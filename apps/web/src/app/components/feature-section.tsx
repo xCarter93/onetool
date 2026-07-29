@@ -1,7 +1,7 @@
 "use client";
 
 import { ReactNode } from "react";
-import { motion, MotionProps } from "motion/react";
+import { m, MotionProps } from "motion/react";
 import {
 	Blocks,
 	Briefcase,
@@ -29,7 +29,7 @@ function Block({
 	...rest
 }: { className?: string; children: ReactNode } & MotionProps) {
 	return (
-		<motion.div
+		<m.div
 			variants={{
 				initial: {
 					y: 6,
@@ -52,7 +52,7 @@ function Block({
 			{...rest}
 		>
 			{children}
-		</motion.div>
+		</m.div>
 	);
 }
 
@@ -302,7 +302,7 @@ export default function FeatureSection() {
 		>
 			<div className="mx-auto max-w-6xl">
 				{/* Header */}
-				<motion.div
+				<m.div
 					initial={{ opacity: 0, y: 20 }}
 					whileInView={{ opacity: 1, y: 0 }}
 					viewport={{ once: true }}
@@ -318,10 +318,10 @@ export default function FeatureSection() {
 							OneTool.
 						</span>
 					</h2>
-				</motion.div>
+				</m.div>
 
 				{/* Bento Grid */}
-				<motion.div
+				<m.div
 					transition={{ staggerChildren: 0.07 }}
 					initial="initial"
 					whileInView="whileInView"
@@ -333,7 +333,7 @@ export default function FeatureSection() {
 					{highlights.map((h) => (
 						<HighlightBlock key={h.title} {...h} />
 					))}
-				</motion.div>
+				</m.div>
 			</div>
 		</section>
 	);

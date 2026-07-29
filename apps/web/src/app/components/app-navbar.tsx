@@ -1,14 +1,15 @@
 "use client";
 
-import React, { useState } from "react";
+import { useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { SignInButton, SignUpButton, SignedIn, SignedOut } from "@clerk/nextjs";
+import { SignInButton, SignedIn, SignedOut } from "@clerk/nextjs";
 import { ThemeSwitcher } from "@/components/layout/theme-switcher";
 import { Button } from "@/components/ui/button";
-import { AccentCTA } from "@/app/components/landing/accent-cta";
-import { motion, AnimatePresence } from "motion/react";
+import { CtaButton } from "@/app/components/landing/cta-button";
+import { m, AnimatePresence, useReducedMotion } from "motion/react";
+import { ease } from "@/app/components/landing/motion-utils";
 import {
 	Blocks,
 	BookOpen,
@@ -227,6 +228,7 @@ function FeaturesFlyout({
 	onNavigate: (href: string) => void;
 }) {
 	const [open, setOpen] = useState(false);
+	const reduced = useReducedMotion();
 
 	return (
 		<div
@@ -251,11 +253,11 @@ function FeaturesFlyout({
 			</button>
 			<AnimatePresence>
 				{open && (
-					<motion.div
-						initial={{ opacity: 0, y: 12 }}
+					<m.div
+						initial={reduced ? false : { opacity: 0, y: 12 }}
 						animate={{ opacity: 1, y: 0 }}
-						exit={{ opacity: 0, y: 12 }}
-						transition={{ duration: 0.25, ease: "easeOut" }}
+						exit={reduced ? { opacity: 1 } : { opacity: 0, y: 12 }}
+						transition={{ duration: reduced ? 0 : 0.25, ease: "easeOut" }}
 						style={{ translateX: "-50%" }}
 						className="absolute left-1/2 top-full pt-4"
 					>
@@ -294,7 +296,7 @@ function FeaturesFlyout({
 								))}
 							</div>
 						</div>
-					</motion.div>
+					</m.div>
 				)}
 			</AnimatePresence>
 		</div>
@@ -303,6 +305,7 @@ function FeaturesFlyout({
 
 function ResourcesFlyout() {
 	const [open, setOpen] = useState(false);
+	const reduced = useReducedMotion();
 
 	return (
 		<div
@@ -325,11 +328,11 @@ function ResourcesFlyout() {
 			</Link>
 			<AnimatePresence>
 				{open && (
-					<motion.div
-						initial={{ opacity: 0, y: 12 }}
+					<m.div
+						initial={reduced ? false : { opacity: 0, y: 12 }}
 						animate={{ opacity: 1, y: 0 }}
-						exit={{ opacity: 0, y: 12 }}
-						transition={{ duration: 0.25, ease: "easeOut" }}
+						exit={reduced ? { opacity: 1 } : { opacity: 0, y: 12 }}
+						transition={{ duration: reduced ? 0 : 0.25, ease: "easeOut" }}
 						style={{ translateX: "-50%" }}
 						className="absolute left-1/2 top-full pt-4"
 					>
@@ -399,7 +402,7 @@ function ResourcesFlyout() {
 								</div>
 							</div>
 						</div>
-					</motion.div>
+					</m.div>
 				)}
 			</AnimatePresence>
 		</div>
@@ -409,12 +412,13 @@ function ResourcesFlyout() {
 function AppNavBar() {
 	const [isMenuOpen, setIsMenuOpen] = useState(false);
 	const router = useRouter();
+	const reduced = useReducedMotion();
 
 	return (
-		<motion.header
-			initial={{ y: -100 }}
+		<m.header
+			initial={reduced ? false : { y: -100 }}
 			animate={{ y: 0 }}
-			transition={{ duration: 0.8, ease: [0.23, 1, 0.32, 1] }}
+			transition={reduced ? { duration: 0 } : { duration: 0.8, ease }}
 			className="fixed top-0 min-[850px]:top-2.5 left-0 right-0 z-[9998] min-[850px]:left-1/2 min-[850px]:-translate-x-1/2 min-[850px]:w-full min-[850px]:max-w-5xl"
 		>
 			<nav className="bg-frame shadow-2xl/20 rounded-b-4xl md:overflow-visible max-md:overflow-hidden">
@@ -459,20 +463,18 @@ function AppNavBar() {
 										Sign in
 									</button>
 								</SignInButton>
-								<SignUpButton mode="modal" forceRedirectUrl="/home">
-									<AccentCTA size="sm">
-										Get Started
-									</AccentCTA>
-								</SignUpButton>
+								<CtaButton size="sm" href="/sign-up" showArrow={false}>
+									Get Started
+								</CtaButton>
 							</SignedOut>
 							<SignedIn>
-								<Button
-									variant="default"
+								<CtaButton
 									size="sm"
+									showArrow={false}
 									onClick={() => router.push("/home")}
 								>
 									Go To Dashboard
-								</Button>
+								</CtaButton>
 							</SignedIn>
 						</div>
 
@@ -492,11 +494,11 @@ function AppNavBar() {
 				{/* Mobile Navigation */}
 				<AnimatePresence>
 					{isMenuOpen && (
-						<motion.div
+						<m.div
 							initial={{ height: 0, opacity: 0 }}
 							animate={{ height: "auto", opacity: 1 }}
 							exit={{ height: 0, opacity: 0 }}
-							transition={{ duration: 0.3 }}
+							transition={{ duration: reduced ? 0 : 0.3 }}
 							className="md:hidden overflow-hidden border-t border-border"
 						>
 							<div className="px-4 py-3 space-y-1">
@@ -530,27 +532,30 @@ function AppNavBar() {
 												Sign In
 											</Button>
 										</SignInButton>
-										<SignUpButton mode="modal" forceRedirectUrl="/home">
-											<AccentCTA size="sm">
-												Get Started
-											</AccentCTA>
-										</SignUpButton>
+										<CtaButton
+											size="sm"
+											href="/sign-up"
+											showArrow={false}
+											className="w-full sm:w-auto"
+										>
+											Get Started
+										</CtaButton>
 									</SignedOut>
 									<SignedIn>
-										<Button
-											variant="default"
+										<CtaButton
 											size="sm"
+											showArrow={false}
 											onClick={() => {
 												router.push("/home");
 												setIsMenuOpen(false);
 											}}
 										>
 											Go To Dashboard
-										</Button>
+										</CtaButton>
 									</SignedIn>
 								</div>
 							</div>
-						</motion.div>
+						</m.div>
 					)}
 				</AnimatePresence>
 			</nav>
@@ -582,7 +587,7 @@ function AppNavBar() {
 					fill="currentColor"
 				/>
 			</svg>
-		</motion.header>
+		</m.header>
 	);
 }
 

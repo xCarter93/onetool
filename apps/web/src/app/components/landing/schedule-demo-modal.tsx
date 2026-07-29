@@ -107,7 +107,7 @@ export default function ScheduleDemoModal({
 				<form onSubmit={handleScheduleDemo} className="space-y-4">
 					<div className="space-y-2">
 						<Label htmlFor="name">
-							Name <span className="text-red-500">*</span>
+							Name <span className="text-danger">*</span>
 						</Label>
 						<Input
 							id="name"
@@ -124,7 +124,7 @@ export default function ScheduleDemoModal({
 
 					<div className="space-y-2">
 						<Label htmlFor="email">
-							Email <span className="text-red-500">*</span>
+							Email <span className="text-danger">*</span>
 						</Label>
 						<Input
 							id="email"
@@ -183,10 +183,11 @@ export default function ScheduleDemoModal({
 
 					{formStatus.type && (
 						<div
-							className={`p-3 rounded-lg text-sm ${
+							role={formStatus.type === "error" ? "alert" : "status"}
+							className={`p-3 rounded-lg text-sm text-foreground border ${
 								formStatus.type === "success"
-									? "bg-green-50 dark:bg-green-900/20 text-green-800 dark:text-green-200 border border-green-200 dark:border-green-800"
-									: "bg-red-50 dark:bg-red-900/20 text-red-800 dark:text-red-200 border border-red-200 dark:border-red-800"
+									? "bg-success/10 border-success/30"
+									: "bg-danger/10 border-danger/30"
 							}`}
 						>
 							{formStatus.message}

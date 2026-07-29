@@ -1,7 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { ThemeSwitcher } from "@/components/layout/theme-switcher";
-import { AccentCTA } from "@/app/components/landing/accent-cta";
+import { CtaButton } from "@/app/components/landing/cta-button";
 import { HelpSearchButton } from "./help-search";
 
 export function HelpHeader() {
@@ -40,9 +40,9 @@ export function HelpHeader() {
 						Sign in
 					</Link>
 					<span className="hidden md:block">
-						<AccentCTA href="/sign-up" size="sm">
+						<CtaButton href="/sign-up" size="sm" showArrow={false}>
 							Get started
-						</AccentCTA>
+						</CtaButton>
 					</span>
 				</div>
 			</div>

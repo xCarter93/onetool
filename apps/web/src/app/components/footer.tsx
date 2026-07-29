@@ -5,6 +5,7 @@ import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "lucide-react";
 import ScheduleDemoModal from "@/app/components/landing/schedule-demo-modal";
+import { CtaButton } from "@/app/components/landing/cta-button";
 
 const navigation = {
 	solutions: [
@@ -77,14 +78,17 @@ export default function Footer() {
 						<h2 className="text-2xl sm:text-3xl lg:text-4xl font-semibold tracking-tight text-foreground mb-6">
 							Ready to simplify your business?
 						</h2>
-						<Button
-							variant="outline"
-							size="lg"
-							onClick={() => setIsScheduleDemoOpen(true)}
-						>
-							<Calendar className="h-4 w-4" />
-							Schedule a Demo
-						</Button>
+						<div className="flex flex-col sm:flex-row items-center justify-center gap-3">
+							<CtaButton href="/sign-up">Get Started</CtaButton>
+							<Button
+								variant="outline"
+								size="lg"
+								onClick={() => setIsScheduleDemoOpen(true)}
+							>
+								<Calendar className="h-4 w-4" />
+								Schedule a Demo
+							</Button>
+						</div>
 					</div>
 				</div>
 			</div>
@@ -95,7 +99,7 @@ export default function Footer() {
 			/>
 
 			{/* Accent Footer */}
-			<div className="bg-primary rounded-tr-[3rem] rounded-tl-[3rem] pt-32 pb-8 px-4 sm:px-6 lg:px-8">
+			<div className="bg-muted border-t border-border rounded-tr-[3rem] rounded-tl-[3rem] pt-32 pb-8 px-4 sm:px-6 lg:px-8">
 				<div className="mx-auto max-w-7xl">
 					<div className="flex flex-col gap-10 lg:grid lg:grid-cols-3 lg:gap-8">
 						{/* Logo and Description */}
@@ -106,10 +110,10 @@ export default function Footer() {
 									alt="OneTool Logo"
 									width={150}
 									height={150}
-									className="rounded-md brightness-0 invert sm:w-[180px]"
+									className="rounded-md dark:brightness-0 dark:invert sm:w-[180px]"
 								/>
 							</div>
-							<p className="text-sm leading-6 text-white/70 max-w-xs mx-auto lg:mx-0">
+							<p className="text-sm leading-6 text-muted-foreground max-w-xs mx-auto lg:mx-0">
 								Streamlining business operations for companies that serve
 								their communities. Built by entrepreneurs, for entrepreneurs.
 							</p>
@@ -119,7 +123,7 @@ export default function Footer() {
 									<a
 										key={item.name}
 										href={item.href}
-										className="text-white/60 hover:text-white transition-colors"
+										className="text-muted-foreground hover:text-foreground transition-colors"
 									>
 										<span className="sr-only">{item.name}</span>
 										<item.icon aria-hidden="true" className="size-5 sm:size-6" />
@@ -132,7 +136,7 @@ export default function Footer() {
 						<div className="grid grid-cols-2 gap-4 sm:grid-cols-3 sm:gap-8 lg:col-span-2">
 							{/* Solutions */}
 							<div>
-								<h3 className="text-sm font-semibold text-white">
+								<h3 className="text-sm font-semibold text-foreground">
 									Solutions
 								</h3>
 								<ul role="list" className="mt-4 sm:mt-6 space-y-3">
@@ -140,7 +144,7 @@ export default function Footer() {
 										<li key={item.name}>
 											<a
 												href={item.href}
-												className="text-sm text-white/60 hover:text-white transition-colors"
+												className="text-sm text-muted-foreground hover:text-foreground transition-colors"
 											>
 												{item.name}
 											</a>
@@ -151,7 +155,7 @@ export default function Footer() {
 
 							{/* Resources */}
 							<div>
-								<h3 className="text-sm font-semibold text-white">
+								<h3 className="text-sm font-semibold text-foreground">
 									Resources
 								</h3>
 								<ul role="list" className="mt-4 sm:mt-6 space-y-3">
@@ -159,7 +163,7 @@ export default function Footer() {
 										<li key={item.name}>
 											<a
 												href={item.href}
-												className="text-sm text-white/60 hover:text-white transition-colors"
+												className="text-sm text-muted-foreground hover:text-foreground transition-colors"
 											>
 												{item.name}
 											</a>
@@ -170,7 +174,7 @@ export default function Footer() {
 
 							{/* Legal */}
 							<div>
-								<h3 className="text-sm font-semibold text-white">
+								<h3 className="text-sm font-semibold text-foreground">
 									Legal
 								</h3>
 								<ul role="list" className="mt-4 sm:mt-6 space-y-3">
@@ -178,7 +182,7 @@ export default function Footer() {
 										<li key={item.name}>
 											<a
 												href={item.href}
-												className="text-sm text-white/60 hover:text-white transition-colors"
+												className="text-sm text-muted-foreground hover:text-foreground transition-colors"
 											>
 												{item.name}
 											</a>
@@ -190,9 +194,9 @@ export default function Footer() {
 					</div>
 
 					{/* Copyright */}
-					<div className="mt-12 sm:mt-16 border-t border-white/20 pt-6 sm:pt-8">
-						<p className="text-sm text-center lg:text-left text-white/50">
-							&copy; 2025 OneTool. All rights reserved.
+					<div className="mt-12 sm:mt-16 border-t border-border pt-6 sm:pt-8">
+						<p className="text-sm text-center lg:text-left text-muted-foreground">
+							&copy; 2026 OneTool. All rights reserved.
 						</p>
 					</div>
 				</div>

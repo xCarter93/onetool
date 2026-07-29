@@ -1,10 +1,11 @@
 "use client";
 
-import { motion, AnimatePresence } from "motion/react";
+import { m, AnimatePresence, useReducedMotion } from "motion/react";
 import { ChevronDown } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { AccentCTA } from "@/app/components/landing/accent-cta";
+import { CtaButton } from "@/app/components/landing/cta-button";
+import { revealProps } from "@/app/components/landing/motion-utils";
 
 const faqs = [
 	{
@@ -71,6 +72,7 @@ const faqs = [
 
 export default function FAQSection() {
 	const [openIndex, setOpenIndex] = useState<number | null>(null);
+	const reduced = useReducedMotion();
 
 	const toggleFAQ = (index: number) => {
 		setOpenIndex(openIndex === index ? null : index);
@@ -80,13 +82,7 @@ export default function FAQSection() {
 		<section id="faq" className="py-24 sm:py-32 lg:py-40 px-4 sm:px-6 lg:px-8">
 			<div className="mx-auto max-w-3xl">
 				{/* Header */}
-				<motion.div
-					initial={{ opacity: 0, y: 20 }}
-					whileInView={{ opacity: 1, y: 0 }}
-					viewport={{ once: true }}
-					transition={{ duration: 0.5 }}
-					className="text-center mb-12"
-				>
+				<m.div {...revealProps(reduced)} className="text-center mb-12">
 					<p className="text-sm font-semibold text-primary mb-4">FAQ</p>
 					<h2 className="text-3xl sm:text-4xl font-semibold tracking-tight text-foreground mb-4">
 						Frequently Asked Questions
@@ -94,69 +90,78 @@ export default function FAQSection() {
 					<p className="text-base sm:text-lg text-muted-foreground">
 						Everything you need to know about OneTool
 					</p>
-				</motion.div>
+				</m.div>
 
 				{/* FAQ Items */}
 				<div className="space-y-3">
-					{faqs.map((faq, index) => (
-						<motion.div
-							key={index}
-							initial={{ opacity: 0, y: 20 }}
-							whileInView={{ opacity: 1, y: 0 }}
-							viewport={{ once: true }}
-							transition={{ duration: 0.3, delay: index * 0.03 }}
-							className="rounded-2xl bg-white dark:bg-black border border-border shadow-sm overflow-hidden"
-						>
-							<button
-								onClick={() => toggleFAQ(index)}
-								className="flex w-full items-center justify-between p-5 text-left transition-colors hover:bg-accent/50"
-							>
-								<span className="text-sm sm:text-base font-semibold text-foreground pr-4">
-									{faq.question}
-								</span>
-								<motion.div
-									animate={{ rotate: openIndex === index ? 180 : 0 }}
-									transition={{ duration: 0.3 }}
-									className="shrink-0"
-								>
-									<ChevronDown className="h-4 w-4 text-primary" />
-								</motion.div>
-							</button>
+					{faqs.map((faq, index) => {
+						const isOpen = openIndex === index;
+						const panelId = `faq-panel-${index}`;
+						const triggerId = `faq-trigger-${index}`;
 
-							<AnimatePresence>
-								{openIndex === index && (
-									<motion.div
-										initial={{ height: 0, opacity: 0 }}
-										animate={{ height: "auto", opacity: 1 }}
-										exit={{ height: 0, opacity: 0 }}
-										transition={{ duration: 0.3 }}
-										className="overflow-hidden"
+						return (
+							<m.div
+								key={index}
+								{...revealProps(reduced, {
+									duration: 0.3,
+									delay: index * 0.03,
+								})}
+								className="rounded-2xl bg-card border border-border shadow-sm overflow-hidden"
+							>
+								<button
+									id={triggerId}
+									onClick={() => toggleFAQ(index)}
+									aria-expanded={isOpen}
+									aria-controls={panelId}
+									className="flex w-full items-center justify-between p-5 text-left transition-colors hover:bg-accent/50"
+								>
+									<span className="text-sm sm:text-base font-semibold text-foreground pr-4">
+										{faq.question}
+									</span>
+									<m.div
+										animate={{ rotate: isOpen ? 180 : 0 }}
+										transition={{ duration: reduced ? 0 : 0.3 }}
+										className="shrink-0"
 									>
-										<div className="border-t border-border px-5 py-4">
-											<p className="text-sm leading-relaxed text-muted-foreground">
-												{faq.answer}
-											</p>
-										</div>
-									</motion.div>
-								)}
-							</AnimatePresence>
-						</motion.div>
-					))}
+										<ChevronDown className="h-4 w-4 text-primary" />
+									</m.div>
+								</button>
+
+								<AnimatePresence initial={false}>
+									{isOpen && (
+										<m.div
+											id={panelId}
+											role="region"
+											aria-labelledby={triggerId}
+											initial={{ height: 0, opacity: 0 }}
+											animate={{ height: "auto", opacity: 1 }}
+											exit={{ height: 0, opacity: 0 }}
+											transition={{ duration: reduced ? 0 : 0.3 }}
+											className="overflow-hidden"
+										>
+											<div className="border-t border-border px-5 py-4">
+												<p className="text-sm leading-relaxed text-muted-foreground">
+													{faq.answer}
+												</p>
+											</div>
+										</m.div>
+									)}
+								</AnimatePresence>
+							</m.div>
+						);
+					})}
 				</div>
 
 				{/* Bottom CTAs */}
-				<motion.div
-					initial={{ opacity: 0, y: 20 }}
-					whileInView={{ opacity: 1, y: 0 }}
-					viewport={{ once: true }}
-					transition={{ duration: 0.5, delay: 0.3 }}
+				<m.div
+					{...revealProps(reduced, { delay: 0.3 })}
 					className="mt-12 text-center flex flex-col sm:flex-row items-center justify-center gap-3"
 				>
-					<AccentCTA href="/sign-up">Get Started</AccentCTA>
+					<CtaButton href="/sign-up">Get Started</CtaButton>
 					<a href="mailto:support@onetool.biz">
 						<Button variant="outline">Contact Support</Button>
 					</a>
-				</motion.div>
+				</m.div>
 			</div>
 		</section>
 	);

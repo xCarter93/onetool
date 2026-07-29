@@ -1,12 +1,10 @@
 import PageFrame from "@/app/components/landing/page-frame";
 import { SmoothScroll } from "@/app/components/landing/smooth-scroll";
 import AppNavbar from "@/app/components/app-navbar";
-import HeroSection from "@/app/components/hero-section";
-import BlurInHeadline from "@/app/components/landing/blur-in-headline";
+import Hero from "@/app/components/landing/hero/hero";
 import FeatureSection from "@/app/components/feature-section";
-import HowItWorks from "@/app/components/landing/how-it-works";
+import { SceneRail } from "@/app/components/landing/scenes";
 import FAQSection from "@/app/components/faq-section";
-import ShowcaseSection from "@/app/components/showcase-section";
 import PricingSection from "@/app/components/pricing-section";
 import Footer from "@/app/components/footer";
 
@@ -16,12 +14,10 @@ export default function Home() {
 			<main className="flex-1 overflow-x-clip">
 				<PageFrame />
 				<AppNavbar />
-				<HeroSection />
-				<BlurInHeadline />
+				<Hero />
 				<FeatureSection />
-				<HowItWorks />
+				<SceneRail />
 				<FAQSection />
-				<ShowcaseSection />
 				<PricingSection />
 				<Footer />
 			</main>

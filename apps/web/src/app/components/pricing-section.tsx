@@ -8,9 +8,10 @@ import {
 	Server,
 } from "lucide-react";
 import { useState, useEffect, useRef, useSyncExternalStore } from "react";
-import { motion } from "motion/react";
+import { m, useReducedMotion } from "motion/react";
 import { useTheme } from "next-themes";
-import { AccentCTA } from "@/app/components/landing/accent-cta";
+import { CtaButton } from "@/app/components/landing/cta-button";
+import { revealProps } from "@/app/components/landing/motion-utils";
 import { usePlans } from "@clerk/nextjs/experimental";
 import { useRouter } from "next/navigation";
 
@@ -139,6 +140,7 @@ const plans = [
 
 const PricingSwitch = ({ onSwitch }: { onSwitch: (value: string) => void }) => {
 	const [selected, setSelected] = useState("0");
+	const reduced = useReducedMotion();
 
 	const handleSwitch = (value: string) => {
 		setSelected(value);
@@ -158,10 +160,14 @@ const PricingSwitch = ({ onSwitch }: { onSwitch: (value: string) => void }) => {
 					)}
 				>
 					{selected === "0" && (
-						<motion.span
+						<m.span
 							layoutId="switch"
-							className="absolute top-0 left-0 sm:h-12 h-10 w-full rounded-full border-4 shadow-sm shadow-primary border-primary bg-linear-to-t from-primary via-primary/80 to-primary"
-							transition={{ type: "spring", stiffness: 500, damping: 30 }}
+							className="absolute top-0 left-0 sm:h-12 h-10 w-full rounded-full border-4 border-(--cta-solid) bg-(--cta-solid) shadow-sm"
+							transition={
+								reduced
+									? { duration: 0 }
+									: { type: "spring", stiffness: 500, damping: 30 }
+							}
 						/>
 					)}
 					<span className="relative">Monthly</span>
@@ -177,15 +183,19 @@ const PricingSwitch = ({ onSwitch }: { onSwitch: (value: string) => void }) => {
 					)}
 				>
 					{selected === "1" && (
-						<motion.span
+						<m.span
 							layoutId="switch"
-							className="absolute top-0 left-0 sm:h-12 h-10 w-full rounded-full border-4 shadow-sm shadow-primary border-primary bg-linear-to-t from-primary via-primary/80 to-primary"
-							transition={{ type: "spring", stiffness: 500, damping: 30 }}
+							className="absolute top-0 left-0 sm:h-12 h-10 w-full rounded-full border-4 border-(--cta-solid) bg-(--cta-solid) shadow-sm"
+							transition={
+								reduced
+									? { duration: 0 }
+									: { type: "spring", stiffness: 500, damping: 30 }
+							}
 						/>
 					)}
 					<span className="relative flex items-center gap-2">
 						Yearly
-						<span className="rounded-full bg-white dark:bg-gray-900 px-2 py-0.5 text-xs font-medium text-primary border border-primary/20">
+						<span className="rounded-full bg-card px-2 py-0.5 text-xs font-medium text-primary border border-primary/20">
 							Save 17%
 						</span>
 					</span>
@@ -205,6 +215,7 @@ export default function PricingSection() {
 	);
 	const { resolvedTheme } = useTheme();
 	const router = useRouter();
+	const reduced = useReducedMotion();
 
 	const { data: clerkPlans, isLoading: isLoadingPlans } = usePlans({
 		for: "organization",
@@ -280,11 +291,8 @@ export default function PricingSection() {
 		>
 			<div className="mx-auto max-w-5xl">
 				{/* Header */}
-				<motion.div
-					initial={{ opacity: 0, y: 20 }}
-					whileInView={{ opacity: 1, y: 0 }}
-					viewport={{ once: true }}
-					transition={{ duration: 0.5 }}
+				<m.div
+					{...revealProps(reduced)}
 					className="text-center mb-8 sm:mb-12"
 				>
 					<h2 className="text-3xl sm:text-4xl lg:text-5xl font-semibold tracking-tight text-foreground mb-4">
@@ -297,28 +305,19 @@ export default function PricingSection() {
 						We help teams all around the world. Explore which option is right
 						for you.
 					</p>
-				</motion.div>
+				</m.div>
 
 				{/* Switch */}
-				<motion.div
-					initial={{ opacity: 0, y: 20 }}
-					whileInView={{ opacity: 1, y: 0 }}
-					viewport={{ once: true }}
-					transition={{ duration: 0.5, delay: 0.1 }}
-					className="mb-10"
-				>
+				<m.div {...revealProps(reduced, { delay: 0.1 })} className="mb-10">
 					<PricingSwitch onSwitch={togglePricingPeriod} />
-				</motion.div>
+				</m.div>
 
 				{/* Plan Cards */}
 				<div className="grid grid-cols-1 md:grid-cols-2 gap-6">
 					{displayPlans.map((plan, index) => (
-						<motion.div
+						<m.div
 							key={plan.name}
-							initial={{ opacity: 0, y: 30 }}
-							whileInView={{ opacity: 1, y: 0 }}
-							viewport={{ once: true }}
-							transition={{ duration: 0.5, delay: 0.15 * index }}
+							{...revealProps(reduced, { y: 30, delay: 0.15 * index })}
 							className="relative"
 						>
 							{/* Popular badge wrapper */}
@@ -327,7 +326,7 @@ export default function PricingSection() {
 							)}
 							{plan.popular && (
 								<div className="absolute -top-3.5 left-1/2 -translate-x-1/2 z-10">
-									<span className="bg-primary text-white px-4 py-1 rounded-full text-xs font-medium whitespace-nowrap">
+									<span className="bg-(--cta-solid) text-white px-4 py-1 rounded-full text-xs font-medium whitespace-nowrap">
 										Most Popular
 									</span>
 								</div>
@@ -335,7 +334,7 @@ export default function PricingSection() {
 
 							<div
 								className={cn(
-									"relative z-[1] h-full rounded-2xl bg-white dark:bg-black border border-border p-6 sm:p-8",
+									"relative z-[1] h-full rounded-2xl bg-card border border-border p-6 sm:p-8",
 									plan.popular && "border-transparent",
 								)}
 							>
@@ -406,20 +405,17 @@ export default function PricingSection() {
 									</div>
 								)}
 							</div>
-						</motion.div>
+						</m.div>
 					))}
 				</div>
 
 				{/* CTA */}
-				<motion.div
-					initial={{ opacity: 0, y: 20 }}
-					whileInView={{ opacity: 1, y: 0 }}
-					viewport={{ once: true }}
-					transition={{ duration: 0.5, delay: 0.3 }}
+				<m.div
+					{...revealProps(reduced, { delay: 0.3 })}
 					className="flex justify-center mt-10"
 				>
-					<AccentCTA onClick={handleGetStarted}>Get Started</AccentCTA>
-				</motion.div>
+					<CtaButton onClick={handleGetStarted}>Get Started</CtaButton>
+				</m.div>
 			</div>
 		</section>
 	);
