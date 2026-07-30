@@ -77,7 +77,8 @@ const BOLDSIGN_TIMESTAMP_FIELDS: Record<BoldSignStatus, string> = {
  */
 type DerivedSigner = { name: string; email: string; signerOrder: number };
 
-type EmbeddedRequestContext = {
+type EmbeddedRequestReady = {
+	ok: true;
 	quoteTitle: string;
 	message: string;
 	filename: string;
@@ -90,6 +91,14 @@ type EmbeddedRequestContext = {
 	// URL is minted fresh per visit, so this is not gated on link expiry.
 	existing: { boldsignDocumentId: string } | null;
 };
+
+/**
+ * A quote with no generated PDF is an expected state, not a failure, so it is
+ * returned as a typed reason alongside the action's limit / no_signer verdicts.
+ */
+type EmbeddedRequestContext =
+	| EmbeddedRequestReady
+	| { ok: false; reason: "no_pdf" };
 
 /**
  * Gather everything the embedded-request action needs, org-scoped to the
@@ -167,7 +176,7 @@ export const getEmbeddedRequestContext = internalQuery({
 
 		const latest = await getLatestQuoteDocument(ctx, quote._id, orgId);
 		if (!latest) {
-			throw new Error("No PDF has been generated for this quote yet");
+			return { ok: false, reason: "no_pdf" };
 		}
 
 		// Resume any embedded Draft (idempotent /sign visits). Deliberately not
@@ -219,6 +228,7 @@ export const getEmbeddedRequestContext = internalQuery({
 
 		const quoteLabel = quote.quoteNumber || quote._id.slice(-6);
 		return {
+			ok: true,
 			quoteTitle: `Quote ${quoteLabel}`,
 			message: quote.clientMessage || "Please review and sign this quote.",
 			filename: `Quote-${quoteLabel}.pdf`,

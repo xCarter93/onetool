@@ -45,6 +45,35 @@ type LineItem = {
 	isNew?: boolean; // Track if this is a new item not yet saved
 };
 
+// Mirrors validateQuoteLineItemFields in packages/backend/convex/lib/lineItems.ts —
+// these values are rejected server-side, so never fire the mutation with them.
+const lineItemFieldError = (
+	field: keyof LineItem,
+	value: unknown
+): string | null => {
+	switch (field) {
+		case "description":
+			return typeof value === "string" && value.trim()
+				? null
+				: "Description cannot be empty.";
+		case "unit":
+			return typeof value === "string" && value.trim()
+				? null
+				: "Unit cannot be empty.";
+		case "quantity":
+			return typeof value === "number" && Number.isFinite(value) && value > 0
+				? null
+				: "Quantity must be a positive number.";
+		case "rate":
+		case "cost":
+			return typeof value === "number" && Number.isFinite(value) && value >= 0
+				? null
+				: `${field === "rate" ? "Rate" : "Cost"} must be a non-negative number.`;
+		default:
+			return null;
+	}
+};
+
 // Status formatting functions
 const formatStatus = (status: string) => {
 	switch (status) {
@@ -792,6 +821,7 @@ function LineItemRow({
 	) => Promise<void>;
 	onDelete: () => void;
 }) {
+	const toast = useToast();
 	const [editedItem, setEditedItem] = useState<LineItem>(item);
 	const [isSaving, setIsSaving] = useState(false);
 
@@ -812,6 +842,13 @@ function LineItemRow({
 	const handleBlur = async (field: keyof LineItem) => {
 		// Only save if the value actually changed
 		if (editedItem[field] === item[field]) {
+			return;
+		}
+
+		const error = lineItemFieldError(field, editedItem[field]);
+		if (error) {
+			setEditedItem((prev) => ({ ...prev, [field]: item[field] }));
+			toast.error("Invalid value", error);
 			return;
 		}
 

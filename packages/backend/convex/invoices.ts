@@ -7,7 +7,7 @@ import {
 	MutationCtx,
 } from "./_generated/server";
 import { internal } from "./_generated/api";
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 import { Doc, Id } from "./_generated/dataModel";
 import { ActivityHelpers } from "./lib/activities";
 import { AggregateHelpers } from "./lib/aggregates";
@@ -414,21 +414,33 @@ export const create = userMutation({
 		await ctx.requireLevel("invoices", "modify");
 		// Validate required fields
 		if (!args.invoiceNumber.trim()) {
-			throw new Error("Invoice number is required");
+			throw new ConvexError({
+				code: "BAD_REQUEST",
+				message: "Invoice number is required",
+			});
 		}
 
 		// Validate financial values
 		if (args.subtotal < 0) {
-			throw new Error("Subtotal cannot be negative");
+			throw new ConvexError({
+				code: "BAD_REQUEST",
+				message: "Subtotal cannot be negative",
+			});
 		}
 
 		if (args.total < 0) {
-			throw new Error("Total cannot be negative");
+			throw new ConvexError({
+				code: "BAD_REQUEST",
+				message: "Total cannot be negative",
+			});
 		}
 
 		// Validate dates
 		if (args.dueDate <= args.issuedDate) {
-			throw new Error("Due date must be after issued date");
+			throw new ConvexError({
+				code: "BAD_REQUEST",
+				message: "Due date must be after issued date",
+			});
 		}
 
 		const invoiceId = await createInvoiceWithOrg(ctx, {
@@ -614,19 +626,27 @@ export const sendToClient = userMutation({
 		);
 
 		if (invoice.status === "paid" || invoice.status === "cancelled") {
-			throw new Error(`Cannot send a ${invoice.status} invoice to the client.`);
+			throw new ConvexError({
+				code: "CONFLICT",
+				message: `Cannot send a ${invoice.status} invoice to the client.`,
+			});
 		}
 
 		// The client must be reachable in the portal: portal access enabled and a
 		// primary contact with an email to receive the invite.
 		const client = await ctx.db.get(invoice.clientId);
 		if (!client || client.orgId !== invoice.orgId) {
-			throw new Error("Invoice client not found.");
+			throw new ConvexError({
+				code: "NOT_FOUND",
+				message: "Invoice client not found.",
+			});
 		}
 		if (!client.portalAccessId) {
-			throw new Error(
-				"This client has no portal access yet. Enable it on the client before sending."
-			);
+			throw new ConvexError({
+				code: "CONFLICT",
+				message:
+					"This client has no portal access yet. Enable it on the client before sending.",
+			});
 		}
 		const primaryContact = await ctx.db
 			.query("clientContacts")
@@ -636,9 +656,10 @@ export const sendToClient = userMutation({
 			.first();
 		const recipientEmail = primaryContact?.email?.trim();
 		if (!recipientEmail) {
-			throw new Error(
-				"Add an email to this client's primary contact before sending."
-			);
+			throw new ConvexError({
+				code: "CONFLICT",
+				message: "Add an email to this client's primary contact before sending.",
+			});
 		}
 
 		// Sending is the act of sending: flip draft→sent. Already-sent/overdue
@@ -727,11 +748,17 @@ export const markPaid = userMutation({
 		);
 
 		if (invoice.status === "paid") {
-			throw new Error("Invoice is already paid");
+			throw new ConvexError({
+				code: "CONFLICT",
+				message: "Invoice is already paid",
+			});
 		}
 
 		if (invoice.status === "cancelled") {
-			throw new Error("Cannot mark cancelled invoice as paid");
+			throw new ConvexError({
+				code: "CONFLICT",
+				message: "Cannot mark cancelled invoice as paid",
+			});
 		}
 
 		await ctx.db.patch(args.id, {
@@ -1012,7 +1039,10 @@ export const createFromQuote = userMutation({
 		const quote = await ctx.orgEntity("quotes", args.quoteId);
 
 		if (quote.status !== "approved") {
-			throw new Error("Only approved quotes can be converted to invoices");
+			throw new ConvexError({
+				code: "CONFLICT",
+				message: "Only approved quotes can be converted to invoices",
+			});
 		}
 
 		// One invoice per quote — guard against duplicates from double-clicks or
@@ -1022,7 +1052,10 @@ export const createFromQuote = userMutation({
 			.withIndex("by_quote", (q) => q.eq("quoteId", args.quoteId))
 			.first();
 		if (existingInvoice) {
-			throw new Error("An invoice has already been created from this quote");
+			throw new ConvexError({
+				code: "CONFLICT",
+				message: "An invoice has already been created from this quote",
+			});
 		}
 
 		// Generate invoice number automatically

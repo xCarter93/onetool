@@ -597,24 +597,39 @@ export const create = userMutation({
 
 		// Validate financial values
 		if (args.subtotal < 0) {
-			throw new Error("Subtotal cannot be negative");
+			throw new ConvexError({
+				code: "BAD_REQUEST",
+				message: "Subtotal cannot be negative",
+			});
 		}
 
 		if (args.total < 0) {
-			throw new Error("Total cannot be negative");
+			throw new ConvexError({
+				code: "BAD_REQUEST",
+				message: "Total cannot be negative",
+			});
 		}
 
 		if (args.discountEnabled && args.discountAmount !== undefined) {
 			if (args.discountAmount < 0) {
-				throw new Error("Discount amount cannot be negative");
+				throw new ConvexError({
+					code: "BAD_REQUEST",
+					message: "Discount amount cannot be negative",
+				});
 			}
 			if (args.discountType === "percentage" && args.discountAmount > 100) {
-				throw new Error("Percentage discount cannot exceed 100%");
+				throw new ConvexError({
+					code: "BAD_REQUEST",
+					message: "Percentage discount cannot exceed 100%",
+				});
 			}
 		}
 
 		if (args.taxEnabled && args.taxRate !== undefined && args.taxRate < 0) {
-			throw new Error("Tax rate cannot be negative");
+			throw new ConvexError({
+				code: "BAD_REQUEST",
+				message: "Tax rate cannot be negative",
+			});
 		}
 
 		// validUntil is a calendar date (UTC-midnight epoch): the quote is valid
@@ -623,7 +638,10 @@ export const create = userMutation({
 		if (args.validUntil) {
 			const tz = (await ctx.db.get(ctx.orgId))?.timezone ?? "UTC";
 			if (args.validUntil < calendarDayEpoch(Date.now(), tz)) {
-				throw new Error("Valid until date cannot be in the past");
+				throw new ConvexError({
+					code: "BAD_REQUEST",
+					message: "Valid until date cannot be in the past",
+				});
 			}
 		}
 
@@ -710,15 +728,24 @@ export const update = userMutation({
 
 		// Validate financial values
 		if (updates.subtotal !== undefined && updates.subtotal < 0) {
-			throw new Error("Subtotal cannot be negative");
+			throw new ConvexError({
+				code: "BAD_REQUEST",
+				message: "Subtotal cannot be negative",
+			});
 		}
 
 		if (updates.total !== undefined && updates.total < 0) {
-			throw new Error("Total cannot be negative");
+			throw new ConvexError({
+				code: "BAD_REQUEST",
+				message: "Total cannot be negative",
+			});
 		}
 
 		if (updates.discountAmount !== undefined && updates.discountAmount < 0) {
-			throw new Error("Discount amount cannot be negative");
+			throw new ConvexError({
+				code: "BAD_REQUEST",
+				message: "Discount amount cannot be negative",
+			});
 		}
 
 		if (
@@ -726,33 +753,46 @@ export const update = userMutation({
 			updates.discountAmount !== undefined &&
 			updates.discountAmount > 100
 		) {
-			throw new Error("Percentage discount cannot exceed 100%");
+			throw new ConvexError({
+				code: "BAD_REQUEST",
+				message: "Percentage discount cannot exceed 100%",
+			});
 		}
 
 		if (updates.taxRate !== undefined && updates.taxRate < 0) {
-			throw new Error("Tax rate cannot be negative");
+			throw new ConvexError({
+				code: "BAD_REQUEST",
+				message: "Tax rate cannot be negative",
+			});
 		}
 
 		// Same calendar-day semantics as create (see comment there).
 		if (updates.validUntil) {
 			const tz = (await ctx.db.get(ctx.orgId))?.timezone ?? "UTC";
 			if (updates.validUntil < calendarDayEpoch(Date.now(), tz)) {
-				throw new Error("Valid until date cannot be in the past");
+				throw new ConvexError({
+					code: "BAD_REQUEST",
+					message: "Valid until date cannot be in the past",
+				});
 			}
 		}
 
 		// Validate countersignature settings
 		if (updates.requiresCountersignature === true && !updates.countersignerId) {
-			throw new Error(
-				"Countersigner is required when countersignature is enabled"
-			);
+			throw new ConvexError({
+				code: "BAD_REQUEST",
+				message: "Countersigner is required when countersignature is enabled",
+			});
 		}
 
 		// Validate countersigner exists if provided
 		if (updates.countersignerId) {
 			const countersigner = await ctx.db.get(updates.countersignerId);
 			if (!countersigner) {
-				throw new Error("Countersigner not found");
+				throw new ConvexError({
+					code: "NOT_FOUND",
+					message: "Countersigner not found",
+				});
 			}
 		}
 
@@ -919,10 +959,12 @@ export const remove = userMutation({
 			.collect();
 
 		if (invoices.length > 0) {
-			throw new Error(
-				"Cannot delete quote with existing invoices. " +
-					"Please remove or unlink the invoices first."
-			);
+			throw new ConvexError({
+				code: "CONFLICT",
+				message:
+					"Cannot delete quote with existing invoices. " +
+					"Please remove or unlink the invoices first.",
+			});
 		}
 
 		// Delete line items first

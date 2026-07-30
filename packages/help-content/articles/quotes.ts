@@ -290,6 +290,10 @@ export const quotesArticles: HelpArticle[] = [
 					},
 					{
 						type: "note",
+						text: "Sending needs a generated PDF. Until you click **Generate PDF** on the quote, **Send for e-signature** is unavailable and the page shows **Generate a PDF for this quote first** instead of the editor.",
+					},
+					{
+						type: "note",
 						text: "Sending needs a client contact with an email address on file. If there is none, the page shows **Add a client contact first** instead of the editor.",
 					},
 					{

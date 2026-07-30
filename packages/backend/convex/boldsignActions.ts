@@ -72,7 +72,8 @@ type CreateEmbeddedResult =
 	// minted; the client must not discard it on back-navigation.
 	| { ok: true; sendUrl: string; boldsignDocumentId: string; reused: boolean }
 	| { ok: false; reason: "limit"; used: number; limit: number }
-	| { ok: false; reason: "no_signer" };
+	| { ok: false; reason: "no_signer" }
+	| { ok: false; reason: "no_pdf" };
 
 /**
  * Create an embedded BoldSign sending request for a quote's latest PDF and
@@ -96,6 +97,11 @@ export const createEmbeddedSignatureRequest = action({
 			internal.boldsign.getEmbeddedRequestContext,
 			{ quoteId: args.quoteId }
 		);
+
+		// Nothing to send until a quote PDF exists.
+		if (!context.ok) {
+			return { ok: false, reason: "no_pdf" };
+		}
 
 		// Enforce the monthly cap before creating any BoldSign draft.
 		if (context.usage.overCap) {

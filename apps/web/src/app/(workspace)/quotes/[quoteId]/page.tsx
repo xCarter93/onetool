@@ -19,6 +19,7 @@ import { ExclamationTriangleIcon } from "@heroicons/react/24/outline";
 import { QuoteDetailHeader } from "./components/quote-detail-header";
 import { QuoteDetailTabs } from "./components/quote-detail-tabs";
 import { localDateToUtcMidnightMs } from "@/lib/dates";
+import { convexErrorMessage } from "@/lib/convex-error";
 
 type QuoteStatus = "draft" | "sent" | "approved" | "declined" | "expired";
 
@@ -186,10 +187,7 @@ function QuoteDetailPageContent() {
 			router.push(`/invoices/${invoiceId}`);
 			// Leave the action disabled through navigation; the page unmounts.
 		} catch (err) {
-			const message =
-				err instanceof Error
-					? err.message
-					: "Failed to create invoice";
+			const message = convexErrorMessage(err, "Failed to create invoice");
 			toast.error("Error", message);
 			setIsConverting(false);
 		}
