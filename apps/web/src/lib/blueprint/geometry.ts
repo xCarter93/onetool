@@ -38,6 +38,12 @@ export const BP_DASH = {
 	hidden: "6 4",
 	/** Centre line, long-short-long. */
 	centre: "10 3 2 3",
+	/**
+	 * ISO 04.1 centre line at hero scale. The short `centre` rhythm reads as a
+	 * generic dotted border once a drawing is a few hundred units across; the
+	 * long dash is what makes it a centre line.
+	 */
+	centreLong: "24 3 1 3",
 	/** Long dash for datum / axis lines. */
 	axis: "10 4",
 } as const;
@@ -86,6 +92,57 @@ export function circlePath(cx: number, cy: number, r: number): string {
 		`A ${r} ${r} 0 0 1 ${cx - r} ${cy}`,
 		"Z",
 	].join(" ");
+}
+
+/**
+ * Point on a circle. SVG angle convention: 0deg is +x, 90deg is +y — which is
+ * DOWN the screen, so "increasing angle" is clockwise visually.
+ */
+export function polarPoint(
+	cx: number,
+	cy: number,
+	r: number,
+	deg: number,
+): Point {
+	const t = (deg * Math.PI) / 180;
+	return [cx + r * Math.cos(t), cy + r * Math.sin(t)];
+}
+
+/**
+ * Arc between two angles on a circle, for drawings struck from real construction
+ * geometry rather than eyeballed curves.
+ *
+ * `sweep: 1` travels in the direction of increasing angle (clockwise on screen);
+ * the large-arc flag is derived from the normalised travel, so callers never
+ * have to reason about it. `move: false` drops the leading `M` so the arc can
+ * continue an open subpath whose current point is already the start.
+ */
+export function arcBetweenAngles(
+	cx: number,
+	cy: number,
+	r: number,
+	fromDeg: number,
+	toDeg: number,
+	{ sweep = 1, move = true }: { sweep?: 0 | 1; move?: boolean } = {},
+): string {
+	const [x1, y1] = polarPoint(cx, cy, r, fromDeg);
+	const [x2, y2] = polarPoint(cx, cy, r, toDeg);
+	const raw = sweep === 1 ? toDeg - fromDeg : fromDeg - toDeg;
+	const travel = ((raw % 360) + 360) % 360;
+	const large = travel > 180 ? 1 : 0;
+	const arc = `A ${r} ${r} 0 ${large} ${sweep} ${x2} ${y2}`;
+	return move ? `M ${x1} ${y1} ${arc}` : arc;
+}
+
+/**
+ * Half the chord that a line parallel to a diameter, `offset` from the centre,
+ * cuts from a circle — i.e. how far along the axis that offset line meets the
+ * circumference. This is the tangency/intersection solve behind a drafted part
+ * whose flats run into a struck circle. Returns 0 when the line misses.
+ */
+export function offsetChordHalf(r: number, offset: number): number {
+	const d = r * r - offset * offset;
+	return d > 0 ? Math.sqrt(d) : 0;
 }
 
 /** Straight segment as a path. */

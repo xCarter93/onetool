@@ -147,60 +147,53 @@ const PricingSwitch = ({ onSwitch }: { onSwitch: (value: string) => void }) => {
 		onSwitch(value);
 	};
 
-	return (
-		<div className="flex justify-center">
-			<div className="relative z-50 mx-auto flex w-fit rounded-full bg-muted/30 border border-border p-1">
-				<button
-					onClick={() => handleSwitch("0")}
-					className={cn(
-						"relative z-10 w-fit sm:h-12 h-10 rounded-full sm:px-6 px-3 sm:py-2 py-1 font-medium transition-colors",
-						selected === "0"
-							? "text-white"
-							: "text-muted-foreground hover:text-foreground",
-					)}
-				>
-					{selected === "0" && (
-						<m.span
-							layoutId="switch"
-							className="absolute top-0 left-0 sm:h-12 h-10 w-full rounded-full border-4 border-(--cta-solid) bg-(--cta-solid) shadow-sm"
-							transition={
-								reduced
-									? { duration: 0 }
-									: { type: "spring", stiffness: 500, damping: 30 }
-							}
-						/>
-					)}
-					<span className="relative">Monthly</span>
-				</button>
+	const isYearly = selected === "1";
 
-				<button
-					onClick={() => handleSwitch("1")}
+	return (
+		<div
+			role="radiogroup"
+			aria-label="Billing period"
+			className="inline-flex flex-wrap items-center gap-4"
+		>
+			<div className="relative inline-flex h-11 items-center rounded-lg border border-bp-line bg-muted p-1">
+				{/* Transform-only thumb — no layout animation, so nothing reflows. */}
+				<span
+					aria-hidden="true"
 					className={cn(
-						"relative z-10 w-fit sm:h-12 h-10 shrink-0 rounded-full sm:px-6 px-3 sm:py-2 py-1 font-medium transition-colors",
-						selected === "1"
-							? "text-white"
-							: "text-muted-foreground hover:text-foreground",
+						"absolute bottom-1 left-1 top-1 w-[calc(50%-0.25rem)] rounded-md bg-(--cta-solid) transition-transform ease-out",
+						reduced ? "duration-0" : "duration-300",
+						isYearly ? "translate-x-full" : "translate-x-0",
 					)}
-				>
-					{selected === "1" && (
-						<m.span
-							layoutId="switch"
-							className="absolute top-0 left-0 sm:h-12 h-10 w-full rounded-full border-4 border-(--cta-solid) bg-(--cta-solid) shadow-sm"
-							transition={
-								reduced
-									? { duration: 0 }
-									: { type: "spring", stiffness: 500, damping: 30 }
-							}
-						/>
-					)}
-					<span className="relative flex items-center gap-2">
-						Yearly
-						<span className="rounded-full bg-card px-2 py-0.5 text-xs font-medium text-primary border border-primary/20">
-							Save 17%
-						</span>
-					</span>
-				</button>
+				/>
+				{(["0", "1"] as const).map((value) => {
+					const active = selected === value;
+					return (
+						<button
+							key={value}
+							type="button"
+							role="radio"
+							aria-checked={active}
+							onClick={() => handleSwitch(value)}
+							className={cn(
+								"relative z-10 inline-flex h-9 shrink-0 items-center justify-center rounded-md px-4 text-[11px] font-semibold uppercase leading-none tracking-[0.12em] transition-colors",
+								active
+									? "text-white"
+									: "text-muted-foreground hover:text-foreground",
+							)}
+						>
+							{value === "0" ? "Monthly" : "Yearly"}
+						</button>
+					);
+				})}
 			</div>
+			<span
+				className={cn(
+					"text-[11px] font-semibold uppercase leading-none tracking-[0.14em] transition-opacity",
+					isYearly ? "text-foreground" : "text-muted-foreground opacity-70",
+				)}
+			>
+				Save 17%
+			</span>
 		</div>
 	);
 };
@@ -285,138 +278,131 @@ export default function PricingSection() {
 		setIsYearly(Number.parseInt(value) === 1);
 
 	return (
-		<section
-			id="pricing"
-			className="py-24 sm:py-32 lg:py-40 px-4 sm:px-6 lg:px-8"
-		>
-			<div className="mx-auto max-w-5xl">
-				{/* Header */}
-				<m.div
-					{...revealProps(reduced)}
-					className="text-center mb-8 sm:mb-12"
-				>
-					<h2 className="text-3xl sm:text-4xl lg:text-5xl font-semibold tracking-tight text-foreground mb-4">
-						Plans that work best for your{" "}
-						<span className="border border-dashed border-primary px-2 py-1 rounded-xl bg-primary/10 inline-block">
-							Business
-						</span>
+		<section id="pricing" className="relative p-6 sm:p-10 lg:p-14">
+			{/* Header — heading left, billing toggle right, on a shared baseline. */}
+			<m.div
+				{...revealProps(reduced)}
+				className="flex flex-col gap-6 sm:flex-row sm:items-end sm:justify-between"
+			>
+				<div className="max-w-xl">
+					<h2 className="text-balance text-2xl font-semibold leading-[1.1] tracking-tight text-foreground sm:text-3xl lg:text-[2.5rem]">
+						Plans that work best for your Business
 					</h2>
-					<p className="text-base sm:text-lg text-muted-foreground max-w-xl mx-auto">
+					<p className="mt-5 max-w-md text-sm leading-relaxed text-muted-foreground sm:text-base">
 						We help teams all around the world. Explore which option is right
 						for you.
 					</p>
-				</m.div>
+				</div>
 
-				{/* Switch */}
-				<m.div {...revealProps(reduced, { delay: 0.1 })} className="mb-10">
-					<PricingSwitch onSwitch={togglePricingPeriod} />
-				</m.div>
+				<PricingSwitch onSwitch={togglePricingPeriod} />
+			</m.div>
 
-				{/* Plan Cards */}
-				<div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-					{displayPlans.map((plan, index) => (
-						<m.div
-							key={plan.name}
-							{...revealProps(reduced, { y: 30, delay: 0.15 * index })}
-							className="relative"
+			{/* Plan Cards */}
+			<div className="mt-12 grid grid-cols-1 gap-4 md:grid-cols-2 lg:mt-16 lg:gap-6">
+				{displayPlans.map((plan, index) => (
+					<m.div
+						key={plan.name}
+						{...revealProps(reduced, { y: 30, delay: 0.15 * index })}
+						className={cn(
+							"relative",
+							// Column rule in the gutter, not on the plate edge.
+							index > 0 &&
+								"md:before:absolute md:before:-left-2 md:before:top-0 md:before:bottom-0 md:before:w-px md:before:bg-bp-line md:before:content-[''] lg:before:-left-3",
+						)}
+					>
+						<div
+							className={cn(
+								"relative h-full border border-bp-line p-6 sm:p-8",
+								plan.popular
+									? "bg-muted shadow-[0_10px_28px_-22px_rgba(0,0,0,0.25)]"
+									: "bg-bp-paper",
+							)}
 						>
-							{/* Popular badge wrapper */}
-							{plan.popular && (
-								<div className="absolute -inset-[3px] rounded-[1.2rem] bg-primary z-0" />
-							)}
-							{plan.popular && (
-								<div className="absolute -top-3.5 left-1/2 -translate-x-1/2 z-10">
-									<span className="bg-(--cta-solid) text-white px-4 py-1 rounded-full text-xs font-medium whitespace-nowrap">
-										Most Popular
-									</span>
-								</div>
-							)}
-
-							<div
-								className={cn(
-									"relative z-[1] h-full rounded-2xl bg-card border border-border p-6 sm:p-8",
-									plan.popular && "border-transparent",
-								)}
-							>
-								{/* Plan header */}
+							{/* Plan header */}
+							<div className="flex items-start justify-between gap-4">
 								<h3 className="text-2xl sm:text-3xl font-semibold text-foreground mb-2">
 									{plan.name}
 								</h3>
-								<p className="text-sm text-muted-foreground mb-4">
-									{plan.description}
-								</p>
-
-								{/* Price */}
-								<div className="flex items-baseline mb-1">
-									<span className="text-3xl sm:text-4xl font-semibold text-foreground">
-										$
-										<AnimatedNumber
-											value={isYearly ? plan.yearlyPrice : plan.price}
-											className="text-3xl sm:text-4xl font-semibold"
-											format={{
-												style: "decimal",
-												maximumFractionDigits: 0,
-											}}
-										/>
+								{plan.popular && (
+									<span className="shrink-0 border border-bp-line-strong px-2.5 py-1 text-[10px] font-semibold uppercase leading-none tracking-[0.14em] text-foreground">
+										Most Popular
 									</span>
-									<span className="text-sm text-muted-foreground ml-1">
-										/{isYearly ? "year" : "month"}
-									</span>
-								</div>
-								{plan.price > 0 && (
-									<p className="text-xs text-muted-foreground mb-6">
-										Per organization · Unlimited users included
-									</p>
-								)}
-								{plan.price === 0 && <div className="mb-6" />}
-
-								{/* Features */}
-								<ul className="space-y-2.5 mb-6">
-									{plan.features.map((feature, featureIndex) => (
-										<li key={featureIndex} className="flex items-start">
-											<span className="text-foreground grid place-content-center mt-0.5 mr-3 shrink-0 [&>svg]:w-4 [&>svg]:h-4 sm:[&>svg]:w-5 sm:[&>svg]:h-5">
-												{feature.icon}
-											</span>
-											<span className="text-sm text-muted-foreground">
-												{feature.text}
-											</span>
-										</li>
-									))}
-								</ul>
-
-								{/* Includes */}
-								{plan.includes.length > 0 && (
-									<div className="pt-4 border-t border-border">
-										<h4 className="font-medium text-sm text-foreground mb-3">
-											{plan.includes[0]}
-										</h4>
-										<ul className="space-y-2.5">
-											{plan.includes.slice(1).map((feature, featureIndex) => (
-												<li key={featureIndex} className="flex items-start">
-													<span className="h-5 w-5 bg-primary/10 border border-primary rounded-full grid place-content-center mt-0.5 mr-3 shrink-0">
-														<CheckCheck className="h-3 w-3 text-primary" />
-													</span>
-													<span className="text-sm text-muted-foreground">
-														{feature}
-													</span>
-												</li>
-											))}
-										</ul>
-									</div>
 								)}
 							</div>
-						</m.div>
-					))}
-				</div>
+							<p className="text-sm text-muted-foreground mb-4">
+								{plan.description}
+							</p>
 
-				{/* CTA */}
-				<m.div
-					{...revealProps(reduced, { delay: 0.3 })}
-					className="flex justify-center mt-10"
-				>
-					<CtaButton onClick={handleGetStarted}>Get Started</CtaButton>
-				</m.div>
+							{/* Price */}
+							<div className="flex items-baseline mb-1">
+								<span className="text-3xl sm:text-4xl font-semibold tabular-nums text-foreground">
+									$
+									<AnimatedNumber
+										value={isYearly ? plan.yearlyPrice : plan.price}
+										className="text-3xl sm:text-4xl font-semibold"
+										format={{
+											style: "decimal",
+											maximumFractionDigits: 0,
+										}}
+									/>
+								</span>
+								<span className="text-sm text-muted-foreground ml-1">
+									/{isYearly ? "year" : "month"}
+								</span>
+							</div>
+							{plan.price > 0 && (
+								<p className="text-xs text-muted-foreground mb-6">
+									Per organization · Unlimited users included
+								</p>
+							)}
+							{plan.price === 0 && <div className="mb-6" />}
+
+							{/* Features */}
+							<ul className="space-y-2.5 mb-6">
+								{plan.features.map((feature, featureIndex) => (
+									<li key={featureIndex} className="flex items-start">
+										<span className="text-foreground grid place-content-center mt-0.5 mr-3 shrink-0 [&>svg]:w-4 [&>svg]:h-4 sm:[&>svg]:w-5 sm:[&>svg]:h-5">
+											{feature.icon}
+										</span>
+										<span className="text-sm text-muted-foreground">
+											{feature.text}
+										</span>
+									</li>
+								))}
+							</ul>
+
+							{/* Includes */}
+							{plan.includes.length > 0 && (
+								<div className="pt-4 border-t border-bp-line">
+									<h4 className="font-medium text-sm text-foreground mb-3">
+										{plan.includes[0]}
+									</h4>
+									<ul className="space-y-2.5">
+										{plan.includes.slice(1).map((feature, featureIndex) => (
+											<li key={featureIndex} className="flex items-start">
+												<span className="h-5 w-5 border border-bp-line-strong grid place-content-center mt-0.5 mr-3 shrink-0">
+													<CheckCheck className="h-3 w-3 text-foreground" />
+												</span>
+												<span className="text-sm text-muted-foreground">
+													{feature}
+												</span>
+											</li>
+										))}
+									</ul>
+								</div>
+							)}
+						</div>
+					</m.div>
+				))}
 			</div>
+
+			{/* CTA */}
+			<m.div
+				{...revealProps(reduced, { delay: 0.3 })}
+				className="mt-12 flex lg:mt-16"
+			>
+				<CtaButton onClick={handleGetStarted}>Get Started</CtaButton>
+			</m.div>
 		</section>
 	);
 }

@@ -1,11 +1,6 @@
 "use client";
 
-import { useState } from "react";
 import Image from "next/image";
-import { Button } from "@/components/ui/button";
-import { Calendar } from "lucide-react";
-import ScheduleDemoModal from "@/app/components/landing/schedule-demo-modal";
-import { CtaButton } from "@/app/components/landing/cta-button";
 
 const navigation = {
 	solutions: [
@@ -55,151 +50,104 @@ const navigation = {
 	],
 };
 
+const linkColumns: {
+	label: string;
+	items: { name: string; href: string }[];
+}[] = [
+	{ label: "Solutions", items: navigation.solutions },
+	{ label: "Resources", items: navigation.resources },
+	{ label: "Legal", items: navigation.legal },
+];
+
+const FOOTER_LINK =
+	"rounded-sm text-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background";
+
+/** Last sheet in the set: no border-b, the shell rail closes the drawing. */
 export default function Footer() {
-	const [isScheduleDemoOpen, setIsScheduleDemoOpen] = useState(false);
+	function scrollToTop() {
+		const prefersReducedMotion = window.matchMedia(
+			"(prefers-reduced-motion: reduce)"
+		).matches;
+		window.scrollTo({
+			top: 0,
+			behavior: prefersReducedMotion ? "auto" : "smooth",
+		});
+	}
 
 	return (
-		<footer className="relative">
-			{/* CTA Card - overlapping the footer */}
-			<div className="relative z-10 mx-auto max-w-4xl px-4 sm:px-6 lg:px-8 mb-[-80px]">
-				<div className="relative overflow-hidden rounded-3xl p-8 sm:p-12 text-center">
-					{/* BG image blurred */}
-					<div className="absolute inset-0">
-						<Image
-							src="/BG.png"
-							alt=""
-							fill
-							className="object-cover blur-sm brightness-110"
-						/>
-						<div className="absolute inset-0 bg-white/60 dark:bg-black/60" />
-					</div>
-
-					<div className="relative z-10">
-						<h2 className="text-2xl sm:text-3xl lg:text-4xl font-semibold tracking-tight text-foreground mb-6">
-							Ready to simplify your business?
-						</h2>
-						<div className="flex flex-col sm:flex-row items-center justify-center gap-3">
-							<CtaButton href="/sign-up">Get Started</CtaButton>
-							<Button
-								variant="outline"
-								size="lg"
-								onClick={() => setIsScheduleDemoOpen(true)}
-							>
-								<Calendar className="h-4 w-4" />
-								Schedule a Demo
-							</Button>
-						</div>
-					</div>
+		<footer className="border-t border-bp-guide-strong p-6 sm:p-10 lg:p-14">
+			<div className="grid grid-cols-1 gap-12 lg:grid-cols-[auto_1fr] lg:gap-16">
+				<div className="space-y-5">
+					<button onClick={scrollToTop} className={FOOTER_LINK}>
+						Back to top
+						<span aria-hidden="true"> &uarr;</span>
+					</button>
+					<p className="max-w-xs text-sm leading-6 text-muted-foreground">
+						Streamlining business operations for companies that serve their
+						communities. Built by entrepreneurs, for entrepreneurs.
+					</p>
 				</div>
+
+				<nav
+					aria-label="Footer"
+					className="grid grid-cols-2 gap-x-8 gap-y-10 sm:grid-cols-3 lg:gap-x-12"
+				>
+					{linkColumns.map((column) => (
+						<div key={column.label}>
+							<p className="mb-5 text-[11px] font-semibold uppercase leading-none tracking-[0.14em] text-bp-anno">
+								{column.label}
+							</p>
+							<ul className="space-y-3">
+								{column.items.map((item) => (
+									<li key={item.name}>
+										<a href={item.href} className={FOOTER_LINK}>
+											{item.name}
+										</a>
+									</li>
+								))}
+							</ul>
+						</div>
+					))}
+				</nav>
+
 			</div>
 
-			<ScheduleDemoModal
-				isOpen={isScheduleDemoOpen}
-				onClose={() => setIsScheduleDemoOpen(false)}
-			/>
-
-			{/* Accent Footer */}
-			<div className="bg-muted border-t border-border rounded-tr-[3rem] rounded-tl-[3rem] pt-32 pb-8 px-4 sm:px-6 lg:px-8">
-				<div className="mx-auto max-w-7xl">
-					<div className="flex flex-col gap-10 lg:grid lg:grid-cols-3 lg:gap-8">
-						{/* Logo and Description */}
-						<div className="space-y-5 text-center lg:text-left">
-							<div className="flex items-center justify-center lg:justify-start gap-3">
-								<Image
-									src="/OneTool.png"
-									alt="OneTool Logo"
-									width={150}
-									height={150}
-									className="rounded-md dark:brightness-0 dark:invert sm:w-[180px]"
-								/>
-							</div>
-							<p className="text-sm leading-6 text-muted-foreground max-w-xs mx-auto lg:mx-0">
-								Streamlining business operations for companies that serve
-								their communities. Built by entrepreneurs, for entrepreneurs.
-							</p>
-							{/* Social icons */}
-							<div className="flex justify-center lg:justify-start gap-x-5">
-								{navigation.social.map((item) => (
-									<a
-										key={item.name}
-										href={item.href}
-										className="text-muted-foreground hover:text-foreground transition-colors"
-									>
-										<span className="sr-only">{item.name}</span>
-										<item.icon aria-hidden="true" className="size-5 sm:size-6" />
-									</a>
-								))}
-							</div>
-						</div>
-
-						{/* Navigation Links */}
-						<div className="grid grid-cols-2 gap-4 sm:grid-cols-3 sm:gap-8 lg:col-span-2">
-							{/* Solutions */}
-							<div>
-								<h3 className="text-sm font-semibold text-foreground">
-									Solutions
-								</h3>
-								<ul role="list" className="mt-4 sm:mt-6 space-y-3">
-									{navigation.solutions.map((item) => (
-										<li key={item.name}>
-											<a
-												href={item.href}
-												className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-											>
-												{item.name}
-											</a>
-										</li>
-									))}
-								</ul>
-							</div>
-
-							{/* Resources */}
-							<div>
-								<h3 className="text-sm font-semibold text-foreground">
-									Resources
-								</h3>
-								<ul role="list" className="mt-4 sm:mt-6 space-y-3">
-									{navigation.resources.map((item) => (
-										<li key={item.name}>
-											<a
-												href={item.href}
-												className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-											>
-												{item.name}
-											</a>
-										</li>
-									))}
-								</ul>
-							</div>
-
-							{/* Legal */}
-							<div>
-								<h3 className="text-sm font-semibold text-foreground">
-									Legal
-								</h3>
-								<ul role="list" className="mt-4 sm:mt-6 space-y-3">
-									{navigation.legal.map((item) => (
-										<li key={item.name}>
-											<a
-												href={item.href}
-												className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-											>
-												{item.name}
-											</a>
-										</li>
-									))}
-								</ul>
-							</div>
-						</div>
-					</div>
-
-					{/* Copyright */}
-					<div className="mt-12 sm:mt-16 border-t border-border pt-6 sm:pt-8">
-						<p className="text-sm text-center lg:text-left text-muted-foreground">
-							&copy; 2026 OneTool. All rights reserved.
+			<div className="mt-16 border-t border-bp-line pt-8 lg:mt-24">
+				<div className="flex flex-col-reverse items-start gap-6 sm:flex-row sm:items-center sm:justify-between">
+					<div className="flex items-center gap-4">
+						<Image
+							src="/OneTool.png"
+							alt="OneTool"
+							width={150}
+							height={150}
+							className="w-[130px] rounded-md dark:brightness-0 dark:invert"
+						/>
+						<p className="text-sm text-muted-foreground">
+							&copy; {new Date().getFullYear()} OneTool. All rights reserved.
 						</p>
 					</div>
+
+					<div className="flex gap-x-5">
+						{navigation.social.map((item) => (
+							<a
+								key={item.name}
+								href={item.href}
+								className="rounded-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+							>
+								<span className="sr-only">{item.name}</span>
+								<item.icon aria-hidden="true" className="size-5 sm:size-6" />
+							</a>
+						))}
+					</div>
 				</div>
+
+				{/* Sheet-bottom wordmark: artwork, not text — aria-hidden and unselectable. */}
+				<p
+					aria-hidden="true"
+					className="mt-10 select-none text-[16vw] font-semibold leading-[0.78] tracking-[-0.05em] text-bp-guide-strong"
+				>
+					OneTool
+				</p>
 			</div>
 		</footer>
 	);

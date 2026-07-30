@@ -4,7 +4,7 @@ import { useEffect, type ReactNode } from "react";
 import Lenis from "lenis";
 
 const LENIS_OPTIONS = {
-	duration: 1.6,
+	duration: 1.0,
 	easing: (t: number) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
 	orientation: "vertical" as const,
 	gestureOrientation: "vertical" as const,

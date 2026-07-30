@@ -29,6 +29,15 @@ export const BP_FILL = {
 /** Arrowhead marker. `orient="auto-start-reverse"` lets one def serve both ends. */
 export const BP_MARKER_ARROW = "url(#bp-arrow)";
 
+/**
+ * The same arrowhead in construction ink, for flow runs drawn in sky.
+ *
+ * Markers cannot be restyled per reference, so a directional sky run has no way
+ * to reach an object-ink arrowhead without the head reading as a different
+ * element. These two are the whole marker vocabulary — one per ink, no more.
+ */
+export const BP_MARKER_ARROW_INK = "url(#bp-arrow-ink)";
+
 export function BlueprintDefs() {
 	return (
 		<>
@@ -122,6 +131,18 @@ export function BlueprintDefs() {
 						orient="auto-start-reverse"
 					>
 						<path d="M0 0 L8 4 L0 8 Z" style={{ fill: "var(--bp-line-strong)" }} />
+					</marker>
+					<marker
+						id="bp-arrow-ink"
+						viewBox="0 0 8 8"
+						refX={8}
+						refY={4}
+						markerWidth={8}
+						markerHeight={8}
+						markerUnits="userSpaceOnUse"
+						orient="auto-start-reverse"
+					>
+						<path d="M0 0 L8 4 L0 8 Z" style={{ fill: "var(--bp-ink)" }} />
 					</marker>
 				</defs>
 			</svg>

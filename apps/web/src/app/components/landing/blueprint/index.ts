@@ -32,7 +32,12 @@
  *     is a real value from the product.
  */
 
-export { BP_FILL, BP_MARKER_ARROW, BlueprintDefs } from "./blueprint-defs";
+export {
+	BP_FILL,
+	BP_MARKER_ARROW,
+	BP_MARKER_ARROW_INK,
+	BlueprintDefs,
+} from "./blueprint-defs";
 export { BlueprintCanvas, BlueprintStage } from "./blueprint-canvas";
 export { GuideLines } from "./guide-lines";
 export { BP_WEIGHT, DraftedShape } from "./drafted-shape";

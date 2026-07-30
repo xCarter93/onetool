@@ -1,35 +1,16 @@
 "use client";
 
-import { useState } from "react";
-import Image from "next/image";
+import { useEffect, useId, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { SignInButton, SignedIn, SignedOut } from "@clerk/nextjs";
 import { ThemeSwitcher } from "@/components/layout/theme-switcher";
 import { Button } from "@/components/ui/button";
 import { CtaButton } from "@/app/components/landing/cta-button";
+import Image from "next/image";
 import { m, AnimatePresence, useReducedMotion } from "motion/react";
-import { ease } from "@/app/components/landing/motion-utils";
-import {
-	Blocks,
-	BookOpen,
-	Briefcase,
-	Calendar,
-	ChartColumn,
-	CheckCheck,
-	CreditCard,
-	FileText,
-	Globe,
-	Handshake,
-	LifeBuoy,
-	Mail,
-	Rocket,
-	Shield,
-	Smartphone,
-	Users,
-	Zap,
-	type LucideIcon,
-} from "lucide-react";
+import { cn } from "@/lib/utils";
+import { BookOpen, LifeBuoy, Rocket, type LucideIcon } from "lucide-react";
 
 const navigationLinks = [
 	{ href: "#features", label: "Features" },
@@ -75,99 +56,59 @@ const legalItems = [
 	{ label: "Data Security", href: "/data-security" },
 ];
 
-const featureItems: {
-	icon: LucideIcon;
-	iconClassName: string;
+/** Drawing-set index rows. `sheet` is the real sheet code of the page section a
+    row scrolls to — never invented. Copy is agent-draft, pending Patrick. */
+const sheetIndexRows: {
+	ordinal: string;
+	sheet: string;
 	label: string;
 	description: string;
-	comingSoon?: boolean;
+	href: string;
 }[] = [
 	{
-		icon: Users,
-		iconClassName: "text-blue-500",
-		label: "Client management",
-		description: "Contacts, history, and follow-ups",
+		ordinal: "01",
+		sheet: "A-501",
+		label: "Quotes & e-sign",
+		description: "Send quotes clients can sign in the driveway",
+		href: "#features",
 	},
 	{
-		icon: Briefcase,
-		iconClassName: "text-sky-500",
-		label: "Project tracking",
-		description: "Visual pipelines, lead to complete",
+		ordinal: "02",
+		sheet: "A-501",
+		label: "Scheduling & jobs",
+		description: "Jobs on a calendar your crew actually checks",
+		href: "#features",
 	},
 	{
-		icon: Calendar,
-		iconClassName: "text-amber-500",
-		label: "Task scheduling",
-		description: "Calendars and team assignments",
+		ordinal: "03",
+		sheet: "A-501",
+		label: "Invoices & payments",
+		description: "Invoices that chase themselves and get paid online",
+		href: "#features",
 	},
 	{
-		icon: FileText,
-		iconClassName: "text-emerald-600",
-		label: "Quoting & invoicing",
-		description: "Estimates with e-signatures",
+		ordinal: "04",
+		sheet: "A-101",
+		label: "Automations",
+		description: "Set the rule once; it runs at 7am without you",
+		href: "#how-it-works",
 	},
 	{
-		icon: CreditCard,
-		iconClassName: "text-pink-500",
-		label: "Stripe payments",
-		description: "Deposits, installments, payouts",
-	},
-	{
-		icon: Mail,
-		iconClassName: "text-orange-500",
-		label: "Email hub",
-		description: "Unified inbox for client threads",
-	},
-	{
-		icon: Handshake,
-		iconClassName: "text-rose-500",
-		label: "Client portal",
-		description: "Clients e-sign quotes & pay online",
-	},
-	{
-		icon: Globe,
-		iconClassName: "text-green-600",
-		label: "Community pages",
-		description: "Your free public business page",
-	},
-	{
-		icon: ChartColumn,
-		iconClassName: "text-indigo-500",
-		label: "Custom report builder",
-		description: "Build and export your own reports",
-	},
-	{
-		icon: Shield,
-		iconClassName: "text-red-500",
-		label: "Role-based access",
-		description: "Admin and employee views",
-	},
-	{
-		icon: CheckCheck,
-		iconClassName: "text-cyan-500",
-		label: "Real-time sync",
-		description: "Instant updates on every device",
-	},
-	{
-		icon: Smartphone,
-		iconClassName: "text-violet-500",
-		label: "Mobile access",
-		description: "iOS companion app",
-	},
-	{
-		icon: Zap,
-		iconClassName: "text-teal-500",
-		label: "Workflow automations",
-		description: "Trigger actions on status changes",
-	},
-	{
-		icon: Blocks,
-		iconClassName: "text-fuchsia-500",
-		label: "QuickBooks sync",
-		description: "Send invoices & payments to QuickBooks",
-		comingSoon: true,
+		ordinal: "05",
+		sheet: "A-101",
+		label: "Assistant & reports",
+		description: "Ask your numbers a question, get the chart back",
+		href: "#how-it-works",
 	},
 ];
+
+/** Pill-row geometry, shared so plain links and both flyout triggers align. */
+const NAV_ITEM =
+	"rounded-full px-4 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background";
+
+/** Underline is inset to the label, not the pill padding. */
+const NAV_UNDERLINE =
+	"absolute inset-x-4 bottom-0.5 h-0.5 origin-left rounded-full bg-primary transition-transform duration-300 ease-out";
 
 function scrollToSection(href: string) {
 	const element = document.querySelector(href);
@@ -229,26 +170,47 @@ function FeaturesFlyout({
 }) {
 	const [open, setOpen] = useState(false);
 	const reduced = useReducedMotion();
+	const panelId = useId();
+	const triggerRef = useRef<HTMLButtonElement>(null);
+
+	function close(refocus = false) {
+		setOpen(false);
+		if (refocus) triggerRef.current?.focus();
+	}
 
 	return (
 		<div
 			className="relative"
 			onMouseEnter={() => setOpen(true)}
 			onMouseLeave={() => setOpen(false)}
+			onKeyDown={(e) => {
+				if (e.key === "Escape" && open) {
+					e.stopPropagation();
+					close(true);
+				}
+			}}
+			// Moving focus outside the trigger/panel dismisses it.
+			onBlur={(e) => {
+				if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
+					setOpen(false);
+				}
+			}}
 		>
 			<button
+				ref={triggerRef}
 				onClick={() => {
 					onNavigate("#features");
 					setOpen(false);
 				}}
 				onFocus={() => setOpen(true)}
 				aria-expanded={open}
-				className="relative text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+				aria-controls={panelId}
+				className={cn("relative", NAV_ITEM)}
 			>
 				Features
 				<span
 					style={{ transform: open ? "scaleX(1)" : "scaleX(0)" }}
-					className="absolute -bottom-1.5 left-0 right-0 h-0.5 origin-left rounded-full bg-primary transition-transform duration-300 ease-out"
+					className={NAV_UNDERLINE}
 				/>
 			</button>
 			<AnimatePresence>
@@ -261,40 +223,69 @@ function FeaturesFlyout({
 						style={{ translateX: "-50%" }}
 						className="absolute left-1/2 top-full pt-4"
 					>
-						<div className="relative w-120 lg:w-172 rounded-2xl border border-border bg-popover text-popover-foreground p-3 shadow-2xl/20">
+						{/* The nav menu as the drawing set's index page: no. · title · sheet ref. */}
+						<div
+							id={panelId}
+							className="relative w-[26rem] lg:w-[30rem] rounded-2xl border border-border bg-popover text-popover-foreground shadow-2xl/20"
+						>
 							<div
 								className="absolute -top-1.5 left-1/2 h-3 w-3 -translate-x-1/2 rotate-45 rounded-[2px] border-l border-t border-border bg-popover"
 								aria-hidden="true"
 							/>
-							<div className="grid grid-cols-2 lg:grid-cols-3 gap-1">
-								{featureItems.map((f) => (
+							<div className="flex items-baseline justify-between px-5 pb-2.5 pt-4">
+								<p className="text-[11px] font-semibold uppercase leading-none tracking-[0.14em] text-bp-anno">
+									Sheet index
+								</p>
+								<p className="text-[10px] font-medium uppercase leading-none tracking-[0.14em] text-muted-foreground">
+									Ref
+								</p>
+							</div>
+							<div className="divide-y divide-bp-line border-t border-bp-line">
+								{sheetIndexRows.map((row) => (
 									<button
-										key={f.label}
+										key={row.label}
 										onClick={() => {
-											onNavigate("#features");
-											setOpen(false);
+											onNavigate(row.href);
+											close();
 										}}
-										className="flex items-start gap-3 rounded-xl p-3 text-left transition-colors hover:bg-accent"
+										className={cn(
+											"group flex w-full items-baseline gap-4 px-5 py-3.5 text-left",
+											"transition-colors hover:bg-accent focus-visible:bg-accent"
+										)}
 									>
-										<f.icon
-											className={`mt-0.5 h-4 w-4 shrink-0 ${f.iconClassName}`}
-										/>
-										<span>
-											<span className="flex items-center gap-1.5 text-sm font-medium text-foreground">
-												{f.label}
-												{f.comingSoon && (
-													<span className="rounded-full bg-amber-400/15 px-1.5 py-px text-[10px] font-semibold uppercase tracking-wide text-amber-600 dark:text-amber-400">
-														Soon
-													</span>
-												)}
+										<span
+											aria-hidden="true"
+											className="w-5 shrink-0 text-[11px] font-medium leading-5 tabular-nums text-muted-foreground"
+										>
+											{row.ordinal}
+										</span>
+										<span className="min-w-0 flex-1">
+											<span className="block text-sm font-semibold leading-5 text-foreground">
+												{row.label}
 											</span>
-											<span className="block text-xs text-muted-foreground">
-												{f.description}
+											<span className="mt-0.5 block text-xs leading-5 text-muted-foreground">
+												{row.description}
 											</span>
+										</span>
+										<span className="shrink-0 text-[11px] font-semibold uppercase leading-5 tracking-[0.14em] tabular-nums text-bp-anno">
+											{row.sheet}
 										</span>
 									</button>
 								))}
 							</div>
+							<button
+								onClick={() => {
+									onNavigate("#features");
+									close();
+								}}
+								className="flex w-full items-center gap-2 rounded-b-2xl border-t border-bp-line px-5 py-3 text-left text-[11px] font-semibold uppercase leading-none tracking-[0.14em] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+							>
+								Full capability index
+								<span
+									aria-hidden="true"
+									className="h-px w-6 bg-bp-line-strong"
+								/>
+							</button>
 						</div>
 					</m.div>
 				)}
@@ -318,12 +309,12 @@ function ResourcesFlyout() {
 				onClick={() => setOpen(false)}
 				onFocus={() => setOpen(true)}
 				aria-expanded={open}
-				className="relative text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+				className={cn("relative", NAV_ITEM)}
 			>
 				Resources
 				<span
 					style={{ transform: open ? "scaleX(1)" : "scaleX(0)" }}
-					className="absolute -bottom-1.5 left-0 right-0 h-0.5 origin-left rounded-full bg-primary transition-transform duration-300 ease-out"
+					className={NAV_UNDERLINE}
 				/>
 			</Link>
 			<AnimatePresence>
@@ -411,183 +402,204 @@ function ResourcesFlyout() {
 
 function AppNavBar() {
 	const [isMenuOpen, setIsMenuOpen] = useState(false);
+	const [isScrolled, setIsScrolled] = useState(false);
 	const router = useRouter();
 	const reduced = useReducedMotion();
 
-	return (
-		<m.header
-			initial={reduced ? false : { y: -100 }}
-			animate={{ y: 0 }}
-			transition={reduced ? { duration: 0 } : { duration: 0.8, ease }}
-			className="fixed top-0 min-[850px]:top-2.5 left-0 right-0 z-[9998] min-[850px]:left-1/2 min-[850px]:-translate-x-1/2 min-[850px]:w-full min-[850px]:max-w-5xl"
-		>
-			<nav className="bg-frame shadow-2xl/20 rounded-b-4xl md:overflow-visible max-md:overflow-hidden">
-				<div className="flex items-center justify-between h-14 px-4 sm:px-6">
-					{/* Logo */}
-					<Link href="/" className="shrink-0">
-						<Image
-							src="/OneTool.png"
-							alt="OneTool Logo"
-							width={160}
-							height={160}
-							className="rounded-md dark:brightness-0 dark:invert w-[140px] sm:w-[170px]"
-						/>
-					</Link>
+	useEffect(() => {
+		const handleScroll = () => setIsScrolled(window.scrollY > 8);
+		// rAF rather than a direct call: setState in an effect body is a lint error,
+		// and a restored scroll position must still resolve on first paint.
+		const raf = requestAnimationFrame(handleScroll);
+		window.addEventListener("scroll", handleScroll, { passive: true });
+		return () => {
+			cancelAnimationFrame(raf);
+			window.removeEventListener("scroll", handleScroll);
+		};
+	}, []);
 
-					{/* Desktop Navigation */}
-					<div className="hidden md:flex items-center gap-8">
-						{navigationLinks.map((link) =>
-							link.href === "#features" ? (
-								<FeaturesFlyout key={link.href} onNavigate={scrollToSection} />
-							) : link.href === "/help" ? (
-								<ResourcesFlyout key={link.href} />
-							) : (
+	// `body.nav-open` lets global CSS hide the sheet corner ticks behind the panel.
+	useEffect(() => {
+		if (!isMenuOpen) return;
+
+		const previousOverflow = document.body.style.overflow;
+		document.body.style.overflow = "hidden";
+		document.body.classList.add("nav-open");
+
+		return () => {
+			document.body.style.overflow = previousOverflow;
+			document.body.classList.remove("nav-open");
+		};
+	}, [isMenuOpen]);
+
+	return (
+		<header className="sticky top-0 z-50 border-b border-bp-guide-strong bg-bp-paper/95 backdrop-blur supports-backdrop-filter:bg-bp-paper/80">
+			{/* 7px ticks straddling the shell rails, same as every section corner. */}
+			<span
+				aria-hidden="true"
+				data-section-corner
+				className="pointer-events-none absolute bottom-0 left-0 z-10 h-[7px] w-[7px] -translate-x-1/2 translate-y-1/2 border border-bp-guide-strong bg-bp-paper"
+			/>
+			<span
+				aria-hidden="true"
+				data-section-corner
+				className="pointer-events-none absolute bottom-0 right-0 z-10 h-[7px] w-[7px] translate-x-1/2 translate-y-1/2 border border-bp-guide-strong bg-bp-paper"
+			/>
+
+			<div className="flex h-16 sm:h-20 items-center justify-between px-4 sm:px-6 lg:px-8">
+				{/* Logo */}
+				<Link
+					href="/"
+					aria-label="OneTool home"
+					className="enter flex shrink-0 items-center rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+				>
+					<Image
+						src="/OneTool.png"
+						alt="OneTool Logo"
+						width={160}
+						height={160}
+						className="rounded-md dark:brightness-0 dark:invert w-[140px] sm:w-[170px]"
+					/>
+				</Link>
+
+				{/* Desktop navigation — the pill loses its fill once the page moves. */}
+				<nav
+					aria-label="Primary navigation"
+					className={cn(
+						"hidden items-center gap-1 rounded-full px-2 py-1.5 transition-[background-color] duration-300 ease-out md:flex",
+						isScrolled ? "bg-transparent" : "bg-muted"
+					)}
+				>
+					{navigationLinks.map((link, i) =>
+						link.href === "#features" ? (
+							<FeaturesFlyout key={link.href} onNavigate={scrollToSection} />
+						) : link.href === "/help" ? (
+							<ResourcesFlyout key={link.href} />
+						) : (
+							<button
+								key={link.href}
+								onClick={() => scrollToSection(link.href)}
+								style={{ ["--enter-delay" as string]: `${80 + i * 60}ms` }}
+								className={cn("enter", NAV_ITEM)}
+							>
+								{link.label}
+							</button>
+						)
+					)}
+				</nav>
+
+				{/* Right side - Auth + Theme */}
+				<div className="flex items-center gap-3">
+					<ThemeSwitcher />
+					<div className="hidden sm:flex items-center gap-2">
+						<SignedOut>
+							<SignInButton mode="modal" forceRedirectUrl="/home">
 								<button
-									key={link.href}
-									onClick={() => scrollToSection(link.href)}
-									className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+									style={{ ["--enter-delay" as string]: "260ms" }}
+									className={cn("enter", NAV_ITEM)}
 								>
-									{link.label}
+									Sign in
 								</button>
-							)
-						)}
+							</SignInButton>
+							<CtaButton size="sm" href="/sign-up" showArrow={false}>
+								Get Started
+							</CtaButton>
+						</SignedOut>
+						<SignedIn>
+							<CtaButton
+								size="sm"
+								showArrow={false}
+								onClick={() => router.push("/home")}
+							>
+								Go To Dashboard
+							</CtaButton>
+						</SignedIn>
 					</div>
 
-					{/* Right side - Auth + Theme */}
-					<div className="flex items-center gap-3">
-						<ThemeSwitcher />
-						<div className="hidden sm:flex items-center gap-2">
-							<SignedOut>
-								<SignInButton mode="modal" forceRedirectUrl="/home">
-									<button className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors px-3 py-1.5">
-										Sign in
-									</button>
-								</SignInButton>
-								<CtaButton size="sm" href="/sign-up" showArrow={false}>
-									Get Started
-								</CtaButton>
-							</SignedOut>
-							<SignedIn>
-								<CtaButton
-									size="sm"
-									showArrow={false}
-									onClick={() => router.push("/home")}
-								>
-									Go To Dashboard
-								</CtaButton>
-							</SignedIn>
-						</div>
-
-						{/* Mobile menu button */}
-						<div className="md:hidden">
-							<button
-								className="group inline-flex items-center justify-center rounded-lg p-2 text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
-								onClick={() => setIsMenuOpen(!isMenuOpen)}
-								aria-expanded={isMenuOpen}
-							>
-								<MenuIcon />
-							</button>
-						</div>
+					{/* Mobile menu button */}
+					<div className="md:hidden">
+						<button
+							className="group inline-flex items-center justify-center rounded-lg p-2 text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+							onClick={() => setIsMenuOpen(!isMenuOpen)}
+							aria-expanded={isMenuOpen}
+							aria-label={
+								isMenuOpen ? "Close navigation menu" : "Open navigation menu"
+							}
+						>
+							<MenuIcon />
+						</button>
 					</div>
 				</div>
+			</div>
 
-				{/* Mobile Navigation */}
-				<AnimatePresence>
-					{isMenuOpen && (
-						<m.div
-							initial={{ height: 0, opacity: 0 }}
-							animate={{ height: "auto", opacity: 1 }}
-							exit={{ height: 0, opacity: 0 }}
-							transition={{ duration: reduced ? 0 : 0.3 }}
-							className="md:hidden overflow-hidden border-t border-border"
-						>
-							<div className="px-4 py-3 space-y-1">
-								{navigationLinks.map((link) =>
-									link.href === "/help" ? (
-										<Link
-											key={link.href}
-											href="/help"
-											onClick={() => setIsMenuOpen(false)}
-											className="block w-full text-left px-3 py-2.5 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-accent rounded-lg transition-colors"
-										>
-											Help Center
-										</Link>
-									) : (
-										<button
-											key={link.href}
-											onClick={() => {
-												scrollToSection(link.href);
-												setIsMenuOpen(false);
-											}}
-											className="block w-full text-left px-3 py-2.5 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-accent rounded-lg transition-colors"
-										>
-											{link.label}
-										</button>
-									)
-								)}
-								<div className="pt-3 mt-2 border-t border-border flex items-center justify-center gap-2">
-									<SignedOut>
-										<SignInButton mode="modal" forceRedirectUrl="/home">
-											<Button variant="outline" size="sm">
-												Sign In
-											</Button>
-										</SignInButton>
-										<CtaButton
-											size="sm"
-											href="/sign-up"
-											showArrow={false}
-											className="w-full sm:w-auto"
-										>
-											Get Started
-										</CtaButton>
-									</SignedOut>
-									<SignedIn>
-										<CtaButton
-											size="sm"
-											showArrow={false}
-											onClick={() => {
-												router.push("/home");
-												setIsMenuOpen(false);
-											}}
-										>
-											Go To Dashboard
-										</CtaButton>
-									</SignedIn>
-								</div>
+			{/* Mobile Navigation */}
+			<AnimatePresence>
+				{isMenuOpen && (
+					<m.div
+						initial={{ height: 0, opacity: 0 }}
+						animate={{ height: "auto", opacity: 1 }}
+						exit={{ height: 0, opacity: 0 }}
+						transition={{ duration: reduced ? 0 : 0.3 }}
+						className="md:hidden overflow-hidden border-t border-bp-guide-strong bg-bp-paper"
+					>
+						<div className="px-4 py-3 space-y-1">
+							{navigationLinks.map((link) =>
+								link.href === "/help" ? (
+									<Link
+										key={link.href}
+										href="/help"
+										onClick={() => setIsMenuOpen(false)}
+										className="block w-full text-left px-3 py-2.5 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-accent rounded-lg transition-colors"
+									>
+										Help Center
+									</Link>
+								) : (
+									<button
+										key={link.href}
+										onClick={() => {
+											scrollToSection(link.href);
+											setIsMenuOpen(false);
+										}}
+										className="block w-full text-left px-3 py-2.5 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-accent rounded-lg transition-colors"
+									>
+										{link.label}
+									</button>
+								)
+							)}
+							<div className="pt-3 mt-2 border-t border-bp-line flex items-center justify-center gap-2">
+								<SignedOut>
+									<SignInButton mode="modal" forceRedirectUrl="/home">
+										<Button variant="outline" size="sm">
+											Sign In
+										</Button>
+									</SignInButton>
+									<CtaButton
+										size="sm"
+										href="/sign-up"
+										showArrow={false}
+										className="w-full sm:w-auto"
+									>
+										Get Started
+									</CtaButton>
+								</SignedOut>
+								<SignedIn>
+									<CtaButton
+										size="sm"
+										showArrow={false}
+										onClick={() => {
+											router.push("/home");
+											setIsMenuOpen(false);
+										}}
+									>
+										Go To Dashboard
+									</CtaButton>
+								</SignedIn>
 							</div>
-						</m.div>
-					)}
-				</AnimatePresence>
-			</nav>
-
-			{/* Corner decorations connecting navbar to frame - desktop only */}
-			<svg
-				className="absolute top-0 -left-[49px] rotate-180 text-frame pointer-events-none max-[850px]:hidden"
-				width="50"
-				height="50"
-				viewBox="0 0 50 50"
-				fill="none"
-				aria-hidden="true"
-			>
-				<path
-					d="M5.50871e-06 0C-0.00788227 37.3001 8.99616 50.0116 50 50H5.50871e-06V0Z"
-					fill="currentColor"
-				/>
-			</svg>
-			<svg
-				className="absolute top-0 -right-[49px] rotate-90 text-frame pointer-events-none max-[850px]:hidden"
-				width="50"
-				height="50"
-				viewBox="0 0 50 50"
-				fill="none"
-				aria-hidden="true"
-			>
-				<path
-					d="M5.50871e-06 0C-0.00788227 37.3001 8.99616 50.0116 50 50H5.50871e-06V0Z"
-					fill="currentColor"
-				/>
-			</svg>
-		</m.header>
+						</div>
+					</m.div>
+				)}
+			</AnimatePresence>
+		</header>
 	);
 }
 

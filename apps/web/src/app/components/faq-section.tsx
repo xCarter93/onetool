@@ -2,7 +2,7 @@
 
 import { m, AnimatePresence, useReducedMotion } from "motion/react";
 import { ChevronDown } from "lucide-react";
-import { useState } from "react";
+import { useId, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { CtaButton } from "@/app/components/landing/cta-button";
 import { revealProps } from "@/app/components/landing/motion-utils";
@@ -70,92 +70,57 @@ const faqs = [
 	},
 ];
 
+/**
+ * G-003 — general notes. Heading column left, the notes themselves right; one
+ * note open at a time, the first open on arrival. The section prints no border
+ * of its own: the sheet shell owns the seam rule and the corner marks.
+ */
 export default function FAQSection() {
-	const [openIndex, setOpenIndex] = useState<number | null>(null);
+	const [openIndex, setOpenIndex] = useState<number>(0);
 	const reduced = useReducedMotion();
 
 	const toggleFAQ = (index: number) => {
-		setOpenIndex(openIndex === index ? null : index);
+		setOpenIndex((prev) => (prev === index ? -1 : index));
 	};
 
 	return (
-		<section id="faq" className="py-24 sm:py-32 lg:py-40 px-4 sm:px-6 lg:px-8">
-			<div className="mx-auto max-w-3xl">
-				{/* Header */}
-				<m.div {...revealProps(reduced)} className="text-center mb-12">
-					<p className="text-sm font-semibold text-primary mb-4">FAQ</p>
-					<h2 className="text-3xl sm:text-4xl font-semibold tracking-tight text-foreground mb-4">
-						Frequently Asked Questions
-					</h2>
-					<p className="text-base sm:text-lg text-muted-foreground">
-						Everything you need to know about OneTool
-					</p>
-				</m.div>
+		<section
+			id="faq"
+			className="bp-section relative p-6 sm:p-10 lg:p-14 lg:grid lg:grid-cols-[minmax(0,24rem)_1fr] lg:gap-14"
+		>
+			{/* Heading column */}
+			{/* No `sticky` here: .bp-section's content-visibility breaks it. */}
+			<m.div {...revealProps(reduced)} className="lg:self-start">
+				<p className="text-[11px] font-semibold uppercase leading-none tracking-[0.14em] text-bp-anno">
+					FAQ
+				</p>
+				<h2 className="mt-5 text-balance text-2xl font-semibold leading-[1.1] tracking-tight text-foreground sm:text-3xl lg:text-[2.5rem]">
+					Frequently Asked Questions
+				</h2>
+				<p className="mt-5 max-w-md text-sm leading-relaxed text-muted-foreground sm:text-base">
+					Everything you need to know about OneTool
+				</p>
+			</m.div>
 
-				{/* FAQ Items */}
-				<div className="space-y-3">
-					{faqs.map((faq, index) => {
-						const isOpen = openIndex === index;
-						const panelId = `faq-panel-${index}`;
-						const triggerId = `faq-trigger-${index}`;
-
-						return (
-							<m.div
-								key={index}
-								{...revealProps(reduced, {
-									duration: 0.3,
-									delay: index * 0.03,
-								})}
-								className="rounded-2xl bg-card border border-border shadow-sm overflow-hidden"
-							>
-								<button
-									id={triggerId}
-									onClick={() => toggleFAQ(index)}
-									aria-expanded={isOpen}
-									aria-controls={panelId}
-									className="flex w-full items-center justify-between p-5 text-left transition-colors hover:bg-accent/50"
-								>
-									<span className="text-sm sm:text-base font-semibold text-foreground pr-4">
-										{faq.question}
-									</span>
-									<m.div
-										animate={{ rotate: isOpen ? 180 : 0 }}
-										transition={{ duration: reduced ? 0 : 0.3 }}
-										className="shrink-0"
-									>
-										<ChevronDown className="h-4 w-4 text-primary" />
-									</m.div>
-								</button>
-
-								<AnimatePresence initial={false}>
-									{isOpen && (
-										<m.div
-											id={panelId}
-											role="region"
-											aria-labelledby={triggerId}
-											initial={{ height: 0, opacity: 0 }}
-											animate={{ height: "auto", opacity: 1 }}
-											exit={{ height: 0, opacity: 0 }}
-											transition={{ duration: reduced ? 0 : 0.3 }}
-											className="overflow-hidden"
-										>
-											<div className="border-t border-border px-5 py-4">
-												<p className="text-sm leading-relaxed text-muted-foreground">
-													{faq.answer}
-												</p>
-											</div>
-										</m.div>
-									)}
-								</AnimatePresence>
-							</m.div>
-						);
-					})}
-				</div>
+			{/* Notes */}
+			<div className="mt-10 border-t border-bp-line lg:mt-0">
+				<ul className="divide-y divide-bp-line">
+					{faqs.map((faq, index) => (
+						<FaqRow
+							key={faq.question}
+							faq={faq}
+							index={index}
+							isOpen={openIndex === index}
+							reduced={reduced}
+							onToggle={() => toggleFAQ(index)}
+						/>
+					))}
+				</ul>
 
 				{/* Bottom CTAs */}
 				<m.div
 					{...revealProps(reduced, { delay: 0.3 })}
-					className="mt-12 text-center flex flex-col sm:flex-row items-center justify-center gap-3"
+					className="mt-10 flex flex-col gap-3 sm:flex-row sm:items-center"
 				>
 					<CtaButton href="/sign-up">Get Started</CtaButton>
 					<a href="mailto:support@onetool.biz">
@@ -164,5 +129,83 @@ export default function FAQSection() {
 				</m.div>
 			</div>
 		</section>
+	);
+}
+
+function FaqRow({
+	faq,
+	index,
+	isOpen,
+	reduced,
+	onToggle,
+}: {
+	faq: (typeof faqs)[number];
+	index: number;
+	isOpen: boolean;
+	reduced: boolean | null;
+	onToggle: () => void;
+}) {
+	const triggerId = useId();
+	const panelId = useId();
+
+	const answer = (
+		<div className="max-w-3xl pb-6 pr-10 text-sm leading-relaxed text-muted-foreground sm:text-base">
+			{faq.answer}
+		</div>
+	);
+
+	return (
+		<li>
+			<button
+				id={triggerId}
+				type="button"
+				onClick={onToggle}
+				aria-expanded={isOpen}
+				aria-controls={panelId}
+				className="flex w-full cursor-pointer items-center justify-between gap-6 py-6 text-left"
+			>
+				<span className="flex min-w-0 items-baseline gap-4">
+					<span className="shrink-0 text-[10px] font-semibold uppercase leading-none tracking-[0.14em] tabular-nums text-muted-foreground">
+						{`Note ${String(index + 1).padStart(2, "0")}`}
+					</span>
+					<span className="text-base font-medium leading-snug tracking-tight text-foreground sm:text-lg">
+						{faq.question}
+					</span>
+				</span>
+				<m.span
+					aria-hidden="true"
+					animate={{ rotate: isOpen ? 180 : 0 }}
+					transition={{ duration: reduced ? 0 : 0.3 }}
+					className="inline-flex h-8 w-8 shrink-0 items-center justify-center border border-bp-line text-foreground"
+				>
+					<ChevronDown className="h-4 w-4" />
+				</m.span>
+			</button>
+
+			{reduced ? (
+				isOpen ? (
+					<div id={panelId} role="region" aria-labelledby={triggerId}>
+						{answer}
+					</div>
+				) : null
+			) : (
+				<AnimatePresence initial={false}>
+					{isOpen && (
+						<m.div
+							id={panelId}
+							role="region"
+							aria-labelledby={triggerId}
+							initial={{ height: 0, opacity: 0 }}
+							animate={{ height: "auto", opacity: 1 }}
+							exit={{ height: 0, opacity: 0 }}
+							transition={{ duration: 0.3 }}
+							className="overflow-hidden"
+						>
+							{answer}
+						</m.div>
+					)}
+				</AnimatePresence>
+			)}
+		</li>
 	);
 }
