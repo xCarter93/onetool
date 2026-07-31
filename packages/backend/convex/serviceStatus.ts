@@ -1,5 +1,6 @@
 import { v } from "convex/values";
-import { query, internalMutation } from "./_generated/server";
+import { query } from "./_generated/server";
+import { internalMutation } from "./lib/triggers";
 
 // Internal mutation to update service statuses (called from action)
 export const updateStatuses = internalMutation({

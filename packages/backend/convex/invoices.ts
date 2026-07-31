@@ -1,16 +1,10 @@
 import { calendarDayEpoch } from "./lib/formula";
-import {
-	query,
-	internalMutation,
-	internalQuery,
-	QueryCtx,
-	MutationCtx,
-} from "./_generated/server";
+import { query, internalQuery, QueryCtx, MutationCtx } from "./_generated/server";
+import { internalMutation } from "./lib/triggers";
 import { internal } from "./_generated/api";
 import { ConvexError, v } from "convex/values";
 import { Doc, Id } from "./_generated/dataModel";
 import { ActivityHelpers } from "./lib/activities";
-import { AggregateHelpers } from "./lib/aggregates";
 import {
 	validateParentAccess,
 	filterUndefined,
@@ -356,16 +350,6 @@ export const markInvoicePaidFromWebhookInternal = internalMutation({
 			paidAt: Date.now(),
 		});
 
-		// Aggregates key on [status, paidAt] — skipping this drifts revenue stats.
-		const paidInvoice = await ctx.db.get(invoice._id);
-		if (paidInvoice) {
-			await AggregateHelpers.updateInvoice(
-				ctx,
-				invoice as InvoiceDocument,
-				paidInvoice as InvoiceDocument
-			);
-		}
-
 		// Settle installment payment rows like the workspace paid paths do, so a
 		// webhook-paid invoice never leaves pending rows behind.
 		await settleOutstandingPaymentsForInvoice(ctx, invoice._id);
@@ -448,7 +432,7 @@ export const create = userMutation({
 			createdByUserId: ctx.user._id,
 		});
 
-		// Get the created invoice for activity logging and aggregates
+		// Get the created invoice for activity logging
 		const invoice = await ctx.db.get(invoiceId);
 		if (invoice) {
 			const client = await ctx.db.get(invoice.clientId);
@@ -457,7 +441,6 @@ export const create = userMutation({
 				invoice as InvoiceDocument,
 				client?.companyName || "Unknown Client"
 			);
-			await AggregateHelpers.addInvoice(ctx, invoice as InvoiceDocument);
 			await emitRecordCreatedEvent(
 				ctx,
 				invoice.orgId,
@@ -542,22 +525,9 @@ export const update = userMutation({
 			await settleOutstandingPaymentsForInvoice(ctx, id);
 		}
 
-		// Log appropriate activity based on status change and update aggregates
+		// Log appropriate activity based on status change
 		const updatedInvoice = await ctx.db.get(id);
 		if (updatedInvoice) {
-			// Update aggregates if relevant fields changed
-			if (
-				filteredUpdates.status !== undefined ||
-				filteredUpdates.paidAt !== undefined ||
-				filteredUpdates.total !== undefined
-			) {
-				await AggregateHelpers.updateInvoice(
-					ctx,
-					currentInvoice as InvoiceDocument,
-					updatedInvoice as InvoiceDocument
-				);
-			}
-
 			const client = await ctx.db.get(updatedInvoice.clientId);
 			const clientName = client?.companyName || "Unknown Client";
 			if (
@@ -673,11 +643,6 @@ export const sendToClient = userMutation({
 			await ctx.db.patch(invoice._id, { status: "sent" });
 			const updated = await ctx.db.get(invoice._id);
 			if (updated) {
-				await AggregateHelpers.updateInvoice(
-					ctx,
-					invoice as InvoiceDocument,
-					updated as InvoiceDocument
-				);
 				await ActivityHelpers.invoiceSent(
 					ctx,
 					updated as InvoiceDocument,
@@ -772,13 +737,6 @@ export const markPaid = userMutation({
 		// Log activity
 		const updatedInvoice = await ctx.db.get(args.id);
 		if (updatedInvoice) {
-			// Aggregates key on [status, paidAt] — skipping this drifts revenue stats.
-			await AggregateHelpers.updateInvoice(
-				ctx,
-				invoice as InvoiceDocument,
-				updatedInvoice as InvoiceDocument
-			);
-
 			const client = await ctx.db.get(updatedInvoice.clientId);
 			await ActivityHelpers.invoicePaid(
 				ctx,
@@ -819,7 +777,6 @@ export const remove = userMutation({
 			await ctx.db.delete(lineItem._id);
 		}
 
-		await AggregateHelpers.removeInvoice(ctx, invoice as InvoiceDocument);
 		await ctx.db.delete(args.id);
 
 		return args.id;
@@ -1146,7 +1103,7 @@ export const createFromQuote = userMutation({
 			total,
 		});
 
-		// Log activity and add to aggregates with updated totals
+		// Log activity with updated totals
 		const invoice = await ctx.db.get(invoiceId);
 		if (invoice) {
 			const client = await ctx.db.get(invoice.clientId);
@@ -1155,7 +1112,6 @@ export const createFromQuote = userMutation({
 				invoice as InvoiceDocument,
 				client?.companyName || "Unknown Client"
 			);
-			await AggregateHelpers.addInvoice(ctx, invoice as InvoiceDocument);
 			await emitRecordCreatedEvent(
 				ctx,
 				invoice.orgId,

@@ -1,9 +1,20 @@
-import { internalMutation, MutationCtx } from "../_generated/server";
-import { AggregateHelpers } from "../lib/aggregates";
+import { MutationCtx } from "../_generated/server";
+import { internalMutation } from "../lib/triggers";
+import {
+	clientCountsAggregate,
+	projectCountsAggregate,
+	quoteCountsAggregate,
+	invoiceRevenueAggregate,
+	invoiceCountsAggregate,
+} from "../aggregates";
 
 /**
- * Migration scripts to populate aggregates with existing data
- * Run these once after deploying the aggregate component
+ * Backfill aggregates from existing rows.
+ *
+ * Every write path now maintains aggregates through lib/triggers.ts, so these
+ * only exist to seed rows that predate the aggregate component. They use
+ * insertIfDoesNotExist, which makes each function idempotent and safe to
+ * re-run against a partially-populated aggregate.
  *
  * To run these migrations:
  * 1. Deploy your convex functions: `npx convex deploy`
@@ -42,7 +53,7 @@ async function populateClientAggregatesHelper(
 
 			for (const client of page.page) {
 				try {
-					await AggregateHelpers.addClient(ctx, client);
+					await clientCountsAggregate.insertIfDoesNotExist(ctx, client);
 					processed++;
 					if (processed % 100 === 0) {
 						console.log(`Processed ${processed} clients`);
@@ -97,7 +108,7 @@ async function populateProjectAggregatesHelper(
 
 			for (const project of page.page) {
 				try {
-					await AggregateHelpers.addProject(ctx, project);
+					await projectCountsAggregate.insertIfDoesNotExist(ctx, project);
 					processed++;
 					if (processed % 100 === 0) {
 						console.log(`Processed ${processed} projects`);
@@ -152,7 +163,7 @@ async function populateQuoteAggregatesHelper(
 
 			for (const quote of page.page) {
 				try {
-					await AggregateHelpers.addQuote(ctx, quote);
+					await quoteCountsAggregate.insertIfDoesNotExist(ctx, quote);
 					processed++;
 					if (processed % 100 === 0) {
 						console.log(`Processed ${processed} quotes`);
@@ -207,7 +218,8 @@ async function populateInvoiceAggregatesHelper(
 
 			for (const invoice of page.page) {
 				try {
-					await AggregateHelpers.addInvoice(ctx, invoice);
+					await invoiceRevenueAggregate.insertIfDoesNotExist(ctx, invoice);
+					await invoiceCountsAggregate.insertIfDoesNotExist(ctx, invoice);
 					processed++;
 					if (processed % 100 === 0) {
 						console.log(`Processed ${processed} invoices`);

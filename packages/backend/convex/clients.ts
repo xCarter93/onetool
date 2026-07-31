@@ -1,15 +1,9 @@
-import {
-	query,
-	mutation,
-	internalMutation,
-	QueryCtx,
-	MutationCtx,
-} from "./_generated/server";
+import { query, QueryCtx, MutationCtx } from "./_generated/server";
+import { mutation, internalMutation } from "./lib/triggers";
 import { v } from "convex/values";
 import { Doc, Id } from "./_generated/dataModel";
 import { getCurrentUserOrgId } from "./lib/auth";
 import { ActivityHelpers } from "./lib/activities";
-import { AggregateHelpers } from "./lib/aggregates";
 import { calculateQuoteTotals } from "./lib/quoteTotals";
 import {
 	filterUndefined,
@@ -514,11 +508,10 @@ export const create = userMutation({
 			createdByUserId: ctx.user._id,
 		} as any);
 
-		// Get the created client for activity logging and aggregates
+		// Get the created client for activity logging
 		const client = await ctx.db.get(clientId);
 		if (client) {
 			await ActivityHelpers.clientCreated(ctx, client as ClientDocument);
-			await AggregateHelpers.addClient(ctx, client as ClientDocument);
 			await emitRecordCreatedEvent(
 				ctx,
 				client.orgId,
@@ -656,11 +649,10 @@ export const bulkCreate = userMutation({
 					{ ...clientFields, createdByUserId: ctx.user._id } as any
 				);
 
-				// Get the created client for activity logging and aggregates
+				// Get the created client for activity logging
 				const client = await ctx.db.get(clientId);
 				if (client) {
 					await ActivityHelpers.clientCreated(ctx, client as ClientDocument);
-					await AggregateHelpers.addClient(ctx, client as ClientDocument);
 				}
 
 				// Create sub-records with warning-on-failure semantics
@@ -1064,7 +1056,6 @@ async function permanentlyDeleteSystemHandler(
 	}
 
 	for (const project of projects) {
-		await AggregateHelpers.removeProject(ctx, project);
 		await ctx.db.delete(project._id);
 	}
 
@@ -1091,7 +1082,6 @@ async function permanentlyDeleteSystemHandler(
 			await ctx.db.delete(document._id);
 		}
 
-		await AggregateHelpers.removeQuote(ctx, quote);
 		await ctx.db.delete(quote._id);
 	}
 
@@ -1118,16 +1108,12 @@ async function permanentlyDeleteSystemHandler(
 			await ctx.db.delete(document._id);
 		}
 
-		await AggregateHelpers.removeInvoice(ctx, invoice);
 		await ctx.db.delete(invoice._id);
 	}
 
 	for (const task of tasks) {
 		await ctx.db.delete(task._id);
 	}
-
-	// Remove from aggregates before deleting
-	await AggregateHelpers.removeClient(ctx, client);
 
 	// Finally delete the client itself
 	await ctx.db.delete(args.id);

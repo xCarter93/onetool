@@ -1,4 +1,5 @@
-import { internalMutation, mutation, query } from "../_generated/server";
+import { query } from "../_generated/server";
+import { internalMutation, mutation } from "../lib/triggers";
 import { v } from "convex/values";
 import { getPortalSessionOrThrow, ABSOLUTE_MAX_MS, IDLE_MAX_MS } from "./helpers";
 import { rateLimiter } from "../rateLimits";

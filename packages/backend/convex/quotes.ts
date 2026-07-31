@@ -1,10 +1,10 @@
 import { calendarDayEpoch } from "./lib/formula";
-import { query, mutation, QueryCtx, MutationCtx } from "./_generated/server";
+import { query, QueryCtx, MutationCtx } from "./_generated/server";
+import { mutation } from "./lib/triggers";
 import { ConvexError, v } from "convex/values";
 import { Doc, Id } from "./_generated/dataModel";
 import { getCurrentUserOrgId } from "./lib/auth";
 import { ActivityHelpers } from "./lib/activities";
-import { AggregateHelpers } from "./lib/aggregates";
 import { calculateQuoteTotals, syncQuoteTotals } from "./lib/quoteTotals";
 import { computeQuoteTotals } from "./lib/money";
 import {
@@ -651,7 +651,7 @@ export const create = userMutation({
 			createdByUserId: ctx.user._id,
 		} as any);
 
-		// Get the created quote for activity logging and aggregates
+		// Get the created quote for activity logging
 		const quote = await ctx.db.get(quoteId);
 		if (quote) {
 			const client = await ctx.db.get(quote.clientId);
@@ -660,7 +660,6 @@ export const create = userMutation({
 				quote as QuoteDocument,
 				client?.companyName || "Unknown Client"
 			);
-			await AggregateHelpers.addQuote(ctx, quote as QuoteDocument);
 			await emitRecordCreatedEvent(
 				ctx,
 				quote.orgId,
@@ -839,22 +838,9 @@ export const update = userMutation({
 
 		await updateQuoteWithValidation(ctx, id, filteredUpdates);
 
-		// Log appropriate activity based on status change and update aggregates
+		// Log appropriate activity based on status change
 		const updatedQuote = await ctx.db.get(id);
 		if (updatedQuote) {
-			// Update aggregates if relevant fields changed
-			if (
-				filteredUpdates.status !== undefined ||
-				filteredUpdates.approvedAt !== undefined ||
-				filteredUpdates.total !== undefined
-			) {
-				await AggregateHelpers.updateQuote(
-					ctx,
-					currentQuote as QuoteDocument,
-					updatedQuote as QuoteDocument
-				);
-			}
-
 			const client = await ctx.db.get(updatedQuote.clientId);
 			const clientName = client?.companyName || "Unknown Client";
 			if (
@@ -977,8 +963,6 @@ export const remove = userMutation({
 			await ctx.db.delete(lineItem._id);
 		}
 
-		// Remove from aggregates before deleting
-		await AggregateHelpers.removeQuote(ctx, quote as QuoteDocument);
 		await ctx.db.delete(args.id);
 
 		return args.id;

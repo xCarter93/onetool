@@ -15,7 +15,7 @@
  * that already have a lastQuoteNumber set.
  */
 
-import { internalMutation } from "../_generated/server";
+import { internalMutation } from "../lib/triggers";
 
 export const initializeQuoteCounters = internalMutation({
 	args: {},

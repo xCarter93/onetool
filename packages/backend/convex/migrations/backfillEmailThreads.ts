@@ -1,4 +1,5 @@
-import { internalMutation, MutationCtx } from "../_generated/server";
+import { MutationCtx } from "../_generated/server";
+import { internalMutation } from "../lib/triggers";
 import { Doc, Id } from "../_generated/dataModel";
 import { normalizeSubject } from "../email/threads";
 

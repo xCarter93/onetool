@@ -5,7 +5,6 @@
 // nested ctx.runMutation between internal mutations.
 import type { MutationCtx } from "../_generated/server";
 import type { Doc, Id } from "../_generated/dataModel";
-import { AggregateHelpers } from "./aggregates";
 
 type ReceiptMetadata = {
 	cardBrand?: string;
@@ -53,10 +52,6 @@ export async function updateInvoiceStatusIfFullyPaid(
 			status: "paid",
 			paidAt: Date.now(),
 		});
-		// Keep the revenue/count aggregates on the new [status, paidAt] key —
-		// without this the invoice stays keyed as unpaid and home stats drift.
-		const updated = await ctx.db.get(invoiceId);
-		if (updated) await AggregateHelpers.updateInvoice(ctx, invoice, updated);
 	}
 }
 

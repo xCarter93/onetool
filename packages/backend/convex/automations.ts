@@ -1,4 +1,5 @@
-import { QueryCtx, MutationCtx, internalMutation } from "./_generated/server";
+import { QueryCtx, MutationCtx } from "./_generated/server";
+import { internalMutation } from "./lib/triggers";
 import { internal } from "./_generated/api";
 import { v } from "convex/values";
 import {

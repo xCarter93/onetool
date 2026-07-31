@@ -1,9 +1,5 @@
-import {
-	query,
-	mutation,
-	internalMutation,
-	internalQuery,
-} from "./_generated/server";
+import { query, internalQuery } from "./_generated/server";
+import { mutation, internalMutation } from "./lib/triggers";
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import {

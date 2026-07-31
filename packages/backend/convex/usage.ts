@@ -1,9 +1,5 @@
-import {
-	query,
-	mutation,
-	internalMutation,
-	type QueryCtx,
-} from "./_generated/server";
+import { query, type QueryCtx } from "./_generated/server";
+import { mutation, internalMutation } from "./lib/triggers";
 import { v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
 import { getCurrentUserOrgId } from "./lib/auth";

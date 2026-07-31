@@ -6,7 +6,6 @@
 import type { QueryCtx, MutationCtx } from "../_generated/server";
 import type { Id } from "../_generated/dataModel";
 import { computeQuoteTotals } from "./money";
-import { AggregateHelpers } from "./aggregates";
 
 export async function calculateQuoteTotals(
 	ctx: QueryCtx | MutationCtx,
@@ -59,8 +58,4 @@ export async function syncQuoteTotals(
 	}
 
 	await ctx.db.patch(quoteId, totals);
-	const updated = await ctx.db.get(quoteId);
-	if (updated) {
-		await AggregateHelpers.updateQuote(ctx, quote, updated);
-	}
 }

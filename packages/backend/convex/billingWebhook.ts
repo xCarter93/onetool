@@ -1,4 +1,5 @@
-import { internalMutation, MutationCtx } from "./_generated/server";
+import { MutationCtx } from "./_generated/server";
+import { internalMutation } from "./lib/triggers";
 import { v } from "convex/values";
 import { Doc } from "./_generated/dataModel";
 import { logWebhookReceived, logWebhookSuccess, logWebhookError } from "./lib/webhooks";

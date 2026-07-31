@@ -1,15 +1,9 @@
 import { v } from "convex/values";
-import {
-	internalMutation,
-	internalQuery,
-	mutation,
-	MutationCtx,
-	QueryCtx,
-} from "./_generated/server";
+import { internalQuery, MutationCtx, QueryCtx } from "./_generated/server";
+import { internalMutation, mutation } from "./lib/triggers";
 import { Doc, Id, TableNames } from "./_generated/dataModel";
 import { internal, api } from "./_generated/api";
 import { logWebhookSuccess, logWebhookError } from "./lib/webhooks";
-import { AggregateHelpers } from "./lib/aggregates";
 import { getCurrentUser, getCurrentUserOrgId } from "./lib/auth";
 import {
 	denyPermission,
@@ -571,10 +565,6 @@ async function handleQuoteStatusUpdate(
 
 	if (Object.keys(quoteUpdates).length > 0) {
 		await ctx.db.patch(quote._id, quoteUpdates);
-		const updatedQuote = await ctx.db.get(quote._id);
-		if (updatedQuote) {
-			await AggregateHelpers.updateQuote(ctx, quote, updatedQuote);
-		}
 	}
 }
 

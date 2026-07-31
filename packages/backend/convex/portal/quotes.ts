@@ -3,14 +3,8 @@
 // Approve is an action because it stores the signature blob; DB validation and
 // commit work are delegated to internal queries/mutations so scope checks,
 // status changes, audit rows, and event emission stay transactional.
-import {
-	action,
-	internalMutation,
-	internalQuery,
-	mutation,
-	query,
-	type MutationCtx,
-} from "../_generated/server";
+import { action, internalQuery, query, type MutationCtx } from "../_generated/server";
+import { internalMutation, mutation } from "../lib/triggers";
 import { ConvexError, v } from "convex/values";
 import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
@@ -18,7 +12,6 @@ import { getPortalSessionOrThrow } from "./helpers";
 import { rateLimiter } from "../rateLimits";
 import { emitStatusChangeEvent } from "../eventBus";
 import { ActivityHelpers } from "../lib/activities";
-import { AggregateHelpers } from "../lib/aggregates";
 import { calculateQuoteTotals } from "../lib/quoteTotals";
 
 // ---------------------------------------------------------------------------
@@ -574,13 +567,6 @@ export const _commitApproval = internalMutation({
 		await ctx.db.patch(args.quoteId, patch);
 
 		const updatedQuote = await ctx.db.get(args.quoteId);
-		if (updatedQuote) {
-			await AggregateHelpers.updateQuote(
-				ctx,
-				quote as Doc<"quotes">,
-				updatedQuote as Doc<"quotes">,
-			);
-		}
 
 		// 4. Activity helper THIRD (with portal-aware fallback).
 		if (updatedQuote) {
@@ -850,11 +836,6 @@ export const decline = mutation({
 
 		const updatedQuote = await ctx.db.get(args.quoteId);
 		if (updatedQuote) {
-			await AggregateHelpers.updateQuote(
-				ctx,
-				quote as Doc<"quotes">,
-				updatedQuote as Doc<"quotes">,
-			);
 			await logQuoteActivity(
 				ctx,
 				updatedQuote,
