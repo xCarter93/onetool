@@ -30,9 +30,8 @@ import {
 /**
  * Grant management (admin plane) for granular per-object permissions.
  *
- * Unlike the domain-function gating in lib/permissions.ts, this surface is NOT
- * behind the PERMISSIONS_ENFORCE shadow flag: it is new, has no legacy callers,
- * and mediates who may edit grants — always enforced.
+ * Mediates who may edit grants, so it is gated on its own terms rather than by
+ * the per-object grants it manages.
  */
 
 const grantValidator = v.record(

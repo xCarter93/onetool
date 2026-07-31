@@ -1,6 +1,6 @@
 import { convexTest } from "convex-test";
 import { ConvexError } from "convex/values";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { api } from "./_generated/api";
 import { setupConvexTest } from "./test.setup";
 import {
@@ -13,27 +13,16 @@ import type { MutationCtx } from "./_generated/server";
 
 /**
  * Phase-2 granular RBAC: gating of domain functions (clients, projects,
- * tasks, automations, quotes) in shadow vs. enforced mode. Companion to
+ * tasks, automations, quotes). Companion to
  * lib/permissionsResolver.test.ts, which covers the resolver + factory
  * helpers directly; this file drives the same machinery through the real
  * api.* handlers.
  */
 describe("granular RBAC domain-function gating", () => {
 	let t: ReturnType<typeof convexTest>;
-	let originalEnforce: string | undefined;
 
 	beforeEach(() => {
 		t = setupConvexTest();
-		originalEnforce = process.env.PERMISSIONS_ENFORCE;
-		delete process.env.PERMISSIONS_ENFORCE; // default = shadow mode
-	});
-
-	afterEach(() => {
-		if (originalEnforce === undefined) {
-			delete process.env.PERMISSIONS_ENFORCE;
-		} else {
-			process.env.PERMISSIONS_ENFORCE = originalEnforce;
-		}
 	});
 
 	// t.query/t.mutation re-throw ConvexError with `.data` either as a plain
@@ -97,8 +86,7 @@ describe("granular RBAC domain-function gating", () => {
 
 	// ── 1. Read gate: clients.list ───────────────────────────────────────
 
-	it("enforced: member with default permissions is denied clients.list (FORBIDDEN view)", async () => {
-		process.env.PERMISSIONS_ENFORCE = "true";
+	it("member with default permissions is denied clients.list (FORBIDDEN view)", async () => {
 		const { asMember } = await seedOrgWithMember("org_read_1", "user_read_1");
 
 		let caught: unknown;
@@ -116,25 +104,203 @@ describe("granular RBAC domain-function gating", () => {
 		});
 	});
 
-	it("shadow: the same call succeeds and returns rows", async () => {
-		const { asAdmin, asMember } = await seedOrgWithMember(
-			"org_read_2",
-			"user_read_2"
+	// ── 1b. SEC-6: reports:view must not escalate into raw entity reads ──
+
+	// reports isn't in DEFAULT_MEMBER_PERMISSIONS, so this is grant escalation,
+	// not a default-member leak: "let them see reports" silently also handed
+	// over unscoped raw rows of every entity the admin had withheld.
+	const reportArgs = (entityType: "clients" | "activities") => ({
+		entityType,
+		dateRange: {},
+		aggregation: { op: "count" as const },
+	});
+
+	it("reports:view alone does NOT grant a clients report (SEC-6)", async () => {
+		const { org, member, asMember } = await seedOrgWithMember(
+			"org_sec6_1",
+			"user_sec6_1"
 		);
-		await asAdmin.mutation(api.clients.create, {
-			portalAccessId: crypto.randomUUID(),
-			companyName: "Shadow Client",
-			status: "active",
+		await grantMemberPermissions(org.orgId, member.userId, {
+			reports: { level: "view" },
 		});
 
-		const rows = await asMember.query(api.clients.list, {});
-		expect(rows).toHaveLength(1);
+		let caught: unknown;
+		try {
+			await asMember.query(api.reportData.executeReport, reportArgs("clients"));
+		} catch (e) {
+			caught = e;
+		}
+		expect(caught).toBeInstanceOf(ConvexError);
+		expect(parseConvexErrorData(caught)).toMatchObject({
+			code: "FORBIDDEN",
+			object: "clients",
+		});
+	});
+
+	it("a record-scoped clients:view grant is still not enough (SEC-6)", async () => {
+		const { org, member, asMember } = await seedOrgWithMember(
+			"org_sec6_2",
+			"user_sec6_2"
+		);
+		// The report scan pages by_org with no record filter, so a member who can
+		// only see their own assignments must not be able to run one at all.
+		await grantMemberPermissions(org.orgId, member.userId, {
+			reports: { level: "view" },
+			clients: { level: "view" },
+		});
+
+		let caught: unknown;
+		try {
+			await asMember.query(api.reportData.executeReport, reportArgs("clients"));
+		} catch (e) {
+			caught = e;
+		}
+		expect(caught).toBeInstanceOf(ConvexError);
+		expect(parseConvexErrorData(caught)).toMatchObject({
+			code: "FORBIDDEN",
+			object: "clients",
+			scope: true,
+		});
+	});
+
+	it("reports:view + clients:view with allRecords succeeds (SEC-6)", async () => {
+		const { org, member, asMember } = await seedOrgWithMember(
+			"org_sec6_3",
+			"user_sec6_3"
+		);
+		await grantMemberPermissions(org.orgId, member.userId, {
+			reports: { level: "view" },
+			clients: { level: "view", allRecords: true },
+		});
+
+		const result = await asMember.query(
+			api.reportData.executeReport,
+			reportArgs("clients")
+		);
+		expect(result).toBeDefined();
+	});
+
+	it("an activities report is admin-only even with every entity grant (SEC-6)", async () => {
+		const { org, member, asMember } = await seedOrgWithMember(
+			"org_sec6_4",
+			"user_sec6_4"
+		);
+		// Activity rows span every entity type and include the `user` rows
+		// (member_permissions_updated) that activities.ts restricts to admins.
+		await grantMemberPermissions(org.orgId, member.userId, {
+			reports: { level: "view" },
+			clients: { level: "view", allRecords: true },
+			projects: { level: "view", allRecords: true },
+			tasks: { level: "view", allRecords: true },
+			quotes: { level: "view", allRecords: true },
+			invoices: { level: "view", allRecords: true },
+		});
+
+		let caught: unknown;
+		try {
+			await asMember.query(
+				api.reportData.executeReport,
+				reportArgs("activities")
+			);
+		} catch (e) {
+			caught = e;
+		}
+		expect(caught).toBeInstanceOf(ConvexError);
+		expect(parseConvexErrorData(caught)).toMatchObject({ code: "FORBIDDEN" });
+	});
+
+	it("an admin can still run both reports (SEC-6 does not break admins)", async () => {
+		const { asAdmin } = await seedOrgWithMember("org_sec6_5", "user_sec6_5");
+		expect(
+			await asAdmin.query(api.reportData.executeReport, reportArgs("clients"))
+		).toBeDefined();
+		expect(
+			await asAdmin.query(api.reportData.executeReport, reportArgs("activities"))
+		).toBeDefined();
+	});
+
+	// ── 1c. SEC-7: dashboard totals are org-wide, so they need allRecords ──
+
+	it("a record-scoped member is denied getHomeStats (SEC-7)", async () => {
+		const { org, member, asMember } = await seedOrgWithMember(
+			"org_sec7_1",
+			"user_sec7_1"
+		);
+		// Every grant present, but assigned-records only. The figures are org
+		// totals from org-keyed aggregates, so `view` alone must not suffice.
+		await grantMemberPermissions(org.orgId, member.userId, {
+			clients: { level: "view" },
+			projects: { level: "view" },
+			quotes: { level: "view" },
+			invoices: { level: "view" },
+			tasks: { level: "view" },
+		});
+
+		let caught: unknown;
+		try {
+			await asMember.query(api.homeStats.getHomeStats, {});
+		} catch (e) {
+			caught = e;
+		}
+		expect(caught).toBeInstanceOf(ConvexError);
+		expect(parseConvexErrorData(caught)).toMatchObject({
+			code: "FORBIDDEN",
+			scope: true,
+		});
+	});
+
+	it("the same member with allRecords gets the stats (SEC-7)", async () => {
+		const { org, member, asMember } = await seedOrgWithMember(
+			"org_sec7_2",
+			"user_sec7_2"
+		);
+		await grantMemberPermissions(org.orgId, member.userId, {
+			clients: { level: "view", allRecords: true },
+			projects: { level: "view", allRecords: true },
+			quotes: { level: "view", allRecords: true },
+			invoices: { level: "view", allRecords: true },
+			tasks: { level: "view", allRecords: true },
+		});
+
+		expect(await asMember.query(api.homeStats.getHomeStats, {})).toBeDefined();
+	});
+
+	it("a scoped member is denied getPendingTasksCount (SEC-7)", async () => {
+		const { org, member, asMember } = await seedOrgWithMember(
+			"org_sec7_3",
+			"user_sec7_3"
+		);
+		// tasks:modify (assigned-only) is the DEFAULT member grant, so this is
+		// the shape a plain member actually has.
+		await grantMemberPermissions(org.orgId, member.userId, {
+			tasks: { level: "modify" },
+		});
+
+		let caught: unknown;
+		try {
+			await asMember.query(api.homeStats.getPendingTasksCount, {});
+		} catch (e) {
+			caught = e;
+		}
+		expect(caught).toBeInstanceOf(ConvexError);
+		expect(parseConvexErrorData(caught)).toMatchObject({
+			code: "FORBIDDEN",
+			object: "tasks",
+			scope: true,
+		});
+	});
+
+	it("an admin still gets dashboard stats (SEC-7 does not break admins)", async () => {
+		const { asAdmin } = await seedOrgWithMember("org_sec7_4", "user_sec7_4");
+		expect(await asAdmin.query(api.homeStats.getHomeStats, {})).toBeDefined();
+		expect(
+			await asAdmin.query(api.homeStats.getPendingTasksCount, {})
+		).toBeDefined();
 	});
 
 	// ── 2. Read grant + derived scope: clients.list ──────────────────────
 
-	it("enforced: member with a clients view grant sees only derived-scope clients; allRecords sees all", async () => {
-		process.env.PERMISSIONS_ENFORCE = "true";
+	it("member with a clients view grant sees only derived-scope clients; allRecords sees all", async () => {
 		const { org, member, asAdmin, asMember } = await seedOrgWithMember(
 			"org_read_3",
 			"user_read_3"
@@ -185,8 +351,7 @@ describe("granular RBAC domain-function gating", () => {
 
 	// ── 3. Write scope: projects.update ──────────────────────────────────
 
-	it("enforced: member (default projects modify) can update an assigned project but not an unassigned one; allRecords lifts the scope", async () => {
-		process.env.PERMISSIONS_ENFORCE = "true";
+	it("member (default projects modify) can update an assigned project but not an unassigned one; allRecords lifts the scope", async () => {
 		const { org, member, asAdmin, asMember } = await seedOrgWithMember(
 			"org_write_4",
 			"user_write_4"
@@ -248,8 +413,7 @@ describe("granular RBAC domain-function gating", () => {
 
 	// ── 4. Delete ladder: projects.remove ────────────────────────────────
 
-	it("enforced: modify+allRecords is not enough to delete; delete+allRecords succeeds", async () => {
-		process.env.PERMISSIONS_ENFORCE = "true";
+	it("modify+allRecords is not enough to delete; delete+allRecords succeeds", async () => {
 		const { org, member, asAdmin, asMember } = await seedOrgWithMember(
 			"org_delete_5",
 			"user_delete_5"
@@ -298,8 +462,7 @@ describe("granular RBAC domain-function gating", () => {
 
 	// ── 5. Scoped-create auto-assign: tasks.create ───────────────────────
 
-	it("enforced: a scoped member creating a task without assigneeUserId is auto-assigned; shadow leaves it undefined", async () => {
-		process.env.PERMISSIONS_ENFORCE = "true";
+	it("a scoped member creating a task without assigneeUserId is auto-assigned", async () => {
 		const { asMember, member } = await seedOrgWithMember(
 			"org_autoassign_6",
 			"user_autoassign_6"
@@ -314,23 +477,6 @@ describe("granular RBAC domain-function gating", () => {
 
 		const task = await asMember.query(api.tasks.get, { id: taskId });
 		expect(task?.assigneeUserId).toBe(member.userId);
-	});
-
-	it("shadow: the same create leaves assigneeUserId undefined (would-auto-assign only warns)", async () => {
-		const { asMember } = await seedOrgWithMember(
-			"org_autoassign_7",
-			"user_autoassign_7"
-		);
-
-		const taskId = await asMember.mutation(api.tasks.create, {
-			title: "Unassigned on input",
-			date: Date.now(),
-			status: "pending",
-			type: "internal",
-		});
-
-		const task = await asMember.query(api.tasks.get, { id: taskId });
-		expect(task?.assigneeUserId).toBeUndefined();
 	});
 
 	// ── 6. automations.create ────────────────────────────────────────────
@@ -357,8 +503,7 @@ describe("granular RBAC domain-function gating", () => {
 		};
 	}
 
-	it("enforced: member is denied automations.create by default; a modify grant allows it; admin always passes", async () => {
-		process.env.PERMISSIONS_ENFORCE = "true";
+	it("member is denied automations.create by default; a modify grant allows it; admin always passes", async () => {
 		const { org, member, asAdmin, asMember } = await seedOrgWithMember(
 			"org_automations_8",
 			"user_automations_8"
@@ -381,8 +526,33 @@ describe("granular RBAC domain-function gating", () => {
 			level: "modify",
 		});
 
+		// SEC-9: automations:modify alone is no longer enough. This definition
+		// writes client.status, so authoring it also requires clients:modify —
+		// otherwise "may edit automations" is a write primitive over every
+		// record type the executor can reach.
 		await grantMemberPermissions(org.orgId, member.userId, {
 			automations: { level: "modify" },
+		});
+
+		let caughtWithoutClients: unknown;
+		try {
+			await asMember.mutation(api.automations.create, {
+				name: "Writes clients without a clients grant",
+				trigger: automationTrigger,
+				nodes: [automationActionNode("act-1")],
+			});
+		} catch (e) {
+			caughtWithoutClients = e;
+		}
+		expect(parseConvexErrorData(caughtWithoutClients)).toMatchObject({
+			code: "FORBIDDEN",
+			object: "clients",
+			level: "modify",
+		});
+
+		await grantMemberPermissions(org.orgId, member.userId, {
+			automations: { level: "modify" },
+			clients: { level: "modify", allRecords: true },
 		});
 
 		const memberCreated = await asMember.mutation(api.automations.create, {
@@ -402,8 +572,7 @@ describe("granular RBAC domain-function gating", () => {
 
 	// ── 7. Derived quotes: quotes.list ───────────────────────────────────
 
-	it("enforced: member with a quotes view grant sees quotes derived from their assigned project's client only", async () => {
-		process.env.PERMISSIONS_ENFORCE = "true";
+	it("member with a quotes view grant sees quotes derived from their assigned project's client only", async () => {
 		const { org, member, asAdmin, asMember } = await seedOrgWithMember(
 			"org_quotes_9",
 			"user_quotes_9"
@@ -462,8 +631,7 @@ describe("granular RBAC domain-function gating", () => {
 
 	// ── 8. Admin/owner spot-check ────────────────────────────────────────
 
-	it("enforced: admin/owner passes every gate — clients.list unfiltered, projects.remove unscoped", async () => {
-		process.env.PERMISSIONS_ENFORCE = "true";
+	it("admin/owner passes every gate — clients.list unfiltered, projects.remove unscoped", async () => {
 		const { asAdmin } = await seedOrgWithMember(
 			"org_admin_10",
 			"user_admin_10"
@@ -489,49 +657,9 @@ describe("granular RBAC domain-function gating", () => {
 		).resolves.toBe(project);
 	});
 
-	// ── 9. Shadow no-op spot-check: quotes.list ──────────────────────────
-
-	it("shadow: default member permissions still see ALL org quotes on quotes.list (no filtering, no throw)", async () => {
-		const { asAdmin, asMember } = await seedOrgWithMember(
-			"org_shadow_11",
-			"user_shadow_11"
-		);
-
-		const clientC = await asAdmin.mutation(api.clients.create, {
-			portalAccessId: crypto.randomUUID(),
-			companyName: "Shadow Quotes Client C",
-			status: "active",
-		});
-		const clientD = await asAdmin.mutation(api.clients.create, {
-			portalAccessId: crypto.randomUUID(),
-			companyName: "Shadow Quotes Client D",
-			status: "active",
-		});
-		await asAdmin.mutation(api.quotes.create, {
-			clientId: clientC,
-			title: "Quote C",
-			status: "draft",
-			subtotal: 100,
-			total: 100,
-		});
-		await asAdmin.mutation(api.quotes.create, {
-			clientId: clientD,
-			title: "Quote D",
-			status: "draft",
-			subtotal: 200,
-			total: 200,
-		});
-
-		// Default member grants have no `quotes` key at all — still no throw,
-		// and applyReadScope's shadow branch returns every row unfiltered.
-		const rows = await asMember.query(api.quotes.list, {});
-		expect(rows).toHaveLength(2);
-	});
-
 	// ── 10. Single-record read scope: clients.get ────────────────────────
 
-	it("enforced: a scoped member reading an out-of-scope client by ID via clients.get is FORBIDDEN; allRecords lifts the scope", async () => {
-		process.env.PERMISSIONS_ENFORCE = "true";
+	it("a scoped member reading an out-of-scope client by ID via clients.get is FORBIDDEN; allRecords lifts the scope", async () => {
 		const { org, member, asAdmin, asMember } = await seedOrgWithMember(
 			"org_get_12",
 			"user_get_12"
@@ -588,8 +716,7 @@ describe("granular RBAC domain-function gating", () => {
 
 	// ── 11. Single-record read scope: quotes.get (projectId/clientId fallback) ──
 
-	it("enforced: a scoped member reading an out-of-scope quote by ID via quotes.get is FORBIDDEN; allRecords lifts the scope", async () => {
-		process.env.PERMISSIONS_ENFORCE = "true";
+	it("a scoped member reading an out-of-scope quote by ID via quotes.get is FORBIDDEN; allRecords lifts the scope", async () => {
 		const { org, member, asAdmin, asMember } = await seedOrgWithMember(
 			"org_get_13",
 			"user_get_13"
@@ -662,8 +789,7 @@ describe("granular RBAC domain-function gating", () => {
 
 	// ── 12. Single-record read scope: reports.get (direct createdBy scope) ──
 
-	it("enforced: a member reading another user's report via reports.get is FORBIDDEN", async () => {
-		process.env.PERMISSIONS_ENFORCE = "true";
+	it("a member reading another user's report via reports.get is FORBIDDEN", async () => {
 		const org = await t.run(async (ctx) =>
 			createTestOrg(ctx, {
 				clerkUserId: "org_get_14_owner",
@@ -721,8 +847,7 @@ describe("granular RBAC domain-function gating", () => {
 	// checklist unconditionally, so missing view grants must yield null, never
 	// FORBIDDEN.
 
-	it("enforced: member with default permissions gets null from getJourneyProgress (no FORBIDDEN)", async () => {
-		process.env.PERMISSIONS_ENFORCE = "true";
+	it("member with default permissions gets null from getJourneyProgress (no FORBIDDEN)", async () => {
 		const { asMember } = await seedOrgWithMember(
 			"org_journey_1",
 			"user_journey_1"
@@ -733,8 +858,7 @@ describe("granular RBAC domain-function gating", () => {
 		).resolves.toBeNull();
 	});
 
-	it("enforced: admin still gets full journey progress", async () => {
-		process.env.PERMISSIONS_ENFORCE = "true";
+	it("admin still gets full journey progress", async () => {
 		const { asAdmin } = await seedOrgWithMember(
 			"org_journey_2",
 			"user_journey_2"
@@ -745,21 +869,9 @@ describe("granular RBAC domain-function gating", () => {
 		).resolves.toMatchObject({ hasClient: false, hasOrganization: false });
 	});
 
-	it("shadow: member with default permissions still gets journey progress", async () => {
-		const { asMember } = await seedOrgWithMember(
-			"org_journey_3",
-			"user_journey_3"
-		);
-
-		await expect(
-			asMember.query(api.homeStats.getJourneyProgress, {})
-		).resolves.toMatchObject({ hasClient: false });
-	});
-
 	// ── getSampleRelatedFields: record scope + registry-field filtering ──
 
-	it("enforced: related-fields preview omits relations outside the member's record scope", async () => {
-		process.env.PERMISSIONS_ENFORCE = "true";
+	it("related-fields preview omits relations outside the member's record scope", async () => {
 		const { org, member, asAdmin, asMember } = await seedOrgWithMember(
 			"org_srf_1",
 			"user_srf_1"

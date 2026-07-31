@@ -541,6 +541,109 @@ describe("BoldSign embedded sending", () => {
 		});
 	});
 
+	// SEC-3: the signed-PDF sink is existence-only via fetchEntityOrThrow, so it
+	// must pin the BoldSign id or a download can be stamped onto any document row.
+	describe("updateDocumentWithSignedPdf", () => {
+		it("stores the signed PDF on the document that owns the BoldSign id", async () => {
+			const { documentId, storageId } = await t.run(async (ctx) => {
+				const org = await createTestOrg(ctx);
+				const clientId = await createTestClient(ctx, org.orgId);
+				const quoteId = await seedQuote(ctx, org.orgId, clientId);
+				const documentId = await seedDocument(ctx, org.orgId, quoteId, 1, {
+					documentId: "bs_owned",
+					status: "Completed",
+				});
+				const storageId = await ctx.storage.store(
+					new Blob(["signed"], { type: "application/pdf" })
+				);
+				return { documentId, storageId };
+			});
+
+			await t.mutation(internal.boldsign.updateDocumentWithSignedPdf, {
+				documentId,
+				boldsignDocumentId: "bs_owned",
+				signedStorageId: storageId,
+			});
+
+			const doc = await t.run(async (ctx) => await ctx.db.get(documentId));
+			expect(doc?.signedStorageId).toBe(storageId);
+		});
+
+		it("refuses to stamp a signed PDF onto a document it is not linked to", async () => {
+			const { victimDocumentId, storageId } = await t.run(async (ctx) => {
+				const org = await createTestOrg(ctx);
+				const clientId = await createTestClient(ctx, org.orgId);
+				const quoteId = await seedQuote(ctx, org.orgId, clientId);
+				const victimDocumentId = await seedDocument(ctx, org.orgId, quoteId, 1, {
+					documentId: "bs_victim",
+					status: "Completed",
+				});
+				const storageId = await ctx.storage.store(
+					new Blob(["attacker"], { type: "application/pdf" })
+				);
+				return { victimDocumentId, storageId };
+			});
+
+			await expect(
+				t.mutation(internal.boldsign.updateDocumentWithSignedPdf, {
+					documentId: victimDocumentId,
+					boldsignDocumentId: "bs_someone_elses",
+					signedStorageId: storageId,
+				})
+			).rejects.toThrow(/not linked to BoldSign document/);
+
+			const doc = await t.run(async (ctx) => await ctx.db.get(victimDocumentId));
+			expect(doc?.signedStorageId).toBeUndefined();
+		});
+	});
+
+	// ========================================================================
+	// downloadCompletedDocument (action-level storage cleanup)
+	// ========================================================================
+
+	describe("downloadCompletedDocument", () => {
+		afterEach(() => {
+			vi.unstubAllEnvs();
+			vi.unstubAllGlobals();
+		});
+
+		it("deletes the downloaded PDF when the identity check rejects the delivery", async () => {
+			vi.stubEnv("BOLDSIGN_API_KEY", "test_key");
+			vi.stubGlobal(
+				"fetch",
+				vi.fn(async () => new Response("signed pdf", { status: 200 }))
+			);
+
+			const { documentId, baselineCount } = await t.run(async (ctx) => {
+				const org = await createTestOrg(ctx);
+				const clientId = await createTestClient(ctx, org.orgId);
+				const quoteId = await seedQuote(ctx, org.orgId, clientId);
+				const documentId = await seedDocument(ctx, org.orgId, quoteId, 1, {
+					documentId: "bs_current",
+					status: "Completed",
+				});
+				const baselineCount = (
+					await ctx.db.system.query("_storage").collect()
+				).length;
+				return { documentId, baselineCount };
+			});
+
+			// Stale delivery: the document has since been re-linked to bs_current.
+			await expect(
+				t.action(internal.boldsignActions.downloadCompletedDocument, {
+					documentId,
+					boldsignDocumentId: "bs_stale",
+				})
+			).rejects.toThrow(/not linked to BoldSign document/);
+
+			// The blob stored for the rejected delivery must have been reclaimed.
+			const finalCount = await t.run(
+				async (ctx) => (await ctx.db.system.query("_storage").collect()).length
+			);
+			expect(finalCount).toBe(baselineCount);
+		});
+	});
+
 	// ========================================================================
 	// getEmbeddedDraft / clearEmbeddedDraft (abandoned-draft discard)
 	// ========================================================================
@@ -655,11 +758,7 @@ describe("BoldSign embedded sending", () => {
 			expect(doc?.boldsign?.status).toBe("Sent");
 		});
 
-		// Enforcement is still shadow-mode in prod, so pin the flag on: this
-		// asserts the gate exists and will bite at the enforcement flip, rather
-		// than passing vacuously because denyPermission only logged.
 		it("denies a view-only member (org membership is not the boundary)", async () => {
-			vi.stubEnv("PERMISSIONS_ENFORCE", "true");
 			const { clerkOrgId, memberClerkUserId, quoteId, documentId } = await t.run(
 				async (ctx) => {
 					const org = await createTestOrg(ctx);

@@ -17,6 +17,7 @@ import {
 } from "./lib/webhooks";
 import { resend } from "./email/durableResend";
 import { readPremiumOverride } from "./lib/permissions";
+import { constantTimeEqual } from "./lib/portalAttestation";
 
 const http = httpRouter();
 
@@ -781,15 +782,6 @@ http.route({
 // Server-to-server OTP request endpoint. Next.js derives the IP hash and gates
 // access with the shared portal secret before this invokes the internal mutation.
 
-function constantTimeEqual(a: string, b: string): boolean {
-	if (a.length !== b.length) return false;
-	let diff = 0;
-	for (let i = 0; i < a.length; i++) {
-		diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
-	}
-	return diff === 0;
-}
-
 http.route({
 	path: "/portal/otp/request",
 	method: "POST",
@@ -834,7 +826,17 @@ http.route({
 			typeof body.clientPortalId === "string" ? body.clientPortalId : "";
 		const email = typeof body.email === "string" ? body.email : "";
 		const ipHash = typeof body.ipHash === "string" ? body.ipHash : "";
-		if (!clientPortalId || !email || !email.includes("@") || !ipHash) {
+		// Both clientPortalId and email are unauthenticated inputs that become
+		// halves of a rate-limiter key, so bound both: a real portal id is a
+		// 36-char UUID and RFC 5321 caps an address at 254 chars.
+		if (
+			!clientPortalId ||
+			clientPortalId.length > 200 ||
+			!email ||
+			email.length > 320 ||
+			!email.includes("@") ||
+			!ipHash
+		) {
 			return new Response(
 				JSON.stringify({ error: "Enter a valid email address." }),
 				{

@@ -164,6 +164,68 @@ describe("portal otp", () => {
 		expect(result).toEqual({ ok: true });
 	});
 
+	// SEC-13: the send limiters necessarily run before the client lookup, so an
+	// email-only bucket was spendable by anyone who knew a contact's address —
+	// pair it with the (unguessable) portal id or a bogus id locks the real
+	// client out at ~1 request per 20 minutes.
+	it("a bogus portal id cannot drain the real client's OTP budget (SEC-13)", async () => {
+		const seed = await seedClientPortal(t, {
+			portalId: "real-portal-sec13",
+			email: "victim@example.com",
+		});
+
+		// Burn the whole per-pair bucket (capacity 3) against a portal that does
+		// not exist. Each returns the same {ok:true} as any unknown portal.
+		for (let i = 0; i < 3; i++) {
+			const drained = await t.mutation(internal.portal.otp.requestOtp, {
+				clientPortalId: "attacker-guess-sec13",
+				email: "victim@example.com",
+				ipHash: "sec13-attacker-ip",
+			});
+			expect(drained).toEqual({ ok: true });
+		}
+
+		// The real client must still get a code.
+		const real = await t.mutation(internal.portal.otp.requestOtp, {
+			clientPortalId: seed.clientPortalId,
+			email: "victim@example.com",
+			ipHash: "sec13-victim-ip",
+		});
+		expect(real).toEqual({ ok: true });
+
+		const rows = await t.run(async (ctx) =>
+			ctx.db.query("portalOtpCodes").collect()
+		);
+		expect(rows).toHaveLength(1);
+		expect(rows[0].clientPortalId).toBe(seed.clientPortalId);
+	});
+
+	it("still caps repeated sends for one portal/email pair (SEC-13)", async () => {
+		const seed = await seedClientPortal(t, {
+			portalId: "capped-portal-sec13",
+			email: "capped@example.com",
+		});
+
+		for (let i = 0; i < 3; i++) {
+			await t.mutation(internal.portal.otp.requestOtp, {
+				clientPortalId: seed.clientPortalId,
+				email: "capped@example.com",
+				ipHash: "sec13-capped-ip",
+			});
+		}
+
+		try {
+			await t.mutation(internal.portal.otp.requestOtp, {
+				clientPortalId: seed.clientPortalId,
+				email: "capped@example.com",
+				ipHash: "sec13-capped-ip",
+			});
+			throw new Error("Expected ConvexError");
+		} catch (err) {
+			expect(asOtpError(err).code).toBe("OTP_RATE_LIMITED");
+		}
+	});
+
 	it("verifyOtp returns session payload AND creates portalSessions row on correct code", async () => {
 		const seed = await seedClientPortal(t);
 		const code = "123456";

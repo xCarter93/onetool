@@ -1,7 +1,8 @@
-import { query } from "./_generated/server";
+import { action, internalQuery } from "./_generated/server";
 import { internalMutation, mutation } from "./lib/triggers";
-import { UserJSON } from "@clerk/backend";
+import { createClerkClient, UserJSON } from "@clerk/backend";
 import { v, Validator } from "convex/values";
+import type { Id } from "./_generated/dataModel";
 import {
 	getCurrentUser,
 	getCurrentUserOrgId,
@@ -12,12 +13,14 @@ import { getOptionalOrgId } from "./lib/queries";
 import { internal } from "./_generated/api";
 import {
 	ensureMembership,
+	getMembership,
 	listMembershipsByOrg,
 	listMembershipsByUser,
 	removeMembership,
 } from "./lib/memberships";
 import { optionalUserQuery, userMutation } from "./lib/factories";
 import { readPremiumOverride } from "./lib/permissions";
+import { rateLimiter } from "./rateLimits";
 
 export const current = optionalUserQuery({
 	args: {},
@@ -49,13 +52,21 @@ export const listByOrg = optionalUserQuery({
 });
 
 /**
- * Get a user by ID (authenticated, returns limited fields)
+ * Get a user by ID (returns limited fields).
+ *
+ * The target must be a member of the caller's active org — without that check
+ * this is a deployment-wide name/email lookup for any `Id<"users">`.
  */
 export const get = optionalUserQuery({
 	args: { id: v.id("users") },
 	handler: async (ctx, args) => {
 		const currentUser = await getCurrentUser(ctx);
 		if (!currentUser) return null;
+
+		const orgId = await getOptionalOrgId(ctx);
+		if (!orgId) return null;
+
+		if (!(await getMembership(ctx, args.id, orgId))) return null;
 
 		const user = await ctx.db.get(args.id);
 		if (!user) return null;
@@ -231,76 +242,136 @@ export const removeUserFromOrganization = internalMutation({
 });
 
 /**
- * Ensure a user from Clerk exists in Convex
- * This is used when tagging users who may not have signed in yet
+ * Resolve the caller's org and its Clerk organization id, for the mention-sync
+ * action to verify membership against. Internal: the action supplies the auth.
  */
-export const ensureUserExists = optionalUserQuery({
-	args: {
-		clerkUserId: v.string(),
-		name: v.string(),
-		email: v.string(),
-		imageUrl: v.string(),
-	},
-	handler: async (ctx, args) => {
-		// Check if user already exists
-		const existingUser = await userByExternalId(ctx, args.clerkUserId);
-		
-		if (existingUser) {
-			return existingUser._id;
-		}
-
-		// User doesn't exist yet, return null
-		// We can't create users from a query, so we'll handle this differently
-		return null;
+export const getMentionSyncContext = internalQuery({
+	args: {},
+	handler: async (
+		ctx
+	): Promise<{
+		orgId: Id<"organizations">;
+		clerkOrganizationId: string;
+	} | null> => {
+		const user = await getCurrentUser(ctx);
+		if (!user) return null;
+		const orgId = await getOptionalOrgId(ctx);
+		if (!orgId) return null;
+		const organization = await ctx.db.get(orgId);
+		if (!organization) return null;
+		return {
+			orgId,
+			clerkOrganizationId: organization.clerkOrganizationId,
+		};
 	},
 });
 
 /**
- * Sync a user from Clerk to Convex if they don't exist yet
- * This allows tagging users who haven't signed in yet
+ * Create-or-find the Convex user for a Clerk member and bind them to the org.
+ * Internal-only: the caller must already have proven, against Clerk, that
+ * `clerkUserId` belongs to `orgId`'s Clerk organization.
  */
-export const syncUserFromClerk = userMutation({
+export const upsertVerifiedClerkUser = internalMutation({
 	args: {
 		clerkUserId: v.string(),
+		orgId: v.id("organizations"),
 		name: v.string(),
 		email: v.string(),
 		imageUrl: v.string(),
 	},
-	handler: async (ctx, args) => {
-		// Check if user already exists
+	handler: async (ctx, args): Promise<Id<"users">> => {
 		const existingUser = await userByExternalId(ctx, args.clerkUserId);
-		
 		if (existingUser) {
-			// If user exists, make sure they have membership in current org
-			const userOrgId = await getCurrentUserOrgId(ctx);
-			const membership = await ctx.db
-				.query("organizationMemberships")
-				.withIndex("by_org_user", (q) =>
-					q.eq("orgId", userOrgId).eq("userId", existingUser._id)
-				)
-				.first();
-			
-			if (!membership) {
-				// Add them to the organization if they're not already a member
-				await ensureMembership(ctx, existingUser._id, userOrgId);
-			}
-			
+			await ensureMembership(ctx, existingUser._id, args.orgId);
 			return existingUser._id;
 		}
 
-		// Create the user
+		// No lastSignedInDate: this user hasn't signed in — the session webhook
+		// stamps it when they actually do.
 		const userId = await ctx.db.insert("users", {
 			name: args.name,
 			email: args.email,
 			image: args.imageUrl,
 			externalId: args.clerkUserId,
-			lastSignedInDate: Date.now(),
+		});
+		await ensureMembership(ctx, userId, args.orgId);
+		return userId;
+	},
+});
+
+/**
+ * Look up a Clerk organization membership. Split out so tests can stub it.
+ * Returns the member's Clerk profile, or null if they are not a member.
+ */
+export async function fetchClerkOrgMember(
+	clerkOrganizationId: string,
+	clerkUserId: string
+): Promise<{ name: string; email: string; imageUrl: string } | null> {
+	const secretKey = process.env.CLERK_SECRET_KEY;
+	if (!secretKey) {
+		throw new Error("CLERK_SECRET_KEY is not configured");
+	}
+	const clerk = createClerkClient({ secretKey });
+	const { data } = await clerk.organizations.getOrganizationMembershipList({
+		organizationId: clerkOrganizationId,
+		userId: [clerkUserId],
+	});
+	const membership = data.find(
+		(row) => row.publicUserData?.userId === clerkUserId
+	);
+	if (!membership?.publicUserData) return null;
+
+	const profile = membership.publicUserData;
+	const name = `${profile.firstName ?? ""} ${profile.lastName ?? ""}`.trim();
+	return {
+		name: name || profile.identifier || "Unknown User",
+		email: profile.identifier ?? "",
+		imageUrl: profile.imageUrl ?? "",
+	};
+}
+
+/**
+ * Resolve a Clerk org member to a Convex user id, creating the row and the
+ * membership if the webhooks have not landed yet. Backs the @mention picker,
+ * which is its only caller (web + mobile).
+ *
+ * An action, not a mutation, because the Clerk id must be checked against
+ * Clerk itself: as a plain mutation this bound any Clerk id the caller cared
+ * to name into their own org, and pre-planted a `users` row carrying an
+ * attacker-chosen `externalId` — the sole identity join key — which the
+ * victim's real `user.created` webhook would later patch rather than replace.
+ * The profile fields are taken from Clerk's response, not from the caller.
+ */
+export const syncUserFromClerk = action({
+	args: {
+		clerkUserId: v.string(),
+		// Accepted for call-site compatibility and ignored: the stored profile
+		// comes from Clerk.
+		name: v.optional(v.string()),
+		email: v.optional(v.string()),
+		imageUrl: v.optional(v.string()),
+	},
+	handler: async (ctx, args): Promise<Id<"users"> | null> => {
+		const context = await ctx.runQuery(internal.users.getMentionSyncContext, {});
+		if (!context) return null;
+
+		await rateLimiter.limit(ctx, "mentionUserSync", {
+			key: context.orgId,
+			throws: true,
 		});
 
-		// Ensure they're added to the current user's organization
-		const userOrgId = await getCurrentUserOrgId(ctx);
-		await ensureMembership(ctx, userId, userOrgId);
+		const member = await fetchClerkOrgMember(
+			context.clerkOrganizationId,
+			args.clerkUserId
+		);
+		if (!member) return null;
 
-		return userId;
+		return await ctx.runMutation(internal.users.upsertVerifiedClerkUser, {
+			clerkUserId: args.clerkUserId,
+			orgId: context.orgId,
+			name: member.name,
+			email: member.email,
+			imageUrl: member.imageUrl,
+		});
 	},
 });

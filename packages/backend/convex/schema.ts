@@ -439,6 +439,10 @@ export default defineSchema({
 		clientId: v.optional(v.id("clients")), // Optional to support internal tasks
 		propertyId: v.optional(v.id("clientProperties")), // Which client property the work happens at
 		type: v.optional(v.union(v.literal("internal"), v.literal("external"))),
+		// SEC-8: set only by communityPages.submitInterest, an unauthenticated
+		// mutation, so the title/description are third-party text. The assistant
+		// fences these rows before they reach the model.
+		source: v.optional(v.literal("public_form")),
 
 		title: v.string(),
 		description: v.optional(v.string()),
@@ -481,7 +485,9 @@ export default defineSchema({
 		.index("by_org", ["orgId"])
 		.index("by_project", ["projectId"])
 		.index("by_client", ["clientId"])
-		.index("by_assignee", ["assigneeUserId"])
+		// Org-prefixed: a user can belong to several orgs, so a bare
+		// assigneeUserId lookup reads their tasks in every tenant.
+		.index("by_org_assignee", ["orgId", "assigneeUserId"])
 		.index("by_date", ["orgId", "date"])
 		.index("by_parent_task", ["parentTaskId"])
 		.searchIndex("search_text", {
@@ -605,6 +611,10 @@ export default defineSchema({
 		// Decline rows omit this field — decline does not require terms acceptance
 		// (per CONTEXT §"Decline with reason" and REVIEWS feedback on Plan 14-01).
 		termsAcceptedAt: v.optional(v.number()),
+		// SEC-4: set only when the signer affirmed signing intent (ESIGN) on a
+		// typed signature. Optional — rows predating the check, drawn
+		// signatures, and declines all omit it.
+		intentAffirmedAt: v.optional(v.number()),
 		createdAt: v.number(),
 	})
 		.index("by_quote", ["quoteId", "createdAt"])

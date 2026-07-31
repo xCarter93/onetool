@@ -2,6 +2,11 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { api } from "./_generated/api";
 import { setupConvexTest } from "./test.setup";
 import { Id } from "./_generated/dataModel";
+import {
+	createTestOrg,
+	createTestIdentity,
+	createTestTask,
+} from "./test.helpers";
 
 describe("Tasks", () => {
 	let t: ReturnType<typeof setupConvexTest>;
@@ -1709,6 +1714,83 @@ describe("Tasks", () => {
 
 			const task = await asUser.query(api.tasks.get, { id: taskId });
 			expect(task).toBeNull();
+		});
+	});
+
+	// SEC-2: `by_assignee` carried no org component and the product supports a
+	// user belonging to several orgs, so an assignee-filtered read returned that
+	// user's tasks in every tenant. `validateUserAccess` does not catch this —
+	// it only proves the assignee is a member of the *caller's* org, which a
+	// dual-org user is.
+	describe("cross-org assignee scoping", () => {
+		async function seedDualOrgUser() {
+			return await t.run(async (ctx) => {
+				const orgA = await createTestOrg(ctx, {
+					orgName: "Org A",
+					clerkUserId: "user_org_a_admin",
+					clerkOrgId: "org_a",
+				});
+				const orgB = await createTestOrg(ctx, {
+					orgName: "Org B",
+					clerkUserId: "user_org_b_admin",
+					clerkOrgId: "org_b",
+				});
+
+				// One human, member of both orgs — the precondition for the leak.
+				const sharedUserId = await ctx.db.insert("users", {
+					name: "Dual Org User",
+					email: "dual@example.com",
+					image: "https://example.com/dual.jpg",
+					externalId: "user_dual",
+				});
+				for (const orgId of [orgA.orgId, orgB.orgId]) {
+					await ctx.db.insert("organizationMemberships", {
+						orgId,
+						userId: sharedUserId,
+						role: "member",
+					});
+				}
+
+				await createTestTask(ctx, orgA.orgId, {
+					title: "Org A task",
+					assigneeUserId: sharedUserId,
+				});
+				await createTestTask(ctx, orgB.orgId, {
+					title: "Org B SECRET task",
+					assigneeUserId: sharedUserId,
+				});
+
+				return { orgA, sharedUserId };
+			});
+		}
+
+		it("list does not return the assignee's tasks from another org", async () => {
+			const { orgA, sharedUserId } = await seedDualOrgUser();
+
+			const asOrgAAdmin = t.withIdentity(
+				createTestIdentity(orgA.clerkUserId, orgA.clerkOrgId)
+			);
+
+			const tasks = await asOrgAAdmin.query(api.tasks.list, {
+				assigneeUserId: sharedUserId,
+			});
+
+			expect(tasks.map((task) => task.title)).toEqual(["Org A task"]);
+			expect(tasks.every((task) => task.orgId === orgA.orgId)).toBe(true);
+		});
+
+		it("getByUser does not return the assignee's tasks from another org", async () => {
+			const { orgA, sharedUserId } = await seedDualOrgUser();
+
+			const asOrgAAdmin = t.withIdentity(
+				createTestIdentity(orgA.clerkUserId, orgA.clerkOrgId)
+			);
+
+			const tasks = await asOrgAAdmin.query(api.tasks.getByUser, {
+				userId: sharedUserId,
+			});
+
+			expect(tasks.map((task) => task.title)).toEqual(["Org A task"]);
 		});
 	});
 });

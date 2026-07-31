@@ -15,7 +15,6 @@ import { useRouter } from "expo-router";
 import { useMutation } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { Id } from "@onetool/backend/convex/_generated/dataModel";
-import * as Crypto from "expo-crypto";
 import { fontFamily, radii, type, useTokens } from "@/lib/theme";
 import { AppHeader } from "@/components/app-header";
 import { PaneHeader } from "@/components/ipad/pane-header";
@@ -114,14 +113,12 @@ export function ClientCreateBody({
 		const warnings: string[] = [];
 
 		try {
-			// (2) Create the client first. portalAccessId is a crypto-strong RFC4122
-			// v4 (Convex retries mutations; non-deterministic UUIDs are unsafe, T-21-02).
-			// randomUUID is sync per MAPBOX-SPIKE.md; await defends a Promise (Pitfall 1).
+			// (2) Create the client first. The portal access id is minted server-side
+			// (SEC-5). await defends a Promise (Pitfall 1).
 			const clientId = (await Promise.resolve(
 				createClient({
 					companyName: companyName.trim(),
 					status,
-					portalAccessId: Crypto.randomUUID(),
 					notes: notes.trim() || undefined,
 				})
 			)) as Id<"clients">;

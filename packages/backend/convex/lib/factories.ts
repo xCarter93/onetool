@@ -22,8 +22,6 @@ import {
 	checkLevel,
 	denyPermission,
 	getEffectivePermissionsFor,
-	isMember,
-	permissionsEnforced,
 	type EffectivePermissions,
 	type RequiredLevel,
 } from "./permissions";
@@ -76,7 +74,7 @@ export type UserFunctionExtras = {
 	scopedToActor: ScopedToActor;
 	/** Pure verdict: caller has ≥`level` on `object`. */
 	can: (object: PermissionObject, level: RequiredLevel) => Promise<boolean>;
-	/** Level gate. Shadow mode: warns instead of throwing. */
+	/** Level gate. Throws FORBIDDEN when the caller lacks `level`. */
 	requireLevel: (
 		object: PermissionObject,
 		level: RequiredLevel
@@ -87,7 +85,7 @@ export type UserFunctionExtras = {
 	/**
 	 * Record-scope gate for writes on scopable objects. Skipped under
 	 * hasAllRecords; otherwise `isInScope` decides (compute lazily — only runs
-	 * when needed). Shadow mode: warns instead of throwing.
+	 * when needed). Throws FORBIDDEN(scope) when out of scope.
 	 */
 	requireRecordScope: (
 		object: PermissionObject,
@@ -95,8 +93,7 @@ export type UserFunctionExtras = {
 	) => Promise<void>;
 	/**
 	 * Derived-scope list filter. Under hasAllRecords returns `rows` untouched;
-	 * otherwise keeps rows where `keep(row, scope)`. Shadow mode: warns with the
-	 * would-hide count and returns everything.
+	 * otherwise keeps rows where `keep(row, scope)`.
 	 */
 	applyReadScope: <T>(
 		object: PermissionObject,
@@ -105,7 +102,7 @@ export type UserFunctionExtras = {
 	) => Promise<T[]>;
 	/**
 	 * For cross-cutting reads composing several object types: should this
-	 * object's bucket be included? Shadow mode: warns on would-deny, returns true.
+	 * object's bucket be included?
 	 */
 	gateRead: (object: PermissionObject) => Promise<boolean>;
 };
@@ -197,16 +194,8 @@ function makeOrgExtras(
 		})());
 
 	const scopedToActor: ScopedToActor = async (object, list, getAssignees) => {
-		// Legacy verdict (role-based) stays authoritative in shadow mode; the
-		// grant-based verdict takes over on enforcement. Divergence is logged.
-		const legacyScoped = await isMember(ctx);
-		const grantScoped = !(await hasAllRecords(object));
-		if (legacyScoped !== grantScoped && !permissionsEnforced()) {
-			console.warn(
-				`[permissions-shadow] scopedToActor(${object}) divergence: legacy=${legacyScoped} grants=${grantScoped} user=${user._id} org=${orgId}`
-			);
-		}
-		const scoped = permissionsEnforced() ? grantScoped : legacyScoped;
+		// Grants decide, not the JWT role: an allRecords grant lifts the scope.
+		const scoped = !(await hasAllRecords(object));
 		if (!scoped) return list;
 
 		return list.filter((item) => {
@@ -240,28 +229,9 @@ function makeOrgExtras(
 		applyReadScope: async (object, rows, keep) => {
 			if (await hasAllRecords(object)) return rows;
 			const scope = await actorScope();
-			if (permissionsEnforced()) {
-				return rows.filter((row) => keep(row, scope));
-			}
-			const hidden = rows.reduce(
-				(n, row) => (keep(row, scope) ? n : n + 1),
-				0
-			);
-			if (hidden > 0) {
-				console.warn(
-					`[permissions-shadow] would hide ${hidden}/${rows.length} ${object} rows user=${user._id} org=${orgId}`
-				);
-			}
-			return rows;
+			return rows.filter((row) => keep(row, scope));
 		},
-		gateRead: async (object) => {
-			if (await can(object, "view")) return true;
-			if (permissionsEnforced()) return false;
-			console.warn(
-				`[permissions-shadow] would exclude ${object} from cross-cutting read user=${user._id} org=${orgId}`
-			);
-			return true;
-		},
+		gateRead: async (object) => can(object, "view"),
 	};
 }
 

@@ -90,8 +90,14 @@ export const requestOtp = internalMutation({
 				Math.ceil(rlIp.retryAfter / 1000)
 			);
 		}
+		// Keyed on the pair, not the email alone: both limiters necessarily run
+		// before the client lookup, so an email-only bucket lets anyone who knows
+		// a contact's address drain it with a bogus portal id and lock the real
+		// client out. The portal id is an unguessable UUID, so pairing it means an
+		// attacker can only spend a bucket they could already use. Per-IP stays
+		// pre-lookup and unkeyed by portal, bounding unauthenticated scanning.
 		const rlEmail = await rateLimiter.limit(ctx, "portalOtpSend", {
-			key: normalizedEmail,
+			key: `${clientPortalId}:${normalizedEmail}`,
 			throws: false,
 		});
 		if (!rlEmail.ok) {

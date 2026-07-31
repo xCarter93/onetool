@@ -1,11 +1,10 @@
-import { convexTest } from "convex-test";
 import { describe, it, expect, beforeEach } from "vitest";
 import { api } from "./_generated/api";
 import { setupConvexTest } from "./test.setup";
 import { Id } from "./_generated/dataModel";
 
 describe("Clients", () => {
-	let t: ReturnType<typeof convexTest>;
+	let t: ReturnType<typeof setupConvexTest>;
 
 	beforeEach(() => {
 		t = setupConvexTest();
@@ -61,6 +60,110 @@ describe("Clients", () => {
 			expect(client?.portalAccessId).toMatch(
 				/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
 			);
+		});
+
+		// SEC-5: portalAccessId used to be a caller-controlled v.string(). Both
+		// readers resolve `by_portal_access_id` with `.unique()`, so anyone who
+		// had seen a victim org's portal link could re-create that id in their
+		// own org and take the victim's portal offline until an admin revoked.
+		it("ignores a caller-supplied portalAccessId (SEC-5)", async () => {
+			await t.run(async (ctx) => {
+				const userId = await ctx.db.insert("users", {
+					name: "SEC5 User",
+					email: "sec5@example.com",
+					image: "https://example.com/i.jpg",
+					externalId: "user_sec5",
+				});
+				const orgId = await ctx.db.insert("organizations", {
+					clerkOrganizationId: "org_sec5",
+					name: "SEC5 Org",
+					ownerUserId: userId,
+				});
+				await ctx.db.insert("organizationMemberships", {
+					orgId,
+					userId,
+					role: "admin",
+				});
+			});
+
+			const asUser = t.withIdentity({
+				subject: "user_sec5",
+				activeOrgId: "org_sec5",
+			});
+
+			const clientId = await asUser.mutation(api.clients.create, {
+				portalAccessId: "attacker-chosen-portal-id",
+				companyName: "SEC5 Company",
+				status: "active",
+			});
+
+			const client = await asUser.query(api.clients.get, { id: clientId });
+			expect(client?.portalAccessId).not.toBe("attacker-chosen-portal-id");
+			expect(client?.portalAccessId).toMatch(
+				/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+			);
+		});
+
+		it("a second org cannot collide with another org's portalAccessId (SEC-5)", async () => {
+			await t.run(async (ctx) => {
+				for (const suffix of ["a", "b"]) {
+					const userId = await ctx.db.insert("users", {
+						name: `SEC5 ${suffix}`,
+						email: `sec5_${suffix}@example.com`,
+						image: "https://example.com/i.jpg",
+						externalId: `user_sec5_${suffix}`,
+					});
+					const orgId = await ctx.db.insert("organizations", {
+						clerkOrganizationId: `org_sec5_${suffix}`,
+						name: `SEC5 Org ${suffix}`,
+						ownerUserId: userId,
+					});
+					await ctx.db.insert("organizationMemberships", {
+						orgId,
+						userId,
+						role: "admin",
+					});
+				}
+			});
+
+			const asVictim = t.withIdentity({
+				subject: "user_sec5_a",
+				activeOrgId: "org_sec5_a",
+			});
+			const asAttacker = t.withIdentity({
+				subject: "user_sec5_b",
+				activeOrgId: "org_sec5_b",
+			});
+
+			const victimClientId = await asVictim.mutation(api.clients.create, {
+				companyName: "Victim Co",
+				status: "active",
+			});
+			const victimPortalId = (
+				await asVictim.query(api.clients.get, { id: victimClientId })
+			)?.portalAccessId;
+			expect(victimPortalId).toBeTruthy();
+
+			const attackerClientId = await asAttacker.mutation(api.clients.create, {
+				portalAccessId: victimPortalId,
+				companyName: "Attacker Co",
+				status: "active",
+			});
+			const attackerPortalId = (
+				await asAttacker.query(api.clients.get, { id: attackerClientId })
+			)?.portalAccessId;
+			expect(attackerPortalId).not.toBe(victimPortalId);
+
+			// The payoff: the readers use `.unique()`, which throws on two matches.
+			const resolved = await t.run(async (ctx) => {
+				return await ctx.db
+					.query("clients")
+					.withIndex("by_portal_access_id", (q) =>
+						q.eq("portalAccessId", victimPortalId),
+					)
+					.unique();
+			});
+			expect(resolved?._id).toBe(victimClientId);
 		});
 
 		it("should create client with minimal required fields", async () => {

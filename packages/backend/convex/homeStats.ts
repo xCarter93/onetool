@@ -16,6 +16,35 @@ import {
 	invoiceRevenueAggregate,
 	invoiceCountsAggregate,
 } from "./aggregates";
+import type { PermissionObject } from "./lib/permissionKeys";
+
+/**
+ * Gate a dashboard statistic on org-wide visibility of what it counts.
+ *
+ * Every figure here is an org-wide total — the aggregate components are keyed
+ * by org, and the `.collect()` fallbacks page `by_org` — so `view` alone is not
+ * enough. Without the allRecords check a member restricted to their own
+ * assignments still read the organisation's client counts, revenue and pipeline.
+ * Owners and admins resolve to "all" grants and are unaffected, and members are
+ * routed to /projects rather than /home, so the practical reach of this is the
+ * assistant's getHomeStats tool.
+ */
+async function requireOrgWideView(
+	ctx: {
+		requireLevel: (o: PermissionObject, l: "view") => Promise<void>;
+		requireRecordScope: (
+			o: PermissionObject,
+			isInScope: () => boolean | Promise<boolean>
+		) => Promise<void>;
+	},
+	...objects: PermissionObject[]
+): Promise<void> {
+	for (const object of objects) {
+		await ctx.requireLevel(object, "view");
+		// Denies unless the caller holds allRecords.
+		await ctx.requireRecordScope(object, () => false);
+	}
+}
 
 /**
  * Home dashboard statistics queries
@@ -144,11 +173,14 @@ export const getHomeStats = optionalUserQuery({
 	handler: async (ctx): Promise<HomeStats> => {
 		if (!ctx.orgId) return EMPTY_HOME_STATS;
 		const userOrgId = ctx.orgId;
-		await ctx.requireLevel("clients", "view");
-		await ctx.requireLevel("projects", "view");
-		await ctx.requireLevel("quotes", "view");
-		await ctx.requireLevel("invoices", "view");
-		await ctx.requireLevel("tasks", "view");
+		await requireOrgWideView(
+			ctx,
+			"clients",
+			"projects",
+			"quotes",
+			"invoices",
+			"tasks"
+		);
 
 		const { thisMonthStart, lastMonthStart, lastMonthEnd } =
 			getMonthComparisonPeriods();
@@ -342,7 +374,7 @@ export const getPendingTasksCount = optionalUserQuery({
 	handler: async (ctx): Promise<{ count: number; dueThisWeek: number }> => {
 		if (!ctx.orgId) return { count: 0, dueThisWeek: 0 };
 		const userOrgId = ctx.orgId;
-		await ctx.requireLevel("tasks", "view");
+		await requireOrgWideView(ctx, "tasks");
 		const weekRange = getWeekRange();
 
 		const pendingTasks = await ctx.db
@@ -392,7 +424,7 @@ export const getClientsStats = optionalUserQuery({
 			};
 		}
 		const userOrgId = ctx.orgId;
-		await ctx.requireLevel("clients", "view");
+		await requireOrgWideView(ctx, "clients");
 		const { thisMonthStart, lastMonthStart, lastMonthEnd } =
 			getMonthComparisonPeriods();
 
@@ -445,7 +477,7 @@ export const getRevenueGoalProgress = optionalUserQuery({
 			};
 		}
 		const userOrgId = ctx.orgId;
-		await ctx.requireLevel("invoices", "view");
+		await requireOrgWideView(ctx, "invoices");
 
 		// Get organization to fetch revenue target
 		const organization = await ctx.db.get(userOrgId);
@@ -520,7 +552,7 @@ export const getClientsCreatedByDateRange = optionalUserQuery({
 			};
 		}
 		const userOrgId = ctx.orgId;
-		await ctx.requireLevel("clients", "view");
+		await requireOrgWideView(ctx, "clients");
 		const { from, to } = args;
 		const { start, end } = getDateRangeBounds(from, to);
 
@@ -597,7 +629,7 @@ export const getProjectsCompletedByDateRange = optionalUserQuery({
 			};
 		}
 		const userOrgId = ctx.orgId;
-		await ctx.requireLevel("projects", "view");
+		await requireOrgWideView(ctx, "projects");
 		const { from, to } = args;
 		const { start, end } = getDateRangeBounds(from, to);
 
@@ -695,7 +727,7 @@ export const getQuotesApprovedByDateRange = optionalUserQuery({
 			};
 		}
 		const userOrgId = ctx.orgId;
-		await ctx.requireLevel("quotes", "view");
+		await requireOrgWideView(ctx, "quotes");
 		const { from, to } = args;
 		const { start, end } = getDateRangeBounds(from, to);
 
@@ -775,7 +807,7 @@ export const getInvoicesPaidByDateRange = optionalUserQuery({
 			};
 		}
 		const userOrgId = ctx.orgId;
-		await ctx.requireLevel("invoices", "view");
+		await requireOrgWideView(ctx, "invoices");
 		const { from, to } = args;
 		const { start, end } = getDateRangeBounds(from, to);
 
@@ -861,7 +893,7 @@ export const getRevenueByDateRange = optionalUserQuery({
 	> => {
 		if (!ctx.orgId) return [];
 		const userOrgId = ctx.orgId;
-		await ctx.requireLevel("invoices", "view");
+		await requireOrgWideView(ctx, "invoices");
 		const { from, to } = args;
 		const { start, end } = getDateRangeBounds(from, to);
 
@@ -911,7 +943,7 @@ export const getTasksCreatedByDateRange = optionalUserQuery({
 	> => {
 		if (!ctx.orgId) return [];
 		const userOrgId = ctx.orgId;
-		await ctx.requireLevel("tasks", "view");
+		await requireOrgWideView(ctx, "tasks");
 		const { from, to } = args;
 		const { start, end } = getDateRangeBounds(from, to);
 

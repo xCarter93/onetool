@@ -8,6 +8,7 @@ import { readSessionCookie } from "@/lib/portal/cookie";
 import { approveBodySchema } from "@/lib/portal/quotes/normalize-signature-payload";
 import { mapConvexError } from "@/lib/portal/quotes/map-convex-error";
 import { isSameOrigin } from "@/lib/portal/origin";
+import { env } from "@/env";
 
 export async function POST(
 	req: NextRequest,
@@ -61,6 +62,9 @@ export async function POST(
 				ipAddress: ip,
 				userAgent,
 				termsAccepted: true,
+				intentAffirmed: parsed.data.intentAffirmed === true,
+				attestation:
+					env.PORTAL_ATTESTATION_SECRET ?? env.PORTAL_OTP_REQUEST_SECRET,
 			},
 			{ token },
 		);

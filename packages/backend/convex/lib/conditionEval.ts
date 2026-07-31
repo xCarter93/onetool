@@ -312,6 +312,14 @@ function formatTimestampForDisplay(ms: number, tz: string): string {
 }
 
 /**
+ * Token pattern for `{{path}}`. The lazy inner class carries no surrounding
+ * `\s*` groups: `\{\{\s*([^{}]+?)\s*\}\}` is cubic on a run of spaces after an
+ * unclosed `{{` (70 s on 5 KB), which the 1 MiB document limit leaves wide open.
+ * Whitespace is trimmed off the capture instead.
+ */
+const TEMPLATE_TOKEN = /\{\{([^{}]*?)\}\}/g;
+
+/**
  * Replace `{{path}}` tokens with values resolved from the scope.
  * Missing values (undefined/null) render as an empty string. Date values and
  * epoch-ms date globals (e.g. `workflow.now`) render as a readable date/time in
@@ -322,7 +330,9 @@ export function interpolateTemplate(
 	scope: VariableScope
 ): string {
 	const tz = scope.workflow?.tz ?? "UTC";
-	return template.replace(/\{\{\s*([^{}]+?)\s*\}\}/g, (_match, path: string) => {
+	return template.replace(TEMPLATE_TOKEN, (_match, raw: string) => {
+		const path = raw.trim();
+		if (!path) return "";
 		const value = resolvePath(path, scope);
 		if (value === undefined || value === null) return "";
 		if (value instanceof Date) return formatTimestampForDisplay(value.getTime(), tz);

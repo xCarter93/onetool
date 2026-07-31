@@ -109,6 +109,33 @@ const MARKDOWN_CLASS = [
 	"[&_blockquote]:border-l-2 [&_blockquote]:border-border [&_blockquote]:pl-3 [&_blockquote]:text-muted-foreground",
 ].join(" ");
 
+/**
+ * Schemes a model-authored link may use.
+ *
+ * The assistant reads third-party text (inbound email bodies, public
+ * community-form submissions), so its output must be treated as attacker
+ * influenced. An href is a one-tap exfiltration channel; images are a zero-click
+ * one and are stripped entirely below. There is no enforcing CSP behind this —
+ * next.config.ts ships the policy as Content-Security-Policy-Report-Only pending
+ * a soak — so this renderer is the only control.
+ */
+const SAFE_LINK_SCHEMES = ["http:", "https:", "mailto:", "tel:"];
+
+function isRenderableHref(href: string | undefined): href is string {
+	if (!href) return false;
+	// Same-document and app-relative links carry no scheme and are safe.
+	if (href.startsWith("/") || href.startsWith("#")) return true;
+	try {
+		const base =
+			typeof window === "undefined"
+				? "https://placeholder.invalid"
+				: window.location.origin;
+		return SAFE_LINK_SCHEMES.includes(new URL(href, base).protocol);
+	} catch {
+		return false;
+	}
+}
+
 // searchHelp replies link help articles as /help/... paths — open those in the
 // in-app drawer instead of navigating the workspace away mid-conversation.
 function MarkdownLink({
@@ -123,8 +150,15 @@ function MarkdownLink({
 			? href.replace("/help/", "")
 			: undefined;
 	if (!ref || !resolveHelpRef(ref)) {
+		// Render a rejected scheme as inert text rather than dropping the label,
+		// so a stripped link is visible rather than silently missing.
+		if (!isRenderableHref(href)) {
+			return <span {...props}>{children}</span>;
+		}
 		return (
-			<a href={href} {...props}>
+			// rel="noreferrer" so clicking a model-emitted external link cannot leak the
+				// workspace URL (which can encode client/project ids) via the Referer header.
+				<a href={href} {...props} rel="noreferrer">
 				{children}
 			</a>
 		);
@@ -149,6 +183,11 @@ function TextPart({ text, streaming }: { text: string; streaming: boolean }) {
 		<div className={MARKDOWN_CLASS}>
 			<ReactMarkdown
 				remarkPlugins={[remarkGfm]}
+				// An <img> the model emits fires an automatic GET with no user
+				// action — the zero-click exfiltration leg. react-markdown's
+				// built-in urlTransform blocks javascript: but permits https:,
+				// which is exactly what exfiltration needs.
+				disallowedElements={["img"]}
 				components={{ a: MarkdownLink }}
 			>
 				{visibleText}

@@ -373,25 +373,6 @@ export const getStats = optionalUserQuery({
 });
 
 /**
- * Get notifications due to be sent
- */
-// TODO: Candidate for deletion if confirmed unused.
-export const getDueNotifications = optionalUserQuery({
-	args: {},
-	handler: async (ctx): Promise<NotificationDocument[]> => {
-		const now = Date.now();
-
-		const notifications = await ctx.db
-			.query("notifications")
-			.withIndex("by_scheduled", (q) => q.lte("scheduledFor", now))
-			.collect();
-
-		// Only return notifications that haven't been sent yet
-		return notifications.filter((notification) => !notification.sentAt);
-	},
-});
-
-/**
  * List notifications for the current user in the current organization
  */
 export const listForCurrentUser = optionalUserQuery({
