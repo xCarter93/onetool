@@ -276,7 +276,7 @@ export const gettingStartedArticles: HelpArticle[] = [
 				blocks: [
 					{
 						type: "paragraph",
-						text: "Type at least two characters and results appear grouped by type. Matching starts from the beginning of each word — typing \"hen\" finds \"Henderson\", and a bare number like \"1042\" finds quote Q-1042 — with the closest matches listed first:",
+						text: "Type at least two characters and results appear grouped by type, closest matches first. Matching starts from the beginning of each word: typing \"hen\" finds \"Henderson\", and a bare number like \"1042\" finds quote Q-1042.",
 					},
 					{
 						type: "list",
