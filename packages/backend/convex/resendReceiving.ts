@@ -5,7 +5,7 @@ import { internal } from "./_generated/api";
 import { getResendClient } from "./lib/resendClient";
 import type { Doc, Id } from "./_generated/dataModel";
 import { systemMutation } from "./lib/factories";
-import { deriveVisibleText } from "./email/replyParser";
+import { deriveVisibleText, stripTagBlocks } from "./email/replyParser";
 import {
 	resolveInboundThread,
 	stripPlusTag,
@@ -472,10 +472,11 @@ function parseEmailAddress(address: string): { name: string; email: string } {
  * Strip HTML tags to get plain text
  */
 function stripHtml(html: string): string {
-	return html
-		.replace(/<style[^>]*>.*?<\/style>/gi, "")
-		.replace(/<script[^>]*>.*?<\/script>/gi, "")
-		.replace(/<[^>]+>/g, " ")
+	// This runs inside a mutation transaction. `stripTagBlocks` scans by index
+	// because the regex form is quadratic on a run of unclosed <style> opens
+	// (3.1 s at the inbound cap); `[^<>]`, not `[^>]`, for the same reason.
+	return stripTagBlocks(stripTagBlocks(html, "style"), "script")
+		.replace(/<[^<>]*>/g, " ")
 		.replace(/\s+/g, " ")
 		.trim();
 }
@@ -493,6 +494,50 @@ interface NormalizedInboundContent {
 	inReplyTo: string | null;
 	references: string[];
 	receivedForAddress: string | null;
+}
+
+/**
+ * Inbound bodies are attacker-controlled and arrive before any recipient or org
+ * resolution, so bound them at the boundary. Budgets are in UTF-8 *bytes*,
+ * which is how Convex sizes a document: one emailMessages row stores the text
+ * three times over (messageBody, textBody, visibleText) plus the html once, so
+ * 3x64 KB + 256 KB leaves ample headroom under the 1 MiB limit for the subject
+ * and the (also attacker-supplied) references list. Both are far above any
+ * real email body.
+ */
+const MAX_TEXT_BODY_BYTES = 64_000;
+const MAX_HTML_BODY_BYTES = 256_000;
+/** RFC 5322 allows long References chains; 100 message-ids is already absurd. */
+const MAX_REFERENCES = 100;
+
+const utf8Length = (value: string): number =>
+	new TextEncoder().encode(value).length;
+
+function capBody(
+	value: string | undefined,
+	maxBytes: number
+): string | undefined {
+	if (!value) return undefined;
+	if (utf8Length(value) <= maxBytes) return value;
+
+	// Code units are >= 1 byte each, so maxBytes is a safe starting length;
+	// shrink proportionally until it fits (converges in a couple of passes).
+	let end = Math.min(value.length, maxBytes);
+	let out = value.slice(0, end);
+	while (end > 0 && utf8Length(out) > maxBytes) {
+		// Floor at 0, not 1: a cap smaller than one character's UTF-8 width would
+		// otherwise pin `end` at 1 and spin forever.
+		end = Math.max(0, Math.floor((end * maxBytes) / utf8Length(out)) - 1);
+		out = value.slice(0, end);
+	}
+	// Never leave a dangling high surrogate, which would encode as U+FFFD.
+	const lastCode = out.charCodeAt(out.length - 1);
+	if (lastCode >= 0xd800 && lastCode <= 0xdbff) out = out.slice(0, -1);
+
+	console.warn(
+		`Inbound body truncated from ${value.length} chars to ${out.length} (${maxBytes}-byte cap)`
+	);
+	return out;
 }
 
 async function fetchInboundContent(
@@ -526,11 +571,11 @@ async function fetchInboundContent(
 			.filter(Boolean);
 
 		return {
-			html: d.html || undefined,
-			text: d.text || undefined,
+			html: capBody(d.html || undefined, MAX_HTML_BODY_BYTES),
+			text: capBody(d.text || undefined, MAX_TEXT_BODY_BYTES),
 			rfcMessageId: d.message_id || headers["message-id"] || null,
 			inReplyTo: headers["in-reply-to"] ?? null,
-			references,
+			references: references.slice(0, MAX_REFERENCES),
 			receivedForAddress: d.received_for?.[0] ?? null,
 		};
 	} catch (error) {

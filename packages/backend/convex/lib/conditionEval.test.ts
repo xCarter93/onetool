@@ -298,6 +298,20 @@ describe("interpolateTemplate", () => {
 		);
 	});
 
+	// SEC-12: `\{\{\s*([^{}]+?)\s*\}\}` is cubic on a run of spaces after an
+	// unclosed `{{` — 70 s on 5 KB, and a config string can approach 1 MiB.
+	it("does not backtrack on an unclosed {{ followed by whitespace", () => {
+		const payload = "{{" + " ".repeat(20_000);
+		const start = performance.now();
+		expect(interpolateTemplate(payload, scope)).toBe(payload);
+		expect(performance.now() - start).toBeLessThan(500);
+	});
+
+	it("renders an empty token as empty string", () => {
+		expect(interpolateTemplate("a{{}}b", scope)).toBe("ab");
+		expect(interpolateTemplate("a{{   }}b", scope)).toBe("ab");
+	});
+
 	it("leaves templates without tokens untouched", () => {
 		expect(interpolateTemplate("no tokens here", scope)).toBe(
 			"no tokens here"

@@ -19,7 +19,8 @@ export type RelationRefs = {
 	loops: Map<string, Set<string>>;
 };
 
-const TEMPLATE_TOKEN = /\{\{\s*([^{}]+?)\s*\}\}/g;
+// No outer `\s*` groups — that shape is cubic on unclosed `{{` (see conditionEval).
+const TEMPLATE_TOKEN = /\{\{([^{}]*?)\}\}/g;
 
 /**
  * Collect every variable path a config value can carry: ValueRef `var` paths
@@ -28,7 +29,10 @@ const TEMPLATE_TOKEN = /\{\{\s*([^{}]+?)\s*\}\}/g;
  */
 function collectPathsFromValue(value: unknown, paths: Set<string>): void {
 	if (typeof value === "string") {
-		for (const match of value.matchAll(TEMPLATE_TOKEN)) paths.add(match[1]);
+		for (const match of value.matchAll(TEMPLATE_TOKEN)) {
+			const path = match[1].trim();
+			if (path) paths.add(path);
+		}
 		return;
 	}
 	if (Array.isArray(value)) {

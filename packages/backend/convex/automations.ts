@@ -258,7 +258,8 @@ function sanitizeTrigger<T>(trigger: T): T {
 	return rest as T;
 }
 
-const TEMPLATE_TOKEN = /\{\{\s*([^}]+?)\s*\}\}/g;
+// No outer `\s*` groups — that shape is cubic on unclosed `{{` (see conditionEval).
+const TEMPLATE_TOKEN = /\{\{([^{}]*?)\}\}/g;
 
 /**
  * Every scope path a config reads: `{kind:"var"}` refs plus `{{token}}`s inside
@@ -269,7 +270,8 @@ const TEMPLATE_TOKEN = /\{\{\s*([^}]+?)\s*\}\}/g;
 function collectConfigPaths(value: unknown, out: string[] = []): string[] {
 	if (typeof value === "string") {
 		for (const match of value.matchAll(TEMPLATE_TOKEN)) {
-			out.push(match[1].trim());
+			const path = match[1].trim();
+			if (path) out.push(path);
 		}
 		return out;
 	}
@@ -712,11 +714,40 @@ function computeLoopBodyScopeTypes(
 	return bodyScopeType;
 }
 
+/**
+ * Ceiling on any single string inside a node config (template bodies included).
+ * Generous versus real email/notification copy; it exists so the template
+ * scanners always run against a bounded input even if a pattern regresses.
+ */
+const MAX_CONFIG_STRING_CHARS = 100_000;
+
+function assertConfigStringsBounded(nodeId: string, value: unknown): void {
+	if (typeof value === "string") {
+		if (value.length > MAX_CONFIG_STRING_CHARS) {
+			throw new Error(
+				`Node ${nodeId}: config value exceeds ${MAX_CONFIG_STRING_CHARS} characters`
+			);
+		}
+		return;
+	}
+	if (Array.isArray(value)) {
+		for (const entry of value) assertConfigStringsBounded(nodeId, entry);
+		return;
+	}
+	if (value !== null && typeof value === "object") {
+		for (const entry of Object.values(value as Record<string, unknown>)) {
+			assertConfigStringsBounded(nodeId, entry);
+		}
+	}
+}
+
 function validateWorkflowDefinition(
 	trigger: AutomationTrigger,
 	nodes: NodeArg[]
 ): void {
 	validateTrigger(trigger);
+
+	for (const node of nodes) assertConfigStringsBounded(node.id, node.config);
 
 	const objectType = triggerRecordObjectType(trigger);
 	const nodeIds = new Set(nodes.map((n) => n.id));

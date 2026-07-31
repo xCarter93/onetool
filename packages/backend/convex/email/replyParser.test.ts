@@ -125,3 +125,80 @@ describe("deriveVisibleText", () => {
 		expect(deriveVisibleText({ text: null, html: null })).toBe("");
 	});
 });
+
+// SEC-12: inbound bodies are attacker-controlled and parsed before any recipient
+// or org resolution. Each payload below pinned a worker for seconds against the
+// previous patterns (measured: 600 ms at 20 KB, 15 s at 100 KB); the budget here
+// is deliberately loose so it fails only on a genuine super-linear regression.
+describe("ReDoS resistance", () => {
+	const BUDGET_MS = 500;
+
+	function elapsed(fn: () => void): number {
+		const start = performance.now();
+		fn();
+		return performance.now() - start;
+	}
+
+	it("does not backtrack on a From: line of unclosed angle brackets", () => {
+		const body = "hello\n" + "From: " + "<".repeat(50_000);
+		expect(elapsed(() => extractVisibleText(body))).toBeLessThan(BUDGET_MS);
+	});
+
+	it("does not backtrack stripping tags from unclosed angle brackets", () => {
+		const html = "<".repeat(200_000);
+		expect(elapsed(() => htmlToText(html))).toBeLessThan(BUDGET_MS);
+	});
+
+	it("does not backtrack on a run of unclosed <style tags", () => {
+		const html = "<style".repeat(30_000);
+		expect(elapsed(() => htmlToText(html))).toBeLessThan(BUDGET_MS);
+	});
+
+	// The payload that matters: *valid* opens with no close. The variant above
+	// omits ">", so the open never matches and the body scan never engages —
+	// it passed against the quadratic implementation.
+	it("does not backtrack on valid <style> opens that are never closed", () => {
+		const html = "<style>".repeat(40_000);
+		expect(elapsed(() => htmlToText(html))).toBeLessThan(BUDGET_MS);
+	});
+
+	it("does not backtrack on valid <script> opens that are never closed", () => {
+		const html = "<script>".repeat(40_000);
+		expect(elapsed(() => htmlToText(html))).toBeLessThan(BUDGET_MS);
+	});
+
+	it("still removes style and script blocks, including across newlines", () => {
+		const html =
+			"<p>keep</p><style>\n.a { color: red }\n</style>" +
+			"<SCRIPT type='text/javascript'>alert(1)</SCRIPT><p>also keep</p>";
+		const text = htmlToText(html);
+		expect(text).toContain("keep");
+		expect(text).toContain("also keep");
+		expect(text).not.toContain("color: red");
+		expect(text).not.toContain("alert(1)");
+	});
+
+	// Unclosed open: the block is left alone and its text falls through the tag
+	// stripper. Matches what the previous regex did (it could not match either).
+	it("leaves the remainder intact when a block open is never closed", () => {
+		expect(htmlToText("<p>before</p><style>.a{}")).toBe("before\n.a{}");
+	});
+
+	it("still strips a normal quoted From: header block", () => {
+		const body = [
+			"Sounds good.",
+			"",
+			"From: Patrick Carter <p@x.com>",
+			"Sent: Wednesday",
+			"quoted original",
+		].join("\n");
+		expect(extractVisibleText(body)).toBe("Sounds good.");
+	});
+
+	it("keeps an over-long line rather than treating it as a marker", () => {
+		const long = "x".repeat(2000);
+		expect(extractVisibleText(`first\n${long}\nlast`)).toBe(
+			`first\n${long}\nlast`
+		);
+	});
+});
