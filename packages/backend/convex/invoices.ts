@@ -175,47 +175,13 @@ export const list = optionalUserQuery({
 			);
 		}
 
-		// Fetch all line items for these invoices in one query
-		const allLineItems = await ctx.db
-			.query("invoiceLineItems")
-			.withIndex("by_org", (q) => q.eq("orgId", orgId))
-			.collect();
-
-		// Group line items by invoice ID for efficient lookup
-		const lineItemsByInvoice = new Map<Id<"invoices">, typeof allLineItems>();
-		for (const item of allLineItems) {
-			const existing = lineItemsByInvoice.get(item.invoiceId) || [];
-			existing.push(item);
-			lineItemsByInvoice.set(item.invoiceId, existing);
-		}
-
-		// Calculate totals for each invoice using in-memory data
-		const invoicesWithCalculatedTotals = invoices.map((invoice) => {
-			const lineItems = lineItemsByInvoice.get(invoice._id) || [];
-
-			// Calculate subtotal from line items
-			const subtotal = lineItems.reduce((sum, item) => sum + item.total, 0);
-
-			// Calculate total with discount and tax
-			let total = subtotal;
-			if (invoice.discountAmount) {
-				total -= invoice.discountAmount;
-			}
-			if (invoice.taxAmount) {
-				total += invoice.taxAmount;
-			}
-
-			return {
-				...invoice,
-				subtotal,
-				total,
-			};
-		});
-
-		// Sort by creation time (newest first)
-		const sorted = invoicesWithCalculatedTotals.sort(
-			(a, b) => b._creationTime - a._creationTime
-		);
+		// Stored totals, not a recompute: syncInvoiceTotals keeps subtotal/total
+		// in step with the line items on every line-item mutation and on every
+		// discount/tax edit in `update`. Recomputing here meant collecting the
+		// org's entire invoiceLineItems table on each list call — and it did the
+		// arithmetic in raw floats, so the list could disagree with `get` by a
+		// fraction of a cent.
+		const sorted = invoices.sort((a, b) => b._creationTime - a._creationTime);
 
 		return await ctx.applyReadScope("invoices", sorted, (invoice, scope) =>
 			invoice.projectId
@@ -256,8 +222,12 @@ export const get = optionalUserQuery({
 			)
 		);
 
-		// Calculate totals from line items
-		const { subtotal, total } = await calculateInvoiceTotals(ctx, args.id);
+		// Calculate totals from line items. "stored" so an invoice that never had
+		// line items shows the amount payment validation enforces (payments.ts)
+		// and `list` displays, rather than a misleading 0.
+		const { subtotal, total } = await calculateInvoiceTotals(ctx, args.id, {
+			emptyFallback: "stored",
+		});
 
 		return {
 			...invoice,
@@ -454,6 +424,14 @@ export const create = userMutation({
 	},
 });
 
+/** Invoice fields whose change invalidates the stored subtotal/total. */
+const INVOICE_TOTAL_FIELDS = [
+	"subtotal",
+	"discountAmount",
+	"taxAmount",
+	"total",
+] as const;
+
 /**
  * Update an invoice
  */
@@ -518,6 +496,15 @@ export const update = userMutation({
 		}
 
 		await ctx.db.patch(id, filteredUpdates);
+
+		// Callers send their own subtotal/total next to a discount or tax edit.
+		// Recompute from the line items so the stored figures — which list,
+		// payment validation and the revenue aggregates all read — stay
+		// authoritative. "stored" leaves line-item-less invoices alone rather
+		// than zeroing a total the caller just set.
+		if (INVOICE_TOTAL_FIELDS.some((field) => field in filteredUpdates)) {
+			await syncInvoiceTotals(ctx, id, { emptyFallback: "stored" });
+		}
 
 		// Settle outstanding installments when this transition marks the invoice
 		// paid, so a payment taken outside the portal reflects there as completed.
@@ -1166,8 +1153,10 @@ export const getWithPayments = optionalUserQuery({
 			)
 		);
 
-		// Calculate totals from line items
-		const { subtotal, total } = await calculateInvoiceTotals(ctx, args.id);
+		// Calculate totals from line items ("stored" fallback — see invoices.get).
+		const { subtotal, total } = await calculateInvoiceTotals(ctx, args.id, {
+			emptyFallback: "stored",
+		});
 
 		// Get all payments for this invoice
 		const payments = await ctx.db
@@ -1297,7 +1286,10 @@ export const getPreview = optionalUserQuery({
 
 		// Recompute total from line items (source of truth; stored total can be
 		// stale). Reuse the shared helper so discount/tax logic can't diverge.
-		const { total } = await calculateInvoiceTotals(ctx, args.id);
+		// "stored" fallback — see invoices.get.
+		const { total } = await calculateInvoiceTotals(ctx, args.id, {
+			emptyFallback: "stored",
+		});
 
 		// Resolve client + its primary address. Guard the raw get() against a
 		// cross-org reference — projectId/quoteId aren't org-checked on write, so

@@ -6,7 +6,6 @@ import { Doc, Id } from "./_generated/dataModel";
 import { getCurrentUserOrgId } from "./lib/auth";
 import { ActivityHelpers } from "./lib/activities";
 import { calculateQuoteTotals, syncQuoteTotals } from "./lib/quoteTotals";
-import { computeQuoteTotals } from "./lib/money";
 import {
 	validateParentAccess,
 	filterUndefined,
@@ -142,6 +141,18 @@ async function createQuoteWithOrg(
 	return await ctx.db.insert("quotes", quoteData);
 }
 
+/** Quote fields whose change invalidates the stored subtotal/taxAmount/total. */
+const QUOTE_TOTAL_FIELDS = [
+	"subtotal",
+	"taxAmount",
+	"total",
+	"discountEnabled",
+	"discountAmount",
+	"discountType",
+	"taxEnabled",
+	"taxRate",
+] as const;
+
 /**
  * Update a quote with validation
  */
@@ -242,45 +253,11 @@ export const list = optionalUserQuery({
 			q.projectId ? s.projectIds.has(q.projectId) : s.clientIds.has(q.clientId)
 		);
 
-		// Batch fetch ALL line items for ALL quotes in a single query
-		// This avoids N+1 query problem (1 query for quotes + 1 query for all line items = 2 total)
-		const allLineItems = await ctx.db
-			.query("quoteLineItems")
-			.withIndex("by_org", (q) => q.eq("orgId", orgId))
-			.collect();
-
-		// Group line items by quoteId for O(1) lookup
-		const lineItemsByQuote = new Map<Id<"quotes">, typeof allLineItems>();
-		for (const item of allLineItems) {
-			const existing = lineItemsByQuote.get(item.quoteId) || [];
-			existing.push(item);
-			lineItemsByQuote.set(item.quoteId, existing);
-		}
-
-		// Calculate totals for each quote using in-memory data
-		const quotesWithCalculatedTotals = quotes.map((quote) => {
-			const lineItems = lineItemsByQuote.get(quote._id) || [];
-
-			// Shared roll-up (lib/money.ts) — same math as quotes.get and the portal
-			const totals = computeQuoteTotals({
-				lineAmounts: lineItems.map((item) => item.amount),
-				discountEnabled: quote.discountEnabled,
-				discountAmount: quote.discountAmount,
-				discountType: quote.discountType,
-				taxEnabled: quote.taxEnabled,
-				taxRate: quote.taxRate,
-			});
-
-			return {
-				...quote,
-				...totals,
-			};
-		});
-
-		// Sort by creation time (newest first)
-		return quotesWithCalculatedTotals.sort(
-			(a, b) => b._creationTime - a._creationTime
-		);
+		// Stored totals, not a recompute: syncQuoteTotals keeps subtotal/taxAmount/
+		// total in step with the line items on every line-item mutation and on
+		// every discount/tax edit in `update`. Recomputing here meant collecting
+		// the org's entire quoteLineItems table on each list call.
+		return quotes.sort((a, b) => b._creationTime - a._creationTime);
 	},
 });
 
@@ -837,6 +814,13 @@ export const update = userMutation({
 		}
 
 		await updateQuoteWithValidation(ctx, id, filteredUpdates);
+
+		// Callers send their own subtotal/total next to a discount or tax edit.
+		// Recompute from the line items so the stored figures — which list,
+		// getStats and the revenue aggregates all read — stay authoritative.
+		if (QUOTE_TOTAL_FIELDS.some((field) => field in filteredUpdates)) {
+			await syncQuoteTotals(ctx, id);
+		}
 
 		// Log appropriate activity based on status change
 		const updatedQuote = await ctx.db.get(id);

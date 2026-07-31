@@ -48,12 +48,17 @@ export async function calculateInvoiceTotals(
  */
 export async function syncInvoiceTotals(
 	ctx: MutationCtx,
-	invoiceId: Id<"invoices">
+	invoiceId: Id<"invoices">,
+	options?: { emptyFallback?: "zero" | "stored" }
 ): Promise<void> {
 	const invoice = await ctx.db.get(invoiceId);
 	if (!invoice) return;
 
-	const { subtotal, total } = await calculateInvoiceTotals(ctx, invoiceId);
+	const { subtotal, total } = await calculateInvoiceTotals(
+		ctx,
+		invoiceId,
+		options
+	);
 
 	if (invoice.subtotal === subtotal && invoice.total === total) {
 		return;
