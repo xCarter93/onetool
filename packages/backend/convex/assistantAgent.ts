@@ -2,7 +2,7 @@ import { openai } from "@ai-sdk/openai";
 import { Agent, stepCountIs, type UsageHandler } from "@convex-dev/agent";
 import { v } from "convex/values";
 import { components, internal } from "./_generated/api";
-import { internalMutation } from "./_generated/server";
+import { internalMutation } from "./lib/triggers";
 import { assistantTools } from "./assistantTools";
 import { trackAiGeneration } from "./lib/posthog";
 

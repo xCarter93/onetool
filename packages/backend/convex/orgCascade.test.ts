@@ -3,7 +3,13 @@ import { readFileSync } from "fs";
 import { join } from "path";
 import { internal } from "./_generated/api";
 import { setupConvexTest } from "./test.setup";
-import { AggregateHelpers } from "./lib/aggregates";
+import {
+	clientCountsAggregate,
+	projectCountsAggregate,
+	quoteCountsAggregate,
+	invoiceRevenueAggregate,
+	invoiceCountsAggregate,
+} from "./aggregates";
 import { ORG_SCOPED_CASCADE_TABLES } from "./lib/orgCascade";
 
 /**
@@ -54,7 +60,7 @@ describe("orgCascade", () => {
 					status: "active",
 				});
 				const client = await ctx.db.get(clientId);
-				await AggregateHelpers.addClient(ctx, client!);
+				await clientCountsAggregate.insertIfDoesNotExist(ctx, client!);
 
 				const contactId = await ctx.db.insert("clientContacts", {
 					clientId,
@@ -82,7 +88,7 @@ describe("orgCascade", () => {
 					projectType: "one-off",
 				});
 				const project = await ctx.db.get(projectId);
-				await AggregateHelpers.addProject(ctx, project!);
+				await projectCountsAggregate.insertIfDoesNotExist(ctx, project!);
 
 				// quote (+ aggregate) + line item + approval
 				const quoteId = await ctx.db.insert("quotes", {
@@ -93,7 +99,7 @@ describe("orgCascade", () => {
 					total: 100,
 				});
 				const quote = await ctx.db.get(quoteId);
-				await AggregateHelpers.addQuote(ctx, quote!);
+				await quoteCountsAggregate.insertIfDoesNotExist(ctx, quote!);
 				await ctx.db.insert("quoteLineItems", {
 					quoteId,
 					orgId,
@@ -144,7 +150,8 @@ describe("orgCascade", () => {
 					publicToken: "tok-inv",
 				});
 				const invoice = await ctx.db.get(invoiceId);
-				await AggregateHelpers.addInvoice(ctx, invoice!);
+				await invoiceRevenueAggregate.insertIfDoesNotExist(ctx, invoice!);
+				await invoiceCountsAggregate.insertIfDoesNotExist(ctx, invoice!);
 				await ctx.db.insert("invoiceLineItems", {
 					invoiceId,
 					orgId,
@@ -426,7 +433,7 @@ describe("orgCascade", () => {
 					status: "active",
 				});
 				const client = await ctx.db.get(clientId);
-				await AggregateHelpers.addClient(ctx, client!);
+				await clientCountsAggregate.insertIfDoesNotExist(ctx, client!);
 				await ctx.db.insert("tasks", {
 					orgId,
 					title: "WH task",

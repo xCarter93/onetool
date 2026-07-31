@@ -10,6 +10,7 @@ export const aiAssistantArticles: HelpArticle[] = [
 		heroMedia: {
 			media: "image",
 			caption: "The assistant panel open in the workspace",
+			asset: "ai-assistant/meet-the-assistant/hero",
 		},
 		keywords: ["ai", "chat", "chatbot", "copilot", "pin", "sidebar"],
 		sections: [
@@ -98,6 +99,7 @@ export const aiAssistantArticles: HelpArticle[] = [
 		heroMedia: {
 			media: "image",
 			caption: "Asking the assistant about the week's schedule",
+			asset: "ai-assistant/what-you-can-ask/hero",
 		},
 		keywords: ["prompts", "examples", "ai", "chat", "capabilities", "commands"],
 		sections: [

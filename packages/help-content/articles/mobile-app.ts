@@ -10,6 +10,7 @@ export const mobileAppArticles: HelpArticle[] = [
 		heroMedia: {
 			media: "image",
 			caption: "The Today tab on iPhone",
+			asset: "mobile-app/onetool-on-iphone-and-ipad/hero",
 		},
 		keywords: ["ios", "mobile", "phone", "tablet", "apple", "companion", "tab bar"],
 		sections: [
@@ -123,6 +124,7 @@ export const mobileAppArticles: HelpArticle[] = [
 						type: "media",
 						media: "image",
 						caption: "The sign-in screen on iPhone",
+						asset: "mobile-app/signing-in-on-mobile/sign-in-screen-on-iphone",
 					},
 				],
 			},

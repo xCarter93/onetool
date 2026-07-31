@@ -1,4 +1,5 @@
-import { action, internalMutation } from "../_generated/server";
+import { action } from "../_generated/server";
+import { internalMutation } from "../lib/triggers";
 import { v, ConvexError } from "convex/values";
 import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";

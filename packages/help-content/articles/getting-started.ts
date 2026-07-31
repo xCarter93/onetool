@@ -10,6 +10,7 @@ export const gettingStartedArticles: HelpArticle[] = [
 		heroMedia: {
 			media: "image",
 			caption: "The OneTool workspace",
+			asset: "getting-started/welcome-to-onetool/hero",
 		},
 		keywords: ["introduction", "overview", "what is onetool", "field service"],
 		sections: [
@@ -110,6 +111,7 @@ export const gettingStartedArticles: HelpArticle[] = [
 						type: "media",
 						media: "image",
 						caption: "The Organization step of the setup wizard",
+						asset: "getting-started/set-up-your-organization/organization-step-of-the-setup-wizard",
 					},
 				],
 			},
@@ -158,6 +160,7 @@ export const gettingStartedArticles: HelpArticle[] = [
 						type: "media",
 						media: "video",
 						caption: "Setting up an organization from start to finish",
+						asset: "getting-started/set-up-your-organization/setting-up-an-organization-from-start",
 					},
 				],
 			},
@@ -187,6 +190,7 @@ export const gettingStartedArticles: HelpArticle[] = [
 		heroMedia: {
 			media: "image",
 			caption: "The workspace with the sidebar open",
+			asset: "getting-started/navigating-the-workspace/hero",
 		},
 		keywords: ["sidebar", "navigation", "home", "dashboard", "admin", "member", "layout"],
 		sections: [
@@ -246,6 +250,7 @@ export const gettingStartedArticles: HelpArticle[] = [
 		heroMedia: {
 			media: "image",
 			caption: "The search palette open over the workspace",
+			asset: "getting-started/search-your-workspace/hero",
 		},
 		keywords: [
 			"search",
@@ -271,7 +276,7 @@ export const gettingStartedArticles: HelpArticle[] = [
 				blocks: [
 					{
 						type: "paragraph",
-						text: "Type at least two characters and results appear grouped by type:",
+						text: "Type at least two characters and results appear grouped by type, closest matches first. Matching starts from the beginning of each word: typing \"hen\" finds \"Henderson\", and a bare number like \"1042\" finds quote Q-1042.",
 					},
 					{
 						type: "list",
@@ -344,6 +349,7 @@ export const gettingStartedArticles: HelpArticle[] = [
 						type: "media",
 						media: "image",
 						caption: "The new client form",
+						asset: "getting-started/add-your-first-client/new-client-form",
 					},
 					{
 						type: "note",
@@ -422,6 +428,7 @@ export const gettingStartedArticles: HelpArticle[] = [
 						type: "media",
 						media: "image",
 						caption: "The new project dialog",
+						asset: "getting-started/create-your-first-project/new-project-dialog",
 					},
 				],
 			},
@@ -519,6 +526,7 @@ export const gettingStartedArticles: HelpArticle[] = [
 						type: "media",
 						media: "image",
 						caption: "The quote line item editor",
+						asset: "getting-started/send-your-first-quote/quote-line-item-editor",
 					},
 					{
 						type: "tip",
@@ -587,6 +595,7 @@ export const gettingStartedArticles: HelpArticle[] = [
 						type: "media",
 						media: "image",
 						caption: "Converting an approved quote into an invoice",
+						asset: "getting-started/invoice-and-get-paid/converting-an-approved-quote-into-an",
 					},
 					{
 						type: "note",

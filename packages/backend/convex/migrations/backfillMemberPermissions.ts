@@ -1,4 +1,4 @@
-import { internalMutation } from "../_generated/server";
+import { internalMutation } from "../lib/triggers";
 import { v } from "convex/values";
 import type { Doc, Id } from "../_generated/dataModel";
 import { isAdminRole } from "../lib/permissions";

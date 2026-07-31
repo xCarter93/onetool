@@ -1,4 +1,4 @@
-import { internalMutation } from "./_generated/server";
+import { internalMutation } from "./lib/triggers";
 import { v } from "convex/values";
 import { vOnEmailEventArgs } from "@convex-dev/resend";
 import { logWebhookError, logWebhookSuccess } from "./lib/webhooks";

@@ -1,10 +1,5 @@
-import {
-	query,
-	mutation,
-	internalMutation,
-	QueryCtx,
-	MutationCtx,
-} from "./_generated/server";
+import { query, QueryCtx, MutationCtx } from "./_generated/server";
+import { mutation, internalMutation } from "./lib/triggers";
 import { v } from "convex/values";
 import { Doc, Id } from "./_generated/dataModel";
 import { getCurrentUserOrgId } from "./lib/auth";
@@ -234,11 +229,16 @@ export const listByUser = optionalUserQuery({
 				)
 				.collect();
 		} else {
+			// Binding only the index prefix scopes the read to this user's
+			// notifications instead of scanning the whole table.
 			notifications = await ctx.db
 				.query("notifications")
-				.filter((q) => q.eq(q.field("userId"), args.userId))
+				.withIndex("by_user_read", (q) => q.eq("userId", args.userId))
 				.collect();
 		}
+
+		// Org scoping: the target user may belong to multiple orgs.
+		notifications = notifications.filter((n) => n.orgId === orgId);
 
 		// Filter by notification type if specified
 		if (args.notificationType) {
@@ -343,10 +343,13 @@ export const getStatsForUser = optionalUserQuery({
 
 		const notifications = await ctx.db
 			.query("notifications")
-			.filter((q) => q.eq(q.field("userId"), args.userId))
+			.withIndex("by_user_read", (q) => q.eq("userId", args.userId))
 			.collect();
 
-		return calculateNotificationStats(notifications);
+		// Org scoping: the target user may belong to multiple orgs.
+		return calculateNotificationStats(
+			notifications.filter((n) => n.orgId === orgId)
+		);
 	},
 });
 
@@ -434,16 +437,14 @@ export const listForCurrentUser = optionalUserQuery({
 			// Filter by current organization
 			notifications = notifications.filter((n) => n.orgId === orgId);
 		} else {
+			// Prefix-only index bind: ordered by isRead before _creationTime, so
+			// re-sort below before applying the limit.
 			notifications = await ctx.db
 				.query("notifications")
-				.filter((q) =>
-					q.and(
-						q.eq(q.field("userId"), user._id),
-						q.eq(q.field("orgId"), orgId)
-					)
-				)
-				.order("desc")
+				.withIndex("by_user_read", (q) => q.eq("userId", user._id))
 				.collect();
+			notifications = notifications.filter((n) => n.orgId === orgId);
+			notifications.sort((a, b) => b._creationTime - a._creationTime);
 		}
 
 		// Apply limit if specified

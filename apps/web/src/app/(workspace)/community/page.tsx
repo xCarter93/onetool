@@ -47,7 +47,7 @@ import {
 	FrameDescription,
 } from "@/components/reui/frame";
 import { DotField } from "@/components/ui/dot-field";
-import { NodesIllustration } from "./components/nodes-illustration";
+import { Illustration } from "@/components/illustrations";
 import { StatusBadge } from "@/components/domain/status-badge";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
@@ -425,7 +425,7 @@ function CommunityPageContent() {
 							{/* Left: pitch + claim form */}
 							<div className="space-y-7 px-7 py-8 sm:px-9">
 								<div className="space-y-3">
-									<NodesIllustration className="-ml-4 h-24 w-auto" />
+									<Illustration name="community-page" size="md" className="-ml-4 w-40" />
 									<span className="inline-flex items-center gap-1.5 rounded-full border border-primary/20 bg-primary/5 px-3 py-1 text-xs font-medium text-primary">
 										<Globe className="size-3.5" />
 										Your public page
@@ -747,7 +747,7 @@ function CommunityPageContent() {
 						{/* Illustration card */}
 						<div className="relative hidden shrink-0 items-center justify-center overflow-hidden rounded-xl border border-border/60 bg-muted/30 px-14 py-7 md:flex">
 							<DotField className="text-primary opacity-40 [mask-image:radial-gradient(ellipse_at_center,black_40%,transparent_80%)]" />
-							<NodesIllustration className="relative h-36 w-auto" />
+							<Illustration name="community-page" size="md" className="relative w-60" />
 						</div>
 					</div>
 				</FramePanel>

@@ -1,5 +1,7 @@
 "use client";
 
+import { EmptyState } from "@/components/domain/empty-state";
+
 /**
  * Shared empty-plot hint for report charts. Used whenever a chart receives
  * an empty data array OR every value is 0 — regression: an all-zero pie
@@ -22,10 +24,14 @@ export function ChartNoData({
 	return (
 		<div
 			data-slot="chart-no-data"
-			className="flex min-h-[300px] w-full flex-col items-center justify-center gap-1 text-center"
+			className="flex min-h-[300px] w-full items-center justify-center"
 		>
-			<p className="text-sm font-medium text-muted-foreground">{message}</p>
-			<p className="text-xs text-muted-foreground/70">{detail}</p>
+			<EmptyState
+				size="md"
+				illustration="report-chart-no-data"
+				title={message}
+				description={detail}
+			/>
 		</div>
 	);
 }

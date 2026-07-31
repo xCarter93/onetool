@@ -110,7 +110,9 @@ export function OverviewTab({ quote, quoteId, lineItems }: OverviewTabProps) {
 
 	const saveTerms = async () => {
 		try {
-			await updateQuote({ id: quoteId, terms: termsValue || undefined });
+			// Send "" rather than undefined: undefined is stripped server-side and an
+			// empty payload throws "No valid updates provided", so clearing never saved.
+			await updateQuote({ id: quoteId, terms: termsValue });
 			toast.success("Updated", "Terms saved.");
 			cancelEditingTerms();
 		} catch (err) {
@@ -141,7 +143,8 @@ export function OverviewTab({ quote, quoteId, lineItems }: OverviewTabProps) {
 
 	const saveMessage = async () => {
 		try {
-			await updateQuote({ id: quoteId, clientMessage: messageValue || undefined });
+			// See saveTerms: "" is a valid update, undefined degenerates to an empty payload.
+			await updateQuote({ id: quoteId, clientMessage: messageValue });
 			toast.success("Updated", "Client message saved.");
 			cancelEditingMessage();
 		} catch (err) {

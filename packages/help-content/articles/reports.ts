@@ -52,6 +52,7 @@ export const reportsArticles: HelpArticle[] = [
 						type: "media",
 						media: "image",
 						caption: "The report builder with the Outline panel open",
+						asset: "reports/building-a-report/report-builder-with-the-outline-panel",
 					},
 					{
 						type: "note",
@@ -98,6 +99,7 @@ export const reportsArticles: HelpArticle[] = [
 						type: "media",
 						media: "video",
 						caption: "Building and saving a report from start to finish",
+						asset: "reports/building-a-report/building-and-saving-a-report-from",
 					},
 				],
 			},
@@ -162,6 +164,7 @@ export const reportsArticles: HelpArticle[] = [
 						type: "media",
 						media: "image",
 						caption: "The preset library",
+						asset: "reports/report-presets/preset-library",
 					},
 					{
 						type: "note",

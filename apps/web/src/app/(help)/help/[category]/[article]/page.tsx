@@ -26,7 +26,7 @@ import {
 import { ArticleFeedback } from "@/components/help/article-feedback";
 import { ArticleSections } from "@/components/help/article-blocks";
 import { renderInlineText } from "@/components/help/inline-text";
-import { MediaPlaceholder } from "@/components/help/media-placeholder";
+import { HelpMedia } from "@/components/help/help-media";
 import {
 	HELP_CATEGORIES,
 	getAdjacentArticles,
@@ -138,9 +138,10 @@ export default async function HelpArticlePage({
 					</div>
 
 					{article.heroMedia && (
-						<MediaPlaceholder
+						<HelpMedia
 							media={article.heroMedia.media}
 							caption={article.heroMedia.caption}
+							asset={article.heroMedia.asset}
 						/>
 					)}
 

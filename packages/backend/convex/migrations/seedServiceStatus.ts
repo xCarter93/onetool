@@ -1,4 +1,4 @@
-import { internalMutation } from "../_generated/server";
+import { internalMutation } from "../lib/triggers";
 
 export const seedServiceStatus = internalMutation({
 	handler: async (ctx) => {

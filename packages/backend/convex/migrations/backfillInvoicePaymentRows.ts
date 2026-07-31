@@ -1,4 +1,4 @@
-import { internalMutation } from "../_generated/server";
+import { internalMutation } from "../lib/triggers";
 
 /**
  * One-time backfill: give every payable-but-unpaid invoice that has no payment

@@ -29,6 +29,7 @@ import {
 } from "./permissions";
 import type { PermissionObject } from "./permissionKeys";
 import { getOptionalOrgId } from "./queries";
+import { triggers } from "./triggers";
 
 /**
  * Org-scoped Convex function factories.
@@ -274,7 +275,9 @@ export const userMutation = customMutation(
 	mutation,
 	customCtx(async (ctx: MutationCtx) => {
 		const user = await getCurrentUserOrThrow(ctx);
-		return await makeOrgCtx(ctx, user);
+		const extras = await makeOrgCtx(ctx, user);
+		// Route writes through the trigger registry (aggregate maintenance).
+		return { ...extras, db: triggers.wrapDB(ctx).db };
 	})
 );
 
@@ -315,6 +318,8 @@ export const systemMutation = customMutation(internalMutation, {
 			ctx: {
 				orgId,
 				orgEntity: makeOrgEntity(ctx, orgId),
+				// Route writes through the trigger registry (aggregate maintenance).
+				db: triggers.wrapDB(ctx).db,
 			},
 			args: {},
 		};

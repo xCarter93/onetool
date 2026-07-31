@@ -9,13 +9,8 @@
 // onboarding. sendNotificationPush / pruneToken are internal-only (not
 // client-callable).
 
-import {
-	mutation,
-	internalQuery,
-	internalMutation,
-	internalAction,
-	type MutationCtx,
-} from "./_generated/server";
+import { internalQuery, internalAction, type MutationCtx } from "./_generated/server";
+import { mutation, internalMutation } from "./lib/triggers";
 import { internal } from "./_generated/api";
 import { v } from "convex/values";
 import { Id } from "./_generated/dataModel";

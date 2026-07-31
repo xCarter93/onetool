@@ -37,6 +37,7 @@ export const projectsAndTasksArticles: HelpArticle[] = [
 						type: "media",
 						media: "image",
 						caption: "The Create Project dialog",
+						asset: "projects-and-tasks/creating-and-managing-projects/create-project-dialog",
 					},
 					{
 						type: "note",
@@ -76,6 +77,7 @@ export const projectsAndTasksArticles: HelpArticle[] = [
 						type: "media",
 						media: "image",
 						caption: "A project page with the Overview tab open",
+						asset: "projects-and-tasks/creating-and-managing-projects/project-page-with-the-overview-tab",
 					},
 				],
 			},
@@ -167,6 +169,7 @@ export const projectsAndTasksArticles: HelpArticle[] = [
 						type: "media",
 						media: "image",
 						caption: "The task panel with an external task filled in",
+						asset: "projects-and-tasks/working-with-tasks/task-panel-with-an-external-task",
 					},
 				],
 			},
@@ -194,6 +197,7 @@ export const projectsAndTasksArticles: HelpArticle[] = [
 						type: "media",
 						media: "image",
 						caption: "The Tasks page grouped into Overdue, Today, and This Week",
+						asset: "projects-and-tasks/working-with-tasks/tasks-page-grouped-into-overdue-today",
 					},
 				],
 			},
@@ -239,6 +243,7 @@ export const projectsAndTasksArticles: HelpArticle[] = [
 		heroMedia: {
 			media: "image",
 			caption: "A member's view of the Projects page",
+			asset: "projects-and-tasks/assigning-work-to-your-team/hero",
 		},
 		keywords: ["assignee", "crew", "team member", "visibility", "permissions", "field tech"],
 		sections: [

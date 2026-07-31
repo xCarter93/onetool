@@ -1,5 +1,6 @@
 import { ConvexError, v } from "convex/values";
-import { action, ActionCtx, internalMutation } from "./_generated/server";
+import { action, ActionCtx } from "./_generated/server";
+import { internalMutation } from "./lib/triggers";
 import { internal } from "./_generated/api";
 import { Doc, Id } from "./_generated/dataModel";
 import { getCurrentUserOrgId, getCurrentUserOrThrow } from "./lib/auth";

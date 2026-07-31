@@ -11,6 +11,7 @@ export const automationsArticles: HelpArticle[] = [
 		heroMedia: {
 			media: "image",
 			caption: "The Automations page with the monitoring dashboard",
+			asset: "automations/automations-overview/hero",
 		},
 		keywords: ["workflow", "trigger", "rules", "monitoring", "draft", "published", "beta"],
 		sections: [
@@ -147,6 +148,7 @@ export const automationsArticles: HelpArticle[] = [
 						type: "media",
 						media: "image",
 						caption: "Inserting a step from the plus button on a connection",
+						asset: "automations/building-an-automation/inserting-a-step-from-the-plus",
 					},
 					{
 						type: "note",
@@ -173,6 +175,7 @@ export const automationsArticles: HelpArticle[] = [
 						type: "media",
 						media: "video",
 						caption: "Building and publishing an automation from start to finish",
+						asset: "automations/building-an-automation/building-and-publishing-an-automation-from",
 					},
 				],
 			},
@@ -215,6 +218,7 @@ export const automationsArticles: HelpArticle[] = [
 		heroMedia: {
 			media: "image",
 			caption: "The step picker in the automation editor",
+			asset: "automations/triggers-and-actions/hero",
 		},
 		keywords: ["steps", "condition", "branch", "loop", "delay", "send email", "variables", "schedule"],
 		sections: [
@@ -341,6 +345,7 @@ export const automationsArticles: HelpArticle[] = [
 						type: "media",
 						media: "image",
 						caption: "A test run's execution timeline in the Debug tab",
+						asset: "automations/testing-and-run-history/test-runs-execution-timeline-in-the",
 					},
 				],
 			},
@@ -377,6 +382,7 @@ export const automationsArticles: HelpArticle[] = [
 						type: "media",
 						media: "image",
 						caption: "The Runs tab filtered by status",
+						asset: "automations/testing-and-run-history/runs-tab-filtered-by-status",
 					},
 				],
 			},

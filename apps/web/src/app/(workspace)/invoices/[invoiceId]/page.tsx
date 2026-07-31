@@ -17,6 +17,7 @@ import { ExclamationTriangleIcon } from "@heroicons/react/24/outline";
 import { InvoiceDetailHeader } from "./components/invoice-detail-header";
 import { InvoiceDetailTabs } from "./components/invoice-detail-tabs";
 import { PaymentsConfigurationModal } from "../components/payments-configuration-modal";
+import { convexErrorMessage } from "@/lib/convex-error";
 
 type InvoiceStatus = "draft" | "sent" | "paid" | "overdue" | "cancelled";
 
@@ -174,7 +175,7 @@ function InvoiceDetailPageContent() {
 			);
 		} catch (err) {
 			const message =
-				err instanceof Error ? err.message : "Failed to send invoice";
+				convexErrorMessage(err, "Failed to send invoice");
 			toast.error("Couldn't send invoice", message);
 		}
 	};

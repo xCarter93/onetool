@@ -1,5 +1,4 @@
-import { internalMutation } from "../_generated/server";
-import { AggregateHelpers } from "../lib/aggregates";
+import { internalMutation } from "../lib/triggers";
 
 /**
  * Migration to fix invoices with $0 subtotal/total that have valid line items
@@ -50,12 +49,6 @@ export const fixInvoiceTotals = internalMutation({
 					subtotal: calculatedSubtotal,
 					total: calculatedTotal,
 				});
-
-				// total is the revenue aggregate's sumValue — keep it in sync
-				const updatedInvoice = await ctx.db.get(invoice._id);
-				if (updatedInvoice) {
-					await AggregateHelpers.updateInvoice(ctx, invoice, updatedInvoice);
-				}
 
 				console.log(
 					`Fixed invoice ${invoice.invoiceNumber}: $${calculatedSubtotal} subtotal, $${calculatedTotal} total (from ${lineItems.length} line items)`

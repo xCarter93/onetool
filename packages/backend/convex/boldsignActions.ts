@@ -72,7 +72,8 @@ type CreateEmbeddedResult =
 	// minted; the client must not discard it on back-navigation.
 	| { ok: true; sendUrl: string; boldsignDocumentId: string; reused: boolean }
 	| { ok: false; reason: "limit"; used: number; limit: number }
-	| { ok: false; reason: "no_signer" };
+	| { ok: false; reason: "no_signer" }
+	| { ok: false; reason: "no_pdf" };
 
 /**
  * Create an embedded BoldSign sending request for a quote's latest PDF and
@@ -96,6 +97,11 @@ export const createEmbeddedSignatureRequest = action({
 			internal.boldsign.getEmbeddedRequestContext,
 			{ quoteId: args.quoteId }
 		);
+
+		// Nothing to send until a quote PDF exists.
+		if (!context.ok) {
+			return { ok: false, reason: "no_pdf" };
+		}
 
 		// Enforce the monthly cap before creating any BoldSign draft.
 		if (context.usage.overCap) {
@@ -146,8 +152,10 @@ export const createEmbeddedSignatureRequest = action({
 
 		// Download the stored quote PDF into a Node buffer.
 		const blob = await ctx.storage.get(context.pdfStorageId);
+		// Document row can outlive its blob; same outcome as having no PDF at
+		// all — no BoldSign draft is created.
 		if (!blob) {
-			throw new Error("Stored quote PDF not found");
+			return { ok: false, reason: "no_pdf" };
 		}
 		const pdfBuffer = Buffer.from(await blob.arrayBuffer());
 

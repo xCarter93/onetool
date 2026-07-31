@@ -41,6 +41,7 @@ export const quotesArticles: HelpArticle[] = [
 						type: "media",
 						media: "image",
 						caption: "The New quote dialog",
+						asset: "quotes/creating-a-quote/new-quote-dialog",
 					},
 					{
 						type: "note",
@@ -68,6 +69,7 @@ export const quotesArticles: HelpArticle[] = [
 						type: "media",
 						media: "image",
 						caption: "The line item editor with a discount and tax applied",
+						asset: "quotes/creating-a-quote/line-item-editor-with-a-discount",
 					},
 					{
 						type: "tip",
@@ -176,6 +178,7 @@ export const quotesArticles: HelpArticle[] = [
 						type: "media",
 						media: "image",
 						caption: "The approval panel in the client portal",
+						asset: "quotes/sending-quotes-and-approvals/approval-panel-in-the-client-portal",
 					},
 					{
 						type: "paragraph",
@@ -283,6 +286,11 @@ export const quotesArticles: HelpArticle[] = [
 						type: "media",
 						media: "image",
 						caption: "The embedded signing editor",
+						asset: "quotes/e-signatures/embedded-signing-editor",
+					},
+					{
+						type: "note",
+						text: "Sending needs a generated PDF. Until you click **Generate PDF** on the quote, **Send for e-signature** is unavailable and the page shows **Generate a PDF for this quote first** instead of the editor.",
 					},
 					{
 						type: "note",
@@ -331,6 +339,7 @@ export const quotesArticles: HelpArticle[] = [
 						type: "media",
 						media: "image",
 						caption: "The Signatures tab with a completed request",
+						asset: "quotes/e-signatures/signatures-tab-with-a-completed-request",
 					},
 				],
 			},

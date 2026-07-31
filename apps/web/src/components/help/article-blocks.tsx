@@ -2,7 +2,7 @@ import { Info, Lightbulb } from "lucide-react";
 import type { HelpBlock, HelpSection } from "@/lib/help";
 import { slugifyHeading } from "@/lib/help";
 import { renderInlineText } from "./inline-text";
-import { MediaPlaceholder } from "./media-placeholder";
+import { HelpMedia } from "./help-media";
 
 function Callout({
 	variant,
@@ -71,7 +71,13 @@ function ArticleBlock({ block }: { block: HelpBlock }) {
 		case "tip":
 			return <Callout variant="tip" text={block.text} />;
 		case "media":
-			return <MediaPlaceholder media={block.media} caption={block.caption} />;
+			return (
+				<HelpMedia
+					media={block.media}
+					caption={block.caption}
+					asset={block.asset}
+				/>
+			);
 	}
 }
 
