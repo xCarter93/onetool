@@ -109,10 +109,21 @@ export const illustrations = {
 		sm: Objects.DocumentsNoneSm,
 		hero: Objects.DocumentsNoneHero,
 	},
+	/** Public community page — the card is live, leads converge on it. */
+	"community-page": {
+		md: Objects.CommunityPage,
+		sm: Objects.CommunityPageSm,
+		hero: Objects.CommunityPageHero,
+	},
 	"select-conversation": {
-		md: Browse.SelectConversation,
-		sm: Browse.SelectConversationSm,
-		hero: Browse.SelectConversationHero,
+		md: Objects.SelectConversation,
+		sm: Objects.SelectConversationSm,
+		hero: Objects.SelectConversationHero,
+	},
+	"route-none": {
+		md: Objects.RouteNone,
+		sm: Objects.RouteNoneSm,
+		hero: Objects.RouteNoneHero,
 	},
 	/** Permission gates — a restricted state, never the destructive app-error art. */
 	"access-restricted": {

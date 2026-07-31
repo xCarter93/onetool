@@ -274,6 +274,7 @@ export function ThreadViewEmpty() {
 			<EmptyState
 				size="md"
 				illustration="select-conversation"
+				illustrationSize="hero"
 				title="Select a conversation"
 				description="Choose a thread on the left to read and reply."
 			/>
