@@ -53,6 +53,10 @@ export const env = createEnv({
 		PORTAL_JWT_ISSUER: z.string().url(),
 		// Shared secret for proxied Convex OTP rate-limit actions.
 		PORTAL_OTP_REQUEST_SECRET: z.string().min(16),
+		// Optional: proves to the Convex portal actions that a call came through
+		// these routes. Falls back to PORTAL_OTP_REQUEST_SECRET when unset, so
+		// no new variable is required to deploy.
+		PORTAL_ATTESTATION_SECRET: z.string().min(16).optional(),
 	},
 	client: {
 		NEXT_PUBLIC_CONVEX_URL: z.string().min(1),

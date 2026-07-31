@@ -8,10 +8,13 @@ import { api } from "../../_generated/api";
 import type { Id } from "../../_generated/dataModel";
 
 const PORTAL_ISSUER = "https://portal.example.com";
+const TEST_ATTESTATION = "test-portal-attestation-0123456789";
 const previousIssuer = process.env.PORTAL_JWT_ISSUER;
+const previousAttestation = process.env.PORTAL_ATTESTATION_SECRET;
 
 beforeAll(() => {
 	process.env.PORTAL_JWT_ISSUER = PORTAL_ISSUER;
+	process.env.PORTAL_ATTESTATION_SECRET = TEST_ATTESTATION;
 });
 
 afterAll(() => {
@@ -19,6 +22,11 @@ afterAll(() => {
 		delete process.env.PORTAL_JWT_ISSUER;
 	} else {
 		process.env.PORTAL_JWT_ISSUER = previousIssuer;
+	}
+	if (previousAttestation === undefined) {
+		delete process.env.PORTAL_ATTESTATION_SECRET;
+	} else {
+		process.env.PORTAL_ATTESTATION_SECRET = previousAttestation;
 	}
 });
 
@@ -199,6 +207,8 @@ describe("portal.quotes.approve", () => {
 
 		const asPortal = t.withIdentity(ident(s, jti));
 		const result = await asPortal.action(api.portal.quotes.approve, {
+			attestation: TEST_ATTESTATION,
+			intentAffirmed: true,
 			quoteId,
 			expectedDocumentId: documentId,
 			signatureBase64: VALID_PNG_B64,
@@ -253,6 +263,8 @@ describe("portal.quotes.approve", () => {
 
 		const asPortal = t.withIdentity(ident(s, jti));
 		await asPortal.action(api.portal.quotes.approve, {
+			attestation: TEST_ATTESTATION,
+			intentAffirmed: true,
 			quoteId,
 			expectedDocumentId: documentId,
 			signatureBase64: VALID_PNG_B64,
@@ -277,6 +289,8 @@ describe("portal.quotes.approve", () => {
 
 		const asPortal = t.withIdentity(ident(s, jti));
 		await asPortal.action(api.portal.quotes.approve, {
+			attestation: TEST_ATTESTATION,
+			intentAffirmed: true,
 			quoteId,
 			expectedDocumentId: documentId,
 			signatureBase64: VALID_PNG_B64,
@@ -332,6 +346,8 @@ describe("portal.quotes.approve", () => {
 		const asPortal = t.withIdentity(ident(s, jti));
 		await expect(
 			asPortal.action(api.portal.quotes.approve, {
+				attestation: TEST_ATTESTATION,
+				intentAffirmed: true,
 				quoteId,
 				expectedDocumentId: documentId, // stale (v2) — current is v3 (newDocId)
 				signatureBase64: VALID_PNG_B64,
@@ -381,6 +397,8 @@ describe("portal.quotes.approve", () => {
 		const asPortal = t.withIdentity(ident(s, jti));
 		await expect(
 			asPortal.action(api.portal.quotes.approve, {
+				attestation: TEST_ATTESTATION,
+				intentAffirmed: true,
 				quoteId,
 				expectedDocumentId: documentId,
 				signatureBase64: VALID_PNG_B64,
@@ -426,6 +444,8 @@ describe("portal.quotes.approve", () => {
 		);
 		await expect(
 			asOther.action(api.portal.quotes.approve, {
+				attestation: TEST_ATTESTATION,
+				intentAffirmed: true,
 				quoteId, // belongs to s.clientId, not s.otherClientId
 				expectedDocumentId: documentId,
 				signatureBase64: VALID_PNG_B64,
@@ -458,6 +478,8 @@ describe("portal.quotes.approve", () => {
 		const asPortal = t.withIdentity(ident(s, jti));
 		for (let i = 0; i < 5; i++) {
 			await asPortal.action(api.portal.quotes.approve, {
+				attestation: TEST_ATTESTATION,
+				intentAffirmed: true,
 				quoteId: quotes[i]!.quoteId,
 				expectedDocumentId: quotes[i]!.documentId,
 				signatureBase64: VALID_PNG_B64,
@@ -472,6 +494,8 @@ describe("portal.quotes.approve", () => {
 		let captured: unknown = null;
 		try {
 			await asPortal.action(api.portal.quotes.approve, {
+				attestation: TEST_ATTESTATION,
+				intentAffirmed: true,
 				quoteId: quotes[5]!.quoteId,
 				expectedDocumentId: quotes[5]!.documentId,
 				signatureBase64: VALID_PNG_B64,
@@ -514,6 +538,8 @@ describe("portal.quotes.approve", () => {
 
 		const asPortal = t.withIdentity(ident(s, jti));
 		await asPortal.action(api.portal.quotes.approve, {
+			attestation: TEST_ATTESTATION,
+			intentAffirmed: true,
 			quoteId,
 			expectedDocumentId: documentId,
 			signatureBase64: VALID_PNG_B64,
@@ -589,6 +615,8 @@ describe("portal.quotes.approve", () => {
 
 		const asPortal = t.withIdentity(ident(s, jti));
 		const result = await asPortal.action(api.portal.quotes.approve, {
+			attestation: TEST_ATTESTATION,
+			intentAffirmed: true,
 			quoteId,
 			expectedDocumentId: documentId,
 			signatureBase64: VALID_PNG_B64,
@@ -655,6 +683,8 @@ describe("portal.quotes.approve", () => {
 
 		const asPortal = t.withIdentity(ident(s, jti));
 		const result = await asPortal.action(api.portal.quotes.approve, {
+			attestation: TEST_ATTESTATION,
+			intentAffirmed: true,
 			quoteId,
 			expectedDocumentId: documentId,
 			signatureBase64: VALID_PNG_B64,
@@ -676,6 +706,8 @@ describe("portal.quotes.approve", () => {
 
 		const asPortal = t.withIdentity(ident(s, jti));
 		const r = await asPortal.action(api.portal.quotes.approve, {
+			attestation: TEST_ATTESTATION,
+			intentAffirmed: true,
 			quoteId,
 			expectedDocumentId: documentId,
 			signatureBase64: VALID_PNG_B64,
@@ -696,5 +728,164 @@ describe("portal.quotes.approve", () => {
 		expect(typeof r.signatureStorageId).toBe("string");
 		// signatureUrl is `string | null` — never `undefined`.
 		expect(r.signatureUrl === null || typeof r.signatureUrl === "string").toBe(true);
+	});
+});
+
+describe("portal.quotes.approve provenance (SEC-4)", () => {
+	let t: ReturnType<typeof setupConvexTest>;
+
+	beforeEach(() => {
+		t = setupConvexTest();
+	});
+
+	// The portal browser holds a real Convex token minted by /api/portal/token,
+	// so it can call this action directly and skip the Next.js route that derives
+	// the true IP/UA and enforces intent. Everything the route asserts on the
+	// caller's behalf therefore has to be attested here.
+	async function setup() {
+		const s = await seedAll(t);
+		const jti = `sec4-jti-${Math.random()}`;
+		await seedSession(t, s, jti);
+		const { quoteId, documentId } = await seedQuoteWithDoc(t, s, s.clientId);
+		return {
+			s,
+			jti,
+			quoteId,
+			documentId,
+			asPortal: t.withIdentity(ident(s, jti)),
+		};
+	}
+
+	const baseArgs = (quoteId: Id<"quotes">, documentId: Id<"documents">) => ({
+		quoteId,
+		expectedDocumentId: documentId,
+		signatureBase64: VALID_PNG_B64,
+		signatureMode: "typed" as const,
+		signatureRawData: JSON.stringify({ typedName: "Jane", font: "Caveat" }),
+		ipAddress: "1.2.3.4",
+		userAgent: "ua",
+		termsAccepted: true as const,
+	});
+
+	const auditRowCount = (t: ReturnType<typeof setupConvexTest>) =>
+		t.run(async (ctx) => (await ctx.db.query("quoteApprovals").collect()).length);
+
+	it("rejects an approve with no attestation", async () => {
+		const { asPortal, quoteId, documentId } = await setup();
+		await expect(
+			asPortal.action(api.portal.quotes.approve, {
+				...baseArgs(quoteId, documentId),
+				intentAffirmed: true,
+			}),
+		).rejects.toThrow(/UNATTESTED_REQUEST/);
+		expect(await auditRowCount(t)).toBe(0);
+	});
+
+	it("rejects an approve whose attestation does not match", async () => {
+		const { asPortal, quoteId, documentId } = await setup();
+		await expect(
+			asPortal.action(api.portal.quotes.approve, {
+				...baseArgs(quoteId, documentId),
+				intentAffirmed: true,
+				attestation: "not-the-secret-0123456789abcdef",
+			}),
+		).rejects.toThrow(/UNATTESTED_REQUEST/);
+	});
+
+	it("rejects a typed signature with no intent affirmation", async () => {
+		const { asPortal, quoteId, documentId } = await setup();
+		await expect(
+			asPortal.action(api.portal.quotes.approve, {
+				...baseArgs(quoteId, documentId),
+				attestation: TEST_ATTESTATION,
+			}),
+		).rejects.toThrow(/INTENT_AFFIRMATION_REQUIRED/);
+		expect(await auditRowCount(t)).toBe(0);
+	});
+
+	it("stamps intentAffirmedAt when a typed signature affirms intent", async () => {
+		const { asPortal, quoteId, documentId } = await setup();
+		await asPortal.action(api.portal.quotes.approve, {
+			...baseArgs(quoteId, documentId),
+			attestation: TEST_ATTESTATION,
+			intentAffirmed: true,
+		});
+
+		const row = await t.run(
+			async (ctx) => (await ctx.db.query("quoteApprovals").collect())[0],
+		);
+		expect(typeof row?.intentAffirmedAt).toBe("number");
+	});
+
+	it("bounds a forged over-long ipAddress", async () => {
+		const { asPortal, quoteId, documentId } = await setup();
+		await asPortal.action(api.portal.quotes.approve, {
+			...baseArgs(quoteId, documentId),
+			attestation: TEST_ATTESTATION,
+			intentAffirmed: true,
+			ipAddress: "9".repeat(10_000),
+		});
+
+		const row = await t.run(
+			async (ctx) => (await ctx.db.query("quoteApprovals").collect())[0],
+		);
+		expect(row?.ipAddress.length).toBeLessThanOrEqual(64);
+	});
+
+	it("fails closed when no attestation secret is configured", async () => {
+		const { asPortal, quoteId, documentId } = await setup();
+		const savedAttestation = process.env.PORTAL_ATTESTATION_SECRET;
+		const savedNext = process.env.PORTAL_ATTESTATION_SECRET_NEXT;
+		const savedOtp = process.env.PORTAL_OTP_REQUEST_SECRET;
+		delete process.env.PORTAL_ATTESTATION_SECRET;
+		delete process.env.PORTAL_ATTESTATION_SECRET_NEXT;
+		delete process.env.PORTAL_OTP_REQUEST_SECRET;
+		try {
+			await expect(
+				asPortal.action(api.portal.quotes.approve, {
+					...baseArgs(quoteId, documentId),
+					attestation: TEST_ATTESTATION,
+					intentAffirmed: true,
+				}),
+			).rejects.toThrow(/PORTAL_MISCONFIGURED/);
+			expect(await auditRowCount(t)).toBe(0);
+		} finally {
+			if (savedAttestation !== undefined)
+				process.env.PORTAL_ATTESTATION_SECRET = savedAttestation;
+			if (savedNext !== undefined)
+				process.env.PORTAL_ATTESTATION_SECRET_NEXT = savedNext;
+			if (savedOtp !== undefined)
+				process.env.PORTAL_OTP_REQUEST_SECRET = savedOtp;
+		}
+	});
+
+	it("accepts the _NEXT secret during a rotation window", async () => {
+		const { asPortal, quoteId, documentId } = await setup();
+		const rotated = "rotated-portal-attestation-98765";
+		process.env.PORTAL_ATTESTATION_SECRET_NEXT = rotated;
+		try {
+			const result = await asPortal.action(api.portal.quotes.approve, {
+				...baseArgs(quoteId, documentId),
+				attestation: rotated,
+				intentAffirmed: true,
+			});
+			expect(result.action).toBe("approved");
+		} finally {
+			delete process.env.PORTAL_ATTESTATION_SECRET_NEXT;
+		}
+	});
+
+	it("rejects an unattested decline", async () => {
+		const { asPortal, quoteId, documentId } = await setup();
+		await expect(
+			asPortal.mutation(api.portal.quotes.decline, {
+				quoteId,
+				expectedDocumentId: documentId,
+				declineReason: "no",
+				ipAddress: "1.2.3.4",
+				userAgent: "ua",
+			}),
+		).rejects.toThrow(/UNATTESTED_REQUEST/);
+		expect(await auditRowCount(t)).toBe(0);
 	});
 });

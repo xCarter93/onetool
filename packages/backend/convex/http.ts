@@ -17,6 +17,7 @@ import {
 } from "./lib/webhooks";
 import { resend } from "./email/durableResend";
 import { readPremiumOverride } from "./lib/permissions";
+import { constantTimeEqual } from "./lib/portalAttestation";
 
 const http = httpRouter();
 
@@ -780,15 +781,6 @@ http.route({
 
 // Server-to-server OTP request endpoint. Next.js derives the IP hash and gates
 // access with the shared portal secret before this invokes the internal mutation.
-
-function constantTimeEqual(a: string, b: string): boolean {
-	if (a.length !== b.length) return false;
-	let diff = 0;
-	for (let i = 0; i < a.length; i++) {
-		diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
-	}
-	return diff === 0;
-}
 
 http.route({
 	path: "/portal/otp/request",

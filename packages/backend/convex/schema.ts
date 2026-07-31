@@ -607,6 +607,10 @@ export default defineSchema({
 		// Decline rows omit this field — decline does not require terms acceptance
 		// (per CONTEXT §"Decline with reason" and REVIEWS feedback on Plan 14-01).
 		termsAcceptedAt: v.optional(v.number()),
+		// SEC-4: set only when the signer affirmed signing intent (ESIGN) on a
+		// typed signature. Optional — rows predating the check, drawn
+		// signatures, and declines all omit it.
+		intentAffirmedAt: v.optional(v.number()),
 		createdAt: v.number(),
 	})
 		.index("by_quote", ["quoteId", "createdAt"])

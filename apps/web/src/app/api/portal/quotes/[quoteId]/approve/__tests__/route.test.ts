@@ -6,6 +6,13 @@ const cookieHolder: { value: string | null } = { value: "test-cookie-jwt" };
 const fetchActionMock = vi.fn();
 const getRequestIpMock = vi.fn((_req?: unknown) => "203.0.113.5");
 
+vi.mock("@/env", () => ({
+	env: {
+		PORTAL_OTP_REQUEST_SECRET: "test-shared-secret-0123456789abcdef",
+		PORTAL_ATTESTATION_SECRET: undefined,
+	},
+}));
+
 vi.mock("@/lib/portal/cookie", () => ({
 	readSessionCookie: async () => cookieHolder.value,
 }));
@@ -181,6 +188,25 @@ describe("POST /api/portal/quotes/[quoteId]/approve", () => {
 		expect(getRequestIpMock).toHaveBeenCalled();
 		const args = fetchActionMock.mock.calls[0];
 		expect(args[1].ipAddress).toBe("198.51.100.7");
+	});
+
+	// SEC-4: the backend rejects any approve it cannot attribute to this route,
+	// so the route must actually send the shared secret and the intent flag.
+	it("forwards the route attestation and intentAffirmed to the action", async () => {
+		fetchActionMock.mockResolvedValue({
+			auditId: "a",
+			action: "approved",
+			createdAt: 1,
+			documentVersion: 1,
+			lineItemsCount: 1,
+			total: 1,
+		});
+
+		const { POST } = await import("../route");
+		await POST(makeReq({ body: validBody() }), { params });
+		const args = fetchActionMock.mock.calls[0];
+		expect(args[1].attestation).toBe("test-shared-secret-0123456789abcdef");
+		expect(args[1].intentAffirmed).toBe(true);
 	});
 
 	it("rejects request with malformed Origin header (returns 403)", async () => {

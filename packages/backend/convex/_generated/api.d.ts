@@ -84,6 +84,7 @@ import type * as lib_permissionKeys from "../lib/permissionKeys.js";
 import type * as lib_permissions from "../lib/permissions.js";
 import type * as lib_planLimits from "../lib/planLimits.js";
 import type * as lib_polylineCodec from "../lib/polylineCodec.js";
+import type * as lib_portalAttestation from "../lib/portalAttestation.js";
 import type * as lib_posthog from "../lib/posthog.js";
 import type * as lib_queries from "../lib/queries.js";
 import type * as lib_quoteTotals from "../lib/quoteTotals.js";
@@ -245,6 +246,7 @@ declare const fullApi: ApiFromModules<{
   "lib/permissions": typeof lib_permissions;
   "lib/planLimits": typeof lib_planLimits;
   "lib/polylineCodec": typeof lib_polylineCodec;
+  "lib/portalAttestation": typeof lib_portalAttestation;
   "lib/posthog": typeof lib_posthog;
   "lib/queries": typeof lib_queries;
   "lib/quoteTotals": typeof lib_quoteTotals;

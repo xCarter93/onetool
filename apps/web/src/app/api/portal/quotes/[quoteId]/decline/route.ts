@@ -8,6 +8,7 @@ import { readSessionCookie } from "@/lib/portal/cookie";
 import { declineBodySchema } from "@/lib/portal/quotes/normalize-signature-payload";
 import { mapConvexError } from "@/lib/portal/quotes/map-convex-error";
 import { isSameOrigin } from "@/lib/portal/origin";
+import { env } from "@/env";
 
 export async function POST(
 	req: NextRequest,
@@ -50,6 +51,8 @@ export async function POST(
 				declineReason: reason && reason.length > 0 ? reason : undefined,
 				ipAddress: ip,
 				userAgent,
+				attestation:
+					env.PORTAL_ATTESTATION_SECRET ?? env.PORTAL_OTP_REQUEST_SECRET,
 			},
 			{ token },
 		);
