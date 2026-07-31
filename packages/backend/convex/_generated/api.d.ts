@@ -93,6 +93,7 @@ import type * as lib_reportPresets from "../lib/reportPresets.js";
 import type * as lib_resendClient from "../lib/resendClient.js";
 import type * as lib_schedule from "../lib/schedule.js";
 import type * as lib_schemaIntrospection from "../lib/schemaIntrospection.js";
+import type * as lib_searchText from "../lib/searchText.js";
 import type * as lib_shared from "../lib/shared.js";
 import type * as lib_storage from "../lib/storage.js";
 import type * as lib_stripe from "../lib/stripe.js";
@@ -108,6 +109,7 @@ import type * as migrations_backfillEmailThreads from "../migrations/backfillEma
 import type * as migrations_backfillInvoicePaymentRows from "../migrations/backfillInvoicePaymentRows.js";
 import type * as migrations_backfillMemberPermissions from "../migrations/backfillMemberPermissions.js";
 import type * as migrations_backfillPremiumOverrides from "../migrations/backfillPremiumOverrides.js";
+import type * as migrations_backfillSearchText from "../migrations/backfillSearchText.js";
 import type * as migrations_backfillTeamMessagesFromNotifications from "../migrations/backfillTeamMessagesFromNotifications.js";
 import type * as migrations_fixInvoiceTotals from "../migrations/fixInvoiceTotals.js";
 import type * as migrations_geocodeAddresses from "../migrations/geocodeAddresses.js";
@@ -251,6 +253,7 @@ declare const fullApi: ApiFromModules<{
   "lib/resendClient": typeof lib_resendClient;
   "lib/schedule": typeof lib_schedule;
   "lib/schemaIntrospection": typeof lib_schemaIntrospection;
+  "lib/searchText": typeof lib_searchText;
   "lib/shared": typeof lib_shared;
   "lib/storage": typeof lib_storage;
   "lib/stripe": typeof lib_stripe;
@@ -266,6 +269,7 @@ declare const fullApi: ApiFromModules<{
   "migrations/backfillInvoicePaymentRows": typeof migrations_backfillInvoicePaymentRows;
   "migrations/backfillMemberPermissions": typeof migrations_backfillMemberPermissions;
   "migrations/backfillPremiumOverrides": typeof migrations_backfillPremiumOverrides;
+  "migrations/backfillSearchText": typeof migrations_backfillSearchText;
   "migrations/backfillTeamMessagesFromNotifications": typeof migrations_backfillTeamMessagesFromNotifications;
   "migrations/fixInvoiceTotals": typeof migrations_fixInvoiceTotals;
   "migrations/geocodeAddresses": typeof migrations_geocodeAddresses;

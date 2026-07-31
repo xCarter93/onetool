@@ -15,6 +15,15 @@ import {
 	invoiceRevenueAggregate,
 	invoiceCountsAggregate,
 } from "../aggregates";
+import {
+	clientSearchText,
+	contactSearchText,
+	propertySearchText,
+	projectSearchText,
+	quoteSearchText,
+	invoiceSearchText,
+	taskSearchText,
+} from "./searchText";
 
 /**
  * Every mutation builder in the backend routes ctx.db through this registry
@@ -38,6 +47,67 @@ triggers.register("projects", projectCountsAggregate.idempotentTrigger());
 triggers.register("quotes", quoteCountsAggregate.idempotentTrigger());
 triggers.register("invoices", invoiceRevenueAggregate.idempotentTrigger());
 triggers.register("invoices", invoiceCountsAggregate.idempotentTrigger());
+
+/**
+ * search.ts reads these tables through their `search_text` search index, so the
+ * digest has to be maintained on every write path — same reasoning as the
+ * aggregates above.
+ *
+ * Unlike the line-item totals sync this is cascade-safe: each handler is a
+ * guarded no-op-skip patch (recompute, compare, return when unchanged) that
+ * reads nothing but the row itself, and deletes are free, so cascade deletes
+ * stay O(n). The `!==` guard is also the recursion terminator — the
+ * maintainer's own patch re-fires the trigger, which finds stored === computed
+ * and stops.
+ */
+triggers.register("clients", async (ctx, change) => {
+	if (!change.newDoc) return;
+	const searchText = clientSearchText(change.newDoc);
+	if (change.newDoc.searchText === searchText) return;
+	await ctx.db.patch(change.id, { searchText });
+});
+
+triggers.register("clientContacts", async (ctx, change) => {
+	if (!change.newDoc) return;
+	const searchText = contactSearchText(change.newDoc);
+	if (change.newDoc.searchText === searchText) return;
+	await ctx.db.patch(change.id, { searchText });
+});
+
+triggers.register("clientProperties", async (ctx, change) => {
+	if (!change.newDoc) return;
+	const searchText = propertySearchText(change.newDoc);
+	if (change.newDoc.searchText === searchText) return;
+	await ctx.db.patch(change.id, { searchText });
+});
+
+triggers.register("projects", async (ctx, change) => {
+	if (!change.newDoc) return;
+	const searchText = projectSearchText(change.newDoc);
+	if (change.newDoc.searchText === searchText) return;
+	await ctx.db.patch(change.id, { searchText });
+});
+
+triggers.register("quotes", async (ctx, change) => {
+	if (!change.newDoc) return;
+	const searchText = quoteSearchText(change.newDoc);
+	if (change.newDoc.searchText === searchText) return;
+	await ctx.db.patch(change.id, { searchText });
+});
+
+triggers.register("invoices", async (ctx, change) => {
+	if (!change.newDoc) return;
+	const searchText = invoiceSearchText(change.newDoc);
+	if (change.newDoc.searchText === searchText) return;
+	await ctx.db.patch(change.id, { searchText });
+});
+
+triggers.register("tasks", async (ctx, change) => {
+	if (!change.newDoc) return;
+	const searchText = taskSearchText(change.newDoc);
+	if (change.newDoc.searchText === searchText) return;
+	await ctx.db.patch(change.id, { searchText });
+});
 
 /**
  * Drop-in replacements for the _generated/server builders. All mutations —

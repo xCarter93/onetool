@@ -240,6 +240,9 @@ describe("globalSearch", () => {
 					firstName: "Ghostly",
 					lastName: "Person",
 				});
+				await createTestClientProperty(ctx, orgId, archivedId, {
+					streetAddress: "9 Ghostly Lane",
+				});
 				return { clerkUserId, clerkOrgId };
 			});
 
@@ -249,6 +252,46 @@ describe("globalSearch", () => {
 			});
 
 			expect(result.clients).toHaveLength(0);
+		});
+
+		it("keeps a live client's contact/property hits when a sibling is archived", async () => {
+			const { clerkUserId, clerkOrgId } = await t.run(async (ctx) => {
+				const { orgId, clerkUserId, clerkOrgId } = await createTestOrg(ctx, {
+					clerkUserId: "user_1",
+					clerkOrgId: "org_1",
+				});
+				const archivedId = await createTestClient(ctx, orgId, {
+					companyName: "Hidden Corp",
+					status: "archived",
+				});
+				await createTestClientContact(ctx, orgId, archivedId, {
+					firstName: "Marlow",
+					lastName: "Hidden",
+				});
+				const liveId = await createTestClient(ctx, orgId, {
+					companyName: "Visible Corp",
+					status: "active",
+				});
+				await createTestClientContact(ctx, orgId, liveId, {
+					firstName: "Marlow",
+					lastName: "Visible",
+				});
+				await createTestClientProperty(ctx, orgId, liveId, {
+					streetAddress: "3 Marlow Road",
+				});
+				return { clerkUserId, clerkOrgId };
+			});
+
+			const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+			const result = await asUser.query(api.search.globalSearch, {
+				query: "marlow",
+			});
+
+			expect(result.clients.every((c) => c.label === "Visible Corp")).toBe(true);
+			expect(result.clients.map((c) => c.kind).sort()).toEqual([
+				"contact",
+				"property",
+			]);
 		});
 	});
 

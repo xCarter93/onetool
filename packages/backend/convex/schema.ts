@@ -245,10 +245,16 @@ export default defineSchema({
 
 		// Creator (optional — unset on historical + system-created rows)
 		createdByUserId: v.optional(v.id("users")),
+		// Search digest maintained by lib/triggers.ts (see lib/searchText.ts).
+		searchText: v.optional(v.string()),
 	})
 		.index("by_org", ["orgId"])
 		.index("by_status", ["orgId", "status"])
-		.index("by_portal_access_id", ["portalAccessId"]),
+		.index("by_portal_access_id", ["portalAccessId"])
+		.searchIndex("search_text", {
+			searchField: "searchText",
+			filterFields: ["orgId"],
+		}),
 
 	// Client Contacts - separate table for multiple contacts per client
 	clientContacts: defineTable({
@@ -266,10 +272,16 @@ export default defineSchema({
 
 		// Contact preferences
 		isPrimary: v.boolean(), // Mark primary contact
+		// Search digest maintained by lib/triggers.ts (see lib/searchText.ts).
+		searchText: v.optional(v.string()),
 	})
 		.index("by_client", ["clientId"])
 		.index("by_org", ["orgId"])
-		.index("by_primary", ["clientId", "isPrimary"]),
+		.index("by_primary", ["clientId", "isPrimary"])
+		.searchIndex("search_text", {
+			searchField: "searchText",
+			filterFields: ["orgId"],
+		}),
 
 	// Client Properties - separate table for multiple properties per client
 	clientProperties: defineTable({
@@ -303,10 +315,16 @@ export default defineSchema({
 		latitude: v.optional(v.number()),
 		longitude: v.optional(v.number()),
 		formattedAddress: v.optional(v.string()), // Full formatted address from Mapbox
+		// Search digest maintained by lib/triggers.ts (see lib/searchText.ts).
+		searchText: v.optional(v.string()),
 	})
 		.index("by_client", ["clientId"])
 		.index("by_org", ["orgId"])
-		.index("by_primary", ["clientId", "isPrimary"]),
+		.index("by_primary", ["clientId", "isPrimary"])
+		.searchIndex("search_text", {
+			searchField: "searchText",
+			filterFields: ["orgId"],
+		}),
 
 	// Planned multi-stop routes (Routing page)
 	routes: defineTable({
@@ -403,10 +421,16 @@ export default defineSchema({
 
 		// Creator (optional — unset on historical + system-created rows)
 		createdByUserId: v.optional(v.id("users")),
+		// Search digest maintained by lib/triggers.ts (see lib/searchText.ts).
+		searchText: v.optional(v.string()),
 	})
 		.index("by_org", ["orgId"])
 		.index("by_client", ["clientId"])
-		.index("by_status", ["orgId", "status"]),
+		.index("by_status", ["orgId", "status"])
+		.searchIndex("search_text", {
+			searchField: "searchText",
+			filterFields: ["orgId"],
+		}),
 
 	// Tasks/Schedule items
 	tasks: defineTable({
@@ -451,13 +475,19 @@ export default defineSchema({
 
 		// Creator (optional — unset on historical + system-created rows)
 		createdByUserId: v.optional(v.id("users")),
+		// Search digest maintained by lib/triggers.ts (see lib/searchText.ts).
+		searchText: v.optional(v.string()),
 	})
 		.index("by_org", ["orgId"])
 		.index("by_project", ["projectId"])
 		.index("by_client", ["clientId"])
 		.index("by_assignee", ["assigneeUserId"])
 		.index("by_date", ["orgId", "date"])
-		.index("by_parent_task", ["parentTaskId"]),
+		.index("by_parent_task", ["parentTaskId"])
+		.searchIndex("search_text", {
+			searchField: "searchText",
+			filterFields: ["orgId"],
+		}),
 
 	// Quotes
 	quotes: defineTable({
@@ -525,11 +555,17 @@ export default defineSchema({
 
 		// Creator (optional — unset on historical + system-created rows)
 		createdByUserId: v.optional(v.id("users")),
+		// Search digest maintained by lib/triggers.ts (see lib/searchText.ts).
+		searchText: v.optional(v.string()),
 	})
 		.index("by_org", ["orgId"])
 		.index("by_client", ["clientId"])
 		.index("by_project", ["projectId"])
-		.index("by_status", ["orgId", "status"]),
+		.index("by_status", ["orgId", "status"])
+		.searchIndex("search_text", {
+			searchField: "searchText",
+			filterFields: ["orgId"],
+		}),
 
 	// Quote Approvals — APPEND-ONLY audit trail for portal quote approve/decline
 	// (Phase 14, QUOTE-04 + QUOTE-05). Never patch existing rows; re-approval
@@ -635,6 +671,8 @@ export default defineSchema({
 
 		// Creator (optional — unset on historical + system-created rows)
 		createdByUserId: v.optional(v.id("users")),
+		// Search digest maintained by lib/triggers.ts (see lib/searchText.ts).
+		searchText: v.optional(v.string()),
 	})
 		.index("by_org", ["orgId"])
 		.index("by_client", ["clientId"])
@@ -642,7 +680,11 @@ export default defineSchema({
 		.index("by_quote", ["quoteId"])
 		.index("by_status", ["orgId", "status"])
 		.index("by_due_date", ["orgId", "dueDate"])
-		.index("by_public_token", ["publicToken"]),
+		.index("by_public_token", ["publicToken"])
+		.searchIndex("search_text", {
+			searchField: "searchText",
+			filterFields: ["orgId"],
+		}),
 
 	// Invoice Line Items
 	invoiceLineItems: defineTable({
@@ -1459,6 +1501,9 @@ export default defineSchema({
 		// Per-step one-time prep (aggregate clear) already ran.
 		prepared: v.boolean(),
 		processed: v.number(),
+		// Rows actually written (processed minus no-op skips); jobs that only
+		// repair drift use it to prove idempotency.
+		written: v.optional(v.number()),
 		errors: v.array(v.string()),
 		startedAt: v.number(),
 		updatedAt: v.number(),
