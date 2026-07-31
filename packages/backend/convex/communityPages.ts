@@ -774,6 +774,7 @@ export const submitInterest = mutation({
 			date: nextDay.getTime(),
 			status: "pending",
 			type: "internal",
+			source: "public_form",
 			assigneeUserId: assigneeUserId || undefined,
 		});
 

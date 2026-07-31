@@ -59,6 +59,45 @@ function truncate(text: string | undefined | null, max: number) {
 	return text.length > max ? `${text.slice(0, max)}…` : text;
 }
 
+/**
+ * Fence text that an outsider wrote.
+ *
+ * Inbound email bodies, subjects and sender names arrive from anyone who can
+ * send mail; public community-form submissions land in task titles and
+ * descriptions. All of it flows into the model context alongside eight write
+ * tools, so it has to be visibly data rather than instruction. The agent
+ * INSTRUCTIONS block carries the matching rule: nothing inside this envelope
+ * can request a tool call.
+ *
+ * Inner occurrences of the delimiter are defanged so third-party text cannot
+ * close its own envelope and continue as trusted prose.
+ */
+const UNTRUSTED_OPEN = "<<<UNTRUSTED_DATA";
+const UNTRUSTED_CLOSE = "UNTRUSTED_DATA>>>";
+
+/** Fence a field only when its row came from the public community form. */
+export function untrustedIfPublic(
+	text: string | undefined | null,
+	source: string | undefined
+): string | undefined {
+	return source === "public_form" ? untrusted(text) : (text ?? undefined);
+}
+
+export function untrusted(
+	text: string | undefined | null
+): string | undefined {
+	if (!text) return undefined;
+	// Replaced with something visually unlike the real fence: a near-twin such as
+	// `UNTRUSTED_DATA_>>>` is one character off and can still read as a closing
+	// fence to a model doing fuzzy rather than exact matching.
+	const defanged = text
+		.split(UNTRUSTED_OPEN)
+		.join("[marker removed]")
+		.split(UNTRUSTED_CLOSE)
+		.join("[marker removed]");
+	return `${UNTRUSTED_OPEN}\n${defanged}\n${UNTRUSTED_CLOSE}`;
+}
+
 function capped<T>(items: T[], cap: number): Capped<T> {
 	return {
 		items: items.slice(0, cap),
@@ -696,8 +735,11 @@ export const getSchedule = createTool({
 			})),
 			tasks: events.tasks.map((t) => ({
 				id: t.id,
-				title: t.title,
-				description: truncate(t.description, TEXT_CAP),
+				title: untrustedIfPublic(t.title, t.source) ?? t.title,
+				description: untrustedIfPublic(
+					truncate(t.description, TEXT_CAP),
+					t.source
+				),
 				date: isoDay(t.startDate),
 				startTime: t.startTime,
 				endTime: t.endTime,
@@ -755,8 +797,11 @@ export const getTasks = createTool({
 		return capped(
 			tasks.map((t) => ({
 				id: t._id,
-				title: t.title,
-				description: truncate(t.description, TEXT_CAP),
+				title: untrustedIfPublic(t.title, t.source) ?? t.title,
+				description: untrustedIfPublic(
+					truncate(t.description, TEXT_CAP),
+					t.source
+				),
 				date: isoDay(t.date),
 				startTime: t.startTime,
 				endTime: t.endTime,
@@ -928,7 +973,7 @@ export const getClient = createTool({
 				leadSource: client.leadSource,
 				communicationPreference: client.communicationPreference,
 				tags: client.tags,
-				notes: truncate(client.notes, BODY_CAP),
+				notes: untrusted(truncate(client.notes, BODY_CAP)),
 			},
 			contacts: contacts.map((c) => ({
 				id: c._id,
@@ -1186,9 +1231,11 @@ export const searchClientEmails = createTool({
 		return capped(
 			emails.map((e) => ({
 				direction: e.direction,
-				subject: e.subject,
-				preview: e.messagePreview ?? truncate(e.messageBody, TEXT_CAP),
-				from: `${e.fromName} <${e.fromEmail}>`,
+				subject: untrusted(e.subject) ?? e.subject,
+				preview: untrusted(
+					e.messagePreview ?? truncate(e.messageBody, TEXT_CAP)
+				),
+				from: `${untrusted(e.fromName) ?? ""} <${e.fromEmail}>`,
 				to: `${e.toName} <${e.toEmail}>`,
 				status: e.status,
 				sentAt: isoInstant(e.sentAt),
@@ -1213,14 +1260,16 @@ export const getEmailThread = createTool({
 			found: true,
 			messages: thread.map((m) => ({
 				direction: m.direction,
-				subject: m.subject,
-				body: truncate(
-					(m.visibleText?.trim() ? m.visibleText : undefined) ??
-						m.textBody ??
-						m.messageBody,
-					BODY_CAP
+				subject: untrusted(m.subject) ?? m.subject,
+				body: untrusted(
+					truncate(
+						(m.visibleText?.trim() ? m.visibleText : undefined) ??
+							m.textBody ??
+							m.messageBody,
+						BODY_CAP
+					)
 				),
-				from: `${m.fromName} <${m.fromEmail}>`,
+				from: `${untrusted(m.fromName) ?? ""} <${m.fromEmail}>`,
 				to: `${m.toName} <${m.toEmail}>`,
 				status: m.status,
 				sentAt: isoInstant(m.sentAt),
@@ -1314,7 +1363,9 @@ export const getActivity = createTool({
 		return capped(
 			activities.map((a) => ({
 				type: a.activityType,
-				description: truncate(a.description, TEXT_CAP),
+				// resendReceiving writes `Received email: ${subject}` into these
+				// rows, so an inbound-mail activity carries external text.
+				description: untrusted(truncate(a.description, TEXT_CAP)),
 				timestamp: isoInstant(a._creationTime),
 				user: a.user?.name,
 			})),

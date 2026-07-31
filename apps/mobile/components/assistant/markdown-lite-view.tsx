@@ -3,6 +3,14 @@ import { Linking, StyleSheet, Text, View } from "react-native";
 import { fontFamily, type, useTokens } from "@/lib/theme";
 import { parseMarkdownLite, type InlineNode } from "@/lib/markdown-lite";
 
+const SAFE_LINK_SCHEMES = ["http://", "https://", "mailto:", "tel:"];
+
+/** Only let a model-authored link open if it uses a scheme we expect. */
+function isSafeLinkHref(href: string): boolean {
+	const normalized = href.trim().toLowerCase();
+	return SAFE_LINK_SCHEMES.some((scheme) => normalized.startsWith(scheme));
+}
+
 /** Renders markdown-lite's block AST as RN Text/View using theme tokens. */
 export function MarkdownLiteView({ text }: { text: string }) {
 	const t = useTokens();
@@ -90,6 +98,15 @@ function Inline({ nodes, t }: { nodes: InlineNode[]; t: ReturnType<typeof useTok
 					);
 				}
 				if (node.type === "link") {
+					// The assistant reads third-party text (inbound email, public
+					// community-form submissions), so a model-authored href is
+					// attacker influenced. Without a scheme check this openURL is an
+					// arbitrary-scheme deep link, not just an exfil tap.
+					if (!isSafeLinkHref(node.href)) {
+						return (
+							<Text key={i}>{node.text}</Text>
+						);
+					}
 					return (
 						<Text
 							key={i}

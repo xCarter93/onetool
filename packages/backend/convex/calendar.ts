@@ -114,6 +114,10 @@ export const getCalendarEvents = optionalUserQuery({
 				type: "task" as const,
 				title: task.title,
 				description: task.description,
+				// SEC-8: lets the assistant fence public-form rows. submitInterest
+				// dates them to the next business day, so the schedule is exactly
+				// where an injected task surfaces.
+				source: task.source,
 				startDate: task.date,
 				startTime: task.startTime,
 				endTime: task.endTime,

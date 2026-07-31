@@ -439,6 +439,10 @@ export default defineSchema({
 		clientId: v.optional(v.id("clients")), // Optional to support internal tasks
 		propertyId: v.optional(v.id("clientProperties")), // Which client property the work happens at
 		type: v.optional(v.union(v.literal("internal"), v.literal("external"))),
+		// SEC-8: set only by communityPages.submitInterest, an unauthenticated
+		// mutation, so the title/description are third-party text. The assistant
+		// fences these rows before they reach the model.
+		source: v.optional(v.literal("public_form")),
 
 		title: v.string(),
 		description: v.optional(v.string()),
