@@ -113,7 +113,7 @@ import type * as migrations_backfillTeamMessagesFromNotifications from "../migra
 import type * as migrations_fixInvoiceTotals from "../migrations/fixInvoiceTotals.js";
 import type * as migrations_geocodeAddresses from "../migrations/geocodeAddresses.js";
 import type * as migrations_initializeQuoteCounters from "../migrations/initializeQuoteCounters.js";
-import type * as migrations_populateAggregates from "../migrations/populateAggregates.js";
+import type * as migrations_rebuildAggregates from "../migrations/rebuildAggregates.js";
 import type * as migrations_revalidateStripeConnectAccounts from "../migrations/revalidateStripeConnectAccounts.js";
 import type * as migrations_seedServiceStatus from "../migrations/seedServiceStatus.js";
 import type * as notifications from "../notifications.js";
@@ -272,7 +272,7 @@ declare const fullApi: ApiFromModules<{
   "migrations/fixInvoiceTotals": typeof migrations_fixInvoiceTotals;
   "migrations/geocodeAddresses": typeof migrations_geocodeAddresses;
   "migrations/initializeQuoteCounters": typeof migrations_initializeQuoteCounters;
-  "migrations/populateAggregates": typeof migrations_populateAggregates;
+  "migrations/rebuildAggregates": typeof migrations_rebuildAggregates;
   "migrations/revalidateStripeConnectAccounts": typeof migrations_revalidateStripeConnectAccounts;
   "migrations/seedServiceStatus": typeof migrations_seedServiceStatus;
   notifications: typeof notifications;

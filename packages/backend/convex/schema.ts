@@ -1440,6 +1440,30 @@ export default defineSchema({
 		generation: v.number(),
 	}),
 
+	// Resume/stop state for long-running backfills (one row per job name).
+	// Not org-scoped: backfills sweep whole tables. `generation` fences stale
+	// scheduler chains when a job is restarted; flipping `status` to "paused"
+	// from the dashboard stops the chain at the next batch.
+	backfillState: defineTable({
+		name: v.string(),
+		status: v.union(
+			v.literal("running"),
+			v.literal("paused"),
+			v.literal("done"),
+			v.literal("failed")
+		),
+		generation: v.number(),
+		// Index into the job's step list; step-local pagination cursor.
+		step: v.number(),
+		cursor: v.union(v.string(), v.null()),
+		// Per-step one-time prep (aggregate clear) already ran.
+		prepared: v.boolean(),
+		processed: v.number(),
+		errors: v.array(v.string()),
+		startedAt: v.number(),
+		updatedAt: v.number(),
+	}).index("by_name", ["name"]),
+
 	// Workflow Automations - main automation definition
 	workflowAutomations: defineTable({
 		orgId: v.id("organizations"),
