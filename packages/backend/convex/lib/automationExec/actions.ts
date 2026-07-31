@@ -1205,8 +1205,8 @@ export async function executeCreateRecordAction(
 		// No acting user — createdByUserId left unset (automation-created).
 		switch (objectType) {
 			case "client":
-				// Portal links need an access id; the create mutation takes a
-				// caller-supplied one for retry-determinism, harmless to mint here.
+				// Portal links need an access id. Minted here for the same reason
+				// clients.create mints one (SEC-5): it is never caller-supplied.
 				payload.portalAccessId = crypto.randomUUID();
 				// eslint-disable-next-line @typescript-eslint/no-explicit-any
 				newId = await ctx.db.insert("clients", payload as any);

@@ -834,7 +834,15 @@ http.route({
 			typeof body.clientPortalId === "string" ? body.clientPortalId : "";
 		const email = typeof body.email === "string" ? body.email : "";
 		const ipHash = typeof body.ipHash === "string" ? body.ipHash : "";
-		if (!clientPortalId || !email || !email.includes("@") || !ipHash) {
+		// clientPortalId is unauthenticated input that becomes a rate-limiter key,
+		// so bound it: a real one is a 36-char UUID.
+		if (
+			!clientPortalId ||
+			clientPortalId.length > 200 ||
+			!email ||
+			!email.includes("@") ||
+			!ipHash
+		) {
 			return new Response(
 				JSON.stringify({ error: "Enter a valid email address." }),
 				{

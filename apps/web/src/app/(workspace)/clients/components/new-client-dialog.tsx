@@ -229,9 +229,6 @@ export function NewClientDialog({
 					communicationPreference: value.communicationPreference ?? undefined,
 					tags: value.tags.length > 0 ? value.tags : undefined,
 					notes: value.notes.trim() || undefined,
-					// Generated client-side: Convex retries mutations, so a server-side
-					// UUID would not be deterministic.
-					portalAccessId: crypto.randomUUID(),
 				});
 			} catch (error) {
 				console.error("Failed to create client:", error);

@@ -336,13 +336,8 @@ export function useImportWizard(options?: { embedded?: boolean; source?: 'client
 
 			for (const batch of batches) {
 				try {
-					// Generate portal access UUIDs client-side to keep the Convex mutation deterministic
-					const batchWithIds = batch.map((c) => ({
-						...c,
-						portalAccessId: crypto.randomUUID(),
-					}));
 					// eslint-disable-next-line @typescript-eslint/no-explicit-any
-					const batchResults = await bulkCreateClients({ clients: batchWithIds as any });
+					const batchResults = await bulkCreateClients({ clients: batch as any });
 					for (let j = 0; j < batchResults.length; j++) {
 						const r = batchResults[j];
 						allBackendResults.push({

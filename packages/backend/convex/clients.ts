@@ -73,6 +73,28 @@ async function listClientsForOrg(
 }
 
 /**
+ * Mint a portal access id.
+ *
+ * The probe is deliberately org-agnostic: `by_portal_access_id` is a global
+ * index and both readers (`portal/branding.ts`, `portal/otp.ts`) resolve with
+ * `.unique()`, which throws on two matches. A duplicate therefore takes the
+ * other tenant's portal offline entirely — shell, sign-in, and pay links.
+ */
+async function mintPortalAccessId(ctx: UserMutationCtx): Promise<string> {
+	for (let attempt = 0; attempt < 5; attempt++) {
+		const candidate = crypto.randomUUID();
+		const collision = await ctx.db
+			.query("clients")
+			.withIndex("by_portal_access_id", (q) =>
+				q.eq("portalAccessId", candidate)
+			)
+			.first();
+		if (!collision) return candidate;
+	}
+	throw new Error("Could not allocate a unique portal access id");
+}
+
+/**
  * Create a client with automatic orgId assignment
  */
 async function createClientWithOrg(
@@ -82,6 +104,12 @@ async function createClientWithOrg(
 	const clientData = {
 		...data,
 		orgId: ctx.orgId,
+		// Overrides whatever the caller sent. A caller-chosen id let anyone who
+		// had seen a victim org's portal link re-create it here and collide them
+		// off the air; the "retry determinism" the old arg claimed to buy is not
+		// real, since only the committed attempt's id persists and nothing has
+		// read it yet.
+		portalAccessId: await mintPortalAccessId(ctx),
 	};
 
 	return await ctx.db.insert("clients", clientData);
@@ -496,9 +524,9 @@ export const create = userMutation({
 		tags: v.optional(v.array(v.string())),
 		notes: v.optional(v.string()),
 
-		// Caller-supplied portal access UUID — generated client-side to keep this
-		// mutation deterministic (Convex retries mutations on conflict).
-		portalAccessId: v.string(),
+		// Accepted for call-site compatibility and ignored: the id is minted
+		// server-side by createClientWithOrg.
+		portalAccessId: v.optional(v.string()),
 	},
 	handler: async (ctx, args): Promise<ClientId> => {
 		await ctx.requireLevel("clients", "modify");
@@ -569,8 +597,8 @@ export const bulkCreate = userMutation({
 				tags: v.optional(v.array(v.string())),
 				notes: v.optional(v.string()),
 
-				// Caller-supplied portal access UUID — see clients.create for rationale.
-				portalAccessId: v.string(),
+				// Accepted and ignored — see clients.create.
+				portalAccessId: v.optional(v.string()),
 
 				// Optional nested sub-records for CSV import
 				contacts: v.optional(
@@ -916,7 +944,7 @@ export const revokePortalAccess = userMutation({
 			}
 		}
 
-		const portalAccessId = crypto.randomUUID();
+		const portalAccessId = await mintPortalAccessId(ctx);
 		await ctx.db.patch(args.id, { portalAccessId });
 		return { portalAccessId };
 	},
