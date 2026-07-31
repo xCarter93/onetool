@@ -22,6 +22,8 @@ import {
 	evaluateReportFilters,
 	type ReportFilters,
 } from "./lib/reportFilters";
+import type { PermissionObject } from "./lib/permissionKeys";
+import { denyPermission, getEffectivePermissions } from "./lib/permissions";
 
 /**
  * Report Data Queries
@@ -1139,6 +1141,65 @@ async function runReportByConfig(
 // Public export
 // ============================================================================
 
+/**
+ * The permission object a report over each entity reads from.
+ *
+ * `activities` is absent on purpose: an activity row can carry ANY entity type,
+ * including the `user` rows (member_permissions_updated) that activities.ts
+ * restricts to admins, so there is no single object that covers it.
+ */
+const REPORT_PERMISSION_OBJECT: Record<
+	Exclude<ReportEntityType, "activities">,
+	PermissionObject
+> = {
+	clients: "clients",
+	projects: "projects",
+	tasks: "tasks",
+	quotes: "quotes",
+	invoices: "invoices",
+};
+
+/**
+ * Gate a report on the entity it reads, not just on `reports:view`.
+ *
+ * `reports:view` alone was the only check, which made it a grant escalation:
+ * it reads in the UI as "let them see reports" but also handed over unscoped
+ * raw reads of clients, projects, tasks, quotes, invoices and activities —
+ * defeating the very grants an admin had deliberately withheld. Detail reports
+ * return raw document fields.
+ *
+ * allRecords is required, not merely `view`, for the same reason the automation
+ * engine requires it: a report is an org-wide scan by construction (scanOrgTable
+ * pages `by_org` with a 10,000-row ceiling and no record filter), so a caller
+ * who can only see their own assignments must not be able to run one. Owners and
+ * admins resolve to "all" grants and are unaffected.
+ */
+async function requireReportEntityAccess(
+	ctx: Parameters<typeof getEffectivePermissions>[0] & {
+		requireLevel: (o: PermissionObject, l: "view") => Promise<void>;
+		requireRecordScope: (
+			o: PermissionObject,
+			isInScope: () => boolean | Promise<boolean>
+		) => Promise<void>;
+	},
+	entityType: ReportEntityType
+): Promise<void> {
+	if (entityType === "activities") {
+		// The audit trail spans every object type and includes permission-change
+		// rows; only owners/admins ("all") may report over it.
+		const grants = await getEffectivePermissions(ctx);
+		if (grants !== "all") {
+			denyPermission({ object: "reports", level: "view", detail: "activities report" });
+		}
+		return;
+	}
+	const object = REPORT_PERMISSION_OBJECT[entityType];
+	await ctx.requireLevel(object, "view");
+	// Denies unless the caller holds allRecords; requireRecordScope short-circuits
+	// for hasAllRecords and otherwise runs this predicate.
+	await ctx.requireRecordScope(object, () => false);
+}
+
 export const executeReport = optionalUserQuery({
 	args: {
 		entityType: v.union(
@@ -1161,6 +1222,7 @@ export const executeReport = optionalUserQuery({
 		const orgId = ctx.orgId;
 
 		const entityType = args.entityType as ReportEntityType;
+		await requireReportEntityAccess(ctx, entityType);
 		const filters = args.filters as ReportFilters | undefined;
 		const aggregation = args.aggregation as Aggregation | undefined;
 		const detail = args.detail as DetailArgs | undefined;

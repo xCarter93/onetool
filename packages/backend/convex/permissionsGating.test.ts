@@ -131,6 +131,209 @@ describe("granular RBAC domain-function gating", () => {
 		expect(rows).toHaveLength(1);
 	});
 
+	// ── 1b. SEC-6: reports:view must not escalate into raw entity reads ──
+
+	// reports isn't in DEFAULT_MEMBER_PERMISSIONS, so this is grant escalation,
+	// not a default-member leak: "let them see reports" silently also handed
+	// over unscoped raw rows of every entity the admin had withheld.
+	const reportArgs = (entityType: "clients" | "activities") => ({
+		entityType,
+		dateRange: {},
+		aggregation: { op: "count" as const },
+	});
+
+	it("enforced: reports:view alone does NOT grant a clients report (SEC-6)", async () => {
+		process.env.PERMISSIONS_ENFORCE = "true";
+		const { org, member, asMember } = await seedOrgWithMember(
+			"org_sec6_1",
+			"user_sec6_1"
+		);
+		await grantMemberPermissions(org.orgId, member.userId, {
+			reports: { level: "view" },
+		});
+
+		let caught: unknown;
+		try {
+			await asMember.query(api.reportData.executeReport, reportArgs("clients"));
+		} catch (e) {
+			caught = e;
+		}
+		expect(caught).toBeInstanceOf(ConvexError);
+		expect(parseConvexErrorData(caught)).toMatchObject({
+			code: "FORBIDDEN",
+			object: "clients",
+		});
+	});
+
+	it("enforced: a record-scoped clients:view grant is still not enough (SEC-6)", async () => {
+		process.env.PERMISSIONS_ENFORCE = "true";
+		const { org, member, asMember } = await seedOrgWithMember(
+			"org_sec6_2",
+			"user_sec6_2"
+		);
+		// The report scan pages by_org with no record filter, so a member who can
+		// only see their own assignments must not be able to run one at all.
+		await grantMemberPermissions(org.orgId, member.userId, {
+			reports: { level: "view" },
+			clients: { level: "view" },
+		});
+
+		let caught: unknown;
+		try {
+			await asMember.query(api.reportData.executeReport, reportArgs("clients"));
+		} catch (e) {
+			caught = e;
+		}
+		expect(caught).toBeInstanceOf(ConvexError);
+		expect(parseConvexErrorData(caught)).toMatchObject({
+			code: "FORBIDDEN",
+			object: "clients",
+			scope: true,
+		});
+	});
+
+	it("enforced: reports:view + clients:view with allRecords succeeds (SEC-6)", async () => {
+		process.env.PERMISSIONS_ENFORCE = "true";
+		const { org, member, asMember } = await seedOrgWithMember(
+			"org_sec6_3",
+			"user_sec6_3"
+		);
+		await grantMemberPermissions(org.orgId, member.userId, {
+			reports: { level: "view" },
+			clients: { level: "view", allRecords: true },
+		});
+
+		const result = await asMember.query(
+			api.reportData.executeReport,
+			reportArgs("clients")
+		);
+		expect(result).toBeDefined();
+	});
+
+	it("enforced: an activities report is admin-only even with every entity grant (SEC-6)", async () => {
+		process.env.PERMISSIONS_ENFORCE = "true";
+		const { org, member, asMember } = await seedOrgWithMember(
+			"org_sec6_4",
+			"user_sec6_4"
+		);
+		// Activity rows span every entity type and include the `user` rows
+		// (member_permissions_updated) that activities.ts restricts to admins.
+		await grantMemberPermissions(org.orgId, member.userId, {
+			reports: { level: "view" },
+			clients: { level: "view", allRecords: true },
+			projects: { level: "view", allRecords: true },
+			tasks: { level: "view", allRecords: true },
+			quotes: { level: "view", allRecords: true },
+			invoices: { level: "view", allRecords: true },
+		});
+
+		let caught: unknown;
+		try {
+			await asMember.query(
+				api.reportData.executeReport,
+				reportArgs("activities")
+			);
+		} catch (e) {
+			caught = e;
+		}
+		expect(caught).toBeInstanceOf(ConvexError);
+		expect(parseConvexErrorData(caught)).toMatchObject({ code: "FORBIDDEN" });
+	});
+
+	it("enforced: an admin can still run both reports (SEC-6 does not break admins)", async () => {
+		process.env.PERMISSIONS_ENFORCE = "true";
+		const { asAdmin } = await seedOrgWithMember("org_sec6_5", "user_sec6_5");
+		expect(
+			await asAdmin.query(api.reportData.executeReport, reportArgs("clients"))
+		).toBeDefined();
+		expect(
+			await asAdmin.query(api.reportData.executeReport, reportArgs("activities"))
+		).toBeDefined();
+	});
+
+	// ── 1c. SEC-7: dashboard totals are org-wide, so they need allRecords ──
+
+	it("enforced: a record-scoped member is denied getHomeStats (SEC-7)", async () => {
+		process.env.PERMISSIONS_ENFORCE = "true";
+		const { org, member, asMember } = await seedOrgWithMember(
+			"org_sec7_1",
+			"user_sec7_1"
+		);
+		// Every grant present, but assigned-records only. The figures are org
+		// totals from org-keyed aggregates, so `view` alone must not suffice.
+		await grantMemberPermissions(org.orgId, member.userId, {
+			clients: { level: "view" },
+			projects: { level: "view" },
+			quotes: { level: "view" },
+			invoices: { level: "view" },
+			tasks: { level: "view" },
+		});
+
+		let caught: unknown;
+		try {
+			await asMember.query(api.homeStats.getHomeStats, {});
+		} catch (e) {
+			caught = e;
+		}
+		expect(caught).toBeInstanceOf(ConvexError);
+		expect(parseConvexErrorData(caught)).toMatchObject({
+			code: "FORBIDDEN",
+			scope: true,
+		});
+	});
+
+	it("enforced: the same member with allRecords gets the stats (SEC-7)", async () => {
+		process.env.PERMISSIONS_ENFORCE = "true";
+		const { org, member, asMember } = await seedOrgWithMember(
+			"org_sec7_2",
+			"user_sec7_2"
+		);
+		await grantMemberPermissions(org.orgId, member.userId, {
+			clients: { level: "view", allRecords: true },
+			projects: { level: "view", allRecords: true },
+			quotes: { level: "view", allRecords: true },
+			invoices: { level: "view", allRecords: true },
+			tasks: { level: "view", allRecords: true },
+		});
+
+		expect(await asMember.query(api.homeStats.getHomeStats, {})).toBeDefined();
+	});
+
+	it("enforced: a scoped member is denied getPendingTasksCount (SEC-7)", async () => {
+		process.env.PERMISSIONS_ENFORCE = "true";
+		const { org, member, asMember } = await seedOrgWithMember(
+			"org_sec7_3",
+			"user_sec7_3"
+		);
+		// tasks:modify (assigned-only) is the DEFAULT member grant, so this is
+		// the shape a plain member actually has.
+		await grantMemberPermissions(org.orgId, member.userId, {
+			tasks: { level: "modify" },
+		});
+
+		let caught: unknown;
+		try {
+			await asMember.query(api.homeStats.getPendingTasksCount, {});
+		} catch (e) {
+			caught = e;
+		}
+		expect(caught).toBeInstanceOf(ConvexError);
+		expect(parseConvexErrorData(caught)).toMatchObject({
+			code: "FORBIDDEN",
+			object: "tasks",
+			scope: true,
+		});
+	});
+
+	it("enforced: an admin still gets dashboard stats (SEC-7 does not break admins)", async () => {
+		process.env.PERMISSIONS_ENFORCE = "true";
+		const { asAdmin } = await seedOrgWithMember("org_sec7_4", "user_sec7_4");
+		expect(await asAdmin.query(api.homeStats.getHomeStats, {})).toBeDefined();
+		expect(
+			await asAdmin.query(api.homeStats.getPendingTasksCount, {})
+		).toBeDefined();
+	});
+
 	// ── 2. Read grant + derived scope: clients.list ──────────────────────
 
 	it("enforced: member with a clients view grant sees only derived-scope clients; allRecords sees all", async () => {
