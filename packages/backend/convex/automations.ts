@@ -47,6 +47,12 @@ import {
 } from "./lib/formula";
 import { ENTITY_PERMISSION_OBJECT } from "./activities";
 import {
+	canReadExecutionDetail,
+	computeLoopBodyScopeTypes,
+	requireDefinitionObjectAccess,
+	requireExecutionReadAccess,
+} from "./lib/automationExec/authz";
+import {
 	RELATED_OBJECTS,
 	RELATION_FIELD,
 	USER_REF_RECIPIENT_FIELDS,
@@ -679,40 +685,6 @@ function validateCreateRecordAction(
  * Full structural validation of a workflow definition. Used on every write;
  * activation additionally requires at least one node (see validateForActivation).
  */
-/**
- * Map loop-body node ids to the object type their loop iterates (the source
- * fetch node's objectType, or undefined when unresolvable). Bounded by a
- * visited set so it terminates even on cyclic input (cycles are rejected
- * separately).
- */
-function computeLoopBodyScopeTypes(
-	nodes: NodeArg[]
-): Map<string, AutomationObjectType | undefined> {
-	const byId = new Map(nodes.map((n) => [n.id, n]));
-	const bodyScopeType = new Map<string, AutomationObjectType | undefined>();
-	for (const loop of nodes) {
-		if (loop.config.kind !== "loop") continue;
-		const fetchNode = byId.get(loop.config.sourceNodeId);
-		const fetchType =
-			fetchNode?.config.kind === "fetch_records"
-				? fetchNode.config.objectType
-				: undefined;
-		const stack =
-			loop.bodyStartNodeId === undefined ? [] : [loop.bodyStartNodeId];
-		const seen = new Set<string>();
-		while (stack.length > 0) {
-			const id = stack.pop()!;
-			if (seen.has(id)) continue;
-			seen.add(id);
-			bodyScopeType.set(id, fetchType);
-			const member = byId.get(id);
-			if (member?.nextNodeId !== undefined) stack.push(member.nextNodeId);
-			if (member?.elseNodeId !== undefined) stack.push(member.elseNodeId);
-			if (member?.mergeNodeId !== undefined) stack.push(member.mergeNodeId);
-		}
-	}
-	return bodyScopeType;
-}
 
 /**
  * Ceiling on any single string inside a node config (template bodies included).
@@ -1469,6 +1441,12 @@ export const create = userMutation({
 		} else {
 			validateWorkflowDefinition(args.trigger, args.nodes);
 		}
+		await requireDefinitionObjectAccess(
+			ctx,
+			args.trigger,
+			args.nodes,
+			args.formulas
+		);
 		validateFormulas(args.formulas, args.trigger);
 
 		const userOrgId = await getCurrentUserOrgId(ctx);
@@ -1546,6 +1524,22 @@ export const update = userMutation({
 			validateWorkflowDefinition(nextTrigger, nextNodes);
 		}
 
+		// Gate on any change that can alter which object types the definition
+		// touches — including a formulas-only patch, since a formula is a route
+		// to a relation. Mirrors validateFormulas' condition below.
+		if (
+			updates.trigger !== undefined ||
+			updates.nodes !== undefined ||
+			updates.formulas !== undefined
+		) {
+			await requireDefinitionObjectAccess(
+				ctx,
+				nextTrigger,
+				(updates.nodes ?? automation.nodes) as NodeArg[],
+				updates.formulas ?? automation.formulas
+			);
+		}
+
 		// Also re-check stored formulas when the trigger changes: switching to a
 		// schedule can strand a formula that reads the trigger record.
 		if (updates.formulas !== undefined || updates.trigger !== undefined) {
@@ -1581,6 +1575,12 @@ export const publish = userMutation({
 		await requireAutomationAccess(ctx, automation.orgId, user._id);
 
 		validateForActivation(automation.trigger, automation.nodes as NodeArg[]);
+		await requireDefinitionObjectAccess(
+			ctx,
+			automation.trigger,
+			automation.nodes as NodeArg[],
+			automation.formulas
+		);
 		validateFormulas(automation.formulas, automation.trigger);
 
 		await ctx.db.patch(args.id, {
@@ -1631,6 +1631,12 @@ export const toggleActive = userMutation({
 			// back on and fail every tick with nothing to stop it.
 			const snapshot = automation.publishedSnapshot;
 			validateForActivation(snapshot.trigger, snapshot.nodes as NodeArg[]);
+			await requireDefinitionObjectAccess(
+				ctx,
+				snapshot.trigger,
+				snapshot.nodes as NodeArg[],
+				snapshot.formulas
+			);
 			validateFormulas(snapshot.formulas, snapshot.trigger);
 
 			await ctx.db.patch(args.id, {
@@ -1643,6 +1649,12 @@ export const toggleActive = userMutation({
 
 		// Draft with no snapshot: publishing is the only way to go live.
 		validateForActivation(automation.trigger, automation.nodes as NodeArg[]);
+		await requireDefinitionObjectAccess(
+			ctx,
+			automation.trigger,
+			automation.nodes as NodeArg[],
+			automation.formulas
+		);
 		validateFormulas(automation.formulas, automation.trigger);
 		await ctx.db.patch(args.id, {
 			status: "active",
@@ -1814,7 +1826,11 @@ export const getExecutions = userQuery({
 	): Promise<ExecutionDoc[] | PaginationResult<ExecutionDoc>> => {
 		await ctx.requireLevel("automations", "view");
 		// Validate access to the automation (org-scoped).
-		await getAutomationOrThrow(ctx, args.automationId);
+		const automation = await getAutomationOrThrow(ctx, args.automationId);
+		// Execution rows carry per-node input/output snapshots interpolated from
+		// the records the automation touched, so automations:view alone is not
+		// enough to read them.
+		await requireExecutionReadAccess(ctx, automation);
 
 		const status = args.status;
 		const base = ctx.db
@@ -1871,11 +1887,56 @@ export const listRuns = userQuery({
 		const page = await ordered.paginate(args.paginationOpts);
 
 		const resolveName = makeAutomationNameResolver(ctx, orgId);
+		// Per-automation detail verdict, memoized across the page. Throwing would
+		// take the whole table down on the first automation the caller isn't
+		// granted, so ungranted rows keep their status/timing metadata (fine under
+		// automations:view) and lose the per-node snapshots instead.
+		const detailAllowed = new Map<Id<"workflowAutomations">, boolean>();
+		const canReadDetail = async (
+			automationId: Id<"workflowAutomations">
+		): Promise<boolean> => {
+			const cached = detailAllowed.get(automationId);
+			if (cached !== undefined) return cached;
+			const automation = await ctx.db.get(automationId);
+			const allowed =
+				automation !== null && automation.orgId === orgId
+					? await canReadExecutionDetail(ctx, automation)
+					: false;
+			detailAllowed.set(automationId, allowed);
+			return allowed;
+		};
+
 		const rows: RunRow[] = [];
 		for (const execution of page.page) {
 			const { activeMs, wallMs } = deriveDurations(execution);
+			const allowed = await canReadDetail(execution.automationId);
+			const {
+				nodesExecuted,
+				testCursor,
+				loopSummary,
+				triggerRecord,
+				error,
+				...metadata
+			} = execution;
 			rows.push({
-				...execution,
+				...(allowed
+					? execution
+					: {
+							...metadata,
+							nodesExecuted: [],
+							// Loop summaries carry per-record labels in their errors.
+							loopSummary: loopSummary?.map((summary) => ({
+								...summary,
+								errors: [],
+							})),
+							// `label` is a record display name (company, quote title).
+							triggerRecord: triggerRecord && {
+								entityType: triggerRecord.entityType,
+								entityId: triggerRecord.entityId,
+							},
+							// Failure messages interpolate resolved record values.
+							error: error === undefined ? undefined : "Hidden",
+						}),
 				automationName: await resolveName(execution.automationId),
 				activeMs,
 				wallMs,

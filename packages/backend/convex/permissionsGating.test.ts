@@ -381,8 +381,33 @@ describe("granular RBAC domain-function gating", () => {
 			level: "modify",
 		});
 
+		// SEC-9: automations:modify alone is no longer enough. This definition
+		// writes client.status, so authoring it also requires clients:modify —
+		// otherwise "may edit automations" is a write primitive over every
+		// record type the executor can reach.
 		await grantMemberPermissions(org.orgId, member.userId, {
 			automations: { level: "modify" },
+		});
+
+		let caughtWithoutClients: unknown;
+		try {
+			await asMember.mutation(api.automations.create, {
+				name: "Writes clients without a clients grant",
+				trigger: automationTrigger,
+				nodes: [automationActionNode("act-1")],
+			});
+		} catch (e) {
+			caughtWithoutClients = e;
+		}
+		expect(parseConvexErrorData(caughtWithoutClients)).toMatchObject({
+			code: "FORBIDDEN",
+			object: "clients",
+			level: "modify",
+		});
+
+		await grantMemberPermissions(org.orgId, member.userId, {
+			automations: { level: "modify" },
+			clients: { level: "modify", allRecords: true },
 		});
 
 		const memberCreated = await asMember.mutation(api.automations.create, {

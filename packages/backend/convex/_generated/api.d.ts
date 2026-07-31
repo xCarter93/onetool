@@ -51,6 +51,7 @@ import type * as lib_activities from "../lib/activities.js";
 import type * as lib_assistantShared from "../lib/assistantShared.js";
 import type * as lib_auth from "../lib/auth.js";
 import type * as lib_automationExec_actions from "../lib/automationExec/actions.js";
+import type * as lib_automationExec_authz from "../lib/automationExec/authz.js";
 import type * as lib_automationExec_dryRun from "../lib/automationExec/dryRun.js";
 import type * as lib_automationExec_externalEffects from "../lib/automationExec/externalEffects.js";
 import type * as lib_automationExec_fetch from "../lib/automationExec/fetch.js";
@@ -211,6 +212,7 @@ declare const fullApi: ApiFromModules<{
   "lib/assistantShared": typeof lib_assistantShared;
   "lib/auth": typeof lib_auth;
   "lib/automationExec/actions": typeof lib_automationExec_actions;
+  "lib/automationExec/authz": typeof lib_automationExec_authz;
   "lib/automationExec/dryRun": typeof lib_automationExec_dryRun;
   "lib/automationExec/externalEffects": typeof lib_automationExec_externalEffects;
   "lib/automationExec/fetch": typeof lib_automationExec_fetch;

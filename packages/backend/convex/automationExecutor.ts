@@ -4,7 +4,17 @@ import { v } from "convex/values";
 import { Doc, Id } from "./_generated/dataModel";
 import { internal } from "./_generated/api";
 import { ENTITY_PERMISSION_OBJECT } from "./activities";
-import { systemMutation, userMutation, userQuery } from "./lib/factories";
+import {
+	requireDefinitionObjectAccess,
+	requireExecutionReadAccess,
+} from "./lib/automationExec/authz";
+import {
+	systemMutation,
+	userMutation,
+	userQuery,
+	type ActorScope,
+	type UserMutationCtx,
+} from "./lib/factories";
 import { computeNextRunAt } from "./lib/schedule";
 import { orgHasPremiumPlan, userHasPremiumOverride } from "./lib/permissions";
 import { rateLimiter } from "./rateLimits";
@@ -30,6 +40,7 @@ import type {
 import {
 	WALK_SCAN_BUDGET,
 	takeOrgPage,
+	type OrgRow,
 	getObject,
 	hydrateRelations,
 	hydrateTriggerRelations,
@@ -536,7 +547,15 @@ export const dispatchScheduledAutomations = internalMutation({
 
 
 /**
- * Execute a single automation workflow
+ * Execute a single automation workflow.
+ *
+ * The executor is a trusted org-level principal by design: it is a
+ * systemMutation with no user identity, and event-driven/scheduled runs have no
+ * initiating user at all, so the caller's grants cannot be consulted here. All
+ * per-user authorization therefore happens at the entry points — see
+ * `requireTargetRecordAccess`, which every caller-chosen record must pass
+ * before a run is created. Anything that lets a user reach this without that
+ * gate is a privilege escalation.
  */
 export const executeAutomation = systemMutation({
 	args: {
@@ -1157,6 +1176,64 @@ export const cleanupOldExecutions = internalMutation({
 });
 
 
+/** Bounded paging for the run picker; 5 x 100 rows is ample to find 10. */
+const SAMPLE_RECORD_PASSES = 5;
+
+/** A record type an automation can be triggered on / run against. */
+type TriggerableObjectType = Extract<
+	ObjectType,
+	"client" | "project" | "quote" | "invoice" | "task"
+>;
+
+/**
+ * Gate a caller-chosen automation target the way each entity's own module gates
+ * it: object-level `view`, then the per-entity record scope. `getObject` proves
+ * only that the row is in the caller's org, so without this `automations:modify`
+ * confers org-wide read over every record type — and, through startManualRun,
+ * write as well, since executeAutomation runs as a systemMutation with no user
+ * identity in ctx and nothing downstream can consult the caller's grants.
+ */
+async function requireTargetRecordAccess(
+	ctx: UserMutationCtx,
+	objectType: TriggerableObjectType,
+	record: Record<string, unknown>
+): Promise<void> {
+	const permissionObject = ENTITY_PERMISSION_OBJECT[objectType];
+	if (!permissionObject) {
+		throw new Error(`Unsupported automation record type: ${objectType}`);
+	}
+	await ctx.requireLevel(permissionObject, "view");
+	await ctx.requireRecordScope(permissionObject, async () =>
+		inActorScope(objectType, record, await ctx.actorScope(), ctx.user._id)
+	);
+}
+
+/** Per-entity record-scope rule, mirroring each CRUD module's own predicate. */
+function inActorScope(
+	objectType: TriggerableObjectType,
+	record: Record<string, unknown>,
+	scope: ActorScope,
+	userId: Id<"users">
+): boolean {
+	switch (objectType) {
+		case "client":
+			return scope.clientIds.has(record._id as Id<"clients">);
+		case "project":
+			return (
+				(record.assignedUserIds as Id<"users">[] | undefined)?.includes(
+					userId
+				) ?? false
+			);
+		case "quote":
+		case "invoice":
+			return record.projectId
+				? scope.projectIds.has(record.projectId as Id<"projects">)
+				: scope.clientIds.has(record.clientId as Id<"clients">);
+		case "task":
+			return record.assigneeUserId === userId;
+	}
+}
+
 /**
  * Start a dry-run test of an automation's working copy against an optional
  * sample record. Computes the plan, then schedules the live reveal.
@@ -1180,6 +1257,16 @@ export const startTestRun = userMutation({
 		if (!automation || automation.orgId !== ctx.orgId) {
 			throw new Error("Automation not found");
 		}
+
+		// The definition itself is gated too, not just the chosen record: a
+		// definition authored before this rule (or by an admin) can fetch,
+		// aggregate and write object types the runner has no grant on.
+		await requireDefinitionObjectAccess(
+			ctx,
+			automation.trigger as AutomationTrigger,
+			automation.nodes,
+			automation.formulas
+		);
 
 		const trigger = automation.trigger;
 		const triggerObjectType = triggerRecordObjectType(
@@ -1213,6 +1300,11 @@ export const startTestRun = userMutation({
 			if (!obj) {
 				throw new Error("The selected record could not be found");
 			}
+			await requireTargetRecordAccess(
+				ctx,
+				args.record.entityType,
+				obj as Record<string, unknown>
+			);
 			triggerObject = obj as Record<string, unknown>;
 			// Simulate a status change so status_changed conditions/variables
 			// reflect the tested transition rather than the record's live status.
@@ -1419,6 +1511,18 @@ export const startManualRun = userMutation({
 			throw new Error("Publish this automation before running it manually");
 		}
 
+		const {
+			trigger: publishedTrigger,
+			nodes: publishedNodes,
+			formulas: publishedFormulas,
+		} = executableDefinition(automation);
+		await requireDefinitionObjectAccess(
+			ctx,
+			publishedTrigger as AutomationTrigger,
+			publishedNodes,
+			publishedFormulas
+		);
+
 		const { trigger } = executableDefinition(automation);
 		const objectType = triggerRecordObjectType(
 			trigger as AutomationTrigger
@@ -1444,6 +1548,11 @@ export const startManualRun = userMutation({
 			if (!obj) {
 				throw new Error("The selected record could not be found");
 			}
+			await requireTargetRecordAccess(
+				ctx,
+				args.record.entityType,
+				obj as Record<string, unknown>
+			);
 			objType = args.record.entityType;
 			objectId = args.record.entityId;
 			triggerRecord = {
@@ -1514,6 +1623,17 @@ export const getExecution = userQuery({
 		await ctx.requireLevel("automations", "view");
 		const execution = await ctx.db.get(args.executionId);
 		if (!execution || execution.orgId !== ctx.orgId) return null;
+
+		// A run row carries per-node input/output snapshots of the records it
+		// touched. projectThroughRegistry keeps unregistered fields out of the
+		// condition embed, but interpolated `{{...}}` values can still surface
+		// record data, so reading a run requires the same object grants as
+		// authoring or running it — not `automations:view` alone.
+		// Fail closed on an orphaned row: `remove` deletes executions in scheduled
+		// batches, so rows outlive their automation across that window.
+		const automation = await ctx.db.get(execution.automationId);
+		if (!automation || automation.orgId !== ctx.orgId) return null;
+		await requireExecutionReadAccess(ctx, automation);
 		return execution;
 	},
 });
@@ -1552,7 +1672,29 @@ export const getSampleRecords = userQuery({
 		if (!permissionObject) return [];
 		await ctx.requireLevel(permissionObject, "view");
 
-		const rows = await takeOrgPage(ctx, objectType, ctx.orgId, undefined, 10);
+		// ...and record scope applies as it would on the entity's own list page.
+		// Page rather than filtering a single fetch: a scoped member whose newest
+		// 100 records are all out of scope would otherwise get an empty picker
+		// with no way to test against a record they do own.
+		const rows: OrgRow[] = [];
+		let before: number | undefined;
+		for (let pass = 0; pass < SAMPLE_RECORD_PASSES && rows.length < 10; pass++) {
+			const page = await takeOrgPage(ctx, objectType, ctx.orgId, before, 100);
+			if (page.length === 0) break;
+			const visible = await ctx.applyReadScope(
+				permissionObject,
+				page,
+				(row, scope) =>
+					inActorScope(
+						objectType as TriggerableObjectType,
+						row,
+						scope,
+						ctx.user._id
+					)
+			);
+			rows.push(...visible.slice(0, 10 - rows.length));
+			before = page[page.length - 1]._creationTime;
+		}
 		return rows.map((row) => ({
 			entityType: objectType as ObjectType,
 			entityId: String(row._id),

@@ -44,7 +44,7 @@ const FETCH_SCAN_BATCH = 500;
  */
 export const WALK_SCAN_BUDGET = 10_000;
 
-type OrgRow = Record<string, unknown> & { _creationTime: number };
+export type OrgRow = Record<string, unknown> & { _creationTime: number };
 
 /**
  * One page of an org's rows from the by_org index, newest first, starting

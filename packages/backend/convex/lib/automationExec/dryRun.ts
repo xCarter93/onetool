@@ -8,7 +8,11 @@ import {
 	type VariableScope,
 } from "../conditionEval";
 import { collectRelationRefs, type RelationRefs } from "../relationRefs";
-import { getFieldDefinition, isCreatableObjectType } from "../fieldRegistry";
+import {
+	FIELD_REGISTRY,
+	getFieldDefinition,
+	isCreatableObjectType,
+} from "../fieldRegistry";
 import { orgHasPremiumPlan, userHasPremiumOverride } from "../permissions";
 import { AUTOMATION_EMAIL_DAILY_CAP, rateLimiter } from "../../rateLimits";
 import { getMembership } from "../memberships";
@@ -615,6 +619,29 @@ async function dryExecuteAction(
 	}
 }
 
+/**
+ * Snapshot only registry-known fields. This object is persisted on
+ * workflowExecutions and served by getExecution, which gates on
+ * automations:view alone — so a raw document would hand over every field with
+ * no registry entry, including clients.portalAccessId and the quote/invoice
+ * publicToken (portal URL secrets).
+ */
+function projectThroughRegistry(
+	record: Record<string, unknown>,
+	recordType: AutomationObjectType | undefined
+): Record<string, unknown> {
+	if (!recordType) return {};
+	const allowed = new Set(FIELD_REGISTRY[recordType].map((f) => f.key));
+	const out: Record<string, unknown> = {};
+	for (const key of ["_id", "_creationTime"]) {
+		if (key in record) out[key] = record[key];
+	}
+	for (const [key, value] of Object.entries(record)) {
+		if (allowed.has(key)) out[key] = value;
+	}
+	return out;
+}
+
 /** Dry evaluation of a per-record node (condition/action). */
 async function dryExecuteNode(
 	ctx: MutationCtx,
@@ -666,7 +693,11 @@ async function dryExecuteNode(
 			success: true,
 			conditionMet,
 			output: { conditionMet },
-			input: { record, logic: config.logic, groups: config.groups },
+			input: {
+				record: projectThroughRegistry(record, recordType),
+				logic: config.logic,
+				groups: config.groups,
+			},
 		};
 	}
 	if (config?.kind === "action") {
