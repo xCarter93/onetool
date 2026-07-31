@@ -1526,10 +1526,14 @@ export const listSkus = createTool({
 // - Whitelist editable fields in inputSchema; never pass input through.
 // - Dates come in as YYYY-MM-DD and are stored UTC-midnight (dayStartMs).
 // - Return WriteResult, catching mutation validation errors as data.
-// - Consequential, externally visible actions (e.g. anything that emails a
-//   client) must set needsApproval — none of the current writes qualify.
-//   Note: status changes DO fire emitStatusChangeEvent and can trigger org
-//   automations (PRD risk R3, shipped ungated by decision 2026-07-03).
+// - No write requires human-in-the-loop approval. If the user asks for a record
+//   to be created or updated, the agent just does it. Decided 2026-07-03 and
+//   reaffirmed 2026-07-31 against the SEC-8 indirect-injection review, which
+//   proposed gating the three writes whose status changes fire
+//   emitStatusChangeEvent into the automation engine. Revisit only if that
+//   fan-out proves to be a real problem; the bound in the meantime is that
+//   every write wraps a userMutation, so org isolation and RBAC still apply
+//   and an injected chain can only do what the acting user already could.
 // ---------------------------------------------------------------------------
 
 const taskStatus = z.enum(["pending", "in-progress", "completed", "cancelled"]);
