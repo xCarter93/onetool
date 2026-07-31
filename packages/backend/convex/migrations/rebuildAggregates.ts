@@ -32,8 +32,8 @@ import {
  *      current batch; resumeAggregateRebuild picks up at the same cursor
  *
  * WARNING: aggregates read low/empty while a rebuild is in flight. Anything
- * aggregate-backed (homeStatsOptimized) shows depressed numbers until the job
- * reports "done"; run it during a quiet window.
+ * aggregate-backed (homeStats.getHomeStats) shows depressed numbers until the
+ * job reports "done"; run it during a quiet window.
  */
 
 const JOB_NAME = "aggregates";

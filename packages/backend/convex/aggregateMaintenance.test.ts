@@ -51,7 +51,7 @@ describe("aggregate maintenance", () => {
 
 	// ---------------------------------------------------------------- readers
 	// All reads go straight at the aggregate btree (same call shape
-	// homeStatsOptimized.getHomeStats uses), so nothing here can be satisfied
+	// homeStats.getHomeStats uses), so nothing here can be satisfied
 	// by the documents table alone.
 
 	const invoiceRevenueFor = (orgId: Id<"organizations">, status: string) =>
@@ -182,7 +182,7 @@ describe("aggregate maintenance", () => {
 			expect(await invoiceRevenueFor(orgId, "paid")).toBe(0);
 			expect(await invoiceCountFor(orgId, "paid")).toBe(0);
 
-			// Window used by homeStatsOptimized for "revenue this month".
+			// Window used by homeStats for "revenue this month".
 			const thisMonthStart = (() => {
 				const d = new Date();
 				d.setDate(1);

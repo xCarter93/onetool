@@ -44,7 +44,6 @@ import type * as eventBus from "../eventBus.js";
 import type * as externalIoPool from "../externalIoPool.js";
 import type * as favorites from "../favorites.js";
 import type * as homeStats from "../homeStats.js";
-import type * as homeStatsOptimized from "../homeStatsOptimized.js";
 import type * as http from "../http.js";
 import type * as invoiceLineItems from "../invoiceLineItems.js";
 import type * as invoices from "../invoices.js";
@@ -203,7 +202,6 @@ declare const fullApi: ApiFromModules<{
   externalIoPool: typeof externalIoPool;
   favorites: typeof favorites;
   homeStats: typeof homeStats;
-  homeStatsOptimized: typeof homeStatsOptimized;
   http: typeof http;
   invoiceLineItems: typeof invoiceLineItems;
   invoices: typeof invoices;
