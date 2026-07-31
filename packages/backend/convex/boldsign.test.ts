@@ -598,6 +598,53 @@ describe("BoldSign embedded sending", () => {
 	});
 
 	// ========================================================================
+	// downloadCompletedDocument (action-level storage cleanup)
+	// ========================================================================
+
+	describe("downloadCompletedDocument", () => {
+		afterEach(() => {
+			vi.unstubAllEnvs();
+			vi.unstubAllGlobals();
+		});
+
+		it("deletes the downloaded PDF when the identity check rejects the delivery", async () => {
+			vi.stubEnv("BOLDSIGN_API_KEY", "test_key");
+			vi.stubGlobal(
+				"fetch",
+				vi.fn(async () => new Response("signed pdf", { status: 200 }))
+			);
+
+			const { documentId, baselineCount } = await t.run(async (ctx) => {
+				const org = await createTestOrg(ctx);
+				const clientId = await createTestClient(ctx, org.orgId);
+				const quoteId = await seedQuote(ctx, org.orgId, clientId);
+				const documentId = await seedDocument(ctx, org.orgId, quoteId, 1, {
+					documentId: "bs_current",
+					status: "Completed",
+				});
+				const baselineCount = (
+					await ctx.db.system.query("_storage").collect()
+				).length;
+				return { documentId, baselineCount };
+			});
+
+			// Stale delivery: the document has since been re-linked to bs_current.
+			await expect(
+				t.action(internal.boldsignActions.downloadCompletedDocument, {
+					documentId,
+					boldsignDocumentId: "bs_stale",
+				})
+			).rejects.toThrow(/not linked to BoldSign document/);
+
+			// The blob stored for the rejected delivery must have been reclaimed.
+			const finalCount = await t.run(
+				async (ctx) => (await ctx.db.system.query("_storage").collect()).length
+			);
+			expect(finalCount).toBe(baselineCount);
+		});
+	});
+
+	// ========================================================================
 	// getEmbeddedDraft / clearEmbeddedDraft (abandoned-draft discard)
 	// ========================================================================
 

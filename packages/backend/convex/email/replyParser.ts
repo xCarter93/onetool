@@ -19,8 +19,8 @@ const QUOTE_STARTERS: Array<(line: string) => boolean> = [
 ];
 
 // RFC 5322 caps a line at 998 octets, so a longer one is never a real quote or
-// signature marker. Marker detection is skipped past this bound (the line is
-// still kept) rather than scanned, so body length can't drive parser cost.
+// signature marker. Unanchored marker scans are skipped past this bound (only
+// the left-anchored checks run), so body length can't drive parser cost.
 const MAX_MARKER_LINE = 998;
 
 // Reply attribution ("On <date> <name> wrote:" and localized forms). Gmail wraps
@@ -107,6 +107,10 @@ export function extractVisibleText(body: string): string {
 	for (let i = 0; i < lines.length; i++) {
 		const line = lines[i];
 		if (line.length > MAX_MARKER_LINE) {
+			// Skip only the unanchored scans; the left-anchored checks are O(prefix)
+			// and an over-length quoted line (e.g. unwrapped htmlToText output) must
+			// still end the visible portion.
+			if (SIGNATURE_DELIMITER.test(line) || /^\s*>/.test(line)) break;
 			kept.push(line);
 			continue;
 		}

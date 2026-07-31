@@ -77,11 +77,11 @@ export const handleInboundEmail = internalAction({
 		const rfcMessageId =
 			content.rfcMessageId ?? args.messageId ?? args.emailId;
 		const inReplyTo = content.inReplyTo ?? args.inReplyTo;
-		const references = (
+		const references = capReferences(
 			content.references.length > 0
 				? content.references
 				: (args.references ?? [])
-		).slice(0, MAX_REFERENCES);
+		);
 		const receivedForAddress = content.receivedForAddress ?? args.to[0];
 		const visibleText = deriveVisibleText({
 			text: content.text,
@@ -520,6 +520,14 @@ const MAX_TEXT_BODY_BYTES = 64_000;
 const MAX_HTML_BODY_BYTES = 256_000;
 /** RFC 5322 allows long References chains; 100 message-ids is already absurd. */
 const MAX_REFERENCES = 100;
+/** RFC 5322 caps a line at 998 octets; a longer token is never a real message-id. */
+const MAX_REFERENCE_LENGTH = 998;
+
+/** Drop oversized (attacker-supplied) tokens, then cap the count. */
+const capReferences = (values: string[]): string[] =>
+	values
+		.filter((value) => value.length <= MAX_REFERENCE_LENGTH)
+		.slice(0, MAX_REFERENCES);
 
 const utf8Length = (value: string): number =>
 	new TextEncoder().encode(value).length;
@@ -586,7 +594,7 @@ async function fetchInboundContent(
 			text: capBody(d.text || undefined, MAX_TEXT_BODY_BYTES),
 			rfcMessageId: d.message_id || headers["message-id"] || null,
 			inReplyTo: headers["in-reply-to"] ?? null,
-			references: references.slice(0, MAX_REFERENCES),
+			references: capReferences(references),
 			receivedForAddress: d.received_for?.[0] ?? null,
 		};
 	} catch (error) {

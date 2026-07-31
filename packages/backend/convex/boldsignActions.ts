@@ -345,12 +345,21 @@ export const downloadCompletedDocument = internalAction({
 				signedStorageId,
 			});
 
-			// Update the document record with the signed storage ID
-			await ctx.runMutation(internal.boldsign.updateDocumentWithSignedPdf, {
-				documentId: args.documentId,
-				boldsignDocumentId: args.boldsignDocumentId,
-				signedStorageId,
-			});
+			// Update the document record with the signed storage ID. If the
+			// identity check rejects the delivery, reclaim the stored blob so a
+			// stale/mismatched webhook can't leak orphaned storage.
+			try {
+				await ctx.runMutation(internal.boldsign.updateDocumentWithSignedPdf, {
+					documentId: args.documentId,
+					boldsignDocumentId: args.boldsignDocumentId,
+					signedStorageId,
+				});
+			} catch (err) {
+				await ctx.storage.delete(signedStorageId).catch(() => {
+					/* swallow cleanup error so the original is the one re-thrown */
+				});
+				throw err;
+			}
 
 			return { success: true, signedStorageId };
 		} catch (error) {

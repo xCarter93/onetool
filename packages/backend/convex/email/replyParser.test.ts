@@ -135,6 +135,18 @@ describe("deriveVisibleText", () => {
 // or org resolution. Each payload below pinned a worker for seconds against the
 // previous patterns (measured: 600 ms at 20 KB, 15 s at 100 KB); the budget here
 // is deliberately loose so it fails only on a genuine super-linear regression.
+describe("over-length lines", () => {
+	it("still ends the visible portion at an over-length quoted line", () => {
+		const body = "reply text\n> " + "x".repeat(2_000);
+		expect(extractVisibleText(body)).toBe("reply text");
+	});
+
+	it("keeps an over-length non-marker line", () => {
+		const long = "a".repeat(2_000);
+		expect(extractVisibleText("hi\n" + long)).toBe("hi\n" + long);
+	});
+});
+
 describe("ReDoS resistance", () => {
 	const BUDGET_MS = 500;
 

@@ -1523,7 +1523,7 @@ export const startManualRun = userMutation({
 			publishedFormulas
 		);
 
-		const { trigger } = executableDefinition(automation);
+		const trigger = publishedTrigger;
 		const objectType = triggerRecordObjectType(
 			trigger as AutomationTrigger
 		) as ObjectType | undefined;

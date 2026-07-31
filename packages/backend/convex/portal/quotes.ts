@@ -559,8 +559,12 @@ export const _commitApproval = internalMutation({
 			totalSnapshot: args.total,
 			termsSnapshot: args.terms,
 			termsAcceptedAt: args.action === "approved" ? now : undefined,
+			// Intent affirmation is only presented (and only legally meaningful)
+			// for typed signatures; never record it for drawn ones.
 			intentAffirmedAt:
-				args.action === "approved" && args.intentAffirmed === true
+				args.action === "approved" &&
+				args.signatureMode === "typed" &&
+				args.intentAffirmed === true
 					? now
 					: undefined,
 			createdAt: now,

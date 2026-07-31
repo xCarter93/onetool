@@ -286,12 +286,13 @@ export const upsertVerifiedClerkUser = internalMutation({
 			return existingUser._id;
 		}
 
+		// No lastSignedInDate: this user hasn't signed in — the session webhook
+		// stamps it when they actually do.
 		const userId = await ctx.db.insert("users", {
 			name: args.name,
 			email: args.email,
 			image: args.imageUrl,
 			externalId: args.clerkUserId,
-			lastSignedInDate: Date.now(),
 		});
 		await ensureMembership(ctx, userId, args.orgId);
 		return userId;

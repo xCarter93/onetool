@@ -6,7 +6,7 @@ import { hashIp, getRequestIp } from "@/lib/portal/ip";
 
 const bodySchema = z.object({
 	clientPortalId: z.string().min(1).max(200),
-	email: z.string().email().max(320),
+	email: z.string().max(320).pipe(z.email()),
 });
 
 function convexHttpUrl(): string {

@@ -378,6 +378,60 @@ describe("Users", () => {
 				})
 			).toBeNull();
 		});
+
+		it("throws when CLERK_SECRET_KEY is not configured", async () => {
+			const { clerkUserId, clerkOrgId } = await t.run(
+				async (ctx) => await createTestOrg(ctx)
+			);
+			vi.stubEnv("CLERK_SECRET_KEY", "");
+
+			const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+
+			await expect(
+				asUser.action(api.users.syncUserFromClerk, {
+					clerkUserId: "invited_member",
+				})
+			).rejects.toThrow(/CLERK_SECRET_KEY is not configured/);
+		});
+
+		it("falls back to the Clerk identifier when the member has no name", async () => {
+			const { clerkUserId, clerkOrgId } = await t.run(
+				async (ctx) => await createTestOrg(ctx)
+			);
+			// The mock derives firstName/lastName from `name`; empty means both absent.
+			clerkMembers.set(`${clerkOrgId}:nameless_member`, {
+				name: "",
+				email: "nameless@example.com",
+				imageUrl: "",
+			});
+
+			const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+
+			const newUserId = await asUser.action(api.users.syncUserFromClerk, {
+				clerkUserId: "nameless_member",
+			});
+			const newUser = await t.run(async (ctx) => await ctx.db.get(newUserId!));
+			expect(newUser?.name).toBe("nameless@example.com");
+		});
+
+		it('falls back to "Unknown User" when identifier is also absent', async () => {
+			const { clerkUserId, clerkOrgId } = await t.run(
+				async (ctx) => await createTestOrg(ctx)
+			);
+			clerkMembers.set(`${clerkOrgId}:anonymous_member`, {
+				name: "",
+				email: "",
+				imageUrl: "",
+			});
+
+			const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+
+			const newUserId = await asUser.action(api.users.syncUserFromClerk, {
+				clerkUserId: "anonymous_member",
+			});
+			const newUser = await t.run(async (ctx) => await ctx.db.get(newUserId!));
+			expect(newUser?.name).toBe("Unknown User");
+		});
 	});
 
 	describe("Internal Mutations", () => {
