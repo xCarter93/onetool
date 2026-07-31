@@ -130,7 +130,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 	const isOrgSwitching = useIsOrgSwitching();
 	const { can, hasFullAccess, isLoading: permissionsLoading } = usePermissions();
 	// Badge queries hit view-gated endpoints — skip them for users without the
-	// grant or they throw FORBIDDEN once PERMISSIONS_ENFORCE is on.
+	// grant or they throw FORBIDDEN.
 	const taskStats = useQuery(api.tasks.getStats, can("tasks") ? {} : "skip");
 	// Suppress the badge during the org-switch grace window so a stale count
 	// (or a transient "0") never flashes for the new org.

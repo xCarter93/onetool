@@ -711,11 +711,7 @@ describe("BoldSign embedded sending", () => {
 			expect(doc?.boldsign?.status).toBe("Sent");
 		});
 
-		// Enforcement is still shadow-mode in prod, so pin the flag on: this
-		// asserts the gate exists and will bite at the enforcement flip, rather
-		// than passing vacuously because denyPermission only logged.
 		it("denies a view-only member (org membership is not the boundary)", async () => {
-			vi.stubEnv("PERMISSIONS_ENFORCE", "true");
 			const { clerkOrgId, memberClerkUserId, quoteId, documentId } = await t.run(
 				async (ctx) => {
 					const org = await createTestOrg(ctx);

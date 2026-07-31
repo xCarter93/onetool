@@ -2245,7 +2245,7 @@ export const getSampleRelatedFields = userQuery({
 
 		const relations = RELATED_OBJECTS[args.entityType] ?? [];
 		if (relations.length === 0) return {};
-		// Per-entity read gates (shadow-aware), matching the per-type sample
+		// Per-entity read gates, matching the per-type sample
 		// queries the modal already calls: a relation the caller can't view is
 		// simply omitted from the preview.
 		const sourcePermObj = ENTITY_PERMISSION_OBJECT[args.entityType];
@@ -2255,7 +2255,7 @@ export const getSampleRelatedFields = userQuery({
 
 		// Record-scope mirror of each entity's own `.get` query, so the preview
 		// can't show a doc the caller couldn't open directly. requireRecordScope
-		// throws only when enforcement is on (shadow mode logs) — catch => omit.
+		// throws when the caller is out of scope — catch => omit from preview.
 		const inRecordScope = async (
 			type: TriggerableObjectType,
 			doc: Record<string, unknown>

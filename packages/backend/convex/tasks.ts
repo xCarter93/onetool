@@ -23,7 +23,6 @@ import {
 	userMutation,
 	type UserMutationCtx,
 } from "./lib/factories";
-import { permissionsEnforced } from "./lib/permissions";
 
 /**
  * Task/Schedule operations
@@ -461,14 +460,8 @@ export const create = userMutation({
 
 		let assigneeUserId = args.assigneeUserId;
 		if (!(await ctx.hasAllRecords("tasks")) && args.assigneeUserId === undefined) {
-			if (permissionsEnforced()) {
-				// scoped users own what they create (PRD §3.2)
-				assigneeUserId = ctx.user._id;
-			} else {
-				console.warn(
-					`[permissions-shadow] would auto-assign task creator user=${ctx.user._id}`
-				);
-			}
+			// scoped users own what they create (PRD §3.2)
+			assigneeUserId = ctx.user._id;
 		}
 		args = { ...args, assigneeUserId };
 

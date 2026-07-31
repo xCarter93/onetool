@@ -20,25 +20,17 @@ import {
 import { userQuery, type ActorScope } from "./factories";
 
 /**
- * Resolver + shadow-mode factory-helper coverage for granular RBAC
+ * Resolver + factory-helper coverage for granular RBAC
  * (permissionKeys.ts / permissions.ts / factories.ts makeOrgExtras).
  */
-describe("granular RBAC resolver + shadow mode", () => {
+describe("granular RBAC resolver", () => {
 	let t: ReturnType<typeof convexTest>;
-	let originalEnforce: string | undefined;
 
 	beforeEach(() => {
 		t = setupConvexTest();
-		originalEnforce = process.env.PERMISSIONS_ENFORCE;
-		delete process.env.PERMISSIONS_ENFORCE; // default = shadow mode
 	});
 
 	afterEach(() => {
-		if (originalEnforce === undefined) {
-			delete process.env.PERMISSIONS_ENFORCE;
-		} else {
-			process.env.PERMISSIONS_ENFORCE = originalEnforce;
-		}
 		vi.restoreAllMocks();
 	});
 
@@ -296,9 +288,9 @@ describe("granular RBAC resolver + shadow mode", () => {
 		expect(result).toBe("all");
 	});
 
-	// ── Shadow vs. enforced: ctx helpers via userQuery-wrapped handlers ─────
+	// ── ctx helpers via userQuery-wrapped handlers ─────────────────────────
 
-	describe("shadow vs. enforced ctx helpers", () => {
+	describe("ctx helpers", () => {
 		async function seedOrgWithMember(orgClerkId: string, memberClerkId: string) {
 			const org = await t.run(async (ctx) => {
 				return await createTestOrg(ctx, {
@@ -314,34 +306,7 @@ describe("granular RBAC resolver + shadow mode", () => {
 			return { org, member };
 		}
 
-		it("shadow mode: requireLevel does not throw and warns [permissions-shadow]", async () => {
-			const { org, member } = await seedOrgWithMember(
-				"org_shadow_10",
-				"user_shadow_10"
-			);
-			const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-
-			const result = await t.run(async (ctx) => {
-				(ctx.auth as any).getUserIdentity = async () =>
-					createTestIdentity(member.clerkUserId, org.clerkOrgId);
-				const fn = userQuery({
-					args: {},
-					handler: async (factoryCtx) => {
-						await factoryCtx.requireLevel("clients", "view");
-						return "ok";
-					},
-				});
-				return await invokeRegisteredFunction<string>(fn, ctx);
-			});
-
-			expect(result).toBe("ok");
-			expect(warnSpy).toHaveBeenCalledWith(
-				expect.stringContaining("[permissions-shadow]")
-			);
-		});
-
-		it("enforced mode: requireLevel throws FORBIDDEN with object + level", async () => {
-			process.env.PERMISSIONS_ENFORCE = "true";
+		it("requireLevel throws FORBIDDEN with object + level", async () => {
 			const { org, member } = await seedOrgWithMember(
 				"org_enforced_11",
 				"user_enforced_11"
@@ -373,7 +338,7 @@ describe("granular RBAC resolver + shadow mode", () => {
 			});
 		});
 
-		it("applyReadScope: shadow returns all rows + warns; enforced returns only in-scope rows", async () => {
+		it("applyReadScope: returns only in-scope rows for a scoped member", async () => {
 			const { org, member } = await seedOrgWithMember(
 				"org_scope_12",
 				"user_scope_12"
@@ -401,25 +366,6 @@ describe("granular RBAC resolver + shadow mode", () => {
 				scope: ActorScope
 			) => scope.clientIds.has(row.clientId);
 
-			const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-			const shadowRows = await t.run(async (ctx) => {
-				(ctx.auth as any).getUserIdentity = async () =>
-					createTestIdentity(member.clerkUserId, org.clerkOrgId);
-				const fn = userQuery({
-					args: {},
-					handler: async (factoryCtx) =>
-						await factoryCtx.applyReadScope("clients", rows, keep),
-				});
-				return await invokeRegisteredFunction<typeof rows>(fn, ctx);
-			});
-
-			expect(shadowRows).toHaveLength(2);
-			expect(warnSpy).toHaveBeenCalledWith(
-				expect.stringContaining("[permissions-shadow] would hide")
-			);
-			warnSpy.mockRestore();
-
-			process.env.PERMISSIONS_ENFORCE = "true";
 			const enforcedRows = await t.run(async (ctx) => {
 				(ctx.auth as any).getUserIdentity = async () =>
 					createTestIdentity(member.clerkUserId, org.clerkOrgId);
@@ -434,8 +380,7 @@ describe("granular RBAC resolver + shadow mode", () => {
 			expect(enforcedRows.map((r) => r.id)).toEqual(["in-scope"]);
 		});
 
-		it("enforced requireRecordScope throws FORBIDDEN(scope) for scoped members but skips the predicate for hasAllRecords callers", async () => {
-			process.env.PERMISSIONS_ENFORCE = "true";
+		it("requireRecordScope throws FORBIDDEN(scope) for scoped members but skips the predicate for hasAllRecords callers", async () => {
 			const { org, member } = await seedOrgWithMember(
 				"org_recordscope_13",
 				"user_recordscope_13"
@@ -486,29 +431,12 @@ describe("granular RBAC resolver + shadow mode", () => {
 			expect(adminResult).toBe("ok");
 		});
 
-		it("gateRead: shadow allows-with-warn / enforced excludes for scoped members; admins always pass silently", async () => {
+		it("gateRead: excludes for scoped members; admins always pass", async () => {
 			const { org, member } = await seedOrgWithMember(
 				"org_gateread_14",
 				"user_gateread_14"
 			);
 
-			const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-			const shadowIncluded = await t.run(async (ctx) => {
-				(ctx.auth as any).getUserIdentity = async () =>
-					createTestIdentity(member.clerkUserId, org.clerkOrgId);
-				const fn = userQuery({
-					args: {},
-					handler: async (factoryCtx) => await factoryCtx.gateRead("clients"),
-				});
-				return await invokeRegisteredFunction<boolean>(fn, ctx);
-			});
-			expect(shadowIncluded).toBe(true);
-			expect(warnSpy).toHaveBeenCalledWith(
-				expect.stringContaining("[permissions-shadow] would exclude")
-			);
-			warnSpy.mockRestore();
-
-			process.env.PERMISSIONS_ENFORCE = "true";
 			const enforcedIncluded = await t.run(async (ctx) => {
 				(ctx.auth as any).getUserIdentity = async () =>
 					createTestIdentity(member.clerkUserId, org.clerkOrgId);
@@ -520,20 +448,7 @@ describe("granular RBAC resolver + shadow mode", () => {
 			});
 			expect(enforcedIncluded).toBe(false);
 
-			// Admin (owner): true in both modes.
-			const adminShadow = await t.run(async (ctx) => {
-				delete process.env.PERMISSIONS_ENFORCE;
-				(ctx.auth as any).getUserIdentity = async () =>
-					createTestIdentity(org.clerkUserId, org.clerkOrgId);
-				const fn = userQuery({
-					args: {},
-					handler: async (factoryCtx) => await factoryCtx.gateRead("clients"),
-				});
-				return await invokeRegisteredFunction<boolean>(fn, ctx);
-			});
-			expect(adminShadow).toBe(true);
-
-			process.env.PERMISSIONS_ENFORCE = "true";
+			// Admin (owner) resolves to "all" grants and always passes.
 			const adminEnforced = await t.run(async (ctx) => {
 				(ctx.auth as any).getUserIdentity = async () =>
 					createTestIdentity(org.clerkUserId, org.clerkOrgId);
@@ -546,7 +461,7 @@ describe("granular RBAC resolver + shadow mode", () => {
 			expect(adminEnforced).toBe(true);
 		});
 
-		it("scopedToActor: grant-based allRecords diverges from legacy role scoping; shadow keeps legacy, enforced switches to grants", async () => {
+		it("scopedToActor: allRecords grants lift the scope regardless of the legacy JWT role", async () => {
 			const { org, member } = await seedOrgWithMember(
 				"org_diverge_15",
 				"user_diverge_15"
@@ -563,9 +478,8 @@ describe("granular RBAC resolver + shadow mode", () => {
 					org.orgId,
 					member.userId
 				);
-				// Grant-based verdict now says "all records" for tasks, while the
-				// legacy role-based verdict (JWT orgRole="org:member") still says
-				// "scoped to me" — this is the intentional divergence window.
+				// allRecords lifts the scope even though the JWT still carries
+				// orgRole="org:member": grants decide, the legacy role does not.
 				await ctx.db.patch(membership._id, {
 					permissions: { tasks: { level: "modify", allRecords: true } },
 				});
@@ -576,31 +490,6 @@ describe("granular RBAC resolver + shadow mode", () => {
 				{ id: "other", assigneeUserId: other.userId },
 			];
 
-			const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-			const shadowRows = await t.run(async (ctx) => {
-				(ctx.auth as any).getUserIdentity = async () => ({
-					...createTestIdentity(member.clerkUserId, org.clerkOrgId),
-					orgRole: "org:member",
-				});
-				const fn = userQuery({
-					args: {},
-					handler: async (factoryCtx) =>
-						await factoryCtx.scopedToActor(
-							"tasks",
-							rows,
-							(row) => row.assigneeUserId
-						),
-				});
-				return await invokeRegisteredFunction<typeof rows>(fn, ctx);
-			});
-
-			expect(shadowRows.map((r) => r.id)).toEqual(["mine"]);
-			expect(warnSpy).toHaveBeenCalledWith(
-				expect.stringContaining("scopedToActor(tasks) divergence")
-			);
-			warnSpy.mockRestore();
-
-			process.env.PERMISSIONS_ENFORCE = "true";
 			const enforcedRows = await t.run(async (ctx) => {
 				(ctx.auth as any).getUserIdentity = async () => ({
 					...createTestIdentity(member.clerkUserId, org.clerkOrgId),

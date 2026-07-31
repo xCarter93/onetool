@@ -25,7 +25,6 @@ import {
 	type UserMutationCtx,
 } from "./lib/factories";
 import { calculateQuoteTotals } from "./lib/quoteTotals";
-import { permissionsEnforced } from "./lib/permissions";
 
 /**
  * Project operations
@@ -110,14 +109,8 @@ async function resolveScopedCreateAssignees(
 ): Promise<Id<"users">[] | undefined> {
 	if (await ctx.hasAllRecords("projects")) return assignedUserIds;
 	if (assignedUserIds?.includes(ctx.user._id)) return assignedUserIds;
-	if (permissionsEnforced()) {
-		// scoped users own what they create (PRD §3.2)
-		return [...(assignedUserIds ?? []), ctx.user._id];
-	}
-	console.warn(
-		`[permissions-shadow] would auto-assign project creator user=${ctx.user._id}`
-	);
-	return assignedUserIds;
+	// scoped users own what they create (PRD §3.2)
+	return [...(assignedUserIds ?? []), ctx.user._id];
 }
 
 /**

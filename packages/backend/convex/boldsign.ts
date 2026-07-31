@@ -128,7 +128,7 @@ async function getLatestQuoteDocument(
  * Resolve the caller's org, load the quote, and enforce quotes-modify plus
  * project/client scope. Every e-sign entry point that reads or mutates a
  * quote's embedded-signature state must go through this — org membership
- * alone is not the boundary (PRD §4.4). Shadow-aware.
+ * alone is not the boundary (PRD §4.4).
  */
 async function authorizeQuoteModify(
 	ctx: QueryCtx | MutationCtx,

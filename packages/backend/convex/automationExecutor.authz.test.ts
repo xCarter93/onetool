@@ -1,6 +1,6 @@
 import { convexTest } from "convex-test";
 import { ConvexError } from "convex/values";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { api } from "./_generated/api";
 import { setupConvexTest } from "./test.setup";
 import {
@@ -25,20 +25,9 @@ import type { MutationCtx } from "./_generated/server";
  */
 describe("automation run entry points — per-object authorization", () => {
 	let t: ReturnType<typeof convexTest>;
-	let originalEnforce: string | undefined;
 
 	beforeEach(() => {
 		t = setupConvexTest();
-		originalEnforce = process.env.PERMISSIONS_ENFORCE;
-		process.env.PERMISSIONS_ENFORCE = "true";
-	});
-
-	afterEach(() => {
-		if (originalEnforce === undefined) {
-			delete process.env.PERMISSIONS_ENFORCE;
-		} else {
-			process.env.PERMISSIONS_ENFORCE = originalEnforce;
-		}
 	});
 
 	function forbidden(caught: unknown): Record<string, unknown> {

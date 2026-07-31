@@ -9,7 +9,6 @@ import {
 import type { WorkflowNodeConfig } from "../workflowTypes";
 import { collectRelationRefs } from "../relationRefs";
 import type { Doc } from "../../_generated/dataModel";
-import { permissionsEnforced } from "../permissions";
 
 /**
  * The shape `collectDefinitionObjectTypes` needs from a node. Deliberately
@@ -272,9 +271,6 @@ export async function canReadExecutionDetail(
 	ctx: UserQueryCtx | UserMutationCtx,
 	automation: Doc<"workflowAutomations">
 ): Promise<boolean> {
-	// Shadow mode hides nothing anywhere else (applyReadScope returns every row),
-	// so this verdict must not be the one exception.
-	if (!permissionsEnforced()) return true;
 	const { reads, writes } = storedDefinitionObjectTypes(automation);
 	for (const type of new Set([...reads, ...writes])) {
 		const permissionObject = AUTOMATION_PERMISSION_OBJECT[type];
