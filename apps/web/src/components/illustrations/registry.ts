@@ -1,118 +1,150 @@
 import type { IllustrationVariants } from "./types";
-import * as Line from "./art/line";
-import * as Fragment from "./art/fragment";
-import * as Celebration from "./art/celebration";
-import * as Compact from "./art/compact";
+import * as Records from "./art/scenes/records";
+import * as Browse from "./art/scenes/browse";
+import * as Objects from "./art/scenes/objects";
+import * as Flow from "./art/scenes/flow";
+import * as Celebration from "./art/scenes/celebration";
 
 /**
- * Style assignment rule — do not pick a direction per surface, pick it per
- * *kind of moment*, or the set decays back into ad hoc art:
+ * V2 registry — every scene is drawn in the shared isometric language
+ * (30° grid, outline-first, discrete face ramp, one accent hue, the OneTool
+ * mark once per md/hero scene). Density scales by tier: sm carries the hero
+ * object only, md the staged scene, hero the full composition.
  *
- *   Line art  → concept and object states. The default.
- *   Fragment  → list and table empties ONLY. The artwork previews the records.
- *   Isometric → celebration ONLY. Capped at four; scarcity is the mechanism.
+ * Several names share art deliberately — a client-contacts table and a
+ * clients table want the same cascade. Aliasing beats near-duplicate
+ * drawings.
  *
- * Consequence worth knowing: a tasks list inside a project detail tab is still
- * a list, so it stays Fragment even though line art looks better there alone.
- *
- * Several names share art deliberately — a client-contacts table and a clients
- * table want the same fragment. Aliasing beats near-duplicate drawings.
+ * Celebrate green stays exclusive to the celebration scenes so it keeps
+ * signalling an occasion; everything else is accent + neutrals (the brand
+ * mark's duotone and app-error's destructive hue are the two exceptions).
  */
 export const illustrations = {
-	// --- Fragment: list & table empties ---
+	// --- record-list empties: the artwork previews the coming records ---
 	"clients-none": {
-		md: Fragment.ClientsNone,
-		sm: Compact.ClientsNoneSm,
+		md: Records.ClientsNone,
+		sm: Records.ClientsNoneSm,
+		hero: Records.ClientsNoneHero,
 	},
 	"client-contacts-none": {
-		md: Fragment.ClientsNone,
-		sm: Compact.ClientsNoneSm,
+		md: Records.ClientsNone,
+		sm: Records.ClientsNoneSm,
+		hero: Records.ClientsNoneHero,
 	},
 	"team-members-none": {
-		md: Fragment.ClientsNone,
-		sm: Compact.ClientsNoneSm,
+		md: Records.ClientsNone,
+		sm: Records.ClientsNoneSm,
+		hero: Records.ClientsNoneHero,
 	},
 	"projects-none": {
-		md: Fragment.ProjectsNone,
-		sm: Compact.ProjectsNoneSm,
+		md: Records.ProjectsNone,
+		sm: Records.ProjectsNoneSm,
+		hero: Records.ProjectsNoneHero,
 	},
 	"invoices-none": {
-		md: Fragment.InvoicesNone,
-		sm: Compact.InvoicesNoneSm,
+		md: Records.InvoicesNone,
+		sm: Records.InvoicesNoneSm,
+		hero: Records.InvoicesNoneHero,
 	},
 	"quotes-none": {
-		md: Fragment.InvoicesNone,
-		sm: Compact.QuotesNoneSm,
+		md: Records.InvoicesNone,
+		sm: Records.InvoicesNoneSm,
+		hero: Records.InvoicesNoneHero,
 	},
 	/** SKUs are a catalogue of priced line items — the same amount-bearing grid. */
 	"skus-none": {
-		md: Fragment.InvoicesNone,
-		sm: Compact.InvoicesNoneSm,
+		md: Records.InvoicesNone,
+		sm: Records.InvoicesNoneSm,
+		hero: Records.InvoicesNoneHero,
 	},
 	"tasks-none": {
-		md: Fragment.TasksNone,
-		sm: Compact.TasksNoneSm,
+		md: Records.TasksNone,
+		sm: Records.TasksNoneSm,
+		hero: Records.TasksNoneHero,
 	},
 	"no-filter-match": {
-		md: Fragment.NoFilterMatch,
-		sm: Compact.NoFilterMatchSm,
+		md: Browse.NoFilterMatch,
+		sm: Browse.NoFilterMatchSm,
+		hero: Browse.NoFilterMatchHero,
 	},
 	"report-chart-no-data": {
-		md: Fragment.ReportChartNoData,
+		md: Browse.ReportChartNoData,
+		sm: Browse.ReportChartNoDataSm,
+		hero: Browse.ReportChartNoDataHero,
 	},
 	"activity-none": {
-		md: Fragment.ActivityNone,
-		sm: Compact.ActivityNoneSm,
+		md: Browse.ActivityNone,
+		sm: Browse.ActivityNoneSm,
+		hero: Browse.ActivityNoneHero,
 	},
 
-	// --- Line art: concept & object states ---
+	// --- concept & object states ---
 	"client-properties-none": {
-		md: Line.ClientPropertiesNone,
-		sm: Compact.ClientPropertiesNoneSm,
+		md: Objects.ClientPropertiesNone,
+		sm: Objects.ClientPropertiesNoneSm,
+		hero: Objects.ClientPropertiesNoneHero,
 	},
 	"quote-approval-none": {
-		md: Line.QuoteApprovalNone,
+		md: Flow.QuoteApprovalNone,
+		sm: Flow.QuoteApprovalNoneSm,
+		hero: Flow.QuoteApprovalNoneHero,
 	},
 	"payments-none": {
-		md: Line.PaymentsNone,
+		md: Objects.PaymentsNone,
+		sm: Objects.PaymentsNoneSm,
+		hero: Objects.PaymentsNoneHero,
 	},
 	"automations-none": {
-		md: Line.AutomationsNone,
-		sm: Compact.AutomationsNoneSm,
+		md: Flow.AutomationsNone,
+		sm: Flow.AutomationsNoneSm,
+		hero: Flow.AutomationsNoneHero,
 	},
 	"messages-none": {
-		md: Line.MessagesNone,
-		sm: Compact.MessagesNoneSm,
+		md: Objects.MessagesNone,
+		sm: Objects.MessagesNoneSm,
+		hero: Objects.MessagesNoneHero,
 	},
 	"documents-none": {
-		md: Line.DocumentsNone,
+		md: Objects.DocumentsNone,
+		sm: Objects.DocumentsNoneSm,
+		hero: Objects.DocumentsNoneHero,
 	},
 	"select-conversation": {
-		md: Line.SelectConversation,
+		md: Browse.SelectConversation,
+		sm: Browse.SelectConversationSm,
+		hero: Browse.SelectConversationHero,
 	},
 	/** Permission gates — a restricted state, never the destructive app-error art. */
 	"access-restricted": {
-		md: Line.AccessRestricted,
+		md: Flow.AccessRestricted,
+		sm: Flow.AccessRestrictedSm,
+		hero: Flow.AccessRestrictedHero,
 	},
 	"app-error": {
-		md: Line.AppError,
-		hero: Line.AppErrorHero,
+		md: Flow.AppError,
+		sm: Flow.AppErrorSm,
+		hero: Flow.AppErrorHero,
 	},
 
-	// --- Isometric: celebration only ---
+	// --- celebration: the only tier with the celebrate hue ---
 	"quote-signed": {
 		md: Celebration.QuoteSigned,
+		sm: Celebration.QuoteSignedSm,
+		hero: Celebration.QuoteSignedHero,
 	},
 	"invoice-paid": {
 		md: Celebration.InvoicePaid,
+		sm: Celebration.InvoicePaidSm,
+		hero: Celebration.InvoicePaidHero,
 	},
 	"first-client-added": {
 		md: Celebration.FirstClientAdded,
+		sm: Celebration.FirstClientAddedSm,
 		hero: Celebration.FirstClientAddedHero,
 	},
 	"all-caught-up": {
 		md: Celebration.AllCaughtUp,
-		sm: Compact.AllCaughtUpSm,
+		sm: Celebration.AllCaughtUpSm,
 		hero: Celebration.AllCaughtUpHero,
 	},
 } satisfies Record<string, IllustrationVariants>;

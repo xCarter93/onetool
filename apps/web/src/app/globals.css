@@ -791,14 +791,29 @@
 	fill: var(--illo-line);
 	opacity: 0.22;
 }
-/* Isometric side faces: two fixed shading steps, never a gradient. */
+/* Isometric faces: a discrete three-step ramp, never a gradient. Opaque
+   (color-mix, not alpha) so stacked objects don't bleed through each other. */
+.ot-illo .illo-face-top {
+	fill: color-mix(in oklab, var(--illo-line) 5%, var(--illo-knockout));
+}
 .ot-illo .illo-face-left {
-	fill: var(--illo-line);
-	opacity: 0.2;
+	fill: color-mix(in oklab, var(--illo-line) 18%, var(--illo-knockout));
 }
 .ot-illo .illo-face-right {
+	fill: color-mix(in oklab, var(--illo-line) 32%, var(--illo-knockout));
+}
+/* Accent/celebrate objects shade two-step: base hue on the lit face, a darker
+   turned face. Never tint the hue lighter. */
+.ot-illo .illo-accent-shade {
+	fill: color-mix(in oklab, var(--illo-accent) 76%, black);
+}
+.ot-illo .illo-celebrate-shade {
+	fill: color-mix(in oklab, var(--illo-celebrate) 76%, black);
+}
+/* Cast shadow: flattened silhouette under an object — anchors floaters. */
+.ot-illo .illo-cast {
 	fill: var(--illo-line);
-	opacity: 0.32;
+	opacity: 0.1;
 }
 
 /* --- strokes ---
