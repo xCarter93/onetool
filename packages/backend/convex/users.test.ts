@@ -1,5 +1,46 @@
-import { convexTest } from "convex-test";
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, afterEach, beforeEach, vi } from "vitest";
+
+/**
+ * Stands in for the Clerk Backend API. Keyed `${clerkOrgId}:${clerkUserId}`;
+ * anything absent is "not a member of that organization", which is the case
+ * SEC-10 turns on.
+ */
+const { clerkMembers } = vi.hoisted(() => ({
+	clerkMembers: new Map<
+		string,
+		{ name: string; email: string; imageUrl: string }
+	>(),
+}));
+vi.mock("@clerk/backend", () => ({
+	createClerkClient: () => ({
+		organizations: {
+			getOrganizationMembershipList: async ({
+				organizationId,
+				userId,
+			}: {
+				organizationId: string;
+				userId: string[];
+			}) => {
+				const profile = clerkMembers.get(`${organizationId}:${userId[0]}`);
+				if (!profile) return { data: [], totalCount: 0 };
+				return {
+					data: [
+						{
+							publicUserData: {
+								userId: userId[0],
+								firstName: profile.name.split(" ")[0],
+								lastName: profile.name.split(" ").slice(1).join(" "),
+								identifier: profile.email,
+								imageUrl: profile.imageUrl,
+							},
+						},
+					],
+					totalCount: 1,
+				};
+			},
+		},
+	}),
+}));
 import { api, internal } from "./_generated/api";
 import { setupConvexTest } from "./test.setup";
 import {
@@ -9,7 +50,7 @@ import {
 } from "./test.helpers";
 
 describe("Users", () => {
-	let t: ReturnType<typeof convexTest>;
+	let t: ReturnType<typeof setupConvexTest>;
 
 	beforeEach(() => {
 		t = setupConvexTest();
@@ -170,99 +211,172 @@ describe("Users", () => {
 		});
 	});
 
+	// SEC-10: this was a plain userMutation taking clerkUserId/name/email as raw
+	// strings that were never checked against Clerk. It bound any Clerk id the
+	// caller named into their own org, and its insert branch pre-planted a users
+	// row with an attacker-chosen externalId — the sole identity join key — that
+	// the victim's real user.created webhook would later patch rather than
+	// replace. It is now an action that verifies membership against Clerk and
+	// takes the stored profile from Clerk's response, not the caller's args.
 	describe("syncUserFromClerk", () => {
-		it("should create a new user if they do not exist", async () => {
-			const { clerkUserId, clerkOrgId, orgId } = await t.run(async (ctx) => {
-				const setup = await createTestOrg(ctx);
-				return setup;
+		afterEach(() => {
+			vi.unstubAllEnvs();
+		});
+
+		beforeEach(() => {
+			clerkMembers.clear();
+			vi.stubEnv("CLERK_SECRET_KEY", "sk_test_stub");
+		});
+
+		it("creates the user and membership for a verified Clerk org member", async () => {
+			const { clerkUserId, clerkOrgId, orgId } = await t.run(
+				async (ctx) => await createTestOrg(ctx)
+			);
+			clerkMembers.set(`${clerkOrgId}:invited_member`, {
+				name: "Invited Member",
+				email: "invited@example.com",
+				imageUrl: "https://example.com/invited.jpg",
 			});
 
 			const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
 
-			const newUserId = await asUser.mutation(api.users.syncUserFromClerk, {
-				clerkUserId: "new_clerk_user",
-				name: "New Synced User",
-				email: "newsynced@example.com",
-				imageUrl: "https://example.com/new.jpg",
+			const newUserId = await asUser.action(api.users.syncUserFromClerk, {
+				clerkUserId: "invited_member",
 			});
+			expect(newUserId).not.toBeNull();
 
-			expect(newUserId).toBeDefined();
-
-			// Verify user was created
-			const newUser = await t.run(async (ctx) => {
-				return await ctx.db.get(newUserId);
-			});
-
-			expect(newUser).toMatchObject({
-				name: "New Synced User",
-				email: "newsynced@example.com",
-				image: "https://example.com/new.jpg",
-				externalId: "new_clerk_user",
-			});
-
-			// Verify membership was created
-			const membership = await t.run(async (ctx) => {
-				return await ctx.db
+			const { newUser, membership } = await t.run(async (ctx) => {
+				const newUser = await ctx.db.get(newUserId!);
+				const membership = await ctx.db
 					.query("organizationMemberships")
-					.filter((q) =>
-						q.and(
-							q.eq(q.field("orgId"), orgId),
-							q.eq(q.field("userId"), newUserId)
-						)
+					.withIndex("by_org_user", (q) =>
+						q.eq("orgId", orgId).eq("userId", newUserId!)
 					)
-					.first();
+					.unique();
+				return { newUser, membership };
 			});
 
+			// Profile comes from Clerk, not from the caller.
+			expect(newUser).toMatchObject({
+				name: "Invited Member",
+				email: "invited@example.com",
+				externalId: "invited_member",
+			});
 			expect(membership).not.toBeNull();
 		});
 
-		it("should return existing user ID and ensure membership if user exists", async () => {
-			const { clerkUserId, clerkOrgId, orgId } = await t.run(async (ctx) => {
-				const setup = await createTestOrg(ctx);
-				return setup;
+		it("refuses a Clerk user who is not a member of the caller's org", async () => {
+			const { clerkUserId, clerkOrgId, orgId } = await t.run(
+				async (ctx) => await createTestOrg(ctx)
+			);
+
+			// A real user in some other org. Nothing is registered for clerkOrgId.
+			const victimUserId = await t.run(async (ctx) => {
+				return await ctx.db.insert("users", {
+					name: "Victim",
+					email: "victim@example.com",
+					image: "https://example.com/v.jpg",
+					externalId: "victim_clerk_id",
+				});
 			});
 
-			// Create another user without membership to current org
-			const { existingUserId, existingClerkUserId } = await t.run(
-				async (ctx) => {
-					const existingUserId = await ctx.db.insert("users", {
-						name: "Existing External User",
-						email: "external@example.com",
-						image: "https://example.com/external.jpg",
-						externalId: "existing_external_user",
-					});
-					return {
-						existingUserId,
-						existingClerkUserId: "existing_external_user",
-					};
-				}
+			const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+
+			const result = await asUser.action(api.users.syncUserFromClerk, {
+				clerkUserId: "victim_clerk_id",
+			});
+
+			expect(result).toBeNull();
+
+			// The victim must not have been bound into the caller's org.
+			const membership = await t.run(async (ctx) => {
+				return await ctx.db
+					.query("organizationMemberships")
+					.withIndex("by_org_user", (q) =>
+						q.eq("orgId", orgId).eq("userId", victimUserId)
+					)
+					.unique();
+			});
+			expect(membership).toBeNull();
+		});
+
+		it("does not pre-plant a users row for an unverified Clerk id", async () => {
+			const { clerkUserId, clerkOrgId } = await t.run(
+				async (ctx) => await createTestOrg(ctx)
 			);
 
 			const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
 
-			const returnedUserId = await asUser.mutation(api.users.syncUserFromClerk, {
-				clerkUserId: existingClerkUserId,
-				name: "Existing External User",
-				email: "external@example.com",
-				imageUrl: "https://example.com/external.jpg",
+			expect(
+				await asUser.action(api.users.syncUserFromClerk, {
+					clerkUserId: "not_yet_signed_up",
+				})
+			).toBeNull();
+
+			const planted = await t.run(async (ctx) => {
+				return await ctx.db
+					.query("users")
+					.withIndex("by_external_id", (q) =>
+						q.eq("externalId", "not_yet_signed_up")
+					)
+					.unique();
+			});
+			expect(planted).toBeNull();
+		});
+
+		it("binds an existing verified member without duplicating their user row", async () => {
+			const { clerkUserId, clerkOrgId, orgId } = await t.run(
+				async (ctx) => await createTestOrg(ctx)
+			);
+			const existingUserId = await t.run(async (ctx) => {
+				return await ctx.db.insert("users", {
+					name: "Already Signed Up",
+					email: "already@example.com",
+					image: "https://example.com/a.jpg",
+					externalId: "already_signed_up",
+				});
+			});
+			clerkMembers.set(`${clerkOrgId}:already_signed_up`, {
+				name: "Already Signed Up",
+				email: "already@example.com",
+				imageUrl: "https://example.com/a.jpg",
 			});
 
-			expect(returnedUserId).toBe(existingUserId);
+			const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
 
-			// Verify membership was created for the existing user
+			const returned = await asUser.action(api.users.syncUserFromClerk, {
+				clerkUserId: "already_signed_up",
+			});
+			expect(returned).toBe(existingUserId);
+
 			const membership = await t.run(async (ctx) => {
 				return await ctx.db
 					.query("organizationMemberships")
-					.filter((q) =>
-						q.and(
-							q.eq(q.field("orgId"), orgId),
-							q.eq(q.field("userId"), existingUserId)
-						)
+					.withIndex("by_org_user", (q) =>
+						q.eq("orgId", orgId).eq("userId", existingUserId)
 					)
-					.first();
+					.unique();
+			});
+			expect(membership).not.toBeNull();
+		});
+
+		it("returns null for a caller with no active organization", async () => {
+			await t.run(async (ctx) => {
+				return await ctx.db.insert("users", {
+					name: "Orgless",
+					email: "orgless@example.com",
+					image: "https://example.com/o.jpg",
+					externalId: "user_orgless",
+				});
 			});
 
-			expect(membership).not.toBeNull();
+			const asUser = t.withIdentity({ subject: "user_orgless" });
+
+			expect(
+				await asUser.action(api.users.syncUserFromClerk, {
+					clerkUserId: "anyone",
+				})
+			).toBeNull();
 		});
 	});
 

@@ -21,6 +21,16 @@ export const rateLimiter = new RateLimiter(components.rateLimiter, {
 	// cannot exhaust a slug's shared quota and block legitimate leads.
 	communityInterestPerIp: { kind: "token bucket", rate: 20, period: HOUR, capacity: 20 },
 
+	// SEC-10: each mention sync spends one Clerk Backend API call, and Clerk's
+	// limits are instance-wide, so an authenticated member must not be able to
+	// drive them for everyone. Generous versus real @mention use.
+	mentionUserSync: {
+		kind: "token bucket",
+		rate: 60,
+		period: HOUR,
+		capacity: 20,
+	},
+
 	portalOtpSend: { kind: "token bucket", rate: 3, period: HOUR, capacity: 3 },
 
 	portalOtpVerify: {
