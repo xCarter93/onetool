@@ -327,11 +327,14 @@ export const list = optionalUserQuery({
 
 		// Start with the most specific query available
 		if (args.assigneeUserId) {
+			// validateUserAccess only proves the assignee is a member of this org;
+			// the product supports multi-org users, so the index must carry orgId
+			// or their tasks in every other tenant come back too.
 			await validateUserAccess(ctx, args.assigneeUserId, orgId);
 			tasks = await ctx.db
 				.query("tasks")
-				.withIndex("by_assignee", (q) =>
-					q.eq("assigneeUserId", args.assigneeUserId)
+				.withIndex("by_org_assignee", (q) =>
+					q.eq("orgId", orgId).eq("assigneeUserId", args.assigneeUserId)
 				)
 				.collect();
 		} else if (args.projectId) {
@@ -1090,11 +1093,10 @@ export const getByUser = optionalUserQuery({
 
 		let tasks = await ctx.db
 			.query("tasks")
-			.withIndex("by_assignee", (q) => q.eq("assigneeUserId", args.userId))
+			.withIndex("by_org_assignee", (q) =>
+				q.eq("orgId", orgId).eq("assigneeUserId", args.userId)
+			)
 			.collect();
-
-		// Filter by organization (additional security check)
-		tasks = tasks.filter((task) => task.orgId === orgId);
 
 		// Scoped members may only read their own assignments this way
 		tasks = await ctx.scopedToActor("tasks", tasks, (task) => task.assigneeUserId);

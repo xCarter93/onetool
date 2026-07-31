@@ -481,7 +481,9 @@ export default defineSchema({
 		.index("by_org", ["orgId"])
 		.index("by_project", ["projectId"])
 		.index("by_client", ["clientId"])
-		.index("by_assignee", ["assigneeUserId"])
+		// Org-prefixed: a user can belong to several orgs, so a bare
+		// assigneeUserId lookup reads their tasks in every tenant.
+		.index("by_org_assignee", ["orgId", "assigneeUserId"])
 		.index("by_date", ["orgId", "date"])
 		.index("by_parent_task", ["parentTaskId"])
 		.searchIndex("search_text", {
