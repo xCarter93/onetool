@@ -5,7 +5,7 @@
  * floating knockout plate carrying real content, a celebrate element, the
  * OneTool beacon prop, cast-shadow silhouettes, a few motes. No ground line.
  */
-import { isoGrid } from "../iso";
+import { isoGrid, ISO_T } from "../iso";
 import { OneToolMark } from "../mark";
 
 /* ---------------------------------------------------------------- helpers */
@@ -817,9 +817,6 @@ export function InvoicePaidSm() {
 }
 
 /* ---------------------------------------------------------- first client added */
-
-/** tan(30°) — the right-facing plane's vertical shear per unit of local x. */
-const ISO_T = 0.57735;
 
 /**
  * Five-point star, point-up, for the right-facing plane. A disc survives that

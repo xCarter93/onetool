@@ -6,7 +6,7 @@
  * knockout plates carrying the real content, exactly one OneTool mark, cast
  * shadows, a few motes. Accent hue only (celebrate is reserved for wins).
  */
-import { isoGrid } from "../iso";
+import { isoGrid, ISO_T } from "../iso";
 import { OneToolMark } from "../mark";
 import { Beacon } from "./celebration";
 
@@ -16,7 +16,7 @@ type Grid = ReturnType<typeof isoGrid>;
 
 /** Lays 1:1 screen-px artwork flat into the iso top plane (unit-scale
  *  topMatrix), so strokes keep their px width instead of scaling by `unit`. */
-const FLAT = "matrix(1 0.57735 -1 0.57735 0 0)";
+const FLAT = `matrix(1 ${ISO_T} -1 ${ISO_T} 0 0)`;
 function flatAt(g: Grid, a: number, b: number, h: number): string {
 	const [x, y] = g.pt(a, b, h);
 	return `translate(${x} ${y}) ${FLAT}`;

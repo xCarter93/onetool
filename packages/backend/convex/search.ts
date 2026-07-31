@@ -162,7 +162,11 @@ export const globalSearch = optionalUserQuery({
 					})
 				);
 
-			result.clients = [...clientHits, ...contactHits, ...propertyHits];
+			// Each source is already capped; the merged bucket needs its own cap.
+			result.clients = [...clientHits, ...contactHits, ...propertyHits].slice(
+				0,
+				BUCKET_LIMIT
+			);
 		}
 
 		if (await ctx.gateRead("projects")) {

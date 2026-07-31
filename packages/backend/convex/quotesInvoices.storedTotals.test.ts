@@ -2,7 +2,7 @@ import { convexTest } from "convex-test";
 import { describe, it, expect, beforeEach } from "vitest";
 import { api } from "./_generated/api";
 import { setupConvexTest } from "./test.setup";
-import { Id } from "./_generated/dataModel";
+import type { Id } from "./_generated/dataModel";
 import { createTestOrg, createTestClient, createTestIdentity } from "./test.helpers";
 
 /**

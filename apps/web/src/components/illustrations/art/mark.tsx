@@ -27,7 +27,11 @@ export interface OneToolMarkProps {
 	/** Rendered box size (the mark is square). */
 	size: number;
 	variant?: OneToolMarkVariant;
-	/** Extra transform applied around the mark's centre (e.g. iso matrices). */
+	/**
+	 * Extra transform (e.g. an iso matrix), applied in the parent's coordinate
+	 * space *before* the mark's own translate/scale — so rotation and scale
+	 * pivot on the parent viewBox origin, not the mark's centre.
+	 */
 	transform?: string;
 	opacity?: number;
 }

@@ -56,57 +56,56 @@ triggers.register("invoices", invoiceCountsAggregate.idempotentTrigger());
  * Unlike the line-item totals sync this is cascade-safe: each handler is a
  * guarded no-op-skip patch (recompute, compare, return when unchanged) that
  * reads nothing but the row itself, and deletes are free, so cascade deletes
- * stay O(n). The `!==` guard is also the recursion terminator — the
- * maintainer's own patch re-fires the trigger, which finds stored === computed
- * and stops.
+ * stay O(n). ctx.innerDb (not ctx.db) writes the digest below the trigger
+ * registry, so the maintainer's own patch never re-enters the trigger chain.
  */
 triggers.register("clients", async (ctx, change) => {
 	if (!change.newDoc) return;
 	const searchText = clientSearchText(change.newDoc);
 	if (change.newDoc.searchText === searchText) return;
-	await ctx.db.patch(change.id, { searchText });
+	await ctx.innerDb.patch(change.id, { searchText });
 });
 
 triggers.register("clientContacts", async (ctx, change) => {
 	if (!change.newDoc) return;
 	const searchText = contactSearchText(change.newDoc);
 	if (change.newDoc.searchText === searchText) return;
-	await ctx.db.patch(change.id, { searchText });
+	await ctx.innerDb.patch(change.id, { searchText });
 });
 
 triggers.register("clientProperties", async (ctx, change) => {
 	if (!change.newDoc) return;
 	const searchText = propertySearchText(change.newDoc);
 	if (change.newDoc.searchText === searchText) return;
-	await ctx.db.patch(change.id, { searchText });
+	await ctx.innerDb.patch(change.id, { searchText });
 });
 
 triggers.register("projects", async (ctx, change) => {
 	if (!change.newDoc) return;
 	const searchText = projectSearchText(change.newDoc);
 	if (change.newDoc.searchText === searchText) return;
-	await ctx.db.patch(change.id, { searchText });
+	await ctx.innerDb.patch(change.id, { searchText });
 });
 
 triggers.register("quotes", async (ctx, change) => {
 	if (!change.newDoc) return;
 	const searchText = quoteSearchText(change.newDoc);
 	if (change.newDoc.searchText === searchText) return;
-	await ctx.db.patch(change.id, { searchText });
+	await ctx.innerDb.patch(change.id, { searchText });
 });
 
 triggers.register("invoices", async (ctx, change) => {
 	if (!change.newDoc) return;
 	const searchText = invoiceSearchText(change.newDoc);
 	if (change.newDoc.searchText === searchText) return;
-	await ctx.db.patch(change.id, { searchText });
+	await ctx.innerDb.patch(change.id, { searchText });
 });
 
 triggers.register("tasks", async (ctx, change) => {
 	if (!change.newDoc) return;
 	const searchText = taskSearchText(change.newDoc);
 	if (change.newDoc.searchText === searchText) return;
-	await ctx.db.patch(change.id, { searchText });
+	await ctx.innerDb.patch(change.id, { searchText });
 });
 
 /**

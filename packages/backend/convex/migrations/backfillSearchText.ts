@@ -77,12 +77,15 @@ const DIGEST_BUILDERS = {
 	[K in Step]: (doc: Doc<K>) => string;
 };
 
+/** Recorded messages are capped at MAX_RECORDED_ERRORS; `total` is not. */
+type ErrorSink = { recorded: string[]; total: number };
+
 /** Recompute one page's digests, writing only the rows that actually differ. */
 async function backfillPage<K extends Step>(
 	ctx: MutationCtx,
 	step: K,
 	cursor: string | null,
-	errors: string[]
+	sink: ErrorSink
 ): Promise<PageResult> {
 	let written = 0;
 	const build = DIGEST_BUILDERS[step] as (doc: Doc<K>) => string;
@@ -107,7 +110,8 @@ async function backfillPage<K extends Step>(
 		} catch (error) {
 			const message = `Failed to backfill ${step} ${doc._id}: ${error}`;
 			console.error(message);
-			if (errors.length < MAX_RECORDED_ERRORS) errors.push(message);
+			sink.total += 1;
+			if (sink.recorded.length < MAX_RECORDED_ERRORS) sink.recorded.push(message);
 		}
 	}
 
@@ -136,6 +140,7 @@ export const startSearchTextBackfill = internalMutation({
 			processed: 0,
 			written: 0,
 			errors: [],
+			errorCount: 0,
 			startedAt: now,
 			updatedAt: now,
 		};
@@ -170,17 +175,19 @@ export const searchTextBackfillBatch = internalMutation({
 			return;
 		}
 
+		const errorCount = state.errorCount ?? state.errors.length;
+
 		const step = STEPS[state.step];
 		if (!step) {
 			await ctx.db.patch(state._id, {
-				status: "done",
+				status: errorCount > 0 ? "failed" : "done",
 				updatedAt: Date.now(),
 			});
 			return;
 		}
 
-		const errors = [...state.errors];
-		const page = await backfillPage(ctx, step, state.cursor, errors);
+		const sink: ErrorSink = { recorded: [...state.errors], total: errorCount };
+		const page = await backfillPage(ctx, step, state.cursor, sink);
 
 		const nextStep = page.isDone ? state.step + 1 : state.step;
 		const finished = nextStep >= STEPS.length;
@@ -190,15 +197,16 @@ export const searchTextBackfillBatch = internalMutation({
 			cursor: page.isDone ? null : page.continueCursor,
 			processed: state.processed + page.count,
 			written: (state.written ?? 0) + page.written,
-			errors,
-			status: finished ? "done" : "running",
+			errors: sink.recorded,
+			errorCount: sink.total,
+			status: finished ? (sink.total > 0 ? "failed" : "done") : "running",
 			updatedAt: Date.now(),
 		});
 
 		if (finished) {
 			console.log(
 				`searchText backfill complete: ${state.processed + page.count} rows read, ` +
-					`${(state.written ?? 0) + page.written} written, ${errors.length} errors`
+					`${(state.written ?? 0) + page.written} written, ${sink.total} errors`
 			);
 			return;
 		}
@@ -265,6 +273,7 @@ export const searchTextBackfillStatus = internalQuery({
 			processed: state.processed,
 			written: state.written ?? 0,
 			errors: state.errors,
+			errorCount: state.errorCount ?? state.errors.length,
 			startedAt: state.startedAt,
 			updatedAt: state.updatedAt,
 		};

@@ -38,12 +38,14 @@ async function folderPaths(): Promise<string[]> {
 				const assets = [
 					...(article.heroMedia ? [article.heroMedia.asset] : []),
 					...article.sections.flatMap((s) =>
-						s.blocks.filter((b) => b.type === "media").map((b) => b.asset!)
+						s.blocks.filter((b) => b.type === "media").map((b) => b.asset)
 					),
-				];
-				// Folder is everything up to the descriptor.
+				].filter((a): a is string => Boolean(a));
+				// Folder is everything up to the descriptor; a descriptor with no
+				// "/" sits at the prefix root and needs no folder.
 				for (const asset of assets) {
-					paths.add(`${PREFIX}/${asset.slice(0, asset.lastIndexOf("/"))}`);
+					const cut = asset.lastIndexOf("/");
+					if (cut > 0) paths.add(`${PREFIX}/${asset.slice(0, cut)}`);
 				}
 			}
 		}
@@ -93,8 +95,9 @@ async function main() {
 		}
 
 		const body = await res.text();
-		// Re-running is expected; an existing folder is not an error.
-		if (res.status === 400 && /exists/i.test(body)) {
+		// Re-running is expected; an existing folder is not an error. Cloudinary
+		// has returned both shapes for this.
+		if (res.status === 409 || (res.status === 400 && /exists/i.test(body))) {
 			console.log(`= ${path}`);
 			existed++;
 			continue;

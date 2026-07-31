@@ -764,15 +764,7 @@ function AppErrorScene({ hero }: { hero: boolean }) {
 				strokeWidth={2.4 * s}
 				strokeLinecap="round"
 			/>
-			<line
-				x1={dx}
-				y1={dy + dr * 0.42}
-				x2={dx}
-				y2={dy + dr * 0.43}
-				stroke="var(--destructive)"
-				strokeWidth={2.4 * s}
-				strokeLinecap="round"
-			/>
+			<circle cx={dx} cy={dy + dr * 0.42} r={1.2 * s} fill="var(--destructive)" />
 
 			{/* motes — neutral only in this scene */}
 			<circle cx={34 * s} cy={26 * s} r={1.9 * s} className="illo-mote" />
@@ -861,15 +853,7 @@ export function AppErrorSm() {
 				strokeWidth={1.7}
 				strokeLinecap="round"
 			/>
-			<line
-				x1={64}
-				y1={36.6}
-				x2={64}
-				y2={36.7}
-				stroke="var(--destructive)"
-				strokeWidth={1.7}
-				strokeLinecap="round"
-			/>
+			<circle cx={64} cy={36.6} r={0.85} fill="var(--destructive)" />
 		</>
 	);
 }

@@ -1505,6 +1505,8 @@ export default defineSchema({
 		// repair drift use it to prove idempotency.
 		written: v.optional(v.number()),
 		errors: v.array(v.string()),
+		// Recorded messages are capped; errorCount is the true total.
+		errorCount: v.optional(v.number()),
 		startedAt: v.number(),
 		updatedAt: v.number(),
 	}).index("by_name", ["name"]),

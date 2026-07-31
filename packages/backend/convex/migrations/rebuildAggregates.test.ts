@@ -81,6 +81,37 @@ describe("rebuildAggregates", () => {
 		await t.finishAllScheduledFunctions(vi.runAllTimers);
 	}
 
+	it("finishes as failed, not done, when any row errored", async () => {
+		await seedOrg("failed");
+		await runRebuild();
+
+		// Land the chain on its terminal step with recorded errors, then let the
+		// final batch decide the terminal status.
+		const generation = await t.run(async (ctx) => {
+			const state = await ctx.db.query("backfillState").first();
+			await ctx.db.patch(state!._id, {
+				status: "running",
+				step: 4,
+				errors: ["Failed to seed clients abc: boom"],
+				errorCount: 37,
+			});
+			return state!.generation;
+		});
+
+		await t.mutation(
+			internal.migrations.rebuildAggregates.rebuildAggregatesBatch,
+			{ generation }
+		);
+
+		const status = await t.query(
+			internal.migrations.rebuildAggregates.aggregateRebuildStatus,
+			{}
+		);
+		expect(status?.status).toBe("failed");
+		// Recorded messages are capped at 20; the count is not.
+		expect(status?.errorCount).toBe(37);
+	});
+
 	it("repairs a stale-keyed invoice left behind by a raw db.patch", async () => {
 		const { orgId, asUser } = await seedOrg("stale");
 		const clientId = await createClientViaApi(asUser, "Stale Co");

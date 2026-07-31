@@ -94,17 +94,13 @@ describe("backfillSearchText", () => {
 
 		// Raw patches bypass lib/triggers.ts — exactly the pre-index state.
 		await t.run(async (ctx) => {
-			for (const id of [
-				seeded.clientId,
-				seeded.contactId,
-				seeded.propertyId,
-				seeded.projectId,
-				seeded.quoteId,
-				seeded.invoiceId,
-				seeded.taskId,
-			] as Id<"clients">[]) {
-				await ctx.db.patch(id, { searchText: undefined });
-			}
+			await ctx.db.patch(seeded.clientId, { searchText: undefined });
+			await ctx.db.patch(seeded.contactId, { searchText: undefined });
+			await ctx.db.patch(seeded.propertyId, { searchText: undefined });
+			await ctx.db.patch(seeded.projectId, { searchText: undefined });
+			await ctx.db.patch(seeded.quoteId, { searchText: undefined });
+			await ctx.db.patch(seeded.invoiceId, { searchText: undefined });
+			await ctx.db.patch(seeded.taskId, { searchText: undefined });
 		});
 
 		return seeded;

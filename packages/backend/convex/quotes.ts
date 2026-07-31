@@ -702,6 +702,13 @@ export const update = userMutation({
 
 		const { id, ...updates } = args;
 
+		const currentQuote = await ctx.orgEntity("quotes", id);
+		const filteredUpdates = filterUndefined(updates) as Partial<QuoteDocument>;
+		// Paired fields (discount type/amount, countersignature/countersigner) are
+		// validated on the merged result, so patching one half can't bypass a rule
+		// or trip one that the merged quote satisfies.
+		const effective = { ...currentQuote, ...filteredUpdates };
+
 		// Validate financial values
 		if (updates.subtotal !== undefined && updates.subtotal < 0) {
 			throw new ConvexError({
@@ -725,9 +732,9 @@ export const update = userMutation({
 		}
 
 		if (
-			updates.discountType === "percentage" &&
-			updates.discountAmount !== undefined &&
-			updates.discountAmount > 100
+			effective.discountType === "percentage" &&
+			effective.discountAmount !== undefined &&
+			effective.discountAmount > 100
 		) {
 			throw new ConvexError({
 				code: "BAD_REQUEST",
@@ -743,7 +750,7 @@ export const update = userMutation({
 		}
 
 		// Same calendar-day semantics as create (see comment there).
-		if (updates.validUntil) {
+		if (updates.validUntil !== undefined) {
 			const tz = (await ctx.db.get(ctx.orgId))?.timezone ?? "UTC";
 			if (updates.validUntil < calendarDayEpoch(Date.now(), tz)) {
 				throw new ConvexError({
@@ -754,7 +761,7 @@ export const update = userMutation({
 		}
 
 		// Validate countersignature settings
-		if (updates.requiresCountersignature === true && !updates.countersignerId) {
+		if (effective.requiresCountersignature === true && !effective.countersignerId) {
 			throw new ConvexError({
 				code: "BAD_REQUEST",
 				message: "Countersigner is required when countersignature is enabled",
@@ -772,12 +779,8 @@ export const update = userMutation({
 			}
 		}
 
-		// Filter and validate updates
-		const filteredUpdates = filterUndefined(updates) as Partial<QuoteDocument>;
 		requireUpdates(filteredUpdates);
 
-		// Get current quote to check for status changes
-		const currentQuote = await ctx.orgEntity("quotes", id);
 		await ctx.requireRecordScope("quotes", () =>
 			ctx.actorScope().then((s) =>
 				currentQuote.projectId

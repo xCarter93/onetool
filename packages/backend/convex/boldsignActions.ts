@@ -152,8 +152,10 @@ export const createEmbeddedSignatureRequest = action({
 
 		// Download the stored quote PDF into a Node buffer.
 		const blob = await ctx.storage.get(context.pdfStorageId);
+		// Document row can outlive its blob; same outcome as having no PDF at
+		// all — no BoldSign draft is created.
 		if (!blob) {
-			throw new Error("Stored quote PDF not found");
+			return { ok: false, reason: "no_pdf" };
 		}
 		const pdfBuffer = Buffer.from(await blob.arrayBuffer());
 

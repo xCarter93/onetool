@@ -4,14 +4,16 @@
  *
  * Every V2 scene is composed from these so all angles agree. Iso space is
  * (a, b, h): `a` runs toward the lower-right, `b` toward the lower-left,
- * `h` straight up.
+ * `h` straight up. Units differ: a/b/w/d are iso units (scaled by `unit`),
+ * while h/ht are screen px, subtracted straight off the projected y.
  *
  * Helpers return path `d` strings / transform matrices, computed once at
  * module scope — art components stay static JSX.
  */
 
 /** tan(30°): vertical rise per horizontal unit along an iso axis. */
-const T = 0.57735;
+export const ISO_T = 0.57735;
+const T = ISO_T;
 
 export type IsoPoint = readonly [number, number];
 
@@ -21,7 +23,8 @@ export interface IsoGrid {
 	/** Closed polygon through iso points. */
 	poly: (points: ReadonlyArray<readonly [number, number, number]>) => string;
 	/**
-	 * Axis-aligned box footprint (a,b)→(a+w,b+d), base height h, extruded ht.
+	 * Axis-aligned box footprint (a,b)→(a+w,b+d) in iso units, base height h and
+	 * extrusion ht in screen px.
 	 * Faces: top, plus the two viewer-facing sides (left = the b+d edge,
 	 * right = the a+w edge).
 	 */

@@ -201,7 +201,7 @@ describe("homeStats.getHomeStats", () => {
 		expect(stats.invoicesPaid.change).toBe(0);
 	});
 
-	it("totalClients.previous uses total - thisMonth + lastMonth, a different formula than the other groups", async () => {
+	it("totalClients.previous is total - thisMonth, matching the other groups", async () => {
 		// convex-test's internal _creationTime clock is monotonic per `t`
 		// instance (clamps forward if "now" doesn't advance) — unlike
 		// completedAt/approvedAt/paidAt, which are plain Date.now() calls in
@@ -221,10 +221,9 @@ describe("homeStats.getHomeStats", () => {
 		const stats = await asUser.query(api.homeStats.getHomeStats, {});
 
 		expect(stats.totalClients.current).toBe(4);
-		// homeStats.ts:301 -> 4 - 2(thisMonth) + 1(lastMonth) = 3. The
-		// completedProjects-style "total - thisMonth" formula would give 2 here
-		// instead — this is a genuinely different calculation, not a typo.
-		expect(stats.totalClients.previous).toBe(3);
+		// 4 - 2(thisMonth) = 2; the two-months-ago client stays folded into
+		// "previous" the same way it does for the other groups.
+		expect(stats.totalClients.previous).toBe(2);
 		expect(stats.totalClients.change).toBe(1); // |thisMonth(2) - lastMonth(1)|
 		expect(stats.totalClients.changeType).toBe("increase");
 	});

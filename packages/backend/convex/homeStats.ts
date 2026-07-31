@@ -291,7 +291,7 @@ export const getHomeStats = optionalUserQuery({
 		return {
 			totalClients: {
 				current: totalClients,
-				previous: totalClients - clientsThisMonth + clientsLastMonth,
+				previous: totalClients - clientsThisMonth,
 				change: Math.abs(clientsChange),
 				changeType: getChangeType(clientsChange),
 			},

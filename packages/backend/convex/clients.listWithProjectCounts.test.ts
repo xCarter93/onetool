@@ -3,6 +3,7 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { api } from "./_generated/api";
 import { setupConvexTest } from "./test.setup";
 import type { Id } from "./_generated/dataModel";
+import type { MutationCtx } from "./_generated/server";
 import {
 	createTestOrg,
 	createTestClient,
@@ -25,7 +26,7 @@ describe("clients.listWithProjectCounts", () => {
 
 	/** Activity rows need every required field; keep the noise in one place. */
 	async function insertActivity(
-		ctx: { db: any },
+		ctx: { db: MutationCtx["db"] },
 		args: {
 			orgId: Id<"organizations">;
 			userId: Id<"users">;

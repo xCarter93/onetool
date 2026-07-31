@@ -45,6 +45,9 @@ const MAX_RECORDED_ERRORS = 20;
 const STEPS = ["clients", "projects", "quotes", "invoices"] as const;
 type Step = (typeof STEPS)[number];
 
+/** Recorded messages are capped at MAX_RECORDED_ERRORS; `total` is not. */
+type ErrorSink = { recorded: string[]; total: number };
+
 type PageResult = {
 	count: number;
 	isDone: boolean;
@@ -86,7 +89,7 @@ async function seedPage(
 	ctx: MutationCtx,
 	step: Step,
 	cursor: string | null,
-	errors: string[]
+	sink: ErrorSink
 ): Promise<PageResult> {
 	const paginateOpts = { numItems: BATCH_SIZE, cursor };
 
@@ -96,7 +99,8 @@ async function seedPage(
 		} catch (error) {
 			const message = `Failed to seed ${step} ${id}: ${error}`;
 			console.error(message);
-			if (errors.length < MAX_RECORDED_ERRORS) errors.push(message);
+			sink.total += 1;
+			if (sink.recorded.length < MAX_RECORDED_ERRORS) sink.recorded.push(message);
 		}
 	};
 
@@ -176,6 +180,7 @@ export const startAggregateRebuild = internalMutation({
 			prepared: false,
 			processed: 0,
 			errors: [],
+			errorCount: 0,
 			startedAt: now,
 			updatedAt: now,
 		};
@@ -210,10 +215,12 @@ export const rebuildAggregatesBatch = internalMutation({
 			return;
 		}
 
+		const errorCount = state.errorCount ?? state.errors.length;
+
 		const step = STEPS[state.step];
 		if (!step) {
 			await ctx.db.patch(state._id, {
-				status: "done",
+				status: errorCount > 0 ? "failed" : "done",
 				updatedAt: Date.now(),
 			});
 			return;
@@ -232,8 +239,8 @@ export const rebuildAggregatesBatch = internalMutation({
 			return;
 		}
 
-		const errors = [...state.errors];
-		const page = await seedPage(ctx, step, state.cursor, errors);
+		const sink: ErrorSink = { recorded: [...state.errors], total: errorCount };
+		const page = await seedPage(ctx, step, state.cursor, sink);
 
 		const nextStep = page.isDone ? state.step + 1 : state.step;
 		const finished = nextStep >= STEPS.length;
@@ -243,14 +250,15 @@ export const rebuildAggregatesBatch = internalMutation({
 			cursor: page.isDone ? null : page.continueCursor,
 			prepared: !page.isDone,
 			processed: state.processed + page.count,
-			errors,
-			status: finished ? "done" : "running",
+			errors: sink.recorded,
+			errorCount: sink.total,
+			status: finished ? (sink.total > 0 ? "failed" : "done") : "running",
 			updatedAt: Date.now(),
 		});
 
 		if (finished) {
 			console.log(
-				`Aggregate rebuild complete: ${state.processed + page.count} rows, ${errors.length} errors`
+				`Aggregate rebuild complete: ${state.processed + page.count} rows, ${sink.total} errors`
 			);
 			return;
 		}
@@ -313,6 +321,7 @@ export const aggregateRebuildStatus = internalQuery({
 			totalSteps: STEPS.length,
 			processed: state.processed,
 			errors: state.errors,
+			errorCount: state.errorCount ?? state.errors.length,
 			startedAt: state.startedAt,
 			updatedAt: state.updatedAt,
 		};
