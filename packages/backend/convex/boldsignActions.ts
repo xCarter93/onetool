@@ -1,6 +1,6 @@
 "use node";
 import { v } from "convex/values";
-import { action } from "./_generated/server";
+import { action, internalAction } from "./_generated/server";
 import { internal } from "./_generated/api";
 import {
 	DocumentApi,
@@ -274,8 +274,14 @@ export const discardEmbeddedSignatureRequest = action({
 	},
 });
 
-// Action to download completed/signed document from BoldSign
-export const downloadCompletedDocument = action({
+/**
+ * Download a completed/signed document from BoldSign.
+ *
+ * Internal-only: it spends the shared platform API key and writes into storage,
+ * so it must never be client-callable. Its sole caller is
+ * `boldsign.triggerDocumentDownload`, scheduled from the verified webhook.
+ */
+export const downloadCompletedDocument = internalAction({
 	args: {
 		documentId: v.id("documents"),
 		boldsignDocumentId: v.string(),
@@ -289,8 +295,11 @@ export const downloadCompletedDocument = action({
 		});
 
 		try {
-			// Download the signed PDF from BoldSign API
-			const downloadUrl = `https://api.boldsign.com/v1/document/download?documentId=${args.boldsignDocumentId}`;
+			// Build via URL/searchParams so the id can never inject extra query
+			// parameters into a request carrying the platform credential.
+			const url = new URL("https://api.boldsign.com/v1/document/download");
+			url.searchParams.set("documentId", args.boldsignDocumentId);
+			const downloadUrl = url.toString();
 
 			// Set up fetch timeout using AbortController
 			const controller = new AbortController();
@@ -339,6 +348,7 @@ export const downloadCompletedDocument = action({
 			// Update the document record with the signed storage ID
 			await ctx.runMutation(internal.boldsign.updateDocumentWithSignedPdf, {
 				documentId: args.documentId,
+				boldsignDocumentId: args.boldsignDocumentId,
 				signedStorageId,
 			});
 

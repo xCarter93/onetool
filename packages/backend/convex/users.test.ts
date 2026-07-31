@@ -108,38 +108,65 @@ describe("Users", () => {
 		});
 	});
 
-	describe("ensureUserExists", () => {
-		it("should return user ID if user exists", async () => {
-			const { userId, clerkUserId } = await t.run(async (ctx) => {
-				const userId = await ctx.db.insert("users", {
-					name: "Existing User",
-					email: "existing@example.com",
-					image: "https://example.com/image.jpg",
-					externalId: "user_existing",
-				});
-				return { userId, clerkUserId: "user_existing" };
-			});
+	// SEC-11: `users.get` must not be a deployment-wide directory lookup.
+	describe("get", () => {
+		it("returns a user who shares the caller's organization", async () => {
+			const { clerkUserId, clerkOrgId, memberUserId } = await t.run(
+				async (ctx) => {
+					const setup = await createTestOrg(ctx, {
+						userName: "Admin User",
+						userEmail: "admin@example.com",
+					});
+					const member = await addMemberToOrg(ctx, setup.orgId, {
+						userName: "Teammate",
+						userEmail: "teammate@example.com",
+					});
+					return { ...setup, memberUserId: member.userId };
+				}
+			);
 
-			// ensureUserExists is a query that can be called without auth
-			const result = await t.query(api.users.ensureUserExists, {
-				clerkUserId,
-				name: "Existing User",
-				email: "existing@example.com",
-				imageUrl: "https://example.com/image.jpg",
-			});
+			const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
 
-			expect(result).toBe(userId);
+			const user = await asUser.query(api.users.get, { id: memberUserId });
+			expect(user).toMatchObject({
+				_id: memberUserId,
+				name: "Teammate",
+				email: "teammate@example.com",
+			});
 		});
 
-		it("should return null if user does not exist", async () => {
-			const result = await t.query(api.users.ensureUserExists, {
-				clerkUserId: "nonexistent_user",
-				name: "New User",
-				email: "new@example.com",
-				imageUrl: "https://example.com/image.jpg",
+		it("returns null for a user in another organization", async () => {
+			const { clerkUserId, clerkOrgId, outsiderId } = await t.run(async (ctx) => {
+				const setup = await createTestOrg(ctx, {
+					userName: "Org A Admin",
+					userEmail: "a@example.com",
+					clerkUserId: "user_org_a",
+					clerkOrgId: "org_a",
+				});
+				const other = await createTestOrg(ctx, {
+					userName: "Org B Admin",
+					userEmail: "b@example.com",
+					clerkUserId: "user_org_b",
+					clerkOrgId: "org_b",
+				});
+				return { ...setup, outsiderId: other.userId };
 			});
 
-			expect(result).toBeNull();
+			const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+
+			expect(await asUser.query(api.users.get, { id: outsiderId })).toBeNull();
+		});
+
+		it("returns null for an unauthenticated caller", async () => {
+			const userId = await t.run(async (ctx) => {
+				const setup = await createTestOrg(ctx, {
+					userName: "Admin User",
+					userEmail: "admin@example.com",
+				});
+				return setup.userId;
+			});
+
+			expect(await t.query(api.users.get, { id: userId })).toBeNull();
 		});
 	});
 

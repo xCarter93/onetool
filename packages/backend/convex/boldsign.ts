@@ -2,7 +2,7 @@ import { v } from "convex/values";
 import { internalQuery, MutationCtx, QueryCtx } from "./_generated/server";
 import { internalMutation, mutation } from "./lib/triggers";
 import { Doc, Id, TableNames } from "./_generated/dataModel";
-import { internal, api } from "./_generated/api";
+import { internal } from "./_generated/api";
 import { logWebhookSuccess, logWebhookError } from "./lib/webhooks";
 import { getCurrentUser, getCurrentUserOrgId } from "./lib/auth";
 import {
@@ -575,10 +575,19 @@ async function handleQuoteStatusUpdate(
 export const updateDocumentWithSignedPdf = internalMutation({
 	args: {
 		documentId: v.id("documents"),
+		boldsignDocumentId: v.string(),
 		signedStorageId: v.id("_storage"),
 	},
 	handler: async (ctx, args) => {
-		await fetchEntityOrThrow(ctx, args.documentId, "Document");
+		const document = await fetchEntityOrThrow(ctx, args.documentId, "Document");
+
+		// fetchEntityOrThrow is existence-only, so pin the pair here: a PDF
+		// downloaded for one BoldSign document can never land on another row.
+		if (document.boldsignDocumentId !== args.boldsignDocumentId) {
+			throw new Error(
+				`Document ${args.documentId} is not linked to BoldSign document ${args.boldsignDocumentId}`
+			);
+		}
 
 		await ctx.db.patch(args.documentId, {
 			signedStorageId: args.signedStorageId,
@@ -602,7 +611,7 @@ export const triggerDocumentDownload = internalMutation({
 	handler: async (ctx, args) => {
 		await ctx.scheduler.runAfter(
 			0,
-			api.boldsignActions.downloadCompletedDocument,
+			internal.boldsignActions.downloadCompletedDocument,
 			{
 				documentId: args.documentId,
 				boldsignDocumentId: args.boldsignDocumentId,

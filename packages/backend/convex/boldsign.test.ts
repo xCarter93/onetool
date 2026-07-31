@@ -541,6 +541,62 @@ describe("BoldSign embedded sending", () => {
 		});
 	});
 
+	// SEC-3: the signed-PDF sink is existence-only via fetchEntityOrThrow, so it
+	// must pin the BoldSign id or a download can be stamped onto any document row.
+	describe("updateDocumentWithSignedPdf", () => {
+		it("stores the signed PDF on the document that owns the BoldSign id", async () => {
+			const { documentId, storageId } = await t.run(async (ctx) => {
+				const org = await createTestOrg(ctx);
+				const clientId = await createTestClient(ctx, org.orgId);
+				const quoteId = await seedQuote(ctx, org.orgId, clientId);
+				const documentId = await seedDocument(ctx, org.orgId, quoteId, 1, {
+					documentId: "bs_owned",
+					status: "Completed",
+				});
+				const storageId = await ctx.storage.store(
+					new Blob(["signed"], { type: "application/pdf" })
+				);
+				return { documentId, storageId };
+			});
+
+			await t.mutation(internal.boldsign.updateDocumentWithSignedPdf, {
+				documentId,
+				boldsignDocumentId: "bs_owned",
+				signedStorageId: storageId,
+			});
+
+			const doc = await t.run(async (ctx) => await ctx.db.get(documentId));
+			expect(doc?.signedStorageId).toBe(storageId);
+		});
+
+		it("refuses to stamp a signed PDF onto a document it is not linked to", async () => {
+			const { victimDocumentId, storageId } = await t.run(async (ctx) => {
+				const org = await createTestOrg(ctx);
+				const clientId = await createTestClient(ctx, org.orgId);
+				const quoteId = await seedQuote(ctx, org.orgId, clientId);
+				const victimDocumentId = await seedDocument(ctx, org.orgId, quoteId, 1, {
+					documentId: "bs_victim",
+					status: "Completed",
+				});
+				const storageId = await ctx.storage.store(
+					new Blob(["attacker"], { type: "application/pdf" })
+				);
+				return { victimDocumentId, storageId };
+			});
+
+			await expect(
+				t.mutation(internal.boldsign.updateDocumentWithSignedPdf, {
+					documentId: victimDocumentId,
+					boldsignDocumentId: "bs_someone_elses",
+					signedStorageId: storageId,
+				})
+			).rejects.toThrow(/not linked to BoldSign document/);
+
+			const doc = await t.run(async (ctx) => await ctx.db.get(victimDocumentId));
+			expect(doc?.signedStorageId).toBeUndefined();
+		});
+	});
+
 	// ========================================================================
 	// getEmbeddedDraft / clearEmbeddedDraft (abandoned-draft discard)
 	// ========================================================================

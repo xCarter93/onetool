@@ -12,6 +12,7 @@ import { getOptionalOrgId } from "./lib/queries";
 import { internal } from "./_generated/api";
 import {
 	ensureMembership,
+	getMembership,
 	listMembershipsByOrg,
 	listMembershipsByUser,
 	removeMembership,
@@ -49,13 +50,21 @@ export const listByOrg = optionalUserQuery({
 });
 
 /**
- * Get a user by ID (authenticated, returns limited fields)
+ * Get a user by ID (returns limited fields).
+ *
+ * The target must be a member of the caller's active org — without that check
+ * this is a deployment-wide name/email lookup for any `Id<"users">`.
  */
 export const get = optionalUserQuery({
 	args: { id: v.id("users") },
 	handler: async (ctx, args) => {
 		const currentUser = await getCurrentUser(ctx);
 		if (!currentUser) return null;
+
+		const orgId = await getOptionalOrgId(ctx);
+		if (!orgId) return null;
+
+		if (!(await getMembership(ctx, args.id, orgId))) return null;
 
 		const user = await ctx.db.get(args.id);
 		if (!user) return null;
@@ -227,31 +236,6 @@ export const removeUserFromOrganization = internalMutation({
 		}
 
 		await removeMembership(ctx, user._id, organization._id);
-	},
-});
-
-/**
- * Ensure a user from Clerk exists in Convex
- * This is used when tagging users who may not have signed in yet
- */
-export const ensureUserExists = optionalUserQuery({
-	args: {
-		clerkUserId: v.string(),
-		name: v.string(),
-		email: v.string(),
-		imageUrl: v.string(),
-	},
-	handler: async (ctx, args) => {
-		// Check if user already exists
-		const existingUser = await userByExternalId(ctx, args.clerkUserId);
-		
-		if (existingUser) {
-			return existingUser._id;
-		}
-
-		// User doesn't exist yet, return null
-		// We can't create users from a query, so we'll handle this differently
-		return null;
 	},
 });
 
