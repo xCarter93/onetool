@@ -160,6 +160,70 @@ describe("automation run entry points — per-object authorization", () => {
 		expect(forbidden(caught).code).toBe("FORBIDDEN");
 	});
 
+	it("startManualRun refuses a record for a scheduled automation", async () => {
+		// A scheduled trigger has no record type, so an update_field target:"self"
+		// node adds nothing to requireDefinitionObjectAccess's write set — the
+		// definition gate passes on automations:modify alone. startTestRun rejects a
+		// record for scheduled triggers; startManualRun must too, or clients:view
+		// (allRecords) + this automation writes any client's status.
+		const { org, member } = await seed();
+		await grant(org.orgId, member.userId, {
+			automations: { level: "modify" },
+			clients: { level: "view", allRecords: true },
+		});
+
+		const schedule = {
+			frequency: "daily" as const,
+			timezone: "UTC",
+			time: "09:00",
+		};
+		const trigger = { type: "scheduled" as const, schedule };
+		const nodes = [
+			{
+				id: "act-1",
+				type: "action" as const,
+				config: {
+					kind: "action" as const,
+					action: {
+						type: "update_field" as const,
+						target: "self" as const,
+						field: "status",
+						value: { kind: "static" as const, value: "completed" },
+					},
+				},
+			},
+		];
+		const { automationId, clientId } = await t.run(async (ctx) => {
+			const now = Date.now();
+			const victimClientId = await createTestClient(ctx, org.orgId, {
+				companyName: "Victim Client",
+			});
+			const id = await ctx.db.insert("workflowAutomations", {
+				orgId: org.orgId,
+				name: "Scheduled self-write",
+				status: "active" as const,
+				trigger,
+				nodes,
+				publishedSnapshot: { trigger, nodes, version: 1, publishedAt: now },
+				createdBy: org.userId,
+				createdAt: now,
+				updatedAt: now,
+			});
+			return { automationId: id, clientId: victimClientId };
+		});
+
+		const asMember = t.withIdentity(
+			createTestIdentity(member.clerkUserId, org.clerkOrgId)
+		);
+
+		await expect(
+			asMember.mutation(api.automationExecutor.startManualRun, {
+				automationId,
+				record: { entityType: "client", entityId: clientId },
+			})
+		).rejects.toThrow(/without a triggering record/);
+	});
+
 	it("startTestRun refuses a record outside the caller's record scope", async () => {
 		const { org, member, clientId, automationId } = await seed();
 		// clients:view, but scoped — and the member is assigned to no project of

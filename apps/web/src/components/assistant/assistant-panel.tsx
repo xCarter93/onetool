@@ -156,7 +156,9 @@ function MarkdownLink({
 			return <span {...props}>{children}</span>;
 		}
 		return (
-			<a href={href} {...props}>
+			// rel="noreferrer" so clicking a model-emitted external link cannot leak the
+				// workspace URL (which can encode client/project ids) via the Referer header.
+				<a href={href} {...props} rel="noreferrer">
 				{children}
 			</a>
 		);

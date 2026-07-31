@@ -2180,14 +2180,34 @@ export const getRecentFailures = userQuery({
 			.slice(0, limit);
 
 		const resolveName = makeAutomationNameResolver(ctx, orgId);
+		// Failure messages (e.error and loop-summary errors) interpolate resolved
+		// record values, so they carry the same disclosure as listRuns' error field
+		// and must ride the same per-automation detail verdict — automations:view
+		// alone is not enough. Memoized across the page.
+		const detailAllowed = new Map<Id<"workflowAutomations">, boolean>();
+		const canReadDetail = async (
+			automationId: Id<"workflowAutomations">
+		): Promise<boolean> => {
+			const cached = detailAllowed.get(automationId);
+			if (cached !== undefined) return cached;
+			const automation = await ctx.db.get(automationId);
+			const allowed =
+				automation !== null && automation.orgId === orgId
+					? await canReadExecutionDetail(ctx, automation)
+					: false;
+			detailAllowed.set(automationId, allowed);
+			return allowed;
+		};
 		const rows = [];
 		for (const e of merged) {
 			const failedNode = [...e.nodesExecuted]
 				.reverse()
 				.find((n) => n.result === "failed");
 			const status = e.status as "failed" | "completed_with_errors";
-			const error =
-				status === "completed_with_errors"
+			const allowed = await canReadDetail(e.automationId);
+			const error = !allowed
+				? "Hidden"
+				: status === "completed_with_errors"
 					? deriveLoopSummaryError(e.loopSummary)
 					: (e.error ?? "Unknown error");
 			rows.push({

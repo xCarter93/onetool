@@ -51,7 +51,12 @@ const SIGNATURE_DELIMITER = /^\s*--\s*$/;
 export function stripTagBlocks(input: string, tag: string): string {
 	const open = `<${tag}`;
 	const close = `</${tag}>`;
-	const haystack = input.toLowerCase();
+	// ASCII-only, length-preserving fold. `input.toLowerCase()` is NOT
+	// length-preserving (U+0130 lowercases to 2 code units), which would desync
+	// haystack indices from the `input.slice` below and leak block interiors into
+	// the output. The match targets (<style/<script) are ASCII, so folding A-Z is
+	// sufficient and keeps every index aligned with `input`.
+	const haystack = input.replace(/[A-Z]/g, (c) => c.toLowerCase());
 	let out = "";
 	let cursor = 0;
 	for (;;) {

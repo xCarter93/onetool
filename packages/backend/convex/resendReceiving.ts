@@ -77,8 +77,11 @@ export const handleInboundEmail = internalAction({
 		const rfcMessageId =
 			content.rfcMessageId ?? args.messageId ?? args.emailId;
 		const inReplyTo = content.inReplyTo ?? args.inReplyTo;
-		const references =
-			content.references.length > 0 ? content.references : args.references;
+		const references = (
+			content.references.length > 0
+				? content.references
+				: (args.references ?? [])
+		).slice(0, MAX_REFERENCES);
 		const receivedForAddress = content.receivedForAddress ?? args.to[0];
 		const visibleText = deriveVisibleText({
 			text: content.text,
@@ -455,16 +458,24 @@ export const createAttachmentRecord = systemMutation({
  * Format: "John Doe <john@example.com>" or "john@example.com"
  */
 function parseEmailAddress(address: string): { name: string; email: string } {
-	const match = address.match(/^(.+?)\s*<(.+?)>$/);
-	if (match) {
+	// Bound first: `from` is an attacker-controlled webhook header that capBody
+	// does not cover, and the old lazy `<(.+?)>$` was quadratic on a run of "<".
+	// RFC 5322 caps a header far below this. Then split on the last angle bracket
+	// pair with index scans instead of a backtracking regex.
+	const bounded = address.slice(0, 998).trim();
+	const open = bounded.lastIndexOf("<");
+	if (open !== -1 && bounded.endsWith(">")) {
 		return {
-			name: match[1].trim().replace(/^["']|["']$/g, ""),
-			email: match[2].trim(),
+			name: bounded
+				.slice(0, open)
+				.trim()
+				.replace(/^["']|["']$/g, ""),
+			email: bounded.slice(open + 1, bounded.length - 1).trim(),
 		};
 	}
 	return {
-		name: address.split("@")[0],
-		email: address.trim(),
+		name: bounded.split("@")[0],
+		email: bounded,
 	};
 }
 

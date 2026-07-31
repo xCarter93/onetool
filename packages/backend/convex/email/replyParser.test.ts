@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { extractVisibleText, deriveVisibleText, htmlToText } from "./replyParser";
+import {
+	extractVisibleText,
+	deriveVisibleText,
+	htmlToText,
+	stripTagBlocks,
+} from "./replyParser";
 
 describe("extractVisibleText", () => {
 	it("keeps only the new content above a Gmail 'On … wrote:' quote", () => {
@@ -200,5 +205,21 @@ describe("ReDoS resistance", () => {
 		expect(extractVisibleText(`first\n${long}\nlast`)).toBe(
 			`first\n${long}\nlast`
 		);
+	});
+});
+
+describe("stripTagBlocks", () => {
+	it("removes the block cleanly despite length-changing uppercase before it", () => {
+		// U+0130 (İ) lowercases to two code units, so a naive input.toLowerCase()
+		// desyncs the scan indices from the input.slice below — leaking the block
+		// interior and truncating the tail. İ is ordinary Turkish-locale content.
+		const input = "İİİ<script>alert(1)</script>TAIL";
+		const out = stripTagBlocks(input, "script");
+		expect(out).toBe("İİİTAIL");
+		expect(out).not.toContain("alert(1)");
+	});
+
+	it("matches the tag name case-insensitively", () => {
+		expect(stripTagBlocks("a<STYLE>x</STYLE>b", "style")).toBe("ab");
 	});
 });

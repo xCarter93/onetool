@@ -1534,6 +1534,17 @@ export const startManualRun = userMutation({
 		let objType: ObjectType | undefined;
 		let objectId: string | undefined;
 		if (args.record) {
+			// A scheduled automation runs without a triggering record. Accepting one
+			// here lets a caller with only automations:modify + <type>:view feed an
+			// arbitrary record into a target:"self" write, whose object type never
+			// enters requireDefinitionObjectAccess's write set (triggerType is
+			// undefined for scheduled), so nothing requires modify on it. Reject it,
+			// exactly as startTestRun does.
+			if ("type" in trigger && trigger.type === "scheduled") {
+				throw new Error(
+					"Scheduled automations run without a triggering record — run it without one"
+				);
+			}
 			if (objectType && args.record.entityType !== objectType) {
 				throw new Error(
 					`This automation runs on ${objectType} records — pick a ${objectType} to run it against`

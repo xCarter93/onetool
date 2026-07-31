@@ -20,12 +20,17 @@ export function constantTimeEqual(a: string, b: string): boolean {
  * where it is missing has no signed-in contacts to attest for in the first
  * place.
  *
- * PORTAL_ATTESTATION_SECRET splits the two purposes. It must be set in BOTH the
- * Convex env and Vercel, or every signature and decline fails closed with
- * UNATTESTED_REQUEST — a half-configured rollout is the failure mode to watch.
- * Rotate through _NEXT the same way STRIPE_CONNECT_WEBHOOK_SECRET does: set the
- * new value in PORTAL_ATTESTATION_SECRET_NEXT, roll the web env, then promote it
- * and unset _NEXT. Both are accepted meanwhile, so there is no signing outage.
+ * PORTAL_ATTESTATION_SECRET splits the two purposes. Set it in the Convex env
+ * FIRST, then in Vercel. Convex also accepts PORTAL_OTP_REQUEST_SECRET (the last
+ * entry below), so while only Convex knows the new secret the web routes keep
+ * presenting the OTP secret and signing continues. The failure mode to avoid is
+ * the reverse — setting it in Vercel only, where the routes present a secret
+ * Convex does not accept and every signature/decline fails closed with
+ * UNATTESTED_REQUEST.
+ * Rotation: _NEXT lives only here — the web env has no _NEXT slot. Set the new
+ * value in PORTAL_ATTESTATION_SECRET_NEXT, set Vercel's PORTAL_ATTESTATION_SECRET
+ * to it, then promote it into PORTAL_ATTESTATION_SECRET here and unset _NEXT.
+ * Both are accepted meanwhile, so there is no signing outage.
  */
 function attestationSecrets(): string[] {
 	return [

@@ -87,14 +87,14 @@ export function untrusted(
 	text: string | undefined | null
 ): string | undefined {
 	if (!text) return undefined;
-	// Replaced with something visually unlike the real fence: a near-twin such as
-	// `UNTRUSTED_DATA_>>>` is one character off and can still read as a closing
-	// fence to a model doing fuzzy rather than exact matching.
-	const defanged = text
-		.split(UNTRUSTED_OPEN)
-		.join("[marker removed]")
-		.split(UNTRUSTED_CLOSE)
-		.join("[marker removed]");
+	// Defang the shared token in ANY case, not the two full markers. A near-twin
+	// such as `UNTRUSTED_DATA >>>` (extra space) or lowercase `untrusted_data>>>`
+	// slips an exact-match full-marker replace yet still reads as a closing fence
+	// to a model doing fuzzy rather than exact matching. Both fences are built
+	// around UNTRUSTED_DATA, so neutralising the token neutralises every variant.
+	// `[marker removed]` shares no substring with either fence, so the replacement
+	// itself can never splice a new one.
+	const defanged = text.replace(/UNTRUSTED_DATA/gi, "[marker removed]");
 	return `${UNTRUSTED_OPEN}\n${defanged}\n${UNTRUSTED_CLOSE}`;
 }
 
@@ -1235,7 +1235,7 @@ export const searchClientEmails = createTool({
 				preview: untrusted(
 					e.messagePreview ?? truncate(e.messageBody, TEXT_CAP)
 				),
-				from: `${untrusted(e.fromName) ?? ""} <${e.fromEmail}>`,
+				from: untrusted(`${e.fromName ?? ""} <${e.fromEmail}>`) ?? "",
 				to: `${e.toName} <${e.toEmail}>`,
 				status: e.status,
 				sentAt: isoInstant(e.sentAt),
@@ -1269,7 +1269,7 @@ export const getEmailThread = createTool({
 						BODY_CAP
 					)
 				),
-				from: `${untrusted(m.fromName) ?? ""} <${m.fromEmail}>`,
+				from: untrusted(`${m.fromName ?? ""} <${m.fromEmail}>`) ?? "",
 				to: `${m.toName} <${m.toEmail}>`,
 				status: m.status,
 				sentAt: isoInstant(m.sentAt),

@@ -826,12 +826,14 @@ http.route({
 			typeof body.clientPortalId === "string" ? body.clientPortalId : "";
 		const email = typeof body.email === "string" ? body.email : "";
 		const ipHash = typeof body.ipHash === "string" ? body.ipHash : "";
-		// clientPortalId is unauthenticated input that becomes a rate-limiter key,
-		// so bound it: a real one is a 36-char UUID.
+		// Both clientPortalId and email are unauthenticated inputs that become
+		// halves of a rate-limiter key, so bound both: a real portal id is a
+		// 36-char UUID and RFC 5321 caps an address at 254 chars.
 		if (
 			!clientPortalId ||
 			clientPortalId.length > 200 ||
 			!email ||
+			email.length > 320 ||
 			!email.includes("@") ||
 			!ipHash
 		) {
