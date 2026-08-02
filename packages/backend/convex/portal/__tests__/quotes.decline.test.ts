@@ -9,9 +9,11 @@ import { api } from "../../_generated/api";
 import type { Id } from "../../_generated/dataModel";
 
 const PORTAL_ISSUER = "https://portal.example.com";
+const TEST_ATTESTATION = "test-portal-attestation-0123456789";
 
 beforeAll(() => {
 	process.env.PORTAL_JWT_ISSUER = PORTAL_ISSUER;
+	process.env.PORTAL_ATTESTATION_SECRET = TEST_ATTESTATION;
 });
 
 type Seed = {
@@ -156,6 +158,7 @@ describe("portal.quotes.decline", () => {
 
 		const asPortal = t.withIdentity(ident(s, jti));
 		const result = await asPortal.mutation(api.portal.quotes.decline, {
+			attestation: TEST_ATTESTATION,
 			quoteId,
 			expectedDocumentId: documentId,
 			declineReason: "Too expensive",
@@ -210,6 +213,7 @@ describe("portal.quotes.decline", () => {
 
 		const asPortal = t.withIdentity(ident(s, jti));
 		await asPortal.mutation(api.portal.quotes.decline, {
+			attestation: TEST_ATTESTATION,
 			quoteId,
 			expectedDocumentId: documentId,
 			declineReason: "no thanks",
@@ -231,6 +235,7 @@ describe("portal.quotes.decline", () => {
 
 		const asPortal = t.withIdentity(ident(s, jti));
 		await asPortal.mutation(api.portal.quotes.decline, {
+			attestation: TEST_ATTESTATION,
 			quoteId,
 			expectedDocumentId: documentId,
 			ipAddress: "1",
@@ -268,6 +273,7 @@ describe("portal.quotes.decline", () => {
 		const asPortal = t.withIdentity(ident(s, jti));
 		await expect(
 			asPortal.mutation(api.portal.quotes.decline, {
+				attestation: TEST_ATTESTATION,
 				quoteId,
 				expectedDocumentId: documentId,
 				ipAddress: "1",
@@ -294,6 +300,7 @@ describe("portal.quotes.decline", () => {
 		const asPortal = t.withIdentity(ident(s, jti));
 		await expect(
 			asPortal.mutation(api.portal.quotes.decline, {
+				attestation: TEST_ATTESTATION,
 				quoteId,
 				expectedDocumentId: documentId,
 				ipAddress: "1",
@@ -310,6 +317,7 @@ describe("portal.quotes.decline", () => {
 
 		const asPortal = t.withIdentity(ident(s, jti));
 		const r = await asPortal.mutation(api.portal.quotes.decline, {
+			attestation: TEST_ATTESTATION,
 			quoteId,
 			expectedDocumentId: documentId,
 			declineReason: "nope",

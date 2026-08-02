@@ -1,4 +1,5 @@
-import { query, mutation, QueryCtx, MutationCtx } from "./_generated/server";
+import { query, QueryCtx, MutationCtx } from "./_generated/server";
+import { mutation } from "./lib/triggers";
 import { v } from "convex/values";
 import { Doc, Id } from "./_generated/dataModel";
 import { getCurrentUserOrgId } from "./lib/auth";
@@ -22,7 +23,6 @@ import {
 	userMutation,
 	type UserMutationCtx,
 } from "./lib/factories";
-import { permissionsEnforced } from "./lib/permissions";
 
 /**
  * Task/Schedule operations
@@ -326,11 +326,14 @@ export const list = optionalUserQuery({
 
 		// Start with the most specific query available
 		if (args.assigneeUserId) {
+			// validateUserAccess only proves the assignee is a member of this org;
+			// the product supports multi-org users, so the index must carry orgId
+			// or their tasks in every other tenant come back too.
 			await validateUserAccess(ctx, args.assigneeUserId, orgId);
 			tasks = await ctx.db
 				.query("tasks")
-				.withIndex("by_assignee", (q) =>
-					q.eq("assigneeUserId", args.assigneeUserId)
+				.withIndex("by_org_assignee", (q) =>
+					q.eq("orgId", orgId).eq("assigneeUserId", args.assigneeUserId)
 				)
 				.collect();
 		} else if (args.projectId) {
@@ -457,14 +460,8 @@ export const create = userMutation({
 
 		let assigneeUserId = args.assigneeUserId;
 		if (!(await ctx.hasAllRecords("tasks")) && args.assigneeUserId === undefined) {
-			if (permissionsEnforced()) {
-				// scoped users own what they create (PRD §3.2)
-				assigneeUserId = ctx.user._id;
-			} else {
-				console.warn(
-					`[permissions-shadow] would auto-assign task creator user=${ctx.user._id}`
-				);
-			}
+			// scoped users own what they create (PRD §3.2)
+			assigneeUserId = ctx.user._id;
 		}
 		args = { ...args, assigneeUserId };
 
@@ -1089,11 +1086,10 @@ export const getByUser = optionalUserQuery({
 
 		let tasks = await ctx.db
 			.query("tasks")
-			.withIndex("by_assignee", (q) => q.eq("assigneeUserId", args.userId))
+			.withIndex("by_org_assignee", (q) =>
+				q.eq("orgId", orgId).eq("assigneeUserId", args.userId)
+			)
 			.collect();
-
-		// Filter by organization (additional security check)
-		tasks = tasks.filter((task) => task.orgId === orgId);
 
 		// Scoped members may only read their own assignments this way
 		tasks = await ctx.scopedToActor("tasks", tasks, (task) => task.assigneeUserId);

@@ -1,4 +1,5 @@
-import { query, mutation, QueryCtx, MutationCtx } from "./_generated/server";
+import { query, QueryCtx, MutationCtx } from "./_generated/server";
+import { mutation } from "./lib/triggers";
 import { v } from "convex/values";
 import { Doc, Id } from "./_generated/dataModel";
 import {
@@ -773,6 +774,7 @@ export const submitInterest = mutation({
 			date: nextDay.getTime(),
 			status: "pending",
 			type: "internal",
+			source: "public_form",
 			assigneeUserId: assigneeUserId || undefined,
 		});
 

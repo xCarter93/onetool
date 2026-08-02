@@ -1,16 +1,10 @@
 import { calendarDayEpoch } from "./lib/formula";
-import {
-	query,
-	internalMutation,
-	internalQuery,
-	QueryCtx,
-	MutationCtx,
-} from "./_generated/server";
+import { query, internalQuery, QueryCtx, MutationCtx } from "./_generated/server";
+import { internalMutation } from "./lib/triggers";
 import { internal } from "./_generated/api";
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 import { Doc, Id } from "./_generated/dataModel";
 import { ActivityHelpers } from "./lib/activities";
-import { AggregateHelpers } from "./lib/aggregates";
 import {
 	validateParentAccess,
 	filterUndefined,
@@ -181,47 +175,13 @@ export const list = optionalUserQuery({
 			);
 		}
 
-		// Fetch all line items for these invoices in one query
-		const allLineItems = await ctx.db
-			.query("invoiceLineItems")
-			.withIndex("by_org", (q) => q.eq("orgId", orgId))
-			.collect();
-
-		// Group line items by invoice ID for efficient lookup
-		const lineItemsByInvoice = new Map<Id<"invoices">, typeof allLineItems>();
-		for (const item of allLineItems) {
-			const existing = lineItemsByInvoice.get(item.invoiceId) || [];
-			existing.push(item);
-			lineItemsByInvoice.set(item.invoiceId, existing);
-		}
-
-		// Calculate totals for each invoice using in-memory data
-		const invoicesWithCalculatedTotals = invoices.map((invoice) => {
-			const lineItems = lineItemsByInvoice.get(invoice._id) || [];
-
-			// Calculate subtotal from line items
-			const subtotal = lineItems.reduce((sum, item) => sum + item.total, 0);
-
-			// Calculate total with discount and tax
-			let total = subtotal;
-			if (invoice.discountAmount) {
-				total -= invoice.discountAmount;
-			}
-			if (invoice.taxAmount) {
-				total += invoice.taxAmount;
-			}
-
-			return {
-				...invoice,
-				subtotal,
-				total,
-			};
-		});
-
-		// Sort by creation time (newest first)
-		const sorted = invoicesWithCalculatedTotals.sort(
-			(a, b) => b._creationTime - a._creationTime
-		);
+		// Stored totals, not a recompute: syncInvoiceTotals keeps subtotal/total
+		// in step with the line items on every line-item mutation and on every
+		// discount/tax edit in `update`. Recomputing here meant collecting the
+		// org's entire invoiceLineItems table on each list call — and it did the
+		// arithmetic in raw floats, so the list could disagree with `get` by a
+		// fraction of a cent.
+		const sorted = invoices.sort((a, b) => b._creationTime - a._creationTime);
 
 		return await ctx.applyReadScope("invoices", sorted, (invoice, scope) =>
 			invoice.projectId
@@ -262,8 +222,12 @@ export const get = optionalUserQuery({
 			)
 		);
 
-		// Calculate totals from line items
-		const { subtotal, total } = await calculateInvoiceTotals(ctx, args.id);
+		// Calculate totals from line items. "stored" so an invoice that never had
+		// line items shows the amount payment validation enforces (payments.ts)
+		// and `list` displays, rather than a misleading 0.
+		const { subtotal, total } = await calculateInvoiceTotals(ctx, args.id, {
+			emptyFallback: "stored",
+		});
 
 		return {
 			...invoice,
@@ -356,16 +320,6 @@ export const markInvoicePaidFromWebhookInternal = internalMutation({
 			paidAt: Date.now(),
 		});
 
-		// Aggregates key on [status, paidAt] — skipping this drifts revenue stats.
-		const paidInvoice = await ctx.db.get(invoice._id);
-		if (paidInvoice) {
-			await AggregateHelpers.updateInvoice(
-				ctx,
-				invoice as InvoiceDocument,
-				paidInvoice as InvoiceDocument
-			);
-		}
-
 		// Settle installment payment rows like the workspace paid paths do, so a
 		// webhook-paid invoice never leaves pending rows behind.
 		await settleOutstandingPaymentsForInvoice(ctx, invoice._id);
@@ -414,21 +368,33 @@ export const create = userMutation({
 		await ctx.requireLevel("invoices", "modify");
 		// Validate required fields
 		if (!args.invoiceNumber.trim()) {
-			throw new Error("Invoice number is required");
+			throw new ConvexError({
+				code: "BAD_REQUEST",
+				message: "Invoice number is required",
+			});
 		}
 
 		// Validate financial values
 		if (args.subtotal < 0) {
-			throw new Error("Subtotal cannot be negative");
+			throw new ConvexError({
+				code: "BAD_REQUEST",
+				message: "Subtotal cannot be negative",
+			});
 		}
 
 		if (args.total < 0) {
-			throw new Error("Total cannot be negative");
+			throw new ConvexError({
+				code: "BAD_REQUEST",
+				message: "Total cannot be negative",
+			});
 		}
 
 		// Validate dates
 		if (args.dueDate <= args.issuedDate) {
-			throw new Error("Due date must be after issued date");
+			throw new ConvexError({
+				code: "BAD_REQUEST",
+				message: "Due date must be after issued date",
+			});
 		}
 
 		const invoiceId = await createInvoiceWithOrg(ctx, {
@@ -436,7 +402,7 @@ export const create = userMutation({
 			createdByUserId: ctx.user._id,
 		});
 
-		// Get the created invoice for activity logging and aggregates
+		// Get the created invoice for activity logging
 		const invoice = await ctx.db.get(invoiceId);
 		if (invoice) {
 			const client = await ctx.db.get(invoice.clientId);
@@ -445,7 +411,6 @@ export const create = userMutation({
 				invoice as InvoiceDocument,
 				client?.companyName || "Unknown Client"
 			);
-			await AggregateHelpers.addInvoice(ctx, invoice as InvoiceDocument);
 			await emitRecordCreatedEvent(
 				ctx,
 				invoice.orgId,
@@ -458,6 +423,14 @@ export const create = userMutation({
 		return invoiceId;
 	},
 });
+
+/** Invoice fields whose change invalidates the stored subtotal/total. */
+const INVOICE_TOTAL_FIELDS = [
+	"subtotal",
+	"discountAmount",
+	"taxAmount",
+	"total",
+] as const;
 
 /**
  * Update an invoice
@@ -524,28 +497,24 @@ export const update = userMutation({
 
 		await ctx.db.patch(id, filteredUpdates);
 
+		// Callers send their own subtotal/total next to a discount or tax edit.
+		// Recompute from the line items so the stored figures — which list,
+		// payment validation and the revenue aggregates all read — stay
+		// authoritative. "stored" leaves line-item-less invoices alone rather
+		// than zeroing a total the caller just set.
+		if (INVOICE_TOTAL_FIELDS.some((field) => field in filteredUpdates)) {
+			await syncInvoiceTotals(ctx, id, { emptyFallback: "stored" });
+		}
+
 		// Settle outstanding installments when this transition marks the invoice
 		// paid, so a payment taken outside the portal reflects there as completed.
 		if (filteredUpdates.status === "paid" && oldStatus !== "paid") {
 			await settleOutstandingPaymentsForInvoice(ctx, id);
 		}
 
-		// Log appropriate activity based on status change and update aggregates
+		// Log appropriate activity based on status change
 		const updatedInvoice = await ctx.db.get(id);
 		if (updatedInvoice) {
-			// Update aggregates if relevant fields changed
-			if (
-				filteredUpdates.status !== undefined ||
-				filteredUpdates.paidAt !== undefined ||
-				filteredUpdates.total !== undefined
-			) {
-				await AggregateHelpers.updateInvoice(
-					ctx,
-					currentInvoice as InvoiceDocument,
-					updatedInvoice as InvoiceDocument
-				);
-			}
-
 			const client = await ctx.db.get(updatedInvoice.clientId);
 			const clientName = client?.companyName || "Unknown Client";
 			if (
@@ -614,19 +583,27 @@ export const sendToClient = userMutation({
 		);
 
 		if (invoice.status === "paid" || invoice.status === "cancelled") {
-			throw new Error(`Cannot send a ${invoice.status} invoice to the client.`);
+			throw new ConvexError({
+				code: "CONFLICT",
+				message: `Cannot send a ${invoice.status} invoice to the client.`,
+			});
 		}
 
 		// The client must be reachable in the portal: portal access enabled and a
 		// primary contact with an email to receive the invite.
 		const client = await ctx.db.get(invoice.clientId);
 		if (!client || client.orgId !== invoice.orgId) {
-			throw new Error("Invoice client not found.");
+			throw new ConvexError({
+				code: "NOT_FOUND",
+				message: "Invoice client not found.",
+			});
 		}
 		if (!client.portalAccessId) {
-			throw new Error(
-				"This client has no portal access yet. Enable it on the client before sending."
-			);
+			throw new ConvexError({
+				code: "CONFLICT",
+				message:
+					"This client has no portal access yet. Enable it on the client before sending.",
+			});
 		}
 		const primaryContact = await ctx.db
 			.query("clientContacts")
@@ -636,9 +613,10 @@ export const sendToClient = userMutation({
 			.first();
 		const recipientEmail = primaryContact?.email?.trim();
 		if (!recipientEmail) {
-			throw new Error(
-				"Add an email to this client's primary contact before sending."
-			);
+			throw new ConvexError({
+				code: "CONFLICT",
+				message: "Add an email to this client's primary contact before sending.",
+			});
 		}
 
 		// Sending is the act of sending: flip draft→sent. Already-sent/overdue
@@ -652,11 +630,6 @@ export const sendToClient = userMutation({
 			await ctx.db.patch(invoice._id, { status: "sent" });
 			const updated = await ctx.db.get(invoice._id);
 			if (updated) {
-				await AggregateHelpers.updateInvoice(
-					ctx,
-					invoice as InvoiceDocument,
-					updated as InvoiceDocument
-				);
 				await ActivityHelpers.invoiceSent(
 					ctx,
 					updated as InvoiceDocument,
@@ -727,11 +700,17 @@ export const markPaid = userMutation({
 		);
 
 		if (invoice.status === "paid") {
-			throw new Error("Invoice is already paid");
+			throw new ConvexError({
+				code: "CONFLICT",
+				message: "Invoice is already paid",
+			});
 		}
 
 		if (invoice.status === "cancelled") {
-			throw new Error("Cannot mark cancelled invoice as paid");
+			throw new ConvexError({
+				code: "CONFLICT",
+				message: "Cannot mark cancelled invoice as paid",
+			});
 		}
 
 		await ctx.db.patch(args.id, {
@@ -745,13 +724,6 @@ export const markPaid = userMutation({
 		// Log activity
 		const updatedInvoice = await ctx.db.get(args.id);
 		if (updatedInvoice) {
-			// Aggregates key on [status, paidAt] — skipping this drifts revenue stats.
-			await AggregateHelpers.updateInvoice(
-				ctx,
-				invoice as InvoiceDocument,
-				updatedInvoice as InvoiceDocument
-			);
-
 			const client = await ctx.db.get(updatedInvoice.clientId);
 			await ActivityHelpers.invoicePaid(
 				ctx,
@@ -792,7 +764,6 @@ export const remove = userMutation({
 			await ctx.db.delete(lineItem._id);
 		}
 
-		await AggregateHelpers.removeInvoice(ctx, invoice as InvoiceDocument);
 		await ctx.db.delete(args.id);
 
 		return args.id;
@@ -1012,7 +983,10 @@ export const createFromQuote = userMutation({
 		const quote = await ctx.orgEntity("quotes", args.quoteId);
 
 		if (quote.status !== "approved") {
-			throw new Error("Only approved quotes can be converted to invoices");
+			throw new ConvexError({
+				code: "CONFLICT",
+				message: "Only approved quotes can be converted to invoices",
+			});
 		}
 
 		// One invoice per quote — guard against duplicates from double-clicks or
@@ -1022,7 +996,10 @@ export const createFromQuote = userMutation({
 			.withIndex("by_quote", (q) => q.eq("quoteId", args.quoteId))
 			.first();
 		if (existingInvoice) {
-			throw new Error("An invoice has already been created from this quote");
+			throw new ConvexError({
+				code: "CONFLICT",
+				message: "An invoice has already been created from this quote",
+			});
 		}
 
 		// Generate invoice number automatically
@@ -1113,7 +1090,7 @@ export const createFromQuote = userMutation({
 			total,
 		});
 
-		// Log activity and add to aggregates with updated totals
+		// Log activity with updated totals
 		const invoice = await ctx.db.get(invoiceId);
 		if (invoice) {
 			const client = await ctx.db.get(invoice.clientId);
@@ -1122,7 +1099,6 @@ export const createFromQuote = userMutation({
 				invoice as InvoiceDocument,
 				client?.companyName || "Unknown Client"
 			);
-			await AggregateHelpers.addInvoice(ctx, invoice as InvoiceDocument);
 			await emitRecordCreatedEvent(
 				ctx,
 				invoice.orgId,
@@ -1177,8 +1153,10 @@ export const getWithPayments = optionalUserQuery({
 			)
 		);
 
-		// Calculate totals from line items
-		const { subtotal, total } = await calculateInvoiceTotals(ctx, args.id);
+		// Calculate totals from line items ("stored" fallback — see invoices.get).
+		const { subtotal, total } = await calculateInvoiceTotals(ctx, args.id, {
+			emptyFallback: "stored",
+		});
 
 		// Get all payments for this invoice
 		const payments = await ctx.db
@@ -1308,7 +1286,10 @@ export const getPreview = optionalUserQuery({
 
 		// Recompute total from line items (source of truth; stored total can be
 		// stale). Reuse the shared helper so discount/tax logic can't diverge.
-		const { total } = await calculateInvoiceTotals(ctx, args.id);
+		// "stored" fallback — see invoices.get.
+		const { total } = await calculateInvoiceTotals(ctx, args.id, {
+			emptyFallback: "stored",
+		});
 
 		// Resolve client + its primary address. Guard the raw get() against a
 		// cross-org reference — projectId/quoteId aren't org-checked on write, so

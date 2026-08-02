@@ -740,7 +740,8 @@ function RoutingWorkspace() {
 			{view === "today" && !dailyRoute && !dirty ? (
 				<div className="flex min-h-0 flex-1 items-center justify-center">
 					<EmptyState
-						illustration="tasks-none"
+						illustration="route-none"
+						illustrationSize="hero"
 						title="No route for today yet"
 						description="Build one from today's scheduled tasks and projects, or reuse a saved route."
 						action={

@@ -50,6 +50,7 @@ import {
 } from "@/components/shared/detail-drawer";
 import { formatCurrency } from "@/lib/money";
 import { utcMidnightMsToLocalDate } from "@/lib/dates";
+import { convexErrorMessage } from "@/lib/convex-error";
 
 type QuoteStatus = Doc<"quotes">["status"];
 
@@ -109,6 +110,19 @@ export function QuoteDetailDrawer({
 		quoteId ? { id: quoteId } : "skip"
 	);
 
+	// E-signature runs on the quote's PDF, so the send action needs to know one
+	// exists. Skipped without the documents grant (the query throws FORBIDDEN).
+	const canViewDocuments = can("documents");
+	const latestDocument = useQuery(
+		api.documents.getLatest,
+		quoteId && canViewDocuments
+			? { documentType: "quote", documentId: quoteId }
+			: "skip"
+	);
+	// Only gate on a definitive "no PDF"; undefined (loading) or a missing grant
+	// falls through to the /sign route, which reports the same state itself.
+	const missingPdf = canViewDocuments && latestDocument === null;
+
 	const loading = quoteId !== null && preview === undefined;
 	const notFound = quoteId !== null && preview === null;
 	const data = preview ?? null;
@@ -151,7 +165,7 @@ export function QuoteDetailDrawer({
 			console.error("Failed to convert quote to invoice:", err);
 			toast.error(
 				"Couldn't convert quote",
-				err instanceof Error ? err.message : "Please try again."
+				convexErrorMessage(err, "Please try again.")
 			);
 		} finally {
 			setConverting(false);
@@ -188,7 +202,10 @@ export function QuoteDetailDrawer({
 			variant: "default",
 			slot: "start",
 			onClick: sendForSignature,
-			disabled: !can("quotes", "modify"),
+			disabled: !can("quotes", "modify") || missingPdf,
+			disabledReason: missingPdf
+				? "Generate a PDF for this quote first"
+				: undefined,
 			hidden: !canSend,
 		},
 		{

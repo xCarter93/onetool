@@ -15,6 +15,7 @@ import type { Id } from "@onetool/backend/convex/_generated/dataModel";
 import { ApprovedQuote } from "@/types/quote";
 import { formatCurrency } from "@/lib/money";
 import { localDateToUtcMidnightMs } from "@/lib/dates";
+import { convexErrorMessage } from "@/lib/convex-error";
 
 interface InvoiceGenerationModalProps {
 	isOpen: boolean;
@@ -79,7 +80,7 @@ export function InvoiceGenerationModal({
 			router.push(`/invoices/${invoiceId}`);
 		} catch (error) {
 			const message =
-				error instanceof Error ? error.message : "Failed to create invoice";
+				convexErrorMessage(error, "Failed to create invoice");
 			toast.error("Invoice Creation Failed", message);
 		} finally {
 			setIsCreating(false);

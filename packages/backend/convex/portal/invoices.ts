@@ -6,11 +6,8 @@
 // Plan 03 adds the V8-runtime helper queries (_getPortalSessionForAction /
 // _rateLimitPreflight / _getPaymentTargetInternal) and the Stripe-importing
 // action createPaymentIntent in portal/invoicesActions.ts.
-import {
-	query,
-	internalQuery,
-	internalMutation,
-} from "../_generated/server";
+import { query, internalQuery } from "../_generated/server";
+import { internalMutation } from "../lib/triggers";
 import { ConvexError, v } from "convex/values";
 import type { Doc, Id } from "../_generated/dataModel";
 import { getPortalSessionOrThrow } from "./helpers";

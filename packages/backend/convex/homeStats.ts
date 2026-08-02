@@ -9,11 +9,62 @@ import {
 	toChartData,
 } from "./lib/queries";
 import { optionalUserQuery, userMutation } from "./lib/factories";
+import {
+	clientCountsAggregate,
+	projectCountsAggregate,
+	quoteCountsAggregate,
+	invoiceRevenueAggregate,
+	invoiceCountsAggregate,
+} from "./aggregates";
+import type { PermissionObject } from "./lib/permissionKeys";
+
+/**
+ * Gate a dashboard statistic on org-wide visibility of what it counts.
+ *
+ * Every figure here is an org-wide total — the aggregate components are keyed
+ * by org, and the `.collect()` fallbacks page `by_org` — so `view` alone is not
+ * enough. Without the allRecords check a member restricted to their own
+ * assignments still read the organisation's client counts, revenue and pipeline.
+ * Owners and admins resolve to "all" grants and are unaffected, and members are
+ * routed to /projects rather than /home, so the practical reach of this is the
+ * assistant's getHomeStats tool.
+ */
+async function requireOrgWideView(
+	ctx: {
+		requireLevel: (o: PermissionObject, l: "view") => Promise<void>;
+		requireRecordScope: (
+			o: PermissionObject,
+			isInScope: () => boolean | Promise<boolean>
+		) => Promise<void>;
+	},
+	...objects: PermissionObject[]
+): Promise<void> {
+	for (const object of objects) {
+		await ctx.requireLevel(object, "view");
+		// Denies unless the caller holds allRecords.
+		await ctx.requireRecordScope(object, () => false);
+	}
+}
 
 /**
  * Home dashboard statistics queries
  * Provides real-time metrics for the business overview section
  */
+
+/**
+ * Status-scoped aggregate key range. Aggregate keys are [status, timestamp || 0],
+ * so a lower bound of 1 excludes rows whose timestamp is unset — matching the
+ * `&& completedAt` / `&& approvedAt` / `&& paidAt` guards these counts have
+ * always applied.
+ */
+const statusRange = (
+	status: string,
+	from: number,
+	to: number = Number.MAX_SAFE_INTEGER
+) => ({
+	lower: { key: [status, from] as [string, number], inclusive: true },
+	upper: { key: [status, to] as [string, number], inclusive: true },
+});
 
 // Interface for home statistics
 export interface HomeStats {
@@ -122,172 +173,146 @@ export const getHomeStats = optionalUserQuery({
 	handler: async (ctx): Promise<HomeStats> => {
 		if (!ctx.orgId) return EMPTY_HOME_STATS;
 		const userOrgId = ctx.orgId;
-		await ctx.requireLevel("clients", "view");
-		await ctx.requireLevel("projects", "view");
-		await ctx.requireLevel("quotes", "view");
-		await ctx.requireLevel("invoices", "view");
-		await ctx.requireLevel("tasks", "view");
+		await requireOrgWideView(
+			ctx,
+			"clients",
+			"projects",
+			"quotes",
+			"invoices",
+			"tasks"
+		);
 
 		const { thisMonthStart, lastMonthStart, lastMonthEnd } =
 			getMonthComparisonPeriods();
 		const weekRange = getWeekRange();
 
-		// Get organization to fetch revenue target
 		const organization = await ctx.db.get(userOrgId);
 
-		// Parallel queries for better performance
-		const [allClients, allProjects, allQuotes, allInvoices, allTasks] =
-			await Promise.all([
-				// Get all clients
-				ctx.db
-					.query("clients")
-					.withIndex("by_org", (q) => q.eq("orgId", userOrgId))
-					.collect(),
+		// Aggregate reads are awaited one at a time on purpose: convex-test tracks
+		// the executing component on a single global stack, so concurrent reads
+		// across different aggregates resolve against whichever component is on
+		// top and hand back another aggregate's numbers. Batching the bounds keeps
+		// this to one round-trip per aggregate rather than one per figure.
+		const clientCounts = await clientCountsAggregate.countBatch(ctx, [
+			{ namespace: userOrgId },
+			{
+				namespace: userOrgId,
+				bounds: { lower: { key: thisMonthStart, inclusive: true } },
+			},
+			{
+				namespace: userOrgId,
+				bounds: {
+					lower: { key: lastMonthStart, inclusive: true },
+					upper: { key: lastMonthEnd, inclusive: true },
+				},
+			},
+		]);
+		const projectCounts = await projectCountsAggregate.countBatch(ctx, [
+			{ namespace: userOrgId, bounds: statusRange("completed", 1) },
+			{
+				namespace: userOrgId,
+				bounds: statusRange("completed", thisMonthStart),
+			},
+			{
+				namespace: userOrgId,
+				bounds: statusRange("completed", lastMonthStart, lastMonthEnd),
+			},
+		]);
+		const quoteCounts = await quoteCountsAggregate.countBatch(ctx, [
+			{ namespace: userOrgId, bounds: statusRange("approved", 1) },
+			{ namespace: userOrgId, bounds: statusRange("approved", thisMonthStart) },
+			{
+				namespace: userOrgId,
+				bounds: statusRange("approved", lastMonthStart, lastMonthEnd),
+			},
+		]);
+		const quoteValues = await quoteCountsAggregate.sumBatch(ctx, [
+			{ namespace: userOrgId, bounds: statusRange("approved", thisMonthStart) },
+		]);
+		const invoiceCounts = await invoiceCountsAggregate.countBatch(ctx, [
+			{ namespace: userOrgId, bounds: statusRange("paid", 1) },
+			{ namespace: userOrgId, bounds: statusRange("paid", thisMonthStart) },
+			{
+				namespace: userOrgId,
+				bounds: statusRange("paid", lastMonthStart, lastMonthEnd),
+			},
+		]);
+		const invoiceValues = await invoiceRevenueAggregate.sumBatch(ctx, [
+			{ namespace: userOrgId, bounds: statusRange("paid", thisMonthStart) },
+			{
+				namespace: userOrgId,
+				bounds: statusRange("paid", lastMonthStart, lastMonthEnd),
+			},
+			// Outstanding is not time-bounded, so prefix-match the status alone.
+			{ namespace: userOrgId, bounds: { prefix: ["sent"] as [string] } },
+			{ namespace: userOrgId, bounds: { prefix: ["overdue"] as [string] } },
+		]);
 
-				// Get all projects
-				ctx.db
-					.query("projects")
-					.withIndex("by_org", (q) => q.eq("orgId", userOrgId))
-					.collect(),
+		const [completedProjects, approvedQuotes, allTasks] = await Promise.all([
+			// completedProjects.totalValue needs a project→quote join no aggregate
+			// models; both scans bind status instead of sweeping the whole org.
+			ctx.db
+				.query("projects")
+				.withIndex("by_status", (q) =>
+					q.eq("orgId", userOrgId).eq("status", "completed")
+				)
+				.collect(),
+			ctx.db
+				.query("quotes")
+				.withIndex("by_status", (q) =>
+					q.eq("orgId", userOrgId).eq("status", "approved")
+				)
+				.collect(),
+			// No status index on tasks — still a full org scan.
+			ctx.db
+				.query("tasks")
+				.withIndex("by_org", (q) => q.eq("orgId", userOrgId))
+				.collect(),
+		]);
 
-				// Get all quotes
-				ctx.db
-					.query("quotes")
-					.withIndex("by_org", (q) => q.eq("orgId", userOrgId))
-					.collect(),
+		const [totalClients, clientsThisMonth, clientsLastMonth] = clientCounts;
+		const [
+			totalCompletedProjects,
+			completedProjectsThisMonth,
+			completedProjectsLastMonth,
+		] = projectCounts;
+		const [
+			totalApprovedQuotes,
+			approvedQuotesThisMonth,
+			approvedQuotesLastMonth,
+		] = quoteCounts;
+		const [quotesTotalValue] = quoteValues;
+		const [totalPaidInvoices, invoicesThisMonth, invoicesLastMonth] =
+			invoiceCounts;
+		const [currentRevenue, lastMonthRevenue, sentValue, overdueValue] =
+			invoiceValues;
 
-				// Get all invoices
-				ctx.db
-					.query("invoices")
-					.withIndex("by_org", (q) => q.eq("orgId", userOrgId))
-					.collect(),
-
-				// Get all tasks
-				ctx.db
-					.query("tasks")
-					.withIndex("by_org", (q) => q.eq("orgId", userOrgId))
-					.collect(),
-			]);
-
-		// Calculate client statistics
-		const clientsThisMonth = allClients.filter(
-			(client) => client._creationTime >= thisMonthStart
-		).length;
-		const clientsLastMonth = allClients.filter(
-			(client) =>
-				client._creationTime >= lastMonthStart &&
-				client._creationTime <= lastMonthEnd
-		).length;
-		const clientsChange = clientsThisMonth - clientsLastMonth;
-
-		// Calculate completed projects statistics
-		// Count all projects with status = 'completed' that were completed this month
-		const completedProjectsThisMonth = allProjects.filter(
-			(project) =>
-				project.status === "completed" &&
-				project.completedAt &&
-				project.completedAt >= thisMonthStart
-		);
-		const completedProjectsLastMonth = allProjects.filter(
-			(project) =>
-				project.status === "completed" &&
-				project.completedAt &&
-				project.completedAt >= lastMonthStart &&
-				project.completedAt <= lastMonthEnd
-		);
-		const projectsChange =
-			completedProjectsThisMonth.length - completedProjectsLastMonth.length;
-
-		// Calculate project value by summing approved quotes for completed projects
 		const completedProjectIds = new Set(
-			completedProjectsThisMonth.map((p) => p._id)
+			completedProjects
+				.filter((p) => p.completedAt && p.completedAt >= thisMonthStart)
+				.map((p) => p._id)
 		);
-		const projectsValue = allQuotes
-			.filter(
-				(quote) =>
-					quote.status === "approved" &&
-					quote.projectId &&
-					completedProjectIds.has(quote.projectId)
-			)
-			.reduce((sum, quote) => sum + quote.total, 0);
+		const projectsValue = approvedQuotes
+			.filter((q) => q.projectId && completedProjectIds.has(q.projectId))
+			.reduce((sum, q) => sum + q.total, 0);
 
-		// Calculate approved quotes statistics
-		const approvedQuotesThisMonth = allQuotes.filter(
-			(quote) =>
-				quote.status === "approved" &&
-				(quote.approvedAt ? quote.approvedAt >= thisMonthStart : false)
-		);
-		const approvedQuotesLastMonth = allQuotes.filter(
-			(quote) =>
-				quote.status === "approved" &&
-				quote.approvedAt &&
-				quote.approvedAt >= lastMonthStart &&
-				quote.approvedAt <= lastMonthEnd
-		);
-		const quotesChange =
-			approvedQuotesThisMonth.length - approvedQuotesLastMonth.length;
-		const quotesTotalValue = approvedQuotesThisMonth.reduce(
-			(sum, quote) => sum + quote.total,
-			0
-		);
+		const outstandingInvoices = sentValue + overdueValue;
 
-		// Calculate invoice statistics - only paid invoices
-		const invoicesThisMonth = allInvoices.filter(
-			(invoice) =>
-				invoice.status === "paid" &&
-				invoice.paidAt &&
-				invoice.paidAt >= thisMonthStart
-		);
-		const invoicesLastMonth = allInvoices.filter(
-			(invoice) =>
-				invoice.status === "paid" &&
-				invoice.paidAt &&
-				invoice.paidAt >= lastMonthStart &&
-				invoice.paidAt <= lastMonthEnd
-		);
-		const invoicesChange = invoicesThisMonth.length - invoicesLastMonth.length;
-		const invoicesTotalValue = invoicesThisMonth.reduce(
-			(sum, invoice) => sum + invoice.total,
-			0
-		);
-		const outstandingInvoices = allInvoices
-			.filter(
-				(invoice) => invoice.status === "sent" || invoice.status === "overdue"
-			)
-			.reduce((sum, invoice) => sum + invoice.total, 0);
+		const clientsChange = clientsThisMonth - clientsLastMonth;
+		const projectsChange =
+			completedProjectsThisMonth - completedProjectsLastMonth;
+		const quotesChange = approvedQuotesThisMonth - approvedQuotesLastMonth;
+		const invoicesChange = invoicesThisMonth - invoicesLastMonth;
 
-		// Calculate revenue goal progress
-		// Use only paid invoices for revenue tracking
-		const monthlyTarget = organization?.monthlyRevenueTarget || 50000; // Default target
-		const currentRevenue = invoicesThisMonth
-			.filter((invoice) => invoice.status === "paid")
-			.reduce((sum, invoice) => sum + invoice.total, 0);
-		const currentPercentage = Math.round(
-			(currentRevenue / monthlyTarget) * 100
-		);
-
-		// Calculate last month's revenue from paid invoices only
-		const lastMonthRevenue = invoicesLastMonth
-			.filter((invoice) => invoice.status === "paid")
-			.reduce((sum, invoice) => sum + invoice.total, 0);
+		// `||` (not `??`): an explicit target of 0 falls back to the default, as it
+		// always has — which also keeps the divisions below non-zero.
+		const monthlyTarget = organization?.monthlyRevenueTarget || 50000;
+		const currentPercentage = Math.round((currentRevenue / monthlyTarget) * 100);
 		const lastMonthPercentage = Math.round(
 			(lastMonthRevenue / monthlyTarget) * 100
 		);
 		const revenuePercentageChange = currentPercentage - lastMonthPercentage;
 
-		const totalCompletedProjects = allProjects.filter(
-			(project) => project.status === "completed" && project.completedAt
-		).length;
-
-		const totalApprovedQuotes = allQuotes.filter(
-			(quote) => quote.status === "approved" && quote.approvedAt
-		).length;
-
-		const totalPaidInvoices = allInvoices.filter(
-			(invoice) => invoice.status === "paid" && invoice.paidAt
-		).length;
-
-		// Calculate pending tasks using shared week range
 		const pendingTasks = allTasks.filter(
 			(task) => task.status === "pending" || task.status === "in-progress"
 		);
@@ -297,31 +322,31 @@ export const getHomeStats = optionalUserQuery({
 
 		return {
 			totalClients: {
-				current: allClients.length,
-				previous: allClients.length - clientsThisMonth + clientsLastMonth,
+				current: totalClients,
+				previous: totalClients - clientsThisMonth,
 				change: Math.abs(clientsChange),
 				changeType: getChangeType(clientsChange),
 			},
 			completedProjects: {
 				current: totalCompletedProjects,
-				previous: totalCompletedProjects - completedProjectsThisMonth.length,
+				previous: totalCompletedProjects - completedProjectsThisMonth,
 				change: Math.abs(projectsChange),
 				changeType: getChangeType(projectsChange),
 				totalValue: projectsValue,
 			},
 			approvedQuotes: {
 				current: totalApprovedQuotes,
-				previous: totalApprovedQuotes - approvedQuotesThisMonth.length,
+				previous: totalApprovedQuotes - approvedQuotesThisMonth,
 				change: Math.abs(quotesChange),
 				changeType: getChangeType(quotesChange),
 				totalValue: quotesTotalValue,
 			},
 			invoicesPaid: {
 				current: totalPaidInvoices,
-				previous: totalPaidInvoices - invoicesThisMonth.length,
+				previous: totalPaidInvoices - invoicesThisMonth,
 				change: Math.abs(invoicesChange),
 				changeType: getChangeType(invoicesChange),
-				totalValue: invoicesTotalValue,
+				totalValue: currentRevenue,
 				outstanding: outstandingInvoices,
 			},
 			revenueGoal: {
@@ -349,7 +374,7 @@ export const getPendingTasksCount = optionalUserQuery({
 	handler: async (ctx): Promise<{ count: number; dueThisWeek: number }> => {
 		if (!ctx.orgId) return { count: 0, dueThisWeek: 0 };
 		const userOrgId = ctx.orgId;
-		await ctx.requireLevel("tasks", "view");
+		await requireOrgWideView(ctx, "tasks");
 		const weekRange = getWeekRange();
 
 		const pendingTasks = await ctx.db
@@ -399,7 +424,7 @@ export const getClientsStats = optionalUserQuery({
 			};
 		}
 		const userOrgId = ctx.orgId;
-		await ctx.requireLevel("clients", "view");
+		await requireOrgWideView(ctx, "clients");
 		const { thisMonthStart, lastMonthStart, lastMonthEnd } =
 			getMonthComparisonPeriods();
 
@@ -452,7 +477,7 @@ export const getRevenueGoalProgress = optionalUserQuery({
 			};
 		}
 		const userOrgId = ctx.orgId;
-		await ctx.requireLevel("invoices", "view");
+		await requireOrgWideView(ctx, "invoices");
 
 		// Get organization to fetch revenue target
 		const organization = await ctx.db.get(userOrgId);
@@ -527,7 +552,7 @@ export const getClientsCreatedByDateRange = optionalUserQuery({
 			};
 		}
 		const userOrgId = ctx.orgId;
-		await ctx.requireLevel("clients", "view");
+		await requireOrgWideView(ctx, "clients");
 		const { from, to } = args;
 		const { start, end } = getDateRangeBounds(from, to);
 
@@ -604,7 +629,7 @@ export const getProjectsCompletedByDateRange = optionalUserQuery({
 			};
 		}
 		const userOrgId = ctx.orgId;
-		await ctx.requireLevel("projects", "view");
+		await requireOrgWideView(ctx, "projects");
 		const { from, to } = args;
 		const { start, end } = getDateRangeBounds(from, to);
 
@@ -702,7 +727,7 @@ export const getQuotesApprovedByDateRange = optionalUserQuery({
 			};
 		}
 		const userOrgId = ctx.orgId;
-		await ctx.requireLevel("quotes", "view");
+		await requireOrgWideView(ctx, "quotes");
 		const { from, to } = args;
 		const { start, end } = getDateRangeBounds(from, to);
 
@@ -782,7 +807,7 @@ export const getInvoicesPaidByDateRange = optionalUserQuery({
 			};
 		}
 		const userOrgId = ctx.orgId;
-		await ctx.requireLevel("invoices", "view");
+		await requireOrgWideView(ctx, "invoices");
 		const { from, to } = args;
 		const { start, end } = getDateRangeBounds(from, to);
 
@@ -868,7 +893,7 @@ export const getRevenueByDateRange = optionalUserQuery({
 	> => {
 		if (!ctx.orgId) return [];
 		const userOrgId = ctx.orgId;
-		await ctx.requireLevel("invoices", "view");
+		await requireOrgWideView(ctx, "invoices");
 		const { from, to } = args;
 		const { start, end } = getDateRangeBounds(from, to);
 
@@ -918,7 +943,7 @@ export const getTasksCreatedByDateRange = optionalUserQuery({
 	> => {
 		if (!ctx.orgId) return [];
 		const userOrgId = ctx.orgId;
-		await ctx.requireLevel("tasks", "view");
+		await requireOrgWideView(ctx, "tasks");
 		const { from, to } = args;
 		const { start, end } = getDateRangeBounds(from, to);
 

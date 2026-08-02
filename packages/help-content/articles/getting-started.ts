@@ -221,7 +221,7 @@ export const gettingStartedArticles: HelpArticle[] = [
 				blocks: [
 					{
 						type: "paragraph",
-						text: "On the Business plan, the AI assistant sits in a small tab at the bottom of every page. Open it to ask questions about your data or to get something done without leaving the page you are on. Read more in [Meet the assistant](/help/ai-assistant).",
+						text: "On the Business plan, the AI assistant sits in a floating dock at the bottom center of every page. Open it to ask questions about your data or to get something done without leaving the page you are on. Read more in [Meet the assistant](/help/ai-assistant).",
 					},
 				],
 			},
@@ -276,7 +276,7 @@ export const gettingStartedArticles: HelpArticle[] = [
 				blocks: [
 					{
 						type: "paragraph",
-						text: "Type at least two characters and results appear grouped by type:",
+						text: "Type at least two characters and results appear grouped by type, closest matches first. Matching starts from the beginning of each word: typing \"hen\" finds \"Henderson\", and a bare number like \"1042\" finds quote Q-1042.",
 					},
 					{
 						type: "list",

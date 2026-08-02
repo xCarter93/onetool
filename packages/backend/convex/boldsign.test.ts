@@ -114,6 +114,14 @@ describe("BoldSign embedded sending", () => {
 		});
 	}
 
+	/** Narrow the context union to the ready variant (i.e. a PDF exists). */
+	function expectReady<T extends { ok: boolean }>(
+		result: T
+	): Extract<T, { ok: true }> {
+		expect(result.ok).toBe(true);
+		return result as Extract<T, { ok: true }>;
+	}
+
 	// ========================================================================
 	// getEmbeddedRequestContext
 	// ========================================================================
@@ -153,7 +161,7 @@ describe("BoldSign embedded sending", () => {
 			).rejects.toThrowError("Quote does not belong to your organization");
 		});
 
-		it("throws when the quote has no generated PDF", async () => {
+		it("returns the no_pdf reason when the quote has no generated PDF", async () => {
 			const { clerkUserId, clerkOrgId, quoteId } = await t.run(async (ctx) => {
 				const org = await createTestOrg(ctx);
 				const clientId = await createTestClient(ctx, org.orgId);
@@ -163,9 +171,12 @@ describe("BoldSign embedded sending", () => {
 
 			const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
 
-			await expect(
-				asUser.query(internal.boldsign.getEmbeddedRequestContext, { quoteId })
-			).rejects.toThrowError("No PDF has been generated for this quote yet");
+			const result = await asUser.query(
+				internal.boldsign.getEmbeddedRequestContext,
+				{ quoteId }
+			);
+
+			expect(result).toEqual({ ok: false, reason: "no_pdf" });
 		});
 
 		it("derives a single client signer when there is no countersigner", async () => {
@@ -185,9 +196,10 @@ describe("BoldSign embedded sending", () => {
 
 			const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
 
-			const result = await asUser.query(
-				internal.boldsign.getEmbeddedRequestContext,
-				{ quoteId }
+			const result = expectReady(
+				await asUser.query(internal.boldsign.getEmbeddedRequestContext, {
+					quoteId,
+				})
 			);
 
 			expect(result.signers).toHaveLength(1);
@@ -221,9 +233,10 @@ describe("BoldSign embedded sending", () => {
 
 			const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
 
-			const result = await asUser.query(
-				internal.boldsign.getEmbeddedRequestContext,
-				{ quoteId }
+			const result = expectReady(
+				await asUser.query(internal.boldsign.getEmbeddedRequestContext, {
+					quoteId,
+				})
 			);
 
 			expect(result.signers).toHaveLength(2);
@@ -260,9 +273,10 @@ describe("BoldSign embedded sending", () => {
 
 			const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
 
-			const result = await asUser.query(
-				internal.boldsign.getEmbeddedRequestContext,
-				{ quoteId }
+			const result = expectReady(
+				await asUser.query(internal.boldsign.getEmbeddedRequestContext, {
+					quoteId,
+				})
 			);
 
 			expect(result.signers).toHaveLength(2);
@@ -297,9 +311,10 @@ describe("BoldSign embedded sending", () => {
 
 			const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
 
-			const result = await asUser.query(
-				internal.boldsign.getEmbeddedRequestContext,
-				{ quoteId }
+			const result = expectReady(
+				await asUser.query(internal.boldsign.getEmbeddedRequestContext, {
+					quoteId,
+				})
 			);
 
 			expect(result.signers).toHaveLength(0);
@@ -329,9 +344,10 @@ describe("BoldSign embedded sending", () => {
 					createTestIdentity(clerkUserId, clerkOrgId)
 				);
 
-				const result = await asUser.query(
-					internal.boldsign.getEmbeddedRequestContext,
-					{ quoteId }
+				const result = expectReady(
+					await asUser.query(internal.boldsign.getEmbeddedRequestContext, {
+						quoteId,
+					})
 				);
 
 				expect(result.usage.limit).toBe(5);
@@ -361,9 +377,10 @@ describe("BoldSign embedded sending", () => {
 					createTestIdentity(clerkUserId, clerkOrgId)
 				);
 
-				const result = await asUser.query(
-					internal.boldsign.getEmbeddedRequestContext,
-					{ quoteId }
+				const result = expectReady(
+					await asUser.query(internal.boldsign.getEmbeddedRequestContext, {
+						quoteId,
+					})
 				);
 
 				expect(result.usage.limit).toBe(5);
@@ -395,9 +412,10 @@ describe("BoldSign embedded sending", () => {
 					createTestIdentity(clerkUserId, clerkOrgId)
 				);
 
-				const result = await asUser.query(
-					internal.boldsign.getEmbeddedRequestContext,
-					{ quoteId }
+				const result = expectReady(
+					await asUser.query(internal.boldsign.getEmbeddedRequestContext, {
+						quoteId,
+					})
 				);
 
 				expect(result.existing).toEqual({
@@ -426,9 +444,10 @@ describe("BoldSign embedded sending", () => {
 					createTestIdentity(clerkUserId, clerkOrgId)
 				);
 
-				const result = await asUser.query(
-					internal.boldsign.getEmbeddedRequestContext,
-					{ quoteId }
+				const result = expectReady(
+					await asUser.query(internal.boldsign.getEmbeddedRequestContext, {
+						quoteId,
+					})
 				);
 
 				// A lapsed link no longer strands the draft: the action mints a
@@ -459,9 +478,10 @@ describe("BoldSign embedded sending", () => {
 					createTestIdentity(clerkUserId, clerkOrgId)
 				);
 
-				const result = await asUser.query(
-					internal.boldsign.getEmbeddedRequestContext,
-					{ quoteId }
+				const result = expectReady(
+					await asUser.query(internal.boldsign.getEmbeddedRequestContext, {
+						quoteId,
+					})
 				);
 
 				expect(result.existing).toBeNull();
@@ -518,6 +538,109 @@ describe("BoldSign embedded sending", () => {
 			expect(quote?.status).toBe("draft");
 			expect(quote?.status).not.toBe("sent");
 			expect(quote?.sentAt).toBeUndefined();
+		});
+	});
+
+	// SEC-3: the signed-PDF sink is existence-only via fetchEntityOrThrow, so it
+	// must pin the BoldSign id or a download can be stamped onto any document row.
+	describe("updateDocumentWithSignedPdf", () => {
+		it("stores the signed PDF on the document that owns the BoldSign id", async () => {
+			const { documentId, storageId } = await t.run(async (ctx) => {
+				const org = await createTestOrg(ctx);
+				const clientId = await createTestClient(ctx, org.orgId);
+				const quoteId = await seedQuote(ctx, org.orgId, clientId);
+				const documentId = await seedDocument(ctx, org.orgId, quoteId, 1, {
+					documentId: "bs_owned",
+					status: "Completed",
+				});
+				const storageId = await ctx.storage.store(
+					new Blob(["signed"], { type: "application/pdf" })
+				);
+				return { documentId, storageId };
+			});
+
+			await t.mutation(internal.boldsign.updateDocumentWithSignedPdf, {
+				documentId,
+				boldsignDocumentId: "bs_owned",
+				signedStorageId: storageId,
+			});
+
+			const doc = await t.run(async (ctx) => await ctx.db.get(documentId));
+			expect(doc?.signedStorageId).toBe(storageId);
+		});
+
+		it("refuses to stamp a signed PDF onto a document it is not linked to", async () => {
+			const { victimDocumentId, storageId } = await t.run(async (ctx) => {
+				const org = await createTestOrg(ctx);
+				const clientId = await createTestClient(ctx, org.orgId);
+				const quoteId = await seedQuote(ctx, org.orgId, clientId);
+				const victimDocumentId = await seedDocument(ctx, org.orgId, quoteId, 1, {
+					documentId: "bs_victim",
+					status: "Completed",
+				});
+				const storageId = await ctx.storage.store(
+					new Blob(["attacker"], { type: "application/pdf" })
+				);
+				return { victimDocumentId, storageId };
+			});
+
+			await expect(
+				t.mutation(internal.boldsign.updateDocumentWithSignedPdf, {
+					documentId: victimDocumentId,
+					boldsignDocumentId: "bs_someone_elses",
+					signedStorageId: storageId,
+				})
+			).rejects.toThrow(/not linked to BoldSign document/);
+
+			const doc = await t.run(async (ctx) => await ctx.db.get(victimDocumentId));
+			expect(doc?.signedStorageId).toBeUndefined();
+		});
+	});
+
+	// ========================================================================
+	// downloadCompletedDocument (action-level storage cleanup)
+	// ========================================================================
+
+	describe("downloadCompletedDocument", () => {
+		afterEach(() => {
+			vi.unstubAllEnvs();
+			vi.unstubAllGlobals();
+		});
+
+		it("deletes the downloaded PDF when the identity check rejects the delivery", async () => {
+			vi.stubEnv("BOLDSIGN_API_KEY", "test_key");
+			vi.stubGlobal(
+				"fetch",
+				vi.fn(async () => new Response("signed pdf", { status: 200 }))
+			);
+
+			const { documentId, baselineCount } = await t.run(async (ctx) => {
+				const org = await createTestOrg(ctx);
+				const clientId = await createTestClient(ctx, org.orgId);
+				const quoteId = await seedQuote(ctx, org.orgId, clientId);
+				const documentId = await seedDocument(ctx, org.orgId, quoteId, 1, {
+					documentId: "bs_current",
+					status: "Completed",
+				});
+				const baselineCount = (
+					await ctx.db.system.query("_storage").collect()
+				).length;
+				return { documentId, baselineCount };
+			});
+
+			// Stale delivery: the document has since been re-linked to bs_current.
+			await expect(
+				t.action(internal.boldsignActions.downloadCompletedDocument, {
+					documentId,
+					boldsignDocumentId: "bs_stale",
+				})
+			).rejects.toThrow(/not linked to BoldSign document/);
+
+			// The blob stored for the rejected delivery must have been reclaimed.
+			const finalCount = await t.run(
+				async (ctx) => (await ctx.db.system.query("_storage").collect()).length
+			);
+			expect(finalCount).toBe(baselineCount);
 		});
 	});
 
@@ -635,11 +758,7 @@ describe("BoldSign embedded sending", () => {
 			expect(doc?.boldsign?.status).toBe("Sent");
 		});
 
-		// Enforcement is still shadow-mode in prod, so pin the flag on: this
-		// asserts the gate exists and will bite at the enforcement flip, rather
-		// than passing vacuously because denyPermission only logged.
 		it("denies a view-only member (org membership is not the boundary)", async () => {
-			vi.stubEnv("PERMISSIONS_ENFORCE", "true");
 			const { clerkOrgId, memberClerkUserId, quoteId, documentId } = await t.run(
 				async (ctx) => {
 					const org = await createTestOrg(ctx);
@@ -859,6 +978,45 @@ describe("BoldSign embedded sending", () => {
 			expect(doc?.boldsign?.status).toBe("Completed");
 			expect(quote?.status).toBe("approved");
 			expect(quote?.approvedAt).toBeGreaterThan(0);
+		});
+	});
+	// ========================================================================
+	// createEmbeddedSignatureRequest (action)
+	// ========================================================================
+
+	describe("createEmbeddedSignatureRequest", () => {
+		it("returns no_pdf and creates no draft when the stored PDF blob is gone", async () => {
+			const { clerkUserId, clerkOrgId, quoteId, documentId } = await t.run(
+				async (ctx) => {
+					const org = await createTestOrg(ctx);
+					const clientId = await createTestClient(ctx, org.orgId);
+					await createTestClientContact(ctx, org.orgId, clientId, {
+						firstName: "Jane",
+						lastName: "Client",
+						email: "jane@client.com",
+						isPrimary: true,
+					});
+					const quoteId = await seedQuote(ctx, org.orgId, clientId);
+					const documentId = await seedDocument(ctx, org.orgId, quoteId, 1);
+					// Document row outlives its blob.
+					const doc = await ctx.db.get(documentId);
+					await ctx.storage.delete(doc!.storageId!);
+					return { ...org, quoteId, documentId };
+				}
+			);
+
+			const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+
+			const result = await asUser.action(
+				api.boldsignActions.createEmbeddedSignatureRequest,
+				{ quoteId }
+			);
+
+			expect(result).toEqual({ ok: false, reason: "no_pdf" });
+
+			const doc = await t.run(async (ctx) => ctx.db.get(documentId));
+			expect(doc?.boldsign).toBeUndefined();
+			expect(doc?.boldsignDocumentId).toBeUndefined();
 		});
 	});
 });

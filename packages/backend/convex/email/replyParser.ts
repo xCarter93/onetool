@@ -7,12 +7,21 @@
  */
 
 // Lines that begin a quoted original / forwarded block. First hit ends the message.
-const QUOTE_STARTERS: RegExp[] = [
-	/^\s*>/, // a quoted line
-	/^\s*-{2,}\s*Original Message\s*-{2,}/i, // Outlook "----- Original Message -----"
-	/^\s*_{10,}\s*$/, // Outlook underscore divider above the quoted header block
-	/^\s*From:\s.*(<[^>]+>|@).*$/i, // Outlook quoted-header block ("From: Name <addr>")
+// Predicates, not one regex each: the "From:" rule is two independent linear
+// scans because expressing it as `From:\s.*(<[^>]+>|@).*$` backtracks
+// catastrophically on a line of many "<" characters (600 ms at 20 KB).
+const QUOTE_STARTERS: Array<(line: string) => boolean> = [
+	(l) => /^\s*>/.test(l), // a quoted line
+	(l) => /^\s*-{2,}\s*Original Message\s*-{2,}/i.test(l), // Outlook "----- Original Message -----"
+	(l) => /^\s*_{10,}\s*$/.test(l), // Outlook underscore divider above the quoted header block
+	// Outlook quoted-header block ("From: Name <addr>")
+	(l) => /^\s*From:\s/i.test(l) && /<[^<>]+>|@/.test(l),
 ];
+
+// RFC 5322 caps a line at 998 octets, so a longer one is never a real quote or
+// signature marker. Unanchored marker scans are skipped past this bound (only
+// the left-anchored checks run), so body length can't drive parser cost.
+const MAX_MARKER_LINE = 998;
 
 // Reply attribution ("On <date> <name> wrote:" and localized forms). Gmail wraps
 // it across lines when the address is long, so the anchor and the verb are matched
@@ -30,17 +39,51 @@ const CONTACT_LINE = /^\s*(phone|tel|mobile|cell|fax|e-?mail)\b/i;
 const SIGNATURE_DELIMITER = /^\s*--\s*$/;
 
 /**
+ * Remove `<tag ...> … </tag>` blocks by index scan rather than regex.
+ *
+ * The obvious `/<style[^>]*>[\s\S]*?<\/style>/gi` is quadratic on a run of
+ * *valid* opens with no close — `"<style>".repeat(n)` matches the open at all n
+ * positions and the lazy body scans to end-of-string each time (2.1 s at the
+ * 256 KB inbound cap). Tempering the body class does not help; the cost is
+ * n starts x O(n) scan. Each iteration here advances past the close it found,
+ * so the whole walk is linear. An unclosed open leaves the remainder intact.
+ */
+export function stripTagBlocks(input: string, tag: string): string {
+	const open = `<${tag}`;
+	const close = `</${tag}>`;
+	// ASCII-only, length-preserving fold. `input.toLowerCase()` is NOT
+	// length-preserving (U+0130 lowercases to 2 code units), which would desync
+	// haystack indices from the `input.slice` below and leak block interiors into
+	// the output. The match targets (<style/<script) are ASCII, so folding A-Z is
+	// sufficient and keeps every index aligned with `input`.
+	const haystack = input.replace(/[A-Z]/g, (c) => c.toLowerCase());
+	let out = "";
+	let cursor = 0;
+	for (;;) {
+		const start = haystack.indexOf(open, cursor);
+		if (start === -1) break;
+		const openEnd = haystack.indexOf(">", start);
+		if (openEnd === -1) break;
+		const closeStart = haystack.indexOf(close, openEnd + 1);
+		if (closeStart === -1) break;
+		out += input.slice(cursor, start);
+		cursor = closeStart + close.length;
+	}
+	return out + input.slice(cursor);
+}
+
+/**
  * Strip HTML to text: drop <style>/<script>, convert breaks to newlines, remove
  * tags, decode a few common entities, collapse whitespace. Used only as a
  * fallback when an inbound email has no text/plain part.
  */
 export function htmlToText(html: string): string {
-	return html
-		.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
-		.replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
+	// `[^<>]` rather than `[^>]` in the tag pattern: the latter is quadratic on
+	// a run of unclosed "<" (15 s at 100 KB) because each failed match rescans.
+	return stripTagBlocks(stripTagBlocks(html, "style"), "script")
 		.replace(/<\/(p|div|tr|li|h[1-6])>/gi, "\n")
 		.replace(/<br\s*\/?>/gi, "\n")
-		.replace(/<[^>]+>/g, "")
+		.replace(/<[^<>]*>/g, "")
 		.replace(/&nbsp;/gi, " ")
 		.replace(/&lt;/gi, "<")
 		.replace(/&gt;/gi, ">")
@@ -63,6 +106,14 @@ export function extractVisibleText(body: string): string {
 	const kept: string[] = [];
 	for (let i = 0; i < lines.length; i++) {
 		const line = lines[i];
+		if (line.length > MAX_MARKER_LINE) {
+			// Skip only the unanchored scans; the left-anchored checks are O(prefix)
+			// and an over-length quoted line (e.g. unwrapped htmlToText output) must
+			// still end the visible portion.
+			if (SIGNATURE_DELIMITER.test(line) || /^\s*>/.test(line)) break;
+			kept.push(line);
+			continue;
+		}
 		if (SIGNATURE_DELIMITER.test(line)) break;
 		// Attribution line, which Gmail may wrap across up to ~3 lines.
 		if (ATTRIBUTION_ANCHOR.test(line) && /\d/.test(line)) {
@@ -76,7 +127,7 @@ export function extractVisibleText(body: string): string {
 		) {
 			break;
 		}
-		if (QUOTE_STARTERS.some((re) => re.test(line))) break;
+		if (QUOTE_STARTERS.some((isStarter) => isStarter(line))) break;
 		kept.push(line);
 	}
 	return kept.join("\n").replace(/\n{3,}/g, "\n\n").trim();

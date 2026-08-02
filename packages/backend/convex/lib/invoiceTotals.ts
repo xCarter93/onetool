@@ -5,7 +5,6 @@
 import type { QueryCtx, MutationCtx } from "../_generated/server";
 import type { Id } from "../_generated/dataModel";
 import { computeInvoiceTotals, roundCents } from "./money";
-import { AggregateHelpers } from "./aggregates";
 
 export async function calculateInvoiceTotals(
 	ctx: QueryCtx | MutationCtx,
@@ -44,26 +43,26 @@ export async function calculateInvoiceTotals(
 }
 
 /**
- * Recompute an invoice's totals from its line items and persist them, keeping
- * the revenue/count aggregates in step. Call after any line-item write; no-ops
- * when nothing changed.
+ * Recompute an invoice's totals from its line items and persist them. Call
+ * after any line-item write; no-ops when nothing changed.
  */
 export async function syncInvoiceTotals(
 	ctx: MutationCtx,
-	invoiceId: Id<"invoices">
+	invoiceId: Id<"invoices">,
+	options?: { emptyFallback?: "zero" | "stored" }
 ): Promise<void> {
 	const invoice = await ctx.db.get(invoiceId);
 	if (!invoice) return;
 
-	const { subtotal, total } = await calculateInvoiceTotals(ctx, invoiceId);
+	const { subtotal, total } = await calculateInvoiceTotals(
+		ctx,
+		invoiceId,
+		options
+	);
 
 	if (invoice.subtotal === subtotal && invoice.total === total) {
 		return;
 	}
 
 	await ctx.db.patch(invoiceId, { subtotal, total });
-	const updated = await ctx.db.get(invoiceId);
-	if (updated) {
-		await AggregateHelpers.updateInvoice(ctx, invoice, updated);
-	}
 }

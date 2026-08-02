@@ -1031,12 +1031,18 @@ function validateDelayUntilNode(
 	// var kind: resolved at run time — nothing further to check here.
 }
 
-const TEMPLATE_TOKEN = /\{\{\s*([^}]+?)\s*\}\}/g;
+// Must stay byte-identical to the backend token (lib/conditionEval.ts) or the
+// two disagree on which paths a config reads. No outer `\s*` groups — that
+// shape is cubic on an unclosed `{{` followed by whitespace.
+const TEMPLATE_TOKEN = /\{\{([^{}]*?)\}\}/g;
 
 /** Scope paths a config reads: var refs plus {{tokens}} inside static strings. */
 function collectConfigPaths(value: unknown, out: string[] = []): string[] {
 	if (typeof value === "string") {
-		for (const match of value.matchAll(TEMPLATE_TOKEN)) out.push(match[1].trim());
+		for (const match of value.matchAll(TEMPLATE_TOKEN)) {
+			const path = match[1].trim();
+			if (path) out.push(path);
+		}
 		return out;
 	}
 	if (Array.isArray(value)) {

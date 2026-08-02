@@ -6,6 +6,13 @@ const cookieHolder: { value: string | null } = { value: "test-cookie-jwt" };
 const fetchMutationMock = vi.fn();
 const getRequestIpMock = vi.fn((_req?: unknown) => "203.0.113.5");
 
+vi.mock("@/env", () => ({
+	env: {
+		PORTAL_OTP_REQUEST_SECRET: "test-shared-secret-0123456789abcdef",
+		PORTAL_ATTESTATION_SECRET: undefined,
+	},
+}));
+
 vi.mock("@/lib/portal/cookie", () => ({
 	readSessionCookie: async () => cookieHolder.value,
 }));

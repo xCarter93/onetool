@@ -1,5 +1,14 @@
 import { Id, Doc } from "./_generated/dataModel";
 import { MutationCtx } from "./_generated/server";
+import {
+	clientSearchText,
+	contactSearchText,
+	propertySearchText,
+	projectSearchText,
+	quoteSearchText,
+	invoiceSearchText,
+	taskSearchText,
+} from "./lib/searchText";
 
 /**
  * Test helper utilities for Convex backend tests
@@ -104,12 +113,17 @@ export async function createTestClient(
 		notes?: string;
 	} = {}
 ): Promise<Id<"clients">> {
-	return await ctx.db.insert("clients", {
+	const doc = {
 		orgId,
 		companyName: overrides.companyName ?? "Test Client",
 		status: overrides.status ?? "active",
 		leadSource: overrides.leadSource,
 		notes: overrides.notes,
+	};
+	// Raw t.run inserts bypass lib/triggers.ts, so seed the search digest here.
+	return await ctx.db.insert("clients", {
+		...doc,
+		searchText: clientSearchText(doc),
 	});
 }
 
@@ -129,7 +143,7 @@ export async function createTestProject(
 		endDate?: number;
 	} = {}
 ): Promise<Id<"projects">> {
-	return await ctx.db.insert("projects", {
+	const doc = {
 		orgId,
 		clientId,
 		title: overrides.title ?? "Test Project",
@@ -138,6 +152,10 @@ export async function createTestProject(
 		projectType: overrides.projectType ?? "one-off",
 		startDate: overrides.startDate,
 		endDate: overrides.endDate,
+	};
+	return await ctx.db.insert("projects", {
+		...doc,
+		searchText: projectSearchText(doc),
 	});
 }
 
@@ -160,7 +178,7 @@ export async function createTestTask(
 		assigneeUserId?: Id<"users">;
 	} = {}
 ): Promise<Id<"tasks">> {
-	return await ctx.db.insert("tasks", {
+	const doc = {
 		orgId,
 		title: overrides.title ?? "Test Task",
 		description: overrides.description,
@@ -172,6 +190,10 @@ export async function createTestTask(
 		clientId: overrides.clientId,
 		projectId: overrides.projectId,
 		assigneeUserId: overrides.assigneeUserId,
+	};
+	return await ctx.db.insert("tasks", {
+		...doc,
+		searchText: taskSearchText(doc),
 	});
 }
 
@@ -192,7 +214,7 @@ export async function createTestQuote(
 		projectId?: Id<"projects">;
 	} = {}
 ): Promise<Id<"quotes">> {
-	return await ctx.db.insert("quotes", {
+	const doc = {
 		orgId,
 		clientId,
 		projectId: overrides.projectId,
@@ -202,6 +224,10 @@ export async function createTestQuote(
 		subtotal: overrides.subtotal ?? 1000,
 		taxAmount: overrides.taxAmount ?? 100,
 		total: overrides.total ?? 1100,
+	};
+	return await ctx.db.insert("quotes", {
+		...doc,
+		searchText: quoteSearchText(doc),
 	});
 }
 
@@ -226,7 +252,7 @@ export async function createTestInvoice(
 		publicToken?: string;
 	} = {}
 ): Promise<Id<"invoices">> {
-	return await ctx.db.insert("invoices", {
+	const doc = {
 		orgId,
 		clientId,
 		projectId: overrides.projectId,
@@ -240,6 +266,10 @@ export async function createTestInvoice(
 		dueDate: overrides.dueDate ?? Date.now() + 30 * 24 * 60 * 60 * 1000,
 		paidAt: overrides.paidAt,
 		publicToken: overrides.publicToken ?? `token_${Date.now()}`,
+	};
+	return await ctx.db.insert("invoices", {
+		...doc,
+		searchText: invoiceSearchText(doc),
 	});
 }
 
@@ -283,7 +313,7 @@ export async function createTestClientContact(
 		isPrimary?: boolean;
 	} = {}
 ): Promise<Id<"clientContacts">> {
-	return await ctx.db.insert("clientContacts", {
+	const doc = {
 		orgId,
 		clientId,
 		firstName: overrides.firstName ?? "John",
@@ -292,6 +322,10 @@ export async function createTestClientContact(
 		phone: overrides.phone,
 		jobTitle: overrides.jobTitle,
 		isPrimary: overrides.isPrimary ?? false,
+	};
+	return await ctx.db.insert("clientContacts", {
+		...doc,
+		searchText: contactSearchText(doc),
 	});
 }
 
@@ -323,7 +357,7 @@ export async function createTestClientProperty(
 		formattedAddress?: string;
 	} = {}
 ): Promise<Id<"clientProperties">> {
-	return await ctx.db.insert("clientProperties", {
+	const doc = {
 		orgId,
 		clientId,
 		propertyName: overrides.propertyName,
@@ -338,6 +372,10 @@ export async function createTestClientProperty(
 		latitude: overrides.latitude,
 		longitude: overrides.longitude,
 		formattedAddress: overrides.formattedAddress,
+	};
+	return await ctx.db.insert("clientProperties", {
+		...doc,
+		searchText: propertySearchText(doc),
 	});
 }
 

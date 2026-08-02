@@ -1,15 +1,9 @@
 import { v } from "convex/values";
-import {
-	internalMutation,
-	internalQuery,
-	mutation,
-	MutationCtx,
-	QueryCtx,
-} from "./_generated/server";
+import { internalQuery, MutationCtx, QueryCtx } from "./_generated/server";
+import { internalMutation, mutation } from "./lib/triggers";
 import { Doc, Id, TableNames } from "./_generated/dataModel";
-import { internal, api } from "./_generated/api";
+import { internal } from "./_generated/api";
 import { logWebhookSuccess, logWebhookError } from "./lib/webhooks";
-import { AggregateHelpers } from "./lib/aggregates";
 import { getCurrentUser, getCurrentUserOrgId } from "./lib/auth";
 import {
 	denyPermission,
@@ -77,7 +71,8 @@ const BOLDSIGN_TIMESTAMP_FIELDS: Record<BoldSignStatus, string> = {
  */
 type DerivedSigner = { name: string; email: string; signerOrder: number };
 
-type EmbeddedRequestContext = {
+type EmbeddedRequestReady = {
+	ok: true;
 	quoteTitle: string;
 	message: string;
 	filename: string;
@@ -90,6 +85,14 @@ type EmbeddedRequestContext = {
 	// URL is minted fresh per visit, so this is not gated on link expiry.
 	existing: { boldsignDocumentId: string } | null;
 };
+
+/**
+ * A quote with no generated PDF is an expected state, not a failure, so it is
+ * returned as a typed reason alongside the action's limit / no_signer verdicts.
+ */
+type EmbeddedRequestContext =
+	| EmbeddedRequestReady
+	| { ok: false; reason: "no_pdf" };
 
 /**
  * Gather everything the embedded-request action needs, org-scoped to the
@@ -125,7 +128,7 @@ async function getLatestQuoteDocument(
  * Resolve the caller's org, load the quote, and enforce quotes-modify plus
  * project/client scope. Every e-sign entry point that reads or mutates a
  * quote's embedded-signature state must go through this — org membership
- * alone is not the boundary (PRD §4.4). Shadow-aware.
+ * alone is not the boundary (PRD §4.4).
  */
 async function authorizeQuoteModify(
 	ctx: QueryCtx | MutationCtx,
@@ -167,7 +170,7 @@ export const getEmbeddedRequestContext = internalQuery({
 
 		const latest = await getLatestQuoteDocument(ctx, quote._id, orgId);
 		if (!latest) {
-			throw new Error("No PDF has been generated for this quote yet");
+			return { ok: false, reason: "no_pdf" };
 		}
 
 		// Resume any embedded Draft (idempotent /sign visits). Deliberately not
@@ -219,6 +222,7 @@ export const getEmbeddedRequestContext = internalQuery({
 
 		const quoteLabel = quote.quoteNumber || quote._id.slice(-6);
 		return {
+			ok: true,
 			quoteTitle: `Quote ${quoteLabel}`,
 			message: quote.clientMessage || "Please review and sign this quote.",
 			filename: `Quote-${quoteLabel}.pdf`,
@@ -561,10 +565,6 @@ async function handleQuoteStatusUpdate(
 
 	if (Object.keys(quoteUpdates).length > 0) {
 		await ctx.db.patch(quote._id, quoteUpdates);
-		const updatedQuote = await ctx.db.get(quote._id);
-		if (updatedQuote) {
-			await AggregateHelpers.updateQuote(ctx, quote, updatedQuote);
-		}
 	}
 }
 
@@ -575,10 +575,19 @@ async function handleQuoteStatusUpdate(
 export const updateDocumentWithSignedPdf = internalMutation({
 	args: {
 		documentId: v.id("documents"),
+		boldsignDocumentId: v.string(),
 		signedStorageId: v.id("_storage"),
 	},
 	handler: async (ctx, args) => {
-		await fetchEntityOrThrow(ctx, args.documentId, "Document");
+		const document = await fetchEntityOrThrow(ctx, args.documentId, "Document");
+
+		// fetchEntityOrThrow is existence-only, so pin the pair here: a PDF
+		// downloaded for one BoldSign document can never land on another row.
+		if (document.boldsignDocumentId !== args.boldsignDocumentId) {
+			throw new Error(
+				`Document ${args.documentId} is not linked to BoldSign document ${args.boldsignDocumentId}`
+			);
+		}
 
 		await ctx.db.patch(args.documentId, {
 			signedStorageId: args.signedStorageId,
@@ -602,7 +611,7 @@ export const triggerDocumentDownload = internalMutation({
 	handler: async (ctx, args) => {
 		await ctx.scheduler.runAfter(
 			0,
-			api.boldsignActions.downloadCompletedDocument,
+			internal.boldsignActions.downloadCompletedDocument,
 			{
 				documentId: args.documentId,
 				boldsignDocumentId: args.boldsignDocumentId,

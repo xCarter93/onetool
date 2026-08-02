@@ -319,6 +319,7 @@ describe("Community Pages", () => {
 		expect(tasks[0].description).toContain("I need lawn care services");
 		expect(tasks[0].status).toBe("pending");
 		expect(tasks[0].type).toBe("internal");
+		expect(tasks[0].source).toBe("public_form");
 	});
 
 	it("submitInterest emits entity.record_created for the follow-up task", async () => {

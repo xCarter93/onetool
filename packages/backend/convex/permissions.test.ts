@@ -11,16 +11,14 @@ import {
 import { DEFAULT_MEMBER_PERMISSIONS } from "./lib/permissionKeys";
 
 /**
- * Phase-3 grant management plane (convex/permissions.ts). Deliberately NOT
- * behind PERMISSIONS_ENFORCE — all tests run with the flag unset to prove the
- * admin plane enforces regardless of shadow mode.
+ * Phase-3 grant management plane (convex/permissions.ts). The admin plane is
+ * gated on its own terms, not by the per-object grants it manages.
  */
 describe("permissions grant management", () => {
 	let t: ReturnType<typeof convexTest>;
 
 	beforeEach(() => {
 		t = setupConvexTest();
-		delete process.env.PERMISSIONS_ENFORCE;
 	});
 
 	function parseConvexErrorData(caught: unknown): Record<string, unknown> {
@@ -69,7 +67,7 @@ describe("permissions grant management", () => {
 
 	// ── setMemberPermissions ─────────────────────────────────────────────
 
-	it("rejects a non-admin caller even in shadow mode", async () => {
+	it("rejects a non-admin caller", async () => {
 		const { secondMember, asMember } = await seedOrgWithMembers("set_caller");
 		await expectConvexError(
 			() =>

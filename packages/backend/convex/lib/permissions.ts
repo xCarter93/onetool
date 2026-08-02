@@ -238,23 +238,6 @@ export async function getCurrentUserRole(
 }
 
 /**
- * Check if the current user is a member (non-admin) in their organization
- * Member is defined as a role that explicitly includes "member" and does not include "admin"
- * Secure-by-default: denies access if role is missing or lookup fails
- */
-export async function isMember(ctx: QueryCtx | MutationCtx): Promise<boolean> {
-	const role = await getCurrentUserRole(ctx);
-
-	// Secure-by-default: deny if role is missing or lookup fails
-	if (!role) {
-		return false;
-	}
-
-	// Exact match on the normalized role key (not substring collisions).
-	return normalizeRoleKey(role) === "member";
-}
-
-/**
  * Get the current user's ID for filtering assigned items
  */
 export async function getCurrentUserId(
@@ -285,15 +268,6 @@ import { getMembership } from "./memberships";
 export type EffectivePermissions = PermissionGrants | "all";
 export type RequiredLevel = Exclude<AccessLevel, "none">;
 
-/**
- * Shadow-mode switch. While unset/false, permission verdicts are computed and
- * would-denies logged (`[permissions-shadow]`), but nothing throws and no rows
- * are hidden. Read at call time so tests can toggle process.env.
- */
-export function permissionsEnforced(): boolean {
-	return process.env.PERMISSIONS_ENFORCE === "true";
-}
-
 /** Pure verdict on an already-resolved grant set. */
 export function checkLevel(
 	grants: EffectivePermissions,
@@ -316,8 +290,9 @@ export function checkAllRecords(
 }
 
 /**
- * Throw FORBIDDEN when enforcing; console.warn the would-deny in shadow mode.
- * `extra` lands in the ConvexError data and the log line.
+ * Deny with FORBIDDEN. `extra` lands in the ConvexError data; userId/orgId/detail
+ * are dropped from the payload so a denial never discloses who or what it was
+ * about, and exist only for the caller's own readability.
  */
 export function denyPermission(extra: {
 	object: PermissionObject;
@@ -326,17 +301,9 @@ export function denyPermission(extra: {
 	userId?: Id<"users">;
 	orgId?: Id<"organizations">;
 	detail?: string;
-}): void {
-	if (permissionsEnforced()) {
-		const { userId: _u, orgId: _o, detail: _d, ...data } = extra;
-		throw new ConvexError({ code: "FORBIDDEN", ...data });
-	}
-	console.warn(
-		`[permissions-shadow] would deny ${extra.level ?? (extra.scope ? "record-scope" : "?")} on ${extra.object}` +
-			(extra.userId ? ` user=${extra.userId}` : "") +
-			(extra.orgId ? ` org=${extra.orgId}` : "") +
-			(extra.detail ? ` (${extra.detail})` : "")
-	);
+}): never {
+	const { userId: _u, orgId: _o, detail: _d, ...data } = extra;
+	throw new ConvexError({ code: "FORBIDDEN", ...data });
 }
 
 /**
@@ -391,7 +358,7 @@ export async function hasAllRecords(
 	return checkAllRecords(await getEffectivePermissions(ctx), object);
 }
 
-/** Shadow-aware level gate for non-factory call sites (assistant tools etc.). */
+/** Level gate for non-factory call sites (assistant tools etc.). */
 export async function requireLevel(
 	ctx: QueryCtx | MutationCtx,
 	object: PermissionObject,

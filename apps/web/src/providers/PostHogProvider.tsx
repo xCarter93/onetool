@@ -30,6 +30,30 @@ export function PostHogProvider({ children }: { children: React.ReactNode }) {
 					element_allowlist: ["a", "button", "form", "input", "select", "textarea"],
 				},
 				capture_exceptions: true, // Capture JavaScript errors
+				// Benign browser noise from layout-heavy UI (charts, data-grid,
+				// signature pad) — drop before ingestion so it can't reopen issues.
+				before_send: (event) => {
+					if (event?.event === "$exception") {
+						const values: unknown[] = [
+							event.properties?.$exception_message,
+							...(Array.isArray(event.properties?.$exception_list)
+								? event.properties.$exception_list.map(
+										(e: { value?: string }) => e?.value
+									)
+								: []),
+						];
+						if (
+							values.some(
+								(v) =>
+									typeof v === "string" &&
+									v.includes("ResizeObserver loop")
+							)
+						) {
+							return null;
+						}
+					}
+					return event;
+				},
 				capture_heatmaps: true,
 				enable_heatmaps: true,
 				persistence: "localStorage+cookie",

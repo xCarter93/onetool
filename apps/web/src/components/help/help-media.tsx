@@ -48,17 +48,21 @@ export function HelpMedia({ media, caption, asset, className }: HelpMediaProps) 
 	const [pending, setPending] = useState(false);
 	const triggerRef = useRef<HTMLButtonElement>(null);
 	const imgRef = useRef<HTMLImageElement>(null);
-	const preloadRef = useRef<HTMLImageElement | null>(null);
+	// Keyed by asset: the instance can be reused for a different slot on
+	// navigation, and an unkeyed cache would hand back the previous image.
+	const preloadRef = useRef<{ asset: string; img: HTMLImageElement } | null>(
+		null
+	);
 	const reduceMotion = useReducedMotion();
 
 	// Warm the full-size source on intent, so the click usually opens instantly.
 	// Cloudinary generates a derived asset on its first request, so this also
 	// absorbs that one-time transform cost before anyone is waiting on it.
 	const preload = useCallback(() => {
-		if (preloadRef.current) return preloadRef.current;
+		if (preloadRef.current?.asset === asset) return preloadRef.current.img;
 		const img = new window.Image();
 		img.src = helpImageUrl(asset, EXPANDED_WIDTH);
-		preloadRef.current = img;
+		preloadRef.current = { asset, img };
 		return img;
 	}, [asset]);
 
@@ -271,7 +275,8 @@ function HelpMediaLightbox({
 							/>
 						</motion.div>
 
-						<motion.figcaption
+						{/* Not a <figcaption>: this is portalled to body, outside any <figure>. */}
+						<motion.p
 							className="pointer-events-auto max-w-2xl text-center text-sm text-muted-foreground"
 							initial={{ opacity: 0 }}
 							animate={{ opacity: 1 }}
@@ -282,7 +287,7 @@ function HelpMediaLightbox({
 							}}
 						>
 							{caption}
-						</motion.figcaption>
+						</motion.p>
 					</div>
 
 					<button

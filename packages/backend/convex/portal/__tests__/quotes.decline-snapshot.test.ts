@@ -16,9 +16,11 @@ import { api } from "../../_generated/api";
 import type { Id } from "../../_generated/dataModel";
 
 const PORTAL_ISSUER = "https://portal.example.com";
+const TEST_ATTESTATION = "test-portal-attestation-0123456789";
 
 beforeAll(() => {
 	process.env.PORTAL_JWT_ISSUER = PORTAL_ISSUER;
+	process.env.PORTAL_ATTESTATION_SECRET = TEST_ATTESTATION;
 });
 
 type Seed = {
@@ -162,6 +164,7 @@ describe("decline audit snapshot recomputes from line items (Finding 6)", () => 
 
 		const asPortal = t.withIdentity(ident(s, jti));
 		const result = await asPortal.mutation(api.portal.quotes.decline, {
+			attestation: TEST_ATTESTATION,
 			quoteId,
 			expectedDocumentId: documentId,
 			declineReason: "Too expensive",
@@ -229,6 +232,7 @@ describe("decline audit snapshot recomputes from line items (Finding 6)", () => 
 
 		const asPortal = t.withIdentity(ident(s, jti));
 		await asPortal.mutation(api.portal.quotes.decline, {
+			attestation: TEST_ATTESTATION,
 			quoteId,
 			expectedDocumentId: documentId,
 			ipAddress: "1.2.3.4",

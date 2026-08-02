@@ -64,6 +64,20 @@ export function mapConvexError(err: unknown): NextResponse {
 		case "FORBIDDEN":
 		case "NOT_FOUND":
 			return NextResponse.json({ error: "Not found" }, { status: 404 });
+		// SEC-4: these two only fire when the caller bypassed this route (the
+		// route always attests and always sends intentAffirmed), so they are
+		// misuse rather than anything a portal user can act on.
+		case "UNATTESTED_REQUEST":
+		case "INTENT_AFFIRMATION_REQUIRED":
+			return NextResponse.json(
+				{ error: "Invalid request", code: "invalid_request" },
+				{ status: 400 },
+			);
+		case "PORTAL_MISCONFIGURED":
+			return NextResponse.json(
+				{ error: "Portal is misconfigured" },
+				{ status: 500 },
+			);
 		case "INVALID_SIGNATURE_FORMAT":
 		case "SIGNATURE_TOO_LARGE":
 			return NextResponse.json(

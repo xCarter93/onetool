@@ -1,4 +1,5 @@
-import { query, mutation } from "./_generated/server";
+import { query } from "./_generated/server";
+import { mutation } from "./lib/triggers";
 import { v } from "convex/values";
 import { getCurrentUserOrgId, getCurrentUserOrThrow } from "./lib/auth";
 import { getOptionalOrgId } from "./lib/queries";

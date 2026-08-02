@@ -1,9 +1,9 @@
-import { query, mutation, QueryCtx, MutationCtx } from "./_generated/server";
+import { query, QueryCtx, MutationCtx } from "./_generated/server";
+import { mutation } from "./lib/triggers";
 import { v } from "convex/values";
 import { Doc, Id } from "./_generated/dataModel";
 import { getCurrentUserOrgId } from "./lib/auth";
 import { ActivityHelpers } from "./lib/activities";
-import { AggregateHelpers } from "./lib/aggregates";
 import { DateUtils } from "./lib/shared";
 import { requireMembership } from "./lib/memberships";
 import {
@@ -25,7 +25,6 @@ import {
 	type UserMutationCtx,
 } from "./lib/factories";
 import { calculateQuoteTotals } from "./lib/quoteTotals";
-import { permissionsEnforced } from "./lib/permissions";
 
 /**
  * Project operations
@@ -110,14 +109,8 @@ async function resolveScopedCreateAssignees(
 ): Promise<Id<"users">[] | undefined> {
 	if (await ctx.hasAllRecords("projects")) return assignedUserIds;
 	if (assignedUserIds?.includes(ctx.user._id)) return assignedUserIds;
-	if (permissionsEnforced()) {
-		// scoped users own what they create (PRD §3.2)
-		return [...(assignedUserIds ?? []), ctx.user._id];
-	}
-	console.warn(
-		`[permissions-shadow] would auto-assign project creator user=${ctx.user._id}`
-	);
-	return assignedUserIds;
+	// scoped users own what they create (PRD §3.2)
+	return [...(assignedUserIds ?? []), ctx.user._id];
 }
 
 /**
@@ -589,7 +582,6 @@ export const create = userMutation({
 		const project = await ctx.db.get(projectId);
 		if (project) {
 			await ActivityHelpers.projectCreated(ctx, project as ProjectDocument);
-			await AggregateHelpers.addProject(ctx, project as ProjectDocument);
 			await emitRecordCreatedEvent(
 				ctx,
 				(project as ProjectDocument).orgId,
@@ -714,11 +706,10 @@ export const bulkCreate = userMutation({
 					createdByUserId: ctx.user._id,
 				});
 
-				// Get the created project for activity logging and aggregate updates
+				// Get the created project for activity logging
 				const project = await ctx.db.get(projectId);
 				if (project) {
 					await ActivityHelpers.projectCreated(ctx, project as ProjectDocument);
-					await AggregateHelpers.addProject(ctx, project as ProjectDocument);
 				}
 
 				results.push({
@@ -812,21 +803,9 @@ export const update = userMutation({
 
 		await updateProjectWithValidation(ctx, id, filteredUpdates);
 
-		// Get updated project for activity logging and aggregates
+		// Get updated project for activity logging
 		const project = await ctx.db.get(id);
 		if (project) {
-			// Update aggregates if status or completedAt changed
-			if (
-				filteredUpdates.status !== undefined ||
-				filteredUpdates.completedAt !== undefined
-			) {
-				await AggregateHelpers.updateProject(
-					ctx,
-					currentProject as ProjectDocument,
-					project as ProjectDocument
-				);
-			}
-
 			if (isBeingCompleted) {
 				await ActivityHelpers.projectCompleted(
 					ctx,
@@ -929,7 +908,6 @@ export const remove = userMutation({
 			}
 
 			// Delete the quote itself
-			await AggregateHelpers.removeQuote(ctx, quote);
 			await ctx.db.delete(quote._id);
 		}
 
@@ -970,14 +948,10 @@ export const remove = userMutation({
 			}
 
 			// Delete the invoice itself
-			await AggregateHelpers.removeInvoice(ctx, invoice);
 			await ctx.db.delete(invoice._id);
 		}
 
-		// 4. Remove from aggregates before deleting the project
-		await AggregateHelpers.removeProject(ctx, project as ProjectDocument);
-
-		// 5. Finally, delete the project itself
+		// 4. Finally, delete the project itself
 		await ctx.db.delete(args.id);
 
 		return args.id;

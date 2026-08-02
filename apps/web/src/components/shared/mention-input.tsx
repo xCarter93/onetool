@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { useQuery, useMutation } from "convex/react";
+import { useQuery, useMutation, useAction } from "convex/react";
 import { useOrganization } from "@clerk/nextjs";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { Button } from "@/components/ui/button";
@@ -60,7 +60,7 @@ export function MentionInput({
 	// Also fetch Convex users to map Clerk users to Convex user IDs
 	const convexUsers = useQuery(api.users.listByOrg);
 	const createMention = useMutation(api.notifications.createMention);
-	const syncUserFromClerk = useMutation(api.users.syncUserFromClerk);
+	const syncUserFromClerk = useAction(api.users.syncUserFromClerk);
 	const generateUploadUrl = useMutation(
 		api.messageAttachments.generateUploadUrl
 	);
@@ -393,12 +393,17 @@ export function MentionInput({
 
 				let convexUserId = user.convexUserId;
 				if (!convexUserId) {
-					convexUserId = await syncUserFromClerk({
-						clerkUserId: user.id,
-						name: user.name,
-						email: user.email,
-						imageUrl: user.image,
-					});
+					// Verified against Clerk server-side; null means "not a member of
+					// this org", so the mention can't be resolved.
+					convexUserId =
+						(await syncUserFromClerk({ clerkUserId: user.id })) ?? undefined;
+				}
+				if (!convexUserId) {
+					toast.error(
+						"Error",
+						`Couldn't find @${mentionedUser.name} — remove the mention and try again`
+					);
+					return;
 				}
 				mentionedUserIds.push(convexUserId);
 			}

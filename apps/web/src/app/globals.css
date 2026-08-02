@@ -64,15 +64,15 @@
 
 :root {
 	--radius: 0.5rem;
-	/* Vertical room the bottom-anchored assistant notch (.assistant-notch,
-	   min-height 40px) needs above it. Consumed by the automations editor's
-	   floating right panel bottom inset so it clears the notch tab; keep >= the
-	   notch height plus a little breathing room. */
-	--assistant-notch-clearance: 3.5rem;
-	/* Shared notch geometry: ogee sweep width (x) and tab depth (y). Consumed
-	   by the .header-notch/.assistant-notch shape() paths AND the components'
-	   side padding / heights (px-(--notch-sweep), h-(--notch-depth)) so the
-	   flat floor and the curve region stay in lockstep. */
+	/* Vertical room the bottom-anchored assistant dock (assistant-dock.tsx,
+	   ~3.25rem tall incl. its pb-3 inset) needs above it. Consumed by the
+	   automations editor's floating right panel bottom inset so it clears the
+	   dock; keep >= the dock height plus a little breathing room. */
+	--assistant-notch-clearance: 4.5rem;
+	/* Header notch geometry: ogee sweep width (x) and tab depth (y). Consumed
+	   by the .header-notch shape() path AND the component's side padding /
+	   heights (px-(--notch-sweep), h-(--notch-depth)) so the flat floor and
+	   the curve region stay in lockstep. */
 	--notch-sweep: 56px;
 	--notch-depth: 40px;
 	--bg: oklch(0.97 0 0);
@@ -614,34 +614,6 @@
 
 	}
 
-	/* ========================================================================
-	   Assistant notch — the header notch mirrored vertically: a tab that
-	   bulges UP from the bottom frame band. Flat floor on top, ogee sweeps
-	   down both sides to the bottom edge (same --notch-sweep geometry). Sits
-	   flush on the viewport bottom; the frame behind it is the same color, so
-	   the hover lift stays visually fused. Fallback without border-shape:
-	   plain rounded-t tab.
-	   ======================================================================== */
-	.assistant-notch {
-		background-color: var(--sidebar);
-		min-height: var(--notch-depth);
-	}
-
-	@supports (border-shape: shape(from 0 0, close)) {
-		/* Exact vertical mirror of .header-notch — same sweep/depth, so top
-		   and bottom notches read as twins. */
-		.assistant-notch {
-			border-shape: shape(
-				from 0 100%,
-				curve to var(--notch-sweep) 0 with calc(var(--notch-sweep) / 2)
-					100% / calc(var(--notch-sweep) / 2) 0,
-				hline to calc(100% - var(--notch-sweep)),
-				curve to 100% 100% with calc(100% - var(--notch-sweep) / 2) 0 /
-					calc(100% - var(--notch-sweep) / 2) 100%,
-				close
-			);
-		}
-	}
 }
 
 @layer utilities {
@@ -791,14 +763,29 @@
 	fill: var(--illo-line);
 	opacity: 0.22;
 }
-/* Isometric side faces: two fixed shading steps, never a gradient. */
+/* Isometric faces: a discrete three-step ramp, never a gradient. Opaque
+   (color-mix, not alpha) so stacked objects don't bleed through each other. */
+.ot-illo .illo-face-top {
+	fill: color-mix(in oklab, var(--illo-line) 5%, var(--illo-knockout));
+}
 .ot-illo .illo-face-left {
-	fill: var(--illo-line);
-	opacity: 0.2;
+	fill: color-mix(in oklab, var(--illo-line) 18%, var(--illo-knockout));
 }
 .ot-illo .illo-face-right {
+	fill: color-mix(in oklab, var(--illo-line) 32%, var(--illo-knockout));
+}
+/* Accent/celebrate objects shade two-step: base hue on the lit face, a darker
+   turned face. Never tint the hue lighter. */
+.ot-illo .illo-accent-shade {
+	fill: color-mix(in oklab, var(--illo-accent) 76%, black);
+}
+.ot-illo .illo-celebrate-shade {
+	fill: color-mix(in oklab, var(--illo-celebrate) 76%, black);
+}
+/* Cast shadow: flattened silhouette under an object — anchors floaters. */
+.ot-illo .illo-cast {
 	fill: var(--illo-line);
-	opacity: 0.32;
+	opacity: 0.1;
 }
 
 /* --- strokes ---

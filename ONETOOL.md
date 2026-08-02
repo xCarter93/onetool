@@ -1018,7 +1018,7 @@ await ctx.requireRecordScope("projects", () =>
 );
 ```
 
-**Shadow mode**: while the `PERMISSIONS_ENFORCE` env var is unset, verdicts are computed and logged as `[permissions-shadow]` `console.warn`s but nothing is denied or hidden. Set `PERMISSIONS_ENFORCE=true` to enforce.
+**Enforcement**: permission verdicts always deny. There is no shadow mode and no opt-out env var — `denyPermission` throws `FORBIDDEN`, `applyReadScope`/`scopedToActor` filter, and `gateRead` excludes. Any query a member can reach must therefore degrade gracefully rather than throw; the frontend pattern is `can(obj) ? args : "skip"`.
 
 **Grant management** (`convex/permissions.ts`) is admin/owner-only via `setMemberPermissions`, `myPermissions`, `memberPermissions`, and `orgMemberAccess` — this admin plane is always enforced, never shadow-gated. On the frontend, `usePermissions()` (`apps/web/src/hooks/use-permissions.ts`) is reactive over `useQuery(api.permissions.myPermissions)`:
 

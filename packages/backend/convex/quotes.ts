@@ -1,12 +1,11 @@
 import { calendarDayEpoch } from "./lib/formula";
-import { query, mutation, QueryCtx, MutationCtx } from "./_generated/server";
+import { query, QueryCtx, MutationCtx } from "./_generated/server";
+import { mutation } from "./lib/triggers";
 import { ConvexError, v } from "convex/values";
 import { Doc, Id } from "./_generated/dataModel";
 import { getCurrentUserOrgId } from "./lib/auth";
 import { ActivityHelpers } from "./lib/activities";
-import { AggregateHelpers } from "./lib/aggregates";
 import { calculateQuoteTotals, syncQuoteTotals } from "./lib/quoteTotals";
-import { computeQuoteTotals } from "./lib/money";
 import {
 	validateParentAccess,
 	filterUndefined,
@@ -142,6 +141,18 @@ async function createQuoteWithOrg(
 	return await ctx.db.insert("quotes", quoteData);
 }
 
+/** Quote fields whose change invalidates the stored subtotal/taxAmount/total. */
+const QUOTE_TOTAL_FIELDS = [
+	"subtotal",
+	"taxAmount",
+	"total",
+	"discountEnabled",
+	"discountAmount",
+	"discountType",
+	"taxEnabled",
+	"taxRate",
+] as const;
+
 /**
  * Update a quote with validation
  */
@@ -242,45 +253,11 @@ export const list = optionalUserQuery({
 			q.projectId ? s.projectIds.has(q.projectId) : s.clientIds.has(q.clientId)
 		);
 
-		// Batch fetch ALL line items for ALL quotes in a single query
-		// This avoids N+1 query problem (1 query for quotes + 1 query for all line items = 2 total)
-		const allLineItems = await ctx.db
-			.query("quoteLineItems")
-			.withIndex("by_org", (q) => q.eq("orgId", orgId))
-			.collect();
-
-		// Group line items by quoteId for O(1) lookup
-		const lineItemsByQuote = new Map<Id<"quotes">, typeof allLineItems>();
-		for (const item of allLineItems) {
-			const existing = lineItemsByQuote.get(item.quoteId) || [];
-			existing.push(item);
-			lineItemsByQuote.set(item.quoteId, existing);
-		}
-
-		// Calculate totals for each quote using in-memory data
-		const quotesWithCalculatedTotals = quotes.map((quote) => {
-			const lineItems = lineItemsByQuote.get(quote._id) || [];
-
-			// Shared roll-up (lib/money.ts) — same math as quotes.get and the portal
-			const totals = computeQuoteTotals({
-				lineAmounts: lineItems.map((item) => item.amount),
-				discountEnabled: quote.discountEnabled,
-				discountAmount: quote.discountAmount,
-				discountType: quote.discountType,
-				taxEnabled: quote.taxEnabled,
-				taxRate: quote.taxRate,
-			});
-
-			return {
-				...quote,
-				...totals,
-			};
-		});
-
-		// Sort by creation time (newest first)
-		return quotesWithCalculatedTotals.sort(
-			(a, b) => b._creationTime - a._creationTime
-		);
+		// Stored totals, not a recompute: syncQuoteTotals keeps subtotal/taxAmount/
+		// total in step with the line items on every line-item mutation and on
+		// every discount/tax edit in `update`. Recomputing here meant collecting
+		// the org's entire quoteLineItems table on each list call.
+		return quotes.sort((a, b) => b._creationTime - a._creationTime);
 	},
 });
 
@@ -597,24 +574,39 @@ export const create = userMutation({
 
 		// Validate financial values
 		if (args.subtotal < 0) {
-			throw new Error("Subtotal cannot be negative");
+			throw new ConvexError({
+				code: "BAD_REQUEST",
+				message: "Subtotal cannot be negative",
+			});
 		}
 
 		if (args.total < 0) {
-			throw new Error("Total cannot be negative");
+			throw new ConvexError({
+				code: "BAD_REQUEST",
+				message: "Total cannot be negative",
+			});
 		}
 
 		if (args.discountEnabled && args.discountAmount !== undefined) {
 			if (args.discountAmount < 0) {
-				throw new Error("Discount amount cannot be negative");
+				throw new ConvexError({
+					code: "BAD_REQUEST",
+					message: "Discount amount cannot be negative",
+				});
 			}
 			if (args.discountType === "percentage" && args.discountAmount > 100) {
-				throw new Error("Percentage discount cannot exceed 100%");
+				throw new ConvexError({
+					code: "BAD_REQUEST",
+					message: "Percentage discount cannot exceed 100%",
+				});
 			}
 		}
 
 		if (args.taxEnabled && args.taxRate !== undefined && args.taxRate < 0) {
-			throw new Error("Tax rate cannot be negative");
+			throw new ConvexError({
+				code: "BAD_REQUEST",
+				message: "Tax rate cannot be negative",
+			});
 		}
 
 		// validUntil is a calendar date (UTC-midnight epoch): the quote is valid
@@ -623,7 +615,10 @@ export const create = userMutation({
 		if (args.validUntil) {
 			const tz = (await ctx.db.get(ctx.orgId))?.timezone ?? "UTC";
 			if (args.validUntil < calendarDayEpoch(Date.now(), tz)) {
-				throw new Error("Valid until date cannot be in the past");
+				throw new ConvexError({
+					code: "BAD_REQUEST",
+					message: "Valid until date cannot be in the past",
+				});
 			}
 		}
 
@@ -633,7 +628,7 @@ export const create = userMutation({
 			createdByUserId: ctx.user._id,
 		} as any);
 
-		// Get the created quote for activity logging and aggregates
+		// Get the created quote for activity logging
 		const quote = await ctx.db.get(quoteId);
 		if (quote) {
 			const client = await ctx.db.get(quote.clientId);
@@ -642,7 +637,6 @@ export const create = userMutation({
 				quote as QuoteDocument,
 				client?.companyName || "Unknown Client"
 			);
-			await AggregateHelpers.addQuote(ctx, quote as QuoteDocument);
 			await emitRecordCreatedEvent(
 				ctx,
 				quote.orgId,
@@ -708,60 +702,85 @@ export const update = userMutation({
 
 		const { id, ...updates } = args;
 
+		const currentQuote = await ctx.orgEntity("quotes", id);
+		const filteredUpdates = filterUndefined(updates) as Partial<QuoteDocument>;
+		// Paired fields (discount type/amount, countersignature/countersigner) are
+		// validated on the merged result, so patching one half can't bypass a rule
+		// or trip one that the merged quote satisfies.
+		const effective = { ...currentQuote, ...filteredUpdates };
+
 		// Validate financial values
 		if (updates.subtotal !== undefined && updates.subtotal < 0) {
-			throw new Error("Subtotal cannot be negative");
+			throw new ConvexError({
+				code: "BAD_REQUEST",
+				message: "Subtotal cannot be negative",
+			});
 		}
 
 		if (updates.total !== undefined && updates.total < 0) {
-			throw new Error("Total cannot be negative");
+			throw new ConvexError({
+				code: "BAD_REQUEST",
+				message: "Total cannot be negative",
+			});
 		}
 
 		if (updates.discountAmount !== undefined && updates.discountAmount < 0) {
-			throw new Error("Discount amount cannot be negative");
+			throw new ConvexError({
+				code: "BAD_REQUEST",
+				message: "Discount amount cannot be negative",
+			});
 		}
 
 		if (
-			updates.discountType === "percentage" &&
-			updates.discountAmount !== undefined &&
-			updates.discountAmount > 100
+			effective.discountType === "percentage" &&
+			effective.discountAmount !== undefined &&
+			effective.discountAmount > 100
 		) {
-			throw new Error("Percentage discount cannot exceed 100%");
+			throw new ConvexError({
+				code: "BAD_REQUEST",
+				message: "Percentage discount cannot exceed 100%",
+			});
 		}
 
 		if (updates.taxRate !== undefined && updates.taxRate < 0) {
-			throw new Error("Tax rate cannot be negative");
+			throw new ConvexError({
+				code: "BAD_REQUEST",
+				message: "Tax rate cannot be negative",
+			});
 		}
 
 		// Same calendar-day semantics as create (see comment there).
-		if (updates.validUntil) {
+		if (updates.validUntil !== undefined) {
 			const tz = (await ctx.db.get(ctx.orgId))?.timezone ?? "UTC";
 			if (updates.validUntil < calendarDayEpoch(Date.now(), tz)) {
-				throw new Error("Valid until date cannot be in the past");
+				throw new ConvexError({
+					code: "BAD_REQUEST",
+					message: "Valid until date cannot be in the past",
+				});
 			}
 		}
 
 		// Validate countersignature settings
-		if (updates.requiresCountersignature === true && !updates.countersignerId) {
-			throw new Error(
-				"Countersigner is required when countersignature is enabled"
-			);
+		if (effective.requiresCountersignature === true && !effective.countersignerId) {
+			throw new ConvexError({
+				code: "BAD_REQUEST",
+				message: "Countersigner is required when countersignature is enabled",
+			});
 		}
 
 		// Validate countersigner exists if provided
 		if (updates.countersignerId) {
 			const countersigner = await ctx.db.get(updates.countersignerId);
 			if (!countersigner) {
-				throw new Error("Countersigner not found");
+				throw new ConvexError({
+					code: "NOT_FOUND",
+					message: "Countersigner not found",
+				});
 			}
 		}
 
-		// Filter and validate updates
-		const filteredUpdates = filterUndefined(updates) as Partial<QuoteDocument>;
 		requireUpdates(filteredUpdates);
 
-		// Get current quote to check for status changes
-		const currentQuote = await ctx.orgEntity("quotes", id);
 		await ctx.requireRecordScope("quotes", () =>
 			ctx.actorScope().then((s) =>
 				currentQuote.projectId
@@ -799,22 +818,16 @@ export const update = userMutation({
 
 		await updateQuoteWithValidation(ctx, id, filteredUpdates);
 
-		// Log appropriate activity based on status change and update aggregates
+		// Callers send their own subtotal/total next to a discount or tax edit.
+		// Recompute from the line items so the stored figures — which list,
+		// getStats and the revenue aggregates all read — stay authoritative.
+		if (QUOTE_TOTAL_FIELDS.some((field) => field in filteredUpdates)) {
+			await syncQuoteTotals(ctx, id);
+		}
+
+		// Log appropriate activity based on status change
 		const updatedQuote = await ctx.db.get(id);
 		if (updatedQuote) {
-			// Update aggregates if relevant fields changed
-			if (
-				filteredUpdates.status !== undefined ||
-				filteredUpdates.approvedAt !== undefined ||
-				filteredUpdates.total !== undefined
-			) {
-				await AggregateHelpers.updateQuote(
-					ctx,
-					currentQuote as QuoteDocument,
-					updatedQuote as QuoteDocument
-				);
-			}
-
 			const client = await ctx.db.get(updatedQuote.clientId);
 			const clientName = client?.companyName || "Unknown Client";
 			if (
@@ -919,10 +932,12 @@ export const remove = userMutation({
 			.collect();
 
 		if (invoices.length > 0) {
-			throw new Error(
-				"Cannot delete quote with existing invoices. " +
-					"Please remove or unlink the invoices first."
-			);
+			throw new ConvexError({
+				code: "CONFLICT",
+				message:
+					"Cannot delete quote with existing invoices. " +
+					"Please remove or unlink the invoices first.",
+			});
 		}
 
 		// Delete line items first
@@ -935,8 +950,6 @@ export const remove = userMutation({
 			await ctx.db.delete(lineItem._id);
 		}
 
-		// Remove from aggregates before deleting
-		await AggregateHelpers.removeQuote(ctx, quote as QuoteDocument);
 		await ctx.db.delete(args.id);
 
 		return args.id;

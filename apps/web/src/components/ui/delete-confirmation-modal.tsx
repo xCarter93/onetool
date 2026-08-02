@@ -9,6 +9,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
+import { convexErrorMessage } from "@/lib/convex-error";
 
 // "discard": the item really is deleted, but it's a disposable working
 // artifact — no record is kept, and nothing it was attached to is affected.
@@ -80,7 +81,7 @@ const DeleteConfirmationModal: React.FC<DeleteConfirmationModalProps> = ({
 						: "delete";
 			toast.error(
 				`Failed to ${verb} ${lowerType}`,
-				error instanceof Error ? error.message : "An unexpected error occurred"
+				convexErrorMessage(error, "An unexpected error occurred")
 			);
 		}
 	};

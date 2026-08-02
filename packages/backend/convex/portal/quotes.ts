@@ -3,14 +3,8 @@
 // Approve is an action because it stores the signature blob; DB validation and
 // commit work are delegated to internal queries/mutations so scope checks,
 // status changes, audit rows, and event emission stay transactional.
-import {
-	action,
-	internalMutation,
-	internalQuery,
-	mutation,
-	query,
-	type MutationCtx,
-} from "../_generated/server";
+import { action, internalQuery, query, type MutationCtx } from "../_generated/server";
+import { internalMutation, mutation } from "../lib/triggers";
 import { ConvexError, v } from "convex/values";
 import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
@@ -18,8 +12,11 @@ import { getPortalSessionOrThrow } from "./helpers";
 import { rateLimiter } from "../rateLimits";
 import { emitStatusChangeEvent } from "../eventBus";
 import { ActivityHelpers } from "../lib/activities";
-import { AggregateHelpers } from "../lib/aggregates";
 import { calculateQuoteTotals } from "../lib/quoteTotals";
+import {
+	boundIpAddress,
+	requirePortalAttestation,
+} from "../lib/portalAttestation";
 
 // ---------------------------------------------------------------------------
 // Public queries
@@ -478,6 +475,7 @@ export const _commitApproval = internalMutation({
 		signatureRawData: v.optional(v.string()),
 		ipAddress: v.string(),
 		userAgent: v.string(),
+		intentAffirmed: v.optional(v.boolean()),
 		documentVersion: v.number(),
 		lineItemsSnapshot: v.array(
 			v.object({
@@ -551,7 +549,7 @@ export const _commitApproval = internalMutation({
 				args.action === "approved" ? args.signatureMode : undefined,
 			signatureRawData:
 				args.action === "approved" ? args.signatureRawData : undefined,
-			ipAddress: args.ipAddress,
+			ipAddress: boundIpAddress(args.ipAddress),
 			userAgent: args.userAgent.slice(0, 512),
 			documentId: args.expectedDocumentId,
 			documentVersion: args.documentVersion,
@@ -561,6 +559,14 @@ export const _commitApproval = internalMutation({
 			totalSnapshot: args.total,
 			termsSnapshot: args.terms,
 			termsAcceptedAt: args.action === "approved" ? now : undefined,
+			// Intent affirmation is only presented (and only legally meaningful)
+			// for typed signatures; never record it for drawn ones.
+			intentAffirmedAt:
+				args.action === "approved" &&
+				args.signatureMode === "typed" &&
+				args.intentAffirmed === true
+					? now
+					: undefined,
 			createdAt: now,
 		});
 
@@ -574,13 +580,6 @@ export const _commitApproval = internalMutation({
 		await ctx.db.patch(args.quoteId, patch);
 
 		const updatedQuote = await ctx.db.get(args.quoteId);
-		if (updatedQuote) {
-			await AggregateHelpers.updateQuote(
-				ctx,
-				quote as Doc<"quotes">,
-				updatedQuote as Doc<"quotes">,
-			);
-		}
 
 		// 4. Activity helper THIRD (with portal-aware fallback).
 		if (updatedQuote) {
@@ -625,6 +624,12 @@ export const approve = action({
 		ipAddress: v.string(),
 		userAgent: v.string(),
 		termsAccepted: v.literal(true),
+		// Was enforced only in the Next.js route, which the portal browser can
+		// skip entirely by calling this action directly. ESIGN intent is the
+		// whole legal basis for a typed signature, so it belongs here.
+		intentAffirmed: v.optional(v.boolean()),
+		// Proves ipAddress/userAgent/intentAffirmed came from the Next.js route.
+		attestation: v.optional(v.string()),
 	},
 	handler: async (
 		ctx,
@@ -639,6 +644,10 @@ export const approve = action({
 		signatureStorageId: Id<"_storage">;
 		signatureUrl: string | null;
 	}> => {
+		requirePortalAttestation(args.attestation);
+		if (args.signatureMode === "typed" && args.intentAffirmed !== true) {
+			throw new ConvexError({ code: "INTENT_AFFIRMATION_REQUIRED" });
+		}
 		const session = await ctx.runQuery(internal.portal.quotes._getPortalSessionForAction, {});
 		await ctx.runMutation(internal.portal.quotes._rateLimitPreflight, {
 			jti: session.tokenJti,
@@ -688,6 +697,7 @@ export const approve = action({
 					signatureRawData: args.signatureRawData,
 					ipAddress: args.ipAddress,
 					userAgent: args.userAgent,
+					intentAffirmed: args.intentAffirmed === true,
 					documentVersion: preflight.documentVersion,
 					lineItemsSnapshot: preflight.lineItemsSnapshot,
 					subtotal: preflight.subtotal,
@@ -728,6 +738,9 @@ export const decline = mutation({
 		declineReason: v.optional(v.string()),
 		ipAddress: v.string(),
 		userAgent: v.string(),
+		// See approve: the provenance fields are only meaningful if the Next.js
+		// route proves it made the call.
+		attestation: v.optional(v.string()),
 	},
 	handler: async (
 		ctx,
@@ -740,6 +753,7 @@ export const decline = mutation({
 		lineItemsCount: number;
 		total: number;
 	}> => {
+		requirePortalAttestation(args.attestation);
 		const session = await getPortalSessionOrThrow(ctx);
 
 		const rl = await rateLimiter.limit(ctx, "portalQuoteDecline", {
@@ -831,7 +845,7 @@ export const decline = mutation({
 			clientContactId: session.clientContactId,
 			action: "declined",
 			declineReason: normalizedReason,
-			ipAddress: args.ipAddress,
+			ipAddress: boundIpAddress(args.ipAddress),
 			userAgent: args.userAgent.slice(0, 512),
 			documentId: args.expectedDocumentId,
 			documentVersion: document.version,
@@ -850,11 +864,6 @@ export const decline = mutation({
 
 		const updatedQuote = await ctx.db.get(args.quoteId);
 		if (updatedQuote) {
-			await AggregateHelpers.updateQuote(
-				ctx,
-				quote as Doc<"quotes">,
-				updatedQuote as Doc<"quotes">,
-			);
 			await logQuoteActivity(
 				ctx,
 				updatedQuote,

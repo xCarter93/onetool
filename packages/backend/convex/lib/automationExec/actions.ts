@@ -1,7 +1,6 @@
 import { Doc, Id } from "../../_generated/dataModel";
 import { MutationCtx } from "../../_generated/server";
 import { trackServerException } from "../posthog";
-import { AggregateHelpers } from "../aggregates";
 import { ActivityHelpers } from "../activities";
 import {
 	isAdminRole,
@@ -258,8 +257,6 @@ async function applyStatusUpdate(
 		// eslint-disable-next-line @typescript-eslint/no-explicit-any
 		await ctx.db.patch(targetInfo.id, updatePayload as any);
 
-		// IMPORTANT: Update aggregates atomically in the same transaction
-		// This prevents "key not found" errors when entities are later deleted or updated
 		if (oldStatus && oldStatus !== newStatus) {
 			const updatedObject = await ctx.db.get(targetInfo.id);
 			if (!updatedObject) {
@@ -267,33 +264,6 @@ async function applyStatusUpdate(
 					success: false,
 					error: "Target object was deleted during update",
 				};
-			}
-
-			if (targetObject) {
-				switch (targetInfo.type) {
-					case "project":
-						await AggregateHelpers.updateProject(
-							ctx,
-							targetObject as Doc<"projects">,
-							updatedObject as Doc<"projects">
-						);
-						break;
-					case "quote":
-						await AggregateHelpers.updateQuote(
-							ctx,
-							targetObject as Doc<"quotes">,
-							updatedObject as Doc<"quotes">
-						);
-						break;
-					case "invoice":
-						await AggregateHelpers.updateInvoice(
-							ctx,
-							targetObject as Doc<"invoices">,
-							updatedObject as Doc<"invoices">
-						);
-						break;
-					// Clients and tasks don't have aggregate status tracking
-				}
 			}
 		}
 
@@ -649,33 +619,6 @@ export async function executeUpdateFieldsAction(
 					success: false,
 					error: "Target object was deleted during update",
 				};
-			}
-
-			// Keep aggregates in sync; each helper no-ops unless a field it
-			// tracks (status/completedAt/approvedAt/paidAt/total) changed.
-			switch (targetInfo.type) {
-				case "project":
-					await AggregateHelpers.updateProject(
-						ctx,
-						targetObject as Doc<"projects">,
-						updatedObject as Doc<"projects">
-					);
-					break;
-				case "quote":
-					await AggregateHelpers.updateQuote(
-						ctx,
-						targetObject as Doc<"quotes">,
-						updatedObject as Doc<"quotes">
-					);
-					break;
-				case "invoice":
-					await AggregateHelpers.updateInvoice(
-						ctx,
-						targetObject as Doc<"invoices">,
-						updatedObject as Doc<"invoices">
-					);
-					break;
-				// Clients and tasks don't have aggregate field tracking
 			}
 
 			// Emit record_updated so automations chained on these fields actually
@@ -1262,8 +1205,8 @@ export async function executeCreateRecordAction(
 		// No acting user — createdByUserId left unset (automation-created).
 		switch (objectType) {
 			case "client":
-				// Portal links need an access id; the create mutation takes a
-				// caller-supplied one for retry-determinism, harmless to mint here.
+				// Portal links need an access id. Minted here for the same reason
+				// clients.create mints one (SEC-5): it is never caller-supplied.
 				payload.portalAccessId = crypto.randomUUID();
 				// eslint-disable-next-line @typescript-eslint/no-explicit-any
 				newId = await ctx.db.insert("clients", payload as any);
@@ -1298,7 +1241,6 @@ export async function executeCreateRecordAction(
 			switch (objectType) {
 				case "client":
 					await ActivityHelpers.clientCreated(ctx, doc as Doc<"clients">, actor);
-					await AggregateHelpers.addClient(ctx, doc as Doc<"clients">);
 					break;
 				case "project":
 					await ActivityHelpers.projectCreated(
@@ -1306,10 +1248,8 @@ export async function executeCreateRecordAction(
 						doc as Doc<"projects">,
 						actor
 					);
-					await AggregateHelpers.addProject(ctx, doc as Doc<"projects">);
 					break;
 				case "task":
-					// Tasks have no aggregate.
 					await ActivityHelpers.taskCreated(ctx, doc as Doc<"tasks">, actor);
 					break;
 			}

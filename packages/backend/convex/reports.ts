@@ -1,4 +1,5 @@
-import { query, mutation } from "./_generated/server";
+import { query } from "./_generated/server";
+import { mutation } from "./lib/triggers";
 import { v } from "convex/values";
 import { Doc, Id } from "./_generated/dataModel";
 import { getCurrentUserOrgId, getCurrentUser } from "./lib/auth";
@@ -124,7 +125,11 @@ export const getMyReports = optionalUserQuery({
 			.withIndex("by_creator", (q) => q.eq("createdBy", user._id))
 			.collect();
 
-		const sorted = reports.sort((a, b) => b.updatedAt - a.updatedAt);
+		// by_creator isn't org-scoped; a user in several orgs would otherwise see
+		// the reports they authored in all of them from any one workspace.
+		const sorted = reports
+			.filter((report) => report.orgId === ctx.orgId)
+			.sort((a, b) => b.updatedAt - a.updatedAt);
 		return await ctx.scopedToActor("reports", sorted, (r) => r.createdBy);
 	},
 });

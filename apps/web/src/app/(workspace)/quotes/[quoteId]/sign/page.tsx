@@ -18,6 +18,7 @@ import {
 import {
 	AlertTriangle,
 	ArrowLeft,
+	FileText,
 	Loader2,
 	RefreshCw,
 	Sparkles,
@@ -38,6 +39,7 @@ type ViewState =
 	| { kind: "ready"; sendUrl: string }
 	| { kind: "limit"; used: number; limit: number }
 	| { kind: "no_signer" }
+	| { kind: "no_pdf" }
 	| { kind: "error"; message: string };
 
 /**
@@ -155,6 +157,8 @@ function QuoteSignPageContent() {
 				setView({ kind: "ready", sendUrl: result.sendUrl });
 			} else if (result.reason === "limit") {
 				setView({ kind: "limit", used: result.used, limit: result.limit });
+			} else if (result.reason === "no_pdf") {
+				setView({ kind: "no_pdf" });
 			} else {
 				setView({ kind: "no_signer" });
 			}
@@ -425,6 +429,34 @@ function QuoteSignPageContent() {
 						<Button variant="outline" onClick={() => void backToQuote()} disabled={discarding}>
 							Back to quote
 						</Button>
+					</div>
+				)}
+
+				{view.kind === "no_pdf" && (
+					<div className="flex max-w-md flex-col items-center gap-4 text-center">
+						<div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-amber-100 dark:bg-amber-900/30">
+							<FileText
+								className="h-7 w-7 text-amber-600 dark:text-amber-400"
+								aria-hidden="true"
+							/>
+						</div>
+						<div>
+							<h1 className="text-lg font-semibold text-foreground">
+								Generate a PDF for this quote first
+							</h1>
+							<p className="mt-2 text-sm text-muted-foreground">
+								E-signatures are collected on the quote&apos;s PDF. Open the
+								quote, choose &ldquo;Generate PDF&rdquo;, then come back to send
+								it for signature.
+							</p>
+						</div>
+						<Button variant="outline" onClick={() => void backToQuote()} disabled={discarding}>
+							Back to quote
+						</Button>
+						<LearnMoreLink
+							article="quotes/e-signatures"
+							label="How e-signatures work"
+						/>
 					</div>
 				)}
 

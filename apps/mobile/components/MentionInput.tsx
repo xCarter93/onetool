@@ -9,7 +9,7 @@ import {
 	ActivityIndicator,
 } from "react-native";
 import { useState, useRef } from "react";
-import { useQuery, useMutation } from "convex/react";
+import { useQuery, useMutation, useAction } from "convex/react";
 import { useAuth, useOrganization } from "@clerk/expo";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { colors, fontFamily, spacing, radius } from "@/lib/theme";
@@ -62,7 +62,7 @@ export function MentionInput({
 	// Fetch Convex users to map Clerk users to Convex user IDs
 	const convexUsers = useQuery(api.users.listByOrg);
 	const createMention = useMutation(api.notifications.createMention);
-	const syncUserFromClerk = useMutation(api.users.syncUserFromClerk);
+	const syncUserFromClerk = useAction(api.users.syncUserFromClerk);
 	const generateUploadUrl = useMutation(
 		api.messageAttachments.generateUploadUrl
 	);
@@ -314,12 +314,16 @@ export function MentionInput({
 				let convexUserId = user.convexUserId;
 
 				if (!convexUserId) {
-					convexUserId = await syncUserFromClerk({
-						clerkUserId: user.id,
-						name: user.name,
-						email: user.email,
-						imageUrl: user.image,
-					});
+					// Verified against Clerk server-side; null means "not a member of
+					// this org", so the mention can't be resolved.
+					convexUserId =
+						(await syncUserFromClerk({ clerkUserId: user.id })) ?? undefined;
+				}
+
+				if (!convexUserId) {
+					throw new Error(
+						`Could not find "${mentionedUser.name}" to tag. Remove the mention and try again.`
+					);
 				}
 
 				mentionedUserIds.push(convexUserId);

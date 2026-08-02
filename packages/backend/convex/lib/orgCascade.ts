@@ -1,7 +1,6 @@
 import { MutationCtx } from "../_generated/server";
 import { Id } from "../_generated/dataModel";
 import { assistantAgent } from "../assistantAgent";
-import { AggregateHelpers } from "./aggregates";
 import { StorageHelpers } from "./storage";
 
 /**
@@ -444,7 +443,7 @@ export async function cascadeDeleteOrgDataPage(
 		}
 	}
 
-	// Aggregate-tracked parents — remove from aggregate BEFORE deleting the row.
+	// Aggregate-tracked parents (aggregates maintained by lib/triggers.ts).
 
 	// quotes (after quoteLineItems + quoteApprovals)
 	{
@@ -454,7 +453,6 @@ export async function cascadeDeleteOrgDataPage(
 			.withIndex("by_org", (q) => q.eq("orgId", orgId))
 			.take(remaining);
 		for (const row of rows) {
-			await AggregateHelpers.removeQuote(ctx, row);
 			await ctx.db.delete(row._id);
 			remaining--;
 		}
@@ -468,7 +466,6 @@ export async function cascadeDeleteOrgDataPage(
 			.withIndex("by_org", (q) => q.eq("orgId", orgId))
 			.take(remaining);
 		for (const row of rows) {
-			await AggregateHelpers.removeInvoice(ctx, row);
 			await ctx.db.delete(row._id);
 			remaining--;
 		}
@@ -482,7 +479,6 @@ export async function cascadeDeleteOrgDataPage(
 			.withIndex("by_org", (q) => q.eq("orgId", orgId))
 			.take(remaining);
 		for (const row of rows) {
-			await AggregateHelpers.removeProject(ctx, row);
 			await ctx.db.delete(row._id);
 			remaining--;
 		}
@@ -496,7 +492,6 @@ export async function cascadeDeleteOrgDataPage(
 			.withIndex("by_org", (q) => q.eq("orgId", orgId))
 			.take(remaining);
 		for (const row of rows) {
-			await AggregateHelpers.removeClient(ctx, row);
 			await ctx.db.delete(row._id);
 			remaining--;
 		}

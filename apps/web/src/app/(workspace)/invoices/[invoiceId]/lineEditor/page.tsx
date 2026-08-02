@@ -263,8 +263,11 @@ function InvoiceLineEditorPageContent() {
 				id: invoiceId,
 				subtotal: totals.subtotal,
 				total: totals.total,
-				discountAmount: discount.enabled ? totals.discountAmount : undefined,
-				taxAmount: tax.enabled ? totals.taxAmount : undefined,
+				// 0, not undefined — undefined is filtered out server-side, which
+				// would leave a turned-off discount or tax still stored and still
+				// applied by the next totals recompute.
+				discountAmount: discount.enabled ? totals.discountAmount : 0,
+				taxAmount: tax.enabled ? totals.taxAmount : 0,
 			});
 
 			setHasChanges(false);

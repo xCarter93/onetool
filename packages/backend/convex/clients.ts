@@ -1,15 +1,9 @@
-import {
-	query,
-	mutation,
-	internalMutation,
-	QueryCtx,
-	MutationCtx,
-} from "./_generated/server";
+import { query, QueryCtx, MutationCtx } from "./_generated/server";
+import { mutation, internalMutation } from "./lib/triggers";
 import { v } from "convex/values";
 import { Doc, Id } from "./_generated/dataModel";
 import { getCurrentUserOrgId } from "./lib/auth";
 import { ActivityHelpers } from "./lib/activities";
-import { AggregateHelpers } from "./lib/aggregates";
 import { calculateQuoteTotals } from "./lib/quoteTotals";
 import {
 	filterUndefined,
@@ -79,6 +73,28 @@ async function listClientsForOrg(
 }
 
 /**
+ * Mint a portal access id.
+ *
+ * The probe is deliberately org-agnostic: `by_portal_access_id` is a global
+ * index and both readers (`portal/branding.ts`, `portal/otp.ts`) resolve with
+ * `.unique()`, which throws on two matches. A duplicate therefore takes the
+ * other tenant's portal offline entirely — shell, sign-in, and pay links.
+ */
+async function mintPortalAccessId(ctx: UserMutationCtx): Promise<string> {
+	for (let attempt = 0; attempt < 5; attempt++) {
+		const candidate = crypto.randomUUID();
+		const collision = await ctx.db
+			.query("clients")
+			.withIndex("by_portal_access_id", (q) =>
+				q.eq("portalAccessId", candidate)
+			)
+			.first();
+		if (!collision) return candidate;
+	}
+	throw new Error("Could not allocate a unique portal access id");
+}
+
+/**
  * Create a client with automatic orgId assignment
  */
 async function createClientWithOrg(
@@ -88,6 +104,12 @@ async function createClientWithOrg(
 	const clientData = {
 		...data,
 		orgId: ctx.orgId,
+		// Overrides whatever the caller sent. A caller-chosen id let anyone who
+		// had seen a victim org's portal link re-create it here and collide them
+		// off the air; the "retry determinism" the old arg claimed to buy is not
+		// real, since only the committed attempt's id persists and nothing has
+		// read it yet.
+		portalAccessId: await mintPortalAccessId(ctx),
 	};
 
 	return await ctx.db.insert("clients", clientData);
@@ -502,9 +524,9 @@ export const create = userMutation({
 		tags: v.optional(v.array(v.string())),
 		notes: v.optional(v.string()),
 
-		// Caller-supplied portal access UUID — generated client-side to keep this
-		// mutation deterministic (Convex retries mutations on conflict).
-		portalAccessId: v.string(),
+		// Accepted for call-site compatibility and ignored: the id is minted
+		// server-side by createClientWithOrg.
+		portalAccessId: v.optional(v.string()),
 	},
 	handler: async (ctx, args): Promise<ClientId> => {
 		await ctx.requireLevel("clients", "modify");
@@ -514,11 +536,10 @@ export const create = userMutation({
 			createdByUserId: ctx.user._id,
 		} as any);
 
-		// Get the created client for activity logging and aggregates
+		// Get the created client for activity logging
 		const client = await ctx.db.get(clientId);
 		if (client) {
 			await ActivityHelpers.clientCreated(ctx, client as ClientDocument);
-			await AggregateHelpers.addClient(ctx, client as ClientDocument);
 			await emitRecordCreatedEvent(
 				ctx,
 				client.orgId,
@@ -576,8 +597,8 @@ export const bulkCreate = userMutation({
 				tags: v.optional(v.array(v.string())),
 				notes: v.optional(v.string()),
 
-				// Caller-supplied portal access UUID — see clients.create for rationale.
-				portalAccessId: v.string(),
+				// Accepted and ignored — see clients.create.
+				portalAccessId: v.optional(v.string()),
 
 				// Optional nested sub-records for CSV import
 				contacts: v.optional(
@@ -656,11 +677,10 @@ export const bulkCreate = userMutation({
 					{ ...clientFields, createdByUserId: ctx.user._id } as any
 				);
 
-				// Get the created client for activity logging and aggregates
+				// Get the created client for activity logging
 				const client = await ctx.db.get(clientId);
 				if (client) {
 					await ActivityHelpers.clientCreated(ctx, client as ClientDocument);
-					await AggregateHelpers.addClient(ctx, client as ClientDocument);
 				}
 
 				// Create sub-records with warning-on-failure semantics
@@ -924,7 +944,7 @@ export const revokePortalAccess = userMutation({
 			}
 		}
 
-		const portalAccessId = crypto.randomUUID();
+		const portalAccessId = await mintPortalAccessId(ctx);
 		await ctx.db.patch(args.id, { portalAccessId });
 		return { portalAccessId };
 	},
@@ -1064,7 +1084,6 @@ async function permanentlyDeleteSystemHandler(
 	}
 
 	for (const project of projects) {
-		await AggregateHelpers.removeProject(ctx, project);
 		await ctx.db.delete(project._id);
 	}
 
@@ -1091,7 +1110,6 @@ async function permanentlyDeleteSystemHandler(
 			await ctx.db.delete(document._id);
 		}
 
-		await AggregateHelpers.removeQuote(ctx, quote);
 		await ctx.db.delete(quote._id);
 	}
 
@@ -1118,16 +1136,12 @@ async function permanentlyDeleteSystemHandler(
 			await ctx.db.delete(document._id);
 		}
 
-		await AggregateHelpers.removeInvoice(ctx, invoice);
 		await ctx.db.delete(invoice._id);
 	}
 
 	for (const task of tasks) {
 		await ctx.db.delete(task._id);
 	}
-
-	// Remove from aggregates before deleting
-	await AggregateHelpers.removeClient(ctx, client);
 
 	// Finally delete the client itself
 	await ctx.db.delete(args.id);
@@ -1405,20 +1419,26 @@ export const listWithProjectCounts = optionalUserQuery({
 			s.clientIds.has(c._id)
 		);
 
-		// For each client, get their active project count
+		// Active project counts for the whole org in two index reads, grouped in
+		// JS. The per-client query this replaces read EVERY project of that
+		// client — the status narrowing was a post-read `.filter()` — so the old
+		// shape scanned the org's entire projects table across N clients.
+		const activeProjectCounts = new Map<Id<"clients">, number>();
+		for (const status of ["planned", "in-progress"] as const) {
+			const projects = await ctx.db
+				.query("projects")
+				.withIndex("by_status", (q) => q.eq("orgId", orgId).eq("status", status))
+				.collect();
+			for (const project of projects) {
+				activeProjectCounts.set(
+					project.clientId,
+					(activeProjectCounts.get(project.clientId) ?? 0) + 1
+				);
+			}
+		}
+
 		const clientsWithProjectCounts = await Promise.all(
 			clients.map(async (client) => {
-				const activeProjects = await ctx.db
-					.query("projects")
-					.withIndex("by_client", (q) => q.eq("clientId", client._id))
-					.filter((q) =>
-						q.or(
-							q.eq(q.field("status"), "planned"),
-							q.eq(q.field("status"), "in-progress")
-						)
-					)
-					.collect();
-
 				// Get the primary contact for this client
 				const primaryContact = await ctx.db
 					.query("clientContacts")
@@ -1427,25 +1447,31 @@ export const listWithProjectCounts = optionalUserQuery({
 					)
 					.first();
 
-				// Get the most recent activity timestamp for this client
-				const recentActivities = await ctx.db
+				// Most recent activity. by_entity binds both key fields, so this is
+				// a lookup inside one client's activities rather than a walk back
+				// through the org's whole activity log. It also corrects the order:
+				// the previous by_type read bound only orgId, so "desc" sorted by
+				// activityType and returned an arbitrary — frequently older — row.
+				// No orgId predicate needed: entityId is a globally unique client
+				// _id, so this range can only hold that client's own activities.
+				const lastActivity = await ctx.db
 					.query("activities")
-					.withIndex("by_type", (q) => q.eq("orgId", client.orgId))
-					.filter((q) => q.eq(q.field("entityId"), client._id))
+					.withIndex("by_entity", (q) =>
+						q.eq("entityType", "client").eq("entityId", client._id)
+					)
 					.order("desc")
-					.take(1);
+					.first();
 
-				const lastActivityTime =
-					recentActivities.length > 0
-						? recentActivities[0].timestamp
-						: client._creationTime;
+				const lastActivityTime = lastActivity
+					? lastActivity.timestamp
+					: client._creationTime;
 
 				return {
 					id: client._id,
 					name: client.companyName,
 					// For location, we'll need to check if there's a primary contact with address
 					location: "Not specified", // This could be enhanced with contact data
-					activeProjects: activeProjects.length,
+					activeProjects: activeProjectCounts.get(client._id) ?? 0,
 					lastActivity: new Date(lastActivityTime).toISOString(),
 					status:
 						client.status === "active"
