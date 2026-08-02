@@ -4,6 +4,7 @@ import AppNavbar from "@/app/components/app-navbar";
 import HeroSection from "@/app/components/hero-section";
 import BlurInHeadline from "@/app/components/landing/blur-in-headline";
 import FeatureSection from "@/app/components/feature-section";
+import ProductTour from "@/app/components/landing/product-tour";
 import HowItWorks from "@/app/components/landing/how-it-works";
 import FAQSection from "@/app/components/faq-section";
 import ShowcaseSection from "@/app/components/showcase-section";
@@ -19,6 +20,7 @@ export default function Home() {
 				<HeroSection />
 				<BlurInHeadline />
 				<FeatureSection />
+				<ProductTour />
 				<HowItWorks />
 				<FAQSection />
 				<ShowcaseSection />
