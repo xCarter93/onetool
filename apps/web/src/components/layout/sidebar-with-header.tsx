@@ -1,7 +1,7 @@
 "use client";
 
 import { ReactNode } from "react";
-import { AssistantNotch } from "@/components/assistant/assistant-notch";
+import { AssistantDock } from "@/components/assistant/assistant-dock";
 import {
 	AssistantSurfaceProvider,
 	useAssistantSurface,
@@ -29,9 +29,11 @@ interface SidebarWithHeaderProps {
  * Shell stacking ladder (fixed/sticky layers, bottom to top):
  *   z-10 sidebar container (ui/sidebar) → z-20 sidebar rail →
  *   z-30 sticky WorkspaceHeader (its notch rail is z-10 within it) →
- *   z-40 MobileFloatingHeader + AssistantNotchDock →
+ *   z-40 MobileFloatingHeader + the assistant dock overlay →
  *   z-50 floating assistant panel and portaled overlays (sheet, popovers) →
  *   z-[9999] ui/modal portals above everything.
+ * The dock and floating panel live in bottom-center overlays INSIDE
+ * SidebarInset so they center on the workspace card, not the viewport.
  * The docked assistant column is in-flow and carries no z-index on purpose.
  *
  * Two scroll contexts: on md+ the card interior ([data-workspace-scroller])
@@ -40,31 +42,42 @@ interface SidebarWithHeaderProps {
  */
 
 /**
- * The bottom assistant notch wrapped in its tour step. Always visible —
- * free-plan users get an upgrade prompt inside the panel (and the backend
- * enforces the plan gate regardless).
+ * The assistant dock and the floating panel's portal anchor, both centered
+ * along the card's bottom edge. Always visible — free-plan users get an
+ * upgrade prompt inside the panel (and the backend enforces the plan gate
+ * regardless).
  *
- * The notch positions itself out of flow, so the fixed placement lives on the
- * tour wrapper — otherwise it collapses to 0x0 and the highlight ring (a
- * ::after on the wrapper) has nothing to draw. The right-* offsets are
- * placement along the bottom frame band; md:right-24 also keeps the tab's
- * sweep clear of the card's bottom-right rounded corner.
+ * Below md the card isn't viewport-height (the document scrolls), so the dock
+ * overlay goes `fixed`; on md+ `absolute` pins it to the card. The tour
+ * wrapper carries the width so its highlight ring (a ::after) hugs the dock.
  */
-function AssistantNotchDock() {
-	const { open, setOpen } = useAssistantSurface();
+function AssistantDockHost() {
+	const { open, setOpen, setDockAnchor } = useAssistantSurface();
 	return (
-		<TourElement<HomeTour>
-			className="fixed bottom-0 right-6 z-40 sm:right-12 md:right-24"
-			TourContext={HomeTourContext}
-			stepId={HomeTour.ASSISTANT_NOTCH}
-			title={HOME_TOUR_CONTENT[HomeTour.ASSISTANT_NOTCH].title}
-			description={HOME_TOUR_CONTENT[HomeTour.ASSISTANT_NOTCH].description}
-			tooltipPosition={
-				HOME_TOUR_CONTENT[HomeTour.ASSISTANT_NOTCH].tooltipPosition
-			}
-		>
-			<AssistantNotch open={open} onOpen={() => setOpen(true)} />
-		</TourElement>
+		<>
+			<div className="pointer-events-none fixed inset-x-0 bottom-0 z-40 flex justify-center px-4 pb-3 md:absolute">
+				{/* Sized to the dock (not the row) so the tour highlight ring —
+				    a ::after on this wrapper — hugs the dock. */}
+				<TourElement<HomeTour>
+					className="flex w-full max-w-sm justify-center"
+					TourContext={HomeTourContext}
+					stepId={HomeTour.ASSISTANT_NOTCH}
+					title={HOME_TOUR_CONTENT[HomeTour.ASSISTANT_NOTCH].title}
+					description={HOME_TOUR_CONTENT[HomeTour.ASSISTANT_NOTCH].description}
+					tooltipPosition={
+						HOME_TOUR_CONTENT[HomeTour.ASSISTANT_NOTCH].tooltipPosition
+					}
+				>
+					<AssistantDock open={open} onOpen={() => setOpen(true)} />
+				</TourElement>
+			</div>
+			{/* Floating-panel anchor: AssistantPanel portals its unpinned overlay
+			    here (md+ only — below md the panel rides a Sheet). */}
+			<div
+				ref={setDockAnchor}
+				className="pointer-events-none absolute inset-x-0 bottom-0 z-50 hidden justify-center px-4 md:flex"
+			/>
+		</>
 	);
 }
 
@@ -96,9 +109,10 @@ export function SidebarWithHeader({ children }: SidebarWithHeaderProps) {
 								>
 									{children}
 								</div>
+
+								<AssistantDockHost />
 							</SidebarInset>
 
-							<AssistantNotchDock />
 							{/* When docked, the panel is the next flex sibling of the card;
 						    other surfaces portal/position themselves. */}
 							<AssistantPanel />
