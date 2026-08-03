@@ -168,14 +168,18 @@ const BlinkingSquares: React.FC<BlinkingSquaresProps> = ({
 		const tick = (now: number) => {
 			const t = now / 1000;
 			ctx.clearRect(0, 0, canvas.width, canvas.height);
+			// One fillStyle parse per frame; per-cell alpha rides globalAlpha,
+			// which takes a number — no string allocation in the hot loop.
+			ctx.fillStyle = `rgb(${r} ${g} ${b})`;
 			for (const c of cells) {
 				const pulse = 0.5 + 0.5 * Math.sin(t * c.speed + c.phase);
 				const twinkle = 1 - twinkleStrength + twinkleStrength * pulse;
 				const alpha = Math.min(c.base * twinkle * intensity, 1) * opacity;
 				if (alpha <= 0.004) continue;
-				ctx.fillStyle = `rgba(${r} ${g} ${b} / ${alpha.toFixed(3)})`;
+				ctx.globalAlpha = alpha;
 				ctx.fillRect(c.x, c.y, c.size, c.size);
 			}
+			ctx.globalAlpha = 1;
 			frame = requestAnimationFrame(tick);
 		};
 

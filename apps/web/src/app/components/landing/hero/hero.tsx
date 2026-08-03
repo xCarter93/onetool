@@ -103,6 +103,8 @@ export default function Hero() {
 								priority
 								unoptimized
 							/>
+							{/* No priority here: only one badge renders per theme, and a
+							    high-priority preload for the hidden one wastes the request. */}
 							<Image
 								src="/app-store-badge-white.svg"
 								alt=""
@@ -110,7 +112,6 @@ export default function Hero() {
 								width={132}
 								height={44}
 								className="hidden h-11 w-auto dark:block"
-								priority
 								unoptimized
 							/>
 						</a>

@@ -154,6 +154,17 @@ const PricingSwitch = ({ onSwitch }: { onSwitch: (value: string) => void }) => {
 			role="radiogroup"
 			aria-label="Billing period"
 			className="inline-flex flex-wrap items-center gap-4"
+			// ARIA radiogroup contract: one tab stop, arrows move selection.
+			onKeyDown={(e) => {
+				if (!["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(e.key))
+					return;
+				e.preventDefault();
+				const next = selected === "0" ? "1" : "0";
+				handleSwitch(next);
+				e.currentTarget
+					.querySelector<HTMLButtonElement>(`[data-value="${next}"]`)
+					?.focus();
+			}}
 		>
 			<div className="relative inline-flex h-11 items-center rounded-lg border border-bp-line bg-muted p-1">
 				{/* Transform-only thumb — no layout animation, so nothing reflows. */}
@@ -173,6 +184,8 @@ const PricingSwitch = ({ onSwitch }: { onSwitch: (value: string) => void }) => {
 							type="button"
 							role="radio"
 							aria-checked={active}
+							data-value={value}
+							tabIndex={active ? 0 : -1}
 							onClick={() => handleSwitch(value)}
 							className={cn(
 								"relative z-10 inline-flex h-9 shrink-0 items-center justify-center rounded-md px-4 text-[11px] font-semibold uppercase leading-none tracking-[0.12em] transition-colors",

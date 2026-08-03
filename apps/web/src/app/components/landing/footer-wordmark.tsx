@@ -17,6 +17,8 @@ const ParticleText = dynamic(
  */
 const LIGHT_COLORS = ["#d4d4d8", "#d4d4d8", "#a1a1aa", "#0284c7"];
 const DARK_COLORS = ["#3f3f46", "#3f3f46", "#52525b", "#00a6f4"];
+/** Module-level: an inline literal would re-init the particles every render. */
+const MOUSE_CONTROLS = { enabled: true, radius: 130, strength: 4 };
 
 /** Static fallback — reduced motion, no JS settling yet, and SSR. */
 function StaticWordmark() {
@@ -61,7 +63,7 @@ export function FooterWordmark() {
 					particleGap={2}
 					ease={0.06}
 					friction={0.82}
-					mouseControls={{ enabled: true, radius: 130, strength: 4 }}
+					mouseControls={MOUSE_CONTROLS}
 				/>
 			) : (
 				<StaticWordmark />

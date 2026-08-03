@@ -201,15 +201,17 @@ export function lattice({
 	inset?: number;
 	orientation?: "vertical" | "horizontal" | "both";
 }): Guide[] {
+	// A zero/negative step would never terminate; fall back to the default.
+	const s = step > 0 ? step : 40;
 	const guides: Guide[] = [];
 	if (orientation !== "horizontal") {
-		for (let x = step; x < width; x += step) {
+		for (let x = s; x < width; x += s) {
 			const px = Math.round(x) + 0.5;
 			guides.push({ x1: px, y1: inset, x2: px, y2: height - inset });
 		}
 	}
 	if (orientation !== "vertical") {
-		for (let y = step; y < height; y += step) {
+		for (let y = s; y < height; y += s) {
 			const py = Math.round(y) + 0.5;
 			guides.push({ x1: inset, y1: py, x2: width - inset, y2: py });
 		}
@@ -283,18 +285,20 @@ const signedArea = (p: readonly Point[]) =>
  */
 export function revisionCloud(points: readonly Point[], bump = 14): string {
 	if (points.length < 2) return "";
+	// bump <= 0 would make n Infinity and the inner loop unbounded.
+	const b = bump > 0 ? bump : 14;
 	const pts: Point[] = [];
 	const closed = [...points, points[0]];
 	for (let i = 0; i < closed.length - 1; i++) {
 		const [ax, ay] = closed[i];
 		const [bx, by] = closed[i + 1];
 		const len = Math.hypot(bx - ax, by - ay);
-		const n = Math.max(1, Math.round(len / bump));
+		const n = Math.max(1, Math.round(len / b));
 		for (let k = 0; k < n; k++) {
 			pts.push([ax + ((bx - ax) * k) / n, ay + ((by - ay) * k) / n]);
 		}
 	}
-	const r = bump * 0.62;
+	const r = b * 0.62;
 	const sweep = signedArea(points) > 0 ? 0 : 1;
 	let d = `M ${pts[0][0]} ${pts[0][1]}`;
 	for (let i = 1; i <= pts.length; i++) {

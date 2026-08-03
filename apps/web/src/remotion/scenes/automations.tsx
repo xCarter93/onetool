@@ -125,7 +125,9 @@ const Spinner: React.FC<{ frame: number; since: number; color: string }> = ({ fr
 	</svg>
 );
 
-const NodeIcon: React.FC<{ kind: string; color: string }> = ({ kind, color }) => (
+// Glyph, not node.kind: both action nodes share kind "action", so the email
+// node passes its id to reach the envelope branch.
+const NodeIcon: React.FC<{ glyph: string; color: string }> = ({ glyph: kind, color }) => (
 	<svg width={26} height={26} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
 		{kind === "trigger" ? (
 			<path d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 7v5l3.5 2" />
@@ -341,7 +343,7 @@ export const Automations: React.FC = () => {
 										backgroundColor: `color-mix(in oklch, ${isTrigger ? t.warning : node.kind === "loop" ? orange : t.primary} ${isTrigger ? "18%" : "13%"}, transparent)`,
 									}}
 								>
-									<NodeIcon kind={node.kind} color={accent} />
+									<NodeIcon glyph={node.kind === "action" ? node.id : node.kind} color={accent} />
 								</span>
 								<div style={{ minWidth: 0, flex: 1 }}>
 									<div

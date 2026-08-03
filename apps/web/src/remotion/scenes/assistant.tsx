@@ -25,7 +25,8 @@ export const Assistant: React.FC = () => {
 	const RESULT_AT = 200;
 	const open = pop(frame, fps, OPEN_AT, { damping: 16, stiffness: 140 });
 	const text = typed(PROMPT, frame, fps, 45, 26);
-	const sent = frame >= 108;
+	// Derived from the typing itself so a copy/speed change can't cut it off.
+	const sent = text.length >= PROMPT.length;
 
 	return (
 		<AbsoluteFill>

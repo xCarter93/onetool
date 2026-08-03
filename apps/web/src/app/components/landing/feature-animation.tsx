@@ -8,6 +8,7 @@ import {
 	VIDEO_CONFIG,
 	type FeatureKey,
 } from "@/remotion/compositions";
+import { usePrefersReducedMotion } from "./use-reduced-motion";
 
 export type { FeatureKey };
 
@@ -46,13 +47,19 @@ export function FeatureAnimation({
 		return () => observer.disconnect();
 	}, []);
 
+	// Reduced motion: never auto-play the ambient loop — the CSS reduced-motion
+	// rules cannot reach Remotion playback, and the chromeless embed offers no
+	// pause control. The user still gets the still first frame (and can play
+	// explicitly where controls are enabled).
+	const reduced = usePrefersReducedMotion();
+
 	useEffect(() => {
-		if (inView) {
+		if (inView && !reduced) {
 			playerRef.current?.play();
 		} else {
 			playerRef.current?.pause();
 		}
-	}, [inView]);
+	}, [inView, reduced]);
 
 	const video = FEATURE_VIDEOS[feature];
 

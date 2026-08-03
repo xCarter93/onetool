@@ -14,6 +14,8 @@ const ROWS = [
 	{ initials: "CV", hue: "#64748b", name: "Cedar View Apartments", contact: "June Alvarez", status: "prospect", projects: "New this week" },
 ];
 
+const QUERY = "lake";
+
 /** Client list: rows stream in, search filters live, a new client pops in on top. */
 export const Clients: React.FC = () => {
 	const frame = useCurrentFrame();
@@ -22,7 +24,7 @@ export const Clients: React.FC = () => {
 
 	const SEARCH_AT = 95;
 	const NEW_AT = 175;
-	const query = typed("lake", frame, fps, SEARCH_AT, 9);
+	const query = typed(QUERY, frame, fps, SEARCH_AT, 9);
 	const filtering = progress(frame, SEARCH_AT + 18, 16);
 	const restored = progress(frame, NEW_AT - 18, 12);
 	const filterAmt = filtering * (1 - restored);
@@ -115,7 +117,7 @@ export const Clients: React.FC = () => {
 
 						{/* Rows */}
 						{ROWS.map((row, i) => {
-							const matches = row.name.toLowerCase().includes("lake");
+							const matches = row.name.toLowerCase().includes(QUERY);
 							const collapse = matches ? 0 : filterAmt;
 							return (
 								<div

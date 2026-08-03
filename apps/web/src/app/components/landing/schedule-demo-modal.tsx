@@ -84,12 +84,12 @@ export function ScheduleDemoForm({
 					"Thank you! We'll be in touch within 24 hours to schedule your demo.",
 			});
 
-			if (onSuccess) {
-				timerRef.current = setTimeout(() => {
-					resetForm();
-					onSuccess();
-				}, 2000);
-			}
+			// Always reset — inline consumers (final CTA) pass no onSuccess, and
+			// leaving the fields filled invites a duplicate submit.
+			timerRef.current = setTimeout(() => {
+				resetForm();
+				onSuccess?.();
+			}, 2000);
 		} catch (error) {
 			setFormStatus({
 				type: "error",
@@ -173,18 +173,21 @@ export function ScheduleDemoForm({
 				/>
 			</div>
 
-			{formStatus.type && (
-				<div
-					role={formStatus.type === "error" ? "alert" : "status"}
-					className={`p-3 rounded-lg text-sm text-foreground border ${
-						formStatus.type === "success"
-							? "bg-success/10 border-success/30"
-							: "bg-danger/10 border-danger/30"
-					}`}
-				>
-					{formStatus.message}
-				</div>
-			)}
+			{/* Live region stays mounted: some screen readers skip a region
+			    inserted together with its content. */}
+			<div role="status" aria-live="polite" aria-atomic="true">
+				{formStatus.type && (
+					<div
+						className={`p-3 rounded-lg text-sm text-foreground border ${
+							formStatus.type === "success"
+								? "bg-success/10 border-success/30"
+								: "bg-danger/10 border-danger/30"
+						}`}
+					>
+						{formStatus.message}
+					</div>
+				)}
+			</div>
 
 			<div className="flex justify-end gap-3 pt-4">
 				{onCancel && (

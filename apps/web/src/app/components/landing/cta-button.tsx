@@ -83,7 +83,9 @@ const CtaButton = forwardRef<HTMLButtonElement, CtaButtonProps>(
 		}
 
 		return (
-			<button ref={ref} className={cls} {...buttonProps}>
+			// Default type before the spread: a CTA inside a form must not submit
+			// it unless the caller explicitly opts in.
+			<button ref={ref} type="button" className={cls} {...buttonProps}>
 				{inner}
 			</button>
 		);

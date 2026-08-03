@@ -44,8 +44,10 @@ export function FeatureChaptersClient({ chapters }: { chapters: RailChapter[] })
 function StackedChapters({ chapters }: { chapters: RailChapter[] }) {
 	return (
 		<div className="flex flex-col gap-16">
+			{/* Same `#feature-<key>` anchors the rail renders — the navbar flyout
+			    links to them at every breakpoint. scroll-mt clears the sticky navbar. */}
 			{chapters.map((c) => (
-				<div key={c.key}>
+				<div key={c.key} id={chapterAnchor(c.key)} className="scroll-mt-24">
 					<SheetCode code={c.code} label={c.label} />
 					<h3 className="mt-4 text-balance text-2xl font-semibold leading-[1.1] tracking-tight text-foreground">
 						{c.heading}
@@ -140,6 +142,7 @@ export function FeatureRail({ chapters }: { chapters: RailChapter[] }) {
 								>
 									<button
 										type="button"
+										aria-current={isActive || undefined}
 										onClick={() =>
 											document
 												.getElementById(chapterAnchor(c.key))
@@ -154,8 +157,11 @@ export function FeatureRail({ chapters }: { chapters: RailChapter[] }) {
 										<span className="block text-balance text-lg font-semibold leading-snug tracking-tight sm:text-xl">
 											{c.heading}
 										</span>
-										{/* The mechanism sentence unfolds under the active row. */}
+										{/* The mechanism sentence unfolds under the active row.
+										    aria-hidden when collapsed: grid-rows-[0fr]+opacity-0 hide
+										    it visually only, so screen readers would read all seven. */}
 										<span
+											aria-hidden={!isActive || undefined}
 											className={`grid transition-[grid-template-rows,opacity] duration-300 ease-out motion-reduce:transition-none ${
 												isActive
 													? "grid-rows-[1fr] opacity-100"

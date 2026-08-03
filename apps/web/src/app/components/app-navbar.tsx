@@ -302,18 +302,36 @@ function FeaturesFlyout({
 function ResourcesFlyout() {
 	const [open, setOpen] = useState(false);
 	const reduced = useReducedMotion();
+	const panelId = useId();
+	const triggerRef = useRef<HTMLAnchorElement>(null);
 
 	return (
 		<div
 			className="relative"
 			onMouseEnter={() => setOpen(true)}
 			onMouseLeave={() => setOpen(false)}
+			// Same dismissal contract as FeaturesFlyout: Escape closes and
+			// refocuses the trigger; focus leaving the boundary closes.
+			onKeyDown={(e) => {
+				if (e.key === "Escape" && open) {
+					e.stopPropagation();
+					setOpen(false);
+					triggerRef.current?.focus();
+				}
+			}}
+			onBlur={(e) => {
+				if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
+					setOpen(false);
+				}
+			}}
 		>
 			<Link
 				href="/help"
+				ref={triggerRef}
 				onClick={() => setOpen(false)}
 				onFocus={() => setOpen(true)}
 				aria-expanded={open}
+				aria-controls={panelId}
 				className={cn("relative", NAV_ITEM)}
 			>
 				Resources
@@ -332,7 +350,10 @@ function ResourcesFlyout() {
 						style={{ translateX: "-50%" }}
 						className="absolute left-1/2 top-full pt-4"
 					>
-						<div className="relative w-108 rounded-2xl border border-border bg-popover text-popover-foreground p-3 shadow-2xl/20">
+						<div
+							id={panelId}
+							className="relative w-108 rounded-2xl border border-border bg-popover text-popover-foreground p-3 shadow-2xl/20"
+						>
 							<div
 								className="absolute -top-1.5 left-1/2 h-3 w-3 -translate-x-1/2 rotate-45 rounded-[2px] border-l border-t border-border bg-popover"
 								aria-hidden="true"
@@ -547,7 +568,9 @@ function AppNavBar() {
 						transition={{ duration: reduced ? 0 : 0.3 }}
 						className="md:hidden overflow-hidden border-t border-bp-guide-strong bg-bp-paper"
 					>
-						<div className="px-4 py-3 space-y-1">
+						{/* Body scroll is locked while open — the panel itself must scroll
+						    or short viewports (landscape phones) lose the lower links. */}
+						<div className="max-h-[calc(100dvh-4rem)] overflow-y-auto px-4 py-3 space-y-1">
 							{navigationLinks.map((link) =>
 								link.href === "/help" ? (
 									<Link

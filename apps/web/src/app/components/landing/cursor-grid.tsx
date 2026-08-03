@@ -485,9 +485,12 @@ export function CursorGrid({
 			resolveInk();
 			wake();
 		});
+		// class only: watching style too fires on every unrelated inline write
+		// (scroll locks, smooth-scroll libs), each forcing a style recalc via
+		// resolveInk and waking the draw loop.
 		themeObserver.observe(document.documentElement, {
 			attributes: true,
-			attributeFilter: ["class", "style"],
+			attributeFilter: ["class"],
 		});
 
 		resizeCanvas();

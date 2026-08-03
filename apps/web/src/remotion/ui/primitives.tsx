@@ -142,6 +142,9 @@ export const Checkbox: React.FC<{ checked: number; size?: number }> = ({
 	size = 26,
 }) => {
 	const t = useTheme();
+	// Springs overshoot past 1; a color-mix() percentage outside 0-100 makes
+	// the whole declaration invalid and drops the fill entirely.
+	const amount = Math.min(1, Math.max(0, checked));
 	return (
 		<span
 			style={{
@@ -152,10 +155,10 @@ export const Checkbox: React.FC<{ checked: number; size?: number }> = ({
 				width: size,
 				height: size,
 				borderRadius: size * 0.28,
-				border: `2px solid ${checked > 0.05 ? t.primary : t.input}`,
+				border: `2px solid ${amount > 0.05 ? t.primary : t.input}`,
 				backgroundColor:
-					checked > 0.05
-						? `color-mix(in oklch, ${t.primary} ${Math.round(checked * 100)}%, transparent)`
+					amount > 0.05
+						? `color-mix(in oklch, ${t.primary} ${Math.round(amount * 100)}%, transparent)`
 						: t.card,
 				flexShrink: 0,
 			}}

@@ -5,17 +5,27 @@ import { fade } from "@remotion/transitions/fade";
 import { slide } from "@remotion/transitions/slide";
 import { fadeUp, pop, progress } from "./lib/anim";
 import { useTheme } from "./ui/primitives";
-import { Assistant } from "./scenes/assistant";
-import { Automations } from "./scenes/automations";
-import { Clients } from "./scenes/clients";
-import { QuoteToPaid } from "./scenes/quote-to-paid";
-import { Reports } from "./scenes/reports";
-import { Routing } from "./scenes/routing";
-import { TasksSchedule } from "./scenes/tasks-schedule";
+import { Assistant, ASSISTANT_DURATION } from "./scenes/assistant";
+import { Automations, AUTOMATIONS_DURATION } from "./scenes/automations";
+import { Clients, CLIENTS_DURATION } from "./scenes/clients";
+import { QuoteToPaid, QUOTE_TO_PAID_DURATION } from "./scenes/quote-to-paid";
+import { Reports, REPORTS_DURATION } from "./scenes/reports";
+import { Routing, ROUTING_DURATION } from "./scenes/routing";
+import { TasksSchedule, TASKS_DURATION } from "./scenes/tasks-schedule";
 
 const T = 18; // transition length
 
-const SCENE_DURATIONS = [240, 300, 240, 240, 270, 270, 240];
+// The scenes' own duration constants — a hardcoded copy silently cut the
+// automations scene 30 frames short of its run toast.
+const SCENE_DURATIONS = [
+	CLIENTS_DURATION,
+	QUOTE_TO_PAID_DURATION,
+	TASKS_DURATION,
+	ROUTING_DURATION,
+	AUTOMATIONS_DURATION,
+	ASSISTANT_DURATION,
+	REPORTS_DURATION,
+];
 
 const INTRO = 90;
 const OUTRO = 120;
@@ -102,31 +112,31 @@ export const Showcase: React.FC = () => {
 				<Intro />
 			</TransitionSeries.Sequence>
 			<TransitionSeries.Transition timing={linearTiming({ durationInFrames: T })} presentation={fade()} />
-			<TransitionSeries.Sequence durationInFrames={240} name="Clients">
+			<TransitionSeries.Sequence durationInFrames={CLIENTS_DURATION} name="Clients">
 				<Clients />
 			</TransitionSeries.Sequence>
 			<TransitionSeries.Transition timing={linearTiming({ durationInFrames: T })} presentation={slide({ direction: "from-right" })} />
-			<TransitionSeries.Sequence durationInFrames={300} name="Quotes → Paid">
+			<TransitionSeries.Sequence durationInFrames={QUOTE_TO_PAID_DURATION} name="Quotes → Paid">
 				<QuoteToPaid />
 			</TransitionSeries.Sequence>
 			<TransitionSeries.Transition timing={linearTiming({ durationInFrames: T })} presentation={slide({ direction: "from-bottom" })} />
-			<TransitionSeries.Sequence durationInFrames={240} name="Tasks">
+			<TransitionSeries.Sequence durationInFrames={TASKS_DURATION} name="Tasks">
 				<TasksSchedule />
 			</TransitionSeries.Sequence>
 			<TransitionSeries.Transition timing={linearTiming({ durationInFrames: T })} presentation={slide({ direction: "from-right" })} />
-			<TransitionSeries.Sequence durationInFrames={240} name="Routing">
+			<TransitionSeries.Sequence durationInFrames={ROUTING_DURATION} name="Routing">
 				<Routing />
 			</TransitionSeries.Sequence>
 			<TransitionSeries.Transition timing={linearTiming({ durationInFrames: T })} presentation={slide({ direction: "from-bottom" })} />
-			<TransitionSeries.Sequence durationInFrames={270} name="Automations">
+			<TransitionSeries.Sequence durationInFrames={AUTOMATIONS_DURATION} name="Automations">
 				<Automations />
 			</TransitionSeries.Sequence>
 			<TransitionSeries.Transition timing={linearTiming({ durationInFrames: T })} presentation={slide({ direction: "from-right" })} />
-			<TransitionSeries.Sequence durationInFrames={270} name="Assistant">
+			<TransitionSeries.Sequence durationInFrames={ASSISTANT_DURATION} name="Assistant">
 				<Assistant />
 			</TransitionSeries.Sequence>
 			<TransitionSeries.Transition timing={linearTiming({ durationInFrames: T })} presentation={fade()} />
-			<TransitionSeries.Sequence durationInFrames={240} name="Reports">
+			<TransitionSeries.Sequence durationInFrames={REPORTS_DURATION} name="Reports">
 				<Reports />
 			</TransitionSeries.Sequence>
 			<TransitionSeries.Transition timing={linearTiming({ durationInFrames: T })} presentation={fade()} />

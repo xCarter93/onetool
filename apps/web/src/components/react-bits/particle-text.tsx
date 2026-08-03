@@ -33,17 +33,18 @@ export interface ParticleTextProps {
   autoFit?: boolean;
 }
 
+// Module-level defaults: fresh literals per render would re-run the main
+// effect (and re-init all particles) on every render.
+const DEFAULT_COLORS = ["#40ffaa", "#40aaff", "#ff40aa", "#aa40ff"];
+const DEFAULT_MOUSE = { enabled: true, radius: 150, strength: 5 };
+
 const ParticleText: React.FC<ParticleTextProps> = ({
   text = "brilliant.",
   className = "",
-  colors = ["#40ffaa", "#40aaff", "#ff40aa", "#aa40ff"],
+  colors = DEFAULT_COLORS,
   particleSize = 2,
   particleGap = 2,
-  mouseControls = {
-    enabled: true,
-    radius: 150,
-    strength: 5,
-  },
+  mouseControls = DEFAULT_MOUSE,
   backgroundColor = "transparent",
   fontFamily = "sans-serif",
   fontSize = 200,
@@ -52,6 +53,14 @@ const ParticleText: React.FC<ParticleTextProps> = ({
   ease = 0.05,
   autoFit = true,
 }) => {
+  // Scalar mouse options: keeping the object out of the effect deps means an
+  // inline `mouseControls={{...}}` at a call site cannot reset the animation.
+  const {
+    enabled: mouseEnabled = true,
+    radius: mouseRadius = 150,
+    strength: mouseStrength = 5,
+  } = mouseControls;
+
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const particlesRef = useRef<Particle[]>([]);
@@ -113,6 +122,12 @@ const ParticleText: React.FC<ParticleTextProps> = ({
       canvas.width = container.clientWidth * dpr;
       canvas.height = container.clientHeight * dpr;
 
+      // display:none reports a 0x0 box; getImageData on it throws.
+      if (!canvas.width || !canvas.height) {
+        particlesRef.current = [];
+        return;
+      }
+
       let effectiveFontSize = fontSize;
       if (autoFit) {
         effectiveFontSize = calculateFitFontSize(
@@ -167,6 +182,11 @@ const ParticleText: React.FC<ParticleTextProps> = ({
 
     initParticles();
 
+    // The loop idles once every particle has settled and the pointer is gone —
+    // the wordmark lives for the whole page, so an unconditional rAF would
+    // burn CPU forever. Pointer handlers and resizes wake it back up.
+    let rafActive = false;
+
     const animate = () => {
       const dpr = dprRef.current;
       ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -178,8 +198,8 @@ const ParticleText: React.FC<ParticleTextProps> = ({
 
       const particles = particlesRef.current;
       const mouse = mouseRef.current;
-      const { radius = 150, strength = 5 } = mouseControls;
-      const scaledRadius = radius * dpr;
+      const scaledRadius = mouseRadius * dpr;
+      let moving = mouse.isActive;
 
       for (let i = 0; i < particles.length; i++) {
         const p = particles[i];
@@ -190,7 +210,7 @@ const ParticleText: React.FC<ParticleTextProps> = ({
         let forceX = 0;
         let forceY = 0;
 
-        if (mouse.isActive) {
+        if (mouseEnabled && mouse.isActive) {
           const mdx = mouse.x * dpr - p.x;
           const mdy = mouse.y * dpr - p.y;
           const mDist = Math.sqrt(mdx * mdx + mdy * mdy);
@@ -198,8 +218,8 @@ const ParticleText: React.FC<ParticleTextProps> = ({
           if (mDist < scaledRadius) {
             const force = (scaledRadius - mDist) / scaledRadius;
             const angle = Math.atan2(mdy, mdx);
-            forceX = -Math.cos(angle) * force * strength * 5;
-            forceY = -Math.sin(angle) * force * strength * 5;
+            forceX = -Math.cos(angle) * force * mouseStrength * 5;
+            forceY = -Math.sin(angle) * force * mouseStrength * 5;
           }
         }
 
@@ -212,17 +232,35 @@ const ParticleText: React.FC<ParticleTextProps> = ({
         p.x += p.vx;
         p.y += p.vy;
 
+        if (
+          Math.abs(p.vx) + Math.abs(p.vy) > 0.05 ||
+          Math.abs(dx) + Math.abs(dy) > 0.5
+        ) {
+          moving = true;
+        }
+
         ctx.fillStyle = p.color;
         ctx.fillRect(Math.round(p.x), Math.round(p.y), p.size, p.size);
       }
 
+      if (moving) {
+        animationFrameRef.current = requestAnimationFrame(animate);
+      } else {
+        rafActive = false;
+      }
+    };
+
+    const wake = () => {
+      if (rafActive) return;
+      rafActive = true;
       animationFrameRef.current = requestAnimationFrame(animate);
     };
 
-    animate();
+    wake();
 
     resizeObserverRef.current = new ResizeObserver(() => {
       initParticles();
+      wake();
     });
     resizeObserverRef.current.observe(container);
 
@@ -231,15 +269,19 @@ const ParticleText: React.FC<ParticleTextProps> = ({
       mouseRef.current.x = e.clientX - rect.left;
       mouseRef.current.y = e.clientY - rect.top;
       mouseRef.current.isActive = true;
+      wake();
     };
 
     // Passive + no preventDefault: the wordmark spans the footer, so touch
     // scrolling over it must keep working; particles still react to the drag.
     const handleTouchMove = (e: TouchEvent) => {
+      const touch = e.touches[0];
+      if (!touch) return;
       const rect = canvas.getBoundingClientRect();
-      mouseRef.current.x = e.touches[0].clientX - rect.left;
-      mouseRef.current.y = e.touches[0].clientY - rect.top;
+      mouseRef.current.x = touch.clientX - rect.left;
+      mouseRef.current.y = touch.clientY - rect.top;
       mouseRef.current.isActive = true;
+      wake();
     };
 
     const handleMouseLeave = () => {
@@ -250,28 +292,34 @@ const ParticleText: React.FC<ParticleTextProps> = ({
       mouseRef.current.isActive = false;
     };
 
-    container.addEventListener("mousemove", handleMouseMove);
-    container.addEventListener("mouseleave", handleMouseLeave);
-    container.addEventListener("touchmove", handleTouchMove, {
-      passive: true,
-    });
-    container.addEventListener("touchend", handleTouchEnd);
+    if (mouseEnabled) {
+      container.addEventListener("mousemove", handleMouseMove);
+      container.addEventListener("mouseleave", handleMouseLeave);
+      container.addEventListener("touchmove", handleTouchMove, {
+        passive: true,
+      });
+      container.addEventListener("touchend", handleTouchEnd);
+    }
 
     return () => {
       if (animationFrameRef.current)
         cancelAnimationFrame(animationFrameRef.current);
       if (resizeObserverRef.current) resizeObserverRef.current.disconnect();
-      container.removeEventListener("mousemove", handleMouseMove);
-      container.removeEventListener("mouseleave", handleMouseLeave);
-      container.removeEventListener("touchmove", handleTouchMove);
-      container.removeEventListener("touchend", handleTouchEnd);
+      if (mouseEnabled) {
+        container.removeEventListener("mousemove", handleMouseMove);
+        container.removeEventListener("mouseleave", handleMouseLeave);
+        container.removeEventListener("touchmove", handleTouchMove);
+        container.removeEventListener("touchend", handleTouchEnd);
+      }
     };
   }, [
     text,
     colors,
     particleSize,
     particleGap,
-    mouseControls,
+    mouseEnabled,
+    mouseRadius,
+    mouseStrength,
     backgroundColor,
     fontFamily,
     fontSize,
