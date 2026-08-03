@@ -109,7 +109,7 @@ export const HOME_TOUR_CONTENT: Record<HomeTour, TourStepContent> = {
 		title: "Ask the Assistant",
 		description:
 			"Your AI teammate lives here. Ask it to draft a quote, find a client, or explain a report \u2014 it already knows the screen you\u2019re on. Available on the paid plan.",
-		tooltipPosition: "left",
+		tooltipPosition: "top",
 	},
 };
 

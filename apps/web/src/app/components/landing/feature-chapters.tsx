@@ -1,0 +1,94 @@
+import { FeatureChaptersClient } from "./feature-rail";
+import type { RailChapter } from "./feature-rail";
+
+/**
+ * A-101 — "How it works" as an Attio-style pinned run: the rail of chapter
+ * headings holds on the left while scroll walks the plate through the seven
+ * Remotion scenes (FeatureRail). Below lg it degrades to a plain stacked
+ * read. Server shell; the client island owns all scroll machinery.
+ */
+
+/** DRAFT copy — PRD §5 grammar: bold clause + period + mechanism sentence.
+    Every claim traces to shipped behaviour. */
+const CHAPTERS: readonly RailChapter[] = [
+	{
+		key: "clients",
+		code: "A-101",
+		label: "Clients",
+		heading: "The whole book of business.",
+		body: "Every client, contact, and property on one searchable list — with the history that tells you who to call back.",
+	},
+	{
+		key: "quote-to-paid",
+		code: "A-102",
+		label: "Quotes & invoices",
+		heading: "Quote to paid, one thread.",
+		body: "Send the quote, watch the signature land, flip it to an invoice, and see the payment come in — without leaving the record.",
+	},
+	{
+		key: "tasks",
+		code: "A-103",
+		label: "Scheduling",
+		heading: "The day plans itself.",
+		body: "Tasks and visits land on a day plan you can actually run, and the week's workload stays where you can see it.",
+	},
+	{
+		key: "routing",
+		code: "A-104",
+		label: "Routing",
+		heading: "The shortest way through Tuesday.",
+		body: "Your stops become an optimized route with drive times, so the crew spends the day working, not navigating.",
+	},
+	{
+		key: "automations",
+		code: "A-105",
+		label: "Automations",
+		heading: "Work that runs while you sleep.",
+		body: "Friday, 7:00 AM — the overdue list gets walked one invoice at a time: recent ones get a reminder email, the late ones become a call task. You wake up to a finished run.",
+	},
+	{
+		key: "assistant",
+		code: "A-106",
+		label: "Assistant",
+		heading: "Ask for it in plain English.",
+		body: "One sentence becomes the task, the route, or the report — and the assistant shows its work as it goes.",
+	},
+	{
+		key: "reports",
+		code: "A-107",
+		label: "Reports",
+		heading: "Your numbers, without the spreadsheet.",
+		body: "Revenue, outstanding invoices, and top clients from live data — the chart is already made when you ask.",
+	},
+];
+
+const HEADING_ID = "feature-chapters-heading";
+
+/**
+ * Keeps `id="how-it-works"` — the navbar link and the hero's quiet CTA both
+ * point at it.
+ */
+export function FeatureChapters() {
+	return (
+		<section
+			id="how-it-works"
+			aria-labelledby={HEADING_ID}
+			className="relative p-6 sm:p-10 lg:p-14"
+		>
+			<h2
+				id={HEADING_ID}
+				className="max-w-3xl text-balance text-2xl font-semibold leading-[1.1] tracking-tight text-foreground sm:text-3xl lg:text-[2.5rem]"
+			>
+				Watch a job run through it.{" "}
+				<span className="text-muted-foreground">
+					Seven scenes drawn from the real screens — the same job, quote to
+					paid.
+				</span>
+			</h2>
+
+			<div className="mt-10 lg:mt-6">
+				<FeatureChaptersClient chapters={[...CHAPTERS]} />
+			</div>
+		</section>
+	);
+}

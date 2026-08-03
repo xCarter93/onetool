@@ -53,6 +53,10 @@ type AssistantSurfaceContextValue = {
 	togglePinned: () => void;
 	/** xl+: the viewport can host the docked column (pinned or not). */
 	canDock: boolean;
+	/** Bottom-center overlay inside the workspace card; the floating panel
+	 *  portals here so it stays centered within the app shell. */
+	dockAnchor: HTMLElement | null;
+	setDockAnchor: (el: HTMLElement | null) => void;
 };
 
 const AssistantSurfaceContext =
@@ -111,10 +115,20 @@ export function AssistantSurfaceProvider({
 		[belowMd]
 	);
 	const openAssistant = React.useCallback(() => setOpen(true), [setOpen]);
+	const [dockAnchor, setDockAnchor] = React.useState<HTMLElement | null>(null);
 
 	const value = React.useMemo(
-		() => ({ surface, open, setOpen, pinned, togglePinned, canDock }),
-		[surface, open, setOpen, pinned, togglePinned, canDock]
+		() => ({
+			surface,
+			open,
+			setOpen,
+			pinned,
+			togglePinned,
+			canDock,
+			dockAnchor,
+			setDockAnchor,
+		}),
+		[surface, open, setOpen, pinned, togglePinned, canDock, dockAnchor]
 	);
 
 	return (

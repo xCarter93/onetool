@@ -68,3 +68,14 @@ apps/mobile/APP-STORE-SUBMISSION.md
 
 graphify-out/
 .env.local
+
+# design-sync machine state
+.ds-sync/
+.design-sync/
+ds-bundle/
+.design-sync/.cache/
+.design-sync/learnings/
+.design-sync/node_modules
+
+# Design mockups (.pen files + exported PNGs) — local only
+.mockups/

@@ -32,7 +32,7 @@ export const aiAssistantArticles: HelpArticle[] = [
 				blocks: [
 					{
 						type: "paragraph",
-						text: "The **Assistant** tab sits at the bottom of every workspace page. Click it to open the chat panel, and press Escape or the close button to put it away. On a phone the chat slides up from the bottom edge instead.",
+						text: "The **Assistant** dock floats at the bottom center of every workspace page. Click it to open the chat panel, and press Escape or the close button to put it away. On a phone the chat slides up from the bottom edge instead.",
 					},
 					{
 						type: "paragraph",

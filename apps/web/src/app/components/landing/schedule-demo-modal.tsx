@@ -8,18 +8,26 @@ import { Input } from "@/components/ui/input";
 import { PhoneInput } from "@/components/reui/phone-input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { cn } from "@/lib/utils";
 import { trackEvent } from "@/lib/analytics";
 import { AnalyticsEvents } from "@/lib/analytics-events";
 
-interface ScheduleDemoModalProps {
-	isOpen: boolean;
-	onClose: () => void;
+interface ScheduleDemoFormProps {
+	className?: string;
+	/** Rendered as a Cancel button next to submit; omit for standalone use. */
+	onCancel?: () => void;
+	/** Fired 2s after a successful submit, once the form has reset. */
+	onSuccess?: () => void;
+	/** Prefix for field ids so two instances can coexist on one page. */
+	idPrefix?: string;
 }
 
-export default function ScheduleDemoModal({
-	isOpen,
-	onClose,
-}: ScheduleDemoModalProps) {
+export function ScheduleDemoForm({
+	className,
+	onCancel,
+	onSuccess,
+	idPrefix = "demo",
+}: ScheduleDemoFormProps) {
 	const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 	const [isSubmitting, setIsSubmitting] = useState(false);
 	const [formData, setFormData] = useState({
@@ -45,10 +53,7 @@ export default function ScheduleDemoModal({
 		setFormStatus({ type: null, message: "" });
 	};
 
-	const handleClose = () => {
-		resetForm();
-		onClose();
-	};
+	const fieldId = (name: string) => `${idPrefix}-${name}`;
 
 	const handleScheduleDemo = async (e: React.FormEvent) => {
 		e.preventDefault();
@@ -79,9 +84,11 @@ export default function ScheduleDemoModal({
 					"Thank you! We'll be in touch within 24 hours to schedule your demo.",
 			});
 
+			// Always reset — inline consumers (final CTA) pass no onSuccess, and
+			// leaving the fields filled invites a duplicate submit.
 			timerRef.current = setTimeout(() => {
 				resetForm();
-				onClose();
+				onSuccess?.();
 			}, 2000);
 		} catch (error) {
 			setFormStatus({
@@ -97,127 +104,141 @@ export default function ScheduleDemoModal({
 	};
 
 	return (
-		<Modal isOpen={isOpen} onClose={handleClose} title="Schedule a Demo" size="md">
+		<form onSubmit={handleScheduleDemo} className={cn("space-y-4", className)}>
+			<div className="space-y-2">
+				<Label htmlFor={fieldId("name")}>
+					Name <span className="text-danger">*</span>
+				</Label>
+				<Input
+					id={fieldId("name")}
+					type="text"
+					required
+					placeholder="John Doe"
+					value={formData.name}
+					onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+					disabled={isSubmitting}
+				/>
+			</div>
+
+			<div className="space-y-2">
+				<Label htmlFor={fieldId("email")}>
+					Email <span className="text-danger">*</span>
+				</Label>
+				<Input
+					id={fieldId("email")}
+					type="email"
+					required
+					placeholder="john@company.com"
+					value={formData.email}
+					onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+					disabled={isSubmitting}
+				/>
+			</div>
+
+			<div className="space-y-2">
+				<Label htmlFor={fieldId("company")}>Company</Label>
+				<Input
+					id={fieldId("company")}
+					type="text"
+					placeholder="Acme Inc."
+					value={formData.company}
+					onChange={(e) => setFormData({ ...formData, company: e.target.value })}
+					disabled={isSubmitting}
+				/>
+			</div>
+
+			<div className="space-y-2">
+				<Label htmlFor={fieldId("phone")}>Phone</Label>
+				<PhoneInput
+					id={fieldId("phone")}
+					defaultCountry="US"
+					placeholder="(555) 123-4567"
+					value={formData.phone}
+					onChange={(next) =>
+						setFormData((prev) => ({ ...prev, phone: next ?? "" }))
+					}
+					disabled={isSubmitting}
+				/>
+			</div>
+
+			<div className="space-y-2">
+				<Label htmlFor={fieldId("message")}>Message</Label>
+				<Textarea
+					id={fieldId("message")}
+					placeholder="Tell us about your business and what you'd like to see in the demo..."
+					value={formData.message}
+					onChange={(e) => setFormData({ ...formData, message: e.target.value })}
+					disabled={isSubmitting}
+					rows={4}
+				/>
+			</div>
+
+			{/* Live region stays mounted: some screen readers skip a region
+			    inserted together with its content. */}
+			<div role="status" aria-live="polite" aria-atomic="true">
+				{formStatus.type && (
+					<div
+						className={`p-3 rounded-lg text-sm text-foreground border ${
+							formStatus.type === "success"
+								? "bg-success/10 border-success/30"
+								: "bg-danger/10 border-danger/30"
+						}`}
+					>
+						{formStatus.message}
+					</div>
+				)}
+			</div>
+
+			<div className="flex justify-end gap-3 pt-4">
+				{onCancel && (
+					<Button
+						type="button"
+						variant="outline"
+						onClick={onCancel}
+						disabled={isSubmitting}
+					>
+						Cancel
+					</Button>
+				)}
+				<Button
+					type="submit"
+					variant="default"
+					disabled={
+						isSubmitting || !formData.name.trim() || !formData.email.trim()
+					}
+				>
+					{isSubmitting && <Loader2 className="h-4 w-4 animate-spin" />}
+					{isSubmitting ? "Sending..." : "Request Demo"}
+				</Button>
+			</div>
+		</form>
+	);
+}
+
+interface ScheduleDemoModalProps {
+	isOpen: boolean;
+	onClose: () => void;
+}
+
+export default function ScheduleDemoModal({
+	isOpen,
+	onClose,
+}: ScheduleDemoModalProps) {
+	return (
+		<Modal isOpen={isOpen} onClose={onClose} title="Schedule a Demo" size="md">
 			<div className="space-y-4">
 				<p className="text-sm text-muted-foreground">
 					Fill out the form below and we&apos;ll reach out within 24 hours to
 					schedule your personalized demo.
 				</p>
 
-				<form onSubmit={handleScheduleDemo} className="space-y-4">
-					<div className="space-y-2">
-						<Label htmlFor="name">
-							Name <span className="text-red-500">*</span>
-						</Label>
-						<Input
-							id="name"
-							type="text"
-							required
-							placeholder="John Doe"
-							value={formData.name}
-							onChange={(e) =>
-								setFormData({ ...formData, name: e.target.value })
-							}
-							disabled={isSubmitting}
-						/>
-					</div>
-
-					<div className="space-y-2">
-						<Label htmlFor="email">
-							Email <span className="text-red-500">*</span>
-						</Label>
-						<Input
-							id="email"
-							type="email"
-							required
-							placeholder="john@company.com"
-							value={formData.email}
-							onChange={(e) =>
-								setFormData({ ...formData, email: e.target.value })
-							}
-							disabled={isSubmitting}
-						/>
-					</div>
-
-					<div className="space-y-2">
-						<Label htmlFor="company">Company</Label>
-						<Input
-							id="company"
-							type="text"
-							placeholder="Acme Inc."
-							value={formData.company}
-							onChange={(e) =>
-								setFormData({ ...formData, company: e.target.value })
-							}
-							disabled={isSubmitting}
-						/>
-					</div>
-
-					<div className="space-y-2">
-						<Label htmlFor="phone">Phone</Label>
-						<PhoneInput
-							id="phone"
-							defaultCountry="US"
-							placeholder="(555) 123-4567"
-							value={formData.phone}
-							onChange={(next) =>
-								setFormData((prev) => ({ ...prev, phone: next ?? "" }))
-							}
-							disabled={isSubmitting}
-						/>
-					</div>
-
-					<div className="space-y-2">
-						<Label htmlFor="message">Message</Label>
-						<Textarea
-							id="message"
-							placeholder="Tell us about your business and what you'd like to see in the demo..."
-							value={formData.message}
-							onChange={(e) =>
-								setFormData({ ...formData, message: e.target.value })
-							}
-							disabled={isSubmitting}
-							rows={4}
-						/>
-					</div>
-
-					{formStatus.type && (
-						<div
-							className={`p-3 rounded-lg text-sm ${
-								formStatus.type === "success"
-									? "bg-green-50 dark:bg-green-900/20 text-green-800 dark:text-green-200 border border-green-200 dark:border-green-800"
-									: "bg-red-50 dark:bg-red-900/20 text-red-800 dark:text-red-200 border border-red-200 dark:border-red-800"
-							}`}
-						>
-							{formStatus.message}
-						</div>
-					)}
-
-					<div className="flex justify-end gap-3 pt-4">
-						<Button
-							type="button"
-							variant="outline"
-							onClick={handleClose}
-							disabled={isSubmitting}
-						>
-							Cancel
-						</Button>
-						<Button
-							type="submit"
-							variant="default"
-							disabled={
-								isSubmitting ||
-								!formData.name.trim() ||
-								!formData.email.trim()
-							}
-						>
-							{isSubmitting && (
-								<Loader2 className="h-4 w-4 animate-spin" />
-							)}
-							{isSubmitting ? "Sending..." : "Request Demo"}
-						</Button>
-					</div>
-				</form>
+				{/* key remount clears form state on close, matching the old resetForm. */}
+				<ScheduleDemoForm
+					key={isOpen ? "open" : "closed"}
+					idPrefix="demo-modal"
+					onCancel={onClose}
+					onSuccess={onClose}
+				/>
 			</div>
 		</Modal>
 	);

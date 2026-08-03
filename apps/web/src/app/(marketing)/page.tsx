@@ -1,13 +1,18 @@
 import PageFrame from "@/app/components/landing/page-frame";
 import { SmoothScroll } from "@/app/components/landing/smooth-scroll";
+import { SheetIndicator } from "@/app/components/landing/sheet-indicator";
+import {
+	SheetSection,
+	SheetStack,
+} from "@/app/components/landing/sheet-stack";
 import AppNavbar from "@/app/components/app-navbar";
-import HeroSection from "@/app/components/hero-section";
-import BlurInHeadline from "@/app/components/landing/blur-in-headline";
-import FeatureSection from "@/app/components/feature-section";
-import HowItWorks from "@/app/components/landing/how-it-works";
-import FAQSection from "@/app/components/faq-section";
-import ShowcaseSection from "@/app/components/showcase-section";
+import Hero from "@/app/components/landing/hero/hero";
+import { ValueProp } from "@/app/components/landing/value-prop";
+import { FeatureDetail } from "@/app/components/landing/feature-detail/feature-detail";
+import { FeatureChapters } from "@/app/components/landing/feature-chapters";
 import PricingSection from "@/app/components/pricing-section";
+import FAQSection from "@/app/components/faq-section";
+import { FinalCta } from "@/app/components/landing/final-cta";
 import Footer from "@/app/components/footer";
 
 export default function Home() {
@@ -15,15 +20,33 @@ export default function Home() {
 		<SmoothScroll>
 			<main className="flex-1 overflow-x-clip">
 				<PageFrame />
-				<AppNavbar />
-				<HeroSection />
-				<BlurInHeadline />
-				<FeatureSection />
-				<HowItWorks />
-				<FAQSection />
-				<ShowcaseSection />
-				<PricingSection />
-				<Footer />
+				<SheetIndicator />
+				<SheetStack>
+					<AppNavbar />
+					<SheetSection code="G-001" title="Cover">
+						<Hero />
+					</SheetSection>
+					<SheetSection code="A-501" title="Features">
+						<ValueProp />
+					</SheetSection>
+					<SheetSection code="A-502" title="Capabilities">
+						<FeatureDetail />
+					</SheetSection>
+					{/* FeatureChapters owns id="how-it-works" itself — never duplicate it here. */}
+					<SheetSection code="A-101" title="How it works">
+						<FeatureChapters />
+					</SheetSection>
+					<SheetSection code="G-002" title="Estimate">
+						<PricingSection />
+					</SheetSection>
+					<SheetSection code="G-003" title="General notes">
+						<FAQSection />
+					</SheetSection>
+					<SheetSection code="G-004" title="Issue">
+						<FinalCta />
+					</SheetSection>
+					<Footer />
+				</SheetStack>
 			</main>
 		</SmoothScroll>
 	);

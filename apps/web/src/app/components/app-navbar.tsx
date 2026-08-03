@@ -1,34 +1,30 @@
 "use client";
 
-import React, { useState } from "react";
-import Image from "next/image";
+import { useEffect, useId, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { SignInButton, SignUpButton, SignedIn, SignedOut } from "@clerk/nextjs";
+import { SignInButton, SignedIn, SignedOut } from "@clerk/nextjs";
 import { ThemeSwitcher } from "@/components/layout/theme-switcher";
 import { Button } from "@/components/ui/button";
-import { AccentCTA } from "@/app/components/landing/accent-cta";
-import { motion, AnimatePresence } from "motion/react";
+import { CtaButton } from "@/app/components/landing/cta-button";
+import Image from "next/image";
+import { m, AnimatePresence, useReducedMotion } from "motion/react";
+import { cn } from "@/lib/utils";
 import {
-	Blocks,
+	BarChart3,
 	BookOpen,
-	Briefcase,
-	Calendar,
-	ChartColumn,
-	CheckCheck,
-	CreditCard,
-	FileText,
-	Globe,
-	Handshake,
+	CalendarDays,
+	FileSignature,
 	LifeBuoy,
-	Mail,
+	Map,
+	Receipt,
 	Rocket,
-	Shield,
-	Smartphone,
+	Sparkles,
 	Users,
 	Zap,
 	type LucideIcon,
 } from "lucide-react";
+import { chapterAnchor } from "@/app/components/landing/feature-anchors";
 
 const navigationLinks = [
 	{ href: "#features", label: "Features" },
@@ -40,28 +36,24 @@ const navigationLinks = [
 
 const resourceItems: {
 	icon: LucideIcon;
-	iconClassName: string;
 	label: string;
 	description: string;
 	href: string;
 }[] = [
 	{
 		icon: BookOpen,
-		iconClassName: "text-blue-500",
 		label: "Help Center",
 		description: "Guides for every part of OneTool",
 		href: "/help",
 	},
 	{
 		icon: Rocket,
-		iconClassName: "text-emerald-600",
 		label: "Getting started",
 		description: "Set up OneTool step by step",
 		href: "/help/getting-started",
 	},
 	{
 		icon: LifeBuoy,
-		iconClassName: "text-amber-500",
 		label: "Contact support",
 		description: "Email our team for a hand",
 		href: "mailto:support@onetool.biz",
@@ -74,99 +66,72 @@ const legalItems = [
 	{ label: "Data Security", href: "/data-security" },
 ];
 
+/** Full capability list. Anchors resolve to the feature chapters (A-101…A-107),
+    so every row lands on the scene that demos it. Copy is agent-draft, pending
+    Patrick. */
 const featureItems: {
 	icon: LucideIcon;
-	iconClassName: string;
 	label: string;
 	description: string;
-	comingSoon?: boolean;
+	href: string;
 }[] = [
 	{
 		icon: Users,
-		iconClassName: "text-blue-500",
-		label: "Client management",
-		description: "Contacts, history, and follow-ups",
+		label: "Clients & CRM",
+		description: "Every client, contact, and property in one place",
+		href: `#${chapterAnchor("clients")}`,
 	},
 	{
-		icon: Briefcase,
-		iconClassName: "text-sky-500",
-		label: "Project tracking",
-		description: "Visual pipelines, lead to complete",
+		icon: FileSignature,
+		label: "Quotes & e-sign",
+		description: "Send quotes clients sign from their phone",
+		href: `#${chapterAnchor("quote-to-paid")}`,
 	},
 	{
-		icon: Calendar,
-		iconClassName: "text-amber-500",
-		label: "Task scheduling",
-		description: "Calendars and team assignments",
+		icon: Receipt,
+		label: "Invoices & payments",
+		description: "Flip the quote to an invoice, get paid online",
+		href: `#${chapterAnchor("quote-to-paid")}`,
 	},
 	{
-		icon: FileText,
-		iconClassName: "text-emerald-600",
-		label: "Quoting & invoicing",
-		description: "Estimates with e-signatures",
+		icon: CalendarDays,
+		label: "Scheduling & tasks",
+		description: "A day plan your crew actually runs",
+		href: `#${chapterAnchor("tasks")}`,
 	},
 	{
-		icon: CreditCard,
-		iconClassName: "text-pink-500",
-		label: "Stripe payments",
-		description: "Deposits, installments, payouts",
-	},
-	{
-		icon: Mail,
-		iconClassName: "text-orange-500",
-		label: "Email hub",
-		description: "Unified inbox for client threads",
-	},
-	{
-		icon: Handshake,
-		iconClassName: "text-rose-500",
-		label: "Client portal",
-		description: "Clients e-sign quotes & pay online",
-	},
-	{
-		icon: Globe,
-		iconClassName: "text-green-600",
-		label: "Community pages",
-		description: "Your free public business page",
-	},
-	{
-		icon: ChartColumn,
-		iconClassName: "text-indigo-500",
-		label: "Custom report builder",
-		description: "Build and export your own reports",
-	},
-	{
-		icon: Shield,
-		iconClassName: "text-red-500",
-		label: "Role-based access",
-		description: "Admin and employee views",
-	},
-	{
-		icon: CheckCheck,
-		iconClassName: "text-cyan-500",
-		label: "Real-time sync",
-		description: "Instant updates on every device",
-	},
-	{
-		icon: Smartphone,
-		iconClassName: "text-violet-500",
-		label: "Mobile access",
-		description: "iOS companion app",
+		icon: Map,
+		label: "Route planning",
+		description: "Stops become an optimized route",
+		href: `#${chapterAnchor("routing")}`,
 	},
 	{
 		icon: Zap,
-		iconClassName: "text-teal-500",
-		label: "Workflow automations",
-		description: "Trigger actions on status changes",
+		label: "Automations",
+		description: "Rules that run while you sleep",
+		href: `#${chapterAnchor("automations")}`,
 	},
 	{
-		icon: Blocks,
-		iconClassName: "text-fuchsia-500",
-		label: "QuickBooks sync",
-		description: "Send invoices & payments to QuickBooks",
-		comingSoon: true,
+		icon: Sparkles,
+		label: "AI assistant",
+		description: "Ask in plain English, it does the work",
+		href: `#${chapterAnchor("assistant")}`,
+	},
+	{
+		icon: BarChart3,
+		label: "Reports",
+		description: "Live numbers without the spreadsheet",
+		href: `#${chapterAnchor("reports")}`,
 	},
 ];
+
+/** Pill-row geometry, shared so plain links and both flyout triggers align. */
+const NAV_ITEM =
+	"rounded-full px-4 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background";
+
+/** Underline is inset to the label, not the pill padding. */
+const NAV_UNDERLINE =
+	"absolute inset-x-4 bottom-0.5 h-0.5 origin-left rounded-full bg-primary transition-transform duration-300 ease-out";
 
 function scrollToSection(href: string) {
 	const element = document.querySelector(href);
@@ -227,74 +192,107 @@ function FeaturesFlyout({
 	onNavigate: (href: string) => void;
 }) {
 	const [open, setOpen] = useState(false);
+	const reduced = useReducedMotion();
+	const panelId = useId();
+	const triggerRef = useRef<HTMLButtonElement>(null);
+
+	function close(refocus = false) {
+		setOpen(false);
+		if (refocus) triggerRef.current?.focus();
+	}
 
 	return (
 		<div
 			className="relative"
 			onMouseEnter={() => setOpen(true)}
 			onMouseLeave={() => setOpen(false)}
+			onKeyDown={(e) => {
+				if (e.key === "Escape" && open) {
+					e.stopPropagation();
+					close(true);
+				}
+			}}
+			// Moving focus outside the trigger/panel dismisses it.
+			onBlur={(e) => {
+				if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
+					setOpen(false);
+				}
+			}}
 		>
 			<button
+				ref={triggerRef}
 				onClick={() => {
 					onNavigate("#features");
 					setOpen(false);
 				}}
 				onFocus={() => setOpen(true)}
 				aria-expanded={open}
-				className="relative text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+				aria-controls={panelId}
+				className={cn("relative", NAV_ITEM)}
 			>
 				Features
 				<span
 					style={{ transform: open ? "scaleX(1)" : "scaleX(0)" }}
-					className="absolute -bottom-1.5 left-0 right-0 h-0.5 origin-left rounded-full bg-primary transition-transform duration-300 ease-out"
+					className={NAV_UNDERLINE}
 				/>
 			</button>
 			<AnimatePresence>
 				{open && (
-					<motion.div
-						initial={{ opacity: 0, y: 12 }}
+					<m.div
+						initial={reduced ? false : { opacity: 0, y: 12 }}
 						animate={{ opacity: 1, y: 0 }}
-						exit={{ opacity: 0, y: 12 }}
-						transition={{ duration: 0.25, ease: "easeOut" }}
+						exit={reduced ? { opacity: 1 } : { opacity: 0, y: 12 }}
+						transition={{ duration: reduced ? 0 : 0.25, ease: "easeOut" }}
 						style={{ translateX: "-50%" }}
 						className="absolute left-1/2 top-full pt-4"
 					>
-						<div className="relative w-120 lg:w-172 rounded-2xl border border-border bg-popover text-popover-foreground p-3 shadow-2xl/20">
+						{/* Full capability grid — each row lands on its feature chapter. */}
+						<div
+							id={panelId}
+							className="relative w-[34rem] lg:w-[38rem] rounded-2xl border border-border bg-popover text-popover-foreground shadow-2xl/20"
+						>
 							<div
 								className="absolute -top-1.5 left-1/2 h-3 w-3 -translate-x-1/2 rotate-45 rounded-[2px] border-l border-t border-border bg-popover"
 								aria-hidden="true"
 							/>
-							<div className="grid grid-cols-2 lg:grid-cols-3 gap-1">
-								{featureItems.map((f) => (
+							<div className="grid grid-cols-2 gap-1 p-3">
+								{featureItems.map((item) => (
 									<button
-										key={f.label}
+										key={item.label}
 										onClick={() => {
-											onNavigate("#features");
-											setOpen(false);
+											onNavigate(item.href);
+											close();
 										}}
-										className="flex items-start gap-3 rounded-xl p-3 text-left transition-colors hover:bg-accent"
+										className="group flex items-start gap-3 rounded-xl p-3 text-left transition-colors hover:bg-accent focus-visible:bg-accent"
 									>
-										<f.icon
-											className={`mt-0.5 h-4 w-4 shrink-0 ${f.iconClassName}`}
-										/>
-										<span>
-											<span className="flex items-center gap-1.5 text-sm font-medium text-foreground">
-												{f.label}
-												{f.comingSoon && (
-													<span className="rounded-full bg-amber-400/15 px-1.5 py-px text-[10px] font-semibold uppercase tracking-wide text-amber-600 dark:text-amber-400">
-														Soon
-													</span>
-												)}
+										<span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-primary/20 bg-primary/10 text-primary">
+											<item.icon className="h-4.5 w-4.5" />
+										</span>
+										<span className="min-w-0">
+											<span className="block text-sm font-semibold leading-5 text-foreground">
+												{item.label}
 											</span>
-											<span className="block text-xs text-muted-foreground">
-												{f.description}
+											<span className="mt-0.5 block text-xs leading-5 text-muted-foreground">
+												{item.description}
 											</span>
 										</span>
 									</button>
 								))}
 							</div>
+							<button
+								onClick={() => {
+									onNavigate("#how-it-works");
+									close();
+								}}
+								className="flex w-full items-center justify-between rounded-b-2xl border-t border-border px-6 py-3.5 text-left text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+							>
+								Watch a job run through it
+								<span aria-hidden="true" className="text-primary">
+									→
+								</span>
+							</button>
 						</div>
-					</motion.div>
+					</m.div>
 				)}
 			</AnimatePresence>
 		</div>
@@ -303,37 +301,59 @@ function FeaturesFlyout({
 
 function ResourcesFlyout() {
 	const [open, setOpen] = useState(false);
+	const reduced = useReducedMotion();
+	const panelId = useId();
+	const triggerRef = useRef<HTMLAnchorElement>(null);
 
 	return (
 		<div
 			className="relative"
 			onMouseEnter={() => setOpen(true)}
 			onMouseLeave={() => setOpen(false)}
+			// Same dismissal contract as FeaturesFlyout: Escape closes and
+			// refocuses the trigger; focus leaving the boundary closes.
+			onKeyDown={(e) => {
+				if (e.key === "Escape" && open) {
+					e.stopPropagation();
+					setOpen(false);
+					triggerRef.current?.focus();
+				}
+			}}
+			onBlur={(e) => {
+				if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
+					setOpen(false);
+				}
+			}}
 		>
 			<Link
 				href="/help"
+				ref={triggerRef}
 				onClick={() => setOpen(false)}
 				onFocus={() => setOpen(true)}
 				aria-expanded={open}
-				className="relative text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+				aria-controls={panelId}
+				className={cn("relative", NAV_ITEM)}
 			>
 				Resources
 				<span
 					style={{ transform: open ? "scaleX(1)" : "scaleX(0)" }}
-					className="absolute -bottom-1.5 left-0 right-0 h-0.5 origin-left rounded-full bg-primary transition-transform duration-300 ease-out"
+					className={NAV_UNDERLINE}
 				/>
 			</Link>
 			<AnimatePresence>
 				{open && (
-					<motion.div
-						initial={{ opacity: 0, y: 12 }}
+					<m.div
+						initial={reduced ? false : { opacity: 0, y: 12 }}
 						animate={{ opacity: 1, y: 0 }}
-						exit={{ opacity: 0, y: 12 }}
-						transition={{ duration: 0.25, ease: "easeOut" }}
+						exit={reduced ? { opacity: 1 } : { opacity: 0, y: 12 }}
+						transition={{ duration: reduced ? 0 : 0.25, ease: "easeOut" }}
 						style={{ translateX: "-50%" }}
 						className="absolute left-1/2 top-full pt-4"
 					>
-						<div className="relative w-108 rounded-2xl border border-border bg-popover text-popover-foreground p-3 shadow-2xl/20">
+						<div
+							id={panelId}
+							className="relative w-108 rounded-2xl border border-border bg-popover text-popover-foreground p-3 shadow-2xl/20"
+						>
 							<div
 								className="absolute -top-1.5 left-1/2 h-3 w-3 -translate-x-1/2 rotate-45 rounded-[2px] border-l border-t border-border bg-popover"
 								aria-hidden="true"
@@ -346,9 +366,9 @@ function ResourcesFlyout() {
 									{resourceItems.map((item) => {
 										const inner = (
 											<>
-												<item.icon
-													className={`mt-0.5 h-4 w-4 shrink-0 ${item.iconClassName}`}
-												/>
+												<span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-primary/20 bg-primary/10 text-primary">
+													<item.icon className="h-4.5 w-4.5" />
+												</span>
 												<span>
 													<span className="block text-sm font-medium text-foreground">
 														{item.label}
@@ -399,7 +419,7 @@ function ResourcesFlyout() {
 								</div>
 							</div>
 						</div>
-					</motion.div>
+					</m.div>
 				)}
 			</AnimatePresence>
 		</div>
@@ -408,181 +428,206 @@ function ResourcesFlyout() {
 
 function AppNavBar() {
 	const [isMenuOpen, setIsMenuOpen] = useState(false);
+	const [isScrolled, setIsScrolled] = useState(false);
 	const router = useRouter();
+	const reduced = useReducedMotion();
+
+	useEffect(() => {
+		const handleScroll = () => setIsScrolled(window.scrollY > 8);
+		// rAF rather than a direct call: setState in an effect body is a lint error,
+		// and a restored scroll position must still resolve on first paint.
+		const raf = requestAnimationFrame(handleScroll);
+		window.addEventListener("scroll", handleScroll, { passive: true });
+		return () => {
+			cancelAnimationFrame(raf);
+			window.removeEventListener("scroll", handleScroll);
+		};
+	}, []);
+
+	// `body.nav-open` lets global CSS hide the sheet corner ticks behind the panel.
+	useEffect(() => {
+		if (!isMenuOpen) return;
+
+		const previousOverflow = document.body.style.overflow;
+		document.body.style.overflow = "hidden";
+		document.body.classList.add("nav-open");
+
+		return () => {
+			document.body.style.overflow = previousOverflow;
+			document.body.classList.remove("nav-open");
+		};
+	}, [isMenuOpen]);
 
 	return (
-		<motion.header
-			initial={{ y: -100 }}
-			animate={{ y: 0 }}
-			transition={{ duration: 0.8, ease: [0.23, 1, 0.32, 1] }}
-			className="fixed top-0 min-[850px]:top-2.5 left-0 right-0 z-[9998] min-[850px]:left-1/2 min-[850px]:-translate-x-1/2 min-[850px]:w-full min-[850px]:max-w-5xl"
-		>
-			<nav className="bg-frame shadow-2xl/20 rounded-b-4xl md:overflow-visible max-md:overflow-hidden">
-				<div className="flex items-center justify-between h-14 px-4 sm:px-6">
-					{/* Logo */}
-					<Link href="/" className="shrink-0">
-						<Image
-							src="/OneTool.png"
-							alt="OneTool Logo"
-							width={160}
-							height={160}
-							className="rounded-md dark:brightness-0 dark:invert w-[140px] sm:w-[170px]"
-						/>
-					</Link>
+		<header className="sticky top-0 z-50 border-b border-bp-guide-strong bg-bp-paper/95 backdrop-blur supports-backdrop-filter:bg-bp-paper/80">
+			{/* 7px ticks straddling the shell rails, same as every section corner. */}
+			<span
+				aria-hidden="true"
+				data-section-corner
+				className="pointer-events-none absolute bottom-0 left-0 z-10 h-[7px] w-[7px] -translate-x-1/2 translate-y-1/2 border border-bp-guide-strong bg-bp-paper"
+			/>
+			<span
+				aria-hidden="true"
+				data-section-corner
+				className="pointer-events-none absolute bottom-0 right-0 z-10 h-[7px] w-[7px] translate-x-1/2 translate-y-1/2 border border-bp-guide-strong bg-bp-paper"
+			/>
 
-					{/* Desktop Navigation */}
-					<div className="hidden md:flex items-center gap-8">
-						{navigationLinks.map((link) =>
-							link.href === "#features" ? (
-								<FeaturesFlyout key={link.href} onNavigate={scrollToSection} />
-							) : link.href === "/help" ? (
-								<ResourcesFlyout key={link.href} />
-							) : (
+			<div className="flex h-16 sm:h-20 items-center justify-between px-4 sm:px-6 lg:px-8">
+				{/* Logo */}
+				<Link
+					href="/"
+					aria-label="OneTool home"
+					className="enter flex shrink-0 items-center rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+				>
+					<Image
+						src="/OneTool.png"
+						alt="OneTool Logo"
+						width={160}
+						height={160}
+						className="rounded-md dark:brightness-0 dark:invert w-[140px] sm:w-[170px]"
+					/>
+				</Link>
+
+				{/* Desktop navigation — the pill loses its fill once the page moves. */}
+				<nav
+					aria-label="Primary navigation"
+					className={cn(
+						"hidden items-center gap-1 rounded-full px-2 py-1.5 transition-[background-color] duration-300 ease-out md:flex",
+						isScrolled ? "bg-transparent" : "bg-muted"
+					)}
+				>
+					{navigationLinks.map((link, i) =>
+						link.href === "#features" ? (
+							<FeaturesFlyout key={link.href} onNavigate={scrollToSection} />
+						) : link.href === "/help" ? (
+							<ResourcesFlyout key={link.href} />
+						) : (
+							<button
+								key={link.href}
+								onClick={() => scrollToSection(link.href)}
+								style={{ ["--enter-delay" as string]: `${80 + i * 60}ms` }}
+								className={cn("enter", NAV_ITEM)}
+							>
+								{link.label}
+							</button>
+						)
+					)}
+				</nav>
+
+				{/* Right side - Auth + Theme */}
+				<div className="flex items-center gap-3">
+					<ThemeSwitcher />
+					<div className="hidden sm:flex items-center gap-2">
+						<SignedOut>
+							<SignInButton mode="modal" forceRedirectUrl="/home">
 								<button
-									key={link.href}
-									onClick={() => scrollToSection(link.href)}
-									className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+									style={{ ["--enter-delay" as string]: "260ms" }}
+									className={cn("enter", NAV_ITEM)}
 								>
-									{link.label}
+									Sign in
 								</button>
-							)
-						)}
+							</SignInButton>
+							<CtaButton size="sm" href="/sign-up" showArrow={false}>
+								Get Started
+							</CtaButton>
+						</SignedOut>
+						<SignedIn>
+							<CtaButton
+								size="sm"
+								showArrow={false}
+								onClick={() => router.push("/home")}
+							>
+								Go To Dashboard
+							</CtaButton>
+						</SignedIn>
 					</div>
 
-					{/* Right side - Auth + Theme */}
-					<div className="flex items-center gap-3">
-						<ThemeSwitcher />
-						<div className="hidden sm:flex items-center gap-2">
-							<SignedOut>
-								<SignInButton mode="modal" forceRedirectUrl="/home">
-									<button className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors px-3 py-1.5">
-										Sign in
-									</button>
-								</SignInButton>
-								<SignUpButton mode="modal" forceRedirectUrl="/home">
-									<AccentCTA size="sm">
-										Get Started
-									</AccentCTA>
-								</SignUpButton>
-							</SignedOut>
-							<SignedIn>
-								<Button
-									variant="default"
-									size="sm"
-									onClick={() => router.push("/home")}
-								>
-									Go To Dashboard
-								</Button>
-							</SignedIn>
-						</div>
-
-						{/* Mobile menu button */}
-						<div className="md:hidden">
-							<button
-								className="group inline-flex items-center justify-center rounded-lg p-2 text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
-								onClick={() => setIsMenuOpen(!isMenuOpen)}
-								aria-expanded={isMenuOpen}
-							>
-								<MenuIcon />
-							</button>
-						</div>
+					{/* Mobile menu button */}
+					<div className="md:hidden">
+						<button
+							className="group inline-flex items-center justify-center rounded-lg p-2 text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+							onClick={() => setIsMenuOpen(!isMenuOpen)}
+							aria-expanded={isMenuOpen}
+							aria-label={
+								isMenuOpen ? "Close navigation menu" : "Open navigation menu"
+							}
+						>
+							<MenuIcon />
+						</button>
 					</div>
 				</div>
+			</div>
 
-				{/* Mobile Navigation */}
-				<AnimatePresence>
-					{isMenuOpen && (
-						<motion.div
-							initial={{ height: 0, opacity: 0 }}
-							animate={{ height: "auto", opacity: 1 }}
-							exit={{ height: 0, opacity: 0 }}
-							transition={{ duration: 0.3 }}
-							className="md:hidden overflow-hidden border-t border-border"
-						>
-							<div className="px-4 py-3 space-y-1">
-								{navigationLinks.map((link) =>
-									link.href === "/help" ? (
-										<Link
-											key={link.href}
-											href="/help"
-											onClick={() => setIsMenuOpen(false)}
-											className="block w-full text-left px-3 py-2.5 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-accent rounded-lg transition-colors"
-										>
-											Help Center
-										</Link>
-									) : (
-										<button
-											key={link.href}
-											onClick={() => {
-												scrollToSection(link.href);
-												setIsMenuOpen(false);
-											}}
-											className="block w-full text-left px-3 py-2.5 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-accent rounded-lg transition-colors"
-										>
-											{link.label}
-										</button>
-									)
-								)}
-								<div className="pt-3 mt-2 border-t border-border flex items-center justify-center gap-2">
-									<SignedOut>
-										<SignInButton mode="modal" forceRedirectUrl="/home">
-											<Button variant="outline" size="sm">
-												Sign In
-											</Button>
-										</SignInButton>
-										<SignUpButton mode="modal" forceRedirectUrl="/home">
-											<AccentCTA size="sm">
-												Get Started
-											</AccentCTA>
-										</SignUpButton>
-									</SignedOut>
-									<SignedIn>
-										<Button
-											variant="default"
-											size="sm"
-											onClick={() => {
-												router.push("/home");
-												setIsMenuOpen(false);
-											}}
-										>
-											Go To Dashboard
+			{/* Mobile Navigation */}
+			<AnimatePresence>
+				{isMenuOpen && (
+					<m.div
+						initial={{ height: 0, opacity: 0 }}
+						animate={{ height: "auto", opacity: 1 }}
+						exit={{ height: 0, opacity: 0 }}
+						transition={{ duration: reduced ? 0 : 0.3 }}
+						className="md:hidden overflow-hidden border-t border-bp-guide-strong bg-bp-paper"
+					>
+						{/* Body scroll is locked while open — the panel itself must scroll
+						    or short viewports (landscape phones) lose the lower links. */}
+						<div className="max-h-[calc(100dvh-4rem)] overflow-y-auto px-4 py-3 space-y-1">
+							{navigationLinks.map((link) =>
+								link.href === "/help" ? (
+									<Link
+										key={link.href}
+										href="/help"
+										onClick={() => setIsMenuOpen(false)}
+										className="block w-full text-left px-3 py-2.5 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-accent rounded-lg transition-colors"
+									>
+										Help Center
+									</Link>
+								) : (
+									<button
+										key={link.href}
+										onClick={() => {
+											scrollToSection(link.href);
+											setIsMenuOpen(false);
+										}}
+										className="block w-full text-left px-3 py-2.5 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-accent rounded-lg transition-colors"
+									>
+										{link.label}
+									</button>
+								)
+							)}
+							<div className="pt-3 mt-2 border-t border-bp-line flex items-center justify-center gap-2">
+								<SignedOut>
+									<SignInButton mode="modal" forceRedirectUrl="/home">
+										<Button variant="outline" size="sm">
+											Sign In
 										</Button>
-									</SignedIn>
-								</div>
+									</SignInButton>
+									<CtaButton
+										size="sm"
+										href="/sign-up"
+										showArrow={false}
+										className="w-full sm:w-auto"
+									>
+										Get Started
+									</CtaButton>
+								</SignedOut>
+								<SignedIn>
+									<CtaButton
+										size="sm"
+										showArrow={false}
+										onClick={() => {
+											router.push("/home");
+											setIsMenuOpen(false);
+										}}
+									>
+										Go To Dashboard
+									</CtaButton>
+								</SignedIn>
 							</div>
-						</motion.div>
-					)}
-				</AnimatePresence>
-			</nav>
-
-			{/* Corner decorations connecting navbar to frame - desktop only */}
-			<svg
-				className="absolute top-0 -left-[49px] rotate-180 text-frame pointer-events-none max-[850px]:hidden"
-				width="50"
-				height="50"
-				viewBox="0 0 50 50"
-				fill="none"
-				aria-hidden="true"
-			>
-				<path
-					d="M5.50871e-06 0C-0.00788227 37.3001 8.99616 50.0116 50 50H5.50871e-06V0Z"
-					fill="currentColor"
-				/>
-			</svg>
-			<svg
-				className="absolute top-0 -right-[49px] rotate-90 text-frame pointer-events-none max-[850px]:hidden"
-				width="50"
-				height="50"
-				viewBox="0 0 50 50"
-				fill="none"
-				aria-hidden="true"
-			>
-				<path
-					d="M5.50871e-06 0C-0.00788227 37.3001 8.99616 50.0116 50 50H5.50871e-06V0Z"
-					fill="currentColor"
-				/>
-			</svg>
-		</motion.header>
+						</div>
+					</m.div>
+				)}
+			</AnimatePresence>
+		</header>
 	);
 }
 

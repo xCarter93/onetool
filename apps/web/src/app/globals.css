@@ -64,15 +64,15 @@
 
 :root {
 	--radius: 0.5rem;
-	/* Vertical room the bottom-anchored assistant notch (.assistant-notch,
-	   min-height 40px) needs above it. Consumed by the automations editor's
-	   floating right panel bottom inset so it clears the notch tab; keep >= the
-	   notch height plus a little breathing room. */
-	--assistant-notch-clearance: 3.5rem;
-	/* Shared notch geometry: ogee sweep width (x) and tab depth (y). Consumed
-	   by the .header-notch/.assistant-notch shape() paths AND the components'
-	   side padding / heights (px-(--notch-sweep), h-(--notch-depth)) so the
-	   flat floor and the curve region stay in lockstep. */
+	/* Vertical room the bottom-anchored assistant dock (assistant-dock.tsx,
+	   ~3.25rem tall incl. its pb-3 inset) needs above it. Consumed by the
+	   automations editor's floating right panel bottom inset so it clears the
+	   dock; keep >= the dock height plus a little breathing room. */
+	--assistant-notch-clearance: 4.5rem;
+	/* Header notch geometry: ogee sweep width (x) and tab depth (y). Consumed
+	   by the .header-notch shape() path AND the component's side padding /
+	   heights (px-(--notch-sweep), h-(--notch-depth)) so the flat floor and
+	   the curve region stay in lockstep. */
 	--notch-sweep: 56px;
 	--notch-depth: 40px;
 	--bg: oklch(0.97 0 0);
@@ -614,34 +614,6 @@
 
 	}
 
-	/* ========================================================================
-	   Assistant notch — the header notch mirrored vertically: a tab that
-	   bulges UP from the bottom frame band. Flat floor on top, ogee sweeps
-	   down both sides to the bottom edge (same --notch-sweep geometry). Sits
-	   flush on the viewport bottom; the frame behind it is the same color, so
-	   the hover lift stays visually fused. Fallback without border-shape:
-	   plain rounded-t tab.
-	   ======================================================================== */
-	.assistant-notch {
-		background-color: var(--sidebar);
-		min-height: var(--notch-depth);
-	}
-
-	@supports (border-shape: shape(from 0 0, close)) {
-		/* Exact vertical mirror of .header-notch — same sweep/depth, so top
-		   and bottom notches read as twins. */
-		.assistant-notch {
-			border-shape: shape(
-				from 0 100%,
-				curve to var(--notch-sweep) 0 with calc(var(--notch-sweep) / 2)
-					100% / calc(var(--notch-sweep) / 2) 0,
-				hline to calc(100% - var(--notch-sweep)),
-				curve to 100% 100% with calc(100% - var(--notch-sweep) / 2) 0 /
-					calc(100% - var(--notch-sweep) / 2) 100%,
-				close
-			);
-		}
-	}
 }
 
 @layer utilities {
@@ -950,4 +922,346 @@
 .ot-glyph .glyph-fill {
 	fill: currentColor;
 	stroke: none;
+}
+
+/* ============================================================================
+ * BLUEPRINT DRAFTING LANGUAGE — marketing surface only
+ *
+ * The landing page is drawn, not decorated: hairline construction guides,
+ * drafted object outlines, hatched regions, dimension strings, stamps. Two inks
+ * ever — zinc (object ink, derived from --foreground) and sky (construction
+ * ink). No third hue lives in artwork.
+ *
+ * These tokens must NEVER be used inside the workspace (CLAUDE.md rule). They
+ * are aliases + color-mix in the same style as the --illo-* block above: they
+ * resolve at use time, so .dark redefining the referenced tokens flips every
+ * drawing with no per-SVG work.
+ *
+ * Alphas are SPLIT per theme on purpose. The same alpha reads materially
+ * fainter on the #101828 dark paper than on the light zinc paper — reusing the
+ * light percentages makes every hairline vanish in dark mode.
+ * ========================================================================== */
+
+:root {
+	/* Paper. Knockout fill for shapes that punch through the lattice. Override
+	   on any wrapper that is not the page background (same footgun the
+	   --illo-knockout comment documents). */
+	--bp-paper: var(--background);
+
+	/* Construction guides — the faintest marks on the sheet. Guardrail: grid
+	   alpha never exceeds 15%. */
+	--bp-guide: color-mix(in oklch, var(--foreground) 8%, transparent);
+	--bp-guide-strong: color-mix(in oklch, var(--foreground) 14%, transparent);
+
+	/* Object ink. --bp-line is the hairline outline, --bp-line-strong is a
+	   "visible edge" line. Construction ink is always quieter than object ink. */
+	--bp-line: color-mix(in oklch, var(--foreground) 16%, transparent);
+	--bp-line-strong: color-mix(in oklch, var(--foreground) 34%, transparent);
+
+	/* Construction ink (sky). sky-600 clears 3:1 as a line on light paper; the
+	   brand #00A6F4 measures 2.71:1 there and is fills/tints only. --bp-anno is
+	   the ANNOTATION TEXT ink and must clear 4.5:1 — sky-700 does.
+	   Fallbacks are the literal Tailwind sky values already used elsewhere in
+	   this file (--ring is sky-600, --info is sky-500, --chart-2 is sky-400). */
+	--bp-ink: var(--color-sky-600, oklch(0.588 0.158 241.966));
+	--bp-anno: var(--color-sky-700, oklch(0.5 0.134 242.749));
+
+	/* Hatch marks a REGION (<=5% of a composition, <=3 patterns page-wide). */
+	--bp-hatch: color-mix(
+		in oklch,
+		var(--color-sky-600, oklch(0.588 0.158 241.966)) 10%,
+		transparent
+	);
+
+	/* One hairline weight per role; weight varies only to encode meaning —
+	   heavy = cut, med = visible edge, thin = annotation/construction. */
+	--lw-heavy: 1.5;
+	--lw-med: 1;
+	--lw-thin: 0.75;
+
+	/* Lattice geometry, shared by the CSS wallpaper utilities and lib/blueprint. */
+	--bp-grid-minor: 8px;
+	--bp-grid-major: 40px;
+	--bp-hatch-gap: 16px;
+
+	/* Marketing solid CTA ink — one value in both themes (AA-verified: white
+	   label 4.95:1; boundary 4.54:1 on light paper, 3.58:1 on dark). The brand
+	   #00A6F4 cannot carry a white label (2.71:1) and stays a tint/fill.
+	   Shared by cta-button and keyword-mark so the page has ONE solid sky. */
+	--cta-solid: #0275b8;
+	--cta-solid-hover: #0369a1;
+	--cta-solid-active: #075985;
+}
+
+.dark {
+	--bp-guide: color-mix(in oklch, var(--foreground) 9%, transparent);
+	--bp-guide-strong: color-mix(in oklch, var(--foreground) 14%, transparent);
+	--bp-line: color-mix(in oklch, var(--foreground) 22%, transparent);
+	--bp-line-strong: color-mix(in oklch, var(--foreground) 46%, transparent);
+	/* On #101828 the brand sky becomes a legitimate ink (~7.2:1). */
+	--bp-ink: var(--color-sky-500, oklch(0.685 0.169 237.323));
+	--bp-anno: var(--color-sky-400, oklch(0.746 0.16 232.661));
+	--bp-hatch: color-mix(
+		in oklch,
+		var(--color-sky-500, oklch(0.685 0.169 237.323)) 12%,
+		transparent
+	);
+}
+
+/* One media block, real accessibility win, near-zero cost. */
+@media (prefers-contrast: more) {
+	:root {
+		--bp-guide: color-mix(in oklch, var(--foreground) 12%, transparent);
+		--bp-guide-strong: color-mix(in oklch, var(--foreground) 20%, transparent);
+		--bp-line: color-mix(in oklch, var(--foreground) 40%, transparent);
+		--bp-line-strong: color-mix(in oklch, var(--foreground) 60%, transparent);
+	}
+	.dark {
+		--bp-guide: color-mix(in oklch, var(--foreground) 16%, transparent);
+		--bp-guide-strong: color-mix(in oklch, var(--foreground) 26%, transparent);
+		--bp-line: color-mix(in oklch, var(--foreground) 55%, transparent);
+		--bp-line-strong: color-mix(in oklch, var(--foreground) 72%, transparent);
+	}
+}
+
+/* Surface the blueprint inks to Tailwind. v4 auto-generates stroke-*, fill-*,
+   text-* and border-* from any --color-* key, so `stroke-bp-guide` /
+   `fill-bp-hatch` / `text-bp-anno` all exist without a plugin. Prefer these
+   over inline style. Never lighten a stroke with `opacity` — opacity stays
+   free as an animation channel; alpha is baked into the token. */
+@theme inline {
+	--color-bp-paper: var(--bp-paper);
+	--color-bp-guide: var(--bp-guide);
+	--color-bp-guide-strong: var(--bp-guide-strong);
+	--color-bp-line: var(--bp-line);
+	--color-bp-line-strong: var(--bp-line-strong);
+	--color-bp-ink: var(--bp-ink);
+	--color-bp-anno: var(--bp-anno);
+	--color-bp-hatch: var(--bp-hatch);
+}
+
+@layer utilities {
+	/* next-themes toggles .dark on <html>. Any colour transition on a blueprint
+	   mark cross-fades the entire lattice on theme toggle — an expensive
+	   full-layer repaint that reads laggy. Blueprint marks repaint instantly. */
+	[class*="stroke-bp-"],
+	[class*="fill-bp-"],
+	[class*="text-bp-"],
+	[class*="border-bp-"],
+	.bp-dotgrid,
+	.bp-graphpaper,
+	.bp-stamp {
+		transition: none;
+	}
+
+	/* ------------------------------------------------------------------
+	   Wallpaper. CSS gradients, not SVG patterns: cheaper to repaint, no
+	   fragment-id collisions, and mask-image fades come free. Put this on ONE
+	   fixed full-viewport layer per page, never per section, and never add
+	   will-change (a full-viewport composited layer buys nothing here).
+	   ------------------------------------------------------------------ */
+	.bp-dotgrid {
+		background-image: radial-gradient(var(--bp-line) 1px, transparent 1px);
+		background-size: var(--bp-grid-major) var(--bp-grid-major);
+		/* land dots on the device pixel grid at dpr 1 */
+		background-position: -0.5px -0.5px;
+	}
+
+	/* Major lines ONLY. The 8px minor lattice is unresolvable at fractional
+	   device pixel ratios (at dpr 1.8 a minor line lands every 14.4 device px,
+	   so rendered weight alternates in visible bands — reads as doubled or
+	   tripled rules). The 40px pitch lands on whole device pixels at common
+	   ratios and stays uniform. */
+	.bp-graphpaper {
+		background-image:
+			linear-gradient(to right, var(--bp-guide-strong) 1px, transparent 1px),
+			linear-gradient(to bottom, var(--bp-guide-strong) 1px, transparent 1px);
+		background-size: var(--bp-grid-major) var(--bp-grid-major);
+		background-position: -0.5px -0.5px;
+	}
+
+	/* Always fade the wallpaper or it reads as literal blueprint-paper kitsch. */
+	.bp-fade {
+		mask-image: radial-gradient(120% 90% at 50% 0%, #000 35%, transparent 78%);
+	}
+
+	/* Landing-only ink correction: the workspace's light muted-foreground
+	   (oklch 0.552) sits directly on the lattice paper here and reads washed
+	   out at body sizes. Darken it one step in light mode only; dark mode's
+	   value already clears. Scoped to the sheet shell so the workspace is
+	   untouched. */
+	/* Override --muted-foreground itself, not --muted-fg: var() chains resolve
+	   at the declaring element (:root), so re-pointing the inner var on a
+	   descendant is a no-op. */
+	.landing-ink {
+		--muted-foreground: oklch(0.47 0.016 285.938);
+	}
+	.dark .landing-ink {
+		--muted-foreground: oklch(0.705 0.015 286.067);
+	}
+
+	/* Off-screen sections skip layout/paint. contain-intrinsic-size is
+	   MANDATORY — without it the section collapses to 0 height (CLS +
+	   scrollbar jump). Do NOT put this on a sticky-rail section: it breaks
+	   position:sticky descendants and useScroll measurement. */
+	.bp-section {
+		content-visibility: auto;
+		contain-intrinsic-size: auto 720px;
+	}
+
+	/* ------------------------------------------------------------------
+	   Draw-on. The default technique for the whole system: pathLength="1" on
+	   the element rescales dasharray/dashoffset into 0-1 units, so no
+	   getTotalLength(), no DOM measurement, no client component. <DrawIn>
+	   flips .bp-in on the scene root and every child fires on its own delay.
+	   Only <path>/<line>/<polyline>/<polygon> may use this — pathLength on
+	   <rect>/<circle> has a broken Safari history.
+	   ------------------------------------------------------------------ */
+	.bp-draw {
+		stroke-dasharray: 1;
+		stroke-dashoffset: 1;
+	}
+	.bp-in .bp-draw {
+		animation: bp-draw 0.7s cubic-bezier(0.16, 1, 0.3, 1) var(--bp-delay, 0s)
+			forwards;
+	}
+	@keyframes bp-draw {
+		to {
+			stroke-dashoffset: 0;
+		}
+	}
+
+	.bp-fade-in {
+		opacity: 0;
+	}
+	.bp-in .bp-fade-in {
+		animation: bp-fade-in 0.45s cubic-bezier(0.16, 1, 0.3, 1)
+			var(--bp-delay, 0s) forwards;
+	}
+	@keyframes bp-fade-in {
+		to {
+			opacity: 1;
+		}
+	}
+
+	.bp-rise {
+		opacity: 0;
+	}
+	.bp-in .bp-rise {
+		animation: bp-rise 0.42s cubic-bezier(0.16, 1, 0.3, 1) var(--bp-delay, 0s)
+			forwards;
+	}
+	@keyframes bp-rise {
+		from {
+			opacity: 0;
+			translate: 0 8px;
+		}
+		to {
+			opacity: 1;
+			translate: 0 0;
+		}
+	}
+
+	/* A stamp APPEARS. It never slams, never bounces, never overshoots — one
+	   beat of ink settling onto paper. `scale` is a standalone property so the
+	   component's `rotate` stays independent. */
+	.bp-stamp {
+		opacity: 0;
+	}
+	.bp-in .bp-stamp {
+		animation: bp-stamp 0.34s cubic-bezier(0.2, 0, 0, 1) var(--bp-delay, 0s)
+			forwards;
+	}
+	@keyframes bp-stamp {
+		from {
+			opacity: 0;
+			scale: 1.035;
+		}
+		to {
+			opacity: 1;
+			scale: 1;
+		}
+	}
+
+	/* ------------------------------------------------------------------
+	   Entrance. The drawing-set chassis staggers first paint with plain CSS
+	   rather than an observer: authors set --enter-delay per element, so a
+	   whole sheet enters without shipping any JavaScript.
+	   ------------------------------------------------------------------ */
+	@keyframes enter-up {
+		from {
+			opacity: 0;
+			transform: translate3d(0, 12px, 0);
+		}
+		to {
+			opacity: 1;
+			transform: translate3d(0, 0, 0);
+		}
+	}
+
+	@keyframes enter-fade {
+		from {
+			opacity: 0;
+		}
+		to {
+			opacity: 1;
+		}
+	}
+
+	.enter {
+		opacity: 0;
+		animation: enter-up 700ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+		animation-delay: var(--enter-delay, 0ms);
+		/* Pre-promote the compositor layer and keep it backed, so the layer isn't
+		   allocated mid-animation (which flashes white for a frame on some GPUs,
+		   notably macOS Chrome). */
+		will-change: opacity, transform;
+		backface-visibility: hidden;
+		-webkit-backface-visibility: hidden;
+	}
+
+	.enter-fade {
+		opacity: 0;
+		animation: enter-fade 900ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+		animation-delay: var(--enter-delay, 0ms);
+		will-change: opacity;
+		backface-visibility: hidden;
+		-webkit-backface-visibility: hidden;
+	}
+
+	/* The mobile nav overlays the sheet rail; its corner marks would punch
+	   through the panel. */
+	body.nav-open [data-section-corner] {
+		opacity: 0;
+	}
+
+	/* MotionConfig reducedMotion="user" covers transform/layout ONLY — it does
+	   not touch stroke-dashoffset or CSS keyframes. Gate them here, and land
+	   every animated element on its TERMINAL state (never the hidden one:
+	   anything whose initial state is invisible and whose reveal is skipped is
+	   permanently invisible). */
+	@media (prefers-reduced-motion: reduce) {
+		.bp-draw,
+		.bp-in .bp-draw {
+			animation: none !important;
+			stroke-dashoffset: 0;
+		}
+		.bp-fade-in,
+		.bp-in .bp-fade-in,
+		.bp-rise,
+		.bp-in .bp-rise,
+		.bp-stamp,
+		.bp-in .bp-stamp {
+			animation: none !important;
+			opacity: 1;
+			translate: none;
+			scale: 1;
+		}
+		.enter,
+		.enter-fade {
+			animation: none !important;
+			opacity: 1;
+			transform: none;
+		}
+	}
 }

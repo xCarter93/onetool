@@ -221,7 +221,7 @@ export const gettingStartedArticles: HelpArticle[] = [
 				blocks: [
 					{
 						type: "paragraph",
-						text: "On the Business plan, the AI assistant sits in a small tab at the bottom of every page. Open it to ask questions about your data or to get something done without leaving the page you are on. Read more in [Meet the assistant](/help/ai-assistant).",
+						text: "On the Business plan, the AI assistant sits in a floating dock at the bottom center of every page. Open it to ask questions about your data or to get something done without leaving the page you are on. Read more in [Meet the assistant](/help/ai-assistant).",
 					},
 				],
 			},
