@@ -14,7 +14,7 @@ import { CursorGrid } from "./cursor-grid";
  */
 export function SheetStack({ children }: { children: ReactNode }) {
 	return (
-		<div className="relative mx-auto flex min-h-screen w-[calc(100%-1.5rem)] max-w-[1440px] flex-col border-x border-bp-guide-strong sm:w-[calc(100%-2.5rem)] lg:w-[calc(100%-3rem)]">
+		<div className="landing-ink relative mx-auto flex min-h-screen w-[calc(100%-1.5rem)] max-w-[1560px] flex-col border-x border-bp-guide-strong sm:w-[calc(100%-2.5rem)] lg:w-[calc(100%-3rem)]">
 			{/*
 			 * The lattice. ONE layer for the whole stack: the drawing sits on
 			 * continuous graph paper rather than per-section patches, so the grid

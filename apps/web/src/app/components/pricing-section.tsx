@@ -312,78 +312,112 @@ export default function PricingSection() {
 					>
 						<div
 							className={cn(
-								"relative h-full border border-bp-line p-6 sm:p-8",
+								"relative flex h-full flex-col border bg-bp-paper p-6 sm:p-8",
 								plan.popular
-									? "bg-muted shadow-[0_10px_28px_-22px_rgba(0,0,0,0.25)]"
-									: "bg-bp-paper",
+									? "border-primary/35 shadow-[0_20px_48px_-28px_rgba(2,117,184,0.45)]"
+									: "border-bp-line",
 							)}
 						>
+							{/* Popular plate carries a brand rule along its top edge. */}
+							{plan.popular && (
+								<span
+									aria-hidden="true"
+									className="absolute inset-x-0 top-0 h-0.5 bg-(--cta-solid)"
+								/>
+							)}
 							{/* Plan header */}
 							<div className="flex items-start justify-between gap-4">
-								<h3 className="text-2xl sm:text-3xl font-semibold text-foreground mb-2">
+								<h3 className="text-xl sm:text-2xl font-semibold text-foreground">
 									{plan.name}
 								</h3>
 								{plan.popular && (
-									<span className="shrink-0 border border-bp-line-strong px-2.5 py-1 text-[10px] font-semibold uppercase leading-none tracking-[0.14em] text-foreground">
+									<span className="shrink-0 rounded-full border border-primary/30 bg-primary/10 px-3 py-1.5 text-[10px] font-semibold uppercase leading-none tracking-[0.14em] text-(--cta-solid) dark:text-primary">
 										Most Popular
 									</span>
 								)}
 							</div>
-							<p className="text-sm text-muted-foreground mb-4">
+							<p className="mt-2 text-sm leading-6 text-muted-foreground">
 								{plan.description}
 							</p>
 
 							{/* Price */}
-							<div className="flex items-baseline mb-1">
-								<span className="text-3xl sm:text-4xl font-semibold tabular-nums text-foreground">
+							<div className="mt-6 flex items-baseline">
+								<span className="text-4xl sm:text-5xl font-semibold tabular-nums tracking-tight text-foreground">
 									$
 									<AnimatedNumber
 										value={isYearly ? plan.yearlyPrice : plan.price}
-										className="text-3xl sm:text-4xl font-semibold"
+										className="text-4xl sm:text-5xl font-semibold tabular-nums tracking-tight"
 										format={{
 											style: "decimal",
 											maximumFractionDigits: 0,
 										}}
 									/>
 								</span>
-								<span className="text-sm text-muted-foreground ml-1">
+								<span className="text-sm text-muted-foreground ml-1.5">
 									/{isYearly ? "year" : "month"}
 								</span>
 							</div>
-							{plan.price > 0 && (
-								<p className="text-xs text-muted-foreground mb-6">
-									Per organization · Unlimited users included
-								</p>
-							)}
-							{plan.price === 0 && <div className="mb-6" />}
+							<p className="mt-1.5 text-xs leading-5 text-muted-foreground">
+								{plan.price === 0
+									? "Free forever · No card required"
+									: isYearly
+										? `That's $${Math.round(plan.yearlyPrice / 12)}/month · Per organization, unlimited users`
+										: "Per organization · Unlimited users included"}
+							</p>
+
+							{/* Per-plan action */}
+							<div className="mt-6">
+								{plan.popular ? (
+									<CtaButton
+										onClick={handleGetStarted}
+										className="w-full"
+										showArrow={false}
+									>
+										{plan.buttonText}
+									</CtaButton>
+								) : (
+									<button
+										type="button"
+										onClick={handleGetStarted}
+										className="inline-flex h-12 w-full cursor-pointer items-center justify-center rounded-lg border border-bp-line-strong bg-transparent text-base font-semibold text-foreground transition-colors duration-200 hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+									>
+										Start free
+									</button>
+								)}
+							</div>
 
 							{/* Features */}
-							<ul className="space-y-2.5 mb-6">
-								{plan.features.map((feature, featureIndex) => (
-									<li key={featureIndex} className="flex items-start">
-										<span className="text-foreground grid place-content-center mt-0.5 mr-3 shrink-0 [&>svg]:w-4 [&>svg]:h-4 sm:[&>svg]:w-5 sm:[&>svg]:h-5">
-											{feature.icon}
-										</span>
-										<span className="text-sm text-muted-foreground">
-											{feature.text}
-										</span>
-									</li>
-								))}
-							</ul>
+							<div className="mt-8 border-t border-bp-line pt-6">
+								<h4 className="text-[11px] font-semibold uppercase leading-none tracking-[0.14em] text-bp-anno">
+									What you get
+								</h4>
+								<ul className="mt-4 space-y-3">
+									{plan.features.map((feature, featureIndex) => (
+										<li key={featureIndex} className="flex items-start gap-3">
+											<span className="mt-0.5 grid h-7 w-7 shrink-0 place-content-center rounded-lg border border-primary/20 bg-primary/10 text-(--cta-solid) dark:text-primary [&>svg]:h-3.5 [&>svg]:w-3.5">
+												{feature.icon}
+											</span>
+											<span className="pt-1 text-sm leading-5 text-muted-foreground">
+												{feature.text}
+											</span>
+										</li>
+									))}
+								</ul>
+							</div>
 
 							{/* Includes */}
 							{plan.includes.length > 0 && (
-								<div className="pt-4 border-t border-bp-line">
-									<h4 className="font-medium text-sm text-foreground mb-3">
+								<div className="mt-6 border-t border-bp-line pt-6">
+									<h4 className="text-[11px] font-semibold uppercase leading-none tracking-[0.14em] text-bp-anno">
 										{plan.includes[0]}
 									</h4>
-									<ul className="space-y-2.5">
+									<ul className="mt-4 space-y-3">
 										{plan.includes.slice(1).map((feature, featureIndex) => (
-											<li key={featureIndex} className="flex items-start">
-												<span className="h-5 w-5 border border-bp-line-strong grid place-content-center mt-0.5 mr-3 shrink-0">
-													<CheckCheck className="h-3 w-3 text-foreground" />
+											<li key={featureIndex} className="flex items-start gap-3">
+												<span className="mt-0.5 grid h-5 w-5 shrink-0 place-content-center rounded-full bg-primary/10">
+													<CheckCheck className="h-3 w-3 text-(--cta-solid) dark:text-primary" />
 												</span>
-												<span className="text-sm text-muted-foreground">
+												<span className="text-sm leading-5 text-muted-foreground">
 													{feature}
 												</span>
 											</li>
@@ -396,13 +430,6 @@ export default function PricingSection() {
 				))}
 			</div>
 
-			{/* CTA */}
-			<m.div
-				{...revealProps(reduced, { delay: 0.3 })}
-				className="mt-12 flex lg:mt-16"
-			>
-				<CtaButton onClick={handleGetStarted}>Get Started</CtaButton>
-			</m.div>
 		</section>
 	);
 }

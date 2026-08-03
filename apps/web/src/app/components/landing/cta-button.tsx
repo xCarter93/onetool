@@ -5,21 +5,23 @@ import Link from "next/link";
 import { forwardRef } from "react";
 
 /**
- * Marketing-only solid primary CTA.
+ * Marketing-only primary CTA, in the workspace's frosted-blue treatment
+ * (nova's `.cn-button-variant-default`: translucent sky tint + soft ring +
+ * blur) so landing and app primaries read as the same button. Kept separate
+ * from `ui/button` so the landing surface stays dependency-light.
  *
- * Deliberately does NOT use `ui/button` — the workspace's nova layer repaints
- * `.cn-button-variant-default` into a frosted `bg-primary/10` pill, which is
- * exactly the treatment this replaces. Scoped to the landing surface so the
- * workspace button keeps its own look.
- *
- * Colour: `--cta-solid` in globals.css — the AA-verified solid sky ink
- * (white label 4.95:1; the brand #00A6F4 is 2.71:1 and stays a tint/fill).
- * Hover darkens to sky-700 / active sky-800, so contrast only ever improves.
+ * Label colour: the brand #00A6F4 is 2.71:1 on the 10% tint and fails AA, so
+ * light mode labels in `--cta-solid` (AA-verified sky ink); dark mode's
+ * `--primary` clears contrast on the dark tint by itself.
  */
 const BASE =
-	"group relative inline-flex cursor-pointer items-center justify-center gap-2 rounded-lg font-semibold text-white " +
-	"bg-(--cta-solid) hover:bg-(--cta-solid-hover) active:bg-(--cta-solid-active) " +
-	"transition-colors duration-200 motion-reduce:transition-none " +
+	// Fill is the frosted tint composited OPAQUE (color-mix against --background,
+	// not alpha): on the lattice paper a translucent bg-primary/10 lets the grid
+	// lines print straight through the button.
+	"group relative inline-flex cursor-pointer items-center justify-center gap-2 rounded-lg font-semibold " +
+	"border border-primary/30 bg-[color-mix(in_srgb,var(--primary)_10%,var(--background))] text-(--cta-solid) shadow-sm dark:text-primary " +
+	"hover:border-primary/40 hover:bg-[color-mix(in_srgb,var(--primary)_16%,var(--background))] hover:shadow-md active:bg-[color-mix(in_srgb,var(--primary)_22%,var(--background))] " +
+	"transition-all duration-200 motion-reduce:transition-none " +
 	"focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background " +
 	"disabled:pointer-events-none disabled:opacity-60";
 

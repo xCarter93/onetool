@@ -10,7 +10,21 @@ import { CtaButton } from "@/app/components/landing/cta-button";
 import Image from "next/image";
 import { m, AnimatePresence, useReducedMotion } from "motion/react";
 import { cn } from "@/lib/utils";
-import { BookOpen, LifeBuoy, Rocket, type LucideIcon } from "lucide-react";
+import {
+	BarChart3,
+	BookOpen,
+	CalendarDays,
+	FileSignature,
+	LifeBuoy,
+	Map,
+	Receipt,
+	Rocket,
+	Sparkles,
+	Users,
+	Zap,
+	type LucideIcon,
+} from "lucide-react";
+import { chapterAnchor } from "@/app/components/landing/feature-anchors";
 
 const navigationLinks = [
 	{ href: "#features", label: "Features" },
@@ -22,28 +36,24 @@ const navigationLinks = [
 
 const resourceItems: {
 	icon: LucideIcon;
-	iconClassName: string;
 	label: string;
 	description: string;
 	href: string;
 }[] = [
 	{
 		icon: BookOpen,
-		iconClassName: "text-blue-500",
 		label: "Help Center",
 		description: "Guides for every part of OneTool",
 		href: "/help",
 	},
 	{
 		icon: Rocket,
-		iconClassName: "text-emerald-600",
 		label: "Getting started",
 		description: "Set up OneTool step by step",
 		href: "/help/getting-started",
 	},
 	{
 		icon: LifeBuoy,
-		iconClassName: "text-amber-500",
 		label: "Contact support",
 		description: "Email our team for a hand",
 		href: "mailto:support@onetool.biz",
@@ -56,49 +66,62 @@ const legalItems = [
 	{ label: "Data Security", href: "/data-security" },
 ];
 
-/** Drawing-set index rows. `sheet` is the real sheet code of the page section a
-    row scrolls to — never invented. Copy is agent-draft, pending Patrick. */
-const sheetIndexRows: {
-	ordinal: string;
-	sheet: string;
+/** Full capability list. Anchors resolve to the feature chapters (A-101…A-107),
+    so every row lands on the scene that demos it. Copy is agent-draft, pending
+    Patrick. */
+const featureItems: {
+	icon: LucideIcon;
 	label: string;
 	description: string;
 	href: string;
 }[] = [
 	{
-		ordinal: "01",
-		sheet: "A-501",
+		icon: Users,
+		label: "Clients & CRM",
+		description: "Every client, contact, and property in one place",
+		href: `#${chapterAnchor("clients")}`,
+	},
+	{
+		icon: FileSignature,
 		label: "Quotes & e-sign",
-		description: "Send quotes clients can sign in the driveway",
-		href: "#features",
+		description: "Send quotes clients sign from their phone",
+		href: `#${chapterAnchor("quote-to-paid")}`,
 	},
 	{
-		ordinal: "02",
-		sheet: "A-501",
-		label: "Scheduling & jobs",
-		description: "Jobs on a calendar your crew actually checks",
-		href: "#features",
-	},
-	{
-		ordinal: "03",
-		sheet: "A-501",
+		icon: Receipt,
 		label: "Invoices & payments",
-		description: "Invoices that chase themselves and get paid online",
-		href: "#features",
+		description: "Flip the quote to an invoice, get paid online",
+		href: `#${chapterAnchor("quote-to-paid")}`,
 	},
 	{
-		ordinal: "04",
-		sheet: "A-101",
+		icon: CalendarDays,
+		label: "Scheduling & tasks",
+		description: "A day plan your crew actually runs",
+		href: `#${chapterAnchor("tasks")}`,
+	},
+	{
+		icon: Map,
+		label: "Route planning",
+		description: "Stops become an optimized route",
+		href: `#${chapterAnchor("routing")}`,
+	},
+	{
+		icon: Zap,
 		label: "Automations",
-		description: "Set the rule once; it runs at 7am without you",
-		href: "#how-it-works",
+		description: "Rules that run while you sleep",
+		href: `#${chapterAnchor("automations")}`,
 	},
 	{
-		ordinal: "05",
-		sheet: "A-101",
-		label: "Assistant & reports",
-		description: "Ask your numbers a question, get the chart back",
-		href: "#how-it-works",
+		icon: Sparkles,
+		label: "AI assistant",
+		description: "Ask in plain English, it does the work",
+		href: `#${chapterAnchor("assistant")}`,
+	},
+	{
+		icon: BarChart3,
+		label: "Reports",
+		description: "Live numbers without the spreadsheet",
+		href: `#${chapterAnchor("reports")}`,
 	},
 ];
 
@@ -223,68 +246,50 @@ function FeaturesFlyout({
 						style={{ translateX: "-50%" }}
 						className="absolute left-1/2 top-full pt-4"
 					>
-						{/* The nav menu as the drawing set's index page: no. · title · sheet ref. */}
+						{/* Full capability grid — each row lands on its feature chapter. */}
 						<div
 							id={panelId}
-							className="relative w-[26rem] lg:w-[30rem] rounded-2xl border border-border bg-popover text-popover-foreground shadow-2xl/20"
+							className="relative w-[34rem] lg:w-[38rem] rounded-2xl border border-border bg-popover text-popover-foreground shadow-2xl/20"
 						>
 							<div
 								className="absolute -top-1.5 left-1/2 h-3 w-3 -translate-x-1/2 rotate-45 rounded-[2px] border-l border-t border-border bg-popover"
 								aria-hidden="true"
 							/>
-							<div className="flex items-baseline justify-between px-5 pb-2.5 pt-4">
-								<p className="text-[11px] font-semibold uppercase leading-none tracking-[0.14em] text-bp-anno">
-									Sheet index
-								</p>
-								<p className="text-[10px] font-medium uppercase leading-none tracking-[0.14em] text-muted-foreground">
-									Ref
-								</p>
-							</div>
-							<div className="divide-y divide-bp-line border-t border-bp-line">
-								{sheetIndexRows.map((row) => (
+							<div className="grid grid-cols-2 gap-1 p-3">
+								{featureItems.map((item) => (
 									<button
-										key={row.label}
+										key={item.label}
 										onClick={() => {
-											onNavigate(row.href);
+											onNavigate(item.href);
 											close();
 										}}
-										className={cn(
-											"group flex w-full items-baseline gap-4 px-5 py-3.5 text-left",
-											"transition-colors hover:bg-accent focus-visible:bg-accent"
-										)}
+										className="group flex items-start gap-3 rounded-xl p-3 text-left transition-colors hover:bg-accent focus-visible:bg-accent"
 									>
-										<span
-											aria-hidden="true"
-											className="w-5 shrink-0 text-[11px] font-medium leading-5 tabular-nums text-muted-foreground"
-										>
-											{row.ordinal}
+										<span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-primary/20 bg-primary/10 text-primary">
+											<item.icon className="h-4.5 w-4.5" />
 										</span>
-										<span className="min-w-0 flex-1">
+										<span className="min-w-0">
 											<span className="block text-sm font-semibold leading-5 text-foreground">
-												{row.label}
+												{item.label}
 											</span>
 											<span className="mt-0.5 block text-xs leading-5 text-muted-foreground">
-												{row.description}
+												{item.description}
 											</span>
-										</span>
-										<span className="shrink-0 text-[11px] font-semibold uppercase leading-5 tracking-[0.14em] tabular-nums text-bp-anno">
-											{row.sheet}
 										</span>
 									</button>
 								))}
 							</div>
 							<button
 								onClick={() => {
-									onNavigate("#features");
+									onNavigate("#how-it-works");
 									close();
 								}}
-								className="flex w-full items-center gap-2 rounded-b-2xl border-t border-bp-line px-5 py-3 text-left text-[11px] font-semibold uppercase leading-none tracking-[0.14em] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+								className="flex w-full items-center justify-between rounded-b-2xl border-t border-border px-6 py-3.5 text-left text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
 							>
-								Full capability index
-								<span
-									aria-hidden="true"
-									className="h-px w-6 bg-bp-line-strong"
-								/>
+								Watch a job run through it
+								<span aria-hidden="true" className="text-primary">
+									→
+								</span>
 							</button>
 						</div>
 					</m.div>
@@ -340,9 +345,9 @@ function ResourcesFlyout() {
 									{resourceItems.map((item) => {
 										const inner = (
 											<>
-												<item.icon
-													className={`mt-0.5 h-4 w-4 shrink-0 ${item.iconClassName}`}
-												/>
+												<span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-primary/20 bg-primary/10 text-primary">
+													<item.icon className="h-4.5 w-4.5" />
+												</span>
 												<span>
 													<span className="block text-sm font-medium text-foreground">
 														{item.label}

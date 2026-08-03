@@ -8,7 +8,7 @@ type Falloff = "linear" | "smooth" | "sharp";
 export interface CursorGridProps {
 	/** Lattice pitch in px. Omit to read `--bp-grid-major` at mount (the printed pitch). */
 	cellSize?: number;
-	/** Omit to read `--bp-ink` at mount and on every theme toggle. */
+	/** Omit to read `--primary` at mount and on every theme toggle. */
 	color?: string;
 	radius?: number;
 	falloff?: Falloff;
@@ -183,12 +183,21 @@ export function CursorGrid({
 			parseFloat(getComputedStyle(sizer).getPropertyValue("--bp-grid-major"));
 		const pitch = Number.isFinite(cell) && cell > 0 ? cell : FALLBACK_CELL;
 
+		// Highlighted cells respond in brand sky, not the print ink. Each theme
+		// needs its own pair: light paper takes --cta-solid (the brand #00A6F4 at
+		// 0.35 alpha all but vanishes on white) with a moderate boost; the dark
+		// sheet keeps --primary with a stronger one.
 		let ink = "currentColor";
+		let boost = 1;
 		const resolveInk = () => {
+			const styles = getComputedStyle(sizer);
+			const dark = document.documentElement.classList.contains("dark");
 			ink =
 				color ||
-				getComputedStyle(sizer).getPropertyValue("--bp-ink").trim() ||
+				styles.getPropertyValue(dark ? "--primary" : "--cta-solid").trim() ||
+				styles.getPropertyValue("--bp-ink").trim() ||
 				"currentColor";
+			boost = dark ? 1.7 : 1.35;
 		};
 		resolveInk();
 
@@ -373,7 +382,7 @@ export function CursorGrid({
 					if (ramp <= 0) continue;
 					const dim =
 						sheetW > 0 ? centreDim((col * pitch + pitch / 2) / sheetW) : 1;
-					const level = a * ramp * dim;
+					const level = Math.min(1, a * boost) * ramp * dim;
 
 					// Path on the integer multiple of the pitch: a 1px stroke there covers
 					// exactly the printed major line's pixel.

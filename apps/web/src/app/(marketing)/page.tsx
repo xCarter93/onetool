@@ -9,7 +9,7 @@ import AppNavbar from "@/app/components/app-navbar";
 import Hero from "@/app/components/landing/hero/hero";
 import { ValueProp } from "@/app/components/landing/value-prop";
 import { FeatureDetail } from "@/app/components/landing/feature-detail/feature-detail";
-import { SceneRail } from "@/app/components/landing/scenes";
+import { FeatureChapters } from "@/app/components/landing/feature-chapters";
 import PricingSection from "@/app/components/pricing-section";
 import FAQSection from "@/app/components/faq-section";
 import { FinalCta } from "@/app/components/landing/final-cta";
@@ -32,9 +32,9 @@ export default function Home() {
 					<SheetSection code="A-502" title="Capabilities">
 						<FeatureDetail />
 					</SheetSection>
-					{/* SceneRail owns id="how-it-works" itself — never duplicate it here. */}
+					{/* FeatureChapters owns id="how-it-works" itself — never duplicate it here. */}
 					<SheetSection code="A-101" title="How it works">
-						<SceneRail />
+						<FeatureChapters />
 					</SheetSection>
 					<SheetSection code="G-002" title="Estimate">
 						<PricingSection />

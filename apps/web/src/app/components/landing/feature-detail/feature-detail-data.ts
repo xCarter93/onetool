@@ -527,9 +527,9 @@ export const CAPABILITIES = [
 /* ---------------------------------------------------------------------------
  * The capability track
  *
- * The same eight index names, regrouped into seven cards so each one carries a
- * sentence instead of only a label. Mobile is not its own card — it is the same
- * visit opened on a phone, so it belongs in the scheduling card.
+ * One card per product surface — the full navbar feature list plus the portal
+ * and the inbox. Mobile is not its own card: it is the same visit opened on a
+ * phone, so it lives in the scheduling and routing cards.
  *
  * DRAFT copy. Every claim traces to shipped behaviour: BoldSign e-sign on
  * quotes, `createFromQuote` (invoices.ts) off an approved quote, portal card
@@ -545,10 +545,12 @@ export type CapabilityIcon =
 	| "clients"
 	| "quotes"
 	| "schedule"
+	| "routing"
 	| "invoices"
 	| "portal"
 	| "automations"
-	| "inbox";
+	| "inbox"
+	| "assistant";
 
 export type CapabilityCard = {
 	readonly id: string;
@@ -576,37 +578,51 @@ export const CAPABILITY_CARDS: readonly CapabilityCard[] = [
 	{
 		id: "schedule",
 		refCode: "CAP 03",
-		title: "Scheduling",
+		title: "Scheduling & tasks",
 		body: "An approved quote turns into scheduled visits and tasks on the calendar. The crew opens that same visit on their phone, with the address and the notes already on it.",
 		icon: "schedule",
 	},
 	{
-		id: "invoices",
+		id: "routing",
 		refCode: "CAP 04",
+		title: "Route planning",
+		body: "Pick the day's visits and get them back as an ordered route on a real map — drive it stop by stop from the phone instead of eyeballing addresses.",
+		icon: "routing",
+	},
+	{
+		id: "invoices",
+		refCode: "CAP 05",
 		title: "Invoices & payments",
 		body: "Convert the approved quote into an invoice off the same numbers, then take card payments through Stripe. The money lands in your own bank account.",
 		icon: "invoices",
 	},
 	{
 		id: "portal",
-		refCode: "CAP 05",
+		refCode: "CAP 06",
 		title: "Client portal",
 		body: "Your clients get a portal of their own to review the quote, sign it, read the invoice and pay it — under your business name, not ours.",
 		icon: "portal",
 	},
 	{
 		id: "automations",
-		refCode: "CAP 06",
+		refCode: "CAP 07",
 		title: "Automations",
 		body: "Rules watch for things like a quote moving from sent to approved, then do the next step for you — create the task, send the email. Follow-ups stop waiting on your memory.",
 		icon: "automations",
 	},
 	{
 		id: "inbox",
-		refCode: "CAP 07",
-		title: "Inbox & assistant",
-		body: "Email to and from a client stays on one thread beside their jobs. Ask the assistant for something like revenue by month and it reads your real invoices.",
+		refCode: "CAP 08",
+		title: "Inbox & email",
+		body: "Email to and from a client stays on one thread beside their jobs — send from the record, and the reply lands back on it. No more digging through a personal inbox.",
 		icon: "inbox",
+	},
+	{
+		id: "assistant",
+		refCode: "CAP 09",
+		title: "Assistant & reports",
+		body: "Ask in plain English — schedule the follow-up, plan the route, or chart revenue by month. Reports read your real quotes and invoices, not an export.",
+		icon: "assistant",
 	},
 ];
 
@@ -616,4 +632,4 @@ export const CAPABILITY_CARDS: readonly CapabilityCard[] = [
  * scrolling would otherwise hide.
  */
 export const CAPABILITY_SUMMARY =
-	"Seven capabilities, in the order one job travels through them: clients, quotes and e-signatures, scheduling, invoices and payments, the client portal, automations, and the shared inbox with the assistant.";
+	"Nine capabilities, in the order one job travels through them: clients, quotes and e-signatures, scheduling and tasks, route planning, invoices and payments, the client portal, automations, the shared inbox, and the assistant with reports.";

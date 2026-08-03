@@ -15,6 +15,8 @@ interface FeatureAnimationProps {
 	feature: FeatureKey;
 	/** Show playback controls (default: chromeless ambient loop). */
 	controls?: boolean;
+	/** Pin the scene to one theme regardless of the site theme (night chapter). */
+	forceTheme?: "light" | "dark";
 	className?: string;
 }
 
@@ -25,6 +27,7 @@ interface FeatureAnimationProps {
 export function FeatureAnimation({
 	feature,
 	controls = false,
+	forceTheme,
 	className,
 }: FeatureAnimationProps) {
 	const { resolvedTheme } = useTheme();
@@ -58,7 +61,9 @@ export function FeatureAnimation({
 			<Player
 				ref={playerRef}
 				component={video.component}
-				inputProps={{ theme: resolvedTheme === "dark" ? "dark" : "light" }}
+				inputProps={{
+					theme: forceTheme ?? (resolvedTheme === "dark" ? "dark" : "light"),
+				}}
 				durationInFrames={video.durationInFrames}
 				fps={VIDEO_CONFIG.fps}
 				compositionWidth={VIDEO_CONFIG.width}

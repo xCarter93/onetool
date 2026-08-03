@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import { FooterWordmark } from "@/app/components/landing/footer-wordmark";
 
 const navigation = {
 	solutions: [
@@ -75,7 +76,9 @@ export default function Footer() {
 	}
 
 	return (
-		<footer className="border-t border-bp-guide-strong p-6 sm:p-10 lg:p-14">
+		// No border-t: the G-004 sheet above already draws its border-b — stacking
+		// both prints a doubled seam rule.
+		<footer className="p-6 sm:p-10 lg:p-14">
 			<div className="grid grid-cols-1 gap-12 lg:grid-cols-[auto_1fr] lg:gap-16">
 				<div className="space-y-5">
 					<button onClick={scrollToTop} className={FOOTER_LINK}>
@@ -141,13 +144,9 @@ export default function Footer() {
 					</div>
 				</div>
 
-				{/* Sheet-bottom wordmark: artwork, not text — aria-hidden and unselectable. */}
-				<p
-					aria-hidden="true"
-					className="mt-10 select-none text-[16vw] font-semibold leading-[0.78] tracking-[-0.05em] text-bp-guide-strong"
-				>
-					OneTool
-				</p>
+				{/* Sheet-bottom wordmark: artwork, not text — aria-hidden, and
+				    particle-settled when motion is allowed. */}
+				<FooterWordmark />
 			</div>
 		</footer>
 	);

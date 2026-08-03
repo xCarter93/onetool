@@ -36,7 +36,9 @@ export function KeywordMark({
 	className?: string;
 }) {
 	return (
-		<span className={`relative mx-[0.12em] inline-block ${className}`}>
+		// mx must exceed the frame's -inset overhang (0.12em) or the dashed
+		// rectangle sits flush against the neighbouring words.
+		<span className={`relative mx-[0.3em] inline-block ${className}`}>
 			<span
 				className="relative z-[1] inline-block rounded-[0.06em] px-[0.22em] pb-[0.04em]"
 				style={{

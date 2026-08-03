@@ -8,6 +8,8 @@ import {
 	FileSignature,
 	Globe,
 	Mail,
+	Map,
+	Sparkles,
 	Users,
 	Workflow,
 	type LucideIcon,
@@ -60,10 +62,12 @@ const ICONS: Record<CapabilityIcon, LucideIcon> = {
 	clients: Users,
 	quotes: FileSignature,
 	schedule: CalendarDays,
+	routing: Map,
 	invoices: CreditCard,
 	portal: Globe,
 	automations: Workflow,
 	inbox: Mail,
+	assistant: Sparkles,
 };
 
 export function FeatureDetail() {
@@ -91,7 +95,9 @@ export function FeatureDetail() {
 			return;
 		}
 		const scrollable = track.scrollWidth - track.clientWidth;
-		const pages = Math.max(1, Math.round(scrollable / pitch) + 1);
+		// ceil, not round: a trailing partial page must still be reachable or the
+		// Next button disables with the last card half clipped.
+		const pages = Math.max(1, Math.ceil(scrollable / pitch) + 1);
 		setPageCount(pages);
 		setPage(Math.min(pages - 1, Math.max(0, Math.round(track.scrollLeft / pitch))));
 	}, [step]);
@@ -156,13 +162,16 @@ export function FeatureDetail() {
 					<p className="sr-only">{CAPABILITY_SUMMARY}</p>
 
 					{/* Focusable so the scroller is reachable and pannable by keyboard —
-					    the cards hold no interactive elements of their own. */}
+					    the cards hold no interactive elements of their own. Margins are
+					    ml/mr longhands, not mx: the track bleeds through the section's
+					    right padding at every breakpoint so the last card scrolls fully
+					    clear instead of clipping under the plate edge. */}
 					<div
 						ref={trackRef}
 						tabIndex={0}
 						role="group"
 						aria-label="Capabilities"
-						className="scrollbar-hide -mx-6 flex snap-x snap-mandatory items-stretch gap-4 overflow-x-auto px-6 scroll-pl-6 sm:scroll-pl-10 lg:scroll-pl-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background sm:-mx-10 sm:px-10 lg:mx-0 lg:px-0"
+						className="scrollbar-hide -ml-6 -mr-6 flex snap-x snap-mandatory items-stretch gap-4 overflow-x-auto pl-6 pr-6 scroll-pl-6 sm:-ml-10 sm:-mr-10 sm:pl-10 sm:pr-10 sm:scroll-pl-10 lg:ml-0 lg:-mr-14 lg:pl-0 lg:pr-14 lg:scroll-pl-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
 					>
 						{CAPABILITY_CARDS.map((card) => (
 							<Card key={card.id} card={card} />
@@ -208,32 +217,40 @@ export function FeatureDetail() {
 	);
 }
 
-/** A square hairline plate. Not clickable — there is nothing behind it. */
+/**
+ * A hairline plate in the pricing cards' vocabulary: frosted sky icon tile,
+ * a brand top rule that inks in on hover, and the ref code demoted to a
+ * bottom meta rule. Not clickable — there is nothing behind it.
+ */
 function Card({ card }: { card: CapabilityCard }) {
 	const Icon = ICONS[card.icon];
 
 	return (
 		<article
 			data-card
-			className="flex w-[18rem] shrink-0 snap-start flex-col border border-bp-line bg-bp-paper p-6 sm:w-[20rem]"
+			className="group relative flex w-[18rem] shrink-0 snap-start flex-col border border-bp-line bg-bp-paper p-6 transition-colors duration-200 hover:border-primary/35 motion-reduce:transition-none sm:w-[20rem]"
 		>
-			<div className="flex items-center justify-between gap-4">
-				<span
-					aria-hidden="true"
-					className="flex h-9 w-9 items-center justify-center border border-bp-line text-bp-anno"
-				>
-					<Icon className="h-4 w-4" strokeWidth={1.5} />
-				</span>
-				<span className="text-[10px] font-semibold uppercase leading-none tracking-[0.14em] tabular-nums text-muted-foreground">
+			<span
+				aria-hidden="true"
+				className="pointer-events-none absolute inset-x-0 top-0 h-0.5 bg-transparent transition-colors duration-200 group-hover:bg-(--cta-solid) motion-reduce:transition-none"
+			/>
+			<span
+				aria-hidden="true"
+				className="flex h-9 w-9 items-center justify-center rounded-lg border border-primary/20 bg-primary/10 text-(--cta-solid) dark:text-primary"
+			>
+				<Icon className="h-4 w-4" strokeWidth={1.75} />
+			</span>
+			<h3 className="mt-6 text-lg font-semibold leading-tight tracking-tight text-foreground">
+				{card.title}
+			</h3>
+			<p className="mb-6 mt-3 text-sm leading-relaxed text-muted-foreground">
+				{card.body}
+			</p>
+			<div className="mt-auto border-t border-bp-line pt-4">
+				<span className="text-[10px] font-semibold uppercase leading-none tracking-[0.14em] tabular-nums text-bp-anno">
 					{card.refCode}
 				</span>
 			</div>
-			<h3 className="mt-8 text-lg font-semibold leading-tight tracking-tight text-foreground">
-				{card.title}
-			</h3>
-			<p className="mt-3 text-sm leading-relaxed text-muted-foreground">
-				{card.body}
-			</p>
 		</article>
 	);
 }

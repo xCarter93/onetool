@@ -1067,23 +1067,37 @@
 		background-position: -0.5px -0.5px;
 	}
 
+	/* Major lines ONLY. The 8px minor lattice is unresolvable at fractional
+	   device pixel ratios (at dpr 1.8 a minor line lands every 14.4 device px,
+	   so rendered weight alternates in visible bands — reads as doubled or
+	   tripled rules). The 40px pitch lands on whole device pixels at common
+	   ratios and stays uniform. */
 	.bp-graphpaper {
 		background-image:
-			linear-gradient(to right, var(--bp-guide) 1px, transparent 1px),
-			linear-gradient(to bottom, var(--bp-guide) 1px, transparent 1px),
 			linear-gradient(to right, var(--bp-guide-strong) 1px, transparent 1px),
 			linear-gradient(to bottom, var(--bp-guide-strong) 1px, transparent 1px);
-		background-size:
-			var(--bp-grid-minor) var(--bp-grid-minor),
-			var(--bp-grid-minor) var(--bp-grid-minor),
-			var(--bp-grid-major) var(--bp-grid-major),
-			var(--bp-grid-major) var(--bp-grid-major);
+		background-size: var(--bp-grid-major) var(--bp-grid-major);
 		background-position: -0.5px -0.5px;
 	}
 
 	/* Always fade the wallpaper or it reads as literal blueprint-paper kitsch. */
 	.bp-fade {
 		mask-image: radial-gradient(120% 90% at 50% 0%, #000 35%, transparent 78%);
+	}
+
+	/* Landing-only ink correction: the workspace's light muted-foreground
+	   (oklch 0.552) sits directly on the lattice paper here and reads washed
+	   out at body sizes. Darken it one step in light mode only; dark mode's
+	   value already clears. Scoped to the sheet shell so the workspace is
+	   untouched. */
+	/* Override --muted-foreground itself, not --muted-fg: var() chains resolve
+	   at the declaring element (:root), so re-pointing the inner var on a
+	   descendant is a no-op. */
+	.landing-ink {
+		--muted-foreground: oklch(0.47 0.016 285.938);
+	}
+	.dark .landing-ink {
+		--muted-foreground: oklch(0.705 0.015 286.067);
 	}
 
 	/* Off-screen sections skip layout/paint. contain-intrinsic-size is

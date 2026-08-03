@@ -4,14 +4,14 @@ import Link from "next/link";
 import { Check } from "lucide-react";
 import { CtaButton } from "../cta-button";
 import { KeywordMark } from "../blueprint";
-import { DraftedMark } from "./drafted-mark";
+import { ParticleMark } from "./particle-mark";
 
 /**
  * G-001 — the cover sheet.
  *
  * Server component end to end. The only JavaScript below this line is the CTA
- * (a client component for its hover arrow) and the mark plate's own draw-on
- * choreography; the copy side enters on the CSS `.enter` stagger.
+ * (a client component for its hover arrow) and the particle mark plate; the
+ * copy side enters on the CSS `.enter` stagger.
  *
  * Anatomy is the drawing-set chassis: a two-cell split (copy | part detail)
  * over a two-cell caption band (positioning line | facts), every cell edge
@@ -133,14 +133,15 @@ export default function Hero() {
 				</div>
 
 				{/*
-				 * The part detail. Suppressed on phones only: a second full drawing
-				 * above the fold just pushes the real content further down.
+				 * The mark plate: the logo as particles that assemble on load and
+				 * scatter under the pointer. Suppressed on phones only: a second
+				 * full plate above the fold just pushes the real content down.
 				 */}
 				<div
 					style={delay(200)}
 					className="enter-fade relative hidden min-h-80 items-center justify-center px-6 py-12 sm:flex lg:min-h-160 lg:px-14"
 				>
-					<DraftedMark className="w-full max-w-sm lg:max-w-none" />
+					<ParticleMark className="max-w-sm lg:max-w-lg" />
 				</div>
 			</div>
 
