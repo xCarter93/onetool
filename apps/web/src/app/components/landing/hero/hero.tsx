@@ -58,12 +58,28 @@ export default function Hero() {
 						G-001 · Cover
 					</p>
 
+					{/*
+					 * Three explicit lines, not one wrapping block. "Manage with
+					 * Confidence" never fits the copy column at this scale, so the break
+					 * is authored rather than discovered — and the framed word then gets
+					 * a real margin instead of relying on line-height, which can't clear
+					 * KeywordMark's 0.12em frame overhang plus the descenders above it.
+					 * Margins are em so they track the responsive type sizes.
+					 */}
 					<h1
 						style={delay(380)}
-						className="enter mt-6 text-4xl font-medium leading-[1.05] tracking-tighter text-foreground sm:text-5xl lg:text-[4rem] xl:text-[5rem]"
+						className="enter mt-6 text-balance text-4xl font-medium leading-[1.08] tracking-tighter text-foreground sm:text-5xl lg:text-[3.5rem] xl:text-[4.25rem]"
 					>
-						Run the whole <KeywordMark>job</KeywordMark>{" "}
-						<span className="text-muted-foreground">from your phone.</span>
+						<span className="block">Simplify Your Business</span>
+						<span className="mt-[0.12em] block text-muted-foreground">
+							Manage with
+						</span>
+						{/* -ml cancels KeywordMark's 0.3em side margin less the frame's
+						    0.12em overhang, landing the dashed rectangle flush with the
+						    text column instead of a hair inside it. */}
+						<span className="mt-[0.4em] block">
+							<KeywordMark className="-ml-[0.18em]">Confidence</KeywordMark>
+						</span>
 					</h1>
 
 					<div
@@ -154,7 +170,8 @@ export default function Hero() {
 						style={delay(680)}
 						className="enter max-w-md text-base leading-relaxed text-muted-foreground sm:text-lg"
 					>
-						Quote it, schedule it, invoice it, get paid — one tool, one price.
+						OneTool brings together quotes, projects, clients, and invoices —
+						everything you need to keep work moving.
 					</p>
 				</div>
 				<div className="grid grid-cols-3 px-6 py-10 sm:px-10 lg:px-14">
