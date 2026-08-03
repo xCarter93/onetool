@@ -172,11 +172,13 @@ function FaqRow({
 						{faq.question}
 					</span>
 				</span>
+				{/* Opaque plate on --border, not a --bp-* hairline: this is a control
+				    boundary, so it owes 3:1 non-text contrast in both themes. */}
 				<m.span
 					aria-hidden="true"
 					animate={{ rotate: isOpen ? 180 : 0 }}
 					transition={{ duration: reduced ? 0 : 0.3 }}
-					className="inline-flex h-8 w-8 shrink-0 items-center justify-center border border-bp-line text-foreground"
+					className="inline-flex h-8 w-8 shrink-0 items-center justify-center border border-border bg-card text-foreground"
 				>
 					<ChevronDown className="h-4 w-4" />
 				</m.span>
