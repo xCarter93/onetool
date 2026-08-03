@@ -68,12 +68,9 @@ export function FeatureAnimation({
 		 * playing, so one dropped start strands an ambient embed on a still frame
 		 * with no control a visitor could use to recover it.
 		 *
-		 * isPlaying() is a trustworthy signal here *specifically* because nothing
-		 * in these compositions can reach Remotion's buffering gate — the one state
-		 * that freezes frames while isPlaying() stays true. That gate is only fed
-		 * by <Audio>/<Video> elements and by <Img> when passed `pauseWhenLoading`;
-		 * our scenes use plain <Img> and no media. If a scene ever gains audio or
-		 * video, this check stops being sufficient on its own.
+		 * NOTE: isPlaying() only reports that play() was called — it can stay true
+		 * while frames are frozen (see the `initiallyMuted` comment on <Player>).
+		 * This loop guards a dropped play(), not a stalled frame loop.
 		 */
 		let raf = 0;
 		const ensurePlaying = () => {
@@ -101,6 +98,26 @@ export function FeatureAnimation({
 
 	const video = FEATURE_VIDEOS[feature];
 
+	/*
+	 * initiallyMuted / numberOfSharedAudioTags / showVolumeControls are what
+	 * actually make autoplay work. No scene here contains <Audio> or <Video>, so
+	 * Remotion's audio path is dead weight that only ever breaks playback:
+	 *
+	 * Unmuted, the Player builds an AudioContext, and usePlayback parks the whole
+	 * frame loop on `getIsResumingAudioContext()` *before* it queues a rAF.
+	 * Without a user gesture Chrome leaves resume() pending forever rather than
+	 * rejecting it, and Remotion's waitUntilActuallyResumed() polls a clock that
+	 * never advances — so the promise never settles, no frame is ever queued, and
+	 * the scene sits on frame 0 while isPlaying() still reports true. Any click
+	 * anywhere on the page releases it, which is why clicking a rail button
+	 * looked like the trigger.
+	 *
+	 * initiallyMuted makes shouldCreateAudioContext false, so no context is built
+	 * and that branch is unreachable. numberOfSharedAudioTags drops the 5 warm-up
+	 * <audio> tags Remotion mounts for <Html5Audio>. The volume control goes with
+	 * them — it would flip the audio path back on, and there is no audio for it
+	 * to control.
+	 */
 	return (
 		<div ref={ref} className={className}>
 			<Player
@@ -119,6 +136,9 @@ export function FeatureAnimation({
 				controls={controls}
 				clickToPlay={controls}
 				spaceKeyToPlayOrPause={controls}
+				initiallyMuted
+				numberOfSharedAudioTags={0}
+				showVolumeControls={false}
 				acknowledgeRemotionLicense
 			/>
 		</div>
