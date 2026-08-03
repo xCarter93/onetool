@@ -123,7 +123,7 @@ export function InvoiceGenerationModal({
 									<RadioGroup.Option
 										key={quote._id}
 										value={quote._id}
-										className={({ checked }) =>
+										className={({ checked }: { checked: boolean }) =>
 											`relative flex cursor-pointer rounded-lg border-2 px-5 py-4 transition-all ${
 												checked
 													? "border-primary bg-primary/5 ring-2 ring-primary/20"
@@ -131,7 +131,7 @@ export function InvoiceGenerationModal({
 											}`
 										}
 									>
-										{({ checked }) => (
+										{({ checked }: { checked: boolean }) => (
 											<div className="flex w-full items-center justify-between">
 												<div className="flex items-center gap-4">
 													<div
