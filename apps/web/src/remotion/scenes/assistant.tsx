@@ -6,15 +6,16 @@ import { Panel, StatusBadge, useTheme } from "../ui/primitives";
 
 export const ASSISTANT_DURATION = 270;
 
-const PROMPT = "Create an invoice for the Henderson mulch project";
+// Every step maps to a real assistant tool: getProject, getSchedule, createTask.
+const PROMPT = "Schedule a follow-up visit for the Henderson project tomorrow";
 
 const TOOL_STEPS = [
 	{ label: "Reading project · Henderson Residence", at: 120 },
-	{ label: "Pulling approved quote #1042", at: 145 },
-	{ label: "Drafting invoice from line items", at: 170 },
+	{ label: "Checking tomorrow's schedule", at: 145 },
+	{ label: "Creating task · Follow-up visit", at: 170 },
 ];
 
-/** AI assistant: dock opens, a request is typed, tools run, an invoice appears. */
+/** AI assistant: dock opens, a request is typed, tools run, a scheduled task appears. */
 export const Assistant: React.FC = () => {
 	const frame = useCurrentFrame();
 	const { fps } = useVideoConfig();
@@ -157,14 +158,14 @@ export const Assistant: React.FC = () => {
 											}}
 										>
 											<svg width={26} height={26} viewBox="0 0 24 24" fill="none" stroke={t.primary} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-												<path d="M4 2v20l2-1.5L8 22l2-1.5L12 22l2-1.5L16 22l2-1.5L20 22V2H4zM8 8h8M8 12h8M8 16h5" />
+												<path d="M9 6.5 11 8.5 14.5 5M9 13.5 11 15.5 14.5 12M17 7h4M17 14h4M4 20h17" />
 											</svg>
 										</span>
 										<div style={{ flex: 1 }}>
-											<div style={{ fontWeight: 700, fontSize: 21 }}>Invoice #0848 — Henderson Residence</div>
-											<div style={{ color: t.mutedFg, fontSize: 17 }}>3 line items from quote #1042 · $2,850.00 · due in 14 days</div>
+											<div style={{ fontWeight: 700, fontSize: 21 }}>Follow-up visit — Henderson Residence</div>
+											<div style={{ color: t.mutedFg, fontSize: 17 }}>Tomorrow · 9:00 AM · assigned to you</div>
 										</div>
-										<StatusBadge status="draft" size={17} />
+										<StatusBadge status="scheduled" size={17} />
 									</Panel>
 								</div>
 							) : null}
