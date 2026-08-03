@@ -54,12 +54,50 @@ export function FeatureAnimation({
 	const reduced = usePrefersReducedMotion();
 
 	useEffect(() => {
-		if (inView && !reduced) {
-			playerRef.current?.play();
-		} else {
-			playerRef.current?.pause();
+		const player = playerRef.current;
+		if (!player) return;
+
+		if (!inView || reduced) {
+			player.pause();
+			return;
 		}
-	}, [inView, reduced]);
+
+		/*
+		 * Assert playback rather than firing a single play(). Remotion's play() is
+		 * a void one-shot that early-returns when the player already believes it is
+		 * playing, so one dropped start strands an ambient embed on a still frame
+		 * with no control a visitor could use to recover it.
+		 *
+		 * isPlaying() is a trustworthy signal here *specifically* because nothing
+		 * in these compositions can reach Remotion's buffering gate — the one state
+		 * that freezes frames while isPlaying() stays true. That gate is only fed
+		 * by <Audio>/<Video> elements and by <Img> when passed `pauseWhenLoading`;
+		 * our scenes use plain <Img> and no media. If a scene ever gains audio or
+		 * video, this check stops being sufficient on its own.
+		 */
+		let raf = 0;
+		const ensurePlaying = () => {
+			cancelAnimationFrame(raf);
+			// Next frame, so re-asserting can never recurse inside a pause dispatch.
+			raf = requestAnimationFrame(() => {
+				if (!document.hidden && !player.isPlaying()) player.play();
+			});
+		};
+
+		ensurePlaying();
+
+		// Controls embeds opt out: there, a pause is the visitor's own choice.
+		if (controls) return () => cancelAnimationFrame(raf);
+
+		player.addEventListener("pause", ensurePlaying);
+		// Backgrounding stops the rAF loop; returning shouldn't need a scroll.
+		document.addEventListener("visibilitychange", ensurePlaying);
+		return () => {
+			cancelAnimationFrame(raf);
+			player.removeEventListener("pause", ensurePlaying);
+			document.removeEventListener("visibilitychange", ensurePlaying);
+		};
+	}, [inView, reduced, controls]);
 
 	const video = FEATURE_VIDEOS[feature];
 
