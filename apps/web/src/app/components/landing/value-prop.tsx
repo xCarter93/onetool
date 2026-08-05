@@ -2,8 +2,10 @@
  * The general-notes plate: three value clusters distilled from the A-501
  * capability index. Server component, zero JS.
  *
- * The section renders NO border of its own — <SheetSection> owns the seam rule
- * and the corner marks. Cards are square hairline plates, never rounded cards.
+ * The section renders NO border of its own — its <SheetSection> wrapper draws
+ * the kept top seam (`seam` prop) because `.bp-section` paint containment
+ * would clip the registration squares here. Cards are square hairline plates,
+ * never rounded cards.
  */
 
 type Cluster = {

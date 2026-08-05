@@ -6,9 +6,6 @@
  * islands are imported directly and deliberately:
  *
  *   import { DrawIn } from ".../blueprint/draw-in";
- *   import { VertexTicks } from ".../blueprint/vertex-ticks";
- *   import { BlueprintRail } from ".../blueprint/blueprint-rail";
- *   import { RevisionCloudDraw } from ".../blueprint/revision-cloud-draw";
  *   import { useBpId } from ".../blueprint/use-bp-id";
  *
  * <BlueprintDefs/> and <BlueprintMotionProvider> are mounted once in
@@ -41,12 +38,9 @@ export {
 export { BlueprintCanvas, BlueprintStage } from "./blueprint-canvas";
 export { GuideLines } from "./guide-lines";
 export { BP_WEIGHT, DraftedShape } from "./drafted-shape";
-export { BP_FILL_BOX, VertexTick } from "./vertex-tick";
 export { DimensionLine } from "./dimension-line";
 export { KeywordMark } from "./keyword-mark";
 export { LeaderLine, leaderAnchor } from "./leader-line";
-export { RevisionCloud } from "./revision-cloud";
-export { Crosshair } from "./crosshair";
 export { SheetCode, SheetFrame } from "./sheet-frame";
 export { Stamp } from "./stamp";
 export { Annotation } from "./annotation";

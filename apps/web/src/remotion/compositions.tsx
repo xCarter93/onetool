@@ -1,39 +1,22 @@
 import React from "react";
-import { AbsoluteFill } from "remotion";
-import { fontFamily } from "./lib/font";
-import { themeFor, type ThemeName } from "./lib/tokens";
-import { ThemeProvider } from "./ui/primitives";
-import { Assistant, ASSISTANT_DURATION } from "./scenes/assistant";
-import { Automations, AUTOMATIONS_DURATION } from "./scenes/automations";
-import { Clients, CLIENTS_DURATION } from "./scenes/clients";
-import { QuoteToPaid, QUOTE_TO_PAID_DURATION } from "./scenes/quote-to-paid";
-import { Reports, REPORTS_DURATION } from "./scenes/reports";
-import { Routing, ROUTING_DURATION } from "./scenes/routing";
-import { TasksSchedule, TASKS_DURATION } from "./scenes/tasks-schedule";
+import { QUOTE_TO_PAID_DURATION } from "./durations";
+import { themed, type FeatureCompositionProps } from "./lib/themed";
+import { STORY_CHAPTERS, STORY_REEL_DURATION, VIDEO_CONFIG, type FeatureKey } from "./manifest";
+import { Assistant } from "./scenes/assistant";
+import { Automations } from "./scenes/automations";
+import { Clients } from "./scenes/clients";
+import { InvoicePaid } from "./scenes/invoice-paid";
+import { PortalApprove } from "./scenes/portal-approve";
+import { QuoteBuild } from "./scenes/quote-build";
+import { QuoteToPaid } from "./scenes/quote-to-paid";
+import { Reports } from "./scenes/reports";
+import { Routing } from "./scenes/routing";
+import { TasksSchedule } from "./scenes/tasks-schedule";
 import { Showcase, SHOWCASE_DURATION } from "./showcase";
+import { StoryReel } from "./story-reel";
 
-export interface FeatureCompositionProps {
-	theme?: ThemeName;
-	[key: string]: unknown;
-}
-
-export const VIDEO_CONFIG = {
-	fps: 30,
-	width: 1600,
-	height: 1000,
-} as const;
-
-const themed = (Scene: React.FC): React.FC<FeatureCompositionProps> => {
-	const Wrapped: React.FC<FeatureCompositionProps> = ({ theme = "light" }) => (
-		<ThemeProvider theme={themeFor(theme)}>
-			<AbsoluteFill style={{ fontFamily, backgroundColor: themeFor(theme).bg }}>
-				<Scene />
-			</AbsoluteFill>
-		</ThemeProvider>
-	);
-	Wrapped.displayName = `Themed(${Scene.displayName ?? Scene.name ?? "Scene"})`;
-	return Wrapped;
-};
+export { themed, VIDEO_CONFIG };
+export type { FeatureCompositionProps, FeatureKey };
 
 export interface FeatureVideo {
 	id: string;
@@ -42,49 +25,49 @@ export interface FeatureVideo {
 	durationInFrames: number;
 }
 
-/** Every landing-page animation, keyed for <FeatureAnimation feature="…">. */
-export const FEATURE_VIDEOS = {
-	clients: {
-		id: "Clients",
-		label: "Client management",
-		component: themed(Clients),
-		durationInFrames: CLIENTS_DURATION,
-	},
+const SCENES: Record<FeatureKey, React.FC> = {
+	clients: Clients,
+	"quote-build": QuoteBuild,
+	"portal-approve": PortalApprove,
+	tasks: TasksSchedule,
+	routing: Routing,
+	"invoice-paid": InvoicePaid,
+	automations: Automations,
+	assistant: Assistant,
+	reports: Reports,
+};
+
+/**
+ * Studio / render registry. NOT a page-side module — the landing page imports
+ * `manifest.ts` and loads scenes through `scene-loaders.ts` instead, so this
+ * eager graph never reaches the browser bundle.
+ */
+export const FEATURE_VIDEOS: Record<string, FeatureVideo> = {
+	...Object.fromEntries(
+		STORY_CHAPTERS.map((chapter) => [
+			chapter.key,
+			{
+				id: chapter.id,
+				label: chapter.label,
+				component: themed(SCENES[chapter.key]),
+				durationInFrames: chapter.durationInFrames,
+			},
+		]),
+	),
+	// Retired from the rail (wave 4 split it into quote-build / portal-approve /
+	// invoice-paid) but still the Showcase reel's quote chapter, so it keeps a
+	// composition of its own for renders and Studio.
 	"quote-to-paid": {
 		id: "QuoteToPaid",
-		label: "Quoting & invoicing",
+		label: "Quote to paid (legacy)",
 		component: themed(QuoteToPaid),
 		durationInFrames: QUOTE_TO_PAID_DURATION,
 	},
-	tasks: {
-		id: "Tasks",
-		label: "Task scheduling",
-		component: themed(TasksSchedule),
-		durationInFrames: TASKS_DURATION,
-	},
-	routing: {
-		id: "Routing",
-		label: "Route planning",
-		component: themed(Routing),
-		durationInFrames: ROUTING_DURATION,
-	},
-	automations: {
-		id: "Automations",
-		label: "Workflow automations",
-		component: themed(Automations),
-		durationInFrames: AUTOMATIONS_DURATION,
-	},
-	assistant: {
-		id: "Assistant",
-		label: "AI assistant",
-		component: themed(Assistant),
-		durationInFrames: ASSISTANT_DURATION,
-	},
-	reports: {
-		id: "Reports",
-		label: "Reports",
-		component: themed(Reports),
-		durationInFrames: REPORTS_DURATION,
+	"story-reel": {
+		id: "StoryReel",
+		label: "Story reel",
+		component: themed(StoryReel),
+		durationInFrames: STORY_REEL_DURATION,
 	},
 	showcase: {
 		id: "Showcase",
@@ -92,6 +75,7 @@ export const FEATURE_VIDEOS = {
 		component: themed(Showcase),
 		durationInFrames: SHOWCASE_DURATION,
 	},
-} satisfies Record<string, FeatureVideo>;
+};
 
-export type FeatureKey = keyof typeof FEATURE_VIDEOS;
+/** Compositions that stand alone at the top level of the Studio sidebar. */
+export const TOP_LEVEL_IDS = ["story-reel", "showcase"] as const;

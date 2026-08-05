@@ -40,8 +40,13 @@ const AnimatedNumber: React.FC<AnimatedNumberProps> = ({
 	const [currentValue, setCurrentValue] = useState(0);
 	const animationFrameRef = useRef<number | null>(null);
 	const startTimeRef = useRef<number | null>(null);
+	const reduced = useReducedMotion();
 
 	useEffect(() => {
+		// Reduced motion never starts the loop; the render below reads `value`
+		// straight through instead (setState here would cascade).
+		if (reduced) return;
+
 		const duration = 500;
 
 		const animate = (timestamp: DOMHighResTimeStamp) => {
@@ -73,7 +78,7 @@ const AnimatedNumber: React.FC<AnimatedNumberProps> = ({
 				cancelAnimationFrame(animationFrameRef.current);
 			}
 		};
-	}, [value]);
+	}, [value, reduced]);
 
 	const formatter = new Intl.NumberFormat("en-US", {
 		style: format.style,
@@ -81,7 +86,11 @@ const AnimatedNumber: React.FC<AnimatedNumberProps> = ({
 		maximumFractionDigits: format.maximumFractionDigits,
 	});
 
-	return <span className={className}>{formatter.format(currentValue)}</span>;
+	return (
+		<span className={className}>
+			{formatter.format(reduced ? value : currentValue)}
+		</span>
+	);
 };
 
 const plans = [
@@ -190,7 +199,7 @@ const PricingSwitch = ({ onSwitch }: { onSwitch: (value: string) => void }) => {
 							className={cn(
 								"relative z-10 inline-flex h-9 shrink-0 items-center justify-center rounded-md px-4 text-[11px] font-semibold uppercase leading-none tracking-[0.12em] transition-colors",
 								active
-									? "text-white"
+									? "text-primary-foreground"
 									: "text-muted-foreground hover:text-foreground",
 							)}
 						>

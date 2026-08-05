@@ -1,7 +1,12 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { useSpring, useTransform, motion } from "motion/react";
+import {
+	useSpring,
+	useTransform,
+	useReducedMotion,
+	motion,
+} from "motion/react";
 
 interface AnimatedNumberProps {
 	value: number;
@@ -21,8 +26,16 @@ export function AnimatedNumber({
 		format(Math.round(current))
 	);
 	const hasAnimatedRef = useRef(false);
+	const reduced = useReducedMotion();
 
 	useEffect(() => {
+		// Reduced motion skips both the delay and the spring: jump to the value.
+		if (reduced) {
+			hasAnimatedRef.current = true;
+			spring.jump(value);
+			return;
+		}
+
 		if (!hasAnimatedRef.current) {
 			// Initial mount: apply delay before starting animation
 			hasAnimatedRef.current = true;
@@ -38,7 +51,7 @@ export function AnimatedNumber({
 
 		// Subsequent value changes: animate immediately
 		spring.set(value);
-	}, [spring, value, delay]);
+	}, [spring, value, delay, reduced]);
 
 	return <motion.span>{display}</motion.span>;
 }

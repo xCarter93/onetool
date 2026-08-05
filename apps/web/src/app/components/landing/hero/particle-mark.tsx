@@ -193,6 +193,7 @@ export function ParticleMark({ className }: { className?: string }) {
 		let lastTime = 0;
 		let frame = 0;
 		let running = false;
+		let visible = false;
 		const mouse = { x: -1e4, y: -1e4, active: false };
 
 		const init = () => {
@@ -291,11 +292,20 @@ export function ParticleMark({ className }: { className?: string }) {
 				ctx.fillRect(Math.round(p.x), Math.round(p.y), size, size);
 			}
 
+			// Idle stop. Fill fully in, nothing displaced, pointer away: there is
+			// nothing left to integrate, so park the loop instead of burning a
+			// frame a tick forever. Pointer or observer wakes it.
+			if (!mouse.active && maxOffset < SETTLE_EPS * dpr && fillAlpha > 0.995) {
+				running = false;
+				lastTime = 0;
+				return;
+			}
+
 			frame = requestAnimationFrame(tick);
 		};
 
 		const start = () => {
-			if (running || reduced) return;
+			if (running || reduced || !visible) return;
 			running = true;
 			frame = requestAnimationFrame(tick);
 		};
@@ -311,7 +321,8 @@ export function ParticleMark({ className }: { className?: string }) {
 
 		// Run the loop only while the plate is actually on screen.
 		const io = new IntersectionObserver(([entry]) => {
-			if (entry.isIntersecting) start();
+			visible = entry.isIntersecting;
+			if (visible) start();
 			else stop();
 		});
 		io.observe(container);
@@ -324,15 +335,19 @@ export function ParticleMark({ className }: { className?: string }) {
 			mouse.x = e.clientX - rect.left;
 			mouse.y = e.clientY - rect.top;
 			mouse.active = true;
+			start();
 		};
 		const onLeave = () => {
 			mouse.active = false;
+			// Wake so the particles can walk home and the fill can ease back.
+			start();
 		};
 		const onTouch = (e: TouchEvent) => {
 			const rect = canvas.getBoundingClientRect();
 			mouse.x = e.touches[0].clientX - rect.left;
 			mouse.y = e.touches[0].clientY - rect.top;
 			mouse.active = true;
+			start();
 		};
 		container.addEventListener("mousemove", onMove);
 		container.addEventListener("mouseleave", onLeave);

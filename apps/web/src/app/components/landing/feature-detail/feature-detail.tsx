@@ -17,6 +17,7 @@ import {
 import { useCallback, useEffect, useRef, useState } from "react";
 import { CtaButton } from "@/app/components/landing/cta-button";
 import { SheetCode } from "../blueprint/sheet-frame";
+import { MiniaturePlate } from "../feature-miniatures";
 import {
 	CAPABILITY_CARDS,
 	CAPABILITY_SUMMARY,
@@ -31,7 +32,7 @@ import {
  * carrying nine edges, three swimlanes and a leader read as busy rather than
  * legible). Same facts, sequential instead of simultaneous: a split sheet with
  * the claim on the left and the capabilities on a horizontal track on the right,
- * one card at a time. `system-schematic.tsx` is left on disk but unreferenced.
+ * one card at a time.
  *
  * HOUSING. The section declares its own padding and nothing else — the sheet
  * shell owns the container width, the seam rule and the corner marks.
@@ -53,7 +54,7 @@ const HEADING = {
 	lines: ["One workspace", "runs the whole job,"] as const,
 	muted: "start to paid.",
 	support:
-		"Quote, signature, schedule, invoice, payment — each step hands off to the next on the same record, and the follow-ups run without you.",
+		"Quote, signature, schedule, invoice, payment: each step hands off to the next on the same record, and the follow-ups run without you.",
 	cta: "Start free",
 	ctaHref: "/sign-up",
 } as const;
@@ -228,11 +229,11 @@ function Card({ card }: { card: CapabilityCard }) {
 	return (
 		<article
 			data-card
-			className="group relative flex w-[18rem] shrink-0 snap-start flex-col border border-bp-line bg-bp-paper p-6 transition-colors duration-200 hover:border-primary/35 motion-reduce:transition-none sm:w-[20rem]"
+			className="group relative flex w-[18rem] shrink-0 snap-start flex-col border border-bp-line bg-bp-paper p-6 transition-colors duration-200 [@media(hover:hover)_and_(pointer:fine)]:hover:border-primary/35 motion-reduce:transition-none sm:w-[20rem]"
 		>
 			<span
 				aria-hidden="true"
-				className="pointer-events-none absolute inset-x-0 top-0 h-0.5 bg-transparent transition-colors duration-200 group-hover:bg-(--cta-solid) motion-reduce:transition-none"
+				className="pointer-events-none absolute inset-x-0 top-0 h-0.5 bg-transparent transition-colors duration-200 [@media(hover:hover)_and_(pointer:fine)]:group-hover:bg-(--cta-solid) motion-reduce:transition-none"
 			/>
 			<span
 				aria-hidden="true"
@@ -243,9 +244,20 @@ function Card({ card }: { card: CapabilityCard }) {
 			<h3 className="mt-6 text-lg font-semibold leading-tight tracking-tight text-foreground">
 				{card.title}
 			</h3>
-			<p className="mb-6 mt-3 text-sm leading-relaxed text-muted-foreground">
+			<p
+				className={`mt-3 text-sm leading-relaxed text-muted-foreground ${
+					card.miniature ? "" : "mb-6"
+				}`}
+			>
 				{card.body}
 			</p>
+			{/* Card art, not illustration: all nine surfaces carry a drawing. The
+			    guard stays because `miniature` is optional on the card type. */}
+			{card.miniature ? (
+				<div className="mb-6 mt-6">
+					<MiniaturePlate miniature={card.miniature} />
+				</div>
+			) : null}
 			<div className="mt-auto border-t border-bp-line pt-4">
 				<span className="text-[10px] font-semibold uppercase leading-none tracking-[0.14em] tabular-nums text-bp-anno">
 					{card.refCode}
@@ -272,7 +284,10 @@ function TrackButton({
 			aria-label={label}
 			disabled={disabled}
 			onClick={onClick}
-			className="inline-flex h-9 w-9 items-center justify-center border border-bp-line-strong text-foreground transition-colors duration-200 hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:text-muted-foreground disabled:opacity-40 motion-reduce:transition-none"
+			// A control boundary is NOT artwork: --border, never a --bp-* hairline
+			// (2.3:1, fails the 3:1 non-text floor). h-11 w-11 clears the 44px target.
+			// Opaque plate: the lattice must not read through a control.
+			className="inline-flex h-11 w-11 items-center justify-center border border-border bg-card text-foreground transition-colors duration-200 hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:text-muted-foreground disabled:opacity-40 motion-reduce:transition-none"
 		>
 			{children}
 		</button>

@@ -1,11 +1,17 @@
 import React from "react";
 import { AbsoluteFill, useCurrentFrame, useVideoConfig } from "remotion";
 import { fadeUp, pop, progress } from "../lib/anim";
-import { AppFrame } from "../ui/app-frame";
+import { themed } from "../lib/themed";
+import { SceneFrame, type SceneShell } from "../ui/scene-shell";
 import { Panel, StatusBadge, useTheme } from "../ui/primitives";
 import type { Theme } from "../lib/tokens";
 
-export const AUTOMATIONS_DURATION = 300;
+// Last motion is the run toast (fadeUp from DONE_AT + 2, 14 frames) → ~284,
+// plus a short hold.
+export { AUTOMATIONS_DURATION } from "../durations";
+
+const RUN_AT = 100;
+const DONE_AT = 268;
 
 /**
  * Mirrors the real editor's canvas grammar (flow/edge-style.ts + flow-theme.css):
@@ -115,6 +121,9 @@ const NODE_RUNS: Record<string, [number, number][]> = {
 	task: [[236, 258]],
 };
 
+/** Frame each loop iteration starts, so the "Invoice N of 6" copy can't drift. */
+const LOOP_ITERATION_AT = NODE_RUNS.loop.map(([start]) => start);
+
 const loopInk = (t: Theme) =>
 	t.name === "dark" ? "oklch(0.837 0.128 66.29)" : "oklch(0.75 0.183 55.93)"; // orange-300 / 400
 
@@ -143,14 +152,39 @@ const NodeIcon: React.FC<{ glyph: string; color: string }> = ({ glyph: kind, col
 	</svg>
 );
 
+const AutomationsHeader: React.FC = () => {
+	const frame = useCurrentFrame();
+	const { fps } = useVideoConfig();
+	return (
+		<>
+			<StatusBadge status={frame >= RUN_AT ? "active" : "draft"} label={frame >= RUN_AT ? "Live" : "Draft"} />
+			{frame >= DONE_AT ? (
+				<StatusBadge
+					status="completed"
+					label="Run #214 · success"
+					size={18}
+					style={{
+						scale: String(0.92 + pop(frame, fps, DONE_AT) * 0.08),
+						opacity: progress(frame, DONE_AT, 8),
+					}}
+				/>
+			) : null}
+		</>
+	);
+};
+
+export const AUTOMATIONS_SHELL: SceneShell = {
+	active: "Automations",
+	title: "Overdue invoice chase",
+	HeaderAction: AutomationsHeader,
+};
+
 /** Workflow canvas, editor-faithful: a vertical flow builds, then a run walks the loop twice. */
-export const Automations: React.FC = () => {
+export const AutomationsContent: React.FC = () => {
 	const frame = useCurrentFrame();
 	const { fps } = useVideoConfig();
 	const t = useTheme();
 	const orange = loopInk(t);
-	const RUN_AT = 100;
-	const DONE_AT = 268;
 
 	const isRunning = (windows: [number, number][] | undefined) =>
 		windows?.some(([a, b]) => frame >= a && frame < b) ?? false;
@@ -158,262 +192,263 @@ export const Automations: React.FC = () => {
 		windows?.reduce<number | null>((acc, [, b]) => (frame >= b ? b : acc), null) ?? null;
 
 	return (
-		<AbsoluteFill>
-			<AppFrame
-				active="Automations"
-				title="Overdue invoice chase"
-				headerRight={
-					<>
-						<StatusBadge status={frame >= RUN_AT ? "active" : "draft"} label={frame >= RUN_AT ? "Live" : "Draft"} />
-						{frame >= DONE_AT ? (
-							<StatusBadge status="completed" label="Run #214 · success" size={18} style={{ scale: String(pop(frame, fps, DONE_AT)) }} />
-						) : null}
-					</>
-				}
+		<>
+			{/* Loop body container: dotted orange frame, as the editor draws it */}
+			<div
+				style={{
+					position: "absolute",
+					left: CONTAINER.x,
+					top: CONTAINER.y,
+					width: CONTAINER.w,
+					height: CONTAINER.h,
+					border: `1.5px dashed color-mix(in oklch, ${orange} 55%, transparent)`,
+					borderRadius: 16,
+					backgroundColor: `color-mix(in oklch, ${orange} ${t.name === "dark" ? "6%" : "4%"}, transparent)`,
+					opacity: progress(frame, 34, 14),
+				}}
 			>
-				{/* Loop body container: dotted orange frame, as the editor draws it */}
-				<div
+				<span
 					style={{
 						position: "absolute",
-						left: CONTAINER.x,
-						top: CONTAINER.y,
-						width: CONTAINER.w,
-						height: CONTAINER.h,
-						border: `1.5px dashed color-mix(in oklch, ${orange} 55%, transparent)`,
-						borderRadius: 16,
-						backgroundColor: `color-mix(in oklch, ${orange} ${t.name === "dark" ? "6%" : "4%"}, transparent)`,
-						opacity: progress(frame, 34, 14),
+						top: -13,
+						left: 20,
+						padding: "3px 12px",
+						borderRadius: 999,
+						fontSize: 14,
+						fontWeight: 700,
+						letterSpacing: "0.08em",
+						textTransform: "uppercase",
+						color: orange,
+						backgroundColor: t.canvas,
+						border: `1px solid color-mix(in oklch, ${orange} 45%, transparent)`,
 					}}
 				>
-					<span
-						style={{
-							position: "absolute",
-							top: -13,
-							left: 20,
-							padding: "3px 12px",
-							borderRadius: 999,
-							fontSize: 14,
-							fontWeight: 700,
-							letterSpacing: "0.08em",
-							textTransform: "uppercase",
-							color: orange,
-							backgroundColor: t.canvas,
-							border: `1px solid color-mix(in oklch, ${orange} 45%, transparent)`,
-						}}
-					>
-						Loop body
-					</span>
-				</div>
+					Loop body
+				</span>
+			</div>
 
-				<svg style={{ position: "absolute", inset: 0, width: "100%", height: "100%", overflow: "visible" }}>
-					{EDGES.map((edge) => {
-						const { d, len } = ortho(edge.pts);
-						const drawn = progress(frame, edge.drawAt, 16);
-						const running = isRunning(edge.runs);
-						const traversed = lastDone(edge.runs) !== null;
-						const base = edge.loop
-							? `color-mix(in oklch, ${orange} ${traversed ? "85%" : "60%"}, transparent)`
-							: `color-mix(in oklch, ${t.mutedFg} ${traversed ? "85%" : "55%"}, transparent)`;
-						const end = edge.pts[edge.pts.length - 1];
-						return (
-							<g key={edge.id}>
+			<svg style={{ position: "absolute", inset: 0, width: "100%", height: "100%", overflow: "visible" }}>
+				{EDGES.map((edge) => {
+					const { d, len } = ortho(edge.pts);
+					const drawn = progress(frame, edge.drawAt, 16);
+					const running = isRunning(edge.runs);
+					const traversed = lastDone(edge.runs) !== null;
+					const base = edge.loop
+						? `color-mix(in oklch, ${orange} ${traversed ? "85%" : "60%"}, transparent)`
+						: `color-mix(in oklch, ${t.mutedFg} ${traversed ? "85%" : "55%"}, transparent)`;
+					const end = edge.pts[edge.pts.length - 1];
+					return (
+						<g key={edge.id}>
+							<path
+								d={d}
+								fill="none"
+								stroke={base}
+								strokeWidth={2}
+								strokeDasharray={len}
+								strokeDashoffset={len * (1 - drawn)}
+							/>
+							{/* Run replay: the editor's marching-dash treatment, in primary */}
+							{running ? (
 								<path
 									d={d}
 									fill="none"
-									stroke={base}
-									strokeWidth={2}
-									strokeDasharray={len}
-									strokeDashoffset={len * (1 - drawn)}
+									stroke={t.primary}
+									strokeWidth={2.5}
+									strokeDasharray="7 5"
+									strokeDashoffset={-frame * 1.6}
 								/>
-								{/* Run replay: the editor's marching-dash treatment, in primary */}
-								{running ? (
-									<path
-										d={d}
-										fill="none"
-										stroke={t.primary}
-										strokeWidth={2.5}
-										strokeDasharray="7 5"
-										strokeDashoffset={-frame * 1.6}
-									/>
-								) : null}
-								{edge.arrow && drawn >= 1 ? (
-									<path
-										d={
-											edge.arrow === "down"
-												? `M ${end[0] - 6} ${end[1] - 8} L ${end[0]} ${end[1]} L ${end[0] + 6} ${end[1] - 8}`
-												: `M ${end[0] + 8} ${end[1] - 6} L ${end[0]} ${end[1]} L ${end[0] + 8} ${end[1] + 6}`
-										}
-										fill="none"
-										stroke={running ? t.primary : base}
-										strokeWidth={2}
-										strokeLinecap="round"
-										strokeLinejoin="round"
-									/>
-								) : null}
-							</g>
-						);
-					})}
-					{/* Merge point */}
-					<circle
-						cx={MERGE.x}
-						cy={MERGE.y}
-						r={5.5}
-						fill={t.canvas}
-						stroke={`color-mix(in oklch, ${orange} 70%, transparent)`}
-						strokeWidth={2}
-						opacity={progress(frame, 88, 10)}
-					/>
-				</svg>
-
-				{/* Branch label pills (edge-label-pill) */}
-				{EDGES.filter((e) => e.pill).map((edge) => {
-					const running = isRunning(edge.runs);
-					return (
-						<span
-							key={`pill-${edge.id}`}
-							style={{
-								position: "absolute",
-								left: edge.pill!.x,
-								top: edge.pill!.y,
-								translate: "-50% -50%",
-								padding: "3px 13px",
-								borderRadius: 999,
-								fontSize: 15,
-								fontWeight: 700,
-								color: running ? t.primaryFg : t.mutedFg,
-								backgroundColor: running ? t.primary : t.canvas,
-								border: `1px solid ${running ? t.primary : t.border}`,
-								opacity: progress(frame, edge.drawAt + 8, 10),
-							}}
-						>
-							{edge.pill!.label}
-						</span>
+							) : null}
+							{edge.arrow && drawn >= 1 ? (
+								<path
+									d={
+										edge.arrow === "down"
+											? `M ${end[0] - 6} ${end[1] - 8} L ${end[0]} ${end[1]} L ${end[0] + 6} ${end[1] - 8}`
+											: `M ${end[0] + 8} ${end[1] - 6} L ${end[0]} ${end[1]} L ${end[0] + 8} ${end[1] + 6}`
+									}
+									fill="none"
+									stroke={running ? t.primary : base}
+									strokeWidth={2}
+									strokeLinecap="round"
+									strokeLinejoin="round"
+								/>
+							) : null}
+						</g>
 					);
 				})}
+				{/* Merge point */}
+				<circle
+					cx={MERGE.x}
+					cy={MERGE.y}
+					r={5.5}
+					fill={t.canvas}
+					stroke={`color-mix(in oklch, ${orange} 70%, transparent)`}
+					strokeWidth={2}
+					opacity={progress(frame, 88, 10)}
+				/>
+			</svg>
 
-				{NODES.map((node) => {
-					const runs = NODE_RUNS[node.id];
-					const running = isRunning(runs);
-					const doneAt = lastDone(runs);
-					const done = doneAt !== null;
-					const isTrigger = node.kind === "trigger";
-					const isLoop = node.kind === "loop" || node.kind === "condition";
-					const accent = isTrigger ? t.warningFg : node.kind === "loop" ? orange : t.primary;
-					const border = running ? t.primary : done ? t.success : t.border;
-					const glow = running
-						? `0 0 0 5px color-mix(in oklch, ${t.primary} 16%, transparent)`
-						: done
-							? `0 0 0 5px color-mix(in oklch, ${t.success} 14%, transparent)`
-							: `0 1px 2px ${t.shadow}`;
-					return (
-						<div
-							key={node.id}
+			{/* Branch label pills (edge-label-pill) */}
+			{EDGES.filter((e) => e.pill).map((edge) => {
+				const running = isRunning(edge.runs);
+				return (
+					<span
+						key={`pill-${edge.id}`}
+						style={{
+							position: "absolute",
+							left: edge.pill!.x,
+							top: edge.pill!.y,
+							translate: "-50% -50%",
+							padding: "3px 13px",
+							borderRadius: 999,
+							fontSize: 15,
+							fontWeight: 700,
+							color: running ? t.primaryFg : t.mutedFg,
+							backgroundColor: running ? t.primary : t.canvas,
+							border: `1px solid ${running ? t.primary : t.border}`,
+							opacity: progress(frame, edge.drawAt + 8, 10),
+						}}
+					>
+						{edge.pill!.label}
+					</span>
+				);
+			})}
+
+			{NODES.map((node) => {
+				const runs = NODE_RUNS[node.id];
+				const running = isRunning(runs);
+				const doneAt = lastDone(runs);
+				const done = doneAt !== null;
+				const isTrigger = node.kind === "trigger";
+				const isLoop = node.kind === "loop" || node.kind === "condition";
+				const accent = isTrigger ? t.warningFg : node.kind === "loop" ? orange : t.primary;
+				const border = running ? t.primary : done ? t.success : t.border;
+				const glow = running
+					? `0 0 0 5px color-mix(in oklch, ${t.primary} 16%, transparent)`
+					: done
+						? `0 0 0 5px color-mix(in oklch, ${t.success} 14%, transparent)`
+						: `0 1px 2px ${t.shadow}`;
+				return (
+					<div
+						key={node.id}
+						style={{
+							position: "absolute",
+							left: 0,
+							top: 0,
+							translate: `${node.x}px ${node.y}px`,
+							width: NODE_W,
+							height: NODE_H,
+							scale: String(0.85 + pop(frame, fps, node.at) * 0.15),
+							opacity: progress(frame, node.at, 10),
+						}}
+					>
+						<Panel
 							style={{
 								position: "absolute",
-								left: 0,
-								top: 0,
-								translate: `${node.x}px ${node.y}px`,
-								width: NODE_W,
-								height: NODE_H,
-								scale: String(0.85 + pop(frame, fps, node.at) * 0.15),
-								opacity: progress(frame, node.at, 10),
+								inset: 0,
+								padding: "14px 20px",
+								display: "flex",
+								alignItems: "center",
+								gap: 15,
+								border: `2px solid ${border}`,
+								boxShadow: glow,
 							}}
 						>
-							<Panel
+							<span
 								style={{
-									position: "absolute",
-									inset: 0,
-									padding: "14px 20px",
-									display: "flex",
+									width: 48,
+									height: 48,
+									borderRadius: 12,
+									flexShrink: 0,
+									display: "inline-flex",
 									alignItems: "center",
-									gap: 15,
-									border: `2px solid ${border}`,
-									boxShadow: glow,
+									justifyContent: "center",
+									backgroundColor: `color-mix(in oklch, ${isTrigger ? t.warning : node.kind === "loop" ? orange : t.primary} ${isTrigger ? "18%" : "13%"}, transparent)`,
 								}}
 							>
+								<NodeIcon glyph={node.kind === "action" ? node.id : node.kind} color={accent} />
+							</span>
+							<div style={{ minWidth: 0, flex: 1 }}>
+								<div
+									style={{
+										fontSize: 14,
+										fontWeight: 700,
+										letterSpacing: "0.07em",
+										textTransform: "uppercase",
+										color: accent,
+									}}
+								>
+									{isTrigger ? "Trigger" : node.kind === "loop" ? "Loop" : node.kind === "condition" ? "Condition" : "Action"}
+								</div>
+								<div style={{ fontWeight: 700, fontSize: 21, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{node.title}</div>
+								<div style={{ color: t.mutedFg, fontSize: 15.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+									{/* Iteration count ticks up as the loop runs */}
+									{node.id === "loop" && frame >= LOOP_ITERATION_AT[1]
+										? "Invoice 2 of 6"
+										: node.id === "loop" && frame >= LOOP_ITERATION_AT[0]
+											? "Invoice 1 of 6"
+											: node.sub}
+								</div>
+							</div>
+							{running ? (
+								<Spinner frame={frame} since={runs![0][0]} color={t.primary} />
+							) : done && !isLoop ? (
 								<span
 									style={{
-										width: 48,
-										height: 48,
-										borderRadius: 12,
-										flexShrink: 0,
+										width: 26,
+										height: 26,
+										borderRadius: 999,
+										backgroundColor: t.success,
 										display: "inline-flex",
 										alignItems: "center",
 										justifyContent: "center",
-										backgroundColor: `color-mix(in oklch, ${isTrigger ? t.warning : node.kind === "loop" ? orange : t.primary} ${isTrigger ? "18%" : "13%"}, transparent)`,
+										flexShrink: 0,
+										scale: String(pop(frame, fps, doneAt)),
 									}}
 								>
-									<NodeIcon glyph={node.kind === "action" ? node.id : node.kind} color={accent} />
+									<svg width={15} height={15} viewBox="0 0 24 24" fill="none">
+										<path d="M4 12.5 9.5 18 20 6.5" stroke="white" strokeWidth={3.4} strokeLinecap="round" strokeLinejoin="round" />
+									</svg>
 								</span>
-								<div style={{ minWidth: 0, flex: 1 }}>
-									<div
-										style={{
-											fontSize: 14,
-											fontWeight: 700,
-											letterSpacing: "0.07em",
-											textTransform: "uppercase",
-											color: accent,
-										}}
-									>
-										{isTrigger ? "Trigger" : node.kind === "loop" ? "Loop" : node.kind === "condition" ? "Condition" : "Action"}
-									</div>
-									<div style={{ fontWeight: 700, fontSize: 21, whiteSpace: "nowrap" }}>{node.title}</div>
-									<div style={{ color: t.mutedFg, fontSize: 15.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-										{/* Iteration count ticks up as the loop runs */}
-										{node.id === "loop" && frame >= 200 ? "Invoice 2 of 6" : node.id === "loop" && frame >= 116 ? "Invoice 1 of 6" : node.sub}
-									</div>
-								</div>
-								{running ? (
-									<Spinner frame={frame} since={runs![0][0]} color={t.primary} />
-								) : done && !isLoop ? (
-									<span
-										style={{
-											width: 26,
-											height: 26,
-											borderRadius: 999,
-											backgroundColor: t.success,
-											display: "inline-flex",
-											alignItems: "center",
-											justifyContent: "center",
-											flexShrink: 0,
-											scale: String(pop(frame, fps, doneAt)),
-										}}
-									>
-										<svg width={15} height={15} viewBox="0 0 24 24" fill="none">
-											<path d="M4 12.5 9.5 18 20 6.5" stroke="white" strokeWidth={3.4} strokeLinecap="round" strokeLinejoin="round" />
-										</svg>
-									</span>
-								) : null}
-							</Panel>
-						</div>
-					);
-				})}
+							) : null}
+						</Panel>
+					</div>
+				);
+			})}
 
-				{/* Run toast */}
-				<div style={{ position: "absolute", right: 36, bottom: 32, ...fadeUp(frame, DONE_AT + 2, 14, 18) }}>
-					<Panel style={{ padding: "18px 24px", display: "flex", alignItems: "center", gap: 14 }}>
-						<span
-							style={{
-								width: 34,
-								height: 34,
-								borderRadius: 999,
-								backgroundColor: t.success,
-								display: "inline-flex",
-								alignItems: "center",
-								justifyContent: "center",
-							}}
-						>
-							<svg width={19} height={19} viewBox="0 0 24 24" fill="none">
-								<path d="M4 12.5 9.5 18 20 6.5" stroke="white" strokeWidth={3.2} strokeLinecap="round" strokeLinejoin="round" />
-							</svg>
-						</span>
-						<div>
-							<div style={{ fontWeight: 700, fontSize: 21 }}>6 invoices chased</div>
-							<div style={{ color: t.mutedFg, fontSize: 17 }}>4 reminders sent · 2 call tasks created</div>
-						</div>
-					</Panel>
-				</div>
-			</AppFrame>
-		</AbsoluteFill>
+			{/* Run toast */}
+			<div style={{ position: "absolute", right: 36, bottom: 32, ...fadeUp(frame, DONE_AT + 2, 14, 18) }}>
+				<Panel style={{ padding: "18px 24px", display: "flex", alignItems: "center", gap: 14 }}>
+					<span
+						style={{
+							width: 34,
+							height: 34,
+							borderRadius: 999,
+							backgroundColor: t.success,
+							display: "inline-flex",
+							alignItems: "center",
+							justifyContent: "center",
+						}}
+					>
+						<svg width={19} height={19} viewBox="0 0 24 24" fill="none">
+							<path d="M4 12.5 9.5 18 20 6.5" stroke="white" strokeWidth={3.2} strokeLinecap="round" strokeLinejoin="round" />
+						</svg>
+					</span>
+					<div>
+						<div style={{ fontWeight: 700, fontSize: 21 }}>6 invoices chased</div>
+						<div style={{ color: t.mutedFg, fontSize: 17 }}>4 reminders sent · 2 call tasks created</div>
+					</div>
+				</Panel>
+			</div>
+		</>
 	);
 };
+
+export const Automations: React.FC = () => (
+	<AbsoluteFill>
+		<SceneFrame shell={AUTOMATIONS_SHELL}>
+			<AutomationsContent />
+		</SceneFrame>
+	</AbsoluteFill>
+);
+
+export default themed(Automations);

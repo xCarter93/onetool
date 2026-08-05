@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Check } from "lucide-react";
 import { CtaButton } from "../cta-button";
 import { KeywordMark } from "../blueprint";
+import { SeamCorners } from "../sheet-stack";
 import { ParticleMark } from "./particle-mark";
 
 /**
@@ -23,8 +24,8 @@ const APP_STORE_URL =
 	"https://apps.apple.com/us/app/onetool-small-business-crm/id6757319255";
 
 /**
- * Anchor for the quiet CTA. `#how-it-works` is the A-101 sticky scene rail
- * (landing/scenes/scene-rail.tsx). The navbar's "How it Works" link points at
+ * Anchor for the quiet CTA. `#how-it-works` is owned by the A-101 chapter rail
+ * (landing/feature-chapters.tsx). The navbar's "How it Works" link points at
  * the same one.
  */
 const SCENES_ANCHOR = "#how-it-works";
@@ -50,9 +51,9 @@ export default function Hero() {
 	return (
 		<section id="home" className="relative">
 			<div className="grid grid-cols-1 lg:grid-cols-2">
-				<div className="flex min-h-130 flex-col justify-center px-6 py-16 sm:px-10 sm:py-20 lg:min-h-160 lg:border-r lg:border-bp-guide-strong lg:px-14 lg:py-24">
+				<div className="flex min-h-130 flex-col justify-center px-6 py-16 sm:px-10 sm:py-20 lg:min-h-160 lg:px-14 lg:py-24">
 					<p
-						style={delay(300)}
+						style={delay(0)}
 						className="enter text-[10px] font-semibold uppercase tracking-[0.18em] text-bp-anno"
 					>
 						G-001 · Cover
@@ -67,7 +68,7 @@ export default function Hero() {
 					 * Margins are em so they track the responsive type sizes.
 					 */}
 					<h1
-						style={delay(380)}
+						style={delay(60)}
 						className="enter mt-6 text-balance text-4xl font-medium leading-[1.08] tracking-tighter text-foreground sm:text-5xl lg:text-[3.5rem] xl:text-[4.25rem]"
 					>
 						<span className="block">Simplify Your Business</span>
@@ -83,7 +84,7 @@ export default function Hero() {
 					</h1>
 
 					<div
-						style={delay(520)}
+						style={delay(140)}
 						className="enter mt-10 flex w-full flex-col items-stretch gap-3 sm:w-auto sm:flex-row sm:flex-wrap sm:items-center sm:gap-4"
 					>
 						<CtaButton href="/sign-up" className="w-full sm:w-auto">
@@ -106,7 +107,7 @@ export default function Hero() {
 							target="_blank"
 							rel="noopener noreferrer"
 							aria-label="Download OneTool on the App Store"
-							className="inline-block self-start rounded-md transition-transform duration-200 hover:scale-[1.03] active:scale-[0.98] motion-reduce:transition-none motion-reduce:hover:scale-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background sm:self-auto"
+							className="inline-block self-start rounded-md transition-transform duration-200 [@media(hover:hover)_and_(pointer:fine)]:hover:scale-[1.03] active:scale-[0.98] motion-reduce:transition-none motion-reduce:hover:scale-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background sm:self-auto"
 						>
 							{/* Two badges swapped by CSS rather than next-themes, so the hero
 							    stays a server component and never flashes the wrong badge. */}
@@ -134,7 +135,7 @@ export default function Hero() {
 					</div>
 
 					<ul
-						style={delay(620)}
+						style={delay(200)}
 						className="enter mt-9 flex flex-wrap items-center gap-x-5 gap-y-2"
 					>
 						{FACTS.map((fact) => (
@@ -155,7 +156,7 @@ export default function Hero() {
 				 * full plate above the fold just pushes the real content down.
 				 */}
 				<div
-					style={delay(200)}
+					style={delay(100)}
 					className="enter-fade relative hidden min-h-80 items-center justify-center px-6 py-12 sm:flex lg:min-h-160 lg:px-14"
 				>
 					<ParticleMark className="max-w-sm lg:max-w-lg" />
@@ -163,20 +164,22 @@ export default function Hero() {
 			</div>
 
 			{/* Opaque plate: the caption band interrupts the sheet lattice rather than
-			    letting the graph paper read through the stats. */}
+			    letting the graph paper read through the stats. Its top rule is a kept
+			    seam, so it carries the registration squares. */}
 			<div className="relative grid grid-cols-1 border-t border-bp-guide-strong bg-bp-paper lg:grid-cols-2">
+				<SeamCorners />
 				<div className="border-b border-bp-guide-strong px-6 py-10 sm:px-10 lg:border-b-0 lg:border-r lg:px-14">
 					<p
-						style={delay(680)}
+						style={delay(260)}
 						className="enter max-w-md text-base leading-relaxed text-muted-foreground sm:text-lg"
 					>
-						OneTool brings together quotes, projects, clients, and invoices —
+						OneTool brings together quotes, projects, clients, and invoices:
 						everything you need to keep work moving.
 					</p>
 				</div>
 				<div className="grid grid-cols-3 px-6 py-10 sm:px-10 lg:px-14">
 					{SHEET_FACTS.map((fact, i) => (
-						<div key={fact.label} style={delay(740 + i * 80)} className="enter">
+						<div key={fact.label} style={delay(320 + i * 60)} className="enter">
 							<p className="text-xs font-medium tracking-wide text-muted-foreground sm:text-sm">
 								{fact.label}
 							</p>

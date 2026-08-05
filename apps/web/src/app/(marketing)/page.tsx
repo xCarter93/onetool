@@ -18,7 +18,21 @@ import Footer from "@/app/components/footer";
 export default function Home() {
 	return (
 		<SmoothScroll>
-			<main className="flex-1 overflow-x-clip">
+			{/* First focusable element on the page. `data-no-smooth` opts it out of
+			    Lenis' anchor handler, which would preventDefault and eat the focus
+			    move that makes the skip actually skip. */}
+			<a
+				href="#main-content"
+				data-no-smooth
+				className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[60] focus:inline-flex focus:h-11 focus:items-center focus:rounded-lg focus:border focus:border-border focus:bg-card focus:px-4 focus:text-sm focus:font-medium focus:text-foreground focus:shadow-md focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background"
+			>
+				Skip to content
+			</a>
+			<main
+				id="main-content"
+				tabIndex={-1}
+				className="flex-1 overflow-x-clip outline-none"
+			>
 				<PageFrame />
 				<SheetIndicator />
 				<SheetStack>
@@ -26,7 +40,7 @@ export default function Home() {
 					<SheetSection code="G-001" title="Cover">
 						<Hero />
 					</SheetSection>
-					<SheetSection code="A-501" title="Features">
+					<SheetSection code="A-501" title="Features" seam>
 						<ValueProp />
 					</SheetSection>
 					<SheetSection code="A-502" title="Capabilities">

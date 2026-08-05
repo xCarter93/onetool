@@ -1,11 +1,13 @@
 "use client";
 
 import { m, AnimatePresence, useReducedMotion } from "motion/react";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, Mail } from "lucide-react";
 import { useId, useState } from "react";
-import { Button } from "@/components/ui/button";
 import { CtaButton } from "@/app/components/landing/cta-button";
 import { revealProps } from "@/app/components/landing/motion-utils";
+
+/** The landing surface's canonical deceleration, matching `--ease-out-quint`. */
+const EASE_OUT_QUINT = [0.23, 1, 0.32, 1] as const;
 
 const faqs = [
 	{
@@ -84,13 +86,18 @@ export default function FAQSection() {
 	};
 
 	return (
+		// No `bp-section` here: its content-visibility clips the sticky heading
+		// column out of position. The tradeoff is this section's off-screen render
+		// cost, which the notes list is cheap enough to absorb.
 		<section
 			id="faq"
-			className="bp-section relative p-6 sm:p-10 lg:p-14 lg:grid lg:grid-cols-[minmax(0,24rem)_1fr] lg:gap-14"
+			className="relative p-6 sm:p-10 lg:p-14 lg:grid lg:grid-cols-[minmax(0,24rem)_1fr] lg:gap-14"
 		>
-			{/* Heading column */}
-			{/* No `sticky` here: .bp-section's content-visibility breaks it. */}
-			<m.div {...revealProps(reduced)} className="lg:self-start">
+			{/* Heading column, held in place while the notes scroll past it. */}
+			<m.div
+				{...revealProps(reduced)}
+				className="lg:sticky lg:top-24 lg:self-start"
+			>
 				<p className="text-[11px] font-semibold uppercase leading-none tracking-[0.14em] text-bp-anno">
 					FAQ
 				</p>
@@ -100,11 +107,33 @@ export default function FAQSection() {
 				<p className="mt-5 max-w-md text-sm leading-relaxed text-muted-foreground sm:text-base">
 					Everything you need to know about OneTool
 				</p>
+
+				<div className="mt-8 max-w-md border border-bp-line bg-card p-5">
+					<span
+						aria-hidden="true"
+						className="flex h-9 w-9 items-center justify-center rounded-lg border border-primary/20 bg-primary/10 text-(--cta-solid) dark:text-primary"
+					>
+						<Mail className="h-4 w-4" strokeWidth={1.75} />
+					</span>
+					<h3 className="mt-4 text-base font-semibold leading-tight tracking-tight text-foreground">
+						Something else?
+					</h3>
+					<p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+						Write us at{" "}
+						<a
+							href="mailto:support@onetool.biz"
+							className="font-medium text-primary underline-offset-4 hover:underline"
+						>
+							support@onetool.biz
+						</a>{" "}
+						and we reply within a day.
+					</p>
+				</div>
 			</m.div>
 
 			{/* Notes */}
-			<div className="mt-10 border-t border-bp-line lg:mt-0">
-				<ul className="divide-y divide-bp-line">
+			<div className="mt-10 lg:mt-0">
+				<ul>
 					{faqs.map((faq, index) => (
 						<FaqRow
 							key={faq.question}
@@ -117,15 +146,8 @@ export default function FAQSection() {
 					))}
 				</ul>
 
-				{/* Bottom CTAs */}
-				<m.div
-					{...revealProps(reduced, { delay: 0.3 })}
-					className="mt-10 flex flex-col gap-3 sm:flex-row sm:items-center"
-				>
+				<m.div {...revealProps(reduced, { delay: 0.3 })} className="mt-10">
 					<CtaButton href="/sign-up">Get Started</CtaButton>
-					<a href="mailto:support@onetool.biz">
-						<Button variant="outline">Contact Support</Button>
-					</a>
 				</m.div>
 			</div>
 		</section>
@@ -162,7 +184,9 @@ function FaqRow({
 				onClick={onToggle}
 				aria-expanded={isOpen}
 				aria-controls={panelId}
-				className="flex w-full cursor-pointer items-center justify-between gap-6 py-6 text-left"
+				// Rules between rows are gone, so the rhythm is spacing alone: tighter
+				// than the ruled version read, still clear of the 44px target.
+				className="flex w-full cursor-pointer items-center justify-between gap-6 py-5 text-left"
 			>
 				<span className="flex min-w-0 items-baseline gap-4">
 					<span className="shrink-0 text-[10px] font-semibold uppercase leading-none tracking-[0.14em] tabular-nums text-muted-foreground">
@@ -193,17 +217,19 @@ function FaqRow({
 			) : (
 				<AnimatePresence initial={false}>
 					{isOpen && (
+						// grid-template-rows 0fr→1fr, never height:auto — Framer cannot
+						// interpolate `auto`, so it measures every frame and thrashes layout.
 						<m.div
 							id={panelId}
 							role="region"
 							aria-labelledby={triggerId}
-							initial={{ height: 0, opacity: 0 }}
-							animate={{ height: "auto", opacity: 1 }}
-							exit={{ height: 0, opacity: 0 }}
-							transition={{ duration: 0.3 }}
-							className="overflow-hidden"
+							initial={{ gridTemplateRows: "0fr", opacity: 0 }}
+							animate={{ gridTemplateRows: "1fr", opacity: 1 }}
+							exit={{ gridTemplateRows: "0fr", opacity: 0 }}
+							transition={{ duration: 0.3, ease: EASE_OUT_QUINT }}
+							className="grid overflow-hidden"
 						>
-							{answer}
+							<div className="min-h-0 overflow-hidden">{answer}</div>
 						</m.div>
 					)}
 				</AnimatePresence>

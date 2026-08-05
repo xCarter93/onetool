@@ -48,7 +48,7 @@ export function SheetIndicator() {
 	return (
 		<div
 			aria-hidden="true"
-			className="pointer-events-none fixed bottom-2.5 right-16 z-[9999] hidden divide-x divide-bp-line border border-bp-line bg-bp-paper min-[850px]:flex"
+			className="pointer-events-none fixed bottom-2.5 right-16 z-[55] hidden divide-x divide-bp-line border border-bp-line bg-bp-paper min-[850px]:flex"
 		>
 			<div className="px-3 py-1.5 text-[10px] font-semibold uppercase leading-none tracking-[0.14em] text-muted-foreground">
 				Sheet

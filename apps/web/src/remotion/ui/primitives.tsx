@@ -78,6 +78,9 @@ export const StatusBadge: React.FC<{
 	);
 };
 
+/** Rendered height of a PrimaryButton — cursor targets derive from it. */
+export const primaryButtonHeight = (size = 22) => size * 2.1;
+
 export const PrimaryButton: React.FC<{
 	children: React.ReactNode;
 	size?: number;
@@ -91,7 +94,7 @@ export const PrimaryButton: React.FC<{
 				display: "inline-flex",
 				alignItems: "center",
 				gap: 8,
-				height: size * 2.1,
+				height: primaryButtonHeight(size),
 				padding: `0 ${size}px`,
 				borderRadius: RADIUS.lg,
 				backgroundColor: t.primary,
@@ -190,13 +193,15 @@ export const Cursor: React.FC<{
 	y: number;
 	click?: number;
 	scale?: number;
-}> = ({ x, y, click = 0, scale = 1 }) => (
+	opacity?: number;
+}> = ({ x, y, click = 0, scale = 1, opacity = 1 }) => (
 	<div
 		style={{
 			position: "absolute",
 			left: 0,
 			top: 0,
 			translate: `${x}px ${y}px`,
+			opacity,
 			zIndex: 50,
 			pointerEvents: "none",
 		}}

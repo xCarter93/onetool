@@ -14,7 +14,7 @@ import { CursorGrid } from "./cursor-grid";
  */
 export function SheetStack({ children }: { children: ReactNode }) {
 	return (
-		<div className="landing-ink relative mx-auto flex min-h-screen w-[calc(100%-1.5rem)] max-w-[1560px] flex-col border-x border-bp-guide-strong sm:w-[calc(100%-2.5rem)] lg:w-[calc(100%-3rem)]">
+		<div className="landing-ink relative mx-auto flex min-h-dvh w-[calc(100%-1.5rem)] max-w-[1560px] flex-col border-x border-bp-guide-strong sm:w-[calc(100%-2.5rem)] lg:w-[calc(100%-3rem)]">
 			{/*
 			 * The lattice. ONE layer for the whole stack: the drawing sits on
 			 * continuous graph paper rather than per-section patches, so the grid
@@ -46,23 +46,25 @@ export function SheetStack({ children }: { children: ReactNode }) {
 }
 
 /**
- * A sheet corner. Two 7px squares straddling the shell rail at the sheet's
- * bottom edge, where the seam rule crosses it — the drawing-set equivalent of a
- * plotter registration mark, and what keeps the side margins reading as sheet
- * furniture instead of dead air.
+ * Seam registration marks: two 7px squares straddling the shell rail where a
+ * kept seam rule crosses it — the same furniture the navbar prints under its
+ * own bottom edge. Render inside a `relative` element that draws a
+ * `border-t` seam; only sections that KEEP a rule (opaque neighbours, no
+ * cursor grid to misregister against) should pair with this.
+ * `data-section-corner` keeps the nav-open CSS hiding them with the rest.
  */
-function SheetCorners() {
+export function SeamCorners() {
 	return (
 		<>
 			<span
 				aria-hidden="true"
 				data-section-corner
-				className="pointer-events-none absolute bottom-0 left-0 z-10 h-[7px] w-[7px] -translate-x-1/2 translate-y-1/2 border border-bp-guide-strong bg-bp-paper"
+				className="pointer-events-none absolute left-0 top-0 z-10 h-[7px] w-[7px] -translate-x-1/2 -translate-y-1/2 border border-bp-guide-strong bg-bp-paper"
 			/>
 			<span
 				aria-hidden="true"
 				data-section-corner
-				className="pointer-events-none absolute bottom-0 right-0 z-10 h-[7px] w-[7px] translate-x-1/2 translate-y-1/2 border border-bp-guide-strong bg-bp-paper"
+				className="pointer-events-none absolute right-0 top-0 z-10 h-[7px] w-[7px] -translate-y-1/2 translate-x-1/2 border border-bp-guide-strong bg-bp-paper"
 			/>
 		</>
 	);
@@ -77,12 +79,20 @@ export function SheetSection({
 	code,
 	title,
 	id,
+	seam = false,
 	children,
 }: {
 	/** e.g. "A-101". */
 	code: string;
 	title: string;
 	id?: string;
+	/**
+	 * Draw a kept top seam (rule + registration squares) on this wrapper. The
+	 * seam must live HERE, not on the child section: `.bp-section`'s
+	 * content-visibility imposes paint containment, which clips the squares
+	 * that straddle the shell rail to a fragment.
+	 */
+	seam?: boolean;
 	children: ReactNode;
 }) {
 	return (
@@ -90,10 +100,14 @@ export function SheetSection({
 			id={id}
 			data-sheet={code}
 			data-sheet-title={title}
-			className="relative border-b border-bp-guide-strong"
+			className={
+				seam
+					? "relative border-t border-bp-guide-strong"
+					: "relative"
+			}
 		>
+			{seam ? <SeamCorners /> : null}
 			{children}
-			<SheetCorners />
 		</div>
 	);
 }
