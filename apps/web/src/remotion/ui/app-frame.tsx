@@ -208,6 +208,9 @@ export const AppFrame: React.FC<{
 						display: "flex",
 						alignItems: "center",
 						gap: 12,
+						// border-box so brandHeight includes the padding even in a headless
+						// render, where the app's preflight reset isn't loaded.
+						boxSizing: "border-box",
 						height: SIDEBAR.brandHeight,
 						padding: "4px 12px 22px",
 					}}
@@ -222,7 +225,7 @@ export const AppFrame: React.FC<{
 						</>
 					)}
 				</div>
-				{NAV.map(({ group, items }, groupIndex) => (
+				{NAV.map(({ group, items }) => (
 					<div key={group} style={{ position: "relative", marginBottom: SIDEBAR.groupMarginBottom }}>
 						<div
 							style={{
@@ -238,10 +241,8 @@ export const AppFrame: React.FC<{
 						>
 							{group}
 						</div>
-						{items.map((item, i) => {
-							// Flat index = rows in every earlier group, plus this one.
-							const flat =
-								NAV.slice(0, groupIndex).reduce((n, g) => n + g.items.length, 0) + i;
+						{items.map((item) => {
+							const flat = NAV_INDEX[item.label];
 							const w = rowWeight(flat, activeAt);
 							const ink = `color-mix(in oklch, ${t.fg} ${pct(0.72 + w * 0.28)}%, transparent)`;
 							return (

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, type ReactNode } from "react";
+import { usePrefersReducedMotion } from "./use-reduced-motion";
 
 /**
  * Scroll-linked presentation for a scene plate: it enters slightly scaled down
@@ -10,11 +11,15 @@ import { useEffect, useRef, type ReactNode } from "react";
  */
 export function ReelExpand({ children }: { children: ReactNode }) {
 	const ref = useRef<HTMLDivElement>(null);
+	const reduced = usePrefersReducedMotion();
 
 	useEffect(() => {
 		const el = ref.current;
 		if (!el) return;
-		if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+		if (reduced) {
+			el.style.transform = "";
+			return;
+		}
 
 		let raf = 0;
 		const update = () => {
@@ -35,7 +40,7 @@ export function ReelExpand({ children }: { children: ReactNode }) {
 			window.removeEventListener("scroll", onScroll);
 			window.removeEventListener("resize", onScroll);
 		};
-	}, []);
+	}, [reduced]);
 
 	return (
 		<div ref={ref} className="origin-top will-change-transform">

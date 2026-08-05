@@ -261,7 +261,7 @@ export const InvoicePaidContent: React.FC = () => {
 	const flip = invoiceAt(frame);
 	const isInvoice = flip > 0.5;
 	const panelIn = progress(frame, PAY_PANEL_AT, 18);
-	const counted = interpolate(frame, [COUNT_FROM, PAID_AT], [0, TOTAL], {
+	const counted = interpolate(frame, [COUNT_FROM, PAID_AT], [TOTAL, 0], {
 		extrapolateLeft: "clamp",
 		extrapolateRight: "clamp",
 	});

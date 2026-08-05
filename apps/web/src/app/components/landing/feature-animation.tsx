@@ -39,6 +39,8 @@ export function StoryReelPlayer({
 	const { resolvedTheme } = useTheme();
 	const reduced = usePrefersReducedMotion();
 	const playerRef = useRef<PlayerRef>(null);
+	const wrapRef = useRef<HTMLDivElement>(null);
+	const [inView, setInView] = useState(false);
 	// Looked up by key, not by the rail's index: reordering the rail copy can
 	// never silently point a chapter at the wrong stretch of the reel.
 	const segment =
@@ -53,8 +55,26 @@ export function StoryReelPlayer({
 	} as const;
 
 	useEffect(() => {
+		const node = wrapRef.current;
+		if (!node) return;
+		const observer = new IntersectionObserver(
+			([entry]) => setInView(entry.isIntersecting),
+			{ threshold: 0.35 },
+		);
+		observer.observe(node);
+		return () => observer.disconnect();
+	}, []);
+
+	useEffect(() => {
 		const player = playerRef.current;
 		if (!player || reduced) return;
+
+		// Off-screen the reel rests: no playback, and no listeners that could
+		// restart it on a visibilitychange while it's scrolled out of view.
+		if (!inView) {
+			player.pause();
+			return;
+		}
 
 		// Segments tile the timeline (`to[i] === from[i + 1]`), so arriving from
 		// the previous chapter needs no seek at all — just keep rolling through
@@ -92,12 +112,12 @@ export function StoryReelPlayer({
 			player.removeEventListener("pause", ensurePlaying);
 			document.removeEventListener("visibilitychange", ensurePlaying);
 		};
-	}, [reduced, from, stopAt]);
+	}, [reduced, from, stopAt, inView]);
 
 	// Reduced motion: a still of the settled chapter, and no playback engine.
 	if (reduced) {
 		return (
-			<div className={className}>
+			<div ref={wrapRef} className={className}>
 				<Thumbnail
 					lazyComponent={lazyComponent}
 					inputProps={inputProps}
@@ -113,7 +133,7 @@ export function StoryReelPlayer({
 	}
 
 	return (
-		<div className={className}>
+		<div ref={wrapRef} className={className}>
 			<Player
 				ref={playerRef}
 				lazyComponent={lazyComponent}

@@ -189,7 +189,7 @@ export const RoutingContent: React.FC = () => {
 						padding: "2px 8px",
 					}}
 				>
-					© OpenStreetMap
+					© OpenStreetMap contributors
 				</div>
 			</Panel>
 

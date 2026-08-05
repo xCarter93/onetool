@@ -578,7 +578,7 @@ function AppNavBar() {
 						    or short viewports (landscape phones) lose the lower links. */}
 						{/* min-h-0 is load-bearing: a grid item's auto minimum would refuse
 						    to shrink to the 0fr row. */}
-						<div className="min-h-0 max-h-[calc(100dvh-4rem)] overflow-y-auto px-4 py-3 space-y-1">
+						<div className="min-h-0 max-h-[calc(100dvh-4rem)] sm:max-h-[calc(100dvh-5rem)] overflow-y-auto px-4 py-3 space-y-1">
 							{navigationLinks.map((link) =>
 								link.href === "/help" ? (
 									<Link

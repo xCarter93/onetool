@@ -184,7 +184,3 @@ const buildSegments = (): readonly StorySegment[] => {
 export const STORY_SEGMENTS = buildSegments();
 
 export const STORY_REEL_DURATION = STORY_SEGMENTS[STORY_SEGMENTS.length - 1].to;
-
-/** Reel frame where chapter `i` is settled — used as the reduced-motion still. */
-export const segmentPosterFrame = (index: number): number =>
-	STORY_SEGMENTS[index].to;
