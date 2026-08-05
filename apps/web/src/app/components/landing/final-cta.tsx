@@ -29,12 +29,12 @@ export function FinalCta() {
 								Start your first job today
 							</h2>
 							<p className="mt-5 max-w-md text-base leading-7 text-muted-foreground">
-								Set up your clients, send a quote, and get paid — all from one
+								Set up your clients, send a quote, and get paid, all from one
 								place. Nothing to install, and you can be quoting within the
 								hour.
 							</p>
 							<div className="mt-10">
-								<CtaButton href="/sign-up">Get Started</CtaButton>
+								<CtaButton href="/sign-up">Start free</CtaButton>
 							</div>
 						</div>
 
@@ -46,8 +46,7 @@ export function FinalCta() {
 									Schedule a demo
 								</p>
 								<p className="mt-3 text-sm leading-6 text-muted-foreground">
-									Prefer a walkthrough first? We&apos;ll reach out within 24
-									hours.
+									Prefer a walkthrough first? We&apos;ll reach out shortly.
 								</p>
 								<ScheduleDemoForm idPrefix="final-cta-demo" className="mt-6" />
 							</div>

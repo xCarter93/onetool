@@ -21,6 +21,8 @@ function CornerSVG({ className }: { className: string }) {
 
 export default function PageFrame() {
 	return (
+		// Decorative chrome sits at z-[55]: above the sticky navbar (z-50),
+		// far below the z-[9999] modal portal band it used to paint over.
 		<>
 			{/* Fixed frame borders */}
 			<div className="site-frame site-frame-top" aria-hidden="true" />
@@ -29,10 +31,10 @@ export default function PageFrame() {
 			<div className="site-frame site-frame-right" aria-hidden="true" />
 
 			{/* Corner decorations - 50x50 curved SVGs with rotations */}
-			<CornerSVG className="fixed z-[9998] pointer-events-none text-frame top-2.5 left-2.5 rotate-90 hidden min-[850px]:block" />
-			<CornerSVG className="fixed z-[9998] pointer-events-none text-frame top-2.5 right-2.5 rotate-180 hidden min-[850px]:block" />
-			<CornerSVG className="fixed z-[9998] pointer-events-none text-frame bottom-2.5 left-2.5 rotate-0 hidden min-[850px]:block" />
-			<CornerSVG className="fixed z-[9998] pointer-events-none text-frame bottom-2.5 right-2.5 -rotate-90 hidden min-[850px]:block" />
+			<CornerSVG className="fixed z-[55] pointer-events-none text-frame top-2.5 left-2.5 rotate-90 hidden min-[850px]:block" />
+			<CornerSVG className="fixed z-[55] pointer-events-none text-frame top-2.5 right-2.5 rotate-180 hidden min-[850px]:block" />
+			<CornerSVG className="fixed z-[55] pointer-events-none text-frame bottom-2.5 left-2.5 rotate-0 hidden min-[850px]:block" />
+			<CornerSVG className="fixed z-[55] pointer-events-none text-frame bottom-2.5 right-2.5 -rotate-90 hidden min-[850px]:block" />
 		</>
 	);
 }

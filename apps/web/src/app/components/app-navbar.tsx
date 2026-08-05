@@ -30,8 +30,8 @@ const navigationLinks = [
 	{ href: "#features", label: "Features" },
 	{ href: "/help", label: "Resources" },
 	{ href: "#how-it-works", label: "How it Works" },
-	{ href: "#faq", label: "FAQ" },
 	{ href: "#pricing", label: "Pricing" },
+	{ href: "#faq", label: "FAQ" },
 ];
 
 const resourceItems: {
@@ -85,13 +85,13 @@ const featureItems: {
 		icon: FileSignature,
 		label: "Quotes & e-sign",
 		description: "Send quotes clients sign from their phone",
-		href: `#${chapterAnchor("quote-to-paid")}`,
+		href: `#${chapterAnchor("portal-approve")}`,
 	},
 	{
 		icon: Receipt,
 		label: "Invoices & payments",
 		description: "Flip the quote to an invoice, get paid online",
-		href: `#${chapterAnchor("quote-to-paid")}`,
+		href: `#${chapterAnchor("invoice-paid")}`,
 	},
 	{
 		icon: CalendarDays,
@@ -124,6 +124,9 @@ const featureItems: {
 		href: `#${chapterAnchor("reports")}`,
 	},
 ];
+
+/** The landing surface's canonical deceleration, matching `--ease-out-quint`. */
+const EASE_OUT_QUINT = [0.23, 1, 0.32, 1] as const;
 
 /** Pill-row geometry, shared so plain links and both flyout triggers align. */
 const NAV_ITEM =
@@ -176,7 +179,7 @@ function MenuIcon() {
 			/>
 			<path
 				d="M4 12H20"
-				className="origin-center transition-all duration-300 ease-[cubic-bezier(.5,.85,.25,1.8)] group-aria-expanded:rotate-45"
+				className="origin-center transition-all duration-300 ease-[cubic-bezier(.5,.85,.25,1.1)] group-aria-expanded:rotate-45"
 			/>
 			<path
 				d="M4 12H20"
@@ -242,7 +245,7 @@ function FeaturesFlyout({
 						initial={reduced ? false : { opacity: 0, y: 12 }}
 						animate={{ opacity: 1, y: 0 }}
 						exit={reduced ? { opacity: 1 } : { opacity: 0, y: 12 }}
-						transition={{ duration: reduced ? 0 : 0.25, ease: "easeOut" }}
+						transition={{ duration: reduced ? 0 : 0.25, ease: EASE_OUT_QUINT }}
 						style={{ translateX: "-50%" }}
 						className="absolute left-1/2 top-full pt-4"
 					>
@@ -346,7 +349,7 @@ function ResourcesFlyout() {
 						initial={reduced ? false : { opacity: 0, y: 12 }}
 						animate={{ opacity: 1, y: 0 }}
 						exit={reduced ? { opacity: 1 } : { opacity: 0, y: 12 }}
-						transition={{ duration: reduced ? 0 : 0.25, ease: "easeOut" }}
+						transition={{ duration: reduced ? 0 : 0.25, ease: EASE_OUT_QUINT }}
 						style={{ translateX: "-50%" }}
 						className="absolute left-1/2 top-full pt-4"
 					>
@@ -545,7 +548,8 @@ function AppNavBar() {
 					{/* Mobile menu button */}
 					<div className="md:hidden">
 						<button
-							className="group inline-flex items-center justify-center rounded-lg p-2 text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+							// min-h/w-11 pads the tap target to 44px without resizing the glyph.
+						className="group inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg p-2 text-muted-foreground hover:text-foreground hover:bg-accent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
 							onClick={() => setIsMenuOpen(!isMenuOpen)}
 							aria-expanded={isMenuOpen}
 							aria-label={
@@ -561,16 +565,20 @@ function AppNavBar() {
 			{/* Mobile Navigation */}
 			<AnimatePresence>
 				{isMenuOpen && (
+					// grid-template-rows 0fr→1fr, never height:auto — Framer cannot
+					// interpolate `auto`, so it measures every frame and thrashes layout.
 					<m.div
-						initial={{ height: 0, opacity: 0 }}
-						animate={{ height: "auto", opacity: 1 }}
-						exit={{ height: 0, opacity: 0 }}
-						transition={{ duration: reduced ? 0 : 0.3 }}
-						className="md:hidden overflow-hidden border-t border-bp-guide-strong bg-bp-paper"
+						initial={{ gridTemplateRows: "0fr", opacity: 0 }}
+						animate={{ gridTemplateRows: "1fr", opacity: 1 }}
+						exit={{ gridTemplateRows: "0fr", opacity: 0 }}
+						transition={{ duration: reduced ? 0 : 0.3, ease: EASE_OUT_QUINT }}
+						className="grid md:hidden overflow-hidden border-t border-bp-guide-strong bg-bp-paper"
 					>
 						{/* Body scroll is locked while open — the panel itself must scroll
 						    or short viewports (landscape phones) lose the lower links. */}
-						<div className="max-h-[calc(100dvh-4rem)] overflow-y-auto px-4 py-3 space-y-1">
+						{/* min-h-0 is load-bearing: a grid item's auto minimum would refuse
+						    to shrink to the 0fr row. */}
+						<div className="min-h-0 max-h-[calc(100dvh-4rem)] overflow-y-auto px-4 py-3 space-y-1">
 							{navigationLinks.map((link) =>
 								link.href === "/help" ? (
 									<Link

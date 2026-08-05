@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import { FooterWordmark } from "@/app/components/landing/footer-wordmark";
+import { SeamCorners } from "@/app/components/landing/sheet-stack";
 
 const navigation = {
 	solutions: [
@@ -78,7 +79,13 @@ export default function Footer() {
 	return (
 		// No border-t: the G-004 sheet above already draws its border-b — stacking
 		// both prints a doubled seam rule.
-		<footer className="p-6 sm:p-10 lg:p-14">
+		// bg-background (opaque, plus `relative` to lift it out of the stack) so
+		// the page lattice and any band texture stop at the footer's top edge.
+		// The footer sits on solid ground, not the lattice, so its top seam is the
+		// one section rule the page keeps: opaque paper on both sides, nothing for
+		// the line to misregister against.
+		<footer className="relative border-t border-bp-guide-strong bg-background p-6 sm:p-10 lg:p-14">
+			<SeamCorners />
 			<div className="grid grid-cols-1 gap-12 lg:grid-cols-[auto_1fr] lg:gap-16">
 				<div className="space-y-5">
 					<button onClick={scrollToTop} className={FOOTER_LINK}>
@@ -130,12 +137,14 @@ export default function Footer() {
 						</p>
 					</div>
 
-					<div className="flex gap-x-5">
+					<div className="-mx-2.5 flex gap-x-1">
 						{navigation.social.map((item) => (
+							// Negative margin on the row cancels the padding that grows each
+							// icon to a 44px target, so the glyphs keep their visual gap.
 							<a
 								key={item.name}
 								href={item.href}
-								className="rounded-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+								className="inline-flex size-11 items-center justify-center rounded-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
 							>
 								<span className="sr-only">{item.name}</span>
 								<item.icon aria-hidden="true" className="size-5 sm:size-6" />

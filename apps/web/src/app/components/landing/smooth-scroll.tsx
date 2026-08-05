@@ -2,6 +2,7 @@
 
 import { useEffect, type ReactNode } from "react";
 import Lenis from "lenis";
+import { usePrefersReducedMotion } from "./use-reduced-motion";
 
 const LENIS_OPTIONS = {
 	duration: 1.0,
@@ -13,14 +14,19 @@ const LENIS_OPTIONS = {
 	touchMultiplier: 2,
 };
 
-export function SmoothScroll({ children }: { children: ReactNode }): ReactNode {
-	useEffect(() => {
-		// Respect user's motion preferences
-		const prefersReducedMotion = window.matchMedia(
-			"(prefers-reduced-motion: reduce)"
-		).matches;
+/**
+ * Sticky-header clearance for anchor landings. Matches the chapter rail's
+ * `sticky top-24` (6rem) — one number, or a link lands under the rail.
+ */
+const ANCHOR_OFFSET = 96;
 
-		if (prefersReducedMotion) return;
+export function SmoothScroll({ children }: { children: ReactNode }): ReactNode {
+	// Live, so toggling the OS setting mid-session tears Lenis down or brings it
+	// back rather than leaving the page in whichever mode it happened to load in.
+	const reduced = usePrefersReducedMotion();
+
+	useEffect(() => {
+		if (reduced) return;
 
 		const lenis = new Lenis(LENIS_OPTIONS);
 
@@ -38,6 +44,8 @@ export function SmoothScroll({ children }: { children: ReactNode }): ReactNode {
 			const target = e.target as HTMLElement;
 			const anchor = target.closest('a[href^="#"]');
 			if (!anchor) return;
+			// Opt-out for links that need the browser's own focus move (skip link).
+			if (anchor.hasAttribute("data-no-smooth")) return;
 
 			const href = anchor.getAttribute("href");
 			if (!href || href === "#") return;
@@ -46,7 +54,7 @@ export function SmoothScroll({ children }: { children: ReactNode }): ReactNode {
 			if (!element) return;
 
 			e.preventDefault();
-			lenis.scrollTo(element as HTMLElement, { offset: -100 });
+			lenis.scrollTo(element as HTMLElement, { offset: -ANCHOR_OFFSET });
 		}
 
 		document.addEventListener("click", handleAnchorClick);
@@ -56,7 +64,7 @@ export function SmoothScroll({ children }: { children: ReactNode }): ReactNode {
 			cancelAnimationFrame(rafId);
 			lenis.destroy();
 		};
-	}, []);
+	}, [reduced]);
 
 	return <>{children}</>;
 }

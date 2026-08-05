@@ -50,7 +50,8 @@ const Intro: React.FC = () => {
 				src={staticFile("OneTool-mark.png")}
 				style={{
 					height: 130,
-					scale: String(pop(frame, fps, 5)),
+					// Entrances start from 0.92, never 0 — nothing appears from nothing.
+					scale: String(0.92 + pop(frame, fps, 5) * 0.08),
 					filter: `drop-shadow(0 20px 40px color-mix(in oklch, ${t.primary} 30%, transparent))`,
 				}}
 			/>
@@ -58,7 +59,7 @@ const Intro: React.FC = () => {
 				Run your business on OneTool
 			</div>
 			<div style={{ fontSize: 28, color: t.mutedFg, ...fadeUp(frame, 28, 16) }}>
-				Clients, quotes, invoices, crews, and payments — one calm workspace.
+				Clients, quotes, invoices, crews, and payments in one calm workspace.
 			</div>
 		</AbsoluteFill>
 	);
@@ -88,7 +89,7 @@ const Outro: React.FC = () => {
 					fontWeight: 600,
 					borderRadius: 14,
 					padding: "18px 38px",
-					scale: String(pop(frame, fps, 26)),
+					scale: String(0.92 + pop(frame, fps, 26) * 0.08),
 					boxShadow: `0 16px 44px color-mix(in oklch, ${t.primary} 38%, transparent)`,
 				}}
 			>

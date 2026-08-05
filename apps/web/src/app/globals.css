@@ -534,10 +534,12 @@
 	/* ========================================================================
 	   Site Frame Effect
 	   ======================================================================== */
+	/* Decorative chrome. 55 clears the sticky navbar (z-50) but stays far below
+	   the z-[9999] modal portal band, which it used to paint over. */
 	.site-frame {
 		display: block;
 		position: fixed;
-		z-index: 9999;
+		z-index: 55;
 		pointer-events: none;
 		background-color: var(--frame);
 	}
@@ -951,12 +953,14 @@
 	/* Construction guides — the faintest marks on the sheet. Guardrail: grid
 	   alpha never exceeds 15%. */
 	--bp-guide: color-mix(in oklch, var(--foreground) 8%, transparent);
-	--bp-guide-strong: color-mix(in oklch, var(--foreground) 14%, transparent);
+	--bp-guide-strong: color-mix(in oklch, var(--foreground) 18%, transparent);
 
 	/* Object ink. --bp-line is the hairline outline, --bp-line-strong is a
-	   "visible edge" line. Construction ink is always quieter than object ink. */
-	--bp-line: color-mix(in oklch, var(--foreground) 16%, transparent);
-	--bp-line-strong: color-mix(in oklch, var(--foreground) 34%, transparent);
+	   "visible edge" line. Construction ink is always quieter than object ink.
+	   Light paper needs MORE separation than dark, not less: at 16% object ink
+	   sat only 2x over the 8% guides and plate edges drowned in the lattice. */
+	--bp-line: color-mix(in oklch, var(--foreground) 26%, transparent);
+	--bp-line-strong: color-mix(in oklch, var(--foreground) 44%, transparent);
 
 	/* Construction ink (sky). sky-600 clears 3:1 as a line on light paper; the
 	   brand #00A6F4 measures 2.71:1 there and is fills/tints only. --bp-anno is
@@ -991,9 +995,18 @@
 	--cta-solid: #0275b8;
 	--cta-solid-hover: #0369a1;
 	--cta-solid-active: #075985;
+
+	/* The landing surface's TWO curves. Every hand-typed near-duplicate points
+	   here — a drawing that decelerates two different ways reads as two systems. */
+	--ease-out-quint: cubic-bezier(0.23, 1, 0.32, 1);
+	--ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
 }
 
 .dark {
+	/* Re-declared so a SCOPED .dark (e.g. the navbar flipping over a dark band)
+	   recomputes against its own --background — a var() chain declared only on
+	   :root freezes to the light value for descendants. */
+	--bp-paper: var(--background);
 	--bp-guide: color-mix(in oklch, var(--foreground) 9%, transparent);
 	--bp-guide-strong: color-mix(in oklch, var(--foreground) 14%, transparent);
 	--bp-line: color-mix(in oklch, var(--foreground) 22%, transparent);
@@ -1095,9 +1108,24 @@
 	   descendant is a no-op. */
 	.landing-ink {
 		--muted-foreground: oklch(0.47 0.016 285.938);
+		/* Light-mode canvas tint: the sheet interior sits a hair below the pure
+		   white --background, so every opaque bg-bp-paper / bg-card plate lifts
+		   off the lattice by VALUE, not just by outline. --bp-paper deliberately
+		   still resolves to the untinted --background for exactly that reason.
+		   Dark mode already separates (plates are lighter than paper) — the
+		   .dark block below must NOT pick this up. */
+		background-color: color-mix(in oklch, var(--foreground) 3%, var(--background));
+		/* --muted (~3.3% gray) matches the tinted canvas; bump it so muted
+		   plates (A-501 clusters, miniature fills, hovers) keep a readable step
+		   above it. */
+		--muted: color-mix(in oklch, var(--foreground) 7%, var(--background));
 	}
 	.dark .landing-ink {
 		--muted-foreground: oklch(0.705 0.015 286.067);
+		/* Undo the light-mode canvas tint and --muted bump above: dark mode is
+		   approved as-is. --muted is the theme's own dark value verbatim. */
+		background-color: transparent;
+		--muted: oklch(0.21 0.006 285.885);
 	}
 
 	/* Off-screen sections skip layout/paint. contain-intrinsic-size is
@@ -1122,7 +1150,7 @@
 		stroke-dashoffset: 1;
 	}
 	.bp-in .bp-draw {
-		animation: bp-draw 0.7s cubic-bezier(0.16, 1, 0.3, 1) var(--bp-delay, 0s)
+		animation: bp-draw 0.7s var(--ease-out-quint) var(--bp-delay, 0s)
 			forwards;
 	}
 	@keyframes bp-draw {
@@ -1135,8 +1163,8 @@
 		opacity: 0;
 	}
 	.bp-in .bp-fade-in {
-		animation: bp-fade-in 0.45s cubic-bezier(0.16, 1, 0.3, 1)
-			var(--bp-delay, 0s) forwards;
+		animation: bp-fade-in 0.45s var(--ease-out-quint) var(--bp-delay, 0s)
+			forwards;
 	}
 	@keyframes bp-fade-in {
 		to {
@@ -1148,7 +1176,7 @@
 		opacity: 0;
 	}
 	.bp-in .bp-rise {
-		animation: bp-rise 0.42s cubic-bezier(0.16, 1, 0.3, 1) var(--bp-delay, 0s)
+		animation: bp-rise 0.42s var(--ease-out-quint) var(--bp-delay, 0s)
 			forwards;
 	}
 	@keyframes bp-rise {
@@ -1169,7 +1197,7 @@
 		opacity: 0;
 	}
 	.bp-in .bp-stamp {
-		animation: bp-stamp 0.34s cubic-bezier(0.2, 0, 0, 1) var(--bp-delay, 0s)
+		animation: bp-stamp 0.34s var(--ease-in-out) var(--bp-delay, 0s)
 			forwards;
 	}
 	@keyframes bp-stamp {
@@ -1208,23 +1236,22 @@
 		}
 	}
 
+	/* One-shot entrance: NO standing `will-change`. backface-visibility alone
+	   pre-promotes the layer (which is what stopped the macOS Chrome white
+	   flash); a permanent will-change kept every hero element on its own
+	   compositor layer for the life of the page. */
 	.enter {
 		opacity: 0;
-		animation: enter-up 700ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+		animation: enter-up 700ms var(--ease-out-quint) forwards;
 		animation-delay: var(--enter-delay, 0ms);
-		/* Pre-promote the compositor layer and keep it backed, so the layer isn't
-		   allocated mid-animation (which flashes white for a frame on some GPUs,
-		   notably macOS Chrome). */
-		will-change: opacity, transform;
 		backface-visibility: hidden;
 		-webkit-backface-visibility: hidden;
 	}
 
 	.enter-fade {
 		opacity: 0;
-		animation: enter-fade 900ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+		animation: enter-fade 900ms var(--ease-out-quint) forwards;
 		animation-delay: var(--enter-delay, 0ms);
-		will-change: opacity;
 		backface-visibility: hidden;
 		-webkit-backface-visibility: hidden;
 	}

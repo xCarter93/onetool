@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import type { FeatureKey } from "@/remotion/manifest";
 import { SheetCode } from "./blueprint/sheet-frame";
-import { FeatureAnimation, type FeatureKey } from "./feature-animation";
-import { FeatureAnimationLazy } from "./feature-animation-lazy";
+import { FeatureAnimationLazy, StoryReelPlayerLazy } from "./feature-animation-lazy";
 import { chapterAnchor } from "./feature-anchors";
+import { ReelExpand } from "./reel-expand";
 
 export interface RailChapter {
 	key: FeatureKey;
@@ -13,6 +14,14 @@ export interface RailChapter {
 	heading: string;
 	body: string;
 }
+
+/**
+ * Scroll a visitor spends on one chapter before the rail advances. At nine
+ * chapters the old 85vh made a 765vh track, which reads as the section
+ * trapping the page; 70vh keeps the whole run to 630vh and still gives each
+ * scene time to play out.
+ */
+const CHAPTER_DWELL_VH = 70;
 
 const LG_QUERY = "(min-width: 1024px)";
 const subscribeLg = (cb: () => void) => {
@@ -68,9 +77,10 @@ function StackedChapters({ chapters }: { chapters: RailChapter[] }) {
  * Attio-style pinned chapters (lg+): the rail of headings stays in view on the
  * left while scrolling walks the right-hand plate through the Remotion scenes.
  * The section's real height is one tall scroll track; a sticky viewport-frame
- * inside it swaps the active chapter from scroll progress. Only the active
- * scene's Player is mounted — remounting on swap restarts the scene from
- * frame 0, which is the wanted behaviour.
+ * inside it swaps the active chapter from scroll progress. The plate holds ONE
+ * persistent Player running the story reel: activating a chapter seeks its
+ * segment and plays to the settled end, so the workspace shell around the
+ * scenes never remounts and the sidebar/title carry between chapters.
  *
  * Anchor markers for the navbar's `#feature-<key>` deep links sit at each
  * segment boundary inside the track, so old links land on the right scene.
@@ -111,20 +121,46 @@ export function FeatureRail({ chapters }: { chapters: RailChapter[] }) {
 
 	const chapter = chapters[active];
 
+	/**
+	 * Scrolls so progress lands 10% into chapter i's segment — the same
+	 * rect-vs-scrollable math `update` reads back, so the floor can't tip into
+	 * a neighbouring chapter.
+	 */
+	const scrollToChapter = (i: number) => {
+		const track = trackRef.current;
+		if (!track) return;
+		const rect = track.getBoundingClientRect();
+		const scrollable = rect.height - window.innerHeight;
+		if (scrollable <= 0) return;
+		window.scrollTo({
+			top:
+				window.scrollY + rect.top + ((i + 0.1) / chapters.length) * scrollable,
+			behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches
+				? "auto"
+				: "smooth",
+		});
+	};
+
 	return (
 		<div
 			ref={trackRef}
 			className="relative"
-			style={{ height: `${chapters.length * 85}vh` }}
+			style={{ height: `${chapters.length * CHAPTER_DWELL_VH}vh` }}
 		>
-			{/* Deep-link markers, one per scroll segment. */}
+			{/* Deep-link markers, one per scroll segment. Offsets are in *scrollable*
+			    space (100% − 100vh): an anchor lands with the marker at the viewport
+			    top, so its offset must be the scroll position whose progress falls
+			    inside segment i — 10% in, never on the boundary the floor could tip
+			    across. */}
 			{chapters.map((c, i) => (
 				<div
 					key={c.key}
 					id={chapterAnchor(c.key)}
 					aria-hidden="true"
 					className="absolute left-0 w-px"
-					style={{ top: `${(i / chapters.length) * 100}%` }}
+					style={{
+						top: `calc(${(i + 0.1) / chapters.length} * (100% - 100vh))`,
+					}}
 				/>
 			))}
 
@@ -143,12 +179,8 @@ export function FeatureRail({ chapters }: { chapters: RailChapter[] }) {
 									<button
 										type="button"
 										aria-current={isActive || undefined}
-										onClick={() =>
-											document
-												.getElementById(chapterAnchor(c.key))
-												?.scrollIntoView({ block: "start" })
-										}
-										className={`block w-full py-2.5 pl-5 text-left transition-colors duration-200 ${
+										onClick={() => scrollToChapter(i)}
+										className={`block w-full rounded-sm py-2.5 pl-5 text-left transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background ${
 											isActive
 												? "text-foreground"
 												: "text-muted-foreground hover:text-foreground"
@@ -183,16 +215,16 @@ export function FeatureRail({ chapters }: { chapters: RailChapter[] }) {
 
 				{/* Scene plate */}
 				<div className="col-span-8">
-					<div className="border border-bp-line bg-card">
-						{/* key remounts the Player so each chapter starts at frame 0;
-						    the fade covers the module swap. */}
-						<div
-							key={chapter.key}
-							className="animate-in fade-in duration-300 motion-reduce:animate-none"
-						>
-							<FeatureAnimation feature={chapter.key} />
+					{/* Scroll-linked scale on the plate only — the caption below keeps
+					    its type size. Transform lives INSIDE the sticky frame, so it
+					    never steals the rail's scroller. */}
+					<ReelExpand>
+						<div className="border border-bp-line bg-card">
+							{/* No key: the reel Player is deliberately persistent, and the
+							    scene change is the composition's own blueprint sweep. */}
+							<StoryReelPlayerLazy feature={chapter.key} />
 						</div>
-					</div>
+					</ReelExpand>
 					<p className="mt-3 flex items-baseline justify-between text-[11px] font-semibold uppercase leading-none tracking-[0.14em] text-bp-anno">
 						<span>
 							{chapter.code} · {chapter.label}

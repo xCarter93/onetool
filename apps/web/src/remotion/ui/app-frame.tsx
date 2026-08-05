@@ -1,5 +1,5 @@
 import React from "react";
-import { Img, staticFile } from "remotion";
+import { Img, interpolate, staticFile } from "remotion";
 import { DotCanvas, useTheme } from "./primitives";
 import { RADIUS } from "../lib/tokens";
 
@@ -7,6 +7,24 @@ export interface NavItem {
 	label: string;
 	icon: React.ReactNode;
 }
+
+/** Shell geometry, in composition pixels (VIDEO_CONFIG is 1600×1000). */
+export const FRAME = {
+	width: 1600,
+	sidebarWidth: 300,
+	cardInset: 14,
+	cardBorder: 1,
+	headerPadX: 32,
+	headerPadY: 20,
+} as const;
+
+/** Right edge of the header action row — `headerRight` is flush right. */
+export const HEADER_ACTION_RIGHT =
+	FRAME.width - FRAME.cardInset - FRAME.cardBorder - FRAME.headerPadX;
+
+/** Vertical center of a header control of `height`. */
+export const headerCenterY = (height: number) =>
+	FRAME.cardInset + FRAME.cardBorder + FRAME.headerPadY + height / 2;
 
 const stroke = (d: string) => (
 	<svg width={22} height={22} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.9} strokeLinecap="round" strokeLinejoin="round">
@@ -42,18 +60,96 @@ export const NAV: { group: string; items: NavItem[] }[] = [
 	},
 ];
 
+/** Nav rows flattened in render order — the axis the active pill glides along. */
+export const NAV_ITEMS: NavItem[] = NAV.flatMap(({ items }) => items);
+
+export const NAV_INDEX: Record<string, number> = Object.fromEntries(
+	NAV_ITEMS.map((item, i) => [item.label, i]),
+);
+
+/**
+ * Sidebar metrics. Rows and group labels carry EXPLICIT heights so the pill's
+ * y-position is pure arithmetic — no DOM measurement, which would desync
+ * between the Player and a headless render.
+ */
+export const SIDEBAR = {
+	padTop: 24,
+	padX: 16,
+	/** Wordmark block: 4px top + 46px mark + 22px bottom. */
+	brandHeight: 72,
+	/** Sidebar is a column flex with this gap between brand and each group. */
+	groupGap: 6,
+	groupLabelHeight: 29,
+	groupMarginBottom: 10,
+	itemHeight: 42,
+} as const;
+
+/** Top offset of every nav row, in sidebar-local px, in flat NAV_ITEMS order. */
+export const NAV_ITEM_TOPS: number[] = (() => {
+	const tops: number[] = [];
+	let y = SIDEBAR.padTop + SIDEBAR.brandHeight;
+	for (const { items } of NAV) {
+		y += SIDEBAR.groupGap + SIDEBAR.groupLabelHeight;
+		for (let i = 0; i < items.length; i++) {
+			tops.push(y + i * SIDEBAR.itemHeight);
+		}
+		y += items.length * SIDEBAR.itemHeight + SIDEBAR.groupMarginBottom;
+	}
+	return tops;
+})();
+
+const NAV_STEPS = NAV_ITEM_TOPS.map((_, i) => i);
+
+/** 1 at the row, 0 a full row away — drives ink strength during a glide. */
+const rowWeight = (index: number, activeFloat: number) =>
+	Math.max(0, 1 - Math.abs(index - activeFloat));
+
+const pct = (n: number) => Math.round(Math.max(0, Math.min(1, n)) * 100);
+
 /**
  * The workspace shell: sidebar + header + rounded content card, mirroring
  * sidebar-with-header.tsx / workspace-theme.css zone colors.
+ *
+ * Simple callers pass `active` + `title` and get the static shell. The story
+ * reel passes the animated forms instead: `activeFloat` (a fractional index
+ * into NAV_ITEMS, so the pill glides between rows) and `titleB`/`titleMix`
+ * (a title crossfade across a transition window).
  */
 export const AppFrame: React.FC<{
 	active: string;
 	title: string;
+	/** Fractional NAV_ITEMS index; overrides `active` when supplied. */
+	activeFloat?: number;
+	/** Incoming title to crossfade toward. */
+	titleB?: string;
+	/** 0 = `title`, 1 = `titleB`. */
+	titleMix?: number;
 	headerRight?: React.ReactNode;
 	children?: React.ReactNode;
 	dotCanvas?: boolean;
-}> = ({ active, title, headerRight, children, dotCanvas = true }) => {
+}> = ({
+	active,
+	title,
+	activeFloat,
+	titleB,
+	titleMix = 0,
+	headerRight,
+	children,
+	dotCanvas = true,
+}) => {
 	const t = useTheme();
+	const activeAt = activeFloat ?? NAV_INDEX[active] ?? -1;
+	const pillTop = interpolate(activeAt, NAV_STEPS, NAV_ITEM_TOPS, {
+		extrapolateLeft: "clamp",
+		extrapolateRight: "clamp",
+	});
+	// A float index that lands between rows still reads as "one row lit": the
+	// pill is continuous, the two neighbouring rows share the ink.
+	const pillOn = activeAt >= 0 ? 1 : 0;
+	// No second title (or an identical one) means no crossfade at all — never
+	// fade the only title out to nothing.
+	const hasTitleB = titleB !== undefined && titleB !== title;
+	const mix = hasTitleB ? Math.max(0, Math.min(1, titleMix)) : 0;
 	return (
 		<div
 			style={{
@@ -68,16 +164,54 @@ export const AppFrame: React.FC<{
 			{/* Sidebar */}
 			<div
 				style={{
-					width: 300,
+					position: "relative",
+					width: FRAME.sidebarWidth,
 					flexShrink: 0,
 					display: "flex",
 					flexDirection: "column",
-					padding: "24px 16px",
-					gap: 6,
+					padding: `${SIDEBAR.padTop}px ${SIDEBAR.padX}px`,
+					gap: SIDEBAR.groupGap,
 					borderRight: `1px solid ${t.sidebarBorder}`,
 				}}
 			>
-				<div style={{ display: "flex", alignItems: "center", gap: 12, padding: "4px 12px 22px" }}>
+				{/* Active pill — one element that glides, rather than a highlight
+				    hopping between rows. Sits behind the rows. */}
+				<div
+					style={{
+						position: "absolute",
+						left: SIDEBAR.padX,
+						right: SIDEBAR.padX,
+						top: pillTop,
+						height: SIDEBAR.itemHeight,
+						borderRadius: RADIUS.lg,
+						backgroundColor: `color-mix(in oklch, ${t.primary} 11%, transparent)`,
+						opacity: pillOn,
+					}}
+				>
+					<span
+						style={{
+							position: "absolute",
+							left: 2,
+							top: "50%",
+							translate: "0 -50%",
+							width: 3.5,
+							height: 20,
+							borderRadius: 999,
+							backgroundColor: t.primary,
+						}}
+					/>
+				</div>
+
+				<div
+					style={{
+						position: "relative",
+						display: "flex",
+						alignItems: "center",
+						gap: 12,
+						height: SIDEBAR.brandHeight,
+						padding: "4px 12px 22px",
+					}}
+				>
 					{/* Wordmark text is navy — swap to mark + fg text on dark surfaces */}
 					{t.name === "light" ? (
 						<Img src={staticFile("OneTool-wordmark.png")} style={{ height: 46 }} />
@@ -88,8 +222,8 @@ export const AppFrame: React.FC<{
 						</>
 					)}
 				</div>
-				{NAV.map(({ group, items }) => (
-					<div key={group} style={{ marginBottom: 10 }}>
+				{NAV.map(({ group, items }, groupIndex) => (
+					<div key={group} style={{ position: "relative", marginBottom: SIDEBAR.groupMarginBottom }}>
 						<div
 							style={{
 								fontSize: 14,
@@ -97,13 +231,19 @@ export const AppFrame: React.FC<{
 								letterSpacing: "0.09em",
 								textTransform: "uppercase",
 								color: `color-mix(in oklch, ${t.fg} 52%, transparent)`,
-								padding: "6px 12px",
+								height: SIDEBAR.groupLabelHeight,
+								lineHeight: `${SIDEBAR.groupLabelHeight}px`,
+								padding: "0 12px",
 							}}
 						>
 							{group}
 						</div>
-						{items.map((item) => {
-							const isActive = item.label === active;
+						{items.map((item, i) => {
+							// Flat index = rows in every earlier group, plus this one.
+							const flat =
+								NAV.slice(0, groupIndex).reduce((n, g) => n + g.items.length, 0) + i;
+							const w = rowWeight(flat, activeAt);
+							const ink = `color-mix(in oklch, ${t.fg} ${pct(0.72 + w * 0.28)}%, transparent)`;
 							return (
 								<div
 									key={item.label}
@@ -112,31 +252,19 @@ export const AppFrame: React.FC<{
 										display: "flex",
 										alignItems: "center",
 										gap: 12,
-										padding: "9px 12px",
-										borderRadius: RADIUS.lg,
-										fontWeight: isActive ? 600 : 500,
+										height: SIDEBAR.itemHeight,
+										padding: "0 12px",
+										fontWeight: w > 0.5 ? 600 : 500,
 										fontSize: 21,
-										color: isActive ? t.fg : `color-mix(in oklch, ${t.fg} 72%, transparent)`,
-										backgroundColor: isActive
-											? `color-mix(in oklch, ${t.primary} 11%, transparent)`
-											: "transparent",
+										color: ink,
 									}}
 								>
-									{isActive ? (
-										<span
-											style={{
-												position: "absolute",
-												left: 2,
-												top: "50%",
-												translate: "0 -50%",
-												width: 3.5,
-												height: 20,
-												borderRadius: 999,
-												backgroundColor: t.primary,
-											}}
-										/>
-									) : null}
-									<span style={{ color: isActive ? t.primary : "inherit", display: "flex" }}>
+									<span
+										style={{
+											display: "flex",
+											color: `color-mix(in oklch, ${t.primary} ${pct(w)}%, ${ink})`,
+										}}
+									>
 										{item.icon}
 									</span>
 									{item.label}
@@ -148,13 +276,13 @@ export const AppFrame: React.FC<{
 			</div>
 
 			{/* Content card */}
-			<div style={{ flex: 1, padding: 14, display: "flex" }}>
+			<div style={{ flex: 1, padding: FRAME.cardInset, display: "flex" }}>
 				<div
 					style={{
 						flex: 1,
 						position: "relative",
 						borderRadius: RADIUS["3xl"],
-						border: `1px solid ${t.border}`,
+						border: `${FRAME.cardBorder}px solid ${t.border}`,
 						backgroundColor: t.canvas,
 						overflow: "hidden",
 						display: "flex",
@@ -169,12 +297,27 @@ export const AppFrame: React.FC<{
 							display: "flex",
 							alignItems: "center",
 							justifyContent: "space-between",
-							padding: "20px 32px",
+							padding: `${FRAME.headerPadY}px ${FRAME.headerPadX}px`,
 							borderBottom: `1px solid ${t.border}`,
 							backgroundColor: `color-mix(in oklch, ${t.canvas} 82%, transparent)`,
 						}}
 					>
-						<span style={{ fontSize: 30, fontWeight: 700 }}>{title}</span>
+						<span
+							style={{
+								position: "relative",
+								display: "inline-block",
+								fontSize: 30,
+								fontWeight: 700,
+								whiteSpace: "nowrap",
+							}}
+						>
+							<span style={{ opacity: 1 - mix }}>{title}</span>
+							{hasTitleB ? (
+								<span style={{ position: "absolute", left: 0, top: 0, opacity: mix }}>
+									{titleB}
+								</span>
+							) : null}
+						</span>
 						<div style={{ display: "flex", alignItems: "center", gap: 14 }}>{headerRight}</div>
 					</div>
 					<div style={{ position: "relative", flex: 1 }}>{children}</div>

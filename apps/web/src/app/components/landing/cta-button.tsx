@@ -21,7 +21,7 @@ const BASE =
 	"group relative inline-flex cursor-pointer items-center justify-center gap-2 rounded-lg font-semibold " +
 	"border border-primary/30 bg-[color-mix(in_srgb,var(--primary)_10%,var(--background))] text-(--cta-solid) shadow-sm dark:text-primary " +
 	"hover:border-primary/40 hover:bg-[color-mix(in_srgb,var(--primary)_16%,var(--background))] hover:shadow-md active:bg-[color-mix(in_srgb,var(--primary)_22%,var(--background))] " +
-	"transition-all duration-200 motion-reduce:transition-none " +
+	"transition-[background-color,border-color,box-shadow] duration-200 motion-reduce:transition-none " +
 	"focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background " +
 	"disabled:pointer-events-none disabled:opacity-60";
 

@@ -3,7 +3,7 @@ import type { RailChapter } from "./feature-rail";
 
 /**
  * A-101 — "How it works" as an Attio-style pinned run: the rail of chapter
- * headings holds on the left while scroll walks the plate through the seven
+ * headings holds on the left while scroll walks the plate through the nine
  * Remotion scenes (FeatureRail). Below lg it degrades to a plain stacked
  * read. Server shell; the client island owns all scroll machinery.
  */
@@ -16,49 +16,63 @@ const CHAPTERS: readonly RailChapter[] = [
 		code: "A-101",
 		label: "Clients",
 		heading: "The whole book of business.",
-		body: "Every client, contact, and property on one searchable list — with the history that tells you who to call back.",
+		body: "Every client, contact, and property on one searchable list, with the history that tells you who to call back.",
 	},
 	{
-		key: "quote-to-paid",
+		key: "quote-build",
 		code: "A-102",
-		label: "Quotes & invoices",
-		heading: "Quote to paid, one thread.",
-		body: "Send the quote, watch the signature land, flip it to an invoice, and see the payment come in — without leaving the record.",
+		label: "Quote builder",
+		heading: "Build the quote in minutes.",
+		body: "Pick the client, drop in the line items, and the total adds itself up. Send it from the same screen you built it on.",
+	},
+	{
+		key: "portal-approve",
+		code: "A-103",
+		label: "Client approval",
+		heading: "The client approves from their phone.",
+		body: "They open your link, read the quote under your name, and sign with a finger. You see it land the moment they do.",
 	},
 	{
 		key: "tasks",
-		code: "A-103",
+		code: "A-104",
 		label: "Scheduling",
 		heading: "The day plans itself.",
 		body: "Tasks and visits land on a day plan you can actually run, and the week's workload stays where you can see it.",
 	},
 	{
 		key: "routing",
-		code: "A-104",
+		code: "A-105",
 		label: "Routing",
 		heading: "The shortest way through Tuesday.",
 		body: "Your stops become an optimized route with drive times, so the crew spends the day working, not navigating.",
 	},
 	{
+		key: "invoice-paid",
+		code: "A-106",
+		label: "Invoice & payment",
+		heading: "One click to invoice. Paid the same week.",
+		body: "The approved quote becomes an invoice without retyping a line, and the card payment settles straight into your Stripe account.",
+	},
+	{
 		key: "automations",
-		code: "A-105",
+		code: "A-107",
 		label: "Automations",
 		heading: "Work that runs while you sleep.",
-		body: "Friday, 7:00 AM — the overdue list gets walked one invoice at a time: recent ones get a reminder email, the late ones become a call task. You wake up to a finished run.",
+		body: "Friday, 7:00 AM: the overdue list gets walked one invoice at a time: recent ones get a reminder email, the late ones become a call task. You wake up to a finished run.",
 	},
 	{
 		key: "assistant",
-		code: "A-106",
+		code: "A-108",
 		label: "Assistant",
 		heading: "Ask for it in plain English.",
-		body: "One sentence becomes the task, the route, or the report — and the assistant shows its work as it goes.",
+		body: "One sentence becomes the task, the route, or the report, and the assistant shows its work as it goes.",
 	},
 	{
 		key: "reports",
-		code: "A-107",
+		code: "A-109",
 		label: "Reports",
 		heading: "Your numbers, without the spreadsheet.",
-		body: "Revenue, outstanding invoices, and top clients from live data — the chart is already made when you ask.",
+		body: "Revenue, outstanding invoices, and top clients from live data. The chart is already made when you ask.",
 	},
 ];
 
@@ -81,7 +95,7 @@ export function FeatureChapters() {
 			>
 				Watch a job run through it.{" "}
 				<span className="text-muted-foreground">
-					Seven scenes drawn from the real screens — the same job, quote to
+					Nine scenes drawn from the real screens. The same job, quote to
 					paid.
 				</span>
 			</h2>
