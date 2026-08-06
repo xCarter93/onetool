@@ -1003,30 +1003,21 @@ export function BusinessInfoTab() {
 										</ItemDescription>
 									</ItemContent>
 									<ItemActions>
-										{/* SegmentedControl has no disabled prop; gate the wrapper
-										    so it is inert and reads as disabled to AT. */}
-										<div
-											aria-disabled={audienceDisabled || undefined}
-											className={cn(
-												audienceDisabled &&
-													"pointer-events-none opacity-70",
-											)}
-										>
-											<SegmentedControl<"admins" | "everyone">
-												value={businessForm.celebrationsAudience}
-												onValueChange={(value) => {
-													if (audienceDisabled) {
-														return;
-													}
-													setBusinessDirty(true);
-													setBusinessForm((prev) => ({
-														...prev,
-														celebrationsAudience: value,
-													}));
-												}}
-												options={celebrationAudienceOptions}
-											/>
-										</div>
+										<SegmentedControl<"admins" | "everyone">
+											value={businessForm.celebrationsAudience}
+											disabled={audienceDisabled}
+											onValueChange={(value) => {
+												if (audienceDisabled) {
+													return;
+												}
+												setBusinessDirty(true);
+												setBusinessForm((prev) => ({
+													...prev,
+													celebrationsAudience: value,
+												}));
+											}}
+											options={celebrationAudienceOptions}
+										/>
 									</ItemActions>
 								</Item>
 							</div>

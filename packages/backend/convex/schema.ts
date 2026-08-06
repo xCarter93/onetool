@@ -962,7 +962,9 @@ export default defineSchema({
 		.index("by_scheduled", ["scheduledFor"])
 		.index("by_type", ["notificationType"])
 		// Once-per-record celebration dedup lookup.
-		.index("by_org_type_entity", ["orgId", "notificationType", "entityId"]),
+		.index("by_org_type_entity", ["orgId", "notificationType", "entityId"])
+		// Per-user celebration feed, range-bounded on _creationTime.
+		.index("by_user_type", ["userId", "notificationType"]),
 
 	// Organization Documents - reusable documents for quotes/invoices
 	organizationDocuments: defineTable({

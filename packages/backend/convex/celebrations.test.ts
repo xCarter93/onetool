@@ -1,5 +1,5 @@
 import { convexTest } from "convex-test";
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { api } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import { setupConvexTest } from "./test.setup";
@@ -373,5 +373,36 @@ describe("celebrations", () => {
 			{}
 		);
 		expect(adminPendingAfter.map((n) => n._id)).toEqual([adminRow._id]);
+	});
+
+	it("hides celebrations older than the freshness window", async () => {
+		const org = await seedOrg("g");
+		const clientId = await createClient(org.asOwner, "Golf Gutters");
+		const quoteId = await createSentQuote(org.asOwner, clientId, {
+			quoteNumber: "Q-7007",
+			total: 400,
+		});
+		await org.asOwner.mutation(api.quotes.update, {
+			id: quoteId,
+			status: "approved",
+		});
+
+		expect(
+			await org.asOwner.query(api.notifications.celebrationsForCurrentUser, {})
+		).toHaveLength(1);
+
+		// Age the row past the 15-minute window; fake only Date so convex-test's
+		// internal timers keep running.
+		vi.useFakeTimers({ toFake: ["Date"], now: Date.now() + 16 * 60 * 1000 });
+		try {
+			expect(
+				await org.asOwner.query(
+					api.notifications.celebrationsForCurrentUser,
+					{}
+				)
+			).toEqual([]);
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 });

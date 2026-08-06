@@ -31,7 +31,7 @@ export function CelebrationToast({
 	return (
 		<div
 			role="status"
-			className="pointer-events-auto flex w-[356px] items-start gap-3 rounded-lg border border-border bg-popover p-4 shadow-lg"
+			className="pointer-events-auto flex w-full items-start gap-3 rounded-lg border border-border bg-popover p-4 shadow-lg sm:w-[356px]"
 		>
 			<div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-success/15 text-success">
 				<PartyPopper className="h-4 w-4" aria-hidden />

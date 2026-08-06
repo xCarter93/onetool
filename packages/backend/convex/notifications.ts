@@ -453,7 +453,7 @@ export const listForCurrentUser = optionalUserQuery({
 // Celebrations (confetti toasts for quote_approved / payment_received)
 // ============================================================================
 
-const CELEBRATION_TYPES = new Set(["quote_approved", "payment_received"]);
+const CELEBRATION_TYPES = ["quote_approved", "payment_received"] as const;
 // Only events this fresh fire confetti; older ones stay bell-only.
 const CELEBRATION_FRESHNESS_MS = 15 * 60 * 1000;
 
@@ -464,34 +464,28 @@ const CELEBRATION_FRESHNESS_MS = 15 * 60 * 1000;
 export const celebrationsForCurrentUser = optionalUserQuery({
 	args: {},
 	handler: async (ctx) => {
-		const currentUser = await ctx.auth.getUserIdentity();
-		if (!currentUser) return [];
-
-		const orgId = await getOptionalOrgId(ctx);
-		if (!orgId) return [];
-
-		const user = await ctx.db
-			.query("users")
-			.withIndex("by_external_id", (q) =>
-				q.eq("externalId", currentUser.subject)
-			)
-			.first();
-		if (!user) return [];
+		if (!ctx.user || !ctx.orgId) return [];
+		const { user, orgId } = ctx;
 
 		const cutoff = Date.now() - CELEBRATION_FRESHNESS_MS;
-		const rows = await ctx.db
-			.query("notifications")
-			.withIndex("by_user_read", (q) => q.eq("userId", user._id))
-			.collect();
+		const perType = [];
+		for (const notificationType of CELEBRATION_TYPES) {
+			perType.push(
+				await ctx.db
+					.query("notifications")
+					.withIndex("by_user_type", (q) =>
+						q
+							.eq("userId", user._id)
+							.eq("notificationType", notificationType)
+							.gt("_creationTime", cutoff)
+					)
+					.collect()
+			);
+		}
 
-		return rows
-			.filter(
-				(n) =>
-					n.orgId === orgId &&
-					CELEBRATION_TYPES.has(n.notificationType) &&
-					n.celebratedAt === undefined &&
-					n._creationTime > cutoff
-			)
+		return perType
+			.flat()
+			.filter((n) => n.orgId === orgId && n.celebratedAt === undefined)
 			.sort((a, b) => b._creationTime - a._creationTime)
 			.map((n) => ({
 				_id: n._id,
