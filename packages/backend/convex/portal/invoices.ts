@@ -60,7 +60,14 @@ export type PortalInvoicePublic = {
 	dueDate: number;
 	subtotal: number;
 	taxAmount: number | null;
+	// Pricing-mode fields (see lib/invoiceTotals.ts): under quote-style pricing
+	// discountAmount is a PERCENT when discountType is "percentage", so the
+	// portal needs the mode alongside the number to render it correctly.
+	discountEnabled: boolean | null;
 	discountAmount: number | null;
+	discountType: "percentage" | "fixed" | null;
+	taxEnabled: boolean | null;
+	taxRate: number | null;
 	total: number;
 	paidAt: number | null;
 };
@@ -152,7 +159,15 @@ const portalInvoicePublicValidator = v.object({
 	dueDate: v.number(),
 	subtotal: v.number(),
 	taxAmount: v.union(v.number(), v.null()),
+	discountEnabled: v.union(v.boolean(), v.null()),
 	discountAmount: v.union(v.number(), v.null()),
+	discountType: v.union(
+		v.literal("percentage"),
+		v.literal("fixed"),
+		v.null()
+	),
+	taxEnabled: v.union(v.boolean(), v.null()),
+	taxRate: v.union(v.number(), v.null()),
 	total: v.number(),
 	paidAt: v.union(v.number(), v.null()),
 });
@@ -395,7 +410,11 @@ export const get = query({
 			dueDate: invoice.dueDate,
 			subtotal: invoice.subtotal,
 			taxAmount: invoice.taxAmount ?? null,
+			discountEnabled: invoice.discountEnabled ?? null,
 			discountAmount: invoice.discountAmount ?? null,
+			discountType: invoice.discountType ?? null,
+			taxEnabled: invoice.taxEnabled ?? null,
+			taxRate: invoice.taxRate ?? null,
 			total: invoice.total,
 			paidAt: invoice.paidAt ?? null,
 		};

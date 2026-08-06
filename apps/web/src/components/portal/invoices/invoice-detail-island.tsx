@@ -34,7 +34,14 @@ export interface PortalInvoiceGetData {
 		dueDate: number;
 		subtotal: number;
 		taxAmount: number | null;
+		// discountAmount is a PERCENT when discountType is "percentage" — see
+		// lib/invoiceTotals.ts. Optional so fixtures predating the pricing modes
+		// still satisfy the type.
+		discountEnabled?: boolean | null;
 		discountAmount: number | null;
+		discountType?: "percentage" | "fixed" | null;
+		taxEnabled?: boolean | null;
+		taxRate?: number | null;
 		total: number;
 		paidAt: number | null;
 	};

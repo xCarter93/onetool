@@ -116,6 +116,7 @@ export function InvoiceDetailTabs({
 							invoice={invoice}
 							invoiceId={invoiceId}
 							lineItems={lineItems}
+							payments={invoiceWithPayments?.payments}
 							paymentSummary={invoiceWithPayments?.paymentSummary}
 						/>
 					</PillTabsContent>

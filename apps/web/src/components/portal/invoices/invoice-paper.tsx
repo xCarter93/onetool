@@ -11,6 +11,7 @@ import { cn } from "@/lib/utils";
 import { formatDate, formatMoney } from "@/lib/portal/format";
 
 import { TotalsBreakdown } from "../totals-breakdown";
+import { deriveInvoiceDisplayPricing } from "@/components/shared/line-items/invoice-pricing";
 
 export type InvoiceDisplayStatus = "awaiting" | "partial" | "paid" | "overdue";
 
@@ -48,7 +49,14 @@ export interface InvoicePaperInvoice {
 	dueDate: number;
 	subtotal: number;
 	taxAmount: number | null;
+	// Pricing-mode fields — discountAmount is a PERCENT when quote-style pricing
+	// is on and discountType is "percentage". Optional so older callers still
+	// type-check; absent means legacy (flat dollar) pricing.
+	discountEnabled?: boolean | null;
 	discountAmount: number | null;
+	discountType?: "percentage" | "fixed" | null;
+	taxEnabled?: boolean | null;
+	taxRate?: number | null;
 	total: number;
 	paidAt: number | null;
 }
@@ -83,6 +91,8 @@ export function InvoicePaper({
 	paymentSummary,
 	paySlot,
 }: InvoicePaperProps) {
+	// Mode-aware: a quote-style percentage discount stores the RATE, not dollars.
+	const displayPricing = deriveInvoiceDisplayPricing(invoice);
 	const heroIsPaid = displayStatus === "paid";
 	const heroLabel = heroIsPaid ? "Total paid" : "Total due";
 	const heroAmount = heroIsPaid ? invoice.total : paymentSummary.totalRemaining;
@@ -212,8 +222,10 @@ export function InvoicePaper({
 
 						<TotalsBreakdown
 							subtotal={invoice.subtotal}
-							discount={invoice.discountAmount}
-							tax={invoice.taxAmount}
+							discount={displayPricing.discountDollars}
+							discountLabel={displayPricing.discountLabel}
+							tax={displayPricing.taxDollars}
+							taxLabel={displayPricing.taxLabel}
 							total={invoice.total}
 							className="sm:ml-auto sm:w-80"
 						/>

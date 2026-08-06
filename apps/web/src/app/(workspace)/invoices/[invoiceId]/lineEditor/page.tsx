@@ -30,6 +30,10 @@ import {
 } from "lucide-react";
 import { SKUSelector } from "@/components/shared/sku-selector";
 import { formatCurrency } from "@/lib/money";
+import {
+	deriveInvoiceDisplayPricing,
+	legacyTaxRateFromAmounts,
+} from "@/components/shared/line-items/invoice-pricing";
 
 type LineItem = {
 	_id: Id<"invoiceLineItems">;
@@ -111,26 +115,34 @@ function InvoiceLineEditorPageContent() {
 	if (invoice && invoice !== prevInvoice) {
 		setPrevInvoice(invoice);
 
-		// Check if discount is enabled based on discountAmount
-		const hasDiscount =
-			invoice.discountAmount !== undefined && invoice.discountAmount > 0;
-		setDiscount({
-			enabled: hasDiscount,
-			amount: invoice.discountAmount || 0,
-			type: "fixed", // Invoice stores fixed amounts
-		});
-
-		// Check if tax is enabled based on taxAmount
-		const hasTax = invoice.taxAmount !== undefined && invoice.taxAmount > 0;
-		// Calculate approximate tax rate from the stored amount
-		const approxTaxRate =
-			hasTax && invoice.subtotal > 0
-				? (invoice.taxAmount! / invoice.subtotal) * 100
-				: 0;
-		setTax({
-			enabled: hasTax,
-			rate: approxTaxRate,
-		});
+		// Mode-aware seeding: under quote-style pricing discountAmount is a
+		// PERCENT, so read it through the shared helper rather than as dollars.
+		const pricing = deriveInvoiceDisplayPricing(invoice);
+		if (pricing.mode === "quote") {
+			setDiscount({
+				enabled: invoice.discountEnabled === true,
+				amount: invoice.discountAmount ?? 0,
+				type: invoice.discountType ?? "fixed",
+			});
+			setTax({
+				enabled: invoice.taxEnabled === true,
+				rate: invoice.taxRate ?? 0,
+			});
+		} else {
+			setDiscount({
+				enabled: pricing.discountDollars > 0,
+				amount: pricing.discountDollars,
+				type: "fixed", // Legacy invoices store flat dollars
+			});
+			setTax({
+				enabled: pricing.taxDollars > 0,
+				rate: legacyTaxRateFromAmounts(
+					invoice.subtotal,
+					pricing.discountDollars,
+					pricing.taxDollars
+				),
+			});
+		}
 	}
 
 	// Use line items directly from the database
@@ -258,16 +270,20 @@ function InvoiceLineEditorPageContent() {
 
 	const handleSaveInvoice = async () => {
 		try {
-			// Update invoice totals
+			// Write quote-style pricing fields (the server recomputes subtotal /
+			// total / taxAmount from the line items). Sending the rate rather than
+			// pre-computed dollars keeps this page from ever storing a number the
+			// invoice's pricing mode would reinterpret.
 			await updateInvoice({
 				id: invoiceId,
-				subtotal: totals.subtotal,
-				total: totals.total,
-				// 0, not undefined — undefined is filtered out server-side, which
-				// would leave a turned-off discount or tax still stored and still
-				// applied by the next totals recompute.
-				discountAmount: discount.enabled ? totals.discountAmount : 0,
-				taxAmount: tax.enabled ? totals.taxAmount : 0,
+				// false/0, not undefined — undefined is filtered out server-side,
+				// which would leave a turned-off discount or tax still stored and
+				// still applied by the next totals recompute.
+				discountEnabled: discount.enabled && discount.amount > 0,
+				discountAmount: discount.enabled ? discount.amount : 0,
+				discountType: discount.type,
+				taxEnabled: tax.enabled && tax.rate > 0,
+				taxRate: tax.enabled ? tax.rate : 0,
 			});
 
 			setHasChanges(false);

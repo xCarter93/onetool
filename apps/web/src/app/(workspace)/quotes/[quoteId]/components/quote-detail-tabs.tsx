@@ -64,6 +64,9 @@ interface QuoteDetailTabsProps {
 	selectedDocument: Doc<"documents"> | null | undefined;
 	selectedDocumentUrl: string | null | undefined;
 	onGeneratePdf: () => void;
+	onPreviewPdf: () => void;
+	previewDisabled: boolean;
+	isPdfStale: boolean;
 	onDownloadPdf: () => void;
 	selectedVersionId: Id<"documents"> | null;
 	onSelectVersion: (id: Id<"documents"> | null) => void;
@@ -88,6 +91,9 @@ export function QuoteDetailTabs({
 	selectedDocument,
 	selectedDocumentUrl,
 	onGeneratePdf,
+	onPreviewPdf,
+	previewDisabled,
+	isPdfStale,
 	onDownloadPdf,
 	selectedVersionId,
 	onSelectVersion,
@@ -106,6 +112,7 @@ export function QuoteDetailTabs({
 		selectedDocument,
 		selectedDocumentUrl,
 		onGeneratePdf,
+		isPdfStale,
 		onDownloadPdf,
 		selectedVersionId,
 		onSelectVersion,
@@ -139,6 +146,8 @@ export function QuoteDetailTabs({
 							quote={quote}
 							quoteId={quoteId}
 							lineItems={lineItems}
+							onPreviewPdf={onPreviewPdf}
+							previewDisabled={previewDisabled}
 						/>
 					</PillTabsContent>
 

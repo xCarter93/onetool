@@ -44,6 +44,7 @@ import {
 import Link from "next/link";
 import { usePermissions } from "@/hooks/use-permissions";
 import { formatCurrency } from "@/lib/money";
+import { deriveInvoiceDisplayPricing } from "@/components/shared/line-items/invoice-pricing";
 import {
 	localDateToUtcMidnightMs,
 	todayUtcMidnightMs,
@@ -117,6 +118,10 @@ export function InvoiceDetailSidebar({
 }: InvoiceDetailSidebarProps) {
 	const toast = useToast();
 	const updateInvoice = useMutation(api.invoices.update);
+
+	// discountAmount is a PERCENT under quote-style pricing — always read
+	// discount/tax through the mode-aware helper.
+	const displayPricing = deriveInvoiceDisplayPricing(invoice);
 
 	const { can, isLoading: permissionsLoading } = usePermissions();
 	const canModify = can("invoices", "modify");
@@ -553,29 +558,29 @@ export function InvoiceDetailSidebar({
 					</div>
 				</div>
 
-				{invoice.discountAmount != null && invoice.discountAmount > 0 && (
+				{displayPricing.showDiscount && (
 					<div className="flex items-start gap-3 py-2.5 -mx-2 px-2">
 						<Percent className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
 						<span className="text-sm text-muted-foreground w-28 shrink-0">
-							Discount
+							{displayPricing.discountLabel}
 						</span>
 						<div className="flex-1 min-w-0">
-							<span className="text-sm text-red-600 dark:text-red-400">
-								-{formatCurrency(invoice.discountAmount)}
+							<span className="text-sm text-destructive">
+								-{formatCurrency(displayPricing.discountDollars)}
 							</span>
 						</div>
 					</div>
 				)}
 
-				{invoice.taxAmount != null && invoice.taxAmount > 0 && (
+				{displayPricing.showTax && (
 					<div className="flex items-start gap-3 py-2.5 -mx-2 px-2">
 						<Receipt className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
 						<span className="text-sm text-muted-foreground w-28 shrink-0">
-							Tax
+							{displayPricing.taxLabel}
 						</span>
 						<div className="flex-1 min-w-0">
 							<span className="text-sm text-foreground">
-								{formatCurrency(invoice.taxAmount)}
+								{formatCurrency(displayPricing.taxDollars)}
 							</span>
 						</div>
 					</div>

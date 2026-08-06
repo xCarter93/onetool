@@ -9,6 +9,7 @@ import {
 } from "@react-pdf/renderer";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
 import { formatCurrency } from "@/lib/money";
+import { deriveInvoiceDisplayPricing } from "@/components/shared/line-items/invoice-pricing";
 
 type InvoiceLineItem = {
 	_id: Id<"invoiceLineItems">;
@@ -25,10 +26,23 @@ type Invoice = {
 	dueDate: number;
 	status: string;
 	subtotal: number;
+	// Pricing-mode fields (lib/invoiceTotals.ts): discountAmount is a PERCENT
+	// when quote-style pricing is on and discountType is "percentage".
+	discountEnabled?: boolean;
 	discountAmount?: number;
+	discountType?: "percentage" | "fixed";
+	taxEnabled?: boolean;
+	taxRate?: number;
 	taxAmount?: number;
 	total: number;
 	paidAt?: number;
+	/** Column visibility chosen in the record page's pricing panel. */
+	pdfSettings?: {
+		showQuantities: boolean;
+		showUnitPrices: boolean;
+		showLineItemTotals: boolean;
+		showTotals: boolean;
+	};
 };
 
 type Client = {
@@ -367,6 +381,15 @@ export const InvoicePDF: React.FC<InvoicePDFProps> = ({
 	const isOverdue =
 		!isPaid && invoice.status === "sent" && invoice.dueDate < now;
 
+	// Mode-aware discount/tax — discountAmount is a percent under quote-style
+	// pricing, so never print it as dollars directly.
+	const displayPricing = deriveInvoiceDisplayPricing(invoice);
+	// Column visibility from the record page's pricing panel; default all on.
+	const showQuantities = invoice.pdfSettings?.showQuantities ?? true;
+	const showUnitPrices = invoice.pdfSettings?.showUnitPrices ?? true;
+	const showLineItemTotals = invoice.pdfSettings?.showLineItemTotals ?? true;
+	const showTotals = invoice.pdfSettings?.showTotals ?? true;
+
 	// Format client address
 	const clientAddress = client
 		? [
@@ -458,57 +481,79 @@ export const InvoicePDF: React.FC<InvoicePDFProps> = ({
 						<Text style={[styles.colDescription, styles.tableHeaderText]}>
 							Description
 						</Text>
-						<Text style={[styles.colQty, styles.tableHeaderText]}>Qty</Text>
-						<Text style={[styles.colPrice, styles.tableHeaderText]}>
-							Unit Price
-						</Text>
-						<Text style={[styles.colAmount, styles.tableHeaderText]}>
-							Amount
-						</Text>
+						{showQuantities && (
+							<Text style={[styles.colQty, styles.tableHeaderText]}>Qty</Text>
+						)}
+						{showUnitPrices && (
+							<Text style={[styles.colPrice, styles.tableHeaderText]}>
+								Unit Price
+							</Text>
+						)}
+						{showLineItemTotals && (
+							<Text style={[styles.colAmount, styles.tableHeaderText]}>
+								Amount
+							</Text>
+						)}
 					</View>
 					{items.map((item) => (
 						<View key={String(item._id)} style={styles.tableRow}>
 							<Text style={styles.colDescription}>{item.description}</Text>
-							<Text style={styles.colQty}>{item.quantity}</Text>
-							<Text style={styles.colPrice}>{formatCurrency(item.unitPrice)}</Text>
-							<Text style={styles.colAmount}>{formatCurrency(item.total)}</Text>
+							{showQuantities && (
+								<Text style={styles.colQty}>{item.quantity}</Text>
+							)}
+							{showUnitPrices && (
+								<Text style={styles.colPrice}>
+									{formatCurrency(item.unitPrice)}
+								</Text>
+							)}
+							{showLineItemTotals && (
+								<Text style={styles.colAmount}>
+									{formatCurrency(item.total)}
+								</Text>
+							)}
 						</View>
 					))}
 				</View>
 
 				{/* Totals */}
-				<View style={styles.totalsSection}>
-					<View style={styles.totalsContainer}>
-						<View style={styles.totalRow}>
-							<Text style={styles.totalLabel}>Subtotal:</Text>
-							<Text style={styles.totalValue}>
-								{formatCurrency(invoice.subtotal)}
-							</Text>
-						</View>
-						{invoice.discountAmount ? (
+				{showTotals && (
+					<View style={styles.totalsSection}>
+						<View style={styles.totalsContainer}>
 							<View style={styles.totalRow}>
-								<Text style={styles.totalLabel}>Discount:</Text>
+								<Text style={styles.totalLabel}>Subtotal:</Text>
 								<Text style={styles.totalValue}>
-									-{formatCurrency(invoice.discountAmount)}
+									{formatCurrency(invoice.subtotal)}
 								</Text>
 							</View>
-						) : null}
-						{invoice.taxAmount ? (
-							<View style={styles.totalRow}>
-								<Text style={styles.totalLabel}>Tax:</Text>
-								<Text style={styles.totalValue}>
-									{formatCurrency(invoice.taxAmount)}
+							{displayPricing.showDiscount ? (
+								<View style={styles.totalRow}>
+									<Text style={styles.totalLabel}>
+										{displayPricing.discountLabel}:
+									</Text>
+									<Text style={styles.totalValue}>
+										-{formatCurrency(displayPricing.discountDollars)}
+									</Text>
+								</View>
+							) : null}
+							{displayPricing.showTax ? (
+								<View style={styles.totalRow}>
+									<Text style={styles.totalLabel}>
+										{displayPricing.taxLabel}:
+									</Text>
+									<Text style={styles.totalValue}>
+										{formatCurrency(displayPricing.taxDollars)}
+									</Text>
+								</View>
+							) : null}
+							<View style={styles.grandTotalRow}>
+								<Text style={styles.grandTotalLabel}>Total</Text>
+								<Text style={styles.grandTotalValue}>
+									{formatCurrency(invoice.total)}
 								</Text>
 							</View>
-						) : null}
-						<View style={styles.grandTotalRow}>
-							<Text style={styles.grandTotalLabel}>Total</Text>
-							<Text style={styles.grandTotalValue}>
-								{formatCurrency(invoice.total)}
-							</Text>
 						</View>
 					</View>
-				</View>
+				)}
 
 				{/* Payment Schedule */}
 				{payments && payments.length > 1 && (

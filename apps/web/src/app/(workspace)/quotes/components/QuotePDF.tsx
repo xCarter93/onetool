@@ -34,6 +34,12 @@ type Quote = {
 	total: number;
 	terms?: string;
 	clientMessage?: string;
+	pdfSettings?: {
+		showQuantities: boolean;
+		showUnitPrices: boolean;
+		showLineItemTotals: boolean;
+		showTotals: boolean;
+	};
 };
 
 type Client = {
@@ -330,6 +336,13 @@ export const QuotePDF: React.FC<QuotePDFProps> = ({
 	const clientSignerNum = signingOrder === "org_first" ? 2 : 1;
 	const orgSignerNum = signingOrder === "org_first" ? 1 : 2;
 
+	// Client-visibility toggles (the "What the client sees" panel). Unit rides
+	// with Rate: a per-unit price without its unit is meaningless.
+	const showQty = quote.pdfSettings?.showQuantities ?? true;
+	const showRate = quote.pdfSettings?.showUnitPrices ?? true;
+	const showAmount = quote.pdfSettings?.showLineItemTotals ?? true;
+	const showTotals = quote.pdfSettings?.showTotals ?? true;
+
 	// Format client address
 	const clientAddress = client
 		? [
@@ -423,23 +436,40 @@ export const QuotePDF: React.FC<QuotePDFProps> = ({
 						<Text style={[styles.colDescription, styles.tableHeaderText]}>
 							Description
 						</Text>
-						<Text style={[styles.colQty, styles.tableHeaderText]}>Qty</Text>
-						<Text style={[styles.colUnit, styles.tableHeaderText]}>Unit</Text>
-						<Text style={[styles.colRate, styles.tableHeaderText]}>Rate</Text>
-						<Text style={[styles.colAmount, styles.tableHeaderText]}>Amount</Text>
+						{showQty && (
+							<Text style={[styles.colQty, styles.tableHeaderText]}>Qty</Text>
+						)}
+						{showRate && (
+							<Text style={[styles.colUnit, styles.tableHeaderText]}>Unit</Text>
+						)}
+						{showRate && (
+							<Text style={[styles.colRate, styles.tableHeaderText]}>Rate</Text>
+						)}
+						{showAmount && (
+							<Text style={[styles.colAmount, styles.tableHeaderText]}>
+								Amount
+							</Text>
+						)}
 					</View>
 					{items.map((item) => (
 						<View key={String(item._id)} style={styles.tableRow}>
 							<Text style={styles.colDescription}>{item.description}</Text>
-							<Text style={styles.colQty}>{item.quantity}</Text>
-							<Text style={styles.colUnit}>{item.unit}</Text>
-							<Text style={styles.colRate}>{formatCurrency(item.rate)}</Text>
-							<Text style={styles.colAmount}>{formatCurrency(item.amount)}</Text>
+							{showQty && <Text style={styles.colQty}>{item.quantity}</Text>}
+							{showRate && <Text style={styles.colUnit}>{item.unit}</Text>}
+							{showRate && (
+								<Text style={styles.colRate}>{formatCurrency(item.rate)}</Text>
+							)}
+							{showAmount && (
+								<Text style={styles.colAmount}>
+									{formatCurrency(item.amount)}
+								</Text>
+							)}
 						</View>
 					))}
 				</View>
 
 				{/* Totals */}
+				{showTotals && (
 				<View style={styles.totalsSection}>
 					<View style={styles.totalsContainer}>
 						<View style={styles.totalRow}>
@@ -474,6 +504,7 @@ export const QuotePDF: React.FC<QuotePDFProps> = ({
 						</View>
 					</View>
 				</View>
+				)}
 
 				{/* Terms & Conditions */}
 				{quote.terms && (

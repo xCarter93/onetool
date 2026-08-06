@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { MentionSection } from "@/components/shared/mention-section";
 import { useToast } from "@/hooks/use-toast";
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
-import { Check, Loader2, Plus, TriangleAlert, Pencil } from "lucide-react";
+import { Check, Eye, Loader2, Plus, TriangleAlert, Pencil } from "lucide-react";
 import { LineItemGrid } from "@/components/shared/line-items/line-item-grid";
 import { LineItemsTotals } from "@/components/shared/line-items/line-items-totals";
 import { PricingPanel } from "@/components/shared/line-items/pricing-panel";
@@ -17,15 +17,29 @@ import {
 	computeDisplayTotals,
 	type LineItemsPricingSettings,
 } from "@/components/shared/line-items/types";
+import {
+	Tooltip,
+	TooltipContent,
+	TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
 interface OverviewTabProps {
 	quote: Doc<"quotes">;
 	quoteId: Id<"quotes">;
 	lineItems: Doc<"quoteLineItems">[] | undefined;
+	onPreviewPdf: () => void;
+	/** True while the quote has nothing to render (loading or no line items). */
+	previewDisabled: boolean;
 }
 
-export function OverviewTab({ quote, quoteId, lineItems }: OverviewTabProps) {
+export function OverviewTab({
+	quote,
+	quoteId,
+	lineItems,
+	onPreviewPdf,
+	previewDisabled,
+}: OverviewTabProps) {
 	const toast = useToast();
 	const updateQuote = useMutation(api.quotes.update);
 
@@ -222,6 +236,33 @@ export function OverviewTab({ quote, quoteId, lineItems }: OverviewTabProps) {
 								</>
 							)}
 						</span>
+						<Tooltip>
+							<TooltipTrigger
+								render={
+									<span
+										// A disabled button swallows pointer events, so the
+										// tooltip needs a live wrapper to hang off.
+										tabIndex={previewDisabled ? 0 : -1}
+										className="inline-flex rounded-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+									/>
+								}
+							>
+								<Button
+									variant="outline"
+									size="sm"
+									disabled={previewDisabled}
+									onClick={onPreviewPdf}
+								>
+									<Eye className="h-4 w-4" aria-hidden="true" />
+									Preview Document
+								</Button>
+							</TooltipTrigger>
+							{previewDisabled && (
+								<TooltipContent>
+									Add a line item to preview this quote
+								</TooltipContent>
+							)}
+						</Tooltip>
 						{!controller.locked && (
 							<Button
 								variant="outline"
