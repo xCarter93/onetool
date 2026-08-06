@@ -5,6 +5,7 @@
 // nested ctx.runMutation between internal mutations.
 import type { MutationCtx } from "../_generated/server";
 import type { Doc, Id } from "../_generated/dataModel";
+import { celebrateInvoicePaid } from "./celebrations";
 
 type ReceiptMetadata = {
 	cardBrand?: string;
@@ -52,6 +53,10 @@ export async function updateInvoiceStatusIfFullyPaid(
 			status: "paid",
 			paidAt: Date.now(),
 		});
+		const paidInvoice = await ctx.db.get(invoiceId);
+		if (paidInvoice) {
+			await celebrateInvoicePaid(ctx, paidInvoice);
+		}
 	}
 }
 

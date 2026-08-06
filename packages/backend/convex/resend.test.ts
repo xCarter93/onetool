@@ -44,6 +44,9 @@ vi.mock("./email/outbound", async (importOriginal) => {
 
 const RICH_HTML =
 	'<p>Hello <strong>there</strong></p><ul><li>one</li></ul><p><a href="https://example.test">link</a></p>';
+// sanitizeHtml hardens every anchor with target/rel; stored htmlBody reflects that.
+const RICH_HTML_SANITIZED =
+	'<p>Hello <strong>there</strong></p><ul><li>one</li></ul><p><a href="https://example.test" target="_blank" rel="noopener noreferrer nofollow">link</a></p>';
 const RICH_TEXT = "Hello there\none\nlink";
 
 describe("resend send paths", () => {
@@ -117,7 +120,7 @@ describe("resend send paths", () => {
 			expect(row.messageBody).toBe(RICH_TEXT);
 			expect(row.visibleText).toBe(RICH_TEXT);
 			expect(row.messagePreview).toBe(RICH_TEXT.substring(0, 100));
-			expect(row.htmlBody).toBe(RICH_HTML);
+			expect(row.htmlBody).toBe(RICH_HTML_SANITIZED);
 
 			expect(sentMessages[0].text).toBe(RICH_TEXT);
 			// Rich body replaces the <p>-per-line pipeline inside the shell.
@@ -263,7 +266,7 @@ describe("resend send paths", () => {
 
 			const rows = await getMessages();
 			const reply = rows.find((r) => r.subject === "Re: Original")!;
-			expect(reply.htmlBody).toBe(RICH_HTML);
+			expect(reply.htmlBody).toBe(RICH_HTML_SANITIZED);
 			expect(reply.visibleText).toBe(RICH_TEXT);
 			expect(reply.messageBody).toBe(RICH_TEXT);
 			expect(sentMessages[0].text).toBe(RICH_TEXT);

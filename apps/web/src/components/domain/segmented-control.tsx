@@ -26,6 +26,7 @@ export interface SegmentedControlProps<T extends string> {
 	onValueChange: (value: T) => void;
 	options: ReadonlyArray<SegmentedControlOption<T>>;
 	className?: string;
+	disabled?: boolean;
 }
 
 /**
@@ -39,6 +40,7 @@ export function SegmentedControl<T extends string>({
 	onValueChange,
 	options,
 	className,
+	disabled = false,
 }: SegmentedControlProps<T>) {
 	return (
 		<div role="group" className={cn(PILL_TAB_CONTAINER, className)}>
@@ -46,11 +48,13 @@ export function SegmentedControl<T extends string>({
 				<button
 					key={option.value}
 					type="button"
+					disabled={disabled}
 					onClick={() => onValueChange(option.value)}
 					aria-pressed={value === option.value}
 					aria-label={option.ariaLabel}
 					className={cn(
 						SEGMENT_BASE,
+						"disabled:cursor-not-allowed disabled:opacity-70",
 						value === option.value
 							? PILL_TAB_SEGMENT_ACTIVE
 							: PILL_TAB_SEGMENT_INACTIVE

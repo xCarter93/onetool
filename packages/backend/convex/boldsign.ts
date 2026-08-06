@@ -4,6 +4,7 @@ import { internalMutation, mutation } from "./lib/triggers";
 import { Doc, Id, TableNames } from "./_generated/dataModel";
 import { internal } from "./_generated/api";
 import { logWebhookSuccess, logWebhookError } from "./lib/webhooks";
+import { celebrateQuoteApproved } from "./lib/celebrations";
 import { getCurrentUser, getCurrentUserOrgId } from "./lib/auth";
 import {
 	denyPermission,
@@ -565,6 +566,12 @@ async function handleQuoteStatusUpdate(
 
 	if (Object.keys(quoteUpdates).length > 0) {
 		await ctx.db.patch(quote._id, quoteUpdates);
+		if (quoteUpdates.status === "approved") {
+			const updatedQuote = await ctx.db.get(quote._id);
+			if (updatedQuote) {
+				await celebrateQuoteApproved(ctx, updatedQuote);
+			}
+		}
 	}
 }
 

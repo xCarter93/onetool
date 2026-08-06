@@ -5,6 +5,7 @@ import { ConvexError, v } from "convex/values";
 import { Doc, Id } from "./_generated/dataModel";
 import { getCurrentUserOrgId } from "./lib/auth";
 import { ActivityHelpers } from "./lib/activities";
+import { celebrateQuoteApproved } from "./lib/celebrations";
 import { calculateQuoteTotals, syncQuoteTotals } from "./lib/quoteTotals";
 import {
 	validateParentAccess,
@@ -854,6 +855,10 @@ export const update = userMutation({
 					clientName,
 					changes
 				);
+			}
+
+			if (filteredUpdates.status === "approved" && oldStatus !== "approved") {
+				await celebrateQuoteApproved(ctx, updatedQuote as QuoteDocument);
 			}
 
 			// Emit status change event if status changed

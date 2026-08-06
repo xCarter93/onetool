@@ -449,6 +449,79 @@ export const listForCurrentUser = optionalUserQuery({
 	},
 });
 
+// ============================================================================
+// Celebrations (confetti toasts for quote_approved / payment_received)
+// ============================================================================
+
+const CELEBRATION_TYPES = ["quote_approved", "payment_received"] as const;
+// Only events this fresh fire confetti; older ones stay bell-only.
+const CELEBRATION_FRESHNESS_MS = 15 * 60 * 1000;
+
+/**
+ * Un-celebrated, fresh celebration notifications for the current user. The
+ * workspace CelebrationListener watches this and fires the confetti toast.
+ */
+export const celebrationsForCurrentUser = optionalUserQuery({
+	args: {},
+	handler: async (ctx) => {
+		if (!ctx.user || !ctx.orgId) return [];
+		const { user, orgId } = ctx;
+
+		const cutoff = Date.now() - CELEBRATION_FRESHNESS_MS;
+		const perType = [];
+		for (const notificationType of CELEBRATION_TYPES) {
+			perType.push(
+				await ctx.db
+					.query("notifications")
+					.withIndex("by_user_type", (q) =>
+						q
+							.eq("userId", user._id)
+							.eq("notificationType", notificationType)
+							.gt("_creationTime", cutoff)
+					)
+					.collect()
+			);
+		}
+
+		return perType
+			.flat()
+			.filter((n) => n.orgId === orgId && n.celebratedAt === undefined)
+			.sort((a, b) => b._creationTime - a._creationTime)
+			.map((n) => ({
+				_id: n._id,
+				_creationTime: n._creationTime,
+				notificationType: n.notificationType,
+				title: n.title,
+				message: n.message,
+				celebrationFlair: n.celebrationFlair,
+				actionUrl: n.actionUrl,
+			}));
+	},
+});
+
+/**
+ * Mark celebration notifications as shown so the toast never re-fires.
+ */
+export const markCelebrated = userMutation({
+	args: { ids: v.array(v.id("notifications")) },
+	handler: async (ctx, args): Promise<null> => {
+		const now = Date.now();
+		for (const id of args.ids) {
+			const notification = await ctx.db.get(id);
+			if (
+				!notification ||
+				notification.userId !== ctx.user._id ||
+				notification.orgId !== ctx.orgId ||
+				notification.celebratedAt !== undefined
+			) {
+				continue;
+			}
+			await ctx.db.patch(id, { celebratedAt: now });
+		}
+		return null;
+	},
+});
+
 /**
  * List mention notifications for a specific entity
  */

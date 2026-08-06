@@ -8,6 +8,7 @@ import {
 	userHasPremiumOverride,
 } from "../permissions";
 import { getMembership, listMembershipsByOrg } from "../memberships";
+import { celebrateQuoteApproved, celebrateInvoicePaid } from "../celebrations";
 import { insertTeamMessage } from "../../teamMessages";
 import { AUTOMATION_EMAIL_DAILY_CAP, rateLimiter } from "../../rateLimits";
 import { buildEmailHtml, resolveFromEmail } from "../../email/branding";
@@ -256,6 +257,26 @@ async function applyStatusUpdate(
 		// Apply the update
 		// eslint-disable-next-line @typescript-eslint/no-explicit-any
 		await ctx.db.patch(targetInfo.id, updatePayload as any);
+
+		if (
+			newStatus === "approved" &&
+			targetInfo.type === "quote" &&
+			oldStatus !== "approved"
+		) {
+			const updated = await ctx.db.get(targetInfo.id);
+			if (updated) {
+				await celebrateQuoteApproved(ctx, updated as Doc<"quotes">);
+			}
+		} else if (
+			newStatus === "paid" &&
+			targetInfo.type === "invoice" &&
+			oldStatus !== "paid"
+		) {
+			const updated = await ctx.db.get(targetInfo.id);
+			if (updated) {
+				await celebrateInvoicePaid(ctx, updated as Doc<"invoices">);
+			}
+		}
 
 		if (oldStatus && oldStatus !== newStatus) {
 			const updatedObject = await ctx.db.get(targetInfo.id);
