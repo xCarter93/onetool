@@ -124,6 +124,9 @@ function TimezoneCombobox({
 	return (
 		<Combobox
 			items={filtered}
+			// Items are already search-filtered above; stop Base UI's own filter
+			// from second-guessing the list.
+			filter={null}
 			value={value}
 			disabled={disabled}
 			onOpenChange={(open) => {
@@ -1017,9 +1020,9 @@ export function BusinessInfoTab() {
 					<AlertDialogHeader>
 						<AlertDialogTitle>Change your email address?</AlertDialogTitle>
 						<AlertDialogDescription>
-							Your current address {currentReceivingAddress} will stop working
-							immediately. Replies to existing email threads sent to the old
-							address will no longer reach your inbox.
+							{currentReceivingAddress
+								? `Your current address ${currentReceivingAddress} will stop working immediately. Replies to existing email threads sent to the old address will no longer reach your inbox.`
+								: "This sets the address clients use to reach your inbox."}
 						</AlertDialogDescription>
 					</AlertDialogHeader>
 					<AlertDialogFooter>

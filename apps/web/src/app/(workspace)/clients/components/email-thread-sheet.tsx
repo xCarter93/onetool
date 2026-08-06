@@ -33,6 +33,7 @@ import {
 	EmailDeliveryIndicator,
 	formatMessageTimestamp,
 } from "@/components/shared/email/email-delivery-indicator";
+import { initialsOf } from "@/app/(workspace)/inbox/lib/inbox-utils";
 
 interface EmailThreadSheetProps {
 	isOpen: boolean;
@@ -329,9 +330,7 @@ function SheetMessage({ message }: SheetMessageProps) {
 							/>
 						)}
 						<AvatarFallback className="text-xs font-medium text-muted-foreground">
-							{(message.senderName || message.fromName)
-								.slice(0, 2)
-								.toUpperCase()}
+							{initialsOf(message.senderName || message.fromName)}
 						</AvatarFallback>
 					</Avatar>
 					<div className="min-w-0">

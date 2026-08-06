@@ -89,7 +89,7 @@ const PARAGRAPH_TAGS = new Set([
 ]);
 
 /** Elements separated by a single line break when flattened to plain text. */
-const LINE_TAGS = new Set(["li", "tr", "br"]);
+const LINE_TAGS = new Set(["li", "tr", "td", "th", "br"]);
 
 const URL_SCHEME_ALLOWLIST = /^(?:https?|mailto|tel):/i;
 
@@ -276,7 +276,11 @@ export function sanitizeHtml(
 		let extraAttrs = "";
 		if (name === "a") {
 			const href = sanitizeHref(parseAttributes(rawAttrs).get("href") ?? "");
-			if (href) extraAttrs = ` href="${escapeAttrValue(href)}"`;
+			// target/rel are forced, not copied: links must open in a new tab
+			// without leaking the referrer wherever the stored HTML is rendered.
+			if (href) {
+				extraAttrs = ` href="${escapeAttrValue(href)}" target="_blank" rel="noopener noreferrer nofollow"`;
+			}
 		}
 
 		openTag(name, extraAttrs);

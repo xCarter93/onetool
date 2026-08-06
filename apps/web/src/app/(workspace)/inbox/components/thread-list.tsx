@@ -167,6 +167,7 @@ function ThreadRow({
 					unread ? "bg-primary" : "bg-transparent"
 				)}
 			/>
+			{unread && <span className="sr-only">Unread.</span>}
 			<span className="min-w-0 flex-1">
 				<span className="flex items-baseline justify-between gap-2">
 					<span

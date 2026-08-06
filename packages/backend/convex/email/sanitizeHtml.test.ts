@@ -5,6 +5,9 @@ import {
 	EMAIL_BODY_STYLES,
 } from "./sanitizeHtml";
 
+/** Attributes forced onto every kept link. */
+const LINK_ATTRS = ` target="_blank" rel="noopener noreferrer nofollow"`;
+
 /**
  * Allowlist sanitizer for TipTap composer output. Runs in the default Convex
  * runtime, so these are pure-function tests — no convex-test harness.
@@ -36,6 +39,12 @@ describe("sanitizeHtml", () => {
 			expect(sanitizeHtml(once)).toBe(once);
 		});
 
+		it("forces target and rel on kept links", () => {
+			expect(sanitizeHtml(`<a href="https://a.test">x</a>`)).toBe(
+				`<a href="https://a.test"${LINK_ATTRS}>x</a>`
+			);
+		});
+
 		it("returns empty string for empty input", () => {
 			expect(sanitizeHtml("")).toBe("");
 		});
@@ -52,6 +61,10 @@ describe("sanitizeHtml", () => {
 			expect(
 				sanitizeHtml('<script type="text/javascript">alert("x")</script>hi')
 			).toBe("hi");
+		});
+
+		it("pins nested-script handling: skip ends at the first close tag", () => {
+			expect(sanitizeHtml("<script><script>x</script>hi")).toBe("hi");
 		});
 
 		it("drops an unterminated <script> and everything after it", () => {
@@ -74,6 +87,9 @@ describe("sanitizeHtml", () => {
 
 		it("drops javascript: hrefs but keeps the link text", () => {
 			expect(sanitizeHtml(`<a href="javascript:alert(1)">click</a>`)).toBe(
+				"<a>click</a>"
+			);
+			expect(sanitizeHtml(`<a href="JaVaScRiPt:alert(1)">click</a>`)).toBe(
 				"<a>click</a>"
 			);
 		});
@@ -106,30 +122,30 @@ describe("sanitizeHtml", () => {
 
 		it("keeps http, https, mailto and tel hrefs", () => {
 			expect(sanitizeHtml(`<a href="https://a.test/p?q=1">x</a>`)).toBe(
-				`<a href="https://a.test/p?q=1">x</a>`
+				`<a href="https://a.test/p?q=1"${LINK_ATTRS}>x</a>`
 			);
 			expect(sanitizeHtml(`<a href="http://a.test">x</a>`)).toBe(
-				`<a href="http://a.test">x</a>`
+				`<a href="http://a.test"${LINK_ATTRS}>x</a>`
 			);
 			expect(sanitizeHtml(`<a href="mailto:a@b.test">x</a>`)).toBe(
-				`<a href="mailto:a@b.test">x</a>`
+				`<a href="mailto:a@b.test"${LINK_ATTRS}>x</a>`
 			);
 			expect(sanitizeHtml(`<a href="tel:+15551234567">x</a>`)).toBe(
-				`<a href="tel:+15551234567">x</a>`
+				`<a href="tel:+15551234567"${LINK_ATTRS}>x</a>`
 			);
 		});
 
-		it("drops every non-href attribute on anchors", () => {
+		it("drops every non-href attribute on anchors, forcing its own target/rel", () => {
 			expect(
 				sanitizeHtml(
-					`<a href="https://a.test" target="_blank" onclick="x()" download>x</a>`
+					`<a href="https://a.test" target="_top" rel="opener" onclick="x()" download>x</a>`
 				)
-			).toBe(`<a href="https://a.test">x</a>`);
+			).toBe(`<a href="https://a.test"${LINK_ATTRS}>x</a>`);
 		});
 
 		it("escapes quotes and angle brackets inside href values", () => {
 			expect(sanitizeHtml(`<a href='https://a.test/"><script>'>x</a>`)).toBe(
-				`<a href="https://a.test/&quot;&gt;&lt;script&gt;">x</a>`
+				`<a href="https://a.test/&quot;&gt;&lt;script&gt;"${LINK_ATTRS}>x</a>`
 			);
 		});
 
@@ -216,7 +232,7 @@ describe("sanitizeHtml", () => {
 			expect(out).toContain(`<p style="${EMAIL_BODY_STYLES.p}">`);
 			expect(out).toContain(`<li style="${EMAIL_BODY_STYLES.li}">`);
 			expect(out).toContain(
-				`<a href="https://a.test" style="${EMAIL_BODY_STYLES.a}">`
+				`<a href="https://a.test"${LINK_ATTRS} style="${EMAIL_BODY_STYLES.a}">`
 			);
 		});
 
@@ -257,6 +273,12 @@ describe("htmlToPlainText", () => {
 		expect(htmlToPlainText("<p></p><p>a</p><p></p><p></p><p>b</p><p></p>")).toBe(
 			"a\n\nb"
 		);
+	});
+
+	it("separates adjacent table cells", () => {
+		expect(
+			htmlToPlainText("<table><tr><td>a</td><td>b</td></tr><tr><th>c</th></tr></table>")
+		).toBe("a\nb\nc");
 	});
 
 	it("keeps inline formatting inline", () => {

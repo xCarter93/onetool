@@ -453,11 +453,10 @@ export function CompleteOrganizationMetadata() {
 			// Optional address claim. Never blocks setup: if it fails (taken in the
 			// meantime) or the Convex org row hasn't arrived, the org keeps its
 			// auto-generated address and the user can change it in Settings.
-			const wantsAddress =
-				orgReady &&
+			const addressChanged =
 				receivingLocalPart.length > 0 &&
-				receivingLocalPart !== editableReceivingLocalPart &&
-				receivingState.canClaim;
+				receivingLocalPart !== editableReceivingLocalPart;
+			const wantsAddress = orgReady && addressChanged && receivingState.canClaim;
 			if (wantsAddress) {
 				try {
 					const fullAddress = await setReceivingAddress({
@@ -472,6 +471,13 @@ export function CompleteOrganizationMetadata() {
 							: "You can pick one later in Settings.",
 					);
 				}
+			} else if (addressChanged) {
+				// The user typed an address but availability hadn't confirmed by the
+				// time they submitted — don't let the claim vanish silently.
+				toast.warning(
+					"Email address not reserved",
+					"We couldn't confirm it was available in time. You can pick one later in Settings.",
+				);
 			}
 
 			// Don't redirect here - let handleCompleteSetup do it

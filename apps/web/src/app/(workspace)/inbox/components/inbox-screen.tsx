@@ -91,10 +91,8 @@ export function InboxScreen({ initialThreadId = null }: InboxScreenProps) {
 				(t) => t.threadDocId === selectedThreadId
 			);
 
-			if (e.key === "Enter") {
-				if (currentIndex >= 0) e.preventDefault();
-				return;
-			}
+			// Enter falls through to the focused ThreadRow button's own activation.
+			if (e.key === "Enter") return;
 
 			e.preventDefault();
 			let nextIndex: number;

@@ -302,9 +302,11 @@ function ExpandedMessage({
 }) {
 	const outbound = message.direction === "outbound";
 
+	// Spans (not divs) so the header stays valid phrasing content when the
+	// collapsible branch wraps it in a <button>.
 	const header = (
-		<div className="flex items-start justify-between gap-3">
-			<div className="flex min-w-0 items-center gap-2.5">
+		<span className="flex items-start justify-between gap-3">
+			<span className="flex min-w-0 items-center gap-2.5">
 				<Avatar className="size-7">
 					{message.senderAvatar && (
 						<AvatarImage src={message.senderAvatar} alt={message.senderName} />
@@ -313,8 +315,8 @@ function ExpandedMessage({
 						{initialsOf(message.senderName)}
 					</AvatarFallback>
 				</Avatar>
-				<div className="min-w-0">
-					<div className="flex items-center gap-1.5">
+				<span className="block min-w-0">
+					<span className="flex items-center gap-1.5">
 						<span className="truncate text-sm font-medium text-foreground">
 							{message.senderName}
 						</span>
@@ -323,16 +325,16 @@ function ExpandedMessage({
 								You
 							</span>
 						)}
-					</div>
+					</span>
 					<span className="block truncate text-xs text-muted-foreground">
 						{message.fromEmail}
 					</span>
-				</div>
-			</div>
+				</span>
+			</span>
 			<time className="shrink-0 text-xs tabular-nums text-muted-foreground">
 				{formatMessageTimestamp(message.sentAt)}
 			</time>
-		</div>
+		</span>
 	);
 
 	return (

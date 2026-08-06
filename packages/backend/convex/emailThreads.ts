@@ -141,6 +141,9 @@ export const listThreadsByOrg = optionalUserQuery({
     filter: v.optional(
       v.union(v.literal("all"), v.literal("unread"), v.literal("unlinked")),
     ),
+    // Cap on returned threads (e.g. the home dashboard strip wants 5, not the
+    // whole inbox page); enrichment cost scales with it.
+    limit: v.optional(v.number()),
   },
   handler: async (ctx, args): Promise<InboxThread[]> => {
     if (!ctx.orgId) return emptyListResult<InboxThread>();
@@ -156,11 +159,17 @@ export const listThreadsByOrg = optionalUserQuery({
       .take(INBOX_LIST_LIMIT);
 
     const filter = args.filter ?? "all";
-    const visibleThreads = openThreads.filter((t) => {
-      if (filter === "unread") return t.unreadCount > 0;
-      if (filter === "unlinked") return t.clientId === null;
-      return true;
-    });
+    const limit = Math.max(
+      1,
+      Math.min(Math.floor(args.limit ?? INBOX_LIST_LIMIT), INBOX_LIST_LIMIT),
+    );
+    const visibleThreads = openThreads
+      .filter((t) => {
+        if (filter === "unread") return t.unreadCount > 0;
+        if (filter === "unlinked") return t.clientId === null;
+        return true;
+      })
+      .slice(0, limit);
 
     const contactIndex = await buildContactIndex(ctx, orgId);
     const clientCache = new Map<Id<"clients">, Doc<"clients"> | null>();

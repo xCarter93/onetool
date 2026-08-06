@@ -54,15 +54,18 @@ export function normalizeLocalPart(raw: string): string {
 	return raw.toLowerCase().replace(/[^a-z0-9-]/g, "");
 }
 
-/** Turns a business name into a starting-point local part. */
+/** Turns a business name into a starting-point local part ("" when nothing claimable results). */
 export function slugifyLocalPart(name: string): string {
-	return name
+	const slug = name
 		.toLowerCase()
 		.replace(/[^a-z0-9]+/g, "-")
 		.replace(/-+/g, "-")
 		.replace(/^-+|-+$/g, "")
 		.slice(0, MAX_LOCAL_PART_LENGTH)
 		.replace(/-+$/g, "");
+	// Reserved names, the org- namespace, and too-short slugs aren't claimable —
+	// suggest nothing rather than a value the server will reject.
+	return validateLocalPart(slug) === null ? slug : "";
 }
 
 /** Client mirror of `validateReceivingLocalPart` — instant feedback only. */

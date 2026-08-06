@@ -1,4 +1,4 @@
-import type { MutationCtx, QueryCtx } from "../_generated/server";
+import type { MutationCtx } from "../_generated/server";
 
 /** Domain all org receiving addresses live under. */
 export const INBOUND_EMAIL_DOMAIN = "inbound.onetool.biz";
@@ -79,7 +79,7 @@ export function buildReceivingAddress(localPart: string): string {
  * exists only as a hard guarantee.
  */
 export async function generateUniqueReceivingAddress(
-	ctx: QueryCtx | MutationCtx
+	ctx: MutationCtx
 ): Promise<string> {
 	const MAX_ATTEMPTS = 10;
 

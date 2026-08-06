@@ -287,12 +287,9 @@ export default function Page() {
 										</TourElement>
 									</FramePanel>
 								</Frame>
-								{/* Recent Emails — full-width strip; single-line rows want the width */}
-								<Frame className="w-full lg:col-span-12">
-									<FramePanel className="grow">
-										<RecentEmails />
-									</FramePanel>
-								</Frame>
+								{/* Recent Emails — full-width strip; single-line rows want the
+								    width (Frame owned by component) */}
+								<RecentEmails className="w-full lg:col-span-12" />
 							</div>
 						</motion.div>
 					</>

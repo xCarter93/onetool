@@ -100,7 +100,7 @@ describe("buildEmailHtml", () => {
 			expect(body).toContain(`<blockquote style="`);
 			expect(body).toContain("border-left: 3px solid #e2e8f0");
 			expect(body).toContain(
-				`<a href="https://a.test" style="${EMAIL_BODY_STYLES.a}">link</a>`
+				`<a href="https://a.test" target="_blank" rel="noopener noreferrer nofollow" style="${EMAIL_BODY_STYLES.a}">link</a>`
 			);
 			expect(body).toContain("color: #2563eb");
 		});

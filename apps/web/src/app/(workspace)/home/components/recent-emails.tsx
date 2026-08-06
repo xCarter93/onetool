@@ -7,6 +7,7 @@ import { formatDistanceToNowStrict } from "date-fns";
 import { ArrowRight } from "lucide-react";
 
 import { Badge } from "@/components/reui/badge";
+import { Frame, FramePanel } from "@/components/reui/frame";
 import { EmptyState } from "@/components/domain/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { usePermissions } from "@/hooks/use-permissions";
@@ -18,8 +19,9 @@ const VISIBLE_THREADS = 5;
 /**
  * Compact inbox strip for the home dashboard: the newest client
  * conversations as single-line rows, each deep-linking into /inbox.
+ * Owns its Frame so the page renders no empty shell when access is denied.
  */
-export function RecentEmails() {
+export function RecentEmails({ className }: { className?: string }) {
 	const { can, isLoading: permsLoading } = usePermissions();
 	const canView = can("inbox");
 	const isOrgSwitching = useIsOrgSwitching();
@@ -28,7 +30,7 @@ export function RecentEmails() {
 	// the client knows the caller holds inbox access.
 	const threads = useQuery(
 		api.emailThreads.listThreadsByOrg,
-		canView ? { filter: "all" } : "skip"
+		canView ? { filter: "all", limit: VISIBLE_THREADS } : "skip"
 	);
 	const unreadCount = useQuery(
 		api.emailThreads.countUnreadThreads,
@@ -44,7 +46,8 @@ export function RecentEmails() {
 	const visible = (threads ?? []).slice(0, VISIBLE_THREADS);
 
 	return (
-		<div>
+		<Frame className={className}>
+			<FramePanel className="grow">
 			<div className="mb-6 flex items-center justify-between gap-3">
 				<div className="flex items-center gap-2">
 					<h3 className="text-base font-semibold text-foreground">
@@ -137,7 +140,8 @@ export function RecentEmails() {
 					})}
 				</ul>
 			)}
-		</div>
+			</FramePanel>
+		</Frame>
 	);
 }
 
