@@ -47,7 +47,36 @@ export const invoicesAndPaymentsArticles: HelpArticle[] = [
 				blocks: [
 					{
 						type: "paragraph",
-						text: "When there is no quote, create the invoice directly from the **Invoices** page. New invoices start as drafts, and you add what you are billing for in the invoice's line item editor.",
+						text: "When there is no quote, create the invoice directly from the **Invoices** page. New invoices start as drafts, and you add what you are billing for in the line item grid on the invoice itself.",
+					},
+				],
+			},
+			{
+				heading: "Edit the line items",
+				blocks: [
+					{
+						type: "paragraph",
+						text: "Line items live on the invoice's Overview tab in a spreadsheet-style grid. Click any cell and type. Press **Enter** to move down a row, and again on the last row to add a new one. The arrow keys move between cells, and **New row** at the bottom adds one at any time.",
+					},
+					{
+						type: "steps",
+						items: [
+							"Copy rows from a spreadsheet and paste them into the grid to create a line for each row.",
+							"Click **SKU** on a row to fill its description, unit, rate, and cost from your saved price list.",
+							"Drag the handle on the left of a row to reorder it, and tick the row checkboxes to duplicate or delete several rows at once.",
+						],
+					},
+					{
+						type: "paragraph",
+						text: "Nothing needs saving by hand. Every edit saves on its own and the marker above the grid reads **All changes saved** once it lands.",
+					},
+					{
+						type: "paragraph",
+						text: "Open the **Pricing & visibility** panel under the grid to set a **Discount** as a dollar amount or a percentage and a **Tax** rate as a percentage, the same way quotes work. The right-hand side controls which columns print on the client's copy: quantities, unit prices, line totals, and the grand total. Cost and margin are internal and never printed. Use **Preview Document** above the grid to see the exact PDF in a modal before generating it, and watch the **Generated PDF** card in the right rail, which warns when the invoice has changed since the last PDF was generated.",
+					},
+					{
+						type: "note",
+						text: "Paid and cancelled invoices lock their line items and pricing, and so does any invoice with a payment that has settled, been refunded, or been disputed. A bill cannot change after money has moved. The grid switches to read only and explains why.",
 					},
 				],
 			},

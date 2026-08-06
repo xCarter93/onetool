@@ -7,7 +7,15 @@ import { api } from "@onetool/backend/convex/_generated/api";
 import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
 import { HighlightMetricGrid } from "@/components/shared/highlight-metric-grid";
-import { Check, DollarSign, CreditCard, Loader2, Plus, TriangleAlert } from "lucide-react";
+import {
+	Check,
+	DollarSign,
+	CreditCard,
+	Eye,
+	Loader2,
+	Plus,
+	TriangleAlert,
+} from "lucide-react";
 import { formatCurrency } from "@/lib/money";
 import { useToast } from "@/hooks/use-toast";
 import { LineItemGrid } from "@/components/shared/line-items/line-item-grid";
@@ -23,6 +31,11 @@ import {
 	legacyTaxRateFromAmounts,
 	resolveInvoicePricingMode,
 } from "@/components/shared/line-items/invoice-pricing";
+import {
+	Tooltip,
+	TooltipContent,
+	TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
 interface OverviewTabProps {
@@ -35,6 +48,9 @@ interface OverviewTabProps {
 		totalPayments: number;
 		paidCount: number;
 	};
+	onPreviewPdf: () => void;
+	/** True while the invoice has nothing to render (loading or no line items). */
+	previewDisabled: boolean;
 }
 
 export function OverviewTab({
@@ -43,6 +59,8 @@ export function OverviewTab({
 	lineItems,
 	payments,
 	paymentSummary,
+	onPreviewPdf,
+	previewDisabled,
 }: OverviewTabProps) {
 	const toast = useToast();
 	const updateInvoice = useMutation(api.invoices.update);
@@ -178,7 +196,7 @@ export function OverviewTab({
 					<h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
 						Line Items
 					</h3>
-					{/* Actions rail — a "Preview Document" button lands here next. */}
+					{/* Actions rail */}
 					<div className="flex items-center gap-2.5">
 						<span
 							className={cn(
@@ -211,6 +229,33 @@ export function OverviewTab({
 								</>
 							)}
 						</span>
+						<Tooltip>
+							<TooltipTrigger
+								render={
+									<span
+										// A disabled button swallows pointer events, so the
+										// tooltip needs a live wrapper to hang off.
+										tabIndex={previewDisabled ? 0 : -1}
+										className="inline-flex rounded-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+									/>
+								}
+							>
+								<Button
+									variant="outline"
+									size="sm"
+									disabled={previewDisabled}
+									onClick={onPreviewPdf}
+								>
+									<Eye className="h-4 w-4" aria-hidden="true" />
+									Preview Document
+								</Button>
+							</TooltipTrigger>
+							{previewDisabled && (
+								<TooltipContent>
+									Add a line item to preview this invoice
+								</TooltipContent>
+							)}
+						</Tooltip>
 						{!controller.locked && (
 							<Button
 								variant="outline"

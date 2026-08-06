@@ -40,6 +40,8 @@ import {
 	Download,
 	History,
 	Clock,
+	AlertTriangle,
+	RefreshCw,
 } from "lucide-react";
 import Link from "next/link";
 import { usePermissions } from "@/hooks/use-permissions";
@@ -91,6 +93,8 @@ interface InvoiceDetailSidebarProps {
 	selectedDocument: Doc<"documents"> | null | undefined;
 	selectedDocumentUrl: string | null | undefined;
 	onGeneratePdf: () => void;
+	/** Invoice content changed after the newest PDF was stored. */
+	isPdfStale: boolean;
 	onDownloadPdf: () => void;
 	selectedVersionId: Id<"documents"> | null;
 	onSelectVersion: (id: Id<"documents"> | null) => void;
@@ -110,6 +114,7 @@ export function InvoiceDetailSidebar({
 	selectedDocument,
 	selectedDocumentUrl,
 	onGeneratePdf,
+	isPdfStale,
 	onDownloadPdf,
 	selectedVersionId,
 	onSelectVersion,
@@ -125,6 +130,9 @@ export function InvoiceDetailSidebar({
 
 	const { can, isLoading: permissionsLoading } = usePermissions();
 	const canModify = can("invoices", "modify");
+	// Without the documents grant the PDF queries are skipped forever, so
+	// `undefined` there means "no access", not "still loading".
+	const canViewDocuments = can("documents");
 	const showReadOnly = !permissionsLoading && !canModify;
 	// Editable rows get the interactive affordance; read-only rows sit flat.
 	const rowClass = `flex items-start gap-3 py-2.5 -mx-2 px-2 rounded-md transition-colors${
@@ -606,148 +614,220 @@ export function InvoiceDetailSidebar({
 				Generated PDF
 			</h3>
 			<div className="py-2">
-				{selectedDocumentUrl ? (
-					<div className="space-y-4">
-						{selectedDocument && (
-							<div className="flex items-center gap-2 mb-2">
-								<Badge variant="outline" className="text-xs">
-									v{selectedDocument.version}
-								</Badge>
-							</div>
-						)}
-						<div className="h-48 bg-gray-50 dark:bg-gray-800 rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden">
-							<iframe
-								src={selectedDocumentUrl}
-								className="w-full h-full"
-								title="PDF Preview"
-								style={{ border: "none" }}
+				{latestDocument === null ? (
+					<div className="rounded-lg border border-border bg-background/60 p-4">
+						<div className="flex items-start gap-3">
+							<FileText
+								className="h-5 w-5 text-muted-foreground shrink-0 mt-0.5"
+								aria-hidden="true"
 							/>
-						</div>
-
-						<div className="flex gap-2">
-							<a
-								href={selectedDocumentUrl}
-								target="_blank"
-								rel="noopener noreferrer"
-								className="flex-1"
-							>
+							<div className="min-w-0 flex-1">
+								<p className="text-sm font-medium text-foreground">
+									No PDF yet
+								</p>
+								<p className="mt-1 text-sm text-muted-foreground">
+									Generate one to send this invoice.
+								</p>
 								<Button
 									variant="outline"
 									size="sm"
-									className="w-full"
+									className="mt-3"
+									onClick={onGeneratePdf}
+									disabled={!canModify}
 								>
-									<Eye className="h-4 w-4 mr-2" />
-									View
+									<FileText className="h-4 w-4" aria-hidden="true" />
+									Generate PDF
 								</Button>
-							</a>
-							<Button
-								variant="outline"
-								size="sm"
-								className="w-full flex-1"
-								onClick={onDownloadPdf}
-							>
-								<Download className="h-4 w-4 mr-2" />
-								Download
-							</Button>
+							</div>
 						</div>
+					</div>
+				) : latestDocument === undefined ? (
+					<div className="rounded-lg border border-border bg-background/60 p-4">
+						<p className="text-sm text-muted-foreground">
+							{canViewDocuments
+								? "Checking for a generated PDF…"
+								: "You do not have access to this invoice's documents."}
+						</p>
+					</div>
+				) : (
+					<div className="space-y-4">
+						{isPdfStale ? (
+							<div className="rounded-lg border border-warning/40 bg-warning/10 p-4">
+								<div className="flex items-start gap-3">
+									<AlertTriangle
+										className="h-5 w-5 text-warning shrink-0 mt-0.5"
+										aria-hidden="true"
+									/>
+									<div className="min-w-0 flex-1">
+										<p className="text-sm font-medium text-foreground">
+											PDF v{latestDocument.version} is out of date
+										</p>
+										<p className="mt-1 text-sm text-muted-foreground">
+											Line items changed since it was generated.
+											Regenerate before you send.
+										</p>
+										<Button
+											variant="outline"
+											size="sm"
+											className="mt-3"
+											onClick={onGeneratePdf}
+											disabled={!canModify}
+										>
+											<RefreshCw
+												className="h-4 w-4"
+												aria-hidden="true"
+											/>
+											Regenerate
+										</Button>
+									</div>
+								</div>
+							</div>
+						) : (
+							<div className="rounded-lg border border-border bg-background/60 p-4">
+								<div className="flex items-start gap-3">
+									<FileText
+										className="h-5 w-5 text-muted-foreground shrink-0 mt-0.5"
+										aria-hidden="true"
+									/>
+									<div className="min-w-0 flex-1">
+										<p className="text-sm font-medium text-foreground">
+											Invoice PDF v{latestDocument.version}
+										</p>
+										<p className="mt-1 text-sm text-muted-foreground">
+											Generated{" "}
+											{formatDate(latestDocument._creationTime)}
+										</p>
+										<div className="mt-3 flex flex-wrap gap-2">
+											<Button
+												size="sm"
+												variant="outline"
+												onClick={onDownloadPdf}
+												disabled={!selectedDocumentUrl}
+											>
+												<Download
+													className="h-4 w-4"
+													aria-hidden="true"
+												/>
+												Download
+											</Button>
+											<Button
+												size="sm"
+												variant="ghost"
+												onClick={onGeneratePdf}
+												disabled={!canModify}
+											>
+												<RefreshCw
+													className="h-4 w-4"
+													aria-hidden="true"
+												/>
+												Regenerate
+											</Button>
+										</div>
+									</div>
+								</div>
+							</div>
+						)}
 
-						{allDocumentVersions &&
-							allDocumentVersions.length > 1 && (
-								<div className="pt-2 border-t border-gray-200 dark:border-gray-700">
+						{selectedDocumentUrl && (
+							<>
+								{selectedDocument &&
+									selectedDocument._id !== latestDocument._id && (
+										<Badge variant="outline" className="text-xs">
+											Viewing v{selectedDocument.version}
+										</Badge>
+									)}
+								<div className="h-48 overflow-hidden rounded-lg border border-border bg-muted/40">
+									<iframe
+										src={selectedDocumentUrl}
+										className="w-full h-full"
+										title="PDF preview"
+										style={{ border: "none" }}
+									/>
+								</div>
+								<a
+									href={selectedDocumentUrl}
+									target="_blank"
+									rel="noopener noreferrer"
+									className="block"
+								>
 									<Button
 										variant="outline"
 										size="sm"
 										className="w-full"
-										onClick={onToggleVersionHistory}
 									>
-										<History className="h-4 w-4 mr-2" />
-										{showVersionHistory
-											? "Hide"
-											: "Show"}{" "}
-										Version History (
-										{allDocumentVersions.length})
+										<Eye className="h-4 w-4" aria-hidden="true" />
+										Open in new tab
 									</Button>
+								</a>
+							</>
+						)}
 
-									{showVersionHistory && (
-										<div className="mt-3 space-y-2 max-h-48 overflow-y-auto">
-											{allDocumentVersions.map(
-												(version) => (
-													<button
-														key={version._id}
-														onClick={() => {
-															onSelectVersion(
-																version._id ===
-																	latestDocument?._id
-																	? null
-																	: version._id
-															);
-														}}
-														className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${
-															selectedVersionId ===
-																version._id ||
-															(!selectedVersionId &&
-																version._id ===
-																	latestDocument?._id)
-																? "bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800"
-																: "bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800"
-														}`}
-													>
-														<div className="flex items-center justify-between">
-															<div className="flex items-center gap-2">
-																<Clock className="h-3 w-3 text-gray-400" />
-																<span className="font-medium">
-																	Version{" "}
-																	{
-																		version.version
-																	}
-																</span>
-																{version._id ===
-																	latestDocument?._id && (
-																	<Badge
-																		variant="default"
-																		className="text-xs"
-																	>
-																		Latest
-																	</Badge>
-																)}
-															</div>
-															<span className="text-xs text-gray-500">
-																{new Date(
-																	version.generatedAt
-																).toLocaleDateString()}{" "}
-																{new Date(
-																	version.generatedAt
-																).toLocaleTimeString(
-																	[],
-																	{
-																		hour: "2-digit",
-																		minute: "2-digit",
-																	}
-																)}
+						{allDocumentVersions && allDocumentVersions.length > 1 && (
+							<div className="pt-2 border-t border-border">
+								<Button
+									variant="outline"
+									size="sm"
+									className="w-full"
+									onClick={onToggleVersionHistory}
+								>
+									<History className="h-4 w-4" aria-hidden="true" />
+									{showVersionHistory ? "Hide" : "Show"} version history (
+									{allDocumentVersions.length})
+								</Button>
+
+								{showVersionHistory && (
+									<div className="mt-3 space-y-2 max-h-48 overflow-y-auto">
+										{allDocumentVersions.map((version) => {
+											const isActive =
+												selectedVersionId === version._id ||
+												(!selectedVersionId &&
+													version._id === latestDocument._id);
+											return (
+												<button
+													key={version._id}
+													onClick={() => {
+														onSelectVersion(
+															version._id === latestDocument._id
+																? null
+																: version._id
+														);
+													}}
+													aria-pressed={isActive}
+													className={`w-full text-left px-3 py-2 rounded-md text-sm border transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring ${
+														isActive
+															? "border-primary/40 bg-primary/10"
+															: "border-border bg-background/60 hover:bg-muted/60"
+													}`}
+												>
+													<div className="flex items-center justify-between gap-2">
+														<div className="flex items-center gap-2">
+															<Clock
+																className="h-3 w-3 text-muted-foreground"
+																aria-hidden="true"
+															/>
+															<span className="font-medium">
+																Version {version.version}
 															</span>
+															{version._id === latestDocument._id && (
+																<Badge
+																	variant="default"
+																	className="text-xs"
+																>
+																	Latest
+																</Badge>
+															)}
 														</div>
-													</button>
-												)
-											)}
-										</div>
-									)}
-								</div>
-							)}
-					</div>
-				) : (
-					<div className="text-center py-6">
-						<FileText className="h-12 w-12 text-gray-400 mx-auto mb-3" />
-						<p className="text-sm text-gray-600 dark:text-gray-400 mb-2">
-							No PDF generated yet
-						</p>
-						<Button
-							variant="outline"
-							size="sm"
-							onClick={onGeneratePdf}
-						>
-							<FileText className="h-4 w-4 mr-2" />
-							Generate PDF
-						</Button>
+														<span className="text-xs text-muted-foreground">
+															{formatDate(version.generatedAt)}
+														</span>
+													</div>
+												</button>
+											);
+										})}
+									</div>
+								)}
+							</div>
+						)}
 					</div>
 				)}
 			</div>

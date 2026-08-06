@@ -24,7 +24,7 @@ const LOCKED_REASON: Record<string, string> = {
 	approved:
 		"Approved quotes are locked. Line items can't change after the client approves.",
 	declined:
-		"Declined quotes are locked. Duplicate the quote to price a new version.",
+		"Declined quotes are locked so the record keeps what the client saw.",
 };
 
 const SETTLE_MS = 700;

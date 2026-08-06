@@ -43,6 +43,9 @@ interface InvoiceDetailTabsProps {
 	selectedDocument: Doc<"documents"> | null | undefined;
 	selectedDocumentUrl: string | null | undefined;
 	onGeneratePdf: () => void;
+	onPreviewPdf: () => void;
+	previewDisabled: boolean;
+	isPdfStale: boolean;
 	onDownloadPdf: () => void;
 	selectedVersionId: Id<"documents"> | null;
 	onSelectVersion: (id: Id<"documents"> | null) => void;
@@ -68,6 +71,9 @@ export function InvoiceDetailTabs({
 	selectedDocument,
 	selectedDocumentUrl,
 	onGeneratePdf,
+	onPreviewPdf,
+	previewDisabled,
+	isPdfStale,
 	onDownloadPdf,
 	selectedVersionId,
 	onSelectVersion,
@@ -86,6 +92,7 @@ export function InvoiceDetailTabs({
 		selectedDocument,
 		selectedDocumentUrl,
 		onGeneratePdf,
+		isPdfStale,
 		onDownloadPdf,
 		selectedVersionId,
 		onSelectVersion,
@@ -118,6 +125,8 @@ export function InvoiceDetailTabs({
 							lineItems={lineItems}
 							payments={invoiceWithPayments?.payments}
 							paymentSummary={invoiceWithPayments?.paymentSummary}
+							onPreviewPdf={onPreviewPdf}
+							previewDisabled={previewDisabled}
 						/>
 					</PillTabsContent>
 

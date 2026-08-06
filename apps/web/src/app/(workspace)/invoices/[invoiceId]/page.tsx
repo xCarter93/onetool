@@ -6,11 +6,11 @@ import { useParams, useRouter } from "next/navigation";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { useToast } from "@/hooks/use-toast";
-import { pdf } from "@react-pdf/renderer";
-import InvoicePDF from "@/app/(workspace)/invoices/components/InvoicePDF";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
 import type { Id as StorageId } from "@onetool/backend/convex/_generated/dataModel";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback, useRef } from "react";
+import { DocumentPreviewModal } from "@/components/shared/document-preview-modal";
+import { buildInvoicePdfBlob } from "./components/build-invoice-pdf-blob";
 import DeleteConfirmationModal from "@/components/ui/delete-confirmation-modal";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ExclamationTriangleIcon } from "@heroicons/react/24/outline";
@@ -60,6 +60,7 @@ function InvoiceDetailPageContent() {
 	const [showVersionHistory, setShowVersionHistory] = useState(false);
 	const [isPaymentsModalOpen, setIsPaymentsModalOpen] = useState(false);
 	const [isCancelModalOpen, setIsCancelModalOpen] = useState(false);
+	const [showPreviewModal, setShowPreviewModal] = useState(false);
 
 	// Queries
 	const invoiceWithPayments = useQuery(api.invoices.getWithPayments, {
@@ -109,6 +110,39 @@ function InvoiceDetailPageContent() {
 	const sendToClient = useMutation(api.invoices.sendToClient);
 	const generateUploadUrl = useMutation(api.documents.generateUploadUrl);
 	const createDocument = useMutation(api.documents.create);
+
+	// Last render produced by the preview, kept so Generate can skip a second
+	// identical render. Invalidated by any client-visible content change.
+	const previewBlobRef = useRef<{
+		blob: Blob;
+		contentUpdatedAt: number | undefined;
+		paymentsFingerprint: string;
+		invoiceId: Id<"invoices">;
+	} | null>(null);
+
+	// The PDF prints the payment schedule, but payment writes do not stamp the
+	// invoice's contentUpdatedAt — fingerprint the rendered fields separately.
+	const paymentsFingerprint = useMemo(
+		() =>
+			JSON.stringify(
+				(invoiceWithPayments?.payments ?? []).map((p) => [
+					p._id,
+					p.paymentAmount,
+					p.dueDate,
+					p.description,
+					p.sortOrder,
+				])
+			),
+		[invoiceWithPayments?.payments]
+	);
+
+	// The generated PDF is stale once the invoice's client-visible content moved
+	// after the newest document was stored. No stamp means nothing to compare.
+	const isPdfStale = Boolean(
+		latestDocument &&
+			invoice?.contentUpdatedAt !== undefined &&
+			invoice.contentUpdatedAt > latestDocument._creationTime
+	);
 
 	// Derived state
 	const selectedDocument = useMemo(() => {
@@ -180,6 +214,50 @@ function InvoiceDetailPageContent() {
 		}
 	};
 
+	// Renders the invoice PDF exactly the way Generate does, so what the preview
+	// shows is what gets uploaded. The result is cached against the invoice's
+	// contentUpdatedAt stamp and reused by Generate while it stays valid.
+	const renderInvoicePdf = useCallback(async () => {
+		if (!invoice || !lineItems) {
+			throw new Error(
+				"This invoice is still loading. Try again in a moment."
+			);
+		}
+		const blob = await buildInvoicePdfBlob({
+			invoice,
+			lineItems,
+			payments: invoiceWithPayments?.payments,
+			client,
+			organization,
+			primaryProperty,
+		});
+		previewBlobRef.current = {
+			blob,
+			contentUpdatedAt: invoice.contentUpdatedAt,
+			paymentsFingerprint,
+			invoiceId: invoice._id,
+		};
+		return blob;
+	}, [
+		invoice,
+		lineItems,
+		invoiceWithPayments?.payments,
+		paymentsFingerprint,
+		client,
+		organization,
+		primaryProperty,
+	]);
+
+	const takeCachedPdfBlob = (): Blob | null => {
+		const cached = previewBlobRef.current;
+		if (!cached || !invoice) return null;
+		if (cached.invoiceId !== invoice._id) return null;
+		// Any client-visible edit since the preview invalidates it.
+		if (cached.contentUpdatedAt !== invoice.contentUpdatedAt) return null;
+		if (cached.paymentsFingerprint !== paymentsFingerprint) return null;
+		return cached.blob;
+	};
+
 	const handleGeneratePdf = async () => {
 		let loadingId;
 		try {
@@ -189,40 +267,8 @@ function InvoiceDetailPageContent() {
 				"Rendering and uploading..."
 			);
 
-			const element = (
-				<InvoicePDF
-					invoice={invoice}
-					client={
-						client
-							? {
-									companyName: client.companyName,
-									streetAddress:
-										primaryProperty?.streetAddress,
-									city: primaryProperty?.city,
-									state: primaryProperty?.state,
-									zipCode: primaryProperty?.zipCode,
-									country: primaryProperty?.country,
-								}
-							: undefined
-					}
-					items={lineItems}
-					organization={
-						organization
-							? {
-									name: organization.name,
-									logoUrl:
-										organization.logoUrl || undefined,
-									address:
-										organization.address || undefined,
-									phone: organization.phone || undefined,
-									email: organization.email || undefined,
-								}
-							: undefined
-					}
-					payments={invoiceWithPayments?.payments}
-				/>
-			);
-			const invoiceBlob = await pdf(element).toBlob();
+			// Reuse the preview's render when the invoice content has not moved since.
+			const invoiceBlob = takeCachedPdfBlob() ?? (await renderInvoicePdf());
 
 			const uploadUrl = await generateUploadUrl({});
 			const res = await fetch(uploadUrl, {
@@ -352,6 +398,9 @@ function InvoiceDetailPageContent() {
 					selectedDocument={selectedDocument}
 					selectedDocumentUrl={selectedDocumentUrl}
 					onGeneratePdf={handleGeneratePdf}
+					onPreviewPdf={() => setShowPreviewModal(true)}
+					previewDisabled={!lineItems || lineItems.length === 0}
+					isPdfStale={isPdfStale}
 					onDownloadPdf={handleDownloadPdf}
 					selectedVersionId={selectedVersionId}
 					onSelectVersion={setSelectedVersionId}
@@ -374,6 +423,23 @@ function InvoiceDetailPageContent() {
 				}
 				itemType="Invoice"
 				mode="cancel"
+			/>
+
+			<DocumentPreviewModal
+				open={showPreviewModal}
+				onOpenChange={setShowPreviewModal}
+				title="Invoice preview"
+				description="This is exactly what gets saved when you generate the PDF."
+				renderDocument={renderInvoicePdf}
+				downloadFileName={`Invoice-${invoice.invoiceNumber || invoice._id.slice(-6)}.pdf`}
+				primaryAction={{
+					label: "Generate PDF",
+					disabled: !can("invoices", "modify"),
+					onAction: () => {
+						setShowPreviewModal(false);
+						void handleGeneratePdf();
+					},
+				}}
 			/>
 
 			{invoice && (

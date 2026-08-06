@@ -39,7 +39,7 @@ export function assertQuoteContentEditable(quote: Doc<"quotes">): void {
 	if (LOCKED_QUOTE_STATUSES.has(quote.status)) {
 		throw new ConvexError({
 			code: "CONFLICT",
-			message: `QUOTE_LOCKED: this quote is ${quote.status} and its line items, pricing and terms can no longer be edited. Duplicate it to build a revised quote.`,
+			message: `QUOTE_LOCKED: this quote is ${quote.status} and its line items, pricing and terms can no longer be edited.`,
 		});
 	}
 }

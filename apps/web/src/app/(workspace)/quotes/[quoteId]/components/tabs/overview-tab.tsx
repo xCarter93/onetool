@@ -1,6 +1,7 @@
 "use client";
 
 import { Doc, Id } from "@onetool/backend/convex/_generated/dataModel";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useMutation } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { Separator } from "@/components/ui/separator";
@@ -42,6 +43,29 @@ export function OverviewTab({
 }: OverviewTabProps) {
 	const toast = useToast();
 	const updateQuote = useMutation(api.quotes.update);
+	const router = useRouter();
+	const pathname = usePathname();
+	const searchParams = useSearchParams();
+
+	// The new-quote dialog hands the caret over with ?focus=line-items. Latch it
+	// on mount so stripping the param below can't un-flip the grid's prop, and
+	// so a refresh of the clean URL never re-triggers the focus.
+	const [autoFocusLineItems] = useState(
+		() => searchParams.get("focus") === "line-items"
+	);
+	const focusParamClearedRef = useRef(false);
+
+	useEffect(() => {
+		if (!autoFocusLineItems || focusParamClearedRef.current) return;
+		focusParamClearedRef.current = true;
+		// Strip only `focus`, so any other param on the URL survives.
+		const next = new URLSearchParams(searchParams.toString());
+		next.delete("focus");
+		const query = next.toString();
+		router.replace(query ? `${pathname}?${query}` : pathname, {
+			scroll: false,
+		});
+	}, [autoFocusLineItems, pathname, router, searchParams]);
 
 	const controller = useQuoteLineItemsController({
 		quote,
@@ -132,6 +156,8 @@ export function OverviewTab({
 	}, [isEditingMessage]);
 
 	const startEditingTerms = () => {
+		// Terms are gated server-side once the quote locks; don't open a dead editor.
+		if (controller.locked) return;
 		setTermsValue(quote.terms || "");
 		setIsEditingTerms(true);
 	};
@@ -165,6 +191,7 @@ export function OverviewTab({
 	};
 
 	const startEditingMessage = () => {
+		if (controller.locked) return;
 		setMessageValue(quote.clientMessage || "");
 		setIsEditingMessage(true);
 	};
@@ -283,6 +310,7 @@ export function OverviewTab({
 				<LineItemGrid
 					controller={controller}
 					isLoading={lineItems === undefined}
+					autoFocusFirstRow={autoFocusLineItems}
 				/>
 
 				<LineItemsTotals

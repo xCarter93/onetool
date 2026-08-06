@@ -349,14 +349,24 @@ export interface LineItemGridProps {
 	controller: LineItemGridController;
 	/** Render skeleton rows while the line items query resolves. */
 	isLoading?: boolean;
+	/**
+	 * Put the caret in row 1's description once the data lands, adding the first
+	 * row when there is none. Runs at most once per mount.
+	 */
+	autoFocusFirstRow?: boolean;
 }
 
-export function LineItemGrid({ controller, isLoading = false }: LineItemGridProps) {
+export function LineItemGrid({
+	controller,
+	isLoading = false,
+	autoFocusFirstRow = false,
+}: LineItemGridProps) {
 	const { items, locked, showCostMargin } = controller;
 	const gridRef = useRef<HTMLDivElement>(null);
 	const [selectedIds, setSelectedIds] = useState<string[]>([]);
 	const focusNewRowRef = useRef(false);
 	const rowCountRef = useRef(items.length);
+	const autoFocusedRef = useRef(false);
 
 	const columns = useMemo(() => {
 		const cost = showCostMargin ? " 82px" : "";
@@ -404,6 +414,25 @@ export function LineItemGrid({ controller, isLoading = false }: LineItemGridProp
 		},
 		[controller, locked]
 	);
+
+	// Opt-in entry focus (e.g. straight out of the new-quote dialog). The ref
+	// latches before the async add so a re-render can't fire it twice; an empty
+	// grid rides the addRow path, which already focuses the row it appends.
+	useEffect(() => {
+		if (!autoFocusFirstRow || autoFocusedRef.current || isLoading || locked) {
+			return;
+		}
+		autoFocusedRef.current = true;
+		if (items.length === 0) {
+			void addRow(true);
+			return;
+		}
+		const grid = gridRef.current;
+		if (!grid) return;
+		const target = visibleCells(grid)[0];
+		target?.focus();
+		target?.select();
+	}, [autoFocusFirstRow, isLoading, locked, items.length, addRow, visibleCells]);
 
 	const handleGridKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
 		const input = event.target as HTMLInputElement | null;

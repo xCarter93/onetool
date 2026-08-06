@@ -116,24 +116,33 @@ export function InvoiceDetailBody({
 	const client = clientName.get(invoice.clientId) ?? "Client";
 
 	// TOTALS — straight from invoice.* (calculated by get). Never sum line items.
-	// Discount/Tax rows are conditional on the raw dollar figures (invoices store
-	// no taxRate/enabled flags), so the Tax label has no percentage.
+	// Quote-style invoices store discountAmount as a raw percent when
+	// discountType is "percentage"; legacy invoices store flat dollars.
+	const discountDollars =
+		invoice.discountEnabled === false
+			? 0
+			: invoice.discountType === "percentage"
+				? Math.round(invoice.subtotal * (invoice.discountAmount ?? 0)) / 100
+				: (invoice.discountAmount ?? 0);
 	const totalsRows: { label: string; value: string; negative?: boolean }[] = [
 		{
 			label: "Subtotal",
 			value: formatCurrency(invoice.subtotal, { exact: true }),
 		},
 	];
-	if (invoice.discountAmount) {
+	if (discountDollars) {
 		totalsRows.push({
-			label: "Discount",
-			value: formatCurrency(invoice.discountAmount ?? 0, { exact: true }),
+			label:
+				invoice.discountType === "percentage"
+					? `Discount (${invoice.discountAmount}%)`
+					: "Discount",
+			value: formatCurrency(discountDollars, { exact: true }),
 			negative: true,
 		});
 	}
-	if (invoice.taxAmount) {
+	if (invoice.taxAmount && invoice.taxEnabled !== false) {
 		totalsRows.push({
-			label: "Tax",
+			label: invoice.taxRate ? `Tax (${invoice.taxRate}%)` : "Tax",
 			value: formatCurrency(invoice.taxAmount ?? 0, { exact: true }),
 		});
 	}
