@@ -12,6 +12,7 @@ import { getPortalSessionOrThrow } from "./helpers";
 import { rateLimiter } from "../rateLimits";
 import { emitStatusChangeEvent } from "../eventBus";
 import { ActivityHelpers } from "../lib/activities";
+import { celebrateQuoteApproved } from "../lib/celebrations";
 import { calculateQuoteTotals } from "../lib/quoteTotals";
 import {
 	boundIpAddress,
@@ -605,6 +606,10 @@ export const _commitApproval = internalMutation({
 			newStatus,
 			source,
 		);
+
+		if (args.action === "approved" && updatedQuote) {
+			await celebrateQuoteApproved(ctx, updatedQuote);
+		}
 
 		return { auditId, createdAt: now };
 	},

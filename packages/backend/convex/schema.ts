@@ -156,6 +156,11 @@ export default defineSchema({
 		// Settings
 		monthlyRevenueTarget: v.optional(v.number()), // Monthly Revenue target displayed on home page
 		timezone: v.optional(v.string()), // IANA timezone (e.g., "America/New_York")
+		// Celebration toasts (quote approved / invoice paid). Undefined = enabled, admins-only.
+		celebrationsEnabled: v.optional(v.boolean()),
+		celebrationsAudience: v.optional(
+			v.union(v.literal("admins"), v.literal("everyone"))
+		),
 
 		// Sequential numbering counters
 		lastQuoteNumber: v.optional(v.number()), // Last used quote number for sequential generation
@@ -948,11 +953,16 @@ export default defineSchema({
 		// Optional Stripe webhook notification metadata.
 		priority: v.optional(v.union(v.literal("normal"), v.literal("high"))),
 		paymentId: v.optional(v.id("payments")),
+		// Celebration metadata (quote_approved / payment_received confetti toasts).
+		celebrationFlair: v.optional(v.string()), // Server-picked flair line shown on the toast
+		celebratedAt: v.optional(v.number()), // When the confetti toast was shown (unset = pending)
 	})
 		.index("by_user_read", ["userId", "isRead"])
 		.index("by_org", ["orgId"])
 		.index("by_scheduled", ["scheduledFor"])
-		.index("by_type", ["notificationType"]),
+		.index("by_type", ["notificationType"])
+		// Once-per-record celebration dedup lookup.
+		.index("by_org_type_entity", ["orgId", "notificationType", "entityId"]),
 
 	// Organization Documents - reusable documents for quotes/invoices
 	organizationDocuments: defineTable({

@@ -86,6 +86,23 @@ export const settingsAndTeamArticles: HelpArticle[] = [
 				],
 			},
 			{
+				heading: "Celebrations",
+				blocks: [
+					{
+						type: "paragraph",
+						text: "Further down the **Business Info** tab, **Celebrate wins** controls whether OneTool shows a confetti toast when a quote is approved or an invoice is paid. It is on by default, and you can turn it off if you would rather keep things quiet.",
+					},
+					{
+						type: "paragraph",
+						text: "**Who sees celebrations** decides who the toast reaches. **Admins only** is the default. Choose **Entire team** to share the moment with everyone — team members see a generic message without the client name or dollar amount.",
+					},
+					{
+						type: "note",
+						text: "Like the rest of Business Info, these settings are owner only. They save with the footer at the bottom of the page.",
+					},
+				],
+			},
+			{
 				heading: "Your OneTool email address",
 				blocks: [
 					{

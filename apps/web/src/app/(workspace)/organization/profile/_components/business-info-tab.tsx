@@ -37,6 +37,7 @@ import {
 	type AddressData,
 } from "@/components/ui/address-autocomplete";
 import SelectService from "@/components/shared/choice-set";
+import { SegmentedControl } from "@/components/domain/segmented-control";
 import {
 	ReceivingAddressField,
 	localPartOf,
@@ -190,7 +191,14 @@ type BusinessFormState = {
 	companySize: string;
 	timezone: string;
 	logoInvertInDarkMode: boolean;
+	celebrationsEnabled: boolean;
+	celebrationsAudience: "admins" | "everyone";
 };
+
+const celebrationAudienceOptions = [
+	{ value: "admins" as const, label: "Admins only" },
+	{ value: "everyone" as const, label: "Entire team" },
+];
 
 const initialBusinessForm: BusinessFormState = {
 	email: "",
@@ -206,6 +214,8 @@ const initialBusinessForm: BusinessFormState = {
 	companySize: "",
 	timezone: "",
 	logoInvertInDarkMode: true,
+	celebrationsEnabled: true,
+	celebrationsAudience: "admins",
 };
 
 function parseAddress(address?: string) {
@@ -255,6 +265,7 @@ export function BusinessInfoTab() {
 	const [savingBusiness, setSavingBusiness] = useState(false);
 
 	const controlsDisabled = !isOwner || savingBusiness;
+	const audienceDisabled = controlsDisabled || !businessForm.celebrationsEnabled;
 
 	// Receiving (inbound email) address. Saved on its own — it is claimed through
 	// setReceivingAddress, not the tab's blanket organizations.update.
@@ -340,6 +351,8 @@ export function BusinessInfoTab() {
 				companySize: organization?.companySize ?? "",
 				timezone: organization?.timezone ?? "",
 				logoInvertInDarkMode: organization?.logoInvertInDarkMode ?? true,
+				celebrationsEnabled: organization?.celebrationsEnabled ?? true,
+				celebrationsAudience: organization?.celebrationsAudience ?? "admins",
 			});
 		}
 	}
@@ -425,6 +438,8 @@ export function BusinessInfoTab() {
 				timezone: businessForm.timezone || undefined,
 				logoUrl: clerkOrgImageUrl ?? undefined,
 				logoInvertInDarkMode: businessForm.logoInvertInDarkMode,
+				celebrationsEnabled: businessForm.celebrationsEnabled,
+				celebrationsAudience: businessForm.celebrationsAudience,
 			});
 
 			setBusinessDirty(false);
@@ -474,6 +489,8 @@ export function BusinessInfoTab() {
 			companySize: organization?.companySize ?? "",
 			timezone: organization?.timezone ?? "",
 			logoInvertInDarkMode: organization?.logoInvertInDarkMode ?? true,
+			celebrationsEnabled: organization?.celebrationsEnabled ?? true,
+			celebrationsAudience: organization?.celebrationsAudience ?? "admins",
 		});
 		setBusinessDirty(false);
 		clearErrors();
@@ -934,6 +951,84 @@ export function BusinessInfoTab() {
 										</div>
 									</div>
 								</div>
+							</div>
+						</FramePanel>
+					</Frame>
+
+					<Frame>
+						<FrameHeader>
+							<FrameTitle>Celebrations</FrameTitle>
+						</FrameHeader>
+						<FramePanel>
+							<div className="flex flex-col gap-4">
+								<Item variant="muted" size="sm" className="rounded-lg">
+									<ItemContent>
+										<ItemTitle>Celebrate wins</ItemTitle>
+										<ItemDescription>
+											Show a confetti toast when a quote is approved or an
+											invoice is paid.
+										</ItemDescription>
+									</ItemContent>
+									<ItemActions>
+										<span className="w-14 text-right text-xs text-muted-foreground">
+											{businessForm.celebrationsEnabled
+												? "Enabled"
+												: "Disabled"}
+										</span>
+										<Switch
+											checked={businessForm.celebrationsEnabled}
+											onCheckedChange={(checked) => {
+												if (controlsDisabled) {
+													return;
+												}
+												setBusinessDirty(true);
+												setBusinessForm((prev) => ({
+													...prev,
+													celebrationsEnabled: Boolean(checked),
+												}));
+											}}
+											disabled={controlsDisabled}
+											aria-label="Celebrate wins"
+										/>
+									</ItemActions>
+								</Item>
+
+								<Item variant="muted" size="sm" className="rounded-lg">
+									<ItemContent>
+										<ItemTitle>Who sees celebrations</ItemTitle>
+										<ItemDescription>
+											Admins always see them. Include the whole team to share
+											the moment — team members see a generic message without
+											client or dollar details.
+										</ItemDescription>
+									</ItemContent>
+									<ItemActions>
+										{/* SegmentedControl has no disabled prop; gate the wrapper
+										    so it is inert and reads as disabled to AT. */}
+										<div
+											aria-disabled={audienceDisabled || undefined}
+											className={cn(
+												audienceDisabled &&
+													"pointer-events-none opacity-70",
+											)}
+										>
+											<SegmentedControl<"admins" | "everyone">
+												value={businessForm.celebrationsAudience}
+												onValueChange={(value) => {
+													if (audienceDisabled) {
+														return;
+													}
+													setBusinessDirty(true);
+													setBusinessForm((prev) => ({
+														...prev,
+														celebrationsAudience: value,
+													}));
+												}}
+												options={celebrationAudienceOptions}
+											/>
+										</div>
+									</ItemActions>
+								</Item>
 							</div>
 						</FramePanel>
 					</Frame>

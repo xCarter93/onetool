@@ -385,6 +385,10 @@ export const update = userMutation({
 		),
 		monthlyRevenueTarget: v.optional(v.number()),
 		timezone: v.optional(v.string()), // IANA timezone (e.g., "America/New_York")
+		celebrationsEnabled: v.optional(v.boolean()),
+		celebrationsAudience: v.optional(
+			v.union(v.literal("admins"), v.literal("everyone"))
+		),
 		// Structured address fields (replaces legacy `address` string)
 		addressStreet: v.optional(v.string()),
 		addressCity: v.optional(v.string()),

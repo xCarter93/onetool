@@ -5,6 +5,7 @@ import { internal } from "./_generated/api";
 import { ConvexError, v } from "convex/values";
 import { Doc, Id } from "./_generated/dataModel";
 import { ActivityHelpers } from "./lib/activities";
+import { celebrateInvoicePaid } from "./lib/celebrations";
 import {
 	validateParentAccess,
 	filterUndefined,
@@ -335,6 +336,11 @@ export const markInvoicePaidFromWebhookInternal = internalMutation({
 			console.warn("Invoice paid activity logging skipped:", err);
 		}
 
+		const paidInvoice = await ctx.db.get(invoice._id);
+		if (paidInvoice) {
+			await celebrateInvoicePaid(ctx, paidInvoice);
+		}
+
 		return null;
 	},
 });
@@ -536,6 +542,10 @@ export const update = userMutation({
 				);
 			}
 
+			if (filteredUpdates.status === "paid" && oldStatus !== "paid") {
+				await celebrateInvoicePaid(ctx, updatedInvoice as InvoiceDocument);
+			}
+
 			// Emit status change event if status changed
 			if (args.status && args.status !== oldStatus) {
 				await emitStatusChangeEvent(
@@ -730,6 +740,7 @@ export const markPaid = userMutation({
 				updatedInvoice as InvoiceDocument,
 				client?.companyName || "Unknown Client"
 			);
+			await celebrateInvoicePaid(ctx, updatedInvoice as InvoiceDocument);
 		}
 
 		return args.id;

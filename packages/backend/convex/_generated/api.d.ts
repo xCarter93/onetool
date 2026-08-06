@@ -60,6 +60,7 @@ import type * as lib_automationExec_fetch from "../lib/automationExec/fetch.js";
 import type * as lib_automationExec_matching from "../lib/automationExec/matching.js";
 import type * as lib_automationExec_types from "../lib/automationExec/types.js";
 import type * as lib_automationExec_walk from "../lib/automationExec/walk.js";
+import type * as lib_celebrations from "../lib/celebrations.js";
 import type * as lib_changeTracking from "../lib/changeTracking.js";
 import type * as lib_conditionEval from "../lib/conditionEval.js";
 import type * as lib_crud from "../lib/crud.js";
@@ -224,6 +225,7 @@ declare const fullApi: ApiFromModules<{
   "lib/automationExec/matching": typeof lib_automationExec_matching;
   "lib/automationExec/types": typeof lib_automationExec_types;
   "lib/automationExec/walk": typeof lib_automationExec_walk;
+  "lib/celebrations": typeof lib_celebrations;
   "lib/changeTracking": typeof lib_changeTracking;
   "lib/conditionEval": typeof lib_conditionEval;
   "lib/crud": typeof lib_crud;
