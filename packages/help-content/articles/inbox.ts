@@ -126,6 +126,10 @@ export const inboxArticles: HelpArticle[] = [
 				question: "Can I attach a file to a reply?",
 				answer: "Not currently. You can view and download files that arrive on email from clients, which appear on the client's Email Threads tab.",
 			},
+			{
+				question: "What address do my emails come from?",
+				answer: "Your organization's OneTool email address, which ends in @inbound.onetool.biz. The organization owner can customize the part before the @ in [organization settings](/help/settings-and-team/organization-profile).",
+			},
 		],
 		related: [
 			"inbox/emailing-from-a-client-record",

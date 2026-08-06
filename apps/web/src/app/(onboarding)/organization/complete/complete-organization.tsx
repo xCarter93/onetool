@@ -17,6 +17,14 @@ import {
 } from "@/components/ui/address-autocomplete";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import {
+	ReceivingAddressField,
+	localPartOf,
+	slugifyLocalPart,
+	MIN_LOCAL_PART_LENGTH,
+	type ReceivingAddressState,
+} from "@/components/shared/receiving-address-field";
 import { useToast } from "@/hooks/use-toast";
 import { useAutoTimezone } from "@/hooks/use-auto-timezone";
 import { useFeatureAccess } from "@/hooks/use-feature-access";
@@ -123,6 +131,7 @@ export function CompleteOrganizationMetadata() {
 	const router = useRouter();
 	const searchParams = useSearchParams();
 	const completeMetadata = useMutation(api.organizations.completeMetadata);
+	const setReceivingAddress = useMutation(api.organizations.setReceivingAddress);
 	const organization = useQuery(api.organizations.get);
 	const needsCompletion = useQuery(api.organizations.needsMetadataCompletion);
 	const toast = useToast();
@@ -214,6 +223,36 @@ export function CompleteOrganizationMetadata() {
 		const clerkEmail = user.primaryEmailAddress?.emailAddress;
 		if (clerkEmail && !formData.email) {
 			setFormData((prev) => (prev.email ? prev : { ...prev, email: clerkEmail }));
+		}
+	}
+
+	// Optional inbound email address (step 2). Prefilled once from the org name;
+	// never regenerated after the user edits it.
+	const [receivingLocalPart, setReceivingLocalPart] = useState("");
+	const [receivingSeeded, setReceivingSeeded] = useState(false);
+	const [receivingState, setReceivingState] = useState<ReceivingAddressState>({
+		status: "empty",
+		message: null,
+		canClaim: false,
+	});
+	// The Convex org row lands via webhook and can lag Clerk; it is the readiness
+	// signal for both the availability query and the claim.
+	const orgReady = Boolean(organization);
+	const currentReceivingLocalPart = localPartOf(organization?.receivingAddress);
+	// `org-…` values are system-generated placeholders, not user-chosen names.
+	const editableReceivingLocalPart = currentReceivingLocalPart.startsWith("org-")
+		? ""
+		: currentReceivingLocalPart;
+
+	if (!receivingSeeded && orgReady) {
+		setReceivingSeeded(true);
+		if (editableReceivingLocalPart) {
+			setReceivingLocalPart(editableReceivingLocalPart);
+		} else {
+			const suggestion = slugifyLocalPart(clerkOrganization?.name ?? "");
+			if (suggestion.length >= MIN_LOCAL_PART_LENGTH) {
+				setReceivingLocalPart(suggestion);
+			}
 		}
 	}
 
@@ -410,6 +449,30 @@ export function CompleteOrganizationMetadata() {
 				logoUrl: clerkOrganization?.imageUrl || undefined,
 				logoInvertInDarkMode: formData.logoInvertInDarkMode,
 			});
+
+			// Optional address claim. Never blocks setup: if it fails (taken in the
+			// meantime) or the Convex org row hasn't arrived, the org keeps its
+			// auto-generated address and the user can change it in Settings.
+			const wantsAddress =
+				orgReady &&
+				receivingLocalPart.length > 0 &&
+				receivingLocalPart !== editableReceivingLocalPart &&
+				receivingState.canClaim;
+			if (wantsAddress) {
+				try {
+					const fullAddress = await setReceivingAddress({
+						localPart: receivingLocalPart,
+					});
+					toast.success("Email address reserved", fullAddress);
+				} catch (err) {
+					toast.warning(
+						"Couldn't reserve that email address",
+						err instanceof Error
+							? err.message
+							: "You can pick one later in Settings.",
+					);
+				}
+			}
 
 			// Don't redirect here - let handleCompleteSetup do it
 			return true;
@@ -695,6 +758,31 @@ export function CompleteOrganizationMetadata() {
 					className="w-full bg-background"
 					placeholder="your.business@company.com"
 					type="email"
+				/>
+			</div>
+
+			<div>
+				<label
+					htmlFor="onboarding-receiving-address"
+					className="block text-sm font-medium text-foreground mb-2"
+				>
+					OneTool Email Address{" "}
+					<span className="font-normal text-muted-foreground">(optional)</span>
+				</label>
+				<Alert className="mb-3">
+					<AlertDescription>
+						This is the email address your clients will see when you send
+						quotes, invoices, and messages. Pick something recognizable — you
+						can change it anytime in Settings.
+					</AlertDescription>
+				</Alert>
+				<ReceivingAddressField
+					id="onboarding-receiving-address"
+					value={receivingLocalPart}
+					onChange={setReceivingLocalPart}
+					currentLocalPart={editableReceivingLocalPart || undefined}
+					enabled={orgReady}
+					onStatusChange={setReceivingState}
 				/>
 			</div>
 
