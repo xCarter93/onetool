@@ -234,9 +234,12 @@ describe("Invoices", () => {
 			const invoice = await asUser.query(api.invoices.get, { id: invoiceId });
 
 			expect(invoice?.subtotal).toBe(5000);
-			// Regression: the raw `10` used to be copied straight through and then
-			// subtracted as $10, billing the client $4,990.
-			expect(invoice?.discountAmount).toBe(500);
+			// Quote-style pricing carries over verbatim: raw percent + mode fields,
+			// so the invoice resolves to "quote" pricing mode and recomputes with
+			// the same math. The billed total is what matters — never $4,990.
+			expect(invoice?.discountAmount).toBe(10);
+			expect(invoice?.discountType).toBe("percentage");
+			expect(invoice?.discountEnabled).toBe(true);
 			expect(invoice?.total).toBe(4500);
 		});
 
@@ -276,9 +279,10 @@ describe("Invoices", () => {
 
 		it("ignores a stale discount left behind by a disabled toggle", async () => {
 			// Turning a discount off patches discountEnabled: false but leaves the
-			// amount on the doc (`filterUndefined` drops the undefined). Quote totals
-			// gate on discountEnabled, so the invoice must too — otherwise the client
-			// is billed $4,500 for a quote they approved at $5,000.
+			// amount on the doc (`filterUndefined` drops the undefined). The copied
+			// mode fields make the invoice quote-style, and quote math gates on
+			// discountEnabled — otherwise the client is billed $4,500 for a quote
+			// they approved at $5,000.
 			const { quoteId, clerkUserId, clerkOrgId } = await setupApprovedQuote({
 				discountEnabled: false,
 				discountAmount: 10,
@@ -292,7 +296,8 @@ describe("Invoices", () => {
 			});
 			const invoice = await asUser.query(api.invoices.get, { id: invoiceId });
 
-			expect(invoice?.discountAmount).toBeUndefined();
+			expect(invoice?.discountAmount).toBe(10);
+			expect(invoice?.discountEnabled).toBe(false);
 			expect(invoice?.total).toBe(5000);
 		});
 
@@ -313,9 +318,11 @@ describe("Invoices", () => {
 			});
 			const invoice = await asUser.query(api.invoices.get, { id: invoiceId });
 
-			// `calculateInvoiceTotals` still subtracts without rounding, so `total`
-			// keeps binary-float dust. The stored discount is what this seam owns.
-			expect(invoice?.discountAmount).toBe(41.67);
+			// Quote-style mode keeps the raw 12.5 percent; cent-rounding now happens
+			// inside the shared quote math on every recompute, so the payable total
+			// is exact rather than carrying binary-float dust.
+			expect(invoice?.discountAmount).toBe(12.5);
+			expect(invoice?.discountType).toBe("percentage");
 			expect(invoice?.total).toBeCloseTo(291.66, 2);
 		});
 

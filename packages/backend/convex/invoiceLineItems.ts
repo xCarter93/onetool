@@ -17,6 +17,10 @@ import {
 	userMutation,
 } from "./lib/factories";
 import { syncInvoiceTotals } from "./lib/invoiceTotals";
+import {
+	assertInvoiceContentEditable,
+	touchInvoiceContent,
+} from "./lib/editLocks";
 
 /**
  * Invoice Line Item operations
@@ -151,13 +155,14 @@ export const get = optionalUserQuery({
 /**
  * Create a new invoice line item
  */
-// TODO: Candidate for deletion if confirmed unused.
 export const create = userMutation({
 	args: {
 		invoiceId: v.id("invoices"),
 		description: v.string(),
 		quantity: v.number(),
+		unit: v.optional(v.string()),
 		unitPrice: v.number(),
+		cost: v.optional(v.number()),
 		sortOrder: v.number(),
 	},
 	handler: async (ctx, args): Promise<InvoiceLineItemId> => {
@@ -171,6 +176,8 @@ export const create = userMutation({
 			)
 		);
 
+		await assertInvoiceContentEditable(ctx, parentInvoice);
+
 		// Validate line item fields
 		validateInvoiceLineItemFields(args);
 
@@ -183,7 +190,7 @@ export const create = userMutation({
 		});
 
 		// Keep stored invoice totals (and aggregates) in sync with line items
-		await syncInvoiceTotals(ctx, args.invoiceId);
+		await syncInvoiceTotals(ctx, args.invoiceId, { touchContent: true });
 
 		return lineItemId;
 	},
@@ -192,14 +199,15 @@ export const create = userMutation({
 /**
  * Update an invoice line item
  */
-// TODO: Candidate for deletion if confirmed unused.
 export const update = userMutation({
 	args: {
 		id: v.id("invoiceLineItems"),
 		invoiceId: v.optional(v.id("invoices")),
 		description: v.optional(v.string()),
 		quantity: v.optional(v.number()),
+		unit: v.optional(v.string()),
 		unitPrice: v.optional(v.number()),
+		cost: v.optional(v.number()),
 		sortOrder: v.optional(v.number()),
 	},
 	handler: async (ctx, args): Promise<InvoiceLineItemId> => {
@@ -228,6 +236,8 @@ export const update = userMutation({
 			)
 		);
 
+		await assertInvoiceContentEditable(ctx, parentInvoice);
+
 		// Validate new invoiceId if changing
 		if (filteredUpdates.invoiceId) {
 			const newParent = await validateInvoiceAccess(ctx, filteredUpdates.invoiceId);
@@ -239,6 +249,8 @@ export const update = userMutation({
 						: s.clientIds.has(newParent.clientId)
 				)
 			);
+			// …and must itself accept content edits.
+			await assertInvoiceContentEditable(ctx, newParent);
 		}
 
 		// Recalculate total if quantity or unit price changed
@@ -256,12 +268,16 @@ export const update = userMutation({
 		await ctx.db.patch(id, filteredUpdates);
 
 		// Keep stored totals in sync — both invoices when the item was reassigned
-		await syncInvoiceTotals(ctx, currentLineItem.invoiceId);
+		await syncInvoiceTotals(ctx, currentLineItem.invoiceId, {
+			touchContent: true,
+		});
 		if (
 			filteredUpdates.invoiceId &&
 			filteredUpdates.invoiceId !== currentLineItem.invoiceId
 		) {
-			await syncInvoiceTotals(ctx, filteredUpdates.invoiceId);
+			await syncInvoiceTotals(ctx, filteredUpdates.invoiceId, {
+				touchContent: true,
+			});
 		}
 
 		return id;
@@ -271,7 +287,6 @@ export const update = userMutation({
 /**
  * Delete an invoice line item
  */
-// TODO: Candidate for deletion if confirmed unused.
 export const remove = userMutation({
 	args: { id: v.id("invoiceLineItems") },
 	handler: async (ctx, args): Promise<InvoiceLineItemId> => {
@@ -289,8 +304,10 @@ export const remove = userMutation({
 					: s.clientIds.has(parentInvoice.clientId)
 			)
 		);
+		await assertInvoiceContentEditable(ctx, parentInvoice);
+
 		await ctx.db.delete(args.id);
-		await syncInvoiceTotals(ctx, lineItem.invoiceId);
+		await syncInvoiceTotals(ctx, lineItem.invoiceId, { touchContent: true });
 		return args.id;
 	},
 });
@@ -298,7 +315,6 @@ export const remove = userMutation({
 /**
  * Bulk create invoice line items
  */
-// TODO: Candidate for deletion if confirmed unused.
 export const bulkCreate = userMutation({
 	args: {
 		invoiceId: v.id("invoices"),
@@ -306,7 +322,9 @@ export const bulkCreate = userMutation({
 			v.object({
 				description: v.string(),
 				quantity: v.number(),
+				unit: v.optional(v.string()),
 				unitPrice: v.number(),
+				cost: v.optional(v.number()),
 				sortOrder: v.number(),
 			})
 		),
@@ -322,6 +340,8 @@ export const bulkCreate = userMutation({
 					: s.clientIds.has(parentInvoice.clientId)
 			)
 		);
+
+		await assertInvoiceContentEditable(ctx, parentInvoice);
 
 		const userOrgId = await getCurrentUserOrgId(ctx);
 		const createdIds: InvoiceLineItemId[] = [];
@@ -348,7 +368,7 @@ export const bulkCreate = userMutation({
 			createdIds.push(lineItemId);
 		}
 
-		await syncInvoiceTotals(ctx, args.invoiceId);
+		await syncInvoiceTotals(ctx, args.invoiceId, { touchContent: true });
 
 		return createdIds;
 	},
@@ -357,7 +377,6 @@ export const bulkCreate = userMutation({
 /**
  * Reorder invoice line items
  */
-// TODO: Candidate for deletion if confirmed unused.
 export const reorder = userMutation({
 	args: {
 		invoiceId: v.id("invoices"),
@@ -374,6 +393,8 @@ export const reorder = userMutation({
 			)
 		);
 
+		await assertInvoiceContentEditable(ctx, parentInvoice);
+
 		// Validate that all line items belong to the invoice
 		for (const lineItemId of args.lineItemIds) {
 			const lineItem = await ctx.orgEntity("invoiceLineItems", lineItemId);
@@ -388,13 +409,15 @@ export const reorder = userMutation({
 				sortOrder: i,
 			});
 		}
+
+		// Ordering is client-visible on the PDF even though totals are unchanged.
+		await touchInvoiceContent(ctx, args.invoiceId);
 	},
 });
 
 /**
  * Duplicate an invoice line item
  */
-// TODO: Candidate for deletion if confirmed unused.
 export const duplicate = userMutation({
 	args: { id: v.id("invoiceLineItems") },
 	handler: async (ctx, args): Promise<InvoiceLineItemId> => {
@@ -413,6 +436,8 @@ export const duplicate = userMutation({
 			)
 		);
 
+		await assertInvoiceContentEditable(ctx, parentInvoice);
+
 		// Get the highest sort order for the invoice to append the duplicate
 		const allItems = await ctx.db
 			.query("invoiceLineItems")
@@ -427,12 +452,16 @@ export const duplicate = userMutation({
 			orgId: originalItem.orgId,
 			description: `${originalItem.description} (Copy)`,
 			quantity: originalItem.quantity,
+			unit: originalItem.unit,
 			unitPrice: originalItem.unitPrice,
 			total: originalItem.total,
+			cost: originalItem.cost,
 			sortOrder: newSortOrder,
 		});
 
-		await syncInvoiceTotals(ctx, originalItem.invoiceId);
+		await syncInvoiceTotals(ctx, originalItem.invoiceId, {
+			touchContent: true,
+		});
 
 		return duplicateId;
 	},

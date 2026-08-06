@@ -33,10 +33,14 @@ export async function calculateQuoteTotals(
  * Recompute a quote's totals from its line items and persist them, keeping the
  * dashboard aggregates in step. Call after any line-item write; no-ops when
  * nothing changed.
+ *
+ * `touchContent` stamps contentUpdatedAt in the SAME patch, so a line-item
+ * edit costs one parent write rather than two.
  */
 export async function syncQuoteTotals(
 	ctx: MutationCtx,
-	quoteId: Id<"quotes">
+	quoteId: Id<"quotes">,
+	options?: { touchContent?: boolean }
 ): Promise<void> {
 	const quote = await ctx.db.get(quoteId);
 	if (!quote) return;
@@ -49,13 +53,17 @@ export async function syncQuoteTotals(
 		taxRate: quote.taxRate,
 	});
 
-	if (
+	const totalsUnchanged =
 		quote.subtotal === totals.subtotal &&
 		quote.taxAmount === totals.taxAmount &&
-		quote.total === totals.total
-	) {
+		quote.total === totals.total;
+
+	if (totalsUnchanged && !options?.touchContent) {
 		return;
 	}
 
-	await ctx.db.patch(quoteId, totals);
+	await ctx.db.patch(quoteId, {
+		...(totalsUnchanged ? {} : totals),
+		...(options?.touchContent ? { contentUpdatedAt: Date.now() } : {}),
+	});
 }

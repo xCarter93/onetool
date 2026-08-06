@@ -19,6 +19,7 @@ import {
 } from "./eventBus";
 import { computeFieldChanges } from "./lib/changeTracking";
 import { calculateInvoiceTotals, syncInvoiceTotals } from "./lib/invoiceTotals";
+import { assertInvoiceContentEditable } from "./lib/editLocks";
 import { settleOutstandingPaymentsForInvoice } from "./lib/payments";
 import { roundCents, sumMoney, dollarsToCents } from "./lib/money";
 import {
@@ -430,18 +431,38 @@ export const create = userMutation({
 	},
 });
 
-/** Invoice fields whose change invalidates the stored subtotal/total. */
+/** Invoice fields whose change invalidates the stored subtotal/taxAmount/total. */
 const INVOICE_TOTAL_FIELDS = [
 	"subtotal",
 	"discountAmount",
 	"taxAmount",
 	"total",
+	"discountEnabled",
+	"discountType",
+	"taxEnabled",
+	"taxRate",
+] as const;
+
+/**
+ * Invoice fields that change what the client sees on the document. Patching
+ * any of them requires an unlocked invoice and stamps contentUpdatedAt;
+ * `subtotal`/`total` are deliberately absent — they are derived, and callers
+ * echo them back alongside unrelated writes.
+ */
+const INVOICE_CONTENT_FIELDS = [
+	"discountEnabled",
+	"discountAmount",
+	"discountType",
+	"taxEnabled",
+	"taxRate",
+	"taxAmount",
+	"pdfSettings",
+	"dueDate",
 ] as const;
 
 /**
  * Update an invoice
  */
-// TODO: Candidate for deletion if confirmed unused.
 export const update = userMutation({
 	args: {
 		id: v.id("invoices"),
@@ -455,9 +476,23 @@ export const update = userMutation({
 			)
 		),
 		subtotal: v.optional(v.number()),
+		discountEnabled: v.optional(v.boolean()),
 		discountAmount: v.optional(v.number()),
+		discountType: v.optional(
+			v.union(v.literal("percentage"), v.literal("fixed"))
+		),
+		taxEnabled: v.optional(v.boolean()),
+		taxRate: v.optional(v.number()),
 		taxAmount: v.optional(v.number()),
 		total: v.optional(v.number()),
+		pdfSettings: v.optional(
+			v.object({
+				showQuantities: v.boolean(),
+				showUnitPrices: v.boolean(),
+				showLineItemTotals: v.boolean(),
+				showTotals: v.boolean(),
+			})
+		),
 		dueDate: v.optional(v.number()),
 		paymentMethod: v.optional(v.string()),
 		stripeSessionId: v.optional(v.string()),
@@ -481,6 +516,13 @@ export const update = userMutation({
 					: s.clientIds.has(currentInvoice.clientId)
 			)
 		);
+
+		// Content edits are frozen once the invoice is paid/cancelled or a payment
+		// has settled. Status transitions and Stripe bookkeeping stay editable.
+		if (INVOICE_CONTENT_FIELDS.some((field) => field in filteredUpdates)) {
+			await assertInvoiceContentEditable(ctx, currentInvoice);
+			filteredUpdates.contentUpdatedAt = Date.now();
+		}
 
 		// Compute field-level changes before applying the update
 		const changes = computeFieldChanges(
@@ -1044,9 +1086,19 @@ export const createFromQuote = userMutation({
 			.withIndex("by_quote", (q) => q.eq("quoteId", args.quoteId))
 			.collect();
 
-		// Quotes store discountAmount as the raw input — a percent when discountType
-		// is "percentage" — while invoices store it as dollars (calculateInvoiceTotals
-		// subtracts it flat). Convert here or a 10% discount bills the client $10 off.
+		// Quote-style pricing (percentage/fixed discount + tax rate) carries over
+		// verbatim when the quote uses it — the invoice then resolves to "quote"
+		// pricing mode and recomputes with the same math, so discountAmount stays
+		// the RAW input (a percent when discountType is "percentage").
+		const quoteStylePricing =
+			quote.discountEnabled !== undefined ||
+			quote.discountType !== undefined ||
+			quote.taxEnabled !== undefined ||
+			quote.taxRate !== undefined;
+
+		// Legacy path: invoices store discountAmount as flat dollars
+		// (calculateInvoiceTotals subtracts it flat), so convert here or a 10%
+		// discount bills the client $10 off.
 		//
 		// Gate on discountEnabled: turning a discount off sends discountAmount:
 		// undefined, which `filterUndefined` drops from the patch, so the old amount
@@ -1054,7 +1106,7 @@ export const createFromQuote = userMutation({
 		const lineItemSubtotal = sumMoney(
 			quoteLineItems.map((item) => item.amount)
 		);
-		const discountAmount =
+		const legacyDiscountAmount =
 			quote.discountEnabled && quote.discountAmount
 				? quote.discountType === "percentage"
 					? // Round to cents — payments must sum exactly to the invoice total.
@@ -1072,9 +1124,20 @@ export const createFromQuote = userMutation({
 			invoiceNumber,
 			status: "draft",
 			subtotal: quote.subtotal,
-			discountAmount,
+			discountAmount: quoteStylePricing
+				? quote.discountAmount
+				: legacyDiscountAmount,
 			taxAmount: quote.taxAmount,
 			total: quote.total,
+			...(quoteStylePricing
+				? {
+						discountEnabled: quote.discountEnabled,
+						discountType: quote.discountType,
+						taxEnabled: quote.taxEnabled,
+						taxRate: quote.taxRate,
+					}
+				: {}),
+			pdfSettings: quote.pdfSettings,
 			issuedDate,
 			dueDate,
 		});
@@ -1086,7 +1149,9 @@ export const createFromQuote = userMutation({
 				orgId: ctx.orgId,
 				description: quoteLineItem.description,
 				quantity: quoteLineItem.quantity,
+				unit: quoteLineItem.unit,
 				unitPrice: quoteLineItem.rate,
+				cost: quoteLineItem.cost,
 				total: quoteLineItem.amount,
 				sortOrder: quoteLineItem.sortOrder,
 			});

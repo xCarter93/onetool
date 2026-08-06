@@ -7,20 +7,17 @@ import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
 import { MentionSection } from "@/components/shared/mention-section";
 import { useToast } from "@/hooks/use-toast";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { Check, Loader2, Plus, TriangleAlert, Pencil } from "lucide-react";
+import { LineItemGrid } from "@/components/shared/line-items/line-item-grid";
+import { LineItemsTotals } from "@/components/shared/line-items/line-items-totals";
+import { PricingPanel } from "@/components/shared/line-items/pricing-panel";
+import { useQuoteLineItemsController } from "@/components/shared/line-items/use-quote-line-items-controller";
 import {
-	DataGrid,
-	DataGridContainer,
-} from "@/components/reui/data-grid/data-grid";
-import { DataGridTable } from "@/components/reui/data-grid/data-grid-table";
-import {
-	ColumnDef,
-	getCoreRowModel,
-	useReactTable,
-} from "@tanstack/react-table";
-import { Settings, ClipboardList, Pencil } from "lucide-react";
-import { useRouter } from "next/navigation";
-import { formatCurrency } from "@/lib/money";
+	computeDisplayTotals,
+	type LineItemsPricingSettings,
+} from "@/components/shared/line-items/types";
+import { cn } from "@/lib/utils";
 
 interface OverviewTabProps {
 	quote: Doc<"quotes">;
@@ -28,51 +25,73 @@ interface OverviewTabProps {
 	lineItems: Doc<"quoteLineItems">[] | undefined;
 }
 
-const columns: ColumnDef<Doc<"quoteLineItems">>[] = [
-	{
-		accessorKey: "description",
-		header: "Description",
-		meta: { cellClassName: "font-medium" },
-		cell: ({ row }) => row.original.description,
-	},
-	{
-		accessorKey: "quantity",
-		header: "Qty",
-		meta: { headerClassName: "text-center", cellClassName: "text-center" },
-		cell: ({ row }) => row.original.quantity,
-	},
-	{
-		accessorKey: "unit",
-		header: "Unit",
-		meta: { headerClassName: "text-center", cellClassName: "text-center" },
-		cell: ({ row }) => row.original.unit || "item",
-	},
-	{
-		accessorKey: "rate",
-		header: "Rate",
-		meta: { headerClassName: "text-right", cellClassName: "text-right" },
-		cell: ({ row }) => formatCurrency(row.original.rate),
-	},
-	{
-		accessorKey: "amount",
-		header: "Amount",
-		meta: {
-			headerClassName: "text-right",
-			cellClassName: "text-right font-medium",
-		},
-		cell: ({ row }) => formatCurrency(row.original.amount),
-	},
-];
-
 export function OverviewTab({ quote, quoteId, lineItems }: OverviewTabProps) {
-	const router = useRouter();
 	const toast = useToast();
 	const updateQuote = useMutation(api.quotes.update);
-	const table = useReactTable({
-		data: lineItems ?? [],
-		columns,
-		getCoreRowModel: getCoreRowModel(),
+
+	const controller = useQuoteLineItemsController({
+		quote,
+		quoteId,
+		lineItems,
 	});
+
+	// Display-only math. The server recomputes and stores subtotal/total from
+	// the line items — never send computed totals back.
+	const pricing: LineItemsPricingSettings = useMemo(
+		() => ({
+			discountAmount: quote.discountEnabled ? (quote.discountAmount ?? 0) : 0,
+			discountType: quote.discountType ?? "fixed",
+			taxRate: quote.taxEnabled ? (quote.taxRate ?? 0) : 0,
+			pdfSettings: {
+				showQuantities: quote.pdfSettings?.showQuantities ?? true,
+				showUnitPrices: quote.pdfSettings?.showUnitPrices ?? true,
+				showLineItemTotals: quote.pdfSettings?.showLineItemTotals ?? true,
+				showTotals: quote.pdfSettings?.showTotals ?? true,
+			},
+		}),
+		[
+			quote.discountEnabled,
+			quote.discountAmount,
+			quote.discountType,
+			quote.taxEnabled,
+			quote.taxRate,
+			quote.pdfSettings,
+		]
+	);
+
+	const subtotal = useMemo(
+		() => controller.items.reduce((sum, item) => sum + item.quantity * item.rate, 0),
+		[controller.items]
+	);
+	const totalCost = useMemo(
+		() =>
+			controller.items.reduce(
+				(sum, item) => sum + item.quantity * (item.cost ?? 0),
+				0
+			),
+		[controller.items]
+	);
+	const totals = computeDisplayTotals(subtotal, pricing);
+
+	const savePricing = useCallback(
+		async (next: LineItemsPricingSettings) => {
+			try {
+				await updateQuote({
+					id: quoteId,
+					discountEnabled: next.discountAmount > 0,
+					discountAmount: next.discountAmount,
+					discountType: next.discountType,
+					taxEnabled: next.taxRate > 0,
+					taxRate: next.taxRate,
+					pdfSettings: next.pdfSettings,
+				});
+			} catch (err) {
+				const message = err instanceof Error ? err.message : "Failed to save";
+				toast.error("Error", message);
+			}
+		},
+		[quoteId, toast, updateQuote]
+	);
 
 	// Inline editing for terms
 	const [isEditingTerms, setIsEditingTerms] = useState(false);
@@ -167,89 +186,79 @@ export function OverviewTab({ quote, quoteId, lineItems }: OverviewTabProps) {
 		<div className="space-y-8">
 			{/* Line Items Section */}
 			<div>
-				<div className="flex items-center justify-between mb-1 min-h-8">
+				<div className="flex items-center justify-between mb-1 min-h-8 gap-3">
 					<h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
 						Line Items
 					</h3>
-					<Button
-						variant="outline"
-						size="sm"
-						onClick={() =>
-							router.push(`/quotes/${quoteId}/quoteLineEditor`)
-						}
-					>
-						<Settings className="h-4 w-4" />
-						Edit Line Items
-					</Button>
+					<div className="flex items-center gap-2.5">
+						<span
+							className={cn(
+								"flex items-center gap-1.5 text-xs",
+								controller.saveState === "error"
+									? "text-destructive"
+									: controller.saveState === "saving"
+										? "text-muted-foreground"
+										: "text-success"
+							)}
+							aria-live="polite"
+						>
+							{controller.saveState === "saving" ? (
+								<>
+									<Loader2
+										className="h-3 w-3 animate-spin motion-reduce:animate-none"
+										aria-hidden="true"
+									/>
+									Saving…
+								</>
+							) : controller.saveState === "error" ? (
+								<>
+									<TriangleAlert className="h-3 w-3" aria-hidden="true" />
+									Couldn&apos;t save
+								</>
+							) : (
+								<>
+									<Check className="h-3 w-3" aria-hidden="true" />
+									All changes saved
+								</>
+							)}
+						</span>
+						{!controller.locked && (
+							<Button
+								variant="outline"
+								size="sm"
+								// Until the query resolves the row count is 0, which would
+								// hand the new line a colliding sortOrder.
+								disabled={lineItems === undefined}
+								onClick={() => void controller.addItem()}
+							>
+								<Plus className="h-4 w-4" />
+								Add line
+							</Button>
+						)}
+					</div>
 				</div>
 				<Separator className="mb-4" />
 
-				{lineItems && lineItems.length > 0 ? (
-					<>
-						<DataGrid
-							table={table}
-							recordCount={lineItems.length}
-							tableLayout={{ width: "auto", headerBackground: true }}
-						>
-							<DataGridContainer className="rounded-lg border">
-								<DataGridTable />
-							</DataGridContainer>
-						</DataGrid>
+				<LineItemGrid
+					controller={controller}
+					isLoading={lineItems === undefined}
+				/>
 
-						{/* Totals */}
-						<div className="mt-6 space-y-2">
-							<div className="flex justify-between text-sm">
-								<span className="text-muted-foreground">
-									Subtotal:
-								</span>
-								<span className="font-medium">
-									{formatCurrency(quote.subtotal)}
-								</span>
-							</div>
-							{quote.discountEnabled &&
-								quote.discountAmount && (
-									<div className="flex justify-between text-sm">
-										<span className="text-muted-foreground">
-											Discount:
-										</span>
-										<span className="font-medium text-red-600 dark:text-red-400">
-											-
-											{quote.discountType === "percentage"
-												? `${quote.discountAmount}%`
-												: formatCurrency(
-														quote.discountAmount
-													)}
-										</span>
-									</div>
-								)}
-							{quote.taxEnabled && quote.taxAmount && (
-								<div className="flex justify-between text-sm">
-									<span className="text-muted-foreground">
-										Tax:
-									</span>
-									<span className="font-medium">
-										{formatCurrency(quote.taxAmount)}
-									</span>
-								</div>
-							)}
-							<div className="border-t pt-2">
-								<div className="flex justify-between text-lg font-bold">
-									<span>Total:</span>
-									<span>{formatCurrency(quote.total)}</span>
-								</div>
-							</div>
-						</div>
-					</>
-				) : (
-					<div className="flex flex-col items-center justify-center py-12 text-center">
-						<div className="w-12 h-12 bg-muted rounded-lg flex items-center justify-center mb-3">
-							<ClipboardList className="h-6 w-6 text-muted-foreground" />
-						</div>
-						<p className="text-sm text-muted-foreground">
-							No line items added yet
-						</p>
-					</div>
-				)}
+				<LineItemsTotals
+					subtotal={totals.subtotal}
+					discountAmount={totals.discountAmount}
+					taxAmount={totals.taxAmount}
+					total={totals.total}
+					showCostMargin={controller.showCostMargin}
+					totalCost={totalCost}
+				/>
+
+				<PricingPanel
+					value={pricing}
+					onSave={savePricing}
+					subtotal={subtotal}
+					disabled={controller.locked}
+				/>
 			</div>
 
 			{/* Terms & Client Message Section */}

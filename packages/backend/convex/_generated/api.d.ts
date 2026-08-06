@@ -64,6 +64,7 @@ import type * as lib_celebrations from "../lib/celebrations.js";
 import type * as lib_changeTracking from "../lib/changeTracking.js";
 import type * as lib_conditionEval from "../lib/conditionEval.js";
 import type * as lib_crud from "../lib/crud.js";
+import type * as lib_editLocks from "../lib/editLocks.js";
 import type * as lib_factories from "../lib/factories.js";
 import type * as lib_fieldRegistry from "../lib/fieldRegistry.js";
 import type * as lib_formula_ast from "../lib/formula/ast.js";
@@ -229,6 +230,7 @@ declare const fullApi: ApiFromModules<{
   "lib/changeTracking": typeof lib_changeTracking;
   "lib/conditionEval": typeof lib_conditionEval;
   "lib/crud": typeof lib_crud;
+  "lib/editLocks": typeof lib_editLocks;
   "lib/factories": typeof lib_factories;
   "lib/fieldRegistry": typeof lib_fieldRegistry;
   "lib/formula/ast": typeof lib_formula_ast;
