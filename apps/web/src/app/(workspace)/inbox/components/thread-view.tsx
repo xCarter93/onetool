@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
@@ -11,20 +11,45 @@ import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import { cn } from "@/lib/utils";
+import {
+	EmailComposer,
+	type EmailComposerPayload,
+} from "@/components/shared/email/email-composer";
+import { EmailMessageBody } from "@/components/shared/email/email-message-body";
+import { EmailAttachmentList } from "@/components/shared/email/email-attachment-list";
+import {
+	EmailDeliveryIndicator,
+	formatMessageTimestamp,
+} from "@/components/shared/email/email-delivery-indicator";
 import { initialsOf, type InboxThread } from "../lib/inbox-utils";
-import { MessageComposer } from "./message-composer";
 import { LinkClientPopover } from "./link-client-popover";
+
+type ThreadMessage = NonNullable<
+	ReturnType<typeof useThreadMessages>
+>[number];
+
+function useThreadMessages(threadDocId: Id<"emailThreads">) {
+	return useQuery(api.emailMessages.getEmailThread, { threadDocId });
+}
 
 interface ThreadViewProps {
 	thread: InboxThread;
 	onBack: () => void;
 	onArchived: () => void;
+	/** Kept-alive reply draft for this thread (TipTap HTML, "" when empty). */
+	draft: string;
+	onDraftChange: (html: string) => void;
 }
 
-export function ThreadView({ thread, onBack, onArchived }: ThreadViewProps) {
+export function ThreadView({
+	thread,
+	onBack,
+	onArchived,
+	draft,
+	onDraftChange,
+}: ThreadViewProps) {
 	const { threadDocId } = thread;
-	const messages = useQuery(api.emailMessages.getEmailThread, { threadDocId });
+	const messages = useThreadMessages(threadDocId);
 
 	const markRead = useMutation(api.emailThreads.markRead);
 	const markUnread = useMutation(api.emailThreads.markUnread);
@@ -34,10 +59,15 @@ export function ThreadView({ thread, onBack, onArchived }: ThreadViewProps) {
 	const toast = useToast();
 
 	const [isSending, setIsSending] = useState(false);
+	// Explicit expand/collapse choices; anything untouched derives its state
+	// from position (only the newest message starts expanded).
+	const [manualExpanded, setManualExpanded] = useState<
+		ReadonlyMap<string, boolean>
+	>(() => new Map());
 
 	const isLinked = thread.clientId !== null;
 	// getEmailThread returns null when access is denied; treat like empty.
-	const loadedMessages = messages ?? [];
+	const loadedMessages = useMemo(() => messages ?? [], [messages]);
 	const lastMessageId =
 		loadedMessages.length > 0
 			? loadedMessages[loadedMessages.length - 1]!._id
@@ -76,7 +106,9 @@ export function ThreadView({ thread, onBack, onArchived }: ThreadViewProps) {
 		}
 	};
 
-	const handleSend = async (body: string): Promise<boolean> => {
+	const handleSend = async (
+		payload: EmailComposerPayload
+	): Promise<boolean> => {
 		if (!lastMessageId) {
 			toast.error(
 				"Couldn't send reply",
@@ -86,7 +118,11 @@ export function ThreadView({ thread, onBack, onArchived }: ThreadViewProps) {
 		}
 		setIsSending(true);
 		try {
-			await replyToEmail({ emailMessageId: lastMessageId, messageBody: body });
+			await replyToEmail({
+				emailMessageId: lastMessageId,
+				messageBody: payload.text,
+				messageHtml: payload.html,
+			});
 			return true;
 		} catch {
 			toast.error("Couldn't send reply", "Please try again.");
@@ -94,6 +130,14 @@ export function ThreadView({ thread, onBack, onArchived }: ThreadViewProps) {
 		} finally {
 			setIsSending(false);
 		}
+	};
+
+	const toggleMessage = (id: string, next: boolean) => {
+		setManualExpanded((prev) => {
+			const map = new Map(prev);
+			map.set(id, next);
+			return map;
+		});
 	};
 
 	return (
@@ -159,7 +203,7 @@ export function ThreadView({ thread, onBack, onArchived }: ThreadViewProps) {
 				</div>
 			</header>
 
-			<div className="flex-1 space-y-3 overflow-y-auto min-h-0 px-6 py-4">
+			<div className="flex-1 overflow-y-auto min-h-0 px-6">
 				{messages === undefined ? (
 					<MessageSkeleton />
 				) : loadedMessages.length === 0 ? (
@@ -167,93 +211,172 @@ export function ThreadView({ thread, onBack, onArchived }: ThreadViewProps) {
 						No messages in this conversation.
 					</p>
 				) : (
-					loadedMessages.map((msg) => {
-						const outbound = msg.direction === "outbound";
-						const body =
-							(msg.visibleText && msg.visibleText.trim()) ||
-							msg.messagePreview ||
-							msg.messageBody ||
-							"";
-						return (
-							<article
-								key={msg._id}
-								className={cn(
-									"rounded-lg border border-border p-4",
-									outbound ? "bg-muted/30" : "bg-background"
-								)}
-							>
-								<div className="mb-3 flex items-start justify-between gap-3">
-									<div className="flex min-w-0 items-center gap-2.5">
-										<Avatar className="size-8">
-											{msg.senderAvatar && (
-												<AvatarImage
-													src={msg.senderAvatar}
-													alt={msg.senderName}
-												/>
-											)}
-											<AvatarFallback className="text-xs font-medium text-muted-foreground">
-												{initialsOf(msg.senderName)}
-											</AvatarFallback>
-										</Avatar>
-										<div className="min-w-0">
-											<div className="flex items-center gap-1.5">
-												<span className="truncate text-sm font-medium text-foreground">
-													{msg.senderName}
-												</span>
-												{outbound && (
-													<span className="shrink-0 rounded bg-muted px-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-														You
-													</span>
-												)}
-											</div>
-											<span className="block truncate text-xs text-muted-foreground">
-												{msg.fromEmail}
-											</span>
-										</div>
-									</div>
-									<time className="shrink-0 text-xs text-muted-foreground">
-										{formatTimestamp(msg.sentAt)}
-									</time>
-								</div>
-								<p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-foreground">
-									{body || (
-										<span className="italic text-muted-foreground">
-											No content.
-										</span>
+					<ol className="divide-y divide-border/60">
+						{loadedMessages.map((msg, index) => {
+							const isLast = index === loadedMessages.length - 1;
+							const expanded = manualExpanded.get(msg._id) ?? isLast;
+							return (
+								<li key={msg._id}>
+									{expanded ? (
+										<ExpandedMessage
+											message={msg}
+											collapsible={!isLast || loadedMessages.length > 1}
+											onCollapse={() => toggleMessage(msg._id, false)}
+										/>
+									) : (
+										<CollapsedMessage
+											message={msg}
+											onExpand={() => toggleMessage(msg._id, true)}
+										/>
 									)}
-								</p>
-							</article>
-						);
-					})
+								</li>
+							);
+						})}
+					</ol>
 				)}
 			</div>
 
-			<MessageComposer
-				canReply={isLinked}
-				isSending={isSending}
-				onSend={handleSend}
-				onLinkClient={handleLink}
-			/>
+			<div className="shrink-0 border-t border-border bg-background p-3">
+				{isLinked ? (
+					<EmailComposer
+						key={threadDocId}
+						onSend={handleSend}
+						isSending={isSending}
+						placeholder="Reply…"
+						sendLabel="Send"
+						initialHtml={draft}
+						onChangeHtml={onDraftChange}
+					/>
+				) : (
+					<div className="flex flex-col items-start gap-2 rounded-lg bg-muted/20 p-3 text-sm text-muted-foreground">
+						<p>Link this conversation to a client to reply.</p>
+						<LinkClientPopover onSelect={handleLink} />
+					</div>
+				)}
+			</div>
 		</>
 	);
 }
 
-function formatTimestamp(ms: number): string {
-	return new Date(ms).toLocaleString(undefined, {
-		month: "short",
-		day: "numeric",
-		hour: "numeric",
-		minute: "2-digit",
-	});
+/** One-line strip for an older message; click to expand. */
+function CollapsedMessage({
+	message,
+	onExpand,
+}: {
+	message: ThreadMessage;
+	onExpand: () => void;
+}) {
+	const snippet =
+		message.visibleText?.trim() ||
+		message.messagePreview ||
+		message.messageBody ||
+		"";
+	return (
+		<button
+			type="button"
+			onClick={onExpand}
+			aria-expanded={false}
+			className="flex w-full cursor-pointer items-baseline gap-2 py-2.5 text-left transition-colors duration-150 hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+		>
+			<span className="w-32 shrink-0 truncate text-sm font-medium text-foreground">
+				{message.senderName}
+			</span>
+			<span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+				{snippet}
+			</span>
+			<time className="shrink-0 text-[11px] tabular-nums text-muted-foreground">
+				{formatMessageTimestamp(message.sentAt)}
+			</time>
+		</button>
+	);
+}
+
+function ExpandedMessage({
+	message,
+	collapsible,
+	onCollapse,
+}: {
+	message: ThreadMessage;
+	collapsible: boolean;
+	onCollapse: () => void;
+}) {
+	const outbound = message.direction === "outbound";
+
+	// Spans (not divs) so the header stays valid phrasing content when the
+	// collapsible branch wraps it in a <button>.
+	const header = (
+		<span className="flex items-start justify-between gap-3">
+			<span className="flex min-w-0 items-center gap-2.5">
+				<Avatar className="size-7">
+					{message.senderAvatar && (
+						<AvatarImage src={message.senderAvatar} alt={message.senderName} />
+					)}
+					<AvatarFallback className="text-xs font-medium text-muted-foreground">
+						{initialsOf(message.senderName)}
+					</AvatarFallback>
+				</Avatar>
+				<span className="block min-w-0">
+					<span className="flex items-center gap-1.5">
+						<span className="truncate text-sm font-medium text-foreground">
+							{message.senderName}
+						</span>
+						{outbound && (
+							<span className="shrink-0 rounded bg-muted px-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+								You
+							</span>
+						)}
+					</span>
+					<span className="block truncate text-xs text-muted-foreground">
+						{message.fromEmail}
+					</span>
+				</span>
+			</span>
+			<time className="shrink-0 text-xs tabular-nums text-muted-foreground">
+				{formatMessageTimestamp(message.sentAt)}
+			</time>
+		</span>
+	);
+
+	return (
+		<article className="py-4">
+			{collapsible ? (
+				<button
+					type="button"
+					onClick={onCollapse}
+					aria-expanded={true}
+					aria-label="Collapse message"
+					className="block w-full cursor-pointer rounded text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+				>
+					{header}
+				</button>
+			) : (
+				header
+			)}
+
+			<EmailMessageBody message={message} className="mt-3 pl-9.5" />
+
+			<EmailAttachmentList
+				emailMessageId={message._id}
+				hasAttachments={message.hasAttachments}
+				className="mt-3 pl-9.5"
+			/>
+
+			{outbound && (
+				<div className="mt-2 pl-9.5">
+					<EmailDeliveryIndicator message={message} />
+				</div>
+			)}
+		</article>
+	);
 }
 
 function MessageSkeleton() {
 	return (
-		<div className="space-y-3">
+		<div className="space-y-3 py-4">
 			{Array.from({ length: 3 }).map((_, i) => (
-				<div key={i} className="rounded-lg border border-border p-4">
+				<div key={i} className="py-2">
 					<div className="mb-3 flex items-center gap-2.5">
-						<Skeleton className="size-8 rounded-full" />
+						<Skeleton className="size-7 rounded-full" />
 						<div className="space-y-1.5">
 							<Skeleton className="h-3.5 w-32" />
 							<Skeleton className="h-3 w-40" />

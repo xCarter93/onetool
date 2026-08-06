@@ -1,86 +1,79 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useQuery } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
 import { cn } from "@/lib/utils";
-import { buildInboxView, type InboxFilter } from "../lib/inbox-utils";
+import { filterThreads, type InboxFilter } from "../lib/inbox-utils";
 import { ThreadList } from "./thread-list";
 import { ThreadView, ThreadViewEmpty } from "./thread-view";
+import { NewEmailDialog } from "./new-email-dialog";
 
-export function InboxScreen() {
+interface InboxScreenProps {
+	/** Deep link (e.g. from the home dashboard): thread to open on load. */
+	initialThreadId?: string | null;
+}
+
+export function InboxScreen({ initialThreadId = null }: InboxScreenProps) {
 	const [filter, setFilter] = useState<InboxFilter>("all");
 	const [searchQuery, setSearchQuery] = useState("");
-	const [expandedGroups, setExpandedGroups] = useState<Set<string>>(
-		() => new Set()
-	);
 	const [selectedThreadId, setSelectedThreadId] =
-		useState<Id<"emailThreads"> | null>(null);
+		useState<Id<"emailThreads"> | null>(
+			(initialThreadId as Id<"emailThreads"> | null) ?? null
+		);
+	const [composeOpen, setComposeOpen] = useState(false);
+	// Per-thread reply drafts (TipTap HTML) so switching threads never loses
+	// typed text. Session-only by design.
+	const [drafts, setDrafts] = useState<Record<string, string>>({});
 
 	const threads = useQuery(api.emailThreads.listThreadsByOrg, { filter });
 
-	// Groups collapse by default; search + collapse + the visible row order for
-	// keyboard nav all come from one derivation so they never drift apart.
-	const { groups, orderedThreads } = useMemo(
-		() =>
-			buildInboxView(threads ?? [], {
-				query: searchQuery,
-				expandedGroups,
-				selectedThreadId,
-			}),
-		[threads, searchQuery, expandedGroups, selectedThreadId]
+	// One derivation feeds both the rendered rows and the keyboard-nav order.
+	const visibleThreads = useMemo(
+		() => filterThreads(threads ?? [], searchQuery),
+		[threads, searchQuery]
 	);
-
-	const toggleGroup = useCallback((key: string) => {
-		setExpandedGroups((prev) => {
-			const next = new Set(prev);
-			if (next.has(key)) next.delete(key);
-			else next.add(key);
-			return next;
-		});
-	}, []);
 
 	const selectedFromList = useMemo(
 		() => threads?.find((t) => t.threadDocId === selectedThreadId) ?? null,
 		[threads, selectedThreadId]
 	);
 
-	// Keep the open thread rendered even when a mutation drops it out of the
-	// active filter (mark-read evicts it from "Unread", linking from
-	// "Unlinked") — the thread the user just opened must not close itself.
-	const fallbackThread = useQuery(
+	// Subscribe to the selected thread directly for the whole selection: when a
+	// mutation evicts it from the active filter (mark-read under "Unread",
+	// linking under "Unlinked"), this already-warm result keeps the pane open
+	// with no flash and no render-time caching tricks.
+	const fetchedThread = useQuery(
 		api.emailThreads.getThread,
-		selectedThreadId && threads && !selectedFromList
-			? { threadDocId: selectedThreadId }
-			: "skip"
+		selectedThreadId ? { threadDocId: selectedThreadId } : "skip"
 	);
-	// Hold the last resolved thread so the pane doesn't flash empty for the
-	// frames while the fallback query loads right after a filter eviction.
-	const lastSelectedRef = useRef<typeof selectedFromList>(null);
-	const resolvedThread = selectedFromList ?? fallbackThread ?? null;
-	if (resolvedThread && resolvedThread.threadDocId === selectedThreadId) {
-		lastSelectedRef.current = resolvedThread;
-	}
-	const selectedThread =
-		resolvedThread ??
-		(fallbackThread === undefined &&
-		lastSelectedRef.current?.threadDocId === selectedThreadId
-			? lastSelectedRef.current
-			: null);
+	const selectedThread = selectedFromList ?? fetchedThread ?? null;
 
-	// A completed fallback returning null means the thread is genuinely gone
+	// A resolved-null direct fetch means the thread is genuinely gone
 	// (deleted / inaccessible) — clear the selection so mobile isn't stuck on
-	// an empty pane with the list hidden.
-	useEffect(() => {
-		if (selectedThreadId && !selectedFromList && fallbackThread === null) {
-			setSelectedThreadId(null);
-		}
-	}, [selectedThreadId, selectedFromList, fallbackThread]);
+	// an empty pane with the list hidden. Guarded render-time derivation: the
+	// guard goes false as soon as the state updates, so this can't loop.
+	if (selectedThreadId && !selectedFromList && fetchedThread === null) {
+		setSelectedThreadId(null);
+	}
+
+	const handleDraftChange = useCallback(
+		(threadId: Id<"emailThreads">, html: string) => {
+			setDrafts((prev) => {
+				if (html) return { ...prev, [threadId]: html };
+				if (!(threadId in prev)) return prev;
+				const next = { ...prev };
+				delete next[threadId];
+				return next;
+			});
+		},
+		[]
+	);
 
 	const handleKeyDown = useCallback(
 		(e: React.KeyboardEvent<HTMLDivElement>) => {
-			if (orderedThreads.length === 0) return;
+			if (visibleThreads.length === 0) return;
 			if (e.key !== "ArrowDown" && e.key !== "ArrowUp" && e.key !== "Enter") {
 				return;
 			}
@@ -94,28 +87,26 @@ export function InboxScreen() {
 				return;
 			}
 
-			const currentIndex = orderedThreads.findIndex(
+			const currentIndex = visibleThreads.findIndex(
 				(t) => t.threadDocId === selectedThreadId
 			);
 
-			if (e.key === "Enter") {
-				if (currentIndex >= 0) e.preventDefault();
-				return;
-			}
+			// Enter falls through to the focused ThreadRow button's own activation.
+			if (e.key === "Enter") return;
 
 			e.preventDefault();
 			let nextIndex: number;
 			if (currentIndex === -1) {
-				nextIndex = e.key === "ArrowDown" ? 0 : orderedThreads.length - 1;
+				nextIndex = e.key === "ArrowDown" ? 0 : visibleThreads.length - 1;
 			} else {
 				nextIndex =
 					e.key === "ArrowDown"
-						? Math.min(currentIndex + 1, orderedThreads.length - 1)
+						? Math.min(currentIndex + 1, visibleThreads.length - 1)
 						: Math.max(currentIndex - 1, 0);
 			}
-			setSelectedThreadId(orderedThreads[nextIndex]!.threadDocId);
+			setSelectedThreadId(visibleThreads[nextIndex]!.threadDocId);
 		},
-		[orderedThreads, selectedThreadId]
+		[visibleThreads, selectedThreadId]
 	);
 
 	const hasSelection = selectedThreadId !== null;
@@ -137,14 +128,14 @@ export function InboxScreen() {
 			>
 				<ThreadList
 					loading={threads === undefined}
-					groups={groups}
+					threads={visibleThreads}
 					filter={filter}
 					onFilterChange={setFilter}
 					searchQuery={searchQuery}
 					onSearchChange={setSearchQuery}
 					selectedThreadId={selectedThreadId}
 					onSelect={setSelectedThreadId}
-					onToggleGroup={toggleGroup}
+					onCompose={() => setComposeOpen(true)}
 				/>
 			</aside>
 
@@ -161,11 +152,17 @@ export function InboxScreen() {
 						thread={selectedThread}
 						onBack={() => setSelectedThreadId(null)}
 						onArchived={() => setSelectedThreadId(null)}
+						draft={drafts[selectedThread.threadDocId] ?? ""}
+						onDraftChange={(html) =>
+							handleDraftChange(selectedThread.threadDocId, html)
+						}
 					/>
 				) : (
 					<ThreadViewEmpty />
 				)}
 			</section>
+
+			<NewEmailDialog open={composeOpen} onOpenChange={setComposeOpen} />
 		</div>
 	);
 }

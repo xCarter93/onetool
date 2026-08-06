@@ -193,7 +193,10 @@ export const processInboundEmail = internalMutation({
 		// Resolve recipient + any plus-addressed thread token, then the base
 		// address that identifies the org.
 		const recipientRaw = args.receivedForAddress ?? args.to[0];
-		const { base: baseAddress, token: plusToken } = stripPlusTag(recipientRaw);
+		const { base: rawBaseAddress, token: plusToken } =
+			stripPlusTag(recipientRaw);
+		// Receiving addresses are stored lowercase; inbound recipients can arrive mixed-case.
+		const baseAddress = rawBaseAddress.toLowerCase();
 
 		// A plus-token deterministically identifies a thread (and thus its org)
 		// for mail we originated — resolve it BEFORE any generic-inbox

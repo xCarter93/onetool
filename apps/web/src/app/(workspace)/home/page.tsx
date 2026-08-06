@@ -7,6 +7,7 @@ import { NeedsAttention } from "@/app/(workspace)/home/components/needs-attentio
 import { HomeCalendar } from "@/app/(workspace)/home/components/calendar/home-calendar";
 import { SchedulePanel } from "@/app/(workspace)/home/components/schedule/schedule-panel";
 import ClientPropertiesMap from "@/app/(workspace)/home/components/client-properties-map";
+import { RecentEmails } from "@/app/(workspace)/home/components/recent-emails";
 import { Frame, FramePanel } from "@/components/reui/frame";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
@@ -286,6 +287,9 @@ export default function Page() {
 										</TourElement>
 									</FramePanel>
 								</Frame>
+								{/* Recent Emails — full-width strip; single-line rows want the
+								    width (Frame owned by component) */}
+								<RecentEmails className="w-full lg:col-span-12" />
 							</div>
 						</motion.div>
 					</>

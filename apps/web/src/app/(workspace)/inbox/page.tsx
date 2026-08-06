@@ -6,10 +6,15 @@ export const metadata: Metadata = {
 	title: "Inbox",
 };
 
-export default function InboxPage() {
+export default async function InboxPage({
+	searchParams,
+}: {
+	searchParams: Promise<{ thread?: string }>;
+}) {
+	const { thread } = await searchParams;
 	return (
 		<PermissionGate object="inbox">
-			<InboxScreen />
+			<InboxScreen initialThreadId={thread ?? null} />
 		</PermissionGate>
 	);
 }

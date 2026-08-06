@@ -86,6 +86,23 @@ export const settingsAndTeamArticles: HelpArticle[] = [
 				],
 			},
 			{
+				heading: "Your OneTool email address",
+				blocks: [
+					{
+						type: "paragraph",
+						text: "Also on the **Business Info** tab is your organization's OneTool email address — the address clients see when you send quotes, invoices, and messages, and the one their replies come back to. Every organization starts with an automatically generated address ending in **@inbound.onetool.biz**; you can replace the part before the @ with something recognizable, like your business name.",
+					},
+					{
+						type: "paragraph",
+						text: "Addresses use lowercase letters, numbers, and hyphens (3–24 characters), and must be unique across OneTool. As you type, a check mark or cross shows whether the name is available.",
+					},
+					{
+						type: "note",
+						text: "Changing the address takes effect immediately and the old address stops working, so replies to email threads you sent from the old address will no longer reach your inbox. OneTool asks you to confirm before the change is saved.",
+					},
+				],
+			},
+			{
 				heading: "Leaving or deleting the organization",
 				blocks: [
 					{

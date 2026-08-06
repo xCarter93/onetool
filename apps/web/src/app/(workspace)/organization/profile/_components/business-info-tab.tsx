@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import Image from "next/image";
 import { useOrganization } from "@clerk/nextjs";
 import { useMutation } from "convex/react";
@@ -37,7 +37,32 @@ import {
 	type AddressData,
 } from "@/components/ui/address-autocomplete";
 import SelectService from "@/components/shared/choice-set";
-import ComboBox from "@/components/ui/combo-box";
+import {
+	ReceivingAddressField,
+	localPartOf,
+	type ReceivingAddressState,
+} from "@/components/shared/receiving-address-field";
+import { Button } from "@/components/ui/button";
+import {
+	AlertDialog,
+	AlertDialogAction,
+	AlertDialogCancel,
+	AlertDialogContent,
+	AlertDialogDescription,
+	AlertDialogFooter,
+	AlertDialogHeader,
+	AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
+	Combobox,
+	ComboboxContent,
+	ComboboxEmpty,
+	ComboboxInput,
+	ComboboxItem,
+	ComboboxList,
+	ComboboxSeparator,
+	ComboboxTrigger,
+} from "@/components/ui/combobox";
 import { TIMEZONES } from "@/lib/timezones";
 import {
 	Frame,
@@ -76,6 +101,78 @@ function RequiredMark() {
 		<span aria-hidden="true" className="ml-0.5 text-destructive">
 			*
 		</span>
+	);
+}
+
+function TimezoneCombobox({
+	value,
+	disabled,
+	onSelect,
+}: {
+	value: string;
+	disabled?: boolean;
+	onSelect: (timezone: string) => void;
+}) {
+	const [search, setSearch] = useState("");
+
+	const filtered = useMemo(() => {
+		const term = search.trim().toLowerCase();
+		if (!term) return TIMEZONES;
+		return TIMEZONES.filter((zone) => zone.toLowerCase().includes(term));
+	}, [search]);
+
+	return (
+		<Combobox
+			items={filtered}
+			// Items are already search-filtered above; stop Base UI's own filter
+			// from second-guessing the list.
+			filter={null}
+			value={value}
+			disabled={disabled}
+			onOpenChange={(open) => {
+				if (!open) setSearch("");
+			}}
+			// Never cleared: organizations.update drops undefined, so an empty value
+			// would revert on reload while showing blank.
+			onValueChange={(timezone: string | null) => {
+				if (timezone) onSelect(timezone);
+			}}
+		>
+			<ComboboxTrigger
+				render={
+					<Button
+						variant="outline"
+						disabled={disabled}
+						aria-label="Timezone"
+						className="w-full justify-between font-normal"
+					>
+						<span className={cn("truncate", !value && "text-muted-foreground")}>
+							{value || "Select timezone"}
+						</span>
+					</Button>
+				}
+			/>
+			<ComboboxContent className="*:data-[slot=input-group]:bg-transparent">
+				<ComboboxInput
+					placeholder="Search timezones..."
+					value={search}
+					onChange={(event) => setSearch(event.target.value)}
+					showTrigger={false}
+					className="rounded-none border-0 px-0 py-2.5 shadow-none ring-0! outline-none! focus-visible:ring-0"
+				/>
+				<ComboboxSeparator />
+				<ComboboxEmpty className="px-4 py-2.5 text-sm text-muted-foreground">
+					No timezones found.
+				</ComboboxEmpty>
+				<ComboboxList className="max-h-[min(var(--available-height),18rem)]">
+					{filtered.map((zone) => (
+						<ComboboxItem key={zone} value={zone}>
+							<span className="truncate">{zone}</span>
+						</ComboboxItem>
+					))}
+				</ComboboxList>
+			</ComboboxContent>
+		</Combobox>
 	);
 }
 
@@ -146,6 +243,7 @@ export function BusinessInfoTab() {
 	const { organization: clerkOrganization } = useOrganization();
 	const clerkOrgImageUrl = clerkOrganization?.imageUrl;
 	const updateOrganization = useMutation(api.organizations.update);
+	const setReceivingAddress = useMutation(api.organizations.setReceivingAddress);
 	const { showErrors, markSaveAttempt, clearErrors } = useSaveValidation();
 
 	const [businessForm, setBusinessForm] =
@@ -157,6 +255,58 @@ export function BusinessInfoTab() {
 	const [savingBusiness, setSavingBusiness] = useState(false);
 
 	const controlsDisabled = !isOwner || savingBusiness;
+
+	// Receiving (inbound email) address. Saved on its own — it is claimed through
+	// setReceivingAddress, not the tab's blanket organizations.update.
+	const currentReceivingAddress = organization?.receivingAddress;
+	const currentLocalPart = localPartOf(currentReceivingAddress);
+	// `org-…` addresses are system-generated; they can't be re-typed, so the field
+	// starts empty and the generated address is shown as context instead.
+	const isGeneratedAddress = currentLocalPart.startsWith("org-");
+	const editableCurrentLocalPart = isGeneratedAddress ? "" : currentLocalPart;
+
+	const [addressLocalPart, setAddressLocalPart] = useState("");
+	const [addressState, setAddressState] = useState<ReceivingAddressState>({
+		status: "empty",
+		message: null,
+		canClaim: false,
+	});
+	const [savingAddress, setSavingAddress] = useState(false);
+	const [confirmAddressOpen, setConfirmAddressOpen] = useState(false);
+
+	// Re-seed the field whenever the stored address changes (org switch or a
+	// successful claim). Render-time derivation — no setState inside an effect.
+	const [prevReceivingAddress, setPrevReceivingAddress] = useState<
+		string | undefined
+	>(undefined);
+	if (currentReceivingAddress !== prevReceivingAddress) {
+		setPrevReceivingAddress(currentReceivingAddress);
+		setAddressLocalPart(editableCurrentLocalPart);
+	}
+
+	const addressDiffers =
+		addressLocalPart !== "" && addressLocalPart !== editableCurrentLocalPart;
+	const canSaveAddress =
+		isOwner && addressDiffers && addressState.canClaim && !savingAddress;
+
+	const handleClaimAddress = useCallback(async () => {
+		setConfirmAddressOpen(false);
+		setSavingAddress(true);
+		try {
+			const fullAddress = await setReceivingAddress({
+				localPart: addressLocalPart,
+			});
+			toast.success("Email address updated", `Clients can now reach you at ${fullAddress}.`);
+		} catch (error) {
+			const message =
+				error instanceof Error
+					? error.message
+					: "Failed to update your email address.";
+			toast.error("Update failed", message);
+		} finally {
+			setSavingAddress(false);
+		}
+	}, [addressLocalPart, setReceivingAddress, toast]);
 
 	// Re-sync the form from org data during render whenever org data changes
 	// (unless the user has unsaved edits). Seeded with `undefined` so the first
@@ -483,6 +633,54 @@ export function BusinessInfoTab() {
 
 					<Frame>
 						<FrameHeader>
+							<FrameTitle>Email address</FrameTitle>
+							<FrameDescription>
+								The address clients see and reply to when you send quotes,
+								invoices, and messages.
+							</FrameDescription>
+						</FrameHeader>
+						<FramePanel>
+							<Field>
+								<FieldLabel htmlFor="receiving-address">
+									Your OneTool email address
+								</FieldLabel>
+								<ReceivingAddressField
+									id="receiving-address"
+									value={addressLocalPart}
+									onChange={setAddressLocalPart}
+									currentLocalPart={editableCurrentLocalPart || undefined}
+									disabled={!isOwner || savingAddress}
+									onStatusChange={setAddressState}
+								/>
+								{isGeneratedAddress && currentReceivingAddress && (
+									<FieldDescription>
+										Currently{" "}
+										<span className="font-medium text-foreground">
+											{currentReceivingAddress}
+										</span>
+										. Pick something your clients will recognize.
+									</FieldDescription>
+								)}
+								{!isOwner && (
+									<FieldDescription>
+										Only the organization owner can change this address.
+									</FieldDescription>
+								)}
+							</Field>
+							<div className="mt-4 flex justify-end">
+								<Button
+									type="button"
+									disabled={!canSaveAddress}
+									onClick={() => setConfirmAddressOpen(true)}
+								>
+									{savingAddress ? "Updating…" : "Update address"}
+								</Button>
+							</div>
+						</FramePanel>
+					</Frame>
+
+					<Frame>
+						<FrameHeader>
 							<FrameTitle>Address</FrameTitle>
 						</FrameHeader>
 						<FramePanel>
@@ -635,16 +833,10 @@ export function BusinessInfoTab() {
 
 							<Field className="mt-4">
 								<FieldLabel>Timezone</FieldLabel>
-								<ComboBox
-									options={TIMEZONES}
+								<TimezoneCombobox
 									value={businessForm.timezone}
-									placeholder="Search timezones..."
 									disabled={controlsDisabled}
-									// Not clearable: organizations.update drops undefined, so a
-									// cleared field would revert on reload while showing empty.
-									clearable={false}
 									onSelect={(tz) => {
-										if (!tz) return;
 										setBusinessDirty(true);
 										setBusinessForm((prev) => ({
 											...prev,
@@ -819,6 +1011,31 @@ export function BusinessInfoTab() {
 					</FramePanel>
 				</Frame>
 			</div>
+
+			<AlertDialog
+				open={confirmAddressOpen}
+				onOpenChange={setConfirmAddressOpen}
+			>
+				<AlertDialogContent>
+					<AlertDialogHeader>
+						<AlertDialogTitle>Change your email address?</AlertDialogTitle>
+						<AlertDialogDescription>
+							{currentReceivingAddress
+								? `Your current address ${currentReceivingAddress} will stop working immediately. Replies to existing email threads sent to the old address will no longer reach your inbox.`
+								: "This sets the address clients use to reach your inbox."}
+						</AlertDialogDescription>
+					</AlertDialogHeader>
+					<AlertDialogFooter>
+						<AlertDialogCancel>Cancel</AlertDialogCancel>
+						<AlertDialogAction
+							variant="destructive"
+							onClick={handleClaimAddress}
+						>
+							Change address
+						</AlertDialogAction>
+					</AlertDialogFooter>
+				</AlertDialogContent>
+			</AlertDialog>
 		</div>
 	);
 }

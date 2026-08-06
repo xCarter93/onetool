@@ -1,5 +1,5 @@
 import { internalMutation } from "../lib/triggers";
-import { MutationCtx } from "../_generated/server";
+import { generateUniqueReceivingAddress } from "../email/receivingAddress";
 
 /**
  * Migration to add receiving addresses to organizations that don't have one
@@ -23,53 +23,35 @@ export const addReceivingAddresses = internalMutation({
 					`Added receiving address for org ${org._id}: ${receivingAddress}`
 				);
 				updated++;
+				continue;
 			}
+
+			// Inbound lookup lowercases recipients and expects stored addresses to be
+			// lowercase too — normalize any legacy mixed-case rows. Orgs are visited
+			// in creation order, so on a case-insensitive collision the older org
+			// keeps the lowercase form and the newer one is regenerated.
+			const lowered = org.receivingAddress.toLowerCase();
+			if (lowered === org.receivingAddress) continue;
+
+			const collision = await ctx.db
+				.query("organizations")
+				.withIndex("by_receiving_address", (q) =>
+					q.eq("receivingAddress", lowered)
+				)
+				.first();
+			const receivingAddress =
+				collision && collision._id !== org._id
+					? await generateUniqueReceivingAddress(ctx)
+					: lowered;
+
+			await ctx.db.patch(org._id, { receivingAddress });
+			console.log(
+				`Normalized receiving address for org ${org._id}: ${org.receivingAddress} -> ${receivingAddress}`
+			);
+			updated++;
 		}
 
 		console.log(`Migration complete: Updated ${updated} organizations`);
 		return { updated, total: organizations.length };
 	},
 });
-
-/**
- * Generates a unique receiving address with collision prevention
- * Uses 16-character identifier to minimize collision risk
- * Implements retry loop with database uniqueness check
- */
-async function generateUniqueReceivingAddress(
-	ctx: MutationCtx
-): Promise<string> {
-	const MAX_ATTEMPTS = 10;
-
-	for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-		// Use 16 characters for much lower collision probability
-		// 16 hex chars = 64 bits = ~18 quintillion possible values
-		const identifier = crypto.randomUUID().replace(/-/g, "").slice(0, 16);
-		const receivingAddress = `org-${identifier}@inbound.onetool.biz`;
-
-		// Check if this address already exists in the database
-		const existing = await ctx.db
-			.query("organizations")
-			.filter((q) => q.eq(q.field("receivingAddress"), receivingAddress))
-			.first();
-
-		if (!existing) {
-			return receivingAddress;
-		}
-
-		console.warn(
-			`Collision detected on attempt ${attempt}/${MAX_ATTEMPTS} for ${receivingAddress}`
-		);
-
-		// Simple exponential backoff: 10ms, 20ms, 40ms, etc.
-		if (attempt < MAX_ATTEMPTS) {
-			await new Promise((resolve) =>
-				setTimeout(resolve, 10 * Math.pow(2, attempt - 1))
-			);
-		}
-	}
-
-	throw new Error(
-		`Failed to generate unique receiving address after ${MAX_ATTEMPTS} attempts`
-	);
-}

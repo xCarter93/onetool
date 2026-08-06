@@ -1,6 +1,8 @@
 // Org-branded email shell, shared by manual client emails (resend.ts) and the
 // automation send_email action. Pure string builders — no ctx, no env vars.
 
+import { sanitizeHtml, EMAIL_BODY_STYLES } from "./sanitizeHtml";
+
 // Canonical fallback when an org has no receiving address configured (rare
 // post-migration). Never throws — a missing address must not block sends.
 export const FALLBACK_FROM_EMAIL = "support@onetool.biz";
@@ -39,6 +41,13 @@ export function buildEmailHtml(options: {
 	organizationAddress?: string;
 	clientName?: string;
 	messageBody: string;
+	/**
+	 * Rich-text (composer) body. When present it REPLACES the plain-text ->
+	 * `<p>` pipeline; `messageBody` is still required as the text/plain
+	 * alternative. Re-sanitized here as defense in depth even though callers
+	 * (resend.ts) sanitize before storing.
+	 */
+	messageHtml?: string;
 	senderName: string; // Name of the person (or org) sending the email
 }): string {
 	const {
@@ -82,14 +91,21 @@ export function buildEmailHtml(options: {
 	const escapedInitials = escapeHtml(getOrgInitials(organizationName));
 	const escapedLogoUrl = logoUrl ? escapeHtml(logoUrl) : undefined;
 
-	// Convert message body to HTML (preserve line breaks) with XSS protection
-	const messageHtml = messageBody
-		.split("\n")
-		.map((line) => {
-			const escapedLine = escapeHtml(line);
-			return `<p style="margin: 8px 0;">${escapedLine || "&nbsp;"}</p>`;
-		})
-		.join("");
+	// Rich-text body when provided; otherwise convert the plain-text body to
+	// HTML (preserve line breaks) with XSS protection.
+	const sanitizedRichBody = options.messageHtml
+		? sanitizeHtml(options.messageHtml, { styles: EMAIL_BODY_STYLES })
+		: "";
+	const bodyHtml =
+		sanitizedRichBody.length > 0
+			? sanitizedRichBody
+			: messageBody
+					.split("\n")
+					.map((line) => {
+						const escapedLine = escapeHtml(line);
+						return `<p style="margin: 8px 0;">${escapedLine || "&nbsp;"}</p>`;
+					})
+					.join("");
 
 	return `
 <!DOCTYPE html>
@@ -132,7 +148,7 @@ export function buildEmailHtml(options: {
 						<td style="padding: 26px 40px 30px 40px;">
 							${escapedClientName ? `<p style="margin: 0 0 18px 0; font-size: 16px; line-height: 1.6; color: #0f172a;">Hi ${escapedClientName},</p>` : ""}
 							<div style="font-size: 15px; line-height: 1.7; color: #334155;">
-								${messageHtml}
+								${bodyHtml}
 							</div>
 							<p style="margin: 28px 0 4px 0; font-size: 15px; line-height: 1.6; color: #334155;">Best regards,</p>
 							<p style="margin: 0; font-size: 15px; font-weight: 700; color: #0f172a;">${escapedSenderName}</p>

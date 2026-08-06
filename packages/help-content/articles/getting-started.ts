@@ -212,7 +212,7 @@ export const gettingStartedArticles: HelpArticle[] = [
 				blocks: [
 					{
 						type: "paragraph",
-						text: "Admins land on **Home** after signing in: a dashboard with your key numbers, this week's schedule, a map of client locations, and a Needs Attention list of overdue tasks and unpaid invoices. Members land on **Projects** instead, since Home is an admin view.",
+						text: "Admins land on **Home** after signing in: a dashboard with your key numbers, this week's schedule, a map of client locations, a Needs Attention list of overdue tasks and unpaid invoices, and your most recent client emails with a click-through into the [inbox](/help/inbox/unified-inbox). Members land on **Projects** instead, since Home is an admin view.",
 					},
 				],
 			},

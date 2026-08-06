@@ -1,4 +1,4 @@
-import { query, internalQuery } from "./_generated/server";
+import { internalQuery } from "./_generated/server";
 import { mutation, internalMutation } from "./lib/triggers";
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
@@ -14,7 +14,17 @@ import {
 	removeMembership,
 	requireMembership,
 } from "./lib/memberships";
-import { optionalUserQuery, userMutation, systemMutation } from "./lib/factories";
+import {
+	optionalUserQuery,
+	userMutation,
+	userQuery,
+	systemMutation,
+} from "./lib/factories";
+import {
+	buildReceivingAddress,
+	generateUniqueReceivingAddress,
+	validateReceivingLocalPart,
+} from "./email/receivingAddress";
 import { trackServerEvent, SERVER_EVENTS } from "./lib/posthog";
 
 /**
@@ -108,6 +118,8 @@ export const createFromClerk = internalMutation({
 			return existingOrg._id;
 		}
 
+		const receivingAddress = await generateUniqueReceivingAddress(ctx);
+
 		// Create minimal organization metadata (just sync from Clerk)
 		// Full setup will happen when user completes onboarding
 		const orgId = await ctx.db.insert("organizations", {
@@ -118,9 +130,7 @@ export const createFromClerk = internalMutation({
 			hasPremiumFeatureAccess: args.hasPremiumFeatureAccess ?? false,
 			isMetadataComplete: false, // User needs to complete additional setup
 			// Generate unique receiving address for this organization
-			receivingAddress: `org-${crypto
-				.randomUUID()
-				.slice(0, 8)}@inbound.onetool.biz`,
+			receivingAddress,
 			// Initialize usage tracking
 			usageTracking: {
 				clientsCount: 0,
@@ -457,15 +467,90 @@ export const regenerateReceivingAddress = userMutation({
 		}
 
 		// Generate new receiving address
-		const newReceivingAddress = `org-${crypto
-			.randomUUID()
-			.slice(0, 8)}@inbound.onetool.biz`;
+		const newReceivingAddress = await generateUniqueReceivingAddress(ctx);
 
 		await ctx.db.patch(userOrgId, {
 			receivingAddress: newReceivingAddress,
 		});
 
 		return newReceivingAddress;
+	},
+});
+
+/**
+ * Check whether a custom receiving address local part is claimable.
+ * Input is normalized (trimmed + lowercased) before validation.
+ */
+export const checkReceivingAddressAvailable = userQuery({
+	args: { localPart: v.string() },
+	handler: async (
+		ctx,
+		args
+	): Promise<{ available: boolean; reason?: string }> => {
+		const localPart = args.localPart.trim().toLowerCase();
+
+		const error = validateReceivingLocalPart(localPart);
+		if (error) {
+			return { available: false, reason: error };
+		}
+
+		const existing = await ctx.db
+			.query("organizations")
+			.withIndex("by_receiving_address", (q) =>
+				q.eq("receivingAddress", buildReceivingAddress(localPart))
+			)
+			.first();
+
+		if (!existing || existing._id === ctx.orgId) {
+			return { available: true };
+		}
+
+		return { available: false, reason: "This address is already taken" };
+	},
+});
+
+/**
+ * Claim a custom receiving address for the organization.
+ * Only organization owner can perform this action.
+ */
+export const setReceivingAddress = userMutation({
+	args: { localPart: v.string() },
+	handler: async (ctx, args): Promise<string> => {
+		const user = await getCurrentUserOrThrow(ctx);
+		const userOrgId = await getCurrentUserOrgId(ctx);
+
+		const organization = await ctx.db.get(userOrgId);
+		if (!organization) {
+			throw new Error("Organization not found");
+		}
+
+		if (organization.ownerUserId !== user._id) {
+			throw new Error("Only organization owner can set the receiving address");
+		}
+
+		const localPart = args.localPart.trim().toLowerCase();
+		const error = validateReceivingLocalPart(localPart);
+		if (error) {
+			throw new Error(error);
+		}
+
+		const receivingAddress = buildReceivingAddress(localPart);
+
+		// Mutations are serialized, so this check-then-write stays atomic.
+		const existing = await ctx.db
+			.query("organizations")
+			.withIndex("by_receiving_address", (q) =>
+				q.eq("receivingAddress", receivingAddress)
+			)
+			.first();
+
+		if (existing && existing._id !== userOrgId) {
+			throw new Error("This address is already taken. Please choose another.");
+		}
+
+		await ctx.db.patch(userOrgId, { receivingAddress });
+
+		return receivingAddress;
 	},
 });
 
