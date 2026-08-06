@@ -33,6 +33,7 @@ import type * as email_durableResend from "../email/durableResend.js";
 import type * as email_outbound from "../email/outbound.js";
 import type * as email_receivingAddress from "../email/receivingAddress.js";
 import type * as email_replyParser from "../email/replyParser.js";
+import type * as email_sanitizeHtml from "../email/sanitizeHtml.js";
 import type * as email_suppressions from "../email/suppressions.js";
 import type * as email_threads from "../email/threads.js";
 import type * as email_types from "../email/types.js";
@@ -196,6 +197,7 @@ declare const fullApi: ApiFromModules<{
   "email/outbound": typeof email_outbound;
   "email/receivingAddress": typeof email_receivingAddress;
   "email/replyParser": typeof email_replyParser;
+  "email/sanitizeHtml": typeof email_sanitizeHtml;
   "email/suppressions": typeof email_suppressions;
   "email/threads": typeof email_threads;
   "email/types": typeof email_types;

@@ -30,9 +30,9 @@ export const inboxArticles: HelpArticle[] = [
 						type: "steps",
 						items: [
 							"Go to **Inbox** in the sidebar.",
-							"Browse the left rail. Conversations are grouped by contact; click a contact to expand their threads, then click a thread to open it.",
+							"Browse the left rail. Conversations are listed newest first; each row shows who it's with, the subject, and a preview of the last message. A dot marks unread conversations.",
 							"Narrow the list with the **All**, **Unread**, and **Unlinked** filters at the top.",
-							"Search by typing a client name or a subject. Matching a name expands that contact's whole group; matching a subject shows just the matching threads.",
+							"Search by typing a contact name, client name, or subject to filter the list to matching conversations.",
 						],
 					},
 					{
@@ -53,10 +53,14 @@ export const inboxArticles: HelpArticle[] = [
 					{
 						type: "steps",
 						items: [
-							"Click a thread to open it in the right pane. OneTool marks it as read automatically.",
-							"Type your reply in the box at the bottom of the thread.",
+							"Click a thread to open it in the right pane. OneTool marks it as read automatically. Older messages are collapsed to one line; click one to expand it.",
+							"Type your reply in the box at the bottom of the thread. Use the toolbar to format it: bold, italic, underline, lists, links, and quotes.",
 							"Click **Send**, or press Cmd+Enter (Ctrl+Enter on Windows).",
 						],
+					},
+					{
+						type: "paragraph",
+						text: "Under each message you sent, a status line shows how it's doing: sent, delivered, or opened, with bounced and failed called out so you know a message never arrived. Files a client emailed you appear on their message, ready to download.",
 					},
 					{
 						type: "note",
@@ -64,7 +68,33 @@ export const inboxArticles: HelpArticle[] = [
 					},
 					{
 						type: "tip",
-						text: "You can move through the list with the up and down arrow keys and press Enter to open the highlighted conversation.",
+						text: "You can move through the list with the up and down arrow keys. A reply you've started is kept while you look at other conversations, so you can check something and come back without losing it.",
+					},
+				],
+			},
+			{
+				heading: "Start a new email",
+				blocks: [
+					{
+						type: "steps",
+						items: [
+							"Click **New email** at the top of the inbox.",
+							"Pick the client, then the contact to send to. It defaults to their primary contact.",
+							"Add a subject, write your message, and click **Send email**.",
+						],
+					},
+					{
+						type: "paragraph",
+						text: "The conversation starts already linked to that client, and their reply lands back in this inbox. A greeting and your signature are added around what you write, so the email arrives looking professional without extra work.",
+					},
+				],
+			},
+			{
+				heading: "Reading the original email",
+				blocks: [
+					{
+						type: "paragraph",
+						text: "Incoming messages show just the new text, with quoted history and signatures trimmed away. If something looks missing, click **Show original message** under the text to see the full email as it was sent.",
 					},
 				],
 			},
@@ -124,7 +154,7 @@ export const inboxArticles: HelpArticle[] = [
 			},
 			{
 				question: "Can I attach a file to a reply?",
-				answer: "Not currently. You can view and download files that arrive on email from clients, which appear on the client's Email Threads tab.",
+				answer: "Not currently. Files that clients email you appear on their messages in the inbox and on the client's Email Threads tab, ready to download.",
 			},
 			{
 				question: "What address do my emails come from?",
@@ -167,9 +197,8 @@ export const inboxArticles: HelpArticle[] = [
 						items: [
 							"Open the client and click **Compose Email** at the top of the page.",
 							"Pick the recipient under **Send To**. It defaults to the client's primary contact.",
-							"Enter a **Subject** and write your **Message**.",
-							"Check the **Email Preview** below the message. OneTool adds a greeting and a signature around what you wrote.",
-							"Click **Send Email**.",
+							"Enter a **Subject** and write your **Message**. Use the toolbar to format it: bold, italic, underline, lists, links, and quotes.",
+							"Click **Send email**. OneTool adds a greeting and your signature around what you wrote.",
 						],
 					},
 					{
@@ -188,7 +217,7 @@ export const inboxArticles: HelpArticle[] = [
 						items: [
 							"Open the **Email Threads** tab and click a conversation to open it.",
 							"Type your reply in the message box. Replies do not need a subject.",
-							"Click **Send Reply**.",
+							"Click **Send reply**, or press Cmd+Enter (Ctrl+Enter on Windows).",
 						],
 					},
 					{

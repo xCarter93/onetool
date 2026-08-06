@@ -10,6 +10,18 @@ import {
 } from "./email/threads";
 import { SERVER_EVENTS, trackServerEvent } from "./lib/posthog";
 import { buildEmailHtml, resolveFromEmail } from "./email/branding";
+import { sanitizeHtml } from "./email/sanitizeHtml";
+
+/**
+ * Rich-text composer bodies arrive as HTML alongside the plain-text version.
+ * Sanitize server-side (never trust the client) and treat an all-junk result
+ * as "no rich body" so the plain-text pipeline takes over.
+ */
+function sanitizeComposerHtml(messageHtml?: string): string | undefined {
+	if (!messageHtml) return undefined;
+	const sanitized = sanitizeHtml(messageHtml);
+	return sanitized.trim().length > 0 ? sanitized : undefined;
+}
 
 // Re-export the durable component instance so existing callers (portal/email.ts)
 // keep importing `resend` from here; the instance itself lives in the seam.
@@ -22,7 +34,8 @@ export const sendClientEmail = userMutation({
 	args: {
 		clientId: v.id("clients"),
 		subject: v.string(),
-		messageBody: v.string(),
+		messageBody: v.string(), // Plain-text body (composer: editor.getText())
+		messageHtml: v.optional(v.string()), // Rich-text body; sanitized server-side
 		threadId: v.optional(v.string()), // Optional for starting a thread
 		contactId: v.optional(v.id("clientContacts")), // Recipient; defaults to primary
 	},
@@ -70,6 +83,9 @@ export const sendClientEmail = userMutation({
 			throw new Error("Selected contact does not have a valid email address");
 		}
 
+		// Sanitized composer HTML (undefined for plain-text sends)
+		const sanitizedHtml = sanitizeComposerHtml(args.messageHtml);
+
 		// Build email HTML with organization branding
 		const emailHtml = buildEmailHtml({
 			logoUrl: organization.logoUrl,
@@ -79,6 +95,7 @@ export const sendClientEmail = userMutation({
 			organizationAddress: organization.address,
 			clientName: `${recipient.firstName} ${recipient.lastName}`,
 			messageBody: args.messageBody,
+			messageHtml: sanitizedHtml,
 			senderName: user.name, // Add sender's name for personalization
 		});
 
@@ -100,6 +117,7 @@ export const sendClientEmail = userMutation({
 			replyTo: [plusTagAddress(resolveFromEmail(organization), threadDocId)],
 			subject: args.subject,
 			html: emailHtml,
+			text: args.messageBody, // text/plain alternative on every send
 		};
 
 		const result = await sendOutbound(ctx, orgId, message);
@@ -131,6 +149,11 @@ export const sendClientEmail = userMutation({
 			subject: args.subject,
 			messageBody: args.messageBody,
 			messagePreview,
+			// Rich-text sends keep the sanitized HTML for inbox rendering; the
+			// plain text doubles as the visible-text digest.
+			...(sanitizedHtml
+				? { htmlBody: sanitizedHtml, visibleText: args.messageBody }
+				: {}),
 			fromEmail: fromEmail,
 			fromName: fromName,
 			toEmail: recipient.email,
@@ -192,7 +215,8 @@ export const sendClientEmail = userMutation({
 export const replyToEmail = userMutation({
 	args: {
 		emailMessageId: v.id("emailMessages"), // The message being replied to
-		messageBody: v.string(),
+		messageBody: v.string(), // Plain-text body (composer: editor.getText())
+		messageHtml: v.optional(v.string()), // Rich-text body; sanitized server-side
 	},
 	handler: async (ctx, args) => {
 		await ctx.requireLevel("inbox", "modify");
@@ -248,6 +272,9 @@ export const replyToEmail = userMutation({
 			...(parentRfcId ? [parentRfcId] : []),
 		];
 
+		// Sanitized composer HTML (undefined for plain-text replies)
+		const sanitizedHtml = sanitizeComposerHtml(args.messageHtml);
+
 		// Build email HTML with organization branding
 		const emailHtml = buildEmailHtml({
 			logoUrl: organization.logoUrl,
@@ -257,6 +284,7 @@ export const replyToEmail = userMutation({
 			organizationAddress: organization.address,
 			clientName: `${primaryContact.firstName} ${primaryContact.lastName}`,
 			messageBody: args.messageBody,
+			messageHtml: sanitizedHtml,
 			senderName: user.name,
 		});
 
@@ -283,6 +311,7 @@ export const replyToEmail = userMutation({
 			replyTo: [plusTagAddress(resolveFromEmail(organization), threadDocId)],
 			subject,
 			html: emailHtml,
+			text: args.messageBody, // text/plain alternative on every send
 			// RFC threading headers so the recipient's client threads our reply.
 			...(parentRfcId ? { inReplyTo: parentRfcId } : {}),
 			...(references.length > 0 ? { references } : {}),
@@ -315,6 +344,9 @@ export const replyToEmail = userMutation({
 			subject,
 			messageBody: args.messageBody,
 			messagePreview,
+			...(sanitizedHtml
+				? { htmlBody: sanitizedHtml, visibleText: args.messageBody }
+				: {}),
 			fromEmail,
 			fromName,
 			toEmail: primaryContact.email,

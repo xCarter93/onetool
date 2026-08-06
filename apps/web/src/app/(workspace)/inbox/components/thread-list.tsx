@@ -1,22 +1,14 @@
 "use client";
 
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
-import { formatDistanceToNow } from "date-fns";
-import {
-	ChevronDown,
-	ChevronRight,
-	Search,
-	X,
-} from "lucide-react";
+import { formatDistanceToNowStrict } from "date-fns";
+import { PenSquare, Search, X } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/domain/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { SegmentedControl } from "@/components/domain/segmented-control";
 import { cn } from "@/lib/utils";
-import type {
-	DisplayGroup,
-	InboxFilter,
-	InboxThread,
-} from "../lib/inbox-utils";
+import type { InboxFilter, InboxThread } from "../lib/inbox-utils";
 
 const FILTER_OPTIONS = [
 	{ value: "all" as const, label: "All" },
@@ -41,33 +33,39 @@ const EMPTY_COPY: Record<InboxFilter, { title: string; description: string }> = 
 
 interface ThreadListProps {
 	loading: boolean;
-	groups: DisplayGroup[];
+	threads: InboxThread[];
 	filter: InboxFilter;
 	onFilterChange: (filter: InboxFilter) => void;
 	searchQuery: string;
 	onSearchChange: (query: string) => void;
 	selectedThreadId: Id<"emailThreads"> | null;
 	onSelect: (threadId: Id<"emailThreads">) => void;
-	onToggleGroup: (key: string) => void;
+	onCompose: () => void;
 }
 
 export function ThreadList({
 	loading,
-	groups,
+	threads,
 	filter,
 	onFilterChange,
 	searchQuery,
 	onSearchChange,
 	selectedThreadId,
 	onSelect,
-	onToggleGroup,
+	onCompose,
 }: ThreadListProps) {
 	const searching = searchQuery.trim().length > 0;
 
 	return (
 		<>
 			<div className="sticky top-0 z-10 shrink-0 space-y-3 border-b border-border bg-card px-4 pb-3 pt-4">
-				<h1 className="text-lg font-semibold tracking-tight">Inbox</h1>
+				<div className="flex items-center justify-between gap-2">
+					<h1 className="text-lg font-semibold tracking-tight">Inbox</h1>
+					<Button size="sm" variant="outline" onClick={onCompose}>
+						<PenSquare className="size-4" aria-hidden="true" />
+						New email
+					</Button>
+				</div>
 
 				<div className="relative">
 					<Search
@@ -104,7 +102,7 @@ export function ThreadList({
 			<div className="flex-1 overflow-y-auto min-h-0">
 				{loading ? (
 					<ThreadListSkeleton />
-				) : groups.length === 0 ? (
+				) : threads.length === 0 ? (
 					<div className="flex h-full items-center p-4">
 						<EmptyState
 							size="sm"
@@ -118,75 +116,20 @@ export function ThreadList({
 						/>
 					</div>
 				) : (
-					<div className="py-1">
-						{groups.map((group) => (
-							<section key={group.key} aria-label={group.contactName}>
-								<GroupHeader
-									group={group}
-									onToggle={() => onToggleGroup(group.key)}
+					<ul className="divide-y divide-border/60 py-0.5">
+						{threads.map((thread) => (
+							<li key={thread.threadDocId}>
+								<ThreadRow
+									thread={thread}
+									selected={selectedThreadId === thread.threadDocId}
+									onSelect={onSelect}
 								/>
-								{group.expanded && (
-									<ul>
-										{group.threads.map((thread) => (
-											<li key={thread.threadDocId}>
-												<ThreadRow
-													thread={thread}
-													selected={
-														selectedThreadId === thread.threadDocId
-													}
-													onSelect={onSelect}
-												/>
-											</li>
-										))}
-									</ul>
-								)}
-							</section>
+							</li>
 						))}
-					</div>
+					</ul>
 				)}
 			</div>
 		</>
-	);
-}
-
-function GroupHeader({
-	group,
-	onToggle,
-}: {
-	group: DisplayGroup;
-	onToggle: () => void;
-}) {
-	const Chevron = group.expanded ? ChevronDown : ChevronRight;
-	return (
-		<button
-			type="button"
-			onClick={onToggle}
-			aria-expanded={group.expanded}
-			className="flex w-full cursor-pointer items-center gap-1.5 px-3 py-2 text-left transition-colors duration-150 hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-		>
-			<Chevron
-				aria-hidden="true"
-				className="size-3.5 shrink-0 text-muted-foreground"
-			/>
-			<span className="truncate text-sm font-medium text-foreground">
-				{group.contactName}
-			</span>
-			{group.clientName && (
-				<span className="truncate text-xs text-muted-foreground">
-					· {group.clientName}
-				</span>
-			)}
-			<span className="ml-auto flex shrink-0 items-center gap-2 pl-2">
-				{group.unreadCount > 0 && (
-					<span className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold leading-none text-primary-foreground">
-						{group.unreadCount}
-					</span>
-				)}
-				<span className="text-[11px] tabular-nums text-muted-foreground">
-					{group.threads.length}
-				</span>
-			</span>
-		</button>
 	);
 }
 
@@ -200,23 +143,27 @@ function ThreadRow({
 	onSelect: (threadId: Id<"emailThreads">) => void;
 }) {
 	const unread = thread.unreadCount > 0;
+	const contactName = thread.contact?.name?.trim() || "Unknown sender";
+
 	return (
 		<button
 			type="button"
 			onClick={() => onSelect(thread.threadDocId)}
 			aria-current={selected ? "true" : undefined}
 			className={cn(
-				"flex w-full cursor-pointer items-center gap-2 border-l-2 py-1.5 pl-8 pr-3 text-left transition-colors duration-150",
+				"flex w-full cursor-pointer items-start gap-2 border-l-2 py-2 pl-3 pr-3 text-left transition-colors duration-150",
 				"focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
 				selected
 					? "border-l-primary bg-accent"
 					: "border-l-transparent hover:bg-accent/60"
 			)}
 		>
+			{/* Fixed gutter keeps the type rhythm flat: a dot marks unread instead
+			    of bolding the whole row. */}
 			<span
 				aria-hidden="true"
 				className={cn(
-					"size-1.5 shrink-0 rounded-full",
+					"mt-1.5 size-1.5 shrink-0 rounded-full",
 					unread ? "bg-primary" : "bg-transparent"
 				)}
 			/>
@@ -224,17 +171,31 @@ function ThreadRow({
 				<span className="flex items-baseline justify-between gap-2">
 					<span
 						className={cn(
-							"truncate text-sm",
-							unread ? "font-semibold text-foreground" : "text-foreground"
+							"truncate text-sm text-foreground",
+							unread ? "font-semibold" : "font-medium"
 						)}
 					>
-						{thread.subject || "(no subject)"}
+						{contactName}
+						{thread.clientName && (
+							<span className="font-normal text-muted-foreground">
+								{" "}
+								· {thread.clientName}
+							</span>
+						)}
 					</span>
-					<span className="shrink-0 text-[11px] text-muted-foreground">
-						{formatDistanceToNow(new Date(thread.lastMessageAt), {
+					<span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">
+						{formatDistanceToNowStrict(new Date(thread.lastMessageAt), {
 							addSuffix: true,
 						})}
 					</span>
+				</span>
+				<span
+					className={cn(
+						"block truncate text-xs",
+						unread ? "font-medium text-foreground" : "text-foreground/80"
+					)}
+				>
+					{thread.subject || "(no subject)"}
 				</span>
 				<span className="line-clamp-1 block text-xs text-muted-foreground">
 					{thread.lastMessageDirection === "outbound" && (
@@ -249,12 +210,15 @@ function ThreadRow({
 
 function ThreadListSkeleton() {
 	return (
-		<div className="space-y-2 p-3">
+		<div className="space-y-1 p-2">
 			{Array.from({ length: 8 }).map((_, i) => (
-				<div key={i} className="flex items-center gap-2">
-					<Skeleton className="size-3.5 rounded" />
-					<Skeleton className="h-3.5 w-2/3" />
-					<Skeleton className="ml-auto h-3.5 w-6" />
+				<div key={i} className="space-y-1.5 px-2 py-2">
+					<div className="flex items-center justify-between gap-2">
+						<Skeleton className="h-3.5 w-32" />
+						<Skeleton className="h-3 w-10" />
+					</div>
+					<Skeleton className="h-3 w-3/4" />
+					<Skeleton className="h-3 w-full" />
 				</div>
 			))}
 		</div>
