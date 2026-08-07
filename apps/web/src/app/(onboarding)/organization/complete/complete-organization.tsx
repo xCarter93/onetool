@@ -183,7 +183,11 @@ export function CompleteOrganizationMetadata() {
 		createOrganization,
 		setActive,
 		userMemberships,
-	} = useOrganizationList({ userMemberships: { infinite: true } });
+	} = useOrganizationList({
+		// Clerk defaults to 10/page; bump it so the escape hatch shows every org
+		// for all but extreme cases, with Load more covering the rest.
+		userMemberships: { infinite: true, pageSize: 50 },
+	});
 	const { signOut } = useClerk();
 	const [switchingOrgId, setSwitchingOrgId] = useState<string | null>(null);
 	const [orgName, setOrgName] = useState("");
@@ -720,6 +724,24 @@ export function CompleteOrganizationMetadata() {
 										</li>
 									))}
 								</ul>
+								{userMemberships?.hasNextPage && (
+									<Button
+										type="button"
+										variant="ghost"
+										size="sm"
+										className="mt-2 w-full text-muted-foreground"
+										disabled={userMemberships.isFetching}
+										onClick={() => userMemberships.fetchNext?.()}
+									>
+										{userMemberships.isFetching ? (
+											<Loader2
+												className="h-4 w-4 animate-spin"
+												aria-hidden="true"
+											/>
+										) : null}
+										Load more organizations
+									</Button>
+								)}
 							</div>
 							<div className="flex items-center gap-3">
 								<div className="h-px flex-1 bg-border/60" />

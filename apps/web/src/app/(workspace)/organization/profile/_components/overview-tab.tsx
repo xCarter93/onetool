@@ -193,23 +193,36 @@ export function OverviewTab() {
 	// the create-org flow when none remain. Without this, users with other
 	// orgs get trapped on /organization/complete (no switcher, no sign-out).
 	const switchToRemainingOrg = async (deletedOrgId: string) => {
-		try {
-			// Imperative fetch so we get a fresh list; the deleted org can linger
-			// in Clerk's client cache, so filter it out explicitly.
-			const { data } = (await user?.getOrganizationMemberships({
-				pageSize: 50,
-			})) ?? { data: [] };
-			const next = data.find((m) => m.organization.id !== deletedOrgId);
-			if (next) {
+		// Imperative fetch so we get a fresh list; the deleted org can linger
+		// in Clerk's client cache, so filter it out explicitly.
+		const memberships = await user
+			?.getOrganizationMemberships({ pageSize: 50 })
+			.then((res) => res.data)
+			.catch(() => []);
+		const next = memberships?.find((m) => m.organization.id !== deletedOrgId);
+		if (next) {
+			try {
 				await setActive({ organization: next.organization.id });
 				// Middleware routes "/" by role: admins → /home, members → /projects.
 				router.push("/");
 				return;
+			} catch {
+				// Activation of a known org failed (transient) — explain before
+				// landing on the picker, where the user can retry the switch.
+				toast.warning(
+					"Couldn't switch organization",
+					`Pick ${next.organization.name} from the list to try again.`,
+				);
 			}
-		} catch {
-			// Fall through to the no-org flow.
 		}
-		await setActive({ organization: null });
+		// No org left, or fetch/activation failed. The complete screen lists any
+		// remaining memberships with a switcher, so this is recoverable.
+		try {
+			await setActive({ organization: null });
+		} catch {
+			// Ignore: navigation below still lands on the picker, and surfacing
+			// this in the caller would mislabel it as a failed delete/leave.
+		}
 		router.push("/organization/complete");
 	};
 
