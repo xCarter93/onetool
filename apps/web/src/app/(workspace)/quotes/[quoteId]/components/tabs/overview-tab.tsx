@@ -8,6 +8,7 @@ import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
 import { MentionSection } from "@/components/shared/mention-section";
 import { useToast } from "@/hooks/use-toast";
+import { convexErrorMessage } from "@/lib/convex-error";
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { Eye, Pencil } from "lucide-react";
 import {
@@ -146,8 +147,10 @@ export function OverviewTab({
 					pdfSettings: next.pdfSettings,
 				});
 			} catch (err) {
-				const message = err instanceof Error ? err.message : "Failed to save";
-				toast.error("Error", message);
+				toast.error(
+					"Couldn't save pricing",
+					convexErrorMessage(err, "Failed to save")
+				);
 			}
 		},
 		[quoteId, toast, updateQuote]

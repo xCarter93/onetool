@@ -517,6 +517,37 @@ export const update = userMutation({
 			)
 		);
 
+		// Paired discount fields are validated on the merged result, so patching
+		// one half can't bypass a rule or trip one the merged invoice satisfies.
+		// Legacy flat-dollar invoices carry no discountType, so the percentage
+		// ceiling never fires on them.
+		const effective = { ...currentInvoice, ...filteredUpdates };
+
+		if (updates.discountAmount !== undefined && updates.discountAmount < 0) {
+			throw new ConvexError({
+				code: "BAD_REQUEST",
+				message: "Discount amount cannot be negative",
+			});
+		}
+
+		if (
+			effective.discountType === "percentage" &&
+			effective.discountAmount !== undefined &&
+			effective.discountAmount > 100
+		) {
+			throw new ConvexError({
+				code: "BAD_REQUEST",
+				message: "Percentage discount cannot exceed 100%",
+			});
+		}
+
+		if (updates.taxRate !== undefined && updates.taxRate < 0) {
+			throw new ConvexError({
+				code: "BAD_REQUEST",
+				message: "Tax rate cannot be negative",
+			});
+		}
+
 		// Content edits are frozen once the invoice is paid/cancelled or a payment
 		// has settled. Status transitions and Stripe bookkeeping stay editable.
 		if (INVOICE_CONTENT_FIELDS.some((field) => field in filteredUpdates)) {

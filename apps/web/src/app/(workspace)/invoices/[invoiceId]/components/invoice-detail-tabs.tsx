@@ -24,18 +24,21 @@ interface InvoiceDetailTabsProps {
 	primaryProperty: Doc<"clientProperties"> | null | undefined;
 	organization: Doc<"organizations"> | null | undefined;
 	// Payment data
-	invoiceWithPayments: {
-		payments: Doc<"payments">[];
-		paymentSummary: {
-			totalPayments: number;
-			paidCount: number;
-			pendingCount: number;
-			paidAmount: number;
-			remainingAmount: number;
-			allPaymentsPaid: boolean;
-			percentPaid: number;
-		};
-	};
+	invoiceWithPayments:
+		| {
+				payments: Doc<"payments">[];
+				paymentSummary: {
+					totalPayments: number;
+					paidCount: number;
+					pendingCount: number;
+					paidAmount: number;
+					remainingAmount: number;
+					allPaymentsPaid: boolean;
+					percentPaid: number;
+				};
+		  }
+		| null
+		| undefined;
 	onConfigurePayments: () => void;
 	// PDF section
 	latestDocument: Doc<"documents"> | null | undefined;
@@ -134,11 +137,13 @@ export function InvoiceDetailTabs({
 						value="payments"
 						className="mt-0 pt-5"
 					>
-						<PaymentScheduleTab
-							invoiceWithPayments={invoiceWithPayments}
-							organization={organization}
-							onConfigurePayments={onConfigurePayments}
-						/>
+						{invoiceWithPayments && (
+							<PaymentScheduleTab
+								invoiceWithPayments={invoiceWithPayments}
+								organization={organization}
+								onConfigurePayments={onConfigurePayments}
+							/>
+						)}
 					</PillTabsContent>
 				</div>
 

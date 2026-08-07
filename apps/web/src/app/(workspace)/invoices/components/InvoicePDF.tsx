@@ -594,7 +594,7 @@ export const InvoicePDF: React.FC<InvoicePDFProps> = ({
 
 				{/* Payment Status Notices */}
 				<View style={styles.noticeSection}>
-					{!isPaid && (
+					{!isPaid && showTotals && (
 						<View style={styles.amountDueNotice}>
 							<Text style={styles.amountDueLabel}>
 								{isOverdue ? "AMOUNT OVERDUE" : "AMOUNT DUE"}

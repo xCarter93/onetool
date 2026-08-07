@@ -576,7 +576,7 @@ export function InvoiceDetailSidebar({
 				) : latestDocument === undefined ? (
 					<div className="rounded-lg border border-border bg-background/60 p-4">
 						<p className="text-sm text-muted-foreground">
-							{canViewDocuments
+							{permissionsLoading || canViewDocuments
 								? "Checking for a generated PDF…"
 								: "You do not have access to this invoice's documents."}
 						</p>
@@ -623,7 +623,7 @@ export function InvoiceDetailSidebar({
 												/>
 											),
 											label: `v${latestDocument.version} is up to date`,
-											detail: `Generated ${formatDate(latestDocument._creationTime)}`,
+											detail: `Generated ${formatDate(latestDocument.generatedAt)}`,
 										};
 							return (
 								<div
@@ -682,19 +682,23 @@ export function InvoiceDetailSidebar({
 									)}
 									<div className="flex flex-wrap items-center gap-1 border-t border-border/70 px-2 py-1.5">
 										{selectedDocumentUrl ? (
-											<a
-												href={selectedDocumentUrl}
-												target="_blank"
-												rel="noopener noreferrer"
-											>
-												<Button variant="ghost" size="sm">
-													<Eye
-														className="h-4 w-4"
-														aria-hidden="true"
+											<Button
+												variant="ghost"
+												size="sm"
+												render={
+													<a
+														href={selectedDocumentUrl}
+														target="_blank"
+														rel="noopener noreferrer"
 													/>
-													Open in new tab
-												</Button>
-											</a>
+												}
+											>
+												<Eye
+													className="h-4 w-4"
+													aria-hidden="true"
+												/>
+												Open in new tab
+											</Button>
 										) : (
 											<Button variant="ghost" size="sm" disabled>
 												<Eye

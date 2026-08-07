@@ -7,6 +7,8 @@
  * subtotal/total from the line items on every write.
  */
 
+import { roundCents } from "@/lib/money";
+
 /** A single editable row. Money values are DOLLARS (see lib/money.ts). */
 export interface GridLineItem {
 	id: string;
@@ -97,17 +99,19 @@ export function computeDisplayTotals(
 	subtotal: number,
 	settings: LineItemsPricingSettings
 ): LineItemsDisplayTotals {
-	const discountAmount =
+	// Operation order must byte-match applyDiscount/computeQuoteTotals in
+	// lib/money.ts, or displayed figures drift from stored ones.
+	const discount = settings.discountAmount || 0;
+	const afterDiscount =
 		settings.discountType === "percentage"
-			? (subtotal * (settings.discountAmount || 0)) / 100
-			: settings.discountAmount || 0;
-	const afterDiscount = subtotal - discountAmount;
-	const taxAmount = (afterDiscount * (settings.taxRate || 0)) / 100;
+			? Math.max(0, roundCents(subtotal * (1 - discount / 100)))
+			: Math.max(0, roundCents(subtotal - discount));
+	const taxAmount = roundCents(afterDiscount * ((settings.taxRate || 0) / 100));
 	return {
 		subtotal,
-		discountAmount,
+		discountAmount: roundCents(subtotal - afterDiscount),
 		taxAmount,
-		total: afterDiscount + taxAmount,
+		total: roundCents(afterDiscount + taxAmount),
 	};
 }
 
@@ -123,8 +127,9 @@ export function parseTsvRows(text: string): GridNewRow[] {
 
 	return text
 		.split(/\r\n|\r|\n/)
-		.map((line) => line.trim())
-		.filter((line) => line.length > 0)
+		// Strip only the trailing \r: a leading tab is an empty description cell.
+		.map((line) => line.replace(/\r$/, ""))
+		.filter((line) => line.trim().length > 0)
 		.map((line) => {
 			const cols = line.split("\t").map((col) => col.trim());
 			const description = cols[0] ?? "";

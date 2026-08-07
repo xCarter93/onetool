@@ -117,8 +117,22 @@ function InvoiceDetailPageContent() {
 		blob: Blob;
 		contentUpdatedAt: number | undefined;
 		paymentsFingerprint: string;
+		renderInputsFingerprint: string;
 		invoiceId: Id<"invoices">;
 	} | null>(null);
+
+	// The PDF also renders client/org/property data that contentUpdatedAt never
+	// tracks. "loading" keeps a blob rendered before those queries resolved from
+	// matching one rendered after.
+	const renderInputsFingerprint = useMemo(
+		() =>
+			JSON.stringify(
+				[client, organization, primaryProperty].map((doc) =>
+					doc === undefined ? "loading" : doc
+				)
+			),
+		[client, organization, primaryProperty]
+	);
 
 	// The PDF prints the payment schedule, but payment writes do not stamp the
 	// invoice's contentUpdatedAt — fingerprint the rendered fields separately.
@@ -141,7 +155,7 @@ function InvoiceDetailPageContent() {
 	const isPdfStale = Boolean(
 		latestDocument &&
 			invoice?.contentUpdatedAt !== undefined &&
-			invoice.contentUpdatedAt > latestDocument._creationTime
+			invoice.contentUpdatedAt > latestDocument.generatedAt
 	);
 
 	// Derived state
@@ -235,6 +249,7 @@ function InvoiceDetailPageContent() {
 			blob,
 			contentUpdatedAt: invoice.contentUpdatedAt,
 			paymentsFingerprint,
+			renderInputsFingerprint,
 			invoiceId: invoice._id,
 		};
 		return blob;
@@ -243,6 +258,7 @@ function InvoiceDetailPageContent() {
 		lineItems,
 		invoiceWithPayments?.payments,
 		paymentsFingerprint,
+		renderInputsFingerprint,
 		client,
 		organization,
 		primaryProperty,
@@ -255,6 +271,8 @@ function InvoiceDetailPageContent() {
 		// Any client-visible edit since the preview invalidates it.
 		if (cached.contentUpdatedAt !== invoice.contentUpdatedAt) return null;
 		if (cached.paymentsFingerprint !== paymentsFingerprint) return null;
+		if (cached.renderInputsFingerprint !== renderInputsFingerprint)
+			return null;
 		return cached.blob;
 	};
 
@@ -391,7 +409,7 @@ function InvoiceDetailPageContent() {
 					primaryContact={primaryContact}
 					primaryProperty={primaryProperty}
 					organization={organization}
-					invoiceWithPayments={invoiceWithPayments!}
+					invoiceWithPayments={invoiceWithPayments}
 					onConfigurePayments={() => setIsPaymentsModalOpen(true)}
 					latestDocument={latestDocument}
 					allDocumentVersions={allDocumentVersions}

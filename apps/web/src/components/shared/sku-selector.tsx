@@ -68,9 +68,12 @@ export function SKUSelector({
 	};
 
 	return (
-		<Popover open={open} onOpenChange={setOpen}>
+		<Popover
+			open={open}
+			onOpenChange={(next) => setOpen(disabled ? false : next)}
+		>
 			{trigger ? (
-				<PopoverTrigger render={trigger} />
+				<PopoverTrigger disabled={disabled} render={trigger} />
 			) : (
 				<PopoverTrigger
 					render={

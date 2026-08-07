@@ -116,14 +116,28 @@ export function InvoiceDetailBody({
 	const client = clientName.get(invoice.clientId) ?? "Client";
 
 	// TOTALS — straight from invoice.* (calculated by get). Never sum line items.
-	// Quote-style invoices store discountAmount as a raw percent when
-	// discountType is "percentage"; legacy invoices store flat dollars.
-	const discountDollars =
-		invoice.discountEnabled === false
-			? 0
-			: invoice.discountType === "percentage"
-				? Math.round(invoice.subtotal * (invoice.discountAmount ?? 0)) / 100
-				: (invoice.discountAmount ?? 0);
+	// Mode split mirrors resolveInvoicePricingMode / deriveInvoiceDisplayPricing:
+	// quote-style invoices (any of the four fields set) store discountAmount as a
+	// raw percent when discountType is "percentage" and only apply discount/tax
+	// when the enabled flag is truthy, exactly like computeQuoteTotals. Legacy
+	// invoices store flat dollars with no flags.
+	const isQuotePricing =
+		invoice.discountEnabled != null ||
+		invoice.discountType != null ||
+		invoice.taxEnabled != null ||
+		invoice.taxRate != null;
+	const rawDiscount = invoice.discountAmount ?? 0;
+	const discountActive = isQuotePricing
+		? invoice.discountEnabled === true && rawDiscount > 0
+		: rawDiscount > 0;
+	const discountDollars = !discountActive
+		? 0
+		: invoice.discountType === "percentage"
+			? Math.round(invoice.subtotal * rawDiscount) / 100
+			: rawDiscount;
+	const taxActive = isQuotePricing
+		? invoice.taxEnabled === true && !!invoice.taxAmount
+		: !!invoice.taxAmount;
 	const totalsRows: { label: string; value: string; negative?: boolean }[] = [
 		{
 			label: "Subtotal",
@@ -140,7 +154,7 @@ export function InvoiceDetailBody({
 			negative: true,
 		});
 	}
-	if (invoice.taxAmount && invoice.taxEnabled !== false) {
+	if (taxActive) {
 		totalsRows.push({
 			label: invoice.taxRate ? `Tax (${invoice.taxRate}%)` : "Tax",
 			value: formatCurrency(invoice.taxAmount ?? 0, { exact: true }),

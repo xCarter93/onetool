@@ -16,6 +16,7 @@ import {
 } from "@/components/reui/frame";
 import { formatCurrency } from "@/lib/money";
 import { useToast } from "@/hooks/use-toast";
+import { convexErrorMessage } from "@/lib/convex-error";
 import {
 	LineItemGrid,
 	LineItemGridHints,
@@ -161,23 +162,35 @@ export function OverviewTab({
 	const savePricing = useCallback(
 		async (next: LineItemsPricingSettings) => {
 			try {
+				// Sending the mode fields flips a legacy invoice to quote-style
+				// pricing, so a PDF-columns-only edit must not include them.
+				const pricingChanged =
+					next.discountAmount !== pricing.discountAmount ||
+					next.discountType !== pricing.discountType ||
+					next.taxRate !== pricing.taxRate;
 				// Never send subtotal/total/taxAmount — the server recomputes them
 				// from the line items via syncInvoiceTotals.
 				await updateInvoice({
 					id: invoiceId,
-					discountEnabled: next.discountAmount > 0,
-					discountAmount: next.discountAmount,
-					discountType: next.discountType,
-					taxEnabled: next.taxRate > 0,
-					taxRate: next.taxRate,
+					...(pricingChanged
+						? {
+								discountEnabled: next.discountAmount > 0,
+								discountAmount: next.discountAmount,
+								discountType: next.discountType,
+								taxEnabled: next.taxRate > 0,
+								taxRate: next.taxRate,
+							}
+						: {}),
 					pdfSettings: next.pdfSettings,
 				});
 			} catch (err) {
-				const message = err instanceof Error ? err.message : "Failed to save";
-				toast.error("Error", message);
+				toast.error(
+					"Couldn't save pricing",
+					convexErrorMessage(err, "Failed to save")
+				);
 			}
 		},
-		[invoiceId, toast, updateInvoice]
+		[invoiceId, pricing, toast, updateInvoice]
 	);
 
 	return (
@@ -264,8 +277,8 @@ export function OverviewTab({
 						<LineItemGrid
 							bare
 							showHints={false}
-						selectedIds={selection}
-						onSelectionChange={setSelectedLineIds}
+							selectedIds={selection}
+							onSelectionChange={setSelectedLineIds}
 							controller={controller}
 							isLoading={lineItems === undefined}
 						/>

@@ -121,5 +121,7 @@ export function legacyTaxRateFromAmounts(
 ): number {
 	const afterDiscount = subtotal - discountDollars;
 	if (afterDiscount <= 0 || taxAmount <= 0) return 0;
-	return Math.round((taxAmount / afterDiscount) * 100 * 1000) / 1000;
+	// 1e-6 percent keeps enough precision to reproduce the stored cents;
+	// 3 decimals lost a penny on rates like 6.1725%.
+	return Math.round((taxAmount / afterDiscount) * 100 * 1e6) / 1e6;
 }

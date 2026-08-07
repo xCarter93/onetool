@@ -145,15 +145,29 @@ function QuoteDetailPageContent() {
 	const previewBlobRef = useRef<{
 		blob: Blob;
 		contentUpdatedAt: number | undefined;
+		renderInputsFingerprint: string;
 		quoteId: Id<"quotes">;
 	} | null>(null);
+
+	// The PDF also renders client/org/property/countersigner data that
+	// contentUpdatedAt never tracks. "loading" keeps a blob rendered before
+	// those queries resolved from matching one rendered after.
+	const renderInputsFingerprint = useMemo(
+		() =>
+			JSON.stringify(
+				[client, organization, primaryProperty, countersigner].map((doc) =>
+					doc === undefined ? "loading" : doc
+				)
+			),
+		[client, organization, primaryProperty, countersigner]
+	);
 
 	// The generated PDF is stale once the quote's client-visible content moved
 	// after the newest document was stored. No stamp means nothing to compare.
 	const isPdfStale = Boolean(
 		latestDocument &&
 			quote?.contentUpdatedAt !== undefined &&
-			quote.contentUpdatedAt > latestDocument._creationTime
+			quote.contentUpdatedAt > latestDocument.generatedAt
 	);
 
 	// Derived state
@@ -241,10 +255,19 @@ function QuoteDetailPageContent() {
 		previewBlobRef.current = {
 			blob,
 			contentUpdatedAt: quote.contentUpdatedAt,
+			renderInputsFingerprint,
 			quoteId: quote._id,
 		};
 		return blob;
-	}, [quote, lineItems, client, organization, primaryProperty, countersigner]);
+	}, [
+		quote,
+		lineItems,
+		client,
+		organization,
+		primaryProperty,
+		countersigner,
+		renderInputsFingerprint,
+	]);
 
 	const takeCachedPdfBlob = (): Blob | null => {
 		const cached = previewBlobRef.current;
@@ -252,6 +275,8 @@ function QuoteDetailPageContent() {
 		if (cached.quoteId !== quote._id) return null;
 		// Any client-visible edit since the preview invalidates it.
 		if (cached.contentUpdatedAt !== quote.contentUpdatedAt) return null;
+		if (cached.renderInputsFingerprint !== renderInputsFingerprint)
+			return null;
 		return cached.blob;
 	};
 

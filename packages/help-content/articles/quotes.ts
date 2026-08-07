@@ -116,7 +116,7 @@ export const quotesArticles: HelpArticle[] = [
 					},
 					{
 						type: "note",
-						text: "The **Generated PDF** preview in the right-hand panel keeps track of the saved copy. Its colored header shows the status at a glance: green means the PDF matches the quote, amber means line items changed since it was generated and offers a **Regenerate** button. Regenerate before you send so the client gets the current numbers.",
+						text: "The **Generated PDF** preview in the right-hand panel keeps track of the saved copy. Its colored header shows the status at a glance: green means the PDF matches the quote, amber means the quote's content changed since it was generated, whether line items, pricing, or terms, and offers a **Regenerate** button. Regenerate before you send so the client gets the current numbers.",
 					},
 				],
 			},
@@ -132,7 +132,7 @@ export const quotesArticles: HelpArticle[] = [
 			},
 			{
 				question: "Can I still edit line items after the client approves?",
-				answer: "No. Approved and declined quotes lock their line items, so the priced agreement stays exactly as the client saw it. The grid switches to read only and explains why. To price a new version, duplicate the quote.",
+				answer: "No. Approved and declined quotes lock their line items, so the priced agreement stays exactly as the client saw it. The grid switches to read only and explains why. To price a new version, create a new quote.",
 			},
 			{
 				question: "Can I delete a quote?",

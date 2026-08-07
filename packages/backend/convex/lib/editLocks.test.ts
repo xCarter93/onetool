@@ -456,6 +456,80 @@ describe("edit locks", () => {
 			expect(afterDiscount?.contentUpdatedAt).toBeGreaterThan(1);
 		});
 
+		it("bumps on payment-schedule edits, not on payment status flips", async () => {
+			const { asUser, invoiceId } = await setup();
+
+			// configurePayments below requires the schedule to sum to the total.
+			await asUser.mutation(api.invoiceLineItems.create, {
+				invoiceId,
+				description: "Service",
+				quantity: 1,
+				unitPrice: 100,
+				sortOrder: 0,
+			});
+
+			await t.run((ctx) => ctx.db.patch(invoiceId, { contentUpdatedAt: 1 }));
+			const firstId = await asUser.mutation(api.payments.create, {
+				invoiceId,
+				paymentAmount: 60,
+				dueDate: Date.now() + 86400000,
+				sortOrder: 0,
+			});
+			const afterCreate = await t.run((ctx) => ctx.db.get(invoiceId));
+			expect(afterCreate?.contentUpdatedAt).toBeGreaterThan(1);
+
+			await t.run((ctx) => ctx.db.patch(invoiceId, { contentUpdatedAt: 1 }));
+			await asUser.mutation(api.payments.update, {
+				id: firstId,
+				paymentAmount: 40,
+			});
+			const afterAmount = await t.run((ctx) => ctx.db.get(invoiceId));
+			expect(afterAmount?.contentUpdatedAt).toBeGreaterThan(1);
+
+			// Status-only flip is bookkeeping, not a document change.
+			await t.run((ctx) => ctx.db.patch(invoiceId, { contentUpdatedAt: 1 }));
+			await asUser.mutation(api.payments.update, {
+				id: firstId,
+				status: "sent",
+			});
+			const afterStatus = await t.run((ctx) => ctx.db.get(invoiceId));
+			expect(afterStatus?.contentUpdatedAt).toBe(1);
+
+			const secondId = await asUser.mutation(api.payments.create, {
+				invoiceId,
+				paymentAmount: 60,
+				dueDate: Date.now() + 172800000,
+				sortOrder: 1,
+			});
+
+			await t.run((ctx) => ctx.db.patch(invoiceId, { contentUpdatedAt: 1 }));
+			await asUser.mutation(api.payments.reorder, {
+				invoiceId,
+				paymentIds: [secondId, firstId],
+			});
+			const afterReorder = await t.run((ctx) => ctx.db.get(invoiceId));
+			expect(afterReorder?.contentUpdatedAt).toBeGreaterThan(1);
+
+			await t.run((ctx) => ctx.db.patch(invoiceId, { contentUpdatedAt: 1 }));
+			await asUser.mutation(api.payments.remove, { id: secondId });
+			const afterRemove = await t.run((ctx) => ctx.db.get(invoiceId));
+			expect(afterRemove?.contentUpdatedAt).toBeGreaterThan(1);
+
+			await t.run((ctx) => ctx.db.patch(invoiceId, { contentUpdatedAt: 1 }));
+			await asUser.mutation(api.payments.configurePayments, {
+				invoiceId,
+				payments: [
+					{
+						paymentAmount: 100,
+						dueDate: Date.now() + 86400000,
+						sortOrder: 0,
+					},
+				],
+			});
+			const afterConfigure = await t.run((ctx) => ctx.db.get(invoiceId));
+			expect(afterConfigure?.contentUpdatedAt).toBeGreaterThan(1);
+		});
+
 		it("bumps on reorder even though totals are unchanged", async () => {
 			const { asUser, quoteId } = await setup();
 
