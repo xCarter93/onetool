@@ -519,7 +519,7 @@ export const gettingStartedArticles: HelpArticle[] = [
 						items: [
 							"Describe the work in the first row, with a unit, a rate, and a quantity.",
 							"Press **Enter** to start the next row. The subtotal updates as you go.",
-							"Open **Pricing & visibility** under the grid for a percentage or fixed discount and your tax rate.",
+							"Set a percentage or fixed discount and your tax rate in the footer below the grid.",
 						],
 					},
 					{

@@ -61,7 +61,7 @@ export const quotesArticles: HelpArticle[] = [
 						items: [
 							"Fill in the first row: a **Description**, a **Qty**, a **Unit** (like hour), and a **Rate**. **Cost** is optional and internal.",
 							"Press **Enter** to move down a row. On the last row, Enter adds a new one. The arrow keys move between cells.",
-							"Add more rows any time with **New row** at the bottom of the grid, or the **Add line** button above it.",
+							"Add more rows any time with **New row** at the bottom of the grid.",
 							"Click **SKU** on a row to fill its description, unit, rate, and cost from your saved price list.",
 							"Drag the handle on the left of a row to reorder it, and tick the row checkboxes to duplicate or delete several rows at once.",
 						],
@@ -78,7 +78,7 @@ export const quotesArticles: HelpArticle[] = [
 					},
 					{
 						type: "paragraph",
-						text: "There is no Save button. Every edit saves on its own, and the marker above the grid reads **All changes saved** once it lands. If a value cannot be saved, OneTool says so and puts the cell back the way it was.",
+						text: "There is no Save button. Every edit saves on its own, and the marker in the **Line Items** header reads **All changes saved** once it lands. If a value cannot be saved, OneTool says so and puts the cell back the way it was.",
 					},
 					{
 						type: "note",
@@ -95,11 +95,11 @@ export const quotesArticles: HelpArticle[] = [
 				blocks: [
 					{
 						type: "paragraph",
-						text: "Open the **Pricing & visibility** panel under the grid. On the left, set a **Discount** as a dollar amount or a percentage (use the $ / % selector next to the field) and a **Tax** rate as a percentage. Both preview their effect on the total as you type, and they save a moment after you stop typing.",
+						text: "The footer below the grid holds the pricing controls. Set a **Discount** in the first field and pick **$** or **%** with the buttons inside it, then set a **Tax** rate as a percentage in the field below. The totals beside them update as you type, and both save a moment after you stop typing.",
 					},
 					{
 						type: "paragraph",
-						text: "On the right, **What the client sees** controls which columns print on the client's copy: quantities, unit prices, line totals, and the grand total. Turn off anything you would rather not show, like unit prices on a fixed-price job.",
+						text: "The **Client view** button under those fields opens **What the client sees**, which controls the columns that print on the client's copy: quantities, unit prices, line totals, and the grand total. Its label shows how many are on, and you can turn off anything you would rather not show, like unit prices on a fixed-price job.",
 					},
 				],
 			},
@@ -108,7 +108,7 @@ export const quotesArticles: HelpArticle[] = [
 				blocks: [
 					{
 						type: "paragraph",
-						text: "Click **Preview Document** above the grid to see the client's copy exactly as it will be saved. The preview needs at least one line item. From the preview you can download a copy or click **Generate PDF** to store it on the quote.",
+						text: "Click **Preview Document** in the **Line Items** header to see the client's copy exactly as it will be saved. The preview needs at least one line item. From the preview you can download a copy or click **Generate PDF** to store it on the quote.",
 					},
 					{
 						type: "paragraph",

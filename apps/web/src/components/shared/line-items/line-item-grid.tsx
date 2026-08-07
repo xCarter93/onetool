@@ -354,12 +354,24 @@ export interface LineItemGridProps {
 	 * row when there is none. Runs at most once per mount.
 	 */
 	autoFocusFirstRow?: boolean;
+	/**
+	 * Edge-to-edge mode for a dense Frame panel: drops the outer radius and the
+	 * side borders so the grid hairlines meet the panel edges.
+	 */
+	bare?: boolean;
+	/**
+	 * Render the keyboard-hint bar under the grid. Off when the surface places
+	 * `LineItemGridHints` itself (the frame layout puts it above the frame).
+	 */
+	showHints?: boolean;
 }
 
 export function LineItemGrid({
 	controller,
 	isLoading = false,
 	autoFocusFirstRow = false,
+	bare = false,
+	showHints = true,
 }: LineItemGridProps) {
 	const { items, locked, showCostMargin } = controller;
 	const gridRef = useRef<HTMLDivElement>(null);
@@ -503,7 +515,10 @@ export function LineItemGrid({
 	if (isLoading) {
 		return (
 			<div
-				className="overflow-hidden rounded-md border border-border bg-background"
+				className={cn(
+					"overflow-hidden bg-background",
+					bare ? "border-y border-border" : "rounded-md border border-border"
+				)}
 				aria-busy="true"
 			>
 				<div
@@ -538,7 +553,12 @@ export function LineItemGrid({
 	return (
 		<div>
 			{locked && controller.lockedReason && (
-				<div className="mb-3 flex items-start gap-2 rounded-md border border-border bg-muted/50 px-3 py-2 text-[13px] text-muted-foreground">
+				<div
+					className={cn(
+						"flex items-start gap-2 border border-border bg-muted/50 px-3 py-2 text-[13px] text-muted-foreground",
+						bare ? "mx-3 mt-3 mb-2 rounded-md" : "mb-3 rounded-md"
+					)}
+				>
 					<Lock className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
 					<span>{controller.lockedReason}</span>
 				</div>
@@ -548,7 +568,10 @@ export function LineItemGrid({
 				ref={gridRef}
 				onKeyDown={handleGridKeyDown}
 				onPaste={handlePaste}
-				className="rounded-md border border-border bg-background tabular-nums"
+				className={cn(
+					"bg-background tabular-nums",
+					bare ? "border-y border-border" : "rounded-md border border-border"
+				)}
 			>
 				{/* Header */}
 				<div
@@ -625,7 +648,12 @@ export function LineItemGrid({
 					<button
 						type="button"
 						onClick={() => void addRow(true)}
-						className="flex h-[30px] w-full items-center gap-2 rounded-b-md border-0 border-t border-border bg-muted/35 px-2.5 text-left text-[12.5px] text-muted-foreground transition-colors hover:text-primary focus-visible:outline-2 focus-visible:outline-primary focus-visible:-outline-offset-2"
+						className={cn(
+							"flex h-[30px] w-full items-center gap-2 border-0 border-t border-border bg-muted/35 px-2.5",
+							"text-left text-[12.5px] text-muted-foreground transition-colors hover:text-primary",
+							"focus-visible:outline-2 focus-visible:outline-primary focus-visible:-outline-offset-2",
+							!bare && "rounded-b-md"
+						)}
 					>
 						<Plus className="h-3 w-3" />
 						New row
@@ -633,34 +661,8 @@ export function LineItemGrid({
 				)}
 			</div>
 
-			{/* Keyboard hints */}
-			{!locked && (
-				<div className="mt-2.5 flex flex-wrap items-center gap-x-3.5 gap-y-1.5 text-xs text-muted-foreground">
-					<span className="flex items-center gap-1.5">
-						<kbd className="rounded border border-border px-1.5 py-px font-mono">
-							← ↑ ↓ →
-						</kbd>
-						move between cells
-					</span>
-					<span className="flex items-center gap-1.5">
-						<kbd className="rounded border border-border px-1.5 py-px font-mono">
-							⏎
-						</kbd>
-						next row, or a new one at the end
-					</span>
-					<span className="flex items-center gap-1.5">
-						<kbd className="rounded border border-border px-1.5 py-px font-mono">
-							⌘V
-						</kbd>
-						paste rows from a spreadsheet
-					</span>
-					<span className="flex items-center gap-1.5">
-						<kbd className="rounded border border-border px-1.5 py-px text-[10.5px] font-semibold">
-							SKU
-						</kbd>
-						fill a row from the catalog
-					</span>
-				</div>
+			{showHints && !locked && (
+				<LineItemGridHints className={bare ? "px-3 pt-2.5 pb-0.5" : "mt-2.5"} />
 			)}
 
 			{/* Floating selection bar */}
@@ -703,6 +705,38 @@ export function LineItemGrid({
 					</div>
 				</div>
 			)}
+		</div>
+	);
+}
+
+/** Keyboard affordances for the grid. Rendered under it, or above the frame. */
+export function LineItemGridHints({ className }: { className?: string }) {
+	const chip = "rounded border border-border px-1.5 py-px font-mono";
+	return (
+		<div
+			className={cn(
+				"flex flex-wrap items-center gap-x-3.5 gap-y-1.5 text-xs text-muted-foreground",
+				className
+			)}
+		>
+			<span className="flex items-center gap-1.5">
+				<kbd className={chip}>← ↑ ↓ →</kbd>
+				move between cells
+			</span>
+			<span className="flex items-center gap-1.5">
+				<kbd className={chip}>⏎</kbd>
+				next row, or a new one at the end
+			</span>
+			<span className="flex items-center gap-1.5">
+				<kbd className={chip}>⌘V</kbd>
+				paste rows from a spreadsheet
+			</span>
+			<span className="flex items-center gap-1.5">
+				<kbd className="rounded border border-border px-1.5 py-px text-[10.5px] font-semibold">
+					SKU
+				</kbd>
+				fill a row from the catalog
+			</span>
 		</div>
 	);
 }

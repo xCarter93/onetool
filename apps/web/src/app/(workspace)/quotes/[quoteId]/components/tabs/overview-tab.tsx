@@ -9,10 +9,21 @@ import { Button } from "@/components/ui/button";
 import { MentionSection } from "@/components/shared/mention-section";
 import { useToast } from "@/hooks/use-toast";
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
-import { Check, Eye, Loader2, Plus, TriangleAlert, Pencil } from "lucide-react";
-import { LineItemGrid } from "@/components/shared/line-items/line-item-grid";
+import { Eye, Pencil } from "lucide-react";
+import {
+	Frame,
+	FrameFooter,
+	FrameHeader,
+	FramePanel,
+	FrameTitle,
+} from "@/components/reui/frame";
+import {
+	LineItemGrid,
+	LineItemGridHints,
+} from "@/components/shared/line-items/line-item-grid";
 import { LineItemsTotals } from "@/components/shared/line-items/line-items-totals";
-import { PricingPanel } from "@/components/shared/line-items/pricing-panel";
+import { PricingFooter } from "@/components/shared/line-items/pricing-footer";
+import { SaveStateIndicator } from "@/components/shared/line-items/save-state-indicator";
 import { useQuoteLineItemsController } from "@/components/shared/line-items/use-quote-line-items-controller";
 import {
 	computeDisplayTotals,
@@ -23,7 +34,6 @@ import {
 	TooltipContent,
 	TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { cn } from "@/lib/utils";
 
 interface OverviewTabProps {
 	quote: Doc<"quotes">;
@@ -225,93 +235,63 @@ export function OverviewTab({
 
 	return (
 		<div className="space-y-8">
-			{/* Line Items Section */}
-			<div>
-				<div className="flex items-center justify-between mb-1 min-h-8 gap-3">
-					<h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-						Line Items
-					</h3>
-					<div className="flex items-center gap-2.5">
-						<span
-							className={cn(
-								"flex items-center gap-1.5 text-xs",
-								controller.saveState === "error"
-									? "text-destructive"
-									: controller.saveState === "saving"
-										? "text-muted-foreground"
-										: "text-success"
-							)}
-							aria-live="polite"
-						>
-							{controller.saveState === "saving" ? (
-								<>
-									<Loader2
-										className="h-3 w-3 animate-spin motion-reduce:animate-none"
-										aria-hidden="true"
-									/>
-									Saving…
-								</>
-							) : controller.saveState === "error" ? (
-								<>
-									<TriangleAlert className="h-3 w-3" aria-hidden="true" />
-									Couldn&apos;t save
-								</>
-							) : (
-								<>
-									<Check className="h-3 w-3" aria-hidden="true" />
-									All changes saved
-								</>
-							)}
-						</span>
-						<Tooltip>
-							<TooltipTrigger
-								render={
-									<span
-										// A disabled button swallows pointer events, so the
-										// tooltip needs a live wrapper to hang off.
-										tabIndex={previewDisabled ? 0 : -1}
-										className="inline-flex rounded-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
-									/>
-								}
-							>
-								<Button
-									variant="outline"
-									size="sm"
-									disabled={previewDisabled}
-									onClick={onPreviewPdf}
-								>
-									<Eye className="h-4 w-4" aria-hidden="true" />
-									Preview Document
-								</Button>
-							</TooltipTrigger>
-							{previewDisabled && (
-								<TooltipContent>
-									Add a line item to preview this quote
-								</TooltipContent>
-							)}
-						</Tooltip>
-						{!controller.locked && (
-							<Button
-								variant="outline"
-								size="sm"
-								// Until the query resolves the row count is 0, which would
-								// hand the new line a colliding sortOrder.
-								disabled={lineItems === undefined}
-								onClick={() => void controller.addItem()}
-							>
-								<Plus className="h-4 w-4" />
-								Add line
-							</Button>
-						)}
-					</div>
-				</div>
-				<Separator className="mb-4" />
+			{/* Line Items */}
+			<div className="space-y-3">
+				{!controller.locked && <LineItemGridHints />}
 
-				<LineItemGrid
-					controller={controller}
-					isLoading={lineItems === undefined}
-					autoFocusFirstRow={autoFocusLineItems}
-				/>
+				<Frame dense spacing="sm">
+					<FrameHeader className="flex-row items-center justify-between gap-3">
+						<FrameTitle>Line Items</FrameTitle>
+						<div className="flex items-center gap-2.5">
+							<SaveStateIndicator state={controller.saveState} />
+							<Tooltip>
+								<TooltipTrigger
+									render={
+										<span
+											// A disabled button swallows pointer events, so the
+											// tooltip needs a live wrapper to hang off.
+											tabIndex={previewDisabled ? 0 : -1}
+											className="inline-flex rounded-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+										/>
+									}
+								>
+									<Button
+										variant="outline"
+										size="sm"
+										disabled={previewDisabled}
+										onClick={onPreviewPdf}
+									>
+										<Eye className="h-4 w-4" aria-hidden="true" />
+										Preview Document
+									</Button>
+								</TooltipTrigger>
+								{previewDisabled && (
+									<TooltipContent>
+										Add a line item to preview this quote
+									</TooltipContent>
+								)}
+							</Tooltip>
+						</div>
+					</FrameHeader>
+
+					<FramePanel className="px-0 py-0">
+						<LineItemGrid
+							bare
+							showHints={false}
+							controller={controller}
+							isLoading={lineItems === undefined}
+							autoFocusFirstRow={autoFocusLineItems}
+						/>
+					</FramePanel>
+
+					<FrameFooter>
+						<PricingFooter
+							value={pricing}
+							onSave={savePricing}
+							disabled={controller.locked}
+						/>
+					</FrameFooter>
+				</Frame>
 
 				<LineItemsTotals
 					subtotal={totals.subtotal}
@@ -320,13 +300,7 @@ export function OverviewTab({
 					total={totals.total}
 					showCostMargin={controller.showCostMargin}
 					totalCost={totalCost}
-				/>
-
-				<PricingPanel
-					value={pricing}
-					onSave={savePricing}
-					subtotal={subtotal}
-					disabled={controller.locked}
+					className="mt-0"
 				/>
 			</div>
 
