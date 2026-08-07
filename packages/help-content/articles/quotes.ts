@@ -34,7 +34,7 @@ export const quotesArticles: HelpArticle[] = [
 							"Attach a **Project** if the quote belongs to a specific job.",
 							"Give the quote a **Title**, and set a **Valid until** date if the price has a shelf life.",
 							"Add a **Message to client** and any **Terms & conditions**.",
-							"Click **Create quote**. OneTool creates the draft and opens the line item editor.",
+							"Click **Create quote**. OneTool creates the draft, opens the quote, and puts your cursor in the first line item so you can start typing right away.",
 						],
 					},
 					{
@@ -54,22 +54,35 @@ export const quotesArticles: HelpArticle[] = [
 				blocks: [
 					{
 						type: "paragraph",
-						text: "Line items are the priced pieces of the job. The subtotal, tax, and total recalculate live as you edit.",
+						text: "Line items are the priced pieces of the job, and you edit them right on the quote in a spreadsheet-style grid. Click any cell and type. The subtotal, discount, tax, and total recalculate live as you go.",
 					},
 					{
 						type: "steps",
 						items: [
-							"Click **Add Line Item** and describe the work, with a unit (like hour), a rate, and a quantity.",
-							"Repeat for each part of the job.",
-							"Click **Add Discount** to take off a percentage (up to 100 percent) or a fixed amount.",
-							"Click **Add Tax** to apply your tax rate as a percentage.",
+							"Fill in the first row: a **Description**, a **Qty**, a **Unit** (like hour), and a **Rate**. **Cost** is optional and internal.",
+							"Press **Enter** to move down a row. On the last row, Enter adds a new one. The arrow keys move between cells.",
+							"Add more rows any time with **New row** at the bottom of the grid.",
+							"Click **SKU** on a row to fill its description, unit, rate, and cost from your saved price list.",
+							"Drag the handle on the left of a row to reorder it, and tick the row checkboxes to duplicate or delete several rows at once.",
 						],
 					},
 					{
 						type: "media",
 						media: "image",
-						caption: "The line item editor with a discount and tax applied",
+						caption: "The line item grid on a quote",
 						asset: "quotes/creating-a-quote/line-item-editor-with-a-discount",
+					},
+					{
+						type: "tip",
+						text: "Already have the numbers in a spreadsheet? Copy the rows and paste them into the grid. OneTool reads the columns in the same order the grid shows them (description, quantity, unit, rate, then cost) and creates a line for each row.",
+					},
+					{
+						type: "paragraph",
+						text: "There is no Save button. Every edit saves on its own, and the marker in the **Line Items** header reads **All changes saved** once it lands. If a value cannot be saved, OneTool says so and puts the cell back the way it was.",
+					},
+					{
+						type: "note",
+						text: "**Cost** and **Margin** are for you, not the client. They are never printed on the quote the client sees.",
 					},
 					{
 						type: "tip",
@@ -78,11 +91,32 @@ export const quotesArticles: HelpArticle[] = [
 				],
 			},
 			{
-				heading: "Get a PDF",
+				heading: "Set the discount, tax, and what the client sees",
 				blocks: [
 					{
 						type: "paragraph",
-						text: "Click **Generate PDF** in the quote header to create a PDF copy of the quote. It is available in every status, so you can produce a copy while drafting or after approval. The [e-signature flow](/help/quotes/e-signatures) also builds its signature request from the quote's PDF.",
+						text: "The footer below the grid holds the pricing controls. Set a **Discount** in the first field and pick **$** or **%** with the buttons inside it, then set a **Tax** rate as a percentage in the field below. The totals beside them update as you type, and both save a moment after you stop typing.",
+					},
+					{
+						type: "paragraph",
+						text: "The **Client view** button under those fields opens **What the client sees**, which controls the columns that print on the client's copy: quantities, unit prices, line totals, and the grand total. Its label shows how many are on, and you can turn off anything you would rather not show, like unit prices on a fixed-price job.",
+					},
+				],
+			},
+			{
+				heading: "Preview and generate the PDF",
+				blocks: [
+					{
+						type: "paragraph",
+						text: "Click **Preview Document** in the **Line Items** header to see the client's copy exactly as it will be saved. The preview needs at least one line item. From the preview you can download a copy or click **Generate PDF** to store it on the quote.",
+					},
+					{
+						type: "paragraph",
+						text: "**Generate PDF** is also in the quote header, and it is available in every status, so you can produce a copy while drafting or after approval. The [e-signature flow](/help/quotes/e-signatures) builds its signature request from the quote's PDF.",
+					},
+					{
+						type: "note",
+						text: "The **Generated PDF** preview in the right-hand panel keeps track of the saved copy. Its colored header shows the status at a glance: green means the PDF matches the quote, amber means the quote's content changed since it was generated, whether line items, pricing, or terms, and offers a **Regenerate** button. Regenerate before you send so the client gets the current numbers.",
 					},
 				],
 			},
@@ -95,6 +129,10 @@ export const quotesArticles: HelpArticle[] = [
 			{
 				question: "What happens when the Valid until date passes?",
 				answer: "Nothing automatic. The date is informational and the quote keeps its current status. Only a lapsed e-signature request marks a quote as Expired.",
+			},
+			{
+				question: "Can I still edit line items after the client approves?",
+				answer: "No. Approved and declined quotes lock their line items, so the priced agreement stays exactly as the client saw it. The grid switches to read only and explains why. To price a new version, create a new quote.",
 			},
 			{
 				question: "Can I delete a quote?",

@@ -554,6 +554,11 @@ export default defineSchema({
 			})
 		),
 
+		// Last time client-visible content (line items, pricing, PDF settings,
+		// terms, validUntil) changed — drives PDF/document staleness on record
+		// pages.
+		contentUpdatedAt: v.optional(v.number()),
+
 		// Reference to the latest document version
 		latestDocumentId: v.optional(v.id("documents")),
 
@@ -662,13 +667,38 @@ export default defineSchema({
 			v.literal("cancelled")
 		),
 
-		// Financial — all DOLLARS. Unlike quotes, discountAmount/taxAmount are
-		// stored pre-computed in dollars. Stored subtotal/total are kept in sync
-		// with line items by syncInvoiceTotals (lib/invoiceTotals.ts).
+		// Financial — all DOLLARS. Two pricing modes, see lib/invoiceTotals.ts:
+		// LEGACY (none of discountEnabled/discountType/taxEnabled/taxRate set) —
+		// discountAmount/taxAmount are pre-computed dollars, subtracted/added flat.
+		// QUOTE-STYLE (any of them set) — discountAmount is a percent when
+		// discountType is "percentage", taxRate drives a derived taxAmount, and
+		// the math matches computeQuoteTotals exactly. Stored subtotal/total are
+		// kept in sync with line items by syncInvoiceTotals.
 		subtotal: v.number(), // dollars
-		discountAmount: v.optional(v.number()), // dollars
+		discountEnabled: v.optional(v.boolean()),
+		// Percent (0-100) when discountType is "percentage", otherwise dollars
+		discountAmount: v.optional(v.number()),
+		discountType: v.optional(
+			v.union(v.literal("percentage"), v.literal("fixed"))
+		),
+		taxEnabled: v.optional(v.boolean()),
+		taxRate: v.optional(v.number()), // Percentage
 		taxAmount: v.optional(v.number()), // dollars
 		total: v.number(), // dollars
+
+		// PDF settings for client view (mirrors quotes.pdfSettings)
+		pdfSettings: v.optional(
+			v.object({
+				showQuantities: v.boolean(),
+				showUnitPrices: v.boolean(),
+				showLineItemTotals: v.boolean(),
+				showTotals: v.boolean(),
+			})
+		),
+
+		// Last time client-visible content (line items, pricing, PDF settings,
+		// due date) changed — drives PDF/document staleness on record pages.
+		contentUpdatedAt: v.optional(v.number()),
 
 		// Dates
 		issuedDate: v.number(),
@@ -708,8 +738,10 @@ export default defineSchema({
 
 		description: v.string(),
 		quantity: v.number(),
+		unit: v.optional(v.string()), // e.g., "hour", "item", "day"
 		unitPrice: v.number(), // dollars
 		total: v.number(), // quantity * unitPrice, dollars (cent-rounded)
+		cost: v.optional(v.number()), // Cost per unit for margin calculation, dollars
 
 		sortOrder: v.number(),
 	})

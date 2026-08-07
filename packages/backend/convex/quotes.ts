@@ -7,6 +7,7 @@ import { getCurrentUserOrgId } from "./lib/auth";
 import { ActivityHelpers } from "./lib/activities";
 import { celebrateQuoteApproved } from "./lib/celebrations";
 import { calculateQuoteTotals, syncQuoteTotals } from "./lib/quoteTotals";
+import { assertQuoteContentEditable } from "./lib/editLocks";
 import {
 	validateParentAccess,
 	filterUndefined,
@@ -152,6 +153,26 @@ const QUOTE_TOTAL_FIELDS = [
 	"discountType",
 	"taxEnabled",
 	"taxRate",
+] as const;
+
+/**
+ * Quote fields that change what the client sees on the document. Patching any
+ * of them requires an unlocked quote and stamps contentUpdatedAt; `subtotal`
+ * and `total` are deliberately absent — they are derived, and callers echo
+ * them back alongside unrelated writes.
+ */
+const QUOTE_CONTENT_FIELDS = [
+	"discountEnabled",
+	"discountAmount",
+	"discountType",
+	"taxEnabled",
+	"taxRate",
+	"taxAmount",
+	"pdfSettings",
+	"title",
+	"terms",
+	"clientMessage",
+	"validUntil",
 ] as const;
 
 /**
@@ -789,6 +810,14 @@ export const update = userMutation({
 					: s.clientIds.has(currentQuote.clientId)
 			)
 		);
+
+		// Content edits are frozen once the client has acted on the quote. Status
+		// transitions and every other field stay editable.
+		if (QUOTE_CONTENT_FIELDS.some((field) => field in filteredUpdates)) {
+			assertQuoteContentEditable(currentQuote);
+			filteredUpdates.contentUpdatedAt = Date.now();
+		}
+
 		const oldStatus = currentQuote.status;
 
 		// Compute field-level changes before applying the update

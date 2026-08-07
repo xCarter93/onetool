@@ -1,5 +1,6 @@
 import { query, internalQuery, QueryCtx, MutationCtx } from "./_generated/server";
 import { mutation, internalMutation } from "./lib/triggers";
+import { touchInvoiceContent } from "./lib/editLocks";
 import { ConvexError, v } from "convex/values";
 import { Doc, Id } from "./_generated/dataModel";
 import { internal } from "./_generated/api";
@@ -280,6 +281,9 @@ export const create = userMutation({
 			status: "pending",
 		});
 
+		// The payment schedule prints on the invoice PDF.
+		await touchInvoiceContent(ctx, args.invoiceId);
+
 		return paymentId;
 	},
 });
@@ -333,6 +337,15 @@ export const update = userMutation({
 
 		await ctx.db.patch(id, filteredUpdates);
 
+		// Schedule-shape changes print on the invoice PDF; status flips don't.
+		if (
+			filteredUpdates.paymentAmount !== undefined ||
+			filteredUpdates.dueDate !== undefined ||
+			filteredUpdates.description !== undefined
+		) {
+			await touchInvoiceContent(ctx, payment.invoiceId);
+		}
+
 		return id;
 	},
 });
@@ -360,6 +373,9 @@ export const remove = userMutation({
 		}
 
 		await ctx.db.delete(args.id);
+
+		// The payment schedule prints on the invoice PDF.
+		await touchInvoiceContent(ctx, payment.invoiceId);
 
 		return args.id;
 	},
@@ -453,6 +469,9 @@ export const configurePayments = userMutation({
 
 			createdIds.push(paymentId);
 		}
+
+		// The payment schedule prints on the invoice PDF.
+		await touchInvoiceContent(ctx, args.invoiceId);
 
 		// Return paid payment IDs followed by new payment IDs
 		return [...paidPayments.map((p) => p._id), ...createdIds];
@@ -590,6 +609,9 @@ export const reorder = userMutation({
 				sortOrder: i,
 			});
 		}
+
+		// The payment schedule prints on the invoice PDF.
+		await touchInvoiceContent(ctx, args.invoiceId);
 	},
 });
 

@@ -116,24 +116,47 @@ export function InvoiceDetailBody({
 	const client = clientName.get(invoice.clientId) ?? "Client";
 
 	// TOTALS — straight from invoice.* (calculated by get). Never sum line items.
-	// Discount/Tax rows are conditional on the raw dollar figures (invoices store
-	// no taxRate/enabled flags), so the Tax label has no percentage.
+	// Mode split mirrors resolveInvoicePricingMode / deriveInvoiceDisplayPricing:
+	// quote-style invoices (any of the four fields set) store discountAmount as a
+	// raw percent when discountType is "percentage" and only apply discount/tax
+	// when the enabled flag is truthy, exactly like computeQuoteTotals. Legacy
+	// invoices store flat dollars with no flags.
+	const isQuotePricing =
+		invoice.discountEnabled != null ||
+		invoice.discountType != null ||
+		invoice.taxEnabled != null ||
+		invoice.taxRate != null;
+	const rawDiscount = invoice.discountAmount ?? 0;
+	const discountActive = isQuotePricing
+		? invoice.discountEnabled === true && rawDiscount > 0
+		: rawDiscount > 0;
+	const discountDollars = !discountActive
+		? 0
+		: invoice.discountType === "percentage"
+			? Math.round(invoice.subtotal * rawDiscount) / 100
+			: rawDiscount;
+	const taxActive = isQuotePricing
+		? invoice.taxEnabled === true && !!invoice.taxAmount
+		: !!invoice.taxAmount;
 	const totalsRows: { label: string; value: string; negative?: boolean }[] = [
 		{
 			label: "Subtotal",
 			value: formatCurrency(invoice.subtotal, { exact: true }),
 		},
 	];
-	if (invoice.discountAmount) {
+	if (discountDollars) {
 		totalsRows.push({
-			label: "Discount",
-			value: formatCurrency(invoice.discountAmount ?? 0, { exact: true }),
+			label:
+				invoice.discountType === "percentage"
+					? `Discount (${invoice.discountAmount}%)`
+					: "Discount",
+			value: formatCurrency(discountDollars, { exact: true }),
 			negative: true,
 		});
 	}
-	if (invoice.taxAmount) {
+	if (taxActive) {
 		totalsRows.push({
-			label: "Tax",
+			label: invoice.taxRate ? `Tax (${invoice.taxRate}%)` : "Tax",
 			value: formatCurrency(invoice.taxAmount ?? 0, { exact: true }),
 		});
 	}

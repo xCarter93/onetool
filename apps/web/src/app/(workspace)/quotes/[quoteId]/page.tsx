@@ -7,12 +7,12 @@ import { useQuery, useMutation, useConvex } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { useToast } from "@/hooks/use-toast";
 import { useCanPerformAction } from "@/hooks/use-feature-access";
-import { pdf } from "@react-pdf/renderer";
-import QuotePDF from "@/app/(workspace)/quotes/components/QuotePDF";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
 import type { Id as StorageId } from "@onetool/backend/convex/_generated/dataModel";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback, useRef } from "react";
 import { DocumentSelectionModal } from "@/app/(workspace)/quotes/components/document-selection-modal";
+import { DocumentPreviewModal } from "@/components/shared/document-preview-modal";
+import { buildQuotePdfBlob } from "./components/build-quote-pdf-blob";
 import DeleteConfirmationModal from "@/components/ui/delete-confirmation-modal";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ExclamationTriangleIcon } from "@heroicons/react/24/outline";
@@ -63,6 +63,7 @@ function QuoteDetailPageContent() {
 		useState<Id<"documents"> | null>(null);
 	const [showVersionHistory, setShowVersionHistory] = useState(false);
 	const [showDocumentModal, setShowDocumentModal] = useState(false);
+	const [showPreviewModal, setShowPreviewModal] = useState(false);
 	const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
 	const [isDeleting, setIsDeleting] = useState(false);
 	const [isConverting, setIsConverting] = useState(false);
@@ -139,6 +140,36 @@ function QuoteDetailPageContent() {
 	// undefined = the latest-document query is still resolving; null = no PDF.
 	const isLatestDocumentLoading = latestDocument === undefined;
 
+	// Last render produced by the preview, kept so Generate can skip a second
+	// identical render. Invalidated by any client-visible content change.
+	const previewBlobRef = useRef<{
+		blob: Blob;
+		contentUpdatedAt: number | undefined;
+		renderInputsFingerprint: string;
+		quoteId: Id<"quotes">;
+	} | null>(null);
+
+	// The PDF also renders client/org/property/countersigner data that
+	// contentUpdatedAt never tracks. "loading" keeps a blob rendered before
+	// those queries resolved from matching one rendered after.
+	const renderInputsFingerprint = useMemo(
+		() =>
+			JSON.stringify(
+				[client, organization, primaryProperty, countersigner].map((doc) =>
+					doc === undefined ? "loading" : doc
+				)
+			),
+		[client, organization, primaryProperty, countersigner]
+	);
+
+	// The generated PDF is stale once the quote's client-visible content moved
+	// after the newest document was stored. No stamp means nothing to compare.
+	const isPdfStale = Boolean(
+		latestDocument &&
+			quote?.contentUpdatedAt !== undefined &&
+			quote.contentUpdatedAt > latestDocument.generatedAt
+	);
+
 	// Derived state
 	const selectedDocument = useMemo(() => {
 		if (selectedVersionId && allDocumentVersions) {
@@ -206,6 +237,49 @@ function QuoteDetailPageContent() {
 		}
 	};
 
+	// Renders the quote PDF exactly the way Generate does, so what the preview
+	// shows is what gets uploaded. The result is cached against the quote's
+	// contentUpdatedAt stamp and reused by Generate while it stays valid.
+	const renderQuotePdf = useCallback(async () => {
+		if (!quote || !lineItems) {
+			throw new Error("This quote is still loading. Try again in a moment.");
+		}
+		const blob = await buildQuotePdfBlob({
+			quote,
+			lineItems,
+			client,
+			organization,
+			primaryProperty,
+			countersigner,
+		});
+		previewBlobRef.current = {
+			blob,
+			contentUpdatedAt: quote.contentUpdatedAt,
+			renderInputsFingerprint,
+			quoteId: quote._id,
+		};
+		return blob;
+	}, [
+		quote,
+		lineItems,
+		client,
+		organization,
+		primaryProperty,
+		countersigner,
+		renderInputsFingerprint,
+	]);
+
+	const takeCachedPdfBlob = (): Blob | null => {
+		const cached = previewBlobRef.current;
+		if (!cached || !quote) return null;
+		if (cached.quoteId !== quote._id) return null;
+		// Any client-visible edit since the preview invalidates it.
+		if (cached.contentUpdatedAt !== quote.contentUpdatedAt) return null;
+		if (cached.renderInputsFingerprint !== renderInputsFingerprint)
+			return null;
+		return cached.blob;
+	};
+
 	const handleGeneratePdf = async (
 		appendDocumentIds: Id<"organizationDocuments">[] = []
 	) => {
@@ -218,50 +292,9 @@ function QuoteDetailPageContent() {
 					: "Rendering and uploading…"
 			);
 
-			const element = (
-				<QuotePDF
-					quote={quote}
-					client={
-						client
-							? {
-									companyName: client.companyName,
-									streetAddress:
-										primaryProperty?.streetAddress,
-									city: primaryProperty?.city,
-									state: primaryProperty?.state,
-									zipCode: primaryProperty?.zipCode,
-									country: primaryProperty?.country,
-								}
-							: undefined
-					}
-					items={lineItems}
-					organization={
-						organization
-							? {
-									name: organization.name,
-									logoUrl:
-										organization.logoUrl || undefined,
-									address:
-										organization.address || undefined,
-									phone: organization.phone || undefined,
-									email: organization.email || undefined,
-								}
-							: undefined
-					}
-					countersigner={
-						quote.requiresCountersignature && countersigner
-							? {
-									name:
-										countersigner.name ||
-										countersigner.email,
-									email: countersigner.email,
-								}
-							: null
-					}
-					signingOrder={quote.signingOrder}
-				/>
-			);
-			const quoteBlob = await pdf(element).toBlob();
+			// Reuse the preview's render when the quote content has not moved since;
+			// appending org documents never re-renders the quote pages.
+			const quoteBlob = takeCachedPdfBlob() ?? (await renderQuotePdf());
 
 			let finalBlob = quoteBlob;
 			if (appendDocumentIds.length > 0) {
@@ -372,6 +405,14 @@ function QuoteDetailPageContent() {
 			toast.error("No PDF", "Generate a PDF first");
 			return;
 		}
+		if (isPdfStale) {
+			// Non-blocking: warning toasts survive the route change into /sign,
+			// so the notice rides along with the user instead of preventing send.
+			toast.warning(
+				"PDF may be out of date",
+				"The attached PDF is older than the latest edits. Regenerate first?"
+			);
+		}
 		router.push(`/quotes/${quoteId}/sign`);
 	};
 
@@ -454,6 +495,9 @@ function QuoteDetailPageContent() {
 					selectedDocument={selectedDocument}
 					selectedDocumentUrl={selectedDocumentUrl}
 					onGeneratePdf={() => setShowDocumentModal(true)}
+					onPreviewPdf={() => setShowPreviewModal(true)}
+					previewDisabled={!lineItems || lineItems.length === 0}
+					isPdfStale={isPdfStale}
 					onDownloadPdf={handleDownloadPdf}
 					selectedVersionId={selectedVersionId}
 					onSelectVersion={setSelectedVersionId}
@@ -481,6 +525,22 @@ function QuoteDetailPageContent() {
 				isOpen={showDocumentModal}
 				onClose={() => setShowDocumentModal(false)}
 				onConfirm={(selectedIds) => handleGeneratePdf(selectedIds)}
+			/>
+			<DocumentPreviewModal
+				open={showPreviewModal}
+				onOpenChange={setShowPreviewModal}
+				title="Quote preview"
+				description="This is exactly what gets saved when you generate the PDF."
+				renderDocument={renderQuotePdf}
+				downloadFileName={`Quote-${quote.quoteNumber || quote._id.slice(-6)}.pdf`}
+				primaryAction={{
+					label: "Generate PDF",
+					disabled: !can("quotes", "modify"),
+					onAction: () => {
+						setShowPreviewModal(false);
+						setShowDocumentModal(true);
+					},
+				}}
 			/>
 		</>
 	);

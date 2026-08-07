@@ -20,6 +20,10 @@ import {
 	userMutation,
 } from "./lib/factories";
 import { syncQuoteTotals } from "./lib/quoteTotals";
+import {
+	assertQuoteContentEditable,
+	touchQuoteContent,
+} from "./lib/editLocks";
 
 /**
  * Quote Line Item operations
@@ -227,6 +231,8 @@ export const create = userMutation({
 			)
 		);
 
+		assertQuoteContentEditable(parentQuote);
+
 		// Calculate amount
 		const amount = calculateQuoteLineItemAmount(args.quantity, args.rate);
 
@@ -236,7 +242,7 @@ export const create = userMutation({
 		});
 
 		// Keep stored quote totals (and aggregates) in sync with line items
-		await syncQuoteTotals(ctx, args.quoteId);
+		await syncQuoteTotals(ctx, args.quoteId, { touchContent: true });
 
 		return lineItemId;
 	},
@@ -279,6 +285,8 @@ export const update = userMutation({
 			)
 		);
 
+		assertQuoteContentEditable(parentQuote);
+
 		// Validate new quoteId if changing
 		if (filteredUpdates.quoteId) {
 			const newParent = await validateQuoteAccess(ctx, filteredUpdates.quoteId);
@@ -290,6 +298,8 @@ export const update = userMutation({
 						: s.clientIds.has(newParent.clientId)
 				)
 			);
+			// …and must itself accept content edits.
+			assertQuoteContentEditable(newParent);
 		}
 
 		// Recalculate amount if quantity or rate changed
@@ -304,12 +314,16 @@ export const update = userMutation({
 		await ctx.db.patch(id, filteredUpdates);
 
 		// Keep stored totals in sync — both quotes when the item was reassigned
-		await syncQuoteTotals(ctx, currentLineItem.quoteId);
+		await syncQuoteTotals(ctx, currentLineItem.quoteId, {
+			touchContent: true,
+		});
 		if (
 			filteredUpdates.quoteId &&
 			filteredUpdates.quoteId !== currentLineItem.quoteId
 		) {
-			await syncQuoteTotals(ctx, filteredUpdates.quoteId);
+			await syncQuoteTotals(ctx, filteredUpdates.quoteId, {
+				touchContent: true,
+			});
 		}
 
 		return id;
@@ -334,8 +348,10 @@ export const remove = userMutation({
 			)
 		);
 
+		assertQuoteContentEditable(parentQuote);
+
 		await ctx.db.delete(args.id);
-		await syncQuoteTotals(ctx, lineItem.quoteId);
+		await syncQuoteTotals(ctx, lineItem.quoteId, { touchContent: true });
 		return args.id;
 	},
 });
@@ -370,6 +386,8 @@ export const bulkCreate = userMutation({
 			)
 		);
 
+		assertQuoteContentEditable(parentQuote);
+
 		// Validate all items using shared utility
 		validateBulkLineItems(args.lineItems, "quote");
 
@@ -393,7 +411,7 @@ export const bulkCreate = userMutation({
 			createdIds.push(lineItemId);
 		}
 
-		await syncQuoteTotals(ctx, args.quoteId);
+		await syncQuoteTotals(ctx, args.quoteId, { touchContent: true });
 
 		return createdIds;
 	},
@@ -420,6 +438,8 @@ export const reorder = userMutation({
 			)
 		);
 
+		assertQuoteContentEditable(parentQuote);
+
 		// Validate that all line items belong to the quote and update sort order
 		for (let i = 0; i < args.lineItemIds.length; i++) {
 			const lineItem = await ctx.orgEntity(
@@ -431,6 +451,9 @@ export const reorder = userMutation({
 			}
 			await ctx.db.patch(args.lineItemIds[i], { sortOrder: i });
 		}
+
+		// Ordering is client-visible on the PDF even though totals are unchanged.
+		await touchQuoteContent(ctx, args.quoteId);
 	},
 });
 
@@ -453,6 +476,8 @@ export const duplicate = userMutation({
 			)
 		);
 
+		assertQuoteContentEditable(parentQuote);
+
 		// Get all items for the quote to determine next sort order
 		const allItems = await ctx.db
 			.query("quoteLineItems")
@@ -474,7 +499,7 @@ export const duplicate = userMutation({
 			sortOrder: nextSortOrder,
 		});
 
-		await syncQuoteTotals(ctx, originalItem.quoteId);
+		await syncQuoteTotals(ctx, originalItem.quoteId, { touchContent: true });
 
 		return duplicateId;
 	},

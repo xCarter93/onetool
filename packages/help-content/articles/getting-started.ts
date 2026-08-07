@@ -512,20 +512,20 @@ export const gettingStartedArticles: HelpArticle[] = [
 				blocks: [
 					{
 						type: "paragraph",
-						text: "After you create the quote, OneTool opens the line item editor.",
+						text: "After you create the quote, OneTool opens it with your cursor already in the first line item.",
 					},
 					{
 						type: "steps",
 						items: [
-							"Click **Add Line Item** and describe the work, with a unit, a rate, and a quantity.",
-							"Repeat for each part of the job. The subtotal updates as you go.",
-							"Use **Add Discount** for a percentage or fixed discount, and **Add Tax** to apply your tax rate.",
+							"Describe the work in the first row, with a unit, a rate, and a quantity.",
+							"Press **Enter** to start the next row. The subtotal updates as you go.",
+							"Set a percentage or fixed discount and your tax rate in the footer below the grid.",
 						],
 					},
 					{
 						type: "media",
 						media: "image",
-						caption: "The quote line item editor",
+						caption: "The line item grid on a quote",
 						asset: "getting-started/send-your-first-quote/quote-line-item-editor",
 					},
 					{

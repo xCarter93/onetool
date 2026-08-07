@@ -1,78 +1,160 @@
 "use client";
 
 import { Doc, Id } from "@onetool/backend/convex/_generated/dataModel";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useMutation } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
 import { MentionSection } from "@/components/shared/mention-section";
 import { useToast } from "@/hooks/use-toast";
-import { useState, useEffect, useRef } from "react";
+import { convexErrorMessage } from "@/lib/convex-error";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { Eye, Pencil } from "lucide-react";
 import {
-	DataGrid,
-	DataGridContainer,
-} from "@/components/reui/data-grid/data-grid";
-import { DataGridTable } from "@/components/reui/data-grid/data-grid-table";
+	Frame,
+	FrameFooter,
+	FrameHeader,
+	FramePanel,
+	FrameTitle,
+} from "@/components/reui/frame";
 import {
-	ColumnDef,
-	getCoreRowModel,
-	useReactTable,
-} from "@tanstack/react-table";
-import { Settings, ClipboardList, Pencil } from "lucide-react";
-import { useRouter } from "next/navigation";
-import { formatCurrency } from "@/lib/money";
+	LineItemGrid,
+	LineItemGridHints,
+} from "@/components/shared/line-items/line-item-grid";
+import { LineItemsTotals } from "@/components/shared/line-items/line-items-totals";
+import { PricingFooter } from "@/components/shared/line-items/pricing-footer";
+import { SaveStateIndicator } from "@/components/shared/line-items/save-state-indicator";
+import { SelectionActions } from "@/components/shared/line-items/selection-actions";
+import { useQuoteLineItemsController } from "@/components/shared/line-items/use-quote-line-items-controller";
+import {
+	computeDisplayTotals,
+	type LineItemsPricingSettings,
+} from "@/components/shared/line-items/types";
+import {
+	Tooltip,
+	TooltipContent,
+	TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 interface OverviewTabProps {
 	quote: Doc<"quotes">;
 	quoteId: Id<"quotes">;
 	lineItems: Doc<"quoteLineItems">[] | undefined;
+	onPreviewPdf: () => void;
+	/** True while the quote has nothing to render (loading or no line items). */
+	previewDisabled: boolean;
 }
 
-const columns: ColumnDef<Doc<"quoteLineItems">>[] = [
-	{
-		accessorKey: "description",
-		header: "Description",
-		meta: { cellClassName: "font-medium" },
-		cell: ({ row }) => row.original.description,
-	},
-	{
-		accessorKey: "quantity",
-		header: "Qty",
-		meta: { headerClassName: "text-center", cellClassName: "text-center" },
-		cell: ({ row }) => row.original.quantity,
-	},
-	{
-		accessorKey: "unit",
-		header: "Unit",
-		meta: { headerClassName: "text-center", cellClassName: "text-center" },
-		cell: ({ row }) => row.original.unit || "item",
-	},
-	{
-		accessorKey: "rate",
-		header: "Rate",
-		meta: { headerClassName: "text-right", cellClassName: "text-right" },
-		cell: ({ row }) => formatCurrency(row.original.rate),
-	},
-	{
-		accessorKey: "amount",
-		header: "Amount",
-		meta: {
-			headerClassName: "text-right",
-			cellClassName: "text-right font-medium",
-		},
-		cell: ({ row }) => formatCurrency(row.original.amount),
-	},
-];
-
-export function OverviewTab({ quote, quoteId, lineItems }: OverviewTabProps) {
-	const router = useRouter();
+export function OverviewTab({
+	quote,
+	quoteId,
+	lineItems,
+	onPreviewPdf,
+	previewDisabled,
+}: OverviewTabProps) {
 	const toast = useToast();
 	const updateQuote = useMutation(api.quotes.update);
-	const table = useReactTable({
-		data: lineItems ?? [],
-		columns,
-		getCoreRowModel: getCoreRowModel(),
+	const router = useRouter();
+	const pathname = usePathname();
+	const searchParams = useSearchParams();
+
+	// The new-quote dialog hands the caret over with ?focus=line-items. Latch it
+	// on mount so stripping the param below can't un-flip the grid's prop, and
+	// so a refresh of the clean URL never re-triggers the focus.
+	const [autoFocusLineItems] = useState(
+		() => searchParams.get("focus") === "line-items"
+	);
+	const focusParamClearedRef = useRef(false);
+
+	useEffect(() => {
+		if (!autoFocusLineItems || focusParamClearedRef.current) return;
+		focusParamClearedRef.current = true;
+		// Strip only `focus`, so any other param on the URL survives.
+		const next = new URLSearchParams(searchParams.toString());
+		next.delete("focus");
+		const query = next.toString();
+		router.replace(query ? `${pathname}?${query}` : pathname, {
+			scroll: false,
+		});
+	}, [autoFocusLineItems, pathname, router, searchParams]);
+
+	const controller = useQuoteLineItemsController({
+		quote,
+		quoteId,
+		lineItems,
 	});
+
+	// Display-only math. The server recomputes and stores subtotal/total from
+	// the line items — never send computed totals back.
+	// Row selection lives here so the frame header can host the bulk actions.
+	// Pruned at derivation time — a deleted row must not linger as selected.
+	const [selectedLineIds, setSelectedLineIds] = useState<string[]>([]);
+	const selection = useMemo(
+		() =>
+			selectedLineIds.filter((id) =>
+				controller.items.some((item) => item.id === id)
+			),
+		[selectedLineIds, controller.items]
+	);
+
+	const pricing: LineItemsPricingSettings = useMemo(
+		() => ({
+			discountAmount: quote.discountEnabled ? (quote.discountAmount ?? 0) : 0,
+			discountType: quote.discountType ?? "fixed",
+			taxRate: quote.taxEnabled ? (quote.taxRate ?? 0) : 0,
+			pdfSettings: {
+				showQuantities: quote.pdfSettings?.showQuantities ?? true,
+				showUnitPrices: quote.pdfSettings?.showUnitPrices ?? true,
+				showLineItemTotals: quote.pdfSettings?.showLineItemTotals ?? true,
+				showTotals: quote.pdfSettings?.showTotals ?? true,
+			},
+		}),
+		[
+			quote.discountEnabled,
+			quote.discountAmount,
+			quote.discountType,
+			quote.taxEnabled,
+			quote.taxRate,
+			quote.pdfSettings,
+		]
+	);
+
+	const subtotal = useMemo(
+		() => controller.items.reduce((sum, item) => sum + item.quantity * item.rate, 0),
+		[controller.items]
+	);
+	const totalCost = useMemo(
+		() =>
+			controller.items.reduce(
+				(sum, item) => sum + item.quantity * (item.cost ?? 0),
+				0
+			),
+		[controller.items]
+	);
+	const totals = computeDisplayTotals(subtotal, pricing);
+
+	const savePricing = useCallback(
+		async (next: LineItemsPricingSettings) => {
+			try {
+				await updateQuote({
+					id: quoteId,
+					discountEnabled: next.discountAmount > 0,
+					discountAmount: next.discountAmount,
+					discountType: next.discountType,
+					taxEnabled: next.taxRate > 0,
+					taxRate: next.taxRate,
+					pdfSettings: next.pdfSettings,
+				});
+			} catch (err) {
+				toast.error(
+					"Couldn't save pricing",
+					convexErrorMessage(err, "Failed to save")
+				);
+			}
+		},
+		[quoteId, toast, updateQuote]
+	);
 
 	// Inline editing for terms
 	const [isEditingTerms, setIsEditingTerms] = useState(false);
@@ -99,6 +181,8 @@ export function OverviewTab({ quote, quoteId, lineItems }: OverviewTabProps) {
 	}, [isEditingMessage]);
 
 	const startEditingTerms = () => {
+		// Terms are gated server-side once the quote locks; don't open a dead editor.
+		if (controller.locked) return;
 		setTermsValue(quote.terms || "");
 		setIsEditingTerms(true);
 	};
@@ -132,6 +216,7 @@ export function OverviewTab({ quote, quoteId, lineItems }: OverviewTabProps) {
 	};
 
 	const startEditingMessage = () => {
+		if (controller.locked) return;
 		setMessageValue(quote.clientMessage || "");
 		setIsEditingMessage(true);
 	};
@@ -165,91 +250,93 @@ export function OverviewTab({ quote, quoteId, lineItems }: OverviewTabProps) {
 
 	return (
 		<div className="space-y-8">
-			{/* Line Items Section */}
-			<div>
-				<div className="flex items-center justify-between mb-1 min-h-8">
-					<h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-						Line Items
-					</h3>
-					<Button
-						variant="outline"
-						size="sm"
-						onClick={() =>
-							router.push(`/quotes/${quoteId}/quoteLineEditor`)
-						}
-					>
-						<Settings className="h-4 w-4" />
-						Edit Line Items
-					</Button>
-				</div>
-				<Separator className="mb-4" />
+			{/* Line Items */}
+			<div className="space-y-3">
+				{!controller.locked && <LineItemGridHints />}
 
-				{lineItems && lineItems.length > 0 ? (
-					<>
-						<DataGrid
-							table={table}
-							recordCount={lineItems.length}
-							tableLayout={{ width: "auto", headerBackground: true }}
-						>
-							<DataGridContainer className="rounded-lg border">
-								<DataGridTable />
-							</DataGridContainer>
-						</DataGrid>
-
-						{/* Totals */}
-						<div className="mt-6 space-y-2">
-							<div className="flex justify-between text-sm">
-								<span className="text-muted-foreground">
-									Subtotal:
-								</span>
-								<span className="font-medium">
-									{formatCurrency(quote.subtotal)}
-								</span>
-							</div>
-							{quote.discountEnabled &&
-								quote.discountAmount && (
-									<div className="flex justify-between text-sm">
-										<span className="text-muted-foreground">
-											Discount:
-										</span>
-										<span className="font-medium text-red-600 dark:text-red-400">
-											-
-											{quote.discountType === "percentage"
-												? `${quote.discountAmount}%`
-												: formatCurrency(
-														quote.discountAmount
-													)}
-										</span>
-									</div>
-								)}
-							{quote.taxEnabled && quote.taxAmount && (
-								<div className="flex justify-between text-sm">
-									<span className="text-muted-foreground">
-										Tax:
-									</span>
-									<span className="font-medium">
-										{formatCurrency(quote.taxAmount)}
-									</span>
+				<Frame dense spacing="sm">
+					<FrameHeader className="flex-row items-center justify-between gap-3">
+						<FrameTitle>Line Items</FrameTitle>
+						<div className="flex items-center gap-2.5">
+							{selection.length > 0 ? (
+								<SelectionActions
+									className="duration-150 ease-out animate-in fade-in-0 motion-reduce:animate-none"
+									count={selection.length}
+									onDuplicate={() => {
+										void controller.duplicateItems(selection);
+										setSelectedLineIds([]);
+									}}
+									onDelete={() => {
+										void controller.removeItems(selection);
+										setSelectedLineIds([]);
+									}}
+									onClear={() => setSelectedLineIds([])}
+								/>
+							) : (
+								<div className="flex items-center gap-2.5 duration-150 ease-out animate-in fade-in-0 motion-reduce:animate-none">
+									<SaveStateIndicator state={controller.saveState} />
+									<Tooltip>
+										<TooltipTrigger
+											render={
+												<span
+													// A disabled button swallows pointer events, so
+													// the tooltip needs a live wrapper to hang off.
+													tabIndex={previewDisabled ? 0 : -1}
+													className="inline-flex rounded-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+												/>
+											}
+										>
+											<Button
+												variant="outline"
+												size="sm"
+												disabled={previewDisabled}
+												onClick={onPreviewPdf}
+											>
+												<Eye className="h-4 w-4" aria-hidden="true" />
+												Preview Document
+											</Button>
+										</TooltipTrigger>
+										{previewDisabled && (
+											<TooltipContent>
+												Add a line item to preview this quote
+											</TooltipContent>
+										)}
+									</Tooltip>
 								</div>
 							)}
-							<div className="border-t pt-2">
-								<div className="flex justify-between text-lg font-bold">
-									<span>Total:</span>
-									<span>{formatCurrency(quote.total)}</span>
-								</div>
-							</div>
 						</div>
-					</>
-				) : (
-					<div className="flex flex-col items-center justify-center py-12 text-center">
-						<div className="w-12 h-12 bg-muted rounded-lg flex items-center justify-center mb-3">
-							<ClipboardList className="h-6 w-6 text-muted-foreground" />
-						</div>
-						<p className="text-sm text-muted-foreground">
-							No line items added yet
-						</p>
-					</div>
-				)}
+					</FrameHeader>
+
+					<FramePanel className="px-0 py-0">
+						<LineItemGrid
+							bare
+							showHints={false}
+						selectedIds={selection}
+						onSelectionChange={setSelectedLineIds}
+							controller={controller}
+							isLoading={lineItems === undefined}
+							autoFocusFirstRow={autoFocusLineItems}
+						/>
+					</FramePanel>
+
+					<FrameFooter>
+						<PricingFooter
+							value={pricing}
+							onSave={savePricing}
+							disabled={controller.locked}
+						/>
+					</FrameFooter>
+				</Frame>
+
+				<LineItemsTotals
+					subtotal={totals.subtotal}
+					discountAmount={totals.discountAmount}
+					taxAmount={totals.taxAmount}
+					total={totals.total}
+					showCostMargin={controller.showCostMargin}
+					totalCost={totalCost}
+					className="mt-0"
+				/>
 			</div>
 
 			{/* Terms & Client Message Section */}

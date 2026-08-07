@@ -24,18 +24,21 @@ interface InvoiceDetailTabsProps {
 	primaryProperty: Doc<"clientProperties"> | null | undefined;
 	organization: Doc<"organizations"> | null | undefined;
 	// Payment data
-	invoiceWithPayments: {
-		payments: Doc<"payments">[];
-		paymentSummary: {
-			totalPayments: number;
-			paidCount: number;
-			pendingCount: number;
-			paidAmount: number;
-			remainingAmount: number;
-			allPaymentsPaid: boolean;
-			percentPaid: number;
-		};
-	};
+	invoiceWithPayments:
+		| {
+				payments: Doc<"payments">[];
+				paymentSummary: {
+					totalPayments: number;
+					paidCount: number;
+					pendingCount: number;
+					paidAmount: number;
+					remainingAmount: number;
+					allPaymentsPaid: boolean;
+					percentPaid: number;
+				};
+		  }
+		| null
+		| undefined;
 	onConfigurePayments: () => void;
 	// PDF section
 	latestDocument: Doc<"documents"> | null | undefined;
@@ -43,6 +46,9 @@ interface InvoiceDetailTabsProps {
 	selectedDocument: Doc<"documents"> | null | undefined;
 	selectedDocumentUrl: string | null | undefined;
 	onGeneratePdf: () => void;
+	onPreviewPdf: () => void;
+	previewDisabled: boolean;
+	isPdfStale: boolean;
 	onDownloadPdf: () => void;
 	selectedVersionId: Id<"documents"> | null;
 	onSelectVersion: (id: Id<"documents"> | null) => void;
@@ -68,6 +74,9 @@ export function InvoiceDetailTabs({
 	selectedDocument,
 	selectedDocumentUrl,
 	onGeneratePdf,
+	onPreviewPdf,
+	previewDisabled,
+	isPdfStale,
 	onDownloadPdf,
 	selectedVersionId,
 	onSelectVersion,
@@ -86,6 +95,7 @@ export function InvoiceDetailTabs({
 		selectedDocument,
 		selectedDocumentUrl,
 		onGeneratePdf,
+		isPdfStale,
 		onDownloadPdf,
 		selectedVersionId,
 		onSelectVersion,
@@ -116,7 +126,10 @@ export function InvoiceDetailTabs({
 							invoice={invoice}
 							invoiceId={invoiceId}
 							lineItems={lineItems}
+							payments={invoiceWithPayments?.payments}
 							paymentSummary={invoiceWithPayments?.paymentSummary}
+							onPreviewPdf={onPreviewPdf}
+							previewDisabled={previewDisabled}
 						/>
 					</PillTabsContent>
 
@@ -124,11 +137,13 @@ export function InvoiceDetailTabs({
 						value="payments"
 						className="mt-0 pt-5"
 					>
-						<PaymentScheduleTab
-							invoiceWithPayments={invoiceWithPayments}
-							organization={organization}
-							onConfigurePayments={onConfigurePayments}
-						/>
+						{invoiceWithPayments && (
+							<PaymentScheduleTab
+								invoiceWithPayments={invoiceWithPayments}
+								organization={organization}
+								onConfigurePayments={onConfigurePayments}
+							/>
+						)}
 					</PillTabsContent>
 				</div>
 
@@ -141,7 +156,7 @@ export function InvoiceDetailTabs({
 			</div>
 
 			{/* Sidebar for mobile (below content) */}
-			<div className="xl:hidden mt-6 border-t-2 border-border/80 pt-6 bg-muted/40 dark:bg-muted/50 rounded-lg">
+			<div className="xl:hidden mt-6 pt-6 bg-muted/40 dark:bg-muted/50 rounded-lg">
 				<InvoiceDetailSidebar {...sidebarProps} />
 			</div>
 		</PillTabs>

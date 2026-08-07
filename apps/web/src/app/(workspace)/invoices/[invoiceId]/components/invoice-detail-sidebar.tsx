@@ -28,22 +28,21 @@ import {
 	Phone,
 	MapPin,
 	FolderOpen,
-	DollarSign,
-	Percent,
-	Receipt,
 	Pencil,
 	Lock,
 	Check,
+	CheckCircle2,
 	X,
 	FileText,
 	Eye,
 	Download,
 	History,
 	Clock,
+	AlertTriangle,
+	RefreshCw,
 } from "lucide-react";
 import Link from "next/link";
 import { usePermissions } from "@/hooks/use-permissions";
-import { formatCurrency } from "@/lib/money";
 import {
 	localDateToUtcMidnightMs,
 	todayUtcMidnightMs,
@@ -90,6 +89,8 @@ interface InvoiceDetailSidebarProps {
 	selectedDocument: Doc<"documents"> | null | undefined;
 	selectedDocumentUrl: string | null | undefined;
 	onGeneratePdf: () => void;
+	/** Invoice content changed after the newest PDF was stored. */
+	isPdfStale: boolean;
 	onDownloadPdf: () => void;
 	selectedVersionId: Id<"documents"> | null;
 	onSelectVersion: (id: Id<"documents"> | null) => void;
@@ -109,6 +110,7 @@ export function InvoiceDetailSidebar({
 	selectedDocument,
 	selectedDocumentUrl,
 	onGeneratePdf,
+	isPdfStale,
 	onDownloadPdf,
 	selectedVersionId,
 	onSelectVersion,
@@ -120,6 +122,9 @@ export function InvoiceDetailSidebar({
 
 	const { can, isLoading: permissionsLoading } = usePermissions();
 	const canModify = can("invoices", "modify");
+	// Without the documents grant the PDF queries are skipped forever, so
+	// `undefined` there means "no access", not "still loading".
+	const canViewDocuments = can("documents");
 	const showReadOnly = !permissionsLoading && !canModify;
 	// Editable rows get the interactive affordance; read-only rows sit flat.
 	const rowClass = `flex items-start gap-3 py-2.5 -mx-2 px-2 rounded-md transition-colors${
@@ -536,213 +541,271 @@ export function InvoiceDetailSidebar({
 
 			<Separator className="my-4" />
 
-			{/* Invoice Financials Section */}
-			<h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-3">
-				Invoice Financials
-			</h3>
-			<div className="space-y-0">
-				<div className="flex items-start gap-3 py-2.5 -mx-2 px-2">
-					<DollarSign className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
-					<span className="text-sm text-muted-foreground w-28 shrink-0">
-						Subtotal
-					</span>
-					<div className="flex-1 min-w-0">
-						<span className="text-sm text-foreground">
-							{formatCurrency(invoice.subtotal)}
-						</span>
-					</div>
-				</div>
-
-				{invoice.discountAmount != null && invoice.discountAmount > 0 && (
-					<div className="flex items-start gap-3 py-2.5 -mx-2 px-2">
-						<Percent className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
-						<span className="text-sm text-muted-foreground w-28 shrink-0">
-							Discount
-						</span>
-						<div className="flex-1 min-w-0">
-							<span className="text-sm text-red-600 dark:text-red-400">
-								-{formatCurrency(invoice.discountAmount)}
-							</span>
-						</div>
-					</div>
-				)}
-
-				{invoice.taxAmount != null && invoice.taxAmount > 0 && (
-					<div className="flex items-start gap-3 py-2.5 -mx-2 px-2">
-						<Receipt className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
-						<span className="text-sm text-muted-foreground w-28 shrink-0">
-							Tax
-						</span>
-						<div className="flex-1 min-w-0">
-							<span className="text-sm text-foreground">
-								{formatCurrency(invoice.taxAmount)}
-							</span>
-						</div>
-					</div>
-				)}
-
-				<div className="flex items-start gap-3 py-2.5 -mx-2 px-2">
-					<DollarSign className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
-					<span className="text-sm text-muted-foreground w-28 shrink-0 font-medium">
-						Total
-					</span>
-					<div className="flex-1 min-w-0">
-						<span className="text-sm text-foreground font-medium">
-							{formatCurrency(invoice.total)}
-						</span>
-					</div>
-				</div>
-			</div>
-
-			<Separator className="my-4" />
-
 			{/* Generated PDF Section */}
 			<h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-3">
 				Generated PDF
 			</h3>
 			<div className="py-2">
-				{selectedDocumentUrl ? (
-					<div className="space-y-4">
-						{selectedDocument && (
-							<div className="flex items-center gap-2 mb-2">
-								<Badge variant="outline" className="text-xs">
-									v{selectedDocument.version}
-								</Badge>
-							</div>
-						)}
-						<div className="h-48 bg-gray-50 dark:bg-gray-800 rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden">
-							<iframe
-								src={selectedDocumentUrl}
-								className="w-full h-full"
-								title="PDF Preview"
-								style={{ border: "none" }}
+				{latestDocument === null ? (
+					<div className="rounded-lg border border-border bg-background/60 p-4">
+						<div className="flex items-start gap-3">
+							<FileText
+								className="h-5 w-5 text-muted-foreground shrink-0 mt-0.5"
+								aria-hidden="true"
 							/>
+							<div className="min-w-0 flex-1">
+								<p className="text-sm font-medium text-foreground">
+									No PDF yet
+								</p>
+								<p className="mt-1 text-sm text-muted-foreground">
+									Generate one to send this invoice.
+								</p>
+								<Button
+									variant="outline"
+									size="sm"
+									className="mt-3"
+									onClick={onGeneratePdf}
+									disabled={!canModify}
+								>
+									<FileText className="h-4 w-4" aria-hidden="true" />
+									Generate PDF
+								</Button>
+							</div>
 						</div>
+					</div>
+				) : latestDocument === undefined ? (
+					<div className="rounded-lg border border-border bg-background/60 p-4">
+						<p className="text-sm text-muted-foreground">
+							{permissionsLoading || canViewDocuments
+								? "Checking for a generated PDF…"
+								: "You do not have access to this invoice's documents."}
+						</p>
+					</div>
+				) : (
+					<div className="space-y-3">
+						{(() => {
+							const viewingOlder =
+								!!selectedDocument &&
+								selectedDocument._id !== latestDocument._id;
+							const frame = viewingOlder
+								? {
+										border: "border-border",
+										strip: "bg-muted/60",
+										icon: (
+											<History
+												className="h-3.5 w-3.5 text-muted-foreground shrink-0"
+												aria-hidden="true"
+											/>
+										),
+										label: `Viewing v${selectedDocument.version}`,
+										detail: `v${latestDocument.version} is current`,
+									}
+								: isPdfStale
+									? {
+											border: "border-warning/50",
+											strip: "bg-warning/10",
+											icon: (
+												<AlertTriangle
+													className="h-3.5 w-3.5 text-warning shrink-0"
+													aria-hidden="true"
+												/>
+											),
+											label: `v${latestDocument.version} is out of date`,
+											detail: "Regenerate before you send",
+										}
+									: {
+											border: "border-success/40",
+											strip: "bg-success/10",
+											icon: (
+												<CheckCircle2
+													className="h-3.5 w-3.5 text-success shrink-0"
+													aria-hidden="true"
+												/>
+											),
+											label: `v${latestDocument.version} is up to date`,
+											detail: `Generated ${formatDate(latestDocument.generatedAt)}`,
+										};
+							return (
+								<div
+									className={`overflow-hidden rounded-lg border ${frame.border} bg-background/60`}
+								>
+									<div
+										className={`flex items-center gap-2 border-b ${frame.border} ${frame.strip} px-3 py-2`}
+									>
+										{frame.icon}
+										<span className="shrink-0 text-xs font-medium text-foreground">
+											{frame.label}
+										</span>
+										<span className="min-w-0 truncate text-xs text-muted-foreground">
+											{frame.detail}
+										</span>
+										<div className="ml-auto shrink-0">
+											{viewingOlder ? (
+												<Button
+													variant="ghost"
+													size="sm"
+													className="h-6 px-2 text-xs"
+													onClick={() => onSelectVersion(null)}
+												>
+													View latest
+												</Button>
+											) : isPdfStale ? (
+												<Button
+													variant="outline"
+													size="sm"
+													className="h-6 px-2 text-xs"
+													onClick={onGeneratePdf}
+													disabled={!canModify}
+												>
+													<RefreshCw
+														className="h-3 w-3"
+														aria-hidden="true"
+													/>
+													Regenerate
+												</Button>
+											) : null}
+										</div>
+									</div>
+									{selectedDocumentUrl ? (
+										<iframe
+											src={selectedDocumentUrl}
+											className="h-48 w-full bg-muted/40"
+											title="PDF preview"
+											style={{ border: "none" }}
+										/>
+									) : (
+										<div className="flex h-48 items-center justify-center bg-muted/40">
+											<p className="text-sm text-muted-foreground">
+												Loading preview…
+											</p>
+										</div>
+									)}
+									<div className="flex flex-wrap items-center gap-1 border-t border-border/70 px-2 py-1.5">
+										{selectedDocumentUrl ? (
+											<Button
+												variant="ghost"
+												size="sm"
+												render={
+													<a
+														href={selectedDocumentUrl}
+														target="_blank"
+														rel="noopener noreferrer"
+													/>
+												}
+											>
+												<Eye
+													className="h-4 w-4"
+													aria-hidden="true"
+												/>
+												Open in new tab
+											</Button>
+										) : (
+											<Button variant="ghost" size="sm" disabled>
+												<Eye
+													className="h-4 w-4"
+													aria-hidden="true"
+												/>
+												Open in new tab
+											</Button>
+										)}
+										<Button
+											variant="ghost"
+											size="sm"
+											onClick={onDownloadPdf}
+											disabled={!selectedDocumentUrl}
+										>
+											<Download
+												className="h-4 w-4"
+												aria-hidden="true"
+											/>
+											Download
+										</Button>
+										{!viewingOlder && !isPdfStale && (
+											<Button
+												variant="ghost"
+												size="sm"
+												className="ml-auto"
+												onClick={onGeneratePdf}
+												disabled={!canModify}
+											>
+												<RefreshCw
+													className="h-4 w-4"
+													aria-hidden="true"
+												/>
+												Regenerate
+											</Button>
+										)}
+									</div>
+								</div>
+							);
+						})()}
 
-						<div className="flex gap-2">
-							<a
-								href={selectedDocumentUrl}
-								target="_blank"
-								rel="noopener noreferrer"
-								className="flex-1"
-							>
+						{allDocumentVersions && allDocumentVersions.length > 1 && (
+							<div className="pt-2 border-t border-border">
 								<Button
 									variant="outline"
 									size="sm"
 									className="w-full"
+									onClick={onToggleVersionHistory}
 								>
-									<Eye className="h-4 w-4 mr-2" />
-									View
+									<History className="h-4 w-4" aria-hidden="true" />
+									{showVersionHistory ? "Hide" : "Show"} version history (
+									{allDocumentVersions.length})
 								</Button>
-							</a>
-							<Button
-								variant="outline"
-								size="sm"
-								className="w-full flex-1"
-								onClick={onDownloadPdf}
-							>
-								<Download className="h-4 w-4 mr-2" />
-								Download
-							</Button>
-						</div>
 
-						{allDocumentVersions &&
-							allDocumentVersions.length > 1 && (
-								<div className="pt-2 border-t border-gray-200 dark:border-gray-700">
-									<Button
-										variant="outline"
-										size="sm"
-										className="w-full"
-										onClick={onToggleVersionHistory}
-									>
-										<History className="h-4 w-4 mr-2" />
-										{showVersionHistory
-											? "Hide"
-											: "Show"}{" "}
-										Version History (
-										{allDocumentVersions.length})
-									</Button>
-
-									{showVersionHistory && (
-										<div className="mt-3 space-y-2 max-h-48 overflow-y-auto">
-											{allDocumentVersions.map(
-												(version) => (
-													<button
-														key={version._id}
-														onClick={() => {
-															onSelectVersion(
-																version._id ===
-																	latestDocument?._id
-																	? null
-																	: version._id
-															);
-														}}
-														className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${
-															selectedVersionId ===
-																version._id ||
-															(!selectedVersionId &&
-																version._id ===
-																	latestDocument?._id)
-																? "bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800"
-																: "bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800"
-														}`}
-													>
-														<div className="flex items-center justify-between">
-															<div className="flex items-center gap-2">
-																<Clock className="h-3 w-3 text-gray-400" />
-																<span className="font-medium">
-																	Version{" "}
-																	{
-																		version.version
-																	}
-																</span>
-																{version._id ===
-																	latestDocument?._id && (
-																	<Badge
-																		variant="default"
-																		className="text-xs"
-																	>
-																		Latest
-																	</Badge>
-																)}
-															</div>
-															<span className="text-xs text-gray-500">
-																{new Date(
-																	version.generatedAt
-																).toLocaleDateString()}{" "}
-																{new Date(
-																	version.generatedAt
-																).toLocaleTimeString(
-																	[],
-																	{
-																		hour: "2-digit",
-																		minute: "2-digit",
-																	}
-																)}
+								{showVersionHistory && (
+									<div className="mt-3 space-y-2 max-h-48 overflow-y-auto">
+										{allDocumentVersions.map((version) => {
+											const isActive =
+												selectedVersionId === version._id ||
+												(!selectedVersionId &&
+													version._id === latestDocument._id);
+											return (
+												<button
+													key={version._id}
+													onClick={() => {
+														onSelectVersion(
+															version._id === latestDocument._id
+																? null
+																: version._id
+														);
+													}}
+													aria-pressed={isActive}
+													className={`w-full text-left px-3 py-2 rounded-md text-sm border transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring ${
+														isActive
+															? "border-primary/40 bg-primary/10"
+															: "border-border bg-background/60 hover:bg-muted/60"
+													}`}
+												>
+													<div className="flex items-center justify-between gap-2">
+														<div className="flex items-center gap-2">
+															<Clock
+																className="h-3 w-3 text-muted-foreground"
+																aria-hidden="true"
+															/>
+															<span className="font-medium">
+																Version {version.version}
 															</span>
+															{version._id === latestDocument._id && (
+																<Badge
+																	variant="default"
+																	className="text-xs"
+																>
+																	Latest
+																</Badge>
+															)}
 														</div>
-													</button>
-												)
-											)}
-										</div>
-									)}
-								</div>
-							)}
-					</div>
-				) : (
-					<div className="text-center py-6">
-						<FileText className="h-12 w-12 text-gray-400 mx-auto mb-3" />
-						<p className="text-sm text-gray-600 dark:text-gray-400 mb-2">
-							No PDF generated yet
-						</p>
-						<Button
-							variant="outline"
-							size="sm"
-							onClick={onGeneratePdf}
-						>
-							<FileText className="h-4 w-4 mr-2" />
-							Generate PDF
-						</Button>
+														<span className="text-xs text-muted-foreground">
+															{formatDate(version.generatedAt)}
+														</span>
+													</div>
+												</button>
+											);
+										})}
+									</div>
+								)}
+							</div>
+						)}
 					</div>
 				)}
 			</div>

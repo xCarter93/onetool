@@ -107,7 +107,7 @@ export function NewQuoteDialog({
 						: undefined,
 					title: value.title.trim() || undefined,
 					status: "draft",
-					subtotal: 0, // Line items are added in the line editor.
+					subtotal: 0, // Line items are added inline on the quote page.
 					total: 0,
 					validUntil: value.validUntil
 						? localDateToUtcMidnightMs(value.validUntil)
@@ -123,10 +123,11 @@ export function NewQuoteDialog({
 				});
 
 				// No success toast: ToastProvider drops transient toasts on route
-				// change, and the line editor is the rest of this creation flow.
+				// change, and pricing the quote is the rest of this creation flow.
+				// focus=line-items lands the caret in the grid's first description.
 				onOpenChange(false);
 				form.reset();
-				router.push(`/quotes/${quoteId}/quoteLineEditor`);
+				router.push(`/quotes/${quoteId}?focus=line-items`);
 			} catch (error) {
 				console.error("Failed to create quote:", error);
 				toast.error("Error", "Failed to create quote. Please try again.");

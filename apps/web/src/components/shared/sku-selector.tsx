@@ -31,9 +31,18 @@ type SKU = {
 interface SKUSelectorProps {
 	onSelect: (sku: SKU) => void;
 	disabled?: boolean;
+	/** Replaces the default icon button (the grid uses a compact "SKU" chip). */
+	trigger?: React.ReactElement;
+	/** Popover alignment against the trigger. */
+	align?: "start" | "center" | "end";
 }
 
-export function SKUSelector({ onSelect, disabled = false }: SKUSelectorProps) {
+export function SKUSelector({
+	onSelect,
+	disabled = false,
+	trigger,
+	align = "start",
+}: SKUSelectorProps) {
 	const [open, setOpen] = useState(false);
 	const [searchQuery, setSearchQuery] = useState("");
 	const { can } = usePermissions();
@@ -59,23 +68,30 @@ export function SKUSelector({ onSelect, disabled = false }: SKUSelectorProps) {
 	};
 
 	return (
-		<Popover open={open} onOpenChange={setOpen}>
-			<PopoverTrigger
-				render={
-					<Button
-						variant="outline"
-						size="icon-sm"
-						disabled={disabled}
-						aria-label="Select SKU"
-						className="shrink-0"
-					/>
-				}
-			>
-				<Package className="h-4 w-4" />
-			</PopoverTrigger>
+		<Popover
+			open={open}
+			onOpenChange={(next) => setOpen(disabled ? false : next)}
+		>
+			{trigger ? (
+				<PopoverTrigger disabled={disabled} render={trigger} />
+			) : (
+				<PopoverTrigger
+					render={
+						<Button
+							variant="outline"
+							size="icon-sm"
+							disabled={disabled}
+							aria-label="Select SKU"
+							className="shrink-0"
+						/>
+					}
+				>
+					<Package className="h-4 w-4" />
+				</PopoverTrigger>
+			)}
 			<PopoverContent
-				className="w-[400px] p-0 bg-white dark:bg-gray-900 border border-border shadow-xl opacity-100"
-				align="start"
+				className="w-[400px] p-0 bg-white dark:bg-gray-900 border border-border shadow-xl opacity-100 duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] data-[starting-style]:opacity-0 data-[starting-style]:scale-[0.97] transition-[opacity,transform] motion-reduce:transition-none"
+				align={align}
 				style={{ backgroundColor: "var(--background)", opacity: 1 }}
 			>
 				<div className="flex flex-col bg-white dark:bg-gray-900">
