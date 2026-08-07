@@ -28,13 +28,11 @@ import {
 	Phone,
 	MapPin,
 	FolderOpen,
-	DollarSign,
-	Percent,
-	Receipt,
 	Type,
 	Pencil,
 	Lock,
 	Check,
+	CheckCircle2,
 	X,
 	FileText,
 	Eye,
@@ -46,7 +44,6 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { usePermissions } from "@/hooks/use-permissions";
-import { formatCurrency } from "@/lib/money";
 import {
 	localDateToUtcMidnightMs,
 	utcMidnightMsToLocalDate,
@@ -574,69 +571,6 @@ export function QuoteDetailSidebar({
 
 			<Separator className="my-4" />
 
-			{/* Quote Financials Section */}
-			<h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-3">
-				Quote Financials
-			</h3>
-			<div className="space-y-0">
-				<div className="flex items-start gap-3 py-2.5 -mx-2 px-2">
-					<DollarSign className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
-					<span className="text-sm text-muted-foreground w-28 shrink-0">
-						Subtotal
-					</span>
-					<div className="flex-1 min-w-0">
-						<span className="text-sm text-foreground">
-							{formatCurrency(quote.subtotal)}
-						</span>
-					</div>
-				</div>
-
-				{quote.discountEnabled && quote.discountAmount && (
-					<div className="flex items-start gap-3 py-2.5 -mx-2 px-2">
-						<Percent className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
-						<span className="text-sm text-muted-foreground w-28 shrink-0">
-							Discount
-						</span>
-						<div className="flex-1 min-w-0">
-							<span className="text-sm text-red-600 dark:text-red-400">
-								-
-								{quote.discountType === "percentage"
-									? `${quote.discountAmount}%`
-									: formatCurrency(quote.discountAmount)}
-							</span>
-						</div>
-					</div>
-				)}
-
-				{quote.taxEnabled && quote.taxAmount && (
-					<div className="flex items-start gap-3 py-2.5 -mx-2 px-2">
-						<Receipt className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
-						<span className="text-sm text-muted-foreground w-28 shrink-0">
-							Tax
-						</span>
-						<div className="flex-1 min-w-0">
-							<span className="text-sm text-foreground">
-								{formatCurrency(quote.taxAmount)}
-							</span>
-						</div>
-					</div>
-				)}
-
-				<div className="flex items-start gap-3 py-2.5 -mx-2 px-2">
-					<DollarSign className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
-					<span className="text-sm text-muted-foreground w-28 shrink-0 font-medium">
-						Total
-					</span>
-					<div className="flex-1 min-w-0">
-						<span className="text-sm text-foreground font-medium">
-							{formatCurrency(quote.total)}
-						</span>
-					</div>
-				</div>
-			</div>
-
-			<Separator className="my-4" />
-
 			{/* Generated PDF Section */}
 			<h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-3">
 				Generated PDF
@@ -678,69 +612,145 @@ export function QuoteDetailSidebar({
 						</p>
 					</div>
 				) : (
-					<div className="space-y-4">
-						{isPdfStale ? (
-							<div className="rounded-lg border border-warning/40 bg-warning/10 p-4">
-								<div className="flex items-start gap-3">
-									<AlertTriangle
-										className="h-5 w-5 text-warning shrink-0 mt-0.5"
-										aria-hidden="true"
-									/>
-									<div className="min-w-0 flex-1">
-										<p className="text-sm font-medium text-foreground">
-											PDF v{latestDocument.version} is out of date
-										</p>
-										<p className="mt-1 text-sm text-muted-foreground">
-											Line items changed since it was generated.
-											Regenerate before you send.
-										</p>
-										<Button
-											variant="outline"
-											size="sm"
-											className="mt-3"
-											onClick={onGeneratePdf}
-											disabled={!canModify}
-										>
-											<RefreshCw
-												className="h-4 w-4"
+					<div className="space-y-3">
+						{(() => {
+							const viewingOlder =
+								!!selectedDocument &&
+								selectedDocument._id !== latestDocument._id;
+							const frame = viewingOlder
+								? {
+										border: "border-border",
+										strip: "bg-muted/60",
+										icon: (
+											<History
+												className="h-3.5 w-3.5 text-muted-foreground shrink-0"
 												aria-hidden="true"
 											/>
-											Regenerate
-										</Button>
+										),
+										label: `Viewing v${selectedDocument.version}`,
+										detail: `v${latestDocument.version} is current`,
+									}
+								: isPdfStale
+									? {
+											border: "border-warning/50",
+											strip: "bg-warning/10",
+											icon: (
+												<AlertTriangle
+													className="h-3.5 w-3.5 text-warning shrink-0"
+													aria-hidden="true"
+												/>
+											),
+											label: `v${latestDocument.version} is out of date`,
+											detail: "Regenerate before you send",
+										}
+									: {
+											border: "border-success/40",
+											strip: "bg-success/10",
+											icon: (
+												<CheckCircle2
+													className="h-3.5 w-3.5 text-success shrink-0"
+													aria-hidden="true"
+												/>
+											),
+											label: `v${latestDocument.version} is up to date`,
+											detail: `Generated ${formatDate(latestDocument._creationTime)}`,
+										};
+							return (
+								<div
+									className={`overflow-hidden rounded-lg border ${frame.border} bg-background/60`}
+								>
+									<div
+										className={`flex items-center gap-2 border-b ${frame.border} ${frame.strip} px-3 py-2`}
+									>
+										{frame.icon}
+										<span className="shrink-0 text-xs font-medium text-foreground">
+											{frame.label}
+										</span>
+										<span className="min-w-0 truncate text-xs text-muted-foreground">
+											{frame.detail}
+										</span>
+										<div className="ml-auto shrink-0">
+											{viewingOlder ? (
+												<Button
+													variant="ghost"
+													size="sm"
+													className="h-6 px-2 text-xs"
+													onClick={() => onSelectVersion(null)}
+												>
+													View latest
+												</Button>
+											) : isPdfStale ? (
+												<Button
+													variant="outline"
+													size="sm"
+													className="h-6 px-2 text-xs"
+													onClick={onGeneratePdf}
+													disabled={!canModify}
+												>
+													<RefreshCw
+														className="h-3 w-3"
+														aria-hidden="true"
+													/>
+													Regenerate
+												</Button>
+											) : null}
+										</div>
 									</div>
-								</div>
-							</div>
-						) : (
-							<div className="rounded-lg border border-border bg-background/60 p-4">
-								<div className="flex items-start gap-3">
-									<FileText
-										className="h-5 w-5 text-muted-foreground shrink-0 mt-0.5"
-										aria-hidden="true"
-									/>
-									<div className="min-w-0 flex-1">
-										<p className="text-sm font-medium text-foreground">
-											Quote PDF v{latestDocument.version}
-										</p>
-										<p className="mt-1 text-sm text-muted-foreground">
-											Generated{" "}
-											{formatDate(latestDocument._creationTime)}
-										</p>
-										<div className="mt-3 flex flex-wrap gap-2">
-											<Button
-												size="sm"
-												variant="outline"
-												onClick={onDownloadPdf}
-												disabled={!selectedDocumentUrl}
+									{selectedDocumentUrl ? (
+										<iframe
+											src={selectedDocumentUrl}
+											className="h-48 w-full bg-muted/40"
+											title="PDF preview"
+											style={{ border: "none" }}
+										/>
+									) : (
+										<div className="flex h-48 items-center justify-center bg-muted/40">
+											<p className="text-sm text-muted-foreground">
+												Loading preview…
+											</p>
+										</div>
+									)}
+									<div className="flex flex-wrap items-center gap-1 border-t border-border/70 px-2 py-1.5">
+										{selectedDocumentUrl ? (
+											<a
+												href={selectedDocumentUrl}
+												target="_blank"
+												rel="noopener noreferrer"
 											>
-												<Download
+												<Button variant="ghost" size="sm">
+													<Eye
+														className="h-4 w-4"
+														aria-hidden="true"
+													/>
+													Open in new tab
+												</Button>
+											</a>
+										) : (
+											<Button variant="ghost" size="sm" disabled>
+												<Eye
 													className="h-4 w-4"
 													aria-hidden="true"
 												/>
-												Download
+												Open in new tab
 											</Button>
+										)}
+										<Button
+											variant="ghost"
+											size="sm"
+											onClick={onDownloadPdf}
+											disabled={!selectedDocumentUrl}
+										>
+											<Download
+												className="h-4 w-4"
+												aria-hidden="true"
+											/>
+											Download
+										</Button>
+										{!viewingOlder && !isPdfStale && (
 											<Button
-												size="sm"
 												variant="ghost"
+												size="sm"
+												className="ml-auto"
 												onClick={onGeneratePdf}
 												disabled={!canModify}
 											>
@@ -750,45 +760,11 @@ export function QuoteDetailSidebar({
 												/>
 												Regenerate
 											</Button>
-										</div>
+										)}
 									</div>
 								</div>
-							</div>
-						)}
-
-						{selectedDocumentUrl && (
-							<>
-								{selectedDocument &&
-									selectedDocument._id !== latestDocument._id && (
-										<Badge variant="outline" className="text-xs">
-											Viewing v{selectedDocument.version}
-										</Badge>
-									)}
-								<div className="h-48 overflow-hidden rounded-lg border border-border bg-muted/40">
-									<iframe
-										src={selectedDocumentUrl}
-										className="w-full h-full"
-										title="PDF preview"
-										style={{ border: "none" }}
-									/>
-								</div>
-								<a
-									href={selectedDocumentUrl}
-									target="_blank"
-									rel="noopener noreferrer"
-									className="block"
-								>
-									<Button
-										variant="outline"
-										size="sm"
-										className="w-full"
-									>
-										<Eye className="h-4 w-4" aria-hidden="true" />
-										Open in new tab
-									</Button>
-								</a>
-							</>
-						)}
+							);
+						})()}
 
 						{allDocumentVersions && allDocumentVersions.length > 1 && (
 							<div className="pt-2 border-t border-border">

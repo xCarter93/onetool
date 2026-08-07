@@ -116,7 +116,7 @@ export const quotesArticles: HelpArticle[] = [
 					},
 					{
 						type: "note",
-						text: "The **Generated PDF** card in the right-hand panel keeps track of the saved copy. If you change line items after generating, the card warns that the PDF is out of date and offers a **Regenerate** button. Regenerate before you send so the client gets the current numbers.",
+						text: "The **Generated PDF** preview in the right-hand panel keeps track of the saved copy. Its colored header shows the status at a glance: green means the PDF matches the quote, amber means line items changed since it was generated and offers a **Regenerate** button. Regenerate before you send so the client gets the current numbers.",
 					},
 				],
 			},
