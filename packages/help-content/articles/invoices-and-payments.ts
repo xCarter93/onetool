@@ -72,7 +72,7 @@ export const invoicesAndPaymentsArticles: HelpArticle[] = [
 					},
 					{
 						type: "paragraph",
-						text: "The footer below the grid sets a **Discount** — a dollar amount or a percentage, chosen with the **$** and **%** buttons inside the field — and a **Tax** rate as a percentage, the same way quotes work. The **Client view** button beside them controls which columns print on the client's copy: quantities, unit prices, line totals, and the grand total. Cost and margin are internal and never printed. Use **Preview Document** in the **Line Items** header to see the exact PDF in a modal before generating it, and watch the **Generated PDF** card in the right rail, which warns when the invoice has changed since the last PDF was generated.",
+						text: "The footer below the grid sets a **Discount**, either a dollar amount or a percentage chosen with the **$** and **%** buttons inside the field, and a **Tax** rate as a percentage, the same way quotes work. The **Client view** button beside them controls which columns print on the client's copy: quantities, unit prices, line totals, and the grand total. Cost and margin are internal and never printed. Use **Preview Document** in the **Line Items** header to see the exact PDF in a modal before generating it, and watch the **Generated PDF** preview in the right rail, whose colored header turns amber when the invoice has changed since the last PDF was generated.",
 					},
 					{
 						type: "note",
