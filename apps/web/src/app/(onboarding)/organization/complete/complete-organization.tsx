@@ -1,7 +1,12 @@
 "use client";
 
 import React, { useMemo, useState, useEffect, useSyncExternalStore } from "react";
-import { useUser, useOrganization, useOrganizationList } from "@clerk/nextjs";
+import {
+	useUser,
+	useOrganization,
+	useOrganizationList,
+	useClerk,
+} from "@clerk/nextjs";
 import { PricingTable } from "@clerk/nextjs";
 import { useTheme } from "next-themes";
 import { useMutation, useQuery } from "convex/react";
@@ -79,6 +84,13 @@ const ONBOARDING_STEPS: OnboardingStep[] = [
 ];
 
 const TOTAL_STEPS = ONBOARDING_STEPS.length;
+
+// Formats Clerk's setLogo accepts (SVG is not one of them).
+const SUPPORTED_LOGO_TYPES = new Set([
+	"image/png",
+	"image/jpeg",
+	"image/webp",
+]);
 
 // Inner content column per step; the card itself is one fixed generous size.
 const STEP_WIDTHS: Record<number, string> = {
@@ -164,11 +176,20 @@ export function CompleteOrganizationMetadata() {
 	} | null>(null);
 
 	// Step 1: custom create-org form state (replaces Clerk's <CreateOrganization>)
+	// userMemberships powers the "switch to an existing organization" escape
+	// hatch — without it, a user with orgs but no active org is trapped here.
 	const {
 		isLoaded: orgListLoaded,
 		createOrganization,
 		setActive,
-	} = useOrganizationList();
+		userMemberships,
+	} = useOrganizationList({
+		// Clerk defaults to 10/page; bump it so the escape hatch shows every org
+		// for all but extreme cases, with Load more covering the rest.
+		userMemberships: { infinite: true, pageSize: 50 },
+	});
+	const { signOut } = useClerk();
+	const [switchingOrgId, setSwitchingOrgId] = useState<string | null>(null);
 	const [orgName, setOrgName] = useState("");
 	// First/last name are required HERE, not at the Clerk sign-up step: the Clerk
 	// instance keeps name optional so Sign in with Apple completes on returning
@@ -506,6 +527,14 @@ export function CompleteOrganizationMetadata() {
 		setCreateLogoError(null);
 		const file = e.target.files?.[0] ?? null;
 		if (!file) return;
+		// Clerk's setLogo rejects SVGs (and other exotic types); catch them here
+		// instead of at upload time. The accept attr filters the picker but not
+		// drag-drop or "All Files" selections.
+		if (!SUPPORTED_LOGO_TYPES.has(file.type)) {
+			setCreateLogoError("Use a PNG, JPG, or WEBP image — other formats aren't supported");
+			e.target.value = "";
+			return;
+		}
 		if (file.size > 10 * 1024 * 1024) {
 			setCreateLogoError("Logo must be 10 MB or smaller");
 			// Reset so re-selecting the same file refires onChange
@@ -516,6 +545,26 @@ export function CompleteOrganizationMetadata() {
 		setLogoFile(file);
 		setLogoPreviewUrl(URL.createObjectURL(file));
 	};
+
+	// Escape hatch: activate an org the user already belongs to (e.g. after
+	// deleting/leaving their active org) instead of forcing a new one.
+	const handleSwitchToOrg = async (orgId: string) => {
+		if (!setActive || switchingOrgId) return;
+		setSwitchingOrgId(orgId);
+		try {
+			await setActive({ organization: orgId });
+			// Middleware routes "/" by role: admins → /home, members → /projects.
+			router.push("/");
+		} catch (err) {
+			toast.error(
+				"Couldn't switch organization",
+				err instanceof Error ? err.message : "Please try again."
+			);
+			setSwitchingOrgId(null);
+		}
+	};
+
+	const existingMemberships = userMemberships?.data ?? [];
 
 	const handleCreateOrganization: React.FormEventHandler<
 		HTMLFormElement
@@ -576,9 +625,19 @@ export function CompleteOrganizationMetadata() {
 					: await createOrganization({ name: trimmedName });
 			createdOrgRef.current = { org: newOrg, name: trimmedName };
 
-			// 2. Upload logo BEFORE setActive so step 2's preview tiles see imageUrl on first render
+			// 2. Upload logo BEFORE setActive so step 2's preview tiles see imageUrl
+			// on first render. A logo failure must NOT abort the flow: bailing before
+			// setActive orphans the just-created org and a retry after remount
+			// creates a duplicate. The logo can always be set later in Settings.
 			if (logoFile) {
-				await newOrg.setLogo({ file: logoFile });
+				try {
+					await newOrg.setLogo({ file: logoFile });
+				} catch {
+					toast.warning(
+						"Couldn't upload the logo",
+						"Your organization was still created — you can add a logo later in Settings."
+					);
+				}
 			}
 
 			// 3. Mark as active session org
@@ -607,6 +666,92 @@ export function CompleteOrganizationMetadata() {
 				</div>
 			) : (
 				<div className="space-y-6">
+					{existingMemberships.length > 0 && (
+						<div className="space-y-4">
+							<div className="border border-border/60 rounded-xl bg-muted/20 p-4">
+								<p className="text-sm font-medium text-foreground mb-1">
+									Your organizations
+								</p>
+								<p className="text-xs text-muted-foreground mb-3">
+									You already belong to{" "}
+									{existingMemberships.length === 1
+										? "an organization"
+										: "these organizations"}
+									. Switch back to one, or create a new one below.
+								</p>
+								<ul className="space-y-2">
+									{existingMemberships.map((m) => (
+										<li
+											key={m.organization.id}
+											className="flex items-center gap-3 rounded-lg border border-border/60 bg-background px-3 py-2"
+										>
+											{m.organization.imageUrl ? (
+												<Image
+													src={m.organization.imageUrl}
+													alt=""
+													width={32}
+													height={32}
+													className="h-8 w-8 rounded-md border border-border object-contain bg-white"
+												/>
+											) : (
+												<div className="flex h-8 w-8 items-center justify-center rounded-md border border-border bg-muted/40 text-xs font-medium text-muted-foreground">
+													{m.organization.name.charAt(0).toUpperCase()}
+												</div>
+											)}
+											<div className="min-w-0 flex-1">
+												<p className="truncate text-sm font-medium text-foreground">
+													{m.organization.name}
+												</p>
+												<p className="text-xs text-muted-foreground capitalize">
+													{m.role.replace(/^org:/, "")}
+												</p>
+											</div>
+											<Button
+												type="button"
+												variant="outline"
+												size="sm"
+												disabled={switchingOrgId !== null}
+												onClick={() => handleSwitchToOrg(m.organization.id)}
+											>
+												{switchingOrgId === m.organization.id ? (
+													<Loader2
+														className="h-4 w-4 animate-spin"
+														aria-hidden="true"
+													/>
+												) : null}
+												Switch
+											</Button>
+										</li>
+									))}
+								</ul>
+								{userMemberships?.hasNextPage && (
+									<Button
+										type="button"
+										variant="ghost"
+										size="sm"
+										className="mt-2 w-full text-muted-foreground"
+										disabled={userMemberships.isFetching}
+										onClick={() => userMemberships.fetchNext?.()}
+									>
+										{userMemberships.isFetching ? (
+											<Loader2
+												className="h-4 w-4 animate-spin"
+												aria-hidden="true"
+											/>
+										) : null}
+										Load more organizations
+									</Button>
+								)}
+							</div>
+							<div className="flex items-center gap-3">
+								<div className="h-px flex-1 bg-border/60" />
+								<span className="text-xs text-muted-foreground">
+									Or create a new organization
+								</span>
+								<div className="h-px flex-1 bg-border/60" />
+							</div>
+						</div>
+					)}
 					<div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
 						<div>
 							<label
@@ -730,7 +875,7 @@ export function CompleteOrganizationMetadata() {
 							<input
 								id="org-logo"
 								type="file"
-								accept="image/*"
+								accept="image/png,image/jpeg,image/webp"
 								onChange={handleLogoSelect}
 								disabled={createSubmitting}
 								className="text-sm text-foreground file:mr-3 file:rounded-md file:border-0 file:bg-primary/10 file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-primary hover:file:bg-primary/20 file:cursor-pointer"
@@ -740,7 +885,7 @@ export function CompleteOrganizationMetadata() {
 							<p className="mt-2 text-sm text-destructive">{createLogoError}</p>
 						)}
 						<p className="mt-2 text-xs text-muted-foreground">
-							PNG, JPG, or SVG up to 10 MB.
+							PNG, JPG, or WEBP up to 10 MB.
 						</p>
 					</div>
 				</div>
@@ -1451,6 +1596,7 @@ export function CompleteOrganizationMetadata() {
 						<OnboardingHeader
 							canGoBack={currentStep > minStep}
 							onBack={handlePrevious}
+							onSignOut={() => void signOut({ redirectUrl: "/sign-in" })}
 						/>
 
 						<div className="flex flex-1">

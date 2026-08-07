@@ -52,7 +52,7 @@ export const settingsAndTeamArticles: HelpArticle[] = [
 						type: "steps",
 						items: [
 							"Open your organization settings and stay on the **Overview** tab.",
-							"Edit your organization name, or upload a logo image (up to 10 MB).",
+							"Edit your organization name, or upload a logo image (PNG, JPG, or WEBP up to 10 MB — SVG isn't supported).",
 							"Save your changes with the footer at the bottom of the page. It reads **Unsaved changes** until you do.",
 						],
 					},
@@ -124,7 +124,7 @@ export const settingsAndTeamArticles: HelpArticle[] = [
 				blocks: [
 					{
 						type: "paragraph",
-						text: "At the bottom of the **Overview** tab, anyone can use **Leave organization** to remove themselves. **Delete organization** is an admin action that removes the organization for everyone, and it asks you to re-verify your identity first. Deleting is permanent, so treat it as a last resort.",
+						text: "At the bottom of the **Overview** tab, anyone can use **Leave organization** to remove themselves. **Delete organization** is an admin action that removes the organization for everyone, and it asks you to re-verify your identity first. Deleting is permanent, so treat it as a last resort. After you leave or delete, OneTool switches you to another organization you belong to, or takes you to the setup screen to create a new one.",
 					},
 				],
 			},
