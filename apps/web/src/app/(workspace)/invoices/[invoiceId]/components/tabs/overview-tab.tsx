@@ -1,7 +1,7 @@
 "use client";
 
 import { Doc, Id } from "@onetool/backend/convex/_generated/dataModel";
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useMutation } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { Button } from "@/components/ui/button";
@@ -23,6 +23,7 @@ import {
 import { LineItemsTotals } from "@/components/shared/line-items/line-items-totals";
 import { PricingFooter } from "@/components/shared/line-items/pricing-footer";
 import { SaveStateIndicator } from "@/components/shared/line-items/save-state-indicator";
+import { SelectionActions } from "@/components/shared/line-items/selection-actions";
 import { useInvoiceLineItemsController } from "@/components/shared/line-items/use-invoice-line-items-controller";
 import {
 	computeDisplayTotals,
@@ -72,6 +73,17 @@ export function OverviewTab({
 		lineItems,
 		payments,
 	});
+
+	// Row selection lives here so the frame header can host the bulk actions.
+	// Pruned at derivation time — a deleted row must not linger as selected.
+	const [selectedLineIds, setSelectedLineIds] = useState<string[]>([]);
+	const selection = useMemo(
+		() =>
+			selectedLineIds.filter((id) =>
+				controller.items.some((item) => item.id === id)
+			),
+		[selectedLineIds, controller.items]
+	);
 
 	const pricingMode = resolveInvoicePricingMode(invoice);
 
@@ -199,34 +211,52 @@ export function OverviewTab({
 					<FrameHeader className="flex-row items-center justify-between gap-3">
 						<FrameTitle>Line Items</FrameTitle>
 						<div className="flex items-center gap-2.5">
-							<SaveStateIndicator state={controller.saveState} />
-							<Tooltip>
-								<TooltipTrigger
-									render={
-										<span
-											// A disabled button swallows pointer events, so the
-											// tooltip needs a live wrapper to hang off.
-											tabIndex={previewDisabled ? 0 : -1}
-											className="inline-flex rounded-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
-										/>
-									}
-								>
-									<Button
-										variant="outline"
-										size="sm"
-										disabled={previewDisabled}
-										onClick={onPreviewPdf}
-									>
-										<Eye className="h-4 w-4" aria-hidden="true" />
-										Preview Document
-									</Button>
-								</TooltipTrigger>
-								{previewDisabled && (
-									<TooltipContent>
-										Add a line item to preview this invoice
-									</TooltipContent>
-								)}
-							</Tooltip>
+							{selection.length > 0 ? (
+								<SelectionActions
+									className="duration-150 ease-out animate-in fade-in-0 motion-reduce:animate-none"
+									count={selection.length}
+									onDuplicate={() => {
+										void controller.duplicateItems(selection);
+										setSelectedLineIds([]);
+									}}
+									onDelete={() => {
+										void controller.removeItems(selection);
+										setSelectedLineIds([]);
+									}}
+									onClear={() => setSelectedLineIds([])}
+								/>
+							) : (
+								<div className="flex items-center gap-2.5 duration-150 ease-out animate-in fade-in-0 motion-reduce:animate-none">
+									<SaveStateIndicator state={controller.saveState} />
+									<Tooltip>
+										<TooltipTrigger
+											render={
+												<span
+													// A disabled button swallows pointer events, so
+													// the tooltip needs a live wrapper to hang off.
+													tabIndex={previewDisabled ? 0 : -1}
+													className="inline-flex rounded-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+												/>
+											}
+										>
+											<Button
+												variant="outline"
+												size="sm"
+												disabled={previewDisabled}
+												onClick={onPreviewPdf}
+											>
+												<Eye className="h-4 w-4" aria-hidden="true" />
+												Preview Document
+											</Button>
+										</TooltipTrigger>
+										{previewDisabled && (
+											<TooltipContent>
+												Add a line item to preview this invoice
+											</TooltipContent>
+										)}
+									</Tooltip>
+								</div>
+							)}
 						</div>
 					</FrameHeader>
 
@@ -234,6 +264,8 @@ export function OverviewTab({
 						<LineItemGrid
 							bare
 							showHints={false}
+						selectedIds={selection}
+						onSelectionChange={setSelectedLineIds}
 							controller={controller}
 							isLoading={lineItems === undefined}
 						/>

@@ -364,6 +364,13 @@ export interface LineItemGridProps {
 	 * `LineItemGridHints` itself (the frame layout puts it above the frame).
 	 */
 	showHints?: boolean;
+	/**
+	 * Controlled row selection. When provided, the surface owns the selection
+	 * and the grid renders no floating action bar — it expects the host to
+	 * present the actions (the frame layout puts them in its header).
+	 */
+	selectedIds?: string[];
+	onSelectionChange?: (ids: string[]) => void;
 }
 
 export function LineItemGrid({
@@ -372,10 +379,14 @@ export function LineItemGrid({
 	autoFocusFirstRow = false,
 	bare = false,
 	showHints = true,
+	selectedIds: controlledSelectedIds,
+	onSelectionChange,
 }: LineItemGridProps) {
 	const { items, locked, showCostMargin } = controller;
 	const gridRef = useRef<HTMLDivElement>(null);
-	const [selectedIds, setSelectedIds] = useState<string[]>([]);
+	const isControlled = controlledSelectedIds !== undefined;
+	const [internalSelectedIds, setInternalSelectedIds] = useState<string[]>([]);
+	const selectedIds = controlledSelectedIds ?? internalSelectedIds;
 	const focusNewRowRef = useRef(false);
 	const rowCountRef = useRef(items.length);
 	const autoFocusedRef = useRef(false);
@@ -393,11 +404,24 @@ export function LineItemGrid({
 	);
 	const allSelected = items.length > 0 && selected.length === items.length;
 
-	const toggleSelect = useCallback((id: string) => {
-		setSelectedIds((prev) =>
-			prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
-		);
-	}, []);
+	const setSelection = useCallback(
+		(next: string[]) => {
+			if (isControlled) onSelectionChange?.(next);
+			else setInternalSelectedIds(next);
+		},
+		[isControlled, onSelectionChange]
+	);
+
+	const toggleSelect = useCallback(
+		(id: string) => {
+			setSelection(
+				selected.includes(id)
+					? selected.filter((x) => x !== id)
+					: [...selected, id]
+			);
+		},
+		[selected, setSelection]
+	);
 
 	const visibleCells = useCallback((scope: HTMLElement): HTMLInputElement[] => {
 		return Array.from(
@@ -585,9 +609,7 @@ export function LineItemGrid({
 							indeterminate={selected.length > 0 && !allSelected}
 							disabled={locked || items.length === 0}
 							onCheckedChange={() =>
-								setSelectedIds(
-									allSelected ? [] : items.map((item) => item.id)
-								)
+								setSelection(allSelected ? [] : items.map((item) => item.id))
 							}
 							aria-label={allSelected ? "Deselect all lines" : "Select all lines"}
 							className="size-3.5"
@@ -665,8 +687,9 @@ export function LineItemGrid({
 				<LineItemGridHints className={bare ? "px-3 pt-2.5 pb-0.5" : "mt-2.5"} />
 			)}
 
-			{/* Floating selection bar */}
-			{selected.length > 0 && !locked && (
+			{/* Floating selection bar — uncontrolled mode only; a controlled host
+			    renders its own action group (see SelectionActions). */}
+			{!isControlled && selected.length > 0 && !locked && (
 				<div className="sticky bottom-3 z-[15] mt-3 flex justify-center">
 					<div className="flex items-center gap-2.5 rounded-[10px] bg-foreground py-2 pl-3.5 pr-2.5 text-background shadow-lg duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] animate-in fade-in-0 zoom-in-95 motion-reduce:animate-none">
 						<span className="text-[13px] font-medium">
@@ -678,7 +701,7 @@ export function LineItemGrid({
 							type="button"
 							onClick={() => {
 								void controller.duplicateItems(selected);
-								setSelectedIds([]);
+								setSelection([]);
 							}}
 							className="inline-flex h-[26px] items-center gap-1.5 rounded-md bg-background/15 px-2.5 text-[12.5px] transition-colors hover:bg-background/25 focus-visible:outline-2 focus-visible:outline-background"
 						>
@@ -688,7 +711,7 @@ export function LineItemGrid({
 							type="button"
 							onClick={() => {
 								void controller.removeItems(selected);
-								setSelectedIds([]);
+								setSelection([]);
 							}}
 							className="inline-flex h-[26px] items-center gap-1.5 rounded-md bg-destructive px-2.5 text-[12.5px] text-white transition-colors hover:brightness-110 focus-visible:outline-2 focus-visible:outline-background"
 						>
@@ -697,7 +720,7 @@ export function LineItemGrid({
 						</button>
 						<button
 							type="button"
-							onClick={() => setSelectedIds([])}
+							onClick={() => setSelection([])}
 							className="h-[26px] rounded-md px-2 text-[12.5px] text-background/65 transition-colors hover:text-background focus-visible:outline-2 focus-visible:outline-background"
 						>
 							Clear
