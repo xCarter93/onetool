@@ -1,7 +1,12 @@
 "use client";
 
 import { useCallback, useRef, useState } from "react";
-import { useOrganization, useClerk, useReverification } from "@clerk/nextjs";
+import {
+	useOrganization,
+	useClerk,
+	useReverification,
+	useUser,
+} from "@clerk/nextjs";
 import { isReverificationCancelledError } from "@clerk/nextjs/errors";
 import { useMutation } from "convex/react";
 import { useRouter } from "next/navigation";
@@ -34,6 +39,13 @@ import { SectionHeading } from "./settings-card";
 import { TeamMembersTable } from "./team-members-table";
 import { ADMIN_ROLE, getInitials, clerkErr } from "../_lib/org-members";
 
+// Formats Clerk's setLogo accepts (SVG is not one of them).
+const SUPPORTED_LOGO_TYPES = new Set([
+	"image/png",
+	"image/jpeg",
+	"image/webp",
+]);
+
 export function OverviewTab() {
 	const router = useRouter();
 	const toast = useToast();
@@ -43,6 +55,7 @@ export function OverviewTab() {
 	const updateOrganization = useMutation(api.organizations.update);
 
 	const { organization, membership, isLoaded } = useOrganization();
+	const { user } = useUser();
 
 	const isAdmin = membership?.role === ADMIN_ROLE;
 
@@ -138,6 +151,17 @@ export function OverviewTab() {
 			event.target.value = "";
 			return;
 		}
+		// Clerk's setLogo rejects SVGs (and other exotic types); catch them here
+		// instead of at upload time. The accept attr filters the picker but not
+		// drag-drop or "All Files" selections.
+		if (!SUPPORTED_LOGO_TYPES.has(file.type)) {
+			toast.error(
+				"Unsupported logo format",
+				"Choose a PNG, JPG, or WEBP image instead.",
+			);
+			event.target.value = "";
+			return;
+		}
 		if (file.size > 10 * 1024 * 1024) {
 			toast.error("Logo too large", "Choose an image 10 MB or smaller.");
 			event.target.value = "";
@@ -164,6 +188,31 @@ export function OverviewTab() {
 		}
 	};
 
+	// After leaving/deleting the active org, land the user somewhere sane:
+	// activate another org they belong to when one exists; only fall back to
+	// the create-org flow when none remain. Without this, users with other
+	// orgs get trapped on /organization/complete (no switcher, no sign-out).
+	const switchToRemainingOrg = async (deletedOrgId: string) => {
+		try {
+			// Imperative fetch so we get a fresh list; the deleted org can linger
+			// in Clerk's client cache, so filter it out explicitly.
+			const { data } = (await user?.getOrganizationMemberships({
+				pageSize: 50,
+			})) ?? { data: [] };
+			const next = data.find((m) => m.organization.id !== deletedOrgId);
+			if (next) {
+				await setActive({ organization: next.organization.id });
+				// Middleware routes "/" by role: admins → /home, members → /projects.
+				router.push("/");
+				return;
+			}
+		} catch {
+			// Fall through to the no-org flow.
+		}
+		await setActive({ organization: null });
+		router.push("/organization/complete");
+	};
+
 	const handleLeave = async () => {
 		const confirmed = await confirmDialog({
 			title: "Leave organization",
@@ -177,8 +226,7 @@ export function OverviewTab() {
 		setLeaving(true);
 		try {
 			await membership?.destroy();
-			await setActive({ organization: null });
-			router.push("/organization/complete");
+			await switchToRemainingOrg(organization.id);
 		} catch (error) {
 			toast.error("Couldn't leave organization", clerkErr(error));
 			setLeaving(false);
@@ -198,8 +246,7 @@ export function OverviewTab() {
 		setDeleting(true);
 		try {
 			await deleteOrganization();
-			await setActive({ organization: null });
-			router.push("/organization/complete");
+			await switchToRemainingOrg(organization.id);
 		} catch (error) {
 			// The user dismissed Clerk's step-up modal — not an error worth a toast.
 			if (isReverificationCancelledError(error)) {
@@ -254,7 +301,7 @@ export function OverviewTab() {
 							<input
 								ref={logoInputRef}
 								type="file"
-								accept="image/*"
+								accept="image/png,image/jpeg,image/webp"
 								className="hidden"
 								onChange={handleLogoSelect}
 								disabled={!isAdmin || !isOwner || uploadingLogo}
@@ -273,7 +320,7 @@ export function OverviewTab() {
 								{uploadingLogo ? "Uploading…" : "Change logo"}
 							</Button>
 							<p className="text-xs text-muted-foreground">
-								PNG, JPG, or SVG up to 10 MB.
+								PNG, JPG, or WEBP up to 10 MB.
 							</p>
 						</div>
 					</div>

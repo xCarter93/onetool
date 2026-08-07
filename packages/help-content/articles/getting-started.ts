@@ -96,14 +96,14 @@ export const gettingStartedArticles: HelpArticle[] = [
 				blocks: [
 					{
 						type: "paragraph",
-						text: "The **Organization** step asks for your first name, last name, and organization name, plus an optional logo.",
+						text: "The **Organization** step asks for your first name, last name, and organization name, plus an optional logo. If you already belong to other organizations, they're listed at the top of this step with a **Switch** button, so you can return to one instead of creating something new.",
 					},
 					{
 						type: "steps",
 						items: [
 							"Enter your **First Name** and **Last Name**.",
 							"Enter your **Organization Name**. This is the business name your clients will see.",
-							"Upload a logo if you have one. You can add or change it later in your organization settings.",
+							"Upload a logo if you have one (PNG, JPG, or WEBP up to 10 MB — SVG isn't supported). You can add or change it later in your organization settings.",
 							"Click **Create Organization**.",
 						],
 					},
