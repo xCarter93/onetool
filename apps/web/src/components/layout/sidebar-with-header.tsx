@@ -52,7 +52,7 @@ interface SidebarWithHeaderProps {
  * wrapper carries the width so its highlight ring (a ::after) hugs the dock.
  */
 function AssistantDockHost() {
-	const { open, setOpen, setDockAnchor } = useAssistantSurface();
+	const { open, pinned, setOpen, setDockAnchor } = useAssistantSurface();
 	return (
 		<>
 			<div className="pointer-events-none fixed inset-x-0 bottom-0 z-40 flex justify-center px-4 pb-3 md:absolute">
@@ -68,7 +68,11 @@ function AssistantDockHost() {
 						HOME_TOUR_CONTENT[HomeTour.ASSISTANT_NOTCH].tooltipPosition
 					}
 				>
-					<AssistantDock open={open} onOpen={() => setOpen(true)} />
+					<AssistantDock
+							open={open}
+							pinned={pinned}
+							onOpen={() => setOpen(true)}
+						/>
 				</TourElement>
 			</div>
 			{/* Floating-panel anchor: AssistantPanel portals its unpinned overlay
