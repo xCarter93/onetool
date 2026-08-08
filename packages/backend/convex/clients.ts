@@ -17,7 +17,10 @@ import {
 } from "./eventBus";
 import { trackServerEvent, SERVER_EVENTS } from "./lib/posthog";
 import { computeFieldChanges } from "./lib/changeTracking";
-import { maybeEnqueueQboSync } from "./lib/quickbooksEnqueue";
+import {
+	maybeEnqueueQboSync,
+	kickQboSyncWorker,
+} from "./lib/quickbooksEnqueue";
 import {
 	optionalUserQuery,
 	userMutation,
@@ -659,6 +662,7 @@ export const bulkCreate = userMutation({
 			warnings?: string[];
 		}> = [];
 
+		let qboSyncQueued = false;
 		for (const clientData of args.clients) {
 			try {
 				// Validate required fields
@@ -754,7 +758,20 @@ export const bulkCreate = userMutation({
 					}
 				}
 
-				await maybeEnqueueQboSync(ctx, userOrgId, "client", clientId);
+				// A sync-queue hiccup must not fail a row that already imported.
+				try {
+					if (
+						await maybeEnqueueQboSync(ctx, userOrgId, "client", clientId, {
+							kick: false,
+						})
+					) {
+						qboSyncQueued = true;
+					}
+				} catch (err) {
+					warnings.push(
+						`QuickBooks sync not queued: ${err instanceof Error ? err.message : "Unknown error"}`
+					);
+				}
 
 				results.push({
 					success: true,
@@ -768,6 +785,10 @@ export const bulkCreate = userMutation({
 						error instanceof Error ? error.message : "Unknown error occurred",
 				});
 			}
+		}
+
+		if (qboSyncQueued) {
+			await kickQboSyncWorker(ctx, userOrgId);
 		}
 
 		return results;

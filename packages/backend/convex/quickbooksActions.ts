@@ -152,8 +152,11 @@ async function refreshConnection(
 		return { accessToken: tokens.accessToken };
 	} catch (error) {
 		if (error instanceof QboInvalidGrantError) {
+			// Refresh race (worker vs cron): if another caller already rotated the
+			// token, this failure is stale — leave the connection alone.
 			await ctx.runMutation(internal.quickbooks.markNeedsReauth, {
 				orgId: connection.orgId,
+				ifRefreshTokenMatches: connection.refreshToken,
 			});
 			return null;
 		}
@@ -256,14 +259,22 @@ export const listSetupAccounts = action({
 			throw new ConvexError("not_connected");
 		}
 
-		const income = await qboQuery<QboAccount>(
-			tokens,
-			"SELECT * FROM Account WHERE AccountType = 'Income'"
-		);
+		// QBO caps query pages at 1000 rows; page until a short page.
+		const PAGE_SIZE = 1000;
+		const incomeAccounts: QboAccount[] = [];
+		for (let start = 1; ; start += PAGE_SIZE) {
+			const page = await qboQuery<QboAccount>(
+				tokens,
+				`SELECT * FROM Account WHERE AccountType = 'Income' STARTPOSITION ${start} MAXRESULTS ${PAGE_SIZE}`
+			);
+			const accounts = page.QueryResponse?.Account ?? [];
+			incomeAccounts.push(...accounts);
+			if (accounts.length < PAGE_SIZE) break;
+		}
 		const deposit = await findUndepositedFundsAccount(tokens);
 
 		return {
-			incomeAccounts: (income.QueryResponse?.Account ?? []).map((account) => ({
+			incomeAccounts: incomeAccounts.map((account) => ({
 				qboId: account.Id,
 				name: account.Name,
 			})),
@@ -583,7 +594,8 @@ async function syncInvoice(
 	ctx: ActionCtx,
 	connection: Connection,
 	tokens: QboRef,
-	invoiceId: Id<"invoices">
+	invoiceId: Id<"invoices">,
+	requestId: string
 ): Promise<SyncOutcome> {
 	if (!connection.defaultServiceItemQboId) {
 		return { kind: "hold", delayMs: SETUP_HOLD_MS };
@@ -634,8 +646,14 @@ async function syncInvoice(
 				link.qboId,
 				link.qboSyncToken
 			)
-		: (await qboPost<QboEntityResponse<"Invoice">>(tokens, "/invoice", body))
-				.Invoice;
+		: (
+				await qboPost<QboEntityResponse<"Invoice">>(
+					tokens,
+					// requestid makes the create idempotent across crash-retries.
+					`/invoice?requestid=${requestId}`,
+					body
+				)
+			).Invoice;
 
 	// Automated Sales Tax may overrule the tax we sent. Never silent.
 	const returnedTax = result.TxnTaxDetail?.TotalTax;
@@ -659,10 +677,30 @@ async function syncPayment(
 	ctx: ActionCtx,
 	connection: Connection,
 	tokens: QboRef,
-	paymentId: Id<"payments">
+	paymentId: Id<"payments">,
+	requestId: string
 ): Promise<SyncOutcome> {
-	if (!connection.depositAccountQboId) {
+	// Setup not finished at all: park until completeSetup releases the queue.
+	if (!connection.defaultServiceItemQboId) {
 		return { kind: "hold", delayMs: SETUP_HOLD_MS };
+	}
+
+	// Setup finished without an Undeposited Funds account. Re-resolve instead
+	// of holding forever; if the company truly has none, fail actionably so it
+	// reaches the error center rather than hanging silently.
+	let depositAccountQboId = connection.depositAccountQboId;
+	if (!depositAccountQboId) {
+		const deposit = await findUndepositedFundsAccount(tokens);
+		if (!deposit) {
+			throw new TerminalSyncError(
+				"Your QuickBooks company has no Undeposited Funds account, so payments cannot be recorded. Create one in QuickBooks, then retry."
+			);
+		}
+		depositAccountQboId = deposit.Id;
+		await ctx.runMutation(internal.quickbooks.saveDepositAccount, {
+			orgId: connection.orgId,
+			depositAccountQboId,
+		});
 	}
 
 	// Payments are create-only in v1: a settled payment does not change.
@@ -708,11 +746,13 @@ async function syncPayment(
 		payment: payload.payment,
 		customerQboId: clientLink.qboId,
 		invoiceQboId: invoiceLink.qboId,
-		depositAccountQboId: connection.depositAccountQboId,
+		depositAccountQboId,
 	});
+	// requestid: if a prior attempt created the Payment but we crashed before
+	// linking it, the retry returns the original response instead of a duplicate.
 	const created = await qboPost<QboEntityResponse<"Payment">>(
 		tokens,
-		"/payment",
+		`/payment?requestid=${requestId}`,
 		body
 	);
 
@@ -732,6 +772,10 @@ async function syncOne(
 	tokens: QboRef,
 	job: SyncJob
 ): Promise<SyncOutcome> {
+	// Stable within a claim (crash-retries reuse it, so QBO dedupes the create)
+	// but new on each user-visible retry, which increments attempts.
+	const requestId = `${job.localId}-${job.attempts}`;
+
 	if (job.entityType === "client") {
 		await syncClient(ctx, connection, tokens, job.localId as Id<"clients">);
 		return { kind: "done" };
@@ -741,14 +785,16 @@ async function syncOne(
 			ctx,
 			connection,
 			tokens,
-			job.localId as Id<"invoices">
+			job.localId as Id<"invoices">,
+			requestId
 		);
 	}
 	return await syncPayment(
 		ctx,
 		connection,
 		tokens,
-		job.localId as Id<"payments">
+		job.localId as Id<"payments">,
+		requestId
 	);
 }
 
@@ -942,16 +988,40 @@ export const sweepSyncJobs = internalAction({
 });
 
 /** Best-effort revoke, scheduled from the disconnect mutation. */
+/**
+ * Revoke a refresh token at Intuit. Preferred form is `orgId`: the token is
+ * read from the connection doc and scrubbed afterwards, so the secret never
+ * rides in scheduler args. The explicit `refreshToken` form exists only for
+ * the org-delete cascade, where the doc is gone before this action runs.
+ */
 export const revokeConnection = internalAction({
-	args: { refreshToken: v.string() },
-	handler: async (_ctx, args): Promise<null> => {
+	args: {
+		orgId: v.optional(v.id("organizations")),
+		refreshToken: v.optional(v.string()),
+	},
+	handler: async (ctx, args): Promise<null> => {
+		let token = args.refreshToken ?? null;
+		if (!token && args.orgId) {
+			const connection: Doc<"quickbooksConnections"> | null =
+				await ctx.runQuery(internal.quickbooks.getConnection, {
+					orgId: args.orgId,
+				});
+			token = connection?.refreshToken || null;
+		}
+		if (!token) return null;
+
 		try {
-			const revoked = await revokeToken(args.refreshToken);
+			const revoked = await revokeToken(token);
 			if (!revoked) {
 				console.warn("QuickBooks token revoke returned a non-OK status");
 			}
 		} catch (error) {
 			console.warn("QuickBooks token revoke failed", error);
+		}
+		if (args.orgId) {
+			await ctx.runMutation(internal.quickbooks.clearConnectionTokens, {
+				orgId: args.orgId,
+			});
 		}
 		return null;
 	},

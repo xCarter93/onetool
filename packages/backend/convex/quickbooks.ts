@@ -135,10 +135,12 @@ export const disconnect = userMutation({
 
 		await ctx.db.patch(connection._id, { status: "disconnected" });
 
+		// Pass only the orgId: the action reads the token from the doc (and
+		// scrubs it afterwards), keeping the secret out of scheduler args.
 		await ctx.scheduler.runAfter(
 			0,
 			internal.quickbooksActions.revokeConnection,
-			{ refreshToken: connection.refreshToken }
+			{ orgId: ctx.orgId }
 		);
 		return null;
 	},
@@ -250,6 +252,20 @@ export const storeConnection = internalMutation({
 				companyName: args.companyName,
 				lastHealthCheckAt: Date.now(),
 			});
+			// Drain anything queued while the connection needed reauth.
+			const pendingJob = await ctx.db
+				.query("quickbooksSyncJobs")
+				.withIndex("by_org_status", (q) =>
+					q.eq("orgId", orgId).eq("status", "pending")
+				)
+				.first();
+			if (pendingJob) {
+				await ctx.scheduler.runAfter(
+					0,
+					internal.quickbooksActions.processOrgJobs,
+					{ orgId }
+				);
+			}
 			return { orgId };
 		}
 
@@ -304,7 +320,12 @@ export const updateTokens = internalMutation({
 });
 
 export const markNeedsReauth = internalMutation({
-	args: { orgId: v.id("organizations") },
+	args: {
+		orgId: v.id("organizations"),
+		// Refresh-race guard: only flip if the token that just failed is still
+		// the stored one. A concurrent refresh that already rotated it wins.
+		ifRefreshTokenMatches: v.optional(v.string()),
+	},
 	handler: async (ctx, args): Promise<null> => {
 		const connection = await ctx.db
 			.query("quickbooksConnections")
@@ -313,9 +334,55 @@ export const markNeedsReauth = internalMutation({
 		if (!connection || connection.status === "disconnected") {
 			return null;
 		}
+		if (
+			args.ifRefreshTokenMatches !== undefined &&
+			connection.refreshToken !== args.ifRefreshTokenMatches
+		) {
+			return null;
+		}
 		await ctx.db.patch(connection._id, {
 			status: "needs_reauth",
 			lastHealthCheckAt: Date.now(),
+		});
+		return null;
+	},
+});
+
+/** Post-revoke scrub: a disconnected row keeps no live secrets at rest. */
+export const clearConnectionTokens = internalMutation({
+	args: { orgId: v.id("organizations") },
+	handler: async (ctx, args): Promise<null> => {
+		const connection = await ctx.db
+			.query("quickbooksConnections")
+			.withIndex("by_org", (q) => q.eq("orgId", args.orgId))
+			.first();
+		if (!connection || connection.status !== "disconnected") {
+			return null;
+		}
+		await ctx.db.patch(connection._id, {
+			accessToken: "",
+			accessTokenExpiresAt: 0,
+			refreshToken: "",
+			refreshTokenExpiresAt: 0,
+		});
+		return null;
+	},
+});
+
+/** Late deposit-account resolution (worker self-heal when setup ran without one). */
+export const saveDepositAccount = internalMutation({
+	args: {
+		orgId: v.id("organizations"),
+		depositAccountQboId: v.string(),
+	},
+	handler: async (ctx, args): Promise<null> => {
+		const connection = await ctx.db
+			.query("quickbooksConnections")
+			.withIndex("by_org", (q) => q.eq("orgId", args.orgId))
+			.first();
+		if (!connection) return null;
+		await ctx.db.patch(connection._id, {
+			depositAccountQboId: args.depositAccountQboId,
 		});
 		return null;
 	},
@@ -358,9 +425,6 @@ const QBO_ENTITY_TYPE = v.union(
 	v.literal("payment")
 );
 
-/** How many pending rows to scan for due work before giving up on a pass. */
-const JOB_SCAN_LIMIT = 100;
-
 /**
  * Flip due pending jobs to "processing" and hand them to the caller. This is
  * the mutual-exclusion point: two concurrent processOrgJobs kicks cannot claim
@@ -370,16 +434,12 @@ export const claimDueJobs = internalMutation({
 	args: { orgId: v.id("organizations"), limit: v.number() },
 	handler: async (ctx, args): Promise<Doc<"quickbooksSyncJobs">[]> => {
 		const now = Date.now();
-		const candidates = await ctx.db
+		const due = await ctx.db
 			.query("quickbooksSyncJobs")
-			.withIndex("by_org_status", (q) =>
-				q.eq("orgId", args.orgId).eq("status", "pending")
+			.withIndex("by_org_status_due", (q) =>
+				q.eq("orgId", args.orgId).eq("status", "pending").lte("runAfter", now)
 			)
-			.take(JOB_SCAN_LIMIT);
-
-		const due = candidates
-			.filter((job) => job.runAfter <= now)
-			.slice(0, Math.max(0, args.limit));
+			.take(Math.max(0, args.limit));
 
 		const claimed: Doc<"quickbooksSyncJobs">[] = [];
 		for (const job of due) {
@@ -740,6 +800,8 @@ export const listSyncErrors = userQuery({
 				failedAt: job.failedAt ?? job._creationTime,
 			});
 		}
+		// The index orders by creation time; the UI promises newest failure first.
+		rows.sort((a, b) => b.failedAt - a.failedAt);
 		return rows;
 	},
 });

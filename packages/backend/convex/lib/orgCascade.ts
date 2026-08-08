@@ -605,6 +605,9 @@ export async function cascadeDeleteOrgDataPage(
 			.take(remaining);
 		for (const row of rows) {
 			if (row.status !== "disconnected") {
+				// Explicit-token form: the doc is deleted in this transaction, so
+				// the action cannot read it. The arg is consumed once and never
+				// logged; every other caller passes orgId instead.
 				await ctx.scheduler.runAfter(
 					0,
 					internal.quickbooksActions.revokeConnection,

@@ -2004,6 +2004,7 @@ export default defineSchema({
 		dedupeKey: v.string(), // `${entityType}:${localId}` — collapse duplicate pending jobs
 	})
 		.index("by_org_status", ["orgId", "status"])
+		.index("by_org_status_due", ["orgId", "status", "runAfter"])
 		.index("by_status_due", ["status", "runAfter"])
 		.index("by_org_dedupe", ["orgId", "dedupeKey", "status"]),
 });

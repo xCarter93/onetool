@@ -71,6 +71,9 @@ export class QboRequestError extends Error {
 	}
 }
 
+/** Every Intuit request gets a deadline so a hung fetch can't burn the action. */
+const QBO_FETCH_TIMEOUT_MS = 30_000;
+
 export async function qboFetch<T>(args: {
 	accessToken: string;
 	realmId: string;
@@ -89,6 +92,7 @@ export async function qboFetch<T>(args: {
 			"Content-Type": "application/json",
 		},
 		body: args.body ? JSON.stringify(args.body) : undefined,
+		signal: AbortSignal.timeout(QBO_FETCH_TIMEOUT_MS),
 	});
 
 	// intuit_tid is the only handle Intuit support can trace — log it on every call.
@@ -148,6 +152,7 @@ async function postTokenRequest(body: URLSearchParams): Promise<QboTokenSet> {
 			"Content-Type": "application/x-www-form-urlencoded",
 		},
 		body: body.toString(),
+		signal: AbortSignal.timeout(QBO_FETCH_TIMEOUT_MS),
 	});
 
 	const intuitTid = response.headers.get("intuit_tid");
@@ -206,6 +211,7 @@ export async function revokeToken(refreshToken: string): Promise<boolean> {
 			"Content-Type": "application/json",
 		},
 		body: JSON.stringify({ token: refreshToken }),
+		signal: AbortSignal.timeout(QBO_FETCH_TIMEOUT_MS),
 	});
 	const intuitTid = response.headers.get("intuit_tid");
 	console.log(

@@ -38,8 +38,20 @@ describe("QuickBooks connection", () => {
 
 	// disconnect schedules revokeConnection via runAfter(0); fake timers +
 	// finishAllScheduledFunctions is the convex-test pattern for draining it.
+	// The revoke action fetches Intuit and then writes (token scrub), so give
+	// it a resolved fetch or the drain ends before the chain does.
 	function useScheduledDrain() {
 		vi.useFakeTimers();
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async () => ({
+				ok: true,
+				status: 200,
+				headers: { get: () => null },
+				json: async () => ({}),
+				text: async () => "",
+			}))
+		);
 	}
 
 	async function setupOwnerOrg(suffix: string) {
@@ -288,6 +300,9 @@ describe("QuickBooks connection", () => {
 			});
 
 			expect(after.connection?.status).toBe("disconnected");
+			// Post-revoke scrub: no live secrets left at rest.
+			expect(after.connection?.refreshToken).toBe("");
+			expect(after.connection?.accessToken).toBe("");
 			expect(after.pending?.status).toBe("ignored");
 			expect(after.done?.status).toBe("succeeded");
 			expect(after.link).not.toBeNull();
@@ -378,7 +393,8 @@ describe("QuickBooks connection", () => {
 					.first()
 			);
 			expect(connection?.status).toBe("disconnected");
-			expect(connection?.accessToken).toBe("access_1");
+			// Disconnect scrubbed the tokens, and the late refresh must not restore them.
+			expect(connection?.accessToken).toBe("");
 		});
 
 		it("markNeedsReauth leaves a disconnected connection alone", async () => {

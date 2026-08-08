@@ -39,6 +39,9 @@ async function isEligible(
 		if (!invoiceId) return false;
 		const invoice = await ctx.db.get(invoiceId);
 		if (!invoice || invoice.orgId !== orgId) return false;
+		// Void propagation is Phase 3; never re-push a cancelled invoice's
+		// last state as an upsert.
+		if (invoice.status === "cancelled") return false;
 		const link = await ctx.db
 			.query("quickbooksEntityLinks")
 			.withIndex("by_org_entity", (q) =>
@@ -64,22 +67,28 @@ async function isEligible(
  * Queue an entity for QBO sync and kick the worker. Safe to call
  * unconditionally: duplicate pending jobs collapse on dedupeKey, and jobs are
  * enqueued even when account setup is incomplete (the worker holds them rather
- * than dropping the write).
+ * than dropping the write). A needs_reauth connection still queues — the write
+ * must survive to the reconnect — it just doesn't kick the worker.
+ *
+ * Returns true when a sync job is pending for the entity (inserted or already
+ * queued). Bulk call sites pass `kick: false` and issue one worker kick via
+ * `kickQboSyncWorker` after their loop.
  */
 export async function maybeEnqueueQboSync(
 	ctx: MutationCtx,
 	orgId: Id<"organizations">,
 	entityType: QboEntityType,
-	localId: string
-): Promise<void> {
+	localId: string,
+	opts?: { kick?: boolean }
+): Promise<boolean> {
 	const connection = await ctx.db
 		.query("quickbooksConnections")
 		.withIndex("by_org", (q) => q.eq("orgId", orgId))
 		.first();
-	if (!connection || connection.status !== "connected") return;
+	if (!connection || connection.status === "disconnected") return false;
 
 	if (!(await isEligible(ctx, connection, orgId, entityType, localId))) {
-		return;
+		return false;
 	}
 
 	const dedupeKey = `${entityType}:${localId}`;
@@ -89,7 +98,7 @@ export async function maybeEnqueueQboSync(
 			q.eq("orgId", orgId).eq("dedupeKey", dedupeKey).eq("status", "pending")
 		)
 		.first();
-	if (existing) return;
+	if (existing) return true;
 
 	await ctx.db.insert("quickbooksSyncJobs", {
 		orgId,
@@ -102,6 +111,24 @@ export async function maybeEnqueueQboSync(
 		dedupeKey,
 	});
 
+	if (connection.status === "connected" && (opts?.kick ?? true)) {
+		await ctx.scheduler.runAfter(0, internal.quickbooksActions.processOrgJobs, {
+			orgId,
+		});
+	}
+	return true;
+}
+
+/** One worker kick for a batch of `kick: false` enqueues. No-op unless connected. */
+export async function kickQboSyncWorker(
+	ctx: MutationCtx,
+	orgId: Id<"organizations">
+): Promise<void> {
+	const connection = await ctx.db
+		.query("quickbooksConnections")
+		.withIndex("by_org", (q) => q.eq("orgId", orgId))
+		.first();
+	if (!connection || connection.status !== "connected") return;
 	await ctx.scheduler.runAfter(0, internal.quickbooksActions.processOrgJobs, {
 		orgId,
 	});

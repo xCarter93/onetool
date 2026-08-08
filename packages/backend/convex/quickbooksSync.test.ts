@@ -61,8 +61,8 @@ describe("QuickBooks mappers", () => {
 		expect(toQboDate(Date.UTC(2026, 11, 31, 23, 59))).toBe("2026-12-31");
 	});
 
-	it("escapeQboQueryValue doubles single quotes", () => {
-		expect(escapeQboQueryValue("O'Brien's Yard")).toBe("O''Brien''s Yard");
+	it("escapeQboQueryValue backslash-escapes quotes (QBO query syntax)", () => {
+		expect(escapeQboQueryValue("O'Brien's Yard")).toBe("O\\'Brien\\'s Yard");
 	});
 
 	it("buildQboCustomer maps name, contact, and billing address", () => {
@@ -356,14 +356,53 @@ describe("QuickBooks sync engine", () => {
 			expect(await jobsFor(org.orgId)).toHaveLength(0);
 		});
 
-		it("is a no-op when the connection is not connected", async () => {
+		it("is a no-op when the connection is disconnected", async () => {
 			const { org, asOwner } = await setupOrg("enq_dead");
-			await connect(org.orgId, { status: "needs_reauth" });
+			await connect(org.orgId, { status: "disconnected" });
 			await asOwner.mutation(api.clients.create, {
 				companyName: "Paused Co",
 				status: "active",
 			});
 			expect(await jobsFor(org.orgId)).toHaveLength(0);
+		});
+
+		it("still queues while the connection needs reauth (drains on reconnect)", async () => {
+			const { org, asOwner } = await setupOrg("enq_reauth");
+			await connect(org.orgId, { status: "needs_reauth" });
+			await asOwner.mutation(api.clients.create, {
+				companyName: "Paused Co",
+				status: "active",
+			});
+			const jobs = await jobsFor(org.orgId);
+			expect(jobs).toHaveLength(1);
+			expect(jobs[0]).toMatchObject({ entityType: "client", status: "pending" });
+		});
+
+		it("does not enqueue a cancelled invoice, even when linked", async () => {
+			const { org, asOwner } = await setupOrg("enq_cancel");
+			await connect(org.orgId, { defaultServiceItemQboId: "9" });
+			const clientId = await asOwner.mutation(api.clients.create, {
+				companyName: "Acme Co",
+				status: "active",
+			});
+			const invoiceId = await createInvoice(asOwner, clientId, "sent");
+			await t.mutation(internal.quickbooks.upsertEntityLink, {
+				orgId: org.orgId,
+				entityType: "invoice",
+				localId: invoiceId,
+				qboId: "202",
+				qboSyncToken: "0",
+			});
+			await clearJobsOfType(org.orgId, "all");
+
+			await asOwner.mutation(api.invoices.update, {
+				id: invoiceId,
+				status: "cancelled",
+			});
+
+			expect(
+				(await jobsFor(org.orgId)).filter((j) => j.entityType === "invoice")
+			).toHaveLength(0);
 		});
 
 		it("enqueues a client job on create, even with setup incomplete", async () => {
@@ -1402,6 +1441,8 @@ describe("QuickBooks sync engine", () => {
 
 			expect(result.processed).toBe(1);
 			expect(calls[0].url).toContain("/payment");
+			// Crash-retry idempotency: creates carry an Intuit requestid.
+			expect(calls[0].url).toContain(`requestid=${paymentId}-0`);
 			expect(calls[0].body).toMatchObject({
 				TotalAmt: 100,
 				DepositToAccountRef: { value: "88" },
@@ -1410,6 +1451,95 @@ describe("QuickBooks sync engine", () => {
 			expect((await linkFor(org.orgId, "payment", paymentId))?.qboId).toBe(
 				"303"
 			);
+		});
+
+		async function setupPaidPayment(prefix: string) {
+			const { org, asOwner } = await setupOrg(prefix);
+			await connect(org.orgId, { defaultServiceItemQboId: "9" });
+			const clientId = await asOwner.mutation(api.clients.create, {
+				companyName: "Acme Co",
+				status: "active",
+			});
+			const invoiceId = await createInvoice(asOwner, clientId, "sent");
+			const paymentId = await asOwner.mutation(api.payments.create, {
+				invoiceId,
+				paymentAmount: 100,
+				dueDate: Date.now() + DAY,
+				description: "Full Payment",
+				sortOrder: 0,
+			});
+			await t.run(async (ctx) => {
+				await ctx.db.patch(paymentId, { status: "paid", paidAt: Date.now() });
+			});
+			await clearJobsOfType(org.orgId, "all");
+			await t.mutation(internal.quickbooks.upsertEntityLink, {
+				orgId: org.orgId,
+				entityType: "client",
+				localId: clientId,
+				qboId: "101",
+				qboSyncToken: "0",
+			});
+			await t.mutation(internal.quickbooks.upsertEntityLink, {
+				orgId: org.orgId,
+				entityType: "invoice",
+				localId: invoiceId,
+				qboId: "202",
+				qboSyncToken: "0",
+			});
+			await seedJobFor(org.orgId, paymentId, "payment");
+			return { org, paymentId };
+		}
+
+		it("self-heals a missing deposit account when QBO has Undeposited Funds", async () => {
+			const { org, paymentId } = await setupPaidPayment("w_pay_heal");
+
+			stubQbo((url) => {
+				if (url.includes("/query")) {
+					return {
+						payload: {
+							QueryResponse: {
+								Account: [{ Id: "88", Name: "Undeposited Funds" }],
+							},
+						},
+					};
+				}
+				return { payload: { Payment: { Id: "303", SyncToken: "0" } } };
+			});
+
+			const result = await t.action(internal.quickbooksActions.processOrgJobs, {
+				orgId: org.orgId,
+			});
+
+			expect(result.processed).toBe(1);
+			expect((await linkFor(org.orgId, "payment", paymentId))?.qboId).toBe(
+				"303"
+			);
+			const connection = await t.run(async (ctx) =>
+				ctx.db
+					.query("quickbooksConnections")
+					.withIndex("by_org", (q) => q.eq("orgId", org.orgId))
+					.first()
+			);
+			expect(connection?.depositAccountQboId).toBe("88");
+		});
+
+		it("fails a payment actionably when QBO has no Undeposited Funds account", async () => {
+			const { org } = await setupPaidPayment("w_pay_noUF");
+
+			stubQbo((url) => {
+				if (url.includes("/query")) {
+					return { payload: { QueryResponse: {} } };
+				}
+				return { payload: { Payment: { Id: "303", SyncToken: "0" } } };
+			});
+
+			await t.action(internal.quickbooksActions.processOrgJobs, {
+				orgId: org.orgId,
+			});
+
+			const jobs = await jobsFor(org.orgId);
+			expect(jobs[0].status).toBe("failed");
+			expect(jobs[0].lastError).toContain("Undeposited Funds");
 		});
 
 		it("is idempotent for an already-linked payment", async () => {

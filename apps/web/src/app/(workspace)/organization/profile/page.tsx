@@ -159,7 +159,17 @@ export default function OrganizationProfilePage() {
 		!permsLoading &&
 		((ADMIN_TABS.includes(activeTab) && !hasFullAccess) ||
 			(tabPermission !== undefined && !can(tabPermission)));
-	const renderTab: TabValue = deniedPremium ? "overview" : activeTab;
+	// The payments nav item is hidden until a Stripe account exists; a direct
+	// ?tab=payments link then lands on Integrations (the payments front door)
+	// instead of a tab with no nav entry.
+	const hasStripeAccount = Boolean(organization?.stripeConnectAccountId);
+	const paymentsUnavailable =
+		activeTab === "payments" && !isLoading && !hasStripeAccount;
+	const renderTab: TabValue = deniedPremium
+		? "overview"
+		: paymentsUnavailable
+			? "integrations"
+			: activeTab;
 
 	React.useEffect(() => {
 		if (deniedPremium) {
@@ -205,7 +215,6 @@ export default function OrganizationProfilePage() {
 
 	// The Integrations tab is the front door for payments setup; the Payments tab
 	// only appears once a Stripe connected account exists.
-	const hasStripeAccount = Boolean(organization?.stripeConnectAccountId);
 
 	const navItems: SettingsNavItem[] = React.useMemo(
 		() =>

@@ -21,7 +21,8 @@ export function toQboDate(ms: number): string {
  * single quotes and doubles them to escape.
  */
 export function escapeQboQueryValue(value: string): string {
-	return value.replace(/'/g, "''");
+	// QBO's query language escapes with backslashes, not SQL-style doubling.
+	return value.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
 }
 
 // ============================================================================
