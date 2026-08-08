@@ -65,12 +65,13 @@ export const ORG_SCOPED_CASCADE_TABLES = [
 	// AI assistant metadata (component-side thread data deleted async per row).
 	"agentThreadMeta",
 	"agentUsage",
-	// QuickBooks integration (jobs + links before the connection row).
+	// QuickBooks integration (jobs, links, and import rows before their parent
+	// runs; the connection row last).
 	"quickbooksSyncJobs",
 	"quickbooksEntityLinks",
-	"quickbooksConnections",
-	"quickbooksImportRuns",
 	"quickbooksImportRows",
+	"quickbooksImportRuns",
+	"quickbooksConnections",
 ] as const;
 
 /**
@@ -598,11 +599,11 @@ export async function cascadeDeleteOrgDataPage(
 		}
 	}
 
-	// quickbooksImportRuns
+	// quickbooksImportRows — children of quickbooksImportRuns; drain first.
 	{
 		if (remaining <= 0) return { done: false };
 		const rows = await ctx.db
-			.query("quickbooksImportRuns")
+			.query("quickbooksImportRows")
 			.withIndex("by_org", (q) => q.eq("orgId", orgId))
 			.take(remaining);
 		for (const row of rows) {
@@ -611,11 +612,11 @@ export async function cascadeDeleteOrgDataPage(
 		}
 	}
 
-	// quickbooksImportRows
+	// quickbooksImportRuns
 	{
 		if (remaining <= 0) return { done: false };
 		const rows = await ctx.db
-			.query("quickbooksImportRows")
+			.query("quickbooksImportRuns")
 			.withIndex("by_org", (q) => q.eq("orgId", orgId))
 			.take(remaining);
 		for (const row of rows) {

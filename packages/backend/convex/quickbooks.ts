@@ -169,54 +169,95 @@ export const resetConnection = userMutation({
 			throw new ConvexError("QuickBooks is not connected");
 		}
 
-		const BATCH = 500;
-
-		for (;;) {
-			const links = await ctx.db
-				.query("quickbooksEntityLinks")
-				.withIndex("by_org_entity", (q) => q.eq("orgId", ctx.orgId))
-				.take(BATCH);
-			for (const link of links) await ctx.db.delete(link._id);
-			if (links.length < BATCH) break;
-		}
-
-		for (;;) {
-			const jobs = await ctx.db
-				.query("quickbooksSyncJobs")
-				.withIndex("by_org_status", (q) => q.eq("orgId", ctx.orgId))
-				.take(BATCH);
-			for (const job of jobs) await ctx.db.delete(job._id);
-			if (jobs.length < BATCH) break;
-		}
-
-		for (;;) {
-			const rows = await ctx.db
-				.query("quickbooksImportRows")
-				.withIndex("by_org", (q) => q.eq("orgId", ctx.orgId))
-				.take(BATCH);
-			for (const row of rows) await ctx.db.delete(row._id);
-			if (rows.length < BATCH) break;
-		}
-
-		for (;;) {
-			const runs = await ctx.db
-				.query("quickbooksImportRuns")
-				.withIndex("by_org", (q) => q.eq("orgId", ctx.orgId))
-				.take(BATCH);
-			for (const run of runs) await ctx.db.delete(run._id);
-			if (runs.length < BATCH) break;
-		}
-
 		if (connection.status !== "disconnected") {
 			// Explicit-token form: the doc is deleted in this transaction, so the
 			// action cannot read it (same contract as the org-delete cascade).
+			// The stored value is ciphertext once the encryption key is set.
 			await ctx.scheduler.runAfter(
 				0,
 				internal.quickbooksActions.revokeConnection,
 				{ refreshToken: connection.refreshToken }
 			);
 		}
+		// Deleting the connection first makes the org read as disconnected in
+		// the same transaction (no new jobs enqueue); the sync data drains in
+		// bounded pages behind it, fenced by the cutoff so a reconnect started
+		// mid-purge keeps its new data.
 		await ctx.db.delete(connection._id);
+		// +1ms: _creationTime is a commit timestamp and can trail this
+		// transaction's clock fractionally; anything a reconnect creates is
+		// seconds away at minimum.
+		await ctx.scheduler.runAfter(0, internal.quickbooks.purgeQboSyncDataPage, {
+			orgId: ctx.orgId,
+			cutoff: Date.now() + 1,
+		});
+		return null;
+	},
+});
+
+/**
+ * Bounded reset cleanup: one page of QBO sync data per invocation,
+ * rescheduling itself until everything at or before the cutoff is gone. Child
+ * tables drain before their parents (rows before runs). The import tables
+ * bound on _creationTime in the index; jobs and links bound in JS because
+ * their indexes lead with other columns — post-cutoff docs there can only
+ * come from a concurrent reconnect and are left alone.
+ */
+export const purgeQboSyncDataPage = internalMutation({
+	args: { orgId: v.id("organizations"), cutoff: v.number() },
+	handler: async (ctx, args): Promise<null> => {
+		const BATCH = 200;
+		let deleted = 0;
+
+		const rows = await ctx.db
+			.query("quickbooksImportRows")
+			.withIndex("by_org", (q) =>
+				q.eq("orgId", args.orgId).lte("_creationTime", args.cutoff)
+			)
+			.take(BATCH);
+		for (const doc of rows) await ctx.db.delete(doc._id);
+		deleted = rows.length;
+
+		if (deleted === 0) {
+			const runs = await ctx.db
+				.query("quickbooksImportRuns")
+				.withIndex("by_org", (q) =>
+					q.eq("orgId", args.orgId).lte("_creationTime", args.cutoff)
+				)
+				.take(BATCH);
+			for (const doc of runs) await ctx.db.delete(doc._id);
+			deleted = runs.length;
+		}
+
+		if (deleted === 0) {
+			const jobs = (
+				await ctx.db
+					.query("quickbooksSyncJobs")
+					.withIndex("by_org_status", (q) => q.eq("orgId", args.orgId))
+					.take(BATCH)
+			).filter((doc) => doc._creationTime <= args.cutoff);
+			for (const doc of jobs) await ctx.db.delete(doc._id);
+			deleted = jobs.length;
+		}
+
+		if (deleted === 0) {
+			const links = (
+				await ctx.db
+					.query("quickbooksEntityLinks")
+					.withIndex("by_org_entity", (q) => q.eq("orgId", args.orgId))
+					.take(BATCH)
+			).filter((doc) => doc._creationTime <= args.cutoff);
+			for (const doc of links) await ctx.db.delete(doc._id);
+			deleted = links.length;
+		}
+
+		if (deleted > 0) {
+			await ctx.scheduler.runAfter(
+				0,
+				internal.quickbooks.purgeQboSyncDataPage,
+				args
+			);
+		}
 		return null;
 	},
 });
@@ -397,29 +438,38 @@ export const updateTokens = internalMutation({
 export const markNeedsReauth = internalMutation({
 	args: {
 		orgId: v.id("organizations"),
-		// Refresh-race guard: only flip if the token that just failed is still
-		// the stored one. A concurrent refresh that already rotated it wins.
+		// Race guards, compared against the STORED (possibly encrypted) token
+		// strings: only flip if the token that just failed is still the stored
+		// one. A concurrent refresh that already rotated it wins. Returns
+		// whether the connection was flipped.
 		ifRefreshTokenMatches: v.optional(v.string()),
+		ifAccessTokenMatches: v.optional(v.string()),
 	},
-	handler: async (ctx, args): Promise<null> => {
+	handler: async (ctx, args): Promise<boolean> => {
 		const connection = await ctx.db
 			.query("quickbooksConnections")
 			.withIndex("by_org", (q) => q.eq("orgId", args.orgId))
 			.first();
 		if (!connection || connection.status === "disconnected") {
-			return null;
+			return false;
 		}
 		if (
 			args.ifRefreshTokenMatches !== undefined &&
 			connection.refreshToken !== args.ifRefreshTokenMatches
 		) {
-			return null;
+			return false;
+		}
+		if (
+			args.ifAccessTokenMatches !== undefined &&
+			connection.accessToken !== args.ifAccessTokenMatches
+		) {
+			return false;
 		}
 		await ctx.db.patch(connection._id, {
 			status: "needs_reauth",
 			lastHealthCheckAt: Date.now(),
 		});
-		return null;
+		return true;
 	},
 });
 
@@ -530,7 +580,24 @@ export const claimDueJobs = internalMutation({
 			.take(Math.max(0, args.limit));
 
 		const claimed: Doc<"quickbooksSyncJobs">[] = [];
+		const claimedKeys = new Set<string>();
 		for (const job of due) {
+			// Per-entity serialization: a job whose entity is already in flight
+			// (claimed by a concurrent worker, or earlier in this batch) stays
+			// pending for the next pass — two workers must never both create the
+			// same QBO record.
+			if (claimedKeys.has(job.dedupeKey)) continue;
+			const inFlight = await ctx.db
+				.query("quickbooksSyncJobs")
+				.withIndex("by_org_dedupe", (q) =>
+					q
+						.eq("orgId", args.orgId)
+						.eq("dedupeKey", job.dedupeKey)
+						.eq("status", "processing")
+				)
+				.first();
+			if (inFlight) continue;
+			claimedKeys.add(job.dedupeKey);
 			await ctx.db.patch(job._id, { status: "processing", claimedAt: now });
 			claimed.push({ ...job, status: "processing", claimedAt: now });
 		}
@@ -547,7 +614,9 @@ export const markJobSucceeded = internalMutation({
 	args: { jobId: v.id("quickbooksSyncJobs") },
 	handler: async (ctx, args): Promise<null> => {
 		const job = await ctx.db.get(args.jobId);
-		if (!job) return null;
+		// Same fence as markJobIgnored/releaseJob: a job that was ignored or
+		// released mid-flight must not be revived as succeeded.
+		if (!job || job.status !== "processing") return null;
 		await ctx.db.patch(args.jobId, {
 			status: "succeeded",
 			attempts: job.attempts + 1,

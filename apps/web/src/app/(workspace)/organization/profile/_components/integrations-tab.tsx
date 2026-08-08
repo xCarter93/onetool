@@ -60,7 +60,6 @@ import {
 } from "./settings-card";
 
 const CONNECT_URL = "/api/quickbooks/connect";
-const TAB_URL = "/organization/profile?tab=integrations";
 const PAYMENTS_TAB_URL = "/organization/profile?tab=payments";
 
 const ERROR_MESSAGES: Record<string, string> = {
@@ -258,7 +257,12 @@ export function IntegrationsTab() {
 				ERROR_MESSAGES[reason] ?? ERROR_MESSAGES.unknown,
 			);
 		}
-		router.replace(TAB_URL);
+		// Strip only the OAuth params so anything else on the URL survives.
+		const params = new URLSearchParams(searchParams.toString());
+		params.delete("qbo");
+		params.delete("reason");
+		params.set("tab", "integrations");
+		router.replace(`/organization/profile?${params.toString()}`);
 	}, [searchParams, router, toast]);
 
 	const needsSetup =

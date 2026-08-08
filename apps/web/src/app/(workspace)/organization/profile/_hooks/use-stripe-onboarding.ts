@@ -101,17 +101,18 @@ export function useStripeOnboarding(options?: {
 			});
 
 			toast.removeToast(loadingToastId);
+			// Stays loading on purpose: this is a full-page navigation, so the
+			// document is replaced and there is no SPA return to reset.
 			window.location.href = linkData.url;
 		} catch (error) {
 			toast.removeToast(loadingToastId);
+			setOnboardingLoading(false);
 			logError(error, { action: "stripe_onboarding" });
 			toast.error(
 				"Stripe onboarding failed",
 				getUserFriendlyErrorMessage(error) ??
 					"Unable to start Stripe onboarding right now.",
 			);
-		} finally {
-			setOnboardingLoading(false);
 		}
 	}, [isOwner, toast, onAccountStatus]);
 

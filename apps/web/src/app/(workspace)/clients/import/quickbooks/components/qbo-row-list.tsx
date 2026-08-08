@@ -181,7 +181,11 @@ function QboRow({
 							disabled={pending}
 							onClick={restore}
 						>
-							{proposedDecision(row) === "link" ? "Link" : "Import"}
+							{proposedDecision(row) === "link"
+								? "Link"
+								: proposedDecision(row) === "site"
+									? "Restore"
+									: "Import"}
 						</Button>
 					) : (
 						decision !== "skip" && (

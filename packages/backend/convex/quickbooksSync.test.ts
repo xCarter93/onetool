@@ -496,6 +496,46 @@ describe("QuickBooks sync engine", () => {
 			expect(invoiceJobs[0].operation).toBe("upsert");
 		});
 
+		it("re-enqueues a linked invoice when one of its line items is edited", async () => {
+			const { org, asOwner } = await setupOrg("enq_line_edit");
+			await connect(org.orgId, { defaultServiceItemQboId: "9" });
+			const clientId = await asOwner.mutation(api.clients.create, {
+				companyName: "Acme Co",
+				status: "active",
+			});
+			const invoiceId = await createInvoice(asOwner, clientId, "sent");
+			await t.mutation(internal.quickbooks.upsertEntityLink, {
+				orgId: org.orgId,
+				entityType: "invoice",
+				localId: invoiceId,
+				qboId: "303",
+				qboSyncToken: "0",
+			});
+			const lineId = await asOwner.mutation(api.invoiceLineItems.create, {
+				invoiceId,
+				description: "Mowing visit",
+				quantity: 1,
+				unitPrice: 100,
+				sortOrder: 0,
+			});
+			await clearJobsOfType(org.orgId, "all");
+
+			await asOwner.mutation(api.invoiceLineItems.update, {
+				id: lineId,
+				unitPrice: 150,
+			});
+
+			const invoiceJobs = (await jobsFor(org.orgId)).filter(
+				(j) => j.entityType === "invoice"
+			);
+			expect(invoiceJobs).toHaveLength(1);
+			expect(invoiceJobs[0]).toMatchObject({
+				operation: "upsert",
+				status: "pending",
+				dedupeKey: `invoice:${invoiceId}`,
+			});
+		});
+
 		it("enqueues nothing when an unlinked invoice is cancelled", async () => {
 			const { org, asOwner } = await setupOrg("enq_cancel_unlinked");
 			await connect(org.orgId, { defaultServiceItemQboId: "9" });
@@ -2004,27 +2044,20 @@ describe("QuickBooks sync engine", () => {
 				});
 			}
 
-			/**
-			 * Line items are created through the public API; `skuId` is patched in
-			 * because invoiceLineItems.create does not accept it yet (owned by a
-			 * parallel change). Line-item tables are deliberately untriggered.
-			 */
+			/** Line items are created through the public API. */
 			async function addLine(
 				asOwner: ReturnType<typeof t.withIdentity>,
 				invoiceId: Id<"invoices">,
 				skuId?: Id<"skus">
 			) {
-				const lineId = await asOwner.mutation(api.invoiceLineItems.create, {
+				return await asOwner.mutation(api.invoiceLineItems.create, {
 					invoiceId,
 					description: "Mowing visit",
 					quantity: 1,
 					unitPrice: 100,
 					sortOrder: 0,
+					skuId,
 				});
-				if (skuId) {
-					await t.run(async (ctx) => ctx.db.patch(lineId, { skuId }));
-				}
-				return lineId;
 			}
 
 			function itemRefOf(body: unknown): string | undefined {
@@ -2419,6 +2452,20 @@ describe("QuickBooks sync engine", () => {
 			});
 
 			await asOwner.mutation(api.quickbooks.resetConnection, {});
+			// The connection dies in the mutation; the sync data drains through
+			// scheduled purge pages (and the revoke action fetches Intuit).
+			vi.stubGlobal(
+				"fetch",
+				vi.fn(async () => ({
+					ok: true,
+					status: 200,
+					headers: { get: () => null },
+					json: async () => ({}),
+					text: async () => "",
+				}))
+			);
+			expect((await qboStateCounts(org.orgId)).connections).toBe(0);
+			await t.finishAllScheduledFunctions(vi.runAllTimers);
 
 			expect(await qboStateCounts(org.orgId)).toEqual({
 				connections: 0,
@@ -2438,6 +2485,7 @@ describe("QuickBooks sync engine", () => {
 			await connect(org.orgId, { status: "disconnected" });
 
 			await asOwner.mutation(api.quickbooks.resetConnection, {});
+			await t.finishAllScheduledFunctions(vi.runAllTimers);
 
 			expect(await qboStateCounts(org.orgId)).toMatchObject({
 				connections: 0,

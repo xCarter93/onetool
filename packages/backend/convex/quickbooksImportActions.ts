@@ -4,7 +4,11 @@ import { ConvexError } from "convex/values";
 import { action } from "./_generated/server";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
-import { qboFetch, type QboEnvironment } from "./lib/quickbooks";
+import {
+	QboRequestError,
+	qboFetch,
+	type QboEnvironment,
+} from "./lib/quickbooks";
 import { ensureFreshAccessToken } from "./quickbooksActions";
 
 /**
@@ -15,6 +19,9 @@ import { ensureFreshAccessToken } from "./quickbooksActions";
 const PAGE_SIZE = 100;
 // Hard stop so a misbehaving page cursor can't loop forever.
 const MAX_PAGES = 200;
+// A throttled or briefly unavailable Intuit must not abort a whole import.
+const PAGE_ATTEMPTS = 3;
+const PAGE_RETRY_BACKOFF_MS = 500;
 
 type QboBillAddr = {
 	Line1?: string;
@@ -49,6 +56,31 @@ type QboRef = {
 	realmId: string;
 	environment: QboEnvironment;
 };
+
+/** 429 and 5xx are transient; everything else (auth, validation) is not. */
+function isTransientQboError(error: unknown): boolean {
+	return (
+		error instanceof QboRequestError &&
+		(error.isRateLimited || error.status >= 500)
+	);
+}
+
+/** Retry one page a bounded number of times before letting failRun take over. */
+async function queryCustomersWithRetry(
+	tokens: QboRef,
+	startPosition: number
+): Promise<QboCustomer[]> {
+	for (let attempt = 1; ; attempt++) {
+		try {
+			return await queryCustomers(tokens, startPosition);
+		} catch (error) {
+			if (attempt >= PAGE_ATTEMPTS || !isTransientQboError(error)) throw error;
+			await new Promise((resolve) =>
+				setTimeout(resolve, PAGE_RETRY_BACKOFF_MS * attempt)
+			);
+		}
+	}
+}
 
 async function queryCustomers(
 	tokens: QboRef,
@@ -164,7 +196,7 @@ export const startImport = action({
 			// carry its parent's name without a second query.
 			const namesById = new Map<string, string>();
 			for (let page = 0; page < MAX_PAGES; page++) {
-				const customers = await queryCustomers(
+				const customers = await queryCustomersWithRetry(
 					tokens,
 					page * PAGE_SIZE + 1
 				);

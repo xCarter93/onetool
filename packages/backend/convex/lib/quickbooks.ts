@@ -96,9 +96,12 @@ export async function qboFetch<T>(args: {
 	});
 
 	// intuit_tid is the only handle Intuit support can trace — log it on every call.
+	// The query string is stripped: /query?query=... embeds customer and item
+	// names, and Intuit forbids logging QBO data.
 	const intuitTid = response.headers.get("intuit_tid");
+	const loggedPath = args.path.split("?")[0];
 	console.log(
-		`[qbo] realm=${args.realmId} ${args.method ?? "GET"} ${args.path} status=${response.status} intuit_tid=${intuitTid ?? "none"}`
+		`[qbo] realm=${args.realmId} ${args.method ?? "GET"} ${loggedPath} status=${response.status} intuit_tid=${intuitTid ?? "none"}`
 	);
 
 	if (!response.ok) {

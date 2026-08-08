@@ -10,6 +10,9 @@ interface MapboxGeocodeResponse {
 	}>;
 }
 
+/** Deadline on every Mapbox call so a hung fetch can't burn the action. */
+const GEOCODE_FETCH_TIMEOUT_MS = 30_000;
+
 export type GeocodeResult = {
 	latitude: number;
 	longitude: number;
@@ -29,7 +32,9 @@ export async function geocodeAddress(
 	const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodedAddress}.json?access_token=${mapboxToken}&limit=1&country=US`;
 
 	try {
-		const response = await fetch(url);
+		const response = await fetch(url, {
+			signal: AbortSignal.timeout(GEOCODE_FETCH_TIMEOUT_MS),
+		});
 		if (!response.ok) {
 			console.error(`Geocoding API error: ${response.status}`);
 			return null;
@@ -48,7 +53,11 @@ export async function geocodeAddress(
 			formattedAddress: feature.place_name || address,
 		};
 	} catch (error) {
-		console.error("Geocoding error:", error);
+		// Message only — the raw error can embed the request URL, which carries
+		// the Mapbox access token.
+		console.error(
+			`Geocoding error: ${error instanceof Error ? error.message : "unknown"}`
+		);
 		return null;
 	}
 }

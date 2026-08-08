@@ -49,7 +49,10 @@ export function QboSummaryBar({
 				<StatCard dotClass="bg-success" label={`${results.linked} linked`} />
 				<StatCard dotClass="bg-primary" label={`${results.imported} imported`} />
 				{hasSites && (
-					<StatCard dotClass="bg-primary" label={`${results.sites} job sites`} />
+					<StatCard
+						dotClass="bg-primary"
+						label={`${results.sites} job site${results.sites !== 1 ? "s" : ""}`}
+					/>
 				)}
 				<StatCard
 					dotClass="bg-muted-foreground/50"
@@ -76,9 +79,15 @@ export function QboSummaryBar({
 				dotClass="bg-primary"
 				label={`${counts.import} new client${counts.import !== 1 ? "s" : ""}`}
 			/>
-			<StatCard dotClass="bg-warning" label={`${counts.review} need review`} />
+			<StatCard
+				dotClass="bg-warning"
+				label={`${counts.review} need${counts.review === 1 ? "s" : ""} review`}
+			/>
 			{hasSites && (
-				<StatCard dotClass="bg-primary" label={`${counts.sites} job sites`} />
+				<StatCard
+					dotClass="bg-primary"
+					label={`${counts.sites} job site${counts.sites !== 1 ? "s" : ""}`}
+				/>
 			)}
 			<StatCard
 				dotClass="bg-muted-foreground/50"

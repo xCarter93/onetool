@@ -163,8 +163,7 @@ export default function OrganizationProfilePage() {
 	// ?tab=payments link then lands on Integrations (the payments front door)
 	// instead of a tab with no nav entry.
 	const hasStripeAccount = Boolean(organization?.stripeConnectAccountId);
-	const paymentsUnavailable =
-		activeTab === "payments" && !isLoading && !hasStripeAccount;
+	const paymentsUnavailable = activeTab === "payments" && !hasStripeAccount;
 	const renderTab: TabValue = deniedPremium
 		? "overview"
 		: paymentsUnavailable
@@ -177,6 +176,13 @@ export default function OrganizationProfilePage() {
 			router.replace("/organization/profile");
 		}
 	}, [deniedPremium, router, toast]);
+
+	// Keep the URL honest once the org resolves: ?tab=payments without a Stripe
+	// account renders Integrations, so the address bar should say so too.
+	React.useEffect(() => {
+		if (isLoading || deniedPremium || !paymentsUnavailable) return;
+		router.replace("/organization/profile?tab=integrations");
+	}, [isLoading, deniedPremium, paymentsUnavailable, router]);
 
 	const handleTabChange = React.useCallback(
 		(value: string) => {

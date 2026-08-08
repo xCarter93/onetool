@@ -34,6 +34,7 @@ describe("QuickBooks connection", () => {
 
 	afterEach(() => {
 		vi.useRealTimers();
+		vi.unstubAllGlobals();
 	});
 
 	// disconnect schedules revokeConnection via runAfter(0); fake timers +
@@ -436,6 +437,190 @@ describe("QuickBooks connection", () => {
 			);
 			expect(live).toHaveLength(1);
 			expect(live[0].realmId).toBe("realm_a");
+		});
+
+		it("markNeedsReauth honors the access-token guard", async () => {
+			const { org, asOwner } = await setupOwnerOrg("g1");
+			await asOwner.mutation(internal.quickbooks.storeConnection, tokenArgs());
+
+			// Stale guard: the failing request used a token that has since rotated.
+			const stale = await t.mutation(internal.quickbooks.markNeedsReauth, {
+				orgId: org.orgId as Id<"organizations">,
+				ifAccessTokenMatches: "access_rotated_away",
+			});
+			expect(stale).toBe(false);
+			let connection = await t.run(async (ctx) =>
+				ctx.db
+					.query("quickbooksConnections")
+					.withIndex("by_org", (q) => q.eq("orgId", org.orgId))
+					.first()
+			);
+			expect(connection?.status).toBe("connected");
+
+			// Matching guard: the stored token really is the one that failed.
+			const marked = await t.mutation(internal.quickbooks.markNeedsReauth, {
+				orgId: org.orgId as Id<"organizations">,
+				ifAccessTokenMatches: "access_1",
+			});
+			expect(marked).toBe(true);
+			connection = await t.run(async (ctx) =>
+				ctx.db
+					.query("quickbooksConnections")
+					.withIndex("by_org", (q) => q.eq("orgId", org.orgId))
+					.first()
+			);
+			expect(connection?.status).toBe("needs_reauth");
+		});
+
+		it("refresh sweep lazily encrypts legacy plaintext tokens", async () => {
+			vi.stubEnv("QUICKBOOKS_TOKEN_ENC_KEY", btoa("0123456789abcdef0123456789abcdef"));
+			vi.stubEnv("QUICKBOOKS_CLIENT_ID", "cid");
+			vi.stubEnv("QUICKBOOKS_CLIENT_SECRET", "secret");
+			const { org, asOwner } = await setupOwnerOrg("g2");
+			// Plaintext tokens, stale health check: the sweep must refresh it.
+			await asOwner.mutation(internal.quickbooks.storeConnection, tokenArgs());
+			await t.run(async (ctx) => {
+				const connection = await ctx.db
+					.query("quickbooksConnections")
+					.withIndex("by_org", (q) => q.eq("orgId", org.orgId))
+					.first();
+				await ctx.db.patch(connection!._id, { lastHealthCheckAt: 1 });
+			});
+
+			const fetchMock = vi.fn(async (_input: unknown, init?: RequestInit) => ({
+				ok: true,
+				status: 200,
+				headers: { get: () => null },
+				json: async () => ({
+					access_token: "access_2",
+					refresh_token: "refresh_2",
+					expires_in: 3600,
+					x_refresh_token_expires_in: 100 * 24 * 3600,
+				}),
+				text: async () => "",
+			}));
+			vi.stubGlobal("fetch", fetchMock);
+
+			await t.action(internal.quickbooksActions.refreshStaleConnections, {});
+
+			// Intuit received the original plaintext refresh token...
+			const body = String(fetchMock.mock.calls[0][1]?.body ?? "");
+			expect(body).toContain("refresh_token=refresh_1");
+
+			// ...and the rotated tokens landed encrypted at rest.
+			const connection = await t.run(async (ctx) =>
+				ctx.db
+					.query("quickbooksConnections")
+					.withIndex("by_org", (q) => q.eq("orgId", org.orgId))
+					.first()
+			);
+			expect(connection?.accessToken).toMatch(/^qbenc1:/);
+			expect(connection?.refreshToken).toMatch(/^qbenc1:/);
+			expect(connection?.accessToken).not.toContain("access_2");
+			expect(connection?.refreshToken).not.toContain("refresh_2");
+
+			// A second sweep decrypts the stored refresh token before calling out.
+			await t.run(async (ctx) => {
+				const doc = await ctx.db
+					.query("quickbooksConnections")
+					.withIndex("by_org", (q) => q.eq("orgId", org.orgId))
+					.first();
+				await ctx.db.patch(doc!._id, { lastHealthCheckAt: 1 });
+			});
+			await t.action(internal.quickbooksActions.refreshStaleConnections, {});
+			const secondBody = String(fetchMock.mock.calls[1][1]?.body ?? "");
+			expect(secondBody).toContain("refresh_token=refresh_2");
+
+			vi.unstubAllEnvs();
+		});
+	});
+
+	describe("sync job state machine hardening", () => {
+		async function insertJob(
+			orgId: Id<"organizations">,
+			overrides: Partial<Record<string, unknown>> = {}
+		) {
+			return await t.run(async (ctx) =>
+				ctx.db.insert("quickbooksSyncJobs", {
+					orgId,
+					entityType: "client",
+					localId: "client_1",
+					operation: "upsert",
+					status: "pending",
+					attempts: 0,
+					runAfter: 0,
+					dedupeKey: "client:client_1",
+					...overrides,
+				})
+			);
+		}
+
+		it("markJobSucceeded only lands on a processing job", async () => {
+			const { org } = await setupOwnerOrg("s1");
+			const jobId = await insertJob(org.orgId as Id<"organizations">);
+
+			// Still pending (released mid-flight): must not be revived as succeeded.
+			await t.mutation(internal.quickbooks.markJobSucceeded, { jobId });
+			let job = await t.run(async (ctx) => ctx.db.get(jobId));
+			expect(job?.status).toBe("pending");
+
+			await t.run(async (ctx) =>
+				ctx.db.patch(jobId, { status: "processing", claimedAt: Date.now() })
+			);
+			await t.mutation(internal.quickbooks.markJobSucceeded, { jobId });
+			job = await t.run(async (ctx) => ctx.db.get(jobId));
+			expect(job?.status).toBe("succeeded");
+		});
+
+		it("claimDueJobs leaves a job pending while its entity is in flight", async () => {
+			const { org } = await setupOwnerOrg("s2");
+			const orgId = org.orgId as Id<"organizations">;
+
+			const firstId = await insertJob(orgId);
+			const firstClaim = await t.mutation(internal.quickbooks.claimDueJobs, {
+				orgId,
+				limit: 10,
+			});
+			expect(firstClaim.map((job) => job._id)).toEqual([firstId]);
+
+			// Same entity re-enqueued while the first job is processing: a second
+			// worker must not claim it, or both could create the same QBO record.
+			const secondId = await insertJob(orgId);
+			const secondClaim = await t.mutation(internal.quickbooks.claimDueJobs, {
+				orgId,
+				limit: 10,
+			});
+			expect(secondClaim).toHaveLength(0);
+
+			// Once the first finishes, the queued job becomes claimable.
+			await t.mutation(internal.quickbooks.markJobSucceeded, {
+				jobId: firstId,
+			});
+			const thirdClaim = await t.mutation(internal.quickbooks.claimDueJobs, {
+				orgId,
+				limit: 10,
+			});
+			expect(thirdClaim.map((job) => job._id)).toEqual([secondId]);
+		});
+
+		it("claimDueJobs claims one job per entity within a batch", async () => {
+			const { org } = await setupOwnerOrg("s3");
+			const orgId = org.orgId as Id<"organizations">;
+
+			await insertJob(orgId);
+			await insertJob(orgId, {
+				localId: "client_2",
+				dedupeKey: "client:client_2",
+			});
+			// Duplicate key inside the same due batch (possible after a release).
+			await insertJob(orgId);
+
+			const claimed = await t.mutation(internal.quickbooks.claimDueJobs, {
+				orgId,
+				limit: 10,
+			});
+			expect(claimed).toHaveLength(2);
+			expect(new Set(claimed.map((job) => job.dedupeKey)).size).toBe(2);
 		});
 	});
 });

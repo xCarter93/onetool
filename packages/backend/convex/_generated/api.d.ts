@@ -94,6 +94,7 @@ import type * as lib_portalAttestation from "../lib/portalAttestation.js";
 import type * as lib_posthog from "../lib/posthog.js";
 import type * as lib_queries from "../lib/queries.js";
 import type * as lib_quickbooks from "../lib/quickbooks.js";
+import type * as lib_quickbooksCrypto from "../lib/quickbooksCrypto.js";
 import type * as lib_quickbooksEnqueue from "../lib/quickbooksEnqueue.js";
 import type * as lib_quickbooksMappers from "../lib/quickbooksMappers.js";
 import type * as lib_quoteTotals from "../lib/quoteTotals.js";
@@ -269,6 +270,7 @@ declare const fullApi: ApiFromModules<{
   "lib/posthog": typeof lib_posthog;
   "lib/queries": typeof lib_queries;
   "lib/quickbooks": typeof lib_quickbooks;
+  "lib/quickbooksCrypto": typeof lib_quickbooksCrypto;
   "lib/quickbooksEnqueue": typeof lib_quickbooksEnqueue;
   "lib/quickbooksMappers": typeof lib_quickbooksMappers;
   "lib/quoteTotals": typeof lib_quoteTotals;

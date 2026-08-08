@@ -2106,5 +2106,6 @@ export default defineSchema({
 	})
 		.index("by_run", ["runId"])
 		.index("by_run_outcome", ["runId", "outcome"])
+		.index("by_run_qbo", ["runId", "qboId"])
 		.index("by_org", ["orgId"]),
 });

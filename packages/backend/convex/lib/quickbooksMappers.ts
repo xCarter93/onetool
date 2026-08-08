@@ -17,8 +17,9 @@ export function toQboDate(ms: number): string {
 }
 
 /**
- * Escape a value for a QBO query string literal. Intuit's query language uses
- * single quotes and doubles them to escape.
+ * Escape a value for a QBO query string literal. Intuit's query language
+ * delimits literals with single quotes and escapes with backslashes (not
+ * SQL-style quote doubling), so backslashes are escaped first.
  */
 export function escapeQboQueryValue(value: string): string {
 	// QBO's query language escapes with backslashes, not SQL-style doubling.

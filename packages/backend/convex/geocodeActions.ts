@@ -71,7 +71,14 @@ export const geocodeClientProperty = internalAction({
 		);
 		if (!property) return null;
 		// Already placed (autofill, an earlier run, or the backfill migration).
-		if (property.latitude !== undefined && property.latitude !== null) {
+		// Both coordinates must be present: a half-written pair is unplottable,
+		// so it gets repaired rather than skipped.
+		if (
+			property.latitude !== undefined &&
+			property.latitude !== null &&
+			property.longitude !== undefined &&
+			property.longitude !== null
+		) {
 			return null;
 		}
 

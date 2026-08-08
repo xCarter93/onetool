@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useAction } from "convex/react";
 import { AlertTriangle, Landmark } from "lucide-react";
 
@@ -72,8 +72,12 @@ function SetupBody({ onDone }: { onDone: () => void }) {
 		}) => {
 			setIncomeAccounts(result.incomeAccounts);
 			setDepositAccount(result.depositAccount);
-			setSelectedId(
-				(current) => current || (result.incomeAccounts[0]?.qboId ?? ""),
+			// A retry can return a different chart of accounts, so keep the current
+			// pick only when it still exists in the fresh list.
+			setSelectedId((current) =>
+				result.incomeAccounts.some((a) => a.qboId === current)
+					? current
+					: (result.incomeAccounts[0]?.qboId ?? ""),
 			);
 			setLoadError(null);
 			setLoading(false);
@@ -90,6 +94,10 @@ function SetupBody({ onDone }: { onDone: () => void }) {
 		setLoading(false);
 	}, []);
 
+	// Bumped by every retry and on unmount, so a late response from a superseded
+	// load is dropped instead of writing state.
+	const loadTokenRef = useRef(0);
+
 	// Accounts come live from QuickBooks. Every state update lands in a promise
 	// callback so nothing is set synchronously inside the effect.
 	useEffect(() => {
@@ -103,13 +111,21 @@ function SetupBody({ onDone }: { onDone: () => void }) {
 			});
 		return () => {
 			cancelled = true;
+			loadTokenRef.current += 1;
 		};
 	}, [listSetupAccounts, applyResult, applyError]);
 
 	const retryLoad = useCallback(() => {
+		const token = ++loadTokenRef.current;
 		setLoading(true);
 		setLoadError(null);
-		listSetupAccounts({}).then(applyResult).catch(applyError);
+		listSetupAccounts({})
+			.then((result) => {
+				if (token === loadTokenRef.current) applyResult(result);
+			})
+			.catch((error: unknown) => {
+				if (token === loadTokenRef.current) applyError(error);
+			});
 	}, [listSetupAccounts, applyResult, applyError]);
 
 	const handleConfirm = useCallback(async () => {

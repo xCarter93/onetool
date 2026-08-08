@@ -14,6 +14,7 @@ import {
 	revokeToken,
 	type QboEnvironment,
 } from "./lib/quickbooks";
+import { encryptToken, decryptToken } from "./lib/quickbooksCrypto";
 import {
 	buildQboCustomer,
 	buildQboInvoice,
@@ -84,9 +85,9 @@ export const completeConnection = action({
 		await ctx.runMutation(internal.quickbooks.storeConnection, {
 			realmId: args.realmId,
 			environment,
-			accessToken: tokens.accessToken,
+			accessToken: await encryptToken(tokens.accessToken),
 			accessTokenExpiresAt: tokens.accessTokenExpiresAt,
-			refreshToken: tokens.refreshToken,
+			refreshToken: await encryptToken(tokens.refreshToken),
 			refreshTokenExpiresAt: tokens.refreshTokenExpiresAt,
 			companyName: companyName ?? undefined,
 		});
@@ -105,6 +106,8 @@ export async function ensureFreshAccessToken(
 	orgId: Id<"organizations">
 ): Promise<{
 	accessToken: string;
+	/** The stored (possibly encrypted) form, for compare-and-set guards. */
+	storedAccessToken: string;
 	realmId: string;
 	environment: "sandbox" | "production";
 } | null> {
@@ -118,7 +121,8 @@ export async function ensureFreshAccessToken(
 
 	if (connection.accessTokenExpiresAt > Date.now() + ACCESS_TOKEN_REFRESH_WINDOW_MS) {
 		return {
-			accessToken: connection.accessToken,
+			accessToken: await decryptToken(connection.accessToken),
+			storedAccessToken: connection.accessToken,
 			realmId: connection.realmId,
 			environment: connection.environment,
 		};
@@ -130,6 +134,7 @@ export async function ensureFreshAccessToken(
 	}
 	return {
 		accessToken: refreshed.accessToken,
+		storedAccessToken: refreshed.storedAccessToken,
 		realmId: connection.realmId,
 		environment: connection.environment,
 	};
@@ -139,17 +144,22 @@ export async function ensureFreshAccessToken(
 async function refreshConnection(
 	ctx: ActionCtx,
 	connection: Doc<"quickbooksConnections">
-): Promise<{ accessToken: string } | null> {
+): Promise<{ accessToken: string; storedAccessToken: string } | null> {
 	try {
-		const tokens = await refreshTokens(connection.refreshToken);
+		const tokens = await refreshTokens(
+			await decryptToken(connection.refreshToken)
+		);
+		// Rotation is also the lazy-migration point: legacy plaintext rows come
+		// back encrypted on their first refresh after the key is set.
+		const storedAccessToken = await encryptToken(tokens.accessToken);
 		await ctx.runMutation(internal.quickbooks.updateTokens, {
 			orgId: connection.orgId,
-			accessToken: tokens.accessToken,
+			accessToken: storedAccessToken,
 			accessTokenExpiresAt: tokens.accessTokenExpiresAt,
-			refreshToken: tokens.refreshToken,
+			refreshToken: await encryptToken(tokens.refreshToken),
 			refreshTokenExpiresAt: tokens.refreshTokenExpiresAt,
 		});
-		return { accessToken: tokens.accessToken };
+		return { accessToken: tokens.accessToken, storedAccessToken };
 	} catch (error) {
 		if (error instanceof QboInvalidGrantError) {
 			// Refresh race (worker vs cron): if another caller already rotated the
@@ -259,10 +269,12 @@ export const listSetupAccounts = action({
 			throw new ConvexError("not_connected");
 		}
 
-		// QBO caps query pages at 1000 rows; page until a short page.
+		// QBO caps query pages at 1000 rows; page until a short page. The page
+		// cap is a backstop against a server that ignores STARTPOSITION.
 		const PAGE_SIZE = 1000;
+		const MAX_PAGES = 10;
 		const incomeAccounts: QboAccount[] = [];
-		for (let start = 1; ; start += PAGE_SIZE) {
+		for (let start = 1, pages = 0; pages < MAX_PAGES; start += PAGE_SIZE, pages++) {
 			const page = await qboQuery<QboAccount>(
 				tokens,
 				`SELECT * FROM Account WHERE AccountType = 'Income' STARTPOSITION ${start} MAXRESULTS ${PAGE_SIZE}`
@@ -525,9 +537,12 @@ async function syncClient(
 
 	let created: { Id: string; SyncToken: string };
 	try {
+		// requestid: same idempotency contract as the item/invoice/payment
+		// creates — concurrent or crash-retried creates for the same client
+		// collapse to one QBO Customer instead of duplicating.
 		const response = await qboPost<QboEntityResponse<"Customer">>(
 			tokens,
-			"/customer",
+			`/customer?requestid=${clientId}`,
 			customer
 		);
 		created = response.Customer;
@@ -538,6 +553,7 @@ async function syncClient(
 		created = await resolveDuplicateCustomer(
 			tokens,
 			connection,
+			clientId,
 			customer,
 			error
 		);
@@ -572,6 +588,7 @@ async function syncClient(
 async function resolveDuplicateCustomer(
 	tokens: QboRef,
 	connection: Connection,
+	localId: Id<"clients">,
 	payload: QboCustomerPayload,
 	original: QboRequestError
 ): Promise<{ Id: string; SyncToken: string }> {
@@ -594,9 +611,11 @@ async function resolveDuplicateCustomer(
 		);
 	}
 
+	// Distinct requestid: the disambiguated payload must not replay the
+	// original create attempt's cached response.
 	const retryResponse = await qboPost<QboEntityResponse<"Customer">>(
 		tokens,
-		"/customer",
+		`/customer?requestid=${localId}-2`,
 		{ ...payload, DisplayName: `${displayName} - 2` }
 	);
 	return retryResponse.Customer;
@@ -1096,16 +1115,23 @@ async function handleJobFailure(
 	ctx: ActionCtx,
 	orgId: Id<"organizations">,
 	job: SyncJob,
-	error: unknown
+	error: unknown,
+	storedAccessToken: string | null
 ): Promise<"continue" | "pause"> {
 	// Dead or rejected grant: park the job untouched and stop the batch.
 	if (
 		error instanceof QboInvalidGrantError ||
 		(error instanceof QboRequestError && error.isAuthError)
 	) {
-		await ctx.runMutation(internal.quickbooks.markNeedsReauth, { orgId });
+		// Guarded on the token this request actually used: if a concurrent
+		// refresh already rotated it, the 401 is stale — release and retry with
+		// the fresh token instead of pausing the org on a false alarm.
+		const marked = await ctx.runMutation(internal.quickbooks.markNeedsReauth, {
+			orgId,
+			ifAccessTokenMatches: storedAccessToken ?? undefined,
+		});
 		await ctx.runMutation(internal.quickbooks.releaseJob, { jobId: job._id });
-		return "pause";
+		return marked ? "pause" : "continue";
 	}
 
 	const nextAttempt = job.attempts + 1;
@@ -1241,7 +1267,8 @@ export const processOrgJobs = internalAction({
 					ctx,
 					args.orgId,
 					job,
-					error
+					error,
+					tokens.storedAccessToken
 				);
 				if (disposition === "pause") {
 					for (let rest = index + 1; rest < jobs.length; rest++) {
@@ -1317,7 +1344,7 @@ export const revokeConnection = internalAction({
 		if (!token) return null;
 
 		try {
-			const revoked = await revokeToken(token);
+			const revoked = await revokeToken(await decryptToken(token));
 			if (!revoked) {
 				console.warn("QuickBooks token revoke returned a non-OK status");
 			}

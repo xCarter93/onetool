@@ -260,12 +260,9 @@ export const processCustomerPage = internalMutation({
 			clientLinks.map((link) => [link.qboId, link.localId])
 		);
 
-		// Rows already written for this run (idempotent re-entry of a page).
-		const existingRows = await ctx.db
-			.query("quickbooksImportRows")
-			.withIndex("by_run", (q) => q.eq("runId", args.runId))
-			.collect();
-		const rowedQboIds = new Set(existingRows.map((row) => row.qboId));
+		// qboIds already rowed for this run, seeded per customer by an indexed
+		// point lookup (idempotent re-entry of a page) and then kept in memory.
+		const rowedQboIds = new Set<string>();
 
 		// Match pool for this page. A proposed link drops its target out via
 		// linkedLocalIds so two customers can't propose the same client.
@@ -287,6 +284,16 @@ export const processCustomerPage = internalMutation({
 
 		for (const customer of args.customers as ImportCustomer[]) {
 			if (rowedQboIds.has(customer.qboId)) continue;
+			const alreadyRowed = await ctx.db
+				.query("quickbooksImportRows")
+				.withIndex("by_run_qbo", (q) =>
+					q.eq("runId", args.runId).eq("qboId", customer.qboId)
+				)
+				.first();
+			if (alreadyRowed) {
+				rowedQboIds.add(customer.qboId);
+				continue;
+			}
 			rowedQboIds.add(customer.qboId);
 			counters.totalFetched += 1;
 

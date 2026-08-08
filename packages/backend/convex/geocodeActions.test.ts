@@ -141,6 +141,33 @@ describe("import-created property geocoding", () => {
 		});
 	});
 
+	it("repairs a property with only one of the two coordinates", async () => {
+		const { org, clientId } = await setup("partial");
+		const propertyId = await t.run(async (ctx) =>
+			createTestClientProperty(ctx, org.orgId, clientId, {
+				streetAddress: "1 Main St",
+				city: "Austin",
+				state: "TX",
+				zipCode: "78701",
+				latitude: 1,
+			})
+		);
+		const calls = stubMapbox();
+		vi.stubEnv("MAPBOX_API_KEY", "mapbox_test_key");
+
+		const result = await t.action(
+			internal.geocodeActions.geocodeClientProperty,
+			{ propertyId }
+		);
+
+		expect(result).toEqual({ latitude: 30.2672, longitude: -97.7431 });
+		expect(calls).toHaveLength(1);
+		expect(await propertyById(propertyId)).toMatchObject({
+			latitude: 30.2672,
+			longitude: -97.7431,
+		});
+	});
+
 	it("schedules a geocode for every CSV-imported property", async () => {
 		const org = await t.run(async (ctx) =>
 			createTestOrg(ctx, {

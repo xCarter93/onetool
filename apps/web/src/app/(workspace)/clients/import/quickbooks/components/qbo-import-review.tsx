@@ -19,11 +19,6 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
-import {
-	Tooltip,
-	TooltipContent,
-	TooltipTrigger,
-} from "@/components/ui/tooltip";
 import { useConfirmDialog } from "@/hooks/use-confirm-dialog";
 import { useToast } from "@/hooks/use-toast";
 import { getUserFriendlyErrorMessage, logError } from "@/lib/error-logger";
@@ -186,7 +181,6 @@ export function QboImportReview({ run }: { run: ImportRun }) {
 	const importableCount = importableClients + counts.sites;
 	// "customers" until job sites join the plan, then the honest generic noun.
 	const importNoun = counts.sites > 0 ? "item" : "customer";
-	const undecidedCount = counts.review;
 
 	const footerHint = isFetching
 		? "Fetching your QuickBooks customers."
@@ -212,17 +206,10 @@ export function QboImportReview({ run }: { run: ImportRun }) {
 		}
 		if (!isReviewing) return null;
 
+		// The undecided count is only as fresh as the loaded pages, so it can never
+		// gate the button. The commit rejects undecided rows and handleCommit
+		// surfaces that with a toast plus a jump to Needs review.
 		const label = `Import ${importableCount} ${importNoun}${importableCount !== 1 ? "s" : ""}`;
-		if (undecidedCount > 0) {
-			return (
-				<Tooltip>
-					<TooltipTrigger render={<span className="inline-flex" />}>
-						<Button disabled>{label}</Button>
-					</TooltipTrigger>
-					<TooltipContent>{UNDECIDED_MESSAGE}</TooltipContent>
-				</Tooltip>
-			);
-		}
 		return (
 			<Button onClick={() => void handleCommit()} disabled={importableCount === 0}>
 				{label}

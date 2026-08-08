@@ -6,7 +6,7 @@
 import type { MutationCtx } from "../_generated/server";
 import type { Doc, Id } from "../_generated/dataModel";
 import { celebrateInvoicePaid } from "./celebrations";
-import { maybeEnqueueQboSync } from "./quickbooksEnqueue";
+import { kickQboSyncWorker, maybeEnqueueQboSync } from "./quickbooksEnqueue";
 
 type ReceiptMetadata = {
 	cardBrand?: string;
@@ -78,6 +78,8 @@ export async function settleOutstandingPaymentsForInvoice(
 		.withIndex("by_invoice", (q) => q.eq("invoiceId", invoiceId))
 		.collect();
 	const now = Date.now();
+	// One worker kick for the whole batch rather than one per installment.
+	let qboSyncQueued = false;
 	for (const p of rows) {
 		if (
 			p.status === "paid" ||
@@ -99,7 +101,16 @@ export async function settleOutstandingPaymentsForInvoice(
 			pendingCheckoutSessionUrl: undefined,
 			pendingCheckoutSessionExpiresAt: undefined,
 		});
-		await maybeEnqueueQboSync(ctx, p.orgId, "payment", p._id);
+		if (
+			await maybeEnqueueQboSync(ctx, p.orgId, "payment", p._id, {
+				kick: false,
+			})
+		) {
+			qboSyncQueued = true;
+		}
+	}
+	if (qboSyncQueued && rows[0]) {
+		await kickQboSyncWorker(ctx, rows[0].orgId);
 	}
 }
 
