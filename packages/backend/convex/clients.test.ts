@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { api } from "./_generated/api";
 import { setupConvexTest } from "./test.setup";
 import { Id } from "./_generated/dataModel";
@@ -8,6 +8,15 @@ describe("Clients", () => {
 
 	beforeEach(() => {
 		t = setupConvexTest();
+		// bulkCreate schedules a geocode action per imported property. Fake
+		// timers keep those jobs inside the test so none of them lands after
+		// the transaction closes.
+		vi.useFakeTimers();
+	});
+
+	afterEach(async () => {
+		await t.finishAllScheduledFunctions(vi.runAllTimers);
+		vi.useRealTimers();
 	});
 
 	describe("create", () => {

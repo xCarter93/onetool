@@ -29,6 +29,8 @@ export type GridLineItemPatch = Partial<
 
 /** Catalog entry shape the SKU picker hands back. */
 export interface GridSku {
+	/** Id<"skus"> — recorded on the line for per-SKU QuickBooks item sync. */
+	id: string;
 	name: string;
 	unit: string;
 	rate: number;

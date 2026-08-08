@@ -6,6 +6,7 @@ import {
 	createTestOrg,
 	createTestClient,
 	createTestInvoice,
+	createTestQuote,
 	createTestIdentity,
 } from "./test.helpers";
 
@@ -351,6 +352,47 @@ describe("Invoices", () => {
 			expect(invoiceEvents).toHaveLength(1);
 			expect(invoiceEvents[0].payload.entityType).toBe("invoice");
 			expect(invoiceEvents[0].eventSource).toBe("invoices.createFromQuote");
+		});
+
+		it("copies each quote line's skuId onto the invoice line", async () => {
+			const { quoteId, clerkUserId, clerkOrgId } = await t.run(async (ctx) => {
+				const { orgId, clerkUserId, clerkOrgId } = await createTestOrg(ctx);
+				const clientId = await createTestClient(ctx, orgId);
+				const quoteId = await createTestQuote(ctx, orgId, clientId);
+				return { quoteId, clerkUserId, clerkOrgId };
+			});
+
+			const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+
+			const skuId = await asUser.mutation(api.skus.create, {
+				name: "Mulch Delivery",
+				unit: "yard",
+				rate: 60,
+			});
+			await asUser.mutation(api.quoteLineItems.create, {
+				quoteId,
+				description: "Mulch Delivery",
+				quantity: 4,
+				unit: "yard",
+				rate: 60,
+				sortOrder: 0,
+				skuId,
+			});
+
+			// Approve after the line exists — approved quotes reject content edits.
+			await t.run(async (ctx) => {
+				await ctx.db.patch(quoteId, { status: "approved" as const });
+			});
+
+			const invoiceId = await asUser.mutation(api.invoices.createFromQuote, {
+				quoteId,
+			});
+
+			const lineItems = await asUser.query(api.invoiceLineItems.listByInvoice, {
+				invoiceId,
+			});
+			expect(lineItems).toHaveLength(1);
+			expect(lineItems[0].skuId).toBe(skuId);
 		});
 	});
 

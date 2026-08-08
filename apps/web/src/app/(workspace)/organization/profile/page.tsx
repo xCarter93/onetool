@@ -4,6 +4,7 @@ import * as React from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
 	AlertTriangle,
+	Blocks,
 	Briefcase,
 	CreditCard,
 	Crown,
@@ -38,6 +39,7 @@ import { BillingTab } from "./_components/billing-tab";
 import { PaymentsTab } from "./_components/payments-tab";
 import { DocumentsTab } from "./_components/documents-tab";
 import { SKUsTab } from "./_components/skus-tab";
+import { IntegrationsTab } from "./_components/integrations-tab";
 
 const TAB_VALUES = [
 	"overview",
@@ -47,10 +49,16 @@ const TAB_VALUES = [
 	"payments",
 	"documents",
 	"skus",
+	"integrations",
 ] as const;
 type TabValue = (typeof TAB_VALUES)[number];
 
-const PREMIUM_TABS: readonly TabValue[] = ["payments", "documents", "skus"];
+const PREMIUM_TABS: readonly TabValue[] = [
+	"payments",
+	"documents",
+	"skus",
+	"integrations",
+];
 
 // Granular-permission gating per tab (§5.4); tabs absent here are role/premium-gated only.
 const TAB_PERMISSIONS: Partial<Record<TabValue, PermissionObject>> = {
@@ -63,7 +71,7 @@ const TAB_PERMISSIONS: Partial<Record<TabValue, PermissionObject>> = {
 // Team management and Stripe payouts are admin/owner-only (no grantable "manage
 // team" object in v1). Overview and Business Info stay viewable read-only for
 // members — the Overview tab still shows a read-only team roster.
-const ADMIN_TABS: readonly TabValue[] = ["team", "payments"];
+const ADMIN_TABS: readonly TabValue[] = ["team", "payments", "integrations"];
 
 const isTabValue = (value: string): value is TabValue =>
 	TAB_VALUES.includes(value as TabValue);
@@ -151,7 +159,16 @@ export default function OrganizationProfilePage() {
 		!permsLoading &&
 		((ADMIN_TABS.includes(activeTab) && !hasFullAccess) ||
 			(tabPermission !== undefined && !can(tabPermission)));
-	const renderTab: TabValue = deniedPremium ? "overview" : activeTab;
+	// The payments nav item is hidden until a Stripe account exists; a direct
+	// ?tab=payments link then lands on Integrations (the payments front door)
+	// instead of a tab with no nav entry.
+	const hasStripeAccount = Boolean(organization?.stripeConnectAccountId);
+	const paymentsUnavailable = activeTab === "payments" && !hasStripeAccount;
+	const renderTab: TabValue = deniedPremium
+		? "overview"
+		: paymentsUnavailable
+			? "integrations"
+			: activeTab;
 
 	React.useEffect(() => {
 		if (deniedPremium) {
@@ -159,6 +176,13 @@ export default function OrganizationProfilePage() {
 			router.replace("/organization/profile");
 		}
 	}, [deniedPremium, router, toast]);
+
+	// Keep the URL honest once the org resolves: ?tab=payments without a Stripe
+	// account renders Integrations, so the address bar should say so too.
+	React.useEffect(() => {
+		if (isLoading || deniedPremium || !paymentsUnavailable) return;
+		router.replace("/organization/profile?tab=integrations");
+	}, [isLoading, deniedPremium, paymentsUnavailable, router]);
 
 	const handleTabChange = React.useCallback(
 		(value: string) => {
@@ -195,8 +219,12 @@ export default function OrganizationProfilePage() {
 		[router, hasPremiumAccess, toast, can, permsLoading, hasFullAccess],
 	);
 
+	// The Integrations tab is the front door for payments setup; the Payments tab
+	// only appears once a Stripe connected account exists.
+
 	const navItems: SettingsNavItem[] = React.useMemo(
-		() => [
+		() =>
+			[
 			{
 				value: "overview",
 				label: "Overview",
@@ -245,8 +273,15 @@ export default function OrganizationProfilePage() {
 				icon: Tags,
 				locked: !hasPremiumAccess || (!permsLoading && !can("skus")),
 			},
-		],
-		[hasPremiumAccess, can, permsLoading, hasFullAccess],
+			{
+				value: "integrations",
+				label: "Integrations",
+				sublabel: "Payments & accounting",
+				icon: Blocks,
+				locked: !hasPremiumAccess || (!permsLoading && !hasFullAccess),
+			},
+			].filter((item) => item.value !== "payments" || hasStripeAccount),
+		[hasPremiumAccess, can, permsLoading, hasFullAccess, hasStripeAccount],
 	);
 
 	if (isLoading || permsLoading) {
@@ -328,8 +363,10 @@ export default function OrganizationProfilePage() {
 											description={
 												activeTab === "team"
 													? "Only organization admins can manage team members and access."
-													: ADMIN_TABS.includes(activeTab)
+													: activeTab === "payments"
 														? "Only organization admins can access payment settings."
+														: activeTab === "integrations"
+															? "Only organization admins can manage integrations."
 														: "Ask an organization admin to grant you access from the team settings."
 											}
 										/>
@@ -343,6 +380,7 @@ export default function OrganizationProfilePage() {
 										{renderTab === "payments" && <PaymentsTab />}
 										{renderTab === "documents" && <DocumentsTab />}
 										{renderTab === "skus" && <SKUsTab />}
+										{renderTab === "integrations" && <IntegrationsTab />}
 									</>
 								)}
 							</div>

@@ -251,6 +251,7 @@ export function useQuoteLineItemsController({
 					unit: sku.unit,
 					rate: sku.rate,
 					cost: sku.cost ?? 0,
+					skuId: sku.id as Id<"skus">,
 				})
 			);
 			return result !== null;

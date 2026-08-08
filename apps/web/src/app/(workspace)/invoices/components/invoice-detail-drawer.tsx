@@ -46,6 +46,7 @@ import {
 	DrawerSkeleton,
 	formatActivityTime,
 } from "@/components/shared/detail-drawer";
+import { QuickBooksSyncField } from "@/components/quickbooks/sync-status-row";
 import { formatCurrency } from "@/lib/money";
 import { utcMidnightMsToLocalDate } from "@/lib/dates";
 import { useToast } from "@/hooks/use-toast";
@@ -338,6 +339,10 @@ export function InvoiceDetailDrawer({
 									? `#${data.sourceQuote.quoteNumber}`
 									: "—"}
 							</DrawerField>
+							<QuickBooksSyncField
+								entityType="invoice"
+								localId={invoice._id}
+							/>
 						</DrawerFieldGrid>
 					</DrawerSection>
 
