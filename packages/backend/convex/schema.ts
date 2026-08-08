@@ -1995,6 +1995,10 @@ export default defineSchema({
 		),
 		attempts: v.number(),
 		runAfter: v.number(), // backoff gate; worker skips jobs not yet due
+		// Stamped when the worker flips a job to "processing"; the 15-minute
+		// sweep reclaims jobs stranded in that state.
+		claimedAt: v.optional(v.number()),
+		failedAt: v.optional(v.number()), // terminal-failure time, error center sort
 		lastError: v.optional(v.string()), // human-readable, shown in error center
 		lastErrorCode: v.optional(v.string()), // QBO Fault code, e.g. "6240"
 		dedupeKey: v.string(), // `${entityType}:${localId}` — collapse duplicate pending jobs

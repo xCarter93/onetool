@@ -17,6 +17,7 @@ import {
 } from "./eventBus";
 import { trackServerEvent, SERVER_EVENTS } from "./lib/posthog";
 import { computeFieldChanges } from "./lib/changeTracking";
+import { maybeEnqueueQboSync } from "./lib/quickbooksEnqueue";
 import {
 	optionalUserQuery,
 	userMutation,
@@ -547,6 +548,7 @@ export const create = userMutation({
 				client._id,
 				"clients.create"
 			);
+			await maybeEnqueueQboSync(ctx, client.orgId, "client", client._id);
 		}
 
 		return clientId;
@@ -752,6 +754,8 @@ export const bulkCreate = userMutation({
 					}
 				}
 
+				await maybeEnqueueQboSync(ctx, userOrgId, "client", clientId);
+
 				results.push({
 					success: true,
 					id: clientId,
@@ -856,6 +860,7 @@ export const update = userMutation({
 				Object.keys(filteredUpdates).filter((key) => key !== "updatedAt"),
 				"clients.update"
 			);
+			await maybeEnqueueQboSync(ctx, client.orgId, "client", client._id);
 		}
 
 		return id;

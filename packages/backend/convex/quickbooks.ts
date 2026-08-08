@@ -7,6 +7,7 @@ import { userMutation, userQuery } from "./lib/factories";
 import type { UserMutationCtx, UserQueryCtx } from "./lib/factories";
 import { getCurrentUserOrgId, getCurrentUserOrThrow } from "./lib/auth";
 import { hasPremiumAccess } from "./lib/permissions";
+import { formatCurrency } from "./lib/money";
 
 /**
  * QuickBooks Online connection + token lifecycle (PRD §6.2, §6.5).
@@ -317,5 +318,507 @@ export const markNeedsReauth = internalMutation({
 			lastHealthCheckAt: Date.now(),
 		});
 		return null;
+	},
+});
+
+/** Account/item ids resolved by the setup flow (PRD §7.1). */
+export const saveAccountMappings = internalMutation({
+	args: {
+		orgId: v.id("organizations"),
+		incomeAccountQboId: v.string(),
+		incomeAccountName: v.string(),
+		depositAccountQboId: v.optional(v.string()),
+		defaultServiceItemQboId: v.string(),
+	},
+	handler: async (ctx, args): Promise<null> => {
+		const connection = await ctx.db
+			.query("quickbooksConnections")
+			.withIndex("by_org", (q) => q.eq("orgId", args.orgId))
+			.first();
+		if (!connection) {
+			throw new ConvexError("QuickBooks is not connected");
+		}
+		await ctx.db.patch(connection._id, {
+			incomeAccountQboId: args.incomeAccountQboId,
+			incomeAccountName: args.incomeAccountName,
+			depositAccountQboId: args.depositAccountQboId,
+			defaultServiceItemQboId: args.defaultServiceItemQboId,
+		});
+		return null;
+	},
+});
+
+// ============================================================================
+// Sync job state machine (worker support)
+// ============================================================================
+
+const QBO_ENTITY_TYPE = v.union(
+	v.literal("client"),
+	v.literal("invoice"),
+	v.literal("payment")
+);
+
+/** How many pending rows to scan for due work before giving up on a pass. */
+const JOB_SCAN_LIMIT = 100;
+
+/**
+ * Flip due pending jobs to "processing" and hand them to the caller. This is
+ * the mutual-exclusion point: two concurrent processOrgJobs kicks cannot claim
+ * the same job because the whole scan-and-patch runs in one transaction.
+ */
+export const claimDueJobs = internalMutation({
+	args: { orgId: v.id("organizations"), limit: v.number() },
+	handler: async (ctx, args): Promise<Doc<"quickbooksSyncJobs">[]> => {
+		const now = Date.now();
+		const candidates = await ctx.db
+			.query("quickbooksSyncJobs")
+			.withIndex("by_org_status", (q) =>
+				q.eq("orgId", args.orgId).eq("status", "pending")
+			)
+			.take(JOB_SCAN_LIMIT);
+
+		const due = candidates
+			.filter((job) => job.runAfter <= now)
+			.slice(0, Math.max(0, args.limit));
+
+		const claimed: Doc<"quickbooksSyncJobs">[] = [];
+		for (const job of due) {
+			await ctx.db.patch(job._id, { status: "processing", claimedAt: now });
+			claimed.push({ ...job, status: "processing", claimedAt: now });
+		}
+		return claimed;
+	},
+});
+
+export const markJobSucceeded = internalMutation({
+	args: { jobId: v.id("quickbooksSyncJobs") },
+	handler: async (ctx, args): Promise<null> => {
+		const job = await ctx.db.get(args.jobId);
+		if (!job) return null;
+		await ctx.db.patch(args.jobId, {
+			status: "succeeded",
+			attempts: job.attempts + 1,
+			lastError: undefined,
+			lastErrorCode: undefined,
+			claimedAt: undefined,
+		});
+		return null;
+	},
+});
+
+/**
+ * Record an attempt that failed. `terminal` parks the job in the error center;
+ * otherwise it goes back to pending behind the supplied backoff gate.
+ */
+export const markJobFailed = internalMutation({
+	args: {
+		jobId: v.id("quickbooksSyncJobs"),
+		terminal: v.boolean(),
+		runAfter: v.optional(v.number()),
+		lastError: v.string(),
+		lastErrorCode: v.optional(v.string()),
+	},
+	handler: async (ctx, args): Promise<null> => {
+		const job = await ctx.db.get(args.jobId);
+		if (!job) return null;
+		const now = Date.now();
+		await ctx.db.patch(args.jobId, {
+			status: args.terminal ? "failed" : "pending",
+			attempts: job.attempts + 1,
+			runAfter: args.terminal ? job.runAfter : (args.runAfter ?? now),
+			failedAt: args.terminal ? now : undefined,
+			lastError: args.lastError,
+			lastErrorCode: args.lastErrorCode,
+			claimedAt: undefined,
+		});
+		return null;
+	},
+});
+
+/**
+ * Put a claimed job back without burning an attempt. Used when the job could
+ * not even be tried: setup incomplete, dependency missing, connection paused.
+ */
+export const releaseJob = internalMutation({
+	args: {
+		jobId: v.id("quickbooksSyncJobs"),
+		runAfter: v.optional(v.number()),
+	},
+	handler: async (ctx, args): Promise<null> => {
+		const job = await ctx.db.get(args.jobId);
+		if (!job || job.status !== "processing") return null;
+		await ctx.db.patch(args.jobId, {
+			status: "pending",
+			runAfter: args.runAfter ?? Date.now(),
+			claimedAt: undefined,
+		});
+		return null;
+	},
+});
+
+export const upsertEntityLink = internalMutation({
+	args: {
+		orgId: v.id("organizations"),
+		entityType: QBO_ENTITY_TYPE,
+		localId: v.string(),
+		qboId: v.string(),
+		qboSyncToken: v.string(),
+		syncWarning: v.optional(v.string()),
+	},
+	handler: async (ctx, args): Promise<null> => {
+		const existing = await ctx.db
+			.query("quickbooksEntityLinks")
+			.withIndex("by_org_entity", (q) =>
+				q
+					.eq("orgId", args.orgId)
+					.eq("entityType", args.entityType)
+					.eq("localId", args.localId)
+			)
+			.first();
+
+		const fields = {
+			qboId: args.qboId,
+			qboSyncToken: args.qboSyncToken,
+			lastSyncedAt: Date.now(),
+			// Absent warning clears a stale one from an earlier sync.
+			syncWarning: args.syncWarning,
+		};
+
+		if (existing) {
+			await ctx.db.patch(existing._id, fields);
+			return null;
+		}
+		await ctx.db.insert("quickbooksEntityLinks", {
+			orgId: args.orgId,
+			entityType: args.entityType,
+			localId: args.localId,
+			...fields,
+		});
+		return null;
+	},
+});
+
+export const getEntityLinkInternal = internalQuery({
+	args: {
+		orgId: v.id("organizations"),
+		entityType: QBO_ENTITY_TYPE,
+		localId: v.string(),
+	},
+	handler: async (ctx, args): Promise<Doc<"quickbooksEntityLinks"> | null> => {
+		return await ctx.db
+			.query("quickbooksEntityLinks")
+			.withIndex("by_org_entity", (q) =>
+				q
+					.eq("orgId", args.orgId)
+					.eq("entityType", args.entityType)
+					.eq("localId", args.localId)
+			)
+			.first();
+	},
+});
+
+/** Everything the worker needs to build a payload, org-checked in one read. */
+export type QboSyncPayload =
+	| {
+			kind: "client";
+			client: Doc<"clients">;
+			primaryContact: Doc<"clientContacts"> | null;
+			billingAddress: Doc<"clientProperties"> | null;
+	  }
+	| {
+			kind: "invoice";
+			invoice: Doc<"invoices">;
+			lineItems: Doc<"invoiceLineItems">[];
+			clientId: Id<"clients">;
+	  }
+	| {
+			kind: "payment";
+			payment: Doc<"payments">;
+			invoiceId: Id<"invoices">;
+			clientId: Id<"clients">;
+	  };
+
+export const getSyncJobPayload = internalQuery({
+	args: {
+		orgId: v.id("organizations"),
+		entityType: QBO_ENTITY_TYPE,
+		localId: v.string(),
+	},
+	handler: async (ctx, args): Promise<QboSyncPayload | null> => {
+		if (args.entityType === "client") {
+			const clientId = ctx.db.normalizeId("clients", args.localId);
+			if (!clientId) return null;
+			const client = await ctx.db.get(clientId);
+			if (!client || client.orgId !== args.orgId) return null;
+			const primaryContact = await ctx.db
+				.query("clientContacts")
+				.withIndex("by_primary", (q) =>
+					q.eq("clientId", clientId).eq("isPrimary", true)
+				)
+				.first();
+			const billingAddress = await ctx.db
+				.query("clientProperties")
+				.withIndex("by_primary", (q) =>
+					q.eq("clientId", clientId).eq("isPrimary", true)
+				)
+				.first();
+			return { kind: "client", client, primaryContact, billingAddress };
+		}
+
+		if (args.entityType === "invoice") {
+			const invoiceId = ctx.db.normalizeId("invoices", args.localId);
+			if (!invoiceId) return null;
+			const invoice = await ctx.db.get(invoiceId);
+			if (!invoice || invoice.orgId !== args.orgId) return null;
+			const lineItems = await ctx.db
+				.query("invoiceLineItems")
+				.withIndex("by_invoice", (q) => q.eq("invoiceId", invoiceId))
+				.collect();
+			lineItems.sort((a, b) => a.sortOrder - b.sortOrder);
+			return {
+				kind: "invoice",
+				invoice,
+				lineItems,
+				clientId: invoice.clientId,
+			};
+		}
+
+		const paymentId = ctx.db.normalizeId("payments", args.localId);
+		if (!paymentId) return null;
+		const payment = await ctx.db.get(paymentId);
+		if (!payment || payment.orgId !== args.orgId) return null;
+		const invoice = await ctx.db.get(payment.invoiceId);
+		if (!invoice || invoice.orgId !== args.orgId) return null;
+		return {
+			kind: "payment",
+			payment,
+			invoiceId: invoice._id,
+			clientId: invoice.clientId,
+		};
+	},
+});
+
+/** Sweep (a): jobs stranded in "processing" by a dropped action. */
+export const reclaimStuckJobs = internalMutation({
+	args: { staleBeforeMs: v.number() },
+	handler: async (ctx, args): Promise<{ reclaimed: number }> => {
+		const stuck = await ctx.db
+			.query("quickbooksSyncJobs")
+			.withIndex("by_status_due", (q) => q.eq("status", "processing"))
+			.take(200);
+		let reclaimed = 0;
+		for (const job of stuck) {
+			const claimedAt = job.claimedAt ?? job._creationTime;
+			if (claimedAt > args.staleBeforeMs) continue;
+			await ctx.db.patch(job._id, {
+				status: "pending",
+				runAfter: Date.now(),
+				claimedAt: undefined,
+			});
+			reclaimed++;
+		}
+		return { reclaimed };
+	},
+});
+
+/** Sweep (b): orgs with due pending work, so a lost kick still gets picked up. */
+export const listOrgsWithDueJobs = internalQuery({
+	args: {},
+	handler: async (ctx): Promise<Id<"organizations">[]> => {
+		const now = Date.now();
+		const due = await ctx.db
+			.query("quickbooksSyncJobs")
+			.withIndex("by_status_due", (q) =>
+				q.eq("status", "pending").lte("runAfter", now)
+			)
+			.take(500);
+		return Array.from(new Set(due.map((job) => job.orgId)));
+	},
+});
+
+// ============================================================================
+// Sync status + error center (public)
+// ============================================================================
+
+export interface QboEntityLinkView {
+	qboId: string;
+	lastSyncedAt: number;
+	syncWarning?: string;
+}
+
+/** Sync badge on a client/invoice/payment record page. */
+export const getEntityLink = userQuery({
+	args: { entityType: QBO_ENTITY_TYPE, localId: v.string() },
+	handler: async (ctx, args): Promise<QboEntityLinkView | null> => {
+		if (!(await hasPremiumAccess(ctx))) return null;
+		const connection = await connectionForOrg(ctx, ctx.orgId);
+		if (!connection || connection.status === "disconnected") return null;
+
+		const link = await ctx.db
+			.query("quickbooksEntityLinks")
+			.withIndex("by_org_entity", (q) =>
+				q
+					.eq("orgId", ctx.orgId)
+					.eq("entityType", args.entityType)
+					.eq("localId", args.localId)
+			)
+			.first();
+		if (!link) return null;
+		return {
+			qboId: link.qboId,
+			lastSyncedAt: link.lastSyncedAt,
+			...(link.syncWarning ? { syncWarning: link.syncWarning } : {}),
+		};
+	},
+});
+
+export interface QboSyncErrorView {
+	_id: Id<"quickbooksSyncJobs">;
+	entityType: "client" | "invoice" | "payment";
+	localId: string;
+	entityLabel: string;
+	lastError?: string;
+	lastErrorCode?: string;
+	attempts: number;
+	failedAt: number;
+}
+
+/** Human label for the error center. Deleted rows still need a readable row. */
+async function describeEntity(
+	ctx: UserQueryCtx,
+	orgId: Id<"organizations">,
+	entityType: "client" | "invoice" | "payment",
+	localId: string
+): Promise<string> {
+	if (entityType === "client") {
+		const id = ctx.db.normalizeId("clients", localId);
+		const client = id ? await ctx.db.get(id) : null;
+		if (!client || client.orgId !== orgId) return "Deleted client";
+		return client.companyName;
+	}
+	if (entityType === "invoice") {
+		const id = ctx.db.normalizeId("invoices", localId);
+		const invoice = id ? await ctx.db.get(id) : null;
+		if (!invoice || invoice.orgId !== orgId) return "Deleted invoice";
+		return invoice.invoiceNumber;
+	}
+	const id = ctx.db.normalizeId("payments", localId);
+	const payment = id ? await ctx.db.get(id) : null;
+	if (!payment || payment.orgId !== orgId) return "Deleted payment";
+	return `${payment.description ?? "Payment"} ${formatCurrency(payment.paymentAmount)}`;
+}
+
+/** Error center feed: the org's failed sync jobs, newest first. */
+export const listSyncErrors = userQuery({
+	args: {},
+	handler: async (ctx): Promise<QboSyncErrorView[]> => {
+		if (!(await hasPremiumAccess(ctx))) return [];
+
+		const failed = await ctx.db
+			.query("quickbooksSyncJobs")
+			.withIndex("by_org_status", (q) =>
+				q.eq("orgId", ctx.orgId).eq("status", "failed")
+			)
+			.order("desc")
+			.take(100);
+
+		const rows: QboSyncErrorView[] = [];
+		for (const job of failed) {
+			rows.push({
+				_id: job._id,
+				entityType: job.entityType,
+				localId: job.localId,
+				entityLabel: await describeEntity(
+					ctx,
+					ctx.orgId,
+					job.entityType,
+					job.localId
+				),
+				lastError: job.lastError,
+				lastErrorCode: job.lastErrorCode,
+				attempts: job.attempts,
+				failedAt: job.failedAt ?? job._creationTime,
+			});
+		}
+		return rows;
+	},
+});
+
+/** Error-center actions are member-accessible; only premium orgs have jobs. */
+async function requirePremiumMember(ctx: UserMutationCtx): Promise<void> {
+	if (!(await hasPremiumAccess(ctx))) {
+		throw new ConvexError(
+			"QuickBooks sync is available on the Business plan. Upgrade to use it."
+		);
+	}
+}
+
+export const retryJob = userMutation({
+	args: { jobId: v.id("quickbooksSyncJobs") },
+	handler: async (ctx, args): Promise<null> => {
+		await requirePremiumMember(ctx);
+		const job = await ctx.db.get(args.jobId);
+		if (!job || job.orgId !== ctx.orgId) {
+			throw new ConvexError("Sync job not found");
+		}
+		if (job.status !== "failed") return null;
+
+		await ctx.db.patch(job._id, {
+			status: "pending",
+			runAfter: Date.now(),
+			attempts: 0,
+			failedAt: undefined,
+		});
+		await ctx.scheduler.runAfter(
+			0,
+			internal.quickbooksActions.processOrgJobs,
+			{ orgId: ctx.orgId }
+		);
+		return null;
+	},
+});
+
+export const ignoreJob = userMutation({
+	args: { jobId: v.id("quickbooksSyncJobs") },
+	handler: async (ctx, args): Promise<null> => {
+		await requirePremiumMember(ctx);
+		const job = await ctx.db.get(args.jobId);
+		if (!job || job.orgId !== ctx.orgId) {
+			throw new ConvexError("Sync job not found");
+		}
+		if (job.status !== "failed") return null;
+		await ctx.db.patch(job._id, { status: "ignored" });
+		return null;
+	},
+});
+
+export const retryAllFailed = userMutation({
+	args: {},
+	handler: async (ctx): Promise<{ retried: number }> => {
+		await requirePremiumMember(ctx);
+		const failed = await ctx.db
+			.query("quickbooksSyncJobs")
+			.withIndex("by_org_status", (q) =>
+				q.eq("orgId", ctx.orgId).eq("status", "failed")
+			)
+			.take(200);
+
+		const now = Date.now();
+		for (const job of failed) {
+			await ctx.db.patch(job._id, {
+				status: "pending",
+				runAfter: now,
+				attempts: 0,
+				failedAt: undefined,
+			});
+		}
+		if (failed.length > 0) {
+			await ctx.scheduler.runAfter(
+				0,
+				internal.quickbooksActions.processOrgJobs,
+				{ orgId: ctx.orgId }
+			);
+		}
+		return { retried: failed.length };
 	},
 });

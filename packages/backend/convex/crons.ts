@@ -81,4 +81,13 @@ crons.interval(
 	{}
 );
 
+// Sync-queue watchdog: reclaim jobs stranded mid-claim and re-kick orgs whose
+// scheduler hop was dropped.
+crons.interval(
+	"sweep quickbooks sync jobs",
+	{ minutes: 15 },
+	internal.quickbooksActions.sweepSyncJobs,
+	{}
+);
+
 export default crons;
