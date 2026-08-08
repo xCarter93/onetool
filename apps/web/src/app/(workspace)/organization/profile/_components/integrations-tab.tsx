@@ -325,16 +325,18 @@ export function IntegrationsTab() {
 		<p className="mt-1 text-xs text-muted-foreground">{text}</p>
 	);
 
-	// A completed import is done business: the wizard stops being reachable.
 	// A fetched run is reviewed on its own page, so those states route there
-	// instead of opening the dialog.
+	// instead of opening the dialog. Re-running after a completed import is
+	// safe (already-linked customers just re-link), so the action stays.
 	const importAction = (() => {
-		if (importRun === undefined || importRun?.status === "completed") return null;
+		if (importRun === undefined) return null;
 
 		const reviewing = importRun?.status === "reviewing";
 		const committing = importRun?.status === "committing";
 		const label =
-			importRun === null || importRun.status === "failed"
+			importRun === null ||
+			importRun.status === "failed" ||
+			importRun.status === "completed"
 				? "Import customers"
 				: reviewing
 					? `Review import (${importRun.totalFetched})`

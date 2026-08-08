@@ -141,7 +141,7 @@ export const settingsAndTeamArticles: HelpArticle[] = [
 					},
 					{
 						type: "paragraph",
-						text: "When the fetch finishes the card reads **Review import** and takes you to the review page, which lists every customer with what will happen to it. You can change any of them: search for a different client to link to, import a customer as a new client, or choose not to import it at all. Customers under **Needs review** have to be decided before you can continue. **Import** applies the plan and shows its progress, and **Discard** throws the plan away without creating anything. Nothing is written to your clients, and nothing is pushed to QuickBooks, until you click Import.",
+						text: "When the fetch finishes the card reads **Review import** and takes you to the review page, which lists every customer with what will happen to it. You can change any of them: search for a different client to link to, import a customer as a new client, or choose not to import it at all. Customers under **Needs review** have to be decided before you can continue. **Import** applies the plan and shows its progress, and **Discard** throws the plan away without creating anything. Nothing is written to your clients, and nothing is pushed to QuickBooks, until you click Import. You can run the import again at any time from the same card: customers that are already linked stay as they are, and only new or unmatched customers come up for review.",
 					},
 					{
 						type: "paragraph",
