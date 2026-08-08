@@ -53,7 +53,7 @@ export const settingsAndTeamArticles: HelpArticle[] = [
 						type: "steps",
 						items: [
 							"Open your organization settings and stay on the **Overview** tab.",
-							"Edit your organization name, or upload a logo image (PNG, JPG, or WEBP up to 10 MB — SVG isn't supported).",
+							"Edit your organization name, or upload a logo image (PNG, JPG, or WEBP up to 10 MB; SVG isn't supported).",
 							"Save your changes with the footer at the bottom of the page. It reads **Unsaved changes** until you do.",
 						],
 					},

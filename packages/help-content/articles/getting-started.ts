@@ -103,7 +103,7 @@ export const gettingStartedArticles: HelpArticle[] = [
 						items: [
 							"Enter your **First Name** and **Last Name**.",
 							"Enter your **Organization Name**. This is the business name your clients will see.",
-							"Upload a logo if you have one (PNG, JPG, or WEBP up to 10 MB — SVG isn't supported). You can add or change it later in your organization settings.",
+							"Upload a logo if you have one (PNG, JPG, or WEBP up to 10 MB; SVG isn't supported). You can add or change it later in your organization settings.",
 							"Click **Create Organization**.",
 						],
 					},
