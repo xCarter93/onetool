@@ -10,7 +10,7 @@ import {
 } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useMutation, useQuery } from "convex/react";
-import { CreditCard, Landmark, ShieldAlert } from "lucide-react";
+import { Banknote, CreditCard, FileText, Landmark, ShieldAlert } from "lucide-react";
 
 import { api } from "@onetool/backend/convex/_generated/api";
 import { Button } from "@/components/ui/button";
@@ -24,12 +24,14 @@ import {
 	ItemTitle,
 } from "@/components/ui/item";
 import { Badge } from "@/components/reui/badge";
+import { DotField } from "@/components/ui/dot-field";
 import { StatusBadge } from "@/components/domain/status-badge";
 import { SegmentedControl } from "@/components/domain/segmented-control";
 import { useToast } from "@/hooks/use-toast";
 import { useConfirmDialog } from "@/hooks/use-confirm-dialog";
 import { logError, getUserFriendlyErrorMessage } from "@/lib/error-logger";
 import { useOrgOwner } from "../_hooks/use-org-owner";
+import { QuickBooksMark, StripeMark } from "./integration-brand-marks";
 import { useStripeOnboarding } from "../_hooks/use-stripe-onboarding";
 import { QuickBooksSetupDialog } from "./quickbooks-setup-dialog";
 import { QuickBooksSyncIssues } from "./quickbooks-sync-issues";
@@ -58,16 +60,52 @@ const ERROR_MESSAGES: Record<string, string> = {
 	unknown: "Something went wrong connecting QuickBooks. Try again.",
 };
 
-/** Compact tile header: icon + name + status inline, primary action right. */
+const CONNECTOR_TILE =
+	"flex items-center justify-center rounded-lg border-2 border-background bg-background shadow-sm dark:border-muted/80 dark:bg-muted/80";
+
+/**
+ * Connector diagram in the card-5 grammar: data-type icons flank the brand
+ * mark on a dashed line over a masked dot field. Purely decorative — the
+ * integration is named in the header below.
+ */
+function IntegrationConnectorBand({
+	brand,
+	leftIcon: LeftIcon,
+	rightIcon: RightIcon,
+}: {
+	brand: ReactNode;
+	leftIcon: ComponentType<{ className?: string }>;
+	rightIcon: ComponentType<{ className?: string }>;
+}) {
+	return (
+		<div
+			aria-hidden="true"
+			className="relative isolate overflow-hidden border-b border-border bg-muted/40 px-6 py-6"
+		>
+			<DotField className="text-muted-foreground [mask-image:radial-gradient(86%_76%_at_50%_46%,black,transparent)]" />
+			<div className="relative z-10 flex items-center justify-center">
+				<div className={`size-10 ${CONNECTOR_TILE}`}>
+					<LeftIcon className="size-4 text-muted-foreground" />
+				</div>
+				<div className="mx-1 w-8 border-t border-dashed border-foreground/20" />
+				<div className={`size-13 rounded-xl ${CONNECTOR_TILE}`}>{brand}</div>
+				<div className="mx-1 w-8 border-t border-dashed border-foreground/20" />
+				<div className={`size-10 ${CONNECTOR_TILE}`}>
+					<RightIcon className="size-4 text-muted-foreground" />
+				</div>
+			</div>
+		</div>
+	);
+}
+
+/** Compact tile header: name + status inline, primary action right. */
 function IntegrationTileHeader({
-	icon: Icon,
 	name,
 	status,
 	description,
 	meta,
 	action,
 }: {
-	icon: ComponentType<{ className?: string; "aria-hidden"?: boolean }>;
 	name: string;
 	status: ReactNode;
 	description: ReactNode;
@@ -76,10 +114,6 @@ function IntegrationTileHeader({
 }) {
 	return (
 		<div className="flex items-start gap-3 px-4 py-3">
-			<Icon
-				className="mt-0.5 size-4.5 shrink-0 text-muted-foreground"
-				aria-hidden={true}
-			/>
 			<div className="min-w-0 flex-1">
 				<div className="flex flex-wrap items-center gap-2">
 					<h3 className="text-sm font-semibold tracking-tight">{name}</h3>
@@ -226,6 +260,7 @@ export function IntegrationsTab() {
 				<div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
 					{[0, 1].map((index) => (
 						<SettingsCard key={index}>
+							<div className="h-[100px] border-b border-border bg-muted/40" />
 							<SettingsCardBody className="space-y-2 px-4 py-3">
 								<Skeleton className="h-4 w-40" />
 								<Skeleton className="h-4 w-full max-w-xs" />
@@ -261,8 +296,12 @@ export function IntegrationsTab() {
 			<div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
 				{/* QuickBooks Online */}
 				<SettingsCard>
+					<IntegrationConnectorBand
+						brand={<QuickBooksMark className="size-7" />}
+						leftIcon={FileText}
+						rightIcon={Banknote}
+					/>
 					<IntegrationTileHeader
-						icon={Landmark}
 						name="QuickBooks Online"
 						status={
 							!isConnected ? (
@@ -464,8 +503,12 @@ export function IntegrationsTab() {
 
 				{/* Stripe payments */}
 				<SettingsCard>
+					<IntegrationConnectorBand
+						brand={<StripeMark className="size-7" />}
+						leftIcon={CreditCard}
+						rightIcon={Landmark}
+					/>
 					<IntegrationTileHeader
-						icon={CreditCard}
 						name="Stripe payments"
 						status={
 							!stripeAccountId ? (
