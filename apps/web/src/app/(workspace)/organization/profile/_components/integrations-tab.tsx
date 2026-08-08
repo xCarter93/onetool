@@ -34,6 +34,8 @@ import { useOrgOwner } from "../_hooks/use-org-owner";
 import { QuickBooksMark, StripeMark } from "./integration-brand-marks";
 import { useStripeOnboarding } from "../_hooks/use-stripe-onboarding";
 import { QuickBooksSetupDialog } from "./quickbooks-setup-dialog";
+import { QuickBooksImportDialog } from "./quickbooks-import-dialog";
+import { QuickBooksResetDialog } from "./quickbooks-reset-dialog";
 import { QuickBooksSyncIssues } from "./quickbooks-sync-issues";
 import {
 	SectionHeading,
@@ -50,7 +52,7 @@ const ERROR_MESSAGES: Record<string, string> = {
 	realm_in_use:
 		"That QuickBooks company is already connected to a different organization.",
 	realm_mismatch:
-		"This organization is already linked to a different QuickBooks company.",
+		"This QuickBooks company doesn't match the one previously connected. Reset the connection to link a different company.",
 	not_owner: "Only the organization owner can connect QuickBooks.",
 	not_premium: "QuickBooks sync requires the Business plan.",
 	config: "QuickBooks is not configured for this environment yet.",
@@ -145,6 +147,7 @@ export function IntegrationsTab() {
 	const { confirm: confirmDialog } = useConfirmDialog();
 
 	const connection = useQuery(api.quickbooks.getConnectionStatus);
+	const importRun = useQuery(api.quickbooksImport.getImportRun);
 	const updateSyncSettings = useMutation(api.quickbooks.updateSyncSettings);
 	const disconnect = useMutation(api.quickbooks.disconnect);
 
@@ -159,6 +162,16 @@ export function IntegrationsTab() {
 	// effect below strips the param) and open once the connection resolves.
 	const [armSetup] = useState(() => searchParams.get("qbo") === "connected");
 	const [setupDismissed, setSetupDismissed] = useState(false);
+	const [importOpen, setImportOpen] = useState(false);
+	const [importDismissed, setImportDismissed] = useState(false);
+	const [resetOpen, setResetOpen] = useState(false);
+	// The realm-mismatch failure only arrives as a URL param, and the effect
+	// below strips it — capture it at mount so the tile can offer the way out.
+	const [realmMismatch] = useState(
+		() =>
+			searchParams.get("qbo") === "error" &&
+			searchParams.get("reason") === "realm_mismatch",
+	);
 
 	// Show the OAuth outcome once, then strip the params so a refresh is quiet.
 	const resultHandledRef = useRef(false);
@@ -191,6 +204,24 @@ export function IntegrationsTab() {
 	const setupDialogOpen =
 		setupOpen ||
 		(armSetup && !setupDismissed && !ownerLoading && isOwner && needsSetup);
+
+	// Setup finishing is the only signal the parent gets that the setup dialog
+	// completed (dismiss and done both close it), so remember that setup was
+	// pending: needsSetup flips true→false exactly once, on completion.
+	const [sawNeedsSetup, setSawNeedsSetup] = useState(false);
+	if (needsSetup && !sawNeedsSetup) setSawNeedsSetup(true);
+
+	// Same derived-not-effect shape as the setup auto-open. `=== null` (not
+	// falsy) so the loading tick can't open the wizard on a live run.
+	const importDialogOpen =
+		importOpen ||
+		(!importDismissed &&
+			!ownerLoading &&
+			isOwner &&
+			connection?.status === "connected" &&
+			!needsSetup &&
+			importRun === null &&
+			(armSetup || sawNeedsSetup));
 
 	// Full-page redirect to Intuit takes a beat — hold a visible pending state
 	// until the browser actually navigates away.
@@ -291,6 +322,22 @@ export function IntegrationsTab() {
 		<p className="mt-1 text-xs text-muted-foreground">{text}</p>
 	);
 
+	// A completed import is done business — the wizard stops being reachable.
+	const importAction =
+		importRun === undefined || importRun?.status === "completed" ? null : (
+			<Button
+				variant="outline"
+				size="sm"
+				onClick={() => setImportOpen(true)}
+			>
+				{importRun === null || importRun.status === "failed"
+					? "Import customers"
+					: importRun.status === "awaiting_review"
+						? `Review import (${importRun.ambiguous})`
+						: "Importing…"}
+			</Button>
+		);
+
 	return (
 		<div className="space-y-6">
 			{heading}
@@ -360,6 +407,28 @@ export function IntegrationsTab() {
 							) : undefined
 						}
 					/>
+
+					{realmMismatch && (
+						<div className="mx-4 mb-3 flex items-start gap-2.5 rounded-md border border-destructive/25 bg-destructive/[0.05] px-3 py-2.5">
+							<ShieldAlert
+								className="mt-0.5 size-4 shrink-0 text-destructive"
+								aria-hidden="true"
+							/>
+							<p className="min-w-0 flex-1 text-xs text-muted-foreground">
+								{ERROR_MESSAGES.realm_mismatch}
+							</p>
+							{isOwner && (
+								<Button
+									size="sm"
+									variant="outline"
+									onClick={() => setResetOpen(true)}
+									className="shrink-0"
+								>
+									Reset &amp; connect…
+								</Button>
+							)}
+						</div>
+					)}
 
 					{isConnected && (
 						<>
@@ -489,15 +558,18 @@ export function IntegrationsTab() {
 										? "Records already in QuickBooks stay there."
 										: "Only the organization owner can change these settings."}
 								</p>
-								<Button
-									variant="ghost"
-									size="sm"
-									onClick={handleDisconnect}
-									disabled={!isOwner || disconnecting}
-									className="shrink-0 text-destructive hover:bg-destructive/10 hover:text-destructive"
-								>
-									{disconnecting ? "Disconnecting…" : "Disconnect"}
-								</Button>
+								<div className="flex shrink-0 items-center gap-1">
+									{isOwner && importAction}
+									<Button
+										variant="ghost"
+										size="sm"
+										onClick={handleDisconnect}
+										disabled={!isOwner || disconnecting}
+										className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+									>
+										{disconnecting ? "Disconnecting…" : "Disconnect"}
+									</Button>
+								</div>
 							</div>
 						</>
 					)}
@@ -581,6 +653,16 @@ export function IntegrationsTab() {
 					if (!open) setSetupDismissed(true);
 				}}
 			/>
+
+			<QuickBooksImportDialog
+				open={importDialogOpen}
+				onOpenChange={(open) => {
+					setImportOpen(open);
+					if (!open) setImportDismissed(true);
+				}}
+			/>
+
+			<QuickBooksResetDialog open={resetOpen} onOpenChange={setResetOpen} />
 		</div>
 	);
 }

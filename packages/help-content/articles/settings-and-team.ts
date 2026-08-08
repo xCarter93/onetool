@@ -129,11 +129,19 @@ export const settingsAndTeamArticles: HelpArticle[] = [
 					},
 					{
 						type: "paragraph",
-						text: "Once a company is connected, the QuickBooks card shows which company you are linked to and lets the owner choose when invoices are sent to QuickBooks, whether payments are included, and whether duplicate names are resolved automatically. **Disconnect QuickBooks** stops syncing and revokes OneTool's access; records already in QuickBooks stay there.",
+						text: "Once a company is connected, the QuickBooks card shows which company you are linked to and lets the owner choose when invoices are sent to QuickBooks, whether payments are included, and whether duplicate names are resolved automatically. Cancelling an invoice that already synced voids it in QuickBooks rather than deleting it. **Disconnect QuickBooks** stops syncing and revokes OneTool's access; records already in QuickBooks stay there.",
 					},
 					{
 						type: "paragraph",
-						text: "Right after the first connection the QuickBooks card shows a **Setup incomplete** badge and a **Finish setup** button. Setup asks the owner to pick the income account that synced invoices should post to, and it confirms which account payments will be recorded to. Clients start syncing right away, but invoices and payments wait until setup is finished; once it is, anything waiting in the queue syncs shortly after, and the card lists the income account it posts to.",
+						text: "Right after the first connection the QuickBooks card shows a **Setup incomplete** badge and a **Finish setup** button. Setup asks the owner to pick the income account that synced invoices should post to, and it confirms which account payments will be recorded to. That account is used for every item OneTool creates in QuickBooks: one item per line-item SKU, plus a fallback **OneTool Service** item for lines without a SKU. A SKU's item is created the first time it is invoiced, and it is renamed in QuickBooks when you rename the SKU in OneTool. Clients start syncing right away, but invoices and payments wait until setup is finished; once it is, anything waiting in the queue syncs shortly after, and the card lists the income account it posts to.",
+					},
+					{
+						type: "paragraph",
+						text: "Once setup is finished, OneTool offers to import the customers already in your QuickBooks company. **Import customers** on the QuickBooks card opens the wizard, which runs in the background so you can close it. A QuickBooks customer whose name matches one of your clients is linked to that client, a customer with no match is brought in as a new client, and a customer that matches more than one client waits for you: the card reads **Review import** and the wizard lists each one so you can pick the right client or choose not to import it. Sub-customers are skipped. Nothing is pushed to QuickBooks during the import.",
+					},
+					{
+						type: "paragraph",
+						text: "If you need to point OneTool at a different QuickBooks company, **Reset & connect** clears every sync link to the old company and sends the owner back to QuickBooks to pick a new one. Your OneTool records are untouched and nothing is deleted in QuickBooks, but sync history cannot be relinked automatically afterwards.",
 					},
 					{
 						type: "paragraph",

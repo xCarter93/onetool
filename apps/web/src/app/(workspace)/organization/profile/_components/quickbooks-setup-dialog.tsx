@@ -146,8 +146,8 @@ function SetupBody({ onDone }: { onDone: () => void }) {
 				<DialogTitle>Finish QuickBooks setup</DialogTitle>
 				<DialogDescription>
 					Choose the income account your synced invoices should post to. We use
-					it to create the single &ldquo;OneTool Service&rdquo; item every
-					synced line references.
+					it for the QuickBooks items OneTool creates: one per line-item SKU,
+					plus the fallback &ldquo;OneTool Service&rdquo; item.
 				</DialogDescription>
 			</DialogHeader>
 
