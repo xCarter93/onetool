@@ -69,6 +69,8 @@ export const ORG_SCOPED_CASCADE_TABLES = [
 	"quickbooksSyncJobs",
 	"quickbooksEntityLinks",
 	"quickbooksConnections",
+	"quickbooksImportRuns",
+	"quickbooksImportRows",
 ] as const;
 
 /**
@@ -589,6 +591,32 @@ export async function cascadeDeleteOrgDataPage(
 		const rows = await ctx.db
 			.query("quickbooksEntityLinks")
 			.withIndex("by_org_entity", (q) => q.eq("orgId", orgId))
+			.take(remaining);
+		for (const row of rows) {
+			await ctx.db.delete(row._id);
+			remaining--;
+		}
+	}
+
+	// quickbooksImportRuns
+	{
+		if (remaining <= 0) return { done: false };
+		const rows = await ctx.db
+			.query("quickbooksImportRuns")
+			.withIndex("by_org", (q) => q.eq("orgId", orgId))
+			.take(remaining);
+		for (const row of rows) {
+			await ctx.db.delete(row._id);
+			remaining--;
+		}
+	}
+
+	// quickbooksImportRows
+	{
+		if (remaining <= 0) return { done: false };
+		const rows = await ctx.db
+			.query("quickbooksImportRows")
+			.withIndex("by_org", (q) => q.eq("orgId", orgId))
 			.take(remaining);
 		for (const row of rows) {
 			await ctx.db.delete(row._id);

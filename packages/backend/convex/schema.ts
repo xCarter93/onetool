@@ -642,6 +642,7 @@ export default defineSchema({
 		rate: v.number(), // Unit price, dollars
 		amount: v.number(), // quantity * rate, dollars (cent-rounded)
 		cost: v.optional(v.number()), // Cost per unit for margin calculation, dollars
+		skuId: v.optional(v.id("skus")), // set when picked from the SKU list; drives QBO per-item sync
 
 		sortOrder: v.number(), // For ordering items
 	})
@@ -742,6 +743,7 @@ export default defineSchema({
 		unitPrice: v.number(), // dollars
 		total: v.number(), // quantity * unitPrice, dollars (cent-rounded)
 		cost: v.optional(v.number()), // Cost per unit for margin calculation, dollars
+		skuId: v.optional(v.id("skus")), // set when picked from the SKU list; drives QBO per-item sync
 
 		sortOrder: v.number(),
 	})
@@ -1965,9 +1967,10 @@ export default defineSchema({
 		entityType: v.union(
 			v.literal("client"),
 			v.literal("invoice"),
-			v.literal("payment")
+			v.literal("payment"),
+			v.literal("sku")
 		),
-		localId: v.string(), // Id<"clients"> | Id<"invoices"> | Id<"payments">
+		localId: v.string(), // Id<"clients"> | Id<"invoices"> | Id<"payments"> | Id<"skus">
 		qboId: v.string(),
 		qboSyncToken: v.string(), // optimistic-concurrency token, updated on every write
 		lastSyncedAt: v.number(),
@@ -1982,7 +1985,8 @@ export default defineSchema({
 		entityType: v.union(
 			v.literal("client"),
 			v.literal("invoice"),
-			v.literal("payment")
+			v.literal("payment"),
+			v.literal("sku")
 		),
 		localId: v.string(),
 		operation: v.union(v.literal("upsert"), v.literal("void")),
@@ -2007,4 +2011,50 @@ export default defineSchema({
 		.index("by_org_status_due", ["orgId", "status", "runAfter"])
 		.index("by_status_due", ["status", "runAfter"])
 		.index("by_org_dedupe", ["orgId", "dedupeKey", "status"]),
+
+	// One-time QBO→OneTool customer import (wizard shown at connect). Kept
+	// separate from quickbooksSyncJobs: different lifecycle (bounded run, not a
+	// durable queue) and rows carry per-row human resolution actions.
+	quickbooksImportRuns: defineTable({
+		orgId: v.id("organizations"),
+		realmId: v.string(),
+		status: v.union(
+			v.literal("running"), // fetching + matching QBO customers
+			v.literal("awaiting_review"), // ambiguous rows need human picks
+			v.literal("completed"),
+			v.literal("failed")
+		),
+		startedByUserId: v.id("users"),
+		startedAt: v.number(),
+		completedAt: v.optional(v.number()),
+		// Denormalized counters for the wizard progress/summary UI
+		totalFetched: v.number(),
+		autoLinked: v.number(),
+		imported: v.number(),
+		ambiguous: v.number(),
+		skipped: v.number(),
+		lastError: v.optional(v.string()),
+	}).index("by_org", ["orgId"]),
+
+	quickbooksImportRows: defineTable({
+		orgId: v.id("organizations"),
+		runId: v.id("quickbooksImportRuns"),
+		qboId: v.string(), // QBO Customer.Id
+		qboDisplayName: v.string(),
+		qboEmail: v.optional(v.string()),
+		qboCompanyName: v.optional(v.string()),
+		outcome: v.union(
+			v.literal("auto_linked"), // matched exactly one client — link written
+			v.literal("imported"), // no match — created as a new OneTool client
+			v.literal("ambiguous"), // multiple candidates — awaiting a human pick
+			v.literal("resolved"), // human picked a candidate — link written
+			v.literal("skipped") // sub-customer, or user chose Don't import
+		),
+		candidateClientIds: v.optional(v.array(v.id("clients"))), // ambiguous only
+		linkedClientId: v.optional(v.id("clients")),
+		skipReason: v.optional(v.string()), // "sub_customer" | "user_skipped"
+	})
+		.index("by_run", ["runId"])
+		.index("by_run_outcome", ["runId", "outcome"])
+		.index("by_org", ["orgId"]),
 });

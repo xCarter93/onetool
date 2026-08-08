@@ -783,7 +783,7 @@ export const getEntityLink = userQuery({
 
 export interface QboSyncErrorView {
 	_id: Id<"quickbooksSyncJobs">;
-	entityType: "client" | "invoice" | "payment";
+	entityType: "client" | "invoice" | "payment" | "sku";
 	localId: string;
 	entityLabel: string;
 	lastError?: string;
@@ -796,9 +796,15 @@ export interface QboSyncErrorView {
 async function describeEntity(
 	ctx: UserQueryCtx,
 	orgId: Id<"organizations">,
-	entityType: "client" | "invoice" | "payment",
+	entityType: "client" | "invoice" | "payment" | "sku",
 	localId: string
 ): Promise<string> {
+	if (entityType === "sku") {
+		const id = ctx.db.normalizeId("skus", localId);
+		const sku = id ? await ctx.db.get(id) : null;
+		if (!sku || sku.orgId !== orgId) return "Deleted line item";
+		return sku.name;
+	}
 	if (entityType === "client") {
 		const id = ctx.db.normalizeId("clients", localId);
 		const client = id ? await ctx.db.get(id) : null;
