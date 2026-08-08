@@ -34,7 +34,10 @@ import { useOrgOwner } from "../_hooks/use-org-owner";
 import { QuickBooksMark, StripeMark } from "./integration-brand-marks";
 import { useStripeOnboarding } from "../_hooks/use-stripe-onboarding";
 import { QuickBooksSetupDialog } from "./quickbooks-setup-dialog";
-import { QuickBooksImportDialog } from "./quickbooks-import-dialog";
+import {
+	QBO_IMPORT_REVIEW_URL,
+	QuickBooksImportDialog,
+} from "./quickbooks-import-dialog";
 import { QuickBooksResetDialog } from "./quickbooks-reset-dialog";
 import { QuickBooksSyncIssues } from "./quickbooks-sync-issues";
 import {
@@ -322,21 +325,37 @@ export function IntegrationsTab() {
 		<p className="mt-1 text-xs text-muted-foreground">{text}</p>
 	);
 
-	// A completed import is done business — the wizard stops being reachable.
-	const importAction =
-		importRun === undefined || importRun?.status === "completed" ? null : (
+	// A completed import is done business: the wizard stops being reachable.
+	// A fetched run is reviewed on its own page, so those states route there
+	// instead of opening the dialog.
+	const importAction = (() => {
+		if (importRun === undefined || importRun?.status === "completed") return null;
+
+		const reviewing = importRun?.status === "reviewing";
+		const committing = importRun?.status === "committing";
+		const label =
+			importRun === null || importRun.status === "failed"
+				? "Import customers"
+				: reviewing
+					? `Review import (${importRun.totalFetched})`
+					: importRun.status === "awaiting_review"
+						? `Review import (${importRun.ambiguous})`
+						: "Importing…";
+
+		return (
 			<Button
 				variant="outline"
 				size="sm"
-				onClick={() => setImportOpen(true)}
+				onClick={() =>
+					reviewing || committing
+						? router.push(QBO_IMPORT_REVIEW_URL)
+						: setImportOpen(true)
+				}
 			>
-				{importRun === null || importRun.status === "failed"
-					? "Import customers"
-					: importRun.status === "awaiting_review"
-						? `Review import (${importRun.ambiguous})`
-						: "Importing…"}
+				{label}
 			</Button>
 		);
+	})();
 
 	return (
 		<div className="space-y-6">

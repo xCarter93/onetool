@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useState, type ReactNode } from "react";
+import { useRouter } from "next/navigation";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { AlertTriangle } from "lucide-react";
 
@@ -28,6 +29,23 @@ import { Spinner } from "@/components/ui/spinner";
 import { useToast } from "@/hooks/use-toast";
 import { getUserFriendlyErrorMessage, logError } from "@/lib/error-logger";
 
+/** Full review surface for a fetched run. */
+export const QBO_IMPORT_REVIEW_URL = "/clients/import/quickbooks";
+
+/**
+ * A run marked failed by a discard or a supersede is not an error: the plan was
+ * thrown away before anything was created, so the intro shows as if it were the
+ * first run.
+ */
+const QUIET_FAILURES = new Set([
+	"Discarded before import",
+	"Superseded by a new import",
+]);
+
+export function isQuietFailure(run: { lastError?: string } | null): boolean {
+	return Boolean(run?.lastError && QUIET_FAILURES.has(run.lastError));
+}
+
 /** The backend throws `new ConvexError("import_already_running")`. */
 function isAlreadyRunning(error: unknown): boolean {
 	const data = (error as { data?: unknown } | null)?.data;
@@ -52,13 +70,14 @@ export function QuickBooksImportDialog({
 		<Dialog open={open} onOpenChange={onOpenChange}>
 			<DialogContent className="w-[min(92vw,36rem)]">
 				{/* Mounted per open so "started this session" means this open. */}
-				{open && <ImportBody />}
+				{open && <ImportBody onClose={() => onOpenChange(false)} />}
 			</DialogContent>
 		</Dialog>
 	);
 }
 
-function ImportBody() {
+function ImportBody({ onClose }: { onClose: () => void }) {
+	const router = useRouter();
 	const toast = useToast();
 	const startImport = useAction(api.quickbooksImportActions.startImport);
 	const run = useQuery(api.quickbooksImport.getImportRun);
@@ -69,11 +88,19 @@ function ImportBody() {
 	// clears the last row lands on the summary instead of back at the intro.
 	const [sawActiveRun, setSawActiveRun] = useState(false);
 	if (
-		(run?.status === "running" || run?.status === "awaiting_review") &&
+		(run?.status === "running" ||
+			run?.status === "reviewing" ||
+			run?.status === "committing" ||
+			run?.status === "awaiting_review") &&
 		!sawActiveRun
 	) {
 		setSawActiveRun(true);
 	}
+
+	const goToReview = useCallback(() => {
+		onClose();
+		router.push(QBO_IMPORT_REVIEW_URL);
+	}, [onClose, router]);
 
 	const handleStart = useCallback(async () => {
 		setStarting(true);
@@ -114,6 +141,16 @@ function ImportBody() {
 		return <RunningState run={run} />;
 	}
 
+	if (run?.status === "reviewing" || run?.status === "committing") {
+		return (
+			<FetchedState
+				run={run}
+				committing={run.status === "committing"}
+				onReview={goToReview}
+			/>
+		);
+	}
+
 	if (run?.status === "awaiting_review") {
 		return <ReviewState runId={run._id} ambiguous={run.ambiguous} />;
 	}
@@ -148,7 +185,7 @@ function IntroState({
 	starting: boolean;
 	onStart: () => void;
 }) {
-	const failed = run?.status === "failed";
+	const failed = run?.status === "failed" && !isQuietFailure(run);
 	const previouslyCompleted = run?.status === "completed";
 
 	return (
@@ -228,6 +265,51 @@ function RunningState({ run }: { run: ImportRun }) {
 
 			<DialogFooter>
 				<DialogClose render={<Button variant="outline" />}>Close</DialogClose>
+			</DialogFooter>
+		</>
+	);
+}
+
+/**
+ * The fetch is done and the plan is waiting. Deciding happens on the full page,
+ * so the dialog hands off rather than duplicating the review surface.
+ */
+function FetchedState({
+	run,
+	committing,
+	onReview,
+}: {
+	run: ImportRun;
+	committing: boolean;
+	onReview: () => void;
+}) {
+	return (
+		<>
+			<DialogHeader>
+				<DialogTitle>
+					{committing
+						? "Importing your QuickBooks customers"
+						: "Review your QuickBooks customers"}
+				</DialogTitle>
+				<DialogDescription>
+					{committing
+						? `${run.committedRows ?? 0} of ${run.totalFetched} applied so far.`
+						: `${run.totalFetched} customer${run.totalFetched !== 1 ? "s" : ""} fetched. Review what will be imported.`}
+				</DialogDescription>
+			</DialogHeader>
+
+			{committing && (
+				<div className="flex items-center gap-2 py-1">
+					<Spinner className="size-4 text-muted-foreground" />
+					<StatLine>Nothing else is needed from you.</StatLine>
+				</div>
+			)}
+
+			<DialogFooter>
+				<DialogClose render={<Button variant="outline" />}>Close</DialogClose>
+				<Button onClick={onReview}>
+					{committing ? "View progress" : "Review"}
+				</Button>
 			</DialogFooter>
 		</>
 	);

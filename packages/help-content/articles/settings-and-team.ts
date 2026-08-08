@@ -137,7 +137,11 @@ export const settingsAndTeamArticles: HelpArticle[] = [
 					},
 					{
 						type: "paragraph",
-						text: "Once setup is finished, OneTool offers to import the customers already in your QuickBooks company. **Import customers** on the QuickBooks card opens the wizard, which runs in the background so you can close it. A QuickBooks customer whose name matches one of your clients is linked to that client, a customer with no match is brought in as a new client, and a customer that matches more than one client waits for you: the card reads **Review import** and the wizard lists each one so you can pick the right client or choose not to import it. Sub-customers are skipped. Nothing is pushed to QuickBooks during the import.",
+						text: "Once setup is finished, OneTool offers to import the customers already in your QuickBooks company. **Import customers** on the QuickBooks card fetches them in the background, so you can close the dialog while it runs. Nothing is created yet: the fetch only works out a plan. A QuickBooks customer whose name matches one of your clients is proposed as a link to that client, a customer with no match is proposed as a new client, a customer that matches more than one client is marked as needing review, and sub-customers are always skipped.",
+					},
+					{
+						type: "paragraph",
+						text: "When the fetch finishes the card reads **Review import** and takes you to the review page, which lists every customer with what will happen to it. You can change any of them: search for a different client to link to, import a customer as a new client, or choose not to import it at all. Customers under **Needs review** have to be decided before you can continue. **Import** applies the plan and shows its progress, and **Discard** throws the plan away without creating anything. Nothing is written to your clients, and nothing is pushed to QuickBooks, until you click Import.",
 					},
 					{
 						type: "paragraph",
