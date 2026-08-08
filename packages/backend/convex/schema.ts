@@ -1922,4 +1922,84 @@ export default defineSchema({
 		outputTokens: v.number(),
 		totalTokens: v.number(),
 	}).index("by_org", ["orgId"]),
+
+	// QuickBooks Online connection — one per org, one org per realm
+	quickbooksConnections: defineTable({
+		orgId: v.id("organizations"),
+		realmId: v.string(), // QBO company ID, required on every API URL
+		environment: v.union(v.literal("sandbox"), v.literal("production")),
+
+		// OAuth tokens. Intuit rotates the refresh token — always overwrite
+		// with the value from the latest token response.
+		accessToken: v.string(),
+		accessTokenExpiresAt: v.number(),
+		refreshToken: v.string(),
+		refreshTokenExpiresAt: v.number(),
+
+		status: v.union(
+			v.literal("connected"),
+			v.literal("needs_reauth"), // refresh failed / invalid_grant
+			v.literal("disconnected")
+		),
+		connectedByUserId: v.id("users"),
+		companyName: v.optional(v.string()), // from CompanyInfo, display only
+		lastHealthCheckAt: v.optional(v.number()),
+
+		// Sync settings (Jobber/Workiz-style toggles)
+		syncInvoicesOn: v.union(v.literal("sent"), v.literal("created")),
+		syncPayments: v.boolean(),
+		autoDisambiguateNames: v.boolean(), // append " - 2" on 6240 collisions
+
+		// QBO account/item mappings resolved during setup
+		incomeAccountQboId: v.optional(v.string()),
+		incomeAccountName: v.optional(v.string()),
+		depositAccountQboId: v.optional(v.string()), // Undeposited Funds
+		defaultServiceItemQboId: v.optional(v.string()), // "OneTool Service"
+	})
+		.index("by_org", ["orgId"])
+		.index("by_realm", ["realmId"]),
+
+	// OneTool entity ↔ QBO entity mapping (survives disconnect/reconnect)
+	quickbooksEntityLinks: defineTable({
+		orgId: v.id("organizations"),
+		entityType: v.union(
+			v.literal("client"),
+			v.literal("invoice"),
+			v.literal("payment")
+		),
+		localId: v.string(), // Id<"clients"> | Id<"invoices"> | Id<"payments">
+		qboId: v.string(),
+		qboSyncToken: v.string(), // optimistic-concurrency token, updated on every write
+		lastSyncedAt: v.number(),
+		syncWarning: v.optional(v.string()), // e.g. AST overrode tax amount
+	})
+		.index("by_org_entity", ["orgId", "entityType", "localId"])
+		.index("by_org_qbo", ["orgId", "entityType", "qboId"]),
+
+	// Durable sync queue with retry state
+	quickbooksSyncJobs: defineTable({
+		orgId: v.id("organizations"),
+		entityType: v.union(
+			v.literal("client"),
+			v.literal("invoice"),
+			v.literal("payment")
+		),
+		localId: v.string(),
+		operation: v.union(v.literal("upsert"), v.literal("void")),
+		status: v.union(
+			v.literal("pending"),
+			v.literal("processing"),
+			v.literal("succeeded"),
+			v.literal("failed"), // exhausted retries — shows in error center
+			v.literal("ignored") // user dismissed
+		),
+		attempts: v.number(),
+		runAfter: v.number(), // backoff gate; worker skips jobs not yet due
+		lastError: v.optional(v.string()), // human-readable, shown in error center
+		lastErrorCode: v.optional(v.string()), // QBO Fault code, e.g. "6240"
+		dedupeKey: v.string(), // `${entityType}:${localId}` — collapse duplicate pending jobs
+	})
+		.index("by_org_status", ["orgId", "status"])
+		.index("by_status_due", ["status", "runAfter"])
+		.index("by_org_dedupe", ["orgId", "dedupeKey", "status"]),
 });

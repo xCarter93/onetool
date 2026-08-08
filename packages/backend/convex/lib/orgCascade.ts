@@ -1,5 +1,6 @@
 import { MutationCtx } from "../_generated/server";
 import { Id } from "../_generated/dataModel";
+import { internal } from "../_generated/api";
 import { assistantAgent } from "../assistantAgent";
 import { StorageHelpers } from "./storage";
 
@@ -64,6 +65,10 @@ export const ORG_SCOPED_CASCADE_TABLES = [
 	// AI assistant metadata (component-side thread data deleted async per row).
 	"agentThreadMeta",
 	"agentUsage",
+	// QuickBooks integration (jobs + links before the connection row).
+	"quickbooksSyncJobs",
+	"quickbooksEntityLinks",
+	"quickbooksConnections",
 ] as const;
 
 /**
@@ -560,6 +565,52 @@ export async function cascadeDeleteOrgDataPage(
 			.withIndex("by_org", (q) => q.eq("orgId", orgId))
 			.take(remaining);
 		for (const row of rows) {
+			await ctx.db.delete(row._id);
+			remaining--;
+		}
+	}
+
+	// quickbooksSyncJobs
+	{
+		if (remaining <= 0) return { done: false };
+		const rows = await ctx.db
+			.query("quickbooksSyncJobs")
+			.withIndex("by_org_status", (q) => q.eq("orgId", orgId))
+			.take(remaining);
+		for (const row of rows) {
+			await ctx.db.delete(row._id);
+			remaining--;
+		}
+	}
+
+	// quickbooksEntityLinks
+	{
+		if (remaining <= 0) return { done: false };
+		const rows = await ctx.db
+			.query("quickbooksEntityLinks")
+			.withIndex("by_org_entity", (q) => q.eq("orgId", orgId))
+			.take(remaining);
+		for (const row of rows) {
+			await ctx.db.delete(row._id);
+			remaining--;
+		}
+	}
+
+	// quickbooksConnections — revoke live tokens at Intuit before dropping the row.
+	{
+		if (remaining <= 0) return { done: false };
+		const rows = await ctx.db
+			.query("quickbooksConnections")
+			.withIndex("by_org", (q) => q.eq("orgId", orgId))
+			.take(remaining);
+		for (const row of rows) {
+			if (row.status !== "disconnected") {
+				await ctx.scheduler.runAfter(
+					0,
+					internal.quickbooksActions.revokeConnection,
+					{ refreshToken: row.refreshToken }
+				);
+			}
 			await ctx.db.delete(row._id);
 			remaining--;
 		}

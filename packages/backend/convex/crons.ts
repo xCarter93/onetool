@@ -73,4 +73,12 @@ crons.interval(
 	{}
 );
 
+// Keep QuickBooks tokens warm and surface dead grants as needs_reauth.
+crons.interval(
+	"refresh stale quickbooks connections",
+	{ hours: 6 },
+	internal.quickbooksActions.refreshStaleConnections,
+	{}
+);
+
 export default crons;

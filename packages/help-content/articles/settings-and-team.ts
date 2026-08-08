@@ -24,9 +24,10 @@ export const settingsAndTeamArticles: HelpArticle[] = [
 							"**Team** is where you invite people and manage their access.",
 							"**Business Info** holds your contact details and address.",
 							"**Billing** shows your plan and subscription.",
-							"**Payments** connects Stripe so clients can pay you online.",
+							"**Payments** manages your Stripe account, payouts, and disputes. It appears once Stripe setup has been started.",
 							"**Documents** stores organization files for quotes and invoices.",
 							"**SKUs** holds your reusable products and services.",
+							"**Integrations** connects QuickBooks Online and starts your Stripe payments setup.",
 						],
 					},
 					{
@@ -37,7 +38,7 @@ export const settingsAndTeamArticles: HelpArticle[] = [
 					},
 					{
 						type: "note",
-						text: "Some tabs are locked depending on your role and plan. The **Team** and **Payments** tabs are for admins and the owner, and **Payments**, **Documents**, and **SKUs** require the Business plan.",
+						text: "Some tabs are locked depending on your role and plan. The **Team**, **Payments**, and **Integrations** tabs are for admins and the owner, and **Payments**, **Documents**, **SKUs**, and **Integrations** require the Business plan.",
 					},
 				],
 			},
@@ -116,6 +117,27 @@ export const settingsAndTeamArticles: HelpArticle[] = [
 					{
 						type: "note",
 						text: "Changing the address takes effect immediately and the old address stops working, so replies to email threads you sent from the old address will no longer reach your inbox. OneTool asks you to confirm before the change is saved.",
+					},
+				],
+			},
+			{
+				heading: "Integrations",
+				blocks: [
+					{
+						type: "paragraph",
+						text: "The **Integrations** tab is available on the Business plan to organization admins. It lists one card per integration, and it is where the organization owner connects a QuickBooks Online company, which prepares your account for QuickBooks sync of clients, invoices, and payments from OneTool.",
+					},
+					{
+						type: "paragraph",
+						text: "Once a company is connected, the QuickBooks card shows which company you are linked to and lets the owner choose when invoices are sent to QuickBooks, whether payments are included, and whether duplicate names are resolved automatically. **Disconnect QuickBooks** stops syncing and revokes OneTool's access; records already in QuickBooks stay there.",
+					},
+					{
+						type: "paragraph",
+						text: "The **Stripe payments** card on the same tab is where online payments start. **Set up payments** sends the owner to Stripe's hosted onboarding, and the card shows whether setup is still incomplete or charges and payouts are enabled. Once setup has been started, a separate **Payments** tab appears in settings for payouts, disputes, and account details, and **Open Payments** on the card takes you there.",
+					},
+					{
+						type: "note",
+						text: "Connecting, changing sync settings, and disconnecting are limited to the organization owner. Other admins can see the tab.",
 					},
 				],
 			},
@@ -473,10 +495,10 @@ export const settingsAndTeamArticles: HelpArticle[] = [
 					{
 						type: "steps",
 						items: [
-							"Open your organization settings and select the **Payments** tab.",
-							"Click **Onboard to collect payments**.",
+							"Open your organization settings and select the **Integrations** tab.",
+							"On the **Stripe payments** card, click **Set up payments**. If you have already started, the button reads **Finish setup**.",
 							"Follow Stripe's guided onboarding to enter your business details and the bank account for payouts.",
-							"Return to OneTool when Stripe finishes. The tab shows your progress.",
+							"Return to OneTool when Stripe finishes. A **Payments** tab now appears in settings and shows your progress.",
 						],
 					},
 					{
@@ -487,7 +509,7 @@ export const settingsAndTeamArticles: HelpArticle[] = [
 					},
 					{
 						type: "paragraph",
-						text: "If you stop partway, come back and click **Continue onboarding** to pick up where you left off. Use **Refresh status** any time to pull the latest state from Stripe.",
+						text: "If you stop partway, come back and click **Finish setup** on the Stripe payments card, or **Continue onboarding** on the Payments tab, to pick up where you left off. Use **Refresh status** on the Payments tab any time to pull the latest state from Stripe.",
 					},
 				],
 			},
