@@ -133,6 +133,14 @@ export const settingsAndTeamArticles: HelpArticle[] = [
 					},
 					{
 						type: "paragraph",
+						text: "Right after the first connection the QuickBooks card shows a **Setup incomplete** badge and a **Finish setup** button. Setup asks the owner to pick the income account that synced invoices should post to, and it confirms which account payments will be recorded to. Clients start syncing right away, but invoices and payments wait until setup is finished; once it is, anything waiting in the queue syncs shortly after, and the card lists the income account it posts to.",
+					},
+					{
+						type: "paragraph",
+						text: "If a record cannot reach QuickBooks, a **Sync issues** section appears below the cards listing each failed client, invoice, or payment with the reason QuickBooks gave, how many attempts were made, and when it last failed. **Retry** queues one record again, **Ignore** stops tracking that record, and **Retry all** queues every failed record at once. The section disappears when there is nothing left to fix.",
+					},
+					{
+						type: "paragraph",
 						text: "The **Stripe payments** card on the same tab is where online payments start. **Set up payments** sends the owner to Stripe's hosted onboarding, and the card shows whether setup is still incomplete or charges and payouts are enabled. Once setup has been started, a separate **Payments** tab appears in settings for payouts, disputes, and account details, and **Open Payments** on the card takes you there.",
 					},
 					{

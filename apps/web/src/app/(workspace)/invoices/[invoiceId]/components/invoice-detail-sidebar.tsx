@@ -42,6 +42,7 @@ import {
 	RefreshCw,
 } from "lucide-react";
 import Link from "next/link";
+import { QuickBooksSyncRow } from "@/components/quickbooks/sync-status-row";
 import { usePermissions } from "@/hooks/use-permissions";
 import {
 	localDateToUtcMidnightMs,
@@ -406,6 +407,8 @@ export function InvoiceDetailSidebar({
 						</div>
 					</div>
 				)}
+
+				<QuickBooksSyncRow entityType="invoice" localId={invoiceId} />
 			</div>
 
 			<Separator className="my-4" />

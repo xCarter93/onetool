@@ -31,6 +31,8 @@ import { useConfirmDialog } from "@/hooks/use-confirm-dialog";
 import { logError, getUserFriendlyErrorMessage } from "@/lib/error-logger";
 import { useOrgOwner } from "../_hooks/use-org-owner";
 import { useStripeOnboarding } from "../_hooks/use-stripe-onboarding";
+import { QuickBooksSetupDialog } from "./quickbooks-setup-dialog";
+import { QuickBooksSyncIssues } from "./quickbooks-sync-issues";
 import {
 	SectionHeading,
 	SettingsCard,
@@ -103,7 +105,7 @@ export function IntegrationsTab() {
 	const router = useRouter();
 	const searchParams = useSearchParams();
 	const toast = useToast();
-	const { organization, isOwner } = useOrgOwner();
+	const { organization, isOwner, isLoading: ownerLoading } = useOrgOwner();
 	const { confirm: confirmDialog } = useConfirmDialog();
 
 	const connection = useQuery(api.quickbooks.getConnectionStatus);
@@ -115,6 +117,12 @@ export function IntegrationsTab() {
 	const [saving, setSaving] = useState(false);
 	const [disconnecting, setDisconnecting] = useState(false);
 	const [connecting, setConnecting] = useState(false);
+	const [setupOpen, setSetupOpen] = useState(false);
+	// A fresh connect should land straight in setup, but the connection query is
+	// still loading on first render — capture the OAuth outcome at mount (the
+	// effect below strips the param) and open once the connection resolves.
+	const [armSetup] = useState(() => searchParams.get("qbo") === "connected");
+	const [setupDismissed, setSetupDismissed] = useState(false);
 
 	// Show the OAuth outcome once, then strip the params so a refresh is quiet.
 	const resultHandledRef = useRef(false);
@@ -135,6 +143,18 @@ export function IntegrationsTab() {
 		}
 		router.replace(TAB_URL);
 	}, [searchParams, router, toast]);
+
+	const needsSetup =
+		connection != null &&
+		connection.status === "connected" &&
+		!connection.defaultServiceItemQboId;
+
+	// Derived rather than set from an effect: the auto-open resolves as soon as
+	// the connection and ownership queries land, and closes itself once setup is
+	// done (needsSetup flips false) or the owner dismisses it.
+	const setupDialogOpen =
+		setupOpen ||
+		(armSetup && !setupDismissed && !ownerLoading && isOwner && needsSetup);
 
 	// Full-page redirect to Intuit takes a beat — hold a visible pending state
 	// until the browser actually navigates away.
@@ -226,8 +246,8 @@ export function IntegrationsTab() {
 	const stripeAccountId = organization?.stripeConnectAccountId;
 	const stripeActive = Boolean(
 		organization?.stripeChargesEnabled &&
-			organization?.stripePayoutsEnabled &&
-			organization?.stripeDetailsSubmitted,
+		organization?.stripePayoutsEnabled &&
+		organization?.stripeDetailsSubmitted,
 	);
 
 	const ownerHint = (text: string) => (
@@ -249,9 +269,9 @@ export function IntegrationsTab() {
 								<NotConnectedBadge />
 							) : (
 								<>
-									{needsReauth ? (
+									{needsReauth || needsSetup ? (
 										<Badge variant="warning-light" radius="full" size="sm">
-											Needs attention
+											{needsReauth ? "Needs attention" : "Setup incomplete"}
 										</Badge>
 									) : (
 										<StatusBadge role="success" size="sm">
@@ -273,9 +293,16 @@ export function IntegrationsTab() {
 						}
 						meta={
 							isConnected ? (
-								<p className="mt-0.5 font-mono text-xs text-muted-foreground">
-									Realm {connection.realmId}
-								</p>
+								<>
+									<p className="mt-0.5 font-mono text-xs text-muted-foreground">
+										Realm {connection.realmId}
+									</p>
+									{connection.incomeAccountName && (
+										<p className="mt-0.5 text-xs text-muted-foreground">
+											Invoices post to {connection.incomeAccountName}
+										</p>
+									)}
+								</>
 							) : !isOwner ? (
 								ownerHint("Only the organization owner can connect QuickBooks.")
 							) : undefined
@@ -311,6 +338,28 @@ export function IntegrationsTab() {
 										className="shrink-0"
 									>
 										{connecting ? "Connecting…" : "Reconnect"}
+									</Button>
+								</div>
+							)}
+
+							{!needsReauth && needsSetup && (
+								<div className="mx-4 mb-3 flex items-start gap-2.5 rounded-md border border-warning/25 bg-warning/[0.05] px-3 py-2.5">
+									<ShieldAlert
+										className="mt-0.5 size-4 shrink-0 text-warning"
+										aria-hidden="true"
+									/>
+									<p className="min-w-0 flex-1 text-xs text-muted-foreground">
+										{isOwner
+											? "Finish setup to start syncing. Choose which income account QuickBooks invoices should post to."
+											: "Setup is not finished yet. Only the organization owner can choose the income account QuickBooks invoices post to."}
+									</p>
+									<Button
+										size="sm"
+										onClick={() => setSetupOpen(true)}
+										disabled={!isOwner}
+										className="shrink-0"
+									>
+										Finish setup
 									</Button>
 								</div>
 							)}
@@ -477,6 +526,16 @@ export function IntegrationsTab() {
 					)}
 				</SettingsCard>
 			</div>
+
+			{isConnected && <QuickBooksSyncIssues />}
+
+			<QuickBooksSetupDialog
+				open={setupDialogOpen}
+				onOpenChange={(open) => {
+					setSetupOpen(open);
+					if (!open) setSetupDismissed(true);
+				}}
+			/>
 		</div>
 	);
 }

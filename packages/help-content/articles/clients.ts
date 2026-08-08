@@ -112,6 +112,10 @@ export const clientsArticles: HelpArticle[] = [
 						text: "A summary sidebar stays on the right of the page with the primary contact, the primary property, and an invoice summary, so the essentials are always in view.",
 					},
 					{
+						type: "note",
+						text: "If your organization has QuickBooks Online connected, the sidebar adds a **QuickBooks** row showing when this client last synced. The row is hidden when QuickBooks is not connected or the client has not synced yet.",
+					},
+					{
 						type: "media",
 						media: "image",
 						caption: "A client detail page with the Overview tab open",
