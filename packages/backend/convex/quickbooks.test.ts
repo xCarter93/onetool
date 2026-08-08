@@ -35,6 +35,7 @@ describe("QuickBooks connection", () => {
 	afterEach(() => {
 		vi.useRealTimers();
 		vi.unstubAllGlobals();
+		vi.unstubAllEnvs();
 	});
 
 	// disconnect schedules revokeConnection via runAfter(0); fake timers +
@@ -530,8 +531,6 @@ describe("QuickBooks connection", () => {
 			await t.action(internal.quickbooksActions.refreshStaleConnections, {});
 			const secondBody = String(fetchMock.mock.calls[1][1]?.body ?? "");
 			expect(secondBody).toContain("refresh_token=refresh_2");
-
-			vi.unstubAllEnvs();
 		});
 	});
 

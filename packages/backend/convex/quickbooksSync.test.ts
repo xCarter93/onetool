@@ -783,6 +783,11 @@ describe("QuickBooks sync engine", () => {
 			});
 			expect(job?.failedAt).toBeUndefined();
 
+			// The worker re-claims before each attempt; markJobFailed only lands
+			// on a processing job (the ignored/released fence).
+			await t.run(async (ctx) =>
+				ctx.db.patch(jobId, { status: "processing", claimedAt: Date.now() })
+			);
 			await t.mutation(internal.quickbooks.markJobFailed, {
 				jobId,
 				terminal: true,

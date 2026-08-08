@@ -1282,8 +1282,11 @@ export const processOrgJobs = internalAction({
 			}
 		}
 
-		// A full batch means there may be more due work waiting.
-		if (processed > 0 && jobs.length === JOB_BATCH_SIZE) {
+		// Any progress warrants one more pass: a full batch may have left due
+		// work behind, and a job claim-skipped while its entity was in flight
+		// becomes claimable the moment this batch finished. The follow-up that
+		// claims nothing ends the chain.
+		if (processed > 0) {
 			await ctx.scheduler.runAfter(
 				0,
 				internal.quickbooksActions.processOrgJobs,

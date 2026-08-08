@@ -642,7 +642,9 @@ export const markJobFailed = internalMutation({
 	},
 	handler: async (ctx, args): Promise<null> => {
 		const job = await ctx.db.get(args.jobId);
-		if (!job) return null;
+		// Same fence as markJobSucceeded: a job ignored by a mid-batch disconnect
+		// must not resurrect as failed (and false-alarm the failure alert).
+		if (!job || job.status !== "processing") return null;
 		const now = Date.now();
 		// Debounce read happens before the patch: another failed job on the org
 		// means the alert for this failure streak already went out.
