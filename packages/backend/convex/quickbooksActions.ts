@@ -418,7 +418,9 @@ async function sparseUpdate<K extends string>(
 	qboId: string,
 	syncToken: string
 ): Promise<QboEntityResponse<K>[K]> {
-	const path = `/${resource}`;
+	// resource is the capitalized response key ("Customer"); QBO URL paths must
+	// be lowercase or it answers 400 "Unsupported Operation".
+	const path = `/${resource.toLowerCase()}`;
 	try {
 		const response = await qboPost<QboEntityResponse<K>>(tokens, path, {
 			...payload,
@@ -435,7 +437,7 @@ async function sparseUpdate<K extends string>(
 			accessToken: tokens.accessToken,
 			realmId: tokens.realmId,
 			environment: tokens.environment,
-			path: `/${resource}/${qboId}`,
+			path: `/${resource.toLowerCase()}/${qboId}`,
 		});
 		const freshToken = fresh[resource].SyncToken;
 		await ctx.runMutation(internal.quickbooks.upsertEntityLink, {

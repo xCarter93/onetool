@@ -1060,6 +1060,111 @@ describe("QuickBooks sync engine", () => {
 			);
 		});
 
+		it("sparse-updates already-linked entities via lowercase endpoints", async () => {
+			const { org, asOwner } = await setupOrg("w_upd");
+			await connect(org.orgId, { defaultServiceItemQboId: "9" });
+			const clientId = await asOwner.mutation(api.clients.create, {
+				companyName: "Acme Co",
+				status: "active",
+			});
+			const invoiceId = await createInvoice(asOwner, clientId, "sent");
+			await clearJobsOfType(org.orgId, "client");
+			await t.run(async (ctx) => {
+				await ctx.db.insert("quickbooksEntityLinks", {
+					orgId: org.orgId,
+					entityType: "client",
+					localId: clientId,
+					qboId: "101",
+					qboSyncToken: "0",
+					lastSyncedAt: Date.now(),
+				});
+				await ctx.db.insert("quickbooksEntityLinks", {
+					orgId: org.orgId,
+					entityType: "invoice",
+					localId: invoiceId,
+					qboId: "202",
+					qboSyncToken: "0",
+					lastSyncedAt: Date.now(),
+				});
+			});
+
+			const calls = stubQbo((url) => {
+				if (url.includes("/customer")) {
+					return { payload: { Customer: { Id: "101", SyncToken: "1" } } };
+				}
+				return { payload: { Invoice: { Id: "202", SyncToken: "1" } } };
+			});
+
+			const result = await t.action(internal.quickbooksActions.processOrgJobs, {
+				orgId: org.orgId,
+			});
+
+			expect(result.processed).toBe(1);
+			// QBO rejects capitalized entity paths ("/Customer") with
+			// "Unsupported Operation"; only lowercase is valid.
+			expect(new URL(calls[0].url).pathname).toContain("/customer");
+			expect(calls[0].body).toMatchObject({
+				Id: "101",
+				SyncToken: "0",
+				sparse: true,
+			});
+			expect(new URL(calls[1].url).pathname).toContain("/invoice");
+			expect(calls[1].body).toMatchObject({
+				Id: "202",
+				SyncToken: "0",
+				sparse: true,
+			});
+			const jobs = await jobsFor(org.orgId);
+			expect(jobs[0].status).toBe("succeeded");
+		});
+
+		it("recovers a stale SyncToken via lowercase re-GET and one retry", async () => {
+			const { org, asOwner } = await setupOrg("w_stale");
+			await connect(org.orgId);
+			const clientId = await asOwner.mutation(api.clients.create, {
+				companyName: "Acme Co",
+				status: "active",
+			});
+			await t.run(async (ctx) => {
+				await ctx.db.insert("quickbooksEntityLinks", {
+					orgId: org.orgId,
+					entityType: "client",
+					localId: clientId,
+					qboId: "101",
+					qboSyncToken: "0",
+					lastSyncedAt: Date.now(),
+				});
+			});
+
+			const calls = stubQbo((_url, body) => {
+				if (!body) {
+					// re-GET of the entity after the stale-token rejection
+					return { payload: { Customer: { Id: "101", SyncToken: "3" } } };
+				}
+				if ((body as { SyncToken?: string }).SyncToken === "0") {
+					return {
+						status: 400,
+						payload: {
+							Fault: {
+								type: "ValidationFault",
+								Error: [{ code: "5010", Message: "Stale Object Error" }],
+							},
+						},
+					};
+				}
+				return { payload: { Customer: { Id: "101", SyncToken: "4" } } };
+			});
+
+			await t.action(internal.quickbooksActions.processOrgJobs, {
+				orgId: org.orgId,
+			});
+
+			expect(new URL(calls[1].url).pathname).toContain("/customer/101");
+			expect(calls[2].body).toMatchObject({ SyncToken: "3", sparse: true });
+			const link = await linkFor(org.orgId, "client", clientId);
+			expect(link?.qboSyncToken).toBe("4");
+		});
+
 		it("records a sync warning when Automated Sales Tax overrides the tax", async () => {
 			const { org, asOwner } = await setupOrg("w_ast");
 			await connect(org.orgId, { defaultServiceItemQboId: "9" });
