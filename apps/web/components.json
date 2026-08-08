@@ -36,6 +36,7 @@
 			"headers": {
 				"Authorization": "Bearer ${REACTBITS_LICENSE_KEY}"
 			}
-		}
+		},
+		"@magicui": "https://magicui.design/r/{name}"
 	}
 }

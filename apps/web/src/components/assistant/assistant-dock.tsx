@@ -1,6 +1,7 @@
 "use client";
 
 import { MessageCircle, Sparkles } from "lucide-react";
+import { BorderBeam } from "@/components/ui/border-beam";
 import { cn } from "@/lib/utils";
 
 /**
@@ -12,9 +13,11 @@ import { cn } from "@/lib/utils";
  */
 export function AssistantDock({
 	open,
+	pinned = false,
 	onOpen,
 }: {
 	open: boolean;
+	pinned?: boolean;
 	onOpen: () => void;
 }) {
 	return (
@@ -24,7 +27,7 @@ export function AssistantDock({
 			disabled={open}
 			aria-label="Open assistant chat"
 			className={cn(
-				"pointer-events-auto flex w-full max-w-sm cursor-pointer items-center gap-3 rounded-2xl border border-border bg-popover p-2 pr-2.5 text-left shadow-lg transition-[transform,opacity,box-shadow] duration-300 ease-out",
+				"pointer-events-auto relative flex w-full max-w-sm cursor-pointer items-center gap-3 rounded-2xl border border-border bg-popover p-2 pr-2.5 text-left shadow-lg transition-[transform,opacity,box-shadow] duration-300 ease-out",
 				"hover:-translate-y-0.5 hover:shadow-xl focus-visible:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40",
 				open && "pointer-events-none opacity-0 duration-150"
 			)}
@@ -44,6 +47,22 @@ export function AssistantDock({
 				<MessageCircle className="size-3.5" />
 				Chat
 			</span>
+			{/* Subtle attention cue for the collapsed dock only; pinned users
+			    already know where the assistant lives. Radial (rotationally
+			    symmetric) glow instead of the default linear tail — the beam
+			    auto-rotates through corners, and a directional gradient makes
+			    that read as a snap. */}
+			{!open && !pinned && (
+				<BorderBeam
+					size={90}
+					duration={6}
+					pathRadius={16}
+					borderWidth={2}
+					colorFrom="var(--primary)"
+					colorTo="var(--primary)"
+					className="motion-reduce:hidden bg-[radial-gradient(circle_at_center,var(--color-from)_0%,var(--color-from)_20%,transparent_60%)]"
+				/>
+			)}
 		</button>
 	);
 }
