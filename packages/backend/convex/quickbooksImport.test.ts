@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { api } from "./_generated/api";
+import { api, internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import { setupConvexTest } from "./test.setup";
 import {
@@ -128,20 +128,49 @@ describe("QuickBooks customer import", () => {
 		);
 	}
 
+	async function rowByQboId(
+		runId: Id<"quickbooksImportRuns">,
+		qboId: string
+	): Promise<Doc<"quickbooksImportRows">> {
+		const rows = await rowsFor(runId);
+		const row = rows.find((candidate) => candidate.qboId === qboId);
+		if (!row) throw new Error(`no row for qboId ${qboId}`);
+		return row;
+	}
+
+	/** Commit and drain the self-scheduling commit loop. */
+	async function commit(asOwner: ReturnType<typeof t.withIdentity>) {
+		await asOwner.mutation(api.quickbooksImport.commitImportRun, {});
+		await t.finishAllScheduledFunctions(vi.runAllTimers);
+	}
+
 	// ------------------------------------------------------------------
-	// Matching
+	// Fetch pass — proposals only
 	// ------------------------------------------------------------------
 
-	it("auto-links a customer whose name matches one client", async () => {
-		const { org, asOwner } = await setupOrg("auto");
+	it("proposes without writing any client or link", async () => {
+		const { org, asOwner } = await setupOrg("propose");
 		await connect(org.orgId);
-		const clientId = await asOwner.mutation(api.clients.create, {
+		const matched = await asOwner.mutation(api.clients.create, {
 			companyName: "Acme Landscaping",
+			status: "active",
+		});
+		const betaA = await asOwner.mutation(api.clients.create, {
+			companyName: "Beta Co",
+			status: "active",
+		});
+		const betaB = await asOwner.mutation(api.clients.create, {
+			companyName: "Beta Co",
 			status: "active",
 		});
 
 		stubCustomerPages([
-			[{ Id: "77", SyncToken: "3", DisplayName: "  acme landscaping " }],
+			[
+				{ Id: "1", SyncToken: "3", DisplayName: "  acme landscaping " },
+				{ Id: "2", DisplayName: "Beta Co" },
+				{ Id: "3", DisplayName: "Brand New Co" },
+				{ Id: "4", DisplayName: "Acme Landscaping:Yard", Job: true },
+			],
 		]);
 
 		const { runId } = await asOwner.action(
@@ -149,34 +178,41 @@ describe("QuickBooks customer import", () => {
 			{}
 		);
 
-		const rows = await rowsFor(runId);
-		expect(rows).toHaveLength(1);
-		expect(rows[0]).toMatchObject({
-			outcome: "auto_linked",
-			linkedClientId: clientId,
-			qboId: "77",
-		});
+		// Nothing was written to client data.
+		expect(await orgClients(org.orgId)).toHaveLength(3);
+		expect(await clientLinks(org.orgId)).toHaveLength(0);
 
-		const links = await clientLinks(org.orgId);
-		expect(links).toHaveLength(1);
-		expect(links[0]).toMatchObject({
-			localId: clientId,
-			qboId: "77",
-			qboSyncToken: "3",
+		expect(await rowByQboId(runId, "1")).toMatchObject({
+			outcome: "proposed_link",
+			linkedClientId: matched,
 		});
-
-		// No client was created for a matched customer.
-		expect(await orgClients(org.orgId)).toHaveLength(1);
+		expect(await rowByQboId(runId, "2")).toMatchObject({
+			outcome: "ambiguous",
+		});
+		expect((await rowByQboId(runId, "2")).candidateClientIds?.sort()).toEqual(
+			[betaA, betaB].sort()
+		);
+		expect(await rowByQboId(runId, "3")).toMatchObject({
+			outcome: "proposed_import",
+		});
+		expect(await rowByQboId(runId, "4")).toMatchObject({
+			outcome: "proposed_skip",
+			skipReason: "sub_customer",
+		});
 
 		const run = await asOwner.query(api.quickbooksImport.getImportRun, {});
 		expect(run).toMatchObject({
-			status: "completed",
-			totalFetched: 1,
-			autoLinked: 1,
+			status: "reviewing",
+			totalFetched: 4,
+			proposedLink: 1,
+			proposedImport: 1,
+			proposedSkip: 1,
+			ambiguous: 1,
+			autoLinked: 0,
 			imported: 0,
-			ambiguous: 0,
+			skipped: 0,
 		});
-		expect(run?.completedAt).toBeGreaterThan(0);
+		expect(run?.completedAt).toBeUndefined();
 	});
 
 	it("breaks a same-name tie on the primary contact email", async () => {
@@ -220,256 +256,15 @@ describe("QuickBooks customer import", () => {
 			{}
 		);
 
-		const rows = await rowsFor(runId);
-		expect(rows[0]).toMatchObject({
-			outcome: "auto_linked",
+		expect(await rowByQboId(runId, "88")).toMatchObject({
+			outcome: "proposed_link",
 			linkedClientId: rightId,
 		});
+
+		await commit(asOwner);
 		const links = await clientLinks(org.orgId);
 		expect(links).toHaveLength(1);
 		expect(links[0].localId).toBe(rightId);
-	});
-
-	it("creates an ambiguous row and never auto-merges", async () => {
-		const { org, asOwner } = await setupOrg("amb");
-		await connect(org.orgId);
-		const a = await asOwner.mutation(api.clients.create, {
-			companyName: "Beta Co",
-			status: "active",
-		});
-		const b = await asOwner.mutation(api.clients.create, {
-			companyName: "Beta Co",
-			status: "active",
-		});
-
-		stubCustomerPages([[{ Id: "91", DisplayName: "Beta Co" }]]);
-
-		const { runId } = await asOwner.action(
-			api.quickbooksImportActions.startImport,
-			{}
-		);
-
-		const rows = await rowsFor(runId);
-		expect(rows[0].outcome).toBe("ambiguous");
-		expect(rows[0].candidateClientIds?.sort()).toEqual([a, b].sort());
-		expect(await clientLinks(org.orgId)).toHaveLength(0);
-
-		const run = await asOwner.query(api.quickbooksImport.getImportRun, {});
-		expect(run).toMatchObject({ status: "awaiting_review", ambiguous: 1 });
-		expect(run?.completedAt).toBeUndefined();
-
-		const listed = await asOwner.query(api.quickbooksImport.listAmbiguousRows, {
-			runId,
-		});
-		expect(listed).toHaveLength(1);
-		expect(listed[0]).toMatchObject({
-			rowId: rows[0]._id,
-			qboDisplayName: "Beta Co",
-		});
-		expect(listed[0].candidates.map((c) => c.companyName)).toEqual([
-			"Beta Co",
-			"Beta Co",
-		]);
-
-		await asOwner.mutation(api.quickbooksImport.resolveImportRow, {
-			rowId: rows[0]._id,
-			clientId: b,
-		});
-
-		const resolved = await rowsFor(runId);
-		expect(resolved[0]).toMatchObject({
-			outcome: "resolved",
-			linkedClientId: b,
-		});
-		const links = await clientLinks(org.orgId);
-		expect(links).toHaveLength(1);
-		expect(links[0]).toMatchObject({ localId: b, qboId: "91" });
-
-		const after = await asOwner.query(api.quickbooksImport.getImportRun, {});
-		expect(after).toMatchObject({ status: "completed", ambiguous: 0 });
-		expect(after?.completedAt).toBeGreaterThan(0);
-	});
-
-	it("rejects a resolve pick that is not a candidate", async () => {
-		const { org, asOwner } = await setupOrg("amb_bad");
-		await connect(org.orgId);
-		await asOwner.mutation(api.clients.create, {
-			companyName: "Beta Co",
-			status: "active",
-		});
-		await asOwner.mutation(api.clients.create, {
-			companyName: "Beta Co",
-			status: "active",
-		});
-		const outsider = await asOwner.mutation(api.clients.create, {
-			companyName: "Unrelated Co",
-			status: "active",
-		});
-
-		stubCustomerPages([[{ Id: "92", DisplayName: "Beta Co" }]]);
-		const { runId } = await asOwner.action(
-			api.quickbooksImportActions.startImport,
-			{}
-		);
-		const rows = await rowsFor(runId);
-
-		await expect(
-			asOwner.mutation(api.quickbooksImport.resolveImportRow, {
-				rowId: rows[0]._id,
-				clientId: outsider,
-			})
-		).rejects.toThrow();
-		expect(await clientLinks(org.orgId)).toHaveLength(0);
-	});
-
-	it("skipImportRow closes out the run too", async () => {
-		const { org, asOwner } = await setupOrg("skip");
-		await connect(org.orgId);
-		await asOwner.mutation(api.clients.create, {
-			companyName: "Gamma Co",
-			status: "active",
-		});
-		await asOwner.mutation(api.clients.create, {
-			companyName: "Gamma Co",
-			status: "active",
-		});
-
-		stubCustomerPages([[{ Id: "93", DisplayName: "Gamma Co" }]]);
-		const { runId } = await asOwner.action(
-			api.quickbooksImportActions.startImport,
-			{}
-		);
-		const rows = await rowsFor(runId);
-
-		await asOwner.mutation(api.quickbooksImport.skipImportRow, {
-			rowId: rows[0]._id,
-		});
-
-		const after = await rowsFor(runId);
-		expect(after[0]).toMatchObject({
-			outcome: "skipped",
-			skipReason: "user_skipped",
-		});
-		expect(await clientLinks(org.orgId)).toHaveLength(0);
-
-		const run = await asOwner.query(api.quickbooksImport.getImportRun, {});
-		expect(run).toMatchObject({ status: "completed", ambiguous: 0, skipped: 1 });
-	});
-
-	// ------------------------------------------------------------------
-	// Import
-	// ------------------------------------------------------------------
-
-	it("imports an unmatched customer with contact, address, and link", async () => {
-		const { org, asOwner } = await setupOrg("import");
-		await connect(org.orgId);
-
-		stubCustomerPages([
-			[
-				{
-					Id: "55",
-					SyncToken: "1",
-					DisplayName: "Delta Services",
-					CompanyName: "Delta Services LLC",
-					GivenName: "Dana",
-					FamilyName: "Reed",
-					PrimaryEmailAddr: { Address: "Dana@Delta.TEST" },
-					PrimaryPhone: { FreeFormNumber: "555-0100" },
-					BillAddr: {
-						Line1: "1 Main St",
-						City: "Austin",
-						CountrySubDivisionCode: "TX",
-						PostalCode: "78701",
-					},
-				},
-			],
-		]);
-
-		const { runId } = await asOwner.action(
-			api.quickbooksImportActions.startImport,
-			{}
-		);
-
-		const clients = await orgClients(org.orgId);
-		expect(clients).toHaveLength(1);
-		const client = clients[0];
-		expect(client.companyName).toBe("Delta Services");
-		expect(client.status).toBe("active");
-		expect(client.portalAccessId).toBeTruthy();
-		// Triggers ran on the raw insert: the search digest is maintained.
-		expect(client.searchText).toContain("Delta Services");
-
-		// Reachable through global search, which reads the search index.
-		const found = await asOwner.query(api.search.globalSearch, {
-			query: "Delta Services",
-		});
-		expect(found.clients.some((hit) => hit.clientId === client._id)).toBe(true);
-
-		const contact = await t.run(async (ctx) =>
-			ctx.db
-				.query("clientContacts")
-				.withIndex("by_client", (q) => q.eq("clientId", client._id))
-				.first()
-		);
-		expect(contact).toMatchObject({
-			firstName: "Dana",
-			lastName: "Reed",
-			email: "dana@delta.test",
-			phone: "555-0100",
-			isPrimary: true,
-		});
-
-		const property = await t.run(async (ctx) =>
-			ctx.db
-				.query("clientProperties")
-				.withIndex("by_client", (q) => q.eq("clientId", client._id))
-				.first()
-		);
-		expect(property).toMatchObject({
-			streetAddress: "1 Main St",
-			city: "Austin",
-			state: "TX",
-			zipCode: "78701",
-			isPrimary: true,
-		});
-
-		const links = await clientLinks(org.orgId);
-		expect(links).toHaveLength(1);
-		expect(links[0]).toMatchObject({
-			localId: client._id,
-			qboId: "55",
-			qboSyncToken: "1",
-		});
-
-		const rows = await rowsFor(runId);
-		expect(rows[0]).toMatchObject({
-			outcome: "imported",
-			linkedClientId: client._id,
-		});
-		const run = await asOwner.query(api.quickbooksImport.getImportRun, {});
-		expect(run).toMatchObject({ status: "completed", imported: 1 });
-	});
-
-	it("skips sub-customers (QBO jobs)", async () => {
-		const { org, asOwner } = await setupOrg("job");
-		await connect(org.orgId);
-
-		stubCustomerPages([
-			[{ Id: "60", DisplayName: "Delta Services:Backyard", Job: true }],
-		]);
-
-		const { runId } = await asOwner.action(
-			api.quickbooksImportActions.startImport,
-			{}
-		);
-
-		const rows = await rowsFor(runId);
-		expect(rows[0]).toMatchObject({
-			outcome: "skipped",
-			skipReason: "sub_customer",
-		});
-		expect(await orgClients(org.orgId)).toHaveLength(0);
-		expect(await clientLinks(org.orgId)).toHaveLength(0);
 	});
 
 	it("pages until a short page and processes every page", async () => {
@@ -496,15 +291,472 @@ describe("QuickBooks customer import", () => {
 		expect(calls[0]).toContain("STARTPOSITION 1 ");
 		expect(calls[1]).toContain("STARTPOSITION 101 ");
 
-		const rows = await rowsFor(runId);
-		expect(rows).toHaveLength(101);
+		expect(await rowsFor(runId)).toHaveLength(101);
+		const run = await asOwner.query(api.quickbooksImport.getImportRun, {});
+		expect(run).toMatchObject({
+			status: "reviewing",
+			totalFetched: 101,
+			proposedSkip: 100,
+			proposedImport: 1,
+		});
+
+		// The commit loop spans two batches (100 + 1) and still finishes.
+		await commit(asOwner);
+		const after = await asOwner.query(api.quickbooksImport.getImportRun, {});
+		expect(after).toMatchObject({
+			status: "completed",
+			skipped: 100,
+			imported: 1,
+			committedRows: 101,
+		});
+		expect(await orgClients(org.orgId)).toHaveLength(1);
+	});
+
+	// ------------------------------------------------------------------
+	// Commit pass
+	// ------------------------------------------------------------------
+
+	it("commits the default proposals", async () => {
+		const { org, asOwner } = await setupOrg("commit");
+		await connect(org.orgId);
+		const matched = await asOwner.mutation(api.clients.create, {
+			companyName: "Acme Landscaping",
+			status: "active",
+		});
+
+		stubCustomerPages([
+			[
+				{ Id: "10", SyncToken: "7", DisplayName: "Acme Landscaping" },
+				{
+					Id: "11",
+					DisplayName: "Delta Services",
+					GivenName: "Dana",
+					FamilyName: "Reed",
+					PrimaryEmailAddr: { Address: "Dana@Delta.TEST" },
+					PrimaryPhone: { FreeFormNumber: "555-0100" },
+					BillAddr: {
+						Line1: "1 Main St",
+						City: "Austin",
+						CountrySubDivisionCode: "TX",
+						PostalCode: "78701",
+					},
+				},
+				{ Id: "12", DisplayName: "Delta Services:Yard", Job: true },
+			],
+		]);
+
+		const { runId } = await asOwner.action(
+			api.quickbooksImportActions.startImport,
+			{}
+		);
+		await commit(asOwner);
+
+		const clients = await orgClients(org.orgId);
+		expect(clients).toHaveLength(2);
+		const created = clients.find((client) => client._id !== matched)!;
+		expect(created.companyName).toBe("Delta Services");
+		expect(created.portalAccessId).toBeTruthy();
+		// Triggers ran on the raw insert: the search digest is maintained.
+		expect(created.searchText).toContain("Delta Services");
+
+		const found = await asOwner.query(api.search.globalSearch, {
+			query: "Delta Services",
+		});
+		expect(found.clients.some((hit) => hit.clientId === created._id)).toBe(
+			true
+		);
+
+		const contact = await t.run(async (ctx) =>
+			ctx.db
+				.query("clientContacts")
+				.withIndex("by_client", (q) => q.eq("clientId", created._id))
+				.first()
+		);
+		expect(contact).toMatchObject({
+			firstName: "Dana",
+			lastName: "Reed",
+			email: "dana@delta.test",
+			phone: "555-0100",
+			isPrimary: true,
+		});
+
+		const property = await t.run(async (ctx) =>
+			ctx.db
+				.query("clientProperties")
+				.withIndex("by_client", (q) => q.eq("clientId", created._id))
+				.first()
+		);
+		expect(property).toMatchObject({
+			streetAddress: "1 Main St",
+			city: "Austin",
+			state: "TX",
+			zipCode: "78701",
+			isPrimary: true,
+		});
+
+		const links = await clientLinks(org.orgId);
+		expect(links).toHaveLength(2);
+		const matchedLink = links.find((link) => link.localId === matched)!;
+		expect(matchedLink).toMatchObject({ qboId: "10", qboSyncToken: "0" });
+		expect(links.find((link) => link.localId === created._id)).toMatchObject({
+			qboId: "11",
+			qboSyncToken: "0",
+		});
+
+		expect(await rowByQboId(runId, "10")).toMatchObject({
+			outcome: "auto_linked",
+			linkedClientId: matched,
+		});
+		expect(await rowByQboId(runId, "11")).toMatchObject({
+			outcome: "imported",
+			linkedClientId: created._id,
+		});
+		expect(await rowByQboId(runId, "12")).toMatchObject({
+			outcome: "skipped",
+			skipReason: "sub_customer",
+		});
+
 		const run = await asOwner.query(api.quickbooksImport.getImportRun, {});
 		expect(run).toMatchObject({
 			status: "completed",
-			totalFetched: 101,
-			skipped: 100,
+			autoLinked: 1,
 			imported: 1,
+			skipped: 1,
+			ambiguous: 0,
+			committedRows: 3,
 		});
+		expect(run?.completedAt).toBeGreaterThan(0);
+	});
+
+	it("honors reviewer overrides over the proposals", async () => {
+		const { org, asOwner } = await setupOrg("override");
+		await connect(org.orgId);
+		const linkTarget = await asOwner.mutation(api.clients.create, {
+			companyName: "Zeta Holdings",
+			status: "active",
+		});
+		const proposedTarget = await asOwner.mutation(api.clients.create, {
+			companyName: "Omega Co",
+			status: "active",
+		});
+		const ambA = await asOwner.mutation(api.clients.create, {
+			companyName: "Beta Co",
+			status: "active",
+		});
+		await asOwner.mutation(api.clients.create, {
+			companyName: "Beta Co",
+			status: "active",
+		});
+		const outsider = await asOwner.mutation(api.clients.create, {
+			companyName: "Not A Candidate",
+			status: "active",
+		});
+
+		stubCustomerPages([
+			[
+				{ Id: "20", DisplayName: "Fresh Co" }, // proposed_import → link
+				{ Id: "21", DisplayName: "Omega Co" }, // proposed_link → skip
+				{ Id: "22", DisplayName: "Beta Co" }, // ambiguous → link
+			],
+		]);
+
+		const { runId } = await asOwner.action(
+			api.quickbooksImportActions.startImport,
+			{}
+		);
+
+		await asOwner.mutation(api.quickbooksImport.setRowDecision, {
+			rowId: (await rowByQboId(runId, "20"))._id,
+			decision: "link",
+			clientId: linkTarget,
+		});
+		await asOwner.mutation(api.quickbooksImport.setRowDecision, {
+			rowId: (await rowByQboId(runId, "21"))._id,
+			decision: "skip",
+		});
+		// Ambiguous rows accept any org client, not just the stored candidates.
+		await asOwner.mutation(api.quickbooksImport.setRowDecision, {
+			rowId: (await rowByQboId(runId, "22"))._id,
+			decision: "link",
+			clientId: outsider,
+		});
+
+		await commit(asOwner);
+
+		// No client was created for the overridden import.
+		expect(await orgClients(org.orgId)).toHaveLength(5);
+		const links = await clientLinks(org.orgId);
+		expect(links).toHaveLength(2);
+		expect(links.find((link) => link.qboId === "20")?.localId).toBe(linkTarget);
+		expect(links.find((link) => link.qboId === "22")?.localId).toBe(outsider);
+		expect(links.some((link) => link.localId === proposedTarget)).toBe(false);
+		expect(links.some((link) => link.localId === ambA)).toBe(false);
+
+		expect(await rowByQboId(runId, "21")).toMatchObject({
+			outcome: "skipped",
+			skipReason: "user_skipped",
+		});
+
+		const run = await asOwner.query(api.quickbooksImport.getImportRun, {});
+		expect(run).toMatchObject({
+			status: "completed",
+			autoLinked: 2,
+			imported: 0,
+			skipped: 1,
+			ambiguous: 0,
+		});
+	});
+
+	it("refuses to commit while an ambiguous row is undecided", async () => {
+		const { org, asOwner } = await setupOrg("undecided");
+		await connect(org.orgId);
+		const a = await asOwner.mutation(api.clients.create, {
+			companyName: "Beta Co",
+			status: "active",
+		});
+		await asOwner.mutation(api.clients.create, {
+			companyName: "Beta Co",
+			status: "active",
+		});
+
+		stubCustomerPages([[{ Id: "30", DisplayName: "Beta Co" }]]);
+		const { runId } = await asOwner.action(
+			api.quickbooksImportActions.startImport,
+			{}
+		);
+
+		await expect(
+			asOwner.mutation(api.quickbooksImport.commitImportRun, {})
+		).rejects.toThrow(/undecided_ambiguous_rows/);
+
+		const stillReviewing = await asOwner.query(
+			api.quickbooksImport.getImportRun,
+			{}
+		);
+		expect(stillReviewing?.status).toBe("reviewing");
+
+		await asOwner.mutation(api.quickbooksImport.setRowDecision, {
+			rowId: (await rowByQboId(runId, "30"))._id,
+			decision: "link",
+			clientId: a,
+		});
+		await commit(asOwner);
+		expect(await clientLinks(org.orgId)).toHaveLength(1);
+	});
+
+	it("never double-applies when the commit loop is re-kicked", async () => {
+		const { org, asOwner } = await setupOrg("recommit");
+		await connect(org.orgId);
+		await asOwner.mutation(api.clients.create, {
+			companyName: "Acme Landscaping",
+			status: "active",
+		});
+
+		stubCustomerPages([
+			[
+				{ Id: "40", DisplayName: "Acme Landscaping" },
+				{ Id: "41", DisplayName: "Novel Co" },
+			],
+		]);
+		await asOwner.action(api.quickbooksImportActions.startImport, {});
+		await commit(asOwner);
+
+		expect(await orgClients(org.orgId)).toHaveLength(2);
+		expect(await clientLinks(org.orgId)).toHaveLength(2);
+
+		// Simulate a stalled loop being re-kicked after it already ran.
+		const runId = (await asOwner.query(api.quickbooksImport.getImportRun, {}))!
+			._id;
+		await t.run(async (ctx) => {
+			await ctx.db.patch(runId, { status: "committing" });
+		});
+		await t.mutation(internal.quickbooksImport.commitPage, { runId });
+		await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+		expect(await orgClients(org.orgId)).toHaveLength(2);
+		expect(await clientLinks(org.orgId)).toHaveLength(2);
+		const run = await asOwner.query(api.quickbooksImport.getImportRun, {});
+		expect(run).toMatchObject({ status: "completed", imported: 1 });
+	});
+
+	it("skips a proposed link whose client got linked elsewhere", async () => {
+		const { org, asOwner } = await setupOrg("already");
+		await connect(org.orgId);
+		const clientId = await asOwner.mutation(api.clients.create, {
+			companyName: "Solo Co",
+			status: "active",
+		});
+
+		stubCustomerPages([[{ Id: "50", DisplayName: "Solo Co" }]]);
+		const { runId } = await asOwner.action(
+			api.quickbooksImportActions.startImport,
+			{}
+		);
+
+		// Another surface links the same client to a different QBO customer.
+		await t.run(async (ctx) => {
+			await ctx.db.insert("quickbooksEntityLinks", {
+				orgId: org.orgId,
+				entityType: "client",
+				localId: clientId,
+				qboId: "999",
+				qboSyncToken: "0",
+				lastSyncedAt: Date.now(),
+			});
+		});
+
+		await commit(asOwner);
+
+		expect(await rowByQboId(runId, "50")).toMatchObject({
+			outcome: "skipped",
+			skipReason: "already_linked",
+		});
+		const links = await clientLinks(org.orgId);
+		expect(links).toHaveLength(1);
+		expect(links[0].qboId).toBe("999");
+		expect(await orgClients(org.orgId)).toHaveLength(1);
+	});
+
+	it("does not enqueue outbound sync jobs for imported clients", async () => {
+		const { org, asOwner } = await setupOrg("nojobs");
+		await connect(org.orgId);
+
+		stubCustomerPages([[{ Id: "60", DisplayName: "Quiet Co" }]]);
+		await asOwner.action(api.quickbooksImportActions.startImport, {});
+		await commit(asOwner);
+
+		expect(await orgClients(org.orgId)).toHaveLength(1);
+		const jobs = await t.run(async (ctx) =>
+			ctx.db
+				.query("quickbooksSyncJobs")
+				.withIndex("by_org_status", (q) => q.eq("orgId", org.orgId))
+				.collect()
+		);
+		expect(jobs).toHaveLength(0);
+	});
+
+	// ------------------------------------------------------------------
+	// Review surface — listing, discard, supersede
+	// ------------------------------------------------------------------
+
+	it("lists rows paginated and hydrated with client names", async () => {
+		const { org, asOwner } = await setupOrg("list");
+		await connect(org.orgId);
+		await asOwner.mutation(api.clients.create, {
+			companyName: "Acme Landscaping",
+			status: "active",
+		});
+		await asOwner.mutation(api.clients.create, {
+			companyName: "Beta Co",
+			status: "active",
+		});
+		await asOwner.mutation(api.clients.create, {
+			companyName: "Beta Co",
+			status: "active",
+		});
+
+		stubCustomerPages([
+			[
+				{ Id: "70", DisplayName: "Acme Landscaping" },
+				{ Id: "71", DisplayName: "Beta Co" },
+				{ Id: "72", DisplayName: "Unknown Co" },
+			],
+		]);
+		const { runId } = await asOwner.action(
+			api.quickbooksImportActions.startImport,
+			{}
+		);
+
+		const first = await asOwner.query(api.quickbooksImport.listImportRows, {
+			runId,
+			paginationOpts: { numItems: 2, cursor: null },
+		});
+		expect(first.page).toHaveLength(2);
+		expect(first.isDone).toBe(false);
+
+		const second = await asOwner.query(api.quickbooksImport.listImportRows, {
+			runId,
+			paginationOpts: { numItems: 2, cursor: first.continueCursor },
+		});
+		const all = [...first.page, ...second.page];
+		expect(all).toHaveLength(3);
+
+		const linkRow = all.find((row) => row.qboId === "70")!;
+		expect(linkRow.proposedClient?.companyName).toBe("Acme Landscaping");
+		const ambiguousRow = all.find((row) => row.qboId === "71")!;
+		expect(ambiguousRow.candidates?.map((c) => c.companyName)).toEqual([
+			"Beta Co",
+			"Beta Co",
+		]);
+		const importRow = all.find((row) => row.qboId === "72")!;
+		expect(importRow.proposedClient).toBeUndefined();
+	});
+
+	it("discardImportRun drops the rows and quietly fails the run", async () => {
+		const { org, asOwner } = await setupOrg("discard");
+		await connect(org.orgId);
+
+		stubCustomerPages([[{ Id: "80", DisplayName: "Throwaway Co" }]]);
+		const { runId } = await asOwner.action(
+			api.quickbooksImportActions.startImport,
+			{}
+		);
+
+		await asOwner.mutation(api.quickbooksImport.discardImportRun, {});
+		await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+		expect(await rowsFor(runId)).toHaveLength(0);
+		expect(await orgClients(org.orgId)).toHaveLength(0);
+		const run = await asOwner.query(api.quickbooksImport.getImportRun, {});
+		expect(run).toMatchObject({
+			status: "failed",
+			lastError: "Discarded before import",
+		});
+	});
+
+	it("a new run supersedes one waiting in review", async () => {
+		const { org, asOwner } = await setupOrg("supersede");
+		await connect(org.orgId);
+
+		stubCustomerPages([[{ Id: "90", DisplayName: "Stale Co" }]]);
+		const first = await asOwner.action(
+			api.quickbooksImportActions.startImport,
+			{}
+		);
+
+		stubCustomerPages([[{ Id: "91", DisplayName: "Fresh Co" }]]);
+		const second = await asOwner.action(
+			api.quickbooksImportActions.startImport,
+			{}
+		);
+		await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+		expect(second.runId).not.toBe(first.runId);
+		expect(await rowsFor(first.runId)).toHaveLength(0);
+		const superseded = await t.run(async (ctx) => ctx.db.get(first.runId));
+		expect(superseded).toMatchObject({
+			status: "failed",
+			lastError: "Superseded by a new import",
+		});
+
+		const run = await asOwner.query(api.quickbooksImport.getImportRun, {});
+		expect(run).toMatchObject({ status: "reviewing", _id: second.runId });
+	});
+
+	it("refuses a second run while one is committing", async () => {
+		const { org, asOwner } = await setupOrg("busy");
+		await connect(org.orgId);
+
+		stubCustomerPages([[{ Id: "95", DisplayName: "Busy Co" }]]);
+		await asOwner.action(api.quickbooksImportActions.startImport, {});
+		// Commit without draining: the run sits in "committing".
+		await asOwner.mutation(api.quickbooksImport.commitImportRun, {});
+
+		await expect(
+			asOwner.action(api.quickbooksImportActions.startImport, {})
+		).rejects.toThrow(/import_already_running/);
+		await t.finishAllScheduledFunctions(vi.runAllTimers);
+		expect(await orgClients(org.orgId)).toHaveLength(1);
 	});
 
 	// ------------------------------------------------------------------
@@ -515,12 +767,10 @@ describe("QuickBooks customer import", () => {
 		const { org, asOwner } = await setupOrg("idem");
 		await connect(org.orgId);
 
-		const customers: QboCustomer[] = [
-			{ Id: "70", SyncToken: "0", DisplayName: "Epsilon Co" },
-		];
-		stubCustomerPages([customers]);
+		stubCustomerPages([[{ Id: "70", SyncToken: "0", DisplayName: "Epsilon Co" }]]);
 
 		await asOwner.action(api.quickbooksImportActions.startImport, {});
+		await commit(asOwner);
 		const afterFirst = await orgClients(org.orgId);
 		expect(afterFirst).toHaveLength(1);
 
@@ -529,34 +779,17 @@ describe("QuickBooks customer import", () => {
 			{}
 		);
 
-		expect(await orgClients(org.orgId)).toHaveLength(1);
-		expect(await clientLinks(org.orgId)).toHaveLength(1);
+		// Already-linked customers are stated as fact during the fetch pass.
 		const rows = await rowsFor(second.runId);
 		expect(rows).toHaveLength(1);
 		expect(rows[0]).toMatchObject({
 			outcome: "auto_linked",
 			linkedClientId: afterFirst[0]._id,
 		});
-	});
 
-	it("refuses a second run while one is awaiting review", async () => {
-		const { org, asOwner } = await setupOrg("busy");
-		await connect(org.orgId);
-		await asOwner.mutation(api.clients.create, {
-			companyName: "Zeta Co",
-			status: "active",
-		});
-		await asOwner.mutation(api.clients.create, {
-			companyName: "Zeta Co",
-			status: "active",
-		});
-
-		stubCustomerPages([[{ Id: "80", DisplayName: "Zeta Co" }]]);
-		await asOwner.action(api.quickbooksImportActions.startImport, {});
-
-		await expect(
-			asOwner.action(api.quickbooksImportActions.startImport, {})
-		).rejects.toThrow(/import_already_running/);
+		await commit(asOwner);
+		expect(await orgClients(org.orgId)).toHaveLength(1);
+		expect(await clientLinks(org.orgId)).toHaveLength(1);
 	});
 
 	it("refuses a non-owner", async () => {
@@ -582,5 +815,106 @@ describe("QuickBooks customer import", () => {
 				.collect()
 		);
 		expect(runs).toHaveLength(0);
+	});
+
+	it("rejects a decision on a sub-customer row", async () => {
+		const { org, asOwner } = await setupOrg("nodecide");
+		await connect(org.orgId);
+		const clientId = await asOwner.mutation(api.clients.create, {
+			companyName: "Anything Co",
+			status: "active",
+		});
+
+		stubCustomerPages([[{ Id: "96", DisplayName: "Parent:Job", Job: true }]]);
+		const { runId } = await asOwner.action(
+			api.quickbooksImportActions.startImport,
+			{}
+		);
+
+		await expect(
+			asOwner.mutation(api.quickbooksImport.setRowDecision, {
+				rowId: (await rowByQboId(runId, "96"))._id,
+				decision: "link",
+				clientId,
+			})
+		).rejects.toThrow();
+		expect(await clientLinks(org.orgId)).toHaveLength(0);
+	});
+
+	// ------------------------------------------------------------------
+	// Legacy awaiting_review runs (pre-rework)
+	// ------------------------------------------------------------------
+
+	it("still resolves a legacy awaiting_review run", async () => {
+		const { org, asOwner } = await setupOrg("legacy");
+		await connect(org.orgId);
+		const a = await asOwner.mutation(api.clients.create, {
+			companyName: "Legacy Co",
+			status: "active",
+		});
+		const b = await asOwner.mutation(api.clients.create, {
+			companyName: "Legacy Co",
+			status: "active",
+		});
+
+		const { runId, rowIds } = await t.run(async (ctx) => {
+			const organization = await ctx.db.get(org.orgId);
+			const runId = await ctx.db.insert("quickbooksImportRuns", {
+				orgId: org.orgId,
+				realmId: `realm_${org.orgId}`,
+				status: "awaiting_review",
+				startedByUserId: organization!.ownerUserId,
+				startedAt: Date.now(),
+				totalFetched: 2,
+				autoLinked: 0,
+				imported: 0,
+				ambiguous: 2,
+				skipped: 0,
+			});
+			const rowIds = [] as Id<"quickbooksImportRows">[];
+			for (const qboId of ["L1", "L2"]) {
+				rowIds.push(
+					await ctx.db.insert("quickbooksImportRows", {
+						orgId: org.orgId,
+						runId,
+						qboId,
+						qboDisplayName: "Legacy Co",
+						outcome: "ambiguous",
+						candidateClientIds: [a, b],
+					})
+				);
+			}
+			return { runId, rowIds };
+		});
+
+		const listed = await asOwner.query(api.quickbooksImport.listAmbiguousRows, {
+			runId,
+		});
+		expect(listed).toHaveLength(2);
+
+		await asOwner.mutation(api.quickbooksImport.resolveImportRow, {
+			rowId: rowIds[0],
+			clientId: b,
+		});
+		await asOwner.mutation(api.quickbooksImport.skipImportRow, {
+			rowId: rowIds[1],
+		});
+
+		const rows = await rowsFor(runId);
+		expect(rows.find((row) => row._id === rowIds[0])).toMatchObject({
+			outcome: "resolved",
+			linkedClientId: b,
+		});
+		expect(rows.find((row) => row._id === rowIds[1])).toMatchObject({
+			outcome: "skipped",
+			skipReason: "user_skipped",
+		});
+
+		const links = await clientLinks(org.orgId);
+		expect(links).toHaveLength(1);
+		expect(links[0]).toMatchObject({ localId: b, qboId: "L1" });
+
+		const run = await t.run(async (ctx) => ctx.db.get(runId));
+		expect(run).toMatchObject({ status: "completed", ambiguous: 0, skipped: 1 });
 	});
 });

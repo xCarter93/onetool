@@ -1,4 +1,5 @@
 import { ConvexError, v } from "convex/values";
+import { paginationOptsValidator, type PaginationResult } from "convex/server";
 import { internalMutation } from "./lib/triggers";
 import { internal } from "./_generated/api";
 import type { MutationCtx } from "./_generated/server";
@@ -19,6 +20,13 @@ import { hasPremiumAccess } from "./lib/permissions";
 
 // Cap stored candidates so a pathological name collision can't bloat a row.
 const MAX_CANDIDATES = 10;
+
+/** A run stuck mid-fetch or mid-commit this long is reclaimed by the next run. */
+const RUN_RECLAIM_MS = 30 * 60 * 1000;
+
+/** Rows applied per commit batch, and rows deleted per discard batch. */
+const COMMIT_BATCH = 100;
+const DELETE_BATCH = 200;
 
 // ============================================================================
 // Local auth helpers (mirrors quickbooks.ts — that file is owned elsewhere)
@@ -92,6 +100,22 @@ type ImportCustomer = {
 	};
 };
 
+/** The subset of a QBO customer needed to create a OneTool client. */
+type ImportedClientSource = {
+	displayName: string;
+	email?: string;
+	phone?: string;
+	givenName?: string;
+	familyName?: string;
+	billAddr?: {
+		line1?: string;
+		city?: string;
+		state?: string;
+		postalCode?: string;
+		country?: string;
+	};
+};
+
 function normalizeName(value: string | undefined): string {
 	return (value ?? "").trim().toLowerCase();
 }
@@ -139,28 +163,46 @@ export const startRun = internalMutation({
 		}
 
 		// One active run per org — a second run would race on the same links.
-		// A run whose action died before its catch can strand "running" forever,
-		// so anything running longer than 30 minutes is reclaimed as failed.
-		const RUN_RECLAIM_MS = 30 * 60 * 1000;
+		// A run whose action died before its catch can strand "running" (or
+		// "committing") forever, so anything in flight past 30 minutes is
+		// reclaimed as failed. A "reviewing" run is durable and never expires:
+		// it holds proposals only, so a new run simply supersedes it.
 		const existing = await ctx.db
 			.query("quickbooksImportRuns")
 			.withIndex("by_org", (q) => q.eq("orgId", args.orgId))
 			.collect();
 		for (const run of existing) {
-			if (run.status !== "running" && run.status !== "awaiting_review") {
-				continue;
+			if (run.status === "running" || run.status === "committing") {
+				const since =
+					run.status === "committing"
+						? (run.committingAt ?? run.startedAt)
+						: run.startedAt;
+				if (Date.now() - since > RUN_RECLAIM_MS) {
+					await ctx.db.patch(run._id, {
+						status: "failed",
+						lastError: "Import stalled and was reclaimed by a new run",
+					});
+					continue;
+				}
+				throw new ConvexError("import_already_running");
 			}
-			if (
-				run.status === "running" &&
-				Date.now() - run.startedAt > RUN_RECLAIM_MS
-			) {
+			if (run.status === "reviewing") {
 				await ctx.db.patch(run._id, {
 					status: "failed",
-					lastError: "Import stalled and was reclaimed by a new run",
+					lastError: "Superseded by a new import",
 				});
+				await ctx.scheduler.runAfter(
+					0,
+					internal.quickbooksImport.deleteRunRowsPage,
+					{ runId: run._id }
+				);
 				continue;
 			}
-			throw new ConvexError("import_already_running");
+			// Legacy awaiting_review runs stay blocking: they carry real links
+			// already and are cleared through resolveImportRow/skipImportRow.
+			if (run.status === "awaiting_review") {
+				throw new ConvexError("import_already_running");
+			}
 		}
 
 		return await ctx.db.insert("quickbooksImportRuns", {
@@ -220,7 +262,8 @@ export const processCustomerPage = internalMutation({
 			.collect();
 		const rowedQboIds = new Set(existingRows.map((row) => row.qboId));
 
-		// Mutable client list so imported clients participate in later matching.
+		// Match pool for this page. A proposed link drops its target out via
+		// linkedLocalIds so two customers can't propose the same client.
 		const candidatePool: Array<{ _id: Id<"clients">; companyName: string }> =
 			clients.map((client) => ({
 				_id: client._id,
@@ -230,9 +273,10 @@ export const processCustomerPage = internalMutation({
 		const counters = {
 			totalFetched: 0,
 			autoLinked: 0,
-			imported: 0,
 			ambiguous: 0,
-			skipped: 0,
+			proposedLink: 0,
+			proposedImport: 0,
+			proposedSkip: 0,
 		};
 
 		for (const customer of args.customers as ImportCustomer[]) {
@@ -247,16 +291,23 @@ export const processCustomerPage = internalMutation({
 				qboDisplayName: customer.displayName,
 				qboEmail: customer.email,
 				qboCompanyName: customer.companyName,
+				qboSnapshot: {
+					phone: customer.phone,
+					givenName: customer.givenName,
+					familyName: customer.familyName,
+					billAddr: customer.billAddr,
+				},
 			};
 
 			// Sub-customers (jobs) are QBO's project construct, not a client.
+			// Not overridable at review — always skipped.
 			if (customer.isJob === true) {
 				await ctx.db.insert("quickbooksImportRows", {
 					...rowBase,
-					outcome: "skipped",
+					outcome: "proposed_skip",
 					skipReason: "sub_customer",
 				});
-				counters.skipped += 1;
+				counters.proposedSkip += 1;
 				continue;
 			}
 
@@ -316,61 +367,39 @@ export const processCustomerPage = internalMutation({
 				continue;
 			}
 
-			const syncToken = customer.syncToken ?? "0";
-
 			if (candidates.length === 1) {
+				// Proposal only — the link is written by the commit pass.
 				const clientId = candidates[0]._id;
-				await ctx.runMutation(internal.quickbooks.upsertEntityLink, {
-					orgId: args.orgId,
-					entityType: "client",
-					localId: clientId,
-					qboId: customer.qboId,
-					qboSyncToken: syncToken,
-				});
 				linkedLocalIds.add(clientId);
-				byQboId.set(customer.qboId, clientId);
 				await ctx.db.insert("quickbooksImportRows", {
 					...rowBase,
-					outcome: "auto_linked",
+					outcome: "proposed_link",
 					linkedClientId: clientId,
 				});
-				counters.autoLinked += 1;
+				counters.proposedLink += 1;
 				continue;
 			}
 
-			// No match — bring the customer in as a new client.
-			const clientId = await createImportedClient(
-				ctx,
-				args.orgId,
-				run.startedByUserId,
-				customer
-			);
-			await ctx.runMutation(internal.quickbooks.upsertEntityLink, {
-				orgId: args.orgId,
-				entityType: "client",
-				localId: clientId,
-				qboId: customer.qboId,
-				qboSyncToken: syncToken,
-			});
-			linkedLocalIds.add(clientId);
-			byQboId.set(customer.qboId, clientId);
-			candidatePool.push({ _id: clientId, companyName: customer.displayName });
+			// No match — propose bringing the customer in as a new client. The
+			// client does not exist yet, so it cannot join the candidate pool:
+			// two same-name unmatched customers each propose their own import.
 			await ctx.db.insert("quickbooksImportRows", {
 				...rowBase,
-				outcome: "imported",
-				linkedClientId: clientId,
+				outcome: "proposed_import",
 			});
-			counters.imported += 1;
+			counters.proposedImport += 1;
 		}
 
 		const latest = await ctx.db.get(args.runId);
 		if (latest) {
 			await ctx.db.patch(args.runId, {
 				totalFetched: latest.totalFetched + counters.totalFetched,
+				// autoLinked counts pre-existing links only until the commit pass.
 				autoLinked: latest.autoLinked + counters.autoLinked,
-				imported: latest.imported + counters.imported,
 				ambiguous: latest.ambiguous + counters.ambiguous,
-				skipped: latest.skipped + counters.skipped,
+				proposedLink: (latest.proposedLink ?? 0) + counters.proposedLink,
+				proposedImport: (latest.proposedImport ?? 0) + counters.proposedImport,
+				proposedSkip: (latest.proposedSkip ?? 0) + counters.proposedSkip,
 			});
 		}
 		return null;
@@ -386,7 +415,7 @@ async function createImportedClient(
 	ctx: MutationCtx,
 	orgId: Id<"organizations">,
 	createdByUserId: Id<"users">,
-	customer: ImportCustomer
+	customer: ImportedClientSource
 ): Promise<Id<"clients">> {
 	const clientId = await ctx.db.insert("clients", {
 		orgId,
@@ -430,28 +459,26 @@ async function createImportedClient(
 	return clientId;
 }
 
-/** Close the run out after the last page. */
+/**
+ * Close the fetch pass out. Every non-empty run lands in `reviewing`: nothing
+ * has been written to client data yet, and the reviewer commits explicitly.
+ * A run that fetched nothing has nothing to review, so it completes directly
+ * rather than parking the wizard on an empty table.
+ */
 export const finishRun = internalMutation({
 	args: { runId: v.id("quickbooksImportRuns") },
 	handler: async (ctx, args): Promise<null> => {
 		const run = await ctx.db.get(args.runId);
 		if (!run) return null;
 
-		const ambiguous = await ctx.db
-			.query("quickbooksImportRows")
-			.withIndex("by_run_outcome", (q) =>
-				q.eq("runId", args.runId).eq("outcome", "ambiguous")
-			)
-			.first();
-
-		if (ambiguous) {
-			await ctx.db.patch(args.runId, { status: "awaiting_review" });
+		if (run.totalFetched === 0) {
+			await ctx.db.patch(args.runId, {
+				status: "completed",
+				completedAt: Date.now(),
+			});
 			return null;
 		}
-		await ctx.db.patch(args.runId, {
-			status: "completed",
-			completedAt: Date.now(),
-		});
+		await ctx.db.patch(args.runId, { status: "reviewing" });
 		return null;
 	},
 });
@@ -464,6 +491,241 @@ export const failRun = internalMutation({
 		await ctx.db.patch(args.runId, {
 			status: "failed",
 			lastError: args.error.slice(0, 500),
+		});
+		return null;
+	},
+});
+
+// ============================================================================
+// Internal API — commit pass
+// ============================================================================
+
+/** Outcomes a commit batch still has to apply. */
+const PROPOSAL_OUTCOMES = [
+	"proposed_link",
+	"proposed_import",
+	"proposed_skip",
+	"ambiguous",
+] as const;
+
+type EffectiveDecision = "link" | "import" | "skip";
+
+/**
+ * A row's decision: the reviewer's override when set, otherwise the proposal.
+ * `proposed_skip` (sub-customers) is never overridable, so it ignores decision.
+ */
+function effectiveDecision(
+	row: Doc<"quickbooksImportRows">
+): EffectiveDecision | null {
+	if (row.outcome === "proposed_skip") return "skip";
+	if (row.decision) return row.decision;
+	if (row.outcome === "proposed_link") return "link";
+	if (row.outcome === "proposed_import") return "import";
+	return null; // undecided ambiguous — commitImportRun refuses to start
+}
+
+/** Delete a run's rows in batches; used by discard and by supersede. */
+export const deleteRunRowsPage = internalMutation({
+	args: { runId: v.id("quickbooksImportRuns") },
+	handler: async (ctx, args): Promise<null> => {
+		const rows = await ctx.db
+			.query("quickbooksImportRows")
+			.withIndex("by_run", (q) => q.eq("runId", args.runId))
+			.take(DELETE_BATCH);
+		for (const row of rows) {
+			await ctx.db.delete(row._id);
+		}
+		if (rows.length === DELETE_BATCH) {
+			await ctx.scheduler.runAfter(
+				0,
+				internal.quickbooksImport.deleteRunRowsPage,
+				{ runId: args.runId }
+			);
+		}
+		return null;
+	},
+});
+
+/**
+ * Apply one batch of decisions, then reschedule itself. Re-entrant by design:
+ * a batch only ever reads rows still in a proposal outcome, so a re-kicked or
+ * crashed loop can never create the same client or link twice.
+ */
+export const commitPage = internalMutation({
+	args: { runId: v.id("quickbooksImportRuns") },
+	handler: async (ctx, args): Promise<null> => {
+		const run = await ctx.db.get(args.runId);
+		if (!run || run.status !== "committing") return null;
+
+		const pending: Doc<"quickbooksImportRows">[] = [];
+		for (const outcome of PROPOSAL_OUTCOMES) {
+			if (pending.length >= COMMIT_BATCH) break;
+			const rows = await ctx.db
+				.query("quickbooksImportRows")
+				.withIndex("by_run_outcome", (q) =>
+					q.eq("runId", args.runId).eq("outcome", outcome)
+				)
+				.take(COMMIT_BATCH - pending.length);
+			pending.push(...rows);
+		}
+
+		if (pending.length === 0) {
+			await ctx.db.patch(args.runId, {
+				status: "completed",
+				completedAt: Date.now(),
+			});
+			return null;
+		}
+
+		const counters = {
+			autoLinked: 0,
+			imported: 0,
+			skipped: 0,
+			ambiguousCleared: 0,
+		};
+
+		for (const row of pending) {
+			const decision = effectiveDecision(row);
+			if (row.outcome === "ambiguous") counters.ambiguousCleared += 1;
+
+			// Guarded upstream; must still leave the proposal outcome, or this
+			// row would be refetched by every batch and the loop never ends.
+			if (decision === null || decision === "skip") {
+				await ctx.db.patch(row._id, {
+					outcome: "skipped",
+					skipReason: row.skipReason ?? "user_skipped",
+					candidateClientIds: undefined,
+				});
+				counters.skipped += 1;
+				continue;
+			}
+
+			// Whoever already owns this QBO customer locally, if anyone.
+			const linkByQbo = await ctx.db
+				.query("quickbooksEntityLinks")
+				.withIndex("by_org_qbo", (q) =>
+					q
+						.eq("orgId", run.orgId)
+						.eq("entityType", "client")
+						.eq("qboId", row.qboId)
+				)
+				.first();
+
+			if (decision === "link") {
+				const clientId = row.decisionClientId ?? row.linkedClientId;
+				const client = clientId ? await ctx.db.get(clientId) : null;
+				if (!clientId || !client || client.orgId !== run.orgId) {
+					await ctx.db.patch(row._id, {
+						outcome: "skipped",
+						skipReason: "missing_client",
+						candidateClientIds: undefined,
+					});
+					counters.skipped += 1;
+					continue;
+				}
+
+				const linkByClient = await ctx.db
+					.query("quickbooksEntityLinks")
+					.withIndex("by_org_entity", (q) =>
+						q
+							.eq("orgId", run.orgId)
+							.eq("entityType", "client")
+							.eq("localId", clientId)
+					)
+					.first();
+
+				// Either side already spoken for by a different partner: skip
+				// rather than clobber an existing mapping.
+				const mismatched =
+					(linkByClient && linkByClient.qboId !== row.qboId) ||
+					(linkByQbo && linkByQbo.localId !== clientId);
+				if (mismatched) {
+					await ctx.db.patch(row._id, {
+						outcome: "skipped",
+						skipReason: "already_linked",
+						linkedClientId: clientId,
+						candidateClientIds: undefined,
+					});
+					counters.skipped += 1;
+					continue;
+				}
+
+				if (!linkByClient) {
+					// The row carries no SyncToken; the sync worker re-GETs on a
+					// 5010 stale token, so "0" is safe as a seed.
+					await ctx.runMutation(internal.quickbooks.upsertEntityLink, {
+						orgId: run.orgId,
+						entityType: "client",
+						localId: clientId,
+						qboId: row.qboId,
+						qboSyncToken: "0",
+					});
+				}
+				await ctx.db.patch(row._id, {
+					outcome: "auto_linked",
+					linkedClientId: clientId,
+					candidateClientIds: undefined,
+				});
+				counters.autoLinked += 1;
+				continue;
+			}
+
+			// import — unless a previous (partial) commit already created it.
+			if (linkByQbo) {
+				const existingClientId = ctx.db.normalizeId(
+					"clients",
+					linkByQbo.localId
+				);
+				await ctx.db.patch(row._id, {
+					outcome: "imported",
+					linkedClientId: existingClientId ?? undefined,
+					candidateClientIds: undefined,
+				});
+				counters.imported += 1;
+				continue;
+			}
+
+			const newClientId = await createImportedClient(
+				ctx,
+				run.orgId,
+				run.startedByUserId,
+				{
+					displayName: row.qboDisplayName,
+					email: row.qboEmail,
+					phone: row.qboSnapshot?.phone,
+					givenName: row.qboSnapshot?.givenName,
+					familyName: row.qboSnapshot?.familyName,
+					billAddr: row.qboSnapshot?.billAddr,
+				}
+			);
+			await ctx.runMutation(internal.quickbooks.upsertEntityLink, {
+				orgId: run.orgId,
+				entityType: "client",
+				localId: newClientId,
+				qboId: row.qboId,
+				qboSyncToken: "0",
+			});
+			await ctx.db.patch(row._id, {
+				outcome: "imported",
+				linkedClientId: newClientId,
+				candidateClientIds: undefined,
+			});
+			counters.imported += 1;
+		}
+
+		const latest = await ctx.db.get(args.runId);
+		if (latest) {
+			await ctx.db.patch(args.runId, {
+				autoLinked: latest.autoLinked + counters.autoLinked,
+				imported: latest.imported + counters.imported,
+				skipped: latest.skipped + counters.skipped,
+				ambiguous: Math.max(0, latest.ambiguous - counters.ambiguousCleared),
+				committedRows: (latest.committedRows ?? 0) + pending.length,
+			});
+		}
+
+		await ctx.scheduler.runAfter(0, internal.quickbooksImport.commitPage, {
+			runId: args.runId,
 		});
 		return null;
 	},
@@ -483,6 +745,12 @@ async function loadAmbiguousRow(
 	}
 	if (row.outcome !== "ambiguous") {
 		throw new ConvexError("This import row has already been resolved");
+	}
+	// Legacy surface: pre-rework runs parked in awaiting_review resolved rows
+	// one at a time. Reviewing runs decide via setRowDecision + commitImportRun.
+	const run = await ctx.db.get(row.runId);
+	if (!run || run.status !== "awaiting_review") {
+		throw new ConvexError("This import run is reviewed before it is applied");
 	}
 	return row;
 }
@@ -587,6 +855,156 @@ export const skipImportRow = userMutation({
 });
 
 // ============================================================================
+// Public API — review surface (propose → review → commit)
+// ============================================================================
+
+/** The org's latest run, which must still be open for review. */
+async function loadReviewingRun(
+	ctx: UserMutationCtx
+): Promise<Doc<"quickbooksImportRuns">> {
+	const run = await ctx.db
+		.query("quickbooksImportRuns")
+		.withIndex("by_org", (q) => q.eq("orgId", ctx.orgId))
+		.order("desc")
+		.first();
+	if (!run) {
+		throw new ConvexError("Import run not found");
+	}
+	if (run.status !== "reviewing") {
+		throw new ConvexError("run_not_reviewing");
+	}
+	return run;
+}
+
+/**
+ * Record (or clear back to) a decision for one proposal row. Writes nothing to
+ * client data — the commit pass applies decisions. Ambiguous rows deliberately
+ * accept ANY org client, not just the stored candidates: the review picker is
+ * the point of the surface, and the candidate list is only a suggestion.
+ */
+export const setRowDecision = userMutation({
+	args: {
+		rowId: v.id("quickbooksImportRows"),
+		decision: v.union(
+			v.literal("link"),
+			v.literal("import"),
+			v.literal("skip")
+		),
+		clientId: v.optional(v.id("clients")),
+	},
+	handler: async (ctx, args): Promise<null> => {
+		await requirePremium(ctx);
+		await requireOrgOwner(ctx);
+
+		const row = await ctx.db.get(args.rowId);
+		if (!row || row.orgId !== ctx.orgId) {
+			throw new ConvexError("Import row not found");
+		}
+		const run = await ctx.db.get(row.runId);
+		if (!run || run.orgId !== ctx.orgId || run.status !== "reviewing") {
+			throw new ConvexError("run_not_reviewing");
+		}
+		if (
+			row.outcome !== "proposed_link" &&
+			row.outcome !== "proposed_import" &&
+			row.outcome !== "ambiguous"
+		) {
+			throw new ConvexError("This import row cannot be changed");
+		}
+
+		if (args.decision !== "link") {
+			await ctx.db.patch(row._id, {
+				decision: args.decision,
+				decisionClientId: undefined,
+			});
+			return null;
+		}
+
+		if (!args.clientId) {
+			throw new ConvexError("Pick a client to link this customer to");
+		}
+		await ctx.orgEntity("clients", args.clientId);
+
+		const existingLink = await ctx.db
+			.query("quickbooksEntityLinks")
+			.withIndex("by_org_entity", (q) =>
+				q
+					.eq("orgId", ctx.orgId)
+					.eq("entityType", "client")
+					.eq("localId", args.clientId!)
+			)
+			.first();
+		// Re-picking the same QBO customer is a no-op, not a conflict.
+		if (existingLink && existingLink.qboId !== row.qboId) {
+			throw new ConvexError("That client is already linked to QuickBooks");
+		}
+
+		await ctx.db.patch(row._id, {
+			decision: "link",
+			decisionClientId: args.clientId,
+		});
+		return null;
+	},
+});
+
+/** Apply the reviewed plan. Every ambiguous row must have an explicit pick. */
+export const commitImportRun = userMutation({
+	args: {},
+	handler: async (ctx): Promise<{ runId: Id<"quickbooksImportRuns"> }> => {
+		await requirePremium(ctx);
+		await requireOrgOwner(ctx);
+
+		const run = await loadReviewingRun(ctx);
+
+		// Ambiguous rows are rare by construction (same-name collisions only).
+		const ambiguousRows = await ctx.db
+			.query("quickbooksImportRows")
+			.withIndex("by_run_outcome", (q) =>
+				q.eq("runId", run._id).eq("outcome", "ambiguous")
+			)
+			.collect();
+		if (ambiguousRows.some((row) => !row.decision)) {
+			throw new ConvexError("undecided_ambiguous_rows");
+		}
+
+		await ctx.db.patch(run._id, {
+			status: "committing",
+			committingAt: Date.now(),
+			committedRows: 0,
+		});
+		await ctx.scheduler.runAfter(0, internal.quickbooksImport.commitPage, {
+			runId: run._id,
+		});
+		return { runId: run._id };
+	},
+});
+
+/**
+ * Throw the plan away before anything is applied. The run is marked `failed`
+ * to keep the status union small — the UI reads this lastError as a quiet
+ * "discarded" state, not an error.
+ */
+export const discardImportRun = userMutation({
+	args: {},
+	handler: async (ctx): Promise<null> => {
+		await requirePremium(ctx);
+		await requireOrgOwner(ctx);
+
+		const run = await loadReviewingRun(ctx);
+		await ctx.db.patch(run._id, {
+			status: "failed",
+			lastError: "Discarded before import",
+		});
+		await ctx.scheduler.runAfter(
+			0,
+			internal.quickbooksImport.deleteRunRowsPage,
+			{ runId: run._id }
+		);
+		return null;
+	},
+});
+
+// ============================================================================
 // Public API — read surface
 // ============================================================================
 
@@ -602,6 +1020,80 @@ export const getImportRun = userQuery({
 			.withIndex("by_org", (q) => q.eq("orgId", ctx.orgId))
 			.order("desc")
 			.first();
+	},
+});
+
+export type ImportRowView = Doc<"quickbooksImportRows"> & {
+	proposedClient?: { clientId: Id<"clients">; companyName: string };
+	candidates?: Array<{ clientId: Id<"clients">; companyName: string }>;
+};
+
+/**
+ * Every row of a run, paginated, hydrated with the company names the review
+ * table renders. Counts come off the run doc — there is no separate query.
+ */
+export const listImportRows = userQuery({
+	args: {
+		runId: v.id("quickbooksImportRuns"),
+		paginationOpts: paginationOptsValidator,
+	},
+	handler: async (
+		ctx: UserQueryCtx,
+		args
+	): Promise<PaginationResult<ImportRowView>> => {
+		const empty: PaginationResult<ImportRowView> = {
+			page: [],
+			isDone: true,
+			continueCursor: "",
+		};
+		if (!(await hasPremiumAccess(ctx))) {
+			return empty;
+		}
+		const run = await ctx.db.get(args.runId);
+		if (!run || run.orgId !== ctx.orgId) {
+			return empty;
+		}
+
+		const result = await ctx.db
+			.query("quickbooksImportRows")
+			.withIndex("by_run", (q) => q.eq("runId", args.runId))
+			.paginate(args.paginationOpts);
+
+		const names = new Map<Id<"clients">, string>();
+		const nameOf = async (
+			clientId: Id<"clients">
+		): Promise<string | undefined> => {
+			const cached = names.get(clientId);
+			if (cached !== undefined) return cached;
+			const client = await ctx.db.get(clientId);
+			if (!client || client.orgId !== ctx.orgId) return undefined;
+			names.set(clientId, client.companyName);
+			return client.companyName;
+		};
+
+		const page: ImportRowView[] = [];
+		for (const row of result.page) {
+			const view: ImportRowView = { ...row };
+			const proposedId = row.decisionClientId ?? row.linkedClientId;
+			if (proposedId) {
+				const companyName = await nameOf(proposedId);
+				if (companyName !== undefined) {
+					view.proposedClient = { clientId: proposedId, companyName };
+				}
+			}
+			if (row.candidateClientIds?.length) {
+				const candidates: NonNullable<ImportRowView["candidates"]> = [];
+				for (const clientId of row.candidateClientIds) {
+					const companyName = await nameOf(clientId);
+					if (companyName !== undefined) {
+						candidates.push({ clientId, companyName });
+					}
+				}
+				view.candidates = candidates;
+			}
+			page.push(view);
+		}
+		return { ...result, page };
 	},
 });
 

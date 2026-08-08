@@ -2020,19 +2020,29 @@ export default defineSchema({
 		realmId: v.string(),
 		status: v.union(
 			v.literal("running"), // fetching + matching QBO customers
-			v.literal("awaiting_review"), // ambiguous rows need human picks
+			v.literal("reviewing"), // proposals written, waiting on the reviewer
+			v.literal("committing"), // applying decisions page by page
+			v.literal("awaiting_review"), // legacy: ambiguous rows need human picks
 			v.literal("completed"),
 			v.literal("failed")
 		),
 		startedByUserId: v.id("users"),
 		startedAt: v.number(),
 		completedAt: v.optional(v.number()),
-		// Denormalized counters for the wizard progress/summary UI
+		// Denormalized counters for the wizard progress/summary UI. The final
+		// counters below are the post-commit truth; proposed* describe the plan.
 		totalFetched: v.number(),
 		autoLinked: v.number(),
 		imported: v.number(),
 		ambiguous: v.number(),
 		skipped: v.number(),
+		proposedLink: v.optional(v.number()),
+		proposedImport: v.optional(v.number()),
+		proposedSkip: v.optional(v.number()),
+		committedRows: v.optional(v.number()), // commit-loop progress
+		// Stamped when the commit loop starts; a review can sit for days, so the
+		// stalled-commit reclaim can't measure against startedAt.
+		committingAt: v.optional(v.number()),
 		lastError: v.optional(v.string()),
 	}).index("by_org", ["orgId"]),
 
@@ -2044,14 +2054,42 @@ export default defineSchema({
 		qboEmail: v.optional(v.string()),
 		qboCompanyName: v.optional(v.string()),
 		outcome: v.union(
-			v.literal("auto_linked"), // matched exactly one client — link written
-			v.literal("imported"), // no match — created as a new OneTool client
-			v.literal("ambiguous"), // multiple candidates — awaiting a human pick
-			v.literal("resolved"), // human picked a candidate — link written
+			// Proposals written by the fetch pass — no client data touched yet.
+			v.literal("proposed_link"), // one confident match, in linkedClientId
+			v.literal("proposed_import"), // no match — would create a client
+			v.literal("proposed_skip"), // sub-customer; not overridable
+			v.literal("ambiguous"), // multiple candidates — needs a human pick
+			// Final outcomes, written by the commit pass.
+			v.literal("auto_linked"), // link written
+			v.literal("imported"), // created as a new OneTool client
+			v.literal("resolved"), // legacy: human picked a candidate pre-rework
 			v.literal("skipped") // sub-customer, or user chose Don't import
+		),
+		// Fields the commit pass needs to create a client, captured at fetch time
+		// (the QBO payload is long gone by the time the reviewer commits).
+		qboSnapshot: v.optional(
+			v.object({
+				phone: v.optional(v.string()),
+				givenName: v.optional(v.string()),
+				familyName: v.optional(v.string()),
+				billAddr: v.optional(
+					v.object({
+						line1: v.optional(v.string()),
+						city: v.optional(v.string()),
+						state: v.optional(v.string()),
+						postalCode: v.optional(v.string()),
+						country: v.optional(v.string()),
+					})
+				),
+			})
 		),
 		candidateClientIds: v.optional(v.array(v.id("clients"))), // ambiguous only
 		linkedClientId: v.optional(v.id("clients")),
+		// Reviewer override; unset means "accept the proposal".
+		decision: v.optional(
+			v.union(v.literal("link"), v.literal("import"), v.literal("skip"))
+		),
+		decisionClientId: v.optional(v.id("clients")), // decision === "link"
 		skipReason: v.optional(v.string()), // "sub_customer" | "user_skipped"
 	})
 		.index("by_run", ["runId"])
