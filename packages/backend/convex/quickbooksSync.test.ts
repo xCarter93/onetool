@@ -2,7 +2,11 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { api, internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import { setupConvexTest } from "./test.setup";
-import { createPremiumTestIdentity, createTestOrg } from "./test.helpers";
+import {
+	addMemberToOrg,
+	createPremiumTestIdentity,
+	createTestOrg,
+} from "./test.helpers";
 import {
 	buildQboCustomer,
 	buildQboInvoice,
@@ -378,7 +382,7 @@ describe("QuickBooks sync engine", () => {
 			expect(jobs[0]).toMatchObject({ entityType: "client", status: "pending" });
 		});
 
-		it("does not enqueue a cancelled invoice, even when linked", async () => {
+		it("enqueues a void job when a linked invoice is cancelled", async () => {
 			const { org, asOwner } = await setupOrg("enq_cancel");
 			await connect(org.orgId, { defaultServiceItemQboId: "9" });
 			const clientId = await asOwner.mutation(api.clients.create, {
@@ -393,6 +397,72 @@ describe("QuickBooks sync engine", () => {
 				qboId: "202",
 				qboSyncToken: "0",
 			});
+			await clearJobsOfType(org.orgId, "all");
+
+			await asOwner.mutation(api.invoices.update, {
+				id: invoiceId,
+				status: "cancelled",
+			});
+
+			const invoiceJobs = (await jobsFor(org.orgId)).filter(
+				(j) => j.entityType === "invoice"
+			);
+			expect(invoiceJobs).toHaveLength(1);
+			expect(invoiceJobs[0]).toMatchObject({
+				operation: "void",
+				status: "pending",
+				dedupeKey: `invoice:${invoiceId}`,
+			});
+		});
+
+		it("supersedes a pending upsert with the void, and back again", async () => {
+			const { org, asOwner } = await setupOrg("enq_supersede");
+			await connect(org.orgId, { defaultServiceItemQboId: "9" });
+			const clientId = await asOwner.mutation(api.clients.create, {
+				companyName: "Acme Co",
+				status: "active",
+			});
+			const invoiceId = await createInvoice(asOwner, clientId, "sent");
+			await t.mutation(internal.quickbooks.upsertEntityLink, {
+				orgId: org.orgId,
+				entityType: "invoice",
+				localId: invoiceId,
+				qboId: "202",
+				qboSyncToken: "0",
+			});
+			await clearJobsOfType(org.orgId, "client");
+
+			// The pending upsert from the create/link stays a single row.
+			await asOwner.mutation(api.invoices.update, {
+				id: invoiceId,
+				status: "cancelled",
+			});
+			let invoiceJobs = (await jobsFor(org.orgId)).filter(
+				(j) => j.entityType === "invoice"
+			);
+			expect(invoiceJobs).toHaveLength(1);
+			expect(invoiceJobs[0].operation).toBe("void");
+
+			// Reactivating must flip it back, or the worker would void a live invoice.
+			await asOwner.mutation(api.invoices.update, {
+				id: invoiceId,
+				status: "sent",
+			});
+			invoiceJobs = (await jobsFor(org.orgId)).filter(
+				(j) => j.entityType === "invoice"
+			);
+			expect(invoiceJobs).toHaveLength(1);
+			expect(invoiceJobs[0].operation).toBe("upsert");
+		});
+
+		it("enqueues nothing when an unlinked invoice is cancelled", async () => {
+			const { org, asOwner } = await setupOrg("enq_cancel_unlinked");
+			await connect(org.orgId, { defaultServiceItemQboId: "9" });
+			const clientId = await asOwner.mutation(api.clients.create, {
+				companyName: "Acme Co",
+				status: "active",
+			});
+			const invoiceId = await createInvoice(asOwner, clientId, "sent");
 			await clearJobsOfType(org.orgId, "all");
 
 			await asOwner.mutation(api.invoices.update, {
@@ -1603,6 +1673,215 @@ describe("QuickBooks sync engine", () => {
 			expect(jobs[0].lastError).toContain("no longer exists");
 		});
 
+		it("writes one client activity entry, on the first sync only", async () => {
+			const { org, asOwner } = await setupOrg("w_activity");
+			await connect(org.orgId);
+			const clientId = await asOwner.mutation(api.clients.create, {
+				companyName: "Acme Co",
+				status: "active",
+			});
+			stubQbo(() => ({
+				payload: { Customer: { Id: "101", SyncToken: "0" } },
+			}));
+
+			await t.action(internal.quickbooksActions.processOrgJobs, {
+				orgId: org.orgId,
+			});
+
+			const syncEntries = async () =>
+				await t.run(async (ctx) => {
+					const rows = await ctx.db
+						.query("activities")
+						.withIndex("by_entity", (q) =>
+							q.eq("entityType", "client").eq("entityId", clientId)
+						)
+						.collect();
+					return rows.filter((row) =>
+						row.description.startsWith("Synced to QuickBooks")
+					);
+				});
+
+			const first = await syncEntries();
+			expect(first).toHaveLength(1);
+			expect(first[0].description).toBe("Synced to QuickBooks as Acme Co");
+
+			// A rename re-syncs the linked customer; the feed must not repeat.
+			await asOwner.mutation(api.clients.update, {
+				id: clientId,
+				companyName: "Acme Landscaping",
+			});
+			await t.action(internal.quickbooksActions.processOrgJobs, {
+				orgId: org.orgId,
+			});
+			expect(await syncEntries()).toHaveLength(1);
+		});
+
+		// ------------------------------------------------------------------
+		// Void on cancel
+		// ------------------------------------------------------------------
+
+		describe("void on cancel", () => {
+			/** Linked, cancelled invoice with only its void job pending. */
+			async function cancelledLinkedInvoice(suffix: string) {
+				const { org, asOwner } = await setupOrg(suffix);
+				await connect(org.orgId, { defaultServiceItemQboId: "9" });
+				const clientId = await asOwner.mutation(api.clients.create, {
+					companyName: "Acme Co",
+					status: "active",
+				});
+				const invoiceId = await createInvoice(asOwner, clientId, "sent");
+				await t.mutation(internal.quickbooks.upsertEntityLink, {
+					orgId: org.orgId,
+					entityType: "invoice",
+					localId: invoiceId,
+					qboId: "202",
+					qboSyncToken: "0",
+				});
+				return { org, asOwner, clientId, invoiceId };
+			}
+
+			async function cancel(
+				asOwner: ReturnType<typeof t.withIdentity>,
+				orgId: Id<"organizations">,
+				invoiceId: Id<"invoices">
+			) {
+				await asOwner.mutation(api.invoices.update, {
+					id: invoiceId,
+					status: "cancelled",
+				});
+				await clearJobsOfType(orgId, "client");
+			}
+
+			const notFound = {
+				status: 400,
+				payload: {
+					Fault: {
+						type: "ValidationFault",
+						Error: [{ code: "610", Message: "Object Not Found" }],
+					},
+				},
+			};
+
+			it("re-GETs a fresh SyncToken and voids the invoice", async () => {
+				const { org, asOwner, invoiceId } =
+					await cancelledLinkedInvoice("w_void");
+				await cancel(asOwner, org.orgId, invoiceId);
+
+				const calls = stubQbo((url) =>
+					url.includes("operation=void")
+						? { payload: { Invoice: { Id: "202", SyncToken: "4" } } }
+						: { payload: { Invoice: { Id: "202", SyncToken: "3" } } }
+				);
+
+				const result = await t.action(
+					internal.quickbooksActions.processOrgJobs,
+					{ orgId: org.orgId }
+				);
+
+				expect(result.processed).toBe(1);
+				expect(calls[0].url).toContain("/invoice/202");
+				expect(calls[1].url).toContain("/invoice?operation=void");
+				expect(calls[1].body).toEqual({ Id: "202", SyncToken: "3" });
+
+				const jobs = await jobsFor(org.orgId);
+				expect(jobs[0]).toMatchObject({
+					operation: "void",
+					status: "succeeded",
+				});
+				// Link kept, so a reactivation updates rather than re-creates.
+				const link = await linkFor(org.orgId, "invoice", invoiceId);
+				expect(link).toMatchObject({ qboId: "202", qboSyncToken: "4" });
+				expect(link?.syncWarning).toBeUndefined();
+			});
+
+			it("treats a missing QuickBooks invoice as already voided", async () => {
+				const { org, asOwner, invoiceId } =
+					await cancelledLinkedInvoice("w_void_gone");
+				await cancel(asOwner, org.orgId, invoiceId);
+
+				const calls = stubQbo(() => notFound);
+
+				const result = await t.action(
+					internal.quickbooksActions.processOrgJobs,
+					{ orgId: org.orgId }
+				);
+
+				expect(result).toMatchObject({ processed: 1, failed: 0 });
+				expect(calls).toHaveLength(1);
+				expect((await jobsFor(org.orgId))[0].status).toBe("succeeded");
+				expect(await linkFor(org.orgId, "invoice", invoiceId)).toMatchObject({
+					qboId: "202",
+				});
+			});
+
+			it("warns when a synced payment referenced the voided invoice", async () => {
+				const { org, asOwner, invoiceId } = await cancelledLinkedInvoice(
+					"w_void_paid"
+				);
+				const paymentId = await asOwner.mutation(api.payments.create, {
+					invoiceId,
+					paymentAmount: 100,
+					dueDate: Date.now() + DAY,
+					description: "Full Payment",
+					sortOrder: 0,
+				});
+				await t.mutation(internal.quickbooks.upsertEntityLink, {
+					orgId: org.orgId,
+					entityType: "payment",
+					localId: paymentId,
+					qboId: "301",
+					qboSyncToken: "0",
+				});
+				await cancel(asOwner, org.orgId, invoiceId);
+				await clearJobsOfType(org.orgId, "payment");
+
+				stubQbo((url) =>
+					url.includes("operation=void")
+						? { payload: { Invoice: { Id: "202", SyncToken: "4" } } }
+						: { payload: { Invoice: { Id: "202", SyncToken: "3" } } }
+				);
+
+				await t.action(internal.quickbooksActions.processOrgJobs, {
+					orgId: org.orgId,
+				});
+
+				const link = await linkFor(org.orgId, "invoice", invoiceId);
+				expect(link?.syncWarning).toContain("review it in QuickBooks");
+			});
+
+			it("skips the void when the invoice was reactivated after the claim", async () => {
+				const { org, asOwner, invoiceId } = await cancelledLinkedInvoice(
+					"w_void_revived"
+				);
+				await cancel(asOwner, org.orgId, invoiceId);
+				// Flip the job back to a void by hand after reactivating, to model a
+				// job claimed before the status changed.
+				await asOwner.mutation(api.invoices.update, {
+					id: invoiceId,
+					status: "sent",
+				});
+				await t.run(async (ctx) => {
+					const jobs = await ctx.db
+						.query("quickbooksSyncJobs")
+						.withIndex("by_org_status", (q) => q.eq("orgId", org.orgId))
+						.collect();
+					for (const job of jobs) {
+						await ctx.db.patch(job._id, { operation: "void" });
+					}
+				});
+
+				const calls = stubQbo(() => ({ payload: {} }));
+
+				const result = await t.action(
+					internal.quickbooksActions.processOrgJobs,
+					{ orgId: org.orgId }
+				);
+
+				expect(result.processed).toBe(1);
+				expect(calls).toHaveLength(0);
+			});
+		});
+
 		// ------------------------------------------------------------------
 		// Per-SKU Items (lazy catalog sync)
 		// ------------------------------------------------------------------
@@ -1926,6 +2205,159 @@ describe("QuickBooks sync engine", () => {
 
 				expect(await jobsFor(org.orgId)).toHaveLength(0);
 			});
+		});
+	});
+
+	// ------------------------------------------------------------------
+	// Realm reset
+	// ------------------------------------------------------------------
+
+	describe("resetConnection", () => {
+		/** Links, jobs and an import run, so the reset has something to wipe. */
+		async function seedQboState(
+			org: { orgId: Id<"organizations">; userId: Id<"users"> },
+			clientId: Id<"clients">
+		) {
+			await t.mutation(internal.quickbooks.upsertEntityLink, {
+				orgId: org.orgId,
+				entityType: "client",
+				localId: clientId,
+				qboId: "101",
+				qboSyncToken: "0",
+			});
+			await t.run(async (ctx) => {
+				await ctx.db.insert("quickbooksSyncJobs", {
+					orgId: org.orgId,
+					entityType: "client",
+					localId: clientId,
+					operation: "upsert",
+					status: "failed",
+					attempts: 5,
+					runAfter: Date.now(),
+					dedupeKey: `client:${clientId}`,
+				});
+				const runId = await ctx.db.insert("quickbooksImportRuns", {
+					orgId: org.orgId,
+					realmId: `realm_${org.orgId}`,
+					status: "completed",
+					startedByUserId: org.userId,
+					startedAt: Date.now(),
+					totalFetched: 1,
+					autoLinked: 1,
+					imported: 0,
+					ambiguous: 0,
+					skipped: 0,
+				});
+				await ctx.db.insert("quickbooksImportRows", {
+					orgId: org.orgId,
+					runId,
+					qboId: "101",
+					qboDisplayName: "Acme Co",
+					outcome: "auto_linked",
+					linkedClientId: clientId,
+				});
+			});
+		}
+
+		async function qboStateCounts(orgId: Id<"organizations">) {
+			return await t.run(async (ctx) => ({
+				connections: (
+					await ctx.db
+						.query("quickbooksConnections")
+						.withIndex("by_org", (q) => q.eq("orgId", orgId))
+						.collect()
+				).length,
+				links: (
+					await ctx.db
+						.query("quickbooksEntityLinks")
+						.withIndex("by_org_entity", (q) => q.eq("orgId", orgId))
+						.collect()
+				).length,
+				jobs: (
+					await ctx.db
+						.query("quickbooksSyncJobs")
+						.withIndex("by_org_status", (q) => q.eq("orgId", orgId))
+						.collect()
+				).length,
+				importRuns: (
+					await ctx.db
+						.query("quickbooksImportRuns")
+						.withIndex("by_org", (q) => q.eq("orgId", orgId))
+						.collect()
+				).length,
+				importRows: (
+					await ctx.db
+						.query("quickbooksImportRows")
+						.withIndex("by_org", (q) => q.eq("orgId", orgId))
+						.collect()
+				).length,
+			}));
+		}
+
+		it("wipes links, jobs, import rows and the connection", async () => {
+			const { org, asOwner } = await setupOrg("reset_ok");
+			await connect(org.orgId);
+			const clientId = await asOwner.mutation(api.clients.create, {
+				companyName: "Acme Co",
+				status: "active",
+			});
+			await seedQboState(org, clientId);
+			expect(await qboStateCounts(org.orgId)).toMatchObject({
+				connections: 1,
+				links: 1,
+				importRuns: 1,
+				importRows: 1,
+			});
+
+			await asOwner.mutation(api.quickbooks.resetConnection, {});
+
+			expect(await qboStateCounts(org.orgId)).toEqual({
+				connections: 0,
+				links: 0,
+				jobs: 0,
+				importRuns: 0,
+				importRows: 0,
+			});
+			// The client itself survives — only the QuickBooks mapping is gone.
+			expect(
+				await t.run(async (ctx) => ctx.db.get(clientId))
+			).not.toBeNull();
+		});
+
+		it("resets a disconnected connection too", async () => {
+			const { org, asOwner } = await setupOrg("reset_disc");
+			await connect(org.orgId, { status: "disconnected" });
+
+			await asOwner.mutation(api.quickbooks.resetConnection, {});
+
+			expect(await qboStateCounts(org.orgId)).toMatchObject({
+				connections: 0,
+			});
+		});
+
+		it("throws when there is nothing to reset", async () => {
+			const { asOwner } = await setupOrg("reset_none");
+			await expect(
+				asOwner.mutation(api.quickbooks.resetConnection, {})
+			).rejects.toThrow(/not connected/i);
+		});
+
+		it("rejects a non-owner member", async () => {
+			const { org } = await setupOrg("reset_member");
+			await connect(org.orgId);
+			const member = await t.run(async (ctx) =>
+				addMemberToOrg(ctx, org.orgId, {
+					clerkUserId: "qbo_member_reset",
+				})
+			);
+			const asMember = t.withIdentity(
+				createPremiumTestIdentity(member.clerkUserId, org.clerkOrgId)
+			);
+
+			await expect(
+				asMember.mutation(api.quickbooks.resetConnection, {})
+			).rejects.toThrow(/owner/i);
+			expect(await qboStateCounts(org.orgId)).toMatchObject({ connections: 1 });
 		});
 	});
 });

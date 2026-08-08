@@ -543,13 +543,25 @@ async function syncClient(
 		);
 	}
 
-	await ctx.runMutation(internal.quickbooks.upsertEntityLink, {
-		orgId: connection.orgId,
-		entityType: "client",
-		localId: clientId,
-		qboId: created.Id,
-		qboSyncToken: created.SyncToken,
-	});
+	const { created: firstLink } = await ctx.runMutation(
+		internal.quickbooks.upsertEntityLink,
+		{
+			orgId: connection.orgId,
+			entityType: "client",
+			localId: clientId,
+			qboId: created.Id,
+			qboSyncToken: created.SyncToken,
+		}
+	);
+	// Activity entry on first link only — renames must not spam the feed.
+	if (firstLink) {
+		await ctx.runMutation(internal.quickbooks.recordClientSyncActivity, {
+			orgId: connection.orgId,
+			clientId,
+			qboDisplayName: customer.DisplayName,
+			qboId: created.Id,
+		});
+	}
 	return created.Id;
 }
 
@@ -763,6 +775,108 @@ async function syncInvoice(
 	return { kind: "done" };
 }
 
+/** QBO "Object Not Found" — the entity is already gone, so a void is moot. */
+function isObjectNotFound(error: unknown): boolean {
+	return (
+		error instanceof QboRequestError &&
+		error.faults.some((fault) => fault.code === "610")
+	);
+}
+
+/**
+ * Void a cancelled invoice in QBO. Re-GETs for a fresh SyncToken (the local
+ * token may be stale) and POSTs to `/invoice?operation=void`. The link is kept
+ * so a later reactivation updates the voided invoice instead of creating a
+ * second one.
+ */
+async function voidInvoice(
+	ctx: ActionCtx,
+	connection: Connection,
+	tokens: QboRef,
+	invoiceId: Id<"invoices">
+): Promise<SyncOutcome> {
+	const link = await ctx.runQuery(internal.quickbooks.getEntityLinkInternal, {
+		orgId: connection.orgId,
+		entityType: "invoice",
+		localId: invoiceId,
+	});
+	// Never pushed to QuickBooks: nothing to void.
+	if (!link) return { kind: "done" };
+
+	// The invoice may have been reactivated after this job was claimed. A
+	// deleted invoice (null payload) still gets voided.
+	const payload = await ctx.runQuery(internal.quickbooks.getSyncJobPayload, {
+		orgId: connection.orgId,
+		entityType: "invoice",
+		localId: invoiceId,
+	});
+	if (payload?.kind === "invoice" && payload.invoice.status !== "cancelled") {
+		return { kind: "done" };
+	}
+
+	const getFreshToken = async (): Promise<string | null> => {
+		try {
+			const fresh = await qboFetch<QboEntityResponse<"Invoice">>({
+				accessToken: tokens.accessToken,
+				realmId: tokens.realmId,
+				environment: tokens.environment,
+				path: `/invoice/${link.qboId}`,
+			});
+			return fresh.Invoice.SyncToken;
+		} catch (error) {
+			if (isObjectNotFound(error)) return null;
+			throw error;
+		}
+	};
+
+	const syncToken = await getFreshToken();
+	// Already gone from QuickBooks — treat as success, keep the link.
+	if (syncToken === null) return { kind: "done" };
+
+	let voided: { Id: string; SyncToken: string };
+	try {
+		voided = (
+			await qboPost<QboEntityResponse<"Invoice">>(tokens, "/invoice?operation=void", {
+				Id: link.qboId,
+				SyncToken: syncToken,
+			})
+		).Invoice;
+	} catch (error) {
+		if (isObjectNotFound(error)) return { kind: "done" };
+		if (!(error instanceof QboRequestError) || !error.isStaleSyncToken) {
+			throw error;
+		}
+		// One stale-token retry, mirroring sparseUpdate.
+		const retryToken = await getFreshToken();
+		if (retryToken === null) return { kind: "done" };
+		voided = (
+			await qboPost<QboEntityResponse<"Invoice">>(tokens, "/invoice?operation=void", {
+				Id: link.qboId,
+				SyncToken: retryToken,
+			})
+		).Invoice;
+	}
+
+	// A synced Payment referencing this invoice is now orphaned in QuickBooks;
+	// only the user can decide what to do with it.
+	const hasSyncedPayment: boolean = await ctx.runQuery(
+		internal.quickbooks.hasSyncedPaymentForInvoice,
+		{ orgId: connection.orgId, invoiceId }
+	);
+
+	await ctx.runMutation(internal.quickbooks.upsertEntityLink, {
+		orgId: connection.orgId,
+		entityType: "invoice",
+		localId: invoiceId,
+		qboId: voided.Id,
+		qboSyncToken: voided.SyncToken,
+		syncWarning: hasSyncedPayment
+			? "Voided in QuickBooks; a synced payment referenced this invoice — review it in QuickBooks"
+			: undefined,
+	});
+	return { kind: "done" };
+}
+
 async function syncPayment(
 	ctx: ActionCtx,
 	connection: Connection,
@@ -947,6 +1061,14 @@ async function syncOne(
 		return { kind: "done" };
 	}
 	if (job.entityType === "invoice") {
+		if (job.operation === "void") {
+			return await voidInvoice(
+				ctx,
+				connection,
+				tokens,
+				job.localId as Id<"invoices">
+			);
+		}
 		return await syncInvoice(
 			ctx,
 			connection,

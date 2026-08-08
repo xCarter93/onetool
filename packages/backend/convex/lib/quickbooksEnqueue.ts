@@ -13,14 +13,24 @@ import type { Id } from "../_generated/dataModel";
 import { internal } from "../_generated/api";
 
 export type QboEntityType = "client" | "invoice" | "payment" | "sku";
+export type QboOperation = "upsert" | "void";
+
+type Eligibility =
+	| { eligible: false }
+	| { eligible: true; operation: QboOperation };
+
+const UPSERT: Eligibility = { eligible: true, operation: "upsert" };
+const INELIGIBLE: Eligibility = { eligible: false };
 
 /**
- * Decide whether this entity is currently sync-eligible.
+ * Decide whether this entity is currently sync-eligible, and with which
+ * operation.
  *
  * The hook has no "what just happened" parameter on purpose: current state is
  * enough. An invoice that already has a QBO link always re-syncs (edits must
- * propagate); an unlinked draft only syncs when the org opted into
- * `syncInvoicesOn: "created"`. Payments sync once settled, when the toggle is on.
+ * propagate, and a cancelled one becomes a void); an unlinked draft only syncs
+ * when the org opted into `syncInvoicesOn: "created"`. Payments sync once
+ * settled, when the toggle is on.
  */
 async function isEligible(
 	ctx: MutationCtx,
@@ -31,8 +41,8 @@ async function isEligible(
 	orgId: Id<"organizations">,
 	entityType: QboEntityType,
 	localId: string
-): Promise<boolean> {
-	if (entityType === "client") return true;
+): Promise<Eligibility> {
+	if (entityType === "client") return UPSERT;
 
 	// A SKU only syncs once it has a QBO Item; unlinked ones are created lazily
 	// by the next invoice that references them.
@@ -43,36 +53,38 @@ async function isEligible(
 				q.eq("orgId", orgId).eq("entityType", "sku").eq("localId", localId)
 			)
 			.first();
-		return link !== null;
+		return link !== null ? UPSERT : INELIGIBLE;
 	}
 
 	if (entityType === "invoice") {
 		const invoiceId = ctx.db.normalizeId("invoices", localId);
-		if (!invoiceId) return false;
+		if (!invoiceId) return INELIGIBLE;
 		const invoice = await ctx.db.get(invoiceId);
-		if (!invoice || invoice.orgId !== orgId) return false;
-		// Void propagation is Phase 3; never re-push a cancelled invoice's
-		// last state as an upsert.
-		if (invoice.status === "cancelled") return false;
+		if (!invoice || invoice.orgId !== orgId) return INELIGIBLE;
 		const link = await ctx.db
 			.query("quickbooksEntityLinks")
 			.withIndex("by_org_entity", (q) =>
 				q.eq("orgId", orgId).eq("entityType", "invoice").eq("localId", localId)
 			)
 			.first();
-		if (link) return true;
-		if (invoice.status === "draft" && connection.syncInvoicesOn === "sent") {
-			return false;
+		// Cancelling voids the QBO invoice; one that never reached QuickBooks
+		// has nothing to void, and its last state must never be re-pushed.
+		if (invoice.status === "cancelled") {
+			return link ? { eligible: true, operation: "void" } : INELIGIBLE;
 		}
-		return true;
+		if (link) return UPSERT;
+		if (invoice.status === "draft" && connection.syncInvoicesOn === "sent") {
+			return INELIGIBLE;
+		}
+		return UPSERT;
 	}
 
-	if (!connection.syncPayments) return false;
+	if (!connection.syncPayments) return INELIGIBLE;
 	const paymentId = ctx.db.normalizeId("payments", localId);
-	if (!paymentId) return false;
+	if (!paymentId) return INELIGIBLE;
 	const payment = await ctx.db.get(paymentId);
-	if (!payment || payment.orgId !== orgId) return false;
-	return payment.status === "paid";
+	if (!payment || payment.orgId !== orgId) return INELIGIBLE;
+	return payment.status === "paid" ? UPSERT : INELIGIBLE;
 }
 
 /**
@@ -99,9 +111,15 @@ export async function maybeEnqueueQboSync(
 		.first();
 	if (!connection || connection.status === "disconnected") return false;
 
-	if (!(await isEligible(ctx, connection, orgId, entityType, localId))) {
-		return false;
-	}
+	const eligibility = await isEligible(
+		ctx,
+		connection,
+		orgId,
+		entityType,
+		localId
+	);
+	if (!eligibility.eligible) return false;
+	const operation = eligibility.operation;
 
 	const dedupeKey = `${entityType}:${localId}`;
 	const existing = await ctx.db
@@ -110,13 +128,20 @@ export async function maybeEnqueueQboSync(
 			q.eq("orgId", orgId).eq("dedupeKey", dedupeKey).eq("status", "pending")
 		)
 		.first();
-	if (existing) return true;
+	if (existing) {
+		// The latest intent wins rather than stacking: a cancel supersedes a
+		// queued upsert, and reactivating supersedes a queued void.
+		if (existing.operation !== operation) {
+			await ctx.db.patch(existing._id, { operation });
+		}
+		return true;
+	}
 
 	await ctx.db.insert("quickbooksSyncJobs", {
 		orgId,
 		entityType,
 		localId,
-		operation: "upsert",
+		operation,
 		status: "pending",
 		attempts: 0,
 		runAfter: Date.now(),

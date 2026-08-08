@@ -149,6 +149,8 @@ import type * as projects from "../projects.js";
 import type * as push from "../push.js";
 import type * as quickbooks from "../quickbooks.js";
 import type * as quickbooksActions from "../quickbooksActions.js";
+import type * as quickbooksImport from "../quickbooksImport.js";
+import type * as quickbooksImportActions from "../quickbooksImportActions.js";
 import type * as quoteLineItems from "../quoteLineItems.js";
 import type * as quotes from "../quotes.js";
 import type * as rateLimits from "../rateLimits.js";
@@ -320,6 +322,8 @@ declare const fullApi: ApiFromModules<{
   push: typeof push;
   quickbooks: typeof quickbooks;
   quickbooksActions: typeof quickbooksActions;
+  quickbooksImport: typeof quickbooksImport;
+  quickbooksImportActions: typeof quickbooksImportActions;
   quoteLineItems: typeof quoteLineItems;
   quotes: typeof quotes;
   rateLimits: typeof rateLimits;

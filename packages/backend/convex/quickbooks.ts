@@ -9,6 +9,7 @@ import { getCurrentUserOrgId, getCurrentUserOrThrow } from "./lib/auth";
 import { hasPremiumAccess } from "./lib/permissions";
 import { formatCurrency } from "./lib/money";
 import { maybeEnqueueQboSync } from "./lib/quickbooksEnqueue";
+import { createActivity } from "./lib/activities";
 
 /**
  * QuickBooks Online connection + token lifecycle (PRD §6.2, §6.5).
@@ -143,6 +144,77 @@ export const disconnect = userMutation({
 			internal.quickbooksActions.revokeConnection,
 			{ orgId: ctx.orgId }
 		);
+		return null;
+	},
+});
+
+/**
+ * Reset: wipe every trace of QBO state so the org can connect a DIFFERENT
+ * company. Without this, reconnecting to another realm dead-ends on
+ * `realm_mismatch` in storeConnection.
+ *
+ * Deletes in bounded batches — these tables are small per-org (jobs are pruned,
+ * links scale with clients), so one transaction is enough.
+ */
+export const resetConnection = userMutation({
+	args: {},
+	handler: async (ctx): Promise<null> => {
+		await requirePremium(ctx);
+		await requireOrgOwner(ctx);
+
+		const connection = await connectionForOrg(ctx, ctx.orgId);
+		if (!connection) {
+			throw new ConvexError("QuickBooks is not connected");
+		}
+
+		const BATCH = 500;
+
+		for (;;) {
+			const links = await ctx.db
+				.query("quickbooksEntityLinks")
+				.withIndex("by_org_entity", (q) => q.eq("orgId", ctx.orgId))
+				.take(BATCH);
+			for (const link of links) await ctx.db.delete(link._id);
+			if (links.length < BATCH) break;
+		}
+
+		for (;;) {
+			const jobs = await ctx.db
+				.query("quickbooksSyncJobs")
+				.withIndex("by_org_status", (q) => q.eq("orgId", ctx.orgId))
+				.take(BATCH);
+			for (const job of jobs) await ctx.db.delete(job._id);
+			if (jobs.length < BATCH) break;
+		}
+
+		for (;;) {
+			const rows = await ctx.db
+				.query("quickbooksImportRows")
+				.withIndex("by_org", (q) => q.eq("orgId", ctx.orgId))
+				.take(BATCH);
+			for (const row of rows) await ctx.db.delete(row._id);
+			if (rows.length < BATCH) break;
+		}
+
+		for (;;) {
+			const runs = await ctx.db
+				.query("quickbooksImportRuns")
+				.withIndex("by_org", (q) => q.eq("orgId", ctx.orgId))
+				.take(BATCH);
+			for (const run of runs) await ctx.db.delete(run._id);
+			if (runs.length < BATCH) break;
+		}
+
+		if (connection.status !== "disconnected") {
+			// Explicit-token form: the doc is deleted in this transaction, so the
+			// action cannot read it (same contract as the org-delete cascade).
+			await ctx.scheduler.runAfter(
+				0,
+				internal.quickbooksActions.revokeConnection,
+				{ refreshToken: connection.refreshToken }
+			);
+		}
+		await ctx.db.delete(connection._id);
 		return null;
 	},
 });
@@ -592,7 +664,8 @@ export const upsertEntityLink = internalMutation({
 		qboSyncToken: v.string(),
 		syncWarning: v.optional(v.string()),
 	},
-	handler: async (ctx, args): Promise<null> => {
+	/** `created` is true only on first link — the worker uses it to log activity once. */
+	handler: async (ctx, args): Promise<{ created: boolean }> => {
 		const existing = await ctx.db
 			.query("quickbooksEntityLinks")
 			.withIndex("by_org_entity", (q) =>
@@ -613,7 +686,7 @@ export const upsertEntityLink = internalMutation({
 
 		if (existing) {
 			await ctx.db.patch(existing._id, fields);
-			return null;
+			return { created: false };
 		}
 		await ctx.db.insert("quickbooksEntityLinks", {
 			orgId: args.orgId,
@@ -621,7 +694,68 @@ export const upsertEntityLink = internalMutation({
 			localId: args.localId,
 			...fields,
 		});
+		return { created: true };
+	},
+});
+
+/**
+ * Activity-feed entry for the client record, written once when the client first
+ * lands in QuickBooks (created or adopted). Renames never emit — that would
+ * spam the feed. The activityType union has no QuickBooks member, so this
+ * reuses `client_updated` with a distinct description.
+ */
+export const recordClientSyncActivity = internalMutation({
+	args: {
+		orgId: v.id("organizations"),
+		clientId: v.id("clients"),
+		qboDisplayName: v.string(),
+		qboId: v.string(),
+	},
+	handler: async (ctx, args): Promise<null> => {
+		const client = await ctx.db.get(args.clientId);
+		if (!client || client.orgId !== args.orgId) return null;
+		const connection = await ctx.db
+			.query("quickbooksConnections")
+			.withIndex("by_org", (q) => q.eq("orgId", args.orgId))
+			.first();
+		if (!connection) return null;
+
+		// The worker has no ambient user: attribute to whoever connected QBO.
+		await createActivity(ctx, {
+			activityType: "client_updated",
+			entityType: "client",
+			entityId: client._id,
+			entityName: client.companyName,
+			description: `Synced to QuickBooks as ${args.qboDisplayName}`,
+			metadata: { quickbooks: { qboId: args.qboId } },
+			actor: { userId: connection.connectedByUserId, orgId: args.orgId },
+		});
 		return null;
+	},
+});
+
+/** Void guard: does any payment on this invoice already exist in QuickBooks? */
+export const hasSyncedPaymentForInvoice = internalQuery({
+	args: { orgId: v.id("organizations"), invoiceId: v.id("invoices") },
+	handler: async (ctx, args): Promise<boolean> => {
+		const payments = await ctx.db
+			.query("payments")
+			.withIndex("by_invoice", (q) => q.eq("invoiceId", args.invoiceId))
+			.take(200);
+		for (const payment of payments) {
+			if (payment.orgId !== args.orgId) continue;
+			const link = await ctx.db
+				.query("quickbooksEntityLinks")
+				.withIndex("by_org_entity", (q) =>
+					q
+						.eq("orgId", args.orgId)
+						.eq("entityType", "payment")
+						.eq("localId", payment._id)
+				)
+				.first();
+			if (link) return true;
+		}
+		return false;
 	},
 });
 
