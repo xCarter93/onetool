@@ -1207,6 +1207,7 @@ export const createFromQuote = userMutation({
 				cost: quoteLineItem.cost,
 				total: quoteLineItem.amount,
 				sortOrder: quoteLineItem.sortOrder,
+				skuId: quoteLineItem.skuId,
 			});
 		}
 

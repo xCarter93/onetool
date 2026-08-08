@@ -167,18 +167,24 @@ export function deriveInvoiceAmounts(
 	};
 }
 
+/** A line item plus the QBO Item it resolved to (absent → generic item). */
+export type QboInvoiceLineInput = Doc<"invoiceLineItems"> & {
+	itemQboId?: string;
+};
+
 /**
  * Invoice → QBO Invoice.
  *
- * Every line references one generic "OneTool Service" item; the real detail
- * lives in Description (Jobber's pattern). Per-line rounding is reconciled
+ * A line references its SKU's QBO Item when one was resolved, otherwise the
+ * generic "OneTool Service" item; the real detail lives in Description
+ * (Jobber's pattern). Per-line rounding is reconciled
  * against the stored `invoice.total`: any residual cents are absorbed by the
  * last sales line, which then drops Qty/UnitPrice so QBO does not recompute
  * the adjusted Amount back to quantity x unit price.
  */
 export function buildQboInvoice(args: {
 	invoice: Doc<"invoices">;
-	lineItems: Doc<"invoiceLineItems">[];
+	lineItems: QboInvoiceLineInput[];
 	customerQboId: string;
 	defaultServiceItemQboId: string;
 }): QboInvoicePayload {
@@ -190,7 +196,7 @@ export function buildQboInvoice(args: {
 		Description: item.description,
 		LineNum: index + 1,
 		SalesItemLineDetail: {
-			ItemRef: { value: defaultServiceItemQboId },
+			ItemRef: { value: item.itemQboId ?? defaultServiceItemQboId },
 			Qty: item.quantity,
 			UnitPrice: roundCents(item.unitPrice),
 		},

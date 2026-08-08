@@ -311,6 +311,7 @@ function LineItemRow({
 							align="end"
 							onSelect={(sku) =>
 								controller.applySku(item.id, {
+									id: sku._id,
 									name: sku.name,
 									unit: sku.unit,
 									rate: sku.rate,

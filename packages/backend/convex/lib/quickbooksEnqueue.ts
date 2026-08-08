@@ -12,7 +12,7 @@ import type { MutationCtx } from "../_generated/server";
 import type { Id } from "../_generated/dataModel";
 import { internal } from "../_generated/api";
 
-export type QboEntityType = "client" | "invoice" | "payment";
+export type QboEntityType = "client" | "invoice" | "payment" | "sku";
 
 /**
  * Decide whether this entity is currently sync-eligible.
@@ -33,6 +33,18 @@ async function isEligible(
 	localId: string
 ): Promise<boolean> {
 	if (entityType === "client") return true;
+
+	// A SKU only syncs once it has a QBO Item; unlinked ones are created lazily
+	// by the next invoice that references them.
+	if (entityType === "sku") {
+		const link = await ctx.db
+			.query("quickbooksEntityLinks")
+			.withIndex("by_org_entity", (q) =>
+				q.eq("orgId", orgId).eq("entityType", "sku").eq("localId", localId)
+			)
+			.first();
+		return link !== null;
+	}
 
 	if (entityType === "invoice") {
 		const invoiceId = ctx.db.normalizeId("invoices", localId);

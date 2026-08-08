@@ -423,8 +423,21 @@ export const saveAccountMappings = internalMutation({
 const QBO_ENTITY_TYPE = v.union(
 	v.literal("client"),
 	v.literal("invoice"),
-	v.literal("payment")
+	v.literal("payment"),
+	v.literal("sku")
 );
+
+/**
+ * Dependency order within a claimed batch. Items are independent and cheap, so
+ * they go first; the rest keeps the client → invoice → payment chain that lets
+ * a batch resolve its own dependencies in one pass.
+ */
+const JOB_TYPE_RANK: Record<string, number> = {
+	sku: 0,
+	client: 1,
+	invoice: 2,
+	payment: 3,
+};
 
 /**
  * Flip due pending jobs to "processing" and hand them to the caller. This is
@@ -447,6 +460,11 @@ export const claimDueJobs = internalMutation({
 			await ctx.db.patch(job._id, { status: "processing", claimedAt: now });
 			claimed.push({ ...job, status: "processing", claimedAt: now });
 		}
+		// Stable sort: dependency order within the batch, insertion order within a type.
+		claimed.sort(
+			(a, b) =>
+				(JOB_TYPE_RANK[a.entityType] ?? 9) - (JOB_TYPE_RANK[b.entityType] ?? 9)
+		);
 		return claimed;
 	},
 });
@@ -639,7 +657,10 @@ export type QboSyncPayload =
 			invoice: Doc<"invoices">;
 			lineItems: Doc<"invoiceLineItems">[];
 			clientId: Id<"clients">;
+			/** Distinct in-org SKUs referenced by the lines, keyed by skuId. */
+			skus: Record<string, Doc<"skus">>;
 	  }
+	| { kind: "sku"; sku: Doc<"skus"> }
 	| {
 			kind: "payment";
 			payment: Doc<"payments">;
@@ -684,12 +705,32 @@ export const getSyncJobPayload = internalQuery({
 				.withIndex("by_invoice", (q) => q.eq("invoiceId", invoiceId))
 				.collect();
 			lineItems.sort((a, b) => a.sortOrder - b.sortOrder);
+
+			// Resolve the lines' SKUs here so the worker needs no per-line query.
+			// A missing / cross-org sku is simply absent: the line falls back to
+			// the generic service item.
+			const skus: Record<string, Doc<"skus">> = {};
+			for (const item of lineItems) {
+				if (!item.skuId || skus[item.skuId]) continue;
+				const sku = await ctx.db.get(item.skuId);
+				if (sku && sku.orgId === args.orgId) skus[item.skuId] = sku;
+			}
+
 			return {
 				kind: "invoice",
 				invoice,
 				lineItems,
 				clientId: invoice.clientId,
+				skus,
 			};
+		}
+
+		if (args.entityType === "sku") {
+			const skuId = ctx.db.normalizeId("skus", args.localId);
+			if (!skuId) return null;
+			const sku = await ctx.db.get(skuId);
+			if (!sku || sku.orgId !== args.orgId) return null;
+			return { kind: "sku", sku };
 		}
 
 		const paymentId = ctx.db.normalizeId("payments", args.localId);

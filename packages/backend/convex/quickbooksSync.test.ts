@@ -310,7 +310,7 @@ describe("QuickBooks sync engine", () => {
 
 	async function clearJobsOfType(
 		orgId: Id<"organizations">,
-		entityType: "client" | "invoice" | "payment" | "all"
+		entityType: "client" | "invoice" | "payment" | "sku" | "all"
 	) {
 		await t.run(async (ctx) => {
 			const all = await ctx.db
@@ -937,7 +937,7 @@ describe("QuickBooks sync engine", () => {
 		async function seedJobFor(
 			orgId: Id<"organizations">,
 			localId: string,
-			entityType: "client" | "invoice" | "payment" = "client"
+			entityType: "client" | "invoice" | "payment" | "sku" = "client"
 		) {
 			return await t.run(async (ctx) =>
 				ctx.db.insert("quickbooksSyncJobs", {
@@ -955,7 +955,7 @@ describe("QuickBooks sync engine", () => {
 
 		async function linkFor(
 			orgId: Id<"organizations">,
-			entityType: "client" | "invoice" | "payment",
+			entityType: "client" | "invoice" | "payment" | "sku",
 			localId: string
 		) {
 			return await t.run(async (ctx) =>
@@ -1601,6 +1601,331 @@ describe("QuickBooks sync engine", () => {
 			const jobs = await jobsFor(org.orgId);
 			expect(jobs[0].status).toBe("failed");
 			expect(jobs[0].lastError).toContain("no longer exists");
+		});
+
+		// ------------------------------------------------------------------
+		// Per-SKU Items (lazy catalog sync)
+		// ------------------------------------------------------------------
+
+		describe("per-SKU items", () => {
+			/** Fully mapped connection: item ops need the income account. */
+			async function connectMapped(orgId: Id<"organizations">) {
+				await connect(orgId, {
+					defaultServiceItemQboId: "9",
+					incomeAccountQboId: "44",
+				});
+			}
+
+			/**
+			 * Line items are created through the public API; `skuId` is patched in
+			 * because invoiceLineItems.create does not accept it yet (owned by a
+			 * parallel change). Line-item tables are deliberately untriggered.
+			 */
+			async function addLine(
+				asOwner: ReturnType<typeof t.withIdentity>,
+				invoiceId: Id<"invoices">,
+				skuId?: Id<"skus">
+			) {
+				const lineId = await asOwner.mutation(api.invoiceLineItems.create, {
+					invoiceId,
+					description: "Mowing visit",
+					quantity: 1,
+					unitPrice: 100,
+					sortOrder: 0,
+				});
+				if (skuId) {
+					await t.run(async (ctx) => ctx.db.patch(lineId, { skuId }));
+				}
+				return lineId;
+			}
+
+			function itemRefOf(body: unknown): string | undefined {
+				const line = (
+					body as {
+						Line?: Array<{
+							SalesItemLineDetail?: { ItemRef?: { value: string } };
+						}>;
+					}
+				).Line?.[0];
+				return line?.SalesItemLineDetail?.ItemRef?.value;
+			}
+
+			it("creates a QBO Item for a line's SKU and points the line at it", async () => {
+				const { org, asOwner } = await setupOrg("w_sku_new");
+				await connectMapped(org.orgId);
+				const clientId = await asOwner.mutation(api.clients.create, {
+					companyName: "Acme Co",
+					status: "active",
+				});
+				const skuId = await asOwner.mutation(api.skus.create, {
+					name: "Lawn Mowing",
+					unit: "visit",
+					rate: 100,
+				});
+				const invoiceId = await createInvoice(asOwner, clientId, "sent");
+				await addLine(asOwner, invoiceId, skuId);
+				await clearJobsOfType(org.orgId, "client");
+
+				const calls = stubQbo((url) => {
+					if (url.includes("/query")) return { payload: { QueryResponse: {} } };
+					if (url.includes("/customer")) {
+						return { payload: { Customer: { Id: "101", SyncToken: "0" } } };
+					}
+					if (url.includes("/item")) {
+						return {
+							payload: {
+								Item: { Id: "77", Name: "Lawn Mowing", SyncToken: "0" },
+							},
+						};
+					}
+					return { payload: { Invoice: { Id: "202", SyncToken: "0" } } };
+				});
+
+				const result = await t.action(
+					internal.quickbooksActions.processOrgJobs,
+					{ orgId: org.orgId }
+				);
+				expect(result.processed).toBe(1);
+
+				const itemPost = calls.find((call) => call.url.includes("/item?"));
+				expect(itemPost?.url).toContain(`requestid=${skuId}-0`);
+				expect(itemPost?.body).toMatchObject({
+					Name: "Lawn Mowing",
+					Type: "Service",
+					IncomeAccountRef: { value: "44" },
+				});
+
+				expect(await linkFor(org.orgId, "sku", skuId)).toMatchObject({
+					qboId: "77",
+				});
+				const invoicePost = calls.find((call) => call.url.includes("/invoice"));
+				expect(itemRefOf(invoicePost?.body)).toBe("77");
+			});
+
+			it("adopts an existing QBO Item with the same name instead of creating one", async () => {
+				const { org, asOwner } = await setupOrg("w_sku_adopt");
+				await connectMapped(org.orgId);
+				const clientId = await asOwner.mutation(api.clients.create, {
+					companyName: "Acme Co",
+					status: "active",
+				});
+				const skuId = await asOwner.mutation(api.skus.create, {
+					name: "Lawn Mowing",
+					unit: "visit",
+					rate: 100,
+				});
+				const invoiceId = await createInvoice(asOwner, clientId, "sent");
+				await addLine(asOwner, invoiceId, skuId);
+				await clearJobsOfType(org.orgId, "client");
+
+				const calls = stubQbo((url) => {
+					if (url.includes("/query")) {
+						return {
+							payload: {
+								QueryResponse: {
+									Item: [
+										{ Id: "88", Name: "Lawn Mowing", SyncToken: "3" },
+									],
+								},
+							},
+						};
+					}
+					if (url.includes("/customer")) {
+						return { payload: { Customer: { Id: "101", SyncToken: "0" } } };
+					}
+					return { payload: { Invoice: { Id: "202", SyncToken: "0" } } };
+				});
+
+				await t.action(internal.quickbooksActions.processOrgJobs, {
+					orgId: org.orgId,
+				});
+
+				expect(calls.some((call) => call.url.includes("/item?"))).toBe(false);
+				expect(await linkFor(org.orgId, "sku", skuId)).toMatchObject({
+					qboId: "88",
+					qboSyncToken: "3",
+				});
+				const invoicePost = calls.find((call) => call.url.includes("/invoice"));
+				expect(itemRefOf(invoicePost?.body)).toBe("88");
+			});
+
+			it("keeps the generic item for a line with no SKU", async () => {
+				const { org, asOwner } = await setupOrg("w_sku_none");
+				await connectMapped(org.orgId);
+				const clientId = await asOwner.mutation(api.clients.create, {
+					companyName: "Acme Co",
+					status: "active",
+				});
+				const invoiceId = await createInvoice(asOwner, clientId, "sent");
+				await addLine(asOwner, invoiceId);
+				await clearJobsOfType(org.orgId, "client");
+
+				const calls = stubQbo((url) => {
+					if (url.includes("/customer")) {
+						return { payload: { Customer: { Id: "101", SyncToken: "0" } } };
+					}
+					return { payload: { Invoice: { Id: "202", SyncToken: "0" } } };
+				});
+
+				await t.action(internal.quickbooksActions.processOrgJobs, {
+					orgId: org.orgId,
+				});
+
+				expect(calls.some((call) => call.url.includes("/item"))).toBe(false);
+				const invoicePost = calls.find((call) => call.url.includes("/invoice"));
+				expect(itemRefOf(invoicePost?.body)).toBe("9");
+			});
+
+			it("falls back to the generic item when the SKU was deleted", async () => {
+				const { org, asOwner } = await setupOrg("w_sku_gone");
+				await connectMapped(org.orgId);
+				const clientId = await asOwner.mutation(api.clients.create, {
+					companyName: "Acme Co",
+					status: "active",
+				});
+				const skuId = await asOwner.mutation(api.skus.create, {
+					name: "Lawn Mowing",
+					unit: "visit",
+					rate: 100,
+				});
+				const invoiceId = await createInvoice(asOwner, clientId, "sent");
+				await addLine(asOwner, invoiceId, skuId);
+				await asOwner.mutation(api.skus.permanentlyDelete, { id: skuId });
+				await clearJobsOfType(org.orgId, "client");
+
+				const calls = stubQbo((url) => {
+					if (url.includes("/customer")) {
+						return { payload: { Customer: { Id: "101", SyncToken: "0" } } };
+					}
+					return { payload: { Invoice: { Id: "202", SyncToken: "0" } } };
+				});
+
+				const result = await t.action(
+					internal.quickbooksActions.processOrgJobs,
+					{ orgId: org.orgId }
+				);
+
+				expect(result.processed).toBe(1);
+				expect(calls.some((call) => call.url.includes("/item"))).toBe(false);
+				const invoicePost = calls.find((call) => call.url.includes("/invoice"));
+				expect(itemRefOf(invoicePost?.body)).toBe("9");
+			});
+
+			it("enqueues and sparse-updates the Item when a linked SKU is renamed", async () => {
+				const { org, asOwner } = await setupOrg("w_sku_rename");
+				await connectMapped(org.orgId);
+				const skuId = await asOwner.mutation(api.skus.create, {
+					name: "Lawn Mowing",
+					unit: "visit",
+					rate: 100,
+				});
+				await t.mutation(internal.quickbooks.upsertEntityLink, {
+					orgId: org.orgId,
+					entityType: "sku",
+					localId: skuId,
+					qboId: "77",
+					qboSyncToken: "0",
+				});
+
+				await asOwner.mutation(api.skus.update, {
+					id: skuId,
+					name: "Lawn Care",
+				});
+
+				const jobs = await jobsFor(org.orgId);
+				expect(jobs).toHaveLength(1);
+				expect(jobs[0]).toMatchObject({
+					entityType: "sku",
+					localId: skuId,
+					status: "pending",
+				});
+
+				const calls = stubQbo(() => ({
+					payload: { Item: { Id: "77", Name: "Lawn Care", SyncToken: "1" } },
+				}));
+
+				const result = await t.action(
+					internal.quickbooksActions.processOrgJobs,
+					{ orgId: org.orgId }
+				);
+
+				expect(result.processed).toBe(1);
+				// QBO rejects "/Item"; only the lowercase path works.
+				expect(new URL(calls[0].url).pathname).toContain("/item");
+				expect(calls[0].body).toMatchObject({
+					Id: "77",
+					SyncToken: "0",
+					sparse: true,
+					Name: "Lawn Care",
+				});
+				expect(await linkFor(org.orgId, "sku", skuId)).toMatchObject({
+					qboSyncToken: "1",
+				});
+			});
+
+			it("fails a rename terminally on a 6240 name collision (never adopts)", async () => {
+				const { org, asOwner } = await setupOrg("w_sku_collide");
+				await connectMapped(org.orgId);
+				const skuId = await asOwner.mutation(api.skus.create, {
+					name: "Lawn Mowing",
+					unit: "visit",
+					rate: 100,
+				});
+				await t.mutation(internal.quickbooks.upsertEntityLink, {
+					orgId: org.orgId,
+					entityType: "sku",
+					localId: skuId,
+					qboId: "77",
+					qboSyncToken: "0",
+				});
+				await asOwner.mutation(api.skus.update, {
+					id: skuId,
+					name: "Lawn Care",
+				});
+
+				stubQbo(() => ({
+					status: 400,
+					payload: {
+						Fault: {
+							type: "ValidationFault",
+							Error: [{ code: "6240", Message: "Duplicate Name Exists Error" }],
+						},
+					},
+				}));
+
+				await t.action(internal.quickbooksActions.processOrgJobs, {
+					orgId: org.orgId,
+				});
+
+				const jobs = await jobsFor(org.orgId);
+				expect(jobs[0].status).toBe("failed");
+				expect(jobs[0].lastError).toContain(
+					'An item named "Lawn Care" already exists in QuickBooks'
+				);
+				// The link still points at the original item.
+				expect(await linkFor(org.orgId, "sku", skuId)).toMatchObject({
+					qboId: "77",
+				});
+			});
+
+			it("does not enqueue a rename for an unlinked SKU", async () => {
+				const { org, asOwner } = await setupOrg("w_sku_unlinked");
+				await connectMapped(org.orgId);
+				const skuId = await asOwner.mutation(api.skus.create, {
+					name: "Lawn Mowing",
+					unit: "visit",
+					rate: 100,
+				});
+
+				await asOwner.mutation(api.skus.update, {
+					id: skuId,
+					name: "Lawn Care",
+				});
+				// Rate-only edits never enqueue either.
+				await asOwner.mutation(api.skus.update, { id: skuId, rate: 120 });
+
+				expect(await jobsFor(org.orgId)).toHaveLength(0);
+			});
 		});
 	});
 });

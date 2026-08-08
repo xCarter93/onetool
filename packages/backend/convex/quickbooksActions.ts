@@ -422,7 +422,7 @@ async function sparseUpdate<K extends string>(
 	ctx: ActionCtx,
 	tokens: QboRef,
 	orgId: Id<"organizations">,
-	entityType: "client" | "invoice",
+	entityType: "client" | "invoice" | "sku",
 	localId: string,
 	resource: K,
 	payload: Record<string, unknown>,
@@ -590,12 +590,85 @@ async function resolveDuplicateCustomer(
 	return retryResponse.Customer;
 }
 
+/** Name lookup for Items. QBO Item names are unique per company. */
+async function findItemByName(
+	tokens: QboRef,
+	name: string
+): Promise<QboItem | null> {
+	const result = await qboQuery<QboItem>(
+		tokens,
+		`SELECT * FROM Item WHERE Name = '${escapeQboQueryValue(name)}'`
+	);
+	return result.QueryResponse?.Item?.find((item) => item.Name === name) ?? null;
+}
+
+/**
+ * Resolve the QBO Item for a SKU, creating it on first use (Jobber's lazy
+ * catalog sync). Adoption by name is the normal path: the user's QuickBooks
+ * usually already has an item called "Lawn Mowing".
+ *
+ * Returns null when the Item cannot be provisioned (no income account mapped);
+ * the caller then falls back to the generic service item rather than failing
+ * the invoice.
+ */
+async function ensureItemForSku(
+	ctx: ActionCtx,
+	connection: Connection,
+	tokens: QboRef,
+	sku: Doc<"skus">,
+	attempts: number
+): Promise<string | null> {
+	const link = await ctx.runQuery(internal.quickbooks.getEntityLinkInternal, {
+		orgId: connection.orgId,
+		entityType: "sku",
+		localId: sku._id,
+	});
+	if (link) return link.qboId;
+
+	const linkItem = async (item: QboItem): Promise<string> => {
+		await ctx.runMutation(internal.quickbooks.upsertEntityLink, {
+			orgId: connection.orgId,
+			entityType: "sku",
+			localId: sku._id,
+			qboId: item.Id,
+			qboSyncToken: item.SyncToken ?? "0",
+		});
+		return item.Id;
+	};
+
+	const existing = await findItemByName(tokens, sku.name);
+	if (existing) return await linkItem(existing);
+
+	if (!connection.incomeAccountQboId) return null;
+
+	try {
+		const created = await qboPost<{ Item: QboItem }>(
+			tokens,
+			// requestid: same idempotency contract as the invoice/payment creates.
+			`/item?requestid=${sku._id}-${attempts}`,
+			{
+				Name: sku.name,
+				Type: "Service",
+				IncomeAccountRef: { value: connection.incomeAccountQboId },
+			}
+		);
+		return await linkItem(created.Item);
+	} catch (error) {
+		if (error instanceof QboRequestError && error.isDuplicateName) {
+			const adopted = await findItemByName(tokens, sku.name);
+			if (adopted) return await linkItem(adopted);
+		}
+		throw error;
+	}
+}
+
 async function syncInvoice(
 	ctx: ActionCtx,
 	connection: Connection,
 	tokens: QboRef,
 	invoiceId: Id<"invoices">,
-	requestId: string
+	requestId: string,
+	attempts: number
 ): Promise<SyncOutcome> {
 	if (!connection.defaultServiceItemQboId) {
 		return { kind: "hold", delayMs: SETUP_HOLD_MS };
@@ -620,9 +693,26 @@ async function syncInvoice(
 		payload.clientId
 	);
 
+	// Per-SKU Items, resolved once per distinct SKU. A line whose SKU was
+	// deleted (absent from payload.skus) silently keeps the generic item.
+	const itemIdBySku = new Map<string, string>();
+	for (const sku of Object.values(payload.skus)) {
+		const itemQboId = await ensureItemForSku(
+			ctx,
+			connection,
+			tokens,
+			sku,
+			attempts
+		);
+		if (itemQboId) itemIdBySku.set(sku._id, itemQboId);
+	}
+
 	const body = buildQboInvoice({
 		invoice: payload.invoice,
-		lineItems: payload.lineItems,
+		lineItems: payload.lineItems.map((item) => {
+			const itemQboId = item.skuId ? itemIdBySku.get(item.skuId) : undefined;
+			return itemQboId ? { ...item, itemQboId } : item;
+		}),
 		customerQboId,
 		defaultServiceItemQboId: connection.defaultServiceItemQboId,
 	});
@@ -772,6 +862,73 @@ async function syncPayment(
 	return { kind: "done" };
 }
 
+/**
+ * Propagate a SKU rename to its QBO Item. Only linked SKUs get here (the
+ * enqueue hook filters the rest), so a missing link means the item was never
+ * pushed and the job is a no-op.
+ */
+async function syncSku(
+	ctx: ActionCtx,
+	connection: Connection,
+	tokens: QboRef,
+	skuId: Id<"skus">
+): Promise<SyncOutcome> {
+	// Same hold as invoices: Item writes belong to a fully mapped connection.
+	if (!connection.defaultServiceItemQboId) {
+		return { kind: "hold", delayMs: SETUP_HOLD_MS };
+	}
+
+	const link = await ctx.runQuery(internal.quickbooks.getEntityLinkInternal, {
+		orgId: connection.orgId,
+		entityType: "sku",
+		localId: skuId,
+	});
+	if (!link) return { kind: "done" };
+
+	const payload = await ctx.runQuery(internal.quickbooks.getSyncJobPayload, {
+		orgId: connection.orgId,
+		entityType: "sku",
+		localId: skuId,
+	});
+	if (!payload || payload.kind !== "sku") {
+		throw new TerminalSyncError(
+			"This line item no longer exists in OneTool, so it cannot be synced."
+		);
+	}
+
+	try {
+		const updated = await sparseUpdate(
+			ctx,
+			tokens,
+			connection.orgId,
+			"sku",
+			skuId,
+			"Item",
+			{ Name: payload.sku.name },
+			link.qboId,
+			link.qboSyncToken
+		);
+		await ctx.runMutation(internal.quickbooks.upsertEntityLink, {
+			orgId: connection.orgId,
+			entityType: "sku",
+			localId: skuId,
+			qboId: updated.Id,
+			qboSyncToken: updated.SyncToken,
+		});
+		return { kind: "done" };
+	} catch (error) {
+		// Never adopt on rename: the colliding item belongs to someone else's
+		// catalog, and merging into it would be silent data loss.
+		if (error instanceof QboRequestError && error.isDuplicateName) {
+			throw new TerminalSyncError(
+				`An item named "${payload.sku.name}" already exists in QuickBooks. Rename it there or in OneTool, then retry.`,
+				error.faults[0]?.code ?? "6240"
+			);
+		}
+		throw error;
+	}
+}
+
 async function syncOne(
 	ctx: ActionCtx,
 	connection: Connection,
@@ -782,6 +939,9 @@ async function syncOne(
 	// but new on each user-visible retry, which increments attempts.
 	const requestId = `${job.localId}-${job.attempts}`;
 
+	if (job.entityType === "sku") {
+		return await syncSku(ctx, connection, tokens, job.localId as Id<"skus">);
+	}
 	if (job.entityType === "client") {
 		await syncClient(ctx, connection, tokens, job.localId as Id<"clients">);
 		return { kind: "done" };
@@ -792,7 +952,8 @@ async function syncOne(
 			connection,
 			tokens,
 			job.localId as Id<"invoices">,
-			requestId
+			requestId,
+			job.attempts
 		);
 	}
 	return await syncPayment(

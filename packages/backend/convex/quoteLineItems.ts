@@ -14,6 +14,7 @@ import {
 	calculateLineItemStats,
 	validateQuoteAccess,
 	validateBulkLineItems,
+	validateLineItemSku,
 } from "./lib/lineItems";
 import {
 	optionalUserQuery,
@@ -215,12 +216,17 @@ export const create = userMutation({
 		rate: v.number(),
 		cost: v.optional(v.number()),
 		sortOrder: v.number(),
+		skuId: v.optional(v.id("skus")),
 	},
 	handler: async (ctx, args): Promise<QuoteLineItemId> => {
 		await ctx.requireLevel("quotes", "modify");
 
 		// Validate all fields using shared utility
 		validateQuoteLineItemFields(args, { isUpdate: false });
+
+		if (args.skuId) {
+			await validateLineItemSku(ctx, args.skuId, ctx.orgId);
+		}
 
 		const parentQuote = await validateQuoteAccess(ctx, args.quoteId);
 		await ctx.requireRecordScope("quotes", () =>
@@ -261,6 +267,7 @@ export const update = userMutation({
 		rate: v.optional(v.number()),
 		cost: v.optional(v.number()),
 		sortOrder: v.optional(v.number()),
+		skuId: v.optional(v.id("skus")),
 	},
 	handler: async (ctx, args): Promise<QuoteLineItemId> => {
 		await ctx.requireLevel("quotes", "modify");
@@ -300,6 +307,10 @@ export const update = userMutation({
 			);
 			// …and must itself accept content edits.
 			assertQuoteContentEditable(newParent);
+		}
+
+		if (filteredUpdates.skuId) {
+			await validateLineItemSku(ctx, filteredUpdates.skuId, ctx.orgId);
 		}
 
 		// Recalculate amount if quantity or rate changed
@@ -370,6 +381,7 @@ export const bulkCreate = userMutation({
 				rate: v.number(),
 				cost: v.optional(v.number()),
 				sortOrder: v.number(),
+				skuId: v.optional(v.id("skus")),
 			})
 		),
 	},
@@ -395,6 +407,10 @@ export const bulkCreate = userMutation({
 		const createdIds: QuoteLineItemId[] = [];
 
 		for (const itemData of args.lineItems) {
+			if (itemData.skuId) {
+				await validateLineItemSku(ctx, itemData.skuId, userOrgId);
+			}
+
 			// Calculate amount and create item
 			const amount = calculateQuoteLineItemAmount(
 				itemData.quantity,
@@ -497,6 +513,7 @@ export const duplicate = userMutation({
 			amount: originalItem.amount,
 			cost: originalItem.cost,
 			sortOrder: nextSortOrder,
+			skuId: originalItem.skuId,
 		});
 
 		await syncQuoteTotals(ctx, originalItem.quoteId, { touchContent: true });
