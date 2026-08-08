@@ -961,7 +961,10 @@ export default defineSchema({
 			v.literal("automation_message"),
 			// Workflow-automation production failure alert (admins, in-app only —
 			// deliberately NOT in PUSHABLE_TYPES so failures don't push at 3am).
-			v.literal("automation_failed")
+			v.literal("automation_failed"),
+			// QuickBooks sync failure alert (admins, in-app only, debounced to
+			// one while any unresolved terminal failure exists).
+			v.literal("quickbooks_sync_failed")
 		),
 		title: v.string(), // Notification title
 		message: v.string(), // Notification message content

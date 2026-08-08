@@ -10,6 +10,8 @@ import { hasPremiumAccess } from "./lib/permissions";
 import { formatCurrency } from "./lib/money";
 import { maybeEnqueueQboSync } from "./lib/quickbooksEnqueue";
 import { createActivity } from "./lib/activities";
+import { resolveMemberUserIds } from "./lib/automationExec/actions";
+import type { MutationCtx } from "./_generated/server";
 
 /**
  * QuickBooks Online connection + token lifecycle (PRD §6.2, §6.5).
@@ -573,6 +575,16 @@ export const markJobFailed = internalMutation({
 		const job = await ctx.db.get(args.jobId);
 		if (!job) return null;
 		const now = Date.now();
+		// Debounce read happens before the patch: another failed job on the org
+		// means the alert for this failure streak already went out.
+		const firstFailure =
+			args.terminal &&
+			(await ctx.db
+				.query("quickbooksSyncJobs")
+				.withIndex("by_org_status_due", (q) =>
+					q.eq("orgId", job.orgId).eq("status", "failed")
+				)
+				.first()) === null;
 		await ctx.db.patch(args.jobId, {
 			status: args.terminal ? "failed" : "pending",
 			attempts: job.attempts + 1,
@@ -582,9 +594,56 @@ export const markJobFailed = internalMutation({
 			lastErrorCode: args.lastErrorCode,
 			claimedAt: undefined,
 		});
+		if (firstFailure) {
+			await notifySyncFailure(ctx, job.orgId);
+		}
 		return null;
 	},
 });
+
+/**
+ * One in-app alert per failure streak, to each org admin: fires only when the
+ * org transitions from zero terminally failed jobs to one (a QuickBooks outage
+ * can fail dozens of jobs in minutes, and per-job alerts would bury the bell),
+ * and an admin who still has the last alert unread is not sent another. In-app
+ * only (not in PUSHABLE_TYPES), mirroring automation_failed. Never throws: an
+ * alert hiccup must not roll back the job's failure patch.
+ */
+async function notifySyncFailure(
+	ctx: MutationCtx,
+	orgId: Id<"organizations">
+): Promise<void> {
+	try {
+		const adminIds = await resolveMemberUserIds(ctx, orgId, true);
+		for (const userId of adminIds) {
+			const unread = await ctx.db
+				.query("notifications")
+				.withIndex("by_user_read", (q) =>
+					q.eq("userId", userId).eq("isRead", false)
+				)
+				.filter((q) =>
+					q.eq(q.field("notificationType"), "quickbooks_sync_failed")
+				)
+				.first();
+			if (unread) continue;
+			await ctx.db.insert("notifications", {
+				orgId,
+				userId,
+				notificationType: "quickbooks_sync_failed",
+				title: "QuickBooks sync needs attention",
+				message:
+					"Something failed to sync to QuickBooks. Review and retry it from Settings.",
+				actionUrl: "/organization/profile?tab=integrations",
+				isRead: false,
+				sentVia: "in_app",
+				sentAt: Date.now(),
+				priority: "high",
+			});
+		}
+	} catch (err) {
+		console.error(`[QuickBooks] notifySyncFailure failed for org ${orgId}`, err);
+	}
+}
 
 /**
  * Disconnect fence: a job claimed before the disconnect sweep ran is cancelled

@@ -10,14 +10,15 @@ export type ImportRowView = FunctionReturnType<
 >["page"][number];
 
 /** What a row will do when the import is committed. */
-export type EffectiveDecision = "link" | "import" | "skip" | "undecided";
+export type EffectiveDecision = "link" | "import" | "site" | "skip" | "undecided";
 
-export type FilterTab = "all" | "link" | "import" | "review" | "skip";
+export type FilterTab = "all" | "link" | "import" | "review" | "sites" | "skip";
 
 export interface PlanCounts {
 	link: number;
 	import: number;
 	review: number;
+	sites: number;
 	skip: number;
 }
 
@@ -26,11 +27,17 @@ export function isDecidable(row: ImportRowView): boolean {
 	return (
 		row.outcome === "proposed_link" ||
 		row.outcome === "proposed_import" ||
+		row.outcome === "proposed_property" ||
 		row.outcome === "ambiguous"
 	);
 }
 
-/** A sub-customer in QuickBooks. Never imported, never overridable. */
+/** A sub-customer job site, headed for clientProperties on the parent. */
+export function isJobSite(row: ImportRowView): boolean {
+	return row.outcome === "proposed_property";
+}
+
+/** An addressless sub-customer in QuickBooks. Never imported, never overridable. */
 export function isSubCustomer(row: ImportRowView): boolean {
 	return row.outcome === "proposed_skip" && row.skipReason === "sub_customer";
 }
@@ -45,6 +52,9 @@ export function proposedDecision(row: ImportRowView): EffectiveDecision {
 		case "proposed_import":
 		case "imported":
 			return "import";
+		case "proposed_property":
+		case "property_created":
+			return "site";
 		case "proposed_skip":
 		case "skipped":
 			return "skip";
@@ -58,15 +68,23 @@ export function proposedDecision(row: ImportRowView): EffectiveDecision {
 /** The reviewer's override when set, otherwise the proposal. */
 export function effectiveDecision(row: ImportRowView): EffectiveDecision {
 	if (row.outcome === "proposed_skip") return "skip";
+	// A job site's only real decision is skip; "import" restores the proposal.
+	if (isJobSite(row)) {
+		return row.decision === "skip" ? "skip" : "site";
+	}
 	if (isDecidable(row) && row.decision) return row.decision;
 	return proposedDecision(row);
 }
 
+function tabForDecision(decision: EffectiveDecision): Exclude<FilterTab, "all"> {
+	if (decision === "undecided") return "review";
+	if (decision === "site") return "sites";
+	return decision;
+}
+
 /** Which filter tab a row belongs to under its effective decision. */
 export function tabForRow(row: ImportRowView): Exclude<FilterTab, "all"> {
-	const decision = effectiveDecision(row);
-	if (decision === "undecided") return "review";
-	return decision;
+	return tabForDecision(effectiveDecision(row));
 }
 
 /**
@@ -82,16 +100,15 @@ export function planCounts(run: ImportRun, loadedRows: ImportRowView[]): PlanCou
 		link: run.autoLinked + (run.proposedLink ?? 0),
 		import: run.proposedImport ?? 0,
 		review: run.ambiguous,
+		sites: run.proposedProperty ?? 0,
 		skip: run.proposedSkip ?? 0,
 	};
 
 	for (const row of loadedRows) {
 		if (!isDecidable(row) || !row.decision) continue;
-		const from = proposedDecision(row);
-		const to = row.decision;
-		if (from === to) continue;
-		const fromKey: keyof PlanCounts = from === "undecided" ? "review" : from;
-		const toKey: keyof PlanCounts = to;
+		const fromKey = tabForDecision(proposedDecision(row));
+		const toKey = tabForDecision(effectiveDecision(row));
+		if (fromKey === toKey) continue;
 		counts[fromKey] = Math.max(0, counts[fromKey] - 1);
 		counts[toKey] += 1;
 	}

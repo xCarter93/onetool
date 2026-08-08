@@ -32,16 +32,25 @@ export function QboSummaryBar({
 }: {
 	totalFetched: number;
 	counts?: PlanCounts;
-	results?: { linked: number; imported: number; skipped: number };
+	results?: { linked: number; imported: number; sites: number; skipped: number };
 }) {
 	const customersLabel = `${totalFetched} customer${totalFetched !== 1 ? "s" : ""}`;
 
 	if (results) {
+		const hasSites = results.sites > 0;
 		return (
-			<div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+			<div
+				className={cn(
+					"grid grid-cols-2 gap-3",
+					hasSites ? "sm:grid-cols-5" : "sm:grid-cols-4"
+				)}
+			>
 				<StatCard dotClass="bg-muted-foreground/50" muted label={customersLabel} />
 				<StatCard dotClass="bg-success" label={`${results.linked} linked`} />
 				<StatCard dotClass="bg-primary" label={`${results.imported} imported`} />
+				{hasSites && (
+					<StatCard dotClass="bg-primary" label={`${results.sites} job sites`} />
+				)}
 				<StatCard
 					dotClass="bg-muted-foreground/50"
 					muted
@@ -53,8 +62,14 @@ export function QboSummaryBar({
 
 	if (!counts) return null;
 
+	const hasSites = counts.sites > 0;
 	return (
-		<div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+		<div
+			className={cn(
+				"grid grid-cols-2 gap-3",
+				hasSites ? "sm:grid-cols-6" : "sm:grid-cols-5"
+			)}
+		>
 			<StatCard dotClass="bg-muted-foreground/50" muted label={customersLabel} />
 			<StatCard dotClass="bg-success" label={`${counts.link} will link`} />
 			<StatCard
@@ -62,6 +77,9 @@ export function QboSummaryBar({
 				label={`${counts.import} new client${counts.import !== 1 ? "s" : ""}`}
 			/>
 			<StatCard dotClass="bg-warning" label={`${counts.review} need review`} />
+			{hasSites && (
+				<StatCard dotClass="bg-primary" label={`${counts.sites} job sites`} />
+			)}
 			<StatCard
 				dotClass="bg-muted-foreground/50"
 				muted

@@ -218,6 +218,7 @@ function IntroState({
 							</p>
 							<StatLine>
 								{run?.autoLinked} linked, {run?.imported} imported,{" "}
+								{run?.properties ? `${run.properties} job sites, ` : ""}
 								{run?.skipped} skipped
 							</StatLine>
 						</div>
@@ -476,8 +477,9 @@ function CompletedState({ run }: { run: ImportRun }) {
 				<div className="rounded-md border border-border bg-muted/40 px-3 py-2.5">
 					<p className="text-sm font-medium text-foreground">Import complete</p>
 					<StatLine>
-						{run.autoLinked} linked, {run.imported} imported, {run.skipped}{" "}
-						skipped
+						{run.autoLinked} linked, {run.imported} imported,{" "}
+						{run.properties ? `${run.properties} job sites, ` : ""}
+						{run.skipped} skipped
 					</StatLine>
 				</div>
 			</div>

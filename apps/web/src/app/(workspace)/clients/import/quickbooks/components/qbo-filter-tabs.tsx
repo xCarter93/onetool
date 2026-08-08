@@ -14,6 +14,7 @@ const TABS: { key: FilterTab; label: string }[] = [
 	{ key: "link", label: "Will link" },
 	{ key: "import", label: "New" },
 	{ key: "review", label: "Needs review" },
+	{ key: "sites", label: "Job sites" },
 	{ key: "skip", label: "Skipped" },
 ];
 
@@ -30,11 +31,14 @@ export function QboFilterTabs({
 	return (
 		<div className={PILL_TAB_CONTAINER}>
 			{TABS.map((tab) => {
+				// Most companies have no sub-customers; the tab appears only when
+				// this run actually proposed job sites.
+				if (tab.key === "sites" && counts.sites === 0) return null;
 				const isActive = activeTab === tab.key;
 				const badgeVariant =
 					tab.key === "link"
 						? "success-light"
-						: tab.key === "import"
+						: tab.key === "import" || tab.key === "sites"
 							? "primary-light"
 							: tab.key === "review"
 								? "warning-light"

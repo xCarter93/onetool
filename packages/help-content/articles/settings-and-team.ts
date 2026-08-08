@@ -137,7 +137,7 @@ export const settingsAndTeamArticles: HelpArticle[] = [
 					},
 					{
 						type: "paragraph",
-						text: "Once setup is finished, OneTool offers to import the customers already in your QuickBooks company. **Import customers** on the QuickBooks card fetches them in the background, so you can close the dialog while it runs. Nothing is created yet: the fetch only works out a plan. A QuickBooks customer whose name matches one of your clients is proposed as a link to that client, a customer with no match is proposed as a new client, a customer that matches more than one client is marked as needing review, and sub-customers are always skipped.",
+						text: "Once setup is finished, OneTool offers to import the customers already in your QuickBooks company. **Import customers** on the QuickBooks card fetches them in the background, so you can close the dialog while it runs. Nothing is created yet: the fetch only works out a plan. A QuickBooks customer whose name matches one of your clients is proposed as a link to that client, a customer with no match is proposed as a new client, a customer that matches more than one client is marked as needing review, and sub-customers with an address come in as job-site properties on their parent's client. Imported addresses are placed on the map automatically.",
 					},
 					{
 						type: "paragraph",

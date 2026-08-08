@@ -1041,7 +1041,7 @@ describe("QuickBooks customer import", () => {
 		});
 	});
 
-	it("honors a skip override on a job-site row and rejects link/import", async () => {
+	it("honors skip and restore on a job-site row and rejects link", async () => {
 		const { org, asOwner } = await setupOrg("subskip");
 		await connect(org.orgId);
 		const clientId = await asOwner.mutation(api.clients.create, {
@@ -1065,13 +1065,16 @@ describe("QuickBooks customer import", () => {
 				clientId,
 			})
 		).rejects.toThrow();
-		await expect(
-			asOwner.mutation(api.quickbooksImport.setRowDecision, {
-				rowId,
-				decision: "import",
-			})
-		).rejects.toThrow();
-
+		// "import" restores a skipped job site to its proposal, so skip → import
+		// → skip must round-trip; only the final decision counts at commit.
+		await asOwner.mutation(api.quickbooksImport.setRowDecision, {
+			rowId,
+			decision: "skip",
+		});
+		await asOwner.mutation(api.quickbooksImport.setRowDecision, {
+			rowId,
+			decision: "import",
+		});
 		await asOwner.mutation(api.quickbooksImport.setRowDecision, {
 			rowId,
 			decision: "skip",

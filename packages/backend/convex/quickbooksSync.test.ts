@@ -754,6 +754,74 @@ describe("QuickBooks sync engine", () => {
 			expect(job?.failedAt).toBeGreaterThan(0);
 		});
 
+		it("terminal failures alert admins once per streak", async () => {
+			const { org } = await setupOrg("notify");
+			const jobA = await seedJob(org.orgId, { status: "processing" });
+			const jobB = await seedJob(org.orgId, {
+				status: "processing",
+				localId: "local_2",
+				dedupeKey: "client:local_2",
+			});
+			const alerts = async () =>
+				await t.run(async (ctx) =>
+					(await ctx.db.query("notifications").collect()).filter(
+						(n) =>
+							n.orgId === org.orgId &&
+							n.notificationType === "quickbooks_sync_failed"
+					)
+				);
+
+			// First terminal failure of the streak: one alert.
+			await t.mutation(internal.quickbooks.markJobFailed, {
+				jobId: jobA,
+				terminal: true,
+				lastError: "Closed accounting period",
+			});
+			const first = await alerts();
+			expect(first).toHaveLength(1);
+			expect(first[0]?.actionUrl).toBe("/organization/profile?tab=integrations");
+
+			// Second failure while the first is still unresolved: no new alert.
+			await t.mutation(internal.quickbooks.markJobFailed, {
+				jobId: jobB,
+				terminal: true,
+				lastError: "Closed accounting period",
+			});
+			expect(await alerts()).toHaveLength(1);
+
+			// Streak cleared but the alert is still unread: a new failure is
+			// debounced by the unread alert rather than stacking another.
+			await t.run(async (ctx) => {
+				await ctx.db.patch(jobA, { status: "ignored" });
+				await ctx.db.patch(jobB, { status: "processing" });
+			});
+			await t.mutation(internal.quickbooks.markJobFailed, {
+				jobId: jobB,
+				terminal: true,
+				lastError: "Closed accounting period",
+			});
+			expect(await alerts()).toHaveLength(1);
+
+			// Streak cleared AND the alert read: the next failure alerts again.
+			// (Query through ctx here: alerts() opens its own t.run, and a nested
+			// t.run deadlocks convex-test.)
+			await t.run(async (ctx) => {
+				const existing = (
+					await ctx.db.query("notifications").collect()
+				).filter((n) => n.notificationType === "quickbooks_sync_failed");
+				await ctx.db.patch(jobB, { status: "processing" });
+				for (const n of existing) {
+					await ctx.db.patch(n._id, { isRead: true });
+				}
+			});
+			await t.mutation(internal.quickbooks.markJobFailed, {
+				jobId: jobB,
+				terminal: true,
+				lastError: "Closed accounting period",
+			});
+			expect(await alerts()).toHaveLength(2);
+		});
+
 		it("releaseJob returns a claimed job without burning an attempt", async () => {
 			const { org } = await setupOrg("release");
 			const jobId = await seedJob(org.orgId, {

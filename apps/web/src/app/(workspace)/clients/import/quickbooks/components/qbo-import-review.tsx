@@ -94,6 +94,7 @@ export function QboImportReview({ run }: { run: ImportRun }) {
 			link: 0,
 			import: 0,
 			review: 0,
+			sites: 0,
 			skip: 0,
 		};
 		for (const row of results) {
@@ -180,8 +181,11 @@ export function QboImportReview({ run }: { run: ImportRun }) {
 
 	// Customers already mapped by an earlier run are counted in `link` for the
 	// summary, but the commit never touches them, so they stay out of "Import N".
-	const importableCount =
+	const importableClients =
 		Math.max(0, counts.link - run.autoLinked) + counts.import;
+	const importableCount = importableClients + counts.sites;
+	// "customers" until job sites join the plan, then the honest generic noun.
+	const importNoun = counts.sites > 0 ? "item" : "customer";
 	const undecidedCount = counts.review;
 
 	const footerHint = isFetching
@@ -208,7 +212,7 @@ export function QboImportReview({ run }: { run: ImportRun }) {
 		}
 		if (!isReviewing) return null;
 
-		const label = `Import ${importableCount} customer${importableCount !== 1 ? "s" : ""}`;
+		const label = `Import ${importableCount} ${importNoun}${importableCount !== 1 ? "s" : ""}`;
 		if (undecidedCount > 0) {
 			return (
 				<Tooltip>
@@ -252,6 +256,7 @@ export function QboImportReview({ run }: { run: ImportRun }) {
 						results={{
 							linked: run.autoLinked,
 							imported: run.imported,
+							sites: run.properties ?? 0,
 							skipped: run.skipped,
 						}}
 					/>

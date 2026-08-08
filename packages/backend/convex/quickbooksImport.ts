@@ -1066,10 +1066,11 @@ export const setRowDecision = userMutation({
 		) {
 			throw new ConvexError("This import row cannot be changed");
 		}
-		// A job site can only be dropped — it is never a client of its own, so
-		// "link"/"import" have no meaning for it.
-		if (row.outcome === "proposed_property" && args.decision !== "skip") {
-			throw new ConvexError("This import row can only be skipped");
+		// A job site is never a client of its own, so "link" has no meaning for
+		// it. "skip" drops it; "import" restores a skipped one to the proposal
+		// (commitPage creates the property for any non-skip decision).
+		if (row.outcome === "proposed_property" && args.decision === "link") {
+			throw new ConvexError("This import row cannot link to a client");
 		}
 
 		if (args.decision !== "link") {

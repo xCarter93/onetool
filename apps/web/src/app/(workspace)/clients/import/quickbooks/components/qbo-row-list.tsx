@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 import {
 	effectiveDecision,
 	isDecidable,
+	isJobSite,
 	isSubCustomer,
 	proposedDecision,
 	type EffectiveDecision,
@@ -20,6 +21,7 @@ const BADGE: Record<
 > = {
 	link: { label: "Will link", variant: "success-light" },
 	import: { label: "New client", variant: "primary-light" },
+	site: { label: "Job site", variant: "primary-light" },
 	undecided: { label: "Needs review", variant: "warning-light" },
 	skip: { label: "Skipped", variant: "secondary" },
 };
@@ -76,24 +78,32 @@ function QboRow({
 }) {
 	const decision = effectiveDecision(row);
 	const decidable = isDecidable(row);
+	const jobSite = isJobSite(row);
 	const badge = BADGE[decision];
 	const linkedName = row.proposedClient?.companyName;
 	const muted = !decidable || decision === "skip";
 
-	// Read-only rows still explain themselves: a sub-customer is QuickBooks' own
-	// project construct, and an already-linked customer has nothing to decide.
-	const note = isSubCustomer(row)
-		? "Sub-customer in QuickBooks"
-		: !decidable && linkedName
-			? `Already linked to ${linkedName}`
-			: decision === "link" && linkedName
-				? `Links to ${linkedName}`
-				: undefined;
+	// Read-only rows still explain themselves: an addressless sub-customer is
+	// QuickBooks' own project construct, and an already-linked customer has
+	// nothing to decide.
+	const note = jobSite
+		? row.parentName
+			? `Job site of ${row.parentName}`
+			: "Job site"
+		: isSubCustomer(row)
+			? "Sub-customer in QuickBooks"
+			: !decidable && linkedName
+				? `Already linked to ${linkedName}`
+				: decision === "link" && linkedName
+					? `Links to ${linkedName}`
+					: undefined;
 
 	const controls = decidable && !readOnly;
 	const canRestore =
 		decision === "skip" &&
-		(row.outcome === "proposed_link" || row.outcome === "proposed_import");
+		(row.outcome === "proposed_link" ||
+			row.outcome === "proposed_import" ||
+			jobSite);
 
 	const restore = () => {
 		if (row.outcome === "proposed_link" && row.linkedClientId) {
@@ -104,11 +114,17 @@ function QboRow({
 			});
 			return;
 		}
+		// "import" restores a job site to its proposal too.
 		onDecide({ rowId: row._id, decision: "import" });
 	};
 
 	return (
-		<li className="flex flex-col gap-2.5 py-3.5 sm:flex-row sm:items-center sm:gap-4">
+		<li
+			className={cn(
+				"flex flex-col gap-2.5 py-3.5 sm:flex-row sm:items-center sm:gap-4",
+				jobSite && "sm:pl-8"
+			)}
+		>
 			<div className="min-w-0 flex-1">
 				<p
 					className={cn(
@@ -132,7 +148,8 @@ function QboRow({
 
 			{controls && (
 				<div className="flex shrink-0 flex-wrap items-center gap-1.5">
-					<ImportClientPicker
+					{!jobSite && (
+						<ImportClientPicker
 						clients={clients}
 						value={
 							decision === "link"
@@ -145,7 +162,8 @@ function QboRow({
 						onSelect={(clientId) =>
 							onDecide({ rowId: row._id, decision: "link", clientId })
 						}
-					/>
+						/>
+					)}
 					{row.outcome === "ambiguous" && decision !== "import" && (
 						<Button
 							variant="ghost"
