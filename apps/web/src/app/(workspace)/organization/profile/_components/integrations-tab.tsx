@@ -10,7 +10,16 @@ import {
 } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useMutation, useQuery } from "convex/react";
-import { Banknote, CreditCard, FileText, Landmark, ShieldAlert } from "lucide-react";
+import {
+	Banknote,
+	CircleAlert,
+	CircleCheck,
+	CircleMinus,
+	CreditCard,
+	FileText,
+	Landmark,
+	ShieldAlert,
+} from "lucide-react";
 
 import { api } from "@onetool/backend/convex/_generated/api";
 import { Button } from "@/components/ui/button";
@@ -25,7 +34,11 @@ import {
 } from "@/components/ui/item";
 import { Badge } from "@/components/reui/badge";
 import { DotField } from "@/components/ui/dot-field";
-import { StatusBadge } from "@/components/domain/status-badge";
+import {
+	Tooltip,
+	TooltipContent,
+	TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { SegmentedControl } from "@/components/domain/segmented-control";
 import { useToast } from "@/hooks/use-toast";
 import { useConfirmDialog } from "@/hooks/use-confirm-dialog";
@@ -70,37 +83,89 @@ const ERROR_MESSAGES: Record<string, string> = {
 const CONNECTOR_TILE =
 	"flex items-center justify-center rounded-lg border-2 border-background bg-background shadow-sm dark:border-muted/80 dark:bg-muted/80";
 
+type StatusTone = "connected" | "attention" | "off";
+
+/**
+ * Status icons follow the badge color language (`text-*-foreground` resolves
+ * per theme), so they stay readable on the band in light and dark.
+ */
+const STATUS_TONE: Record<
+	StatusTone,
+	{ Icon: ComponentType<{ className?: string }>; className: string }
+> = {
+	connected: { Icon: CircleCheck, className: "text-success-foreground" },
+	attention: { Icon: CircleAlert, className: "text-warning-foreground" },
+	off: { Icon: CircleMinus, className: "text-muted-foreground" },
+};
+
+/**
+ * Connection status for the card, anchored in the connector band. The label is
+ * the accessible name and the tooltip text; degraded states also carry a text
+ * chip beside the integration name, so this is never the only signal.
+ */
+function IntegrationStatusIcon({
+	tone,
+	label,
+}: {
+	tone: StatusTone;
+	label: string;
+}) {
+	const { Icon, className } = STATUS_TONE[tone];
+	return (
+		<Tooltip>
+			<TooltipTrigger
+				render={
+					<span
+						role="img"
+						aria-label={label}
+						tabIndex={0}
+						className="inline-flex size-7 items-center justify-center rounded-full border border-border bg-card focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+					/>
+				}
+			>
+				<Icon className={`size-4 ${className}`} />
+			</TooltipTrigger>
+			<TooltipContent side="left" className="px-2 py-1 text-xs">
+				{label}
+			</TooltipContent>
+		</Tooltip>
+	);
+}
+
 /**
  * Connector diagram in the card-5 grammar: data-type icons flank the brand
- * mark on a dashed line over a masked dot field. Purely decorative — the
- * integration is named in the header below.
+ * mark on a dashed line over a masked dot field. The diagram is decorative (the
+ * integration is named in the header below) but the status icon pinned to its
+ * top-right corner is not, so only the diagram is hidden from assistive tech.
  */
 function IntegrationConnectorBand({
 	brand,
 	leftIcon: LeftIcon,
 	rightIcon: RightIcon,
+	status,
 }: {
 	brand: ReactNode;
 	leftIcon: ComponentType<{ className?: string }>;
 	rightIcon: ComponentType<{ className?: string }>;
+	status: ReactNode;
 }) {
 	return (
-		<div
-			aria-hidden="true"
-			className="relative isolate overflow-hidden border-b border-border bg-muted/40 px-6 py-6"
-		>
-			<DotField className="text-muted-foreground [mask-image:radial-gradient(86%_76%_at_50%_46%,black,transparent)]" />
-			<div className="relative z-10 flex items-center justify-center">
-				<div className={`size-10 ${CONNECTOR_TILE}`}>
-					<LeftIcon className="size-4 text-muted-foreground" />
-				</div>
-				<div className="mx-1 w-8 border-t border-dashed border-foreground/20" />
-				<div className={`size-13 rounded-xl ${CONNECTOR_TILE}`}>{brand}</div>
-				<div className="mx-1 w-8 border-t border-dashed border-foreground/20" />
-				<div className={`size-10 ${CONNECTOR_TILE}`}>
-					<RightIcon className="size-4 text-muted-foreground" />
+		<div className="relative isolate overflow-hidden border-b border-border bg-muted/40 px-6 py-6">
+			<div aria-hidden="true">
+				<DotField className="text-muted-foreground [mask-image:radial-gradient(86%_76%_at_50%_46%,black,transparent)]" />
+				<div className="relative z-10 flex items-center justify-center">
+					<div className={`size-10 ${CONNECTOR_TILE}`}>
+						<LeftIcon className="size-4 text-muted-foreground" />
+					</div>
+					<div className="mx-1 w-8 border-t border-dashed border-foreground/20" />
+					<div className={`size-13 rounded-xl ${CONNECTOR_TILE}`}>{brand}</div>
+					<div className="mx-1 w-8 border-t border-dashed border-foreground/20" />
+					<div className={`size-10 ${CONNECTOR_TILE}`}>
+						<RightIcon className="size-4 text-muted-foreground" />
+					</div>
 				</div>
 			</div>
+			<div className="absolute right-3 top-3 z-10">{status}</div>
 		</div>
 	);
 }
@@ -370,6 +435,26 @@ export function IntegrationsTab() {
 						brand={<QuickBooksMark className="size-7" />}
 						leftIcon={FileText}
 						rightIcon={Banknote}
+						status={
+							<IntegrationStatusIcon
+								tone={
+									!isConnected
+										? "off"
+										: needsReauth || needsSetup
+											? "attention"
+											: "connected"
+								}
+								label={
+									!isConnected
+										? "QuickBooks not connected"
+										: needsReauth
+											? "QuickBooks needs to be reconnected"
+											: needsSetup
+												? "QuickBooks setup is not finished"
+												: "QuickBooks connected and syncing"
+								}
+							/>
+						}
 					/>
 					<IntegrationTileHeader
 						name="QuickBooks Online"
@@ -378,14 +463,10 @@ export function IntegrationsTab() {
 								<NotConnectedBadge />
 							) : (
 								<>
-									{needsReauth || needsSetup ? (
+									{(needsReauth || needsSetup) && (
 										<Badge variant="warning-light" radius="full" size="sm">
-											{needsReauth ? "Needs attention" : "Setup incomplete"}
+											{needsReauth ? "Reconnect needed" : "Setup incomplete"}
 										</Badge>
-									) : (
-										<StatusBadge role="success" size="sm">
-											Active
-										</StatusBadge>
 									)}
 									{connection.environment === "sandbox" && (
 										<Badge variant="warning-light" radius="full" size="sm">
@@ -408,7 +489,7 @@ export function IntegrationsTab() {
 									</p>
 									{connection.incomeAccountName && (
 										<p className="mt-0.5 text-xs text-muted-foreground">
-											Invoices post to {connection.incomeAccountName}
+											Revenue account: {connection.incomeAccountName}
 										</p>
 									)}
 								</>
@@ -602,17 +683,31 @@ export function IntegrationsTab() {
 						brand={<StripeMark className="size-7" />}
 						leftIcon={CreditCard}
 						rightIcon={Landmark}
+						status={
+							<IntegrationStatusIcon
+								tone={
+									!stripeAccountId
+										? "off"
+										: stripeActive
+											? "connected"
+											: "attention"
+								}
+								label={
+									!stripeAccountId
+										? "Stripe payments not connected"
+										: stripeActive
+											? "Stripe charges and payouts enabled"
+											: "Stripe setup is not finished"
+								}
+							/>
+						}
 					/>
 					<IntegrationTileHeader
 						name="Stripe payments"
 						status={
 							!stripeAccountId ? (
 								<NotConnectedBadge />
-							) : stripeActive ? (
-								<StatusBadge role="success" size="sm">
-									Active
-								</StatusBadge>
-							) : (
+							) : stripeActive ? null : (
 								<Badge variant="warning-light" radius="full" size="sm">
 									Setup incomplete
 								</Badge>
