@@ -55,6 +55,8 @@ const ERROR_MESSAGES: Record<string, string> = {
 	not_premium: "QuickBooks sync requires the Business plan.",
 	config: "QuickBooks is not configured for this environment yet.",
 	state: "The connection request expired. Start again from this page.",
+	org_changed:
+		"Your active organization changed during the connection. Switch back and try again.",
 	missing_params: "QuickBooks did not return the details we need. Try again.",
 	exchange_failed: "QuickBooks rejected the connection request. Try again.",
 	unknown: "Something went wrong connecting QuickBooks. Try again.",

@@ -28,10 +28,12 @@ export async function GET(request: Request) {
 	const settingsUrl = (params: string) =>
 		NextResponse.redirect(new URL(`${SETTINGS_TAB}${params}`, request.url));
 
-	// Consume the CSRF cookie on every path, success or failure.
+	// Consume the CSRF cookie on every path, success or failure. Its value is
+	// `${csrf}.${clerkOrgId}` — the org that initiated the flow.
 	const cookieStore = await cookies();
-	const expectedState = cookieStore.get("qbo_oauth_state")?.value ?? null;
+	const rawState = cookieStore.get("qbo_oauth_state")?.value ?? null;
 	cookieStore.delete({ name: "qbo_oauth_state", path: "/api/quickbooks" });
+	const [expectedState, initiatingOrgId] = rawState?.split(".") ?? [null, null];
 
 	const state = url.searchParams.get("state");
 	if (!expectedState || !state || state !== expectedState) {
@@ -54,10 +56,16 @@ export async function GET(request: Request) {
 	}
 
 	// convex/nextjs calls need the Clerk JWT passed explicitly as `{ token }`.
-	const { userId, getToken } = await auth();
+	const { userId, orgId, getToken } = await auth();
 	const token = userId ? await getToken({ template: "convex" }) : null;
 	if (!token) {
 		return NextResponse.redirect(new URL("/sign-in", request.url));
+	}
+
+	// Tenant binding: the approved realm must land on the org that started the
+	// flow, not whichever org became active in this session meanwhile.
+	if (!initiatingOrgId || !orgId || orgId !== initiatingOrgId) {
+		return settingsUrl("&qbo=error&reason=org_changed");
 	}
 
 	try {

@@ -1389,8 +1389,16 @@ describe("QuickBooks sync engine", () => {
 			expect(result).toMatchObject({ processed: 0, held: 1 });
 			expect(calls).toHaveLength(0);
 			const jobs = await jobsFor(org.orgId);
-			expect(jobs[0]).toMatchObject({ status: "pending", attempts: 0 });
-			expect(jobs[0].runAfter).toBeGreaterThanOrEqual(before + 60_000);
+			const paymentJob = jobs.find((j) => j.entityType === "payment");
+			expect(paymentJob).toMatchObject({ status: "pending", attempts: 0 });
+			expect(paymentJob?.runAfter).toBeGreaterThanOrEqual(before + 60_000);
+			// Backstop: the missing invoice job is queued so the hold can resolve —
+			// a partially paid invoice created pre-connection has no other enqueue path.
+			const invoiceJob = jobs.find((j) => j.entityType === "invoice");
+			expect(invoiceJob).toMatchObject({
+				status: "pending",
+				localId: invoiceId,
+			});
 		});
 
 		it("creates a QBO Payment once the invoice and client are linked", async () => {

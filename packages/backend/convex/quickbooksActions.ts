@@ -738,7 +738,13 @@ async function syncPayment(
 		}
 	);
 	if (!invoiceLink || !clientLink) {
-		// The invoice job is queued ahead of us; come back once it has landed.
+		// The invoice may never have been queued at all (created before QuickBooks
+		// was connected and still only partially paid). Make sure a job exists so
+		// this hold can resolve — the invoice sync also creates the customer link.
+		await ctx.runMutation(internal.quickbooks.ensureInvoiceSyncQueued, {
+			orgId: connection.orgId,
+			invoiceId: payload.invoiceId,
+		});
 		return { kind: "hold", delayMs: DEPENDENCY_HOLD_MS };
 	}
 
@@ -903,13 +909,29 @@ export const processOrgJobs = internalAction({
 		for (let index = 0; index < jobs.length; index++) {
 			const job = jobs[index];
 
+			// Per-job fence: re-reads the connection doc, so a disconnect or dead
+			// grant that lands mid-batch stops the queue before the next QBO write.
 			const tokens = await ensureFreshAccessToken(ctx, args.orgId);
 			if (!tokens) {
-				// needs_reauth (or disconnected) mid-batch: park everything left.
+				// needs_reauth parks the remainder for the reconnect drain; a
+				// disconnect cancels it — these jobs were claimed before the
+				// disconnect mutation's pending-job sweep could ignore them.
+				const current: Connection | null = await ctx.runQuery(
+					internal.quickbooks.getConnection,
+					{ orgId: args.orgId }
+				);
+				const disconnected = !current || current.status === "disconnected";
 				for (let rest = index; rest < jobs.length; rest++) {
-					await ctx.runMutation(internal.quickbooks.releaseJob, {
-						jobId: jobs[rest]._id,
-					});
+					if (disconnected) {
+						await ctx.runMutation(internal.quickbooks.markJobIgnored, {
+							jobId: jobs[rest]._id,
+							lastError: "Cancelled because QuickBooks was disconnected",
+						});
+					} else {
+						await ctx.runMutation(internal.quickbooks.releaseJob, {
+							jobId: jobs[rest]._id,
+						});
+					}
 					held++;
 				}
 				return { processed, held, failed };

@@ -8,6 +8,7 @@ import type { UserMutationCtx, UserQueryCtx } from "./lib/factories";
 import { getCurrentUserOrgId, getCurrentUserOrThrow } from "./lib/auth";
 import { hasPremiumAccess } from "./lib/permissions";
 import { formatCurrency } from "./lib/money";
+import { maybeEnqueueQboSync } from "./lib/quickbooksEnqueue";
 
 /**
  * QuickBooks Online connection + token lifecycle (PRD §6.2, §6.5).
@@ -491,6 +492,54 @@ export const markJobFailed = internalMutation({
 			lastErrorCode: args.lastErrorCode,
 			claimedAt: undefined,
 		});
+		return null;
+	},
+});
+
+/**
+ * Disconnect fence: a job claimed before the disconnect sweep ran is cancelled
+ * rather than released, so it can't linger pending and surprise-sync on
+ * reconnect.
+ */
+export const markJobIgnored = internalMutation({
+	args: { jobId: v.id("quickbooksSyncJobs"), lastError: v.string() },
+	handler: async (ctx, args): Promise<null> => {
+		const job = await ctx.db.get(args.jobId);
+		if (!job || job.status !== "processing") return null;
+		await ctx.db.patch(args.jobId, {
+			status: "ignored",
+			lastError: args.lastError,
+			claimedAt: undefined,
+		});
+		return null;
+	},
+});
+
+/**
+ * Worker backstop for the payment→invoice dependency: a payment can settle on
+ * an invoice that was never queued (created before QuickBooks was connected
+ * and still only partially paid, so no invoice mutation ever fired). Without
+ * this, syncPayment would hold forever waiting for a job nothing will create.
+ * Skips when the invoice already failed terminally (retry is the user's call
+ * from the error center) or is mid-sync in another batch.
+ */
+export const ensureInvoiceSyncQueued = internalMutation({
+	args: { orgId: v.id("organizations"), invoiceId: v.id("invoices") },
+	handler: async (ctx, args): Promise<null> => {
+		const dedupeKey = `invoice:${args.invoiceId}`;
+		for (const status of ["failed", "processing"] as const) {
+			const existing = await ctx.db
+				.query("quickbooksSyncJobs")
+				.withIndex("by_org_dedupe", (q) =>
+					q
+						.eq("orgId", args.orgId)
+						.eq("dedupeKey", dedupeKey)
+						.eq("status", status)
+				)
+				.first();
+			if (existing) return null;
+		}
+		await maybeEnqueueQboSync(ctx, args.orgId, "invoice", args.invoiceId);
 		return null;
 	},
 });

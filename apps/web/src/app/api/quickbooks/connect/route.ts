@@ -31,7 +31,10 @@ export async function GET(request: Request) {
 
 	const state = crypto.randomBytes(24).toString("hex");
 	const cookieStore = await cookies();
-	cookieStore.set("qbo_oauth_state", state, {
+	// Tenant binding rides with the CSRF value: the callback rejects the
+	// exchange if the user's active organization changed mid-flow, so the
+	// realm can only attach to the org that started the authorization.
+	cookieStore.set("qbo_oauth_state", `${state}.${orgId}`, {
 		httpOnly: true,
 		secure: process.env.NODE_ENV === "production",
 		sameSite: "lax",
