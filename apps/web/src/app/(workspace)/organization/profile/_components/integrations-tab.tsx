@@ -114,6 +114,7 @@ export function IntegrationsTab() {
 
 	const [saving, setSaving] = useState(false);
 	const [disconnecting, setDisconnecting] = useState(false);
+	const [connecting, setConnecting] = useState(false);
 
 	// Show the OAuth outcome once, then strip the params so a refresh is quiet.
 	const resultHandledRef = useRef(false);
@@ -135,9 +136,13 @@ export function IntegrationsTab() {
 		router.replace(TAB_URL);
 	}, [searchParams, router, toast]);
 
+	// Full-page redirect to Intuit takes a beat — hold a visible pending state
+	// until the browser actually navigates away.
 	const startConnect = useCallback(() => {
+		setConnecting(true);
+		toast.loading("Connecting to QuickBooks…", "Taking you to Intuit to sign in");
 		window.location.href = CONNECT_URL;
-	}, []);
+	}, [toast]);
 
 	const saveSettings = useCallback(
 		async (
@@ -277,8 +282,12 @@ export function IntegrationsTab() {
 						}
 						action={
 							!isConnected ? (
-								<Button size="sm" onClick={startConnect} disabled={!isOwner}>
-									Connect
+								<Button
+									size="sm"
+									onClick={startConnect}
+									disabled={!isOwner || connecting}
+								>
+									{connecting ? "Connecting…" : "Connect"}
 								</Button>
 							) : undefined
 						}
@@ -298,10 +307,10 @@ export function IntegrationsTab() {
 									<Button
 										size="sm"
 										onClick={startConnect}
-										disabled={!isOwner}
+										disabled={!isOwner || connecting}
 										className="shrink-0"
 									>
-										Reconnect
+										{connecting ? "Connecting…" : "Reconnect"}
 									</Button>
 								</div>
 							)}
