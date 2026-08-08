@@ -5,6 +5,7 @@ import { setupConvexTest } from "./test.setup";
 import {
 	addMemberToOrg,
 	createPremiumTestIdentity,
+	createTestClientProperty,
 	createTestOrg,
 } from "./test.helpers";
 
@@ -18,10 +19,13 @@ type QboCustomer = {
 	CompanyName?: string;
 	GivenName?: string;
 	FamilyName?: string;
+	FullyQualifiedName?: string;
 	Job?: boolean;
+	ParentRef?: { value?: string };
 	PrimaryEmailAddr?: { Address?: string };
 	PrimaryPhone?: { FreeFormNumber?: string };
 	BillAddr?: Record<string, string>;
+	ShipAddr?: Record<string, string>;
 };
 
 describe("QuickBooks customer import", () => {
@@ -839,6 +843,276 @@ describe("QuickBooks customer import", () => {
 			})
 		).rejects.toThrow();
 		expect(await clientLinks(org.orgId)).toHaveLength(0);
+	});
+
+	// ------------------------------------------------------------------
+	// Sub-customers as job-site properties (PRD 3.6.1)
+	// ------------------------------------------------------------------
+
+	const YARD = {
+		Id: "31",
+		DisplayName: "North Yard",
+		FullyQualifiedName: "Delta Services:North Yard",
+		Job: true,
+		ParentRef: { value: "30" },
+		BillAddr: {
+			Line1: "9 Billing Rd",
+			City: "Austin",
+			CountrySubDivisionCode: "TX",
+			PostalCode: "78701",
+		},
+		ShipAddr: {
+			Line1: "2 Yard Ln",
+			City: "Round Rock",
+			CountrySubDivisionCode: "TX",
+			PostalCode: "78664",
+		},
+	} satisfies QboCustomer;
+
+	async function propertiesFor(clientId: Id<"clients">) {
+		return await t.run(async (ctx) =>
+			ctx.db
+				.query("clientProperties")
+				.withIndex("by_client", (q) => q.eq("clientId", clientId))
+				.collect()
+		);
+	}
+
+	it("proposes a sub-customer with an address as a job site", async () => {
+		const { org, asOwner } = await setupOrg("subprop");
+		await connect(org.orgId);
+
+		stubCustomerPages([
+			[{ Id: "30", DisplayName: "Delta Services" }, YARD],
+		]);
+		const { runId } = await asOwner.action(
+			api.quickbooksImportActions.startImport,
+			{}
+		);
+
+		const row = await rowByQboId(runId, "31");
+		expect(row).toMatchObject({
+			outcome: "proposed_property",
+			parentQboId: "30",
+			parentDisplayName: "Delta Services",
+		});
+		// ShipAddr wins over BillAddr for a job site.
+		expect(row.qboSnapshot?.billAddr).toMatchObject({
+			line1: "2 Yard Ln",
+			city: "Round Rock",
+			state: "TX",
+			postalCode: "78664",
+		});
+
+		// Proposals only: nothing written to client data yet.
+		expect(await orgClients(org.orgId)).toHaveLength(0);
+		const run = await asOwner.query(api.quickbooksImport.getImportRun, {});
+		expect(run).toMatchObject({ proposedImport: 1, proposedProperty: 1 });
+
+		const listed = await asOwner.query(api.quickbooksImport.listImportRows, {
+			runId,
+			paginationOpts: { numItems: 10, cursor: null },
+		});
+		expect(
+			listed.page.find((view) => view.qboId === "31")?.parentName
+		).toBe("Delta Services");
+	});
+
+	it("keeps an addressless sub-customer a plain skip", async () => {
+		const { org, asOwner } = await setupOrg("subnoaddr");
+		await connect(org.orgId);
+
+		stubCustomerPages([
+			[
+				{ Id: "30", DisplayName: "Delta Services" },
+				{
+					Id: "31",
+					DisplayName: "North Yard",
+					Job: true,
+					ParentRef: { value: "30" },
+				},
+			],
+		]);
+		const { runId } = await asOwner.action(
+			api.quickbooksImportActions.startImport,
+			{}
+		);
+		expect(await rowByQboId(runId, "31")).toMatchObject({
+			outcome: "proposed_skip",
+			skipReason: "sub_customer",
+		});
+	});
+
+	it("creates the job site on an imported parent's client", async () => {
+		const { org, asOwner } = await setupOrg("subcommit");
+		await connect(org.orgId);
+
+		stubCustomerPages([
+			[{ Id: "30", DisplayName: "Delta Services" }, YARD],
+		]);
+		const { runId } = await asOwner.action(
+			api.quickbooksImportActions.startImport,
+			{}
+		);
+		await commit(asOwner);
+
+		const clients = await orgClients(org.orgId);
+		expect(clients).toHaveLength(1);
+		const properties = await propertiesFor(clients[0]._id);
+		expect(properties).toHaveLength(1);
+		expect(properties[0]).toMatchObject({
+			propertyName: "North Yard",
+			streetAddress: "2 Yard Ln",
+			city: "Round Rock",
+			state: "TX",
+			zipCode: "78664",
+			isPrimary: true,
+		});
+
+		expect(await rowByQboId(runId, "31")).toMatchObject({
+			outcome: "property_created",
+			linkedClientId: clients[0]._id,
+		});
+		const run = await asOwner.query(api.quickbooksImport.getImportRun, {});
+		expect(run).toMatchObject({
+			status: "completed",
+			imported: 1,
+			properties: 1,
+		});
+	});
+
+	it("adds the job site to a linked parent without stealing primary", async () => {
+		const { org, asOwner } = await setupOrg("sublink");
+		await connect(org.orgId);
+		const clientId = await asOwner.mutation(api.clients.create, {
+			companyName: "Delta Services",
+			status: "active",
+		});
+		await t.run(async (ctx) =>
+			createTestClientProperty(ctx, org.orgId, clientId, {
+				streetAddress: "1 HQ Way",
+				city: "Austin",
+				isPrimary: true,
+			})
+		);
+
+		stubCustomerPages([
+			[{ Id: "30", DisplayName: "Delta Services" }, YARD],
+		]);
+		const { runId } = await asOwner.action(
+			api.quickbooksImportActions.startImport,
+			{}
+		);
+		await commit(asOwner);
+
+		const properties = await propertiesFor(clientId);
+		expect(properties).toHaveLength(2);
+		const jobSite = properties.find(
+			(property) => property.streetAddress === "2 Yard Ln"
+		)!;
+		expect(jobSite.isPrimary).toBe(false);
+		expect(await rowByQboId(runId, "31")).toMatchObject({
+			outcome: "property_created",
+			linkedClientId: clientId,
+		});
+	});
+
+	it("skips a job site whose parent was not imported", async () => {
+		const { org, asOwner } = await setupOrg("subnoparent");
+		await connect(org.orgId);
+
+		stubCustomerPages([
+			[{ Id: "30", DisplayName: "Delta Services" }, YARD],
+		]);
+		const { runId } = await asOwner.action(
+			api.quickbooksImportActions.startImport,
+			{}
+		);
+		await asOwner.mutation(api.quickbooksImport.setRowDecision, {
+			rowId: (await rowByQboId(runId, "30"))._id,
+			decision: "skip",
+		});
+		await commit(asOwner);
+
+		expect(await orgClients(org.orgId)).toHaveLength(0);
+		expect(await rowByQboId(runId, "31")).toMatchObject({
+			outcome: "skipped",
+			skipReason: "parent_not_imported",
+		});
+	});
+
+	it("honors a skip override on a job-site row and rejects link/import", async () => {
+		const { org, asOwner } = await setupOrg("subskip");
+		await connect(org.orgId);
+		const clientId = await asOwner.mutation(api.clients.create, {
+			companyName: "Somebody Else",
+			status: "active",
+		});
+
+		stubCustomerPages([
+			[{ Id: "30", DisplayName: "Delta Services" }, YARD],
+		]);
+		const { runId } = await asOwner.action(
+			api.quickbooksImportActions.startImport,
+			{}
+		);
+		const rowId = (await rowByQboId(runId, "31"))._id;
+
+		await expect(
+			asOwner.mutation(api.quickbooksImport.setRowDecision, {
+				rowId,
+				decision: "link",
+				clientId,
+			})
+		).rejects.toThrow();
+		await expect(
+			asOwner.mutation(api.quickbooksImport.setRowDecision, {
+				rowId,
+				decision: "import",
+			})
+		).rejects.toThrow();
+
+		await asOwner.mutation(api.quickbooksImport.setRowDecision, {
+			rowId,
+			decision: "skip",
+		});
+		await commit(asOwner);
+
+		const created = (await orgClients(org.orgId)).find(
+			(client) => client.companyName === "Delta Services"
+		)!;
+		expect(await propertiesFor(created._id)).toHaveLength(0);
+		expect(await rowByQboId(runId, "31")).toMatchObject({
+			outcome: "skipped",
+			skipReason: "user_skipped",
+		});
+	});
+
+	it("does not duplicate the job site when the same data is re-imported", async () => {
+		const { org, asOwner } = await setupOrg("subidem");
+		await connect(org.orgId);
+
+		stubCustomerPages([
+			[{ Id: "30", DisplayName: "Delta Services" }, YARD],
+		]);
+		await asOwner.action(api.quickbooksImportActions.startImport, {});
+		await commit(asOwner);
+
+		const clientId = (await orgClients(org.orgId))[0]._id;
+		expect(await propertiesFor(clientId)).toHaveLength(1);
+
+		const { runId: secondRunId } = await asOwner.action(
+			api.quickbooksImportActions.startImport,
+			{}
+		);
+		await commit(asOwner);
+
+		expect(await orgClients(org.orgId)).toHaveLength(1);
+		expect(await propertiesFor(clientId)).toHaveLength(1);
+		expect(await rowByQboId(secondRunId, "31")).toMatchObject({
+			outcome: "property_created",
+			linkedClientId: clientId,
+		});
 	});
 
 	// ------------------------------------------------------------------

@@ -119,6 +119,13 @@ export interface QboInvoicePayload {
 	DueDate: string;
 	Line: QboInvoiceLine[];
 	TxnTaxDetail?: { TotalTax: number };
+	/** Job site. QBO's Automated Sales Tax computes off the ship-to address. */
+	ShipAddr?: {
+		Line1?: string;
+		City?: string;
+		CountrySubDivisionCode?: string;
+		PostalCode?: string;
+	};
 }
 
 /**
@@ -187,6 +194,8 @@ export function buildQboInvoice(args: {
 	lineItems: QboInvoiceLineInput[];
 	customerQboId: string;
 	defaultServiceItemQboId: string;
+	/** Job site for ShipAddr; BillAddr stays whatever the Customer carries. */
+	jobSite?: Doc<"clientProperties"> | null;
 }): QboInvoicePayload {
 	const { invoice, lineItems, customerQboId, defaultServiceItemQboId } = args;
 
@@ -230,6 +239,8 @@ export function buildQboInvoice(args: {
 		});
 	}
 
+	const jobSite = args.jobSite;
+
 	return {
 		CustomerRef: { value: customerQboId },
 		DocNumber: invoice.invoiceNumber,
@@ -237,6 +248,16 @@ export function buildQboInvoice(args: {
 		DueDate: toQboDate(invoice.dueDate),
 		Line: lines,
 		...(derived.tax > 0 ? { TxnTaxDetail: { TotalTax: derived.tax } } : {}),
+		...(jobSite
+			? {
+					ShipAddr: {
+						Line1: jobSite.streetAddress,
+						City: jobSite.city,
+						CountrySubDivisionCode: jobSite.state,
+						PostalCode: jobSite.zipCode,
+					},
+				}
+			: {}),
 	};
 }
 

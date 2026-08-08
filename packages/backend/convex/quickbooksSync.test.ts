@@ -5,7 +5,11 @@ import { setupConvexTest } from "./test.setup";
 import {
 	addMemberToOrg,
 	createPremiumTestIdentity,
+	createTestClient,
+	createTestClientProperty,
+	createTestInvoice,
 	createTestOrg,
+	createTestProject,
 } from "./test.helpers";
 import {
 	buildQboCustomer,
@@ -212,6 +216,43 @@ describe("QuickBooks mappers", () => {
 			defaultServiceItemQboId: "9",
 		});
 		expect(withoutTax.TxnTaxDetail).toBeUndefined();
+	});
+
+	it("buildQboInvoice sets ShipAddr from the job site, and omits it without one", () => {
+		const jobSite = {
+			_id: "prop1" as Id<"clientProperties">,
+			_creationTime: 0,
+			orgId: "org1" as Id<"organizations">,
+			clientId: "cli1" as Id<"clients">,
+			streetAddress: "77 Job Site Rd",
+			city: "Round Rock",
+			state: "TX",
+			zipCode: "78664",
+			isPrimary: false,
+		} as Doc<"clientProperties">;
+
+		const withShip = buildQboInvoice({
+			invoice: invoiceDoc(),
+			lineItems: [lineItem("Work", 1, 100, 100)],
+			customerQboId: "7",
+			defaultServiceItemQboId: "9",
+			jobSite,
+		});
+		expect(withShip.ShipAddr).toEqual({
+			Line1: "77 Job Site Rd",
+			City: "Round Rock",
+			CountrySubDivisionCode: "TX",
+			PostalCode: "78664",
+		});
+
+		const withoutShip = buildQboInvoice({
+			invoice: invoiceDoc(),
+			lineItems: [lineItem("Work", 1, 100, 100)],
+			customerQboId: "7",
+			defaultServiceItemQboId: "9",
+			jobSite: null,
+		});
+		expect(withoutShip.ShipAddr).toBeUndefined();
 	});
 
 	it("buildQboPayment links the payment to the invoice", () => {
@@ -2359,5 +2400,83 @@ describe("QuickBooks sync engine", () => {
 			).rejects.toThrow(/owner/i);
 			expect(await qboStateCounts(org.orgId)).toMatchObject({ connections: 1 });
 		});
+	});
+});
+
+// ============================================================================
+// Invoice ship-to resolution (getSyncJobPayload)
+// ============================================================================
+
+describe("invoice sync payload job site", () => {
+	let t: ReturnType<typeof setupConvexTest>;
+
+	beforeEach(() => {
+		t = setupConvexTest();
+	});
+
+	async function setupInvoice(
+		suffix: string,
+		options: { withPrimary?: boolean; withProjectProperty?: boolean }
+	) {
+		return await t.run(async (ctx) => {
+			const org = await createTestOrg(ctx, {
+				clerkUserId: `ship_user_${suffix}`,
+				clerkOrgId: `ship_org_${suffix}`,
+			});
+			const clientId = await createTestClient(ctx, org.orgId);
+			if (options.withPrimary) {
+				await createTestClientProperty(ctx, org.orgId, clientId, {
+					streetAddress: "1 Primary St",
+					isPrimary: true,
+				});
+			}
+			let projectId: Id<"projects"> | undefined;
+			if (options.withProjectProperty) {
+				const propertyId = await createTestClientProperty(
+					ctx,
+					org.orgId,
+					clientId,
+					{ streetAddress: "2 Job Site Rd", isPrimary: false }
+				);
+				projectId = await createTestProject(ctx, org.orgId, clientId);
+				await ctx.db.patch(projectId, { propertyId });
+			}
+			const invoiceId = await createTestInvoice(ctx, org.orgId, clientId, {
+				projectId,
+			});
+			return { orgId: org.orgId, invoiceId };
+		});
+	}
+
+	async function jobSiteFor(suffix: string, options: {
+		withPrimary?: boolean;
+		withProjectProperty?: boolean;
+	}) {
+		const { orgId, invoiceId } = await setupInvoice(suffix, options);
+		const payload = await t.query(internal.quickbooks.getSyncJobPayload, {
+			orgId,
+			entityType: "invoice",
+			localId: invoiceId,
+		});
+		if (!payload || payload.kind !== "invoice") throw new Error("no payload");
+		return payload.jobSite;
+	}
+
+	it("prefers the project's property", async () => {
+		const jobSite = await jobSiteFor("project", {
+			withPrimary: true,
+			withProjectProperty: true,
+		});
+		expect(jobSite?.streetAddress).toBe("2 Job Site Rd");
+	});
+
+	it("falls back to the client's primary property", async () => {
+		const jobSite = await jobSiteFor("primary", { withPrimary: true });
+		expect(jobSite?.streetAddress).toBe("1 Primary St");
+	});
+
+	it("is null when the client has no property at all", async () => {
+		const jobSite = await jobSiteFor("none", {});
+		expect(jobSite).toBeNull();
 	});
 });

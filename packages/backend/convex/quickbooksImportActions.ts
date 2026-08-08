@@ -28,13 +28,16 @@ type QboCustomer = {
 	Id: string;
 	SyncToken?: string;
 	DisplayName?: string;
+	FullyQualifiedName?: string;
 	CompanyName?: string;
 	GivenName?: string;
 	FamilyName?: string;
 	Job?: boolean;
+	ParentRef?: { value?: string };
 	PrimaryEmailAddr?: { Address?: string };
 	PrimaryPhone?: { FreeFormNumber?: string };
 	BillAddr?: QboBillAddr;
+	ShipAddr?: QboBillAddr;
 };
 
 type QboCustomerQueryResponse = {
@@ -61,11 +64,51 @@ async function queryCustomers(
 	return result.QueryResponse?.Customer ?? [];
 }
 
-function toImportCustomer(customer: QboCustomer) {
-	const addr = customer.BillAddr;
-	const hasAddr =
+/** A QBO address is worth capturing only when it carries some location. */
+function hasLocation(addr: QboBillAddr | undefined): boolean {
+	return Boolean(
 		addr &&
-		(addr.Line1 || addr.City || addr.CountrySubDivisionCode || addr.PostalCode);
+			(addr.Line1 || addr.City || addr.CountrySubDivisionCode || addr.PostalCode)
+	);
+}
+
+/**
+ * A sub-customer's parent display name. `namesById` carries every customer seen
+ * so far in the run (parents are created before their jobs, so they normally
+ * arrive first); FullyQualifiedName ("Parent:Job") is the fallback when the
+ * parent lands on a later page. For a multi-level job ("A:B:C") the fallback
+ * yields the parent's fully-qualified name, which is still what a reviewer
+ * expects to read.
+ */
+function parentDisplayName(
+	customer: QboCustomer,
+	namesById: Map<string, string>
+): string | undefined {
+	const parentId = customer.ParentRef?.value;
+	if (parentId) {
+		const known = namesById.get(parentId);
+		if (known) return known;
+	}
+	const fqn = customer.FullyQualifiedName;
+	if (fqn && fqn.includes(":")) {
+		return fqn.slice(0, fqn.lastIndexOf(":"));
+	}
+	return undefined;
+}
+
+function toImportCustomer(
+	customer: QboCustomer,
+	namesById: Map<string, string> = new Map()
+) {
+	// Sub-customers are job sites: QBO's Automated Sales Tax and every field
+	// crew care about the SHIP-to address, so it wins over BillAddr (Jobber's
+	// rule). Top-level customers keep BillAddr as their billing property.
+	const isJob = customer.Job === true;
+	const addr =
+		isJob && hasLocation(customer.ShipAddr)
+			? customer.ShipAddr
+			: customer.BillAddr;
+	const hasAddr = hasLocation(addr);
 	return {
 		qboId: customer.Id,
 		syncToken: customer.SyncToken,
@@ -76,7 +119,11 @@ function toImportCustomer(customer: QboCustomer) {
 		phone: customer.PrimaryPhone?.FreeFormNumber,
 		givenName: customer.GivenName,
 		familyName: customer.FamilyName,
-		isJob: customer.Job === true,
+		isJob,
+		parentQboId: isJob ? customer.ParentRef?.value : undefined,
+		parentDisplayName: isJob
+			? parentDisplayName(customer, namesById)
+			: undefined,
 		billAddr: hasAddr
 			? {
 					line1: addr?.Line1,
@@ -113,6 +160,9 @@ export const startImport = action({
 
 		try {
 			const seen = new Set<string>();
+			// Display names of every customer seen so far, so a sub-customer can
+			// carry its parent's name without a second query.
+			const namesById = new Map<string, string>();
 			for (let page = 0; page < MAX_PAGES; page++) {
 				const customers = await queryCustomers(
 					tokens,
@@ -123,11 +173,17 @@ export const startImport = action({
 					seen.add(customer.Id);
 					return true;
 				});
+				for (const customer of fresh) {
+					const name = customer.DisplayName ?? customer.CompanyName;
+					if (name) namesById.set(customer.Id, name);
+				}
 				if (fresh.length > 0) {
 					await ctx.runMutation(internal.quickbooksImport.processCustomerPage, {
 						orgId,
 						runId,
-						customers: fresh.map(toImportCustomer),
+						customers: fresh.map((customer) =>
+							toImportCustomer(customer, namesById)
+						),
 					});
 				}
 				if (customers.length < PAGE_SIZE) break;

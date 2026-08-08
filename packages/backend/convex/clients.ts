@@ -1,4 +1,5 @@
 import { query, QueryCtx, MutationCtx } from "./_generated/server";
+import { internal } from "./_generated/api";
 import { mutation, internalMutation } from "./lib/triggers";
 import { v } from "convex/values";
 import { Doc, Id } from "./_generated/dataModel";
@@ -744,12 +745,22 @@ export const bulkCreate = userMutation({
 								);
 								continue;
 							}
-							await ctx.db.insert("clientProperties", {
-								...property,
-								clientId,
-								orgId: userOrgId,
-								isPrimary: i === 0,
-							});
+							const propertyId = await ctx.db.insert(
+								"clientProperties",
+								{
+									...property,
+									clientId,
+									orgId: userOrgId,
+									isPrimary: i === 0,
+								}
+							);
+							// CSV addresses carry no coordinates (manual entry gets
+							// them from Mapbox autofill); backfill out of band.
+							await ctx.scheduler.runAfter(
+								0,
+								internal.geocodeActions.geocodeClientProperty,
+								{ propertyId }
+							);
 						} catch (err) {
 							warnings.push(
 								`Property creation failed: ${err instanceof Error ? err.message : "Unknown error"}`

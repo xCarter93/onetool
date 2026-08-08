@@ -727,6 +727,7 @@ async function syncInvoice(
 		}),
 		customerQboId,
 		defaultServiceItemQboId: connection.defaultServiceItemQboId,
+		jobSite: payload.jobSite,
 	});
 	const sentTax = deriveInvoiceAmounts(payload.invoice, payload.lineItems).tax;
 

@@ -2039,6 +2039,8 @@ export default defineSchema({
 		proposedLink: v.optional(v.number()),
 		proposedImport: v.optional(v.number()),
 		proposedSkip: v.optional(v.number()),
+		proposedProperty: v.optional(v.number()),
+		properties: v.optional(v.number()), // final: job sites created from sub-customers
 		committedRows: v.optional(v.number()), // commit-loop progress
 		// Stamped when the commit loop starts; a review can sit for days, so the
 		// stalled-commit reclaim can't measure against startedAt.
@@ -2057,11 +2059,13 @@ export default defineSchema({
 			// Proposals written by the fetch pass — no client data touched yet.
 			v.literal("proposed_link"), // one confident match, in linkedClientId
 			v.literal("proposed_import"), // no match — would create a client
-			v.literal("proposed_skip"), // sub-customer; not overridable
+			v.literal("proposed_skip"), // sub-customer with no address; not overridable
+			v.literal("proposed_property"), // sub-customer with an address — a job site
 			v.literal("ambiguous"), // multiple candidates — needs a human pick
 			// Final outcomes, written by the commit pass.
 			v.literal("auto_linked"), // link written
 			v.literal("imported"), // created as a new OneTool client
+			v.literal("property_created"), // job site added to the parent's client
 			v.literal("resolved"), // legacy: human picked a candidate pre-rework
 			v.literal("skipped") // sub-customer, or user chose Don't import
 		),
@@ -2085,6 +2089,11 @@ export default defineSchema({
 		),
 		candidateClientIds: v.optional(v.array(v.id("clients"))), // ambiguous only
 		linkedClientId: v.optional(v.id("clients")),
+		// proposed_property only: the QBO Customer.Id of the job's parent, plus
+		// its display name captured at fetch time so the review table needs no
+		// extra lookup.
+		parentQboId: v.optional(v.string()),
+		parentDisplayName: v.optional(v.string()),
 		// Reviewer override; unset means "accept the proposal".
 		decision: v.optional(
 			v.union(v.literal("link"), v.literal("import"), v.literal("skip"))

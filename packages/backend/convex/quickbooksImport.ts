@@ -70,6 +70,9 @@ const IMPORT_CUSTOMER = v.object({
 	givenName: v.optional(v.string()),
 	familyName: v.optional(v.string()),
 	isJob: v.boolean(),
+	// Sub-customers only: which customer they hang off, and its name for review.
+	parentQboId: v.optional(v.string()),
+	parentDisplayName: v.optional(v.string()),
 	billAddr: v.optional(
 		v.object({
 			line1: v.optional(v.string()),
@@ -91,6 +94,8 @@ type ImportCustomer = {
 	givenName?: string;
 	familyName?: string;
 	isJob: boolean;
+	parentQboId?: string;
+	parentDisplayName?: string;
 	billAddr?: {
 		line1?: string;
 		city?: string;
@@ -277,6 +282,7 @@ export const processCustomerPage = internalMutation({
 			proposedLink: 0,
 			proposedImport: 0,
 			proposedSkip: 0,
+			proposedProperty: 0,
 		};
 
 		for (const customer of args.customers as ImportCustomer[]) {
@@ -299,9 +305,20 @@ export const processCustomerPage = internalMutation({
 				},
 			};
 
-			// Sub-customers (jobs) are QBO's project construct, not a client.
-			// Not overridable at review — always skipped.
+			// Sub-customers (jobs) are QBO's job-site construct, not a client. One
+			// carrying an address becomes a property on its parent's client; one
+			// with nothing to place stays a plain, non-overridable skip.
 			if (customer.isJob === true) {
+				if (customer.parentQboId && customer.billAddr?.line1) {
+					await ctx.db.insert("quickbooksImportRows", {
+						...rowBase,
+						outcome: "proposed_property",
+						parentQboId: customer.parentQboId,
+						parentDisplayName: customer.parentDisplayName,
+					});
+					counters.proposedProperty += 1;
+					continue;
+				}
 				await ctx.db.insert("quickbooksImportRows", {
 					...rowBase,
 					outcome: "proposed_skip",
@@ -400,6 +417,8 @@ export const processCustomerPage = internalMutation({
 				proposedLink: (latest.proposedLink ?? 0) + counters.proposedLink,
 				proposedImport: (latest.proposedImport ?? 0) + counters.proposedImport,
 				proposedSkip: (latest.proposedSkip ?? 0) + counters.proposedSkip,
+				proposedProperty:
+					(latest.proposedProperty ?? 0) + counters.proposedProperty,
 			});
 		}
 		return null;
@@ -442,21 +461,74 @@ async function createImportedClient(
 	}
 
 	// clients has no address columns — a billing address is a primary property.
-	const addr = customer.billAddr;
-	if (addr?.line1) {
-		await ctx.db.insert("clientProperties", {
-			clientId,
-			orgId,
-			streetAddress: addr.line1,
-			city: addr.city ?? "",
-			state: addr.state ?? "",
-			zipCode: addr.postalCode ?? "",
-			country: addr.country,
-			isPrimary: true,
-		});
-	}
+	await createPropertyFromQboAddress(ctx, {
+		orgId,
+		clientId,
+		addr: customer.billAddr,
+	});
 
 	return clientId;
+}
+
+/**
+ * Create a clientProperties row from a QBO address. Shared by the imported
+ * client's billing address and by sub-customer job sites so both get the same
+ * field mapping — and the same follow-up geocode, which the import path is the
+ * only way to get coordinates (manual entry gets them from address autofill).
+ */
+async function createPropertyFromQboAddress(
+	ctx: MutationCtx,
+	args: {
+		orgId: Id<"organizations">;
+		clientId: Id<"clients">;
+		addr:
+			| {
+					line1?: string;
+					city?: string;
+					state?: string;
+					postalCode?: string;
+					country?: string;
+			  }
+			| undefined;
+		propertyName?: string;
+	}
+): Promise<Id<"clientProperties"> | null> {
+	const addr = args.addr;
+	if (!addr?.line1) return null;
+
+	// A linked (rather than imported) parent may already have a primary.
+	const existingPrimary = await ctx.db
+		.query("clientProperties")
+		.withIndex("by_primary", (q) =>
+			q.eq("clientId", args.clientId).eq("isPrimary", true)
+		)
+		.first();
+
+	const propertyId = await ctx.db.insert("clientProperties", {
+		clientId: args.clientId,
+		orgId: args.orgId,
+		propertyName: args.propertyName,
+		streetAddress: addr.line1,
+		city: addr.city ?? "",
+		state: addr.state ?? "",
+		zipCode: addr.postalCode ?? "",
+		country: addr.country,
+		isPrimary: !existingPrimary,
+	});
+	await scheduleGeocode(ctx, propertyId);
+	return propertyId;
+}
+
+/** Imported addresses arrive without coordinates; backfill them out of band. */
+async function scheduleGeocode(
+	ctx: MutationCtx,
+	propertyId: Id<"clientProperties">
+): Promise<void> {
+	await ctx.scheduler.runAfter(
+		0,
+		internal.geocodeActions.geocodeClientProperty,
+		{ propertyId }
+	);
 }
 
 /**
@@ -500,12 +572,22 @@ export const failRun = internalMutation({
 // Internal API — commit pass
 // ============================================================================
 
-/** Outcomes a commit batch still has to apply. */
+/**
+ * Outcomes a commit batch still has to apply.
+ *
+ * ORDER IS LOAD-BEARING: `proposed_property` is LAST. A property row needs its
+ * parent customer's client link to exist, and the drain is outcome-by-outcome —
+ * `pending` is filled in this array's order and applied in that same order, so
+ * every parent row (link or import) is finalized before the first property row
+ * of the same batch runs, and earlier batches drain parents entirely before a
+ * batch ever reaches properties.
+ */
 const PROPOSAL_OUTCOMES = [
 	"proposed_link",
 	"proposed_import",
 	"proposed_skip",
 	"ambiguous",
+	"proposed_property",
 ] as const;
 
 type EffectiveDecision = "link" | "import" | "skip";
@@ -581,10 +663,81 @@ export const commitPage = internalMutation({
 			autoLinked: 0,
 			imported: 0,
 			skipped: 0,
+			properties: 0,
 			ambiguousCleared: 0,
 		};
 
 		for (const row of pending) {
+			// Sub-customer job sites: land on the parent's client, or skip. The
+			// only override a reviewer can set here is "skip".
+			if (row.outcome === "proposed_property") {
+				if (row.decision === "skip") {
+					await ctx.db.patch(row._id, {
+						outcome: "skipped",
+						skipReason: "user_skipped",
+					});
+					counters.skipped += 1;
+					continue;
+				}
+
+				const parentLink = row.parentQboId
+					? await ctx.db
+							.query("quickbooksEntityLinks")
+							.withIndex("by_org_qbo", (q) =>
+								q
+									.eq("orgId", run.orgId)
+									.eq("entityType", "client")
+									.eq("qboId", row.parentQboId!)
+							)
+							.first()
+					: null;
+				const parentClientId = parentLink
+					? ctx.db.normalizeId("clients", parentLink.localId)
+					: null;
+				const parentClient = parentClientId
+					? await ctx.db.get(parentClientId)
+					: null;
+				if (!parentClient || parentClient.orgId !== run.orgId) {
+					await ctx.db.patch(row._id, {
+						outcome: "skipped",
+						skipReason: "parent_not_imported",
+					});
+					counters.skipped += 1;
+					continue;
+				}
+
+				// Idempotent: a re-commit (or a second run over the same QBO data)
+				// must not stack duplicate job sites on the client.
+				const addr = row.qboSnapshot?.billAddr;
+				const existing = await ctx.db
+					.query("clientProperties")
+					.withIndex("by_client", (q) => q.eq("clientId", parentClient._id))
+					.collect();
+				const duplicate = existing.find(
+					(property) =>
+						property.streetAddress === (addr?.line1 ?? "") &&
+						property.city === (addr?.city ?? "")
+				);
+				if (duplicate) {
+					// Still worth a geocode pass: the action no-ops when the row
+					// already has coordinates, and backfills it when it doesn't.
+					await scheduleGeocode(ctx, duplicate._id);
+				} else {
+					await createPropertyFromQboAddress(ctx, {
+						orgId: run.orgId,
+						clientId: parentClient._id,
+						addr,
+						propertyName: row.qboDisplayName,
+					});
+				}
+				await ctx.db.patch(row._id, {
+					outcome: "property_created",
+					linkedClientId: parentClient._id,
+				});
+				counters.properties += 1;
+				continue;
+			}
+
 			const decision = effectiveDecision(row);
 			if (row.outcome === "ambiguous") counters.ambiguousCleared += 1;
 
@@ -719,6 +872,7 @@ export const commitPage = internalMutation({
 				autoLinked: latest.autoLinked + counters.autoLinked,
 				imported: latest.imported + counters.imported,
 				skipped: latest.skipped + counters.skipped,
+				properties: (latest.properties ?? 0) + counters.properties,
 				ambiguous: Math.max(0, latest.ambiguous - counters.ambiguousCleared),
 				committedRows: (latest.committedRows ?? 0) + pending.length,
 			});
@@ -907,9 +1061,15 @@ export const setRowDecision = userMutation({
 		if (
 			row.outcome !== "proposed_link" &&
 			row.outcome !== "proposed_import" &&
-			row.outcome !== "ambiguous"
+			row.outcome !== "ambiguous" &&
+			row.outcome !== "proposed_property"
 		) {
 			throw new ConvexError("This import row cannot be changed");
+		}
+		// A job site can only be dropped — it is never a client of its own, so
+		// "link"/"import" have no meaning for it.
+		if (row.outcome === "proposed_property" && args.decision !== "skip") {
+			throw new ConvexError("This import row can only be skipped");
 		}
 
 		if (args.decision !== "link") {
@@ -1026,6 +1186,8 @@ export const getImportRun = userQuery({
 export type ImportRowView = Doc<"quickbooksImportRows"> & {
 	proposedClient?: { clientId: Id<"clients">; companyName: string };
 	candidates?: Array<{ clientId: Id<"clients">; companyName: string }>;
+	/** proposed_property rows: the parent customer's name, captured at fetch. */
+	parentName?: string;
 };
 
 /**
@@ -1074,6 +1236,7 @@ export const listImportRows = userQuery({
 		const page: ImportRowView[] = [];
 		for (const row of result.page) {
 			const view: ImportRowView = { ...row };
+			if (row.parentDisplayName) view.parentName = row.parentDisplayName;
 			const proposedId = row.decisionClientId ?? row.linkedClientId;
 			if (proposedId) {
 				const companyName = await nameOf(proposedId);

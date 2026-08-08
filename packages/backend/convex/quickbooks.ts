@@ -793,6 +793,12 @@ export type QboSyncPayload =
 			clientId: Id<"clients">;
 			/** Distinct in-org SKUs referenced by the lines, keyed by skuId. */
 			skus: Record<string, Doc<"skus">>;
+			/**
+			 * Where the work happened, for the QBO ShipAddr: the project's
+			 * property when the invoice has one, else the client's primary.
+			 * QBO's Automated Sales Tax computes off the ship-to address.
+			 */
+			jobSite: Doc<"clientProperties"> | null;
 	  }
 	| { kind: "sku"; sku: Doc<"skus"> }
 	| {
@@ -850,12 +856,32 @@ export const getSyncJobPayload = internalQuery({
 				if (sku && sku.orgId === args.orgId) skus[item.skuId] = sku;
 			}
 
+			// Ship-to resolution: project job site first, client primary fallback.
+			let jobSite: Doc<"clientProperties"> | null = null;
+			if (invoice.projectId) {
+				const project = await ctx.db.get(invoice.projectId);
+				if (project && project.orgId === args.orgId && project.propertyId) {
+					const property = await ctx.db.get(project.propertyId);
+					if (property && property.orgId === args.orgId) jobSite = property;
+				}
+			}
+			if (!jobSite) {
+				jobSite =
+					(await ctx.db
+						.query("clientProperties")
+						.withIndex("by_primary", (q) =>
+							q.eq("clientId", invoice.clientId).eq("isPrimary", true)
+						)
+						.first()) ?? null;
+			}
+
 			return {
 				kind: "invoice",
 				invoice,
 				lineItems,
 				clientId: invoice.clientId,
 				skus,
+				jobSite,
 			};
 		}
 
