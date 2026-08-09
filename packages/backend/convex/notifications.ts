@@ -108,6 +108,8 @@ interface NotificationStats {
 		automation_message: number;
 		// Workflow-automation production failure alerts.
 		automation_failed: number;
+		// QuickBooks sync failure alerts.
+		quickbooks_sync_failed: number;
 	};
 	today: number;
 	pending: number; // scheduled but not sent yet
@@ -139,6 +141,7 @@ function createEmptyNotificationStats(): NotificationStats {
 			stripe_disconnected: 0,
 			automation_message: 0,
 			automation_failed: 0,
+			quickbooks_sync_failed: 0,
 		},
 		today: 0,
 		pending: 0,

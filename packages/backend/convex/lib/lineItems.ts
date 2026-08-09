@@ -5,6 +5,7 @@
  * Reduces code duplication between invoiceLineItems.ts and quoteLineItems.ts.
  */
 
+import { ConvexError } from "convex/values";
 import { MutationCtx, QueryCtx } from "../_generated/server";
 import { Id, Doc } from "../_generated/dataModel";
 import { getCurrentUserOrgId } from "./auth";
@@ -272,6 +273,29 @@ export async function validateQuoteAccess(
 	}
 
 	return quote;
+}
+
+/**
+ * Validate a SKU referenced by a line item belongs to the caller's org.
+ * skuId is provenance only — it drives per-SKU QuickBooks item sync.
+ */
+export async function validateLineItemSku(
+	ctx: QueryCtx | MutationCtx,
+	skuId: Id<"skus">,
+	existingOrgId?: Id<"organizations">
+): Promise<Doc<"skus">> {
+	const userOrgId = existingOrgId ?? (await getCurrentUserOrgId(ctx));
+	const sku = await ctx.db.get(skuId);
+
+	if (!sku) {
+		throw new ConvexError("SKU not found");
+	}
+
+	if (sku.orgId !== userOrgId) {
+		throw new ConvexError("SKU does not belong to your organization");
+	}
+
+	return sku;
 }
 
 // ============================================================================

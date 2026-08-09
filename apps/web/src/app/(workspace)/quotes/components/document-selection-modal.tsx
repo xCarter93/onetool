@@ -23,7 +23,12 @@ export function DocumentSelectionModal({
 	const [selectedIds, setSelectedIds] = useState<Id<"organizationDocuments">[]>(
 		[]
 	);
-	const documents = useQuery(api.organizationDocuments.list);
+	const allDocuments = useQuery(api.organizationDocuments.list);
+	// Appending merges with pdf-lib, which can only consume PDFs; the documents
+	// library itself now accepts other types too.
+	const documents = allDocuments?.filter(
+		(doc) => doc.mimeType === "application/pdf"
+	);
 
 	const handleToggle = (id: Id<"organizationDocuments">) => {
 		setSelectedIds((prev) =>
@@ -74,7 +79,7 @@ export function DocumentSelectionModal({
 					<div className="text-center py-8 px-4 border-2 border-dashed border-gray-300 dark:border-gray-700 rounded-lg">
 						<FileText className="h-12 w-12 text-gray-400 mx-auto mb-3" />
 						<p className="text-muted-foreground mb-2 font-medium">
-							No documents available
+							No PDF documents available
 						</p>
 						<p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
 							Upload documents in Settings → Documents to use them in quotes

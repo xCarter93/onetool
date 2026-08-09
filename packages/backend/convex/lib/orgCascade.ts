@@ -1,5 +1,6 @@
 import { MutationCtx } from "../_generated/server";
 import { Id } from "../_generated/dataModel";
+import { internal } from "../_generated/api";
 import { assistantAgent } from "../assistantAgent";
 import { StorageHelpers } from "./storage";
 
@@ -36,6 +37,7 @@ export const ORG_SCOPED_CASCADE_TABLES = [
 	"clientDocuments",
 	"documents",
 	"organizationDocuments",
+	"organizationDocumentFolders", // parents of organizationDocuments — drain after them
 	"activities",
 	"notifications",
 	"workflowExecutions",
@@ -64,6 +66,13 @@ export const ORG_SCOPED_CASCADE_TABLES = [
 	// AI assistant metadata (component-side thread data deleted async per row).
 	"agentThreadMeta",
 	"agentUsage",
+	// QuickBooks integration (jobs, links, and import rows before their parent
+	// runs; the connection row last).
+	"quickbooksSyncJobs",
+	"quickbooksEntityLinks",
+	"quickbooksImportRows",
+	"quickbooksImportRuns",
+	"quickbooksConnections",
 ] as const;
 
 /**
@@ -230,6 +239,19 @@ export async function cascadeDeleteOrgDataPage(
 			.take(remaining);
 		for (const row of rows) {
 			await StorageHelpers.deleteFromStorage(ctx, row.storageId);
+			await ctx.db.delete(row._id);
+			remaining--;
+		}
+	}
+
+	// organizationDocumentFolders — no blobs; drained after their documents.
+	{
+		if (remaining <= 0) return { done: false };
+		const rows = await ctx.db
+			.query("organizationDocumentFolders")
+			.withIndex("by_org", (q) => q.eq("orgId", orgId))
+			.take(remaining);
+		for (const row of rows) {
 			await ctx.db.delete(row._id);
 			remaining--;
 		}
@@ -560,6 +582,81 @@ export async function cascadeDeleteOrgDataPage(
 			.withIndex("by_org", (q) => q.eq("orgId", orgId))
 			.take(remaining);
 		for (const row of rows) {
+			await ctx.db.delete(row._id);
+			remaining--;
+		}
+	}
+
+	// quickbooksSyncJobs
+	{
+		if (remaining <= 0) return { done: false };
+		const rows = await ctx.db
+			.query("quickbooksSyncJobs")
+			.withIndex("by_org_status", (q) => q.eq("orgId", orgId))
+			.take(remaining);
+		for (const row of rows) {
+			await ctx.db.delete(row._id);
+			remaining--;
+		}
+	}
+
+	// quickbooksEntityLinks
+	{
+		if (remaining <= 0) return { done: false };
+		const rows = await ctx.db
+			.query("quickbooksEntityLinks")
+			.withIndex("by_org_entity", (q) => q.eq("orgId", orgId))
+			.take(remaining);
+		for (const row of rows) {
+			await ctx.db.delete(row._id);
+			remaining--;
+		}
+	}
+
+	// quickbooksImportRows — children of quickbooksImportRuns; drain first.
+	{
+		if (remaining <= 0) return { done: false };
+		const rows = await ctx.db
+			.query("quickbooksImportRows")
+			.withIndex("by_org", (q) => q.eq("orgId", orgId))
+			.take(remaining);
+		for (const row of rows) {
+			await ctx.db.delete(row._id);
+			remaining--;
+		}
+	}
+
+	// quickbooksImportRuns
+	{
+		if (remaining <= 0) return { done: false };
+		const rows = await ctx.db
+			.query("quickbooksImportRuns")
+			.withIndex("by_org", (q) => q.eq("orgId", orgId))
+			.take(remaining);
+		for (const row of rows) {
+			await ctx.db.delete(row._id);
+			remaining--;
+		}
+	}
+
+	// quickbooksConnections — revoke live tokens at Intuit before dropping the row.
+	{
+		if (remaining <= 0) return { done: false };
+		const rows = await ctx.db
+			.query("quickbooksConnections")
+			.withIndex("by_org", (q) => q.eq("orgId", orgId))
+			.take(remaining);
+		for (const row of rows) {
+			if (row.status !== "disconnected") {
+				// Explicit-token form: the doc is deleted in this transaction, so
+				// the action cannot read it. The arg is consumed once and never
+				// logged; every other caller passes orgId instead.
+				await ctx.scheduler.runAfter(
+					0,
+					internal.quickbooksActions.revokeConnection,
+					{ refreshToken: row.refreshToken }
+				);
+			}
 			await ctx.db.delete(row._id);
 			remaining--;
 		}

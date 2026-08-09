@@ -642,6 +642,7 @@ export default defineSchema({
 		rate: v.number(), // Unit price, dollars
 		amount: v.number(), // quantity * rate, dollars (cent-rounded)
 		cost: v.optional(v.number()), // Cost per unit for margin calculation, dollars
+		skuId: v.optional(v.id("skus")), // set when picked from the SKU list; drives QBO per-item sync
 
 		sortOrder: v.number(), // For ordering items
 	})
@@ -742,6 +743,7 @@ export default defineSchema({
 		unitPrice: v.number(), // dollars
 		total: v.number(), // quantity * unitPrice, dollars (cent-rounded)
 		cost: v.optional(v.number()), // Cost per unit for margin calculation, dollars
+		skuId: v.optional(v.id("skus")), // set when picked from the SKU list; drives QBO per-item sync
 
 		sortOrder: v.number(),
 	})
@@ -959,7 +961,10 @@ export default defineSchema({
 			v.literal("automation_message"),
 			// Workflow-automation production failure alert (admins, in-app only —
 			// deliberately NOT in PUSHABLE_TYPES so failures don't push at 3am).
-			v.literal("automation_failed")
+			v.literal("automation_failed"),
+			// QuickBooks sync failure alert (admins, in-app only, debounced to
+			// one while any unresolved terminal failure exists).
+			v.literal("quickbooks_sync_failed")
 		),
 		title: v.string(), // Notification title
 		message: v.string(), // Notification message content
@@ -998,6 +1003,18 @@ export default defineSchema({
 		// Per-user celebration feed, range-bounded on _creationTime.
 		.index("by_user_type", ["userId", "notificationType"]),
 
+	// Organization Document Folders - drive-explorer tree for organizationDocuments
+	organizationDocumentFolders: defineTable({
+		orgId: v.id("organizations"),
+		name: v.string(),
+		// Undefined = root-level folder.
+		parentId: v.optional(v.id("organizationDocumentFolders")),
+		createdAt: v.number(),
+		createdBy: v.id("users"),
+	})
+		.index("by_org", ["orgId"])
+		.index("by_org_parent", ["orgId", "parentId"]),
+
 	// Organization Documents - reusable documents for quotes/invoices
 	organizationDocuments: defineTable({
 		orgId: v.id("organizations"),
@@ -1009,13 +1026,18 @@ export default defineSchema({
 		// Storage
 		storageId: v.id("_storage"), // Reference to stored PDF
 		fileSize: v.optional(v.number()), // Size in bytes
+		mimeType: v.optional(v.string()), // From _storage metadata; legacy rows read as application/pdf
+
+		// Folder placement (undefined = root)
+		folderId: v.optional(v.id("organizationDocumentFolders")),
 
 		// Tracking
 		uploadedAt: v.number(),
 		uploadedBy: v.id("users"),
 	})
 		.index("by_org", ["orgId"])
-		.index("by_org_uploaded", ["orgId", "uploadedAt"]),
+		.index("by_org_uploaded", ["orgId", "uploadedAt"])
+		.index("by_org_folder", ["orgId", "folderId"]),
 
 	// SKUs - reusable stock keeping units for quotes
 	skus: defineTable({
@@ -1922,4 +1944,185 @@ export default defineSchema({
 		outputTokens: v.number(),
 		totalTokens: v.number(),
 	}).index("by_org", ["orgId"]),
+
+	// QuickBooks Online connection — one per org, one org per realm
+	quickbooksConnections: defineTable({
+		orgId: v.id("organizations"),
+		realmId: v.string(), // QBO company ID, required on every API URL
+		environment: v.union(v.literal("sandbox"), v.literal("production")),
+
+		// OAuth tokens. Intuit rotates the refresh token — always overwrite
+		// with the value from the latest token response.
+		accessToken: v.string(),
+		accessTokenExpiresAt: v.number(),
+		refreshToken: v.string(),
+		refreshTokenExpiresAt: v.number(),
+
+		status: v.union(
+			v.literal("connected"),
+			v.literal("needs_reauth"), // refresh failed / invalid_grant
+			v.literal("disconnected")
+		),
+		connectedByUserId: v.id("users"),
+		companyName: v.optional(v.string()), // from CompanyInfo, display only
+		lastHealthCheckAt: v.optional(v.number()),
+
+		// Sync settings (Jobber/Workiz-style toggles)
+		syncInvoicesOn: v.union(v.literal("sent"), v.literal("created")),
+		syncPayments: v.boolean(),
+		autoDisambiguateNames: v.boolean(), // append " - 2" on 6240 collisions
+
+		// QBO account/item mappings resolved during setup
+		incomeAccountQboId: v.optional(v.string()),
+		incomeAccountName: v.optional(v.string()),
+		depositAccountQboId: v.optional(v.string()), // Undeposited Funds
+		defaultServiceItemQboId: v.optional(v.string()), // "OneTool Service"
+	})
+		.index("by_org", ["orgId"])
+		.index("by_realm", ["realmId"]),
+
+	// OneTool entity ↔ QBO entity mapping (survives disconnect/reconnect)
+	quickbooksEntityLinks: defineTable({
+		orgId: v.id("organizations"),
+		entityType: v.union(
+			v.literal("client"),
+			v.literal("invoice"),
+			v.literal("payment"),
+			v.literal("sku")
+		),
+		localId: v.string(), // Id<"clients"> | Id<"invoices"> | Id<"payments"> | Id<"skus">
+		qboId: v.string(),
+		qboSyncToken: v.string(), // optimistic-concurrency token, updated on every write
+		lastSyncedAt: v.number(),
+		syncWarning: v.optional(v.string()), // e.g. AST overrode tax amount
+	})
+		.index("by_org_entity", ["orgId", "entityType", "localId"])
+		.index("by_org_qbo", ["orgId", "entityType", "qboId"]),
+
+	// Durable sync queue with retry state
+	quickbooksSyncJobs: defineTable({
+		orgId: v.id("organizations"),
+		entityType: v.union(
+			v.literal("client"),
+			v.literal("invoice"),
+			v.literal("payment"),
+			v.literal("sku")
+		),
+		localId: v.string(),
+		operation: v.union(v.literal("upsert"), v.literal("void")),
+		status: v.union(
+			v.literal("pending"),
+			v.literal("processing"),
+			v.literal("succeeded"),
+			v.literal("failed"), // exhausted retries — shows in error center
+			v.literal("ignored") // user dismissed
+		),
+		attempts: v.number(),
+		runAfter: v.number(), // backoff gate; worker skips jobs not yet due
+		// Stamped when the worker flips a job to "processing"; the 15-minute
+		// sweep reclaims jobs stranded in that state.
+		claimedAt: v.optional(v.number()),
+		failedAt: v.optional(v.number()), // terminal-failure time, error center sort
+		lastError: v.optional(v.string()), // human-readable, shown in error center
+		lastErrorCode: v.optional(v.string()), // QBO Fault code, e.g. "6240"
+		dedupeKey: v.string(), // `${entityType}:${localId}` — collapse duplicate pending jobs
+	})
+		.index("by_org_status", ["orgId", "status"])
+		.index("by_org_status_due", ["orgId", "status", "runAfter"])
+		.index("by_status_due", ["status", "runAfter"])
+		.index("by_org_dedupe", ["orgId", "dedupeKey", "status"]),
+
+	// One-time QBO→OneTool customer import (wizard shown at connect). Kept
+	// separate from quickbooksSyncJobs: different lifecycle (bounded run, not a
+	// durable queue) and rows carry per-row human resolution actions.
+	quickbooksImportRuns: defineTable({
+		orgId: v.id("organizations"),
+		realmId: v.string(),
+		status: v.union(
+			v.literal("running"), // fetching + matching QBO customers
+			v.literal("reviewing"), // proposals written, waiting on the reviewer
+			v.literal("committing"), // applying decisions page by page
+			v.literal("awaiting_review"), // legacy: ambiguous rows need human picks
+			v.literal("completed"),
+			v.literal("failed")
+		),
+		startedByUserId: v.id("users"),
+		startedAt: v.number(),
+		completedAt: v.optional(v.number()),
+		// Denormalized counters for the wizard progress/summary UI. The final
+		// counters below are the post-commit truth; proposed* describe the plan.
+		totalFetched: v.number(),
+		autoLinked: v.number(),
+		imported: v.number(),
+		ambiguous: v.number(),
+		skipped: v.number(),
+		proposedLink: v.optional(v.number()),
+		proposedImport: v.optional(v.number()),
+		proposedSkip: v.optional(v.number()),
+		proposedProperty: v.optional(v.number()),
+		properties: v.optional(v.number()), // final: job sites created from sub-customers
+		committedRows: v.optional(v.number()), // commit-loop progress
+		// Stamped when the commit loop starts; a review can sit for days, so the
+		// stalled-commit reclaim can't measure against startedAt.
+		committingAt: v.optional(v.number()),
+		lastError: v.optional(v.string()),
+	}).index("by_org", ["orgId"]),
+
+	quickbooksImportRows: defineTable({
+		orgId: v.id("organizations"),
+		runId: v.id("quickbooksImportRuns"),
+		qboId: v.string(), // QBO Customer.Id
+		qboDisplayName: v.string(),
+		qboEmail: v.optional(v.string()),
+		qboCompanyName: v.optional(v.string()),
+		outcome: v.union(
+			// Proposals written by the fetch pass — no client data touched yet.
+			v.literal("proposed_link"), // one confident match, in linkedClientId
+			v.literal("proposed_import"), // no match — would create a client
+			v.literal("proposed_skip"), // sub-customer with no address; not overridable
+			v.literal("proposed_property"), // sub-customer with an address — a job site
+			v.literal("ambiguous"), // multiple candidates — needs a human pick
+			// Final outcomes, written by the commit pass.
+			v.literal("auto_linked"), // link written
+			v.literal("imported"), // created as a new OneTool client
+			v.literal("property_created"), // job site added to the parent's client
+			v.literal("resolved"), // legacy: human picked a candidate pre-rework
+			v.literal("skipped") // sub-customer, or user chose Don't import
+		),
+		// Fields the commit pass needs to create a client, captured at fetch time
+		// (the QBO payload is long gone by the time the reviewer commits).
+		qboSnapshot: v.optional(
+			v.object({
+				phone: v.optional(v.string()),
+				givenName: v.optional(v.string()),
+				familyName: v.optional(v.string()),
+				billAddr: v.optional(
+					v.object({
+						line1: v.optional(v.string()),
+						city: v.optional(v.string()),
+						state: v.optional(v.string()),
+						postalCode: v.optional(v.string()),
+						country: v.optional(v.string()),
+					})
+				),
+			})
+		),
+		candidateClientIds: v.optional(v.array(v.id("clients"))), // ambiguous only
+		linkedClientId: v.optional(v.id("clients")),
+		// proposed_property only: the QBO Customer.Id of the job's parent, plus
+		// its display name captured at fetch time so the review table needs no
+		// extra lookup.
+		parentQboId: v.optional(v.string()),
+		parentDisplayName: v.optional(v.string()),
+		// Reviewer override; unset means "accept the proposal".
+		decision: v.optional(
+			v.union(v.literal("link"), v.literal("import"), v.literal("skip"))
+		),
+		decisionClientId: v.optional(v.id("clients")), // decision === "link"
+		skipReason: v.optional(v.string()), // "sub_customer" | "user_skipped"
+	})
+		.index("by_run", ["runId"])
+		.index("by_run_outcome", ["runId", "outcome"])
+		.index("by_run_qbo", ["runId", "qboId"])
+		.index("by_org", ["orgId"]),
 });

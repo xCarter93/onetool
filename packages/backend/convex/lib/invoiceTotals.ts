@@ -15,6 +15,7 @@
 import type { QueryCtx, MutationCtx } from "../_generated/server";
 import type { Doc, Id } from "../_generated/dataModel";
 import { computeInvoiceTotals, computeQuoteTotals, roundCents } from "./money";
+import { maybeEnqueueQboSync } from "./quickbooksEnqueue";
 
 export type InvoicePricingMode = "legacy" | "quote";
 
@@ -103,6 +104,11 @@ export async function calculateInvoiceTotals(
  *
  * `touchContent` stamps contentUpdatedAt in the SAME patch, so a line-item
  * edit costs one parent write rather than two.
+ *
+ * Also the QuickBooks re-sync choke point for line-item edits: this runs on
+ * every line-item write (both parents on a move), and the enqueue is
+ * unconditional because a description-only edit produces an empty patch yet
+ * still has to reach QBO.
  */
 export async function syncInvoiceTotals(
 	ctx: MutationCtx,
@@ -125,7 +131,9 @@ export async function syncInvoiceTotals(
 	}
 	if (options?.touchContent) patch.contentUpdatedAt = Date.now();
 
-	if (Object.keys(patch).length === 0) return;
+	if (Object.keys(patch).length > 0) {
+		await ctx.db.patch(invoiceId, patch);
+	}
 
-	await ctx.db.patch(invoiceId, patch);
+	await maybeEnqueueQboSync(ctx, invoice.orgId, "invoice", invoiceId);
 }

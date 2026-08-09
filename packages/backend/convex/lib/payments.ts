@@ -6,6 +6,7 @@
 import type { MutationCtx } from "../_generated/server";
 import type { Doc, Id } from "../_generated/dataModel";
 import { celebrateInvoicePaid } from "./celebrations";
+import { kickQboSyncWorker, maybeEnqueueQboSync } from "./quickbooksEnqueue";
 
 type ReceiptMetadata = {
 	cardBrand?: string;
@@ -56,6 +57,7 @@ export async function updateInvoiceStatusIfFullyPaid(
 		const paidInvoice = await ctx.db.get(invoiceId);
 		if (paidInvoice) {
 			await celebrateInvoicePaid(ctx, paidInvoice);
+			await maybeEnqueueQboSync(ctx, paidInvoice.orgId, "invoice", invoiceId);
 		}
 	}
 }
@@ -76,6 +78,8 @@ export async function settleOutstandingPaymentsForInvoice(
 		.withIndex("by_invoice", (q) => q.eq("invoiceId", invoiceId))
 		.collect();
 	const now = Date.now();
+	// One worker kick for the whole batch rather than one per installment.
+	let qboSyncQueued = false;
 	for (const p of rows) {
 		if (
 			p.status === "paid" ||
@@ -97,6 +101,16 @@ export async function settleOutstandingPaymentsForInvoice(
 			pendingCheckoutSessionUrl: undefined,
 			pendingCheckoutSessionExpiresAt: undefined,
 		});
+		if (
+			await maybeEnqueueQboSync(ctx, p.orgId, "payment", p._id, {
+				kick: false,
+			})
+		) {
+			qboSyncQueued = true;
+		}
+	}
+	if (qboSyncQueued && rows[0]) {
+		await kickQboSyncWorker(ctx, rows[0].orgId);
 	}
 }
 
@@ -136,5 +150,7 @@ export async function applyMarkPaidCascade(
 
 	await ctx.db.patch(payment._id, patch);
 	await updateInvoiceStatusIfFullyPaid(ctx, payment.invoiceId, payment._id);
+	// QuickBooks: the settled installment becomes a QBO Payment (PRD §6.3).
+	await maybeEnqueueQboSync(ctx, payment.orgId, "payment", payment._id);
 	return payment._id;
 }

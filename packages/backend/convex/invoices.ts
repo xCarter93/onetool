@@ -18,6 +18,7 @@ import {
 	emitRecordUpdatedEvent,
 } from "./eventBus";
 import { computeFieldChanges } from "./lib/changeTracking";
+import { maybeEnqueueQboSync } from "./lib/quickbooksEnqueue";
 import { calculateInvoiceTotals, syncInvoiceTotals } from "./lib/invoiceTotals";
 import { assertInvoiceContentEditable } from "./lib/editLocks";
 import { settleOutstandingPaymentsForInvoice } from "./lib/payments";
@@ -340,6 +341,12 @@ export const markInvoicePaidFromWebhookInternal = internalMutation({
 		const paidInvoice = await ctx.db.get(invoice._id);
 		if (paidInvoice) {
 			await celebrateInvoicePaid(ctx, paidInvoice);
+			await maybeEnqueueQboSync(
+				ctx,
+				paidInvoice.orgId,
+				"invoice",
+				paidInvoice._id
+			);
 		}
 
 		return null;
@@ -425,6 +432,7 @@ export const create = userMutation({
 				invoice._id,
 				"invoices.create"
 			);
+			await maybeEnqueueQboSync(ctx, invoice.orgId, "invoice", invoice._id);
 		}
 
 		return invoiceId;
@@ -640,6 +648,12 @@ export const update = userMutation({
 				Object.keys(filteredUpdates).filter((key) => key !== "updatedAt"),
 				"invoices.update"
 			);
+			await maybeEnqueueQboSync(
+				ctx,
+				updatedInvoice.orgId,
+				"invoice",
+				updatedInvoice._id
+			);
 		}
 
 		return id;
@@ -751,6 +765,8 @@ export const sendToClient = userMutation({
 			});
 		}
 
+		await maybeEnqueueQboSync(ctx, invoice.orgId, "invoice", invoice._id);
+
 		// Fire-and-forget the branded portal-invite email.
 		await ctx.scheduler.runAfter(
 			0,
@@ -814,6 +830,12 @@ export const markPaid = userMutation({
 				client?.companyName || "Unknown Client"
 			);
 			await celebrateInvoicePaid(ctx, updatedInvoice as InvoiceDocument);
+			await maybeEnqueueQboSync(
+				ctx,
+				updatedInvoice.orgId,
+				"invoice",
+				updatedInvoice._id
+			);
 		}
 
 		return args.id;
@@ -1185,6 +1207,7 @@ export const createFromQuote = userMutation({
 				cost: quoteLineItem.cost,
 				total: quoteLineItem.amount,
 				sortOrder: quoteLineItem.sortOrder,
+				skuId: quoteLineItem.skuId,
 			});
 		}
 
@@ -1213,6 +1236,7 @@ export const createFromQuote = userMutation({
 				invoice._id,
 				"invoices.createFromQuote"
 			);
+			await maybeEnqueueQboSync(ctx, invoice.orgId, "invoice", invoice._id);
 		}
 
 		// Create default payment for the full invoice amount

@@ -74,6 +74,86 @@ describe("InvoiceLineItems", () => {
 			expect(lineItem?.total).toBe(60000); // 5 * 12000
 		});
 
+		it("should record the skuId the line was filled from", async () => {
+			const { invoiceId, clerkUserId, clerkOrgId } = await t.run(async (ctx) => {
+				const { orgId, clerkUserId, clerkOrgId } = await createTestOrg(ctx);
+				const clientId = await createTestClient(ctx, orgId);
+				const invoiceId = await createTestInvoice(ctx, orgId, clientId);
+				return { invoiceId, clerkUserId, clerkOrgId };
+			});
+
+			const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+
+			const skuId = await asUser.mutation(api.skus.create, {
+				name: "Gutter Cleaning",
+				unit: "job",
+				rate: 200,
+			});
+
+			const lineItemId = await asUser.mutation(api.invoiceLineItems.create, {
+				invoiceId,
+				description: "Gutter Cleaning",
+				quantity: 1,
+				unit: "job",
+				unitPrice: 200,
+				sortOrder: 0,
+				skuId,
+			});
+
+			const lineItem = await asUser.query(api.invoiceLineItems.get, {
+				id: lineItemId,
+			});
+			expect(lineItem?.skuId).toBe(skuId);
+
+			// Manual edits after the pick keep the provenance.
+			await asUser.mutation(api.invoiceLineItems.update, {
+				id: lineItemId,
+				quantity: 3,
+			});
+			const edited = await asUser.query(api.invoiceLineItems.get, {
+				id: lineItemId,
+			});
+			expect(edited?.skuId).toBe(skuId);
+		});
+
+		it("should reject a skuId from another organization", async () => {
+			const { invoiceId, clerkUserId, clerkOrgId } = await t.run(async (ctx) => {
+				const { orgId, clerkUserId, clerkOrgId } = await createTestOrg(ctx);
+				const clientId = await createTestClient(ctx, orgId);
+				const invoiceId = await createTestInvoice(ctx, orgId, clientId);
+				return { invoiceId, clerkUserId, clerkOrgId };
+			});
+
+			const other = await t.run(async (ctx) => {
+				const { clerkUserId, clerkOrgId } = await createTestOrg(ctx, {
+					clerkOrgId: "org_other_sku",
+					clerkUserId: "user_other_sku",
+				});
+				return { clerkUserId, clerkOrgId };
+			});
+			const asOtherUser = t.withIdentity(
+				createTestIdentity(other.clerkUserId, other.clerkOrgId)
+			);
+			const foreignSkuId = await asOtherUser.mutation(api.skus.create, {
+				name: "Foreign SKU",
+				unit: "job",
+				rate: 100,
+			});
+
+			const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+
+			await expect(
+				asUser.mutation(api.invoiceLineItems.create, {
+					invoiceId,
+					description: "Cross-org",
+					quantity: 1,
+					unitPrice: 100,
+					sortOrder: 0,
+					skuId: foreignSkuId,
+				})
+			).rejects.toThrow(/organization/i);
+		});
+
 		it("should validate required fields", async () => {
 			const { invoiceId, clerkUserId, clerkOrgId } = await t.run(async (ctx) => {
 				const { orgId, clerkUserId, clerkOrgId } = await createTestOrg(ctx);

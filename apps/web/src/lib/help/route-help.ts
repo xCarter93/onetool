@@ -15,6 +15,14 @@ export const ROUTE_HELP: Array<{ pattern: RegExp; refs: string[] }> = [
 		refs: ["inbox/unified-inbox", "inbox/emailing-from-a-client-record"],
 	},
 	{
+		pattern: /^\/clients\/import\/quickbooks/,
+		refs: [
+			"settings-and-team/quickbooks-sync",
+			"settings-and-team/organization-profile",
+			"clients/importing-clients",
+		],
+	},
+	{
 		pattern: /^\/clients\/import/,
 		refs: ["clients/importing-clients", "clients/managing-clients"],
 	},
@@ -99,6 +107,8 @@ export const ROUTE_HELP: Array<{ pattern: RegExp; refs: string[] }> = [
 			"settings-and-team/inviting-your-team",
 			"settings-and-team/plans-and-billing",
 			"settings-and-team/setting-up-online-payments",
+			"settings-and-team/quickbooks-sync",
+			"settings-and-team/documents-and-skus",
 		],
 	},
 ];

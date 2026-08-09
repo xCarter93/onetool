@@ -73,4 +73,21 @@ crons.interval(
 	{}
 );
 
+// Keep QuickBooks tokens warm and surface dead grants as needs_reauth.
+crons.interval(
+	"refresh stale quickbooks connections",
+	{ hours: 6 },
+	internal.quickbooksActions.refreshStaleConnections,
+	{}
+);
+
+// Sync-queue watchdog: reclaim jobs stranded mid-claim and re-kick orgs whose
+// scheduler hop was dropped.
+crons.interval(
+	"sweep quickbooks sync jobs",
+	{ minutes: 15 },
+	internal.quickbooksActions.sweepSyncJobs,
+	{}
+);
+
 export default crons;

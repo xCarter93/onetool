@@ -4,6 +4,7 @@ import { v } from "convex/values";
 import { Doc, Id } from "./_generated/dataModel";
 import { getCurrentUserOrgId } from "./lib/auth";
 import { optionalUserQuery, userMutation } from "./lib/factories";
+import { maybeEnqueueQboSync } from "./lib/quickbooksEnqueue";
 
 /**
  * SKU operations with embedded CRUD helpers
@@ -198,6 +199,7 @@ export const update = userMutation({
 	handler: async (ctx, args): Promise<SKUId> => {
 		await ctx.requireLevel("skus", "modify");
 		const { id, ...updates } = args;
+		const existing = await getSKUOrThrow(ctx, id);
 
 		// Validate fields if being updated
 		if (updates.name !== undefined && !updates.name.trim()) {
@@ -243,6 +245,15 @@ export const update = userMutation({
 		filteredUpdates.updatedAt = Date.now();
 
 		await updateSKUWithValidation(ctx, id, filteredUpdates);
+
+		// A rename must reach the linked QBO Item. Unlinked SKUs are skipped by
+		// the eligibility check and get created lazily on the next invoice sync.
+		if (
+			filteredUpdates.name !== undefined &&
+			filteredUpdates.name !== existing.name
+		) {
+			await maybeEnqueueQboSync(ctx, existing.orgId, "sku", id);
+		}
 
 		return id;
 	},

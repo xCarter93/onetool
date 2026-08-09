@@ -1,4 +1,5 @@
 import { query, QueryCtx, MutationCtx } from "./_generated/server";
+import { internal } from "./_generated/api";
 import { mutation, internalMutation } from "./lib/triggers";
 import { v } from "convex/values";
 import { Doc, Id } from "./_generated/dataModel";
@@ -17,6 +18,10 @@ import {
 } from "./eventBus";
 import { trackServerEvent, SERVER_EVENTS } from "./lib/posthog";
 import { computeFieldChanges } from "./lib/changeTracking";
+import {
+	maybeEnqueueQboSync,
+	kickQboSyncWorker,
+} from "./lib/quickbooksEnqueue";
 import {
 	optionalUserQuery,
 	userMutation,
@@ -547,6 +552,7 @@ export const create = userMutation({
 				client._id,
 				"clients.create"
 			);
+			await maybeEnqueueQboSync(ctx, client.orgId, "client", client._id);
 		}
 
 		return clientId;
@@ -657,6 +663,7 @@ export const bulkCreate = userMutation({
 			warnings?: string[];
 		}> = [];
 
+		let qboSyncQueued = false;
 		for (const clientData of args.clients) {
 			try {
 				// Validate required fields
@@ -738,18 +745,43 @@ export const bulkCreate = userMutation({
 								);
 								continue;
 							}
-							await ctx.db.insert("clientProperties", {
-								...property,
-								clientId,
-								orgId: userOrgId,
-								isPrimary: i === 0,
-							});
+							const propertyId = await ctx.db.insert(
+								"clientProperties",
+								{
+									...property,
+									clientId,
+									orgId: userOrgId,
+									isPrimary: i === 0,
+								}
+							);
+							// CSV addresses carry no coordinates (manual entry gets
+							// them from Mapbox autofill); backfill out of band.
+							await ctx.scheduler.runAfter(
+								0,
+								internal.geocodeActions.geocodeClientProperty,
+								{ propertyId }
+							);
 						} catch (err) {
 							warnings.push(
 								`Property creation failed: ${err instanceof Error ? err.message : "Unknown error"}`
 							);
 						}
 					}
+				}
+
+				// A sync-queue hiccup must not fail a row that already imported.
+				try {
+					if (
+						await maybeEnqueueQboSync(ctx, userOrgId, "client", clientId, {
+							kick: false,
+						})
+					) {
+						qboSyncQueued = true;
+					}
+				} catch (err) {
+					warnings.push(
+						`QuickBooks sync not queued: ${err instanceof Error ? err.message : "Unknown error"}`
+					);
 				}
 
 				results.push({
@@ -764,6 +796,10 @@ export const bulkCreate = userMutation({
 						error instanceof Error ? error.message : "Unknown error occurred",
 				});
 			}
+		}
+
+		if (qboSyncQueued) {
+			await kickQboSyncWorker(ctx, userOrgId);
 		}
 
 		return results;
@@ -856,6 +892,7 @@ export const update = userMutation({
 				Object.keys(filteredUpdates).filter((key) => key !== "updatedAt"),
 				"clients.update"
 			);
+			await maybeEnqueueQboSync(ctx, client.orgId, "client", client._id);
 		}
 
 		return id;

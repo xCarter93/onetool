@@ -78,6 +78,87 @@ describe("QuoteLineItems", () => {
 			});
 			expect(lineItem?.amount).toBe(1000); // 25 * 40 = 1000
 		});
+
+		it("should record the skuId the line was filled from", async () => {
+			const { clerkUserId, clerkOrgId, quoteId } = await t.run(async (ctx) => {
+				const { orgId, clerkUserId, clerkOrgId } = await createTestOrg(ctx);
+				const clientId = await createTestClient(ctx, orgId);
+				const quoteId = await createTestQuote(ctx, orgId, clientId);
+				return { clerkUserId, clerkOrgId, quoteId };
+			});
+
+			const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+
+			const skuId = await asUser.mutation(api.skus.create, {
+				name: "Lawn Mowing",
+				unit: "hour",
+				rate: 75,
+			});
+
+			const lineItemId = await asUser.mutation(api.quoteLineItems.create, {
+				quoteId,
+				description: "Lawn Mowing",
+				quantity: 2,
+				unit: "hour",
+				rate: 75,
+				sortOrder: 0,
+				skuId,
+			});
+
+			const lineItem = await asUser.query(api.quoteLineItems.get, {
+				id: lineItemId,
+			});
+			expect(lineItem?.skuId).toBe(skuId);
+
+			// Manual edits after the pick keep the provenance.
+			await asUser.mutation(api.quoteLineItems.update, {
+				id: lineItemId,
+				rate: 90,
+			});
+			const edited = await asUser.query(api.quoteLineItems.get, {
+				id: lineItemId,
+			});
+			expect(edited?.skuId).toBe(skuId);
+		});
+
+		it("should reject a skuId from another organization", async () => {
+			const { clerkUserId, clerkOrgId, quoteId } = await t.run(async (ctx) => {
+				const { orgId, clerkUserId, clerkOrgId } = await createTestOrg(ctx);
+				const clientId = await createTestClient(ctx, orgId);
+				const quoteId = await createTestQuote(ctx, orgId, clientId);
+				return { clerkUserId, clerkOrgId, quoteId };
+			});
+
+			const other = await t.run(async (ctx) => {
+				const { clerkUserId, clerkOrgId } = await createTestOrg(ctx, {
+					clerkOrgId: "org_other_sku",
+					clerkUserId: "user_other_sku",
+				});
+				return { clerkUserId, clerkOrgId };
+			});
+			const asOtherUser = t.withIdentity(
+				createTestIdentity(other.clerkUserId, other.clerkOrgId)
+			);
+			const foreignSkuId = await asOtherUser.mutation(api.skus.create, {
+				name: "Foreign SKU",
+				unit: "hour",
+				rate: 50,
+			});
+
+			const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+
+			await expect(
+				asUser.mutation(api.quoteLineItems.create, {
+					quoteId,
+					description: "Cross-org",
+					quantity: 1,
+					unit: "hour",
+					rate: 50,
+					sortOrder: 0,
+					skuId: foreignSkuId,
+				})
+			).rejects.toThrow(/organization/i);
+		});
 	});
 
 	describe("listByQuote", () => {

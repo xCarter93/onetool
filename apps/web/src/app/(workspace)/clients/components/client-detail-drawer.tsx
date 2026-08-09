@@ -52,6 +52,7 @@ import {
 	RelatedRow,
 	formatActivityTime,
 } from "@/components/shared/detail-drawer";
+import { QuickBooksSyncField } from "@/components/quickbooks/sync-status-row";
 import { formatCurrency } from "@/lib/money";
 import { useToast } from "@/hooks/use-toast";
 import { SendClientEmailPopover } from "./send-client-email-popover";
@@ -372,6 +373,7 @@ export function ClientDetailDrawer({
 							<DrawerField label="Tags">
 								{client.tags.length ? client.tags.join(", ") : "—"}
 							</DrawerField>
+							<QuickBooksSyncField entityType="client" localId={client._id} />
 						</DrawerFieldGrid>
 					</DrawerSection>
 

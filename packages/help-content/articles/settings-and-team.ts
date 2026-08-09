@@ -24,9 +24,10 @@ export const settingsAndTeamArticles: HelpArticle[] = [
 							"**Team** is where you invite people and manage their access.",
 							"**Business Info** holds your contact details and address.",
 							"**Billing** shows your plan and subscription.",
-							"**Payments** connects Stripe so clients can pay you online.",
+							"**Payments** manages your Stripe account, payouts, and disputes. It appears once Stripe setup has been started.",
 							"**Documents** stores organization files for quotes and invoices.",
 							"**SKUs** holds your reusable products and services.",
+							"**Integrations** connects QuickBooks Online and starts your Stripe payments setup.",
 						],
 					},
 					{
@@ -37,7 +38,7 @@ export const settingsAndTeamArticles: HelpArticle[] = [
 					},
 					{
 						type: "note",
-						text: "Some tabs are locked depending on your role and plan. The **Team** and **Payments** tabs are for admins and the owner, and **Payments**, **Documents**, and **SKUs** require the Business plan.",
+						text: "Some tabs are locked depending on your role and plan. The **Team**, **Payments**, and **Integrations** tabs are for admins and the owner, and **Payments**, **Documents**, **SKUs**, and **Integrations** require the Business plan.",
 					},
 				],
 			},
@@ -52,7 +53,7 @@ export const settingsAndTeamArticles: HelpArticle[] = [
 						type: "steps",
 						items: [
 							"Open your organization settings and stay on the **Overview** tab.",
-							"Edit your organization name, or upload a logo image (PNG, JPG, or WEBP up to 10 MB — SVG isn't supported).",
+							"Edit your organization name, or upload a logo image (PNG, JPG, or WEBP up to 10 MB; SVG isn't supported).",
 							"Save your changes with the footer at the bottom of the page. It reads **Unsaved changes** until you do.",
 						],
 					},
@@ -120,6 +121,51 @@ export const settingsAndTeamArticles: HelpArticle[] = [
 				],
 			},
 			{
+				heading: "Integrations",
+				blocks: [
+					{
+						type: "note",
+						text: "QuickBooks Online is not open to everyone yet. While we finish certification with Intuit, the QuickBooks card shows a **Coming soon** badge and the **Connect** button is inactive. Everything below describes how it works once it is switched on for your organization.",
+					},
+					{
+						type: "paragraph",
+						text: "The **Integrations** tab is available on the Business plan to organization admins. It lists one card per integration, and it is where the organization owner connects a QuickBooks Online company, which prepares your account for QuickBooks sync of clients, invoices, and payments from OneTool.",
+					},
+					{
+						type: "paragraph",
+						text: "Once a company is connected, the QuickBooks card shows which company you are linked to and lets the owner choose when invoices are sent to QuickBooks, whether payments are included, and whether duplicate names are resolved automatically. Cancelling an invoice that already synced voids it in QuickBooks rather than deleting it. **Disconnect QuickBooks** stops syncing and revokes OneTool's access; records already in QuickBooks stay there.",
+					},
+					{
+						type: "paragraph",
+						text: "Right after the first connection the QuickBooks card shows a **Setup incomplete** badge and a **Finish setup** button. Setup asks the owner to pick the income account that synced invoices should post to, and it confirms which account payments will be recorded to. That account is used for every item OneTool creates in QuickBooks: one item per line-item SKU, plus a fallback **OneTool Service** item for lines without a SKU. A SKU's item is created the first time it is invoiced, and it is renamed in QuickBooks when you rename the SKU in OneTool. Clients start syncing right away, but invoices and payments wait until setup is finished; once it is, anything waiting in the queue syncs shortly after, and the card lists the income account it posts to. Payments are recorded to your QuickBooks company's Undeposited Funds account; if the company has no such account, payment syncs appear under **Sync issues** until one exists, while invoices keep syncing.",
+					},
+					{
+						type: "paragraph",
+						text: "Once setup is finished, OneTool offers to import the customers already in your QuickBooks company. **Import customers** on the QuickBooks card fetches them in the background, so you can close the dialog while it runs. Nothing is created yet: the fetch only works out a plan. A QuickBooks customer whose name matches one of your clients is proposed as a link to that client, a customer with no match is proposed as a new client, a customer that matches more than one client is marked as needing review, and sub-customers with an address come in as job-site properties on their parent's client. Imported addresses are placed on the map automatically.",
+					},
+					{
+						type: "paragraph",
+						text: "When the fetch finishes the card reads **Review import** and takes you to the review page, which lists every customer with what will happen to it. You can change any of them: search for a different client to link to, import a customer as a new client, or choose not to import it at all. Customers under **Needs review** have to be decided before you can continue. **Import** applies the plan and shows its progress, and **Discard** throws the plan away without creating anything. Nothing is written to your clients, and nothing is pushed to QuickBooks, until you click Import. You can run the import again at any time from the same card: customers that are already linked stay as they are, and only new or unmatched customers come up for review.",
+					},
+					{
+						type: "paragraph",
+						text: "If you need to point OneTool at a different QuickBooks company, **Reset & connect** clears every sync link to the old company and sends the owner back to QuickBooks to pick a new one. Your OneTool records are untouched and nothing is deleted in QuickBooks, but sync history cannot be relinked automatically afterwards.",
+					},
+					{
+						type: "paragraph",
+						text: "If a record cannot reach QuickBooks, a **Sync issues** section appears below the cards listing each failed client, invoice, or payment with the reason QuickBooks gave, how many attempts were made, and when it last failed. **Retry** queues one record again, **Ignore** stops tracking that record, and **Retry all** queues every failed record at once. The section disappears when there is nothing left to fix.",
+					},
+					{
+						type: "paragraph",
+						text: "The **Stripe payments** card on the same tab is where online payments start. **Set up payments** sends the owner to Stripe's hosted onboarding, and the card shows whether setup is still incomplete or charges and payouts are enabled. Once setup has been started, a separate **Payments** tab appears in settings for payouts, disputes, and account details, and **Open Payments** on the card takes you there.",
+					},
+					{
+						type: "note",
+						text: "Connecting, changing sync settings, and disconnecting are limited to the organization owner. Other admins can see the tab.",
+					},
+				],
+			},
+			{
 				heading: "Leaving or deleting the organization",
 				blocks: [
 					{
@@ -147,6 +193,7 @@ export const settingsAndTeamArticles: HelpArticle[] = [
 			"getting-started/set-up-your-organization",
 			"settings-and-team/inviting-your-team",
 			"settings-and-team/plans-and-billing",
+			"settings-and-team/quickbooks-sync",
 		],
 	},
 	{
@@ -473,10 +520,10 @@ export const settingsAndTeamArticles: HelpArticle[] = [
 					{
 						type: "steps",
 						items: [
-							"Open your organization settings and select the **Payments** tab.",
-							"Click **Onboard to collect payments**.",
-							"Follow Stripe's guided onboarding to enter your business details and the bank account for payouts.",
-							"Return to OneTool when Stripe finishes. The tab shows your progress.",
+							"Open your organization settings and select the **Integrations** tab.",
+							"On the **Stripe payments** card, click **Set up payments**. If you have already started, the button reads **Finish setup**.",
+							"Follow Stripe's guided onboarding to enter your business details and the bank account for payouts. A **Payments** tab appears in settings as soon as setup starts, and shows your progress.",
+							"Return to OneTool when Stripe finishes, and check the **Payments** tab for your verification status.",
 						],
 					},
 					{
@@ -487,7 +534,7 @@ export const settingsAndTeamArticles: HelpArticle[] = [
 					},
 					{
 						type: "paragraph",
-						text: "If you stop partway, come back and click **Continue onboarding** to pick up where you left off. Use **Refresh status** any time to pull the latest state from Stripe.",
+						text: "If you stop partway, come back and click **Finish setup** on the Stripe payments card, or **Continue onboarding** on the Payments tab, to pick up where you left off. Use **Refresh status** on the Payments tab any time to pull the latest state from Stripe.",
 					},
 				],
 			},
@@ -551,6 +598,121 @@ export const settingsAndTeamArticles: HelpArticle[] = [
 		],
 	},
 	{
+		slug: "quickbooks-sync",
+		title: "QuickBooks sync: what syncs and what doesn't",
+		subtitle: "Know exactly which records reach QuickBooks so your books stay clean without double entry.",
+		kind: "howto",
+		availability: "business",
+		permission: "Connecting and settings are owner only; every admin can see sync status.",
+		keywords: [
+			"quickbooks",
+			"qbo",
+			"accounting",
+			"sync",
+			"intuit",
+			"bookkeeping",
+			"income account",
+			"sync errors",
+		],
+		sections: [
+			{
+				heading: "OneTool is the source of truth",
+				blocks: [
+					{
+						type: "note",
+						text: "QuickBooks sync is still being certified with Intuit and is not available to connect yet. This article describes how it behaves once it is switched on for your organization.",
+					},
+					{
+						type: "paragraph",
+						text: "The QuickBooks integration syncs one way: from OneTool to QuickBooks. Records you create and update in OneTool are pushed to QuickBooks automatically, usually within a couple of minutes. Changes made inside QuickBooks are never pulled back into OneTool, and the next time a synced record changes in OneTool it is pushed again, replacing edits made on the QuickBooks side.",
+					},
+					{
+						type: "tip",
+						text: "Treat OneTool as the place where client, invoice, and payment records are edited, and QuickBooks as the place your books live. The one exception is the customer import, which brings your existing QuickBooks customers into OneTool. It is usually run once when you first connect, but it is safe to run again any time.",
+					},
+				],
+			},
+			{
+				heading: "What syncs",
+				blocks: [
+					{
+						type: "list",
+						items: [
+							"**Clients** become QuickBooks customers. They sync when created and again whenever their details change.",
+							"**Invoices** sync when you send them (or when created, if the owner changes the timing on the Integrations tab), and edits to an already synced invoice sync again. Cancelling a synced invoice voids it in QuickBooks.",
+							"**Payments** are recorded against the matching QuickBooks invoice when they are paid, if payment sync is turned on.",
+							"**SKUs** become QuickBooks items the first time they are invoiced, posting to the income account chosen during setup. Lines without a SKU use the fallback **OneTool Service** item.",
+						],
+					},
+				],
+			},
+			{
+				heading: "What never syncs",
+				blocks: [
+					{
+						type: "list",
+						items: [
+							"**Quotes and estimates.** Only invoices and their payments reach QuickBooks.",
+							"**Deletes.** Deleting a record in OneTool never deletes it in QuickBooks; the record simply stops updating.",
+							"**Refunds and disputes.** Record those in QuickBooks directly.",
+							"**Card processing fees and payouts.** Stripe fees and payout deposits are not broken out in QuickBooks.",
+							"**History from before you connected.** Older invoices and payments are not backfilled. Editing an older invoice after connecting does sync it.",
+						],
+					},
+				],
+			},
+			{
+				heading: "Seeing sync status on a record",
+				blocks: [
+					{
+						type: "paragraph",
+						text: "Synced invoices and clients show a **QuickBooks** row in the detail sidebar and in the quick-look drawer, with how long ago they last synced. A warning icon on that row means the record reached QuickBooks but came back different, most often because QuickBooks Automated Sales Tax adjusted the tax amount based on the addresses involved.",
+					},
+					{
+						type: "paragraph",
+						text: "When a record cannot reach QuickBooks at all, it appears under **Sync issues** on the Integrations tab with the reason QuickBooks gave, and admins get an in-app notification the first time something fails. Fix the cause, then use **Retry**; the notification clears once the list is empty.",
+					},
+				],
+			},
+			{
+				heading: "Common sync errors",
+				blocks: [
+					{
+						type: "list",
+						items: [
+							"**Duplicate name.** QuickBooks requires customer names to be unique across customers, vendors, and employees. OneTool links to an exact customer match automatically; otherwise it adds a numeric suffix when **Auto-resolve duplicate names** is on, or reports the conflict under Sync issues when it is off.",
+							"**Missing Undeposited Funds account.** Payments are recorded to your Undeposited Funds account. If your QuickBooks company does not have one, payment syncs fail under Sync issues until it exists; invoices still sync.",
+							"**Closed accounting period.** QuickBooks rejects changes to a period your accountant has closed. Reopen the period or ignore the item.",
+						],
+					},
+				],
+			},
+		],
+		faq: [
+			{
+				question: "I edited a customer in QuickBooks. Will my change stay?",
+				answer: "Only until that client next changes in OneTool. Sync is one way, so OneTool's version replaces QuickBooks edits on the next sync. Make record edits in OneTool.",
+			},
+			{
+				question: "Why is my tax amount different in QuickBooks?",
+				answer: "QuickBooks Automated Sales Tax recalculates tax from the addresses on the invoice and can override the amount OneTool sent. When that happens the record shows a warning on its QuickBooks row so you can review it.",
+			},
+			{
+				question: "Do my old invoices get synced when I connect?",
+				answer: "No. Sync starts from the moment you connect, and existing invoices and payments stay where they are. Editing an older invoice after connecting syncs it. Existing QuickBooks customers can be brought in with the customer import, which you can run whenever you need it.",
+			},
+			{
+				question: "What happens if I disconnect?",
+				answer: "Syncing stops and OneTool's access is revoked, but everything already in QuickBooks stays there. Reconnecting the same QuickBooks company picks up where it left off.",
+			},
+		],
+		related: [
+			"settings-and-team/organization-profile",
+			"invoices-and-payments/creating-an-invoice",
+			"clients/importing-clients",
+		],
+	},
+	{
 		slug: "documents-and-skus",
 		title: "Documents and SKUs",
 		subtitle: "Keep reusable files and line items on hand so quotes come together faster.",
@@ -577,15 +739,24 @@ export const settingsAndTeamArticles: HelpArticle[] = [
 				blocks: [
 					{
 						type: "paragraph",
-						text: "Documents is a library for the files your business sends out again and again, like proof of insurance or a license. Instead of hunting for the right file each time, upload it once and attach it to quotes and invoices from the library.",
+						text: "Documents is a file library for the things your business keeps on hand, like proof of insurance, licenses, spec sheets, and site photos. It accepts PDFs, images, Office documents, and CSV or text files up to 25 MB each. Organize files into folders, switch between a list and a card grid, and search or filter by type when the library grows.",
 					},
 					{
 						type: "steps",
 						items: [
 							"Open your organization settings and select the **Documents** tab.",
-							"Upload the files you want to keep on hand.",
-							"Attach them to a quote or invoice when you build it.",
+							"Upload files with the **Upload** button or by dragging them onto the library; they land in the folder you are viewing.",
+							"Use **New Folder** to organize files, and the row menu's **Move** action to rearrange them later.",
+							"Attach PDFs to a quote or invoice when you build it.",
 						],
+					},
+					{
+						type: "note",
+						text: "Only PDFs can be appended to quote and invoice PDFs. Other file types live in the library for your team's reference.",
+					},
+					{
+						type: "paragraph",
+						text: "Selecting a file's **Details** opens a panel where you can rename it, give it a description, preview images, or download it. Select several rows at once to download or delete them together, and use the **Recent** view in the sidebar to jump back to the latest uploads. Deleting a file or folder is permanent, and deleting a folder also deletes everything inside it.",
 					},
 				],
 			},

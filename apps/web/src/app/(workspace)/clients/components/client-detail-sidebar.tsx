@@ -10,6 +10,7 @@ import {
 	SelectValue,
 	SelectItem,
 } from "@/components/ui/select";
+import { QuickBooksSyncRow } from "@/components/quickbooks/sync-status-row";
 import { TagsInput } from "@/components/shared/tags-input";
 import { ProminentStatusBadge } from "@/components/shared/prominent-status-badge";
 import { Separator } from "@/components/ui/separator";
@@ -474,6 +475,8 @@ export function ClientDetailSidebar({
 						</span>
 					</div>
 				</div>
+
+				<QuickBooksSyncRow entityType="client" localId={clientId} />
 			</div>
 
 			<Separator className="my-4" />

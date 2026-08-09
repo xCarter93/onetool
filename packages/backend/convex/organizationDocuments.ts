@@ -51,12 +51,54 @@ async function getDocumentOrThrow(
 type OrganizationDocument = Doc<"organizationDocuments">;
 type OrganizationDocumentId = Id<"organizationDocuments">;
 
+/** Enriched shape returned by `list`/`get` for the drive explorer. */
+export type OrganizationDocumentWithMeta = OrganizationDocument & {
+	mimeType: string;
+	uploaderName: string | null;
+	uploaderImage: string | null;
+};
+
+/** Hard server-side upload ceiling (25 MB). */
+export const MAX_DOCUMENT_BYTES = 25 * 1024 * 1024;
+
+/** Content types accepted for organization document uploads. */
+export const ALLOWED_MIME_TYPES = [
+	"application/pdf",
+	// Images
+	"image/png",
+	"image/jpeg",
+	"image/webp",
+	"image/gif",
+	"image/heic",
+	"image/heif",
+	// Office (OpenXML)
+	"application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+	"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+	"application/vnd.openxmlformats-officedocument.presentationml.presentation",
+	// Office (legacy)
+	"application/msword",
+	"application/vnd.ms-excel",
+	"application/vnd.ms-powerpoint",
+	// Text
+	"text/csv",
+	"text/plain",
+] as const;
+
+const ALLOWED_MIME_TYPE_SET: ReadonlySet<string> = new Set(ALLOWED_MIME_TYPES);
+
+/**
+ * Legacy rows predate `mimeType` and were always PDFs.
+ */
+function normalizeMimeType(doc: OrganizationDocument): string {
+	return doc.mimeType ?? "application/pdf";
+}
+
 /**
  * Get all organization documents
  */
 export const list = optionalUserQuery({
 	args: {},
-	handler: async (ctx): Promise<OrganizationDocument[]> => {
+	handler: async (ctx): Promise<OrganizationDocumentWithMeta[]> => {
 		const userOrgId = ctx.orgId;
 		if (!userOrgId) {
 			return [];
@@ -68,8 +110,28 @@ export const list = optionalUserQuery({
 			.withIndex("by_org", (q) => q.eq("orgId", userOrgId))
 			.collect();
 
-		// Sort by upload time (newest first)
-		return documents.sort((a, b) => b.uploadedAt - a.uploadedAt);
+		// Batch-load the distinct uploaders once, not once per document.
+		const uploaderIds = [...new Set(documents.map((d) => d.uploadedBy))];
+		const uploaders = new Map<
+			Id<"users">,
+			{ name: string | null; image: string | null }
+		>();
+		for (const uploaderId of uploaderIds) {
+			const uploader = await ctx.db.get(uploaderId);
+			uploaders.set(uploaderId, {
+				name: uploader?.name ?? uploader?.email ?? null,
+				image: uploader?.image || null,
+			});
+		}
+
+		return documents
+			.sort((a, b) => b.uploadedAt - a.uploadedAt)
+			.map((doc) => ({
+				...doc,
+				mimeType: normalizeMimeType(doc),
+				uploaderName: uploaders.get(doc.uploadedBy)?.name ?? null,
+				uploaderImage: uploaders.get(doc.uploadedBy)?.image ?? null,
+			}));
 	},
 });
 
@@ -78,13 +140,23 @@ export const list = optionalUserQuery({
  */
 export const get = optionalUserQuery({
 	args: { id: v.id("organizationDocuments") },
-	handler: async (ctx, args): Promise<OrganizationDocument | null> => {
+	handler: async (ctx, args): Promise<OrganizationDocumentWithMeta | null> => {
 		const userOrgId = ctx.orgId;
 		if (!userOrgId) {
 			return null;
 		}
 		await ctx.requireLevel("orgDocuments", "view");
-		return await getDocumentWithOrgValidation(ctx, args.id);
+		const document = await getDocumentWithOrgValidation(ctx, args.id);
+		if (!document) {
+			return null;
+		}
+		const uploader = await ctx.db.get(document.uploadedBy);
+		return {
+			...document,
+			mimeType: normalizeMimeType(document),
+			uploaderName: uploader?.name ?? uploader?.email ?? null,
+			uploaderImage: uploader?.image || null,
+		};
 	},
 });
 
@@ -96,19 +168,57 @@ export const create = userMutation({
 		name: v.string(),
 		description: v.optional(v.string()),
 		storageId: v.id("_storage"),
+		// Accepted for backwards compatibility; the authoritative size comes from
+		// the _storage system document.
 		fileSize: v.optional(v.number()),
+		folderId: v.optional(v.id("organizationDocumentFolders")),
 	},
 	handler: async (ctx, args): Promise<OrganizationDocumentId> => {
 		const user = await getCurrentUserOrThrow(ctx);
 		const userOrgId = await getCurrentUserOrgId(ctx);
 		await ctx.requireLevel("orgDocuments", "modify");
 
+		const name = args.name.trim();
+		if (name.length === 0) {
+			throw new Error("Document name is required");
+		}
+
+		// Authoritative file facts live on the _storage system document, not on
+		// anything the client sent. Reject + drop the blob on violation.
+		const metadata = await ctx.db.system.get(args.storageId);
+		if (!metadata) {
+			throw new Error("Uploaded file could not be found in storage");
+		}
+
+		// NOTE: a rejected upload's blob cannot be cleaned up here — Convex
+		// mutations are transactional, so throwing rolls back any
+		// `ctx.storage.delete` in the same call. The client is responsible for
+		// not retaining the storageId of a rejected upload.
+		if (metadata.size > MAX_DOCUMENT_BYTES) {
+			throw new Error(
+				`File is too large. Maximum size is ${MAX_DOCUMENT_BYTES / (1024 * 1024)} MB.`
+			);
+		}
+
+		const contentType = metadata.contentType ?? undefined;
+		if (!contentType || !ALLOWED_MIME_TYPE_SET.has(contentType)) {
+			throw new Error(
+				`Unsupported file type${contentType ? `: ${contentType}` : ""}. Allowed types: PDF, images, Office documents, CSV and plain text.`
+			);
+		}
+
+		if (args.folderId) {
+			await ctx.orgEntity("organizationDocumentFolders", args.folderId);
+		}
+
 		const documentId = await ctx.db.insert("organizationDocuments", {
 			orgId: userOrgId,
-			name: args.name,
+			name,
 			description: args.description,
 			storageId: args.storageId,
-			fileSize: args.fileSize,
+			fileSize: metadata.size,
+			mimeType: contentType,
+			folderId: args.folderId,
 			uploadedAt: Date.now(),
 			uploadedBy: user._id,
 		});
@@ -170,6 +280,61 @@ export const remove = userMutation({
 		await ctx.db.delete(args.id);
 
 		return args.id;
+	},
+});
+
+/**
+ * Delete several documents at once (drive-explorer multi-select).
+ */
+export const bulkRemove = userMutation({
+	args: { ids: v.array(v.id("organizationDocuments")) },
+	handler: async (ctx, args): Promise<{ deleted: number }> => {
+		await ctx.requireLevel("orgDocuments", "delete");
+
+		// Validate every id first so a cross-org id aborts the whole batch.
+		const documents: OrganizationDocument[] = [];
+		for (const id of args.ids) {
+			documents.push(await ctx.orgEntity("organizationDocuments", id));
+		}
+
+		for (const document of documents) {
+			try {
+				await ctx.storage.delete(document.storageId);
+			} catch (error) {
+				console.warn(`Failed to delete file from storage: ${error}`);
+			}
+			await ctx.db.delete(document._id);
+		}
+
+		return { deleted: documents.length };
+	},
+});
+
+/**
+ * Move documents into a folder (undefined folderId = root).
+ */
+export const move = userMutation({
+	args: {
+		ids: v.array(v.id("organizationDocuments")),
+		folderId: v.optional(v.id("organizationDocumentFolders")),
+	},
+	handler: async (ctx, args): Promise<{ moved: number }> => {
+		await ctx.requireLevel("orgDocuments", "modify");
+
+		if (args.folderId) {
+			await ctx.orgEntity("organizationDocumentFolders", args.folderId);
+		}
+
+		const documents: OrganizationDocument[] = [];
+		for (const id of args.ids) {
+			documents.push(await ctx.orgEntity("organizationDocuments", id));
+		}
+
+		for (const document of documents) {
+			await ctx.db.patch(document._id, { folderId: args.folderId });
+		}
+
+		return { moved: documents.length };
 	},
 });
 
@@ -280,10 +445,8 @@ export const getStats = optionalUserQuery({
 		const monthStartTime = monthStart.getTime();
 
 		documents.forEach((doc: OrganizationDocument) => {
-			// Count total size
-			if (doc.fileSize) {
-				stats.totalSize += doc.fileSize;
-			}
+			// Count total size (legacy rows may have no fileSize)
+			stats.totalSize += doc.fileSize ?? 0;
 
 			// Count this month
 			if (doc.uploadedAt >= monthStartTime) {

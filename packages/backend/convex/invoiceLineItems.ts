@@ -11,6 +11,7 @@ import {
 	calculateInvoiceLineItemTotal,
 	sortLineItems,
 	getNextLineItemSortOrder,
+	validateLineItemSku,
 } from "./lib/lineItems";
 import {
 	optionalUserQuery,
@@ -164,6 +165,7 @@ export const create = userMutation({
 		unitPrice: v.number(),
 		cost: v.optional(v.number()),
 		sortOrder: v.number(),
+		skuId: v.optional(v.id("skus")),
 	},
 	handler: async (ctx, args): Promise<InvoiceLineItemId> => {
 		await ctx.requireLevel("invoices", "modify");
@@ -180,6 +182,10 @@ export const create = userMutation({
 
 		// Validate line item fields
 		validateInvoiceLineItemFields(args);
+
+		if (args.skuId) {
+			await validateLineItemSku(ctx, args.skuId, ctx.orgId);
+		}
 
 		// Calculate total
 		const total = calculateInvoiceLineItemTotal(args.quantity, args.unitPrice);
@@ -209,6 +215,7 @@ export const update = userMutation({
 		unitPrice: v.optional(v.number()),
 		cost: v.optional(v.number()),
 		sortOrder: v.optional(v.number()),
+		skuId: v.optional(v.id("skus")),
 	},
 	handler: async (ctx, args): Promise<InvoiceLineItemId> => {
 		await ctx.requireLevel("invoices", "modify");
@@ -251,6 +258,10 @@ export const update = userMutation({
 			);
 			// …and must itself accept content edits.
 			await assertInvoiceContentEditable(ctx, newParent);
+		}
+
+		if (filteredUpdates.skuId) {
+			await validateLineItemSku(ctx, filteredUpdates.skuId, ctx.orgId);
 		}
 
 		// Recalculate total if quantity or unit price changed
@@ -326,6 +337,7 @@ export const bulkCreate = userMutation({
 				unitPrice: v.number(),
 				cost: v.optional(v.number()),
 				sortOrder: v.number(),
+				skuId: v.optional(v.id("skus")),
 			})
 		),
 	},
@@ -351,6 +363,10 @@ export const bulkCreate = userMutation({
 
 			// Validate each item
 			validateInvoiceLineItemFields(itemData, { prefix: `Item ${i + 1}: ` });
+
+			if (itemData.skuId) {
+				await validateLineItemSku(ctx, itemData.skuId, userOrgId);
+			}
 
 			// Calculate total and create item
 			const total = calculateInvoiceLineItemTotal(
@@ -457,6 +473,7 @@ export const duplicate = userMutation({
 			total: originalItem.total,
 			cost: originalItem.cost,
 			sortOrder: newSortOrder,
+			skuId: originalItem.skuId,
 		});
 
 		await syncInvoiceTotals(ctx, originalItem.invoiceId, {
