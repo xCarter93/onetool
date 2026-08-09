@@ -109,7 +109,11 @@ export function CommunityEditor({
 			const currentStr = JSON.stringify(currentContent);
 
 			if (contentStr !== currentStr && content.content && content.content.length > 0) {
-				editor.commands.setContent(content);
+				// emitUpdate defaults to true in TipTap v3 (it was false in v2).
+				// Loading a document normalizes it — default attrs get filled in — so
+				// an emit here hands the parent JSON that differs from what it just
+				// passed down, and every open of the editor reads as an unsaved edit.
+				editor.commands.setContent(content, { emitUpdate: false });
 			}
 		}
 	}, [editor, content]);
