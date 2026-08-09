@@ -22,7 +22,9 @@ import {
 } from "@/lib/community-sections";
 import { isValidUrl as isValidSocialUrl } from "@/lib/validators";
 
-const MAX_BANNER_SIZE = 5 * 1024 * 1024;
+// The banner is the one full-bleed image on the page, so it comes off a camera
+// or a designer far more often than the avatar or a gallery thumbnail does.
+const MAX_BANNER_SIZE = 10 * 1024 * 1024;
 const MAX_AVATAR_SIZE = 2 * 1024 * 1024;
 const MAX_GALLERY_IMAGE_SIZE = 5 * 1024 * 1024;
 export const MAX_GALLERY_IMAGES = 5;

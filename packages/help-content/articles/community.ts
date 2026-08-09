@@ -84,7 +84,7 @@ export const communityArticles: HelpArticle[] = [
 					},
 					{
 						type: "note",
-						text: "Image limits: the banner and gallery photos can each be up to 5 MB, and the avatar up to 2 MB.",
+						text: "Image limits: the banner can be up to 10 MB, gallery photos up to 5 MB each, and the avatar up to 2 MB.",
 					},
 					{
 						type: "note",

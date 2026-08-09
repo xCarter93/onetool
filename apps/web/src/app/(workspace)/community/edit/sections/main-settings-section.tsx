@@ -160,7 +160,7 @@ export const MainSettingsSection = React.memo(function MainSettingsSection({
 									<span className="text-sm font-medium">
 										Click to upload banner image
 									</span>
-									<span className="text-xs opacity-70">Max 5MB</span>
+									<span className="text-xs opacity-70">Max 10MB</span>
 								</>
 							)}
 						</div>

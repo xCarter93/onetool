@@ -50,7 +50,7 @@ export function SiteHeader({
 					: "bg-transparent border-b border-transparent"
 			)}
 		>
-			<div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center gap-4">
+			<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center gap-4">
 				<a
 					href="#main"
 					className="flex items-center gap-2.5 min-w-0 rounded-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"

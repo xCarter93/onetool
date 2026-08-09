@@ -171,7 +171,7 @@ export function CommunityPageView({
 				>
 					About us
 				</h2>
-				<div className="mt-4 text-fg">
+				<div className="mt-4 max-w-[68ch] text-fg">
 					<CommunityPageContent content={data.bioContent} />
 				</div>
 			</section>
@@ -184,7 +184,7 @@ export function CommunityPageView({
 				>
 					What we do
 				</h2>
-				<div className="mt-4 text-fg">
+				<div className="mt-4 max-w-[68ch] text-fg">
 					<CommunityPageContent content={data.servicesContent} />
 				</div>
 			</section>
@@ -246,7 +246,7 @@ export function CommunityPageView({
 					</ul>
 				) : (
 					data.pricingContent && (
-						<div className="mt-4 text-fg">
+						<div className="mt-4 max-w-[68ch] text-fg">
 							<CommunityPageContent content={data.pricingContent} />
 						</div>
 					)
@@ -299,7 +299,7 @@ export function CommunityPageView({
 						</div>
 					)}
 
-					<div className="relative max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 pt-10 pb-12 sm:pt-14 sm:pb-16">
+					<div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-10 pb-12 sm:pt-14 sm:pb-16">
 						<div
 							className={cn(
 								"grid gap-10",
@@ -403,7 +403,7 @@ export function CommunityPageView({
 					timezone={data.organization?.timezone}
 				/>
 
-				<div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-12 sm:py-16">
+				<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 sm:py-16">
 					<div className="flex flex-col lg:flex-row gap-10 lg:gap-14">
 						<div className="flex-1 min-w-0 space-y-14">
 							{onEditSection ? (
@@ -424,7 +424,7 @@ export function CommunityPageView({
 									<Fragment key={id}>{sectionNodes[id]}</Fragment>
 								))
 							) : data.content ? (
-								<div className="text-fg">
+								<div className="max-w-[68ch] text-fg">
 									<CommunityPageContent content={data.content} />
 								</div>
 							) : null}
@@ -455,7 +455,7 @@ export function CommunityPageView({
 			</main>
 
 			<footer className="border-t border-border bg-muted/20">
-				<div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8 pb-24 lg:pb-8">
+				<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 pb-24 lg:pb-8">
 					<div className="flex flex-col sm:flex-row items-center justify-between gap-4 text-sm text-muted-fg">
 						<p>
 							Powered by{" "}

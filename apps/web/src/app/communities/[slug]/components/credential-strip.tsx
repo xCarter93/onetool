@@ -65,7 +65,7 @@ export function CredentialStrip({
 
 	return (
 		<div className="border-y border-border bg-muted/30">
-			<div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-3">
+			<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3">
 				<ul className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-muted-fg">
 					{licenseLabel && (
 						<li className="inline-flex items-center gap-1.5">
