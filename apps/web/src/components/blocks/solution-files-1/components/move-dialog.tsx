@@ -54,6 +54,9 @@ import {
 } from "./folder-tree"
 import { FolderIcon, SearchIcon, CheckIcon, XIcon } from "lucide-react"
 
+/** Shared description for tree rows the move can't target. */
+const BLOCKED_HINT_ID = "move-dialog-blocked-hint"
+
 // prettier-ignore
 const ICONS = {
   folder: <FolderIcon aria-hidden="true" />,
@@ -194,6 +197,7 @@ export function MoveDialog({
   const [tab, setTab] = useState("suggested")
   const [searching, setSearching] = useState(false)
   const searchRef = useRef<HTMLInputElement | null>(null)
+  const searchToggleRef = useRef<HTMLButtonElement | null>(null)
   const [expandedItems, setExpandedItems] = useState<string[]>([TREE_ROOT_ID])
   const folderNodes = useMemo(() => buildFolderNodes(rows), [rows])
 
@@ -253,6 +257,25 @@ export function MoveDialog({
     setQuery("")
   }
 
+  // Dismissing search from inside it (Escape, the Close button) unmounts the
+  // focused element, which would drop focus to body. Hand it back to the toggle
+  // that opened search. Not used on the dialog-close path, where focus belongs
+  // to whatever opened the dialog.
+  function dismissSearch() {
+    closeSearch()
+    requestAnimationFrame(() => searchToggleRef.current?.focus())
+  }
+
+  // Every close path resets search and the tab, not just the overlay/Escape one
+  // the Dialog drives — Cancel used to leave both where the last visit left them.
+  function handleOpenChange(next: boolean) {
+    if (!next) {
+      closeSearch()
+      setTab("suggested")
+    }
+    onOpenChange(next)
+  }
+
   function parentLabelOf(id: string) {
     const chain = destPathOf(id)
     return chain.length > 1 ? chain.slice(0, -1).join(" / ") : "Documents"
@@ -280,16 +303,7 @@ export function MoveDialog({
   }
 
   return (
-    <Dialog
-      open={open}
-      onOpenChange={(next) => {
-        if (!next) {
-          closeSearch()
-          setTab("suggested")
-        }
-        onOpenChange(next)
-      }}
-    >
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="flex flex-col gap-0 overflow-hidden p-0 sm:max-w-lg">
         <DialogHeader className="shrink-0 gap-3 p-4 pb-3">
           <DialogTitle className="truncate">Move {targetName}</DialogTitle>
@@ -332,7 +346,7 @@ export function MoveDialog({
                       // Swallow it: Escape would otherwise close the dialog.
                       event.preventDefault()
                       event.stopPropagation()
-                      closeSearch()
+                      dismissSearch()
                     }
                   }}
                   placeholder="Search folders"
@@ -346,7 +360,7 @@ export function MoveDialog({
                   size="icon-sm"
                   className="shrink-0"
                   aria-label="Close search"
-                  onClick={closeSearch}
+                  onClick={dismissSearch}
                 >
                   {ICONS.close}
                 </Button>
@@ -373,6 +387,7 @@ export function MoveDialog({
                   </TabsTrigger>
                 </TabsList>
                 <Button
+                  ref={searchToggleRef}
                   type="button"
                   variant="ghost"
                   size="icon-sm"
@@ -404,12 +419,25 @@ export function MoveDialog({
                   {renderList(suggested, "No folders yet.")}
                 </TabsContent>
                 <TabsContent value="all" className="px-2 py-2">
+                  {/* One shared reason for every blocked row: repeating it per
+                      item would make a screen reader read it on each arrow key. */}
+                  <span id={BLOCKED_HINT_ID} className="sr-only">
+                    Unavailable: this is the item being moved, or a folder
+                    inside it.
+                  </span>
                   <Tree indent={TREE_INDENT} tree={tree}>
                     {tree.getItems().map((item) => {
                       const blocked = disabledIds.has(item.getId())
 
                       return (
-                        <TreeItem key={item.getId()} item={item}>
+                        <TreeItem
+                          key={item.getId()}
+                          item={item}
+                          aria-disabled={blocked}
+                          aria-describedby={
+                            blocked ? BLOCKED_HINT_ID : undefined
+                          }
+                        >
                           <TreeItemLabel
                             className={cn(
                               "bg-transparent",
@@ -447,13 +475,20 @@ export function MoveDialog({
           <Button
             type="button"
             variant="outline"
-            onClick={() => onOpenChange(false)}
+            onClick={() => handleOpenChange(false)}
           >
             Cancel
           </Button>
           <Button
             type="button"
-            disabled={destId === "" || disabledIds.has(destId)}
+            // folderNodes membership, not just non-empty: a folder deleted from
+            // under an open dialog leaves destId pointing at a row that no
+            // longer exists, and confirming would move into nothing.
+            disabled={
+              destId === "" ||
+              !folderNodes[destId] ||
+              disabledIds.has(destId)
+            }
             onClick={onConfirm}
           >
             Move Here

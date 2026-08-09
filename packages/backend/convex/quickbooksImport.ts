@@ -265,6 +265,12 @@ export const processCustomerPage = internalMutation({
 		if (!run || run.orgId !== args.orgId) {
 			throw new ConvexError("Import run not found");
 		}
+		// A fetch action can outlive the reclaim that failed its run. Without this
+		// fence its late pages would re-create rows after deleteRunRowsPage
+		// finished, stranding them forever. Throwing also stops the zombie's loop.
+		if (run.status !== "running") {
+			throw new ConvexError("import_run_not_active");
+		}
 
 		const clients = await ctx.db
 			.query("clients")
@@ -579,6 +585,9 @@ export const finishRun = internalMutation({
 	handler: async (ctx, args): Promise<null> => {
 		const run = await ctx.db.get(args.runId);
 		if (!run) return null;
+		// Same reclaim race as processCustomerPage: a zombie action's finishRun
+		// must not walk a failed run back to reviewing.
+		if (run.status !== "running") return null;
 
 		if (run.totalFetched === 0) {
 			await ctx.db.patch(args.runId, {

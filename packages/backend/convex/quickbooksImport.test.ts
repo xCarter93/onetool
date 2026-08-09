@@ -763,6 +763,45 @@ describe("QuickBooks customer import", () => {
 		expect(await orgClients(org.orgId)).toHaveLength(1);
 	});
 
+	it("ignores late writes from a run that was already reclaimed", async () => {
+		const { org, asOwner } = await setupOrg("zombie");
+		await connect(org.orgId);
+
+		stubCustomerPages([[{ Id: "301", DisplayName: "Stalled Co" }]]);
+		await asOwner.action(api.quickbooksImportActions.startImport, {});
+		const runId = (await asOwner.query(api.quickbooksImport.getImportRun, {}))!
+			._id;
+
+		// Stand in for the reclaim path: the run is failed and its rows purged
+		// while the original fetch action is still alive holding this runId.
+		await t.run(async (ctx) => {
+			await ctx.db.patch(runId, {
+				status: "failed",
+				lastError: "Import stalled and was reclaimed by a new run",
+			});
+		});
+		await t.mutation(internal.quickbooksImport.deleteRunRowsPage, { runId });
+		await t.finishAllScheduledFunctions(vi.runAllTimers);
+		expect(await rowsFor(runId)).toHaveLength(0);
+
+		// The zombie's remaining page must not resurrect rows...
+		await expect(
+			t.mutation(internal.quickbooksImport.processCustomerPage, {
+				orgId: org.orgId,
+				runId,
+				customers: [
+					{ qboId: "302", displayName: "Late Co", isJob: false },
+				],
+			})
+		).rejects.toThrow(/import_run_not_active/);
+		expect(await rowsFor(runId)).toHaveLength(0);
+
+		// ...and its finishRun must not walk the failed run back to reviewing.
+		await t.mutation(internal.quickbooksImport.finishRun, { runId });
+		const after = await t.run(async (ctx) => ctx.db.get(runId));
+		expect(after?.status).toBe("failed");
+	});
+
 	// ------------------------------------------------------------------
 	// Guards
 	// ------------------------------------------------------------------
