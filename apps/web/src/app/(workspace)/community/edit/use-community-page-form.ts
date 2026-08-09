@@ -14,6 +14,12 @@ import type { JSONContent } from "@tiptap/react";
 import { useToast } from "@/hooks/use-toast";
 import { api } from "@onetool/backend/convex/_generated/api";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
+import {
+	hasRichTextContent,
+	resolveSectionConfig,
+	type CommunitySectionId,
+	type CommunitySectionSetting,
+} from "@/lib/community-sections";
 import { isValidUrl as isValidSocialUrl } from "@/lib/validators";
 
 const MAX_BANNER_SIZE = 5 * 1024 * 1024;
@@ -76,6 +82,7 @@ export type PricingMode = "structured" | "richText";
 export type SectionId =
 	| "mainSettings"
 	| "design"
+	| "sections"
 	| "businessInfo"
 	| "bio"
 	| "imageGallery"
@@ -135,6 +142,7 @@ const EMPTY_SOCIAL_LINKS: SocialLinks = {};
 interface Snapshot {
 	mainSettings: string;
 	design: string;
+	sections: string;
 	businessInfo: string;
 	bio: string;
 	imageGallery: string;
@@ -145,6 +153,7 @@ interface Snapshot {
 export const SECTION_LIST: Array<{ id: SectionId; label: string }> = [
 	{ id: "mainSettings", label: "Main Page Settings" },
 	{ id: "design", label: "Design" },
+	{ id: "sections", label: "Page Sections" },
 	{ id: "businessInfo", label: "Business Info" },
 	{ id: "bio", label: "Bio" },
 	{ id: "imageGallery", label: "Image Gallery" },
@@ -178,6 +187,7 @@ function createSnapshot({
 	businessSchedule,
 	socialLinks,
 	theme,
+	sectionConfig,
 }: {
 	pageTitle: string;
 	slug: string;
@@ -204,6 +214,7 @@ function createSnapshot({
 	businessSchedule: DaySchedule[];
 	socialLinks: SocialLinks;
 	theme: string;
+	sectionConfig: CommunitySectionSetting[];
 }): Snapshot {
 	return {
 		mainSettings: JSON.stringify({
@@ -215,6 +226,7 @@ function createSnapshot({
 			avatarStorageId,
 		}),
 		design: JSON.stringify({ theme }),
+		sections: JSON.stringify(sectionConfig),
 		businessInfo: JSON.stringify({
 			ownerName,
 			ownerTitle,
@@ -278,6 +290,9 @@ export function useCommunityPageForm() {
 	>();
 	const [pricingTiers, setPricingTiers] = useState<PricingTier[]>([]);
 	const [theme, setTheme] = useState("clean-professional");
+	const [sectionConfig, setSectionConfig] = useState<CommunitySectionSetting[]>(
+		() => resolveSectionConfig(),
+	);
 
 	const [bannerUrl, setBannerUrl] = useState<string | null>(null);
 	const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
@@ -323,6 +338,7 @@ export function useCommunityPageForm() {
 	const sectionRefs = useRef<Record<SectionId, HTMLElement | null>>({
 		mainSettings: null,
 		design: null,
+		sections: null,
 		businessInfo: null,
 		bio: null,
 		imageGallery: null,
@@ -461,6 +477,13 @@ export function useCommunityPageForm() {
 		const serverTheme = (communityPage.draftTheme as string) || "clean-professional";
 		setTheme(serverTheme);
 
+		// Normalized on the way in, so a config written before a section existed
+		// still hydrates a complete list.
+		const serverSectionConfig = resolveSectionConfig(
+			communityPage.draftSectionConfig,
+		);
+		setSectionConfig(serverSectionConfig);
+
 		setSavedSnapshot(createSnapshot({
 			pageTitle: communityPage.pageTitle || "",
 			slug: communityPage.slug,
@@ -499,6 +522,7 @@ export function useCommunityPageForm() {
 			businessSchedule: hours?.schedule || DEFAULT_SCHEDULE,
 			socialLinks: links || EMPTY_SOCIAL_LINKS,
 			theme: serverTheme,
+			sectionConfig: serverSectionConfig,
 		}));
 	}
 
@@ -696,6 +720,7 @@ export function useCommunityPageForm() {
 				businessSchedule,
 				socialLinks,
 				theme,
+				sectionConfig,
 			}),
 		[
 			pageTitle,
@@ -723,6 +748,7 @@ export function useCommunityPageForm() {
 			businessSchedule,
 			socialLinks,
 			theme,
+			sectionConfig,
 		],
 	);
 
@@ -732,6 +758,7 @@ export function useCommunityPageForm() {
 			return {
 				mainSettings: false,
 				design: false,
+				sections: false,
 				businessInfo: false,
 				bio: false,
 				imageGallery: false,
@@ -742,6 +769,7 @@ export function useCommunityPageForm() {
 		return {
 			mainSettings: saved.mainSettings !== currentSnapshot.mainSettings,
 			design: saved.design !== currentSnapshot.design,
+			sections: saved.sections !== currentSnapshot.sections,
 			businessInfo: saved.businessInfo !== currentSnapshot.businessInfo,
 			bio: saved.bio !== currentSnapshot.bio,
 			imageGallery: saved.imageGallery !== currentSnapshot.imageGallery,
@@ -760,6 +788,55 @@ export function useCommunityPageForm() {
 	const isCheckingSlug =
 		slug.length >= 3 &&
 		(debouncedSlug !== slug || isSlugAvailable === undefined);
+
+	// What each public section currently holds. A switched-on but empty section
+	// still does not render, so the row has to say so where the switch is.
+	const sectionStatus = useMemo<
+		Record<CommunitySectionId, { filled: boolean; detail: string }>
+	>(() => {
+		const servicesFilled = hasRichTextContent(servicesContent);
+		const pricingFilled =
+			pricingMode === "structured"
+				? pricingTiers.length > 0
+				: hasRichTextContent(pricingContent);
+		return {
+			bio: {
+				filled: hasRichTextContent(bioContent),
+				detail: hasRichTextContent(bioContent) ? "Written" : "Nothing written yet",
+			},
+			services: {
+				filled: servicesFilled,
+				detail: servicesFilled
+					? draftServiceTags.length > 0
+						? `Written, ${draftServiceTags.length} service tags`
+						: "Written"
+					: "Nothing written yet",
+			},
+			pricing: {
+				filled: pricingFilled,
+				detail:
+					pricingMode === "structured"
+						? pricingTiers.length === 1
+							? "1 tier"
+							: `${pricingTiers.length} tiers`
+						: pricingFilled
+							? "Written"
+							: "Nothing written yet",
+			},
+			gallery: {
+				filled: galleryItems.length > 0,
+				detail: `${galleryItems.length} of 5 photos`,
+			},
+		};
+	}, [
+		bioContent,
+		servicesContent,
+		draftServiceTags,
+		pricingMode,
+		pricingContent,
+		pricingTiers,
+		galleryItems,
+	]);
 
 	const hasPublishableContent = useMemo(
 		() =>
@@ -844,6 +921,7 @@ export function useCommunityPageForm() {
 					? socialLinks
 					: undefined,
 				draftTheme: theme,
+				draftSectionConfig: sectionConfig,
 			});
 
 			if (isPublic) {
@@ -923,6 +1001,7 @@ export function useCommunityPageForm() {
 					? socialLinks
 					: undefined,
 				draftTheme: theme,
+				draftSectionConfig: sectionConfig,
 			});
 
 			await publishMutation();
@@ -953,6 +1032,7 @@ export function useCommunityPageForm() {
 				businessSchedule,
 				socialLinks,
 				theme,
+				sectionConfig,
 			}));
 			toast.success("Published!", "Your community page is now live and public");
 		} catch (error) {
@@ -995,6 +1075,7 @@ export function useCommunityPageForm() {
 				businessSchedule,
 				socialLinks,
 				theme,
+				sectionConfig,
 			}));
 			toast.success("Page is now private", "Only you can see your page");
 		} catch {
@@ -1094,6 +1175,12 @@ export function useCommunityPageForm() {
 		design: {
 			theme,
 			setTheme,
+		},
+		// Page sections slice — order + visibility of the public sections
+		sections: {
+			sectionConfig,
+			setSectionConfig,
+			sectionStatus,
 		},
 		// Business Info slice
 		businessInfo: {

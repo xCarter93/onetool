@@ -84,6 +84,19 @@ export const upsert = userMutation({
 			)
 		),
 		draftServiceTags: v.optional(v.array(v.string())),
+		draftSectionConfig: v.optional(
+			v.array(
+				v.object({
+					id: v.union(
+						v.literal("bio"),
+						v.literal("services"),
+						v.literal("pricing"),
+						v.literal("gallery")
+					),
+					visible: v.boolean(),
+				})
+			)
+		),
 		galleryItemsDraft: v.optional(
 			v.array(
 				v.object({
@@ -149,6 +162,9 @@ export const upsert = userMutation({
 		if (args.galleryItemsDraft !== undefined) {
 			validateGalleryItems(args.galleryItemsDraft);
 		}
+		if (args.draftSectionConfig !== undefined) {
+			validateSectionConfig(args.draftSectionConfig);
+		}
 		const validatedServiceTags =
 			args.draftServiceTags !== undefined
 				? validateServiceTags(args.draftServiceTags)
@@ -193,6 +209,8 @@ export const upsert = userMutation({
 				updates.draftServiceTags = validatedServiceTags;
 			if (args.galleryItemsDraft !== undefined)
 				updates.galleryItemsDraft = args.galleryItemsDraft;
+			if (args.draftSectionConfig !== undefined)
+				updates.draftSectionConfig = args.draftSectionConfig;
 			if (args.pageTitle !== undefined) updates.pageTitle = args.pageTitle;
 			if (args.metaDescription !== undefined)
 				updates.metaDescription = args.metaDescription;
@@ -231,6 +249,7 @@ export const upsert = userMutation({
 				draftPricingTiers: args.draftPricingTiers,
 				draftServiceTags: validatedServiceTags,
 				galleryItemsDraft: args.galleryItemsDraft,
+				draftSectionConfig: args.draftSectionConfig,
 				pageTitle: args.pageTitle,
 				metaDescription: args.metaDescription,
 				draftOwnerInfo: args.draftOwnerInfo,
@@ -257,6 +276,7 @@ const DRAFT_TO_PUBLISHED_MAP: Record<string, string> = {
 	draftPricingContent: "publishedPricingContent",
 	draftPricingTiers: "publishedPricingTiers",
 	draftServiceTags: "publishedServiceTags",
+	draftSectionConfig: "publishedSectionConfig",
 	pricingModeDraft: "pricingModePublished",
 	galleryItemsDraft: "galleryItemsPublished",
 	draftOwnerInfo: "publishedOwnerInfo",
@@ -473,6 +493,19 @@ export const getBySlug = query({
 				})
 			),
 			serviceTags: v.array(v.string()),
+			sectionConfig: v.optional(
+				v.array(
+					v.object({
+						id: v.union(
+							v.literal("bio"),
+							v.literal("services"),
+							v.literal("pricing"),
+							v.literal("gallery")
+						),
+						visible: v.boolean(),
+					})
+				)
+			),
 			galleryImages: v.array(
 				v.object({
 					storageId: v.id("_storage"),
@@ -590,6 +623,7 @@ export const getBySlug = query({
 			pricingContent: page.publishedPricingContent,
 			pricingTiers: page.publishedPricingTiers ?? [],
 			serviceTags: page.publishedServiceTags ?? [],
+			sectionConfig: page.publishedSectionConfig,
 			galleryImages,
 			ownerInfo: page.publishedOwnerInfo,
 			// PUB-05: project credentials explicitly. licenseNumber is a sensitive
@@ -1041,8 +1075,26 @@ function validateGalleryItems(
 	}
 }
 
+/**
+ * Section order/visibility is a permutation, not a free list: the same section
+ * twice would render twice, and an unknown id would render nothing while
+ * silently occupying a slot.
+ */
+function validateSectionConfig(
+	config: Array<{ id: string; visible: boolean }>
+): void {
+	const seen = new Set<string>();
+	for (const entry of config) {
+		if (seen.has(entry.id)) {
+			throw new Error("Each page section can only be listed once");
+		}
+		seen.add(entry.id);
+	}
+}
+
 export const __testUtils = {
 	validatePricingTiers,
 	validateGalleryItems,
 	validateServiceTags,
+	validateSectionConfig,
 };

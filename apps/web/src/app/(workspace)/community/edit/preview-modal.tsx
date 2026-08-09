@@ -31,6 +31,7 @@ interface PreviewModalProps {
 		sortOrder: number;
 	}>;
 	theme: string;
+	sectionConfig: Array<{ id: string; visible: boolean }>;
 	ownerInfo: { name?: string; title?: string } | undefined;
 	credentials:
 		| {
@@ -79,6 +80,7 @@ export function PreviewModal({
 	pricingTiers,
 	galleryImages,
 	theme,
+	sectionConfig,
 	ownerInfo,
 	credentials,
 	businessHours,
@@ -120,6 +122,7 @@ export function PreviewModal({
 				img.url !== null,
 		),
 		theme,
+		sectionConfig,
 		bannerUrl,
 		avatarUrl,
 		organization,

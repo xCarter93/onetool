@@ -63,13 +63,14 @@ export const communityArticles: HelpArticle[] = [
 				blocks: [
 					{
 						type: "paragraph",
-						text: "Click **Edit page** to open the editor. It has seven sections, and the Community page tracks how many you have filled in.",
+						text: "Click **Edit page** to open the editor. It has eight sections, and the Community page tracks how many you have filled in.",
 					},
 					{
 						type: "list",
 						items: [
 							"**Main Page Settings**: banner image, avatar or logo, page title, page URL, and an SEO description for search engines.",
 							"**Design**: pick one of three visual themes, **Clean Professional**, **Bold & Expressive**, or **Warm & Approachable**.",
+							"**Page Sections**: the order your public sections appear in, and a switch to leave any of them off.",
 							"**Business Info**: your name and title, **Licensed**, **Bonded**, and **Insured** badges, year established, license number, certifications, business hours, and social links.",
 							"**Bio**: tell visitors who you are and what makes your business different.",
 							"**Image Gallery**: up to 5 photos of your work.",
@@ -92,6 +93,27 @@ export const communityArticles: HelpArticle[] = [
 					{
 						type: "tip",
 						text: "Click **Preview** at any time to see the page as a visitor would, without publishing anything.",
+					},
+				],
+			},
+			{
+				heading: "Choose what appears, and in what order",
+				blocks: [
+					{
+						type: "paragraph",
+						text: "**Page Sections** in the editor lists the four sections of your public page: **About us**, **What we do**, **Plans & pricing**, and **Our work**. Drag a row to move it, and use the switch to leave a section off the page entirely.",
+					},
+					{
+						type: "note",
+						text: "A section only appears once it has something in it. An empty one stays off the page whether or not its switch is on, so you never publish a heading with nothing under it.",
+					},
+					{
+						type: "paragraph",
+						text: "The quote request form is always last and cannot be switched off. It is how visitors reach you.",
+					},
+					{
+						type: "tip",
+						text: "The jump links at the top of your public page follow the same order, so reordering sections reorders the menu too.",
 					},
 				],
 			},

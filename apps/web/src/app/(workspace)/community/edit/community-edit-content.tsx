@@ -19,6 +19,7 @@ import {
 	Images,
 	Wrench,
 	Tags,
+	LayoutList,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/reui/badge";
@@ -35,6 +36,7 @@ import { ServicesSection } from "./sections/services-section";
 import { PricingSection } from "./sections/pricing-section";
 import { BusinessInfoSection } from "./sections/business-info-section";
 import { DesignSection } from "./sections/design-section";
+import { PageSectionsSection } from "./sections/page-sections-section";
 import { PreviewModal } from "./preview-modal";
 
 /** Sticky chrome is ~150px tall; scrollspy targets land just below it. */
@@ -46,6 +48,7 @@ const SECTION_ICONS: Record<
 > = {
 	mainSettings: Sparkles,
 	design: Palette,
+	sections: LayoutList,
 	businessInfo: BadgeCheck,
 	bio: FileText,
 	imageGallery: Images,
@@ -58,6 +61,7 @@ export default function CommunityEditContent() {
 	const {
 		mainSettings,
 		design,
+		sections,
 		businessInfo,
 		bio,
 		gallery,
@@ -321,6 +325,10 @@ export default function CommunityEditContent() {
 								sectionRef={sectionRefSetters.mainSettings}
 							/>
 							<DesignSection {...design} sectionRef={sectionRefSetters.design} />
+							<PageSectionsSection
+								{...sections}
+								sectionRef={sectionRefSetters.sections}
+							/>
 							<BusinessInfoSection
 								{...businessInfo}
 								sectionRef={sectionRefSetters.businessInfo}
@@ -374,6 +382,7 @@ export default function CommunityEditContent() {
 						sortOrder: item.sortOrder,
 					}))}
 				theme={design.theme}
+				sectionConfig={sections.sectionConfig}
 				ownerInfo={
 					businessInfo.ownerName || businessInfo.ownerTitle
 						? {

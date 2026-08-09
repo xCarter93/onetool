@@ -1,8 +1,14 @@
+import { Fragment } from "react";
 import Image from "next/image";
 import type { JSONContent } from "@tiptap/react";
 import Link from "next/link";
 import { ArrowRight, Check, Phone } from "lucide-react";
 import { cn } from "@/lib/utils";
+import {
+	hasRichTextContent,
+	visibleSectionIds,
+	type CommunitySectionId,
+} from "@/lib/community-sections";
 import { CommunityPageContent } from "@/components/tiptap/community-editor";
 import { GalleryCarousel } from "./gallery-carousel";
 import { ContactForm } from "./contact-form";
@@ -16,6 +22,18 @@ import { ViewBeacon } from "./components/view-beacon";
 
 export const CONTACT_FORM_ID = "contact-form-section";
 
+/**
+ * Only sections a visitor would jump to get a nav anchor; "About us" is read on
+ * the way past, not navigated to.
+ */
+const SECTION_ANCHORS: Partial<
+	Record<CommunitySectionId, { id: string; label: string }>
+> = {
+	services: { id: "services", label: "Services" },
+	pricing: { id: "pricing", label: "Pricing" },
+	gallery: { id: "work", label: "Work" },
+};
+
 export interface CommunityPageViewData {
 	slug: string;
 	pageTitle: string;
@@ -24,6 +42,7 @@ export interface CommunityPageViewData {
 	bioContent?: JSONContent;
 	servicesContent?: JSONContent;
 	serviceTags?: string[];
+	sectionConfig?: Array<{ id: string; visible: boolean }>;
 	pricingMode: "structured" | "richText";
 	pricingContent?: JSONContent;
 	pricingTiers?: Array<{
@@ -115,15 +134,125 @@ export function CommunityPageView({ data, preview }: CommunityPageViewProps) {
 		.filter(Boolean)
 		.join(", ");
 
-	// Order mirrors the order the sections actually render in below.
+	// A section renders only if it is switched on AND has something in it, so an
+	// owner never publishes a bare heading over nothing.
+	const sectionHasContent: Record<CommunitySectionId, boolean> = {
+		bio: hasRichTextContent(data.bioContent),
+		services: hasRichTextContent(data.servicesContent),
+		pricing: hasStructuredPricing || hasRichTextContent(data.pricingContent),
+		gallery: galleryImages.length > 0,
+	};
+	const renderedSections = visibleSectionIds(data.sectionConfig).filter(
+		(id) => sectionHasContent[id],
+	);
+
+	// Anchors follow the same order the sections render in.
 	const anchors = [
-		data.servicesContent ? { id: "services", label: "Services" } : null,
-		hasStructuredPricing || data.pricingContent
-			? { id: "pricing", label: "Pricing" }
-			: null,
-		galleryImages.length > 0 ? { id: "work", label: "Work" } : null,
+		...renderedSections.map((id) => SECTION_ANCHORS[id]),
 		data.businessHours ? { id: "hours", label: "Hours" } : null,
-	].filter((a): a is { id: string; label: string } => a !== null);
+	].filter((a): a is { id: string; label: string } => !!a);
+
+	const sectionNodes: Record<CommunitySectionId, React.ReactNode> = {
+		bio: data.bioContent ? (
+			<section aria-labelledby="about-heading">
+				<h2
+					id="about-heading"
+					className="text-2xl font-semibold tracking-tight text-fg"
+				>
+					About us
+				</h2>
+				<div className="mt-4 text-fg">
+					<CommunityPageContent content={data.bioContent} />
+				</div>
+			</section>
+		) : null,
+		services: data.servicesContent ? (
+			<section id="services" aria-labelledby="services-heading" className="scroll-mt-20">
+				<h2
+					id="services-heading"
+					className="text-2xl font-semibold tracking-tight text-fg"
+				>
+					What we do
+				</h2>
+				<div className="mt-4 text-fg">
+					<CommunityPageContent content={data.servicesContent} />
+				</div>
+			</section>
+		) : null,
+		pricing: (
+			<section id="pricing" aria-labelledby="pricing-heading" className="scroll-mt-20">
+				<h2
+					id="pricing-heading"
+					className="text-2xl font-semibold tracking-tight text-fg"
+				>
+					Plans &amp; pricing
+				</h2>
+				{hasStructuredPricing ? (
+					<ul className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+						{pricingTiers.map((tier, index) => (
+							<li
+								key={`${tier.name}-${index}`}
+								className={cn(
+									"relative flex flex-col rounded-2xl border p-5",
+									tier.highlighted
+										? "border-primary bg-primary/5"
+										: "border-border bg-bg"
+								)}
+							>
+								{tier.highlighted && (
+									<span className="absolute -top-2.5 left-5 rounded-full bg-primary px-2.5 py-0.5 text-xs font-medium text-primary-fg">
+										Most chosen
+									</span>
+								)}
+								<h3 className="text-base font-semibold text-fg">
+									{tier.name}
+								</h3>
+								<p className="mt-1 text-2xl font-semibold tabular-nums text-fg">
+									{tier.price}
+								</p>
+								{tier.description && (
+									<p className="mt-2 text-sm text-muted-fg text-pretty">
+										{tier.description}
+									</p>
+								)}
+								{tier.features && tier.features.length > 0 && (
+									<ul className="mt-4 space-y-2 border-t border-border pt-4">
+										{tier.features.map((feature) => (
+											<li
+												key={feature}
+												className="flex items-start gap-2 text-sm text-muted-fg"
+											>
+												<Check
+													className="mt-0.5 size-4 shrink-0 text-success"
+													aria-hidden="true"
+												/>
+												<span className="text-pretty">{feature}</span>
+											</li>
+										))}
+									</ul>
+								)}
+							</li>
+						))}
+					</ul>
+				) : (
+					data.pricingContent && (
+						<div className="mt-4 text-fg">
+							<CommunityPageContent content={data.pricingContent} />
+						</div>
+					)
+				)}
+			</section>
+		),
+		gallery: (
+			<section id="work" className="scroll-mt-20">
+				<GalleryCarousel
+					images={galleryImages}
+					businessName={data.pageTitle}
+					headingClassName="text-2xl font-semibold tracking-tight text-fg"
+				/>
+			</section>
+		),
+	};
 
 	return (
 		<div className="min-h-screen bg-bg flex flex-col">
@@ -268,110 +397,9 @@ export function CommunityPageView({ data, preview }: CommunityPageViewProps) {
 					<div className="flex flex-col lg:flex-row gap-10 lg:gap-14">
 						<div className="flex-1 min-w-0 space-y-14">
 							{hasSectionedContent ? (
-								<>
-									{data.bioContent ? (
-										<section aria-labelledby="about-heading">
-											<h2
-												id="about-heading"
-												className="text-2xl font-semibold tracking-tight text-fg"
-											>
-												About us
-											</h2>
-											<div className="mt-4 text-fg">
-												<CommunityPageContent content={data.bioContent} />
-											</div>
-										</section>
-									) : null}
-
-									{data.servicesContent ? (
-										<section id="services" aria-labelledby="services-heading" className="scroll-mt-20">
-											<h2
-												id="services-heading"
-												className="text-2xl font-semibold tracking-tight text-fg"
-											>
-												What we do
-											</h2>
-											<div className="mt-4 text-fg">
-												<CommunityPageContent content={data.servicesContent} />
-											</div>
-										</section>
-									) : null}
-
-									{(hasStructuredPricing || data.pricingContent) && (
-										<section id="pricing" aria-labelledby="pricing-heading" className="scroll-mt-20">
-											<h2
-												id="pricing-heading"
-												className="text-2xl font-semibold tracking-tight text-fg"
-											>
-												Plans &amp; pricing
-											</h2>
-											{hasStructuredPricing ? (
-												<ul className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-													{pricingTiers.map((tier, index) => (
-														<li
-															key={`${tier.name}-${index}`}
-															className={cn(
-																"relative flex flex-col rounded-2xl border p-5",
-																tier.highlighted
-																	? "border-primary bg-primary/5"
-																	: "border-border bg-bg"
-															)}
-														>
-															{tier.highlighted && (
-																<span className="absolute -top-2.5 left-5 rounded-full bg-primary px-2.5 py-0.5 text-xs font-medium text-primary-fg">
-																	Most chosen
-																</span>
-															)}
-															<h3 className="text-base font-semibold text-fg">
-																{tier.name}
-															</h3>
-															<p className="mt-1 text-2xl font-semibold tabular-nums text-fg">
-																{tier.price}
-															</p>
-															{tier.description && (
-																<p className="mt-2 text-sm text-muted-fg text-pretty">
-																	{tier.description}
-																</p>
-															)}
-															{tier.features && tier.features.length > 0 && (
-																<ul className="mt-4 space-y-2 border-t border-border pt-4">
-																	{tier.features.map((feature) => (
-																		<li
-																			key={feature}
-																			className="flex items-start gap-2 text-sm text-muted-fg"
-																		>
-																			<Check
-																				className="mt-0.5 size-4 shrink-0 text-success"
-																				aria-hidden="true"
-																			/>
-																			<span className="text-pretty">{feature}</span>
-																		</li>
-																	))}
-																</ul>
-															)}
-														</li>
-													))}
-												</ul>
-											) : (
-												data.pricingContent && (
-													<div className="mt-4 text-fg">
-														<CommunityPageContent content={data.pricingContent} />
-													</div>
-												)
-											)}
-										</section>
-									)}
-
-									{galleryImages.length > 0 && (
-										<section id="work" className="scroll-mt-20">
-											<GalleryCarousel
-												images={galleryImages}
-												businessName={data.pageTitle}
-												headingClassName="text-2xl font-semibold tracking-tight text-fg"
-											/>
-										</section>
-									)}
-								</>
+								renderedSections.map((id) => (
+									<Fragment key={id}>{sectionNodes[id]}</Fragment>
+								))
 							) : (
 								data.content ? (
 									<div className="text-fg">

@@ -15,6 +15,7 @@ import {
 	QrCode,
 } from "lucide-react";
 
+import { hasRichTextContent } from "@/lib/community-sections";
 import { PermissionGate } from "@/components/domain/permission-gate";
 import { LearnMoreLink } from "@/components/help/learn-more";
 import { Button } from "@/components/ui/button";
@@ -131,14 +132,6 @@ function formatShortDate(timestamp: number): string {
 }
 
 /** True when TipTap JSON actually contains text or media, not just empty nodes. */
-function hasRichTextContent(doc: unknown): boolean {
-	if (!doc || typeof doc !== "object") return false;
-	const node = doc as { type?: string; text?: string; content?: unknown[] };
-	if (node.type === "text") return !!node.text?.trim();
-	if (node.type === "image") return true;
-	return Array.isArray(node.content) && node.content.some(hasRichTextContent);
-}
-
 function PageHeader({
 	subtitle,
 	children,

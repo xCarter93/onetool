@@ -674,4 +674,65 @@ describe("Community Pages", () => {
 		expect(orgKeys).not.toContain("latitude");
 		expect(orgKeys).not.toContain("longitude");
 	});
+
+	it("sectionConfig round-trips through upsert, publish, and getBySlug", async () => {
+		const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+
+		await asUser.mutation(api.communityPages.upsert, {
+			slug: "section-config-page",
+			isPublic: true,
+			draftBioContent: {
+				type: "doc",
+				content: [{ type: "paragraph", content: [{ type: "text", text: "Bio" }] }],
+			},
+			draftSectionConfig: [
+				{ id: "gallery", visible: true },
+				{ id: "bio", visible: false },
+			],
+		});
+
+		const draft = await asUser.query(api.communityPages.get, {});
+		expect(draft?.draftSectionConfig).toEqual([
+			{ id: "gallery", visible: true },
+			{ id: "bio", visible: false },
+		]);
+
+		await asUser.mutation(api.communityPages.publish, {});
+
+		const publicPage = await t.query(api.communityPages.getBySlug, {
+			slug: "section-config-page",
+		});
+		expect(publicPage?.sectionConfig).toEqual([
+			{ id: "gallery", visible: true },
+			{ id: "bio", visible: false },
+		]);
+	});
+
+	it("a page with no sectionConfig publishes without one", async () => {
+		const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+
+		await asUser.mutation(api.communityPages.upsert, {
+			slug: "no-section-config-page",
+			isPublic: true,
+			draftBioContent: {
+				type: "doc",
+				content: [{ type: "paragraph", content: [{ type: "text", text: "Bio" }] }],
+			},
+		});
+		await asUser.mutation(api.communityPages.publish, {});
+
+		const publicPage = await t.query(api.communityPages.getBySlug, {
+			slug: "no-section-config-page",
+		});
+		expect(publicPage?.sectionConfig).toBeUndefined();
+	});
+
+	it("validateSectionConfig rejects a section listed twice", () => {
+		expect(() =>
+			__testUtils.validateSectionConfig([
+				{ id: "bio", visible: true },
+				{ id: "bio", visible: false },
+			])
+		).toThrow("Each page section can only be listed once");
+	});
 });

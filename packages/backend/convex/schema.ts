@@ -1326,6 +1326,36 @@ export default defineSchema({
 		),
 		draftServiceTags: v.optional(v.array(v.string())),
 		publishedServiceTags: v.optional(v.array(v.string())),
+
+		// Public section order + visibility. Array order IS display order; an
+		// absent config means "default order, everything visible", so legacy
+		// pages keep rendering exactly as they did.
+		draftSectionConfig: v.optional(
+			v.array(
+				v.object({
+					id: v.union(
+						v.literal("bio"),
+						v.literal("services"),
+						v.literal("pricing"),
+						v.literal("gallery")
+					),
+					visible: v.boolean(),
+				})
+			)
+		),
+		publishedSectionConfig: v.optional(
+			v.array(
+				v.object({
+					id: v.union(
+						v.literal("bio"),
+						v.literal("services"),
+						v.literal("pricing"),
+						v.literal("gallery")
+					),
+					visible: v.boolean(),
+				})
+			)
+		),
 		galleryItemsDraft: v.optional(
 			v.array(
 				v.object({
