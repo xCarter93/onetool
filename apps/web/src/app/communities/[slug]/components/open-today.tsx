@@ -13,6 +13,8 @@ interface ScheduleDay {
 interface OpenTodayProps {
 	schedule?: ScheduleDay[];
 	byAppointmentOnly?: boolean;
+	/** The business's IANA timezone. Falls back to the visitor's when unset. */
+	timezone?: string;
 }
 
 const DAY_NAMES = [
@@ -40,20 +42,39 @@ function formatTime(value: string): string {
 // server-rendered "today" would go stale. Read through useSyncExternalStore
 // so it is correct on first client render with no hydration mismatch.
 const noopSubscribe = () => () => {};
-const getWeekdayIndex = () => new Date().getDay();
 const getServerWeekdayIndex = () => null;
 
+/** Today's weekday in `timezone`, or the visitor's own when it is unset/invalid. */
+function weekdayIndexIn(timezone?: string): number {
+	if (!timezone) return new Date().getDay();
+	try {
+		const name = new Intl.DateTimeFormat("en-US", {
+			weekday: "long",
+			timeZone: timezone,
+		})
+			.format(new Date())
+			.toLowerCase();
+		const index = DAY_NAMES.indexOf(name);
+		return index === -1 ? new Date().getDay() : index;
+	} catch {
+		// A stored zone Intl doesn't recognise shouldn't blank the hours line.
+		return new Date().getDay();
+	}
+}
+
 /**
- * Today's hours, resolved against the VISITOR's local day.
- *
- * Visitors to a local field-service business are almost always in the same
- * timezone as the business. The org's own timezone is not part of the public
- * payload today; adding it would make this exact.
+ * Today's hours, resolved against the BUSINESS's day when the org has a
+ * timezone set — so an out-of-area visitor doesn't see the wrong day — and
+ * against the visitor's own clock otherwise.
  */
-export function OpenToday({ schedule, byAppointmentOnly }: OpenTodayProps) {
+export function OpenToday({
+	schedule,
+	byAppointmentOnly,
+	timezone,
+}: OpenTodayProps) {
 	const weekdayIndex = useSyncExternalStore(
 		noopSubscribe,
-		getWeekdayIndex,
+		() => weekdayIndexIn(timezone),
 		getServerWeekdayIndex
 	);
 

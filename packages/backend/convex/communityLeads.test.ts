@@ -1,0 +1,345 @@
+import { convexTest } from "convex-test";
+import { beforeEach, describe, expect, it } from "vitest";
+import { api } from "./_generated/api";
+import { setupConvexTest } from "./test.setup";
+import { addMemberToOrg, createTestIdentity, createTestOrg } from "./test.helpers";
+import { Id } from "./_generated/dataModel";
+
+describe("Community leads", () => {
+	let t: ReturnType<typeof convexTest>;
+	let clerkUserId = "";
+	let clerkOrgId = "";
+	let orgId: Id<"organizations">;
+
+	/** Publishes a page and submits one request through the public mutation. */
+	async function publishAndSubmit(
+		slug: string,
+		submission: {
+			name: string;
+			email: string;
+			phone?: string;
+			message?: string;
+			service?: string;
+			website?: string;
+		}
+	) {
+		const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+		await asUser.mutation(api.communityPages.upsert, {
+			slug,
+			isPublic: true,
+			draftServiceTags: ["Lawn Care"],
+			draftBioContent: {
+				type: "doc",
+				content: [{ type: "paragraph", content: [{ type: "text", text: "Bio" }] }],
+			},
+		});
+		await asUser.mutation(api.communityPages.publish, {});
+		await t.mutation(api.communityPages.submitInterest, { slug, ...submission });
+	}
+
+	beforeEach(async () => {
+		t = setupConvexTest();
+		const ids = await t.run(async (ctx) => createTestOrg(ctx));
+		clerkUserId = ids.clerkUserId;
+		clerkOrgId = ids.clerkOrgId;
+		orgId = ids.orgId;
+	});
+
+	it("submitInterest stores a lead alongside the follow-up task", async () => {
+		await publishAndSubmit("lead-row-test", {
+			name: "John Smith",
+			email: "John@Example.com",
+			phone: "555-1234",
+			message: "I need lawn care",
+			service: "lawn care",
+		});
+
+		const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+		const result = await asUser.query(api.communityLeads.list, {});
+
+		expect(result.total).toBe(1);
+		expect(result.newCount).toBe(1);
+		const [lead] = result.leads;
+		expect(lead.name).toBe("John Smith");
+		// Sanitized, never the raw arg.
+		expect(lead.email).toBe("john@example.com");
+		expect(lead.phone).toBe("555-1234");
+		expect(lead.message).toBe("I need lawn care");
+		// Matched case-insensitively against the published tag, stored canonically.
+		expect(lead.service).toBe("Lawn Care");
+		expect(lead.status).toBe("new");
+		expect(lead.slug).toBe("lead-row-test");
+		expect(lead.taskId).toBeTruthy();
+	});
+
+	it("submitInterest drops a service that is not a published tag", async () => {
+		await publishAndSubmit("lead-service-drop", {
+			name: "Mismatch Person",
+			email: "mismatch@example.com",
+			service: "Roof Repair",
+		});
+
+		const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+		const result = await asUser.query(api.communityLeads.list, {});
+		expect(result.leads[0].service).toBeUndefined();
+	});
+
+	it("honeypot submission creates neither a lead nor a task", async () => {
+		await publishAndSubmit("lead-honeypot", {
+			name: "Bot",
+			email: "bot@example.com",
+			website: "http://spam.example.com",
+		});
+
+		const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+		const result = await asUser.query(api.communityLeads.list, {});
+		expect(result.total).toBe(0);
+
+		const tasks = await t.run(async (ctx) => ctx.db.query("tasks").collect());
+		expect(tasks).toHaveLength(0);
+	});
+
+	it("list filters by status and keeps counts org-wide", async () => {
+		await publishAndSubmit("lead-filter-test", {
+			name: "First Person",
+			email: "first@example.com",
+		});
+		await t.mutation(api.communityPages.submitInterest, {
+			slug: "lead-filter-test",
+			name: "Second Person",
+			email: "second@example.com",
+		});
+
+		const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+		const before = await asUser.query(api.communityLeads.list, {});
+		const target = before.leads.find((l) => l.name === "First Person")!;
+
+		await asUser.mutation(api.communityLeads.updateStatus, {
+			leadId: target._id,
+			status: "contacted",
+		});
+
+		const newOnly = await asUser.query(api.communityLeads.list, { status: "new" });
+		expect(newOnly.leads).toHaveLength(1);
+		expect(newOnly.leads[0].name).toBe("Second Person");
+		// Counts describe the whole inbox, not the filtered slice.
+		expect(newOnly.total).toBe(2);
+		expect(newOnly.newCount).toBe(1);
+	});
+
+	it("promoteToClient creates a linked client with a primary contact", async () => {
+		await publishAndSubmit("lead-promote-test", {
+			name: "Marisol Ruiz",
+			email: "marisol@example.com",
+			phone: "555-9876",
+			message: "Weekly mowing please",
+			service: "lawn care",
+		});
+
+		const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+		const before = await asUser.query(api.communityLeads.list, {});
+		const leadId = before.leads[0]._id;
+
+		const clientId = await asUser.mutation(api.communityLeads.promoteToClient, {
+			leadId,
+		});
+
+		const { client, contacts, lead } = await t.run(async (ctx) => ({
+			client: await ctx.db.get(clientId),
+			contacts: await ctx.db
+				.query("clientContacts")
+				.filter((q) => q.eq(q.field("clientId"), clientId))
+				.collect(),
+			lead: await ctx.db.get(leadId),
+		}));
+
+		expect(client?.companyName).toBe("Marisol Ruiz");
+		expect(client?.status).toBe("lead");
+		expect(client?.leadSource).toBe("community-page");
+		// Every client-creation path mints a portal id; a bare insert would not.
+		expect(client?.portalAccessId).toBeTruthy();
+		expect(contacts).toHaveLength(1);
+		expect(contacts[0].firstName).toBe("Marisol");
+		expect(contacts[0].lastName).toBe("Ruiz");
+		expect(contacts[0].email).toBe("marisol@example.com");
+		expect(contacts[0].isPrimary).toBe(true);
+
+		expect(lead?.clientId).toBe(clientId);
+		expect(lead?.status).toBe("converted");
+	});
+
+	it("promoteToClient is idempotent", async () => {
+		await publishAndSubmit("lead-promote-twice", {
+			name: "Dev Patel",
+			email: "dev@example.com",
+		});
+
+		const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+		const before = await asUser.query(api.communityLeads.list, {});
+		const leadId = before.leads[0]._id;
+
+		const first = await asUser.mutation(api.communityLeads.promoteToClient, { leadId });
+		const second = await asUser.mutation(api.communityLeads.promoteToClient, { leadId });
+
+		expect(second).toBe(first);
+		const clients = await t.run(async (ctx) => ctx.db.query("clients").collect());
+		expect(clients).toHaveLength(1);
+	});
+
+	it("a member without the community grant cannot read or move leads", async () => {
+		await publishAndSubmit("lead-rbac-test", {
+			name: "Angela Nkemelu",
+			email: "angela@example.com",
+		});
+
+		const asAdmin = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+		const leadId = (await asAdmin.query(api.communityLeads.list, {})).leads[0]._id;
+
+		const member = await t.run(async (ctx) =>
+			addMemberToOrg(ctx, orgId, { clerkUserId: "member_leads_rbac" })
+		);
+		const asMember = t.withIdentity(
+			createTestIdentity(member.clerkUserId, clerkOrgId)
+		);
+
+		await expect(asMember.query(api.communityLeads.list, {})).rejects.toThrow();
+		await expect(
+			asMember.mutation(api.communityLeads.updateStatus, {
+				leadId,
+				status: "contacted",
+			})
+		).rejects.toThrow();
+	});
+});
+
+describe("Community analytics", () => {
+	let t: ReturnType<typeof convexTest>;
+	let clerkUserId = "";
+	let clerkOrgId = "";
+
+	async function publishPage(slug: string) {
+		const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+		await asUser.mutation(api.communityPages.upsert, {
+			slug,
+			isPublic: true,
+			draftBioContent: {
+				type: "doc",
+				content: [{ type: "paragraph", content: [{ type: "text", text: "Bio" }] }],
+			},
+		});
+		await asUser.mutation(api.communityPages.publish, {});
+	}
+
+	beforeEach(async () => {
+		t = setupConvexTest();
+		const ids = await t.run(async (ctx) => createTestOrg(ctx));
+		clerkUserId = ids.clerkUserId;
+		clerkOrgId = ids.clerkOrgId;
+	});
+
+	it("recordView buckets repeat views into one day row", async () => {
+		await publishPage("views-bucket-test");
+
+		await t.mutation(api.communityAnalytics.recordView, {
+			slug: "views-bucket-test",
+		});
+		await t.mutation(api.communityAnalytics.recordView, {
+			slug: "views-bucket-test",
+		});
+		await t.mutation(api.communityAnalytics.recordView, {
+			slug: "views-bucket-test",
+		});
+
+		const rows = await t.run(async (ctx) =>
+			ctx.db.query("communityPageViews").collect()
+		);
+		expect(rows).toHaveLength(1);
+		expect(rows[0].count).toBe(3);
+
+		const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+		const stats = await asUser.query(api.communityAnalytics.dashboard, {
+			days: 30,
+		});
+		expect(stats.views).toBe(3);
+		expect(stats.series).toHaveLength(30);
+		expect(stats.series[29].views).toBe(3);
+	});
+
+	it("recordView ignores an unpublished page", async () => {
+		const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+		await asUser.mutation(api.communityPages.upsert, {
+			slug: "views-draft-test",
+			isPublic: false,
+		});
+
+		await t.mutation(api.communityAnalytics.recordView, {
+			slug: "views-draft-test",
+		});
+		await t.mutation(api.communityAnalytics.recordView, { slug: "no-such-page" });
+
+		const rows = await t.run(async (ctx) =>
+			ctx.db.query("communityPageViews").collect()
+		);
+		expect(rows).toHaveLength(0);
+	});
+
+	it("dashboard divides requests by views and counts what is waiting", async () => {
+		await publishPage("views-conversion-test");
+		await t.mutation(api.communityAnalytics.recordView, {
+			slug: "views-conversion-test",
+		});
+		await t.mutation(api.communityAnalytics.recordView, {
+			slug: "views-conversion-test",
+		});
+		await t.mutation(api.communityPages.submitInterest, {
+			slug: "views-conversion-test",
+			name: "Converting Visitor",
+			email: "converting@example.com",
+		});
+
+		const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+		const stats = await asUser.query(api.communityAnalytics.dashboard, {
+			days: 7,
+		});
+
+		expect(stats.views).toBe(2);
+		expect(stats.requests).toBe(1);
+		expect(stats.conversionPct).toBe(50);
+		expect(stats.waitingCount).toBe(1);
+		// Nothing has been picked up yet, so there is no response time to report.
+		expect(stats.medianFirstResponseMs).toBeNull();
+	});
+
+	it("first response time is stamped once, on the move off new", async () => {
+		await publishPage("views-response-test");
+		await t.mutation(api.communityPages.submitInterest, {
+			slug: "views-response-test",
+			name: "Waiting Person",
+			email: "waiting@example.com",
+		});
+
+		const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+		const leadId = (await asUser.query(api.communityLeads.list, {})).leads[0]._id;
+
+		await asUser.mutation(api.communityLeads.updateStatus, {
+			leadId,
+			status: "contacted",
+		});
+		const stamped = await t.run(async (ctx) => ctx.db.get(leadId));
+		expect(stamped?.firstRespondedAt).toBeTruthy();
+
+		// A later move must not restate when it was first picked up.
+		await asUser.mutation(api.communityLeads.updateStatus, {
+			leadId,
+			status: "quoted",
+		});
+		const after = await t.run(async (ctx) => ctx.db.get(leadId));
+		expect(after?.firstRespondedAt).toBe(stamped?.firstRespondedAt);
+
+		const stats = await asUser.query(api.communityAnalytics.dashboard, {
+			days: 7,
+		});
+		expect(stats.medianFirstResponseMs).not.toBeNull();
+		expect(stats.waitingCount).toBe(0);
+	});
+});

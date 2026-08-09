@@ -536,6 +536,9 @@ export const getBySlug = query({
 					// excluded — do not widen this beyond city/state.
 					addressCity: v.optional(v.string()),
 					addressState: v.optional(v.string()),
+					// IANA zone, so "Open today" reflects the business's hours
+					// rather than an out-of-area visitor's clock.
+					timezone: v.optional(v.string()),
 				})
 			),
 		})
@@ -614,6 +617,7 @@ export const getBySlug = query({
 						website: org.website,
 						addressCity: org.addressCity,
 						addressState: org.addressState,
+						timezone: org.timezone,
 					}
 				: null,
 		};
@@ -767,13 +771,15 @@ export const submitInterest = mutation({
 		const descParts: string[] = [];
 		descParts.push(`Name: ${sanitizedName}`);
 		descParts.push(`Email: ${normalizedEmail}`);
+		let sanitizedPhone: string | undefined;
 		if (args.phone) {
 			// PUB-13: strip non-phone chars and cap length before interpolating
-			const sanitizedPhone = args.phone
-				.replace(/[^0-9+().x\-\s]/gi, "")
-				.replace(/\s+/g, " ")
-				.trim()
-				.substring(0, 40);
+			sanitizedPhone =
+				args.phone
+					.replace(/[^0-9+().x\-\s]/gi, "")
+					.replace(/\s+/g, " ")
+					.trim()
+					.substring(0, 40) || undefined;
 			if (sanitizedPhone) {
 				descParts.push(`Phone: ${sanitizedPhone}`);
 			}
@@ -781,8 +787,9 @@ export const submitInterest = mutation({
 		if (sanitizedService) {
 			descParts.push(`Service: ${sanitizedService}`);
 		}
+		let sanitizedMessage: string | undefined;
 		if (args.message) {
-			const sanitizedMessage = args.message.trim().substring(0, 2000);
+			sanitizedMessage = args.message.trim().substring(0, 2000) || undefined;
 			if (sanitizedMessage) {
 				descParts.push(`\nMessage:\n${sanitizedMessage}`);
 			}
@@ -817,6 +824,22 @@ export const submitInterest = mutation({
 			type: "internal",
 			source: "public_form",
 			assigneeUserId: assigneeUserId || undefined,
+		});
+
+		// The lead row is the durable record of the request; the task is the
+		// follow-up nudge. Only sanitized values land here — never args.*.
+		await ctx.db.insert("communityLeads", {
+			orgId: page.orgId,
+			communityPageId: page._id,
+			slug: page.slug,
+			name: sanitizedName,
+			email: normalizedEmail,
+			phone: sanitizedPhone,
+			service: sanitizedService,
+			message: sanitizedMessage,
+			status: "new",
+			taskId,
+			submittedAt: Date.now(),
 		});
 
 		// Public submission — no actor user, but task record_created automations

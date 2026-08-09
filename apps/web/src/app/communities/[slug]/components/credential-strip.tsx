@@ -20,6 +20,8 @@ interface CredentialStripProps {
 	};
 	/** Derived from the org's city/state — there is no service-area field. */
 	serviceArea?: string;
+	/** The org's IANA timezone, so "Open today" follows the business's day. */
+	timezone?: string;
 }
 
 /**
@@ -31,6 +33,7 @@ export function CredentialStrip({
 	credentials,
 	businessHours,
 	serviceArea,
+	timezone,
 }: CredentialStripProps) {
 	const badges: string[] = [];
 	if (credentials?.isLicensed) badges.push("Licensed");
@@ -92,6 +95,7 @@ export function CredentialStrip({
 						<OpenToday
 							schedule={businessHours?.schedule}
 							byAppointmentOnly={businessHours?.byAppointmentOnly}
+							timezone={timezone}
 						/>
 					</li>
 				</ul>

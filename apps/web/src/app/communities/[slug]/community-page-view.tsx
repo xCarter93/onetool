@@ -12,6 +12,7 @@ import { CredentialStrip } from "./components/credential-strip";
 import { BusinessHoursCard } from "./components/business-hours-card";
 import { SocialLinks } from "./components/social-links";
 import { OwnerInfo } from "./components/owner-info";
+import { ViewBeacon } from "./components/view-beacon";
 
 export const CONTACT_FORM_ID = "contact-form-section";
 
@@ -69,6 +70,7 @@ export interface CommunityPageViewData {
 		website?: string;
 		addressCity?: string;
 		addressState?: string;
+		timezone?: string;
 	} | null;
 }
 
@@ -259,6 +261,7 @@ export function CommunityPageView({ data, preview }: CommunityPageViewProps) {
 					credentials={data.credentials}
 					businessHours={data.businessHours}
 					serviceArea={serviceArea || undefined}
+					timezone={data.organization?.timezone}
 				/>
 
 				<div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-12 sm:py-16">
@@ -445,10 +448,14 @@ export function CommunityPageView({ data, preview }: CommunityPageViewProps) {
 			</footer>
 
 			{!preview && (
-				<MobileActionBar
-					contactFormId={CONTACT_FORM_ID}
-					phone={data.organization?.phone}
-				/>
+				<>
+					<MobileActionBar
+						contactFormId={CONTACT_FORM_ID}
+						phone={data.organization?.phone}
+					/>
+					{/* Draft previews must never inflate the owner's own view count. */}
+					<ViewBeacon slug={data.slug} />
+				</>
 			)}
 		</div>
 	);

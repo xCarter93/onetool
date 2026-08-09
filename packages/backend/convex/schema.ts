@@ -1446,6 +1446,56 @@ export default defineSchema({
 		.index("by_slug", ["slug"])
 		.index("by_public", ["isPublic"]),
 
+	// Community leads - quote requests submitted from a public community page.
+	// Written by the public `submitInterest` mutation, so every field here is
+	// the sanitized value, never the raw arg.
+	communityLeads: defineTable({
+		orgId: v.id("organizations"),
+		communityPageId: v.id("communityPages"),
+		slug: v.string(), // slug at submission time; the page's slug can change later
+
+		// Submitted details (sanitized in submitInterest)
+		name: v.string(),
+		email: v.string(), // lowercased + trimmed
+		phone: v.optional(v.string()),
+		service: v.optional(v.string()), // matched against publishedServiceTags
+		message: v.optional(v.string()),
+
+		status: v.union(
+			v.literal("new"),
+			v.literal("contacted"),
+			v.literal("quoted"),
+			v.literal("converted"),
+			v.literal("archived")
+		),
+
+		// Links to whatever the lead became
+		taskId: v.optional(v.id("tasks")), // follow-up task created alongside the lead
+		clientId: v.optional(v.id("clients")), // set by the explicit "Add as client" promotion
+
+		submittedAt: v.number(),
+		statusUpdatedAt: v.optional(v.number()),
+		// Stamped once, the first time the lead leaves "new". statusUpdatedAt
+		// keeps moving, so it cannot answer "how fast did we respond?".
+		firstRespondedAt: v.optional(v.number()),
+	})
+		.index("by_org", ["orgId"])
+		.index("by_org_status", ["orgId", "status"])
+		.index("by_page", ["communityPageId"]),
+
+	// Community page views — daily buckets, not one row per visit. A public page
+	// can be hit far more often than it is edited, and the dashboard only ever
+	// asks for day totals, so per-visit rows would grow without bound and buy
+	// nothing. `day` is a UTC "YYYY-MM-DD" key.
+	communityPageViews: defineTable({
+		orgId: v.id("organizations"),
+		communityPageId: v.id("communityPages"),
+		day: v.string(),
+		count: v.number(),
+	})
+		.index("by_org_day", ["orgId", "day"])
+		.index("by_page_day", ["communityPageId", "day"]),
+
 	// Reports - saved report configurations
 	reports: defineTable({
 		orgId: v.id("organizations"),

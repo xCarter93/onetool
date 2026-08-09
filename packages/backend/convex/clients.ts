@@ -513,6 +513,7 @@ export const create = userMutation({
 				v.literal("advertising"),
 				v.literal("trade-show"),
 				v.literal("cold-outreach"),
+				v.literal("community-page"),
 				v.literal("other")
 			)
 		),
@@ -534,30 +535,37 @@ export const create = userMutation({
 		portalAccessId: v.optional(v.string()),
 	},
 	handler: async (ctx, args): Promise<ClientId> => {
-		await ctx.requireLevel("clients", "modify");
-		// Type assertion needed because schema still has deprecated fields
-		const clientId = await createClientWithOrg(ctx, {
-			...args,
-			createdByUserId: ctx.user._id,
-		} as any);
-
-		// Get the created client for activity logging
-		const client = await ctx.db.get(clientId);
-		if (client) {
-			await ActivityHelpers.clientCreated(ctx, client as ClientDocument);
-			await emitRecordCreatedEvent(
-				ctx,
-				client.orgId,
-				"client",
-				client._id,
-				"clients.create"
-			);
-			await maybeEnqueueQboSync(ctx, client.orgId, "client", client._id);
-		}
-
-		return clientId;
+		return await createClient(ctx, args, "clients.create");
 	},
 });
+
+/**
+ * The full client-creation path: portal id, activity log, record_created
+ * automations, and QuickBooks enqueue. Any surface that creates a client goes
+ * through here — a bare db.insert skips the portal id and the automations.
+ */
+export async function createClient(
+	ctx: UserMutationCtx,
+	data: Record<string, unknown>,
+	source: string
+): Promise<ClientId> {
+	await ctx.requireLevel("clients", "modify");
+	// Type assertion needed because schema still has deprecated fields
+	const clientId = await createClientWithOrg(ctx, {
+		...data,
+		createdByUserId: ctx.user._id,
+	} as any);
+
+	// Get the created client for activity logging
+	const client = await ctx.db.get(clientId);
+	if (client) {
+		await ActivityHelpers.clientCreated(ctx, client as ClientDocument);
+		await emitRecordCreatedEvent(ctx, client.orgId, "client", client._id, source);
+		await maybeEnqueueQboSync(ctx, client.orgId, "client", client._id);
+	}
+
+	return clientId;
+}
 
 /**
  * Bulk create clients from CSV import

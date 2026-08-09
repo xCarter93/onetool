@@ -25,6 +25,8 @@ import type * as clientDocuments from "../clientDocuments.js";
 import type * as clientProperties from "../clientProperties.js";
 import type * as clientTelemetry from "../clientTelemetry.js";
 import type * as clients from "../clients.js";
+import type * as communityAnalytics from "../communityAnalytics.js";
+import type * as communityLeads from "../communityLeads.js";
 import type * as communityPages from "../communityPages.js";
 import type * as crons from "../crons.js";
 import type * as documents from "../documents.js";
@@ -202,6 +204,8 @@ declare const fullApi: ApiFromModules<{
   clientProperties: typeof clientProperties;
   clientTelemetry: typeof clientTelemetry;
   clients: typeof clients;
+  communityAnalytics: typeof communityAnalytics;
+  communityLeads: typeof communityLeads;
   communityPages: typeof communityPages;
   crons: typeof crons;
   documents: typeof documents;

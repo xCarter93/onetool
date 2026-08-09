@@ -86,6 +86,10 @@ export const communityArticles: HelpArticle[] = [
 						text: "Image limits: the banner and gallery photos can each be up to 5 MB, and the avatar up to 2 MB.",
 					},
 					{
+						type: "note",
+						text: "The **Open today** line on your public page follows the time zone set in your [organization profile](/help/settings-and-team/organization-profile), so an out-of-area visitor still sees your day, not theirs.",
+					},
+					{
 						type: "tip",
 						text: "Click **Preview** at any time to see the page as a visitor would, without publishing anything.",
 					},
@@ -172,6 +176,13 @@ export const communityArticles: HelpArticle[] = [
 			"follow up",
 			"tasks",
 			"visitors",
+			"requests inbox",
+			"add as client",
+			"qr code",
+			"share",
+			"page views",
+			"performance",
+			"conversion",
 		],
 		sections: [
 			{
@@ -194,11 +205,11 @@ export const communityArticles: HelpArticle[] = [
 				blocks: [
 					{
 						type: "paragraph",
-						text: "Each submission creates a task in your workspace named **Follow up:** plus the visitor's name, scheduled for the next business day at 9:00 AM and assigned to an admin. The task description holds everything the visitor entered: their name, email, phone, the service they picked, message, and which page the request came from.",
+						text: "Every submission shows up in two places. It lands in **Requests from your page** at the bottom of your **Community** page, and it also creates a task in your workspace named **Follow up:** plus the visitor's name, scheduled for the next business day at 9:00 AM and assigned to an admin. The task description holds everything the visitor entered: their name, email, phone, the service they picked, message, and which page the request came from.",
 					},
 					{
 						type: "note",
-						text: "OneTool does not send you an email when a request arrives. Check **Tasks** for new follow-ups, or [build an automation](/help/automations/building-an-automation) that notifies you whenever a task is created.",
+						text: "OneTool does not send you an email when a request arrives. Check the requests list on your Community page or **Tasks** for new follow-ups, or [build an automation](/help/automations/building-an-automation) that notifies you whenever a task is created.",
 					},
 				],
 			},
@@ -206,13 +217,44 @@ export const communityArticles: HelpArticle[] = [
 				heading: "Follow up on a request",
 				blocks: [
 					{
+						type: "paragraph",
+						text: "The requests list opens on **New** so you only see what has not been picked up yet. Switch to **All** for the full history.",
+					},
+					{
 						type: "steps",
 						items: [
-							"Open the task from **Tasks** or your Home calendar.",
-							"Reach out to the visitor by email or phone using the details in the task description.",
-							"If the conversation turns into real work, [add them as a client](/help/clients/managing-clients) so quotes, projects, and invoices have somewhere to live.",
-							"Mark the task complete when you have made contact.",
+							"Open **Community** and find the request in **Requests from your page**.",
+							"Open the **⋯** menu at the end of the row. **Reply by email** opens a message to the address they gave you; the email under their name is a link too.",
+							"Use **Add as client** when the conversation turns into real work. That creates a client record with them as the primary contact and moves the request to **Client**.",
+							"Use **Send quote** to start a quote. If they are not a client yet, this adds them first, then opens the new quote form.",
+							"Mark a request **Contacted** or **Quoted** as you work it, or **Archive** one you are not pursuing.",
 						],
+					},
+				],
+			},
+			{
+				heading: "Reading the numbers",
+				blocks: [
+					{
+						type: "paragraph",
+						text: "The **Performance** panel at the top of your Community page covers the last **7**, **30**, or **90** days. **Page views** counts visits to your public page. **Quote requests** counts submissions. **Visit to request** is requests divided by views. **Median first response** is how long a request typically waits before you pick it up, and **N waiting** counts requests still sitting in **New**.",
+					},
+					{
+						type: "note",
+						text: "**Median first response** measures the moment you act on a request in OneTool: adding the person as a client, sending a quote, or marking the request **Contacted**. An email you send from your own mail app is invisible to OneTool, so mark the request as you go if you want this number to mean anything.",
+					},
+					{
+						type: "paragraph",
+						text: "Views are counted by OneTool itself, not by an outside analytics service. A visit is counted once per browsing session, and repeated hits from the same address are throttled, so the figure is a reasonable count of real visits rather than an exact one.",
+					},
+				],
+			},
+			{
+				heading: "Share your page",
+				blocks: [
+					{
+						type: "paragraph",
+						text: "**QR & share kit** in the page header, and **Share** on the page card, both open the share kit: a QR code you can download as a **PNG** for print or an **SVG** that scales to any size, your page link, and paste-ready wording for a social bio, a post or text message, and an email signature.",
 					},
 				],
 			},
@@ -224,7 +266,11 @@ export const communityArticles: HelpArticle[] = [
 			},
 			{
 				question: "Does a request create a client record?",
-				answer: "No. It creates a follow-up task only. You decide whether to add the person as a client once you have talked to them.",
+				answer: "Not on its own. A request creates an entry in your Requests inbox and a follow-up task. It becomes a client only when you choose **Add as client** (or **Send quote**, which adds them first), so strangers and bots never end up in your client list.",
+			},
+			{
+				question: "What do the request statuses mean?",
+				answer: "**New** is untouched. **Contacted** and **Quoted** are yours to set as you work the request. **Client** is set automatically when you add the person as a client. **Archived** hides a request you are not pursuing.",
 			},
 			{
 				question: "What stops spam submissions?",
