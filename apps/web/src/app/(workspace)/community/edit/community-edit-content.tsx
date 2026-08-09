@@ -24,7 +24,6 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/reui/badge";
-import { Frame, FramePanel } from "@/components/reui/frame";
 import { Scrollspy } from "@/components/reui/scrollspy";
 import { cn } from "@/lib/utils";
 import { useWorkspaceScrollTarget } from "@/lib/workspace-scroller";
@@ -346,12 +345,15 @@ export default function CommunityEditContent() {
 						</div>
 					</div>
 
-					<div className="grid gap-10 lg:grid-cols-[240px_minmax(0,1fr)] 2xl:grid-cols-[240px_minmax(0,1fr)_minmax(420px,0.85fr)]">
+					{/* One surface, hairline-divided. Rail and preview stick inside it, so
+					    neither column ever bottoms out onto bare canvas. */}
+					<div className="rounded-xl border border-border/60 bg-card shadow-xs">
+						<div className="grid lg:grid-cols-[220px_minmax(0,1fr)] 2xl:grid-cols-[220px_minmax(0,1fr)_minmax(400px,32%)]">
 						{/* Desktop rail */}
-						<aside className="hidden lg:block">
+						<aside className="hidden lg:block lg:border-r lg:border-border/60">
 							<nav
 								aria-label="Page sections"
-								className="sticky top-40 space-y-0.5 rounded-xl border border-border/60 bg-card p-3 shadow-xs"
+								className="sticky top-40 space-y-0.5 p-3"
 							>
 								<p className="px-3 pb-2 text-[11px] font-semibold uppercase tracking-wider text-muted-fg">
 									Sections
@@ -383,9 +385,7 @@ export default function CommunityEditContent() {
 						</aside>
 
 						{/* Sections */}
-						<div className="min-w-0 pb-[40vh]">
-							<Frame>
-								<FramePanel className="space-y-12 px-6 py-8 sm:px-8">
+						<div className="min-w-0 space-y-12 px-5 pt-8 pb-[40vh] sm:px-8">
 							<MainSettingsSection
 								{...mainSettings}
 								sectionRef={sectionRefSetters.mainSettings}
@@ -412,20 +412,19 @@ export default function CommunityEditContent() {
 								{...pricing}
 								sectionRef={sectionRefSetters.pricing}
 							/>
-								</FramePanel>
-							</Frame>
 						</div>
 
 						{/* Live preview. Third column only where there is room for one;
 						    narrower than 2xl, the header's Preview button still opens
 						    the full page. */}
-						<div className="hidden 2xl:block">
+						<aside className="hidden 2xl:block 2xl:border-l 2xl:border-border/60">
 							<LivePreviewPane
 								data={previewData}
 								publicUrl={publicUrl}
 								hasUnsavedChanges={actions.hasUnsavedChanges}
 								onEditSection={handleJumpToSection}
 							/>
+						</aside>
 						</div>
 					</div>
 				</div>

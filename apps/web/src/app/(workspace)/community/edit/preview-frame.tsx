@@ -12,16 +12,42 @@ const FRAME_READY_TIMEOUT_MS = 2500;
  * <link> in production and inline <style> in development, so both are copied.
  */
 function cloneStyles(host: Document, frame: Document) {
+	const sheets = host.querySelectorAll<HTMLElement>(
+		'style, link[rel="stylesheet"]',
+	);
 	frame.head.replaceChildren(
-		...Array.from(
-			host.querySelectorAll('style, link[rel="stylesheet"]'),
-			(node) => node.cloneNode(true),
-		),
+		...Array.from(sheets, (node) => {
+			if (!(node instanceof HTMLLinkElement)) return node.cloneNode(true);
+			// Copying the element would copy `/_next/...` verbatim, and a relative
+			// href has nothing to resolve against inside an about:blank document.
+			// The `href` property is already absolute.
+			const link = frame.createElement("link");
+			link.rel = "stylesheet";
+			link.href = node.href;
+			return link;
+		}),
 	);
 	// Font variables and the theme class live on <html>; without them the frame
 	// renders in the fallback font and the light palette.
 	frame.documentElement.className = host.documentElement.className;
 	frame.documentElement.style.cssText = host.documentElement.style.cssText;
+}
+
+/** Resolves once every cloned stylesheet has landed, so nothing shows unstyled. */
+function whenStylesReady(frame: Document): Promise<void> {
+	const links = Array.from(
+		frame.querySelectorAll<HTMLLinkElement>('link[rel="stylesheet"]'),
+	);
+	return Promise.all(
+		links.map((link) =>
+			link.sheet
+				? Promise.resolve()
+				: new Promise<void>((resolve) => {
+						link.addEventListener("load", () => resolve(), { once: true });
+						link.addEventListener("error", () => resolve(), { once: true });
+					}),
+		),
+	).then(() => undefined);
 }
 
 interface PreviewFrameProps {
@@ -43,6 +69,7 @@ export function PreviewFrame({ width, title, children }: PreviewFrameProps) {
 	const wrapperRef = useRef<HTMLDivElement>(null);
 	const frameRef = useRef<HTMLIFrameElement>(null);
 	const [mountNode, setMountNode] = useState<HTMLElement | null>(null);
+	const [stylesReady, setStylesReady] = useState(false);
 	const [scale, setScale] = useState(0);
 	const [height, setHeight] = useState(0);
 	const [timedOut, setTimedOut] = useState(false);
@@ -57,6 +84,7 @@ export function PreviewFrame({ width, title, children }: PreviewFrameProps) {
 			cloneStyles(document, doc);
 			doc.body.style.margin = "0";
 			setMountNode(doc.body);
+			void whenStylesReady(doc).then(() => setStylesReady(true));
 			return true;
 		};
 
@@ -85,10 +113,10 @@ export function PreviewFrame({ width, title, children }: PreviewFrameProps) {
 	}, [mountNode]);
 
 	useEffect(() => {
-		if (mountNode) return;
+		if (mountNode && stylesReady) return;
 		const timer = setTimeout(() => setTimedOut(true), FRAME_READY_TIMEOUT_MS);
 		return () => clearTimeout(timer);
-	}, [mountNode]);
+	}, [mountNode, stylesReady]);
 
 	// The frame lays out at `width` and is scaled down to whatever room the
 	// device shell gives it; its height is grown to match so no band is cut off.
@@ -119,10 +147,10 @@ export function PreviewFrame({ width, title, children }: PreviewFrameProps) {
 					height: height || 1,
 					transform: `scale(${scale})`,
 					transformOrigin: "top left",
-					opacity: mountNode && scale > 0 ? 1 : 0,
+					opacity: mountNode && stylesReady && scale > 0 ? 1 : 0,
 				}}
 			/>
-			{!mountNode && (
+			{(!mountNode || !stylesReady) && (
 				<div className="absolute inset-0 flex items-center justify-center p-6 text-center">
 					{timedOut ? (
 						<p className="text-xs text-muted-fg">
