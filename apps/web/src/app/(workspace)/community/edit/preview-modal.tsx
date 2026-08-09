@@ -2,7 +2,6 @@
 
 import { useEffect } from "react";
 import { X } from "lucide-react";
-import type { JSONContent } from "@tiptap/react";
 import {
 	CommunityPageView,
 	type CommunityPageViewData,
@@ -11,81 +10,11 @@ import {
 interface PreviewModalProps {
 	open: boolean;
 	onOpenChange: (open: boolean) => void;
-	pageTitle: string;
-	bannerUrl: string | null;
-	avatarUrl: string | null;
-	organization: {
-		name: string;
-		email?: string;
-		phone?: string;
-		website?: string;
-	} | null;
-	bioContent: JSONContent | undefined;
-	servicesContent: JSONContent | undefined;
-	pricingMode: string;
-	pricingContent: JSONContent | undefined;
-	pricingTiers: Array<{ name: string; price: string; description: string }>;
-	galleryImages: Array<{
-		url: string | null;
-		storageId: string;
-		sortOrder: number;
-	}>;
-	theme: string;
-	sectionConfig: Array<{ id: string; visible: boolean }>;
-	ownerInfo: { name?: string; title?: string } | undefined;
-	credentials:
-		| {
-				isLicensed?: boolean;
-				isBonded?: boolean;
-				isInsured?: boolean;
-				yearEstablished?: number;
-				certifications?: string[];
-		  }
-		| undefined;
-	businessHours:
-		| {
-				byAppointmentOnly: boolean;
-				schedule?: Array<{
-					day: string;
-					open: string;
-					close: string;
-					isClosed: boolean;
-				}>;
-		  }
-		| undefined;
-	socialLinks:
-		| {
-				facebook?: string;
-				instagram?: string;
-				nextdoor?: string;
-				youtube?: string;
-				linkedin?: string;
-				yelp?: string;
-				google?: string;
-		  }
-		| undefined;
+	/** Built by `buildPreviewData`, the same mapping the docked pane renders. */
+	data: CommunityPageViewData;
 }
 
-export function PreviewModal({
-	open,
-	onOpenChange,
-	pageTitle,
-	bannerUrl,
-	avatarUrl,
-	organization,
-	bioContent,
-	servicesContent,
-	pricingMode,
-	pricingContent,
-	pricingTiers,
-	galleryImages,
-	theme,
-	sectionConfig,
-	ownerInfo,
-	credentials,
-	businessHours,
-	socialLinks,
-}: PreviewModalProps) {
+export function PreviewModal({ open, onOpenChange, data }: PreviewModalProps) {
 	// Lock background scroll when open
 	useEffect(() => {
 		if (!open) return;
@@ -107,30 +36,6 @@ export function PreviewModal({
 	}, [open, onOpenChange]);
 
 	if (!open) return null;
-
-	// Preview mode never submits a real lead, so slug is unused by the view.
-	const data: CommunityPageViewData = {
-		slug: "",
-		pageTitle,
-		bioContent,
-		servicesContent,
-		pricingMode: pricingMode === "structured" ? "structured" : "richText",
-		pricingContent,
-		pricingTiers,
-		galleryImages: galleryImages.filter(
-			(img): img is { url: string; storageId: string; sortOrder: number } =>
-				img.url !== null,
-		),
-		theme,
-		sectionConfig,
-		bannerUrl,
-		avatarUrl,
-		organization,
-		ownerInfo,
-		credentials,
-		businessHours,
-		socialLinks,
-	};
 
 	return (
 		<div

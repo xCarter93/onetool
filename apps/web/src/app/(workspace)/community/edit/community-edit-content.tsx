@@ -20,6 +20,7 @@ import {
 	Wrench,
 	Tags,
 	LayoutList,
+	Check as CheckIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/reui/badge";
@@ -38,6 +39,17 @@ import { BusinessInfoSection } from "./sections/business-info-section";
 import { DesignSection } from "./sections/design-section";
 import { PageSectionsSection } from "./sections/page-sections-section";
 import { PreviewModal } from "./preview-modal";
+import { LivePreviewPane } from "./live-preview-pane";
+import { buildPreviewData } from "./preview-data";
+import type { CommunitySectionId } from "@/lib/community-sections";
+
+/** Public section ids differ from the editor's own; the gallery is the only one. */
+const EDITOR_SECTION_FOR: Record<CommunitySectionId, SectionId> = {
+	bio: "bio",
+	services: "services",
+	pricing: "pricing",
+	gallery: "imageGallery",
+};
 
 /** Sticky chrome is ~150px tall; scrollspy targets land just below it. */
 const SCROLLSPY_OFFSET = 160;
@@ -56,8 +68,48 @@ const SECTION_ICONS: Record<
 	pricing: Tags,
 };
 
+/** Trailing rail state, most urgent first: unsaved beats a count beats done. */
+function SectionIndicator({
+	dirty,
+	done,
+	count,
+}: {
+	dirty: boolean;
+	done: boolean;
+	count?: string;
+}) {
+	if (dirty) {
+		return (
+			<span className="size-2 shrink-0 rounded-full bg-amber-500">
+				<span className="sr-only">Unsaved changes</span>
+			</span>
+		);
+	}
+	if (count) {
+		return (
+			<span className="shrink-0 text-[11px] tabular-nums text-muted-fg">
+				{count}
+			</span>
+		);
+	}
+	if (done) {
+		return (
+			<>
+				<CheckIcon className="size-3.5 shrink-0 text-success" aria-hidden />
+				<span className="sr-only">Filled in</span>
+			</>
+		);
+	}
+	return (
+		<span className="size-2 shrink-0 rounded-full border border-border">
+			<span className="sr-only">Empty</span>
+		</span>
+	);
+}
+
 export default function CommunityEditContent() {
 	const router = useRouter();
+	const form = useCommunityPageForm();
 	const {
 		mainSettings,
 		design,
@@ -70,9 +122,10 @@ export default function CommunityEditContent() {
 		actions,
 		sectionRefSetters,
 		dirtyBySection,
+		sectionCompletion,
 		isLoading,
 		isRedirecting,
-	} = useCommunityPageForm();
+	} = form;
 	const isPageLoaded = !isLoading && !isRedirecting;
 	const [previewOpen, setPreviewOpen] = useState(false);
 
@@ -107,6 +160,20 @@ export default function CommunityEditContent() {
 	}
 
 	const publicUrl = `${typeof window !== "undefined" ? window.location.origin : ""}/communities/${mainSettings.slug}`;
+
+	const previewData = buildPreviewData(form);
+
+	// A callout in the preview jumps to the field that fills it, so the fix is
+	// one click from where the problem showed up.
+	const handleJumpToSection = (sectionId: CommunitySectionId) => {
+		const prefersReducedMotion = window.matchMedia(
+			"(prefers-reduced-motion: reduce)",
+		).matches;
+		document.getElementById(EDITOR_SECTION_FOR[sectionId])?.scrollIntoView({
+			behavior: prefersReducedMotion ? "auto" : "smooth",
+			block: "start",
+		});
+	};
 
 	const saveDisabled =
 		actions.isSaving ||
@@ -279,7 +346,7 @@ export default function CommunityEditContent() {
 						</div>
 					</div>
 
-					<div className="grid gap-10 lg:grid-cols-[240px_minmax(0,1fr)]">
+					<div className="grid gap-10 lg:grid-cols-[240px_minmax(0,1fr)] 2xl:grid-cols-[240px_minmax(0,1fr)_minmax(420px,0.85fr)]">
 						{/* Desktop rail */}
 						<aside className="hidden lg:block">
 							<nav
@@ -304,12 +371,11 @@ export default function CommunityEditContent() {
 										>
 											<Icon className="size-4 shrink-0 opacity-70 group-data-[active=true]:opacity-100" />
 											<span className="flex-1 truncate">{section.label}</span>
-											{dirtyBySection[section.id] && (
-												<span
-													className="size-2 shrink-0 rounded-full bg-amber-500"
-													title="Unsaved changes in this section"
-												/>
-											)}
+											<SectionIndicator
+												dirty={dirtyBySection[section.id]}
+												done={sectionCompletion[section.id].done}
+												count={sectionCompletion[section.id].count}
+											/>
 										</button>
 									);
 								})}
@@ -349,6 +415,18 @@ export default function CommunityEditContent() {
 								</FramePanel>
 							</Frame>
 						</div>
+
+						{/* Live preview. Third column only where there is room for one;
+						    narrower than 2xl, the header's Preview button still opens
+						    the full page. */}
+						<div className="hidden 2xl:block">
+							<LivePreviewPane
+								data={previewData}
+								publicUrl={publicUrl}
+								hasUnsavedChanges={actions.hasUnsavedChanges}
+								onEditSection={handleJumpToSection}
+							/>
+						</div>
 					</div>
 				</div>
 			</Scrollspy>
@@ -356,70 +434,7 @@ export default function CommunityEditContent() {
 			<PreviewModal
 				open={previewOpen}
 				onOpenChange={setPreviewOpen}
-				pageTitle={mainSettings.pageTitle}
-				bannerUrl={mainSettings.bannerUrl}
-				avatarUrl={mainSettings.avatarUrl}
-				organization={
-					mainSettings.organization
-						? {
-								name: mainSettings.organization.name,
-								email: mainSettings.organization.email,
-								phone: mainSettings.organization.phone,
-								website: mainSettings.organization.website,
-							}
-						: null
-				}
-				bioContent={bio.bioContent}
-				servicesContent={services.servicesContent}
-				pricingMode={pricing.pricingMode}
-				pricingContent={pricing.pricingContent}
-				pricingTiers={pricing.pricingTiers}
-				galleryImages={gallery.galleryItems
-					.filter((item) => item.url)
-					.map((item) => ({
-						url: item.url!,
-						storageId: String(item.storageId),
-						sortOrder: item.sortOrder,
-					}))}
-				theme={design.theme}
-				sectionConfig={sections.sectionConfig}
-				ownerInfo={
-					businessInfo.ownerName || businessInfo.ownerTitle
-						? {
-								name: businessInfo.ownerName || undefined,
-								title: businessInfo.ownerTitle || undefined,
-							}
-						: undefined
-				}
-				credentials={
-					businessInfo.isLicensed ||
-					businessInfo.isBonded ||
-					businessInfo.isInsured ||
-					businessInfo.yearEstablished ||
-					businessInfo.certifications.length > 0
-						? {
-								isLicensed: businessInfo.isLicensed || undefined,
-								isBonded: businessInfo.isBonded || undefined,
-								isInsured: businessInfo.isInsured || undefined,
-								yearEstablished: businessInfo.yearEstablished,
-								certifications:
-									businessInfo.certifications.length > 0
-										? businessInfo.certifications
-										: undefined,
-							}
-						: undefined
-				}
-				businessHours={{
-					byAppointmentOnly: businessInfo.byAppointmentOnly,
-					schedule: businessInfo.byAppointmentOnly
-						? undefined
-						: businessInfo.businessSchedule,
-				}}
-				socialLinks={
-					Object.values(businessInfo.socialLinks).some(Boolean)
-						? businessInfo.socialLinks
-						: undefined
-				}
+				data={previewData}
 			/>
 		</div>
 	);

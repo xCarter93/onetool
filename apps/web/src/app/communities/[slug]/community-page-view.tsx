@@ -19,6 +19,7 @@ import { BusinessHoursCard } from "./components/business-hours-card";
 import { SocialLinks } from "./components/social-links";
 import { OwnerInfo } from "./components/owner-info";
 import { ViewBeacon } from "./components/view-beacon";
+import { EmptySectionHint } from "./components/empty-section-hint";
 
 export const CONTACT_FORM_ID = "contact-form-section";
 
@@ -100,6 +101,12 @@ interface CommunityPageViewProps {
 	 * action fire (no lead submission, no live links out).
 	 */
 	preview?: boolean;
+	/**
+	 * Editor-only. When supplied, sections that are switched on but empty render
+	 * a callout in place instead of vanishing, and the callout jumps back to the
+	 * field that fills them. The public page never passes this.
+	 */
+	onEditSection?: (sectionId: CommunitySectionId) => void;
 }
 
 function normalizeUrl(url: string): string {
@@ -111,7 +118,11 @@ function normalizeUrl(url: string): string {
  * editor's preview, and the claim-flow ghost all render this same tree — only
  * the data source differs.
  */
-export function CommunityPageView({ data, preview }: CommunityPageViewProps) {
+export function CommunityPageView({
+	data,
+	preview,
+	onEditSection,
+}: CommunityPageViewProps) {
 	const galleryImages = data.galleryImages ?? [];
 	const pricingTiers = data.pricingTiers ?? [];
 	const hasStructuredPricing =
@@ -142,9 +153,8 @@ export function CommunityPageView({ data, preview }: CommunityPageViewProps) {
 		pricing: hasStructuredPricing || hasRichTextContent(data.pricingContent),
 		gallery: galleryImages.length > 0,
 	};
-	const renderedSections = visibleSectionIds(data.sectionConfig).filter(
-		(id) => sectionHasContent[id],
-	);
+	const orderedSections = visibleSectionIds(data.sectionConfig);
+	const renderedSections = orderedSections.filter((id) => sectionHasContent[id]);
 
 	// Anchors follow the same order the sections render in.
 	const anchors = [
@@ -396,17 +406,28 @@ export function CommunityPageView({ data, preview }: CommunityPageViewProps) {
 				<div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-12 sm:py-16">
 					<div className="flex flex-col lg:flex-row gap-10 lg:gap-14">
 						<div className="flex-1 min-w-0 space-y-14">
-							{hasSectionedContent ? (
+							{onEditSection ? (
+								orderedSections.map((id) => (
+									<Fragment key={id}>
+										{sectionHasContent[id] ? (
+											sectionNodes[id]
+										) : (
+											<EmptySectionHint
+												sectionId={id}
+												onEdit={onEditSection}
+											/>
+										)}
+									</Fragment>
+								))
+							) : hasSectionedContent ? (
 								renderedSections.map((id) => (
 									<Fragment key={id}>{sectionNodes[id]}</Fragment>
 								))
-							) : (
-								data.content ? (
-									<div className="text-fg">
-										<CommunityPageContent content={data.content} />
-									</div>
-								) : null
-							)}
+							) : data.content ? (
+								<div className="text-fg">
+									<CommunityPageContent content={data.content} />
+								</div>
+							) : null}
 						</div>
 
 						<div

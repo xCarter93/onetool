@@ -838,6 +838,50 @@ export function useCommunityPageForm() {
 		galleryItems,
 	]);
 
+	// Rail completeness, one glance per editor section. The gallery reports a
+	// count because "some photos" and "five photos" are different amounts of done.
+	const sectionCompletion = useMemo<
+		Record<SectionId, { done: boolean; count?: string }>
+	>(
+		() => ({
+			mainSettings: { done: !!pageTitle.trim() && slug.length >= 3 },
+			design: { done: true },
+			sections: { done: true },
+			businessInfo: {
+				done:
+					!!ownerName ||
+					!!ownerTitle ||
+					isLicensed ||
+					isBonded ||
+					isInsured ||
+					!!yearEstablished ||
+					certifications.length > 0 ||
+					byAppointmentOnly,
+			},
+			bio: { done: sectionStatus.bio.filled },
+			imageGallery: {
+				done: galleryItems.length > 0,
+				count: `${galleryItems.length}/5`,
+			},
+			services: { done: sectionStatus.services.filled },
+			pricing: { done: sectionStatus.pricing.filled },
+		}),
+		[
+			pageTitle,
+			slug,
+			ownerName,
+			ownerTitle,
+			isLicensed,
+			isBonded,
+			isInsured,
+			yearEstablished,
+			certifications,
+			byAppointmentOnly,
+			sectionStatus,
+			galleryItems,
+		],
+	);
+
 	const hasPublishableContent = useMemo(
 		() =>
 			!!bioContent ||
@@ -1254,6 +1298,7 @@ export function useCommunityPageForm() {
 		sectionRefs,
 		sectionRefSetters,
 		dirtyBySection,
+		sectionCompletion,
 		// Loading state
 		isLoading: communityPage === undefined,
 		isRedirecting: communityPage === null,

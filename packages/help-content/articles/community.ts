@@ -97,6 +97,27 @@ export const communityArticles: HelpArticle[] = [
 				],
 			},
 			{
+				heading: "Watch the page change as you edit",
+				blocks: [
+					{
+						type: "paragraph",
+						text: "On a wide screen the editor shows a **Live preview** beside the form. It updates as you type, and it always shows your draft, including changes you have not saved yet.",
+					},
+					{
+						type: "paragraph",
+						text: "Switch between **Desktop** and **Mobile** above the preview to see how the page reflows on a phone. Most visitors arrive on a phone, so it is worth a look before you publish.",
+					},
+					{
+						type: "paragraph",
+						text: "If a section is switched on but has nothing in it, the preview shows a note in its place with a button that takes you straight to the field that fills it. Those notes are only in the editor. Visitors never see them, and an empty section simply does not appear on the published page.",
+					},
+					{
+						type: "note",
+						text: "On a narrower screen there is no room for the side-by-side preview. Use **Preview** in the header instead, which opens the same page full screen.",
+					},
+				],
+			},
+			{
 				heading: "Choose what appears, and in what order",
 				blocks: [
 					{
