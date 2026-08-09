@@ -17,6 +17,7 @@ export const ROUTE_HELP: Array<{ pattern: RegExp; refs: string[] }> = [
 	{
 		pattern: /^\/clients\/import\/quickbooks/,
 		refs: [
+			"settings-and-team/quickbooks-sync",
 			"settings-and-team/organization-profile",
 			"clients/importing-clients",
 		],
@@ -106,6 +107,7 @@ export const ROUTE_HELP: Array<{ pattern: RegExp; refs: string[] }> = [
 			"settings-and-team/inviting-your-team",
 			"settings-and-team/plans-and-billing",
 			"settings-and-team/setting-up-online-payments",
+			"settings-and-team/quickbooks-sync",
 		],
 	},
 ];

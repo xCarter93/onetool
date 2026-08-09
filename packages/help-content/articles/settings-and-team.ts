@@ -133,7 +133,7 @@ export const settingsAndTeamArticles: HelpArticle[] = [
 					},
 					{
 						type: "paragraph",
-						text: "Right after the first connection the QuickBooks card shows a **Setup incomplete** badge and a **Finish setup** button. Setup asks the owner to pick the income account that synced invoices should post to, and it confirms which account payments will be recorded to. That account is used for every item OneTool creates in QuickBooks: one item per line-item SKU, plus a fallback **OneTool Service** item for lines without a SKU. A SKU's item is created the first time it is invoiced, and it is renamed in QuickBooks when you rename the SKU in OneTool. Clients start syncing right away, but invoices and payments wait until setup is finished; once it is, anything waiting in the queue syncs shortly after, and the card lists the income account it posts to.",
+						text: "Right after the first connection the QuickBooks card shows a **Setup incomplete** badge and a **Finish setup** button. Setup asks the owner to pick the income account that synced invoices should post to, and it confirms which account payments will be recorded to. That account is used for every item OneTool creates in QuickBooks: one item per line-item SKU, plus a fallback **OneTool Service** item for lines without a SKU. A SKU's item is created the first time it is invoiced, and it is renamed in QuickBooks when you rename the SKU in OneTool. Clients start syncing right away, but invoices and payments wait until setup is finished; once it is, anything waiting in the queue syncs shortly after, and the card lists the income account it posts to. Payments are recorded to your QuickBooks company's Undeposited Funds account; if the company has no such account, payment syncs appear under **Sync issues** until one exists, while invoices keep syncing.",
 					},
 					{
 						type: "paragraph",
@@ -189,6 +189,7 @@ export const settingsAndTeamArticles: HelpArticle[] = [
 			"getting-started/set-up-your-organization",
 			"settings-and-team/inviting-your-team",
 			"settings-and-team/plans-and-billing",
+			"settings-and-team/quickbooks-sync",
 		],
 	},
 	{
@@ -590,6 +591,117 @@ export const settingsAndTeamArticles: HelpArticle[] = [
 			"invoices-and-payments/getting-paid",
 			"invoices-and-payments/refunds-and-disputes",
 			"settings-and-team/plans-and-billing",
+		],
+	},
+	{
+		slug: "quickbooks-sync",
+		title: "QuickBooks sync: what syncs and what doesn't",
+		subtitle: "Know exactly which records reach QuickBooks so your books stay clean without double entry.",
+		kind: "howto",
+		availability: "business",
+		permission: "Connecting and settings are owner only; every admin can see sync status.",
+		keywords: [
+			"quickbooks",
+			"qbo",
+			"accounting",
+			"sync",
+			"intuit",
+			"bookkeeping",
+			"income account",
+			"sync errors",
+		],
+		sections: [
+			{
+				heading: "OneTool is the source of truth",
+				blocks: [
+					{
+						type: "paragraph",
+						text: "The QuickBooks integration syncs one way: from OneTool to QuickBooks. Records you create and update in OneTool are pushed to QuickBooks automatically, usually within a couple of minutes. Changes made inside QuickBooks are never pulled back into OneTool, and the next time a synced record changes in OneTool it is pushed again, replacing edits made on the QuickBooks side.",
+					},
+					{
+						type: "tip",
+						text: "Treat OneTool as the place where client, invoice, and payment records are edited, and QuickBooks as the place your books live. The one exception is the one-time customer import, which brings your existing QuickBooks customers into OneTool when you first connect.",
+					},
+				],
+			},
+			{
+				heading: "What syncs",
+				blocks: [
+					{
+						type: "list",
+						items: [
+							"**Clients** become QuickBooks customers. They sync when created and again whenever their details change.",
+							"**Invoices** sync when you send them (or when created, if the owner changes the timing on the Integrations tab), and edits to an already synced invoice sync again. Cancelling a synced invoice voids it in QuickBooks.",
+							"**Payments** are recorded against the matching QuickBooks invoice when they are paid, if payment sync is turned on.",
+							"**SKUs** become QuickBooks items the first time they are invoiced, posting to the income account chosen during setup. Lines without a SKU use the fallback **OneTool Service** item.",
+						],
+					},
+				],
+			},
+			{
+				heading: "What never syncs",
+				blocks: [
+					{
+						type: "list",
+						items: [
+							"**Quotes and estimates.** Only invoices and their payments reach QuickBooks.",
+							"**Deletes.** Deleting a record in OneTool never deletes it in QuickBooks; the record simply stops updating.",
+							"**Refunds and disputes.** Record those in QuickBooks directly.",
+							"**Card processing fees and payouts.** Stripe fees and payout deposits are not broken out in QuickBooks.",
+							"**History from before you connected.** Older invoices and payments are not backfilled. Editing an older invoice after connecting does sync it.",
+						],
+					},
+				],
+			},
+			{
+				heading: "Seeing sync status on a record",
+				blocks: [
+					{
+						type: "paragraph",
+						text: "Synced invoices and clients show a **QuickBooks** row in the detail sidebar and in the quick-look drawer, with how long ago they last synced. A warning icon on that row means the record reached QuickBooks but came back different, most often because QuickBooks Automated Sales Tax adjusted the tax amount based on the addresses involved.",
+					},
+					{
+						type: "paragraph",
+						text: "When a record cannot reach QuickBooks at all, it appears under **Sync issues** on the Integrations tab with the reason QuickBooks gave, and admins get an in-app notification the first time something fails. Fix the cause, then use **Retry**; the notification clears once the list is empty.",
+					},
+				],
+			},
+			{
+				heading: "Common sync errors",
+				blocks: [
+					{
+						type: "list",
+						items: [
+							"**Duplicate name.** QuickBooks requires customer names to be unique across customers, vendors, and employees. OneTool links to an exact customer match automatically; otherwise it adds a numeric suffix when **Auto-resolve duplicate names** is on, or reports the conflict under Sync issues when it is off.",
+							"**Missing Undeposited Funds account.** Payments are recorded to your Undeposited Funds account. If your QuickBooks company does not have one, payment syncs fail under Sync issues until it exists; invoices still sync.",
+							"**Closed accounting period.** QuickBooks rejects changes to a period your accountant has closed. Reopen the period or ignore the item.",
+						],
+					},
+				],
+			},
+		],
+		faq: [
+			{
+				question: "I edited a customer in QuickBooks. Will my change stay?",
+				answer: "Only until that client next changes in OneTool. Sync is one way, so OneTool's version replaces QuickBooks edits on the next sync. Make record edits in OneTool.",
+			},
+			{
+				question: "Why is my tax amount different in QuickBooks?",
+				answer: "QuickBooks Automated Sales Tax recalculates tax from the addresses on the invoice and can override the amount OneTool sent. When that happens the record shows a warning on its QuickBooks row so you can review it.",
+			},
+			{
+				question: "Do my old invoices get synced when I connect?",
+				answer: "No. Sync starts from the moment you connect, and existing invoices and payments stay where they are. Editing an older invoice after connecting syncs it. Existing QuickBooks customers can be brought in with the one-time customer import.",
+			},
+			{
+				question: "What happens if I disconnect?",
+				answer: "Syncing stops and OneTool's access is revoked, but everything already in QuickBooks stays there. Reconnecting the same QuickBooks company picks up where it left off.",
+			},
+		],
+		related: [
+			"settings-and-team/organization-profile",
+			"invoices-and-payments/creating-an-invoice",
+			"clients/importing-clients",
 		],
 	},
 	{
