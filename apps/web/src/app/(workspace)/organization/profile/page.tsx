@@ -15,6 +15,7 @@ import {
 	Users,
 } from "lucide-react";
 
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/reui/badge";
 import { EmptyState } from "@/components/domain/empty-state";
@@ -261,7 +262,7 @@ export default function OrganizationProfilePage() {
 			{
 				value: "documents",
 				label: "Documents",
-				sublabel: "Quote & invoice files",
+				sublabel: "Team file library",
 				icon: FileText,
 				locked:
 					!hasPremiumAccess || (!permsLoading && !can("orgDocuments")),
@@ -353,7 +354,16 @@ export default function OrganizationProfilePage() {
 									onSelect={handleTabChange}
 								/>
 							</div>
-							<div className="min-h-0 flex-1 p-5 sm:p-6 lg:overflow-y-auto lg:p-8">
+							<div
+								className={cn(
+									"min-h-0 flex-1 p-5 sm:p-6 lg:overflow-y-auto lg:p-8",
+									// The documents drive owns its scrolling: the pane stops
+									// scrolling and hands the explorer its full height instead.
+									renderTab === "documents" &&
+										!deniedAccess &&
+										"lg:flex lg:flex-col lg:overflow-hidden",
+								)}
+							>
 								{deniedAccess ? (
 									<div className="flex min-h-[40vh] items-center justify-center">
 										<EmptyState

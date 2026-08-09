@@ -108,6 +108,7 @@ export const ROUTE_HELP: Array<{ pattern: RegExp; refs: string[] }> = [
 			"settings-and-team/plans-and-billing",
 			"settings-and-team/setting-up-online-payments",
 			"settings-and-team/quickbooks-sync",
+			"settings-and-team/documents-and-skus",
 		],
 	},
 ];

@@ -37,6 +37,7 @@ export const ORG_SCOPED_CASCADE_TABLES = [
 	"clientDocuments",
 	"documents",
 	"organizationDocuments",
+	"organizationDocumentFolders", // parents of organizationDocuments — drain after them
 	"activities",
 	"notifications",
 	"workflowExecutions",
@@ -238,6 +239,19 @@ export async function cascadeDeleteOrgDataPage(
 			.take(remaining);
 		for (const row of rows) {
 			await StorageHelpers.deleteFromStorage(ctx, row.storageId);
+			await ctx.db.delete(row._id);
+			remaining--;
+		}
+	}
+
+	// organizationDocumentFolders — no blobs; drained after their documents.
+	{
+		if (remaining <= 0) return { done: false };
+		const rows = await ctx.db
+			.query("organizationDocumentFolders")
+			.withIndex("by_org", (q) => q.eq("orgId", orgId))
+			.take(remaining);
+		for (const row of rows) {
 			await ctx.db.delete(row._id);
 			remaining--;
 		}

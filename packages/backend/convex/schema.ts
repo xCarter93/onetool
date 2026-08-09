@@ -1003,6 +1003,18 @@ export default defineSchema({
 		// Per-user celebration feed, range-bounded on _creationTime.
 		.index("by_user_type", ["userId", "notificationType"]),
 
+	// Organization Document Folders - drive-explorer tree for organizationDocuments
+	organizationDocumentFolders: defineTable({
+		orgId: v.id("organizations"),
+		name: v.string(),
+		// Undefined = root-level folder.
+		parentId: v.optional(v.id("organizationDocumentFolders")),
+		createdAt: v.number(),
+		createdBy: v.id("users"),
+	})
+		.index("by_org", ["orgId"])
+		.index("by_org_parent", ["orgId", "parentId"]),
+
 	// Organization Documents - reusable documents for quotes/invoices
 	organizationDocuments: defineTable({
 		orgId: v.id("organizations"),
@@ -1014,13 +1026,18 @@ export default defineSchema({
 		// Storage
 		storageId: v.id("_storage"), // Reference to stored PDF
 		fileSize: v.optional(v.number()), // Size in bytes
+		mimeType: v.optional(v.string()), // From _storage metadata; legacy rows read as application/pdf
+
+		// Folder placement (undefined = root)
+		folderId: v.optional(v.id("organizationDocumentFolders")),
 
 		// Tracking
 		uploadedAt: v.number(),
 		uploadedBy: v.id("users"),
 	})
 		.index("by_org", ["orgId"])
-		.index("by_org_uploaded", ["orgId", "uploadedAt"]),
+		.index("by_org_uploaded", ["orgId", "uploadedAt"])
+		.index("by_org_folder", ["orgId", "folderId"]),
 
 	// SKUs - reusable stock keeping units for quotes
 	skus: defineTable({

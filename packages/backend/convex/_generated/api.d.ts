@@ -131,6 +131,7 @@ import type * as migrations_revalidateStripeConnectAccounts from "../migrations/
 import type * as migrations_seedServiceStatus from "../migrations/seedServiceStatus.js";
 import type * as notifications from "../notifications.js";
 import type * as orgCascade from "../orgCascade.js";
+import type * as organizationDocumentFolders from "../organizationDocumentFolders.js";
 import type * as organizationDocuments from "../organizationDocuments.js";
 import type * as organizations from "../organizations.js";
 import type * as payments from "../payments.js";
@@ -307,6 +308,7 @@ declare const fullApi: ApiFromModules<{
   "migrations/seedServiceStatus": typeof migrations_seedServiceStatus;
   notifications: typeof notifications;
   orgCascade: typeof orgCascade;
+  organizationDocumentFolders: typeof organizationDocumentFolders;
   organizationDocuments: typeof organizationDocuments;
   organizations: typeof organizations;
   payments: typeof payments;

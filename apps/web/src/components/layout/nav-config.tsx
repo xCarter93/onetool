@@ -166,6 +166,11 @@ export const NAV_GROUPS: NavGroup[] = [
 						requiresPremium: true,
 						permission: "skus",
 					},
+					{
+						title: "Integrations",
+						url: "/organization/profile?tab=integrations",
+						requiresPremium: true,
+					},
 				],
 			},
 		],

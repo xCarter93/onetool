@@ -731,15 +731,24 @@ export const settingsAndTeamArticles: HelpArticle[] = [
 				blocks: [
 					{
 						type: "paragraph",
-						text: "Documents is a library for the files your business sends out again and again, like proof of insurance or a license. Instead of hunting for the right file each time, upload it once and attach it to quotes and invoices from the library.",
+						text: "Documents is a file library for the things your business keeps on hand, like proof of insurance, licenses, spec sheets, and site photos. It accepts PDFs, images, Office documents, and CSV or text files up to 25 MB each. Organize files into folders, switch between a list and a card grid, and search or filter by type when the library grows.",
 					},
 					{
 						type: "steps",
 						items: [
 							"Open your organization settings and select the **Documents** tab.",
-							"Upload the files you want to keep on hand.",
-							"Attach them to a quote or invoice when you build it.",
+							"Upload files with the **Upload** button or by dragging them onto the library; they land in the folder you are viewing.",
+							"Use **New Folder** to organize files, and the row menu's **Move** action to rearrange them later.",
+							"Attach PDFs to a quote or invoice when you build it.",
 						],
+					},
+					{
+						type: "note",
+						text: "Only PDFs can be appended to quote and invoice PDFs. Other file types live in the library for your team's reference.",
+					},
+					{
+						type: "paragraph",
+						text: "Selecting a file's **Details** opens a panel where you can rename it, give it a description, preview images, or download it. Select several rows at once to download or delete them together, and use the **Recent** view in the sidebar to jump back to the latest uploads. Deleting a file or folder is permanent, and deleting a folder also deletes everything inside it.",
 					},
 				],
 			},
