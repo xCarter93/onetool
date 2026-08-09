@@ -1308,6 +1308,8 @@ export default defineSchema({
 					name: v.string(),
 					price: v.string(),
 					description: v.optional(v.string()),
+					features: v.optional(v.array(v.string())),
+					highlighted: v.optional(v.boolean()),
 				})
 			)
 		),
@@ -1317,9 +1319,13 @@ export default defineSchema({
 					name: v.string(),
 					price: v.string(),
 					description: v.optional(v.string()),
+					features: v.optional(v.array(v.string())),
+					highlighted: v.optional(v.boolean()),
 				})
 			)
 		),
+		draftServiceTags: v.optional(v.array(v.string())),
+		publishedServiceTags: v.optional(v.array(v.string())),
 		galleryItemsDraft: v.optional(
 			v.array(
 				v.object({

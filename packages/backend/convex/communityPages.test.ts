@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { api } from "./_generated/api";
 import { Id } from "./_generated/dataModel";
 import { setupConvexTest } from "./test.setup";
-import { createTestIdentity, createTestOrg } from "./test.helpers";
+import { createTestIdentity, createTestOrg, createTestOrgWithAddress } from "./test.helpers";
 import { __testUtils } from "./communityPages";
 
 describe("Community Pages", () => {
@@ -492,5 +492,186 @@ describe("Community Pages", () => {
 		expect(() => __testUtils.validateGalleryItems(items)).toThrow(
 			"You can upload up to 5 gallery images"
 		);
+	});
+
+	it("serviceTags round-trip through upsert, publish, and getBySlug", async () => {
+		const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+
+		await asUser.mutation(api.communityPages.upsert, {
+			slug: "service-tags-page",
+			isPublic: true,
+			draftBioContent: {
+				type: "doc",
+				content: [{ type: "paragraph", content: [{ type: "text", text: "Bio" }] }],
+			},
+			draftServiceTags: ["Lawn Care", "Snow Removal", "lawn care"],
+		});
+
+		const draft = await asUser.query(api.communityPages.get, {});
+		expect(draft?.draftServiceTags).toEqual(["Lawn Care", "Snow Removal"]);
+
+		await asUser.mutation(api.communityPages.publish, {});
+
+		const publicPage = await t.query(api.communityPages.getBySlug, {
+			slug: "service-tags-page",
+		});
+		expect(publicPage?.serviceTags).toEqual(["Lawn Care", "Snow Removal"]);
+	});
+
+	it("validateServiceTags rejects more than 8 tags", () => {
+		const tags = Array.from({ length: 9 }).map((_, index) => `Tag ${index}`);
+		expect(() => __testUtils.validateServiceTags(tags)).toThrow(
+			"You can add up to 8 service tags"
+		);
+	});
+
+	it("validateServiceTags rejects over-length tags", () => {
+		const tags = ["a".repeat(41)];
+		expect(() => __testUtils.validateServiceTags(tags)).toThrow(
+			"Service tag must be 40 characters or less"
+		);
+	});
+
+	it("validateServiceTags dedupes case-insensitively and drops empties", () => {
+		const result = __testUtils.validateServiceTags([
+			"Lawn Care",
+			"  ",
+			"LAWN CARE",
+			"Snow Removal",
+		]);
+		expect(result).toEqual(["Lawn Care", "Snow Removal"]);
+	});
+
+	it("validatePricingTiers rejects more than 6 features per tier", () => {
+		const tiers = [
+			{
+				name: "Starter",
+				price: "$99",
+				features: Array.from({ length: 7 }).map((_, i) => `Feature ${i}`),
+			},
+		];
+		expect(() => __testUtils.validatePricingTiers(tiers)).toThrow(
+			"Each pricing tier can have up to 6 features"
+		);
+	});
+
+	it("validatePricingTiers rejects over-length features", () => {
+		const tiers = [
+			{ name: "Starter", price: "$99", features: ["a".repeat(81)] },
+		];
+		expect(() => __testUtils.validatePricingTiers(tiers)).toThrow(
+			"Pricing tier feature must be 80 characters or less"
+		);
+	});
+
+	it("validatePricingTiers rejects more than one highlighted tier", () => {
+		const tiers = [
+			{ name: "Starter", price: "$99", highlighted: true },
+			{ name: "Pro", price: "$199", highlighted: true },
+		];
+		expect(() => __testUtils.validatePricingTiers(tiers)).toThrow(
+			"Only one pricing tier can be highlighted"
+		);
+	});
+
+	it("submitInterest stores service when it matches a published tag", async () => {
+		const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+
+		await asUser.mutation(api.communityPages.upsert, {
+			slug: "service-match-test",
+			isPublic: true,
+			draftBioContent: {
+				type: "doc",
+				content: [{ type: "paragraph", content: [{ type: "text", text: "Bio" }] }],
+			},
+			draftServiceTags: ["Lawn Care", "Snow Removal"],
+		});
+		await asUser.mutation(api.communityPages.publish, {});
+
+		await t.mutation(api.communityPages.submitInterest, {
+			slug: "service-match-test",
+			name: "Match Person",
+			email: "match@example.com",
+			service: "lawn care",
+		});
+
+		const tasks = await t.run(async (ctx) => {
+			return await ctx.db.query("tasks").collect();
+		});
+		const task = tasks.find((row) => row.title === "Follow up: Match Person");
+		expect(task).toBeTruthy();
+		expect(task?.description).toContain("Service: Lawn Care");
+	});
+
+	it("submitInterest drops a non-matching service but still creates the lead", async () => {
+		const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+
+		await asUser.mutation(api.communityPages.upsert, {
+			slug: "service-mismatch-test",
+			isPublic: true,
+			draftBioContent: {
+				type: "doc",
+				content: [{ type: "paragraph", content: [{ type: "text", text: "Bio" }] }],
+			},
+			draftServiceTags: ["Lawn Care"],
+		});
+		await asUser.mutation(api.communityPages.publish, {});
+
+		await t.mutation(api.communityPages.submitInterest, {
+			slug: "service-mismatch-test",
+			name: "Mismatch Person",
+			email: "mismatch@example.com",
+			service: "Roof Repair",
+		});
+
+		const tasks = await t.run(async (ctx) => {
+			return await ctx.db.query("tasks").collect();
+		});
+		const task = tasks.find((row) => row.title === "Follow up: Mismatch Person");
+		expect(task).toBeTruthy();
+		expect(task?.description).not.toContain("Service:");
+	});
+
+	it("getBySlug surfaces org addressCity/addressState and excludes street/zip/geo fields", async () => {
+		const addressedOrg = await t.run(async (ctx) =>
+			createTestOrgWithAddress(ctx, {
+				orgName: "Beverly Landscaping",
+				clerkUserId: "user_address_test",
+				clerkOrgId: "org_address_test",
+				addressStreet: "123 Main St",
+				addressCity: "Beverly",
+				addressState: "MA",
+				addressZip: "01915",
+				addressCountry: "US",
+				latitude: 42.5584,
+				longitude: -70.8801,
+			})
+		);
+		const asAddressedUser = t.withIdentity(
+			createTestIdentity(addressedOrg.clerkUserId, addressedOrg.clerkOrgId)
+		);
+
+		await asAddressedUser.mutation(api.communityPages.upsert, {
+			slug: "address-city-state-page",
+			isPublic: true,
+			draftBioContent: {
+				type: "doc",
+				content: [{ type: "paragraph", content: [{ type: "text", text: "Bio" }] }],
+			},
+		});
+		await asAddressedUser.mutation(api.communityPages.publish, {});
+
+		const publicPage = await t.query(api.communityPages.getBySlug, {
+			slug: "address-city-state-page",
+		});
+
+		expect(publicPage?.organization?.addressCity).toBe("Beverly");
+		expect(publicPage?.organization?.addressState).toBe("MA");
+		const orgKeys = Object.keys(publicPage?.organization ?? {});
+		expect(orgKeys).not.toContain("addressStreet");
+		expect(orgKeys).not.toContain("addressZip");
+		expect(orgKeys).not.toContain("addressCountry");
+		expect(orgKeys).not.toContain("latitude");
+		expect(orgKeys).not.toContain("longitude");
 	});
 });

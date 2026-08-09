@@ -21,6 +21,57 @@ const MAX_AVATAR_SIZE = 2 * 1024 * 1024;
 const MAX_GALLERY_IMAGE_SIZE = 5 * 1024 * 1024;
 export const MAX_GALLERY_IMAGES = 5;
 
+export const MAX_SERVICE_TAGS = 8;
+export const MAX_SERVICE_TAG_LENGTH = 40;
+export const MAX_TIER_FEATURES = 6;
+export const MAX_TIER_FEATURE_LENGTH = 80;
+
+/** Trims, length-caps, case-insensitively dedupes, and caps count — mirrors the backend validator. */
+export function normalizeServiceTags(tags: string[]): string[] {
+	const seen = new Set<string>();
+	const result: string[] = [];
+	for (const raw of tags) {
+		const trimmed = raw.trim().slice(0, MAX_SERVICE_TAG_LENGTH);
+		if (!trimmed) continue;
+		const key = trimmed.toLowerCase();
+		if (seen.has(key)) continue;
+		if (result.length >= MAX_SERVICE_TAGS) break;
+		seen.add(key);
+		result.push(trimmed);
+	}
+	return result;
+}
+
+/** Drops blanks, length-caps, and caps count — mirrors the backend validator. */
+function sanitizeTierFeatures(features: string[]): string[] {
+	const result: string[] = [];
+	for (const raw of features) {
+		const trimmed = raw.trim().slice(0, MAX_TIER_FEATURE_LENGTH);
+		if (!trimmed) continue;
+		if (result.length >= MAX_TIER_FEATURES) break;
+		result.push(trimmed);
+	}
+	return result;
+}
+
+/** Shapes a form tier into the upsert payload shape, sanitizing features. */
+function mapTierForSave(tier: {
+	name: string;
+	price: string;
+	description: string;
+	features: string[];
+	highlighted: boolean;
+}) {
+	const sanitizedFeatures = sanitizeTierFeatures(tier.features);
+	return {
+		name: tier.name,
+		price: tier.price,
+		description: tier.description || undefined,
+		features: sanitizedFeatures.length > 0 ? sanitizedFeatures : undefined,
+		highlighted: tier.highlighted || undefined,
+	};
+}
+
 export type PricingMode = "structured" | "richText";
 export type SectionId =
 	| "mainSettings"
@@ -35,6 +86,8 @@ export interface PricingTier {
 	name: string;
 	price: string;
 	description: string;
+	features: string[];
+	highlighted: boolean;
 }
 
 export interface GalleryItem {
@@ -108,6 +161,7 @@ function createSnapshot({
 	avatarStorageId,
 	bioContent,
 	servicesContent,
+	draftServiceTags,
 	pricingMode,
 	pricingContent,
 	pricingTiers,
@@ -133,6 +187,7 @@ function createSnapshot({
 	avatarStorageId: Id<"_storage"> | null;
 	bioContent: JSONContent | undefined;
 	servicesContent: JSONContent | undefined;
+	draftServiceTags: string[];
 	pricingMode: PricingMode;
 	pricingContent: JSONContent | undefined;
 	pricingTiers: PricingTier[];
@@ -180,7 +235,10 @@ function createSnapshot({
 				sortOrder: item.sortOrder ?? index,
 			})),
 		),
-		services: JSON.stringify(servicesContent ?? null),
+		services: JSON.stringify({
+			content: servicesContent ?? null,
+			tags: draftServiceTags,
+		}),
 		pricing: JSON.stringify({
 			pricingMode,
 			pricingContent: pricingContent ?? null,
@@ -213,6 +271,7 @@ export function useCommunityPageForm() {
 	const [servicesContent, setServicesContent] = useState<
 		JSONContent | undefined
 	>();
+	const [draftServiceTags, setDraftServiceTags] = useState<string[]>([]);
 	const [pricingMode, setPricingMode] = useState<PricingMode>("richText");
 	const [pricingContent, setPricingContent] = useState<
 		JSONContent | undefined
@@ -322,6 +381,20 @@ export function useCommunityPageForm() {
 		const draftBio =
 			(communityPage.draftBioContent as JSONContent | undefined) ??
 			(communityPage.draftContent as JSONContent | undefined);
+		const nextServiceTags = communityPage.draftServiceTags ?? [];
+		const mapDraftTier = (tier: {
+			name: string;
+			price: string;
+			description?: string;
+			features?: string[];
+			highlighted?: boolean;
+		}): PricingTier => ({
+			name: tier.name,
+			price: tier.price,
+			description: tier.description ?? "",
+			features: tier.features ?? [],
+			highlighted: tier.highlighted ?? false,
+		});
 
 		setPageTitle(communityPage.pageTitle || "");
 		setSlug(communityPage.slug);
@@ -331,19 +404,14 @@ export function useCommunityPageForm() {
 		setServicesContent(
 			communityPage.draftServicesContent as JSONContent | undefined,
 		);
+		setDraftServiceTags(nextServiceTags);
 		setPricingMode(
 			(communityPage.pricingModeDraft as PricingMode | undefined) ?? "richText",
 		);
 		setPricingContent(
 			communityPage.draftPricingContent as JSONContent | undefined,
 		);
-		setPricingTiers(
-			(communityPage.draftPricingTiers ?? []).map((tier) => ({
-				name: tier.name,
-				price: tier.price,
-				description: tier.description ?? "",
-			})),
-		);
+		setPricingTiers((communityPage.draftPricingTiers ?? []).map(mapDraftTier));
 		setBannerStorageId(communityPage.bannerStorageId || null);
 		setAvatarStorageId(communityPage.avatarStorageId || null);
 		setGalleryItems(
@@ -404,17 +472,14 @@ export function useCommunityPageForm() {
 			servicesContent: communityPage.draftServicesContent as
 				| JSONContent
 				| undefined,
+			draftServiceTags: nextServiceTags,
 			pricingMode:
 				(communityPage.pricingModeDraft as PricingMode | undefined) ??
 				"richText",
 			pricingContent: communityPage.draftPricingContent as
 				| JSONContent
 				| undefined,
-			pricingTiers: (communityPage.draftPricingTiers ?? []).map((tier) => ({
-				name: tier.name,
-				price: tier.price,
-				description: tier.description ?? "",
-			})),
+			pricingTiers: (communityPage.draftPricingTiers ?? []).map(mapDraftTier),
 			galleryItems: (communityPage.galleryItemsDraft ?? [])
 				.slice()
 				.sort((a, b) => a.sortOrder - b.sortOrder)
@@ -614,6 +679,7 @@ export function useCommunityPageForm() {
 				avatarStorageId,
 				bioContent,
 				servicesContent,
+				draftServiceTags,
 				pricingMode,
 				pricingContent,
 				pricingTiers,
@@ -640,6 +706,7 @@ export function useCommunityPageForm() {
 			avatarStorageId,
 			bioContent,
 			servicesContent,
+			draftServiceTags,
 			pricingMode,
 			pricingContent,
 			pricingTiers,
@@ -698,6 +765,7 @@ export function useCommunityPageForm() {
 		() =>
 			!!bioContent ||
 			!!servicesContent ||
+			draftServiceTags.length > 0 ||
 			!!pricingContent ||
 			pricingTiers.length > 0 ||
 			galleryItems.length > 0 ||
@@ -711,7 +779,7 @@ export function useCommunityPageForm() {
 			certifications.length > 0 ||
 			byAppointmentOnly ||
 			Object.values(socialLinks).some(Boolean),
-		[bioContent, servicesContent, pricingContent, pricingTiers.length, galleryItems.length, ownerName, ownerTitle, isLicensed, isBonded, isInsured, yearEstablished, licenseNumber, certifications.length, byAppointmentOnly, socialLinks],
+		[bioContent, servicesContent, draftServiceTags.length, pricingContent, pricingTiers.length, galleryItems.length, ownerName, ownerTitle, isLicensed, isBonded, isInsured, yearEstablished, licenseNumber, certifications.length, byAppointmentOnly, socialLinks],
 	);
 
 	const hasInvalidSocialUrls = useMemo(
@@ -734,13 +802,10 @@ export function useCommunityPageForm() {
 				draftContent: bioContent,
 				draftBioContent: bioContent,
 				draftServicesContent: servicesContent,
+				draftServiceTags: normalizeServiceTags(draftServiceTags),
 				pricingModeDraft: pricingMode,
 				draftPricingContent: pricingContent,
-				draftPricingTiers: pricingTiers.map((tier) => ({
-					name: tier.name,
-					price: tier.price,
-					description: tier.description || undefined,
-				})),
+				draftPricingTiers: pricingTiers.map(mapTierForSave),
 				galleryItemsDraft: galleryItems.map((item, index) => ({
 					storageId: item.storageId,
 					sortOrder: index,
@@ -816,13 +881,10 @@ export function useCommunityPageForm() {
 				draftContent: bioContent,
 				draftBioContent: bioContent,
 				draftServicesContent: servicesContent,
+				draftServiceTags: normalizeServiceTags(draftServiceTags),
 				pricingModeDraft: pricingMode,
 				draftPricingContent: pricingContent,
-				draftPricingTiers: pricingTiers.map((tier) => ({
-					name: tier.name,
-					price: tier.price,
-					description: tier.description || undefined,
-				})),
+				draftPricingTiers: pricingTiers.map(mapTierForSave),
 				galleryItemsDraft: galleryItems.map((item, index) => ({
 					storageId: item.storageId,
 					sortOrder: index,
@@ -874,6 +936,7 @@ export function useCommunityPageForm() {
 				avatarStorageId,
 				bioContent,
 				servicesContent,
+				draftServiceTags,
 				pricingMode,
 				pricingContent,
 				pricingTiers,
@@ -915,6 +978,7 @@ export function useCommunityPageForm() {
 				avatarStorageId,
 				bioContent,
 				servicesContent,
+				draftServiceTags,
 				pricingMode,
 				pricingContent,
 				pricingTiers,
@@ -1069,7 +1133,12 @@ export function useCommunityPageForm() {
 			galleryInputRef,
 		},
 		// Services slice
-		services: { servicesContent, setServicesContent },
+		services: {
+			servicesContent,
+			setServicesContent,
+			draftServiceTags,
+			setDraftServiceTags,
+		},
 		// Pricing slice
 		pricing: {
 			pricingMode,

@@ -10,7 +10,7 @@ import { getRequestIp, hashIp } from "@/lib/portal/ip";
 export async function POST(request: NextRequest) {
 	try {
 		const body = await request.json();
-		const { slug, name, email, phone, message, website } = body;
+		const { slug, name, email, phone, message, website, service } = body;
 
 		// Validate required fields
 		if (!slug || typeof slug !== "string") {
@@ -53,6 +53,9 @@ export async function POST(request: NextRequest) {
 		if (message != null && typeof message !== "string") {
 			return NextResponse.json({ error: "Invalid message" }, { status: 400 });
 		}
+		if (service != null && typeof service !== "string") {
+			return NextResponse.json({ error: "Invalid service" }, { status: 400 });
+		}
 
 		// Validate phone format if provided
 		if (phone && phone.trim().length > 0) {
@@ -75,6 +78,7 @@ export async function POST(request: NextRequest) {
 			email: email.trim().toLowerCase(),
 			phone: phone?.trim() || undefined,
 			message: message?.trim() || undefined,
+			service: service?.trim() || undefined,
 			// PUB-18: honeypot passthrough — the mutation drops non-empty values
 			website: typeof website === "string" ? website : undefined,
 			// PUB-19: per-IP throttle key (server-derived, not client-supplied)

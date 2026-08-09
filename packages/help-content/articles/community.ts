@@ -73,8 +73,8 @@ export const communityArticles: HelpArticle[] = [
 							"**Business Info**: your name and title, **Licensed**, **Bonded**, and **Insured** badges, year established, license number, certifications, business hours, and social links.",
 							"**Bio**: tell visitors who you are and what makes your business different.",
 							"**Image Gallery**: up to 5 photos of your work.",
-							"**Services**: describe what you offer and where.",
-							"**Pricing**: structured tiers or a free-form pricing write-up.",
+							"**Services**: describe what you offer and where, plus a short **Service list** of the jobs you take on. Those become the options a visitor can pick from on your quote form.",
+							"**Pricing**: structured tiers or a free-form pricing write-up. Each tier can list what is included, and you can mark one tier as **Most chosen** to draw the eye to it.",
 						],
 					},
 					{
@@ -179,7 +179,7 @@ export const communityArticles: HelpArticle[] = [
 				blocks: [
 					{
 						type: "paragraph",
-						text: "Every live community page includes a **Get a Free Quote** form. A visitor enters their name and email, optionally a phone number and a message about their project, and clicks **Request a Quote**. They see a confirmation that you will get back to them within one business day.",
+						text: "Every live community page includes a **Get a Free Quote** form. A visitor enters their name and email, optionally a phone number and a message about their project, and clicks **Request a Quote**. If you have filled in a **Service list** in the Services section, they can also pick which service they need. They see a confirmation that you will get back to them within one business day.",
 					},
 					{
 						type: "media",
@@ -194,7 +194,7 @@ export const communityArticles: HelpArticle[] = [
 				blocks: [
 					{
 						type: "paragraph",
-						text: "Each submission creates a task in your workspace named **Follow up:** plus the visitor's name, scheduled for the next business day at 9:00 AM and assigned to an admin. The task description holds everything the visitor entered: their name, email, phone, message, and which page the request came from.",
+						text: "Each submission creates a task in your workspace named **Follow up:** plus the visitor's name, scheduled for the next business day at 9:00 AM and assigned to an admin. The task description holds everything the visitor entered: their name, email, phone, the service they picked, message, and which page the request came from.",
 					},
 					{
 						type: "note",

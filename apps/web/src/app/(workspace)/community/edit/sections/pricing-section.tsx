@@ -7,6 +7,8 @@ import type { JSONContent } from "@tiptap/react";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import {
 	PillTabs,
 	PillTabsList,
@@ -14,7 +16,12 @@ import {
 } from "@/components/shared/pill-tabs";
 import { CommunityEditor } from "@/components/tiptap/community-editor";
 import { SectionShell } from "./section-shell";
-import type { PricingMode, PricingTier } from "../use-community-page-form";
+import {
+	MAX_TIER_FEATURES,
+	MAX_TIER_FEATURE_LENGTH,
+	type PricingMode,
+	type PricingTier,
+} from "../use-community-page-form";
 
 interface PricingSectionProps {
 	pricingMode: PricingMode;
@@ -35,6 +42,60 @@ export const PricingSection = React.memo(function PricingSection({
 	setPricingTiers,
 	sectionRef,
 }: PricingSectionProps) {
+	const addTierFeature = (tierIndex: number) => {
+		setPricingTiers((prev) =>
+			prev.map((tier, i) =>
+				i === tierIndex && tier.features.length < MAX_TIER_FEATURES
+					? { ...tier, features: [...tier.features, ""] }
+					: tier,
+			),
+		);
+	};
+
+	const updateTierFeature = (
+		tierIndex: number,
+		featureIndex: number,
+		value: string,
+	) => {
+		setPricingTiers((prev) =>
+			prev.map((tier, i) =>
+				i === tierIndex
+					? {
+							...tier,
+							features: tier.features.map((feature, fi) =>
+								fi === featureIndex
+									? value.slice(0, MAX_TIER_FEATURE_LENGTH)
+									: feature,
+							),
+						}
+					: tier,
+			),
+		);
+	};
+
+	const removeTierFeature = (tierIndex: number, featureIndex: number) => {
+		setPricingTiers((prev) =>
+			prev.map((tier, i) =>
+				i === tierIndex
+					? {
+							...tier,
+							features: tier.features.filter((_, fi) => fi !== featureIndex),
+						}
+					: tier,
+			),
+		);
+	};
+
+	// Single-select across the whole set: highlighting a tier clears every other.
+	const toggleTierHighlighted = (tierIndex: number) => {
+		setPricingTiers((prev) =>
+			prev.map((tier, i) => ({
+				...tier,
+				highlighted: i === tierIndex ? !tier.highlighted : false,
+			})),
+		);
+	};
+
 	return (
 		<SectionShell
 			id="pricing"
@@ -144,6 +205,58 @@ export const PricingSection = React.memo(function PricingSection({
 										placeholder="Brief description of what's included"
 									/>
 								</Field>
+								<Field>
+									<FieldLabel className="text-xs uppercase tracking-wider text-muted-fg">
+										Features
+									</FieldLabel>
+									<div className="space-y-2">
+										{tier.features.map((feature, featureIndex) => (
+											<div key={featureIndex} className="flex items-center gap-2">
+												<Input
+													value={feature}
+													onChange={(e) =>
+														updateTierFeature(index, featureIndex, e.target.value)
+													}
+													placeholder="e.g. Weekly service visits"
+													maxLength={MAX_TIER_FEATURE_LENGTH}
+												/>
+												<button
+													type="button"
+													aria-label="Remove feature"
+													onClick={() => removeTierFeature(index, featureIndex)}
+													className="size-8 shrink-0 rounded-lg flex items-center justify-center text-muted-fg cursor-pointer transition-colors hover:bg-danger/10 hover:text-danger focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+												>
+													<Trash2 className="size-4" />
+												</button>
+											</div>
+										))}
+										{tier.features.length < MAX_TIER_FEATURES ? (
+											<Button
+												type="button"
+												variant="ghost"
+												size="sm"
+												onClick={() => addTierFeature(index)}
+											>
+												<Plus className="size-3.5 mr-1.5" />
+												Add feature
+											</Button>
+										) : (
+											<p className="text-xs text-muted-fg">
+												Maximum of {MAX_TIER_FEATURES} features per tier.
+											</p>
+										)}
+									</div>
+								</Field>
+								<div className="flex items-center gap-3 pt-1">
+									<Switch
+										id={`pricing-tier-${index}-highlighted`}
+										checked={tier.highlighted}
+										onCheckedChange={() => toggleTierHighlighted(index)}
+									/>
+									<Label htmlFor={`pricing-tier-${index}-highlighted`}>
+										Most chosen
+									</Label>
+								</div>
 							</div>
 						</div>
 					))}
@@ -152,7 +265,13 @@ export const PricingSection = React.memo(function PricingSection({
 						onClick={() =>
 							setPricingTiers((prev) => [
 								...prev,
-								{ name: "", price: "", description: "" },
+								{
+									name: "",
+									price: "",
+									description: "",
+									features: [],
+									highlighted: false,
+								},
 							])
 						}
 					>

@@ -1,6 +1,6 @@
 import { query, QueryCtx, MutationCtx } from "./_generated/server";
 import { mutation } from "./lib/triggers";
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 import { Doc, Id } from "./_generated/dataModel";
 import {
 	getCurrentUserOrThrow,
@@ -78,9 +78,12 @@ export const upsert = userMutation({
 					name: v.string(),
 					price: v.string(),
 					description: v.optional(v.string()),
+					features: v.optional(v.array(v.string())),
+					highlighted: v.optional(v.boolean()),
 				})
 			)
 		),
+		draftServiceTags: v.optional(v.array(v.string())),
 		galleryItemsDraft: v.optional(
 			v.array(
 				v.object({
@@ -146,6 +149,10 @@ export const upsert = userMutation({
 		if (args.galleryItemsDraft !== undefined) {
 			validateGalleryItems(args.galleryItemsDraft);
 		}
+		const validatedServiceTags =
+			args.draftServiceTags !== undefined
+				? validateServiceTags(args.draftServiceTags)
+				: undefined;
 
 		const existing = await ctx.db
 			.query("communityPages")
@@ -182,6 +189,8 @@ export const upsert = userMutation({
 				updates.draftPricingContent = args.draftPricingContent;
 			if (args.draftPricingTiers !== undefined)
 				updates.draftPricingTiers = args.draftPricingTiers;
+			if (args.draftServiceTags !== undefined)
+				updates.draftServiceTags = validatedServiceTags;
 			if (args.galleryItemsDraft !== undefined)
 				updates.galleryItemsDraft = args.galleryItemsDraft;
 			if (args.pageTitle !== undefined) updates.pageTitle = args.pageTitle;
@@ -220,6 +229,7 @@ export const upsert = userMutation({
 				pricingModeDraft: args.pricingModeDraft,
 				draftPricingContent: args.draftPricingContent,
 				draftPricingTiers: args.draftPricingTiers,
+				draftServiceTags: validatedServiceTags,
 				galleryItemsDraft: args.galleryItemsDraft,
 				pageTitle: args.pageTitle,
 				metaDescription: args.metaDescription,
@@ -246,6 +256,7 @@ const DRAFT_TO_PUBLISHED_MAP: Record<string, string> = {
 	draftServicesContent: "publishedServicesContent",
 	draftPricingContent: "publishedPricingContent",
 	draftPricingTiers: "publishedPricingTiers",
+	draftServiceTags: "publishedServiceTags",
 	pricingModeDraft: "pricingModePublished",
 	galleryItemsDraft: "galleryItemsPublished",
 	draftOwnerInfo: "publishedOwnerInfo",
@@ -457,8 +468,11 @@ export const getBySlug = query({
 					name: v.string(),
 					price: v.string(),
 					description: v.optional(v.string()),
+					features: v.optional(v.array(v.string())),
+					highlighted: v.optional(v.boolean()),
 				})
 			),
+			serviceTags: v.array(v.string()),
 			galleryImages: v.array(
 				v.object({
 					storageId: v.id("_storage"),
@@ -517,6 +531,11 @@ export const getBySlug = query({
 					email: v.optional(v.string()),
 					phone: v.optional(v.string()),
 					website: v.optional(v.string()),
+					// Town-level location for the public credential strip ("Serving
+					// <city>, <state>"). PUB-05: street/zip/lat/lng are deliberately
+					// excluded — do not widen this beyond city/state.
+					addressCity: v.optional(v.string()),
+					addressState: v.optional(v.string()),
 				})
 			),
 		})
@@ -567,6 +586,7 @@ export const getBySlug = query({
 			pricingMode: (page.pricingModePublished ?? "richText") as PricingMode,
 			pricingContent: page.publishedPricingContent,
 			pricingTiers: page.publishedPricingTiers ?? [],
+			serviceTags: page.publishedServiceTags ?? [],
 			galleryImages,
 			ownerInfo: page.publishedOwnerInfo,
 			// PUB-05: project credentials explicitly. licenseNumber is a sensitive
@@ -592,6 +612,8 @@ export const getBySlug = query({
 						email: org.email,
 						phone: org.phone,
 						website: org.website,
+						addressCity: org.addressCity,
+						addressState: org.addressState,
 					}
 				: null,
 		};
@@ -665,6 +687,9 @@ export const submitInterest = mutation({
 		email: v.string(),
 		phone: v.optional(v.string()),
 		message: v.optional(v.string()),
+		// Service the lead is interested in; must match a published service tag
+		// on the page (see the match check below) or it is silently dropped.
+		service: v.optional(v.string()),
 		// PUB-18: honeypot — hidden form field, non-empty means bot
 		website: v.optional(v.string()),
 		// PUB-19: server-derived client IP hash from the Next.js route, for a
@@ -725,6 +750,19 @@ export const submitInterest = mutation({
 
 		const normalizedEmail = args.email.toLowerCase().trim();
 
+		// Attacker-controlled: must match a published service tag on this page
+		// (case-insensitively) or it's dropped. A mismatch is more likely a
+		// stale cached form than an attack, so we drop rather than throw and
+		// risk losing a real lead.
+		let sanitizedService: string | undefined;
+		if (args.service) {
+			const trimmedService = args.service.trim().substring(0, 40);
+			const publishedTags = page.publishedServiceTags ?? [];
+			sanitizedService = publishedTags.find(
+				(tag) => tag.toLowerCase() === trimmedService.toLowerCase()
+			);
+		}
+
 		// Build task description with all form data
 		const descParts: string[] = [];
 		descParts.push(`Name: ${sanitizedName}`);
@@ -739,6 +777,9 @@ export const submitInterest = mutation({
 			if (sanitizedPhone) {
 				descParts.push(`Phone: ${sanitizedPhone}`);
 			}
+		}
+		if (sanitizedService) {
+			descParts.push(`Service: ${sanitizedService}`);
 		}
 		if (args.message) {
 			const sanitizedMessage = args.message.trim().substring(0, 2000);
@@ -866,12 +907,19 @@ async function validateSlugUnique(
 }
 
 function validatePricingTiers(
-	tiers: Array<{ name: string; price: string; description?: string }>
+	tiers: Array<{
+		name: string;
+		price: string;
+		description?: string;
+		features?: string[];
+		highlighted?: boolean;
+	}>
 ): void {
 	if (tiers.length > 10) {
 		throw new Error("You can add up to 10 pricing tiers");
 	}
 
+	let highlightedCount = 0;
 	for (const tier of tiers) {
 		const name = tier.name.trim();
 		const price = tier.price.trim();
@@ -894,7 +942,61 @@ function validatePricingTiers(
 				"Pricing tier description must be 240 characters or less"
 			);
 		}
+		if (tier.features !== undefined) {
+			if (tier.features.length > 6) {
+				throw new Error("Each pricing tier can have up to 6 features");
+			}
+			for (const feature of tier.features) {
+				const trimmedFeature = feature.trim();
+				if (!trimmedFeature) {
+					throw new Error("Pricing tier features cannot be empty");
+				}
+				if (trimmedFeature.length > 80) {
+					throw new Error(
+						"Pricing tier feature must be 80 characters or less"
+					);
+				}
+			}
+		}
+		if (tier.highlighted) {
+			highlightedCount++;
+		}
 	}
+	if (highlightedCount > 1) {
+		throw new Error("Only one pricing tier can be highlighted");
+	}
+}
+
+/**
+ * Validates and normalizes public-facing service tags. This is a security
+ * boundary (values render on the public page and are matched against
+ * submitInterest's service field), not just UX validation.
+ */
+function validateServiceTags(tags: string[]): string[] {
+	if (tags.length > 8) {
+		throw new ConvexError({
+			code: "BAD_REQUEST",
+			message: "You can add up to 8 service tags",
+		});
+	}
+
+	const seen = new Set<string>();
+	const result: string[] = [];
+	for (const rawTag of tags) {
+		const tag = rawTag.trim();
+		if (!tag) continue; // drop empties
+		if (tag.length > 40) {
+			throw new ConvexError({
+				code: "BAD_REQUEST",
+				message: "Service tag must be 40 characters or less",
+			});
+		}
+		const key = tag.toLowerCase();
+		if (seen.has(key)) continue; // case-insensitive dedupe
+		seen.add(key);
+		result.push(tag);
+	}
+	return result;
 }
 
 function validateGalleryItems(
@@ -919,4 +1021,5 @@ function validateGalleryItems(
 export const __testUtils = {
 	validatePricingTiers,
 	validateGalleryItems,
+	validateServiceTags,
 };
