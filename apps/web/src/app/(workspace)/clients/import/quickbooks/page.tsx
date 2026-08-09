@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useFeatureAccess } from "@/hooks/use-feature-access";
 import { useOrgOwner } from "@/app/(workspace)/organization/profile/_hooks/use-org-owner";
+import { useQuickBooksEnabled } from "@/hooks/use-quickbooks-enabled";
 import { QboImportReview } from "./components/qbo-import-review";
 
 const INTEGRATIONS_URL = "/organization/profile?tab=integrations";
@@ -54,12 +55,35 @@ function NoRunState({ onBack }: { onBack: () => void }) {
 	);
 }
 
+function UnavailableState({ onBack }: { onBack: () => void }) {
+	return (
+		<div className="px-4 py-10 sm:px-6">
+			<div className="mx-auto w-full max-w-2xl rounded-xl border border-border bg-card">
+				<EmptyState
+					size="md"
+					title="QuickBooks import is coming soon"
+					description="We're finishing certification with Intuit. Once that's done you'll be able to bring your QuickBooks customers straight into OneTool."
+					action={
+						<Button variant="outline" onClick={onBack}>
+							Back to integrations
+						</Button>
+					}
+				/>
+			</div>
+		</div>
+	);
+}
+
 export default function QuickBooksImportPage() {
 	const router = useRouter();
+	const qboEnabled = useQuickBooksEnabled();
 	const { isOwner, isLoading: ownerLoading } = useOrgOwner();
 	const { hasPremiumAccess, isLoading: accessLoading } = useFeatureAccess();
 
-	const canReview = !ownerLoading && !accessLoading && isOwner && hasPremiumAccess;
+	// The route is reachable by URL, so it carries the same flag gate as the
+	// Integrations card rather than trusting that nothing links here.
+	const canReview =
+		qboEnabled && !ownerLoading && !accessLoading && isOwner && hasPremiumAccess;
 	const connection = useQuery(
 		api.quickbooks.getConnectionStatus,
 		canReview ? {} : "skip"
@@ -78,6 +102,11 @@ export default function QuickBooksImportPage() {
 
 	if (ownerLoading || accessLoading) {
 		return <ImportSkeleton />;
+	}
+	// Distinct from NoRunState: "start one from Integrations" is bad advice when
+	// the integration itself isn't open yet.
+	if (!qboEnabled) {
+		return <UnavailableState onBack={() => router.push(INTEGRATIONS_URL)} />;
 	}
 	if (!canReview) {
 		return <NoRunState onBack={() => router.push(INTEGRATIONS_URL)} />;

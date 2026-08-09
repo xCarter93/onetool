@@ -124,6 +124,10 @@ export const settingsAndTeamArticles: HelpArticle[] = [
 				heading: "Integrations",
 				blocks: [
 					{
+						type: "note",
+						text: "QuickBooks Online is not open to everyone yet. While we finish certification with Intuit, the QuickBooks card shows a **Coming soon** badge and the **Connect** button is inactive. Everything below describes how it works once it is switched on for your organization.",
+					},
+					{
 						type: "paragraph",
 						text: "The **Integrations** tab is available on the Business plan to organization admins. It lists one card per integration, and it is where the organization owner connects a QuickBooks Online company, which prepares your account for QuickBooks sync of clients, invoices, and payments from OneTool.",
 					},
@@ -614,6 +618,10 @@ export const settingsAndTeamArticles: HelpArticle[] = [
 			{
 				heading: "OneTool is the source of truth",
 				blocks: [
+					{
+						type: "note",
+						text: "QuickBooks sync is still being certified with Intuit and is not available to connect yet. This article describes how it behaves once it is switched on for your organization.",
+					},
 					{
 						type: "paragraph",
 						text: "The QuickBooks integration syncs one way: from OneTool to QuickBooks. Records you create and update in OneTool are pushed to QuickBooks automatically, usually within a couple of minutes. Changes made inside QuickBooks are never pulled back into OneTool, and the next time a synced record changes in OneTool it is pushed again, replacing edits made on the QuickBooks side.",

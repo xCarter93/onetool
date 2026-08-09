@@ -18,3 +18,27 @@ export function getPostHogServer(): PostHog {
 	}
 	return client;
 }
+
+/**
+ * Evaluate a feature flag for a signed-in user from server code.
+ *
+ * Fails closed on every error path — an unreachable or misconfigured PostHog
+ * must not open a gated route. Callers that need the feature to stay usable
+ * when analytics is down should not use this.
+ */
+export async function isFlagEnabledForUser(
+	flag: string,
+	distinctId: string
+): Promise<boolean> {
+	try {
+		// evaluateFlags, not the deprecated isFeatureEnabled: one scoped /flags
+		// request per call, and it survives the next posthog-node major.
+		const flags = await getPostHogServer().evaluateFlags(distinctId, {
+			flagKeys: [flag],
+		});
+		return flags.isEnabled(flag) === true;
+	} catch (error) {
+		console.error(`PostHog flag evaluation failed for "${flag}":`, error);
+		return false;
+	}
+}

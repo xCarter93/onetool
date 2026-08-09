@@ -3,6 +3,8 @@ import { auth } from "@clerk/nextjs/server";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import crypto from "node:crypto";
+import { FLAG_QUICKBOOKS } from "@/lib/feature-flags";
+import { isFlagEnabledForUser } from "@/lib/posthog-server";
 
 const INTUIT_AUTHORIZE_URL = "https://appcenter.intuit.com/connect/oauth2";
 const QBO_SCOPE = "com.intuit.quickbooks.accounting";
@@ -19,6 +21,15 @@ export async function GET(request: Request) {
 	const { userId, orgId } = await auth();
 	if (!userId || !orgId) {
 		return NextResponse.redirect(new URL("/sign-in", request.url));
+	}
+
+	// The real gate for the whole integration. Every QuickBooks mutation needs a
+	// connection, and a connection can only be minted through this route and the
+	// callback — so refusing here keeps the feature off no matter what the UI does.
+	if (!(await isFlagEnabledForUser(FLAG_QUICKBOOKS, userId))) {
+		return NextResponse.redirect(
+			new URL(`${SETTINGS_TAB}&qbo=error&reason=unavailable`, request.url)
+		);
 	}
 
 	const clientId = process.env.QUICKBOOKS_CLIENT_ID;

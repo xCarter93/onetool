@@ -53,6 +53,7 @@ import {
 } from "./quickbooks-import-dialog";
 import { QuickBooksResetDialog } from "./quickbooks-reset-dialog";
 import { QuickBooksSyncIssues } from "./quickbooks-sync-issues";
+import { useQuickBooksEnabled } from "@/hooks/use-quickbooks-enabled";
 import {
 	SectionHeading,
 	SettingsCard,
@@ -68,6 +69,8 @@ const ERROR_MESSAGES: Record<string, string> = {
 		"That QuickBooks company is already connected to a different organization.",
 	realm_mismatch:
 		"This QuickBooks company doesn't match the one previously connected. Reset the connection to link a different company.",
+	unavailable:
+		"The QuickBooks integration isn't available yet. It's coming soon.",
 	not_owner: "Only the organization owner can connect QuickBooks.",
 	not_premium: "QuickBooks sync requires the Business plan.",
 	config: "QuickBooks is not configured for this environment yet.",
@@ -206,12 +209,26 @@ function NotConnectedBadge() {
 	);
 }
 
+/** Shown while an integration is built but deliberately not yet released. */
+function ComingSoonBadge() {
+	return (
+		<Badge variant="primary-light" radius="full" size="sm">
+			Coming soon
+		</Badge>
+	);
+}
+
 export function IntegrationsTab() {
 	const router = useRouter();
 	const searchParams = useSearchParams();
 	const toast = useToast();
 	const { organization, isOwner, isLoading: ownerLoading } = useOrgOwner();
 	const { confirm: confirmDialog } = useConfirmDialog();
+
+	// Held behind a PostHog flag until Intuit grants production credentials. The
+	// OAuth routes enforce the same flag server-side, so this only controls what
+	// the card offers — it is not the security boundary.
+	const qboEnabled = useQuickBooksEnabled();
 
 	const connection = useQuery(api.quickbooks.getConnectionStatus);
 	const importRun = useQuery(api.quickbooksImport.getImportRun);
@@ -274,8 +291,9 @@ export function IntegrationsTab() {
 	// the connection and ownership queries land, and closes itself once setup is
 	// done (needsSetup flips false) or the owner dismisses it.
 	const setupDialogOpen =
-		setupOpen ||
-		(armSetup && !setupDismissed && !ownerLoading && isOwner && needsSetup);
+		qboEnabled &&
+		(setupOpen ||
+			(armSetup && !setupDismissed && !ownerLoading && isOwner && needsSetup));
 
 	// Setup finishing is the only signal the parent gets that the setup dialog
 	// completed (dismiss and done both close it), so remember that setup was
@@ -286,14 +304,15 @@ export function IntegrationsTab() {
 	// Same derived-not-effect shape as the setup auto-open. `=== null` (not
 	// falsy) so the loading tick can't open the wizard on a live run.
 	const importDialogOpen =
-		importOpen ||
-		(!importDismissed &&
-			!ownerLoading &&
-			isOwner &&
-			connection?.status === "connected" &&
-			!needsSetup &&
-			importRun === null &&
-			(armSetup || sawNeedsSetup));
+		qboEnabled &&
+		(importOpen ||
+			(!importDismissed &&
+				!ownerLoading &&
+				isOwner &&
+				connection?.status === "connected" &&
+				!needsSetup &&
+				importRun === null &&
+				(armSetup || sawNeedsSetup)));
 
 	// Full-page redirect to Intuit takes a beat — hold a visible pending state
 	// until the browser actually navigates away.
@@ -377,8 +396,10 @@ export function IntegrationsTab() {
 		);
 	}
 
+	// One lever for the whole card: with the flag off nothing downstream of a
+	// connection renders, whatever the connection query says.
 	const isConnected =
-		connection !== null && connection.status !== "disconnected";
+		qboEnabled && connection !== null && connection.status !== "disconnected";
 	const needsReauth = isConnected && connection.status === "needs_reauth";
 	const controlsDisabled = !isOwner || saving;
 
@@ -451,13 +472,15 @@ export function IntegrationsTab() {
 											: "connected"
 								}
 								label={
-									!isConnected
-										? "QuickBooks not connected"
-										: needsReauth
-											? "QuickBooks needs to be reconnected"
-											: needsSetup
-												? "QuickBooks setup is not finished"
-												: "QuickBooks connected and syncing"
+									!qboEnabled
+										? "QuickBooks is not available yet"
+										: !isConnected
+											? "QuickBooks not connected"
+											: needsReauth
+												? "QuickBooks needs to be reconnected"
+												: needsSetup
+													? "QuickBooks setup is not finished"
+													: "QuickBooks connected and syncing"
 								}
 							/>
 						}
@@ -465,7 +488,9 @@ export function IntegrationsTab() {
 					<IntegrationTileHeader
 						name="QuickBooks Online"
 						status={
-							!isConnected ? (
+							!qboEnabled ? (
+								<ComingSoonBadge />
+							) : !isConnected ? (
 								<NotConnectedBadge />
 							) : (
 								<>
@@ -483,12 +508,14 @@ export function IntegrationsTab() {
 							)
 						}
 						description={
-							isConnected
-								? (connection.companyName ?? "QuickBooks company")
-								: "Sync clients, invoices, and payments to QuickBooks."
+							!qboEnabled
+								? "Sync clients, invoices, and payments to QuickBooks. We're finishing certification with Intuit — this will open up soon."
+								: isConnected
+									? (connection.companyName ?? "QuickBooks company")
+									: "Sync clients, invoices, and payments to QuickBooks."
 						}
 						meta={
-							isConnected ? (
+							!qboEnabled ? undefined : isConnected ? (
 								<>
 									<p className="mt-0.5 font-mono text-xs text-muted-foreground">
 										Realm {connection.realmId}
@@ -504,7 +531,13 @@ export function IntegrationsTab() {
 							) : undefined
 						}
 						action={
-							!isConnected ? (
+							!qboEnabled ? (
+								// Kept visible but inert: the card reads as a real integration
+								// that isn't open yet, rather than one that failed to load.
+								<Button size="sm" disabled>
+									Connect
+								</Button>
+							) : !isConnected ? (
 								<Button
 									size="sm"
 									onClick={startConnect}

@@ -5,6 +5,8 @@ import { NextResponse } from "next/server";
 import { fetchAction } from "convex/nextjs";
 import { ConvexError } from "convex/values";
 import { api } from "@onetool/backend/convex/_generated/api";
+import { FLAG_QUICKBOOKS } from "@/lib/feature-flags";
+import { isFlagEnabledForUser } from "@/lib/posthog-server";
 
 // Every redirect target is a hardcoded path — query input is never reflected.
 const SETTINGS_TAB = "/organization/profile?tab=integrations";
@@ -66,6 +68,12 @@ export async function GET(request: Request) {
 	// flow, not whichever org became active in this session meanwhile.
 	if (!initiatingOrgId || !orgId || orgId !== initiatingOrgId) {
 		return settingsUrl("&qbo=error&reason=org_changed");
+	}
+
+	// Re-checked here, not just on /connect: the flag can flip mid-flow, and this
+	// is the hop that actually persists the connection.
+	if (!(await isFlagEnabledForUser(FLAG_QUICKBOOKS, userId))) {
+		return settingsUrl("&qbo=error&reason=unavailable");
 	}
 
 	try {
