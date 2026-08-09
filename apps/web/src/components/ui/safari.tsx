@@ -38,7 +38,7 @@ export function Safari({
   ...props
 }: SafariProps) {
   const hasVideo = !!videoSrc
-  const hasMedia = hasVideo || !!imageSrc
+  const hasMedia = hasVideo || !!imageSrc || !!children
 
   return (
     <div
