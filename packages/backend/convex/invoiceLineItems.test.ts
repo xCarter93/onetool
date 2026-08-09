@@ -151,7 +151,7 @@ describe("InvoiceLineItems", () => {
 					sortOrder: 0,
 					skuId: foreignSkuId,
 				})
-			).rejects.toThrow();
+			).rejects.toThrow(/organization/i);
 		});
 
 		it("should validate required fields", async () => {

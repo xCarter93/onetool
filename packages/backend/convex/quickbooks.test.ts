@@ -327,6 +327,86 @@ describe("QuickBooks connection", () => {
 		});
 	});
 
+	describe("resetConnection", () => {
+		it("purges every QBO table for the org", async () => {
+			useScheduledDrain();
+			const { org, asOwner } = await setupOwnerOrg("reset");
+			await asOwner.mutation(internal.quickbooks.storeConnection, tokenArgs());
+
+			await t.run(async (ctx) => {
+				await ctx.db.insert("quickbooksSyncJobs", {
+					orgId: org.orgId,
+					entityType: "invoice",
+					localId: "invoice_1",
+					operation: "upsert",
+					status: "succeeded",
+					attempts: 1,
+					runAfter: Date.now(),
+					dedupeKey: "invoice:invoice_1",
+				});
+				await ctx.db.insert("quickbooksEntityLinks", {
+					orgId: org.orgId,
+					entityType: "client",
+					localId: "client_1",
+					qboId: "42",
+					qboSyncToken: "0",
+					lastSyncedAt: Date.now(),
+				});
+				const runId = await ctx.db.insert("quickbooksImportRuns", {
+					orgId: org.orgId,
+					realmId: "realm_a",
+					status: "completed",
+					startedByUserId: org.userId,
+					startedAt: Date.now(),
+					totalFetched: 1,
+					autoLinked: 1,
+					imported: 0,
+					ambiguous: 0,
+					skipped: 0,
+				});
+				await ctx.db.insert("quickbooksImportRows", {
+					orgId: org.orgId,
+					runId,
+					qboId: "qbo_1",
+					qboDisplayName: "Acme",
+					outcome: "auto_linked",
+				});
+			});
+
+			await asOwner.mutation(api.quickbooks.resetConnection, {});
+			await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+			const after = await t.run(async (ctx) => ({
+				connections: await ctx.db
+					.query("quickbooksConnections")
+					.withIndex("by_org", (q) => q.eq("orgId", org.orgId))
+					.collect(),
+				jobs: await ctx.db
+					.query("quickbooksSyncJobs")
+					.withIndex("by_org_status", (q) => q.eq("orgId", org.orgId))
+					.collect(),
+				links: await ctx.db
+					.query("quickbooksEntityLinks")
+					.withIndex("by_org_entity", (q) => q.eq("orgId", org.orgId))
+					.collect(),
+				runs: await ctx.db
+					.query("quickbooksImportRuns")
+					.withIndex("by_org", (q) => q.eq("orgId", org.orgId))
+					.collect(),
+				rows: await ctx.db
+					.query("quickbooksImportRows")
+					.withIndex("by_org", (q) => q.eq("orgId", org.orgId))
+					.collect(),
+			}));
+
+			expect(after.connections).toHaveLength(0);
+			expect(after.jobs).toHaveLength(0);
+			expect(after.links).toHaveLength(0);
+			expect(after.runs).toHaveLength(0);
+			expect(after.rows).toHaveLength(0);
+		});
+	});
+
 	describe("token lifecycle", () => {
 		it("updateTokens persists both rotated tokens", async () => {
 			const { org, asOwner } = await setupOwnerOrg("n");

@@ -45,7 +45,9 @@ function Tree({
     tree && typeof tree.getContainerProps === "function"
       ? tree.getContainerProps()
       : {}
-  const mergedProps = { ...props, ...containerProps }
+  // mergeProps so the tree's handlers chain with the caller's instead of
+  // replacing them.
+  const mergedProps = mergeProps<"div">(props, containerProps)
 
   // Extract style from mergedProps to merge with our custom styles
   const { style: propStyle, ...otherProps } = mergedProps
@@ -87,7 +89,7 @@ function TreeItem<T = any>({
   const { indent } = parentContext
 
   const itemProps = typeof item.getProps === "function" ? item.getProps() : {}
-  const mergedProps = { ...props, children, ...itemProps }
+  const mergedProps = mergeProps<"button">({ children, ...props }, itemProps)
 
   // Extract style from mergedProps to merge with our custom styles
   const { style: propStyle, ...otherProps } = mergedProps

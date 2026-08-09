@@ -201,13 +201,26 @@ export const resetConnection = userMutation({
  * tables drain before their parents (rows before runs). The import tables
  * bound on _creationTime in the index; jobs and links bound in JS because
  * their indexes lead with other columns — post-cutoff docs there can only
- * come from a concurrent reconnect and are left alone.
+ * come from a concurrent reconnect and are left alone. Those two walk with a
+ * pagination cursor: .take() always restarts at the index head, so a page of
+ * post-cutoff docs would delete nothing and stall the purge for good.
  */
 export const purgeQboSyncDataPage = internalMutation({
-	args: { orgId: v.id("organizations"), cutoff: v.number() },
+	args: {
+		orgId: v.id("organizations"),
+		cutoff: v.number(),
+		jobsCursor: v.optional(v.union(v.string(), v.null())),
+		jobsDone: v.optional(v.boolean()),
+		linksCursor: v.optional(v.union(v.string(), v.null())),
+		linksDone: v.optional(v.boolean()),
+	},
 	handler: async (ctx, args): Promise<null> => {
 		const BATCH = 200;
 		let deleted = 0;
+		let jobsCursor = args.jobsCursor ?? null;
+		let jobsDone = args.jobsDone ?? false;
+		let linksCursor = args.linksCursor ?? null;
+		let linksDone = args.linksDone ?? false;
 
 		const rows = await ctx.db
 			.query("quickbooksImportRows")
@@ -229,33 +242,41 @@ export const purgeQboSyncDataPage = internalMutation({
 			deleted = runs.length;
 		}
 
-		if (deleted === 0) {
-			const jobs = (
-				await ctx.db
-					.query("quickbooksSyncJobs")
-					.withIndex("by_org_status", (q) => q.eq("orgId", args.orgId))
-					.take(BATCH)
-			).filter((doc) => doc._creationTime <= args.cutoff);
-			for (const doc of jobs) await ctx.db.delete(doc._id);
-			deleted = jobs.length;
+		// One paginated table per invocation, jobs before links.
+		if (deleted === 0 && !jobsDone) {
+			const page = await ctx.db
+				.query("quickbooksSyncJobs")
+				.withIndex("by_org_status", (q) => q.eq("orgId", args.orgId))
+				.paginate({ cursor: jobsCursor, numItems: BATCH });
+			for (const doc of page.page) {
+				if (doc._creationTime <= args.cutoff) await ctx.db.delete(doc._id);
+			}
+			jobsCursor = page.continueCursor;
+			jobsDone = page.isDone;
+		} else if (deleted === 0 && !linksDone) {
+			const page = await ctx.db
+				.query("quickbooksEntityLinks")
+				.withIndex("by_org_entity", (q) => q.eq("orgId", args.orgId))
+				.paginate({ cursor: linksCursor, numItems: BATCH });
+			for (const doc of page.page) {
+				if (doc._creationTime <= args.cutoff) await ctx.db.delete(doc._id);
+			}
+			linksCursor = page.continueCursor;
+			linksDone = page.isDone;
 		}
 
-		if (deleted === 0) {
-			const links = (
-				await ctx.db
-					.query("quickbooksEntityLinks")
-					.withIndex("by_org_entity", (q) => q.eq("orgId", args.orgId))
-					.take(BATCH)
-			).filter((doc) => doc._creationTime <= args.cutoff);
-			for (const doc of links) await ctx.db.delete(doc._id);
-			deleted = links.length;
-		}
-
-		if (deleted > 0) {
+		if (deleted > 0 || !jobsDone || !linksDone) {
 			await ctx.scheduler.runAfter(
 				0,
 				internal.quickbooks.purgeQboSyncDataPage,
-				args
+				{
+					orgId: args.orgId,
+					cutoff: args.cutoff,
+					jobsCursor,
+					jobsDone,
+					linksCursor,
+					linksDone,
+				}
 			);
 		}
 		return null;
@@ -761,6 +782,27 @@ export const ensureInvoiceSyncQueued = internalMutation({
 		}
 		await maybeEnqueueQboSync(ctx, args.orgId, "invoice", args.invoiceId);
 		return null;
+	},
+});
+
+/**
+ * Payment dependency check: did the invoice's sync job fail terminally?
+ * ensureInvoiceSyncQueued deliberately leaves those alone, so a payment held
+ * behind one would hold forever.
+ */
+export const hasFailedInvoiceSyncJob = internalQuery({
+	args: { orgId: v.id("organizations"), invoiceId: v.id("invoices") },
+	handler: async (ctx, args): Promise<boolean> => {
+		const failed = await ctx.db
+			.query("quickbooksSyncJobs")
+			.withIndex("by_org_dedupe", (q) =>
+				q
+					.eq("orgId", args.orgId)
+					.eq("dedupeKey", `invoice:${args.invoiceId}`)
+					.eq("status", "failed")
+			)
+			.first();
+		return failed !== null;
 	},
 });
 

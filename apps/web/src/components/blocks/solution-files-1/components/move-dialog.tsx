@@ -114,12 +114,15 @@ function FolderRow({
   pathLabel,
   selected,
   blocked,
+  isTarget,
   onSelect,
 }: {
   row: DriveRow
   pathLabel: string
   selected: boolean
   blocked: boolean
+  /** The item being moved, as opposed to one of its descendants. */
+  isTarget: boolean
   onSelect: (id: string) => void
 }) {
   return (
@@ -140,7 +143,11 @@ function FolderRow({
       <span className="flex min-w-0 flex-1 flex-col">
         <span className="truncate text-sm">{row.node.name}</span>
         <span className="text-muted-foreground truncate text-xs">
-          {blocked ? "Cannot move into itself" : pathLabel}
+          {blocked
+            ? isTarget
+              ? "Cannot move into itself"
+              : "Cannot move into its own subfolder"
+            : pathLabel}
         </span>
       </span>
       {selected ? (
@@ -152,6 +159,7 @@ function FolderRow({
 
 export function MoveDialog({
   open,
+  targetId,
   targetName,
   currentParent,
   rows,
@@ -164,6 +172,8 @@ export function MoveDialog({
   destPathOf,
 }: {
   open: boolean
+  /** Row id of the item being moved, so its own row reads apart from its subtree. */
+  targetId: string
   targetName: string
   currentParent: string
   rows: DriveRow[]
@@ -179,6 +189,9 @@ export function MoveDialog({
   destPathOf: (id: string) => string[]
 }) {
   const [query, setQuery] = useState("")
+  // Controlled: search unmounts the tab list, which would otherwise commit a
+  // null value and leave the tab area empty once search closes.
+  const [tab, setTab] = useState("suggested")
   const [searching, setSearching] = useState(false)
   const searchRef = useRef<HTMLInputElement | null>(null)
   const [expandedItems, setExpandedItems] = useState<string[]>([TREE_ROOT_ID])
@@ -260,6 +273,7 @@ export function MoveDialog({
         pathLabel={parentLabelOf(row.id)}
         selected={row.id === destId}
         blocked={disabledIds.has(row.id)}
+        isTarget={row.id === targetId}
         onSelect={onDest}
       />
     ))
@@ -269,7 +283,10 @@ export function MoveDialog({
     <Dialog
       open={open}
       onOpenChange={(next) => {
-        if (!next) closeSearch()
+        if (!next) {
+          closeSearch()
+          setTab("suggested")
+        }
         onOpenChange(next)
       }}
     >
@@ -291,7 +308,13 @@ export function MoveDialog({
           </div>
         </DialogHeader>
 
-        <Tabs defaultValue="suggested" className="flex flex-col">
+        <Tabs
+          value={tab}
+          onValueChange={(next) => {
+            if (next) setTab(next as string)
+          }}
+          className="flex flex-col"
+        >
           {/* One 40px row in both states, so the border below it never moves
               and the dialog keeps its height when search opens. */}
           <div className="flex h-10 shrink-0 items-center gap-1 border-b px-4">

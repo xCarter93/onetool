@@ -157,7 +157,7 @@ describe("QuoteLineItems", () => {
 					sortOrder: 0,
 					skuId: foreignSkuId,
 				})
-			).rejects.toThrow();
+			).rejects.toThrow(/organization/i);
 		});
 	});
 

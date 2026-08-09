@@ -518,8 +518,8 @@ export const settingsAndTeamArticles: HelpArticle[] = [
 						items: [
 							"Open your organization settings and select the **Integrations** tab.",
 							"On the **Stripe payments** card, click **Set up payments**. If you have already started, the button reads **Finish setup**.",
-							"Follow Stripe's guided onboarding to enter your business details and the bank account for payouts.",
-							"Return to OneTool when Stripe finishes. A **Payments** tab now appears in settings and shows your progress.",
+							"Follow Stripe's guided onboarding to enter your business details and the bank account for payouts. A **Payments** tab appears in settings as soon as setup starts, and shows your progress.",
+							"Return to OneTool when Stripe finishes, and check the **Payments** tab for your verification status.",
 						],
 					},
 					{
@@ -620,7 +620,7 @@ export const settingsAndTeamArticles: HelpArticle[] = [
 					},
 					{
 						type: "tip",
-						text: "Treat OneTool as the place where client, invoice, and payment records are edited, and QuickBooks as the place your books live. The one exception is the one-time customer import, which brings your existing QuickBooks customers into OneTool when you first connect.",
+						text: "Treat OneTool as the place where client, invoice, and payment records are edited, and QuickBooks as the place your books live. The one exception is the customer import, which brings your existing QuickBooks customers into OneTool. It is usually run once when you first connect, but it is safe to run again any time.",
 					},
 				],
 			},
@@ -691,7 +691,7 @@ export const settingsAndTeamArticles: HelpArticle[] = [
 			},
 			{
 				question: "Do my old invoices get synced when I connect?",
-				answer: "No. Sync starts from the moment you connect, and existing invoices and payments stay where they are. Editing an older invoice after connecting syncs it. Existing QuickBooks customers can be brought in with the one-time customer import.",
+				answer: "No. Sync starts from the moment you connect, and existing invoices and payments stay where they are. Editing an older invoice after connecting syncs it. Existing QuickBooks customers can be brought in with the customer import, which you can run whenever you need it.",
 			},
 			{
 				question: "What happens if I disconnect?",

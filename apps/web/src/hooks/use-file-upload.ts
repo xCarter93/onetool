@@ -87,20 +87,14 @@ export const useFileUpload = (
 
   const validateFile = useCallback(
     (file: File | FileMetadata): string | null => {
-      if (file instanceof File) {
-        if (file.size > maxSize) {
-          return `File "${file.name}" exceeds the maximum size of ${formatBytes(maxSize)}.`
-        }
-      } else {
-        if (file.size > maxSize) {
-          return `File "${file.name}" exceeds the maximum size of ${formatBytes(maxSize)}.`
-        }
+      if (file.size > maxSize) {
+        return `File "${file.name}" exceeds the maximum size of ${formatBytes(maxSize)}.`
       }
 
       if (accept !== "*") {
         const acceptedTypes = accept.split(",").map((type) => type.trim())
-        const fileType = file instanceof File ? file.type || "" : file.type
-        const fileExtension = `.${file instanceof File ? file.name.split(".").pop() : file.name.split(".").pop()}`
+        const fileType = file.type || ""
+        const fileExtension = `.${file.name.split(".").pop()}`
 
         const isAccepted = acceptedTypes.some((type) => {
           if (type.startsWith(".")) {
@@ -114,7 +108,7 @@ export const useFileUpload = (
         })
 
         if (!isAccepted) {
-          return `File "${file instanceof File ? file.name : file.name}" is not an accepted file type.`
+          return `File "${file.name}" is not an accepted file type.`
         }
       }
 
@@ -126,7 +120,11 @@ export const useFileUpload = (
   const createPreview = useCallback(
     (file: File | FileMetadata): string | undefined => {
       if (file instanceof File) {
-        return URL.createObjectURL(file)
+        // Only images get an object URL: revocation elsewhere is image-only,
+        // so minting one for any other type would leak it.
+        return file.type.startsWith("image/")
+          ? URL.createObjectURL(file)
+          : undefined
       }
       return file.url
     },

@@ -224,11 +224,16 @@ export function buildQboInvoice(args: {
 	);
 	if (remainder !== 0 && salesLines.length > 0) {
 		const last = salesLines[salesLines.length - 1];
-		last.Amount = roundCents(last.Amount + remainder);
-		// The adjusted amount no longer equals Qty x UnitPrice; sending both
-		// would let QBO recompute it away.
-		delete last.SalesItemLineDetail.Qty;
-		delete last.SalesItemLineDetail.UnitPrice;
+		const adjusted = roundCents(last.Amount + remainder);
+		// QBO rejects zero/negative sales lines; leave the line alone and let the
+		// stored total diverge rather than send an invalid invoice.
+		if (adjusted > 0) {
+			last.Amount = adjusted;
+			// The adjusted amount no longer equals Qty x UnitPrice; sending both
+			// would let QBO recompute it away.
+			delete last.SalesItemLineDetail.Qty;
+			delete last.SalesItemLineDetail.UnitPrice;
+		}
 	}
 
 	const lines: QboInvoiceLine[] = [...salesLines];

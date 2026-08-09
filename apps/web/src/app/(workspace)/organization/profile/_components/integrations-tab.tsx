@@ -411,7 +411,9 @@ export function IntegrationsTab() {
 					? `Review import (${importRun.totalFetched})`
 					: importRun.status === "awaiting_review"
 						? `Review import (${importRun.ambiguous})`
-						: "Importing…";
+						: committing
+							? "View progress"
+							: "Importing…";
 
 		return (
 			<Button

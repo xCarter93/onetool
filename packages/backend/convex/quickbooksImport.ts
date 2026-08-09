@@ -2,6 +2,7 @@ import { ConvexError, v } from "convex/values";
 import { paginationOptsValidator, type PaginationResult } from "convex/server";
 import { internalMutation } from "./lib/triggers";
 import { internal } from "./_generated/api";
+import { externalIoPool } from "./externalIoPool";
 import type { MutationCtx } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import { userMutation, userQuery } from "./lib/factories";
@@ -121,6 +122,25 @@ type ImportedClientSource = {
 	};
 };
 
+type QboAddress = {
+	line1?: string;
+	city?: string;
+	state?: string;
+	postalCode?: string;
+	country?: string;
+};
+
+/**
+ * Mirrors `hasLocation` in quickbooksImportActions.ts: the fetch side only sends
+ * an address that carries some location, so the property gate here must accept
+ * the same shapes or a city-only job site would be silently dropped.
+ */
+function hasUsableAddress(addr: QboAddress | undefined): addr is QboAddress {
+	return Boolean(
+		addr && (addr.line1 || addr.city || addr.state || addr.postalCode)
+	);
+}
+
 function normalizeName(value: string | undefined): string {
 	return (value ?? "").trim().toLowerCase();
 }
@@ -187,6 +207,11 @@ export const startRun = internalMutation({
 						status: "failed",
 						lastError: "Import stalled and was reclaimed by a new run",
 					});
+					await ctx.scheduler.runAfter(
+						0,
+						internal.quickbooksImport.deleteRunRowsPage,
+						{ runId: run._id }
+					);
 					continue;
 				}
 				throw new ConvexError("import_already_running");
@@ -316,7 +341,7 @@ export const processCustomerPage = internalMutation({
 			// carrying an address becomes a property on its parent's client; one
 			// with nothing to place stays a plain, non-overridable skip.
 			if (customer.isJob === true) {
-				if (customer.parentQboId && customer.billAddr?.line1) {
+				if (customer.parentQboId && hasUsableAddress(customer.billAddr)) {
 					await ctx.db.insert("quickbooksImportRows", {
 						...rowBase,
 						outcome: "proposed_property",
@@ -501,7 +526,7 @@ async function createPropertyFromQboAddress(
 	}
 ): Promise<Id<"clientProperties"> | null> {
 	const addr = args.addr;
-	if (!addr?.line1) return null;
+	if (!hasUsableAddress(addr)) return null;
 
 	// A linked (rather than imported) parent may already have a primary.
 	const existingPrimary = await ctx.db
@@ -515,7 +540,7 @@ async function createPropertyFromQboAddress(
 		clientId: args.clientId,
 		orgId: args.orgId,
 		propertyName: args.propertyName,
-		streetAddress: addr.line1,
+		streetAddress: addr.line1 ?? "",
 		city: addr.city ?? "",
 		state: addr.state ?? "",
 		zipCode: addr.postalCode ?? "",
@@ -526,13 +551,18 @@ async function createPropertyFromQboAddress(
 	return propertyId;
 }
 
-/** Imported addresses arrive without coordinates; backfill them out of band. */
+/**
+ * Imported addresses arrive without coordinates; backfill them out of band.
+ * Routed through the shared externalIoPool rather than a raw scheduler kick: a
+ * commit batch creates up to 100 properties, and an unbounded Mapbox burst
+ * earns 429s whose lost coordinates are never retried.
+ */
 async function scheduleGeocode(
 	ctx: MutationCtx,
 	propertyId: Id<"clientProperties">
 ): Promise<void> {
-	await ctx.scheduler.runAfter(
-		0,
+	await externalIoPool.enqueueAction(
+		ctx,
 		internal.geocodeActions.geocodeClientProperty,
 		{ propertyId }
 	);

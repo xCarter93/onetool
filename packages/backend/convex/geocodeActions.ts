@@ -41,10 +41,24 @@ export const applyPropertyGeocode = internalMutation({
 		latitude: v.number(),
 		longitude: v.number(),
 		formattedAddress: v.string(),
+		/** The address string that was geocoded, for the staleness check below. */
+		geocodedAddress: v.string(),
 	},
 	handler: async (ctx, args): Promise<null> => {
 		const property = await ctx.db.get(args.propertyId);
 		if (!property) return null;
+		// The action runs out of band: the address may have been edited, or the
+		// coordinates filled in, while Mapbox was answering. Both coordinates
+		// must be present to count as placed — a half-written pair is repaired.
+		if (buildPropertyAddress(property) !== args.geocodedAddress) return null;
+		if (
+			property.latitude !== undefined &&
+			property.latitude !== null &&
+			property.longitude !== undefined &&
+			property.longitude !== null
+		) {
+			return null;
+		}
 		await ctx.db.patch(args.propertyId, {
 			latitude: args.latitude,
 			longitude: args.longitude,
@@ -99,6 +113,7 @@ export const geocodeClientProperty = internalAction({
 			latitude: result.latitude,
 			longitude: result.longitude,
 			formattedAddress: result.formattedAddress,
+			geocodedAddress: address,
 		});
 		return { latitude: result.latitude, longitude: result.longitude };
 	},

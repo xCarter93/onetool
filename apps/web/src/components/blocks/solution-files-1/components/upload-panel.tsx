@@ -81,7 +81,11 @@ function UploadRow({
         <Tooltip>
           <TooltipTrigger
             render={
-              <span className="flex size-7 items-center justify-center" />
+              <span
+                tabIndex={0}
+                aria-label={detail}
+                className="focus-visible:ring-ring/50 flex size-7 items-center justify-center rounded-md outline-none focus-visible:ring-[3px]"
+              />
             }
           >
             {entry.status === "uploading" ? (

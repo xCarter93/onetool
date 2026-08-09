@@ -30,12 +30,16 @@ export function useStripeOnboarding(options?: {
 	onAccountStatus?: (status: StripeAccountStatus) => void;
 }) {
 	const toast = useToast();
-	const { isOwner } = useOrgOwner();
+	const { isOwner, isLoading: ownerLoading } = useOrgOwner();
 	const onAccountStatus = options?.onAccountStatus;
 
 	const [onboardingLoading, setOnboardingLoading] = useState(false);
 
 	const startOnboarding = useCallback(async () => {
+		// Ownership is still resolving; an owner clicking early would otherwise
+		// get a spurious permission error.
+		if (ownerLoading) return;
+
 		if (!isOwner) {
 			toast.error(
 				"Permission required",
@@ -114,7 +118,7 @@ export function useStripeOnboarding(options?: {
 					"Unable to start Stripe onboarding right now.",
 			);
 		}
-	}, [isOwner, toast, onAccountStatus]);
+	}, [isOwner, ownerLoading, toast, onAccountStatus]);
 
 	return { startOnboarding, onboardingLoading };
 }

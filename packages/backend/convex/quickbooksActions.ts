@@ -962,6 +962,17 @@ async function syncPayment(
 		}
 	);
 	if (!invoiceLink || !clientLink) {
+		// A terminally failed invoice job is never requeued, so holding on it
+		// would repeat every DEPENDENCY_HOLD_MS forever.
+		const invoiceFailed = await ctx.runQuery(
+			internal.quickbooks.hasFailedInvoiceSyncJob,
+			{ orgId: connection.orgId, invoiceId: payload.invoiceId }
+		);
+		if (invoiceFailed) {
+			throw new TerminalSyncError(
+				"The invoice for this payment failed to sync to QuickBooks; retry the invoice sync first."
+			);
+		}
 		// The invoice may never have been queued at all (created before QuickBooks
 		// was connected and still only partially paid). Make sure a job exists so
 		// this hold can resolve — the invoice sync also creates the customer link.
@@ -1138,11 +1149,14 @@ async function handleJobFailure(
 
 	if (error instanceof QboRequestError && error.isRateLimited) {
 		const backoff = 2 ** nextAttempt * 30_000 + Math.floor(Math.random() * 5_000);
+		const terminal = nextAttempt >= MAX_JOB_ATTEMPTS;
 		await ctx.runMutation(internal.quickbooks.markJobFailed, {
 			jobId: job._id,
-			terminal: nextAttempt >= MAX_JOB_ATTEMPTS,
+			terminal,
 			runAfter: Date.now() + backoff,
-			lastError: "QuickBooks rate limit reached; the sync will retry shortly.",
+			lastError: terminal
+				? "QuickBooks kept rate limiting this sync, so it stopped retrying. Retry it once QuickBooks settles down."
+				: "QuickBooks rate limit reached; the sync will retry shortly.",
 			lastErrorCode: "429",
 		});
 		return "continue";

@@ -1319,6 +1319,7 @@ export function DriveExplorer() {
 			/>
 			<MoveDialog
 				open={moveTarget !== null}
+				targetId={moveTarget?.id ?? ""}
 				targetName={moveTarget?.node.name ?? ""}
 				rows={driveRows}
 				destId={moveDestId}

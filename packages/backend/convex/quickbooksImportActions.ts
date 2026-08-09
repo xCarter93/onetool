@@ -195,6 +195,9 @@ export const startImport = action({
 			// Display names of every customer seen so far, so a sub-customer can
 			// carry its parent's name without a second query.
 			const namesById = new Map<string, string>();
+			// A short page means QBO is done. Without one, the cap truncated the
+			// customer set — finishing would present a silently partial plan.
+			let fetchedEveryPage = false;
 			for (let page = 0; page < MAX_PAGES; page++) {
 				const customers = await queryCustomersWithRetry(
 					tokens,
@@ -218,7 +221,17 @@ export const startImport = action({
 						),
 					});
 				}
-				if (customers.length < PAGE_SIZE) break;
+				if (customers.length < PAGE_SIZE) {
+					fetchedEveryPage = true;
+					break;
+				}
+			}
+			if (!fetchedEveryPage) {
+				await ctx.runMutation(internal.quickbooksImport.failRun, {
+					runId,
+					error: `Import exceeded the page limit (${MAX_PAGES * PAGE_SIZE} customers); contact support`,
+				});
+				return { runId };
 			}
 			await ctx.runMutation(internal.quickbooksImport.finishRun, { runId });
 		} catch (error) {

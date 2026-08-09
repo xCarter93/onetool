@@ -35,13 +35,15 @@ describe("quickbooksCrypto", () => {
 	});
 
 	it("stores plaintext when no key is configured", async () => {
+		// Explicit empty value: don't depend on the ambient env being unset.
+		vi.stubEnv("QUICKBOOKS_TOKEN_ENC_KEY", "");
 		expect(await encryptToken("token_without_key")).toBe("token_without_key");
 	});
 
 	it("throws when an encrypted value exists but the key is missing", async () => {
 		vi.stubEnv("QUICKBOOKS_TOKEN_ENC_KEY", KEY);
 		const stored = await encryptToken("secret");
-		vi.unstubAllEnvs();
+		vi.stubEnv("QUICKBOOKS_TOKEN_ENC_KEY", "");
 		await expect(decryptToken(stored)).rejects.toThrow(
 			/QUICKBOOKS_TOKEN_ENC_KEY is not set/
 		);

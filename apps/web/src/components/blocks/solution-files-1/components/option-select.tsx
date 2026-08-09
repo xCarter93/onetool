@@ -67,7 +67,9 @@ export function OptionSelect<T extends string>({
           {options.map((option, index) => (
             <Fragment key={option.value}>
               {/* One rule between the grants and the taking-away */}
-              {option.destructive && !options[index - 1]?.destructive ? (
+              {index > 0 &&
+              option.destructive &&
+              !options[index - 1]?.destructive ? (
                 <SelectSeparator />
               ) : null}
               <SelectItem

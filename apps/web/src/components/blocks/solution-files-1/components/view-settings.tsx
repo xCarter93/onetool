@@ -11,7 +11,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover"
-import { OptionSelect } from "./option-select"
+import { OptionSelect, type Option } from "./option-select"
 import { Settings2Icon, CheckIcon } from "lucide-react"
 
 export type DriveDensity = "comfortable" | "compact"
@@ -61,9 +61,10 @@ export function ViewSettings({
   onSortChange: (next: DriveSortKey) => void
   onToggleProperty: (property: DriveProperty) => void
 }) {
-  const sortItems: { value: DriveSortKey | "custom"; label: string }[] =
+  // "custom" is display-only: choosing it would cast an invalid sort key.
+  const sortItems: Option<DriveSortKey | "custom">[] =
     sortKey === "custom"
-      ? [...SORT_OPTIONS, { value: "custom", label: "Custom" }]
+      ? [...SORT_OPTIONS, { value: "custom", label: "Custom", disabled: true }]
       : SORT_OPTIONS
   return (
     <Popover>
