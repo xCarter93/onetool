@@ -28,12 +28,15 @@ export function ViewBeacon({ slug }: { slug: string }) {
 		const src = srcParam === "qr" || srcParam === "link" ? srcParam : undefined;
 
 		// A same-site referrer (in-app navigation) says nothing about where the
-		// visitor came from, so only cross-origin referrers are reported.
+		// visitor came from, so only cross-origin referrers are reported, and
+		// only their origin — the source is classified by hostname alone, so a
+		// referring site's path and query never need to leave the browser.
 		let referrer: string | undefined;
 		if (document.referrer) {
 			try {
-				if (new URL(document.referrer).origin !== window.location.origin) {
-					referrer = document.referrer;
+				const referrerUrl = new URL(document.referrer);
+				if (referrerUrl.origin !== window.location.origin) {
+					referrer = referrerUrl.origin;
 				}
 			} catch {
 				// Unparseable referrer: treat as absent.

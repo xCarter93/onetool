@@ -1,6 +1,6 @@
 import { query, QueryCtx, MutationCtx } from "./_generated/server";
 import { mutation } from "./lib/triggers";
-import { ConvexError, v } from "convex/values";
+import { ConvexError, v, type Infer } from "convex/values";
 import { Doc, Id } from "./_generated/dataModel";
 import {
 	getCurrentUserOrThrow,
@@ -1142,7 +1142,7 @@ function validateGalleryItems(
  * silently occupying a slot.
  */
 function validateSectionConfig(
-	config: Array<{ id: string; visible: boolean; layout?: string }>
+	config: Infer<typeof communitySectionConfigValidator>
 ): void {
 	const seen = new Set<string>();
 	for (const entry of config) {

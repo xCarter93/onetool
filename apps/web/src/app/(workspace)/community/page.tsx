@@ -16,6 +16,11 @@ import {
 } from "lucide-react";
 
 import { hasRichTextContent } from "@/lib/community-sections";
+import { copyToClipboard } from "@/lib/clipboard";
+import {
+	PAGE_LAYOUT_LABELS,
+	resolvePageLayout,
+} from "@/lib/community-layouts";
 import { PermissionGate } from "@/components/domain/permission-gate";
 import { LearnMoreLink } from "@/components/help/learn-more";
 import { Button } from "@/components/ui/button";
@@ -126,7 +131,6 @@ function formatShortDate(timestamp: number): string {
 	});
 }
 
-/** True when TipTap JSON actually contains text or media, not just empty nodes. */
 function PageHeader({
 	subtitle,
 	children,
@@ -294,8 +298,9 @@ function CommunityPageContent() {
 		debouncedSlug.length >= 3 ? { slug: debouncedSlug } : "skip",
 	);
 
-	// Requests only exist once a page does; the filter is a client-side view of
-	// one server-side list so the counts and the rows always agree.
+	// Requests only exist once a page does. The filter is a query arg, so
+	// toggling it re-subscribes; the counts are computed over the unfiltered
+	// set either way, so they never disagree with each other.
 	const inbox = useQuery(
 		api.communityLeads.list,
 		communityPage ? (requestFilter === "new" ? { status: "new" } : {}) : "skip",
@@ -371,10 +376,13 @@ function CommunityPageContent() {
 	};
 
 	const communitySlug = communityPage?.slug;
-	const handleCopyUrl = useCallback(() => {
+	const handleCopyUrl = useCallback(async () => {
 		if (!communitySlug) return;
 		const url = `${window.location.origin}/communities/${communitySlug}`;
-		navigator.clipboard.writeText(url);
+		if (!(await copyToClipboard(url))) {
+			toast.error("Couldn't copy the URL", "Copy it from the address bar");
+			return;
+		}
 		setCopied(true);
 		setTimeout(() => setCopied(false), COPY_FEEDBACK_DURATION_MS);
 		toast.success("URL copied", "Share this link with your audience");
@@ -616,7 +624,7 @@ function CommunityPageContent() {
 							onClick={() => router.push("/community/edit")}
 						>
 							<Send className="size-4 mr-2" />
-							Publish to public
+							Review and publish
 						</Button>
 					)}
 					<Button
@@ -644,6 +652,9 @@ function CommunityPageContent() {
 					avatarUrl={avatarUrl}
 					locationLine={locationLine || undefined}
 					galleryCount={communityPage.galleryItemsDraft?.length ?? 0}
+					layoutLabel={
+						PAGE_LAYOUT_LABELS[resolvePageLayout(communityPage.draftTheme)]
+					}
 					remainingSteps={remainingSteps}
 					completedCount={completedCount}
 					totalSteps={SECTION_CHECKLIST.length}

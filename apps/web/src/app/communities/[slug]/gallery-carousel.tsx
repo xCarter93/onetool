@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Image from "next/image";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, Pause, Play } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { usePrefersReducedMotion } from "@/hooks/use-prefers-reduced-motion";
@@ -28,8 +28,9 @@ export function GalleryCarousel({
 	const prefersReducedMotion = usePrefersReducedMotion();
 	const [isHovered, setIsHovered] = useState(false);
 	const [isFocused, setIsFocused] = useState(false);
+	const [isManuallyPaused, setIsManuallyPaused] = useState(false);
 
-	const isPaused = isHovered || isFocused;
+	const isPaused = isHovered || isFocused || isManuallyPaused;
 
 	useEffect(() => {
 		if (images.length <= 1 || prefersReducedMotion || isPaused) return;
@@ -93,6 +94,21 @@ export function GalleryCarousel({
 						>
 							<ChevronRight className="size-4" aria-hidden="true" />
 						</Button>
+						<Button
+							variant="secondary"
+							size="sm"
+							onClick={() => setIsManuallyPaused((prev) => !prev)}
+							aria-label={
+								isManuallyPaused ? "Play slideshow" : "Pause slideshow"
+							}
+							className="size-11"
+						>
+							{isManuallyPaused ? (
+								<Play className="size-4" aria-hidden="true" />
+							) : (
+								<Pause className="size-4" aria-hidden="true" />
+							)}
+						</Button>
 					</div>
 				)}
 			</div>
@@ -100,7 +116,7 @@ export function GalleryCarousel({
 				{images[activeSlide] && (
 					<Image
 						src={images[activeSlide].url}
-						alt={altText}
+						alt={`${altText} — photo ${activeSlide + 1} of ${images.length}`}
 						fill
 						className="object-cover"
 					/>

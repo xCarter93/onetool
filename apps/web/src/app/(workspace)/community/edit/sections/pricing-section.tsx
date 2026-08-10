@@ -214,6 +214,7 @@ export const PricingSection = React.memo(function PricingSection({
 											<div key={featureIndex} className="flex items-center gap-2">
 												<Input
 													value={feature}
+													aria-label={`Feature ${featureIndex + 1}`}
 													onChange={(e) =>
 														updateTierFeature(index, featureIndex, e.target.value)
 													}

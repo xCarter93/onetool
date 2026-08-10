@@ -51,12 +51,21 @@ export const list = userQuery({
 
 		const totalIsCapped = recent.length > COUNT_CEILING;
 		const counted = totalIsCapped ? recent.slice(0, COUNT_CEILING) : recent;
-		const filtered = args.status
-			? counted.filter((lead) => lead.status === args.status)
-			: counted;
+		// Counts come from the unfiltered window, but a status view reads its own
+		// index so it still finds matches older than the newest COUNT_CEILING.
+		const status = args.status;
+		const leads = status
+			? await ctx.db
+					.query("communityLeads")
+					.withIndex("by_org_status", (q) =>
+						q.eq("orgId", ctx.orgId).eq("status", status)
+					)
+					.order("desc")
+					.take(PAGE_SIZE)
+			: counted.slice(0, PAGE_SIZE);
 
 		return {
-			leads: filtered.slice(0, PAGE_SIZE),
+			leads,
 			newCount: counted.filter((lead) => lead.status === "new").length,
 			total: counted.length,
 			totalIsCapped,

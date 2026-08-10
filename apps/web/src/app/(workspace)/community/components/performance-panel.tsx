@@ -19,22 +19,12 @@ import {
 } from "@/components/charts/chart-stripe-defs";
 import { EmptyState } from "@/components/domain/empty-state";
 import { cn } from "@/lib/utils";
+import type {
+	CommunityDashboard,
+	ViewSource,
+} from "@onetool/backend/convex/communityAnalytics";
 
 export type RangeDays = 7 | 30 | 90;
-
-type ViewSource = "qr" | "link" | "search" | "social" | "referral" | "direct";
-
-interface DashboardStats {
-	views: number;
-	viewsPrevious: number;
-	requests: number;
-	requestsPrevious: number;
-	conversionPct: number | null;
-	medianFirstResponseMs: number | null;
-	waitingCount: number;
-	series: Array<{ day: string; views: number; requests: number }>;
-	sources: Array<{ source: ViewSource; views: number }>;
-}
 
 const SOURCE_LABELS: Record<ViewSource, string> = {
 	qr: "QR code",
@@ -46,7 +36,7 @@ const SOURCE_LABELS: Record<ViewSource, string> = {
 };
 
 interface PerformancePanelProps {
-	stats: DashboardStats | undefined;
+	stats: CommunityDashboard | undefined;
 	days: RangeDays;
 	onDaysChange: (days: RangeDays) => void;
 }

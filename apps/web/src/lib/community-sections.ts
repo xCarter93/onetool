@@ -1,8 +1,8 @@
 /**
- * The four reorderable sections of a public community page. Everything else on
- * that page (hero, credentials, hours, quote form) is fixed chrome — the quote
- * form in particular is always last by rule, so it is deliberately not a row
- * here where a future config write could move or hide it.
+ * The six reorderable sections of a public community page. Everything else
+ * (hero, credentials, hours, quote form) is fixed chrome; the form's position is
+ * the page layout's decision, and it is deliberately not a row here where a
+ * future config write could move or hide it.
  */
 export const COMMUNITY_SECTION_IDS = [
 	"bio",
@@ -34,14 +34,6 @@ export const COMMUNITY_SECTION_LAYOUTS = {
 
 export type CommunitySectionLayout =
 	(typeof COMMUNITY_SECTION_LAYOUTS)[CommunitySectionId][number];
-
-/** Every layout id across every section — the storage-level allowlist. */
-export const COMMUNITY_LAYOUT_IDS = [
-	"tiers",
-	"compact",
-	"carousel",
-	"grid",
-] as const satisfies readonly CommunitySectionLayout[];
 
 export const COMMUNITY_LAYOUT_LABELS: Record<CommunitySectionLayout, string> = {
 	tiers: "Cards",

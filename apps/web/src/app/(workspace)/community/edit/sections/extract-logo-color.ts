@@ -22,12 +22,25 @@ function toHex(r: number, g: number, b: number): string {
 	return `#${part(r)}${part(g)}${part(b)}`;
 }
 
+/** A stalled fetch fires neither handler, so the promise needs its own end. */
+const LOAD_TIMEOUT_MS = 8000;
+
 function loadImage(url: string): Promise<HTMLImageElement> {
 	return new Promise((resolve, reject) => {
 		const image = new Image();
+		const timer = setTimeout(
+			() => reject(new Error("Could not load the logo")),
+			LOAD_TIMEOUT_MS,
+		);
 		image.crossOrigin = "anonymous";
-		image.onload = () => resolve(image);
-		image.onerror = () => reject(new Error("Could not load the logo"));
+		image.onload = () => {
+			clearTimeout(timer);
+			resolve(image);
+		};
+		image.onerror = () => {
+			clearTimeout(timer);
+			reject(new Error("Could not load the logo"));
+		};
 		image.src = url;
 	});
 }

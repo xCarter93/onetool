@@ -1,4 +1,4 @@
-import { v } from "convex/values";
+import { v, type Infer } from "convex/values";
 
 /**
  * Shared shape for the public community page's section list. The same object is
@@ -41,7 +41,10 @@ export const communitySectionConfigValidator = v.array(
  *
  * Mirrors `COMMUNITY_SECTION_LAYOUTS` in the web app's `lib/community-sections`.
  */
-export const COMMUNITY_SECTION_LAYOUTS: Record<string, readonly string[]> = {
+export const COMMUNITY_SECTION_LAYOUTS: Record<
+	Infer<typeof communitySectionIdValidator>,
+	readonly Infer<typeof communitySectionLayoutValidator>[]
+> = {
 	bio: [],
 	services: [],
 	pricing: ["tiers", "compact"],

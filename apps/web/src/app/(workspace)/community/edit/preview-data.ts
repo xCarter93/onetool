@@ -1,5 +1,8 @@
 import type { CommunityPageViewData } from "@/app/communities/[slug]/community-page-view";
-import type { useCommunityPageForm } from "./use-community-page-form";
+import {
+	mapTierForSave,
+	type useCommunityPageForm,
+} from "./use-community-page-form";
 
 type CommunityPageForm = ReturnType<typeof useCommunityPageForm>;
 
@@ -47,7 +50,9 @@ export function buildPreviewData(
 		pricingMode:
 			pricing.pricingMode === "structured" ? "structured" : "richText",
 		pricingContent: pricing.pricingContent,
-		pricingTiers: pricing.pricingTiers,
+		// Through the save mapper, or blank feature rows preview and then vanish
+		// on publish.
+		pricingTiers: pricing.pricingTiers.map(mapTierForSave),
 		galleryImages: gallery.galleryItems
 			.filter((item): item is typeof item & { url: string } => !!item.url)
 			.map((item) => ({

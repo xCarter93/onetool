@@ -12,6 +12,7 @@ import { useMutation, useQuery } from "convex/react";
 import type { JSONContent } from "@tiptap/react";
 
 import { useToast } from "@/hooks/use-toast";
+import { copyToClipboard } from "@/lib/clipboard";
 import { api } from "@onetool/backend/convex/_generated/api";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
 import {
@@ -85,7 +86,7 @@ function sanitizeTierFeatures(features: string[]): string[] {
 }
 
 /** Shapes a form tier into the upsert payload shape, sanitizing features. */
-function mapTierForSave(tier: {
+export function mapTierForSave(tier: {
 	name: string;
 	price: string;
 	description: string;
@@ -1452,9 +1453,12 @@ export function useCommunityPageForm() {
 		setSlugError(null);
 	};
 
-	const handleCopyUrl = () => {
+	const handleCopyUrl = async () => {
 		const url = `${window.location.origin}/communities/${slug}`;
-		navigator.clipboard.writeText(url);
+		if (!(await copyToClipboard(url))) {
+			toast.error("Couldn't copy the URL", "Copy it from the address bar");
+			return;
+		}
 		setCopied(true);
 		setTimeout(() => setCopied(false), 2000);
 		toast.success("URL copied", "Share this link with your audience");

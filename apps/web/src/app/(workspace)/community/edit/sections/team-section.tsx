@@ -82,6 +82,7 @@ export const TeamSection = React.memo(function TeamSection({
 							<button
 								type="button"
 								aria-label={`Remove team member ${index + 1}`}
+								disabled={uploadingTeamPhotoAt !== null}
 								onClick={() =>
 									setTeamMembers((prev) => prev.filter((_, i) => i !== index))
 								}

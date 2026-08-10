@@ -546,15 +546,22 @@ export const create = userMutation({
  */
 export async function createClient(
 	ctx: UserMutationCtx,
-	data: Record<string, unknown>,
+	data: Omit<
+		Doc<"clients">,
+		| "_id"
+		| "_creationTime"
+		| "orgId"
+		| "portalAccessId"
+		| "createdByUserId"
+		| "searchText"
+	>,
 	source: string
 ): Promise<ClientId> {
 	await ctx.requireLevel("clients", "modify");
-	// Type assertion needed because schema still has deprecated fields
 	const clientId = await createClientWithOrg(ctx, {
 		...data,
 		createdByUserId: ctx.user._id,
-	} as any);
+	});
 
 	// Get the created client for activity logging
 	const client = await ctx.db.get(clientId);

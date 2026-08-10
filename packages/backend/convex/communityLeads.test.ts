@@ -209,6 +209,9 @@ describe("Community leads", () => {
 				status: "contacted",
 			})
 		).rejects.toThrow();
+		await expect(
+			asMember.mutation(api.communityLeads.promoteToClient, { leadId })
+		).rejects.toThrow();
 	});
 });
 

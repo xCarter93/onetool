@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
+import { copyToClipboard } from "@/lib/clipboard";
 import { cn } from "@/lib/utils";
 
 const COPY_FEEDBACK_DURATION_MS = 2000;
@@ -116,10 +117,15 @@ export function ShareKitDialog({
 
 	const copy = React.useCallback(
 		(id: string, text: string, description: string) => {
-			void navigator.clipboard.writeText(text);
-			setCopiedId(id);
-			setTimeout(() => setCopiedId(null), COPY_FEEDBACK_DURATION_MS);
-			toast.success("Copied", description);
+			void (async () => {
+				if (!(await copyToClipboard(text))) {
+					toast.error("Couldn't copy", "Select the text and copy it manually");
+					return;
+				}
+				setCopiedId(id);
+				setTimeout(() => setCopiedId(null), COPY_FEEDBACK_DURATION_MS);
+				toast.success("Copied", description);
+			})();
 		},
 		[toast]
 	);

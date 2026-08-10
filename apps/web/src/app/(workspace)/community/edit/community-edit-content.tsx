@@ -49,6 +49,7 @@ import { DesignSection } from "./sections/design-section";
 import { FaqSection } from "./sections/faq-section";
 import { TeamSection } from "./sections/team-section";
 import { PreviewModal } from "./preview-modal";
+import { useMediaQuery } from "@/hooks/use-media-query";
 import { LivePreviewPane } from "./live-preview-pane";
 import { buildPreviewData } from "./preview-data";
 import type { CommunitySectionId } from "@/lib/community-sections";
@@ -182,6 +183,10 @@ export default function CommunityEditContent() {
 		observer.observe(sentinel);
 		return () => observer.disconnect();
 	}, [isPageLoaded]);
+
+	// Matches the `2xl` the docked preview renders at; undefined on the server.
+	// Declared with the other hooks: the loading guard below returns early.
+	const canDockPreview = useMediaQuery("(min-width: 96rem)");
 
 	if (isLoading || isRedirecting) {
 		return (
@@ -495,14 +500,18 @@ export default function CommunityEditContent() {
 
 						{/* Live preview. Third column only where there is room for one;
 						    narrower than 2xl, the header's Preview button still opens
-						    the full page. */}
+						    the full page. The pane is gated on the query and not just
+						    hidden, so its iframe and head observers never start on the
+						    viewports that would not show it. */}
 						<aside className="hidden 2xl:block 2xl:border-l 2xl:border-border/60">
-							<LivePreviewPane
-								data={previewData}
-								publicUrl={publicUrl}
-								hasUnsavedChanges={actions.hasUnsavedChanges}
-								onEditSection={handleJumpToSection}
-							/>
+							{canDockPreview && (
+								<LivePreviewPane
+									data={previewData}
+									publicUrl={publicUrl}
+									hasUnsavedChanges={actions.hasUnsavedChanges}
+									onEditSection={handleJumpToSection}
+								/>
+							)}
 						</aside>
 						</div>
 					</div>

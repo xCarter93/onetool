@@ -24,6 +24,8 @@ interface PageCardProps {
 	/** Town line under the name, derived from the org address. */
 	locationLine?: string;
 	galleryCount: number;
+	/** Which of the three layouts the page renders, e.g. "Storefront". */
+	layoutLabel: string;
 	remainingSteps: SetupStep[];
 	completedCount: number;
 	totalSteps: number;
@@ -44,6 +46,7 @@ export function PageCard({
 	avatarUrl,
 	locationLine,
 	galleryCount,
+	layoutLabel,
 	remainingSteps,
 	completedCount,
 	totalSteps,
@@ -124,7 +127,7 @@ export function PageCard({
 						href="/community/edit#design"
 						className="text-xs text-muted-foreground hover:text-foreground hover:underline"
 					>
-						Showcase layout
+						{layoutLabel} layout
 					</Link>
 				</div>
 				{isLive ? (
