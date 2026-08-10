@@ -20,6 +20,12 @@ export const rateLimiter = new RateLimiter(components.rateLimiter, {
 	// PUB-18/PUB-19: distributed per-IP throttle so an attacker rotating emails
 	// cannot exhaust a slug's shared quota and block legitimate leads.
 	communityInterestPerIp: { kind: "token bucket", rate: 20, period: HOUR, capacity: 20 },
+	// PUB-16: the view beacon is unauthenticated and fires on every page load.
+	// A limited caller is silently ignored rather than rejected — an inflated
+	// counter is a worse outcome than a dropped one, and the visitor sees
+	// nothing either way.
+	communityPageView: { kind: "token bucket", rate: 600, period: HOUR, capacity: 600 },
+	communityPageViewPerIp: { kind: "token bucket", rate: 30, period: HOUR, capacity: 30 },
 
 	// SEC-10: each mention sync spends one Clerk Backend API call, and Clerk's
 	// limits are instance-wide, so an authenticated member must not be able to

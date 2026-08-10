@@ -883,4 +883,134 @@ http.route({
 	}),
 });
 
+/**
+ * Server-to-server door for the two public community-page writes.
+ *
+ * Both used to be public mutations, which meant anything could call them on the
+ * public Convex URL with a hand-picked `ipHash` — rotating one value per request
+ * walked straight past the per-IP limiter and left only the per-slug ceiling.
+ * They are internal now, and the Next.js routes prove they made the call.
+ *
+ * COMMUNITY_PUBLIC_SECRET is the dedicated name; PORTAL_OTP_REQUEST_SECRET is
+ * accepted as a fallback so this needs no new environment variable to start
+ * working. Same rollout order as portal attestation: set the new secret in
+ * Convex FIRST, then in Vercel. The reverse breaks lead capture, because the
+ * routes would present a secret Convex does not yet accept.
+ */
+function communitySecretAccepted(request: Request): boolean {
+	const accepted = [
+		process.env.COMMUNITY_PUBLIC_SECRET,
+		process.env.PORTAL_OTP_REQUEST_SECRET,
+	].filter((value): value is string => Boolean(value));
+	if (accepted.length === 0) return false;
+	const presented = request.headers.get("x-community-secret") ?? "";
+	// No early exit: the comparison count must not depend on which one matched.
+	let matched = false;
+	for (const secret of accepted) {
+		if (constantTimeEqual(presented, secret)) matched = true;
+	}
+	return matched;
+}
+
+function communityJson(body: unknown, status: number): Response {
+	return new Response(JSON.stringify(body), {
+		status,
+		headers: { "Content-Type": "application/json" },
+	});
+}
+
+/** Bounded read of an untrusted body field; the mutations do the sanitizing. */
+function bodyString(value: unknown, maxLength: number): string | undefined {
+	return typeof value === "string" && value.length > 0 && value.length <= maxLength
+		? value
+		: undefined;
+}
+
+http.route({
+	path: "/community/interest",
+	method: "POST",
+	handler: httpAction(async (ctx, request) => {
+		if (!communitySecretAccepted(request)) {
+			return communityJson({ error: "Unauthorized" }, 401);
+		}
+
+		let body: Record<string, unknown>;
+		try {
+			body = (await request.json()) as Record<string, unknown>;
+		} catch {
+			return communityJson({ error: "Invalid JSON body" }, 400);
+		}
+
+		const slug = bodyString(body.slug, 50);
+		const name = bodyString(body.name, 200);
+		const email = bodyString(body.email, 320);
+		const ipHash = bodyString(body.ipHash, 128);
+		if (!slug || !name || !email || !ipHash) {
+			return communityJson({ error: "Invalid request" }, 400);
+		}
+
+		try {
+			await ctx.runMutation(internal.communityPages.submitInterest, {
+				slug,
+				name,
+				email,
+				ipHash,
+				phone: bodyString(body.phone, 100),
+				message: bodyString(body.message, 10000),
+				service: bodyString(body.service, 100),
+				website: bodyString(body.website, 200),
+			});
+		} catch (err) {
+			const message = err instanceof Error ? err.message : "Submission failed";
+			if (message.includes("Community page not found")) {
+				return communityJson({ error: "Community page not found" }, 404);
+			}
+			console.error("Community interest submission error:", err);
+			return communityJson(
+				{ error: "Something went wrong. Please try again." },
+				500
+			);
+		}
+
+		return communityJson({ success: true }, 200);
+	}),
+});
+
+http.route({
+	path: "/community/view",
+	method: "POST",
+	handler: httpAction(async (ctx, request) => {
+		if (!communitySecretAccepted(request)) {
+			return communityJson({ error: "Unauthorized" }, 401);
+		}
+
+		// A visitor must never see an error because a counter was busy, so every
+		// path below this point answers 200 — same contract as the old beacon.
+		let body: Record<string, unknown>;
+		try {
+			body = (await request.json()) as Record<string, unknown>;
+		} catch {
+			return communityJson({ success: true }, 200);
+		}
+
+		const slug = bodyString(body.slug, 50);
+		const ipHash = bodyString(body.ipHash, 128);
+		if (slug && ipHash) {
+			try {
+				await ctx.runMutation(internal.communityAnalytics.recordView, {
+					slug,
+					ipHash,
+					viewerClerkOrgId: bodyString(body.viewerClerkOrgId, 100),
+					src: bodyString(body.src, 32),
+					referrer: bodyString(body.referrer, 600),
+				});
+			} catch (err) {
+				console.error("Community page view beacon error:", err);
+			}
+		}
+
+		return communityJson({ success: true }, 200);
+	}),
+});
+
 export default http;

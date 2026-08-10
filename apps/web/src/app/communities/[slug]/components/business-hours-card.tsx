@@ -34,12 +34,12 @@ export function BusinessHoursCard({
 
 	return (
 		<div className={cn("rounded-xl p-6 mt-6", cardClasses)}>
-			<h3 className="text-lg font-semibold text-fg mb-4">
+			<h3 className="text-lg font-semibold text-foreground mb-4">
 				Business Hours
 			</h3>
 
 			{businessHours.byAppointmentOnly ? (
-				<p className="text-sm text-muted-fg">By Appointment Only</p>
+				<p className="text-sm text-muted-foreground">By Appointment Only</p>
 			) : (
 				<div className="space-y-2">
 					{businessHours.schedule?.map((entry) => {
@@ -50,13 +50,13 @@ export function BusinessHoursCard({
 								className={cn(
 									"flex items-center justify-between text-sm",
 									isToday
-										? "font-bold text-fg"
-										: "text-muted-fg"
+										? "font-bold text-foreground"
+										: "text-muted-foreground"
 								)}
 							>
 								<span>{entry.day}</span>
 								{entry.isClosed ? (
-									<span className="text-muted-fg italic">
+									<span className="text-muted-foreground italic">
 										Closed
 									</span>
 								) : (

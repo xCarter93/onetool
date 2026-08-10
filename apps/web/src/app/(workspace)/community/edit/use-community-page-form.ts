@@ -12,14 +12,96 @@ import { useMutation, useQuery } from "convex/react";
 import type { JSONContent } from "@tiptap/react";
 
 import { useToast } from "@/hooks/use-toast";
+import { copyToClipboard } from "@/lib/clipboard";
 import { api } from "@onetool/backend/convex/_generated/api";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
+import {
+	hasRichTextContent,
+	resolveSectionConfig,
+	type CommunitySectionId,
+	type CommunitySectionSetting,
+} from "@/lib/community-sections";
+import {
+	DEFAULT_COMMUNITY_COLOR_MODE,
+	resolveColorMode,
+	type CommunityColorMode,
+} from "@/lib/community-theme";
+import {
+	DEFAULT_COMMUNITY_ACCENT,
+	normalizeAccent,
+} from "@/lib/community-accent";
+import {
+	DEFAULT_PAGE_LAYOUT,
+	resolvePageLayout,
+	type PageLayout,
+} from "@/lib/community-layouts";
 import { isValidUrl as isValidSocialUrl } from "@/lib/validators";
 
-const MAX_BANNER_SIZE = 5 * 1024 * 1024;
+// The banner is the one full-bleed image on the page, so it comes off a camera
+// or a designer far more often than the avatar or a gallery thumbnail does.
+const MAX_BANNER_SIZE = 10 * 1024 * 1024;
 const MAX_AVATAR_SIZE = 2 * 1024 * 1024;
 const MAX_GALLERY_IMAGE_SIZE = 5 * 1024 * 1024;
 export const MAX_GALLERY_IMAGES = 5;
+
+export const MAX_FAQ_ITEMS = 12;
+export const MAX_FAQ_QUESTION_LENGTH = 200;
+export const MAX_FAQ_ANSWER_LENGTH = 1200;
+export const MAX_TEAM_MEMBERS = 12;
+export const MAX_TEAM_NAME_LENGTH = 80;
+export const MAX_TEAM_ROLE_LENGTH = 80;
+export const MAX_TEAM_BIO_LENGTH = 400;
+
+export const MAX_SERVICE_TAGS = 8;
+export const MAX_SERVICE_TAG_LENGTH = 40;
+export const MAX_TIER_FEATURES = 6;
+export const MAX_TIER_FEATURE_LENGTH = 80;
+
+/** Trims, length-caps, case-insensitively dedupes, and caps count — mirrors the backend validator. */
+export function normalizeServiceTags(tags: string[]): string[] {
+	const seen = new Set<string>();
+	const result: string[] = [];
+	for (const raw of tags) {
+		const trimmed = raw.trim().slice(0, MAX_SERVICE_TAG_LENGTH);
+		if (!trimmed) continue;
+		const key = trimmed.toLowerCase();
+		if (seen.has(key)) continue;
+		if (result.length >= MAX_SERVICE_TAGS) break;
+		seen.add(key);
+		result.push(trimmed);
+	}
+	return result;
+}
+
+/** Drops blanks, length-caps, and caps count — mirrors the backend validator. */
+function sanitizeTierFeatures(features: string[]): string[] {
+	const result: string[] = [];
+	for (const raw of features) {
+		const trimmed = raw.trim().slice(0, MAX_TIER_FEATURE_LENGTH);
+		if (!trimmed) continue;
+		if (result.length >= MAX_TIER_FEATURES) break;
+		result.push(trimmed);
+	}
+	return result;
+}
+
+/** Shapes a form tier into the upsert payload shape, sanitizing features. */
+export function mapTierForSave(tier: {
+	name: string;
+	price: string;
+	description: string;
+	features: string[];
+	highlighted: boolean;
+}) {
+	const sanitizedFeatures = sanitizeTierFeatures(tier.features);
+	return {
+		name: tier.name,
+		price: tier.price,
+		description: tier.description || undefined,
+		features: sanitizedFeatures.length > 0 ? sanitizedFeatures : undefined,
+		highlighted: tier.highlighted || undefined,
+	};
+}
 
 export type PricingMode = "structured" | "richText";
 export type SectionId =
@@ -29,12 +111,30 @@ export type SectionId =
 	| "bio"
 	| "imageGallery"
 	| "services"
-	| "pricing";
+	| "pricing"
+	| "faq"
+	| "team";
 
 export interface PricingTier {
 	name: string;
 	price: string;
 	description: string;
+	features: string[];
+	highlighted: boolean;
+}
+
+export interface FaqItem {
+	question: string;
+	answer: string;
+}
+
+export interface TeamMember {
+	name: string;
+	role: string;
+	bio: string;
+	photoStorageId?: Id<"_storage">;
+	/** Resolved for the editor only; the mutation stores the id, not the URL. */
+	photoUrl?: string | null;
 }
 
 export interface GalleryItem {
@@ -87,20 +187,39 @@ interface Snapshot {
 	imageGallery: string;
 	services: string;
 	pricing: string;
+	faq: string;
+	team: string;
 }
 
+/**
+ * The four sections a page needs before publishing makes sense. Everything
+ * else has a working default or auto-hides when empty. Advisory only — the
+ * Publish button never gates on this.
+ */
+export const ESSENTIAL_SECTION_IDS: readonly SectionId[] = [
+	"mainSettings",
+	"businessInfo",
+	"bio",
+	"services",
+];
+
+// Essentials first, in both this list and the rendered form — the rail groups
+// by slicing this order, and the scrollspy needs rail order to match DOM order.
 export const SECTION_LIST: Array<{ id: SectionId; label: string }> = [
 	{ id: "mainSettings", label: "Main Page Settings" },
-	{ id: "design", label: "Design" },
 	{ id: "businessInfo", label: "Business Info" },
 	{ id: "bio", label: "Bio" },
-	{ id: "imageGallery", label: "Image Gallery" },
 	{ id: "services", label: "Services" },
+	{ id: "design", label: "Design" },
+	{ id: "imageGallery", label: "Image Gallery" },
 	{ id: "pricing", label: "Pricing" },
+	{ id: "faq", label: "Common Questions" },
+	{ id: "team", label: "Team" },
 ];
 
 function createSnapshot({
 	pageTitle,
+	tagline,
 	slug,
 	metaDescription,
 	isPublic,
@@ -108,6 +227,7 @@ function createSnapshot({
 	avatarStorageId,
 	bioContent,
 	servicesContent,
+	draftServiceTags,
 	pricingMode,
 	pricingContent,
 	pricingTiers,
@@ -123,9 +243,15 @@ function createSnapshot({
 	byAppointmentOnly,
 	businessSchedule,
 	socialLinks,
-	theme,
+	layout,
+	colorMode,
+	accent,
+	sectionConfig,
+	faqItems,
+	teamMembers,
 }: {
 	pageTitle: string;
+	tagline: string;
 	slug: string;
 	metaDescription: string;
 	isPublic: boolean;
@@ -133,6 +259,7 @@ function createSnapshot({
 	avatarStorageId: Id<"_storage"> | null;
 	bioContent: JSONContent | undefined;
 	servicesContent: JSONContent | undefined;
+	draftServiceTags: string[];
 	pricingMode: PricingMode;
 	pricingContent: JSONContent | undefined;
 	pricingTiers: PricingTier[];
@@ -148,18 +275,26 @@ function createSnapshot({
 	byAppointmentOnly: boolean;
 	businessSchedule: DaySchedule[];
 	socialLinks: SocialLinks;
-	theme: string;
+	layout: PageLayout;
+	colorMode: CommunityColorMode;
+	accent: string;
+	sectionConfig: CommunitySectionSetting[];
+	faqItems: FaqItem[];
+	teamMembers: TeamMember[];
 }): Snapshot {
 	return {
 		mainSettings: JSON.stringify({
 			pageTitle,
+			tagline,
 			slug,
 			metaDescription,
 			isPublic,
 			bannerStorageId,
 			avatarStorageId,
 		}),
-		design: JSON.stringify({ theme }),
+		// Layout, light/dark and the section list are one dirty unit: they are
+		// the three tabs of a single Design step.
+		design: JSON.stringify({ layout, colorMode, accent, sectionConfig }),
 		businessInfo: JSON.stringify({
 			ownerName,
 			ownerTitle,
@@ -180,13 +315,51 @@ function createSnapshot({
 				sortOrder: item.sortOrder ?? index,
 			})),
 		),
-		services: JSON.stringify(servicesContent ?? null),
+		services: JSON.stringify({
+			content: servicesContent ?? null,
+			tags: draftServiceTags,
+		}),
 		pricing: JSON.stringify({
 			pricingMode,
 			pricingContent: pricingContent ?? null,
 			pricingTiers,
 		}),
+		faq: JSON.stringify(faqItems),
+		// photoUrl is resolved for display and never stored, so it must not count
+		// as an edit — a URL that comes back different would read as unsaved work.
+		team: JSON.stringify(
+			teamMembers.map((member) => ({
+				name: member.name,
+				role: member.role,
+				bio: member.bio,
+				photoStorageId: member.photoStorageId ?? null,
+			})),
+		),
 	};
+}
+
+/**
+ * The editor keeps every field as a string so inputs stay controlled; the
+ * mutation wants absent rather than empty, and has no use for a resolved URL.
+ */
+function cleanFaqItems(items: FaqItem[]) {
+	return items
+		.filter((item) => item.question.trim() && item.answer.trim())
+		.map((item) => ({
+			question: item.question.trim(),
+			answer: item.answer.trim(),
+		}));
+}
+
+function cleanTeamMembers(members: TeamMember[]) {
+	return members
+		.filter((member) => member.name.trim())
+		.map((member) => ({
+			name: member.name.trim(),
+			role: member.role.trim() || undefined,
+			bio: member.bio.trim() || undefined,
+			photoStorageId: member.photoStorageId,
+		}));
 }
 
 export function useCommunityPageForm() {
@@ -206,6 +379,7 @@ export function useCommunityPageForm() {
 
 	// State
 	const [pageTitle, setPageTitle] = useState("");
+	const [tagline, setTagline] = useState("");
 	const [slug, setSlug] = useState("");
 	const [metaDescription, setMetaDescription] = useState("");
 	const [isPublic, setIsPublic] = useState(false);
@@ -213,12 +387,22 @@ export function useCommunityPageForm() {
 	const [servicesContent, setServicesContent] = useState<
 		JSONContent | undefined
 	>();
+	const [draftServiceTags, setDraftServiceTags] = useState<string[]>([]);
 	const [pricingMode, setPricingMode] = useState<PricingMode>("richText");
 	const [pricingContent, setPricingContent] = useState<
 		JSONContent | undefined
 	>();
 	const [pricingTiers, setPricingTiers] = useState<PricingTier[]>([]);
-	const [theme, setTheme] = useState("clean-professional");
+	const [layout, setLayout] = useState<PageLayout>(
+		DEFAULT_PAGE_LAYOUT,
+	);
+	const [accent, setAccent] = useState<string>(DEFAULT_COMMUNITY_ACCENT);
+	const [colorMode, setColorMode] = useState<CommunityColorMode>(
+		DEFAULT_COMMUNITY_COLOR_MODE,
+	);
+	const [sectionConfig, setSectionConfig] = useState<CommunitySectionSetting[]>(
+		() => resolveSectionConfig(),
+	);
 
 	const [bannerUrl, setBannerUrl] = useState<string | null>(null);
 	const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
@@ -229,6 +413,8 @@ export function useCommunityPageForm() {
 		null,
 	);
 	const [galleryItems, setGalleryItems] = useState<GalleryItem[]>([]);
+	const [faqItems, setFaqItems] = useState<FaqItem[]>([]);
+	const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
 
 	// Business info state
 	const [ownerName, setOwnerName] = useState("");
@@ -252,6 +438,12 @@ export function useCommunityPageForm() {
 	const [isUploadingBanner, setIsUploadingBanner] = useState(false);
 	const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
 	const [isUploadingGallery, setIsUploadingGallery] = useState(false);
+	const [uploadingTeamPhotoAt, setUploadingTeamPhotoAt] = useState<number | null>(
+		null,
+	);
+	// Mirrors the state so the upload callback can reject an overlapping start
+	// synchronously, before React has re-rendered with the new value.
+	const uploadingTeamPhotoAtRef = useRef<number | null>(null);
 	const [slugError, setSlugError] = useState<string | null>(null);
 	const [copied, setCopied] = useState(false);
 	const [debouncedSlug, setDebouncedSlug] = useState("");
@@ -269,6 +461,8 @@ export function useCommunityPageForm() {
 		imageGallery: null,
 		services: null,
 		pricing: null,
+		faq: null,
+		team: null,
 	});
 	// Baseline snapshot of last-saved server state, used for dirty detection.
 	const [savedSnapshot, setSavedSnapshot] = useState<Snapshot | null>(null);
@@ -313,41 +507,51 @@ export function useCommunityPageForm() {
 		}
 	}, [communityPage, router]);
 
-	// Sync server data to local state whenever the server doc changes.
-	// Runs during render via the prev-value pattern instead of an effect.
 	const [prevCommunityPage, setPrevCommunityPage] = useState(communityPage);
-	if (communityPage && communityPage !== prevCommunityPage) {
-		setPrevCommunityPage(communityPage);
 
+	// Hydrates every form atom (and the baseline snapshot) from a server doc.
+	// Used by the render-phase sync below and by Discard, which is just
+	// "hydrate again from the doc we already have".
+	const hydrateFromDoc = (doc: NonNullable<typeof communityPage>) => {
 		const draftBio =
-			(communityPage.draftBioContent as JSONContent | undefined) ??
-			(communityPage.draftContent as JSONContent | undefined);
+			(doc.draftBioContent as JSONContent | undefined) ??
+			(doc.draftContent as JSONContent | undefined);
+		const nextServiceTags = doc.draftServiceTags ?? [];
+		const mapDraftTier = (tier: {
+			name: string;
+			price: string;
+			description?: string;
+			features?: string[];
+			highlighted?: boolean;
+		}): PricingTier => ({
+			name: tier.name,
+			price: tier.price,
+			description: tier.description ?? "",
+			features: tier.features ?? [],
+			highlighted: tier.highlighted ?? false,
+		});
 
-		setPageTitle(communityPage.pageTitle || "");
-		setSlug(communityPage.slug);
-		setMetaDescription(communityPage.metaDescription || "");
-		setIsPublic(communityPage.isPublic);
+		setPageTitle(doc.pageTitle || "");
+		setTagline(doc.draftTagline || "");
+		setSlug(doc.slug);
+		setMetaDescription(doc.metaDescription || "");
+		setIsPublic(doc.isPublic);
 		setBioContent(draftBio);
 		setServicesContent(
-			communityPage.draftServicesContent as JSONContent | undefined,
+			doc.draftServicesContent as JSONContent | undefined,
 		);
+		setDraftServiceTags(nextServiceTags);
 		setPricingMode(
-			(communityPage.pricingModeDraft as PricingMode | undefined) ?? "richText",
+			(doc.pricingModeDraft as PricingMode | undefined) ?? "richText",
 		);
 		setPricingContent(
-			communityPage.draftPricingContent as JSONContent | undefined,
+			doc.draftPricingContent as JSONContent | undefined,
 		);
-		setPricingTiers(
-			(communityPage.draftPricingTiers ?? []).map((tier) => ({
-				name: tier.name,
-				price: tier.price,
-				description: tier.description ?? "",
-			})),
-		);
-		setBannerStorageId(communityPage.bannerStorageId || null);
-		setAvatarStorageId(communityPage.avatarStorageId || null);
+		setPricingTiers((doc.draftPricingTiers ?? []).map(mapDraftTier));
+		setBannerStorageId(doc.bannerStorageId || null);
+		setAvatarStorageId(doc.avatarStorageId || null);
 		setGalleryItems(
-			(communityPage.galleryItemsDraft ?? [])
+			(doc.galleryItemsDraft ?? [])
 				.slice()
 				.sort((a, b) => a.sortOrder - b.sortOrder)
 				.map((item) => ({
@@ -357,14 +561,30 @@ export function useCommunityPageForm() {
 				})),
 		);
 
+		setFaqItems(
+			(doc.draftFaqItems ?? []).map((item) => ({
+				question: item.question,
+				answer: item.answer,
+			})),
+		);
+		setTeamMembers(
+			(doc.draftTeamMembers ?? []).map((member) => ({
+				name: member.name,
+				role: member.role ?? "",
+				bio: member.bio ?? "",
+				photoStorageId: member.photoStorageId,
+				photoUrl: null,
+			})),
+		);
+
 		// Business info sync
-		const ownerInfo = communityPage.draftOwnerInfo as
+		const ownerInfo = doc.draftOwnerInfo as
 			| { name?: string; title?: string }
 			| undefined;
 		setOwnerName(ownerInfo?.name || "");
 		setOwnerTitle(ownerInfo?.title || "");
 
-		const creds = communityPage.draftCredentials as
+		const creds = doc.draftCredentials as
 			| {
 					isLicensed?: boolean;
 					isBonded?: boolean;
@@ -381,41 +601,54 @@ export function useCommunityPageForm() {
 		setLicenseNumber(creds?.licenseNumber || "");
 		setCertifications(creds?.certifications || []);
 
-		const hours = communityPage.draftBusinessHours as
+		const hours = doc.draftBusinessHours as
 			| { byAppointmentOnly: boolean; schedule?: DaySchedule[] }
 			| undefined;
 		setByAppointmentOnly(hours?.byAppointmentOnly || false);
 		setBusinessSchedule(hours?.schedule || DEFAULT_SCHEDULE);
 
-		const links = communityPage.draftSocialLinks as SocialLinks | undefined;
+		const links = doc.draftSocialLinks as SocialLinks | undefined;
 		setSocialLinks(links || EMPTY_SOCIAL_LINKS);
 
-		const serverTheme = (communityPage.draftTheme as string) || "clean-professional";
-		setTheme(serverTheme);
+		// Legacy rows still hold the Phase 8 theme names; resolve rather than trust,
+		// so the next save writes a real layout back.
+		const serverLayout = resolvePageLayout(doc.draftTheme);
+		setLayout(serverLayout);
+		const serverColorMode = resolveColorMode(doc.draftColorMode);
+		setColorMode(serverColorMode);
+		const serverAccent = normalizeAccent(
+			doc.draftAccent as string | undefined,
+		);
+		setAccent(serverAccent);
+
+		// Normalized on the way in, so a config written before a section existed
+		// still hydrates a complete list.
+		const serverSectionConfig = resolveSectionConfig(
+			doc.draftSectionConfig,
+		);
+		setSectionConfig(serverSectionConfig);
 
 		setSavedSnapshot(createSnapshot({
-			pageTitle: communityPage.pageTitle || "",
-			slug: communityPage.slug,
-			metaDescription: communityPage.metaDescription || "",
-			isPublic: communityPage.isPublic,
-			bannerStorageId: communityPage.bannerStorageId || null,
-			avatarStorageId: communityPage.avatarStorageId || null,
+			pageTitle: doc.pageTitle || "",
+			tagline: doc.draftTagline || "",
+			slug: doc.slug,
+			metaDescription: doc.metaDescription || "",
+			isPublic: doc.isPublic,
+			bannerStorageId: doc.bannerStorageId || null,
+			avatarStorageId: doc.avatarStorageId || null,
 			bioContent: draftBio,
-			servicesContent: communityPage.draftServicesContent as
+			servicesContent: doc.draftServicesContent as
 				| JSONContent
 				| undefined,
+			draftServiceTags: nextServiceTags,
 			pricingMode:
-				(communityPage.pricingModeDraft as PricingMode | undefined) ??
+				(doc.pricingModeDraft as PricingMode | undefined) ??
 				"richText",
-			pricingContent: communityPage.draftPricingContent as
+			pricingContent: doc.draftPricingContent as
 				| JSONContent
 				| undefined,
-			pricingTiers: (communityPage.draftPricingTiers ?? []).map((tier) => ({
-				name: tier.name,
-				price: tier.price,
-				description: tier.description ?? "",
-			})),
-			galleryItems: (communityPage.galleryItemsDraft ?? [])
+			pricingTiers: (doc.draftPricingTiers ?? []).map(mapDraftTier),
+			galleryItems: (doc.galleryItemsDraft ?? [])
 				.slice()
 				.sort((a, b) => a.sortOrder - b.sortOrder)
 				.map((item) => ({
@@ -433,8 +666,28 @@ export function useCommunityPageForm() {
 			byAppointmentOnly: hours?.byAppointmentOnly || false,
 			businessSchedule: hours?.schedule || DEFAULT_SCHEDULE,
 			socialLinks: links || EMPTY_SOCIAL_LINKS,
-			theme: serverTheme,
+			layout: serverLayout,
+			colorMode: serverColorMode,
+			accent: serverAccent,
+			sectionConfig: serverSectionConfig,
+			faqItems: (doc.draftFaqItems ?? []).map((item) => ({
+				question: item.question,
+				answer: item.answer,
+			})),
+			teamMembers: (doc.draftTeamMembers ?? []).map((member) => ({
+				name: member.name,
+				role: member.role ?? "",
+				bio: member.bio ?? "",
+				photoStorageId: member.photoStorageId,
+			})),
 		}));
+	};
+
+	// Sync server data to local state whenever the server doc changes.
+	// Runs during render via the prev-value pattern instead of an effect.
+	if (communityPage && communityPage !== prevCommunityPage) {
+		setPrevCommunityPage(communityPage);
+		hydrateFromDoc(communityPage);
 	}
 
 	// Image URL queries
@@ -494,6 +747,48 @@ export function useCommunityPageForm() {
 					return url !== undefined && item.url !== url
 						? { ...item, url }
 						: item;
+				}),
+			);
+		}
+	}
+
+	// Team photos resolve through the same query as the gallery; the ids are
+	// collected here so a page with no team never issues a second request.
+	const teamPhotoIds = useMemo(
+		() =>
+			teamMembers
+				.map((member) => member.photoStorageId)
+				.filter((id): id is Id<"_storage"> => !!id),
+		[teamMembers],
+	);
+	const teamPhotoUrlsQuery = useQuery(
+		api.communityPages.getImageUrls,
+		teamPhotoIds.length > 0 ? { storageIds: teamPhotoIds } : "skip",
+	);
+	const teamPhotoUrlMap = useMemo(
+		() =>
+			new Map(
+				(teamPhotoUrlsQuery ?? []).map((item) => [
+					String(item.storageId),
+					item.url,
+				]),
+			),
+		[teamPhotoUrlsQuery],
+	);
+	if (teamPhotoUrlsQuery) {
+		const needsUpdate = teamMembers.some((member) => {
+			if (!member.photoStorageId) return false;
+			const url = teamPhotoUrlMap.get(String(member.photoStorageId));
+			return url !== undefined && member.photoUrl !== url;
+		});
+		if (needsUpdate) {
+			setTeamMembers((prev) =>
+				prev.map((member) => {
+					if (!member.photoStorageId) return member;
+					const url = teamPhotoUrlMap.get(String(member.photoStorageId));
+					return url !== undefined && member.photoUrl !== url
+						? { ...member, photoUrl: url }
+						: member;
 				}),
 			);
 		}
@@ -602,11 +897,69 @@ export function useCommunityPageForm() {
 		}
 	}, [galleryItems.length, generateUploadUrl, toast]);
 
+	/**
+	 * Team photos upload one row at a time, so they take their own path rather
+	 * than a fourth branch through `uploadImage` — the caller is a specific
+	 * member, not a section.
+	 */
+	const uploadTeamPhoto = useCallback(
+		async (file: File, index: number) => {
+			// One at a time. `index` is captured for the whole upload, and removing
+			// a row shifts every index after it — so a second upload starting while
+			// the first is in flight could land its photo on the wrong person once
+			// the first one's `finally` re-enables the remove buttons.
+			if (uploadingTeamPhotoAtRef.current !== null) return;
+			if (file.size > MAX_AVATAR_SIZE) {
+				toast.error(
+					"File too large",
+					`Maximum size is ${MAX_AVATAR_SIZE / 1024 / 1024}MB`,
+				);
+				return;
+			}
+			if (!file.type.startsWith("image/")) {
+				toast.error("Invalid file type", "Please upload an image file");
+				return;
+			}
+
+			uploadingTeamPhotoAtRef.current = index;
+			setUploadingTeamPhotoAt(index);
+			const loadingToastId = toast.loading("Uploading photo…");
+			try {
+				const uploadUrl = await generateUploadUrl();
+				const response = await fetch(uploadUrl, {
+					method: "POST",
+					headers: { "Content-Type": file.type },
+					body: file,
+				});
+				if (!response.ok) throw new Error("Upload failed");
+				const { storageId } = await response.json();
+
+				setTeamMembers((prev) =>
+					prev.map((member, memberIndex) =>
+						memberIndex === index
+							? { ...member, photoStorageId: storageId, photoUrl: null }
+							: member,
+					),
+				);
+				toast.removeToast(loadingToastId);
+				toast.success("Photo uploaded", "Don't forget to save your changes");
+			} catch {
+				toast.removeToast(loadingToastId);
+				toast.error("Upload failed", "Please try again");
+			} finally {
+				uploadingTeamPhotoAtRef.current = null;
+				setUploadingTeamPhotoAt(null);
+			}
+		},
+		[generateUploadUrl, toast],
+	);
+
 	// Snapshot comparison
 	const currentSnapshot = useMemo(
 		() =>
 			createSnapshot({
 				pageTitle,
+				tagline,
 				slug,
 				metaDescription,
 				isPublic,
@@ -614,6 +967,7 @@ export function useCommunityPageForm() {
 				avatarStorageId,
 				bioContent,
 				servicesContent,
+				draftServiceTags,
 				pricingMode,
 				pricingContent,
 				pricingTiers,
@@ -629,10 +983,16 @@ export function useCommunityPageForm() {
 				byAppointmentOnly,
 				businessSchedule,
 				socialLinks,
-				theme,
+				layout,
+				colorMode,
+				accent,
+				sectionConfig,
+				faqItems,
+				teamMembers,
 			}),
 		[
 			pageTitle,
+			tagline,
 			slug,
 			metaDescription,
 			isPublic,
@@ -640,6 +1000,7 @@ export function useCommunityPageForm() {
 			avatarStorageId,
 			bioContent,
 			servicesContent,
+			draftServiceTags,
 			pricingMode,
 			pricingContent,
 			pricingTiers,
@@ -655,7 +1016,12 @@ export function useCommunityPageForm() {
 			byAppointmentOnly,
 			businessSchedule,
 			socialLinks,
-			theme,
+			layout,
+			colorMode,
+			accent,
+			sectionConfig,
+			faqItems,
+			teamMembers,
 		],
 	);
 
@@ -666,6 +1032,8 @@ export function useCommunityPageForm() {
 				mainSettings: false,
 				design: false,
 				businessInfo: false,
+				faq: false,
+				team: false,
 				bio: false,
 				imageGallery: false,
 				services: false,
@@ -680,6 +1048,8 @@ export function useCommunityPageForm() {
 			imageGallery: saved.imageGallery !== currentSnapshot.imageGallery,
 			services: saved.services !== currentSnapshot.services,
 			pricing: saved.pricing !== currentSnapshot.pricing,
+			faq: saved.faq !== currentSnapshot.faq,
+			team: saved.team !== currentSnapshot.team,
 		};
 	}, [currentSnapshot, savedSnapshot]);
 
@@ -694,13 +1064,131 @@ export function useCommunityPageForm() {
 		slug.length >= 3 &&
 		(debouncedSlug !== slug || isSlugAvailable === undefined);
 
+	// What each public section currently holds. A switched-on but empty section
+	// still does not render, so the row has to say so where the switch is.
+	const sectionStatus = useMemo<
+		Record<CommunitySectionId, { filled: boolean; detail: string }>
+	>(() => {
+		const servicesFilled = hasRichTextContent(servicesContent);
+		const pricingFilled =
+			pricingMode === "structured"
+				? pricingTiers.length > 0
+				: hasRichTextContent(pricingContent);
+		return {
+			bio: {
+				filled: hasRichTextContent(bioContent),
+				detail: hasRichTextContent(bioContent) ? "Written" : "Nothing written yet",
+			},
+			services: {
+				filled: servicesFilled,
+				detail: servicesFilled
+					? draftServiceTags.length > 0
+						? `Written, ${draftServiceTags.length} service tags`
+						: "Written"
+					: "Nothing written yet",
+			},
+			pricing: {
+				filled: pricingFilled,
+				detail:
+					pricingMode === "structured"
+						? pricingTiers.length === 1
+							? "1 tier"
+							: `${pricingTiers.length} tiers`
+						: pricingFilled
+							? "Written"
+							: "Nothing written yet",
+			},
+			gallery: {
+				filled: galleryItems.length > 0,
+				detail: `${galleryItems.length} of 5 photos`,
+			},
+			faq: {
+				filled: faqItems.length > 0,
+				detail:
+					faqItems.length === 0
+						? "No questions yet"
+						: faqItems.length === 1
+							? "1 question"
+							: `${faqItems.length} questions`,
+			},
+			team: {
+				filled: teamMembers.length > 0,
+				detail:
+					teamMembers.length === 0
+						? "Nobody added yet"
+						: teamMembers.length === 1
+							? "1 person"
+							: `${teamMembers.length} people`,
+			},
+		};
+	}, [
+		bioContent,
+		servicesContent,
+		draftServiceTags,
+		pricingMode,
+		pricingContent,
+		pricingTiers,
+		galleryItems,
+		faqItems,
+		teamMembers,
+	]);
+
+	// Rail completeness, one glance per editor section. The gallery reports a
+	// count because "some photos" and "five photos" are different amounts of done.
+	const sectionCompletion = useMemo<
+		Record<SectionId, { done: boolean; count?: string }>
+	>(
+		() => ({
+			mainSettings: { done: !!pageTitle.trim() && slug.length >= 3 },
+			design: { done: true },
+			businessInfo: {
+				done:
+					!!ownerName ||
+					!!ownerTitle ||
+					isLicensed ||
+					isBonded ||
+					isInsured ||
+					!!yearEstablished ||
+					certifications.length > 0 ||
+					byAppointmentOnly,
+			},
+			bio: { done: sectionStatus.bio.filled },
+			imageGallery: {
+				done: galleryItems.length > 0,
+				count: `${galleryItems.length}/5`,
+			},
+			services: { done: sectionStatus.services.filled },
+			pricing: { done: sectionStatus.pricing.filled },
+			faq: { done: sectionStatus.faq.filled },
+			team: { done: sectionStatus.team.filled },
+		}),
+		[
+			pageTitle,
+			slug,
+			ownerName,
+			ownerTitle,
+			isLicensed,
+			isBonded,
+			isInsured,
+			yearEstablished,
+			certifications,
+			byAppointmentOnly,
+			sectionStatus,
+			galleryItems,
+		],
+	);
+
 	const hasPublishableContent = useMemo(
 		() =>
+			!!tagline.trim() ||
 			!!bioContent ||
 			!!servicesContent ||
+			draftServiceTags.length > 0 ||
 			!!pricingContent ||
 			pricingTiers.length > 0 ||
 			galleryItems.length > 0 ||
+			faqItems.length > 0 ||
+			teamMembers.length > 0 ||
 			!!ownerName ||
 			!!ownerTitle ||
 			isLicensed ||
@@ -711,7 +1199,7 @@ export function useCommunityPageForm() {
 			certifications.length > 0 ||
 			byAppointmentOnly ||
 			Object.values(socialLinks).some(Boolean),
-		[bioContent, servicesContent, pricingContent, pricingTiers.length, galleryItems.length, ownerName, ownerTitle, isLicensed, isBonded, isInsured, yearEstablished, licenseNumber, certifications.length, byAppointmentOnly, socialLinks],
+		[tagline, bioContent, servicesContent, draftServiceTags.length, pricingContent, pricingTiers.length, galleryItems.length, faqItems.length, teamMembers.length, ownerName, ownerTitle, isLicensed, isBonded, isInsured, yearEstablished, licenseNumber, certifications.length, byAppointmentOnly, socialLinks],
 	);
 
 	const hasInvalidSocialUrls = useMemo(
@@ -719,10 +1207,11 @@ export function useCommunityPageForm() {
 		[socialLinks],
 	);
 
-	// Actions
-	const handleSave = async () => {
-		if (!validateSlug(slug)) return;
-		if (hasInvalidSocialUrls) return;
+	// Actions. Save reports success so the leave-guard's "Save and leave" can
+	// hold the navigation when validation or the mutation fails.
+	const handleSave = async (): Promise<boolean> => {
+		if (!validateSlug(slug)) return false;
+		if (hasInvalidSocialUrls) return false;
 
 		setIsSaving(true);
 		try {
@@ -730,17 +1219,17 @@ export function useCommunityPageForm() {
 				slug,
 				isPublic,
 				pageTitle: pageTitle || undefined,
+				// Sent unconditionally — the mutation clears the stored value on
+				// empty, so wiping the field sticks.
+				draftTagline: tagline,
 				metaDescription: metaDescription || undefined,
 				draftContent: bioContent,
 				draftBioContent: bioContent,
 				draftServicesContent: servicesContent,
+				draftServiceTags: normalizeServiceTags(draftServiceTags),
 				pricingModeDraft: pricingMode,
 				draftPricingContent: pricingContent,
-				draftPricingTiers: pricingTiers.map((tier) => ({
-					name: tier.name,
-					price: tier.price,
-					description: tier.description || undefined,
-				})),
+				draftPricingTiers: pricingTiers.map(mapTierForSave),
 				galleryItemsDraft: galleryItems.map((item, index) => ({
 					storageId: item.storageId,
 					sortOrder: index,
@@ -778,7 +1267,12 @@ export function useCommunityPageForm() {
 				draftSocialLinks: Object.values(socialLinks).some(Boolean)
 					? socialLinks
 					: undefined,
-				draftTheme: theme,
+				draftTheme: layout,
+				draftColorMode: colorMode,
+				draftAccent: accent,
+				draftSectionConfig: sectionConfig,
+				draftFaqItems: cleanFaqItems(faqItems),
+				draftTeamMembers: cleanTeamMembers(teamMembers),
 			});
 
 			if (isPublic) {
@@ -792,11 +1286,13 @@ export function useCommunityPageForm() {
 					? "Your live page has been updated"
 					: "Your changes have been saved",
 			);
+			return true;
 		} catch (error) {
 			toast.error(
 				"Save failed",
 				error instanceof Error ? error.message : "Please try again",
 			);
+			return false;
 		} finally {
 			setIsSaving(false);
 		}
@@ -812,17 +1308,15 @@ export function useCommunityPageForm() {
 				slug,
 				isPublic: true,
 				pageTitle: pageTitle || undefined,
+				draftTagline: tagline,
 				metaDescription: metaDescription || undefined,
 				draftContent: bioContent,
 				draftBioContent: bioContent,
 				draftServicesContent: servicesContent,
+				draftServiceTags: normalizeServiceTags(draftServiceTags),
 				pricingModeDraft: pricingMode,
 				draftPricingContent: pricingContent,
-				draftPricingTiers: pricingTiers.map((tier) => ({
-					name: tier.name,
-					price: tier.price,
-					description: tier.description || undefined,
-				})),
+				draftPricingTiers: pricingTiers.map(mapTierForSave),
 				galleryItemsDraft: galleryItems.map((item, index) => ({
 					storageId: item.storageId,
 					sortOrder: index,
@@ -860,13 +1354,19 @@ export function useCommunityPageForm() {
 				draftSocialLinks: Object.values(socialLinks).some(Boolean)
 					? socialLinks
 					: undefined,
-				draftTheme: theme,
+				draftTheme: layout,
+				draftColorMode: colorMode,
+				draftAccent: accent,
+				draftSectionConfig: sectionConfig,
+				draftFaqItems: cleanFaqItems(faqItems),
+				draftTeamMembers: cleanTeamMembers(teamMembers),
 			});
 
 			await publishMutation();
 			setIsPublic(true);
 			setSavedSnapshot(createSnapshot({
 				pageTitle,
+				tagline,
 				slug,
 				metaDescription,
 				isPublic: true,
@@ -874,6 +1374,7 @@ export function useCommunityPageForm() {
 				avatarStorageId,
 				bioContent,
 				servicesContent,
+				draftServiceTags,
 				pricingMode,
 				pricingContent,
 				pricingTiers,
@@ -889,7 +1390,12 @@ export function useCommunityPageForm() {
 				byAppointmentOnly,
 				businessSchedule,
 				socialLinks,
-				theme,
+				layout,
+				colorMode,
+				accent,
+				sectionConfig,
+				faqItems,
+				teamMembers,
 			}));
 			toast.success("Published!", "Your community page is now live and public");
 		} catch (error) {
@@ -908,6 +1414,7 @@ export function useCommunityPageForm() {
 			setIsPublic(false);
 			setSavedSnapshot(createSnapshot({
 				pageTitle,
+				tagline,
 				slug,
 				metaDescription,
 				isPublic: false,
@@ -915,6 +1422,7 @@ export function useCommunityPageForm() {
 				avatarStorageId,
 				bioContent,
 				servicesContent,
+				draftServiceTags,
 				pricingMode,
 				pricingContent,
 				pricingTiers,
@@ -930,7 +1438,12 @@ export function useCommunityPageForm() {
 				byAppointmentOnly,
 				businessSchedule,
 				socialLinks,
-				theme,
+				layout,
+				colorMode,
+				accent,
+				sectionConfig,
+				faqItems,
+				teamMembers,
 			}));
 			toast.success("Page is now private", "Only you can see your page");
 		} catch {
@@ -938,9 +1451,24 @@ export function useCommunityPageForm() {
 		}
 	};
 
-	const handleCopyUrl = () => {
+	// Discard = hydrate again from the doc we already have. The URL resets are
+	// only needed here: an unsaved upload leaves a resolved URL behind that the
+	// id reset alone would keep showing. They repopulate from the queries (or
+	// the org-logo fallback) on the next render.
+	const handleDiscard = () => {
+		if (!communityPage) return;
+		hydrateFromDoc(communityPage);
+		setBannerUrl(null);
+		setAvatarUrl(null);
+		setSlugError(null);
+	};
+
+	const handleCopyUrl = async () => {
 		const url = `${window.location.origin}/communities/${slug}`;
-		navigator.clipboard.writeText(url);
+		if (!(await copyToClipboard(url))) {
+			toast.error("Couldn't copy the URL", "Copy it from the address bar");
+			return;
+		}
 		setCopied(true);
 		setTimeout(() => setCopied(false), 2000);
 		toast.success("URL copied", "Share this link with your audience");
@@ -998,6 +1526,8 @@ export function useCommunityPageForm() {
 		mainSettings: {
 			pageTitle,
 			setPageTitle,
+			tagline,
+			setTagline,
 			slug,
 			setSlug,
 			metaDescription,
@@ -1028,8 +1558,18 @@ export function useCommunityPageForm() {
 		},
 		// Design slice
 		design: {
-			theme,
-			setTheme,
+			layout,
+			setLayout,
+			colorMode,
+			setColorMode,
+			accent,
+			setAccent,
+		},
+		// Page sections slice — order + visibility of the public sections
+		sections: {
+			sectionConfig,
+			setSectionConfig,
+			sectionStatus,
 		},
 		// Business Info slice
 		businessInfo: {
@@ -1069,7 +1609,21 @@ export function useCommunityPageForm() {
 			galleryInputRef,
 		},
 		// Services slice
-		services: { servicesContent, setServicesContent },
+		services: {
+			servicesContent,
+			setServicesContent,
+			draftServiceTags,
+			setDraftServiceTags,
+		},
+		// FAQ slice
+		faq: { faqItems, setFaqItems },
+		// Team slice
+		team: {
+			teamMembers,
+			setTeamMembers,
+			uploadTeamPhoto,
+			uploadingTeamPhotoAt,
+		},
 		// Pricing slice
 		pricing: {
 			pricingMode,
@@ -1083,6 +1637,7 @@ export function useCommunityPageForm() {
 		actions: {
 			handleSave,
 			handlePublish,
+			handleDiscard,
 			isSaving,
 			isPublishing,
 			hasUnsavedChanges,
@@ -1098,6 +1653,7 @@ export function useCommunityPageForm() {
 		sectionRefs,
 		sectionRefSetters,
 		dirtyBySection,
+		sectionCompletion,
 		// Loading state
 		isLoading: communityPage === undefined,
 		isRedirecting: communityPage === null,

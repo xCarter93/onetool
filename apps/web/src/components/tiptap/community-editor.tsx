@@ -79,7 +79,7 @@ export function CommunityEditor({
 			Placeholder.configure({
 				placeholder,
 				emptyEditorClass:
-					"before:content-[attr(data-placeholder)] before:text-muted-fg before:float-left before:h-0 before:pointer-events-none",
+					"before:content-[attr(data-placeholder)] before:text-muted-foreground before:float-left before:h-0 before:pointer-events-none",
 			}),
 		],
 		content,
@@ -109,7 +109,11 @@ export function CommunityEditor({
 			const currentStr = JSON.stringify(currentContent);
 
 			if (contentStr !== currentStr && content.content && content.content.length > 0) {
-				editor.commands.setContent(content);
+				// emitUpdate defaults to true in TipTap v3 (it was false in v2).
+				// Loading a document normalizes it — default attrs get filled in — so
+				// an emit here hands the parent JSON that differs from what it just
+				// passed down, and every open of the editor reads as an unsaved edit.
+				editor.commands.setContent(content, { emitUpdate: false });
 			}
 		}
 	}, [editor, content]);
@@ -146,7 +150,7 @@ export function CommunityEditor({
 	return (
 		<div
 			className={cn(
-				"border border-border rounded-xl overflow-hidden bg-bg",
+				"border border-border rounded-xl overflow-hidden bg-background",
 				className
 			)}
 		>
@@ -443,8 +447,8 @@ function LinkPopover({ editor, onSetLink }: LinkPopoverProps) {
 						type="button"
 						className={cn(
 							"inline-flex items-center justify-center size-8 rounded-md transition-colors",
-							"text-muted-fg hover:text-fg hover:bg-muted/50",
-							isActive && "bg-muted text-fg"
+							"text-muted-foreground hover:text-foreground hover:bg-muted/50",
+							isActive && "bg-muted text-foreground"
 						)}
 						aria-label="Add Link"
 						aria-pressed={isActive}
@@ -457,11 +461,11 @@ function LinkPopover({ editor, onSetLink }: LinkPopoverProps) {
 			<PopoverContent className="w-80" align="start">
 				<form onSubmit={handleSubmit} className="space-y-4">
 					<div className="flex items-center justify-between">
-						<h4 className="font-medium text-sm text-fg">Insert Link</h4>
+						<h4 className="font-medium text-sm text-foreground">Insert Link</h4>
 						<button
 							type="button"
 							onClick={() => setOpen(false)}
-							className="text-muted-fg hover:text-fg"
+							className="text-muted-foreground hover:text-foreground"
 						>
 							<X className="size-4" />
 						</button>
@@ -529,7 +533,7 @@ function ImagePopover({ onSetImage }: ImagePopoverProps) {
 						type="button"
 						className={cn(
 							"inline-flex items-center justify-center size-8 rounded-md transition-colors",
-							"text-muted-fg hover:text-fg hover:bg-muted/50"
+							"text-muted-foreground hover:text-foreground hover:bg-muted/50"
 						)}
 						aria-label="Add Image"
 						title="Add Image"
@@ -541,11 +545,11 @@ function ImagePopover({ onSetImage }: ImagePopoverProps) {
 			<PopoverContent className="w-80" align="start">
 				<form onSubmit={handleSubmit} className="space-y-4">
 					<div className="flex items-center justify-between">
-						<h4 className="font-medium text-sm text-fg">Insert Image</h4>
+						<h4 className="font-medium text-sm text-foreground">Insert Image</h4>
 						<button
 							type="button"
 							onClick={() => setOpen(false)}
-							className="text-muted-fg hover:text-fg"
+							className="text-muted-foreground hover:text-foreground"
 						>
 							<X className="size-4" />
 						</button>
@@ -562,7 +566,7 @@ function ImagePopover({ onSetImage }: ImagePopoverProps) {
 							placeholder="https://example.com/image.jpg"
 							autoFocus
 						/>
-						<p className="text-xs text-muted-fg">
+						<p className="text-xs text-muted-foreground">
 							Paste a URL to an image hosted online
 						</p>
 					</div>
@@ -606,9 +610,9 @@ function ToolbarButton({
 			disabled={disabled}
 			className={cn(
 				"inline-flex items-center justify-center size-8 rounded-md transition-colors",
-				"text-muted-fg hover:text-fg hover:bg-muted/50",
+				"text-muted-foreground hover:text-foreground hover:bg-muted/50",
 				"disabled:opacity-50 disabled:pointer-events-none",
-				active && "bg-muted text-fg"
+				active && "bg-muted text-foreground"
 			)}
 			aria-label={title}
 			aria-pressed={active}

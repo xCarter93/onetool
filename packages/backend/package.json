@@ -21,6 +21,10 @@
       "types": "./convex/_generated/server.d.ts",
       "default": "./convex/_generated/server.js"
     },
+    "./convex/communityAnalytics": {
+      "types": "./convex/communityAnalytics.ts",
+      "default": "./convex/communityAnalytics.ts"
+    },
     "./convex/emailMessages": {
       "types": "./convex/emailMessages.ts",
       "default": "./convex/emailMessages.ts"

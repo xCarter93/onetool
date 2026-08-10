@@ -13,7 +13,6 @@ interface SocialLinksProps {
 				google?: string;
 		  }
 		| undefined;
-	bannerUrl: string | null;
 }
 
 function NextdoorIcon({ className }: { className?: string }) {
@@ -84,7 +83,7 @@ function getHref(url: string): string {
 	return url.startsWith("http") ? url : `https://${url}`;
 }
 
-export function SocialLinks({ socialLinks, bannerUrl }: SocialLinksProps) {
+export function SocialLinks({ socialLinks }: SocialLinksProps) {
 	if (!socialLinks) return null;
 
 	const activePlatforms = PLATFORM_CONFIG.filter(
@@ -104,7 +103,7 @@ export function SocialLinks({ socialLinks, bannerUrl }: SocialLinksProps) {
 					aria-label={`Follow on ${platform.label}`}
 					className={cn(
 						"opacity-70 hover:opacity-100 transition-opacity duration-200",
-						bannerUrl ? "text-gray-200" : "text-muted-fg"
+						"text-muted-foreground"
 					)}
 				>
 					{platform.icon}

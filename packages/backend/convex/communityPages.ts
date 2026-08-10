@@ -1,6 +1,6 @@
 import { query, QueryCtx, MutationCtx } from "./_generated/server";
-import { mutation } from "./lib/triggers";
-import { v } from "convex/values";
+import { internalMutation, mutation } from "./lib/triggers";
+import { ConvexError, v, type Infer } from "convex/values";
 import { Doc, Id } from "./_generated/dataModel";
 import {
 	getCurrentUserOrThrow,
@@ -12,6 +12,14 @@ import { optionalUserQuery, userMutation } from "./lib/factories";
 import { emitRecordCreatedEvent } from "./eventBus";
 import { isAdminRole } from "./lib/permissions";
 import { FEATURE_FLAGS, isServerFlagEnabled } from "./lib/posthog";
+import {
+	COMMUNITY_SECTION_LAYOUTS,
+	communityColorModeValidator,
+	communityFaqItemsValidator,
+	communityLayoutValidator,
+	communitySectionConfigValidator,
+	communityTeamMembersValidator,
+} from "./lib/communityTypes";
 
 /** PostHog rollout gate for editing/publishing community pages (fail-open). */
 async function requireCommunityPagesAccess(
@@ -78,9 +86,15 @@ export const upsert = userMutation({
 					name: v.string(),
 					price: v.string(),
 					description: v.optional(v.string()),
+					features: v.optional(v.array(v.string())),
+					highlighted: v.optional(v.boolean()),
 				})
 			)
 		),
+		draftServiceTags: v.optional(v.array(v.string())),
+		draftSectionConfig: v.optional(communitySectionConfigValidator),
+		draftFaqItems: v.optional(communityFaqItemsValidator),
+		draftTeamMembers: v.optional(communityTeamMembersValidator),
 		galleryItemsDraft: v.optional(
 			v.array(
 				v.object({
@@ -133,7 +147,10 @@ export const upsert = userMutation({
 				google: v.optional(v.string()),
 			})
 		),
-		draftTheme: v.optional(v.string()),
+		draftTheme: v.optional(communityLayoutValidator),
+		draftColorMode: v.optional(communityColorModeValidator),
+		draftAccent: v.optional(v.string()),
+		draftTagline: v.optional(v.string()),
 	},
 	handler: async (ctx, args): Promise<CommunityPageId> => {
 		await ctx.requireLevel("community", "modify");
@@ -146,6 +163,25 @@ export const upsert = userMutation({
 		if (args.galleryItemsDraft !== undefined) {
 			validateGalleryItems(args.galleryItemsDraft);
 		}
+		if (args.draftSectionConfig !== undefined) {
+			validateSectionConfig(args.draftSectionConfig);
+		}
+		if (args.draftFaqItems !== undefined) {
+			validateFaqItems(args.draftFaqItems);
+		}
+		if (args.draftTeamMembers !== undefined) {
+			validateTeamMembers(args.draftTeamMembers);
+		}
+		if (args.draftAccent !== undefined) {
+			validateAccent(args.draftAccent);
+		}
+		if (args.draftTagline !== undefined) {
+			validateTagline(args.draftTagline);
+		}
+		const validatedServiceTags =
+			args.draftServiceTags !== undefined
+				? validateServiceTags(args.draftServiceTags)
+				: undefined;
 
 		const existing = await ctx.db
 			.query("communityPages")
@@ -182,8 +218,16 @@ export const upsert = userMutation({
 				updates.draftPricingContent = args.draftPricingContent;
 			if (args.draftPricingTiers !== undefined)
 				updates.draftPricingTiers = args.draftPricingTiers;
+			if (args.draftServiceTags !== undefined)
+				updates.draftServiceTags = validatedServiceTags;
 			if (args.galleryItemsDraft !== undefined)
 				updates.galleryItemsDraft = args.galleryItemsDraft;
+			if (args.draftSectionConfig !== undefined)
+				updates.draftSectionConfig = args.draftSectionConfig;
+			if (args.draftFaqItems !== undefined)
+				updates.draftFaqItems = args.draftFaqItems;
+			if (args.draftTeamMembers !== undefined)
+				updates.draftTeamMembers = args.draftTeamMembers;
 			if (args.pageTitle !== undefined) updates.pageTitle = args.pageTitle;
 			if (args.metaDescription !== undefined)
 				updates.metaDescription = args.metaDescription;
@@ -197,6 +241,14 @@ export const upsert = userMutation({
 				updates.draftSocialLinks = args.draftSocialLinks;
 			if (args.draftTheme !== undefined)
 				updates.draftTheme = args.draftTheme;
+			if (args.draftColorMode !== undefined)
+				updates.draftColorMode = args.draftColorMode;
+			if (args.draftAccent !== undefined)
+				updates.draftAccent = args.draftAccent;
+			// patch drops fields set to undefined, and the editor always sends the
+			// string, so clearing the input genuinely clears the stored tagline.
+			if (args.draftTagline !== undefined)
+				updates.draftTagline = args.draftTagline.trim() || undefined;
 
 			await ctx.db.patch(existing._id, updates);
 			return existing._id;
@@ -220,7 +272,11 @@ export const upsert = userMutation({
 				pricingModeDraft: args.pricingModeDraft,
 				draftPricingContent: args.draftPricingContent,
 				draftPricingTiers: args.draftPricingTiers,
+				draftServiceTags: validatedServiceTags,
 				galleryItemsDraft: args.galleryItemsDraft,
+				draftSectionConfig: args.draftSectionConfig,
+				draftFaqItems: args.draftFaqItems,
+				draftTeamMembers: args.draftTeamMembers,
 				pageTitle: args.pageTitle,
 				metaDescription: args.metaDescription,
 				draftOwnerInfo: args.draftOwnerInfo,
@@ -228,6 +284,9 @@ export const upsert = userMutation({
 				draftBusinessHours: args.draftBusinessHours,
 				draftSocialLinks: args.draftSocialLinks,
 				draftTheme: args.draftTheme,
+				draftColorMode: args.draftColorMode,
+				draftAccent: args.draftAccent,
+				draftTagline: args.draftTagline?.trim() || undefined,
 				createdAt: now,
 				updatedAt: now,
 			});
@@ -246,6 +305,10 @@ const DRAFT_TO_PUBLISHED_MAP: Record<string, string> = {
 	draftServicesContent: "publishedServicesContent",
 	draftPricingContent: "publishedPricingContent",
 	draftPricingTiers: "publishedPricingTiers",
+	draftServiceTags: "publishedServiceTags",
+	draftSectionConfig: "publishedSectionConfig",
+	draftFaqItems: "publishedFaqItems",
+	draftTeamMembers: "publishedTeamMembers",
 	pricingModeDraft: "pricingModePublished",
 	galleryItemsDraft: "galleryItemsPublished",
 	draftOwnerInfo: "publishedOwnerInfo",
@@ -253,6 +316,9 @@ const DRAFT_TO_PUBLISHED_MAP: Record<string, string> = {
 	draftBusinessHours: "publishedBusinessHours",
 	draftSocialLinks: "publishedSocialLinks",
 	draftTheme: "publishedTheme",
+	draftColorMode: "publishedColorMode",
+	draftAccent: "publishedAccent",
+	draftTagline: "publishedTagline",
 };
 
 /**
@@ -279,7 +345,10 @@ export const publish = userMutation({
 			!!page.draftServicesContent ||
 			!!page.draftPricingContent ||
 			(page.draftPricingTiers?.length ?? 0) > 0 ||
-			(page.galleryItemsDraft?.length ?? 0) > 0;
+			(page.galleryItemsDraft?.length ?? 0) > 0 ||
+			(page.draftFaqItems?.length ?? 0) > 0 ||
+			(page.draftTeamMembers?.length ?? 0) > 0 ||
+			!!page.draftTagline;
 		const hasBusinessInfoContent =
 			!!page.draftOwnerInfo ||
 			!!page.draftCredentials ||
@@ -447,6 +516,7 @@ export const getBySlug = query({
 			slug: v.string(),
 			pageTitle: v.string(),
 			metaDescription: v.optional(v.string()),
+			tagline: v.optional(v.string()),
 			content: v.optional(v.any()),
 			bioContent: v.optional(v.any()),
 			servicesContent: v.optional(v.any()),
@@ -457,6 +527,26 @@ export const getBySlug = query({
 					name: v.string(),
 					price: v.string(),
 					description: v.optional(v.string()),
+					features: v.optional(v.array(v.string())),
+					highlighted: v.optional(v.boolean()),
+				})
+			),
+			serviceTags: v.array(v.string()),
+			sectionConfig: v.optional(communitySectionConfigValidator),
+			faqItems: v.array(
+				v.object({
+					question: v.string(),
+					answer: v.string(),
+				})
+			),
+			// Photos are projected as resolved URLs, never storage ids — a public
+			// reader has nothing to do with an id it cannot fetch.
+			teamMembers: v.array(
+				v.object({
+					name: v.string(),
+					role: v.optional(v.string()),
+					bio: v.optional(v.string()),
+					photoUrl: v.optional(v.string()),
 				})
 			),
 			galleryImages: v.array(
@@ -508,6 +598,8 @@ export const getBySlug = query({
 				})
 			),
 			theme: v.optional(v.string()),
+			colorMode: v.optional(communityColorModeValidator),
+			accent: v.optional(v.string()),
 			bannerUrl: v.union(v.string(), v.null()),
 			avatarUrl: v.union(v.string(), v.null()),
 			organization: v.union(
@@ -517,6 +609,14 @@ export const getBySlug = query({
 					email: v.optional(v.string()),
 					phone: v.optional(v.string()),
 					website: v.optional(v.string()),
+					// Town-level location for the public credential strip ("Serving
+					// <city>, <state>"). PUB-05: street/zip/lat/lng are deliberately
+					// excluded — do not widen this beyond city/state.
+					addressCity: v.optional(v.string()),
+					addressState: v.optional(v.string()),
+					// IANA zone, so "Open today" reflects the business's hours
+					// rather than an out-of-area visitor's clock.
+					timezone: v.optional(v.string()),
 				})
 			),
 		})
@@ -557,16 +657,32 @@ export const getBySlug = query({
 			)
 		).filter((item): item is NonNullable<typeof item> => item !== null);
 
+		const teamMembers = await Promise.all(
+			(page.publishedTeamMembers ?? []).map(async (member) => ({
+				name: member.name,
+				role: member.role,
+				bio: member.bio,
+				photoUrl: member.photoStorageId
+					? ((await ctx.storage.getUrl(member.photoStorageId)) ?? undefined)
+					: undefined,
+			}))
+		);
+
 		return {
 			slug: page.slug,
 			pageTitle: page.pageTitle || org?.name || "Community Page",
 			metaDescription: page.metaDescription,
+			tagline: page.publishedTagline || undefined,
 			content: page.publishedContent,
 			bioContent: page.publishedBioContent ?? page.publishedContent,
 			servicesContent: page.publishedServicesContent,
 			pricingMode: (page.pricingModePublished ?? "richText") as PricingMode,
 			pricingContent: page.publishedPricingContent,
 			pricingTiers: page.publishedPricingTiers ?? [],
+			serviceTags: page.publishedServiceTags ?? [],
+			sectionConfig: page.publishedSectionConfig,
+			faqItems: page.publishedFaqItems ?? [],
+			teamMembers,
 			galleryImages,
 			ownerInfo: page.publishedOwnerInfo,
 			// PUB-05: project credentials explicitly. licenseNumber is a sensitive
@@ -584,6 +700,8 @@ export const getBySlug = query({
 			businessHours: page.publishedBusinessHours,
 			socialLinks: page.publishedSocialLinks,
 			theme: page.publishedTheme,
+			colorMode: page.publishedColorMode,
+			accent: page.publishedAccent,
 			bannerUrl,
 			avatarUrl,
 			organization: org
@@ -592,6 +710,9 @@ export const getBySlug = query({
 						email: org.email,
 						phone: org.phone,
 						website: org.website,
+						addressCity: org.addressCity,
+						addressState: org.addressState,
+						timezone: org.timezone,
 					}
 				: null,
 		};
@@ -653,24 +774,29 @@ export const listPublic = query({
 });
 
 /**
- * Submit interest form (creates lead client) - UNAUTHENTICATED
- * This is called from public pages without user authentication
+ * Submit interest form (creates a lead + follow-up task) — UNAUTHENTICATED.
+ *
+ * Internal on purpose. The only way in is the `/community/interest` httpAction,
+ * which proves with a shared secret that the call came through the Next.js
+ * route. That is what makes `ipHash` below trustworthy: a mutation reachable on
+ * the public Convex URL would let a caller mint a fresh hash per request and
+ * walk straight past the per-IP limiter.
  */
-// INTENTIONAL: raw public mutation — unauthenticated lead capture from a public page.
-// Org is discovered from the published page row, not the actor.
-export const submitInterest = mutation({
+export const submitInterest = internalMutation({
 	args: {
 		slug: v.string(),
 		name: v.string(),
 		email: v.string(),
 		phone: v.optional(v.string()),
 		message: v.optional(v.string()),
+		// Service the lead is interested in; must match a published service tag
+		// on the page (see the match check below) or it is silently dropped.
+		service: v.optional(v.string()),
 		// PUB-18: honeypot — hidden form field, non-empty means bot
 		website: v.optional(v.string()),
 		// PUB-19: server-derived client IP hash from the Next.js route, for a
-		// distributed per-IP limit. Optional so a direct caller still hits the
-		// slug/email limits.
-		ipHash: v.optional(v.string()),
+		// distributed per-IP limit. Required: the attested caller always has one.
+		ipHash: v.string(),
 	},
 	handler: async (ctx, args) => {
 		// PUB-18: honeypot tripped — pretend success, create nothing
@@ -679,12 +805,10 @@ export const submitInterest = mutation({
 		}
 
 		// PUB-19: distributed per-IP throttle (rotating-email defense).
-		if (args.ipHash) {
-			await rateLimiter.limit(ctx, "communityInterestPerIp", {
-				key: args.ipHash,
-				throws: true,
-			});
-		}
+		await rateLimiter.limit(ctx, "communityInterestPerIp", {
+			key: args.ipHash,
+			throws: true,
+		});
 
 		// Rate limit per slug (org's community page)
 		await rateLimiter.limit(ctx, "communityInterest", {
@@ -725,23 +849,42 @@ export const submitInterest = mutation({
 
 		const normalizedEmail = args.email.toLowerCase().trim();
 
+		// Attacker-controlled: must match a published service tag on this page
+		// (case-insensitively) or it's dropped. A mismatch is more likely a
+		// stale cached form than an attack, so we drop rather than throw and
+		// risk losing a real lead.
+		let sanitizedService: string | undefined;
+		if (args.service) {
+			const trimmedService = args.service.trim().substring(0, 40);
+			const publishedTags = page.publishedServiceTags ?? [];
+			sanitizedService = publishedTags.find(
+				(tag) => tag.toLowerCase() === trimmedService.toLowerCase()
+			);
+		}
+
 		// Build task description with all form data
 		const descParts: string[] = [];
 		descParts.push(`Name: ${sanitizedName}`);
 		descParts.push(`Email: ${normalizedEmail}`);
+		let sanitizedPhone: string | undefined;
 		if (args.phone) {
 			// PUB-13: strip non-phone chars and cap length before interpolating
-			const sanitizedPhone = args.phone
-				.replace(/[^0-9+().x\-\s]/gi, "")
-				.replace(/\s+/g, " ")
-				.trim()
-				.substring(0, 40);
+			sanitizedPhone =
+				args.phone
+					.replace(/[^0-9+().x\-\s]/gi, "")
+					.replace(/\s+/g, " ")
+					.trim()
+					.substring(0, 40) || undefined;
 			if (sanitizedPhone) {
 				descParts.push(`Phone: ${sanitizedPhone}`);
 			}
 		}
+		if (sanitizedService) {
+			descParts.push(`Service: ${sanitizedService}`);
+		}
+		let sanitizedMessage: string | undefined;
 		if (args.message) {
-			const sanitizedMessage = args.message.trim().substring(0, 2000);
+			sanitizedMessage = args.message.trim().substring(0, 2000) || undefined;
 			if (sanitizedMessage) {
 				descParts.push(`\nMessage:\n${sanitizedMessage}`);
 			}
@@ -776,6 +919,22 @@ export const submitInterest = mutation({
 			type: "internal",
 			source: "public_form",
 			assigneeUserId: assigneeUserId || undefined,
+		});
+
+		// The lead row is the durable record of the request; the task is the
+		// follow-up nudge. Only sanitized values land here — never args.*.
+		await ctx.db.insert("communityLeads", {
+			orgId: page.orgId,
+			communityPageId: page._id,
+			slug: page.slug,
+			name: sanitizedName,
+			email: normalizedEmail,
+			phone: sanitizedPhone,
+			service: sanitizedService,
+			message: sanitizedMessage,
+			status: "new",
+			taskId,
+			submittedAt: Date.now(),
 		});
 
 		// Public submission — no actor user, but task record_created automations
@@ -866,12 +1025,19 @@ async function validateSlugUnique(
 }
 
 function validatePricingTiers(
-	tiers: Array<{ name: string; price: string; description?: string }>
+	tiers: Array<{
+		name: string;
+		price: string;
+		description?: string;
+		features?: string[];
+		highlighted?: boolean;
+	}>
 ): void {
 	if (tiers.length > 10) {
 		throw new Error("You can add up to 10 pricing tiers");
 	}
 
+	let highlightedCount = 0;
 	for (const tier of tiers) {
 		const name = tier.name.trim();
 		const price = tier.price.trim();
@@ -894,7 +1060,61 @@ function validatePricingTiers(
 				"Pricing tier description must be 240 characters or less"
 			);
 		}
+		if (tier.features !== undefined) {
+			if (tier.features.length > 6) {
+				throw new Error("Each pricing tier can have up to 6 features");
+			}
+			for (const feature of tier.features) {
+				const trimmedFeature = feature.trim();
+				if (!trimmedFeature) {
+					throw new Error("Pricing tier features cannot be empty");
+				}
+				if (trimmedFeature.length > 80) {
+					throw new Error(
+						"Pricing tier feature must be 80 characters or less"
+					);
+				}
+			}
+		}
+		if (tier.highlighted) {
+			highlightedCount++;
+		}
 	}
+	if (highlightedCount > 1) {
+		throw new Error("Only one pricing tier can be highlighted");
+	}
+}
+
+/**
+ * Validates and normalizes public-facing service tags. This is a security
+ * boundary (values render on the public page and are matched against
+ * submitInterest's service field), not just UX validation.
+ */
+function validateServiceTags(tags: string[]): string[] {
+	if (tags.length > 8) {
+		throw new ConvexError({
+			code: "BAD_REQUEST",
+			message: "You can add up to 8 service tags",
+		});
+	}
+
+	const seen = new Set<string>();
+	const result: string[] = [];
+	for (const rawTag of tags) {
+		const tag = rawTag.trim();
+		if (!tag) continue; // drop empties
+		if (tag.length > 40) {
+			throw new ConvexError({
+				code: "BAD_REQUEST",
+				message: "Service tag must be 40 characters or less",
+			});
+		}
+		const key = tag.toLowerCase();
+		if (seen.has(key)) continue; // case-insensitive dedupe
+		seen.add(key);
+		result.push(tag);
+	}
+	return result;
 }
 
 function validateGalleryItems(
@@ -916,7 +1136,117 @@ function validateGalleryItems(
 	}
 }
 
+/**
+ * Section order/visibility is a permutation, not a free list: the same section
+ * twice would render twice, and an unknown id would render nothing while
+ * silently occupying a slot.
+ */
+function validateSectionConfig(
+	config: Infer<typeof communitySectionConfigValidator>
+): void {
+	const seen = new Set<string>();
+	for (const entry of config) {
+		if (seen.has(entry.id)) {
+			throw new Error("Each page section can only be listed once");
+		}
+		seen.add(entry.id);
+		// The validator accepts every layout id; only this pairing check knows
+		// that "carousel" is meaningless on Pricing.
+		const allowed = COMMUNITY_SECTION_LAYOUTS[entry.id] ?? [];
+		if (entry.layout !== undefined && !allowed.includes(entry.layout)) {
+			throw new Error(
+				`"${entry.layout}" is not a layout the ${entry.id} section offers`
+			);
+		}
+	}
+}
+
+/**
+ * FAQ and team rows are attacker-reachable only through the authenticated editor,
+ * but they land verbatim on a public page — so length is capped here rather than
+ * left to whatever the form happens to allow.
+ */
+function validateFaqItems(
+	items: Array<{ question: string; answer: string }>
+): void {
+	if (items.length > 12) {
+		throw new Error("You can add up to 12 questions");
+	}
+	for (const item of items) {
+		const question = item.question.trim();
+		const answer = item.answer.trim();
+		if (!question) {
+			throw new Error("Each question needs to be filled in");
+		}
+		if (question.length > 200) {
+			throw new Error("A question must be 200 characters or less");
+		}
+		if (!answer) {
+			throw new Error("Each question needs an answer");
+		}
+		if (answer.length > 1200) {
+			throw new Error("An answer must be 1200 characters or less");
+		}
+	}
+}
+
+function validateTeamMembers(
+	members: Array<{ name: string; role?: string; bio?: string }>
+): void {
+	if (members.length > 12) {
+		throw new Error("You can add up to 12 team members");
+	}
+	for (const member of members) {
+		const name = member.name.trim();
+		if (!name) {
+			throw new Error("Each team member needs a name");
+		}
+		if (name.length > 80) {
+			throw new Error("A team member name must be 80 characters or less");
+		}
+		if (member.role && member.role.trim().length > 80) {
+			throw new Error("A team member role must be 80 characters or less");
+		}
+		if (member.bio && member.bio.trim().length > 400) {
+			throw new Error("A team member bio must be 400 characters or less");
+		}
+	}
+}
+
+/**
+ * The accent is written into an inline `style` on a page any stranger can load,
+ * so it has to be a colour and nothing else. React does not sanitize style
+ * values, and `#dc2626;background:url(...)` is a valid string. Six hex digits
+ * or three, nothing more — the renderer re-serializes from numbers on top of
+ * this, so a bad value could never reach the attribute even if it were stored.
+ */
+function validateAccent(accent: string): void {
+	if (!/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(accent.trim())) {
+		throw new Error("An accent colour must be a hex value like #00a6f4");
+	}
+}
+
+/**
+ * The tagline is a headline on a public page, so it is capped rather than left
+ * to whatever the form allows. Measured after trimming — the stored value is
+ * trimmed too, so whitespace can never buy extra length.
+ */
+function validateTagline(tagline: string): void {
+	if (tagline.trim().length > 80) {
+		throw new ConvexError({
+			code: "BAD_REQUEST",
+			message: "Tagline must be 80 characters or less",
+		});
+	}
+}
+
 export const __testUtils = {
 	validatePricingTiers,
 	validateGalleryItems,
+	validateServiceTags,
+	validateSectionConfig,
+	validateFaqItems,
+	validateTeamMembers,
+	validateAccent,
+	validateTagline,
 };

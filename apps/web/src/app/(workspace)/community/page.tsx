@@ -1,33 +1,28 @@
 "use client";
 
-import { PermissionGate } from "@/components/domain/permission-gate";
-import { LearnMoreLink } from "@/components/help/learn-more";
-import React, { useState, useCallback, useEffect } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import { useMutation, useQuery } from "convex/react";
 import {
 	Globe,
 	ImageIcon,
 	Send,
 	Loader2,
-	Clock,
-	CheckCircle2,
 	ExternalLink,
-	Copy,
 	Check,
 	Pencil,
-	Circle,
 	Sparkles,
-	Palette,
-	BadgeCheck,
-	FileText,
-	Images,
-	Wrench,
-	Tags,
-	ArrowRight,
+	QrCode,
 } from "lucide-react";
 
+import { hasRichTextContent } from "@/lib/community-sections";
+import { copyToClipboard } from "@/lib/clipboard";
+import {
+	PAGE_LAYOUT_LABELS,
+	resolvePageLayout,
+} from "@/lib/community-layouts";
+import { PermissionGate } from "@/components/domain/permission-gate";
+import { LearnMoreLink } from "@/components/help/learn-more";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Field, FieldLabel, FieldDescription } from "@/components/ui/field";
@@ -37,56 +32,45 @@ import {
 	InputGroupInput,
 	InputGroupText,
 } from "@/components/ui/input-group";
-import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-	Frame,
-	FramePanel,
-	FrameHeader,
-	FrameTitle,
-	FrameDescription,
-} from "@/components/reui/frame";
+import { Frame, FramePanel } from "@/components/reui/frame";
 import { DotField } from "@/components/ui/dot-field";
 import { Illustration } from "@/components/illustrations";
-import { StatusBadge } from "@/components/domain/status-badge";
 import { useToast } from "@/hooks/use-toast";
-import { cn } from "@/lib/utils";
 import { api } from "@onetool/backend/convex/_generated/api";
 import type { Doc } from "@onetool/backend/convex/_generated/dataModel";
 import { useOrganization } from "@clerk/nextjs";
+
+import { ShareKitDialog } from "./components/share-kit-dialog";
+import { RequestsTable, type RequestFilter } from "./components/requests-table";
+import { PageCard, type SetupStep } from "./components/page-card";
+import {
+	PerformancePanel,
+	type RangeDays,
+} from "./components/performance-panel";
 
 const COPY_FEEDBACK_DURATION_MS = 2000;
 
 type CommunityPageDoc = Doc<"communityPages">;
 
-/** Mirrors the editor's SECTION_LIST ids so deep links land on the right section. */
+/**
+ * Mirrors the editor's SECTION_LIST ids so deep links land on the right
+ * section. `todo` is what the owner still has to do, phrased as the action.
+ */
 const SECTION_CHECKLIST: Array<{
 	id: string;
-	label: string;
-	blurb: string;
-	icon: React.ComponentType<{ className?: string }>;
+	todo: string;
 	isComplete: (page: CommunityPageDoc) => boolean;
 }> = [
 	{
 		id: "mainSettings",
-		label: "Branding & SEO",
-		blurb: "Banner, logo, and search description",
-		icon: Sparkles,
+		todo: "Add a banner and a search description",
 		isComplete: (p) =>
 			!!p.bannerStorageId || !!p.avatarStorageId || !!p.metaDescription,
 	},
 	{
-		id: "design",
-		label: "Design",
-		blurb: "Pick a visual theme",
-		icon: Palette,
-		isComplete: (p) => !!p.draftTheme,
-	},
-	{
 		id: "businessInfo",
-		label: "Business info",
-		blurb: "Credentials, hours, and social links",
-		icon: BadgeCheck,
+		todo: "Add credentials and business hours",
 		isComplete: (p) =>
 			!!p.draftOwnerInfo ||
 			!!p.draftCredentials ||
@@ -95,32 +79,24 @@ const SECTION_CHECKLIST: Array<{
 	},
 	{
 		id: "bio",
-		label: "Bio",
-		blurb: "Tell your story",
-		icon: FileText,
+		todo: "Write a short bio",
 		isComplete: (p) =>
 			hasRichTextContent(p.draftBioContent) ||
 			hasRichTextContent(p.draftContent),
 	},
 	{
 		id: "imageGallery",
-		label: "Gallery",
-		blurb: "Show off your best work",
-		icon: Images,
+		todo: "Add 3 photos of recent work",
 		isComplete: (p) => (p.galleryItemsDraft?.length ?? 0) > 0,
 	},
 	{
 		id: "services",
-		label: "Services",
-		blurb: "What you offer",
-		icon: Wrench,
+		todo: "List the services you offer",
 		isComplete: (p) => hasRichTextContent(p.draftServicesContent),
 	},
 	{
 		id: "pricing",
-		label: "Pricing",
-		blurb: "Tiers or a custom write-up",
-		icon: Tags,
+		todo: "Add pricing tiers or a write-up",
 		isComplete: (p) =>
 			(p.draftPricingTiers?.length ?? 0) > 0 ||
 			hasRichTextContent(p.draftPricingContent),
@@ -132,7 +108,7 @@ const CREATE_PROOF_POINTS = [
 		icon: Globe,
 		title: "A real web presence",
 		description:
-			"A polished public landing page for your business — no website builder required.",
+			"A polished public landing page for your business. No website builder required.",
 	},
 	{
 		icon: ImageIcon,
@@ -144,27 +120,14 @@ const CREATE_PROOF_POINTS = [
 		icon: Send,
 		title: "Leads, captured",
 		description:
-			"Visitors submit interest forms that land in your tasks automatically.",
+			"Visitors submit quote requests that land in your request inbox and your tasks.",
 	},
 ] as const;
 
-/** True when TipTap JSON actually contains text or media, not just empty nodes. */
-function hasRichTextContent(doc: unknown): boolean {
-	if (!doc || typeof doc !== "object") return false;
-	const node = doc as { type?: string; text?: string; content?: unknown[] };
-	if (node.type === "text") return !!node.text?.trim();
-	if (node.type === "image") return true;
-	return (
-		Array.isArray(node.content) && node.content.some(hasRichTextContent)
-	);
-}
-
-function formatDate(timestamp?: number) {
-	if (!timestamp) return null;
+function formatShortDate(timestamp: number): string {
 	return new Date(timestamp).toLocaleDateString("en-US", {
 		month: "short",
 		day: "numeric",
-		year: "numeric",
 	});
 }
 
@@ -189,7 +152,11 @@ function PageHeader({
 	);
 }
 
-/** Miniature browser-framed mock of the public page that live-mirrors the claim form. */
+/**
+ * Miniature of the public page that live-mirrors the claim form. Mirrors the
+ * Showcase layout's structure — banner, overlapping avatar, credential chips,
+ * photo strip, dual CTA — so what the owner types is what they will get.
+ */
 function GhostPreview({
 	slug,
 	pageTitle,
@@ -202,8 +169,8 @@ function GhostPreview({
 	const displayTitle = pageTitle || orgName || "Your Business";
 	const initial = displayTitle.charAt(0).toUpperCase() || "B";
 	return (
-		<div className="relative w-full max-w-sm">
-			<div className="rounded-xl border border-border/80 bg-background shadow-lg shadow-black/[0.06] overflow-hidden">
+		<div className="relative w-full max-w-lg" aria-hidden="true">
+			<div className="overflow-hidden rounded-xl border border-border/80 bg-background shadow-lg shadow-black/[0.06]">
 				{/* Browser chrome */}
 				<div className="flex items-center gap-2 border-b border-border/60 bg-muted/40 px-3 py-2.5">
 					<div className="flex gap-1.5" aria-hidden>
@@ -211,34 +178,51 @@ function GhostPreview({
 						<span className="size-2.5 rounded-full bg-border" />
 						<span className="size-2.5 rounded-full bg-border" />
 					</div>
-					<div className="ml-2 flex-1 truncate rounded-md bg-background border border-border/60 px-2.5 py-1 text-[11px] font-mono text-muted-foreground">
+					<div className="ml-2 flex-1 truncate rounded-md border border-border/60 bg-background px-2.5 py-1.5 font-mono text-xs text-muted-foreground">
 						onetool.biz/communities/
 						<span className="text-foreground">{slug || "your-business"}</span>
 					</div>
 				</div>
-				{/* Mock page body */}
-				<div className="relative h-20">
+
+				{/* Banner + floating CTA, as on the live page */}
+				<div className="relative h-[92px]">
 					<DotField className="text-primary opacity-60 [mask-image:linear-gradient(to_bottom,black,transparent)]" />
+					<span
+						className="absolute right-3 top-3 rounded-md bg-background px-2.5 py-1 text-[11px] font-semibold text-primary shadow-sm"
+						aria-hidden
+					>
+						Request a quote
+					</span>
 				</div>
+
 				<div className="px-5 pb-5">
-					<div className="-mt-7 mb-3 flex size-14 items-center justify-center rounded-xl border-4 border-background bg-primary/15 text-lg font-bold text-primary">
+					<div className="-mt-7 flex size-14 items-center justify-center rounded-xl border-4 border-background bg-primary/15 text-lg font-bold text-primary">
 						{initial}
 					</div>
-					<p className="truncate text-sm font-semibold text-foreground">
+					<p className="mt-3 truncate text-base font-bold tracking-tight text-foreground">
 						{displayTitle}
 					</p>
-					<div className="mt-3 space-y-2" aria-hidden>
-						<div className="h-2 w-4/5 rounded-full bg-muted" />
-						<div className="h-2 w-3/5 rounded-full bg-muted" />
+					<p className="mt-0.5 text-xs text-muted-foreground">
+						Your services · Your town
+					</p>
+					{/* Credential strip */}
+					<div className="mt-2.5 flex flex-wrap gap-1.5" aria-hidden>
+						<span className="rounded-full border border-border px-2.5 py-0.5 text-[11px] text-muted-foreground">
+							Licensed &amp; insured
+						</span>
+						<span className="rounded-full border border-border px-2.5 py-0.5 text-[11px] text-muted-foreground">
+							Open today
+						</span>
 					</div>
-					<div className="mt-4 grid grid-cols-3 gap-2" aria-hidden>
-						<div className="aspect-square rounded-lg bg-muted/80" />
-						<div className="aspect-square rounded-lg bg-muted/80" />
-						<div className="aspect-square rounded-lg bg-muted/80" />
+					{/* Photo collage */}
+					<div className="mt-3 grid grid-cols-3 gap-1.5" aria-hidden>
+						<div className="aspect-4/3 rounded-md bg-muted" />
+						<div className="aspect-4/3 rounded-md bg-muted" />
+						<div className="aspect-4/3 rounded-md bg-muted" />
 					</div>
-					<div className="mt-4 flex gap-2" aria-hidden>
+					<div className="mt-3.5 flex gap-2" aria-hidden>
 						<div className="h-7 flex-1 rounded-md bg-primary/80" />
-						<div className="h-7 w-16 rounded-md bg-muted" />
+						<div className="h-7 w-20 rounded-md bg-muted" />
 					</div>
 				</div>
 			</div>
@@ -256,12 +240,8 @@ function HeroSkeleton() {
 					<Skeleton className="h-4 w-64" />
 				</div>
 			</div>
-			<Skeleton className="h-56 w-full rounded-xl" />
-			<div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-				{Array.from({ length: 4 }).map((_, i) => (
-					<Skeleton key={i} className="h-20 rounded-xl" />
-				))}
-			</div>
+			<Skeleton className="h-32 w-full rounded-xl" />
+			<Skeleton className="h-64 w-full rounded-xl" />
 		</div>
 	);
 }
@@ -274,16 +254,16 @@ function CommunityPageContent() {
 	// Queries
 	const communityPage = useQuery(api.communityPages.get);
 	const organization = useQuery(api.organizations.get);
-	const bannerUrl = useQuery(
-		api.communityPages.getImageUrl,
-		communityPage?.bannerStorageId
-			? { storageId: communityPage.bannerStorageId }
-			: "skip",
-	);
 	const avatarUrl = useQuery(
 		api.communityPages.getImageUrl,
 		communityPage?.avatarStorageId
 			? { storageId: communityPage.avatarStorageId }
+			: "skip",
+	);
+	const bannerUrl = useQuery(
+		api.communityPages.getImageUrl,
+		communityPage?.bannerStorageId
+			? { storageId: communityPage.bannerStorageId }
 			: "skip",
 	);
 
@@ -297,6 +277,9 @@ function CommunityPageContent() {
 	const [isCreating, setIsCreating] = useState(false);
 	const [copied, setCopied] = useState(false);
 	const [debouncedSlug, setDebouncedSlug] = useState("");
+	const [shareOpen, setShareOpen] = useState(false);
+	const [requestFilter, setRequestFilter] = useState<RequestFilter>("new");
+	const [rangeDays, setRangeDays] = useState<RangeDays>(30);
 
 	// Reset the debounced value immediately when the slug is too short.
 	if (slug.length < 3 && debouncedSlug !== "") {
@@ -313,6 +296,18 @@ function CommunityPageContent() {
 	const isSlugAvailable = useQuery(
 		api.communityPages.checkSlugAvailable,
 		debouncedSlug.length >= 3 ? { slug: debouncedSlug } : "skip",
+	);
+
+	// Requests only exist once a page does. The filter is a query arg, so
+	// toggling it re-subscribes; the counts are computed over the unfiltered
+	// set either way, so they never disagree with each other.
+	const inbox = useQuery(
+		api.communityLeads.list,
+		communityPage ? (requestFilter === "new" ? { status: "new" } : {}) : "skip",
+	);
+	const stats = useQuery(
+		api.communityAnalytics.dashboard,
+		communityPage ? { days: rangeDays } : "skip",
 	);
 
 	// Initialize form from organization data once it loads (no community page yet).
@@ -381,20 +376,21 @@ function CommunityPageContent() {
 	};
 
 	const communitySlug = communityPage?.slug;
-	const handleCopyUrl = useCallback(() => {
+	const handleCopyUrl = useCallback(async () => {
 		if (!communitySlug) return;
 		const url = `${window.location.origin}/communities/${communitySlug}`;
-		navigator.clipboard.writeText(url);
+		if (!(await copyToClipboard(url))) {
+			toast.error("Couldn't copy the URL", "Copy it from the address bar");
+			return;
+		}
 		setCopied(true);
 		setTimeout(() => setCopied(false), COPY_FEEDBACK_DURATION_MS);
 		toast.success("URL copied", "Share this link with your audience");
 	}, [communitySlug, toast]);
 
 	// Relative path keeps SSR/client markup identical; the absolute URL is only
-	// built inside handleCopyUrl where window is guaranteed.
-	const pagePath = communityPage?.slug
-		? `/communities/${communityPage.slug}`
-		: "";
+	// built where window is guaranteed.
+	const pagePath = communitySlug ? `/communities/${communitySlug}` : "";
 
 	// Loading state
 	if (communityPage === undefined) {
@@ -420,12 +416,16 @@ function CommunityPageContent() {
 
 				{/* Claim hero */}
 				<Frame>
-					<FramePanel className="p-0 overflow-hidden">
-						<div className="grid items-stretch lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]">
+					<FramePanel className="overflow-hidden p-0">
+						<div className="grid items-stretch lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
 							{/* Left: pitch + claim form */}
 							<div className="space-y-7 px-7 py-8 sm:px-9">
 								<div className="space-y-3">
-									<Illustration name="community-page" size="md" className="-ml-4 w-40" />
+									<Illustration
+										name="community-page"
+										size="md"
+										className="-ml-4 w-40"
+									/>
 									<span className="inline-flex items-center gap-1.5 rounded-full border border-primary/20 bg-primary/5 px-3 py-1 text-xs font-medium text-primary">
 										<Globe className="size-3.5" />
 										Your public page
@@ -467,19 +467,27 @@ function CommunityPageContent() {
 													!!slugError || slugStatus === "taken" || undefined
 												}
 											/>
-											<InputGroupAddon align="inline-end">
+											<InputGroupAddon align="inline-end" role="status">
 												{slugStatus === "checking" && (
-													<Loader2 className="size-4 animate-spin text-muted-foreground" />
+													<>
+														<Loader2
+															className="size-4 animate-spin text-muted-foreground motion-reduce:animate-none"
+															aria-hidden="true"
+														/>
+														<span className="sr-only">
+															Checking availability
+														</span>
+													</>
 												)}
 												{slugStatus === "available" && (
-													<span className="flex items-center gap-1.5 text-xs font-medium text-emerald-600 dark:text-emerald-400">
-														<span className="size-1.5 rounded-full bg-emerald-500" />
+													<span className="flex items-center gap-1.5 text-xs font-medium text-success-foreground">
+														<span className="size-1.5 rounded-full bg-success" />
 														Available
 													</span>
 												)}
 												{slugStatus === "taken" && (
-													<span className="flex items-center gap-1.5 text-xs font-medium text-red-600 dark:text-red-400">
-														<span className="size-1.5 rounded-full bg-red-500" />
+													<span className="flex items-center gap-1.5 text-xs font-medium text-danger-foreground">
+														<span className="size-1.5 rounded-full bg-danger" />
 														Taken
 													</span>
 												)}
@@ -499,11 +507,11 @@ function CommunityPageContent() {
 										disabled={isCreating || slugStatus !== "available"}
 									>
 										{isCreating ? (
-											<Loader2 className="size-4 mr-2 animate-spin" />
+											<Loader2 className="size-4 mr-2 animate-spin motion-reduce:animate-none" />
 										) : (
 											<Sparkles className="size-4 mr-2" />
 										)}
-										Claim your page
+										{isCreating ? "Claiming…" : "Claim your page"}
 									</Button>
 
 									<ul className="flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-muted-foreground">
@@ -527,13 +535,16 @@ function CommunityPageContent() {
 							</div>
 
 							{/* Right: live-mirroring ghost preview */}
-							<div className="relative hidden items-center justify-center border-l border-border/60 bg-muted/40 p-8 lg:flex">
+							<div className="relative hidden items-center justify-center border-l border-border/60 bg-muted/40 px-6 py-8 lg:flex">
 								<DotField className="text-primary opacity-[0.45] [mask-image:radial-gradient(ellipse_at_center,black_35%,transparent_78%)]" />
 								<GhostPreview
 									slug={slug}
 									pageTitle={pageTitle}
 									orgName={organization?.name}
 								/>
+								<span className="absolute bottom-5 left-0 right-0 text-center text-xs text-muted-foreground">
+									Updates as you type
+								</span>
 							</div>
 						</div>
 					</FramePanel>
@@ -546,12 +557,8 @@ function CommunityPageContent() {
 							<div className="mb-3 flex size-9 items-center justify-center rounded-lg bg-primary/10">
 								<Icon className="size-4.5 text-primary" />
 							</div>
-							<h3 className="text-sm font-semibold text-foreground">
-								{title}
-							</h3>
-							<p className="mt-1 text-sm text-muted-foreground">
-								{description}
-							</p>
+							<h3 className="text-sm font-semibold text-foreground">{title}</h3>
+							<p className="mt-1 text-sm text-muted-foreground">{description}</p>
 						</FramePanel>
 					))}
 				</Frame>
@@ -560,309 +567,122 @@ function CommunityPageContent() {
 	}
 
 	// ------------------------------------------------------------------
-	// Page exists — profile hero (draft or live)
+	// Page exists — results-first control room
 	// ------------------------------------------------------------------
 	const isLive = communityPage.isPublic;
 	const displayTitle =
-		communityPage.pageTitle ||
-		clerkOrganization?.name ||
-		"Your Community Page";
-	const completedSections = SECTION_CHECKLIST.filter((s) =>
-		s.isComplete(communityPage),
-	);
-	const completionPct = Math.round(
-		(completedSections.length / SECTION_CHECKLIST.length) * 100,
-	);
+		communityPage.pageTitle || clerkOrganization?.name || "Your Community Page";
+	const remainingSteps: SetupStep[] = SECTION_CHECKLIST.filter(
+		(section) => !section.isComplete(communityPage),
+	).map((section) => ({ id: section.id, label: section.todo }));
+	const completedCount = SECTION_CHECKLIST.length - remainingSteps.length;
+	const shareUrl =
+		typeof window !== "undefined" && communitySlug
+			? `${window.location.origin}${pagePath}`
+			: "";
+	const locationLine = [organization?.addressCity, organization?.addressState]
+		.filter(Boolean)
+		.join(", ");
+
+	const headline = isLive
+		? `onetool.biz${pagePath}${
+				communityPage.publishedAt
+					? ` · live since ${formatShortDate(communityPage.publishedAt)}`
+					: " · live"
+			}`
+		: `onetool.biz${pagePath} · draft, not published yet`;
 
 	return (
-		<div className="space-y-8 p-6">
-			<PageHeader
-				subtitle={
-					isLive
-						? "Your public page is live and collecting leads"
-						: "Your public page is in draft — publish when ready"
-				}
-			>
+		<div className="space-y-6 p-6">
+			<PageHeader subtitle={headline}>
 				<div className="flex flex-wrap items-center gap-2.5">
+					<Button
+						variant="outline"
+						size="sm"
+						onClick={() => setShareOpen(true)}
+						disabled={!isLive}
+					>
+						<QrCode className="size-4 mr-2" />
+						QR &amp; share kit
+					</Button>
 					{isLive ? (
-						<>
-							<Button variant="ghost" size="sm" onClick={handleCopyUrl}>
-								{copied ? (
-									<>
-										<Check className="size-4 mr-2 text-emerald-600" />
-										Copied!
-									</>
-								) : (
-									<>
-										<Copy className="size-4 mr-2" />
-										Copy link
-									</>
-								)}
-							</Button>
-							<Button
-								variant="outline"
-								size="sm"
-								nativeButton={false}
-								render={
-									<a
-										href={pagePath}
-										target="_blank"
-										rel="noopener noreferrer"
-									/>
-								}
-							>
-								<ExternalLink className="size-4 mr-2" />
-								View live
-							</Button>
-							<Button
-								variant="default"
-								size="sm"
-								onClick={() => router.push("/community/edit")}
-							>
-								<Pencil className="size-4 mr-2" />
-								Edit page
-							</Button>
-						</>
+						<Button
+							variant="outline"
+							size="sm"
+							nativeButton={false}
+							render={
+								<a href={pagePath} target="_blank" rel="noopener noreferrer" />
+							}
+						>
+							<ExternalLink className="size-4 mr-2" />
+							View live
+						</Button>
 					) : (
-						<>
-							<Button
-								variant="outline"
-								size="sm"
-								onClick={() => router.push("/community/edit")}
-							>
-								<Pencil className="size-4 mr-2" />
-								Edit page
-							</Button>
-							<Button
-								variant="default"
-								size="sm"
-								onClick={() => router.push("/community/edit")}
-							>
-								<Send className="size-4 mr-2" />
-								Publish to public
-							</Button>
-						</>
+						<Button
+							variant="outline"
+							size="sm"
+							onClick={() => router.push("/community/edit")}
+						>
+							<Send className="size-4 mr-2" />
+							Review and publish
+						</Button>
 					)}
+					<Button
+						variant="default"
+						size="sm"
+						onClick={() => router.push("/community/edit")}
+					>
+						<Pencil className="size-4 mr-2" />
+						Edit page
+					</Button>
 				</div>
 			</PageHeader>
 
-			{/* Profile hero */}
-			<Frame>
-				<FramePanel className="p-0 overflow-hidden">
-					<DotField className="text-primary opacity-45 [mask-image:radial-gradient(120%_160%_at_100%_0%,black,transparent_75%)]" />
-					{bannerUrl && (
-						<div className="relative h-40 md:h-52">
-							{/* eslint-disable-next-line @next/next/no-img-element */}
-							<img
-								src={bannerUrl}
-								alt=""
-								className="size-full object-cover"
-							/>
-						</div>
-					)}
+			<div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_400px]">
+				<PerformancePanel
+					stats={stats}
+					days={rangeDays}
+					onDaysChange={setRangeDays}
+				/>
+				<PageCard
+					displayTitle={displayTitle}
+					pagePath={pagePath}
+					isLive={isLive}
+					bannerUrl={bannerUrl}
+					avatarUrl={avatarUrl}
+					locationLine={locationLine || undefined}
+					galleryCount={communityPage.galleryItemsDraft?.length ?? 0}
+					layoutLabel={
+						PAGE_LAYOUT_LABELS[resolvePageLayout(communityPage.draftTheme)]
+					}
+					remainingSteps={remainingSteps}
+					completedCount={completedCount}
+					totalSteps={SECTION_CHECKLIST.length}
+					copied={copied}
+					onCopy={handleCopyUrl}
+					onShare={() => setShareOpen(true)}
+				/>
+			</div>
 
-					{/* Identity row — text vertically centered; illustration card right */}
-					<div className="relative flex flex-col gap-6 p-6 md:flex-row md:items-center md:justify-between sm:p-7">
-						<div
-							className={cn(
-								"flex gap-4 min-w-0",
-								bannerUrl ? "items-end" : "items-center",
-							)}
-						>
-							<div
-								className={cn(
-									"flex size-20 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-primary/10 shadow-sm",
-									bannerUrl &&
-										"-mt-16 border-4 border-[var(--frame-panel-bg)]",
-								)}
-							>
-								{avatarUrl ? (
-									// eslint-disable-next-line @next/next/no-img-element
-									<img
-										src={avatarUrl}
-										alt={`${displayTitle} logo`}
-										className="size-full object-cover"
-									/>
-								) : (
-									<span className="text-2xl font-bold text-primary">
-										{displayTitle.charAt(0).toUpperCase()}
-									</span>
-								)}
-							</div>
-							<div className="min-w-0">
-								<div className="flex items-center gap-3">
-									<h2 className="truncate text-xl font-bold tracking-tight text-foreground sm:text-2xl">
-										{displayTitle}
-									</h2>
-									{isLive ? (
-										<StatusBadge
-											role="success"
-											appearance="soft"
-											className="shrink-0 gap-1.5"
-										>
-											<span className="relative flex size-2">
-												<span className="absolute inline-flex size-full animate-ping rounded-full bg-emerald-400 opacity-75 motion-reduce:animate-none" />
-												<span className="relative inline-flex size-2 rounded-full bg-emerald-500" />
-											</span>
-											Live
-										</StatusBadge>
-									) : (
-										<StatusBadge
-											role="warning"
-											appearance="soft"
-											className="shrink-0 gap-1.5"
-										>
-											<Clock className="size-3" />
-											Draft
-										</StatusBadge>
-									)}
-								</div>
-								<div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
-									{isLive ? (
-										<a
-											href={pagePath}
-											target="_blank"
-											rel="noopener noreferrer"
-											className="flex items-center gap-1 font-mono text-xs hover:text-foreground hover:underline transition-colors"
-										>
-											{pagePath}
-											<ExternalLink className="size-3" />
-										</a>
-									) : (
-										<span className="font-mono text-xs">{pagePath}</span>
-									)}
-									<span className="text-xs">
-										{isLive
-											? communityPage.publishedAt
-												? `Published ${formatDate(communityPage.publishedAt)}`
-												: "Published"
-											: communityPage.updatedAt
-												? `Updated ${formatDate(communityPage.updatedAt)}`
-												: "Not yet published"}
-									</span>
-								</div>
-							</div>
-						</div>
+			{inbox === undefined ? (
+				<Skeleton className="h-64 w-full rounded-xl" />
+			) : (
+				<RequestsTable
+					leads={inbox.leads}
+					newCount={inbox.newCount}
+					total={inbox.total}
+					filter={requestFilter}
+					onFilterChange={setRequestFilter}
+				/>
+			)}
 
-						{/* Illustration card */}
-						<div className="relative hidden shrink-0 items-center justify-center overflow-hidden rounded-xl border border-border/60 bg-muted/30 px-14 py-7 md:flex">
-							<DotField className="text-primary opacity-40 [mask-image:radial-gradient(ellipse_at_center,black_40%,transparent_80%)]" />
-							<Illustration name="community-page" size="md" className="relative w-60" />
-						</div>
-					</div>
-				</FramePanel>
-			</Frame>
-
-			{/* Section completeness */}
-			<Frame>
-				<FrameHeader className="flex-row items-center justify-between gap-4">
-					<div>
-						<FrameTitle>Page sections</FrameTitle>
-						<FrameDescription>
-							{completedSections.length === SECTION_CHECKLIST.length
-								? "All sections filled in — your page is looking sharp."
-								: `${completedSections.length} of ${SECTION_CHECKLIST.length} sections have content.`}
-						</FrameDescription>
-					</div>
-					<div className="flex shrink-0 items-center gap-3">
-						<Progress value={completionPct} className="w-28" />
-						<span className="text-sm font-medium tabular-nums text-muted-foreground">
-							{completionPct}%
-						</span>
-					</div>
-				</FrameHeader>
-				<div className="grid gap-1 sm:grid-cols-2 xl:grid-cols-4">
-					{SECTION_CHECKLIST.map((section) => {
-						const complete = section.isComplete(communityPage);
-						const Icon = section.icon;
-						return (
-							<FramePanel
-								key={section.id}
-								className={cn("p-0", !complete && "border-dashed")}
-							>
-								<Link
-									href={`/community/edit#${section.id}`}
-									className="group flex h-full items-start gap-3 p-4 transition-colors hover:bg-accent/50"
-								>
-									<div
-										className={cn(
-											"flex size-8 shrink-0 items-center justify-center rounded-lg",
-											complete
-												? "bg-primary/10 text-primary"
-												: "bg-muted text-muted-foreground",
-										)}
-									>
-										<Icon className="size-4" />
-									</div>
-									<div className="min-w-0 flex-1">
-										<p className="flex items-center gap-1.5 text-sm font-medium text-foreground">
-											{section.label}
-											{complete ? (
-												<CheckCircle2 className="size-3.5 shrink-0 text-emerald-500" />
-											) : (
-												<Circle className="size-3.5 shrink-0 text-border" />
-											)}
-										</p>
-										<p className="mt-0.5 truncate text-xs text-muted-foreground">
-											{complete ? section.blurb : "Not added yet"}
-										</p>
-									</div>
-									<ArrowRight className="size-3.5 shrink-0 self-center text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
-								</Link>
-							</FramePanel>
-						);
-					})}
-					{/* Footer action panel completes the grid */}
-					<FramePanel className="bg-primary/5 p-4">
-						{isLive ? (
-							<div className="flex h-full flex-col justify-between gap-3">
-								<div>
-									<p className="text-sm font-medium text-foreground">
-										Share your page
-									</p>
-									<p className="mt-0.5 text-xs text-muted-foreground">
-										Social media, business cards, email signatures.
-									</p>
-								</div>
-								<Button
-									variant="outline"
-									size="sm"
-									onClick={handleCopyUrl}
-									className="w-full"
-								>
-									{copied ? (
-										<Check className="size-4 mr-2 text-emerald-600" />
-									) : (
-										<Copy className="size-4 mr-2" />
-									)}
-									Copy link
-								</Button>
-							</div>
-						) : (
-							<div className="flex h-full flex-col justify-between gap-3">
-								<div>
-									<p className="text-sm font-medium text-foreground">
-										Ready to go live?
-									</p>
-									<p className="mt-0.5 text-xs text-muted-foreground">
-										Anyone with the link can view your page and submit
-										interest forms.
-									</p>
-								</div>
-								<Button
-									variant="default"
-									size="sm"
-									onClick={() => router.push("/community/edit")}
-									className="w-full"
-								>
-									<Send className="size-4 mr-2" />
-									Publish to public
-								</Button>
-							</div>
-						)}
-					</FramePanel>
-				</div>
-			</Frame>
+			<ShareKitDialog
+				open={shareOpen}
+				onOpenChange={setShareOpen}
+				url={shareUrl}
+				slug={communitySlug ?? ""}
+				businessName={displayTitle}
+			/>
 		</div>
 	);
 }

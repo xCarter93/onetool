@@ -16,7 +16,15 @@ export const communityArticles: HelpArticle[] = [
 			"draft",
 			"banner",
 			"gallery",
-			"themes",
+			"light mode",
+			"dark mode",
+			"layout",
+			"brand color",
+			"accent color",
+			"logo color",
+			"showcase",
+			"storefront",
+			"directory",
 			"page url",
 			"seo",
 		],
@@ -63,18 +71,20 @@ export const communityArticles: HelpArticle[] = [
 				blocks: [
 					{
 						type: "paragraph",
-						text: "Click **Edit page** to open the editor. It has seven sections, and the Community page tracks how many you have filled in.",
+						text: "Click **Edit page** to open the editor. Its nine sections are grouped into **Essentials**, the four a page needs before publishing makes sense, and **Optional**, the rest. Once the essentials are filled in, the sidebar says **Ready to publish**, but nothing stops you publishing earlier or later.",
 					},
 					{
 						type: "list",
 						items: [
-							"**Main Page Settings**: banner image, avatar or logo, page title, page URL, and an SEO description for search engines.",
-							"**Design**: pick one of three visual themes, **Clean Professional**, **Bold & Expressive**, or **Warm & Approachable**.",
+							"**Main Page Settings**: banner image, avatar or logo, page title, page URL, an optional tagline, and an SEO description for search engines. The tagline leads your page as its headline, like \"Lawns worth coming home to\". Leave it blank and your business name takes that spot.",
+							"**Design**: three tabs. **Layout** picks the shape of your public page, **Brand** sets light or dark and your accent color, and **Sections** controls the order your public sections appear in, the layout each one uses, and a switch to leave any of them off.",
 							"**Business Info**: your name and title, **Licensed**, **Bonded**, and **Insured** badges, year established, license number, certifications, business hours, and social links.",
 							"**Bio**: tell visitors who you are and what makes your business different.",
 							"**Image Gallery**: up to 5 photos of your work.",
-							"**Services**: describe what you offer and where.",
-							"**Pricing**: structured tiers or a free-form pricing write-up.",
+							"**Services**: describe what you offer and where, plus a short **Service list** of the jobs you take on. Those become the options a visitor can pick from on your quote form.",
+							"**Pricing**: structured tiers or a free-form pricing write-up. Each tier can list what is included, and you can mark one tier as **Most chosen** to draw the eye to it.",
+							"**Common Questions**: up to 12 question-and-answer pairs. Answer what people ask on the phone and they stop having to call to find out.",
+							"**Team**: up to 12 people, each with a name and an optional role, short bio, and photo. A visitor deciding who to let into their home is reassured by a face.",
 						],
 					},
 					{
@@ -83,11 +93,124 @@ export const communityArticles: HelpArticle[] = [
 					},
 					{
 						type: "note",
-						text: "Image limits: the banner and gallery photos can each be up to 5 MB, and the avatar up to 2 MB.",
+						text: "Image limits: the banner can be up to 10 MB, gallery photos up to 5 MB each, and the avatar and team photos up to 2 MB.",
+					},
+					{
+						type: "note",
+						text: "The **Open today** line on your public page follows the time zone set in your [organization profile](/help/settings-and-team/organization-profile), so an out-of-area visitor still sees your day, not theirs.",
 					},
 					{
 						type: "tip",
 						text: "Click **Preview** at any time to see the page as a visitor would, without publishing anything.",
+					},
+				],
+			},
+			{
+				heading: "Watch the page change as you edit",
+				blocks: [
+					{
+						type: "paragraph",
+						text: "On a wide screen the editor shows a **Live preview** beside the form. It updates as you type, and it always shows your draft, including changes you have not saved yet.",
+					},
+					{
+						type: "paragraph",
+						text: "Switch between **Desktop** and **Mobile** above the preview to see how the page reflows on a phone. Most visitors arrive on a phone, so it is worth a look before you publish.",
+					},
+					{
+						type: "paragraph",
+						text: "If a section is switched on but has nothing in it, the preview shows a note in its place with a button that takes you straight to the field that fills it. Those notes are only in the editor. Visitors never see them, and an empty section simply does not appear on the published page.",
+					},
+					{
+						type: "note",
+						text: "On a narrower screen there is no room for the side-by-side preview. Use **Preview** in the header instead, which opens the same page full screen.",
+					},
+				],
+			},
+			{
+				heading: "Save, discard, or walk away",
+				blocks: [
+					{
+						type: "paragraph",
+						text: "The editor never saves on its own. An amber dot next to a section means it has changes you have not saved yet, and **Save Draft** (or **Save Changes** on a live page) stores all of them at once.",
+					},
+					{
+						type: "paragraph",
+						text: "Changed your mind? **Discard** in the header takes the whole page back to how it looked after your last save. And if you try to leave the editor with unsaved work, OneTool asks first, so you can save it, drop it, or stay, but never lose it by accident.",
+					},
+				],
+			},
+			{
+				heading: "Pick the shape of your page",
+				blocks: [
+					{
+						type: "paragraph",
+						text: "The **Layout** tab under **Design** offers three shapes. They all use the same content you have already entered, and only the arrangement changes, so you can switch between them and watch the preview to see which suits your business.",
+					},
+					{
+						type: "list",
+						items: [
+							"**Showcase**: photos of your work lead the page, sitting beside your business name where a visitor sees them first, with the quote form pinned alongside as they read. Best if you have photos of finished jobs.",
+							"**Storefront**: your plans come first and the quote form sits above your sections, wide and hard to miss. Best if you sell set plans or price ranges.",
+							"**Directory**: a compact listing. Your hours, credentials, service list and area sit at the top next to a **Call** button, and the quote form comes at the end. Best if you have no photos yet.",
+						],
+					},
+					{
+						type: "note",
+						text: "Showcase is what every page starts as. Switching layouts never deletes anything. A section you have filled in stays filled in, wherever the new layout puts it.",
+					},
+					{
+						type: "note",
+						text: "Your banner appears in every layout, each in its own way: Showcase and Storefront wash it behind the top of the page, and Directory shows it as a cover photo above your name.",
+					},
+				],
+			},
+			{
+				heading: "Set your colors",
+				blocks: [
+					{
+						type: "paragraph",
+						text: "The **Brand** tab under **Design** sets two things: whether your page is light or dark, and the accent color used for buttons, links and highlights.",
+					},
+					{
+						type: "paragraph",
+						text: "Light or dark is your choice, not your visitor's. Everyone who lands on your page sees the one you picked, whatever their own phone is set to.",
+					},
+					{
+						type: "paragraph",
+						text: "For the accent, pick one of the eight presets, use the color well to choose your own, or type a hex value such as #00a6f4. If you have uploaded a logo, **Use my logo** reads the main color straight off it.",
+					},
+					{
+						type: "note",
+						text: "Colors are shown as they will appear on your page. If the shade you pick would be hard to read on your background, OneTool darkens or lightens it just enough to stay legible, and says so underneath. Your logo, banner and photos are never changed.",
+					},
+				],
+			},
+			{
+				heading: "Choose what appears, and in what order",
+				blocks: [
+					{
+						type: "paragraph",
+						text: "The **Sections** tab under **Design** lists the six sections of your public page: **About us**, **What we do**, **Plans & pricing**, **Our work**, **Common questions**, and **Meet the team**. Drag a row to move it, and use the switch to leave a section off the page entirely.",
+					},
+					{
+						type: "paragraph",
+						text: "Two sections offer a choice of layout, shown as buttons under the section name. **Our work** can be a **Carousel**, one large photo at a time, or a **Grid** that shows every photo at once. **Plans & pricing** can be **Cards**, one box per plan with its full feature list, or a **Price list**, one compact row per plan. Pick either and the preview updates straight away.",
+					},
+					{
+						type: "note",
+						text: "The pricing layouts describe the plan cards, so they only appear while **Plans & pricing** is set to tiers. A pricing write-up has no layout to choose.",
+					},
+					{
+						type: "note",
+						text: "A section only appears once it has something in it. An empty one stays off the page whether or not its switch is on, so you never publish a heading with nothing under it.",
+					},
+					{
+						type: "paragraph",
+						text: "The quote request form is always last and cannot be switched off. It is how visitors reach you.",
+					},
+					{
+						type: "tip",
+						text: "The jump links at the top of your public page follow the same order, so reordering sections reorders the menu too.",
 					},
 				],
 			},
@@ -172,6 +295,13 @@ export const communityArticles: HelpArticle[] = [
 			"follow up",
 			"tasks",
 			"visitors",
+			"requests inbox",
+			"add as client",
+			"qr code",
+			"share",
+			"page views",
+			"performance",
+			"conversion",
 		],
 		sections: [
 			{
@@ -179,7 +309,7 @@ export const communityArticles: HelpArticle[] = [
 				blocks: [
 					{
 						type: "paragraph",
-						text: "Every live community page includes a **Get a Free Quote** form. A visitor enters their name and email, optionally a phone number and a message about their project, and clicks **Request a Quote**. They see a confirmation that you will get back to them within one business day.",
+						text: "Every live community page includes a **Get a Free Quote** form. A visitor enters their name and email, optionally a phone number and a message about their project, and clicks **Request a Quote**. If you have filled in a **Service list** in the Services section, they can also pick which service they need. They see a confirmation that you will get back to them within one business day.",
 					},
 					{
 						type: "media",
@@ -194,11 +324,11 @@ export const communityArticles: HelpArticle[] = [
 				blocks: [
 					{
 						type: "paragraph",
-						text: "Each submission creates a task in your workspace named **Follow up:** plus the visitor's name, scheduled for the next business day at 9:00 AM and assigned to an admin. The task description holds everything the visitor entered: their name, email, phone, message, and which page the request came from.",
+						text: "Every submission shows up in two places. It lands in **Requests from your page** at the bottom of your **Community** page, and it also creates a task in your workspace named **Follow up:** plus the visitor's name, scheduled for the next business day at 9:00 AM and assigned to an admin. The task description holds everything the visitor entered: their name, email, phone, the service they picked, message, and which page the request came from.",
 					},
 					{
 						type: "note",
-						text: "OneTool does not send you an email when a request arrives. Check **Tasks** for new follow-ups, or [build an automation](/help/automations/building-an-automation) that notifies you whenever a task is created.",
+						text: "OneTool does not send you an email when a request arrives. Check the requests list on your Community page or **Tasks** for new follow-ups, or [build an automation](/help/automations/building-an-automation) that notifies you whenever a task is created.",
 					},
 				],
 			},
@@ -206,13 +336,52 @@ export const communityArticles: HelpArticle[] = [
 				heading: "Follow up on a request",
 				blocks: [
 					{
+						type: "paragraph",
+						text: "The requests list opens on **New** so you only see what has not been picked up yet. Switch to **All** for the full history.",
+					},
+					{
 						type: "steps",
 						items: [
-							"Open the task from **Tasks** or your Home calendar.",
-							"Reach out to the visitor by email or phone using the details in the task description.",
-							"If the conversation turns into real work, [add them as a client](/help/clients/managing-clients) so quotes, projects, and invoices have somewhere to live.",
-							"Mark the task complete when you have made contact.",
+							"Open **Community** and find the request in **Requests from your page**.",
+							"Open the **⋯** menu at the end of the row. **Reply by email** opens a message to the address they gave you; the email under their name is a link too.",
+							"Use **Add as client** when the conversation turns into real work. That creates a client record with them as the primary contact and moves the request to **Client**.",
+							"Use **Send quote** to start a quote. If they are not a client yet, this adds them first, then opens the new quote form.",
+							"Mark a request **Contacted** or **Quoted** as you work it, or **Archive** one you are not pursuing.",
 						],
+					},
+				],
+			},
+			{
+				heading: "Reading the numbers",
+				blocks: [
+					{
+						type: "paragraph",
+						text: "The **Performance** panel at the top of your Community page covers the last **7**, **30**, or **90** days. **Page views** counts visits to your public page. **Quote requests** counts submissions. **Visit to request** is requests divided by views. **Median first response** is how long a request typically waits before you pick it up, and **N waiting** counts requests still sitting in **New**.",
+					},
+					{
+						type: "note",
+						text: "**Median first response** measures the moment you act on a request in OneTool: adding the person as a client, sending a quote, or marking the request **Contacted**. An email you send from your own mail app is invisible to OneTool, so mark the request as you go if you want this number to mean anything.",
+					},
+					{
+						type: "paragraph",
+						text: "Views are counted by OneTool itself, not by an outside analytics service. A visit is counted once per browsing session, repeated hits from the same address are throttled, known bots and crawlers are filtered out, and visits you make while signed in to your own account are not counted at all, so the figure is a reasonable count of real visitors rather than an exact one. Days on the chart follow your business timezone, so an evening visit shows up on the day it happened for you.",
+					},
+					{
+						type: "paragraph",
+						text: "**Top sources**, beside the chart, shows where those visitors came from. Links and QR codes from the share kit carry a tag, so scans of your printed code count as **QR code** and links you pasted elsewhere as **Shared link**. Search engines and social sites are recognized from the page that sent the visitor, any other website counts as **Other sites**, and someone who typed the address or used a bookmark counts as **Direct**.",
+					},
+				],
+			},
+			{
+				heading: "Share your page",
+				blocks: [
+					{
+						type: "paragraph",
+						text: "**QR & share kit** in the page header, and **Share** on the page card, both open the share kit: a QR code you can download as a **PNG** for print or an **SVG** that scales to any size, your page link, and paste-ready wording for a social bio, a post or text message, and an email signature.",
+					},
+					{
+						type: "note",
+						text: "Share-kit links carry a small tag at the end of the address. That is what lets **Top sources** on your Community page tell a QR scan from a shared link, so keep the tag when you paste the link somewhere.",
 					},
 				],
 			},
@@ -224,7 +393,11 @@ export const communityArticles: HelpArticle[] = [
 			},
 			{
 				question: "Does a request create a client record?",
-				answer: "No. It creates a follow-up task only. You decide whether to add the person as a client once you have talked to them.",
+				answer: "Not on its own. A request creates an entry in your Requests inbox and a follow-up task. It becomes a client only when you choose **Add as client** (or **Send quote**, which adds them first), so strangers and bots never end up in your client list.",
+			},
+			{
+				question: "What do the request statuses mean?",
+				answer: "**New** is untouched. **Contacted** and **Quoted** are yours to set as you work the request. **Client** is set automatically when you add the person as a client. **Archived** hides a request you are not pursuing.",
 			},
 			{
 				question: "What stops spam submissions?",

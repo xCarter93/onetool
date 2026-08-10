@@ -199,7 +199,7 @@ export const BusinessInfoSection = React.memo(function BusinessInfoSection({
 	};
 
 	const sublabelClass =
-		"text-[11px] font-semibold uppercase tracking-wider text-muted-fg";
+		"text-[11px] font-semibold uppercase tracking-wider text-muted-foreground";
 
 	return (
 		<SectionShell
@@ -263,14 +263,14 @@ export const BusinessInfoSection = React.memo(function BusinessInfoSection({
 								className={`size-7 mb-2 transition-colors duration-200 ${
 									cred.checked
 										? "text-primary"
-										: "text-muted-fg group-hover:text-primary"
+										: "text-muted-foreground group-hover:text-primary"
 								}`}
 							/>
 							<span
 								className={`text-sm font-semibold tracking-wide transition-colors duration-200 ${
 									cred.checked
 										? "text-primary"
-										: "text-fg group-hover:text-primary"
+										: "text-foreground group-hover:text-primary"
 								}`}
 							>
 								{cred.label}
@@ -336,7 +336,7 @@ export const BusinessInfoSection = React.memo(function BusinessInfoSection({
 								key={day.day}
 								className="grid grid-cols-[100px_1fr_1fr_auto] items-center gap-3"
 							>
-								<span className="text-sm font-medium text-fg">
+								<span className="text-sm font-medium text-foreground">
 									{day.day}
 								</span>
 								<Select
@@ -383,7 +383,7 @@ export const BusinessInfoSection = React.memo(function BusinessInfoSection({
 										}
 										size="sm"
 									/>
-									<span className="text-xs text-muted-fg">Closed</span>
+									<span className="text-xs text-muted-foreground">Closed</span>
 								</div>
 							</div>
 						))}

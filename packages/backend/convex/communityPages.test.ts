@@ -1,10 +1,13 @@
 import { convexTest } from "convex-test";
 import { beforeEach, describe, expect, it } from "vitest";
-import { api } from "./_generated/api";
+import { api, internal } from "./_generated/api";
 import { Id } from "./_generated/dataModel";
 import { setupConvexTest } from "./test.setup";
-import { createTestIdentity, createTestOrg } from "./test.helpers";
+import { createTestIdentity, createTestOrg, createTestOrgWithAddress } from "./test.helpers";
 import { __testUtils } from "./communityPages";
+
+/** Stands in for the IP hash the Next.js route derives and attests. */
+const TEST_IP_HASH = "test-community-ip-hash";
 
 describe("Community Pages", () => {
 	let t: ReturnType<typeof convexTest>;
@@ -110,6 +113,7 @@ describe("Community Pages", () => {
 			draftPricingContent: { type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: "Pricing" }] }] },
 			draftPricingTiers: [{ name: "Basic", price: "$50", description: "Basic plan" }],
 			galleryItemsDraft: [],
+			draftTagline: "Basic plans, done well",
 		});
 
 		await asUser.mutation(api.communityPages.publish, {});
@@ -121,6 +125,7 @@ describe("Community Pages", () => {
 		expect(page?.publishedPricingContent).toBeTruthy();
 		expect(page?.publishedPricingTiers).toEqual([{ name: "Basic", price: "$50", description: "Basic plan" }]);
 		expect(page?.galleryItemsPublished).toEqual([]);
+		expect(page?.publishedTagline).toBe("Basic plans, done well");
 	});
 
 	it("upsert stores draftOwnerInfo", async () => {
@@ -257,12 +262,12 @@ describe("Community Pages", () => {
 		await asUser.mutation(api.communityPages.upsert, {
 			slug: "theme-test",
 			isPublic: false,
-			draftTheme: "bold-expressive",
+			draftTheme: "storefront",
 		});
 
 		const page = await asUser.query(api.communityPages.get, {});
 		expect(page).toBeTruthy();
-		expect(page?.draftTheme).toBe("bold-expressive");
+		expect(page?.draftTheme).toBe("storefront");
 	});
 
 	it("publish copies draftTheme to publishedTheme", async () => {
@@ -271,7 +276,7 @@ describe("Community Pages", () => {
 		await asUser.mutation(api.communityPages.upsert, {
 			slug: "theme-publish-test",
 			isPublic: true,
-			draftTheme: "warm-approachable",
+			draftTheme: "directory",
 			draftBioContent: {
 				type: "doc",
 				content: [{ type: "paragraph", content: [{ type: "text", text: "Bio" }] }],
@@ -285,7 +290,7 @@ describe("Community Pages", () => {
 			return pages.find((p) => p.slug === "theme-publish-test");
 		});
 		expect(page).toBeTruthy();
-		expect(page?.publishedTheme).toBe("warm-approachable");
+		expect(page?.publishedTheme).toBe("directory");
 	});
 
 	it("submitInterest creates follow-up task instead of client", async () => {
@@ -301,7 +306,7 @@ describe("Community Pages", () => {
 		});
 		await asUser.mutation(api.communityPages.publish, {});
 
-		await t.mutation(api.communityPages.submitInterest, {
+		await t.mutation(internal.communityPages.submitInterest, { ipHash: TEST_IP_HASH,
 			slug: "lead-task-test",
 			name: "John Smith",
 			email: "john@example.com",
@@ -337,7 +342,7 @@ describe("Community Pages", () => {
 		});
 		await asUser.mutation(api.communityPages.publish, {});
 
-		await t.mutation(api.communityPages.submitInterest, {
+		await t.mutation(internal.communityPages.submitInterest, { ipHash: TEST_IP_HASH,
 			slug: "lead-event-test",
 			name: "Lead Eventson",
 			email: "lead@example.com",
@@ -372,7 +377,7 @@ describe("Community Pages", () => {
 		});
 		await asUser.mutation(api.communityPages.publish, {});
 
-		await t.mutation(api.communityPages.submitInterest, {
+		await t.mutation(internal.communityPages.submitInterest, { ipHash: TEST_IP_HASH,
 			slug: "admin-assign-test",
 			name: "Jane Doe",
 			email: "jane@example.com",
@@ -407,7 +412,7 @@ describe("Community Pages", () => {
 		});
 		await asUser.mutation(api.communityPages.publish, {});
 
-		await t.mutation(api.communityPages.submitInterest, {
+		await t.mutation(internal.communityPages.submitInterest, { ipHash: TEST_IP_HASH,
 			slug: "org-admin-lead-test",
 			name: "Lead Person",
 			email: "lead@example.com",
@@ -434,7 +439,7 @@ describe("Community Pages", () => {
 		});
 		await asUser.mutation(api.communityPages.publish, {});
 
-		await t.mutation(api.communityPages.submitInterest, {
+		await t.mutation(internal.communityPages.submitInterest, { ipHash: TEST_IP_HASH,
 			slug: "weekday-test",
 			name: "Bob Wilson",
 			email: "bob@example.com",
@@ -463,13 +468,13 @@ describe("Community Pages", () => {
 		});
 		await asUser.mutation(api.communityPages.publish, {});
 
-		await t.mutation(api.communityPages.submitInterest, {
+		await t.mutation(internal.communityPages.submitInterest, { ipHash: TEST_IP_HASH,
 			slug: "dup-email-test",
 			name: "Alice Brown",
 			email: "alice@example.com",
 		});
 
-		await t.mutation(api.communityPages.submitInterest, {
+		await t.mutation(internal.communityPages.submitInterest, { ipHash: TEST_IP_HASH,
 			slug: "dup-email-test",
 			name: "Alice Brown",
 			email: "alice@example.com",
@@ -492,5 +497,510 @@ describe("Community Pages", () => {
 		expect(() => __testUtils.validateGalleryItems(items)).toThrow(
 			"You can upload up to 5 gallery images"
 		);
+	});
+
+	it("serviceTags round-trip through upsert, publish, and getBySlug", async () => {
+		const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+
+		await asUser.mutation(api.communityPages.upsert, {
+			slug: "service-tags-page",
+			isPublic: true,
+			draftBioContent: {
+				type: "doc",
+				content: [{ type: "paragraph", content: [{ type: "text", text: "Bio" }] }],
+			},
+			draftServiceTags: ["Lawn Care", "Snow Removal", "lawn care"],
+		});
+
+		const draft = await asUser.query(api.communityPages.get, {});
+		expect(draft?.draftServiceTags).toEqual(["Lawn Care", "Snow Removal"]);
+
+		await asUser.mutation(api.communityPages.publish, {});
+
+		const publicPage = await t.query(api.communityPages.getBySlug, {
+			slug: "service-tags-page",
+		});
+		expect(publicPage?.serviceTags).toEqual(["Lawn Care", "Snow Removal"]);
+	});
+
+	it("tagline round-trips through upsert, publish, and getBySlug", async () => {
+		const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+
+		await asUser.mutation(api.communityPages.upsert, {
+			slug: "tagline-page",
+			isPublic: true,
+			draftBioContent: {
+				type: "doc",
+				content: [{ type: "paragraph", content: [{ type: "text", text: "Bio" }] }],
+			},
+			draftTagline: "  Lawn care done right  ",
+		});
+
+		const draft = await asUser.query(api.communityPages.get, {});
+		expect(draft?.draftTagline).toBe("Lawn care done right");
+
+		await asUser.mutation(api.communityPages.publish, {});
+
+		const publicPage = await t.query(api.communityPages.getBySlug, {
+			slug: "tagline-page",
+		});
+		expect(publicPage?.tagline).toBe("Lawn care done right");
+	});
+
+	it("an emptied tagline clears the published value", async () => {
+		const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+
+		await asUser.mutation(api.communityPages.upsert, {
+			slug: "tagline-clear-page",
+			isPublic: true,
+			draftBioContent: {
+				type: "doc",
+				content: [{ type: "paragraph", content: [{ type: "text", text: "Bio" }] }],
+			},
+			draftTagline: "X",
+		});
+
+		await asUser.mutation(api.communityPages.upsert, { draftTagline: "" });
+		const draft = await asUser.query(api.communityPages.get, {});
+		expect(draft?.draftTagline).toBeUndefined();
+
+		await asUser.mutation(api.communityPages.publish, {});
+
+		const publicPage = await t.query(api.communityPages.getBySlug, {
+			slug: "tagline-clear-page",
+		});
+		expect(publicPage?.tagline).toBeUndefined();
+	});
+
+	it("validateTagline rejects over-length taglines", () => {
+		expect(() => __testUtils.validateTagline("a".repeat(81))).toThrow(
+			"Tagline must be 80 characters or less"
+		);
+		expect(() => __testUtils.validateTagline("a".repeat(80))).not.toThrow();
+	});
+
+	it("validateServiceTags rejects more than 8 tags", () => {
+		const tags = Array.from({ length: 9 }).map((_, index) => `Tag ${index}`);
+		expect(() => __testUtils.validateServiceTags(tags)).toThrow(
+			"You can add up to 8 service tags"
+		);
+	});
+
+	it("validateServiceTags rejects over-length tags", () => {
+		const tags = ["a".repeat(41)];
+		expect(() => __testUtils.validateServiceTags(tags)).toThrow(
+			"Service tag must be 40 characters or less"
+		);
+	});
+
+	it("validateServiceTags dedupes case-insensitively and drops empties", () => {
+		const result = __testUtils.validateServiceTags([
+			"Lawn Care",
+			"  ",
+			"LAWN CARE",
+			"Snow Removal",
+		]);
+		expect(result).toEqual(["Lawn Care", "Snow Removal"]);
+	});
+
+	it("validatePricingTiers rejects more than 6 features per tier", () => {
+		const tiers = [
+			{
+				name: "Starter",
+				price: "$99",
+				features: Array.from({ length: 7 }).map((_, i) => `Feature ${i}`),
+			},
+		];
+		expect(() => __testUtils.validatePricingTiers(tiers)).toThrow(
+			"Each pricing tier can have up to 6 features"
+		);
+	});
+
+	it("validatePricingTiers rejects over-length features", () => {
+		const tiers = [
+			{ name: "Starter", price: "$99", features: ["a".repeat(81)] },
+		];
+		expect(() => __testUtils.validatePricingTiers(tiers)).toThrow(
+			"Pricing tier feature must be 80 characters or less"
+		);
+	});
+
+	it("validatePricingTiers rejects more than one highlighted tier", () => {
+		const tiers = [
+			{ name: "Starter", price: "$99", highlighted: true },
+			{ name: "Pro", price: "$199", highlighted: true },
+		];
+		expect(() => __testUtils.validatePricingTiers(tiers)).toThrow(
+			"Only one pricing tier can be highlighted"
+		);
+	});
+
+	it("submitInterest stores service when it matches a published tag", async () => {
+		const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+
+		await asUser.mutation(api.communityPages.upsert, {
+			slug: "service-match-test",
+			isPublic: true,
+			draftBioContent: {
+				type: "doc",
+				content: [{ type: "paragraph", content: [{ type: "text", text: "Bio" }] }],
+			},
+			draftServiceTags: ["Lawn Care", "Snow Removal"],
+		});
+		await asUser.mutation(api.communityPages.publish, {});
+
+		await t.mutation(internal.communityPages.submitInterest, { ipHash: TEST_IP_HASH,
+			slug: "service-match-test",
+			name: "Match Person",
+			email: "match@example.com",
+			service: "lawn care",
+		});
+
+		const tasks = await t.run(async (ctx) => {
+			return await ctx.db.query("tasks").collect();
+		});
+		const task = tasks.find((row) => row.title === "Follow up: Match Person");
+		expect(task).toBeTruthy();
+		expect(task?.description).toContain("Service: Lawn Care");
+	});
+
+	it("submitInterest drops a non-matching service but still creates the lead", async () => {
+		const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+
+		await asUser.mutation(api.communityPages.upsert, {
+			slug: "service-mismatch-test",
+			isPublic: true,
+			draftBioContent: {
+				type: "doc",
+				content: [{ type: "paragraph", content: [{ type: "text", text: "Bio" }] }],
+			},
+			draftServiceTags: ["Lawn Care"],
+		});
+		await asUser.mutation(api.communityPages.publish, {});
+
+		await t.mutation(internal.communityPages.submitInterest, { ipHash: TEST_IP_HASH,
+			slug: "service-mismatch-test",
+			name: "Mismatch Person",
+			email: "mismatch@example.com",
+			service: "Roof Repair",
+		});
+
+		const tasks = await t.run(async (ctx) => {
+			return await ctx.db.query("tasks").collect();
+		});
+		const task = tasks.find((row) => row.title === "Follow up: Mismatch Person");
+		expect(task).toBeTruthy();
+		expect(task?.description).not.toContain("Service:");
+	});
+
+	it("getBySlug surfaces org addressCity/addressState and excludes street/zip/geo fields", async () => {
+		const addressedOrg = await t.run(async (ctx) =>
+			createTestOrgWithAddress(ctx, {
+				orgName: "Beverly Landscaping",
+				clerkUserId: "user_address_test",
+				clerkOrgId: "org_address_test",
+				addressStreet: "123 Main St",
+				addressCity: "Beverly",
+				addressState: "MA",
+				addressZip: "01915",
+				addressCountry: "US",
+				latitude: 42.5584,
+				longitude: -70.8801,
+			})
+		);
+		const asAddressedUser = t.withIdentity(
+			createTestIdentity(addressedOrg.clerkUserId, addressedOrg.clerkOrgId)
+		);
+
+		await asAddressedUser.mutation(api.communityPages.upsert, {
+			slug: "address-city-state-page",
+			isPublic: true,
+			draftBioContent: {
+				type: "doc",
+				content: [{ type: "paragraph", content: [{ type: "text", text: "Bio" }] }],
+			},
+		});
+		await asAddressedUser.mutation(api.communityPages.publish, {});
+
+		const publicPage = await t.query(api.communityPages.getBySlug, {
+			slug: "address-city-state-page",
+		});
+
+		expect(publicPage?.organization?.addressCity).toBe("Beverly");
+		expect(publicPage?.organization?.addressState).toBe("MA");
+		const orgKeys = Object.keys(publicPage?.organization ?? {});
+		expect(orgKeys).not.toContain("addressStreet");
+		expect(orgKeys).not.toContain("addressZip");
+		expect(orgKeys).not.toContain("addressCountry");
+		expect(orgKeys).not.toContain("latitude");
+		expect(orgKeys).not.toContain("longitude");
+	});
+
+	it("sectionConfig round-trips through upsert, publish, and getBySlug", async () => {
+		const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+
+		await asUser.mutation(api.communityPages.upsert, {
+			slug: "section-config-page",
+			isPublic: true,
+			draftBioContent: {
+				type: "doc",
+				content: [{ type: "paragraph", content: [{ type: "text", text: "Bio" }] }],
+			},
+			draftSectionConfig: [
+				{ id: "gallery", visible: true },
+				{ id: "bio", visible: false },
+			],
+		});
+
+		const draft = await asUser.query(api.communityPages.get, {});
+		expect(draft?.draftSectionConfig).toEqual([
+			{ id: "gallery", visible: true },
+			{ id: "bio", visible: false },
+		]);
+
+		await asUser.mutation(api.communityPages.publish, {});
+
+		const publicPage = await t.query(api.communityPages.getBySlug, {
+			slug: "section-config-page",
+		});
+		expect(publicPage?.sectionConfig).toEqual([
+			{ id: "gallery", visible: true },
+			{ id: "bio", visible: false },
+		]);
+	});
+
+	it("colorMode round-trips, and an unset page publishes without one", async () => {
+		const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+
+		await asUser.mutation(api.communityPages.upsert, {
+			slug: "color-mode-page",
+			isPublic: true,
+			draftBioContent: {
+				type: "doc",
+				content: [{ type: "paragraph", content: [{ type: "text", text: "Bio" }] }],
+			},
+			draftColorMode: "dark",
+		});
+
+		await asUser.mutation(api.communityPages.publish, {});
+
+		const publicPage = await t.query(api.communityPages.getBySlug, {
+			slug: "color-mode-page",
+		});
+		expect(publicPage?.colorMode).toBe("dark");
+
+		// A page that predates the field must still publish; the renderer, not the
+		// stored value, is what supplies the default.
+		await asUser.mutation(api.communityPages.upsert, {
+			slug: "color-mode-page",
+			isPublic: true,
+		});
+		const stillDark = await t.query(api.communityPages.getBySlug, {
+			slug: "color-mode-page",
+		});
+		expect(stillDark?.colorMode).toBe("dark");
+	});
+
+	it("the page layout round-trips to the public payload", async () => {
+		const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+
+		await asUser.mutation(api.communityPages.upsert, {
+			slug: "layout-page",
+			isPublic: true,
+			draftBioContent: {
+				type: "doc",
+				content: [{ type: "paragraph", content: [{ type: "text", text: "Bio" }] }],
+			},
+			draftTheme: "storefront",
+		});
+
+		await asUser.mutation(api.communityPages.publish, {});
+
+		const publicPage = await t.query(api.communityPages.getBySlug, {
+			slug: "layout-page",
+		});
+		expect(publicPage?.theme).toBe("storefront");
+
+		// Legacy rows still hold the Phase 8 theme names. They stay readable — the
+		// renderer resolves anything it does not recognise to Showcase — so a
+		// publish that omits the field must not disturb what is stored.
+		await asUser.mutation(api.communityPages.upsert, {
+			slug: "layout-page",
+			isPublic: true,
+		});
+		const unchanged = await t.query(api.communityPages.getBySlug, {
+			slug: "layout-page",
+		});
+		expect(unchanged?.theme).toBe("storefront");
+	});
+
+	it("the accent colour round-trips to the public payload", async () => {
+		const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+
+		await asUser.mutation(api.communityPages.upsert, {
+			slug: "accent-page",
+			isPublic: true,
+			draftBioContent: {
+				type: "doc",
+				content: [{ type: "paragraph", content: [{ type: "text", text: "Bio" }] }],
+			},
+			draftAccent: "#7c3aed",
+		});
+
+		await asUser.mutation(api.communityPages.publish, {});
+
+		const publicPage = await t.query(api.communityPages.getBySlug, {
+			slug: "accent-page",
+		});
+		expect(publicPage?.accent).toBe("#7c3aed");
+	});
+
+	it("refuses an accent that is not a colour", async () => {
+		const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+
+		// The value lands in an inline style on a page anyone can load.
+		await expect(
+			asUser.mutation(api.communityPages.upsert, {
+				slug: "accent-reject",
+				draftAccent: "#7c3aed;background:url(https://evil.example)",
+			})
+		).rejects.toThrow(/hex value/);
+	});
+
+	it("faq and team round-trip through upsert, publish, and getBySlug", async () => {
+		const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+
+		await asUser.mutation(api.communityPages.upsert, {
+			slug: "faq-team-page",
+			isPublic: true,
+			draftFaqItems: [
+				{ question: "Do you work weekends?", answer: "Saturdays until 2pm." },
+			],
+			draftTeamMembers: [
+				{ name: "Dana Reyes", role: "Crew lead" },
+				{ name: "Sam Okoye" },
+			],
+			draftSectionConfig: [
+				{ id: "faq", visible: true },
+				{ id: "team", visible: true },
+			],
+		});
+
+		await asUser.mutation(api.communityPages.publish, {});
+
+		const publicPage = await t.query(api.communityPages.getBySlug, {
+			slug: "faq-team-page",
+		});
+		expect(publicPage?.faqItems).toEqual([
+			{ question: "Do you work weekends?", answer: "Saturdays until 2pm." },
+		]);
+		// Photos are absent here, so no member carries a URL — and no member ever
+		// carries the storage id it was uploaded under.
+		expect(publicPage?.teamMembers).toEqual([
+			{ name: "Dana Reyes", role: "Crew lead", bio: undefined, photoUrl: undefined },
+			{ name: "Sam Okoye", role: undefined, bio: undefined, photoUrl: undefined },
+		]);
+		expect(publicPage?.sectionConfig).toEqual([
+			{ id: "faq", visible: true },
+			{ id: "team", visible: true },
+		]);
+	});
+
+	it("a page with only FAQ content is publishable", async () => {
+		const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+
+		await asUser.mutation(api.communityPages.upsert, {
+			slug: "faq-only-page",
+			isPublic: true,
+			draftFaqItems: [{ question: "Weekends?", answer: "Saturdays." }],
+		});
+
+		await expect(
+			asUser.mutation(api.communityPages.publish, {})
+		).resolves.not.toThrow();
+	});
+
+	it("a page with no sectionConfig publishes without one", async () => {
+		const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+
+		await asUser.mutation(api.communityPages.upsert, {
+			slug: "no-section-config-page",
+			isPublic: true,
+			draftBioContent: {
+				type: "doc",
+				content: [{ type: "paragraph", content: [{ type: "text", text: "Bio" }] }],
+			},
+		});
+		await asUser.mutation(api.communityPages.publish, {});
+
+		const publicPage = await t.query(api.communityPages.getBySlug, {
+			slug: "no-section-config-page",
+		});
+		expect(publicPage?.sectionConfig).toBeUndefined();
+	});
+
+	it("validateAccent accepts only hex colours", () => {
+		expect(() => __testUtils.validateAccent("#00a6f4")).not.toThrow();
+		expect(() => __testUtils.validateAccent("#abc")).not.toThrow();
+		expect(() => __testUtils.validateAccent("blue")).toThrow();
+		expect(() => __testUtils.validateAccent("rgb(0,0,0)")).toThrow();
+		expect(() => __testUtils.validateAccent("#00a6f4;color:red")).toThrow();
+	});
+
+	it("validateSectionConfig rejects a section listed twice", () => {
+		expect(() =>
+			__testUtils.validateSectionConfig([
+				{ id: "bio", visible: true },
+				{ id: "bio", visible: false },
+			])
+		).toThrow("Each page section can only be listed once");
+	});
+
+	it("validateFaqItems and validateTeamMembers cap what lands on a public page", () => {
+		expect(() =>
+			__testUtils.validateFaqItems([{ question: "  ", answer: "Yes" }])
+		).toThrow("Each question needs to be filled in");
+		expect(() =>
+			__testUtils.validateFaqItems([{ question: "Weekends?", answer: "  " }])
+		).toThrow("Each question needs an answer");
+		expect(() =>
+			__testUtils.validateFaqItems([
+				{ question: "a".repeat(201), answer: "Yes" },
+			])
+		).toThrow("200 characters or less");
+		expect(() =>
+			__testUtils.validateFaqItems(
+				Array.from({ length: 13 }, () => ({ question: "q", answer: "a" }))
+			)
+		).toThrow("up to 12 questions");
+
+		expect(() => __testUtils.validateTeamMembers([{ name: " " }])).toThrow(
+			"Each team member needs a name"
+		);
+		expect(() =>
+			__testUtils.validateTeamMembers([
+				{ name: "Dana", bio: "b".repeat(401) },
+			])
+		).toThrow("400 characters or less");
+		expect(() =>
+			__testUtils.validateTeamMembers([
+				{ name: "Dana", role: "Crew lead", bio: "Twelve years on the job." },
+			])
+		).not.toThrow();
+	});
+
+	it("validateSectionConfig rejects a layout the section does not offer", () => {
+		expect(() =>
+			__testUtils.validateSectionConfig([
+				{ id: "pricing", visible: true, layout: "carousel" },
+			])
+		).toThrow("is not a layout the pricing section offers");
+		expect(() =>
+			__testUtils.validateSectionConfig([
+				{ id: "gallery", visible: true, layout: "grid" },
+				{ id: "pricing", visible: true, layout: "compact" },
+				{ id: "bio", visible: true },
+			])
+		).not.toThrow();
 	});
 });

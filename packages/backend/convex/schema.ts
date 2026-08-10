@@ -11,6 +11,12 @@ import {
 	triggerValidator,
 	triggerableObjectTypeValidator,
 } from "./lib/workflowTypes";
+import {
+	communityColorModeValidator,
+	communityFaqItemsValidator,
+	communitySectionConfigValidator,
+	communityTeamMembersValidator,
+} from "./lib/communityTypes";
 
 // v2 workflow node shape: each node carries the unified `config` union
 // (see lib/workflowTypes.ts). Legacy v1 fields were dropped post-migration.
@@ -1308,6 +1314,8 @@ export default defineSchema({
 					name: v.string(),
 					price: v.string(),
 					description: v.optional(v.string()),
+					features: v.optional(v.array(v.string())),
+					highlighted: v.optional(v.boolean()),
 				})
 			)
 		),
@@ -1317,9 +1325,23 @@ export default defineSchema({
 					name: v.string(),
 					price: v.string(),
 					description: v.optional(v.string()),
+					features: v.optional(v.array(v.string())),
+					highlighted: v.optional(v.boolean()),
 				})
 			)
 		),
+		draftServiceTags: v.optional(v.array(v.string())),
+		publishedServiceTags: v.optional(v.array(v.string())),
+
+		// Public section order + visibility. Array order IS display order; an
+		// absent config means "default order, everything visible", so legacy
+		// pages keep rendering exactly as they did.
+		draftSectionConfig: v.optional(communitySectionConfigValidator),
+		publishedSectionConfig: v.optional(communitySectionConfigValidator),
+		draftFaqItems: v.optional(communityFaqItemsValidator),
+		publishedFaqItems: v.optional(communityFaqItemsValidator),
+		draftTeamMembers: v.optional(communityTeamMembersValidator),
+		publishedTeamMembers: v.optional(communityTeamMembersValidator),
 		galleryItemsDraft: v.optional(
 			v.array(
 				v.object({
@@ -1423,9 +1445,29 @@ export default defineSchema({
 			})
 		),
 
-		// Theme (Phase 8)
+		// Which of the three page structures the public page renders
+		// (showcase | storefront | directory). Named "theme" from Phase 8;
+		// renaming would need a migration for a value change. Stays a loose
+		// string so the legacy theme names on dev rows still validate — the
+		// renderer maps anything unrecognised to showcase.
 		draftTheme: v.optional(v.string()),
 		publishedTheme: v.optional(v.string()),
+
+		// Light/dark on the public page. Owner-decided, not visitor-decided.
+		draftColorMode: v.optional(communityColorModeValidator),
+		publishedColorMode: v.optional(communityColorModeValidator),
+		// The owner's brand colour as they picked it, `#rrggbb`. Stored raw and
+		// corrected against the page background at render time (see the web app's
+		// lib/community-accent), so a published page inherits later solver work
+		// and switching light/dark does not mean re-choosing. Shape is enforced in
+		// the upsert handler — a validator cannot express a pattern.
+		draftAccent: v.optional(v.string()),
+		publishedAccent: v.optional(v.string()),
+
+		// Short headline under the business name on the public page. Capped at
+		// 80 characters in the upsert handler.
+		draftTagline: v.optional(v.string()),
+		publishedTagline: v.optional(v.string()),
 
 		// Metadata
 		pageTitle: v.optional(v.string()), // Custom page title (falls back to org name)
@@ -1439,6 +1481,68 @@ export default defineSchema({
 		.index("by_org", ["orgId"])
 		.index("by_slug", ["slug"])
 		.index("by_public", ["isPublic"]),
+
+	// Community leads - quote requests submitted from a public community page.
+	// Written by the public `submitInterest` mutation, so every field here is
+	// the sanitized value, never the raw arg.
+	communityLeads: defineTable({
+		orgId: v.id("organizations"),
+		communityPageId: v.id("communityPages"),
+		slug: v.string(), // slug at submission time; the page's slug can change later
+
+		// Submitted details (sanitized in submitInterest)
+		name: v.string(),
+		email: v.string(), // lowercased + trimmed
+		phone: v.optional(v.string()),
+		service: v.optional(v.string()), // matched against publishedServiceTags
+		message: v.optional(v.string()),
+
+		status: v.union(
+			v.literal("new"),
+			v.literal("contacted"),
+			v.literal("quoted"),
+			v.literal("converted"),
+			v.literal("archived")
+		),
+
+		// Links to whatever the lead became
+		taskId: v.optional(v.id("tasks")), // follow-up task created alongside the lead
+		clientId: v.optional(v.id("clients")), // set by the explicit "Add as client" promotion
+
+		submittedAt: v.number(),
+		statusUpdatedAt: v.optional(v.number()),
+		// Stamped once, the first time the lead leaves "new". statusUpdatedAt
+		// keeps moving, so it cannot answer "how fast did we respond?".
+		firstRespondedAt: v.optional(v.number()),
+	})
+		.index("by_org", ["orgId"])
+		.index("by_org_status", ["orgId", "status"])
+		.index("by_page", ["communityPageId"]),
+
+	// Community page views — daily buckets, not one row per visit. A public page
+	// can be hit far more often than it is edited, and the dashboard only ever
+	// asks for day totals, so per-visit rows would grow without bound and buy
+	// nothing. `day` is a UTC "YYYY-MM-DD" key.
+	communityPageViews: defineTable({
+		orgId: v.id("organizations"),
+		communityPageId: v.id("communityPages"),
+		day: v.string(),
+		// Traffic channel, classified server-side in recordView — never a raw
+		// referrer string. Absent on rows written before P5b; read as "direct".
+		source: v.optional(
+			v.union(
+				v.literal("qr"),
+				v.literal("link"),
+				v.literal("search"),
+				v.literal("social"),
+				v.literal("referral"),
+				v.literal("direct")
+			)
+		),
+		count: v.number(),
+	})
+		.index("by_org_day", ["orgId", "day"])
+		.index("by_page_day_source", ["communityPageId", "day", "source"]),
 
 	// Reports - saved report configurations
 	reports: defineTable({
