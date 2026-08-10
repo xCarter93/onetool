@@ -1,5 +1,5 @@
 import { convexTest } from "convex-test";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { api } from "./_generated/api";
 import { setupConvexTest } from "./test.setup";
 import { addMemberToOrg, createTestIdentity, createTestOrg } from "./test.helpers";
@@ -281,6 +281,64 @@ describe("Community analytics", () => {
 			ctx.db.query("communityPageViews").collect()
 		);
 		expect(rows).toHaveLength(0);
+	});
+
+	it("recordView skips the owner's own visits", async () => {
+		await publishPage("views-owner-test");
+
+		// The beacon route passes the signed-in viewer's active Clerk org.
+		await t.mutation(api.communityAnalytics.recordView, {
+			slug: "views-owner-test",
+			viewerClerkOrgId: clerkOrgId,
+		});
+		// A signed-in user from some other org is a real visitor.
+		await t.mutation(api.communityAnalytics.recordView, {
+			slug: "views-owner-test",
+			viewerClerkOrgId: "org_somebody_else",
+		});
+
+		const rows = await t.run(async (ctx) =>
+			ctx.db.query("communityPageViews").collect()
+		);
+		expect(rows).toHaveLength(1);
+		expect(rows[0].count).toBe(1);
+	});
+
+	it("views bucket on the org's calendar day, not UTC", async () => {
+		await publishPage("views-timezone-test");
+		await t.run(async (ctx) => {
+			const org = await ctx.db.query("organizations").first();
+			await ctx.db.patch(org!._id, { timezone: "America/New_York" });
+		});
+
+		vi.useFakeTimers();
+		try {
+			// 01:00 UTC is 9pm the previous evening in New York.
+			vi.setSystemTime(new Date("2026-08-10T01:00:00.000Z"));
+			await t.mutation(api.communityAnalytics.recordView, {
+				slug: "views-timezone-test",
+			});
+
+			const rows = await t.run(async (ctx) =>
+				ctx.db.query("communityPageViews").collect()
+			);
+			expect(rows).toHaveLength(1);
+			expect(rows[0].day).toBe("2026-08-09");
+
+			const asUser = t.withIdentity(
+				createTestIdentity(clerkUserId, clerkOrgId)
+			);
+			const stats = await asUser.query(api.communityAnalytics.dashboard, {
+				days: 7,
+			});
+			// It is still Aug 9 in New York, so the view sits on the chart's
+			// last point rather than showing up under "tomorrow".
+			expect(stats.series[6].day).toBe("2026-08-09");
+			expect(stats.series[6].views).toBe(1);
+			expect(stats.views).toBe(1);
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 
 	it("dashboard divides requests by views and counts what is waiting", async () => {

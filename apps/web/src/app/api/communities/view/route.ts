@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { auth } from "@clerk/nextjs/server";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { getConvexClient } from "@/lib/convexClient";
 import { getRequestIp, hashIp } from "@/lib/portal/ip";
@@ -18,10 +19,15 @@ export async function POST(request: NextRequest) {
 
 		const ipHash = await hashIp(getRequestIp(request));
 
+		// The beacon rides the visitor's own cookies, so a signed-in owner is
+		// identifiable here; recordView skips views from the page's own org.
+		const { orgId: viewerClerkOrgId } = await auth();
+
 		const client = getConvexClient();
 		await client.mutation(api.communityAnalytics.recordView, {
 			slug: slug.trim(),
 			ipHash,
+			viewerClerkOrgId: viewerClerkOrgId ?? undefined,
 		});
 
 		return NextResponse.json({ success: true });

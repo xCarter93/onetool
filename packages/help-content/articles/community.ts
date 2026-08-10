@@ -364,7 +364,7 @@ export const communityArticles: HelpArticle[] = [
 					},
 					{
 						type: "paragraph",
-						text: "Views are counted by OneTool itself, not by an outside analytics service. A visit is counted once per browsing session, and repeated hits from the same address are throttled, so the figure is a reasonable count of real visits rather than an exact one.",
+						text: "Views are counted by OneTool itself, not by an outside analytics service. A visit is counted once per browsing session, repeated hits from the same address are throttled, and visits you make while signed in to your own account are not counted at all, so the figure is a reasonable count of real visitors rather than an exact one. Days on the chart follow your business timezone, so an evening visit shows up on the day it happened for you.",
 					},
 				],
 			},

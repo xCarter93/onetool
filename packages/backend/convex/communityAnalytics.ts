@@ -2,6 +2,7 @@ import { v } from "convex/values";
 import { mutation } from "./lib/triggers";
 import { userQuery } from "./lib/factories";
 import { rateLimiter } from "./rateLimits";
+import { DateUtils } from "./lib/shared";
 
 /**
  * Community page analytics.
@@ -10,17 +11,25 @@ import { rateLimiter } from "./rateLimits";
  * cookie, no CSP work, and the conversion math lands next to the leads it is
  * divided by. `recordView` is public and unauthenticated; `dashboard` is the
  * admin read.
+ *
+ * Day boundaries follow the org's timezone (UTC when unset), so an evening
+ * visit lands on the day the owner experienced it, and the view buckets line
+ * up with the lead buckets they are divided by.
  */
 
-/** UTC "YYYY-MM-DD". Day boundaries are UTC everywhere in this module. */
-function dayKey(ms: number): string {
-	return new Date(ms).toISOString().slice(0, 10);
+/** Calendar arithmetic on a "YYYY-MM-DD" key; Date.UTC absorbs overflow. */
+function shiftDayKey(key: string, deltaDays: number): string {
+	const [year, month, day] = key.split("-").map(Number);
+	return new Date(Date.UTC(year, month - 1, day + deltaDays))
+		.toISOString()
+		.slice(0, 10);
 }
 
-function dayKeysBack(days: number, now: number): string[] {
+/** The `days` consecutive keys ending at `lastKey`, oldest first. */
+function dayKeysEndingAt(lastKey: string, days: number): string[] {
 	const keys: string[] = [];
 	for (let i = days - 1; i >= 0; i--) {
-		keys.push(dayKey(now - i * 86_400_000));
+		keys.push(shiftDayKey(lastKey, -i));
 	}
 	return keys;
 }
@@ -33,6 +42,9 @@ export const recordView = mutation({
 		slug: v.string(),
 		// PUB-19: server-derived in the Next route, never client-supplied.
 		ipHash: v.optional(v.string()),
+		// Also server-derived (Clerk session in the Next route). Spoofing it
+		// only lets a caller suppress their own view, so equality is enough.
+		viewerClerkOrgId: v.optional(v.string()),
 	},
 	handler: async (ctx, args): Promise<null> => {
 		// A throttled beacon is dropped, not rejected: the visitor has done
@@ -54,7 +66,17 @@ export const recordView = mutation({
 			.first();
 		if (!page || !page.isPublic) return null;
 
-		const day = dayKey(Date.now());
+		// The owner checking their own page is not traffic. Only the active
+		// Clerk org is known here, so a signed-out owner still counts.
+		const org = await ctx.db.get(page.orgId);
+		if (
+			args.viewerClerkOrgId &&
+			org?.clerkOrganizationId === args.viewerClerkOrgId
+		) {
+			return null;
+		}
+
+		const day = DateUtils.toLocalDateString(Date.now(), org?.timezone);
 		const existing = await ctx.db
 			.query("communityPageViews")
 			.withIndex("by_page_day", (q) =>
@@ -100,17 +122,17 @@ export const dashboard = userQuery({
 	handler: async (ctx, args): Promise<CommunityDashboard> => {
 		await ctx.requireLevel("community", "view");
 
-		const now = Date.now();
-		const windowMs = args.days * 86_400_000;
+		const org = await ctx.db.get(ctx.orgId);
+		const timezone = org?.timezone;
 
-		const keys = dayKeysBack(args.days, now);
+		// Both windows are whole calendar days in the org's timezone, matching
+		// the stored view buckets. A rolling "N × 24h" request window would
+		// divide requests by a slightly wider pool of views and understate
+		// conversion, so leads are bucketed with the same key function.
+		const todayKey = DateUtils.toLocalDateString(Date.now(), timezone);
+		const keys = dayKeysEndingAt(todayKey, args.days);
 		const firstKey = keys[0];
-		// Both windows start at the same UTC midnight. Views are stored in day
-		// buckets, so a rolling "N × 24h" request window would divide requests by
-		// a slightly wider pool of views and understate conversion.
-		const windowStart = Date.parse(`${firstKey}T00:00:00.000Z`);
-		const previousStart = windowStart - windowMs;
-		const previousFirstKey = dayKey(previousStart);
+		const previousFirstKey = shiftDayKey(firstKey, -args.days);
 
 		// One scan covers both windows; the current window is the tail of it.
 		const viewRows = await ctx.db
@@ -146,14 +168,14 @@ export const dashboard = userQuery({
 
 		for (const lead of leads) {
 			if (lead.status === "new") waitingCount++;
-			if (lead.submittedAt >= windowStart) {
+			const key = DateUtils.toLocalDateString(lead.submittedAt, timezone);
+			if (key >= firstKey) {
 				requests++;
-				const key = dayKey(lead.submittedAt);
 				requestsByDay.set(key, (requestsByDay.get(key) ?? 0) + 1);
 				if (lead.firstRespondedAt) {
 					responseTimes.push(lead.firstRespondedAt - lead.submittedAt);
 				}
-			} else if (lead.submittedAt >= previousStart) {
+			} else if (key >= previousFirstKey) {
 				requestsPrevious++;
 			}
 		}

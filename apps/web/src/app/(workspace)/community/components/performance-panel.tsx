@@ -49,7 +49,10 @@ function formatDuration(ms: number | null): string {
 	return `${Math.round(hours / 24)}d`;
 }
 
-/** "Jun 4" from a UTC day key, read back in UTC so it names the bucket it is. */
+/**
+ * "Jun 4" from a day key. Keys are calendar days in the org's timezone, so the
+ * parts are formatted as-is (UTC round-trip) rather than through local time.
+ */
 function formatDayLabel(day: string): string {
 	const [year, month, date] = day.split("-").map(Number);
 	return new Date(Date.UTC(year, month - 1, date)).toLocaleDateString("en-US", {
