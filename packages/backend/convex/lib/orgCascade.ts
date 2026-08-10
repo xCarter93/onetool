@@ -45,6 +45,8 @@ export const ORG_SCOPED_CASCADE_TABLES = [
 	"workflowAutomations",
 	"domainEvents",
 	"reports",
+	"communityLeads", // reference communityPages — drain before them
+	"communityPageViews",
 	"communityPages",
 	"skus",
 	"emailMessages",
@@ -348,6 +350,32 @@ export async function cascadeDeleteOrgDataPage(
 		}
 	}
 
+	// communityLeads — visitor-submitted contact details; erased with the org.
+	{
+		if (remaining <= 0) return { done: false };
+		const rows = await ctx.db
+			.query("communityLeads")
+			.withIndex("by_org", (q) => q.eq("orgId", orgId))
+			.take(remaining);
+		for (const row of rows) {
+			await ctx.db.delete(row._id);
+			remaining--;
+		}
+	}
+
+	// communityPageViews — no plain by_org index; the org is the prefix of by_org_day.
+	{
+		if (remaining <= 0) return { done: false };
+		const rows = await ctx.db
+			.query("communityPageViews")
+			.withIndex("by_org_day", (q) => q.eq("orgId", orgId))
+			.take(remaining);
+		for (const row of rows) {
+			await ctx.db.delete(row._id);
+			remaining--;
+		}
+	}
+
 	// communityPages — banner/avatar/galleryItems[].storageId (all optional).
 	{
 		if (remaining <= 0) return { done: false };
@@ -367,6 +395,14 @@ export async function cascadeDeleteOrgDataPage(
 			}
 			for (const item of row.galleryItemsPublished ?? []) {
 				await StorageHelpers.deleteFromStorage(ctx, item.storageId);
+			}
+			for (const member of [
+				...(row.draftTeamMembers ?? []),
+				...(row.publishedTeamMembers ?? []),
+			]) {
+				if (member.photoStorageId) {
+					await StorageHelpers.deleteFromStorage(ctx, member.photoStorageId);
+				}
 			}
 			await ctx.db.delete(row._id);
 			remaining--;
