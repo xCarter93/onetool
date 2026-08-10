@@ -773,6 +773,39 @@ describe("Community Pages", () => {
 		expect(unchanged?.theme).toBe("storefront");
 	});
 
+	it("the accent colour round-trips to the public payload", async () => {
+		const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+
+		await asUser.mutation(api.communityPages.upsert, {
+			slug: "accent-page",
+			isPublic: true,
+			draftBioContent: {
+				type: "doc",
+				content: [{ type: "paragraph", content: [{ type: "text", text: "Bio" }] }],
+			},
+			draftAccent: "#7c3aed",
+		});
+
+		await asUser.mutation(api.communityPages.publish, {});
+
+		const publicPage = await t.query(api.communityPages.getBySlug, {
+			slug: "accent-page",
+		});
+		expect(publicPage?.accent).toBe("#7c3aed");
+	});
+
+	it("refuses an accent that is not a colour", async () => {
+		const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+
+		// The value lands in an inline style on a page anyone can load.
+		await expect(
+			asUser.mutation(api.communityPages.upsert, {
+				slug: "accent-reject",
+				draftAccent: "#7c3aed;background:url(https://evil.example)",
+			})
+		).rejects.toThrow(/hex value/);
+	});
+
 	it("faq and team round-trip through upsert, publish, and getBySlug", async () => {
 		const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
 
@@ -843,6 +876,14 @@ describe("Community Pages", () => {
 			slug: "no-section-config-page",
 		});
 		expect(publicPage?.sectionConfig).toBeUndefined();
+	});
+
+	it("validateAccent accepts only hex colours", () => {
+		expect(() => __testUtils.validateAccent("#00a6f4")).not.toThrow();
+		expect(() => __testUtils.validateAccent("#abc")).not.toThrow();
+		expect(() => __testUtils.validateAccent("blue")).toThrow();
+		expect(() => __testUtils.validateAccent("rgb(0,0,0)")).toThrow();
+		expect(() => __testUtils.validateAccent("#00a6f4;color:red")).toThrow();
 	});
 
 	it("validateSectionConfig rejects a section listed twice", () => {

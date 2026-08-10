@@ -91,7 +91,7 @@ function SectionIndicator({
 	}
 	if (count) {
 		return (
-			<span className="shrink-0 text-[11px] tabular-nums text-muted-fg">
+			<span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">
 				{count}
 			</span>
 		);
@@ -160,7 +160,7 @@ export default function CommunityEditContent() {
 	if (isLoading || isRedirecting) {
 		return (
 			<div className="flex items-center justify-center min-h-[400px]">
-				<Loader2 className="size-8 animate-spin text-muted-fg" />
+				<Loader2 className="size-8 animate-spin text-muted-foreground" />
 			</div>
 		);
 	}
@@ -221,7 +221,7 @@ export default function CommunityEditContent() {
 							</Button>
 							<div className="min-w-0">
 								<div className="flex items-center gap-3">
-									<h1 className="text-xl font-bold text-fg truncate">
+									<h1 className="text-xl font-bold text-foreground truncate">
 										{mainSettings.pageTitle || "Edit Page"}
 									</h1>
 									{mainSettings.isPublic ? (
@@ -251,14 +251,14 @@ export default function CommunityEditContent() {
 											href={publicUrl}
 											target="_blank"
 											rel="noopener noreferrer"
-											className="text-xs text-muted-fg hover:text-fg font-mono flex items-center gap-1 transition-colors truncate"
+											className="text-xs text-muted-foreground hover:text-foreground font-mono flex items-center gap-1 transition-colors truncate"
 										>
 											{publicUrl}
 											<ExternalLink className="size-3 shrink-0" />
 										</a>
 										<button
 											onClick={mainSettings.handleCopyUrl}
-											className="text-xs text-muted-fg hover:text-fg transition-colors"
+											className="text-xs text-muted-foreground hover:text-foreground transition-colors"
 											aria-label="Copy public URL"
 										>
 											{mainSettings.copied ? (
@@ -341,7 +341,7 @@ export default function CommunityEditContent() {
 									key={section.id}
 									type="button"
 									data-scrollspy-anchor={section.id}
-									className="flex shrink-0 items-center gap-1.5 rounded-full border border-border/60 bg-card px-3 py-1.5 text-xs font-medium text-muted-fg transition-colors cursor-pointer data-[active=true]:border-primary/40 data-[active=true]:text-primary"
+									className="flex shrink-0 items-center gap-1.5 rounded-full border border-border/60 bg-card px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors cursor-pointer data-[active=true]:border-primary/40 data-[active=true]:text-primary"
 								>
 									{section.label}
 									{dirtyBySection[section.id] && (
@@ -362,7 +362,7 @@ export default function CommunityEditContent() {
 								aria-label="Page sections"
 								className="sticky top-40 space-y-0.5 p-3"
 							>
-								<p className="px-3 pb-2 text-[11px] font-semibold uppercase tracking-wider text-muted-fg">
+								<p className="px-3 pb-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
 									Sections
 								</p>
 								{SECTION_LIST.map((section) => {
@@ -373,8 +373,8 @@ export default function CommunityEditContent() {
 											type="button"
 											data-scrollspy-anchor={section.id}
 											className={cn(
-												"group flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm text-muted-fg transition-colors cursor-pointer",
-												"hover:bg-muted/40 hover:text-fg",
+												"group flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm text-muted-foreground transition-colors cursor-pointer",
+												"hover:bg-muted/40 hover:text-foreground",
 												"data-[active=true]:bg-primary/10 data-[active=true]:text-primary data-[active=true]:font-medium",
 											)}
 										>
@@ -400,6 +400,7 @@ export default function CommunityEditContent() {
 							<DesignSection
 								{...design}
 								{...sections}
+								logoUrl={mainSettings.avatarUrl}
 								pricingMode={pricing.pricingMode}
 								sectionRef={sectionRefSetters.design}
 							/>

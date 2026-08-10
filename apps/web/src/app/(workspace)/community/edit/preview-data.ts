@@ -69,6 +69,7 @@ export function buildPreviewData(
 			})),
 		theme: design.layout,
 		colorMode: design.colorMode,
+		accent: design.accent,
 		bannerUrl: mainSettings.bannerUrl,
 		avatarUrl: mainSettings.avatarUrl,
 		organization: org

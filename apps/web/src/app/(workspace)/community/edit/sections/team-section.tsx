@@ -52,14 +52,14 @@ export const TeamSection = React.memo(function TeamSection({
 			contentClassName="space-y-6 pb-12"
 			headerAccessory={
 				teamMembers.length > 0 ? (
-					<span className="shrink-0 text-xs tabular-nums text-muted-fg">
+					<span className="shrink-0 text-xs tabular-nums text-muted-foreground">
 						{teamMembers.length} of {MAX_TEAM_MEMBERS}
 					</span>
 				) : undefined
 			}
 		>
 			{teamMembers.length === 0 && (
-				<p className="rounded-xl border border-dashed border-border bg-muted/20 p-6 text-center text-sm text-muted-fg">
+				<p className="rounded-xl border border-dashed border-border bg-muted/20 p-6 text-center text-sm text-muted-foreground">
 					Nobody added yet. Start with whoever turns up at the door.
 				</p>
 			)}
@@ -75,7 +75,7 @@ export const TeamSection = React.memo(function TeamSection({
 								<span className="flex size-6 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary">
 									{index + 1}
 								</span>
-								<span className="truncate text-sm font-medium text-fg">
+								<span className="truncate text-sm font-medium text-foreground">
 									{member.name || "Unnamed"}
 								</span>
 							</div>
@@ -85,7 +85,7 @@ export const TeamSection = React.memo(function TeamSection({
 								onClick={() =>
 									setTeamMembers((prev) => prev.filter((_, i) => i !== index))
 								}
-								className="flex size-8 cursor-pointer items-center justify-center rounded-lg text-muted-fg transition-colors hover:bg-danger/10 hover:text-danger focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+								className="flex size-8 cursor-pointer items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-danger/10 hover:text-danger focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
 							>
 								<Trash2 className="size-4" />
 							</button>
@@ -104,7 +104,7 @@ export const TeamSection = React.memo(function TeamSection({
 									className="relative size-20 overflow-hidden rounded-full border border-dashed border-border bg-muted/20 transition-colors hover:border-primary/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
 								>
 									{uploadingTeamPhotoAt === index ? (
-										<span className="absolute inset-0 grid place-items-center text-muted-fg">
+										<span className="absolute inset-0 grid place-items-center text-muted-foreground">
 											<Loader2 className="size-5 animate-spin" />
 										</span>
 									) : member.photoUrl ? (
@@ -116,7 +116,7 @@ export const TeamSection = React.memo(function TeamSection({
 											className="object-cover"
 										/>
 									) : (
-										<span className="absolute inset-0 grid place-items-center text-muted-fg">
+										<span className="absolute inset-0 grid place-items-center text-muted-foreground">
 											<ImageIcon className="size-5 opacity-70" />
 										</span>
 									)}
@@ -130,7 +130,7 @@ export const TeamSection = React.memo(function TeamSection({
 												photoUrl: null,
 											})
 										}
-										className="cursor-pointer text-xs text-muted-fg underline-offset-2 hover:text-danger hover:underline"
+										className="cursor-pointer text-xs text-muted-foreground underline-offset-2 hover:text-danger hover:underline"
 									>
 										Remove photo
 									</button>
@@ -155,7 +155,7 @@ export const TeamSection = React.memo(function TeamSection({
 									<Field>
 										<FieldLabel
 											htmlFor={`team-${index}-name`}
-											className="text-xs uppercase tracking-wider text-muted-fg"
+											className="text-xs uppercase tracking-wider text-muted-foreground"
 										>
 											Name
 										</FieldLabel>
@@ -170,7 +170,7 @@ export const TeamSection = React.memo(function TeamSection({
 									<Field>
 										<FieldLabel
 											htmlFor={`team-${index}-role`}
-											className="text-xs uppercase tracking-wider text-muted-fg"
+											className="text-xs uppercase tracking-wider text-muted-foreground"
 										>
 											Role
 										</FieldLabel>
@@ -186,7 +186,7 @@ export const TeamSection = React.memo(function TeamSection({
 								<Field>
 									<FieldLabel
 										htmlFor={`team-${index}-bio`}
-										className="text-xs uppercase tracking-wider text-muted-fg"
+										className="text-xs uppercase tracking-wider text-muted-foreground"
 									>
 										Short bio
 									</FieldLabel>

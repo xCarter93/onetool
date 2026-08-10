@@ -46,10 +46,10 @@ export function PreviewModal({ open, onOpenChange, data }: PreviewModalProps) {
 		>
 			{/* Header bar */}
 			<div className="sticky top-0 z-10 flex items-center justify-between px-4 py-3 bg-background border-b border-border/60 shadow-sm">
-				<h2 className="text-base font-semibold text-fg">Page Preview</h2>
+				<h2 className="text-base font-semibold text-foreground">Page Preview</h2>
 				<button
 					onClick={() => onOpenChange(false)}
-					className="rounded-lg p-1.5 text-muted-fg hover:text-fg hover:bg-muted/40 transition-colors"
+					className="rounded-lg p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors"
 					aria-label="Close preview"
 				>
 					<X className="size-5" />

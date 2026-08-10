@@ -63,7 +63,7 @@ export function GalleryCarousel({
 			}}
 		>
 			<div className="flex items-center justify-between gap-4">
-				<h2 className={headingClassName ?? "text-2xl font-semibold text-fg"}>
+				<h2 className={headingClassName ?? "text-2xl font-semibold text-foreground"}>
 					Our work
 				</h2>
 				{images.length > 1 && (
@@ -123,7 +123,7 @@ export function GalleryCarousel({
 									"h-2 w-6 origin-center rounded-full transition-[transform,background-color] duration-200 ease-[cubic-bezier(0.23,1,0.32,1)] motion-reduce:transition-none",
 									index === activeSlide
 										? "scale-x-100 bg-primary"
-										: "scale-x-[0.333] bg-muted-fg/40 group-hover:bg-muted-fg/70"
+										: "scale-x-[0.333] bg-muted-foreground/40 group-hover:bg-muted-foreground/70"
 								)}
 							/>
 						</button>

@@ -26,6 +26,10 @@ import {
 	type CommunityColorMode,
 } from "@/lib/community-theme";
 import {
+	DEFAULT_COMMUNITY_ACCENT,
+	normalizeAccent,
+} from "@/lib/community-accent";
+import {
 	DEFAULT_PAGE_LAYOUT,
 	resolvePageLayout,
 	type PageLayout,
@@ -225,6 +229,7 @@ function createSnapshot({
 	socialLinks,
 	layout,
 	colorMode,
+	accent,
 	sectionConfig,
 	faqItems,
 	teamMembers,
@@ -255,6 +260,7 @@ function createSnapshot({
 	socialLinks: SocialLinks;
 	layout: PageLayout;
 	colorMode: CommunityColorMode;
+	accent: string;
 	sectionConfig: CommunitySectionSetting[];
 	faqItems: FaqItem[];
 	teamMembers: TeamMember[];
@@ -270,7 +276,7 @@ function createSnapshot({
 		}),
 		// Layout, light/dark and the section list are one dirty unit: they are
 		// the three tabs of a single Design step.
-		design: JSON.stringify({ layout, colorMode, sectionConfig }),
+		design: JSON.stringify({ layout, colorMode, accent, sectionConfig }),
 		businessInfo: JSON.stringify({
 			ownerName,
 			ownerTitle,
@@ -371,6 +377,7 @@ export function useCommunityPageForm() {
 	const [layout, setLayout] = useState<PageLayout>(
 		DEFAULT_PAGE_LAYOUT,
 	);
+	const [accent, setAccent] = useState<string>(DEFAULT_COMMUNITY_ACCENT);
 	const [colorMode, setColorMode] = useState<CommunityColorMode>(
 		DEFAULT_COMMUNITY_COLOR_MODE,
 	);
@@ -586,6 +593,10 @@ export function useCommunityPageForm() {
 		setLayout(serverLayout);
 		const serverColorMode = resolveColorMode(communityPage.draftColorMode);
 		setColorMode(serverColorMode);
+		const serverAccent = normalizeAccent(
+			communityPage.draftAccent as string | undefined,
+		);
+		setAccent(serverAccent);
 
 		// Normalized on the way in, so a config written before a section existed
 		// still hydrates a complete list.
@@ -633,6 +644,7 @@ export function useCommunityPageForm() {
 			socialLinks: links || EMPTY_SOCIAL_LINKS,
 			layout: serverLayout,
 			colorMode: serverColorMode,
+			accent: serverAccent,
 			sectionConfig: serverSectionConfig,
 			faqItems: (communityPage.draftFaqItems ?? []).map((item) => ({
 				question: item.question,
@@ -934,6 +946,7 @@ export function useCommunityPageForm() {
 				socialLinks,
 				layout,
 				colorMode,
+				accent,
 				sectionConfig,
 				faqItems,
 				teamMembers,
@@ -965,6 +978,7 @@ export function useCommunityPageForm() {
 			socialLinks,
 			layout,
 			colorMode,
+			accent,
 			sectionConfig,
 			faqItems,
 			teamMembers,
@@ -1210,6 +1224,7 @@ export function useCommunityPageForm() {
 					: undefined,
 				draftTheme: layout,
 				draftColorMode: colorMode,
+				draftAccent: accent,
 				draftSectionConfig: sectionConfig,
 				draftFaqItems: cleanFaqItems(faqItems),
 				draftTeamMembers: cleanTeamMembers(teamMembers),
@@ -1293,6 +1308,7 @@ export function useCommunityPageForm() {
 					: undefined,
 				draftTheme: layout,
 				draftColorMode: colorMode,
+				draftAccent: accent,
 				draftSectionConfig: sectionConfig,
 				draftFaqItems: cleanFaqItems(faqItems),
 				draftTeamMembers: cleanTeamMembers(teamMembers),
@@ -1327,6 +1343,7 @@ export function useCommunityPageForm() {
 				socialLinks,
 				layout,
 				colorMode,
+				accent,
 				sectionConfig,
 				faqItems,
 				teamMembers,
@@ -1373,6 +1390,7 @@ export function useCommunityPageForm() {
 				socialLinks,
 				layout,
 				colorMode,
+				accent,
 				sectionConfig,
 				faqItems,
 				teamMembers,
@@ -1477,6 +1495,8 @@ export function useCommunityPageForm() {
 			setLayout,
 			colorMode,
 			setColorMode,
+			accent,
+			setAccent,
 		},
 		// Page sections slice — order + visibility of the public sections
 		sections: {

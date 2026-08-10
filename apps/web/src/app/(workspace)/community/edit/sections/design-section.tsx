@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, Monitor, Moon, Palette, Sun } from "lucide-react";
+import { Check, Moon, Palette, Sun } from "lucide-react";
 
 import {
 	PillTabs,
@@ -24,6 +24,7 @@ import {
 } from "@/lib/community-layouts";
 import type { CommunitySectionId, CommunitySectionSetting } from "@/lib/community-sections";
 import { cn } from "@/lib/utils";
+import { AccentPicker } from "./accent-picker";
 import { PageSectionsSection } from "./page-sections-section";
 import { SectionShell } from "./section-shell";
 
@@ -32,6 +33,10 @@ interface DesignSectionProps {
 	setLayout: (layout: PageLayout) => void;
 	colorMode: CommunityColorMode;
 	setColorMode: (mode: CommunityColorMode) => void;
+	accent: string;
+	setAccent: (accent: string) => void;
+	/** The uploaded logo, when there is one — the source for "Use my logo". */
+	logoUrl: string | null;
 	sectionConfig: CommunitySectionSetting[];
 	setSectionConfig: (config: CommunitySectionSetting[]) => void;
 	sectionStatus: Record<
@@ -48,7 +53,6 @@ const MODE_ICONS: Record<
 > = {
 	light: Sun,
 	dark: Moon,
-	system: Monitor,
 };
 
 /**
@@ -57,8 +61,8 @@ const MODE_ICONS: Record<
  * lands on is recognisably the one the owner chose here.
  */
 function LayoutThumbnail({ layout }: { layout: PageLayout }) {
-	const bar = "rounded-[2px] bg-muted-fg/25";
-	const block = "rounded-[3px] bg-muted-fg/15";
+	const bar = "rounded-[2px] bg-muted-foreground/25";
+	const block = "rounded-[3px] bg-muted-foreground/15";
 
 	if (layout === "storefront") {
 		return (
@@ -78,7 +82,7 @@ function LayoutThumbnail({ layout }: { layout: PageLayout }) {
 	if (layout === "directory") {
 		return (
 			<div aria-hidden className="flex h-20 flex-col items-center gap-1.5 p-2">
-				<div className="size-4 rounded-[4px] bg-muted-fg/25" />
+				<div className="size-4 rounded-[4px] bg-muted-foreground/25" />
 				<div className={cn(bar, "h-1.5 w-1/2")} />
 				<div className={cn(bar, "h-1 w-1/3")} />
 				<div className="mt-0.5 grid w-full grid-cols-2 gap-1">
@@ -108,6 +112,9 @@ export function DesignSection({
 	setLayout,
 	colorMode,
 	setColorMode,
+	accent,
+	setAccent,
+	logoUrl,
 	sectionConfig,
 	setSectionConfig,
 	sectionStatus,
@@ -139,11 +146,11 @@ export function DesignSection({
 									<label
 										key={option}
 										className={cn(
-											"group relative cursor-pointer rounded-xl border bg-bg p-1 text-left transition-colors duration-200",
+											"group relative cursor-pointer rounded-xl border bg-background p-1 text-left transition-colors duration-200",
 											"focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-primary",
 											selected
 												? "border-primary ring-1 ring-primary"
-												: "border-border hover:border-muted-fg/40",
+												: "border-border hover:border-muted-foreground/40",
 										)}
 									>
 										<input
@@ -157,10 +164,10 @@ export function DesignSection({
 										<LayoutThumbnail layout={option} />
 										<div className="flex items-start gap-2 px-2 pb-2 pt-1">
 											<div className="min-w-0 flex-1">
-												<p className="text-sm font-medium text-fg">
+												<p className="text-sm font-medium text-foreground">
 													{PAGE_LAYOUT_LABELS[option]}
 												</p>
-												<p className="mt-0.5 text-xs text-muted-fg text-pretty">
+												<p className="mt-0.5 text-xs text-muted-foreground text-pretty">
 													{PAGE_LAYOUT_DESCRIPTIONS[option]}
 												</p>
 											</div>
@@ -176,15 +183,15 @@ export function DesignSection({
 							})}
 						</div>
 					</fieldset>
-					<p className="mt-3 text-xs text-muted-fg">
+					<p className="mt-3 text-xs text-muted-foreground">
 						{PAGE_LAYOUT_BEST_FOR[layout]} Your content stays where it is —
 						only the shape of the page changes.
 					</p>
 				</PillTabsContent>
 
-				<PillTabsContent value="brand" className="pt-5">
+				<PillTabsContent value="brand" className="space-y-5 pt-5">
 					<div className="space-y-2">
-						<p className="text-sm font-medium text-fg">Light or dark</p>
+						<p className="text-sm font-medium text-foreground">Light or dark</p>
 						<SegmentedControl
 							value={colorMode}
 							onValueChange={setColorMode}
@@ -198,10 +205,19 @@ export function DesignSection({
 								};
 							})}
 						/>
-						<p className="text-xs text-muted-fg">
+						<p className="text-xs text-muted-foreground">
 							{COMMUNITY_COLOR_MODE_DESCRIPTIONS[colorMode]}
 						</p>
 					</div>
+
+					<hr className="border-border" />
+
+					<AccentPicker
+						accent={accent}
+						setAccent={setAccent}
+						colorMode={colorMode}
+						logoUrl={logoUrl}
+					/>
 				</PillTabsContent>
 
 				<PillTabsContent value="sections" className="pt-5">

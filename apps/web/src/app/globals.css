@@ -183,7 +183,7 @@
 }
 
 .dark {
-	--bg: oklch(0.168 0.019 264.665); /* #101828 */
+	--bg: oklch(0.168 0.019 264.665); /* #0b0f17 */
 	--fg: oklch(0.985 0 0);
 	--background: var(--bg);
 	--foreground: var(--fg);

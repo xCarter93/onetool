@@ -149,6 +149,7 @@ export const upsert = userMutation({
 		),
 		draftTheme: v.optional(communityLayoutValidator),
 		draftColorMode: v.optional(communityColorModeValidator),
+		draftAccent: v.optional(v.string()),
 	},
 	handler: async (ctx, args): Promise<CommunityPageId> => {
 		await ctx.requireLevel("community", "modify");
@@ -169,6 +170,9 @@ export const upsert = userMutation({
 		}
 		if (args.draftTeamMembers !== undefined) {
 			validateTeamMembers(args.draftTeamMembers);
+		}
+		if (args.draftAccent !== undefined) {
+			validateAccent(args.draftAccent);
 		}
 		const validatedServiceTags =
 			args.draftServiceTags !== undefined
@@ -235,6 +239,8 @@ export const upsert = userMutation({
 				updates.draftTheme = args.draftTheme;
 			if (args.draftColorMode !== undefined)
 				updates.draftColorMode = args.draftColorMode;
+			if (args.draftAccent !== undefined)
+				updates.draftAccent = args.draftAccent;
 
 			await ctx.db.patch(existing._id, updates);
 			return existing._id;
@@ -271,6 +277,7 @@ export const upsert = userMutation({
 				draftSocialLinks: args.draftSocialLinks,
 				draftTheme: args.draftTheme,
 				draftColorMode: args.draftColorMode,
+				draftAccent: args.draftAccent,
 				createdAt: now,
 				updatedAt: now,
 			});
@@ -301,6 +308,7 @@ const DRAFT_TO_PUBLISHED_MAP: Record<string, string> = {
 	draftSocialLinks: "publishedSocialLinks",
 	draftTheme: "publishedTheme",
 	draftColorMode: "publishedColorMode",
+	draftAccent: "publishedAccent",
 };
 
 /**
@@ -579,6 +587,7 @@ export const getBySlug = query({
 			),
 			theme: v.optional(v.string()),
 			colorMode: v.optional(communityColorModeValidator),
+			accent: v.optional(v.string()),
 			bannerUrl: v.union(v.string(), v.null()),
 			avatarUrl: v.union(v.string(), v.null()),
 			organization: v.union(
@@ -679,6 +688,7 @@ export const getBySlug = query({
 			socialLinks: page.publishedSocialLinks,
 			theme: page.publishedTheme,
 			colorMode: page.publishedColorMode,
+			accent: page.publishedAccent,
 			bannerUrl,
 			avatarUrl,
 			organization: org
@@ -1190,6 +1200,19 @@ function validateTeamMembers(
 	}
 }
 
+/**
+ * The accent is written into an inline `style` on a page any stranger can load,
+ * so it has to be a colour and nothing else. React does not sanitize style
+ * values, and `#dc2626;background:url(...)` is a valid string. Six hex digits
+ * or three, nothing more — the renderer re-serializes from numbers on top of
+ * this, so a bad value could never reach the attribute even if it were stored.
+ */
+function validateAccent(accent: string): void {
+	if (!/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(accent.trim())) {
+		throw new Error("An accent colour must be a hex value like #00a6f4");
+	}
+}
+
 export const __testUtils = {
 	validatePricingTiers,
 	validateGalleryItems,
@@ -1197,4 +1220,5 @@ export const __testUtils = {
 	validateSectionConfig,
 	validateFaqItems,
 	validateTeamMembers,
+	validateAccent,
 };

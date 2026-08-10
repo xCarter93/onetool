@@ -95,7 +95,7 @@ export const MainSettingsSection = React.memo(function MainSettingsSection({
 			first
 		>
 			<div className="space-y-4">
-				<h3 className="text-base font-semibold text-fg">Banner Image</h3>
+				<h3 className="text-base font-semibold text-foreground">Banner Image</h3>
 				<div
 					className={cn(
 						"relative w-full aspect-[4.8/1] rounded-xl overflow-hidden border border-dashed border-border bg-muted/20",
@@ -149,7 +149,7 @@ export const MainSettingsSection = React.memo(function MainSettingsSection({
 							</div>
 						</>
 					) : (
-						<div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-muted-fg group-hover:text-fg transition-colors duration-200">
+						<div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-muted-foreground group-hover:text-foreground transition-colors duration-200">
 							{isUploadingBanner ? (
 								<Loader2 className="size-8 animate-spin" />
 							) : (
@@ -180,7 +180,7 @@ export const MainSettingsSection = React.memo(function MainSettingsSection({
 			</div>
 
 			<div className="space-y-4">
-				<h3 className="text-base font-semibold text-fg">Avatar / Logo</h3>
+				<h3 className="text-base font-semibold text-foreground">Avatar / Logo</h3>
 				<div className="flex items-center gap-6">
 					<div
 						className={cn(
@@ -215,7 +215,7 @@ export const MainSettingsSection = React.memo(function MainSettingsSection({
 								</div>
 							</>
 						) : (
-							<div className="absolute inset-0 flex items-center justify-center text-muted-fg">
+							<div className="absolute inset-0 flex items-center justify-center text-muted-foreground">
 								{isUploadingAvatar ? (
 									<Loader2 className="size-6 animate-spin" />
 								) : (
@@ -287,7 +287,7 @@ export const MainSettingsSection = React.memo(function MainSettingsSection({
 						/>
 						<InputGroupAddon align="inline-end">
 							{isChecking ? (
-								<Loader2 className="size-4 animate-spin text-muted-fg" />
+								<Loader2 className="size-4 animate-spin text-muted-foreground" />
 							) : hasAvailability ? (
 								<InputGroupText className="gap-1.5">
 									<span

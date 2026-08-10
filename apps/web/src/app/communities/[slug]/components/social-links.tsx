@@ -103,7 +103,7 @@ export function SocialLinks({ socialLinks }: SocialLinksProps) {
 					aria-label={`Follow on ${platform.label}`}
 					className={cn(
 						"opacity-70 hover:opacity-100 transition-opacity duration-200",
-						"text-muted-fg"
+						"text-muted-foreground"
 					)}
 				>
 					{platform.icon}

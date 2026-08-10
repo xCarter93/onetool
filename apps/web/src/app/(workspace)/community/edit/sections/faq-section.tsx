@@ -41,14 +41,14 @@ export const FaqSection = React.memo(function FaqSection({
 			description="Answer what people ask on the phone and they stop having to call to find out."
 			headerAccessory={
 				faqItems.length > 0 ? (
-					<span className="shrink-0 text-xs tabular-nums text-muted-fg">
+					<span className="shrink-0 text-xs tabular-nums text-muted-foreground">
 						{faqItems.length} of {MAX_FAQ_ITEMS}
 					</span>
 				) : undefined
 			}
 		>
 			{faqItems.length === 0 && (
-				<p className="rounded-xl border border-dashed border-border bg-muted/20 p-6 text-center text-sm text-muted-fg">
+				<p className="rounded-xl border border-dashed border-border bg-muted/20 p-6 text-center text-sm text-muted-foreground">
 					No questions yet. Add the three you answer most often.
 				</p>
 			)}
@@ -64,7 +64,7 @@ export const FaqSection = React.memo(function FaqSection({
 								<span className="flex size-6 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary">
 									{index + 1}
 								</span>
-								<span className="truncate text-sm font-medium text-fg">
+								<span className="truncate text-sm font-medium text-foreground">
 									{item.question || "Untitled question"}
 								</span>
 							</div>
@@ -74,7 +74,7 @@ export const FaqSection = React.memo(function FaqSection({
 								onClick={() =>
 									setFaqItems((prev) => prev.filter((_, i) => i !== index))
 								}
-								className="flex size-8 cursor-pointer items-center justify-center rounded-lg text-muted-fg transition-colors hover:bg-danger/10 hover:text-danger focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+								className="flex size-8 cursor-pointer items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-danger/10 hover:text-danger focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
 							>
 								<Trash2 className="size-4" />
 							</button>
@@ -83,7 +83,7 @@ export const FaqSection = React.memo(function FaqSection({
 							<Field>
 								<FieldLabel
 									htmlFor={`faq-${index}-question`}
-									className="text-xs uppercase tracking-wider text-muted-fg"
+									className="text-xs uppercase tracking-wider text-muted-foreground"
 								>
 									Question
 								</FieldLabel>
@@ -98,7 +98,7 @@ export const FaqSection = React.memo(function FaqSection({
 							<Field>
 								<FieldLabel
 									htmlFor={`faq-${index}-answer`}
-									className="text-xs uppercase tracking-wider text-muted-fg"
+									className="text-xs uppercase tracking-wider text-muted-foreground"
 								>
 									Answer
 								</FieldLabel>

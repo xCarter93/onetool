@@ -35,7 +35,7 @@ export function MobileActionBar({ contactFormId, phone }: MobileActionBarProps) 
 		<div
 			className={cn(
 				"fixed inset-x-0 bottom-0 z-30 lg:hidden",
-				"border-t border-border bg-bg/95 supports-[backdrop-filter]:bg-bg/85 backdrop-blur",
+				"border-t border-border bg-background/95 supports-[backdrop-filter]:bg-background/85 backdrop-blur",
 				"px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]",
 				"transition-transform duration-200 ease-[cubic-bezier(0.23,1,0.32,1)] motion-reduce:transition-none",
 				isFormVisible ? "translate-y-full" : "translate-y-0"
@@ -48,7 +48,7 @@ export function MobileActionBar({ contactFormId, phone }: MobileActionBarProps) 
 				{phone && (
 					<a
 						href={`tel:${phone}`}
-						className="flex-1 inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-border bg-bg px-4 text-sm font-medium text-fg transition-colors duration-200 hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+						className="flex-1 inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-border bg-background px-4 text-sm font-medium text-foreground transition-colors duration-200 hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
 					>
 						<Phone className="size-4" aria-hidden="true" />
 						Call
@@ -61,7 +61,7 @@ export function MobileActionBar({ contactFormId, phone }: MobileActionBarProps) 
 							.getElementById(contactFormId)
 							?.scrollIntoView({ behavior: "smooth", block: "start" })
 					}
-					className="flex-1 inline-flex min-h-11 items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-primary px-4 text-sm font-medium text-primary-fg transition-colors duration-200 hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+					className="flex-1 inline-flex min-h-11 items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors duration-200 hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
 				>
 					<Send className="size-4" aria-hidden="true" />
 					Get a free quote

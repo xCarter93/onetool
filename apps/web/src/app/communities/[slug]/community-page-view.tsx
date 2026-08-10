@@ -4,11 +4,8 @@ import type { JSONContent } from "@tiptap/react";
 import Link from "next/link";
 import { Check } from "lucide-react";
 import { cn } from "@/lib/utils";
-import {
-	communityColorModeClass,
-	communityColorScheme,
-	resolveColorMode,
-} from "@/lib/community-theme";
+import { resolveColorMode } from "@/lib/community-theme";
+import { resolveAccent } from "@/lib/community-accent";
 import { resolvePageLayout, type PageLayout } from "@/lib/community-layouts";
 import {
 	hasRichTextContent,
@@ -107,6 +104,7 @@ export interface CommunityPageViewData {
 	};
 	theme?: string;
 	colorMode?: string;
+	accent?: string;
 	bannerUrl: string | null;
 	avatarUrl: string | null;
 	organization: {
@@ -209,11 +207,11 @@ export function CommunityPageView({
 			<section aria-labelledby="about-heading">
 				<h2
 					id="about-heading"
-					className="text-2xl font-semibold tracking-tight text-fg"
+					className="text-2xl font-semibold tracking-tight text-foreground"
 				>
 					About us
 				</h2>
-				<div className="mt-4 max-w-[68ch] text-fg">
+				<div className="mt-4 max-w-[68ch] text-foreground">
 					<CommunityPageContent content={data.bioContent} />
 				</div>
 			</section>
@@ -222,11 +220,11 @@ export function CommunityPageView({
 			<section id="services" aria-labelledby="services-heading" className="scroll-mt-20">
 				<h2
 					id="services-heading"
-					className="text-2xl font-semibold tracking-tight text-fg"
+					className="text-2xl font-semibold tracking-tight text-foreground"
 				>
 					What we do
 				</h2>
-				<div className="mt-4 max-w-[68ch] text-fg">
+				<div className="mt-4 max-w-[68ch] text-foreground">
 					<CommunityPageContent content={data.servicesContent} />
 				</div>
 			</section>
@@ -235,7 +233,7 @@ export function CommunityPageView({
 			<section id="pricing" aria-labelledby="pricing-heading" className="scroll-mt-20">
 				<h2
 					id="pricing-heading"
-					className="text-2xl font-semibold tracking-tight text-fg"
+					className="text-2xl font-semibold tracking-tight text-foreground"
 				>
 					Plans &amp; pricing
 				</h2>
@@ -250,27 +248,31 @@ export function CommunityPageView({
 							>
 								<div className="min-w-0 flex-1">
 									<div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-										<h3 className="text-base font-semibold text-fg">
+										<h3 className="text-base font-semibold text-foreground">
 											{tier.name}
 										</h3>
+										{/* Solid, like the card variant. The accent is
+										    owner-chosen and solved only against the page
+										    background, so accent on an accent tint is the one
+										    pairing the solver cannot guarantee. */}
 										{tier.highlighted && (
-											<span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
+											<span className="rounded-full bg-primary px-2 py-0.5 text-xs font-medium text-primary-foreground">
 												Most chosen
 											</span>
 										)}
 									</div>
 									{tier.description && (
-										<p className="mt-0.5 text-sm text-muted-fg text-pretty">
+										<p className="mt-0.5 text-sm text-muted-foreground text-pretty">
 											{tier.description}
 										</p>
 									)}
 									{tier.features && tier.features.length > 0 && (
-										<p className="mt-1 text-sm text-muted-fg text-pretty">
+										<p className="mt-1 text-sm text-muted-foreground text-pretty">
 											{tier.features.join(" · ")}
 										</p>
 									)}
 								</div>
-								<p className="shrink-0 text-lg font-semibold tabular-nums text-fg">
+								<p className="shrink-0 text-lg font-semibold tabular-nums text-foreground">
 									{tier.price}
 								</p>
 							</li>
@@ -285,22 +287,22 @@ export function CommunityPageView({
 									"relative flex flex-col rounded-2xl border p-5",
 									tier.highlighted
 										? "border-primary bg-primary/5"
-										: "border-border bg-bg"
+										: "border-border bg-background"
 								)}
 							>
 								{tier.highlighted && (
-									<span className="absolute -top-2.5 left-5 rounded-full bg-primary px-2.5 py-0.5 text-xs font-medium text-primary-fg">
+									<span className="absolute -top-2.5 left-5 rounded-full bg-primary px-2.5 py-0.5 text-xs font-medium text-primary-foreground">
 										Most chosen
 									</span>
 								)}
-								<h3 className="text-base font-semibold text-fg">
+								<h3 className="text-base font-semibold text-foreground">
 									{tier.name}
 								</h3>
-								<p className="mt-1 text-2xl font-semibold tabular-nums text-fg">
+								<p className="mt-1 text-2xl font-semibold tabular-nums text-foreground">
 									{tier.price}
 								</p>
 								{tier.description && (
-									<p className="mt-2 text-sm text-muted-fg text-pretty">
+									<p className="mt-2 text-sm text-muted-foreground text-pretty">
 										{tier.description}
 									</p>
 								)}
@@ -309,7 +311,7 @@ export function CommunityPageView({
 										{tier.features.map((feature) => (
 											<li
 												key={feature}
-												className="flex items-start gap-2 text-sm text-muted-fg"
+												className="flex items-start gap-2 text-sm text-muted-foreground"
 											>
 												<Check
 													className="mt-0.5 size-4 shrink-0 text-success"
@@ -325,7 +327,7 @@ export function CommunityPageView({
 					</ul>
 				) : (
 					data.pricingContent && (
-						<div className="mt-4 max-w-[68ch] text-fg">
+						<div className="mt-4 max-w-[68ch] text-foreground">
 							<CommunityPageContent content={data.pricingContent} />
 						</div>
 					)
@@ -338,13 +340,13 @@ export function CommunityPageView({
 					<GalleryGrid
 						images={galleryImages}
 						businessName={data.pageTitle}
-						headingClassName="text-2xl font-semibold tracking-tight text-fg"
+						headingClassName="text-2xl font-semibold tracking-tight text-foreground"
 					/>
 				) : (
 					<GalleryCarousel
 						images={galleryImages}
 						businessName={data.pageTitle}
-						headingClassName="text-2xl font-semibold tracking-tight text-fg"
+						headingClassName="text-2xl font-semibold tracking-tight text-foreground"
 					/>
 				)}
 			</section>
@@ -353,7 +355,7 @@ export function CommunityPageView({
 			<section id="faq" aria-labelledby="faq-heading" className="scroll-mt-20">
 				<h2
 					id="faq-heading"
-					className="text-2xl font-semibold tracking-tight text-fg"
+					className="text-2xl font-semibold tracking-tight text-foreground"
 				>
 					Common questions
 				</h2>
@@ -365,10 +367,10 @@ export function CommunityPageView({
 							key={`${item.question}-${index}`}
 							className="border-b border-border py-5"
 						>
-							<dt className="text-base font-semibold text-fg text-pretty">
+							<dt className="text-base font-semibold text-foreground text-pretty">
 								{item.question}
 							</dt>
-							<dd className="mt-2 max-w-[68ch] whitespace-pre-line text-sm leading-relaxed text-muted-fg text-pretty">
+							<dd className="mt-2 max-w-[68ch] whitespace-pre-line text-sm leading-relaxed text-muted-foreground text-pretty">
 								{item.answer}
 							</dd>
 						</div>
@@ -380,7 +382,7 @@ export function CommunityPageView({
 			<section id="team" aria-labelledby="team-heading" className="scroll-mt-20">
 				<h2
 					id="team-heading"
-					className="text-2xl font-semibold tracking-tight text-fg"
+					className="text-2xl font-semibold tracking-tight text-foreground"
 				>
 					Meet the team
 				</h2>
@@ -388,7 +390,7 @@ export function CommunityPageView({
 					{teamMembers.map((member, index) => (
 						<li
 							key={`${member.name}-${index}`}
-							className="flex flex-col rounded-2xl border border-border bg-bg p-5"
+							className="flex flex-col rounded-2xl border border-border bg-background p-5"
 						>
 							<div className="flex items-center gap-3">
 								{member.photoUrl ? (
@@ -404,24 +406,24 @@ export function CommunityPageView({
 								) : (
 									<div
 										aria-hidden="true"
-										className="grid size-14 shrink-0 place-items-center rounded-full bg-muted text-base font-semibold text-muted-fg"
+										className="grid size-14 shrink-0 place-items-center rounded-full bg-muted text-base font-semibold text-muted-foreground"
 									>
 										{initialsOf(member.name)}
 									</div>
 								)}
 								<div className="min-w-0">
-									<p className="truncate text-base font-semibold text-fg">
+									<p className="truncate text-base font-semibold text-foreground">
 										{member.name}
 									</p>
 									{member.role && (
-										<p className="truncate text-sm text-muted-fg">
+										<p className="truncate text-sm text-muted-foreground">
 											{member.role}
 										</p>
 									)}
 								</div>
 							</div>
 							{member.bio && (
-								<p className="mt-3 text-sm leading-relaxed text-muted-fg text-pretty">
+								<p className="mt-3 text-sm leading-relaxed text-muted-foreground text-pretty">
 									{member.bio}
 								</p>
 							)}
@@ -433,6 +435,12 @@ export function CommunityPageView({
 	};
 
 	const colorMode = resolveColorMode(data.colorMode);
+	// The owner's brand colour, corrected for the background their mode renders.
+	// Overriding the two variables here re-points every `bg-primary` /
+	// `text-primary` / `border-primary` in the subtree, because the token block is
+	// declared with `@theme inline` — the utility emits `var(--primary)` rather
+	// than a copy captured at `:root`.
+	const accent = resolveAccent(data.accent, colorMode);
 	const layout = resolvePageLayout(data.theme);
 	const LayoutBody = LAYOUT_BODIES[layout];
 
@@ -440,7 +448,7 @@ export function CommunityPageView({
 	// able to submit a lead, and that guarantee should not depend on three
 	// layouts each remembering it.
 	const contactForm = preview ? (
-		<div className="rounded-2xl border border-border bg-muted/30 p-6 text-sm text-muted-fg">
+		<div className="rounded-2xl border border-border bg-muted/30 p-6 text-sm text-muted-foreground">
 			The quote request form appears here on the live page.
 		</div>
 	) : (
@@ -463,15 +471,20 @@ export function CommunityPageView({
 
 	return (
 		<div
-			className={cn(
-				"min-h-screen bg-bg flex flex-col",
-				communityColorModeClass(colorMode),
-			)}
-			style={{ colorScheme: communityColorScheme(colorMode) }}
+			className={cn("min-h-screen bg-background flex flex-col", colorMode)}
+			style={
+				{
+					// Native controls — form inputs, scrollbars, autofill — read this
+					// rather than our tokens, so a pinned page has to say which it is.
+					colorScheme: colorMode,
+					"--primary": accent.primary,
+					"--primary-fg": accent.primaryFg,
+				} as React.CSSProperties
+			}
 		>
 			<a
 				href="#main"
-				className="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-50 focus:rounded-lg focus:bg-primary focus:px-4 focus:py-2 focus:text-sm focus:font-medium focus:text-primary-fg"
+				className="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-50 focus:rounded-lg focus:bg-primary focus:px-4 focus:py-2 focus:text-sm focus:font-medium focus:text-primary-foreground"
 			>
 				Skip to content
 			</a>
@@ -489,7 +502,7 @@ export function CommunityPageView({
 
 			<footer className="border-t border-border bg-muted/20">
 				<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 pb-24 lg:pb-8">
-					<div className="flex flex-col sm:flex-row items-center justify-between gap-4 text-sm text-muted-fg">
+					<div className="flex flex-col sm:flex-row items-center justify-between gap-4 text-sm text-muted-foreground">
 						<p>
 							Powered by{" "}
 							<a
@@ -507,20 +520,20 @@ export function CommunityPageView({
 									href={normalizeUrl(data.organization.website)}
 									target="_blank"
 									rel="noopener noreferrer"
-									className="transition-colors duration-200 hover:text-fg"
+									className="transition-colors duration-200 hover:text-foreground"
 								>
 									Website
 								</a>
 							)}
 							<Link
 								href="/privacy-policy"
-								className="transition-colors duration-200 hover:text-fg"
+								className="transition-colors duration-200 hover:text-foreground"
 							>
 								Privacy Policy
 							</Link>
 							<Link
 								href="/terms-of-service"
-								className="transition-colors duration-200 hover:text-fg"
+								className="transition-colors duration-200 hover:text-foreground"
 							>
 								Terms of Service
 							</Link>

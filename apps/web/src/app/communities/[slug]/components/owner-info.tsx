@@ -7,7 +7,7 @@ export function OwnerInfo({ ownerInfo }: OwnerInfoProps) {
 	if (!ownerInfo.name && !ownerInfo.title) return null;
 
 	return (
-		<p className="text-sm text-muted-fg">
+		<p className="text-sm text-muted-foreground">
 			{ownerInfo.name}
 			{ownerInfo.name && ownerInfo.title ? ", " : ""}
 			{ownerInfo.title}

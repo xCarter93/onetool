@@ -46,7 +46,7 @@ export function SiteHeader({
 			className={cn(
 				"sticky top-0 z-30 transition-colors duration-200",
 				scrolled
-					? "bg-bg/95 supports-[backdrop-filter]:bg-bg/80 backdrop-blur border-b border-border"
+					? "bg-background/95 supports-[backdrop-filter]:bg-background/80 backdrop-blur border-b border-border"
 					: "bg-transparent border-b border-transparent"
 			)}
 		>
@@ -56,7 +56,7 @@ export function SiteHeader({
 					className="flex items-center gap-2.5 min-w-0 rounded-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
 				>
 					{avatarUrl && (
-						<span className="relative size-8 shrink-0 rounded-lg overflow-hidden ring-1 ring-border bg-bg">
+						<span className="relative size-8 shrink-0 rounded-lg overflow-hidden ring-1 ring-border bg-background">
 							<Image
 								src={avatarUrl}
 								alt=""
@@ -66,7 +66,7 @@ export function SiteHeader({
 							/>
 						</span>
 					)}
-					<span className="font-semibold text-fg truncate">
+					<span className="font-semibold text-foreground truncate">
 						{businessName}
 					</span>
 				</a>
@@ -80,7 +80,7 @@ export function SiteHeader({
 							<a
 								key={a.id}
 								href={`#${a.id}`}
-								className="text-sm text-muted-fg hover:text-fg transition-colors duration-200 rounded-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+								className="text-sm text-muted-foreground hover:text-foreground transition-colors duration-200 rounded-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
 							>
 								{a.label}
 							</a>
@@ -91,7 +91,7 @@ export function SiteHeader({
 				<button
 					type="button"
 					onClick={scrollToForm}
-					className="hidden lg:inline-flex ml-auto items-center rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-fg transition-colors duration-200 hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+					className="hidden lg:inline-flex ml-auto items-center rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors duration-200 hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
 				>
 					Get a free quote
 				</button>

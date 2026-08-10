@@ -90,12 +90,12 @@ export const GallerySection = React.memo(function GallerySection({
 					disabled={isUploadingGallery}
 				>
 					{isUploadingGallery ? (
-						<Loader2 className="size-10 mx-auto animate-spin text-muted-fg mb-3" />
+						<Loader2 className="size-10 mx-auto animate-spin text-muted-foreground mb-3" />
 					) : (
-						<ImageIcon className="size-10 mx-auto text-muted-fg/50 group-hover:text-primary/60 transition-colors mb-3" />
+						<ImageIcon className="size-10 mx-auto text-muted-foreground/50 group-hover:text-primary/60 transition-colors mb-3" />
 					)}
-					<p className="text-sm font-medium text-fg">Add photos of your work</p>
-					<p className="text-xs text-muted-fg mt-1">Up to {MAX_GALLERY_IMAGES} images, 5MB each</p>
+					<p className="text-sm font-medium text-foreground">Add photos of your work</p>
+					<p className="text-xs text-muted-foreground mt-1">Up to {MAX_GALLERY_IMAGES} images, 5MB each</p>
 				</button>
 			) : (
 				<div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
@@ -113,7 +113,7 @@ export const GallerySection = React.memo(function GallerySection({
 										className="object-cover"
 									/>
 								) : (
-									<div className="absolute inset-0 flex items-center justify-center text-muted-fg">
+									<div className="absolute inset-0 flex items-center justify-center text-muted-foreground">
 										<Loader2 className="size-5 animate-spin" />
 									</div>
 								)}
@@ -161,11 +161,11 @@ export const GallerySection = React.memo(function GallerySection({
 						>
 							<div className="text-center">
 								{isUploadingGallery ? (
-									<Loader2 className="size-6 mx-auto animate-spin text-muted-fg mb-2" />
+									<Loader2 className="size-6 mx-auto animate-spin text-muted-foreground mb-2" />
 								) : (
-									<Plus className="size-6 mx-auto text-muted-fg/50 mb-2" />
+									<Plus className="size-6 mx-auto text-muted-foreground/50 mb-2" />
 								)}
-								<span className="text-xs text-muted-fg">Add more</span>
+								<span className="text-xs text-muted-foreground">Add more</span>
 							</div>
 						</div>
 					)}

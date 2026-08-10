@@ -46,7 +46,7 @@ function BrowserBar({ url }: { url: string }) {
 				<span className="size-2 rounded-full bg-border" />
 				<span className="size-2 rounded-full bg-border" />
 			</span>
-			<span className="min-w-0 flex-1 truncate rounded-md bg-bg px-2 py-0.5 text-center text-[11px] text-muted-fg">
+			<span className="min-w-0 flex-1 truncate rounded-md bg-background px-2 py-0.5 text-center text-[11px] text-muted-foreground">
 				{url}
 			</span>
 		</div>
@@ -82,14 +82,14 @@ export function LivePreviewPane({
 	return (
 		<div className="sticky top-40 flex h-[calc(100vh-13rem)] min-h-[460px] flex-col gap-3 p-4">
 			<div className="flex shrink-0 items-center justify-between gap-3">
-				<p className="flex min-w-0 items-center gap-2 text-xs font-medium text-muted-fg">
+				<p className="flex min-w-0 items-center gap-2 text-xs font-medium text-muted-foreground">
 					<span
 						className="size-1.5 shrink-0 rounded-full bg-success"
 						aria-hidden
 					/>
 					<span className="truncate">
 						Live preview
-						<span className="text-muted-fg"> · {PAGE_LAYOUT_LABELS[layout]}</span>
+						<span className="text-muted-foreground"> · {PAGE_LAYOUT_LABELS[layout]}</span>
 					</span>
 				</p>
 				<SegmentedControl
@@ -100,7 +100,7 @@ export function LivePreviewPane({
 			</div>
 
 			{device === "desktop" ? (
-				<div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-border/60 bg-bg shadow-xs">
+				<div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-border/60 bg-background shadow-xs">
 					<BrowserBar url={publicUrl} />
 					<div className="min-h-0 flex-1">
 						<PreviewFrame
@@ -127,7 +127,7 @@ export function LivePreviewPane({
 				</div>
 			)}
 
-			<p className="shrink-0 text-xs text-muted-fg">
+			<p className="shrink-0 text-xs text-muted-foreground">
 				{hasUnsavedChanges
 					? "Showing your unsaved draft. Save to keep it, publish to show visitors."
 					: "This is what visitors see on your published page."}

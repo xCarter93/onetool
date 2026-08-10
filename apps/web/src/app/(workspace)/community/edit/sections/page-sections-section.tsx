@@ -84,12 +84,12 @@ export function PageSectionsSection({
 	return (
 		<div className="space-y-4">
 			<div className="flex items-start justify-between gap-4">
-				<p className="text-sm text-muted-fg text-pretty">
+				<p className="text-sm text-muted-foreground text-pretty">
 					Drag to set the order visitors read them in, pick how each one looks,
 					and switch off anything you do not want on the page.
 				</p>
 				{hiddenCount > 0 && (
-					<span className="shrink-0 text-xs text-muted-fg">
+					<span className="shrink-0 text-xs text-muted-foreground">
 						{hiddenCount} hidden
 					</span>
 				)}
@@ -123,7 +123,7 @@ export function PageSectionsSection({
 							<Icon
 								className={cn(
 									"mt-0.5 size-4 shrink-0",
-									item.visible ? "text-muted-fg" : "text-muted-fg/60",
+									item.visible ? "text-muted-foreground" : "text-muted-foreground/60",
 								)}
 								aria-hidden
 							/>
@@ -132,12 +132,12 @@ export function PageSectionsSection({
 									<p
 										className={cn(
 											"truncate text-sm font-medium",
-											item.visible ? "text-fg" : "text-muted-fg",
+											item.visible ? "text-foreground" : "text-muted-foreground",
 										)}
 									>
 										{label}
 									</p>
-									<p className="truncate text-xs text-muted-fg">
+									<p className="truncate text-xs text-muted-foreground">
 										{!item.visible
 											? "Hidden"
 											: status.filled
@@ -172,19 +172,19 @@ export function PageSectionsSection({
 			    business, so it is never reordered and never switched off. */}
 			<div className="flex items-center gap-3 rounded-lg border border-dashed border-border/60 bg-muted/30 p-3">
 				<span className="w-6 shrink-0" aria-hidden />
-				<Mail className="size-4 shrink-0 text-muted-fg" aria-hidden />
+				<Mail className="size-4 shrink-0 text-muted-foreground" aria-hidden />
 				<div className="min-w-0 flex-1">
-					<p className="truncate text-sm font-medium text-fg">
+					<p className="truncate text-sm font-medium text-foreground">
 						Quote request form
 					</p>
-					<p className="truncate text-xs text-muted-fg">
+					<p className="truncate text-xs text-muted-foreground">
 						{FORM_POSITION[pageLayout]} This is how people reach you.
 					</p>
 				</div>
-				<Lock className="size-4 shrink-0 text-muted-fg" aria-hidden />
+				<Lock className="size-4 shrink-0 text-muted-foreground" aria-hidden />
 			</div>
 
-			<p className="text-xs text-muted-fg">
+			<p className="text-xs text-muted-foreground">
 				A section only appears once it has something in it, so an empty one
 				never publishes a heading over nothing.
 			</p>

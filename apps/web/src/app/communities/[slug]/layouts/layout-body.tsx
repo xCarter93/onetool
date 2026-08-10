@@ -86,7 +86,7 @@ export function SectionStack({
 	if (data.content) {
 		return (
 			<div className={className}>
-				<div className="max-w-[68ch] text-fg">
+				<div className="max-w-[68ch] text-foreground">
 					<CommunityPageContent content={data.content} />
 				</div>
 			</div>

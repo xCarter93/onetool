@@ -30,7 +30,7 @@ export function GalleryGrid({
 
 	return (
 		<section className="space-y-4">
-			<h2 className={headingClassName ?? "text-2xl font-semibold text-fg"}>
+			<h2 className={headingClassName ?? "text-2xl font-semibold text-foreground"}>
 				Our work
 			</h2>
 			<ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4">

@@ -1456,6 +1456,13 @@ export default defineSchema({
 		// Light/dark on the public page. Owner-decided, not visitor-decided.
 		draftColorMode: v.optional(communityColorModeValidator),
 		publishedColorMode: v.optional(communityColorModeValidator),
+		// The owner's brand colour as they picked it, `#rrggbb`. Stored raw and
+		// corrected against the page background at render time (see the web app's
+		// lib/community-accent), so a published page inherits later solver work
+		// and switching light/dark does not mean re-choosing. Shape is enforced in
+		// the upsert handler — a validator cannot express a pattern.
+		draftAccent: v.optional(v.string()),
+		publishedAccent: v.optional(v.string()),
 
 		// Metadata
 		pageTitle: v.optional(v.string()), // Custom page title (falls back to org name)

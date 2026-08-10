@@ -1,9 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-	communityColorModeClass,
-	communityColorScheme,
-	resolveColorMode,
-} from "./community-theme";
+import { COMMUNITY_COLOR_MODES, resolveColorMode } from "./community-theme";
 
 describe("resolveColorMode", () => {
 	it("defaults to light so a stranger sees the page the owner designed", () => {
@@ -17,24 +13,12 @@ describe("resolveColorMode", () => {
 		expect(resolveColorMode("")).toBe("light");
 	});
 
+	it("lands the retired 'system' mode on light", () => {
+		expect(resolveColorMode("system")).toBe("light");
+	});
+
 	it("keeps a stored mode", () => {
 		expect(resolveColorMode("dark")).toBe("dark");
-		expect(resolveColorMode("system")).toBe("system");
-	});
-});
-
-describe("communityColorModeClass", () => {
-	it("pins light and dark, and leaves system to the visitor", () => {
-		expect(communityColorModeClass("light")).toBe("light");
-		expect(communityColorModeClass("dark")).toBe("dark");
-		expect(communityColorModeClass("system")).toBeUndefined();
-	});
-});
-
-describe("communityColorScheme", () => {
-	it("tells native controls which theme they are inside", () => {
-		expect(communityColorScheme("light")).toBe("light");
-		expect(communityColorScheme("dark")).toBe("dark");
-		expect(communityColorScheme("system")).toBe("light dark");
+		expect(COMMUNITY_COLOR_MODES).toEqual(["light", "dark"]);
 	});
 });

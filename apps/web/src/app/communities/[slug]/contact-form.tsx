@@ -122,10 +122,10 @@ export function ContactForm({ slug, serviceTags }: ContactFormProps) {
 						<div className="size-16 rounded-full bg-success/10 flex items-center justify-center mb-4">
 							<CheckCircle className="size-8 text-success-foreground" aria-hidden="true" />
 						</div>
-						<h3 className="text-xl font-semibold text-fg mb-2">
+						<h3 className="text-xl font-semibold text-foreground mb-2">
 							Request sent
 						</h3>
-						<p className="text-muted-fg text-sm">
+						<p className="text-muted-foreground text-sm">
 							Thanks for reaching out. We&apos;ll get back to you
 							within one business day.
 						</p>
@@ -182,7 +182,7 @@ export function ContactForm({ slug, serviceTags }: ContactFormProps) {
 						</div>
 						<div className="space-y-2">
 							<Label htmlFor="phone" className="text-sm font-medium">
-								Phone <span className="text-muted-fg">(optional)</span>
+								Phone <span className="text-muted-foreground">(optional)</span>
 							</Label>
 							<PhoneInput
 								id="phone"
@@ -196,9 +196,9 @@ export function ContactForm({ slug, serviceTags }: ContactFormProps) {
 						</div>
 						{serviceOptions.length > 0 && (
 							<fieldset className="m-0 space-y-2 border-0 p-0">
-								<legend className="p-0 text-sm font-medium text-fg">
+								<legend className="p-0 text-sm font-medium text-foreground">
 									What do you need?{" "}
-									<span className="text-muted-fg">(optional)</span>
+									<span className="text-muted-foreground">(optional)</span>
 								</legend>
 								<div className="flex flex-wrap gap-2">
 									{serviceOptions.map((tag) => {
@@ -228,7 +228,7 @@ export function ContactForm({ slug, serviceTags }: ContactFormProps) {
 												/>
 												<span
 													className={cn(
-														"cursor-pointer select-none rounded-full border border-input bg-background px-3 py-1.5 text-sm text-fg transition-colors",
+														"cursor-pointer select-none rounded-full border border-input bg-background px-3 py-1.5 text-sm text-foreground transition-colors",
 														"hover:bg-muted",
 														"peer-checked:border-primary peer-checked:bg-primary peer-checked:text-primary-foreground",
 														"peer-focus-visible:border-ring peer-focus-visible:ring-[3px] peer-focus-visible:ring-ring/50"
@@ -245,7 +245,7 @@ export function ContactForm({ slug, serviceTags }: ContactFormProps) {
 						<div className="space-y-2">
 							<Label htmlFor="message" className="text-sm font-medium">
 								How can we help?{" "}
-								<span className="text-muted-fg">(optional)</span>
+								<span className="text-muted-foreground">(optional)</span>
 							</Label>
 							<Textarea
 								id="message"

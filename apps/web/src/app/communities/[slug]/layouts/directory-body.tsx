@@ -54,16 +54,16 @@ export function DirectoryBody(props: LayoutBodyProps) {
 						/>
 					) : null}
 
-					<h1 className="mt-4 text-2xl sm:text-3xl font-semibold tracking-tight text-fg text-balance">
+					<h1 className="mt-4 text-2xl sm:text-3xl font-semibold tracking-tight text-foreground text-balance">
 						{data.pageTitle}
 					</h1>
 
 					{metaLine && (
-						<p className="mt-2 text-sm text-muted-fg">{metaLine}</p>
+						<p className="mt-2 text-sm text-muted-foreground">{metaLine}</p>
 					)}
 
 					{data.metaDescription && (
-						<p className="mt-3 mx-auto max-w-xl text-base leading-relaxed text-muted-fg text-pretty">
+						<p className="mt-3 mx-auto max-w-xl text-base leading-relaxed text-muted-foreground text-pretty">
 							{data.metaDescription}
 						</p>
 					)}
@@ -76,7 +76,7 @@ export function DirectoryBody(props: LayoutBodyProps) {
 						{data.organization?.phone && (
 							<a
 								href={`tel:${data.organization.phone}`}
-								className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-primary px-5 text-sm font-medium text-primary-fg transition-colors duration-200 hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+								className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-primary px-5 text-sm font-medium text-primary-foreground transition-colors duration-200 hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
 							>
 								<Phone className="size-4" aria-hidden="true" />
 								Call {data.organization.phone}
@@ -84,7 +84,7 @@ export function DirectoryBody(props: LayoutBodyProps) {
 						)}
 						<a
 							href={`#${CONTACT_FORM_ID}`}
-							className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-border px-5 text-sm font-medium text-fg transition-colors duration-200 hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+							className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-border px-5 text-sm font-medium text-foreground transition-colors duration-200 hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
 						>
 							<MessageSquare className="size-4" aria-hidden="true" />
 							Send a message
@@ -101,7 +101,7 @@ export function DirectoryBody(props: LayoutBodyProps) {
 				<div className="grid gap-6 sm:grid-cols-2">
 					{data.businessHours && (
 						<div id="hours" className="scroll-mt-20">
-							<div className="mb-2 flex items-center gap-2 text-sm font-medium text-fg">
+							<div className="mb-2 flex items-center gap-2 text-sm font-medium text-foreground">
 								<OpenToday
 									schedule={data.businessHours.schedule}
 									byAppointmentOnly={data.businessHours.byAppointmentOnly}
@@ -110,15 +110,15 @@ export function DirectoryBody(props: LayoutBodyProps) {
 							</div>
 							<BusinessHoursCard
 								businessHours={data.businessHours}
-								cardClasses="border border-border bg-bg mt-0"
+								cardClasses="border border-border bg-background mt-0"
 							/>
 						</div>
 					)}
 
 					{hasCredentialCell && (
-						<div className="rounded-xl border border-border bg-bg p-6">
-							<h2 className="text-lg font-semibold text-fg">Credentials</h2>
-							<ul className="mt-4 space-y-2 text-sm text-muted-fg">
+						<div className="rounded-xl border border-border bg-background p-6">
+							<h2 className="text-lg font-semibold text-foreground">Credentials</h2>
+							<ul className="mt-4 space-y-2 text-sm text-muted-foreground">
 								{credentialLines.length > 0 && (
 									<li className="flex items-start gap-2">
 										<ShieldCheck
@@ -131,7 +131,7 @@ export function DirectoryBody(props: LayoutBodyProps) {
 								{certifications.map((certification) => (
 									<li key={certification} className="flex items-start gap-2">
 										<Award
-											className="mt-0.5 size-4 shrink-0 text-muted-fg"
+											className="mt-0.5 size-4 shrink-0 text-muted-foreground"
 											aria-hidden="true"
 										/>
 										<span className="text-pretty">{certification}</span>
@@ -143,12 +143,12 @@ export function DirectoryBody(props: LayoutBodyProps) {
 
 					{serviceTags.length > 0 && (
 						<div className="sm:col-span-2">
-							<h2 className="text-lg font-semibold text-fg">Services</h2>
+							<h2 className="text-lg font-semibold text-foreground">Services</h2>
 							<ul className="mt-3 flex flex-wrap gap-2">
 								{serviceTags.map((tag) => (
 									<li
 										key={tag}
-										className="rounded-full bg-muted px-3 py-1 text-sm text-fg"
+										className="rounded-full bg-muted px-3 py-1 text-sm text-foreground"
 									>
 										{tag}
 									</li>
@@ -158,14 +158,14 @@ export function DirectoryBody(props: LayoutBodyProps) {
 					)}
 
 					{serviceArea && (
-						<div className="sm:col-span-2 flex items-start gap-2 rounded-xl border border-border bg-muted/20 p-5 text-sm text-muted-fg">
+						<div className="sm:col-span-2 flex items-start gap-2 rounded-xl border border-border bg-muted/20 p-5 text-sm text-muted-foreground">
 							<MapPin
-								className="mt-0.5 size-4 shrink-0 text-muted-fg"
+								className="mt-0.5 size-4 shrink-0 text-muted-foreground"
 								aria-hidden="true"
 							/>
 							<span>
 								Serving{" "}
-								<span className="font-medium text-fg">{serviceArea}</span> and
+								<span className="font-medium text-foreground">{serviceArea}</span> and
 								the surrounding area.
 							</span>
 						</div>

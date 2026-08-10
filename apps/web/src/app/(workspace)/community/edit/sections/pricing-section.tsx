@@ -134,7 +134,7 @@ export const PricingSection = React.memo(function PricingSection({
 									<span className="size-6 rounded-full bg-primary/10 text-primary text-xs font-bold flex items-center justify-center">
 										{index + 1}
 									</span>
-									<span className="text-sm font-medium text-fg truncate max-w-[200px]">
+									<span className="text-sm font-medium text-foreground truncate max-w-[200px]">
 										{tier.name || "Untitled Tier"}
 									</span>
 								</div>
@@ -146,7 +146,7 @@ export const PricingSection = React.memo(function PricingSection({
 											prev.filter((_, i) => i !== index),
 										)
 									}
-									className="size-8 rounded-lg flex items-center justify-center text-muted-fg cursor-pointer transition-colors hover:bg-danger/10 hover:text-danger"
+									className="size-8 rounded-lg flex items-center justify-center text-muted-foreground cursor-pointer transition-colors hover:bg-danger/10 hover:text-danger"
 								>
 									<Trash2 className="size-4" />
 								</button>
@@ -154,7 +154,7 @@ export const PricingSection = React.memo(function PricingSection({
 							<div className="p-4 space-y-3">
 								<div className="grid gap-3 sm:grid-cols-2">
 									<Field>
-										<FieldLabel htmlFor={`pricing-tier-${index}-name`} className="text-xs uppercase tracking-wider text-muted-fg">Tier Name</FieldLabel>
+										<FieldLabel htmlFor={`pricing-tier-${index}-name`} className="text-xs uppercase tracking-wider text-muted-foreground">Tier Name</FieldLabel>
 										<Input
 											id={`pricing-tier-${index}-name`}
 											value={tier.name}
@@ -171,7 +171,7 @@ export const PricingSection = React.memo(function PricingSection({
 										/>
 									</Field>
 									<Field>
-										<FieldLabel htmlFor={`pricing-tier-${index}-price`} className="text-xs uppercase tracking-wider text-muted-fg">Price</FieldLabel>
+										<FieldLabel htmlFor={`pricing-tier-${index}-price`} className="text-xs uppercase tracking-wider text-muted-foreground">Price</FieldLabel>
 										<Input
 											id={`pricing-tier-${index}-price`}
 											value={tier.price}
@@ -189,7 +189,7 @@ export const PricingSection = React.memo(function PricingSection({
 									</Field>
 								</div>
 								<Field>
-									<FieldLabel htmlFor={`pricing-tier-${index}-description`} className="text-xs uppercase tracking-wider text-muted-fg">Description</FieldLabel>
+									<FieldLabel htmlFor={`pricing-tier-${index}-description`} className="text-xs uppercase tracking-wider text-muted-foreground">Description</FieldLabel>
 									<Input
 										id={`pricing-tier-${index}-description`}
 										value={tier.description}
@@ -206,7 +206,7 @@ export const PricingSection = React.memo(function PricingSection({
 									/>
 								</Field>
 								<Field>
-									<FieldLabel className="text-xs uppercase tracking-wider text-muted-fg">
+									<FieldLabel className="text-xs uppercase tracking-wider text-muted-foreground">
 										Features
 									</FieldLabel>
 									<div className="space-y-2">
@@ -224,7 +224,7 @@ export const PricingSection = React.memo(function PricingSection({
 													type="button"
 													aria-label="Remove feature"
 													onClick={() => removeTierFeature(index, featureIndex)}
-													className="size-8 shrink-0 rounded-lg flex items-center justify-center text-muted-fg cursor-pointer transition-colors hover:bg-danger/10 hover:text-danger focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+													className="size-8 shrink-0 rounded-lg flex items-center justify-center text-muted-foreground cursor-pointer transition-colors hover:bg-danger/10 hover:text-danger focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
 												>
 													<Trash2 className="size-4" />
 												</button>
@@ -241,7 +241,7 @@ export const PricingSection = React.memo(function PricingSection({
 												Add feature
 											</Button>
 										) : (
-											<p className="text-xs text-muted-fg">
+											<p className="text-xs text-muted-foreground">
 												Maximum of {MAX_TIER_FEATURES} features per tier.
 											</p>
 										)}

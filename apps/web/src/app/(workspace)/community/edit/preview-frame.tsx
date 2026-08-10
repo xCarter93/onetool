@@ -137,7 +137,7 @@ export function PreviewFrame({ width, title, children }: PreviewFrameProps) {
 	}, [width]);
 
 	return (
-		<div ref={wrapperRef} className="relative size-full overflow-hidden bg-bg">
+		<div ref={wrapperRef} className="relative size-full overflow-hidden bg-background">
 			<iframe
 				ref={frameRef}
 				title={title}
@@ -153,7 +153,7 @@ export function PreviewFrame({ width, title, children }: PreviewFrameProps) {
 			{(!mountNode || !stylesReady) && (
 				<div className="absolute inset-0 flex items-center justify-center p-6 text-center">
 					{timedOut ? (
-						<p className="text-xs text-muted-fg">
+						<p className="text-xs text-muted-foreground">
 							The preview could not load here. Use Preview in the header to see
 							the full page.
 						</p>

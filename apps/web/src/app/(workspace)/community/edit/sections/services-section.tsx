@@ -78,7 +78,7 @@ export const ServicesSection = React.memo(function ServicesSection({
 					placeholder="Type a service and press Enter"
 				/>
 				{atCap && (
-					<p className="text-xs text-muted-fg">
+					<p className="text-xs text-muted-foreground">
 						Maximum of {MAX_SERVICE_TAGS} tags reached — remove one to add
 						another.
 					</p>

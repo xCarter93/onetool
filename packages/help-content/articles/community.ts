@@ -19,6 +19,9 @@ export const communityArticles: HelpArticle[] = [
 			"light mode",
 			"dark mode",
 			"layout",
+			"brand color",
+			"accent color",
+			"logo color",
 			"showcase",
 			"storefront",
 			"directory",
@@ -74,7 +77,7 @@ export const communityArticles: HelpArticle[] = [
 						type: "list",
 						items: [
 							"**Main Page Settings**: banner image, avatar or logo, page title, page URL, and an SEO description for search engines.",
-							"**Design**: three tabs. **Layout** picks the shape of your public page, **Brand** sets light or dark, and **Sections** controls the order your public sections appear in, the layout each one uses, and a switch to leave any of them off.",
+							"**Design**: three tabs. **Layout** picks the shape of your public page, **Brand** sets light or dark and your accent color, and **Sections** controls the order your public sections appear in, the layout each one uses, and a switch to leave any of them off.",
 							"**Business Info**: your name and title, **Licensed**, **Bonded**, and **Insured** badges, year established, license number, certifications, business hours, and social links.",
 							"**Bio**: tell visitors who you are and what makes your business different.",
 							"**Image Gallery**: up to 5 photos of your work.",
@@ -141,6 +144,27 @@ export const communityArticles: HelpArticle[] = [
 					{
 						type: "note",
 						text: "Showcase is what every page starts as. Switching layouts never deletes anything. A section you have filled in stays filled in, wherever the new layout puts it.",
+					},
+				],
+			},
+			{
+				heading: "Set your colors",
+				blocks: [
+					{
+						type: "paragraph",
+						text: "The **Brand** tab under **Design** sets two things: whether your page is light or dark, and the accent color used for buttons, links and highlights.",
+					},
+					{
+						type: "paragraph",
+						text: "Light or dark is your choice, not your visitor's. Everyone who lands on your page sees the one you picked, whatever their own phone is set to.",
+					},
+					{
+						type: "paragraph",
+						text: "For the accent, pick one of the eight presets, use the color well to choose your own, or type a hex value such as #00a6f4. If you have uploaded a logo, **Use my logo** reads the main color straight off it.",
+					},
+					{
+						type: "note",
+						text: "Colors are shown as they will appear on your page. If the shade you pick would be hard to read on your background, OneTool darkens or lightens it just enough to stay legible, and says so underneath. Your logo, banner and photos are never changed.",
 					},
 				],
 			},

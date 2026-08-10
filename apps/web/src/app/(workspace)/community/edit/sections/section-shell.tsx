@@ -44,8 +44,8 @@ export function SectionShell({
 						<Icon className="size-4.5 text-primary" />
 					</div>
 					<div>
-						<h2 className="text-lg font-semibold text-fg">{title}</h2>
-						<p className="mt-0.5 text-sm text-muted-fg">{description}</p>
+						<h2 className="text-lg font-semibold text-foreground">{title}</h2>
+						<p className="mt-0.5 text-sm text-muted-foreground">{description}</p>
 					</div>
 				</div>
 				{headerAccessory}

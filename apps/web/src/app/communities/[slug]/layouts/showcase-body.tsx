@@ -32,7 +32,7 @@ export function ShowcaseBody(props: LayoutBodyProps) {
 							className="object-cover opacity-15"
 							priority
 						/>
-						<div className="absolute inset-0 bg-gradient-to-b from-transparent to-bg" />
+						<div className="absolute inset-0 bg-gradient-to-b from-transparent to-background" />
 					</div>
 				)}
 
@@ -45,12 +45,12 @@ export function ShowcaseBody(props: LayoutBodyProps) {
 						)}
 					>
 						<div>
-							<h1 className="text-3xl sm:text-4xl lg:text-5xl font-semibold tracking-tight text-fg text-balance">
+							<h1 className="text-3xl sm:text-4xl lg:text-5xl font-semibold tracking-tight text-foreground text-balance">
 								{data.pageTitle}
 							</h1>
 
 							{data.metaDescription && (
-								<p className="mt-4 text-base sm:text-lg leading-relaxed text-muted-fg max-w-xl text-pretty">
+								<p className="mt-4 text-base sm:text-lg leading-relaxed text-muted-foreground max-w-xl text-pretty">
 									{data.metaDescription}
 								</p>
 							)}
@@ -62,7 +62,7 @@ export function ShowcaseBody(props: LayoutBodyProps) {
 							<div className="mt-7 flex flex-wrap items-center gap-3">
 								<a
 									href={`#${CONTACT_FORM_ID}`}
-									className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-primary px-5 text-sm font-medium text-primary-fg transition-colors duration-200 hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+									className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-primary px-5 text-sm font-medium text-primary-foreground transition-colors duration-200 hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
 								>
 									Get a free quote
 									<ArrowRight className="size-4" aria-hidden="true" />
@@ -70,7 +70,7 @@ export function ShowcaseBody(props: LayoutBodyProps) {
 								{data.organization?.phone && (
 									<a
 										href={`tel:${data.organization.phone}`}
-										className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-border px-5 text-sm font-medium text-fg transition-colors duration-200 hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+										className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-border px-5 text-sm font-medium text-foreground transition-colors duration-200 hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
 									>
 										<Phone className="size-4" aria-hidden="true" />
 										{data.organization.phone}
@@ -153,7 +153,7 @@ export function ShowcaseBody(props: LayoutBodyProps) {
 							<div id="hours" className="scroll-mt-20">
 								<BusinessHoursCard
 									businessHours={data.businessHours}
-									cardClasses="border border-border bg-bg"
+									cardClasses="border border-border bg-background"
 								/>
 							</div>
 						</div>

@@ -69,12 +69,14 @@ export const communityTeamMembersValidator = v.array(
 /**
  * How the public page resolves light and dark. The owner decides, because the
  * page carries their brand and they are the one accountable for what a stranger
- * sees — "system" hands that back to the visitor's device.
+ * sees. There is no "match device": the accent solver corrects the brand colour
+ * against a known background, and a page that could render on either has none.
+ *
+ * Mirrors `COMMUNITY_COLOR_MODES` in the web app's `lib/community-theme`.
  */
 export const communityColorModeValidator = v.union(
 	v.literal("light"),
-	v.literal("dark"),
-	v.literal("system")
+	v.literal("dark")
 );
 
 /**
