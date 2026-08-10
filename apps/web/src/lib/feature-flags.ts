@@ -8,7 +8,8 @@
 
 /**
  * Gates the whole QuickBooks Online integration: connecting, syncing, and the
- * customer import. Held off while Intuit production approval is pending.
+ * customer import. Rolled out to 100% of users on 2026-08-10; kept as a kill
+ * switch, so the off-state UI below it is still reachable.
  * Flag: https://us.posthog.com/project/265773/feature_flags/808384
  */
 export const FLAG_QUICKBOOKS = "quickbooks-integration";

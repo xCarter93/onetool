@@ -36,10 +36,6 @@ export const communityArticles: HelpArticle[] = [
 						type: "paragraph",
 						text: "Your community page is a free public landing page for your business, hosted by OneTool at onetool.biz/communities/your-page-url. It can show a banner, your logo, a bio, a photo gallery, your services and pricing, business hours, credentials, and social links, and it includes a built-in form visitors use to request a quote.",
 					},
-					{
-						type: "note",
-						text: "If **Community** appears grayed out in your sidebar with a coming soon message, the feature is not enabled for your organization yet.",
-					},
 				],
 			},
 			{
