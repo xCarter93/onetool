@@ -65,6 +65,8 @@ export async function generateMetadata({
 	return {
 		title: data.pageTitle,
 		description: data.metaDescription || undefined,
+		// Share-kit links carry ?src tags; this keeps them one page to crawlers.
+		alternates: { canonical: `https://onetool.biz/communities/${slug}` },
 		openGraph: {
 			title: data.pageTitle,
 			description:

@@ -16,6 +16,20 @@ import { cn } from "@/lib/utils";
 
 const COPY_FEEDBACK_DURATION_MS = 2000;
 
+/**
+ * Tags a share-kit URL so the Top sources breakdown can tell a QR scan from a
+ * shared link. Read client-side by the public page's view beacon.
+ */
+function withSrc(url: string, src: "qr" | "link"): string {
+	try {
+		const tagged = new URL(url);
+		tagged.searchParams.set("src", src);
+		return tagged.toString();
+	} catch {
+		return url;
+	}
+}
+
 interface ShareKitDialogProps {
 	open: boolean;
 	onOpenChange: (open: boolean) => void;
@@ -73,16 +87,19 @@ export function ShareKitDialog({
 	const [qrFailed, setQrFailed] = React.useState(false);
 	const [copiedId, setCopiedId] = React.useState<string | null>(null);
 
+	const qrUrl = React.useMemo(() => withSrc(url, "qr"), [url]);
+	const linkUrl = React.useMemo(() => withSrc(url, "link"), [url]);
+
 	React.useEffect(() => {
-		if (!open || !url) return;
+		if (!open || !qrUrl) return;
 		let cancelled = false;
 
 		void (async () => {
 			try {
 				const QRCode = (await import("qrcode")).default;
 				const [png, svg] = await Promise.all([
-					QRCode.toDataURL(url, { margin: 4, width: 1024 }),
-					QRCode.toString(url, { type: "svg", margin: 4, width: 1024 }),
+					QRCode.toDataURL(qrUrl, { margin: 4, width: 1024 }),
+					QRCode.toString(qrUrl, { type: "svg", margin: 4, width: 1024 }),
 				]);
 				if (cancelled) return;
 				setPngDataUrl(png);
@@ -95,7 +112,7 @@ export function ShareKitDialog({
 		return () => {
 			cancelled = true;
 		};
-	}, [open, url]);
+	}, [open, qrUrl]);
 
 	const copy = React.useCallback(
 		(id: string, text: string, description: string) => {
@@ -108,8 +125,8 @@ export function ShareKitDialog({
 	);
 
 	const blurbs = React.useMemo(
-		() => buildBlurbs(businessName, url),
-		[businessName, url]
+		() => buildBlurbs(businessName, linkUrl),
+		[businessName, linkUrl]
 	);
 
 	return (
@@ -191,12 +208,14 @@ export function ShareKitDialog({
 						<p className="text-sm font-medium text-foreground">Link</p>
 						<div className="flex items-center gap-2 rounded-lg border border-border bg-muted/40 px-3 py-2">
 							<span className="min-w-0 flex-1 truncate font-mono text-xs text-muted-foreground">
-								{url}
+								{linkUrl}
 							</span>
 							<Button
 								variant="ghost"
 								size="sm"
-								onClick={() => copy("url", url, "Page link is on your clipboard")}
+								onClick={() =>
+									copy("url", linkUrl, "Page link is on your clipboard")
+								}
 							>
 								{copiedId === "url" ? (
 									<Check className="size-4 text-success" />

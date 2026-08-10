@@ -1527,10 +1527,22 @@ export default defineSchema({
 		orgId: v.id("organizations"),
 		communityPageId: v.id("communityPages"),
 		day: v.string(),
+		// Traffic channel, classified server-side in recordView — never a raw
+		// referrer string. Absent on rows written before P5b; read as "direct".
+		source: v.optional(
+			v.union(
+				v.literal("qr"),
+				v.literal("link"),
+				v.literal("search"),
+				v.literal("social"),
+				v.literal("referral"),
+				v.literal("direct")
+			)
+		),
 		count: v.number(),
 	})
 		.index("by_org_day", ["orgId", "day"])
-		.index("by_page_day", ["communityPageId", "day"]),
+		.index("by_page_day_source", ["communityPageId", "day", "source"]),
 
 	// Reports - saved report configurations
 	reports: defineTable({

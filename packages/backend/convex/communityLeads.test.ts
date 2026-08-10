@@ -304,6 +304,73 @@ describe("Community analytics", () => {
 		expect(rows[0].count).toBe(1);
 	});
 
+	it("classifies view sources and ranks them in the dashboard", async () => {
+		await publishPage("views-sources-test");
+		const record = (extra: { src?: string; referrer?: string }) =>
+			t.mutation(api.communityAnalytics.recordView, {
+				slug: "views-sources-test",
+				...extra,
+			});
+
+		await record({ src: "qr" });
+		await record({ src: "qr" });
+		// A share-kit tag wins over whatever referrer rode along.
+		await record({ src: "link", referrer: "https://www.google.com/" });
+		await record({ referrer: "https://www.google.com/search?q=lawn+care" });
+		await record({ referrer: "https://m.facebook.com/some/post" });
+		await record({ referrer: "https://chamber.example.com/members" });
+		await record({});
+
+		const rows = await t.run(async (ctx) =>
+			ctx.db.query("communityPageViews").collect()
+		);
+		expect(rows).toHaveLength(6);
+
+		const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+		const stats = await asUser.query(api.communityAnalytics.dashboard, {
+			days: 7,
+		});
+		expect(stats.views).toBe(7);
+		expect(stats.sources).toEqual([
+			{ source: "qr", views: 2 },
+			{ source: "link", views: 1 },
+			{ source: "search", views: 1 },
+			{ source: "social", views: 1 },
+			{ source: "referral", views: 1 },
+			{ source: "direct", views: 1 },
+		]);
+	});
+
+	it("rows from before channels existed read as direct", async () => {
+		await publishPage("views-legacy-test");
+		await t.mutation(api.communityAnalytics.recordView, {
+			slug: "views-legacy-test",
+			src: "qr",
+		});
+		// A pre-P5b row: same page and day, no source field at all.
+		await t.run(async (ctx) => {
+			const page = (await ctx.db.query("communityPages").collect()).find(
+				(row) => row.slug === "views-legacy-test"
+			);
+			await ctx.db.insert("communityPageViews", {
+				orgId: page!.orgId,
+				communityPageId: page!._id,
+				day: new Date().toISOString().slice(0, 10),
+				count: 3,
+			});
+		});
+
+		const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+		const stats = await asUser.query(api.communityAnalytics.dashboard, {
+			days: 7,
+		});
+		expect(stats.views).toBe(4);
+		expect(stats.sources).toEqual([
+			{ source: "direct", views: 3 },
+			{ source: "qr", views: 1 },
+		]);
+	});
+
 	it("views bucket on the org's calendar day, not UTC", async () => {
 		await publishPage("views-timezone-test");
 		await t.run(async (ctx) => {

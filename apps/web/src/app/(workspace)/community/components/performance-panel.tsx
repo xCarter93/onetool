@@ -22,6 +22,8 @@ import { cn } from "@/lib/utils";
 
 export type RangeDays = 7 | 30 | 90;
 
+type ViewSource = "qr" | "link" | "search" | "social" | "referral" | "direct";
+
 interface DashboardStats {
 	views: number;
 	viewsPrevious: number;
@@ -31,7 +33,17 @@ interface DashboardStats {
 	medianFirstResponseMs: number | null;
 	waitingCount: number;
 	series: Array<{ day: string; views: number; requests: number }>;
+	sources: Array<{ source: ViewSource; views: number }>;
 }
+
+const SOURCE_LABELS: Record<ViewSource, string> = {
+	qr: "QR code",
+	link: "Shared link",
+	search: "Search",
+	social: "Social",
+	referral: "Other sites",
+	direct: "Direct",
+};
 
 interface PerformancePanelProps {
 	stats: DashboardStats | undefined;
@@ -164,7 +176,10 @@ export function PerformancePanel({
 							<Skeleton key={index} className="h-24 rounded-lg" />
 						))}
 					</div>
-					<Skeleton className="min-h-64 flex-1 rounded-lg" />
+					<div className="grid flex-1 gap-[3px] lg:grid-cols-3">
+						<Skeleton className="min-h-64 rounded-lg lg:col-span-2" />
+						<Skeleton className="min-h-64 rounded-lg" />
+					</div>
 				</div>
 			) : (
 				<div className="flex flex-1 flex-col gap-[3px]">
@@ -222,69 +237,97 @@ export function PerformancePanel({
 						/>
 					</div>
 
-					<div className="flex flex-1 flex-col rounded-lg bg-background p-4">
-						<p className="text-xs text-muted-foreground">
-							Page views, last {days} days
-						</p>
-						{hasViews ? (
-							<ChartContainer
-								config={CHART_CONFIG}
-								className="mt-3 aspect-auto min-h-56 w-full flex-1"
-							>
-								<BarChart
-									data={chartData}
-									margin={{ top: 8, right: 8, left: 0, bottom: 0 }}
+					<div className="grid flex-1 gap-[3px] lg:grid-cols-3">
+						<div
+							className={cn(
+								"flex flex-col rounded-lg bg-background p-4",
+								hasViews ? "lg:col-span-2" : "lg:col-span-3"
+							)}
+						>
+							<p className="text-xs text-muted-foreground">
+								Page views, last {days} days
+							</p>
+							{hasViews ? (
+								<ChartContainer
+									config={CHART_CONFIG}
+									className="mt-3 aspect-auto min-h-56 w-full flex-1"
 								>
-									<ChartStripeDefs
-										idPrefix={patternPrefix}
-										colors={[SERIES_COLOR]}
+									<BarChart
+										data={chartData}
+										margin={{ top: 8, right: 8, left: 0, bottom: 0 }}
+									>
+										<ChartStripeDefs
+											idPrefix={patternPrefix}
+											colors={[SERIES_COLOR]}
+										/>
+										<CartesianGrid
+											strokeDasharray="3 3"
+											vertical={false}
+											stroke="var(--border)"
+										/>
+										<XAxis
+											dataKey="label"
+											axisLine={false}
+											tickLine={false}
+											tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
+											tickMargin={8}
+											interval="preserveStartEnd"
+											minTickGap={24}
+										/>
+										<YAxis
+											axisLine={false}
+											tickLine={false}
+											allowDecimals={false}
+											width={32}
+											tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
+										/>
+										<ChartTooltip
+											cursor={{ fill: "var(--muted)", opacity: 0.3 }}
+											content={<ChartTooltipContent />}
+										/>
+										<Bar dataKey="views" radius={[4, 4, 0, 0]} maxBarSize={36}>
+											{chartData.map((point) => (
+												<Cell
+													key={point.day}
+													fill={`url(#${stripeId(patternPrefix, 0)})`}
+													stroke={SERIES_COLOR}
+													strokeWidth={1}
+												/>
+											))}
+										</Bar>
+									</BarChart>
+								</ChartContainer>
+							) : (
+								// No illustration: the requests table below already carries one,
+								// and two on the same screen reads as decoration.
+								<div className="flex min-h-56 flex-1 items-center justify-center">
+									<EmptyState
+										size="md"
+										title="No views counted yet"
+										description="Numbers start the moment someone opens your page."
 									/>
-									<CartesianGrid
-										strokeDasharray="3 3"
-										vertical={false}
-										stroke="var(--border)"
-									/>
-									<XAxis
-										dataKey="label"
-										axisLine={false}
-										tickLine={false}
-										tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
-										tickMargin={8}
-										interval="preserveStartEnd"
-										minTickGap={24}
-									/>
-									<YAxis
-										axisLine={false}
-										tickLine={false}
-										allowDecimals={false}
-										width={32}
-										tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
-									/>
-									<ChartTooltip
-										cursor={{ fill: "var(--muted)", opacity: 0.3 }}
-										content={<ChartTooltipContent />}
-									/>
-									<Bar dataKey="views" radius={[4, 4, 0, 0]} maxBarSize={36}>
-										{chartData.map((point) => (
-											<Cell
-												key={point.day}
-												fill={`url(#${stripeId(patternPrefix, 0)})`}
-												stroke={SERIES_COLOR}
-												strokeWidth={1}
-											/>
-										))}
-									</Bar>
-								</BarChart>
-							</ChartContainer>
-						) : (
-							// No illustration: the requests table below already carries one,
-							// and two on the same screen reads as decoration.
-							<div className="flex min-h-56 flex-1 items-center justify-center">
-								<EmptyState
-									size="md"
-									title="No views counted yet"
-									description="Numbers start the moment someone opens your page."
-								/>
+								</div>
+							)}
+						</div>
+
+						{hasViews && (
+							<div className="flex flex-col rounded-lg bg-background p-4">
+								<p className="text-xs text-muted-foreground">Top sources</p>
+								<ul className="mt-3 space-y-0.5">
+									{stats.sources.map(({ source, views }) => (
+										<li
+											key={source}
+											className="flex items-baseline justify-between gap-3 py-1"
+										>
+											<span className="text-sm text-foreground">
+												{SOURCE_LABELS[source]}
+											</span>
+											<span className="text-sm font-medium tabular-nums text-foreground">
+												{views.toLocaleString()}
+											</span>
+										</li>
+									))}
+								</ul>
 							</div>
 						)}
 					</div>

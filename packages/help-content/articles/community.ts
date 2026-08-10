@@ -364,7 +364,11 @@ export const communityArticles: HelpArticle[] = [
 					},
 					{
 						type: "paragraph",
-						text: "Views are counted by OneTool itself, not by an outside analytics service. A visit is counted once per browsing session, repeated hits from the same address are throttled, and visits you make while signed in to your own account are not counted at all, so the figure is a reasonable count of real visitors rather than an exact one. Days on the chart follow your business timezone, so an evening visit shows up on the day it happened for you.",
+						text: "Views are counted by OneTool itself, not by an outside analytics service. A visit is counted once per browsing session, repeated hits from the same address are throttled, known bots and crawlers are filtered out, and visits you make while signed in to your own account are not counted at all, so the figure is a reasonable count of real visitors rather than an exact one. Days on the chart follow your business timezone, so an evening visit shows up on the day it happened for you.",
+					},
+					{
+						type: "paragraph",
+						text: "**Top sources**, beside the chart, shows where those visitors came from. Links and QR codes from the share kit carry a tag, so scans of your printed code count as **QR code** and links you pasted elsewhere as **Shared link**. Search engines and social sites are recognized from the page that sent the visitor, any other website counts as **Other sites**, and someone who typed the address or used a bookmark counts as **Direct**.",
 					},
 				],
 			},
@@ -374,6 +378,10 @@ export const communityArticles: HelpArticle[] = [
 					{
 						type: "paragraph",
 						text: "**QR & share kit** in the page header, and **Share** on the page card, both open the share kit: a QR code you can download as a **PNG** for print or an **SVG** that scales to any size, your page link, and paste-ready wording for a social bio, a post or text message, and an email signature.",
+					},
+					{
+						type: "note",
+						text: "Share-kit links carry a small tag at the end of the address. That is what lets **Top sources** on your Community page tell a QR scan from a shared link, so keep the tag when you paste the link somewhere.",
 					},
 				],
 			},

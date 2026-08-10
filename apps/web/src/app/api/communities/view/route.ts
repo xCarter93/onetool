@@ -1,8 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
+import { isbot } from "isbot";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { getConvexClient } from "@/lib/convexClient";
 import { getRequestIp, hashIp } from "@/lib/portal/ip";
+
+/** Bounded pass-through: the fixed enum check happens in recordView. */
+function cleanString(value: unknown, maxLength: number): string | undefined {
+	return typeof value === "string" && value.length > 0 && value.length <= maxLength
+		? value
+		: undefined;
+}
 
 // Counts one view of a public community page. Mirrors the interest route: the
 // real throttle lives in Convex, and this route's only job is to hand it a
@@ -10,6 +18,12 @@ import { getRequestIp, hashIp } from "@/lib/portal/ip";
 // see an error because a counter was busy.
 export async function POST(request: NextRequest) {
 	try {
+		// Self-identifying crawlers, preview fetchers and scrapers are not
+		// visitors; their beacons are dropped silently, like a throttled one.
+		if (isbot(request.headers.get("user-agent"))) {
+			return NextResponse.json({ success: true });
+		}
+
 		const body = await request.json();
 		const { slug } = body;
 
@@ -28,6 +42,8 @@ export async function POST(request: NextRequest) {
 			slug: slug.trim(),
 			ipHash,
 			viewerClerkOrgId: viewerClerkOrgId ?? undefined,
+			src: cleanString(body.src, 32),
+			referrer: cleanString(body.referrer, 600),
 		});
 
 		return NextResponse.json({ success: true });

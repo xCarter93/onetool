@@ -34,6 +34,80 @@ function dayKeysEndingAt(lastKey: string, days: number): string[] {
 	return keys;
 }
 
+/** Traffic channels. Stored on the view row; raw referrers never are. */
+export type ViewSource =
+	| "qr"
+	| "link"
+	| "search"
+	| "social"
+	| "referral"
+	| "direct";
+
+const SEARCH_DOMAINS = [
+	"google.com",
+	"bing.com",
+	"duckduckgo.com",
+	"search.yahoo.com",
+	"ecosia.org",
+	"search.brave.com",
+	"startpage.com",
+];
+
+const SOCIAL_DOMAINS = [
+	"facebook.com",
+	"fb.com",
+	"instagram.com",
+	"twitter.com",
+	"x.com",
+	"t.co",
+	"linkedin.com",
+	"lnkd.in",
+	"tiktok.com",
+	"pinterest.com",
+	"reddit.com",
+	"nextdoor.com",
+	"youtube.com",
+	"youtu.be",
+	"whatsapp.com",
+	"snapchat.com",
+];
+
+function hostnameMatches(hostname: string, domain: string): boolean {
+	return hostname === domain || hostname.endsWith(`.${domain}`);
+}
+
+/**
+ * Collapses the beacon's signals into a fixed channel. A share-kit `src` tag
+ * wins over the referrer (a QR scan has no referrer to speak for it); an
+ * unparseable or unknown referrer is "referral", nothing at all is "direct".
+ */
+function classifySource(
+	src: string | undefined,
+	referrer: string | undefined
+): ViewSource {
+	if (src === "qr") return "qr";
+	if (src === "link") return "link";
+
+	if (referrer) {
+		let hostname: string;
+		try {
+			hostname = new URL(referrer).hostname.toLowerCase();
+		} catch {
+			return "referral";
+		}
+		if (hostname.startsWith("www.")) hostname = hostname.slice(4);
+		if (SEARCH_DOMAINS.some((d) => hostnameMatches(hostname, d))) {
+			return "search";
+		}
+		if (SOCIAL_DOMAINS.some((d) => hostnameMatches(hostname, d))) {
+			return "social";
+		}
+		return "referral";
+	}
+
+	return "direct";
+}
+
 // INTENTIONAL: public, unauthenticated mutation. The page is public, so the
 // beacon that counts a visit has to be too. Everything it can do is bounded by
 // the rate limiter and by only ever incrementing one counter.
@@ -45,6 +119,10 @@ export const recordView = mutation({
 		// Also server-derived (Clerk session in the Next route). Spoofing it
 		// only lets a caller suppress their own view, so equality is enough.
 		viewerClerkOrgId: v.optional(v.string()),
+		// Client-supplied and forgeable, so both are length-capped and only
+		// ever collapsed into the fixed channel enum — never stored raw.
+		src: v.optional(v.string()),
+		referrer: v.optional(v.string()),
 	},
 	handler: async (ctx, args): Promise<null> => {
 		// A throttled beacon is dropped, not rejected: the visitor has done
@@ -77,10 +155,14 @@ export const recordView = mutation({
 		}
 
 		const day = DateUtils.toLocalDateString(Date.now(), org?.timezone);
+		const source = classifySource(
+			args.src && args.src.length <= 32 ? args.src : undefined,
+			args.referrer && args.referrer.length <= 600 ? args.referrer : undefined
+		);
 		const existing = await ctx.db
 			.query("communityPageViews")
-			.withIndex("by_page_day", (q) =>
-				q.eq("communityPageId", page._id).eq("day", day)
+			.withIndex("by_page_day_source", (q) =>
+				q.eq("communityPageId", page._id).eq("day", day).eq("source", source)
 			)
 			.first();
 
@@ -91,6 +173,7 @@ export const recordView = mutation({
 				orgId: page.orgId,
 				communityPageId: page._id,
 				day,
+				source,
 				count: 1,
 			});
 		}
@@ -115,6 +198,8 @@ export interface CommunityDashboard {
 	/** Requests still sitting in "new". */
 	waitingCount: number;
 	series: Array<{ day: string; views: number; requests: number }>;
+	/** Current-window views by channel, highest first, zero channels omitted. */
+	sources: Array<{ source: ViewSource; views: number }>;
 }
 
 export const dashboard = userQuery({
@@ -143,12 +228,16 @@ export const dashboard = userQuery({
 			.collect();
 
 		const viewsByDay = new Map<string, number>();
+		const viewsBySource = new Map<ViewSource, number>();
 		let views = 0;
 		let viewsPrevious = 0;
 		for (const row of viewRows) {
 			if (row.day >= firstKey) {
 				views += row.count;
 				viewsByDay.set(row.day, (viewsByDay.get(row.day) ?? 0) + row.count);
+				// Rows written before channels existed count as direct.
+				const source = row.source ?? "direct";
+				viewsBySource.set(source, (viewsBySource.get(source) ?? 0) + row.count);
 			} else {
 				viewsPrevious += row.count;
 			}
@@ -198,6 +287,9 @@ export const dashboard = userQuery({
 				views: viewsByDay.get(day) ?? 0,
 				requests: requestsByDay.get(day) ?? 0,
 			})),
+			sources: [...viewsBySource.entries()]
+				.map(([source, count]) => ({ source, views: count }))
+				.sort((a, b) => b.views - a.views),
 		};
 	},
 });
