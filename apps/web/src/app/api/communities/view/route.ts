@@ -37,7 +37,7 @@ export async function POST(request: NextRequest) {
 		// identifiable here; recordView skips views from the page's own org.
 		const { orgId: viewerClerkOrgId } = await auth();
 
-		await fetch(`${getConvexHttpUrl()}/community/view`, {
+		const upstream = await fetch(`${getConvexHttpUrl()}/community/view`, {
 			method: "POST",
 			headers: {
 				"Content-Type": "application/json",
@@ -53,6 +53,15 @@ export async function POST(request: NextRequest) {
 			}),
 			cache: "no-store",
 		});
+
+		// The visitor still gets a 200, but a rejected beacon means views have
+		// stopped counting — usually a secret set in Vercel before Convex.
+		if (!upstream.ok) {
+			console.error(
+				"Community page view beacon rejected:",
+				upstream.status
+			);
+		}
 
 		return NextResponse.json({ success: true });
 	} catch (error) {
