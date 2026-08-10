@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
-import { api } from "@onetool/backend/convex/_generated/api";
-import { getConvexClient } from "@/lib/convexClient";
+import { env } from "@/env";
+import { getConvexHttpUrl } from "@/lib/convexClient";
 import { getRequestIp, hashIp } from "@/lib/portal/ip";
 
 // PUB-19: no in-memory rate limiting here — it is per-process and useless on
 // serverless. Convex's rateLimiter inside submitInterest is the real control;
 // this route feeds it a trusted server-derived IP hash for the per-IP bucket.
+// The hash is only worth trusting because submitInterest is internal and this
+// route presents the shared secret to reach it.
 
 export async function POST(request: NextRequest) {
 	try {
@@ -75,33 +77,37 @@ export async function POST(request: NextRequest) {
 
 		const ipHash = await hashIp(getRequestIp(request));
 
-		const client = getConvexClient();
-		await client.mutation(api.communityPages.submitInterest, {
-			slug: slug.trim(),
-			name: name.trim(),
-			email: trimmedEmail.toLowerCase(),
-			phone: phone?.trim() || undefined,
-			message: message?.trim() || undefined,
-			service: service?.trim() || undefined,
-			// PUB-18: honeypot passthrough — the mutation drops non-empty values
-			website: typeof website === "string" ? website : undefined,
-			// PUB-19: per-IP throttle key (server-derived, not client-supplied)
-			ipHash,
+		const upstream = await fetch(`${getConvexHttpUrl()}/community/interest`, {
+			method: "POST",
+			headers: {
+				"Content-Type": "application/json",
+				"x-community-secret":
+					env.COMMUNITY_PUBLIC_SECRET ?? env.PORTAL_OTP_REQUEST_SECRET,
+			},
+			body: JSON.stringify({
+				slug: slug.trim(),
+				name: name.trim(),
+				email: trimmedEmail.toLowerCase(),
+				phone: phone?.trim() || undefined,
+				message: message?.trim() || undefined,
+				service: service?.trim() || undefined,
+				// PUB-18: honeypot passthrough — the mutation drops non-empty values
+				website: typeof website === "string" ? website : undefined,
+				// PUB-19: per-IP throttle key (server-derived, not client-supplied)
+				ipHash,
+			}),
+			// Convex httpActions are not edge-cached; ensure no Next.js caching either.
+			cache: "no-store",
 		});
 
-		return NextResponse.json({ success: true });
+		// The endpoint already speaks this route's response shapes, so the status
+		// and body pass through unchanged.
+		const text = await upstream.text();
+		return new NextResponse(text, {
+			status: upstream.status,
+			headers: { "Content-Type": "application/json" },
+		});
 	} catch (error) {
-		const message =
-			error instanceof Error ? error.message : "Submission failed";
-
-		// Don't expose internal errors to clients
-		if (message.includes("Community page not found")) {
-			return NextResponse.json(
-				{ error: "Community page not found" },
-				{ status: 404 }
-			);
-		}
-
 		console.error("Interest form submission error:", error);
 		return NextResponse.json(
 			{ error: "Something went wrong. Please try again." },

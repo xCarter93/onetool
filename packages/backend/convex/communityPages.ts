@@ -1,5 +1,5 @@
 import { query, QueryCtx, MutationCtx } from "./_generated/server";
-import { mutation } from "./lib/triggers";
+import { internalMutation, mutation } from "./lib/triggers";
 import { ConvexError, v, type Infer } from "convex/values";
 import { Doc, Id } from "./_generated/dataModel";
 import {
@@ -774,12 +774,15 @@ export const listPublic = query({
 });
 
 /**
- * Submit interest form (creates lead client) - UNAUTHENTICATED
- * This is called from public pages without user authentication
+ * Submit interest form (creates a lead + follow-up task) — UNAUTHENTICATED.
+ *
+ * Internal on purpose. The only way in is the `/community/interest` httpAction,
+ * which proves with a shared secret that the call came through the Next.js
+ * route. That is what makes `ipHash` below trustworthy: a mutation reachable on
+ * the public Convex URL would let a caller mint a fresh hash per request and
+ * walk straight past the per-IP limiter.
  */
-// INTENTIONAL: raw public mutation — unauthenticated lead capture from a public page.
-// Org is discovered from the published page row, not the actor.
-export const submitInterest = mutation({
+export const submitInterest = internalMutation({
 	args: {
 		slug: v.string(),
 		name: v.string(),
@@ -792,9 +795,8 @@ export const submitInterest = mutation({
 		// PUB-18: honeypot — hidden form field, non-empty means bot
 		website: v.optional(v.string()),
 		// PUB-19: server-derived client IP hash from the Next.js route, for a
-		// distributed per-IP limit. Optional so a direct caller still hits the
-		// slug/email limits.
-		ipHash: v.optional(v.string()),
+		// distributed per-IP limit. Required: the attested caller always has one.
+		ipHash: v.string(),
 	},
 	handler: async (ctx, args) => {
 		// PUB-18: honeypot tripped — pretend success, create nothing
@@ -803,12 +805,10 @@ export const submitInterest = mutation({
 		}
 
 		// PUB-19: distributed per-IP throttle (rotating-email defense).
-		if (args.ipHash) {
-			await rateLimiter.limit(ctx, "communityInterestPerIp", {
-				key: args.ipHash,
-				throws: true,
-			});
-		}
+		await rateLimiter.limit(ctx, "communityInterestPerIp", {
+			key: args.ipHash,
+			throws: true,
+		});
 
 		// Rate limit per slug (org's community page)
 		await rateLimiter.limit(ctx, "communityInterest", {

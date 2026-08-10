@@ -97,12 +97,16 @@ export const TeamSection = React.memo(function TeamSection({
 								<button
 									type="button"
 									onClick={() => photoInputRefs.current[index]?.click()}
+									// Uploads run one at a time: each carries the row index it
+									// started on, so a second one must not begin while removing
+									// a row could still shift that index.
+									disabled={uploadingTeamPhotoAt !== null}
 									aria-label={
 										member.photoStorageId
 											? `Replace photo for team member ${index + 1}`
 											: `Add a photo for team member ${index + 1}`
 									}
-									className="relative size-20 overflow-hidden rounded-full border border-dashed border-border bg-muted/20 transition-colors hover:border-primary/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+									className="relative size-20 overflow-hidden rounded-full border border-dashed border-border bg-muted/20 transition-colors hover:border-primary/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:cursor-not-allowed"
 								>
 									{uploadingTeamPhotoAt === index ? (
 										<span className="absolute inset-0 grid place-items-center text-muted-foreground">

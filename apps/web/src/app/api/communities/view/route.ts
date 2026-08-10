@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { isbot } from "isbot";
-import { api } from "@onetool/backend/convex/_generated/api";
-import { getConvexClient } from "@/lib/convexClient";
+import { env } from "@/env";
+import { getConvexHttpUrl } from "@/lib/convexClient";
 import { getRequestIp, hashIp } from "@/lib/portal/ip";
 
 /** Bounded pass-through: the fixed enum check happens in recordView. */
@@ -37,13 +37,21 @@ export async function POST(request: NextRequest) {
 		// identifiable here; recordView skips views from the page's own org.
 		const { orgId: viewerClerkOrgId } = await auth();
 
-		const client = getConvexClient();
-		await client.mutation(api.communityAnalytics.recordView, {
-			slug: slug.trim(),
-			ipHash,
-			viewerClerkOrgId: viewerClerkOrgId ?? undefined,
-			src: cleanString(body.src, 32),
-			referrer: cleanString(body.referrer, 600),
+		await fetch(`${getConvexHttpUrl()}/community/view`, {
+			method: "POST",
+			headers: {
+				"Content-Type": "application/json",
+				"x-community-secret":
+					env.COMMUNITY_PUBLIC_SECRET ?? env.PORTAL_OTP_REQUEST_SECRET,
+			},
+			body: JSON.stringify({
+				slug: slug.trim(),
+				ipHash,
+				viewerClerkOrgId: viewerClerkOrgId ?? undefined,
+				src: cleanString(body.src, 32),
+				referrer: cleanString(body.referrer, 600),
+			}),
+			cache: "no-store",
 		});
 
 		return NextResponse.json({ success: true });

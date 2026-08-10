@@ -1,5 +1,5 @@
 import { v } from "convex/values";
-import { mutation } from "./lib/triggers";
+import { internalMutation } from "./lib/triggers";
 import { userQuery } from "./lib/factories";
 import { rateLimiter } from "./rateLimits";
 import { DateUtils } from "./lib/shared";
@@ -9,8 +9,8 @@ import { DateUtils } from "./lib/shared";
  *
  * Views are counted first-party in Convex rather than through PostHog: no
  * cookie, no CSP work, and the conversion math lands next to the leads it is
- * divided by. `recordView` is public and unauthenticated; `dashboard` is the
- * admin read.
+ * divided by. `recordView` serves unauthenticated visitors but is internal —
+ * the `/community/view` httpAction is the door; `dashboard` is the admin read.
  *
  * Day boundaries follow the org's timezone (UTC when unset), so an evening
  * visit lands on the day the owner experienced it, and the view buckets line
@@ -108,14 +108,15 @@ function classifySource(
 	return "direct";
 }
 
-// INTENTIONAL: public, unauthenticated mutation. The page is public, so the
-// beacon that counts a visit has to be too. Everything it can do is bounded by
-// the rate limiter and by only ever incrementing one counter.
-export const recordView = mutation({
+// Internal on purpose. The visitor is unauthenticated, but the beacon reaches
+// this through the `/community/view` httpAction, which checks a shared secret
+// first — otherwise `ipHash` would be forgeable and the per-IP throttle below
+// would be decoration.
+export const recordView = internalMutation({
 	args: {
 		slug: v.string(),
 		// PUB-19: server-derived in the Next route, never client-supplied.
-		ipHash: v.optional(v.string()),
+		ipHash: v.string(),
 		// Also server-derived (Clerk session in the Next route). Spoofing it
 		// only lets a caller suppress their own view, so equality is enough.
 		viewerClerkOrgId: v.optional(v.string()),
@@ -127,12 +128,10 @@ export const recordView = mutation({
 	handler: async (ctx, args): Promise<null> => {
 		// A throttled beacon is dropped, not rejected: the visitor has done
 		// nothing wrong and there is no UI to show them an error in.
-		if (args.ipHash) {
-			const perIp = await rateLimiter.limit(ctx, "communityPageViewPerIp", {
-				key: args.ipHash,
-			});
-			if (!perIp.ok) return null;
-		}
+		const perIp = await rateLimiter.limit(ctx, "communityPageViewPerIp", {
+			key: args.ipHash,
+		});
+		if (!perIp.ok) return null;
 		const perSlug = await rateLimiter.limit(ctx, "communityPageView", {
 			key: args.slug,
 		});

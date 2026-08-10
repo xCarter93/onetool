@@ -57,6 +57,10 @@ export const env = createEnv({
 		// these routes. Falls back to PORTAL_OTP_REQUEST_SECRET when unset, so
 		// no new variable is required to deploy.
 		PORTAL_ATTESTATION_SECRET: z.string().min(16).optional(),
+		// Optional: proves to the Convex community httpActions that a lead or a
+		// view beacon came through these routes. Falls back to
+		// PORTAL_OTP_REQUEST_SECRET when unset, so no new variable is required.
+		COMMUNITY_PUBLIC_SECRET: z.string().min(16).optional(),
 	},
 	client: {
 		NEXT_PUBLIC_CONVEX_URL: z.string().min(1),

@@ -1,10 +1,13 @@
 import { convexTest } from "convex-test";
 import { beforeEach, describe, expect, it } from "vitest";
-import { api } from "./_generated/api";
+import { api, internal } from "./_generated/api";
 import { Id } from "./_generated/dataModel";
 import { setupConvexTest } from "./test.setup";
 import { createTestIdentity, createTestOrg, createTestOrgWithAddress } from "./test.helpers";
 import { __testUtils } from "./communityPages";
+
+/** Stands in for the IP hash the Next.js route derives and attests. */
+const TEST_IP_HASH = "test-community-ip-hash";
 
 describe("Community Pages", () => {
 	let t: ReturnType<typeof convexTest>;
@@ -303,7 +306,7 @@ describe("Community Pages", () => {
 		});
 		await asUser.mutation(api.communityPages.publish, {});
 
-		await t.mutation(api.communityPages.submitInterest, {
+		await t.mutation(internal.communityPages.submitInterest, { ipHash: TEST_IP_HASH,
 			slug: "lead-task-test",
 			name: "John Smith",
 			email: "john@example.com",
@@ -339,7 +342,7 @@ describe("Community Pages", () => {
 		});
 		await asUser.mutation(api.communityPages.publish, {});
 
-		await t.mutation(api.communityPages.submitInterest, {
+		await t.mutation(internal.communityPages.submitInterest, { ipHash: TEST_IP_HASH,
 			slug: "lead-event-test",
 			name: "Lead Eventson",
 			email: "lead@example.com",
@@ -374,7 +377,7 @@ describe("Community Pages", () => {
 		});
 		await asUser.mutation(api.communityPages.publish, {});
 
-		await t.mutation(api.communityPages.submitInterest, {
+		await t.mutation(internal.communityPages.submitInterest, { ipHash: TEST_IP_HASH,
 			slug: "admin-assign-test",
 			name: "Jane Doe",
 			email: "jane@example.com",
@@ -409,7 +412,7 @@ describe("Community Pages", () => {
 		});
 		await asUser.mutation(api.communityPages.publish, {});
 
-		await t.mutation(api.communityPages.submitInterest, {
+		await t.mutation(internal.communityPages.submitInterest, { ipHash: TEST_IP_HASH,
 			slug: "org-admin-lead-test",
 			name: "Lead Person",
 			email: "lead@example.com",
@@ -436,7 +439,7 @@ describe("Community Pages", () => {
 		});
 		await asUser.mutation(api.communityPages.publish, {});
 
-		await t.mutation(api.communityPages.submitInterest, {
+		await t.mutation(internal.communityPages.submitInterest, { ipHash: TEST_IP_HASH,
 			slug: "weekday-test",
 			name: "Bob Wilson",
 			email: "bob@example.com",
@@ -465,13 +468,13 @@ describe("Community Pages", () => {
 		});
 		await asUser.mutation(api.communityPages.publish, {});
 
-		await t.mutation(api.communityPages.submitInterest, {
+		await t.mutation(internal.communityPages.submitInterest, { ipHash: TEST_IP_HASH,
 			slug: "dup-email-test",
 			name: "Alice Brown",
 			email: "alice@example.com",
 		});
 
-		await t.mutation(api.communityPages.submitInterest, {
+		await t.mutation(internal.communityPages.submitInterest, { ipHash: TEST_IP_HASH,
 			slug: "dup-email-test",
 			name: "Alice Brown",
 			email: "alice@example.com",
@@ -646,7 +649,7 @@ describe("Community Pages", () => {
 		});
 		await asUser.mutation(api.communityPages.publish, {});
 
-		await t.mutation(api.communityPages.submitInterest, {
+		await t.mutation(internal.communityPages.submitInterest, { ipHash: TEST_IP_HASH,
 			slug: "service-match-test",
 			name: "Match Person",
 			email: "match@example.com",
@@ -675,7 +678,7 @@ describe("Community Pages", () => {
 		});
 		await asUser.mutation(api.communityPages.publish, {});
 
-		await t.mutation(api.communityPages.submitInterest, {
+		await t.mutation(internal.communityPages.submitInterest, { ipHash: TEST_IP_HASH,
 			slug: "service-mismatch-test",
 			name: "Mismatch Person",
 			email: "mismatch@example.com",

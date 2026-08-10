@@ -1,9 +1,12 @@
 import { convexTest } from "convex-test";
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { api } from "./_generated/api";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { api, internal } from "./_generated/api";
 import { setupConvexTest } from "./test.setup";
 import { addMemberToOrg, createTestIdentity, createTestOrg } from "./test.helpers";
 import { Id } from "./_generated/dataModel";
+
+/** Stands in for the IP hash the Next.js route derives and attests. */
+const TEST_IP_HASH = "test-community-ip-hash";
 
 describe("Community leads", () => {
 	let t: ReturnType<typeof convexTest>;
@@ -34,7 +37,7 @@ describe("Community leads", () => {
 			},
 		});
 		await asUser.mutation(api.communityPages.publish, {});
-		await t.mutation(api.communityPages.submitInterest, { slug, ...submission });
+		await t.mutation(internal.communityPages.submitInterest, { ipHash: TEST_IP_HASH, slug, ...submission });
 	}
 
 	beforeEach(async () => {
@@ -104,7 +107,7 @@ describe("Community leads", () => {
 			name: "First Person",
 			email: "first@example.com",
 		});
-		await t.mutation(api.communityPages.submitInterest, {
+		await t.mutation(internal.communityPages.submitInterest, { ipHash: TEST_IP_HASH,
 			slug: "lead-filter-test",
 			name: "Second Person",
 			email: "second@example.com",
@@ -243,13 +246,13 @@ describe("Community analytics", () => {
 	it("recordView buckets repeat views into one day row", async () => {
 		await publishPage("views-bucket-test");
 
-		await t.mutation(api.communityAnalytics.recordView, {
+		await t.mutation(internal.communityAnalytics.recordView, { ipHash: TEST_IP_HASH,
 			slug: "views-bucket-test",
 		});
-		await t.mutation(api.communityAnalytics.recordView, {
+		await t.mutation(internal.communityAnalytics.recordView, { ipHash: TEST_IP_HASH,
 			slug: "views-bucket-test",
 		});
-		await t.mutation(api.communityAnalytics.recordView, {
+		await t.mutation(internal.communityAnalytics.recordView, { ipHash: TEST_IP_HASH,
 			slug: "views-bucket-test",
 		});
 
@@ -275,10 +278,10 @@ describe("Community analytics", () => {
 			isPublic: false,
 		});
 
-		await t.mutation(api.communityAnalytics.recordView, {
+		await t.mutation(internal.communityAnalytics.recordView, { ipHash: TEST_IP_HASH,
 			slug: "views-draft-test",
 		});
-		await t.mutation(api.communityAnalytics.recordView, { slug: "no-such-page" });
+		await t.mutation(internal.communityAnalytics.recordView, { ipHash: TEST_IP_HASH, slug: "no-such-page" });
 
 		const rows = await t.run(async (ctx) =>
 			ctx.db.query("communityPageViews").collect()
@@ -290,12 +293,12 @@ describe("Community analytics", () => {
 		await publishPage("views-owner-test");
 
 		// The beacon route passes the signed-in viewer's active Clerk org.
-		await t.mutation(api.communityAnalytics.recordView, {
+		await t.mutation(internal.communityAnalytics.recordView, { ipHash: TEST_IP_HASH,
 			slug: "views-owner-test",
 			viewerClerkOrgId: clerkOrgId,
 		});
 		// A signed-in user from some other org is a real visitor.
-		await t.mutation(api.communityAnalytics.recordView, {
+		await t.mutation(internal.communityAnalytics.recordView, { ipHash: TEST_IP_HASH,
 			slug: "views-owner-test",
 			viewerClerkOrgId: "org_somebody_else",
 		});
@@ -310,7 +313,7 @@ describe("Community analytics", () => {
 	it("classifies view sources and ranks them in the dashboard", async () => {
 		await publishPage("views-sources-test");
 		const record = (extra: { src?: string; referrer?: string }) =>
-			t.mutation(api.communityAnalytics.recordView, {
+			t.mutation(internal.communityAnalytics.recordView, { ipHash: TEST_IP_HASH,
 				slug: "views-sources-test",
 				...extra,
 			});
@@ -346,7 +349,7 @@ describe("Community analytics", () => {
 
 	it("rows from before channels existed read as direct", async () => {
 		await publishPage("views-legacy-test");
-		await t.mutation(api.communityAnalytics.recordView, {
+		await t.mutation(internal.communityAnalytics.recordView, { ipHash: TEST_IP_HASH,
 			slug: "views-legacy-test",
 			src: "qr",
 		});
@@ -385,7 +388,7 @@ describe("Community analytics", () => {
 		try {
 			// 01:00 UTC is 9pm the previous evening in New York.
 			vi.setSystemTime(new Date("2026-08-10T01:00:00.000Z"));
-			await t.mutation(api.communityAnalytics.recordView, {
+			await t.mutation(internal.communityAnalytics.recordView, { ipHash: TEST_IP_HASH,
 				slug: "views-timezone-test",
 			});
 
@@ -413,13 +416,13 @@ describe("Community analytics", () => {
 
 	it("dashboard divides requests by views and counts what is waiting", async () => {
 		await publishPage("views-conversion-test");
-		await t.mutation(api.communityAnalytics.recordView, {
+		await t.mutation(internal.communityAnalytics.recordView, { ipHash: TEST_IP_HASH,
 			slug: "views-conversion-test",
 		});
-		await t.mutation(api.communityAnalytics.recordView, {
+		await t.mutation(internal.communityAnalytics.recordView, { ipHash: TEST_IP_HASH,
 			slug: "views-conversion-test",
 		});
-		await t.mutation(api.communityPages.submitInterest, {
+		await t.mutation(internal.communityPages.submitInterest, { ipHash: TEST_IP_HASH,
 			slug: "views-conversion-test",
 			name: "Converting Visitor",
 			email: "converting@example.com",
@@ -440,7 +443,7 @@ describe("Community analytics", () => {
 
 	it("first response time is stamped once, on the move off new", async () => {
 		await publishPage("views-response-test");
-		await t.mutation(api.communityPages.submitInterest, {
+		await t.mutation(internal.communityPages.submitInterest, { ipHash: TEST_IP_HASH,
 			slug: "views-response-test",
 			name: "Waiting Person",
 			email: "waiting@example.com",
@@ -469,5 +472,187 @@ describe("Community analytics", () => {
 		});
 		expect(stats.medianFirstResponseMs).not.toBeNull();
 		expect(stats.waitingCount).toBe(0);
+	});
+});
+
+describe("Community public write endpoints", () => {
+	let t: ReturnType<typeof convexTest>;
+	let clerkUserId = "";
+	let clerkOrgId = "";
+	let originalCommunitySecret: string | undefined;
+	let originalPortalSecret: string | undefined;
+
+	const SECRET = "community-endpoint-test-secret";
+
+	async function publishPage(slug: string) {
+		const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+		await asUser.mutation(api.communityPages.upsert, {
+			slug,
+			isPublic: true,
+			draftBioContent: {
+				type: "doc",
+				content: [{ type: "paragraph", content: [{ type: "text", text: "Bio" }] }],
+			},
+		});
+		await asUser.mutation(api.communityPages.publish, {});
+	}
+
+	function post(path: string, body: unknown, secret?: string) {
+		return t.fetch(path, {
+			method: "POST",
+			headers: {
+				"content-type": "application/json",
+				...(secret === undefined ? {} : { "x-community-secret": secret }),
+			},
+			body: JSON.stringify(body),
+		});
+	}
+
+	beforeEach(async () => {
+		t = setupConvexTest();
+		const ids = await t.run(async (ctx) => createTestOrg(ctx));
+		clerkUserId = ids.clerkUserId;
+		clerkOrgId = ids.clerkOrgId;
+		originalCommunitySecret = process.env.COMMUNITY_PUBLIC_SECRET;
+		originalPortalSecret = process.env.PORTAL_OTP_REQUEST_SECRET;
+		process.env.COMMUNITY_PUBLIC_SECRET = SECRET;
+		delete process.env.PORTAL_OTP_REQUEST_SECRET;
+	});
+
+	afterEach(() => {
+		if (originalCommunitySecret === undefined) {
+			delete process.env.COMMUNITY_PUBLIC_SECRET;
+		} else {
+			process.env.COMMUNITY_PUBLIC_SECRET = originalCommunitySecret;
+		}
+		if (originalPortalSecret === undefined) {
+			delete process.env.PORTAL_OTP_REQUEST_SECRET;
+		} else {
+			process.env.PORTAL_OTP_REQUEST_SECRET = originalPortalSecret;
+		}
+	});
+
+	it("rejects an interest submission with no secret and writes nothing", async () => {
+		await publishPage("gate-interest-test");
+
+		const res = await post("/community/interest", {
+			slug: "gate-interest-test",
+			name: "Spam Bot",
+			email: "bot@example.com",
+			ipHash: "forged-hash",
+		});
+
+		expect(res.status).toBe(401);
+		const leads = await t.run(async (ctx) =>
+			ctx.db.query("communityLeads").collect()
+		);
+		expect(leads).toHaveLength(0);
+	});
+
+	it("rejects an interest submission with the wrong secret", async () => {
+		await publishPage("gate-interest-wrong-test");
+
+		const res = await post(
+			"/community/interest",
+			{
+				slug: "gate-interest-wrong-test",
+				name: "Spam Bot",
+				email: "bot@example.com",
+				ipHash: "forged-hash",
+			},
+			"not-the-secret"
+		);
+
+		expect(res.status).toBe(401);
+		const leads = await t.run(async (ctx) =>
+			ctx.db.query("communityLeads").collect()
+		);
+		expect(leads).toHaveLength(0);
+	});
+
+	it("accepts an attested interest submission", async () => {
+		await publishPage("gate-interest-ok-test");
+
+		const res = await post(
+			"/community/interest",
+			{
+				slug: "gate-interest-ok-test",
+				name: "Real Person",
+				email: "real@example.com",
+				ipHash: "server-derived-hash",
+			},
+			SECRET
+		);
+
+		expect(res.status).toBe(200);
+		const leads = await t.run(async (ctx) =>
+			ctx.db.query("communityLeads").collect()
+		);
+		expect(leads).toHaveLength(1);
+		expect(leads[0].email).toBe("real@example.com");
+	});
+
+	it("rejects an unattested view beacon and counts nothing", async () => {
+		await publishPage("gate-view-test");
+
+		const res = await post("/community/view", {
+			slug: "gate-view-test",
+			ipHash: "forged-hash",
+		});
+
+		expect(res.status).toBe(401);
+		const rows = await t.run(async (ctx) =>
+			ctx.db.query("communityPageViews").collect()
+		);
+		expect(rows).toHaveLength(0);
+	});
+
+	it("counts an attested view beacon", async () => {
+		await publishPage("gate-view-ok-test");
+
+		const res = await post(
+			"/community/view",
+			{ slug: "gate-view-ok-test", ipHash: "server-derived-hash" },
+			SECRET
+		);
+
+		expect(res.status).toBe(200);
+		const rows = await t.run(async (ctx) =>
+			ctx.db.query("communityPageViews").collect()
+		);
+		expect(rows).toHaveLength(1);
+		expect(rows[0].count).toBe(1);
+	});
+
+	it("falls back to the portal secret so no new env var is required", async () => {
+		delete process.env.COMMUNITY_PUBLIC_SECRET;
+		process.env.PORTAL_OTP_REQUEST_SECRET = "portal-fallback-secret";
+		await publishPage("gate-fallback-test");
+
+		const res = await post(
+			"/community/view",
+			{ slug: "gate-fallback-test", ipHash: "server-derived-hash" },
+			"portal-fallback-secret"
+		);
+
+		expect(res.status).toBe(200);
+		const rows = await t.run(async (ctx) =>
+			ctx.db.query("communityPageViews").collect()
+		);
+		expect(rows).toHaveLength(1);
+	});
+
+	it("rejects everything when neither secret is configured", async () => {
+		delete process.env.COMMUNITY_PUBLIC_SECRET;
+		delete process.env.PORTAL_OTP_REQUEST_SECRET;
+		await publishPage("gate-unconfigured-test");
+
+		const res = await post(
+			"/community/view",
+			{ slug: "gate-unconfigured-test", ipHash: "server-derived-hash" },
+			""
+		);
+
+		expect(res.status).toBe(401);
 	});
 });

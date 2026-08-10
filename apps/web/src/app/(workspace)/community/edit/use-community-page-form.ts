@@ -441,6 +441,9 @@ export function useCommunityPageForm() {
 	const [uploadingTeamPhotoAt, setUploadingTeamPhotoAt] = useState<number | null>(
 		null,
 	);
+	// Mirrors the state so the upload callback can reject an overlapping start
+	// synchronously, before React has re-rendered with the new value.
+	const uploadingTeamPhotoAtRef = useRef<number | null>(null);
 	const [slugError, setSlugError] = useState<string | null>(null);
 	const [copied, setCopied] = useState(false);
 	const [debouncedSlug, setDebouncedSlug] = useState("");
@@ -901,6 +904,11 @@ export function useCommunityPageForm() {
 	 */
 	const uploadTeamPhoto = useCallback(
 		async (file: File, index: number) => {
+			// One at a time. `index` is captured for the whole upload, and removing
+			// a row shifts every index after it — so a second upload starting while
+			// the first is in flight could land its photo on the wrong person once
+			// the first one's `finally` re-enables the remove buttons.
+			if (uploadingTeamPhotoAtRef.current !== null) return;
 			if (file.size > MAX_AVATAR_SIZE) {
 				toast.error(
 					"File too large",
@@ -913,6 +921,7 @@ export function useCommunityPageForm() {
 				return;
 			}
 
+			uploadingTeamPhotoAtRef.current = index;
 			setUploadingTeamPhotoAt(index);
 			const loadingToastId = toast.loading("Uploading photo…");
 			try {
@@ -938,6 +947,7 @@ export function useCommunityPageForm() {
 				toast.removeToast(loadingToastId);
 				toast.error("Upload failed", "Please try again");
 			} finally {
+				uploadingTeamPhotoAtRef.current = null;
 				setUploadingTeamPhotoAt(null);
 			}
 		},
