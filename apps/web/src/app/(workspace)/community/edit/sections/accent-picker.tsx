@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Check, Loader2, Pipette } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -34,15 +34,30 @@ export function AccentPicker({
 	const selected = normalizeAccent(accent);
 	const resolved = resolveAccent(selected, colorMode);
 	const [typed, setTyped] = useState(selected);
+	const [wellValue, setWellValue] = useState(selected);
 	const [isReadingLogo, setIsReadingLogo] = useState(false);
+	const wellRef = useRef<HTMLInputElement>(null);
 
-	// The text field owns what is being typed; the swatches own what is chosen.
-	// Re-sync when the choice moved somewhere else (a preset, the logo, the well).
+	// The text field and the colour well own what is being typed or dragged; the
+	// swatches own what is chosen. Re-sync when the choice moved somewhere else.
 	const [lastSelected, setLastSelected] = useState(selected);
 	if (selected !== lastSelected) {
 		setLastSelected(selected);
 		setTyped(selected);
+		setWellValue(selected);
 	}
+
+	// A colour well raises `input` on every pointer move inside the system picker,
+	// and each one would re-render the whole editor and re-portal the preview.
+	// The well tracks the drag locally; only the native `change` at the end of it
+	// reaches form state.
+	useEffect(() => {
+		const well = wellRef.current;
+		if (!well) return;
+		const commit = () => setAccent(normalizeAccent(well.value));
+		well.addEventListener("change", commit);
+		return () => well.removeEventListener("change", commit);
+	}, [setAccent]);
 
 	function commit(value: string) {
 		if (isAccentHex(value)) setAccent(normalizeAccent(value));
@@ -126,9 +141,10 @@ export function AccentPicker({
 				<label className="relative size-8 shrink-0 cursor-pointer overflow-hidden rounded-full border border-border">
 					<span className="sr-only">Custom accent color</span>
 					<input
+						ref={wellRef}
 						type="color"
-						value={selected}
-						onChange={(event) => setAccent(event.target.value)}
+						value={wellValue}
+						onChange={(event) => setWellValue(event.target.value)}
 						className="absolute -inset-2 size-[calc(100%+1rem)] cursor-pointer border-0 bg-transparent p-0"
 					/>
 				</label>
