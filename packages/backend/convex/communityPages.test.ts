@@ -110,6 +110,7 @@ describe("Community Pages", () => {
 			draftPricingContent: { type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: "Pricing" }] }] },
 			draftPricingTiers: [{ name: "Basic", price: "$50", description: "Basic plan" }],
 			galleryItemsDraft: [],
+			draftTagline: "Basic plans, done well",
 		});
 
 		await asUser.mutation(api.communityPages.publish, {});
@@ -121,6 +122,7 @@ describe("Community Pages", () => {
 		expect(page?.publishedPricingContent).toBeTruthy();
 		expect(page?.publishedPricingTiers).toEqual([{ name: "Basic", price: "$50", description: "Basic plan" }]);
 		expect(page?.galleryItemsPublished).toEqual([]);
+		expect(page?.publishedTagline).toBe("Basic plans, done well");
 	});
 
 	it("upsert stores draftOwnerInfo", async () => {
@@ -516,6 +518,62 @@ describe("Community Pages", () => {
 			slug: "service-tags-page",
 		});
 		expect(publicPage?.serviceTags).toEqual(["Lawn Care", "Snow Removal"]);
+	});
+
+	it("tagline round-trips through upsert, publish, and getBySlug", async () => {
+		const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+
+		await asUser.mutation(api.communityPages.upsert, {
+			slug: "tagline-page",
+			isPublic: true,
+			draftBioContent: {
+				type: "doc",
+				content: [{ type: "paragraph", content: [{ type: "text", text: "Bio" }] }],
+			},
+			draftTagline: "  Lawn care done right  ",
+		});
+
+		const draft = await asUser.query(api.communityPages.get, {});
+		expect(draft?.draftTagline).toBe("Lawn care done right");
+
+		await asUser.mutation(api.communityPages.publish, {});
+
+		const publicPage = await t.query(api.communityPages.getBySlug, {
+			slug: "tagline-page",
+		});
+		expect(publicPage?.tagline).toBe("Lawn care done right");
+	});
+
+	it("an emptied tagline clears the published value", async () => {
+		const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+
+		await asUser.mutation(api.communityPages.upsert, {
+			slug: "tagline-clear-page",
+			isPublic: true,
+			draftBioContent: {
+				type: "doc",
+				content: [{ type: "paragraph", content: [{ type: "text", text: "Bio" }] }],
+			},
+			draftTagline: "X",
+		});
+
+		await asUser.mutation(api.communityPages.upsert, { draftTagline: "" });
+		const draft = await asUser.query(api.communityPages.get, {});
+		expect(draft?.draftTagline).toBeUndefined();
+
+		await asUser.mutation(api.communityPages.publish, {});
+
+		const publicPage = await t.query(api.communityPages.getBySlug, {
+			slug: "tagline-clear-page",
+		});
+		expect(publicPage?.tagline).toBeUndefined();
+	});
+
+	it("validateTagline rejects over-length taglines", () => {
+		expect(() => __testUtils.validateTagline("a".repeat(81))).toThrow(
+			"Tagline must be 80 characters or less"
+		);
+		expect(() => __testUtils.validateTagline("a".repeat(80))).not.toThrow();
 	});
 
 	it("validateServiceTags rejects more than 8 tags", () => {

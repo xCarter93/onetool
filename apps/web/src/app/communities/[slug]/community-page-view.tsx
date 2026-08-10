@@ -54,6 +54,7 @@ export interface CommunityPageViewData {
 	slug: string;
 	pageTitle: string;
 	metaDescription?: string;
+	tagline?: string;
 	content?: JSONContent;
 	bioContent?: JSONContent;
 	servicesContent?: JSONContent;

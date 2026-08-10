@@ -71,12 +71,12 @@ export const communityArticles: HelpArticle[] = [
 				blocks: [
 					{
 						type: "paragraph",
-						text: "Click **Edit page** to open the editor. It has ten sections, and the Community page tracks how many you have filled in.",
+						text: "Click **Edit page** to open the editor. Its nine sections are grouped into **Essentials**, the four a page needs before publishing makes sense, and **Optional**, the rest. Once the essentials are filled in, the sidebar says **Ready to publish**, but nothing stops you publishing earlier or later.",
 					},
 					{
 						type: "list",
 						items: [
-							"**Main Page Settings**: banner image, avatar or logo, page title, page URL, and an SEO description for search engines.",
+							"**Main Page Settings**: banner image, avatar or logo, page title, page URL, an optional tagline, and an SEO description for search engines. The tagline leads your page as its headline, like \"Lawns worth coming home to\". Leave it blank and your business name takes that spot.",
 							"**Design**: three tabs. **Layout** picks the shape of your public page, **Brand** sets light or dark and your accent color, and **Sections** controls the order your public sections appear in, the layout each one uses, and a switch to leave any of them off.",
 							"**Business Info**: your name and title, **Licensed**, **Bonded**, and **Insured** badges, year established, license number, certifications, business hours, and social links.",
 							"**Bio**: tell visitors who you are and what makes your business different.",
@@ -127,6 +127,19 @@ export const communityArticles: HelpArticle[] = [
 				],
 			},
 			{
+				heading: "Save, discard, or walk away",
+				blocks: [
+					{
+						type: "paragraph",
+						text: "The editor never saves on its own. An amber dot next to a section means it has changes you have not saved yet, and **Save Draft** (or **Save Changes** on a live page) stores all of them at once.",
+					},
+					{
+						type: "paragraph",
+						text: "Changed your mind? **Discard** in the header takes the whole page back to how it looked after your last save. And if you try to leave the editor with unsaved work, OneTool asks first, so you can save it, drop it, or stay, but never lose it by accident.",
+					},
+				],
+			},
+			{
 				heading: "Pick the shape of your page",
 				blocks: [
 					{
@@ -144,6 +157,10 @@ export const communityArticles: HelpArticle[] = [
 					{
 						type: "note",
 						text: "Showcase is what every page starts as. Switching layouts never deletes anything. A section you have filled in stays filled in, wherever the new layout puts it.",
+					},
+					{
+						type: "note",
+						text: "Your banner appears in every layout, each in its own way: Showcase and Storefront wash it behind the top of the page, and Directory shows it as a cover photo above your name.",
 					},
 				],
 			},

@@ -26,6 +26,8 @@ import { SectionShell } from "./section-shell";
 interface MainSettingsSectionProps {
 	pageTitle: string;
 	setPageTitle: (value: string) => void;
+	tagline: string;
+	setTagline: (value: string) => void;
 	slug: string;
 	metaDescription: string;
 	setMetaDescription: (value: string) => void;
@@ -54,6 +56,8 @@ interface MainSettingsSectionProps {
 export const MainSettingsSection = React.memo(function MainSettingsSection({
 	pageTitle,
 	setPageTitle,
+	tagline,
+	setTagline,
 	slug,
 	metaDescription,
 	setMetaDescription,
@@ -315,6 +319,21 @@ export const MainSettingsSection = React.memo(function MainSettingsSection({
 							{slugError}
 						</FieldDescription>
 					)}
+				</Field>
+
+				<Field className="lg:col-span-2">
+					<FieldLabel htmlFor="tagline">Tagline</FieldLabel>
+					<Input
+						id="tagline"
+						value={tagline}
+						onChange={(e) => setTagline(e.target.value)}
+						maxLength={80}
+						placeholder="Lawns worth coming home to"
+					/>
+					<FieldDescription>
+						Leads your page as the headline. Leave it blank to use your
+						business name.
+					</FieldDescription>
 				</Field>
 
 				<Field className="lg:col-span-2">

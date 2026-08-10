@@ -190,13 +190,27 @@ interface Snapshot {
 	team: string;
 }
 
+/**
+ * The four sections a page needs before publishing makes sense. Everything
+ * else has a working default or auto-hides when empty. Advisory only — the
+ * Publish button never gates on this.
+ */
+export const ESSENTIAL_SECTION_IDS: readonly SectionId[] = [
+	"mainSettings",
+	"businessInfo",
+	"bio",
+	"services",
+];
+
+// Essentials first, in both this list and the rendered form — the rail groups
+// by slicing this order, and the scrollspy needs rail order to match DOM order.
 export const SECTION_LIST: Array<{ id: SectionId; label: string }> = [
 	{ id: "mainSettings", label: "Main Page Settings" },
-	{ id: "design", label: "Design" },
 	{ id: "businessInfo", label: "Business Info" },
 	{ id: "bio", label: "Bio" },
-	{ id: "imageGallery", label: "Image Gallery" },
 	{ id: "services", label: "Services" },
+	{ id: "design", label: "Design" },
+	{ id: "imageGallery", label: "Image Gallery" },
 	{ id: "pricing", label: "Pricing" },
 	{ id: "faq", label: "Common Questions" },
 	{ id: "team", label: "Team" },
@@ -204,6 +218,7 @@ export const SECTION_LIST: Array<{ id: SectionId; label: string }> = [
 
 function createSnapshot({
 	pageTitle,
+	tagline,
 	slug,
 	metaDescription,
 	isPublic,
@@ -235,6 +250,7 @@ function createSnapshot({
 	teamMembers,
 }: {
 	pageTitle: string;
+	tagline: string;
 	slug: string;
 	metaDescription: string;
 	isPublic: boolean;
@@ -268,6 +284,7 @@ function createSnapshot({
 	return {
 		mainSettings: JSON.stringify({
 			pageTitle,
+			tagline,
 			slug,
 			metaDescription,
 			isPublic,
@@ -361,6 +378,7 @@ export function useCommunityPageForm() {
 
 	// State
 	const [pageTitle, setPageTitle] = useState("");
+	const [tagline, setTagline] = useState("");
 	const [slug, setSlug] = useState("");
 	const [metaDescription, setMetaDescription] = useState("");
 	const [isPublic, setIsPublic] = useState(false);
@@ -485,16 +503,16 @@ export function useCommunityPageForm() {
 		}
 	}, [communityPage, router]);
 
-	// Sync server data to local state whenever the server doc changes.
-	// Runs during render via the prev-value pattern instead of an effect.
 	const [prevCommunityPage, setPrevCommunityPage] = useState(communityPage);
-	if (communityPage && communityPage !== prevCommunityPage) {
-		setPrevCommunityPage(communityPage);
 
+	// Hydrates every form atom (and the baseline snapshot) from a server doc.
+	// Used by the render-phase sync below and by Discard, which is just
+	// "hydrate again from the doc we already have".
+	const hydrateFromDoc = (doc: NonNullable<typeof communityPage>) => {
 		const draftBio =
-			(communityPage.draftBioContent as JSONContent | undefined) ??
-			(communityPage.draftContent as JSONContent | undefined);
-		const nextServiceTags = communityPage.draftServiceTags ?? [];
+			(doc.draftBioContent as JSONContent | undefined) ??
+			(doc.draftContent as JSONContent | undefined);
+		const nextServiceTags = doc.draftServiceTags ?? [];
 		const mapDraftTier = (tier: {
 			name: string;
 			price: string;
@@ -509,26 +527,27 @@ export function useCommunityPageForm() {
 			highlighted: tier.highlighted ?? false,
 		});
 
-		setPageTitle(communityPage.pageTitle || "");
-		setSlug(communityPage.slug);
-		setMetaDescription(communityPage.metaDescription || "");
-		setIsPublic(communityPage.isPublic);
+		setPageTitle(doc.pageTitle || "");
+		setTagline(doc.draftTagline || "");
+		setSlug(doc.slug);
+		setMetaDescription(doc.metaDescription || "");
+		setIsPublic(doc.isPublic);
 		setBioContent(draftBio);
 		setServicesContent(
-			communityPage.draftServicesContent as JSONContent | undefined,
+			doc.draftServicesContent as JSONContent | undefined,
 		);
 		setDraftServiceTags(nextServiceTags);
 		setPricingMode(
-			(communityPage.pricingModeDraft as PricingMode | undefined) ?? "richText",
+			(doc.pricingModeDraft as PricingMode | undefined) ?? "richText",
 		);
 		setPricingContent(
-			communityPage.draftPricingContent as JSONContent | undefined,
+			doc.draftPricingContent as JSONContent | undefined,
 		);
-		setPricingTiers((communityPage.draftPricingTiers ?? []).map(mapDraftTier));
-		setBannerStorageId(communityPage.bannerStorageId || null);
-		setAvatarStorageId(communityPage.avatarStorageId || null);
+		setPricingTiers((doc.draftPricingTiers ?? []).map(mapDraftTier));
+		setBannerStorageId(doc.bannerStorageId || null);
+		setAvatarStorageId(doc.avatarStorageId || null);
 		setGalleryItems(
-			(communityPage.galleryItemsDraft ?? [])
+			(doc.galleryItemsDraft ?? [])
 				.slice()
 				.sort((a, b) => a.sortOrder - b.sortOrder)
 				.map((item) => ({
@@ -539,13 +558,13 @@ export function useCommunityPageForm() {
 		);
 
 		setFaqItems(
-			(communityPage.draftFaqItems ?? []).map((item) => ({
+			(doc.draftFaqItems ?? []).map((item) => ({
 				question: item.question,
 				answer: item.answer,
 			})),
 		);
 		setTeamMembers(
-			(communityPage.draftTeamMembers ?? []).map((member) => ({
+			(doc.draftTeamMembers ?? []).map((member) => ({
 				name: member.name,
 				role: member.role ?? "",
 				bio: member.bio ?? "",
@@ -555,13 +574,13 @@ export function useCommunityPageForm() {
 		);
 
 		// Business info sync
-		const ownerInfo = communityPage.draftOwnerInfo as
+		const ownerInfo = doc.draftOwnerInfo as
 			| { name?: string; title?: string }
 			| undefined;
 		setOwnerName(ownerInfo?.name || "");
 		setOwnerTitle(ownerInfo?.title || "");
 
-		const creds = communityPage.draftCredentials as
+		const creds = doc.draftCredentials as
 			| {
 					isLicensed?: boolean;
 					isBonded?: boolean;
@@ -578,53 +597,54 @@ export function useCommunityPageForm() {
 		setLicenseNumber(creds?.licenseNumber || "");
 		setCertifications(creds?.certifications || []);
 
-		const hours = communityPage.draftBusinessHours as
+		const hours = doc.draftBusinessHours as
 			| { byAppointmentOnly: boolean; schedule?: DaySchedule[] }
 			| undefined;
 		setByAppointmentOnly(hours?.byAppointmentOnly || false);
 		setBusinessSchedule(hours?.schedule || DEFAULT_SCHEDULE);
 
-		const links = communityPage.draftSocialLinks as SocialLinks | undefined;
+		const links = doc.draftSocialLinks as SocialLinks | undefined;
 		setSocialLinks(links || EMPTY_SOCIAL_LINKS);
 
 		// Legacy rows still hold the Phase 8 theme names; resolve rather than trust,
 		// so the next save writes a real layout back.
-		const serverLayout = resolvePageLayout(communityPage.draftTheme);
+		const serverLayout = resolvePageLayout(doc.draftTheme);
 		setLayout(serverLayout);
-		const serverColorMode = resolveColorMode(communityPage.draftColorMode);
+		const serverColorMode = resolveColorMode(doc.draftColorMode);
 		setColorMode(serverColorMode);
 		const serverAccent = normalizeAccent(
-			communityPage.draftAccent as string | undefined,
+			doc.draftAccent as string | undefined,
 		);
 		setAccent(serverAccent);
 
 		// Normalized on the way in, so a config written before a section existed
 		// still hydrates a complete list.
 		const serverSectionConfig = resolveSectionConfig(
-			communityPage.draftSectionConfig,
+			doc.draftSectionConfig,
 		);
 		setSectionConfig(serverSectionConfig);
 
 		setSavedSnapshot(createSnapshot({
-			pageTitle: communityPage.pageTitle || "",
-			slug: communityPage.slug,
-			metaDescription: communityPage.metaDescription || "",
-			isPublic: communityPage.isPublic,
-			bannerStorageId: communityPage.bannerStorageId || null,
-			avatarStorageId: communityPage.avatarStorageId || null,
+			pageTitle: doc.pageTitle || "",
+			tagline: doc.draftTagline || "",
+			slug: doc.slug,
+			metaDescription: doc.metaDescription || "",
+			isPublic: doc.isPublic,
+			bannerStorageId: doc.bannerStorageId || null,
+			avatarStorageId: doc.avatarStorageId || null,
 			bioContent: draftBio,
-			servicesContent: communityPage.draftServicesContent as
+			servicesContent: doc.draftServicesContent as
 				| JSONContent
 				| undefined,
 			draftServiceTags: nextServiceTags,
 			pricingMode:
-				(communityPage.pricingModeDraft as PricingMode | undefined) ??
+				(doc.pricingModeDraft as PricingMode | undefined) ??
 				"richText",
-			pricingContent: communityPage.draftPricingContent as
+			pricingContent: doc.draftPricingContent as
 				| JSONContent
 				| undefined,
-			pricingTiers: (communityPage.draftPricingTiers ?? []).map(mapDraftTier),
-			galleryItems: (communityPage.galleryItemsDraft ?? [])
+			pricingTiers: (doc.draftPricingTiers ?? []).map(mapDraftTier),
+			galleryItems: (doc.galleryItemsDraft ?? [])
 				.slice()
 				.sort((a, b) => a.sortOrder - b.sortOrder)
 				.map((item) => ({
@@ -646,17 +666,24 @@ export function useCommunityPageForm() {
 			colorMode: serverColorMode,
 			accent: serverAccent,
 			sectionConfig: serverSectionConfig,
-			faqItems: (communityPage.draftFaqItems ?? []).map((item) => ({
+			faqItems: (doc.draftFaqItems ?? []).map((item) => ({
 				question: item.question,
 				answer: item.answer,
 			})),
-			teamMembers: (communityPage.draftTeamMembers ?? []).map((member) => ({
+			teamMembers: (doc.draftTeamMembers ?? []).map((member) => ({
 				name: member.name,
 				role: member.role ?? "",
 				bio: member.bio ?? "",
 				photoStorageId: member.photoStorageId,
 			})),
 		}));
+	};
+
+	// Sync server data to local state whenever the server doc changes.
+	// Runs during render via the prev-value pattern instead of an effect.
+	if (communityPage && communityPage !== prevCommunityPage) {
+		setPrevCommunityPage(communityPage);
+		hydrateFromDoc(communityPage);
 	}
 
 	// Image URL queries
@@ -921,6 +948,7 @@ export function useCommunityPageForm() {
 		() =>
 			createSnapshot({
 				pageTitle,
+				tagline,
 				slug,
 				metaDescription,
 				isPublic,
@@ -953,6 +981,7 @@ export function useCommunityPageForm() {
 			}),
 		[
 			pageTitle,
+			tagline,
 			slug,
 			metaDescription,
 			isPublic,
@@ -1140,6 +1169,7 @@ export function useCommunityPageForm() {
 
 	const hasPublishableContent = useMemo(
 		() =>
+			!!tagline.trim() ||
 			!!bioContent ||
 			!!servicesContent ||
 			draftServiceTags.length > 0 ||
@@ -1158,7 +1188,7 @@ export function useCommunityPageForm() {
 			certifications.length > 0 ||
 			byAppointmentOnly ||
 			Object.values(socialLinks).some(Boolean),
-		[bioContent, servicesContent, draftServiceTags.length, pricingContent, pricingTiers.length, galleryItems.length, faqItems.length, teamMembers.length, ownerName, ownerTitle, isLicensed, isBonded, isInsured, yearEstablished, licenseNumber, certifications.length, byAppointmentOnly, socialLinks],
+		[tagline, bioContent, servicesContent, draftServiceTags.length, pricingContent, pricingTiers.length, galleryItems.length, faqItems.length, teamMembers.length, ownerName, ownerTitle, isLicensed, isBonded, isInsured, yearEstablished, licenseNumber, certifications.length, byAppointmentOnly, socialLinks],
 	);
 
 	const hasInvalidSocialUrls = useMemo(
@@ -1166,10 +1196,11 @@ export function useCommunityPageForm() {
 		[socialLinks],
 	);
 
-	// Actions
-	const handleSave = async () => {
-		if (!validateSlug(slug)) return;
-		if (hasInvalidSocialUrls) return;
+	// Actions. Save reports success so the leave-guard's "Save and leave" can
+	// hold the navigation when validation or the mutation fails.
+	const handleSave = async (): Promise<boolean> => {
+		if (!validateSlug(slug)) return false;
+		if (hasInvalidSocialUrls) return false;
 
 		setIsSaving(true);
 		try {
@@ -1177,6 +1208,9 @@ export function useCommunityPageForm() {
 				slug,
 				isPublic,
 				pageTitle: pageTitle || undefined,
+				// Sent unconditionally — the mutation clears the stored value on
+				// empty, so wiping the field sticks.
+				draftTagline: tagline,
 				metaDescription: metaDescription || undefined,
 				draftContent: bioContent,
 				draftBioContent: bioContent,
@@ -1241,11 +1275,13 @@ export function useCommunityPageForm() {
 					? "Your live page has been updated"
 					: "Your changes have been saved",
 			);
+			return true;
 		} catch (error) {
 			toast.error(
 				"Save failed",
 				error instanceof Error ? error.message : "Please try again",
 			);
+			return false;
 		} finally {
 			setIsSaving(false);
 		}
@@ -1261,6 +1297,7 @@ export function useCommunityPageForm() {
 				slug,
 				isPublic: true,
 				pageTitle: pageTitle || undefined,
+				draftTagline: tagline,
 				metaDescription: metaDescription || undefined,
 				draftContent: bioContent,
 				draftBioContent: bioContent,
@@ -1318,6 +1355,7 @@ export function useCommunityPageForm() {
 			setIsPublic(true);
 			setSavedSnapshot(createSnapshot({
 				pageTitle,
+				tagline,
 				slug,
 				metaDescription,
 				isPublic: true,
@@ -1365,6 +1403,7 @@ export function useCommunityPageForm() {
 			setIsPublic(false);
 			setSavedSnapshot(createSnapshot({
 				pageTitle,
+				tagline,
 				slug,
 				metaDescription,
 				isPublic: false,
@@ -1399,6 +1438,18 @@ export function useCommunityPageForm() {
 		} catch {
 			toast.error("Failed to update visibility");
 		}
+	};
+
+	// Discard = hydrate again from the doc we already have. The URL resets are
+	// only needed here: an unsaved upload leaves a resolved URL behind that the
+	// id reset alone would keep showing. They repopulate from the queries (or
+	// the org-logo fallback) on the next render.
+	const handleDiscard = () => {
+		if (!communityPage) return;
+		hydrateFromDoc(communityPage);
+		setBannerUrl(null);
+		setAvatarUrl(null);
+		setSlugError(null);
 	};
 
 	const handleCopyUrl = () => {
@@ -1461,6 +1512,8 @@ export function useCommunityPageForm() {
 		mainSettings: {
 			pageTitle,
 			setPageTitle,
+			tagline,
+			setTagline,
 			slug,
 			setSlug,
 			metaDescription,
@@ -1570,6 +1623,7 @@ export function useCommunityPageForm() {
 		actions: {
 			handleSave,
 			handlePublish,
+			handleDiscard,
 			isSaving,
 			isPublishing,
 			hasUnsavedChanges,

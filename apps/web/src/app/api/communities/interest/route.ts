@@ -34,9 +34,13 @@ export async function POST(request: NextRequest) {
 			);
 		}
 
+		// Validate the same value that gets stored — the regex rejects the spaces
+		// that trimming would have removed otherwise.
+		const trimmedEmail = email.trim();
+
 		// Basic email validation
 		const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-		if (!emailRegex.test(email)) {
+		if (!emailRegex.test(trimmedEmail)) {
 			return NextResponse.json(
 				{ error: "Invalid email address" },
 				{ status: 400 }
@@ -75,7 +79,7 @@ export async function POST(request: NextRequest) {
 		await client.mutation(api.communityPages.submitInterest, {
 			slug: slug.trim(),
 			name: name.trim(),
-			email: email.trim().toLowerCase(),
+			email: trimmedEmail.toLowerCase(),
 			phone: phone?.trim() || undefined,
 			message: message?.trim() || undefined,
 			service: service?.trim() || undefined,

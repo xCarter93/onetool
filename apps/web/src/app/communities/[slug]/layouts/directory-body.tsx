@@ -1,5 +1,6 @@
 import Image from "next/image";
 import { Award, MapPin, MessageSquare, Phone, ShieldCheck } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { BusinessHoursCard } from "../components/business-hours-card";
 import { SocialLinks } from "../components/social-links";
 import { OwnerInfo } from "../components/owner-info";
@@ -44,18 +45,40 @@ export function DirectoryBody(props: LayoutBodyProps) {
 		<>
 			<section className="border-b border-border">
 				<div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-10 sm:py-12 text-center">
+					{/* A listing's cover photo, shown as photography rather than washed
+					    back — this is the layout for an owner with no gallery yet. */}
+					{data.bannerUrl && (
+						<div className="relative h-40 sm:h-52 overflow-hidden rounded-2xl ring-1 ring-border">
+							<Image
+								src={data.bannerUrl}
+								alt=""
+								fill
+								className="object-cover"
+								sizes="(max-width: 1024px) 100vw, 64rem"
+								priority
+							/>
+						</div>
+					)}
+
 					{data.avatarUrl ? (
 						<Image
 							src={data.avatarUrl}
 							alt=""
 							width={64}
 							height={64}
-							className="mx-auto size-16 rounded-2xl object-cover ring-1 ring-border"
+							className={cn(
+								"mx-auto size-16 rounded-2xl object-cover",
+								// Lifted over the cover's bottom edge, with the page colour
+								// as the ring so it reads as cut out of the photo.
+								data.bannerUrl
+									? "relative -mt-8 ring-4 ring-background"
+									: "ring-1 ring-border"
+							)}
 						/>
 					) : null}
 
 					<h1 className="mt-4 text-2xl sm:text-3xl font-semibold tracking-tight text-foreground text-balance">
-						{data.pageTitle}
+						{data.tagline || data.pageTitle}
 					</h1>
 
 					{metaLine && (

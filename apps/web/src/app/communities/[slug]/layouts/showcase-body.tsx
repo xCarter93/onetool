@@ -6,6 +6,7 @@ import { BusinessHoursCard } from "../components/business-hours-card";
 import { SocialLinks } from "../components/social-links";
 import { OwnerInfo } from "../components/owner-info";
 import { CONTACT_FORM_ID } from "../community-page-view";
+import { HeroBackdrop } from "./hero-backdrop";
 import { SectionStack, type LayoutBodyProps } from "./layout-body";
 
 /**
@@ -21,19 +22,7 @@ export function ShowcaseBody(props: LayoutBodyProps) {
 			{/* Hero — name sits on the page, never in a glass box over the banner */}
 			<section className="relative">
 				{data.bannerUrl && (
-					<div
-						aria-hidden="true"
-						className="absolute inset-x-0 top-0 h-64 sm:h-80 overflow-hidden"
-					>
-						<Image
-							src={data.bannerUrl}
-							alt=""
-							fill
-							className="object-cover opacity-15"
-							priority
-						/>
-						<div className="absolute inset-0 bg-gradient-to-b from-transparent to-background" />
-					</div>
+					<HeroBackdrop bannerUrl={data.bannerUrl} className="h-64 sm:h-80" />
 				)}
 
 				<div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-10 pb-12 sm:pt-14 sm:pb-16">
@@ -45,8 +34,10 @@ export function ShowcaseBody(props: LayoutBodyProps) {
 						)}
 					>
 						<div>
+							{/* The owner's own line leads when they wrote one; the business
+							    name still names the page in the header and the tab. */}
 							<h1 className="text-3xl sm:text-4xl lg:text-5xl font-semibold tracking-tight text-foreground text-balance">
-								{data.pageTitle}
+								{data.tagline || data.pageTitle}
 							</h1>
 
 							{data.metaDescription && (

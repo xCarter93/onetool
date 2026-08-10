@@ -35,6 +35,7 @@ export function buildPreviewData(
 	return {
 		slug: mainSettings.slug,
 		pageTitle: mainSettings.pageTitle,
+		tagline: mainSettings.tagline.trim() || undefined,
 		metaDescription: mainSettings.metaDescription || undefined,
 		bioContent: bio.bioContent,
 		servicesContent: services.servicesContent,

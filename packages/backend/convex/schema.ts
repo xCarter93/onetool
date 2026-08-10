@@ -1464,6 +1464,11 @@ export default defineSchema({
 		draftAccent: v.optional(v.string()),
 		publishedAccent: v.optional(v.string()),
 
+		// Short headline under the business name on the public page. Capped at
+		// 80 characters in the upsert handler.
+		draftTagline: v.optional(v.string()),
+		publishedTagline: v.optional(v.string()),
+
 		// Metadata
 		pageTitle: v.optional(v.string()), // Custom page title (falls back to org name)
 		metaDescription: v.optional(v.string()), // SEO description

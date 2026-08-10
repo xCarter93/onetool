@@ -150,6 +150,7 @@ export const upsert = userMutation({
 		draftTheme: v.optional(communityLayoutValidator),
 		draftColorMode: v.optional(communityColorModeValidator),
 		draftAccent: v.optional(v.string()),
+		draftTagline: v.optional(v.string()),
 	},
 	handler: async (ctx, args): Promise<CommunityPageId> => {
 		await ctx.requireLevel("community", "modify");
@@ -173,6 +174,9 @@ export const upsert = userMutation({
 		}
 		if (args.draftAccent !== undefined) {
 			validateAccent(args.draftAccent);
+		}
+		if (args.draftTagline !== undefined) {
+			validateTagline(args.draftTagline);
 		}
 		const validatedServiceTags =
 			args.draftServiceTags !== undefined
@@ -241,6 +245,10 @@ export const upsert = userMutation({
 				updates.draftColorMode = args.draftColorMode;
 			if (args.draftAccent !== undefined)
 				updates.draftAccent = args.draftAccent;
+			// patch drops fields set to undefined, and the editor always sends the
+			// string, so clearing the input genuinely clears the stored tagline.
+			if (args.draftTagline !== undefined)
+				updates.draftTagline = args.draftTagline.trim() || undefined;
 
 			await ctx.db.patch(existing._id, updates);
 			return existing._id;
@@ -278,6 +286,7 @@ export const upsert = userMutation({
 				draftTheme: args.draftTheme,
 				draftColorMode: args.draftColorMode,
 				draftAccent: args.draftAccent,
+				draftTagline: args.draftTagline?.trim() || undefined,
 				createdAt: now,
 				updatedAt: now,
 			});
@@ -309,6 +318,7 @@ const DRAFT_TO_PUBLISHED_MAP: Record<string, string> = {
 	draftTheme: "publishedTheme",
 	draftColorMode: "publishedColorMode",
 	draftAccent: "publishedAccent",
+	draftTagline: "publishedTagline",
 };
 
 /**
@@ -337,7 +347,8 @@ export const publish = userMutation({
 			(page.draftPricingTiers?.length ?? 0) > 0 ||
 			(page.galleryItemsDraft?.length ?? 0) > 0 ||
 			(page.draftFaqItems?.length ?? 0) > 0 ||
-			(page.draftTeamMembers?.length ?? 0) > 0;
+			(page.draftTeamMembers?.length ?? 0) > 0 ||
+			!!page.draftTagline;
 		const hasBusinessInfoContent =
 			!!page.draftOwnerInfo ||
 			!!page.draftCredentials ||
@@ -505,6 +516,7 @@ export const getBySlug = query({
 			slug: v.string(),
 			pageTitle: v.string(),
 			metaDescription: v.optional(v.string()),
+			tagline: v.optional(v.string()),
 			content: v.optional(v.any()),
 			bioContent: v.optional(v.any()),
 			servicesContent: v.optional(v.any()),
@@ -660,6 +672,7 @@ export const getBySlug = query({
 			slug: page.slug,
 			pageTitle: page.pageTitle || org?.name || "Community Page",
 			metaDescription: page.metaDescription,
+			tagline: page.publishedTagline || undefined,
 			content: page.publishedContent,
 			bioContent: page.publishedBioContent ?? page.publishedContent,
 			servicesContent: page.publishedServicesContent,
@@ -1213,6 +1226,20 @@ function validateAccent(accent: string): void {
 	}
 }
 
+/**
+ * The tagline is a headline on a public page, so it is capped rather than left
+ * to whatever the form allows. Measured after trimming — the stored value is
+ * trimmed too, so whitespace can never buy extra length.
+ */
+function validateTagline(tagline: string): void {
+	if (tagline.trim().length > 80) {
+		throw new ConvexError({
+			code: "BAD_REQUEST",
+			message: "Tagline must be 80 characters or less",
+		});
+	}
+}
+
 export const __testUtils = {
 	validatePricingTiers,
 	validateGalleryItems,
@@ -1221,4 +1248,5 @@ export const __testUtils = {
 	validateFaqItems,
 	validateTeamMembers,
 	validateAccent,
+	validateTagline,
 };

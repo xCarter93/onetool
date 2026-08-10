@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import {
 	ArrowLeft,
 	Save,
@@ -20,6 +19,7 @@ import {
 	Wrench,
 	Tags,
 	HelpCircle,
+	Undo2,
 	Users,
 	Check as CheckIcon,
 } from "lucide-react";
@@ -28,8 +28,17 @@ import { Badge } from "@/components/reui/badge";
 import { Scrollspy } from "@/components/reui/scrollspy";
 import { cn } from "@/lib/utils";
 import { useWorkspaceScrollTarget } from "@/lib/workspace-scroller";
-import { useCommunityPageForm, SECTION_LIST } from "./use-community-page-form";
+import {
+	useCommunityPageForm,
+	SECTION_LIST,
+	ESSENTIAL_SECTION_IDS,
+} from "./use-community-page-form";
 import type { SectionId } from "./use-community-page-form";
+import { useLeaveGuard } from "./use-leave-guard";
+import {
+	UnsavedChangesDialog,
+	DiscardConfirmDialog,
+} from "./unsaved-changes-dialog";
 import { MainSettingsSection } from "./sections/main-settings-section";
 import { BioSection } from "./sections/bio-section";
 import { GallerySection } from "./sections/gallery-section";
@@ -112,7 +121,6 @@ function SectionIndicator({
 }
 
 export default function CommunityEditContent() {
-	const router = useRouter();
 	const form = useCommunityPageForm();
 	const {
 		mainSettings,
@@ -134,6 +142,24 @@ export default function CommunityEditContent() {
 	} = form;
 	const isPageLoaded = !isLoading && !isRedirecting;
 	const [previewOpen, setPreviewOpen] = useState(false);
+	const [discardConfirmOpen, setDiscardConfirmOpen] = useState(false);
+
+	// Holds tab-close and in-app navigation while there are unsaved edits.
+	const guard = useLeaveGuard(actions.hasUnsavedChanges);
+
+	// The /community checklist links to /community/edit#<sectionId>, but the
+	// sections render after the Convex doc loads — long after the browser's own
+	// hash scroll has already fired against nothing. Land it manually once.
+	useEffect(() => {
+		if (!isPageLoaded) return;
+		const hash = window.location.hash.slice(1);
+		if (!hash || !SECTION_LIST.some((section) => section.id === hash)) return;
+		requestAnimationFrame(() => {
+			document
+				.getElementById(hash)
+				?.scrollIntoView({ behavior: "auto", block: "start" });
+		});
+	}, [isPageLoaded]);
 
 	// Point Scrollspy at whichever scroll context is live (workspace card on
 	// desktop, window on mobile).
@@ -190,6 +216,44 @@ export default function CommunityEditContent() {
 		actions.hasInvalidSocialUrls ||
 		(!actions.hasUnsavedChanges && !mainSettings.isPublic);
 
+	const essentialSections = SECTION_LIST.filter((section) =>
+		ESSENTIAL_SECTION_IDS.includes(section.id),
+	);
+	const optionalSections = SECTION_LIST.filter(
+		(section) => !ESSENTIAL_SECTION_IDS.includes(section.id),
+	);
+	const essentialsDoneCount = ESSENTIAL_SECTION_IDS.filter(
+		(id) => sectionCompletion[id].done,
+	).length;
+	// Advisory only — Publish never gates on it, and a live page needs no nudge.
+	const showReadyLine =
+		!mainSettings.isPublic &&
+		essentialsDoneCount === ESSENTIAL_SECTION_IDS.length;
+
+	const renderRailRow = (section: { id: SectionId; label: string }) => {
+		const Icon = SECTION_ICONS[section.id];
+		return (
+			<button
+				key={section.id}
+				type="button"
+				data-scrollspy-anchor={section.id}
+				className={cn(
+					"group flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm text-muted-foreground transition-colors cursor-pointer",
+					"hover:bg-muted/40 hover:text-foreground",
+					"data-[active=true]:bg-primary/10 data-[active=true]:text-primary data-[active=true]:font-medium",
+				)}
+			>
+				<Icon className="size-4 shrink-0 opacity-70 group-data-[active=true]:opacity-100" />
+				<span className="flex-1 truncate">{section.label}</span>
+				<SectionIndicator
+					dirty={dirtyBySection[section.id]}
+					done={sectionCompletion[section.id].done}
+					count={sectionCompletion[section.id].count}
+				/>
+			</button>
+		);
+	};
+
 	return (
 		// No background here — the workspace canvas dot texture stays visible
 		// across the whole page; content sits on opaque panels.
@@ -214,7 +278,7 @@ export default function CommunityEditContent() {
 							<Button
 								variant="outline"
 								size="icon-sm"
-								onClick={() => router.push("/community")}
+								onClick={() => guard.navigate("/community")}
 								aria-label="Back to Community"
 							>
 								<ArrowLeft className="size-4" />
@@ -272,6 +336,17 @@ export default function CommunityEditContent() {
 							</div>
 						</div>
 						<div className="flex items-center gap-2.5 shrink-0">
+							{actions.hasUnsavedChanges && (
+								<Button
+									variant="ghost"
+									size="sm"
+									onClick={() => setDiscardConfirmOpen(true)}
+									disabled={actions.isSaving || actions.isPublishing}
+								>
+									<Undo2 className="size-4 mr-2" />
+									Discard
+								</Button>
+							)}
 							<Button
 								variant="outline"
 								size="sm"
@@ -362,40 +437,42 @@ export default function CommunityEditContent() {
 								aria-label="Page sections"
 								className="sticky top-40 space-y-0.5 p-3"
 							>
-								<p className="px-3 pb-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-									Sections
+								<p className="flex items-baseline justify-between px-3 pb-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+									Essentials
+									<span className="font-normal tabular-nums normal-case tracking-normal">
+										{essentialsDoneCount}/{ESSENTIAL_SECTION_IDS.length}
+									</span>
 								</p>
-								{SECTION_LIST.map((section) => {
-									const Icon = SECTION_ICONS[section.id];
-									return (
-										<button
-											key={section.id}
-											type="button"
-											data-scrollspy-anchor={section.id}
-											className={cn(
-												"group flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm text-muted-foreground transition-colors cursor-pointer",
-												"hover:bg-muted/40 hover:text-foreground",
-												"data-[active=true]:bg-primary/10 data-[active=true]:text-primary data-[active=true]:font-medium",
-											)}
-										>
-											<Icon className="size-4 shrink-0 opacity-70 group-data-[active=true]:opacity-100" />
-											<span className="flex-1 truncate">{section.label}</span>
-											<SectionIndicator
-												dirty={dirtyBySection[section.id]}
-												done={sectionCompletion[section.id].done}
-												count={sectionCompletion[section.id].count}
-											/>
-										</button>
-									);
-								})}
+								{essentialSections.map(renderRailRow)}
+								{showReadyLine && (
+									<p className="flex items-center gap-1.5 px-3 pt-1.5 pb-1 text-xs font-medium text-success">
+										<CheckIcon className="size-3.5" aria-hidden />
+										Ready to publish
+									</p>
+								)}
+								<p className="px-3 pb-2 pt-4 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+									Optional
+								</p>
+								{optionalSections.map(renderRailRow)}
 							</nav>
 						</aside>
 
 						{/* Sections */}
+						{/* Essentials first, then the optional sections — this order must
+						    match SECTION_LIST or the rail and scrollspy disagree. */}
 						<div className="min-w-0 space-y-12 px-5 pt-8 pb-[40vh] sm:px-8">
 							<MainSettingsSection
 								{...mainSettings}
 								sectionRef={sectionRefSetters.mainSettings}
+							/>
+							<BusinessInfoSection
+								{...businessInfo}
+								sectionRef={sectionRefSetters.businessInfo}
+							/>
+							<BioSection {...bio} sectionRef={sectionRefSetters.bio} />
+							<ServicesSection
+								{...services}
+								sectionRef={sectionRefSetters.services}
 							/>
 							<DesignSection
 								{...design}
@@ -404,18 +481,9 @@ export default function CommunityEditContent() {
 								pricingMode={pricing.pricingMode}
 								sectionRef={sectionRefSetters.design}
 							/>
-							<BusinessInfoSection
-								{...businessInfo}
-								sectionRef={sectionRefSetters.businessInfo}
-							/>
-							<BioSection {...bio} sectionRef={sectionRefSetters.bio} />
 							<GallerySection
 								{...gallery}
 								sectionRef={sectionRefSetters.imageGallery}
-							/>
-							<ServicesSection
-								{...services}
-								sectionRef={sectionRefSetters.services}
 							/>
 							<PricingSection
 								{...pricing}
@@ -445,6 +513,36 @@ export default function CommunityEditContent() {
 				open={previewOpen}
 				onOpenChange={setPreviewOpen}
 				data={previewData}
+			/>
+
+			<UnsavedChangesDialog
+				open={guard.pendingHref !== null}
+				isSaving={actions.isSaving}
+				saveDisabled={
+					actions.isPublishing ||
+					!!actions.slugError ||
+					actions.isSlugAvailable === false ||
+					actions.isCheckingSlug ||
+					actions.hasInvalidSocialUrls
+				}
+				onSaveAndLeave={async () => {
+					const saved = await actions.handleSave();
+					if (saved) guard.proceed();
+				}}
+				onDiscardAndLeave={() => {
+					actions.handleDiscard();
+					guard.proceed();
+				}}
+				onKeepEditing={guard.cancel}
+			/>
+
+			<DiscardConfirmDialog
+				open={discardConfirmOpen}
+				onOpenChange={setDiscardConfirmOpen}
+				onConfirm={() => {
+					actions.handleDiscard();
+					setDiscardConfirmOpen(false);
+				}}
 			/>
 		</div>
 	);
