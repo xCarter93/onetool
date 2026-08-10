@@ -393,6 +393,7 @@ export default function CommunityEditContent() {
 							<DesignSection {...design} sectionRef={sectionRefSetters.design} />
 							<PageSectionsSection
 								{...sections}
+								pricingMode={pricing.pricingMode}
 								sectionRef={sectionRefSetters.sections}
 							/>
 							<BusinessInfoSection

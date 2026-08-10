@@ -6,11 +6,13 @@ import { ArrowRight, Check, Phone } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
 	hasRichTextContent,
+	sectionLayoutMap,
 	visibleSectionIds,
 	type CommunitySectionId,
 } from "@/lib/community-sections";
 import { CommunityPageContent } from "@/components/tiptap/community-editor";
 import { GalleryCarousel } from "./gallery-carousel";
+import { GalleryGrid } from "./gallery-grid";
 import { ContactForm } from "./contact-form";
 import { SiteHeader } from "./components/site-header";
 import { MobileActionBar } from "./components/mobile-action-bar";
@@ -43,7 +45,7 @@ export interface CommunityPageViewData {
 	bioContent?: JSONContent;
 	servicesContent?: JSONContent;
 	serviceTags?: string[];
-	sectionConfig?: Array<{ id: string; visible: boolean }>;
+	sectionConfig?: Array<{ id: string; visible: boolean; layout?: string }>;
 	pricingMode: "structured" | "richText";
 	pricingContent?: JSONContent;
 	pricingTiers?: Array<{
@@ -154,6 +156,7 @@ export function CommunityPageView({
 		gallery: galleryImages.length > 0,
 	};
 	const orderedSections = visibleSectionIds(data.sectionConfig);
+	const layouts = sectionLayoutMap(data.sectionConfig);
 	const renderedSections = orderedSections.filter((id) => sectionHasContent[id]);
 
 	// Anchors follow the same order the sections render in.
@@ -197,7 +200,44 @@ export function CommunityPageView({
 				>
 					Plans &amp; pricing
 				</h2>
-				{hasStructuredPricing ? (
+				{hasStructuredPricing && layouts.pricing === "compact" ? (
+					/* A price list, not a comparison: one row per plan, features
+					   collapsed to a single line so a long menu stays scannable. */
+					<ul className="mt-5 border-y border-border">
+						{pricingTiers.map((tier, index) => (
+							<li
+								key={`${tier.name}-${index}`}
+								className="flex flex-wrap items-baseline justify-between gap-x-8 gap-y-1 border-b border-border py-4 last:border-b-0"
+							>
+								<div className="min-w-0 flex-1">
+									<div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+										<h3 className="text-base font-semibold text-fg">
+											{tier.name}
+										</h3>
+										{tier.highlighted && (
+											<span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
+												Most chosen
+											</span>
+										)}
+									</div>
+									{tier.description && (
+										<p className="mt-0.5 text-sm text-muted-fg text-pretty">
+											{tier.description}
+										</p>
+									)}
+									{tier.features && tier.features.length > 0 && (
+										<p className="mt-1 text-sm text-muted-fg text-pretty">
+											{tier.features.join(" · ")}
+										</p>
+									)}
+								</div>
+								<p className="shrink-0 text-lg font-semibold tabular-nums text-fg">
+									{tier.price}
+								</p>
+							</li>
+						))}
+					</ul>
+				) : hasStructuredPricing ? (
 					<ul className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
 						{pricingTiers.map((tier, index) => (
 							<li
@@ -255,11 +295,19 @@ export function CommunityPageView({
 		),
 		gallery: (
 			<section id="work" className="scroll-mt-20">
-				<GalleryCarousel
-					images={galleryImages}
-					businessName={data.pageTitle}
-					headingClassName="text-2xl font-semibold tracking-tight text-fg"
-				/>
+				{layouts.gallery === "grid" ? (
+					<GalleryGrid
+						images={galleryImages}
+						businessName={data.pageTitle}
+						headingClassName="text-2xl font-semibold tracking-tight text-fg"
+					/>
+				) : (
+					<GalleryCarousel
+						images={galleryImages}
+						businessName={data.pageTitle}
+						headingClassName="text-2xl font-semibold tracking-tight text-fg"
+					/>
+				)}
 			</section>
 		),
 	};

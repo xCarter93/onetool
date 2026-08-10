@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
 	hasRichTextContent,
 	resolveSectionConfig,
+	resolveSectionLayout,
+	sectionLayoutMap,
 	visibleSectionIds,
 } from "./community-sections";
 
@@ -10,8 +12,8 @@ describe("resolveSectionConfig", () => {
 		expect(resolveSectionConfig()).toEqual([
 			{ id: "bio", visible: true },
 			{ id: "services", visible: true },
-			{ id: "pricing", visible: true },
-			{ id: "gallery", visible: true },
+			{ id: "pricing", visible: true, layout: "tiers" },
+			{ id: "gallery", visible: true, layout: "carousel" },
 		]);
 	});
 
@@ -22,10 +24,10 @@ describe("resolveSectionConfig", () => {
 				{ id: "bio", visible: false },
 			]),
 		).toEqual([
-			{ id: "gallery", visible: true },
+			{ id: "gallery", visible: true, layout: "carousel" },
 			{ id: "bio", visible: false },
 			{ id: "services", visible: true },
-			{ id: "pricing", visible: true },
+			{ id: "pricing", visible: true, layout: "tiers" },
 		]);
 	});
 
@@ -39,6 +41,43 @@ describe("resolveSectionConfig", () => {
 			{ id: "bio", visible: false },
 		]);
 		expect(resolved).toHaveLength(4);
+	});
+	it("keeps a stored layout and falls back when it is not on offer", () => {
+		expect(
+			resolveSectionConfig([
+				{ id: "gallery", visible: true, layout: "grid" },
+				{ id: "pricing", visible: true, layout: "carousel" },
+				{ id: "bio", visible: true, layout: "grid" },
+			]),
+		).toEqual([
+			{ id: "gallery", visible: true, layout: "grid" },
+			{ id: "pricing", visible: true, layout: "tiers" },
+			{ id: "bio", visible: true },
+			{ id: "services", visible: true },
+		]);
+	});
+});
+
+describe("resolveSectionLayout", () => {
+	it("defaults to the layout that shipped before the field existed", () => {
+		expect(resolveSectionLayout("gallery")).toBe("carousel");
+		expect(resolveSectionLayout("pricing")).toBe("tiers");
+	});
+
+	it("has nothing to resolve for a section with one presentation", () => {
+		expect(resolveSectionLayout("bio", "grid")).toBeUndefined();
+	});
+});
+
+describe("sectionLayoutMap", () => {
+	it("answers for every section, configured or not", () => {
+		expect(sectionLayoutMap([{ id: "gallery", visible: true, layout: "grid" }]))
+			.toEqual({
+				bio: undefined,
+				services: undefined,
+				pricing: "tiers",
+				gallery: "grid",
+			});
 	});
 });
 

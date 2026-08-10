@@ -64,7 +64,7 @@ export function GalleryCarousel({
 		>
 			<div className="flex items-center justify-between gap-4">
 				<h2 className={headingClassName ?? "text-2xl font-semibold text-fg"}>
-					Image Gallery
+					Our work
 				</h2>
 				{images.length > 1 && (
 					<div className="flex items-center gap-2">

@@ -735,4 +735,19 @@ describe("Community Pages", () => {
 			])
 		).toThrow("Each page section can only be listed once");
 	});
+
+	it("validateSectionConfig rejects a layout the section does not offer", () => {
+		expect(() =>
+			__testUtils.validateSectionConfig([
+				{ id: "pricing", visible: true, layout: "carousel" },
+			])
+		).toThrow("is not a layout the pricing section offers");
+		expect(() =>
+			__testUtils.validateSectionConfig([
+				{ id: "gallery", visible: true, layout: "grid" },
+				{ id: "pricing", visible: true, layout: "compact" },
+				{ id: "bio", visible: true },
+			])
+		).not.toThrow();
+	});
 });

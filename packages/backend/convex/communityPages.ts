@@ -12,6 +12,10 @@ import { optionalUserQuery, userMutation } from "./lib/factories";
 import { emitRecordCreatedEvent } from "./eventBus";
 import { isAdminRole } from "./lib/permissions";
 import { FEATURE_FLAGS, isServerFlagEnabled } from "./lib/posthog";
+import {
+	COMMUNITY_SECTION_LAYOUTS,
+	communitySectionConfigValidator,
+} from "./lib/communityTypes";
 
 /** PostHog rollout gate for editing/publishing community pages (fail-open). */
 async function requireCommunityPagesAccess(
@@ -84,19 +88,7 @@ export const upsert = userMutation({
 			)
 		),
 		draftServiceTags: v.optional(v.array(v.string())),
-		draftSectionConfig: v.optional(
-			v.array(
-				v.object({
-					id: v.union(
-						v.literal("bio"),
-						v.literal("services"),
-						v.literal("pricing"),
-						v.literal("gallery")
-					),
-					visible: v.boolean(),
-				})
-			)
-		),
+		draftSectionConfig: v.optional(communitySectionConfigValidator),
 		galleryItemsDraft: v.optional(
 			v.array(
 				v.object({
@@ -493,19 +485,7 @@ export const getBySlug = query({
 				})
 			),
 			serviceTags: v.array(v.string()),
-			sectionConfig: v.optional(
-				v.array(
-					v.object({
-						id: v.union(
-							v.literal("bio"),
-							v.literal("services"),
-							v.literal("pricing"),
-							v.literal("gallery")
-						),
-						visible: v.boolean(),
-					})
-				)
-			),
+			sectionConfig: v.optional(communitySectionConfigValidator),
 			galleryImages: v.array(
 				v.object({
 					storageId: v.id("_storage"),
@@ -1081,7 +1061,7 @@ function validateGalleryItems(
  * silently occupying a slot.
  */
 function validateSectionConfig(
-	config: Array<{ id: string; visible: boolean }>
+	config: Array<{ id: string; visible: boolean; layout?: string }>
 ): void {
 	const seen = new Set<string>();
 	for (const entry of config) {
@@ -1089,6 +1069,14 @@ function validateSectionConfig(
 			throw new Error("Each page section can only be listed once");
 		}
 		seen.add(entry.id);
+		// The validator accepts every layout id; only this pairing check knows
+		// that "carousel" is meaningless on Pricing.
+		const allowed = COMMUNITY_SECTION_LAYOUTS[entry.id] ?? [];
+		if (entry.layout !== undefined && !allowed.includes(entry.layout)) {
+			throw new Error(
+				`"${entry.layout}" is not a layout the ${entry.id} section offers`
+			);
+		}
 	}
 }
 

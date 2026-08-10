@@ -11,6 +11,7 @@ import {
 	triggerValidator,
 	triggerableObjectTypeValidator,
 } from "./lib/workflowTypes";
+import { communitySectionConfigValidator } from "./lib/communityTypes";
 
 // v2 workflow node shape: each node carries the unified `config` union
 // (see lib/workflowTypes.ts). Legacy v1 fields were dropped post-migration.
@@ -1330,32 +1331,8 @@ export default defineSchema({
 		// Public section order + visibility. Array order IS display order; an
 		// absent config means "default order, everything visible", so legacy
 		// pages keep rendering exactly as they did.
-		draftSectionConfig: v.optional(
-			v.array(
-				v.object({
-					id: v.union(
-						v.literal("bio"),
-						v.literal("services"),
-						v.literal("pricing"),
-						v.literal("gallery")
-					),
-					visible: v.boolean(),
-				})
-			)
-		),
-		publishedSectionConfig: v.optional(
-			v.array(
-				v.object({
-					id: v.union(
-						v.literal("bio"),
-						v.literal("services"),
-						v.literal("pricing"),
-						v.literal("gallery")
-					),
-					visible: v.boolean(),
-				})
-			)
-		),
+		draftSectionConfig: v.optional(communitySectionConfigValidator),
+		publishedSectionConfig: v.optional(communitySectionConfigValidator),
 		galleryItemsDraft: v.optional(
 			v.array(
 				v.object({

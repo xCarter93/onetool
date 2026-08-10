@@ -65,6 +65,7 @@ import type * as lib_automationExec_types from "../lib/automationExec/types.js";
 import type * as lib_automationExec_walk from "../lib/automationExec/walk.js";
 import type * as lib_celebrations from "../lib/celebrations.js";
 import type * as lib_changeTracking from "../lib/changeTracking.js";
+import type * as lib_communityTypes from "../lib/communityTypes.js";
 import type * as lib_conditionEval from "../lib/conditionEval.js";
 import type * as lib_crud from "../lib/crud.js";
 import type * as lib_editLocks from "../lib/editLocks.js";
@@ -244,6 +245,7 @@ declare const fullApi: ApiFromModules<{
   "lib/automationExec/walk": typeof lib_automationExec_walk;
   "lib/celebrations": typeof lib_celebrations;
   "lib/changeTracking": typeof lib_changeTracking;
+  "lib/communityTypes": typeof lib_communityTypes;
   "lib/conditionEval": typeof lib_conditionEval;
   "lib/crud": typeof lib_crud;
   "lib/editLocks": typeof lib_editLocks;
