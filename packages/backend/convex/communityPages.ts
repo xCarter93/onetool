@@ -14,7 +14,9 @@ import { isAdminRole } from "./lib/permissions";
 import { FEATURE_FLAGS, isServerFlagEnabled } from "./lib/posthog";
 import {
 	COMMUNITY_SECTION_LAYOUTS,
+	communityFaqItemsValidator,
 	communitySectionConfigValidator,
+	communityTeamMembersValidator,
 } from "./lib/communityTypes";
 
 /** PostHog rollout gate for editing/publishing community pages (fail-open). */
@@ -89,6 +91,8 @@ export const upsert = userMutation({
 		),
 		draftServiceTags: v.optional(v.array(v.string())),
 		draftSectionConfig: v.optional(communitySectionConfigValidator),
+		draftFaqItems: v.optional(communityFaqItemsValidator),
+		draftTeamMembers: v.optional(communityTeamMembersValidator),
 		galleryItemsDraft: v.optional(
 			v.array(
 				v.object({
@@ -157,6 +161,12 @@ export const upsert = userMutation({
 		if (args.draftSectionConfig !== undefined) {
 			validateSectionConfig(args.draftSectionConfig);
 		}
+		if (args.draftFaqItems !== undefined) {
+			validateFaqItems(args.draftFaqItems);
+		}
+		if (args.draftTeamMembers !== undefined) {
+			validateTeamMembers(args.draftTeamMembers);
+		}
 		const validatedServiceTags =
 			args.draftServiceTags !== undefined
 				? validateServiceTags(args.draftServiceTags)
@@ -203,6 +213,10 @@ export const upsert = userMutation({
 				updates.galleryItemsDraft = args.galleryItemsDraft;
 			if (args.draftSectionConfig !== undefined)
 				updates.draftSectionConfig = args.draftSectionConfig;
+			if (args.draftFaqItems !== undefined)
+				updates.draftFaqItems = args.draftFaqItems;
+			if (args.draftTeamMembers !== undefined)
+				updates.draftTeamMembers = args.draftTeamMembers;
 			if (args.pageTitle !== undefined) updates.pageTitle = args.pageTitle;
 			if (args.metaDescription !== undefined)
 				updates.metaDescription = args.metaDescription;
@@ -242,6 +256,8 @@ export const upsert = userMutation({
 				draftServiceTags: validatedServiceTags,
 				galleryItemsDraft: args.galleryItemsDraft,
 				draftSectionConfig: args.draftSectionConfig,
+				draftFaqItems: args.draftFaqItems,
+				draftTeamMembers: args.draftTeamMembers,
 				pageTitle: args.pageTitle,
 				metaDescription: args.metaDescription,
 				draftOwnerInfo: args.draftOwnerInfo,
@@ -269,6 +285,8 @@ const DRAFT_TO_PUBLISHED_MAP: Record<string, string> = {
 	draftPricingTiers: "publishedPricingTiers",
 	draftServiceTags: "publishedServiceTags",
 	draftSectionConfig: "publishedSectionConfig",
+	draftFaqItems: "publishedFaqItems",
+	draftTeamMembers: "publishedTeamMembers",
 	pricingModeDraft: "pricingModePublished",
 	galleryItemsDraft: "galleryItemsPublished",
 	draftOwnerInfo: "publishedOwnerInfo",
@@ -302,7 +320,9 @@ export const publish = userMutation({
 			!!page.draftServicesContent ||
 			!!page.draftPricingContent ||
 			(page.draftPricingTiers?.length ?? 0) > 0 ||
-			(page.galleryItemsDraft?.length ?? 0) > 0;
+			(page.galleryItemsDraft?.length ?? 0) > 0 ||
+			(page.draftFaqItems?.length ?? 0) > 0 ||
+			(page.draftTeamMembers?.length ?? 0) > 0;
 		const hasBusinessInfoContent =
 			!!page.draftOwnerInfo ||
 			!!page.draftCredentials ||
@@ -486,6 +506,22 @@ export const getBySlug = query({
 			),
 			serviceTags: v.array(v.string()),
 			sectionConfig: v.optional(communitySectionConfigValidator),
+			faqItems: v.array(
+				v.object({
+					question: v.string(),
+					answer: v.string(),
+				})
+			),
+			// Photos are projected as resolved URLs, never storage ids — a public
+			// reader has nothing to do with an id it cannot fetch.
+			teamMembers: v.array(
+				v.object({
+					name: v.string(),
+					role: v.optional(v.string()),
+					bio: v.optional(v.string()),
+					photoUrl: v.optional(v.string()),
+				})
+			),
 			galleryImages: v.array(
 				v.object({
 					storageId: v.id("_storage"),
@@ -592,6 +628,17 @@ export const getBySlug = query({
 			)
 		).filter((item): item is NonNullable<typeof item> => item !== null);
 
+		const teamMembers = await Promise.all(
+			(page.publishedTeamMembers ?? []).map(async (member) => ({
+				name: member.name,
+				role: member.role,
+				bio: member.bio,
+				photoUrl: member.photoStorageId
+					? ((await ctx.storage.getUrl(member.photoStorageId)) ?? undefined)
+					: undefined,
+			}))
+		);
+
 		return {
 			slug: page.slug,
 			pageTitle: page.pageTitle || org?.name || "Community Page",
@@ -604,6 +651,8 @@ export const getBySlug = query({
 			pricingTiers: page.publishedPricingTiers ?? [],
 			serviceTags: page.publishedServiceTags ?? [],
 			sectionConfig: page.publishedSectionConfig,
+			faqItems: page.publishedFaqItems ?? [],
+			teamMembers,
 			galleryImages,
 			ownerInfo: page.publishedOwnerInfo,
 			// PUB-05: project credentials explicitly. licenseNumber is a sensitive
@@ -1080,9 +1129,63 @@ function validateSectionConfig(
 	}
 }
 
+/**
+ * FAQ and team rows are attacker-reachable only through the authenticated editor,
+ * but they land verbatim on a public page — so length is capped here rather than
+ * left to whatever the form happens to allow.
+ */
+function validateFaqItems(
+	items: Array<{ question: string; answer: string }>
+): void {
+	if (items.length > 12) {
+		throw new Error("You can add up to 12 questions");
+	}
+	for (const item of items) {
+		const question = item.question.trim();
+		const answer = item.answer.trim();
+		if (!question) {
+			throw new Error("Each question needs to be filled in");
+		}
+		if (question.length > 200) {
+			throw new Error("A question must be 200 characters or less");
+		}
+		if (!answer) {
+			throw new Error("Each question needs an answer");
+		}
+		if (answer.length > 1200) {
+			throw new Error("An answer must be 1200 characters or less");
+		}
+	}
+}
+
+function validateTeamMembers(
+	members: Array<{ name: string; role?: string; bio?: string }>
+): void {
+	if (members.length > 12) {
+		throw new Error("You can add up to 12 team members");
+	}
+	for (const member of members) {
+		const name = member.name.trim();
+		if (!name) {
+			throw new Error("Each team member needs a name");
+		}
+		if (name.length > 80) {
+			throw new Error("A team member name must be 80 characters or less");
+		}
+		if (member.role && member.role.trim().length > 80) {
+			throw new Error("A team member role must be 80 characters or less");
+		}
+		if (member.bio && member.bio.trim().length > 400) {
+			throw new Error("A team member bio must be 400 characters or less");
+		}
+	}
+}
+
 export const __testUtils = {
 	validatePricingTiers,
 	validateGalleryItems,
 	validateServiceTags,
 	validateSectionConfig,
+	validateFaqItems,
+	validateTeamMembers,
 };

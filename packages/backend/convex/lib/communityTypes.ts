@@ -14,7 +14,9 @@ export const communitySectionIdValidator = v.union(
 	v.literal("bio"),
 	v.literal("services"),
 	v.literal("pricing"),
-	v.literal("gallery")
+	v.literal("gallery"),
+	v.literal("faq"),
+	v.literal("team")
 );
 
 export const communitySectionLayoutValidator = v.union(
@@ -44,4 +46,22 @@ export const COMMUNITY_SECTION_LAYOUTS: Record<string, readonly string[]> = {
 	services: [],
 	pricing: ["tiers", "compact"],
 	gallery: ["carousel", "grid"],
+	faq: [],
+	team: [],
 };
+
+export const communityFaqItemsValidator = v.array(
+	v.object({
+		question: v.string(),
+		answer: v.string(),
+	})
+);
+
+export const communityTeamMembersValidator = v.array(
+	v.object({
+		name: v.string(),
+		role: v.optional(v.string()),
+		bio: v.optional(v.string()),
+		photoStorageId: v.optional(v.id("_storage")),
+	})
+);

@@ -63,7 +63,7 @@ export const communityArticles: HelpArticle[] = [
 				blocks: [
 					{
 						type: "paragraph",
-						text: "Click **Edit page** to open the editor. It has eight sections, and the Community page tracks how many you have filled in.",
+						text: "Click **Edit page** to open the editor. It has ten sections, and the Community page tracks how many you have filled in.",
 					},
 					{
 						type: "list",
@@ -76,6 +76,8 @@ export const communityArticles: HelpArticle[] = [
 							"**Image Gallery**: up to 5 photos of your work.",
 							"**Services**: describe what you offer and where, plus a short **Service list** of the jobs you take on. Those become the options a visitor can pick from on your quote form.",
 							"**Pricing**: structured tiers or a free-form pricing write-up. Each tier can list what is included, and you can mark one tier as **Most chosen** to draw the eye to it.",
+							"**Common Questions**: up to 12 question-and-answer pairs. Answer what people ask on the phone and they stop having to call to find out.",
+							"**Team**: up to 12 people, each with a name and an optional role, short bio, and photo. A visitor deciding who to let into their home is reassured by a face.",
 						],
 					},
 					{
@@ -84,7 +86,7 @@ export const communityArticles: HelpArticle[] = [
 					},
 					{
 						type: "note",
-						text: "Image limits: the banner can be up to 10 MB, gallery photos up to 5 MB each, and the avatar up to 2 MB.",
+						text: "Image limits: the banner can be up to 10 MB, gallery photos up to 5 MB each, and the avatar and team photos up to 2 MB.",
 					},
 					{
 						type: "note",
@@ -122,7 +124,7 @@ export const communityArticles: HelpArticle[] = [
 				blocks: [
 					{
 						type: "paragraph",
-						text: "**Page Sections** in the editor lists the four sections of your public page: **About us**, **What we do**, **Plans & pricing**, and **Our work**. Drag a row to move it, and use the switch to leave a section off the page entirely.",
+						text: "**Page Sections** in the editor lists the six sections of your public page: **About us**, **What we do**, **Plans & pricing**, **Our work**, **Common questions**, and **Meet the team**. Drag a row to move it, and use the switch to leave a section off the page entirely.",
 					},
 					{
 						type: "paragraph",

@@ -28,6 +28,16 @@ const HINTS: Record<
 		body: "Photos of finished jobs do most of the selling here.",
 		action: "Add photos",
 	},
+	faq: {
+		title: "Common questions",
+		body: "Answer what people ask on the phone and they stop needing to call to find out.",
+		action: "Add a question",
+	},
+	team: {
+		title: "Meet the team",
+		body: "Names and faces make a stranger comfortable letting you into their home.",
+		action: "Add someone",
+	},
 };
 
 /**

@@ -20,6 +20,8 @@ export function buildPreviewData(
 		gallery,
 		services,
 		pricing,
+		faq,
+		team,
 	} = form;
 	const org = mainSettings.organization;
 
@@ -51,6 +53,19 @@ export function buildPreviewData(
 				url: item.url,
 				storageId: String(item.storageId),
 				sortOrder: item.sortOrder,
+			})),
+		// Only rows with something in them; an empty draft row would publish a
+		// blank question, and the preview has to show what the page will show.
+		faqItems: faq.faqItems.filter(
+			(item) => item.question.trim() && item.answer.trim(),
+		),
+		teamMembers: team.teamMembers
+			.filter((member) => member.name.trim())
+			.map((member) => ({
+				name: member.name,
+				role: member.role || undefined,
+				bio: member.bio || undefined,
+				photoUrl: member.photoUrl ?? undefined,
 			})),
 		theme: design.theme,
 		bannerUrl: mainSettings.bannerUrl,

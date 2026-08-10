@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+	COMMUNITY_SECTION_IDS,
 	hasRichTextContent,
 	resolveSectionConfig,
 	resolveSectionLayout,
@@ -14,6 +15,8 @@ describe("resolveSectionConfig", () => {
 			{ id: "services", visible: true },
 			{ id: "pricing", visible: true, layout: "tiers" },
 			{ id: "gallery", visible: true, layout: "carousel" },
+			{ id: "faq", visible: true },
+			{ id: "team", visible: true },
 		]);
 	});
 
@@ -28,6 +31,8 @@ describe("resolveSectionConfig", () => {
 			{ id: "bio", visible: false },
 			{ id: "services", visible: true },
 			{ id: "pricing", visible: true, layout: "tiers" },
+			{ id: "faq", visible: true },
+			{ id: "team", visible: true },
 		]);
 	});
 
@@ -40,7 +45,7 @@ describe("resolveSectionConfig", () => {
 		expect(resolved.filter((entry) => entry.id === "bio")).toEqual([
 			{ id: "bio", visible: false },
 		]);
-		expect(resolved).toHaveLength(4);
+		expect(resolved).toHaveLength(COMMUNITY_SECTION_IDS.length);
 	});
 	it("keeps a stored layout and falls back when it is not on offer", () => {
 		expect(
@@ -54,6 +59,8 @@ describe("resolveSectionConfig", () => {
 			{ id: "pricing", visible: true, layout: "tiers" },
 			{ id: "bio", visible: true },
 			{ id: "services", visible: true },
+			{ id: "faq", visible: true },
+			{ id: "team", visible: true },
 		]);
 	});
 });
@@ -77,6 +84,8 @@ describe("sectionLayoutMap", () => {
 				services: undefined,
 				pricing: "tiers",
 				gallery: "grid",
+				faq: undefined,
+				team: undefined,
 			});
 	});
 });
@@ -89,6 +98,8 @@ describe("visibleSectionIds", () => {
 				{ id: "bio", visible: false },
 				{ id: "services", visible: true },
 				{ id: "gallery", visible: false },
+				{ id: "faq", visible: false },
+				{ id: "team", visible: false },
 			]),
 		).toEqual(["pricing", "services"]);
 	});

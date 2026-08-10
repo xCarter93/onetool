@@ -35,6 +35,7 @@ const SECTION_ANCHORS: Partial<
 	services: { id: "services", label: "Services" },
 	pricing: { id: "pricing", label: "Pricing" },
 	gallery: { id: "work", label: "Work" },
+	faq: { id: "faq", label: "FAQ" },
 };
 
 export interface CommunityPageViewData {
@@ -54,6 +55,13 @@ export interface CommunityPageViewData {
 		description?: string;
 		features?: string[];
 		highlighted?: boolean;
+	}>;
+	faqItems?: Array<{ question: string; answer: string }>;
+	teamMembers?: Array<{
+		name: string;
+		role?: string;
+		bio?: string;
+		photoUrl?: string;
 	}>;
 	galleryImages?: Array<{ storageId: string; sortOrder: number; url: string }>;
 	ownerInfo?: { name?: string; title?: string };
@@ -111,6 +119,15 @@ interface CommunityPageViewProps {
 	onEditSection?: (sectionId: CommunitySectionId) => void;
 }
 
+/** Fallback for a team member with no photo; two letters, never more. */
+function initialsOf(name: string): string {
+	const parts = name.trim().split(/\s+/).filter(Boolean);
+	if (parts.length === 0) return "?";
+	const first = parts[0][0] ?? "";
+	const last = parts.length > 1 ? (parts[parts.length - 1][0] ?? "") : "";
+	return (first + last).toUpperCase();
+}
+
 function normalizeUrl(url: string): string {
 	return url.startsWith("http") ? url : `https://${url}`;
 }
@@ -126,6 +143,8 @@ export function CommunityPageView({
 	onEditSection,
 }: CommunityPageViewProps) {
 	const galleryImages = data.galleryImages ?? [];
+	const faqItems = data.faqItems ?? [];
+	const teamMembers = data.teamMembers ?? [];
 	const pricingTiers = data.pricingTiers ?? [];
 	const hasStructuredPricing =
 		data.pricingMode === "structured" && pricingTiers.length > 0;
@@ -137,7 +156,9 @@ export function CommunityPageView({
 		!!data.servicesContent ||
 		hasStructuredPricing ||
 		!!data.pricingContent ||
-		galleryImages.length > 0;
+		galleryImages.length > 0 ||
+		faqItems.length > 0 ||
+		teamMembers.length > 0;
 
 	const heroPhotos = galleryImages.slice(0, 3);
 	const serviceArea = [
@@ -154,6 +175,8 @@ export function CommunityPageView({
 		services: hasRichTextContent(data.servicesContent),
 		pricing: hasStructuredPricing || hasRichTextContent(data.pricingContent),
 		gallery: galleryImages.length > 0,
+		faq: faqItems.length > 0,
+		team: teamMembers.length > 0,
 	};
 	const orderedSections = visibleSectionIds(data.sectionConfig);
 	const layouts = sectionLayoutMap(data.sectionConfig);
@@ -308,6 +331,87 @@ export function CommunityPageView({
 						headingClassName="text-2xl font-semibold tracking-tight text-fg"
 					/>
 				)}
+			</section>
+		),
+		faq: (
+			<section id="faq" aria-labelledby="faq-heading" className="scroll-mt-20">
+				<h2
+					id="faq-heading"
+					className="text-2xl font-semibold tracking-tight text-fg"
+				>
+					Common questions
+				</h2>
+				{/* Answers stay open. Someone scanning for "do you do weekends"
+				    should find it by reading, not by opening four drawers. */}
+				<dl className="mt-5 border-t border-border">
+					{faqItems.map((item, index) => (
+						<div
+							key={`${item.question}-${index}`}
+							className="border-b border-border py-5"
+						>
+							<dt className="text-base font-semibold text-fg text-pretty">
+								{item.question}
+							</dt>
+							<dd className="mt-2 max-w-[68ch] whitespace-pre-line text-sm leading-relaxed text-muted-fg text-pretty">
+								{item.answer}
+							</dd>
+						</div>
+					))}
+				</dl>
+			</section>
+		),
+		team: (
+			<section id="team" aria-labelledby="team-heading" className="scroll-mt-20">
+				<h2
+					id="team-heading"
+					className="text-2xl font-semibold tracking-tight text-fg"
+				>
+					Meet the team
+				</h2>
+				<ul className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+					{teamMembers.map((member, index) => (
+						<li
+							key={`${member.name}-${index}`}
+							className="flex flex-col rounded-2xl border border-border bg-bg p-5"
+						>
+							<div className="flex items-center gap-3">
+								{member.photoUrl ? (
+									<div className="relative size-14 shrink-0 overflow-hidden rounded-full border border-border/60 bg-muted/30">
+										<Image
+											src={member.photoUrl}
+											alt=""
+											fill
+											sizes="56px"
+											className="object-cover"
+										/>
+									</div>
+								) : (
+									<div
+										aria-hidden="true"
+										className="grid size-14 shrink-0 place-items-center rounded-full bg-muted text-base font-semibold text-muted-fg"
+									>
+										{initialsOf(member.name)}
+									</div>
+								)}
+								<div className="min-w-0">
+									<p className="truncate text-base font-semibold text-fg">
+										{member.name}
+									</p>
+									{member.role && (
+										<p className="truncate text-sm text-muted-fg">
+											{member.role}
+										</p>
+									)}
+								</div>
+							</div>
+							{member.bio && (
+								<p className="mt-3 text-sm leading-relaxed text-muted-fg text-pretty">
+									{member.bio}
+								</p>
+							)}
+						</li>
+					))}
+				</ul>
 			</section>
 		),
 	};

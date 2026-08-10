@@ -11,7 +11,11 @@ import {
 	triggerValidator,
 	triggerableObjectTypeValidator,
 } from "./lib/workflowTypes";
-import { communitySectionConfigValidator } from "./lib/communityTypes";
+import {
+	communityFaqItemsValidator,
+	communitySectionConfigValidator,
+	communityTeamMembersValidator,
+} from "./lib/communityTypes";
 
 // v2 workflow node shape: each node carries the unified `config` union
 // (see lib/workflowTypes.ts). Legacy v1 fields were dropped post-migration.
@@ -1333,6 +1337,10 @@ export default defineSchema({
 		// pages keep rendering exactly as they did.
 		draftSectionConfig: v.optional(communitySectionConfigValidator),
 		publishedSectionConfig: v.optional(communitySectionConfigValidator),
+		draftFaqItems: v.optional(communityFaqItemsValidator),
+		publishedFaqItems: v.optional(communityFaqItemsValidator),
+		draftTeamMembers: v.optional(communityTeamMembersValidator),
+		publishedTeamMembers: v.optional(communityTeamMembersValidator),
 		galleryItemsDraft: v.optional(
 			v.array(
 				v.object({

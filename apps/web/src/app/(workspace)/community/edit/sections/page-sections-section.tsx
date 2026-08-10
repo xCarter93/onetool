@@ -1,6 +1,16 @@
 "use client";
 
-import { FileText, Images, LayoutList, Lock, Mail, Tags, Wrench } from "lucide-react";
+import {
+	FileText,
+	HelpCircle,
+	Images,
+	LayoutList,
+	Lock,
+	Mail,
+	Tags,
+	Users,
+	Wrench,
+} from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { ListProvider } from "@/components/shared/sortable-list";
 import { SegmentedControl } from "@/components/domain/segmented-control";
@@ -23,6 +33,8 @@ const SECTION_ICONS: Record<
 	services: Wrench,
 	pricing: Tags,
 	gallery: Images,
+	faq: HelpCircle,
+	team: Users,
 };
 
 interface PageSectionsSectionProps {

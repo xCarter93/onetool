@@ -708,6 +708,59 @@ describe("Community Pages", () => {
 		]);
 	});
 
+	it("faq and team round-trip through upsert, publish, and getBySlug", async () => {
+		const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+
+		await asUser.mutation(api.communityPages.upsert, {
+			slug: "faq-team-page",
+			isPublic: true,
+			draftFaqItems: [
+				{ question: "Do you work weekends?", answer: "Saturdays until 2pm." },
+			],
+			draftTeamMembers: [
+				{ name: "Dana Reyes", role: "Crew lead" },
+				{ name: "Sam Okoye" },
+			],
+			draftSectionConfig: [
+				{ id: "faq", visible: true },
+				{ id: "team", visible: true },
+			],
+		});
+
+		await asUser.mutation(api.communityPages.publish, {});
+
+		const publicPage = await t.query(api.communityPages.getBySlug, {
+			slug: "faq-team-page",
+		});
+		expect(publicPage?.faqItems).toEqual([
+			{ question: "Do you work weekends?", answer: "Saturdays until 2pm." },
+		]);
+		// Photos are absent here, so no member carries a URL — and no member ever
+		// carries the storage id it was uploaded under.
+		expect(publicPage?.teamMembers).toEqual([
+			{ name: "Dana Reyes", role: "Crew lead", bio: undefined, photoUrl: undefined },
+			{ name: "Sam Okoye", role: undefined, bio: undefined, photoUrl: undefined },
+		]);
+		expect(publicPage?.sectionConfig).toEqual([
+			{ id: "faq", visible: true },
+			{ id: "team", visible: true },
+		]);
+	});
+
+	it("a page with only FAQ content is publishable", async () => {
+		const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+
+		await asUser.mutation(api.communityPages.upsert, {
+			slug: "faq-only-page",
+			isPublic: true,
+			draftFaqItems: [{ question: "Weekends?", answer: "Saturdays." }],
+		});
+
+		await expect(
+			asUser.mutation(api.communityPages.publish, {})
+		).resolves.not.toThrow();
+	});
+
 	it("a page with no sectionConfig publishes without one", async () => {
 		const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
 
@@ -734,6 +787,39 @@ describe("Community Pages", () => {
 				{ id: "bio", visible: false },
 			])
 		).toThrow("Each page section can only be listed once");
+	});
+
+	it("validateFaqItems and validateTeamMembers cap what lands on a public page", () => {
+		expect(() =>
+			__testUtils.validateFaqItems([{ question: "  ", answer: "Yes" }])
+		).toThrow("Each question needs to be filled in");
+		expect(() =>
+			__testUtils.validateFaqItems([{ question: "Weekends?", answer: "  " }])
+		).toThrow("Each question needs an answer");
+		expect(() =>
+			__testUtils.validateFaqItems([
+				{ question: "a".repeat(201), answer: "Yes" },
+			])
+		).toThrow("200 characters or less");
+		expect(() =>
+			__testUtils.validateFaqItems(
+				Array.from({ length: 13 }, () => ({ question: "q", answer: "a" }))
+			)
+		).toThrow("up to 12 questions");
+
+		expect(() => __testUtils.validateTeamMembers([{ name: " " }])).toThrow(
+			"Each team member needs a name"
+		);
+		expect(() =>
+			__testUtils.validateTeamMembers([
+				{ name: "Dana", bio: "b".repeat(401) },
+			])
+		).toThrow("400 characters or less");
+		expect(() =>
+			__testUtils.validateTeamMembers([
+				{ name: "Dana", role: "Crew lead", bio: "Twelve years on the job." },
+			])
+		).not.toThrow();
 	});
 
 	it("validateSectionConfig rejects a layout the section does not offer", () => {

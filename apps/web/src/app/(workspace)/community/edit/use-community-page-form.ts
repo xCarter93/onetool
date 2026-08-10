@@ -29,6 +29,14 @@ const MAX_AVATAR_SIZE = 2 * 1024 * 1024;
 const MAX_GALLERY_IMAGE_SIZE = 5 * 1024 * 1024;
 export const MAX_GALLERY_IMAGES = 5;
 
+export const MAX_FAQ_ITEMS = 12;
+export const MAX_FAQ_QUESTION_LENGTH = 200;
+export const MAX_FAQ_ANSWER_LENGTH = 1200;
+export const MAX_TEAM_MEMBERS = 12;
+export const MAX_TEAM_NAME_LENGTH = 80;
+export const MAX_TEAM_ROLE_LENGTH = 80;
+export const MAX_TEAM_BIO_LENGTH = 400;
+
 export const MAX_SERVICE_TAGS = 8;
 export const MAX_SERVICE_TAG_LENGTH = 40;
 export const MAX_TIER_FEATURES = 6;
@@ -89,7 +97,9 @@ export type SectionId =
 	| "bio"
 	| "imageGallery"
 	| "services"
-	| "pricing";
+	| "pricing"
+	| "faq"
+	| "team";
 
 export interface PricingTier {
 	name: string;
@@ -97,6 +107,20 @@ export interface PricingTier {
 	description: string;
 	features: string[];
 	highlighted: boolean;
+}
+
+export interface FaqItem {
+	question: string;
+	answer: string;
+}
+
+export interface TeamMember {
+	name: string;
+	role: string;
+	bio: string;
+	photoStorageId?: Id<"_storage">;
+	/** Resolved for the editor only; the mutation stores the id, not the URL. */
+	photoUrl?: string | null;
 }
 
 export interface GalleryItem {
@@ -150,6 +174,8 @@ interface Snapshot {
 	imageGallery: string;
 	services: string;
 	pricing: string;
+	faq: string;
+	team: string;
 }
 
 export const SECTION_LIST: Array<{ id: SectionId; label: string }> = [
@@ -161,6 +187,8 @@ export const SECTION_LIST: Array<{ id: SectionId; label: string }> = [
 	{ id: "imageGallery", label: "Image Gallery" },
 	{ id: "services", label: "Services" },
 	{ id: "pricing", label: "Pricing" },
+	{ id: "faq", label: "Common Questions" },
+	{ id: "team", label: "Team" },
 ];
 
 function createSnapshot({
@@ -190,6 +218,8 @@ function createSnapshot({
 	socialLinks,
 	theme,
 	sectionConfig,
+	faqItems,
+	teamMembers,
 }: {
 	pageTitle: string;
 	slug: string;
@@ -217,6 +247,8 @@ function createSnapshot({
 	socialLinks: SocialLinks;
 	theme: string;
 	sectionConfig: CommunitySectionSetting[];
+	faqItems: FaqItem[];
+	teamMembers: TeamMember[];
 }): Snapshot {
 	return {
 		mainSettings: JSON.stringify({
@@ -258,7 +290,42 @@ function createSnapshot({
 			pricingContent: pricingContent ?? null,
 			pricingTiers,
 		}),
+		faq: JSON.stringify(faqItems),
+		// photoUrl is resolved for display and never stored, so it must not count
+		// as an edit — a URL that comes back different would read as unsaved work.
+		team: JSON.stringify(
+			teamMembers.map((member) => ({
+				name: member.name,
+				role: member.role,
+				bio: member.bio,
+				photoStorageId: member.photoStorageId ?? null,
+			})),
+		),
 	};
+}
+
+/**
+ * The editor keeps every field as a string so inputs stay controlled; the
+ * mutation wants absent rather than empty, and has no use for a resolved URL.
+ */
+function cleanFaqItems(items: FaqItem[]) {
+	return items
+		.filter((item) => item.question.trim() && item.answer.trim())
+		.map((item) => ({
+			question: item.question.trim(),
+			answer: item.answer.trim(),
+		}));
+}
+
+function cleanTeamMembers(members: TeamMember[]) {
+	return members
+		.filter((member) => member.name.trim())
+		.map((member) => ({
+			name: member.name.trim(),
+			role: member.role.trim() || undefined,
+			bio: member.bio.trim() || undefined,
+			photoStorageId: member.photoStorageId,
+		}));
 }
 
 export function useCommunityPageForm() {
@@ -305,6 +372,8 @@ export function useCommunityPageForm() {
 		null,
 	);
 	const [galleryItems, setGalleryItems] = useState<GalleryItem[]>([]);
+	const [faqItems, setFaqItems] = useState<FaqItem[]>([]);
+	const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
 
 	// Business info state
 	const [ownerName, setOwnerName] = useState("");
@@ -328,6 +397,9 @@ export function useCommunityPageForm() {
 	const [isUploadingBanner, setIsUploadingBanner] = useState(false);
 	const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
 	const [isUploadingGallery, setIsUploadingGallery] = useState(false);
+	const [uploadingTeamPhotoAt, setUploadingTeamPhotoAt] = useState<number | null>(
+		null,
+	);
 	const [slugError, setSlugError] = useState<string | null>(null);
 	const [copied, setCopied] = useState(false);
 	const [debouncedSlug, setDebouncedSlug] = useState("");
@@ -346,6 +418,8 @@ export function useCommunityPageForm() {
 		imageGallery: null,
 		services: null,
 		pricing: null,
+		faq: null,
+		team: null,
 	});
 	// Baseline snapshot of last-saved server state, used for dirty detection.
 	const [savedSnapshot, setSavedSnapshot] = useState<Snapshot | null>(null);
@@ -443,6 +517,22 @@ export function useCommunityPageForm() {
 				})),
 		);
 
+		setFaqItems(
+			(communityPage.draftFaqItems ?? []).map((item) => ({
+				question: item.question,
+				answer: item.answer,
+			})),
+		);
+		setTeamMembers(
+			(communityPage.draftTeamMembers ?? []).map((member) => ({
+				name: member.name,
+				role: member.role ?? "",
+				bio: member.bio ?? "",
+				photoStorageId: member.photoStorageId,
+				photoUrl: null,
+			})),
+		);
+
 		// Business info sync
 		const ownerInfo = communityPage.draftOwnerInfo as
 			| { name?: string; title?: string }
@@ -525,6 +615,16 @@ export function useCommunityPageForm() {
 			socialLinks: links || EMPTY_SOCIAL_LINKS,
 			theme: serverTheme,
 			sectionConfig: serverSectionConfig,
+			faqItems: (communityPage.draftFaqItems ?? []).map((item) => ({
+				question: item.question,
+				answer: item.answer,
+			})),
+			teamMembers: (communityPage.draftTeamMembers ?? []).map((member) => ({
+				name: member.name,
+				role: member.role ?? "",
+				bio: member.bio ?? "",
+				photoStorageId: member.photoStorageId,
+			})),
 		}));
 	}
 
@@ -585,6 +685,48 @@ export function useCommunityPageForm() {
 					return url !== undefined && item.url !== url
 						? { ...item, url }
 						: item;
+				}),
+			);
+		}
+	}
+
+	// Team photos resolve through the same query as the gallery; the ids are
+	// collected here so a page with no team never issues a second request.
+	const teamPhotoIds = useMemo(
+		() =>
+			teamMembers
+				.map((member) => member.photoStorageId)
+				.filter((id): id is Id<"_storage"> => !!id),
+		[teamMembers],
+	);
+	const teamPhotoUrlsQuery = useQuery(
+		api.communityPages.getImageUrls,
+		teamPhotoIds.length > 0 ? { storageIds: teamPhotoIds } : "skip",
+	);
+	const teamPhotoUrlMap = useMemo(
+		() =>
+			new Map(
+				(teamPhotoUrlsQuery ?? []).map((item) => [
+					String(item.storageId),
+					item.url,
+				]),
+			),
+		[teamPhotoUrlsQuery],
+	);
+	if (teamPhotoUrlsQuery) {
+		const needsUpdate = teamMembers.some((member) => {
+			if (!member.photoStorageId) return false;
+			const url = teamPhotoUrlMap.get(String(member.photoStorageId));
+			return url !== undefined && member.photoUrl !== url;
+		});
+		if (needsUpdate) {
+			setTeamMembers((prev) =>
+				prev.map((member) => {
+					if (!member.photoStorageId) return member;
+					const url = teamPhotoUrlMap.get(String(member.photoStorageId));
+					return url !== undefined && member.photoUrl !== url
+						? { ...member, photoUrl: url }
+						: member;
 				}),
 			);
 		}
@@ -693,6 +835,56 @@ export function useCommunityPageForm() {
 		}
 	}, [galleryItems.length, generateUploadUrl, toast]);
 
+	/**
+	 * Team photos upload one row at a time, so they take their own path rather
+	 * than a fourth branch through `uploadImage` — the caller is a specific
+	 * member, not a section.
+	 */
+	const uploadTeamPhoto = useCallback(
+		async (file: File, index: number) => {
+			if (file.size > MAX_AVATAR_SIZE) {
+				toast.error(
+					"File too large",
+					`Maximum size is ${MAX_AVATAR_SIZE / 1024 / 1024}MB`,
+				);
+				return;
+			}
+			if (!file.type.startsWith("image/")) {
+				toast.error("Invalid file type", "Please upload an image file");
+				return;
+			}
+
+			setUploadingTeamPhotoAt(index);
+			const loadingToastId = toast.loading("Uploading photo…");
+			try {
+				const uploadUrl = await generateUploadUrl();
+				const response = await fetch(uploadUrl, {
+					method: "POST",
+					headers: { "Content-Type": file.type },
+					body: file,
+				});
+				if (!response.ok) throw new Error("Upload failed");
+				const { storageId } = await response.json();
+
+				setTeamMembers((prev) =>
+					prev.map((member, memberIndex) =>
+						memberIndex === index
+							? { ...member, photoStorageId: storageId, photoUrl: null }
+							: member,
+					),
+				);
+				toast.removeToast(loadingToastId);
+				toast.success("Photo uploaded", "Don't forget to save your changes");
+			} catch {
+				toast.removeToast(loadingToastId);
+				toast.error("Upload failed", "Please try again");
+			} finally {
+				setUploadingTeamPhotoAt(null);
+			}
+		},
+		[generateUploadUrl, toast],
+	);
+
 	// Snapshot comparison
 	const currentSnapshot = useMemo(
 		() =>
@@ -723,6 +915,8 @@ export function useCommunityPageForm() {
 				socialLinks,
 				theme,
 				sectionConfig,
+				faqItems,
+				teamMembers,
 			}),
 		[
 			pageTitle,
@@ -751,6 +945,8 @@ export function useCommunityPageForm() {
 			socialLinks,
 			theme,
 			sectionConfig,
+			faqItems,
+			teamMembers,
 		],
 	);
 
@@ -762,6 +958,8 @@ export function useCommunityPageForm() {
 				design: false,
 				sections: false,
 				businessInfo: false,
+				faq: false,
+				team: false,
 				bio: false,
 				imageGallery: false,
 				services: false,
@@ -777,6 +975,8 @@ export function useCommunityPageForm() {
 			imageGallery: saved.imageGallery !== currentSnapshot.imageGallery,
 			services: saved.services !== currentSnapshot.services,
 			pricing: saved.pricing !== currentSnapshot.pricing,
+			faq: saved.faq !== currentSnapshot.faq,
+			team: saved.team !== currentSnapshot.team,
 		};
 	}, [currentSnapshot, savedSnapshot]);
 
@@ -829,6 +1029,24 @@ export function useCommunityPageForm() {
 				filled: galleryItems.length > 0,
 				detail: `${galleryItems.length} of 5 photos`,
 			},
+			faq: {
+				filled: faqItems.length > 0,
+				detail:
+					faqItems.length === 0
+						? "No questions yet"
+						: faqItems.length === 1
+							? "1 question"
+							: `${faqItems.length} questions`,
+			},
+			team: {
+				filled: teamMembers.length > 0,
+				detail:
+					teamMembers.length === 0
+						? "Nobody added yet"
+						: teamMembers.length === 1
+							? "1 person"
+							: `${teamMembers.length} people`,
+			},
 		};
 	}, [
 		bioContent,
@@ -838,6 +1056,8 @@ export function useCommunityPageForm() {
 		pricingContent,
 		pricingTiers,
 		galleryItems,
+		faqItems,
+		teamMembers,
 	]);
 
 	// Rail completeness, one glance per editor section. The gallery reports a
@@ -867,6 +1087,8 @@ export function useCommunityPageForm() {
 			},
 			services: { done: sectionStatus.services.filled },
 			pricing: { done: sectionStatus.pricing.filled },
+			faq: { done: sectionStatus.faq.filled },
+			team: { done: sectionStatus.team.filled },
 		}),
 		[
 			pageTitle,
@@ -892,6 +1114,8 @@ export function useCommunityPageForm() {
 			!!pricingContent ||
 			pricingTiers.length > 0 ||
 			galleryItems.length > 0 ||
+			faqItems.length > 0 ||
+			teamMembers.length > 0 ||
 			!!ownerName ||
 			!!ownerTitle ||
 			isLicensed ||
@@ -902,7 +1126,7 @@ export function useCommunityPageForm() {
 			certifications.length > 0 ||
 			byAppointmentOnly ||
 			Object.values(socialLinks).some(Boolean),
-		[bioContent, servicesContent, draftServiceTags.length, pricingContent, pricingTiers.length, galleryItems.length, ownerName, ownerTitle, isLicensed, isBonded, isInsured, yearEstablished, licenseNumber, certifications.length, byAppointmentOnly, socialLinks],
+		[bioContent, servicesContent, draftServiceTags.length, pricingContent, pricingTiers.length, galleryItems.length, faqItems.length, teamMembers.length, ownerName, ownerTitle, isLicensed, isBonded, isInsured, yearEstablished, licenseNumber, certifications.length, byAppointmentOnly, socialLinks],
 	);
 
 	const hasInvalidSocialUrls = useMemo(
@@ -968,6 +1192,8 @@ export function useCommunityPageForm() {
 					: undefined,
 				draftTheme: theme,
 				draftSectionConfig: sectionConfig,
+				draftFaqItems: cleanFaqItems(faqItems),
+				draftTeamMembers: cleanTeamMembers(teamMembers),
 			});
 
 			if (isPublic) {
@@ -1048,6 +1274,8 @@ export function useCommunityPageForm() {
 					: undefined,
 				draftTheme: theme,
 				draftSectionConfig: sectionConfig,
+				draftFaqItems: cleanFaqItems(faqItems),
+				draftTeamMembers: cleanTeamMembers(teamMembers),
 			});
 
 			await publishMutation();
@@ -1079,6 +1307,8 @@ export function useCommunityPageForm() {
 				socialLinks,
 				theme,
 				sectionConfig,
+				faqItems,
+				teamMembers,
 			}));
 			toast.success("Published!", "Your community page is now live and public");
 		} catch (error) {
@@ -1122,6 +1352,8 @@ export function useCommunityPageForm() {
 				socialLinks,
 				theme,
 				sectionConfig,
+				faqItems,
+				teamMembers,
 			}));
 			toast.success("Page is now private", "Only you can see your page");
 		} catch {
@@ -1271,6 +1503,15 @@ export function useCommunityPageForm() {
 			setServicesContent,
 			draftServiceTags,
 			setDraftServiceTags,
+		},
+		// FAQ slice
+		faq: { faqItems, setFaqItems },
+		// Team slice
+		team: {
+			teamMembers,
+			setTeamMembers,
+			uploadTeamPhoto,
+			uploadingTeamPhotoAt,
 		},
 		// Pricing slice
 		pricing: {

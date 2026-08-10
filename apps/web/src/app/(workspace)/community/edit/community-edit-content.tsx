@@ -20,6 +20,8 @@ import {
 	Wrench,
 	Tags,
 	LayoutList,
+	HelpCircle,
+	Users,
 	Check as CheckIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -37,6 +39,8 @@ import { PricingSection } from "./sections/pricing-section";
 import { BusinessInfoSection } from "./sections/business-info-section";
 import { DesignSection } from "./sections/design-section";
 import { PageSectionsSection } from "./sections/page-sections-section";
+import { FaqSection } from "./sections/faq-section";
+import { TeamSection } from "./sections/team-section";
 import { PreviewModal } from "./preview-modal";
 import { LivePreviewPane } from "./live-preview-pane";
 import { buildPreviewData } from "./preview-data";
@@ -48,6 +52,8 @@ const EDITOR_SECTION_FOR: Record<CommunitySectionId, SectionId> = {
 	services: "services",
 	pricing: "pricing",
 	gallery: "imageGallery",
+	faq: "faq",
+	team: "team",
 };
 
 /** Sticky chrome is ~150px tall; scrollspy targets land just below it. */
@@ -65,6 +71,8 @@ const SECTION_ICONS: Record<
 	imageGallery: Images,
 	services: Wrench,
 	pricing: Tags,
+	faq: HelpCircle,
+	team: Users,
 };
 
 /** Trailing rail state, most urgent first: unsaved beats a count beats done. */
@@ -118,6 +126,8 @@ export default function CommunityEditContent() {
 		gallery,
 		services,
 		pricing,
+		faq,
+		team,
 		actions,
 		sectionRefSetters,
 		dirtyBySection,
@@ -413,6 +423,8 @@ export default function CommunityEditContent() {
 								{...pricing}
 								sectionRef={sectionRefSetters.pricing}
 							/>
+							<FaqSection {...faq} sectionRef={sectionRefSetters.faq} />
+							<TeamSection {...team} sectionRef={sectionRefSetters.team} />
 						</div>
 
 						{/* Live preview. Third column only where there is room for one;

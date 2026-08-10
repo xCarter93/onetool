@@ -9,6 +9,8 @@ export const COMMUNITY_SECTION_IDS = [
 	"services",
 	"pricing",
 	"gallery",
+	"faq",
+	"team",
 ] as const;
 
 export type CommunitySectionId = (typeof COMMUNITY_SECTION_IDS)[number];
@@ -26,6 +28,8 @@ export const COMMUNITY_SECTION_LAYOUTS = {
 	services: [],
 	pricing: ["tiers", "compact"],
 	gallery: ["carousel", "grid"],
+	faq: [],
+	team: [],
 } as const satisfies Record<CommunitySectionId, readonly string[]>;
 
 export type CommunitySectionLayout =
@@ -75,6 +79,8 @@ export const COMMUNITY_SECTION_LABELS: Record<CommunitySectionId, string> = {
 	services: "What we do",
 	pricing: "Plans & pricing",
 	gallery: "Our work",
+	faq: "Common questions",
+	team: "Meet the team",
 };
 
 function isKnownSectionId(id: string): id is CommunitySectionId {
