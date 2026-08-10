@@ -708,6 +708,38 @@ describe("Community Pages", () => {
 		]);
 	});
 
+	it("colorMode round-trips, and an unset page publishes without one", async () => {
+		const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+
+		await asUser.mutation(api.communityPages.upsert, {
+			slug: "color-mode-page",
+			isPublic: true,
+			draftBioContent: {
+				type: "doc",
+				content: [{ type: "paragraph", content: [{ type: "text", text: "Bio" }] }],
+			},
+			draftColorMode: "dark",
+		});
+
+		await asUser.mutation(api.communityPages.publish, {});
+
+		const publicPage = await t.query(api.communityPages.getBySlug, {
+			slug: "color-mode-page",
+		});
+		expect(publicPage?.colorMode).toBe("dark");
+
+		// A page that predates the field must still publish; the renderer, not the
+		// stored value, is what supplies the default.
+		await asUser.mutation(api.communityPages.upsert, {
+			slug: "color-mode-page",
+			isPublic: true,
+		});
+		const stillDark = await t.query(api.communityPages.getBySlug, {
+			slug: "color-mode-page",
+		});
+		expect(stillDark?.colorMode).toBe("dark");
+	});
+
 	it("faq and team round-trip through upsert, publish, and getBySlug", async () => {
 		const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
 

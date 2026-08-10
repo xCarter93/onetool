@@ -20,6 +20,11 @@ import {
 	type CommunitySectionId,
 	type CommunitySectionSetting,
 } from "@/lib/community-sections";
+import {
+	DEFAULT_COMMUNITY_COLOR_MODE,
+	resolveColorMode,
+	type CommunityColorMode,
+} from "@/lib/community-theme";
 import { isValidUrl as isValidSocialUrl } from "@/lib/validators";
 
 // The banner is the one full-bleed image on the page, so it comes off a camera
@@ -217,6 +222,7 @@ function createSnapshot({
 	businessSchedule,
 	socialLinks,
 	theme,
+	colorMode,
 	sectionConfig,
 	faqItems,
 	teamMembers,
@@ -246,6 +252,7 @@ function createSnapshot({
 	businessSchedule: DaySchedule[];
 	socialLinks: SocialLinks;
 	theme: string;
+	colorMode: CommunityColorMode;
 	sectionConfig: CommunitySectionSetting[];
 	faqItems: FaqItem[];
 	teamMembers: TeamMember[];
@@ -259,7 +266,7 @@ function createSnapshot({
 			bannerStorageId,
 			avatarStorageId,
 		}),
-		design: JSON.stringify({ theme }),
+		design: JSON.stringify({ theme, colorMode }),
 		sections: JSON.stringify(sectionConfig),
 		businessInfo: JSON.stringify({
 			ownerName,
@@ -359,6 +366,9 @@ export function useCommunityPageForm() {
 	>();
 	const [pricingTiers, setPricingTiers] = useState<PricingTier[]>([]);
 	const [theme, setTheme] = useState("clean-professional");
+	const [colorMode, setColorMode] = useState<CommunityColorMode>(
+		DEFAULT_COMMUNITY_COLOR_MODE,
+	);
 	const [sectionConfig, setSectionConfig] = useState<CommunitySectionSetting[]>(
 		() => resolveSectionConfig(),
 	);
@@ -568,6 +578,8 @@ export function useCommunityPageForm() {
 
 		const serverTheme = (communityPage.draftTheme as string) || "clean-professional";
 		setTheme(serverTheme);
+		const serverColorMode = resolveColorMode(communityPage.draftColorMode);
+		setColorMode(serverColorMode);
 
 		// Normalized on the way in, so a config written before a section existed
 		// still hydrates a complete list.
@@ -614,6 +626,7 @@ export function useCommunityPageForm() {
 			businessSchedule: hours?.schedule || DEFAULT_SCHEDULE,
 			socialLinks: links || EMPTY_SOCIAL_LINKS,
 			theme: serverTheme,
+			colorMode: serverColorMode,
 			sectionConfig: serverSectionConfig,
 			faqItems: (communityPage.draftFaqItems ?? []).map((item) => ({
 				question: item.question,
@@ -914,6 +927,7 @@ export function useCommunityPageForm() {
 				businessSchedule,
 				socialLinks,
 				theme,
+				colorMode,
 				sectionConfig,
 				faqItems,
 				teamMembers,
@@ -944,6 +958,7 @@ export function useCommunityPageForm() {
 			businessSchedule,
 			socialLinks,
 			theme,
+			colorMode,
 			sectionConfig,
 			faqItems,
 			teamMembers,
@@ -1191,6 +1206,7 @@ export function useCommunityPageForm() {
 					? socialLinks
 					: undefined,
 				draftTheme: theme,
+				draftColorMode: colorMode,
 				draftSectionConfig: sectionConfig,
 				draftFaqItems: cleanFaqItems(faqItems),
 				draftTeamMembers: cleanTeamMembers(teamMembers),
@@ -1273,6 +1289,7 @@ export function useCommunityPageForm() {
 					? socialLinks
 					: undefined,
 				draftTheme: theme,
+				draftColorMode: colorMode,
 				draftSectionConfig: sectionConfig,
 				draftFaqItems: cleanFaqItems(faqItems),
 				draftTeamMembers: cleanTeamMembers(teamMembers),
@@ -1306,6 +1323,7 @@ export function useCommunityPageForm() {
 				businessSchedule,
 				socialLinks,
 				theme,
+				colorMode,
 				sectionConfig,
 				faqItems,
 				teamMembers,
@@ -1351,6 +1369,7 @@ export function useCommunityPageForm() {
 				businessSchedule,
 				socialLinks,
 				theme,
+				colorMode,
 				sectionConfig,
 				faqItems,
 				teamMembers,
@@ -1451,8 +1470,12 @@ export function useCommunityPageForm() {
 		},
 		// Design slice
 		design: {
+			// Dormant: nothing sets `theme` while the editor offers no layout
+			// choice. It round-trips so the stored value survives until P4b
+			// turns it into the layout picker.
 			theme,
-			setTheme,
+			colorMode,
+			setColorMode,
 		},
 		// Page sections slice — order + visibility of the public sections
 		sections: {

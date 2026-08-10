@@ -1,37 +1,31 @@
 "use client";
 
-import { Palette } from "lucide-react";
+import { Monitor, Moon, Palette, Sun } from "lucide-react";
 
+import { SegmentedControl } from "@/components/domain/segmented-control";
+import {
+	COMMUNITY_COLOR_MODE_DESCRIPTIONS,
+	COMMUNITY_COLOR_MODE_LABELS,
+	COMMUNITY_COLOR_MODES,
+	type CommunityColorMode,
+} from "@/lib/community-theme";
 import { SectionShell } from "./section-shell";
-import { ThemeCard } from "../components/theme-card";
 
 interface DesignSectionProps {
-	theme: string;
-	setTheme: (theme: string) => void;
+	colorMode: CommunityColorMode;
+	setColorMode: (mode: CommunityColorMode) => void;
 	sectionRef: (el: HTMLElement | null) => void;
 }
 
-const THEMES = [
-	{
-		id: "clean-professional",
-		label: "Clean Professional",
-		description: "Minimal and polished. Lets your work speak for itself.",
-	},
-	{
-		id: "bold-expressive",
-		label: "Bold & Expressive",
-		description: "Strong visual presence with accent details.",
-	},
-	{
-		id: "warm-approachable",
-		label: "Warm & Approachable",
-		description: "Friendly and inviting. Builds personal connection.",
-	},
-] as const;
+const MODE_ICONS: Record<CommunityColorMode, React.ComponentType<{ className?: string }>> = {
+	light: Sun,
+	dark: Moon,
+	system: Monitor,
+};
 
 export function DesignSection({
-	theme,
-	setTheme,
+	colorMode,
+	setColorMode,
 	sectionRef,
 }: DesignSectionProps) {
 	return (
@@ -40,19 +34,26 @@ export function DesignSection({
 			sectionRef={sectionRef}
 			icon={Palette}
 			title="Design"
-			description="Choose a visual style for your public page."
+			description="How your public page looks to the people who visit it."
 		>
-			<div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-				{THEMES.map((t) => (
-					<ThemeCard
-						key={t.id}
-						id={t.id}
-						label={t.label}
-						description={t.description}
-						isSelected={theme === t.id}
-						onSelect={() => setTheme(t.id)}
-					/>
-				))}
+			<div className="space-y-2">
+				<p className="text-sm font-medium text-fg">Light or dark</p>
+				<SegmentedControl
+					value={colorMode}
+					onValueChange={setColorMode}
+					options={COMMUNITY_COLOR_MODES.map((mode) => {
+						const Icon = MODE_ICONS[mode];
+						return {
+							value: mode,
+							label: COMMUNITY_COLOR_MODE_LABELS[mode],
+							icon: <Icon className="size-3.5" aria-hidden />,
+							ariaLabel: `${COMMUNITY_COLOR_MODE_LABELS[mode]}: ${COMMUNITY_COLOR_MODE_DESCRIPTIONS[mode]}`,
+						};
+					})}
+				/>
+				<p className="text-xs text-muted-fg">
+					{COMMUNITY_COLOR_MODE_DESCRIPTIONS[colorMode]}
+				</p>
 			</div>
 		</SectionShell>
 	);

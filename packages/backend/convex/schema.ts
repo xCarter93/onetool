@@ -12,6 +12,7 @@ import {
 	triggerableObjectTypeValidator,
 } from "./lib/workflowTypes";
 import {
+	communityColorModeValidator,
 	communityFaqItemsValidator,
 	communitySectionConfigValidator,
 	communityTeamMembersValidator,
@@ -1444,9 +1445,15 @@ export default defineSchema({
 			})
 		),
 
-		// Theme (Phase 8)
+		// Theme (Phase 8). Dormant: the renderer ignores it until P4b turns it
+		// into the layout picker. Left as a loose string so the legacy values
+		// stored on dev pages still validate.
 		draftTheme: v.optional(v.string()),
 		publishedTheme: v.optional(v.string()),
+
+		// Light/dark on the public page. Owner-decided, not visitor-decided.
+		draftColorMode: v.optional(communityColorModeValidator),
+		publishedColorMode: v.optional(communityColorModeValidator),
 
 		// Metadata
 		pageTitle: v.optional(v.string()), // Custom page title (falls back to org name)

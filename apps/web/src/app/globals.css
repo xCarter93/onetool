@@ -62,7 +62,13 @@
 	--radius-xl: calc(var(--radius) + 4px);
 }
 
-:root {
+/* `.light` rides along with `:root` so a subtree can pin the light theme inside
+   a dark document — the public community page does this when its owner has
+   chosen a colour mode (see lib/community-theme.ts). Custom properties resolve
+   at the nearest declaring ancestor, so the nested class wins. next-themes also
+   puts `.light` on <html>, where it is simply the same thing as `:root`. */
+:root,
+.light {
 	--radius: 0.5rem;
 	/* Vertical room the bottom-anchored assistant dock (assistant-dock.tsx,
 	   ~3.25rem tall incl. its pb-3 inset) needs above it. Consumed by the

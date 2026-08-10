@@ -5,6 +5,11 @@ import Link from "next/link";
 import { ArrowRight, Check, Phone } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
+	communityColorModeClass,
+	communityColorScheme,
+	resolveColorMode,
+} from "@/lib/community-theme";
+import {
 	hasRichTextContent,
 	sectionLayoutMap,
 	visibleSectionIds,
@@ -91,6 +96,7 @@ export interface CommunityPageViewData {
 		google?: string;
 	};
 	theme?: string;
+	colorMode?: string;
 	bannerUrl: string | null;
 	avatarUrl: string | null;
 	organization: {
@@ -416,8 +422,16 @@ export function CommunityPageView({
 		),
 	};
 
+	const colorMode = resolveColorMode(data.colorMode);
+
 	return (
-		<div className="min-h-screen bg-bg flex flex-col">
+		<div
+			className={cn(
+				"min-h-screen bg-bg flex flex-col",
+				communityColorModeClass(colorMode),
+			)}
+			style={{ colorScheme: communityColorScheme(colorMode) }}
+		>
 			<a
 				href="#main"
 				className="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-50 focus:rounded-lg focus:bg-primary focus:px-4 focus:py-2 focus:text-sm focus:font-medium focus:text-primary-fg"

@@ -68,6 +68,7 @@ export function buildPreviewData(
 				photoUrl: member.photoUrl ?? undefined,
 			})),
 		theme: design.theme,
+		colorMode: design.colorMode,
 		bannerUrl: mainSettings.bannerUrl,
 		avatarUrl: mainSettings.avatarUrl,
 		organization: org

@@ -400,7 +400,11 @@ export default function CommunityEditContent() {
 								{...mainSettings}
 								sectionRef={sectionRefSetters.mainSettings}
 							/>
-							<DesignSection {...design} sectionRef={sectionRefSetters.design} />
+							<DesignSection
+								colorMode={design.colorMode}
+								setColorMode={design.setColorMode}
+								sectionRef={sectionRefSetters.design}
+							/>
 							<PageSectionsSection
 								{...sections}
 								pricingMode={pricing.pricingMode}

@@ -16,7 +16,8 @@ export const communityArticles: HelpArticle[] = [
 			"draft",
 			"banner",
 			"gallery",
-			"themes",
+			"light mode",
+			"dark mode",
 			"page url",
 			"seo",
 		],
@@ -69,7 +70,7 @@ export const communityArticles: HelpArticle[] = [
 						type: "list",
 						items: [
 							"**Main Page Settings**: banner image, avatar or logo, page title, page URL, and an SEO description for search engines.",
-							"**Design**: pick one of three visual themes, **Clean Professional**, **Bold & Expressive**, or **Warm & Approachable**.",
+							"**Design**: choose whether your public page shows **Light**, **Dark**, or **Match device**. Light and dark look the same to every visitor no matter what their phone is set to; **Match device** follows each visitor's own setting.",
 							"**Page Sections**: the order your public sections appear in, the layout each one uses, and a switch to leave any of them off.",
 							"**Business Info**: your name and title, **Licensed**, **Bonded**, and **Insured** badges, year established, license number, certifications, business hours, and social links.",
 							"**Bio**: tell visitors who you are and what makes your business different.",
@@ -128,7 +129,7 @@ export const communityArticles: HelpArticle[] = [
 					},
 					{
 						type: "paragraph",
-						text: "Two sections offer a choice of layout, shown as buttons under the section name. **Our work** can be a **Carousel** — one large photo at a time — or a **Grid** that shows every photo at once. **Plans & pricing** can be **Cards**, one box per plan with its full feature list, or a **Price list**, one compact row per plan. Pick either and the preview updates straight away.",
+						text: "Two sections offer a choice of layout, shown as buttons under the section name. **Our work** can be a **Carousel**, one large photo at a time, or a **Grid** that shows every photo at once. **Plans & pricing** can be **Cards**, one box per plan with its full feature list, or a **Price list**, one compact row per plan. Pick either and the preview updates straight away.",
 					},
 					{
 						type: "note",

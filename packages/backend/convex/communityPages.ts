@@ -14,6 +14,7 @@ import { isAdminRole } from "./lib/permissions";
 import { FEATURE_FLAGS, isServerFlagEnabled } from "./lib/posthog";
 import {
 	COMMUNITY_SECTION_LAYOUTS,
+	communityColorModeValidator,
 	communityFaqItemsValidator,
 	communitySectionConfigValidator,
 	communityTeamMembersValidator,
@@ -146,6 +147,7 @@ export const upsert = userMutation({
 			})
 		),
 		draftTheme: v.optional(v.string()),
+		draftColorMode: v.optional(communityColorModeValidator),
 	},
 	handler: async (ctx, args): Promise<CommunityPageId> => {
 		await ctx.requireLevel("community", "modify");
@@ -230,6 +232,8 @@ export const upsert = userMutation({
 				updates.draftSocialLinks = args.draftSocialLinks;
 			if (args.draftTheme !== undefined)
 				updates.draftTheme = args.draftTheme;
+			if (args.draftColorMode !== undefined)
+				updates.draftColorMode = args.draftColorMode;
 
 			await ctx.db.patch(existing._id, updates);
 			return existing._id;
@@ -265,6 +269,7 @@ export const upsert = userMutation({
 				draftBusinessHours: args.draftBusinessHours,
 				draftSocialLinks: args.draftSocialLinks,
 				draftTheme: args.draftTheme,
+				draftColorMode: args.draftColorMode,
 				createdAt: now,
 				updatedAt: now,
 			});
@@ -294,6 +299,7 @@ const DRAFT_TO_PUBLISHED_MAP: Record<string, string> = {
 	draftBusinessHours: "publishedBusinessHours",
 	draftSocialLinks: "publishedSocialLinks",
 	draftTheme: "publishedTheme",
+	draftColorMode: "publishedColorMode",
 };
 
 /**
@@ -571,6 +577,7 @@ export const getBySlug = query({
 				})
 			),
 			theme: v.optional(v.string()),
+			colorMode: v.optional(communityColorModeValidator),
 			bannerUrl: v.union(v.string(), v.null()),
 			avatarUrl: v.union(v.string(), v.null()),
 			organization: v.union(
@@ -670,6 +677,7 @@ export const getBySlug = query({
 			businessHours: page.publishedBusinessHours,
 			socialLinks: page.publishedSocialLinks,
 			theme: page.publishedTheme,
+			colorMode: page.publishedColorMode,
 			bannerUrl,
 			avatarUrl,
 			organization: org
