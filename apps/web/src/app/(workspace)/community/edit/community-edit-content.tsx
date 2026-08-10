@@ -19,7 +19,6 @@ import {
 	Images,
 	Wrench,
 	Tags,
-	LayoutList,
 	HelpCircle,
 	Users,
 	Check as CheckIcon,
@@ -38,7 +37,6 @@ import { ServicesSection } from "./sections/services-section";
 import { PricingSection } from "./sections/pricing-section";
 import { BusinessInfoSection } from "./sections/business-info-section";
 import { DesignSection } from "./sections/design-section";
-import { PageSectionsSection } from "./sections/page-sections-section";
 import { FaqSection } from "./sections/faq-section";
 import { TeamSection } from "./sections/team-section";
 import { PreviewModal } from "./preview-modal";
@@ -65,7 +63,6 @@ const SECTION_ICONS: Record<
 > = {
 	mainSettings: Sparkles,
 	design: Palette,
-	sections: LayoutList,
 	businessInfo: BadgeCheck,
 	bio: FileText,
 	imageGallery: Images,
@@ -401,14 +398,10 @@ export default function CommunityEditContent() {
 								sectionRef={sectionRefSetters.mainSettings}
 							/>
 							<DesignSection
-								colorMode={design.colorMode}
-								setColorMode={design.setColorMode}
-								sectionRef={sectionRefSetters.design}
-							/>
-							<PageSectionsSection
+								{...design}
 								{...sections}
 								pricingMode={pricing.pricingMode}
-								sectionRef={sectionRefSetters.sections}
+								sectionRef={sectionRefSetters.design}
 							/>
 							<BusinessInfoSection
 								{...businessInfo}

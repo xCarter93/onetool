@@ -257,12 +257,12 @@ describe("Community Pages", () => {
 		await asUser.mutation(api.communityPages.upsert, {
 			slug: "theme-test",
 			isPublic: false,
-			draftTheme: "bold-expressive",
+			draftTheme: "storefront",
 		});
 
 		const page = await asUser.query(api.communityPages.get, {});
 		expect(page).toBeTruthy();
-		expect(page?.draftTheme).toBe("bold-expressive");
+		expect(page?.draftTheme).toBe("storefront");
 	});
 
 	it("publish copies draftTheme to publishedTheme", async () => {
@@ -271,7 +271,7 @@ describe("Community Pages", () => {
 		await asUser.mutation(api.communityPages.upsert, {
 			slug: "theme-publish-test",
 			isPublic: true,
-			draftTheme: "warm-approachable",
+			draftTheme: "directory",
 			draftBioContent: {
 				type: "doc",
 				content: [{ type: "paragraph", content: [{ type: "text", text: "Bio" }] }],
@@ -285,7 +285,7 @@ describe("Community Pages", () => {
 			return pages.find((p) => p.slug === "theme-publish-test");
 		});
 		expect(page).toBeTruthy();
-		expect(page?.publishedTheme).toBe("warm-approachable");
+		expect(page?.publishedTheme).toBe("directory");
 	});
 
 	it("submitInterest creates follow-up task instead of client", async () => {
@@ -738,6 +738,39 @@ describe("Community Pages", () => {
 			slug: "color-mode-page",
 		});
 		expect(stillDark?.colorMode).toBe("dark");
+	});
+
+	it("the page layout round-trips to the public payload", async () => {
+		const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+
+		await asUser.mutation(api.communityPages.upsert, {
+			slug: "layout-page",
+			isPublic: true,
+			draftBioContent: {
+				type: "doc",
+				content: [{ type: "paragraph", content: [{ type: "text", text: "Bio" }] }],
+			},
+			draftTheme: "storefront",
+		});
+
+		await asUser.mutation(api.communityPages.publish, {});
+
+		const publicPage = await t.query(api.communityPages.getBySlug, {
+			slug: "layout-page",
+		});
+		expect(publicPage?.theme).toBe("storefront");
+
+		// Legacy rows still hold the Phase 8 theme names. They stay readable — the
+		// renderer resolves anything it does not recognise to Showcase — so a
+		// publish that omits the field must not disturb what is stored.
+		await asUser.mutation(api.communityPages.upsert, {
+			slug: "layout-page",
+			isPublic: true,
+		});
+		const unchanged = await t.query(api.communityPages.getBySlug, {
+			slug: "layout-page",
+		});
+		expect(unchanged?.theme).toBe("storefront");
 	});
 
 	it("faq and team round-trip through upsert, publish, and getBySlug", async () => {

@@ -16,6 +16,7 @@ import {
 	COMMUNITY_SECTION_LAYOUTS,
 	communityColorModeValidator,
 	communityFaqItemsValidator,
+	communityLayoutValidator,
 	communitySectionConfigValidator,
 	communityTeamMembersValidator,
 } from "./lib/communityTypes";
@@ -146,7 +147,7 @@ export const upsert = userMutation({
 				google: v.optional(v.string()),
 			})
 		),
-		draftTheme: v.optional(v.string()),
+		draftTheme: v.optional(communityLayoutValidator),
 		draftColorMode: v.optional(communityColorModeValidator),
 	},
 	handler: async (ctx, args): Promise<CommunityPageId> => {

@@ -4,7 +4,6 @@ import {
 	FileText,
 	HelpCircle,
 	Images,
-	LayoutList,
 	Lock,
 	Mail,
 	Tags,
@@ -22,8 +21,15 @@ import {
 	type CommunitySectionLayout,
 	type CommunitySectionSetting,
 } from "@/lib/community-sections";
+import { type PageLayout } from "@/lib/community-layouts";
 import { cn } from "@/lib/utils";
-import { SectionShell } from "./section-shell";
+
+/** Where the quote form lands in each layout — it is not always last. */
+const FORM_POSITION: Record<PageLayout, string> = {
+	showcase: "Pinned beside your sections.",
+	storefront: "Above your sections.",
+	directory: "Always last.",
+};
 
 const SECTION_ICONS: Record<
 	CommunitySectionId,
@@ -46,7 +52,8 @@ interface PageSectionsSectionProps {
 		CommunitySectionId,
 		{ filled: boolean; detail: string }
 	>;
-	sectionRef: (el: HTMLElement | null) => void;
+	/** The form sits in a different place in each layout; the row says which. */
+	pageLayout: PageLayout;
 }
 
 export function PageSectionsSection({
@@ -54,7 +61,7 @@ export function PageSectionsSection({
 	setSectionConfig,
 	pricingMode,
 	sectionStatus,
-	sectionRef,
+	pageLayout,
 }: PageSectionsSectionProps) {
 	const hiddenCount = sectionConfig.filter((entry) => !entry.visible).length;
 
@@ -75,20 +82,19 @@ export function PageSectionsSection({
 	};
 
 	return (
-		<SectionShell
-			id="sections"
-			sectionRef={sectionRef}
-			icon={LayoutList}
-			title="Page Sections"
-			description="Drag to set the order visitors read them in, pick how each one looks, and switch off anything you do not want on the page."
-			headerAccessory={
-				hiddenCount > 0 ? (
+		<div className="space-y-4">
+			<div className="flex items-start justify-between gap-4">
+				<p className="text-sm text-muted-fg text-pretty">
+					Drag to set the order visitors read them in, pick how each one looks,
+					and switch off anything you do not want on the page.
+				</p>
+				{hiddenCount > 0 && (
 					<span className="shrink-0 text-xs text-muted-fg">
 						{hiddenCount} hidden
 					</span>
-				) : undefined
-			}
-		>
+				)}
+			</div>
+
 			<ListProvider
 				items={sectionConfig.map((entry) => ({ ...entry, id: entry.id }))}
 				onReorder={(items) =>
@@ -172,7 +178,7 @@ export function PageSectionsSection({
 						Quote request form
 					</p>
 					<p className="truncate text-xs text-muted-fg">
-						Always last. This is how people reach you.
+						{FORM_POSITION[pageLayout]} This is how people reach you.
 					</p>
 				</div>
 				<Lock className="size-4 shrink-0 text-muted-fg" aria-hidden />
@@ -182,6 +188,6 @@ export function PageSectionsSection({
 				A section only appears once it has something in it, so an empty one
 				never publishes a heading over nothing.
 			</p>
-		</SectionShell>
+		</div>
 	);
 }

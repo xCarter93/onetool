@@ -76,3 +76,17 @@ export const communityColorModeValidator = v.union(
 	v.literal("dark"),
 	v.literal("system")
 );
+
+/**
+ * Which of the three page structures the public page renders. Stored in
+ * `draftTheme`/`publishedTheme` — the field kept its name to avoid a migration
+ * for a value change. The schema stays a loose string because dev rows still
+ * hold the legacy theme names; this union guards what the editor may write.
+ *
+ * Mirrors `PAGE_LAYOUTS` in the web app's `lib/community-layouts`.
+ */
+export const communityLayoutValidator = v.union(
+	v.literal("showcase"),
+	v.literal("storefront"),
+	v.literal("directory")
+);

@@ -25,6 +25,11 @@ import {
 	resolveColorMode,
 	type CommunityColorMode,
 } from "@/lib/community-theme";
+import {
+	DEFAULT_PAGE_LAYOUT,
+	resolvePageLayout,
+	type PageLayout,
+} from "@/lib/community-layouts";
 import { isValidUrl as isValidSocialUrl } from "@/lib/validators";
 
 // The banner is the one full-bleed image on the page, so it comes off a camera
@@ -97,7 +102,6 @@ export type PricingMode = "structured" | "richText";
 export type SectionId =
 	| "mainSettings"
 	| "design"
-	| "sections"
 	| "businessInfo"
 	| "bio"
 	| "imageGallery"
@@ -173,7 +177,6 @@ const EMPTY_SOCIAL_LINKS: SocialLinks = {};
 interface Snapshot {
 	mainSettings: string;
 	design: string;
-	sections: string;
 	businessInfo: string;
 	bio: string;
 	imageGallery: string;
@@ -186,7 +189,6 @@ interface Snapshot {
 export const SECTION_LIST: Array<{ id: SectionId; label: string }> = [
 	{ id: "mainSettings", label: "Main Page Settings" },
 	{ id: "design", label: "Design" },
-	{ id: "sections", label: "Page Sections" },
 	{ id: "businessInfo", label: "Business Info" },
 	{ id: "bio", label: "Bio" },
 	{ id: "imageGallery", label: "Image Gallery" },
@@ -221,7 +223,7 @@ function createSnapshot({
 	byAppointmentOnly,
 	businessSchedule,
 	socialLinks,
-	theme,
+	layout,
 	colorMode,
 	sectionConfig,
 	faqItems,
@@ -251,7 +253,7 @@ function createSnapshot({
 	byAppointmentOnly: boolean;
 	businessSchedule: DaySchedule[];
 	socialLinks: SocialLinks;
-	theme: string;
+	layout: PageLayout;
 	colorMode: CommunityColorMode;
 	sectionConfig: CommunitySectionSetting[];
 	faqItems: FaqItem[];
@@ -266,8 +268,9 @@ function createSnapshot({
 			bannerStorageId,
 			avatarStorageId,
 		}),
-		design: JSON.stringify({ theme, colorMode }),
-		sections: JSON.stringify(sectionConfig),
+		// Layout, light/dark and the section list are one dirty unit: they are
+		// the three tabs of a single Design step.
+		design: JSON.stringify({ layout, colorMode, sectionConfig }),
 		businessInfo: JSON.stringify({
 			ownerName,
 			ownerTitle,
@@ -365,7 +368,9 @@ export function useCommunityPageForm() {
 		JSONContent | undefined
 	>();
 	const [pricingTiers, setPricingTiers] = useState<PricingTier[]>([]);
-	const [theme, setTheme] = useState("clean-professional");
+	const [layout, setLayout] = useState<PageLayout>(
+		DEFAULT_PAGE_LAYOUT,
+	);
 	const [colorMode, setColorMode] = useState<CommunityColorMode>(
 		DEFAULT_COMMUNITY_COLOR_MODE,
 	);
@@ -422,7 +427,6 @@ export function useCommunityPageForm() {
 	const sectionRefs = useRef<Record<SectionId, HTMLElement | null>>({
 		mainSettings: null,
 		design: null,
-		sections: null,
 		businessInfo: null,
 		bio: null,
 		imageGallery: null,
@@ -576,8 +580,10 @@ export function useCommunityPageForm() {
 		const links = communityPage.draftSocialLinks as SocialLinks | undefined;
 		setSocialLinks(links || EMPTY_SOCIAL_LINKS);
 
-		const serverTheme = (communityPage.draftTheme as string) || "clean-professional";
-		setTheme(serverTheme);
+		// Legacy rows still hold the Phase 8 theme names; resolve rather than trust,
+		// so the next save writes a real layout back.
+		const serverLayout = resolvePageLayout(communityPage.draftTheme);
+		setLayout(serverLayout);
 		const serverColorMode = resolveColorMode(communityPage.draftColorMode);
 		setColorMode(serverColorMode);
 
@@ -625,7 +631,7 @@ export function useCommunityPageForm() {
 			byAppointmentOnly: hours?.byAppointmentOnly || false,
 			businessSchedule: hours?.schedule || DEFAULT_SCHEDULE,
 			socialLinks: links || EMPTY_SOCIAL_LINKS,
-			theme: serverTheme,
+			layout: serverLayout,
 			colorMode: serverColorMode,
 			sectionConfig: serverSectionConfig,
 			faqItems: (communityPage.draftFaqItems ?? []).map((item) => ({
@@ -926,7 +932,7 @@ export function useCommunityPageForm() {
 				byAppointmentOnly,
 				businessSchedule,
 				socialLinks,
-				theme,
+				layout,
 				colorMode,
 				sectionConfig,
 				faqItems,
@@ -957,7 +963,7 @@ export function useCommunityPageForm() {
 			byAppointmentOnly,
 			businessSchedule,
 			socialLinks,
-			theme,
+			layout,
 			colorMode,
 			sectionConfig,
 			faqItems,
@@ -971,7 +977,6 @@ export function useCommunityPageForm() {
 			return {
 				mainSettings: false,
 				design: false,
-				sections: false,
 				businessInfo: false,
 				faq: false,
 				team: false,
@@ -984,7 +989,6 @@ export function useCommunityPageForm() {
 		return {
 			mainSettings: saved.mainSettings !== currentSnapshot.mainSettings,
 			design: saved.design !== currentSnapshot.design,
-			sections: saved.sections !== currentSnapshot.sections,
 			businessInfo: saved.businessInfo !== currentSnapshot.businessInfo,
 			bio: saved.bio !== currentSnapshot.bio,
 			imageGallery: saved.imageGallery !== currentSnapshot.imageGallery,
@@ -1083,7 +1087,6 @@ export function useCommunityPageForm() {
 		() => ({
 			mainSettings: { done: !!pageTitle.trim() && slug.length >= 3 },
 			design: { done: true },
-			sections: { done: true },
 			businessInfo: {
 				done:
 					!!ownerName ||
@@ -1205,7 +1208,7 @@ export function useCommunityPageForm() {
 				draftSocialLinks: Object.values(socialLinks).some(Boolean)
 					? socialLinks
 					: undefined,
-				draftTheme: theme,
+				draftTheme: layout,
 				draftColorMode: colorMode,
 				draftSectionConfig: sectionConfig,
 				draftFaqItems: cleanFaqItems(faqItems),
@@ -1288,7 +1291,7 @@ export function useCommunityPageForm() {
 				draftSocialLinks: Object.values(socialLinks).some(Boolean)
 					? socialLinks
 					: undefined,
-				draftTheme: theme,
+				draftTheme: layout,
 				draftColorMode: colorMode,
 				draftSectionConfig: sectionConfig,
 				draftFaqItems: cleanFaqItems(faqItems),
@@ -1322,7 +1325,7 @@ export function useCommunityPageForm() {
 				byAppointmentOnly,
 				businessSchedule,
 				socialLinks,
-				theme,
+				layout,
 				colorMode,
 				sectionConfig,
 				faqItems,
@@ -1368,7 +1371,7 @@ export function useCommunityPageForm() {
 				byAppointmentOnly,
 				businessSchedule,
 				socialLinks,
-				theme,
+				layout,
 				colorMode,
 				sectionConfig,
 				faqItems,
@@ -1470,10 +1473,8 @@ export function useCommunityPageForm() {
 		},
 		// Design slice
 		design: {
-			// Dormant: nothing sets `theme` while the editor offers no layout
-			// choice. It round-trips so the stored value survives until P4b
-			// turns it into the layout picker.
-			theme,
+			layout,
+			setLayout,
 			colorMode,
 			setColorMode,
 		},

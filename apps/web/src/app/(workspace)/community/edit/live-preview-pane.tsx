@@ -9,6 +9,10 @@ import {
 	CommunityPageView,
 	type CommunityPageViewData,
 } from "@/app/communities/[slug]/community-page-view";
+import {
+	PAGE_LAYOUT_LABELS,
+	resolvePageLayout,
+} from "@/lib/community-layouts";
 import { PreviewFrame } from "./preview-frame";
 
 type DeviceMode = "desktop" | "mobile";
@@ -65,6 +69,7 @@ export function LivePreviewPane({
 	const [device, setDevice] = useState<DeviceMode>("desktop");
 	// Typing stays responsive; the preview catches up a render later.
 	const deferredData = useDeferredValue(data);
+	const layout = resolvePageLayout(deferredData.theme);
 
 	const page = (
 		<CommunityPageView
@@ -82,7 +87,10 @@ export function LivePreviewPane({
 						className="size-1.5 shrink-0 rounded-full bg-success"
 						aria-hidden
 					/>
-					<span className="truncate">Live preview</span>
+					<span className="truncate">
+						Live preview
+						<span className="text-muted-fg"> · {PAGE_LAYOUT_LABELS[layout]}</span>
+					</span>
 				</p>
 				<SegmentedControl
 					value={device}

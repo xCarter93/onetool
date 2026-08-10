@@ -64,11 +64,6 @@ const SECTION_CHECKLIST: Array<{
 			!!p.bannerStorageId || !!p.avatarStorageId || !!p.metaDescription,
 	},
 	{
-		id: "design",
-		todo: "Pick a layout",
-		isComplete: (p) => !!p.draftTheme,
-	},
-	{
 		id: "businessInfo",
 		todo: "Add credentials and business hours",
 		isComplete: (p) =>

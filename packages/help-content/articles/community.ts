@@ -18,6 +18,10 @@ export const communityArticles: HelpArticle[] = [
 			"gallery",
 			"light mode",
 			"dark mode",
+			"layout",
+			"showcase",
+			"storefront",
+			"directory",
 			"page url",
 			"seo",
 		],
@@ -70,8 +74,7 @@ export const communityArticles: HelpArticle[] = [
 						type: "list",
 						items: [
 							"**Main Page Settings**: banner image, avatar or logo, page title, page URL, and an SEO description for search engines.",
-							"**Design**: choose whether your public page shows **Light**, **Dark**, or **Match device**. Light and dark look the same to every visitor no matter what their phone is set to; **Match device** follows each visitor's own setting.",
-							"**Page Sections**: the order your public sections appear in, the layout each one uses, and a switch to leave any of them off.",
+							"**Design**: three tabs. **Layout** picks the shape of your public page, **Brand** sets light or dark, and **Sections** controls the order your public sections appear in, the layout each one uses, and a switch to leave any of them off.",
 							"**Business Info**: your name and title, **Licensed**, **Bonded**, and **Insured** badges, year established, license number, certifications, business hours, and social links.",
 							"**Bio**: tell visitors who you are and what makes your business different.",
 							"**Image Gallery**: up to 5 photos of your work.",
@@ -121,11 +124,32 @@ export const communityArticles: HelpArticle[] = [
 				],
 			},
 			{
+				heading: "Pick the shape of your page",
+				blocks: [
+					{
+						type: "paragraph",
+						text: "The **Layout** tab under **Design** offers three shapes. They all use the same content you have already entered, and only the arrangement changes, so you can switch between them and watch the preview to see which suits your business.",
+					},
+					{
+						type: "list",
+						items: [
+							"**Showcase**: photos of your work lead the page, sitting beside your business name where a visitor sees them first, with the quote form pinned alongside as they read. Best if you have photos of finished jobs.",
+							"**Storefront**: your plans come first and the quote form sits above your sections, wide and hard to miss. Best if you sell set plans or price ranges.",
+							"**Directory**: a compact listing. Your hours, credentials, service list and area sit at the top next to a **Call** button, and the quote form comes at the end. Best if you have no photos yet.",
+						],
+					},
+					{
+						type: "note",
+						text: "Showcase is what every page starts as. Switching layouts never deletes anything. A section you have filled in stays filled in, wherever the new layout puts it.",
+					},
+				],
+			},
+			{
 				heading: "Choose what appears, and in what order",
 				blocks: [
 					{
 						type: "paragraph",
-						text: "**Page Sections** in the editor lists the six sections of your public page: **About us**, **What we do**, **Plans & pricing**, **Our work**, **Common questions**, and **Meet the team**. Drag a row to move it, and use the switch to leave a section off the page entirely.",
+						text: "The **Sections** tab under **Design** lists the six sections of your public page: **About us**, **What we do**, **Plans & pricing**, **Our work**, **Common questions**, and **Meet the team**. Drag a row to move it, and use the switch to leave a section off the page entirely.",
 					},
 					{
 						type: "paragraph",

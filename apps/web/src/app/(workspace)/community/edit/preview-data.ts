@@ -67,7 +67,7 @@ export function buildPreviewData(
 				bio: member.bio || undefined,
 				photoUrl: member.photoUrl ?? undefined,
 			})),
-		theme: design.theme,
+		theme: design.layout,
 		colorMode: design.colorMode,
 		bannerUrl: mainSettings.bannerUrl,
 		avatarUrl: mainSettings.avatarUrl,

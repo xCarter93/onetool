@@ -1445,9 +1445,11 @@ export default defineSchema({
 			})
 		),
 
-		// Theme (Phase 8). Dormant: the renderer ignores it until P4b turns it
-		// into the layout picker. Left as a loose string so the legacy values
-		// stored on dev pages still validate.
+		// Which of the three page structures the public page renders
+		// (showcase | storefront | directory). Named "theme" from Phase 8;
+		// renaming would need a migration for a value change. Stays a loose
+		// string so the legacy theme names on dev rows still validate — the
+		// renderer maps anything unrecognised to showcase.
 		draftTheme: v.optional(v.string()),
 		publishedTheme: v.optional(v.string()),
 
