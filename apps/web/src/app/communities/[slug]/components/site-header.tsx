@@ -1,8 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useRef } from "react";
 import Image from "next/image";
-import { cn } from "@/lib/utils";
 
 interface NavAnchor {
 	id: string;
@@ -17,8 +16,10 @@ interface SiteHeaderProps {
 }
 
 /**
- * Sticky page header for the public community page. Goes opaque once the hero
- * scrolls past so the business name and CTA stay legible over any content.
+ * Sticky page header for the public community page. The bar is always drawn —
+ * it sits in flow rather than over a hero, so a transparent resting state just
+ * reads as a logo floating in a gap. Content passes under the frosted fill on
+ * scroll. Opacity stays high enough to hold AA over a bright banner photo.
  * The CTA is desktop-only — on phones MobileActionBar carries it.
  */
 export function SiteHeader({
@@ -27,28 +28,20 @@ export function SiteHeader({
 	anchors,
 	contactFormId,
 }: SiteHeaderProps) {
-	const [scrolled, setScrolled] = useState(false);
+	const headerRef = useRef<HTMLElement>(null);
 
-	useEffect(() => {
-		const onScroll = () => setScrolled(window.scrollY > 24);
-		onScroll();
-		window.addEventListener("scroll", onScroll, { passive: true });
-		return () => window.removeEventListener("scroll", onScroll);
-	}, []);
-
+	// The editor previews this page inside an iframe, so the component runs in the
+	// host realm while its DOM lives in another document — a bare `document` would
+	// search the editor page instead of the previewed one.
 	const scrollToForm = () =>
-		document
+		headerRef.current?.ownerDocument
 			.getElementById(contactFormId)
 			?.scrollIntoView({ behavior: "smooth", block: "start" });
 
 	return (
 		<header
-			className={cn(
-				"sticky top-0 z-30 transition-colors duration-200",
-				scrolled
-					? "bg-background/95 supports-[backdrop-filter]:bg-background/80 backdrop-blur border-b border-border"
-					: "bg-transparent border-b border-transparent"
-			)}
+			ref={headerRef}
+			className="sticky top-0 z-30 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/90"
 		>
 			<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center gap-4">
 				<a
