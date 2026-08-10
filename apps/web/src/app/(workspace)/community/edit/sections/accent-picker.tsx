@@ -98,7 +98,11 @@ export function AccentPicker({
 								key={preset.hex}
 								title={preset.name}
 								className={cn(
-									"grid size-8 cursor-pointer place-items-center rounded-full transition-shadow duration-200",
+									// `relative` is load-bearing: the radio inside is `sr-only`, which is
+									// `position: absolute`. Without a containing block here it lays
+									// out against a distant ancestor, and clicking the label focuses
+									// it — so the browser scrolls to wherever that landed.
+									"relative grid size-8 cursor-pointer place-items-center rounded-full transition-shadow duration-200",
 									"focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-primary",
 									isSelected &&
 										"ring-2 ring-foreground/70 ring-offset-2 ring-offset-background",
