@@ -2,6 +2,14 @@ import type { HTMLAttributes, ReactNode } from "react"
 
 const PHONE_WIDTH = 433
 const PHONE_HEIGHT = 882
+
+/**
+ * Frame dimensions, exported so callers can size the shell from the same ratio.
+ * Size exactly one axis: clamping both (a `height` plus a `max-width` that
+ * bites) drops the aspect ratio, and the bezel SVG then letterboxes away from
+ * the percentage-positioned screen slot, spilling the page past the phone.
+ */
+export const IPHONE_FRAME = { width: PHONE_WIDTH, height: PHONE_HEIGHT } as const
 const SCREEN_X = 21.25
 const SCREEN_Y = 19.25
 const SCREEN_WIDTH = 389.5

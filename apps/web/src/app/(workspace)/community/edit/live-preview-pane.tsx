@@ -3,7 +3,7 @@
 import { useDeferredValue, useState } from "react";
 import { Monitor, Smartphone } from "lucide-react";
 import { SegmentedControl } from "@/components/domain/segmented-control";
-import { Iphone } from "@/components/ui/iphone";
+import { IPHONE_FRAME, Iphone } from "@/components/ui/iphone";
 import type { CommunitySectionId } from "@/lib/community-sections";
 import {
 	CommunityPageView,
@@ -112,10 +112,15 @@ export function LivePreviewPane({
 					</div>
 				</div>
 			) : (
-				<div className="flex min-h-0 flex-1 items-center justify-center">
+				<div className="@container flex min-h-0 flex-1 items-center justify-center">
+					{/* Contain-fit by capping height at what the column width can carry;
+					    a max-width clamp would break the ratio — see IPHONE_FRAME. */}
 					<Iphone
 						className="shrink-0"
-						style={{ height: "100%", width: "auto", maxWidth: "100%" }}
+						style={{
+							height: `min(100%, 100cqw * ${IPHONE_FRAME.height} / ${IPHONE_FRAME.width})`,
+							width: "auto",
+						}}
 					>
 						<PreviewFrame
 							width={DEVICE_WIDTH.mobile}
