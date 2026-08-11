@@ -5,7 +5,6 @@ import {
 	RefreshControl,
 	Pressable,
 	StyleSheet,
-	Linking,
 } from "react-native";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
@@ -35,6 +34,7 @@ import { EditableField } from "@/components/EditableField";
 import { FieldMenu } from "@/components/FieldMenu";
 import { MentionModal } from "@/components/MentionModal";
 import { IdentityBlock } from "@/components/identity-block";
+import { openExternal } from "@/lib/open-external";
 import { QuickActions, type QuickAction } from "@/components/quick-actions";
 import { DotGrid, SectionHeader, ListRow } from "@/components/ui";
 import {
@@ -301,28 +301,28 @@ export function ClientDetailBody({
 			label: "Call",
 			Icon: Phone,
 			disabled: !phone,
-			onPress: () => phone && Linking.openURL(`tel:${phone}`),
+			onPress: () => phone && openExternal(`tel:${phone}`, "Phone"),
 		},
 		{
 			key: "message",
 			label: "Message",
 			Icon: MessageSquare,
 			disabled: !phone,
-			onPress: () => phone && Linking.openURL(`sms:${phone}`),
+			onPress: () => phone && openExternal(`sms:${phone}`, "Messages"),
 		},
 		{
 			key: "email",
 			label: "Email",
 			Icon: Mail,
 			disabled: !email,
-			onPress: () => email && Linking.openURL(`mailto:${email}`),
+			onPress: () => email && openExternal(`mailto:${email}`, "Mail"),
 		},
 		{
 			key: "directions",
 			label: "Directions",
 			Icon: Navigation,
 			disabled: !directionsUrl,
-			onPress: () => directionsUrl && Linking.openURL(directionsUrl),
+			onPress: () => directionsUrl && openExternal(directionsUrl, "Maps"),
 		},
 	];
 
@@ -473,7 +473,7 @@ export function ClientDetailBody({
 											contact.phone ? (
 												<Pressable
 													onPress={() =>
-														Linking.openURL(`tel:${contact.phone}`)
+														openExternal(`tel:${contact.phone}`, "Phone")
 													}
 													accessibilityRole="button"
 													accessibilityLabel={`Call ${name}`}
