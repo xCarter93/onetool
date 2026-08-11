@@ -5,14 +5,13 @@ import {
 	Platform,
 	ScrollView,
 	StyleSheet,
-	Text,
 	View,
 } from "react-native";
 import { BlurView } from "expo-blur";
 import { LinearGradient } from "expo-linear-gradient";
 import { StatusBar } from "expo-status-bar";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { fontFamily, hero, radii, spacing } from "@/lib/theme";
+import { hero, radii, spacing } from "@/lib/theme";
 import { useDevice } from "@/lib/use-device";
 
 interface AuthScreenShellProps {
@@ -98,7 +97,11 @@ export function AuthScreenShell({ children }: AuthScreenShellProps) {
 				pointerEvents="none"
 				accessibilityElementsHidden
 			>
-				<Text style={styles.wordmark}>ONETOOL</Text>
+				<Image
+					source={require("@/assets/OneTool-wordmark-light.png")}
+					style={styles.wordmark}
+					resizeMode="contain"
+				/>
 			</View>
 			<KeyboardAvoidingView
 				style={styles.cardHost}
@@ -137,11 +140,10 @@ const styles = StyleSheet.create({
 		alignItems: "center",
 		gap: 14,
 	},
+	// Full wordmark (light logotype) over the photo's calm upper band.
 	wordmark: {
-		fontFamily: fontFamily.semibold,
-		fontSize: 13,
-		letterSpacing: 2.5,
-		color: hero.textStrong,
+		width: 168,
+		height: 168 * (237 / 908),
 	},
 	cardHost: {
 		flex: 1,

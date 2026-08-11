@@ -23,7 +23,7 @@
 		"check:privacy-drift": "node scripts/check-privacy-manifest-drift.cjs --advisory"
 	},
 	"dependencies": {
-		"@clerk/expo": "3.4.2",
+		"@clerk/expo": "3.7.8",
 		"@convex-dev/agent": "0.6.4",
 		"@expo-google-fonts/outfit": "^0.2.3",
 		"@expo/ui": "~56.0.16",
