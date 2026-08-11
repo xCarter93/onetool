@@ -5,8 +5,10 @@ import { useUser } from "@clerk/expo";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
-import { useTokens } from "@/lib/theme";
-import { AppHeader } from "@/components/app-header";
+import { DOCK_CLEARANCE, useTokens } from "@/lib/theme";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { formatCurrency } from "@/lib/format";
+import { CommandHero, type HeroStat } from "@/components/today/command-hero";
 import {
 	DotGrid,
 	SegmentedToggle,
@@ -86,6 +88,7 @@ export default function TodayScreen({
 } = {}) {
 	const t = useTokens();
 	const { user } = useUser();
+	const insets = useSafeAreaInsets();
 	const pane = headerMode === "pane";
 	// iPad only — null on iPhone, where navigation falls back to the router.
 	const shellNav = useShellNav();
@@ -173,23 +176,24 @@ export default function TodayScreen({
 		);
 	}, [weekTasks, overdue, clientNames, meId, effectiveScope]);
 
-	const dayProjects = useMemo<AgendaProject[]>(
+	const scopedProjects = useMemo<AgendaProject[]>(
 		() =>
-			projectsForDay(
-				(projects ?? [])
-					.map((p) => ({
-						_id: p._id,
-						title: p.title,
-						status: p.status,
-						startDate: p.startDate,
-						endDate: p.endDate,
-						context: clientNames.get(p.clientId),
-						assignedUserIds: p.assignedUserIds,
-					}))
-					.filter((p) => projectInScope(p, meId, effectiveScope)),
-				selectedDayMs,
-			),
-		[projects, clientNames, selectedDayMs, meId, effectiveScope],
+			(projects ?? [])
+				.map((p) => ({
+					_id: p._id,
+					title: p.title,
+					status: p.status,
+					startDate: p.startDate,
+					endDate: p.endDate,
+					context: clientNames.get(p.clientId),
+					assignedUserIds: p.assignedUserIds,
+				}))
+				.filter((p) => projectInScope(p, meId, effectiveScope)),
+		[projects, clientNames, meId, effectiveScope],
+	);
+	const dayProjects = useMemo<AgendaProject[]>(
+		() => projectsForDay(scopedProjects, selectedDayMs),
+		[scopedProjects, selectedDayMs],
 	);
 
 	const nowDate = new Date(nowMs);
@@ -310,6 +314,24 @@ export default function TodayScreen({
 
 	const greeting = greetingFor(nowDate.getHours());
 	const firstName = user?.firstName ?? null;
+
+	// Hero stats — honest to what this screen already subscribes to. "Overdue"
+	// (not the canvas's "due this week"): due-dated aggregation isn't available
+	// client-side, and a wrong money number is worse than a narrower true one.
+	const todayVisits = useMemo(
+		() => projectsForDay(scopedProjects, todayMs).length,
+		[scopedProjects, todayMs],
+	);
+	const overdueTotal = useMemo(
+		() =>
+			(overdueInvoices ?? []).reduce((sum, inv) => sum + (inv.total ?? 0), 0),
+		[overdueInvoices],
+	);
+	const heroStats: HeroStat[] = [
+		{ value: String(todayVisits), caption: "Visits today" },
+		{ value: formatCurrency(overdueTotal), caption: "Overdue", accent: true },
+		{ value: String(sentQuotes?.length ?? 0), caption: "Quotes waiting" },
+	];
 	const nowLabel =
 		formatClockLabel(
 			`${String(nowDate.getHours()).padStart(2, "0")}:${String(
@@ -343,28 +365,44 @@ export default function TodayScreen({
 					}
 				/>
 			) : (
-				<AppHeader
-					mode="root"
-					title={firstName ? `${greeting}, ${firstName}` : greeting}
-					sub={dateLabel}
-					halftone
-					// Week strip below is pinned, so this screen places the fade itself.
-					fade={false}
+				// 3.0 ink command hero (canvas 1a): org bar, greeting, day stats and
+				// the ink-tone week strip live in the band; the body scrolls beneath.
+				<CommandHero
+					eyebrow={dateLabel}
+					greeting={firstName ? `${greeting}, ${firstName}` : greeting}
+					stats={heroStats}
 					onAdd={() => router.push(TASK_FORM)}
 					addLabel="New task"
-				/>
+				>
+					<WeekStrip
+						tone="ink"
+						days={days}
+						selectedDayMs={selectedDayMs}
+						todayMs={todayMs}
+						counts={counts}
+						onSelectDay={setSelectedDayMs}
+						onPageWeek={(dir) =>
+							setSelectedDayMs((ms) => ms + dir * 7 * DAY_MS)
+						}
+					/>
+				</CommandHero>
 			)}
 
-			{/* Pinned date + scope controls — "persistent" is the point. */}
+			{/* Pinned controls — the iPad pane keeps the light strip here; on the
+			    phone the strip moved into the hero and only the scope toggle stays. */}
 			<View style={styles.controls}>
-				<WeekStrip
-					days={days}
-					selectedDayMs={selectedDayMs}
-					todayMs={todayMs}
-					counts={counts}
-					onSelectDay={setSelectedDayMs}
-					onPageWeek={(dir) => setSelectedDayMs((ms) => ms + dir * 7 * DAY_MS)}
-				/>
+				{pane ? (
+					<WeekStrip
+						days={days}
+						selectedDayMs={selectedDayMs}
+						todayMs={todayMs}
+						counts={counts}
+						onSelectDay={setSelectedDayMs}
+						onPageWeek={(dir) =>
+							setSelectedDayMs((ms) => ms + dir * 7 * DAY_MS)
+						}
+					/>
+				) : null}
 				{multiMember ? (
 					<SegmentedToggle
 						segments={SCOPE_SEGMENTS}
@@ -380,7 +418,12 @@ export default function TodayScreen({
 			{!hydrated ? null : (
 				<ScrollView
 					style={styles.scroll}
-					contentContainerStyle={styles.scrollBody}
+					contentContainerStyle={[
+						styles.scrollBody,
+						// Content runs under the floating glass dock (phone only — the
+						// iPad pane has no dock).
+						!pane && { paddingBottom: DOCK_CLEARANCE + insets.bottom },
+					]}
 					showsVerticalScrollIndicator={false}
 				>
 					<AttentionLine items={attention} onPress={openAttention} />
@@ -422,6 +465,7 @@ const styles = StyleSheet.create({
 	controls: {
 		paddingHorizontal: 18,
 		gap: 10,
+		paddingTop: 10,
 		paddingBottom: 12,
 		// Anchors the ScrollFade to this block's bottom edge.
 		position: "relative",

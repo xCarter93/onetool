@@ -34,7 +34,7 @@ import {
 	deriveInvoiceDisplayPricing,
 	legacyTaxRateFromAmounts,
 	resolveInvoicePricingMode,
-} from "@/components/shared/line-items/invoice-pricing";
+} from "@onetool/backend/pdf/invoicePricing";
 import {
 	Tooltip,
 	TooltipContent,

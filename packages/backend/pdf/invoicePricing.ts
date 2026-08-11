@@ -3,7 +3,10 @@
  * `packages/backend/convex/lib/invoiceTotals.ts`. That module can't be imported
  * here (it pulls `_generated/server`), so the predicate and the display math
  * live once in this file and every invoice surface — record page, sidebar,
- * portal paper, PDF — reads discount/tax through it.
+ * portal paper, PDF (rendered server-side through pdfActions.ts) — reads
+ * discount/tax through it. The rounding itself comes from `convex/lib/money`,
+ * which is pure math and safe to import anywhere, so displayed rows land on the
+ * same cents the server stored.
  *
  * LEGACY  — none of discountEnabled/discountType/taxEnabled/taxRate is set.
  *           discountAmount/taxAmount are pre-computed DOLLARS.
@@ -11,6 +14,8 @@
  *           is "percentage", otherwise dollars; taxAmount is derived and kept
  *           in sync server-side, so it is always dollars.
  */
+
+import { applyDiscount, roundCents } from "../convex/lib/money";
 
 export type InvoicePricingMode = "legacy" | "quote";
 
@@ -85,9 +90,12 @@ export function deriveInvoiceDisplayPricing(
 
 	const discountActive = invoice.discountEnabled === true && rawDiscount > 0;
 	const isPercent = invoice.discountType === "percentage";
+	// A percentage discount must be the cent-rounded gap the server actually
+	// applied (applyDiscount rounds the DISCOUNTED subtotal, not the discount),
+	// or the printed rows fail to reconcile with the stored total by a cent.
 	const discountDollars = discountActive
 		? isPercent
-			? (subtotal * rawDiscount) / 100
+			? roundCents(subtotal - applyDiscount(subtotal, rawDiscount, true))
 			: rawDiscount
 		: 0;
 

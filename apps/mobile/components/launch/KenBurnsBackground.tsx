@@ -31,7 +31,7 @@ export function KenBurnsBackground() {
 
 	return (
 		<Animated.Image
-			source={require("../../assets/BG.png")}
+			source={require("../../assets/launch-hero.png")}
 			style={[styles.image, style]}
 			resizeMode="cover"
 		/>

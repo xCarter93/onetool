@@ -1,11 +1,12 @@
 import { useMemo, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { FlashList } from "@shopify/flash-list";
 import { usePaginatedQuery } from "convex/react";
 import { useRouter, type Href } from "expo-router";
 import { api } from "@onetool/backend/convex/_generated/api";
 import {
+	DOCK_CLEARANCE,
 	fontFamily,
 	radii,
 	spacing,
@@ -69,7 +70,11 @@ export default function ActivityScreen({
 } = {}) {
 	const t = useTokens();
 	const router = useRouter();
+	const insets = useSafeAreaInsets();
 	const isPane = headerMode === "pane";
+	// The floating dock takes no layout height — the feed clears it itself.
+	// iPad panes have no dock (the shell replaces Tabs).
+	const listBottom = isPane ? spacing.lg : DOCK_CLEARANCE + insets.bottom;
 	// Seed "now" once (lazy) — react-hooks/purity forbids Date.now() during render.
 	const [nowMs] = useState(() => Date.now());
 
@@ -209,7 +214,10 @@ export default function ActivityScreen({
 					keyExtractor={(item) => item.key}
 					getItemType={(item) => item.kind}
 					renderItem={renderItem}
-					contentContainerStyle={styles.listContent}
+					contentContainerStyle={{
+						...styles.listContent,
+						paddingBottom: listBottom,
+					}}
 					ListEmptyComponent={Empty}
 					ListFooterComponent={Footer}
 				/>

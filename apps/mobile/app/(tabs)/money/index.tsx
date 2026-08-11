@@ -1,15 +1,21 @@
 import { useMemo, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { StyleSheet, Text, View } from "react-native";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { FlashList } from "@shopify/flash-list";
 import { useQuery } from "convex/react";
 import { useRouter, type Href } from "expo-router";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { Id } from "@onetool/backend/convex/_generated/dataModel";
-import { fontFamily, radii, type, useTokens } from "@/lib/theme";
+import {
+	badgeTone,
+	DOCK_CLEARANCE,
+	fontFamily,
+	radii,
+	type,
+	useTokens,
+} from "@/lib/theme";
 import { AppHeader } from "@/components/app-header";
 import {
-	Badge,
 	DotGrid,
 	Eyebrow,
 	ListRow,
@@ -18,6 +24,11 @@ import {
 } from "@/components/ui";
 import { formatCurrency, formatDocumentDate } from "@/lib/format";
 import { Illustration } from "@/components/illustrations";
+import { MoneyAmount } from "@/components/money/money-amount";
+import {
+	CollectedChart,
+	type MonthBucket,
+} from "@/components/money/collected-chart";
 
 type Tab = "invoices" | "quotes";
 
@@ -28,6 +39,7 @@ type InvoiceRow = {
 	status: string;
 	total: number;
 	dueDate: number;
+	paidAt?: number;
 };
 
 type QuoteRow = {
@@ -61,7 +73,11 @@ export default function MoneyScreen({
 } = {}) {
 	const t = useTokens();
 	const router = useRouter();
+	const insets = useSafeAreaInsets();
 	const isPane = headerMode === "pane";
+	// The floating dock takes no layout height — lists clear it themselves.
+	// iPad panes have no dock (the shell replaces Tabs).
+	const listBottom = isPane ? 24 : DOCK_CLEARANCE + insets.bottom;
 	const [tab, setTab] = useState<Tab>("invoices");
 	// Seed "now" once (lazy) — react-hooks/purity forbids Date.now() during render.
 	const [now] = useState(() => Date.now());
@@ -78,6 +94,45 @@ export default function MoneyScreen({
 		return map;
 	}, [clients]);
 
+	// Derived hero + chart facts — all client-side from the already-loaded
+	// invoice list (existing-data-only rule for the 1d restyle): overdue
+	// dollars, draft count, and paid totals bucketed into the last 6 months.
+	const derived = useMemo(() => {
+		if (!invoices) return undefined;
+		let overdueAmount = 0;
+		let draftCount = 0;
+		for (const inv of invoices) {
+			if (inv.status === "draft") draftCount += 1;
+			const effOverdue =
+				inv.status === "overdue" ||
+				(inv.status === "sent" && inv.dueDate < now);
+			if (effOverdue) overdueAmount += inv.total;
+		}
+		const base = new Date(now);
+		const months: MonthBucket[] = [];
+		for (let i = 5; i >= 0; i--) {
+			const d = new Date(base.getFullYear(), base.getMonth() - i, 1);
+			const label = d
+				.toLocaleDateString("en-US", { month: "short" })
+				.toUpperCase();
+			const start = d.getTime();
+			const end = new Date(
+				d.getFullYear(),
+				d.getMonth() + 1,
+				1
+			).getTime();
+			const value = invoices.reduce(
+				(sum, inv) =>
+					inv.paidAt && inv.paidAt >= start && inv.paidAt < end
+						? sum + inv.total
+						: sum,
+				0
+			);
+			months.push({ label, value });
+		}
+		return { overdueAmount, draftCount, months };
+	}, [invoices, now]);
+
 	const Hero = (
 		<View style={[styles.hero, { backgroundColor: t.card, borderColor: t.line }]}>
 			<Eyebrow>Outstanding</Eyebrow>
@@ -92,12 +147,24 @@ export default function MoneyScreen({
 				</>
 			) : (
 				<>
-					<Text style={[styles.heroAmount, { color: t.ink }]}>
-						{formatCurrency(stats.totalOutstanding)}
-					</Text>
-					<Text style={[styles.heroSubline, { color: t.sub }]}>
-						{stats.byStatus.overdue} overdue · {stats.byStatus.sent} sent
-					</Text>
+					<MoneyAmount amount={stats.totalOutstanding} size={40} />
+					<View style={styles.heroSubRow}>
+						{derived && derived.overdueAmount > 0 ? (
+							<>
+								<View style={[styles.overdueDot, { backgroundColor: t.danger }]} />
+								<Text style={[styles.heroOverdue, { color: badgeTone.late.fg }]}>
+									{formatCurrency(derived.overdueAmount)} overdue
+								</Text>
+							</>
+						) : null}
+						<Text style={[styles.heroSubline, { color: t.sub }]}>
+							{derived && derived.overdueAmount > 0 ? "· " : ""}
+							{stats.byStatus.sent} sent
+							{derived && derived.draftCount > 0
+								? ` · ${derived.draftCount} draft${derived.draftCount === 1 ? "" : "s"}`
+								: ""}
+						</Text>
+					</View>
 				</>
 			)}
 		</View>
@@ -106,6 +173,9 @@ export default function MoneyScreen({
 	const ListHeader = (
 		<View style={styles.listHeader}>
 			{Hero}
+			{derived && derived.months.some((m) => m.value > 0) ? (
+				<CollectedChart months={derived.months} />
+			) : null}
 			<Toggle2<Tab>
 				value={tab}
 				onChange={setTab}
@@ -162,23 +232,34 @@ export default function MoneyScreen({
 	};
 
 	const renderQuote = ({ item }: { item: QuoteRow }) => {
+		// Same table row as invoices (visual-pass feedback: the two tabs
+		// diverged — quotes rendered as cards). ListRow carries the status
+		// badge, hairline rows, and the iPad selected state for free.
+		const iconColor =
+			item.status === "approved"
+				? t.success
+				: item.status === "declined"
+					? t.danger
+					: t.sub;
 		const client = clientName.get(item.clientId) ?? "Client";
-		const primary = item.title || `Quote ${item.quoteNumber ?? ""}`.trim();
+		const sub = item.title
+			? `${client} · ${item.title}`
+			: `${client} · ${formatDocumentDate(item._creationTime)}`;
 		const isSelected =
 			isPane && selected?.kind === "quote" && selected.id === item._id;
 		return (
-			<Pressable
-				style={({ pressed }) => [
-					styles.quoteCard,
-					{ backgroundColor: t.card, borderColor: t.line },
-					// primarySolid border, matching ui/list-row's selected state —
-					// frostedBorder composites to ~1.4:1 and cannot carry a state.
-					isSelected && {
-						borderColor: t.primarySolid,
-						backgroundColor: t.frostedBg,
-					},
-					pressed && styles.pressed,
-				]}
+			<ListRow
+				icon="FileText"
+				iconColor={iconColor}
+				title={item.quoteNumber ?? item.title ?? "Quote"}
+				sub={sub}
+				status={item.status}
+				selected={isSelected}
+				right={
+					<Text style={[styles.amount, { color: t.ink }]}>
+						{formatCurrency(item.total, { exact: true })}
+					</Text>
+				}
 				onPress={() =>
 					// iPad pane: drive the shell selection ({kind,id}). iPhone: push the
 					// ROOT /quote/[id] route exactly as before.
@@ -189,35 +270,7 @@ export default function MoneyScreen({
 								params: { id: item._id },
 							} as unknown as Href)
 				}
-			>
-				<View style={styles.quoteTop}>
-					<View style={styles.quoteHead}>
-						{item.quoteNumber ? (
-							// Default t.faint fails AA (4.23:1) once the selected state's
-							// frostedBg tint is behind it — t.sub clears both backdrops.
-							<Eyebrow color={t.sub}>{item.quoteNumber}</Eyebrow>
-						) : null}
-						<Text
-							style={[styles.quoteTitle, { color: t.ink }]}
-							numberOfLines={1}
-						>
-							{primary}
-						</Text>
-						<Text style={[styles.quoteClient, { color: t.sub }]} numberOfLines={1}>
-							{client}
-						</Text>
-					</View>
-					<Badge status={item.status} />
-				</View>
-				<View style={[styles.quoteBottom, { borderTopColor: t.line }]}>
-					<Text style={[styles.quoteDate, { color: t.sub }]}>
-						{formatDocumentDate(item._creationTime)}
-					</Text>
-					<Text style={[styles.quoteAmount, { color: t.ink }]}>
-						{formatCurrency(item.total, { exact: true })}
-					</Text>
-				</View>
-			</Pressable>
+			/>
 		);
 	};
 
@@ -291,7 +344,10 @@ export default function MoneyScreen({
 					keyExtractor={(item) => item._id}
 					renderItem={renderInvoice}
 					ListHeaderComponent={ListHeader}
-					contentContainerStyle={styles.listContent}
+					contentContainerStyle={{
+						...styles.listContent,
+						paddingBottom: listBottom,
+					}}
 					ListEmptyComponent={Empty}
 				/>
 			) : (
@@ -300,8 +356,10 @@ export default function MoneyScreen({
 					keyExtractor={(item) => item._id}
 					renderItem={renderQuote}
 					ListHeaderComponent={ListHeader}
-					contentContainerStyle={styles.listContent}
-					ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
+					contentContainerStyle={{
+						...styles.listContent,
+						paddingBottom: listBottom,
+					}}
 					ListEmptyComponent={Empty}
 				/>
 			)}
@@ -325,13 +383,25 @@ const styles = StyleSheet.create({
 		borderWidth: 1,
 		gap: 8,
 	},
-	heroAmount: {
-		fontFamily: fontFamily.bold,
-		fontSize: type.h1,
+	heroSubRow: {
+		flexDirection: "row",
+		alignItems: "center",
+		gap: 6,
+		flexWrap: "wrap",
+	},
+	overdueDot: {
+		width: 7,
+		height: 7,
+		borderRadius: 4,
+	},
+	heroOverdue: {
+		fontFamily: fontFamily.medium,
+		fontSize: type.rowTitle,
+		fontVariant: ["tabular-nums"],
 	},
 	heroSubline: {
 		fontFamily: fontFamily.regular,
-		fontSize: type.h4,
+		fontSize: type.rowTitle,
 	},
 	heroAmountSkeleton: {
 		width: 160,
@@ -346,49 +416,7 @@ const styles = StyleSheet.create({
 	amount: {
 		fontFamily: fontFamily.bold,
 		fontSize: type.h4,
-	},
-	quoteCard: {
-		borderRadius: radii.rLg,
-		borderWidth: 1,
-		padding: 16,
-		gap: 12,
-	},
-	pressed: {
-		opacity: 0.85,
-	},
-	quoteTop: {
-		flexDirection: "row",
-		alignItems: "flex-start",
-		justifyContent: "space-between",
-		gap: 12,
-	},
-	quoteHead: {
-		flex: 1,
-		minWidth: 0,
-		gap: 3,
-	},
-	quoteTitle: {
-		fontFamily: fontFamily.bold,
-		fontSize: type.h3,
-	},
-	quoteClient: {
-		fontFamily: fontFamily.regular,
-		fontSize: type.h4,
-	},
-	quoteBottom: {
-		flexDirection: "row",
-		alignItems: "center",
-		justifyContent: "space-between",
-		borderTopWidth: 1,
-		paddingTop: 12,
-	},
-	quoteDate: {
-		fontFamily: fontFamily.regular,
-		fontSize: type.sm,
-	},
-	quoteAmount: {
-		fontFamily: fontFamily.bold,
-		fontSize: type.h4,
+		fontVariant: ["tabular-nums"],
 	},
 	skeletonBlock: {
 		gap: 4,

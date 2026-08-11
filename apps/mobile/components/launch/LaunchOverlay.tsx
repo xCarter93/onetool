@@ -13,6 +13,7 @@ import {
 	FLOOR_MS,
 	shouldForceDismiss,
 } from "@/lib/launch-gate";
+import { hero } from "@/lib/theme";
 import { GlassLogoCard } from "./GlassLogoCard";
 import { KenBurnsBackground } from "./KenBurnsBackground";
 import { LaunchScrim } from "./LaunchScrim";
@@ -119,7 +120,9 @@ const styles = StyleSheet.create({
 		left: 0,
 		right: 0,
 		bottom: 0,
-		backgroundColor: "#031125",
+		// Matches the 3.0 hero ink + native splash bg, and the sign-in screen
+		// shares the same hero photo — launch → sign-in reads as one scene.
+		backgroundColor: hero.ink,
 		zIndex: 1000,
 		elevation: 1000,
 	},

@@ -21,6 +21,18 @@
       "types": "./convex/_generated/server.d.ts",
       "default": "./convex/_generated/server.js"
     },
+    "./pdf/QuotePDF": {
+      "types": "./pdf/QuotePDF.tsx",
+      "default": "./pdf/QuotePDF.tsx"
+    },
+    "./pdf/InvoicePDF": {
+      "types": "./pdf/InvoicePDF.tsx",
+      "default": "./pdf/InvoicePDF.tsx"
+    },
+    "./pdf/invoicePricing": {
+      "types": "./pdf/invoicePricing.ts",
+      "default": "./pdf/invoicePricing.ts"
+    },
     "./convex/communityAnalytics": {
       "types": "./convex/communityAnalytics.ts",
       "default": "./convex/communityAnalytics.ts"
@@ -100,10 +112,12 @@
     "@posthog/convex": "2.0.32",
     "@react-email/components": "^1.0.3",
     "@react-email/render": "^2.0.1",
+    "@react-pdf/renderer": "^4.3.2",
     "ai": "6.0.218",
     "boldsign": "^3.2.0",
     "convex": "~1.40.0",
     "convex-helpers": "0.1.113",
+    "react": "19.2.3",
     "resend": "^6.5.2",
     "stripe": "22.1.1",
     "svix": "^1.76.1",

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { FlashList } from "@shopify/flash-list";
 import { useQuery } from "convex/react";
 import { useLocalSearchParams, useRouter, type Href } from "expo-router";
@@ -19,6 +19,7 @@ import { Illustration, type IllustrationName } from "@/components/illustrations"
 import { formatCurrency } from "@/lib/format";
 import { sameRef, type RecordRef } from "@/lib/selection-context";
 import {
+	DOCK_CLEARANCE,
 	fontFamily,
 	radii,
 	recordTint,
@@ -91,7 +92,11 @@ export default function WorkScreen({
 } = {}) {
 	const t = useTokens();
 	const router = useRouter();
+	const insets = useSafeAreaInsets();
 	const isPane = headerMode === "pane";
+	// The floating dock takes no layout height — scroll content clears it itself.
+	// iPad panes have no dock (the shell replaces Tabs).
+	const listBottom = isPane ? 24 : DOCK_CLEARANCE + insets.bottom;
 
 	// Raw input drives the field; `q` (debounced 250ms) drives filtering.
 	const [raw, setRaw] = useState("");
@@ -373,7 +378,10 @@ export default function WorkScreen({
 					keyExtractor={(item) => item.key}
 					getItemType={(item) => item.type}
 					renderItem={renderRow}
-					contentContainerStyle={styles.listContent}
+					contentContainerStyle={{
+						...styles.listContent,
+						paddingBottom: listBottom,
+					}}
 					// On by default in FlashList v2. Four independent subscriptions
 					// resolve at different times into a recency-sorted list, so rows
 					// land above the anchor and the offset creeps down. Not a chat.

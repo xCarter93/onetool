@@ -17,6 +17,17 @@ import {
 	type RecordAction,
 } from "@/components/domain/action-button-group";
 import { AnimatePresence, motion } from "motion/react";
+import { useState } from "react";
+import {
+	AlertDialog,
+	AlertDialogAction,
+	AlertDialogCancel,
+	AlertDialogContent,
+	AlertDialogDescription,
+	AlertDialogFooter,
+	AlertDialogHeader,
+	AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { usePermissions } from "@/hooks/use-permissions";
 import { cn } from "@/lib/utils";
 
@@ -54,6 +65,9 @@ export function QuoteDetailHeader({
 	const canDeleteQuote = can("quotes", "delete");
 	const canModifyInvoice = can("invoices", "modify");
 
+	// Reverting a sent quote pulls it out of the client's portal, so it confirms.
+	const [showRevertConfirm, setShowRevertConfirm] = useState(false);
+
 	// Status-dependent actions. The primary next step for each status is pinned
 	// left ("start"); everything else is secondary and collapses into the ⋯ menu.
 	const statusActions: RecordAction[] = (() => {
@@ -80,6 +94,15 @@ export function QuoteDetailHeader({
 						slot: "start",
 						variant: "default",
 						onClick: () => onStatusChange("approved"),
+						disabled: !canModifyQuote,
+					},
+					{
+						key: "revert-to-draft",
+						label: "Revert to draft",
+						icon: <RotateCcw className="h-4 w-4" />,
+						slot: "secondary",
+						variant: "outline",
+						onClick: () => setShowRevertConfirm(true),
 						disabled: !canModifyQuote,
 					},
 				];
@@ -212,6 +235,35 @@ export function QuoteDetailHeader({
 						)}
 					</AnimatePresence>
 					<ActionButtonGroup actions={actions} className="shrink-0" />
+
+					{/* Portals out — no effect on the header layout. */}
+					<AlertDialog
+						open={showRevertConfirm}
+						onOpenChange={setShowRevertConfirm}
+					>
+						<AlertDialogContent size="sm">
+							<AlertDialogHeader>
+								<AlertDialogTitle>
+									Revert this quote to draft?
+								</AlertDialogTitle>
+								<AlertDialogDescription>
+									The client&apos;s link will stop working until you
+									resend.
+								</AlertDialogDescription>
+							</AlertDialogHeader>
+							<AlertDialogFooter>
+								<AlertDialogCancel>Keep it sent</AlertDialogCancel>
+								<AlertDialogAction
+									onClick={() => {
+										setShowRevertConfirm(false);
+										onStatusChange("draft");
+									}}
+								>
+									Revert to draft
+								</AlertDialogAction>
+							</AlertDialogFooter>
+						</AlertDialogContent>
+					</AlertDialog>
 				</div>
 			)}
 		</StickyDetailHeader>

@@ -231,6 +231,8 @@ export default function RootLayout() {
 							<Stack.Screen name="business-details" />
 							{/* Manual route builder — create/edit, pushed from Routes tab. */}
 							<Stack.Screen name="route-edit" />
+							{/* In-person quote signature capture (Slice 3). */}
+							<Stack.Screen name="sign-quote" />
 							<Stack.Screen
 								name="org-switch"
 								options={overlayOptions(device, {

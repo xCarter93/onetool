@@ -20,6 +20,8 @@ export type RouteSheetProps = {
 	onSelect: (id: Id<"routes">) => void;
 	onCreate: () => void;
 	onSeedSchedule: () => void;
+	/** Bottom clearance for the floating dock (DOCK_CLEARANCE + safe area). */
+	bottomInset: number;
 };
 
 function routeMeta(route: Doc<"routes">): string {
@@ -54,7 +56,13 @@ export function RouteSheet(props: RouteSheetProps) {
 			}}
 			handleIndicatorStyle={{ backgroundColor: t.faintDecor }}
 		>
-			<BottomSheetScrollView contentContainerStyle={styles.content}>
+			<BottomSheetScrollView
+				contentContainerStyle={[
+					styles.content,
+					// The floating dock overlays the sheet bottom (DOCK_CLEARANCE).
+					{ paddingBottom: 32 + props.bottomInset },
+				]}
+			>
 				<View style={styles.headerRow}>
 					<Text style={[styles.heading, { color: t.ink }]}>Routes</Text>
 					{props.premium !== false ? (

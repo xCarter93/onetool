@@ -118,7 +118,7 @@ describe("edit locks", () => {
 			expect(stored?.discountEnabled).toBeUndefined();
 		});
 
-		it("allows line-item edits on draft and sent quotes", async () => {
+		it("allows line-item edits on draft quotes only — sent locks until revert (Slice 4 rule)", async () => {
 			const { asUser, quoteId } = await setup();
 
 			const itemId = await asUser.mutation(api.quoteLineItems.create, {
@@ -130,8 +130,25 @@ describe("edit locks", () => {
 				sortOrder: 0,
 			});
 
-			await t.run((ctx) => ctx.db.patch(quoteId, { status: "sent" }));
+			// Through the public API so the status aggregate tracks the flip —
+			// the revert below also runs through it.
+			await asUser.mutation(api.quotes.update, {
+				id: quoteId,
+				status: "sent",
+			});
 
+			await expect(
+				asUser.mutation(api.quoteLineItems.update, {
+					id: itemId,
+					quantity: 3,
+				})
+			).rejects.toThrow(/QUOTE_LOCKED.*revert it to draft/);
+
+			// Reverting to draft is the unlock.
+			await asUser.mutation(api.quotes.update, {
+				id: quoteId,
+				status: "draft",
+			});
 			await asUser.mutation(api.quoteLineItems.update, {
 				id: itemId,
 				quantity: 3,
@@ -396,6 +413,15 @@ describe("edit locks", () => {
 			});
 			const afterStatus = await t.run((ctx) => ctx.db.get(quoteId));
 			expect(afterStatus?.contentUpdatedAt).toBe(1);
+
+			// Sent quotes lock content (Slice 4) — revert to draft to continue,
+			// which is itself a status change and must not bump either.
+			await asUser.mutation(api.quotes.update, {
+				id: quoteId,
+				status: "draft",
+			});
+			const afterRevert = await t.run((ctx) => ctx.db.get(quoteId));
+			expect(afterRevert?.contentUpdatedAt).toBe(1);
 
 			// Line-item update bumps.
 			await asUser.mutation(api.quoteLineItems.update, {

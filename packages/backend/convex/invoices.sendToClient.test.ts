@@ -84,6 +84,99 @@ describe("invoices.sendToClient", () => {
 		expect(invoice?.status).toBe("sent");
 	});
 
+	it("schedules a server-side PDF render when the invoice has no document", async () => {
+		const { asUser, invoiceId } = await seed({
+			portalAccess: true,
+			contactEmail: "client@example.com",
+		});
+
+		await asUser.mutation(api.invoices.sendToClient, { id: invoiceId });
+
+		const pending = await t.run(async (ctx) => {
+			const rows = await ctx.db.system.query("_scheduled_functions").collect();
+			return rows.filter(
+				(row) =>
+					row.name.includes("generateInvoicePdf") &&
+					row.state.kind === "pending"
+			);
+		});
+		expect(pending.length).toBe(1);
+
+		await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+		const docs = await t.run(async (ctx) =>
+			(await ctx.db.query("documents").collect()).filter(
+				(d) => d.documentType === "invoice" && d.documentId === invoiceId
+			)
+		);
+		expect(docs.length).toBe(1);
+	});
+
+	it("does not schedule a PDF render when the invoice already has one", async () => {
+		const { asUser, invoiceId, orgId } = await seed({
+			portalAccess: true,
+			contactEmail: "client@example.com",
+		});
+		await t.run(async (ctx) => {
+			const storageId = await ctx.storage.store(
+				new Blob(["%PDF-existing"], { type: "application/pdf" })
+			);
+			await ctx.db.insert("documents", {
+				orgId,
+				documentType: "invoice",
+				documentId: invoiceId,
+				storageId,
+				generatedAt: Date.now(),
+				version: 1,
+			});
+			// Spell out the freshness this case depends on: the render must post-
+			// date the content, or the staleness branch (next test) would fire.
+			await ctx.db.patch(invoiceId, { contentUpdatedAt: Date.now() - 1000 });
+		});
+
+		await asUser.mutation(api.invoices.sendToClient, { id: invoiceId });
+
+		const pending = await t.run(async (ctx) => {
+			const rows = await ctx.db.system.query("_scheduled_functions").collect();
+			return rows.filter((row) => row.name.includes("generateInvoicePdf"));
+		});
+		expect(pending.length).toBe(0);
+		await t.finishAllScheduledFunctions(vi.runAllTimers);
+	});
+
+	it("schedules a fresh render when the newest PDF predates a content edit", async () => {
+		const { asUser, invoiceId, orgId } = await seed({
+			portalAccess: true,
+			contactEmail: "client@example.com",
+		});
+		// A PDF from before the latest edit — sent-invoice line items stay
+		// editable, so this state arises without any revert.
+		await t.run(async (ctx) => {
+			const storageId = await ctx.storage.store(
+				new Blob(["%PDF-stale"], { type: "application/pdf" })
+			);
+			await ctx.db.insert("documents", {
+				orgId,
+				documentType: "invoice",
+				documentId: invoiceId,
+				storageId,
+				generatedAt: 1000,
+				version: 1,
+			});
+			// The edit's touchContent stamp (the seed's raw inserts don't set it).
+			await ctx.db.patch(invoiceId, { contentUpdatedAt: Date.now() });
+		});
+
+		await asUser.mutation(api.invoices.sendToClient, { id: invoiceId });
+
+		const pending = await t.run(async (ctx) => {
+			const rows = await ctx.db.system.query("_scheduled_functions").collect();
+			return rows.filter((row) => row.name.includes("generateInvoicePdf"));
+		});
+		expect(pending.length).toBe(1);
+		await t.finishAllScheduledFunctions(vi.runAllTimers);
+	});
+
 	it("re-sends an already-sent invoice without changing status", async () => {
 		const { asUser, invoiceId } = await seed({
 			portalAccess: true,

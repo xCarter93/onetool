@@ -19,7 +19,7 @@ export const mobileAppArticles: HelpArticle[] = [
 				blocks: [
 					{
 						type: "paragraph",
-						text: "The OneTool mobile app is an iOS companion to the web workspace, built for the part of your day that happens away from a desk. Check the schedule from the truck, look up a client on site, and keep an eye on invoices and quotes between jobs.",
+						text: "The OneTool mobile app is an iOS companion to the web workspace, built for the part of your day that happens away from a desk. Check the schedule from the truck, look up a client on site, send a quote from the driveway, and record a payment at the door.",
 					},
 					{
 						type: "paragraph",
@@ -41,10 +41,10 @@ export const mobileAppArticles: HelpArticle[] = [
 					{
 						type: "list",
 						items: [
-							"**Today** shows your day at a glance: a week strip to pick a date, urgent items called out at the top, your plan for the day in order, and a peek at tomorrow. A **Me** and **Team** toggle switches between your own work and the whole team's.",
-							"**Work** is the hub for everything else: clients, projects, tasks, and your invoices and quotes.",
+							"**Today** shows your day at a glance: a week strip to pick a date, urgent items called out at the top, your plan for the day in order, and a peek at tomorrow. A **Me** and **Team** toggle switches between your own work and the whole team's. Your organization's activity feed opens from here too.",
+							"**Work** is the hub for clients, projects, and tasks.",
+							"**Money** holds your invoices and quotes, with an outstanding total up top and a chart of what you've collected recently.",
 							"**Routes** plans the day's stops and gets you from one to the next. See [Planning a route](/help/routing/planning-a-route).",
-							"**Activity** shows your organization's activity feed.",
 						],
 					},
 					{
@@ -54,11 +54,21 @@ export const mobileAppArticles: HelpArticle[] = [
 				],
 			},
 			{
-				heading: "Clients and money live under Work",
+				heading: "Send, collect, and share from the Money tab",
 				blocks: [
 					{
 						type: "paragraph",
-						text: "Clients, projects, and tasks each have their own list and detail screens inside **Work**, rather than separate tabs. Invoices and quotes live there too, on a combined screen with an **Invoices** and **Quotes** toggle. Tap any row to open the full record.",
+						text: "The **Money** tab is a combined list with an **Invoices** and **Quotes** toggle; tap any row to open the full record. From a detail screen, the buttons follow the record's status: a draft offers **Send** (with **Mark as sent** under the \u2022\u2022\u2022 menu when you delivered the quote yourself \u2014 no email goes out), a sent quote offers **Get signature** \u2014 the client picks who's signing, signs on your screen (turn the phone sideways; iPad signs full-width), and the quote is approved with the signature saved to its approval history \u2014 plus **Resend** and a manual **Mark approved**, an approved quote converts to an invoice in one tap, and a sent or overdue invoice offers **Record payment** and **Share pay link**.",
+					},
+					{
+						type: "list",
+						items: [
+							"**Sending** shows a preview of the document first, then emails your client a link to review it — and, for invoices, pay it — in their client portal. The client needs portal access and a primary contact email; the buttons explain what's missing if they can't be reached.",
+							"**Record payment** logs a cash or check payment on the spot. The amount starts at the remaining balance and can be edited down for deposits and partial payments; the confirm button always shows the exact amount it will record.",
+							"**Share pay link** opens the share sheet with the invoice's portal payment link, so a client can pay by card on their own phone while you're standing together.",
+							"**Line items** are editable right on the record: tap a row to change its description, quantity, unit, or rate, or tap **Add line item** below the list — the total updates as you type. Draft quotes edit directly; a sent quote asks to move back to draft first (its portal link pauses until you resend), while invoices stay editable until a payment is recorded.",
+							"**Extend valid until** (under the ••• menu on a sent or expired quote) picks a new date without emailing the client — and extending an expired quote makes it available in the portal again.",
+						],
 					},
 				],
 			},

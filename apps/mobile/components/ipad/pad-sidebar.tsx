@@ -38,7 +38,9 @@ interface PadSidebarProps {
 	onNotifications: () => void;
 }
 
-// Mirrors field-kit-tab-bar.tsx's TABS 1:1 (icon set + label wording).
+// Mirrors the phone dock's mode set (icon + label wording). The 3.0 GlassDock
+// promoted Money into the phone dock; the rail keeps Activity and reaches
+// Money through Work until the shell grows a money pane.
 const NAV: { id: SidebarTab; label: string; Icon: typeof CalendarCheck }[] = [
 	{ id: "today", label: "Today", Icon: CalendarCheck },
 	{ id: "work", label: "Work", Icon: Briefcase },

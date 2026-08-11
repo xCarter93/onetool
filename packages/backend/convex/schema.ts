@@ -631,6 +631,11 @@ export default defineSchema({
 		// typed signature. Optional — rows predating the check, drawn
 		// signatures, and declines all omit it.
 		intentAffirmedAt: v.optional(v.number()),
+		// Slice 3 (mobile 3.0): in-person capture on an org device. Absent =
+		// portal. capturedByUserId = the org user who held the phone; ipAddress
+		// carries the "in-person" sentinel on these rows (mutations see no IP).
+		channel: v.optional(v.literal("in_person")),
+		capturedByUserId: v.optional(v.id("users")),
 		createdAt: v.number(),
 	})
 		.index("by_quote", ["quoteId", "createdAt"])
@@ -782,6 +787,12 @@ export default defineSchema({
 		// True when settled outside the portal (e.g. cash/check reconciled via
 		// the workspace "Mark as Paid"), so the portal can label it as such.
 		recordedOutsidePortal: v.optional(v.boolean()),
+		// How a field payment was taken, set when a row is settled through
+		// payments.recordManualPayment (mobile "Record payment").
+		manualMethod: v.optional(
+			v.union(v.literal("cash"), v.literal("check"), v.literal("other"))
+		),
+		manualNote: v.optional(v.string()),
 
 		// Legacy pay-by-link token. Retired: no longer generated for new payment
 		// rows (portal PaymentIntents correlate by paymentId). Optional so existing

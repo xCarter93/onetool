@@ -45,7 +45,7 @@ export const quotesArticles: HelpArticle[] = [
 					},
 					{
 						type: "note",
-						text: "The **Valid until** date is informational. Nothing changes automatically when it passes, and the quote keeps its status. A quote only shows as Expired when an e-signature request lapses before it is signed.",
+						text: "The **Valid until** date is informational. Nothing changes automatically when it passes, and the quote keeps its status. A quote only shows as Expired when an e-signature request lapses before it is signed. You can change the date any time before your client approves or declines, even on a sent quote, and extending an expired quote makes it available to your client again.",
 					},
 				],
 			},
@@ -88,6 +88,10 @@ export const quotesArticles: HelpArticle[] = [
 						type: "tip",
 						text: "Quotes convert straight into invoices later, so write line items the way you want them to appear on the bill.",
 					},
+					{
+						type: "note",
+						text: "Line items, pricing, the title, and the terms are editable while the quote is a **draft**. Once it is sent, the grid goes read only — click **Revert to draft** in the quote header to make changes, which pulls the quote from your client's portal until you send it again.",
+					},
 				],
 			},
 			{
@@ -128,11 +132,11 @@ export const quotesArticles: HelpArticle[] = [
 			},
 			{
 				question: "What happens when the Valid until date passes?",
-				answer: "Nothing automatic. The date is informational and the quote keeps its current status. Only a lapsed e-signature request marks a quote as Expired.",
+				answer: "Nothing automatic. The date is informational and the quote keeps its current status. Only a lapsed e-signature request marks a quote as Expired. You can extend the date any time before your client approves or declines, and extending an expired quote makes it available to your client again.",
 			},
 			{
-				question: "Can I still edit line items after the client approves?",
-				answer: "No. Approved and declined quotes lock their line items, so the priced agreement stays exactly as the client saw it. The grid switches to read only and explains why. To price a new version, create a new quote.",
+				question: "Can I still edit line items after I send the quote?",
+				answer: "Not directly. Editing is draft only, so click Revert to draft in the quote header first — that pulls the quote from your client's portal until you resend it. Approved and declined quotes stay locked for good, so the priced agreement keeps exactly what the client saw. To price a new version, create a new quote.",
 			},
 			{
 				question: "Can I delete a quote?",
@@ -173,7 +177,7 @@ export const quotesArticles: HelpArticle[] = [
 						type: "list",
 						items: [
 							"**Draft**: you are still building it. Only your team can see it, and the header shows **Mark as Sent**.",
-							"**Sent**: live in your client's portal, awaiting a decision. The header shows **Mark Approved**.",
+							"**Sent**: live in your client's portal, awaiting a decision. The header shows **Mark Approved** and **Revert to draft**.",
 							"**Approved**: your client said yes. The header shows **Convert to Invoice** and **Reopen**.",
 							"**Declined**: your client passed. The header shows **Reopen**.",
 							"**Expired**: an e-signature request lapsed before it was signed. The header shows **Reopen**.",
@@ -202,6 +206,19 @@ export const quotesArticles: HelpArticle[] = [
 					{
 						type: "note",
 						text: "**Mark as Sent** on its own makes the quote approvable in the portal. A formal e-signature request is a separate, optional path. See [E-signatures](/help/quotes/e-signatures).",
+					},
+				],
+			},
+			{
+				heading: "Change a quote you have already sent",
+				blocks: [
+					{
+						type: "paragraph",
+						text: "A sent quote is locked, so the numbers never change under your client while they are deciding. To fix a price, a line item, the title, or the terms, click **Revert to draft** in the quote header and confirm. The quote leaves your client's portal and their link stops working, and everything is editable again. Click **Send** when it is ready to go back — that emails the revised quote and makes their link work again. (**Mark as Sent** only flips the status, so save it for quotes you delivered outside OneTool.)",
+					},
+					{
+						type: "note",
+						text: "**Valid until** is the exception: you can extend it on a sent quote without reverting anything, right up until your client approves or declines. Extending an expired quote makes it available to your client again, and nothing is emailed, so nudge them yourself.",
 					},
 				],
 			},

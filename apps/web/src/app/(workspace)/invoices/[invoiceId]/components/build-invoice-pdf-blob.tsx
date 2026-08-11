@@ -1,7 +1,7 @@
 import { pdf } from "@react-pdf/renderer";
 import InvoicePDF, {
 	type InvoicePDFProps,
-} from "@/app/(workspace)/invoices/components/InvoicePDF";
+} from "@onetool/backend/pdf/InvoicePDF";
 import type { Doc } from "@onetool/backend/convex/_generated/dataModel";
 
 export interface BuildInvoicePdfArgs {

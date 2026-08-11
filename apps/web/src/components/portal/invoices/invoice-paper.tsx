@@ -11,7 +11,7 @@ import { cn } from "@/lib/utils";
 import { formatDate, formatMoney } from "@/lib/portal/format";
 
 import { TotalsBreakdown } from "../totals-breakdown";
-import { deriveInvoiceDisplayPricing } from "@/components/shared/line-items/invoice-pricing";
+import { deriveInvoiceDisplayPricing } from "@onetool/backend/pdf/invoicePricing";
 
 export type InvoiceDisplayStatus = "awaiting" | "partial" | "paid" | "overdue";
 

@@ -11,9 +11,19 @@ import { useQuery, useMutation } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { useLocalSearchParams, useRouter, type Href } from "expo-router";
 import { useState, useCallback } from "react";
-import { SafeAreaView } from "react-native-safe-area-context";
+import {
+	SafeAreaView,
+	useSafeAreaInsets,
+} from "react-native-safe-area-context";
 import { Id } from "@onetool/backend/convex/_generated/dataModel";
-import { fontFamily, radii, STATUS, touch, useTokens } from "@/lib/theme";
+import {
+	DOCK_CLEARANCE,
+	fontFamily,
+	radii,
+	STATUS,
+	touch,
+	useTokens,
+} from "@/lib/theme";
 import { formatCurrency } from "@/lib/format";
 import { AppHeader } from "@/components/app-header";
 import { PaneHeader } from "@/components/ipad/pane-header";
@@ -79,6 +89,10 @@ export function ClientDetailBody({
 	// nav, so onBack clears it; router.back would pop out of the shell). onBack
 	// is undefined in landscape (list always visible → no back button shown).
 	const isPane = headerMode === "pane";
+	const insets = useSafeAreaInsets();
+	// The floating dock takes no layout height — scroll content clears it
+	// itself. iPad panes have no dock (the shell replaces Tabs).
+	const scrollBottom = isPane ? 16 : DOCK_CLEARANCE + insets.bottom;
 	const appHeaderMode = headerMode === "pane" ? "pane" : "detail";
 	const [refreshing, setRefreshing] = useState(false);
 	const [mentionModalVisible, setMentionModalVisible] = useState(false);
@@ -157,7 +171,12 @@ export function ClientDetailBody({
 				) : (
 					<AppHeader mode={appHeaderMode} />
 				)}
-				<ScrollView contentContainerStyle={styles.scroll}>
+				<ScrollView
+					contentContainerStyle={[
+						styles.scroll,
+						{ paddingBottom: scrollBottom },
+					]}
+				>
 					<View
 						style={[
 							styles.skeletonCard,
@@ -208,7 +227,10 @@ export function ClientDetailBody({
 				<AppHeader mode={appHeaderMode} title={client.companyName} />
 			)}
 			<ScrollView
-				contentContainerStyle={styles.scroll}
+				contentContainerStyle={[
+					styles.scroll,
+					{ paddingBottom: scrollBottom },
+				]}
 				refreshControl={
 					<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
 				}
