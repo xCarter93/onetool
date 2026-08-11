@@ -8,6 +8,7 @@ import {
 	Text,
 	View,
 } from "react-native";
+import { BlurView } from "expo-blur";
 import { LinearGradient } from "expo-linear-gradient";
 import { StatusBar } from "expo-status-bar";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -24,7 +25,10 @@ interface AuthScreenShellProps {
 // screen as one continuous scene. AuthView renders its own heading + buttons —
 // the shell deliberately carries no copy of its own (canvas headline dropped:
 // two stacked headings read as clutter, and auth correctness beats pixel
-// parity). AuthView's surface is themed to hero.authSurface via clerk-theme.json.
+// parity). AuthView's surface is themed TRANSLUCENT ink via clerk-theme.json
+// (8-digit-hex background), so the card's BlurView reads through it as glass.
+// clerk-theme.json is baked into Info.plist at prebuild — changes need
+// `expo prebuild --clean -p ios` before `expo run:ios`.
 export function AuthScreenShell({ children }: AuthScreenShellProps) {
 	const { device, width, height } = useDevice();
 	const insets = useSafeAreaInsets();
@@ -51,6 +55,20 @@ export function AuthScreenShell({ children }: AuthScreenShellProps) {
 		</>
 	);
 
+	// Real glass: AuthView's themed surface is TRANSLUCENT ink (clerk-theme
+	// background #0e1e288c — the native bridge parses 8-digit RGBA and its
+	// hosting view is .clear), so the BlurView underneath does the work.
+	const glass = (content: React.ReactNode, style: object) => (
+		<View style={style}>
+			<BlurView
+				intensity={40}
+				tint="dark"
+				style={StyleSheet.absoluteFill}
+			/>
+			{content}
+		</View>
+	);
+
 	if (isPad) {
 		return (
 			<View style={styles.root}>
@@ -65,7 +83,7 @@ export function AuthScreenShell({ children }: AuthScreenShellProps) {
 						contentContainerStyle={styles.scrollContentPad}
 						keyboardShouldPersistTaps="handled"
 					>
-						<View style={styles.padCard}>{children}</View>
+						{glass(children, styles.padCard)}
 					</ScrollView>
 				</KeyboardAvoidingView>
 			</View>
@@ -78,32 +96,26 @@ export function AuthScreenShell({ children }: AuthScreenShellProps) {
 	return (
 		<View style={styles.root}>
 			{backdrop}
+			{/* Wordmark only — AuthView renders the app logo inside the card, so a
+			    second mark up here read as a duplicate. */}
 			<View
 				style={[styles.lockup, { top: insets.top + 64 }]}
 				pointerEvents="none"
 				accessibilityElementsHidden
 			>
-				<View style={styles.logoTile}>
-					<Image
-						source={require("@/assets/OneTool-mark.png")}
-						style={styles.logoMark}
-						resizeMode="contain"
-					/>
-				</View>
 				<Text style={styles.wordmark}>ONETOOL</Text>
 			</View>
 			<KeyboardAvoidingView
 				style={styles.cardHost}
 				behavior={Platform.OS === "ios" ? "padding" : undefined}
 			>
-				<View
-					style={[
+				{glass(
+					children,
+					StyleSheet.flatten([
 						styles.glassCard,
 						{ marginBottom: Math.max(insets.bottom, 18) + 12 },
-					]}
-				>
-					{children}
-				</View>
+					]),
+				)}
 			</KeyboardAvoidingView>
 		</View>
 	);
@@ -130,19 +142,6 @@ const styles = StyleSheet.create({
 		alignItems: "center",
 		gap: 14,
 	},
-	logoTile: {
-		width: 64,
-		height: 64,
-		borderRadius: 20,
-		backgroundColor: "rgba(255,255,255,.92)",
-		alignItems: "center",
-		justifyContent: "center",
-		boxShadow: "0 20px 50px rgba(0,0,0,.35)",
-	},
-	logoMark: {
-		width: 44,
-		height: 44,
-	},
 	wordmark: {
 		fontFamily: fontFamily.semibold,
 		fontSize: 13,
@@ -156,10 +155,6 @@ const styles = StyleSheet.create({
 	},
 	glassCard: {
 		borderRadius: 26,
-		// Solid authSurface, not translucent glassBg: AuthView paints its themed
-		// opaque background anyway, so true glass would only show at the card's
-		// padding ring and read as a seam.
-		backgroundColor: hero.authSurface,
 		borderWidth: 1,
 		borderColor: hero.glassBorder,
 		boxShadow: "0 24px 60px rgba(0,0,0,.4)",
@@ -168,8 +163,7 @@ const styles = StyleSheet.create({
 		paddingBottom: 8,
 		overflow: "hidden",
 	},
-	// iPad: centered floating card over the hero. Bg matches the AuthView
-	// surface so card + component read as one continuous panel.
+	// iPad: centered floating glass card over the hero.
 	scrollContentPad: {
 		flexGrow: 1,
 		justifyContent: "center",
@@ -180,7 +174,6 @@ const styles = StyleSheet.create({
 	padCard: {
 		width: "100%",
 		maxWidth: 440,
-		backgroundColor: hero.authSurface,
 		borderRadius: radii["3xl"],
 		borderWidth: 1,
 		borderColor: hero.glassBorder,
@@ -188,5 +181,6 @@ const styles = StyleSheet.create({
 		paddingTop: spacing.xl,
 		paddingBottom: spacing.xl,
 		boxShadow: "0 24px 60px rgba(0,0,0,.4)",
+		overflow: "hidden",
 	},
 });

@@ -172,9 +172,6 @@ export const hero = {
 	/** Sign-in glass card fill — lighter ink so the glass lifts off the scrim. */
 	glassBg: "rgba(14,30,40,.55)",
 	glassBorder: "rgba(255,255,255,.14)",
-	/** Solid stand-in for glassBg composited over the hero photo — clerk-theme
-	 * .json's background must match it so AuthView reads as the card surface. */
-	authSurface: "#13232d",
 	/** Sign-in scrim stops (top → foot). */
 	scrim: [
 		"rgba(10,28,38,.42)",
