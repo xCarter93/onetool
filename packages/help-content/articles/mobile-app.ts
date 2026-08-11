@@ -54,6 +54,24 @@ export const mobileAppArticles: HelpArticle[] = [
 				],
 			},
 			{
+				heading: "Create anything with the + button",
+				blocks: [
+					{
+						type: "paragraph",
+						text: "The **+** button floats above the bottom-right of every tab and fans out into **New project**, **New task**, **New client**, and **New quote** — you only see the ones your role can create. On iPad, the same menu lives behind the **+** in the sidebar.",
+					},
+					{
+						type: "list",
+						items: [
+							"**New project** is built for speed: pick a client, type a title, optionally set a start date, and it's created. If the client isn't in OneTool yet, tap **+ New client** inside the picker to add them with just a name and phone without leaving the form. You can also start a project straight from a client's detail screen.",
+							"**New quote** picks a client and creates a draft, then opens it so you can add line items right away.",
+							"**New task** and **New client** open the full forms you already know.",
+							"On the Free plan, the 10-client and 3-active-projects-per-client limits apply here the same as on the web — the app tells you when you've hit one.",
+						],
+					},
+				],
+			},
+			{
 				heading: "Send, collect, and share from the Money tab",
 				blocks: [
 					{

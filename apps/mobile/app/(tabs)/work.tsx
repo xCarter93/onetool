@@ -311,10 +311,9 @@ export default function WorkScreen({
 			{/* Page canvas, matching web's .workspace-canvas. */}
 			<DotGrid style={StyleSheet.absoluteFill} />
 			{/* Pane mode: the shell mounts PaneHeader above this body (one header
-			    per pane — locked convention); it owns the +. On iPhone the ＋ is
-			    unconditional: client is the only record type mobile can create here
-			    (quotes/invoices/projects stay web-only at 2.0), and a ＋ that
-			    disappears on some chips reads as a bug. */}
+			    per pane — locked convention); it owns the ＋, and the rail's create
+			    menu covers the rest. On iPhone the header carries no ＋: the
+			    speed-dial FAB is the single capture entry point (3.0 slice 5). */}
 			{isPane ? null : (
 				<AppHeader
 					mode="root"
@@ -322,8 +321,6 @@ export default function WorkScreen({
 					halftone
 					// Controls below are pinned, so this screen places the fade itself.
 					fade={false}
-					onAdd={() => router.push("/clients/new" as Href)}
-					addLabel="New client"
 				/>
 			)}
 

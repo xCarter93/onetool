@@ -93,6 +93,7 @@ import type * as lib_organization from "../lib/organization.js";
 import type * as lib_payments from "../lib/payments.js";
 import type * as lib_permissionKeys from "../lib/permissionKeys.js";
 import type * as lib_permissions from "../lib/permissions.js";
+import type * as lib_planCaps from "../lib/planCaps.js";
 import type * as lib_planLimits from "../lib/planLimits.js";
 import type * as lib_polylineCodec from "../lib/polylineCodec.js";
 import type * as lib_portalAttestation from "../lib/portalAttestation.js";
@@ -279,6 +280,7 @@ declare const fullApi: ApiFromModules<{
   "lib/payments": typeof lib_payments;
   "lib/permissionKeys": typeof lib_permissionKeys;
   "lib/permissions": typeof lib_permissions;
+  "lib/planCaps": typeof lib_planCaps;
   "lib/planLimits": typeof lib_planLimits;
   "lib/polylineCodec": typeof lib_polylineCodec;
   "lib/portalAttestation": typeof lib_portalAttestation;

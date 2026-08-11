@@ -5,9 +5,10 @@ import { useTokens } from "@/lib/theme";
 import { CenteredModal } from "@/components/ipad/centered-modal";
 import { useDevice } from "@/lib/use-device";
 import { AssistantHost } from "@/components/assistant/assistant-host";
+import { AssistantInkHeader } from "@/components/assistant/ink-header";
 import { buildScreenContext } from "@/lib/screen-context";
 
-// Assistant sheet — the center tab-bar FAB's destination (P3). The FAB passes
+// Assistant sheet — the dock's assistant orb's destination (P3). The orb passes
 // the path it was pressed over as `ctx`; iPad landscape gets an in-shell right
 // panel instead (ipad-shell), this pushed route covers iPhone + iPad portrait.
 export default function AssistantSheet() {
@@ -21,6 +22,7 @@ export default function AssistantSheet() {
 		return (
 			<CenteredModal onScrimPress={() => router.back()} maxHeight="80%">
 				<View style={[styles.padCard, { backgroundColor: t.card }]}>
+					<AssistantInkHeader />
 					<AssistantHost screenContext={screenContext} />
 				</View>
 			</CenteredModal>
@@ -34,6 +36,7 @@ export default function AssistantSheet() {
 				{ backgroundColor: t.card, paddingBottom: insets.bottom },
 			]}
 		>
+			<AssistantInkHeader grabber />
 			<AssistantHost screenContext={screenContext} />
 		</View>
 	);

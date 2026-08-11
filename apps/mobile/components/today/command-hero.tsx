@@ -19,7 +19,6 @@ import {
 	Activity as ActivityIcon,
 	Bell,
 	ChevronDown,
-	Plus,
 } from "lucide-react-native";
 import { DotGrid } from "@/components/ui";
 import { fontFamily, hero, tokens, tracking, useTokens } from "@/lib/theme";
@@ -49,9 +48,6 @@ interface CommandHeroProps {
 	eyebrow: string;
 	greeting: string;
 	stats: readonly HeroStat[];
-	/** "New task" — the hero keeps 2.0's capture affordance the canvas omits. */
-	onAdd?: () => void;
-	addLabel?: string;
 	/** The ink-tone week strip (or any pinned control) below the stats. */
 	children?: React.ReactNode;
 }
@@ -65,8 +61,6 @@ export function CommandHero({
 	eyebrow,
 	greeting,
 	stats,
-	onAdd,
-	addLabel = "New",
 	children,
 }: CommandHeroProps) {
 	const t = useTokens();
@@ -186,14 +180,8 @@ export function CommandHero({
 					<ChevronDown size={14} color={hero.textSub} />
 				</Pressable>
 				<View style={styles.spacer} />
-				{onAdd
-					? iconButton(
-							"add",
-							addLabel,
-							onAdd,
-							<Plus size={18} color={hero.text} strokeWidth={2.2} />,
-						)
-					: null}
+				{/* No ＋ here — the speed-dial FAB is the single capture entry point
+				    on iPhone (3.0 slice 5). */}
 				{iconButton(
 					"activity",
 					"Activity",

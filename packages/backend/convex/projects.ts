@@ -24,6 +24,7 @@ import {
 	userMutation,
 	type UserMutationCtx,
 } from "./lib/factories";
+import { assertProjectCapacity } from "./lib/planCaps";
 import { calculateQuoteTotals } from "./lib/quoteTotals";
 
 /**
@@ -567,6 +568,11 @@ export const create = userMutation({
 		if (args.startDate && args.endDate && args.startDate > args.endDate) {
 			throw new Error("Start date cannot be after end date");
 		}
+
+		// Org-scope the client before counting its projects (and before the
+		// free-plan ceiling check, so a foreign client can't be probed).
+		await validateClientAccess(ctx, args.clientId, ctx.orgId);
+		await assertProjectCapacity(ctx, args.clientId, args.status);
 
 		const assignedUserIds = await resolveScopedCreateAssignees(
 			ctx,

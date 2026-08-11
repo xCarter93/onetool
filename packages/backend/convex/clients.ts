@@ -27,6 +27,7 @@ import {
 	userMutation,
 	type UserMutationCtx,
 } from "./lib/factories";
+import { assertClientCapacity } from "./lib/planCaps";
 
 /**
  * Client operations
@@ -535,6 +536,9 @@ export const create = userMutation({
 		portalAccessId: v.optional(v.string()),
 	},
 	handler: async (ctx, args): Promise<ClientId> => {
+		// Free-plan ceiling. Enforced here (not in createClient) so the internal
+		// paths — bulk import, community lead conversion — keep their behavior.
+		await assertClientCapacity(ctx, ctx.orgId, args.status);
 		return await createClient(ctx, args, "clients.create");
 	},
 });

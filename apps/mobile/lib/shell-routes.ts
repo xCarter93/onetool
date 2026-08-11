@@ -33,7 +33,7 @@ export function refFromPathname(pathname: string): RecordRef | null {
 	if ((m = pathname.match(/^\/projects\/([^/]+)$/)) && m[1] !== "new") {
 		return { kind: "project", id: m[1] };
 	}
-	if ((m = pathname.match(/^\/quote\/([^/]+)$/))) {
+	if ((m = pathname.match(/^\/quote\/([^/]+)$/)) && m[1] !== "new") {
 		return { kind: "quote", id: m[1] };
 	}
 	if ((m = pathname.match(/^\/invoice\/([^/]+)$/))) {

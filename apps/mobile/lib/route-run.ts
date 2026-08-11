@@ -174,6 +174,11 @@ export function appleMapsUrl(lat: number, lng: number): string {
 	return `http://maps.apple.com/?daddr=${lat},${lng}&dirflg=d`;
 }
 
+/** Same handoff for records that have an address but no geocode yet. */
+export function appleMapsAddressUrl(address: string): string {
+	return `http://maps.apple.com/?daddr=${encodeURIComponent(address)}&dirflg=d`;
+}
+
 // Google's directions URL caps intermediary waypoints at 9 (documented limit);
 // origin and destination ride on top of that.
 const MAX_GOOGLE_WAYPOINTS = 9;

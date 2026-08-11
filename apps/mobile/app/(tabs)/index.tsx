@@ -371,8 +371,6 @@ export default function TodayScreen({
 					eyebrow={dateLabel}
 					greeting={firstName ? `${greeting}, ${firstName}` : greeting}
 					stats={heroStats}
-					onAdd={() => router.push(TASK_FORM)}
-					addLabel="New task"
 				>
 					<WeekStrip
 						tone="ink"

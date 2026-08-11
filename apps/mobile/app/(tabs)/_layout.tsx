@@ -1,5 +1,7 @@
 import { Tabs, Redirect } from "expo-router";
 import type { Href } from "expo-router";
+import { View } from "react-native";
+import { SpeedDialFab } from "@/components/speed-dial-fab";
 import { useAuth, useOrganization, useOrganizationList } from "@clerk/expo";
 import { useQuery } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
@@ -56,6 +58,7 @@ export default function TabLayout() {
   }
 
   return (
+    <View style={{ flex: 1 }}>
     <Tabs
       screenOptions={{ headerShown: false }}
       tabBar={(props) => <GlassDock {...props} />}
@@ -75,5 +78,9 @@ export default function TabLayout() {
       {/* Profile reached via the header avatar (per CONTEXT) */}
       <Tabs.Screen name="profile" options={{ href: null }} />
     </Tabs>
+    {/* Speed-dial capture fan — sibling of Tabs so its open-state backdrop
+        paints over screens AND the dock (slice 5). */}
+    <SpeedDialFab />
+    </View>
   );
 }

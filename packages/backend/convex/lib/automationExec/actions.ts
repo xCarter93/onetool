@@ -30,10 +30,7 @@ import {
 	type VariableScope,
 } from "../conditionEval";
 import { calendarDayEpoch } from "../formula";
-import {
-	FREE_MAX_ACTIVE_PROJECTS_PER_CLIENT,
-	FREE_MAX_CLIENTS,
-} from "../planLimits";
+import { checkClientCapacity, checkProjectCapacity } from "../planCaps";
 import {
 	RELATION_FIELD,
 	getFieldDefinition,
@@ -1047,33 +1044,17 @@ export async function checkCreateRecordPlanCap(
 	payload: Record<string, unknown>,
 	orgId: Id<"organizations">
 ): Promise<string | null> {
-	if (objectType === "client" && (payload.status as string | undefined) !== "archived") {
-		const clients = await ctx.db
-			.query("clients")
-			.withIndex("by_org", (q) => q.eq("orgId", orgId))
-			.collect();
-		const active = clients.filter((c) => c.status !== "archived").length;
-		if (active >= FREE_MAX_CLIENTS) {
-			return `Your plan is limited to ${FREE_MAX_CLIENTS} clients — upgrade to add more.`;
-		}
+	const status = payload.status as string | undefined;
+	if (objectType === "client") {
+		return await checkClientCapacity(ctx, orgId, status);
 	}
 	if (objectType === "project") {
 		// Only an active candidate (planned/in-progress) consumes a per-client slot.
-		const status = payload.status as string | undefined;
-		const projectActive = status === "planned" || status === "in-progress";
-		const clientId = payload.clientId as Id<"clients"> | undefined;
-		if (clientId && projectActive) {
-			const projects = await ctx.db
-				.query("projects")
-				.withIndex("by_client", (q) => q.eq("clientId", clientId))
-				.collect();
-			const active = projects.filter(
-				(p) => p.status === "planned" || p.status === "in-progress"
-			).length;
-			if (active >= FREE_MAX_ACTIVE_PROJECTS_PER_CLIENT) {
-				return `Your plan allows ${FREE_MAX_ACTIVE_PROJECTS_PER_CLIENT} active projects per client — upgrade to add more.`;
-			}
-		}
+		return await checkProjectCapacity(
+			ctx,
+			payload.clientId as Id<"clients"> | undefined,
+			status
+		);
 	}
 	return null;
 }
