@@ -9,7 +9,8 @@ import {
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { useLocalSearchParams, useRouter, type Href } from "expo-router";
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
+import { useOrganization } from "@clerk/expo";
 import {
 	SafeAreaView,
 	useSafeAreaInsets,
@@ -35,6 +36,7 @@ import { FieldMenu } from "@/components/FieldMenu";
 import { MentionModal } from "@/components/MentionModal";
 import { IdentityBlock } from "@/components/identity-block";
 import { openExternal } from "@/lib/open-external";
+import { recordRecentView } from "@/lib/recents";
 import { QuickActions, type QuickAction } from "@/components/quick-actions";
 import { DotGrid, SectionHeader, ListRow } from "@/components/ui";
 import {
@@ -137,6 +139,23 @@ export function ClientDetailBody({
 			api.invoices.list,
 			clientId ? { clientId: clientId as Id<"clients"> } : "skip"
 		) ?? [];
+
+	// On-device "Recently viewed" trail for the Work tab (Slice 6). Fire-and-
+	// forget, and only once the doc has loaded so the snapshot is a real title.
+	const { organization } = useOrganization();
+	const orgId = organization?.id;
+	const recentId = client?._id;
+	const recentTitle = client?.companyName;
+	const recentSub = client?.companyDescription?.trim() || properties[0]?.city;
+	useEffect(() => {
+		if (!recentId || !recentTitle) return;
+		recordRecentView(orgId, {
+			kind: "client",
+			id: recentId,
+			title: recentTitle,
+			sub: recentSub,
+		});
+	}, [orgId, recentId, recentTitle, recentSub]);
 
 	const updateClient = useMutation(api.clients.update);
 

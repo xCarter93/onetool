@@ -41,15 +41,15 @@ export const mobileAppArticles: HelpArticle[] = [
 					{
 						type: "list",
 						items: [
-							"**Today** shows your day at a glance: a week strip to pick a date, urgent items called out at the top, your plan for the day in order, and a peek at tomorrow. A **Me** and **Team** toggle switches between your own work and the whole team's. Your organization's activity feed opens from here too.",
-							"**Work** is the hub for clients, projects, and tasks.",
+							"**Today** is your schedule. A week strip picks the date, and a **Day / List** toggle switches views: Day is a timeline of the chosen day — timed work in order with a *Now* marker, plus an all-day band for projects and unscheduled tasks — while List looks ahead two weeks, grouped by day. A **Me** and **Team** toggle switches between your own work and the whole team's, urgent items are called out at the top, and your organization's activity feed opens from here too.",
+							"**Work** is where you find anything. Type in the search field to search every record — clients (including their contacts and properties), projects, quotes, invoices, and tasks — with results grouped by type; the chips narrow to one type or browse its full list. Before you search, the screen shows records you've recently opened on this device.",
 							"**Money** holds your invoices and quotes, with an outstanding total up top and a chart of what you've collected recently.",
 							"**Routes** plans the day's stops and gets you from one to the next. See [Planning a route](/help/routing/planning-a-route).",
 						],
 					},
 					{
 						type: "paragraph",
-						text: "The center button opens the AI assistant, a Business plan feature. See [Meet the assistant](/help/ai-assistant/meet-the-assistant).",
+						text: "A magnifier in the header of the other tabs jumps straight to Work with the search field ready. The center button opens the AI assistant, a Business plan feature. See [Meet the assistant](/help/ai-assistant/meet-the-assistant).",
 					},
 				],
 			},

@@ -2,18 +2,23 @@ import React from "react";
 import { Pressable, ScrollView, StyleSheet, Text } from "react-native";
 import { Check } from "lucide-react-native";
 import { fontFamily, radii, spacing, touch, type, useTokens } from "@/lib/theme";
-import { KIND_LABEL, KIND_ORDER, type WorkKind } from "@/lib/work-search";
+import { CHIP_ORDER, KIND_LABEL, type WorkChipKind } from "@/lib/work-search";
 
 interface TypeChipsProps {
-	/** null = no type filter (mixed view). */
-	value: WorkKind | null;
-	onChange: (next: WorkKind | null) => void;
-	/** Optional per-kind counts, shown after the label when known. */
-	counts?: Partial<Record<WorkKind, number>>;
+	/** null = no type filter (search everything / resting view). */
+	value: WorkChipKind | null;
+	onChange: (next: WorkChipKind | null) => void;
 }
 
-/** Record-type filter chips. Tapping the selected chip clears the filter. */
-export function TypeChips({ value, onChange, counts }: TypeChipsProps) {
+/**
+ * Bucket chips. With a query they scope results to one kind; without one they
+ * open that kind's full browse list.
+ *
+ * COUNTLESS by design (Slice 6): the screen no longer holds four always-on list
+ * subscriptions, and search buckets cap at 5 hits — any number rendered here
+ * would be either a lie or four subscriptions bought back to print it.
+ */
+export function TypeChips({ value, onChange }: TypeChipsProps) {
 	const t = useTokens();
 
 	return (
@@ -27,20 +32,15 @@ export function TypeChips({ value, onChange, counts }: TypeChipsProps) {
 			contentContainerStyle={styles.row}
 			keyboardShouldPersistTaps="handled"
 		>
-			{KIND_ORDER.map((kind) => {
+			{CHIP_ORDER.map((kind) => {
 				const selected = value === kind;
-				const count = counts?.[kind];
 				return (
 					<Pressable
 						key={kind}
 						onPress={() => onChange(selected ? null : kind)}
 						accessibilityRole="button"
 						accessibilityState={{ selected }}
-						accessibilityLabel={
-							count === undefined
-								? KIND_LABEL[kind]
-								: `${KIND_LABEL[kind]}, ${count}`
-						}
+						accessibilityLabel={KIND_LABEL[kind]}
 						style={({ pressed }) => [
 							styles.chip,
 							selected
@@ -64,16 +64,6 @@ export function TypeChips({ value, onChange, counts }: TypeChipsProps) {
 						>
 							{KIND_LABEL[kind]}
 						</Text>
-						{count === undefined ? null : (
-							<Text
-								style={[
-									styles.count,
-									{ color: selected ? t.frostedInk : t.faint },
-								]}
-							>
-								{count}
-							</Text>
-						)}
 					</Pressable>
 				);
 			})}
@@ -102,10 +92,6 @@ const styles = StyleSheet.create({
 	label: {
 		fontFamily: fontFamily.semibold,
 		fontSize: type.sm,
-	},
-	count: {
-		fontFamily: fontFamily.semibold,
-		fontSize: type.meta,
 	},
 	pressed: {
 		opacity: 0.75,

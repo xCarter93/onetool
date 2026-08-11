@@ -9,7 +9,8 @@ import {
 	StyleSheet,
 	Animated,
 } from "react-native";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useOrganization } from "@clerk/expo";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router, useLocalSearchParams } from "expo-router";
 import { useMutation, useQuery } from "convex/react";
@@ -24,6 +25,8 @@ import { useOverlayTransition } from "@/components/useOverlayTransition";
 import { utcMsFromDateId, todayDateId, dateIdFromUtcMs } from "@/lib/date";
 import { CenteredModal } from "@/components/ipad/centered-modal";
 import { useDevice } from "@/lib/use-device";
+import { recordRecentView } from "@/lib/recents";
+import { formatTaskDate } from "@/lib/work-search";
 
 const TYPE_OPTIONS = [
 	{ value: "external", label: "External" },
@@ -137,6 +140,23 @@ export default function TaskFormSheet() {
 			setAppliedKey(initKey);
 		}
 	}
+
+	// On-device "Recently viewed" trail for the Work tab (Slice 6). Edit only —
+	// a task being created has nothing to remember yet.
+	const { organization } = useOrganization();
+	const orgId = organization?.id;
+	const recentId = isEdit ? task?._id : undefined;
+	const recentTitle = task?.title;
+	const recentSub = task ? formatTaskDate(task.date) : undefined;
+	useEffect(() => {
+		if (!recentId || !recentTitle) return;
+		recordRecentView(orgId, {
+			kind: "task",
+			id: recentId,
+			title: recentTitle,
+			sub: recentSub,
+		});
+	}, [orgId, recentId, recentTitle, recentSub]);
 
 	// Queries
 	const clients = useQuery(api.clients.list, {});

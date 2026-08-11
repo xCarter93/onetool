@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
 	Alert,
 	Image,
@@ -37,6 +37,8 @@ import {
 import { useQuoteCapabilities } from "@/lib/use-record-capabilities";
 import { usePermissions } from "@/lib/use-permissions";
 import { formatCurrency, formatDocumentDate } from "@/lib/format";
+import { recordRecentView } from "@/lib/recents";
+import { useOrganization } from "@clerk/expo";
 
 // Lifecycle track states per status (frame 1h). Declined/expired terminate
 // the track at the third node instead of pretending the path continues.
@@ -163,6 +165,24 @@ export function QuoteDetailBody({
 		clients?.forEach((c) => map.set(c._id, c.companyName));
 		return map;
 	}, [clients]);
+
+	// On-device "Recently viewed" trail for the Work tab (Slice 6). Fire-and-
+	// forget, and only once the doc has loaded so the snapshot is a real title.
+	const { organization } = useOrganization();
+	const orgId = organization?.id;
+	const recentId = quote?._id;
+	const recentTitle =
+		quote?.title?.trim() || quote?.quoteNumber?.trim() || "Quote";
+	const recentSub = quote ? clientName.get(quote.clientId) : undefined;
+	useEffect(() => {
+		if (!recentId) return;
+		recordRecentView(orgId, {
+			kind: "quote",
+			id: recentId,
+			title: recentTitle,
+			sub: recentSub,
+		});
+	}, [orgId, recentId, recentTitle, recentSub]);
 
 	// quote === undefined → loading skeleton.
 	if (quote === undefined) {

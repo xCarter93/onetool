@@ -25,7 +25,7 @@ import { DotGrid } from "@/components/ui";
 import { PaneDetailHost } from "@/components/ipad/pane-detail-host";
 import { PaneAction, PaneHeader } from "@/components/ipad/pane-header";
 import { ShellNavProvider, type ShellNav } from "@/lib/shell-nav";
-import type { WorkKind } from "@/lib/work-search";
+import type { WorkChipKind } from "@/lib/work-search";
 import TodayScreen from "@/app/(tabs)/index";
 import WorkScreen from "@/app/(tabs)/work";
 import RoutesScreen from "@/app/(tabs)/routes";
@@ -119,7 +119,9 @@ function IpadShellInner() {
 
 	// Work's chip lives here so `browse(kind)` ("View all projects" from a client
 	// detail) can scope the list without a route push.
-	const [workKind, setWorkKind] = useState<WorkKind | null>(null);
+	// Chip kinds are wider than pane kinds: Work also browses tasks, which open a
+	// form sheet rather than a detail pane (so they never reach `select`).
+	const [workKind, setWorkKind] = useState<WorkChipKind | null>(null);
 
 	// Route → selection reconciliation. On a detail route, sync the durable
 	// selection so the pane opens the target. select() dispatches to the

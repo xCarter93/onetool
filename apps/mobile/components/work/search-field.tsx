@@ -9,13 +9,20 @@ interface SearchFieldProps {
 	placeholder?: string;
 	/** Programmatic label — the magnifier glyph is decorative, not a label. */
 	label?: string;
+	/**
+	 * Handle on the TextInput so the owner can focus it (the header magnifier
+	 * jumps here). NOT named `ref`: a plain prop keeps this a normal component
+	 * and sidesteps the forwardRef/`ref`-prop footgun.
+	 */
+	inputRef?: React.RefObject<TextInput | null>;
 }
 
 export function SearchField({
 	value,
 	onChangeText,
-	placeholder = "Search clients, projects, quotes, invoices…",
+	placeholder = "Search everything",
 	label = "Search work",
+	inputRef,
 }: SearchFieldProps) {
 	const t = useTokens();
 
@@ -25,6 +32,7 @@ export function SearchField({
 		>
 			<Search size={18} color={t.faint} />
 			<TextInput
+				ref={inputRef}
 				value={value}
 				onChangeText={onChangeText}
 				placeholder={placeholder}

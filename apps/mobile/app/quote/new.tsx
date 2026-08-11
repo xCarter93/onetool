@@ -36,14 +36,21 @@ export default function NewQuoteSheet() {
 	const insets = useSafeAreaInsets();
 	const { device } = useDevice();
 	const { can, isLoading: permsLoading } = usePermissions();
-	const params = useLocalSearchParams<{ clientId?: string }>();
+	const params = useLocalSearchParams<{
+		clientId?: string;
+		projectId?: string;
+	}>();
 
 	const [clientId, setClientId] = useState<Id<"clients"> | "">(
 		(params.clientId as Id<"clients">) || ""
 	);
 	// A client pushed in on the route is settled — show it read-only.
 	const clientLocked = !!params.clientId;
-	const [projectId, setProjectId] = useState<Id<"projects"> | "">("");
+	// A project pushed in on the route is only pre-staged, never locked — the
+	// picker below still clears it (and a client change wipes it outright).
+	const [projectId, setProjectId] = useState<Id<"projects"> | "">(
+		(params.projectId as Id<"projects">) || ""
+	);
 	const [title, setTitle] = useState("");
 	const [submitting, setSubmitting] = useState(false);
 	const [error, setError] = useState<{
