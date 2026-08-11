@@ -23,7 +23,14 @@ const DOT_RADIUS = 1; // pt — 1:1 with web's radial-gradient 1px stop
  * escapes to full-screen and `overflow: hidden` does not clip it (see the
  * headerHeight measurement in app-header.tsx for the prior incident).
  */
-export function DotGrid({ style }: { style?: StyleProp<ViewStyle> }) {
+export function DotGrid({
+	style,
+	// Same 22px pitch everywhere; the ink command hero passes its white variant.
+	color = DOT_COLOR,
+}: {
+	style?: StyleProp<ViewStyle>;
+	color?: string;
+}) {
 	// useId() can contain ":" — not safe inside a `url(#id)` pattern reference.
 	const rawId = useId();
 	const patternId = `dotGrid${rawId.replace(/[^a-zA-Z0-9]/g, "")}`;
@@ -57,7 +64,7 @@ export function DotGrid({ style }: { style?: StyleProp<ViewStyle> }) {
 								cx={SPACING / 2}
 								cy={SPACING / 2}
 								r={DOT_RADIUS}
-								fill={DOT_COLOR}
+								fill={color}
 							/>
 						</Pattern>
 					</Defs>

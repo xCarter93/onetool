@@ -7,11 +7,14 @@ import {
 	Pressable,
 	StyleSheet,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import {
+	SafeAreaView,
+	useSafeAreaInsets,
+} from "react-native-safe-area-context";
 import { useUser, useAuth, useOrganization } from "@clerk/expo";
 import { useQuery } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
-import { useTokens, radii, fontFamily } from "@/lib/theme";
+import { DOCK_CLEARANCE, useTokens, radii, fontFamily } from "@/lib/theme";
 import { Avatar, Card, DotGrid } from "@/components/ui";
 import { useRouter, type Href } from "expo-router";
 import { Mail, Building, LogOut, Shield, Trash2, SquarePen, ChevronRight } from "lucide-react-native";
@@ -38,7 +41,11 @@ export default function ProfileScreen({
 	const router = useRouter();
 	const { organization, membership } = useOrganization();
 	const t = useTokens();
+	const insets = useSafeAreaInsets();
 	const isPane = headerMode === "pane";
+	// The floating dock takes no layout height — scroll content clears it
+	// itself. iPad panes have no dock (the shell replaces Tabs).
+	const scrollBottom = isPane ? 16 : DOCK_CLEARANCE + insets.bottom;
 
 	// TRUE ownership comes from the BACKEND (Convex), NOT the Clerk org:admin role —
 	// a co-admin who is not the org owner must take the member path.
@@ -165,7 +172,7 @@ export default function ProfileScreen({
 			<ScrollView
 				style={{ flex: 1 }}
 				contentContainerStyle={[
-					{ padding: 16 },
+					{ padding: 16, paddingBottom: scrollBottom },
 					// iPad: comfortable centered column (not stretched edge-to-edge).
 					isPane && { maxWidth: 560, alignSelf: "center", width: "100%" },
 				]}

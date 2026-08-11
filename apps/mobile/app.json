@@ -125,7 +125,7 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#031125",
+          "backgroundColor": "#0a1c26",
           "image": "./assets/OneTool-mark.png",
           "imageWidth": 120
         }

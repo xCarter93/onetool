@@ -14,10 +14,10 @@ export default function AuthScreen() {
 	return (
 		<AuthScreenShell>
 			{/* AuthView has no style prop and no intrinsic height — it fills its
-			    parent, so the host must resolve to a real height: flex:1 in the
-			    phone flex column, a fixed minHeight inside the content-sized iPad
-			    card (a flex:1 child of a content-sized box collapses to 0). */}
-			<View style={isPad ? { minHeight: 480 } : { flex: 1 }}>
+			    parent, so the host must resolve to a real height. Both branches
+			    now sit inside content-sized cards (3.0 glass card / iPad panel),
+			    where a flex:1 child collapses to 0 — hence fixed minHeights. */}
+			<View style={isPad ? { minHeight: 480 } : { minHeight: 440 }}>
 				<AuthView mode="signIn" isDismissible={false} />
 			</View>
 		</AuthScreenShell>

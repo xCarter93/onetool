@@ -1,12 +1,12 @@
 import { useMemo, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { FlashList } from "@shopify/flash-list";
 import { useQuery } from "convex/react";
 import { useRouter, type Href } from "expo-router";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { Id } from "@onetool/backend/convex/_generated/dataModel";
-import { fontFamily, radii, type, useTokens } from "@/lib/theme";
+import { DOCK_CLEARANCE, fontFamily, radii, type, useTokens } from "@/lib/theme";
 import { AppHeader } from "@/components/app-header";
 import {
 	Badge,
@@ -61,7 +61,11 @@ export default function MoneyScreen({
 } = {}) {
 	const t = useTokens();
 	const router = useRouter();
+	const insets = useSafeAreaInsets();
 	const isPane = headerMode === "pane";
+	// The floating dock takes no layout height — lists clear it themselves.
+	// iPad panes have no dock (the shell replaces Tabs).
+	const listBottom = isPane ? 24 : DOCK_CLEARANCE + insets.bottom;
 	const [tab, setTab] = useState<Tab>("invoices");
 	// Seed "now" once (lazy) — react-hooks/purity forbids Date.now() during render.
 	const [now] = useState(() => Date.now());
@@ -291,7 +295,10 @@ export default function MoneyScreen({
 					keyExtractor={(item) => item._id}
 					renderItem={renderInvoice}
 					ListHeaderComponent={ListHeader}
-					contentContainerStyle={styles.listContent}
+					contentContainerStyle={{
+						...styles.listContent,
+						paddingBottom: listBottom,
+					}}
 					ListEmptyComponent={Empty}
 				/>
 			) : (
@@ -300,7 +307,10 @@ export default function MoneyScreen({
 					keyExtractor={(item) => item._id}
 					renderItem={renderQuote}
 					ListHeaderComponent={ListHeader}
-					contentContainerStyle={styles.listContent}
+					contentContainerStyle={{
+						...styles.listContent,
+						paddingBottom: listBottom,
+					}}
 					ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
 					ListEmptyComponent={Empty}
 				/>

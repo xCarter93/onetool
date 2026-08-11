@@ -11,9 +11,12 @@ import { useQuery } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { useRouter } from "expo-router";
 import { useState, useMemo } from "react";
-import { SafeAreaView } from "react-native-safe-area-context";
+import {
+	SafeAreaView,
+	useSafeAreaInsets,
+} from "react-native-safe-area-context";
 import { Search, Plus, X } from "lucide-react-native";
-import { fontFamily, radii, shadow, useTokens } from "@/lib/theme";
+import { DOCK_CLEARANCE, fontFamily, radii, shadow, useTokens } from "@/lib/theme";
 import { Avatar, Badge, DotGrid, SCROLL_TOP_INSET } from "@/components/ui";
 import { AppHeader } from "@/components/app-header";
 import { useShellNav } from "@/lib/shell-nav";
@@ -64,7 +67,11 @@ export default function ClientsScreen({
 	const router = useRouter();
 	const t = useTokens();
 	const shellNav = useShellNav();
+	const insets = useSafeAreaInsets();
 	const isPane = headerMode === "pane";
+	// The floating dock takes no layout height — the list clears it itself.
+	// iPad panes have no dock (the shell replaces Tabs).
+	const listBottom = isPane ? 24 : DOCK_CLEARANCE + insets.bottom;
 	const [searchQuery, setSearchQuery] = useState("");
 	const [filter, setFilter] = useState<FilterValue>("all");
 
@@ -251,7 +258,10 @@ export default function ClientsScreen({
 					keyExtractor={(item) => item.id}
 					renderItem={renderClient}
 					ListHeaderComponent={ListHeader}
-					contentContainerStyle={styles.listContent}
+					contentContainerStyle={{
+						...styles.listContent,
+						paddingBottom: listBottom,
+					}}
 					ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
 					ListEmptyComponent={
 						<View style={styles.emptyState}>

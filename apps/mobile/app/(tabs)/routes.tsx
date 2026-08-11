@@ -8,7 +8,14 @@ import { useAction, useMutation, useQuery } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import type { Doc, Id } from "@onetool/backend/convex/_generated/dataModel";
 import { ChevronLeft, Fuel, Map } from "lucide-react-native";
-import { fontFamily, radii, shadow, type, useTokens } from "@/lib/theme";
+import {
+	DOCK_CLEARANCE,
+	fontFamily,
+	radii,
+	shadow,
+	type,
+	useTokens,
+} from "@/lib/theme";
 import { AppHeader } from "@/components/app-header";
 import { DotGrid } from "@/components/ui";
 import { MapboxModule } from "@/lib/mapbox";
@@ -251,6 +258,9 @@ function RoutesBody({ headerMode }: { headerMode: "root" | "pane" }) {
 			: null;
 	// Header band (no title) bottoms out around insets.top + 62 — chips clear it.
 	const controlsTop = isPane ? 12 : insets.top + 70;
+	// The floating dock takes no layout height — the sheet and the carousel lift
+	// clear of it. iPad panes have no dock (the shell replaces Tabs).
+	const dockInset = isPane ? 12 : DOCK_CLEARANCE + insets.bottom;
 
 	return (
 		<View style={styles.screen}>
@@ -315,6 +325,7 @@ function RoutesBody({ headerMode }: { headerMode: "root" | "pane" }) {
 					error={error}
 					googleMaps={googleMaps}
 					focusIndex={focusIndex}
+					bottomInset={dockInset}
 					onFocusChange={setFocusIndex}
 					onStart={() =>
 						run(async () => {
@@ -371,6 +382,7 @@ function RoutesBody({ headerMode }: { headerMode: "root" | "pane" }) {
 					onSelect={selectRoute}
 					onCreate={() => openBuilder()}
 					onSeedSchedule={onSeedSchedule}
+					bottomInset={dockInset}
 				/>
 			)}
 		</View>

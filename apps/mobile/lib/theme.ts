@@ -134,6 +134,83 @@ export function useTokens() {
 }
 
 // ----------------------------------------------------------------------------
+// 3.0 premium chrome — ink command hero + floating glass dock. Values are the
+// design canvas's literals (Mobile App Redesign 1a/1m); components must bind
+// these, never inline the hex. White-on-heroInk text tiers are AA-checked:
+// .92 white 15.2:1, .75 10.1:1, .55 5.5:1, .5 4.6:1 (all pass at their sizes).
+// ----------------------------------------------------------------------------
+export const hero = {
+	/** Deep-ink band + sign-in root — the dark counterpart of the brand blue. */
+	ink: "#0a1c26",
+	/** Radial brand glow painted top-right of the ink band. */
+	glow: "rgba(0,166,244,.22)",
+	/** White dot-grid on ink (same 22px pitch as the light canvas). */
+	dotGrid: "rgba(255,255,255,.07)",
+	/** Frosted stat/utility fills on ink. */
+	cellBg: "rgba(255,255,255,.08)",
+	cellBorder: "rgba(255,255,255,.10)",
+	buttonBg: "rgba(255,255,255,.10)",
+	buttonBorder: "rgba(255,255,255,.12)",
+	avatarBg: "rgba(255,255,255,.14)",
+	/** Text tiers on ink. */
+	text: "#ffffff",
+	textStrong: "rgba(255,255,255,.92)",
+	textMid: "rgba(255,255,255,.75)",
+	textSub: "rgba(255,255,255,.55)",
+	textDim: "rgba(255,255,255,.5)",
+	textFaint: "rgba(255,255,255,.45)",
+	/** Money/stat accent — readable sky blue on ink (7.5:1). */
+	statAccent: "#4cc4ff",
+	/** Week-strip load bars on ink (decor, not text). */
+	barStrong: "rgba(255,255,255,.45)",
+	barMid: "rgba(255,255,255,.3)",
+	barSoft: "rgba(255,255,255,.22)",
+	/** Notification dot (bordered with `ink` so it reads on the frosted tile). */
+	alertDot: "#ff5d5d",
+	/** Bottom corner radius of the band. */
+	radius: 28,
+	/** Sign-in glass card fill — lighter ink so the glass lifts off the scrim. */
+	glassBg: "rgba(14,30,40,.55)",
+	glassBorder: "rgba(255,255,255,.14)",
+	/** Solid stand-in for glassBg composited over the hero photo — clerk-theme
+	 * .json's background must match it so AuthView reads as the card surface. */
+	authSurface: "#13232d",
+	/** Sign-in scrim stops (top → foot). */
+	scrim: [
+		"rgba(10,28,38,.42)",
+		"rgba(10,28,38,.06)",
+		"rgba(10,28,38,.16)",
+		"rgba(8,22,30,.9)",
+	],
+} as const;
+
+export const dock = {
+	/** Floating white glass pill. */
+	bg: "rgba(255,255,255,.86)",
+	border: "rgba(23,24,26,.08)",
+	shadow: "0 12px 32px rgba(15,30,40,.16)",
+	height: 60,
+	radius: 30,
+	sideInset: 16,
+	bottomInset: 14,
+	blur: 18,
+	/** Orb: 50px gradient squircle, risen 16px above the pill's top edge. */
+	orbSize: 50,
+	orbRise: 16,
+	orbRadius: 18,
+	orbRing: "#ffffff",
+	orbGradient: ["#00a6f4", "#0072b5"] as [string, string],
+} as const;
+
+/**
+ * Scroll clearance for content that runs under the floating dock:
+ * bottomInset + height + orb rise + slack. Screens inside (tabs) add this to
+ * their scroll padding instead of hardcoding.
+ */
+export const DOCK_CLEARANCE =
+	dock.bottomInset + dock.height + dock.orbRise + 12;
+
+// ----------------------------------------------------------------------------
 // Badge tones — soft-tint pairs, quieter than the old saturated pills.
 // ----------------------------------------------------------------------------
 export type BadgeTone = "ok" | "info" | "warn" | "late" | "mute";

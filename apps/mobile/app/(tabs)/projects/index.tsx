@@ -12,9 +12,12 @@ import { api } from "@onetool/backend/convex/_generated/api";
 import type { Doc, Id } from "@onetool/backend/convex/_generated/dataModel";
 import { useRouter } from "expo-router";
 import { useState, useMemo } from "react";
-import { SafeAreaView } from "react-native-safe-area-context";
+import {
+	SafeAreaView,
+	useSafeAreaInsets,
+} from "react-native-safe-area-context";
 import { Search, Calendar, X } from "lucide-react-native";
-import { fontFamily, radii, useTokens } from "@/lib/theme";
+import { DOCK_CLEARANCE, fontFamily, radii, useTokens } from "@/lib/theme";
 import { Badge, DotGrid, Eyebrow, SCROLL_TOP_INSET } from "@/components/ui";
 import { AppHeader } from "@/components/app-header";
 
@@ -45,7 +48,11 @@ export default function ProjectsScreen({
 } = {}) {
 	const router = useRouter();
 	const t = useTokens();
+	const insets = useSafeAreaInsets();
 	const isPane = headerMode === "pane";
+	// The floating dock takes no layout height — the list clears it itself.
+	// iPad panes have no dock (the shell replaces Tabs).
+	const listBottom = isPane ? 24 : DOCK_CLEARANCE + insets.bottom;
 	const [searchQuery, setSearchQuery] = useState("");
 	const [filter, setFilter] = useState<FilterValue>("all");
 
@@ -247,7 +254,10 @@ export default function ProjectsScreen({
 					keyExtractor={(item) => item._id}
 					renderItem={renderProject}
 					ListHeaderComponent={ListHeader}
-					contentContainerStyle={styles.listContent}
+					contentContainerStyle={{
+						...styles.listContent,
+						paddingBottom: listBottom,
+					}}
 					ItemSeparatorComponent={() => <View style={{ height: 12 }} />}
 					ListEmptyComponent={
 						<View style={styles.emptyState}>

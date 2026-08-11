@@ -46,6 +46,8 @@ export type StopCarouselProps = {
 	onSendGoogle?: () => void;
 	/** Waypoint-cap note, e.g. "Sends the next 10 stops — 3 left off." */
 	sendGoogleNote?: string | null;
+	/** Bottom clearance for the floating dock (DOCK_CLEARANCE + safe area). */
+	bottomInset: number;
 };
 
 export function StopCarousel(props: StopCarouselProps) {
@@ -67,7 +69,11 @@ export function StopCarousel(props: StopCarouselProps) {
 	}, [props.focusIndex, snap]);
 
 	return (
-		<View style={styles.wrap} pointerEvents="box-none">
+		// Lifted clear of the floating dock (DOCK_CLEARANCE) by the parent.
+		<View
+			style={[styles.wrap, { bottom: props.bottomInset }]}
+			pointerEvents="box-none"
+		>
 			<ScrollView
 				ref={scrollRef}
 				horizontal
@@ -356,7 +362,6 @@ const styles = StyleSheet.create({
 		position: "absolute",
 		left: 0,
 		right: 0,
-		bottom: 12,
 	},
 	strip: {
 		gap: CARD_GAP,
