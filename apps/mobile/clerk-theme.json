@@ -2,7 +2,7 @@
 	"colors": {
 		"primary": "#0072b5",
 		"primaryForeground": "#ffffff",
-		"background": "#0e1e288c",
+		"background": "#00000000",
 		"foreground": "#ffffff",
 		"mutedForeground": "#c2ced6",
 		"muted": "#ffffff14",

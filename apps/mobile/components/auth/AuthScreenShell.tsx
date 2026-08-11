@@ -55,15 +55,20 @@ export function AuthScreenShell({ children }: AuthScreenShellProps) {
 		</>
 	);
 
-	// Real glass: AuthView's themed surface is TRANSLUCENT ink (clerk-theme
-	// background #0e1e288c — the native bridge parses 8-digit RGBA and its
-	// hosting view is .clear), so the BlurView underneath does the work.
+	// Real glass: AuthView's themed background is FULLY transparent (clerk-theme
+	// background #00000000 — the bridge parses 8-digit RGBA and its hosting view
+	// is .clear), so this card is the only surface: system blur + the canvas's
+	// ink wash. A translucent AuthView bg stacked on the blur read as an opaque
+	// gray slab (first visual pass).
 	const glass = (content: React.ReactNode, style: object) => (
 		<View style={style}>
 			<BlurView
-				intensity={40}
+				intensity={55}
 				tint="dark"
 				style={StyleSheet.absoluteFill}
+			/>
+			<View
+				style={[StyleSheet.absoluteFill, { backgroundColor: hero.glassBg }]}
 			/>
 			{content}
 		</View>
