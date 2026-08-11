@@ -23,6 +23,7 @@ import { AppHeader } from "@/components/app-header";
 import { PaneHeader } from "@/components/ipad/pane-header";
 import { Button, DotGrid } from "@/components/ui";
 import { useDevice } from "@/lib/use-device";
+import { describeMutationError } from "@/lib/mutation-error";
 import {
 	AddressAutocomplete,
 	type AddressValue,
@@ -176,9 +177,15 @@ export function ClientCreateBody({
 			else router.replace(`/clients/${clientId}`);
 		} catch (err) {
 			console.error("Client create failed:", err);
+			const { message, planLimit } = describeMutationError(
+				err,
+				"Couldn't save your changes. Check your connection and try again."
+			);
 			Alert.alert(
-				"Couldn't save",
-				"Couldn't save your changes. Check your connection and try again.",
+				planLimit ? "Plan limit reached" : "Couldn't save",
+				planLimit
+					? `${message} Upgrade on the web app to add more.`
+					: "Couldn't save your changes. Check your connection and try again.",
 				[{ text: "OK" }]
 			);
 		} finally {

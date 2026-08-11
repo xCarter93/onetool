@@ -19,14 +19,16 @@ import {
 	Activity as ActivityIcon,
 	Bell,
 	ChevronDown,
-	Plus,
+	Search,
 } from "lucide-react-native";
 import { DotGrid } from "@/components/ui";
 import { fontFamily, hero, tokens, tracking, useTokens } from "@/lib/theme";
+import { requestSearchFocus } from "@/lib/search-focus";
 
 const ORG_SWITCH: Href = "/org-switch" as Href;
 const NOTIFICATIONS: Href = "/notifications" as Href;
 const ACTIVITY: Href = "/(tabs)/activity" as Href;
+const WORK: Href = "/(tabs)/work" as Href;
 
 function initialsFrom(name?: string | null, email?: string | null): string {
 	const source = name?.trim() || email || "?";
@@ -49,9 +51,12 @@ interface CommandHeroProps {
 	eyebrow: string;
 	greeting: string;
 	stats: readonly HeroStat[];
-	/** "New task" — the hero keeps 2.0's capture affordance the canvas omits. */
-	onAdd?: () => void;
-	addLabel?: string;
+	/**
+	 * Compressed band: greeting shrinks and the day stats drop out. Used when the
+	 * schedule is anchored to a day other than today — the stats describe TODAY,
+	 * so keeping them would both mislead and steal the room the schedule needs.
+	 */
+	compact?: boolean;
 	/** The ink-tone week strip (or any pinned control) below the stats. */
 	children?: React.ReactNode;
 }
@@ -65,8 +70,7 @@ export function CommandHero({
 	eyebrow,
 	greeting,
 	stats,
-	onAdd,
-	addLabel = "New",
+	compact = false,
 	children,
 }: CommandHeroProps) {
 	const t = useTokens();
@@ -186,14 +190,19 @@ export function CommandHero({
 					<ChevronDown size={14} color={hero.textSub} />
 				</Pressable>
 				<View style={styles.spacer} />
-				{onAdd
-					? iconButton(
-							"add",
-							addLabel,
-							onAdd,
-							<Plus size={18} color={hero.text} strokeWidth={2.2} />,
-						)
-					: null}
+				{/* No ＋ here — the speed-dial FAB is the single capture entry point
+				    on iPhone (3.0 slice 5). */}
+				{/* Today has no AppHeader on iPhone, so the hero carries the global
+				    search jump the other tab roots get from app-header.tsx. */}
+				{iconButton(
+					"search",
+					"Search everything",
+					() => {
+						requestSearchFocus();
+						router.push(WORK);
+					},
+					<Search size={18} color={hero.text} strokeWidth={2} />,
+				)}
 				{iconButton(
 					"activity",
 					"Activity",
@@ -217,25 +226,31 @@ export function CommandHero({
 			</View>
 
 			{/* Greeting */}
-			<Text style={styles.eyebrow}>{eyebrow.toUpperCase()}</Text>
-			<Text style={styles.greeting}>{greeting}</Text>
+			<Text style={[styles.eyebrow, compact && styles.eyebrowCompact]}>
+				{eyebrow.toUpperCase()}
+			</Text>
+			<Text style={[styles.greeting, compact && styles.greetingCompact]}>
+				{greeting}
+			</Text>
 
-			{/* Day stats */}
-			<View style={styles.statsRow}>
-				{stats.map((stat) => (
-					<View key={stat.caption} style={styles.statCard}>
-						<Text
-							style={[
-								styles.statValue,
-								stat.accent && { color: hero.statAccent },
-							]}
-						>
-							{stat.value}
-						</Text>
-						<Text style={styles.statCaption}>{stat.caption}</Text>
-					</View>
-				))}
-			</View>
+			{/* Day stats — today's numbers, so they leave with the compressed band. */}
+			{compact ? null : (
+				<View style={styles.statsRow}>
+					{stats.map((stat) => (
+						<View key={stat.caption} style={styles.statCard}>
+							<Text
+								style={[
+									styles.statValue,
+									stat.accent && { color: hero.statAccent },
+								]}
+							>
+								{stat.value}
+							</Text>
+							<Text style={styles.statCaption}>{stat.caption}</Text>
+						</View>
+					))}
+				</View>
+			)}
 
 			{children ? <View style={styles.controls}>{children}</View> : null}
 		</View>
@@ -316,6 +331,9 @@ const styles = StyleSheet.create({
 		letterSpacing: tracking.groupLabel,
 		color: hero.textDim,
 	},
+	eyebrowCompact: {
+		marginTop: 14,
+	},
 	greeting: {
 		marginTop: 4,
 		fontFamily: fontFamily.semibold,
@@ -323,6 +341,11 @@ const styles = StyleSheet.create({
 		lineHeight: 31,
 		letterSpacing: -0.3,
 		color: hero.text,
+	},
+	greetingCompact: {
+		fontSize: 19,
+		lineHeight: 23,
+		marginTop: 2,
 	},
 	statsRow: {
 		flexDirection: "row",

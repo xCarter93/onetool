@@ -30,7 +30,11 @@ interface WeekStripProps {
 	days: number[];
 	selectedDayMs: number;
 	todayMs: number;
-	/** Open-task counts keyed by UTC-midnight ms (see `countTasksByDay`). */
+	/**
+	 * Open-work counts keyed by UTC-midnight ms — tasks AND project spans, from
+	 * the same calendar-events feed the schedule renders (`countScheduleByDay`),
+	 * so the bars can never disagree with the timeline this strip anchors.
+	 */
 	counts: Map<number, number>;
 	/** Tapping a day scopes the agenda to it. */
 	onSelectDay: (dayMs: number) => void;
@@ -167,7 +171,7 @@ export function WeekStrip({
 						accessibilityLabel={[
 							isToday ? `Today, ${label}` : label,
 							// The bar encodes workload but is invisible to a screen reader.
-							count > 0 ? `${count} ${count === 1 ? "task" : "tasks"}` : "no tasks",
+							count > 0 ? `${count} ${count === 1 ? "job" : "jobs"}` : "nothing scheduled",
 						].join(", ")}
 						accessibilityHint="Shows this day's work"
 						onPress={() => onSelectDay(dayMs)}

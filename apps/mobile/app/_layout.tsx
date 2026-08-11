@@ -260,6 +260,27 @@ export default function RootLayout() {
 									sheetCornerRadius: 30,
 								})}
 							/>
+							{/* Speed-dial fast-capture creates (Slice 5) — same sheet
+							    idiom as tasks/form. Static segments, so they take
+							    precedence over the sibling [id] routes. */}
+							<Stack.Screen
+								name="project/new"
+								options={overlayOptions(device, {
+									sheetAllowedDetents: [0.9, 1.0],
+									sheetInitialDetentIndex: 0,
+									sheetGrabberVisible: false,
+									sheetCornerRadius: 30,
+								})}
+							/>
+							<Stack.Screen
+								name="quote/new"
+								options={overlayOptions(device, {
+									sheetAllowedDetents: [0.9, 1.0],
+									sheetInitialDetentIndex: 0,
+									sheetGrabberVisible: false,
+									sheetCornerRadius: 30,
+								})}
+							/>
 							{/* Assistant sheet over the current context (§4). P2 ships the neutral
 							    unavailable state; P3 adds the gated chat. */}
 							<Stack.Screen

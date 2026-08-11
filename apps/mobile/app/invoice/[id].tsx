@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
 	Pressable,
 	ScrollView,
@@ -51,6 +51,8 @@ import { useInvoiceCapabilities } from "@/lib/use-record-capabilities";
 import { usePermissions } from "@/lib/use-permissions";
 import { deriveInvoiceDisplayPricing } from "@onetool/backend/pdf/invoicePricing";
 import { formatCurrency, formatDocumentDate } from "@/lib/format";
+import { recordRecentView } from "@/lib/recents";
+import { useOrganization } from "@clerk/expo";
 
 const METHOD_LABEL: Record<string, string> = {
 	cash: "Cash",
@@ -135,6 +137,23 @@ export function InvoiceDetailBody({
 		clients?.forEach((c) => map.set(c._id, c.companyName));
 		return map;
 	}, [clients]);
+
+	// On-device "Recently viewed" trail for the Work tab (Slice 6). Fire-and-
+	// forget, and only once the doc has loaded so the snapshot is a real title.
+	const { organization } = useOrganization();
+	const orgId = organization?.id;
+	const recentId = invoice?._id;
+	const recentTitle = invoice?.invoiceNumber;
+	const recentSub = invoice ? clientName.get(invoice.clientId) : undefined;
+	useEffect(() => {
+		if (!recentId || !recentTitle) return;
+		recordRecentView(orgId, {
+			kind: "invoice",
+			id: recentId,
+			title: recentTitle,
+			sub: recentSub,
+		});
+	}, [orgId, recentId, recentTitle, recentSub]);
 
 	// PARENT STATE — loading: skeleton document, keep the detail header.
 	if (invoice === undefined) {

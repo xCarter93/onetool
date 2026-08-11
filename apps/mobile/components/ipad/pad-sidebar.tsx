@@ -1,7 +1,11 @@
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import {
+	ActionSheetIOS,
+	Alert,
+	findNodeHandle,
 	Image,
 	type LayoutChangeEvent,
+	Platform,
 	Pressable,
 	StyleSheet,
 	Text,
@@ -15,6 +19,7 @@ import {
 	Briefcase,
 	CalendarCheck,
 	ChevronDown,
+	Plus,
 	Route as RouteIcon,
 	Sparkles,
 } from "lucide-react-native";
@@ -30,9 +35,19 @@ export type SidebarTab = "today" | "work" | "routes" | "activity";
 /** "profile" highlights NO nav row — Profile is reached via the footer. */
 export type SidebarActive = SidebarTab | "profile";
 
+/** One entry of the rail's create menu. The shell builds and permission-filters
+ *  these; the rail only renders them (same "pure chrome" split as the nav). */
+export interface CreateItem {
+	key: string;
+	label: string;
+	run: () => void;
+}
+
 interface PadSidebarProps {
 	activeTab: SidebarActive;
 	onNavigate: (tab: SidebarTab) => void;
+	/** Empty → no ＋ at all (nothing this member may create = no dead chrome). */
+	createItems?: CreateItem[];
 	onAssistant: () => void;
 	onProfile: () => void;
 	onNotifications: () => void;
@@ -66,12 +81,35 @@ function roleLabel(role?: string | null): string {
 export function PadSidebar({
 	activeTab,
 	onNavigate,
+	createItems = [],
 	onAssistant,
 	onProfile,
 	onNotifications,
 }: PadSidebarProps) {
 	const t = useTokens();
 	const router = useRouter();
+	// The sheet must be anchored to the ＋ or iOS pops it from the screen centre
+	// instead of beside the rail.
+	const createAnchor = useRef<View>(null);
+
+	const openCreateMenu = () => {
+		if (createItems.length === 0) return;
+		if (Platform.OS === "ios") {
+			ActionSheetIOS.showActionSheetWithOptions(
+				{
+					options: [...createItems.map((i) => i.label), "Cancel"],
+					cancelButtonIndex: createItems.length,
+					anchor: findNodeHandle(createAnchor.current) ?? undefined,
+				},
+				(index) => createItems[index]?.run(),
+			);
+		} else {
+			Alert.alert("Create", undefined, [
+				...createItems.map((i) => ({ text: i.label, onPress: i.run })),
+				{ text: "Cancel", style: "cancel" as const },
+			]);
+		}
+	};
 	const { organization, membership } = useOrganization();
 	const { user } = useUser();
 
@@ -182,6 +220,27 @@ export function PadSidebar({
 			{/* Assistant sits OUTSIDE the tablist — it is a button, not a fifth tab —
 			    and after the flex:1 nav, which is what pins it to the rail bottom (§6:
 			    no floating FAB on iPad). */}
+			{/* Create sits directly above the assistant — the rail's capture entry
+			    point, standing in for the phone's speed-dial FAB (§6: no FAB on
+			    iPad). Anchors its own action sheet. */}
+			{createItems.length > 0 ? (
+				<View style={styles.createWrap}>
+					<Pressable
+						ref={createAnchor}
+						onPress={openCreateMenu}
+						style={({ pressed }) => [
+							styles.createBtn,
+							{ backgroundColor: t.secondary },
+							pressed && { opacity: 0.85 },
+						]}
+						accessibilityRole="button"
+						accessibilityLabel="Create"
+					>
+						<Plus size={22} color={t.primaryInk} strokeWidth={2.2} />
+					</Pressable>
+				</View>
+			) : null}
+
 			<View style={styles.assistantWrap}>
 				<Pressable
 					onPress={onAssistant}
@@ -312,6 +371,17 @@ const styles = StyleSheet.create({
 	},
 	navLabel: {
 		fontSize: type.body,
+	},
+	createWrap: {
+		paddingHorizontal: 12,
+		paddingBottom: 8,
+	},
+	createBtn: {
+		width: touch.min,
+		height: touch.min,
+		borderRadius: radii.ctrl,
+		alignItems: "center",
+		justifyContent: "center",
 	},
 	assistantWrap: {
 		paddingHorizontal: 12,

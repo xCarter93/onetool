@@ -152,20 +152,9 @@ export default function ClientsScreen({
 
 	const ListHeader = (
 		<View style={styles.listHeader}>
-			<Pressable
-				onPress={goToNew}
-				style={({ pressed }) => [
-					styles.newBtn,
-					{ backgroundColor: t.primarySolid },
-					pressed && { opacity: 0.9 },
-				]}
-				accessibilityRole="button"
-				accessibilityLabel="New client"
-			>
-				<Plus size={18} color="#fff" />
-				<Text style={styles.newBtnLabel}>New client</Text>
-			</Pressable>
-
+			{/* No "New client" button here — the speed-dial FAB owns capture on
+			    iPhone (3.0 slice 5). The empty state keeps its CTA: a first-run
+			    primary action isn't a duplicate. */}
 			<View style={styles.searchBar}>
 				<Search size={19} color={t.faint} />
 				<TextInput

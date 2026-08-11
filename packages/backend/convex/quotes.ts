@@ -129,6 +129,15 @@ async function createQuoteWithOrg(
 	// Validate project access if provided
 	if (data.projectId) {
 		await validateProjectAccess(ctx, data.projectId, ctx.orgId);
+		// Org scope alone still allows a project belonging to a DIFFERENT client,
+		// which would print the wrong job on the quote.
+		const project = await ctx.db.get(data.projectId);
+		if (project && project.clientId !== data.clientId) {
+			throw new ConvexError({
+				code: "BAD_REQUEST",
+				message: "Project does not belong to the selected client",
+			});
+		}
 	}
 
 	// Auto-generate quote number if not provided

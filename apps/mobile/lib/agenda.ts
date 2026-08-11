@@ -5,7 +5,11 @@
 // boundary here is a UTC boundary. Never use local getFullYear/getMonth/getDate
 // on a task date. `startTime`/`endTime` are "HH:MM" wall-clock strings.
 
-import { DAY_MS } from "@/components/calendar/dateUtils";
+import {
+	DAY_MS,
+	type ProjectEvent,
+	type TaskEvent,
+} from "@/components/calendar/dateUtils";
 import { utcDayStartMs } from "@/lib/date";
 
 /** Sunday-start, matching the mockup's `Sun Mon Tue Wed Thu Fri Sat` strip. */
@@ -148,8 +152,6 @@ export type DayPlan = {
 	anytime: AgendaTask[];
 	/** Open spillover from earlier days, oldest first. */
 	overdue: AgendaTask[];
-	/** Task to emphasize as "next up"; null off-today or when the day is done. */
-	nextUpId: string | null;
 	/**
 	 * `timed` index the now-separator renders BEFORE (== timed.length → after
 	 * the last row); -1 = don't render (browsing another day, or no timed work).
@@ -195,19 +197,65 @@ export function buildDayPlan(
 	// Oldest first — the thing you've ignored longest leads.
 	overdue.sort((a, b) => (a.date ?? 0) - (b.date ?? 0));
 
+	// The "next up" pick derives from nowIndex, but lives in `selectNextUp` — it
+	// has to see the screen's optimistic done state, which a pure plan cannot.
 	let nowIndex = -1;
-	let nextUpId: string | null = null;
 	if (day === today && timed.length > 0) {
 		const firstUpcoming = timed.findIndex(
 			(t) => (minutesFromHHMM(t.startTime) ?? 0) >= nowMinutes,
 		);
 		nowIndex = firstUpcoming === -1 ? timed.length : firstUpcoming;
-		// Next up = the first upcoming task still open; a done row isn't "next".
-		nextUpId =
-			timed.slice(nowIndex).find((t) => !DONE.has(t.status ?? ""))?._id ?? null;
 	}
 
-	return { timed, anytime, overdue, nextUpId, nowIndex };
+	return { timed, anytime, overdue, nowIndex };
+}
+
+/** The lead object plus the timeline that continues after it. */
+export type NextUpSplit = {
+	/** The card's task; null off-today, on an empty day, or when the day is done. */
+	next: AgendaTask | null;
+	/** `plan.timed` with `next` removed — the card is never duplicated below. */
+	timed: AgendaTask[];
+	/** `plan.nowIndex` re-based onto the shortened `timed`. */
+	nowIndex: number;
+};
+
+/**
+ * Split the day's lead job off the timeline for the "Next up" card.
+ *
+ * Re-derives the pick from `doneIds` rather than trusting `plan.nextUpId`:
+ * nextUpId reads SERVER status, so checking the card off would leave a
+ * struck-through "Next up" until the subscription round-trips. `nowIndex === -1`
+ * (browsing another day) short-circuits, which is what anchors the card to today.
+ */
+export function selectNextUp(
+	plan: DayPlan,
+	doneIds: ReadonlySet<string>,
+): NextUpSplit {
+	const { timed, nowIndex } = plan;
+	if (nowIndex < 0) return { next: null, timed, nowIndex };
+	const at = timed.findIndex(
+		(task, i) =>
+			i >= nowIndex && !doneIds.has(task._id) && !DONE.has(task.status ?? ""),
+	);
+	if (at === -1) return { next: null, timed, nowIndex };
+	const rest = timed.filter((_, i) => i !== at);
+	// The removed row is always at index >= nowIndex, so earlier indices hold;
+	// only the "after the last row" position can fall off the end.
+	return { next: timed[at], timed: rest, nowIndex: Math.min(nowIndex, rest.length) };
+}
+
+/**
+ * Fallback lead object when no timed job qualifies for the card: the first
+ * still-active project visit. A project-only day is the COMMON field-service
+ * shape ("1 visit today", nothing clocked) — without this, exactly those days
+ * lose the "what's next" moment. Caller gates on today-anchored, since a
+ * timed-empty plan carries nowIndex -1 whether or not the day is today.
+ */
+export function selectNextUpProject(
+	projects: readonly AgendaProject[],
+): AgendaProject | null {
+	return projects.find((p) => !DONE.has(p.status)) ?? null;
 }
 
 /**
@@ -235,6 +283,197 @@ export function countTasksByDay(tasks: AgendaTask[]): Map<number, number> {
 		counts.set(day, (counts.get(day) ?? 0) + 1);
 	}
 	return counts;
+}
+
+// ---------------------------------------------------------------------------
+// Calendar-events feed. Today's schedule (both views) and the week strip's
+// workload bars read ONE subscription — api.calendar.getCalendarEvents — so the
+// strip can never disagree with the timeline it anchors.
+// ---------------------------------------------------------------------------
+
+export type CalendarEvents = {
+	projects: readonly ProjectEvent[];
+	tasks: readonly TaskEvent[];
+};
+
+/** Calendar events adapted to agenda shapes and filtered to a scope. */
+export type ScopedSchedule = {
+	projects: AgendaProject[];
+	tasks: AgendaTask[];
+};
+
+export const EMPTY_SCHEDULE: ScopedSchedule = { projects: [], tasks: [] };
+
+function taskEventToAgenda(event: TaskEvent): AgendaTask {
+	return {
+		_id: event.id,
+		title: event.title,
+		date: event.startDate,
+		startTime: event.startTime,
+		endTime: event.endTime,
+		status: event.status,
+		// The backend substitutes "Internal Task"/"Unknown Client" when a task has
+		// no client. A clientless row should show nothing, not a placeholder.
+		context: event.clientId ? event.clientName : undefined,
+		assigneeUserId: event.assigneeUserId,
+	};
+}
+
+function projectEventToAgenda(event: ProjectEvent): AgendaProject {
+	return {
+		_id: event.id,
+		title: event.title,
+		status: event.status,
+		startDate: event.startDate,
+		endDate: event.endDate,
+		context: event.clientName,
+		assignedUserIds: event.assignedUserIds,
+	};
+}
+
+/**
+ * Adapt + scope in one place, so every downstream feed (day plan, upcoming
+ * list, strip counts, tomorrow peek) sees the same rows. Scoping reuses
+ * `taskInScope`/`projectInScope` — including their deliberate "unassigned work
+ * is still mine" rule.
+ */
+export function scopeCalendarEvents(
+	events: CalendarEvents | undefined,
+	meId: string | null,
+	scope: DayScope,
+): ScopedSchedule {
+	if (!events) return EMPTY_SCHEDULE;
+	return {
+		projects: events.projects
+			.filter((p) => projectInScope(p, meId, scope))
+			.map(projectEventToAgenda),
+		tasks: events.tasks
+			.filter((t) => taskInScope(t, meId, scope))
+			.map(taskEventToAgenda),
+	};
+}
+
+/**
+ * Per-day workload counts for the week strip, over BOTH kinds of work. Bounded
+ * to `days`: a project span is unbounded, and the strip's bar scale must be set
+ * by days it actually shows.
+ */
+export function countScheduleByDay(
+	tasks: AgendaTask[],
+	projects: readonly AgendaProject[],
+	days: readonly number[],
+): Map<number, number> {
+	const taskCounts = countTasksByDay(tasks);
+	const counts = new Map<number, number>();
+	for (const dayMs of days) {
+		const day = utcDayStartMs(dayMs);
+		const total =
+			(taskCounts.get(day) ?? 0) + projectsForDay(projects, day).length;
+		if (total > 0) counts.set(day, total);
+	}
+	return counts;
+}
+
+/** One day of the rolling upcoming agenda. */
+export type UpcomingDay = {
+	dayMs: number;
+	/** Day-level work: project spans covering the day. */
+	projects: AgendaProject[];
+	/** Untimed tasks — shown with the projects, above the timed rows. */
+	anytime: AgendaTask[];
+	/** Timed tasks in start order. */
+	timed: AgendaTask[];
+};
+
+/** Rolling window length for the List view, in days (anchor day included). */
+export const UPCOMING_DAYS = 14;
+
+/**
+ * The List view's feed: `days` calendar days starting at the anchor, grouped by
+ * day, empty days omitted. Days are stepped in whole UTC days (DAY_MS on a
+ * UTC-midnight date-id), which is DST-immune — no local calendar arithmetic.
+ */
+export function buildUpcomingAgenda(
+	schedule: ScopedSchedule,
+	anchorDayMs: number,
+	days: number = UPCOMING_DAYS,
+): UpcomingDay[] {
+	const start = utcDayStartMs(anchorDayMs);
+	const end = start + (days - 1) * DAY_MS;
+
+	// Bucket tasks once rather than re-scanning per day.
+	const byDay = new Map<number, AgendaTask[]>();
+	for (const task of schedule.tasks) {
+		if (task.date === undefined) continue;
+		const day = utcDayStartMs(task.date);
+		if (day < start || day > end) continue;
+		const bucket = byDay.get(day);
+		if (bucket) bucket.push(task);
+		else byDay.set(day, [task]);
+	}
+
+	const out: UpcomingDay[] = [];
+	for (let i = 0; i < days; i++) {
+		const dayMs = start + i * DAY_MS;
+		const dayTasks = byDay.get(dayMs) ?? [];
+		const timed = dayTasks
+			.filter((t) => minutesFromHHMM(t.startTime) !== null)
+			.sort(byStartTime);
+		const anytime = dayTasks
+			.filter((t) => minutesFromHHMM(t.startTime) === null)
+			.sort((a, b) => a.title.localeCompare(b.title));
+		const projects = projectsForDay(schedule.projects, dayMs);
+		if (projects.length === 0 && timed.length === 0 && anytime.length === 0) {
+			continue;
+		}
+		out.push({ dayMs, projects, anytime, timed });
+	}
+	return out;
+}
+
+const WEEKDAY_NAMES = [
+	"Sunday",
+	"Monday",
+	"Tuesday",
+	"Wednesday",
+	"Thursday",
+	"Friday",
+	"Saturday",
+];
+const MONTH_NAMES = [
+	"Jan",
+	"Feb",
+	"Mar",
+	"Apr",
+	"May",
+	"Jun",
+	"Jul",
+	"Aug",
+	"Sep",
+	"Oct",
+	"Nov",
+	"Dec",
+];
+
+/**
+ * Group header for a day in the List view: "Today", "Tomorrow", else
+ * "Wednesday, Jul 22". Hand-rolled rather than Intl so it is deterministic
+ * under test and never re-renders a date in the host's timezone (date-ids are
+ * UTC — see lib/date.ts).
+ */
+export function dayLabel(dayMs: number, todayMs: number): string {
+	const day = utcDayStartMs(dayMs);
+	const today = utcDayStartMs(todayMs);
+	if (day === today) return "Today";
+	if (day === today + DAY_MS) return "Tomorrow";
+	const d = new Date(day);
+	return `${WEEKDAY_NAMES[d.getUTCDay()]}, ${MONTH_NAMES[d.getUTCMonth()]} ${d.getUTCDate()}`;
+}
+
+/** Saturday or Sunday on the UTC calendar — drives the "day off" empty state. */
+export function isWeekend(dayMs: number): boolean {
+	const dow = new Date(utcDayStartMs(dayMs)).getUTCDay();
+	return dow === 0 || dow === 6;
 }
 
 /** One-line Tomorrow peek: "3 tasks · first stop 8:30 AM" style summary parts. */

@@ -1,26 +1,40 @@
 import React from "react";
 import { StyleSheet, Text, View } from "react-native";
+import { fontFamily, recordTint, type, useTokens } from "@/lib/theme";
+import { ListRow } from "@/components/ui";
+import { AgendaRow, SpinedRow } from "@/components/today/agenda-row";
 import {
-	fontFamily,
-	radii,
-	recordTint,
-	tracking,
-	type,
-	useTokens,
-} from "@/lib/theme";
-import { Button, ListRow } from "@/components/ui";
-import { Illustration } from "@/components/illustrations";
-import { AgendaRow } from "@/components/today/agenda-row";
-import type { AgendaProject, AgendaTask, DayPlan } from "@/lib/agenda";
+	NextUpCard,
+	NextUpProjectCard,
+} from "@/components/today/next-up-card";
+import { PlanSection } from "@/components/today/plan-section";
+import {
+	ScheduleEmpty,
+	type ScheduleEmptyVariant,
+} from "@/components/today/schedule-empty";
+import {
+	isWeekend,
+	selectNextUp,
+	selectNextUpProject,
+	type AgendaProject,
+	type AgendaTask,
+	type DayPlan,
+} from "@/lib/agenda";
 
 export type Assignee = { initials: string; name: string };
 
 interface DayPlanViewProps {
 	plan: DayPlan;
-	/** Multi-day/all-day project work covering this day (the ALL DAY lane). */
+	/** The anchored day (UTC-midnight date-id) — drives the empty-state variant. */
+	dayMs: number;
+	/** Anchored to the real today — gates both card variants. */
+	isToday: boolean;
+	/** Project spans covering this day (the ALL DAY band). */
 	projects: AgendaProject[];
 	/** "10:24 AM" — rendered on the now separator. */
 	nowLabel: string;
+	/** True when the whole rolling window is empty, not just this day. */
+	windowEmpty: boolean;
 	completedIds: Set<string>;
 	updatingIds: Set<string>;
 	onToggleTask: (id: string) => void;
@@ -31,17 +45,33 @@ interface DayPlanViewProps {
 	assigneeFor?: (task: AgendaTask) => Assignee | undefined;
 }
 
+/** "3 jobs · 1 done" — the day's stats echo, from rows already on screen. */
+function sectionMeta(tasks: readonly AgendaTask[], done: Set<string>): string {
+	const n = tasks.length;
+	const finished = tasks.filter((task) => done.has(task._id)).length;
+	const label = `${n} ${n === 1 ? "job" : "jobs"}`;
+	return finished > 0 ? `${label} · ${finished} done` : label;
+}
+
 /**
- * The single chronological plan for a day — ALL DAY project lane on top,
- * timed tasks in start order with a now separator and a "next up" emphasis,
- * then untimed and overdue work. One representation, list-first: the pattern
- * every field-service app (and Apple's own day-view list toggle) converges on
- * for phone-width glanceability.
+ * The anchored day's timeline. The first still-open timed job is lifted OUT of
+ * the list into the "Next up" card — it is the day's lead object, so it gets the
+ * moment below the hero and is never duplicated in the rows beneath. Then an ALL
+ * DAY band (project spans plus untimed tasks: work that owns the day but not a
+ * slot in it), the remaining timed rows with the now separator, then overdue
+ * spillover.
+ *
+ * `selectNextUp` only yields a card when the anchored day IS today, and the now
+ * separator's `nowIndex` comes back re-based onto the shortened list — browsing
+ * another day needs no extra guard in here.
  */
 export function DayPlanView({
 	plan,
+	dayMs,
+	isToday,
 	projects,
 	nowLabel,
+	windowEmpty,
 	completedIds,
 	updatingIds,
 	onToggleTask,
@@ -51,26 +81,28 @@ export function DayPlanView({
 	assigneeFor,
 }: DayPlanViewProps) {
 	const t = useTokens();
-	const { timed, anytime, overdue, nextUpId, nowIndex } = plan;
+	const { anytime, overdue } = plan;
+	const { next, timed, nowIndex } = selectNextUp(plan, completedIds);
+	// Project-visit fallback: a timed-empty plan has nowIndex -1 even today, so
+	// the today gate comes from the screen, not from selectNextUp.
+	const nextProject =
+		!next && isToday ? selectNextUpProject(projects) : null;
+	// The lead is never duplicated below — same rule as the timed card.
+	const bandProjects = nextProject
+		? projects.filter((p) => p._id !== nextProject._id)
+		: projects;
+	const allDayCount = bandProjects.length + anytime.length;
+	// Emptiness is judged on the WHOLE day, before the lead is split off.
 	const empty =
-		projects.length === 0 &&
-		timed.length === 0 &&
-		anytime.length === 0 &&
-		overdue.length === 0;
+		projects.length === 0 && anytime.length === 0 && plan.timed.length === 0 && overdue.length === 0;
 
 	if (empty) {
-		return (
-			<View style={[styles.empty, { borderColor: t.line }]}>
-				<Illustration name="all-caught-up" knockout={t.bg} style={styles.emptyArt} />
-				<Text style={[styles.emptyTitle, { color: t.ink }]}>
-					Nothing scheduled
-				</Text>
-				<Text style={[styles.emptyCopy, { color: t.sub }]}>
-					This day is clear.
-				</Text>
-				<Button title="New task" onPress={onNewTask} style={styles.emptyAction} />
-			</View>
-		);
+		const variant: ScheduleEmptyVariant = windowEmpty
+			? "no-work"
+			: isWeekend(dayMs)
+				? "day-off"
+				: "clear-day";
+		return <ScheduleEmpty variant={variant} onNewTask={onNewTask} />;
 	}
 
 	const nowSeparator = (
@@ -83,57 +115,44 @@ export function DayPlanView({
 		</View>
 	);
 
-	const taskRow = (task: AgendaTask, last: boolean) => {
-		const row = (
-			<AgendaRow
-				key={task._id}
-				task={task}
-				completed={completedIds.has(task._id)}
-				updating={updatingIds.has(task._id)}
-				last={last}
-				onToggle={() => onToggleTask(task._id)}
-				onOpen={() => onOpenTask(task._id)}
-				assignee={assigneeFor?.(task)}
-			/>
-		);
-		if (task._id !== nextUpId) return row;
-		// "Next up" carries its state on a SOLID rail — frosted washes composite
-		// too close to the card to indicate anything (see design notes).
-		return (
-			<View
-				key={task._id}
-				style={[
-					styles.nextUp,
-					{ borderLeftColor: t.primarySolid, backgroundColor: t.secondary },
-				]}
-			>
-				{row}
-			</View>
-		);
-	};
-
-	const section = (label: string, children: React.ReactNode) => (
-		<View style={styles.group}>
-			<Text style={[styles.groupLabel, { color: t.faint }]}>{label}</Text>
-			<View
-				style={[
-					styles.groupCard,
-					{ backgroundColor: t.card, borderColor: t.line },
-				]}
-			>
-				{children}
-			</View>
-		</View>
+	const taskRow = (task: AgendaTask, last: boolean) => (
+		<AgendaRow
+			key={task._id}
+			task={task}
+			completed={completedIds.has(task._id)}
+			updating={updatingIds.has(task._id)}
+			last={last}
+			onToggle={() => onToggleTask(task._id)}
+			onOpen={() => onOpenTask(task._id)}
+			assignee={assigneeFor?.(task)}
+		/>
 	);
 
 	return (
 		<>
-			{projects.length > 0
-				? section(
-						"ALL DAY",
-						projects.map((p, i) => (
+			{next ? (
+				<NextUpCard
+					task={next}
+					updating={updatingIds.has(next._id)}
+					onToggle={() => onToggleTask(next._id)}
+					onOpen={() => onOpenTask(next._id)}
+					assignee={assigneeFor?.(next)}
+				/>
+			) : nextProject ? (
+				<NextUpProjectCard
+					project={nextProject}
+					onOpen={() => onOpenProject(nextProject._id)}
+				/>
+			) : null}
+
+			{allDayCount > 0 ? (
+				<PlanSection
+					label="All day"
+					meta={`${allDayCount} ${allDayCount === 1 ? "item" : "items"}`}
+				>
+					{bandProjects.map((p, i) => (
+						<SpinedRow key={p._id} color={recordTint.project.fg}>
 							<ListRow
-								key={p._id}
 								icon="Folder"
 								iconColor={recordTint.project.fg}
 								iconBg={recordTint.project.bg}
@@ -141,59 +160,45 @@ export function DayPlanView({
 								sub={p.context}
 								status={p.status}
 								onPress={() => onOpenProject(p._id)}
-								last={i === projects.length - 1}
+								last={i === allDayCount - 1}
 							/>
-						)),
-					)
-				: null}
+						</SpinedRow>
+					))}
+					{anytime.map((task, i) =>
+						taskRow(task, bandProjects.length + i === allDayCount - 1),
+					)}
+				</PlanSection>
+			) : null}
 
-			{timed.length > 0
-				? section(
-						"SCHEDULE",
-						<>
-							{timed.flatMap((task, i) => [
-								...(i === nowIndex
-									? [<React.Fragment key="now">{nowSeparator}</React.Fragment>]
-									: []),
-								taskRow(task, i === timed.length - 1),
-							])}
-							{/* A finished schedule still shows where "now" stands. */}
-							{nowIndex === timed.length ? nowSeparator : null}
-						</>,
-					)
-				: null}
+			{timed.length > 0 ? (
+				<PlanSection
+					label="Schedule"
+					meta={sectionMeta(timed, completedIds)}
+				>
+					{timed.flatMap((task, i) => [
+						...(i === nowIndex
+							? [<React.Fragment key="now">{nowSeparator}</React.Fragment>]
+							: []),
+						taskRow(task, i === timed.length - 1),
+					])}
+					{/* A finished schedule still shows where "now" stands. */}
+					{nowIndex === timed.length ? nowSeparator : null}
+				</PlanSection>
+			) : null}
 
-			{anytime.length > 0
-				? section(
-						"ANYTIME",
-						anytime.map((task, i) => taskRow(task, i === anytime.length - 1)),
-					)
-				: null}
-
-			{overdue.length > 0
-				? section(
-						"OVERDUE",
-						overdue.map((task, i) => taskRow(task, i === overdue.length - 1)),
-					)
-				: null}
+			{overdue.length > 0 ? (
+				<PlanSection
+					label="Overdue"
+					meta={`${overdue.length} ${overdue.length === 1 ? "job" : "jobs"}`}
+				>
+					{overdue.map((task, i) => taskRow(task, i === overdue.length - 1))}
+				</PlanSection>
+			) : null}
 		</>
 	);
 }
 
 const styles = StyleSheet.create({
-	group: {
-		gap: 7,
-	},
-	groupLabel: {
-		fontFamily: fontFamily.semibold,
-		fontSize: type.eyebrow,
-		letterSpacing: tracking.groupLabel,
-	},
-	groupCard: {
-		borderWidth: 1,
-		borderRadius: radii.card,
-		overflow: "hidden",
-	},
 	nowRow: {
 		flexDirection: "row",
 		alignItems: "center",
@@ -216,32 +221,5 @@ const styles = StyleSheet.create({
 	nowLabel: {
 		fontFamily: fontFamily.semibold,
 		fontSize: type.meta,
-	},
-	nextUp: {
-		borderLeftWidth: 3,
-	},
-	empty: {
-		alignItems: "center",
-		gap: 4,
-		borderWidth: 1,
-		borderStyle: "dashed",
-		borderRadius: radii.card,
-		paddingVertical: 30,
-		paddingHorizontal: 24,
-	},
-	emptyArt: {
-		marginBottom: 6,
-	},
-	emptyTitle: {
-		fontFamily: fontFamily.semibold,
-		fontSize: type.h3,
-	},
-	emptyCopy: {
-		fontFamily: fontFamily.regular,
-		fontSize: type.body,
-	},
-	emptyAction: {
-		marginTop: 12,
-		alignSelf: "stretch",
 	},
 });

@@ -9,13 +9,22 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BlurView } from "expo-blur";
-import { useRouter, type Href } from "expo-router";
+import { usePathname, useRouter, type Href } from "expo-router";
 import { useOrganization, useUser } from "@clerk/expo";
 import { useQuery } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
-import { ArrowLeft, Bell, ChevronDown, Plus } from "lucide-react-native";
+import { ArrowLeft, Bell, ChevronDown, Plus, Search } from "lucide-react-native";
+import { requestSearchFocus } from "@/lib/search-focus";
 import { fontFamily, radii, tokens, tracking, type, useTokens } from "@/lib/theme";
 import { Avatar, HalftoneBg, ScrollFade } from "@/components/ui";
+
+// Tab roots that get the "jump to search" magnifier. An ALLOWLIST, not
+// "everything except Work": the Clients/Projects/Activity/Profile roots also
+// mount a root-mode header and have no business growing one. Today and Money
+// are absent because they mount an ink band, not this header — their magnifier
+// lives in the band's icon cluster (3.0 slice 6).
+const SEARCH_JUMP_ROUTES = new Set(["/routes"]);
+const WORK_TAB: Href = "/(tabs)/work" as Href;
 
 // mode: 'root' | 'detail' | 'pane' — P19 uses root/detail; 'pane' reserved for P26 iPad.
 type HeaderMode = "root" | "detail" | "pane";
@@ -69,6 +78,7 @@ export function AppHeader({
 }: AppHeaderProps) {
 	const t = useTokens();
 	const router = useRouter();
+	const pathname = usePathname();
 	const insets = useSafeAreaInsets();
 	const { organization } = useOrganization();
 	const { user } = useUser();
@@ -91,6 +101,10 @@ export function AppHeader({
 		setHeaderHeight(e.nativeEvent.layout.height);
 
 	const detail = mode === "detail";
+	// Pane mode returns early below, and both call sites that qualify gate their
+	// root header on !isPane — so this can never render inside an iPad pane,
+	// where Work is already on screen as a list pane.
+	const showSearchJump = mode === "root" && SEARCH_JUMP_ROUTES.has(pathname);
 	const orgName = organization?.name ?? "Personal";
 	const orgInitials = initialsFrom(orgName);
 	const userInitials = initialsFrom(
@@ -231,6 +245,22 @@ export function AppHeader({
 				<View style={{ flex: 1 }} pointerEvents="none" />
 
 				{/* Constant right cluster (root + detail) */}
+				{showSearchJump ? (
+					<Pressable
+						onPress={() => {
+							// Latch, then navigate: Work consumes it once on focus. A
+							// ?focus= param would stick to the tab and re-fire forever.
+							requestSearchFocus();
+							router.push(WORK_TAB);
+						}}
+						style={styles.bareBtn}
+						accessibilityRole="button"
+						accessibilityLabel="Search"
+					>
+						<Search size={21} color={t.ink} strokeWidth={2} />
+					</Pressable>
+				) : null}
+
 				{onAdd ? (
 					<Pressable
 						onPress={onAdd}

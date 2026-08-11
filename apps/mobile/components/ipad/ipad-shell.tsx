@@ -1,15 +1,19 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, View } from "react-native";
 import { Plus, X } from "lucide-react-native";
 import { Slot, usePathname, useRouter, type Href } from "expo-router";
 import { useDevice } from "@/lib/use-device";
-import { fontFamily, type, useTokens } from "@/lib/theme";
+import { useTokens } from "@/lib/theme";
 import {
 	SelectionProvider,
 	useSelection,
 	type SelectionTab,
 } from "@/lib/selection-context";
-import { PadSidebar, type SidebarTab } from "@/components/ipad/pad-sidebar";
+import {
+	PadSidebar,
+	type CreateItem,
+	type SidebarTab,
+} from "@/components/ipad/pad-sidebar";
 import {
 	isOverlayRoute,
 	isStackRoute,
@@ -21,7 +25,7 @@ import { DotGrid } from "@/components/ui";
 import { PaneDetailHost } from "@/components/ipad/pane-detail-host";
 import { PaneAction, PaneHeader } from "@/components/ipad/pane-header";
 import { ShellNavProvider, type ShellNav } from "@/lib/shell-nav";
-import type { WorkKind } from "@/lib/work-search";
+import type { WorkChipKind } from "@/lib/work-search";
 import TodayScreen from "@/app/(tabs)/index";
 import WorkScreen from "@/app/(tabs)/work";
 import RoutesScreen from "@/app/(tabs)/routes";
@@ -29,7 +33,12 @@ import ActivityScreen from "@/app/(tabs)/activity";
 import ProfileScreen from "@/app/(tabs)/profile";
 import { ClientCreateBody } from "@/app/(tabs)/clients/new";
 import { AssistantHost } from "@/components/assistant/assistant-host";
+import {
+	AssistantInkHeader,
+	inkHeaderGlyph,
+} from "@/components/assistant/ink-header";
 import { buildScreenContext } from "@/lib/screen-context";
+import { usePermissions } from "@/lib/use-permissions";
 
 // ============================================================================
 // IpadShell — top-level iPad layout (gated on device === "ipad" in (tabs)/
@@ -77,6 +86,7 @@ function IpadShellInner() {
 	const { orientation } = useDevice();
 	const { state, select, clear } = useSelection();
 	const pathname = usePathname();
+	const { can, isLoading: permissionsLoading } = usePermissions();
 
 	// activeTab is held in LOCAL STATE so a rail tap swaps only the content pane —
 	// the rail is a persistent frame, not a navigation push. A router.push() for
@@ -109,7 +119,9 @@ function IpadShellInner() {
 
 	// Work's chip lives here so `browse(kind)` ("View all projects" from a client
 	// detail) can scope the list without a route push.
-	const [workKind, setWorkKind] = useState<WorkKind | null>(null);
+	// Chip kinds are wider than pane kinds: Work also browses tasks, which open a
+	// form sheet rather than a detail pane (so they never reach `select`).
+	const [workKind, setWorkKind] = useState<WorkChipKind | null>(null);
 
 	// Route → selection reconciliation. On a detail route, sync the durable
 	// selection so the pane opens the target. select() dispatches to the
@@ -157,10 +169,47 @@ function IpadShellInner() {
 		[select],
 	);
 
+	// Rail create menu — the iPad counterpart of the iPhone speed-dial FAB. Same
+	// four record types, same "modify" gate; New client uses the shell-native
+	// in-pane surface rather than a route push, the rest push their stack route.
+	const createItems = useMemo<CreateItem[]>(() => {
+		const items: CreateItem[] = [];
+		if (can("projects", "modify")) {
+			items.push({
+				key: "project",
+				label: "New project",
+				run: () => router.push("/project/new" as Href),
+			});
+		}
+		if (can("tasks", "modify")) {
+			items.push({
+				key: "task",
+				label: "New task",
+				run: () => router.push("/tasks/form" as Href),
+			});
+		}
+		if (can("clients", "modify")) {
+			items.push({
+				key: "client",
+				label: "New client",
+				run: () => shellNav.startCreate(),
+			});
+		}
+		if (can("quotes", "modify")) {
+			items.push({
+				key: "quote",
+				label: "New quote",
+				run: () => router.push("/quote/new" as Href),
+			});
+		}
+		return items;
+	}, [can, router, shellNav]);
+
 	const sidebar = (
 		<PadSidebar
 			activeTab={activeTab}
 			onNavigate={onNavigate}
+			createItems={permissionsLoading ? [] : createItems}
 			onAssistant={() => {
 				if (orientation === "landscape") {
 					setAssistantOpen((open) => !open);
@@ -380,20 +429,19 @@ function AssistantPanel({
 				{ backgroundColor: t.card, borderLeftColor: t.border },
 			]}
 		>
-			<View style={[styles.assistantHeader, { borderBottomColor: t.border }]}>
-				<Text style={[styles.assistantTitle, { color: t.ink }]}>
-					Assistant
-				</Text>
-				<Pressable
-					onPress={onClose}
-					hitSlop={10}
-					accessibilityRole="button"
-					accessibilityLabel="Close assistant"
-					style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}
-				>
-					<X size={18} color={t.sub} strokeWidth={2.25} />
-				</Pressable>
-			</View>
+			<AssistantInkHeader
+				right={
+					<Pressable
+						onPress={onClose}
+						hitSlop={10}
+						accessibilityRole="button"
+						accessibilityLabel="Close assistant"
+						style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}
+					>
+						<X size={18} color={inkHeaderGlyph} strokeWidth={2.25} />
+					</Pressable>
+				}
+			/>
 			<AssistantHost screenContext={screenContext} />
 		</View>
 	);
@@ -436,17 +484,5 @@ const styles = StyleSheet.create({
 		flexShrink: 0,
 		borderLeftWidth: 1,
 		overflow: "hidden",
-	},
-	assistantHeader: {
-		flexDirection: "row",
-		alignItems: "center",
-		justifyContent: "space-between",
-		paddingHorizontal: 16,
-		paddingVertical: 12,
-		borderBottomWidth: StyleSheet.hairlineWidth,
-	},
-	assistantTitle: {
-		fontFamily: fontFamily.semibold,
-		fontSize: type.h3,
 	},
 });

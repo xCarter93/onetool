@@ -9,11 +9,14 @@ export function MoneyAmount({
 	amount,
 	size = 34,
 	color,
+	centsColor,
 }: {
 	amount: number;
 	/** Hero (Money hub) uses 40; document cards use 34. */
 	size?: number;
 	color?: string;
+	/** Override for on-ink surfaces — the default faint is a light-mode value. */
+	centsColor?: string;
 }) {
 	const t = useTokens();
 	const formatted = formatCurrency(amount, { exact: true });
@@ -33,7 +36,10 @@ export function MoneyAmount({
 				<Text
 					style={[
 						styles.cents,
-						{ fontSize: Math.round(size * 0.56), color: t.faintDecor },
+						{
+							fontSize: Math.round(size * 0.56),
+							color: centsColor ?? t.faintDecor,
+						},
 					]}
 				>
 					{cents}
