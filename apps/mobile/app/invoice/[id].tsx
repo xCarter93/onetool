@@ -1,22 +1,54 @@
 import { useMemo, useState } from "react";
-import { ScrollView, StyleSheet, Text, View } from "react-native";
+import {
+	Pressable,
+	ScrollView,
+	Share,
+	StyleSheet,
+	Text,
+	View,
+} from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useQuery } from "convex/react";
+import { useMutation, useQuery } from "convex/react";
 import { useLocalSearchParams } from "expo-router";
+import { CalendarX2, Check, Link2, Share as ShareIcon } from "lucide-react-native";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { Id } from "@onetool/backend/convex/_generated/dataModel";
-import { fontFamily, radii, type, useTokens } from "@/lib/theme";
+import {
+	badgeTone,
+	fontFamily,
+	radii,
+	recordTint,
+	type,
+	useTokens,
+} from "@/lib/theme";
 import { AppHeader } from "@/components/app-header";
 import { PaneHeader } from "@/components/ipad/pane-header";
-import { Badge, Card, DotGrid, Eyebrow, TotalsBlock } from "@/components/ui";
+import { Card, DotGrid, Eyebrow, TotalsBlock } from "@/components/ui";
+import { DocumentHeaderCard } from "@/components/money/document-header-card";
+import { QuickActionRow } from "@/components/money/quick-action-row";
+import { SendPreviewSheet } from "@/components/money/send-preview-sheet";
+import {
+	RecordPaymentSheet,
+	type ManualMethod,
+} from "@/components/money/record-payment-sheet";
+import {
+	resolveInvoiceActions,
+	type InvoiceStatus,
+	type RecordActionKey,
+} from "@/lib/record-actions";
+import { useInvoiceCapabilities } from "@/lib/use-record-capabilities";
 import { formatCurrency, formatDocumentDate } from "@/lib/format";
 
-// Read-only itemized invoice detail (MONEY-02). Itemized like the quote detail
-// (CONTEXT diverges from the prototype's summary view), reusing the shared
-// TotalsBlock + formatDocumentDate so this layout matches quote/[id] exactly.
-// Totals come straight from invoices.get (calculated server-side) — never recomputed.
-// Body extracted (P26 Option B). headerMode DEFAULTS to "root" → the iPhone
-// route wrapper below is byte-identical. The iPad Money pane passes "pane".
+const METHOD_LABEL: Record<string, string> = {
+	cash: "Cash",
+	check: "Check",
+	other: "Other",
+};
+
+// Invoice detail, restyled to frame 1i (Mobile 3.0 slice 2): document header
+// card with the money numeral, the resolver-driven CTA pair IN the card, the
+// pay-link row, and the payment section as a timeline. The screen went from
+// read-only viewer to the field collection surface.
 export function InvoiceDetailBody({
 	id,
 	headerMode = "root",
@@ -31,8 +63,6 @@ export function InvoiceDetailBody({
 }) {
 	const t = useTokens();
 	const appHeaderMode = headerMode === "pane" ? "pane" : "detail";
-	// In an iPad pane WITH an onBack the body owns a PaneHeader (back → clear
-	// selection); otherwise AppHeader (root/detail = router back, pane = no back).
 	const renderHeader = (title?: string) =>
 		headerMode === "pane" && onBack ? (
 			<PaneHeader title={title} onBack={onBack} />
@@ -41,6 +71,8 @@ export function InvoiceDetailBody({
 		);
 	// Seed "now" once (lazy) — react-hooks/purity forbids Date.now() during render.
 	const [now] = useState(() => Date.now());
+	const [sendOpen, setSendOpen] = useState(false);
+	const [recordOpen, setRecordOpen] = useState(false);
 
 	const invoice = useQuery(
 		api.invoices.get,
@@ -58,6 +90,16 @@ export function InvoiceDetailBody({
 		id ? { id: id as Id<"invoices"> } : "skip"
 	);
 	const clients = useQuery(api.clients.list, {});
+	// Backend-served portal URL (one source of truth with the invite email).
+	// Null when the client has no portal access; the resolver disables Share.
+	const portalLink = useQuery(
+		api.invoices.getPortalLink,
+		invoice ? { id: invoice._id } : "skip"
+	);
+	const capsData = useInvoiceCapabilities(invoice);
+
+	const sendToClient = useMutation(api.invoices.sendToClient);
+	const recordManualPayment = useMutation(api.payments.recordManualPayment);
 
 	const clientName = useMemo(() => {
 		const map = new Map<string, string>();
@@ -106,14 +148,16 @@ export function InvoiceDetailBody({
 	}
 
 	// Effective status: a past-due sent invoice displays as Overdue to match the
-	// list + hero (mirrors web invoices/page.tsx:307-309). Stored status alone
-	// would show "Sent" on an already-overdue invoice.
-	const displayStatus =
+	// list + hero (mirrors web invoices/page.tsx). Stored status alone would
+	// show "Sent" on an already-overdue invoice.
+	const displayStatus = (
 		invoice.status === "sent" && invoice.dueDate < now
 			? "overdue"
-			: invoice.status;
+			: invoice.status
+	) as InvoiceStatus;
 
 	const client = clientName.get(invoice.clientId) ?? "Client";
+	const daysLate = Math.floor((now - invoice.dueDate) / 86_400_000);
 
 	// TOTALS — straight from invoice.* (calculated by get). Never sum line items.
 	// Mode split mirrors resolveInvoicePricingMode / deriveInvoiceDisplayPricing:
@@ -165,42 +209,243 @@ export function InvoiceDetailBody({
 	const payments = withPayments?.payments ?? [];
 	const summary = withPayments?.paymentSummary;
 	const hasRows = payments.length > 0;
-	// PAID PREDICATE (pinned) — drives the no-rows summary copy + percent.
 	const isPaid = invoice.status === "paid" || invoice.paidAt != null;
-	// Align the summary "of $Y" to the loaded query total so it matches
-	// paidAmount/remainingAmount; fall back to invoice.total before load.
 	const summaryTotal = withPayments?.total ?? invoice.total;
-	// Clamped progress percent (RevenueGauge idiom).
+	const remaining = hasRows
+		? (summary?.remainingAmount ?? 0)
+		: isPaid
+			? 0
+			: summaryTotal;
 	const pct = hasRows
 		? Math.min(Math.max(Math.round(summary?.percentPaid ?? 0), 0), 100)
 		: isPaid
 			? 100
 			: 0;
 
+	// Status→CTA resolver output (undefined caps = still composing facts; the
+	// action row simply doesn't render yet — never a flash of wrong buttons).
+	const actions = capsData
+		? resolveInvoiceActions(displayStatus, capsData.caps)
+		: [];
+
+	const sharePayLink = async () => {
+		if (!portalLink) return;
+		await Share.share({
+			message: `Pay ${invoice.invoiceNumber} — ${formatCurrency(invoice.total, { exact: true })}: ${portalLink}`,
+			url: portalLink,
+		});
+	};
+
+	const onAction = (key: RecordActionKey) => {
+		switch (key) {
+			case "send_invoice":
+			case "resend_invoice":
+				setSendOpen(true);
+				break;
+			case "record_payment":
+				setRecordOpen(true);
+				break;
+			case "share_pay_link":
+				void sharePayLink();
+				break;
+		}
+	};
+
+	const submitPayment = async (
+		amount: number,
+		method: ManualMethod,
+		note?: string
+	) => {
+		return await recordManualPayment({
+			invoiceId: invoice._id,
+			amount,
+			method,
+			note,
+		});
+	};
+
 	return (
 		<SafeAreaView style={[styles.flex, { backgroundColor: t.bg }]} edges={[]}>
 			<DotGrid style={StyleSheet.absoluteFill} />
 			{renderHeader(invoice.invoiceNumber)}
 			<ScrollView contentContainerStyle={styles.scroll}>
-				{/* Header block — number, effective status badge, client */}
-				<Card>
-					<View style={styles.headerRow}>
-						<View style={styles.headerBody}>
-							<Eyebrow>Invoice</Eyebrow>
-							<Text style={[styles.invoiceNumber, { color: t.ink }]} numberOfLines={1}>
-								{invoice.invoiceNumber}
+				{/* Document header — identity, money numeral, CTA pair, pay link. */}
+				<DocumentHeaderCard
+					eyebrow={invoice.invoiceNumber}
+					eyebrowColor={recordTint.invoice.fg}
+					clientName={client}
+					status={displayStatus}
+					amount={invoice.total}
+					subline={
+						displayStatus === "overdue" ? (
+							<View style={styles.dueRow}>
+								<CalendarX2 size={13} color={badgeTone.late.fg} />
+								<Text style={[styles.dueLate, { color: badgeTone.late.fg }]}>
+									Due {formatDocumentDate(invoice.dueDate)}
+									{daysLate > 0
+										? ` · ${daysLate} day${daysLate === 1 ? "" : "s"} late`
+										: ""}
+								</Text>
+							</View>
+						) : (
+							<Text style={[styles.dueLine, { color: t.sub }]}>
+								{isPaid && invoice.paidAt
+									? `Paid ${formatDocumentDate(invoice.paidAt)}`
+									: `Due ${formatDocumentDate(invoice.dueDate)}`}
 							</Text>
-							<Text style={[styles.client, { color: t.sub }]} numberOfLines={1}>
-								{client}
-							</Text>
+						)
+					}
+				>
+					{actions.length > 0 ? (
+						<View style={styles.actionsWrap}>
+							<QuickActionRow actions={actions} onAction={onAction} />
 						</View>
-						<Badge status={displayStatus} />
-					</View>
-				</Card>
+					) : null}
+					{portalLink &&
+					(displayStatus === "sent" || displayStatus === "overdue") ? (
+						<Pressable
+							accessibilityRole="button"
+							accessibilityLabel="Share the portal payment link"
+							onPress={() => void sharePayLink()}
+							style={({ pressed }) => [
+								styles.linkRow,
+								{
+									borderColor: t.line,
+									backgroundColor: pressed ? t.secondary : "transparent",
+								},
+							]}
+						>
+							<Link2 size={14} color={t.faint} />
+							<Text
+								style={[styles.linkText, { color: t.sub }]}
+								numberOfLines={1}
+							>
+								{portalLink.replace(/^https?:\/\//, "")}
+							</Text>
+							<ShareIcon size={14} color={t.frostedInk} />
+						</Pressable>
+					) : null}
+				</DocumentHeaderCard>
+
+				{/* Payment — progress + timeline of installment rows. */}
+				<View style={styles.section}>
+					<Eyebrow>Payment</Eyebrow>
+					<Card>
+						<View
+							accessibilityRole="progressbar"
+							accessibilityValue={{ now: pct, min: 0, max: 100 }}
+							accessibilityLabel={`Payment progress, ${pct} percent paid`}
+							style={[styles.barTrack, { backgroundColor: t.line }]}
+						>
+							<View
+								style={[
+									styles.barFill,
+									{ backgroundColor: t.primarySolid, width: `${pct}%` },
+								]}
+							/>
+						</View>
+
+						{withPayments === undefined ? (
+							<View style={[styles.barSkeleton, { backgroundColor: t.muted }]} />
+						) : hasRows && summary ? (
+							<Text style={[styles.summaryLine, { color: t.ink }]}>
+								Paid {formatCurrency(summary.paidAmount, { exact: true })} of{" "}
+								{formatCurrency(summaryTotal, { exact: true })}
+								{summary.remainingAmount > 0
+									? ` · ${formatCurrency(summary.remainingAmount, { exact: true })} outstanding`
+									: ""}
+							</Text>
+						) : isPaid ? (
+							<Text style={[styles.summaryLine, { color: t.ink }]}>
+								Paid in full {formatCurrency(summaryTotal, { exact: true })}
+								{invoice.paidAt
+									? ` · ${formatDocumentDate(invoice.paidAt)}`
+									: ""}
+							</Text>
+						) : (
+							<Text style={[styles.summaryLine, { color: t.ink }]}>
+								{formatCurrency(summaryTotal, { exact: true })} outstanding
+							</Text>
+						)}
+
+						{/* Installment timeline (frame 1i): green check = settled (with
+						    method when recorded in the field), dashed hollow = still owed. */}
+						{withPayments !== undefined && hasRows
+							? payments.map((payment, i) => {
+									const paid = payment.status === "paid";
+									const last = i === payments.length - 1;
+									return (
+										<View key={payment._id} style={styles.timelineRow}>
+											<View style={styles.timelineRail}>
+												<View
+													style={[
+														styles.timelineNode,
+														paid
+															? { backgroundColor: t.success }
+															: {
+																	backgroundColor: t.card,
+																	borderWidth: 2,
+																	borderColor: t.line,
+																	borderStyle: "dashed",
+																},
+													]}
+												>
+													{paid ? (
+														<Check size={11} color="#fff" strokeWidth={3.2} />
+													) : null}
+												</View>
+												{!last ? (
+													<View
+														style={[styles.timelineLine, { backgroundColor: t.line }]}
+													/>
+												) : null}
+											</View>
+											<View style={[styles.timelineBody, !last && styles.timelineGap]}>
+												<View style={styles.timelineTop}>
+													<Text
+														style={[
+															styles.payLabel,
+															{ color: paid ? t.ink : t.sub },
+														]}
+														numberOfLines={1}
+													>
+														{payment.description ?? `Payment ${i + 1}`}
+													</Text>
+													<Text
+														style={[
+															styles.payAmount,
+															{ color: paid ? t.ink : t.sub },
+														]}
+													>
+														{formatCurrency(payment.paymentAmount, { exact: true })}
+													</Text>
+												</View>
+												<Text style={[styles.paySub, { color: t.faint }]}>
+													{paid
+														? `Paid${payment.paidAt ? ` ${formatDocumentDate(payment.paidAt)}` : ""}${
+																payment.manualMethod
+																	? ` · ${METHOD_LABEL[payment.manualMethod]}`
+																	: payment.recordedOutsidePortal
+																		? " · Recorded manually"
+																		: ""
+															}`
+														: `Due ${formatDocumentDate(payment.dueDate)}`}
+												</Text>
+											</View>
+										</View>
+									);
+								})
+							: null}
+					</Card>
+				</View>
 
 				{/* Line items — THREE STATES: undefined → skeleton, [] → empty, else map */}
 				<View style={styles.section}>
-					<Eyebrow>Line items</Eyebrow>
+					<Eyebrow>
+						{items && items.length > 0
+							? `Line items · ${items.length}`
+							: "Line items"}
+					</Eyebrow>
 					<Card style={styles.itemsCard}>
 						{items === undefined ? (
 							<>
@@ -293,90 +538,6 @@ export function InvoiceDetailBody({
 					</Card>
 				</View>
 
-				{/* Payment — progress bar + paid-vs-outstanding summary + installments.
-				    ALWAYS renders (read-only). Section loading keys off withPayments
-				    === undefined; null falls back to the invoice-derived summary. */}
-				<View style={styles.section}>
-					<Eyebrow>Payment</Eyebrow>
-					<Card>
-						{/* Hand-built linear progress bar (two Views) with full a11y */}
-						<View
-							accessibilityRole="progressbar"
-							accessibilityValue={{ now: pct, min: 0, max: 100 }}
-							accessibilityLabel={`Payment progress, ${pct} percent paid`}
-							style={[styles.barTrack, { backgroundColor: t.line }]}
-						>
-							<View
-								style={[
-									styles.barFill,
-									{ backgroundColor: t.primarySolid, width: `${pct}%` },
-								]}
-							/>
-						</View>
-
-						{/* Summary line — every amount through formatCurrency (dollars). */}
-						{withPayments === undefined ? (
-							<View style={[styles.barSkeleton, { backgroundColor: t.muted }]} />
-						) : hasRows && summary ? (
-							<Text style={[styles.summaryLine, { color: t.ink }]}>
-								Paid {formatCurrency(summary.paidAmount, { exact: true })} of{" "}
-								{formatCurrency(summaryTotal, { exact: true })}
-								{summary.remainingAmount > 0
-									? ` · ${formatCurrency(summary.remainingAmount, { exact: true })} outstanding`
-									: ""}
-							</Text>
-						) : isPaid ? (
-							<Text style={[styles.summaryLine, { color: t.ink }]}>
-								Paid in full {formatCurrency(summaryTotal, { exact: true })}
-								{invoice.paidAt
-									? ` · ${formatDocumentDate(invoice.paidAt)}`
-									: ""}
-							</Text>
-						) : (
-							<Text style={[styles.summaryLine, { color: t.ink }]}>
-								{formatCurrency(summaryTotal, { exact: true })} outstanding
-							</Text>
-						)}
-
-						{/* Installment list — only for payment-plan invoices (hasRows). */}
-						{withPayments !== undefined && hasRows
-							? payments.map((payment, i) => (
-									<View
-										key={payment._id}
-										style={[
-											styles.payRow,
-											{
-												borderBottomColor: t.line,
-												borderBottomWidth:
-													i === payments.length - 1 ? 0 : 1,
-											},
-										]}
-									>
-										<View style={styles.payBody}>
-											<Text
-												style={[styles.payLabel, { color: t.ink }]}
-												numberOfLines={1}
-											>
-												{payment.description ?? `Payment ${i + 1}`}
-											</Text>
-											<Text style={[styles.paySub, { color: t.faint }]}>
-												Due {formatDocumentDate(payment.dueDate)}
-											</Text>
-										</View>
-										<View style={styles.payRight}>
-											<Text style={[styles.payAmount, { color: t.ink }]}>
-												{formatCurrency(payment.paymentAmount, {
-													exact: true,
-												})}
-											</Text>
-											<Badge status={payment.status} />
-										</View>
-									</View>
-								))
-							: null}
-					</Card>
-				</View>
-
 				{/* Metadata KV — Invoice # / Issued / Due / Paid (Paid only when present) */}
 				<View style={styles.section}>
 					<Eyebrow>Details</Eyebrow>
@@ -396,6 +557,35 @@ export function InvoiceDetailBody({
 
 				<View style={{ height: 32 }} />
 			</ScrollView>
+
+			<SendPreviewSheet
+				visible={sendOpen}
+				onClose={() => setSendOpen(false)}
+				kind="invoice"
+				number={invoice.invoiceNumber}
+				clientName={client}
+				amount={invoice.total}
+				recipientEmail={capsData?.recipientEmail ?? null}
+				items={(items ?? []).map((item) => ({
+					key: item._id,
+					description: item.description,
+					sub: `${item.quantity} × ${formatCurrency(item.unitPrice, { exact: true })}`,
+					amount: formatCurrency(item.total, { exact: true }),
+				}))}
+				totalsRows={totalsRows}
+				totalValue={formatCurrency(invoice.total, { exact: true })}
+				resend={displayStatus !== "draft"}
+				onSend={async () => {
+					await sendToClient({ id: invoice._id });
+				}}
+			/>
+			<RecordPaymentSheet
+				visible={recordOpen}
+				onClose={() => setRecordOpen(false)}
+				invoiceNumber={invoice.invoiceNumber}
+				remaining={remaining}
+				onSubmit={submitPayment}
+			/>
 		</SafeAreaView>
 	);
 }
@@ -464,21 +654,38 @@ const styles = StyleSheet.create({
 		textAlign: "center",
 	},
 
-	headerRow: {
+	dueRow: {
 		flexDirection: "row",
-		alignItems: "flex-start",
-		justifyContent: "space-between",
-		gap: 12,
+		alignItems: "center",
+		gap: 6,
+		marginTop: 5,
 	},
-	headerBody: { flex: 1, minWidth: 0, gap: 3 },
-	invoiceNumber: {
-		fontFamily: fontFamily.bold,
-		fontSize: type.h2,
-		letterSpacing: -0.3,
+	dueLate: {
+		fontFamily: fontFamily.medium,
+		fontSize: type.sm,
 	},
-	client: {
+	dueLine: {
 		fontFamily: fontFamily.regular,
-		fontSize: type.h4,
+		fontSize: type.sm,
+		marginTop: 5,
+	},
+	actionsWrap: {
+		marginTop: 14,
+	},
+	linkRow: {
+		flexDirection: "row",
+		alignItems: "center",
+		gap: 8,
+		borderWidth: 1,
+		borderRadius: radii.md,
+		paddingHorizontal: 12,
+		paddingVertical: 10,
+		marginTop: 10,
+	},
+	linkText: {
+		flex: 1,
+		fontFamily: fontFamily.medium,
+		fontSize: type.meta,
 	},
 
 	section: { marginTop: 22, gap: 10 },
@@ -504,6 +711,7 @@ const styles = StyleSheet.create({
 	itemAmount: {
 		fontFamily: fontFamily.bold,
 		fontSize: type.h4,
+		fontVariant: ["tabular-nums"],
 	},
 	emptyLine: {
 		fontFamily: fontFamily.regular,
@@ -533,29 +741,51 @@ const styles = StyleSheet.create({
 		fontFamily: fontFamily.semibold,
 		fontSize: type.h4,
 		marginTop: 2,
+		marginBottom: 6,
 	},
-	payRow: {
+
+	timelineRow: {
+		flexDirection: "row",
+		gap: 10,
+		marginTop: 8,
+	},
+	timelineRail: {
+		alignItems: "center",
+		width: 20,
+	},
+	timelineNode: {
+		width: 20,
+		height: 20,
+		borderRadius: 10,
+		alignItems: "center",
+		justifyContent: "center",
+	},
+	timelineLine: {
+		width: 1.5,
+		flex: 1,
+		marginTop: 2,
+	},
+	timelineBody: { flex: 1, minWidth: 0, gap: 2 },
+	timelineGap: { paddingBottom: 12 },
+	timelineTop: {
 		flexDirection: "row",
 		alignItems: "center",
 		justifyContent: "space-between",
 		gap: 12,
-		paddingVertical: 12,
-		paddingHorizontal: 4,
-		marginTop: 4,
 	},
-	payBody: { flex: 1, minWidth: 0, gap: 3 },
 	payLabel: {
-		fontFamily: fontFamily.regular,
-		fontSize: type.h4,
+		flexShrink: 1,
+		fontFamily: fontFamily.medium,
+		fontSize: type.rowTitle,
 	},
 	paySub: {
 		fontFamily: fontFamily.regular,
-		fontSize: type.sm,
+		fontSize: type.meta,
 	},
-	payRight: { alignItems: "flex-end", gap: 6 },
 	payAmount: {
 		fontFamily: fontFamily.bold,
 		fontSize: type.h4,
+		fontVariant: ["tabular-nums"],
 	},
 
 	metaCard: { paddingVertical: 6 },

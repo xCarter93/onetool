@@ -20,6 +20,7 @@ import {
 	emitRecordUpdatedEvent,
 } from "./eventBus";
 import { computeFieldChanges } from "./lib/changeTracking";
+import { internal } from "./_generated/api";
 import {
 	optionalUserQuery,
 	userMutation,
@@ -914,6 +915,108 @@ export const update = userMutation({
 		}
 
 		return id;
+	},
+});
+
+/**
+ * Send a quote to the client: flips draft/declined/expired→sent and schedules
+ * a branded portal-invite email deep-linking to the quote in the client
+ * portal, where the client reviews and approves/declines. Mirror of
+ * invoices.sendToClient. Deliberately separate from the BoldSign e-signature
+ * flow, which stays web-only; an already-sent quote can be re-sent without a
+ * status change.
+ */
+export const sendToClient = userMutation({
+	args: { id: v.id("quotes") },
+	returns: v.id("quotes"),
+	handler: async (ctx, args): Promise<QuoteId> => {
+		await ctx.requireLevel("quotes", "modify");
+		const quote = await ctx.orgEntity("quotes", args.id);
+		await ctx.requireRecordScope("quotes", () =>
+			ctx.actorScope().then((s) =>
+				quote.projectId
+					? s.projectIds.has(quote.projectId)
+					: s.clientIds.has(quote.clientId)
+			)
+		);
+
+		if (quote.status === "approved") {
+			throw new ConvexError({
+				code: "CONFLICT",
+				message:
+					"This quote is already approved — convert it to an invoice instead.",
+			});
+		}
+
+		// The client must be reachable in the portal: portal access enabled and a
+		// primary contact with an email to receive the invite.
+		const client = await ctx.db.get(quote.clientId);
+		if (!client || client.orgId !== quote.orgId) {
+			throw new ConvexError({
+				code: "NOT_FOUND",
+				message: "Quote client not found.",
+			});
+		}
+		if (!client.portalAccessId) {
+			throw new ConvexError({
+				code: "CONFLICT",
+				message:
+					"This client has no portal access yet. Enable it on the client before sending.",
+			});
+		}
+		const primaryContact = await ctx.db
+			.query("clientContacts")
+			.withIndex("by_primary", (q) =>
+				q.eq("clientId", client._id).eq("isPrimary", true)
+			)
+			.first();
+		const recipientEmail = primaryContact?.email?.trim();
+		if (!recipientEmail) {
+			throw new ConvexError({
+				code: "CONFLICT",
+				message: "Add an email to this client's primary contact before sending.",
+			});
+		}
+
+		// Sending is the act of sending: draft, declined, and expired all move to
+		// sent (a "send again" reopens the quote). Already-sent quotes re-send
+		// the email without a transition.
+		if (quote.status !== "sent") {
+			const oldStatus = quote.status;
+			const changes = computeFieldChanges(
+				"quote",
+				quote as unknown as Record<string, unknown>,
+				{ status: "sent" }
+			);
+			await ctx.db.patch(quote._id, { status: "sent", sentAt: Date.now() });
+			const updated = await ctx.db.get(quote._id);
+			if (updated) {
+				await ActivityHelpers.quoteSent(
+					ctx,
+					updated as QuoteDocument,
+					client.companyName || "Unknown Client",
+					changes
+				);
+				await emitStatusChangeEvent(
+					ctx,
+					updated.orgId,
+					"quote",
+					updated._id,
+					oldStatus,
+					"sent",
+					"quotes.sendToClient"
+				);
+			}
+		}
+
+		// Fire-and-forget the branded portal-invite email.
+		await ctx.scheduler.runAfter(
+			0,
+			internal.portal.quoteEmail.sendQuoteReadyEmail,
+			{ quoteId: quote._id }
+		);
+
+		return args.id;
 	},
 });
 

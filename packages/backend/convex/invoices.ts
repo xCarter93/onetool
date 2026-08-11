@@ -18,6 +18,7 @@ import {
 	emitRecordUpdatedEvent,
 } from "./eventBus";
 import { computeFieldChanges } from "./lib/changeTracking";
+import { buildPortalInvoiceUrl } from "./portal/invoiceUrl";
 import { maybeEnqueueQboSync } from "./lib/quickbooksEnqueue";
 import { calculateInvoiceTotals, syncInvoiceTotals } from "./lib/invoiceTotals";
 import { assertInvoiceContentEditable } from "./lib/editLocks";
@@ -26,6 +27,7 @@ import { roundCents, sumMoney, dollarsToCents } from "./lib/money";
 import {
 	optionalUserQuery,
 	userMutation,
+	userQuery,
 	type UserMutationCtx,
 } from "./lib/factories";
 
@@ -779,9 +781,38 @@ export const sendToClient = userMutation({
 });
 
 /**
+ * The client-facing portal URL for this invoice — the "share pay link"
+ * surface on mobile. Backend-served (reusing the email's URL builder) so the
+ * portal origin has exactly one source of truth. Null when the client has no
+ * portal access yet; callers gate the share affordance on that.
+ */
+export const getPortalLink = userQuery({
+	args: { id: v.id("invoices") },
+	returns: v.union(v.string(), v.null()),
+	handler: async (ctx, args): Promise<string | null> => {
+		await ctx.requireLevel("invoices", "view");
+		const invoice = await ctx.orgEntity("invoices", args.id);
+		await ctx.requireRecordScope("invoices", () =>
+			ctx.actorScope().then((s) =>
+				invoice.projectId
+					? s.projectIds.has(invoice.projectId)
+					: s.clientIds.has(invoice.clientId)
+			)
+		);
+		const client = await ctx.db.get(invoice.clientId);
+		if (!client || client.orgId !== invoice.orgId || !client.portalAccessId) {
+			return null;
+		}
+		return buildPortalInvoiceUrl({
+			portalAccessId: client.portalAccessId,
+			invoiceId: invoice._id,
+		});
+	},
+});
+
+/**
  * Mark an invoice as paid
  */
-// TODO: Candidate for deletion if confirmed unused.
 export const markPaid = userMutation({
 	args: {
 		id: v.id("invoices"),
@@ -1077,6 +1108,24 @@ export const generateInvoiceNumber = userMutation({
 /**
  * Create invoice from quote
  */
+/**
+ * The invoice created from a quote, if any — drives mobile's "View invoice"
+ * CTA and hasInvoice capability without the drawer's heavy getPreview.
+ */
+export const getByQuote = userQuery({
+	args: { quoteId: v.id("quotes") },
+	returns: v.union(v.object({ _id: v.id("invoices") }), v.null()),
+	handler: async (ctx, args): Promise<{ _id: InvoiceId } | null> => {
+		await ctx.requireLevel("invoices", "view");
+		await ctx.orgEntity("quotes", args.quoteId);
+		const invoice = await ctx.db
+			.query("invoices")
+			.withIndex("by_quote", (q) => q.eq("quoteId", args.quoteId))
+			.first();
+		return invoice && invoice.orgId === ctx.orgId ? { _id: invoice._id } : null;
+	},
+});
+
 export const createFromQuote = userMutation({
 	args: {
 		quoteId: v.id("quotes"),

@@ -6,7 +6,14 @@ import { useQuery } from "convex/react";
 import { useRouter, type Href } from "expo-router";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { Id } from "@onetool/backend/convex/_generated/dataModel";
-import { DOCK_CLEARANCE, fontFamily, radii, type, useTokens } from "@/lib/theme";
+import {
+	badgeTone,
+	DOCK_CLEARANCE,
+	fontFamily,
+	radii,
+	type,
+	useTokens,
+} from "@/lib/theme";
 import { AppHeader } from "@/components/app-header";
 import {
 	Badge,
@@ -18,6 +25,11 @@ import {
 } from "@/components/ui";
 import { formatCurrency, formatDocumentDate } from "@/lib/format";
 import { Illustration } from "@/components/illustrations";
+import { MoneyAmount } from "@/components/money/money-amount";
+import {
+	CollectedChart,
+	type MonthBucket,
+} from "@/components/money/collected-chart";
 
 type Tab = "invoices" | "quotes";
 
@@ -28,6 +40,7 @@ type InvoiceRow = {
 	status: string;
 	total: number;
 	dueDate: number;
+	paidAt?: number;
 };
 
 type QuoteRow = {
@@ -82,6 +95,45 @@ export default function MoneyScreen({
 		return map;
 	}, [clients]);
 
+	// Derived hero + chart facts — all client-side from the already-loaded
+	// invoice list (existing-data-only rule for the 1d restyle): overdue
+	// dollars, draft count, and paid totals bucketed into the last 6 months.
+	const derived = useMemo(() => {
+		if (!invoices) return undefined;
+		let overdueAmount = 0;
+		let draftCount = 0;
+		for (const inv of invoices) {
+			if (inv.status === "draft") draftCount += 1;
+			const effOverdue =
+				inv.status === "overdue" ||
+				(inv.status === "sent" && inv.dueDate < now);
+			if (effOverdue) overdueAmount += inv.total;
+		}
+		const base = new Date(now);
+		const months: MonthBucket[] = [];
+		for (let i = 5; i >= 0; i--) {
+			const d = new Date(base.getFullYear(), base.getMonth() - i, 1);
+			const label = d
+				.toLocaleDateString("en-US", { month: "short" })
+				.toUpperCase();
+			const start = d.getTime();
+			const end = new Date(
+				d.getFullYear(),
+				d.getMonth() + 1,
+				1
+			).getTime();
+			const value = invoices.reduce(
+				(sum, inv) =>
+					inv.paidAt && inv.paidAt >= start && inv.paidAt < end
+						? sum + inv.total
+						: sum,
+				0
+			);
+			months.push({ label, value });
+		}
+		return { overdueAmount, draftCount, months };
+	}, [invoices, now]);
+
 	const Hero = (
 		<View style={[styles.hero, { backgroundColor: t.card, borderColor: t.line }]}>
 			<Eyebrow>Outstanding</Eyebrow>
@@ -96,12 +148,24 @@ export default function MoneyScreen({
 				</>
 			) : (
 				<>
-					<Text style={[styles.heroAmount, { color: t.ink }]}>
-						{formatCurrency(stats.totalOutstanding)}
-					</Text>
-					<Text style={[styles.heroSubline, { color: t.sub }]}>
-						{stats.byStatus.overdue} overdue · {stats.byStatus.sent} sent
-					</Text>
+					<MoneyAmount amount={stats.totalOutstanding} size={40} />
+					<View style={styles.heroSubRow}>
+						{derived && derived.overdueAmount > 0 ? (
+							<>
+								<View style={[styles.overdueDot, { backgroundColor: t.danger }]} />
+								<Text style={[styles.heroOverdue, { color: badgeTone.late.fg }]}>
+									{formatCurrency(derived.overdueAmount)} overdue
+								</Text>
+							</>
+						) : null}
+						<Text style={[styles.heroSubline, { color: t.sub }]}>
+							{derived && derived.overdueAmount > 0 ? "· " : ""}
+							{stats.byStatus.sent} sent
+							{derived && derived.draftCount > 0
+								? ` · ${derived.draftCount} draft${derived.draftCount === 1 ? "" : "s"}`
+								: ""}
+						</Text>
+					</View>
 				</>
 			)}
 		</View>
@@ -110,6 +174,9 @@ export default function MoneyScreen({
 	const ListHeader = (
 		<View style={styles.listHeader}>
 			{Hero}
+			{derived && derived.months.some((m) => m.value > 0) ? (
+				<CollectedChart months={derived.months} />
+			) : null}
 			<Toggle2<Tab>
 				value={tab}
 				onChange={setTab}
@@ -335,13 +402,25 @@ const styles = StyleSheet.create({
 		borderWidth: 1,
 		gap: 8,
 	},
-	heroAmount: {
-		fontFamily: fontFamily.bold,
-		fontSize: type.h1,
+	heroSubRow: {
+		flexDirection: "row",
+		alignItems: "center",
+		gap: 6,
+		flexWrap: "wrap",
+	},
+	overdueDot: {
+		width: 7,
+		height: 7,
+		borderRadius: 4,
+	},
+	heroOverdue: {
+		fontFamily: fontFamily.medium,
+		fontSize: type.rowTitle,
+		fontVariant: ["tabular-nums"],
 	},
 	heroSubline: {
 		fontFamily: fontFamily.regular,
-		fontSize: type.h4,
+		fontSize: type.rowTitle,
 	},
 	heroAmountSkeleton: {
 		width: 160,
@@ -356,6 +435,7 @@ const styles = StyleSheet.create({
 	amount: {
 		fontFamily: fontFamily.bold,
 		fontSize: type.h4,
+		fontVariant: ["tabular-nums"],
 	},
 	quoteCard: {
 		borderRadius: radii.rLg,
@@ -399,6 +479,7 @@ const styles = StyleSheet.create({
 	quoteAmount: {
 		fontFamily: fontFamily.bold,
 		fontSize: type.h4,
+		fontVariant: ["tabular-nums"],
 	},
 	skeletonBlock: {
 		gap: 4,

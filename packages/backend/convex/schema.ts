@@ -782,6 +782,12 @@ export default defineSchema({
 		// True when settled outside the portal (e.g. cash/check reconciled via
 		// the workspace "Mark as Paid"), so the portal can label it as such.
 		recordedOutsidePortal: v.optional(v.boolean()),
+		// How a field payment was taken, set when a row is settled through
+		// payments.recordManualPayment (mobile "Record payment").
+		manualMethod: v.optional(
+			v.union(v.literal("cash"), v.literal("check"), v.literal("other"))
+		),
+		manualNote: v.optional(v.string()),
 
 		// Legacy pay-by-link token. Retired: no longer generated for new payment
 		// rows (portal PaymentIntents correlate by paymentId). Optional so existing
