@@ -72,6 +72,11 @@ export function ListRow({
 					borderColor: t.primarySolid,
 					borderRadius: radii.xl,
 					borderBottomWidth: 1,
+					// Explicit longhand: the base style's borderBottomColor (lineSoft
+					// separator) beats the borderColor shorthand in RN's resolution
+					// regardless of order — without this the capsule's bottom edge
+					// stays faint grey (visual pass round 2).
+					borderBottomColor: t.primarySolid,
 				},
 				pressed && styles.pressed,
 			]}

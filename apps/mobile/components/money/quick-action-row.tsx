@@ -65,8 +65,12 @@ export function QuickActionRow({
 		}
 	};
 
+	// No shadow on the floating bar: a box-shadow on the (transparent) row
+	// renders a soft plate across the whole bar's bounds — over the dot canvas
+	// it reads as a background blocking the texture (visual pass round 2). The
+	// pills carry their own fills; the canvas shows through the gaps.
 	return (
-		<View style={[styles.row, floating && styles.floating]}>
+		<View style={styles.row}>
 			{primary ? (
 				<Button
 					title={primary.label}
@@ -132,9 +136,6 @@ const styles = StyleSheet.create({
 		flexDirection: "row",
 		alignItems: "stretch",
 		gap: 8,
-	},
-	floating: {
-		boxShadow: "0 12px 32px rgba(15,30,40,.14)",
 	},
 	grow: {
 		flex: 1,

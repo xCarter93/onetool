@@ -15,7 +15,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { ConvexError } from "convex/values";
 import * as Device from "expo-device";
-import { X } from "lucide-react-native";
+import { Check, X } from "lucide-react-native";
 import { api } from "@onetool/backend/convex/_generated/api";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
 import { fontFamily, tracking, type, useTokens } from "@/lib/theme";
@@ -203,8 +203,10 @@ export default function SignQuoteScreen() {
 								</Text>
 							</Card>
 						) : (
-							<Card style={styles.listCard}>
-								{sortedContacts.map((c) => (
+							// Bare rows over the canvas (money-hub idiom) — a Card wrapper
+							// clips the selected row's frosted capsule (visual pass round 2).
+							<View>
+								{sortedContacts.map((c, i) => (
 									<ListRow
 										key={c._id}
 										icon="User"
@@ -218,10 +220,21 @@ export default function SignQuoteScreen() {
 												.join(" · ") || undefined
 										}
 										selected={c._id === selectedId}
+										showChevron={false}
+										right={
+											c._id === selectedId ? (
+												<Check
+													size={17}
+													color={t.primarySolid}
+													strokeWidth={2.5}
+												/>
+											) : undefined
+										}
+										last={i === sortedContacts.length - 1}
 										onPress={() => setContactId(c._id)}
 									/>
 								))}
-							</Card>
+							</View>
 						)}
 					</View>
 				</ScrollView>
@@ -360,7 +373,7 @@ function RotatedFrame({ children }: { children: React.ReactNode }) {
 const styles = StyleSheet.create({
 	flex: { flex: 1 },
 	loading: { flex: 1, alignItems: "center", justifyContent: "center" },
-	scroll: { paddingHorizontal: 16, paddingTop: 4 },
+	scroll: { paddingHorizontal: 16, paddingTop: 16 },
 	contextLine: {
 		fontFamily: fontFamily.medium,
 		fontSize: type.meta,
@@ -368,7 +381,6 @@ const styles = StyleSheet.create({
 		fontVariant: ["tabular-nums"],
 	},
 	section: { gap: 10 },
-	listCard: { paddingVertical: 2, paddingHorizontal: 4 },
 	emptyCard: { padding: 16, gap: 4 },
 	emptyTitle: { fontFamily: fontFamily.semibold, fontSize: type.rowTitle },
 	emptyBody: { fontFamily: fontFamily.medium, fontSize: type.meta },
