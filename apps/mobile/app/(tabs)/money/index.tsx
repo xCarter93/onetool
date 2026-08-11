@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { FlashList } from "@shopify/flash-list";
 import { useQuery } from "convex/react";
@@ -16,7 +16,6 @@ import {
 } from "@/lib/theme";
 import { AppHeader } from "@/components/app-header";
 import {
-	Badge,
 	DotGrid,
 	Eyebrow,
 	ListRow,
@@ -233,23 +232,34 @@ export default function MoneyScreen({
 	};
 
 	const renderQuote = ({ item }: { item: QuoteRow }) => {
+		// Same table row as invoices (visual-pass feedback: the two tabs
+		// diverged — quotes rendered as cards). ListRow carries the status
+		// badge, hairline rows, and the iPad selected state for free.
+		const iconColor =
+			item.status === "approved"
+				? t.success
+				: item.status === "declined"
+					? t.danger
+					: t.sub;
 		const client = clientName.get(item.clientId) ?? "Client";
-		const primary = item.title || `Quote ${item.quoteNumber ?? ""}`.trim();
+		const sub = item.title
+			? `${client} · ${item.title}`
+			: `${client} · ${formatDocumentDate(item._creationTime)}`;
 		const isSelected =
 			isPane && selected?.kind === "quote" && selected.id === item._id;
 		return (
-			<Pressable
-				style={({ pressed }) => [
-					styles.quoteCard,
-					{ backgroundColor: t.card, borderColor: t.line },
-					// primarySolid border, matching ui/list-row's selected state —
-					// frostedBorder composites to ~1.4:1 and cannot carry a state.
-					isSelected && {
-						borderColor: t.primarySolid,
-						backgroundColor: t.frostedBg,
-					},
-					pressed && styles.pressed,
-				]}
+			<ListRow
+				icon="FileText"
+				iconColor={iconColor}
+				title={item.quoteNumber ?? item.title ?? "Quote"}
+				sub={sub}
+				status={item.status}
+				selected={isSelected}
+				right={
+					<Text style={[styles.amount, { color: t.ink }]}>
+						{formatCurrency(item.total, { exact: true })}
+					</Text>
+				}
 				onPress={() =>
 					// iPad pane: drive the shell selection ({kind,id}). iPhone: push the
 					// ROOT /quote/[id] route exactly as before.
@@ -260,35 +270,7 @@ export default function MoneyScreen({
 								params: { id: item._id },
 							} as unknown as Href)
 				}
-			>
-				<View style={styles.quoteTop}>
-					<View style={styles.quoteHead}>
-						{item.quoteNumber ? (
-							// Default t.faint fails AA (4.23:1) once the selected state's
-							// frostedBg tint is behind it — t.sub clears both backdrops.
-							<Eyebrow color={t.sub}>{item.quoteNumber}</Eyebrow>
-						) : null}
-						<Text
-							style={[styles.quoteTitle, { color: t.ink }]}
-							numberOfLines={1}
-						>
-							{primary}
-						</Text>
-						<Text style={[styles.quoteClient, { color: t.sub }]} numberOfLines={1}>
-							{client}
-						</Text>
-					</View>
-					<Badge status={item.status} />
-				</View>
-				<View style={[styles.quoteBottom, { borderTopColor: t.line }]}>
-					<Text style={[styles.quoteDate, { color: t.sub }]}>
-						{formatDocumentDate(item._creationTime)}
-					</Text>
-					<Text style={[styles.quoteAmount, { color: t.ink }]}>
-						{formatCurrency(item.total, { exact: true })}
-					</Text>
-				</View>
-			</Pressable>
+			/>
 		);
 	};
 
@@ -378,7 +360,6 @@ export default function MoneyScreen({
 						...styles.listContent,
 						paddingBottom: listBottom,
 					}}
-					ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
 					ListEmptyComponent={Empty}
 				/>
 			)}
@@ -433,50 +414,6 @@ const styles = StyleSheet.create({
 		borderRadius: radii.sm,
 	},
 	amount: {
-		fontFamily: fontFamily.bold,
-		fontSize: type.h4,
-		fontVariant: ["tabular-nums"],
-	},
-	quoteCard: {
-		borderRadius: radii.rLg,
-		borderWidth: 1,
-		padding: 16,
-		gap: 12,
-	},
-	pressed: {
-		opacity: 0.85,
-	},
-	quoteTop: {
-		flexDirection: "row",
-		alignItems: "flex-start",
-		justifyContent: "space-between",
-		gap: 12,
-	},
-	quoteHead: {
-		flex: 1,
-		minWidth: 0,
-		gap: 3,
-	},
-	quoteTitle: {
-		fontFamily: fontFamily.bold,
-		fontSize: type.h3,
-	},
-	quoteClient: {
-		fontFamily: fontFamily.regular,
-		fontSize: type.h4,
-	},
-	quoteBottom: {
-		flexDirection: "row",
-		alignItems: "center",
-		justifyContent: "space-between",
-		borderTopWidth: 1,
-		paddingTop: 12,
-	},
-	quoteDate: {
-		fontFamily: fontFamily.regular,
-		fontSize: type.sm,
-	},
-	quoteAmount: {
 		fontFamily: fontFamily.bold,
 		fontSize: type.h4,
 		fontVariant: ["tabular-nums"],

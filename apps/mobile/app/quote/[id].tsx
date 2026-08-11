@@ -239,7 +239,7 @@ export function QuoteDetailBody({
 		(a) => a.slot === "primary" || a.slot === "secondary"
 	);
 
-	const setStatus = async (next: "approved" | "declined") => {
+	const setStatus = async (next: "sent" | "approved" | "declined") => {
 		try {
 			await updateQuote({ id: quote._id, status: next });
 		} catch {
@@ -268,6 +268,16 @@ export function QuoteDetailBody({
 			case "send_quote":
 			case "resend_quote":
 				setSendOpen(true);
+				break;
+			case "mark_sent":
+				Alert.alert(
+					"Mark this quote as sent?",
+					"Use this when the client already has it — no email goes out.",
+					[
+						{ text: "Cancel", style: "cancel" },
+						{ text: "Mark as sent", onPress: () => void setStatus("sent") },
+					]
+				);
 				break;
 			case "mark_approved":
 				Alert.alert(

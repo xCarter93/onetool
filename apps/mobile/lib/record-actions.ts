@@ -30,6 +30,7 @@ export type InvoiceStatus =
 export type RecordActionKey =
 	| "send_quote"
 	| "resend_quote"
+	| "mark_sent"
 	| "mark_approved"
 	| "mark_declined"
 	| "get_signature"
@@ -117,6 +118,14 @@ export function resolveQuoteActions(
 					label: "Send quote",
 					slot: "primary",
 					portalIssue: caps.portalIssue,
+				});
+				// Manual escape hatch: the quote was delivered outside the portal
+				// (printed, texted, read over the phone) — no email goes out.
+				// Draft-only: quotes.update stamps sentAt on draft→sent.
+				push({
+					key: "mark_sent",
+					label: "Mark as sent",
+					slot: "overflow",
 				});
 				push({
 					key: "mark_approved",

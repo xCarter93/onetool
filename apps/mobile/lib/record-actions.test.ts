@@ -42,7 +42,8 @@ describe("resolveQuoteActions — aligned CTA table (full capabilities)", () => 
 		draft: {
 			primary: ["send_quote"],
 			secondary: [],
-			overflow: ["mark_approved"],
+			// mark_sent = delivered outside the portal, no email (visual-pass ask).
+			overflow: ["mark_sent", "mark_approved"],
 		},
 		sent: {
 			primary: ["mark_approved"],
