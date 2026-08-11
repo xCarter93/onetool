@@ -9,6 +9,7 @@ import { resend } from "../resend";
 import { InvoiceReadyEmail } from "../emails/invoiceReady";
 import { internal } from "../_generated/api";
 import { formatCurrency } from "../lib/money";
+import { formatEmailFrom } from "../lib/emailFrom";
 import { buildPortalInvoiceUrl } from "./invoiceUrl";
 
 // Matches portal/email.ts's FROM_ADDRESS domain — display name is the
@@ -124,7 +125,9 @@ export const sendInvoiceReadyEmail = internalAction({
 		const amountFormatted = formatCurrency(data.total);
 		const dueDateFormatted = new Date(data.dueDate).toLocaleDateString(
 			"en-US",
-			{ month: "short", day: "numeric", year: "numeric" }
+			// Due dates are UTC-midnight calendar days — format in UTC so the
+			// printed date can't slip a day on a non-UTC runtime.
+			{ month: "short", day: "numeric", year: "numeric", timeZone: "UTC" }
 		);
 
 		const html = await render(
@@ -159,7 +162,7 @@ export const sendInvoiceReadyEmail = internalAction({
 		}
 
 		await resend.sendEmail(ctx, {
-			from: `${data.orgName} <${NOREPLY_ADDRESS}>`,
+			from: formatEmailFrom(data.orgName, NOREPLY_ADDRESS),
 			to: data.contactEmail,
 			subject: `Invoice ${data.invoiceNumber} from ${data.orgName}`,
 			html,

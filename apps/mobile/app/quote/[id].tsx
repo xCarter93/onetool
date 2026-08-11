@@ -111,8 +111,10 @@ export function QuoteDetailBody({
 		) : (
 			<AppHeader mode={appHeaderMode} title={title} />
 		);
-	// Signed signature URLs can expire mid-session — fall back to a caption on load error.
-	const [sigError, setSigError] = useState(false);
+	// Signed signature URLs can expire mid-session — fall back to a caption on
+	// load error. Keyed by the URL that failed so a refreshed one renders again
+	// instead of staying stuck on the caption for the rest of the mount.
+	const [sigErrorUrl, setSigErrorUrl] = useState<string | null>(null);
 	const [sendOpen, setSendOpen] = useState(false);
 	const [converting, setConverting] = useState(false);
 	// null = closed; item null = adding, item set = editing that row.
@@ -609,7 +611,7 @@ export function QuoteDetailBody({
 												].join(" · ")
 											: `${latest.contactEmail} · ${formatDocumentDate(latest.createdAt)}`}
 									</Text>
-									{latest.signatureUrl && !sigError ? (
+									{latest.signatureUrl && sigErrorUrl !== latest.signatureUrl ? (
 										latest.channel === "in_person" ? (
 											// In-person signatures are stored as SVG — RN's Image
 											// can't decode SVG, SvgUri renders the vector directly.
@@ -625,7 +627,7 @@ export function QuoteDetailBody({
 													uri={latest.signatureUrl}
 													width="100%"
 													height="100%"
-													onError={() => setSigError(true)}
+													onError={() => setSigErrorUrl(latest.signatureUrl)}
 												/>
 											</View>
 										) : (
@@ -634,14 +636,14 @@ export function QuoteDetailBody({
 												accessibilityLabel="Client signature"
 												accessibilityRole="image"
 												resizeMode="contain"
-												onError={() => setSigError(true)}
+												onError={() => setSigErrorUrl(latest.signatureUrl)}
 												style={[
 													styles.signature,
 													{ borderColor: t.line, backgroundColor: t.card },
 												]}
 											/>
 										)
-									) : latest.signatureUrl && sigError ? (
+									) : latest.signatureUrl ? (
 										<Text style={[styles.approvalCaption, { color: t.faint }]}>
 											Signature unavailable
 										</Text>

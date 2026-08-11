@@ -11,9 +11,16 @@ import {
 // sendToClient schedules a fire-and-forget email action. The action short-
 // circuits on this sentinel before touching the Resend component (unregistered
 // in tests); PORTAL_JWT_ISSUER feeds the portal deep-link it builds first.
-process.env.RESEND_API_KEY = "test-key";
-process.env.PORTAL_JWT_ISSUER =
-	process.env.PORTAL_JWT_ISSUER ?? "https://portal.example.com";
+// Stubbed (not assigned) so the sentinel key can't leak into other test files
+// sharing this worker's process.env.
+beforeEach(() => {
+	vi.stubEnv("RESEND_API_KEY", "test-key");
+	vi.stubEnv("PORTAL_JWT_ISSUER", "https://portal.example.com");
+});
+
+afterEach(() => {
+	vi.unstubAllEnvs();
+});
 
 // quotes.sendToClient flips draft/declined/expired→sent and schedules the
 // portal-invite email. Tests assert the mutation's contract (recipient guards,

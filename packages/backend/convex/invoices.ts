@@ -824,6 +824,12 @@ export const getPortalLink = userQuery({
 		if (!client || client.orgId !== invoice.orgId || !client.portalAccessId) {
 			return null;
 		}
+		// A deployment without the portal origin configured has no link to give;
+		// null hides the share affordance instead of throwing the detail screen's
+		// query (buildPortalInvoiceUrl raises on a missing issuer).
+		if (!process.env.PORTAL_JWT_ISSUER) {
+			return null;
+		}
 		return buildPortalInvoiceUrl({
 			portalAccessId: client.portalAccessId,
 			invoiceId: invoice._id,
@@ -1143,7 +1149,14 @@ export const getByQuote = userQuery({
 			.query("invoices")
 			.withIndex("by_quote", (q) => q.eq("quoteId", args.quoteId))
 			.first();
-		return invoice && invoice.orgId === ctx.orgId ? { _id: invoice._id } : null;
+		if (!invoice || invoice.orgId !== ctx.orgId) return null;
+		// Record scope decides too: a member scoped to their own projects must not
+		// learn that an invoice exists on a quote they can't open. Filtering (not
+		// throwing) keeps the "View invoice" CTA simply absent for them.
+		const visible = await ctx.applyReadScope("invoices", [invoice], (row, s) =>
+			row.projectId ? s.projectIds.has(row.projectId) : s.clientIds.has(row.clientId)
+		);
+		return visible.length > 0 ? { _id: invoice._id } : null;
 	},
 });
 

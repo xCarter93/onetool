@@ -12,6 +12,7 @@ import { celebrateQuoteApproved, celebrateInvoicePaid } from "../celebrations";
 import { insertTeamMessage } from "../../teamMessages";
 import { AUTOMATION_EMAIL_DAILY_CAP, rateLimiter } from "../../rateLimits";
 import { buildEmailHtml, resolveFromEmail } from "../../email/branding";
+import { formatEmailFrom } from "../emailFrom";
 import {
 	getOrCreateOutboundThread,
 	bumpThread,
@@ -2046,7 +2047,7 @@ async function executeSendEmailAction(
 			senderName: org.name,
 		});
 		const message: OutboundMessage = {
-			from: `${fromName} <${fromEmail}>`,
+			from: formatEmailFrom(fromName, fromEmail),
 			to: [recipient.email],
 			replyTo: [replyTo],
 			subject,

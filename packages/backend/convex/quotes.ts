@@ -822,20 +822,15 @@ export const update = userMutation({
 			filteredUpdates.contentUpdatedAt = Date.now();
 		}
 
-		// validUntil is exempt from the draft-only lock (extending a sent quote's
-		// window is legitimate) but never editable on a closed quote, and it still
-		// stales the PDF.
+		// validUntil has ONE writer: quotes.extendValidUntil. It carries rules this
+		// generic patch can't (expired quotes revive to sent, the PDF re-renders),
+		// so accepting it here would silently produce a half-applied extension.
 		if ("validUntil" in filteredUpdates) {
-			if (
-				currentQuote.status === "approved" ||
-				currentQuote.status === "declined"
-			) {
-				throw new ConvexError({
-					code: "CONFLICT",
-					message: `QUOTE_LOCKED: this quote is ${currentQuote.status} and its valid-until date can no longer be changed.`,
-				});
-			}
-			filteredUpdates.contentUpdatedAt = Date.now();
+			throw new ConvexError({
+				code: "BAD_REQUEST",
+				message:
+					"Use quotes.extendValidUntil to change a quote's valid-until date.",
+			});
 		}
 
 		const oldStatus = currentQuote.status;
@@ -999,8 +994,25 @@ export const extendValidUntil = userMutation({
 			);
 		}
 
-		// quotes.update emitted this for validUntil edits — record_updated
-		// automation triggers must not go dark now that web saves through here.
+		// The date prints on the PDF, so an existing render is now stale. Re-render
+		// it here rather than waiting for the next send: the portal serves this
+		// document to the client today. Quotes that never had a PDF stay without
+		// one — sendToClient/ensureQuotePdf make the first render.
+		const existingPdf = await ctx.db
+			.query("documents")
+			.withIndex("by_document_version", (q) =>
+				q.eq("documentType", "quote").eq("documentId", args.id)
+			)
+			.first();
+		if (existingPdf) {
+			await ctx.scheduler.runAfter(0, internal.pdfActions.generateQuotePdf, {
+				quoteId: args.id,
+				orgId: quote.orgId,
+			});
+		}
+
+		// quotes.update used to emit this for validUntil edits — record_updated
+		// automation triggers must not go dark now that every surface saves here.
 		await emitRecordUpdatedEvent(
 			ctx,
 			quote.orgId,
@@ -1493,6 +1505,8 @@ export const getApprovalAudit = userQuery({
 						: null;
 
 				// In-person rows: surface who captured the signature (org user).
+				// (No org check: `users` has no orgId — membership is its own table —
+				// and capturedByUserId is always the authenticated capturer.)
 				const capturedBy = row.capturedByUserId
 					? await ctx.db.get(row.capturedByUserId)
 					: null;
@@ -1525,19 +1539,6 @@ export const getApprovalAudit = userQuery({
 });
 
 /**
- * Slice 3 (mobile 3.0): in-person signature capture — the client signs on an
- * org device. Writes a FULL quoteApprovals audit row (portal parity, `channel:
- * "in_person"`) and applies the same status effects as portal approval.
- *
- * Mirrors portal/quotes._commitApproval, with the workspace trust model:
- * authenticated org user with quotes-modify instead of portal session +
- * attestation. `ipAddress` carries the "in-person" sentinel — mutations never
- * see a client IP, and the meaningful actor (capturedByUserId) is recorded.
- * Terms acceptance is presented inline above the canvas, so termsAcceptedAt
- * stamps unconditionally; intentAffirmedAt stays typed-signature-only (never
- * set here — drawn signatures carry intent inherently).
- */
-/**
  * Upload target for the in-person signature blob. Quotes-gated (not
  * documents-gated like documents.generateUploadUrl) so a member with
  * quotes-modify but without documents-modify can still complete the
@@ -1551,6 +1552,24 @@ export const generateSignatureUploadUrl = userMutation({
 	},
 });
 
+// Stroke JSON on an in-person approval. Generous for a real signature (a busy
+// one runs a few KB) while staying far under the document size limit the audit
+// row shares with its line-item snapshot.
+const MAX_SIGNATURE_RAW_DATA_CHARS = 200_000;
+
+/**
+ * Slice 3 (mobile 3.0): in-person signature capture — the client signs on an
+ * org device. Writes a FULL quoteApprovals audit row (portal parity, `channel:
+ * "in_person"`) and applies the same status effects as portal approval.
+ *
+ * Mirrors portal/quotes._commitApproval, with the workspace trust model:
+ * authenticated org user with quotes-modify instead of portal session +
+ * attestation. `ipAddress` carries the "in-person" sentinel — mutations never
+ * see a client IP, and the meaningful actor (capturedByUserId) is recorded.
+ * Terms acceptance is presented inline above the canvas, so termsAcceptedAt
+ * stamps unconditionally; intentAffirmedAt stays typed-signature-only (never
+ * set here — drawn signatures carry intent inherently).
+ */
 export const approveInPerson = userMutation({
 	args: {
 		id: v.id("quotes"),
@@ -1575,6 +1594,19 @@ export const approveInPerson = userMutation({
 			throw new ConvexError({
 				code: "QUOTE_NOT_PENDING",
 				message: "Only sent quotes can be signed.",
+			});
+		}
+
+		// The stroke JSON rides along in the audit document; an oversized payload
+		// would blow the row's size limit deep inside the insert, after the OCC
+		// and scope work. Reject it up front with a message the client can show.
+		if (
+			args.signatureRawData !== undefined &&
+			args.signatureRawData.length > MAX_SIGNATURE_RAW_DATA_CHARS
+		) {
+			throw new ConvexError({
+				code: "BAD_REQUEST",
+				message: "Signature data is too large to store.",
 			});
 		}
 

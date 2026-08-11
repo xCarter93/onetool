@@ -214,7 +214,7 @@ export const quotesArticles: HelpArticle[] = [
 				blocks: [
 					{
 						type: "paragraph",
-						text: "A sent quote is locked, so the numbers never change under your client while they are deciding. To fix a price, a line item, the title, or the terms, click **Revert to draft** in the quote header and confirm. The quote leaves your client's portal and their link stops working, and everything is editable again. Click **Mark as Sent** when it is ready to go back.",
+						text: "A sent quote is locked, so the numbers never change under your client while they are deciding. To fix a price, a line item, the title, or the terms, click **Revert to draft** in the quote header and confirm. The quote leaves your client's portal and their link stops working, and everything is editable again. Click **Send** when it is ready to go back — that emails the revised quote and makes their link work again. (**Mark as Sent** only flips the status, so save it for quotes you delivered outside OneTool.)",
 					},
 					{
 						type: "note",

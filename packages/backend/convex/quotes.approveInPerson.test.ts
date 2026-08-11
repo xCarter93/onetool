@@ -188,6 +188,9 @@ describe("quotes.approveInPerson", () => {
 			...approveArgs(s),
 			expectedDocumentId: otherDocId,
 		});
+		const quote = await t.run(async (ctx) => ctx.db.get(s.quoteId));
+		expect(quote?.status).toBe("approved");
+		expect(quote?.latestDocumentId).toBe(otherDocId);
 	});
 
 	it("lets a current document supersede a pin that predates a content edit", async () => {

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { api } from "./_generated/api";
 import { setupConvexTest } from "./test.setup";
 import {
@@ -11,14 +11,18 @@ import {
 // buildPortalInvoiceUrl (the invite email's URL builder) so the portal origin
 // has one source of truth. getByQuote drives the quote detail's View-invoice
 // CTA. Both are thin org-scoped reads — the tests pin their contracts.
-process.env.PORTAL_JWT_ISSUER =
-	process.env.PORTAL_JWT_ISSUER ?? "https://portal.example.com";
-
 describe("invoices.getPortalLink / invoices.getByQuote", () => {
 	let t: ReturnType<typeof setupConvexTest>;
 
 	beforeEach(() => {
+		// Stub rather than default: a developer with a real PORTAL_JWT_ISSUER in
+		// their shell would otherwise fail the exact-URL assertion below.
+		vi.stubEnv("PORTAL_JWT_ISSUER", "https://portal.example.com");
 		t = setupConvexTest();
+	});
+
+	afterEach(() => {
+		vi.unstubAllEnvs();
 	});
 
 	async function seed(opts: { portalAccess: boolean }) {
@@ -75,7 +79,7 @@ describe("invoices.getPortalLink / invoices.getByQuote", () => {
 		const asOther = t.withIdentity(createTestIdentity(otherUserId, otherOrgId));
 		await expect(
 			asOther.query(api.invoices.getPortalLink, { id: invoiceId })
-		).rejects.toThrow();
+		).rejects.toThrow(/does not belong to your organization/);
 	});
 
 	it("getByQuote returns null before conversion and the invoice after", async () => {

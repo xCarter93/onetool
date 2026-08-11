@@ -208,28 +208,31 @@ describe("quote edit rules", () => {
 		});
 	});
 
+	// extendValidUntil owns the date: it revives expired quotes and re-renders
+	// the PDF, neither of which the generic patch can do. Accepting validUntil in
+	// both places is how half-applied extensions happen, so update refuses it.
 	describe("quotes.update validUntil", () => {
-		it("is exempt from the draft-only lock on a sent quote and bumps contentUpdatedAt", async () => {
+		it("refuses a validUntil patch and points at extendValidUntil", async () => {
 			const { asUser, quoteId } = await seed("sent");
-			const backdated = await backdateContent(quoteId);
-			const validUntil = futureDate(30);
-
-			await asUser.mutation(api.quotes.update, { id: quoteId, validUntil });
-
-			const quote = await rawQuote(quoteId);
-			expect(quote?.validUntil).toBe(validUntil);
-			expect(quote?.status).toBe("sent");
-			expect(quote?.contentUpdatedAt).toBeGreaterThan(backdated);
-		});
-
-		it("rejects a validUntil patch on an approved quote", async () => {
-			const { asUser, quoteId } = await seed("approved");
 			await expect(
 				asUser.mutation(api.quotes.update, {
 					id: quoteId,
 					validUntil: futureDate(30),
 				})
-			).rejects.toThrow(/QUOTE_LOCKED/);
+			).rejects.toThrow(/extendValidUntil/);
+
+			const quote = await rawQuote(quoteId);
+			expect(quote?.validUntil).not.toBe(futureDate(30));
+		});
+
+		it("refuses it on a draft quote too — one writer, every status", async () => {
+			const { asUser, quoteId } = await seed("draft");
+			await expect(
+				asUser.mutation(api.quotes.update, {
+					id: quoteId,
+					validUntil: futureDate(30),
+				})
+			).rejects.toThrow(/extendValidUntil/);
 		});
 	});
 
@@ -290,6 +293,37 @@ describe("quote edit rules", () => {
 					validUntil: futureDate(45),
 				})
 			).rejects.toThrow(/QUOTE_LOCKED/);
+		});
+
+		it("rejects a declined quote", async () => {
+			const { asUser, quoteId } = await seed("declined");
+			await expect(
+				asUser.mutation(api.quotes.extendValidUntil, {
+					id: quoteId,
+					validUntil: futureDate(45),
+				})
+			).rejects.toThrow(/QUOTE_LOCKED/);
+		});
+
+		// record_updated is what field-change automations subscribe to; the web
+		// sidebar saves through this mutation, so the trigger must not go dark.
+		it("emits record_updated naming validUntil", async () => {
+			const { asUser, quoteId } = await seed("sent");
+			await asUser.mutation(api.quotes.extendValidUntil, {
+				id: quoteId,
+				validUntil: futureDate(45),
+			});
+
+			const events = await t.run(async (ctx) =>
+				(await ctx.db.query("domainEvents").collect()).filter(
+					(row) =>
+						row.eventType === "entity.record_updated" &&
+						row.eventSource === "quotes.extendValidUntil"
+				)
+			);
+			expect(events.length).toBe(1);
+			expect(events[0]!.payload.entityId).toBe(quoteId);
+			expect(events[0]!.payload.metadata?.changedFields).toContain("validUntil");
 		});
 	});
 

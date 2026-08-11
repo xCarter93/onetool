@@ -29,6 +29,10 @@ import {
 } from "@/components/signature/signature-pad";
 import { formatCurrency } from "@/lib/format";
 
+// Long enough for a slow driveway uplink, short enough that a dead one fails
+// while the client is still standing there.
+const UPLOAD_TIMEOUT_MS = 30_000;
+
 // In-person signature flow (Slice 3, frame-1h follow-through): pick the
 // signer, then capture the signature. Phone keeps the app portrait and
 // rotates the signing surface 90° (Jobber's pattern — a wide canvas without
@@ -101,14 +105,28 @@ export default function SignQuoteScreen() {
 		if (!quote || !selectedId || strokes.length === 0 || !padSize) return;
 		setSubmitting(true);
 		try {
-			void ensurePdf(); // kick (or re-kick) before the upload round-trips
+			// Kick (or re-kick) before the upload round-trips. The rejection is
+			// handled here so a failed early render is a no-op rather than an
+			// unhandled promise; the awaited call below re-runs and surfaces it.
+			void ensurePdf().catch(() => {});
 			const svg = buildSignatureSvg(strokes, padSize.w, padSize.h);
 			const uploadUrl = await generateUploadUrl();
-			const res = await fetch(uploadUrl, {
-				method: "POST",
-				headers: { "Content-Type": "image/svg+xml" },
-				body: svg,
-			});
+			// Field connectivity is the norm here and RN's fetch never times out on
+			// its own — without this the sheet can spin forever on a dead uplink.
+			// (AbortSignal.timeout isn't in RN 0.85's fetch polyfill.)
+			const uploadAbort = new AbortController();
+			const uploadTimer = setTimeout(() => uploadAbort.abort(), UPLOAD_TIMEOUT_MS);
+			let res: Response;
+			try {
+				res = await fetch(uploadUrl, {
+					method: "POST",
+					headers: { "Content-Type": "image/svg+xml" },
+					body: svg,
+					signal: uploadAbort.signal,
+				});
+			} finally {
+				clearTimeout(uploadTimer);
+			}
 			if (!res.ok) throw new Error("Signature upload failed");
 			const { storageId } = (await res.json()) as {
 				storageId: Id<"_storage">;
@@ -245,7 +263,10 @@ export default function SignQuoteScreen() {
 						title="Continue to signature"
 						disabled={!selectedId}
 						onPress={() => {
-							void ensurePdf();
+							// Background render: failures surface on Confirm, which
+							// re-runs ensurePdf. Swallow here so the kick can't raise an
+							// unhandled rejection.
+							void ensurePdf().catch(() => {});
 							setStep("canvas");
 						}}
 					/>

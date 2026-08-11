@@ -49,6 +49,7 @@ import {
 } from "@/lib/record-actions";
 import { useInvoiceCapabilities } from "@/lib/use-record-capabilities";
 import { usePermissions } from "@/lib/use-permissions";
+import { deriveInvoiceDisplayPricing } from "@onetool/backend/pdf/invoicePricing";
 import { formatCurrency, formatDocumentDate } from "@/lib/format";
 
 const METHOD_LABEL: Record<string, string> = {
@@ -188,48 +189,27 @@ export function InvoiceDetailBody({
 	const daysLate = Math.floor((now - invoice.dueDate) / 86_400_000);
 
 	// TOTALS — straight from invoice.* (calculated by get). Never sum line items.
-	// Mode split mirrors resolveInvoicePricingMode / deriveInvoiceDisplayPricing:
-	// quote-style invoices (any of the four fields set) store discountAmount as a
-	// raw percent when discountType is "percentage" and only apply discount/tax
-	// when the enabled flag is truthy, exactly like computeQuoteTotals. Legacy
-	// invoices store flat dollars with no flags.
-	const isQuotePricing =
-		invoice.discountEnabled != null ||
-		invoice.discountType != null ||
-		invoice.taxEnabled != null ||
-		invoice.taxRate != null;
-	const rawDiscount = invoice.discountAmount ?? 0;
-	const discountActive = isQuotePricing
-		? invoice.discountEnabled === true && rawDiscount > 0
-		: rawDiscount > 0;
-	const discountDollars = !discountActive
-		? 0
-		: invoice.discountType === "percentage"
-			? Math.round(invoice.subtotal * rawDiscount) / 100
-			: rawDiscount;
-	const taxActive = isQuotePricing
-		? invoice.taxEnabled === true && !!invoice.taxAmount
-		: !!invoice.taxAmount;
+	// The legacy/quote pricing split and its cent rounding live in the shared
+	// deriveInvoiceDisplayPricing, so this screen prints the same discount and
+	// tax rows as the web record page, the portal paper and the PDF.
+	const pricing = deriveInvoiceDisplayPricing(invoice);
 	const totalsRows: { label: string; value: string; negative?: boolean }[] = [
 		{
 			label: "Subtotal",
 			value: formatCurrency(invoice.subtotal, { exact: true }),
 		},
 	];
-	if (discountDollars) {
+	if (pricing.showDiscount) {
 		totalsRows.push({
-			label:
-				invoice.discountType === "percentage"
-					? `Discount (${invoice.discountAmount}%)`
-					: "Discount",
-			value: formatCurrency(discountDollars, { exact: true }),
+			label: pricing.discountLabel,
+			value: formatCurrency(pricing.discountDollars, { exact: true }),
 			negative: true,
 		});
 	}
-	if (taxActive) {
+	if (pricing.showTax) {
 		totalsRows.push({
-			label: invoice.taxRate ? `Tax (${invoice.taxRate}%)` : "Tax",
-			value: formatCurrency(invoice.taxAmount ?? 0, { exact: true }),
+			label: pricing.taxLabel,
+			value: formatCurrency(pricing.taxDollars, { exact: true }),
 		});
 	}
 
@@ -339,6 +319,10 @@ export function InvoiceDetailBody({
 				setSendOpen(true);
 				break;
 			case "record_payment":
+				// The sheet prefills the remaining balance, which is only knowable
+				// once the payment rows arrive — opening early would seed the full
+				// total and validate against it.
+				if (withPayments === undefined) break;
 				setRecordOpen(true);
 				break;
 			case "share_pay_link":

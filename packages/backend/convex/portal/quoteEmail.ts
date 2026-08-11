@@ -9,6 +9,7 @@ import { resend } from "../resend";
 import { QuoteReadyEmail } from "../emails/quoteReady";
 import { internal } from "../_generated/api";
 import { formatCurrency } from "../lib/money";
+import { formatEmailFrom } from "../lib/emailFrom";
 import { buildPortalQuoteUrl } from "./quoteUrl";
 
 // Matches portal/email.ts's FROM_ADDRESS domain — display name is the
@@ -134,6 +135,9 @@ export const sendQuoteReadyEmail = internalAction({
 						month: "short",
 						day: "numeric",
 						year: "numeric",
+						// validUntil is a UTC-midnight calendar day; format it in UTC so
+						// the printed date can't slip a day on a non-UTC runtime.
+						timeZone: "UTC",
 					})
 				: undefined;
 
@@ -170,7 +174,7 @@ export const sendQuoteReadyEmail = internalAction({
 		}
 
 		await resend.sendEmail(ctx, {
-			from: `${data.orgName} <${NOREPLY_ADDRESS}>`,
+			from: formatEmailFrom(data.orgName, NOREPLY_ADDRESS),
 			to: data.contactEmail,
 			subject: data.quoteNumber
 				? `Quote ${data.quoteNumber} from ${data.orgName}`

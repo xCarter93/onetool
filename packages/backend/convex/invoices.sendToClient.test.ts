@@ -129,6 +129,9 @@ describe("invoices.sendToClient", () => {
 				generatedAt: Date.now(),
 				version: 1,
 			});
+			// Spell out the freshness this case depends on: the render must post-
+			// date the content, or the staleness branch (next test) would fire.
+			await ctx.db.patch(invoiceId, { contentUpdatedAt: Date.now() - 1000 });
 		});
 
 		await asUser.mutation(api.invoices.sendToClient, { id: invoiceId });

@@ -10,6 +10,7 @@ import {
 } from "./email/threads";
 import { SERVER_EVENTS, trackServerEvent } from "./lib/posthog";
 import { buildEmailHtml, resolveFromEmail } from "./email/branding";
+import { formatEmailFrom } from "./lib/emailFrom";
 import { sanitizeHtml } from "./email/sanitizeHtml";
 
 /**
@@ -112,7 +113,7 @@ export const sendClientEmail = userMutation({
 		});
 
 		const message: OutboundMessage = {
-			from: `${fromName} <${fromEmail}>`,
+			from: formatEmailFrom(fromName, fromEmail),
 			to: [recipient.email],
 			replyTo: [plusTagAddress(resolveFromEmail(organization), threadDocId)],
 			subject: args.subject,
@@ -306,7 +307,7 @@ export const replyToEmail = userMutation({
 		});
 
 		const message: OutboundMessage = {
-			from: `${fromName} <${fromEmail}>`,
+			from: formatEmailFrom(fromName, fromEmail),
 			to: [primaryContact.email],
 			replyTo: [plusTagAddress(resolveFromEmail(organization), threadDocId)],
 			subject,

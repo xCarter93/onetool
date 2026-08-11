@@ -63,7 +63,7 @@ export function RecordPaymentSheet({
 	if (visible !== prevVisible) {
 		setPrevVisible(visible);
 		if (visible) {
-			setAmountText(remaining > 0 ? String(remaining) : "");
+			setAmountText(remaining > 0 ? remaining.toFixed(2) : "");
 			setMethod("cash");
 			setNote("");
 			setDone(null);

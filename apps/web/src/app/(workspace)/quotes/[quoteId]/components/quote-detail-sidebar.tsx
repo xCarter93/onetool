@@ -44,6 +44,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { usePermissions } from "@/hooks/use-permissions";
+import { REVERT_TO_DRAFT_REASON } from "@/components/shared/line-items/use-quote-line-items-controller";
 import {
 	localDateToUtcMidnightMs,
 	utcMidnightMsToLocalDate,
@@ -128,9 +129,11 @@ export function QuoteDetailSidebar({
 	const canViewDocuments = can("documents");
 	const showReadOnly = !permissionsLoading && !canModify;
 	// Editable rows get the interactive affordance; read-only rows sit flat.
-	const rowClass = `flex items-start gap-3 py-2.5 -mx-2 px-2 rounded-md transition-colors${
-		canModify ? " group hover:bg-muted/50 cursor-pointer" : ""
-	}`;
+	const rowClassFor = (editable: boolean) =>
+		`flex items-start gap-3 py-2.5 -mx-2 px-2 rounded-md transition-colors${
+			editable ? " group hover:bg-muted/50 cursor-pointer" : ""
+		}`;
+	const rowClass = rowClassFor(canModify);
 	// The title prints on the client's document, so it follows the same
 	// draft-only content lock as line items and terms (see editLocks.ts).
 	const titleLocked = quote.status !== "draft";
@@ -139,21 +142,13 @@ export function QuoteDetailSidebar({
 			? "Approved quotes are locked, so the title can't change."
 			: quote.status === "declined"
 				? "Declined quotes are locked, so the title can't change."
-				: "Revert to draft to edit — the client's link pauses until you resend.";
-	const titleRowClass = `flex items-start gap-3 py-2.5 -mx-2 px-2 rounded-md transition-colors${
-		canModify && !titleLocked
-			? " group hover:bg-muted/50 cursor-pointer"
-			: ""
-	}`;
+				: REVERT_TO_DRAFT_REASON;
+	const titleRowClass = rowClassFor(canModify && !titleLocked);
 	// Valid until is exempt from the draft-only lock — it stays editable while
 	// the quote is sent or expired — but a closed quote's window is settled.
 	const validUntilLocked =
 		quote.status === "approved" || quote.status === "declined";
-	const validUntilRowClass = `flex items-start gap-3 py-2.5 -mx-2 px-2 rounded-md transition-colors${
-		canModify && !validUntilLocked
-			? " group hover:bg-muted/50 cursor-pointer"
-			: ""
-	}`;
+	const validUntilRowClass = rowClassFor(canModify && !validUntilLocked);
 
 	const [editingField, setEditingField] = useState<EditingField>(null);
 	const [editValue, setEditValue] = useState("");

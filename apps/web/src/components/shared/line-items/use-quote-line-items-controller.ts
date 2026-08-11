@@ -19,10 +19,12 @@ import type {
  * on the backend. Sent/expired unlock by reverting to draft; approved and
  * declined are frozen for good.
  */
-const REVERT_TO_DRAFT_REASON =
+export const REVERT_TO_DRAFT_REASON =
 	"Revert to draft to edit — the client's link pauses until you resend.";
 
-const LOCKED_REASON: Record<string, string> = {
+// Exhaustive over every non-draft status, so a new quote status fails the build
+// here instead of silently locking the grid without a reason.
+const LOCKED_REASON: Record<Exclude<Doc<"quotes">["status"], "draft">, string> = {
 	sent: REVERT_TO_DRAFT_REASON,
 	expired: REVERT_TO_DRAFT_REASON,
 	approved:
@@ -175,7 +177,8 @@ export function useQuoteLineItemsController({
 	const itemCount = items.length;
 
 	const locked = quote.status !== "draft";
-	const lockedReason = locked ? LOCKED_REASON[quote.status] : undefined;
+	const lockedReason =
+		quote.status === "draft" ? undefined : LOCKED_REASON[quote.status];
 
 	const patchItem = useCallback(
 		async (id: string, patch: GridLineItemPatch): Promise<boolean> => {
