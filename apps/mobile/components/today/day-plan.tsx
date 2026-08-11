@@ -3,7 +3,10 @@ import { StyleSheet, Text, View } from "react-native";
 import { fontFamily, recordTint, type, useTokens } from "@/lib/theme";
 import { ListRow } from "@/components/ui";
 import { AgendaRow, SpinedRow } from "@/components/today/agenda-row";
-import { NextUpCard } from "@/components/today/next-up-card";
+import {
+	NextUpCard,
+	NextUpProjectCard,
+} from "@/components/today/next-up-card";
 import { PlanSection } from "@/components/today/plan-section";
 import {
 	ScheduleEmpty,
@@ -12,6 +15,7 @@ import {
 import {
 	isWeekend,
 	selectNextUp,
+	selectNextUpProject,
 	type AgendaProject,
 	type AgendaTask,
 	type DayPlan,
@@ -23,6 +27,8 @@ interface DayPlanViewProps {
 	plan: DayPlan;
 	/** The anchored day (UTC-midnight date-id) — drives the empty-state variant. */
 	dayMs: number;
+	/** Anchored to the real today — gates both card variants. */
+	isToday: boolean;
 	/** Project spans covering this day (the ALL DAY band). */
 	projects: AgendaProject[];
 	/** "10:24 AM" — rendered on the now separator. */
@@ -62,6 +68,7 @@ function sectionMeta(tasks: readonly AgendaTask[], done: Set<string>): string {
 export function DayPlanView({
 	plan,
 	dayMs,
+	isToday,
 	projects,
 	nowLabel,
 	windowEmpty,
@@ -76,10 +83,18 @@ export function DayPlanView({
 	const t = useTokens();
 	const { anytime, overdue } = plan;
 	const { next, timed, nowIndex } = selectNextUp(plan, completedIds);
-	const allDayCount = projects.length + anytime.length;
+	// Project-visit fallback: a timed-empty plan has nowIndex -1 even today, so
+	// the today gate comes from the screen, not from selectNextUp.
+	const nextProject =
+		!next && isToday ? selectNextUpProject(projects) : null;
+	// The lead is never duplicated below — same rule as the timed card.
+	const bandProjects = nextProject
+		? projects.filter((p) => p._id !== nextProject._id)
+		: projects;
+	const allDayCount = bandProjects.length + anytime.length;
 	// Emptiness is judged on the WHOLE day, before the lead is split off.
 	const empty =
-		allDayCount === 0 && plan.timed.length === 0 && overdue.length === 0;
+		projects.length === 0 && anytime.length === 0 && plan.timed.length === 0 && overdue.length === 0;
 
 	if (empty) {
 		const variant: ScheduleEmptyVariant = windowEmpty
@@ -123,6 +138,11 @@ export function DayPlanView({
 					onOpen={() => onOpenTask(next._id)}
 					assignee={assigneeFor?.(next)}
 				/>
+			) : nextProject ? (
+				<NextUpProjectCard
+					project={nextProject}
+					onOpen={() => onOpenProject(nextProject._id)}
+				/>
 			) : null}
 
 			{allDayCount > 0 ? (
@@ -130,7 +150,7 @@ export function DayPlanView({
 					label="All day"
 					meta={`${allDayCount} ${allDayCount === 1 ? "item" : "items"}`}
 				>
-					{projects.map((p, i) => (
+					{bandProjects.map((p, i) => (
 						<SpinedRow key={p._id} color={recordTint.project.fg}>
 							<ListRow
 								icon="Folder"
@@ -145,7 +165,7 @@ export function DayPlanView({
 						</SpinedRow>
 					))}
 					{anytime.map((task, i) =>
-						taskRow(task, projects.length + i === allDayCount - 1),
+						taskRow(task, bandProjects.length + i === allDayCount - 1),
 					)}
 				</PlanSection>
 			) : null}

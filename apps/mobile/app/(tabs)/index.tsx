@@ -476,6 +476,7 @@ export default function TodayScreen({
 						<DayPlanView
 							plan={plan}
 							dayMs={anchorMs}
+							isToday={!anchoredElsewhere}
 							projects={dayProjects}
 							nowLabel={nowLabel}
 							windowEmpty={windowEmpty}

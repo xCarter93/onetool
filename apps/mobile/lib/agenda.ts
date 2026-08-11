@@ -246,6 +246,19 @@ export function selectNextUp(
 }
 
 /**
+ * Fallback lead object when no timed job qualifies for the card: the first
+ * still-active project visit. A project-only day is the COMMON field-service
+ * shape ("1 visit today", nothing clocked) — without this, exactly those days
+ * lose the "what's next" moment. Caller gates on today-anchored, since a
+ * timed-empty plan carries nowIndex -1 whether or not the day is today.
+ */
+export function selectNextUpProject(
+	projects: readonly AgendaProject[],
+): AgendaProject | null {
+	return projects.find((p) => !DONE.has(p.status)) ?? null;
+}
+
+/**
  * Width fraction (0-1) for a day's workload bar, scaled against the busiest day
  * in view. Relative rather than absolute so the strip reads as a shape for any
  * shop size — 2 jobs is a full bar for someone whose peak is 2.

@@ -12,6 +12,7 @@ import {
 	projectsForDay,
 	scopeCalendarEvents,
 	selectNextUp,
+	selectNextUpProject,
 	taskInScope,
 	tomorrowPeek,
 	weekDaysFor,
@@ -711,5 +712,31 @@ describe("isWeekend", () => {
 		expect(isWeekend(SUN)).toBe(true);
 		expect(isWeekend(SAT)).toBe(true);
 		expect(isWeekend(WED)).toBe(false);
+	});
+});
+
+describe("selectNextUpProject", () => {
+	const proj = (id: string, status = "in-progress") => ({
+		_id: id,
+		title: `Project ${id}`,
+		status,
+	});
+
+	it("picks the first still-active project", () => {
+		expect(selectNextUpProject([proj("a"), proj("b")])?._id).toBe("a");
+	});
+
+	it("skips completed and cancelled visits", () => {
+		const picked = selectNextUpProject([
+			proj("done", "completed"),
+			proj("gone", "cancelled"),
+			proj("live", "planned"),
+		]);
+		expect(picked?._id).toBe("live");
+	});
+
+	it("returns null when every visit is finished or the day has none", () => {
+		expect(selectNextUpProject([proj("done", "completed")])).toBeNull();
+		expect(selectNextUpProject([])).toBeNull();
 	});
 });

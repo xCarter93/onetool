@@ -16,7 +16,12 @@ import {
 	type,
 	useTokens,
 } from "@/lib/theme";
-import { formatClockLabel, type AgendaTask } from "@/lib/agenda";
+import { ChevronRight } from "lucide-react-native";
+import {
+	formatClockLabel,
+	type AgendaProject,
+	type AgendaTask,
+} from "@/lib/agenda";
 
 interface NextUpCardProps {
 	task: AgendaTask;
@@ -143,6 +148,75 @@ export function NextUpCard({
 				) : null}
 			</View>
 		</View>
+	);
+}
+
+/**
+ * Project-visit variant of the card — the fallback lead object when the day has
+ * no (remaining) timed job. Same anatomy, but "All day" replaces the clock
+ * headline and a chevron replaces the checkbox: projects aren't checkable, so
+ * the whole card is one open intent.
+ */
+export function NextUpProjectCard({
+	project,
+	onOpen,
+}: {
+	project: AgendaProject;
+	onOpen: () => void;
+}) {
+	const t = useTokens();
+	const status = STATUS[project.status as keyof typeof STATUS];
+
+	return (
+		<Pressable
+			onPress={onOpen}
+			accessibilityRole="button"
+			accessibilityLabel={[
+				"Next up",
+				"all day",
+				project.title,
+				project.context,
+				status?.label,
+			]
+				.filter(Boolean)
+				.join(", ")}
+			style={[
+				styles.card,
+				{
+					backgroundColor: t.card,
+					borderColor: t.line,
+					borderLeftColor: recordTint.project.fg,
+				},
+			]}
+		>
+			<View style={styles.body}>
+				<View style={styles.eyebrowRow}>
+					<Text style={[styles.eyebrow, { color: t.faint }]}>NEXT UP</Text>
+					{status ? (
+						<Text style={[styles.status, { color: status.c }]}>
+							{status.label}
+						</Text>
+					) : null}
+				</View>
+
+				<View style={styles.timeRow}>
+					<Text style={[styles.time, { color: t.ink }]}>All day</Text>
+				</View>
+
+				<Text style={[styles.title, { color: t.ink }]} numberOfLines={2}>
+					{project.title}
+				</Text>
+				{project.context ? (
+					<Text style={[styles.context, { color: t.sub }]} numberOfLines={1}>
+						{project.context}
+					</Text>
+				) : null}
+			</View>
+
+			<View style={styles.side}>
+				<ChevronRight size={20} color={t.faint} />
+			</View>
+		</Pressable>
 	);
 }
 
