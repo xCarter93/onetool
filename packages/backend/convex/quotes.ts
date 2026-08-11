@@ -173,7 +173,10 @@ const QUOTE_CONTENT_FIELDS = [
 	"title",
 	"terms",
 	"clientMessage",
-	"validUntil",
+	// validUntil is deliberately absent: it's offer-window metadata, not
+	// document content — extending a sent quote's validity must not require a
+	// revert to draft. It still stamps contentUpdatedAt (the date prints on the
+	// PDF) via its own branch in the update handler.
 ] as const;
 
 /**
@@ -812,10 +815,26 @@ export const update = userMutation({
 			)
 		);
 
-		// Content edits are frozen once the client has acted on the quote. Status
-		// transitions and every other field stay editable.
+		// Content edits are locked to draft quotes. Status transitions and every
+		// other field stay editable.
 		if (QUOTE_CONTENT_FIELDS.some((field) => field in filteredUpdates)) {
 			assertQuoteContentEditable(currentQuote);
+			filteredUpdates.contentUpdatedAt = Date.now();
+		}
+
+		// validUntil is exempt from the draft-only lock (extending a sent quote's
+		// window is legitimate) but never editable on a closed quote, and it still
+		// stales the PDF.
+		if ("validUntil" in filteredUpdates) {
+			if (
+				currentQuote.status === "approved" ||
+				currentQuote.status === "declined"
+			) {
+				throw new ConvexError({
+					code: "CONFLICT",
+					message: `QUOTE_LOCKED: this quote is ${currentQuote.status} and its valid-until date can no longer be changed.`,
+				});
+			}
 			filteredUpdates.contentUpdatedAt = Date.now();
 		}
 
@@ -844,6 +863,10 @@ export const update = userMutation({
 				filteredUpdates.approvedAt = now;
 			} else if (filteredUpdates.status === "declined") {
 				filteredUpdates.declinedAt = now;
+			} else if (filteredUpdates.status === "draft") {
+				// Revert to draft: without this the timeline (and portal sort, were
+				// it ever visible) would keep claiming the quote was sent.
+				filteredUpdates.sentAt = undefined;
 			}
 		}
 
@@ -915,6 +938,79 @@ export const update = userMutation({
 		}
 
 		return id;
+	},
+});
+
+/**
+ * Extend a quote's valid-until date. Exempt from the draft-only content lock
+ * (extending a sent quote's window is the whole point) but closed quotes
+ * reject. Extending an EXPIRED quote revives it to sent — the offer window is
+ * open again, so the portal link the client already has starts working; the
+ * caller's confirm copy states this. Silent toward the client (no email;
+ * resend exists to nudge).
+ */
+export const extendValidUntil = userMutation({
+	args: { id: v.id("quotes"), validUntil: v.number() },
+	returns: v.id("quotes"),
+	handler: async (ctx, args): Promise<QuoteId> => {
+		await ctx.requireLevel("quotes", "modify");
+		const quote = await ctx.orgEntity("quotes", args.id);
+		await ctx.requireRecordScope("quotes", () =>
+			ctx.actorScope().then((s) =>
+				quote.projectId
+					? s.projectIds.has(quote.projectId)
+					: s.clientIds.has(quote.clientId)
+			)
+		);
+
+		if (quote.status === "approved" || quote.status === "declined") {
+			throw new ConvexError({
+				code: "CONFLICT",
+				message: `QUOTE_LOCKED: this quote is ${quote.status} and its valid-until date can no longer be changed.`,
+			});
+		}
+
+		// Same calendar-day semantics as create/update.
+		const tz = (await ctx.db.get(ctx.orgId))?.timezone ?? "UTC";
+		if (args.validUntil < calendarDayEpoch(Date.now(), tz)) {
+			throw new ConvexError({
+				code: "BAD_REQUEST",
+				message: "Valid until date cannot be in the past",
+			});
+		}
+
+		const revived = quote.status === "expired";
+		await ctx.db.patch(args.id, {
+			validUntil: args.validUntil,
+			// The date prints on the PDF, so the existing render goes stale.
+			contentUpdatedAt: Date.now(),
+			...(revived ? { status: "sent" as const } : {}),
+		});
+
+		if (revived) {
+			await emitStatusChangeEvent(
+				ctx,
+				quote.orgId,
+				"quote",
+				args.id,
+				"expired",
+				"sent",
+				"quotes.extendValidUntil"
+			);
+		}
+
+		// quotes.update emitted this for validUntil edits — record_updated
+		// automation triggers must not go dark now that web saves through here.
+		await emitRecordUpdatedEvent(
+			ctx,
+			quote.orgId,
+			"quote",
+			args.id,
+			["validUntil"],
+			"quotes.extendValidUntil"
+		);
+
+		return args.id;
 	},
 });
 
@@ -1009,17 +1105,22 @@ export const sendToClient = userMutation({
 			}
 		}
 
-		// Every sent quote must end up with a PDF (the portal blocks approval
-		// without one — the audit row pins the version the client acted on).
-		// Web enforces this at send time in the UI; here we self-heal by
-		// scheduling a server-side render of the same template when none exists.
-		const existingPdf = await ctx.db
+		// Every sent quote must end up with a CURRENT PDF (the portal blocks
+		// approval without one — the audit row pins the version the client acted
+		// on). Web enforces this at send time in the UI; here we self-heal by
+		// scheduling a server-side render of the same template when none exists
+		// or the newest one predates a content edit (revert→edit→resend cycle).
+		const newestPdf = await ctx.db
 			.query("documents")
-			.withIndex("by_document", (q) =>
+			.withIndex("by_document_version", (q) =>
 				q.eq("documentType", "quote").eq("documentId", args.id)
 			)
+			.order("desc")
 			.first();
-		if (!existingPdf) {
+		if (
+			!newestPdf ||
+			newestPdf.generatedAt < (quote.contentUpdatedAt ?? 0)
+		) {
 			await ctx.scheduler.runAfter(0, internal.pdfActions.generateQuotePdf, {
 				quoteId: args.id,
 				orgId: quote.orgId,
@@ -1507,10 +1608,26 @@ export const approveInPerson = userMutation({
 		if (quote.latestDocumentId == null) {
 			await ctx.db.patch(args.id, { latestDocumentId: args.expectedDocumentId });
 		} else if (quote.latestDocumentId !== args.expectedDocumentId) {
-			throw new ConvexError({
-				code: "QUOTE_VERSION_STALE",
-				latestDocumentId: quote.latestDocumentId,
-			});
+			// The pin can predate a content edit (revert→edit→resend after a
+			// BoldSign pin): a CURRENT document supersedes a stale pin — without
+			// this, ensureQuotePdf renders fresh versions the OCC check here
+			// would reject forever. Anything else is a genuine version race.
+			const pinned = await ctx.db.get(quote.latestDocumentId);
+			const contentUpdatedAt = quote.contentUpdatedAt ?? 0;
+			if (
+				pinned &&
+				pinned.generatedAt < contentUpdatedAt &&
+				doc.generatedAt >= contentUpdatedAt
+			) {
+				await ctx.db.patch(args.id, {
+					latestDocumentId: args.expectedDocumentId,
+				});
+			} else {
+				throw new ConvexError({
+					code: "QUOTE_VERSION_STALE",
+					latestDocumentId: quote.latestDocumentId,
+				});
+			}
 		}
 
 		const client = await ctx.db.get(quote.clientId);

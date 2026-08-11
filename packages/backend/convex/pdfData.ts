@@ -108,6 +108,11 @@ export const _ensureQuotePdfAuth = internalQuery({
 		if (!quote || quote.orgId !== orgId) {
 			throw new ConvexError({ code: "NOT_FOUND" });
 		}
+		// A PDF older than the content is never good enough here: the signature
+		// flow pins this id into the audit row, and a revert→edit→resend cycle
+		// (or a validUntil extension) leaves the stored render behind the
+		// document the client is agreeing to. Stale ⇒ render fresh.
+		const contentUpdatedAt = quote.contentUpdatedAt ?? 0;
 		// Pinned version wins (BoldSign flow); else newest same-org row.
 		if (quote.latestDocumentId) {
 			const pinned = await ctx.db.get(quote.latestDocumentId);
@@ -115,7 +120,8 @@ export const _ensureQuotePdfAuth = internalQuery({
 				pinned &&
 				pinned.orgId === orgId &&
 				pinned.documentType === "quote" &&
-				pinned.documentId === args.quoteId
+				pinned.documentId === args.quoteId &&
+				pinned.generatedAt >= contentUpdatedAt
 			) {
 				return { orgId, existingDocumentId: pinned._id };
 			}
@@ -130,7 +136,11 @@ export const _ensureQuotePdfAuth = internalQuery({
 		return {
 			orgId,
 			existingDocumentId:
-				newest && newest.orgId === orgId ? newest._id : null,
+				newest &&
+				newest.orgId === orgId &&
+				newest.generatedAt >= contentUpdatedAt
+					? newest._id
+					: null,
 		};
 	},
 });

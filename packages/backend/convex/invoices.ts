@@ -769,16 +769,21 @@ export const sendToClient = userMutation({
 
 		await maybeEnqueueQboSync(ctx, invoice.orgId, "invoice", invoice._id);
 
-		// Sent invoices should carry a PDF like web-sent ones do (portal
+		// Sent invoices should carry a CURRENT PDF like web-sent ones do (portal
 		// download, consistent records). Self-heal with a server-side render of
-		// the same template when none exists — mirror of quotes.sendToClient.
-		const existingPdf = await ctx.db
+		// the same template when none exists or the newest one predates a
+		// content edit — mirror of quotes.sendToClient.
+		const newestPdf = await ctx.db
 			.query("documents")
-			.withIndex("by_document", (q) =>
+			.withIndex("by_document_version", (q) =>
 				q.eq("documentType", "invoice").eq("documentId", invoice._id)
 			)
+			.order("desc")
 			.first();
-		if (!existingPdf) {
+		if (
+			!newestPdf ||
+			newestPdf.generatedAt < (invoice.contentUpdatedAt ?? 0)
+		) {
 			await ctx.scheduler.runAfter(0, internal.pdfActions.generateInvoicePdf, {
 				invoiceId: invoice._id,
 				orgId: invoice.orgId,

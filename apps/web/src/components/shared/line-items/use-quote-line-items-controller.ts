@@ -14,13 +14,17 @@ import type {
 	LineItemSaveState,
 } from "./types";
 
-/** Quote statuses that freeze the line items. */
-const LOCKED_STATUSES: ReadonlyArray<Doc<"quotes">["status"]> = [
-	"approved",
-	"declined",
-];
+/**
+ * Quote content is editable in DRAFT ONLY — mirrors assertQuoteContentEditable
+ * on the backend. Sent/expired unlock by reverting to draft; approved and
+ * declined are frozen for good.
+ */
+const REVERT_TO_DRAFT_REASON =
+	"Revert to draft to edit — the client's link pauses until you resend.";
 
 const LOCKED_REASON: Record<string, string> = {
+	sent: REVERT_TO_DRAFT_REASON,
+	expired: REVERT_TO_DRAFT_REASON,
 	approved:
 		"Approved quotes are locked. Line items can't change after the client approves.",
 	declined:
@@ -170,7 +174,7 @@ export function useQuoteLineItemsController({
 
 	const itemCount = items.length;
 
-	const locked = LOCKED_STATUSES.includes(quote.status);
+	const locked = quote.status !== "draft";
 	const lockedReason = locked ? LOCKED_REASON[quote.status] : undefined;
 
 	const patchItem = useCallback(

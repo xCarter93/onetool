@@ -190,6 +190,40 @@ describe("quotes.approveInPerson", () => {
 		});
 	});
 
+	it("lets a current document supersede a pin that predates a content edit", async () => {
+		// revert→edit→resend after a BoldSign pin: the pin points at a PDF older
+		// than the content, ensureQuotePdf renders a fresh version, and signing
+		// with it must succeed (and move the pin) rather than dead-end on OCC.
+		const s = await seed();
+		const freshDocId = await t.run(async (ctx) => {
+			await ctx.db.patch(s.documentId, { generatedAt: 1000 });
+			await ctx.db.patch(s.quoteId, {
+				latestDocumentId: s.documentId,
+				contentUpdatedAt: 5000,
+			});
+			const storageId = await ctx.storage.store(
+				new Blob(["%PDF-fresh"], { type: "application/pdf" })
+			);
+			return await ctx.db.insert("documents", {
+				orgId: s.orgId,
+				documentType: "quote",
+				documentId: s.quoteId,
+				storageId,
+				generatedAt: Date.now(),
+				version: 2,
+			});
+		});
+
+		await s.asUser.mutation(api.quotes.approveInPerson, {
+			...approveArgs(s),
+			expectedDocumentId: freshDocId,
+		});
+
+		const quote = await t.run(async (ctx) => ctx.db.get(s.quoteId));
+		expect(quote?.status).toBe("approved");
+		expect(quote?.latestDocumentId).toBe(freshDocId);
+	});
+
 	it("rejects a document that belongs to a different quote", async () => {
 		const s = await seed();
 		const foreignDocId = await t.run(async (ctx) => {

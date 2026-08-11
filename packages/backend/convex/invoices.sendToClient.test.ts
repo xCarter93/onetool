@@ -141,6 +141,39 @@ describe("invoices.sendToClient", () => {
 		await t.finishAllScheduledFunctions(vi.runAllTimers);
 	});
 
+	it("schedules a fresh render when the newest PDF predates a content edit", async () => {
+		const { asUser, invoiceId, orgId } = await seed({
+			portalAccess: true,
+			contactEmail: "client@example.com",
+		});
+		// A PDF from before the latest edit — sent-invoice line items stay
+		// editable, so this state arises without any revert.
+		await t.run(async (ctx) => {
+			const storageId = await ctx.storage.store(
+				new Blob(["%PDF-stale"], { type: "application/pdf" })
+			);
+			await ctx.db.insert("documents", {
+				orgId,
+				documentType: "invoice",
+				documentId: invoiceId,
+				storageId,
+				generatedAt: 1000,
+				version: 1,
+			});
+			// The edit's touchContent stamp (the seed's raw inserts don't set it).
+			await ctx.db.patch(invoiceId, { contentUpdatedAt: Date.now() });
+		});
+
+		await asUser.mutation(api.invoices.sendToClient, { id: invoiceId });
+
+		const pending = await t.run(async (ctx) => {
+			const rows = await ctx.db.system.query("_scheduled_functions").collect();
+			return rows.filter((row) => row.name.includes("generateInvoicePdf"));
+		});
+		expect(pending.length).toBe(1);
+		await t.finishAllScheduledFunctions(vi.runAllTimers);
+	});
+
 	it("re-sends an already-sent invoice without changing status", async () => {
 		const { asUser, invoiceId } = await seed({
 			portalAccess: true,

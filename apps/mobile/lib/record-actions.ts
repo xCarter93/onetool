@@ -39,7 +39,9 @@ export type RecordActionKey =
 	| "send_invoice"
 	| "resend_invoice"
 	| "record_payment"
-	| "share_pay_link";
+	| "share_pay_link"
+	| "extend_valid_until"
+	| "revert_to_draft";
 
 export type ActionSlot = "primary" | "secondary" | "overflow";
 
@@ -171,6 +173,18 @@ export function resolveQuoteActions(
 					label: "Mark declined",
 					slot: "overflow",
 				});
+				push({
+					key: "extend_valid_until",
+					label: "Extend valid until",
+					slot: "overflow",
+				});
+				// Content is draft-only editable (Slice 4 rule) — this is the
+				// unlock: reverting pulls the quote from the portal until resend.
+				push({
+					key: "revert_to_draft",
+					label: "Revert to draft",
+					slot: "overflow",
+				});
 			}
 			break;
 		case "approved":
@@ -208,6 +222,13 @@ export function resolveQuoteActions(
 					label: "Send again",
 					slot: "primary",
 					portalIssue: caps.portalIssue,
+				});
+				// Extending an expired quote's window revives it to sent — the
+				// portal link starts working again (backend flips the status).
+				push({
+					key: "extend_valid_until",
+					label: "Extend valid until",
+					slot: "overflow",
 				});
 				push({
 					key: "mark_approved",

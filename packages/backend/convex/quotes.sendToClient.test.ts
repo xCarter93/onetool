@@ -175,6 +175,48 @@ describe("quotes.sendToClient", () => {
 		await t.finishAllScheduledFunctions(vi.runAllTimers);
 	});
 
+	it("schedules a fresh render when the newest PDF predates a content edit", async () => {
+		const { asUser, quoteId, orgId } = await seed({
+			portalAccess: true,
+			contactEmail: "client@example.com",
+		});
+		// A PDF from before the latest edit (revert→edit→resend leaves exactly
+		// this state): generatedAt far behind the seed's contentUpdatedAt stamp.
+		await t.run(async (ctx) => {
+			const storageId = await ctx.storage.store(
+				new Blob(["%PDF-stale"], { type: "application/pdf" })
+			);
+			await ctx.db.insert("documents", {
+				orgId,
+				documentType: "quote",
+				documentId: quoteId,
+				storageId,
+				generatedAt: 1000,
+				version: 1,
+			});
+			// The edit's touchContent stamp (the seed's raw inserts don't set it).
+			await ctx.db.patch(quoteId, { contentUpdatedAt: Date.now() });
+		});
+
+		await asUser.mutation(api.quotes.sendToClient, { id: quoteId });
+
+		const pending = await t.run(async (ctx) => {
+			const rows = await ctx.db.system.query("_scheduled_functions").collect();
+			return rows.filter((row) => row.name.includes("generateQuotePdf"));
+		});
+		expect(pending.length).toBe(1);
+		await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+		const versions = await t.run(async (ctx) => {
+			const rows = await ctx.db.query("documents").collect();
+			return rows
+				.filter((row) => row.documentId === quoteId)
+				.map((row) => row.version)
+				.sort();
+		});
+		expect(versions).toEqual([1, 2]);
+	});
+
 	it("re-sends an already-sent quote without a status change or duplicate event", async () => {
 		const { asUser, quoteId } = await seed({
 			portalAccess: true,

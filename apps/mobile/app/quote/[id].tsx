@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import {
 	Alert,
 	Image,
+	Pressable,
 	ScrollView,
 	StyleSheet,
 	Text,
@@ -10,7 +11,7 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useMutation, useQuery } from "convex/react";
 import { useLocalSearchParams, useRouter, type Href } from "expo-router";
-import { CheckCircle2, XCircle } from "lucide-react-native";
+import { CheckCircle2, Plus, XCircle } from "lucide-react-native";
 import { SvgUri } from "react-native-svg";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { Id } from "@onetool/backend/convex/_generated/dataModel";
@@ -23,11 +24,18 @@ import { StatusTrack, type TrackStep } from "@/components/money/status-track";
 import { QuickActionRow } from "@/components/money/quick-action-row";
 import { SendPreviewSheet } from "@/components/money/send-preview-sheet";
 import {
+	LineItemSheet,
+	type LineItemDraft,
+	type LineItemInitial,
+} from "@/components/money/line-item-sheet";
+import { ExtendValidUntilSheet } from "@/components/money/extend-valid-until-sheet";
+import {
 	resolveQuoteActions,
 	type QuoteStatus,
 	type RecordActionKey,
 } from "@/lib/record-actions";
 import { useQuoteCapabilities } from "@/lib/use-record-capabilities";
+import { usePermissions } from "@/lib/use-permissions";
 import { formatCurrency, formatDocumentDate } from "@/lib/format";
 
 // Lifecycle track states per status (frame 1h). Declined/expired terminate
@@ -107,6 +115,11 @@ export function QuoteDetailBody({
 	const [sigError, setSigError] = useState(false);
 	const [sendOpen, setSendOpen] = useState(false);
 	const [converting, setConverting] = useState(false);
+	// null = closed; item null = adding, item set = editing that row.
+	const [itemSheet, setItemSheet] = useState<{
+		item: LineItemInitial | null;
+	} | null>(null);
+	const [extendOpen, setExtendOpen] = useState(false);
 
 	const quote = useQuery(
 		api.quotes.get,
@@ -125,10 +138,23 @@ export function QuoteDetailBody({
 		id ? { quoteId: id as Id<"quotes"> } : "skip"
 	);
 	const capsData = useQuoteCapabilities(quote);
+	const { can } = usePermissions();
+	// Web-parity staleness hint: the saved PDF is older than the content.
+	// Gated useQuery throws on missing permission, so gate with can().
+	const latestDoc = useQuery(
+		api.documents.getLatest,
+		quote && can("documents", "view")
+			? { documentType: "quote" as const, documentId: id }
+			: "skip"
+	);
 
 	const sendToClient = useMutation(api.quotes.sendToClient);
 	const updateQuote = useMutation(api.quotes.update);
 	const createFromQuote = useMutation(api.invoices.createFromQuote);
+	const createLineItem = useMutation(api.quoteLineItems.create);
+	const updateLineItem = useMutation(api.quoteLineItems.update);
+	const removeLineItem = useMutation(api.quoteLineItems.remove);
+	const extendValidUntil = useMutation(api.quotes.extendValidUntil);
 
 	const clientName = useMemo(() => {
 		const map = new Map<string, string>();
@@ -240,12 +266,95 @@ export function QuoteDetailBody({
 		(a) => a.slot === "primary" || a.slot === "secondary"
 	);
 
-	const setStatus = async (next: "sent" | "approved" | "declined") => {
+	const setStatus = async (next: "draft" | "sent" | "approved" | "declined") => {
 		try {
 			await updateQuote({ id: quote._id, status: next });
 		} catch {
 			Alert.alert("Couldn't update this quote", "Please try again.");
 		}
+	};
+
+	// Slice 4: quote content is draft-only editable. Sent quotes funnel the
+	// edit intent through a revert-to-draft confirm; everything else reads as
+	// today's read-only document.
+	const canModify = capsData?.caps.canModify ?? false;
+	const contentEditable = status === "draft" && canModify;
+	const canFunnelEdit = status === "sent" && canModify;
+	const canDeleteItems = can("quotes", "delete");
+	const pdfStale =
+		!!latestDoc &&
+		!!quote.contentUpdatedAt &&
+		quote.contentUpdatedAt > latestDoc.generatedAt;
+
+	const toInitial = (item: {
+		_id: string;
+		description: string;
+		quantity: number;
+		unit: string;
+		rate: number;
+	}): LineItemInitial => ({
+		id: item._id,
+		description: item.description,
+		quantity: item.quantity,
+		unit: item.unit,
+		rate: item.rate,
+	});
+
+	const openItem = (item: LineItemInitial | null) => {
+		if (contentEditable) {
+			setItemSheet({ item });
+			return;
+		}
+		if (canFunnelEdit) {
+			Alert.alert(
+				"Move to draft to edit?",
+				"The client's link will stop working until you resend.",
+				[
+					{ text: "Cancel", style: "cancel" },
+					{
+						text: "Move to draft",
+						onPress: async () => {
+							try {
+								await updateQuote({ id: quote._id, status: "draft" });
+								setItemSheet({ item });
+							} catch {
+								Alert.alert("Couldn't update this quote", "Please try again.");
+							}
+						},
+					},
+				]
+			);
+		}
+	};
+
+	const saveItem = async (draft: LineItemDraft) => {
+		if (itemSheet?.item) {
+			await updateLineItem({
+				id: itemSheet.item.id as Id<"quoteLineItems">,
+				description: draft.description,
+				quantity: draft.quantity,
+				unit: draft.unit,
+				rate: draft.rate,
+			});
+		} else {
+			const nextSort =
+				items && items.length > 0
+					? Math.max(...items.map((i) => i.sortOrder)) + 1
+					: 0;
+			await createLineItem({
+				quoteId: quote._id,
+				description: draft.description,
+				quantity: draft.quantity,
+				unit: draft.unit,
+				rate: draft.rate,
+				sortOrder: nextSort,
+			});
+		}
+	};
+
+	const deleteItem = async () => {
+		if (!itemSheet?.item) return;
+		await removeLineItem({ id: itemSheet.item.id as Id<"quoteLineItems"> });
 	};
 
 	const convert = async () => {
@@ -309,6 +418,22 @@ export function QuoteDetailBody({
 			case "convert_to_invoice":
 				void convert();
 				break;
+			case "extend_valid_until":
+				setExtendOpen(true);
+				break;
+			case "revert_to_draft":
+				Alert.alert(
+					"Revert to draft?",
+					"The client's link will stop working until you resend.",
+					[
+						{ text: "Cancel", style: "cancel" },
+						{
+							text: "Revert to draft",
+							onPress: () => void setStatus("draft"),
+						},
+					]
+				);
+				break;
 			case "view_invoice":
 				if (capsData?.invoiceId) {
 					router.push({
@@ -355,11 +480,18 @@ export function QuoteDetailBody({
 
 				{/* Line items + totals — the document body. */}
 				<View style={styles.section}>
-					<Eyebrow>
-						{items && items.length > 0
-							? `Line items · ${items.length}`
-							: "Line items"}
-					</Eyebrow>
+					<View style={styles.sectionHeader}>
+						<Eyebrow>
+							{items && items.length > 0
+								? `Line items · ${items.length}`
+								: "Line items"}
+						</Eyebrow>
+						{pdfStale ? (
+							<Text style={[styles.staleHint, { color: t.faint }]}>
+								PDF outdated
+							</Text>
+						) : null}
+					</View>
 					<Card style={styles.docCard}>
 						{items === undefined ? (
 							<View style={styles.lineSkeletonBlock}>
@@ -377,14 +509,25 @@ export function QuoteDetailBody({
 						) : (
 							<View>
 								{items.map((item, i) => (
-									<View
+									<Pressable
 										key={item._id}
-										style={[
+										accessibilityRole={
+											contentEditable || canFunnelEdit ? "button" : undefined
+										}
+										onPress={
+											contentEditable || canFunnelEdit
+												? () => openItem(toInitial(item))
+												: undefined
+										}
+										style={({ pressed }) => [
 											styles.lineRow,
 											{
 												borderBottomColor: t.line,
 												borderBottomWidth: i === items.length - 1 ? 0 : 1,
 											},
+											pressed &&
+												(contentEditable || canFunnelEdit) &&
+												styles.linePressed,
 										]}
 									>
 										<View style={styles.lineBody}>
@@ -402,10 +545,26 @@ export function QuoteDetailBody({
 										<Text style={[styles.lineAmount, { color: t.ink }]}>
 											{formatCurrency(item.amount, { exact: true })}
 										</Text>
-									</View>
+									</Pressable>
 								))}
 							</View>
 						)}
+						{items !== undefined && (contentEditable || canFunnelEdit) ? (
+							<Pressable
+								accessibilityRole="button"
+								onPress={() => openItem(null)}
+								style={({ pressed }) => [
+									styles.addRow,
+									{ borderTopColor: t.line },
+									pressed && styles.linePressed,
+								]}
+							>
+								<Plus size={16} color={t.primarySolid} strokeWidth={2.5} />
+								<Text style={[styles.addLabel, { color: t.primarySolid }]}>
+									Add line item
+								</Text>
+							</Pressable>
+						) : null}
 						<View style={[styles.divider, { backgroundColor: t.line }]} />
 						{/* Totals — read straight from quotes.get (never recomputed). */}
 						<View style={styles.totalsWrap}>
@@ -588,6 +747,27 @@ export function QuoteDetailBody({
 					await sendToClient({ id: quote._id });
 				}}
 			/>
+
+			<LineItemSheet
+				visible={itemSheet !== null}
+				onClose={() => setItemSheet(null)}
+				initial={itemSheet?.item ?? null}
+				unitRequired
+				canDelete={canDeleteItems}
+				onSubmit={saveItem}
+				onDelete={deleteItem}
+			/>
+
+			<ExtendValidUntilSheet
+				visible={extendOpen}
+				onClose={() => setExtendOpen(false)}
+				quoteNumber={quote.quoteNumber ?? "This quote"}
+				currentValidUntil={quote.validUntil ?? null}
+				expired={status === "expired"}
+				onSubmit={async (validUntil) => {
+					await extendValidUntil({ id: quote._id, validUntil });
+				}}
+			/>
 		</SafeAreaView>
 	);
 }
@@ -613,6 +793,15 @@ const styles = StyleSheet.create({
 	},
 
 	section: { marginTop: 22, gap: 10 },
+	sectionHeader: {
+		flexDirection: "row",
+		alignItems: "baseline",
+		justifyContent: "space-between",
+	},
+	staleHint: {
+		fontFamily: fontFamily.regular,
+		fontSize: type.sm,
+	},
 	docCard: { padding: 0, overflow: "hidden" },
 
 	divider: { height: 1, marginHorizontal: 18 },
@@ -642,6 +831,19 @@ const styles = StyleSheet.create({
 		fontSize: type.h4,
 		paddingVertical: 18,
 		paddingHorizontal: 18,
+	},
+	linePressed: { opacity: 0.7 },
+	addRow: {
+		flexDirection: "row",
+		alignItems: "center",
+		justifyContent: "center",
+		gap: 6,
+		paddingVertical: 13,
+		borderTopWidth: 1,
+	},
+	addLabel: {
+		fontFamily: fontFamily.semibold,
+		fontSize: type.body,
 	},
 
 	skeletonHeader: {

@@ -119,6 +119,7 @@ export function QuoteDetailSidebar({
 }: QuoteDetailSidebarProps) {
 	const toast = useToast();
 	const updateQuote = useMutation(api.quotes.update);
+	const extendValidUntil = useMutation(api.quotes.extendValidUntil);
 
 	const { can, isLoading: permissionsLoading } = usePermissions();
 	const canModify = can("quotes", "modify");
@@ -129,6 +130,29 @@ export function QuoteDetailSidebar({
 	// Editable rows get the interactive affordance; read-only rows sit flat.
 	const rowClass = `flex items-start gap-3 py-2.5 -mx-2 px-2 rounded-md transition-colors${
 		canModify ? " group hover:bg-muted/50 cursor-pointer" : ""
+	}`;
+	// The title prints on the client's document, so it follows the same
+	// draft-only content lock as line items and terms (see editLocks.ts).
+	const titleLocked = quote.status !== "draft";
+	const titleLockedReason =
+		quote.status === "approved"
+			? "Approved quotes are locked, so the title can't change."
+			: quote.status === "declined"
+				? "Declined quotes are locked, so the title can't change."
+				: "Revert to draft to edit — the client's link pauses until you resend.";
+	const titleRowClass = `flex items-start gap-3 py-2.5 -mx-2 px-2 rounded-md transition-colors${
+		canModify && !titleLocked
+			? " group hover:bg-muted/50 cursor-pointer"
+			: ""
+	}`;
+	// Valid until is exempt from the draft-only lock — it stays editable while
+	// the quote is sent or expired — but a closed quote's window is settled.
+	const validUntilLocked =
+		quote.status === "approved" || quote.status === "declined";
+	const validUntilRowClass = `flex items-start gap-3 py-2.5 -mx-2 px-2 rounded-md transition-colors${
+		canModify && !validUntilLocked
+			? " group hover:bg-muted/50 cursor-pointer"
+			: ""
 	}`;
 
 	const [editingField, setEditingField] = useState<EditingField>(null);
@@ -160,6 +184,29 @@ export function QuoteDetailSidebar({
 		setEditDateValue(undefined);
 	};
 
+	/**
+	 * Valid until is exempt from the draft-only content lock, and extending an
+	 * expired quote revives it to sent — so it goes through extendValidUntil
+	 * rather than the generic update.
+	 */
+	const saveValidUntil = async (value: number) => {
+		const wasExpired = quote.status === "expired";
+		try {
+			await extendValidUntil({ id: quoteId, validUntil: value });
+			toast.success(
+				"Updated",
+				wasExpired
+					? "Valid until saved. The quote is available to your client again."
+					: "Valid until saved."
+			);
+			cancelEditing();
+		} catch (err) {
+			const message =
+				err instanceof Error ? err.message : "Failed to save";
+			toast.error("Error", message);
+		}
+	};
+
 	const saveField = async (
 		field: string,
 		value: string | number | undefined
@@ -172,7 +219,6 @@ export function QuoteDetailSidebar({
 			const labels: Record<string, string> = {
 				title: "Title",
 				status: "Status",
-				validUntil: "Valid until",
 			};
 			const label = labels[field] || field;
 			toast.success("Updated", `${label} saved.`);
@@ -243,11 +289,16 @@ export function QuoteDetailSidebar({
 			<div className="space-y-0">
 				{/* Title */}
 				<div
-					className={rowClass}
-					onClick={() =>
-						editingField !== "title" &&
-						startEditing("title", quote.title || "")
-					}
+					className={titleRowClass}
+					onClick={() => {
+						if (editingField === "title") return;
+						if (titleLocked) {
+							if (canModify)
+								toast.info("Quote locked", titleLockedReason);
+							return;
+						}
+						startEditing("title", quote.title || "");
+					}}
 				>
 					<Type className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
 					<span className="text-sm text-muted-foreground w-28 shrink-0">
@@ -280,7 +331,9 @@ export function QuoteDetailSidebar({
 								if (editValue.trim())
 									saveField("title", editValue.trim());
 							})
-						: renderPencil()}
+						: titleLocked
+							? null
+							: renderPencil()}
 				</div>
 
 				{/* Status */}
@@ -338,11 +391,21 @@ export function QuoteDetailSidebar({
 
 				{/* Valid Until */}
 				<div
-					className={rowClass}
-					onClick={() =>
-						editingField !== "validUntil" &&
-						startEditingDate("validUntil", quote.validUntil)
-					}
+					className={validUntilRowClass}
+					onClick={() => {
+						if (editingField === "validUntil") return;
+						if (validUntilLocked) {
+							if (canModify)
+								toast.info(
+									"Quote locked",
+									quote.status === "approved"
+										? "Approved quotes keep the valid-until date the client saw."
+										: "Declined quotes keep the valid-until date the client saw."
+								);
+							return;
+						}
+						startEditingDate("validUntil", quote.validUntil);
+					}}
 				>
 					<CalendarCheck className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
 					<span className="text-sm text-muted-foreground w-28 shrink-0">
@@ -364,8 +427,7 @@ export function QuoteDetailSidebar({
 								value={editDateValue}
 								onChange={(date) => {
 									if (date) {
-										saveField(
-											"validUntil",
+										saveValidUntil(
 											localDateToUtcMidnightMs(date)
 										);
 									}
@@ -386,7 +448,9 @@ export function QuoteDetailSidebar({
 							</span>
 						)}
 					</div>
-					{editingField !== "validUntil" && renderPencil()}
+					{editingField !== "validUntil" &&
+						!validUntilLocked &&
+						renderPencil()}
 				</div>
 
 				{/* Quote Number - Read only */}

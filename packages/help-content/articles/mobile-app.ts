@@ -66,6 +66,8 @@ export const mobileAppArticles: HelpArticle[] = [
 							"**Sending** shows a preview of the document first, then emails your client a link to review it — and, for invoices, pay it — in their client portal. The client needs portal access and a primary contact email; the buttons explain what's missing if they can't be reached.",
 							"**Record payment** logs a cash or check payment on the spot. The amount starts at the remaining balance and can be edited down for deposits and partial payments; the confirm button always shows the exact amount it will record.",
 							"**Share pay link** opens the share sheet with the invoice's portal payment link, so a client can pay by card on their own phone while you're standing together.",
+							"**Line items** are editable right on the record: tap a row to change its description, quantity, unit, or rate, or tap **Add line item** below the list — the total updates as you type. Draft quotes edit directly; a sent quote asks to move back to draft first (its portal link pauses until you resend), while invoices stay editable until a payment is recorded.",
+							"**Extend valid until** (under the ••• menu on a sent or expired quote) picks a new date without emailing the client — and extending an expired quote makes it available in the portal again.",
 						],
 					},
 				],

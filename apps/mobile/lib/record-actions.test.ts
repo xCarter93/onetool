@@ -48,7 +48,9 @@ describe("resolveQuoteActions — aligned CTA table (full capabilities)", () => 
 		sent: {
 			primary: ["mark_approved"],
 			secondary: ["resend_quote"],
-			overflow: ["mark_declined"],
+			// extend = validUntil is exempt from the draft-only lock; revert =
+			// the unlock for content edits (Slice 4 rule).
+			overflow: ["mark_declined", "extend_valid_until", "revert_to_draft"],
 		},
 		// No resend on approved — quotes.sendToClient rejects approved quotes.
 		approved: {
@@ -64,7 +66,8 @@ describe("resolveQuoteActions — aligned CTA table (full capabilities)", () => 
 		expired: {
 			primary: ["send_quote"],
 			secondary: [],
-			overflow: ["mark_approved"],
+			// Extending an expired quote revives it to sent (backend flip).
+			overflow: ["extend_valid_until", "mark_approved"],
 		},
 	};
 
@@ -116,7 +119,12 @@ describe("resolveQuoteActions — signature capability (reserved for Slice 3)", 
 		expect(keysBySlot(actions)).toEqual({
 			primary: ["get_signature"],
 			secondary: ["resend_quote"],
-			overflow: ["mark_approved", "mark_declined"],
+			overflow: [
+				"mark_approved",
+				"mark_declined",
+				"extend_valid_until",
+				"revert_to_draft",
+			],
 		});
 	});
 

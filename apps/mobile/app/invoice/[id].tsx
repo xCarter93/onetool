@@ -10,7 +10,13 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useMutation, useQuery } from "convex/react";
 import { useLocalSearchParams } from "expo-router";
-import { CalendarX2, Check, Link2, Share as ShareIcon } from "lucide-react-native";
+import {
+	CalendarX2,
+	Check,
+	Link2,
+	Plus,
+	Share as ShareIcon,
+} from "lucide-react-native";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { Id } from "@onetool/backend/convex/_generated/dataModel";
 import {
@@ -32,11 +38,17 @@ import {
 	type ManualMethod,
 } from "@/components/money/record-payment-sheet";
 import {
+	LineItemSheet,
+	type LineItemDraft,
+	type LineItemInitial,
+} from "@/components/money/line-item-sheet";
+import {
 	resolveInvoiceActions,
 	type InvoiceStatus,
 	type RecordActionKey,
 } from "@/lib/record-actions";
 import { useInvoiceCapabilities } from "@/lib/use-record-capabilities";
+import { usePermissions } from "@/lib/use-permissions";
 import { formatCurrency, formatDocumentDate } from "@/lib/format";
 
 const METHOD_LABEL: Record<string, string> = {
@@ -73,6 +85,10 @@ export function InvoiceDetailBody({
 	const [now] = useState(() => Date.now());
 	const [sendOpen, setSendOpen] = useState(false);
 	const [recordOpen, setRecordOpen] = useState(false);
+	// null = closed; item null = adding, item set = editing that row.
+	const [itemSheet, setItemSheet] = useState<{
+		item: LineItemInitial | null;
+	} | null>(null);
 
 	const invoice = useQuery(
 		api.invoices.get,
@@ -97,9 +113,21 @@ export function InvoiceDetailBody({
 		invoice ? { id: invoice._id } : "skip"
 	);
 	const capsData = useInvoiceCapabilities(invoice);
+	const { can } = usePermissions();
+	// Web-parity staleness hint: the saved PDF is older than the content.
+	// Gated useQuery throws on missing permission, so gate with can().
+	const latestDoc = useQuery(
+		api.documents.getLatest,
+		invoice && can("documents", "view")
+			? { documentType: "invoice" as const, documentId: id }
+			: "skip"
+	);
 
 	const sendToClient = useMutation(api.invoices.sendToClient);
 	const recordManualPayment = useMutation(api.payments.recordManualPayment);
+	const createLineItem = useMutation(api.invoiceLineItems.create);
+	const updateLineItem = useMutation(api.invoiceLineItems.update);
+	const removeLineItem = useMutation(api.invoiceLineItems.remove);
 
 	const clientName = useMemo(() => {
 		const map = new Map<string, string>();
@@ -227,6 +255,74 @@ export function InvoiceDetailBody({
 	const actions = capsData
 		? resolveInvoiceActions(displayStatus, capsData.caps)
 		: [];
+
+	// Slice 4: invoice line items stay editable until money settles — mirrors
+	// assertInvoiceContentEditable (paid/cancelled, or any settled/disputed
+	// payment row, freezes the content surface). Deliberately looser than the
+	// quote's draft-only rule: an invoice is a bill, not an offer under review.
+	const hasSettledPayment = payments.some(
+		(p) => p.status === "paid" || p.status === "refunded" || p.disputed === true
+	);
+	const contentEditable =
+		(capsData?.caps.canModify ?? false) &&
+		withPayments !== undefined &&
+		invoice.status !== "paid" &&
+		invoice.status !== "cancelled" &&
+		!hasSettledPayment;
+	// The one genuinely surprising lock: still sent/overdue, but a recorded
+	// payment froze the rows — say so instead of leaving dead taps.
+	const showSettledLockNote =
+		hasSettledPayment &&
+		(capsData?.caps.canModify ?? false) &&
+		(invoice.status === "sent" || invoice.status === "overdue");
+	const canDeleteItems = can("invoices", "delete");
+
+	const toInitial = (item: {
+		_id: string;
+		description: string;
+		quantity: number;
+		unit?: string;
+		unitPrice: number;
+	}): LineItemInitial => ({
+		id: item._id,
+		description: item.description,
+		quantity: item.quantity,
+		unit: item.unit ?? "",
+		rate: item.unitPrice,
+	});
+
+	const saveItem = async (draft: LineItemDraft) => {
+		// Invoice rows name the fields differently (unitPrice/total, optional
+		// unit) — map at this seam, same as the web controller's adapter.
+		const unit = draft.unit.trim() ? draft.unit.trim() : undefined;
+		if (itemSheet?.item) {
+			await updateLineItem({
+				id: itemSheet.item.id as Id<"invoiceLineItems">,
+				description: draft.description,
+				quantity: draft.quantity,
+				unit,
+				unitPrice: draft.rate,
+			});
+		} else {
+			const nextSort =
+				items && items.length > 0
+					? Math.max(...items.map((i) => i.sortOrder)) + 1
+					: 0;
+			await createLineItem({
+				invoiceId: invoice._id,
+				description: draft.description,
+				quantity: draft.quantity,
+				unit,
+				unitPrice: draft.rate,
+				sortOrder: nextSort,
+			});
+		}
+	};
+
+	const deleteItem = async () => {
+		if (!itemSheet?.item) return;
+		await removeLineItem({ id: itemSheet.item.id as Id<"invoiceLineItems"> });
+	};
 
 	const sharePayLink = async () => {
 		if (!portalLink) return;
@@ -441,11 +537,20 @@ export function InvoiceDetailBody({
 
 				{/* Line items — THREE STATES: undefined → skeleton, [] → empty, else map */}
 				<View style={styles.section}>
-					<Eyebrow>
-						{items && items.length > 0
-							? `Line items · ${items.length}`
-							: "Line items"}
-					</Eyebrow>
+					<View style={styles.sectionHeader}>
+						<Eyebrow>
+							{items && items.length > 0
+								? `Line items · ${items.length}`
+								: "Line items"}
+						</Eyebrow>
+						{latestDoc &&
+						invoice.contentUpdatedAt &&
+						invoice.contentUpdatedAt > latestDoc.generatedAt ? (
+							<Text style={[styles.staleHint, { color: t.faint }]}>
+								PDF outdated
+							</Text>
+						) : null}
+					</View>
 					<Card style={styles.itemsCard}>
 						{items === undefined ? (
 							<>
@@ -494,14 +599,21 @@ export function InvoiceDetailBody({
 							</Text>
 						) : (
 							items.map((item, i) => (
-								<View
+								<Pressable
 									key={item._id}
-									style={[
+									accessibilityRole={contentEditable ? "button" : undefined}
+									onPress={
+										contentEditable
+											? () => setItemSheet({ item: toInitial(item) })
+											: undefined
+									}
+									style={({ pressed }) => [
 										styles.itemRow,
 										{
 											borderBottomColor: t.line,
 											borderBottomWidth: i === items.length - 1 ? 0 : 1,
 										},
+										pressed && contentEditable && styles.itemPressed,
 									]}
 								>
 									<View style={styles.itemBody}>
@@ -519,10 +631,31 @@ export function InvoiceDetailBody({
 									<Text style={[styles.itemAmount, { color: t.ink }]}>
 										{formatCurrency(item.total, { exact: true })}
 									</Text>
-								</View>
+								</Pressable>
 							))
 						)}
+						{items !== undefined && contentEditable ? (
+							<Pressable
+								accessibilityRole="button"
+								onPress={() => setItemSheet({ item: null })}
+								style={({ pressed }) => [
+									styles.addRow,
+									{ borderTopColor: t.line },
+									pressed && styles.itemPressed,
+								]}
+							>
+								<Plus size={16} color={t.primarySolid} strokeWidth={2.5} />
+								<Text style={[styles.addLabel, { color: t.primarySolid }]}>
+									Add line item
+								</Text>
+							</Pressable>
+						) : null}
 					</Card>
+					{showSettledLockNote ? (
+						<Text style={[styles.lockNote, { color: t.faint }]}>
+							Line items locked — a payment has been recorded.
+						</Text>
+					) : null}
 				</View>
 
 				{/* Totals — shared TotalsBlock, values from invoice.* (server-calculated) */}
@@ -586,6 +719,15 @@ export function InvoiceDetailBody({
 				remaining={remaining}
 				onSubmit={submitPayment}
 			/>
+			<LineItemSheet
+				visible={itemSheet !== null}
+				onClose={() => setItemSheet(null)}
+				initial={itemSheet?.item ?? null}
+				unitRequired={false}
+				canDelete={canDeleteItems}
+				onSubmit={saveItem}
+				onDelete={deleteItem}
+			/>
 		</SafeAreaView>
 	);
 }
@@ -623,6 +765,35 @@ function MetaRow({
 const styles = StyleSheet.create({
 	flex: { flex: 1 },
 	scroll: { padding: 16, gap: 0 },
+
+	itemPressed: { opacity: 0.7 },
+	sectionHeader: {
+		flexDirection: "row",
+		alignItems: "baseline",
+		justifyContent: "space-between",
+	},
+	staleHint: {
+		fontFamily: fontFamily.regular,
+		fontSize: type.sm,
+	},
+	addRow: {
+		flexDirection: "row",
+		alignItems: "center",
+		justifyContent: "center",
+		gap: 6,
+		paddingVertical: 13,
+		borderTopWidth: 1,
+	},
+	addLabel: {
+		fontFamily: fontFamily.semibold,
+		fontSize: type.body,
+	},
+	lockNote: {
+		fontFamily: fontFamily.regular,
+		fontSize: type.sm,
+		marginTop: 8,
+		paddingHorizontal: 4,
+	},
 
 	skeletonCard: {
 		height: 96,
