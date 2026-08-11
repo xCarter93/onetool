@@ -90,39 +90,6 @@ async function createInvoiceWithOrg(
 type InvoiceDocument = Doc<"invoices">;
 type InvoiceId = Id<"invoices">;
 
-// Interface for invoice statistics
-interface InvoiceStats {
-	total: number;
-	byStatus: {
-		draft: number;
-		sent: number;
-		paid: number;
-		overdue: number;
-		cancelled: number;
-	};
-	totalValue: number;
-	totalPaid: number;
-	totalOutstanding: number;
-	thisMonth: number;
-}
-
-function createEmptyInvoiceStats(): InvoiceStats {
-	return {
-		total: 0,
-		byStatus: {
-			draft: 0,
-			sent: 0,
-			paid: 0,
-			overdue: 0,
-			cancelled: 0,
-		},
-		totalValue: 0,
-		totalPaid: 0,
-		totalOutstanding: 0,
-		thisMonth: 0,
-	};
-}
-
 // ============================================================================
 // Queries
 // ============================================================================
@@ -931,78 +898,6 @@ export const remove = userMutation({
 		await ctx.db.delete(args.id);
 
 		return args.id;
-	},
-});
-
-/**
- * Get invoice statistics for dashboard
- */
-// TODO: Candidate for deletion if confirmed unused.
-export const getStats = optionalUserQuery({
-	args: {},
-	handler: async (ctx): Promise<InvoiceStats> => {
-		const orgId = ctx.orgId;
-		if (!orgId) return createEmptyInvoiceStats();
-		await ctx.requireLevel("invoices", "view");
-
-		const allInvoices = await ctx.db
-			.query("invoices")
-			.withIndex("by_org", (q) => q.eq("orgId", orgId))
-			.collect();
-		const invoices = await ctx.applyReadScope(
-			"invoices",
-			allInvoices,
-			(invoice, scope) =>
-				invoice.projectId
-					? scope.projectIds.has(invoice.projectId)
-					: scope.clientIds.has(invoice.clientId)
-		);
-
-		const stats: InvoiceStats = {
-			total: invoices.length,
-			byStatus: {
-				draft: 0,
-				sent: 0,
-				paid: 0,
-				overdue: 0,
-				cancelled: 0,
-			},
-			totalValue: 0,
-			totalPaid: 0,
-			totalOutstanding: 0,
-			thisMonth: 0,
-		};
-
-		const now = Date.now();
-		const monthStart = new Date();
-		monthStart.setDate(1);
-		monthStart.setHours(0, 0, 0, 0);
-		const monthStartTime = monthStart.getTime();
-
-		invoices.forEach((invoice: InvoiceDocument) => {
-			// Check if overdue
-			const isOverdue = invoice.status === "sent" && invoice.dueDate < now;
-			const status = isOverdue ? "overdue" : invoice.status;
-
-			// Count by status
-			stats.byStatus[status as keyof typeof stats.byStatus]++;
-
-			// Calculate financial values
-			stats.totalValue += invoice.total;
-
-			if (invoice.status === "paid") {
-				stats.totalPaid += invoice.total;
-			} else if (invoice.status === "sent" || isOverdue) {
-				stats.totalOutstanding += invoice.total;
-			}
-
-			// Count this month's invoices
-			if (invoice._creationTime >= monthStartTime) {
-				stats.thisMonth++;
-			}
-		});
-
-		return stats;
 	},
 });
 

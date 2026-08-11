@@ -13,11 +13,16 @@ import { useIsFocused, useRouter, type Href } from "expo-router";
 import { useUser } from "@clerk/expo";
 import { useQuery } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
-import { Bell, type LucideIcon } from "lucide-react-native";
+import {
+	Activity as ActivityIcon,
+	Bell,
+	type LucideIcon,
+} from "lucide-react-native";
 import { DotGrid } from "@/components/ui";
 import { fontFamily, hero, tokens, tracking } from "@/lib/theme";
 
 const NOTIFICATIONS: Href = "/notifications" as Href;
+const ACTIVITY: Href = "/(tabs)/activity" as Href;
 
 function initialsFrom(name?: string | null, email?: string | null): string {
 	const source = name?.trim() || email || "?";
@@ -163,6 +168,12 @@ export function InkTabHeader({
 						action.onPress,
 						<action.icon size={18} color={hero.text} strokeWidth={2} />,
 					),
+				)}
+				{iconButton(
+					"activity",
+					"Activity",
+					() => router.push(ACTIVITY),
+					<ActivityIcon size={18} color={hero.text} strokeWidth={2} />,
 				)}
 				{iconButton(
 					"bell",

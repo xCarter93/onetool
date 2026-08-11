@@ -19,6 +19,7 @@ import type * as automations from "../automations.js";
 import type * as billingWebhook from "../billingWebhook.js";
 import type * as boldsign from "../boldsign.js";
 import type * as boldsignActions from "../boldsignActions.js";
+import type * as businessHealth from "../businessHealth.js";
 import type * as calendar from "../calendar.js";
 import type * as clientContacts from "../clientContacts.js";
 import type * as clientDocuments from "../clientDocuments.js";
@@ -206,6 +207,7 @@ declare const fullApi: ApiFromModules<{
   billingWebhook: typeof billingWebhook;
   boldsign: typeof boldsign;
   boldsignActions: typeof boldsignActions;
+  businessHealth: typeof businessHealth;
   calendar: typeof calendar;
   clientContacts: typeof clientContacts;
   clientDocuments: typeof clientDocuments;

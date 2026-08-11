@@ -417,58 +417,6 @@ describe("Invoices", () => {
 		});
 	});
 
-	describe("getStats", () => {
-		it("should return correct invoice statistics", async () => {
-			const { clerkUserId, clerkOrgId } = await t.run(async (ctx) => {
-				const { orgId, clerkUserId, clerkOrgId } = await createTestOrg(ctx);
-				const clientId = await createTestClient(ctx, orgId);
-
-				// Create invoices with different statuses
-				await createTestInvoice(ctx, orgId, clientId, {
-					status: "draft",
-					total: 1000,
-				});
-				await createTestInvoice(ctx, orgId, clientId, {
-					status: "sent",
-					total: 2000,
-				});
-				await createTestInvoice(ctx, orgId, clientId, {
-					status: "paid",
-					total: 3000,
-				});
-				await createTestInvoice(ctx, orgId, clientId, {
-					status: "overdue",
-					total: 4000,
-				});
-
-				return { clerkUserId, clerkOrgId };
-			});
-
-			const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
-
-			const stats = await asUser.query(api.invoices.getStats, {});
-
-			expect(stats.total).toBe(4);
-			expect(stats.byStatus.draft).toBe(1);
-			expect(stats.byStatus.sent).toBe(1);
-			expect(stats.byStatus.paid).toBe(1);
-			expect(stats.byStatus.overdue).toBe(1);
-		});
-
-		it("should return zero stats for empty organization", async () => {
-			const { clerkUserId, clerkOrgId } = await t.run(async (ctx) => {
-				const { clerkUserId, clerkOrgId } = await createTestOrg(ctx);
-				return { clerkUserId, clerkOrgId };
-			});
-
-			const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
-
-			const stats = await asUser.query(api.invoices.getStats, {});
-
-			expect(stats.total).toBe(0);
-		});
-	});
-
 	describe("getOverdue", () => {
 		const DAY_MS = 24 * 60 * 60 * 1000;
 

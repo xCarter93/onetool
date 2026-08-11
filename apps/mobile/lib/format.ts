@@ -31,3 +31,32 @@ export function formatDocumentDate(ts: number): string {
 		year: "numeric",
 	});
 }
+
+// Year-less date — "Jun 9". For metadata that sits in a narrow column next to a
+// money figure (Money hub attention/payment rows), where the year is noise.
+export function formatShortDate(ts: number): string {
+	return new Date(ts).toLocaleDateString("en-US", {
+		month: "short",
+		day: "numeric",
+	});
+}
+
+/**
+ * "Today" / "Yesterday" / "4d ago" inside the last week, short date beyond it.
+ * `now` is passed in, never read here — react-hooks/purity forbids Date.now()
+ * during render, so screens seed it once with a lazy useState.
+ */
+export function formatRelativeDay(ts: number, now: number): string {
+	const startOfDay = (ms: number) => {
+		const d = new Date(ms);
+		d.setHours(0, 0, 0, 0);
+		return d.getTime();
+	};
+	const days = Math.round(
+		(startOfDay(now) - startOfDay(ts)) / (24 * 60 * 60 * 1000),
+	);
+	if (days <= 0) return "Today";
+	if (days === 1) return "Yesterday";
+	if (days < 7) return `${days}d ago`;
+	return formatShortDate(ts);
+}
