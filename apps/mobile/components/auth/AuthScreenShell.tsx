@@ -20,15 +20,11 @@ interface AuthScreenShellProps {
 }
 
 // 3.0 sign-in (canvas 1m): the generated hero photo full-bleed, a 4-stop ink
-// scrim, the logo lockup up top and a dark glass card holding the auth surface.
-// The launch overlay uses the SAME photo, so cold start cross-fades into this
-// screen as one continuous scene. AuthView renders its own heading + buttons —
-// the shell deliberately carries no copy of its own (canvas headline dropped:
-// two stacked headings read as clutter, and auth correctness beats pixel
-// parity). AuthView's surface is themed TRANSLUCENT ink via clerk-theme.json
-// (8-digit-hex background), so the card's BlurView reads through it as glass.
-// clerk-theme.json is baked into Info.plist at prebuild — changes need
-// `expo prebuild --clean -p ios` before `expo run:ios`.
+// scrim, the wordmark up top and a dark glass card holding the auth surface
+// (SignInCard — custom Clerk-hooks flow; the native AuthView was retired
+// because its NavigationStack paints an opaque systemBackground that no theme
+// value can clear). The launch overlay uses the SAME photo, so cold start
+// cross-fades into this screen as one continuous scene.
 export function AuthScreenShell({ children }: AuthScreenShellProps) {
 	const { device, width, height } = useDevice();
 	const insets = useSafeAreaInsets();
@@ -55,11 +51,8 @@ export function AuthScreenShell({ children }: AuthScreenShellProps) {
 		</>
 	);
 
-	// Real glass: AuthView's themed background is FULLY transparent (clerk-theme
-	// background #00000000 — the bridge parses 8-digit RGBA and its hosting view
-	// is .clear), so this card is the only surface: system blur + the canvas's
-	// ink wash. A translucent AuthView bg stacked on the blur read as an opaque
-	// gray slab (first visual pass).
+	// Real glass: SignInCard paints no background of its own, so this card is
+	// the only surface — system blur + the canvas's ink wash over the photo.
 	const glass = (content: React.ReactNode, style: object) => (
 		<View style={style}>
 			<BlurView
@@ -96,13 +89,10 @@ export function AuthScreenShell({ children }: AuthScreenShellProps) {
 	}
 
 	// Phone: lockup floats over the photo's calm upper band; the glass card is
-	// pinned low and rides the keyboard via KeyboardAvoidingView (AuthView needs
-	// a definite height — see (auth)/index.tsx — so the card body sets one).
+	// pinned low, content-sized, and rides the keyboard via KeyboardAvoidingView.
 	return (
 		<View style={styles.root}>
 			{backdrop}
-			{/* Wordmark only — AuthView renders the app logo inside the card, so a
-			    second mark up here read as a duplicate. */}
 			<View
 				style={[styles.lockup, { top: insets.top + 64 }]}
 				pointerEvents="none"
@@ -163,9 +153,9 @@ const styles = StyleSheet.create({
 		borderWidth: 1,
 		borderColor: hero.glassBorder,
 		boxShadow: "0 24px 60px rgba(0,0,0,.4)",
-		paddingHorizontal: 8,
-		paddingTop: 8,
-		paddingBottom: 8,
+		paddingHorizontal: 22,
+		paddingTop: 24,
+		paddingBottom: 22,
 		overflow: "hidden",
 	},
 	// iPad: centered floating glass card over the hero.

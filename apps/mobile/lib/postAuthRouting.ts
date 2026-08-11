@@ -16,7 +16,7 @@ export type AuthRoutingState = {
 	needsMetadata: boolean | undefined;
 };
 
-// The (auth) group index host (Clerk AuthView). The signed-out destination.
+// The (auth) group index host (custom SignInCard). The signed-out destination.
 const SIGN_IN = "/(auth)";
 // Post-auth "finish setup" screen. The mobile app is SIGN-IN ONLY (Apple 3.1.1):
 // it no longer creates organizations. This screen activates an existing
