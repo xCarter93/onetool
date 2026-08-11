@@ -10,7 +10,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router, useLocalSearchParams } from "expo-router";
-import { useMutation } from "convex/react";
+import { useMutation, useQuery } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
 import { X } from "lucide-react-native";
@@ -18,10 +18,15 @@ import { fontFamily, radii, type, useTokens } from "@/lib/theme";
 import { Button, Eyebrow } from "@/components/ui";
 import { CenteredModal } from "@/components/ipad/centered-modal";
 import { ClientPicker } from "@/components/create/client-picker";
+import { FieldMenu } from "@/components/FieldMenu";
 import { useDevice } from "@/lib/use-device";
 import { usePermissions } from "@/lib/use-permissions";
 import { hapticSuccess } from "@/lib/haptics";
 import { describeMutationError } from "@/lib/mutation-error";
+
+// FieldMenu action id for "no project" — an empty-string id is not a shape the
+// native MenuView is known to round-trip.
+const NO_PROJECT = "__none__";
 
 // Fast-capture quote create (Slice 5 speed-dial). This screen only mints the
 // empty draft — the line-item sheet on the quote detail screen (Slice 4) is
@@ -36,6 +41,9 @@ export default function NewQuoteSheet() {
 	const [clientId, setClientId] = useState<Id<"clients"> | "">(
 		(params.clientId as Id<"clients">) || ""
 	);
+	// A client pushed in on the route is settled — show it read-only.
+	const clientLocked = !!params.clientId;
+	const [projectId, setProjectId] = useState<Id<"projects"> | "">("");
 	const [title, setTitle] = useState("");
 	const [submitting, setSubmitting] = useState(false);
 	const [error, setError] = useState<{
@@ -44,6 +52,16 @@ export default function NewQuoteSheet() {
 	} | null>(null);
 
 	const createQuote = useMutation(api.quotes.create);
+	const projects = useQuery(
+		api.projects.list,
+		clientId ? { clientId: clientId as Id<"clients"> } : "skip"
+	);
+	const projectOptions = [
+		{ value: NO_PROJECT, label: "No project" },
+		...(projects ?? []).map((p) => ({ value: p._id, label: p.title })),
+	];
+	const projectLabel =
+		projectOptions.find((o) => o.value === projectId)?.label ?? "No project";
 
 	const canCreate = can("quotes", "modify");
 	const valid = !!clientId;
@@ -55,6 +73,7 @@ export default function NewQuoteSheet() {
 		try {
 			const quoteId = (await createQuote({
 				clientId: clientId as Id<"clients">,
+				projectId: projectId ? (projectId as Id<"projects">) : undefined,
 				title: title.trim() || undefined,
 				status: "draft",
 				subtotal: 0,
@@ -103,9 +122,35 @@ export default function NewQuoteSheet() {
 				<Eyebrow>Client</Eyebrow>
 				<ClientPicker
 					value={clientId}
-					onChange={setClientId}
-					allowQuickAdd={can("clients", "modify")}
+					onChange={(next) => {
+						setClientId(next);
+						setProjectId(""); // a new client invalidates the staged project
+					}}
+					allowQuickAdd={!clientLocked && can("clients", "modify")}
+					locked={clientLocked}
 				/>
+
+				{/* Optional, and only when the client actually has projects — same
+				    FieldMenu idiom as the task form's client/project pair. */}
+				{clientId && projects && projects.length > 0 ? (
+					<View style={styles.field}>
+						<Eyebrow>Project</Eyebrow>
+						<View style={styles.menuWrap}>
+							<FieldMenu
+								title="Select project"
+								value={projectId || NO_PROJECT}
+								options={projectOptions}
+								label={projectLabel}
+								placeholder={!projectId}
+								onSelect={(next) =>
+									setProjectId(
+										next === NO_PROJECT ? "" : (next as Id<"projects">)
+									)
+								}
+							/>
+						</View>
+					</View>
+				) : null}
 
 				<View style={styles.field}>
 					<Eyebrow>Title</Eyebrow>
@@ -211,6 +256,8 @@ const styles = StyleSheet.create({
 	},
 	body: { paddingHorizontal: 20, paddingBottom: 32 },
 	field: { marginTop: 20 },
+	// FieldMenu has no outer margin of its own; match the TextInput's offset.
+	menuWrap: { marginTop: 8 },
 	input: {
 		borderWidth: 1,
 		borderRadius: radii.ctrl,

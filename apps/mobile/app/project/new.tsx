@@ -58,6 +58,9 @@ export default function NewProjectSheet() {
 	const [clientId, setClientId] = useState<Id<"clients"> | "">(
 		(params.clientId as Id<"clients">) || ""
 	);
+	// Arriving with a client means the picker has nothing to ask — it renders
+	// read-only and the sheet opens on Title.
+	const clientLocked = !!params.clientId;
 	const [title, setTitle] = useState("");
 	const [startDateId, setStartDateId] = useState<string | undefined>(undefined);
 	const [datePickerOpen, setDatePickerOpen] = useState(false);
@@ -138,7 +141,8 @@ export default function NewProjectSheet() {
 				<ClientPicker
 					value={clientId}
 					onChange={setClientId}
-					allowQuickAdd={can("clients", "modify")}
+					allowQuickAdd={!clientLocked && can("clients", "modify")}
+					locked={clientLocked}
 				/>
 
 				<View style={styles.field}>

@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import {
 	ActivityIndicator,
 	Pressable,
+	ScrollView,
 	StyleSheet,
 	Text,
 	TextInput,
@@ -19,6 +20,13 @@ import { describeMutationError } from "@/lib/mutation-error";
 // Above this many clients the list stops being scannable — a filter appears.
 const FILTER_THRESHOLD = 8;
 
+// A ListRow measures 12 + 12 padding + 32 icon tile + 1 hairline separator.
+// Five of them is the tallest the list can get before it pushes the rest of the
+// create sheet off-screen (visual pass: 15+ clients rendered full-height).
+const ROW_HEIGHT = 57;
+const MAX_VISIBLE_ROWS = 5;
+const LIST_MAX_HEIGHT = ROW_HEIGHT * MAX_VISIBLE_ROWS;
+
 /** Mirrors backend ValidationPatterns.isValidPhone so we never orphan a client. */
 function isValidPhone(phone: string): boolean {
 	return /^\+?[\d\s()-]+$/.test(phone) && phone.replace(/\D/g, "").length >= 10;
@@ -32,15 +40,21 @@ function isValidPhone(phone: string): boolean {
  * `allowQuickAdd` adds a "+ New client" row that expands INLINE into name +
  * phone. Confirming creates the client and its primary contact, then selects
  * it — the capture flow never navigates away.
+ *
+ * `locked` is the "pushed from client detail with ?clientId=" case: the client
+ * is already known, so the picker collapses to a read-only row and the form
+ * opens straight on its own fields.
  */
 export function ClientPicker({
 	value,
 	onChange,
 	allowQuickAdd = false,
+	locked = false,
 }: {
 	value: Id<"clients"> | "";
 	onChange: (id: Id<"clients">) => void;
 	allowQuickAdd?: boolean;
+	locked?: boolean;
 }) {
 	const t = useTokens();
 	const clients = useQuery(api.clients.list, {});
@@ -48,6 +62,9 @@ export function ClientPicker({
 	const createContact = useMutation(api.clientContacts.create);
 
 	const [filter, setFilter] = useState("");
+	// Collapse-on-select: once a client is chosen the list folds into a single
+	// row. "Change" flips this back open. Derived at render — never an effect.
+	const [reopened, setReopened] = useState(false);
 	const [quickOpen, setQuickOpen] = useState(false);
 	const [quickName, setQuickName] = useState("");
 	const [quickPhone, setQuickPhone] = useState("");
@@ -64,6 +81,13 @@ export function ClientPicker({
 
 	const quickValid =
 		quickName.trim().length > 0 && isValidPhone(quickPhone.trim());
+
+	const select = (id: Id<"clients">) => {
+		hapticSelect();
+		onChange(id);
+		setReopened(false);
+		setFilter("");
+	};
 
 	const confirmQuickAdd = async () => {
 		if (!quickValid || quickSaving) return;
@@ -90,12 +114,10 @@ export function ClientPicker({
 			} catch {
 				setQuickHint("Client saved, but the phone number didn't stick.");
 			}
-			hapticSelect();
-			onChange(clientId);
+			select(clientId);
 			setQuickOpen(false);
 			setQuickName("");
 			setQuickPhone("");
-			setFilter("");
 		} catch (err) {
 			const { message, planLimit } = describeMutationError(
 				err,
@@ -114,6 +136,43 @@ export function ClientPicker({
 			<View style={styles.loading}>
 				<ActivityIndicator size="small" color={t.sub} />
 			</View>
+		);
+	}
+
+	const selected = value ? clients.find((c) => c._id === value) : undefined;
+
+	// Preselected client (?clientId=): read-only, no search / list / quick-add.
+	// The name is resolved off the list we already have — no extra query.
+	if (locked) {
+		return (
+			<ListRow
+				icon="Building2"
+				title={selected?.companyName ?? "Selected client"}
+				showChevron={false}
+				last
+			/>
+		);
+	}
+
+	// Chosen: fold to one row so the fields below get the vertical space back.
+	if (selected && !reopened) {
+		return (
+			<ListRow
+				icon="Building2"
+				title={selected.companyName}
+				selected
+				showChevron={false}
+				last
+				onPress={() => setReopened(true)}
+				right={
+					<View style={styles.collapsedRight}>
+						<Text style={[styles.change, { color: t.primarySolid }]}>
+							Change
+						</Text>
+						<Check size={17} color={t.primarySolid} strokeWidth={2.5} />
+					</View>
+				}
+			/>
 		);
 	}
 
@@ -152,14 +211,36 @@ export function ClientPicker({
 				</View>
 			) : null}
 
-			{rows.length === 0 ? (
+			{/* Pinned above the scroll area: a trailing quick-add row would be
+			    scrolled out of reach the moment the list overflows. */}
+			{allowQuickAdd && !quickOpen ? (
+				<ListRow
+					icon="Plus"
+					iconColor={t.primarySolid}
+					title="New client"
+					showChevron={false}
+					onPress={() => {
+						setQuickError(null);
+						setQuickHint(null);
+						setQuickOpen(true);
+					}}
+				/>
+			) : null}
+
+			{/* The inline quick-add form takes over this space while it's open. */}
+			{quickOpen ? null : rows.length === 0 ? (
 				<Text style={[styles.empty, { color: t.sub }]}>
 					{clients.length === 0
 						? "No clients yet."
 						: "No clients match that search."}
 				</Text>
 			) : (
-				<View>
+				<ScrollView
+					style={{ maxHeight: LIST_MAX_HEIGHT }}
+					nestedScrollEnabled
+					keyboardShouldPersistTaps="handled"
+					showsVerticalScrollIndicator={rows.length > MAX_VISIBLE_ROWS}
+				>
 					{rows.map((c, i) => (
 						<ListRow
 							key={c._id}
@@ -172,30 +253,12 @@ export function ClientPicker({
 									<Check size={17} color={t.primarySolid} strokeWidth={2.5} />
 								) : undefined
 							}
-							last={i === lastRowIndex && !allowQuickAdd}
-							onPress={() => {
-								hapticSelect();
-								onChange(c._id);
-							}}
+							last={i === lastRowIndex}
+							onPress={() => select(c._id)}
 						/>
 					))}
-				</View>
+				</ScrollView>
 			)}
-
-			{allowQuickAdd && !quickOpen ? (
-				<ListRow
-					icon="Plus"
-					iconColor={t.primarySolid}
-					title="New client"
-					showChevron={false}
-					last
-					onPress={() => {
-						setQuickError(null);
-						setQuickHint(null);
-						setQuickOpen(true);
-					}}
-				/>
-			) : null}
 
 			{allowQuickAdd && quickOpen ? (
 				<View
@@ -274,6 +337,11 @@ export function ClientPicker({
 
 const styles = StyleSheet.create({
 	loading: { paddingVertical: 24, alignItems: "center" },
+	collapsedRight: { flexDirection: "row", alignItems: "center", gap: 8 },
+	change: {
+		fontFamily: fontFamily.semibold,
+		fontSize: type.meta,
+	},
 	searchBar: {
 		flexDirection: "row",
 		alignItems: "center",

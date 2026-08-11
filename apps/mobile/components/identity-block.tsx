@@ -14,7 +14,9 @@ interface IdentityBlockProps {
 	tint: { bg: string; fg: string };
 	/** Monogram glyph. Callers pass a single letter; longer strings are clipped. */
 	monogram: string;
-	title: string;
+	/** Omit when the screen header already carries the name (visual-pass r1:
+	 * repeating it beside the monogram read as redundant). */
+	title?: string;
 	/** Key into the STATUS map — rendered as TEXT, never a badge pill. */
 	statusKey?: string;
 	/** Quiet third line: lead source, city, project client, … */
@@ -60,9 +62,11 @@ export function IdentityBlock({
 				</Text>
 			</View>
 			<View style={styles.body}>
-				<Text style={[styles.title, { color: t.ink }]} numberOfLines={2}>
-					{title}
-				</Text>
+				{title ? (
+					<Text style={[styles.title, { color: t.ink }]} numberOfLines={2}>
+						{title}
+					</Text>
+				) : null}
 				{statusText ? (
 					<View style={styles.statusWrap}>
 						{renderStatus ? renderStatus(statusText) : statusText}

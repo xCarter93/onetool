@@ -357,7 +357,6 @@ export function ClientDetailBody({
 				<IdentityBlock
 					tint={recordTint.client}
 					monogram={client.companyName}
-					title={client.companyName}
 					statusKey={status}
 					sub={identitySub}
 					renderStatus={(statusText) => (
@@ -601,7 +600,32 @@ export function ClientDetailBody({
 
 				{/* Quotes */}
 				<View style={styles.section}>
-					<SectionHeader title={`Quotes${countSuffix(quotes.length)}`} />
+					<View style={styles.headerRow}>
+						<View style={styles.headerGrow}>
+							<SectionHeader title={`Quotes${countSuffix(quotes.length)}`} />
+						</View>
+						<Pressable
+							onPress={() =>
+								// Cast: /quote/new isn't in the generated route map yet.
+								router.push({
+									pathname: "/quote/new",
+									params: { clientId },
+								} as unknown as Href)
+							}
+							hitSlop={12}
+							accessibilityRole="button"
+							accessibilityLabel="New quote for this client"
+							style={({ pressed }) => [
+								styles.newAction,
+								pressed && styles.pressed,
+							]}
+						>
+							<Plus size={14} color={t.frostedInk} />
+							<Text style={[styles.newActionText, { color: t.frostedInk }]}>
+								New quote
+							</Text>
+						</Pressable>
+					</View>
 					{recentQuotes.length > 0 ? (
 						<View>
 							{recentQuotes.map((quote, i) => (

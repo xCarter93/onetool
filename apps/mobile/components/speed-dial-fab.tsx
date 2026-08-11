@@ -89,9 +89,10 @@ const SATELLITE_OBJECT: Record<SatelliteKey, "projects" | "tasks" | "clients" | 
 
 // Layout-animation objects built once at module scope (never in render — New
 // Architecture nativeID gotcha) and indexed by visual position bottom-up so the
-// stagger rises from the FAB.
+// stagger rises from the FAB. Timed, not sprung — the fan is a tool, not a toy
+// (visual-pass round 1: springs read too playful).
 const ENTER_BY_ROW = [0, 1, 2, 3].map((i) =>
-	FadeInDown.delay(i * 40).springify().damping(16),
+	FadeInDown.delay(i * 30).duration(150),
 );
 const EXIT = FadeOutDown.duration(110);
 const BACKDROP_IN = FadeIn.duration(150);
