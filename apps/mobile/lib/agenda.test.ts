@@ -444,6 +444,20 @@ describe("scopeCalendarEvents", () => {
 		expect(s.tasks.find((t) => t._id === "withClient")?.context).toBe("Acme");
 	});
 
+	it("ignores a placeholder client name when the task has no client", () => {
+		// The filler travels with clientId undefined, so the guard is the id, not
+		// the string — a real client called "Unknown Client" still shows.
+		const s = scopeCalendarEvents(
+			{
+				tasks: [taskEvent({ id: "filler", clientName: "Unknown Client" })],
+				projects: [],
+			},
+			"u1",
+			"team",
+		);
+		expect(s.tasks[0]?.context).toBeUndefined();
+	});
+
 	it("applies the scope helpers, keeping unassigned work in Me", () => {
 		const me = scopeCalendarEvents(events, "u1", "me");
 		expect(me.tasks.map((t) => t._id)).toEqual(["mine", "loose", "withClient"]);

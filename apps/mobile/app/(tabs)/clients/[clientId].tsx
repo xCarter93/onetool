@@ -9,7 +9,7 @@ import {
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { useLocalSearchParams, useRouter, type Href } from "expo-router";
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { useOrganization } from "@clerk/expo";
 import {
 	SafeAreaView,
@@ -147,15 +147,21 @@ export function ClientDetailBody({
 	const recentId = client?._id;
 	const recentTitle = client?.companyName;
 	const recentSub = client?.companyDescription?.trim() || properties[0]?.city;
+	// One-shot per visit (same guard as the projects screen): recentSub arrives
+	// late with the properties query and would otherwise re-record the visit.
+	const recordedRef = useRef<string | null>(null);
 	useEffect(() => {
-		if (!recentId || !recentTitle) return;
+		if (!recentId || !recentTitle || !orgId) return;
+		if (recordedRef.current === recentId) return;
+		recordedRef.current = recentId;
 		recordRecentView(orgId, {
 			kind: "client",
 			id: recentId,
 			title: recentTitle,
 			sub: recentSub,
 		});
-	}, [orgId, recentId, recentTitle, recentSub]);
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [orgId, recentId, recentTitle]);
 
 	const updateClient = useMutation(api.clients.update);
 

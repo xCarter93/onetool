@@ -252,6 +252,9 @@ export function ProjectDetailBody({
 					id: projectId as Id<"projects">,
 					status: next as ProjectStatus,
 				});
+				// The query has the write by the time this resolves, so hand the
+				// display back to project.status instead of pinning it here.
+				setOptimisticStatus(null);
 			} catch (error) {
 				setOptimisticStatus(null);
 				console.error("Failed to update status:", error);
@@ -421,6 +424,10 @@ export function ProjectDetailBody({
 			key: "new-quote",
 			label: "New quote",
 			Icon: Plus,
+			// Shown straight away so the row doesn't reflow, but inert until the
+			// grant is known — otherwise a tap in that window opens a sheet the
+			// role may not be allowed to use.
+			disabled: permsLoading,
 			onPress: () =>
 				// Cast: /quote/new isn't in the generated route map yet.
 				router.push({

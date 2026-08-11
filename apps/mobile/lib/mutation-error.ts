@@ -26,7 +26,11 @@ export function describeMutationError(
 			: undefined;
 	if (data?.code === PLAN_LIMIT_CODE) {
 		return {
-			message: data.message ?? "You've reached a plan limit.",
+			// Only a real string may reach the UI — `message` is typed, not proven.
+			message:
+				typeof data.message === "string"
+					? data.message
+					: "You've reached a plan limit.",
 			planLimit: true,
 		};
 	}

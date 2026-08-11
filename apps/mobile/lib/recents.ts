@@ -6,7 +6,15 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 // renamed record shows its old label until re-viewed and a deleted one lands on
 // the target screen's existing not-found state. Deliberate.
 
-export type RecentKind = "client" | "project" | "quote" | "invoice" | "task";
+export const RECENT_KINDS = [
+	"client",
+	"project",
+	"quote",
+	"invoice",
+	"task",
+] as const;
+
+export type RecentKind = (typeof RECENT_KINDS)[number];
 
 export interface RecentRecord {
 	kind: RecentKind;
@@ -43,7 +51,9 @@ function parse(raw: string | null): RecentRecord[] {
 				typeof r.id === "string" &&
 				typeof r.title === "string" &&
 				typeof r.at === "number" &&
-				typeof r.kind === "string"
+				// A kind this build no longer knows (or never wrote) would reach
+				// recordTint/renderRow as undefined, so it is dropped here.
+				(RECENT_KINDS as readonly string[]).includes(r.kind)
 		);
 	} catch {
 		return [];
@@ -58,6 +68,9 @@ export async function getRecents(orgId: string): Promise<RecentRecord[]> {
 	}
 }
 
+/** Tail of the write chain — rejections are swallowed, never propagated. */
+let writes: Promise<unknown> = Promise.resolve();
+
 /**
  * Fire-and-forget: call from record-detail screens once the record has loaded
  * (so the title snapshot is real, not a skeleton placeholder). Never blocks or
@@ -68,7 +81,10 @@ export function recordRecentView(
 	entry: Omit<RecentRecord, "at">
 ): void {
 	if (!orgId) return;
-	getRecents(orgId)
+	// Chained, not concurrent: two screens recording at once would each read the
+	// same list and the later write would drop the earlier entry.
+	writes = writes
+		.then(() => getRecents(orgId))
 		.then((list) =>
 			AsyncStorage.setItem(
 				keyFor(orgId),
@@ -79,3 +95,4 @@ export function recordRecentView(
 			if (__DEV__) console.warn("recordRecentView persist failed", e);
 		});
 }
+

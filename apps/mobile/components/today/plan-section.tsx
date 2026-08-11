@@ -28,6 +28,7 @@ export function PlanSection({
 		<View style={styles.group}>
 			<View style={styles.header}>
 				<Text
+					accessibilityRole="header"
 					style={[
 						day ? styles.dayLabel : styles.groupLabel,
 						{ color: day ? t.ink : t.faint },

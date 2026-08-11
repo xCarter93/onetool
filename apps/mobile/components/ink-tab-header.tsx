@@ -96,6 +96,8 @@ export function InkTabHeader({
 			onPress={onPress}
 			accessibilityRole="button"
 			accessibilityLabel={label}
+			// The circle stays 36pt; the target reaches 44 (bell, avatar, actions).
+			hitSlop={4}
 			style={[
 				styles.iconButton,
 				{

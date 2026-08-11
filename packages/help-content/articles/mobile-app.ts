@@ -41,8 +41,8 @@ export const mobileAppArticles: HelpArticle[] = [
 					{
 						type: "list",
 						items: [
-							"**Today** is your schedule. A week strip picks the date, and a **Day / List** toggle switches views: Day is a timeline of the chosen day — timed work in order with a *Now* marker, plus an all-day band for projects and unscheduled tasks — while List looks ahead two weeks, grouped by day. A **Me** and **Team** toggle switches between your own work and the whole team's, urgent items are called out at the top, and your organization's activity feed opens from here too.",
-							"**Work** is where you find anything. Type in the search field to search every record — clients (including their contacts and properties), projects, quotes, invoices, and tasks — with results grouped by type; the chips narrow to one type or browse its full list. Before you search, the screen shows records you've recently opened on this device.",
+							"**Today** is your schedule. A week strip picks the date, and a **Day / List** toggle switches views: Day is a timeline of the chosen day (timed work in order with a *Now* marker, plus an all-day band for projects and unscheduled tasks), while List looks ahead two weeks, grouped by day. A **Me** and **Team** toggle switches between your own work and the whole team's, urgent items are called out at the top, and your organization's activity feed opens from here too.",
+							"**Work** is where you find anything. Type in the search field to search every record: clients (including their contacts and properties), projects, quotes, invoices, and tasks, with results grouped by type; the chips narrow to one type or browse its full list. Before you search, the screen shows records you've recently opened on this device.",
 							"**Money** holds your invoices and quotes, with an outstanding total up top and a chart of what you've collected recently.",
 							"**Routes** plans the day's stops and gets you from one to the next. See [Planning a route](/help/routing/planning-a-route).",
 						],
@@ -58,7 +58,7 @@ export const mobileAppArticles: HelpArticle[] = [
 				blocks: [
 					{
 						type: "paragraph",
-						text: "The **+** button floats above the bottom-right of every tab and fans out into **New project**, **New task**, **New client**, and **New quote** — you only see the ones your role can create. On iPad, the same menu lives behind the **+** in the sidebar.",
+						text: "The **+** button floats above the bottom-right of every tab and fans out into **New project**, **New task**, **New client**, and **New quote**; you only see the ones your role can create. On iPad, the same menu lives behind the **+** in the sidebar.",
 					},
 					{
 						type: "list",
@@ -66,7 +66,7 @@ export const mobileAppArticles: HelpArticle[] = [
 							"**New project** is built for speed: pick a client, type a title, optionally set a start date, and it's created. If the client isn't in OneTool yet, tap **+ New client** inside the picker to add them with just a name and phone without leaving the form. You can also start a project straight from a client's detail screen.",
 							"**New quote** picks a client and creates a draft, then opens it so you can add line items right away.",
 							"**New task** and **New client** open the full forms you already know.",
-							"On the Free plan, the 10-client and 3-active-projects-per-client limits apply here the same as on the web — the app tells you when you've hit one.",
+							"On the Free plan, the 10-client and 3-active-projects-per-client limits apply here the same as on the web, and the app tells you when you've hit one.",
 						],
 					},
 				],
@@ -76,16 +76,16 @@ export const mobileAppArticles: HelpArticle[] = [
 				blocks: [
 					{
 						type: "paragraph",
-						text: "The **Money** tab is a combined list with an **Invoices** and **Quotes** toggle; tap any row to open the full record. From a detail screen, the buttons follow the record's status: a draft offers **Send** (with **Mark as sent** under the \u2022\u2022\u2022 menu when you delivered the quote yourself \u2014 no email goes out), a sent quote offers **Get signature** \u2014 the client picks who's signing, signs on your screen (turn the phone sideways; iPad signs full-width), and the quote is approved with the signature saved to its approval history \u2014 plus **Resend** and a manual **Mark approved**, an approved quote converts to an invoice in one tap, and a sent or overdue invoice offers **Record payment** and **Share pay link**.",
+						text: "The **Money** tab is a combined list with an **Invoices** and **Quotes** toggle; tap any row to open the full record. From a detail screen, the buttons follow the record's status: a draft offers **Send** (with **Mark as sent** under the \u2022\u2022\u2022 menu when you delivered the quote yourself, so no email goes out), a sent quote offers **Get signature** (the client picks who's signing, signs on your screen, and the quote is approved with the signature saved to its approval history; turn the phone sideways, and iPad signs full-width) plus **Resend** and a manual **Mark approved**, an approved quote converts to an invoice in one tap, and a sent or overdue invoice offers **Record payment** and **Share pay link**.",
 					},
 					{
 						type: "list",
 						items: [
-							"**Sending** shows a preview of the document first, then emails your client a link to review it — and, for invoices, pay it — in their client portal. The client needs portal access and a primary contact email; the buttons explain what's missing if they can't be reached.",
+							"**Sending** shows a preview of the document first, then emails your client a link to review it (and, for invoices, pay it) in their client portal. The client needs portal access and a primary contact email; the buttons explain what's missing if they can't be reached.",
 							"**Record payment** logs a cash or check payment on the spot. The amount starts at the remaining balance and can be edited down for deposits and partial payments; the confirm button always shows the exact amount it will record.",
 							"**Share pay link** opens the share sheet with the invoice's portal payment link, so a client can pay by card on their own phone while you're standing together.",
-							"**Line items** are editable right on the record: tap a row to change its description, quantity, unit, or rate, or tap **Add line item** below the list — the total updates as you type. Draft quotes edit directly; a sent quote asks to move back to draft first (its portal link pauses until you resend), while invoices stay editable until a payment is recorded.",
-							"**Extend valid until** (under the ••• menu on a sent or expired quote) picks a new date without emailing the client — and extending an expired quote makes it available in the portal again.",
+							"**Line items** are editable right on the record: tap a row to change its description, quantity, unit, or rate, or tap **Add line item** below the list, and the total updates as you type. Draft quotes edit directly; a sent quote asks to move back to draft first (its portal link pauses until you resend), while invoices stay editable until a payment is recorded.",
+							"**Extend valid until** (under the ••• menu on a sent or expired quote) picks a new date without emailing the client, and extending an expired quote makes it available in the portal again.",
 						],
 					},
 				],

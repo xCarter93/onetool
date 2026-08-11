@@ -272,5 +272,128 @@ describe("free-plan create caps", () => {
 				})
 			).resolves.toBeDefined();
 		});
+
+		it("reviving a completed project faces the cap", async () => {
+			const { asUser, clientId } = await seedClient();
+			await createProjects(
+				asUser,
+				clientId,
+				FREE_MAX_ACTIVE_PROJECTS_PER_CLIENT
+			);
+			const doneId = await asUser.mutation(api.projects.create, {
+				clientId,
+				title: "Finished",
+				status: "completed",
+				projectType: "one-off",
+			});
+			await expectPlanLimit(
+				asUser.mutation(api.projects.update, {
+					id: doneId,
+					status: "in-progress",
+				})
+			);
+		});
+
+		it("moving an active project onto a full client faces that client's cap", async () => {
+			const { asUser, clientId } = await seedClient();
+			await createProjects(
+				asUser,
+				clientId,
+				FREE_MAX_ACTIVE_PROJECTS_PER_CLIENT
+			);
+			const otherId = await asUser.mutation(api.clients.create, {
+				companyName: "Other client",
+				status: "active",
+			});
+			const movingId = await asUser.mutation(api.projects.create, {
+				clientId: otherId,
+				title: "Moving",
+				status: "planned",
+				projectType: "one-off",
+			});
+			await expectPlanLimit(
+				asUser.mutation(api.projects.update, {
+					id: movingId,
+					clientId,
+				})
+			);
+		});
+
+		it("editing a project that already holds its slot still works at the cap", async () => {
+			const { asUser, clientId } = await seedClient();
+			await createProjects(
+				asUser,
+				clientId,
+				FREE_MAX_ACTIVE_PROJECTS_PER_CLIENT
+			);
+			const activeId = await t.run(async (ctx) => {
+				const rows = await ctx.db
+					.query("projects")
+					.withIndex("by_client", (q) => q.eq("clientId", clientId))
+					.collect();
+				return rows[0]._id;
+			});
+			await expect(
+				asUser.mutation(api.projects.update, {
+					id: activeId,
+					title: "Renamed",
+					status: "in-progress",
+				})
+			).resolves.toBeDefined();
+		});
+	});
+
+	// The ceiling counts states, not inserts: a client coming back from the
+	// archive occupies a slot exactly like a fresh create.
+	describe("client status transitions", () => {
+		/** Fills the org to the cap and leaves one archived client behind. */
+		async function seedFullOrgWithArchived() {
+			const { asUser, orgId } = await seedOrg();
+			const ids = await createClients(asUser, FREE_MAX_CLIENTS);
+			await t.run(async (ctx) => {
+				await ctx.db.patch(ids[0], { status: "archived" });
+			});
+			// Back to the cap, with ids[0] parked in the archive.
+			await asUser.mutation(api.clients.create, {
+				companyName: "Refill",
+				status: "active",
+			});
+			return { asUser, orgId, archivedId: ids[0], activeId: ids[1] };
+		}
+
+		it("restore is refused at the cap", async () => {
+			const { asUser, archivedId } = await seedFullOrgWithArchived();
+			await expectPlanLimit(
+				asUser.mutation(api.clients.restore, { id: archivedId })
+			);
+		});
+
+		it("un-archiving through clients.update is refused at the cap", async () => {
+			const { asUser, archivedId } = await seedFullOrgWithArchived();
+			await expectPlanLimit(
+				asUser.mutation(api.clients.update, {
+					id: archivedId,
+					status: "active",
+				})
+			);
+		});
+
+		it("a client that already holds a slot can still be edited at the cap", async () => {
+			const { asUser, activeId } = await seedFullOrgWithArchived();
+			await expect(
+				asUser.mutation(api.clients.update, {
+					id: activeId,
+					status: "inactive",
+				})
+			).resolves.toBeDefined();
+		});
+
+		it("paid plan can still restore at the cap", async () => {
+			const { asUser, orgId, archivedId } = await seedFullOrgWithArchived();
+			await makePaid(orgId);
+			await expect(
+				asUser.mutation(api.clients.restore, { id: archivedId })
+			).resolves.toBeDefined();
+		});
 	});
 });

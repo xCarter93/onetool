@@ -90,7 +90,7 @@ export const quotesArticles: HelpArticle[] = [
 					},
 					{
 						type: "note",
-						text: "Line items, pricing, the title, and the terms are editable while the quote is a **draft**. Once it is sent, the grid goes read only — click **Revert to draft** in the quote header to make changes, which pulls the quote from your client's portal until you send it again.",
+						text: "Line items, pricing, the title, and the terms are editable while the quote is a **draft**. Once it is sent, the grid goes read only. Click **Revert to draft** in the quote header to make changes, which pulls the quote from your client's portal until you send it again.",
 					},
 				],
 			},
@@ -136,7 +136,7 @@ export const quotesArticles: HelpArticle[] = [
 			},
 			{
 				question: "Can I still edit line items after I send the quote?",
-				answer: "Not directly. Editing is draft only, so click Revert to draft in the quote header first — that pulls the quote from your client's portal until you resend it. Approved and declined quotes stay locked for good, so the priced agreement keeps exactly what the client saw. To price a new version, create a new quote.",
+				answer: "Not directly. Editing is draft only, so click Revert to draft in the quote header first, which pulls the quote from your client's portal until you resend it. Approved and declined quotes stay locked for good, so the priced agreement keeps exactly what the client saw. To price a new version, create a new quote.",
 			},
 			{
 				question: "Can I delete a quote?",
@@ -214,7 +214,7 @@ export const quotesArticles: HelpArticle[] = [
 				blocks: [
 					{
 						type: "paragraph",
-						text: "A sent quote is locked, so the numbers never change under your client while they are deciding. To fix a price, a line item, the title, or the terms, click **Revert to draft** in the quote header and confirm. The quote leaves your client's portal and their link stops working, and everything is editable again. Click **Send** when it is ready to go back — that emails the revised quote and makes their link work again. (**Mark as Sent** only flips the status, so save it for quotes you delivered outside OneTool.)",
+						text: "A sent quote is locked, so the numbers never change under your client while they are deciding. To fix a price, a line item, the title, or the terms, click **Revert to draft** in the quote header and confirm. The quote leaves your client's portal and their link stops working, and everything is editable again. Click **Send** when it is ready to go back; that emails the revised quote and makes their link work again. (**Mark as Sent** only flips the status, so save it for quotes you delivered outside OneTool.)",
 					},
 					{
 						type: "note",

@@ -88,6 +88,8 @@ export function AgendaRow({
 				accessibilityLabel={[
 					task.title,
 					timeLabel,
+					endLabel && `till ${endLabel}`,
+					task.context,
 					// The chip only shows initials — the full name belongs here.
 					assignee && `assigned to ${assignee.name}`,
 				]
@@ -154,7 +156,10 @@ export function AgendaRow({
 				hitSlop={6}
 				style={styles.checkTarget}
 				accessibilityRole="checkbox"
-				accessibilityState={{ checked: done, disabled: cancelled }}
+				accessibilityState={{
+					checked: done,
+					disabled: updating || cancelled,
+				}}
 				accessibilityLabel={
 					done ? `Mark ${task.title} not done` : `Mark ${task.title} done`
 				}

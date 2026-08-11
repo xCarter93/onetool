@@ -9,7 +9,7 @@ import {
 	View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { router, useLocalSearchParams } from "expo-router";
+import { Redirect, router, useLocalSearchParams } from "expo-router";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
@@ -69,6 +69,9 @@ export default function NewQuoteSheet() {
 	];
 	const projectLabel =
 		projectOptions.find((o) => o.value === projectId)?.label ?? "No project";
+	const selectedProject = projectId
+		? (projects ?? []).find((p) => p._id === projectId)
+		: undefined;
 
 	const canCreate = can("quotes", "modify");
 	const valid = !!clientId;
@@ -80,7 +83,15 @@ export default function NewQuoteSheet() {
 		try {
 			const quoteId = (await createQuote({
 				clientId: clientId as Id<"clients">,
-				projectId: projectId ? (projectId as Id<"projects">) : undefined,
+				// Once the client's projects are loaded, only send one the list
+				// actually holds — a stale ?projectId is dropped. Before that,
+				// trust the param: submitting inside the load window must not
+				// silently strip the project the detail screen handed over (a real
+				// mismatch is rejected server-side).
+				projectId:
+					projects === undefined
+						? (projectId as Id<"projects">) || undefined
+						: selectedProject?._id,
 				title: title.trim() || undefined,
 				status: "draft",
 				subtotal: 0,
@@ -100,8 +111,10 @@ export default function NewQuoteSheet() {
 		}
 	};
 
-	// `can` is false while permissions resolve — wait before hiding.
-	if (!permsLoading && !canCreate) return null;
+	// `can` is false while permissions resolve — wait before hiding. A role that
+	// can't create quotes can still deep-link here, so leave, rather than leaving
+	// a blank sheet with no way out.
+	if (!permsLoading && !canCreate) return <Redirect href="/(tabs)/money" />;
 
 	const content = (
 		<>

@@ -24,7 +24,10 @@ import {
 	userMutation,
 	type UserMutationCtx,
 } from "./lib/factories";
-import { assertProjectCapacity } from "./lib/planCaps";
+import {
+	assertProjectCapacity,
+	assertProjectCapacityForTransition,
+} from "./lib/planCaps";
 import { calculateQuoteTotals } from "./lib/quoteTotals";
 
 /**
@@ -789,6 +792,24 @@ export const update = userMutation({
 		if (startDate && endDate && startDate > endDate) {
 			throw new Error("Start date cannot be after end date");
 		}
+
+		// Reviving a finished project, or moving an active one to another client,
+		// takes a per-client slot the create path would have had to clear.
+		const nextClientId = (filteredUpdates.clientId ??
+			currentProject.clientId) as Id<"clients">;
+		if (filteredUpdates.clientId) {
+			// assertProjectCapacityForTransition counts the destination's projects,
+			// so org-scope it first (updateProjectWithValidation repeats this later).
+			await validateClientAccess(ctx, nextClientId, ctx.orgId);
+		}
+		await assertProjectCapacityForTransition(
+			ctx,
+			{ clientId: currentProject.clientId, status: currentProject.status },
+			{
+				clientId: nextClientId,
+				status: filteredUpdates.status ?? currentProject.status,
+			}
+		);
 
 		// Check if status is being changed to completed
 		const wasCompleted = currentProject.status === "completed";

@@ -10,7 +10,7 @@ import {
 	View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { router, useLocalSearchParams } from "expo-router";
+import { Redirect, router, useLocalSearchParams } from "expo-router";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
@@ -111,8 +111,9 @@ export default function NewProjectSheet() {
 	};
 
 	// `can` is false while permissions resolve, so wait before hiding — otherwise
-	// every open flashes an empty sheet.
-	if (!permsLoading && !canCreate) return null;
+	// every open flashes an empty sheet. Once it resolves to "no", leave rather
+	// than sitting on a blank sheet the user can't dismiss.
+	if (!permsLoading && !canCreate) return <Redirect href="/(tabs)/projects" />;
 
 	const content = (
 		<>

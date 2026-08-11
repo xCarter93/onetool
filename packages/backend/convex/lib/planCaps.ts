@@ -29,6 +29,30 @@ function isActiveProjectStatus(status: string | undefined): boolean {
 	return status === "planned" || status === "in-progress";
 }
 
+/** Client statuses that consume a slot — everything except archived. */
+const COUNTED_CLIENT_STATUSES = ["lead", "active", "inactive"] as const;
+
+/**
+ * Counts non-archived clients, stopping at `limit`. Indexed per status and
+ * bounded by `take`, so an org with a long archive tail is never fully read.
+ */
+async function countCountedClients(
+	ctx: MutationCtx,
+	orgId: Id<"organizations">,
+	limit: number
+): Promise<number> {
+	let total = 0;
+	for (const status of COUNTED_CLIENT_STATUSES) {
+		if (total >= limit) break;
+		const rows = await ctx.db
+			.query("clients")
+			.withIndex("by_status", (q) => q.eq("orgId", orgId).eq("status", status))
+			.take(limit - total);
+		total += rows.length;
+	}
+	return total;
+}
+
 /**
  * Counting-only client cap check. Returns the user-facing message when the
  * insert would exceed the ceiling, or null when it's allowed. Does NOT consider
@@ -41,11 +65,7 @@ export async function checkClientCapacity(
 ): Promise<string | null> {
 	// An archived client doesn't occupy a slot, so creating one never trips.
 	if (newStatus === "archived") return null;
-	const clients = await ctx.db
-		.query("clients")
-		.withIndex("by_org", (q) => q.eq("orgId", orgId))
-		.collect();
-	const active = clients.filter((c) => c.status !== "archived").length;
+	const active = await countCountedClients(ctx, orgId, FREE_MAX_CLIENTS);
 	return active >= FREE_MAX_CLIENTS ? CLIENT_CAP_MESSAGE : null;
 }
 
@@ -103,4 +123,36 @@ export async function assertProjectCapacity(
 	if (await hasPremiumAccess(ctx)) return;
 	const error = await checkProjectCapacity(ctx, clientId, newStatus);
 	if (error) throw planLimitError(error);
+}
+
+/**
+ * Update-path client cap: a record already holding a slot keeps it, but an
+ * archived client coming back (restore, or a status edit) is a fresh insert as
+ * far as the ceiling is concerned.
+ */
+export async function assertClientCapacityForTransition(
+	ctx: MutationCtx,
+	orgId: Id<"organizations">,
+	prevStatus: string | undefined,
+	nextStatus: string | undefined
+): Promise<void> {
+	if (prevStatus !== "archived") return;
+	await assertClientCapacity(ctx, orgId, nextStatus);
+}
+
+/**
+ * Update-path per-client project cap. A project that already occupies a slot on
+ * the SAME client keeps it; reviving a completed/cancelled project, or moving an
+ * active one onto another client, has to clear the destination's ceiling (which
+ * counts every active project there, so the moving row must not be counted yet).
+ */
+export async function assertProjectCapacityForTransition(
+	ctx: MutationCtx,
+	prev: { clientId: Id<"clients">; status: string | undefined },
+	next: { clientId: Id<"clients">; status: string | undefined }
+): Promise<void> {
+	const keepsItsSlot =
+		isActiveProjectStatus(prev.status) && prev.clientId === next.clientId;
+	if (keepsItsSlot) return;
+	await assertProjectCapacity(ctx, next.clientId, next.status);
 }

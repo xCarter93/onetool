@@ -188,6 +188,16 @@ export default function WorkScreen({
 		api.search.globalSearch,
 		searching ? { query: q } : "skip",
 	);
+	// Every debounced query re-subscribes, so `results` drops to undefined between
+	// terms. Hold the last resolved set and keep rendering it: only the FIRST
+	// search of a session shows the skeleton, refinements just re-sort under the
+	// finger. (Render-time derivation — set-state-in-effect is error-level here.)
+	const [lastResults, setLastResults] = useState<typeof results>(undefined);
+	if (results !== undefined && results !== lastResults) setLastResults(results);
+	// Dropped out of search: forget the held set, or the NEXT search would open
+	// on the previous term's hits instead of its own skeleton.
+	if (!searching && lastResults !== undefined) setLastResults(undefined);
+	const shownResults = searching ? (results ?? lastResults) : undefined;
 
 	const browseKind = searching ? null : kind;
 	// Clients are also the meta line ("Acme · PRJ-7") for the other three kinds,
@@ -239,7 +249,7 @@ export default function WorkScreen({
 		task: tasks,
 	};
 	const loading = searching
-		? results === undefined
+		? shownResults === undefined
 		: browseKind !== null
 			? browseList[browseKind] === undefined ||
 				(browseKind !== "task" && clients === undefined)
@@ -248,19 +258,19 @@ export default function WorkScreen({
 	const clientNames = useMemo(() => buildClientNameMap(clients), [clients]);
 
 	const searchSections = useMemo<Section[]>(() => {
-		if (!results) return [];
+		if (!shownResults) return [];
 		const byKind: Record<WorkChipKind, WorkRecord[]> = {
-			client: results.clients.map(fromClientHit),
-			project: results.projects.map(fromProjectHit),
-			quote: results.quotes.map(fromQuoteHit),
-			invoice: results.invoices.map(fromInvoiceHit),
-			task: results.tasks.map((doc) => toTaskRecord(doc)),
+			client: shownResults.clients.map(fromClientHit),
+			project: shownResults.projects.map(fromProjectHit),
+			quote: shownResults.quotes.map(fromQuoteHit),
+			invoice: shownResults.invoices.map(fromInvoiceHit),
+			task: shownResults.tasks.map((doc) => toTaskRecord(doc)),
 		};
 		// Hits arrive relevance-ordered per bucket — never re-sort them.
 		return CHIP_ORDER.filter((k) => kind === null || kind === k)
 			.map((k) => ({ key: k, label: KIND_LABEL[k], records: byKind[k] }))
 			.filter((s) => s.records.length > 0);
-	}, [results, kind]);
+	}, [shownResults, kind]);
 
 	const browseSections = useMemo<Section[]>(() => {
 		if (browseKind === null) return [];

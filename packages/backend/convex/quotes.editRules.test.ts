@@ -357,3 +357,70 @@ describe("quote edit rules", () => {
 		});
 	});
 });
+
+describe("quotes.create project binding", () => {
+	let t: ReturnType<typeof setupConvexTest>;
+
+	beforeEach(() => {
+		t = setupConvexTest();
+	});
+
+	// Org scope alone let a quote point at another client's project, which would
+	// print the wrong job on the document.
+	it("refuses a project belonging to a different client", async () => {
+		const { clientId, clerkUserId, clerkOrgId, otherClientId } = await t.run(
+			async (ctx) => {
+				const { orgId, clerkUserId, clerkOrgId } = await createTestOrg(ctx);
+				const clientId = await createTestClient(ctx, orgId);
+				const otherClientId = await createTestClient(ctx, orgId, {
+					companyName: "Other Co",
+				});
+				return { clientId, clerkUserId, clerkOrgId, otherClientId };
+			}
+		);
+		const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+
+		const projectId = await asUser.mutation(api.projects.create, {
+			clientId: otherClientId,
+			title: "Other client's job",
+			status: "planned",
+			projectType: "one-off",
+		});
+
+		await expect(
+			asUser.mutation(api.quotes.create, {
+				clientId,
+				projectId,
+				status: "draft",
+				subtotal: 0,
+				total: 0,
+			})
+		).rejects.toThrow(/does not belong to the selected client/);
+	});
+
+	it("accepts the client's own project", async () => {
+		const { clientId, clerkUserId, clerkOrgId } = await t.run(async (ctx) => {
+			const { orgId, clerkUserId, clerkOrgId } = await createTestOrg(ctx);
+			const clientId = await createTestClient(ctx, orgId);
+			return { clientId, clerkUserId, clerkOrgId };
+		});
+		const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+
+		const projectId = await asUser.mutation(api.projects.create, {
+			clientId,
+			title: "Their job",
+			status: "planned",
+			projectType: "one-off",
+		});
+
+		await expect(
+			asUser.mutation(api.quotes.create, {
+				clientId,
+				projectId,
+				status: "draft",
+				subtotal: 0,
+				total: 0,
+			})
+		).resolves.toBeDefined();
+	});
+});

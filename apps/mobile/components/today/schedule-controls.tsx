@@ -79,7 +79,7 @@ export function ScheduleControls({
 				hitSlop={HIT}
 				accessibilityRole="tab"
 				accessibilityState={{ selected: active }}
-				accessibilityLabel={`Show ${label.toLowerCase()}`}
+				accessibilityLabel={`Filter to ${label.toLowerCase()}`}
 				style={[
 					styles.scopeButton,
 					active && { backgroundColor: t.card, borderColor: t.primarySolid },
@@ -95,6 +95,7 @@ export function ScheduleControls({
 			<View
 				style={[styles.group, { backgroundColor: t.secondary }]}
 				accessibilityRole="tablist"
+				accessibilityLabel="Schedule view"
 			>
 				{pill("day", "Day", CalendarDays)}
 				{pill("list", "List", List)}

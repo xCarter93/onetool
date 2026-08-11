@@ -3,6 +3,7 @@ import { StyleSheet, Text, View } from "react-native";
 import { fontFamily, radii, type, useTokens } from "@/lib/theme";
 import { Button } from "@/components/ui";
 import { Illustration } from "@/components/illustrations";
+import { UPCOMING_DAYS } from "@/lib/agenda";
 
 export type ScheduleEmptyVariant =
 	/** This day is clear, but there IS work elsewhere in the window. */
@@ -17,7 +18,7 @@ const COPY: Record<ScheduleEmptyVariant, { title: string; body: string }> = {
 	"day-off": { title: "Day off", body: "Nothing booked this weekend." },
 	"no-work": {
 		title: "Nothing on the books",
-		body: "No work scheduled for the next two weeks.",
+		body: `No work scheduled for the next ${UPCOMING_DAYS} days.`,
 	},
 };
 
