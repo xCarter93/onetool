@@ -631,6 +631,11 @@ export default defineSchema({
 		// typed signature. Optional — rows predating the check, drawn
 		// signatures, and declines all omit it.
 		intentAffirmedAt: v.optional(v.number()),
+		// Slice 3 (mobile 3.0): in-person capture on an org device. Absent =
+		// portal. capturedByUserId = the org user who held the phone; ipAddress
+		// carries the "in-person" sentinel on these rows (mutations see no IP).
+		channel: v.optional(v.literal("in_person")),
+		capturedByUserId: v.optional(v.id("users")),
 		createdAt: v.number(),
 	})
 		.index("by_quote", ["quoteId", "createdAt"])

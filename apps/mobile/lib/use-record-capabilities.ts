@@ -57,6 +57,9 @@ export function useQuoteCapabilities(
 			canModifyInvoices: can("invoices", "modify"),
 			portalIssue: derivePortalIssue(client, primaryContact),
 			hasInvoice: !!existingInvoice,
+			// Slice 3: in-person capture ships for everyone with quote-modify —
+			// no plan gate (the e-sign quota meters BoldSign, not this).
+			signatureCapture: true,
 		},
 		invoiceId: existingInvoice?._id ?? null,
 		recipientEmail: primaryContact?.email?.trim() || null,

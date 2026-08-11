@@ -58,7 +58,7 @@ export const mobileAppArticles: HelpArticle[] = [
 				blocks: [
 					{
 						type: "paragraph",
-						text: "The **Money** tab is a combined list with an **Invoices** and **Quotes** toggle; tap any row to open the full record. From a detail screen, the buttons follow the record's status: a draft offers **Send** (with **Mark as sent** under the \u2022\u2022\u2022 menu when you delivered the quote yourself \u2014 no email goes out), a sent quote offers **Mark approved** and **Resend**, an approved quote converts to an invoice in one tap, and a sent or overdue invoice offers **Record payment** and **Share pay link**.",
+						text: "The **Money** tab is a combined list with an **Invoices** and **Quotes** toggle; tap any row to open the full record. From a detail screen, the buttons follow the record's status: a draft offers **Send** (with **Mark as sent** under the \u2022\u2022\u2022 menu when you delivered the quote yourself \u2014 no email goes out), a sent quote offers **Get signature** \u2014 the client picks who's signing, signs on your screen (turn the phone sideways; iPad signs full-width), and the quote is approved with the signature saved to its approval history \u2014 plus **Resend** and a manual **Mark approved**, an approved quote converts to an invoice in one tap, and a sent or overdue invoice offers **Record payment** and **Share pay link**.",
 					},
 					{
 						type: "list",

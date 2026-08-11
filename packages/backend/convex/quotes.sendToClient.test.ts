@@ -117,6 +117,64 @@ describe("quotes.sendToClient", () => {
 		expect(typeof quote?.sentAt).toBe("number");
 	});
 
+	it("schedules a server-side PDF render when the quote has no document", async () => {
+		const { asUser, quoteId } = await seed({
+			portalAccess: true,
+			contactEmail: "client@example.com",
+		});
+
+		await asUser.mutation(api.quotes.sendToClient, { id: quoteId });
+
+		const pending = await t.run(async (ctx) => {
+			const rows = await ctx.db.system.query("_scheduled_functions").collect();
+			return rows.filter(
+				(row) =>
+					row.name.includes("generateQuotePdf") && row.state.kind === "pending"
+			);
+		});
+		expect(pending.length).toBe(1);
+
+		await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+		// The drained action rendered a real PDF and inserted the documents row.
+		const docs = await t.run(async (ctx) =>
+			(await ctx.db.query("documents").collect()).filter(
+				(d) => d.documentType === "quote" && d.documentId === quoteId
+			)
+		);
+		expect(docs.length).toBe(1);
+		expect(docs[0]!.version).toBe(1);
+	});
+
+	it("does not schedule a PDF render when the quote already has one", async () => {
+		const { asUser, quoteId, orgId } = await seed({
+			portalAccess: true,
+			contactEmail: "client@example.com",
+		});
+		await t.run(async (ctx) => {
+			const storageId = await ctx.storage.store(
+				new Blob(["%PDF-existing"], { type: "application/pdf" })
+			);
+			await ctx.db.insert("documents", {
+				orgId,
+				documentType: "quote",
+				documentId: quoteId,
+				storageId,
+				generatedAt: Date.now(),
+				version: 1,
+			});
+		});
+
+		await asUser.mutation(api.quotes.sendToClient, { id: quoteId });
+
+		const pending = await t.run(async (ctx) => {
+			const rows = await ctx.db.system.query("_scheduled_functions").collect();
+			return rows.filter((row) => row.name.includes("generateQuotePdf"));
+		});
+		expect(pending.length).toBe(0);
+		await t.finishAllScheduledFunctions(vi.runAllTimers);
+	});
+
 	it("re-sends an already-sent quote without a status change or duplicate event", async () => {
 		const { asUser, quoteId } = await seed({
 			portalAccess: true,

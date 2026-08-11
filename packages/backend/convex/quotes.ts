@@ -1009,6 +1009,23 @@ export const sendToClient = userMutation({
 			}
 		}
 
+		// Every sent quote must end up with a PDF (the portal blocks approval
+		// without one — the audit row pins the version the client acted on).
+		// Web enforces this at send time in the UI; here we self-heal by
+		// scheduling a server-side render of the same template when none exists.
+		const existingPdf = await ctx.db
+			.query("documents")
+			.withIndex("by_document", (q) =>
+				q.eq("documentType", "quote").eq("documentId", args.id)
+			)
+			.first();
+		if (!existingPdf) {
+			await ctx.scheduler.runAfter(0, internal.pdfActions.generateQuotePdf, {
+				quoteId: args.id,
+				orgId: quote.orgId,
+			});
+		}
+
 		// Fire-and-forget the branded portal-invite email.
 		await ctx.scheduler.runAfter(
 			0,
@@ -1374,6 +1391,11 @@ export const getApprovalAudit = userQuery({
 						? row.lineItemsSnapshot
 						: null;
 
+				// In-person rows: surface who captured the signature (org user).
+				const capturedBy = row.capturedByUserId
+					? await ctx.db.get(row.capturedByUserId)
+					: null;
+
 				return {
 					auditId: row._id,
 					action: row.action,
@@ -1384,6 +1406,8 @@ export const getApprovalAudit = userQuery({
 					declineReason: row.declineReason ?? null,
 					signatureUrl,
 					signatureMode: row.signatureMode ?? null,
+					channel: row.channel ?? null,
+					capturedByName: capturedBy?.name ?? null,
 					contactEmail: contact.email ?? "",
 					documentId: row.documentId,
 					auditPinnedPdfUrl,
@@ -1396,5 +1420,175 @@ export const getApprovalAudit = userQuery({
 		);
 
 		return dtos.filter((d): d is NonNullable<typeof d> => d !== null);
+	},
+});
+
+/**
+ * Slice 3 (mobile 3.0): in-person signature capture — the client signs on an
+ * org device. Writes a FULL quoteApprovals audit row (portal parity, `channel:
+ * "in_person"`) and applies the same status effects as portal approval.
+ *
+ * Mirrors portal/quotes._commitApproval, with the workspace trust model:
+ * authenticated org user with quotes-modify instead of portal session +
+ * attestation. `ipAddress` carries the "in-person" sentinel — mutations never
+ * see a client IP, and the meaningful actor (capturedByUserId) is recorded.
+ * Terms acceptance is presented inline above the canvas, so termsAcceptedAt
+ * stamps unconditionally; intentAffirmedAt stays typed-signature-only (never
+ * set here — drawn signatures carry intent inherently).
+ */
+/**
+ * Upload target for the in-person signature blob. Quotes-gated (not
+ * documents-gated like documents.generateUploadUrl) so a member with
+ * quotes-modify but without documents-modify can still complete the
+ * signature flow — the blob only ever lands on a quoteApprovals row.
+ */
+export const generateSignatureUploadUrl = userMutation({
+	args: {},
+	handler: async (ctx) => {
+		await ctx.requireLevel("quotes", "modify");
+		return await ctx.storage.generateUploadUrl();
+	},
+});
+
+export const approveInPerson = userMutation({
+	args: {
+		id: v.id("quotes"),
+		clientContactId: v.id("clientContacts"),
+		expectedDocumentId: v.id("documents"),
+		signatureStorageId: v.id("_storage"),
+		signatureRawData: v.optional(v.string()),
+		deviceDescription: v.optional(v.string()),
+	},
+	handler: async (ctx, args) => {
+		await ctx.requireLevel("quotes", "modify");
+		const quote = await ctx.orgEntity("quotes", args.id);
+		await ctx.requireRecordScope("quotes", () =>
+			ctx.actorScope().then((s) =>
+				quote.projectId
+					? s.projectIds.has(quote.projectId)
+					: s.clientIds.has(quote.clientId)
+			)
+		);
+
+		if (quote.status !== "sent") {
+			throw new ConvexError({
+				code: "QUOTE_NOT_PENDING",
+				message: "Only sent quotes can be signed.",
+			});
+		}
+
+		const contact = await ctx.db.get(args.clientContactId);
+		if (
+			!contact ||
+			contact.orgId !== ctx.orgId ||
+			contact.clientId !== quote.clientId
+		) {
+			throw new ConvexError({
+				code: "FORBIDDEN",
+				message: "Signer must be a contact on this quote's client.",
+			});
+		}
+
+		// Document pin: same OCC semantics as the portal commit — the audit row
+		// pins the exact PDF version the approval covers; pin latestDocumentId
+		// here iff nothing is pinned yet.
+		const doc = await ctx.db.get(args.expectedDocumentId);
+		if (
+			!doc ||
+			doc.orgId !== ctx.orgId ||
+			doc.documentType !== "quote" ||
+			doc.documentId !== args.id
+		) {
+			throw new ConvexError({
+				code: "QUOTE_VERSION_STALE",
+				latestDocumentId: quote.latestDocumentId ?? null,
+			});
+		}
+		if (quote.latestDocumentId == null) {
+			await ctx.db.patch(args.id, { latestDocumentId: args.expectedDocumentId });
+		} else if (quote.latestDocumentId !== args.expectedDocumentId) {
+			throw new ConvexError({
+				code: "QUOTE_VERSION_STALE",
+				latestDocumentId: quote.latestDocumentId,
+			});
+		}
+
+		const client = await ctx.db.get(quote.clientId);
+		const clientName = client?.companyName ?? "Client";
+
+		const lineItems = await ctx.db
+			.query("quoteLineItems")
+			.withIndex("by_quote", (q) => q.eq("quoteId", args.id))
+			.collect();
+		const lineItemsSnapshot = lineItems
+			.slice()
+			.sort((a, b) => a.sortOrder - b.sortOrder)
+			.map((li) => ({
+				description: li.description,
+				quantity: li.quantity,
+				unit: li.unit,
+				rate: li.rate,
+				amount: li.amount,
+				sortOrder: li.sortOrder,
+			}));
+		const totals = await calculateQuoteTotals(ctx, args.id, {
+			discountEnabled: quote.discountEnabled,
+			discountAmount: quote.discountAmount,
+			discountType: quote.discountType,
+			taxEnabled: quote.taxEnabled,
+			taxRate: quote.taxRate,
+		});
+
+		const now = Date.now();
+
+		// 1. Audit row first (portal commit ordering).
+		const auditId = await ctx.db.insert("quoteApprovals", {
+			quoteId: args.id,
+			orgId: ctx.orgId,
+			clientContactId: args.clientContactId,
+			action: "approved",
+			signatureStorageId: args.signatureStorageId,
+			signatureMode: "drawn",
+			signatureRawData: args.signatureRawData,
+			ipAddress: "in-person",
+			userAgent: (args.deviceDescription ?? "OneTool mobile").slice(0, 512),
+			documentId: args.expectedDocumentId,
+			documentVersion: doc.version,
+			lineItemsSnapshot,
+			subtotalSnapshot: totals.subtotal,
+			taxSnapshot: totals.taxAmount,
+			totalSnapshot: totals.total,
+			termsSnapshot: quote.terms,
+			termsAcceptedAt: now,
+			channel: "in_person",
+			capturedByUserId: ctx.user._id,
+			createdAt: now,
+		});
+
+		// 2. Status patch second.
+		await ctx.db.patch(args.id, {
+			status: "approved",
+			approvedAt: now,
+		});
+		const updatedQuote = await ctx.db.get(args.id);
+
+		// 3. Activity, 4. status event, 5. celebration — portal commit ordering.
+		if (updatedQuote) {
+			await ActivityHelpers.quoteApproved(ctx, updatedQuote, clientName);
+		}
+		await emitStatusChangeEvent(
+			ctx,
+			ctx.orgId,
+			"quote",
+			args.id,
+			"sent",
+			"approved",
+			"quotes.approveInPerson"
+		);
+		if (updatedQuote) {
+			await celebrateQuoteApproved(ctx, updatedQuote);
+		}
+
+		return { auditId, approvedAt: now };
 	},
 });

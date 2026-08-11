@@ -1,5 +1,5 @@
 import { pdf } from "@react-pdf/renderer";
-import QuotePDF from "@/app/(workspace)/quotes/components/QuotePDF";
+import QuotePDF from "@onetool/backend/pdf/QuotePDF";
 import type { Doc } from "@onetool/backend/convex/_generated/dataModel";
 
 export interface BuildQuotePdfArgs {

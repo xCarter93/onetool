@@ -139,6 +139,8 @@ import type * as organizationDocumentFolders from "../organizationDocumentFolder
 import type * as organizationDocuments from "../organizationDocuments.js";
 import type * as organizations from "../organizations.js";
 import type * as payments from "../payments.js";
+import type * as pdfActions from "../pdfActions.js";
+import type * as pdfData from "../pdfData.js";
 import type * as permissions from "../permissions.js";
 import type * as portal_audiences from "../portal/audiences.js";
 import type * as portal_branding from "../portal/branding.js";
@@ -322,6 +324,8 @@ declare const fullApi: ApiFromModules<{
   organizationDocuments: typeof organizationDocuments;
   organizations: typeof organizations;
   payments: typeof payments;
+  pdfActions: typeof pdfActions;
+  pdfData: typeof pdfData;
   permissions: typeof permissions;
   "portal/audiences": typeof portal_audiences;
   "portal/branding": typeof portal_branding;

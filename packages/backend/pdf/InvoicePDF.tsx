@@ -7,9 +7,9 @@ import {
 	StyleSheet,
 	Image,
 } from "@react-pdf/renderer";
-import type { Id } from "@onetool/backend/convex/_generated/dataModel";
-import { formatCurrency } from "@/lib/money";
-import { deriveInvoiceDisplayPricing } from "@/components/shared/line-items/invoice-pricing";
+import type { Id } from "../convex/_generated/dataModel";
+import { formatCurrency } from "./format";
+import { deriveInvoiceDisplayPricing } from "./invoicePricing";
 
 type InvoiceLineItem = {
 	_id: Id<"invoiceLineItems">;

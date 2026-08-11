@@ -84,6 +84,63 @@ describe("invoices.sendToClient", () => {
 		expect(invoice?.status).toBe("sent");
 	});
 
+	it("schedules a server-side PDF render when the invoice has no document", async () => {
+		const { asUser, invoiceId } = await seed({
+			portalAccess: true,
+			contactEmail: "client@example.com",
+		});
+
+		await asUser.mutation(api.invoices.sendToClient, { id: invoiceId });
+
+		const pending = await t.run(async (ctx) => {
+			const rows = await ctx.db.system.query("_scheduled_functions").collect();
+			return rows.filter(
+				(row) =>
+					row.name.includes("generateInvoicePdf") &&
+					row.state.kind === "pending"
+			);
+		});
+		expect(pending.length).toBe(1);
+
+		await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+		const docs = await t.run(async (ctx) =>
+			(await ctx.db.query("documents").collect()).filter(
+				(d) => d.documentType === "invoice" && d.documentId === invoiceId
+			)
+		);
+		expect(docs.length).toBe(1);
+	});
+
+	it("does not schedule a PDF render when the invoice already has one", async () => {
+		const { asUser, invoiceId, orgId } = await seed({
+			portalAccess: true,
+			contactEmail: "client@example.com",
+		});
+		await t.run(async (ctx) => {
+			const storageId = await ctx.storage.store(
+				new Blob(["%PDF-existing"], { type: "application/pdf" })
+			);
+			await ctx.db.insert("documents", {
+				orgId,
+				documentType: "invoice",
+				documentId: invoiceId,
+				storageId,
+				generatedAt: Date.now(),
+				version: 1,
+			});
+		});
+
+		await asUser.mutation(api.invoices.sendToClient, { id: invoiceId });
+
+		const pending = await t.run(async (ctx) => {
+			const rows = await ctx.db.system.query("_scheduled_functions").collect();
+			return rows.filter((row) => row.name.includes("generateInvoicePdf"));
+		});
+		expect(pending.length).toBe(0);
+		await t.finishAllScheduledFunctions(vi.runAllTimers);
+	});
+
 	it("re-sends an already-sent invoice without changing status", async () => {
 		const { asUser, invoiceId } = await seed({
 			portalAccess: true,

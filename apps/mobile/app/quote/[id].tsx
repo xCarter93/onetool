@@ -11,6 +11,7 @@ import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context"
 import { useMutation, useQuery } from "convex/react";
 import { useLocalSearchParams, useRouter, type Href } from "expo-router";
 import { CheckCircle2, XCircle } from "lucide-react-native";
+import { SvgUri } from "react-native-svg";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { Id } from "@onetool/backend/convex/_generated/dataModel";
 import { fontFamily, radii, recordTint, type, useTokens } from "@/lib/theme";
@@ -299,6 +300,12 @@ export function QuoteDetailBody({
 					},
 				]);
 				break;
+			case "get_signature":
+				router.push({
+					pathname: "/sign-quote",
+					params: { id: quote._id },
+				} as unknown as Href);
+				break;
 			case "convert_to_invoice":
 				void convert();
 				break;
@@ -433,21 +440,48 @@ export function QuoteDetailBody({
 										</Text>
 									</View>
 									<Text style={[styles.approvalCaption, { color: t.sub }]}>
-										{latest.contactEmail} ·{" "}
-										{formatDocumentDate(latest.createdAt)}
+										{latest.channel === "in_person"
+											? [
+													latest.contactEmail || "Signed in person",
+													formatDocumentDate(latest.createdAt),
+													latest.capturedByName
+														? `captured by ${latest.capturedByName}`
+														: "in person",
+												].join(" · ")
+											: `${latest.contactEmail} · ${formatDocumentDate(latest.createdAt)}`}
 									</Text>
 									{latest.signatureUrl && !sigError ? (
-										<Image
-											source={{ uri: latest.signatureUrl }}
-											accessibilityLabel="Client signature"
-											accessibilityRole="image"
-											resizeMode="contain"
-											onError={() => setSigError(true)}
-											style={[
-												styles.signature,
-												{ borderColor: t.line, backgroundColor: t.card },
-											]}
-										/>
+										latest.channel === "in_person" ? (
+											// In-person signatures are stored as SVG — RN's Image
+											// can't decode SVG, SvgUri renders the vector directly.
+											<View
+												accessibilityLabel="Client signature"
+												style={[
+													styles.signature,
+													styles.signatureSvg,
+													{ borderColor: t.line, backgroundColor: t.card },
+												]}
+											>
+												<SvgUri
+													uri={latest.signatureUrl}
+													width="100%"
+													height="100%"
+													onError={() => setSigError(true)}
+												/>
+											</View>
+										) : (
+											<Image
+												source={{ uri: latest.signatureUrl }}
+												accessibilityLabel="Client signature"
+												accessibilityRole="image"
+												resizeMode="contain"
+												onError={() => setSigError(true)}
+												style={[
+													styles.signature,
+													{ borderColor: t.line, backgroundColor: t.card },
+												]}
+											/>
+										)
 									) : latest.signatureUrl && sigError ? (
 										<Text style={[styles.approvalCaption, { color: t.faint }]}>
 											Signature unavailable
@@ -630,6 +664,10 @@ const styles = StyleSheet.create({
 		height: 64,
 		borderRadius: radii.md,
 		borderWidth: 1,
+	},
+	signatureSvg: {
+		overflow: "hidden",
+		padding: 4,
 	},
 
 	ctaBar: {
