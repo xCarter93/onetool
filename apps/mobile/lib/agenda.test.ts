@@ -11,6 +11,7 @@ import {
 	projectInScope,
 	projectsForDay,
 	scopeCalendarEvents,
+	selectNextUp,
 	taskInScope,
 	tomorrowPeek,
 	weekDaysFor,
@@ -103,22 +104,10 @@ describe("buildDayPlan", () => {
 	it("puts the separator after the last row once the day is behind you", () => {
 		const plan = buildDayPlan(tasks, WED, WED, 23 * 60);
 		expect(plan.nowIndex).toBe(plan.timed.length);
-		expect(plan.nextUpId).toBeNull();
 	});
 
-	it("marks the first OPEN upcoming task as next up, skipping done rows", () => {
-		expect(buildDayPlan(tasks, WED, WED, NOON).nextUpId).toBe("deep");
-		const withDone = [
-			task({ _id: "did", date: WED, startTime: "13:00", status: "completed" }),
-			task({ _id: "next", date: WED, startTime: "15:00" }),
-		];
-		expect(buildDayPlan(withDone, WED, WED, NOON).nextUpId).toBe("next");
-	});
-
-	it("has no now separator or next-up when browsing another day", () => {
-		const plan = buildDayPlan(tasks, WED + 2 * DAY, WED, NOON);
-		expect(plan.nowIndex).toBe(-1);
-		expect(plan.nextUpId).toBeNull();
+	it("has no now separator when browsing another day", () => {
+		expect(buildDayPlan(tasks, WED + 2 * DAY, WED, NOON).nowIndex).toBe(-1);
 	});
 
 	it("has no now separator when the day has no timed work", () => {
@@ -153,6 +142,72 @@ describe("buildDayPlan", () => {
 		const plan = buildDayPlan([task({ _id: "floating" })], WED, WED, NOON);
 		expect(plan.timed).toEqual([]);
 		expect(plan.anytime).toEqual([]);
+	});
+});
+
+describe("selectNextUp", () => {
+	const NOON = 12 * 60;
+	const day: AgendaTask[] = [
+		task({ _id: "wash", date: WED, startTime: "08:00" }),
+		task({ _id: "gutter", date: WED, startTime: "13:00" }),
+		task({ _id: "deep", date: WED, startTime: "15:00" }),
+	];
+	const none = new Set<string>();
+
+	it("lifts the first open upcoming task out of the timeline", () => {
+		const split = selectNextUp(buildDayPlan(day, WED, WED, NOON), none);
+		expect(split.next?._id).toBe("gutter");
+		expect(split.timed.map((t) => t._id)).toEqual(["wash", "deep"]);
+	});
+
+	it("advances past an OPTIMISTICALLY completed row before the server agrees", () => {
+		const plan = buildDayPlan(day, WED, WED, NOON);
+		const split = selectNextUp(plan, new Set(["gutter"]));
+		expect(split.next?._id).toBe("deep");
+		expect(split.timed.map((t) => t._id)).toEqual(["wash", "gutter"]);
+	});
+
+	it("skips rows the server already calls done", () => {
+		const withDone = [
+			task({ _id: "did", date: WED, startTime: "13:00", status: "completed" }),
+			task({ _id: "next", date: WED, startTime: "15:00" }),
+		];
+		expect(selectNextUp(buildDayPlan(withDone, WED, WED, NOON), none).next?._id).toBe(
+			"next",
+		);
+	});
+
+	it("keeps the now separator's position on the shortened timeline", () => {
+		// now = 07:00, so nowIndex is 0 and the lead is the first row.
+		const split = selectNextUp(buildDayPlan(day, WED, WED, 7 * 60), none);
+		expect(split.next?._id).toBe("wash");
+		expect(split.nowIndex).toBe(0);
+		// Everything after now is done → separator clamps to the shortened end.
+		const late = selectNextUp(
+			buildDayPlan(day, WED, WED, 14 * 60),
+			new Set(["deep"]),
+		);
+		expect(late.next).toBeNull();
+		expect(late.nowIndex).toBe(2);
+	});
+
+	it("clamps the separator when the lead was the only row left", () => {
+		const one = [task({ _id: "solo", date: WED, startTime: "15:00" })];
+		const split = selectNextUp(buildDayPlan(one, WED, WED, NOON), none);
+		expect(split.next?._id).toBe("solo");
+		expect(split.timed).toEqual([]);
+		expect(split.nowIndex).toBe(0);
+	});
+
+	it("yields no card when browsing another day, or when the day is done", () => {
+		const elsewhere = selectNextUp(buildDayPlan(day, WED + DAY, WED, NOON), none);
+		expect(elsewhere.next).toBeNull();
+		expect(elsewhere.nowIndex).toBe(-1);
+
+		const finished = buildDayPlan(day, WED, WED, NOON);
+		const allDone = selectNextUp(finished, new Set(["wash", "gutter", "deep"]));
+		expect(allDone.next).toBeNull();
+		expect(allDone.timed).toBe(finished.timed);
 	});
 });
 

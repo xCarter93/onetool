@@ -7,12 +7,21 @@ import {
 	View,
 } from "react-native";
 import { Check } from "lucide-react-native";
-import { fontFamily, radii, touch, type, useTokens } from "@/lib/theme";
+import {
+	fontFamily,
+	radii,
+	recordTint,
+	touch,
+	type,
+	useTokens,
+} from "@/lib/theme";
 import { formatClockLabel, type AgendaTask } from "@/lib/agenda";
 
 const BOX = 22;
-// Time column width + gap — the indent titles and context lines share.
-const TIME_COL = 65;
+/** Left time rail. Fixed so every title starts on the same column, timed or not. */
+const RAIL = 58;
+/** Record-tint spine width — a hairline bar, never a color block. */
+export const SPINE = 3;
 
 interface AgendaRowProps {
 	task: AgendaTask;
@@ -26,9 +35,27 @@ interface AgendaRowProps {
 }
 
 /**
- * One line of Today's agenda. The checkbox and the row body are SEPARATE tap
- * targets — checking off a job and opening it are different intents, and a
- * single row-wide handler makes the common one (checking off) risky.
+ * Wraps a non-task row (project `ListRow`s) in the same tinted spine, so the
+ * ALL DAY band and the timeline speak one language. Lives here rather than in
+ * `ui/list-row.tsx`, which the Today tab does not own.
+ */
+export function SpinedRow({
+	color,
+	children,
+}: {
+	color: string;
+	children: React.ReactNode;
+}) {
+	return <View style={[styles.spined, { borderLeftColor: color }]}>{children}</View>;
+}
+
+/**
+ * One line of Today's timeline: a record-tint spine and a left time rail
+ * (Timepage), then the title block, then the checkbox.
+ *
+ * The checkbox and the row body are SEPARATE tap targets — checking off a job
+ * and opening it are different intents, and a single row-wide handler makes the
+ * common one (checking off) risky.
  */
 export function AgendaRow({
 	task,
@@ -43,15 +70,84 @@ export function AgendaRow({
 	const done = completed || task.status === "completed";
 	const cancelled = task.status === "cancelled";
 	const timeLabel = formatClockLabel(task.startTime);
+	const endLabel = formatClockLabel(task.endTime);
 	const muted = done || cancelled;
 
 	return (
 		<View
 			style={[
 				styles.row,
+				{ borderLeftColor: muted ? t.line : recordTint.task.fg },
 				!last && { borderBottomWidth: 1, borderBottomColor: t.lineSoft },
 			]}
 		>
+			<Pressable
+				onPress={onOpen}
+				style={styles.body}
+				accessibilityRole="button"
+				accessibilityLabel={[
+					task.title,
+					timeLabel,
+					// The chip only shows initials — the full name belongs here.
+					assignee && `assigned to ${assignee.name}`,
+				]
+					.filter(Boolean)
+					.join(", ")}
+			>
+				<View style={styles.rail}>
+					{timeLabel ? (
+						<>
+							<Text style={[styles.time, { color: muted ? t.faint : t.ink }]}>
+								{timeLabel}
+							</Text>
+							{endLabel ? (
+								<Text style={[styles.endTime, { color: t.faint }]}>
+									{endLabel}
+								</Text>
+							) : null}
+						</>
+					) : (
+						<Text style={[styles.endTime, { color: t.faint }]}>Anytime</Text>
+					)}
+				</View>
+
+				<View style={styles.text}>
+					<Text
+						style={[
+							styles.title,
+							{
+								color: muted ? t.faint : t.ink,
+								textDecorationLine: muted ? "line-through" : "none",
+							},
+						]}
+						numberOfLines={1}
+					>
+						{task.title}
+					</Text>
+					{task.context ? (
+						<Text
+							style={[styles.context, { color: t.sub }]}
+							numberOfLines={1}
+						>
+							{task.context}
+						</Text>
+					) : null}
+				</View>
+			</Pressable>
+
+			{assignee ? (
+				// Announced via the body label; the chip itself is decoration.
+				<View
+					style={[styles.assignee, { backgroundColor: t.secondary }]}
+					accessibilityElementsHidden
+					importantForAccessibility="no-hide-descendants"
+				>
+					<Text style={[styles.assigneeText, { color: t.frostedInk }]}>
+						{assignee.initials}
+					</Text>
+				</View>
+			) : null}
+
 			<Pressable
 				onPress={onToggle}
 				disabled={updating || cancelled}
@@ -79,65 +175,6 @@ export function AgendaRow({
 					</View>
 				)}
 			</Pressable>
-
-			<Pressable
-				onPress={onOpen}
-				style={styles.body}
-				accessibilityRole="button"
-				accessibilityLabel={[
-					task.title,
-					timeLabel,
-					// The chip only shows initials — the full name belongs here.
-					assignee && `assigned to ${assignee.name}`,
-				]
-					.filter(Boolean)
-					.join(", ")}
-			>
-				<View style={styles.titleLine}>
-					{timeLabel ? (
-						<Text style={[styles.time, { color: muted ? t.faint : t.sub }]}>
-							{timeLabel}
-						</Text>
-					) : null}
-					<Text
-						style={[
-							styles.title,
-							{
-								color: muted ? t.faint : t.ink,
-								textDecorationLine: muted ? "line-through" : "none",
-							},
-						]}
-						numberOfLines={1}
-					>
-						{task.title}
-					</Text>
-				</View>
-				{task.context ? (
-					<Text
-						style={[
-							styles.context,
-							// Align under the title, which is itself offset only when timed.
-							{ color: t.sub, marginLeft: timeLabel ? TIME_COL : 0 },
-						]}
-						numberOfLines={1}
-					>
-						{task.context}
-					</Text>
-				) : null}
-			</Pressable>
-
-			{assignee ? (
-				// Announced via the body label; the chip itself is decoration.
-				<View
-					style={[styles.assignee, { backgroundColor: t.secondary }]}
-					accessibilityElementsHidden
-					importantForAccessibility="no-hide-descendants"
-				>
-					<Text style={[styles.assigneeText, { color: t.frostedInk }]}>
-						{assignee.initials}
-					</Text>
-				</View>
-			) : null}
 		</View>
 	);
 }
@@ -147,7 +184,44 @@ const styles = StyleSheet.create({
 		flexDirection: "row",
 		alignItems: "center",
 		minHeight: touch.min,
-		paddingRight: 14,
+		borderLeftWidth: SPINE,
+	},
+	spined: {
+		borderLeftWidth: SPINE,
+	},
+	body: {
+		flex: 1,
+		minWidth: 0,
+		flexDirection: "row",
+		alignItems: "center",
+		gap: 10,
+		paddingLeft: 11,
+		paddingVertical: 9,
+	},
+	rail: {
+		width: RAIL,
+	},
+	time: {
+		fontFamily: fontFamily.semibold,
+		fontSize: type.sm,
+	},
+	endTime: {
+		fontFamily: fontFamily.regular,
+		fontSize: type.xs,
+		marginTop: 1,
+	},
+	text: {
+		flex: 1,
+		minWidth: 0,
+	},
+	title: {
+		fontFamily: fontFamily.medium,
+		fontSize: type.rowTitle,
+	},
+	context: {
+		fontFamily: fontFamily.regular,
+		fontSize: type.meta,
+		marginTop: 2,
 	},
 	// 44pt tap target around a 22px glyph.
 	checkTarget: {
@@ -164,41 +238,12 @@ const styles = StyleSheet.create({
 		alignItems: "center",
 		justifyContent: "center",
 	},
-	body: {
-		flex: 1,
-		minWidth: 0,
-		justifyContent: "center",
-		paddingVertical: 9,
-	},
-	titleLine: {
-		flexDirection: "row",
-		alignItems: "baseline",
-		gap: 7,
-	},
-	time: {
-		fontFamily: fontFamily.semibold,
-		fontSize: type.meta,
-		// Keeps titles left-aligned down the column whether or not a row is timed.
-		minWidth: 58,
-	},
-	title: {
-		flex: 1,
-		minWidth: 0,
-		fontFamily: fontFamily.medium,
-		fontSize: type.rowTitle,
-	},
-	context: {
-		fontFamily: fontFamily.regular,
-		fontSize: type.meta,
-		marginTop: 2,
-	},
 	assignee: {
 		width: 26,
 		height: 26,
 		borderRadius: 13,
 		alignItems: "center",
 		justifyContent: "center",
-		marginLeft: 8,
 	},
 	assigneeText: {
 		fontFamily: fontFamily.semibold,

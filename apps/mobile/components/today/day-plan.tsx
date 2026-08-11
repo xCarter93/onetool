@@ -2,13 +2,20 @@ import React from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { fontFamily, recordTint, type, useTokens } from "@/lib/theme";
 import { ListRow } from "@/components/ui";
-import { AgendaRow } from "@/components/today/agenda-row";
+import { AgendaRow, SpinedRow } from "@/components/today/agenda-row";
+import { NextUpCard } from "@/components/today/next-up-card";
 import { PlanSection } from "@/components/today/plan-section";
 import {
 	ScheduleEmpty,
 	type ScheduleEmptyVariant,
 } from "@/components/today/schedule-empty";
-import { isWeekend, type AgendaProject, type AgendaTask, type DayPlan } from "@/lib/agenda";
+import {
+	isWeekend,
+	selectNextUp,
+	type AgendaProject,
+	type AgendaTask,
+	type DayPlan,
+} from "@/lib/agenda";
 
 export type Assignee = { initials: string; name: string };
 
@@ -32,15 +39,25 @@ interface DayPlanViewProps {
 	assigneeFor?: (task: AgendaTask) => Assignee | undefined;
 }
 
+/** "3 jobs · 1 done" — the day's stats echo, from rows already on screen. */
+function sectionMeta(tasks: readonly AgendaTask[], done: Set<string>): string {
+	const n = tasks.length;
+	const finished = tasks.filter((task) => done.has(task._id)).length;
+	const label = `${n} ${n === 1 ? "job" : "jobs"}`;
+	return finished > 0 ? `${label} · ${finished} done` : label;
+}
+
 /**
- * The anchored day's timeline — an ALL DAY band on top (project spans plus
- * untimed tasks: work that owns the day but not a slot in it), then timed rows
- * in start order with the now separator and a "next up" emphasis, then overdue
- * spillover. List-first: the pattern every field-service app converges on for
- * phone-width glanceability.
+ * The anchored day's timeline. The first still-open timed job is lifted OUT of
+ * the list into the "Next up" card — it is the day's lead object, so it gets the
+ * moment below the hero and is never duplicated in the rows beneath. Then an ALL
+ * DAY band (project spans plus untimed tasks: work that owns the day but not a
+ * slot in it), the remaining timed rows with the now separator, then overdue
+ * spillover.
  *
- * The now separator is placed by `buildDayPlan`, which only sets `nowIndex`
- * when the anchored day IS today — browsing another day needs no extra guard.
+ * `selectNextUp` only yields a card when the anchored day IS today, and the now
+ * separator's `nowIndex` comes back re-based onto the shortened list — browsing
+ * another day needs no extra guard in here.
  */
 export function DayPlanView({
 	plan,
@@ -57,9 +74,12 @@ export function DayPlanView({
 	assigneeFor,
 }: DayPlanViewProps) {
 	const t = useTokens();
-	const { timed, anytime, overdue, nextUpId, nowIndex } = plan;
+	const { anytime, overdue } = plan;
+	const { next, timed, nowIndex } = selectNextUp(plan, completedIds);
 	const allDayCount = projects.length + anytime.length;
-	const empty = allDayCount === 0 && timed.length === 0 && overdue.length === 0;
+	// Emptiness is judged on the WHOLE day, before the lead is split off.
+	const empty =
+		allDayCount === 0 && plan.timed.length === 0 && overdue.length === 0;
 
 	if (empty) {
 		const variant: ScheduleEmptyVariant = windowEmpty
@@ -80,51 +100,49 @@ export function DayPlanView({
 		</View>
 	);
 
-	const taskRow = (task: AgendaTask, last: boolean) => {
-		const row = (
-			<AgendaRow
-				key={task._id}
-				task={task}
-				completed={completedIds.has(task._id)}
-				updating={updatingIds.has(task._id)}
-				last={last}
-				onToggle={() => onToggleTask(task._id)}
-				onOpen={() => onOpenTask(task._id)}
-				assignee={assigneeFor?.(task)}
-			/>
-		);
-		if (task._id !== nextUpId) return row;
-		// "Next up" carries its state on a SOLID rail — frosted washes composite
-		// too close to the card to indicate anything (see design notes).
-		return (
-			<View
-				key={task._id}
-				style={[
-					styles.nextUp,
-					{ borderLeftColor: t.primarySolid, backgroundColor: t.secondary },
-				]}
-			>
-				{row}
-			</View>
-		);
-	};
+	const taskRow = (task: AgendaTask, last: boolean) => (
+		<AgendaRow
+			key={task._id}
+			task={task}
+			completed={completedIds.has(task._id)}
+			updating={updatingIds.has(task._id)}
+			last={last}
+			onToggle={() => onToggleTask(task._id)}
+			onOpen={() => onOpenTask(task._id)}
+			assignee={assigneeFor?.(task)}
+		/>
+	);
 
 	return (
 		<>
+			{next ? (
+				<NextUpCard
+					task={next}
+					updating={updatingIds.has(next._id)}
+					onToggle={() => onToggleTask(next._id)}
+					onOpen={() => onOpenTask(next._id)}
+					assignee={assigneeFor?.(next)}
+				/>
+			) : null}
+
 			{allDayCount > 0 ? (
-				<PlanSection label="All day">
+				<PlanSection
+					label="All day"
+					meta={`${allDayCount} ${allDayCount === 1 ? "item" : "items"}`}
+				>
 					{projects.map((p, i) => (
-						<ListRow
-							key={p._id}
-							icon="Folder"
-							iconColor={recordTint.project.fg}
-							iconBg={recordTint.project.bg}
-							title={p.title}
-							sub={p.context}
-							status={p.status}
-							onPress={() => onOpenProject(p._id)}
-							last={i === allDayCount - 1}
-						/>
+						<SpinedRow key={p._id} color={recordTint.project.fg}>
+							<ListRow
+								icon="Folder"
+								iconColor={recordTint.project.fg}
+								iconBg={recordTint.project.bg}
+								title={p.title}
+								sub={p.context}
+								status={p.status}
+								onPress={() => onOpenProject(p._id)}
+								last={i === allDayCount - 1}
+							/>
+						</SpinedRow>
 					))}
 					{anytime.map((task, i) =>
 						taskRow(task, projects.length + i === allDayCount - 1),
@@ -133,7 +151,10 @@ export function DayPlanView({
 			) : null}
 
 			{timed.length > 0 ? (
-				<PlanSection label="Schedule">
+				<PlanSection
+					label="Schedule"
+					meta={sectionMeta(timed, completedIds)}
+				>
 					{timed.flatMap((task, i) => [
 						...(i === nowIndex
 							? [<React.Fragment key="now">{nowSeparator}</React.Fragment>]
@@ -146,7 +167,10 @@ export function DayPlanView({
 			) : null}
 
 			{overdue.length > 0 ? (
-				<PlanSection label="Overdue">
+				<PlanSection
+					label="Overdue"
+					meta={`${overdue.length} ${overdue.length === 1 ? "job" : "jobs"}`}
+				>
 					{overdue.map((task, i) => taskRow(task, i === overdue.length - 1))}
 				</PlanSection>
 			) : null}
@@ -177,8 +201,5 @@ const styles = StyleSheet.create({
 	nowLabel: {
 		fontFamily: fontFamily.semibold,
 		fontSize: type.meta,
-	},
-	nextUp: {
-		borderLeftWidth: 3,
 	},
 });

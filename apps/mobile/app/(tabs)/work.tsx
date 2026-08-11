@@ -12,15 +12,10 @@ import {
 import { useOrganization } from "@clerk/expo";
 import { api } from "@onetool/backend/convex/_generated/api";
 import type { icons } from "lucide-react-native";
-import { AppHeader } from "@/components/app-header";
+import { InkTabHeader } from "@/components/ink-tab-header";
 import { SearchField } from "@/components/work/search-field";
 import { TypeChips } from "@/components/work/type-chips";
-import {
-	DotGrid,
-	ListRow,
-	SCROLL_TOP_INSET,
-	ScrollFade,
-} from "@/components/ui";
+import { DotGrid, ListRow, SCROLL_TOP_INSET } from "@/components/ui";
 import { Illustration, type IllustrationName } from "@/components/illustrations";
 import { formatCurrency } from "@/lib/format";
 import { getRecents, type RecentRecord } from "@/lib/recents";
@@ -113,9 +108,10 @@ function sectionsToRows(sections: Section[]): Row[] {
 }
 
 // headerMode/onSelect/selected/kind default off → the iPhone path (router.push,
-// AppHeader mode="root", no selected highlight, uncontrolled chip) is byte-
-// identical. The iPad shell renders this as a list pane: headerMode="pane"
-// suppresses the self-mounted AppHeader (shell mounts PaneHeader), onSelect
+// the InkTabHeader band, no selected highlight, uncontrolled chip). The iPad
+// shell renders this as a list pane: headerMode="pane" suppresses the
+// self-mounted band and keeps the light controls strip (shell mounts PaneHeader
+// above it — its layout is unchanged from before the band), onSelect
 // drives the detail pane via the shell selection instead of a route push,
 // selected marks the row, and kind/onKindChange let the shell drive the chip
 // (e.g. "View all projects").
@@ -139,6 +135,9 @@ export default function WorkScreen({
 	// The floating dock takes no layout height — scroll content clears it itself.
 	// iPad panes have no dock (the shell replaces Tabs).
 	const listBottom = isPane ? 24 : DOCK_CLEARANCE + insets.bottom;
+	// Pane keeps the fade inset (the shell's light chrome dissolves into content).
+	// On iPhone the ink band is a hard edge — no fade, so no fade clearance.
+	const listTop = isPane ? SCROLL_TOP_INSET : 6;
 
 	// Raw input drives the field; `q` (debounced 250ms) drives the backend query.
 	const [raw, setRaw] = useState("");
@@ -416,32 +415,31 @@ export default function WorkScreen({
 		<SafeAreaView style={{ flex: 1, backgroundColor: t.surface }} edges={[]}>
 			{/* Page canvas, matching web's .workspace-canvas. */}
 			<DotGrid style={StyleSheet.absoluteFill} />
-			{/* Pane mode: the shell mounts PaneHeader above this body (one header
-			    per pane — locked convention); it owns the ＋, and the rail's create
-			    menu covers the rest. On iPhone the header carries no ＋: the
-			    speed-dial FAB is the single capture entry point (3.0 slice 5). */}
-			{isPane ? null : (
-				<AppHeader
-					mode="root"
-					title="Work"
-					halftone
-					// Controls below are pinned, so this screen places the fade itself.
-					fade={false}
-				/>
+			{/* Controls stay pinned either way — a search-first surface must not
+			    scroll its own search field away. On iPhone they ride INSIDE the ink
+			    band (Spotlight-style); the iPad pane keeps the light strip below the
+			    shell's PaneHeader (one header per pane — locked convention). */}
+			{isPane ? (
+				<View style={styles.controls}>
+					<SearchField value={raw} onChangeText={setRaw} inputRef={inputRef} />
+					<TypeChips value={kind} onChange={setKind} />
+				</View>
+			) : (
+				// No ＋ here: the speed-dial FAB is the single capture entry point on
+				// iPhone (3.0 slice 5).
+				<InkTabHeader title="Work">
+					<SearchField
+						value={raw}
+						onChangeText={setRaw}
+						inputRef={inputRef}
+						onInk
+					/>
+					<TypeChips value={kind} onChange={setKind} onInk />
+				</InkTabHeader>
 			)}
 
-			{/* Controls stay pinned — a search-first surface must not scroll its
-			    own search field away. */}
-			<View style={styles.controls}>
-				<SearchField value={raw} onChangeText={setRaw} inputRef={inputRef} />
-				<TypeChips value={kind} onChange={setKind} />
-				{/* At the real chrome/scroll boundary. In AppHeader it painted over
-				    the search field, which has no inset to absorb it. */}
-				{isPane ? null : <ScrollFade edge="top" />}
-			</View>
-
 			{loading ? (
-				<View style={styles.listContent}>
+				<View style={[styles.listContent, { paddingTop: listTop }]}>
 					{/* Shaped like the real body: a group label, then rows. */}
 					<View
 						style={[
@@ -491,6 +489,7 @@ export default function WorkScreen({
 					renderItem={renderRow}
 					contentContainerStyle={{
 						...styles.listContent,
+						paddingTop: listTop,
 						paddingBottom: listBottom,
 					}}
 					// On by default in FlashList v2 — but the list re-keys wholesale
@@ -535,13 +534,10 @@ const styles = StyleSheet.create({
 		paddingTop: 12,
 		paddingBottom: 12,
 		gap: 10,
-		// Anchors the ScrollFade to this block's bottom edge.
-		position: "relative",
 	},
 	listContent: {
 		paddingHorizontal: spacing.gutter,
 		paddingBottom: 24,
-		paddingTop: SCROLL_TOP_INSET,
 	},
 	sectionLabel: {
 		fontFamily: fontFamily.semibold,

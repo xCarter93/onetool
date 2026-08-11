@@ -9,13 +9,7 @@ import { DOCK_CLEARANCE, useTokens } from "@/lib/theme";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { formatCurrency } from "@/lib/format";
 import { CommandHero, type HeroStat } from "@/components/today/command-hero";
-import {
-	DotGrid,
-	SegmentedToggle,
-	ScrollFade,
-	SCROLL_TOP_INSET,
-	type Segment,
-} from "@/components/ui";
+import { DotGrid, ScrollFade, SCROLL_TOP_INSET } from "@/components/ui";
 import { useShellNav } from "@/lib/shell-nav";
 import { WeekStrip } from "@/components/today/week-strip";
 import {
@@ -44,22 +38,13 @@ import {
 import { localDayStartMs, utcDayStartMs } from "@/lib/date";
 import { DAY_MS } from "@/components/calendar/dateUtils";
 import { useDayScope } from "@/lib/useDayScope";
-import { useScheduleView, type ScheduleView } from "@/lib/useScheduleView";
-import { CalendarDays, List, Plus, User, Users } from "lucide-react-native";
+import { useScheduleView } from "@/lib/useScheduleView";
+import { Plus } from "lucide-react-native";
+import { ScheduleControls } from "@/components/today/schedule-controls";
 import { PaneAction, PaneHeader } from "@/components/ipad/pane-header";
 
 const TASK_FORM: Href = "/tasks/form" as Href;
 const WORK: Href = "/(tabs)/work" as Href;
-
-const SCOPE_SEGMENTS: readonly Segment<DayScope>[] = [
-	{ value: "me", label: "Me", Icon: User },
-	{ value: "team", label: "Team", Icon: Users },
-];
-
-const VIEW_SEGMENTS: readonly Segment<ScheduleView>[] = [
-	{ value: "day", label: "Day", Icon: CalendarDays },
-	{ value: "list", label: "List", Icon: List },
-];
 
 /**
  * Days of calendar events fetched past the anchored week's Sunday. The List
@@ -430,8 +415,11 @@ export default function TodayScreen({
 			)}
 
 			{/* Pinned controls — the iPad pane keeps the light strip here; on the
-			    phone the strip moved into the hero. Day | List sits above Me | Team:
-			    two calm rows read better at 375pt than one crowded one. */}
+			    phone the strip moved into the hero. ONE eyebrow-level row: the two
+			    stacked full-width toggles this replaced read as chrome and pushed the
+			    schedule (the reason for the tab) below the fold. Pinned, not folded
+			    into a section header — Day | List swaps the whole body, and this block
+			    anchors the ScrollFade at the chrome/scroll boundary. */}
 			<View style={styles.controls}>
 				{pane ? (
 					<WeekStrip
@@ -445,18 +433,13 @@ export default function TodayScreen({
 						}
 					/>
 				) : null}
-				<SegmentedToggle
-					segments={VIEW_SEGMENTS}
-					value={view}
-					onChange={setView}
+				<ScheduleControls
+					view={view}
+					onChangeView={setView}
+					scope={scope}
+					onChangeScope={setScope}
+					showScope={multiMember}
 				/>
-				{multiMember ? (
-					<SegmentedToggle
-						segments={SCOPE_SEGMENTS}
-						value={scope}
-						onChange={setScope}
-					/>
-				) : null}
 				{/* At the real chrome/scroll boundary. In AppHeader it painted over
 				    the week strip, which has no inset to absorb it. */}
 				<ScrollFade edge="top" />

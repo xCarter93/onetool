@@ -1,13 +1,23 @@
 import React from "react";
 import { Pressable, ScrollView, StyleSheet, Text } from "react-native";
 import { Check } from "lucide-react-native";
-import { fontFamily, radii, spacing, touch, type, useTokens } from "@/lib/theme";
+import {
+	fontFamily,
+	hero,
+	radii,
+	spacing,
+	touch,
+	type,
+	useTokens,
+} from "@/lib/theme";
 import { CHIP_ORDER, KIND_LABEL, type WorkChipKind } from "@/lib/work-search";
 
 interface TypeChipsProps {
 	/** null = no type filter (search everything / resting view). */
 	value: WorkChipKind | null;
 	onChange: (next: WorkChipKind | null) => void;
+	/** Frosted-on-ink palette for the tab-root ink band. */
+	onInk?: boolean;
 }
 
 /**
@@ -18,8 +28,32 @@ interface TypeChipsProps {
  * subscriptions, and search buckets cap at 5 hits — any number rendered here
  * would be either a lie or four subscriptions bought back to print it.
  */
-export function TypeChips({ value, onChange }: TypeChipsProps) {
+export function TypeChips({ value, onChange, onInk = false }: TypeChipsProps) {
 	const t = useTokens();
+
+	// On ink, selection is a SOLID white chip with ink text — the frosted fills
+	// composite to ~1.1:1 there and cannot carry a state on their own.
+	const chipStyle = (selected: boolean) =>
+		onInk
+			? selected
+				? { backgroundColor: hero.text, borderColor: hero.text }
+				: { backgroundColor: hero.cellBg, borderColor: hero.cellBorder }
+			: selected
+				? {
+						backgroundColor: t.frostedBg,
+						// A 10% wash reads as "white chip" in sunlight; the border does
+						// the real work at 4.8:1 against the surface.
+						borderColor: t.primarySolid,
+					}
+				: { backgroundColor: t.card, borderColor: t.line };
+	const chipInk = (selected: boolean) =>
+		onInk
+			? selected
+				? hero.ink
+				: hero.textMid
+			: selected
+				? t.frostedInk
+				: t.sub;
 
 	return (
 		<ScrollView
@@ -43,25 +77,13 @@ export function TypeChips({ value, onChange }: TypeChipsProps) {
 						accessibilityLabel={KIND_LABEL[kind]}
 						style={({ pressed }) => [
 							styles.chip,
-							selected
-								? {
-										backgroundColor: t.frostedBg,
-										// A 10% wash reads as "white chip" in sunlight; the border does
-										// the real work at 4.8:1 against the surface.
-										borderColor: t.primarySolid,
-									}
-								: { backgroundColor: t.card, borderColor: t.line },
+							chipStyle(selected),
 							pressed && styles.pressed,
 						]}
 					>
 						{/* Glyph, not just color — selection must not be color-only. */}
-						{selected ? <Check size={13} color={t.frostedInk} /> : null}
-						<Text
-							style={[
-								styles.label,
-								{ color: selected ? t.frostedInk : t.sub },
-							]}
-						>
+						{selected ? <Check size={13} color={chipInk(true)} /> : null}
+						<Text style={[styles.label, { color: chipInk(selected) }]}>
 							{KIND_LABEL[kind]}
 						</Text>
 					</Pressable>

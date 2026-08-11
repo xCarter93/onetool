@@ -20,9 +20,10 @@ import { Avatar, HalftoneBg, ScrollFade } from "@/components/ui";
 
 // Tab roots that get the "jump to search" magnifier. An ALLOWLIST, not
 // "everything except Work": the Clients/Projects/Activity/Profile roots also
-// mount a root-mode header and have no business growing one. Today is absent
-// because it mounts CommandHero, not this header (3.0 slice 6).
-const SEARCH_JUMP_ROUTES = new Set(["/money", "/routes"]);
+// mount a root-mode header and have no business growing one. Today and Money
+// are absent because they mount an ink band, not this header — their magnifier
+// lives in the band's icon cluster (3.0 slice 6).
+const SEARCH_JUMP_ROUTES = new Set(["/routes"]);
 const WORK_TAB: Href = "/(tabs)/work" as Href;
 
 // mode: 'root' | 'detail' | 'pane' — P19 uses root/detail; 'pane' reserved for P26 iPad.

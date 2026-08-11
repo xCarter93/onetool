@@ -152,8 +152,6 @@ export type DayPlan = {
 	anytime: AgendaTask[];
 	/** Open spillover from earlier days, oldest first. */
 	overdue: AgendaTask[];
-	/** Task to emphasize as "next up"; null off-today or when the day is done. */
-	nextUpId: string | null;
 	/**
 	 * `timed` index the now-separator renders BEFORE (== timed.length → after
 	 * the last row); -1 = don't render (browsing another day, or no timed work).
@@ -199,19 +197,52 @@ export function buildDayPlan(
 	// Oldest first — the thing you've ignored longest leads.
 	overdue.sort((a, b) => (a.date ?? 0) - (b.date ?? 0));
 
+	// The "next up" pick derives from nowIndex, but lives in `selectNextUp` — it
+	// has to see the screen's optimistic done state, which a pure plan cannot.
 	let nowIndex = -1;
-	let nextUpId: string | null = null;
 	if (day === today && timed.length > 0) {
 		const firstUpcoming = timed.findIndex(
 			(t) => (minutesFromHHMM(t.startTime) ?? 0) >= nowMinutes,
 		);
 		nowIndex = firstUpcoming === -1 ? timed.length : firstUpcoming;
-		// Next up = the first upcoming task still open; a done row isn't "next".
-		nextUpId =
-			timed.slice(nowIndex).find((t) => !DONE.has(t.status ?? ""))?._id ?? null;
 	}
 
-	return { timed, anytime, overdue, nextUpId, nowIndex };
+	return { timed, anytime, overdue, nowIndex };
+}
+
+/** The lead object plus the timeline that continues after it. */
+export type NextUpSplit = {
+	/** The card's task; null off-today, on an empty day, or when the day is done. */
+	next: AgendaTask | null;
+	/** `plan.timed` with `next` removed — the card is never duplicated below. */
+	timed: AgendaTask[];
+	/** `plan.nowIndex` re-based onto the shortened `timed`. */
+	nowIndex: number;
+};
+
+/**
+ * Split the day's lead job off the timeline for the "Next up" card.
+ *
+ * Re-derives the pick from `doneIds` rather than trusting `plan.nextUpId`:
+ * nextUpId reads SERVER status, so checking the card off would leave a
+ * struck-through "Next up" until the subscription round-trips. `nowIndex === -1`
+ * (browsing another day) short-circuits, which is what anchors the card to today.
+ */
+export function selectNextUp(
+	plan: DayPlan,
+	doneIds: ReadonlySet<string>,
+): NextUpSplit {
+	const { timed, nowIndex } = plan;
+	if (nowIndex < 0) return { next: null, timed, nowIndex };
+	const at = timed.findIndex(
+		(task, i) =>
+			i >= nowIndex && !doneIds.has(task._id) && !DONE.has(task.status ?? ""),
+	);
+	if (at === -1) return { next: null, timed, nowIndex };
+	const rest = timed.filter((_, i) => i !== at);
+	// The removed row is always at index >= nowIndex, so earlier indices hold;
+	// only the "after the last row" position can fall off the end.
+	return { next: timed[at], timed: rest, nowIndex: Math.min(nowIndex, rest.length) };
 }
 
 /**
