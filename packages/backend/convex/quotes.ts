@@ -1069,6 +1069,22 @@ export const sendToClient = userMutation({
 			});
 		}
 
+		// The portal gates approval on sent status alone, so sending is the last
+		// line of defense against putting an expired offer back in front of the
+		// client (extendValidUntil is the revive path that refreshes the window).
+		// Same calendar-day comparison as extendValidUntil: valid through today
+		// still sends.
+		if (quote.validUntil !== undefined) {
+			const tz = (await ctx.db.get(ctx.orgId))?.timezone ?? "UTC";
+			if (quote.validUntil < calendarDayEpoch(Date.now(), tz)) {
+				throw new ConvexError({
+					code: "CONFLICT",
+					message:
+						"This quote's valid-until date has passed — extend it before sending.",
+				});
+			}
+		}
+
 		// The client must be reachable in the portal: portal access enabled and a
 		// primary contact with an email to receive the invite.
 		const client = await ctx.db.get(quote.clientId);

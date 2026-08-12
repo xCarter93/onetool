@@ -131,6 +131,44 @@ describe("businessHealth.get", () => {
 		expect(health.recentPayments).toHaveLength(0);
 	});
 
+	it("restores a refunded balance to outstanding when the invoice stayed paid", async () => {
+		// The Stripe refund webhook flips only the payment row — the invoice
+		// keeps status "paid". Its restored balance must still surface.
+		const { clerkUserId, clerkOrgId } = await t.run(async (ctx) => {
+			const org = await createTestOrg(ctx);
+			const clientId = await createTestClient(ctx, org.orgId);
+			const refundedId = await createTestInvoice(ctx, org.orgId, clientId, {
+				status: "paid",
+				total: 10000,
+				dueDate: Date.now() - 5 * DAY_MS,
+			});
+			await insertPayment(ctx, org.orgId, refundedId, {
+				paymentAmount: 10000,
+				status: "refunded",
+				paidAt: Date.now(),
+			});
+			// Control: a settled paid invoice stays excluded.
+			const settledId = await createTestInvoice(ctx, org.orgId, clientId, {
+				status: "paid",
+				total: 4000,
+				dueDate: Date.now() - 5 * DAY_MS,
+			});
+			await insertPayment(ctx, org.orgId, settledId, {
+				paymentAmount: 4000,
+				status: "paid",
+				paidAt: Date.now(),
+			});
+			return org;
+		});
+
+		const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+		const health = await asUser.query(api.businessHealth.get, {});
+
+		expect(health.outstanding.total).toBe(10000);
+		expect(health.outstanding.overdue).toBe(10000);
+		expect(health.outstanding.invoiceCount).toBe(1);
+	});
+
 	it("ignores a fully-covered invoice that is still marked sent", async () => {
 		const { clerkUserId, clerkOrgId } = await t.run(async (ctx) => {
 			const org = await createTestOrg(ctx);
