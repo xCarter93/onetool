@@ -8,7 +8,6 @@ import {
 	StyleSheet,
 	View,
 } from "react-native";
-import { BlurView } from "expo-blur";
 import { MoreHorizontal } from "lucide-react-native";
 import { dock, radii, touch, useTokens } from "@/lib/theme";
 import { Button } from "@/components/ui";
@@ -92,7 +91,6 @@ export function QuickActionRow({
 				<Button
 					title={secondary.label}
 					variant="primary"
-					blurred={floating}
 					onPress={() => fire(secondary)}
 					style={StyleSheet.flatten([
 						styles.grow,
@@ -108,14 +106,13 @@ export function QuickActionRow({
 					onPress={openOverflow}
 					style={({ pressed }) => [
 						styles.more,
-						// Floating bar: glass like the dock, so the dot grid reads
-						// through it (frame 1h) — an opaque plate looks like a hole
-						// in the canvas texture. Inline bars stay card-colored.
+						// Floating bar: opaque white like the dock pill — alpha/blur
+						// here let scrolling content ghost through on device. Inline
+						// bars stay card-colored.
 						floating
 							? {
 									backgroundColor: pressed ? t.secondary : dock.bg,
 									borderColor: dock.border,
-									overflow: "hidden" as const,
 								}
 							: {
 									backgroundColor: pressed ? t.secondary : t.card,
@@ -123,14 +120,6 @@ export function QuickActionRow({
 								},
 					]}
 				>
-					{floating ? (
-						<BlurView
-							intensity={dock.blur}
-							tint="light"
-							style={StyleSheet.absoluteFill}
-							pointerEvents="none"
-						/>
-					) : null}
 					<MoreHorizontal size={18} color={t.ink} />
 				</Pressable>
 			) : null}

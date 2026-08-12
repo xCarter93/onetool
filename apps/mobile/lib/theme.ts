@@ -63,14 +63,11 @@ export const tokens = {
 	// OPAQUE since Slice 8: the old alpha values (#00a6f4 @ 10/15/30%) let the dot
 	// grid and anything underneath ghost through every frosted button. These are
 	// those same tints pre-composited over `bg` #f6f7f8 — identical hue, no
-	// see-through. The translucent originals live on as `frostedGlass*`, ONLY for
-	// elements over a BlurView (the floating quote CTA), where alpha IS the glass.
+	// see-through. The translucent `frostedGlass*` variants (kept for the floating
+	// quote CTA) are gone: alpha over scrolling content reads as broken on device.
 	frostedBg: "#ddeff8", // primary @ 10% over bg
 	frostedBgPressed: "#d1ebf7", // primary @ 15% over bg (web's hover)
 	frostedBorder: "#acdff7", // primary @ 30% over bg
-	frostedGlassBg: "#00a6f41A",
-	frostedGlassBgPressed: "#00a6f426",
-	frostedGlassBorder: "#00a6f44D",
 	frostedInk: "#0369a1",
 	/** Solid blue fills that carry WHITE content. #00a6f4 + white is 2.7:1 (under
 	 * even the 3:1 non-text floor) and #0084d1 is 4.0:1 — fine for a glyph but
@@ -190,15 +187,15 @@ export const hero = {
 } as const;
 
 export const dock = {
-	/** Floating white glass pill. */
-	bg: "rgba(255,255,255,.86)",
+	/** Floating white pill. Opaque: any alpha lets scrolling content ghost
+	 *  through on device (far more visible than in the simulator). */
+	bg: "#ffffff",
 	border: "rgba(23,24,26,.08)",
 	shadow: "0 12px 32px rgba(15,30,40,.16)",
 	height: 60,
 	radius: 30,
 	sideInset: 16,
 	bottomInset: 14,
-	blur: 18,
 	/** Orb: 50px gradient squircle, risen 16px above the pill's top edge. */
 	orbSize: 50,
 	orbRise: 16,

@@ -1,6 +1,5 @@
 import React from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
-import { BlurView } from "expo-blur";
 import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter, usePathname, type Href } from "expo-router";
@@ -96,14 +95,10 @@ export function GlassDock({ state, navigation }: BottomTabBarProps) {
 			]}
 			pointerEvents="box-none"
 		>
-			{/* Pill background: clipped rounded blur + frost. The orb lives in the
-			    unclipped items layer, or the radius clip would behead it. */}
+			{/* Pill background: opaque rounded plate (no blur — content must not
+			    ghost through). The orb lives in the unclipped items layer, or the
+			    radius clip would behead it. */}
 			<View style={styles.pill} pointerEvents="none">
-				<BlurView
-					intensity={40}
-					tint="light"
-					style={StyleSheet.absoluteFill}
-				/>
 				<View style={[StyleSheet.absoluteFill, { backgroundColor: dock.bg }]} />
 			</View>
 

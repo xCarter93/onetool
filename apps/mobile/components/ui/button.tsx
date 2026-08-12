@@ -6,7 +6,6 @@ import {
 	View,
 	type ViewStyle,
 } from "react-native";
-import { BlurView } from "expo-blur";
 import { fontFamily, radii, shadow, touch, type, useTokens } from "@/lib/theme";
 
 type ButtonVariant = "primary" | "solid" | "secondary" | "ghost";
@@ -16,8 +15,8 @@ interface ButtonProps {
 	title: string;
 	onPress?: () => void;
 	/**
-	 * `primary` is the frosted-blue treatment shared with web (translucent sky
-	 * tint + soft blue ring). `solid` is the opaque blue fill — reserve it for the
+	 * `primary` is the frosted-blue treatment shared with web (pre-composited
+	 * sky tint + soft blue ring). `solid` is the opaque blue fill — reserve it for the
 	 * one element per screen that must out-shout everything, or for buttons on a
 	 * dark/photographic ground where a tint would vanish.
 	 */
@@ -26,12 +25,6 @@ interface ButtonProps {
 	size?: ButtonSize;
 	icon?: React.ReactNode;
 	disabled?: boolean;
-	/**
-	 * Render a real blur behind the tint. Only meaningful when the button sits
-	 * over content (map, photo, sheet scrim) — on an opaque card it is a no-op
-	 * and costs a native view, so it defaults off.
-	 */
-	blurred?: boolean;
 	style?: ViewStyle | ViewStyle[];
 }
 
@@ -42,7 +35,6 @@ export function Button({
 	size = "md",
 	icon,
 	disabled,
-	blurred,
 	style,
 }: ButtonProps) {
 	const t = useTokens();
@@ -51,23 +43,13 @@ export function Button({
 		switch (variant) {
 			case "primary":
 				// The tint step alone is a 1.05:1 delta — imperceptible. The border
-				// does the perceptible work on press. Over glass the translucent
-				// tints are load-bearing (an opaque plate reads as a hole in the
-				// canvas texture); everywhere else frosted is opaque.
+				// does the perceptible work on press. Frosted is ALWAYS the opaque
+				// pre-composited tint: alpha fills over scrolling content ghost
+				// through on device (the old `blurred` glass path).
 				return {
-					backgroundColor: blurred
-						? pressed
-							? t.frostedGlassBgPressed
-							: t.frostedGlassBg
-						: pressed
-							? t.frostedBgPressed
-							: t.frostedBg,
+					backgroundColor: pressed ? t.frostedBgPressed : t.frostedBg,
 					borderWidth: 1,
-					borderColor: pressed
-						? t.primaryInk
-						: blurred
-							? t.frostedGlassBorder
-							: t.frostedBorder,
+					borderColor: pressed ? t.primaryInk : t.frostedBorder,
 					boxShadow: shadow.xs,
 				};
 			case "solid":
@@ -105,14 +87,6 @@ export function Button({
 				style,
 			]}
 		>
-			{blurred && variant === "primary" ? (
-				<BlurView
-					intensity={18}
-					tint="light"
-					style={StyleSheet.absoluteFill}
-					pointerEvents="none"
-				/>
-			) : null}
 			<View style={styles.content}>
 				{icon}
 				<Text
