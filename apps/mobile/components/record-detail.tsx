@@ -273,10 +273,12 @@ export function DetailSkeleton({ variant }: { variant: "client" | "project" }) {
 
 	return (
 		<>
-			{/* Editorial hero: eyebrow → name → meta. No monogram. */}
+			{/* Editorial hero: name with inline status on the right, meta below. */}
 			<View style={styles.skeletonIdentity}>
-				{bar("22%", 11)}
-				{bar("70%", 22, 10)}
+				<View style={styles.skeletonTitleRow}>
+					{bar("55%", 22)}
+					{bar("18%", 11)}
+				</View>
 				{bar("35%", 11, 8)}
 			</View>
 
@@ -432,6 +434,11 @@ const styles = StyleSheet.create({
 	teamChatText: { fontFamily: fontFamily.semibold, fontSize: 13 },
 
 	skeletonIdentity: { minWidth: 0 },
+	skeletonTitleRow: {
+		flexDirection: "row",
+		alignItems: "center",
+		justifyContent: "space-between",
+	},
 	skeletonIdentityBody: { flex: 1, minWidth: 0 },
 	skeletonBar: { borderRadius: radii.xs },
 	skeletonChatPill: {
