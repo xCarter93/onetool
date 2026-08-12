@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { X } from "lucide-react-native";
 import { Slot, usePathname, useRouter, type Href } from "expo-router";
 import { useDevice } from "@/lib/use-device";
@@ -414,14 +415,23 @@ function AssistantPanel({
 	onClose: () => void;
 }) {
 	const t = useTokens();
+	const insets = useSafeAreaInsets();
 	return (
 		<View
 			style={[
 				styles.assistantPanel,
-				{ backgroundColor: t.card, borderLeftColor: t.border },
+				{
+					backgroundColor: t.card,
+					borderLeftColor: t.border,
+					// The panel reaches both screen edges: clear the status bar so the
+					// close X isn't under the battery, and the home indicator so the
+					// composer's disclaimer line isn't clipped.
+					paddingBottom: Math.max(insets.bottom, 12),
+				},
 			]}
 		>
 			<AssistantInkHeader
+				topInset={insets.top}
 				right={
 					<Pressable
 						onPress={onClose}

@@ -14,12 +14,15 @@ export function AssistantInkHeader({
 	grabber,
 	/** Trailing slot — the panel's close button. */
 	right,
+	/** Status-bar clearance for surfaces that reach the screen top (landscape panel). */
+	topInset = 0,
 }: {
 	grabber?: boolean;
 	right?: React.ReactNode;
+	topInset?: number;
 }) {
 	return (
-		<View style={styles.band}>
+		<View style={[styles.band, topInset > 0 && { paddingTop: 8 + topInset }]}>
 			{/* Orb-gradient glow, barely there — the ink stays the ground. */}
 			<LinearGradient
 				colors={[`${dock.orbGradient[0]}26`, `${dock.orbGradient[1]}00`]}
