@@ -80,6 +80,9 @@ type DateField = "startDate" | "endDate";
 function formatDate(timestamp: number | undefined): string | null {
 	if (!timestamp) return null;
 	return new Date(timestamp).toLocaleDateString("en-US", {
+		// Project dates are UTC-midnight instants — render UTC or west-of-
+		// Greenwich users see the prior day.
+		timeZone: "UTC",
 		month: "short",
 		day: "numeric",
 		year: "numeric",

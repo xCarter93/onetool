@@ -17,7 +17,14 @@ import { useMutation, useQuery } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
 import { X, ChevronDown } from "lucide-react-native";
-import { fontFamily, type, radii, tracking, useTokens } from "@/lib/theme";
+import {
+	colors,
+	fontFamily,
+	type,
+	radii,
+	tracking,
+	useTokens,
+} from "@/lib/theme";
 import { Button } from "@/components/ui";
 import { FieldMenu } from "@/components/FieldMenu";
 import { AppCalendar } from "@/components/AppCalendar";
@@ -498,7 +505,10 @@ export default function TaskFormSheet() {
 						disabled={saveDisabled}
 						icon={
 							submitting ? (
-								<ActivityIndicator size="small" color="#ffffff" />
+								<ActivityIndicator
+									size="small"
+									color={colors.primaryForeground}
+								/>
 							) : undefined
 						}
 						style={styles.submit}
@@ -730,7 +740,7 @@ const styles = StyleSheet.create({
 		alignSelf: "center",
 		width: 44,
 		height: 5,
-		borderRadius: 999,
+		borderRadius: radii.pill,
 		marginTop: 10,
 		marginBottom: 12,
 	},
@@ -754,7 +764,7 @@ const styles = StyleSheet.create({
 	closeBtn: {
 		width: 32,
 		height: 32,
-		borderRadius: 999,
+		borderRadius: radii.pill,
 		alignItems: "center",
 		justifyContent: "center",
 	},
