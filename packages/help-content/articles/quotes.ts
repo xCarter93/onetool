@@ -185,7 +185,7 @@ export const quotesArticles: HelpArticle[] = [
 					},
 					{
 						type: "paragraph",
-						text: "**Send for e-signature**, **Generate PDF**, and **Delete** are available in every status. The one exception: once an invoice has been created from a quote, the quote cannot be deleted until you remove or unlink that invoice.",
+						text: "**Send to Client**, **Send for e-signature**, **Generate PDF**, and **Delete** are available in every status, with two exceptions: **Send to Client** disappears once a quote is approved (convert it to an invoice instead), and a quote cannot be deleted once an invoice has been created from it until you remove or unlink that invoice.",
 					},
 				],
 			},
@@ -196,16 +196,16 @@ export const quotesArticles: HelpArticle[] = [
 						type: "steps",
 						items: [
 							"Open the quote and give the line items and total a final look.",
-							"Click **Mark as Sent**.",
+							"Open the **⋯** menu in the quote header and click **Send to Client**.",
 						],
 					},
 					{
 						type: "paragraph",
-						text: "That is the whole send. The quote becomes visible in your client's portal, where they can approve or decline it.",
+						text: "That is the whole send. Your client's primary contact gets an email with a link straight to the quote in their portal, where they can approve or decline it, and the quote moves to **Sent**. Sending again on a quote that is already sent reads **Resend to Client** and emails the same link without changing anything else.",
 					},
 					{
 						type: "note",
-						text: "**Mark as Sent** on its own makes the quote approvable in the portal. A formal e-signature request is a separate, optional path. See [E-signatures](/help/quotes/e-signatures).",
+						text: "Sending needs the client to have portal access turned on and a primary contact with an email address; OneTool tells you if either is missing. **Mark as Sent** flips the status without emailing anyone, so save it for quotes you delivered outside OneTool. A formal e-signature request is a separate, optional path. See [E-signatures](/help/quotes/e-signatures). You can also send from the quotes list: open a quote's quick-view drawer and use the same action there.",
 					},
 				],
 			},
@@ -214,7 +214,7 @@ export const quotesArticles: HelpArticle[] = [
 				blocks: [
 					{
 						type: "paragraph",
-						text: "A sent quote is locked, so the numbers never change under your client while they are deciding. To fix a price, a line item, the title, or the terms, click **Revert to draft** in the quote header and confirm. The quote leaves your client's portal and their link stops working, and everything is editable again. Click **Send** when it is ready to go back; that emails the revised quote and makes their link work again. (**Mark as Sent** only flips the status, so save it for quotes you delivered outside OneTool.)",
+						text: "A sent quote is locked, so the numbers never change under your client while they are deciding. To fix a price, a line item, the title, or the terms, click **Revert to draft** in the quote header and confirm. The quote leaves your client's portal and their link stops working, and everything is editable again. Click **Send to Client** when it is ready to go back; that emails the revised quote and makes their link work again. (**Mark as Sent** only flips the status, so save it for quotes you delivered outside OneTool.)",
 					},
 					{
 						type: "note",

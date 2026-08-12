@@ -117,7 +117,7 @@ export const invoicesAndPaymentsArticles: HelpArticle[] = [
 					},
 					{
 						type: "paragraph",
-						text: "**Send to Client**, **Generate PDF**, and **Cancel** are always available. **Generate PDF** produces a PDF copy of the invoice, and **Cancel** asks for confirmation before it voids the invoice.",
+						text: "**Send to Client** is available until the invoice is paid or cancelled, and reads **Resend to Client** once it has gone out. **Generate PDF** produces a PDF copy of the invoice and is always available, and **Cancel** asks for confirmation before it voids the invoice.",
 					},
 					{
 						type: "media",
@@ -248,12 +248,12 @@ export const invoicesAndPaymentsArticles: HelpArticle[] = [
 						type: "steps",
 						items: [
 							"Open the invoice and review the total.",
-							"Click **Send to Client**.",
+							"Open the **⋯** menu in the invoice header and click **Send to Client**.",
 						],
 					},
 					{
 						type: "note",
-						text: "Sending requires the client to have a primary contact with an email address on file. Add one on the client record first if it is missing.",
+						text: "Sending requires the client to have portal access turned on and a primary contact with an email address on file. Add one on the client record first if it is missing. To send the same link again later, use **Resend to Client**; nothing else about the invoice changes. You can also send straight from the invoice list: open an invoice\u2019s quick-view drawer and use the same action there.",
 					},
 				],
 			},

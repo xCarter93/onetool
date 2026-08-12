@@ -5,6 +5,7 @@ import { StatusProgressBar } from "@/components/shared/status-progress-bar";
 import { StickyDetailHeader } from "@/components/shared/sticky-detail-header";
 import {
 	PenLine,
+	Mail,
 	FileText,
 	Trash2,
 	Check,
@@ -37,7 +38,11 @@ interface QuoteDetailHeaderProps {
 	quote: Doc<"quotes">;
 	currentStatus: QuoteStatus;
 	onStatusChange: (status: QuoteStatus) => void;
+	/** Emails the client a portal invite for this quote (quotes.sendToClient). */
 	onSendToClient: () => void;
+	/** True while the send-to-client mutation is in flight. */
+	sending?: boolean;
+	onSendForSignature: () => void;
 	/** Disable "Send for e-signature" when the monthly e-signature cap is reached. */
 	sendDisabled?: boolean;
 	sendDisabledReason?: string;
@@ -53,6 +58,8 @@ export function QuoteDetailHeader({
 	currentStatus,
 	onStatusChange,
 	onSendToClient,
+	sending = false,
+	onSendForSignature,
 	sendDisabled = false,
 	sendDisabledReason,
 	onGeneratePdf,
@@ -149,12 +156,27 @@ export function QuoteDetailHeader({
 	const actions: RecordAction[] = [
 		...statusActions,
 		{
+			// Emails the portal invite. Hidden on approved quotes — the backend
+			// rejects those (convert to an invoice instead), same as mobile.
+			key: "send-to-client",
+			label:
+				currentStatus === "sent" ? "Resend to Client" : "Send to Client",
+			icon: <Mail className="h-4 w-4" />,
+			slot: "secondary",
+			variant: "outline",
+			onClick: onSendToClient,
+			disabled: !canModifyQuote || sending,
+			loading: sending,
+			loadingLabel: "Sending…",
+			hidden: currentStatus === "approved",
+		},
+		{
 			key: "send-esign",
 			label: "Send for e-signature",
 			icon: <PenLine className="h-4 w-4" />,
 			slot: "secondary",
 			variant: "outline",
-			onClick: onSendToClient,
+			onClick: onSendForSignature,
 			disabled: sendDisabled || !canModifyQuote,
 			disabledReason: sendDisabled ? sendDisabledReason : undefined,
 		},

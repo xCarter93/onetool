@@ -35,6 +35,8 @@ interface InvoiceDetailHeaderProps {
 	onStatusChange: (status: InvoiceStatus) => void;
 	onMarkPaid: () => void;
 	onSendToClient: () => void;
+	/** True while the send-to-client mutation is in flight. */
+	sending?: boolean;
 	onGeneratePdf: () => void;
 	onCancel: () => void;
 }
@@ -45,6 +47,7 @@ export function InvoiceDetailHeader({
 	onStatusChange,
 	onMarkPaid,
 	onSendToClient,
+	sending = false,
 	onGeneratePdf,
 	onCancel,
 }: InvoiceDetailHeaderProps) {
@@ -132,13 +135,19 @@ export function InvoiceDetailHeader({
 	const actions: RecordAction[] = [
 		...statusActions,
 		{
+			// Emails the portal invite. Hidden on paid/cancelled invoices, which the
+			// backend rejects; sent/overdue re-send the same link.
 			key: "send-to-client",
-			label: "Send to Client",
+			label:
+				currentStatus === "draft" ? "Send to Client" : "Resend to Client",
 			icon: <Mail className="h-4 w-4" />,
 			slot: "secondary",
 			variant: "outline",
 			onClick: onSendToClient,
-			disabled: !canModify,
+			disabled: !canModify || sending,
+			loading: sending,
+			loadingLabel: "Sending…",
+			hidden: currentStatus === "paid" || currentStatus === "cancelled",
 		},
 		{
 			key: "generate-pdf",

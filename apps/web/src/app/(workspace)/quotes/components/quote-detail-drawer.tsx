@@ -11,6 +11,7 @@ import {
 	FileText,
 	Loader2,
 	Lock,
+	Mail,
 	PenLine,
 	Receipt,
 	XCircle,
@@ -103,7 +104,9 @@ export function QuoteDetailDrawer({
 	const toast = useToast();
 	const updateQuote = useMutation(api.quotes.update);
 	const createInvoice = useMutation(api.invoices.createFromQuote);
+	const sendQuoteToClient = useMutation(api.quotes.sendToClient);
 	const [converting, setConverting] = React.useState(false);
+	const [sending, setSending] = React.useState(false);
 
 	const preview = useQuery(
 		api.quotes.getPreview,
@@ -141,6 +144,28 @@ export function QuoteDetailDrawer({
 		if (!quoteId) return;
 		onOpenChange(false);
 		router.push(`/quotes/${quoteId}/sign`);
+	};
+
+	// Emails the client a portal invite for this quote and flips it to sent.
+	// Same mutation the record page and mobile use.
+	const emailToClient = async () => {
+		if (!quoteId || sending) return;
+		setSending(true);
+		try {
+			await sendQuoteToClient({ id: quoteId });
+			toast.success(
+				"Quote sent",
+				"Your client will get an email to view and approve it in the portal."
+			);
+		} catch (err) {
+			console.error("Failed to send quote to client:", err);
+			toast.error(
+				"Couldn't send quote",
+				convexErrorMessage(err, "Please try again.")
+			);
+		} finally {
+			setSending(false);
+		}
 	};
 
 	const setStatus = async (status: QuoteStatus) => {
@@ -196,11 +221,25 @@ export function QuoteDetailDrawer({
 			onClick: openRecord,
 		},
 		{
+			// Hidden on approved quotes: the backend rejects those (convert to an
+			// invoice instead), same rule as the record header and mobile.
+			key: "send-to-client",
+			label: quote?.status === "sent" ? "Resend to client" : "Send to client",
+			icon: <Mail className="size-3.5" />,
+			variant: "outline",
+			slot: "secondary",
+			onClick: () => void emailToClient(),
+			disabled: !can("quotes", "modify") || sending,
+			loading: sending,
+			loadingLabel: "Sending…",
+			hidden: isApproved,
+		},
+		{
 			key: "send",
 			label: "Send for e-signature",
 			icon: <PenLine className="size-3.5" />,
-			variant: "default",
-			slot: "start",
+			variant: "outline",
+			slot: "secondary",
 			onClick: sendForSignature,
 			disabled: !can("quotes", "modify") || missingPdf,
 			disabledReason: missingPdf

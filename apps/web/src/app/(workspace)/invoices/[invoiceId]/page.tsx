@@ -61,6 +61,7 @@ function InvoiceDetailPageContent() {
 	const [isPaymentsModalOpen, setIsPaymentsModalOpen] = useState(false);
 	const [isCancelModalOpen, setIsCancelModalOpen] = useState(false);
 	const [showPreviewModal, setShowPreviewModal] = useState(false);
+	const [isSending, setIsSending] = useState(false);
 
 	// Queries
 	const invoiceWithPayments = useQuery(api.invoices.getWithPayments, {
@@ -215,6 +216,8 @@ function InvoiceDetailPageContent() {
 	};
 
 	const handleSendToClient = async () => {
+		if (isSending) return;
+		setIsSending(true);
 		try {
 			await sendToClient({ id: invoiceId });
 			toast.success(
@@ -225,6 +228,8 @@ function InvoiceDetailPageContent() {
 			const message =
 				convexErrorMessage(err, "Failed to send invoice");
 			toast.error("Couldn't send invoice", message);
+		} finally {
+			setIsSending(false);
 		}
 	};
 
@@ -393,6 +398,7 @@ function InvoiceDetailPageContent() {
 					onStatusChange={handleStatusChange}
 					onMarkPaid={handleMarkPaid}
 					onSendToClient={handleSendToClient}
+					sending={isSending}
 					onGeneratePdf={handleGeneratePdf}
 					onCancel={() => setIsCancelModalOpen(true)}
 				/>

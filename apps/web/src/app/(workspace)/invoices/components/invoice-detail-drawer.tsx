@@ -10,8 +10,8 @@ import {
 	ExternalLink,
 	Loader2,
 	Lock,
+	Mail,
 	Receipt,
-	Send,
 } from "lucide-react";
 
 import { StatusBadge } from "@/components/domain/status-badge";
@@ -50,6 +50,7 @@ import { QuickBooksSyncField } from "@/components/quickbooks/sync-status-row";
 import { formatCurrency } from "@/lib/money";
 import { utcMidnightMsToLocalDate } from "@/lib/dates";
 import { useToast } from "@/hooks/use-toast";
+import { convexErrorMessage } from "@/lib/convex-error";
 
 type InvoiceStatus = Doc<"invoices">["status"];
 type PaymentStatus = Doc<"payments">["status"];
@@ -117,8 +118,10 @@ export function InvoiceDetailDrawer({
 		invoiceId ? { id: invoiceId } : "skip"
 	);
 	const markPaid = useMutation(api.invoices.markPaid);
-	const updateInvoice = useMutation(api.invoices.update);
+	const sendInvoiceToClient = useMutation(api.invoices.sendToClient);
 	const [pending, setPending] = React.useState(false);
+	// Separate from `pending` so the spinner lands on the send row only.
+	const [sending, setSending] = React.useState(false);
 
 	const loading = invoiceId !== null && preview === undefined;
 	const notFound = invoiceId !== null && preview === null;
@@ -156,15 +159,22 @@ export function InvoiceDetailDrawer({
 	};
 
 	const handleSend = async () => {
-		if (!invoiceId) return;
-		setPending(true);
+		if (!invoiceId || sending) return;
+		setSending(true);
 		try {
-			await updateInvoice({ id: invoiceId, status: "sent" });
+			await sendInvoiceToClient({ id: invoiceId });
+			toast.success(
+				"Invoice sent",
+				"Your client will get an email to view and pay it in the portal."
+			);
 		} catch (err) {
 			console.error("Failed to send invoice:", err);
-			toast.error("Couldn't send invoice", "Please try again.");
+			toast.error(
+				"Couldn't send invoice",
+				convexErrorMessage(err, "Please try again.")
+			);
 		} finally {
-			setPending(false);
+			setSending(false);
 		}
 	};
 
@@ -184,18 +194,24 @@ export function InvoiceDetailDrawer({
 			onClick: handleMarkPaid,
 			variant: "default",
 			slot: "start",
-			disabled: pending || !can("invoices", "modify"),
+			disabled: pending || sending || !can("invoices", "modify"),
 			hidden: !canMarkPaid,
 		},
 		{
-			key: "send",
-			label: "Send",
-			icon: <Send className="size-3.5" />,
-			onClick: handleSend,
+			// Emails the portal invite. Hidden on paid/cancelled invoices, which the
+			// backend rejects; sent/overdue re-send the same link.
+			key: "send-to-client",
+			label:
+				effectiveStatus === "draft" ? "Send to client" : "Resend to client",
+			icon: <Mail className="size-3.5" />,
+			onClick: () => void handleSend(),
 			variant: "outline",
 			slot: "secondary",
-			disabled: pending || !can("invoices", "modify"),
-			hidden: effectiveStatus !== "draft",
+			disabled: pending || sending || !can("invoices", "modify"),
+			loading: sending,
+			loadingLabel: "Sending…",
+			hidden:
+				effectiveStatus === "paid" || effectiveStatus === "cancelled",
 		},
 	];
 

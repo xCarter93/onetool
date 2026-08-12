@@ -541,7 +541,7 @@ export const gettingStartedArticles: HelpArticle[] = [
 						type: "steps",
 						items: [
 							"Open the quote and review the total.",
-							"Click **Mark as Sent**. The quote becomes visible in your client's portal, where they can approve or decline it with a signature.",
+							"Open the **⋯** menu in the quote header and click **Send to Client**. Your client gets an email with a link to the quote in their portal, where they can approve or decline it with a signature. (**Mark as Sent** just flips the status, so use it for quotes you delivered outside OneTool.)",
 						],
 					},
 					{

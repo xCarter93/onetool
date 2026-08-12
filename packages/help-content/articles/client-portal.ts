@@ -58,7 +58,7 @@ export const clientPortalArticles: HelpArticle[] = [
 				blocks: [
 					{
 						type: "paragraph",
-						text: "The portal is the client-facing half of your quote and invoice flow. When you click **Mark as Sent** on a quote, it appears in your client's portal for approval. When you click **Send to Client** on an invoice, your client gets an email inviting them into the portal to view and pay it.",
+						text: "The portal is the client-facing half of your quote and invoice flow. When you click **Send to Client** on a quote or an invoice, your client gets an email inviting them into the portal: to approve or decline the quote, or to view and pay the invoice.",
 					},
 					{
 						type: "paragraph",
@@ -179,7 +179,7 @@ export const clientPortalArticles: HelpArticle[] = [
 				blocks: [
 					{
 						type: "paragraph",
-						text: "Only quotes you have sent appear in the portal. Drafts stay private to your workspace until you click **Mark as Sent**. Once a quote is sent, here is your client's flow:",
+						text: "Only quotes you have sent appear in the portal. Drafts stay private to your workspace until you send them. Once a quote is sent, here is your client's flow:",
 					},
 					{
 						type: "steps",
