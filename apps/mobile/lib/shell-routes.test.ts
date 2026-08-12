@@ -23,10 +23,16 @@ describe("tabFromPathname", () => {
 			"/projects/p1",
 			"/quote/q1",
 			"/invoice/i1",
-			"/money",
 		]) {
 			expect(tabFromPathname(p)).toBe("work");
 		}
+	});
+
+	it("keeps the quote/invoice details on Work, not on Money", () => {
+		// Money is a dashboard root; the record routes still belong to Work.
+		expect(tabFromPathname("/money")).toBe("money");
+		expect(tabFromPathname("/quote/q1")).toBe("work");
+		expect(tabFromPathname("/invoice/i1")).toBe("work");
 	});
 
 	it("resolves the other rail tabs and the footer Profile", () => {

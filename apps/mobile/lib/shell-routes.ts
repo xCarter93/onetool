@@ -5,17 +5,25 @@ import type { RecordRef } from "@/lib/selection-context";
 // importing react-native can't be imported by a test.
 
 /** Rail tabs + Profile (reached via the rail footer, highlights no nav row). */
-export type ShellTab = "today" | "work" | "routes" | "activity" | "profile";
+export type ShellTab =
+	| "today"
+	| "work"
+	| "money"
+	| "routes"
+	| "activity"
+	| "profile";
 
 /**
- * Route → active rail tab. Every record route resolves to Work, because records
+ * Route → active rail tab. Every RECORD route resolves to Work, because records
  * are KINDS inside Work now rather than tabs of their own — so a deep link to a
- * quote highlights Work, not a tab that no longer exists.
+ * quote highlights Work, not a tab that no longer exists. Money is the dashboard
+ * root only; it never claims the quote/invoice detail routes.
  */
 export function tabFromPathname(pathname: string): ShellTab {
-	if (/^\/(work|clients|projects|quote|invoice|money)(\/|$)/.test(pathname)) {
+	if (/^\/(work|clients|projects|quote|invoice)(\/|$)/.test(pathname)) {
 		return "work";
 	}
+	if (/^\/money(\/|$)/.test(pathname)) return "money";
 	if (/^\/activity(\/|$)/.test(pathname)) return "activity";
 	if (/^\/routes(\/|$)/.test(pathname)) return "routes";
 	if (/^\/profile(\/|$)/.test(pathname)) return "profile";

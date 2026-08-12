@@ -10,7 +10,7 @@ import {
 // contract the master-detail panes depend on: independent panes, pane-switch
 // persistence, {kind,id} refs, and reducer purity (no mutation).
 
-const EMPTY: SelectionState = { work: null, activity: null };
+const EMPTY: SelectionState = { work: null, money: null, activity: null };
 
 describe("selectionReducer", () => {
 	it("select('work', ref) sets work, leaves activity null", () => {
@@ -21,6 +21,7 @@ describe("selectionReducer", () => {
 		});
 		expect(next).toEqual({
 			work: { kind: "client", id: "c1" },
+			money: null,
 			activity: null,
 		});
 	});
@@ -38,6 +39,7 @@ describe("selectionReducer", () => {
 		});
 		expect(afterWork).toEqual({
 			work: { kind: "client", id: "c1" },
+			money: null,
 			activity: { kind: "invoice", id: "i1" },
 		});
 	});
@@ -67,11 +69,13 @@ describe("selectionReducer", () => {
 	it("clear('work') nulls work without touching activity", () => {
 		const seeded: SelectionState = {
 			work: { kind: "client", id: "c1" },
+			money: null,
 			activity: { kind: "project", id: "p1" },
 		};
 		const next = selectionReducer(seeded, { type: "clear", tab: "work" });
 		expect(next).toEqual({
 			work: null,
+			money: null,
 			activity: { kind: "project", id: "p1" },
 		});
 	});
@@ -98,6 +102,7 @@ describe("selectionReducer", () => {
 	it("is pure: does not mutate its input and returns a new reference", () => {
 		const frozen = Object.freeze({
 			work: null,
+			money: null,
 			activity: null,
 		}) as SelectionState;
 		const action: SelectionAction = {
@@ -109,7 +114,7 @@ describe("selectionReducer", () => {
 		// proves the reducer never wrote to the input.
 		const next = selectionReducer(frozen, action);
 		expect(next).not.toBe(frozen);
-		expect(frozen).toEqual({ work: null, activity: null });
+		expect(frozen).toEqual({ work: null, money: null, activity: null });
 	});
 });
 
