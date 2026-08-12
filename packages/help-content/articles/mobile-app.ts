@@ -19,7 +19,7 @@ export const mobileAppArticles: HelpArticle[] = [
 				blocks: [
 					{
 						type: "paragraph",
-						text: "The OneTool mobile app is an iOS companion to the web workspace, built for the part of your day that happens away from a desk. Check the schedule from the truck, look up a client on site, and keep an eye on invoices and quotes between jobs.",
+						text: "The OneTool mobile app is an iOS companion to the web workspace, built for the part of your day that happens away from a desk. Check the schedule from the truck, look up a client on site, send a quote from the driveway, and record a payment at the door.",
 					},
 					{
 						type: "paragraph",
@@ -41,24 +41,61 @@ export const mobileAppArticles: HelpArticle[] = [
 					{
 						type: "list",
 						items: [
-							"**Today** shows your day at a glance: a week strip to pick a date, urgent items called out at the top, your plan for the day in order, and a peek at tomorrow. A **Me** and **Team** toggle switches between your own work and the whole team's.",
-							"**Work** is the hub for everything else: clients, projects, tasks, and your invoices and quotes.",
+							"**Today** is your schedule. A week strip picks the date, and a **Day / List** toggle switches views: Day is a timeline of the chosen day (timed work in order with a *Now* marker, plus an all-day band for projects and unscheduled tasks), while List looks ahead two weeks, grouped by day. A **Me** and **Team** toggle switches between your own work and the whole team's, urgent items are called out at the top, and your organization's activity feed opens from here too.",
+							"**Work** is where you find anything. Type in the search field to search every record: clients (including their contacts and properties), projects, quotes, invoices, and tasks, with results grouped by type; the chips narrow to one type or browse its full list. Before you search, the screen shows records you've recently opened on this device.",
+							"**Money** is your money dashboard. The top of the screen shows what you are owed, how much of it is overdue, and a pipeline strip of three cells: **Quoted** (quotes waiting on a client), **Unpaid** (invoices still owed), and **Collected** this month. Below that, **Needs attention** lists your overdue invoices and the quotes a client has been sitting on, then a chart of what you've collected over the last six months, then your **Recent payments**. Tap any row to open that record. On iPhone, tapping the **Quoted** or **Unpaid** cell jumps to that list on **Work**; the **Collected** cell is a read-out, not a link, and on iPad the strip is read-only, so use the chips on **Work** to browse.",
 							"**Routes** plans the day's stops and gets you from one to the next. See [Planning a route](/help/routing/planning-a-route).",
-							"**Activity** shows your organization's activity feed.",
 						],
 					},
 					{
 						type: "paragraph",
-						text: "The center button opens the AI assistant, a Business plan feature. See [Meet the assistant](/help/ai-assistant/meet-the-assistant).",
+						text: "A magnifier in the header of the other tabs jumps straight to Work with the search field ready. The center button opens the AI assistant, a Business plan feature. See [Meet the assistant](/help/ai-assistant/meet-the-assistant).",
 					},
 				],
 			},
 			{
-				heading: "Clients and money live under Work",
+				heading: "Create anything with the + button",
 				blocks: [
 					{
 						type: "paragraph",
-						text: "Clients, projects, and tasks each have their own list and detail screens inside **Work**, rather than separate tabs. Invoices and quotes live there too, on a combined screen with an **Invoices** and **Quotes** toggle. Tap any row to open the full record.",
+						text: "The **+** button floats above the bottom-right of every tab and fans out into **New project**, **New task**, **New client**, and **New quote**; you only see the ones your role can create. On iPad, the same menu lives behind the **+** in the sidebar.",
+					},
+					{
+						type: "list",
+						items: [
+							"**New project** is built for speed: pick a client, type a title, optionally set a start date, and it's created. If the client isn't in OneTool yet, tap **+ New client** inside the picker to add them with just a name and phone without leaving the form. You can also start a project straight from a client's detail screen.",
+							"**New quote** picks a client and creates a draft, then opens it so you can add line items right away.",
+							"**New task** and **New client** open the full forms you already know.",
+							"On the Free plan, the 10-client and 3-active-projects-per-client limits apply here the same as on the web, and the app tells you when you've hit one.",
+						],
+					},
+				],
+			},
+			{
+				heading: "Send, collect, and share from the Money tab",
+				blocks: [
+					{
+						type: "paragraph",
+						text: "You reach a record from the **Money** dashboard rows, or from the **Invoices** and **Quotes** chips on **Work**; tap any row to open the full record. From a detail screen, the buttons follow the record's status: a draft offers **Send** (with **Mark as sent** under the \u2022\u2022\u2022 menu when you delivered the quote yourself, so no email goes out), a sent quote offers **Get signature** (the client picks who's signing, signs on your screen, and the quote is approved with the signature saved to its approval history; turn the phone sideways, and iPad signs full-width) plus **Resend** and a manual **Mark approved**, an approved quote converts to an invoice in one tap, and a sent or overdue invoice offers **Record payment** and **Share pay link**.",
+					},
+					{
+						type: "list",
+						items: [
+							"**Sending** shows a preview of the document first, then emails your client a link to review it (and, for invoices, pay it) in their client portal. The client needs portal access and a primary contact email; the buttons explain what's missing if they can't be reached.",
+							"**Record payment** logs a cash or check payment on the spot. The amount starts at the remaining balance and can be edited down for deposits and partial payments; the confirm button always shows the exact amount it will record.",
+							"**Share pay link** opens the share sheet with the invoice's portal payment link, so a client can pay by card on their own phone while you're standing together.",
+							"**Line items** are editable right on the record: tap a row to change its description, quantity, unit, or rate, or tap **Add line item** below the list, and the total updates as you type. Draft quotes edit directly; a sent quote asks to move back to draft first (its portal link pauses until you resend), while invoices stay editable until a payment is recorded.",
+							"**Extend valid until** (under the ••• menu on a sent or expired quote) picks a new date without emailing the client, and extending an expired quote makes it available in the portal again.",
+						],
+					},
+				],
+			},
+			{
+				heading: "Photos and documents on a record",
+				blocks: [
+					{
+						type: "paragraph",
+						text: "Client and project detail screens each have a **Documents** section for the files that belong to that job. Tap **Upload document** to attach from your photo library, take a photo on the spot, or pick a file from the Files app, and tap any document in the list to open it. Files can be up to 10 MB, and everything you attach in the field shows up on the record in the web workspace too.",
 					},
 				],
 			},
@@ -72,11 +109,28 @@ export const mobileAppArticles: HelpArticle[] = [
 				],
 			},
 			{
+				heading: "Notifications and team chat",
+				blocks: [
+					{
+						type: "paragraph",
+						text: "The bell in the header opens your notifications list, and the app can also push the important ones to your lock screen: **mentions** (a teammate tagged you in team chat), **automation messages** from your workflows, and **payments and approvals** (an invoice was paid or a quote was approved). Team chat lives on every client, project, and quote detail screen, so you can tag a teammate right from the record you are looking at.",
+					},
+					{
+						type: "paragraph",
+						text: "To choose which of these reach your lock screen, tap the gear at the top of the notifications list, or open **Notifications** from your profile. Everything starts on, and the toggles only control pushes on your device: your in-app notifications list always shows the full history. If you record a payment or approve a quote yourself, the app celebrates with your team but skips buzzing your own phone.",
+					},
+				],
+			},
+			{
 				heading: "Your profile",
 				blocks: [
 					{
 						type: "paragraph",
 						text: "Tap your avatar in the header to open your profile. It shows your organization and your role, **Admin** or **Member**, and it is where you find **Sign Out**. The organization owner also sees account and organization deletion options here.",
+					},
+					{
+						type: "paragraph",
+						text: "Your profile is also where you share your community page in person: tap **Share QR code** to open a full-screen code for the page. The screen jumps to full brightness and stays awake so a customer can scan it with their camera, and the buttons below share the code image or save it to Photos for printing. Your community page needs to be published on the web first; see [Your public page](/help/community/your-public-page).",
 					},
 				],
 			},

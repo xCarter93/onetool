@@ -119,13 +119,13 @@
           "cameraPermission": "OneTool needs access to your camera so you can capture photos to upload to projects and team chat."
         }
       ],
-      ["@clerk/expo", { "theme": "./clerk-theme.json" }],
+      "@clerk/expo",
       "expo-apple-authentication",
       "expo-notifications",
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#031125",
+          "backgroundColor": "#0a1c26",
           "image": "./assets/OneTool-mark.png",
           "imageWidth": 120
         }
@@ -139,6 +139,14 @@
               { "name": "RecaptchaInterop", "modular_headers": true }
             ]
           }
+        }
+      ],
+      "expo-sharing",
+      [
+        "expo-media-library",
+        {
+          "savePhotosPermission": "OneTool saves your community page QR code to your photo library.",
+          "isAccessMediaLocationEnabled": false
         }
       ]
     ],

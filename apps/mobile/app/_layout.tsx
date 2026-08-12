@@ -231,6 +231,20 @@ export default function RootLayout() {
 							<Stack.Screen name="business-details" />
 							{/* Manual route builder — create/edit, pushed from Routes tab. */}
 							<Stack.Screen name="route-edit" />
+							{/* In-person quote signature capture (Slice 3). */}
+							<Stack.Screen name="sign-quote" />
+							{/* Community-page QR panel. NOT the formSheet idiom the other
+							    root modals use — the screen goes full-bleed ink and drives
+							    the screen to full brightness so a customer can scan it, so
+							    a detented sheet would fight both. Same on iPad: a full-bleed
+							    scan panel has no business as a centered card. */}
+							<Stack.Screen
+								name="community-qr"
+								options={{
+									presentation: "fullScreenModal",
+									headerShown: false,
+								}}
+							/>
 							<Stack.Screen
 								name="org-switch"
 								options={overlayOptions(device, {
@@ -249,8 +263,40 @@ export default function RootLayout() {
 									sheetCornerRadius: 30,
 								})}
 							/>
+							{/* Push-preference toggles — same sheet idiom as the
+							    notifications sheet it's pushed from. */}
+							<Stack.Screen
+								name="notification-preferences"
+								options={overlayOptions(device, {
+									sheetAllowedDetents: [0.52, 0.9],
+									sheetInitialDetentIndex: 0,
+									sheetGrabberVisible: false,
+									sheetCornerRadius: 30,
+								})}
+							/>
 							<Stack.Screen
 								name="tasks/form"
+								options={overlayOptions(device, {
+									sheetAllowedDetents: [0.9, 1.0],
+									sheetInitialDetentIndex: 0,
+									sheetGrabberVisible: false,
+									sheetCornerRadius: 30,
+								})}
+							/>
+							{/* Speed-dial fast-capture creates (Slice 5) — same sheet
+							    idiom as tasks/form. Static segments, so they take
+							    precedence over the sibling [id] routes. */}
+							<Stack.Screen
+								name="project/new"
+								options={overlayOptions(device, {
+									sheetAllowedDetents: [0.9, 1.0],
+									sheetInitialDetentIndex: 0,
+									sheetGrabberVisible: false,
+									sheetCornerRadius: 30,
+								})}
+							/>
+							<Stack.Screen
+								name="quote/new"
 								options={overlayOptions(device, {
 									sheetAllowedDetents: [0.9, 1.0],
 									sheetInitialDetentIndex: 0,

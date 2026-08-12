@@ -31,3 +31,39 @@ export function formatDocumentDate(ts: number): string {
 		year: "numeric",
 	});
 }
+
+// Year-less date — "Jun 9". For metadata that sits in a narrow column next to a
+// money figure (Money hub attention/payment rows), where the year is noise.
+// Pass `now` (seeded by the screen — Date.now() during render is a lint error)
+// and anything outside that year regains it: "Dec 14, 2025" on a year-old
+// overdue invoice beats an undated "Dec 14".
+export function formatShortDate(ts: number, now?: number): string {
+	const date = new Date(ts);
+	const otherYear =
+		now !== undefined && date.getFullYear() !== new Date(now).getFullYear();
+	return date.toLocaleDateString("en-US", {
+		month: "short",
+		day: "numeric",
+		...(otherYear ? { year: "numeric" as const } : {}),
+	});
+}
+
+/**
+ * "Today" / "Yesterday" / "4d ago" inside the last week, short date beyond it.
+ * `now` is passed in, never read here — react-hooks/purity forbids Date.now()
+ * during render, so screens seed it once with a lazy useState.
+ */
+export function formatRelativeDay(ts: number, now: number): string {
+	const startOfDay = (ms: number) => {
+		const d = new Date(ms);
+		d.setHours(0, 0, 0, 0);
+		return d.getTime();
+	};
+	const days = Math.round(
+		(startOfDay(now) - startOfDay(ts)) / (24 * 60 * 60 * 1000),
+	);
+	if (days <= 0) return "Today";
+	if (days === 1) return "Yesterday";
+	if (days < 7) return `${days}d ago`;
+	return formatShortDate(ts, now);
+}

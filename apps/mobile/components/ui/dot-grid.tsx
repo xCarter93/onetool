@@ -7,7 +7,7 @@ import { tokens } from "@/lib/theme";
 // Web parity: apps/web/src/app/globals.css `.workspace-canvas` — 22px grid, 1px-radius
 // dot, dot color = --foreground at 12% alpha. No token is literally "foreground @ 12%",
 // so this composites the closest token (tokens.ink, web's --foreground analog) with the
-// same 12% alpha web uses via hex alpha suffix (same trick as tokens.frostedBg etc).
+// same 12% alpha web uses via hex alpha suffix (same trick as tokens.frostedGlass*).
 const DOT_COLOR = `${tokens.ink}1F`; // "1F" hex alpha ≈ 12%
 const SPACING = 22; // pt — 1:1 with web's background-size (CSS px -> RN pt)
 const DOT_RADIUS = 1; // pt — 1:1 with web's radial-gradient 1px stop
@@ -23,7 +23,14 @@ const DOT_RADIUS = 1; // pt — 1:1 with web's radial-gradient 1px stop
  * escapes to full-screen and `overflow: hidden` does not clip it (see the
  * headerHeight measurement in app-header.tsx for the prior incident).
  */
-export function DotGrid({ style }: { style?: StyleProp<ViewStyle> }) {
+export function DotGrid({
+	style,
+	// Same 22px pitch everywhere; the ink command hero passes its white variant.
+	color = DOT_COLOR,
+}: {
+	style?: StyleProp<ViewStyle>;
+	color?: string;
+}) {
 	// useId() can contain ":" — not safe inside a `url(#id)` pattern reference.
 	const rawId = useId();
 	const patternId = `dotGrid${rawId.replace(/[^a-zA-Z0-9]/g, "")}`;
@@ -57,7 +64,7 @@ export function DotGrid({ style }: { style?: StyleProp<ViewStyle> }) {
 								cx={SPACING / 2}
 								cy={SPACING / 2}
 								r={DOT_RADIUS}
-								fill={DOT_COLOR}
+								fill={color}
 							/>
 						</Pattern>
 					</Defs>

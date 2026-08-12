@@ -1,55 +1,53 @@
-import { useMemo, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
-import { FlashList } from "@shopify/flash-list";
+import { useState } from "react";
+import { ScrollView, StyleSheet, Text, View } from "react-native";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery } from "convex/react";
 import { useRouter, type Href } from "expo-router";
+import { Search } from "lucide-react-native";
 import { api } from "@onetool/backend/convex/_generated/api";
-import { Id } from "@onetool/backend/convex/_generated/dataModel";
-import { fontFamily, radii, type, useTokens } from "@/lib/theme";
-import { AppHeader } from "@/components/app-header";
 import {
-	Badge,
+	badgeTone,
+	DOCK_CLEARANCE,
+	fontFamily,
+	hero,
+	radii,
+	tracking,
+	type,
+	useTokens,
+} from "@/lib/theme";
+import { InkTabHeader } from "@/components/ink-tab-header";
+import { requestSearchFocus } from "@/lib/search-focus";
+import {
 	DotGrid,
 	Eyebrow,
-	ListRow,
-	Toggle2,
+	SectionHeader,
 	SCROLL_TOP_INSET,
 } from "@/components/ui";
-import { formatCurrency, formatDocumentDate } from "@/lib/format";
-import { Illustration } from "@/components/illustrations";
+import { formatCurrency } from "@/lib/format";
+import { MoneyAmount } from "@/components/money/money-amount";
+import { CollectedChart } from "@/components/money/collected-chart";
+import { PipelineStrip } from "@/components/money/pipeline-strip";
+import { NeedsAttention } from "@/components/money/needs-attention";
+import { RecentPayments } from "@/components/money/recent-payments";
 
-type Tab = "invoices" | "quotes";
-
-type InvoiceRow = {
-	_id: Id<"invoices">;
-	invoiceNumber: string;
-	clientId: Id<"clients">;
-	status: string;
-	total: number;
-	dueDate: number;
-};
-
-type QuoteRow = {
-	_id: Id<"quotes">;
-	quoteNumber?: string;
-	title?: string;
-	clientId: Id<"clients">;
-	status: string;
-	total: number;
-	_creationTime: number;
-};
+const WORK_TAB: Href = "/(tabs)/work" as Href;
 
 // The shell selection shape for Money. Mirrors selection-context's
 // state.money: { kind: "quote" | "invoice"; id: string } | null.
 type MoneySelection = { kind: "quote" | "invoice"; id: string };
 
+// Slice 7: Money is a DASHBOARD, not a browser. Browsing the full quote and
+// invoice lists lives on Work behind its type chips, so this screen's only read
+// is api.businessHealth.get — one payload carrying the outstanding figure
+// (remaining balance, not invoice totals), the pipeline, the attention queue,
+// the collected series and the latest payments.
+//
 // headerMode/onSelect/selected default off → the iPhone path (router.push to the
-// ROOT /quote/[id] + /invoice/[id] routes, AppHeader mode="root", no selected
-// highlight) is BYTE-IDENTICAL. The iPad shell renders this as a list pane:
-// headerMode="pane" suppresses the self-mounted AppHeader (shell mounts the one
-// PaneHeader), onSelect drives the detail pane via the shell selection ({kind,id})
-// instead of a route push, selected marks the row matching kind AND id.
+// ROOT /quote/[id] + /invoice/[id] routes, the InkTabHeader band, no selected
+// highlight). The iPad shell renders this as a list pane: headerMode="pane"
+// suppresses the self-mounted band and keeps the light Hero card at the top
+// (the shell mounts the one PaneHeader above), and onSelect drives the detail
+// pane via the shell selection ({kind,id}) instead of a route push.
 export default function MoneyScreen({
 	headerMode = "root",
 	onSelect,
@@ -61,27 +59,67 @@ export default function MoneyScreen({
 } = {}) {
 	const t = useTokens();
 	const router = useRouter();
+	const insets = useSafeAreaInsets();
 	const isPane = headerMode === "pane";
-	const [tab, setTab] = useState<Tab>("invoices");
+	// The floating dock takes no layout height — scroll content clears it itself.
+	// iPad panes have no dock (the shell replaces Tabs).
+	const listBottom = isPane ? 24 : DOCK_CLEARANCE + insets.bottom;
+	// Pane keeps the fade inset below the shell's light chrome; on iPhone the ink
+	// band is a hard edge, so the content starts just under it.
+	const listTop = isPane ? SCROLL_TOP_INSET : 12;
 	// Seed "now" once (lazy) — react-hooks/purity forbids Date.now() during render.
 	const [now] = useState(() => Date.now());
 
-	const stats = useQuery(api.invoices.getStats, {});
-	const invoices = useQuery(api.invoices.list, {}) as InvoiceRow[] | undefined;
-	const quotes = useQuery(api.quotes.list, {}) as QuoteRow[] | undefined;
-	const clients = useQuery(api.clients.list, { includeArchived: true });
+	const health = useQuery(api.businessHealth.get, {});
+	const loading = health === undefined;
 
-	// Resolve client display names client-side (incl. archived) — Map<id, companyName>.
-	const clientName = useMemo(() => {
-		const map = new Map<string, string>();
-		clients?.forEach((c) => map.set(c._id, c.companyName));
-		return map;
-	}, [clients]);
+	const outstanding = health?.outstanding;
+	const overdueAmount = outstanding?.overdue ?? 0;
+	const openCount = outstanding?.invoiceCount ?? 0;
+	// One subline, two surfaces: the light Hero card (iPad pane) and the ink band
+	// stat line (iPhone) must never drift apart.
+	const sublineText = health
+		? `${overdueAmount > 0 ? "· " : ""}${openCount} open ${
+				openCount === 1 ? "invoice" : "invoices"
+			}`
+		: "";
+	// The strip's collected cell is labelled with the payload's own latest bucket
+	// (already in the org's timezone) — no client-side month math.
+	const collectedLabel = health?.months.at(-1)?.label;
+
+	// iPad keeps every cell and view-all static this slice: the panes do not
+	// cross-navigate to the Work tab.
+	const browseWork = (kind: "quote" | "invoice") =>
+		router.push(`/(tabs)/work?kind=${kind}` as Href);
+	const onPressAwaiting = isPane ? undefined : () => browseWork("quote");
+	const onPressUnpaid = isPane ? undefined : () => browseWork("invoice");
+
+	const openRecord = (kind: "quote" | "invoice", id: string) =>
+		onSelect
+			? onSelect({ kind, id })
+			: router.push({
+					pathname: kind === "invoice" ? "/invoice/[id]" : "/quote/[id]",
+					params: { id },
+				} as unknown as Href);
+
+	const Strip = health ? (
+		<PipelineStrip
+			awaitingCount={health.awaiting.count}
+			awaitingTotal={health.awaiting.total}
+			unpaidCount={health.outstanding.invoiceCount}
+			unpaidTotal={health.outstanding.total}
+			collected={health.collectedThisMonth}
+			collectedLabel={collectedLabel}
+			onInk={!isPane}
+			onPressAwaiting={onPressAwaiting}
+			onPressUnpaid={onPressUnpaid}
+		/>
+	) : null;
 
 	const Hero = (
 		<View style={[styles.hero, { backgroundColor: t.card, borderColor: t.line }]}>
 			<Eyebrow>Outstanding</Eyebrow>
-			{stats === undefined ? (
+			{loading ? (
 				<>
 					<View
 						style={[styles.heroAmountSkeleton, { backgroundColor: t.lineSoft }]}
@@ -92,145 +130,85 @@ export default function MoneyScreen({
 				</>
 			) : (
 				<>
-					<Text style={[styles.heroAmount, { color: t.ink }]}>
-						{formatCurrency(stats.totalOutstanding)}
-					</Text>
-					<Text style={[styles.heroSubline, { color: t.sub }]}>
-						{stats.byStatus.overdue} overdue · {stats.byStatus.sent} sent
-					</Text>
+					<MoneyAmount amount={health.outstanding.total} size={40} />
+					<View style={styles.heroSubRow}>
+						{overdueAmount > 0 ? (
+							<>
+								<View style={[styles.overdueDot, { backgroundColor: t.danger }]} />
+								<Text style={[styles.heroOverdue, { color: badgeTone.late.fg }]}>
+									{formatCurrency(overdueAmount)} overdue
+								</Text>
+							</>
+						) : null}
+						<Text style={[styles.heroSubline, { color: t.sub }]}>
+							{sublineText}
+						</Text>
+					</View>
 				</>
 			)}
 		</View>
 	);
 
-	const ListHeader = (
-		<View style={styles.listHeader}>
-			{Hero}
-			<Toggle2<Tab>
-				value={tab}
-				onChange={setTab}
-				options={[
-					{ value: "invoices", label: "Invoices" },
-					{ value: "quotes", label: "Quotes" },
-				]}
-			/>
-		</View>
+	// The same figure on ink, with the pipeline strip pinned under it.
+	const BandStat = (
+		<>
+			<View style={styles.bandStat}>
+				<Text style={styles.bandEyebrow}>OUTSTANDING</Text>
+				{loading ? (
+					<>
+						<View
+							style={[styles.heroAmountSkeleton, { backgroundColor: hero.cellBg }]}
+						/>
+						<View
+							style={[styles.heroSublineSkeleton, { backgroundColor: hero.cellBg }]}
+						/>
+					</>
+				) : (
+					<>
+						<MoneyAmount
+							amount={health.outstanding.total}
+							size={38}
+							color={hero.text}
+							centsColor={hero.textSub}
+						/>
+						<View style={styles.heroSubRow}>
+							{overdueAmount > 0 ? (
+								<>
+									<View
+										style={[styles.overdueDot, { backgroundColor: hero.alertDot }]}
+									/>
+									<Text style={[styles.heroOverdue, { color: hero.alertDot }]}>
+										{formatCurrency(overdueAmount)} overdue
+									</Text>
+								</>
+							) : null}
+							<Text style={[styles.heroSubline, { color: hero.textMid }]}>
+								{sublineText}
+							</Text>
+						</View>
+					</>
+				)}
+			</View>
+			{loading ? (
+				<View style={styles.stripSkeleton}>
+					{[0, 1, 2].map((i) => (
+						<View
+							key={i}
+							style={[styles.stripSkeletonCell, { backgroundColor: hero.cellBg }]}
+						/>
+					))}
+				</View>
+			) : (
+				Strip
+			)}
+		</>
 	);
-
-	const renderInvoice = ({ item }: { item: InvoiceRow }) => {
-		// Effective status: a past-due sent invoice displays as overdue (web parity —
-		// invoices.list returns STORED status; getStats counts overdue synthetically).
-		const displayStatus =
-			item.status === "sent" && item.dueDate < now
-				? "overdue"
-				: item.status;
-		const iconColor =
-			displayStatus === "paid"
-				? t.success
-				: displayStatus === "overdue"
-					? t.danger
-					: t.sub;
-		const client = clientName.get(item.clientId) ?? "Client";
-		const isSelected =
-			isPane && selected?.kind === "invoice" && selected.id === item._id;
-		return (
-			<ListRow
-				icon="Receipt"
-				iconColor={iconColor}
-				title={item.invoiceNumber}
-				sub={`${client} · due ${formatDocumentDate(item.dueDate)}`}
-				status={displayStatus}
-				selected={isSelected}
-				right={
-					<Text style={[styles.amount, { color: t.ink }]}>
-						{formatCurrency(item.total, { exact: true })}
-					</Text>
-				}
-				onPress={() =>
-					// iPad pane: drive the shell selection ({kind,id}) — never a route
-					// push to a (tabs)/ROOT sibling (that slides the whole shell). iPhone:
-					// push the ROOT /invoice/[id] route exactly as before.
-					onSelect
-						? onSelect({ kind: "invoice", id: item._id })
-						: router.push({
-								pathname: "/invoice/[id]",
-								params: { id: item._id },
-							} as unknown as Href)
-				}
-			/>
-		);
-	};
-
-	const renderQuote = ({ item }: { item: QuoteRow }) => {
-		const client = clientName.get(item.clientId) ?? "Client";
-		const primary = item.title || `Quote ${item.quoteNumber ?? ""}`.trim();
-		const isSelected =
-			isPane && selected?.kind === "quote" && selected.id === item._id;
-		return (
-			<Pressable
-				style={({ pressed }) => [
-					styles.quoteCard,
-					{ backgroundColor: t.card, borderColor: t.line },
-					// primarySolid border, matching ui/list-row's selected state —
-					// frostedBorder composites to ~1.4:1 and cannot carry a state.
-					isSelected && {
-						borderColor: t.primarySolid,
-						backgroundColor: t.frostedBg,
-					},
-					pressed && styles.pressed,
-				]}
-				onPress={() =>
-					// iPad pane: drive the shell selection ({kind,id}). iPhone: push the
-					// ROOT /quote/[id] route exactly as before.
-					onSelect
-						? onSelect({ kind: "quote", id: item._id })
-						: router.push({
-								pathname: "/quote/[id]",
-								params: { id: item._id },
-							} as unknown as Href)
-				}
-			>
-				<View style={styles.quoteTop}>
-					<View style={styles.quoteHead}>
-						{item.quoteNumber ? (
-							// Default t.faint fails AA (4.23:1) once the selected state's
-							// frostedBg tint is behind it — t.sub clears both backdrops.
-							<Eyebrow color={t.sub}>{item.quoteNumber}</Eyebrow>
-						) : null}
-						<Text
-							style={[styles.quoteTitle, { color: t.ink }]}
-							numberOfLines={1}
-						>
-							{primary}
-						</Text>
-						<Text style={[styles.quoteClient, { color: t.sub }]} numberOfLines={1}>
-							{client}
-						</Text>
-					</View>
-					<Badge status={item.status} />
-				</View>
-				<View style={[styles.quoteBottom, { borderTopColor: t.line }]}>
-					<Text style={[styles.quoteDate, { color: t.sub }]}>
-						{formatDocumentDate(item._creationTime)}
-					</Text>
-					<Text style={[styles.quoteAmount, { color: t.ink }]}>
-						{formatCurrency(item.total, { exact: true })}
-					</Text>
-				</View>
-			</Pressable>
-		);
-	};
-
-	const activeLoading =
-		tab === "invoices" ? invoices === undefined : quotes === undefined;
 
 	const Skeleton = (
 		<View style={styles.skeletonBlock}>
 			{[0, 1, 2, 3].map((i) => (
 				<View key={i} style={styles.skeletonRow}>
-					<View
-						style={[styles.skeletonTile, { backgroundColor: t.lineSoft }]}
-					/>
+					<View style={[styles.skeletonTile, { backgroundColor: t.lineSoft }]} />
 					<View style={styles.skeletonBody}>
 						<View
 							style={[
@@ -255,56 +233,105 @@ export default function MoneyScreen({
 		</View>
 	);
 
-	const Empty = (
-		<View style={styles.emptyState}>
-			<Illustration
-				name={tab === "invoices" ? "invoices-none" : "quotes-none"}
-				knockout={t.bg}
-				style={styles.emptyArt}
-			/>
-			<Text style={[styles.emptyTitle, { color: t.ink }]}>
-				{tab === "invoices" ? "No invoices yet" : "No quotes yet"}
-			</Text>
-			<Text style={[styles.emptyText, { color: t.sub }]}>
-				{tab === "invoices"
-					? "Invoices you create on the web will show up here."
-					: "Quotes you create on the web will show up here."}
-			</Text>
-		</View>
-	);
+	// A chart of six zeroes says nothing — hide it until there is money in it.
+	const showChart = !!health && health.months.some((m) => m.value > 0);
 
 	return (
 		<SafeAreaView style={{ flex: 1, backgroundColor: t.surface }} edges={[]}>
 			{/* Page canvas, matching web's .workspace-canvas. */}
 			<DotGrid style={StyleSheet.absoluteFill} />
 			{/* Pane mode: the shell mounts PaneHeader above this body (one header
-			    per pane — locked convention). iPhone: AppHeader mode="root". */}
-			{isPane ? null : <AppHeader mode="root" title="Money" />}
-			{activeLoading ? (
-				<View style={styles.listContent}>
-					{ListHeader}
-					{Skeleton}
-				</View>
-			) : tab === "invoices" ? (
-				<FlashList
-					data={invoices ?? []}
-					keyExtractor={(item) => item._id}
-					renderItem={renderInvoice}
-					ListHeaderComponent={ListHeader}
-					contentContainerStyle={styles.listContent}
-					ListEmptyComponent={Empty}
-				/>
-			) : (
-				<FlashList
-					data={quotes ?? []}
-					keyExtractor={(item) => item._id}
-					renderItem={renderQuote}
-					ListHeaderComponent={ListHeader}
-					contentContainerStyle={styles.listContent}
-					ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
-					ListEmptyComponent={Empty}
-				/>
+			    per pane — locked convention). iPhone: the ink band, carrying the
+			    outstanding figure, the pipeline strip, and the search jump. */}
+			{isPane ? null : (
+				<InkTabHeader
+					orgChip
+					actions={[
+						{
+							key: "search",
+							label: "Search everything",
+							icon: Search,
+							onPress: () => {
+								// Latch, then navigate: Work consumes it once on focus. A
+								// ?focus= param would stick to the tab and re-fire forever.
+								requestSearchFocus();
+								router.push(WORK_TAB);
+							},
+						},
+					]}
+				>
+					{BandStat}
+				</InkTabHeader>
 			)}
+			<ScrollView
+				contentContainerStyle={{
+					...styles.listContent,
+					paddingTop: listTop,
+					paddingBottom: listBottom,
+				}}
+				showsVerticalScrollIndicator={false}
+			>
+				{/* iPhone: the figure and strip live in the ink band. The iPad pane
+				    has no band, so it keeps the light Hero card + a light strip. */}
+				{isPane ? (
+					<View style={styles.paneHead}>
+						{Hero}
+						{loading ? (
+							<View style={styles.stripSkeleton}>
+								{[0, 1, 2].map((i) => (
+									<View
+										key={i}
+										style={[
+											styles.stripSkeletonCell,
+											{ backgroundColor: t.lineSoft },
+										]}
+									/>
+								))}
+							</View>
+						) : (
+							Strip
+						)}
+					</View>
+				) : null}
+
+				{showChart ? <CollectedChart months={health.months} /> : null}
+
+				<View style={styles.section}>
+					<SectionHeader
+						title="Needs attention"
+						action={isPane ? undefined : "View all"}
+						// The queue mixes invoices and quotes, so it lands on Work
+						// unscoped — same rule Today's attention line follows.
+						onAction={isPane ? undefined : () => router.push(WORK_TAB)}
+					/>
+					{loading ? (
+						Skeleton
+					) : (
+						<NeedsAttention
+							items={health.needsAttention}
+							now={now}
+							selected={isPane ? selected : null}
+							onOpen={(item) => openRecord(item.kind, item.id)}
+						/>
+					)}
+				</View>
+
+				{loading || health.recentPayments.length > 0 ? (
+					<View style={styles.section}>
+						<SectionHeader title="Recent payments" />
+						{loading ? (
+							Skeleton
+						) : (
+							<RecentPayments
+								payments={health.recentPayments}
+								now={now}
+								selected={isPane ? selected : null}
+								onOpen={(payment) => openRecord("invoice", payment.invoiceId)}
+							/>
+						)}
+					</View>
+				) : null}
+			</ScrollView>
 		</SafeAreaView>
 	);
 }
@@ -312,12 +339,13 @@ export default function MoneyScreen({
 const styles = StyleSheet.create({
 	listContent: {
 		paddingHorizontal: 16,
-		paddingBottom: 24,
-		paddingTop: SCROLL_TOP_INSET,
-	},
-	listHeader: {
 		gap: 16,
-		paddingBottom: 16,
+	},
+	paneHead: {
+		gap: 12,
+	},
+	section: {
+		gap: 4,
 	},
 	hero: {
 		padding: 24,
@@ -325,13 +353,34 @@ const styles = StyleSheet.create({
 		borderWidth: 1,
 		gap: 8,
 	},
-	heroAmount: {
-		fontFamily: fontFamily.bold,
-		fontSize: type.h1,
+	bandStat: {
+		gap: 4,
+	},
+	bandEyebrow: {
+		fontFamily: fontFamily.semibold,
+		fontSize: type.eyebrow,
+		letterSpacing: tracking.eyebrow,
+		color: hero.textDim,
+	},
+	heroSubRow: {
+		flexDirection: "row",
+		alignItems: "center",
+		gap: 6,
+		flexWrap: "wrap",
+	},
+	overdueDot: {
+		width: 7,
+		height: 7,
+		borderRadius: radii.pill,
+	},
+	heroOverdue: {
+		fontFamily: fontFamily.medium,
+		fontSize: type.rowTitle,
+		fontVariant: ["tabular-nums"],
 	},
 	heroSubline: {
 		fontFamily: fontFamily.regular,
-		fontSize: type.h4,
+		fontSize: type.rowTitle,
 	},
 	heroAmountSkeleton: {
 		width: 160,
@@ -343,52 +392,14 @@ const styles = StyleSheet.create({
 		height: 14,
 		borderRadius: radii.sm,
 	},
-	amount: {
-		fontFamily: fontFamily.bold,
-		fontSize: type.h4,
-	},
-	quoteCard: {
-		borderRadius: radii.rLg,
-		borderWidth: 1,
-		padding: 16,
-		gap: 12,
-	},
-	pressed: {
-		opacity: 0.85,
-	},
-	quoteTop: {
+	stripSkeleton: {
 		flexDirection: "row",
-		alignItems: "flex-start",
-		justifyContent: "space-between",
-		gap: 12,
+		gap: 8,
 	},
-	quoteHead: {
+	stripSkeletonCell: {
 		flex: 1,
-		minWidth: 0,
-		gap: 3,
-	},
-	quoteTitle: {
-		fontFamily: fontFamily.bold,
-		fontSize: type.h3,
-	},
-	quoteClient: {
-		fontFamily: fontFamily.regular,
-		fontSize: type.h4,
-	},
-	quoteBottom: {
-		flexDirection: "row",
-		alignItems: "center",
-		justifyContent: "space-between",
-		borderTopWidth: 1,
-		paddingTop: 12,
-	},
-	quoteDate: {
-		fontFamily: fontFamily.regular,
-		fontSize: type.sm,
-	},
-	quoteAmount: {
-		fontFamily: fontFamily.bold,
-		fontSize: type.h4,
+		height: 68,
+		borderRadius: radii.ctrl,
 	},
 	skeletonBlock: {
 		gap: 4,
@@ -410,23 +421,5 @@ const styles = StyleSheet.create({
 	},
 	skeleton: {
 		borderRadius: radii.sm,
-	},
-	emptyState: {
-		alignItems: "center",
-		paddingVertical: 64,
-		paddingHorizontal: 24,
-	},
-	emptyArt: {
-		marginBottom: 16,
-	},
-	emptyTitle: {
-		fontFamily: fontFamily.semibold,
-		fontSize: type.h3,
-		marginBottom: 8,
-	},
-	emptyText: {
-		fontFamily: fontFamily.regular,
-		fontSize: type.h4,
-		textAlign: "center",
 	},
 });

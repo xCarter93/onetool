@@ -1,20 +1,26 @@
 import { describe, expect, it } from "vitest";
 import {
 	buildClientNameMap,
-	filterRecords,
-	groupByKind,
-	KIND_ORDER,
+	CHIP_ORDER,
+	formatTaskDate,
+	fromClientHit,
+	fromInvoiceHit,
+	fromProjectHit,
+	fromQuoteHit,
+	KIND_LABEL,
 	pathForRecord,
 	sortByRecency,
 	toClientRecord,
 	toInvoiceRecord,
 	toProjectRecord,
 	toQuoteRecord,
+	toTaskRecord,
 	type ClientInput,
 	type InvoiceInput,
 	type ProjectInput,
 	type QuoteInput,
-	type WorkKind,
+	type TaskInput,
+	type WorkChipKind,
 	type WorkRecord,
 } from "./work-search";
 
@@ -58,10 +64,19 @@ const invoice = (over: Partial<InvoiceInput> = {}): InvoiceInput => ({
 	...over,
 });
 
+const task = (over: Partial<TaskInput> = {}): TaskInput => ({
+	_id: "t1",
+	_creationTime: T0,
+	title: "Mow the east lawn",
+	date: T0,
+	status: "pending",
+	...over,
+});
+
 // Minimal hand-built record — used where the adapters can't produce the shape
 // (notably an undefined `updatedAt`, which real Convex docs never yield).
 const record = (
-	kind: WorkKind,
+	kind: WorkChipKind,
 	over: Partial<WorkRecord> & { id: string }
 ): WorkRecord =>
 	({
@@ -69,8 +84,6 @@ const record = (
 		title: over.id,
 		meta: "",
 		status: "active",
-		searchText: over.id.toLowerCase(),
-		amount: 0,
 		...over,
 	}) as WorkRecord;
 
@@ -86,7 +99,20 @@ describe("buildClientNameMap", () => {
 	});
 });
 
-describe("adapters", () => {
+describe("chip vocabulary", () => {
+	it("orders chips record-kinds-then-tasks and labels every one", () => {
+		expect([...CHIP_ORDER]).toEqual([
+			"client",
+			"project",
+			"quote",
+			"invoice",
+			"task",
+		]);
+		for (const kind of CHIP_ORDER) expect(KIND_LABEL[kind]).toBeTruthy();
+	});
+});
+
+describe("list adapters", () => {
 	it("maps a client, preferring description over tags for the meta line", () => {
 		const r = toClientRecord(
 			client({ companyDescription: "Commercial grounds", tags: ["vip"] })
@@ -104,12 +130,6 @@ describe("adapters", () => {
 			"vip · retainer"
 		);
 		expect(toClientRecord(client()).meta).toMatch(/^Added /);
-	});
-
-	it("folds notes and tags into the client haystack but not the meta line", () => {
-		const r = toClientRecord(client({ notes: "Gate code 4821", tags: ["vip"] }));
-		expect(r.searchText).toContain("gate code 4821");
-		expect(r.meta).not.toContain("Gate code");
 	});
 
 	it("maps a project with client name + number in the meta line", () => {
@@ -151,9 +171,9 @@ describe("adapters", () => {
 	});
 
 	it("displays a past-due sent invoice as overdue", () => {
-		const past = toInvoiceRecord(invoice(), { now: T0 + 60 * DAY });
-		expect(past.status).toBe("overdue");
-		expect(past.searchText).toContain("overdue");
+		expect(toInvoiceRecord(invoice(), { now: T0 + 60 * DAY }).status).toBe(
+			"overdue"
+		);
 	});
 
 	it("leaves a not-yet-due sent invoice alone, and never re-flags paid", () => {
@@ -162,77 +182,59 @@ describe("adapters", () => {
 			toInvoiceRecord(invoice({ status: "paid" }), { now: T0 + 60 * DAY }).status
 		).toBe("paid");
 	});
-});
 
-describe("filterRecords", () => {
-	const records = [
-		toClientRecord(client({ companyName: "Northside Landscaping" })),
-		toProjectRecord(project({ title: "Spring Cleanup" }), {
-			clientName: "Northside Landscaping",
-		}),
-		toInvoiceRecord(invoice({ invoiceNumber: "INV-0042" }), { now: T0 }),
-	];
-
-	it("returns everything for an empty or whitespace query", () => {
-		expect(filterRecords(records, "")).toHaveLength(3);
-		expect(filterRecords(records, "   ")).toHaveLength(3);
+	it("maps a task with its UTC day and optional start time", () => {
+		expect(toTaskRecord(task()).meta).toBe("Jul 1, 2026");
+		expect(toTaskRecord(task({ startTime: "14:00" })).meta).toBe(
+			"Jul 1, 2026 · 14:00"
+		);
+		expect(toTaskRecord(task()).status).toBe("pending");
 	});
 
-	it("does not mutate or alias the input array", () => {
-		const out = filterRecords(records, "");
-		expect(out).not.toBe(records);
-		expect(out).toEqual([...records]);
-	});
-
-	it("matches case-insensitively on any casing of the query", () => {
-		expect(filterRecords(records, "NORTHSIDE")).toHaveLength(2);
-		expect(filterRecords(records, "northside")).toHaveLength(2);
-		expect(filterRecords(records, "nOrThSiDe")).toHaveLength(2);
-	});
-
-	it("matches mid-string substrings, including document numbers", () => {
-		expect(filterRecords(records, "cleanup").map((r) => r.kind)).toEqual([
-			"project",
-		]);
-		expect(filterRecords(records, "0042").map((r) => r.kind)).toEqual([
-			"invoice",
-		]);
-	});
-
-	it("returns an empty array when nothing matches", () => {
-		expect(filterRecords(records, "helicopter")).toEqual([]);
+	it("renders a task date in UTC, not the local day before it", () => {
+		// UTC-midnight of the 1st is the evening of Jun 30 in any western tz.
+		expect(formatTaskDate(Date.UTC(2026, 6, 1))).toBe("Jul 1, 2026");
 	});
 });
 
-describe("groupByKind", () => {
-	it("orders groups by KIND_ORDER regardless of input order", () => {
-		const groups = groupByKind([
-			record("invoice", { id: "i1" }),
-			record("client", { id: "c1" }),
-			record("quote", { id: "q1" }),
-			record("project", { id: "p1" }),
-		]);
-		expect(groups.map((g) => g.kind)).toEqual([...KIND_ORDER]);
-		expect(groups.map((g) => g.label)).toEqual([
-			"Clients",
-			"Projects",
-			"Quotes",
-			"Invoices",
-		]);
+describe("search-hit adapters", () => {
+	it("routes a plain client hit to the client and carries no status", () => {
+		const r = fromClientHit({ clientId: "c9", kind: "client", label: "Acme" });
+		expect(r).toMatchObject({ kind: "client", id: "c9", title: "Acme" });
+		expect(r.status).toBeUndefined();
 	});
 
-	it("omits kinds with no records", () => {
-		const groups = groupByKind([
-			record("quote", { id: "q1" }),
-			record("client", { id: "c1" }),
-			record("quote", { id: "q2" }),
-		]);
-		expect(groups.map((g) => g.kind)).toEqual(["client", "quote"]);
-		expect(groups[1].records.map((r) => r.id)).toEqual(["q1", "q2"]);
+	it("resolves contact and property hits to the PARENT client, labelled", () => {
+		expect(
+			fromClientHit({
+				clientId: "c9",
+				kind: "contact",
+				label: "Acme",
+				detail: "Jane Doe",
+			})
+		).toMatchObject({ id: "c9", title: "Acme", meta: "Contact · Jane Doe" });
+		expect(
+			fromClientHit({
+				clientId: "c9",
+				kind: "property",
+				label: "Acme",
+				detail: "12 Elm St, Boston",
+			})
+		).toMatchObject({ meta: "Property · 12 Elm St, Boston" });
 	});
 
-	it("returns no groups for no records", () => {
-		expect(groupByKind([])).toEqual([]);
+	it("maps project/quote/invoice hits with detail as the meta line", () => {
+		expect(
+			fromProjectHit({ projectId: "p9", label: "Deck", detail: "PRJ-9" })
+		).toMatchObject({ kind: "project", id: "p9", meta: "PRJ-9" });
+		expect(
+			fromQuoteHit({ quoteId: "q9", label: "Patio", detail: "Acme" })
+		).toMatchObject({ kind: "quote", id: "q9", meta: "Acme" });
+		expect(fromInvoiceHit({ invoiceId: "i9", label: "INV-1" })).toMatchObject({
+			kind: "invoice",
+			id: "i9",
+			meta: "",
+		});
 	});
 });
 
@@ -280,10 +282,16 @@ describe("sortByRecency", () => {
 });
 
 describe("pathForRecord", () => {
-	it("routes each kind to its existing detail route", () => {
+	it("routes each record kind to its detail route", () => {
 		expect(pathForRecord(record("client", { id: "c1" }))).toBe("/clients/c1");
 		expect(pathForRecord(record("project", { id: "p1" }))).toBe("/projects/p1");
 		expect(pathForRecord(record("quote", { id: "q1" }))).toBe("/quote/q1");
 		expect(pathForRecord(record("invoice", { id: "i1" }))).toBe("/invoice/i1");
+	});
+
+	it("routes a task to the form sheet, matching Today's agenda rows", () => {
+		expect(pathForRecord(record("task", { id: "t1" }))).toBe(
+			"/tasks/form?taskId=t1"
+		);
 	});
 });

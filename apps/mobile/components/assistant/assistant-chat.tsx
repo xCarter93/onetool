@@ -219,11 +219,9 @@ export function AssistantChat({ screenContext }: { screenContext?: string }) {
 			style={styles.flex}
 			behavior={Platform.OS === "ios" ? "padding" : undefined}
 		>
+			{/* The ink header above the chat already names the surface — this row is
+			    just the two actions, splitting the width evenly (visual-pass r1). */}
 			<View style={[styles.header, { borderBottomColor: t.lineSoft }]}>
-				<View style={styles.headerTitleRow}>
-					<Sparkles size={16} color={t.frostedInk} />
-					<Text style={[styles.headerTitle, { color: t.ink }]}>Assistant</Text>
-				</View>
 				<View style={styles.headerActions}>
 					<Pressable
 						onPress={() => setShowHistory((v) => !v)}
@@ -404,23 +402,16 @@ const styles = StyleSheet.create({
 		paddingBottom: 12,
 		borderBottomWidth: 1,
 	},
-	headerTitleRow: {
-		flexDirection: "row",
-		alignItems: "center",
-		gap: 6,
-	},
-	headerTitle: {
-		fontFamily: fontFamily.bold,
-		fontSize: type.h2,
-	},
 	headerActions: {
+		flex: 1,
 		flexDirection: "row",
 		alignItems: "center",
-		gap: 14,
 	},
 	newChatBtn: {
+		flex: 1,
 		flexDirection: "row",
 		alignItems: "center",
+		justifyContent: "center",
 		gap: 4,
 		minHeight: touch.min,
 		paddingHorizontal: 4,

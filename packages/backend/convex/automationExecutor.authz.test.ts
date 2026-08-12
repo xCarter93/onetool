@@ -1,6 +1,6 @@
 import { convexTest } from "convex-test";
 import { ConvexError } from "convex/values";
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { api } from "./_generated/api";
 import { setupConvexTest } from "./test.setup";
 import {
@@ -28,6 +28,27 @@ describe("automation run entry points — per-object authorization", () => {
 
 	beforeEach(() => {
 		t = setupConvexTest();
+	});
+
+	// startTestRun schedules executeAutomation, and a test run then steps through
+	// its nodes on a TEST_STEP_INTERVAL_MS timer. Anything still queued when
+	// `beforeEach` swaps the convex-test instance fires against the OLD db inside
+	// the NEW instance's transaction and throws "Write outside of transaction" —
+	// an unhandled rejection that fails the whole vitest run with every test green.
+	// Cancel the queue rather than wait it out (waiting costs the step interval per
+	// test), then let anything already mid-flight land.
+	afterEach(async () => {
+		for (let i = 0; i < 3; i++) {
+			await t.run(async (ctx) => {
+				const jobs = await ctx.db.system.query("_scheduled_functions").collect();
+				for (const job of jobs) {
+					if (job.state.kind === "pending") {
+						await ctx.scheduler.cancel(job._id);
+					}
+				}
+			});
+			await t.finishInProgressScheduledFunctions();
+		}
 	});
 
 	function forbidden(caught: unknown): Record<string, unknown> {

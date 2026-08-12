@@ -46,6 +46,7 @@ export function ListRow({
 	containerStyle,
 }: ListRowProps) {
 	const t = useTokens();
+	// eslint-disable-next-line import/namespace -- computed lookup is typed by keyof typeof icons; the rule can't statically validate it
 	const Glyph = icon ? icons[icon] : null;
 	// Neutral by default — blue is for actions and active states, not list chrome.
 	const tileColor = iconColor || t.sub;
@@ -72,6 +73,11 @@ export function ListRow({
 					borderColor: t.primarySolid,
 					borderRadius: radii.xl,
 					borderBottomWidth: 1,
+					// Explicit longhand: the base style's borderBottomColor (lineSoft
+					// separator) beats the borderColor shorthand in RN's resolution
+					// regardless of order — without this the capsule's bottom edge
+					// stays faint grey (visual pass round 2).
+					borderBottomColor: t.primarySolid,
 				},
 				pressed && styles.pressed,
 			]}

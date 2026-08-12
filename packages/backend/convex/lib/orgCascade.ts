@@ -75,6 +75,8 @@ export const ORG_SCOPED_CASCADE_TABLES = [
 	"quickbooksImportRows",
 	"quickbooksImportRuns",
 	"quickbooksConnections",
+	// Per-category push mutes (Slice 8).
+	"notificationPreferences",
 ] as const;
 
 /**
@@ -277,6 +279,19 @@ export async function cascadeDeleteOrgDataPage(
 		if (remaining <= 0) return { done: false };
 		const rows = await ctx.db
 			.query("notifications")
+			.withIndex("by_org", (q) => q.eq("orgId", orgId))
+			.take(remaining);
+		for (const row of rows) {
+			await ctx.db.delete(row._id);
+			remaining--;
+		}
+	}
+
+	// notificationPreferences
+	{
+		if (remaining <= 0) return { done: false };
+		const rows = await ctx.db
+			.query("notificationPreferences")
 			.withIndex("by_org", (q) => q.eq("orgId", orgId))
 			.take(remaining);
 		for (const row of rows) {

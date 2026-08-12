@@ -60,9 +60,17 @@ export const tokens = {
 	// The label is a DEEPER blue than web's `text-primary`: #00a6f4 on the 10% tint
 	// is only 2.4:1, which fails AA and is unreadable in sunlight. #0369a1 keeps the
 	// same blue family at 5.35:1.
-	frostedBg: "#00a6f41A", // primary @ 10%
-	frostedBgPressed: "#00a6f426", // primary @ 15% (web's hover)
-	frostedBorder: "#00a6f44D", // primary @ 30%
+	// OPAQUE since Slice 8: the old alpha values (#00a6f4 @ 10/15/30%) let the dot
+	// grid and anything underneath ghost through every frosted button. These are
+	// those same tints pre-composited over `bg` #f6f7f8 — identical hue, no
+	// see-through. The translucent originals live on as `frostedGlass*`, ONLY for
+	// elements over a BlurView (the floating quote CTA), where alpha IS the glass.
+	frostedBg: "#ddeff8", // primary @ 10% over bg
+	frostedBgPressed: "#d1ebf7", // primary @ 15% over bg (web's hover)
+	frostedBorder: "#acdff7", // primary @ 30% over bg
+	frostedGlassBg: "#00a6f41A",
+	frostedGlassBgPressed: "#00a6f426",
+	frostedGlassBorder: "#00a6f44D",
 	frostedInk: "#0369a1",
 	/** Solid blue fills that carry WHITE content. #00a6f4 + white is 2.7:1 (under
 	 * even the 3:1 non-text floor) and #0084d1 is 4.0:1 — fine for a glyph but
@@ -132,6 +140,80 @@ export const tokens = {
 export function useTokens() {
 	return tokens;
 }
+
+// ----------------------------------------------------------------------------
+// 3.0 premium chrome — ink command hero + floating glass dock. Values are the
+// design canvas's literals (Mobile App Redesign 1a/1m); components must bind
+// these, never inline the hex. White-on-heroInk text tiers are AA-checked:
+// .92 white 15.2:1, .75 10.1:1, .55 5.5:1, .5 4.6:1 (all pass at their sizes).
+// ----------------------------------------------------------------------------
+export const hero = {
+	/** Deep-ink band + sign-in root — the dark counterpart of the brand blue. */
+	ink: "#0a1c26",
+	/** Radial brand glow painted top-right of the ink band. */
+	glow: "rgba(0,166,244,.22)",
+	/** White dot-grid on ink (same 22px pitch as the light canvas). */
+	dotGrid: "rgba(255,255,255,.07)",
+	/** Frosted stat/utility fills on ink. */
+	cellBg: "rgba(255,255,255,.08)",
+	cellBorder: "rgba(255,255,255,.10)",
+	buttonBg: "rgba(255,255,255,.10)",
+	buttonBorder: "rgba(255,255,255,.12)",
+	avatarBg: "rgba(255,255,255,.14)",
+	/** Text tiers on ink. */
+	text: "#ffffff",
+	textStrong: "rgba(255,255,255,.92)",
+	textMid: "rgba(255,255,255,.75)",
+	textSub: "rgba(255,255,255,.55)",
+	textDim: "rgba(255,255,255,.5)",
+	textFaint: "rgba(255,255,255,.45)",
+	/** Money/stat accent — readable sky blue on ink (7.5:1). */
+	statAccent: "#4cc4ff",
+	/** Week-strip load bars on ink (decor, not text). */
+	barStrong: "rgba(255,255,255,.45)",
+	barMid: "rgba(255,255,255,.3)",
+	barSoft: "rgba(255,255,255,.22)",
+	/** Notification dot (bordered with `ink` so it reads on the frosted tile). */
+	alertDot: "#ff5d5d",
+	/** Bottom corner radius of the band. */
+	radius: 28,
+	/** Sign-in glass card fill — lighter ink so the glass lifts off the scrim. */
+	glassBg: "rgba(14,30,40,.55)",
+	glassBorder: "rgba(255,255,255,.14)",
+	/** Sign-in scrim stops (top → foot). */
+	scrim: [
+		"rgba(10,28,38,.42)",
+		"rgba(10,28,38,.06)",
+		"rgba(10,28,38,.16)",
+		"rgba(8,22,30,.9)",
+	],
+} as const;
+
+export const dock = {
+	/** Floating white glass pill. */
+	bg: "rgba(255,255,255,.86)",
+	border: "rgba(23,24,26,.08)",
+	shadow: "0 12px 32px rgba(15,30,40,.16)",
+	height: 60,
+	radius: 30,
+	sideInset: 16,
+	bottomInset: 14,
+	blur: 18,
+	/** Orb: 50px gradient squircle, risen 16px above the pill's top edge. */
+	orbSize: 50,
+	orbRise: 16,
+	orbRadius: 18,
+	orbRing: "#ffffff",
+	orbGradient: ["#00a6f4", "#0072b5"] as [string, string],
+} as const;
+
+/**
+ * Scroll clearance for content that runs under the floating dock:
+ * bottomInset + height + orb rise + slack. Screens inside (tabs) add this to
+ * their scroll padding instead of hardcoding.
+ */
+export const DOCK_CLEARANCE =
+	dock.bottomInset + dock.height + dock.orbRise + 12;
 
 // ----------------------------------------------------------------------------
 // Badge tones — soft-tint pairs, quieter than the old saturated pills.

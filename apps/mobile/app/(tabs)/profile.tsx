@@ -7,15 +7,19 @@ import {
 	Pressable,
 	StyleSheet,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import {
+	SafeAreaView,
+	useSafeAreaInsets,
+} from "react-native-safe-area-context";
 import { useUser, useAuth, useOrganization } from "@clerk/expo";
 import { useQuery } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
-import { useTokens, radii, fontFamily } from "@/lib/theme";
+import { DOCK_CLEARANCE, useTokens, radii, fontFamily } from "@/lib/theme";
 import { Avatar, Card, DotGrid } from "@/components/ui";
 import { useRouter, type Href } from "expo-router";
-import { Mail, Building, LogOut, Shield, Trash2, SquarePen, ChevronRight } from "lucide-react-native";
-import { AppHeader } from "@/components/app-header";
+import { Mail, Building, LogOut, Shield, Trash2, SquarePen, ChevronRight, Bell, QrCode } from "lucide-react-native";
+import { InkTabHeader } from "@/components/ink-tab-header";
+import { usePermissions } from "@/lib/use-permissions";
 
 // headerMode defaults to "root" → the iPhone path (self-mounted AppHeader,
 // edge-to-edge content) is byte-identical. The iPad shell renders Profile as a
@@ -38,10 +42,20 @@ export default function ProfileScreen({
 	const router = useRouter();
 	const { organization, membership } = useOrganization();
 	const t = useTokens();
+	const insets = useSafeAreaInsets();
 	const isPane = headerMode === "pane";
+	// The floating dock takes no layout height — scroll content clears it
+	// itself. iPad panes have no dock (the shell replaces Tabs).
+	const scrollBottom = isPane ? 16 : DOCK_CLEARANCE + insets.bottom;
 
 	// TRUE ownership comes from the BACKEND (Convex), NOT the Clerk org:admin role —
 	// a co-admin who is not the org owner must take the member path.
+	const { can, isLoading: permsLoading } = usePermissions();
+	// The QR screen reads the community page, which requires community:view —
+	// without it the destination only ever shows "isn't live yet". Visible while
+	// perms load so the row doesn't pop in under a tap.
+	const showQr = permsLoading || can("community", "view");
+
 	const org = useQuery(api.organizations.get);
 	const me = useQuery(api.users.current);
 	// Both queries must resolve before we trust the owner gate — undefined (loading)
@@ -160,12 +174,13 @@ export default function ProfileScreen({
 			{/* Page canvas, matching web's .workspace-canvas. */}
 			<DotGrid style={StyleSheet.absoluteFill} />
 			{/* iPad pane: shell mounts the one PaneHeader title="Profile" (single-header
-			    convention) so the self-mounted AppHeader is suppressed. */}
-			{isPane ? null : <AppHeader mode="root" title="Profile" />}
+			    convention) so the self-mounted band is suppressed. iPhone: the shared
+			    ink band, minus the avatar — this screen IS Profile. */}
+			{isPane ? null : <InkTabHeader title="Profile" hideAvatar />}
 			<ScrollView
 				style={{ flex: 1 }}
 				contentContainerStyle={[
-					{ padding: 16 },
+					{ padding: 16, paddingBottom: scrollBottom },
 					// iPad: comfortable centered column (not stretched edge-to-edge).
 					isPane && { maxWidth: 560, alignSelf: "center", width: "100%" },
 				]}
@@ -292,6 +307,81 @@ export default function ProfileScreen({
 						<ChevronRight size={18} color={t.sub} />
 					</Pressable>
 				)}
+
+				{/* Share the org's community-page QR. Org-level, so it sits with
+				    Business details. The row sells SHARING the code, never "open the
+				    page" — the QR panel has no browse action either. */}
+				{showQr && (
+					<Pressable
+						style={{
+							flexDirection: "row",
+							alignItems: "center",
+							paddingVertical: 16,
+							paddingHorizontal: 16,
+							borderRadius: radii.lg,
+							marginTop: isOwner ? 12 : 24,
+							backgroundColor: t.card,
+							borderWidth: 1,
+							borderColor: t.line,
+						}}
+						onPress={() => router.push("/community-qr" as Href)}
+					>
+						<QrCode size={20} color={t.sub} />
+						<View style={{ marginLeft: 12, flex: 1 }}>
+							<Text
+								style={{
+									color: t.ink,
+									fontFamily: fontFamily.semibold,
+									fontSize: 13,
+								}}
+							>
+								Share QR code
+							</Text>
+							<Text
+								style={{
+									marginTop: 2,
+									color: t.sub,
+									fontFamily: fontFamily.regular,
+									fontSize: 11,
+								}}
+							>
+								Customers scan it to find your community page
+							</Text>
+						</View>
+						<ChevronRight size={18} color={t.sub} />
+					</Pressable>
+				)}
+
+				{/* Notification preferences — per-user, so no owner gate. */}
+				<Pressable
+					style={{
+						flexDirection: "row",
+						alignItems: "center",
+						paddingVertical: 16,
+						paddingHorizontal: 16,
+						borderRadius: radii.lg,
+						// Tight against the row above; 24 when it is the first row after the Card.
+						marginTop: isOwner || showQr ? 12 : 24,
+						backgroundColor: t.card,
+						borderWidth: 1,
+						borderColor: t.line,
+					}}
+					onPress={() => router.push("/notification-preferences" as Href)}
+				>
+					<Bell size={20} color={t.sub} />
+					<Text
+						style={{
+							marginLeft: 12,
+							flex: 1,
+							color: t.ink,
+							fontFamily: fontFamily.semibold,
+							fontSize: 13,
+						}}
+					>
+						Notifications
+					</Text>
+					<ChevronRight size={18} color={t.sub} />
+				</Pressable>
 
 				{/* Sign Out Button */}
 				<Pressable

@@ -1,19 +1,99 @@
-import { useMemo, useState } from "react";
-import { Image, ScrollView, StyleSheet, Text, View } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
-import { useQuery } from "convex/react";
-import { useLocalSearchParams } from "expo-router";
-import { CheckCircle2, XCircle } from "lucide-react-native";
+import { useEffect, useMemo, useState } from "react";
+import {
+	Alert,
+	Image,
+	Pressable,
+	ScrollView,
+	StyleSheet,
+	Text,
+	View,
+} from "react-native";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import { useMutation, useQuery } from "convex/react";
+import { useLocalSearchParams, useRouter, type Href } from "expo-router";
+import { CheckCircle2, MessageSquare, Plus, XCircle } from "lucide-react-native";
+import { SvgUri } from "react-native-svg";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { Id } from "@onetool/backend/convex/_generated/dataModel";
-import { fontFamily, radii, type, useTokens } from "@/lib/theme";
+import { fontFamily, radii, recordTint, type, useTokens } from "@/lib/theme";
 import { AppHeader } from "@/components/app-header";
+import { InkTabHeader } from "@/components/ink-tab-header";
+import { MentionModal } from "@/components/MentionModal";
 import { PaneHeader } from "@/components/ipad/pane-header";
-import { Badge, Card, DotGrid, Eyebrow, TotalsBlock } from "@/components/ui";
+import { Card, DotGrid, Eyebrow, TotalsBlock } from "@/components/ui";
+import { DocumentHeaderCard } from "@/components/money/document-header-card";
+import { StatusTrack, type TrackStep } from "@/components/money/status-track";
+import { QuickActionRow } from "@/components/money/quick-action-row";
+import { SendPreviewSheet } from "@/components/money/send-preview-sheet";
+import {
+	LineItemSheet,
+	type LineItemDraft,
+	type LineItemInitial,
+} from "@/components/money/line-item-sheet";
+import { ExtendValidUntilSheet } from "@/components/money/extend-valid-until-sheet";
+import {
+	resolveQuoteActions,
+	type QuoteStatus,
+	type RecordActionKey,
+} from "@/lib/record-actions";
+import { useShellNav } from "@/lib/shell-nav";
+import { useQuoteCapabilities } from "@/lib/use-record-capabilities";
+import { usePermissions } from "@/lib/use-permissions";
 import { formatCurrency, formatDocumentDate } from "@/lib/format";
+import { recordRecentView } from "@/lib/recents";
+import { useOrganization } from "@clerk/expo";
 
-// Body extracted (P26 Option B). headerMode DEFAULTS to "root" → the iPhone
-// route wrapper below is byte-identical. The iPad Money pane passes "pane".
+// Lifecycle track states per status (frame 1h). Declined/expired terminate
+// the track at the third node instead of pretending the path continues.
+function trackSteps(status: QuoteStatus, hasInvoice: boolean): TrackStep[] {
+	switch (status) {
+		case "draft":
+			return [
+				{ key: "draft", label: "Draft", state: "current" },
+				{ key: "sent", label: "Sent", state: "upcoming" },
+				{ key: "approved", label: "Approved", state: "upcoming" },
+				{ key: "invoiced", label: "Invoiced", state: "upcoming" },
+			];
+		case "sent":
+			return [
+				{ key: "draft", label: "Draft", state: "done" },
+				{ key: "sent", label: "Sent", state: "current" },
+				{ key: "approved", label: "Approved", state: "upcoming" },
+				{ key: "invoiced", label: "Invoiced", state: "upcoming" },
+			];
+		case "approved":
+			return [
+				{ key: "draft", label: "Draft", state: "done" },
+				{ key: "sent", label: "Sent", state: "done" },
+				{ key: "approved", label: "Approved", state: hasInvoice ? "done" : "current" },
+				{
+					key: "invoiced",
+					label: "Invoiced",
+					state: hasInvoice ? "done" : "upcoming",
+				},
+			];
+		case "declined":
+			return [
+				{ key: "draft", label: "Draft", state: "done" },
+				{ key: "sent", label: "Sent", state: "done" },
+				{ key: "declined", label: "Declined", state: "failed" },
+				{ key: "invoiced", label: "Invoiced", state: "upcoming" },
+			];
+		case "expired":
+			return [
+				{ key: "draft", label: "Draft", state: "done" },
+				{ key: "sent", label: "Sent", state: "done" },
+				{ key: "expired", label: "Expired", state: "failed" },
+				{ key: "invoiced", label: "Invoiced", state: "upcoming" },
+			];
+	}
+}
+
+// Quote detail, restyled to frame 1h (Mobile 3.0 slice 2): document header
+// card with the money numeral + lifecycle StatusTrack, and the resolver's CTA
+// pair pinned as a floating bar. Send goes through the portal (new
+// quotes.sendToClient); approve/decline are the manual flips; convert is
+// one tap once approved.
 export function QuoteDetailBody({
 	id,
 	headerMode = "root",
@@ -27,17 +107,38 @@ export function QuoteDetailBody({
 	onBack?: () => void;
 }) {
 	const t = useTokens();
-	const appHeaderMode = headerMode === "pane" ? "pane" : "detail";
-	// In an iPad pane WITH an onBack the body owns a PaneHeader (back → clear
-	// selection); otherwise AppHeader (root/detail = router back, pane = no back).
-	const renderHeader = (title?: string) =>
-		headerMode === "pane" && onBack ? (
-			<PaneHeader title={title} onBack={onBack} />
+	const router = useRouter();
+	// iPad pane: cross-links to the invoice swap the pane selection instead of
+	// pushing a full-screen page over the shell. iPhone: null → router.push.
+	const shellNav = useShellNav();
+	const insets = useSafeAreaInsets();
+	// iPhone gets the 3.0 ink band (back circle + constant cluster). The iPad
+	// pane paths are untouched: PaneHeader when the shell owns back, the light
+	// pane header otherwise.
+	const renderHeader = (title = "Quote") =>
+		headerMode === "pane" ? (
+			onBack ? (
+				// No title in either pane header — the document card carries the
+				// number; a titled header printed it twice.
+				<PaneHeader onBack={onBack} />
+			) : (
+				<AppHeader mode="pane" />
+			)
 		) : (
-			<AppHeader mode={appHeaderMode} title={title} />
+			<InkTabHeader title={title} onBack={() => router.back()} />
 		);
-	// Signed signature URLs can expire mid-session — fall back to a caption on load error.
-	const [sigError, setSigError] = useState(false);
+	// Signed signature URLs can expire mid-session — fall back to a caption on
+	// load error. Keyed by the URL that failed so a refreshed one renders again
+	// instead of staying stuck on the caption for the rest of the mount.
+	const [sigErrorUrl, setSigErrorUrl] = useState<string | null>(null);
+	const [sendOpen, setSendOpen] = useState(false);
+	const [converting, setConverting] = useState(false);
+	// null = closed; item null = adding, item set = editing that row.
+	const [itemSheet, setItemSheet] = useState<{
+		item: LineItemInitial | null;
+	} | null>(null);
+	const [extendOpen, setExtendOpen] = useState(false);
+	const [mentionVisible, setMentionVisible] = useState(false);
 
 	const quote = useQuery(
 		api.quotes.get,
@@ -55,12 +156,48 @@ export function QuoteDetailBody({
 		api.quotes.getApprovalAudit,
 		id ? { quoteId: id as Id<"quotes"> } : "skip"
 	);
+	const capsData = useQuoteCapabilities(quote);
+	const { can } = usePermissions();
+	// Web-parity staleness hint: the saved PDF is older than the content.
+	// Gated useQuery throws on missing permission, so gate with can().
+	const latestDoc = useQuery(
+		api.documents.getLatest,
+		quote && can("documents", "view")
+			? { documentType: "quote" as const, documentId: id }
+			: "skip"
+	);
+
+	const sendToClient = useMutation(api.quotes.sendToClient);
+	const updateQuote = useMutation(api.quotes.update);
+	const createFromQuote = useMutation(api.invoices.createFromQuote);
+	const createLineItem = useMutation(api.quoteLineItems.create);
+	const updateLineItem = useMutation(api.quoteLineItems.update);
+	const removeLineItem = useMutation(api.quoteLineItems.remove);
+	const extendValidUntil = useMutation(api.quotes.extendValidUntil);
 
 	const clientName = useMemo(() => {
 		const map = new Map<string, string>();
 		clients?.forEach((c) => map.set(c._id, c.companyName));
 		return map;
 	}, [clients]);
+
+	// On-device "Recently viewed" trail for the Work tab (Slice 6). Fire-and-
+	// forget, and only once the doc has loaded so the snapshot is a real title.
+	const { organization } = useOrganization();
+	const orgId = organization?.id;
+	const recentId = quote?._id;
+	const recentTitle =
+		quote?.title?.trim() || quote?.quoteNumber?.trim() || "Quote";
+	const recentSub = quote ? clientName.get(quote.clientId) : undefined;
+	useEffect(() => {
+		if (!recentId) return;
+		recordRecentView(orgId, {
+			kind: "quote",
+			id: recentId,
+			title: recentTitle,
+			sub: recentSub,
+		});
+	}, [orgId, recentId, recentTitle, recentSub]);
 
 	// quote === undefined → loading skeleton.
 	if (quote === undefined) {
@@ -108,9 +245,9 @@ export function QuoteDetailBody({
 	}
 
 	const headerTitle = quote.quoteNumber ?? "Quote";
-	const documentTitle =
-		quote.title || `Quote #${quote.quoteNumber ?? ""}`.trim();
+	const documentTitle = quote.title || undefined;
 	const client = clientName.get(quote.clientId) ?? "Client";
+	const status = quote.status as QuoteStatus;
 
 	// Discount dollars — get does NOT return a calculated discount amount, so derive
 	// it (percentage → subtotal * pct/100; otherwise the stored fixed amount).
@@ -146,242 +283,566 @@ export function QuoteDetailBody({
 	const resolvedStatus =
 		quote.status === "approved" || quote.status === "declined";
 
-	// Show/hide gate — a draft (unsent, no audit row, non-resolved) renders NOTHING,
-	// and never flashes a skeleton while audit is still loading.
-	const showApproval = !(
-		!quote.sentAt &&
-		(audit === undefined || (auditEmpty && !resolvedStatus))
+	// Show/hide gate — drafts and expired quotes render NOTHING here (the chip
+	// and track carry those states), and a draft never flashes a skeleton while
+	// audit is still loading. Audit branches below are ALSO gated on the current
+	// status (portal-island convention): a quote re-sent after a decline keeps
+	// its stale audit row, and must read as awaiting, not declined.
+	const showApproval =
+		(status === "sent" || resolvedStatus) &&
+		!(
+			!quote.sentAt &&
+			(audit === undefined || (auditEmpty && !resolvedStatus))
+		);
+
+	const actions = capsData
+		? resolveQuoteActions(status, capsData.caps)
+		: [];
+	// The CTA pair pins as a floating bar (frame 1h); give the scroll room.
+	const hasBar = actions.some(
+		(a) => a.slot === "primary" || a.slot === "secondary"
 	);
+
+	const setStatus = async (next: "draft" | "sent" | "approved" | "declined") => {
+		try {
+			await updateQuote({ id: quote._id, status: next });
+		} catch {
+			Alert.alert("Couldn't update this quote", "Please try again.");
+		}
+	};
+
+	// Slice 4: quote content is draft-only editable. Sent quotes funnel the
+	// edit intent through a revert-to-draft confirm; everything else reads as
+	// today's read-only document.
+	const canModify = capsData?.caps.canModify ?? false;
+	const contentEditable = status === "draft" && canModify;
+	const canFunnelEdit = status === "sent" && canModify;
+	const canDeleteItems = can("quotes", "delete");
+	const pdfStale =
+		!!latestDoc &&
+		!!quote.contentUpdatedAt &&
+		quote.contentUpdatedAt > latestDoc.generatedAt;
+
+	const toInitial = (item: {
+		_id: string;
+		description: string;
+		quantity: number;
+		unit: string;
+		rate: number;
+	}): LineItemInitial => ({
+		id: item._id,
+		description: item.description,
+		quantity: item.quantity,
+		unit: item.unit,
+		rate: item.rate,
+	});
+
+	const openItem = (item: LineItemInitial | null) => {
+		if (contentEditable) {
+			setItemSheet({ item });
+			return;
+		}
+		if (canFunnelEdit) {
+			Alert.alert(
+				"Move to draft to edit?",
+				"The client's link will stop working until you resend.",
+				[
+					{ text: "Cancel", style: "cancel" },
+					{
+						text: "Move to draft",
+						onPress: async () => {
+							try {
+								await updateQuote({ id: quote._id, status: "draft" });
+								setItemSheet({ item });
+							} catch {
+								Alert.alert("Couldn't update this quote", "Please try again.");
+							}
+						},
+					},
+				]
+			);
+		}
+	};
+
+	const saveItem = async (draft: LineItemDraft) => {
+		if (itemSheet?.item) {
+			await updateLineItem({
+				id: itemSheet.item.id as Id<"quoteLineItems">,
+				description: draft.description,
+				quantity: draft.quantity,
+				unit: draft.unit,
+				rate: draft.rate,
+			});
+		} else {
+			const nextSort =
+				items && items.length > 0
+					? Math.max(...items.map((i) => i.sortOrder)) + 1
+					: 0;
+			await createLineItem({
+				quoteId: quote._id,
+				description: draft.description,
+				quantity: draft.quantity,
+				unit: draft.unit,
+				rate: draft.rate,
+				sortOrder: nextSort,
+			});
+		}
+	};
+
+	const deleteItem = async () => {
+		if (!itemSheet?.item) return;
+		await removeLineItem({ id: itemSheet.item.id as Id<"quoteLineItems"> });
+	};
+
+	const convert = async () => {
+		if (converting) return;
+		setConverting(true);
+		try {
+			const invoiceId = await createFromQuote({ quoteId: quote._id });
+			if (shellNav) {
+				shellNav.open({ kind: "invoice", id: invoiceId });
+			} else {
+				router.push({
+					pathname: "/invoice/[id]",
+					params: { id: invoiceId },
+				} as unknown as Href);
+			}
+		} catch {
+			Alert.alert("Couldn't create the invoice", "Please try again.");
+		} finally {
+			setConverting(false);
+		}
+	};
+
+	const onAction = (key: RecordActionKey) => {
+		switch (key) {
+			case "send_quote":
+			case "resend_quote":
+				setSendOpen(true);
+				break;
+			case "mark_sent":
+				Alert.alert(
+					"Mark this quote as sent?",
+					"Use this when the client already has it — no email goes out.",
+					[
+						{ text: "Cancel", style: "cancel" },
+						{ text: "Mark as sent", onPress: () => void setStatus("sent") },
+					]
+				);
+				break;
+			case "mark_approved":
+				Alert.alert(
+					"Mark this quote approved?",
+					"Use this when the client said yes outside the portal.",
+					[
+						{ text: "Cancel", style: "cancel" },
+						{ text: "Mark approved", onPress: () => void setStatus("approved") },
+					]
+				);
+				break;
+			case "mark_declined":
+				Alert.alert("Mark this quote declined?", undefined, [
+					{ text: "Cancel", style: "cancel" },
+					{
+						text: "Mark declined",
+						style: "destructive",
+						onPress: () => void setStatus("declined"),
+					},
+				]);
+				break;
+			case "get_signature":
+				router.push({
+					pathname: "/sign-quote",
+					params: { id: quote._id },
+				} as unknown as Href);
+				break;
+			case "convert_to_invoice":
+				void convert();
+				break;
+			case "extend_valid_until":
+				setExtendOpen(true);
+				break;
+			case "revert_to_draft":
+				Alert.alert(
+					"Revert to draft?",
+					"The client's link will stop working until you resend.",
+					[
+						{ text: "Cancel", style: "cancel" },
+						{
+							text: "Revert to draft",
+							onPress: () => void setStatus("draft"),
+						},
+					]
+				);
+				break;
+			case "view_invoice":
+				if (capsData?.invoiceId) {
+					if (shellNav) {
+						shellNav.open({ kind: "invoice", id: capsData.invoiceId });
+					} else {
+						router.push({
+							pathname: "/invoice/[id]",
+							params: { id: capsData.invoiceId },
+						} as unknown as Href);
+					}
+				}
+				break;
+		}
+	};
 
 	return (
 		<SafeAreaView style={[styles.flex, { backgroundColor: t.bg }]} edges={[]}>
 			<DotGrid style={StyleSheet.absoluteFill} />
 			{renderHeader(headerTitle)}
-			<ScrollView contentContainerStyle={styles.scroll}>
-				<Card style={styles.docCard}>
-					{/* Header block */}
-					<View style={styles.headerBlock}>
-						{quote.quoteNumber ? (
-							<Eyebrow>Quote {quote.quoteNumber}</Eyebrow>
-						) : null}
-						<View style={styles.titleRow}>
-							<Text
-								style={[styles.docTitle, { color: t.ink }]}
-								numberOfLines={2}
-							>
-								{documentTitle}
+			<ScrollView
+				contentContainerStyle={[
+					styles.scroll,
+					hasBar && { paddingBottom: 96 + insets.bottom },
+				]}
+			>
+				{/* Document header — identity, money numeral, lifecycle track. */}
+				<DocumentHeaderCard
+					eyebrow={quote.quoteNumber ?? undefined}
+					eyebrowColor={recordTint.quote.fg}
+					clientName={client}
+					status={status}
+					title={documentTitle}
+					amount={quote.total}
+					subline={
+						quote.validUntil ? (
+							<Text style={[styles.validLine, { color: t.sub }]}>
+								Valid until {formatDocumentDate(quote.validUntil)}
 							</Text>
-							<Badge status={quote.status} big />
-						</View>
-						<Text style={[styles.client, { color: t.sub }]} numberOfLines={1}>
-							{client}
-						</Text>
-						<View style={styles.metaRows}>
-							<View style={styles.metaRow}>
-								<Text style={[styles.metaLabel, { color: t.faint }]}>
-									Created
-								</Text>
-								<Text style={[styles.metaValue, { color: t.sub }]}>
-									{formatDocumentDate(quote._creationTime)}
-								</Text>
-							</View>
-							{quote.validUntil ? (
-								<View style={styles.metaRow}>
-									<Text style={[styles.metaLabel, { color: t.faint }]}>
-										Valid until
-									</Text>
-									<Text style={[styles.metaValue, { color: t.sub }]}>
-										{formatDocumentDate(quote.validUntil)}
-									</Text>
-								</View>
-							) : null}
-						</View>
-					</View>
-
-					<View style={[styles.divider, { backgroundColor: t.line }]} />
-
-					{/* Line items — three states. */}
-					{items === undefined ? (
-						<View style={styles.lineSkeletonBlock}>
-							{[0, 1, 2].map((i) => (
-								<View
-									key={i}
-									style={[styles.lineSkeleton, { backgroundColor: t.muted }]}
-								/>
-							))}
-						</View>
-					) : items.length === 0 ? (
-						<Text style={[styles.noLines, { color: t.faint }]}>
-							No itemized lines
-						</Text>
-					) : (
-						<View>
-							{items.map((item, i) => (
-								<View
-									key={item._id}
-									style={[
-										styles.lineRow,
-										{
-											borderBottomColor: t.line,
-											borderBottomWidth: i === items.length - 1 ? 0 : 1,
-										},
-									]}
-								>
-									<View style={styles.lineBody}>
-										<Text
-											style={[styles.lineDesc, { color: t.ink }]}
-											numberOfLines={2}
-										>
-											{item.description}
-											{item.unit ? ` · ${item.unit}` : ""}
-										</Text>
-										<Text style={[styles.lineSub, { color: t.faint }]}>
-											{item.quantity} × {formatCurrency(item.rate, { exact: true })}
-										</Text>
-									</View>
-									<Text style={[styles.lineAmount, { color: t.ink }]}>
-										{formatCurrency(item.amount, { exact: true })}
-									</Text>
-								</View>
-							))}
-						</View>
-					)}
-
-					<View style={[styles.divider, { backgroundColor: t.line }]} />
-
-					{/* Totals — read straight from quotes.get (never recomputed). */}
-					<View style={styles.totalsWrap}>
-						<TotalsBlock
-							rows={totalsRows}
-							total={{
-								label: "Total",
-								value: formatCurrency(quote.total, { exact: true }),
-							}}
+						) : undefined
+					}
+				>
+					<View style={styles.trackWrap}>
+						<StatusTrack
+							steps={trackSteps(status, capsData?.caps.hasInvoice ?? false)}
 						/>
 					</View>
+				</DocumentHeaderCard>
 
-					{/* Approval — read-only lifecycle state below the totals. */}
-					{showApproval ? (
-						<>
-							<View style={[styles.divider, { backgroundColor: t.line }]} />
-							<View style={styles.approvalBlock}>
-								<Eyebrow>Approval</Eyebrow>
+				{/* Team chat — same slot AND same frosted styling as client/project
+				    detail (both sit on the same dot-grid canvas). */}
+				<Pressable
+					onPress={() => setMentionVisible(true)}
+					accessibilityRole="button"
+					accessibilityLabel="Open team chat"
+					style={({ pressed }) => [
+						styles.teamChat,
+						{ backgroundColor: t.frostedBg, borderColor: t.frostedBorder },
+						pressed && styles.linePressed,
+					]}
+				>
+					<MessageSquare size={18} color={t.frostedInk} />
+					<Text style={[styles.teamChatText, { color: t.frostedInk }]}>
+						Team chat
+					</Text>
+				</Pressable>
 
-								{audit === undefined ? (
-									// Loading (only reachable for a sent quote — drafts are hidden).
+				{/* Line items + totals — the document body. */}
+				<View style={styles.section}>
+					<View style={styles.sectionHeader}>
+						<Eyebrow>
+							{items && items.length > 0
+								? `Line items · ${items.length}`
+								: "Line items"}
+						</Eyebrow>
+						{pdfStale ? (
+							<Text style={[styles.staleHint, { color: t.faint }]}>
+								PDF outdated
+							</Text>
+						) : null}
+					</View>
+					<Card style={styles.docCard}>
+						{items === undefined ? (
+							<View style={styles.lineSkeletonBlock}>
+								{[0, 1, 2].map((i) => (
 									<View
-										style={[
-											styles.approvalSkeleton,
-											{ backgroundColor: t.muted },
-										]}
+										key={i}
+										style={[styles.lineSkeleton, { backgroundColor: t.muted }]}
 									/>
-								) : latest?.action === "approved" ? (
-									// Approved (audit row): contact email + date + signature.
-									<>
-										<View style={styles.approvalRow}>
-											<CheckCircle2 size={18} color={t.success} />
-											<Text style={[styles.approvalLabel, { color: t.ink }]}>
-												Approved
+								))}
+							</View>
+						) : items.length === 0 ? (
+							<Text style={[styles.noLines, { color: t.faint }]}>
+								No itemized lines
+							</Text>
+						) : (
+							<View>
+								{items.map((item, i) => (
+									<Pressable
+										key={item._id}
+										accessibilityRole={
+											contentEditable || canFunnelEdit ? "button" : undefined
+										}
+										onPress={
+											contentEditable || canFunnelEdit
+												? () => openItem(toInitial(item))
+												: undefined
+										}
+										style={({ pressed }) => [
+											styles.lineRow,
+											{
+												borderBottomColor: t.line,
+												borderBottomWidth: i === items.length - 1 ? 0 : 1,
+											},
+											pressed &&
+												(contentEditable || canFunnelEdit) &&
+												styles.linePressed,
+										]}
+									>
+										<View style={styles.lineBody}>
+											<Text
+												style={[styles.lineDesc, { color: t.ink }]}
+												numberOfLines={2}
+											>
+												{item.description}
+												{item.unit ? ` · ${item.unit}` : ""}
+											</Text>
+											<Text style={[styles.lineSub, { color: t.faint }]}>
+												{item.quantity} × {formatCurrency(item.rate, { exact: true })}
 											</Text>
 										</View>
-										<Text style={[styles.approvalCaption, { color: t.sub }]}>
-											{latest.contactEmail} ·{" "}
-											{formatDocumentDate(latest.createdAt)}
+										<Text style={[styles.lineAmount, { color: t.ink }]}>
+											{formatCurrency(item.amount, { exact: true })}
 										</Text>
-										{latest.signatureUrl && !sigError ? (
+									</Pressable>
+								))}
+							</View>
+						)}
+						{items !== undefined && (contentEditable || canFunnelEdit) ? (
+							<Pressable
+								accessibilityRole="button"
+								onPress={() => openItem(null)}
+								style={({ pressed }) => [
+									styles.addRow,
+									{ borderTopColor: t.line },
+									pressed && styles.linePressed,
+								]}
+							>
+								<Plus size={16} color={t.primarySolid} strokeWidth={2.5} />
+								<Text style={[styles.addLabel, { color: t.primarySolid }]}>
+									Add line item
+								</Text>
+							</Pressable>
+						) : null}
+						<View style={[styles.divider, { backgroundColor: t.line }]} />
+						{/* Totals — read straight from quotes.get (never recomputed). */}
+						<View style={styles.totalsWrap}>
+							<TotalsBlock
+								rows={totalsRows}
+								total={{
+									label: "Total",
+									value: formatCurrency(quote.total, { exact: true }),
+								}}
+							/>
+						</View>
+					</Card>
+				</View>
+
+				{/* Approval — read-only lifecycle history below the document. */}
+				{showApproval ? (
+					<View style={styles.section}>
+						<Eyebrow>Approval</Eyebrow>
+						<Card style={styles.approvalCard}>
+							{audit === undefined ? (
+								// Loading (only reachable for a sent quote — drafts are hidden).
+								<View
+									style={[styles.approvalSkeleton, { backgroundColor: t.muted }]}
+								/>
+							) : latest?.action === "approved" && status === "approved" ? (
+								// Approved (audit row): contact email + date + signature.
+								<>
+									<View style={styles.approvalRow}>
+										<CheckCircle2 size={18} color={t.success} />
+										<Text style={[styles.approvalLabel, { color: t.ink }]}>
+											Approved
+										</Text>
+									</View>
+									<Text style={[styles.approvalCaption, { color: t.sub }]}>
+										{latest.channel === "in_person"
+											? [
+													latest.contactEmail || "Signed in person",
+													formatDocumentDate(latest.createdAt),
+													latest.capturedByName
+														? `captured by ${latest.capturedByName}`
+														: "in person",
+												].join(" · ")
+											: `${latest.contactEmail} · ${formatDocumentDate(latest.createdAt)}`}
+									</Text>
+									{latest.signatureUrl && sigErrorUrl !== latest.signatureUrl ? (
+										latest.channel === "in_person" ? (
+											// In-person signatures are stored as SVG — RN's Image
+											// can't decode SVG, SvgUri renders the vector directly.
+											<View
+												accessibilityLabel="Client signature"
+												style={[
+													styles.signature,
+													styles.signatureSvg,
+													{ borderColor: t.line, backgroundColor: t.card },
+												]}
+											>
+												<SvgUri
+													uri={latest.signatureUrl}
+													width="100%"
+													height="100%"
+													onError={() => setSigErrorUrl(latest.signatureUrl)}
+												/>
+											</View>
+										) : (
 											<Image
 												source={{ uri: latest.signatureUrl }}
 												accessibilityLabel="Client signature"
 												accessibilityRole="image"
 												resizeMode="contain"
-												onError={() => setSigError(true)}
+												onError={() => setSigErrorUrl(latest.signatureUrl)}
 												style={[
 													styles.signature,
 													{ borderColor: t.line, backgroundColor: t.card },
 												]}
 											/>
-										) : latest.signatureUrl && sigError ? (
-											<Text
-												style={[styles.approvalCaption, { color: t.faint }]}
-											>
-												Signature unavailable
-											</Text>
-										) : null}
-									</>
-								) : latest?.action === "declined" ? (
-									// Declined (audit row): decline reason.
-									<>
-										<View style={styles.approvalRow}>
-											<XCircle size={18} color={t.danger} />
-											<Text
-												style={[styles.approvalLabel, { color: t.danger }]}
-											>
-												Declined
-											</Text>
-										</View>
-										<Text style={[styles.approvalCaption, { color: t.sub }]}>
-											{formatDocumentDate(latest.createdAt)}
-										</Text>
-										{latest.declineReason ? (
-											<Text
-												style={[styles.approvalCaption, { color: t.sub }]}
-											>
-												“{latest.declineReason}”
-											</Text>
-										) : null}
-									</>
-								) : auditEmpty && quote.status === "approved" ? (
-									// Approved (resolved-without-audit): status + approvedAt, no email/signature.
-									<>
-										<View style={styles.approvalRow}>
-											<CheckCircle2 size={18} color={t.success} />
-											<Text style={[styles.approvalLabel, { color: t.ink }]}>
-												Approved
-											</Text>
-										</View>
-										{quote.approvedAt ? (
-											<Text
-												style={[styles.approvalCaption, { color: t.sub }]}
-											>
-												{formatDocumentDate(quote.approvedAt)}
-											</Text>
-										) : null}
-									</>
-								) : auditEmpty && quote.status === "declined" ? (
-									// Declined (resolved-without-audit): status + declinedAt, no reason.
-									<>
-										<View style={styles.approvalRow}>
-											<XCircle size={18} color={t.danger} />
-											<Text
-												style={[styles.approvalLabel, { color: t.danger }]}
-											>
-												Declined
-											</Text>
-										</View>
-										{quote.declinedAt ? (
-											<Text
-												style={[styles.approvalCaption, { color: t.sub }]}
-											>
-												{formatDocumentDate(quote.declinedAt)}
-											</Text>
-										) : null}
-									</>
-								) : auditEmpty && quote.sentAt && !resolvedStatus ? (
-									// Awaiting — sent, not yet resolved.
-									<Text style={[styles.approvalLabel, { color: t.ink }]}>
-										Awaiting client signature{" "}
+										)
+									) : latest.signatureUrl ? (
 										<Text style={[styles.approvalCaption, { color: t.faint }]}>
-											· sent {formatDocumentDate(quote.sentAt)}
+											Signature unavailable
 										</Text>
+									) : null}
+								</>
+							) : latest?.action === "declined" && status === "declined" ? (
+								// Declined (audit row): decline reason.
+								<>
+									<View style={styles.approvalRow}>
+										<XCircle size={18} color={t.danger} />
+										<Text style={[styles.approvalLabel, { color: t.danger }]}>
+											Declined
+										</Text>
+									</View>
+									<Text style={[styles.approvalCaption, { color: t.sub }]}>
+										{formatDocumentDate(latest.createdAt)}
 									</Text>
-								) : null}
-							</View>
-						</>
-					) : null}
-				</Card>
+									{latest.declineReason ? (
+										<Text style={[styles.approvalCaption, { color: t.sub }]}>
+											“{latest.declineReason}”
+										</Text>
+									) : null}
+								</>
+							) : auditEmpty && quote.status === "approved" ? (
+								// Approved (resolved-without-audit): status + approvedAt.
+								<>
+									<View style={styles.approvalRow}>
+										<CheckCircle2 size={18} color={t.success} />
+										<Text style={[styles.approvalLabel, { color: t.ink }]}>
+											Approved
+										</Text>
+									</View>
+									{quote.approvedAt ? (
+										<Text style={[styles.approvalCaption, { color: t.sub }]}>
+											{formatDocumentDate(quote.approvedAt)}
+										</Text>
+									) : null}
+								</>
+							) : auditEmpty && quote.status === "declined" ? (
+								// Declined (resolved-without-audit): status + declinedAt.
+								<>
+									<View style={styles.approvalRow}>
+										<XCircle size={18} color={t.danger} />
+										<Text style={[styles.approvalLabel, { color: t.danger }]}>
+											Declined
+										</Text>
+									</View>
+									{quote.declinedAt ? (
+										<Text style={[styles.approvalCaption, { color: t.sub }]}>
+											{formatDocumentDate(quote.declinedAt)}
+										</Text>
+									) : null}
+								</>
+							) : status === "sent" && quote.sentAt ? (
+								// Awaiting — sent (incl. re-sent after a decline; the stale
+								// audit row is ignored once the status moved back to sent).
+								<Text style={[styles.approvalLabel, { color: t.ink }]}>
+									Awaiting client approval{" "}
+									<Text style={[styles.approvalCaption, { color: t.faint }]}>
+										· sent {formatDocumentDate(quote.sentAt)}
+									</Text>
+								</Text>
+							) : null}
+						</Card>
+					</View>
+				) : null}
 
 				<View style={{ height: 32 }} />
 			</ScrollView>
+
+			{/* Floating CTA bar (frame 1h) — the resolver's primary/secondary pair. */}
+			{hasBar ? (
+				<View
+					style={[
+						styles.ctaBar,
+						{ bottom: Math.max(insets.bottom, 14) + 4 },
+					]}
+					pointerEvents="box-none"
+				>
+					<QuickActionRow actions={actions} onAction={onAction} floating />
+				</View>
+			) : null}
+
+			<SendPreviewSheet
+				visible={sendOpen}
+				onClose={() => setSendOpen(false)}
+				kind="quote"
+				number={quote.quoteNumber ?? undefined}
+				title={documentTitle}
+				clientName={client}
+				amount={quote.total}
+				recipientEmail={capsData?.recipientEmail ?? null}
+				items={(items ?? []).map((item) => ({
+					key: item._id,
+					description: item.description,
+					sub: `${item.quantity} × ${formatCurrency(item.rate, { exact: true })}`,
+					amount: formatCurrency(item.amount, { exact: true }),
+				}))}
+				totalsRows={totalsRows}
+				totalValue={formatCurrency(quote.total, { exact: true })}
+				resend={status === "sent"}
+				onSend={async () => {
+					await sendToClient({ id: quote._id });
+				}}
+			/>
+
+			<LineItemSheet
+				visible={itemSheet !== null}
+				onClose={() => setItemSheet(null)}
+				initial={itemSheet?.item ?? null}
+				unitRequired
+				canDelete={canDeleteItems}
+				onSubmit={saveItem}
+				onDelete={deleteItem}
+			/>
+
+			<ExtendValidUntilSheet
+				visible={extendOpen}
+				onClose={() => setExtendOpen(false)}
+				quoteNumber={quote.quoteNumber ?? "This quote"}
+				currentValidUntil={quote.validUntil ?? null}
+				expired={status === "expired"}
+				onSubmit={async (validUntil) => {
+					await extendValidUntil({ id: quote._id, validUntil });
+				}}
+			/>
+
+			{/* Team chat — entityName mirrors web's quote label exactly
+			    (quotes/[quoteId] overview-tab). */}
+			<MentionModal
+				visible={mentionVisible}
+				onClose={() => setMentionVisible(false)}
+				entityType="quote"
+				entityId={quote._id}
+				entityName={
+					quote.title || `Quote #${quote.quoteNumber || quote._id.slice(-6)}`
+				}
+			/>
 		</SafeAreaView>
 	);
 }
@@ -397,39 +858,47 @@ const styles = StyleSheet.create({
 	flex: { flex: 1 },
 	scroll: { padding: 16 },
 
-	docCard: { padding: 0, overflow: "hidden" },
-
-	headerBlock: { padding: 18, gap: 6 },
-	titleRow: {
-		flexDirection: "row",
-		alignItems: "flex-start",
-		justifyContent: "space-between",
-		gap: 12,
-	},
-	docTitle: {
-		flex: 1,
-		minWidth: 0,
-		fontFamily: fontFamily.bold,
-		fontSize: type.h2,
-		letterSpacing: -0.3,
-	},
-	client: {
+	validLine: {
 		fontFamily: fontFamily.regular,
-		fontSize: type.h4,
+		fontSize: type.sm,
+		marginTop: 5,
 	},
-	metaRows: { marginTop: 6, gap: 6 },
-	metaRow: {
+	trackWrap: {
+		marginTop: 16,
+	},
+
+	// Mirrors the client/project detail "Team chat" affordance (same shape).
+	teamChat: {
 		flexDirection: "row",
 		alignItems: "center",
+		justifyContent: "center",
+		gap: 8,
+		height: 44,
+		borderRadius: radii.rSm,
+		borderWidth: 1,
+		marginTop: 10,
+	},
+	teamChatText: {
+		fontFamily: fontFamily.semibold,
+		fontSize: 13,
+	},
+
+	section: { marginTop: 22, gap: 10 },
+	sectionHeader: {
+		flexDirection: "row",
+		alignItems: "baseline",
 		justifyContent: "space-between",
 	},
-	metaLabel: { fontFamily: fontFamily.regular, fontSize: type.sm },
-	metaValue: { fontFamily: fontFamily.semibold, fontSize: type.sm },
+	staleHint: {
+		fontFamily: fontFamily.regular,
+		fontSize: type.sm,
+	},
+	docCard: { padding: 0, overflow: "hidden" },
 
 	divider: { height: 1, marginHorizontal: 18 },
 
 	// Inset the totals to align with line-item content + give the card a bottom edge.
-	totalsWrap: { paddingHorizontal: 18, paddingBottom: 18 },
+	totalsWrap: { paddingHorizontal: 18, paddingBottom: 18, paddingTop: 6 },
 
 	lineRow: {
 		flexDirection: "row",
@@ -442,13 +911,30 @@ const styles = StyleSheet.create({
 	lineBody: { flex: 1, minWidth: 0, gap: 2 },
 	lineDesc: { fontFamily: fontFamily.semibold, fontSize: type.h4 },
 	lineSub: { fontFamily: fontFamily.regular, fontSize: type.sm },
-	lineAmount: { fontFamily: fontFamily.bold, fontSize: type.h4 },
+	lineAmount: {
+		fontFamily: fontFamily.bold,
+		fontSize: type.h4,
+		fontVariant: ["tabular-nums"],
+	},
 
 	noLines: {
 		fontFamily: fontFamily.regular,
 		fontSize: type.h4,
 		paddingVertical: 18,
 		paddingHorizontal: 18,
+	},
+	linePressed: { opacity: 0.7 },
+	addRow: {
+		flexDirection: "row",
+		alignItems: "center",
+		justifyContent: "center",
+		gap: 6,
+		paddingVertical: 13,
+		borderTopWidth: 1,
+	},
+	addLabel: {
+		fontFamily: fontFamily.semibold,
+		fontSize: type.body,
 	},
 
 	skeletonHeader: {
@@ -461,12 +947,7 @@ const styles = StyleSheet.create({
 	lineSkeletonBlock: { paddingHorizontal: 18, paddingVertical: 12, gap: 10 },
 	lineSkeleton: { height: 40, borderRadius: radii.sm },
 
-	approvalBlock: {
-		paddingHorizontal: 18,
-		paddingBottom: 18,
-		paddingTop: 14,
-		gap: 8,
-	},
+	approvalCard: { gap: 8 },
 	approvalRow: { flexDirection: "row", alignItems: "center", gap: 8 },
 	approvalLabel: { fontFamily: fontFamily.bold, fontSize: type.h4 },
 	approvalCaption: { fontFamily: fontFamily.regular, fontSize: type.sm },
@@ -476,6 +957,16 @@ const styles = StyleSheet.create({
 		height: 64,
 		borderRadius: radii.md,
 		borderWidth: 1,
+	},
+	signatureSvg: {
+		overflow: "hidden",
+		padding: 4,
+	},
+
+	ctaBar: {
+		position: "absolute",
+		left: 16,
+		right: 16,
 	},
 
 	notFound: {

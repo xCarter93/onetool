@@ -12,6 +12,7 @@ import {
 import { ChevronLeft, ChevronRight } from "lucide-react-native";
 import {
 	fontFamily,
+	hero,
 	radii,
 	touch,
 	tracking,
@@ -29,7 +30,11 @@ interface WeekStripProps {
 	days: number[];
 	selectedDayMs: number;
 	todayMs: number;
-	/** Open-task counts keyed by UTC-midnight ms (see `countTasksByDay`). */
+	/**
+	 * Open-work counts keyed by UTC-midnight ms — tasks AND project spans, from
+	 * the same calendar-events feed the schedule renders (`countScheduleByDay`),
+	 * so the bars can never disagree with the timeline this strip anchors.
+	 */
 	counts: Map<number, number>;
 	/** Tapping a day scopes the agenda to it. */
 	onSelectDay: (dayMs: number) => void;
@@ -39,6 +44,12 @@ interface WeekStripProps {
 	 * an adjacent week rolls the whole strip there with no way back.
 	 */
 	onPageWeek?: (direction: -1 | 1) => void;
+	/**
+	 * "light" = the classic strip on the page canvas (selected cell fills solid
+	 * blue). "ink" = inside the 3.0 command hero: white-on-ink text tiers and the
+	 * selected cell inverts to a white fill with a blue load bar (canvas 1a).
+	 */
+	tone?: "light" | "ink";
 }
 
 /**
@@ -57,8 +68,35 @@ export function WeekStrip({
 	counts,
 	onSelectDay,
 	onPageWeek,
+	tone = "light",
 }: WeekStripProps) {
 	const t = useTokens();
+	// Selected-cell contrast holds in both tones: light = white on #0072b5
+	// (5.15:1); ink = #17181a/#6b7075 on white (17.8/5.0:1), bar is decor.
+	const pal =
+		tone === "ink"
+			? {
+					arrow: hero.textSub,
+					dow: hero.textFaint,
+					num: hero.textMid,
+					selectedBg: t.card,
+					selectedDow: t.faint,
+					selectedNum: t.ink,
+					bar: hero.barStrong,
+					selectedBar: t.primarySolid,
+				}
+			: {
+					arrow: t.sub,
+					dow: t.faint,
+					num: t.ink,
+					selectedBg: t.primarySolid,
+					// Full white, not 85% — 0.85 alpha composites to ~#d9eaf4 on
+					// primarySolid, which is 4.18:1 and fails AA at 10px.
+					selectedDow: "#ffffff",
+					selectedNum: "#ffffff",
+					bar: t.dot,
+					selectedBar: "#ffffff",
+				};
 	const scrollRef = useRef<ScrollView>(null);
 	const [pageWidth, setPageWidth] = useState(0);
 	const selected = utcDayStartMs(selectedDayMs);
@@ -103,9 +141,9 @@ export function WeekStrip({
 			accessibilityLabel={direction === -1 ? "Previous week" : "Next week"}
 		>
 			{direction === -1 ? (
-				<ChevronLeft size={18} color={t.sub} />
+				<ChevronLeft size={18} color={pal.arrow} />
 			) : (
-				<ChevronRight size={18} color={t.sub} />
+				<ChevronRight size={18} color={pal.arrow} />
 			)}
 		</Pressable>
 	);
@@ -133,21 +171,19 @@ export function WeekStrip({
 						accessibilityLabel={[
 							isToday ? `Today, ${label}` : label,
 							// The bar encodes workload but is invisible to a screen reader.
-							count > 0 ? `${count} ${count === 1 ? "task" : "tasks"}` : "no tasks",
+							count > 0 ? `${count} ${count === 1 ? "job" : "jobs"}` : "nothing scheduled",
 						].join(", ")}
 						accessibilityHint="Shows this day's work"
 						onPress={() => onSelectDay(dayMs)}
 						style={[
 							styles.cell,
-							isSelected && { backgroundColor: t.primarySolid },
+							isSelected && { backgroundColor: pal.selectedBg },
 						]}
 					>
 						<Text
 							style={[
 								styles.dow,
-								// Full white, not 85% — 0.85 alpha composites to ~#d9eaf4 on
-								// primarySolid, which is 4.18:1 and fails AA at 10px.
-								{ color: isSelected ? "#ffffff" : t.faint },
+								{ color: isSelected ? pal.selectedDow : pal.dow },
 							]}
 						>
 							{DOW[d.getUTCDay()].toUpperCase()}
@@ -156,7 +192,7 @@ export function WeekStrip({
 							style={[
 								styles.num,
 								{
-									color: isSelected ? "#ffffff" : t.ink,
+									color: isSelected ? pal.selectedNum : pal.num,
 									fontFamily:
 										isToday && !isSelected
 											? fontFamily.bold
@@ -175,7 +211,9 @@ export function WeekStrip({
 										styles.bar,
 										{
 											width: `${bar * 100}%`,
-											backgroundColor: isSelected ? "#ffffff" : t.dot,
+											backgroundColor: isSelected
+												? pal.selectedBar
+												: pal.bar,
 										},
 									]}
 								/>

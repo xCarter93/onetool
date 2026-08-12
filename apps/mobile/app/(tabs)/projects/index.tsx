@@ -12,28 +12,41 @@ import { api } from "@onetool/backend/convex/_generated/api";
 import type { Doc, Id } from "@onetool/backend/convex/_generated/dataModel";
 import { useRouter } from "expo-router";
 import { useState, useMemo } from "react";
-import { SafeAreaView } from "react-native-safe-area-context";
+import {
+	SafeAreaView,
+	useSafeAreaInsets,
+} from "react-native-safe-area-context";
 import { Search, Calendar, X } from "lucide-react-native";
-import { fontFamily, radii, useTokens } from "@/lib/theme";
+import {
+	colors,
+	DOCK_CLEARANCE,
+	fontFamily,
+	radii,
+	useTokens,
+} from "@/lib/theme";
 import { Badge, DotGrid, Eyebrow, SCROLL_TOP_INSET } from "@/components/ui";
-import { AppHeader } from "@/components/app-header";
+import { InkTabHeader } from "@/components/ink-tab-header";
 
 type Project = Doc<"projects">;
 type FilterValue = "all" | "active" | "in-progress" | "completed";
 
 function formatDate(timestamp: number | undefined): string | null {
 	if (!timestamp) return null;
+	// Project start/end dates are stored at UTC midnight — formatting in the
+	// device zone renders the previous day west of Greenwich.
 	return new Date(timestamp).toLocaleDateString("en-US", {
+		timeZone: "UTC",
 		month: "short",
 		day: "numeric",
 	});
 }
 
 // headerMode/onSelect/selectedId default off → the iPhone path (router.push,
-// AppHeader mode="detail" title="Work", no selected highlight) is byte-identical.
-// The iPad shell renders this as the Work list pane (tab id "projects"):
-// headerMode="pane" suppresses the AppHeader (shell mounts PaneHeader), onSelect
-// drives the detail pane via shell selection, selectedId marks the row.
+// the InkTabHeader band titled "Projects", no selected highlight) is
+// byte-identical. headerMode="pane" suppresses that band for a host that
+// mounts its own pane header, onSelect drives a detail pane via selection,
+// selectedId marks the row. NOTE: the iPad shell does NOT mount this screen —
+// its "work" pane mounts app/(tabs)/work.tsx, whose "Work" title is correct.
 export default function ProjectsScreen({
 	headerMode = "root",
 	onSelect,
@@ -45,7 +58,14 @@ export default function ProjectsScreen({
 } = {}) {
 	const router = useRouter();
 	const t = useTokens();
+	const insets = useSafeAreaInsets();
 	const isPane = headerMode === "pane";
+	// The floating dock takes no layout height — the list clears it itself.
+	// iPad panes have no dock (the shell replaces Tabs).
+	const listBottom = isPane ? 24 : DOCK_CLEARANCE + insets.bottom;
+	// iPhone: the ink band is a solid hard edge, so the list starts just under it
+	// (Money's value). iPad pane: no band, so the translucent-header inset stays.
+	const listTop = isPane ? SCROLL_TOP_INSET : 12;
 	const [searchQuery, setSearchQuery] = useState("");
 	const [filter, setFilter] = useState<FilterValue>("all");
 
@@ -129,6 +149,7 @@ export default function ProjectsScreen({
 			<Pressable
 				style={({ pressed }) => [
 					styles.card,
+					{ backgroundColor: t.card, borderColor: t.line },
 					isSelected && { borderColor: t.primarySolid, backgroundColor: t.frostedBg },
 					pressed && styles.cardPressed,
 				]}
@@ -137,10 +158,10 @@ export default function ProjectsScreen({
 				<View style={styles.cardTop}>
 					<View style={styles.cardTitleCol}>
 						<Eyebrow>#{item.projectNumber}</Eyebrow>
-						<Text style={styles.title} numberOfLines={1}>
+						<Text style={[styles.title, { color: t.ink }]} numberOfLines={1}>
 							{item.title}
 						</Text>
-						<Text style={styles.client} numberOfLines={1}>
+						<Text style={[styles.client, { color: t.sub }]} numberOfLines={1}>
 							{clientName(item)}
 						</Text>
 					</View>
@@ -149,7 +170,7 @@ export default function ProjectsScreen({
 				{range && (
 					<View style={styles.metaRow}>
 						<Calendar size={14} color={t.faint} />
-						<Text style={styles.metaText}>{range}</Text>
+						<Text style={[styles.metaText, { color: t.sub }]}>{range}</Text>
 					</View>
 				)}
 			</Pressable>
@@ -158,7 +179,9 @@ export default function ProjectsScreen({
 
 	const ListHeader = (
 		<View style={styles.listHeader}>
-			<View style={styles.searchBar}>
+			<View
+				style={[styles.searchBar, { backgroundColor: t.card, borderColor: t.line }]}
+			>
 				<Search size={19} color={t.faint} />
 				<TextInput
 					value={searchQuery}
@@ -195,7 +218,7 @@ export default function ProjectsScreen({
 							<Text
 								style={[
 									styles.chipLabel,
-									{ color: active ? "#fff" : t.sub },
+									{ color: active ? colors.primaryForeground : t.sub },
 								]}
 							>
 								{chip.label}
@@ -203,7 +226,7 @@ export default function ProjectsScreen({
 							<Text
 								style={[
 									styles.chipCount,
-									{ color: active ? "#fff" : t.faint },
+									{ color: active ? colors.primaryForeground : t.faint },
 								]}
 							>
 								{counts[chip.value]}
@@ -223,20 +246,41 @@ export default function ProjectsScreen({
 			{/* Page canvas, matching web's .workspace-canvas. */}
 			<DotGrid style={StyleSheet.absoluteFill} />
 			{/* Pane mode: shell mounts PaneHeader title="Work" above this body.
-			    iPhone: AppHeader mode="detail" title="Work" (byte-identical). */}
-			{isPane ? null : <AppHeader mode="detail" title="Work" />}
+			    iPhone: the shared ink band. It keeps a back circle because this
+			    route is always pushed (it holds no dock slot — href: null). */}
+			{isPane ? null : (
+				<InkTabHeader title="Projects" onBack={() => router.back()} />
+			)}
 
 			{loading ? (
-				<View style={styles.listContent}>
+				<View style={[styles.listContent, { paddingTop: listTop }]}>
 					{ListHeader}
 					{[0, 1, 2, 3].map((i) => (
-						<View key={i} style={[styles.card, styles.skeletonCard]}>
-							<View style={[styles.skeleton, { width: 48, height: 11 }]} />
+						<View
+							key={i}
+							style={[
+								styles.card,
+								{ backgroundColor: t.card, borderColor: t.line },
+								styles.skeletonCard,
+							]}
+						>
 							<View
-								style={[styles.skeleton, { width: "70%", height: 16, marginTop: 8 }]}
+								style={[
+									styles.skeleton,
+									{ backgroundColor: t.lineSoft, width: 48, height: 11 },
+								]}
 							/>
 							<View
-								style={[styles.skeleton, { width: "45%", height: 13, marginTop: 6 }]}
+								style={[
+									styles.skeleton,
+									{ backgroundColor: t.lineSoft, width: "70%", height: 16, marginTop: 8 },
+								]}
+							/>
+							<View
+								style={[
+									styles.skeleton,
+									{ backgroundColor: t.lineSoft, width: "45%", height: 13, marginTop: 6 },
+								]}
 							/>
 						</View>
 					))}
@@ -247,19 +291,23 @@ export default function ProjectsScreen({
 					keyExtractor={(item) => item._id}
 					renderItem={renderProject}
 					ListHeaderComponent={ListHeader}
-					contentContainerStyle={styles.listContent}
+					contentContainerStyle={{
+						...styles.listContent,
+						paddingTop: listTop,
+						paddingBottom: listBottom,
+					}}
 					ItemSeparatorComponent={() => <View style={{ height: 12 }} />}
 					ListEmptyComponent={
 						<View style={styles.emptyState}>
 							{allProjects.length === 0 ? (
 								<>
-									<Text style={styles.emptyTitle}>No work yet</Text>
-									<Text style={styles.emptyText}>
+									<Text style={[styles.emptyTitle, { color: t.ink }]}>No work yet</Text>
+									<Text style={[styles.emptyText, { color: t.sub }]}>
 										Projects you create will show up here.
 									</Text>
 								</>
 							) : (
-								<Text style={styles.emptyText}>
+								<Text style={[styles.emptyText, { color: t.sub }]}>
 									Try a different search or filter.
 								</Text>
 							)}
@@ -275,7 +323,6 @@ const styles = StyleSheet.create({
 	listContent: {
 		paddingHorizontal: 16,
 		paddingBottom: 24,
-		paddingTop: SCROLL_TOP_INSET,
 	},
 	listHeader: {
 		gap: 12,
@@ -285,10 +332,8 @@ const styles = StyleSheet.create({
 		flexDirection: "row",
 		alignItems: "center",
 		gap: 9,
-		backgroundColor: "#fff",
 		borderWidth: 1,
-		borderColor: "#e9edf2",
-		borderRadius: 15,
+		borderRadius: radii["4xl"],
 		paddingHorizontal: 14,
 		height: 46,
 	},
@@ -308,7 +353,7 @@ const styles = StyleSheet.create({
 		gap: 5,
 		minHeight: 36,
 		paddingHorizontal: 15,
-		borderRadius: 999,
+		borderRadius: radii.pill,
 		borderWidth: 1,
 	},
 	chipLabel: {
@@ -320,10 +365,8 @@ const styles = StyleSheet.create({
 		fontSize: 12,
 	},
 	card: {
-		backgroundColor: "#fff",
 		borderRadius: radii.rLg,
 		borderWidth: 1,
-		borderColor: "#e9edf2",
 		padding: 16,
 	},
 	cardPressed: {
@@ -342,13 +385,11 @@ const styles = StyleSheet.create({
 	title: {
 		fontFamily: fontFamily.semibold,
 		fontSize: 14,
-		color: "#09090b",
 		marginTop: 2,
 	},
 	client: {
 		fontFamily: fontFamily.regular,
 		fontSize: 13,
-		color: "#5b6675",
 		marginTop: 2,
 	},
 	metaRow: {
@@ -360,14 +401,12 @@ const styles = StyleSheet.create({
 	metaText: {
 		fontFamily: fontFamily.regular,
 		fontSize: 11.5,
-		color: "#5b6675",
 	},
 	skeletonCard: {
 		marginBottom: 12,
 	},
 	skeleton: {
-		backgroundColor: "#e9edf2",
-		borderRadius: 6,
+		borderRadius: radii.sm,
 	},
 	emptyState: {
 		alignItems: "center",
@@ -377,13 +416,11 @@ const styles = StyleSheet.create({
 	emptyTitle: {
 		fontFamily: fontFamily.semibold,
 		fontSize: 18,
-		color: "#09090b",
 		marginBottom: 8,
 	},
 	emptyText: {
 		fontFamily: fontFamily.regular,
 		fontSize: 13,
-		color: "#5b6675",
 		textAlign: "center",
 	},
 });

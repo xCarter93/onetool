@@ -27,6 +27,10 @@ import {
 	userMutation,
 	type UserMutationCtx,
 } from "./lib/factories";
+import {
+	assertClientCapacity,
+	assertClientCapacityForTransition,
+} from "./lib/planCaps";
 
 /**
  * Client operations
@@ -535,6 +539,9 @@ export const create = userMutation({
 		portalAccessId: v.optional(v.string()),
 	},
 	handler: async (ctx, args): Promise<ClientId> => {
+		// Free-plan ceiling. Enforced here (not in createClient) so the internal
+		// paths — bulk import, community lead conversion — keep their behavior.
+		await assertClientCapacity(ctx, ctx.orgId, args.status);
 		return await createClient(ctx, args, "clients.create");
 	},
 });
@@ -872,6 +879,17 @@ export const update = userMutation({
 		);
 		const oldStatus = existingClient.status;
 
+		// Un-archiving through a status edit re-occupies a slot, so it faces the
+		// same ceiling as clients.create.
+		if (args.status) {
+			await assertClientCapacityForTransition(
+				ctx,
+				ctx.orgId,
+				oldStatus,
+				args.status
+			);
+		}
+
 		// Compute field-level changes before applying the update
 		const changes = computeFieldChanges(
 			"client",
@@ -1018,6 +1036,14 @@ export const restore = userMutation({
 		if (client.status !== "archived") {
 			throw new Error("Only archived clients can be restored");
 		}
+
+		// A restore is an insert as far as the free-plan ceiling is concerned.
+		await assertClientCapacityForTransition(
+			ctx,
+			ctx.orgId,
+			client.status,
+			"active"
+		);
 
 		// Restore the client by setting status back to active and removing archivedAt
 		await ctx.db.patch(args.id, {

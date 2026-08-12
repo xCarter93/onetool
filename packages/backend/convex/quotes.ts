@@ -20,6 +20,7 @@ import {
 	emitRecordUpdatedEvent,
 } from "./eventBus";
 import { computeFieldChanges } from "./lib/changeTracking";
+import { internal } from "./_generated/api";
 import {
 	optionalUserQuery,
 	userMutation,
@@ -128,6 +129,15 @@ async function createQuoteWithOrg(
 	// Validate project access if provided
 	if (data.projectId) {
 		await validateProjectAccess(ctx, data.projectId, ctx.orgId);
+		// Org scope alone still allows a project belonging to a DIFFERENT client,
+		// which would print the wrong job on the quote.
+		const project = await ctx.db.get(data.projectId);
+		if (project && project.clientId !== data.clientId) {
+			throw new ConvexError({
+				code: "BAD_REQUEST",
+				message: "Project does not belong to the selected client",
+			});
+		}
 	}
 
 	// Auto-generate quote number if not provided
@@ -172,7 +182,10 @@ const QUOTE_CONTENT_FIELDS = [
 	"title",
 	"terms",
 	"clientMessage",
-	"validUntil",
+	// validUntil is deliberately absent: it's offer-window metadata, not
+	// document content — extending a sent quote's validity must not require a
+	// revert to draft. It still stamps contentUpdatedAt (the date prints on the
+	// PDF) via its own branch in the update handler.
 ] as const;
 
 /**
@@ -811,11 +824,22 @@ export const update = userMutation({
 			)
 		);
 
-		// Content edits are frozen once the client has acted on the quote. Status
-		// transitions and every other field stay editable.
+		// Content edits are locked to draft quotes. Status transitions and every
+		// other field stay editable.
 		if (QUOTE_CONTENT_FIELDS.some((field) => field in filteredUpdates)) {
 			assertQuoteContentEditable(currentQuote);
 			filteredUpdates.contentUpdatedAt = Date.now();
+		}
+
+		// validUntil has ONE writer: quotes.extendValidUntil. It carries rules this
+		// generic patch can't (expired quotes revive to sent, the PDF re-renders),
+		// so accepting it here would silently produce a half-applied extension.
+		if ("validUntil" in filteredUpdates) {
+			throw new ConvexError({
+				code: "BAD_REQUEST",
+				message:
+					"Use quotes.extendValidUntil to change a quote's valid-until date.",
+			});
 		}
 
 		const oldStatus = currentQuote.status;
@@ -843,6 +867,10 @@ export const update = userMutation({
 				filteredUpdates.approvedAt = now;
 			} else if (filteredUpdates.status === "declined") {
 				filteredUpdates.declinedAt = now;
+			} else if (filteredUpdates.status === "draft") {
+				// Revert to draft: without this the timeline (and portal sort, were
+				// it ever visible) would keep claiming the quote was sent.
+				filteredUpdates.sentAt = undefined;
 			}
 		}
 
@@ -887,7 +915,11 @@ export const update = userMutation({
 			}
 
 			if (filteredUpdates.status === "approved" && oldStatus !== "approved") {
-				await celebrateQuoteApproved(ctx, updatedQuote as QuoteDocument);
+				await celebrateQuoteApproved(
+					ctx,
+					updatedQuote as QuoteDocument,
+					ctx.user._id
+				);
 			}
 
 			// Emit status change event if status changed
@@ -914,6 +946,236 @@ export const update = userMutation({
 		}
 
 		return id;
+	},
+});
+
+/**
+ * Extend a quote's valid-until date. Exempt from the draft-only content lock
+ * (extending a sent quote's window is the whole point) but closed quotes
+ * reject. Extending an EXPIRED quote revives it to sent — the offer window is
+ * open again, so the portal link the client already has starts working; the
+ * caller's confirm copy states this. Silent toward the client (no email;
+ * resend exists to nudge).
+ */
+export const extendValidUntil = userMutation({
+	args: { id: v.id("quotes"), validUntil: v.number() },
+	returns: v.id("quotes"),
+	handler: async (ctx, args): Promise<QuoteId> => {
+		await ctx.requireLevel("quotes", "modify");
+		const quote = await ctx.orgEntity("quotes", args.id);
+		await ctx.requireRecordScope("quotes", () =>
+			ctx.actorScope().then((s) =>
+				quote.projectId
+					? s.projectIds.has(quote.projectId)
+					: s.clientIds.has(quote.clientId)
+			)
+		);
+
+		if (quote.status === "approved" || quote.status === "declined") {
+			throw new ConvexError({
+				code: "CONFLICT",
+				message: `QUOTE_LOCKED: this quote is ${quote.status} and its valid-until date can no longer be changed.`,
+			});
+		}
+
+		// Same calendar-day semantics as create/update.
+		const tz = (await ctx.db.get(ctx.orgId))?.timezone ?? "UTC";
+		if (args.validUntil < calendarDayEpoch(Date.now(), tz)) {
+			throw new ConvexError({
+				code: "BAD_REQUEST",
+				message: "Valid until date cannot be in the past",
+			});
+		}
+
+		const revived = quote.status === "expired";
+		await ctx.db.patch(args.id, {
+			validUntil: args.validUntil,
+			// The date prints on the PDF, so the existing render goes stale.
+			contentUpdatedAt: Date.now(),
+			...(revived ? { status: "sent" as const } : {}),
+		});
+
+		if (revived) {
+			await emitStatusChangeEvent(
+				ctx,
+				quote.orgId,
+				"quote",
+				args.id,
+				"expired",
+				"sent",
+				"quotes.extendValidUntil"
+			);
+		}
+
+		// The date prints on the PDF, so an existing render is now stale. Re-render
+		// it here rather than waiting for the next send: the portal serves this
+		// document to the client today. Quotes that never had a PDF stay without
+		// one — sendToClient/ensureQuotePdf make the first render.
+		const existingPdf = await ctx.db
+			.query("documents")
+			.withIndex("by_document_version", (q) =>
+				q.eq("documentType", "quote").eq("documentId", args.id)
+			)
+			.first();
+		if (existingPdf) {
+			await ctx.scheduler.runAfter(0, internal.pdfActions.generateQuotePdf, {
+				quoteId: args.id,
+				orgId: quote.orgId,
+			});
+		}
+
+		// quotes.update used to emit this for validUntil edits — record_updated
+		// automation triggers must not go dark now that every surface saves here.
+		await emitRecordUpdatedEvent(
+			ctx,
+			quote.orgId,
+			"quote",
+			args.id,
+			["validUntil"],
+			"quotes.extendValidUntil"
+		);
+
+		return args.id;
+	},
+});
+
+/**
+ * Send a quote to the client: flips draft/declined/expired→sent and schedules
+ * a branded portal-invite email deep-linking to the quote in the client
+ * portal, where the client reviews and approves/declines. Mirror of
+ * invoices.sendToClient. Deliberately separate from the BoldSign e-signature
+ * flow, which stays web-only; an already-sent quote can be re-sent without a
+ * status change.
+ */
+export const sendToClient = userMutation({
+	args: { id: v.id("quotes") },
+	returns: v.id("quotes"),
+	handler: async (ctx, args): Promise<QuoteId> => {
+		await ctx.requireLevel("quotes", "modify");
+		const quote = await ctx.orgEntity("quotes", args.id);
+		await ctx.requireRecordScope("quotes", () =>
+			ctx.actorScope().then((s) =>
+				quote.projectId
+					? s.projectIds.has(quote.projectId)
+					: s.clientIds.has(quote.clientId)
+			)
+		);
+
+		if (quote.status === "approved") {
+			throw new ConvexError({
+				code: "CONFLICT",
+				message:
+					"This quote is already approved — convert it to an invoice instead.",
+			});
+		}
+
+		// The portal gates approval on sent status alone, so sending is the last
+		// line of defense against putting an expired offer back in front of the
+		// client (extendValidUntil is the revive path that refreshes the window).
+		// Same calendar-day comparison as extendValidUntil: valid through today
+		// still sends.
+		if (quote.validUntil !== undefined) {
+			const tz = (await ctx.db.get(ctx.orgId))?.timezone ?? "UTC";
+			if (quote.validUntil < calendarDayEpoch(Date.now(), tz)) {
+				throw new ConvexError({
+					code: "CONFLICT",
+					message:
+						"This quote's valid-until date has passed — extend it before sending.",
+				});
+			}
+		}
+
+		// The client must be reachable in the portal: portal access enabled and a
+		// primary contact with an email to receive the invite.
+		const client = await ctx.db.get(quote.clientId);
+		if (!client || client.orgId !== quote.orgId) {
+			throw new ConvexError({
+				code: "NOT_FOUND",
+				message: "Quote client not found.",
+			});
+		}
+		if (!client.portalAccessId) {
+			throw new ConvexError({
+				code: "CONFLICT",
+				message:
+					"This client has no portal access yet. Enable it on the client before sending.",
+			});
+		}
+		const primaryContact = await ctx.db
+			.query("clientContacts")
+			.withIndex("by_primary", (q) =>
+				q.eq("clientId", client._id).eq("isPrimary", true)
+			)
+			.first();
+		const recipientEmail = primaryContact?.email?.trim();
+		if (!recipientEmail) {
+			throw new ConvexError({
+				code: "CONFLICT",
+				message: "Add an email to this client's primary contact before sending.",
+			});
+		}
+
+		// Sending is the act of sending: draft, declined, and expired all move to
+		// sent (a "send again" reopens the quote). Already-sent quotes re-send
+		// the email without a transition.
+		if (quote.status !== "sent") {
+			const oldStatus = quote.status;
+			const changes = computeFieldChanges(
+				"quote",
+				quote as unknown as Record<string, unknown>,
+				{ status: "sent" }
+			);
+			await ctx.db.patch(quote._id, { status: "sent", sentAt: Date.now() });
+			const updated = await ctx.db.get(quote._id);
+			if (updated) {
+				await ActivityHelpers.quoteSent(
+					ctx,
+					updated as QuoteDocument,
+					client.companyName || "Unknown Client",
+					changes
+				);
+				await emitStatusChangeEvent(
+					ctx,
+					updated.orgId,
+					"quote",
+					updated._id,
+					oldStatus,
+					"sent",
+					"quotes.sendToClient"
+				);
+			}
+		}
+
+		// Every sent quote must end up with a CURRENT PDF (the portal blocks
+		// approval without one — the audit row pins the version the client acted
+		// on). Web enforces this at send time in the UI; here we self-heal by
+		// scheduling a server-side render of the same template when none exists
+		// or the newest one predates a content edit (revert→edit→resend cycle).
+		const newestPdf = await ctx.db
+			.query("documents")
+			.withIndex("by_document_version", (q) =>
+				q.eq("documentType", "quote").eq("documentId", args.id)
+			)
+			.order("desc")
+			.first();
+		if (
+			!newestPdf ||
+			newestPdf.generatedAt < (quote.contentUpdatedAt ?? 0)
+		) {
+			await ctx.scheduler.runAfter(0, internal.pdfActions.generateQuotePdf, {
+				quoteId: args.id,
+				orgId: quote.orgId,
+			});
+		}
+
+		// Fire-and-forget the branded portal-invite email.
+		await ctx.scheduler.runAfter(
+			0,
+			internal.portal.quoteEmail.sendQuoteReadyEmail,
+			{ quoteId: quote._id }
+		);
+
+		return args.id;
 	},
 });
 
@@ -1271,6 +1533,13 @@ export const getApprovalAudit = userQuery({
 						? row.lineItemsSnapshot
 						: null;
 
+				// In-person rows: surface who captured the signature (org user).
+				// (No org check: `users` has no orgId — membership is its own table —
+				// and capturedByUserId is always the authenticated capturer.)
+				const capturedBy = row.capturedByUserId
+					? await ctx.db.get(row.capturedByUserId)
+					: null;
+
 				return {
 					auditId: row._id,
 					action: row.action,
@@ -1281,6 +1550,8 @@ export const getApprovalAudit = userQuery({
 					declineReason: row.declineReason ?? null,
 					signatureUrl,
 					signatureMode: row.signatureMode ?? null,
+					channel: row.channel ?? null,
+					capturedByName: capturedBy?.name ?? null,
 					contactEmail: contact.email ?? "",
 					documentId: row.documentId,
 					auditPinnedPdfUrl,
@@ -1293,5 +1564,209 @@ export const getApprovalAudit = userQuery({
 		);
 
 		return dtos.filter((d): d is NonNullable<typeof d> => d !== null);
+	},
+});
+
+/**
+ * Upload target for the in-person signature blob. Quotes-gated (not
+ * documents-gated like documents.generateUploadUrl) so a member with
+ * quotes-modify but without documents-modify can still complete the
+ * signature flow — the blob only ever lands on a quoteApprovals row.
+ */
+export const generateSignatureUploadUrl = userMutation({
+	args: {},
+	handler: async (ctx) => {
+		await ctx.requireLevel("quotes", "modify");
+		return await ctx.storage.generateUploadUrl();
+	},
+});
+
+// Stroke JSON on an in-person approval. Generous for a real signature (a busy
+// one runs a few KB) while staying far under the document size limit the audit
+// row shares with its line-item snapshot.
+const MAX_SIGNATURE_RAW_DATA_CHARS = 200_000;
+
+/**
+ * Slice 3 (mobile 3.0): in-person signature capture — the client signs on an
+ * org device. Writes a FULL quoteApprovals audit row (portal parity, `channel:
+ * "in_person"`) and applies the same status effects as portal approval.
+ *
+ * Mirrors portal/quotes._commitApproval, with the workspace trust model:
+ * authenticated org user with quotes-modify instead of portal session +
+ * attestation. `ipAddress` carries the "in-person" sentinel — mutations never
+ * see a client IP, and the meaningful actor (capturedByUserId) is recorded.
+ * Terms acceptance is presented inline above the canvas, so termsAcceptedAt
+ * stamps unconditionally; intentAffirmedAt stays typed-signature-only (never
+ * set here — drawn signatures carry intent inherently).
+ */
+export const approveInPerson = userMutation({
+	args: {
+		id: v.id("quotes"),
+		clientContactId: v.id("clientContacts"),
+		expectedDocumentId: v.id("documents"),
+		signatureStorageId: v.id("_storage"),
+		signatureRawData: v.optional(v.string()),
+		deviceDescription: v.optional(v.string()),
+	},
+	handler: async (ctx, args) => {
+		await ctx.requireLevel("quotes", "modify");
+		const quote = await ctx.orgEntity("quotes", args.id);
+		await ctx.requireRecordScope("quotes", () =>
+			ctx.actorScope().then((s) =>
+				quote.projectId
+					? s.projectIds.has(quote.projectId)
+					: s.clientIds.has(quote.clientId)
+			)
+		);
+
+		if (quote.status !== "sent") {
+			throw new ConvexError({
+				code: "QUOTE_NOT_PENDING",
+				message: "Only sent quotes can be signed.",
+			});
+		}
+
+		// The stroke JSON rides along in the audit document; an oversized payload
+		// would blow the row's size limit deep inside the insert, after the OCC
+		// and scope work. Reject it up front with a message the client can show.
+		if (
+			args.signatureRawData !== undefined &&
+			args.signatureRawData.length > MAX_SIGNATURE_RAW_DATA_CHARS
+		) {
+			throw new ConvexError({
+				code: "BAD_REQUEST",
+				message: "Signature data is too large to store.",
+			});
+		}
+
+		const contact = await ctx.db.get(args.clientContactId);
+		if (
+			!contact ||
+			contact.orgId !== ctx.orgId ||
+			contact.clientId !== quote.clientId
+		) {
+			throw new ConvexError({
+				code: "FORBIDDEN",
+				message: "Signer must be a contact on this quote's client.",
+			});
+		}
+
+		// Document pin: same OCC semantics as the portal commit — the audit row
+		// pins the exact PDF version the approval covers; pin latestDocumentId
+		// here iff nothing is pinned yet.
+		const doc = await ctx.db.get(args.expectedDocumentId);
+		if (
+			!doc ||
+			doc.orgId !== ctx.orgId ||
+			doc.documentType !== "quote" ||
+			doc.documentId !== args.id
+		) {
+			throw new ConvexError({
+				code: "QUOTE_VERSION_STALE",
+				latestDocumentId: quote.latestDocumentId ?? null,
+			});
+		}
+		if (quote.latestDocumentId == null) {
+			await ctx.db.patch(args.id, { latestDocumentId: args.expectedDocumentId });
+		} else if (quote.latestDocumentId !== args.expectedDocumentId) {
+			// The pin can predate a content edit (revert→edit→resend after a
+			// BoldSign pin): a CURRENT document supersedes a stale pin — without
+			// this, ensureQuotePdf renders fresh versions the OCC check here
+			// would reject forever. Anything else is a genuine version race.
+			const pinned = await ctx.db.get(quote.latestDocumentId);
+			const contentUpdatedAt = quote.contentUpdatedAt ?? 0;
+			if (
+				pinned &&
+				pinned.generatedAt < contentUpdatedAt &&
+				doc.generatedAt >= contentUpdatedAt
+			) {
+				await ctx.db.patch(args.id, {
+					latestDocumentId: args.expectedDocumentId,
+				});
+			} else {
+				throw new ConvexError({
+					code: "QUOTE_VERSION_STALE",
+					latestDocumentId: quote.latestDocumentId,
+				});
+			}
+		}
+
+		const client = await ctx.db.get(quote.clientId);
+		const clientName = client?.companyName ?? "Client";
+
+		const lineItems = await ctx.db
+			.query("quoteLineItems")
+			.withIndex("by_quote", (q) => q.eq("quoteId", args.id))
+			.collect();
+		const lineItemsSnapshot = lineItems
+			.slice()
+			.sort((a, b) => a.sortOrder - b.sortOrder)
+			.map((li) => ({
+				description: li.description,
+				quantity: li.quantity,
+				unit: li.unit,
+				rate: li.rate,
+				amount: li.amount,
+				sortOrder: li.sortOrder,
+			}));
+		const totals = await calculateQuoteTotals(ctx, args.id, {
+			discountEnabled: quote.discountEnabled,
+			discountAmount: quote.discountAmount,
+			discountType: quote.discountType,
+			taxEnabled: quote.taxEnabled,
+			taxRate: quote.taxRate,
+		});
+
+		const now = Date.now();
+
+		// 1. Audit row first (portal commit ordering).
+		const auditId = await ctx.db.insert("quoteApprovals", {
+			quoteId: args.id,
+			orgId: ctx.orgId,
+			clientContactId: args.clientContactId,
+			action: "approved",
+			signatureStorageId: args.signatureStorageId,
+			signatureMode: "drawn",
+			signatureRawData: args.signatureRawData,
+			ipAddress: "in-person",
+			userAgent: (args.deviceDescription ?? "OneTool mobile").slice(0, 512),
+			documentId: args.expectedDocumentId,
+			documentVersion: doc.version,
+			lineItemsSnapshot,
+			subtotalSnapshot: totals.subtotal,
+			taxSnapshot: totals.taxAmount,
+			totalSnapshot: totals.total,
+			termsSnapshot: quote.terms,
+			termsAcceptedAt: now,
+			channel: "in_person",
+			capturedByUserId: ctx.user._id,
+			createdAt: now,
+		});
+
+		// 2. Status patch second.
+		await ctx.db.patch(args.id, {
+			status: "approved",
+			approvedAt: now,
+		});
+		const updatedQuote = await ctx.db.get(args.id);
+
+		// 3. Activity, 4. status event, 5. celebration — portal commit ordering.
+		if (updatedQuote) {
+			await ActivityHelpers.quoteApproved(ctx, updatedQuote, clientName);
+		}
+		await emitStatusChangeEvent(
+			ctx,
+			ctx.orgId,
+			"quote",
+			args.id,
+			"sent",
+			"approved",
+			"quotes.approveInPerson"
+		);
+		if (updatedQuote) {
+			await celebrateQuoteApproved(ctx, updatedQuote, ctx.user._id);
+		}
+
+		return { auditId, approvedAt: now };
 	},
 });

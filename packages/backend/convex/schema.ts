@@ -631,6 +631,11 @@ export default defineSchema({
 		// typed signature. Optional — rows predating the check, drawn
 		// signatures, and declines all omit it.
 		intentAffirmedAt: v.optional(v.number()),
+		// Slice 3 (mobile 3.0): in-person capture on an org device. Absent =
+		// portal. capturedByUserId = the org user who held the phone; ipAddress
+		// carries the "in-person" sentinel on these rows (mutations see no IP).
+		channel: v.optional(v.literal("in_person")),
+		capturedByUserId: v.optional(v.id("users")),
 		createdAt: v.number(),
 	})
 		.index("by_quote", ["quoteId", "createdAt"])
@@ -782,6 +787,12 @@ export default defineSchema({
 		// True when settled outside the portal (e.g. cash/check reconciled via
 		// the workspace "Mark as Paid"), so the portal can label it as such.
 		recordedOutsidePortal: v.optional(v.boolean()),
+		// How a field payment was taken, set when a row is settled through
+		// payments.recordManualPayment (mobile "Record payment").
+		manualMethod: v.optional(
+			v.union(v.literal("cash"), v.literal("check"), v.literal("other"))
+		),
+		manualNote: v.optional(v.string()),
 
 		// Legacy pay-by-link token. Retired: no longer generated for new payment
 		// rows (portal PaymentIntents correlate by paymentId). Optional so existing
@@ -1139,6 +1150,28 @@ export default defineSchema({
 	})
 		.index("by_user", ["userId"])
 		.index("by_token", ["token"]),
+
+	// Per-category push mutes (Slice 8). Unlike pushTokens (userId-only), these
+	// ARE org-scoped: a user can mute payment pushes in one org and keep them in
+	// another. orgId is the Convex organizations id — the push payload's separate
+	// `orgId` is a CLERK org id, resolved via organizations.by_clerk_org at the
+	// gate (push.ts sendNotificationPush).
+	//
+	// SEMANTICS — default ON, everywhere:
+	//   • no record for (user, org)  → every category is ON
+	//   • record exists, field absent → that category is ON
+	// Fields are optional so adding a 4th category later cannot silently mute
+	// anyone who already has a row. Only `false` ever suppresses a push.
+	notificationPreferences: defineTable({
+		userId: v.id("users"),
+		orgId: v.id("organizations"),
+		mentions: v.optional(v.boolean()),
+		automations: v.optional(v.boolean()),
+		paymentsApprovals: v.optional(v.boolean()),
+	})
+		.index("by_user_org", ["userId", "orgId"])
+		// Org-delete cascade drain (lib/orgCascade.ts).
+		.index("by_org", ["orgId"]),
 
 	// Service Status - monitoring for external service health
 	serviceStatus: defineTable({

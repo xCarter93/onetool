@@ -1,9 +1,11 @@
 import { Tabs, Redirect } from "expo-router";
 import type { Href } from "expo-router";
+import { View } from "react-native";
+import { SpeedDialFab } from "@/components/speed-dial-fab";
 import { useAuth, useOrganization, useOrganizationList } from "@clerk/expo";
 import { useQuery } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
-import { FieldKitTabBar } from "@/components/field-kit-tab-bar";
+import { GlassDock } from "@/components/glass-dock";
 import { resolveAuthDestination, SETUP_ROUTE } from "@/lib/postAuthRouting";
 import { useDevice } from "@/lib/use-device";
 import { IpadShell } from "@/components/ipad/ipad-shell";
@@ -56,23 +58,29 @@ export default function TabLayout() {
   }
 
   return (
+    <View style={{ flex: 1 }}>
     <Tabs
       screenOptions={{ headerShown: false }}
-      tabBar={(props) => <FieldKitTabBar {...props} />}
+      tabBar={(props) => <GlassDock {...props} />}
     >
-      {/* Bar order: Today · Work · [assistant FAB] · Routes · Activity. The FAB
-          is a non-route center column owned by FieldKitTabBar. */}
+      {/* Dock order: Today · Work · [assistant orb] · Money · Routes. The orb
+          is a non-route center column owned by GlassDock. Activity left the
+          dock in 3.0 — it on-ramps from Today's hero. */}
       <Tabs.Screen name="index" options={{ title: "Today" }} />
       <Tabs.Screen name="work" options={{ title: "Work" }} />
+      <Tabs.Screen name="money" options={{ title: "Money" }} />
       <Tabs.Screen name="routes" options={{ title: "Routes" }} />
-      <Tabs.Screen name="activity" options={{ title: "Activity" }} />
+      <Tabs.Screen name="activity" options={{ href: null }} />
       {/* Record surfaces stay routable for detail navigation but are reached
           THROUGH Work, so they hold no bar slot. */}
       <Tabs.Screen name="clients" options={{ href: null }} />
       <Tabs.Screen name="projects" options={{ href: null }} />
-      <Tabs.Screen name="money" options={{ href: null }} />
       {/* Profile reached via the header avatar (per CONTEXT) */}
       <Tabs.Screen name="profile" options={{ href: null }} />
     </Tabs>
+    {/* Speed-dial capture fan — sibling of Tabs so its open-state backdrop
+        paints over screens AND the dock (slice 5). */}
+    <SpeedDialFab />
+    </View>
   );
 }

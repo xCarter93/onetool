@@ -16,7 +16,10 @@ import { getCurrentUserOrgIdOrNull } from "./lib/auth";
 import { emitStatusChangeEvent } from "./eventBus";
 import { applyMarkPaidCascade } from "./lib/payments";
 import { calculateInvoiceTotals } from "./lib/invoiceTotals";
-import { dollarsToCents, roundCents, sumMoney } from "./lib/money";
+import { dollarsToCents, formatCurrency, roundCents, sumMoney } from "./lib/money";
+import { ActivityHelpers } from "./lib/activities";
+import { celebrateInvoicePaid } from "./lib/celebrations";
+import { kickQboSyncWorker, maybeEnqueueQboSync } from "./lib/quickbooksEnqueue";
 import {
 	optionalUserQuery,
 	systemMutation,
@@ -517,6 +520,221 @@ export const createDefaultPayment = userMutation({
 		});
 
 		return paymentId;
+	},
+});
+
+/**
+ * Record a payment taken in the field (cash/check) against an invoice.
+ *
+ * Works within the installment model so the sum-to-total invariant is never
+ * bent: the received amount settles unpaid installment rows in order, and when
+ * it lands mid-row the row is SPLIT — the settled part keeps the row, the
+ * still-owed remainder becomes a new row. Settling the last outstanding row
+ * flips the invoice to paid with the same effects as invoices.markPaid
+ * (activity, celebration, status event, QuickBooks sync). A full-amount
+ * payment therefore degenerates to exactly the markPaid behavior.
+ *
+ * Manual invoices created without installment rows (rows are normally
+ * backfilled at send time) get the standard full-amount row first, so
+ * recording cash against a never-sent draft works — cash-first field jobs
+ * are the point of this mutation.
+ */
+export const recordManualPayment = userMutation({
+	args: {
+		invoiceId: v.id("invoices"),
+		amount: v.number(),
+		method: v.union(
+			v.literal("cash"),
+			v.literal("check"),
+			v.literal("other")
+		),
+		note: v.optional(v.string()),
+	},
+	returns: v.object({ invoicePaid: v.boolean(), remaining: v.number() }),
+	handler: async (
+		ctx,
+		args
+	): Promise<{ invoicePaid: boolean; remaining: number }> => {
+		await ctx.requireLevel("invoices", "modify");
+		const invoice = await validateInvoiceAccess(ctx, args.invoiceId, ctx.orgId);
+		await ctx.requireRecordScope("invoices", () =>
+			ctx.actorScope().then((s) =>
+				invoice.projectId
+					? s.projectIds.has(invoice.projectId)
+					: s.clientIds.has(invoice.clientId)
+			)
+		);
+
+		if (invoice.status === "paid" || invoice.status === "cancelled") {
+			throw new ConvexError({
+				code: "CONFLICT",
+				message: `Cannot record a payment on a ${invoice.status} invoice.`,
+			});
+		}
+
+		const amount = roundCents(args.amount);
+		if (!Number.isFinite(amount) || amount <= 0) {
+			throw new ConvexError({
+				code: "BAD_REQUEST",
+				message: "Payment amount must be greater than zero.",
+			});
+		}
+
+		// Rows are normally backfilled at send time; a never-sent invoice may
+		// have none. Mirror the send-time backfill so there is something to
+		// settle against.
+		let rows = await ctx.db
+			.query("payments")
+			.withIndex("by_invoice_sort", (q) => q.eq("invoiceId", invoice._id))
+			.collect();
+		if (rows.length === 0 && invoice.total > 0) {
+			await ctx.db.insert("payments", {
+				orgId: invoice.orgId,
+				invoiceId: invoice._id,
+				paymentAmount: invoice.total,
+				dueDate: invoice.dueDate,
+				description: "Full Payment",
+				sortOrder: 0,
+				status: "pending",
+			});
+			rows = await ctx.db
+				.query("payments")
+				.withIndex("by_invoice_sort", (q) => q.eq("invoiceId", invoice._id))
+				.collect();
+		}
+
+		const outstanding = rows.filter(
+			(p) =>
+				p.status === "pending" ||
+				p.status === "sent" ||
+				p.status === "overdue"
+		);
+		const outstandingTotal = sumMoney(outstanding.map((p) => p.paymentAmount));
+		if (outstanding.length === 0 || outstandingTotal <= 0) {
+			throw new ConvexError({
+				code: "CONFLICT",
+				message: "This invoice has no outstanding balance to record against.",
+			});
+		}
+		if (amount > outstandingTotal) {
+			throw new ConvexError({
+				code: "BAD_REQUEST",
+				message: `Amount exceeds the remaining balance of ${formatCurrency(outstandingTotal)}.`,
+			});
+		}
+
+		const now = Date.now();
+		const settle = {
+			status: "paid" as const,
+			paidAt: now,
+			recordedOutsidePortal: true,
+			manualMethod: args.method,
+			manualNote: args.note?.trim() || undefined,
+			// Drop any stale in-flight Stripe cache so the portal can't resume a
+			// mint against a now-settled row (mirrors settleOutstandingPayments).
+			pendingPaymentIntentId: undefined,
+			pendingPaymentIntentClientSecret: undefined,
+			pendingPaymentIntentExpiresAt: undefined,
+			pendingCheckoutSessionId: undefined,
+			pendingCheckoutSessionUrl: undefined,
+			pendingCheckoutSessionExpiresAt: undefined,
+		};
+
+		// Settle rows in display order; one QBO worker kick for the whole batch.
+		let left = amount;
+		let qboSyncQueued = false;
+		const enqueueRow = async (paymentId: Id<"payments">) => {
+			if (
+				await maybeEnqueueQboSync(ctx, invoice.orgId, "payment", paymentId, {
+					kick: false,
+				})
+			) {
+				qboSyncQueued = true;
+			}
+		};
+		for (const row of outstanding) {
+			if (left <= 0) break;
+			const rowAmount = roundCents(row.paymentAmount);
+			if (left >= rowAmount) {
+				await ctx.db.patch(row._id, settle);
+				await enqueueRow(row._id);
+				left = roundCents(left - rowAmount);
+			} else {
+				// Split: this row becomes the settled part; the remainder becomes a
+				// fresh pending row right after it (no Stripe/token carry-over).
+				// Both parts are cent-aligned, so their sum is exactly rowAmount and
+				// the invoice-total invariant holds.
+				await ctx.db.patch(row._id, { ...settle, paymentAmount: left });
+				await enqueueRow(row._id);
+				for (const later of rows) {
+					if (later._id !== row._id && later.sortOrder > row.sortOrder) {
+						await ctx.db.patch(later._id, {
+							sortOrder: later.sortOrder + 1,
+						});
+					}
+				}
+				await ctx.db.insert("payments", {
+					orgId: row.orgId,
+					invoiceId: row.invoiceId,
+					paymentAmount: roundCents(rowAmount - left),
+					dueDate: row.dueDate,
+					// Distinct label so the portal/PDF don't show two same-named rows.
+					description: `${row.description ?? "Payment"} (balance)`,
+					sortOrder: row.sortOrder + 1,
+					status: row.status,
+				});
+				left = 0;
+			}
+		}
+
+		const remaining = roundCents(outstandingTotal - amount);
+		const fullySettled = remaining === 0;
+
+		if (fullySettled) {
+			// Same effect set as invoices.markPaid, plus the status event that the
+			// automation triggers and payment-received notifications hang off.
+			const oldStatus = invoice.status;
+			await ctx.db.patch(invoice._id, { status: "paid", paidAt: now });
+			const updatedInvoice = await ctx.db.get(invoice._id);
+			if (updatedInvoice) {
+				const client = await ctx.db.get(updatedInvoice.clientId);
+				await ActivityHelpers.invoicePaid(
+					ctx,
+					updatedInvoice as Doc<"invoices">,
+					client?.companyName || "Unknown Client"
+				);
+				await celebrateInvoicePaid(ctx, updatedInvoice, ctx.user._id);
+				await emitStatusChangeEvent(
+					ctx,
+					updatedInvoice.orgId,
+					"invoice",
+					updatedInvoice._id,
+					oldStatus,
+					"paid",
+					"payments.recordManualPayment"
+				);
+				if (
+					await maybeEnqueueQboSync(
+						ctx,
+						updatedInvoice.orgId,
+						"invoice",
+						updatedInvoice._id,
+						{ kick: false }
+					)
+				) {
+					qboSyncQueued = true;
+				}
+			}
+		}
+		if (qboSyncQueued) {
+			await kickQboSyncWorker(ctx, invoice.orgId);
+		}
+
+		// The payment schedule prints on the invoice PDF — mark it stale like
+		// every other schedule-changing mutation in this file.
+		await touchInvoiceContent(ctx, invoice._id);
+
+		return { invoicePaid: fullySettled, remaining };
 	},
 });
 

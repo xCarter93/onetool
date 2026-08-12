@@ -10,16 +10,27 @@ import {
 	TextInput,
 	View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import {
+	SafeAreaView,
+	useSafeAreaInsets,
+} from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { useMutation } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { Id } from "@onetool/backend/convex/_generated/dataModel";
-import { fontFamily, radii, type, useTokens } from "@/lib/theme";
+import {
+	colors,
+	DOCK_CLEARANCE,
+	fontFamily,
+	radii,
+	type,
+	useTokens,
+} from "@/lib/theme";
 import { AppHeader } from "@/components/app-header";
 import { PaneHeader } from "@/components/ipad/pane-header";
 import { Button, DotGrid } from "@/components/ui";
 import { useDevice } from "@/lib/use-device";
+import { describeMutationError } from "@/lib/mutation-error";
 import {
 	AddressAutocomplete,
 	type AddressValue,
@@ -62,6 +73,10 @@ export function ClientCreateBody({
 	const { device } = useDevice();
 	// No explicit headerMode (iPhone route) → self-detect; the shell passes "pane".
 	const isPane = headerMode ? headerMode === "pane" : device === "ipad";
+	const insets = useSafeAreaInsets();
+	// The floating dock takes no layout height — scroll content clears it
+	// itself. iPad panes have no dock (the shell replaces Tabs).
+	const scrollBottom = isPane ? 48 : DOCK_CLEARANCE + insets.bottom;
 
 	const createClient = useMutation(api.clients.create);
 	const createContact = useMutation(api.clientContacts.create);
@@ -169,9 +184,15 @@ export function ClientCreateBody({
 			else router.replace(`/clients/${clientId}`);
 		} catch (err) {
 			console.error("Client create failed:", err);
+			const { message, planLimit } = describeMutationError(
+				err,
+				"Couldn't save your changes. Check your connection and try again."
+			);
 			Alert.alert(
-				"Couldn't save",
-				"Couldn't save your changes. Check your connection and try again.",
+				planLimit ? "Plan limit reached" : "Couldn't save",
+				planLimit
+					? `${message} Upgrade on the web app to add more.`
+					: "Couldn't save your changes. Check your connection and try again.",
 				[{ text: "OK" }]
 			);
 		} finally {
@@ -202,7 +223,10 @@ export function ClientCreateBody({
 			>
 				<ScrollView
 					style={styles.flex}
-					contentContainerStyle={styles.content}
+					contentContainerStyle={[
+						styles.content,
+						{ paddingBottom: scrollBottom },
+					]}
 					keyboardShouldPersistTaps="handled"
 					showsVerticalScrollIndicator={false}
 				>
@@ -349,7 +373,10 @@ export function ClientCreateBody({
 						disabled={submitting}
 						icon={
 							submitting ? (
-								<ActivityIndicator size="small" color="#ffffff" />
+								<ActivityIndicator
+									size="small"
+									color={colors.primaryForeground}
+								/>
 							) : undefined
 						}
 						style={styles.submit}

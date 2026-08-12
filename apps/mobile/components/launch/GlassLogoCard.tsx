@@ -55,7 +55,7 @@ export function GlassLogoCard() {
 		<View style={[styles.stage, isPad && styles.stagePad]}>
 			<Animated.View style={[styles.logoWrap, logoStyle]}>
 				<Image
-					source={require("../../assets/OneTool-wordmark.png")}
+					source={require("../../assets/OneTool-wordmark-light.png")}
 					style={styles.logo}
 					resizeMode="contain"
 				/>

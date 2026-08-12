@@ -5,6 +5,7 @@ import {
 	Pressable,
 	Linking,
 	ActivityIndicator,
+	type ViewStyle,
 } from "react-native";
 import { useState } from "react";
 import { useQuery, useMutation } from "convex/react";
@@ -13,15 +14,18 @@ import { Card, Button } from "@/components/ui";
 import { fontFamily, radii, useTokens } from "@/lib/theme";
 import { FileText, Download, Upload } from "lucide-react-native";
 import * as FileSystem from "expo-file-system/legacy";
-import { pickUpload } from "@/lib/upload";
+import { pickUpload, uploadToConvex } from "@/lib/upload";
+import { usePermissions } from "@/lib/use-permissions";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
 
-interface ProjectDocumentsProps {
-	projectId: Id<"projects">;
-}
+// The record a documents section hangs off. Project and client documents are
+// separate backend tables with mirrored APIs.
+export type DocumentTarget =
+	| { kind: "project"; id: Id<"projects"> }
+	| { kind: "client"; id: Id<"clients"> };
 
-type ProjectDocument = {
-	_id: Id<"projectDocuments">;
+type RecordDocument = {
+	_id: Id<"projectDocuments"> | Id<"clientDocuments">;
 	name: string;
 	fileName: string;
 	fileSize: number;
@@ -30,6 +34,15 @@ type ProjectDocument = {
 	downloadUrl: string | null;
 };
 
+type CreateArgs = {
+	name: string;
+	fileName: string;
+	fileSize: number;
+	mimeType: string;
+	storageId: Id<"_storage">;
+};
+
+// Matches StorageConfig.MAX_FILE_SIZE in packages/backend/convex/lib/storage.ts.
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
 
 const formatFileSize = (bytes: number): string => {
@@ -48,20 +61,81 @@ const formatDate = (timestamp: number): string =>
 		day: "numeric",
 	});
 
-export function ProjectDocuments({ projectId }: ProjectDocumentsProps) {
+export function RecordDocuments({ target }: { target: DocumentTarget }) {
+	// Branch into per-table variants so each keeps a static set of hooks and
+	// exact create-arg types (projectId vs clientId).
+	return target.kind === "project" ? (
+		<ProjectVariant projectId={target.id} />
+	) : (
+		<ClientVariant clientId={target.id} />
+	);
+}
+
+function ProjectVariant({ projectId }: { projectId: Id<"projects"> }) {
+	const { can, isLoading: permsLoading } = usePermissions();
+	// The list queries call requireLevel("documents", "view") and THROW on denial —
+	// an unguarded useQuery would drop the screen into the root ErrorBoundary.
+	const docsResult = useQuery(
+		api.projectDocuments.listByProject,
+		projectId && can("documents", "view") ? { projectId } : "skip"
+	);
+	const generateUploadUrl = useMutation(api.projectDocuments.generateUploadUrl);
+	const createDoc = useMutation(api.projectDocuments.create);
+
+	return (
+		<DocumentsCard
+			docs={docsResult}
+			// The project screen renders its own SectionHeader above this card.
+			title={() => null}
+			generateUploadUrl={generateUploadUrl}
+			createDoc={(args) => createDoc({ projectId, ...args })}
+			canUpload={permsLoading || can("documents", "modify")}
+		/>
+	);
+}
+
+function ClientVariant({ clientId }: { clientId: Id<"clients"> }) {
+	const { can, isLoading: permsLoading } = usePermissions();
+	const docsResult = useQuery(
+		api.clientDocuments.listByClient,
+		clientId && can("documents", "view") ? { clientId } : "skip"
+	);
+	const generateUploadUrl = useMutation(api.clientDocuments.generateUploadUrl);
+	const createDoc = useMutation(api.clientDocuments.create);
+
+	return (
+		<DocumentsCard
+			docs={docsResult}
+			// The client screen renders its own SectionHeader above this card.
+			title={() => null}
+			generateUploadUrl={generateUploadUrl}
+			createDoc={(args) => createDoc({ clientId, ...args })}
+			canUpload={permsLoading || can("documents", "modify")}
+		/>
+	);
+}
+
+function DocumentsCard({
+	docs: docsResult,
+	title,
+	generateUploadUrl,
+	createDoc,
+	canUpload,
+	style,
+}: {
+	docs: RecordDocument[] | undefined;
+	title: (count: number) => string | null;
+	generateUploadUrl: () => Promise<string>;
+	createDoc: (args: CreateArgs) => Promise<unknown>;
+	canUpload: boolean;
+	style?: ViewStyle;
+}) {
 	const t = useTokens();
 	const [uploading, setUploading] = useState(false);
 	const [uploadError, setUploadError] = useState<string | null>(null);
 
-	const docsResult = useQuery(
-		api.projectDocuments.listByProject,
-		projectId ? { projectId } : "skip"
-	);
 	const loading = docsResult === undefined;
 	const docs = docsResult ?? [];
-
-	const generateUploadUrl = useMutation(api.projectDocuments.generateUploadUrl);
-	const createDoc = useMutation(api.projectDocuments.create);
 
 	const handleUpload = async () => {
 		setUploadError(null);
@@ -78,33 +152,29 @@ export function ProjectDocuments({ projectId }: ProjectDocumentsProps) {
 				const info = await FileSystem.getInfoAsync(file.uri);
 				fileSize = info.exists ? info.size : 0;
 			}
-			if (fileSize <= 0 || fileSize > MAX_FILE_SIZE) {
-				setUploadError("Upload failed. Try again.");
+			if (fileSize > MAX_FILE_SIZE) {
+				setUploadError("Files must be under 10 MB.");
+				return;
+			}
+			if (fileSize <= 0) {
+				setUploadError("Couldn't read that file. Try another one.");
 				return;
 			}
 
 			const uploadUrl = await generateUploadUrl();
-			// Stream the file URI natively. RN's bridgeless fetch() can't read a
-			// local file:// blob, so a Blob body uploads empty / throws.
-			const up = await FileSystem.uploadAsync(uploadUrl, file.uri, {
-				httpMethod: "POST",
-				uploadType: FileSystem.FileSystemUploadType.BINARY_CONTENT,
-				headers: { "Content-Type": file.mimeType },
+			const storageId = await uploadToConvex(uploadUrl, {
+				uri: file.uri,
+				mimeType: file.mimeType,
 			});
-			if (up.status !== 200) throw new Error("Upload failed");
-			const { storageId } = JSON.parse(up.body) as {
-				storageId: Id<"_storage">;
-			};
 
 			await createDoc({
-				projectId,
 				name: file.name,
 				fileName: file.name,
 				fileSize,
 				mimeType: file.mimeType,
 				storageId,
 			});
-			// listByProject is reactive — it auto-refreshes after create.
+			// The list query is reactive — it auto-refreshes after create.
 		} catch (error) {
 			console.error("Document upload error:", error);
 			setUploadError("Upload failed. Try again.");
@@ -113,7 +183,8 @@ export function ProjectDocuments({ projectId }: ProjectDocumentsProps) {
 		}
 	};
 
-	const uploadButton = (
+	// Hide, don't dim — matches the house convention for permission-gated actions.
+	const uploadButton = !canUpload ? null : (
 		<View style={styles.uploadRow}>
 			{uploading ? (
 				<View style={styles.uploadingRow}>
@@ -138,7 +209,7 @@ export function ProjectDocuments({ projectId }: ProjectDocumentsProps) {
 		</View>
 	);
 
-	const handleDocumentPress = async (doc: ProjectDocument) => {
+	const handleDocumentPress = async (doc: RecordDocument) => {
 		// downloadUrl can be null when the storage ref is missing — never call
 		// Linking.openURL(null).
 		if (!doc.downloadUrl) return;
@@ -150,12 +221,17 @@ export function ProjectDocuments({ projectId }: ProjectDocumentsProps) {
 		}
 	};
 
+	const heading = (count: number) => {
+		const text = title(count);
+		return text ? (
+			<Text style={[styles.cardTitle, { color: t.ink }]}>{text}</Text>
+		) : null;
+	};
+
 	if (loading) {
 		return (
-			<Card style={styles.card}>
-				<Text style={[styles.cardTitle, { color: t.ink }]}>
-					Project Documents
-				</Text>
+			<Card style={style}>
+				{heading(0)}
 				<View style={styles.loadingContainer}>
 					<ActivityIndicator size="small" color={t.accent} />
 					<Text style={[styles.loadingText, { color: t.mutedForeground }]}>
@@ -168,10 +244,8 @@ export function ProjectDocuments({ projectId }: ProjectDocumentsProps) {
 
 	if (docs.length === 0) {
 		return (
-			<Card style={styles.card}>
-				<Text style={[styles.cardTitle, { color: t.ink }]}>
-					Project Documents
-				</Text>
+			<Card style={style}>
+				{heading(0)}
 				<View style={styles.emptyContainer}>
 					<View style={[styles.emptyIcon, { backgroundColor: t.muted }]}>
 						<FileText size={28} color={t.mutedForeground} />
@@ -186,10 +260,8 @@ export function ProjectDocuments({ projectId }: ProjectDocumentsProps) {
 	}
 
 	return (
-		<Card style={styles.card}>
-			<Text style={[styles.cardTitle, { color: t.ink }]}>
-				Project Documents ({docs.length})
-			</Text>
+		<Card style={style}>
+			{heading(docs.length)}
 			<View style={styles.documentsList}>
 				{docs.map((doc) => {
 					const openable = !!doc.downloadUrl;
@@ -271,9 +343,6 @@ export function ProjectDocuments({ projectId }: ProjectDocumentsProps) {
 }
 
 const styles = StyleSheet.create({
-	card: {
-		marginTop: 16,
-	},
 	cardTitle: {
 		fontSize: 14,
 		fontFamily: fontFamily.semibold,

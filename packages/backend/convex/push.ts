@@ -16,6 +16,7 @@ import { v } from "convex/values";
 import { Id } from "./_generated/dataModel";
 import { getCurrentUserOrThrow } from "./lib/auth";
 import { externalIoPool } from "./externalIoPool";
+import { categoryForNotificationType } from "./notificationPreferences";
 
 const EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send";
 const EXPO_CHUNK_SIZE = 100;
@@ -97,8 +98,24 @@ export const sendNotificationPush = internalAction({
 		url: v.string(),
 		notificationId: v.id("notifications"),
 		orgId: v.string(),
+		// OPTIONAL for deploy safety, not because callers may omit it: jobs
+		// enqueued by pre-Slice-8 code outlive the deploy (the workpool path can
+		// hold automation pushes under backlog), and a required arg would fail
+		// their validation on run. Absent → unknown category → fail open.
+		notificationType: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
+		// Per-category mute (Slice 8), checked BEFORE token fetch. Unknown types
+		// and unresolvable orgs fail open — a mute is only ever an explicit false.
+		const category = categoryForNotificationType(args.notificationType ?? "");
+		if (category) {
+			const prefs = await ctx.runQuery(
+				internal.notificationPreferences.effectiveForUserOrg,
+				{ userId: args.taggedUserId, clerkOrgId: args.orgId }
+			);
+			if (!prefs[category]) return;
+		}
+
 		const tokens = await ctx.runQuery(internal.push.tokensForUser, {
 			userId: args.taggedUserId,
 		});
@@ -166,6 +183,10 @@ export const PUSHABLE_TYPES = new Set<string>([
 	"quote_mention",
 	// Workflow-automation team messages (send_team_message action).
 	"automation_message",
+	// Celebrations — Slice 8. Failure types (automation_failed, …) stay off the
+	// list deliberately: they are bell-only, never a phone buzz.
+	"quote_approved",
+	"payment_received",
 ]);
 
 // Single extensibility seam: self-gates on PUSHABLE_TYPES, then schedules the send.
@@ -189,6 +210,7 @@ export async function enqueuePush(
 		url: args.url,
 		notificationId: args.notificationId,
 		orgId: args.orgId,
+		notificationType: args.notificationType,
 	});
 }
 
@@ -218,5 +240,6 @@ export async function enqueuePushViaPool(
 		url: args.url,
 		notificationId: args.notificationId,
 		orgId: args.orgId,
+		notificationType: args.notificationType,
 	});
 }

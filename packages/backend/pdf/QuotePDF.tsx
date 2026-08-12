@@ -7,8 +7,8 @@ import {
 	StyleSheet,
 	Image,
 } from "@react-pdf/renderer";
-import type { Id } from "@onetool/backend/convex/_generated/dataModel";
-import { formatCurrency } from "@/lib/money";
+import type { Id } from "../convex/_generated/dataModel";
+import { formatCurrency } from "./format";
 
 type QuoteLineItem = {
 	_id: Id<"quoteLineItems">;

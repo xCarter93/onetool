@@ -18,6 +18,7 @@ import {
 	emitRecordUpdatedEvent,
 } from "./eventBus";
 import { computeFieldChanges } from "./lib/changeTracking";
+import { buildPortalInvoiceUrl } from "./portal/invoiceUrl";
 import { maybeEnqueueQboSync } from "./lib/quickbooksEnqueue";
 import { calculateInvoiceTotals, syncInvoiceTotals } from "./lib/invoiceTotals";
 import { assertInvoiceContentEditable } from "./lib/editLocks";
@@ -26,6 +27,7 @@ import { roundCents, sumMoney, dollarsToCents } from "./lib/money";
 import {
 	optionalUserQuery,
 	userMutation,
+	userQuery,
 	type UserMutationCtx,
 } from "./lib/factories";
 
@@ -87,39 +89,6 @@ async function createInvoiceWithOrg(
 // Define specific types for invoice operations
 type InvoiceDocument = Doc<"invoices">;
 type InvoiceId = Id<"invoices">;
-
-// Interface for invoice statistics
-interface InvoiceStats {
-	total: number;
-	byStatus: {
-		draft: number;
-		sent: number;
-		paid: number;
-		overdue: number;
-		cancelled: number;
-	};
-	totalValue: number;
-	totalPaid: number;
-	totalOutstanding: number;
-	thisMonth: number;
-}
-
-function createEmptyInvoiceStats(): InvoiceStats {
-	return {
-		total: 0,
-		byStatus: {
-			draft: 0,
-			sent: 0,
-			paid: 0,
-			overdue: 0,
-			cancelled: 0,
-		},
-		totalValue: 0,
-		totalPaid: 0,
-		totalOutstanding: 0,
-		thisMonth: 0,
-	};
-}
 
 // ============================================================================
 // Queries
@@ -624,7 +593,11 @@ export const update = userMutation({
 			}
 
 			if (filteredUpdates.status === "paid" && oldStatus !== "paid") {
-				await celebrateInvoicePaid(ctx, updatedInvoice as InvoiceDocument);
+				await celebrateInvoicePaid(
+					ctx,
+					updatedInvoice as InvoiceDocument,
+					ctx.user._id
+				);
 			}
 
 			// Emit status change event if status changed
@@ -767,6 +740,27 @@ export const sendToClient = userMutation({
 
 		await maybeEnqueueQboSync(ctx, invoice.orgId, "invoice", invoice._id);
 
+		// Sent invoices should carry a CURRENT PDF like web-sent ones do (portal
+		// download, consistent records). Self-heal with a server-side render of
+		// the same template when none exists or the newest one predates a
+		// content edit — mirror of quotes.sendToClient.
+		const newestPdf = await ctx.db
+			.query("documents")
+			.withIndex("by_document_version", (q) =>
+				q.eq("documentType", "invoice").eq("documentId", invoice._id)
+			)
+			.order("desc")
+			.first();
+		if (
+			!newestPdf ||
+			newestPdf.generatedAt < (invoice.contentUpdatedAt ?? 0)
+		) {
+			await ctx.scheduler.runAfter(0, internal.pdfActions.generateInvoicePdf, {
+				invoiceId: invoice._id,
+				orgId: invoice.orgId,
+			});
+		}
+
 		// Fire-and-forget the branded portal-invite email.
 		await ctx.scheduler.runAfter(
 			0,
@@ -779,9 +773,44 @@ export const sendToClient = userMutation({
 });
 
 /**
+ * The client-facing portal URL for this invoice — the "share pay link"
+ * surface on mobile. Backend-served (reusing the email's URL builder) so the
+ * portal origin has exactly one source of truth. Null when the client has no
+ * portal access yet; callers gate the share affordance on that.
+ */
+export const getPortalLink = userQuery({
+	args: { id: v.id("invoices") },
+	returns: v.union(v.string(), v.null()),
+	handler: async (ctx, args): Promise<string | null> => {
+		await ctx.requireLevel("invoices", "view");
+		const invoice = await ctx.orgEntity("invoices", args.id);
+		await ctx.requireRecordScope("invoices", () =>
+			ctx.actorScope().then((s) =>
+				invoice.projectId
+					? s.projectIds.has(invoice.projectId)
+					: s.clientIds.has(invoice.clientId)
+			)
+		);
+		const client = await ctx.db.get(invoice.clientId);
+		if (!client || client.orgId !== invoice.orgId || !client.portalAccessId) {
+			return null;
+		}
+		// A deployment without the portal origin configured has no link to give;
+		// null hides the share affordance instead of throwing the detail screen's
+		// query (buildPortalInvoiceUrl raises on a missing issuer).
+		if (!process.env.PORTAL_JWT_ISSUER) {
+			return null;
+		}
+		return buildPortalInvoiceUrl({
+			portalAccessId: client.portalAccessId,
+			invoiceId: invoice._id,
+		});
+	},
+});
+
+/**
  * Mark an invoice as paid
  */
-// TODO: Candidate for deletion if confirmed unused.
 export const markPaid = userMutation({
 	args: {
 		id: v.id("invoices"),
@@ -829,7 +858,11 @@ export const markPaid = userMutation({
 				updatedInvoice as InvoiceDocument,
 				client?.companyName || "Unknown Client"
 			);
-			await celebrateInvoicePaid(ctx, updatedInvoice as InvoiceDocument);
+			await celebrateInvoicePaid(
+					ctx,
+					updatedInvoice as InvoiceDocument,
+					ctx.user._id
+				);
 			await maybeEnqueueQboSync(
 				ctx,
 				updatedInvoice.orgId,
@@ -873,78 +906,6 @@ export const remove = userMutation({
 		await ctx.db.delete(args.id);
 
 		return args.id;
-	},
-});
-
-/**
- * Get invoice statistics for dashboard
- */
-// TODO: Candidate for deletion if confirmed unused.
-export const getStats = optionalUserQuery({
-	args: {},
-	handler: async (ctx): Promise<InvoiceStats> => {
-		const orgId = ctx.orgId;
-		if (!orgId) return createEmptyInvoiceStats();
-		await ctx.requireLevel("invoices", "view");
-
-		const allInvoices = await ctx.db
-			.query("invoices")
-			.withIndex("by_org", (q) => q.eq("orgId", orgId))
-			.collect();
-		const invoices = await ctx.applyReadScope(
-			"invoices",
-			allInvoices,
-			(invoice, scope) =>
-				invoice.projectId
-					? scope.projectIds.has(invoice.projectId)
-					: scope.clientIds.has(invoice.clientId)
-		);
-
-		const stats: InvoiceStats = {
-			total: invoices.length,
-			byStatus: {
-				draft: 0,
-				sent: 0,
-				paid: 0,
-				overdue: 0,
-				cancelled: 0,
-			},
-			totalValue: 0,
-			totalPaid: 0,
-			totalOutstanding: 0,
-			thisMonth: 0,
-		};
-
-		const now = Date.now();
-		const monthStart = new Date();
-		monthStart.setDate(1);
-		monthStart.setHours(0, 0, 0, 0);
-		const monthStartTime = monthStart.getTime();
-
-		invoices.forEach((invoice: InvoiceDocument) => {
-			// Check if overdue
-			const isOverdue = invoice.status === "sent" && invoice.dueDate < now;
-			const status = isOverdue ? "overdue" : invoice.status;
-
-			// Count by status
-			stats.byStatus[status as keyof typeof stats.byStatus]++;
-
-			// Calculate financial values
-			stats.totalValue += invoice.total;
-
-			if (invoice.status === "paid") {
-				stats.totalPaid += invoice.total;
-			} else if (invoice.status === "sent" || isOverdue) {
-				stats.totalOutstanding += invoice.total;
-			}
-
-			// Count this month's invoices
-			if (invoice._creationTime >= monthStartTime) {
-				stats.thisMonth++;
-			}
-		});
-
-		return stats;
 	},
 });
 
@@ -1077,6 +1038,31 @@ export const generateInvoiceNumber = userMutation({
 /**
  * Create invoice from quote
  */
+/**
+ * The invoice created from a quote, if any — drives mobile's "View invoice"
+ * CTA and hasInvoice capability without the drawer's heavy getPreview.
+ */
+export const getByQuote = userQuery({
+	args: { quoteId: v.id("quotes") },
+	returns: v.union(v.object({ _id: v.id("invoices") }), v.null()),
+	handler: async (ctx, args): Promise<{ _id: InvoiceId } | null> => {
+		await ctx.requireLevel("invoices", "view");
+		await ctx.orgEntity("quotes", args.quoteId);
+		const invoice = await ctx.db
+			.query("invoices")
+			.withIndex("by_quote", (q) => q.eq("quoteId", args.quoteId))
+			.first();
+		if (!invoice || invoice.orgId !== ctx.orgId) return null;
+		// Record scope decides too: a member scoped to their own projects must not
+		// learn that an invoice exists on a quote they can't open. Filtering (not
+		// throwing) keeps the "View invoice" CTA simply absent for them.
+		const visible = await ctx.applyReadScope("invoices", [invoice], (row, s) =>
+			row.projectId ? s.projectIds.has(row.projectId) : s.clientIds.has(row.clientId)
+		);
+		return visible.length > 0 ? { _id: invoice._id } : null;
+	},
+});
+
 export const createFromQuote = userMutation({
 	args: {
 		quoteId: v.id("quotes"),

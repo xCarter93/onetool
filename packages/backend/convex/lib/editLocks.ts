@@ -8,8 +8,15 @@ import { ConvexError } from "convex/values";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import type { Doc, Id } from "../_generated/dataModel";
 
-/** Quote statuses whose content is frozen. `expired` stays editable (re-quote). */
-const LOCKED_QUOTE_STATUSES = new Set<Doc<"quotes">["status"]>([
+/**
+ * Quote content is editable in DRAFT ONLY. A sent quote is sitting with the
+ * customer for review — editing it requires reverting to draft, which pulls it
+ * from the portal until re-sent. Expired quotes revise via Reopen→draft.
+ * Approved/declined stay permanently frozen. Invoices are deliberately looser
+ * (see below): they're bills, not offers, and field corrections before money
+ * settles are legitimate.
+ */
+const TERMINAL_QUOTE_STATUSES = new Set<Doc<"quotes">["status"]>([
 	"approved",
 	"declined",
 ]);
@@ -33,13 +40,20 @@ const SETTLED_PAYMENT_STATUSES = new Set<Doc<"payments">["status"]>([
 
 /**
  * Throw when a quote's client-visible content may no longer be edited.
- * Approved and declined quotes are frozen; draft/sent/expired stay editable.
+ * Draft-only: terminal statuses are frozen forever; sent/expired quotes say
+ * how to unlock (revert to draft).
  */
 export function assertQuoteContentEditable(quote: Doc<"quotes">): void {
-	if (LOCKED_QUOTE_STATUSES.has(quote.status)) {
+	if (TERMINAL_QUOTE_STATUSES.has(quote.status)) {
 		throw new ConvexError({
 			code: "CONFLICT",
 			message: `QUOTE_LOCKED: this quote is ${quote.status} and its line items, pricing and terms can no longer be edited.`,
+		});
+	}
+	if (quote.status !== "draft") {
+		throw new ConvexError({
+			code: "CONFLICT",
+			message: `QUOTE_LOCKED: this quote is ${quote.status} — revert it to draft to edit line items, pricing and terms.`,
 		});
 	}
 }

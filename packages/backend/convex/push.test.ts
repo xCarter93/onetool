@@ -292,9 +292,12 @@ describe("push", () => {
 			vi.unstubAllGlobals();
 		});
 
-		it("schedules NO sendNotificationPush job for a non-mention type (payment_received)", async () => {
-			// A notification with a non-mention type must NOT push: enqueuePush
-			// self-gates on PUSHABLE_TYPES (v1 mentions-only gate).
+		// Slice 8 moved payment_received/quote_approved ONTO the allowlist, so the
+		// negative case now rides a failure type. automation_failed is bell-only
+		// by design and must stay unpushable regardless of any user preference.
+		it("schedules NO sendNotificationPush job for a non-pushable type (automation_failed)", async () => {
+			// A notification with a non-pushable type must NOT push: enqueuePush
+			// self-gates on PUSHABLE_TYPES.
 			const { orgId, clerkOrgId, taggedId } = await t.run(async (ctx) => {
 				const author = await createTestOrg(ctx);
 				const tagged = await addMemberToOrg(ctx, author.orgId);
@@ -311,31 +314,31 @@ describe("push", () => {
 				};
 			});
 
-			// enqueuePush self-gates on PUSHABLE_TYPES: a non-mention type schedules
+			// enqueuePush self-gates on PUSHABLE_TYPES: a non-pushable type schedules
 			// no sendNotificationPush job, so no exp.host fetch ever occurs.
 			await t.run(async (ctx) => {
 				const notificationId = await ctx.db.insert("notifications", {
 					orgId,
 					userId: taggedId,
-					notificationType: "payment_received",
-					title: "Payment received",
-					message: "payment_received",
+					notificationType: "automation_failed",
+					title: "Automation failed",
+					message: "automation_failed",
 					isRead: false,
 				});
 				const { enqueuePush } = await import("./push");
 				await enqueuePush(ctx, {
-					notificationType: "payment_received",
+					notificationType: "automation_failed",
 					taggedUserId: taggedId,
-					title: "Payment received",
-					body: "payment_received",
-					url: "/money",
+					title: "Automation failed",
+					body: "automation_failed",
+					url: "/automations",
 					notificationId,
 					orgId: clerkOrgId,
 				});
 			});
 			await t.finishInProgressScheduledFunctions();
 
-			// No mention type → no scheduled send → no exp.host fetch.
+			// Non-pushable type → no scheduled send → no exp.host fetch.
 			expect(fetchSpy).not.toHaveBeenCalledWith(
 				"https://exp.host/--/api/v2/push/send",
 				expect.anything()
@@ -393,6 +396,9 @@ describe("push", () => {
 				url: "/clients/x",
 				notificationId,
 				orgId: "org_x",
+				// "org_x" resolves to no organization → the prefs gate fails open,
+				// so this chunking assertion is unaffected by Slice 8.
+				notificationType: "client_mention",
 			});
 
 			// 150 → 100 + 50 = exactly two POSTs, each ≤100 messages.
