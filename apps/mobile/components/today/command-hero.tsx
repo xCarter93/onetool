@@ -39,6 +39,12 @@ interface CommandHeroProps {
 	 * so keeping them would both mislead and steal the room the schedule needs.
 	 */
 	compact?: boolean;
+	/**
+	 * iPad pane: the rail already owns the org chip, the bell and the avatar, and
+	 * the status bar spans the light rail too — so the hero drops its chrome and
+	 * leaves the glyphs dark.
+	 */
+	hideChrome?: boolean;
 	/** The ink-tone week strip (or any pinned control) below the stats. */
 	children?: React.ReactNode;
 }
@@ -53,6 +59,7 @@ export function CommandHero({
 	greeting,
 	stats,
 	compact = false,
+	hideChrome = false,
 	children,
 }: CommandHeroProps) {
 	const router = useRouter();
@@ -71,6 +78,21 @@ export function CommandHero({
 		);
 	};
 
+	// Today has no AppHeader on iPhone, so the hero carries the global search jump
+	// the other tab roots get from app-header.tsx. One element, two homes: the org
+	// bar on phone, the greeting line in a pane.
+	const searchButton = (
+		<InkIconButton
+			label="Search everything"
+			onPress={() => {
+				requestSearchFocus();
+				router.push(WORK);
+			}}
+		>
+			<Search size={18} color={hero.text} strokeWidth={2} />
+		</InkIconButton>
+	);
+
 	return (
 		<View
 			onLayout={onLayout}
@@ -78,7 +100,7 @@ export function CommandHero({
 		>
 			{/* The dark band needs light status-bar glyphs — but only while Today
 			    is the focused tab, or Work/Money inherit invisible icons. */}
-			{isFocused ? <StatusBar style="light" /> : null}
+			{isFocused && !hideChrome ? <StatusBar style="light" /> : null}
 			{size.width > 0 && (
 				<Svg
 					width={size.width}
@@ -104,33 +126,41 @@ export function CommandHero({
 			)}
 			<DotGrid style={StyleSheet.absoluteFill} color={hero.dotGrid} />
 
-			{/* Org bar */}
-			<View style={styles.orgBar}>
-				<InkOrgChip />
-				<View style={styles.spacer} />
-				{/* No ＋ here — the speed-dial FAB is the single capture entry point
-				    on iPhone (3.0 slice 5). */}
-				{/* Today has no AppHeader on iPhone, so the hero carries the global
-				    search jump the other tab roots get from app-header.tsx. */}
-				<InkIconButton
-					label="Search everything"
-					onPress={() => {
-						requestSearchFocus();
-						router.push(WORK);
-					}}
-				>
-					<Search size={18} color={hero.text} strokeWidth={2} />
-				</InkIconButton>
-				<InkHeaderCluster />
-			</View>
+			{/* Org bar. With the rail owning identity, the pane has nothing left to
+			    put here, so the search jump rides the greeting line instead. */}
+			{hideChrome ? null : (
+				<View style={styles.orgBar}>
+					<InkOrgChip />
+					<View style={styles.spacer} />
+					{/* No ＋ here — the speed-dial FAB is the single capture entry point
+					    on iPhone (3.0 slice 5). */}
+					{searchButton}
+					<InkHeaderCluster />
+				</View>
+			)}
 
 			{/* Greeting */}
 			<Text style={[styles.eyebrow, compact && styles.eyebrowCompact]}>
 				{eyebrow.toUpperCase()}
 			</Text>
-			<Text style={[styles.greeting, compact && styles.greetingCompact]}>
-				{greeting}
-			</Text>
+			{hideChrome ? (
+				<View style={styles.greetingRow}>
+					<Text
+						style={[
+							styles.greeting,
+							compact && styles.greetingCompact,
+							styles.greetingFill,
+						]}
+					>
+						{greeting}
+					</Text>
+					{searchButton}
+				</View>
+			) : (
+				<Text style={[styles.greeting, compact && styles.greetingCompact]}>
+					{greeting}
+				</Text>
+			)}
 
 			{/* Day stats — today's numbers, so they leave with the compressed band. */}
 			{compact ? null : (
@@ -195,6 +225,17 @@ const styles = StyleSheet.create({
 		fontSize: 19,
 		lineHeight: 23,
 		marginTop: 2,
+	},
+	greetingRow: {
+		marginTop: 4,
+		flexDirection: "row",
+		alignItems: "center",
+		gap: 8,
+	},
+	// The row owns the top margin, so the greeting sits centred against the glyph.
+	greetingFill: {
+		flex: 1,
+		marginTop: 0,
 	},
 	statsRow: {
 		flexDirection: "row",

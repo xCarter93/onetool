@@ -18,6 +18,7 @@ import {
 } from "@/components/AddressAutocomplete.native";
 import { Card, DotGrid } from "@/components/ui";
 import { StyledButton } from "@/components/styled";
+import { InkTabHeader } from "@/components/ink-tab-header";
 import { fontFamily, radii, spacing, tokens, type } from "@/lib/theme";
 
 type CompanySize = "1-10" | "10-100" | "100+";
@@ -116,9 +117,12 @@ export default function BusinessDetailsScreen() {
 	// Loading the org row.
 	if (org === undefined || me === undefined) {
 		return (
-			<View style={[styles.screen, styles.center, { paddingTop: insets.top }]}>
+			<View style={styles.screen}>
 				<DotGrid style={StyleSheet.absoluteFill} />
-				<Text style={styles.mutedBody}>Loading…</Text>
+				<InkTabHeader title="Business details" onBack={() => router.back()} />
+				<View style={[styles.body, styles.center]}>
+					<Text style={styles.mutedBody}>Loading…</Text>
+				</View>
 			</View>
 		);
 	}
@@ -128,26 +132,28 @@ export default function BusinessDetailsScreen() {
 	// rather than falling through to the owner-only message below.
 	if (org === null) {
 		return (
-			<View
-				style={[
-					styles.screen,
-					styles.center,
-					{ paddingTop: insets.top, paddingBottom: insets.bottom + spacing.lg },
-				]}
-			>
+			<View style={styles.screen}>
 				<DotGrid style={StyleSheet.absoluteFill} />
-				<View style={styles.box}>
-					<Text style={styles.title}>Business details</Text>
-					<Text style={styles.mutedBody}>
-						No active workspace. Open one first, then edit its business details.
-					</Text>
-					<View style={styles.cta}>
-						<StyledButton
-							intent="outline"
-							label="Back"
-							showArrow={false}
-							onPress={() => router.back()}
-						/>
+				<InkTabHeader title="Business details" onBack={() => router.back()} />
+				<View
+					style={[
+						styles.body,
+						styles.center,
+						{ paddingBottom: insets.bottom + spacing.lg },
+					]}
+				>
+					<View style={styles.box}>
+						<Text style={styles.mutedBody}>
+							No active workspace. Open one first, then edit its business details.
+						</Text>
+						<View style={styles.cta}>
+							<StyledButton
+								intent="outline"
+								label="Back"
+								showArrow={false}
+								onPress={() => router.back()}
+							/>
+						</View>
 					</View>
 				</View>
 			</View>
@@ -158,26 +164,28 @@ export default function BusinessDetailsScreen() {
 	// this route directly — only the owner can save (backend enforces it too).
 	if (!isOwner) {
 		return (
-			<View
-				style={[
-					styles.screen,
-					styles.center,
-					{ paddingTop: insets.top, paddingBottom: insets.bottom + spacing.lg },
-				]}
-			>
+			<View style={styles.screen}>
 				<DotGrid style={StyleSheet.absoluteFill} />
-				<View style={styles.box}>
-					<Text style={styles.title}>Business details</Text>
-					<Text style={styles.mutedBody}>
-						Only the organization owner can edit business details.
-					</Text>
-					<View style={styles.cta}>
-						<StyledButton
-							intent="outline"
-							label="Back"
-							showArrow={false}
-							onPress={() => router.back()}
-						/>
+				<InkTabHeader title="Business details" onBack={() => router.back()} />
+				<View
+					style={[
+						styles.body,
+						styles.center,
+						{ paddingBottom: insets.bottom + spacing.lg },
+					]}
+				>
+					<View style={styles.box}>
+						<Text style={styles.mutedBody}>
+							Only the organization owner can edit business details.
+						</Text>
+						<View style={styles.cta}>
+							<StyledButton
+								intent="outline"
+								label="Back"
+								showArrow={false}
+								onPress={() => router.back()}
+							/>
+						</View>
 					</View>
 				</View>
 			</View>
@@ -185,13 +193,14 @@ export default function BusinessDetailsScreen() {
 	}
 
 	return (
-		<View style={[styles.screen, { paddingTop: insets.top + spacing.lg }]}>
+		<View style={styles.screen}>
 			<DotGrid style={StyleSheet.absoluteFill} />
+			<InkTabHeader title="Business details" onBack={() => router.back()} />
 			<ScrollView
+				style={styles.body}
 				contentContainerStyle={styles.scroll}
 				keyboardShouldPersistTaps="handled"
 			>
-				<Text style={styles.title}>Business details</Text>
 				<Text style={styles.subtitle}>
 					Used on your quotes and invoices. Only the owner can edit these.
 				</Text>
@@ -291,6 +300,11 @@ const styles = StyleSheet.create({
 	screen: {
 		flex: 1,
 		backgroundColor: tokens.bg,
+	},
+	// The ink band spans full width, so the screen gutter moved off the root
+	// and onto everything that renders below it.
+	body: {
+		flex: 1,
 		paddingHorizontal: spacing.lg,
 	},
 	center: {
@@ -304,13 +318,8 @@ const styles = StyleSheet.create({
 		maxWidth: 420,
 	},
 	scroll: {
+		paddingTop: spacing.lg,
 		paddingBottom: spacing.xl,
-	},
-	title: {
-		fontFamily: fontFamily.bold,
-		fontSize: type.h1,
-		color: tokens.ink,
-		textAlign: "center",
 	},
 	subtitle: {
 		fontFamily: fontFamily.regular,
@@ -370,6 +379,7 @@ const styles = StyleSheet.create({
 		flexDirection: "row",
 		gap: spacing.md,
 		paddingTop: spacing.md,
+		paddingHorizontal: spacing.lg,
 	},
 	footerHalf: {
 		flex: 1,

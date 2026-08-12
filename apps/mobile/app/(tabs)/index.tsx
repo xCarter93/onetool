@@ -39,12 +39,13 @@ import { localDayStartMs, utcDayStartMs } from "@/lib/date";
 import { DAY_MS } from "@/components/calendar/dateUtils";
 import { useDayScope } from "@/lib/useDayScope";
 import { useScheduleView } from "@/lib/useScheduleView";
-import { Plus } from "lucide-react-native";
 import { ScheduleControls } from "@/components/today/schedule-controls";
-import { PaneAction, PaneHeader } from "@/components/ipad/pane-header";
 
 const TASK_FORM: Href = "/tasks/form" as Href;
 const WORK: Href = "/(tabs)/work" as Href;
+
+/** iPad pane: Today reads better as a column than a 900pt-wide agenda row. */
+const TODAY_MAX_WIDTH = 760;
 
 /**
  * Days of calendar events fetched past the anchored week's Sunday. The List
@@ -374,65 +375,38 @@ export default function TodayScreen({
 	const newTask = () => router.push(TASK_FORM);
 
 	return (
-		<View style={[styles.screen, { backgroundColor: t.bg }]}>
+		<View style={[styles.screen, !pane && { backgroundColor: t.bg }]}>
 			{/* Page canvas, matching web's .workspace-canvas. First child so every
-			    surface paints over it. */}
-			<DotGrid style={StyleSheet.absoluteFill} />
-			{pane ? (
-				<PaneHeader
-					title={firstName ? `${greeting}, ${firstName}` : greeting}
-					sub={dateLabel}
-					right={
-						<PaneAction
-							icon={Plus}
-							label="New task"
-							onPress={() => router.push(TASK_FORM)}
-						/>
-					}
+			    surface paints over it. The iPad pane inherits the shell's canvas so
+			    the grid runs full-bleed behind the capped content column. */}
+			{pane ? null : <DotGrid style={StyleSheet.absoluteFill} />}
+			{/* 3.0 ink command hero (canvas 1a): org bar, greeting, day stats and
+			    the ink-tone week strip live in the band; the body scrolls beneath.
+			    Anchoring off today compresses it so the schedule gets the room. */}
+			<CommandHero
+				eyebrow={dateLabel}
+				greeting={firstName ? `${greeting}, ${firstName}` : greeting}
+				stats={heroStats}
+				compact={anchoredElsewhere}
+				hideChrome={pane}
+			>
+				<WeekStrip
+					tone="ink"
+					days={days}
+					selectedDayMs={selectedDayMs}
+					todayMs={todayMs}
+					counts={counts}
+					onSelectDay={setSelectedDayMs}
+					onPageWeek={(dir) => setSelectedDayMs((ms) => ms + dir * 7 * DAY_MS)}
 				/>
-			) : (
-				// 3.0 ink command hero (canvas 1a): org bar, greeting, day stats and
-				// the ink-tone week strip live in the band; the body scrolls beneath.
-				// Anchoring off today compresses it so the schedule gets the room.
-				<CommandHero
-					eyebrow={dateLabel}
-					greeting={firstName ? `${greeting}, ${firstName}` : greeting}
-					stats={heroStats}
-					compact={anchoredElsewhere}
-				>
-					<WeekStrip
-						tone="ink"
-						days={days}
-						selectedDayMs={selectedDayMs}
-						todayMs={todayMs}
-						counts={counts}
-						onSelectDay={setSelectedDayMs}
-						onPageWeek={(dir) =>
-							setSelectedDayMs((ms) => ms + dir * 7 * DAY_MS)
-						}
-					/>
-				</CommandHero>
-			)}
+			</CommandHero>
 
-			{/* Pinned controls — the iPad pane keeps the light strip here; on the
-			    phone the strip moved into the hero. ONE eyebrow-level row: the two
-			    stacked full-width toggles this replaced read as chrome and pushed the
-			    schedule (the reason for the tab) below the fold. Pinned, not folded
-			    into a section header — Day | List swaps the whole body, and this block
-			    anchors the ScrollFade at the chrome/scroll boundary. */}
-			<View style={styles.controls}>
-				{pane ? (
-					<WeekStrip
-						days={days}
-						selectedDayMs={selectedDayMs}
-						todayMs={todayMs}
-						counts={counts}
-						onSelectDay={setSelectedDayMs}
-						onPageWeek={(dir) =>
-							setSelectedDayMs((ms) => ms + dir * 7 * DAY_MS)
-						}
-					/>
-				) : null}
+			{/* Pinned controls. ONE eyebrow-level row: the two stacked full-width
+			    toggles this replaced read as chrome and pushed the schedule (the
+			    reason for the tab) below the fold. Pinned, not folded into a section
+			    header — Day | List swaps the whole body, and this block anchors the
+			    ScrollFade at the chrome/scroll boundary. */}
+			<View style={[styles.controls, pane && styles.column]}>
 				<ScheduleControls
 					view={view}
 					onChangeView={setView}
@@ -449,6 +423,7 @@ export default function TodayScreen({
 				style={styles.scroll}
 				contentContainerStyle={[
 					styles.scrollBody,
+					pane && styles.column,
 					// Content runs under the floating glass dock (phone only — the
 					// iPad pane has no dock).
 					!pane && { paddingBottom: DOCK_CLEARANCE + insets.bottom },
@@ -523,5 +498,13 @@ const styles = StyleSheet.create({
 		paddingTop: 2,
 		paddingBottom: SCROLL_TOP_INSET + 40,
 		gap: 18,
+	},
+	// iPad pane only: the hero spans the full pane, but an agenda row stretched
+	// across ~900pt strands its metadata at the far edge, so the content below
+	// stays a centred column.
+	column: {
+		width: "100%",
+		maxWidth: TODAY_MAX_WIDTH,
+		alignSelf: "center",
 	},
 });

@@ -1,3 +1,4 @@
+import { Fragment } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { Check, X } from "lucide-react-native";
 import { fontFamily, type, useTokens } from "@/lib/theme";
@@ -30,7 +31,11 @@ export function StatusTrack({ steps }: { steps: TrackStep[] }) {
 				const resolved = step.state === "done" || step.state === "failed";
 				const active = step.state === "current";
 				return (
-					<View key={step.key} style={styles.stepWrap}>
+					<Fragment key={step.key}>
+						{/* Sibling of the step columns, not nested in a flex cell — every
+						    connector gets an equal share, so the track spreads evenly no
+						    matter how wide the card is (the old per-step flex cell left
+						    the first cell's slack as a dead gap after Draft). */}
 						{i > 0 ? (
 							<View
 								style={[
@@ -87,7 +92,7 @@ export function StatusTrack({ steps }: { steps: TrackStep[] }) {
 								{step.label}
 							</Text>
 						</View>
-					</View>
+					</Fragment>
 				);
 			})}
 		</View>
@@ -96,11 +101,6 @@ export function StatusTrack({ steps }: { steps: TrackStep[] }) {
 
 const styles = StyleSheet.create({
 	row: {
-		flexDirection: "row",
-		alignItems: "flex-start",
-	},
-	stepWrap: {
-		flex: 1,
 		flexDirection: "row",
 		alignItems: "flex-start",
 	},

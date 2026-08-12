@@ -1,6 +1,8 @@
+import { useRef } from "react";
 import {
 	ActionSheetIOS,
 	Alert,
+	findNodeHandle,
 	Platform,
 	Pressable,
 	StyleSheet,
@@ -27,6 +29,9 @@ export function QuickActionRow({
 	floating?: boolean;
 }) {
 	const t = useTokens();
+	// iPad presents the sheet as a popover; unanchored, iOS pops it from the
+	// screen centre with no dim (same fix as the rail's ＋ in pad-sidebar).
+	const moreAnchor = useRef<View>(null);
 	const primary = actions.find((a) => a.slot === "primary");
 	const secondary = actions.find((a) => a.slot === "secondary");
 	const overflow = actions.filter((a) => a.slot === "overflow");
@@ -48,6 +53,7 @@ export function QuickActionRow({
 				{
 					options: [...overflow.map((a) => a.label), "Cancel"],
 					cancelButtonIndex: overflow.length,
+					anchor: findNodeHandle(moreAnchor.current) ?? undefined,
 				},
 				(index) => {
 					const action = overflow[index];
@@ -96,6 +102,7 @@ export function QuickActionRow({
 			) : null}
 			{overflow.length > 0 ? (
 				<Pressable
+					ref={moreAnchor}
 					accessibilityRole="button"
 					accessibilityLabel="More actions"
 					onPress={openOverflow}

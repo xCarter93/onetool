@@ -137,7 +137,7 @@ export default function WorkScreen({
 	const listBottom = isPane ? 24 : DOCK_CLEARANCE + insets.bottom;
 	// Pane keeps the fade inset (the shell's light chrome dissolves into content).
 	// On iPhone the ink band is a hard edge — no fade, so no fade clearance.
-	const listTop = isPane ? SCROLL_TOP_INSET : 6;
+	const listTop = isPane ? SCROLL_TOP_INSET : 12;
 
 	// Raw input drives the field; `q` (debounced 250ms) drives the backend query.
 	const [raw, setRaw] = useState("");

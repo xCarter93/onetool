@@ -1,44 +1,33 @@
 import React from "react";
 import { StyleSheet, Text, View } from "react-native";
-import {
-	fontFamily,
-	radii,
-	STATUS,
-	tracking,
-	type,
-	useTokens,
-} from "@/lib/theme";
+import { fontFamily, STATUS, tracking, type, useTokens } from "@/lib/theme";
 
 interface IdentityBlockProps {
-	/** Record tint pair — pass `recordTint.client`, `recordTint.project`, … */
-	tint: { bg: string; fg: string };
-	/** Monogram glyph. Callers pass a single letter; longer strings are clipped. */
-	monogram: string;
-	/** Omit when the screen header already carries the name (visual-pass r1:
-	 * repeating it beside the monogram read as redundant). */
-	title?: string;
+	/** The record's own name — the hero's anchor: the ink band's title scrolls
+	 * away, so this has to carry the screen. */
+	name?: string;
 	/** Key into the STATUS map — rendered as TEXT, never a badge pill. */
 	statusKey?: string;
-	/** Quiet third line: lead source, city, project client, … */
-	sub?: string;
+	/** Quiet meta line: lead source, city, a tappable client link, … */
+	meta?: React.ReactNode;
 	/**
-	 * Wraps the status text so a screen can make it interactive (the client
-	 * detail hangs a FieldMenu off it). The native MenuView host must receive a
-	 * SINGLE bare child inside a content-sized parent — hence the status line
-	 * lives on its own row with alignSelf:"flex-start", and `sub` is a separate
-	 * line rather than an inline sibling.
+	 * Wraps the status text so a screen can make it interactive (both detail
+	 * screens hang a FieldMenu off it). The native MenuView host must receive a
+	 * SINGLE bare child inside a content-sized parent — the status wrapper is a
+	 * non-stretching row item (flexShrink:0, row alignItems:"center"), and
+	 * `meta` is a separate line rather than an inline sibling.
 	 */
 	renderStatus?: (statusText: React.ReactNode) => React.ReactNode;
 }
 
-// Daybook identity header: tinted monogram square + name + status-as-text.
-// Card-free by design — it sits directly on the page canvas.
+// Editorial identity header: name on the left with the status inline on the
+// right (the eyebrow-above stack left the hero's right half dead), meta below.
+// No monogram — the name IS the mark. Card-free by design; it sits directly on
+// the page canvas.
 export function IdentityBlock({
-	tint,
-	monogram,
-	title,
+	name,
 	statusKey,
-	sub,
+	meta,
 	renderStatus,
 }: IdentityBlockProps) {
 	const t = useTokens();
@@ -55,16 +44,11 @@ export function IdentityBlock({
 	) : null;
 
 	return (
-		<View style={styles.row}>
-			<View style={[styles.monogram, { backgroundColor: tint.bg }]}>
-				<Text style={[styles.monogramText, { color: tint.fg }]}>
-					{monogram.slice(0, 1).toUpperCase()}
-				</Text>
-			</View>
-			<View style={styles.body}>
-				{title ? (
-					<Text style={[styles.title, { color: t.ink }]} numberOfLines={2}>
-						{title}
+		<View style={styles.body}>
+			<View style={styles.titleRow}>
+				{name ? (
+					<Text style={[styles.name, { color: t.ink }]} numberOfLines={2}>
+						{name}
 					</Text>
 				) : null}
 				{statusText ? (
@@ -72,53 +56,54 @@ export function IdentityBlock({
 						{renderStatus ? renderStatus(statusText) : statusText}
 					</View>
 				) : null}
-				{sub ? (
-					<Text style={[styles.sub, { color: t.sub }]} numberOfLines={1}>
-						{sub}
-					</Text>
-				) : null}
 			</View>
+			{meta ? <View style={styles.meta}>{meta}</View> : null}
 		</View>
 	);
 }
 
 const styles = StyleSheet.create({
-	row: {
+	body: { minWidth: 0 },
+	titleRow: {
 		flexDirection: "row",
+		// Center, not baseline: the status may live inside a native MenuView
+		// host, which doesn't report a text baseline.
 		alignItems: "center",
-		gap: 14,
+		gap: 12,
 	},
-	monogram: {
-		width: 54,
-		height: 54,
-		borderRadius: radii.card,
-		alignItems: "center",
-		justifyContent: "center",
-		flexShrink: 0,
-	},
-	monogramText: {
+	name: {
 		fontFamily: fontFamily.semibold,
-		fontSize: 24,
-		letterSpacing: 0.2,
-	},
-	body: { flex: 1, minWidth: 0 },
-	title: {
-		fontFamily: fontFamily.semibold,
+		// h1, not h2: the hero owns the top of the screen, and at 20 the name
+		// left the right half of the band feeling empty (visual pass).
 		fontSize: type.h1,
 		letterSpacing: tracking.title,
+		flex: 1,
+		minWidth: 0,
 	},
-	// alignSelf sizes the (possibly menu-hosting) wrapper to its content — a
-	// stretched native MenuView trigger clips its label to "..".
-	statusWrap: { alignSelf: "flex-start", marginTop: 4 },
+	// flexShrink:0 + the row's center alignment keep the (possibly menu-hosting)
+	// wrapper content-sized — a stretched native MenuView trigger clips its
+	// label to "..".
+	statusWrap: { flexShrink: 0 },
 	status: {
 		fontFamily: fontFamily.semibold,
 		fontSize: type.eyebrow,
 		letterSpacing: tracking.groupLabel,
 		textTransform: "uppercase",
 	},
-	sub: {
+	meta: { marginTop: 4, alignSelf: "flex-start" },
+	metaText: {
 		fontFamily: fontFamily.regular,
 		fontSize: type.meta,
-		marginTop: 4,
 	},
 });
+
+/** Plain (non-interactive) meta line — the tappable variant is built by the
+ * caller and passed as `meta` too. */
+export function IdentityMeta({ children }: { children: string }) {
+	const t = useTokens();
+	return (
+		<Text style={[styles.metaText, { color: t.sub }]} numberOfLines={1}>
+			{children}
+		</Text>
+	);
+}

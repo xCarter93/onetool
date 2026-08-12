@@ -25,7 +25,7 @@ import {
 	Search,
 	X,
 } from "lucide-react-native";
-import { fontFamily, radii, type, useTokens } from "@/lib/theme";
+import { colors, fontFamily, radii, type, useTokens } from "@/lib/theme";
 import { AppHeader } from "@/components/app-header";
 import { PaneHeader } from "@/components/ipad/pane-header";
 import { Button, DotGrid, SegmentedToggle, Toggle2 } from "@/components/ui";
@@ -646,7 +646,14 @@ export default function RouteEditScreen() {
 						title={busy ? "Saving…" : "Save"}
 						onPress={onSave}
 						disabled={busy}
-						icon={busy ? <ActivityIndicator size="small" color="#ffffff" /> : undefined}
+						icon={
+							busy ? (
+								<ActivityIndicator
+									size="small"
+									color={colors.primaryForeground}
+								/>
+							) : undefined
+						}
 						variant="solid"
 						style={styles.submit}
 					/>
@@ -838,7 +845,7 @@ const styles = StyleSheet.create({
 	stopIndex: {
 		width: 24,
 		height: 24,
-		borderRadius: 12,
+		borderRadius: radii.pill,
 		alignItems: "center",
 		justifyContent: "center",
 		flexShrink: 0,

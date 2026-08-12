@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
-import { Plus, X } from "lucide-react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { X } from "lucide-react-native";
 import { Slot, usePathname, useRouter, type Href } from "expo-router";
 import { useDevice } from "@/lib/use-device";
 import { useTokens } from "@/lib/theme";
@@ -23,11 +24,12 @@ import {
 } from "@/lib/shell-routes";
 import { DotGrid } from "@/components/ui";
 import { PaneDetailHost } from "@/components/ipad/pane-detail-host";
-import { PaneAction, PaneHeader } from "@/components/ipad/pane-header";
+import { PaneHeader } from "@/components/ipad/pane-header";
 import { ShellNavProvider, type ShellNav } from "@/lib/shell-nav";
 import type { WorkChipKind } from "@/lib/work-search";
 import TodayScreen from "@/app/(tabs)/index";
 import WorkScreen from "@/app/(tabs)/work";
+import MoneyScreen from "@/app/(tabs)/money/index";
 import RoutesScreen from "@/app/(tabs)/routes";
 import ActivityScreen from "@/app/(tabs)/activity";
 import ProfileScreen from "@/app/(tabs)/profile";
@@ -46,13 +48,15 @@ import { usePermissions } from "@/lib/use-permissions";
 // Convex key={convexKey} boundary (only rendered from the iPad branch) so an
 // org switch remounts it and resets selection (T-26-04).
 //
-// IA (§6): the rail mirrors the iPhone tabs 1:1 — Today · Work · Routes ·
-// Activity — with the assistant pinned at the rail bottom instead of a FAB.
-// Clients/projects/quotes/invoices are no longer rail tabs; they are record
-// KINDS inside Work, which is why selection carries {kind,id} (selection-context).
+// IA (§6): the rail mirrors the iPhone dock — Today · Work · Money · Routes —
+// plus Activity, which the rail has room for and the dock does not. The
+// assistant is pinned at the rail bottom instead of a FAB. Clients/projects/
+// quotes/invoices are no longer rail tabs; they are record KINDS inside Work,
+// which is why selection carries {kind,id} (selection-context).
 //
-// Two panes own a detail view (Work, Activity) and get the master-detail
-// treatment. Today and Routes are single panes in both orientations.
+// Three panes own a detail view (Work, Money, Activity) and get the
+// master-detail treatment. Today and Routes are single panes in both
+// orientations.
 //
 // ROUTER-INTEGRATION LAYER:
 //   A usePathname() effect reconciles expo-router route state → the shell's local
@@ -70,11 +74,14 @@ import { usePermissions } from "@/lib/use-permissions";
 
 const LIST_PANE_WIDTH = 330;
 
-// Today reads better as a column than a 900pt-wide agenda row; landscape caps it.
-const TODAY_MAX_WIDTH = 760;
-
 // Panes with a list + detail split. Today and Routes have no detail view.
-const MASTER_DETAIL: readonly ShellTab[] = ["work", "activity"];
+const MASTER_DETAIL: readonly ShellTab[] = ["work", "money", "activity"];
+
+const PANE_TITLE: Record<SelectionTab, string> = {
+	work: "Work",
+	money: "Money",
+	activity: "Activity",
+};
 
 function isMasterDetailTab(tab: ShellTab): tab is SelectionTab {
 	return MASTER_DETAIL.includes(tab);
@@ -224,10 +231,7 @@ function IpadShellInner() {
 
 	// Assistant context: the active mode plus the pane's current selection —
 	// ids only, never data values (same rule as web's use-screen-context).
-	const selectionRef =
-		activeTab === "work" || activeTab === "activity"
-			? state[activeTab]
-			: null;
+	const selectionRef = isMasterDetailTab(activeTab) ? state[activeTab] : null;
 	const assistantContext = buildScreenContext(
 		activeTab === "today" ? "/" : `/${activeTab}`,
 		selectionRef
@@ -282,31 +286,20 @@ function IpadShellInner() {
 	if (!isMasterDetailTab(activeTab)) {
 		return frame(
 			<View style={styles.contentPane}>
-				<SinglePane tab={activeTab} orientation={orientation} />
+				<SinglePane tab={activeTab} />
 			</View>,
 		);
 	}
 
-	// ── Master-detail (Work / Activity) ──────────────────────────────────────
+	// ── Master-detail (Work / Money / Activity) ──────────────────────────────
 	const pane = activeTab;
 	const selected = state[pane];
 
 	const listPane = (
 		<View style={styles.fill}>
-			<PaneHeader
-				title={pane === "work" ? "Work" : "Activity"}
-				// Contextual create (§4): Work can create a client, Activity is a
-				// read-only feed and gets no ＋.
-				right={
-					pane === "work" ? (
-						<PaneAction
-							icon={Plus}
-							label="New client"
-							onPress={() => setCreating(true)}
-						/>
-					) : undefined
-				}
-			/>
+			{/* No contextual ＋ — the rail's create menu is the single capture entry
+			    point on iPad. */}
+			<PaneHeader title={PANE_TITLE[pane]} />
 			{pane === "work" ? (
 				<WorkScreen
 					headerMode="pane"
@@ -314,6 +307,18 @@ function IpadShellInner() {
 					selected={selected}
 					kind={workKind}
 					onKindChange={setWorkKind}
+				/>
+			) : pane === "money" ? (
+				<MoneyScreen
+					headerMode="pane"
+					onSelect={(sel) => select("money", sel)}
+					// Money only ever selects a quote or an invoice; the other kinds
+					// can't reach this slot, so they read as no selection.
+					selected={
+						selected && (selected.kind === "quote" || selected.kind === "invoice")
+							? { kind: selected.kind, id: selected.id }
+							: null
+					}
 				/>
 			) : (
 				<ActivityScreen
@@ -359,29 +364,17 @@ function IpadShellInner() {
 
 // Single content pane (Today / Routes / Profile) — no list+detail split in either
 // orientation. Each body renders headerMode="pane" so the shell owns the one
-// header; Today is the exception, it mounts its own (greeting + date + ＋).
-function SinglePane({
-	tab,
-	orientation,
-}: {
-	tab: Exclude<ShellTab, SelectionTab>;
-	orientation: "portrait" | "landscape";
-}) {
+// header; Today is the exception, its ink hero IS its header.
+function SinglePane({ tab }: { tab: Exclude<ShellTab, SelectionTab> }) {
 	const t = useTokens();
 
 	if (tab === "today") {
-		// Landscape is ~900pt wide beside the rail; an uncapped agenda row strands
-		// its metadata at the far edge.
+		// Full-bleed canvas: the ink hero spans the pane edge to edge, so the grid
+		// is painted here and TodayScreen's pane mode caps only its own column.
 		return (
-			<View style={[styles.slot, { backgroundColor: t.surface }]}>
-				<View
-					style={[
-						styles.fill,
-						orientation === "landscape" ? styles.todayCapped : null,
-					]}
-				>
-					<TodayScreen headerMode="pane" />
-				</View>
+			<View style={[styles.slot, { backgroundColor: t.bg }]}>
+				<DotGrid style={StyleSheet.absoluteFill} />
+				<TodayScreen headerMode="pane" />
 			</View>
 		);
 	}
@@ -422,14 +415,23 @@ function AssistantPanel({
 	onClose: () => void;
 }) {
 	const t = useTokens();
+	const insets = useSafeAreaInsets();
 	return (
 		<View
 			style={[
 				styles.assistantPanel,
-				{ backgroundColor: t.card, borderLeftColor: t.border },
+				{
+					backgroundColor: t.card,
+					borderLeftColor: t.border,
+					// The panel reaches both screen edges: clear the status bar so the
+					// close X isn't under the battery, and the home indicator so the
+					// composer's disclaimer line isn't clipped.
+					paddingBottom: Math.max(insets.bottom, 12),
+				},
 			]}
 		>
 			<AssistantInkHeader
+				topInset={insets.top}
 				right={
 					<Pressable
 						onPress={onClose}
@@ -473,11 +475,6 @@ const styles = StyleSheet.create({
 	},
 	fill: {
 		flex: 1,
-	},
-	todayCapped: {
-		width: "100%",
-		maxWidth: TODAY_MAX_WIDTH,
-		alignSelf: "center",
 	},
 	assistantPanel: {
 		width: 380,

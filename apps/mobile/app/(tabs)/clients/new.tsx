@@ -18,7 +18,14 @@ import { useRouter } from "expo-router";
 import { useMutation } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { Id } from "@onetool/backend/convex/_generated/dataModel";
-import { DOCK_CLEARANCE, fontFamily, radii, type, useTokens } from "@/lib/theme";
+import {
+	colors,
+	DOCK_CLEARANCE,
+	fontFamily,
+	radii,
+	type,
+	useTokens,
+} from "@/lib/theme";
 import { AppHeader } from "@/components/app-header";
 import { PaneHeader } from "@/components/ipad/pane-header";
 import { Button, DotGrid } from "@/components/ui";
@@ -366,7 +373,10 @@ export function ClientCreateBody({
 						disabled={submitting}
 						icon={
 							submitting ? (
-								<ActivityIndicator size="small" color="#ffffff" />
+								<ActivityIndicator
+									size="small"
+									color={colors.primaryForeground}
+								/>
 							) : undefined
 						}
 						style={styles.submit}

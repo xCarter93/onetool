@@ -1,10 +1,9 @@
-import React, { useRef, useState } from "react";
+import React, { useRef } from "react";
 import {
 	ActionSheetIOS,
 	Alert,
 	findNodeHandle,
 	Image,
-	type LayoutChangeEvent,
 	Platform,
 	Pressable,
 	StyleSheet,
@@ -22,6 +21,7 @@ import {
 	Plus,
 	Route as RouteIcon,
 	Sparkles,
+	Wallet,
 } from "lucide-react-native";
 import { fontFamily, radii, tokens, touch, type, useTokens } from "@/lib/theme";
 import { Avatar } from "@/components/ui";
@@ -31,7 +31,7 @@ import { Avatar } from "@/components/ui";
 // Pure chrome: routing for the rest is injected by ipad-shell via props; only the
 // org-switch push is kept inline (it has no shell dependency).
 
-export type SidebarTab = "today" | "work" | "routes" | "activity";
+export type SidebarTab = "today" | "work" | "money" | "routes" | "activity";
 /** "profile" highlights NO nav row — Profile is reached via the footer. */
 export type SidebarActive = SidebarTab | "profile";
 
@@ -53,12 +53,12 @@ interface PadSidebarProps {
 	onNotifications: () => void;
 }
 
-// Mirrors the phone dock's mode set (icon + label wording). The 3.0 GlassDock
-// promoted Money into the phone dock; the rail keeps Activity and reaches
-// Money through Work until the shell grows a money pane.
+// Mirrors the phone dock's mode set (icon + label wording), plus Activity —
+// the rail has the room the dock does not, so it keeps the feed as a fifth mode.
 const NAV: { id: SidebarTab; label: string; Icon: typeof CalendarCheck }[] = [
 	{ id: "today", label: "Today", Icon: CalendarCheck },
 	{ id: "work", label: "Work", Icon: Briefcase },
+	{ id: "money", label: "Money", Icon: Wallet },
 	{ id: "routes", label: "Routes", Icon: RouteIcon },
 	{ id: "activity", label: "Activity", Icon: Activity },
 ];
@@ -113,13 +113,6 @@ export function PadSidebar({
 	const { organization, membership } = useOrganization();
 	const { user } = useUser();
 
-	// Measure the brand block so the BG.png wash sits in a DEFINITE-height box
-	// before the absoluteFill image — otherwise the image escapes to full-screen
-	// on Fabric (Pitfall 5, mirrors app-header.tsx).
-	const [brandHeight, setBrandHeight] = useState(0);
-	const onBrandLayout = (e: LayoutChangeEvent) =>
-		setBrandHeight(e.nativeEvent.layout.height);
-
 	const orgName = organization?.name ?? "Personal";
 	const orgInitials = initialsFrom(orgName);
 	const userName = user?.fullName ?? user?.firstName ?? "You";
@@ -128,24 +121,8 @@ export function PadSidebar({
 
 	return (
 		<View style={[styles.root, { backgroundColor: t.card, borderRightColor: t.line }]}>
-			{/* Brand block with BG.png wash */}
-			<View style={styles.brand} onLayout={onBrandLayout}>
-				<View
-					style={[styles.brandWash, { height: brandHeight }]}
-					pointerEvents="none"
-				>
-					<Image
-						source={require("@/assets/BG.png")}
-						style={[StyleSheet.absoluteFill, { opacity: 0.256 }]}
-						resizeMode="cover"
-					/>
-					<View
-						style={[
-							StyleSheet.absoluteFill,
-							{ backgroundColor: `${tokens.card}A6` },
-						]}
-					/>
-				</View>
+			{/* Brand block */}
+			<View style={styles.brand}>
 				<View style={styles.brandRow}>
 					<Image
 						source={require("@/assets/OneTool-wordmark.png")}
@@ -217,31 +194,11 @@ export function PadSidebar({
 				})}
 			</View>
 
-			{/* Assistant sits OUTSIDE the tablist — it is a button, not a fifth tab —
-			    and after the flex:1 nav, which is what pins it to the rail bottom (§6:
-			    no floating FAB on iPad). */}
-			{/* Create sits directly above the assistant — the rail's capture entry
-			    point, standing in for the phone's speed-dial FAB (§6: no FAB on
-			    iPad). Anchors its own action sheet. */}
-			{createItems.length > 0 ? (
-				<View style={styles.createWrap}>
-					<Pressable
-						ref={createAnchor}
-						onPress={openCreateMenu}
-						style={({ pressed }) => [
-							styles.createBtn,
-							{ backgroundColor: t.secondary },
-							pressed && { opacity: 0.85 },
-						]}
-						accessibilityRole="button"
-						accessibilityLabel="Create"
-					>
-						<Plus size={22} color={t.primaryInk} strokeWidth={2.2} />
-					</Pressable>
-				</View>
-			) : null}
-
-			<View style={styles.assistantWrap}>
+			{/* Assistant + create sit OUTSIDE the tablist — buttons, not tabs — and
+			    after the flex:1 nav, which is what pins them to the rail bottom.
+			    Together they are the rail's answer to the phone's speed-dial FAB
+			    (§6: no floating FAB on iPad). The ＋ anchors its own action sheet. */}
+			<View style={styles.actionRow}>
 				<Pressable
 					onPress={onAssistant}
 					style={[
@@ -256,6 +213,21 @@ export function PadSidebar({
 						Assistant
 					</Text>
 				</Pressable>
+				{createItems.length > 0 ? (
+					<Pressable
+						ref={createAnchor}
+						onPress={openCreateMenu}
+						style={({ pressed }) => [
+							styles.createBtn,
+							{ backgroundColor: t.secondary },
+							pressed && { opacity: 0.85 },
+						]}
+						accessibilityRole="button"
+						accessibilityLabel="Create"
+					>
+						<Plus size={22} color={t.primaryInk} strokeWidth={2.2} />
+					</Pressable>
+				) : null}
 			</View>
 
 			{/* Footer: profile + bell, sibling Pressables (not nested). */}
@@ -304,13 +276,6 @@ const styles = StyleSheet.create({
 		paddingTop: 40,
 		paddingBottom: 14,
 		paddingHorizontal: 18,
-		overflow: "hidden",
-	},
-	brandWash: {
-		position: "absolute",
-		top: 0,
-		left: 0,
-		right: 0,
 		overflow: "hidden",
 	},
 	brandRow: {
@@ -372,9 +337,12 @@ const styles = StyleSheet.create({
 	navLabel: {
 		fontSize: type.body,
 	},
-	createWrap: {
+	actionRow: {
+		flexDirection: "row",
+		alignItems: "stretch",
+		gap: 8,
 		paddingHorizontal: 12,
-		paddingBottom: 8,
+		paddingBottom: 10,
 	},
 	createBtn: {
 		width: touch.min,
@@ -383,11 +351,8 @@ const styles = StyleSheet.create({
 		alignItems: "center",
 		justifyContent: "center",
 	},
-	assistantWrap: {
-		paddingHorizontal: 12,
-		paddingBottom: 10,
-	},
 	assistantRow: {
+		flex: 1,
 		flexDirection: "row",
 		alignItems: "center",
 		justifyContent: "center",

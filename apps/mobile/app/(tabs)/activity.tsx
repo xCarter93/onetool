@@ -78,7 +78,7 @@ export default function ActivityScreen({
 	// iPhone: the solid ink band ends the header, so the feed starts right below
 	// it (Work's flat-list value — the first day header carries its own spacing.lg).
 	// iPad pane: no band, so the old translucent-header inset still applies.
-	const listTop = isPane ? SCROLL_TOP_INSET : 6;
+	const listTop = isPane ? SCROLL_TOP_INSET : 12;
 	// Seed "now" once (lazy) — react-hooks/purity forbids Date.now() during render.
 	const [nowMs] = useState(() => Date.now());
 

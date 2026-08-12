@@ -15,7 +15,7 @@ import type { WorkKind } from "@/lib/work-search";
 // exactly what `lib/work-search.ts` already models.
 //
 // Tab-switch policy (deterministic, issue #11) is UNCHANGED: switching panes does
-// NOT clear another pane's ref. Work and Activity are independent and PERSIST
+// NOT clear another pane's ref. Every pane is independent and PERSISTS
 // until explicitly cleared, so returning to a pane restores its last selection —
 // matching rotation continuity. Only select()/clear() mutate state.
 
@@ -23,12 +23,13 @@ import type { WorkKind } from "@/lib/work-search";
 export type RecordRef = { kind: WorkKind; id: string };
 
 /** Panes that own a detail view. Today and Routes have none. */
-export type SelectionTab = "work" | "activity";
+export type SelectionTab = "work" | "money" | "activity";
 
 export type SelectionState = Record<SelectionTab, RecordRef | null>;
 
 const initialState: SelectionState = {
 	work: null,
+	money: null,
 	activity: null,
 };
 

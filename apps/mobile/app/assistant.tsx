@@ -51,5 +51,8 @@ const styles = StyleSheet.create({
 	},
 	padCard: {
 		flex: 1,
+		// The composer's disclaimer is the card's last line — without this it
+		// sits flush against (and clips into) the rounded bottom edge.
+		paddingBottom: 12,
 	},
 });

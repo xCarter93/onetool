@@ -233,6 +233,18 @@ export default function RootLayout() {
 							<Stack.Screen name="route-edit" />
 							{/* In-person quote signature capture (Slice 3). */}
 							<Stack.Screen name="sign-quote" />
+							{/* Community-page QR panel. NOT the formSheet idiom the other
+							    root modals use — the screen goes full-bleed ink and drives
+							    the screen to full brightness so a customer can scan it, so
+							    a detented sheet would fight both. Same on iPad: a full-bleed
+							    scan panel has no business as a centered card. */}
+							<Stack.Screen
+								name="community-qr"
+								options={{
+									presentation: "fullScreenModal",
+									headerShown: false,
+								}}
+							/>
 							<Stack.Screen
 								name="org-switch"
 								options={overlayOptions(device, {

@@ -14,7 +14,15 @@ import { api } from "@onetool/backend/convex/_generated/api";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
 import { BellRing, Settings, X } from "lucide-react-native";
 import { Illustration } from "@/components/illustrations";
-import { fontFamily, radii, spacing, touch, type, useTokens } from "@/lib/theme";
+import {
+	colors,
+	fontFamily,
+	radii,
+	spacing,
+	touch,
+	type,
+	useTokens,
+} from "@/lib/theme";
 import {
 	formatRelativeTime,
 	truncateText,
@@ -295,7 +303,7 @@ const styles = StyleSheet.create({
 		alignItems: "center",
 	},
 	badgeText: {
-		color: "#fff",
+		color: colors.primaryForeground,
 		fontSize: type.micro,
 		fontFamily: fontFamily.semibold,
 	},

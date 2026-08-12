@@ -1,11 +1,4 @@
-import {
-	View,
-	Text,
-	ScrollView,
-	RefreshControl,
-	Pressable,
-	StyleSheet,
-} from "react-native";
+import { View, ScrollView, RefreshControl, StyleSheet } from "react-native";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { useLocalSearchParams, useRouter, type Href } from "expo-router";
@@ -15,17 +8,8 @@ import {
 	SafeAreaView,
 	useSafeAreaInsets,
 } from "react-native-safe-area-context";
-import { Id } from "@onetool/backend/convex/_generated/dataModel";
-import {
-	DOCK_CLEARANCE,
-	fontFamily,
-	radii,
-	recordTint,
-	STATUS,
-	touch,
-	type,
-	useTokens,
-} from "@/lib/theme";
+import { Doc, Id } from "@onetool/backend/convex/_generated/dataModel";
+import { DOCK_CLEARANCE, STATUS, useTokens } from "@/lib/theme";
 import { formatCurrency } from "@/lib/format";
 import { appleMapsAddressUrl, appleMapsUrl } from "@/lib/route-run";
 import { InkTabHeader } from "@/components/ink-tab-header";
@@ -34,21 +18,32 @@ import { useShellNav } from "@/lib/shell-nav";
 import { EditableField } from "@/components/EditableField";
 import { FieldMenu } from "@/components/FieldMenu";
 import { MentionModal } from "@/components/MentionModal";
-import { IdentityBlock } from "@/components/identity-block";
+import { IdentityBlock, IdentityMeta } from "@/components/identity-block";
+import {
+	countSuffix,
+	detailStyles,
+	DetailSkeleton,
+	EmptyRow,
+	FactCard,
+	FactRow,
+	SectionLabel,
+	SectionLink,
+	TeamChatButton,
+	type FactAction,
+} from "@/components/record-detail";
 import { openExternal } from "@/lib/open-external";
 import { recordRecentView } from "@/lib/recents";
-import { QuickActions, type QuickAction } from "@/components/quick-actions";
-import { DotGrid, SectionHeader, ListRow } from "@/components/ui";
-import {
-	Illustration,
-	type IllustrationName,
-} from "@/components/illustrations";
+import { usePermissions } from "@/lib/use-permissions";
+import { DotGrid, ListRow } from "@/components/ui";
+import { RecordDocuments } from "@/components/RecordDocuments";
 import {
 	Phone,
 	Mail,
+	MapPin,
 	MessageSquare,
 	Navigation,
 	Plus,
+	User,
 } from "lucide-react-native";
 
 type ClientStatus = "lead" | "active" | "inactive" | "archived";
@@ -74,6 +69,19 @@ const LEAD_SOURCE_LABEL: Record<string, string> = {
 	"community-page": "Community page",
 	other: "Other",
 };
+
+// One address string per property — the Properties row and its directions link
+// must resolve the same thing.
+const addressOf = (
+	property: Pick<
+		Doc<"clientProperties">,
+		"formattedAddress" | "streetAddress" | "city" | "state" | "zipCode"
+	>
+) =>
+	property.formattedAddress ||
+	[property.streetAddress, property.city, property.state, property.zipCode]
+		.filter(Boolean)
+		.join(", ");
 
 // Body extracted (P26 Option B) so the iPad pane can render this without the
 // route shell. headerMode DEFAULTS to "root" → the iPhone route wrapper below is
@@ -108,6 +116,7 @@ export function ClientDetailBody({
 	const [refreshing, setRefreshing] = useState(false);
 	const [mentionModalVisible, setMentionModalVisible] = useState(false);
 	const [optimisticStatus, setOptimisticStatus] = useState<string | null>(null);
+	const { can, isLoading: permsLoading } = usePermissions();
 
 	const client = useQuery(
 		api.clients.get,
@@ -205,81 +214,15 @@ export function ClientDetailBody({
 				) : (
 					<InkTabHeader title="Client" onBack={() => router.back()} />
 				)}
-				{/* Skeleton is shaped like the real layout: monogram + name, the
-				    four action tiles, then list rows. */}
+				{/* Skeleton mirrors the real layout: hero, team-chat pill, then
+				    list rows. */}
 				<ScrollView
 					contentContainerStyle={[
 						styles.scroll,
 						{ paddingBottom: scrollBottom },
 					]}
 				>
-					<View style={styles.skeletonIdentity}>
-						<View
-							style={[
-								styles.skeletonMonogram,
-								{ backgroundColor: t.lineSoft },
-							]}
-						/>
-						<View style={styles.skeletonIdentityBody}>
-							<View
-								style={[
-									styles.skeletonBar,
-									{ width: "70%", height: 20, backgroundColor: t.lineSoft },
-								]}
-							/>
-							<View
-								style={[
-									styles.skeletonBar,
-									{
-										width: "30%",
-										height: 11,
-										marginTop: 8,
-										backgroundColor: t.lineSoft,
-									},
-								]}
-							/>
-						</View>
-					</View>
-					<View style={styles.skeletonTiles}>
-						{[0, 1, 2, 3].map((i) => (
-							<View
-								key={i}
-								style={[
-									styles.skeletonTile,
-									{ backgroundColor: t.lineSoft },
-								]}
-							/>
-						))}
-					</View>
-					{[0, 1, 2].map((i) => (
-						<View key={i} style={styles.skeletonRow}>
-							<View
-								style={[
-									styles.skeletonRowTile,
-									{ backgroundColor: t.lineSoft },
-								]}
-							/>
-							<View style={styles.skeletonIdentityBody}>
-								<View
-									style={[
-										styles.skeletonBar,
-										{ width: "55%", height: 13, backgroundColor: t.lineSoft },
-									]}
-								/>
-								<View
-									style={[
-										styles.skeletonBar,
-										{
-											width: "35%",
-											height: 11,
-											marginTop: 6,
-											backgroundColor: t.lineSoft,
-										},
-									]}
-								/>
-							</View>
-						</View>
-					))}
+					<DetailSkeleton variant="client" />
 				</ScrollView>
 			</SafeAreaView>
 		);
@@ -290,65 +233,32 @@ export function ClientDetailBody({
 	const primaryProperty = properties.find((p) => p.isPrimary) ?? properties[0];
 	const primaryContact = contacts.find((c) => c.isPrimary) ?? contacts[0];
 
-	const propertyAddress = primaryProperty
-		? primaryProperty.formattedAddress ||
-			[
-				primaryProperty.streetAddress,
-				primaryProperty.city,
-				primaryProperty.state,
-				primaryProperty.zipCode,
-			]
-				.filter(Boolean)
-				.join(", ")
-		: undefined;
+	// Identity meta line: where this client is. Lead source only stands in when
+	// there is no location to show.
+	const identityLocation =
+		[primaryProperty?.city, primaryProperty?.state].filter(Boolean).join(", ") ||
+		undefined;
+	const identitySub =
+		identityLocation ??
+		(client.leadSource
+			? (LEAD_SOURCE_LABEL[client.leadSource] ?? client.leadSource)
+			: undefined);
 
-	// Identity sub line: lead source, else the primary property's city.
-	const identitySub = client.leadSource
-		? (LEAD_SOURCE_LABEL[client.leadSource] ?? client.leadSource)
-		: primaryProperty?.city || undefined;
+	// Directions for one property — the project's own resolution, per row:
+	// coordinates win, else the formatted address, else no action at all.
+	const directionsFor = (property: (typeof properties)[number]) => {
+		const address = addressOf(property);
+		if (property.latitude !== undefined && property.longitude !== undefined) {
+			return appleMapsUrl(property.latitude, property.longitude);
+		}
+		return address ? appleMapsAddressUrl(address) : undefined;
+	};
 
-	const phone = primaryContact?.phone;
-	const email = primaryContact?.email;
-	const directionsUrl =
-		primaryProperty &&
-		primaryProperty.latitude !== undefined &&
-		primaryProperty.longitude !== undefined
-			? appleMapsUrl(primaryProperty.latitude, primaryProperty.longitude)
-			: propertyAddress
-				? appleMapsAddressUrl(propertyAddress)
-				: undefined;
-
-	// Every tile stays visible; missing data dims it rather than hiding it.
-	const quickActions: QuickAction[] = [
-		{
-			key: "call",
-			label: "Call",
-			Icon: Phone,
-			disabled: !phone,
-			onPress: () => phone && openExternal(`tel:${phone}`, "Phone"),
-		},
-		{
-			key: "message",
-			label: "Message",
-			Icon: MessageSquare,
-			disabled: !phone,
-			onPress: () => phone && openExternal(`sms:${phone}`, "Messages"),
-		},
-		{
-			key: "email",
-			label: "Email",
-			Icon: Mail,
-			disabled: !email,
-			onPress: () => email && openExternal(`mailto:${email}`, "Mail"),
-		},
-		{
-			key: "directions",
-			label: "Directions",
-			Icon: Navigation,
-			disabled: !directionsUrl,
-			onPress: () => directionsUrl && openExternal(directionsUrl, "Maps"),
-		},
-	];
+	// Creation links are permission-gated, and the convention is to HIDE (not
+	// dim) what the user may not do — but stay visible while the grant is still
+	// loading, so the header doesn't reflow under a tap.
+	const canCreateProject = permsLoading || can("projects", "modify");
+	const canCreateQuote = permsLoading || can("quotes", "modify");
 
 	const recentProjects = projects.slice(0, 3);
 	const recentQuotes = quotes.slice(0, 3);
@@ -363,7 +273,9 @@ export function ClientDetailBody({
 		>
 			<DotGrid style={StyleSheet.absoluteFill} />
 			{isPane ? (
-				<PaneHeader title={client.companyName} onBack={onBack} />
+				// No title — the hero right below carries the name; a titled pane
+				// header printed it twice.
+				<PaneHeader onBack={onBack} />
 			) : (
 				<InkTabHeader
 					title={client.companyName}
@@ -382,10 +294,9 @@ export function ClientDetailBody({
 				{/* Identity — status is TEXT; the FieldMenu hangs off it so the one
 				    place a client status can change keeps working. */}
 				<IdentityBlock
-					tint={recordTint.client}
-					monogram={client.companyName}
 					statusKey={status}
-					sub={identitySub}
+					name={client.companyName}
+					meta={identitySub ? <IdentityMeta>{identitySub}</IdentityMeta> : null}
 					renderStatus={(statusText) => (
 						<FieldMenu
 							title="Client status"
@@ -403,7 +314,10 @@ export function ClientDetailBody({
 								accessibilityLabel={`Status: ${
 									STATUS[status as keyof typeof STATUS]?.label ?? status
 								}. Tap to change`}
-								style={[styles.statusTrigger, { borderBottomColor: t.faint }]}
+								style={[
+									detailStyles.statusTrigger,
+									{ borderBottomColor: t.faint },
+								]}
 							>
 								{statusText}
 							</View>
@@ -411,54 +325,40 @@ export function ClientDetailBody({
 					)}
 				/>
 
-				<View style={styles.actionsWrap}>
-					<QuickActions actions={quickActions} />
-				</View>
-
-				{/* Team chat — relocated from the old floating FAB */}
-				<Pressable
+				{/* One quiet verb near the hero. Call/message/email/directions now
+				    live on the rows that own the data. */}
+				<TeamChatButton
 					onPress={() => setMentionModalVisible(true)}
-					accessibilityRole="button"
-					accessibilityLabel="Open team chat"
-					style={({ pressed }) => [
-						styles.teamChat,
-						{ backgroundColor: t.frostedBg, borderColor: t.frostedBorder },
-						pressed && styles.pressed,
-					]}
-				>
-					<MessageSquare size={18} color={t.frostedInk} />
-					<Text style={[styles.teamChatText, { color: t.frostedInk }]}>
-						Team chat
-					</Text>
-				</Pressable>
+					style={styles.teamChat}
+				/>
 
-				{/* Company — quiet stacked text, no card */}
-				<View style={styles.section}>
-					<SectionHeader title="Company" />
-					<View style={styles.stack}>
+				{/* Company — editable fields read as wells; read-only twins stay flat */}
+				<View style={detailStyles.section}>
+					<SectionLabel title="Company" />
+					<View style={detailStyles.stack}>
 						<EditableField
 							label="Company name"
 							value={client.companyName}
 							onSave={(value) => handleSaveField("companyName", value)}
 							placeholder="Company name"
 						/>
+						{/* Read-only twins: no well, no pencil — the affordance only
+						    means something where it is absent from static text. */}
 						{client.companyDescription ? (
-							<View style={styles.readField}>
-								<Text style={[styles.readLabel, { color: t.faint }]}>
-									Description
-								</Text>
-								<Text style={[styles.readValue, { color: t.ink }]}>
-									{client.companyDescription}
-								</Text>
-							</View>
+							<EditableField
+								label="Description"
+								value={client.companyDescription}
+								onSave={async () => {}}
+								editable={false}
+							/>
 						) : null}
 						{tags.length > 0 ? (
-							<View style={styles.readField}>
-								<Text style={[styles.readLabel, { color: t.faint }]}>Tags</Text>
-								<Text style={[styles.readValue, { color: t.ink }]}>
-									{tags.join("  ·  ")}
-								</Text>
-							</View>
+							<EditableField
+								label="Tags"
+								value={tags.join("  ·  ")}
+								onSave={async () => {}}
+								editable={false}
+							/>
 						) : null}
 						<EditableField
 							label="Notes"
@@ -471,140 +371,144 @@ export function ClientDetailBody({
 					</View>
 				</View>
 
-				{/* Contacts (read-only; Call on phone) */}
-				<View style={styles.section}>
-					<SectionHeader title={`Contacts${countSuffix(contacts.length)}`} />
+				{/* Contacts — every row carries only the actions its data supports:
+				    no phone, no call/message button. */}
+				<View style={detailStyles.section}>
+					<SectionLabel title={`Contacts${countSuffix(contacts.length)}`} />
 					{contacts.length > 0 ? (
-						<View>
+						<FactCard>
 							{contacts.map((contact, i) => {
 								const name =
 									`${contact.firstName} ${contact.lastName}`.trim() ||
 									"Unnamed contact";
+								const isPrimary = contact._id === primaryContact?._id;
 								const sub =
-									[
-										contact.isPrimary ? "Primary" : null,
-										contact.jobTitle,
-										contact.email,
-									]
+									[contact.jobTitle, contact.email, contact.phone]
 										.filter(Boolean)
 										.join("  ·  ") || undefined;
-								return (
-									<ListRow
-										key={contact._id}
-										icon="User"
-										title={name}
-										sub={sub}
-										showChevron={false}
-										last={i === contacts.length - 1}
-										right={
-											contact.phone ? (
-												<Pressable
-													onPress={() =>
-														openExternal(`tel:${contact.phone}`, "Phone")
-													}
-													accessibilityRole="button"
-													accessibilityLabel={`Call ${name}`}
-													hitSlop={8}
-													style={({ pressed }) => [
-														styles.callRow,
-														pressed && styles.pressed,
-													]}
-												>
-													<Phone size={14} color={t.frostedInk} />
-													<Text
-														style={[styles.callText, { color: t.frostedInk }]}
-														numberOfLines={1}
-													>
-														{contact.phone}
-													</Text>
-												</Pressable>
-											) : undefined
+								const actions: FactAction[] = [];
+								if (contact.phone) {
+									actions.push(
+										{
+											key: "call",
+											label: `Call ${name}`,
+											Icon: Phone,
+											onPress: () =>
+												openExternal(`tel:${contact.phone}`, "Phone"),
+										},
+										{
+											key: "message",
+											label: `Message ${name}`,
+											Icon: MessageSquare,
+											onPress: () =>
+												openExternal(`sms:${contact.phone}`, "Messages"),
 										}
+									);
+								}
+								if (contact.email) {
+									actions.push({
+										key: "email",
+										label: `Email ${name}`,
+										Icon: Mail,
+										onPress: () =>
+											openExternal(`mailto:${contact.email}`, "Mail"),
+									});
+								}
+								return (
+									<FactRow
+										key={contact._id}
+										Icon={User}
+										title={isPrimary ? `${name}  ·  Primary` : name}
+										sub={sub}
+										actions={actions}
+										last={i === contacts.length - 1}
 									/>
 								);
 							})}
-						</View>
+						</FactCard>
 					) : (
 						// Web aliases client-contacts-none onto the clients art — same here.
 						<EmptyRow text="No contacts yet" illo="clients-none" />
 					)}
 				</View>
 
-				{/* Properties */}
-				<View style={styles.section}>
-					<SectionHeader
-						title={`Properties${countSuffix(properties.length)}`}
-					/>
+				{/* Properties — directions resolve per row (coords, else address);
+				    a property with neither carries no button. */}
+				<View style={detailStyles.section}>
+					<SectionLabel title={`Properties${countSuffix(properties.length)}`} />
 					{properties.length > 0 ? (
-						<View>
+						<FactCard>
 							{properties.map((property, i) => {
 								const title =
 									property.propertyName || property.streetAddress || "Property";
-								const address =
-									property.formattedAddress ||
-									[
-										property.streetAddress,
-										property.city,
-										property.state,
-										property.zipCode,
-									]
-										.filter(Boolean)
-										.join(", ");
+								const address = addressOf(property);
 								const isPrimary = property._id === primaryProperty?._id;
+								const url = directionsFor(property);
 								return (
-									<ListRow
+									<FactRow
 										key={property._id}
-										icon="MapPin"
+										Icon={MapPin}
 										title={isPrimary ? `${title}  ·  Primary` : title}
 										sub={address || undefined}
-										showChevron={false}
+										actions={
+											url
+												? [
+														{
+															key: "directions",
+															label: `Directions to ${title}`,
+															Icon: Navigation,
+															onPress: () => openExternal(url, "Maps"),
+														},
+													]
+												: []
+										}
 										last={i === properties.length - 1}
 									/>
 								);
 							})}
-						</View>
+						</FactCard>
 					) : (
 						<EmptyRow text="No properties yet" illo="client-properties-none" />
 					)}
 				</View>
 
 				{/* Projects */}
-				<View style={styles.section}>
-					<View style={styles.headerRow}>
-						<View style={styles.headerGrow}>
-							<SectionHeader
-								title={`Projects${countSuffix(projects.length)}`}
-								action={projects.length > 0 ? "View all" : undefined}
-								onAction={() =>
-									// iPad: scope Work's chip to Projects. iPhone keeps the route.
-									shellNav ? shellNav.browse("project") : router.push("/projects")
-								}
-							/>
-						</View>
-						<Pressable
-							onPress={() =>
-								// Cast: /project/new isn't in the generated route map yet.
-								router.push({
-									pathname: "/project/new",
-									params: { clientId },
-								} as unknown as Href)
-							}
-							hitSlop={12}
-							accessibilityRole="button"
-							accessibilityLabel="New project for this client"
-							style={({ pressed }) => [
-								styles.newAction,
-								pressed && styles.pressed,
-							]}
-						>
-							<Plus size={14} color={t.frostedInk} />
-							<Text style={[styles.newActionText, { color: t.frostedInk }]}>
-								New project
-							</Text>
-						</Pressable>
-					</View>
+				<View style={detailStyles.section}>
+					<SectionLabel
+						title={`Projects${countSuffix(projects.length)}`}
+						right={
+							<View style={styles.headerLinks}>
+								{projects.length > 0 ? (
+									<SectionLink
+										label="View all"
+										accessibilityLabel="View all projects"
+										onPress={() =>
+											// iPad: scope Work's chip to Projects. iPhone keeps the route.
+											shellNav
+												? shellNav.browse("project")
+												: router.push("/projects")
+										}
+									/>
+								) : null}
+								{canCreateProject ? (
+									<SectionLink
+										label="New"
+										Icon={Plus}
+										accessibilityLabel="New project for this client"
+										onPress={() =>
+											// Cast: /project/new isn't in the generated route map yet.
+											router.push({
+												pathname: "/project/new",
+												params: { clientId },
+											} as unknown as Href)
+										}
+									/>
+								) : null}
+							</View>
+						}
+					/>
 					{recentProjects.length > 0 ? (
-						<View>
+						<FactCard style={detailStyles.sectionCard}>
 							{recentProjects.map((project, i) => (
 								<ListRow
 									key={project._id}
@@ -619,42 +523,35 @@ export function ClientDetailBody({
 									last={i === recentProjects.length - 1}
 								/>
 							))}
-						</View>
+						</FactCard>
 					) : (
 						<EmptyRow text="No projects yet" illo="projects-none" />
 					)}
 				</View>
 
 				{/* Quotes */}
-				<View style={styles.section}>
-					<View style={styles.headerRow}>
-						<View style={styles.headerGrow}>
-							<SectionHeader title={`Quotes${countSuffix(quotes.length)}`} />
-						</View>
-						<Pressable
-							onPress={() =>
-								// Cast: /quote/new isn't in the generated route map yet.
-								router.push({
-									pathname: "/quote/new",
-									params: { clientId },
-								} as unknown as Href)
-							}
-							hitSlop={12}
-							accessibilityRole="button"
-							accessibilityLabel="New quote for this client"
-							style={({ pressed }) => [
-								styles.newAction,
-								pressed && styles.pressed,
-							]}
-						>
-							<Plus size={14} color={t.frostedInk} />
-							<Text style={[styles.newActionText, { color: t.frostedInk }]}>
-								New quote
-							</Text>
-						</Pressable>
-					</View>
+				<View style={detailStyles.section}>
+					<SectionLabel
+						title={`Quotes${countSuffix(quotes.length)}`}
+						right={
+							canCreateQuote ? (
+								<SectionLink
+									label="New"
+									Icon={Plus}
+									accessibilityLabel="New quote for this client"
+									onPress={() =>
+										// Cast: /quote/new isn't in the generated route map yet.
+										router.push({
+											pathname: "/quote/new",
+											params: { clientId },
+										} as unknown as Href)
+									}
+								/>
+							) : undefined
+						}
+					/>
 					{recentQuotes.length > 0 ? (
-						<View>
+						<FactCard style={detailStyles.sectionCard}>
 							{recentQuotes.map((quote, i) => (
 								<ListRow
 									key={quote._id}
@@ -663,26 +560,28 @@ export function ClientDetailBody({
 									status={quote.status}
 									showChevron={false}
 									onPress={() =>
-										// Cast: dynamic detail route isn't in the generated route map.
-										router.push({
-											pathname: "/quote/[id]",
-											params: { id: quote._id },
-										} as unknown as Href)
+										shellNav
+											? shellNav.open({ kind: "quote", id: quote._id })
+											: // Cast: dynamic detail route isn't in the generated route map.
+												router.push({
+													pathname: "/quote/[id]",
+													params: { id: quote._id },
+												} as unknown as Href)
 									}
 									last={i === recentQuotes.length - 1}
 								/>
 							))}
-						</View>
+						</FactCard>
 					) : (
 						<EmptyRow text="No quotes yet" illo="quotes-none" />
 					)}
 				</View>
 
 				{/* Invoices */}
-				<View style={styles.section}>
-					<SectionHeader title={`Invoices${countSuffix(invoices.length)}`} />
+				<View style={detailStyles.section}>
+					<SectionLabel title={`Invoices${countSuffix(invoices.length)}`} />
 					{recentInvoices.length > 0 ? (
-						<View>
+						<FactCard style={detailStyles.sectionCard}>
 							{recentInvoices.map((invoice, i) => (
 								<ListRow
 									key={invoice._id}
@@ -691,20 +590,33 @@ export function ClientDetailBody({
 									status={invoice.status}
 									showChevron={false}
 									onPress={() =>
-										// Cast: dynamic detail route isn't in the generated route map.
-										router.push({
-											pathname: "/invoice/[id]",
-											params: { id: invoice._id },
-										} as unknown as Href)
+										shellNav
+											? shellNav.open({ kind: "invoice", id: invoice._id })
+											: // Cast: dynamic detail route isn't in the generated route map.
+												router.push({
+													pathname: "/invoice/[id]",
+													params: { id: invoice._id },
+												} as unknown as Href)
 									}
 									last={i === recentInvoices.length - 1}
 								/>
 							))}
-						</View>
+						</FactCard>
 					) : (
 						<EmptyRow text="No invoices yet" illo="invoices-none" />
 					)}
 				</View>
+
+				{/* Documents — hidden without the view grant (the list query throws
+				    on denial); visible while the grant is still loading. */}
+				{permsLoading || can("documents", "view") ? (
+					<View style={detailStyles.section}>
+						<SectionLabel title="Documents" />
+						<RecordDocuments
+							target={{ kind: "client", id: clientId as Id<"clients"> }}
+						/>
+					</View>
+				) : null}
 
 				<View style={{ height: 32 }} />
 			</ScrollView>
@@ -727,105 +639,13 @@ export default function ClientDetailScreen() {
 	return <ClientDetailBody id={clientId} />;
 }
 
-function countSuffix(n: number) {
-	return n > 0 ? `  ·  ${n}` : "";
-}
-
-function EmptyRow({ text, illo }: { text: string; illo: IllustrationName }) {
-	const t = useTokens();
-	return (
-		<View style={styles.empty}>
-			{/* Knockout = the page canvas, so cut-out shapes don't show card-white. */}
-			<Illustration name={illo} size="sm" knockout={t.bg} />
-			<Text style={[styles.emptyText, { color: t.sub }]}>{text}</Text>
-		</View>
-	);
-}
-
 const styles = StyleSheet.create({
 	flex: { flex: 1 },
 	scroll: { padding: 16, gap: 0 },
-	pressed: { opacity: 0.7 },
 
-	skeletonIdentity: { flexDirection: "row", alignItems: "center", gap: 14 },
-	skeletonMonogram: { width: 54, height: 54, borderRadius: radii.card },
-	skeletonIdentityBody: { flex: 1, minWidth: 0 },
-	skeletonBar: { borderRadius: radii.xs },
-	skeletonTiles: { flexDirection: "row", gap: 8, marginTop: 18 },
-	skeletonTile: {
-		flex: 1,
-		height: touch.min + 16,
-		borderRadius: radii.ctrl,
-	},
-	skeletonRow: {
-		flexDirection: "row",
-		alignItems: "center",
-		gap: 11,
-		paddingVertical: 12,
-		paddingHorizontal: 12,
-		marginTop: 6,
-	},
-	skeletonRowTile: { width: 32, height: 32, borderRadius: 9 },
+	// A single quiet pill sits alone under the hero — it no longer follows a
+	// tile row, so it carries the whole gap itself.
+	teamChat: { marginTop: 16, alignSelf: "flex-start", paddingHorizontal: 14 },
 
-	statusTrigger: {
-		alignSelf: "flex-start",
-		paddingBottom: 4,
-		borderBottomWidth: 1,
-	},
-
-	actionsWrap: { marginTop: 18 },
-
-	teamChat: {
-		flexDirection: "row",
-		alignItems: "center",
-		justifyContent: "center",
-		gap: 8,
-		height: 44,
-		borderRadius: radii.rSm,
-		borderWidth: 1,
-		marginTop: 10,
-	},
-	teamChatText: {
-		fontFamily: fontFamily.semibold,
-		fontSize: 13,
-	},
-
-	section: { marginTop: 22, gap: 10 },
-	stack: { gap: 2 },
-	readField: { paddingVertical: 8, paddingHorizontal: 2, gap: 3 },
-	readLabel: {
-		fontFamily: fontFamily.medium,
-		fontSize: type.eyebrow,
-	},
-	readValue: { fontFamily: fontFamily.regular, fontSize: type.body },
-
-	headerRow: { flexDirection: "row", alignItems: "center", gap: 12 },
-	headerGrow: { flex: 1, minWidth: 0 },
-	newAction: {
-		flexDirection: "row",
-		alignItems: "center",
-		gap: 3,
-		flexShrink: 0,
-	},
-	newActionText: {
-		fontFamily: fontFamily.semibold,
-		fontSize: type.sm,
-	},
-
-	callRow: {
-		flexDirection: "row",
-		alignItems: "center",
-		gap: 6,
-		maxWidth: 150,
-		// Painted, not hitSlop-only — the row keeps a tappable target.
-		minHeight: touch.min,
-	},
-	callText: { fontFamily: fontFamily.semibold, fontSize: type.meta },
-
-	empty: {
-		paddingVertical: 18,
-		alignItems: "center",
-		gap: 8,
-	},
-	emptyText: { fontFamily: fontFamily.regular, fontSize: type.meta },
+	headerLinks: { flexDirection: "row", alignItems: "center", gap: 16 },
 });

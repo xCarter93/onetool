@@ -46,6 +46,7 @@ export function ListRow({
 	containerStyle,
 }: ListRowProps) {
 	const t = useTokens();
+	// eslint-disable-next-line import/namespace -- computed lookup is typed by keyof typeof icons; the rule can't statically validate it
 	const Glyph = icon ? icons[icon] : null;
 	// Neutral by default — blue is for actions and active states, not list chrome.
 	const tileColor = iconColor || t.sub;

@@ -140,6 +140,14 @@
             ]
           }
         }
+      ],
+      "expo-sharing",
+      [
+        "expo-media-library",
+        {
+          "savePhotosPermission": "OneTool saves your community page QR code to your photo library.",
+          "isAccessMediaLocationEnabled": false
+        }
       ]
     ],
     "experiments": {
