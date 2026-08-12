@@ -251,6 +251,17 @@ export default function RootLayout() {
 									sheetCornerRadius: 30,
 								})}
 							/>
+							{/* Push-preference toggles — same sheet idiom as the
+							    notifications sheet it's pushed from. */}
+							<Stack.Screen
+								name="notification-preferences"
+								options={overlayOptions(device, {
+									sheetAllowedDetents: [0.52, 0.9],
+									sheetInitialDetentIndex: 0,
+									sheetGrabberVisible: false,
+									sheetCornerRadius: 30,
+								})}
+							/>
 							<Stack.Screen
 								name="tasks/form"
 								options={overlayOptions(device, {

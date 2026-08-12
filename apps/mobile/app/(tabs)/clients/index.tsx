@@ -18,7 +18,7 @@ import {
 import { Search, Plus, X } from "lucide-react-native";
 import { DOCK_CLEARANCE, fontFamily, radii, shadow, useTokens } from "@/lib/theme";
 import { Avatar, Badge, DotGrid, SCROLL_TOP_INSET } from "@/components/ui";
-import { AppHeader } from "@/components/app-header";
+import { InkTabHeader } from "@/components/ink-tab-header";
 import { useShellNav } from "@/lib/shell-nav";
 
 // listWithProjectCounts returns a reshaped DTO (id/name/status display string),
@@ -72,6 +72,9 @@ export default function ClientsScreen({
 	// The floating dock takes no layout height — the list clears it itself.
 	// iPad panes have no dock (the shell replaces Tabs).
 	const listBottom = isPane ? 24 : DOCK_CLEARANCE + insets.bottom;
+	// iPhone: the ink band is a solid hard edge, so the list starts just under it
+	// (Money's value). iPad pane: no band, so the translucent-header inset stays.
+	const listTop = isPane ? SCROLL_TOP_INSET : 12;
 	const [searchQuery, setSearchQuery] = useState("");
 	const [filter, setFilter] = useState<FilterValue>("all");
 
@@ -220,11 +223,11 @@ export default function ClientsScreen({
 			{/* Page canvas, matching web's .workspace-canvas. */}
 			<DotGrid style={StyleSheet.absoluteFill} />
 			{/* Pane mode: the shell mounts PaneHeader above this body (one header
-			    per pane — locked convention). iPhone: AppHeader mode="root". */}
-			{isPane ? null : <AppHeader mode="root" title="Clients" />}
+			    per pane — locked convention). iPhone: the shared ink band. */}
+			{isPane ? null : <InkTabHeader title="Clients" />}
 
 			{loading ? (
-				<View style={styles.listContent}>
+				<View style={[styles.listContent, { paddingTop: listTop }]}>
 					{ListHeader}
 					{[0, 1, 2, 3].map((i) => (
 						<View key={i} style={[styles.card, styles.skeletonCard]}>
@@ -249,6 +252,7 @@ export default function ClientsScreen({
 					ListHeaderComponent={ListHeader}
 					contentContainerStyle={{
 						...styles.listContent,
+						paddingTop: listTop,
 						paddingBottom: listBottom,
 					}}
 					ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
@@ -295,7 +299,6 @@ const styles = StyleSheet.create({
 	listContent: {
 		paddingHorizontal: 16,
 		paddingBottom: 24,
-		paddingTop: SCROLL_TOP_INSET,
 	},
 	listHeader: {
 		gap: 12,

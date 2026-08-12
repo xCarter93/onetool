@@ -100,6 +100,19 @@ export const mobileAppArticles: HelpArticle[] = [
 				],
 			},
 			{
+				heading: "Notifications and team chat",
+				blocks: [
+					{
+						type: "paragraph",
+						text: "The bell in the header opens your notifications list, and the app can also push the important ones to your lock screen: **mentions** (a teammate tagged you in team chat), **automation messages** from your workflows, and **payments and approvals** (an invoice was paid or a quote was approved). Team chat lives on every client, project, and quote detail screen, so you can tag a teammate right from the record you are looking at.",
+					},
+					{
+						type: "paragraph",
+						text: "To choose which of these reach your lock screen, tap the gear at the top of the notifications list, or open **Notifications** from your profile. Everything starts on, and the toggles only control pushes on your device: your in-app notifications list always shows the full history. If you record a payment or approve a quote yourself, the app celebrates with your team but skips buzzing your own phone.",
+					},
+				],
+			},
+			{
 				heading: "Your profile",
 				blocks: [
 					{

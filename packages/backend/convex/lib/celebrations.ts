@@ -11,6 +11,7 @@ import type { Doc, Id } from "../_generated/dataModel";
 import { listMembershipsByOrg } from "./memberships";
 import { isAdminRole } from "./permissions";
 import { formatCurrency } from "./money";
+import { enqueuePush } from "../push";
 
 type CelebrationKind = "quote_approved" | "payment_received";
 
@@ -56,6 +57,13 @@ async function createCelebration(
 		detail: CelebrationCopy;
 		generic: { title: string; message: string };
 		flairPool: string[];
+		/**
+		 * The signed-in user who caused this celebration, when there is one
+		 * (portal / webhook / automation paths have no actor). They still get the
+		 * bell row, but never a push — nobody wants their own phone to buzz for
+		 * the payment they just recorded.
+		 */
+		actorUserId?: Id<"users">;
 	}
 ): Promise<void> {
 	const org = await ctx.db.get(opts.orgId);
@@ -91,17 +99,43 @@ async function createCelebration(
 		opts.flairPool[Math.floor(Math.random() * opts.flairPool.length)];
 
 	for (const [userId, detailed] of recipients) {
-		await ctx.db.insert("notifications", {
+		const title = detailed ? opts.detail.title : opts.generic.title;
+		const message = detailed ? opts.detail.message : opts.generic.message;
+		const notificationId = await ctx.db.insert("notifications", {
 			orgId: opts.orgId,
 			userId,
 			notificationType: opts.kind,
-			title: detailed ? opts.detail.title : opts.generic.title,
-			message: detailed ? opts.detail.message : opts.generic.message,
+			title,
+			message,
 			entityType: detailed ? opts.entityType : undefined,
 			entityId: detailed ? opts.entityId : undefined,
 			actionUrl: detailed ? opts.detail.actionUrl : undefined,
 			isRead: false,
 			celebrationFlair: flair,
+		});
+
+		// Bell row for everyone (above); push for everyone EXCEPT the actor.
+		if (userId === opts.actorUserId) continue;
+		// Celebrations fan out to every member of the org, most of whom have no
+		// mobile device. Skip the scheduled action entirely for them rather than
+		// burning a scheduler slot per member on a send that fetches zero tokens.
+		const hasDevice = await ctx.db
+			.query("pushTokens")
+			.withIndex("by_user", (q) => q.eq("userId", userId))
+			.first();
+		if (!hasDevice) continue;
+		await enqueuePush(ctx, {
+			notificationType: opts.kind,
+			taggedUserId: userId,
+			title,
+			body: message,
+			// Generic recipients get no record link (RBAC read scoping), so send
+			// them to the bell list instead of a page they may not be able to open.
+			url: detailed ? opts.detail.actionUrl : "/notifications",
+			notificationId,
+			// CLERK org id, not opts.orgId — the push payload's orgId is what the
+			// mobile client uses to switch active org on tap (see push.ts).
+			orgId: org.clerkOrganizationId,
 		});
 	}
 }
@@ -109,7 +143,8 @@ async function createCelebration(
 /** Celebrate a quote reaching "approved". Never throws — a celebration must not break the approving write. */
 export async function celebrateQuoteApproved(
 	ctx: MutationCtx,
-	quote: Doc<"quotes">
+	quote: Doc<"quotes">,
+	actorUserId?: Id<"users">
 ): Promise<void> {
 	try {
 		const client = await ctx.db.get(quote.clientId);
@@ -131,6 +166,7 @@ export async function celebrateQuoteApproved(
 				message: "A quote was just approved. Nice work, everyone.",
 			},
 			flairPool: QUOTE_APPROVED_FLAIR,
+			actorUserId,
 		});
 	} catch (err) {
 		console.warn("celebrateQuoteApproved skipped:", err);
@@ -140,7 +176,8 @@ export async function celebrateQuoteApproved(
 /** Celebrate an invoice reaching fully "paid". Never throws. */
 export async function celebrateInvoicePaid(
 	ctx: MutationCtx,
-	invoice: Doc<"invoices">
+	invoice: Doc<"invoices">,
+	actorUserId?: Id<"users">
 ): Promise<void> {
 	try {
 		const client = await ctx.db.get(invoice.clientId);
@@ -164,6 +201,7 @@ export async function celebrateInvoicePaid(
 				message: "An invoice was just paid. Great work out there.",
 			},
 			flairPool: INVOICE_PAID_FLAIR,
+			actorUserId,
 		});
 	} catch (err) {
 		console.warn("celebrateInvoicePaid skipped:", err);

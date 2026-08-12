@@ -245,7 +245,7 @@ export default function MoneyScreen({
 			    outstanding figure, the pipeline strip, and the search jump. */}
 			{isPane ? null : (
 				<InkTabHeader
-					title="Money"
+					orgChip
 					actions={[
 						{
 							key: "search",

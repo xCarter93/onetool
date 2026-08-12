@@ -593,7 +593,11 @@ export const update = userMutation({
 			}
 
 			if (filteredUpdates.status === "paid" && oldStatus !== "paid") {
-				await celebrateInvoicePaid(ctx, updatedInvoice as InvoiceDocument);
+				await celebrateInvoicePaid(
+					ctx,
+					updatedInvoice as InvoiceDocument,
+					ctx.user._id
+				);
 			}
 
 			// Emit status change event if status changed
@@ -854,7 +858,11 @@ export const markPaid = userMutation({
 				updatedInvoice as InvoiceDocument,
 				client?.companyName || "Unknown Client"
 			);
-			await celebrateInvoicePaid(ctx, updatedInvoice as InvoiceDocument);
+			await celebrateInvoicePaid(
+					ctx,
+					updatedInvoice as InvoiceDocument,
+					ctx.user._id
+				);
 			await maybeEnqueueQboSync(
 				ctx,
 				updatedInvoice.orgId,

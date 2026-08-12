@@ -915,7 +915,11 @@ export const update = userMutation({
 			}
 
 			if (filteredUpdates.status === "approved" && oldStatus !== "approved") {
-				await celebrateQuoteApproved(ctx, updatedQuote as QuoteDocument);
+				await celebrateQuoteApproved(
+					ctx,
+					updatedQuote as QuoteDocument,
+					ctx.user._id
+				);
 			}
 
 			// Emit status change event if status changed
@@ -1744,7 +1748,7 @@ export const approveInPerson = userMutation({
 			"quotes.approveInPerson"
 		);
 		if (updatedQuote) {
-			await celebrateQuoteApproved(ctx, updatedQuote);
+			await celebrateQuoteApproved(ctx, updatedQuote, ctx.user._id);
 		}
 
 		return { auditId, approvedAt: now };

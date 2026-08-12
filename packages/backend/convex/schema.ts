@@ -1151,6 +1151,28 @@ export default defineSchema({
 		.index("by_user", ["userId"])
 		.index("by_token", ["token"]),
 
+	// Per-category push mutes (Slice 8). Unlike pushTokens (userId-only), these
+	// ARE org-scoped: a user can mute payment pushes in one org and keep them in
+	// another. orgId is the Convex organizations id — the push payload's separate
+	// `orgId` is a CLERK org id, resolved via organizations.by_clerk_org at the
+	// gate (push.ts sendNotificationPush).
+	//
+	// SEMANTICS — default ON, everywhere:
+	//   • no record for (user, org)  → every category is ON
+	//   • record exists, field absent → that category is ON
+	// Fields are optional so adding a 4th category later cannot silently mute
+	// anyone who already has a row. Only `false` ever suppresses a push.
+	notificationPreferences: defineTable({
+		userId: v.id("users"),
+		orgId: v.id("organizations"),
+		mentions: v.optional(v.boolean()),
+		automations: v.optional(v.boolean()),
+		paymentsApprovals: v.optional(v.boolean()),
+	})
+		.index("by_user_org", ["userId", "orgId"])
+		// Org-delete cascade drain (lib/orgCascade.ts).
+		.index("by_org", ["orgId"]),
+
 	// Service Status - monitoring for external service health
 	serviceStatus: defineTable({
 		serviceName: v.string(), // "convex", "clerk_auth", "clerk_billing", "boldsign_esignature", "stripe"

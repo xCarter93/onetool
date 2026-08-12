@@ -28,7 +28,7 @@ import {
 } from "@/lib/theme";
 import { formatCurrency } from "@/lib/format";
 import { appleMapsAddressUrl, appleMapsUrl } from "@/lib/route-run";
-import { AppHeader } from "@/components/app-header";
+import { InkTabHeader } from "@/components/ink-tab-header";
 import { PaneHeader } from "@/components/ipad/pane-header";
 import { useShellNav } from "@/lib/shell-nav";
 import { EditableField } from "@/components/EditableField";
@@ -105,7 +105,6 @@ export function ClientDetailBody({
 	// The floating dock takes no layout height — scroll content clears it
 	// itself. iPad panes have no dock (the shell replaces Tabs).
 	const scrollBottom = isPane ? 16 : DOCK_CLEARANCE + insets.bottom;
-	const appHeaderMode = headerMode === "pane" ? "pane" : "detail";
 	const [refreshing, setRefreshing] = useState(false);
 	const [mentionModalVisible, setMentionModalVisible] = useState(false);
 	const [optimisticStatus, setOptimisticStatus] = useState<string | null>(null);
@@ -204,7 +203,7 @@ export function ClientDetailBody({
 				{isPane ? (
 					<PaneHeader onBack={onBack} />
 				) : (
-					<AppHeader mode={appHeaderMode} />
+					<InkTabHeader title="Client" onBack={() => router.back()} />
 				)}
 				{/* Skeleton is shaped like the real layout: monogram + name, the
 				    four action tiles, then list rows. */}
@@ -366,7 +365,10 @@ export function ClientDetailBody({
 			{isPane ? (
 				<PaneHeader title={client.companyName} onBack={onBack} />
 			) : (
-				<AppHeader mode={appHeaderMode} title={client.companyName} />
+				<InkTabHeader
+					title={client.companyName}
+					onBack={() => router.back()}
+				/>
 			)}
 			<ScrollView
 				contentContainerStyle={[

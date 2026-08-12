@@ -437,7 +437,7 @@ export default function WorkScreen({
 			) : (
 				// No ＋ here: the speed-dial FAB is the single capture entry point on
 				// iPhone (3.0 slice 5).
-				<InkTabHeader title="Work">
+				<InkTabHeader orgChip>
 					<SearchField
 						value={raw}
 						onChangeText={setRaw}
