@@ -565,11 +565,13 @@ export function ClientDetailBody({
 									status={quote.status}
 									showChevron={false}
 									onPress={() =>
-										// Cast: dynamic detail route isn't in the generated route map.
-										router.push({
-											pathname: "/quote/[id]",
-											params: { id: quote._id },
-										} as unknown as Href)
+										shellNav
+											? shellNav.open({ kind: "quote", id: quote._id })
+											: // Cast: dynamic detail route isn't in the generated route map.
+												router.push({
+													pathname: "/quote/[id]",
+													params: { id: quote._id },
+												} as unknown as Href)
 									}
 									last={i === recentQuotes.length - 1}
 								/>
@@ -593,11 +595,13 @@ export function ClientDetailBody({
 									status={invoice.status}
 									showChevron={false}
 									onPress={() =>
-										// Cast: dynamic detail route isn't in the generated route map.
-										router.push({
-											pathname: "/invoice/[id]",
-											params: { id: invoice._id },
-										} as unknown as Href)
+										shellNav
+											? shellNav.open({ kind: "invoice", id: invoice._id })
+											: // Cast: dynamic detail route isn't in the generated route map.
+												router.push({
+													pathname: "/invoice/[id]",
+													params: { id: invoice._id },
+												} as unknown as Href)
 									}
 									last={i === recentInvoices.length - 1}
 								/>

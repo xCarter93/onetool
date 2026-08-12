@@ -36,6 +36,7 @@ import {
 	type QuoteStatus,
 	type RecordActionKey,
 } from "@/lib/record-actions";
+import { useShellNav } from "@/lib/shell-nav";
 import { useQuoteCapabilities } from "@/lib/use-record-capabilities";
 import { usePermissions } from "@/lib/use-permissions";
 import { formatCurrency, formatDocumentDate } from "@/lib/format";
@@ -107,6 +108,9 @@ export function QuoteDetailBody({
 }) {
 	const t = useTokens();
 	const router = useRouter();
+	// iPad pane: cross-links to the invoice swap the pane selection instead of
+	// pushing a full-screen page over the shell. iPhone: null → router.push.
+	const shellNav = useShellNav();
 	const insets = useSafeAreaInsets();
 	// iPhone gets the 3.0 ink band (back circle + constant cluster). The iPad
 	// pane paths are untouched: PaneHeader when the shell owns back, the light
@@ -395,10 +399,14 @@ export function QuoteDetailBody({
 		setConverting(true);
 		try {
 			const invoiceId = await createFromQuote({ quoteId: quote._id });
-			router.push({
-				pathname: "/invoice/[id]",
-				params: { id: invoiceId },
-			} as unknown as Href);
+			if (shellNav) {
+				shellNav.open({ kind: "invoice", id: invoiceId });
+			} else {
+				router.push({
+					pathname: "/invoice/[id]",
+					params: { id: invoiceId },
+				} as unknown as Href);
+			}
 		} catch {
 			Alert.alert("Couldn't create the invoice", "Please try again.");
 		} finally {
@@ -469,10 +477,14 @@ export function QuoteDetailBody({
 				break;
 			case "view_invoice":
 				if (capsData?.invoiceId) {
-					router.push({
-						pathname: "/invoice/[id]",
-						params: { id: capsData.invoiceId },
-					} as unknown as Href);
+					if (shellNav) {
+						shellNav.open({ kind: "invoice", id: capsData.invoiceId });
+					} else {
+						router.push({
+							pathname: "/invoice/[id]",
+							params: { id: capsData.invoiceId },
+						} as unknown as Href);
+					}
 				}
 				break;
 		}
