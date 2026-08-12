@@ -30,6 +30,7 @@ import {
 	AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { usePermissions } from "@/hooks/use-permissions";
+import { todayUtcMidnightMs } from "@/lib/dates";
 import { cn } from "@/lib/utils";
 
 type QuoteStatus = "draft" | "sent" | "approved" | "declined" | "expired";
@@ -71,6 +72,13 @@ export function QuoteDetailHeader({
 	const canModifyQuote = can("quotes", "modify");
 	const canDeleteQuote = can("quotes", "delete");
 	const canModifyInvoice = can("invoices", "modify");
+
+	// The backend refuses to send a quote whose valid-until day has passed; the
+	// sidebar's Valid until field is the revive path. Compared as calendar days,
+	// same as the backend, so the final valid day still sends.
+	const validUntilPassed =
+		typeof quote.validUntil === "number" &&
+		quote.validUntil < todayUtcMidnightMs();
 
 	// Reverting a sent quote pulls it out of the client's portal, so it confirms.
 	const [showRevertConfirm, setShowRevertConfirm] = useState(false);
@@ -165,7 +173,10 @@ export function QuoteDetailHeader({
 			slot: "secondary",
 			variant: "outline",
 			onClick: onSendToClient,
-			disabled: !canModifyQuote || sending,
+			disabled: !canModifyQuote || sending || validUntilPassed,
+			disabledReason: validUntilPassed
+				? "Extend the valid-until date before sending"
+				: undefined,
 			loading: sending,
 			loadingLabel: "Sending…",
 			hidden: currentStatus === "approved",

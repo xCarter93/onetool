@@ -50,7 +50,7 @@ import {
 	formatActivityTime,
 } from "@/components/shared/detail-drawer";
 import { formatCurrency } from "@/lib/money";
-import { utcMidnightMsToLocalDate } from "@/lib/dates";
+import { todayUtcMidnightMs, utcMidnightMsToLocalDate } from "@/lib/dates";
 import { convexErrorMessage } from "@/lib/convex-error";
 
 type QuoteStatus = Doc<"quotes">["status"];
@@ -206,6 +206,12 @@ export function QuoteDetailDrawer({
 				? "Loading…"
 				: "Quote");
 
+	// Mirrors the backend's send guard (calendar-day comparison, so the final
+	// valid day still sends) and the record header's disabled reason.
+	const validUntilPassed =
+		typeof quote?.validUntil === "number" &&
+		quote.validUntil < todayUtcMidnightMs();
+
 	const canSend = quote?.status === "draft" || quote?.status === "sent";
 	const canDecide = quote?.status === "sent";
 	const isApproved = quote?.status === "approved";
@@ -229,7 +235,10 @@ export function QuoteDetailDrawer({
 			variant: "outline",
 			slot: "secondary",
 			onClick: () => void emailToClient(),
-			disabled: !can("quotes", "modify") || sending,
+			disabled: !can("quotes", "modify") || sending || validUntilPassed,
+			disabledReason: validUntilPassed
+				? "Extend the valid-until date on the quote first"
+				: undefined,
 			loading: sending,
 			loadingLabel: "Sending…",
 			hidden: isApproved,

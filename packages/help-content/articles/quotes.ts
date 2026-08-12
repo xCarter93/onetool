@@ -185,7 +185,7 @@ export const quotesArticles: HelpArticle[] = [
 					},
 					{
 						type: "paragraph",
-						text: "**Send to Client**, **Send for e-signature**, **Generate PDF**, and **Delete** are available in every status, with two exceptions: **Send to Client** disappears once a quote is approved (convert it to an invoice instead), and a quote cannot be deleted once an invoice has been created from it until you remove or unlink that invoice.",
+						text: "**Send to Client**, **Send for e-signature**, **Generate PDF**, and **Delete** are available in every status, with these exceptions: **Send to Client** disappears once a quote is approved (convert it to an invoice instead) and greys out once the **Valid until** date has passed (extend it first), and a quote cannot be deleted once an invoice has been created from it until you remove or unlink that invoice.",
 					},
 				],
 			},

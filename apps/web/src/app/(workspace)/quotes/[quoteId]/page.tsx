@@ -18,7 +18,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ExclamationTriangleIcon } from "@heroicons/react/24/outline";
 import { QuoteDetailHeader } from "./components/quote-detail-header";
 import { QuoteDetailTabs } from "./components/quote-detail-tabs";
-import { localDateToUtcMidnightMs } from "@/lib/dates";
+import { localDateToUtcMidnightMs, todayUtcMidnightMs } from "@/lib/dates";
 import { convexErrorMessage } from "@/lib/convex-error";
 
 type QuoteStatus = "draft" | "sent" | "approved" | "declined" | "expired";
@@ -28,7 +28,7 @@ const getQuoteStatus = (
 	validUntilDate?: number
 ): QuoteStatus => {
 	if (status === "expired") return "expired";
-	if (validUntilDate && validUntilDate < Date.now()) return "expired";
+	if (validUntilDate && validUntilDate < todayUtcMidnightMs()) return "expired";
 	return status;
 };
 
