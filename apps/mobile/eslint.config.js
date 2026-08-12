@@ -37,4 +37,18 @@ module.exports = defineConfig([
       ],
     },
   },
+  // Node build scripts run under plain Node, not the RN runtime.
+  {
+    files: ["scripts/**/*.cjs"],
+    languageOptions: {
+      globals: {
+        __dirname: "readonly",
+        Buffer: "readonly",
+        process: "readonly",
+        console: "readonly",
+        require: "readonly",
+        module: "readonly",
+      },
+    },
+  },
 ]);
