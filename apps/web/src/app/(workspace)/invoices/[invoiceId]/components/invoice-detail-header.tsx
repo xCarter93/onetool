@@ -35,6 +35,8 @@ interface InvoiceDetailHeaderProps {
 	onStatusChange: (status: InvoiceStatus) => void;
 	onMarkPaid: () => void;
 	onSendToClient: () => void;
+	/** True while the send-to-client mutation is in flight. */
+	sending?: boolean;
 	onGeneratePdf: () => void;
 	onCancel: () => void;
 }
@@ -45,11 +47,15 @@ export function InvoiceDetailHeader({
 	onStatusChange,
 	onMarkPaid,
 	onSendToClient,
+	sending = false,
 	onGeneratePdf,
 	onCancel,
 }: InvoiceDetailHeaderProps) {
 	const { can } = usePermissions();
 	const canModify = can("invoices", "modify");
+	// Status writes race an in-flight send, so they wait it out. The send row
+	// itself and Cancel (modal-gated) keep using `canModify` directly.
+	const canModifyNow = canModify && !sending;
 
 	// Status-dependent actions. The primary next step for each status is pinned
 	// left ("start"); everything else is secondary and collapses into the ⋯ menu.
@@ -64,7 +70,7 @@ export function InvoiceDetailHeader({
 						slot: "start",
 						variant: "default",
 						onClick: () => onStatusChange("sent"),
-						disabled: !canModify,
+						disabled: !canModifyNow,
 					},
 					{
 						// TODO(reui-rebuild): success button intent mapped to default
@@ -74,7 +80,7 @@ export function InvoiceDetailHeader({
 						slot: "start",
 						variant: "default",
 						onClick: onMarkPaid,
-						disabled: !canModify,
+						disabled: !canModifyNow,
 					},
 				];
 			case "sent":
@@ -88,7 +94,7 @@ export function InvoiceDetailHeader({
 						slot: "start",
 						variant: "default",
 						onClick: onMarkPaid,
-						disabled: !canModify,
+						disabled: !canModifyNow,
 					},
 					{
 						key: "revert-draft",
@@ -97,7 +103,7 @@ export function InvoiceDetailHeader({
 						slot: "secondary",
 						variant: "outline",
 						onClick: () => onStatusChange("draft"),
-						disabled: !canModify,
+						disabled: !canModifyNow,
 					},
 				];
 			case "paid":
@@ -109,7 +115,7 @@ export function InvoiceDetailHeader({
 						slot: "start",
 						variant: "outline",
 						onClick: () => onStatusChange("sent"),
-						disabled: !canModify,
+						disabled: !canModifyNow,
 					},
 				];
 			case "cancelled":
@@ -121,7 +127,7 @@ export function InvoiceDetailHeader({
 						slot: "start",
 						variant: "outline",
 						onClick: () => onStatusChange("draft"),
-						disabled: !canModify,
+						disabled: !canModifyNow,
 					},
 				];
 			default:
@@ -132,13 +138,19 @@ export function InvoiceDetailHeader({
 	const actions: RecordAction[] = [
 		...statusActions,
 		{
+			// Emails the portal invite. Hidden on paid/cancelled invoices, which the
+			// backend rejects; sent/overdue re-send the same link.
 			key: "send-to-client",
-			label: "Send to Client",
+			label:
+				currentStatus === "draft" ? "Send to Client" : "Resend to Client",
 			icon: <Mail className="h-4 w-4" />,
 			slot: "secondary",
 			variant: "outline",
 			onClick: onSendToClient,
-			disabled: !canModify,
+			disabled: !canModify || sending,
+			loading: sending,
+			loadingLabel: "Sending…",
+			hidden: currentStatus === "paid" || currentStatus === "cancelled",
 		},
 		{
 			key: "generate-pdf",

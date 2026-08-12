@@ -18,7 +18,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ExclamationTriangleIcon } from "@heroicons/react/24/outline";
 import { QuoteDetailHeader } from "./components/quote-detail-header";
 import { QuoteDetailTabs } from "./components/quote-detail-tabs";
-import { localDateToUtcMidnightMs } from "@/lib/dates";
+import { localDateToUtcMidnightMs, todayUtcMidnightMs } from "@/lib/dates";
 import { convexErrorMessage } from "@/lib/convex-error";
 
 type QuoteStatus = "draft" | "sent" | "approved" | "declined" | "expired";
@@ -28,7 +28,7 @@ const getQuoteStatus = (
 	validUntilDate?: number
 ): QuoteStatus => {
 	if (status === "expired") return "expired";
-	if (validUntilDate && validUntilDate < Date.now()) return "expired";
+	if (validUntilDate && validUntilDate < todayUtcMidnightMs()) return "expired";
 	return status;
 };
 
@@ -67,6 +67,7 @@ function QuoteDetailPageContent() {
 	const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
 	const [isDeleting, setIsDeleting] = useState(false);
 	const [isConverting, setIsConverting] = useState(false);
+	const [isSending, setIsSending] = useState(false);
 
 	// Queries
 	const quote = useQuery(api.quotes.get, { id: quoteId });
@@ -130,6 +131,7 @@ function QuoteDetailPageContent() {
 	const generateUploadUrl = useMutation(api.documents.generateUploadUrl);
 	const createDocument = useMutation(api.documents.create);
 	const createInvoiceFromQuote = useMutation(api.invoices.createFromQuote);
+	const sendQuoteToClient = useMutation(api.quotes.sendToClient);
 
 	// Plan gate for e-signature sends (server-enforced; this drives button UX).
 	const esignAccess = useCanPerformAction("send_esignature");
@@ -399,7 +401,7 @@ function QuoteDetailPageContent() {
 		}
 	};
 
-	const handleSendToClient = () => {
+	const handleSendForSignature = () => {
 		if (isLatestDocumentLoading) return; // still resolving — ignore the click
 		if (latestDocument === null) {
 			toast.error("No PDF", "Generate a PDF first");
@@ -414,6 +416,23 @@ function QuoteDetailPageContent() {
 			);
 		}
 		router.push(`/quotes/${quoteId}/sign`);
+	};
+
+	const handleSendToClient = async () => {
+		if (isSending) return;
+		setIsSending(true);
+		try {
+			await sendQuoteToClient({ id: quoteId });
+			toast.success(
+				"Quote sent",
+				"Your client will get an email to view and approve it in the portal."
+			);
+		} catch (err) {
+			const message = convexErrorMessage(err, "Failed to send quote");
+			toast.error("Couldn't send quote", message);
+		} finally {
+			setIsSending(false);
+		}
 	};
 
 	// Loading state
@@ -465,6 +484,8 @@ function QuoteDetailPageContent() {
 					currentStatus={currentStatus}
 					onStatusChange={handleStatusChange}
 					onSendToClient={handleSendToClient}
+					sending={isSending}
+					onSendForSignature={handleSendForSignature}
 					sendDisabled={sendBlocked || isLatestDocumentLoading}
 					sendDisabledReason={
 						isLatestDocumentLoading

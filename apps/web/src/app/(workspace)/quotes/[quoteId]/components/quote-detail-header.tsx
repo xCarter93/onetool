@@ -5,6 +5,7 @@ import { StatusProgressBar } from "@/components/shared/status-progress-bar";
 import { StickyDetailHeader } from "@/components/shared/sticky-detail-header";
 import {
 	PenLine,
+	Mail,
 	FileText,
 	Trash2,
 	Check,
@@ -29,6 +30,7 @@ import {
 	AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { usePermissions } from "@/hooks/use-permissions";
+import { todayUtcMidnightMs } from "@/lib/dates";
 import { cn } from "@/lib/utils";
 
 type QuoteStatus = "draft" | "sent" | "approved" | "declined" | "expired";
@@ -37,7 +39,11 @@ interface QuoteDetailHeaderProps {
 	quote: Doc<"quotes">;
 	currentStatus: QuoteStatus;
 	onStatusChange: (status: QuoteStatus) => void;
+	/** Emails the client a portal invite for this quote (quotes.sendToClient). */
 	onSendToClient: () => void;
+	/** True while the send-to-client mutation is in flight. */
+	sending?: boolean;
+	onSendForSignature: () => void;
 	/** Disable "Send for e-signature" when the monthly e-signature cap is reached. */
 	sendDisabled?: boolean;
 	sendDisabledReason?: string;
@@ -53,6 +59,8 @@ export function QuoteDetailHeader({
 	currentStatus,
 	onStatusChange,
 	onSendToClient,
+	sending = false,
+	onSendForSignature,
 	sendDisabled = false,
 	sendDisabledReason,
 	onGeneratePdf,
@@ -64,6 +72,17 @@ export function QuoteDetailHeader({
 	const canModifyQuote = can("quotes", "modify");
 	const canDeleteQuote = can("quotes", "delete");
 	const canModifyInvoice = can("invoices", "modify");
+	// A send in flight races any status write on the same quote: approve first
+	// and the send comes back "already approved". The conflicting writes wait it
+	// out; Delete stays live, being modal-gated and an abort either way.
+	const canModifyNow = canModifyQuote && !sending;
+
+	// The backend refuses to send a quote whose valid-until day has passed; the
+	// sidebar's Valid until field is the revive path. Compared as calendar days,
+	// same as the backend, so the final valid day still sends.
+	const validUntilPassed =
+		typeof quote.validUntil === "number" &&
+		quote.validUntil < todayUtcMidnightMs();
 
 	// Reverting a sent quote pulls it out of the client's portal, so it confirms.
 	const [showRevertConfirm, setShowRevertConfirm] = useState(false);
@@ -81,7 +100,7 @@ export function QuoteDetailHeader({
 						slot: "start",
 						variant: "default",
 						onClick: () => onStatusChange("sent"),
-						disabled: !canModifyQuote,
+						disabled: !canModifyNow,
 					},
 				];
 			case "sent":
@@ -94,7 +113,7 @@ export function QuoteDetailHeader({
 						slot: "start",
 						variant: "default",
 						onClick: () => onStatusChange("approved"),
-						disabled: !canModifyQuote,
+						disabled: !canModifyNow,
 					},
 					{
 						key: "revert-to-draft",
@@ -103,7 +122,7 @@ export function QuoteDetailHeader({
 						slot: "secondary",
 						variant: "outline",
 						onClick: () => setShowRevertConfirm(true),
-						disabled: !canModifyQuote,
+						disabled: !canModifyNow,
 					},
 				];
 			case "approved":
@@ -115,7 +134,7 @@ export function QuoteDetailHeader({
 						slot: "start",
 						variant: "default",
 						onClick: onConvertToInvoice,
-						disabled: !canModifyInvoice || converting,
+						disabled: !canModifyInvoice || converting || sending,
 						loading: converting,
 					},
 					{
@@ -125,7 +144,7 @@ export function QuoteDetailHeader({
 						slot: "secondary",
 						variant: "outline",
 						onClick: () => onStatusChange("draft"),
-						disabled: !canModifyQuote,
+						disabled: !canModifyNow,
 					},
 				];
 			case "declined":
@@ -138,7 +157,7 @@ export function QuoteDetailHeader({
 						slot: "start",
 						variant: "outline",
 						onClick: () => onStatusChange("draft"),
-						disabled: !canModifyQuote,
+						disabled: !canModifyNow,
 					},
 				];
 			default:
@@ -149,12 +168,30 @@ export function QuoteDetailHeader({
 	const actions: RecordAction[] = [
 		...statusActions,
 		{
+			// Emails the portal invite. Hidden on approved quotes — the backend
+			// rejects those (convert to an invoice instead), same as mobile.
+			key: "send-to-client",
+			label:
+				currentStatus === "sent" ? "Resend to Client" : "Send to Client",
+			icon: <Mail className="h-4 w-4" />,
+			slot: "secondary",
+			variant: "outline",
+			onClick: onSendToClient,
+			disabled: !canModifyQuote || sending || validUntilPassed,
+			disabledReason: validUntilPassed
+				? "Extend the valid-until date before sending"
+				: undefined,
+			loading: sending,
+			loadingLabel: "Sending…",
+			hidden: currentStatus === "approved",
+		},
+		{
 			key: "send-esign",
 			label: "Send for e-signature",
 			icon: <PenLine className="h-4 w-4" />,
 			slot: "secondary",
 			variant: "outline",
-			onClick: onSendToClient,
+			onClick: onSendForSignature,
 			disabled: sendDisabled || !canModifyQuote,
 			disabledReason: sendDisabled ? sendDisabledReason : undefined,
 		},

@@ -11,6 +11,7 @@ import {
 	FileText,
 	Loader2,
 	Lock,
+	Mail,
 	PenLine,
 	Receipt,
 	XCircle,
@@ -49,7 +50,7 @@ import {
 	formatActivityTime,
 } from "@/components/shared/detail-drawer";
 import { formatCurrency } from "@/lib/money";
-import { utcMidnightMsToLocalDate } from "@/lib/dates";
+import { todayUtcMidnightMs, utcMidnightMsToLocalDate } from "@/lib/dates";
 import { convexErrorMessage } from "@/lib/convex-error";
 
 type QuoteStatus = Doc<"quotes">["status"];
@@ -103,7 +104,9 @@ export function QuoteDetailDrawer({
 	const toast = useToast();
 	const updateQuote = useMutation(api.quotes.update);
 	const createInvoice = useMutation(api.invoices.createFromQuote);
+	const sendQuoteToClient = useMutation(api.quotes.sendToClient);
 	const [converting, setConverting] = React.useState(false);
+	const [sending, setSending] = React.useState(false);
 
 	const preview = useQuery(
 		api.quotes.getPreview,
@@ -141,6 +144,28 @@ export function QuoteDetailDrawer({
 		if (!quoteId) return;
 		onOpenChange(false);
 		router.push(`/quotes/${quoteId}/sign`);
+	};
+
+	// Emails the client a portal invite for this quote and flips it to sent.
+	// Same mutation the record page and mobile use.
+	const emailToClient = async () => {
+		if (!quoteId || sending) return;
+		setSending(true);
+		try {
+			await sendQuoteToClient({ id: quoteId });
+			toast.success(
+				"Quote sent",
+				"Your client will get an email to view and approve it in the portal."
+			);
+		} catch (err) {
+			console.error("Failed to send quote to client:", err);
+			toast.error(
+				"Couldn't send quote",
+				convexErrorMessage(err, "Please try again.")
+			);
+		} finally {
+			setSending(false);
+		}
 	};
 
 	const setStatus = async (status: QuoteStatus) => {
@@ -181,6 +206,12 @@ export function QuoteDetailDrawer({
 				? "Loading…"
 				: "Quote");
 
+	// Mirrors the backend's send guard (calendar-day comparison, so the final
+	// valid day still sends) and the record header's disabled reason.
+	const validUntilPassed =
+		typeof quote?.validUntil === "number" &&
+		quote.validUntil < todayUtcMidnightMs();
+
 	const canSend = quote?.status === "draft" || quote?.status === "sent";
 	const canDecide = quote?.status === "sent";
 	const isApproved = quote?.status === "approved";
@@ -196,11 +227,28 @@ export function QuoteDetailDrawer({
 			onClick: openRecord,
 		},
 		{
+			// Hidden on approved quotes: the backend rejects those (convert to an
+			// invoice instead), same rule as the record header and mobile.
+			key: "send-to-client",
+			label: quote?.status === "sent" ? "Resend to client" : "Send to client",
+			icon: <Mail className="size-3.5" />,
+			variant: "outline",
+			slot: "secondary",
+			onClick: () => void emailToClient(),
+			disabled: !can("quotes", "modify") || sending || validUntilPassed,
+			disabledReason: validUntilPassed
+				? "Extend the valid-until date on the quote first"
+				: undefined,
+			loading: sending,
+			loadingLabel: "Sending…",
+			hidden: isApproved,
+		},
+		{
 			key: "send",
 			label: "Send for e-signature",
 			icon: <PenLine className="size-3.5" />,
-			variant: "default",
-			slot: "start",
+			variant: "outline",
+			slot: "secondary",
 			onClick: sendForSignature,
 			disabled: !can("quotes", "modify") || missingPdf,
 			disabledReason: missingPdf
@@ -216,7 +264,7 @@ export function QuoteDetailDrawer({
 			variant: "default",
 			slot: "start",
 			onClick: () => void setStatus("approved"),
-			disabled: !can("quotes", "modify"),
+			disabled: !can("quotes", "modify") || sending,
 			hidden: !canDecide,
 		},
 		{
@@ -227,7 +275,8 @@ export function QuoteDetailDrawer({
 			variant: "default",
 			slot: "start",
 			onClick: convertToInvoice,
-			disabled: !can("invoices", "modify") || alreadyInvoiced,
+			disabled:
+				!can("invoices", "modify") || alreadyInvoiced || sending,
 			loading: converting,
 			hidden: !isApproved,
 		},
@@ -238,7 +287,7 @@ export function QuoteDetailDrawer({
 			variant: "destructive",
 			slot: "end",
 			onClick: () => void setStatus("declined"),
-			disabled: !can("quotes", "modify"),
+			disabled: !can("quotes", "modify") || sending,
 			hidden: !canDecide,
 		},
 	];
@@ -316,6 +365,7 @@ export function QuoteDetailDrawer({
 							quoteId={quote._id}
 							currentStatus={quote.status}
 							canModify={canModify}
+							busy={sending}
 						/>
 					</DrawerSection>
 
@@ -420,10 +470,13 @@ function StatusControl({
 	quoteId,
 	currentStatus,
 	canModify,
+	busy = false,
 }: {
 	quoteId: Id<"quotes">;
 	currentStatus: QuoteStatus;
 	canModify: boolean;
+	/** A send is in flight: its status write would race this one. */
+	busy?: boolean;
 }) {
 	const updateQuote = useMutation(api.quotes.update);
 	const toast = useToast();
@@ -450,7 +503,7 @@ function StatusControl({
 				<Select
 					value={status}
 					onValueChange={(v) => setStatus(v as QuoteStatus)}
-					disabled={!canModify}
+					disabled={!canModify || busy}
 				>
 					<SelectTrigger className="h-9 flex-1">
 						<SelectValue />
@@ -464,7 +517,7 @@ function StatusControl({
 					</SelectContent>
 				</Select>
 				{dirty ? (
-					<Button size="sm" disabled={saving} onClick={handleSave}>
+					<Button size="sm" disabled={saving || busy} onClick={handleSave}>
 						{saving && <Loader2 className="h-4 w-4 animate-spin" />}
 						{saving ? "Saving…" : "Save"}
 					</Button>
