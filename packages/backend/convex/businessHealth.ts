@@ -154,12 +154,21 @@ export const get = optionalUserQuery({
 		const overdueInvoices: Doc<"invoices">[] = [];
 
 		for (const invoice of invoices) {
+			const remaining = remainingFor(invoice);
+			// A paid invoice with a remaining balance can only mean a refund
+			// (markPaid settles every payment row) — per the header contract, the
+			// refund restores the balance to outstanding.
+			const isRefundRestored = invoice.status === "paid" && remaining > 0;
 			const isEffectiveOverdue =
 				invoice.status === "overdue" ||
-				(invoice.status === "sent" && invoice.dueDate < now);
-			if (invoice.status !== "sent" && !isEffectiveOverdue) continue;
-
-			const remaining = remainingFor(invoice);
+				((invoice.status === "sent" || isRefundRestored) &&
+					invoice.dueDate < now);
+			if (
+				invoice.status !== "sent" &&
+				!isRefundRestored &&
+				!isEffectiveOverdue
+			)
+				continue;
 			if (remaining <= 0) continue;
 
 			outstandingTotals.push(remaining);

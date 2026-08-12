@@ -124,6 +124,49 @@ describe("quotes.sendToClient", () => {
 		expect(typeof quote?.sentAt).toBe("number");
 	});
 
+	it("refuses to send when the valid-until date has passed", async () => {
+		const { asUser, quoteId } = await seed({
+			portalAccess: true,
+			contactEmail: "client@example.com",
+			status: "expired",
+		});
+		// create rejects past dates, so backdate directly — the state a quote
+		// reaches once its window lapses.
+		await t.run(async (ctx) => {
+			await ctx.db.patch(quoteId, {
+				validUntil: Date.now() - 30 * 24 * 60 * 60 * 1000,
+			});
+		});
+
+		await expect(
+			asUser.mutation(api.quotes.sendToClient, { id: quoteId })
+		).rejects.toThrow(/valid-until date has passed/);
+
+		// No revive: the portal must not regain an approvable expired offer.
+		const quote = await asUser.query(api.quotes.get, { id: quoteId });
+		expect(quote?.status).toBe("expired");
+		expect(await pendingQuoteEmails()).toHaveLength(0);
+	});
+
+	it("revives an expired quote whose valid-until date is still ahead", async () => {
+		const { asUser, quoteId } = await seed({
+			portalAccess: true,
+			contactEmail: "client@example.com",
+			status: "expired",
+		});
+		await t.run(async (ctx) => {
+			await ctx.db.patch(quoteId, {
+				validUntil: Date.now() + 30 * 24 * 60 * 60 * 1000,
+			});
+		});
+
+		await asUser.mutation(api.quotes.sendToClient, { id: quoteId });
+		await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+		const quote = await asUser.query(api.quotes.get, { id: quoteId });
+		expect(quote?.status).toBe("sent");
+	});
+
 	it("schedules a server-side PDF render when the quote has no document", async () => {
 		const { asUser, quoteId } = await seed({
 			portalAccess: true,
