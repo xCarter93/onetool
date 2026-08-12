@@ -1,7 +1,9 @@
 import { ActionSheetIOS, Alert, Platform } from "react-native";
 import * as DocumentPicker from "expo-document-picker";
 import * as ImagePicker from "expo-image-picker";
+import * as FileSystem from "expo-file-system/legacy";
 import { resolveMime } from "./mime";
+import type { Id } from "@onetool/backend/convex/_generated/dataModel";
 
 // A picked file normalized across the photo library, camera, and Files. size
 // may be 0 when the source omits it — callers derive it from disk before upload.
@@ -127,4 +129,20 @@ export async function pickUpload(opts?: {
 	if (!source) return [];
 	if (source === "files") return pickFiles(multiple);
 	return pickImages(source, multiple);
+}
+
+// Stream the file URI natively to a Convex signed upload URL. RN's bridgeless
+// fetch() can't read a local file:// blob, so a Blob body uploads empty / throws.
+export async function uploadToConvex(
+	uploadUrl: string,
+	file: { uri: string; mimeType: string }
+): Promise<Id<"_storage">> {
+	const result = await FileSystem.uploadAsync(uploadUrl, file.uri, {
+		httpMethod: "POST",
+		uploadType: FileSystem.FileSystemUploadType.BINARY_CONTENT,
+		headers: { "Content-Type": file.mimeType },
+	});
+	if (result.status !== 200) throw new Error("Upload failed");
+	const { storageId } = JSON.parse(result.body) as { storageId: Id<"_storage"> };
+	return storageId;
 }

@@ -47,7 +47,7 @@ import { EditableField } from "@/components/EditableField";
 import { FieldMenu } from "@/components/FieldMenu";
 import { useOverlayTransition } from "@/components/useOverlayTransition";
 import { MentionModal } from "@/components/MentionModal";
-import { ProjectDocuments } from "@/components/ProjectDocuments";
+import { RecordDocuments } from "@/components/RecordDocuments";
 import { AppCalendar, toDateId, fromDateId } from "@/components/AppCalendar";
 import {
 	Building2,
@@ -659,7 +659,9 @@ export function ProjectDetailBody({
 
 				{/* Documents — rewired component (Plan 02) */}
 				{projectId && (
-					<ProjectDocuments projectId={projectId as Id<"projects">} />
+					<RecordDocuments
+						target={{ kind: "project", id: projectId as Id<"projects"> }}
+					/>
 				)}
 
 				<View style={{ height: 32 }} />

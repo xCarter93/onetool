@@ -108,6 +108,9 @@ describe("isOverlayRoute", () => {
 			"/org-switch",
 			"/tasks/form",
 			"/tasks/new",
+			// Full-screen QR panel — maps to no rail tab, so tab sync must not
+			// resolve it to Today while it is up.
+			"/community-qr",
 		]) {
 			expect(isOverlayRoute(p)).toBe(true);
 		}

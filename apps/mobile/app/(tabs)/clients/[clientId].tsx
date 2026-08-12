@@ -39,6 +39,7 @@ import { openExternal } from "@/lib/open-external";
 import { recordRecentView } from "@/lib/recents";
 import { QuickActions, type QuickAction } from "@/components/quick-actions";
 import { DotGrid, SectionHeader, ListRow } from "@/components/ui";
+import { RecordDocuments } from "@/components/RecordDocuments";
 import {
 	Illustration,
 	type IllustrationName,
@@ -704,6 +705,14 @@ export function ClientDetailBody({
 					) : (
 						<EmptyRow text="No invoices yet" illo="invoices-none" />
 					)}
+				</View>
+
+				{/* Documents */}
+				<View style={styles.section}>
+					<SectionHeader title="Documents" />
+					<RecordDocuments
+						target={{ kind: "client", id: clientId as Id<"clients"> }}
+					/>
 				</View>
 
 				<View style={{ height: 32 }} />

@@ -62,7 +62,7 @@ export function isStackRoute(pathname: string): boolean {
  * crashing with "Maximum update depth exceeded".
  */
 export function isOverlayRoute(pathname: string): boolean {
-	if (/^\/(notifications|assistant|org-switch)(\/|$)/.test(pathname)) {
+	if (/^\/(notifications|assistant|org-switch|community-qr)(\/|$)/.test(pathname)) {
 		return true;
 	}
 	return /^\/tasks\/(form|new)(\/|$)/.test(pathname);

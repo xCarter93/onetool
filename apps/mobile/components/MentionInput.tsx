@@ -15,7 +15,7 @@ import { api } from "@onetool/backend/convex/_generated/api";
 import { colors, fontFamily, spacing, radius } from "@/lib/theme";
 import { Send, Paperclip, X } from "lucide-react-native";
 import * as FileSystem from "expo-file-system/legacy";
-import { pickUpload } from "@/lib/upload";
+import { pickUpload, uploadToConvex } from "@/lib/upload";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
 
 interface MentionInputProps {
@@ -205,25 +205,10 @@ export function MentionInput({
 				try {
 					const uploadUrl = await generateUploadUrl();
 
-					// Stream the file URI natively. RN's bridgeless fetch() can't read
-					// a local file:// blob, so a Blob body uploads empty / throws.
-					const uploadResult = await FileSystem.uploadAsync(
-						uploadUrl,
-						attachment.uri,
-						{
-							httpMethod: "POST",
-							uploadType: FileSystem.FileSystemUploadType.BINARY_CONTENT,
-							headers: { "Content-Type": attachment.mimeType },
-						}
-					);
-
-					if (uploadResult.status !== 200) {
-						throw new Error("Upload failed");
-					}
-
-					const { storageId } = JSON.parse(uploadResult.body) as {
-						storageId: Id<"_storage">;
-					};
+					const storageId = await uploadToConvex(uploadUrl, {
+						uri: attachment.uri,
+						mimeType: attachment.mimeType,
+					});
 
 					setAttachments((prev) =>
 						prev.map((a) =>

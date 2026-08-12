@@ -17,7 +17,7 @@ import { api } from "@onetool/backend/convex/_generated/api";
 import { DOCK_CLEARANCE, useTokens, radii, fontFamily } from "@/lib/theme";
 import { Avatar, Card, DotGrid } from "@/components/ui";
 import { useRouter, type Href } from "expo-router";
-import { Mail, Building, LogOut, Shield, Trash2, SquarePen, ChevronRight, Bell } from "lucide-react-native";
+import { Mail, Building, LogOut, Shield, Trash2, SquarePen, ChevronRight, Bell, QrCode } from "lucide-react-native";
 import { InkTabHeader } from "@/components/ink-tab-header";
 
 // headerMode defaults to "root" → the iPhone path (self-mounted AppHeader,
@@ -301,7 +301,9 @@ export default function ProfileScreen({
 					</Pressable>
 				)}
 
-				{/* Notification preferences — per-user, so no owner gate. */}
+				{/* Share the org's community-page QR. Org-level, so it sits with
+				    Business details. The row sells SHARING the code, never "open the
+				    page" — the QR panel has no browse action either. */}
 				<Pressable
 					style={{
 						flexDirection: "row",
@@ -310,6 +312,46 @@ export default function ProfileScreen({
 						paddingHorizontal: 16,
 						borderRadius: radii.lg,
 						marginTop: isOwner ? 12 : 24,
+						backgroundColor: t.card,
+						borderWidth: 1,
+						borderColor: t.line,
+					}}
+					onPress={() => router.push("/community-qr" as Href)}
+				>
+					<QrCode size={20} color={t.sub} />
+					<View style={{ marginLeft: 12, flex: 1 }}>
+						<Text
+							style={{
+								color: t.ink,
+								fontFamily: fontFamily.semibold,
+								fontSize: 13,
+							}}
+						>
+							Share QR code
+						</Text>
+						<Text
+							style={{
+								marginTop: 2,
+								color: t.sub,
+								fontFamily: fontFamily.regular,
+								fontSize: 11,
+							}}
+						>
+							Customers scan it to find your community page
+						</Text>
+					</View>
+					<ChevronRight size={18} color={t.sub} />
+				</Pressable>
+
+				{/* Notification preferences — per-user, so no owner gate. */}
+				<Pressable
+					style={{
+						flexDirection: "row",
+						alignItems: "center",
+						paddingVertical: 16,
+						paddingHorizontal: 16,
+						borderRadius: radii.lg,
+						marginTop: 12,
 						backgroundColor: t.card,
 						borderWidth: 1,
 						borderColor: t.line,
