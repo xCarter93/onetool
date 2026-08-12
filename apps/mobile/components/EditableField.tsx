@@ -182,6 +182,9 @@ export function EditableField({
 				onPress={handleEdit}
 				accessibilityRole="button"
 				accessibilityLabel={`Edit ${label || "field"}`}
+				// The label overrides child Text for VoiceOver, so the current
+				// content has to be announced as the value.
+				accessibilityValue={{ text: value || placeholder }}
 				style={({ pressed }) => [
 					styles.well,
 					{ backgroundColor: t.card, borderColor: t.lineSoft },

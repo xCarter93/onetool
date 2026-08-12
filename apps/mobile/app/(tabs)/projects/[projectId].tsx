@@ -631,8 +631,9 @@ export function ProjectDetailBody({
 					)}
 				</View>
 
-				{/* Documents — rewired component (Plan 02) */}
-				{projectId ? (
+				{/* Documents — rewired component (Plan 02). Hidden without the view
+				    grant (the list query throws on denial); visible while loading. */}
+				{projectId && (permsLoading || can("documents", "view")) ? (
 					<View style={detailStyles.section}>
 						<SectionLabel title="Documents" />
 						<RecordDocuments

@@ -431,7 +431,7 @@ const styles = StyleSheet.create({
 		borderRadius: radii.ctrl,
 		borderWidth: 1,
 	},
-	teamChatText: { fontFamily: fontFamily.semibold, fontSize: 13 },
+	teamChatText: { fontFamily: fontFamily.semibold, fontSize: type.rowTitle },
 
 	skeletonIdentity: { minWidth: 0 },
 	skeletonTitleRow: {

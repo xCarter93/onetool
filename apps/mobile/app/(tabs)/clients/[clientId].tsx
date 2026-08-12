@@ -8,7 +8,7 @@ import {
 	SafeAreaView,
 	useSafeAreaInsets,
 } from "react-native-safe-area-context";
-import { Id } from "@onetool/backend/convex/_generated/dataModel";
+import { Doc, Id } from "@onetool/backend/convex/_generated/dataModel";
 import { DOCK_CLEARANCE, STATUS, useTokens } from "@/lib/theme";
 import { formatCurrency } from "@/lib/format";
 import { appleMapsAddressUrl, appleMapsUrl } from "@/lib/route-run";
@@ -69,6 +69,19 @@ const LEAD_SOURCE_LABEL: Record<string, string> = {
 	"community-page": "Community page",
 	other: "Other",
 };
+
+// One address string per property — the Properties row and its directions link
+// must resolve the same thing.
+const addressOf = (
+	property: Pick<
+		Doc<"clientProperties">,
+		"formattedAddress" | "streetAddress" | "city" | "state" | "zipCode"
+	>
+) =>
+	property.formattedAddress ||
+	[property.streetAddress, property.city, property.state, property.zipCode]
+		.filter(Boolean)
+		.join(", ");
 
 // Body extracted (P26 Option B) so the iPad pane can render this without the
 // route shell. headerMode DEFAULTS to "root" → the iPhone route wrapper below is
@@ -234,16 +247,7 @@ export function ClientDetailBody({
 	// Directions for one property — the project's own resolution, per row:
 	// coordinates win, else the formatted address, else no action at all.
 	const directionsFor = (property: (typeof properties)[number]) => {
-		const address =
-			property.formattedAddress ||
-			[
-				property.streetAddress,
-				property.city,
-				property.state,
-				property.zipCode,
-			]
-				.filter(Boolean)
-				.join(", ");
+		const address = addressOf(property);
 		if (property.latitude !== undefined && property.longitude !== undefined) {
 			return appleMapsUrl(property.latitude, property.longitude);
 		}
@@ -437,16 +441,7 @@ export function ClientDetailBody({
 							{properties.map((property, i) => {
 								const title =
 									property.propertyName || property.streetAddress || "Property";
-								const address =
-									property.formattedAddress ||
-									[
-										property.streetAddress,
-										property.city,
-										property.state,
-										property.zipCode,
-									]
-										.filter(Boolean)
-										.join(", ");
+								const address = addressOf(property);
 								const isPrimary = property._id === primaryProperty?._id;
 								const url = directionsFor(property);
 								return (
@@ -612,13 +607,16 @@ export function ClientDetailBody({
 					)}
 				</View>
 
-				{/* Documents */}
-				<View style={detailStyles.section}>
-					<SectionLabel title="Documents" />
-					<RecordDocuments
-						target={{ kind: "client", id: clientId as Id<"clients"> }}
-					/>
-				</View>
+				{/* Documents — hidden without the view grant (the list query throws
+				    on denial); visible while the grant is still loading. */}
+				{permsLoading || can("documents", "view") ? (
+					<View style={detailStyles.section}>
+						<SectionLabel title="Documents" />
+						<RecordDocuments
+							target={{ kind: "client", id: clientId as Id<"clients"> }}
+						/>
+					</View>
+				) : null}
 
 				<View style={{ height: 32 }} />
 			</ScrollView>

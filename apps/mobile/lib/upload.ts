@@ -142,7 +142,9 @@ export async function uploadToConvex(
 		uploadType: FileSystem.FileSystemUploadType.BINARY_CONTENT,
 		headers: { "Content-Type": file.mimeType },
 	});
-	if (result.status !== 200) throw new Error("Upload failed");
+	if (result.status < 200 || result.status >= 300) {
+		throw new Error(`Upload failed (HTTP ${result.status})`);
+	}
 	const { storageId } = JSON.parse(result.body) as { storageId: Id<"_storage"> };
 	return storageId;
 }

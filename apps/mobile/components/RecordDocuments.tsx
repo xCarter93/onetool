@@ -15,6 +15,7 @@ import { fontFamily, radii, useTokens } from "@/lib/theme";
 import { FileText, Download, Upload } from "lucide-react-native";
 import * as FileSystem from "expo-file-system/legacy";
 import { pickUpload, uploadToConvex } from "@/lib/upload";
+import { usePermissions } from "@/lib/use-permissions";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
 
 // The record a documents section hangs off. Project and client documents are
@@ -71,9 +72,12 @@ export function RecordDocuments({ target }: { target: DocumentTarget }) {
 }
 
 function ProjectVariant({ projectId }: { projectId: Id<"projects"> }) {
+	const { can, isLoading: permsLoading } = usePermissions();
+	// The list queries call requireLevel("documents", "view") and THROW on denial —
+	// an unguarded useQuery would drop the screen into the root ErrorBoundary.
 	const docsResult = useQuery(
 		api.projectDocuments.listByProject,
-		projectId ? { projectId } : "skip"
+		projectId && can("documents", "view") ? { projectId } : "skip"
 	);
 	const generateUploadUrl = useMutation(api.projectDocuments.generateUploadUrl);
 	const createDoc = useMutation(api.projectDocuments.create);
@@ -85,14 +89,16 @@ function ProjectVariant({ projectId }: { projectId: Id<"projects"> }) {
 			title={() => null}
 			generateUploadUrl={generateUploadUrl}
 			createDoc={(args) => createDoc({ projectId, ...args })}
+			canUpload={permsLoading || can("documents", "modify")}
 		/>
 	);
 }
 
 function ClientVariant({ clientId }: { clientId: Id<"clients"> }) {
+	const { can, isLoading: permsLoading } = usePermissions();
 	const docsResult = useQuery(
 		api.clientDocuments.listByClient,
-		clientId ? { clientId } : "skip"
+		clientId && can("documents", "view") ? { clientId } : "skip"
 	);
 	const generateUploadUrl = useMutation(api.clientDocuments.generateUploadUrl);
 	const createDoc = useMutation(api.clientDocuments.create);
@@ -104,6 +110,7 @@ function ClientVariant({ clientId }: { clientId: Id<"clients"> }) {
 			title={() => null}
 			generateUploadUrl={generateUploadUrl}
 			createDoc={(args) => createDoc({ clientId, ...args })}
+			canUpload={permsLoading || can("documents", "modify")}
 		/>
 	);
 }
@@ -113,12 +120,14 @@ function DocumentsCard({
 	title,
 	generateUploadUrl,
 	createDoc,
+	canUpload,
 	style,
 }: {
 	docs: RecordDocument[] | undefined;
 	title: (count: number) => string | null;
 	generateUploadUrl: () => Promise<string>;
 	createDoc: (args: CreateArgs) => Promise<unknown>;
+	canUpload: boolean;
 	style?: ViewStyle;
 }) {
 	const t = useTokens();
@@ -143,8 +152,12 @@ function DocumentsCard({
 				const info = await FileSystem.getInfoAsync(file.uri);
 				fileSize = info.exists ? info.size : 0;
 			}
-			if (fileSize <= 0 || fileSize > MAX_FILE_SIZE) {
-				setUploadError("Upload failed. Try again.");
+			if (fileSize > MAX_FILE_SIZE) {
+				setUploadError("Files must be under 10 MB.");
+				return;
+			}
+			if (fileSize <= 0) {
+				setUploadError("Couldn't read that file. Try another one.");
 				return;
 			}
 
@@ -170,7 +183,8 @@ function DocumentsCard({
 		}
 	};
 
-	const uploadButton = (
+	// Hide, don't dim — matches the house convention for permission-gated actions.
+	const uploadButton = !canUpload ? null : (
 		<View style={styles.uploadRow}>
 			{uploading ? (
 				<View style={styles.uploadingRow}>

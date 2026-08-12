@@ -19,6 +19,7 @@ import { Avatar, Card, DotGrid } from "@/components/ui";
 import { useRouter, type Href } from "expo-router";
 import { Mail, Building, LogOut, Shield, Trash2, SquarePen, ChevronRight, Bell, QrCode } from "lucide-react-native";
 import { InkTabHeader } from "@/components/ink-tab-header";
+import { usePermissions } from "@/lib/use-permissions";
 
 // headerMode defaults to "root" → the iPhone path (self-mounted AppHeader,
 // edge-to-edge content) is byte-identical. The iPad shell renders Profile as a
@@ -49,6 +50,12 @@ export default function ProfileScreen({
 
 	// TRUE ownership comes from the BACKEND (Convex), NOT the Clerk org:admin role —
 	// a co-admin who is not the org owner must take the member path.
+	const { can, isLoading: permsLoading } = usePermissions();
+	// The QR screen reads the community page, which requires community:view —
+	// without it the destination only ever shows "isn't live yet". Visible while
+	// perms load so the row doesn't pop in under a tap.
+	const showQr = permsLoading || can("community", "view");
+
 	const org = useQuery(api.organizations.get);
 	const me = useQuery(api.users.current);
 	// Both queries must resolve before we trust the owner gate — undefined (loading)
@@ -304,44 +311,46 @@ export default function ProfileScreen({
 				{/* Share the org's community-page QR. Org-level, so it sits with
 				    Business details. The row sells SHARING the code, never "open the
 				    page" — the QR panel has no browse action either. */}
-				<Pressable
-					style={{
-						flexDirection: "row",
-						alignItems: "center",
-						paddingVertical: 16,
-						paddingHorizontal: 16,
-						borderRadius: radii.lg,
-						marginTop: isOwner ? 12 : 24,
-						backgroundColor: t.card,
-						borderWidth: 1,
-						borderColor: t.line,
-					}}
-					onPress={() => router.push("/community-qr" as Href)}
-				>
-					<QrCode size={20} color={t.sub} />
-					<View style={{ marginLeft: 12, flex: 1 }}>
-						<Text
-							style={{
-								color: t.ink,
-								fontFamily: fontFamily.semibold,
-								fontSize: 13,
-							}}
-						>
-							Share QR code
-						</Text>
-						<Text
-							style={{
-								marginTop: 2,
-								color: t.sub,
-								fontFamily: fontFamily.regular,
-								fontSize: 11,
-							}}
-						>
-							Customers scan it to find your community page
-						</Text>
-					</View>
-					<ChevronRight size={18} color={t.sub} />
-				</Pressable>
+				{showQr && (
+					<Pressable
+						style={{
+							flexDirection: "row",
+							alignItems: "center",
+							paddingVertical: 16,
+							paddingHorizontal: 16,
+							borderRadius: radii.lg,
+							marginTop: isOwner ? 12 : 24,
+							backgroundColor: t.card,
+							borderWidth: 1,
+							borderColor: t.line,
+						}}
+						onPress={() => router.push("/community-qr" as Href)}
+					>
+						<QrCode size={20} color={t.sub} />
+						<View style={{ marginLeft: 12, flex: 1 }}>
+							<Text
+								style={{
+									color: t.ink,
+									fontFamily: fontFamily.semibold,
+									fontSize: 13,
+								}}
+							>
+								Share QR code
+							</Text>
+							<Text
+								style={{
+									marginTop: 2,
+									color: t.sub,
+									fontFamily: fontFamily.regular,
+									fontSize: 11,
+								}}
+							>
+								Customers scan it to find your community page
+							</Text>
+						</View>
+						<ChevronRight size={18} color={t.sub} />
+					</Pressable>
+				)}
 
 				{/* Notification preferences — per-user, so no owner gate. */}
 				<Pressable
@@ -351,7 +360,8 @@ export default function ProfileScreen({
 						paddingVertical: 16,
 						paddingHorizontal: 16,
 						borderRadius: radii.lg,
-						marginTop: 12,
+						// Tight against the row above; 24 when it is the first row after the Card.
+						marginTop: isOwner || showQr ? 12 : 24,
 						backgroundColor: t.card,
 						borderWidth: 1,
 						borderColor: t.line,

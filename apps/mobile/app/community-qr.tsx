@@ -110,8 +110,11 @@ export default function CommunityQrScreen() {
 		? `https://${COMMUNITY_HOST}/communities/${slug}?src=qr`
 		: null;
 
-	const captureCard = async (): Promise<string> =>
-		captureRef(cardRef, { format: "png", result: "tmpfile" });
+	const captureCard = async (): Promise<string> => {
+		// The card is showing the fallback text, not a code — never ship that PNG.
+		if (qrFailed) throw new Error("QR unavailable");
+		return captureRef(cardRef, { format: "png", result: "tmpfile" });
+	};
 
 	const handleShare = async () => {
 		if (busy) return;
@@ -255,12 +258,12 @@ export default function CommunityQrScreen() {
 
 						<Pressable
 							onPress={() => void handleShare()}
-							disabled={busy !== null}
+							disabled={busy !== null || qrFailed}
 							accessibilityRole="button"
 							accessibilityLabel="Share QR code"
 							style={({ pressed }) => [
 								styles.primaryWrap,
-								(pressed || busy !== null) && styles.dimmed,
+								(pressed || busy !== null || qrFailed) && styles.dimmed,
 							]}
 						>
 							<LinearGradient
@@ -282,12 +285,12 @@ export default function CommunityQrScreen() {
 
 						<Pressable
 							onPress={() => void handleSave()}
-							disabled={busy !== null}
+							disabled={busy !== null || qrFailed}
 							accessibilityRole="button"
 							accessibilityLabel="Save to Photos"
 							style={({ pressed }) => [
 								styles.secondary,
-								(pressed || busy !== null) && styles.dimmed,
+								(pressed || busy !== null || qrFailed) && styles.dimmed,
 							]}
 						>
 							{busy === "save" ? (
