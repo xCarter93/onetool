@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
-import { Plus, X } from "lucide-react-native";
+import { X } from "lucide-react-native";
 import { Slot, usePathname, useRouter, type Href } from "expo-router";
 import { useDevice } from "@/lib/use-device";
 import { useTokens } from "@/lib/theme";
@@ -23,7 +23,7 @@ import {
 } from "@/lib/shell-routes";
 import { DotGrid } from "@/components/ui";
 import { PaneDetailHost } from "@/components/ipad/pane-detail-host";
-import { PaneAction, PaneHeader } from "@/components/ipad/pane-header";
+import { PaneHeader } from "@/components/ipad/pane-header";
 import { ShellNavProvider, type ShellNav } from "@/lib/shell-nav";
 import type { WorkChipKind } from "@/lib/work-search";
 import TodayScreen from "@/app/(tabs)/index";
@@ -296,20 +296,9 @@ function IpadShellInner() {
 
 	const listPane = (
 		<View style={styles.fill}>
-			<PaneHeader
-				title={PANE_TITLE[pane]}
-				// Contextual create (§4): Work can create a client; Money and Activity
-				// are read-only surfaces and get no ＋.
-				right={
-					pane === "work" ? (
-						<PaneAction
-							icon={Plus}
-							label="New client"
-							onPress={() => setCreating(true)}
-						/>
-					) : undefined
-				}
-			/>
+			{/* No contextual ＋ — the rail's create menu is the single capture entry
+			    point on iPad. */}
+			<PaneHeader title={PANE_TITLE[pane]} />
 			{pane === "work" ? (
 				<WorkScreen
 					headerMode="pane"

@@ -99,22 +99,16 @@ export function AppHeader({
 	// typed router clean.
 	const NOTIFICATIONS: Href = "/notifications" as Href;
 
-	// Pane mode (iPad P26): a light header — back arrow + optional title ONLY.
-	// The sidebar owns the bell and avatar, so both are suppressed here.
+	// Pane mode (iPad P26): a light header — optional title ONLY. The sidebar
+	// owns the bell and avatar, and there is no back arrow: this header renders
+	// only when the shell provides no onBack (landscape master-detail, where the
+	// list stays visible and nothing was pushed — router.back() would throw
+	// GO_BACK unhandled).
 	if (pane) {
 		const paneTop = Math.max(insets.top, 36);
 		return (
 			<View style={{ paddingTop: paneTop, zIndex: 3 }}>
 				<View style={styles.topRow}>
-					<Pressable
-						onPress={() => router.back()}
-						hitSlop={4}
-						style={[styles.iconBtn, { borderColor: t.line }]}
-						accessibilityRole="button"
-						accessibilityLabel="Go back"
-					>
-						<ArrowLeft size={20} color={t.ink} />
-					</Pressable>
 					{title ? (
 						<Text
 							style={[styles.paneTitle, { color: t.ink }]}
@@ -311,9 +305,6 @@ const styles = StyleSheet.create({
 		borderWidth: 1.5,
 	},
 	paneTitle: {
-		// topRow's gap tightened to 6 for the 44pt right-cluster buttons; the pane
-		// title still wants breathing room from the back arrow.
-		marginLeft: 8,
 		fontFamily: fontFamily.semibold,
 		fontSize: type.h2,
 		flexShrink: 1,

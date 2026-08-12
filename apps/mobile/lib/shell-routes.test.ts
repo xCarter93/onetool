@@ -117,6 +117,10 @@ describe("isOverlayRoute", () => {
 			// Full-screen QR panel — maps to no rail tab, so tab sync must not
 			// resolve it to Today while it is up.
 			"/community-qr",
+			// Create sheets — tab sync under the sheet jumped the pane (project/new
+			// fell through to Today, quote/new matched Work).
+			"/project/new",
+			"/quote/new",
 		]) {
 			expect(isOverlayRoute(p)).toBe(true);
 		}
@@ -124,7 +128,16 @@ describe("isOverlayRoute", () => {
 
 	it("does not claim real shell routes", () => {
 		// A false positive here freezes the rail on whatever tab was last synced.
-		for (const p of ["/", "/work", "/routes", "/activity", "/clients/c1"]) {
+		for (const p of [
+			"/",
+			"/work",
+			"/routes",
+			"/activity",
+			"/clients/c1",
+			// Detail routes share the create sheets' first segment.
+			"/quote/q1",
+			"/projects/p1",
+		]) {
 			expect(isOverlayRoute(p)).toBe(false);
 		}
 	});

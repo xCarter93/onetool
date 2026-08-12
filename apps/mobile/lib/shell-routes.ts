@@ -73,5 +73,9 @@ export function isOverlayRoute(pathname: string): boolean {
 	if (/^\/(notifications|assistant|org-switch|community-qr)(\/|$)/.test(pathname)) {
 		return true;
 	}
+	// Create sheets present as transparentModal like tasks/form; without this,
+	// tab sync fires underneath the sheet ("/project/new" misses the plural
+	// `projects` alternation → Today, "/quote/new" → Work).
+	if (/^\/(project|quote)\/new(\/|$)/.test(pathname)) return true;
 	return /^\/tasks\/(form|new)(\/|$)/.test(pathname);
 }
