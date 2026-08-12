@@ -91,6 +91,15 @@ export const mobileAppArticles: HelpArticle[] = [
 				],
 			},
 			{
+				heading: "Photos and documents on a record",
+				blocks: [
+					{
+						type: "paragraph",
+						text: "Client and project detail screens each have a **Documents** section for the files that belong to that job. Tap **Upload document** to attach from your photo library, take a photo on the spot, or pick a file from the Files app, and tap any document in the list to open it. Files can be up to 10 MB, and everything you attach in the field shows up on the record in the web workspace too.",
+					},
+				],
+			},
+			{
 				heading: "A bigger layout on iPad",
 				blocks: [
 					{
@@ -118,6 +127,10 @@ export const mobileAppArticles: HelpArticle[] = [
 					{
 						type: "paragraph",
 						text: "Tap your avatar in the header to open your profile. It shows your organization and your role, **Admin** or **Member**, and it is where you find **Sign Out**. The organization owner also sees account and organization deletion options here.",
+					},
+					{
+						type: "paragraph",
+						text: "Your profile is also where you share your community page in person: tap **Share QR code** to open a full-screen code for the page. The screen jumps to full brightness and stays awake so a customer can scan it with their camera, and the buttons below share the code image or save it to Photos for printing. Your community page needs to be published on the web first; see [Your public page](/help/community/your-public-page).",
 					},
 				],
 			},
