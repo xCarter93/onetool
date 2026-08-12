@@ -1,41 +1,29 @@
 import React from "react";
 import { StyleSheet, Text, View } from "react-native";
-import {
-	fontFamily,
-	radii,
-	STATUS,
-	tracking,
-	type,
-	useTokens,
-} from "@/lib/theme";
+import { fontFamily, STATUS, tracking, type, useTokens } from "@/lib/theme";
 
 interface IdentityBlockProps {
-	/** Record tint pair — pass `recordTint.client`, `recordTint.project`, … */
-	tint: { bg: string; fg: string };
-	/** Monogram glyph. Callers pass a single letter; longer strings are clipped. */
-	monogram: string;
-	/** The record's own name. Restored below the status eyebrow (utility-hero
-	 * pass): the ink band's title scrolls away, so the hero has to anchor. */
+	/** The record's own name — the hero's anchor: the ink band's title scrolls
+	 * away, so this has to carry the screen. */
 	name?: string;
 	/** Key into the STATUS map — rendered as TEXT, never a badge pill. */
 	statusKey?: string;
 	/** Quiet meta line: lead source, city, a tappable client link, … */
 	meta?: React.ReactNode;
 	/**
-	 * Wraps the status text so a screen can make it interactive (the client
-	 * detail hangs a FieldMenu off it). The native MenuView host must receive a
+	 * Wraps the status text so a screen can make it interactive (both detail
+	 * screens hang a FieldMenu off it). The native MenuView host must receive a
 	 * SINGLE bare child inside a content-sized parent — hence the status line
-	 * lives on its own row with alignSelf:"flex-start", and `sub` is a separate
+	 * lives on its own row with alignSelf:"flex-start", and `meta` is a separate
 	 * line rather than an inline sibling.
 	 */
 	renderStatus?: (statusText: React.ReactNode) => React.ReactNode;
 }
 
-// Daybook identity header: tinted monogram square + name + status-as-text.
-// Card-free by design — it sits directly on the page canvas.
+// Editorial identity header: left-aligned status eyebrow → name → meta. No
+// monogram — the name IS the mark. Card-free by design; it sits directly on the
+// page canvas.
 export function IdentityBlock({
-	tint,
-	monogram,
 	name,
 	statusKey,
 	meta,
@@ -54,57 +42,34 @@ export function IdentityBlock({
 		</Text>
 	) : null;
 
+	// Status reads as the eyebrow ABOVE the name — the record's state is what a
+	// field user scans for first.
 	return (
-		<View style={styles.row}>
-			<View style={[styles.monogram, { backgroundColor: tint.bg }]}>
-				<Text style={[styles.monogramText, { color: tint.fg }]}>
-					{monogram.slice(0, 1).toUpperCase()}
+		<View style={styles.body}>
+			{statusText ? (
+				<View style={styles.statusWrap}>
+					{renderStatus ? renderStatus(statusText) : statusText}
+				</View>
+			) : null}
+			{name ? (
+				<Text style={[styles.name, { color: t.ink }]} numberOfLines={2}>
+					{name}
 				</Text>
-			</View>
-			{/* Status reads as the eyebrow ABOVE the name — the record's state is
-			    what a field user scans for first. */}
-			<View style={styles.body}>
-				{statusText ? (
-					<View style={styles.statusWrap}>
-						{renderStatus ? renderStatus(statusText) : statusText}
-					</View>
-				) : null}
-				{name ? (
-					<Text style={[styles.name, { color: t.ink }]} numberOfLines={2}>
-						{name}
-					</Text>
-				) : null}
-				{meta ? <View style={styles.meta}>{meta}</View> : null}
-			</View>
+			) : null}
+			{meta ? <View style={styles.meta}>{meta}</View> : null}
 		</View>
 	);
 }
 
 const styles = StyleSheet.create({
-	row: {
-		flexDirection: "row",
-		alignItems: "center",
-		gap: 14,
-	},
-	monogram: {
-		width: 54,
-		height: 54,
-		borderRadius: radii.card,
-		alignItems: "center",
-		justifyContent: "center",
-		flexShrink: 0,
-	},
-	monogramText: {
-		fontFamily: fontFamily.semibold,
-		fontSize: 24,
-		letterSpacing: 0.2,
-	},
-	body: { flex: 1, minWidth: 0 },
+	body: { minWidth: 0 },
 	name: {
 		fontFamily: fontFamily.semibold,
-		fontSize: type.h3,
+		// h1, not h2: the hero owns the top of the screen, and at 20 the name
+		// left the right half of the band feeling empty (visual pass).
+		fontSize: type.h1,
 		letterSpacing: tracking.title,
-		marginTop: 5,
+		marginTop: 6,
 	},
 	// alignSelf sizes the (possibly menu-hosting) wrapper to its content — a
 	// stretched native MenuView trigger clips its label to "..".

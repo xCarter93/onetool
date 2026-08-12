@@ -1,11 +1,4 @@
-import {
-	View,
-	Text,
-	ScrollView,
-	RefreshControl,
-	Pressable,
-	StyleSheet,
-} from "react-native";
+import { View, ScrollView, RefreshControl, StyleSheet } from "react-native";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { useLocalSearchParams, useRouter, type Href } from "expo-router";
@@ -16,15 +9,7 @@ import {
 	useSafeAreaInsets,
 } from "react-native-safe-area-context";
 import { Id } from "@onetool/backend/convex/_generated/dataModel";
-import {
-	DOCK_CLEARANCE,
-	fontFamily,
-	recordTint,
-	STATUS,
-	touch,
-	type,
-	useTokens,
-} from "@/lib/theme";
+import { DOCK_CLEARANCE, STATUS, useTokens } from "@/lib/theme";
 import { formatCurrency } from "@/lib/format";
 import { appleMapsAddressUrl, appleMapsUrl } from "@/lib/route-run";
 import { InkTabHeader } from "@/components/ink-tab-header";
@@ -39,19 +24,26 @@ import {
 	detailStyles,
 	DetailSkeleton,
 	EmptyRow,
+	FactCard,
+	FactRow,
+	SectionLabel,
+	SectionLink,
 	TeamChatButton,
+	type FactAction,
 } from "@/components/record-detail";
 import { openExternal } from "@/lib/open-external";
 import { recordRecentView } from "@/lib/recents";
-import { QuickActions, type QuickAction } from "@/components/quick-actions";
-import { DotGrid, SectionHeader, ListRow } from "@/components/ui";
+import { usePermissions } from "@/lib/use-permissions";
+import { DotGrid, ListRow } from "@/components/ui";
 import { RecordDocuments } from "@/components/RecordDocuments";
 import {
 	Phone,
 	Mail,
+	MapPin,
 	MessageSquare,
 	Navigation,
 	Plus,
+	User,
 } from "lucide-react-native";
 
 type ClientStatus = "lead" | "active" | "inactive" | "archived";
@@ -111,6 +103,7 @@ export function ClientDetailBody({
 	const [refreshing, setRefreshing] = useState(false);
 	const [mentionModalVisible, setMentionModalVisible] = useState(false);
 	const [optimisticStatus, setOptimisticStatus] = useState<string | null>(null);
+	const { can, isLoading: permsLoading } = usePermissions();
 
 	const client = useQuery(
 		api.clients.get,
@@ -208,8 +201,8 @@ export function ClientDetailBody({
 				) : (
 					<InkTabHeader title="Client" onBack={() => router.back()} />
 				)}
-				{/* Skeleton mirrors the real layout: hero, the four action tiles,
-				    then list rows. */}
+				{/* Skeleton mirrors the real layout: hero, team-chat pill, then
+				    list rows. */}
 				<ScrollView
 					contentContainerStyle={[
 						styles.scroll,
@@ -227,65 +220,41 @@ export function ClientDetailBody({
 	const primaryProperty = properties.find((p) => p.isPrimary) ?? properties[0];
 	const primaryContact = contacts.find((c) => c.isPrimary) ?? contacts[0];
 
-	const propertyAddress = primaryProperty
-		? primaryProperty.formattedAddress ||
+	// Identity meta line: where this client is. Lead source only stands in when
+	// there is no location to show.
+	const identityLocation =
+		[primaryProperty?.city, primaryProperty?.state].filter(Boolean).join(", ") ||
+		undefined;
+	const identitySub =
+		identityLocation ??
+		(client.leadSource
+			? (LEAD_SOURCE_LABEL[client.leadSource] ?? client.leadSource)
+			: undefined);
+
+	// Directions for one property — the project's own resolution, per row:
+	// coordinates win, else the formatted address, else no action at all.
+	const directionsFor = (property: (typeof properties)[number]) => {
+		const address =
+			property.formattedAddress ||
 			[
-				primaryProperty.streetAddress,
-				primaryProperty.city,
-				primaryProperty.state,
-				primaryProperty.zipCode,
+				property.streetAddress,
+				property.city,
+				property.state,
+				property.zipCode,
 			]
 				.filter(Boolean)
-				.join(", ")
-		: undefined;
+				.join(", ");
+		if (property.latitude !== undefined && property.longitude !== undefined) {
+			return appleMapsUrl(property.latitude, property.longitude);
+		}
+		return address ? appleMapsAddressUrl(address) : undefined;
+	};
 
-	// Identity sub line: lead source, else the primary property's city.
-	const identitySub = client.leadSource
-		? (LEAD_SOURCE_LABEL[client.leadSource] ?? client.leadSource)
-		: primaryProperty?.city || undefined;
-
-	const phone = primaryContact?.phone;
-	const email = primaryContact?.email;
-	const directionsUrl =
-		primaryProperty &&
-		primaryProperty.latitude !== undefined &&
-		primaryProperty.longitude !== undefined
-			? appleMapsUrl(primaryProperty.latitude, primaryProperty.longitude)
-			: propertyAddress
-				? appleMapsAddressUrl(propertyAddress)
-				: undefined;
-
-	// Every tile stays visible; missing data dims it rather than hiding it.
-	const quickActions: QuickAction[] = [
-		{
-			key: "call",
-			label: "Call",
-			Icon: Phone,
-			disabled: !phone,
-			onPress: () => phone && openExternal(`tel:${phone}`, "Phone"),
-		},
-		{
-			key: "message",
-			label: "Message",
-			Icon: MessageSquare,
-			disabled: !phone,
-			onPress: () => phone && openExternal(`sms:${phone}`, "Messages"),
-		},
-		{
-			key: "email",
-			label: "Email",
-			Icon: Mail,
-			disabled: !email,
-			onPress: () => email && openExternal(`mailto:${email}`, "Mail"),
-		},
-		{
-			key: "directions",
-			label: "Directions",
-			Icon: Navigation,
-			disabled: !directionsUrl,
-			onPress: () => directionsUrl && openExternal(directionsUrl, "Maps"),
-		},
-	];
+	// Creation links are permission-gated, and the convention is to HIDE (not
+	// dim) what the user may not do — but stay visible while the grant is still
+	// loading, so the header doesn't reflow under a tap.
+	const canCreateProject = permsLoading || can("projects", "modify");
+	const canCreateQuote = permsLoading || can("quotes", "modify");
 
 	const recentProjects = projects.slice(0, 3);
 	const recentQuotes = quotes.slice(0, 3);
@@ -319,8 +288,6 @@ export function ClientDetailBody({
 				{/* Identity — status is TEXT; the FieldMenu hangs off it so the one
 				    place a client status can change keeps working. */}
 				<IdentityBlock
-					tint={recordTint.client}
-					monogram={client.companyName}
 					statusKey={status}
 					name={client.companyName}
 					meta={identitySub ? <IdentityMeta>{identitySub}</IdentityMeta> : null}
@@ -352,11 +319,8 @@ export function ClientDetailBody({
 					)}
 				/>
 
-				<View style={styles.actionsWrap}>
-					<QuickActions actions={quickActions} />
-				</View>
-
-				{/* Team chat — relocated from the old floating FAB */}
+				{/* One quiet verb near the hero. Call/message/email/directions now
+				    live on the rows that own the data. */}
 				<TeamChatButton
 					onPress={() => setMentionModalVisible(true)}
 					style={styles.teamChat}
@@ -364,7 +328,7 @@ export function ClientDetailBody({
 
 				{/* Company — editable fields read as wells; read-only twins stay flat */}
 				<View style={detailStyles.section}>
-					<SectionHeader title="Company" />
+					<SectionLabel title="Company" />
 					<View style={detailStyles.stack}>
 						<EditableField
 							label="Company name"
@@ -401,72 +365,73 @@ export function ClientDetailBody({
 					</View>
 				</View>
 
-				{/* Contacts (read-only; Call on phone) */}
+				{/* Contacts — every row carries only the actions its data supports:
+				    no phone, no call/message button. */}
 				<View style={detailStyles.section}>
-					<SectionHeader title={`Contacts${countSuffix(contacts.length)}`} />
+					<SectionLabel title={`Contacts${countSuffix(contacts.length)}`} />
 					{contacts.length > 0 ? (
-						<View>
+						<FactCard>
 							{contacts.map((contact, i) => {
 								const name =
 									`${contact.firstName} ${contact.lastName}`.trim() ||
 									"Unnamed contact";
+								const isPrimary = contact._id === primaryContact?._id;
 								const sub =
-									[
-										contact.isPrimary ? "Primary" : null,
-										contact.jobTitle,
-										contact.email,
-									]
+									[contact.jobTitle, contact.email, contact.phone]
 										.filter(Boolean)
 										.join("  ·  ") || undefined;
-								return (
-									<ListRow
-										key={contact._id}
-										icon="User"
-										title={name}
-										sub={sub}
-										showChevron={false}
-										last={i === contacts.length - 1}
-										right={
-											contact.phone ? (
-												<Pressable
-													onPress={() =>
-														openExternal(`tel:${contact.phone}`, "Phone")
-													}
-													accessibilityRole="button"
-													accessibilityLabel={`Call ${name}`}
-													hitSlop={8}
-													style={({ pressed }) => [
-														styles.callRow,
-														pressed && styles.pressed,
-													]}
-												>
-													<Phone size={14} color={t.frostedInk} />
-													<Text
-														style={[styles.callText, { color: t.frostedInk }]}
-														numberOfLines={1}
-													>
-														{contact.phone}
-													</Text>
-												</Pressable>
-											) : undefined
+								const actions: FactAction[] = [];
+								if (contact.phone) {
+									actions.push(
+										{
+											key: "call",
+											label: `Call ${name}`,
+											Icon: Phone,
+											onPress: () =>
+												openExternal(`tel:${contact.phone}`, "Phone"),
+										},
+										{
+											key: "message",
+											label: `Message ${name}`,
+											Icon: MessageSquare,
+											onPress: () =>
+												openExternal(`sms:${contact.phone}`, "Messages"),
 										}
+									);
+								}
+								if (contact.email) {
+									actions.push({
+										key: "email",
+										label: `Email ${name}`,
+										Icon: Mail,
+										onPress: () =>
+											openExternal(`mailto:${contact.email}`, "Mail"),
+									});
+								}
+								return (
+									<FactRow
+										key={contact._id}
+										Icon={User}
+										title={isPrimary ? `${name}  ·  Primary` : name}
+										sub={sub}
+										actions={actions}
+										last={i === contacts.length - 1}
 									/>
 								);
 							})}
-						</View>
+						</FactCard>
 					) : (
 						// Web aliases client-contacts-none onto the clients art — same here.
 						<EmptyRow text="No contacts yet" illo="clients-none" />
 					)}
 				</View>
 
-				{/* Properties */}
+				{/* Properties — directions resolve per row (coords, else address);
+				    a property with neither carries no button. */}
 				<View style={detailStyles.section}>
-					<SectionHeader
-						title={`Properties${countSuffix(properties.length)}`}
-					/>
+					<SectionLabel title={`Properties${countSuffix(properties.length)}`} />
 					{properties.length > 0 ? (
-						<View>
+						<FactCard>
 							{properties.map((property, i) => {
 								const title =
 									property.propertyName || property.streetAddress || "Property";
@@ -481,18 +446,30 @@ export function ClientDetailBody({
 										.filter(Boolean)
 										.join(", ");
 								const isPrimary = property._id === primaryProperty?._id;
+								const url = directionsFor(property);
 								return (
-									<ListRow
+									<FactRow
 										key={property._id}
-										icon="MapPin"
+										Icon={MapPin}
 										title={isPrimary ? `${title}  ·  Primary` : title}
 										sub={address || undefined}
-										showChevron={false}
+										actions={
+											url
+												? [
+														{
+															key: "directions",
+															label: `Directions to ${title}`,
+															Icon: Navigation,
+															onPress: () => openExternal(url, "Maps"),
+														},
+													]
+												: []
+										}
 										last={i === properties.length - 1}
 									/>
 								);
 							})}
-						</View>
+						</FactCard>
 					) : (
 						<EmptyRow text="No properties yet" illo="client-properties-none" />
 					)}
@@ -500,41 +477,41 @@ export function ClientDetailBody({
 
 				{/* Projects */}
 				<View style={detailStyles.section}>
-					<View style={styles.headerRow}>
-						<View style={styles.headerGrow}>
-							<SectionHeader
-								title={`Projects${countSuffix(projects.length)}`}
-								action={projects.length > 0 ? "View all" : undefined}
-								onAction={() =>
-									// iPad: scope Work's chip to Projects. iPhone keeps the route.
-									shellNav ? shellNav.browse("project") : router.push("/projects")
-								}
-							/>
-						</View>
-						<Pressable
-							onPress={() =>
-								// Cast: /project/new isn't in the generated route map yet.
-								router.push({
-									pathname: "/project/new",
-									params: { clientId },
-								} as unknown as Href)
-							}
-							hitSlop={12}
-							accessibilityRole="button"
-							accessibilityLabel="New project for this client"
-							style={({ pressed }) => [
-								styles.newAction,
-								pressed && styles.pressed,
-							]}
-						>
-							<Plus size={14} color={t.frostedInk} />
-							<Text style={[styles.newActionText, { color: t.frostedInk }]}>
-								New project
-							</Text>
-						</Pressable>
-					</View>
+					<SectionLabel
+						title={`Projects${countSuffix(projects.length)}`}
+						right={
+							<View style={styles.headerLinks}>
+								{projects.length > 0 ? (
+									<SectionLink
+										label="View all"
+										accessibilityLabel="View all projects"
+										onPress={() =>
+											// iPad: scope Work's chip to Projects. iPhone keeps the route.
+											shellNav
+												? shellNav.browse("project")
+												: router.push("/projects")
+										}
+									/>
+								) : null}
+								{canCreateProject ? (
+									<SectionLink
+										label="New"
+										Icon={Plus}
+										accessibilityLabel="New project for this client"
+										onPress={() =>
+											// Cast: /project/new isn't in the generated route map yet.
+											router.push({
+												pathname: "/project/new",
+												params: { clientId },
+											} as unknown as Href)
+										}
+									/>
+								) : null}
+							</View>
+						}
+					/>
 					{recentProjects.length > 0 ? (
-						<View>
+						<FactCard style={detailStyles.sectionCard}>
 							{recentProjects.map((project, i) => (
 								<ListRow
 									key={project._id}
@@ -549,7 +526,7 @@ export function ClientDetailBody({
 									last={i === recentProjects.length - 1}
 								/>
 							))}
-						</View>
+						</FactCard>
 					) : (
 						<EmptyRow text="No projects yet" illo="projects-none" />
 					)}
@@ -557,34 +534,27 @@ export function ClientDetailBody({
 
 				{/* Quotes */}
 				<View style={detailStyles.section}>
-					<View style={styles.headerRow}>
-						<View style={styles.headerGrow}>
-							<SectionHeader title={`Quotes${countSuffix(quotes.length)}`} />
-						</View>
-						<Pressable
-							onPress={() =>
-								// Cast: /quote/new isn't in the generated route map yet.
-								router.push({
-									pathname: "/quote/new",
-									params: { clientId },
-								} as unknown as Href)
-							}
-							hitSlop={12}
-							accessibilityRole="button"
-							accessibilityLabel="New quote for this client"
-							style={({ pressed }) => [
-								styles.newAction,
-								pressed && styles.pressed,
-							]}
-						>
-							<Plus size={14} color={t.frostedInk} />
-							<Text style={[styles.newActionText, { color: t.frostedInk }]}>
-								New quote
-							</Text>
-						</Pressable>
-					</View>
+					<SectionLabel
+						title={`Quotes${countSuffix(quotes.length)}`}
+						right={
+							canCreateQuote ? (
+								<SectionLink
+									label="New"
+									Icon={Plus}
+									accessibilityLabel="New quote for this client"
+									onPress={() =>
+										// Cast: /quote/new isn't in the generated route map yet.
+										router.push({
+											pathname: "/quote/new",
+											params: { clientId },
+										} as unknown as Href)
+									}
+								/>
+							) : undefined
+						}
+					/>
 					{recentQuotes.length > 0 ? (
-						<View>
+						<FactCard style={detailStyles.sectionCard}>
 							{recentQuotes.map((quote, i) => (
 								<ListRow
 									key={quote._id}
@@ -602,7 +572,7 @@ export function ClientDetailBody({
 									last={i === recentQuotes.length - 1}
 								/>
 							))}
-						</View>
+						</FactCard>
 					) : (
 						<EmptyRow text="No quotes yet" illo="quotes-none" />
 					)}
@@ -610,9 +580,9 @@ export function ClientDetailBody({
 
 				{/* Invoices */}
 				<View style={detailStyles.section}>
-					<SectionHeader title={`Invoices${countSuffix(invoices.length)}`} />
+					<SectionLabel title={`Invoices${countSuffix(invoices.length)}`} />
 					{recentInvoices.length > 0 ? (
-						<View>
+						<FactCard style={detailStyles.sectionCard}>
 							{recentInvoices.map((invoice, i) => (
 								<ListRow
 									key={invoice._id}
@@ -630,7 +600,7 @@ export function ClientDetailBody({
 									last={i === recentInvoices.length - 1}
 								/>
 							))}
-						</View>
+						</FactCard>
 					) : (
 						<EmptyRow text="No invoices yet" illo="invoices-none" />
 					)}
@@ -638,7 +608,7 @@ export function ClientDetailBody({
 
 				{/* Documents */}
 				<View style={detailStyles.section}>
-					<SectionHeader title="Documents" />
+					<SectionLabel title="Documents" />
 					<RecordDocuments
 						target={{ kind: "client", id: clientId as Id<"clients"> }}
 					/>
@@ -668,31 +638,10 @@ export default function ClientDetailScreen() {
 const styles = StyleSheet.create({
 	flex: { flex: 1 },
 	scroll: { padding: 16, gap: 0 },
-	pressed: { opacity: 0.7 },
 
-	actionsWrap: { marginTop: 16 },
-	teamChat: { marginTop: 8 },
+	// A single quiet pill sits alone under the hero — it no longer follows a
+	// tile row, so it carries the whole gap itself.
+	teamChat: { marginTop: 16, alignSelf: "flex-start", paddingHorizontal: 14 },
 
-	headerRow: { flexDirection: "row", alignItems: "center", gap: 12 },
-	headerGrow: { flex: 1, minWidth: 0 },
-	newAction: {
-		flexDirection: "row",
-		alignItems: "center",
-		gap: 3,
-		flexShrink: 0,
-	},
-	newActionText: {
-		fontFamily: fontFamily.semibold,
-		fontSize: type.sm,
-	},
-
-	callRow: {
-		flexDirection: "row",
-		alignItems: "center",
-		gap: 6,
-		maxWidth: 150,
-		// Painted, not hitSlop-only — the row keeps a tappable target.
-		minHeight: touch.min,
-	},
-	callText: { fontFamily: fontFamily.semibold, fontSize: type.meta },
+	headerLinks: { flexDirection: "row", alignItems: "center", gap: 16 },
 });

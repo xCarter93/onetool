@@ -23,7 +23,6 @@ import {
 	DOCK_CLEARANCE,
 	fontFamily,
 	radii,
-	recordTint,
 	STATUS,
 	touch,
 	type,
@@ -37,7 +36,7 @@ import { usePermissions } from "@/lib/use-permissions";
 import { InkTabHeader } from "@/components/ink-tab-header";
 import { PaneHeader } from "@/components/ipad/pane-header";
 import { useShellNav } from "@/lib/shell-nav";
-import { Button, DotGrid, ListRow, SectionHeader } from "@/components/ui";
+import { Button, DotGrid, ListRow } from "@/components/ui";
 import { IdentityBlock } from "@/components/identity-block";
 import {
 	countSuffix,
@@ -47,6 +46,7 @@ import {
 	FactCard,
 	FactRow,
 	ProgressBar,
+	SectionLabel,
 	TeamChatButton,
 	type FactAction,
 } from "@/components/record-detail";
@@ -419,8 +419,6 @@ export function ProjectDetailBody({
 				{/* Identity — status is TEXT; the FieldMenu hangs off it so the one
 				    place a project status can change keeps working. */}
 				<IdentityBlock
-					tint={recordTint.project}
-					monogram={project.title}
 					statusKey={status}
 					name={project.title}
 					// The old standalone Building2 client-link row folds in here.
@@ -520,18 +518,11 @@ export function ProjectDetailBody({
 					/>
 				</View>
 
-				{/* Progress — a linear bar; the 72pt ring read as dashboard ornament
-				    on a screen whose job is facts. */}
+				{/* Schedule — the Start/Due pair plus the linear progress bar (the
+				    72pt ring read as dashboard ornament on a screen whose job is
+				    facts). */}
 				<View style={detailStyles.section}>
-					<SectionHeader title="Progress" />
-					{taskProgress ? (
-						<ProgressBar
-							done={taskProgress.done}
-							total={taskProgress.total}
-							// Completed projects keep the green they had on the ring.
-							color={status === "completed" ? t.success : t.primarySolid}
-						/>
-					) : null}
+					<SectionLabel title="Schedule" />
 					<View style={styles.datePair}>
 						<DateWell
 							label="Start"
@@ -544,12 +535,20 @@ export function ProjectDetailBody({
 							onPress={() => openDatePicker("endDate")}
 						/>
 					</View>
+					{taskProgress ? (
+						<ProgressBar
+							done={taskProgress.done}
+							total={taskProgress.total}
+							// Completed projects keep the green they had on the ring.
+							color={status === "completed" ? t.success : t.primarySolid}
+						/>
+					) : null}
 				</View>
 
 				{/* Details — the hero displays the name, so EDITING it lives here
 				    (same idiom as the client screen's Company section). */}
 				<View style={detailStyles.section}>
-					<SectionHeader title="Details" />
+					<SectionLabel title="Details" />
 					<View style={detailStyles.stack}>
 						<EditableField
 							label="Title"
@@ -570,11 +569,9 @@ export function ProjectDetailBody({
 
 				{/* Quotes */}
 				<View style={detailStyles.section}>
-					<SectionHeader
-						title={`Quotes${countSuffix(quotes?.length ?? 0)}`}
-					/>
+					<SectionLabel title={`Quotes${countSuffix(quotes?.length ?? 0)}`} />
 					{recentQuotes.length > 0 ? (
-						<View>
+						<FactCard style={detailStyles.sectionCard}>
 							{recentQuotes.map((quote, i) => (
 								<ListRow
 									key={quote._id}
@@ -592,7 +589,7 @@ export function ProjectDetailBody({
 									last={i === recentQuotes.length - 1}
 								/>
 							))}
-						</View>
+						</FactCard>
 					) : (
 						<EmptyRow text="No quotes yet" illo="quotes-none" />
 					)}
@@ -600,11 +597,11 @@ export function ProjectDetailBody({
 
 				{/* Invoices */}
 				<View style={detailStyles.section}>
-					<SectionHeader
+					<SectionLabel
 						title={`Invoices${countSuffix(invoices?.length ?? 0)}`}
 					/>
 					{recentInvoices.length > 0 ? (
-						<View>
+						<FactCard style={detailStyles.sectionCard}>
 							{recentInvoices.map((invoice, i) => (
 								<ListRow
 									key={invoice._id}
@@ -622,7 +619,7 @@ export function ProjectDetailBody({
 									last={i === recentInvoices.length - 1}
 								/>
 							))}
-						</View>
+						</FactCard>
 					) : (
 						<EmptyRow text="No invoices yet" illo="invoices-none" />
 					)}
@@ -631,7 +628,7 @@ export function ProjectDetailBody({
 				{/* Documents — rewired component (Plan 02) */}
 				{projectId ? (
 					<View style={detailStyles.section}>
-						<SectionHeader title="Documents" />
+						<SectionLabel title="Documents" />
 						<RecordDocuments
 							target={{ kind: "project", id: projectId as Id<"projects"> }}
 						/>

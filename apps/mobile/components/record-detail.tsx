@@ -10,7 +10,7 @@ import {
 } from "react-native";
 import type { LucideIcon } from "lucide-react-native";
 import { MessageSquare } from "lucide-react-native";
-import { fontFamily, radii, touch, type, useTokens } from "@/lib/theme";
+import { fontFamily, radii, touch, tracking, type, useTokens } from "@/lib/theme";
 import { Card } from "@/components/ui";
 import {
 	Illustration,
@@ -22,6 +22,65 @@ import {
 
 export function countSuffix(n: number) {
 	return n > 0 ? `  ·  ${n}` : "";
+}
+
+// ----------------------------------------------------------------------------
+// Section label — uppercase eyebrow with an optional right slot ("View all",
+// "+ New"). Deliberately NOT ui/SectionHeader: that one is the app-wide
+// title-case h3 and belongs to every other screen.
+// ----------------------------------------------------------------------------
+
+export function SectionLabel({
+	title,
+	right,
+}: {
+	title: string;
+	right?: React.ReactNode;
+}) {
+	const t = useTokens();
+	return (
+		<View style={styles.sectionLabelRow}>
+			<Text
+				style={[styles.sectionLabelText, { color: t.sub }]}
+				numberOfLines={1}
+			>
+				{title.toUpperCase()}
+			</Text>
+			{right ? <View style={styles.sectionLabelRight}>{right}</View> : null}
+		</View>
+	);
+}
+
+/** Right-slot text link for SectionLabel. Painted 44pt — RN can't hit-test
+ * outside the row's own bounds, and the header row is short. */
+export function SectionLink({
+	label,
+	onPress,
+	accessibilityLabel,
+	Icon,
+}: {
+	label: string;
+	onPress: () => void;
+	accessibilityLabel?: string;
+	Icon?: LucideIcon;
+}) {
+	const t = useTokens();
+	return (
+		<Pressable
+			onPress={onPress}
+			accessibilityRole="button"
+			accessibilityLabel={accessibilityLabel ?? label}
+			style={({ pressed }) => [styles.sectionLink, pressed && styles.pressed]}
+		>
+			{Icon ? <Icon size={14} color={t.primarySolid} /> : null}
+			<Text
+				style={[styles.sectionLinkText, { color: t.primarySolid }]}
+				numberOfLines={1}
+			>
+				{label}
+			</Text>
+		</Pressable>
+	);
 }
 
 export function EmptyRow({
@@ -53,11 +112,18 @@ export interface FactAction {
 	onPress: () => void;
 }
 
-export function FactCard({ children }: { children: React.ReactNode }) {
+export function FactCard({
+	children,
+	style,
+}: {
+	children: React.ReactNode;
+	style?: StyleProp<ViewStyle>;
+}) {
 	const rows = React.Children.toArray(children).filter(Boolean);
 	if (rows.length === 0) return null;
 	return (
-		<Card flush style={styles.factCard}>
+		// Card takes a bare ViewStyle, so the pair is flattened.
+		<Card flush style={StyleSheet.flatten([styles.factCard, style])}>
 			{rows}
 		</Card>
 	);
@@ -207,15 +273,11 @@ export function DetailSkeleton({ variant }: { variant: "client" | "project" }) {
 
 	return (
 		<>
+			{/* Editorial hero: eyebrow → name → meta. No monogram. */}
 			<View style={styles.skeletonIdentity}>
-				<View
-					style={[styles.skeletonMonogram, { backgroundColor: t.lineSoft }]}
-				/>
-				<View style={styles.skeletonIdentityBody}>
-					{bar("22%", 11)}
-					{bar("70%", 18, 8)}
-					{bar("35%", 11, 8)}
-				</View>
+				{bar("22%", 11)}
+				{bar("70%", 22, 10)}
+				{bar("35%", 11, 8)}
 			</View>
 
 			{variant === "project" ? (
@@ -240,14 +302,10 @@ export function DetailSkeleton({ variant }: { variant: "client" | "project" }) {
 					/>
 				</>
 			) : (
-				<View style={styles.skeletonTiles}>
-					{[0, 1, 2, 3].map((i) => (
-						<View
-							key={i}
-							style={[styles.skeletonTile, { backgroundColor: t.lineSoft }]}
-						/>
-					))}
-				</View>
+				// Client: one quiet team-chat pill, then section rows.
+				<View
+					style={[styles.skeletonChatPill, { backgroundColor: t.lineSoft }]}
+				/>
 			)}
 
 			{[0, 1, 2].map((i) => (
@@ -276,10 +334,35 @@ export const detailStyles = StyleSheet.create({
 	},
 	section: { marginTop: 20, gap: 10 },
 	stack: { gap: 8 },
+	// FactCard inside a section: the section's own gap spaces it — the card's
+	// default hero marginTop would double up.
+	sectionCard: { marginTop: 0 },
 });
 
 const styles = StyleSheet.create({
 	pressed: { opacity: 0.7 },
+
+	sectionLabelRow: {
+		flexDirection: "row",
+		alignItems: "center",
+		justifyContent: "space-between",
+		gap: 12,
+	},
+	sectionLabelText: {
+		fontFamily: fontFamily.semibold,
+		fontSize: type.eyebrow,
+		letterSpacing: tracking.groupLabel,
+		flexShrink: 1,
+	},
+	sectionLabelRight: { flexShrink: 0 },
+	sectionLink: {
+		flexDirection: "row",
+		alignItems: "center",
+		gap: 4,
+		minHeight: touch.min,
+		flexShrink: 0,
+	},
+	sectionLinkText: { fontFamily: fontFamily.semibold, fontSize: type.sm },
 
 	empty: {
 		paddingVertical: 18,
@@ -348,15 +431,14 @@ const styles = StyleSheet.create({
 	},
 	teamChatText: { fontFamily: fontFamily.semibold, fontSize: 13 },
 
-	skeletonIdentity: { flexDirection: "row", alignItems: "center", gap: 14 },
-	skeletonMonogram: { width: 54, height: 54, borderRadius: radii.card },
+	skeletonIdentity: { minWidth: 0 },
 	skeletonIdentityBody: { flex: 1, minWidth: 0 },
 	skeletonBar: { borderRadius: radii.xs },
-	skeletonTiles: { flexDirection: "row", gap: 8, marginTop: 18 },
-	skeletonTile: {
-		flex: 1,
-		height: touch.min + 16,
+	skeletonChatPill: {
+		height: touch.min,
+		width: "42%",
 		borderRadius: radii.ctrl,
+		marginTop: 18,
 	},
 	skeletonFactCard: {
 		height: 128,
