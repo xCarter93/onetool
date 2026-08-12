@@ -81,10 +81,10 @@ function ProjectVariant({ projectId }: { projectId: Id<"projects"> }) {
 	return (
 		<DocumentsCard
 			docs={docsResult}
-			title={(n) => (n > 0 ? `Project Documents (${n})` : "Project Documents")}
+			// The project screen renders its own SectionHeader above this card.
+			title={() => null}
 			generateUploadUrl={generateUploadUrl}
 			createDoc={(args) => createDoc({ projectId, ...args })}
-			style={styles.card}
 		/>
 	);
 }
@@ -329,9 +329,6 @@ function DocumentsCard({
 }
 
 const styles = StyleSheet.create({
-	card: {
-		marginTop: 16,
-	},
 	cardTitle: {
 		fontSize: 14,
 		fontFamily: fontFamily.semibold,

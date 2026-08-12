@@ -19,6 +19,7 @@ import {
 import { useOrganization } from "@clerk/expo";
 import { Id } from "@onetool/backend/convex/_generated/dataModel";
 import {
+	colors,
 	DOCK_CLEARANCE,
 	fontFamily,
 	radii,
@@ -36,13 +37,19 @@ import { usePermissions } from "@/lib/use-permissions";
 import { InkTabHeader } from "@/components/ink-tab-header";
 import { PaneHeader } from "@/components/ipad/pane-header";
 import { useShellNav } from "@/lib/shell-nav";
-import { DotGrid, ListRow, Ring, SectionHeader } from "@/components/ui";
-import {
-	Illustration,
-	type IllustrationName,
-} from "@/components/illustrations";
+import { Button, DotGrid, ListRow, SectionHeader } from "@/components/ui";
 import { IdentityBlock } from "@/components/identity-block";
-import { QuickActions, type QuickAction } from "@/components/quick-actions";
+import {
+	countSuffix,
+	detailStyles,
+	DetailSkeleton,
+	EmptyRow,
+	FactCard,
+	FactRow,
+	ProgressBar,
+	TeamChatButton,
+	type FactAction,
+} from "@/components/record-detail";
 import { EditableField } from "@/components/EditableField";
 import { FieldMenu } from "@/components/FieldMenu";
 import { useOverlayTransition } from "@/components/useOverlayTransition";
@@ -50,11 +57,13 @@ import { MentionModal } from "@/components/MentionModal";
 import { RecordDocuments } from "@/components/RecordDocuments";
 import { AppCalendar, toDateId, fromDateId } from "@/components/AppCalendar";
 import {
-	Building2,
-	MessageSquare,
+	CalendarDays,
+	MapPin,
+	MessageCircle,
 	Navigation,
 	Phone,
 	Plus,
+	User,
 	X,
 } from "lucide-react-native";
 
@@ -77,35 +86,45 @@ function formatDate(timestamp: number | undefined): string | null {
 	});
 }
 
-function KV({
+// Date "well" — same grammar as EditableField's display state (filled card,
+// hairline, trailing glyph) so every editable on the screen speaks one language.
+function DateWell({
 	label,
 	value,
 	onPress,
 }: {
 	label: string;
-	value: string;
-	onPress?: () => void;
+	value: string | null;
+	onPress: () => void;
 }) {
 	const t = useTokens();
-	const body = (
-		<View style={styles.kvRow}>
-			<Text style={[styles.kvLabel, { color: t.faint }]}>{label}</Text>
-			<Text style={[styles.kvValue, { color: t.ink }]}>{value}</Text>
-		</View>
-	);
-	if (!onPress) return body;
 	return (
 		<Pressable
 			onPress={onPress}
+			// Painted height, not hitSlop: Start and Due are adjacent, so 8pt of slop
+			// each left a 16pt band that could open the wrong date picker.
 			style={({ pressed }) => [
-				styles.kvEditable,
-				{ borderBottomColor: t.faint },
+				styles.dateWell,
+				{ backgroundColor: t.card, borderColor: t.lineSoft },
 				pressed && styles.pressed,
 			]}
 			accessibilityRole="button"
 			accessibilityLabel={`Edit ${label}`}
 		>
-			{body}
+			<View style={styles.dateWellBody}>
+				<Text style={[styles.dateWellLabel, { color: t.sub }]}>{label}</Text>
+				<Text
+					style={[
+						styles.dateWellValue,
+						{ color: value ? t.ink : t.faint },
+						!value && styles.dateWellEmpty,
+					]}
+					numberOfLines={1}
+				>
+					{value ?? "Not set"}
+				</Text>
+			</View>
+			<CalendarDays size={14} color={t.faint} />
 		</Pressable>
 	);
 }
@@ -289,72 +308,15 @@ export function ProjectDetailBody({
 				) : (
 					<InkTabHeader title="Project" onBack={() => router.back()} />
 				)}
-				{/* Skeleton is shaped like the real layout: monogram + name, the
-				    action tiles, then list rows. */}
+				{/* Skeleton mirrors the real layout: hero, fact card, pill pair,
+				    progress bar, then list rows. */}
 				<ScrollView
 					contentContainerStyle={[
 						styles.scroll,
 						{ paddingBottom: scrollBottom },
 					]}
 				>
-					<View style={styles.skeletonIdentity}>
-						<View
-							style={[styles.skeletonMonogram, { backgroundColor: t.lineSoft }]}
-						/>
-						<View style={styles.skeletonIdentityBody}>
-							<View
-								style={[
-									styles.skeletonBar,
-									{ width: "70%", height: 20, backgroundColor: t.lineSoft },
-								]}
-							/>
-							<View
-								style={[
-									styles.skeletonBar,
-									{
-										width: "30%",
-										height: 11,
-										marginTop: 8,
-										backgroundColor: t.lineSoft,
-									},
-								]}
-							/>
-						</View>
-					</View>
-					<View style={styles.skeletonTiles}>
-						{[0, 1, 2, 3].map((i) => (
-							<View
-								key={i}
-								style={[styles.skeletonTile, { backgroundColor: t.lineSoft }]}
-							/>
-						))}
-					</View>
-					{[0, 1, 2].map((i) => (
-						<View key={i} style={styles.skeletonRow}>
-							<View
-								style={[styles.skeletonRowTile, { backgroundColor: t.lineSoft }]}
-							/>
-							<View style={styles.skeletonIdentityBody}>
-								<View
-									style={[
-										styles.skeletonBar,
-										{ width: "55%", height: 13, backgroundColor: t.lineSoft },
-									]}
-								/>
-								<View
-									style={[
-										styles.skeletonBar,
-										{
-											width: "35%",
-											height: 11,
-											marginTop: 6,
-											backgroundColor: t.lineSoft,
-										},
-									]}
-								/>
-							</View>
-						</View>
-					))}
+					<DetailSkeleton variant="project" />
 				</ScrollView>
 			</SafeAreaView>
 		);
@@ -392,49 +354,47 @@ export function ProjectDetailBody({
 				? appleMapsAddressUrl(propertyAddress)
 				: undefined;
 
-	// Every tile stays visible; missing data dims it rather than hiding it. The
-	// quote tile is the exception — creation is permission-gated, and the FAB's
-	// convention is to hide (not dim) what the user may not do.
-	const quickActions: QuickAction[] = [
-		{
-			key: "call",
-			label: "Call",
-			Icon: Phone,
-			disabled: !phone,
-			onPress: () => phone && openExternal(`tel:${phone}`, "Phone"),
-		},
-		{
-			key: "message",
-			label: "Message",
-			Icon: MessageSquare,
-			disabled: !phone,
-			onPress: () => phone && openExternal(`sms:${phone}`, "Messages"),
-		},
-		{
-			key: "directions",
-			label: "Directions",
-			Icon: Navigation,
-			disabled: !directionsUrl,
-			onPress: () => directionsUrl && openExternal(directionsUrl, "Maps"),
-		},
-	];
-	if (permsLoading || can("quotes", "modify")) {
-		quickActions.push({
-			key: "new-quote",
-			label: "New quote",
-			Icon: Plus,
-			// Shown straight away so the row doesn't reflow, but inert until the
-			// grant is known — otherwise a tap in that window opens a sheet the
-			// role may not be allowed to use.
-			disabled: permsLoading,
-			onPress: () =>
-				// Cast: /quote/new isn't in the generated route map yet.
-				router.push({
-					pathname: "/quote/new",
-					params: { clientId: project.clientId, projectId },
-				} as unknown as Href),
-		});
-	}
+	// Fact-block actions. Unlike the client screen's peer tile row, a glyph with
+	// nothing behind it is dropped — its row only exists when the data does.
+	const contactName = primaryContact
+		? `${primaryContact.firstName} ${primaryContact.lastName}`.trim() ||
+			"Unnamed contact"
+		: undefined;
+	const contactSub =
+		[primaryContact?.jobTitle, primaryContact?.email]
+			.filter(Boolean)
+			.join("  ·  ") || undefined;
+	const contactActions: FactAction[] = phone
+		? [
+				{
+					key: "call",
+					label: `Call ${contactName ?? "contact"}`,
+					Icon: Phone,
+					onPress: () => openExternal(`tel:${phone}`, "Phone"),
+				},
+				{
+					key: "message",
+					label: `Message ${contactName ?? "contact"}`,
+					Icon: MessageCircle,
+					onPress: () => openExternal(`sms:${phone}`, "Messages"),
+				},
+			]
+		: [];
+	const addressActions: FactAction[] = directionsUrl
+		? [
+				{
+					key: "directions",
+					label: "Directions to job site",
+					Icon: Navigation,
+					onPress: () => openExternal(directionsUrl, "Maps"),
+				},
+			]
+		: [];
+
+	// Creation is permission-gated, and the FAB's convention is to hide (not
+	// dim) what the user may not do — but stay visible-and-inert while the grant
+	// is still loading, so the row doesn't reflow under a tap.
+	const canCreateQuote = permsLoading || can("quotes", "modify");
 
 	const recentQuotes = quotes?.slice(0, 3) ?? [];
 	const recentInvoices = invoices?.slice(0, 3) ?? [];
@@ -459,7 +419,28 @@ export function ProjectDetailBody({
 					tint={recordTint.project}
 					monogram={project.title}
 					statusKey={status}
-					sub={clientName}
+					name={project.title}
+					// The old standalone Building2 client-link row folds in here.
+					meta={
+						<Pressable
+							onPress={() =>
+								shellNav
+									? shellNav.open({ kind: "client", id: project.clientId })
+									: router.push(`/clients/${project.clientId}`)
+							}
+							hitSlop={8}
+							style={({ pressed }) => [
+								styles.clientLink,
+								pressed && styles.pressed,
+							]}
+							accessibilityRole="button"
+							accessibilityLabel={`View client ${clientName ?? ""}`.trim()}
+						>
+							<Text style={[styles.clientLinkText, { color: t.frostedInk }]}>
+								{clientName ?? "View client"}
+							</Text>
+						</Pressable>
+					}
 					renderStatus={(statusText) => (
 						<FieldMenu
 							title="Project status"
@@ -476,7 +457,10 @@ export function ProjectDetailBody({
 								accessibilityLabel={`Status: ${
 									STATUS[status as keyof typeof STATUS]?.label ?? status
 								}. Tap to change`}
-								style={[styles.statusTrigger, { borderBottomColor: t.faint }]}
+								style={[
+									detailStyles.statusTrigger,
+									{ borderBottomColor: t.faint },
+								]}
 							>
 								{statusText}
 							</View>
@@ -484,102 +468,86 @@ export function ProjectDetailBody({
 					)}
 				/>
 
-				{/* Client link stays adjacent to identity — the sub line is text only. */}
-				<Pressable
-					onPress={() =>
-						shellNav
-							? shellNav.open({ kind: "client", id: project.clientId })
-							: router.push(`/clients/${project.clientId}`)
-					}
-					hitSlop={8}
-					style={({ pressed }) => [
-						styles.clientLink,
-						pressed && styles.pressed,
-					]}
-					accessibilityRole="button"
-					accessibilityLabel={`View client ${clientName ?? ""}`.trim()}
-				>
-					<Building2 size={14} color={t.frostedInk} />
-					<Text style={[styles.clientLinkText, { color: t.frostedInk }]}>
-						{clientName ?? "View client"}
-					</Text>
-				</Pressable>
+				{/* Facts — who to reach and where to go. Rows with no data are
+				    hidden outright; the card disappears when both are. */}
+				<FactCard>
+					{contactName ? (
+						<FactRow
+							key="contact"
+							Icon={User}
+							title={contactName}
+							sub={contactSub}
+							actions={contactActions}
+							last={!propertyAddress}
+						/>
+					) : null}
+					{propertyAddress ? (
+						<FactRow
+							key="address"
+							Icon={MapPin}
+							title={propertyAddress}
+							actions={addressActions}
+							last
+						/>
+					) : null}
+				</FactCard>
 
-				<View style={styles.actionsWrap}>
-					<QuickActions actions={quickActions} />
+				{/* Actions — call/message/directions now live in the fact card, so
+				    only the two screen-level verbs remain. */}
+				<View style={styles.pillRow}>
+					{canCreateQuote ? (
+						<Button
+							title="New quote"
+							variant="solid"
+							disabled={permsLoading}
+							icon={<Plus size={16} color={colors.primaryForeground} />}
+							onPress={() =>
+								// Cast: /quote/new isn't in the generated route map yet.
+								router.push({
+									pathname: "/quote/new",
+									params: { clientId: project.clientId, projectId },
+								} as unknown as Href)
+							}
+							style={styles.pill}
+						/>
+					) : null}
+					<TeamChatButton
+						onPress={() => setMentionVisible(true)}
+						style={styles.pill}
+					/>
 				</View>
 
-				{/* Team chat — relocated from the old floating FAB */}
-				<Pressable
-					onPress={() => setMentionVisible(true)}
-					accessibilityRole="button"
-					accessibilityLabel="Open team chat"
-					style={({ pressed }) => [
-						styles.teamChat,
-						{ backgroundColor: t.frostedBg, borderColor: t.frostedBorder },
-						pressed && styles.pressed,
-					]}
-				>
-					<MessageSquare size={18} color={t.frostedInk} />
-					<Text style={[styles.teamChatText, { color: t.frostedInk }]}>
-						Team chat
-					</Text>
-				</Pressable>
-
-				{/* Progress — card-free: the ring sits beside a quiet stat column. */}
-				<View style={styles.section}>
+				{/* Progress — a linear bar; the 72pt ring read as dashboard ornament
+				    on a screen whose job is facts. */}
+				<View style={detailStyles.section}>
 					<SectionHeader title="Progress" />
 					{taskProgress ? (
-						<View style={styles.progressRow}>
-							<Ring
-								pct={taskProgress.pct}
-								size={72}
-								stroke={9}
-								track={t.secondary}
-								color={status === "completed" ? t.success : t.primarySolid}
-							>
-								<Text style={[styles.ringText, { color: t.ink }]}>
-									{taskProgress.pct}%
-								</Text>
-							</Ring>
-							<View style={styles.kvCol}>
-								<KV
-									label="Tasks"
-									value={`${taskProgress.done} of ${taskProgress.total} done`}
-								/>
-								<KV
-									label="Start"
-									value={formatDate(project.startDate) ?? "Not set"}
-									onPress={() => openDatePicker("startDate")}
-								/>
-								<KV
-									label="Due"
-									value={formatDate(project.endDate) ?? "Not set"}
-									onPress={() => openDatePicker("endDate")}
-								/>
-							</View>
-						</View>
-					) : (
-						<View style={styles.kvColStandalone}>
-							<KV
-								label="Start"
-								value={formatDate(project.startDate) ?? "Not set"}
-								onPress={() => openDatePicker("startDate")}
-							/>
-							<KV
-								label="Due"
-								value={formatDate(project.endDate) ?? "Not set"}
-								onPress={() => openDatePicker("endDate")}
-							/>
-						</View>
-					)}
+						<ProgressBar
+							done={taskProgress.done}
+							total={taskProgress.total}
+							// Completed projects keep the green they had on the ring.
+							color={status === "completed" ? t.success : t.primarySolid}
+						/>
+					) : null}
+					<View style={styles.datePair}>
+						<DateWell
+							label="Start"
+							value={formatDate(project.startDate)}
+							onPress={() => openDatePicker("startDate")}
+						/>
+						<DateWell
+							label="Due"
+							value={formatDate(project.endDate)}
+							onPress={() => openDatePicker("endDate")}
+						/>
+					</View>
 				</View>
 
-				{/* Details — the header owns the name, so title editing lives here
+				{/* Details — the hero displays the name, so EDITING it lives here
 				    (same idiom as the client screen's Company section). */}
-				<View style={styles.section}>
+				<View style={detailStyles.section}>
 					<SectionHeader title="Details" />
-					<View style={styles.stack}>
+					<View style={detailStyles.stack}>
 						<EditableField
 							label="Title"
 							value={project.title}
@@ -598,7 +566,7 @@ export function ProjectDetailBody({
 				</View>
 
 				{/* Quotes */}
-				<View style={styles.section}>
+				<View style={detailStyles.section}>
 					<SectionHeader
 						title={`Quotes${countSuffix(quotes?.length ?? 0)}`}
 					/>
@@ -628,7 +596,7 @@ export function ProjectDetailBody({
 				</View>
 
 				{/* Invoices */}
-				<View style={styles.section}>
+				<View style={detailStyles.section}>
 					<SectionHeader
 						title={`Invoices${countSuffix(invoices?.length ?? 0)}`}
 					/>
@@ -658,11 +626,14 @@ export function ProjectDetailBody({
 				</View>
 
 				{/* Documents — rewired component (Plan 02) */}
-				{projectId && (
-					<RecordDocuments
-						target={{ kind: "project", id: projectId as Id<"projects"> }}
-					/>
-				)}
+				{projectId ? (
+					<View style={detailStyles.section}>
+						<SectionHeader title="Documents" />
+						<RecordDocuments
+							target={{ kind: "project", id: projectId as Id<"projects"> }}
+						/>
+					</View>
+				) : null}
 
 				<View style={{ height: 32 }} />
 			</ScrollView>
@@ -741,21 +712,6 @@ export default function ProjectDetailScreen() {
 	return <ProjectDetailBody id={projectId} />;
 }
 
-function countSuffix(n: number) {
-	return n > 0 ? `  ·  ${n}` : "";
-}
-
-function EmptyRow({ text, illo }: { text: string; illo: IllustrationName }) {
-	const t = useTokens();
-	return (
-		<View style={styles.empty}>
-			{/* Knockout = the page canvas, so cut-out shapes don't show card-white. */}
-			<Illustration name={illo} size="sm" knockout={t.bg} />
-			<Text style={[styles.emptyText, { color: t.sub }]}>{text}</Text>
-		</View>
-	);
-}
-
 const styles = StyleSheet.create({
 	flex: { flex: 1 },
 	scroll: {
@@ -766,37 +722,9 @@ const styles = StyleSheet.create({
 		opacity: 0.6,
 	},
 
-	skeletonIdentity: { flexDirection: "row", alignItems: "center", gap: 14 },
-	skeletonMonogram: { width: 54, height: 54, borderRadius: radii.card },
-	skeletonIdentityBody: { flex: 1, minWidth: 0 },
-	skeletonBar: { borderRadius: radii.xs },
-	skeletonTiles: { flexDirection: "row", gap: 8, marginTop: 18 },
-	skeletonTile: {
-		flex: 1,
-		height: touch.min + 16,
-		borderRadius: radii.ctrl,
-	},
-	skeletonRow: {
-		flexDirection: "row",
-		alignItems: "center",
-		gap: 11,
-		paddingVertical: 12,
-		paddingHorizontal: 12,
-		marginTop: 6,
-	},
-	skeletonRowTile: { width: 32, height: 32, borderRadius: 9 },
-
-	statusTrigger: {
-		alignSelf: "flex-start",
-		paddingBottom: 4,
-		borderBottomWidth: 1,
-	},
 	clientLink: {
-		flexDirection: "row",
-		alignItems: "center",
-		gap: 6,
-		marginTop: 12,
 		alignSelf: "flex-start",
+		justifyContent: "center",
 		minHeight: touch.min - 12,
 	},
 	clientLinkText: {
@@ -804,30 +732,33 @@ const styles = StyleSheet.create({
 		fontSize: type.meta,
 	},
 
-	actionsWrap: { marginTop: 10 },
+	pillRow: { flexDirection: "row", gap: 8, marginTop: 14 },
+	pill: { flex: 1, minWidth: 0 },
 
-	teamChat: {
+	datePair: { flexDirection: "row", gap: 8 },
+	dateWell: {
+		flex: 1,
+		minWidth: 0,
 		flexDirection: "row",
 		alignItems: "center",
-		justifyContent: "center",
 		gap: 8,
-		height: 44,
-		borderRadius: radii.rSm,
+		minHeight: touch.min,
 		borderWidth: 1,
-		marginTop: 10,
+		borderRadius: radii.ctrl,
+		paddingHorizontal: 12,
+		paddingVertical: 9,
 	},
-	teamChatText: {
-		fontFamily: fontFamily.semibold,
-		fontSize: 13,
+	dateWellBody: { flex: 1, minWidth: 0, gap: 2 },
+	dateWellLabel: {
+		fontFamily: fontFamily.medium,
+		fontSize: type.eyebrow,
 	},
+	dateWellValue: {
+		fontFamily: fontFamily.regular,
+		fontSize: type.rowTitle,
+	},
+	dateWellEmpty: { fontStyle: "italic" },
 
-	section: { marginTop: 22, gap: 10 },
-	stack: { gap: 2 },
-
-	kvEditable: {
-		paddingBottom: 5,
-		borderBottomWidth: 1,
-	},
 	dateOverlay: {
 		position: "absolute",
 		top: 0,
@@ -857,46 +788,6 @@ const styles = StyleSheet.create({
 	},
 	dateSheetTitle: {
 		fontFamily: fontFamily.semibold,
-		fontSize: 16,
+		fontSize: type.h3,
 	},
-	progressRow: {
-		flexDirection: "row",
-		alignItems: "center",
-		gap: 16,
-	},
-	ringText: {
-		fontFamily: fontFamily.bold,
-		fontSize: 16,
-	},
-	kvCol: {
-		flex: 1,
-		gap: 10,
-	},
-	kvColStandalone: {
-		gap: 10,
-	},
-	kvRow: {
-		flexDirection: "row",
-		alignItems: "baseline",
-		justifyContent: "space-between",
-		// Painted height, not hitSlop: Start and Due are adjacent, so 8pt of slop
-		// each left a 16pt band that could open the wrong date picker.
-		minHeight: touch.min,
-		paddingVertical: 11,
-	},
-	kvLabel: {
-		fontFamily: fontFamily.regular,
-		fontSize: 12,
-	},
-	kvValue: {
-		fontFamily: fontFamily.semibold,
-		fontSize: 13,
-	},
-
-	empty: {
-		paddingVertical: 18,
-		alignItems: "center",
-		gap: 8,
-	},
-	emptyText: { fontFamily: fontFamily.regular, fontSize: type.meta },
 });

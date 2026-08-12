@@ -19,7 +19,6 @@ import { Id } from "@onetool/backend/convex/_generated/dataModel";
 import {
 	DOCK_CLEARANCE,
 	fontFamily,
-	radii,
 	recordTint,
 	STATUS,
 	touch,
@@ -34,16 +33,19 @@ import { useShellNav } from "@/lib/shell-nav";
 import { EditableField } from "@/components/EditableField";
 import { FieldMenu } from "@/components/FieldMenu";
 import { MentionModal } from "@/components/MentionModal";
-import { IdentityBlock } from "@/components/identity-block";
+import { IdentityBlock, IdentityMeta } from "@/components/identity-block";
+import {
+	countSuffix,
+	detailStyles,
+	DetailSkeleton,
+	EmptyRow,
+	TeamChatButton,
+} from "@/components/record-detail";
 import { openExternal } from "@/lib/open-external";
 import { recordRecentView } from "@/lib/recents";
 import { QuickActions, type QuickAction } from "@/components/quick-actions";
 import { DotGrid, SectionHeader, ListRow } from "@/components/ui";
 import { RecordDocuments } from "@/components/RecordDocuments";
-import {
-	Illustration,
-	type IllustrationName,
-} from "@/components/illustrations";
 import {
 	Phone,
 	Mail,
@@ -206,81 +208,15 @@ export function ClientDetailBody({
 				) : (
 					<InkTabHeader title="Client" onBack={() => router.back()} />
 				)}
-				{/* Skeleton is shaped like the real layout: monogram + name, the
-				    four action tiles, then list rows. */}
+				{/* Skeleton mirrors the real layout: hero, the four action tiles,
+				    then list rows. */}
 				<ScrollView
 					contentContainerStyle={[
 						styles.scroll,
 						{ paddingBottom: scrollBottom },
 					]}
 				>
-					<View style={styles.skeletonIdentity}>
-						<View
-							style={[
-								styles.skeletonMonogram,
-								{ backgroundColor: t.lineSoft },
-							]}
-						/>
-						<View style={styles.skeletonIdentityBody}>
-							<View
-								style={[
-									styles.skeletonBar,
-									{ width: "70%", height: 20, backgroundColor: t.lineSoft },
-								]}
-							/>
-							<View
-								style={[
-									styles.skeletonBar,
-									{
-										width: "30%",
-										height: 11,
-										marginTop: 8,
-										backgroundColor: t.lineSoft,
-									},
-								]}
-							/>
-						</View>
-					</View>
-					<View style={styles.skeletonTiles}>
-						{[0, 1, 2, 3].map((i) => (
-							<View
-								key={i}
-								style={[
-									styles.skeletonTile,
-									{ backgroundColor: t.lineSoft },
-								]}
-							/>
-						))}
-					</View>
-					{[0, 1, 2].map((i) => (
-						<View key={i} style={styles.skeletonRow}>
-							<View
-								style={[
-									styles.skeletonRowTile,
-									{ backgroundColor: t.lineSoft },
-								]}
-							/>
-							<View style={styles.skeletonIdentityBody}>
-								<View
-									style={[
-										styles.skeletonBar,
-										{ width: "55%", height: 13, backgroundColor: t.lineSoft },
-									]}
-								/>
-								<View
-									style={[
-										styles.skeletonBar,
-										{
-											width: "35%",
-											height: 11,
-											marginTop: 6,
-											backgroundColor: t.lineSoft,
-										},
-									]}
-								/>
-							</View>
-						</View>
-					))}
+					<DetailSkeleton variant="client" />
 				</ScrollView>
 			</SafeAreaView>
 		);
@@ -386,7 +322,8 @@ export function ClientDetailBody({
 					tint={recordTint.client}
 					monogram={client.companyName}
 					statusKey={status}
-					sub={identitySub}
+					name={client.companyName}
+					meta={identitySub ? <IdentityMeta>{identitySub}</IdentityMeta> : null}
 					renderStatus={(statusText) => (
 						<FieldMenu
 							title="Client status"
@@ -404,7 +341,10 @@ export function ClientDetailBody({
 								accessibilityLabel={`Status: ${
 									STATUS[status as keyof typeof STATUS]?.label ?? status
 								}. Tap to change`}
-								style={[styles.statusTrigger, { borderBottomColor: t.faint }]}
+								style={[
+									detailStyles.statusTrigger,
+									{ borderBottomColor: t.faint },
+								]}
 							>
 								{statusText}
 							</View>
@@ -417,49 +357,38 @@ export function ClientDetailBody({
 				</View>
 
 				{/* Team chat — relocated from the old floating FAB */}
-				<Pressable
+				<TeamChatButton
 					onPress={() => setMentionModalVisible(true)}
-					accessibilityRole="button"
-					accessibilityLabel="Open team chat"
-					style={({ pressed }) => [
-						styles.teamChat,
-						{ backgroundColor: t.frostedBg, borderColor: t.frostedBorder },
-						pressed && styles.pressed,
-					]}
-				>
-					<MessageSquare size={18} color={t.frostedInk} />
-					<Text style={[styles.teamChatText, { color: t.frostedInk }]}>
-						Team chat
-					</Text>
-				</Pressable>
+					style={styles.teamChat}
+				/>
 
-				{/* Company — quiet stacked text, no card */}
-				<View style={styles.section}>
+				{/* Company — editable fields read as wells; read-only twins stay flat */}
+				<View style={detailStyles.section}>
 					<SectionHeader title="Company" />
-					<View style={styles.stack}>
+					<View style={detailStyles.stack}>
 						<EditableField
 							label="Company name"
 							value={client.companyName}
 							onSave={(value) => handleSaveField("companyName", value)}
 							placeholder="Company name"
 						/>
+						{/* Read-only twins: no well, no pencil — the affordance only
+						    means something where it is absent from static text. */}
 						{client.companyDescription ? (
-							<View style={styles.readField}>
-								<Text style={[styles.readLabel, { color: t.faint }]}>
-									Description
-								</Text>
-								<Text style={[styles.readValue, { color: t.ink }]}>
-									{client.companyDescription}
-								</Text>
-							</View>
+							<EditableField
+								label="Description"
+								value={client.companyDescription}
+								onSave={async () => {}}
+								editable={false}
+							/>
 						) : null}
 						{tags.length > 0 ? (
-							<View style={styles.readField}>
-								<Text style={[styles.readLabel, { color: t.faint }]}>Tags</Text>
-								<Text style={[styles.readValue, { color: t.ink }]}>
-									{tags.join("  ·  ")}
-								</Text>
-							</View>
+							<EditableField
+								label="Tags"
+								value={tags.join("  ·  ")}
+								onSave={async () => {}}
+								editable={false}
+							/>
 						) : null}
 						<EditableField
 							label="Notes"
@@ -473,7 +402,7 @@ export function ClientDetailBody({
 				</View>
 
 				{/* Contacts (read-only; Call on phone) */}
-				<View style={styles.section}>
+				<View style={detailStyles.section}>
 					<SectionHeader title={`Contacts${countSuffix(contacts.length)}`} />
 					{contacts.length > 0 ? (
 						<View>
@@ -532,7 +461,7 @@ export function ClientDetailBody({
 				</View>
 
 				{/* Properties */}
-				<View style={styles.section}>
+				<View style={detailStyles.section}>
 					<SectionHeader
 						title={`Properties${countSuffix(properties.length)}`}
 					/>
@@ -570,7 +499,7 @@ export function ClientDetailBody({
 				</View>
 
 				{/* Projects */}
-				<View style={styles.section}>
+				<View style={detailStyles.section}>
 					<View style={styles.headerRow}>
 						<View style={styles.headerGrow}>
 							<SectionHeader
@@ -627,7 +556,7 @@ export function ClientDetailBody({
 				</View>
 
 				{/* Quotes */}
-				<View style={styles.section}>
+				<View style={detailStyles.section}>
 					<View style={styles.headerRow}>
 						<View style={styles.headerGrow}>
 							<SectionHeader title={`Quotes${countSuffix(quotes.length)}`} />
@@ -680,7 +609,7 @@ export function ClientDetailBody({
 				</View>
 
 				{/* Invoices */}
-				<View style={styles.section}>
+				<View style={detailStyles.section}>
 					<SectionHeader title={`Invoices${countSuffix(invoices.length)}`} />
 					{recentInvoices.length > 0 ? (
 						<View>
@@ -708,7 +637,7 @@ export function ClientDetailBody({
 				</View>
 
 				{/* Documents */}
-				<View style={styles.section}>
+				<View style={detailStyles.section}>
 					<SectionHeader title="Documents" />
 					<RecordDocuments
 						target={{ kind: "client", id: clientId as Id<"clients"> }}
@@ -736,77 +665,13 @@ export default function ClientDetailScreen() {
 	return <ClientDetailBody id={clientId} />;
 }
 
-function countSuffix(n: number) {
-	return n > 0 ? `  ·  ${n}` : "";
-}
-
-function EmptyRow({ text, illo }: { text: string; illo: IllustrationName }) {
-	const t = useTokens();
-	return (
-		<View style={styles.empty}>
-			{/* Knockout = the page canvas, so cut-out shapes don't show card-white. */}
-			<Illustration name={illo} size="sm" knockout={t.bg} />
-			<Text style={[styles.emptyText, { color: t.sub }]}>{text}</Text>
-		</View>
-	);
-}
-
 const styles = StyleSheet.create({
 	flex: { flex: 1 },
 	scroll: { padding: 16, gap: 0 },
 	pressed: { opacity: 0.7 },
 
-	skeletonIdentity: { flexDirection: "row", alignItems: "center", gap: 14 },
-	skeletonMonogram: { width: 54, height: 54, borderRadius: radii.card },
-	skeletonIdentityBody: { flex: 1, minWidth: 0 },
-	skeletonBar: { borderRadius: radii.xs },
-	skeletonTiles: { flexDirection: "row", gap: 8, marginTop: 18 },
-	skeletonTile: {
-		flex: 1,
-		height: touch.min + 16,
-		borderRadius: radii.ctrl,
-	},
-	skeletonRow: {
-		flexDirection: "row",
-		alignItems: "center",
-		gap: 11,
-		paddingVertical: 12,
-		paddingHorizontal: 12,
-		marginTop: 6,
-	},
-	skeletonRowTile: { width: 32, height: 32, borderRadius: 9 },
-
-	statusTrigger: {
-		alignSelf: "flex-start",
-		paddingBottom: 4,
-		borderBottomWidth: 1,
-	},
-
-	actionsWrap: { marginTop: 18 },
-
-	teamChat: {
-		flexDirection: "row",
-		alignItems: "center",
-		justifyContent: "center",
-		gap: 8,
-		height: 44,
-		borderRadius: radii.rSm,
-		borderWidth: 1,
-		marginTop: 10,
-	},
-	teamChatText: {
-		fontFamily: fontFamily.semibold,
-		fontSize: 13,
-	},
-
-	section: { marginTop: 22, gap: 10 },
-	stack: { gap: 2 },
-	readField: { paddingVertical: 8, paddingHorizontal: 2, gap: 3 },
-	readLabel: {
-		fontFamily: fontFamily.medium,
-		fontSize: type.eyebrow,
-	},
-	readValue: { fontFamily: fontFamily.regular, fontSize: type.body },
+	actionsWrap: { marginTop: 16 },
+	teamChat: { marginTop: 8 },
 
 	headerRow: { flexDirection: "row", alignItems: "center", gap: 12 },
 	headerGrow: { flex: 1, minWidth: 0 },
@@ -830,11 +695,4 @@ const styles = StyleSheet.create({
 		minHeight: touch.min,
 	},
 	callText: { fontFamily: fontFamily.semibold, fontSize: type.meta },
-
-	empty: {
-		paddingVertical: 18,
-		alignItems: "center",
-		gap: 8,
-	},
-	emptyText: { fontFamily: fontFamily.regular, fontSize: type.meta },
 });

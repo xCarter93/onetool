@@ -938,7 +938,7 @@ const styles = StyleSheet.create({
 	timelineNode: {
 		width: 20,
 		height: 20,
-		borderRadius: 10,
+		borderRadius: radii.pill,
 		alignItems: "center",
 		justifyContent: "center",
 	},

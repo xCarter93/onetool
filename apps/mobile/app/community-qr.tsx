@@ -428,7 +428,7 @@ const styles = StyleSheet.create({
 		color: hero.statAccent,
 	},
 	primaryWrap: {
-		borderRadius: 14,
+		borderRadius: radii["4xl"],
 		overflow: "hidden",
 	},
 	primary: {
@@ -445,7 +445,7 @@ const styles = StyleSheet.create({
 	},
 	secondary: {
 		height: 48,
-		borderRadius: 14,
+		borderRadius: radii["4xl"],
 		borderWidth: 1,
 		borderColor: hero.buttonBorder,
 		backgroundColor: hero.buttonBg,

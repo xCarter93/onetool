@@ -17,7 +17,7 @@ import { useMutation, useQuery } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
 import { X, ChevronDown } from "lucide-react-native";
-import { fontFamily, type, radii, useTokens } from "@/lib/theme";
+import { fontFamily, type, radii, tracking, useTokens } from "@/lib/theme";
 import { Button } from "@/components/ui";
 import { FieldMenu } from "@/components/FieldMenu";
 import { AppCalendar } from "@/components/AppCalendar";
@@ -48,6 +48,13 @@ const REPEAT_OPTIONS = [
 
 // Off-screen start distance for the calendar slide-up (>= sheet height).
 const SHEET_SLIDE = 600;
+
+// Layout floor for a FieldMenu row (14+14 padding + 1+1 border + ~18 line box).
+// The native SwiftUI menu host under-measures its RN child, so a bare <FieldMenu>
+// reserves less vertical space than it paints and the NEXT field's label lands
+// underneath it. The wrapper below reserves the real row box; kept at/below the
+// true height so a correctly-measured host is unchanged.
+const MENU_ROW_MIN_HEIGHT = 48;
 
 type TaskType = "external" | "internal";
 type TaskStatus = "pending" | "in-progress" | "completed" | "cancelled";
@@ -311,24 +318,26 @@ export default function TaskFormSheet() {
 					keyboardShouldPersistTaps="handled"
 				>
 					{/* Type */}
-					<FieldLabel text="Type" color={t.sub} />
-					<FieldMenu
-						title="Task type"
-						value={type}
-						options={TYPE_OPTIONS}
-						label={labelFor(TYPE_OPTIONS, type, "External")}
-						onSelect={(next) => {
-							const nextType = next as TaskType;
-							setType(nextType);
-							if (nextType === "internal") {
-								setClientId("");
-								setProjectId("");
-							}
-						}}
-					/>
+					<FieldLabel text="Type" />
+					<View style={styles.menuField}>
+						<FieldMenu
+							title="Task type"
+							value={type}
+							options={TYPE_OPTIONS}
+							label={labelFor(TYPE_OPTIONS, type, "External")}
+							onSelect={(next) => {
+								const nextType = next as TaskType;
+								setType(nextType);
+								if (nextType === "internal") {
+									setClientId("");
+									setProjectId("");
+								}
+							}}
+						/>
+					</View>
 
 					{/* Title */}
-					<FieldLabel text="Title" color={t.sub} />
+					<FieldLabel text="Title" />
 					<TextInput
 						value={title}
 						onChangeText={setTitle}
@@ -346,7 +355,7 @@ export default function TaskFormSheet() {
 					) : null}
 
 					{/* Description */}
-					<FieldLabel text="Description" color={t.sub} />
+					<FieldLabel text="Description" />
 					<TextInput
 						value={description}
 						onChangeText={setDescription}
@@ -364,47 +373,51 @@ export default function TaskFormSheet() {
 					{/* Client + Project — external only */}
 					{type === "external" ? (
 						<>
-							<FieldLabel text="Client" color={t.sub} />
-							<FieldMenu
-								title="Select client"
-								value={clientId}
-								options={clientOptions}
-								label={
-									clientId
-										? labelFor(clientOptions, clientId, "Select a client")
-										: "Select a client"
-								}
-								placeholder={!clientId}
-								onSelect={(next) => {
-									setClientId(next as Id<"clients">);
-									setProjectId(""); // client change clears staged project
-								}}
-							/>
+							<FieldLabel text="Client" />
+							<View style={styles.menuField}>
+								<FieldMenu
+									title="Select client"
+									value={clientId}
+									options={clientOptions}
+									label={
+										clientId
+											? labelFor(clientOptions, clientId, "Select a client")
+											: "Select a client"
+									}
+									placeholder={!clientId}
+									onSelect={(next) => {
+										setClientId(next as Id<"clients">);
+										setProjectId(""); // client change clears staged project
+									}}
+								/>
+							</View>
 							{!clientId ? (
 								<Text style={[styles.hint, { color: t.faint }]}>
 									Choose a client for an external task.
 								</Text>
 							) : null}
 
-							<FieldLabel text="Project" color={t.sub} />
-							<FieldMenu
-								title="Select project"
-								value={projectId}
-								options={projectOptions}
-								label={
-									projectId
-										? labelFor(projectOptions, projectId, "No project")
-										: "No project"
-								}
-								placeholder={!projectId}
-								disabled={!clientId}
-								onSelect={(next) => setProjectId(next as Id<"projects">)}
-							/>
+							<FieldLabel text="Project" />
+							<View style={styles.menuField}>
+								<FieldMenu
+									title="Select project"
+									value={projectId}
+									options={projectOptions}
+									label={
+										projectId
+											? labelFor(projectOptions, projectId, "No project")
+											: "No project"
+									}
+									placeholder={!projectId}
+									disabled={!clientId}
+									onSelect={(next) => setProjectId(next as Id<"projects">)}
+								/>
+							</View>
 						</>
 					) : null}
 
 					{/* Date */}
-					<FieldLabel text="Date" color={t.sub} />
+					<FieldLabel text="Date" />
 					<SelectRow
 						label={formatDateLabel(dateId)}
 						onPress={() => setDatePickerOpen(true)}
@@ -412,48 +425,54 @@ export default function TaskFormSheet() {
 					/>
 
 					{/* Assignee */}
-					<FieldLabel text="Assignee" color={t.sub} />
-					<FieldMenu
-						title="Assignee"
-						value={assigneeUserId}
-						options={assigneeOptions}
-						label={
-							assigneeUserId
-								? labelFor(assigneeOptions, assigneeUserId, "Unassigned")
-								: "Unassigned"
-						}
-						placeholder={!assigneeUserId}
-						onSelect={(next) => setAssigneeUserId(next as Id<"users">)}
-					/>
+					<FieldLabel text="Assignee" />
+					<View style={styles.menuField}>
+						<FieldMenu
+							title="Assignee"
+							value={assigneeUserId}
+							options={assigneeOptions}
+							label={
+								assigneeUserId
+									? labelFor(assigneeOptions, assigneeUserId, "Unassigned")
+									: "Unassigned"
+							}
+							placeholder={!assigneeUserId}
+							onSelect={(next) => setAssigneeUserId(next as Id<"users">)}
+						/>
+					</View>
 
 					{/* Status */}
-					<FieldLabel text="Status" color={t.sub} />
-					<FieldMenu
-						title="Status"
-						value={status}
-						options={STATUS_OPTIONS}
-						label={labelFor(STATUS_OPTIONS, status, "Pending")}
-						onSelect={(next) => setStatus(next as TaskStatus)}
-					/>
+					<FieldLabel text="Status" />
+					<View style={styles.menuField}>
+						<FieldMenu
+							title="Status"
+							value={status}
+							options={STATUS_OPTIONS}
+							label={labelFor(STATUS_OPTIONS, status, "Pending")}
+							onSelect={(next) => setStatus(next as TaskStatus)}
+						/>
+					</View>
 
 					{/* Repeat */}
-					<FieldLabel text="Repeat" color={t.sub} />
-					<FieldMenu
-						title="Repeat"
-						value={repeat}
-						options={REPEAT_OPTIONS}
-						label={labelFor(REPEAT_OPTIONS, repeat, "None")}
-						onSelect={(next) => {
-							const nextRepeat = next as TaskRepeat;
-							setRepeat(nextRepeat);
-							if (nextRepeat === "none") setRepeatUntilId(undefined);
-						}}
-					/>
+					<FieldLabel text="Repeat" />
+					<View style={styles.menuField}>
+						<FieldMenu
+							title="Repeat"
+							value={repeat}
+							options={REPEAT_OPTIONS}
+							label={labelFor(REPEAT_OPTIONS, repeat, "None")}
+							onSelect={(next) => {
+								const nextRepeat = next as TaskRepeat;
+								setRepeat(nextRepeat);
+								if (nextRepeat === "none") setRepeatUntilId(undefined);
+							}}
+						/>
+					</View>
 
 					{/* Repeat until — only when repeat != none */}
 					{repeat !== "none" ? (
 						<>
-							<FieldLabel text="Repeat until" color={t.sub} />
+							<FieldLabel text="Repeat until" />
 							<SelectRow
 								label={
 									repeatUntilId
@@ -562,8 +581,11 @@ export default function TaskFormSheet() {
 	);
 }
 
-function FieldLabel({ text, color }: { text: string; color: string }) {
-	return <Text style={[styles.fieldLabel, { color }]}>{text}</Text>;
+// Field labels read as 3.0 eyebrows (uppercase, tracked, faint) so the sheet
+// matches the record-detail grammar without borrowing its ink band.
+function FieldLabel({ text }: { text: string }) {
+	const t = useTokens();
+	return <Text style={[styles.fieldLabel, { color: t.faint }]}>{text}</Text>;
 }
 
 function SelectRow({
@@ -758,13 +780,22 @@ const styles = StyleSheet.create({
 	},
 	body: {
 		paddingHorizontal: 20,
-		paddingBottom: 32,
+		// Clears the 0.9-detent bottom edge (root is overflow:"hidden") so the
+		// last field/delete row is never cut off mid-glyph.
+		paddingBottom: 48,
 	},
 	fieldLabel: {
-		fontSize: type.sm,
+		fontSize: type.eyebrow,
+		lineHeight: 14,
 		fontFamily: fontFamily.semibold,
-		marginTop: 16,
+		letterSpacing: tracking.groupLabel,
+		textTransform: "uppercase",
+		marginTop: 20,
 		marginBottom: 8,
+	},
+	// Reserves the FieldMenu row's real layout box (see MENU_ROW_MIN_HEIGHT).
+	menuField: {
+		minHeight: MENU_ROW_MIN_HEIGHT,
 	},
 	input: {
 		borderWidth: 1,

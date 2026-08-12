@@ -8,7 +8,7 @@ import {
 	ActivityIndicator,
 	KeyboardTypeOptions,
 } from "react-native";
-import { Check, X } from "lucide-react-native";
+import { Check, Pencil, X } from "lucide-react-native";
 import { fontFamily, radii, spacing, touch, type, useTokens } from "@/lib/theme";
 
 interface EditableFieldProps {
@@ -149,31 +149,49 @@ export function EditableField({
 		);
 	}
 
+	// Read-only: calm labelled text, no well and no pencil — the affordance only
+	// means something if it is absent where nothing can be edited.
+	if (!editable) {
+		return (
+			<View style={styles.container}>
+				{label ? (
+					<Text style={[styles.readLabel, { color: t.faint }]}>{label}</Text>
+				) : null}
+				{renderValue ? (
+					renderValue(value)
+				) : (
+					<Text
+						style={[
+							styles.value,
+							{ color: t.ink },
+							!value && [styles.placeholder, { color: t.faint }],
+						]}
+					>
+						{value || placeholder}
+					</Text>
+				)}
+			</View>
+		);
+	}
+
+	// Editable: a filled "well" with a trailing pencil. The bare underline it
+	// replaces was indistinguishable from static text at arm's length.
 	return (
 		<View style={styles.container}>
-			{label ? (
-				<Text style={[styles.label, { color: t.sub }]}>{label}</Text>
-			) : null}
 			<Pressable
-				onPress={editable ? handleEdit : undefined}
-				disabled={!editable}
-				accessibilityRole={editable ? "button" : undefined}
-				accessibilityLabel={editable ? `Edit ${label || "field"}` : undefined}
+				onPress={handleEdit}
+				accessibilityRole="button"
+				accessibilityLabel={`Edit ${label || "field"}`}
 				style={({ pressed }) => [
-					styles.valueContainer,
-					pressed && editable && styles.actionPressed,
+					styles.well,
+					{ backgroundColor: t.card, borderColor: t.lineSoft },
+					pressed && styles.actionPressed,
 				]}
 			>
-				{/* Underline hugs the text; the Pressable's own padding carries the
-				44pt touch target so the tap area grows without the "tap to edit"
-				affordance visually drifting away from the text. */}
-				<View
-					style={
-						editable
-							? [styles.editableUnderline, { borderBottomColor: t.faint }]
-							: undefined
-					}
-				>
+				<View style={styles.wellBody}>
+					{label ? (
+						<Text style={[styles.wellLabel, { color: t.sub }]}>{label}</Text>
+					) : null}
 					{renderValue ? (
 						renderValue(value)
 					) : (
@@ -188,32 +206,42 @@ export function EditableField({
 						</Text>
 					)}
 				</View>
+				<Pencil size={14} color={t.faint} />
 			</Pressable>
 		</View>
 	);
 }
 
 const styles = StyleSheet.create({
-	container: {
-		marginBottom: spacing.md,
-	},
+	container: {},
 	label: {
-		fontSize: type.body,
+		fontSize: type.sm,
 		fontFamily: fontFamily.semibold,
 		marginBottom: spacing.xs,
 	},
-	valueContainer: {
-		minHeight: touch.min,
-		justifyContent: "center",
-		alignSelf: "flex-start",
+	// Read-only twin of the well's label — quieter, and with no fill behind it.
+	readLabel: {
+		fontFamily: fontFamily.medium,
+		fontSize: type.eyebrow,
+		marginBottom: 3,
 	},
-	editableUnderline: {
-		minWidth: 120,
-		paddingBottom: 6,
-		borderBottomWidth: 1,
+	well: {
+		flexDirection: "row",
+		alignItems: "center",
+		gap: 10,
+		minHeight: touch.min,
+		borderWidth: 1,
+		borderRadius: radii.ctrl,
+		paddingHorizontal: 12,
+		paddingVertical: 9,
+	},
+	wellBody: { flex: 1, minWidth: 0, gap: 2 },
+	wellLabel: {
+		fontFamily: fontFamily.medium,
+		fontSize: type.eyebrow,
 	},
 	value: {
-		fontSize: 13,
+		fontSize: type.rowTitle,
 		fontFamily: fontFamily.regular,
 	},
 	placeholder: {
@@ -227,11 +255,11 @@ const styles = StyleSheet.create({
 	input: {
 		flex: 1,
 		borderWidth: 1,
-		borderRadius: radii.lg,
+		borderRadius: radii.ctrl,
 		paddingHorizontal: 12,
 		paddingVertical: 10,
 		minHeight: touch.min,
-		fontSize: 13,
+		fontSize: type.rowTitle,
 		fontFamily: fontFamily.regular,
 	},
 	actions: {
@@ -241,7 +269,7 @@ const styles = StyleSheet.create({
 	actionButton: {
 		width: touch.min,
 		height: touch.min,
-		borderRadius: radii.lg,
+		borderRadius: radii.ctrl,
 		alignItems: "center",
 		justifyContent: "center",
 		borderWidth: 1,

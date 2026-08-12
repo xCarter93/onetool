@@ -18,7 +18,7 @@ import * as Device from "expo-device";
 import { Check, X } from "lucide-react-native";
 import { api } from "@onetool/backend/convex/_generated/api";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
-import { fontFamily, tracking, type, useTokens } from "@/lib/theme";
+import { fontFamily, radii, tracking, type, useTokens } from "@/lib/theme";
 import { useDevice } from "@/lib/use-device";
 import { AppHeader } from "@/components/app-header";
 import { Button, Card, DotGrid, Eyebrow, ListRow } from "@/components/ui";
@@ -425,7 +425,7 @@ const styles = StyleSheet.create({
 		left: 16,
 		width: 34,
 		height: 34,
-		borderRadius: 17,
+		borderRadius: radii.pill,
 		borderWidth: StyleSheet.hairlineWidth,
 		alignItems: "center",
 		justifyContent: "center",

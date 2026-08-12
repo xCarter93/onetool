@@ -16,7 +16,14 @@ import {
 	useSafeAreaInsets,
 } from "react-native-safe-area-context";
 import { Search, Plus, X } from "lucide-react-native";
-import { DOCK_CLEARANCE, fontFamily, radii, shadow, useTokens } from "@/lib/theme";
+import {
+	colors,
+	DOCK_CLEARANCE,
+	fontFamily,
+	radii,
+	shadow,
+	useTokens,
+} from "@/lib/theme";
 import { Avatar, Badge, DotGrid, SCROLL_TOP_INSET } from "@/components/ui";
 import { InkTabHeader } from "@/components/ink-tab-header";
 import { useShellNav } from "@/lib/shell-nav";
@@ -51,7 +58,7 @@ function initialsFrom(name: string): string {
 }
 
 // headerMode/onSelect/selectedId default off → the iPhone path (router.push,
-// AppHeader mode="root", no selected highlight) is byte-identical. The iPad
+// the InkTabHeader band, no selected highlight) is byte-identical. The iPad
 // shell renders this as a list pane: headerMode="pane" suppresses the self-
 // mounted AppHeader (shell mounts PaneHeader), onSelect drives the detail pane
 // via the shell selection instead of a route push, selectedId marks the row.
@@ -130,6 +137,7 @@ export default function ClientsScreen({
 			<Pressable
 				style={({ pressed }) => [
 					styles.card,
+					{ backgroundColor: t.card, borderColor: t.line },
 					isSelected && { borderColor: t.primarySolid, backgroundColor: t.frostedBg },
 					pressed && styles.cardPressed,
 				]}
@@ -137,17 +145,17 @@ export default function ClientsScreen({
 			>
 				<Avatar text={initialsFrom(item.name)} size={48} />
 				<View style={styles.cardBody}>
-					<Text style={styles.name} numberOfLines={1}>
+					<Text style={[styles.name, { color: t.ink }]} numberOfLines={1}>
 						{item.name}
 					</Text>
-					<Text style={styles.subline} numberOfLines={1}>
+					<Text style={[styles.subline, { color: t.sub }]} numberOfLines={1}>
 						{contactName} · {item.activeProjects} projects
 					</Text>
 				</View>
 				<View style={styles.cardRight}>
 					<Badge status={STATUS_KEY[item.status]} />
 					{/* No per-client invoice/quote aggregation source exists — show — (never fake a $ figure). */}
-					<Text style={styles.value}>—</Text>
+					<Text style={[styles.value, { color: t.sub }]}>—</Text>
 				</View>
 			</Pressable>
 		);
@@ -158,7 +166,9 @@ export default function ClientsScreen({
 			{/* No "New client" button here — the speed-dial FAB owns capture on
 			    iPhone (3.0 slice 5). The empty state keeps its CTA: a first-run
 			    primary action isn't a duplicate. */}
-			<View style={styles.searchBar}>
+			<View
+				style={[styles.searchBar, { backgroundColor: t.card, borderColor: t.line }]}
+			>
 				<Search size={19} color={t.faint} />
 				<TextInput
 					value={searchQuery}
@@ -230,14 +240,37 @@ export default function ClientsScreen({
 				<View style={[styles.listContent, { paddingTop: listTop }]}>
 					{ListHeader}
 					{[0, 1, 2, 3].map((i) => (
-						<View key={i} style={[styles.card, styles.skeletonCard]}>
-							<View style={[styles.skeleton, styles.skeletonAvatar]} />
+						<View
+							key={i}
+							style={[
+								styles.card,
+								{ backgroundColor: t.card, borderColor: t.line },
+								styles.skeletonCard,
+							]}
+						>
+							<View
+								style={[
+									styles.skeleton,
+									{ backgroundColor: t.lineSoft },
+									styles.skeletonAvatar,
+								]}
+							/>
 							<View style={styles.cardBody}>
-								<View style={[styles.skeleton, { width: "60%", height: 16 }]} />
 								<View
 									style={[
 										styles.skeleton,
-										{ width: "40%", height: 13, marginTop: 6 },
+										{ backgroundColor: t.lineSoft, width: "60%", height: 16 },
+									]}
+								/>
+								<View
+									style={[
+										styles.skeleton,
+										{
+											backgroundColor: t.lineSoft,
+											width: "40%",
+											height: 13,
+											marginTop: 6,
+										},
 									]}
 								/>
 							</View>
@@ -260,8 +293,10 @@ export default function ClientsScreen({
 						<View style={styles.emptyState}>
 							{allClients.length === 0 ? (
 								<>
-									<Text style={styles.emptyTitle}>No clients yet</Text>
-									<Text style={styles.emptyText}>
+									<Text style={[styles.emptyTitle, { color: t.ink }]}>
+										No clients yet
+									</Text>
+									<Text style={[styles.emptyText, { color: t.sub }]}>
 										Add your first client to start tracking work.
 									</Text>
 									<Pressable
@@ -275,14 +310,18 @@ export default function ClientsScreen({
 										accessibilityRole="button"
 										accessibilityLabel="New client"
 									>
-										<Plus size={18} color="#fff" />
-										<Text style={styles.newBtnLabel}>New client</Text>
+										<Plus size={18} color={colors.primaryForeground} />
+										<Text style={[styles.newBtnLabel, { color: colors.primaryForeground }]}>
+											New client
+										</Text>
 									</Pressable>
 								</>
 							) : (
 								<>
-									<Text style={styles.emptyTitle}>No clients found</Text>
-									<Text style={styles.emptyText}>
+									<Text style={[styles.emptyTitle, { color: t.ink }]}>
+										No clients found
+									</Text>
+									<Text style={[styles.emptyText, { color: t.sub }]}>
 										Try a different search or filter.
 									</Text>
 								</>
@@ -310,22 +349,19 @@ const styles = StyleSheet.create({
 		justifyContent: "center",
 		gap: 8,
 		minHeight: 46,
-		borderRadius: 15,
+		borderRadius: radii["4xl"],
 		boxShadow: shadow.md,
 	},
 	newBtnLabel: {
 		fontFamily: fontFamily.semibold,
 		fontSize: 13,
-		color: "#fff",
 	},
 	searchBar: {
 		flexDirection: "row",
 		alignItems: "center",
 		gap: 9,
-		backgroundColor: "#fff",
 		borderWidth: 1,
-		borderColor: "#e9edf2",
-		borderRadius: 15,
+		borderRadius: radii["4xl"],
 		paddingHorizontal: 14,
 		height: 46,
 	},
@@ -345,7 +381,7 @@ const styles = StyleSheet.create({
 		gap: 5,
 		minHeight: 36,
 		paddingHorizontal: 15,
-		borderRadius: 999,
+		borderRadius: radii.pill,
 		borderWidth: 1,
 	},
 	chipLabel: {
@@ -360,10 +396,8 @@ const styles = StyleSheet.create({
 		flexDirection: "row",
 		alignItems: "center",
 		gap: 13,
-		backgroundColor: "#fff",
 		borderRadius: radii.rLg,
 		borderWidth: 1,
-		borderColor: "#e9edf2",
 		padding: 13,
 		minHeight: 44,
 	},
@@ -377,12 +411,10 @@ const styles = StyleSheet.create({
 	name: {
 		fontFamily: fontFamily.semibold,
 		fontSize: 14,
-		color: "#09090b",
 	},
 	subline: {
 		fontFamily: fontFamily.regular,
 		fontSize: 13,
-		color: "#5b6675",
 		marginTop: 2,
 	},
 	cardRight: {
@@ -392,14 +424,12 @@ const styles = StyleSheet.create({
 	value: {
 		fontFamily: fontFamily.semibold,
 		fontSize: 11.5,
-		color: "#5b6675",
 	},
 	skeletonCard: {
 		marginBottom: 10,
 	},
 	skeleton: {
-		backgroundColor: "#e9edf2",
-		borderRadius: 6,
+		borderRadius: radii.sm,
 	},
 	skeletonAvatar: {
 		width: 48,
@@ -414,13 +444,11 @@ const styles = StyleSheet.create({
 	emptyTitle: {
 		fontFamily: fontFamily.semibold,
 		fontSize: 18,
-		color: "#09090b",
 		marginBottom: 8,
 	},
 	emptyText: {
 		fontFamily: fontFamily.regular,
 		fontSize: 13,
-		color: "#5b6675",
 		textAlign: "center",
 	},
 	emptyBtn: {

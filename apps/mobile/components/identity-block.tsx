@@ -14,13 +14,13 @@ interface IdentityBlockProps {
 	tint: { bg: string; fg: string };
 	/** Monogram glyph. Callers pass a single letter; longer strings are clipped. */
 	monogram: string;
-	/** Omit when the screen header already carries the name (visual-pass r1:
-	 * repeating it beside the monogram read as redundant). */
-	title?: string;
+	/** The record's own name. Restored below the status eyebrow (utility-hero
+	 * pass): the ink band's title scrolls away, so the hero has to anchor. */
+	name?: string;
 	/** Key into the STATUS map — rendered as TEXT, never a badge pill. */
 	statusKey?: string;
-	/** Quiet third line: lead source, city, project client, … */
-	sub?: string;
+	/** Quiet meta line: lead source, city, a tappable client link, … */
+	meta?: React.ReactNode;
 	/**
 	 * Wraps the status text so a screen can make it interactive (the client
 	 * detail hangs a FieldMenu off it). The native MenuView host must receive a
@@ -36,9 +36,9 @@ interface IdentityBlockProps {
 export function IdentityBlock({
 	tint,
 	monogram,
-	title,
+	name,
 	statusKey,
-	sub,
+	meta,
 	renderStatus,
 }: IdentityBlockProps) {
 	const t = useTokens();
@@ -61,22 +61,20 @@ export function IdentityBlock({
 					{monogram.slice(0, 1).toUpperCase()}
 				</Text>
 			</View>
+			{/* Status reads as the eyebrow ABOVE the name — the record's state is
+			    what a field user scans for first. */}
 			<View style={styles.body}>
-				{title ? (
-					<Text style={[styles.title, { color: t.ink }]} numberOfLines={2}>
-						{title}
-					</Text>
-				) : null}
 				{statusText ? (
 					<View style={styles.statusWrap}>
 						{renderStatus ? renderStatus(statusText) : statusText}
 					</View>
 				) : null}
-				{sub ? (
-					<Text style={[styles.sub, { color: t.sub }]} numberOfLines={1}>
-						{sub}
+				{name ? (
+					<Text style={[styles.name, { color: t.ink }]} numberOfLines={2}>
+						{name}
 					</Text>
 				) : null}
+				{meta ? <View style={styles.meta}>{meta}</View> : null}
 			</View>
 		</View>
 	);
@@ -102,23 +100,35 @@ const styles = StyleSheet.create({
 		letterSpacing: 0.2,
 	},
 	body: { flex: 1, minWidth: 0 },
-	title: {
+	name: {
 		fontFamily: fontFamily.semibold,
-		fontSize: type.h1,
+		fontSize: type.h3,
 		letterSpacing: tracking.title,
+		marginTop: 5,
 	},
 	// alignSelf sizes the (possibly menu-hosting) wrapper to its content — a
 	// stretched native MenuView trigger clips its label to "..".
-	statusWrap: { alignSelf: "flex-start", marginTop: 4 },
+	statusWrap: { alignSelf: "flex-start" },
 	status: {
 		fontFamily: fontFamily.semibold,
 		fontSize: type.eyebrow,
 		letterSpacing: tracking.groupLabel,
 		textTransform: "uppercase",
 	},
-	sub: {
+	meta: { marginTop: 4, alignSelf: "flex-start" },
+	metaText: {
 		fontFamily: fontFamily.regular,
 		fontSize: type.meta,
-		marginTop: 4,
 	},
 });
+
+/** Plain (non-interactive) meta line — the tappable variant is built by the
+ * caller and passed as `meta` too. */
+export function IdentityMeta({ children }: { children: string }) {
+	const t = useTokens();
+	return (
+		<Text style={[styles.metaText, { color: t.sub }]} numberOfLines={1}>
+			{children}
+		</Text>
+	);
+}

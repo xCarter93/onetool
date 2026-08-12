@@ -1,6 +1,5 @@
 import React, { useState } from "react";
 import {
-	Image,
 	type LayoutChangeEvent,
 	Pressable,
 	StyleSheet,
@@ -9,30 +8,23 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BlurView } from "expo-blur";
-import { usePathname, useRouter, type Href } from "expo-router";
-import { useOrganization, useUser } from "@clerk/expo";
+import { useRouter, type Href } from "expo-router";
+import { useUser } from "@clerk/expo";
 import { useQuery } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
-import { ArrowLeft, Bell, ChevronDown, Plus, Search } from "lucide-react-native";
-import { requestSearchFocus } from "@/lib/search-focus";
+import { ArrowLeft, Bell, Plus } from "lucide-react-native";
 import { fontFamily, radii, tokens, tracking, type, useTokens } from "@/lib/theme";
 import { Avatar, HalftoneBg, ScrollFade } from "@/components/ui";
 
-// Tab roots that get the "jump to search" magnifier. An ALLOWLIST, not
-// "everything except Work": the Clients/Projects/Activity/Profile roots also
-// mount a root-mode header and have no business growing one. Today and Money
-// are absent because they mount an ink band, not this header — their magnifier
-// lives in the band's icon cluster (3.0 slice 6).
-const SEARCH_JUMP_ROUTES = new Set(["/routes"]);
-const WORK_TAB: Href = "/(tabs)/work" as Href;
-
-// mode: 'root' | 'detail' | 'pane' — P19 uses root/detail; 'pane' reserved for P26 iPad.
-type HeaderMode = "root" | "detail" | "pane";
+// Every call site is a pushed record screen ("detail") or an iPad pane
+// ("pane"): the tab roots all mount the ink band (InkTabHeader) instead, so
+// this header has no root mode and therefore no org chip and no search jump.
+type HeaderMode = "detail" | "pane";
 
 interface AppHeaderProps {
 	title?: string;
 	sub?: string;
-	mode?: HeaderMode;
+	mode: HeaderMode;
 	home?: boolean;
 	titleSize?: number;
 	/**
@@ -68,7 +60,7 @@ function initialsFrom(name?: string | null, email?: string | null): string {
 export function AppHeader({
 	title,
 	sub,
-	mode = "root",
+	mode,
 	home,
 	titleSize,
 	onAdd,
@@ -78,9 +70,7 @@ export function AppHeader({
 }: AppHeaderProps) {
 	const t = useTokens();
 	const router = useRouter();
-	const pathname = usePathname();
 	const insets = useSafeAreaInsets();
-	const { organization } = useOrganization();
 	const { user } = useUser();
 
 	// Pane mode (iPad panes) renders no bell — so the notifications query must
@@ -100,26 +90,17 @@ export function AppHeader({
 	const onHeaderLayout = (e: LayoutChangeEvent) =>
 		setHeaderHeight(e.nativeEvent.layout.height);
 
-	const detail = mode === "detail";
-	// Pane mode returns early below, and both call sites that qualify gate their
-	// root header on !isPane — so this can never render inside an iPad pane,
-	// where Work is already on screen as a list pane.
-	const showSearchJump = mode === "root" && SEARCH_JUMP_ROUTES.has(pathname);
-	const orgName = organization?.name ?? "Personal";
-	const orgInitials = initialsFrom(orgName);
 	const userInitials = initialsFrom(
 		user?.fullName ?? user?.firstName,
 		user?.primaryEmailAddress?.emailAddress,
 	);
 
-	// Form-sheet routes not yet in the generated route types — cast keeps the
+	// Form-sheet route not yet in the generated route types — cast keeps the
 	// typed router clean.
-	const ORG_SWITCH: Href = "/org-switch" as Href;
 	const NOTIFICATIONS: Href = "/notifications" as Href;
 
 	// Pane mode (iPad P26): a light header — back arrow + optional title ONLY.
-	// The sidebar owns the org chip, bell, and avatar, so all three are
-	// suppressed here. Additive: root/detail paths below are byte-identical.
+	// The sidebar owns the bell and avatar, so both are suppressed here.
 	if (pane) {
 		const paneTop = Math.max(insets.top, 36);
 		return (
@@ -204,63 +185,19 @@ export function AppHeader({
 
 			{/* Top row */}
 			<View style={styles.topRow} pointerEvents="box-none">
-				{detail ? (
-					<Pressable
-						onPress={() => router.back()}
-						hitSlop={4}
-						style={[styles.iconBtn, { borderColor: t.line }]}
-						accessibilityRole="button"
-						accessibilityLabel="Go back"
-					>
-						<ArrowLeft size={20} color={t.ink} />
-					</Pressable>
-				) : (
-					<Pressable
-						onPress={() => router.push(ORG_SWITCH)}
-						hitSlop={6}
-						style={[styles.orgChip, { borderColor: t.line }]}
-						accessibilityRole="button"
-						accessibilityLabel="Switch organization"
-					>
-						{organization?.imageUrl ? (
-							<Image
-								source={{ uri: organization.imageUrl }}
-								style={styles.orgTile}
-							/>
-						) : (
-							<View style={styles.orgTile}>
-								<Text style={styles.orgTileText}>{orgInitials}</Text>
-							</View>
-						)}
-						<Text
-							style={[styles.orgName, { color: t.ink }]}
-							numberOfLines={1}
-						>
-							{orgName}
-						</Text>
-						<ChevronDown size={15} color={t.sub} />
-					</Pressable>
-				)}
+				<Pressable
+					onPress={() => router.back()}
+					hitSlop={4}
+					style={[styles.iconBtn, { borderColor: t.line }]}
+					accessibilityRole="button"
+					accessibilityLabel="Go back"
+				>
+					<ArrowLeft size={20} color={t.ink} />
+				</Pressable>
 
 				<View style={{ flex: 1 }} pointerEvents="none" />
 
-				{/* Constant right cluster (root + detail) */}
-				{showSearchJump ? (
-					<Pressable
-						onPress={() => {
-							// Latch, then navigate: Work consumes it once on focus. A
-							// ?focus= param would stick to the tab and re-fire forever.
-							requestSearchFocus();
-							router.push(WORK_TAB);
-						}}
-						style={styles.bareBtn}
-						accessibilityRole="button"
-						accessibilityLabel="Search"
-					>
-						<Search size={21} color={t.ink} strokeWidth={2} />
-					</Pressable>
-				) : null}
-
+				{/* Constant right cluster */}
 				{onAdd ? (
 					<Pressable
 						onPress={onAdd}
@@ -355,15 +292,6 @@ const styles = StyleSheet.create({
 		justifyContent: "center",
 		flexShrink: 0,
 	},
-	// Bare chip — no pill, no border. Chrome recedes; the org mark carries it.
-	orgChip: {
-		flexDirection: "row",
-		alignItems: "center",
-		gap: 8,
-		paddingVertical: 5,
-		flexShrink: 1,
-		minWidth: 0,
-	},
 	bareBtn: {
 		position: "relative",
 		alignItems: "center",
@@ -371,26 +299,6 @@ const styles = StyleSheet.create({
 		width: 44,
 		height: 44,
 		flexShrink: 0,
-	},
-	orgTile: {
-		width: 26,
-		height: 26,
-		borderRadius: 7,
-		experimental_backgroundImage:
-			`linear-gradient(135deg, ${tokens.primary}, ${tokens.primarySolid})`,
-		alignItems: "center",
-		justifyContent: "center",
-		flexShrink: 0,
-	},
-	orgTileText: {
-		fontFamily: fontFamily.bold,
-		fontSize: 11.5,
-		color: "#fff",
-	},
-	orgName: {
-		fontFamily: fontFamily.semibold,
-		fontSize: type.body,
-		maxWidth: 170,
 	},
 	// Presence dot, not a counter — the count lives on the notifications screen.
 	unreadDot: {

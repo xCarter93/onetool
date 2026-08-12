@@ -371,7 +371,7 @@ const styles = StyleSheet.create({
 	overdueDot: {
 		width: 7,
 		height: 7,
-		borderRadius: 4,
+		borderRadius: radii.pill,
 	},
 	heroOverdue: {
 		fontFamily: fontFamily.medium,

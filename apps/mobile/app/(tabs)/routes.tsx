@@ -9,6 +9,7 @@ import { api } from "@onetool/backend/convex/_generated/api";
 import type { Doc, Id } from "@onetool/backend/convex/_generated/dataModel";
 import { ChevronLeft, Fuel, Map, Search } from "lucide-react-native";
 import {
+	colors,
 	DOCK_CLEARANCE,
 	fontFamily,
 	radii,
@@ -330,7 +331,7 @@ function RoutesBody({ headerMode }: { headerMode: "root" | "pane" }) {
 								icon={
 									<Fuel
 										size={13}
-										color={gasStations ? "#ffffff" : t.ink}
+										color={gasStations ? colors.primaryForeground : t.ink}
 										strokeWidth={2.25}
 									/>
 								}
@@ -442,7 +443,7 @@ function FloatChip({
 		>
 			{icon}
 			<Text
-				style={[styles.chipLabel, { color: active ? "#ffffff" : t.ink }]}
+				style={[styles.chipLabel, { color: active ? colors.primaryForeground : t.ink }]}
 			>
 				{label}
 			</Text>
@@ -501,7 +502,7 @@ const styles = StyleSheet.create({
 		gap: 5,
 		paddingHorizontal: 12,
 		height: 34,
-		borderRadius: 17,
+		borderRadius: radii.pill,
 		borderWidth: 1,
 		boxShadow: shadow.floatChip,
 	},
