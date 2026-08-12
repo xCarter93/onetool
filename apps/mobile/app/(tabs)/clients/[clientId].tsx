@@ -269,7 +269,9 @@ export function ClientDetailBody({
 		>
 			<DotGrid style={StyleSheet.absoluteFill} />
 			{isPane ? (
-				<PaneHeader title={client.companyName} onBack={onBack} />
+				// No title — the hero right below carries the name; a titled pane
+				// header printed it twice.
+				<PaneHeader onBack={onBack} />
 			) : (
 				<InkTabHeader
 					title={client.companyName}

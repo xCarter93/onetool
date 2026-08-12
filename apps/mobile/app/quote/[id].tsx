@@ -114,9 +114,11 @@ export function QuoteDetailBody({
 	const renderHeader = (title = "Quote") =>
 		headerMode === "pane" ? (
 			onBack ? (
-				<PaneHeader title={title} onBack={onBack} />
+				// No title in either pane header — the document card carries the
+				// number; a titled header printed it twice.
+				<PaneHeader onBack={onBack} />
 			) : (
-				<AppHeader mode="pane" title={title} />
+				<AppHeader mode="pane" />
 			)
 		) : (
 			<InkTabHeader title={title} onBack={() => router.back()} />

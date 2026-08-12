@@ -406,7 +406,9 @@ export function ProjectDetailBody({
 		<SafeAreaView style={[styles.flex, { backgroundColor: t.bg }]} edges={[]}>
 			<DotGrid style={StyleSheet.absoluteFill} />
 			{isPane ? (
-				<PaneHeader title={project.title} onBack={onBack} />
+				// No title — the hero right below carries the name; a titled pane
+				// header printed it twice.
+				<PaneHeader onBack={onBack} />
 			) : (
 				<InkTabHeader title={project.title} onBack={() => router.back()} />
 			)}
