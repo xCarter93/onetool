@@ -296,6 +296,7 @@ export function InvoiceDetailDrawer({
 							invoiceId={invoice._id}
 							currentStatus={effectiveStatus}
 							canModify={canModify}
+							busy={sending}
 						/>
 					</DrawerSection>
 
@@ -406,10 +407,13 @@ function StatusControl({
 	invoiceId,
 	currentStatus,
 	canModify,
+	busy = false,
 }: {
 	invoiceId: Id<"invoices">;
 	currentStatus: InvoiceStatus;
 	canModify: boolean;
+	/** A send is in flight: its status write would race this one. */
+	busy?: boolean;
 }) {
 	const updateInvoice = useMutation(api.invoices.update);
 	const toast = useToast();
@@ -442,7 +446,7 @@ function StatusControl({
 				<Select
 					value={status}
 					onValueChange={(v) => setStatus(v as InvoiceStatus)}
-					disabled={!canModify}
+					disabled={!canModify || busy}
 				>
 					<SelectTrigger className="h-9 flex-1">
 						<SelectValue />
@@ -456,7 +460,7 @@ function StatusControl({
 					</SelectContent>
 				</Select>
 				{dirty ? (
-					<Button size="sm" disabled={saving} onClick={handleSave}>
+					<Button size="sm" disabled={saving || busy} onClick={handleSave}>
 						{saving && <Loader2 className="h-4 w-4 animate-spin" />}
 						{saving ? "Saving…" : "Save"}
 					</Button>

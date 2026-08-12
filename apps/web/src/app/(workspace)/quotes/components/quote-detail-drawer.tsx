@@ -264,7 +264,7 @@ export function QuoteDetailDrawer({
 			variant: "default",
 			slot: "start",
 			onClick: () => void setStatus("approved"),
-			disabled: !can("quotes", "modify"),
+			disabled: !can("quotes", "modify") || sending,
 			hidden: !canDecide,
 		},
 		{
@@ -275,7 +275,8 @@ export function QuoteDetailDrawer({
 			variant: "default",
 			slot: "start",
 			onClick: convertToInvoice,
-			disabled: !can("invoices", "modify") || alreadyInvoiced,
+			disabled:
+				!can("invoices", "modify") || alreadyInvoiced || sending,
 			loading: converting,
 			hidden: !isApproved,
 		},
@@ -286,7 +287,7 @@ export function QuoteDetailDrawer({
 			variant: "destructive",
 			slot: "end",
 			onClick: () => void setStatus("declined"),
-			disabled: !can("quotes", "modify"),
+			disabled: !can("quotes", "modify") || sending,
 			hidden: !canDecide,
 		},
 	];
@@ -364,6 +365,7 @@ export function QuoteDetailDrawer({
 							quoteId={quote._id}
 							currentStatus={quote.status}
 							canModify={canModify}
+							busy={sending}
 						/>
 					</DrawerSection>
 
@@ -468,10 +470,13 @@ function StatusControl({
 	quoteId,
 	currentStatus,
 	canModify,
+	busy = false,
 }: {
 	quoteId: Id<"quotes">;
 	currentStatus: QuoteStatus;
 	canModify: boolean;
+	/** A send is in flight: its status write would race this one. */
+	busy?: boolean;
 }) {
 	const updateQuote = useMutation(api.quotes.update);
 	const toast = useToast();
@@ -498,7 +503,7 @@ function StatusControl({
 				<Select
 					value={status}
 					onValueChange={(v) => setStatus(v as QuoteStatus)}
-					disabled={!canModify}
+					disabled={!canModify || busy}
 				>
 					<SelectTrigger className="h-9 flex-1">
 						<SelectValue />
@@ -512,7 +517,7 @@ function StatusControl({
 					</SelectContent>
 				</Select>
 				{dirty ? (
-					<Button size="sm" disabled={saving} onClick={handleSave}>
+					<Button size="sm" disabled={saving || busy} onClick={handleSave}>
 						{saving && <Loader2 className="h-4 w-4 animate-spin" />}
 						{saving ? "Saving…" : "Save"}
 					</Button>

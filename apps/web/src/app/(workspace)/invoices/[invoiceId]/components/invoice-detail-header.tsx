@@ -53,6 +53,9 @@ export function InvoiceDetailHeader({
 }: InvoiceDetailHeaderProps) {
 	const { can } = usePermissions();
 	const canModify = can("invoices", "modify");
+	// Status writes race an in-flight send, so they wait it out. The send row
+	// itself and Cancel (modal-gated) keep using `canModify` directly.
+	const canModifyNow = canModify && !sending;
 
 	// Status-dependent actions. The primary next step for each status is pinned
 	// left ("start"); everything else is secondary and collapses into the ⋯ menu.
@@ -67,7 +70,7 @@ export function InvoiceDetailHeader({
 						slot: "start",
 						variant: "default",
 						onClick: () => onStatusChange("sent"),
-						disabled: !canModify,
+						disabled: !canModifyNow,
 					},
 					{
 						// TODO(reui-rebuild): success button intent mapped to default
@@ -77,7 +80,7 @@ export function InvoiceDetailHeader({
 						slot: "start",
 						variant: "default",
 						onClick: onMarkPaid,
-						disabled: !canModify,
+						disabled: !canModifyNow,
 					},
 				];
 			case "sent":
@@ -91,7 +94,7 @@ export function InvoiceDetailHeader({
 						slot: "start",
 						variant: "default",
 						onClick: onMarkPaid,
-						disabled: !canModify,
+						disabled: !canModifyNow,
 					},
 					{
 						key: "revert-draft",
@@ -100,7 +103,7 @@ export function InvoiceDetailHeader({
 						slot: "secondary",
 						variant: "outline",
 						onClick: () => onStatusChange("draft"),
-						disabled: !canModify,
+						disabled: !canModifyNow,
 					},
 				];
 			case "paid":
@@ -112,7 +115,7 @@ export function InvoiceDetailHeader({
 						slot: "start",
 						variant: "outline",
 						onClick: () => onStatusChange("sent"),
-						disabled: !canModify,
+						disabled: !canModifyNow,
 					},
 				];
 			case "cancelled":
@@ -124,7 +127,7 @@ export function InvoiceDetailHeader({
 						slot: "start",
 						variant: "outline",
 						onClick: () => onStatusChange("draft"),
-						disabled: !canModify,
+						disabled: !canModifyNow,
 					},
 				];
 			default:

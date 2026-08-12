@@ -72,6 +72,10 @@ export function QuoteDetailHeader({
 	const canModifyQuote = can("quotes", "modify");
 	const canDeleteQuote = can("quotes", "delete");
 	const canModifyInvoice = can("invoices", "modify");
+	// A send in flight races any status write on the same quote: approve first
+	// and the send comes back "already approved". The conflicting writes wait it
+	// out; Delete stays live, being modal-gated and an abort either way.
+	const canModifyNow = canModifyQuote && !sending;
 
 	// The backend refuses to send a quote whose valid-until day has passed; the
 	// sidebar's Valid until field is the revive path. Compared as calendar days,
@@ -96,7 +100,7 @@ export function QuoteDetailHeader({
 						slot: "start",
 						variant: "default",
 						onClick: () => onStatusChange("sent"),
-						disabled: !canModifyQuote,
+						disabled: !canModifyNow,
 					},
 				];
 			case "sent":
@@ -109,7 +113,7 @@ export function QuoteDetailHeader({
 						slot: "start",
 						variant: "default",
 						onClick: () => onStatusChange("approved"),
-						disabled: !canModifyQuote,
+						disabled: !canModifyNow,
 					},
 					{
 						key: "revert-to-draft",
@@ -118,7 +122,7 @@ export function QuoteDetailHeader({
 						slot: "secondary",
 						variant: "outline",
 						onClick: () => setShowRevertConfirm(true),
-						disabled: !canModifyQuote,
+						disabled: !canModifyNow,
 					},
 				];
 			case "approved":
@@ -130,7 +134,7 @@ export function QuoteDetailHeader({
 						slot: "start",
 						variant: "default",
 						onClick: onConvertToInvoice,
-						disabled: !canModifyInvoice || converting,
+						disabled: !canModifyInvoice || converting || sending,
 						loading: converting,
 					},
 					{
@@ -140,7 +144,7 @@ export function QuoteDetailHeader({
 						slot: "secondary",
 						variant: "outline",
 						onClick: () => onStatusChange("draft"),
-						disabled: !canModifyQuote,
+						disabled: !canModifyNow,
 					},
 				];
 			case "declined":
@@ -153,7 +157,7 @@ export function QuoteDetailHeader({
 						slot: "start",
 						variant: "outline",
 						onClick: () => onStatusChange("draft"),
-						disabled: !canModifyQuote,
+						disabled: !canModifyNow,
 					},
 				];
 			default:
