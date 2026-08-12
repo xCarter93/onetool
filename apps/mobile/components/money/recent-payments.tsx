@@ -32,11 +32,15 @@ function methodLabel(method: string | undefined): string | null {
 export function RecentPayments({
 	payments,
 	now,
+	selected = null,
 	onOpen,
 }: {
 	payments: Payment[];
 	/** Seeded once by the screen — Date.now() during render is a lint error. */
 	now: number;
+	/** iPad master-detail: marks the row whose invoice the detail pane shows,
+	 * same contract as NeedsAttention. Two payments on one invoice both mark. */
+	selected?: { kind: "quote" | "invoice"; id: string } | null;
 	onOpen: (payment: Payment) => void;
 }) {
 	const t = useTokens();
@@ -62,6 +66,10 @@ export function RecentPayments({
 								: formatRelativeDay(payment.paidAt, now)
 						}
 						last={i === payments.length - 1}
+						selected={
+							selected?.kind === "invoice" &&
+							selected.id === payment.invoiceId
+						}
 						right={
 							<Text style={[styles.amount, { color: t.success }]}>
 								{formatCurrency(payment.amount, { exact: true })}

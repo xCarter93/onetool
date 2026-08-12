@@ -31,6 +31,16 @@ describe("normalizeActionUrl", () => {
 		expect(normalizeActionUrl("/quote/q123")).toBe("/quote/q123");
 	});
 
+	// PR #314: createMention and the invoice-paid celebration both emit
+	// /invoices/<id>, but the mobile route is /invoice/[id].
+	it("rewrites /invoices/<id> to the singular /invoice/<id> route", () => {
+		expect(normalizeActionUrl("/invoices/i123")).toBe("/invoice/i123");
+	});
+
+	it("is idempotent for an already-singular /invoice/<id>", () => {
+		expect(normalizeActionUrl("/invoice/i123")).toBe("/invoice/i123");
+	});
+
 	it("rewrites the quotes segment even with a trailing slash and no id", () => {
 		expect(normalizeActionUrl("/quotes/")).toBe("/quote/");
 	});

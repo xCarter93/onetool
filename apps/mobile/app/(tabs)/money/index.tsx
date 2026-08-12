@@ -309,6 +309,7 @@ export default function MoneyScreen({
 					) : (
 						<NeedsAttention
 							items={health.needsAttention}
+							now={now}
 							selected={isPane ? selected : null}
 							onOpen={(item) => openRecord(item.kind, item.id)}
 						/>
@@ -324,6 +325,7 @@ export default function MoneyScreen({
 							<RecentPayments
 								payments={health.recentPayments}
 								now={now}
+								selected={isPane ? selected : null}
 								onOpen={(payment) => openRecord("invoice", payment.invoiceId)}
 							/>
 						)}

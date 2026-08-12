@@ -34,10 +34,17 @@ export function formatDocumentDate(ts: number): string {
 
 // Year-less date — "Jun 9". For metadata that sits in a narrow column next to a
 // money figure (Money hub attention/payment rows), where the year is noise.
-export function formatShortDate(ts: number): string {
-	return new Date(ts).toLocaleDateString("en-US", {
+// Pass `now` (seeded by the screen — Date.now() during render is a lint error)
+// and anything outside that year regains it: "Dec 14, 2025" on a year-old
+// overdue invoice beats an undated "Dec 14".
+export function formatShortDate(ts: number, now?: number): string {
+	const date = new Date(ts);
+	const otherYear =
+		now !== undefined && date.getFullYear() !== new Date(now).getFullYear();
+	return date.toLocaleDateString("en-US", {
 		month: "short",
 		day: "numeric",
+		...(otherYear ? { year: "numeric" as const } : {}),
 	});
 }
 
@@ -58,5 +65,5 @@ export function formatRelativeDay(ts: number, now: number): string {
 	if (days <= 0) return "Today";
 	if (days === 1) return "Yesterday";
 	if (days < 7) return `${days}d ago`;
-	return formatShortDate(ts);
+	return formatShortDate(ts, now);
 }

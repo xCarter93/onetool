@@ -278,8 +278,11 @@ function RoutesBody({ headerMode }: { headerMode: "root" | "pane" }) {
 			: null;
 	// The band (iPhone) and the pane header (iPad) are both in normal flow and
 	// already clear the safe area, so the chips only need a gutter off the map's
-	// own top edge.
-	const controlsTop = 12;
+	// own top edge — but that edge belongs to Mapbox: the logo sits at top 8 /
+	// left 8 and the attribution "i" at top 8 / right 8 (route-map.tsx), and this
+	// row spans both with space-between. Clear the ornaments (~26pt tall) rather
+	// than covering them; Mapbox terms require both to stay visible.
+	const controlsTop = 44;
 	// The floating dock takes no layout height — the sheet and the carousel lift
 	// clear of it. iPad panes have no dock (the shell replaces Tabs).
 	const dockInset = isPane ? 12 : DOCK_CLEARANCE + insets.bottom;

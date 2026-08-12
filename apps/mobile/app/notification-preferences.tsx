@@ -143,7 +143,8 @@ export default function NotificationPreferencesSheet() {
 			) : null}
 
 			<Text style={[styles.intro, { color: t.sub }]}>
-				Choose what gets pushed to this device&apos;s lock screen. Your in-app
+				Choose what gets pushed to you in this organization. These choices
+				follow your account across every device you sign in on, and your in-app
 				notifications list always shows everything.
 			</Text>
 

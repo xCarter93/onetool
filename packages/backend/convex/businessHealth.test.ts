@@ -434,6 +434,14 @@ describe("businessHealth.get", () => {
 				dueDate: Date.now() + 10 * DAY_MS,
 				projectId: unassignedProject,
 			});
+			// The member gets invoices:view and nothing else, so this quote proves
+			// the soft gate: quote data is absent rather than throwing.
+			await createTestQuote(ctx, org.orgId, clientId, {
+				quoteNumber: "Q-SCOPE",
+				status: "sent",
+				total: 2500,
+				projectId: assignedProject,
+			});
 			await grantMemberPermissions(ctx, org.orgId, member.userId, {
 				invoices: { level: "view" },
 			});
@@ -442,10 +450,16 @@ describe("businessHealth.get", () => {
 		const adminHealth = await asAdmin.query(api.businessHealth.get, {});
 		expect(adminHealth.outstanding.total).toBe(8000);
 		expect(adminHealth.outstanding.invoiceCount).toBe(2);
+		expect(adminHealth.awaiting).toEqual({ count: 1, total: 2500 });
 
 		const memberHealth = await asMember.query(api.businessHealth.get, {});
 		expect(memberHealth.outstanding.total).toBe(1000);
 		expect(memberHealth.outstanding.invoiceCount).toBe(1);
+		// No quotes:view → no quote pipeline and no quote rows in the list.
+		expect(memberHealth.awaiting).toEqual({ count: 0, total: 0 });
+		expect(
+			memberHealth.needsAttention.some((row) => row.kind === "quote")
+		).toBe(false);
 	});
 
 	it("returns the empty payload for a caller without an org", async () => {

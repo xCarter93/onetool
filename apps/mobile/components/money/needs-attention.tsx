@@ -23,10 +23,15 @@ type AttentionItem = FunctionReturnType<
  */
 export function NeedsAttention({
 	items,
+	now,
 	selected = null,
 	onOpen,
 }: {
 	items: AttentionItem[];
+	/** Seeded once by the screen — Date.now() during render is a lint error.
+	 * Dates outside this year keep theirs, so an aged receivable can't read as
+	 * a recent one. */
+	now: number;
 	/** iPad master-detail: marks the row whose record the detail pane shows. */
 	selected?: { kind: "quote" | "invoice"; id: string } | null;
 	onOpen: (item: AttentionItem) => void;
@@ -53,9 +58,12 @@ export function NeedsAttention({
 					item.kind === "invoice" ? recordTint.invoice : recordTint.quote;
 				const meta =
 					item.kind === "invoice" && item.dueDate !== undefined
-						? { text: `Due ${formatShortDate(item.dueDate)}`, late: true }
+						? { text: `Due ${formatShortDate(item.dueDate, now)}`, late: true }
 						: item.sentAt !== undefined
-							? { text: `Sent ${formatShortDate(item.sentAt)}`, late: false }
+							? {
+									text: `Sent ${formatShortDate(item.sentAt, now)}`,
+									late: false,
+								}
 							: null;
 				return (
 					<ListRow
