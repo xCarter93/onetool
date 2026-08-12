@@ -60,9 +60,17 @@ export const tokens = {
 	// The label is a DEEPER blue than web's `text-primary`: #00a6f4 on the 10% tint
 	// is only 2.4:1, which fails AA and is unreadable in sunlight. #0369a1 keeps the
 	// same blue family at 5.35:1.
-	frostedBg: "#00a6f41A", // primary @ 10%
-	frostedBgPressed: "#00a6f426", // primary @ 15% (web's hover)
-	frostedBorder: "#00a6f44D", // primary @ 30%
+	// OPAQUE since Slice 8: the old alpha values (#00a6f4 @ 10/15/30%) let the dot
+	// grid and anything underneath ghost through every frosted button. These are
+	// those same tints pre-composited over `bg` #f6f7f8 — identical hue, no
+	// see-through. The translucent originals live on as `frostedGlass*`, ONLY for
+	// elements over a BlurView (the floating quote CTA), where alpha IS the glass.
+	frostedBg: "#ddeff8", // primary @ 10% over bg
+	frostedBgPressed: "#d1ebf7", // primary @ 15% over bg (web's hover)
+	frostedBorder: "#acdff7", // primary @ 30% over bg
+	frostedGlassBg: "#00a6f41A",
+	frostedGlassBgPressed: "#00a6f426",
+	frostedGlassBorder: "#00a6f44D",
 	frostedInk: "#0369a1",
 	/** Solid blue fills that carry WHITE content. #00a6f4 + white is 2.7:1 (under
 	 * even the 3:1 non-text floor) and #0084d1 is 4.0:1 — fine for a glyph but

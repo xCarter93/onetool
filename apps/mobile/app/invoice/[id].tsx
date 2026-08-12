@@ -9,7 +9,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useMutation, useQuery } from "convex/react";
-import { useLocalSearchParams } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import {
 	CalendarX2,
 	Check,
@@ -28,6 +28,7 @@ import {
 	useTokens,
 } from "@/lib/theme";
 import { AppHeader } from "@/components/app-header";
+import { InkTabHeader } from "@/components/ink-tab-header";
 import { PaneHeader } from "@/components/ipad/pane-header";
 import { Card, DotGrid, Eyebrow, TotalsBlock } from "@/components/ui";
 import { DocumentHeaderCard } from "@/components/money/document-header-card";
@@ -77,12 +78,19 @@ export function InvoiceDetailBody({
 	onBack?: () => void;
 }) {
 	const t = useTokens();
-	const appHeaderMode = headerMode === "pane" ? "pane" : "detail";
-	const renderHeader = (title?: string) =>
-		headerMode === "pane" && onBack ? (
-			<PaneHeader title={title} onBack={onBack} />
+	const router = useRouter();
+	// iPhone gets the 3.0 ink band (back circle + constant cluster). The iPad
+	// pane paths are untouched: PaneHeader when the shell owns back, the light
+	// pane header otherwise.
+	const renderHeader = (title = "Invoice") =>
+		headerMode === "pane" ? (
+			onBack ? (
+				<PaneHeader title={title} onBack={onBack} />
+			) : (
+				<AppHeader mode="pane" title={title} />
+			)
 		) : (
-			<AppHeader mode={appHeaderMode} title={title} />
+			<InkTabHeader title={title} onBack={() => router.back()} />
 		);
 	// Seed "now" once (lazy) — react-hooks/purity forbids Date.now() during render.
 	const [now] = useState(() => Date.now());

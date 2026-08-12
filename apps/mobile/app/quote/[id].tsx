@@ -11,12 +11,14 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useMutation, useQuery } from "convex/react";
 import { useLocalSearchParams, useRouter, type Href } from "expo-router";
-import { CheckCircle2, Plus, XCircle } from "lucide-react-native";
+import { CheckCircle2, MessageSquare, Plus, XCircle } from "lucide-react-native";
 import { SvgUri } from "react-native-svg";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { Id } from "@onetool/backend/convex/_generated/dataModel";
 import { fontFamily, radii, recordTint, type, useTokens } from "@/lib/theme";
 import { AppHeader } from "@/components/app-header";
+import { InkTabHeader } from "@/components/ink-tab-header";
+import { MentionModal } from "@/components/MentionModal";
 import { PaneHeader } from "@/components/ipad/pane-header";
 import { Card, DotGrid, Eyebrow, TotalsBlock } from "@/components/ui";
 import { DocumentHeaderCard } from "@/components/money/document-header-card";
@@ -106,12 +108,18 @@ export function QuoteDetailBody({
 	const t = useTokens();
 	const router = useRouter();
 	const insets = useSafeAreaInsets();
-	const appHeaderMode = headerMode === "pane" ? "pane" : "detail";
-	const renderHeader = (title?: string) =>
-		headerMode === "pane" && onBack ? (
-			<PaneHeader title={title} onBack={onBack} />
+	// iPhone gets the 3.0 ink band (back circle + constant cluster). The iPad
+	// pane paths are untouched: PaneHeader when the shell owns back, the light
+	// pane header otherwise.
+	const renderHeader = (title = "Quote") =>
+		headerMode === "pane" ? (
+			onBack ? (
+				<PaneHeader title={title} onBack={onBack} />
+			) : (
+				<AppHeader mode="pane" title={title} />
+			)
 		) : (
-			<AppHeader mode={appHeaderMode} title={title} />
+			<InkTabHeader title={title} onBack={() => router.back()} />
 		);
 	// Signed signature URLs can expire mid-session — fall back to a caption on
 	// load error. Keyed by the URL that failed so a refreshed one renders again
@@ -124,6 +132,7 @@ export function QuoteDetailBody({
 		item: LineItemInitial | null;
 	} | null>(null);
 	const [extendOpen, setExtendOpen] = useState(false);
+	const [mentionVisible, setMentionVisible] = useState(false);
 
 	const quote = useQuery(
 		api.quotes.get,
@@ -500,6 +509,24 @@ export function QuoteDetailBody({
 					</View>
 				</DocumentHeaderCard>
 
+				{/* Team chat — same slot AND same frosted styling as client/project
+				    detail (both sit on the same dot-grid canvas). */}
+				<Pressable
+					onPress={() => setMentionVisible(true)}
+					accessibilityRole="button"
+					accessibilityLabel="Open team chat"
+					style={({ pressed }) => [
+						styles.teamChat,
+						{ backgroundColor: t.frostedBg, borderColor: t.frostedBorder },
+						pressed && styles.linePressed,
+					]}
+				>
+					<MessageSquare size={18} color={t.frostedInk} />
+					<Text style={[styles.teamChatText, { color: t.frostedInk }]}>
+						Team chat
+					</Text>
+				</Pressable>
+
 				{/* Line items + totals — the document body. */}
 				<View style={styles.section}>
 					<View style={styles.sectionHeader}>
@@ -790,6 +817,18 @@ export function QuoteDetailBody({
 					await extendValidUntil({ id: quote._id, validUntil });
 				}}
 			/>
+
+			{/* Team chat — entityName mirrors web's quote label exactly
+			    (quotes/[quoteId] overview-tab). */}
+			<MentionModal
+				visible={mentionVisible}
+				onClose={() => setMentionVisible(false)}
+				entityType="quote"
+				entityId={quote._id}
+				entityName={
+					quote.title || `Quote #${quote.quoteNumber || quote._id.slice(-6)}`
+				}
+			/>
 		</SafeAreaView>
 	);
 }
@@ -812,6 +851,22 @@ const styles = StyleSheet.create({
 	},
 	trackWrap: {
 		marginTop: 16,
+	},
+
+	// Mirrors the client/project detail "Team chat" affordance (same shape).
+	teamChat: {
+		flexDirection: "row",
+		alignItems: "center",
+		justifyContent: "center",
+		gap: 8,
+		height: 44,
+		borderRadius: radii.rSm,
+		borderWidth: 1,
+		marginTop: 10,
+	},
+	teamChatText: {
+		fontFamily: fontFamily.semibold,
+		fontSize: 13,
 	},
 
 	section: { marginTop: 22, gap: 10 },

@@ -51,11 +51,23 @@ export function Button({
 		switch (variant) {
 			case "primary":
 				// The tint step alone is a 1.05:1 delta — imperceptible. The border
-				// does the perceptible work on press.
+				// does the perceptible work on press. Over glass the translucent
+				// tints are load-bearing (an opaque plate reads as a hole in the
+				// canvas texture); everywhere else frosted is opaque.
 				return {
-					backgroundColor: pressed ? t.frostedBgPressed : t.frostedBg,
+					backgroundColor: blurred
+						? pressed
+							? t.frostedGlassBgPressed
+							: t.frostedGlassBg
+						: pressed
+							? t.frostedBgPressed
+							: t.frostedBg,
 					borderWidth: 1,
-					borderColor: pressed ? t.primaryInk : t.frostedBorder,
+					borderColor: pressed
+						? t.primaryInk
+						: blurred
+							? t.frostedGlassBorder
+							: t.frostedBorder,
 					boxShadow: shadow.xs,
 				};
 			case "solid":

@@ -703,7 +703,7 @@ export const recordManualPayment = userMutation({
 					updatedInvoice as Doc<"invoices">,
 					client?.companyName || "Unknown Client"
 				);
-				await celebrateInvoicePaid(ctx, updatedInvoice);
+				await celebrateInvoicePaid(ctx, updatedInvoice, ctx.user._id);
 				await emitStatusChangeEvent(
 					ctx,
 					updatedInvoice.orgId,

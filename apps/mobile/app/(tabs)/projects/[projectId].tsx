@@ -33,7 +33,7 @@ import { appleMapsAddressUrl, appleMapsUrl } from "@/lib/route-run";
 import { openExternal } from "@/lib/open-external";
 import { recordRecentView } from "@/lib/recents";
 import { usePermissions } from "@/lib/use-permissions";
-import { AppHeader } from "@/components/app-header";
+import { InkTabHeader } from "@/components/ink-tab-header";
 import { PaneHeader } from "@/components/ipad/pane-header";
 import { useShellNav } from "@/lib/shell-nav";
 import { DotGrid, ListRow, Ring, SectionHeader } from "@/components/ui";
@@ -137,7 +137,6 @@ export function ProjectDetailBody({
 	// The floating dock takes no layout height — scroll content clears it
 	// itself. iPad panes have no dock (the shell replaces Tabs).
 	const scrollBottom = isPane ? 16 : DOCK_CLEARANCE + insets.bottom;
-	const appHeaderMode = headerMode === "pane" ? "pane" : "detail";
 	const [refreshing, setRefreshing] = useState(false);
 	const [dateField, setDateField] = useState<DateField | null>(null);
 	const [mentionVisible, setMentionVisible] = useState(false);
@@ -288,7 +287,7 @@ export function ProjectDetailBody({
 				{isPane ? (
 					<PaneHeader onBack={onBack} />
 				) : (
-					<AppHeader mode={appHeaderMode} />
+					<InkTabHeader title="Project" onBack={() => router.back()} />
 				)}
 				{/* Skeleton is shaped like the real layout: monogram + name, the
 				    action tiles, then list rows. */}
@@ -446,7 +445,7 @@ export function ProjectDetailBody({
 			{isPane ? (
 				<PaneHeader title={project.title} onBack={onBack} />
 			) : (
-				<AppHeader mode={appHeaderMode} title={project.title} />
+				<InkTabHeader title={project.title} onBack={() => router.back()} />
 			)}
 			<ScrollView
 				contentContainerStyle={[styles.scroll, { paddingBottom: scrollBottom }]}

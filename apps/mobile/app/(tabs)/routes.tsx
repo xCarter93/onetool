@@ -3,11 +3,11 @@ import { Linking, Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useKeepAwake } from "expo-keep-awake";
 import * as Location from "expo-location";
-import { router } from "expo-router";
+import { router, type Href } from "expo-router";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import type { Doc, Id } from "@onetool/backend/convex/_generated/dataModel";
-import { ChevronLeft, Fuel, Map } from "lucide-react-native";
+import { ChevronLeft, Fuel, Map, Search } from "lucide-react-native";
 import {
 	DOCK_CLEARANCE,
 	fontFamily,
@@ -16,7 +16,8 @@ import {
 	type,
 	useTokens,
 } from "@/lib/theme";
-import { AppHeader } from "@/components/app-header";
+import { InkTabHeader, type InkHeaderAction } from "@/components/ink-tab-header";
+import { requestSearchFocus } from "@/lib/search-focus";
 import { DotGrid } from "@/components/ui";
 import { MapboxModule } from "@/lib/mapbox";
 import { RouteMap, type GasStation } from "@/components/routes/route-map";
@@ -39,6 +40,25 @@ import { todayDateId, utcMsFromDateId } from "@/lib/date";
 // card fits the whole route, or follows the driver while running).
 //
 // headerMode "pane" = the iPad shell provides its own PaneHeader.
+
+const WORK_TAB: Href = "/(tabs)/work" as Href;
+
+// Same search jump the other tab roots carry in their ink band. Module scope —
+// it closes over the imperative `router`, so it needs no hook and both the map
+// screen and the no-module fallback can share one array.
+const HEADER_ACTIONS: readonly InkHeaderAction[] = [
+	{
+		key: "search",
+		label: "Search everything",
+		icon: Search,
+		onPress: () => {
+			// Latch, then navigate: Work consumes it once on focus.
+			requestSearchFocus();
+			router.push(WORK_TAB);
+		},
+	},
+];
+
 export default function RoutesScreen({
 	headerMode = "root",
 }: {
@@ -256,8 +276,13 @@ function RoutesBody({ headerMode }: { headerMode: "root" | "pane" }) {
 		googleMaps && selected
 			? googleMapsRouteUrl(selected.start, selected.stops, selected.roundTrip)
 			: null;
-	// Header band (no title) bottoms out around insets.top + 62 — chips clear it.
-	const controlsTop = isPane ? 12 : insets.top + 70;
+	// The band (iPhone) and the pane header (iPad) are both in normal flow and
+	// already clear the safe area, so the chips only need a gutter off the map's
+	// own top edge — but that edge belongs to Mapbox: the logo sits at top 8 /
+	// left 8 and the attribution "i" at top 8 / right 8 (route-map.tsx), and this
+	// row spans both with space-between. Clear the ornaments (~26pt tall) rather
+	// than covering them; Mapbox terms require both to stay visible.
+	const controlsTop = 44;
 	// The floating dock takes no layout height — the sheet and the carousel lift
 	// clear of it. iPad panes have no dock (the shell replaces Tabs).
 	const dockInset = isPane ? 12 : DOCK_CLEARANCE + insets.bottom;
@@ -265,57 +290,57 @@ function RoutesBody({ headerMode }: { headerMode: "root" | "pane" }) {
 	return (
 		<View style={styles.screen}>
 			{running ? <KeepAwakeWhileRunning /> : null}
-			<RouteMap
-				route={selected}
-				following={running && focusIndex === 0}
-				focus={focus}
-				gasStations={gasStations}
-			/>
-			{!isPane ? (
-				<View style={styles.headerOverlay} pointerEvents="box-none">
-					{/* No title — the sheet's own "Routes" heading carries it; a title
-					    block here would sit on top of the floating chips. */}
-					<AppHeader mode="root" fade={false} />
-				</View>
-			) : null}
-			{selected ? (
-				<View
-					style={[styles.controls, { top: controlsTop }]}
-					pointerEvents="box-none"
-				>
-					<FloatChip
-						onPress={() => selectRoute(null)}
-						label="All routes"
-						icon={
-							<ChevronLeft
-								size={14}
-								color={t.ink}
-								strokeWidth={2.25}
-							/>
-						}
-					/>
-					{selected.geometry !== undefined && premium !== false ? (
+			{/* The band is normal flow (solid, rounded foot) — the map starts
+			    BELOW it, so nothing inside the map area offsets by insets.top. */}
+			{!isPane ? <InkTabHeader orgChip actions={HEADER_ACTIONS} /> : null}
+			<View style={styles.mapArea}>
+				<RouteMap
+					route={selected}
+					following={running && focusIndex === 0}
+					focus={focus}
+					gasStations={gasStations}
+				/>
+				{selected ? (
+					<View
+						style={[styles.controls, { top: controlsTop }]}
+						pointerEvents="box-none"
+					>
 						<FloatChip
-							onPress={onToggleGas}
-							label={
-								gasLoading
-									? "Gas…"
-									: gasStations
-										? `Gas (${gasStations.length})`
-										: "Gas"
-							}
-							active={gasStations !== undefined}
+							onPress={() => selectRoute(null)}
+							label="All routes"
 							icon={
-								<Fuel
-									size={13}
-									color={gasStations ? "#ffffff" : t.ink}
+								<ChevronLeft
+									size={14}
+									color={t.ink}
 									strokeWidth={2.25}
 								/>
 							}
 						/>
-					) : null}
-				</View>
-			) : null}
+						{selected.geometry !== undefined && premium !== false ? (
+							<FloatChip
+								onPress={onToggleGas}
+								label={
+									gasLoading
+										? "Gas…"
+										: gasStations
+											? `Gas (${gasStations.length})`
+											: "Gas"
+								}
+								active={gasStations !== undefined}
+								icon={
+									<Fuel
+										size={13}
+										color={gasStations ? "#ffffff" : t.ink}
+										strokeWidth={2.25}
+									/>
+								}
+							/>
+						) : null}
+					</View>
+				) : null}
+			</View>
+			{/* Sheet + carousel stay at the SCREEN root: their bottom math (dock
+			    clearance, gorhom snap points) is measured against the full screen. */}
 			{selected ? (
 				<StopCarousel
 					route={selected}
@@ -438,7 +463,7 @@ function RoutesUnavailable({ headerMode }: { headerMode: "root" | "pane" }) {
 		<View style={[styles.screen, { backgroundColor: t.bg }]}>
 			<DotGrid style={StyleSheet.absoluteFill} />
 			{headerMode !== "pane" ? (
-				<AppHeader mode="root" title="Routes" />
+				<InkTabHeader orgChip actions={HEADER_ACTIONS} />
 			) : null}
 			<View style={styles.fallbackBody}>
 				<View style={[styles.mark, { backgroundColor: t.muted }]}>
@@ -460,11 +485,8 @@ const styles = StyleSheet.create({
 	screen: {
 		flex: 1,
 	},
-	headerOverlay: {
-		position: "absolute",
-		top: 0,
-		left: 0,
-		right: 0,
+	mapArea: {
+		flex: 1,
 	},
 	controls: {
 		position: "absolute",

@@ -43,7 +43,7 @@ export const mobileAppArticles: HelpArticle[] = [
 						items: [
 							"**Today** is your schedule. A week strip picks the date, and a **Day / List** toggle switches views: Day is a timeline of the chosen day (timed work in order with a *Now* marker, plus an all-day band for projects and unscheduled tasks), while List looks ahead two weeks, grouped by day. A **Me** and **Team** toggle switches between your own work and the whole team's, urgent items are called out at the top, and your organization's activity feed opens from here too.",
 							"**Work** is where you find anything. Type in the search field to search every record: clients (including their contacts and properties), projects, quotes, invoices, and tasks, with results grouped by type; the chips narrow to one type or browse its full list. Before you search, the screen shows records you've recently opened on this device.",
-							"**Money** holds your invoices and quotes, with an outstanding total up top and a chart of what you've collected recently.",
+							"**Money** is your money dashboard. The top of the screen shows what you are owed, how much of it is overdue, and a pipeline strip of three cells: **Quoted** (quotes waiting on a client), **Unpaid** (invoices still owed), and **Collected** this month. Below that, **Needs attention** lists your overdue invoices and the quotes a client has been sitting on, then a chart of what you've collected over the last six months, then your **Recent payments**. Tap any row to open that record. On iPhone, tapping the **Quoted** or **Unpaid** cell jumps to that list on **Work**; the **Collected** cell is a read-out, not a link, and on iPad the strip is read-only, so use the chips on **Work** to browse.",
 							"**Routes** plans the day's stops and gets you from one to the next. See [Planning a route](/help/routing/planning-a-route).",
 						],
 					},
@@ -76,7 +76,7 @@ export const mobileAppArticles: HelpArticle[] = [
 				blocks: [
 					{
 						type: "paragraph",
-						text: "The **Money** tab is a combined list with an **Invoices** and **Quotes** toggle; tap any row to open the full record. From a detail screen, the buttons follow the record's status: a draft offers **Send** (with **Mark as sent** under the \u2022\u2022\u2022 menu when you delivered the quote yourself, so no email goes out), a sent quote offers **Get signature** (the client picks who's signing, signs on your screen, and the quote is approved with the signature saved to its approval history; turn the phone sideways, and iPad signs full-width) plus **Resend** and a manual **Mark approved**, an approved quote converts to an invoice in one tap, and a sent or overdue invoice offers **Record payment** and **Share pay link**.",
+						text: "You reach a record from the **Money** dashboard rows, or from the **Invoices** and **Quotes** chips on **Work**; tap any row to open the full record. From a detail screen, the buttons follow the record's status: a draft offers **Send** (with **Mark as sent** under the \u2022\u2022\u2022 menu when you delivered the quote yourself, so no email goes out), a sent quote offers **Get signature** (the client picks who's signing, signs on your screen, and the quote is approved with the signature saved to its approval history; turn the phone sideways, and iPad signs full-width) plus **Resend** and a manual **Mark approved**, an approved quote converts to an invoice in one tap, and a sent or overdue invoice offers **Record payment** and **Share pay link**.",
 					},
 					{
 						type: "list",
@@ -96,6 +96,19 @@ export const mobileAppArticles: HelpArticle[] = [
 					{
 						type: "paragraph",
 						text: "On iPad, the app replaces the tab bar with a multi-pane layout designed for the larger screen, so you can see more of your workspace at once.",
+					},
+				],
+			},
+			{
+				heading: "Notifications and team chat",
+				blocks: [
+					{
+						type: "paragraph",
+						text: "The bell in the header opens your notifications list, and the app can also push the important ones to your lock screen: **mentions** (a teammate tagged you in team chat), **automation messages** from your workflows, and **payments and approvals** (an invoice was paid or a quote was approved). Team chat lives on every client, project, and quote detail screen, so you can tag a teammate right from the record you are looking at.",
+					},
+					{
+						type: "paragraph",
+						text: "To choose which of these reach your lock screen, tap the gear at the top of the notifications list, or open **Notifications** from your profile. Everything starts on, and the toggles only control pushes on your device: your in-app notifications list always shows the full history. If you record a payment or approve a quote yourself, the app celebrates with your team but skips buzzing your own phone.",
 					},
 				],
 			},

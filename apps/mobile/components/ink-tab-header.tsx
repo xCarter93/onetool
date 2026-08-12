@@ -1,32 +1,17 @@
 import React, { useState } from "react";
-import {
-	Pressable,
-	StyleSheet,
-	Text,
-	View,
-	type LayoutChangeEvent,
-} from "react-native";
+import { StyleSheet, Text, View, type LayoutChangeEvent } from "react-native";
 import Svg, { Defs, Ellipse, RadialGradient, Stop } from "react-native-svg";
 import { StatusBar } from "expo-status-bar";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useIsFocused, useRouter, type Href } from "expo-router";
-import { useUser } from "@clerk/expo";
-import { useQuery } from "convex/react";
-import { api } from "@onetool/backend/convex/_generated/api";
-import { Bell, type LucideIcon } from "lucide-react-native";
+import { useIsFocused } from "expo-router";
+import { ArrowLeft, type LucideIcon } from "lucide-react-native";
 import { DotGrid } from "@/components/ui";
+import {
+	InkHeaderCluster,
+	InkIconButton,
+	InkOrgChip,
+} from "@/components/ink-header-cluster";
 import { fontFamily, hero, tokens, tracking } from "@/lib/theme";
-
-const NOTIFICATIONS: Href = "/notifications" as Href;
-
-function initialsFrom(name?: string | null, email?: string | null): string {
-	const source = name?.trim() || email || "?";
-	const words = source.split(/\s+/).filter(Boolean);
-	if (words.length >= 2) {
-		return (words[0][0] + words[words.length - 1][0]).toUpperCase();
-	}
-	return source.slice(0, 2).toUpperCase();
-}
 
 export interface InkHeaderAction {
 	key: string;
@@ -37,11 +22,29 @@ export interface InkHeaderAction {
 }
 
 interface InkTabHeaderProps {
-	title: string;
+	/** Band headline. Optional only when `orgChip` takes the left slot. */
+	title?: string;
+	/** Lead with the org-switcher chip instead of a title — the main tab roots
+	 * (Work, Money; Today via CommandHero). The tab's identity already lives in
+	 * the dock, so the band's left slot goes to the org. */
+	orgChip?: boolean;
 	/** Uppercase line above the title. */
 	eyebrow?: string;
 	/** Extra icon buttons, placed LEFT of the constant bell + avatar cluster. */
 	actions?: readonly InkHeaderAction[];
+	/** Drop the constant Activity quick-link — the Activity root can't link to
+	 * itself. Bell + avatar stay. */
+	hideActivity?: boolean;
+	/** Drop the constant avatar — the Profile root can't link to itself.
+	 * Activity + bell stay. */
+	hideAvatar?: boolean;
+	/**
+	 * Detail variant: renders a back circle left of the title. Record screens
+	 * pass `() => router.back()`; tab roots leave it off. With the back button
+	 * AND the 3-icon cluster on the row the 26pt title only fits ~13 characters,
+	 * so this variant also drops the title to 20pt.
+	 */
+	onBack?: () => void;
 	/** On-ink slot below the title — search field, stat line, pinned controls. */
 	children?: React.ReactNode;
 }
@@ -54,23 +57,16 @@ interface InkTabHeaderProps {
  */
 export function InkTabHeader({
 	title,
+	orgChip = false,
 	eyebrow,
 	actions,
+	hideActivity = false,
+	hideAvatar = false,
+	onBack,
 	children,
 }: InkTabHeaderProps) {
-	const router = useRouter();
 	const insets = useSafeAreaInsets();
 	const isFocused = useIsFocused();
-	const { user } = useUser();
-	const notificationData = useQuery(api.notifications.listForCurrentUser, {
-		limit: 1,
-	});
-	const unread = (notificationData?.unreadCount ?? 0) > 0;
-
-	const userInitials = initialsFrom(
-		user?.fullName ?? user?.firstName,
-		user?.primaryEmailAddress?.emailAddress,
-	);
 
 	// Glow SVG needs measured pixels — Fabric escapes %-sized SVGs inside an
 	// indefinite-height parent (same pitfall as dot-grid.tsx).
@@ -83,33 +79,6 @@ export function InkTabHeader({
 				: { width, height },
 		);
 	};
-
-	const iconButton = (
-		key: string,
-		label: string,
-		onPress: () => void,
-		child: React.ReactNode,
-		options?: { avatar?: boolean; dot?: boolean },
-	) => (
-		<Pressable
-			key={key}
-			onPress={onPress}
-			accessibilityRole="button"
-			accessibilityLabel={label}
-			// The circle stays 36pt; the target reaches 44 (bell, avatar, actions).
-			hitSlop={4}
-			style={[
-				styles.iconButton,
-				{
-					backgroundColor: options?.avatar ? hero.avatarBg : hero.buttonBg,
-					borderColor: hero.buttonBorder,
-				},
-			]}
-		>
-			{child}
-			{options?.dot ? <View style={styles.alertDot} /> : null}
-		</Pressable>
-	);
 
 	return (
 		<View
@@ -147,37 +116,40 @@ export function InkTabHeader({
 			{/* Title row — the title sits inline with the icon cluster, which is what
 			    keeps this band shorter than Today's. */}
 			<View style={styles.topRow}>
-				<View style={styles.titleBlock}>
-					{eyebrow ? (
-						<Text style={styles.eyebrow}>{eyebrow.toUpperCase()}</Text>
-					) : null}
-					<Text numberOfLines={1} style={styles.title}>
-						{title}
-					</Text>
-				</View>
+				{onBack ? (
+					<InkIconButton label="Go back" onPress={onBack}>
+						<ArrowLeft size={18} color={hero.text} strokeWidth={2} />
+					</InkIconButton>
+				) : null}
+				{orgChip ? (
+					<InkOrgChip />
+				) : (
+					<View style={styles.titleBlock}>
+						{eyebrow ? (
+							<Text style={styles.eyebrow}>{eyebrow.toUpperCase()}</Text>
+						) : null}
+						<Text
+							numberOfLines={1}
+							style={onBack ? styles.titleCompact : styles.title}
+						>
+							{title}
+						</Text>
+					</View>
+				)}
 				<View style={styles.spacer} />
-				{actions?.map((action) =>
-					iconButton(
-						action.key,
-						action.label,
-						action.onPress,
-						<action.icon size={18} color={hero.text} strokeWidth={2} />,
-					),
-				)}
-				{iconButton(
-					"bell",
-					unread ? "Notifications, unread" : "Notifications",
-					() => router.push(NOTIFICATIONS),
-					<Bell size={18} color={hero.text} strokeWidth={2} />,
-					{ dot: unread },
-				)}
-				{iconButton(
-					"avatar",
-					"Profile",
-					() => router.push("/(tabs)/profile"),
-					<Text style={styles.avatarText}>{userInitials}</Text>,
-					{ avatar: true },
-				)}
+				{actions?.map((action) => (
+					<InkIconButton
+						key={action.key}
+						label={action.label}
+						onPress={action.onPress}
+					>
+						<action.icon size={18} color={hero.text} strokeWidth={2} />
+					</InkIconButton>
+				))}
+				<InkHeaderCluster
+					hideActivity={hideActivity}
+					hideAvatar={hideAvatar}
+				/>
 			</View>
 
 			{children ? <View style={styles.slot}>{children}</View> : null}
@@ -217,32 +189,17 @@ const styles = StyleSheet.create({
 		letterSpacing: -0.3,
 		color: hero.text,
 	},
+	// Detail variant: back circle + 3 cluster icons leave ~175pt for the title on
+	// a 393pt screen — 26pt would truncate a two-word company name.
+	titleCompact: {
+		fontFamily: fontFamily.semibold,
+		fontSize: 20,
+		lineHeight: 24,
+		letterSpacing: -0.2,
+		color: hero.text,
+	},
 	spacer: {
 		flex: 1,
-	},
-	iconButton: {
-		width: 36,
-		height: 36,
-		borderRadius: 12,
-		borderWidth: 1,
-		alignItems: "center",
-		justifyContent: "center",
-	},
-	alertDot: {
-		position: "absolute",
-		top: 7,
-		right: 7,
-		width: 7,
-		height: 7,
-		borderRadius: 4,
-		backgroundColor: hero.alertDot,
-		borderWidth: 1.5,
-		borderColor: hero.ink,
-	},
-	avatarText: {
-		fontFamily: fontFamily.semibold,
-		fontSize: 12,
-		color: hero.text,
 	},
 	slot: {
 		marginTop: 16,

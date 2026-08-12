@@ -17,8 +17,8 @@ import { api } from "@onetool/backend/convex/_generated/api";
 import { DOCK_CLEARANCE, useTokens, radii, fontFamily } from "@/lib/theme";
 import { Avatar, Card, DotGrid } from "@/components/ui";
 import { useRouter, type Href } from "expo-router";
-import { Mail, Building, LogOut, Shield, Trash2, SquarePen, ChevronRight } from "lucide-react-native";
-import { AppHeader } from "@/components/app-header";
+import { Mail, Building, LogOut, Shield, Trash2, SquarePen, ChevronRight, Bell } from "lucide-react-native";
+import { InkTabHeader } from "@/components/ink-tab-header";
 
 // headerMode defaults to "root" → the iPhone path (self-mounted AppHeader,
 // edge-to-edge content) is byte-identical. The iPad shell renders Profile as a
@@ -167,8 +167,9 @@ export default function ProfileScreen({
 			{/* Page canvas, matching web's .workspace-canvas. */}
 			<DotGrid style={StyleSheet.absoluteFill} />
 			{/* iPad pane: shell mounts the one PaneHeader title="Profile" (single-header
-			    convention) so the self-mounted AppHeader is suppressed. */}
-			{isPane ? null : <AppHeader mode="root" title="Profile" />}
+			    convention) so the self-mounted band is suppressed. iPhone: the shared
+			    ink band, minus the avatar — this screen IS Profile. */}
+			{isPane ? null : <InkTabHeader title="Profile" hideAvatar />}
 			<ScrollView
 				style={{ flex: 1 }}
 				contentContainerStyle={[
@@ -299,6 +300,36 @@ export default function ProfileScreen({
 						<ChevronRight size={18} color={t.sub} />
 					</Pressable>
 				)}
+
+				{/* Notification preferences — per-user, so no owner gate. */}
+				<Pressable
+					style={{
+						flexDirection: "row",
+						alignItems: "center",
+						paddingVertical: 16,
+						paddingHorizontal: 16,
+						borderRadius: radii.lg,
+						marginTop: isOwner ? 12 : 24,
+						backgroundColor: t.card,
+						borderWidth: 1,
+						borderColor: t.line,
+					}}
+					onPress={() => router.push("/notification-preferences" as Href)}
+				>
+					<Bell size={20} color={t.sub} />
+					<Text
+						style={{
+							marginLeft: 12,
+							flex: 1,
+							color: t.ink,
+							fontFamily: fontFamily.semibold,
+							fontSize: 13,
+						}}
+					>
+						Notifications
+					</Text>
+					<ChevronRight size={18} color={t.sub} />
+				</Pressable>
 
 				{/* Sign Out Button */}
 				<Pressable

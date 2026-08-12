@@ -1,43 +1,25 @@
 import React, { useState } from "react";
 import {
-	Image,
-	Pressable,
 	StyleSheet,
 	Text,
 	View,
 	type LayoutChangeEvent,
 } from "react-native";
 import Svg, { Defs, Ellipse, RadialGradient, Stop } from "react-native-svg";
-import { LinearGradient } from "expo-linear-gradient";
 import { StatusBar } from "expo-status-bar";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useIsFocused, useRouter, type Href } from "expo-router";
-import { useOrganization, useUser } from "@clerk/expo";
-import { useQuery } from "convex/react";
-import { api } from "@onetool/backend/convex/_generated/api";
-import {
-	Activity as ActivityIcon,
-	Bell,
-	ChevronDown,
-	Search,
-} from "lucide-react-native";
+import { Search } from "lucide-react-native";
 import { DotGrid } from "@/components/ui";
-import { fontFamily, hero, tokens, tracking, useTokens } from "@/lib/theme";
+import {
+	InkHeaderCluster,
+	InkIconButton,
+	InkOrgChip,
+} from "@/components/ink-header-cluster";
+import { fontFamily, hero, tokens, tracking } from "@/lib/theme";
 import { requestSearchFocus } from "@/lib/search-focus";
 
-const ORG_SWITCH: Href = "/org-switch" as Href;
-const NOTIFICATIONS: Href = "/notifications" as Href;
-const ACTIVITY: Href = "/(tabs)/activity" as Href;
 const WORK: Href = "/(tabs)/work" as Href;
-
-function initialsFrom(name?: string | null, email?: string | null): string {
-	const source = name?.trim() || email || "?";
-	const words = source.split(/\s+/).filter(Boolean);
-	if (words.length >= 2) {
-		return (words[0][0] + words[words.length - 1][0]).toUpperCase();
-	}
-	return source.slice(0, 2).toUpperCase();
-}
 
 export interface HeroStat {
 	value: string;
@@ -73,23 +55,9 @@ export function CommandHero({
 	compact = false,
 	children,
 }: CommandHeroProps) {
-	const t = useTokens();
 	const router = useRouter();
 	const insets = useSafeAreaInsets();
 	const isFocused = useIsFocused();
-	const { organization } = useOrganization();
-	const { user } = useUser();
-	const notificationData = useQuery(api.notifications.listForCurrentUser, {
-		limit: 1,
-	});
-	const unread = (notificationData?.unreadCount ?? 0) > 0;
-
-	const orgName = organization?.name ?? "Personal";
-	const orgInitials = initialsFrom(orgName);
-	const userInitials = initialsFrom(
-		user?.fullName ?? user?.firstName,
-		user?.primaryEmailAddress?.emailAddress,
-	);
 
 	// Glow SVG needs measured pixels — Fabric escapes %-sized SVGs inside an
 	// indefinite-height parent (same pitfall as dot-grid.tsx).
@@ -102,31 +70,6 @@ export function CommandHero({
 				: { width, height },
 		);
 	};
-
-	const iconButton = (
-		key: string,
-		label: string,
-		onPress: () => void,
-		child: React.ReactNode,
-		options?: { avatar?: boolean; dot?: boolean },
-	) => (
-		<Pressable
-			key={key}
-			onPress={onPress}
-			accessibilityRole="button"
-			accessibilityLabel={label}
-			style={[
-				styles.iconButton,
-				{
-					backgroundColor: options?.avatar ? hero.avatarBg : hero.buttonBg,
-					borderColor: hero.buttonBorder,
-				},
-			]}
-		>
-			{child}
-			{options?.dot ? <View style={styles.alertDot} /> : null}
-		</Pressable>
-	);
 
 	return (
 		<View
@@ -163,66 +106,22 @@ export function CommandHero({
 
 			{/* Org bar */}
 			<View style={styles.orgBar}>
-				<Pressable
-					onPress={() => router.push(ORG_SWITCH)}
-					accessibilityRole="button"
-					accessibilityLabel="Switch organization"
-					style={styles.orgChip}
-				>
-					{organization?.imageUrl ? (
-						<Image
-							source={{ uri: organization.imageUrl }}
-							style={styles.orgTile}
-						/>
-					) : (
-						<LinearGradient
-							colors={[t.brand, t.primarySolid]}
-							start={{ x: 0, y: 0 }}
-							end={{ x: 1, y: 1 }}
-							style={[styles.orgTile, styles.orgTileFill]}
-						>
-							<Text style={styles.orgTileText}>{orgInitials}</Text>
-						</LinearGradient>
-					)}
-					<Text numberOfLines={1} style={styles.orgName}>
-						{orgName}
-					</Text>
-					<ChevronDown size={14} color={hero.textSub} />
-				</Pressable>
+				<InkOrgChip />
 				<View style={styles.spacer} />
 				{/* No ＋ here — the speed-dial FAB is the single capture entry point
 				    on iPhone (3.0 slice 5). */}
 				{/* Today has no AppHeader on iPhone, so the hero carries the global
 				    search jump the other tab roots get from app-header.tsx. */}
-				{iconButton(
-					"search",
-					"Search everything",
-					() => {
+				<InkIconButton
+					label="Search everything"
+					onPress={() => {
 						requestSearchFocus();
 						router.push(WORK);
-					},
-					<Search size={18} color={hero.text} strokeWidth={2} />,
-				)}
-				{iconButton(
-					"activity",
-					"Activity",
-					() => router.push(ACTIVITY),
-					<ActivityIcon size={18} color={hero.text} strokeWidth={2} />,
-				)}
-				{iconButton(
-					"bell",
-					unread ? "Notifications, unread" : "Notifications",
-					() => router.push(NOTIFICATIONS),
-					<Bell size={18} color={hero.text} strokeWidth={2} />,
-					{ dot: unread },
-				)}
-				{iconButton(
-					"avatar",
-					"Profile",
-					() => router.push("/(tabs)/profile"),
-					<Text style={styles.avatarText}>{userInitials}</Text>,
-					{ avatar: true },
-				)}
+					}}
+				>
+					<Search size={18} color={hero.text} strokeWidth={2} />
+				</InkIconButton>
+				<InkHeaderCluster />
 			</View>
 
 			{/* Greeting */}
@@ -271,58 +170,8 @@ const styles = StyleSheet.create({
 		alignItems: "center",
 		gap: 8,
 	},
-	orgChip: {
-		flexDirection: "row",
-		alignItems: "center",
-		gap: 8,
-		flexShrink: 1,
-	},
-	orgTile: {
-		width: 26,
-		height: 26,
-		borderRadius: 7,
-	},
-	orgTileFill: {
-		alignItems: "center",
-		justifyContent: "center",
-	},
-	orgTileText: {
-		fontFamily: fontFamily.bold,
-		fontSize: 11,
-		color: hero.text,
-	},
-	orgName: {
-		fontFamily: fontFamily.semibold,
-		fontSize: 14,
-		color: hero.text,
-		flexShrink: 1,
-	},
 	spacer: {
 		flex: 1,
-	},
-	iconButton: {
-		width: 36,
-		height: 36,
-		borderRadius: 12,
-		borderWidth: 1,
-		alignItems: "center",
-		justifyContent: "center",
-	},
-	alertDot: {
-		position: "absolute",
-		top: 7,
-		right: 7,
-		width: 7,
-		height: 7,
-		borderRadius: 4,
-		backgroundColor: hero.alertDot,
-		borderWidth: 1.5,
-		borderColor: hero.ink,
-	},
-	avatarText: {
-		fontFamily: fontFamily.semibold,
-		fontSize: 12,
-		color: hero.text,
 	},
 	eyebrow: {
 		marginTop: 20,

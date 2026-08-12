@@ -15,7 +15,7 @@ import {
 	type,
 	useTokens,
 } from "@/lib/theme";
-import { AppHeader } from "@/components/app-header";
+import { InkTabHeader } from "@/components/ink-tab-header";
 import { Illustration } from "@/components/illustrations";
 import { DotGrid, SCROLL_TOP_INSET } from "@/components/ui";
 import {
@@ -75,6 +75,10 @@ export default function ActivityScreen({
 	// The floating dock takes no layout height — the feed clears it itself.
 	// iPad panes have no dock (the shell replaces Tabs).
 	const listBottom = isPane ? spacing.lg : DOCK_CLEARANCE + insets.bottom;
+	// iPhone: the solid ink band ends the header, so the feed starts right below
+	// it (Work's flat-list value — the first day header carries its own spacing.lg).
+	// iPad pane: no band, so the old translucent-header inset still applies.
+	const listTop = isPane ? SCROLL_TOP_INSET : 6;
 	// Seed "now" once (lazy) — react-hooks/purity forbids Date.now() during render.
 	const [nowMs] = useState(() => Date.now());
 
@@ -203,11 +207,13 @@ export default function ActivityScreen({
 		<SafeAreaView style={{ flex: 1, backgroundColor: t.surface }} edges={[]}>
 			{/* Page canvas, matching web's .workspace-canvas. */}
 			<DotGrid style={StyleSheet.absoluteFill} />
-			{/* Feed scrolls straight under the header, so the header's own fade is
-			    correct here — no relocation needed. */}
-			{!isPane ? <AppHeader mode="root" title="Activity" halftone /> : null}
+			{/* iPhone: the ink band, matching Work and Money. No Activity quick-link
+			    in the cluster — this screen IS Activity. */}
+			{!isPane ? <InkTabHeader title="Activity" hideActivity /> : null}
 			{status === "LoadingFirstPage" ? (
-				<View style={styles.listContent}>{Skeleton}</View>
+				<View style={[styles.listContent, { paddingTop: listTop }]}>
+					{Skeleton}
+				</View>
 			) : (
 				<FlashList
 					data={items}
@@ -216,6 +222,7 @@ export default function ActivityScreen({
 					renderItem={renderItem}
 					contentContainerStyle={{
 						...styles.listContent,
+						paddingTop: listTop,
 						paddingBottom: listBottom,
 					}}
 					ListEmptyComponent={Empty}
@@ -230,7 +237,6 @@ const styles = StyleSheet.create({
 	listContent: {
 		paddingHorizontal: spacing.md,
 		paddingBottom: spacing.lg,
-		paddingTop: SCROLL_TOP_INSET,
 	},
 	skeletonBlock: {
 		gap: 4,
