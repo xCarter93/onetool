@@ -175,7 +175,9 @@ export function ReelLightbox({
 			    backdrop in its own portal. Dismissal is outside-press on the popup,
 			    which this still is. z-[70] clears the sticky nav's z-[60]. */}
 			<DialogPortal>
-				<DialogOverlay className="z-[70] bg-black/75 backdrop-blur-[3px] motion-reduce:animate-none" />
+				{/* No backdrop-filter: blurring the whole (compositor-heavy) page every
+				    frame while a 1920×1080 composition plays can stall the renderer. */}
+				<DialogOverlay className="z-[70] bg-black/80 motion-reduce:animate-none" />
 			</DialogPortal>
 
 			<DialogContent
