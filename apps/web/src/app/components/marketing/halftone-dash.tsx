@@ -25,6 +25,9 @@ type Props = {
 	light?: number;
 	lightRadius?: number;
 	focus?: "top" | "center" | "bottom";
+	/** Which edges dissolve into the page. "both" suits floating fields;
+	 * ground-anchored scenes want "top" so the base stays crisp. */
+	fade?: "both" | "top" | "none";
 	/** Selector whose boxes swallow the pointer (copy blocks). */
 	exclude?: string;
 	className?: string;
@@ -40,6 +43,7 @@ export function HalftoneDash({
 	light = 0.8,
 	lightRadius = 0.5,
 	focus = "center",
+	fade = "both",
 	exclude,
 	className,
 }: Props) {
@@ -118,8 +122,13 @@ export function HalftoneDash({
 				const cy = (r + 0.5) * rowH;
 				const v = sy + (cy / H) * sh;
 				const iy = Math.min(s.H - 1, Math.max(0, Math.round(v * s.H)));
-				// vertical fade so the field dissolves into the page at both edges
-				const edge = Math.min(1, Math.min(cy, H - cy) / (H * 0.22));
+				// vertical fade so the field dissolves into the page
+				const edge =
+					fade === "none"
+						? 1
+						: fade === "top"
+							? Math.min(1, cy / (H * 0.22))
+							: Math.min(1, Math.min(cy, H - cy) / (H * 0.22));
 				for (let k = 0; k < cols; k++) {
 					const cx = (k + 0.5) * cellW;
 					const u = sx + (cx / W) * sw;
@@ -237,7 +246,7 @@ export function HalftoneDash({
 			mo.disconnect();
 			window.removeEventListener("pointermove", onMove);
 		};
-	}, [src, rows, cellRatio, power, maxBar, minTone, light, lightRadius, focus, exclude, reduced]);
+	}, [src, rows, cellRatio, power, maxBar, minTone, light, lightRadius, focus, fade, exclude, reduced]);
 
 	return (
 		<div ref={hostRef} aria-hidden="true" className={cn("block", className)}>

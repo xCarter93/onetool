@@ -1,6 +1,5 @@
 import type { CSSProperties } from "react";
-import HalftoneWave from "@/components/react-bits/halftone-wave";
-import { AmbientLayer } from "../ambient";
+import { HeroHalftoneScene } from "../hero-halftone-scene";
 import { InkButton } from "../marketing-nav";
 import { ParticleMark } from "../particle-mark";
 import { HeroReelCta } from "../reel-cta";
@@ -24,18 +23,6 @@ import { RoughMark } from "../rough-mark";
 
 /** Entrance stagger — the comp's `animation-delay` on `.lp-rise`/`.lp-fade`. */
 const at = (delay: string) => ({ "--lp-delay": delay }) as CSSProperties;
-
-/* HalftoneWave paints an opaque field (bg + dots), so it can't be tinted to
- * both schemes. It runs at a neutral mid-gray — a graphite haze that reads on
- * paper AND in the dark scheme — full-bleed across the hero under an INVERTED
- * radial mask: clear through the middle where the type column and the mark
- * live, dots ramping in just past the content so the frame reads alive. */
-const HALFTONE_MASK =
-	"radial-gradient(72% 78% at 50% 42%, transparent 0%, transparent 36%, rgba(0,0,0,0.55) 60%, #000 78%)";
-const HALFTONE_MASK_STYLE = {
-	maskImage: HALFTONE_MASK,
-	WebkitMaskImage: HALFTONE_MASK,
-} as CSSProperties;
 
 type Tone = "accent" | "dim" | "paid";
 
@@ -88,8 +75,8 @@ const LEDGER: { stage: string; label: string; when: string; tone: Tone }[] = [
 
 export function Hero() {
 	// No id="top" on the Section: page.tsx's root div owns that anchor.
-	// The Section's overflow-hidden is load-bearing: the halftone ambient is
-	// 100vw, which counts the scrollbar.
+	// overflow-hidden keeps the corner halftone scenes from widening the page
+	// on narrow viewports.
 	return (
 		<Section
 			pad="none"
@@ -101,19 +88,8 @@ export function Hero() {
 
 			<GridBackdrop />
 
-			{/* ambient: halftone dots around the hero's outer edge only */}
-			<AmbientLayer opacity={0.18} fullBleed style={HALFTONE_MASK_STYLE}>
-				<HalftoneWave
-					speed={0.45}
-					gridDensity={34}
-					dotSize={0.42}
-					softness={0.6}
-					colorA="#b8b4ac"
-					colorB="#6f6c66"
-					backgroundColor="#a3a09a"
-					cursorInteraction={false}
-				/>
-			</AmbientLayer>
+			{/* ambient: Twenty-style halftone scene in the hero's bottom corners */}
+			<HeroHalftoneScene />
 
 			<Container className="relative grid grid-cols-[repeat(auto-fit,minmax(min(100%,400px),1fr))] items-center gap-[clamp(24px,4vw,64px)] pt-[clamp(40px,7vw,96px)]">
 				<div>
