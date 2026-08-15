@@ -110,14 +110,16 @@ html:has(.dc-landing) {
 		stroke-dashoffset: -14;
 	}
 }
+/* Five loop cards on 4s offsets over the 20s cycle — the 20% window makes the
+   hand-off seamless (one card is always live). */
 @keyframes lp-loopfill {
 	0% {
 		transform: scaleX(0);
 	}
-	11% {
+	17.5% {
 		transform: scaleX(1);
 	}
-	12.5%,
+	20%,
 	100% {
 		transform: scaleX(0);
 	}
@@ -128,10 +130,10 @@ html:has(.dc-landing) {
 		opacity: 0;
 	}
 	2%,
-	11% {
+	17.5% {
 		opacity: 1;
 	}
-	12.5%,
+	20%,
 	100% {
 		opacity: 0;
 	}

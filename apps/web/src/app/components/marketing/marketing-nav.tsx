@@ -34,7 +34,7 @@ export function InkButton({
 		<Link
 			href={href}
 			className={cn(
-				"inline-flex items-center gap-[9px] rounded-[11px] bg-(--ink) font-semibold tracking-[-0.01em] text-(--paper) shadow-(--lp-shadow) transition-opacity hover:opacity-[0.88] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--accent-ink) focus-visible:ring-offset-2 focus-visible:ring-offset-(--paper)",
+				"inline-flex items-center gap-[9px] rounded-[11px] bg-(--ink) font-semibold tracking-[-0.01em] text-(--paper) transition-opacity hover:opacity-[0.88] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--accent-ink) focus-visible:ring-offset-2 focus-visible:ring-offset-(--paper)",
 				size === "sm" && "h-[38px] rounded-[9px] px-4 text-sm",
 				size === "md" && "h-[52px] px-[26px] text-[17px]",
 				className

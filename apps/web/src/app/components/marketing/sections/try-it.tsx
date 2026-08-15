@@ -125,17 +125,17 @@ export function TryIt() {
 		<Section id="try-it">
 			<Eyebrow>Try it yourself</Eyebrow>
 			<SectionHeading>Build a quote in 20 seconds.</SectionHeading>
-			<Lede className="mt-[14px] max-w-[46rem]">
+			<Lede className="max-w-[46rem]">
 				Pick a couple of line items. This is the same motion you&rsquo;d do in the truck
 				&mdash; and the page on the right is what your client gets.
 			</Lede>
 
-			<div className="mt-[clamp(28px,3.4vw,48px)] grid grid-cols-[repeat(auto-fit,minmax(min(100%,360px),1fr))] items-start gap-[clamp(20px,2.6vw,36px)]">
+			<div className="mt-[clamp(40px,6vw,80px)] grid grid-cols-[repeat(auto-fit,minmax(min(100%,360px),1fr))] items-start gap-[clamp(20px,2.6vw,36px)]">
 				{/* ------------------------------------------------------ the builder */}
 				<div>
 					{/* overflow-hidden clips the hairline rows to the card radius, so the
 					    focus indicator has to draw inside: outline, not ring. */}
-					<div className="overflow-hidden rounded-2xl border border-(--rule-2) bg-(--sheet) shadow-(--lp-shadow)">
+					<div className="lp-lift overflow-hidden rounded-2xl border border-(--rule-2) bg-(--sheet)">
 						<CardEyebrowRow label="Line items" index={`${chosen.length} selected`} />
 						<ul>
 							{SERVICES.map((s) => {
@@ -204,7 +204,7 @@ export function TryIt() {
 				</div>
 
 				{/* --------------------------------------------- what the client sees */}
-				<div className="relative rounded-2xl border border-(--rule-2) bg-(--sheet) shadow-(--lp-shadow)">
+				<div className="relative rounded-2xl border border-(--rule-2) bg-(--sheet)">
 					<PlusCorners />
 
 					<div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 px-5 pb-4 pt-[18px]">

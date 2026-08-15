@@ -91,8 +91,8 @@ export function FinalCta() {
 	};
 
 	return (
-		<Section pad="tight">
-			<div className="relative rounded-[20px] border border-(--rule-2) bg-(--sheet) shadow-(--lp-shadow)">
+		<Section pad="tight" divider>
+			<div className="relative rounded-[20px] border border-(--rule-2) bg-(--sheet)">
 				<NightLattice />
 				<PlusCorners />
 				<GridBackdrop
@@ -102,10 +102,10 @@ export function FinalCta() {
 					className="rounded-[19px]"
 				/>
 
-				<div className="relative grid justify-items-center gap-5 px-[clamp(24px,4vw,72px)] py-[clamp(40px,6vw,88px)] text-center">
+				<div className="relative grid justify-items-center px-[clamp(24px,4vw,72px)] py-[clamp(40px,6vw,88px)] text-center">
 					<Eyebrow>Free plan · no card required</Eyebrow>
 
-					<h2 className="max-w-[18ch] text-[clamp(30px,4.4vw,54px)] font-semibold leading-[1.03] tracking-[-0.04em] text-balance">
+					<h2 className="mt-4 max-w-[18ch] text-[clamp(30px,4.4vw,54px)] font-semibold leading-[1.03] tracking-[-0.04em] text-balance">
 						Send your first quote{" "}
 						<RoughMark type="underline" className="whitespace-nowrap">
 							before lunch
@@ -119,7 +119,7 @@ export function FinalCta() {
 						to talk to first.
 					</Lede>
 
-					<div className="mt-2 flex flex-wrap justify-center gap-3">
+					<div className="mt-7 flex flex-wrap justify-center gap-3">
 						<InkButton href="/sign-up">
 							Start free{" "}
 							<span aria-hidden="true" className="text-[15px]">
@@ -132,7 +132,7 @@ export function FinalCta() {
 						</SheetButton>
 					</div>
 
-					<p className="mt-1 text-[14.5px] text-(--ink-3)">
+					<p className="mt-6 text-[14.5px] text-(--ink-3)">
 						Want a walkthrough instead?{" "}
 						<button
 							type="button"

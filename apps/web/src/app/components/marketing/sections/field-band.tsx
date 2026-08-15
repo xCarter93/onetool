@@ -11,7 +11,7 @@ const WASH =
 
 export function FieldBand() {
 	return (
-		<section className="relative border-b border-(--rule)">
+		<section className="relative">
 			<figure className="relative h-[clamp(280px,38vw,520px)] overflow-hidden">
 				<Image
 					src="/landing/field-dawn-van.jpg"
@@ -29,7 +29,7 @@ export function FieldBand() {
 				<figcaption className="absolute inset-0 flex items-center">
 					<Container className="w-full">
 						<Eyebrow>6:41 AM</Eyebrow>
-						<p className="mt-3 max-w-[20rem] text-[clamp(24px,3vw,38px)] font-semibold leading-[1.1] tracking-[-0.03em] text-balance text-(--ink)">
+						<p className="mt-3 max-w-[20rem] text-[clamp(26px,3.2vw,42px)] font-semibold leading-[1.1] tracking-[-0.03em] text-balance text-(--ink)">
 							{"You're already working. The paperwork should be too."}
 						</p>
 					</Container>

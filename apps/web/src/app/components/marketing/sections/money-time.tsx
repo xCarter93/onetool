@@ -17,14 +17,14 @@ const TIME_SAVERS = [
 ] as const;
 
 const CARD =
-	"flex flex-col rounded-2xl border border-(--rule-2) bg-(--sheet) p-[clamp(24px,2.6vw,36px)] [box-shadow:var(--lp-shadow)]";
+	"flex flex-col rounded-2xl border border-(--rule-2) bg-(--sheet) p-[clamp(24px,2.6vw,36px)]";
 const CARD_HEADING =
 	"mt-[14px] text-[clamp(24px,2.6vw,34px)] font-semibold leading-[1.1] tracking-[-0.03em] text-balance";
 const CARD_BODY = "mt-[14px] text-[16.5px] leading-[1.6] text-(--ink-2) text-pretty";
 
 export function MoneyTime() {
 	return (
-		<Section id="money-time">
+		<Section id="money-time" divider>
 			<div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,300px),1fr))] items-end gap-[clamp(20px,4vw,56px)]">
 				<SectionHeading className="mt-0 max-w-[18ch]">
 					Two things it buys back.
@@ -35,7 +35,7 @@ export function MoneyTime() {
 				</Lede>
 			</div>
 
-			<div className="mt-[clamp(32px,4vw,56px)] grid grid-cols-[repeat(auto-fit,minmax(min(100%,340px),1fr))] items-stretch gap-[clamp(20px,3vw,28px)]">
+			<div className="mt-[clamp(40px,6vw,80px)] grid grid-cols-[repeat(auto-fit,minmax(min(100%,340px),1fr))] items-stretch gap-[clamp(20px,3vw,28px)]">
 				<article className={CARD}>
 					<Eyebrow>Money</Eyebrow>
 					<h3 className={CARD_HEADING}>

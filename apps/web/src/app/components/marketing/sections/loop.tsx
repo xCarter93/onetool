@@ -1,9 +1,10 @@
 import { Eyebrow, Lede, Section, SectionHeading } from "../primitives";
 import { RoughMark } from "../rough-mark";
 
-/* The loop: eight steps as a 1px-gap hairline mosaic. A single 20s cycle walks
+/* The loop: five steps as a 1px-gap hairline mosaic. A single 20s cycle walks
  * the rails left-to-right across the grid — each step's fill/dot share the same
- * keyframes offset by i * 2.5s, so exactly one card is "live" at a time.
+ * keyframes offset by i * 4s — the 20% fill window tiles the cycle exactly, so
+ * one card is always "live".
  * Delays are inline styles: a template-built class name never reaches the JIT. */
 
 const STEPS = [
@@ -21,44 +22,26 @@ const STEPS = [
 	},
 	{
 		n: "03",
-		title: "They sign it",
-		body: "A link, their phone, a finger. The quote flips to approved and you get told the second it happens.",
-		detail: "E-signature via BoldSign",
+		title: "They sign it, the calendar fills",
+		body: "A link, their phone, a finger — the quote flips to approved and you get told the second it happens. It becomes visits and tasks on the calendar, assigned to a crew, address and notes attached.",
+		detail: "E-signature via BoldSign · one-off or recurring",
 	},
 	{
 		n: "04",
-		title: "The work gets scheduled",
-		body: "The approved quote becomes visits and tasks on the calendar, assigned to a crew, address and notes attached.",
-		detail: "One-off or recurring",
+		title: "The work gets done and invoiced",
+		body: "Pick the day's stops and get them back in driving order on a real map, with drive times the crew follows from the phone. The invoice is one click off the approved quote — same totals, nothing retyped and nothing to argue about.",
+		detail: "Optimised route · quote → invoice, one click",
 	},
 	{
 		n: "05",
-		title: "The day gets a route",
-		body: "Pick the stops and get them back in driving order on a real map, with drive times. The crew follows it from the phone.",
-		detail: "Optimised route · drive times",
-	},
-	{
-		n: "06",
-		title: "The invoice writes itself",
-		body: "One click off the approved quote. Same totals, same line items, nothing retyped and nothing to argue about.",
-		detail: "Quote → invoice, one click",
-	},
-	{
-		n: "07",
 		title: "You get paid",
-		body: "They pay by card on the portal. With Stripe Connect it settles into your account, and the job closes itself out.",
-		detail: "Stripe Connect · card payments",
-	},
-	{
-		n: "08",
-		title: "The follow-up runs itself",
-		body: "Friday 7:00 AM, the overdue list gets walked one invoice at a time: recent ones get a reminder, the late ones become a call task.",
-		detail: "Automations · you wake up to a finished run",
+		body: "They pay by card on the portal, it settles into your account, and the job closes itself out. Friday 7:00 AM the overdue list gets walked one invoice at a time: recent ones get a reminder, the late ones become a call task.",
+		detail: "Stripe Connect · automated follow-up you wake up to",
 	},
 ] as const;
 
 const CYCLE = "20s";
-const STEP_DELAY = 2.5;
+const STEP_DELAY = 4;
 
 export function Loop() {
 	return (
@@ -87,13 +70,21 @@ export function Loop() {
 				</Lede>
 			</div>
 
-			<ol className="mt-[clamp(32px,4vw,56px)] grid grid-cols-[repeat(auto-fit,minmax(min(100%,290px),1fr))] gap-px overflow-hidden rounded-2xl border border-(--rule-2) bg-(--rule-2)">
+			<ol className="mt-[clamp(40px,6vw,80px)] grid grid-cols-1 gap-px overflow-hidden rounded-2xl border border-(--rule-2) bg-(--rule-2) sm:grid-cols-6">
 				{STEPS.map((s, i) => {
 					const delay = `${i * STEP_DELAY}s`;
+					/* 6-col track: 3 + 2 on lg, 2 + 2 + 1-full on sm. Every row fills
+					   the track, so no hairline cell shows through the mosaic. */
+					const span =
+						i < 3
+							? "sm:col-span-3 lg:col-span-2"
+							: i === STEPS.length - 1
+								? "sm:col-span-6 lg:col-span-3"
+								: "sm:col-span-3 lg:col-span-3";
 					return (
 						<li
 							key={s.n}
-							className="grid min-h-[230px] content-start gap-[14px] bg-(--sheet) p-[clamp(22px,2.4vw,32px)]"
+							className={`grid min-h-[250px] content-start gap-[14px] bg-(--sheet) p-[clamp(22px,2.4vw,32px)] ${span}`}
 						>
 							<div className="flex items-center gap-[10px]">
 								<span className="font-mono text-[11.5px] font-medium tracking-[0.12em] tabular-nums text-(--accent-ink)">

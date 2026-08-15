@@ -109,7 +109,7 @@ export function Pricing() {
 					<SectionHeading className="max-w-[16ch]">
 						<RoughMark type="highlight">Free</RoughMark> until you outgrow it.
 					</SectionHeading>
-					<Lede className="mt-[14px] max-w-[34rem]">
+					<Lede className="max-w-[34rem]">
 						Start on the free plan and upgrade the week it starts paying for itself. If
 						you&rsquo;d rather be walked through it first, book a demo and we&rsquo;ll call
 						you.
@@ -119,9 +119,9 @@ export function Pricing() {
 				<BillingToggle annual={annual} onChange={setAnnual} />
 			</div>
 
-			<div className="mt-[clamp(32px,4vw,52px)] grid max-w-[64rem] grid-cols-[repeat(auto-fit,minmax(min(100%,300px),1fr))] gap-[clamp(16px,2vw,24px)]">
+			<div className="mt-[clamp(40px,6vw,80px)] grid max-w-[64rem] grid-cols-[repeat(auto-fit,minmax(min(100%,300px),1fr))] gap-[clamp(16px,2vw,24px)]">
 				{/* Free */}
-				<div className="grid content-start gap-5 rounded-2xl border border-(--rule-2) bg-(--paper) p-[clamp(24px,3vw,36px)]">
+				<div className="lp-lift grid content-start gap-5 rounded-2xl border border-(--rule-2) bg-(--paper) p-[clamp(24px,3vw,36px)]">
 					<div>
 						<p className="text-[12px] font-semibold uppercase tracking-[0.1em] text-(--ink-3)">
 							Free
@@ -151,7 +151,7 @@ export function Pricing() {
 				</div>
 
 				{/* Business — the featured plate */}
-				<div className="relative grid content-start gap-5 rounded-2xl border border-(--rule-3) bg-(--paper) p-[clamp(24px,3vw,36px)] shadow-(--lp-shadow)">
+				<div className="lp-lift relative grid content-start gap-5 rounded-2xl border border-(--rule-3) bg-(--paper) p-[clamp(24px,3vw,36px)]">
 					<PlusCorners />
 					<div
 						aria-hidden="true"

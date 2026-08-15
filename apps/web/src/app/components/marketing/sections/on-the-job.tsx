@@ -65,6 +65,7 @@ export function OnTheJob() {
 	return (
 		<Section
 			id="phone"
+			divider
 			className="overflow-hidden"
 			containerClassName="grid grid-cols-[repeat(auto-fit,minmax(min(100%,340px),1fr))] items-center gap-[clamp(28px,4vw,64px)]"
 		>
@@ -73,12 +74,12 @@ export function OnTheJob() {
 				<SectionHeading size="md">
 					Works in the truck. Works with one bar. Works with none.
 				</SectionHeading>
-				<Lede className="mt-[18px] max-w-[32rem]">
+				<Lede className="max-w-[32rem]">
 					The iOS app keeps your day on the device, so a basement with no signal
 					doesn&rsquo;t stop you writing up the visit. When you come back into range it
 					syncs — no &ldquo;retry&rdquo;, no lost notes.
 				</Lede>
-				<ul className="mt-[26px] grid max-w-[30rem] gap-[10px]">
+				<ul className="mt-7 grid max-w-[30rem] gap-[10px]">
 					<CheckItem>Real-time sync between phone and web</CheckItem>
 					<CheckItem>Offline day plan with addresses and notes</CheckItem>
 					<CheckItem>Switch between organisations on the go</CheckItem>
@@ -87,7 +88,7 @@ export function OnTheJob() {
 					href={APP_STORE_URL}
 					target="_blank"
 					rel="noopener noreferrer"
-					className="mt-[26px] inline-flex items-center gap-2 text-[16px] font-semibold text-(--accent-ink)"
+					className="mt-7 inline-flex items-center gap-2 text-[16px] font-semibold text-(--accent-ink)"
 				>
 					Get it on the App Store <span aria-hidden="true">→</span>
 				</a>

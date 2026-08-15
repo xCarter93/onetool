@@ -184,7 +184,7 @@ const cellCls = (v: Vendor, extra?: string) =>
 function LedgerTable({ crew }: { crew: CrewSize }) {
 	return (
 		<div className="relative mt-9 hidden md:block">
-			<div className="relative rounded-[14px] border border-(--rule-2) bg-(--sheet) shadow-(--lp-shadow)">
+			<div className="relative rounded-[14px] border border-(--rule-2) bg-(--sheet)">
 				<table className="w-full table-fixed border-collapse">
 					<caption className="sr-only">
 						Published monthly price and included features for a crew of {crew}{" "}
@@ -316,7 +316,7 @@ function VendorCard({ v, crew }: { v: Vendor; crew: CrewSize }) {
 	return (
 		<article
 			className={cn(
-				"relative rounded-[14px] border bg-(--sheet) shadow-(--lp-shadow)",
+				"relative rounded-[14px] border bg-(--sheet)",
 				v.isUs ? "border-(--rule-3)" : "border-(--rule-2)"
 			)}
 		>
@@ -423,18 +423,19 @@ export function Compare() {
 
 	// Paper scheme, not sheet: Numbers above is already a sheet band, and the
 	// ledger card is --sheet — it needs paper behind it to read as a card.
+	// OnTheJob below is paper too, so this boundary needs the hairline seam.
 	return (
-		<Section id="compare">
+		<Section id="compare" divider>
 			<Eyebrow>Compare</Eyebrow>
 			<SectionHeading>Priced for crews, not for seats.</SectionHeading>
-			<Lede className="mt-[14px] max-w-[46rem]">
+			<Lede className="max-w-[46rem]">
 				Jobber adds $29 a month for every user past the plan allowance. Housecall Pro&rsquo;s
 				entry plan covers one person, and extra seats are sold only on its top plan.
 				ServiceTitan prices per technician and publishes no number at all. OneTool is one
 				price for the whole company, however many of you there are.
 			</Lede>
 
-			<div className="mt-8">
+			<div className="mt-[clamp(40px,6vw,80px)]">
 				<CrewStepper crew={crew} onChange={setCrew} />
 			</div>
 

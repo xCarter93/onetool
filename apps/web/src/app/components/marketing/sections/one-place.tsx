@@ -372,16 +372,16 @@ export function OnePlace() {
 			<div className="relative grid items-start gap-[clamp(32px,5vw,80px)] [grid-template-columns:repeat(auto-fit,minmax(min(100%,360px),1fr))]">
 				<div>
 					<Eyebrow>The old way</Eyebrow>
-					<SectionHeading className="mt-5">
+					<SectionHeading>
 						Five places to look. <span className="text-(--accent-ink)">One job</span> to
 						do.
 					</SectionHeading>
-					<Lede className="mt-5 max-w-[34rem]">
+					<Lede className="max-w-[34rem]">
 						Email, a spreadsheet, a notebook, the group text and a sticky note on the
 						dash. None of them know about each other, so you become the integration.
 					</Lede>
 
-					<div className="mt-[clamp(28px,3.5vw,44px)] grid max-w-[30rem] gap-[22px]">
+					<div className="mt-[clamp(40px,6vw,80px)] grid max-w-[30rem] gap-[22px]">
 						<div className="border-t border-dashed border-(--rule-2) pt-[18px]">
 							<h3 className="text-[19px] font-medium leading-[1.35] tracking-[-0.02em]">
 								The address exists in five handwritings

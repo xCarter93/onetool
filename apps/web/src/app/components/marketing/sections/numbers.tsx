@@ -133,7 +133,7 @@ export function Numbers() {
 					<SectionHeading size="md">
 						Know where the month stands without opening a spreadsheet.
 					</SectionHeading>
-					<Lede className="mt-[18px] max-w-[32rem] text-[16.5px]">
+					<Lede className="max-w-[32rem]">
 						Set a revenue goal and watch it fill. See what&apos;s quoted, what&apos;s
 						outstanding, and which clients are worth the drive — read straight off
 						your real quotes and invoices.
@@ -141,7 +141,7 @@ export function Numbers() {
 				</div>
 
 				{/* On the sheet band the featured card inverts to paper. */}
-				<figure className="overflow-hidden rounded-2xl border border-(--rule-2) bg-(--paper) shadow-(--lp-shadow)">
+				<figure className="overflow-hidden rounded-2xl border border-(--rule-2) bg-(--paper)">
 					<figcaption className="flex items-baseline justify-between gap-3 border-b border-(--rule) px-[22px] py-[18px]">
 						<span className="text-[15px] font-semibold tracking-[-0.01em]">
 							Revenue · last 6 months

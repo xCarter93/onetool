@@ -10,7 +10,7 @@ const WASH =
 
 export function DuskBand() {
 	return (
-		<section className="relative border-b border-(--rule)">
+		<section className="relative">
 			<figure className="relative h-[clamp(280px,38vw,520px)] overflow-hidden">
 				<Image
 					src="/landing/crew-dusk.jpg"
@@ -29,7 +29,7 @@ export function DuskBand() {
 					<Container className="flex w-full justify-end">
 						<div className="max-w-[22rem] text-right">
 							<Eyebrow className="justify-end">5:48 PM</Eyebrow>
-							<p className="mt-3 text-[clamp(24px,3vw,38px)] font-semibold leading-[1.1] tracking-[-0.03em] text-balance text-(--ink)">
+							<p className="mt-3 text-[clamp(26px,3.2vw,42px)] font-semibold leading-[1.1] tracking-[-0.03em] text-balance text-(--ink)">
 								The paperwork already did itself.
 							</p>
 							<p className="mt-3 text-[15px] leading-[1.6] text-(--ink-2)">

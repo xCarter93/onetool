@@ -103,6 +103,7 @@
 		"stripe": "22.1.1",
 		"svix": "^1.76.1",
 		"tailwind-merge": "^3.4.0",
+		"three": "^0.185.1",
 		"tunnel-rat": "^0.1.2",
 		"zod": "^4.1.8"
 	},
@@ -121,6 +122,7 @@
 		"@types/qrcode": "^1.5.6",
 		"@types/react": "^19.2.0",
 		"@types/react-dom": "^19.2.0",
+		"@types/three": "^0.185.4",
 		"@vitest/coverage-v8": "^4.0.16",
 		"convex-test": "^0.0.41",
 		"eslint": "^9",

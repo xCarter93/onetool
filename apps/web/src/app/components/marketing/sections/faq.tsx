@@ -46,12 +46,13 @@ export function Faq() {
 	return (
 		<Section
 			id="faq"
+			divider
 			containerClassName="grid grid-cols-[repeat(auto-fit,minmax(min(100%,280px),1fr))] gap-[clamp(28px,4vw,72px)]"
 		>
 			<div>
 				<Eyebrow>FAQ</Eyebrow>
 				<SectionHeading size="md">Straight answers</SectionHeading>
-				<Lede className="mt-4 max-w-[24rem] text-base">
+				<Lede className="max-w-[24rem]">
 					Anything else, email{" "}
 					<a
 						href="mailto:support@onetool.biz"

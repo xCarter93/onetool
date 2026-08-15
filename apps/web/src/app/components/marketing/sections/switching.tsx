@@ -27,7 +27,7 @@ export function Switching() {
 			<div>
 				<Eyebrow>Switching over</Eyebrow>
 				<SectionHeading size="sm">Bring the list you already have.</SectionHeading>
-				<Lede className="mt-[14px] max-w-[30rem]">
+				<Lede className="max-w-[30rem]">
 					Export a CSV from whatever you&rsquo;re using — or the spreadsheet on the
 					office laptop — and OneTool reads it, works out which column is which, and
 					matches names to clients you already have.
@@ -67,7 +67,7 @@ export function Switching() {
 					</span>
 				</div>
 
-				<div className="overflow-hidden rounded-[12px] border border-(--rule-2) bg-(--sheet) shadow-(--lp-shadow)">
+				<div className="overflow-hidden rounded-[12px] border border-(--rule-2) bg-(--sheet)">
 					{IMPORTED.map((row) => (
 						<div
 							key={row.name}

@@ -1,6 +1,6 @@
 import type { CSSProperties } from "react";
 import { InkButton } from "../marketing-nav";
-import { HalftoneMark } from "../halftone-mark";
+import { WireframeMark } from "../wireframe-mark";
 import { HeroReelCta } from "../reel-lightbox";
 import {
 	CheckItem,
@@ -92,7 +92,7 @@ export function Hero() {
 					<div className="lp-rise mt-5" style={at("60ms")}>
 						<SectionHeading
 							as="h1"
-							className="mt-0 max-w-none text-[clamp(40px,6.4vw,76px)] leading-[0.99] tracking-[-0.045em]"
+							className="mt-0 max-w-[26ch] text-balance text-[clamp(44px,6.8vw,96px)] leading-[0.99] tracking-[-0.045em]"
 						>
 							Quote it. Get it signed.
 							<br />
@@ -139,7 +139,7 @@ export function Hero() {
 					className="lp-fade relative flex min-h-[clamp(300px,40vw,560px)] items-center justify-center"
 					style={at("100ms")}
 				>
-					<HalftoneMark className="aspect-square w-full max-w-[560px]" />
+					<WireframeMark className="aspect-square w-full max-w-[560px]" />
 				</div>
 			</Container>
 
@@ -154,46 +154,53 @@ export function Hero() {
 					</p>
 				</div>
 
-				<div className="relative rounded-[14px] border border-(--rule-2) bg-(--sheet) shadow-(--lp-shadow)">
-					<PlusCorners />
+				{/* life-size: the ledger holds product scale and CROPS on narrow
+				    viewports (swipeable) rather than shrinking. The -mx/px pair
+				    bleeds the scroll region to the viewport edge; -my/py gives the
+				    plus corners and the lp-rise translate room without moving
+				    anything. */}
+				<div className="-mx-[clamp(20px,4vw,40px)] -my-4 overflow-x-auto overflow-y-hidden px-[clamp(20px,4vw,40px)] py-4 scrollbar-hide">
+					<div className="relative min-w-[980px] rounded-[14px] border border-(--rule-2) bg-(--sheet)">
+						<PlusCorners />
 
-					<div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,190px),1fr))]">
-						{LEDGER.map((step, i) => (
-							<div
-								key={step.stage}
-								className="lp-rise grid content-start gap-[9px] border-r border-(--rule) px-[18px] py-5"
-								style={at(`${(0.25 + i * 0.12).toFixed(2)}s`)}
-							>
-								<div className="flex items-center gap-2">
-									<span
-										aria-hidden="true"
-										className={`h-[7px] w-[7px] flex-shrink-0 rounded-full ${DOT[step.tone]}`}
-									/>
-									<span
-										className={`font-mono text-[10.5px] font-medium uppercase tracking-[0.12em] ${STAGE[step.tone]}`}
-									>
-										{step.stage}
-									</span>
+						<div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,190px),1fr))]">
+							{LEDGER.map((step, i) => (
+								<div
+									key={step.stage}
+									className="lp-rise grid content-start gap-[9px] border-r border-(--rule) px-[18px] py-5"
+									style={at(`${(0.25 + i * 0.12).toFixed(2)}s`)}
+								>
+									<div className="flex items-center gap-2">
+										<span
+											aria-hidden="true"
+											className={`h-[7px] w-[7px] flex-shrink-0 rounded-full ${DOT[step.tone]}`}
+										/>
+										<span
+											className={`font-mono text-[10.5px] font-medium uppercase tracking-[0.12em] ${STAGE[step.tone]}`}
+										>
+											{step.stage}
+										</span>
+									</div>
+									<p className="text-[15px] font-medium leading-[1.35] tracking-[-0.01em]">
+										{step.label}
+									</p>
+									<p className="font-mono text-[11.5px] tabular-nums text-(--ink-3)">
+										{step.when}
+									</p>
 								</div>
-								<p className="text-[15px] font-medium leading-[1.35] tracking-[-0.01em]">
-									{step.label}
-								</p>
-								<p className="font-mono text-[11.5px] tabular-nums text-(--ink-3)">
-									{step.when}
-								</p>
-							</div>
-						))}
-					</div>
+							))}
+						</div>
 
-					<div className="flex flex-wrap items-center justify-between gap-5 rounded-b-[13px] border-t border-(--rule) bg-(--paid-wash) px-[18px] py-4">
-						<p className="text-sm text-(--ink-2)">
-							{"Three days from “can you take a look?” to money in the bank."}
-						</p>
-						<p className="text-xl font-semibold tabular-nums tracking-[-0.02em] text-(--paid)">
-							<RoughMark type="circle" color="var(--paid)" delay={180}>
-								$4,180.00 paid
-							</RoughMark>
-						</p>
+						<div className="flex flex-wrap items-center justify-between gap-5 rounded-b-[13px] border-t border-(--rule) bg-(--paid-wash) px-[18px] py-4">
+							<p className="text-sm text-(--ink-2)">
+								{"Three days from “can you take a look?” to money in the bank."}
+							</p>
+							<p className="text-xl font-semibold tabular-nums tracking-[-0.02em] text-(--paid)">
+								<RoughMark type="circle" color="var(--paid)" delay={180}>
+									$4,180.00 paid
+								</RoughMark>
+							</p>
+						</div>
 					</div>
 				</div>
 

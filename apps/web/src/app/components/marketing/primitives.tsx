@@ -68,41 +68,6 @@ export function Section({
 	);
 }
 
-/** Standard intro stack (eyebrow → heading → lede → actions) with the fixed
- * rhythm every section shares: 16px above the heading, 12px above the lede,
- * 28px above actions. Content after an intro sits at mt-[clamp(40px,6vw,80px)].
- * Bespoke two-column intros keep those same gaps by hand. */
-export function SectionIntro({
-	eyebrow,
-	heading,
-	lede,
-	actions,
-	align = "start",
-	className,
-}: {
-	eyebrow?: ReactNode;
-	heading: ReactNode;
-	lede?: ReactNode;
-	actions?: ReactNode;
-	align?: "start" | "center";
-	className?: string;
-}) {
-	return (
-		<div
-			className={cn(
-				"flex flex-col",
-				align === "center" && "items-center text-center",
-				className
-			)}
-		>
-			{eyebrow}
-			{heading}
-			{lede}
-			{actions ? <div className="mt-7 flex flex-wrap items-center gap-3">{actions}</div> : null}
-		</div>
-	);
-}
-
 /** Mono eyebrow with the 14×7 accent marker — every section opens with one. */
 export function Eyebrow({
 	children,
