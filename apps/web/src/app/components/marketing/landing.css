@@ -1,0 +1,204 @@
+/* ============================================================================
+ * LANDING PAPER-AND-INK LANGUAGE — marketing surface only.
+ *
+ * Token values come verbatim from the approved Claude Design comp
+ * (.planning/landing-redesign-2026-08/design-import/OneTool Landing.dc.html).
+ * Scoped to `.dc-landing` so nothing leaks into the workspace; the dark block
+ * keys off next-themes' `.dark` on <html>.
+ *
+ * Contrast contract: --accent (brand sky) is decorative-only — fills, marks,
+ * rails. Text in the accent hue must use --accent-ink (AA on paper in both
+ * themes). --ink-3 is timestamps/annotations only, never body copy.
+ * ========================================================================== */
+
+.dc-landing {
+	--paper: oklch(0.975 0.002 286);
+	--ink: oklch(0.16 0.008 285.8);
+	--ink-2: oklch(0.47 0.016 285.9);
+	--ink-3: oklch(0.62 0.014 285.9);
+	--sheet: oklch(1 0 0);
+	--rule: color-mix(in oklch, var(--ink) 11%, transparent);
+	--rule-2: color-mix(in oklch, var(--ink) 20%, transparent);
+	--rule-3: color-mix(in oklch, var(--ink) 38%, transparent);
+	--accent: rgb(0, 166, 244);
+	--accent-ink: oklch(0.5 0.134 242.749);
+	--accent-wash: color-mix(in srgb, rgb(0, 166, 244) 9%, var(--paper));
+	--paid: oklch(0.52 0.13 163.2);
+	--paid-wash: color-mix(in oklch, oklch(0.596 0.145 163.225) 12%, var(--paper));
+	--lp-shadow: 0 1px 2px rgba(16, 24, 40, 0.04), 0 8px 24px -12px rgba(16, 24, 40, 0.12);
+	--lp-ease: cubic-bezier(0.23, 1, 0.32, 1);
+	--lp-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+
+	background: var(--paper);
+	color: var(--ink);
+}
+
+.dark .dc-landing {
+	--paper: oklch(0.168 0.019 264.665);
+	--ink: oklch(0.985 0 0);
+	--ink-2: oklch(0.705 0.015 286.067);
+	--ink-3: oklch(0.6 0.015 286);
+	--sheet: oklch(0.208 0.014 265);
+	--rule: color-mix(in oklch, var(--ink) 12%, transparent);
+	--rule-2: color-mix(in oklch, var(--ink) 20%, transparent);
+	--rule-3: color-mix(in oklch, var(--ink) 42%, transparent);
+	--accent: oklch(0.685 0.169 237.323);
+	--accent-ink: oklch(0.746 0.16 232.661);
+	--accent-wash: color-mix(in srgb, oklch(0.685 0.169 237.323) 14%, var(--paper));
+	--paid: oklch(0.696 0.17 162.48);
+	--paid-wash: color-mix(in oklch, oklch(0.596 0.145 163.225) 18%, var(--paper));
+	--lp-shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 10px 30px -14px rgba(0, 0, 0, 0.6);
+}
+
+/* The "one place" band re-inks itself dark in BOTH themes (comp section #one-place).
+   Applied via className="lp-scheme-dark" on the section. */
+.dc-landing .lp-scheme-dark {
+	--paper: oklch(0.19 0.014 265);
+	--ink: oklch(0.975 0 0);
+	--ink-2: oklch(0.765 0.012 286);
+	--ink-3: oklch(0.615 0.014 286);
+	--sheet: oklch(0.235 0.015 265);
+	--rule: color-mix(in oklch, #fff 12%, transparent);
+	--rule-2: color-mix(in oklch, #fff 22%, transparent);
+	--rule-3: color-mix(in oklch, #fff 40%, transparent);
+	--accent-ink: oklch(0.78 0.13 232);
+	background: var(--paper);
+	color: var(--ink);
+}
+
+/* Anchored sections sit under the sticky 64px nav. */
+.dc-landing [id] {
+	scroll-margin-top: 72px;
+}
+
+html:has(.dc-landing) {
+	scroll-behavior: smooth;
+}
+
+/* ---------------------------------------------------------------- motion ---- */
+/* One entrance (rise), one ambient set. All names lp-prefixed: keyframes are
+   document-global. Every class lands on its terminal state under reduced motion. */
+
+@keyframes lp-rise {
+	from {
+		opacity: 0;
+		translate: 0 16px;
+	}
+	to {
+		opacity: 1;
+		translate: 0 0;
+	}
+}
+@keyframes lp-fade {
+	from {
+		opacity: 0;
+	}
+	to {
+		opacity: 1;
+	}
+}
+@keyframes lp-ripple {
+	0%,
+	100% {
+		scale: 1;
+	}
+	50% {
+		scale: 0.93;
+	}
+}
+@keyframes lp-dashflow {
+	to {
+		stroke-dashoffset: -14;
+	}
+}
+@keyframes lp-loopfill {
+	0% {
+		transform: scaleX(0);
+	}
+	11% {
+		transform: scaleX(1);
+	}
+	12.5%,
+	100% {
+		transform: scaleX(0);
+	}
+}
+@keyframes lp-loopnum {
+	0%,
+	1% {
+		opacity: 0;
+	}
+	2%,
+	11% {
+		opacity: 1;
+	}
+	12.5%,
+	100% {
+		opacity: 0;
+	}
+}
+@keyframes lp-slidedot {
+	0% {
+		left: 0;
+		opacity: 0;
+	}
+	12% {
+		opacity: 1;
+	}
+	88% {
+		opacity: 1;
+	}
+	100% {
+		left: calc(100% - 6px);
+		opacity: 0;
+	}
+}
+@keyframes lp-scanline {
+	0% {
+		top: 2px;
+		opacity: 0;
+	}
+	12% {
+		opacity: 0.9;
+	}
+	85% {
+		opacity: 0.9;
+	}
+	100% {
+		top: calc(100% - 4px);
+		opacity: 0;
+	}
+}
+@keyframes lp-nudge {
+	0%,
+	100% {
+		transform: translateX(0);
+	}
+	50% {
+		transform: translateX(4px);
+	}
+}
+
+.lp-rise {
+	animation: lp-rise 0.7s var(--lp-ease) var(--lp-delay, 0s) both;
+}
+.lp-fade {
+	animation: lp-fade 1s var(--lp-ease) var(--lp-delay, 0s) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.dc-landing *,
+	.dc-landing *::before,
+	.dc-landing *::after {
+		animation: none !important;
+		transition: none !important;
+	}
+	.dc-landing .lp-rise,
+	.dc-landing .lp-fade {
+		opacity: 1;
+		translate: none;
+	}
+	html:has(.dc-landing) {
+		scroll-behavior: auto;
+	}
+}
