@@ -1,5 +1,6 @@
 import { CardEyebrowRow, Eyebrow, Section, SectionHeading } from "../primitives";
-import { JobScenePlayer, type JobSceneKey } from "../scene-player";
+import { JobScenePlayer } from "../scene-player-lazy";
+import type { JobSceneKey } from "../scene-player";
 
 /* WHAT'S INSIDE — three product-media cards, each a live job scene.
  * Copy is verbatim from the comp (design-import/OneTool Landing.dc.html,

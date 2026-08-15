@@ -283,26 +283,3 @@ export function ReelLightbox({
 		</Dialog>
 	);
 }
-
-/**
- * The hero's secondary CTA. A tiny client island so `sections/hero.tsx` stays a
- * server component: the button carries `SheetButton`'s exact styling (that
- * primitive only renders an anchor, and this opens an overlay rather than
- * navigating).
- */
-export function HeroReelCta() {
-	const [open, setOpen] = useState(false);
-
-	return (
-		<>
-			<button
-				type="button"
-				onClick={() => setOpen(true)}
-				className="inline-flex h-[52px] items-center rounded-[11px] border border-(--rule-2) bg-(--sheet) px-[22px] text-[17px] font-medium text-(--ink) transition-colors hover:border-(--rule-3) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--accent-ink) focus-visible:ring-offset-2 focus-visible:ring-offset-(--paper)"
-			>
-				See a job run through it
-			</button>
-			<ReelLightbox open={open} onOpenChange={setOpen} />
-		</>
-	);
-}

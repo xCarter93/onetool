@@ -1,7 +1,7 @@
 import type { CSSProperties } from "react";
 import { InkButton } from "../marketing-nav";
 import { WireframeMark } from "../wireframe-mark";
-import { HeroReelCta } from "../reel-lightbox";
+import { HeroReelCta } from "../reel-cta";
 import {
 	CheckItem,
 	Container,

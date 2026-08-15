@@ -46,7 +46,11 @@ export const TimelineContent = <T extends keyof HTMLElementTagNameMap = "div">({
 		once,
 	});
 
-	const MotionComponent = motion[as || "div"] as React.ElementType;
+	// loose ComponentType (not React.ElementType): fiber augments JSX.IntrinsicElements
+	// with three.js tags, which collapses ElementType's renderable props to never
+	const MotionComponent = motion[as || "div"] as React.ComponentType<
+		React.PropsWithChildren<Record<string, unknown>>
+	>;
 
 	return (
 		<MotionComponent

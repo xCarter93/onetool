@@ -1,11 +1,27 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { SignInButton, SignedIn, SignedOut } from "@clerk/nextjs";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import {
+	BarChart3,
+	BookOpen,
+	CalendarDays,
+	FileSignature,
+	LifeBuoy,
+	Map,
+	Receipt,
+	Rocket,
+	Sparkles,
+	Users,
+	Zap,
+	type LucideIcon,
+} from "lucide-react";
 import { ThemeSwitcher } from "@/components/layout/theme-switcher";
 import { cn } from "@/lib/utils";
+import { openReelLightbox } from "./reel-cta";
 
 const LINKS = [
 	{ href: "#one-place", label: "Why change" },
@@ -15,8 +31,333 @@ const LINKS = [
 	{ href: "#pricing", label: "Pricing" },
 ];
 
+/** Desktop drops "What's inside" — the Features trigger owns #work there. */
+const DESKTOP_LINKS = LINKS.filter((link) => link.href !== "#work");
+
 const LINK_CLASS =
 	"rounded-lg px-3 py-2 text-sm font-medium text-(--ink-2) transition-colors hover:bg-(--rule) hover:text-(--ink) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--accent-ink)";
+
+type FlyoutItem = {
+	icon: LucideIcon;
+	label: string;
+	description: string;
+	href: string;
+};
+
+/* Every row lands on a section that actually exists on this page — no invented
+ * anchors. Several capabilities share a section; that's honest, not a bug. */
+const FEATURE_ITEMS: FlyoutItem[] = [
+	{
+		icon: Users,
+		label: "Clients & CRM",
+		description: "Every client, contact, and property in one place",
+		href: "#work",
+	},
+	{
+		icon: FileSignature,
+		label: "Quotes & e-sign",
+		description: "Send quotes clients sign from their phone",
+		href: "#try-it",
+	},
+	{
+		icon: Receipt,
+		label: "Invoices & payments",
+		description: "Flip the quote to an invoice, get paid online",
+		href: "#money-time",
+	},
+	{
+		icon: CalendarDays,
+		label: "Scheduling & tasks",
+		description: "A day plan your crew actually runs",
+		href: "#work",
+	},
+	{
+		icon: Map,
+		label: "Route planning",
+		description: "Stops become an optimized route",
+		href: "#phone",
+	},
+	{
+		icon: Zap,
+		label: "Automations",
+		description: "Rules that run while you sleep",
+		href: "#loop",
+	},
+	{
+		icon: Sparkles,
+		label: "AI assistant",
+		description: "Ask in plain English, it does the work",
+		href: "#work",
+	},
+	{
+		icon: BarChart3,
+		label: "Reports",
+		description: "Live numbers without the spreadsheet",
+		href: "#numbers",
+	},
+];
+
+const RESOURCE_ITEMS: FlyoutItem[] = [
+	{
+		icon: BookOpen,
+		label: "Help Center",
+		description: "Guides for every part of OneTool",
+		href: "/help",
+	},
+	{
+		icon: Rocket,
+		label: "Getting started",
+		description: "Set up OneTool step by step",
+		href: "/help/getting-started",
+	},
+	{
+		icon: LifeBuoy,
+		label: "Contact support",
+		description: "Email our team for a hand",
+		href: "mailto:support@onetool.biz",
+	},
+];
+
+const LEGAL_ITEMS = [
+	{ label: "Terms of Service", href: "/terms-of-service" },
+	{ label: "Privacy Policy", href: "/privacy-policy" },
+	{ label: "Data Security", href: "/data-security" },
+];
+
+/** `--ease-out-quint`, the landing's canonical deceleration. */
+const EASE_OUT_QUINT = [0.23, 1, 0.32, 1] as const;
+
+/** Underline is inset to the label, not the pill padding. */
+const NAV_UNDERLINE =
+	"pointer-events-none absolute inset-x-3 bottom-1 h-[2px] origin-left rounded-full bg-(--accent) transition-transform duration-300 ease-out";
+
+/** Flyouts float above the sheet, so the one elevation token belongs here. */
+const PANEL_CLASS =
+	"rounded-[14px] border border-(--rule-2) bg-(--sheet) shadow-(--lp-shadow)";
+const EYEBROW_CLASS =
+	"font-mono text-[10.5px] font-medium uppercase tracking-[0.12em] text-(--ink-3)";
+const ROW_CLASS =
+	"flex items-start gap-3 rounded-[9px] p-3 text-left transition-colors hover:bg-(--paper) focus-visible:bg-(--paper) focus-visible:outline-none";
+const TILE_CLASS =
+	"mt-px flex h-9 w-9 shrink-0 items-center justify-center rounded-[9px] border border-(--rule) bg-(--accent-wash) text-(--accent-ink)";
+
+/** Shared open/close contract: hover, focus, Escape-to-refocus, blur-out. */
+function useFlyout<T extends HTMLElement>() {
+	const [open, setOpen] = useState(false);
+	const triggerRef = useRef<T>(null);
+	const panelId = useId();
+
+	const boundaryProps = {
+		className: "relative",
+		onMouseEnter: () => setOpen(true),
+		onMouseLeave: () => setOpen(false),
+		onKeyDown: (e: React.KeyboardEvent) => {
+			if (e.key === "Escape" && open) {
+				e.stopPropagation();
+				setOpen(false);
+				triggerRef.current?.focus();
+			}
+		},
+		// Moving focus outside the trigger/panel dismisses it.
+		onBlur: (e: React.FocusEvent) => {
+			if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
+				setOpen(false);
+			}
+		},
+	};
+
+	return { open, setOpen, triggerRef, panelId, boundaryProps };
+}
+
+/* Side-anchored, not centered: at the 1024px `lg` breakpoint a centered 38rem
+ * panel runs off the viewport and the page root's overflow-x-clip eats it. */
+function FlyoutPanel({
+	open,
+	align,
+	children,
+}: {
+	open: boolean;
+	align: "left" | "right";
+	children: React.ReactNode;
+}) {
+	const reduced = useReducedMotion();
+
+	return (
+		<AnimatePresence>
+			{open && (
+				<motion.div
+					initial={reduced ? false : { opacity: 0, y: 12 }}
+					animate={{ opacity: 1, y: 0 }}
+					exit={reduced ? { opacity: 1 } : { opacity: 0, y: 12 }}
+					transition={{ duration: reduced ? 0 : 0.25, ease: EASE_OUT_QUINT }}
+					className={cn(
+						"absolute top-full z-10 pt-3",
+						align === "left" ? "left-0" : "right-0"
+					)}
+				>
+					{children}
+				</motion.div>
+			)}
+		</AnimatePresence>
+	);
+}
+
+function FeaturesFlyout() {
+	const { open, setOpen, triggerRef, panelId, boundaryProps } =
+		useFlyout<HTMLAnchorElement>();
+
+	return (
+		<div {...boundaryProps}>
+			<a
+				ref={triggerRef}
+				href="#work"
+				onClick={() => setOpen(false)}
+				onFocus={() => setOpen(true)}
+				aria-expanded={open}
+				aria-controls={panelId}
+				className={cn(LINK_CLASS, "relative inline-flex")}
+			>
+				Features
+				<span
+					aria-hidden="true"
+					style={{ transform: open ? "scaleX(1)" : "scaleX(0)" }}
+					className={NAV_UNDERLINE}
+				/>
+			</a>
+			<FlyoutPanel open={open} align="left">
+				<div
+					id={panelId}
+					className={cn(PANEL_CLASS, "w-[min(38rem,calc(100vw-2.5rem))]")}
+				>
+					<p className={cn(EYEBROW_CLASS, "px-3 pb-1 pt-3")}>Everything inside</p>
+					<div className="grid grid-cols-2 gap-1 px-2 pb-2">
+						{FEATURE_ITEMS.map((item) => (
+							<a
+								key={item.label}
+								href={item.href}
+								onClick={() => setOpen(false)}
+								className={ROW_CLASS}
+							>
+								<span className={TILE_CLASS}>
+									<item.icon size={16} aria-hidden="true" />
+								</span>
+								<span className="min-w-0">
+									<span className="block text-[14px] font-medium leading-5 text-(--ink)">
+										{item.label}
+									</span>
+									<span className="mt-0.5 block text-[12.5px] leading-[1.45] text-(--ink-2)">
+										{item.description}
+									</span>
+								</span>
+							</a>
+						))}
+					</div>
+					<button
+						type="button"
+						onClick={() => {
+							setOpen(false);
+							openReelLightbox();
+						}}
+						className="flex w-full items-center justify-between rounded-b-[13px] border-t border-(--rule) px-5 py-3.5 text-left text-[14px] font-medium text-(--ink-2) transition-colors hover:bg-(--paper) hover:text-(--ink) focus-visible:outline-none focus-visible:bg-(--paper)"
+					>
+						Watch a job run through it
+						<span aria-hidden="true" className="text-(--accent-ink)">
+							→
+						</span>
+					</button>
+				</div>
+			</FlyoutPanel>
+		</div>
+	);
+}
+
+function ResourcesFlyout() {
+	const { open, setOpen, triggerRef, panelId, boundaryProps } =
+		useFlyout<HTMLAnchorElement>();
+
+	return (
+		<div {...boundaryProps}>
+			<Link
+				ref={triggerRef}
+				href="/help"
+				onClick={() => setOpen(false)}
+				onFocus={() => setOpen(true)}
+				aria-expanded={open}
+				aria-controls={panelId}
+				className={cn(LINK_CLASS, "relative inline-flex")}
+			>
+				Resources
+				<span
+					aria-hidden="true"
+					style={{ transform: open ? "scaleX(1)" : "scaleX(0)" }}
+					className={NAV_UNDERLINE}
+				/>
+			</Link>
+			<FlyoutPanel open={open} align="right">
+				<div
+					id={panelId}
+					className={cn(
+						PANEL_CLASS,
+						"grid w-[min(28rem,calc(100vw-2.5rem))] grid-cols-[1.5fr_1fr] gap-1 p-2"
+					)}
+				>
+					<div>
+						<p className={cn(EYEBROW_CLASS, "px-3 pb-1 pt-2")}>Support</p>
+						{RESOURCE_ITEMS.map((item) => {
+							const inner = (
+								<>
+									<span className={TILE_CLASS}>
+										<item.icon size={16} aria-hidden="true" />
+									</span>
+									<span className="min-w-0">
+										<span className="block text-[14px] font-medium leading-5 text-(--ink)">
+											{item.label}
+										</span>
+										<span className="mt-0.5 block text-[12.5px] leading-[1.45] text-(--ink-2)">
+											{item.description}
+										</span>
+									</span>
+								</>
+							);
+							return item.href.startsWith("/") ? (
+								<Link
+									key={item.label}
+									href={item.href}
+									onClick={() => setOpen(false)}
+									className={ROW_CLASS}
+								>
+									{inner}
+								</Link>
+							) : (
+								<a
+									key={item.label}
+									href={item.href}
+									onClick={() => setOpen(false)}
+									className={ROW_CLASS}
+								>
+									{inner}
+								</a>
+							);
+						})}
+					</div>
+					<div className="border-l border-(--rule) pl-4">
+						<p className={cn(EYEBROW_CLASS, "pb-1 pt-2")}>Legal</p>
+						{LEGAL_ITEMS.map((item) => (
+							<Link
+								key={item.label}
+								href={item.href}
+								onClick={() => setOpen(false)}
+								className="block rounded-[9px] py-2 pr-2 text-[14px] text-(--ink-2) transition-colors hover:text-(--ink) focus-visible:outline-none focus-visible:text-(--ink)"
+							>
+								{item.label}
+							</Link>
+						))}
+					</div>
+				</div>
+			</FlyoutPanel>
+		</div>
+	);
+}
 
 /** Solid-ink CTA — the page's one filled button style. */
 export function InkButton({
@@ -104,11 +445,13 @@ export function MarketingNav() {
 				</Link>
 
 				<nav aria-label="Primary" className="hidden items-center gap-0.5 lg:flex">
-					{LINKS.map((link) => (
+					<FeaturesFlyout />
+					{DESKTOP_LINKS.map((link) => (
 						<a key={link.href} href={link.href} className={LINK_CLASS}>
 							{link.label}
 						</a>
 					))}
+					<ResourcesFlyout />
 				</nav>
 
 				<div className="flex shrink-0 items-center gap-2.5">
@@ -176,6 +519,32 @@ export function MarketingNav() {
 								{link.label}
 							</a>
 						))}
+						<div className="mt-2 border-t border-(--rule) pt-3">
+							<p className={cn(EYEBROW_CLASS, "px-3 pb-1")}>Features</p>
+							{FEATURE_ITEMS.map((item) => (
+								<a
+									key={item.label}
+									href={item.href}
+									onClick={() => setMenuOpen(false)}
+									className="block rounded-lg px-3 py-2.5 text-sm font-medium text-(--ink-2) transition-colors hover:bg-(--rule) hover:text-(--ink)"
+								>
+									{item.label}
+								</a>
+							))}
+						</div>
+						<div className="mt-2 border-t border-(--rule) pt-3">
+							<p className={cn(EYEBROW_CLASS, "px-3 pb-1")}>Resources</p>
+							{RESOURCE_ITEMS.map((item) => (
+								<a
+									key={item.label}
+									href={item.href}
+									onClick={() => setMenuOpen(false)}
+									className="block rounded-lg px-3 py-2.5 text-sm font-medium text-(--ink-2) transition-colors hover:bg-(--rule) hover:text-(--ink)"
+								>
+									{item.label}
+								</a>
+							))}
+						</div>
 						<div className="mt-2 flex items-center gap-2 border-t border-(--rule) pt-3 sm:hidden">
 							<SignedOut>
 								<SignInButton mode="modal" forceRedirectUrl="/home">

@@ -1,5 +1,7 @@
 import type { CSSProperties, ReactNode } from "react";
 import { cn } from "@/lib/utils";
+import StaggeredText from "@/components/react-bits/staggered-text";
+import { HeadingReveal } from "./heading-reveal";
 
 /* Shared building blocks of the landing's paper-and-ink language. The type
  * scale lives HERE (SectionHeading/Lede/Eyebrow), not in section files, so
@@ -95,32 +97,50 @@ export function Eyebrow({
 	);
 }
 
-/** Section H2. lg = major section, md = band, sm = utility section. */
+/** Section H2. lg = major section, md = band, sm = utility section.
+ * Headings reveal on scroll-into-view: plain-string children get the staggered
+ * word reveal, JSX children (RoughMark etc.) get the matched block reveal.
+ * `reveal={false}` for headings that already animate (hero's lp-rise). */
 export function SectionHeading({
 	as: Tag = "h2",
 	size = "lg",
 	className,
+	reveal = true,
 	children,
 }: {
 	as?: "h1" | "h2" | "h3";
 	size?: "lg" | "md" | "sm";
 	className?: string;
+	reveal?: boolean;
 	children: ReactNode;
 }) {
+	const scale = cn(
+		"mt-4 font-semibold text-balance",
+		size === "lg" &&
+			"text-[clamp(34px,4.8vw,60px)] leading-[1.03] tracking-[-0.038em] max-w-[20ch]",
+		size === "md" &&
+			"text-[clamp(30px,4vw,52px)] leading-[1.05] tracking-[-0.035em] max-w-[22ch]",
+		size === "sm" &&
+			"text-[clamp(25px,3vw,38px)] leading-[1.08] tracking-[-0.03em]",
+		className
+	);
+
+	if (reveal && typeof children === "string") {
+		return (
+			<StaggeredText
+				text={children}
+				as={Tag}
+				segmentBy="words"
+				delay={45}
+				duration={0.6}
+				className={scale}
+			/>
+		);
+	}
+
 	return (
-		<Tag
-			className={cn(
-				"mt-4 font-semibold text-balance",
-				size === "lg" &&
-					"text-[clamp(34px,4.8vw,60px)] leading-[1.03] tracking-[-0.038em] max-w-[20ch]",
-				size === "md" &&
-					"text-[clamp(30px,4vw,52px)] leading-[1.05] tracking-[-0.035em] max-w-[22ch]",
-				size === "sm" &&
-					"text-[clamp(25px,3vw,38px)] leading-[1.08] tracking-[-0.03em]",
-				className
-			)}
-		>
-			{children}
+		<Tag className={scale}>
+			{reveal ? <HeadingReveal>{children}</HeadingReveal> : children}
 		</Tag>
 	);
 }
