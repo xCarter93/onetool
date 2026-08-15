@@ -1,5 +1,4 @@
 import type { CSSProperties } from "react";
-import { HalftoneDash } from "../halftone-dash";
 import { InkButton } from "../marketing-nav";
 import { HalftoneMark } from "../halftone-mark";
 import { HeroReelCta } from "../reel-lightbox";
@@ -16,14 +15,10 @@ import {
 } from "../primitives";
 import { RoughMark } from "../rough-mark";
 
-/* HERO — comp lines 96–166. Grid + pointer-lit halftone field behind the
- * promise, the particle mark opposite it, and one real job travelling five
- * stages underneath. Server component: every moving part (halftone, particles,
- * hand annotations) is its own client island. */
-
-/** The halftone only paints where the copy isn't. */
-const HALFTONE_MASK =
-	"radial-gradient(115% 90% at 82% 26%, #000 0%, transparent 70%)";
+/* HERO — comp lines 96–166, simplified at Patrick's direction: the faint
+ * construction grid, the promise, the dash-halftone OneTool mark opposite it
+ * (the hero's ONE dash system), and one real job travelling five stages
+ * underneath. Server component: every moving part is its own client island. */
 
 /** Entrance stagger — the comp's `animation-delay` on `.lp-rise`/`.lp-fade`. */
 const at = (delay: string) => ({ "--lp-delay": delay }) as CSSProperties;
@@ -85,32 +80,9 @@ export function Hero() {
 			<span id="home" />
 
 			<GridBackdrop />
-			<div
-				aria-hidden="true"
-				className="pointer-events-none absolute inset-0"
-				style={{
-					WebkitMaskImage: HALFTONE_MASK,
-					maskImage: HALFTONE_MASK,
-					opacity: 0.62,
-				}}
-			>
-				<HalftoneDash
-					src="/landing/field-dawn-van.jpg"
-					rows={56}
-					cellRatio={1.1}
-					power={1.2}
-					maxBar={0.12}
-					minTone={0.14}
-					light={0.9}
-					lightRadius={0.34}
-					focus="bottom"
-					exclude="[data-halftone-exclude]"
-					className="h-full w-full text-(--accent)"
-				/>
-			</div>
 
 			<Container className="relative grid grid-cols-[repeat(auto-fit,minmax(min(100%,400px),1fr))] items-center gap-[clamp(24px,4vw,64px)] pt-[clamp(40px,7vw,96px)]">
-				<div data-halftone-exclude>
+				<div>
 					<Eyebrow className="lp-rise">
 						For HVAC, landscaping, cleaning &amp; trades
 					</Eyebrow>
@@ -164,10 +136,10 @@ export function Hero() {
 				</div>
 
 				<div
-					className="lp-fade relative flex min-h-[clamp(240px,32vw,420px)] items-center justify-center"
+					className="lp-fade relative flex min-h-[clamp(300px,40vw,560px)] items-center justify-center"
 					style={at("100ms")}
 				>
-					<HalftoneMark className="aspect-square w-full max-w-[400px]" />
+					<HalftoneMark className="aspect-square w-full max-w-[560px]" />
 				</div>
 			</Container>
 

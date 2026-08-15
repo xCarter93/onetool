@@ -53,6 +53,15 @@ export function JobScenePlayer({
 	const ref = useRef<HTMLDivElement>(null);
 	const playerRef = useRef<PlayerRef>(null);
 	const [inView, setInView] = useState(false);
+	// Flips when the Player actually mounts — the play-assert effect must re-run
+	// then, or an IntersectionObserver callback that landed during the
+	// reduced-first hydration render (no Player yet) parks the scene on frame 0
+	// forever: inView never changes again, so [inView] alone never re-fires.
+	const [playerReady, setPlayerReady] = useState(false);
+	const attachPlayer = useCallback((p: PlayerRef | null) => {
+		playerRef.current = p;
+		setPlayerReady(p !== null);
+	}, []);
 	const reduced = usePrefersReducedMotion();
 	const { durationInFrames, height } = CONFIG[scene];
 	const lazyComponent = useCallback(() => LOADERS[scene](), [scene]);
@@ -70,7 +79,7 @@ export function JobScenePlayer({
 
 	useEffect(() => {
 		const player = playerRef.current;
-		if (!player) return;
+		if (!player || !playerReady) return;
 
 		if (!inView) {
 			player.pause();
@@ -94,7 +103,7 @@ export function JobScenePlayer({
 			player.removeEventListener("pause", ensurePlaying);
 			document.removeEventListener("visibilitychange", ensurePlaying);
 		};
-	}, [inView]);
+	}, [inView, playerReady]);
 
 	if (reduced) {
 		return (
@@ -115,7 +124,7 @@ export function JobScenePlayer({
 	return (
 		<div ref={ref} className={className} role="img" aria-label={label}>
 			<Player
-				ref={playerRef}
+				ref={attachPlayer}
 				lazyComponent={lazyComponent}
 				durationInFrames={durationInFrames}
 				fps={FPS}
