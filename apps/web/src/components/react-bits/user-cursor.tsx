@@ -104,6 +104,9 @@ interface ArrowGlyphProps extends SVGProps<SVGSVGElement> {
   size: number;
 }
 
+/* `color` reaches the path through style, not the fill presentation
+   attribute: callers pass CSS custom properties ("var(--accent-ink)"), and
+   var() is not resolved in presentation attributes. */
 const ArrowGlyph = ({ color, size, ...rest }: ArrowGlyphProps) => (
   <svg
     width={size}
@@ -116,7 +119,7 @@ const ArrowGlyph = ({ color, size, ...rest }: ArrowGlyphProps) => (
   >
     <path
       d="M5.2 3.4c-.7-.3-1.5.4-1.2 1.1l5.7 14.8c.3.8 1.5.8 1.8 0l2.4-6 6-2.4c.8-.3.8-1.5 0-1.8L5.2 3.4Z"
-      fill={color}
+      style={{ fill: color }}
       stroke="rgba(0,0,0,0.18)"
       strokeWidth={1.2}
       strokeLinejoin="round"
@@ -170,6 +173,7 @@ const UserCursor = forwardRef<HTMLDivElement, UserCursorProps>(
       onPointerMove,
       onPointerDown,
       onPointerUp,
+      onPointerCancel,
       ...rest
     },
     ref,
@@ -381,6 +385,18 @@ const UserCursor = forwardRef<HTMLDivElement, UserCursorProps>(
       [trigger, fullScreen, onPointerUp],
     );
 
+    // A pointercancel (scroll takeover, gesture stolen by the browser) never
+    // fires pointerup, so without this the press state and the press-triggered
+    // cursor both stay latched on.
+    const handlePointerCancel = useCallback(
+      (e: React.PointerEvent<HTMLDivElement>) => {
+        setPressed(false);
+        if (trigger === "press" && !fullScreen) setVisible(false);
+        onPointerCancel?.(e);
+      },
+      [trigger, fullScreen, onPointerCancel],
+    );
+
     const setRefs = useCallback(
       (node: HTMLDivElement | null) => {
         surfaceRef.current = node;
@@ -427,6 +443,7 @@ const UserCursor = forwardRef<HTMLDivElement, UserCursorProps>(
               onPointerMove: handlePointerMove,
               onPointerDown: handlePointerDown,
               onPointerUp: handlePointerUp,
+              onPointerCancel: handlePointerCancel,
             })}
         {...rest}
       >

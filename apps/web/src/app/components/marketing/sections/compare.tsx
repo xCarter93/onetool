@@ -469,7 +469,7 @@ export function Compare() {
 							))}
 						</div>
 
-						<FrameFooter className="gap-4 border-t border-(--rule) bg-muted py-4">
+						<FrameFooter className="gap-4 border-t border-(--rule) bg-(--sheet) py-4">
 							<SavingsLine crew={crew} />
 							<Footnotes />
 						</FrameFooter>

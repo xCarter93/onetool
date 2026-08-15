@@ -48,7 +48,7 @@ export const RIGHT_BOX = { w: 720, h: 430 };
 
 /* Ported from Twenty's halftone config via the hero — shared verbatim so a
  * tweak here moves every scene at once. */
-const TUNING = {
+export const TUNING = {
 	cellRatio: 2,
 	power: 1.1,
 	minTone: 0.05,

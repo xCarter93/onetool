@@ -285,11 +285,16 @@ export const CreditCard: React.FC<CreditCardProps> = ({
   const viewportPerspective = width * 3;
 
   const handleCopyCardNumber = useCallback(() => {
-    if (isDetailsVisible) {
-      navigator.clipboard.writeText(cardNumber);
-      setCopySuccess(true);
-      setTimeout(() => setCopySuccess(false), 2000);
-    }
+    if (!isDetailsVisible) return;
+    // A denied or unavailable clipboard used to reject unhandled while the UI
+    // still reported a successful copy.
+    navigator.clipboard
+      ?.writeText(cardNumber)
+      .then(() => {
+        setCopySuccess(true);
+        setTimeout(() => setCopySuccess(false), 2000);
+      })
+      .catch(() => setCopySuccess(false));
   }, [cardNumber, isDetailsVisible]);
 
   const handleCardClick = useCallback(() => {
@@ -625,9 +630,13 @@ export const CreditCard: React.FC<CreditCardProps> = ({
       {showActionButtons && (
         <div className={cn("flex gap-2", buttonsClassName)}>
           <button
+            type="button"
             onClick={() => setIsDetailsVisible(!isDetailsVisible)}
             className="w-10 h-10 rounded-full bg-white shadow-md hover:shadow-lg transition-shadow duration-200 flex items-center justify-center"
             title={isDetailsVisible ? "Hide details" : "Show details"}
+            aria-label={
+              isDetailsVisible ? "Hide card details" : "Show card details"
+            }
           >
             {isDetailsVisible ? (
               <Eye className="w-5 h-5 text-gray-700" />
@@ -636,8 +645,10 @@ export const CreditCard: React.FC<CreditCardProps> = ({
             )}
           </button>
           <button
+            type="button"
             onClick={handleCopyCardNumber}
             disabled={!isDetailsVisible}
+            aria-label="Copy card number"
             className={cn(
               "w-10 h-10 rounded-full bg-white shadow-md transition-all duration-200 flex items-center justify-center",
               isDetailsVisible

@@ -79,7 +79,7 @@ export function MoneyTime() {
 				<article className={CARD}>
 					<Eyebrow>Time</Eyebrow>
 					<h3 className={CARD_HEADING}>
-						<RoughMark type="strike-through" color="var(--ink-3)">
+						<RoughMark type="strike-through" color="var(--struck)">
 							The evening admin shift
 						</RoughMark>
 						, deleted.

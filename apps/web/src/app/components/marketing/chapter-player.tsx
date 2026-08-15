@@ -4,14 +4,14 @@ import { Player, Thumbnail, type PlayerRef } from "@remotion/player";
 import { useCallback, useEffect, useState } from "react";
 import { useTheme } from "next-themes";
 import { SCENE_LOADERS } from "@/remotion/scene-loaders";
-import { chapterFor, type FeatureKey } from "@/remotion/manifest";
+import { chapterFor, VIDEO_CONFIG, type FeatureKey } from "@/remotion/manifest";
 import { usePrefersReducedMotion } from "./use-reduced-motion";
 
 /* Duration and poster frame come from the manifest, which is scene-free by
  * contract — so every chapter works here without this file listing them, and
  * none of them reach the landing bundle statically. */
 
-const FPS = 30; // manifest stage rate
+const FPS = VIDEO_CONFIG.fps;
 const STAGE = { width: 1600, height: 1000 } as const;
 
 /* Same audio config as scene-player.tsx: scenes carry no audio, and Remotion's

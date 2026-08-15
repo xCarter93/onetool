@@ -401,6 +401,12 @@ const SlidingDoc = memo(function SlidingDoc({
   const travelStart = travelEnd - total * (documentWidth + documentGap);
   const loopEnd = travelEnd + documentWidth + documentGap;
 
+  /* Where this card sits at t=0. animationDelay is -index*beat, so each one
+     starts index/total of the way through the sweep. Freezing every card at
+     travelStart instead parked the whole run off the left of the stage, which
+     is what reduced-motion callers were getting rather than a settled frame. */
+  const restingX = travelStart + ((loopEnd - travelStart) * index) / total;
+
   const docStyle: CSSProperties = {
     width: documentWidth,
     height: documentHeight,
@@ -416,7 +422,7 @@ const SlidingDoc = memo(function SlidingDoc({
     animationIterationCount: "infinite",
     animationDelay: `${-index * beat}s`,
     animationPlayState: paused ? "paused" : "running",
-    transform: paused ? `translate3d(${travelStart}px, 0, 0)` : undefined,
+    transform: paused ? `translate3d(${restingX}px, 0, 0)` : undefined,
   };
 
   return (

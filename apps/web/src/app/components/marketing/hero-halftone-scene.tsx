@@ -1,4 +1,4 @@
-import { DEFS, uri } from "./halftone-corners";
+import { DEFS, TUNING, uri } from "./halftone-corners";
 import { HalftoneDash } from "./halftone-dash";
 
 /* HERO SCENE — Twenty's halftone-mountain move (see halftone-dash.tsx for the
@@ -60,23 +60,13 @@ export function HeroHalftoneScene() {
 			<HalftoneDash
 				src={LEFT}
 				rows={34}
-				cellRatio={2}
-				power={1.1}
-				minTone={0.05}
-				light={0.9}
-				lightRadius={0.55}
-				fade="top"
+				{...TUNING}
 				className="pointer-events-none absolute bottom-0 left-0 hidden aspect-[620/380] w-[clamp(240px,34vw,560px)] text-(--accent) opacity-80 md:block"
 			/>
 			<HalftoneDash
 				src={RIGHT}
 				rows={40}
-				cellRatio={2}
-				power={1.1}
-				minTone={0.05}
-				light={0.9}
-				lightRadius={0.55}
-				fade="top"
+				{...TUNING}
 				className="pointer-events-none absolute bottom-0 right-0 aspect-[720/430] w-[clamp(280px,42vw,690px)] text-(--accent) opacity-80"
 			/>
 		</>

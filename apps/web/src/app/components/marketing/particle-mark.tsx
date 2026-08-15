@@ -327,7 +327,12 @@ export function ParticleMark({ className }: { className?: string }) {
 		});
 		io.observe(container);
 
-		const ro = new ResizeObserver(() => init());
+		const ro = new ResizeObserver(() => {
+			// Sizing the canvas clears it and init() only rebuilds state, so the
+			// loop has to be woken or a resize while parked leaves it blank.
+			init();
+			start();
+		});
 		ro.observe(container);
 
 		const onMove = (e: MouseEvent) => {

@@ -86,7 +86,21 @@ const buildKeyframes = (
 
   const keyframes: Record<string, Array<string | number>> = {};
   keys.forEach((key) => {
-    keyframes[key] = [from[key], ...steps.map((step) => step[key])];
+    // A custom `to` may introduce a property `from` never declared, and a step
+    // may omit one the others set. Either used to emit `undefined` into the
+    // keyframe array; carry the last defined value forward instead (seeded
+    // with the first one available so the sequence always starts defined).
+    const raw = [from[key], ...steps.map((step) => step[key])];
+    let last = raw.find((value) => value !== undefined) as
+      | string
+      | number
+      | undefined;
+    if (last === undefined) return;
+
+    keyframes[key] = raw.map((value) => {
+      if (value !== undefined) last = value as string | number;
+      return last as string | number;
+    });
   });
 
   return keyframes;
@@ -151,18 +165,23 @@ const StaggeredText = forwardRef<StaggeredTextHandle, StaggeredTextProps>(
       },
     }));
 
+    // Read through a ref so entering the view doesn't re-run this effect and
+    // rebuild the observer it just unobserved.
+    const hasEnteredViewRef = useRef(hasEnteredView);
+    hasEnteredViewRef.current = hasEnteredView;
+
     useEffect(() => {
       if (!rootRef.current) return;
 
       const observer = new IntersectionObserver(
         ([entry]) => {
-          if (entry.isIntersecting) {
+          if (entry?.isIntersecting) {
             setHasEnteredView(true);
             setIsExiting(false);
             if (!exitOnScrollOut && rootRef.current) {
               observer.unobserve(rootRef.current);
             }
-          } else if (exitOnScrollOut && hasEnteredView) {
+          } else if (exitOnScrollOut && hasEnteredViewRef.current) {
             setIsExiting(true);
           }
         },
@@ -172,7 +191,7 @@ const StaggeredText = forwardRef<StaggeredTextHandle, StaggeredTextProps>(
       observer.observe(rootRef.current);
 
       return () => observer.disconnect();
-    }, [threshold, rootMargin, exitOnScrollOut, hasEnteredView]);
+    }, [threshold, rootMargin, exitOnScrollOut]);
 
     const defaultFrom = useMemo<MotionStyle>(() => {
       const base: MotionStyle = {

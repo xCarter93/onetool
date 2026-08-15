@@ -25,6 +25,7 @@
 	--accent-wash: color-mix(in srgb, rgb(0, 166, 244) 9%, var(--paper));
 	--paid: oklch(0.52 0.13 163.2);
 	--paid-wash: color-mix(in oklch, oklch(0.596 0.145 163.225) 12%, var(--paper));
+	--struck: oklch(0.55 0.19 27.3);
 	--lp-shadow: 0 1px 2px rgba(16, 24, 40, 0.04), 0 8px 24px -12px rgba(16, 24, 40, 0.12);
 	--lp-ease: cubic-bezier(0.23, 1, 0.32, 1);
 
@@ -46,6 +47,7 @@
 	--accent-wash: color-mix(in srgb, oklch(0.685 0.169 237.323) 14%, var(--paper));
 	--paid: oklch(0.696 0.17 162.48);
 	--paid-wash: color-mix(in oklch, oklch(0.596 0.145 163.225) 18%, var(--paper));
+	--struck: oklch(0.71 0.17 27.3);
 	--lp-shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 10px 30px -14px rgba(0, 0, 0, 0.6);
 }
 
@@ -61,6 +63,7 @@
 	--rule-2: color-mix(in oklch, #fff 22%, transparent);
 	--rule-3: color-mix(in oklch, #fff 40%, transparent);
 	--accent-ink: oklch(0.78 0.13 232);
+
 	background: var(--paper);
 	color: var(--ink);
 }

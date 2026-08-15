@@ -1,4 +1,4 @@
-import { DEFS, uri } from "./halftone-corners";
+import { DEFS, TUNING, uri } from "./halftone-corners";
 import { HalftoneDash } from "./halftone-dash";
 
 /* LOOP SCENE — the hero's halftone technique (halftone-dash.tsx) aimed at its
@@ -68,23 +68,13 @@ export function LoopHalftoneScene() {
 			<HalftoneDash
 				src={LEFT}
 				rows={34}
-				cellRatio={2}
-				power={1.1}
-				minTone={0.05}
-				light={0.9}
-				lightRadius={0.55}
-				fade="top"
+				{...TUNING}
 				className="pointer-events-none absolute bottom-0 left-0 hidden aspect-[620/430] w-[clamp(240px,32vw,600px)] text-(--accent) opacity-[0.55] md:block"
 			/>
 			<HalftoneDash
 				src={RIGHT}
 				rows={38}
-				cellRatio={2}
-				power={1.1}
-				minTone={0.05}
-				light={0.9}
-				lightRadius={0.55}
-				fade="top"
+				{...TUNING}
 				/* Small floor on purpose: on a phone the stage's bottom band is only
 				   ~20vh, and a wider cluster would run into the centred progress rail. */
 				className="pointer-events-none absolute bottom-0 right-0 aspect-[720/430] w-[clamp(190px,36vw,680px)] text-(--accent) opacity-[0.55]"

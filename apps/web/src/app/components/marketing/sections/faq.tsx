@@ -99,11 +99,13 @@ export function Faq() {
 				{FAQS.map(([question, answer], index) => {
 					const open = openIndex === index;
 					const panelId = `${baseId}-faq-panel-${index}`;
+					const triggerId = `${baseId}-faq-trigger-${index}`;
 
 					return (
 						<li key={question} className="border-t border-(--rule)">
 							<button
 								type="button"
+								id={triggerId}
 								aria-expanded={open}
 								aria-controls={panelId}
 								onClick={() => setOpenIndex(open ? -1 : index)}
@@ -131,6 +133,8 @@ export function Faq() {
 
 							<div
 								id={panelId}
+								role="region"
+								aria-labelledby={triggerId}
 								className={cn(
 									"grid transition-[grid-template-rows,opacity] duration-[450ms] ease-[cubic-bezier(.23,1,.32,1)]",
 									open ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"

@@ -1,9 +1,9 @@
-import type { CSSProperties } from "react";
 import { HeroHalftoneScene } from "../hero-halftone-scene";
 import { PrimaryButton } from "../marketing-nav";
 import { ParticleMark } from "../particle-mark";
 import { HeroReelCta } from "../reel-cta";
 import {
+	at,
 	CheckItem,
 	Container,
 	GridBackdrop,
@@ -18,9 +18,6 @@ import { RoughMark } from "../rough-mark";
  * construction grid, the promise, the particle OneTool mark opposite it, and
  * one real job travelling five stages underneath. Server component: every
  * moving part is its own client island. */
-
-/** Entrance stagger — the comp's `animation-delay` on `.lp-rise`/`.lp-fade`. */
-const at = (delay: string) => ({ "--lp-delay": delay }) as CSSProperties;
 
 type Tone = "accent" | "dim" | "paid";
 
@@ -168,7 +165,12 @@ export function Hero() {
 				    bleeds the scroll region to the viewport edge; -my/py gives the
 				    plus corners and the lp-rise translate room without moving
 				    anything. */}
-				<div className="-mx-[clamp(20px,4vw,40px)] -my-4 overflow-x-auto overflow-y-hidden px-[clamp(20px,4vw,40px)] py-4 scrollbar-hide">
+				<div
+					tabIndex={0}
+					role="group"
+					aria-label="Job ledger, scrolls horizontally"
+					className="-mx-[clamp(20px,4vw,40px)] -my-4 overflow-x-auto overflow-y-hidden px-[clamp(20px,4vw,40px)] py-4 scrollbar-hide"
+				>
 					<div className="relative min-w-[980px] rounded-[14px] border border-(--rule-2) bg-(--sheet)">
 						<PlusCorners />
 

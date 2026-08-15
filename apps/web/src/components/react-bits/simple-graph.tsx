@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useRef, useEffect } from "react";
+import { useState, useMemo, useRef, useEffect, useId } from "react";
 import { motion, AnimatePresence, useInView } from "motion/react";
 import { cn } from "@/lib/utils";
 import { TrendingUp, TrendingDown } from "lucide-react";
@@ -176,6 +176,10 @@ const SimpleGraph = ({
 
   const widthStyle = typeof width === "number" ? `${width}px` : width;
 
+  // A fixed id made every instance on a page share the first one's lineColor.
+  // useId's delimiters aren't safe in a url(#…) reference, so strip them.
+  const gradientId = `line-gradient-${useId().replace(/[^a-zA-Z0-9_-]/g, "")}`;
+
   const handleMouseMove = (
     event: React.MouseEvent<SVGElement>,
     index: number,
@@ -183,10 +187,15 @@ const SimpleGraph = ({
     if (!svgRef.current) return;
 
     const svg = svgRef.current;
+    // Null whenever the SVG isn't being rendered (display:none, detached);
+    // matrixTransform(undefined) would throw.
+    const screenCTM = svg.getScreenCTM();
+    if (!screenCTM) return;
+
     const point = svg.createSVGPoint();
     point.x = event.clientX;
     point.y = event.clientY;
-    const svgPoint = point.matrixTransform(svg.getScreenCTM()?.inverse());
+    const svgPoint = point.matrixTransform(screenCTM.inverse());
 
     const dotX = points[index].x;
 
@@ -268,7 +277,7 @@ const SimpleGraph = ({
       >
         <defs>
           <linearGradient
-            id="line-gradient"
+            id={gradientId}
             x1="0"
             y1={paddingY}
             x2="0"
@@ -326,7 +335,7 @@ const SimpleGraph = ({
         {gradientFade && (
           <motion.path
             d={gradientFillPath}
-            fill="url(#line-gradient)"
+            fill={`url(#${gradientId})`}
             initial={{ opacity: 0 }}
             animate={{ opacity: shouldAnimate ? 1 : 0 }}
             transition={{

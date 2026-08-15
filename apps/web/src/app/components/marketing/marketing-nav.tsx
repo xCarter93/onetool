@@ -520,9 +520,13 @@ export function MarketingNav() {
 				</div>
 			</div>
 
-			{/* Mobile panel — grid-rows 0fr→1fr so height animates without JS measurement. */}
+			{/* Mobile panel — grid-rows 0fr→1fr so height animates without JS
+			    measurement. Collapsed to 0fr the links are invisible but still
+			    focusable, so `inert` takes the closed panel out of the tab order
+			    and the a11y tree. */}
 			<div
 				id="marketing-nav-panel"
+				inert={!menuOpen}
 				className={cn(
 					"grid overflow-hidden border-(--rule) transition-[grid-template-rows,opacity] duration-300 ease-[cubic-bezier(.23,1,.32,1)] lg:hidden",
 					menuOpen ? "grid-rows-[1fr] border-t opacity-100" : "grid-rows-[0fr] opacity-0"

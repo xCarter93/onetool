@@ -116,7 +116,15 @@ export const Vortex: React.FC<VortexProps> = ({
       a + (b - a) * (fn ? fn(t) : t);
 
     const parseHex = (hex: string): [number, number, number] => {
-      const c = hex.replace("#", "");
+      const raw = hex.replace("#", "");
+      // Expand shorthand first — "fff" sliced as 6-digit yields rgb(255,15,0).
+      const c =
+        raw.length === 3
+          ? raw
+              .split("")
+              .map((ch) => ch + ch)
+              .join("")
+          : raw;
       return [
         parseInt(c.slice(0, 2), 16) || 0,
         parseInt(c.slice(2, 4), 16) || 0,

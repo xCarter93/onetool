@@ -92,7 +92,6 @@ export function OnTheJob() {
 				    Iphone on both axes would drop its ratio and letterbox the screen. */}
 				<div className="absolute left-1/2 top-1/2 aspect-[433/882] h-[86%] -translate-x-1/2 -translate-y-1/2 drop-shadow-[0_26px_54px_rgba(16,24,40,0.38)]">
 					<Iphone
-						className=""
 						src="/landing/app-today.webp"
 						role="img"
 						aria-label="The OneTool iOS app open on the day's schedule, with visits, overdue total and quotes waiting"

@@ -62,6 +62,26 @@ export function HalftoneDash({
 			null;
 		let scale = 1;
 		let raf = 0;
+		/* pointermove fires at pointer frequency on window, and every mounted
+		   scene listens. Reading layout (and re-querying `exclude`) in that
+		   handler forced a synchronous reflow per event per instance, so the
+		   geometry is cached here and refreshed only when it can actually move.
+		   Same for the themed dash colour, which draw() resolved every frame. */
+		let hostRect: DOMRect | null = null;
+		let excludeRects: DOMRect[] = [];
+		let ink = "";
+
+		const readGeometry = () => {
+			hostRect = host.getBoundingClientRect();
+			excludeRects = exclude
+				? [...document.querySelectorAll(exclude)].map((node) =>
+						node.getBoundingClientRect()
+					)
+				: [];
+		};
+		const readInk = () => {
+			ink = getComputedStyle(host).color;
+		};
 		// eased pointer state, in canvas px
 		let px = -1, py = -1, tx = -1, ty = -1, vx = 0, vy = 0, lit = 0;
 
@@ -84,8 +104,10 @@ export function HalftoneDash({
 		};
 
 		const resize = () => {
-			const r = host.getBoundingClientRect();
-			if (!r.width || !r.height) return;
+			readGeometry();
+			readInk();
+			const r = hostRect;
+			if (!r || !r.width || !r.height) return;
 			scale = Math.min(1.5, window.devicePixelRatio || 1);
 			canvas.width = Math.round(r.width * scale);
 			canvas.height = Math.round(r.height * scale);
@@ -113,7 +135,7 @@ export function HalftoneDash({
 				sy = focus === "top" ? 0 : focus === "bottom" ? 1 - sh : (1 - sh) / 2;
 			}
 
-			ctx.strokeStyle = getComputedStyle(host).color;
+			ctx.strokeStyle = ink;
 			ctx.lineCap = "round";
 			ctx.lineWidth = Math.max(1, maxBar * rowH * 2);
 
@@ -180,7 +202,8 @@ export function HalftoneDash({
 		};
 
 		const onMove = (e: PointerEvent) => {
-			const r = host.getBoundingClientRect();
+			const r = hostRect;
+			if (!r) return;
 			if (
 				e.clientX < r.left - 80 ||
 				e.clientX > r.right + 80 ||
@@ -191,19 +214,16 @@ export function HalftoneDash({
 				run();
 				return;
 			}
-			if (exclude) {
-				for (const node of document.querySelectorAll(exclude)) {
-					const b = node.getBoundingClientRect();
-					if (
-						e.clientX >= b.left &&
-						e.clientX <= b.right &&
-						e.clientY >= b.top &&
-						e.clientY <= b.bottom
-					) {
-						tx = -1;
-						run();
-						return;
-					}
+			for (const b of excludeRects) {
+				if (
+					e.clientX >= b.left &&
+					e.clientX <= b.right &&
+					e.clientY >= b.top &&
+					e.clientY <= b.bottom
+				) {
+					tx = -1;
+					run();
+					return;
 				}
 			}
 			tx = (e.clientX - r.left) * scale;
@@ -231,20 +251,34 @@ export function HalftoneDash({
 		});
 		ro.observe(host);
 
+		// Scrolling moves the host without resizing it, so the cached rect has
+		// to follow. Capture: scroll doesn't bubble from ancestor scrollers.
+		const onScroll = () => readGeometry();
+
 		// repaint when the theme flips (dash color is themed via `color`)
-		const mo = new MutationObserver(() => draw());
+		const mo = new MutationObserver(() => {
+			readInk();
+			draw();
+		});
 		mo.observe(document.documentElement, {
 			attributes: true,
 			attributeFilter: ["class", "data-theme"],
 		});
 
-		if (!reduced) window.addEventListener("pointermove", onMove, { passive: true });
+		if (!reduced) {
+			window.addEventListener("pointermove", onMove, { passive: true });
+			window.addEventListener("scroll", onScroll, {
+				passive: true,
+				capture: true,
+			});
+		}
 
 		return () => {
 			if (raf) cancelAnimationFrame(raf);
 			ro.disconnect();
 			mo.disconnect();
 			window.removeEventListener("pointermove", onMove);
+			window.removeEventListener("scroll", onScroll, { capture: true });
 		};
 	}, [src, rows, cellRatio, power, maxBar, minTone, light, lightRadius, focus, fade, exclude, reduced]);
 

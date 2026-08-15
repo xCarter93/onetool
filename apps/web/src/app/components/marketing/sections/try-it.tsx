@@ -575,7 +575,10 @@ export function TryIt() {
 								) : null}
 
 								{stage === "sent" || stage === "requested" ? (
-									<p className="inline-flex h-[46px] items-center gap-[10px] rounded-[11px] border border-(--rule-2) bg-(--sheet) px-[18px] text-[15px] text-(--ink-2)">
+									<p
+										role="status"
+										className="inline-flex h-[46px] items-center gap-[10px] rounded-[11px] border border-(--rule-2) bg-(--sheet) px-[18px] text-[15px] text-(--ink-2)"
+									>
 										<span
 											aria-hidden="true"
 											className="h-[7px] w-[7px] animate-pulse rounded-full bg-(--accent)"

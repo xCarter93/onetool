@@ -9,6 +9,9 @@ import { HeadingReveal } from "./heading-reveal";
  * (`.dc-landing` scope); components reference them via Tailwind v4 var
  * utilities — `text-(--ink-2)`, never raw hex. */
 
+/** Entrance stagger — the comp's `animation-delay` on `.lp-rise`/`.lp-fade`. */
+export const at = (delay: string) => ({ "--lp-delay": delay }) as CSSProperties;
+
 export function Container({
 	className,
 	children,

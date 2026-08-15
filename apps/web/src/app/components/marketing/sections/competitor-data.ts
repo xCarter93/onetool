@@ -64,7 +64,7 @@ export interface Vendor {
 
 /** Fallback price. The pricing section prefers live Clerk `usePlans` data; the
  *  Compare table is deliberately static so the comparison never moves under a
- *  reader mid-scroll. Keep in sync with `pricing-section.tsx`. */
+ *  reader mid-scroll. Keep in sync with `pricing.tsx`. */
 export const ONETOOL_MONTHLY = 30;
 
 export const VENDORS: Vendor[] = [

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import ScrollStack from "@/components/react-bits/scroll-stack";
 import type { FeatureKey } from "@/remotion/manifest";
 import { ChapterPlayer } from "./chapter-player";
@@ -125,63 +125,87 @@ const STAGE_HEADER = (
 
 export function JobStack() {
 	const [active, setActive] = useState(0);
+	const hostRef = useRef<HTMLDivElement>(null);
+	/* Chapter 01 is the lead card from first paint, so gating on the index
+	   alone had its Player running from page load — this stack sits well down
+	   a long page. Playback now also waits for the stack to be near view. */
+	const [inView, setInView] = useState(false);
+
+	useEffect(() => {
+		const node = hostRef.current;
+		if (!node) return;
+		if (typeof IntersectionObserver === "undefined") {
+			// Same escape hatch as rough-mark.tsx: nothing to observe, so let
+			// the chapters play rather than stranding them paused.
+			const t = window.setTimeout(() => setInView(true), 0);
+			return () => window.clearTimeout(t);
+		}
+		const io = new IntersectionObserver(
+			([entry]) => setInView(entry?.isIntersecting ?? true),
+			{ rootMargin: "25% 0px" }
+		);
+		io.observe(node);
+		return () => io.disconnect();
+	}, []);
 
 	return (
-		<ScrollStack
-			background={STAGE_SCENE}
-			stageHeader={STAGE_HEADER}
-			variant="stack"
-			depth={DEPTH}
-			blur={0}
-			dim={0.14}
-			scrollLength={0.6}
-			cardWidth={1080}
-			cardHeight={0.58}
-			showProgress
-			showCounter
-			onIndexChange={setActive}
-			className="text-(--ink-3)"
-		>
-			{STEPS.map((step, i) => (
-				<article
-					key={step.n}
-					className="grid h-full w-full grid-rows-[auto_1fr] overflow-hidden rounded-[16px] border border-(--rule-2) bg-(--sheet) text-(--ink)"
-				>
-					<header className="grid gap-[10px] border-b border-(--rule) px-[clamp(20px,3vw,32px)] py-[clamp(14px,1.8vw,20px)]">
-						<div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1">
-							<div className="flex items-baseline gap-[12px]">
-								<span className="font-mono text-[11.5px] font-medium tracking-[0.12em] tabular-nums text-(--accent-ink)">
-									{step.n}
-								</span>
-								<h3 className="text-[clamp(18px,2vw,24px)] font-semibold leading-[1.2] tracking-[-0.02em]">
-									{step.title}
-								</h3>
+		<div ref={hostRef}>
+			<ScrollStack
+				background={STAGE_SCENE}
+				stageHeader={STAGE_HEADER}
+				variant="stack"
+				depth={DEPTH}
+				blur={0}
+				dim={0.14}
+				scrollLength={0.6}
+				cardWidth={1080}
+				cardHeight={0.58}
+				showProgress
+				showCounter
+				onIndexChange={setActive}
+				className="text-(--ink-3)"
+			>
+				{STEPS.map((step, i) => (
+					<article
+						key={step.n}
+						className="grid h-full w-full grid-rows-[auto_1fr] overflow-hidden rounded-[16px] border border-(--rule-2) bg-(--sheet) text-(--ink)"
+					>
+						<header className="grid gap-[10px] border-b border-(--rule) px-[clamp(20px,3vw,32px)] py-[clamp(14px,1.8vw,20px)]">
+							<div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1">
+								<div className="flex items-baseline gap-[12px]">
+									<span className="font-mono text-[11.5px] font-medium tracking-[0.12em] tabular-nums text-(--accent-ink)">
+										{step.n}
+									</span>
+									<h3 className="text-[clamp(18px,2vw,24px)] font-semibold leading-[1.2] tracking-[-0.02em]">
+										{step.title}
+									</h3>
+								</div>
+								<p className="hidden font-mono text-[11px] uppercase tracking-[0.08em] text-(--ink-3) sm:block">
+									{step.detail}
+								</p>
 							</div>
-							<p className="hidden font-mono text-[11px] uppercase tracking-[0.08em] text-(--ink-3) sm:block">
-								{step.detail}
+							<p className="max-w-[70ch] text-[14.5px] leading-[1.55] text-(--ink-2) text-pretty max-sm:line-clamp-2">
+								{step.body}
 							</p>
-						</div>
-						<p className="max-w-[70ch] text-[14.5px] leading-[1.55] text-(--ink-2) text-pretty max-sm:line-clamp-2">
-							{step.body}
-						</p>
-					</header>
+						</header>
 
-					{/* Life-size chapter canvas: fills the row and crops rather than
-					    shrinking (the 1600×1000 stage keeps product scale). */}
-					<div className="relative overflow-hidden">
-						<div className="absolute inset-0 flex items-center justify-center">
-							{i >= active - DEPTH && i <= active + 1 ? (
-								<ChapterPlayer
-									featureKey={step.chapter}
-									active={i === active}
-									label={`${step.title} (product animation)`}
-									className="w-full min-w-[860px] max-w-[1100px]"
-								/>
-							) : null}
+						{/* Life-size chapter canvas: fills the row and crops rather than
+						    shrinking (the 1600×1000 stage keeps product scale). */}
+						<div className="relative overflow-hidden">
+							<div className="absolute inset-0 flex items-center justify-center">
+								{i >= active - DEPTH && i <= active + 1 ? (
+									<ChapterPlayer
+										featureKey={step.chapter}
+										active={inView && i === active}
+										label={`${step.title} (product animation)`}
+										className="w-full min-w-[860px] max-w-[1100px]"
+									/>
+								) : null}
+							</div>
 						</div>
-					</div>
-				</article>
-			))}
-		</ScrollStack>
+					</article>
+				))}
+			</ScrollStack>
+		</div>
 	);
 }

@@ -60,11 +60,17 @@ export function ScheduleDemoForm({
 	};
 
 	const fieldId = (name: string) => `${idPrefix}-${name}`;
+	/* The success message sits on screen for 2s before resetForm clears the
+	   fields. Releasing the controls on `isSubmitting` alone would leave a
+	   still-populated, still-valid form re-armed for that whole window, so a
+	   second click would POST again and fire a duplicate analytics event. */
+	const locked = isSubmitting || formStatus.type === "success";
 	const grid = layout === "grid";
 	const full = grid ? "sm:col-span-2" : undefined;
 
 	const handleScheduleDemo = async (e: React.FormEvent) => {
 		e.preventDefault();
+		if (locked) return;
 		setIsSubmitting(true);
 		setFormStatus({ type: null, message: "" });
 
@@ -130,7 +136,7 @@ export function ScheduleDemoForm({
 					placeholder="John Doe"
 					value={formData.name}
 					onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-					disabled={isSubmitting}
+					disabled={locked}
 				/>
 			</div>
 
@@ -145,7 +151,7 @@ export function ScheduleDemoForm({
 					placeholder="john@company.com"
 					value={formData.email}
 					onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-					disabled={isSubmitting}
+					disabled={locked}
 				/>
 			</div>
 
@@ -157,7 +163,7 @@ export function ScheduleDemoForm({
 					placeholder="Acme Inc."
 					value={formData.company}
 					onChange={(e) => setFormData({ ...formData, company: e.target.value })}
-					disabled={isSubmitting}
+					disabled={locked}
 				/>
 			</div>
 
@@ -171,7 +177,7 @@ export function ScheduleDemoForm({
 					onChange={(next) =>
 						setFormData((prev) => ({ ...prev, phone: next ?? "" }))
 					}
-					disabled={isSubmitting}
+					disabled={locked}
 				/>
 			</div>
 
@@ -182,7 +188,7 @@ export function ScheduleDemoForm({
 					placeholder="Tell us about your business and what you'd like to see in the demo..."
 					value={formData.message}
 					onChange={(e) => setFormData({ ...formData, message: e.target.value })}
-					disabled={isSubmitting}
+					disabled={locked}
 					rows={4}
 				/>
 			</div>
@@ -218,7 +224,7 @@ export function ScheduleDemoForm({
 					type="submit"
 					variant="default"
 					disabled={
-						isSubmitting || !formData.name.trim() || !formData.email.trim()
+						locked || !formData.name.trim() || !formData.email.trim()
 					}
 				>
 					{isSubmitting && <Loader2 className="h-4 w-4 animate-spin" />}

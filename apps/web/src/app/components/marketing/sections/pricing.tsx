@@ -39,8 +39,14 @@ const BUSINESS_INCLUDES = [
 const FALLBACK_MONTHLY = 30;
 const FALLBACK_YEARLY = 300;
 
-/** Live Clerk Business-plan pricing in dollars; hardcoded fallback while the
- *  plans load, or if billing isn't reachable from the public page. */
+/** Clerk already formats its own figures ("30.00") and carries the currency
+ *  symbol, so the page renders those rather than re-deriving dollars. The comp
+ *  quotes whole dollars, so a zero cents tail is dropped — a real one ("29.99")
+ *  survives. Raw cents come back too, for the yearly savings arithmetic. */
+const trimCents = (formatted: string) => formatted.replace(/\.00$/, "");
+
+/** Live Clerk Business-plan pricing; hardcoded fallback while the plans load,
+ *  or if billing isn't reachable from the public page. */
 function useBusinessPrice() {
 	const { data: plans, isLoading } = usePlans({ for: "organization", enabled: true });
 
@@ -48,14 +54,17 @@ function useBusinessPrice() {
 	const business =
 		paidPlans.find((plan) => plan.name?.toLowerCase().includes("business")) ?? paidPlans[0];
 
-	// Clerk quotes fees in cents at its API boundary; the page displays dollars.
+	const fee = business?.fee;
+	const annualFee = business?.annualFee;
+	const symbol = fee?.currencySymbol ?? annualFee?.currencySymbol ?? "$";
+
 	return {
-		monthly: business?.fee?.amount
-			? Math.round(business.fee.amount / 100)
-			: FALLBACK_MONTHLY,
-		yearly: business?.annualFee?.amount
-			? Math.round(business.annualFee.amount / 100)
-			: FALLBACK_YEARLY,
+		symbol,
+		monthly: fee ? trimCents(fee.amountFormatted) : String(FALLBACK_MONTHLY),
+		yearly: annualFee ? trimCents(annualFee.amountFormatted) : String(FALLBACK_YEARLY),
+		// Smallest currency unit, so the savings maths never rounds twice.
+		monthlyMinor: fee?.amount ?? FALLBACK_MONTHLY * 100,
+		yearlyMinor: annualFee?.amount ?? FALLBACK_YEARLY * 100,
 	};
 }
 
@@ -68,9 +77,11 @@ const GROUP = "border-t border-(--rule) pt-5";
 function BillingToggle({
 	annual,
 	onChange,
+	savingPct,
 }: {
 	annual: boolean;
 	onChange: (annual: boolean) => void;
+	savingPct: number;
 }) {
 	const tab = (isActive: boolean) =>
 		cn(
@@ -98,7 +109,10 @@ function BillingToggle({
 				onClick={() => onChange(true)}
 				className={tab(annual)}
 			>
-				Yearly <span className="font-medium opacity-75">· save 17%</span>
+				Yearly
+				{savingPct > 0 && (
+					<span className="font-medium opacity-75"> · save {savingPct}%</span>
+				)}
 			</button>
 		</div>
 	);
@@ -106,12 +120,21 @@ function BillingToggle({
 
 export function Pricing() {
 	const [annual, setAnnual] = useState(false);
-	const { monthly, yearly } = useBusinessPrice();
+	const { symbol, monthly, yearly, monthlyMinor, yearlyMinor } = useBusinessPrice();
 
-	const price = annual ? `$${yearly}` : `$${monthly}`;
+	// What paying yearly actually saves against twelve monthly charges.
+	const yearOfMonths = monthlyMinor * 12;
+	const savingPct =
+		yearOfMonths > 0 && yearlyMinor < yearOfMonths
+			? Math.round((1 - yearlyMinor / yearOfMonths) * 100)
+			: 0;
+
+	const price = `${symbol}${annual ? yearly : monthly}`;
 	const priceUnit = annual ? "/ year" : "/ month";
 	const priceNote = annual
-		? `Works out at $${Math.round(yearly / 12)} a month, saving 17%.`
+		? `Works out at ${symbol}${Math.round(yearlyMinor / 12 / 100)} a month${
+				savingPct > 0 ? `, saving ${savingPct}%` : ""
+			}.`
 		: "Per organisation, unlimited users. Cancel any time.";
 
 	return (
@@ -152,7 +175,11 @@ export function Pricing() {
 				    column it drops between the plates, so it still reads as the
 				    Business card's control rather than a page-level switch. */}
 				<div className="order-2 flex justify-center md:order-none md:col-start-2 md:row-start-1 md:justify-start">
-					<BillingToggle annual={annual} onChange={setAnnual} />
+					<BillingToggle
+						annual={annual}
+						onChange={setAnnual}
+						savingPct={savingPct}
+					/>
 				</div>
 
 				{/* Free */}

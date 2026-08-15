@@ -5,8 +5,9 @@ import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 import { LP_SECONDARY } from "./marketing-nav";
 
-/* The lightbox (and with it @remotion/player) loads only on first open, and
- * unmounts entirely on close. */
+/* The lightbox (and with it @remotion/player) loads only on first open. It
+ * then stays mounted with open={false} rather than unmounting, so reopening
+ * doesn't pay for the chunk or the Player again. */
 const ReelLightbox = dynamic(
 	() => import("./reel-lightbox").then((m) => m.ReelLightbox),
 	{ ssr: false }

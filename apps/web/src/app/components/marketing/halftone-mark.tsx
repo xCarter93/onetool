@@ -53,6 +53,9 @@ export function HalftoneMark({
 		let coverage: Uint8Array | null = null;
 		let softness: Float32Array | null = null;
 		let scale = 1;
+		/* Cached so the window-level pointermove handler stops forcing a
+		   synchronous reflow on every event (see halftone-dash.tsx). */
+		let hostRect: DOMRect | null = null;
 		let raf = 0;
 		let px = -1, py = -1, tx = -1, ty = -1, vx = 0, vy = 0, lit = 0;
 
@@ -83,6 +86,7 @@ export function HalftoneMark({
 
 		const resize = () => {
 			const r = host.getBoundingClientRect();
+			hostRect = r;
 			if (!r.width || !r.height) return;
 			scale = Math.min(1.5, window.devicePixelRatio || 1);
 			canvas.width = Math.round(r.width * scale);
@@ -155,7 +159,8 @@ export function HalftoneMark({
 		};
 
 		const onMove = (e: PointerEvent) => {
-			const r = host.getBoundingClientRect();
+			const r = hostRect;
+			if (!r) return;
 			if (
 				e.clientX < r.left - 60 ||
 				e.clientX > r.right + 60 ||
@@ -187,12 +192,25 @@ export function HalftoneMark({
 		});
 		ro.observe(host);
 
-		if (!reduced) window.addEventListener("pointermove", onMove, { passive: true });
+		// Scrolling moves the host without resizing it; capture picks up
+		// ancestor scrollers, which don't bubble.
+		const onScroll = () => {
+			hostRect = host.getBoundingClientRect();
+		};
+
+		if (!reduced) {
+			window.addEventListener("pointermove", onMove, { passive: true });
+			window.addEventListener("scroll", onScroll, {
+				passive: true,
+				capture: true,
+			});
+		}
 
 		return () => {
 			if (raf) cancelAnimationFrame(raf);
 			ro.disconnect();
 			window.removeEventListener("pointermove", onMove);
+			window.removeEventListener("scroll", onScroll, { capture: true });
 		};
 	}, [rows, cellRatio, maxBar, light, lightRadius, reduced]);
 

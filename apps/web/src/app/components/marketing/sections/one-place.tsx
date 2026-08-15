@@ -3,6 +3,7 @@ import { ISO_T, isoGrid } from "@/components/illustrations/art/iso";
 import { AmbientLayer } from "../ambient";
 import { OldWayHalftoneScene } from "../section-halftone-scenes";
 import {
+	at,
 	Eyebrow,
 	GridBackdrop,
 	Lede,
@@ -53,8 +54,6 @@ const ILLO_BRIDGE = {
 	"--illo-surface": "color-mix(in oklch, var(--ink) 8%, transparent)",
 	"--illo-celebrate": "var(--paid)",
 } as CSSProperties;
-
-const at = (delay: string) => ({ "--lp-delay": delay }) as CSSProperties;
 
 const r2 = (n: number) => Math.round(n * 100) / 100;
 

@@ -116,7 +116,6 @@ export function RoughMark({
 	const hostRef = useRef<HTMLSpanElement>(null);
 	const textRef = useRef<HTMLSpanElement>(null);
 	const svgRef = useRef<SVGSVGElement>(null);
-	const drawnRef = useRef(false);
 	const reduced = usePrefersReducedMotion();
 
 	useEffect(() => {
@@ -248,11 +247,14 @@ export function RoughMark({
 		};
 
 		let ro: ResizeObserver | null = null;
+		// Per-run latch: each effect run redraws once, so changing an option
+		// after the first draw still re-inks the mark.
+		let drawn = false;
 		const start = () => {
-			if (drawnRef.current) return;
+			if (drawn) return;
 			const first = host.getBoundingClientRect();
 			if (!first.width) return;
-			drawnRef.current = true;
+			drawn = true;
 			draw(true);
 
 			/* A ResizeObserver delivers an initial observation the moment observe()
