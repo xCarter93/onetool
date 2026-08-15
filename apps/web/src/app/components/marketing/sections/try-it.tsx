@@ -10,6 +10,7 @@ import {
 import Link from "next/link";
 import { formatCurrency, roundCents } from "@/lib/money";
 import { cn } from "@/lib/utils";
+import { LP_PRIMARY } from "../marketing-nav";
 import { StatusBadge } from "@/components/domain/status-badge";
 import { AmbientLayer } from "../ambient";
 import { TryItHalftoneScene } from "../section-halftone-scenes";
@@ -182,9 +183,11 @@ const revealStyle = (open: boolean): CSSProperties => ({
 const STEP_BUTTON =
 	"grid h-8 w-8 cursor-pointer place-items-center text-[15px] leading-none text-(--ink-2) transition-colors hover:text-(--ink) focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-(--accent-ink) disabled:cursor-default disabled:text-(--rule-3)";
 
-/** Same ink treatment as the page's primary links, as a real button. */
-const INK_ACTION =
-	"inline-flex h-[46px] cursor-pointer items-center gap-[9px] rounded-[11px] bg-(--ink) px-[22px] text-[15.5px] font-semibold tracking-[-0.01em] text-(--paper) transition-opacity hover:opacity-[0.88] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--accent-ink) focus-visible:ring-offset-2 focus-visible:ring-offset-(--paper) disabled:cursor-default disabled:opacity-40";
+/** The page's primary treatment, as a real <button> rather than a link. */
+const INK_ACTION = cn(
+	LP_PRIMARY,
+	"h-[46px] px-[22px] text-[15.5px] disabled:cursor-default disabled:opacity-40",
+);
 
 function Stepper({
 	label,
@@ -222,48 +225,66 @@ function Stepper({
 	);
 }
 
-/** The loop as a measuring rule: the page's drafting language doing the job a
- *  progress bar would do anywhere else. */
+/** Where the job has got to. The band sits on the halftone scene, so the rail
+ *  rides its own sheet card — on the artwork it read as stray hairlines. */
 function LoopRail({ stage }: { stage: Stage }) {
 	const at = STAGE_ORDER.indexOf(stage);
 	const reached = RAIL.filter((s) => at >= STAGE_ORDER.indexOf(s.from)).length;
 
 	return (
-		<ol
-			aria-label="Where this job has got to"
-			className="flex flex-wrap items-center gap-x-2 gap-y-3 font-mono text-[11px] uppercase tracking-[0.1em]"
-		>
-			{RAIL.map((step, i) => {
-				const done = at >= STAGE_ORDER.indexOf(step.from);
-				return (
-					<li
-						key={step.label}
-						aria-current={i === reached - 1 ? "step" : undefined}
-						className="flex flex-1 items-center gap-2 whitespace-nowrap"
-					>
-						<span
-							aria-hidden="true"
-							className={cn(
-								"h-[7px] w-[7px] flex-none rotate-45 border transition-colors duration-200",
-								done ? "border-(--accent) bg-(--accent)" : "border-(--rule-3)",
-							)}
-						/>
-						<span className={done ? "text-(--ink-2)" : "text-(--ink-3)"}>
-							{step.label}
-						</span>
-						{i < RAIL.length - 1 ? (
-							<span
-								aria-hidden="true"
-								className={cn(
-									"h-px min-w-4 flex-1 transition-colors duration-200",
-									done ? "bg-(--accent)" : "bg-(--rule-2)",
-								)}
-							/>
-						) : null}
-					</li>
-				);
-			})}
-		</ol>
+		<div className="flex justify-center">
+			<ol
+				aria-label="Where this job has got to"
+				className="inline-flex max-w-full flex-wrap items-center justify-center gap-x-2.5 gap-y-3 rounded-[14px] border border-(--rule-2) bg-(--sheet) px-[clamp(14px,2vw,22px)] py-[13px] shadow-(--lp-shadow)"
+			>
+				{RAIL.map((step, i) => {
+					const done = at >= STAGE_ORDER.indexOf(step.from);
+					const current = i === reached - 1;
+					return (
+						<li
+							key={step.label}
+							aria-current={current ? "step" : undefined}
+							className="flex items-center gap-2.5"
+						>
+							<span className="flex items-center gap-[8px] whitespace-nowrap">
+								{/* --accent-ink, not --accent: the darker blue is the only one
+								    that carries --paper text in both themes. */}
+								<span
+									aria-hidden="true"
+									className={cn(
+										"grid size-[22px] flex-none place-items-center rounded-full border text-[11px] font-semibold leading-none tabular-nums transition-colors duration-200",
+										current
+											? "border-(--accent-ink) bg-(--accent-ink) text-(--paper)"
+											: done
+												? "border-(--accent) bg-(--accent-wash) text-(--accent-ink)"
+												: "border-(--rule-3) text-(--ink-3)",
+									)}
+								>
+									{done && !current ? "\u2713" : i + 1}
+								</span>
+								<span
+									className={cn(
+										"text-[12.5px] font-medium tracking-[-0.005em] transition-colors duration-200",
+										done ? "text-(--ink)" : "text-(--ink-3)",
+									)}
+								>
+									{step.label}
+								</span>
+							</span>
+							{i < RAIL.length - 1 ? (
+								<span
+									aria-hidden="true"
+									className={cn(
+										"hidden h-[2px] w-6 flex-none rounded-full transition-colors duration-200 sm:block",
+										done ? "bg-(--accent)" : "bg-(--rule-2)",
+									)}
+								/>
+							) : null}
+						</li>
+					);
+				})}
+			</ol>
+		</div>
 	);
 }
 
@@ -397,7 +418,7 @@ export function TryIt() {
 
 	// The section owns no padding and no column: the cursor surface has to be the
 	// whole band, or the collaborator cursor snaps back to the OS one the moment
-	// the pointer leaves the 1280px column. The inner Container puts the column
+	// the pointer leaves the 1560px column. The inner Container puts the column
 	// and the section rhythm back. overflow-hidden is the fullBleed ambient's
 	// clipping ancestor.
 	return (

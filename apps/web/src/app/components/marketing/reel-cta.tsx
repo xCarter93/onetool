@@ -2,6 +2,8 @@
 
 import dynamic from "next/dynamic";
 import { useEffect, useState } from "react";
+import { cn } from "@/lib/utils";
+import { LP_SECONDARY } from "./marketing-nav";
 
 /* The lightbox (and with it @remotion/player) loads only on first open, and
  * unmounts entirely on close. */
@@ -19,7 +21,7 @@ export function openReelLightbox() {
 
 /**
  * The hero's secondary CTA. A tiny client island so `sections/hero.tsx` stays a
- * server component: the button carries `SheetButton`'s exact styling (that
+ * server component: the button carries `SecondaryButton`'s exact styling (that
  * primitive only renders an anchor, and this opens an overlay rather than
  * navigating). Also the page's single listener for OPEN_REEL_EVENT.
  */
@@ -44,7 +46,7 @@ export function HeroReelCta() {
 					setOpen(true);
 					setEverOpened(true);
 				}}
-				className="inline-flex h-[52px] items-center rounded-[11px] border border-(--rule-2) bg-(--sheet) px-[22px] text-[17px] font-medium text-(--ink) transition-colors hover:border-(--rule-3) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--accent-ink) focus-visible:ring-offset-2 focus-visible:ring-offset-(--paper)"
+				className={cn(LP_SECONDARY, "h-[52px] px-[22px] text-[17px]")}
 			>
 				See a job run through it
 			</button>

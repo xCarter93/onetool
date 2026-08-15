@@ -17,7 +17,7 @@ export function Container({
 	children: ReactNode;
 }) {
 	return (
-		<div className={cn("mx-auto max-w-[1280px] px-[clamp(20px,4vw,40px)]", className)}>
+		<div className={cn("mx-auto max-w-[1560px] px-[clamp(20px,4vw,40px)]", className)}>
 			{children}
 		</div>
 	);

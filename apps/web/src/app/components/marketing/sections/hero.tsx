@@ -1,13 +1,11 @@
 import type { CSSProperties } from "react";
 import { HeroHalftoneScene } from "../hero-halftone-scene";
-import { InkButton } from "../marketing-nav";
+import { PrimaryButton } from "../marketing-nav";
 import { ParticleMark } from "../particle-mark";
 import { HeroReelCta } from "../reel-cta";
 import {
 	CheckItem,
 	Container,
-	DimensionLine,
-	Eyebrow,
 	GridBackdrop,
 	Lede,
 	PlusCorners,
@@ -93,13 +91,9 @@ export function Hero() {
 
 			<Container className="relative grid grid-cols-[repeat(auto-fit,minmax(min(100%,400px),1fr))] items-center gap-[clamp(24px,4vw,64px)] pt-[clamp(40px,7vw,96px)]">
 				<div>
-					<Eyebrow className="lp-rise">
-						For HVAC, landscaping, cleaning &amp; trades
-					</Eyebrow>
-
 					{/* SectionHeading/Lede take className only, so the stagger delay rides
 					    on a wrapper and the primitives keep their own type scale. */}
-					<div className="lp-rise mt-5" style={at("60ms")}>
+					<div className="lp-rise" style={at("60ms")}>
 						<SectionHeading
 							as="h1"
 							reveal={false}
@@ -131,12 +125,12 @@ export function Hero() {
 						className="lp-rise mt-8 flex flex-wrap items-center gap-3"
 						style={at("180ms")}
 					>
-						<InkButton href="/sign-up">
+						<PrimaryButton href="/sign-up">
 							Start free{" "}
 							<span aria-hidden="true" className="text-[15px]">
 								→
 							</span>
-						</InkButton>
+						</PrimaryButton>
 						<HeroReelCta />
 					</div>
 
@@ -218,9 +212,6 @@ export function Hero() {
 						</div>
 					</div>
 				</div>
-
-				{/* dimension line: the thing blueprint is actually good at measuring */}
-				<DimensionLine label="3 days, 8 hrs" className="mt-[18px]" />
 			</Container>
 		</Section>
 	);

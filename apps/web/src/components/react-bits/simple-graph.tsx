@@ -57,6 +57,8 @@ export interface SimpleGraphProps {
   animateOnScroll?: boolean;
   /** Only animate once (requires animateOnScroll) */
   animateOnce?: boolean;
+  /** Format a point's value for the hover tooltip. Defaults to two decimals. */
+  formatValue?: (value: number) => string;
   /** Additional CSS classes */
   className?: string;
 }
@@ -84,6 +86,7 @@ const SimpleGraph = ({
   calculatePercentageDifference = false,
   animateOnScroll = false,
   animateOnce = true,
+  formatValue = (value: number) => value.toFixed(2),
   className,
 }: SimpleGraphProps) => {
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
@@ -453,7 +456,7 @@ const SimpleGraph = ({
                             if (!diff) {
                               return (
                                 <div className="text-sm font-semibold">
-                                  {points[hoveredIndex].value.toFixed(2)}
+                                  {formatValue(points[hoveredIndex].value)}
                                 </div>
                               );
                             }
@@ -480,7 +483,7 @@ const SimpleGraph = ({
                           })()
                         ) : (
                           <div className="text-sm font-semibold">
-                            {points[hoveredIndex].value.toFixed(2)}
+                            {formatValue(points[hoveredIndex].value)}
                           </div>
                         )}
                         {data[hoveredIndex].label && (

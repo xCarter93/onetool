@@ -5,6 +5,12 @@ import { formatCurrency } from "@/lib/money";
 import { cn } from "@/lib/utils";
 import { AmbientLayer } from "../ambient";
 import { CompareHalftoneScene } from "../section-halftone-scenes";
+import {
+	Frame,
+	FrameFooter,
+	FrameHeader,
+	FramePanel,
+} from "@/components/reui/frame";
 import { Eyebrow, Lede, PlusCorners, PlusMark, Section, SectionHeading } from "../primitives";
 import {
 	CREW_SIZES,
@@ -89,7 +95,7 @@ function CrewStepper({
 	onChange: (crew: CrewSize) => void;
 }) {
 	return (
-		<div className="flex flex-wrap items-center gap-x-4 gap-y-3">
+		<div className="flex w-full flex-wrap items-center justify-between gap-x-4 gap-y-3">
 			<span
 				id="compare-crew-label"
 				className="font-mono text-[11.5px] font-medium uppercase tracking-[0.06em] text-(--ink-3)"
@@ -99,7 +105,7 @@ function CrewStepper({
 			<div
 				role="group"
 				aria-labelledby="compare-crew-label"
-				className="flex w-full max-w-[420px] overflow-hidden rounded-[11px] border border-(--rule-2) bg-(--sheet)"
+				className="flex w-full max-w-[420px] overflow-hidden rounded-[11px] border border-(--rule-2) bg-(--sheet) sm:w-[380px]"
 			>
 				{CREW_SIZES.map((size) => {
 					const selected = size === crew;
@@ -156,7 +162,7 @@ function SavingsLine({ crew }: { crew: CrewSize }) {
 	}
 
 	return (
-		<div className="mt-6 flex items-center justify-center gap-1.5 text-(--rule-3)">
+		<div className="flex items-center justify-center gap-1.5 text-(--rule-3)">
 			<span aria-hidden="true" className="flex-none leading-none text-(--accent)">
 				<PlusMark size={12} />
 			</span>
@@ -185,8 +191,10 @@ const cellCls = (v: Vendor, extra?: string) =>
 
 function LedgerTable({ crew }: { crew: CrewSize }) {
 	return (
-		<div className="relative mt-9 hidden md:block">
-			<div className="relative rounded-[14px] border border-(--rule-2) bg-(--sheet)">
+		<div className="hidden md:block">
+			{/* Plain relative box: the section frame owns the border and the fill,
+			    this only anchors the elevated column overlay. */}
+			<div className="relative">
 				<table className="w-full table-fixed border-collapse">
 					<caption className="sr-only">
 						Published monthly price and included features for a crew of {crew} {people(crew)}.
@@ -199,7 +207,7 @@ function LedgerTable({ crew }: { crew: CrewSize }) {
 					</colgroup>
 					<thead>
 						<tr>
-							<td className="px-5 pb-3 pt-4 align-bottom font-mono text-[11px] uppercase tracking-[0.1em] text-(--ink-3)">
+							<td className="px-5 pb-3 pt-5 align-bottom font-mono text-[11px] uppercase tracking-[0.1em] text-(--ink-3)">
 								Published rates
 							</td>
 							{VENDORS.map((v) => (
@@ -207,7 +215,7 @@ function LedgerTable({ crew }: { crew: CrewSize }) {
 									key={v.key}
 									scope="col"
 									className={cn(
-										"px-4 pb-3 pt-4 text-left align-bottom text-[15px] font-semibold tracking-[-0.01em]",
+										"px-4 pb-3 pt-5 text-left align-bottom text-[15px] font-semibold tracking-[-0.01em]",
 										v.isUs ? "bg-(--accent-wash) text-(--accent-ink)" : "text-(--ink-2)",
 									)}
 								>
@@ -312,7 +320,7 @@ function VendorCard({ v, crew }: { v: Vendor; crew: CrewSize }) {
 	return (
 		<article
 			className={cn(
-				"relative rounded-[14px] border bg-(--sheet)",
+				"relative rounded-[14px] border bg-(--paper)",
 				v.isUs ? "border-(--rule-3)" : "border-(--rule-2)",
 			)}
 		>
@@ -394,7 +402,7 @@ function Footnotes() {
 	});
 
 	return (
-		<div className="mt-7 grid gap-2 text-[12px] leading-[1.6] text-(--ink-3)">
+		<div className="grid gap-2 text-[12.5px] leading-[1.65] text-(--ink-2)">
 			<p>
 				<span aria-hidden="true">✓</span> included · a plan name means it is gated to that tier
 				· <span aria-hidden="true">—</span> means the vendor does not publish it.
@@ -440,20 +448,33 @@ export function Compare() {
 					price for the whole company, however many of you there are.
 				</Lede>
 
-				<div className="mt-[clamp(40px,6vw,80px)]">
-					<CrewStepper crew={crew} onChange={setCrew} />
-				</div>
+				{/* The workspace <Frame>, re-inked by the lp-frame bridge: picker in
+				    the header, ledger in a flush panel, readout and sourcing notes in
+				    the footer. Those notes used to sit bare on the halftone scene,
+				    where 12px grey was close to unreadable. */}
+				<Frame
+					spacing="sm"
+					className="lp-frame mt-[clamp(40px,6vw,80px)] w-full bg-(--paper)"
+				>
+					<FrameHeader className="flex-row items-center justify-between gap-3">
+						<CrewStepper crew={crew} onChange={setCrew} />
+					</FrameHeader>
 
-				<LedgerTable crew={crew} />
+					<FramePanel className="p-0">
+						<LedgerTable crew={crew} />
 
-				<div className="mt-8 grid gap-3 md:hidden">
-					{VENDORS.map((v) => (
-						<VendorCard key={v.key} v={v} crew={crew} />
-					))}
-				</div>
+						<div className="grid gap-3 p-3 md:hidden">
+							{VENDORS.map((v) => (
+								<VendorCard key={v.key} v={v} crew={crew} />
+							))}
+						</div>
 
-				<SavingsLine crew={crew} />
-				<Footnotes />
+						<FrameFooter className="gap-4 border-t border-(--rule) bg-muted py-4">
+							<SavingsLine crew={crew} />
+							<Footnotes />
+						</FrameFooter>
+					</FramePanel>
+				</Frame>
 			</div>
 		</Section>
 	);

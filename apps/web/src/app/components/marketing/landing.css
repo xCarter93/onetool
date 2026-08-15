@@ -77,8 +77,24 @@
 	--border: var(--rule-2);
 	--input: var(--rule-2);
 	--ring: var(--accent);
-	--primary: var(--ink);
+	/* --accent-ink, not --accent: nova's primary is a 10% tint of --primary with
+	   --primary as the label, and the brand sky fails AA against its own tint.
+	   Mapping --primary to --ink (the old value) made the submit button black. */
+	--primary: var(--accent-ink);
 	--primary-fg: var(--paper);
+}
+
+/* Same trick for the ReUI <Frame> (components/reui/frame.tsx): it reads --card,
+   --border and --muted through Tailwind's --color-* mapping, none of which this
+   scope defines. Remapping them lets the landing use the real frame component —
+   gutter on paper, panels on sheet — instead of a landing-only lookalike. */
+.dc-landing .lp-frame {
+	--background: var(--sheet);
+	--foreground: var(--ink);
+	--muted: var(--paper);
+	--muted-foreground: var(--ink-3);
+	--card: var(--sheet);
+	--border: var(--rule-2);
 }
 
 /* Anchored sections sit under the sticky 64px nav. */
@@ -115,22 +131,6 @@ html:has(.dc-landing) {
 @keyframes lp-dashflow {
 	to {
 		stroke-dashoffset: -14;
-	}
-}
-@keyframes lp-slidedot {
-	0% {
-		left: 0;
-		opacity: 0;
-	}
-	12% {
-		opacity: 1;
-	}
-	88% {
-		opacity: 1;
-	}
-	100% {
-		left: calc(100% - 6px);
-		opacity: 0;
 	}
 }
 @keyframes lp-scanline {

@@ -96,7 +96,7 @@ export function RoughMark({
 	strokeWidth,
 	opacity,
 	iterations,
-	duration = 620,
+	duration = 760,
 	delay = 0,
 	seed,
 	className,
@@ -177,8 +177,10 @@ export function RoughMark({
 						const y = r.y + r.h * 0.56;
 						d = stroke(r.x - 2, y, r.x + r.w + 2, y, rnd, bow, 3);
 					} else if (type === "circle") {
-						const px = r.h * 0.28;
-						const py = r.h * 0.16;
+						// Wide enough that the loop clears descenders and the "$" rather
+						// than grazing them.
+						const px = r.h * 0.5;
+						const py = r.h * 0.34;
 						d = ellipse(r.x + r.w / 2, r.y + r.h / 2, r.w / 2 + px, r.h / 2 + py, rnd, bow * 1.4);
 					} else if (type === "box") {
 						const p = r.h * 0.16;
@@ -233,7 +235,7 @@ export function RoughMark({
 					{
 						duration: dur,
 						delay: delay + i * dur * 0.28,
-						easing: "cubic-bezier(.23,1,.32,1)",
+						easing: "cubic-bezier(.4,.1,.25,1)",
 						fill: "forwards",
 					}
 				);
@@ -248,11 +250,28 @@ export function RoughMark({
 		let ro: ResizeObserver | null = null;
 		const start = () => {
 			if (drawnRef.current) return;
-			if (!host.getBoundingClientRect().width) return;
+			const first = host.getBoundingClientRect();
+			if (!first.width) return;
 			drawnRef.current = true;
 			draw(true);
+
+			/* A ResizeObserver delivers an initial observation the moment observe()
+			   runs. Redrawing on it replaced the still-animating strokes with fresh
+			   static ones on the very next frame, so every mark popped in instead of
+			   drawing. Latch the geometry the strokes were built from and redraw only
+			   once it actually moves. */
+			let lastW = first.width;
+			let lastH = first.height;
 			ro = new ResizeObserver(() => {
-				if (drawnRef.current) draw(false);
+				const now = host.getBoundingClientRect();
+				if (
+					Math.abs(now.width - lastW) < 0.5 &&
+					Math.abs(now.height - lastH) < 0.5
+				)
+					return;
+				lastW = now.width;
+				lastH = now.height;
+				draw(false);
 			});
 			ro.observe(host);
 			if (document.body) ro.observe(document.body);

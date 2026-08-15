@@ -2,27 +2,31 @@
 
 import { Sparkles } from "lucide-react";
 import MagicTransform, {
+	type MagicTransformDocument,
 	type MagicTransformResult,
 } from "@/components/react-bits/magic-transform";
 import { Eyebrow, Lede, Section, SectionHeading } from "../primitives";
 import { usePrefersReducedMotion } from "../use-reduced-motion";
 
-/* Switching over — the spreadsheet actually moves. Rows of the old export slide
- * through the AI-import axis on the left and come out the right as named client
- * records. Reduced motion pauses the loop on its settled frame, so the story
- * still reads as a still. The module is a client component only because the
- * transformer and the motion query need the browser. */
+/* Switching over — the spreadsheet actually moves. Sheets of the old export
+ * slide through the AI-import axis on the left and come out the right as named
+ * client records. The cards use MagicTransform's `sheet` artwork (ruled cells
+ * under a header band) rather than its default letter/photo pages: this section
+ * is about a CSV, and generic documents did not say that. Reduced motion pauses
+ * the loop on its settled frame, so the story still reads as a still. The
+ * module is a client component only because the transformer and the motion
+ * query need the browser. */
 
 /* Paper-and-ink chips: pale tint plus ink text, never a saturated slab.
  * --accent-ink resolved to hex because MagicTransform concatenates alpha
  * suffixes onto the axis colour, which a CSS custom property can't carry. */
 const ACCENT_INK = "#0b7cba";
 
-const DOCUMENTS = [
-	{ id: "csv-row-1" },
-	{ id: "csv-row-2" },
-	{ id: "csv-row-3" },
-	{ id: "csv-row-4" },
+const DOCUMENTS: MagicTransformDocument[] = [
+	{ id: "csv-rows-1", variant: "sheet" },
+	{ id: "csv-rows-2", variant: "sheet" },
+	{ id: "csv-rows-3", variant: "sheet" },
+	{ id: "csv-rows-4", variant: "sheet" },
 ];
 
 const RESULTS: MagicTransformResult[] = [
@@ -81,8 +85,8 @@ export function Switching() {
 						results={RESULTS}
 						paused={reduced}
 						height={400}
-						documentWidth={168}
-						documentHeight={104}
+						documentWidth={178}
+						documentHeight={112}
 						documentGap={22}
 						documentDuration={3.4}
 						centerSize={52}

@@ -33,7 +33,11 @@ const useDocSlideStyles = () => {
 export interface MagicTransformDocument {
   /** Stable id used as React key. */
   id: string;
+  /** Artwork drawn on the card. Defaults to alternating letter/image. */
+  variant?: DocumentVariant;
 }
+
+export type DocumentVariant = "letter" | "image" | "sheet";
 
 export interface MagicTransformResult {
   /** Stable id used as React key. */
@@ -196,6 +200,49 @@ const HalftoneBlock = ({
   );
 };
 
+const SHEET_COLS = 4;
+const SHEET_ROWS = 5;
+
+/** A fragment of a spreadsheet export: header band, ruled cells, ragged text.
+ *  Reads as a CSV at card size, where a filename or real glyphs would not. */
+const SheetBody = ({ rand }: { rand: (n: number) => number }) => (
+  <div className="flex h-full w-full flex-col overflow-hidden">
+    <div className="grid flex-none grid-cols-4 border-b border-neutral-300 bg-neutral-100 dark:border-neutral-700 dark:bg-neutral-800">
+      {Array.from({ length: SHEET_COLS }).map((_, c) => (
+        <div
+          key={c}
+          className="flex h-[13px] items-center border-r border-neutral-300 px-1.5 last:border-r-0 dark:border-neutral-700"
+        >
+          <span
+            className="h-[3px] rounded-[1px] bg-neutral-400 dark:bg-neutral-500"
+            style={{ width: `${50 + rand(c) * 32}%` }}
+          />
+        </div>
+      ))}
+    </div>
+    <div className="grid flex-1 grid-rows-5">
+      {Array.from({ length: SHEET_ROWS }).map((_, r) => (
+        <div
+          key={r}
+          className="grid grid-cols-4 border-b border-neutral-200 last:border-b-0 dark:border-neutral-800"
+        >
+          {Array.from({ length: SHEET_COLS }).map((_, c) => (
+            <div
+              key={c}
+              className="flex items-center overflow-hidden border-r border-neutral-200 px-1.5 last:border-r-0 dark:border-neutral-800"
+            >
+              <span
+                className="h-[2.5px] rounded-[1px] bg-neutral-300 dark:bg-neutral-600"
+                style={{ width: `${38 + rand(r * SHEET_COLS + c + 7) * 52}%` }}
+              />
+            </div>
+          ))}
+        </div>
+      ))}
+    </div>
+  </div>
+);
+
 const DocumentBody = memo(function DocumentBody({
   seed,
   variant,
@@ -203,7 +250,7 @@ const DocumentBody = memo(function DocumentBody({
   height,
 }: {
   seed: number;
-  variant: "letter" | "image";
+  variant: DocumentVariant;
   width: number;
   height: number;
 }) {
@@ -216,6 +263,8 @@ const DocumentBody = memo(function DocumentBody({
   );
 
   const innerWidth = width - 32;
+
+  if (variant === "sheet") return <SheetBody rand={rand} />;
 
   if (variant === "image") {
     const blockHeight = Math.floor(height * 0.42);
@@ -326,7 +375,7 @@ interface SlidingDocProps {
   index: number;
   total: number;
   beat: number;
-  variant: "letter" | "image";
+  variant: DocumentVariant;
   documentWidth: number;
   documentHeight: number;
   documentGap: number;
@@ -533,7 +582,7 @@ const MagicTransform = ({
               index={i}
               total={docCount}
               beat={beat}
-              variant={i % 2 === 0 ? "letter" : "image"}
+              variant={doc.variant ?? (i % 2 === 0 ? "letter" : "image")}
               documentWidth={documentWidth}
               documentHeight={documentHeight}
               documentGap={documentGap}

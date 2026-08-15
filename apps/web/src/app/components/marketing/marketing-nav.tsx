@@ -359,54 +359,75 @@ function ResourcesFlyout() {
 	);
 }
 
-/** Solid-ink CTA — the page's one filled button style. */
-export function InkButton({
+/* Button ladder. Primary is the workspace's frosted-blue treatment (nova's
+ * `.cn-button-variant-default`, and the same look production's CtaButton uses),
+ * not a solid ink slab — landing and app primaries have to read as one button.
+ *
+ * The fill is composited OPAQUE (color-mix against --paper, not an alpha tint):
+ * these buttons sit over the grid backdrop and the halftone scenes, and a
+ * translucent fill lets the artwork print straight through them.
+ *
+ * Label is --accent-ink, not --accent: the brand sky is ~2.7:1 on its own 10%
+ * tint and fails AA. --accent-ink is the darker sky in light mode and the
+ * lighter one in dark, so it clears contrast on both. */
+export const LP_PRIMARY =
+	"inline-flex cursor-pointer items-center gap-[9px] rounded-[11px] border font-semibold tracking-[-0.01em] " +
+	"border-[color-mix(in_srgb,var(--accent)_32%,transparent)] " +
+	"bg-[color-mix(in_srgb,var(--accent)_10%,var(--paper))] text-(--accent-ink) shadow-sm " +
+	"transition-[background-color,border-color,box-shadow] duration-200 motion-reduce:transition-none " +
+	"hover:border-[color-mix(in_srgb,var(--accent)_45%,transparent)] " +
+	"hover:bg-[color-mix(in_srgb,var(--accent)_16%,var(--paper))] hover:shadow-md " +
+	"active:bg-[color-mix(in_srgb,var(--accent)_22%,var(--paper))] " +
+	"focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--accent-ink) focus-visible:ring-offset-2 focus-visible:ring-offset-(--paper) " +
+	"disabled:pointer-events-none disabled:opacity-60";
+
+/* Secondary: hairline plate, the workspace `outline` variant in landing ink.
+ * Hover moves the border and the label to accent rather than shifting the fill —
+ * these sit on --paper and on --sheet, so any fill shift reads backwards on one
+ * of the two. */
+export const LP_SECONDARY =
+	"inline-flex cursor-pointer items-center rounded-[11px] border border-(--rule-2) bg-(--sheet) font-medium text-(--ink) " +
+	"transition-[color,border-color] duration-200 motion-reduce:transition-none " +
+	"hover:border-[color-mix(in_srgb,var(--accent)_45%,transparent)] hover:text-(--accent-ink) " +
+	"focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--accent-ink) focus-visible:ring-offset-2 focus-visible:ring-offset-(--paper)";
+
+const SIZE = {
+	sm: "h-[38px] rounded-[9px] px-4 text-sm",
+	md: "h-[52px] px-[26px] text-[17px]",
+} as const;
+
+type ButtonProps = {
+	href: string;
+	size?: keyof typeof SIZE;
+	className?: string;
+	children: React.ReactNode;
+};
+
+/** Primary CTA. */
+export function PrimaryButton({
 	href,
 	size = "md",
 	className,
 	children,
-}: {
-	href: string;
-	size?: "sm" | "md";
-	className?: string;
-	children: React.ReactNode;
-}) {
+}: ButtonProps) {
 	return (
-		<Link
-			href={href}
-			className={cn(
-				"inline-flex items-center gap-[9px] rounded-[11px] bg-(--ink) font-semibold tracking-[-0.01em] text-(--paper) transition-opacity hover:opacity-[0.88] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--accent-ink) focus-visible:ring-offset-2 focus-visible:ring-offset-(--paper)",
-				size === "sm" && "h-[38px] rounded-[9px] px-4 text-sm",
-				size === "md" && "h-[52px] px-[26px] text-[17px]",
-				className
-			)}
-		>
+		<Link href={href} className={cn(LP_PRIMARY, SIZE[size], className)}>
 			{children}
 		</Link>
 	);
 }
 
-/** Hairline secondary CTA. */
-export function SheetButton({
+/** Secondary CTA. Plain <a>: several call sites are in-page hash anchors. */
+export function SecondaryButton({
 	href,
 	size = "md",
 	className,
 	children,
-}: {
-	href: string;
-	size?: "sm" | "md";
-	className?: string;
-	children: React.ReactNode;
-}) {
+}: ButtonProps) {
 	return (
 		<a
 			href={href}
-			className={cn(
-				"inline-flex items-center rounded-[11px] border border-(--rule-2) bg-(--sheet) font-medium text-(--ink) transition-colors hover:border-(--rule-3) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--accent-ink) focus-visible:ring-offset-2 focus-visible:ring-offset-(--paper)",
-				size === "sm" && "h-[38px] rounded-[9px] px-4 text-sm",
-				size === "md" && "h-[52px] px-[22px] text-[17px]",
-				className
-			)}
+			className={cn(LP_SECONDARY, SIZE[size], size === "md" && "px-[22px]", className)}
 		>
 			{children}
 		</a>
@@ -428,7 +449,7 @@ export function MarketingNav() {
 
 	return (
 		<header className="sticky top-0 z-[60] border-b border-(--rule) bg-[color-mix(in_srgb,var(--paper)_86%,transparent)] backdrop-blur-[14px] backdrop-saturate-[1.4]">
-			<div className="mx-auto flex min-h-16 max-w-[1280px] flex-wrap items-center justify-between gap-x-6 gap-y-2 px-[clamp(20px,4vw,40px)] py-2">
+			<div className="mx-auto flex min-h-16 max-w-[1560px] flex-wrap items-center justify-between gap-x-6 gap-y-2 px-[clamp(20px,4vw,40px)] py-2">
 				<Link
 					href="/"
 					aria-label="OneTool home"
@@ -460,14 +481,14 @@ export function MarketingNav() {
 						<SignInButton mode="modal" forceRedirectUrl="/home">
 							<button className={cn(LINK_CLASS, "hidden sm:inline-flex")}>Sign in</button>
 						</SignInButton>
-						<InkButton href="/sign-up" size="sm">
+						<PrimaryButton href="/sign-up" size="sm">
 							Start free
-						</InkButton>
+						</PrimaryButton>
 					</SignedOut>
 					<SignedIn>
-						<InkButton href="/home" size="sm">
+						<PrimaryButton href="/home" size="sm">
 							Open OneTool
-						</InkButton>
+						</PrimaryButton>
 					</SignedIn>
 
 					{/* Mobile menu toggle */}

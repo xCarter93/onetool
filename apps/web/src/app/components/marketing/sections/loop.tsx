@@ -10,7 +10,7 @@ import { JobStack } from "../job-stack";
 export function Loop() {
 	return (
 		/* Full-bleed via the container, the hero's pattern: the pinned stage and
-		   its halftone corners want the page's full width, not the 1280px
+		   its halftone corners want the page's full width, not the 1560px
 		   column. Deliberately NOT overflow-hidden on the Section — that would
 		   make it the scrollport and kill the stage's position:sticky; the stage
 		   already clips its own decor. */

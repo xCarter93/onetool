@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { useTheme } from "next-themes";
 import { Eyebrow, GridBackdrop, Lede, PlusCorners, Section } from "../primitives";
 import { AmbientLayer } from "../ambient";
-import { InkButton, SheetButton } from "../marketing-nav";
+import { PrimaryButton, SecondaryButton } from "../marketing-nav";
 import { RoughMark } from "../rough-mark";
 import { usePrefersReducedMotion } from "../use-reduced-motion";
 
@@ -130,51 +130,51 @@ export function FinalCta() {
 					className="rounded-[19px]"
 				/>
 
-				<div className="relative grid justify-items-center px-[clamp(24px,4vw,72px)] py-[clamp(40px,6vw,88px)] text-center">
-					<Eyebrow>Free plan · no card required</Eyebrow>
+				<div className="relative grid items-center gap-[clamp(32px,4vw,60px)] px-[clamp(24px,4vw,64px)] py-[clamp(40px,6vw,80px)] lg:grid-cols-[1fr_minmax(0,440px)]">
+					<div className="max-w-[34rem]">
+						<Eyebrow>Free plan · no card required</Eyebrow>
 
-					<h2 className="mt-4 max-w-[18ch] text-[clamp(30px,4.4vw,54px)] font-semibold leading-[1.03] tracking-[-0.04em] text-balance">
-						Send your first quote{" "}
-						<RoughMark type="underline" className="whitespace-nowrap">
-							before lunch
-						</RoughMark>
-						.
-					</h2>
+						<h2 className="mt-4 max-w-[18ch] text-[clamp(30px,4.4vw,54px)] font-semibold leading-[1.03] tracking-[-0.04em] text-balance">
+							Send your first quote{" "}
+							<RoughMark type="underline" className="whitespace-nowrap">
+								before lunch
+							</RoughMark>
+							.
+						</h2>
 
-					<Lede className="max-w-[38rem]">
-						Add a client, build a quote, send it for signature. You can be doing
-						that ten minutes from now. There is nothing to install, and nobody you have
-						to talk to first.
-					</Lede>
+						<Lede>
+							Add a client, build a quote, send it for signature. You can be
+							doing that ten minutes from now. There is nothing to install, and
+							nobody you have to talk to first.
+						</Lede>
 
-					<div className="mt-7 flex flex-wrap justify-center gap-3">
-						<InkButton href="/sign-up">
-							Start free{" "}
-							<span aria-hidden="true" className="text-[15px]">
-								→
-							</span>
-						</InkButton>
-						{/* Sheet-on-sheet would vanish: the comp's secondary CTA is paper. */}
-						<SheetButton href="#loop" className="bg-(--paper)">
-							See how it works
-						</SheetButton>
+						<div className="mt-7 flex flex-wrap gap-3">
+							<PrimaryButton href="/sign-up">
+								Start free{" "}
+								<span aria-hidden="true" className="text-[15px]">
+									→
+								</span>
+							</PrimaryButton>
+							{/* Sheet-on-sheet would vanish: the comp's secondary CTA is paper. */}
+							<SecondaryButton href="#loop" className="bg-(--paper)">
+								See how it works
+							</SecondaryButton>
+						</div>
 					</div>
 
+					{/* Recessed well on --paper so the fields read as inset into the
+					    sheet rather than floating on it, and stay legible over the
+					    lattice running behind the card. */}
 					<div
 						id="book-a-demo"
-						className="mt-[clamp(36px,5vw,56px)] w-full max-w-[42rem] border-t border-(--rule) pt-[clamp(28px,3.5vw,44px)]"
+						className="lp-form rounded-[14px] border border-(--rule-2) bg-(--paper) p-[clamp(20px,3vw,30px)]"
 					>
 						<Eyebrow>Book a demo</Eyebrow>
-						<p className="mx-auto mt-3.5 max-w-[34rem] text-[15.5px] leading-[1.6] text-(--ink-2) text-pretty">
+						<p className="mt-3 text-[15px] leading-[1.6] text-(--ink-2) text-pretty">
 							Want a walkthrough instead? Leave your details and a real person
 							gets back to you within a day to find a time.
 						</p>
-
-						{/* Recessed well on --paper so the fields read as inset into the
-						    sheet rather than floating on it. */}
-						<div className="lp-form mt-7 rounded-[14px] border border-(--rule-2) bg-(--paper) p-[clamp(18px,3vw,28px)] text-left">
-							<ScheduleDemoForm idPrefix="final-cta-demo" layout="grid" />
-						</div>
+						<ScheduleDemoForm idPrefix="final-cta-demo" className="mt-6" />
 					</div>
 				</div>
 			</div>

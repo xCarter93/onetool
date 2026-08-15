@@ -393,7 +393,7 @@ export function OnePlace() {
 				<OldWayHalftoneScene />
 			</AmbientLayer>
 
-			{/* Full-bleed construction grid: the wrapper escapes the 1280px container,
+			{/* Full-bleed construction grid: the wrapper escapes the 1560px container,
 			    the section's overflow-hidden clips it back to the band. */}
 			<div
 				aria-hidden="true"

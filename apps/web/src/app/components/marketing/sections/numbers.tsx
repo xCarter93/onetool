@@ -1,19 +1,26 @@
 "use client";
 
 import SimpleGraph, { type DataPoint } from "@/components/react-bits/simple-graph";
+import { formatCurrency } from "@/lib/money";
 import { Eyebrow, Lede, Section, SectionHeading } from "../primitives";
 import { usePrefersReducedMotion } from "../use-reduced-motion";
 
 /* NUMBERS — sheet band. Copy and figures verbatim from the comp
  * (design-import/OneTool Landing.dc.html, lines 382–424). One chart only: the
- * goal bar states where the month stands, the line states how it got there.
+ * goal bar states where the period stands, the line states how it got there.
  * Client component because the line draws itself on scroll and reduced motion
  * has to be able to switch that off. */
 
 const MONTHS = ["Apr", "May", "Jun", "Jul", "Aug", "Sep"];
-const REVENUE_K = [22, 31, 27, 38, 34, 44];
 
-const SERIES: DataPoint[] = REVENUE_K.map((value, i) => ({
+/* The six months have to add up to the figure above the chart, or hovering a
+   point contradicts the headline. Sum === BOOKED. */
+const REVENUE = [4120, 5340, 5880, 6910, 7290, 8880];
+const BOOKED = REVENUE.reduce((a, b) => a + b, 0);
+const GOAL = 50000;
+const PERCENT = Math.round((BOOKED / GOAL) * 100);
+
+const SERIES: DataPoint[] = REVENUE.map((value, i) => ({
 	value,
 	label: MONTHS[i],
 }));
@@ -35,7 +42,7 @@ function RevenueLine() {
 	return (
 		<div
 			role="img"
-			aria-label="Line chart of monthly revenue from April to September, trending upward from $22k to $44k"
+			aria-label={`Line chart of monthly revenue from April to September, trending upward from ${formatCurrency(REVENUE[0], { whole: true })} to ${formatCurrency(REVENUE[REVENUE.length - 1], { whole: true })}`}
 			className="mt-6"
 		>
 			<SimpleGraph
@@ -55,6 +62,7 @@ function RevenueLine() {
 				gradientFade
 				animateOnScroll={!reduced}
 				animationDuration={reduced ? 0 : 1.6}
+				formatValue={(value) => formatCurrency(value, { whole: true })}
 			/>
 			{/* Absolute, not equal-flex: flex centres each label in its own sixth,
 			    which is half a step off the data points. */}
@@ -105,10 +113,10 @@ export function Numbers() {
 					<div className="p-[22px]">
 						<div className="flex flex-wrap items-baseline gap-[14px]">
 							<span className="text-[clamp(28px,3.4vw,40px)] font-semibold tracking-[-0.03em] tabular-nums">
-								$38,420
+								{formatCurrency(BOOKED, { whole: true })}
 							</span>
 							<span className="text-[14px] font-semibold text-(--paid)">
-								77% of $50,000 goal
+								{PERCENT}% of {formatCurrency(GOAL, { whole: true })} goal
 							</span>
 						</div>
 						<div
@@ -116,8 +124,9 @@ export function Numbers() {
 							style={{ background: "color-mix(in oklch, var(--ink) 8%, transparent)" }}
 						>
 							<div
-								className="h-full w-[77%] rounded-full"
+								className="h-full rounded-full"
 								style={{
+									width: `${PERCENT}%`,
 									background: "linear-gradient(90deg,var(--accent),var(--paid))",
 								}}
 							/>

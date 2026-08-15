@@ -2,10 +2,9 @@ import { CreditCard } from "@/components/react-bits/credit-card";
 import { Eyebrow, Lede, Section, SectionHeading } from "../primitives";
 import { RoughMark } from "../rough-mark";
 
-/* Two payoff cards. Money carries the settlement diagram (a hairline track with
- * a green dot sliding job → bank); Time carries four was/now rows under a struck
- * heading. Both cards are flex columns so the diagram and the rows bottom-align
- * across unequal copy lengths. */
+/* Two payoff cards. Money carries the settled card the client paid on; Time
+ * carries four was/now rows under a struck heading. Both cards are flex columns
+ * so the artwork and the rows bottom-align across unequal copy lengths. */
 
 const TIME_SAVERS = [
 	{
@@ -49,9 +48,8 @@ export function MoneyTime() {
 					</p>
 
 					<div className="mt-auto pt-8">
-						{/* The settled card sits above the track: what the client tapped,
-						 * then where the money went. It only answers a click (the flip) —
-						 * no hover tilt, so it stays still while you read past it. */}
+						{/* What the client tapped. It only answers a click (the flip) — no
+						 * hover tilt, so it stays still while you read past it. */}
 						<div aria-hidden="true" className="flex justify-center">
 							<CreditCard
 								cardNumber="•••• •••• •••• 4180"
@@ -70,33 +68,7 @@ export function MoneyTime() {
 								className="select-none"
 							/>
 						</div>
-						<div
-							aria-hidden="true"
-							className="mt-8 flex items-end justify-between gap-4 text-[13.5px] text-(--ink-2)"
-						>
-							<span>Job finished</span>
-							<span>Money in</span>
-						</div>
-						<div
-							aria-hidden="true"
-							className="mt-[10px] flex items-center text-(--rule-3)"
-						>
-							<span className="h-[13px] w-px flex-none bg-current" />
-							<span className="relative h-px flex-1 bg-current">
-								<span
-									className="absolute -top-[2.5px] left-0 h-[6px] w-[6px] rounded-full bg-(--paid)"
-									style={{
-										animation: "lp-slidedot 3s var(--lp-ease) infinite",
-									}}
-								/>
-							</span>
-							<span className="flex-none whitespace-nowrap px-3 text-[11px] font-bold uppercase tracking-[0.1em] text-(--paid)">
-								Same week
-							</span>
-							<span className="h-px flex-1 bg-current" />
-							<span className="h-[13px] w-px flex-none bg-current" />
-						</div>
-						<p className="mt-4 text-[13.5px] text-(--ink-3)">
+						<p className="mt-7 text-[13.5px] text-(--ink-3)">
 							{
 								"Without the thirty-day wait and the two reminder phone calls."
 							}
