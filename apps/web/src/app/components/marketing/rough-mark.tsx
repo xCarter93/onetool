@@ -258,21 +258,28 @@ export function RoughMark({
 			if (document.body) ro.observe(document.body);
 		};
 
-		const io = new IntersectionObserver(
-			(entries) => {
-				if (entries.some((e) => e.isIntersecting)) {
-					start();
-					io.disconnect();
-				}
-			},
-			{ rootMargin: "0px 0px -10% 0px" }
-		);
-		io.observe(host);
-		// Fallback: a mark that never draws is worse than one drawn a screen early.
-		const t = window.setTimeout(start, 1200);
+		/* IO only: an unconditional fallback timer drew every mark 1.2s after
+		   mount — while still off-screen — so nothing ever animated into view.
+		   The timer now exists solely for environments without IO. */
+		let io: IntersectionObserver | null = null;
+		let t = 0;
+		if (typeof IntersectionObserver === "undefined") {
+			t = window.setTimeout(start, 300);
+		} else {
+			io = new IntersectionObserver(
+				(entries) => {
+					if (entries.some((e) => e.isIntersecting)) {
+						start();
+						io?.disconnect();
+					}
+				},
+				{ rootMargin: "0px 0px -10% 0px" }
+			);
+			io.observe(host);
+		}
 
 		return () => {
-			io.disconnect();
+			io?.disconnect();
 			ro?.disconnect();
 			window.clearTimeout(t);
 		};

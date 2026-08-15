@@ -28,6 +28,7 @@ export function AmbientLayer({
 	className,
 	opacity = 1,
 	rootMargin = "200px",
+	fullBleed = false,
 	style,
 }: {
 	children: ReactNode;
@@ -35,6 +36,12 @@ export function AmbientLayer({
 	/** Whisper knob — applied to the whole layer so shaders keep their own math. */
 	opacity?: number;
 	rootMargin?: string;
+	/**
+	 * Escape the containing column and span the viewport. 100vw includes the
+	 * scrollbar, so the nearest clipping ancestor (usually the Section) MUST be
+	 * overflow-hidden or the page gains a horizontal scroll on Windows.
+	 */
+	fullBleed?: boolean;
 	style?: CSSProperties;
 }) {
 	const ref = useRef<HTMLDivElement>(null);
@@ -57,7 +64,10 @@ export function AmbientLayer({
 			ref={ref}
 			aria-hidden="true"
 			className={cn(
-				"pointer-events-none absolute inset-0 overflow-hidden",
+				"pointer-events-none absolute overflow-hidden",
+				fullBleed
+					? "inset-y-0 left-1/2 w-screen -translate-x-1/2"
+					: "inset-0",
 				className
 			)}
 			style={{ opacity, ...style }}
