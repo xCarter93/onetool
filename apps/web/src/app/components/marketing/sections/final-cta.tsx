@@ -31,8 +31,9 @@ const LATTICE_LIGHT = "#0284c7";
 
 /**
  * The night-squares lattice under the card: 34px-ish cells blinking toward the
- * bottom edge, alpha capped at .085 so it stays furniture behind the grid
- * (comp tuning per design-import/particles.NOTE.md). A rAF canvas ignores the
+ * bottom edge, alpha capped at .105 so it stays furniture behind the grid
+ * (comp tuning per design-import/particles.NOTE.md, nudged up a step so the
+ * page's last card carries a texture at all). A rAF canvas ignores the
  * stylesheet's reduced-motion kill switch, so it is gated in JS — and mounted
  * only near the viewport, since this card sits at the foot of a long page.
  */
@@ -66,12 +67,14 @@ function NightLattice() {
 					gridSize={15}
 					squareColor={resolvedTheme === "dark" ? LATTICE_DARK : LATTICE_LIGHT}
 					squareSize={0.34}
-					opacity={0.085}
+					opacity={0.105}
 					intensity={1}
-					minBrightness={0.35}
+					minBrightness={0.4}
 					twinkleSpeed={0.7}
 					twinkleStrength={0.9}
-					fadeStart={0.2}
+					/* ramp starts higher up the card so the lattice reads across the
+						   whole CTA, not just along its bottom edge */
+						fadeStart={0.1}
 					fadeEnd={1}
 					falloff={2.2}
 					dpr={1.5}

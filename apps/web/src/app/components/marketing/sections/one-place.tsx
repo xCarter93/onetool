@@ -1,5 +1,7 @@
 import type { CSSProperties, ReactElement, ReactNode } from "react";
 import { ISO_T, isoGrid } from "@/components/illustrations/art/iso";
+import { TechWall } from "@/components/react-bits/tech-wall";
+import { AmbientLayer } from "../ambient";
 import {
 	Eyebrow,
 	GridBackdrop,
@@ -356,6 +358,31 @@ function ExplodedStack() {
 export function OnePlace() {
 	return (
 		<Section id="one-place" scheme="dark" className="overflow-hidden">
+			{/* Ambient panel wall, full-bleed under the whole band. This band is dark
+			    in BOTH site themes, so the panel/accent colours can be literal. */}
+			<div
+				aria-hidden="true"
+				className="pointer-events-none absolute inset-y-0 left-1/2 w-screen -translate-x-1/2"
+			>
+				<AmbientLayer opacity={0.35}>
+					<TechWall
+						className="h-full w-full"
+						color="#131b26"
+						accentColor="#00a6f4"
+						edgeColor="#2d7fa8"
+						backgroundColor="transparent"
+						density={9}
+						speed={0.35}
+						grain={0}
+						vignette={0.25}
+						cursorInteraction={false}
+						paused={false}
+						adaptiveQuality
+						dpr={1.25}
+					/>
+				</AmbientLayer>
+			</div>
+
 			{/* Full-bleed construction grid: the wrapper escapes the 1280px container,
 			    the section's overflow-hidden clips it back to the band. */}
 			<div

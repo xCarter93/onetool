@@ -1,8 +1,10 @@
 "use client";
 
 import { useState } from "react";
+import dynamic from "next/dynamic";
 import { usePlans } from "@clerk/nextjs/experimental";
 import { cn } from "@/lib/utils";
+import { AmbientLayer } from "../ambient";
 import { CheckItem, Eyebrow, Lede, Section, SectionHeading, PlusCorners } from "../primitives";
 import { InkButton, SheetButton } from "../marketing-nav";
 import { RoughMark } from "../rough-mark";
@@ -26,6 +28,13 @@ const BUSINESS_PLAN = [
 	"Recurring work, routing and automations",
 	"Priority support — 24-hour SLAs",
 ];
+
+/* Ambient: slow ink rings under the plates. Three.js stays out of the landing's
+ * first load — the chunk arrives with the section. */
+const MinimalRipple = dynamic(
+	() => import("@/components/react-bits/minimal-ripple"),
+	{ ssr: false }
+);
 
 const FALLBACK_MONTHLY = 30;
 const FALLBACK_YEARLY = 300;
@@ -103,7 +112,22 @@ export function Pricing() {
 
 	return (
 		<Section id="pricing" scheme="sheet">
-			<div className="flex flex-wrap items-end justify-between gap-6">
+			<AmbientLayer opacity={0.1}>
+				<MinimalRipple
+					className="h-full w-full"
+					color="#8a8782"
+					hotColor="#8a8782"
+					backgroundColor="transparent"
+					speed={0.22}
+					frequency={5}
+					grain={0}
+					cursorInteraction={false}
+					adaptiveQuality
+					dpr={1.25}
+				/>
+			</AmbientLayer>
+
+			<div className="relative flex flex-wrap items-end justify-between gap-6">
 				<div>
 					<Eyebrow>Pricing</Eyebrow>
 					<SectionHeading className="max-w-[16ch]">
@@ -119,7 +143,7 @@ export function Pricing() {
 				<BillingToggle annual={annual} onChange={setAnnual} />
 			</div>
 
-			<div className="mt-[clamp(40px,6vw,80px)] grid max-w-[64rem] grid-cols-[repeat(auto-fit,minmax(min(100%,300px),1fr))] gap-[clamp(16px,2vw,24px)]">
+			<div className="relative mt-[clamp(40px,6vw,80px)] grid max-w-[64rem] grid-cols-[repeat(auto-fit,minmax(min(100%,300px),1fr))] gap-[clamp(16px,2vw,24px)]">
 				{/* Free */}
 				<div className="lp-lift grid content-start gap-5 rounded-2xl border border-(--rule-2) bg-(--paper) p-[clamp(24px,3vw,36px)]">
 					<div>

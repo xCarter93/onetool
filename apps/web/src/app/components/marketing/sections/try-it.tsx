@@ -1,9 +1,14 @@
 "use client";
 
-import { useState, type CSSProperties } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import Link from "next/link";
+import { animate, useMotionValue, type MotionValue } from "motion/react";
 import { formatCurrency, roundCents } from "@/lib/money";
 import { cn } from "@/lib/utils";
+import { ThinkingDots } from "@/components/react-bits/thinking-dots";
+import UserCursor from "@/components/react-bits/user-cursor";
+import { AmbientLayer } from "../ambient";
+import { usePrefersReducedMotion } from "../use-reduced-motion";
 import {
 	CardEyebrowRow,
 	DimensionLine,
@@ -94,7 +99,158 @@ function Stepper({
 	);
 }
 
+/* ------------------------------------------------------------ the crew layer */
+
+/* Two teammates drifting over the builder — the "your crew is in here too"
+ * beat. They are pure decoration: the layer is pointer-events-none so the real
+ * controls stay clickable, and the whole thing is skipped under reduced motion,
+ * on coarse pointers, and while the section is off-screen. Positions are
+ * scripted MotionValues (motion's animate() keyframe loops) rather than a hand
+ * rAF, and fed to UserCursor's controlled `positionX`/`positionY` props. */
+
+type CrewGhost = {
+	name: string;
+	color: string;
+	/** Waypoints as fractions of the builder box. First point is also the last. */
+	path: readonly (readonly [number, number])[];
+	duration: number;
+	delay: number;
+};
+
+/** Uneven `times` so the loop reads as wandering, not as a metronome. */
+const GHOST_TIMES = [0, 0.19, 0.41, 0.63, 0.84, 1];
+
+const CREW: readonly CrewGhost[] = [
+	{
+		name: "Mike · Crew B",
+		// Ink-adjacent warm grey: present, never competing with the data.
+		color: "#8a8782",
+		path: [
+			[0.16, 0.14],
+			[0.4, 0.29],
+			[0.27, 0.58],
+			[0.46, 0.79],
+			[0.2, 0.42],
+			[0.16, 0.14],
+		],
+		duration: 17,
+		delay: 0,
+	},
+	{
+		name: "Dana · Office",
+		// The page's one accent, so the two read as different people.
+		color: "rgb(0,166,244)",
+		path: [
+			[0.79, 0.7],
+			[0.61, 0.36],
+			[0.87, 0.2],
+			[0.67, 0.54],
+			[0.88, 0.62],
+			[0.79, 0.7],
+		],
+		duration: 13.5,
+		delay: 1.2,
+	},
+] as const;
+
+function CrewCursors({ hostRef }: { hostRef: React.RefObject<HTMLDivElement | null> }) {
+	const reduced = usePrefersReducedMotion();
+	const [coarse, setCoarse] = useState(true);
+	const [inView, setInView] = useState(false);
+	const [box, setBox] = useState({ w: 0, h: 0 });
+
+	// Fixed hook count: one pair of MotionValues per ghost, created at mount.
+	const mikeX = useMotionValue(-9999);
+	const mikeY = useMotionValue(-9999);
+	const danaX = useMotionValue(-9999);
+	const danaY = useMotionValue(-9999);
+	const values: readonly (readonly [MotionValue<number>, MotionValue<number>])[] = [
+		[mikeX, mikeY],
+		[danaX, danaY],
+	];
+
+	// Match UserCursor's own hideOnTouch test — fake cursors on a phone are noise.
+	useEffect(() => {
+		const mq = window.matchMedia("(pointer: coarse)");
+		const update = () => setCoarse(mq.matches);
+		update();
+		mq.addEventListener("change", update);
+		return () => mq.removeEventListener("change", update);
+	}, []);
+
+	// The cursors aren't an inset-0 ambient, so they get their own view gate.
+	useEffect(() => {
+		const node = hostRef.current;
+		if (!node) return;
+		const io = new IntersectionObserver(([entry]) => setInView(entry.isIntersecting), {
+			rootMargin: "120px",
+		});
+		io.observe(node);
+		return () => io.disconnect();
+	}, [hostRef]);
+
+	useEffect(() => {
+		const node = hostRef.current;
+		if (!node || typeof ResizeObserver === "undefined") return;
+		const ro = new ResizeObserver(([entry]) => {
+			const r = entry.contentRect;
+			setBox({ w: r.width, h: r.height });
+		});
+		ro.observe(node);
+		return () => ro.disconnect();
+	}, [hostRef]);
+
+	const active = !reduced && !coarse && inView && box.w > 0 && box.h > 0;
+
+	useEffect(() => {
+		if (!active) return;
+		const controls = CREW.flatMap((ghost, i) => {
+			const [mx, my] = values[i];
+			const xs = ghost.path.map(([fx]) => fx * box.w);
+			const ys = ghost.path.map(([, fy]) => fy * box.h);
+			// Jump first: rawX rests at -9999, and animating from there would
+			// streak the cursor across the pane on entry.
+			mx.jump(xs[0]);
+			my.jump(ys[0]);
+			const options = {
+				duration: ghost.duration,
+				times: GHOST_TIMES,
+				ease: "easeInOut" as const,
+				repeat: Infinity,
+				delay: ghost.delay,
+			};
+			return [animate(mx, xs, options), animate(my, ys, options)];
+		});
+		return () => controls.forEach((c) => c.stop());
+		// values/hostRef identities are stable for the component's lifetime.
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [active, box.w, box.h]);
+
+	if (reduced || coarse) return null;
+
+	return (
+		<div aria-hidden="true" className="pointer-events-none absolute inset-0 z-20">
+			{CREW.map((ghost, i) => (
+				<UserCursor
+					key={ghost.name}
+					className="h-full w-full"
+					name={ghost.name}
+					color={ghost.color}
+					size={24}
+					showLabel
+					trigger="always"
+					directionAwareTilt
+					hideOnTouch
+					positionX={values[i][0]}
+					positionY={values[i][1]}
+				/>
+			))}
+		</div>
+	);
+}
+
 export function TryIt() {
+	const builderRef = useRef<HTMLDivElement>(null);
 	const [cart, setCart] = useState<Record<string, number>>(OPENING_CART);
 
 	const toggle = (id: string) =>
@@ -114,9 +270,7 @@ export function TryIt() {
 		});
 
 	const chosen = SERVICES.filter((s) => cart[s.id]);
-	const subtotal = roundCents(
-		chosen.reduce((sum, s) => sum + s.price * (cart[s.id] ?? 0), 0)
-	);
+	const subtotal = roundCents(chosen.reduce((sum, s) => sum + s.price * (cart[s.id] ?? 0), 0));
 	const tax = roundCents(subtotal * TAX_RATE);
 	const total = roundCents(subtotal + tax);
 	const empty = chosen.length === 0;
@@ -126,177 +280,193 @@ export function TryIt() {
 			<Eyebrow>Try it yourself</Eyebrow>
 			<SectionHeading>Build a quote in 20 seconds.</SectionHeading>
 			<Lede className="max-w-[46rem]">
-				Pick a couple of line items. This is the same motion you&rsquo;d do in the truck
-				&mdash; and the page on the right is what your client gets.
+				Pick a couple of line items. This is the same motion you&rsquo;d do in the truck &mdash;
+				and the page on the right is what your client gets.
 			</Lede>
 
-			<div className="mt-[clamp(40px,6vw,80px)] grid grid-cols-[repeat(auto-fit,minmax(min(100%,360px),1fr))] items-start gap-[clamp(20px,2.6vw,36px)]">
-				{/* ------------------------------------------------------ the builder */}
-				<div>
-					{/* overflow-hidden clips the hairline rows to the card radius, so the
+			<div ref={builderRef} className="relative mt-[clamp(40px,6vw,80px)]">
+				{/* Paper-toned dot field behind both panes — texture, not weather. */}
+				<AmbientLayer opacity={0.1}>
+					<ThinkingDots
+						className="h-full w-full"
+						color="#8a8782"
+						accentColor="#8a8782"
+						backgroundColor="transparent"
+						glow={0}
+						cursorInteraction={false}
+					/>
+				</AmbientLayer>
+
+				<CrewCursors hostRef={builderRef} />
+
+				<div className="relative grid grid-cols-[repeat(auto-fit,minmax(min(100%,360px),1fr))] items-start gap-[clamp(20px,2.6vw,36px)]">
+					{/* ------------------------------------------------------ the builder */}
+					<div>
+						{/* overflow-hidden clips the hairline rows to the card radius, so the
 					    focus indicator has to draw inside: outline, not ring. */}
-					<div className="lp-lift overflow-hidden rounded-2xl border border-(--rule-2) bg-(--sheet)">
-						<CardEyebrowRow label="Line items" index={`${chosen.length} selected`} />
+						<div className="lp-lift overflow-hidden rounded-2xl border border-(--rule-2) bg-(--sheet)">
+							<CardEyebrowRow label="Line items" index={`${chosen.length} selected`} />
+							<ul>
+								{SERVICES.map((s) => {
+									const qty = cart[s.id] ?? 0;
+									const on = qty > 0;
+									return (
+										<li key={s.id} className="border-t border-(--rule) first:border-t-0">
+											<div
+												className={cn(
+													"flex items-center gap-2 pr-3 transition-colors",
+													on && "bg-(--accent-wash)",
+												)}
+											>
+												<button
+													type="button"
+													aria-pressed={on}
+													onClick={() => toggle(s.id)}
+													className="flex min-h-[44px] flex-1 cursor-pointer items-center gap-3 py-2.5 pl-4 pr-1 text-left focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-(--accent-ink)"
+												>
+													<span
+														aria-hidden="true"
+														className={cn(
+															"grid h-4 w-4 flex-none place-items-center rounded-[4px] border text-[10px] font-bold leading-none transition-colors",
+															on
+																? "border-(--accent) bg-(--sheet) text-(--accent-ink)"
+																: "border-(--rule-2) text-transparent",
+														)}
+													>
+														&#10003;
+													</span>
+													<span className="min-w-0">
+														<span
+															className={cn(
+																"block text-[15px] leading-[1.35] tracking-[-0.01em]",
+																on ? "font-medium text-(--ink)" : "text-(--ink-2)",
+															)}
+														>
+															{s.name}
+														</span>
+														<span className="mt-[3px] block font-mono text-[11.5px] tabular-nums text-(--ink-3)">
+															{formatCurrency(s.price, { whole: true })}
+														</span>
+													</span>
+												</button>
+
+												{/* Fixed slot: the stepper appears without shoving the row. */}
+												<div className="flex w-[100px] flex-none justify-end">
+													{on ? (
+														<Stepper
+															label={s.name}
+															value={qty}
+															onChange={(next) => setQty(s.id, next)}
+														/>
+													) : null}
+												</div>
+											</div>
+										</li>
+									);
+								})}
+							</ul>
+						</div>
+
+						<p className="mt-3 text-[13px] leading-[1.5] text-(--ink-3)">
+							Tap to add or remove &mdash; the document keeps up.
+						</p>
+					</div>
+
+					{/* --------------------------------------------- what the client sees */}
+					<div className="relative rounded-2xl border border-(--rule-2) bg-(--sheet)">
+						<PlusCorners />
+
+						<div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 px-5 pb-4 pt-[18px]">
+							<p className="text-[17px] font-semibold tracking-[-0.02em]">Quote #1042</p>
+							<p className="font-mono text-[11.5px] text-(--ink-3)">
+								Whitfield residence &middot; today
+							</p>
+						</div>
+
 						<ul>
 							{SERVICES.map((s) => {
 								const qty = cart[s.id] ?? 0;
 								const on = qty > 0;
+								const amount = s.price * Math.max(qty, MIN_QTY);
 								return (
-									<li key={s.id} className="border-t border-(--rule) first:border-t-0">
-										<div
-											className={cn(
-												"flex items-center gap-2 pr-3 transition-colors",
-												on && "bg-(--accent-wash)"
-											)}
-										>
-											<button
-												type="button"
-												aria-pressed={on}
-												onClick={() => toggle(s.id)}
-												className="flex min-h-[44px] flex-1 cursor-pointer items-center gap-3 py-2.5 pl-4 pr-1 text-left focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-(--accent-ink)"
-											>
+									<li key={s.id} className="grid" style={revealStyle(on)} aria-hidden={!on}>
+										<div className="overflow-hidden">
+											<div className="flex items-baseline justify-between gap-4 border-t border-(--rule) px-5 py-[11px]">
+												<span className="text-[14.5px] leading-[1.4] text-(--ink-2)">
+													{s.name}
+													{qty > 1 ? (
+														<span className="ml-[6px] font-mono text-[12px] tabular-nums text-(--ink-3)">
+															&times;{qty}
+														</span>
+													) : null}
+												</span>
 												<span
-													aria-hidden="true"
-													className={cn(
-														"grid h-4 w-4 flex-none place-items-center rounded-[4px] border text-[10px] font-bold leading-none transition-colors",
-														on
-															? "border-(--accent) bg-(--sheet) text-(--accent-ink)"
-															: "border-(--rule-2) text-transparent"
-													)}
+													key={amount}
+													style={VALUE_FADE}
+													className="flex-none text-[14.5px] font-medium tabular-nums text-(--ink)"
 												>
-													&#10003;
+													{formatCurrency(amount)}
 												</span>
-												<span className="min-w-0">
-													<span
-														className={cn(
-															"block text-[15px] leading-[1.35] tracking-[-0.01em]",
-															on ? "font-medium text-(--ink)" : "text-(--ink-2)"
-														)}
-													>
-														{s.name}
-													</span>
-													<span className="mt-[3px] block font-mono text-[11.5px] tabular-nums text-(--ink-3)">
-														{formatCurrency(s.price, { whole: true })}
-													</span>
-												</span>
-											</button>
-
-											{/* Fixed slot: the stepper appears without shoving the row. */}
-											<div className="flex w-[100px] flex-none justify-end">
-												{on ? (
-													<Stepper
-														label={s.name}
-														value={qty}
-														onChange={(next) => setQty(s.id, next)}
-													/>
-												) : null}
 											</div>
 										</div>
 									</li>
 								);
 							})}
+
+							{/* A quote with nothing on it still reads as a document, not a bug. */}
+							<li className="grid" style={revealStyle(empty)} aria-hidden={!empty}>
+								<div className="overflow-hidden">
+									<p className="border-t border-(--rule) px-5 py-[11px] font-mono text-[12px] text-(--ink-3)">
+										No line items yet &mdash; pick one on the left.
+									</p>
+								</div>
+							</li>
 						</ul>
-					</div>
 
-					<p className="mt-3 text-[13px] leading-[1.5] text-(--ink-3)">
-						Tap to add or remove &mdash; the document keeps up.
-					</p>
-				</div>
-
-				{/* --------------------------------------------- what the client sees */}
-				<div className="relative rounded-2xl border border-(--rule-2) bg-(--sheet)">
-					<PlusCorners />
-
-					<div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 px-5 pb-4 pt-[18px]">
-						<p className="text-[17px] font-semibold tracking-[-0.02em]">Quote #1042</p>
-						<p className="font-mono text-[11.5px] text-(--ink-3)">
-							Whitfield residence &middot; today
-						</p>
-					</div>
-
-					<ul>
-						{SERVICES.map((s) => {
-							const qty = cart[s.id] ?? 0;
-							const on = qty > 0;
-							const amount = s.price * Math.max(qty, MIN_QTY);
-							return (
-								<li key={s.id} className="grid" style={revealStyle(on)} aria-hidden={!on}>
-									<div className="overflow-hidden">
-										<div className="flex items-baseline justify-between gap-4 border-t border-(--rule) px-5 py-[11px]">
-											<span className="text-[14.5px] leading-[1.4] text-(--ink-2)">
-												{s.name}
-												{qty > 1 ? (
-													<span className="ml-[6px] font-mono text-[12px] tabular-nums text-(--ink-3)">
-														&times;{qty}
-													</span>
-												) : null}
-											</span>
-											<span
-												key={amount}
-												style={VALUE_FADE}
-												className="flex-none text-[14.5px] font-medium tabular-nums text-(--ink)"
-											>
-												{formatCurrency(amount)}
-											</span>
-										</div>
-									</div>
-								</li>
-							);
-						})}
-
-						{/* A quote with nothing on it still reads as a document, not a bug. */}
-						<li className="grid" style={revealStyle(empty)} aria-hidden={!empty}>
-							<div className="overflow-hidden">
-								<p className="border-t border-(--rule) px-5 py-[11px] font-mono text-[12px] text-(--ink-3)">
-									No line items yet &mdash; pick one on the left.
-								</p>
-							</div>
-						</li>
-					</ul>
-
-					<div className="border-t border-(--rule) px-5 py-4">
-						<div className="flex items-baseline justify-between gap-4">
-							<span className="text-[13.5px] text-(--ink-2)">Subtotal</span>
-							<span
-								key={`sub-${subtotal}`}
-								style={VALUE_FADE}
-								className="text-[14px] tabular-nums text-(--ink-2)"
-							>
-								{formatCurrency(subtotal)}
-							</span>
-						</div>
-						<div className="mt-2 flex items-baseline justify-between gap-4">
-							<span className="text-[13.5px] text-(--ink-2)">Tax (8%)</span>
-							<span
-								key={`tax-${tax}`}
-								style={VALUE_FADE}
-								className="text-[14px] tabular-nums text-(--ink-2)"
-							>
-								{formatCurrency(tax)}
-							</span>
-						</div>
-						{/* Stable live region: keying the wrapper would stop it announcing,
-						    so only the inner value re-mounts for the fade. */}
-						<div
-							role="status"
-							className="mt-3 flex items-baseline justify-between gap-4 border-t border-(--rule) pt-3"
-						>
-							<span className="text-[15px] font-semibold">Total</span>
-							<span className="text-[19px] font-semibold tabular-nums tracking-[-0.02em]">
-								<span key={`total-${total}`} style={VALUE_FADE} className="block">
-									{formatCurrency(total)}
+						<div className="border-t border-(--rule) px-5 py-4">
+							<div className="flex items-baseline justify-between gap-4">
+								<span className="text-[13.5px] text-(--ink-2)">Subtotal</span>
+								<span
+									key={`sub-${subtotal}`}
+									style={VALUE_FADE}
+									className="text-[14px] tabular-nums text-(--ink-2)"
+								>
+									{formatCurrency(subtotal)}
 								</span>
-							</span>
+							</div>
+							<div className="mt-2 flex items-baseline justify-between gap-4">
+								<span className="text-[13.5px] text-(--ink-2)">Tax (8%)</span>
+								<span
+									key={`tax-${tax}`}
+									style={VALUE_FADE}
+									className="text-[14px] tabular-nums text-(--ink-2)"
+								>
+									{formatCurrency(tax)}
+								</span>
+							</div>
+							{/* Stable live region: keying the wrapper would stop it announcing,
+						    so only the inner value re-mounts for the fade. */}
+							<div
+								role="status"
+								className="mt-3 flex items-baseline justify-between gap-4 border-t border-(--rule) pt-3"
+							>
+								<span className="text-[15px] font-semibold">Total</span>
+								<span className="text-[19px] font-semibold tabular-nums tracking-[-0.02em]">
+									<span key={`total-${total}`} style={VALUE_FADE} className="block">
+										{formatCurrency(total)}
+									</span>
+								</span>
+							</div>
 						</div>
-					</div>
 
-					<div className="flex items-center gap-2 rounded-b-[15px] border-t border-(--rule) bg-(--paid-wash) px-5 py-3">
-						<span aria-hidden="true" className="text-[13px] font-bold text-(--paid)">
-							&#10003;
-						</span>
-						<p className="text-[13.5px] leading-[1.45] text-(--ink-2)">
-							Sign &amp; pay from any phone &mdash; no app, no login.
-						</p>
+						<div className="flex items-center gap-2 rounded-b-[15px] border-t border-(--rule) bg-(--paid-wash) px-5 py-3">
+							<span aria-hidden="true" className="text-[13px] font-bold text-(--paid)">
+								&#10003;
+							</span>
+							<p className="text-[13.5px] leading-[1.45] text-(--ink-2)">
+								Sign &amp; pay from any phone &mdash; no app, no login.
+							</p>
+						</div>
 					</div>
 				</div>
 			</div>

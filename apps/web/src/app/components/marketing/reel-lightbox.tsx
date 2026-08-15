@@ -11,6 +11,7 @@ import {
 	DialogPortal,
 	DialogTitle,
 } from "@/components/ui/dialog";
+import { Vortex } from "@/components/react-bits/vortex";
 import { cn } from "@/lib/utils";
 import {
 	STORY_REEL_DURATION,
@@ -19,6 +20,7 @@ import {
 	type FeatureKey,
 } from "@/remotion/manifest";
 import { loadStoryReel } from "@/remotion/scene-loaders";
+import { AmbientLayer } from "./ambient";
 import { usePrefersReducedMotion } from "./use-reduced-motion";
 
 /* REEL LIGHTBOX (DIRECTION.md E2) — the hero's secondary CTA opens the existing
@@ -196,8 +198,22 @@ export function ReelLightbox({
 
 				{/* `.dc-landing .lp-scheme-dark` re-inks the panel dark in BOTH themes
 				    and paints its own --paper background. */}
-				<div className="lp-scheme-dark flex max-h-[92dvh] flex-col overflow-hidden rounded-2xl border border-(--rule-2) shadow-[0_30px_90px_-30px_rgba(0,0,0,0.75)]">
-					<div className="flex flex-none items-center justify-between gap-4 border-b border-(--rule) py-2 pl-[clamp(14px,2.5vw,24px)] pr-2">
+				<div className="lp-scheme-dark relative flex max-h-[92dvh] flex-col overflow-hidden rounded-2xl border border-(--rule-2) shadow-[0_30px_90px_-30px_rgba(0,0,0,0.75)]">
+					{/* The dark the reel plays inside: a slow particle tunnel behind the
+					    frame. Only mounts with the dialog (DialogContent unmounts closed),
+					    the particle budget is cut from the component's 10k default, and
+					    cursor interaction is off — the layer is pointer-events-none. */}
+					<AmbientLayer opacity={0.6}>
+						<Vortex
+							particleColor="#7fc4ee"
+							discColor="rgba(180,200,220,0.10)"
+							particleCount={1200}
+							discCount={30}
+							enableCursorInteraction={false}
+						/>
+					</AmbientLayer>
+
+					<div className="relative flex flex-none items-center justify-between gap-4 border-b border-(--rule) py-2 pl-[clamp(14px,2.5vw,24px)] pr-2">
 						<span className="inline-flex items-center gap-[9px]">
 							<span
 								aria-hidden="true"
@@ -219,7 +235,7 @@ export function ReelLightbox({
 						</DialogClose>
 					</div>
 
-					<div className="min-h-0 flex-1 overflow-y-auto p-[clamp(12px,2vw,20px)]">
+					<div className="relative min-h-0 flex-1 overflow-y-auto p-[clamp(12px,2vw,20px)]">
 						{/* Height-aware width cap: the reel is 16:10, so this keeps the
 						    whole panel inside the viewport without cropping. The
 						    scroller above is the backstop when the strip wraps. */}
@@ -249,7 +265,7 @@ export function ReelLightbox({
 						</div>
 					</div>
 
-					<div className="flex flex-none flex-wrap items-center gap-x-0.5 border-t border-(--rule) px-[clamp(8px,1.5vw,14px)]">
+					<div className="relative flex flex-none flex-wrap items-center gap-x-0.5 border-t border-(--rule) px-[clamp(8px,1.5vw,14px)]">
 						{STORY_SEGMENTS.map((segment, i) => {
 							const active = i === activeIndex;
 							return (

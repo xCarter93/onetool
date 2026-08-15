@@ -18,6 +18,7 @@ import {
   useSpring,
   useTransform,
   useVelocity,
+  type MotionValue,
   type SpringOptions,
 } from "motion/react";
 
@@ -86,6 +87,16 @@ export interface UserCursorProps extends Omit<
   hideOnTouch?: boolean;
   /** z-index applied to the cursor layer. */
   zIndex?: number;
+  /**
+   * Drive the cursor from an external MotionValue instead of the pointer.
+   * Supply BOTH `positionX` and `positionY` to enter controlled mode: pointer
+   * listeners are not attached and the native cursor is left alone, so several
+   * of these can be scripted over one surface (fake collaborator cursors).
+   * When either is omitted the component behaves exactly as before.
+   */
+  positionX?: MotionValue<number>;
+  /** See `positionX`. Both must be supplied for controlled mode. */
+  positionY?: MotionValue<number>;
 }
 
 interface ArrowGlyphProps extends SVGProps<SVGSVGElement> {
@@ -150,6 +161,8 @@ const UserCursor = forwardRef<HTMLDivElement, UserCursorProps>(
       classNames,
       hideOnTouch = true,
       zIndex = 50,
+      positionX,
+      positionY,
       className,
       style,
       onPointerEnter,
@@ -174,8 +187,13 @@ const UserCursor = forwardRef<HTMLDivElement, UserCursorProps>(
     const cursorSpring = { ...DEFAULT_SPRING, ...spring };
     const pillSpring = { ...DEFAULT_LABEL_SPRING, ...labelSpring };
 
-    const rawX = useMotionValue(-9999);
-    const rawY = useMotionValue(-9999);
+    /** Controlled = the caller scripts the position; we never read the pointer. */
+    const controlled = positionX !== undefined && positionY !== undefined;
+
+    const ownX = useMotionValue(-9999);
+    const ownY = useMotionValue(-9999);
+    const rawX = positionX ?? ownX;
+    const rawY = positionY ?? ownY;
 
     const cursorX = useSpring(rawX, cursorSpring);
     const cursorY = useSpring(rawY, cursorSpring);
@@ -256,7 +274,7 @@ const UserCursor = forwardRef<HTMLDivElement, UserCursorProps>(
     }, [hideOnTouch]);
 
     useEffect(() => {
-      if (!fullScreen || coarsePointer) return;
+      if (!fullScreen || coarsePointer || controlled) return;
       const move = (e: PointerEvent) => {
         rawX.set(e.clientX + offsetX);
         rawY.set(e.clientY + offsetY);
@@ -279,6 +297,7 @@ const UserCursor = forwardRef<HTMLDivElement, UserCursorProps>(
     }, [
       fullScreen,
       coarsePointer,
+      controlled,
       offsetX,
       offsetY,
       rawX,
@@ -306,7 +325,7 @@ const UserCursor = forwardRef<HTMLDivElement, UserCursorProps>(
 
     const handlePointerMove = useCallback(
       (e: React.PointerEvent<HTMLDivElement>) => {
-        if (fullScreen) {
+        if (fullScreen || controlled) {
           onPointerMove?.(e);
           return;
         }
@@ -317,7 +336,7 @@ const UserCursor = forwardRef<HTMLDivElement, UserCursorProps>(
         }
         onPointerMove?.(e);
       },
-      [fullScreen, offsetX, offsetY, onPointerMove, rawX, rawY],
+      [fullScreen, controlled, offsetX, offsetY, onPointerMove, rawX, rawY],
     );
 
     const handlePointerDown = useCallback(
@@ -354,7 +373,9 @@ const UserCursor = forwardRef<HTMLDivElement, UserCursorProps>(
         : (arrow ?? <ArrowGlyph color={color} size={size} />);
 
     const surfaceStyle: CSSProperties = {
-      ...(hideNativeCursor && !coarsePointer ? { cursor: "none" } : null),
+      ...(hideNativeCursor && !coarsePointer && !controlled
+        ? { cursor: "none" }
+        : null),
       ...style,
     };
 
@@ -374,11 +395,15 @@ const UserCursor = forwardRef<HTMLDivElement, UserCursorProps>(
           className,
         )}
         style={surfaceStyle}
-        onPointerEnter={handlePointerEnter}
-        onPointerLeave={handlePointerLeave}
-        onPointerMove={handlePointerMove}
-        onPointerDown={handlePointerDown}
-        onPointerUp={handlePointerUp}
+        {...(controlled
+          ? null
+          : {
+              onPointerEnter: handlePointerEnter,
+              onPointerLeave: handlePointerLeave,
+              onPointerMove: handlePointerMove,
+              onPointerDown: handlePointerDown,
+              onPointerUp: handlePointerUp,
+            })}
         {...rest}
       >
         {children}

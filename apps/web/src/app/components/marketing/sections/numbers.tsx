@@ -1,117 +1,58 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import SimpleGraph, { type DataPoint } from "@/components/react-bits/simple-graph";
 import { Eyebrow, Lede, Section, SectionHeading } from "../primitives";
 import { usePrefersReducedMotion } from "../use-reduced-motion";
 
 /* NUMBERS — sheet band. Copy and figures verbatim from the comp
- * (design-import/OneTool Landing.dc.html, lines 382–424). The whole module is
- * a client component because the chart's scroll-triggered bar entrance needs an
- * IntersectionObserver; the markup is otherwise static and still server-rendered. */
+ * (design-import/OneTool Landing.dc.html, lines 382–424). One chart only: the
+ * goal bar states where the month stands, the line states how it got there.
+ * Client component because the line draws itself on scroll and reduced motion
+ * has to be able to switch that off. */
 
-const BAR_VALUES = [22, 31, 27, 38, 34, 44];
-const BAR_MAX = 50;
-const BAR_MONTHS = ["Apr", "May", "Jun", "Jul", "Aug", "Sep"];
+const MONTHS = ["Apr", "May", "Jun", "Jul", "Aug", "Sep"];
+const REVENUE_K = [22, 31, 27, 38, 34, 44];
 
-const DIM_FILL = "color-mix(in oklch, var(--ink) 13%, transparent)";
-
-const BARS = BAR_VALUES.map((value, i) => ({
-	month: BAR_MONTHS[i],
-	pct: `${Math.round((value / BAR_MAX) * 100)}%`,
-	value: `$${value}k`,
-	// Only the newest month takes the accent — decorative fill, never text.
-	fill: i === BAR_VALUES.length - 1 ? "var(--accent)" : DIM_FILL,
-	delay: `${i * 70}ms`,
-	labelDelay: `${300 + i * 70}ms`,
+const SERIES: DataPoint[] = REVENUE_K.map((value, i) => ({
+	value,
+	label: MONTHS[i],
 }));
 
-/** Six-bar revenue chart: bars grow from the baseline once the chart is on
- * screen, values fade in behind them. Reduced motion skips straight to the
- * settled state so the data is never withheld. */
-function RevenueBars() {
-	const ref = useRef<HTMLDivElement>(null);
-	const [inView, setInView] = useState(false);
-	const reduced = usePrefersReducedMotion();
-	const settled = inView || reduced;
+/* Accent as a literal: SimpleGraph feeds the colour into SVG stroke/gradient
+ * attributes, which never resolve a CSS custom property. Matches --accent. */
+const ACCENT = "#00a6f4";
 
-	useEffect(() => {
-		const node = ref.current;
-		if (!node) return;
-		const observer = new IntersectionObserver(
-			([entry]) => {
-				if (!entry.isIntersecting) return;
-				setInView(true);
-				observer.disconnect();
-			},
-			{ threshold: 0.35 }
-		);
-		observer.observe(node);
-		return () => observer.disconnect();
-	}, []);
+/** Six-month revenue line: draws once when the chart scrolls into view, then
+ * settles. Reduced motion collapses the draw to nothing so the data is never
+ * withheld. */
+function RevenueLine() {
+	const reduced = usePrefersReducedMotion();
 
 	return (
 		<div
-			ref={ref}
 			role="img"
-			aria-label="Bar chart of revenue over the last six months, trending upward"
+			aria-label="Line chart of monthly revenue from April to September, trending upward from $22k to $44k"
 			className="mt-6"
 		>
-			<div className="relative h-[150px]">
-				<span
-					aria-hidden="true"
-					className="absolute inset-x-0 bottom-0 h-px bg-(--rule-2)"
-				/>
-				<span
-					aria-hidden="true"
-					className="absolute inset-x-0 bottom-[33.3%] border-t border-dashed border-(--rule)"
-				/>
-				<span
-					aria-hidden="true"
-					className="absolute inset-x-0 bottom-[66.6%] border-t border-dashed border-(--rule)"
-				/>
-				<div className="absolute inset-0 flex items-end gap-[14px]">
-					{BARS.map((bar) => (
-						<div
-							key={bar.month}
-							className="relative flex h-full flex-1 items-end justify-center"
-						>
-							<span
-								className="absolute inset-x-0 -translate-y-[6px] text-center font-mono text-[11px] tabular-nums text-(--ink-3)"
-								style={{
-									bottom: bar.pct,
-									opacity: settled ? 1 : 0,
-									transition: reduced
-										? undefined
-										: `opacity .5s var(--lp-ease) ${bar.labelDelay}`,
-								}}
-							>
-								{bar.value}
-							</span>
-							<span
-								aria-hidden="true"
-								className="rounded-t-[4px]"
-								style={{
-									width: "min(58%,46px)",
-									height: bar.pct,
-									background: bar.fill,
-									transformOrigin: "bottom",
-									transform: settled ? "scaleY(1)" : "scaleY(0)",
-									transition: reduced
-										? undefined
-										: `transform .8s var(--lp-ease) ${bar.delay}`,
-								}}
-							/>
-						</div>
-					))}
-				</div>
-			</div>
-			<div className="mt-2 flex gap-[14px]">
-				{BARS.map((bar) => (
-					<span
-						key={bar.month}
-						className="flex-1 text-center text-xs text-(--ink-3)"
-					>
-						{bar.month}
+			<SimpleGraph
+				data={SERIES}
+				className="text-(--ink)"
+				height={168}
+				lineColor={ACCENT}
+				dotColor={ACCENT}
+				dotSize={5}
+				graphLineThickness={2.5}
+				gridStyle="dashed"
+				gridLines="both"
+				curved
+				gradientFade
+				animateOnScroll={!reduced}
+				animationDuration={reduced ? 0 : 1.6}
+			/>
+			<div className="mt-2 flex">
+				{MONTHS.map((month) => (
+					<span key={month} className="flex-1 text-center text-xs text-(--ink-3)">
+						{month}
 					</span>
 				))}
 			</div>
@@ -168,7 +109,7 @@ export function Numbers() {
 								}}
 							/>
 						</div>
-						<RevenueBars />
+						<RevenueLine />
 					</div>
 				</figure>
 			</div>

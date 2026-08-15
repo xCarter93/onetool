@@ -1,4 +1,6 @@
 import type { CSSProperties } from "react";
+import HalftoneWave from "@/components/react-bits/halftone-wave";
+import { AmbientLayer } from "../ambient";
 import { InkButton } from "../marketing-nav";
 import { WireframeMark } from "../wireframe-mark";
 import { HeroReelCta } from "../reel-cta";
@@ -22,6 +24,18 @@ import { RoughMark } from "../rough-mark";
 
 /** Entrance stagger — the comp's `animation-delay` on `.lp-rise`/`.lp-fade`. */
 const at = (delay: string) => ({ "--lp-delay": delay }) as CSSProperties;
+
+/* HalftoneWave paints an opaque field (bg + dots), so it can't be tinted to
+ * both schemes. It runs at a neutral mid-gray under a radial mask instead: the
+ * dots read as a soft graphite haze around the mark on paper AND in the dark
+ * scheme, and the mask dissolves the canvas box long before it reaches the
+ * type column. */
+const HALFTONE_MASK =
+	"radial-gradient(58% 58% at 50% 50%, #000 0%, rgba(0,0,0,0.55) 48%, transparent 76%)";
+const HALFTONE_MASK_STYLE = {
+	maskImage: HALFTONE_MASK,
+	WebkitMaskImage: HALFTONE_MASK,
+} as CSSProperties;
 
 type Tone = "accent" | "dim" | "paid";
 
@@ -139,6 +153,20 @@ export function Hero() {
 					className="lp-fade relative flex min-h-[clamp(300px,40vw,560px)] items-center justify-center"
 					style={at("100ms")}
 				>
+					{/* ambient: halftone dots behind the mark only — never the type column */}
+					<AmbientLayer opacity={0.1} style={HALFTONE_MASK_STYLE}>
+						<HalftoneWave
+							speed={0.3}
+							gridDensity={34}
+							dotSize={0.42}
+							softness={0.6}
+							colorA="#b8b4ac"
+							colorB="#6f6c66"
+							backgroundColor="#a3a09a"
+							cursorInteraction={false}
+						/>
+					</AmbientLayer>
+
 					<WireframeMark className="aspect-square w-full max-w-[560px]" />
 				</div>
 			</Container>

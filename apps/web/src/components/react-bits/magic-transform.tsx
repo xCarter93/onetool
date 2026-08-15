@@ -728,9 +728,11 @@ const MagicTransform = ({
                 }}
               >
                 <div
-                  className="h-5 w-[88px] rounded-md shadow-[0_2px_6px_rgba(0,0,0,0.06)]"
-                  style={{ background: res.color }}
-                />
+                  className="flex h-5 min-w-[88px] max-w-full items-center rounded-md px-2 text-[10px] font-semibold leading-none tracking-[0.01em] shadow-[0_2px_6px_rgba(0,0,0,0.06)]"
+                  style={{ background: res.color, color: res.textColor }}
+                >
+                  <span className="truncate">{res.label}</span>
+                </div>
                 <div className={cn(classNames?.resultBody)}>
                   <ResultBody />
                 </div>
@@ -763,9 +765,11 @@ const MagicTransform = ({
                 }}
               >
                 <div
-                  className="h-5 w-[88px] rounded-md shadow-[0_2px_6px_rgba(0,0,0,0.06)]"
-                  style={{ background: res.color }}
-                />
+                  className="flex h-5 min-w-[88px] max-w-full items-center rounded-md px-2 text-[10px] font-semibold leading-none tracking-[0.01em] shadow-[0_2px_6px_rgba(0,0,0,0.06)]"
+                  style={{ background: res.color, color: res.textColor }}
+                >
+                  <span className="truncate">{res.label}</span>
+                </div>
                 <div className={cn(classNames?.resultBody)}>
                   <ResultBody />
                 </div>

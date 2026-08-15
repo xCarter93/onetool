@@ -1,5 +1,7 @@
 import Image from "next/image";
 import type { CSSProperties } from "react";
+import PerspectiveGrid from "@/components/react-bits/perspective-grid";
+import { AmbientLayer } from "../ambient";
 import { IOSDevice } from "../ios-device";
 import { CheckItem, Eyebrow, Lede, Section, SectionHeading } from "../primitives";
 
@@ -69,7 +71,29 @@ export function OnTheJob() {
 			className="overflow-hidden"
 			containerClassName="grid grid-cols-[repeat(auto-fit,minmax(min(100%,340px),1fr))] items-center gap-[clamp(28px,4vw,64px)]"
 		>
-			<div>
+			{/* The road ahead — an ink grid receding to the horizon, kept to a
+			    whisper and masked away from the top so it never crowds the phone.
+			    bottomFade="" is load-bearing: its default paints an opaque black DOM
+			    gradient that would black out the paper. */}
+			<AmbientLayer
+				opacity={0.08}
+				style={{
+					WebkitMaskImage: "linear-gradient(to bottom, transparent 0%, #000 55%)",
+					maskImage: "linear-gradient(to bottom, transparent 0%, #000 55%)",
+				}}
+			>
+				<PerspectiveGrid
+					width="100%"
+					height="100%"
+					bottomFade=""
+					color="#8a8782"
+					lineThickness={1}
+					speed={0.3}
+					curve={0}
+				/>
+			</AmbientLayer>
+
+			<div className="relative">
 				<Eyebrow>On the job</Eyebrow>
 				<SectionHeading size="md">
 					Works in the truck. Works with one bar. Works with none.

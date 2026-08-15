@@ -3,6 +3,8 @@
 import { useState, type CSSProperties, type ReactNode } from "react";
 import { formatCurrency } from "@/lib/money";
 import { cn } from "@/lib/utils";
+import { ThinkingDots } from "@/components/react-bits/thinking-dots";
+import { AmbientLayer } from "../ambient";
 import { Eyebrow, Lede, PlusCorners, PlusMark, Section, SectionHeading } from "../primitives";
 import {
 	CREW_SIZES,
@@ -116,7 +118,7 @@ function CrewStepper({
 								"min-h-[44px] flex-1 basis-0 cursor-pointer border-r border-(--rule) text-[15px] tabular-nums transition-colors last:border-r-0 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-(--accent-ink)",
 								selected
 									? "bg-(--accent-wash) font-semibold text-(--accent-ink) shadow-[inset_0_-2px_0_0_var(--accent)]"
-									: "text-(--ink-2) hover:text-(--ink)"
+									: "text-(--ink-2) hover:text-(--ink)",
 							)}
 						>
 							{size}
@@ -187,8 +189,7 @@ function LedgerTable({ crew }: { crew: CrewSize }) {
 			<div className="relative rounded-[14px] border border-(--rule-2) bg-(--sheet)">
 				<table className="w-full table-fixed border-collapse">
 					<caption className="sr-only">
-						Published monthly price and included features for a crew of {crew}{" "}
-						{people(crew)}.
+						Published monthly price and included features for a crew of {crew} {people(crew)}.
 					</caption>
 					<colgroup>
 						<col className="w-[28%]" />
@@ -207,7 +208,7 @@ function LedgerTable({ crew }: { crew: CrewSize }) {
 									scope="col"
 									className={cn(
 										"px-4 pb-3 pt-4 text-left align-bottom text-[15px] font-semibold tracking-[-0.01em]",
-										v.isUs ? "bg-(--accent-wash) text-(--accent-ink)" : "text-(--ink-2)"
+										v.isUs ? "bg-(--accent-wash) text-(--accent-ink)" : "text-(--ink-2)",
 									)}
 								>
 									{v.name}
@@ -239,9 +240,7 @@ function LedgerTable({ crew }: { crew: CrewSize }) {
 											<span className="block text-[22px]">
 												<EmDash
 													note={
-														v.quoteOnly
-															? "Request pricing"
-															: "Not published for this crew size"
+														v.quoteOnly ? "Request pricing" : "Not published for this crew size"
 													}
 												/>
 											</span>
@@ -269,10 +268,7 @@ function LedgerTable({ crew }: { crew: CrewSize }) {
 							{VENDORS.map((v) => (
 								<td
 									key={v.key}
-									className={cellCls(
-										v,
-										"font-mono text-[11px] leading-[1.45] text-(--ink-3)"
-									)}
+									className={cellCls(v, "font-mono text-[11px] leading-[1.45] text-(--ink-3)")}
 								>
 									<span key={crew} style={VALUE_FADE} className="block">
 										{planFor(v, crew)}
@@ -317,20 +313,20 @@ function VendorCard({ v, crew }: { v: Vendor; crew: CrewSize }) {
 		<article
 			className={cn(
 				"relative rounded-[14px] border bg-(--sheet)",
-				v.isUs ? "border-(--rule-3)" : "border-(--rule-2)"
+				v.isUs ? "border-(--rule-3)" : "border-(--rule-2)",
 			)}
 		>
 			{v.isUs ? <PlusCorners /> : null}
 			<div
 				className={cn(
 					"flex items-baseline justify-between gap-3 rounded-t-[13px] border-b border-(--rule) px-4 py-3",
-					v.isUs && "bg-(--accent-wash)"
+					v.isUs && "bg-(--accent-wash)",
 				)}
 			>
 				<h3
 					className={cn(
 						"text-[15px] font-semibold tracking-[-0.01em]",
-						v.isUs ? "text-(--accent-ink)" : "text-(--ink-2)"
+						v.isUs ? "text-(--accent-ink)" : "text-(--ink-2)",
 					)}
 				>
 					{v.name}
@@ -393,15 +389,15 @@ function Footnotes() {
 				className="underline decoration-(--rule-3) underline-offset-2 transition-colors hover:text-(--ink-2) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--accent-ink)"
 			>
 				{source.name}
-			</a>
+			</a>,
 		);
 	});
 
 	return (
 		<div className="mt-7 grid gap-2 text-[12px] leading-[1.6] text-(--ink-3)">
 			<p>
-				<span aria-hidden="true">✓</span> included · a plan name means it is gated to that
-				tier · <span aria-hidden="true">—</span> means the vendor does not publish it.
+				<span aria-hidden="true">✓</span> included · a plan name means it is gated to that tier
+				· <span aria-hidden="true">—</span> means the vendor does not publish it.
 			</p>
 			<p>
 				{mention.name} {mention.note}, so there is no honest way to give it a column.
@@ -418,6 +414,12 @@ function Footnotes() {
 
 /* --------------------------------------------------------------- the section */
 
+/** Keeps the dot field in the outer margins: the middle stays fully transparent
+ *  so the ledger — the one thing here that must read as flat ground — sits on
+ *  clean paper, and only the stepper/savings/footnote gutters get texture. */
+const MARGIN_MASK =
+	"radial-gradient(90% 70% at 50% 45%, transparent 0%, transparent 55%, #000 95%)";
+
 export function Compare() {
 	const [crew, setCrew] = useState<CrewSize>(DEFAULT_CREW);
 
@@ -426,29 +428,45 @@ export function Compare() {
 	// OnTheJob below is paper too, so this boundary needs the hairline seam.
 	return (
 		<Section id="compare" divider>
-			<Eyebrow>Compare</Eyebrow>
-			<SectionHeading>Priced for crews, not for seats.</SectionHeading>
-			<Lede className="max-w-[46rem]">
-				Jobber adds $29 a month for every user past the plan allowance. Housecall Pro&rsquo;s
-				entry plan covers one person, and extra seats are sold only on its top plan.
-				ServiceTitan prices per technician and publishes no number at all. OneTool is one
-				price for the whole company, however many of you there are.
-			</Lede>
+			<AmbientLayer
+				opacity={0.08}
+				style={{ WebkitMaskImage: MARGIN_MASK, maskImage: MARGIN_MASK }}
+			>
+				<ThinkingDots
+					className="h-full w-full"
+					color="#8a8782"
+					accentColor="#8a8782"
+					backgroundColor="transparent"
+					glow={0}
+					cursorInteraction={false}
+				/>
+			</AmbientLayer>
 
-			<div className="mt-[clamp(40px,6vw,80px)]">
-				<CrewStepper crew={crew} onChange={setCrew} />
+			<div className="relative">
+				<Eyebrow>Compare</Eyebrow>
+				<SectionHeading>Priced for crews, not for seats.</SectionHeading>
+				<Lede className="max-w-[46rem]">
+					Jobber adds $29 a month for every user past the plan allowance. Housecall Pro&rsquo;s
+					entry plan covers one person, and extra seats are sold only on its top plan.
+					ServiceTitan prices per technician and publishes no number at all. OneTool is one
+					price for the whole company, however many of you there are.
+				</Lede>
+
+				<div className="mt-[clamp(40px,6vw,80px)]">
+					<CrewStepper crew={crew} onChange={setCrew} />
+				</div>
+
+				<LedgerTable crew={crew} />
+
+				<div className="mt-8 grid gap-3 md:hidden">
+					{VENDORS.map((v) => (
+						<VendorCard key={v.key} v={v} crew={crew} />
+					))}
+				</div>
+
+				<SavingsLine crew={crew} />
+				<Footnotes />
 			</div>
-
-			<LedgerTable crew={crew} />
-
-			<div className="mt-8 grid gap-3 md:hidden">
-				{VENDORS.map((v) => (
-					<VendorCard key={v.key} v={v} crew={crew} />
-				))}
-			</div>
-
-			<SavingsLine crew={crew} />
-			<Footnotes />
 		</Section>
 	);
 }

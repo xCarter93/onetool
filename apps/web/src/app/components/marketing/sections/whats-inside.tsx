@@ -1,3 +1,5 @@
+import SquaresTerminal from "@/components/react-bits/squares-terminal";
+import { AmbientLayer } from "../ambient";
 import { CardEyebrowRow, Eyebrow, Section, SectionHeading } from "../primitives";
 import { JobScenePlayer } from "../scene-player-lazy";
 import type { JobSceneKey } from "../scene-player";
@@ -63,35 +65,53 @@ export function WhatsInside() {
 				Everything the job touches, in one record.
 			</SectionHeading>
 
-			<div
-				className="mt-[clamp(40px,6vw,80px)] grid gap-[clamp(20px,3vw,40px)]"
-				style={{
-					gridTemplateColumns: "repeat(auto-fit,minmax(min(100%,340px),1fr))",
-				}}
-			>
-				{CARDS.map((card) => (
-					<article
-						key={card.index}
-						className="lp-lift grid content-start overflow-hidden rounded-2xl border border-(--rule-2) bg-(--sheet)"
-					>
-						<CardEyebrowRow label={card.label} index={card.index} />
-						{/* Fixed-height window: the scene plays at life-size and crops. */}
-						<div
-							className="relative overflow-hidden border-b border-(--rule)"
-							style={{ height: SLOT_HEIGHT }}
+			{/* The card band sits on its own stacking context so the ambient terminal
+			    field can run behind it (visible in the gutters, ink-only, no bloom). */}
+			<div className="relative mt-[clamp(40px,6vw,80px)]">
+				<AmbientLayer opacity={0.07}>
+					<SquaresTerminal
+						color="#1a1a1a"
+						backgroundColor="transparent"
+						columns={44}
+						rows={26}
+						speed={1.4}
+						glow={0}
+						vignette={0}
+						cursorInteraction={false}
+						dpr={1.5}
+					/>
+				</AmbientLayer>
+
+				<div
+					className="relative grid gap-[clamp(20px,3vw,40px)]"
+					style={{
+						gridTemplateColumns: "repeat(auto-fit,minmax(min(100%,340px),1fr))",
+					}}
+				>
+					{CARDS.map((card) => (
+						<article
+							key={card.index}
+							className="lp-lift grid content-start overflow-hidden rounded-2xl border border-(--rule-2) bg-(--sheet)"
 						>
+							<CardEyebrowRow label={card.label} index={card.index} />
+							{/* Fixed-height window: the scene plays at life-size and crops. */}
 							<div
-								className="absolute left-1/2 top-0 -translate-x-1/2"
-								style={{ width: SCENE_MIN_WIDTH }}
+								className="relative overflow-hidden border-b border-(--rule)"
+								style={{ height: SLOT_HEIGHT }}
 							>
-								<JobScenePlayer scene={card.scene} label={card.sceneLabel} />
+								<div
+									className="absolute left-1/2 top-0 -translate-x-1/2"
+									style={{ width: SCENE_MIN_WIDTH }}
+								>
+									<JobScenePlayer scene={card.scene} label={card.sceneLabel} />
+								</div>
 							</div>
-						</div>
-						<p className="px-6 py-3.5 text-[13.5px] text-(--ink-2)">
-							{card.caption}
-						</p>
-					</article>
-				))}
+							<p className="px-6 py-3.5 text-[13.5px] text-(--ink-2)">
+								{card.caption}
+							</p>
+						</article>
+					))}
+				</div>
 			</div>
 		</Section>
 	);

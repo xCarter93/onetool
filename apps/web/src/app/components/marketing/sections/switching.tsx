@@ -1,23 +1,60 @@
+"use client";
+
+import { Sparkles } from "lucide-react";
+import MagicTransform, {
+	type MagicTransformResult,
+} from "@/components/react-bits/magic-transform";
 import { Eyebrow, Lede, Section, SectionHeading } from "../primitives";
+import { usePrefersReducedMotion } from "../use-reduced-motion";
 
-/* Switching over — a dashed CSV block under a scanning accent bar, an arrow,
- * and the matched result. Three columns so the read is left-to-right: raw
- * export → AI import → clean records. */
+/* Switching over — the spreadsheet actually moves. Rows of the old export slide
+ * through the AI-import axis on the left and come out the right as named client
+ * records. Reduced motion pauses the loop on its settled frame, so the story
+ * still reads as a still. The module is a client component only because the
+ * transformer and the motion query need the browser. */
 
-const CSV_ROWS = [
-	"customer,addr1,ph,notes",
-	"Whitfield Prop,412 Ash..",
-	"R. Alvarez,88 Kerr Rd,..",
-	"Northgate HOA,1 Nort..",
+/* Paper-and-ink chips: pale tint plus ink text, never a saturated slab.
+ * --accent-ink resolved to hex because MagicTransform concatenates alpha
+ * suffixes onto the axis colour, which a CSS custom property can't carry. */
+const ACCENT_INK = "#0b7cba";
+
+const DOCUMENTS = [
+	{ id: "csv-row-1" },
+	{ id: "csv-row-2" },
+	{ id: "csv-row-3" },
+	{ id: "csv-row-4" },
 ];
 
-const IMPORTED: { name: string; state: string }[] = [
-	{ name: "Whitfield Property Group", state: "Matched" },
-	{ name: "R. Alvarez", state: "New" },
-	{ name: "Northgate HOA", state: "New" },
+const RESULTS: MagicTransformResult[] = [
+	{
+		id: "whitfield",
+		label: "Whitfield Property Group · matched",
+		color: "#e3f2e9",
+		textColor: "#155f43",
+	},
+	{
+		id: "alvarez",
+		label: "R. Alvarez · new client",
+		color: "#e4f2fb",
+		textColor: ACCENT_INK,
+	},
+	{
+		id: "northgate",
+		label: "Northgate HOA · new client",
+		color: "#e4f2fb",
+		textColor: ACCENT_INK,
+	},
+	{
+		id: "kerr",
+		label: "Kerr Rd Maintenance · matched",
+		color: "#e3f2e9",
+		textColor: "#155f43",
+	},
 ];
 
 export function Switching() {
+	const reduced = usePrefersReducedMotion();
+
 	return (
 		<Section
 			id="switching"
@@ -34,57 +71,36 @@ export function Switching() {
 				</Lede>
 			</div>
 
-			<div className="grid grid-cols-[1fr_auto_1fr] items-center gap-4">
-				<div className="relative overflow-hidden rounded-[12px] border border-dashed border-(--rule-2) bg-(--paper) p-4 font-mono text-[12px] leading-[1.7] text-(--ink-3)">
-					<span
-						aria-hidden="true"
-						className="absolute inset-x-0 h-[2px] rounded-[2px]"
-						style={{
-							background:
-								"linear-gradient(90deg,transparent,var(--accent),transparent)",
-							animation: "lp-scanline 2.6s var(--lp-ease) infinite",
-						}}
-					/>
-					{CSV_ROWS.map((row) => (
-						<div key={row} className="truncate">
-							{row}
-						</div>
-					))}
-				</div>
-
+			<div className="overflow-hidden rounded-2xl border border-(--rule-2) bg-(--paper)">
 				<div
-					aria-hidden="true"
-					className="flex flex-col items-center gap-[6px] text-(--accent-ink)"
+					role="img"
+					aria-label="Rows of a spreadsheet export passing through OneTool's AI import and coming out as named client records — Whitfield Property Group matched, R. Alvarez new client, Northgate HOA new client, Kerr Rd Maintenance matched."
 				>
-					<span className="whitespace-nowrap text-[10px] font-semibold uppercase tracking-[0.1em]">
-						AI import
-					</span>
-					<span
-						className="inline-block text-[20px]"
-						style={{ animation: "lp-nudge 1.6s var(--lp-ease) infinite" }}
-					>
-						→
-					</span>
+					<MagicTransform
+						documents={DOCUMENTS}
+						results={RESULTS}
+						paused={reduced}
+						height={400}
+						documentWidth={168}
+						documentHeight={104}
+						documentGap={22}
+						documentDuration={3.4}
+						centerSize={52}
+						particleCount={14}
+						axisColor={ACCENT_INK}
+						centerContent={
+							<Sparkles
+								aria-hidden="true"
+								className="size-[22px] text-(--accent-ink)"
+								strokeWidth={1.6}
+							/>
+						}
+						classNames={{ root: "rounded-none" }}
+					/>
 				</div>
-
-				<div className="overflow-hidden rounded-[12px] border border-(--rule-2) bg-(--sheet)">
-					{IMPORTED.map((row) => (
-						<div
-							key={row.name}
-							className="flex items-center justify-between gap-[10px] border-b border-(--rule) px-[14px] py-[11px]"
-						>
-							<span className="min-w-0 truncate text-[13.5px] font-medium tracking-[-0.01em]">
-								{row.name}
-							</span>
-							<span className="whitespace-nowrap text-[11px] font-semibold text-(--paid)">
-								{row.state}
-							</span>
-						</div>
-					))}
-					<div className="px-[14px] py-[10px] text-[12px] text-(--ink-3)">
-						3 of 214 shown
-					</div>
-				</div>
+				<p className="border-t border-(--rule) px-[18px] py-[12px] text-[12px] text-(--ink-3)">
+					214 rows read · 4 shown
+				</p>
 			</div>
 		</Section>
 	);

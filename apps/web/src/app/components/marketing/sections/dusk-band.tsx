@@ -1,4 +1,6 @@
 import Image from "next/image";
+import FallingRays from "@/components/react-bits/falling-rays";
+import { AmbientLayer } from "../ambient";
 import { Container, Eyebrow } from "../primitives";
 
 /* DUSK BAND — the 6:41 AM band's closing mirror, placed before Pricing so the
@@ -20,6 +22,13 @@ export function DuskBand() {
 					className="object-cover saturate-[0.72]"
 					style={{ objectPosition: "center 55%" }}
 				/>
+				{/* Day's end: the dawn band's rising streaks, inverted — light raining
+				    down the frame. Same additive-glow family, same slot in the stack:
+				    above the photo, under the wash and the caption. */}
+				<AmbientLayer opacity={0.45}>
+					<FallingRays color1="#ff8a50" color2="#c66a9e" rayCount={24} bgGlow={0.6} />
+				</AmbientLayer>
+
 				<div
 					aria-hidden="true"
 					className="absolute inset-0"

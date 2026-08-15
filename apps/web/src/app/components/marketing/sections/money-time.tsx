@@ -1,3 +1,4 @@
+import { CreditCard } from "@/components/react-bits/credit-card";
 import { Eyebrow, Lede, Section, SectionHeading } from "../primitives";
 import { RoughMark } from "../rough-mark";
 
@@ -47,12 +48,41 @@ export function MoneyTime() {
 						}
 					</p>
 
-					<div aria-hidden="true" className="mt-auto pt-8">
-						<div className="flex items-end justify-between gap-4 text-[13.5px] text-(--ink-2)">
+					<div className="mt-auto pt-8">
+						{/* The settled card sits above the track: what the client tapped,
+						 * then where the money went. Tilt is pointer-driven only, so it
+						 * stays still for anyone who never touches it. */}
+						<div aria-hidden="true" className="flex justify-center">
+							<CreditCard
+								cardNumber="•••• •••• •••• 4180"
+								cardholderName="Whitfield Residence"
+								expirationDate="08/26"
+								cvv="—"
+								background="linear-gradient(152deg,#252c37 0%,#161b22 100%)"
+								textColor="#f3f1ec"
+								scale={0.78}
+								borderRadius={14}
+								rotationIntensity={0.6}
+								parallaxIntensity={0}
+								scaleOnHover={1}
+								showShine={false}
+								showShadow={false}
+								hasTextShadow={false}
+								showActionButtons={false}
+								className="select-none"
+							/>
+						</div>
+						<div
+							aria-hidden="true"
+							className="mt-8 flex items-end justify-between gap-4 text-[13.5px] text-(--ink-2)"
+						>
 							<span>Job finished</span>
 							<span>Money in</span>
 						</div>
-						<div className="mt-[10px] flex items-center text-(--rule-3)">
+						<div
+							aria-hidden="true"
+							className="mt-[10px] flex items-center text-(--rule-3)"
+						>
 							<span className="h-[13px] w-px flex-none bg-current" />
 							<span className="relative h-px flex-1 bg-current">
 								<span

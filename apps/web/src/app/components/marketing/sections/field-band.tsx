@@ -1,4 +1,6 @@
 import Image from "next/image";
+import { RisingLines } from "@/components/react-bits/rising-lines";
+import { AmbientLayer } from "../ambient";
 import { Container, Eyebrow } from "../primitives";
 
 /* FIELD BAND — comp lines 168–178. A full-bleed photograph, not a card: the
@@ -21,6 +23,20 @@ export function FieldBand() {
 					className="object-cover saturate-[0.72]"
 					style={{ objectPosition: "center 62%" }}
 				/>
+				{/* Sunrise: ascending light streaks over the photograph. The shader is
+				    additive glow normalised against dark pixels, so it reads as light
+				    coming up out of the frame — above the photo, under the wash. */}
+				<AmbientLayer opacity={0.5}>
+					<RisingLines
+						color="#ffb35c"
+						horizonColor="#ff9d3d"
+						haloColor="#ffd9a0"
+						riseIntensity={0.6}
+						haloIntensity={3}
+						horizonIntensity={0.4}
+					/>
+				</AmbientLayer>
+
 				<div
 					aria-hidden="true"
 					className="absolute inset-0"

@@ -1,8 +1,27 @@
 "use client";
 
-import { useId, useState } from "react";
+import { useId, useState, type CSSProperties } from "react";
+import dynamic from "next/dynamic";
 import { cn } from "@/lib/utils";
+import { AmbientLayer } from "../ambient";
 import { Eyebrow, Lede, Section, SectionHeading } from "../primitives";
+
+/* Ambient: a dithered paper swell behind the list. DitherWave tears down and
+ * rebuilds its WebGL context on ANY prop change, and this section re-renders on
+ * every accordion click — so every prop below is a stable literal and the edge
+ * fade lives on AmbientLayer's style, never on the canvas. */
+const DitherWave = dynamic(() => import("@/components/react-bits/dither-wave"), {
+	ssr: false,
+});
+
+/* Its ramp is opaque, so it can't be re-inked per scheme: it runs as a paper-toned
+ * whisper that only ever nudges the value a hair in either theme. */
+const DITHER_FADE =
+	"linear-gradient(180deg, transparent 0%, #000 22%, #000 78%, transparent 100%)";
+const DITHER_MASK_STYLE = {
+	maskImage: DITHER_FADE,
+	WebkitMaskImage: DITHER_FADE,
+} as CSSProperties;
 
 /* FAQ — comp lines 590–614. Copy is verbatim. The panel animates on
  * grid-template-rows 0fr→1fr so nothing has to be measured; landing.css already
@@ -49,7 +68,22 @@ export function Faq() {
 			divider
 			containerClassName="grid grid-cols-[repeat(auto-fit,minmax(min(100%,280px),1fr))] gap-[clamp(28px,4vw,72px)]"
 		>
-			<div>
+			<AmbientLayer opacity={0.08} style={DITHER_MASK_STYLE}>
+				<DitherWave
+					speed={0.35}
+					intensity={0.55}
+					scale={2.4}
+					downScale={3}
+					primaryColor="#f4f2ee"
+					secondaryColor="#e6e3dc"
+					tertiaryColor="#b6b2a9"
+					quality="low"
+					maxFPS={30}
+					pauseWhenOffscreen
+				/>
+			</AmbientLayer>
+
+			<div className="relative">
 				<Eyebrow>FAQ</Eyebrow>
 				<SectionHeading size="md">Straight answers</SectionHeading>
 				<Lede className="max-w-[24rem]">
@@ -64,7 +98,7 @@ export function Faq() {
 				</Lede>
 			</div>
 
-			<ul>
+			<ul className="relative">
 				{FAQS.map(([question, answer], index) => {
 					const open = openIndex === index;
 					const panelId = `${baseId}-faq-panel-${index}`;
