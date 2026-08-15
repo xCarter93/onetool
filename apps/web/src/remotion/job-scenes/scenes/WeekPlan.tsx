@@ -1,7 +1,13 @@
 import React from "react";
 import { interpolate, useCurrentFrame, useVideoConfig } from "remotion";
 import { CardHead, Note, Row, SceneFrame } from "../Chrome";
-import { CARD, T } from "../theme";
+import {
+  CARD,
+  JobThemeProvider,
+  paletteFor,
+  useJobTheme,
+  type JobSceneProps,
+} from "../theme";
 
 /** Blocks per day, in the page's own proportions (Tuesday is the heavy day). */
 const WEEK = [
@@ -25,6 +31,7 @@ const TASKS = [
 export const WeekPlan: React.FC<{ bare?: boolean }> = ({ bare }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
+  const T = useJobTheme();
 
   return (
     <SceneFrame bare={bare} eyebrow="The week" title="The day plans itself.">
@@ -81,7 +88,7 @@ export const WeekPlan: React.FC<{ bare?: boolean }> = ({ bare }) => {
                 style={{
                   height: h,
                   borderRadius: 10,
-                  backgroundColor: d.accent && j === 0 ? T.accent : j === 0 ? T.accentWash : "color-mix(in oklch, oklch(0.985 0 0) 8%, transparent)",
+                  backgroundColor: d.accent && j === 0 ? T.accent : j === 0 ? T.accentWash : T.block,
                   transformOrigin: "bottom center",
                   scale: `1 ${interpolate(
                     frame,
@@ -91,7 +98,7 @@ export const WeekPlan: React.FC<{ bare?: boolean }> = ({ bare }) => {
                   )}`,
                   boxShadow:
                     d.accent && j === 0
-                      ? `0 0 ${interpolate(frame, [56, 74, 96], [0, 46, 24], { extrapolateRight: "clamp" })}px color-mix(in oklch, oklch(0.685 0.169 237.323) 55%, transparent)`
+                      ? `0 0 ${interpolate(frame, [56, 74, 96], [0, 46, 24], { extrapolateRight: "clamp" })}px color-mix(in oklch, ${T.accent} 55%, transparent)`
                       : "none",
                 }}
               />
@@ -165,6 +172,11 @@ export const WeekPlan: React.FC<{ bare?: boolean }> = ({ bare }) => {
   );
 };
 
-/** Card-slot cut: the composition IS the card interior. */
-const WeekPlanCard: React.FC = () => <WeekPlan bare />;
+/** Card-slot cut: the composition IS the card interior, inked to the page's
+ * scheme (the slot behind it paints --sheet). */
+const WeekPlanCard: React.FC<JobSceneProps> = ({ theme = "light" }) => (
+  <JobThemeProvider value={paletteFor(theme)}>
+    <WeekPlan bare />
+  </JobThemeProvider>
+);
 export default WeekPlanCard;

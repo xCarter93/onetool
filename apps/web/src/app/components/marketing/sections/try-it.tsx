@@ -1,14 +1,13 @@
 "use client";
 
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { useState, type CSSProperties } from "react";
 import Link from "next/link";
-import { animate, useMotionValue, type MotionValue } from "motion/react";
+import { useMotionValue } from "motion/react";
 import { formatCurrency, roundCents } from "@/lib/money";
 import { cn } from "@/lib/utils";
 import { ThinkingDots } from "@/components/react-bits/thinking-dots";
 import UserCursor from "@/components/react-bits/user-cursor";
 import { AmbientLayer } from "../ambient";
-import { usePrefersReducedMotion } from "../use-reduced-motion";
 import {
 	CardEyebrowRow,
 	DimensionLine,
@@ -101,156 +100,65 @@ function Stepper({
 
 /* ------------------------------------------------------------ the crew layer */
 
-/* Two teammates drifting over the builder — the "your crew is in here too"
- * beat. They are pure decoration: the layer is pointer-events-none so the real
- * controls stay clickable, and the whole thing is skipped under reduced motion,
- * on coarse pointers, and while the section is off-screen. Positions are
- * scripted MotionValues (motion's animate() keyframe loops) rather than a hand
- * rAF, and fed to UserCursor's controlled `positionX`/`positionY` props. */
+/* Two teammates parked on the panes — the "your crew is in here too" beat.
+ * They are static on purpose: a drifting fake cursor competes with the real one
+ * for attention and ends up sitting on the controls. Each stays inside its own
+ * card, over whitespace, and the layer is pointer-events-none so the builder
+ * keeps working. UserCursor's own hideOnTouch drops them on coarse pointers,
+ * where a fake cursor is pure noise. */
 
 type CrewGhost = {
 	name: string;
 	color: string;
-	/** Waypoints as fractions of the builder box. First point is also the last. */
-	path: readonly (readonly [number, number])[];
-	duration: number;
-	delay: number;
+	/** Percentage offsets inside the card the cursor is anchored to. */
+	left: string;
+	top: string;
 };
 
-/** Uneven `times` so the loop reads as wandering, not as a metronome. */
-const GHOST_TIMES = [0, 0.19, 0.41, 0.63, 0.84, 1];
+const MIKE: CrewGhost = {
+	name: "Mike · Crew B",
+	// Ink-adjacent warm grey: present, never competing with the data.
+	color: "#8a8782",
+	left: "54%",
+	top: "76%",
+};
 
-const CREW: readonly CrewGhost[] = [
-	{
-		name: "Mike · Crew B",
-		// Ink-adjacent warm grey: present, never competing with the data.
-		color: "#8a8782",
-		path: [
-			[0.16, 0.14],
-			[0.4, 0.29],
-			[0.27, 0.58],
-			[0.46, 0.79],
-			[0.2, 0.42],
-			[0.16, 0.14],
-		],
-		duration: 17,
-		delay: 0,
-	},
-	{
-		name: "Dana · Office",
-		// The page's one accent, so the two read as different people.
-		color: "rgb(0,166,244)",
-		path: [
-			[0.79, 0.7],
-			[0.61, 0.36],
-			[0.87, 0.2],
-			[0.67, 0.54],
-			[0.88, 0.62],
-			[0.79, 0.7],
-		],
-		duration: 13.5,
-		delay: 1.2,
-	},
-] as const;
+const DANA: CrewGhost = {
+	name: "Dana · Office",
+	// The page's one accent, so the two read as different people.
+	color: "rgb(0,166,244)",
+	left: "44%",
+	top: "58%",
+};
 
-function CrewCursors({ hostRef }: { hostRef: React.RefObject<HTMLDivElement | null> }) {
-	const reduced = usePrefersReducedMotion();
-	const [coarse, setCoarse] = useState(true);
-	const [inView, setInView] = useState(false);
-	const [box, setBox] = useState({ w: 0, h: 0 });
-
-	// Fixed hook count: one pair of MotionValues per ghost, created at mount.
-	const mikeX = useMotionValue(-9999);
-	const mikeY = useMotionValue(-9999);
-	const danaX = useMotionValue(-9999);
-	const danaY = useMotionValue(-9999);
-	const values: readonly (readonly [MotionValue<number>, MotionValue<number>])[] = [
-		[mikeX, mikeY],
-		[danaX, danaY],
-	];
-
-	// Match UserCursor's own hideOnTouch test — fake cursors on a phone are noise.
-	useEffect(() => {
-		const mq = window.matchMedia("(pointer: coarse)");
-		const update = () => setCoarse(mq.matches);
-		update();
-		mq.addEventListener("change", update);
-		return () => mq.removeEventListener("change", update);
-	}, []);
-
-	// The cursors aren't an inset-0 ambient, so they get their own view gate.
-	useEffect(() => {
-		const node = hostRef.current;
-		if (!node) return;
-		const io = new IntersectionObserver(([entry]) => setInView(entry.isIntersecting), {
-			rootMargin: "120px",
-		});
-		io.observe(node);
-		return () => io.disconnect();
-	}, [hostRef]);
-
-	useEffect(() => {
-		const node = hostRef.current;
-		if (!node || typeof ResizeObserver === "undefined") return;
-		const ro = new ResizeObserver(([entry]) => {
-			const r = entry.contentRect;
-			setBox({ w: r.width, h: r.height });
-		});
-		ro.observe(node);
-		return () => ro.disconnect();
-	}, [hostRef]);
-
-	const active = !reduced && !coarse && inView && box.w > 0 && box.h > 0;
-
-	useEffect(() => {
-		if (!active) return;
-		const controls = CREW.flatMap((ghost, i) => {
-			const [mx, my] = values[i];
-			const xs = ghost.path.map(([fx]) => fx * box.w);
-			const ys = ghost.path.map(([, fy]) => fy * box.h);
-			// Jump first: rawX rests at -9999, and animating from there would
-			// streak the cursor across the pane on entry.
-			mx.jump(xs[0]);
-			my.jump(ys[0]);
-			const options = {
-				duration: ghost.duration,
-				times: GHOST_TIMES,
-				ease: "easeInOut" as const,
-				repeat: Infinity,
-				delay: ghost.delay,
-			};
-			return [animate(mx, xs, options), animate(my, ys, options)];
-		});
-		return () => controls.forEach((c) => c.stop());
-		// values/hostRef identities are stable for the component's lifetime.
-		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [active, box.w, box.h]);
-
-	if (reduced || coarse) return null;
+/** A zero-size anchor keeps the position a plain percentage of the card while
+ *  UserCursor's controlled MotionValues rest at the origin — they start where
+ *  they end, so the spring never plays an entry streak. */
+function StaticCursor({ ghost }: { ghost: CrewGhost }) {
+	const x = useMotionValue(0);
+	const y = useMotionValue(0);
 
 	return (
-		<div aria-hidden="true" className="pointer-events-none absolute inset-0 z-20">
-			{CREW.map((ghost, i) => (
-				<UserCursor
-					key={ghost.name}
-					className="h-full w-full"
-					name={ghost.name}
-					color={ghost.color}
-					size={24}
-					showLabel
-					trigger="always"
-					directionAwareTilt
-					hideOnTouch
-					positionX={values[i][0]}
-					positionY={values[i][1]}
-				/>
-			))}
+		<div
+			aria-hidden="true"
+			className="pointer-events-none absolute z-20 h-0 w-0"
+			style={{ left: ghost.left, top: ghost.top }}
+		>
+			<UserCursor
+				name={ghost.name}
+				color={ghost.color}
+				size={24}
+				showLabel
+				trigger="always"
+				hideOnTouch
+				positionX={x}
+				positionY={y}
+			/>
 		</div>
 	);
 }
 
 export function TryIt() {
-	const builderRef = useRef<HTMLDivElement>(null);
 	const [cart, setCart] = useState<Record<string, number>>(OPENING_CART);
 
 	const toggle = (id: string) =>
@@ -275,33 +183,36 @@ export function TryIt() {
 	const total = roundCents(subtotal + tax);
 	const empty = chosen.length === 0;
 
+	// overflow-hidden is the fullBleed ambient's clipping ancestor.
 	return (
-		<Section id="try-it">
-			<Eyebrow>Try it yourself</Eyebrow>
-			<SectionHeading>Build a quote in 20 seconds.</SectionHeading>
-			<Lede className="max-w-[46rem]">
-				Pick a couple of line items. This is the same motion you&rsquo;d do in the truck &mdash;
-				and the page on the right is what your client gets.
-			</Lede>
+		<Section id="try-it" className="overflow-hidden">
+			{/* Paper-toned dot field across the whole band — texture, not weather. */}
+			<AmbientLayer fullBleed opacity={0.1}>
+				<ThinkingDots
+					className="h-full w-full"
+					color="#8a8782"
+					accentColor="#8a8782"
+					backgroundColor="transparent"
+					glow={0}
+					cursorInteraction={false}
+				/>
+			</AmbientLayer>
 
-			<div ref={builderRef} className="relative mt-[clamp(40px,6vw,80px)]">
-				{/* Paper-toned dot field behind both panes — texture, not weather. */}
-				<AmbientLayer opacity={0.1}>
-					<ThinkingDots
-						className="h-full w-full"
-						color="#8a8782"
-						accentColor="#8a8782"
-						backgroundColor="transparent"
-						glow={0}
-						cursorInteraction={false}
-					/>
-				</AmbientLayer>
+			{/* The ambient is absolutely positioned, so the content needs its own
+			    stacking context to stay above it. */}
+			<div className="relative">
+				<Eyebrow>Try it yourself</Eyebrow>
+				<SectionHeading>Build a quote in 20 seconds.</SectionHeading>
+				<Lede className="max-w-[46rem]">
+					Pick a couple of line items. This is the same motion you&rsquo;d do in the
+					truck, and the page on the right is what your client gets.
+				</Lede>
 
-				<CrewCursors hostRef={builderRef} />
-
-				<div className="relative grid grid-cols-[repeat(auto-fit,minmax(min(100%,360px),1fr))] items-start gap-[clamp(20px,2.6vw,36px)]">
+				<div className="mt-[clamp(40px,6vw,80px)] grid grid-cols-[repeat(auto-fit,minmax(min(100%,360px),1fr))] items-start gap-[clamp(20px,2.6vw,36px)]">
 					{/* ------------------------------------------------------ the builder */}
-					<div>
+					<div className="relative">
+						<StaticCursor ghost={MIKE} />
+
 						{/* overflow-hidden clips the hairline rows to the card radius, so the
 					    focus indicator has to draw inside: outline, not ring. */}
 						<div className="lp-lift overflow-hidden rounded-2xl border border-(--rule-2) bg-(--sheet)">
@@ -368,13 +279,14 @@ export function TryIt() {
 						</div>
 
 						<p className="mt-3 text-[13px] leading-[1.5] text-(--ink-3)">
-							Tap to add or remove &mdash; the document keeps up.
+							Tap to add or remove. The document keeps up.
 						</p>
 					</div>
 
 					{/* --------------------------------------------- what the client sees */}
 					<div className="relative rounded-2xl border border-(--rule-2) bg-(--sheet)">
 						<PlusCorners />
+						<StaticCursor ghost={DANA} />
 
 						<div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 px-5 pb-4 pt-[18px]">
 							<p className="text-[17px] font-semibold tracking-[-0.02em]">Quote #1042</p>
@@ -417,7 +329,7 @@ export function TryIt() {
 							<li className="grid" style={revealStyle(empty)} aria-hidden={!empty}>
 								<div className="overflow-hidden">
 									<p className="border-t border-(--rule) px-5 py-[11px] font-mono text-[12px] text-(--ink-3)">
-										No line items yet &mdash; pick one on the left.
+										No line items yet. Pick one on the left.
 									</p>
 								</div>
 							</li>
@@ -464,27 +376,27 @@ export function TryIt() {
 								&#10003;
 							</span>
 							<p className="text-[13.5px] leading-[1.45] text-(--ink-2)">
-								Sign &amp; pay from any phone &mdash; no app, no login.
+								Sign &amp; pay from any phone, with no app or login.
 							</p>
 						</div>
 					</div>
 				</div>
+
+				<DimensionLine
+					className="mt-[clamp(28px,3vw,44px)]"
+					label="quote → signature → invoice · same numbers, never retyped"
+				/>
+
+				<p className="mt-7 text-center text-[15px] text-(--ink-2)">
+					Want the real thing?{" "}
+					<Link
+						href="/sign-up"
+						className="rounded-sm font-semibold text-(--accent-ink) underline decoration-(--rule-3) underline-offset-4 transition-colors hover:decoration-(--accent) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--accent-ink)"
+					>
+						Start free <span aria-hidden="true">→</span>
+					</Link>
+				</p>
 			</div>
-
-			<DimensionLine
-				className="mt-[clamp(28px,3vw,44px)]"
-				label="quote → signature → invoice · same numbers, never retyped"
-			/>
-
-			<p className="mt-7 text-center text-[15px] text-(--ink-2)">
-				Want the real thing?{" "}
-				<Link
-					href="/sign-up"
-					className="rounded-sm font-semibold text-(--accent-ink) underline decoration-(--rule-3) underline-offset-4 transition-colors hover:decoration-(--accent) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--accent-ink)"
-				>
-					Start free <span aria-hidden="true">→</span>
-				</Link>
-			</p>
 		</Section>
 	);
 }

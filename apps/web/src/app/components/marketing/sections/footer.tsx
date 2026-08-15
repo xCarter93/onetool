@@ -160,8 +160,8 @@ export function MarketingFooter() {
 							/>
 						</Link>
 						<p className="text-[14.5px] leading-[1.65] text-(--ink-2)">
-							Built for the people who show up, do the work, and deserve to get
-							paid for it without chasing anyone.
+							Built for the people doing the work, who shouldn&apos;t have to
+							chase anyone to get paid for it.
 						</p>
 						{/* landing.css owns smooth scroll (and its reduced-motion downgrade). */}
 						<a href="#top" className={`${FOOTER_LINK} justify-self-start`}>

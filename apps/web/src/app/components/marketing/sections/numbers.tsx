@@ -22,6 +22,10 @@ const SERIES: DataPoint[] = REVENUE_K.map((value, i) => ({
  * attributes, which never resolve a CSS custom property. Matches --accent. */
 const ACCENT = "#00a6f4";
 
+/** Shared by the plot and the label row — the labels only sit under their
+ *  points while both use the same horizontal inset. */
+const GRAPH_INSET_X = 10;
+
 /** Six-month revenue line: draws once when the chart scrolls into view, then
  * settles. Reduced motion collapses the draw to nothing so the data is never
  * withheld. */
@@ -37,10 +41,13 @@ function RevenueLine() {
 			<SimpleGraph
 				data={SERIES}
 				className="text-(--ink)"
-				height={168}
+				height={190}
 				lineColor={ACCENT}
 				dotColor={ACCENT}
 				dotSize={5}
+				dotRingColor="var(--paper)"
+				paddingX={GRAPH_INSET_X}
+				paddingY={20}
 				graphLineThickness={2.5}
 				gridStyle="dashed"
 				gridLines="both"
@@ -49,9 +56,15 @@ function RevenueLine() {
 				animateOnScroll={!reduced}
 				animationDuration={reduced ? 0 : 1.6}
 			/>
-			<div className="mt-2 flex">
-				{MONTHS.map((month) => (
-					<span key={month} className="flex-1 text-center text-xs text-(--ink-3)">
+			{/* Absolute, not equal-flex: flex centres each label in its own sixth,
+			    which is half a step off the data points. */}
+			<div className="relative mt-2 h-4" style={{ marginInline: `${GRAPH_INSET_X}px` }}>
+				{MONTHS.map((month, i) => (
+					<span
+						key={month}
+						style={{ left: `${(i / (MONTHS.length - 1)) * 100}%` }}
+						className="absolute -translate-x-1/2 text-xs leading-4 text-(--ink-3)"
+					>
 						{month}
 					</span>
 				))}
@@ -76,7 +89,7 @@ export function Numbers() {
 					</SectionHeading>
 					<Lede className="max-w-[32rem]">
 						Set a revenue goal and watch it fill. See what&apos;s quoted, what&apos;s
-						outstanding, and which clients are worth the drive — read straight off
+						outstanding, and which clients are worth the drive, read straight off
 						your real quotes and invoices.
 					</Lede>
 				</div>

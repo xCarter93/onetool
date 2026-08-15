@@ -77,6 +77,7 @@ export function OnTheJob() {
 			    gradient that would black out the paper. */}
 			<AmbientLayer
 				opacity={0.08}
+				fullBleed
 				style={{
 					WebkitMaskImage: "linear-gradient(to bottom, transparent 0%, #000 55%)",
 					maskImage: "linear-gradient(to bottom, transparent 0%, #000 55%)",
@@ -96,12 +97,12 @@ export function OnTheJob() {
 			<div className="relative">
 				<Eyebrow>On the job</Eyebrow>
 				<SectionHeading size="md">
-					Works in the truck. Works with one bar. Works with none.
+					Built to work in the truck, even with no signal at all.
 				</SectionHeading>
 				<Lede className="max-w-[32rem]">
 					The iOS app keeps your day on the device, so a basement with no signal
-					doesn&rsquo;t stop you writing up the visit. When you come back into range it
-					syncs — no &ldquo;retry&rdquo;, no lost notes.
+					doesn&rsquo;t stop you writing up the visit. When you come back into range
+					it syncs by itself, with nothing lost and nothing to retry.
 				</Lede>
 				<ul className="mt-7 grid max-w-[30rem] gap-[10px]">
 					<CheckItem>Real-time sync between phone and web</CheckItem>
@@ -178,7 +179,7 @@ export function OnTheJob() {
 									className="h-[9px] w-[9px] flex-none rounded-full bg-[#FF9F0A]"
 								/>
 								<span className="text-[14.5px] font-[590] tracking-[-0.01em] text-[#8A5A00]">
-									Offline — everything saved on this phone
+									Offline. Everything saved on this phone.
 								</span>
 							</div>
 

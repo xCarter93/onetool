@@ -57,6 +57,13 @@ export interface CreditCardProps {
   /** Show action buttons (eye to toggle visibility, copy to clipboard) */
   showActionButtons?: boolean;
 
+  /**
+   * Pointer tilt / parallax / hover scale. Off leaves the click-to-flip alone:
+   * the pointer handlers write `style.transform` imperatively, which fights
+   * motion's animated flip, so they are detached rather than zeroed.
+   */
+  hoverEffects?: boolean;
+
   /** Additional class name for wrapper */
   className?: string;
 
@@ -103,6 +110,7 @@ export const CreditCard: React.FC<CreditCardProps> = ({
   textColor = "#ffffff",
   hasTextShadow = true,
   showActionButtons = false,
+  hoverEffects = true,
   className,
   cardClassName,
   buttonsClassName,
@@ -316,19 +324,28 @@ export const CreditCard: React.FC<CreditCardProps> = ({
     >
       <div
         ref={wrapperRef}
-        className="relative inline-block touch-none cursor-pointer transform-3d"
+        className={cn(
+          "relative inline-block cursor-pointer transform-3d",
+          // touch-none only earns its keep while the touch handlers are live;
+          // otherwise it just blocks a scroll that starts on the card.
+          hoverEffects && "touch-none",
+        )}
         style={{
           width: `${width}px`,
           height: `${height}px`,
           borderRadius: `${borderRadius}px`,
           transform: `perspective(${viewportPerspective}px)`,
         }}
-        onMouseMove={handleInteraction}
-        onMouseEnter={handleActivate}
-        onMouseLeave={resetTransforms}
-        onTouchStart={handleTouchBegin}
-        onTouchMove={handleInteraction}
-        onTouchEnd={handleTouchComplete}
+        {...(hoverEffects
+          ? {
+              onMouseMove: handleInteraction,
+              onMouseEnter: handleActivate,
+              onMouseLeave: resetTransforms,
+              onTouchStart: handleTouchBegin,
+              onTouchMove: handleInteraction,
+              onTouchEnd: handleTouchComplete,
+            }
+          : null)}
         onClick={handleCardClick}
       >
         <motion.div

@@ -1,7 +1,7 @@
 import React from "react";
 import { AbsoluteFill, interpolate, useCurrentFrame, useVideoConfig } from "remotion";
 import { fontFamily } from "../lib/font";
-import { CARD, T } from "./theme";
+import { CARD, useJobTheme } from "./theme";
 
 /**
  * The stage the job scenes sit on. In the landing page's card slots we always
@@ -17,6 +17,7 @@ export const SceneFrame: React.FC<{
 }> = ({ title, eyebrow, children, cardHeight, bare }) => {
 	const frame = useCurrentFrame();
 	const { fps } = useVideoConfig();
+	const T = useJobTheme();
 
 	if (bare) {
 		return (
@@ -121,53 +122,62 @@ export const SceneFrame: React.FC<{
 };
 
 /** Card header: name left, quiet meta right, hairline under. */
-export const CardHead: React.FC<{ children: React.ReactNode }> = ({ children }) => (
-	<div
-		style={{
-			padding: `36px ${CARD.pad}px`,
-			borderBottom: `1px solid ${T.rule}`,
-			display: "flex",
-			alignItems: "baseline",
-			justifyContent: "space-between",
-			gap: 24,
-		}}
-	>
-		{children}
-	</div>
-);
+export const CardHead: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+	const T = useJobTheme();
+	return (
+		<div
+			style={{
+				padding: `36px ${CARD.pad}px`,
+				borderBottom: `1px solid ${T.rule}`,
+				display: "flex",
+				alignItems: "baseline",
+				justifyContent: "space-between",
+				gap: 24,
+			}}
+		>
+			{children}
+		</div>
+	);
+};
 
 export const Row: React.FC<{ children: React.ReactNode; style?: React.CSSProperties }> = ({
 	children,
 	style,
-}) => (
-	<div
-		style={{
-			padding: `24px ${CARD.pad}px`,
-			borderBottom: `1px solid ${T.rule}`,
-			display: "flex",
-			alignItems: "center",
-			gap: 22,
-			...style,
-		}}
-	>
-		{children}
-	</div>
-);
+}) => {
+	const T = useJobTheme();
+	return (
+		<div
+			style={{
+				padding: `24px ${CARD.pad}px`,
+				borderBottom: `1px solid ${T.rule}`,
+				display: "flex",
+				alignItems: "center",
+				gap: 22,
+				...style,
+			}}
+		>
+			{children}
+		</div>
+	);
+};
 
 /** The closing note every full-frame card ends on. */
 export const Note: React.FC<{ children: React.ReactNode; style?: React.CSSProperties }> = ({
 	children,
 	style,
-}) => (
-	<div
-		style={{
-			padding: `26px ${CARD.pad}px 30px`,
-			fontSize: 24,
-			lineHeight: 1.5,
-			color: T.ink2,
-			...style,
-		}}
-	>
-		{children}
-	</div>
-);
+}) => {
+	const T = useJobTheme();
+	return (
+		<div
+			style={{
+				padding: `26px ${CARD.pad}px 30px`,
+				fontSize: 24,
+				lineHeight: 1.5,
+				color: T.ink2,
+				...style,
+			}}
+		>
+			{children}
+		</div>
+	);
+};

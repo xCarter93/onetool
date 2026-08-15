@@ -1,6 +1,6 @@
 import type { CSSProperties, ReactElement, ReactNode } from "react";
 import { ISO_T, isoGrid } from "@/components/illustrations/art/iso";
-import { TechWall } from "@/components/react-bits/tech-wall";
+import SquaresTerminal from "@/components/react-bits/squares-terminal";
 import { AmbientLayer } from "../ambient";
 import {
 	Eyebrow,
@@ -37,6 +37,15 @@ const RECORD_CHIPS = [
 	"Invoice",
 	"Payment",
 ] as const;
+
+/* 100deg matches the photo bands' wash angle, so the band's one texture leans
+ * the same way the page already does. */
+const SCAN_MASK =
+	"linear-gradient(100deg, transparent 0%, transparent 38%, #000 62%)";
+const SCAN_MASK_STYLE = {
+	maskImage: SCAN_MASK,
+	WebkitMaskImage: SCAN_MASK,
+} as CSSProperties;
 
 /* ---------------------------------------------------------------------------
  * EXPLODED STACK — Illustration V2 language on a 340x260 canvas.
@@ -216,7 +225,15 @@ const TOOLS: readonly Tool[] = [
 		delay: "0s",
 		Mark: SpreadsheetMark,
 	},
-	{ id: "email", x: 58, y: 40, la: -3, lb: -1.8, delay: "0.06s", Mark: EmailMark },
+	{
+		id: "email",
+		x: 58,
+		y: 40,
+		la: -3,
+		lb: -1.8,
+		delay: "0.06s",
+		Mark: EmailMark,
+	},
 	{
 		id: "notebook",
 		x: 182,
@@ -235,7 +252,15 @@ const TOOLS: readonly Tool[] = [
 		delay: "0.18s",
 		Mark: GroupTextMark,
 	},
-	{ id: "sticky", x: 62, y: 122, la: -3, lb: 0.4, delay: "0.24s", Mark: StickyMark },
+	{
+		id: "sticky",
+		x: 62,
+		y: 122,
+		la: -3,
+		lb: 0.4,
+		delay: "0.24s",
+		Mark: StickyMark,
+	},
 ];
 
 const LEADERS = TOOLS.map(({ id, x, y, la, lb }) => {
@@ -331,7 +356,13 @@ function ExplodedStack() {
 					))}
 					<g transform={REC.topMatrix(0, 0, 0)}>
 						{TOOLS.map(({ id, la, lb }) => (
-							<circle key={id} cx={la} cy={lb} r={0.26} className="illo-knock" />
+							<circle
+								key={id}
+								cx={la}
+								cy={lb}
+								r={0.26}
+								className="illo-knock"
+							/>
 						))}
 					</g>
 				</g>
@@ -344,12 +375,15 @@ function ExplodedStack() {
 				))}
 
 				{/* and out the bottom, into the card below */}
-				<path d={`M170 ${r2(REC_BASE_Y + 4)}V249`} className="illo-accent-line" />
+				<path
+					d={`M170 ${r2(REC_BASE_Y + 4)}V249`}
+					className="illo-accent-line"
+				/>
 				<circle cx={170} cy={253} r={3} className="illo-accent" />
 			</svg>
 			<span className="sr-only">
-				Five scattered tools — email, a spreadsheet, a notebook, the group text and
-				a sticky note — drop onto one shared record.
+				Five scattered tools (email, a spreadsheet, a notebook, the group text
+				and a sticky note) drop onto one shared record.
 			</span>
 		</div>
 	);
@@ -358,30 +392,28 @@ function ExplodedStack() {
 export function OnePlace() {
 	return (
 		<Section id="one-place" scheme="dark" className="overflow-hidden">
-			{/* Ambient panel wall, full-bleed under the whole band. This band is dark
-			    in BOTH site themes, so the panel/accent colours can be literal. */}
-			<div
-				aria-hidden="true"
-				className="pointer-events-none absolute inset-y-0 left-1/2 w-screen -translate-x-1/2"
-			>
-				<AmbientLayer opacity={0.35}>
-					<TechWall
-						className="h-full w-full"
-						color="#131b26"
-						accentColor="#00a6f4"
-						edgeColor="#2d7fa8"
-						backgroundColor="transparent"
-						density={9}
-						speed={0.35}
-						grain={0}
-						vignette={0.25}
-						cursorInteraction={false}
-						paused={false}
-						adaptiveQuality
-						dpr={1.25}
-					/>
-				</AmbientLayer>
-			</div>
+			{/* Ambient scan field, full-bleed under the whole band. This band is dark
+			    in BOTH site themes, so the phosphor colour can be literal. The mask
+			    dissolves it to nothing under the left copy column — the headline and
+			    lede sit on clean dark paper, the texture only lives out to the right. */}
+			<AmbientLayer opacity={0.08} fullBleed style={SCAN_MASK_STYLE}>
+				<SquaresTerminal
+					className="h-full w-full"
+					color="#9fd4ee"
+					backgroundColor="transparent"
+					columns={112}
+					rows={64}
+					speed={2}
+					fillThreshold={0.62}
+					rowFloor={0.15}
+					alternateRows
+					curvature={0}
+					glow={0}
+					vignette={0}
+					cursorInteraction={false}
+					dpr={1.25}
+				/>
+			</AmbientLayer>
 
 			{/* Full-bleed construction grid: the wrapper escapes the 1280px container,
 			    the section's overflow-hidden clips it back to the band. */}
@@ -400,12 +432,13 @@ export function OnePlace() {
 				<div>
 					<Eyebrow>The old way</Eyebrow>
 					<SectionHeading>
-						Five places to look. <span className="text-(--accent-ink)">One job</span> to
-						do.
+						Five places to look.{" "}
+						<span className="text-(--accent-ink)">One job</span> to do.
 					</SectionHeading>
 					<Lede className="max-w-[34rem]">
-						Email, a spreadsheet, a notebook, the group text and a sticky note on the
-						dash. None of them know about each other, so you become the integration.
+						Email, a spreadsheet, a notebook, the group text and a sticky note
+						on the dash. None of them know about each other, so you become the
+						integration.
 					</Lede>
 
 					<div className="mt-[clamp(40px,6vw,80px)] grid max-w-[30rem] gap-[22px]">
@@ -414,9 +447,9 @@ export function OnePlace() {
 								The address exists in five handwritings
 							</h3>
 							<p className="mt-2 text-[15px] leading-[1.6] text-(--ink-2) text-pretty">
-								It&apos;s in the thread, on the quote, in the notebook and on the
-								sticky note. Four of them are out of date and you find out which on
-								the driveway.
+								It&apos;s in the thread, on the quote, in the notebook and on
+								the sticky note. Four of them are out of date and you find out
+								which on the driveway.
 							</p>
 						</div>
 						<div className="border-t border-dashed border-(--rule-2) pt-[18px]">
@@ -424,9 +457,9 @@ export function OnePlace() {
 								A spreadsheet only knows what you typed into it
 							</h3>
 							<p className="mt-2 text-[15px] leading-[1.6] text-(--ink-2) text-pretty">
-								It can&apos;t tell you the quote came back signed, that the invoice
-								went out, or that nobody has paid it. It waits for you — usually at
-								nine in the evening.
+								It can&apos;t tell you the quote came back signed, that the
+								invoice went out, or that nobody has paid it. It waits for you,
+								usually at nine in the evening.
 							</p>
 						</div>
 					</div>
@@ -488,8 +521,8 @@ export function OnePlace() {
 							))}
 						</ul>
 						<p className="border-t border-(--rule) pt-3 text-[14.5px] leading-[1.55] text-(--ink-2) text-pretty">
-							Everything after the first entry reads off this. Nothing gets retyped, so
-							nothing gets out of date.
+							Everything after the first entry reads off this. Nothing gets
+							retyped, so nothing gets out of date.
 						</p>
 					</div>
 				</div>

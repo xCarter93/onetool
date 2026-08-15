@@ -1,7 +1,13 @@
 import React from "react";
 import { interpolate, useCurrentFrame, useVideoConfig } from "remotion";
 import { CardHead, Note, SceneFrame } from "../Chrome";
-import { CARD, T } from "../theme";
+import {
+  CARD,
+  JobThemeProvider,
+  paletteFor,
+  useJobTheme,
+  type JobSceneProps,
+} from "../theme";
 
 const THREAD = [
   { who: "Dana Whitfield", when: "Mon 8:02 AM", line: "Furnace in 412 Ashfield is cutting out — can you take a look this week?" },
@@ -19,6 +25,7 @@ const RESULT = "Visit scheduled Tue 8:00 · route rebuilt, 5 stops, 41 min drivi
 export const ThreadAssistant: React.FC<{ bare?: boolean }> = ({ bare }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
+  const T = useJobTheme();
 
   // Typewriter: characters are a function of the frame, never of elapsed time.
   const promptChars = Math.floor(
@@ -108,7 +115,7 @@ export const ThreadAssistant: React.FC<{ bare?: boolean }> = ({ bare }) => {
             backgroundColor: T.paper,
             fontSize: 27,
             lineHeight: 1.4,
-            borderColor: `color-mix(in oklch, oklch(0.685 0.169 237.323) ${interpolate(
+            borderColor: `color-mix(in oklch, ${T.accent} ${interpolate(
               frame,
               [116, 140, 200],
               [0, 60, 22],
@@ -157,6 +164,11 @@ export const ThreadAssistant: React.FC<{ bare?: boolean }> = ({ bare }) => {
   );
 };
 
-/** Card-slot cut: the composition IS the card interior. */
-const ThreadAssistantCard: React.FC = () => <ThreadAssistant bare />;
+/** Card-slot cut: the composition IS the card interior, inked to the page's
+ * scheme (the slot behind it paints --sheet). */
+const ThreadAssistantCard: React.FC<JobSceneProps> = ({ theme = "light" }) => (
+  <JobThemeProvider value={paletteFor(theme)}>
+    <ThreadAssistant bare />
+  </JobThemeProvider>
+);
 export default ThreadAssistantCard;

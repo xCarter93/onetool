@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useRef } from "react";
+import { useState, useMemo, useRef, useEffect } from "react";
 import { motion, AnimatePresence, useInView } from "motion/react";
 import { cn } from "@/lib/utils";
 import { TrendingUp, TrendingDown } from "lucide-react";
@@ -37,6 +37,12 @@ export interface SimpleGraphProps {
   showDots?: boolean;
   /** Size of the dots in pixels */
   dotSize?: number;
+  /** Ring drawn around each dot — set to the surface colour behind the chart */
+  dotRingColor?: string;
+  /** Horizontal inset of the plot area, in pixels */
+  paddingX?: number;
+  /** Vertical inset of the plot area, in pixels */
+  paddingY?: number;
   /** Show glow effect on dots when hovering */
   dotHoverGlow?: boolean;
   /** Curve the line between points */
@@ -68,6 +74,9 @@ const SimpleGraph = ({
   gridLineThickness = 1,
   showDots = true,
   dotSize = 6,
+  dotRingColor = "white",
+  paddingX = 8,
+  paddingY = 24,
   dotHoverGlow = false,
   curved = true,
   gradientFade = false,
@@ -86,8 +95,28 @@ const SimpleGraph = ({
 
   const shouldAnimate = animateOnScroll ? isInView : true;
 
+  /* The plot is laid out in real CSS pixels, not in a fixed viewBox: a fixed
+   * viewBox + the default preserveAspectRatio letterboxes the SVG whenever the
+   * container's aspect ratio differs from it, so the line never reaches the
+   * container's edges. Measured box → 1:1 units → strokes and dots also render
+   * at their stated pixel size. */
+  const [box, setBox] = useState({ w: 0, h: height });
+
+  useEffect(() => {
+    const node = containerRef.current;
+    if (!node || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(([entry]) => {
+      const r = entry.contentRect;
+      setBox({ w: r.width, h: r.height });
+    });
+    ro.observe(node);
+    return () => ro.disconnect();
+  }, []);
+
+  const baseline = box.h - paddingY;
+
   const { points, pathD } = useMemo(() => {
-    if (!data || data.length === 0) {
+    if (!data || data.length === 0 || box.w === 0) {
       return { points: [], pathD: "" };
     }
 
@@ -101,17 +130,13 @@ const SimpleGraph = ({
     const paddedMax = maxVal + rangeVal * padding;
     const paddedRange = paddedMax - paddedMin;
 
-    const viewBoxWidth = 800;
-    const viewBoxHeight = 400;
-    const graphPadding = 40;
-
-    const graphWidth = viewBoxWidth - graphPadding * 2;
-    const graphHeight = viewBoxHeight - graphPadding * 2;
+    const graphWidth = Math.max(0, box.w - paddingX * 2);
+    const graphHeight = Math.max(0, box.h - paddingY * 2);
 
     const calculatedPoints = data.map((d, i) => {
-      const x = graphPadding + (i / (data.length - 1 || 1)) * graphWidth;
+      const x = paddingX + (i / (data.length - 1 || 1)) * graphWidth;
       const y =
-        graphPadding +
+        paddingY +
         graphHeight -
         ((d.value - paddedMin) / paddedRange) * graphHeight;
       return { x, y, value: d.value, label: d.label };
@@ -144,7 +169,7 @@ const SimpleGraph = ({
       points: calculatedPoints,
       pathD: path,
     };
-  }, [data, curved]);
+  }, [data, curved, box.w, box.h, paddingX, paddingY]);
 
   const widthStyle = typeof width === "number" ? `${width}px` : width;
 
@@ -201,7 +226,7 @@ const SimpleGraph = ({
   const gradientFillPath = useMemo(() => {
     if (!gradientFade || points.length === 0) return "";
 
-    let path = `M ${points[0].x},360 L ${points[0].x},${points[0].y}`;
+    let path = `M ${points[0].x},${baseline} L ${points[0].x},${points[0].y}`;
 
     if (curved && points.length > 1) {
       for (let i = 0; i < points.length - 1; i++) {
@@ -221,30 +246,30 @@ const SimpleGraph = ({
       }
     }
 
-    path += ` L ${points[points.length - 1].x},360 Z`;
+    path += ` L ${points[points.length - 1].x},${baseline} Z`;
 
     return path;
-  }, [points, curved, gradientFade]);
+  }, [points, curved, gradientFade, baseline]);
 
   return (
     <div
       ref={containerRef}
-      className={cn("relative text-gray-900 dark:text-gray-100", className)}
+      className={cn("relative", className)}
       style={{ width: widthStyle, height: `${height}px` }}
     >
       <svg
         ref={svgRef}
-        viewBox="0 0 800 400"
-        className="w-full h-full text-gray-900 dark:text-gray-100"
+        viewBox={`0 0 ${box.w} ${box.h}`}
+        className="w-full h-full"
         style={{ overflow: "visible" }}
       >
         <defs>
           <linearGradient
             id="line-gradient"
             x1="0"
-            y1="40"
+            y1={paddingY}
             x2="0"
-            y2="360"
+            y2={baseline}
             gradientUnits="userSpaceOnUse"
           >
             <stop offset="0%" stopColor={lineColor} stopOpacity="0.3" />
@@ -258,10 +283,10 @@ const SimpleGraph = ({
               [0, 1, 2, 3, 4].map((i) => (
                 <line
                   key={`h-${i}`}
-                  x1="40"
-                  y1={40 + (i * 320) / 4}
-                  x2="760"
-                  y2={40 + (i * 320) / 4}
+                  x1={paddingX}
+                  y1={paddingY + (i * (baseline - paddingY)) / 4}
+                  x2={box.w - paddingX}
+                  y2={paddingY + (i * (baseline - paddingY)) / 4}
                   stroke="currentColor"
                   strokeWidth={gridLineThickness}
                   strokeDasharray={
@@ -278,9 +303,9 @@ const SimpleGraph = ({
                 <line
                   key={`v-${i}`}
                   x1={point.x}
-                  y1="40"
+                  y1={paddingY}
                   x2={point.x}
-                  y2="360"
+                  y2={baseline}
                   stroke="currentColor"
                   strokeWidth={gridLineThickness}
                   strokeDasharray={
@@ -337,10 +362,14 @@ const SimpleGraph = ({
               onMouseMove={(e) => handleMouseMove(e, index)}
               style={{ cursor: "pointer" }}
             >
+              {/* Hit target: half the point spacing, so neighbours never overlap. */}
               <circle
                 cx={point.x}
                 cy={point.y}
-                r="60"
+                r={Math.max(
+                  dotSize * 2,
+                  (box.w - paddingX * 2) / (points.length - 1 || 1) / 2,
+                )}
                 fill="transparent"
                 style={{ pointerEvents: "all" }}
               />
@@ -364,9 +393,10 @@ const SimpleGraph = ({
                 cy={point.y}
                 r={dotSize}
                 fill={dotColor}
-                stroke="white"
                 strokeWidth="2"
-                style={{ pointerEvents: "none" }}
+                /* Ring goes through style, not the presentation attribute:
+                 * var() only resolves in CSS. */
+                style={{ pointerEvents: "none", stroke: dotRingColor }}
                 initial={{ scale: 0, opacity: 0 }}
                 animate={{
                   scale: hoveredIndex === index ? 1.5 : 1,

@@ -30,7 +30,7 @@ const DITHER_MASK_STYLE = {
 const FAQS: ReadonlyArray<readonly [string, string]> = [
 	[
 		"Is this going to be too complicated for a two-person crew?",
-		"No. There is no setup project and no consultant. Add a client, add a property, send a quote — that is the whole first session. The parts you do not need stay out of your way until you go looking for them.",
+		"No. There is no setup project and no consultant. Add a client, add a property, send a quote. That is the whole first session, and the parts you do not need stay out of your way until you go looking for them.",
 	],
 	[
 		"Can clients actually sign and pay, or do I still chase them?",
@@ -42,11 +42,11 @@ const FAQS: ReadonlyArray<readonly [string, string]> = [
 	],
 	[
 		"What if I have no signal at the job?",
-		"The iOS app — on the App Store now — keeps your day on the device. You can open visits, read notes and write up work with no bars, and it syncs the moment you are back in range.",
+		"The iOS app (on the App Store now) keeps your day on the device. You can open visits, read notes and write up work with no bars, and it syncs the moment you are back in range.",
 	],
 	[
 		"Can my crew have their own logins?",
-		"Yes. Add them to your organisation, set what each person can see and do, and everyone works off the same live schedule. Users are included — you pay per organisation, not per head.",
+		"Yes. Add them to your organisation, set what each person can see and do, and everyone works off the same live schedule. Users are included in the one organisation price.",
 	],
 	[
 		"I have hundreds of clients in a spreadsheet. Do I retype them?",
@@ -66,9 +66,10 @@ export function Faq() {
 		<Section
 			id="faq"
 			divider
+			className="overflow-hidden"
 			containerClassName="grid grid-cols-[repeat(auto-fit,minmax(min(100%,280px),1fr))] gap-[clamp(28px,4vw,72px)]"
 		>
-			<AmbientLayer opacity={0.08} style={DITHER_MASK_STYLE}>
+			<AmbientLayer opacity={0.08} fullBleed style={DITHER_MASK_STYLE}>
 				<DitherWave
 					speed={0.35}
 					intensity={0.55}
@@ -94,7 +95,7 @@ export function Faq() {
 					>
 						support@onetool.biz
 					</a>{" "}
-					— a person replies within a day.
+					and a person replies within a day.
 				</Lede>
 			</div>
 

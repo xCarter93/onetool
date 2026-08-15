@@ -4,6 +4,7 @@ import dynamic from "next/dynamic";
 import { useEffect, useRef, useState } from "react";
 import { useTheme } from "next-themes";
 import { Eyebrow, GridBackdrop, Lede, PlusCorners, Section } from "../primitives";
+import { AmbientLayer } from "../ambient";
 import { InkButton, SheetButton } from "../marketing-nav";
 import { RoughMark } from "../rough-mark";
 import { usePrefersReducedMotion } from "../use-reduced-motion";
@@ -15,14 +16,19 @@ import { usePrefersReducedMotion } from "../use-reduced-motion";
 
 const BlinkingSquares = dynamic(
 	() => import("@/components/react-bits/blinking-squares"),
-	{ ssr: false }
+	{ ssr: false },
 );
 
 /* Heavy (phone input + flag set): the chunk loads on the first "Book a demo"
  * click, then stays mounted so closing keeps its transition. */
 const ScheduleDemoModal = dynamic(
 	() => import("@/app/components/landing/schedule-demo-modal"),
-	{ ssr: false }
+	{ ssr: false },
+);
+
+const RisingLines = dynamic(
+	() => import("@/components/react-bits/rising-lines"),
+	{ ssr: false },
 );
 
 // The canvas cannot resolve CSS custom properties — brand sky, kept literal.
@@ -48,7 +54,7 @@ function NightLattice() {
 		if (!node) return;
 		const io = new IntersectionObserver(
 			([entry]) => setNear(entry.isIntersecting),
-			{ rootMargin: "25% 0px" }
+			{ rootMargin: "25% 0px" },
 		);
 		io.observe(node);
 		return () => io.disconnect();
@@ -74,7 +80,7 @@ function NightLattice() {
 					twinkleStrength={0.9}
 					/* ramp starts higher up the card so the lattice reads across the
 						   whole CTA, not just along its bottom edge */
-						fadeStart={0.1}
+					fadeStart={0.1}
 					fadeEnd={1}
 					falloff={2.2}
 					dpr={1.5}
@@ -87,6 +93,7 @@ function NightLattice() {
 export function FinalCta() {
 	const [demoMounted, setDemoMounted] = useState(false);
 	const [demoOpen, setDemoOpen] = useState(false);
+	const { resolvedTheme } = useTheme();
 
 	const openDemo = () => {
 		setDemoMounted(true);
@@ -94,7 +101,23 @@ export function FinalCta() {
 	};
 
 	return (
-		<Section pad="tight" divider>
+		<Section pad="tight" divider className="overflow-hidden">
+			{/* Dawn coming up behind the last card, right above the footer. The shader
+			    is additive glow normalised against dark pixels — invisible-to-muddy on
+			    light paper — so it is mounted in the dark scheme only. */}
+			{resolvedTheme === "dark" ? (
+				<AmbientLayer opacity={0.3} fullBleed>
+					<RisingLines
+						color="#ffb35c"
+						horizonColor="#ff9d3d"
+						haloColor="#ffd9a0"
+						riseIntensity={0.6}
+						haloIntensity={3}
+						horizonIntensity={0.4}
+					/>
+				</AmbientLayer>
+			) : null}
+
 			<div className="relative rounded-[20px] border border-(--rule-2) bg-(--sheet)">
 				<NightLattice />
 				<PlusCorners />
@@ -118,7 +141,7 @@ export function FinalCta() {
 
 					<Lede className="max-w-[38rem]">
 						Add a client, build a quote, send it for signature. You can be doing
-						that ten minutes from now — nothing to install, and nobody you have
+						that ten minutes from now. There is nothing to install, and nobody you have
 						to talk to first.
 					</Lede>
 

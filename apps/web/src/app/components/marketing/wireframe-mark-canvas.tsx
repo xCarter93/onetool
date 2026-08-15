@@ -17,7 +17,13 @@ import { LOGO_CHECK, LOGO_WRENCH } from "./logo-mark-data";
  *   - per-strand brand color (aInk attribute) — like HalftoneMark, this is the
  *     one place the actual logo colors appear in artwork;
  *   - a bounded yaw sway instead of the full tumble, so the mark never reads
- *     mirrored; drag-to-spin stays, with a slow spring back to front.
+ *     mirrored; drag-to-spin stays, with a slow spring back to front;
+ *   - the logo is SOLID: the same SVG shapes extruded to the same depth fill the
+ *     body, so the strands read as lit edges on an object rather than as an
+ *     x-ray. That is bought with a real depth buffer (the only geometry in the
+ *     scene that writes depth is the fill) — every shader therefore emits its
+ *     own NDC z, and the strokes carry a viewer-ward bias so they sit ON the
+ *     surface instead of z-fighting it.
  */
 
 const MARK_RADIUS = 1.62;
@@ -27,7 +33,7 @@ const OUTLINE_SAMPLES = 150;
 /* Stroke rendering. The vendored ball's 1/x falloff + additive blending trade
  * peak alpha for accumulated glow; under premultiplied over-blending we need
  * ink-opaque strokes, so falloff is gaussian with the width (LINE_CORE, world
- * units — ≈1.5px at the hero's 560px slot) and peak alpha as independent knobs.
+ * units — ≈1.8px at the hero's 680px slot) and peak alpha as independent knobs.
  * The quad half-width only needs to cover the gaussian's support. */
 const LINE_CORE = 0.011;
 const LINE_REACH = LINE_CORE * 3.5;
@@ -37,6 +43,20 @@ const BEAD_RADIUS = 0.028;
 /* Far side recedes by fading, never by darkening — on paper a darker hue reads
  * as heavier ink, the opposite of depth. */
 const RECEDE = 0.55;
+
+/* Depth. Nothing here uses a projection matrix, so every shader maps its own
+ * world z into NDC over DEPTH_SPAN (comfortably wider than the rotated mark, so
+ * it never clamps). STROKE_LIFT pulls strokes and beads toward the viewer by
+ * less than the slab thickness: enough to clear the fill's front face, not
+ * enough to let a back-face stroke punch through it. */
+const DEPTH_SPAN = 4;
+const STROKE_LIFT = 0.06;
+/* Body shading. The face term never reaches full ink — the strokes are drawn at
+ * the pure color, so leaving the surface a step below keeps them legible across
+ * their whole width instead of only on the silhouette. FACE_EDGE is the turned
+ * side wall, FACE_FLAT the front and back. */
+const FACE_EDGE = 0.7;
+const FACE_FLAT = 0.86;
 
 const clamp = (value: number, low: number, high: number) =>
 	Math.min(high, Math.max(low, value));
@@ -50,6 +70,8 @@ attribute vec3 aInk;
 uniform mat3 uFrame;
 uniform vec2 uProject;
 uniform float uReach;
+uniform float uSpan;
+uniform float uLift;
 
 varying vec2 vPoint;
 varying vec2 vHead;
@@ -78,7 +100,8 @@ void main() {
   vSlab = (head.z + tail.z) * 0.5;
   vInk = aInk;
 
-  gl_Position = vec4(seat * uProject, 0.0, 1.0);
+  float seatZ = mix(head.z, tail.z, u) + uLift;
+  gl_Position = vec4(seat * uProject, clamp(-seatZ / uSpan, -1.0, 1.0), 1.0);
 }
 `;
 
@@ -120,6 +143,8 @@ attribute vec3 aInk;
 uniform mat3 uFrame;
 uniform vec2 uProject;
 uniform float uReach;
+uniform float uSpan;
+uniform float uLift;
 
 varying vec2 vOffset;
 varying float vSlab;
@@ -133,7 +158,12 @@ void main() {
   vSlab = seat.z;
   vInk = aInk;
 
-  gl_Position = vec4((seat.xy + pull) * uProject, 0.0, 1.0);
+  float seatZ = seat.z + uLift;
+  gl_Position = vec4(
+    (seat.xy + pull) * uProject,
+    clamp(-seatZ / uSpan, -1.0, 1.0),
+    1.0
+  );
 }
 `;
 
@@ -161,6 +191,37 @@ void main() {
 }
 `;
 
+/* The solid body. `position`/`normal` are three's injected defaults; uFrame is
+   orthonormal, so it rotates the normal correctly without an inverse-transpose. */
+const fillVertex = `
+uniform mat3 uFrame;
+uniform vec2 uProject;
+uniform float uSpan;
+
+varying vec3 vFacing;
+
+void main() {
+  vec3 seat = uFrame * position;
+  vFacing = uFrame * normal;
+  gl_Position = vec4(seat.xy * uProject, clamp(-seat.z / uSpan, -1.0, 1.0), 1.0);
+}
+`;
+
+const fillFragment = `
+precision highp float;
+
+uniform vec3 uInk;
+uniform float uEdge;
+uniform float uFlat;
+
+varying vec3 vFacing;
+
+void main() {
+  float face = abs(normalize(vFacing).z);
+  gl_FragColor = vec4(uInk * mix(uEdge, uFlat, face), 1.0);
+}
+`;
+
 /** Sample both logo paths, center/scale them into a MARK_RADIUS world, and
  * extrude: a front and back outline ring at ±EXTRUDE_DEPTH plus connecting ribs
  * (with a bead at each rib joint). */
@@ -169,7 +230,7 @@ const buildLogoLattice = () => {
 	const paths = [LOGO_WRENCH, LOGO_CHECK].map((p) => ({
 		ink: new THREE.Color(p.fill),
 		shape: loader.parse(
-			`<svg xmlns="http://www.w3.org/2000/svg"><path d="${p.d}"/></svg>`
+			`<svg xmlns="http://www.w3.org/2000/svg"><path d="${p.d}"/></svg>`,
 		).paths[0],
 	}));
 
@@ -177,7 +238,7 @@ const buildLogoLattice = () => {
 		shape.subPaths.map((sub) => ({
 			ink,
 			pts: sub.getSpacedPoints(OUTLINE_SAMPLES).slice(0, OUTLINE_SAMPLES),
-		}))
+		})),
 	);
 
 	// The paths are authored in a 296×296 box; center on it and flip SVG's y-down.
@@ -186,6 +247,23 @@ const buildLogoLattice = () => {
 	const mid = box.getCenter(new THREE.Vector2());
 	const half = box.getSize(new THREE.Vector2()).multiplyScalar(0.5);
 	const gain = MARK_RADIUS / Math.hypot(half.x, half.y);
+
+	/* The body, registered on the strand lattice by construction: same centering,
+	   same gain, same ±EXTRUDE_DEPTH slab. The y flip inverts winding, so the
+	   material draws double-sided and the shader takes |normal.z|. */
+	const depth = (EXTRUDE_DEPTH * 2) / gain;
+	const bodies = paths.map(({ ink, shape }) => {
+		const geo = new THREE.ExtrudeGeometry(SVGLoader.createShapes(shape), {
+			depth,
+			bevelEnabled: false,
+			curveSegments: 24,
+			steps: 1,
+		});
+		geo.translate(-mid.x, -mid.y, -depth * 0.5);
+		geo.scale(gain, -gain, gain);
+		geo.computeVertexNormals();
+		return { ink, geo };
+	});
 
 	const heads: number[] = [];
 	const tails: number[] = [];
@@ -215,6 +293,7 @@ const buildLogoLattice = () => {
 	});
 
 	return {
+		bodies,
 		head: new Float32Array(heads),
 		headInk: new Float32Array(headInk),
 		tail: new Float32Array(tails),
@@ -229,7 +308,7 @@ const quadCorners = () => {
 	const geo = new THREE.InstancedBufferGeometry();
 	geo.setAttribute(
 		"corner",
-		new THREE.BufferAttribute(new Float32Array([0, 0, 1, 0, 1, 1, 0, 1]), 2)
+		new THREE.BufferAttribute(new Float32Array([0, 0, 1, 0, 1, 1, 0, 1]), 2),
 	);
 	geo.setIndex([0, 1, 2, 0, 2, 3]);
 	geo.boundingSphere = new THREE.Sphere(new THREE.Vector3(), Infinity);
@@ -248,9 +327,11 @@ interface DriftState {
 	dragging: boolean;
 }
 
+/* Strokes and beads test against the body but never write depth — they must not
+   occlude each other, only be occluded by the solid they sit on. */
 const materialShared = {
 	transparent: true,
-	depthTest: false,
+	depthTest: true,
 	depthWrite: false,
 	blending: THREE.CustomBlending,
 	blendSrc: THREE.OneFactor,
@@ -305,14 +386,29 @@ export default function WireframeMarkCanvas({
 		const lattice = buildLogoLattice();
 
 		const strandGeo = quadCorners();
-		strandGeo.setAttribute("aHead", new THREE.InstancedBufferAttribute(lattice.head, 3));
-		strandGeo.setAttribute("aTail", new THREE.InstancedBufferAttribute(lattice.tail, 3));
-		strandGeo.setAttribute("aInk", new THREE.InstancedBufferAttribute(lattice.headInk, 3));
+		strandGeo.setAttribute(
+			"aHead",
+			new THREE.InstancedBufferAttribute(lattice.head, 3),
+		);
+		strandGeo.setAttribute(
+			"aTail",
+			new THREE.InstancedBufferAttribute(lattice.tail, 3),
+		);
+		strandGeo.setAttribute(
+			"aInk",
+			new THREE.InstancedBufferAttribute(lattice.headInk, 3),
+		);
 		strandGeo.instanceCount = lattice.edgeCount;
 
 		const nodeGeo = quadCorners();
-		nodeGeo.setAttribute("aSeat", new THREE.InstancedBufferAttribute(lattice.seats, 3));
-		nodeGeo.setAttribute("aInk", new THREE.InstancedBufferAttribute(lattice.seatInk, 3));
+		nodeGeo.setAttribute(
+			"aSeat",
+			new THREE.InstancedBufferAttribute(lattice.seats, 3),
+		);
+		nodeGeo.setAttribute(
+			"aInk",
+			new THREE.InstancedBufferAttribute(lattice.seatInk, 3),
+		);
 		nodeGeo.instanceCount = lattice.nodeCount;
 
 		const strandMat = new THREE.ShaderMaterial({
@@ -322,6 +418,8 @@ export default function WireframeMarkCanvas({
 				uFrame: { value: new THREE.Matrix3() },
 				uProject: { value: new THREE.Vector2(1, 1) },
 				uReach: { value: LINE_REACH },
+				uSpan: { value: DEPTH_SPAN },
+				uLift: { value: STROKE_LIFT },
 				uPeak: { value: STROKE_ALPHA },
 				uCore: { value: LINE_CORE },
 				uRecede: { value: RECEDE },
@@ -336,6 +434,8 @@ export default function WireframeMarkCanvas({
 				uFrame: { value: new THREE.Matrix3() },
 				uProject: { value: new THREE.Vector2(1, 1) },
 				uReach: { value: BEAD_RADIUS },
+				uSpan: { value: DEPTH_SPAN },
+				uLift: { value: STROKE_LIFT },
 				uGrain: { value: BEAD_RADIUS },
 				uPeak: { value: BEAD_ALPHA },
 				uRecede: { value: RECEDE },
@@ -344,13 +444,45 @@ export default function WireframeMarkCanvas({
 			...materialShared,
 		});
 
+		/* One material per logo path so the ink stays a uniform. The second body
+		   carries a polygon offset: the two paths overlap in the source SVG, and
+		   coplanar front faces would otherwise shimmer against each other. */
+		const fillMats = lattice.bodies.map(
+			({ ink }, i) =>
+				new THREE.ShaderMaterial({
+					vertexShader: fillVertex,
+					fragmentShader: fillFragment,
+					uniforms: {
+						uFrame: { value: new THREE.Matrix3() },
+						uProject: { value: new THREE.Vector2(1, 1) },
+						uSpan: { value: DEPTH_SPAN },
+						uInk: { value: ink.clone() },
+						uEdge: { value: FACE_EDGE },
+						uFlat: { value: FACE_FLAT },
+					},
+					side: THREE.DoubleSide,
+					transparent: false,
+					depthTest: true,
+					depthWrite: true,
+					blending: THREE.NoBlending,
+					polygonOffset: i > 0,
+					polygonOffsetFactor: -1,
+					polygonOffsetUnits: -1,
+				}),
+		);
+
 		const scene = new THREE.Scene();
+		const fillMeshes = lattice.bodies.map(({ geo }, i) => {
+			const mesh = new THREE.Mesh(geo, fillMats[i]);
+			mesh.frustumCulled = false;
+			return mesh;
+		});
 		const strandMesh = new THREE.Mesh(strandGeo, strandMat);
 		const nodeMesh = new THREE.Mesh(nodeGeo, nodeMat);
 		strandMesh.frustumCulled = false;
 		nodeMesh.frustumCulled = false;
 		nodeMesh.renderOrder = 1;
-		scene.add(strandMesh, nodeMesh);
+		scene.add(...fillMeshes, strandMesh, nodeMesh);
 		// Shaders emit clip-space coordinates directly; the camera is a pass-through.
 		const camera = new THREE.Camera();
 
@@ -392,6 +524,9 @@ export default function WireframeMarkCanvas({
 			const frameMat = strandMat.uniforms.uFrame.value as THREE.Matrix3;
 			frameMat.set(cy, 0, sy, sy * sp, cp, -cy * sp, -sy * cp, sp, cy * cp);
 			(nodeMat.uniforms.uFrame.value as THREE.Matrix3).copy(frameMat);
+			fillMats.forEach((mat) =>
+				(mat.uniforms.uFrame.value as THREE.Matrix3).copy(frameMat),
+			);
 
 			const box = node.getBoundingClientRect();
 			const w = Math.max(box.width, 1);
@@ -400,10 +535,15 @@ export default function WireframeMarkCanvas({
 			const floor = Math.min(w, h);
 			(strandMat.uniforms.uProject.value as THREE.Vector2).set(
 				(2 * floor) / (w * span),
-				(2 * floor) / (h * span)
+				(2 * floor) / (h * span),
 			);
 			(nodeMat.uniforms.uProject.value as THREE.Vector2).copy(
-				strandMat.uniforms.uProject.value as THREE.Vector2
+				strandMat.uniforms.uProject.value as THREE.Vector2,
+			);
+			fillMats.forEach((mat) =>
+				(mat.uniforms.uProject.value as THREE.Vector2).copy(
+					strandMat.uniforms.uProject.value as THREE.Vector2,
+				),
 			);
 
 			renderer.render(scene, camera);
@@ -412,19 +552,25 @@ export default function WireframeMarkCanvas({
 		const start = () => {
 			if (renderer) return;
 			const canvas = document.createElement("canvas");
-			canvas.style.cssText = "position:absolute;inset:0;width:100%;height:100%;display:block";
+			canvas.style.cssText =
+				"position:absolute;inset:0;width:100%;height:100%;display:block";
 			node.appendChild(canvas);
 			renderer = new THREE.WebGLRenderer({
 				canvas,
 				alpha: true,
-				antialias: false,
+				// the solid body has no shader-side AA of its own, unlike the strokes
+				antialias: true,
 				premultipliedAlpha: true,
 				powerPreference: "high-performance",
 			});
 			renderer.setPixelRatio(clamp(window.devicePixelRatio || 1, 1, 2));
 			const size = () => {
 				const box = node.getBoundingClientRect();
-				renderer?.setSize(Math.max(box.width, 1), Math.max(box.height, 1), false);
+				renderer?.setSize(
+					Math.max(box.width, 1),
+					Math.max(box.height, 1),
+					false,
+				);
 			};
 			size();
 			resize.observe(node);
@@ -450,7 +596,7 @@ export default function WireframeMarkCanvas({
 
 		const watch = new IntersectionObserver(
 			([entry]) => (entry.isIntersecting ? start() : stop()),
-			{ rootMargin: "200px" }
+			{ rootMargin: "200px" },
 		);
 		watch.observe(node);
 
@@ -461,6 +607,8 @@ export default function WireframeMarkCanvas({
 			nodeGeo.dispose();
 			strandMat.dispose();
 			nodeMat.dispose();
+			lattice.bodies.forEach(({ geo }) => geo.dispose());
+			fillMats.forEach((mat) => mat.dispose());
 		};
 	}, [zoom, speed]);
 

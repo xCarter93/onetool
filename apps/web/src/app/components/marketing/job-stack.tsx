@@ -1,8 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type CSSProperties } from "react";
 import ScrollStack from "@/components/react-bits/scroll-stack";
+import HalftoneWave from "@/components/react-bits/halftone-wave";
 import type { FeatureKey } from "@/remotion/manifest";
+import { AmbientLayer } from "./ambient";
 import { ChapterPlayer } from "./chapter-player";
 
 /* The loop, retold as a pinned card stack: the five steps of one job, each
@@ -10,6 +12,34 @@ import { ChapterPlayer } from "./chapter-player";
  * version of sections/loop.tsx. Only the frontmost card's Player runs
  * (onIndexChange); depth === count keeps covered Players mounted (the stack
  * hides them with visibility, so playback state survives). */
+
+/* Something behind the pinned stage, on the way in and while the cards flip:
+ * the hero's halftone field in the same neutral grays, inverted-masked so it
+ * only ever shows around the cards. HalftoneWave paints an opaque bg + dots and
+ * so can't be re-inked per scheme; at this whisper it reads as graphite haze on
+ * paper and as a lifted edge in the dark scheme. Hoisted to module scope — the
+ * component re-renders on every card flip. */
+const STAGE_MASK =
+	"radial-gradient(64% 60% at 50% 50%, transparent 0%, rgba(0,0,0,0.5) 74%, #000 100%)";
+const STAGE_MASK_STYLE = {
+	maskImage: STAGE_MASK,
+	WebkitMaskImage: STAGE_MASK,
+} as CSSProperties;
+
+const STAGE_BACKDROP = (
+	<AmbientLayer opacity={0.09} style={STAGE_MASK_STYLE}>
+		<HalftoneWave
+			speed={0.24}
+			gridDensity={40}
+			dotSize={0.4}
+			softness={0.62}
+			colorA="#b8b4ac"
+			colorB="#6f6c66"
+			backgroundColor="#a3a09a"
+			cursorInteraction={false}
+		/>
+	</AmbientLayer>
+);
 
 type Step = {
 	n: string;
@@ -23,7 +53,7 @@ const STEPS: Step[] = [
 	{
 		n: "01",
 		title: "The client calls",
-		body: "Log them once — company, contacts, every property they own. The history is there next time they ring.",
+		body: "Log them once, with their contacts and every property they own. The history is there next time they ring.",
 		detail: "Clients · Properties · Contacts",
 		chapter: "clients",
 	},
@@ -37,14 +67,14 @@ const STEPS: Step[] = [
 	{
 		n: "03",
 		title: "They sign it, the calendar fills",
-		body: "A link, their phone, a finger — the quote flips to approved and it becomes visits and tasks on the calendar, assigned to a crew.",
+		body: "They open the link on their phone and sign with a finger. The quote flips to approved and becomes visits and tasks on the calendar, assigned to a crew.",
 		detail: "E-signature via BoldSign · one-off or recurring",
 		chapter: "portal-approve",
 	},
 	{
 		n: "04",
 		title: "The work gets done and invoiced",
-		body: "The day's stops come back in driving order on a real map. The invoice is one click off the approved quote — same totals, nothing retyped.",
+		body: "The day's stops come back in driving order on a real map. The invoice is one click off the approved quote, with the same totals and nothing retyped.",
 		detail: "Optimised route · quote → invoice, one click",
 		chapter: "routing",
 	},
@@ -62,6 +92,7 @@ export function JobStack() {
 
 	return (
 		<ScrollStack
+			background={STAGE_BACKDROP}
 			variant="stack"
 			depth={STEPS.length}
 			blur={0}
@@ -105,7 +136,7 @@ export function JobStack() {
 							<ChapterPlayer
 								featureKey={step.chapter}
 								active={i === active}
-								label={`${step.title} — product animation`}
+								label={`${step.title} (product animation)`}
 								className="w-full min-w-[860px] max-w-[1100px]"
 							/>
 						</div>

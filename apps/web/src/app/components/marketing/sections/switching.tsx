@@ -65,8 +65,8 @@ export function Switching() {
 				<Eyebrow>Switching over</Eyebrow>
 				<SectionHeading size="sm">Bring the list you already have.</SectionHeading>
 				<Lede className="max-w-[30rem]">
-					Export a CSV from whatever you&rsquo;re using — or the spreadsheet on the
-					office laptop — and OneTool reads it, works out which column is which, and
+					Export a CSV from whatever you use today, even the spreadsheet on the
+					office laptop. OneTool reads it, works out which column is which, and
 					matches names to clients you already have.
 				</Lede>
 			</div>
@@ -74,7 +74,7 @@ export function Switching() {
 			<div className="overflow-hidden rounded-2xl border border-(--rule-2) bg-(--paper)">
 				<div
 					role="img"
-					aria-label="Rows of a spreadsheet export passing through OneTool's AI import and coming out as named client records — Whitfield Property Group matched, R. Alvarez new client, Northgate HOA new client, Kerr Rd Maintenance matched."
+					aria-label="Rows of a spreadsheet export passing through OneTool's AI import and coming out as named client records: Whitfield Property Group matched, R. Alvarez new client, Northgate HOA new client, Kerr Rd Maintenance matched."
 				>
 					<MagicTransform
 						documents={DOCUMENTS}

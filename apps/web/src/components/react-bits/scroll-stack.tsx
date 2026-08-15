@@ -33,6 +33,12 @@ export interface ScrollStackProps {
   items?: ScrollStackItem[];
   /** Custom cards, one per child, replacing the built-in layout */
   children?: ReactNode;
+  /**
+   * Decor painted behind the cards INSIDE the pinned viewport, so the canvas is
+   * one screen tall rather than the full runway. Rendered inert and below the
+   * card slots and the progress rail.
+   */
+  background?: ReactNode;
   /** Which stacking animation to run */
   variant?: ScrollStackVariant;
   /** Viewport heights of scrolling assigned to each card */
@@ -253,6 +259,7 @@ const pose = (
 export const ScrollStack = ({
   items = DEFAULT_ITEMS,
   children,
+  background,
   variant = "stack",
   scrollLength = 1,
   peek = 26,
@@ -431,6 +438,14 @@ export const ScrollStack = ({
         className="sticky top-0 flex h-screen w-full items-center justify-center overflow-hidden px-4 sm:px-8"
         style={{ perspective: `${Math.max(200, perspective)}px` }}
       >
+        {/* Sticky always opens a stacking context, so a negative layer here can
+            only ever sit behind this viewport's own children. */}
+        {background && (
+          <div className="pointer-events-none absolute inset-0 -z-10">
+            {background}
+          </div>
+        )}
+
         <div
           className="relative w-full"
           style={{

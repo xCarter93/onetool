@@ -1,7 +1,13 @@
 import React from "react";
 import { interpolate, useCurrentFrame, useVideoConfig } from "remotion";
 import { CardHead, Note, Row, SceneFrame } from "../Chrome";
-import { CARD, T } from "../theme";
+import {
+  CARD,
+  JobThemeProvider,
+  paletteFor,
+  useJobTheme,
+  type JobSceneProps,
+} from "../theme";
 
 const STATS = [
   { label: "Properties", value: 4 },
@@ -22,6 +28,7 @@ const PROPERTIES = [
 export const ClientRecord: React.FC<{ bare?: boolean }> = ({ bare }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
+  const T = useJobTheme();
 
   return (
     <SceneFrame bare={bare} eyebrow="One record" title="Everything the job touches, in one record.">
@@ -152,6 +159,11 @@ export const ClientRecord: React.FC<{ bare?: boolean }> = ({ bare }) => {
   );
 };
 
-/** Card-slot cut: the composition IS the card interior. */
-const ClientRecordCard: React.FC = () => <ClientRecord bare />;
+/** Card-slot cut: the composition IS the card interior, inked to the page's
+ * scheme (the slot behind it paints --sheet). */
+const ClientRecordCard: React.FC<JobSceneProps> = ({ theme = "light" }) => (
+  <JobThemeProvider value={paletteFor(theme)}>
+    <ClientRecord bare />
+  </JobThemeProvider>
+);
 export default ClientRecordCard;

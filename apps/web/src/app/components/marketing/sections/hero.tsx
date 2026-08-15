@@ -26,12 +26,12 @@ import { RoughMark } from "../rough-mark";
 const at = (delay: string) => ({ "--lp-delay": delay }) as CSSProperties;
 
 /* HalftoneWave paints an opaque field (bg + dots), so it can't be tinted to
- * both schemes. It runs at a neutral mid-gray under a radial mask instead: the
- * dots read as a soft graphite haze around the mark on paper AND in the dark
- * scheme, and the mask dissolves the canvas box long before it reaches the
- * type column. */
+ * both schemes. It runs at a neutral mid-gray — a graphite haze that reads on
+ * paper AND in the dark scheme — full-bleed across the hero under an INVERTED
+ * radial mask: nothing through the middle where the type column and the mark
+ * live, dots only out at the hero's perimeter. */
 const HALFTONE_MASK =
-	"radial-gradient(58% 58% at 50% 50%, #000 0%, rgba(0,0,0,0.55) 48%, transparent 76%)";
+	"radial-gradient(80% 84% at 50% 42%, transparent 0%, transparent 52%, rgba(0,0,0,0.5) 74%, #000 88%)";
 const HALFTONE_MASK_STYLE = {
 	maskImage: HALFTONE_MASK,
 	WebkitMaskImage: HALFTONE_MASK,
@@ -88,12 +88,32 @@ const LEDGER: { stage: string; label: string; when: string; tone: Tone }[] = [
 
 export function Hero() {
 	// No id="top" on the Section: page.tsx's root div owns that anchor.
+	// The Section's overflow-hidden is load-bearing: the halftone ambient is
+	// 100vw, which counts the scrollbar.
 	return (
-		<Section pad="none" containerClassName="max-w-none px-0">
+		<Section
+			pad="none"
+			className="overflow-hidden"
+			containerClassName="max-w-none px-0"
+		>
 			{/* legacy anchor: older links point at #home */}
 			<span id="home" />
 
 			<GridBackdrop />
+
+			{/* ambient: halftone dots around the hero's outer edge only */}
+			<AmbientLayer opacity={0.1} fullBleed style={HALFTONE_MASK_STYLE}>
+				<HalftoneWave
+					speed={0.3}
+					gridDensity={34}
+					dotSize={0.42}
+					softness={0.6}
+					colorA="#b8b4ac"
+					colorB="#6f6c66"
+					backgroundColor="#a3a09a"
+					cursorInteraction={false}
+				/>
+			</AmbientLayer>
 
 			<Container className="relative grid grid-cols-[repeat(auto-fit,minmax(min(100%,400px),1fr))] items-center gap-[clamp(24px,4vw,64px)] pt-[clamp(40px,7vw,96px)]">
 				<div>
@@ -112,7 +132,11 @@ export function Hero() {
 							Quote it. Get it signed.
 							<br />
 							<span className="text-(--ink-2)">Get paid</span>{" "}
-							<RoughMark type="underline" delay={420} className="whitespace-nowrap">
+							<RoughMark
+								type="underline"
+								delay={420}
+								className="whitespace-nowrap"
+							>
 								before you
 							</RoughMark>{" "}
 							forget.
@@ -121,9 +145,9 @@ export function Hero() {
 
 					<div className="lp-rise mt-6" style={at("120ms")}>
 						<Lede className="max-w-[34rem] text-[clamp(17px,1.4vw,20px)] leading-[1.55]">
-							The whole job lives in one place — the client, the property, the
-							quote, the crew, the invoice. Built to be run from a phone in a
-							truck, not a desk at head office.
+							The whole job lives in one place: the client, the property, the
+							quote, the crew, the invoice. Built to be run from a phone in
+							the truck.
 						</Lede>
 					</div>
 
@@ -151,24 +175,10 @@ export function Hero() {
 				</div>
 
 				<div
-					className="lp-fade relative flex min-h-[clamp(300px,40vw,560px)] items-center justify-center"
+					className="lp-fade relative flex min-h-[clamp(340px,46vw,680px)] items-center justify-center"
 					style={at("100ms")}
 				>
-					{/* ambient: halftone dots behind the mark only — never the type column */}
-					<AmbientLayer opacity={0.1} style={HALFTONE_MASK_STYLE}>
-						<HalftoneWave
-							speed={0.3}
-							gridDensity={34}
-							dotSize={0.42}
-							softness={0.6}
-							colorA="#b8b4ac"
-							colorB="#6f6c66"
-							backgroundColor="#a3a09a"
-							cursorInteraction={false}
-						/>
-					</AmbientLayer>
-
-					<WireframeMark className="aspect-square w-full max-w-[560px]" />
+					<WireframeMark className="aspect-square w-full max-w-[680px]" />
 				</div>
 			</Container>
 

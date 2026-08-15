@@ -22,11 +22,11 @@ const FREE_PLAN = [
 
 const BUSINESS_PLAN = [
 	"Unlimited clients, projects and e-signatures",
-	"Stripe Connect — card payments to your bank",
+	"Card payments to your bank via Stripe Connect",
 	"Custom SKUs and unlimited saved documents",
 	"AI import for existing clients and projects",
 	"Recurring work, routing and automations",
-	"Priority support — 24-hour SLAs",
+	"Priority support with 24-hour SLAs",
 ];
 
 /* Ambient: slow ink rings under the plates. Three.js stays out of the landing's
@@ -107,12 +107,12 @@ export function Pricing() {
 	const price = annual ? `$${yearly}` : `$${monthly}`;
 	const priceUnit = annual ? "/ year" : "/ month";
 	const priceNote = annual
-		? `Works out at $${Math.round(yearly / 12)} a month — save 17%.`
+		? `Works out at $${Math.round(yearly / 12)} a month, saving 17%.`
 		: "Per organisation, unlimited users. Cancel any time.";
 
 	return (
-		<Section id="pricing" scheme="sheet">
-			<AmbientLayer opacity={0.1}>
+		<Section id="pricing" scheme="sheet" className="overflow-hidden">
+			<AmbientLayer opacity={0.1} fullBleed>
 				<MinimalRipple
 					className="h-full w-full"
 					color="#8a8782"

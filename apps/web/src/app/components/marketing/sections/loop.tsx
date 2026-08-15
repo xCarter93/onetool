@@ -29,8 +29,8 @@ export function Loop() {
 				</div>
 				<Lede>
 					Nothing gets retyped between these steps. The quote becomes the visit
-					becomes the invoice, off the same numbers. Scroll — this is one real
-					job going through.
+					becomes the invoice, off the same numbers. Scroll to watch one real
+					job go through.
 				</Lede>
 			</div>
 

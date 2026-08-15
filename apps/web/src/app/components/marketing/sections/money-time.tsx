@@ -44,14 +44,14 @@ export function MoneyTime() {
 					</h3>
 					<p className={CARD_BODY}>
 						{
-							"The client signs the quote on their phone and pays the invoice on the same link — by card, under your business name. With Stripe Connect it lands in your bank account, not ours."
+							"The client signs the quote on their phone and pays the invoice by card on the same link, under your business name. With Stripe Connect it lands straight in your own bank account."
 						}
 					</p>
 
 					<div className="mt-auto pt-8">
 						{/* The settled card sits above the track: what the client tapped,
-						 * then where the money went. Tilt is pointer-driven only, so it
-						 * stays still for anyone who never touches it. */}
+						 * then where the money went. It only answers a click (the flip) —
+						 * no hover tilt, so it stays still while you read past it. */}
 						<div aria-hidden="true" className="flex justify-center">
 							<CreditCard
 								cardNumber="•••• •••• •••• 4180"
@@ -62,9 +62,7 @@ export function MoneyTime() {
 								textColor="#f3f1ec"
 								scale={0.78}
 								borderRadius={14}
-								rotationIntensity={0.6}
-								parallaxIntensity={0}
-								scaleOnHover={1}
+								hoverEffects={false}
 								showShine={false}
 								showShadow={false}
 								hasTextShadow={false}
@@ -100,7 +98,7 @@ export function MoneyTime() {
 						</div>
 						<p className="mt-4 text-[13.5px] text-(--ink-3)">
 							{
-								"Not “thirty days, then a phone call, then another phone call”."
+								"Without the thirty-day wait and the two reminder phone calls."
 							}
 						</p>
 					</div>

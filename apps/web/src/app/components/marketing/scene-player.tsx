@@ -3,7 +3,9 @@
 import { Player, Thumbnail, type PlayerRef } from "@remotion/player";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ComponentType } from "react";
+import { useTheme } from "next-themes";
 import { CARD_ONLY, DUR, FPS } from "@/remotion/job-scenes/durations";
+import type { JobSceneProps } from "@/remotion/job-scenes/theme";
 import { usePrefersReducedMotion } from "./use-reduced-motion";
 
 export type JobSceneKey = "clientRecord" | "weekPlan" | "threadAssistant";
@@ -11,7 +13,10 @@ export type JobSceneKey = "clientRecord" | "weekPlan" | "threadAssistant";
 /* Dynamic-import table so the landing bundle ships neither the scenes nor
  * @remotion/player's render graph until a card scrolls near the viewport —
  * the same lazyComponent pattern as src/remotion/scene-loaders.ts. */
-const LOADERS: Record<JobSceneKey, () => Promise<{ default: ComponentType }>> = {
+const LOADERS: Record<
+	JobSceneKey,
+	() => Promise<{ default: ComponentType<JobSceneProps> }>
+> = {
 	clientRecord: () => import("@/remotion/job-scenes/scenes/ClientRecord"),
 	weekPlan: () => import("@/remotion/job-scenes/scenes/WeekPlan"),
 	threadAssistant: () => import("@/remotion/job-scenes/scenes/ThreadAssistant"),
@@ -63,6 +68,8 @@ export function JobScenePlayer({
 		setPlayerReady(p !== null);
 	}, []);
 	const reduced = usePrefersReducedMotion();
+	const { resolvedTheme } = useTheme();
+	const theme = resolvedTheme === "dark" ? "dark" : "light";
 	const { durationInFrames, height } = CONFIG[scene];
 	const lazyComponent = useCallback(() => LOADERS[scene](), [scene]);
 
@@ -115,6 +122,7 @@ export function JobScenePlayer({
 					fps={FPS}
 					compositionWidth={CARD_ONLY.width}
 					compositionHeight={height}
+					inputProps={{ theme }}
 					style={{ width: "100%" }}
 				/>
 			</div>
@@ -130,6 +138,7 @@ export function JobScenePlayer({
 				fps={FPS}
 				compositionWidth={CARD_ONLY.width}
 				compositionHeight={height}
+				inputProps={{ theme }}
 				style={{ width: "100%" }}
 				autoPlay={false}
 				loop

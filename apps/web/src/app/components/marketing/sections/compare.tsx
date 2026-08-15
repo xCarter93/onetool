@@ -149,7 +149,7 @@ function SavingsLine({ crew }: { crew: CrewSize }) {
 		} else if (monthlyDelta < 0) {
 			line = `${rival.name} ${rival.planName} is ${formatCurrency(-monthlyDelta, {
 				whole: true,
-			})}/mo less at ${crew} ${people(crew)} — the gap opens as the crew grows`;
+			})}/mo less at ${crew} ${people(crew)} (the gap opens as the crew grows)`;
 		} else {
 			line = `Level with ${rival.name} ${rival.planName} at ${crew} ${people(crew)}`;
 		}
@@ -403,10 +403,10 @@ function Footnotes() {
 				{mention.name} {mention.note}, so there is no honest way to give it a column.
 			</p>
 			<p>
-				Competitor prices are their published rates as of {RETRIEVED_LABEL} — {linked}.
+				Competitor prices are their published rates as of {RETRIEVED_LABEL} ({linked}).
 				Competitors are shown at the annual-billing rate their own pricing page displays;
 				OneTool is shown month-to-month at {formatCurrency(ONETOOL_MONTHLY, { whole: true })}.
-				Every business is different — check their sites for current pricing.
+				Every business is different, so check their sites for current pricing.
 			</p>
 		</div>
 	);
@@ -414,11 +414,16 @@ function Footnotes() {
 
 /* --------------------------------------------------------------- the section */
 
-/** Keeps the dot field in the outer margins: the middle stays fully transparent
- *  so the ledger — the one thing here that must read as flat ground — sits on
- *  clean paper, and only the stepper/savings/footnote gutters get texture. */
-const MARGIN_MASK =
-	"radial-gradient(90% 70% at 50% 45%, transparent 0%, transparent 55%, #000 95%)";
+/** Two linear masks, unioned by the default `add` composite: the dot field
+ *  shows in the outer bands of both axes and stays fully transparent over the
+ *  middle rectangle, so the ledger — the one thing here that must read as flat
+ *  ground — sits on clean paper. A single radial could not do this: its
+ *  transparent core reached ~±49% of the layer, which cleared the whole
+ *  viewport and left nothing visible anywhere. */
+const MARGIN_MASK = [
+	"linear-gradient(to right, #000 0%, transparent 22%, transparent 78%, #000 100%)",
+	"linear-gradient(to bottom, #000 0%, transparent 24%, transparent 76%, #000 100%)",
+].join(",");
 
 export function Compare() {
 	const [crew, setCrew] = useState<CrewSize>(DEFAULT_CREW);
@@ -426,10 +431,12 @@ export function Compare() {
 	// Paper scheme, not sheet: Numbers above is already a sheet band, and the
 	// ledger card is --sheet — it needs paper behind it to read as a card.
 	// OnTheJob below is paper too, so this boundary needs the hairline seam.
+	// overflow-hidden is the fullBleed ambient's clipping ancestor.
 	return (
-		<Section id="compare" divider>
+		<Section id="compare" divider className="overflow-hidden">
 			<AmbientLayer
-				opacity={0.08}
+				fullBleed
+				opacity={0.16}
 				style={{ WebkitMaskImage: MARGIN_MASK, maskImage: MARGIN_MASK }}
 			>
 				<ThinkingDots
@@ -444,7 +451,7 @@ export function Compare() {
 
 			<div className="relative">
 				<Eyebrow>Compare</Eyebrow>
-				<SectionHeading>Priced for crews, not for seats.</SectionHeading>
+				<SectionHeading>One price for the whole crew.</SectionHeading>
 				<Lede className="max-w-[46rem]">
 					Jobber adds $29 a month for every user past the plan allowance. Housecall Pro&rsquo;s
 					entry plan covers one person, and extra seats are sold only on its top plan.

@@ -1,4 +1,5 @@
 import SquaresTerminal from "@/components/react-bits/squares-terminal";
+import { CARD_ONLY } from "@/remotion/job-scenes/durations";
 import { AmbientLayer } from "../ambient";
 import { CardEyebrowRow, Eyebrow, Section, SectionHeading } from "../primitives";
 import { JobScenePlayer } from "../scene-player-lazy";
@@ -9,15 +10,12 @@ import type { JobSceneKey } from "../scene-player";
  * lines 342–390). The cards are plain server markup; only the Player inside
  * JobScenePlayer is a client island. */
 
-/* The scenes are authored at 2× (composition 700 wide for a ~350px slot, see
- * remotion/job-scenes/durations.ts), so letting the Player fill a narrow card
- * renders them at half scale. Pinning a minimum inner width of 430px puts the
- * scene's 22px body type at ~13.5px — the caption's own size, i.e. life-size —
- * and lets the slot CROP rather than shrink below that. Wider cards bleed to
- * 100%. Slot height is the shortest scene's natural height at 430 (620 × 430/700
- * ≈ 381); the taller scenes lose the bottom slack they were authored with. */
-const SCENE_MIN_WIDTH = "max(100%, 430px)";
-const SLOT_HEIGHT = 380;
+/* Each slot carries its scene's own aspect ratio, so nothing is ever cropped —
+ * the cards end up ragged along the bottom, which is the trade. The ratio lives
+ * on this server markup rather than inside the (ssr:false) Player, or the three
+ * slots would be 0px tall until the players hydrate. */
+const slotRatio = (scene: JobSceneKey) =>
+	`${CARD_ONLY.width} / ${CARD_ONLY[scene]}`;
 
 const CARDS: Array<{
 	scene: JobSceneKey;
@@ -41,7 +39,7 @@ const CARDS: Array<{
 		index: "02",
 		sceneLabel: "The week's workload and the day's tasks landing on the schedule",
 		caption:
-			"Recurring work repeats itself — weekly mows, quarterly filter changes — and lands on the crew's phone with the address and notes already on it.",
+			"Recurring work like weekly mows and quarterly filter changes repeats itself, and lands on the crew's phone with the address and notes already on it.",
 	},
 	{
 		scene: "threadAssistant",
@@ -50,7 +48,7 @@ const CARDS: Array<{
 		sceneLabel:
 			"A client email thread, then a plain-English ask answered by the assistant",
 		caption:
-			"Email to and from a client stays beside their jobs, and the assistant turns a sentence into the task, the route or the report — showing its work as it goes.",
+			"Email to and from a client stays beside their jobs, and the assistant turns a sentence into the task, the route or the report, showing its work as it goes.",
 	},
 ];
 
@@ -94,17 +92,15 @@ export function WhatsInside() {
 							className="lp-lift grid content-start overflow-hidden rounded-2xl border border-(--rule-2) bg-(--sheet)"
 						>
 							<CardEyebrowRow label={card.label} index={card.index} />
-							{/* Fixed-height window: the scene plays at life-size and crops. */}
 							<div
-								className="relative overflow-hidden border-b border-(--rule)"
-								style={{ height: SLOT_HEIGHT }}
+								className="relative border-b border-(--rule)"
+								style={{ aspectRatio: slotRatio(card.scene) }}
 							>
-								<div
-									className="absolute left-1/2 top-0 -translate-x-1/2"
-									style={{ width: SCENE_MIN_WIDTH }}
-								>
-									<JobScenePlayer scene={card.scene} label={card.sceneLabel} />
-								</div>
+								<JobScenePlayer
+									scene={card.scene}
+									label={card.sceneLabel}
+									className="absolute inset-0"
+								/>
 							</div>
 							<p className="px-6 py-3.5 text-[13.5px] text-(--ink-2)">
 								{card.caption}
