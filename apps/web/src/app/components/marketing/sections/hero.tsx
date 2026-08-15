@@ -1,7 +1,8 @@
 import type { CSSProperties } from "react";
 import { HalftoneDash } from "../halftone-dash";
-import { InkButton, SheetButton } from "../marketing-nav";
-import { ParticleMark } from "../particle-mark";
+import { InkButton } from "../marketing-nav";
+import { HalftoneMark } from "../halftone-mark";
+import { HeroReelCta } from "../reel-lightbox";
 import {
 	CheckItem,
 	Container,
@@ -77,8 +78,9 @@ const LEDGER: { stage: string; label: string; when: string; tone: Tone }[] = [
 ];
 
 export function Hero() {
+	// No id="top" on the Section: page.tsx's root div owns that anchor.
 	return (
-		<Section id="top" pad="none" containerClassName="max-w-none px-0">
+		<Section pad="none" containerClassName="max-w-none px-0">
 			{/* legacy anchor: older links point at #home */}
 			<span id="home" />
 
@@ -148,7 +150,7 @@ export function Hero() {
 								→
 							</span>
 						</InkButton>
-						<SheetButton href="#loop">See a job run through it</SheetButton>
+						<HeroReelCta />
 					</div>
 
 					<ul
@@ -165,7 +167,7 @@ export function Hero() {
 					className="lp-fade relative flex min-h-[clamp(240px,32vw,420px)] items-center justify-center"
 					style={at("100ms")}
 				>
-					<ParticleMark className="block max-w-[400px]" />
+					<HalftoneMark className="aspect-square w-full max-w-[400px]" />
 				</div>
 			</Container>
 

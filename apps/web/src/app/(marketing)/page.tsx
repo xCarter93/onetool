@@ -1,4 +1,7 @@
 import { MarketingNav } from "@/app/components/marketing/marketing-nav";
+import { SheetSpine } from "@/app/components/marketing/sheet-spine";
+import { TryIt } from "@/app/components/marketing/sections/try-it";
+import { DuskBand } from "@/app/components/marketing/sections/dusk-band";
 import { Hero } from "@/app/components/marketing/sections/hero";
 import { FieldBand } from "@/app/components/marketing/sections/field-band";
 import { OnePlace } from "@/app/components/marketing/sections/one-place";
@@ -30,17 +33,20 @@ export default function Home() {
 				Skip to content
 			</a>
 			<MarketingNav />
+			<SheetSpine />
 			<main id="main-content" tabIndex={-1} className="outline-none">
 				<Hero />
 				<FieldBand />
 				<OnePlace />
 				<Loop />
+				<TryIt />
 				<MoneyTime />
 				<WhatsInside />
 				<Numbers />
 				<Compare />
 				<OnTheJob />
 				<Switching />
+				<DuskBand />
 				<Pricing />
 				<Faq />
 				<FinalCta />
