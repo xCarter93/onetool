@@ -106,6 +106,7 @@ export function Hero() {
 					<div className="lp-rise mt-5" style={at("60ms")}>
 						<SectionHeading
 							as="h1"
+							reveal={false}
 							className="mt-0 max-w-[26ch] text-balance text-[clamp(44px,6.8vw,96px)] leading-[0.99] tracking-[-0.045em]"
 						>
 							Quote it. Get it signed.
