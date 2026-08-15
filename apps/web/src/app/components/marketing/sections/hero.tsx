@@ -2,7 +2,7 @@ import type { CSSProperties } from "react";
 import HalftoneWave from "@/components/react-bits/halftone-wave";
 import { AmbientLayer } from "../ambient";
 import { InkButton } from "../marketing-nav";
-import { WireframeMark } from "../wireframe-mark";
+import { ParticleMark } from "../particle-mark";
 import { HeroReelCta } from "../reel-cta";
 import {
 	CheckItem,
@@ -18,9 +18,9 @@ import {
 import { RoughMark } from "../rough-mark";
 
 /* HERO — comp lines 96–166, simplified at Patrick's direction: the faint
- * construction grid, the promise, the dash-halftone OneTool mark opposite it
- * (the hero's ONE dash system), and one real job travelling five stages
- * underneath. Server component: every moving part is its own client island. */
+ * construction grid, the promise, the particle OneTool mark opposite it, and
+ * one real job travelling five stages underneath. Server component: every
+ * moving part is its own client island. */
 
 /** Entrance stagger — the comp's `animation-delay` on `.lp-rise`/`.lp-fade`. */
 const at = (delay: string) => ({ "--lp-delay": delay }) as CSSProperties;
@@ -28,10 +28,10 @@ const at = (delay: string) => ({ "--lp-delay": delay }) as CSSProperties;
 /* HalftoneWave paints an opaque field (bg + dots), so it can't be tinted to
  * both schemes. It runs at a neutral mid-gray — a graphite haze that reads on
  * paper AND in the dark scheme — full-bleed across the hero under an INVERTED
- * radial mask: nothing through the middle where the type column and the mark
- * live, dots only out at the hero's perimeter. */
+ * radial mask: clear through the middle where the type column and the mark
+ * live, dots ramping in just past the content so the frame reads alive. */
 const HALFTONE_MASK =
-	"radial-gradient(80% 84% at 50% 42%, transparent 0%, transparent 52%, rgba(0,0,0,0.5) 74%, #000 88%)";
+	"radial-gradient(72% 78% at 50% 42%, transparent 0%, transparent 36%, rgba(0,0,0,0.55) 60%, #000 78%)";
 const HALFTONE_MASK_STYLE = {
 	maskImage: HALFTONE_MASK,
 	WebkitMaskImage: HALFTONE_MASK,
@@ -102,9 +102,9 @@ export function Hero() {
 			<GridBackdrop />
 
 			{/* ambient: halftone dots around the hero's outer edge only */}
-			<AmbientLayer opacity={0.1} fullBleed style={HALFTONE_MASK_STYLE}>
+			<AmbientLayer opacity={0.18} fullBleed style={HALFTONE_MASK_STYLE}>
 				<HalftoneWave
-					speed={0.3}
+					speed={0.45}
 					gridDensity={34}
 					dotSize={0.42}
 					softness={0.6}
@@ -178,7 +178,7 @@ export function Hero() {
 					className="lp-fade relative flex min-h-[clamp(340px,46vw,680px)] items-center justify-center"
 					style={at("100ms")}
 				>
-					<WireframeMark className="aspect-square w-full max-w-[680px]" />
+					<ParticleMark className="max-w-[680px]" />
 				</div>
 			</Container>
 
