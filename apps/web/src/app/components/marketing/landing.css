@@ -27,7 +27,6 @@
 	--paid-wash: color-mix(in oklch, oklch(0.596 0.145 163.225) 12%, var(--paper));
 	--lp-shadow: 0 1px 2px rgba(16, 24, 40, 0.04), 0 8px 24px -12px rgba(16, 24, 40, 0.12);
 	--lp-ease: cubic-bezier(0.23, 1, 0.32, 1);
-	--lp-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
 
 	background: var(--paper);
 	color: var(--ink);
@@ -184,6 +183,18 @@ html:has(.dc-landing) {
 }
 .lp-fade {
 	animation: lp-fade 1s var(--lp-ease) var(--lp-delay, 0s) both;
+}
+
+/* Cards rest flat (hairline + surface only); shadow is a hover reward.
+   Reduced motion zeroes the transition but the hover state still applies. */
+.lp-lift {
+	transition:
+		box-shadow 0.3s var(--lp-ease),
+		translate 0.3s var(--lp-ease);
+}
+.lp-lift:hover {
+	box-shadow: var(--lp-shadow);
+	translate: 0 -2px;
 }
 
 @media (prefers-reduced-motion: reduce) {

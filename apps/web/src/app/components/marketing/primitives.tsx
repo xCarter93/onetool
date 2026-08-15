@@ -21,13 +21,16 @@ export function Container({
 	);
 }
 
-/** Section shell: hairline seam below, optional re-inking (Twenty's scheme pattern). */
+/** Section shell: optional re-inking (Twenty's scheme pattern). Bands are
+ * separated by scheme swaps by default; `divider` draws the hairline seam only
+ * where two same-scheme sections meet. */
 export function Section({
 	id,
 	scheme = "paper",
 	className,
 	containerClassName,
 	pad = "default",
+	divider = false,
 	children,
 }: {
 	id?: string;
@@ -36,13 +39,16 @@ export function Section({
 	containerClassName?: string;
 	/** default = the comp's big section rhythm; tight = band rhythm; none = caller owns padding. */
 	pad?: "default" | "tight" | "none";
+	/** Hairline seam below — only for boundaries the scheme swap doesn't already draw. */
+	divider?: boolean;
 	children: ReactNode;
 }) {
 	return (
 		<section
 			id={id}
 			className={cn(
-				"relative border-b border-(--rule)",
+				"relative",
+				divider && "border-b border-(--rule)",
 				scheme === "sheet" && "bg-(--sheet)",
 				scheme === "dark" && "lp-scheme-dark",
 				className
@@ -51,14 +57,49 @@ export function Section({
 			<Container
 				className={cn(
 					"relative",
-					pad === "default" && "py-[clamp(56px,7vw,104px)]",
-					pad === "tight" && "py-[clamp(40px,5vw,72px)]",
+					pad === "default" && "py-[clamp(64px,8vw,120px)]",
+					pad === "tight" && "py-[clamp(44px,5.5vw,80px)]",
 					containerClassName
 				)}
 			>
 				{children}
 			</Container>
 		</section>
+	);
+}
+
+/** Standard intro stack (eyebrow → heading → lede → actions) with the fixed
+ * rhythm every section shares: 16px above the heading, 12px above the lede,
+ * 28px above actions. Content after an intro sits at mt-[clamp(40px,6vw,80px)].
+ * Bespoke two-column intros keep those same gaps by hand. */
+export function SectionIntro({
+	eyebrow,
+	heading,
+	lede,
+	actions,
+	align = "start",
+	className,
+}: {
+	eyebrow?: ReactNode;
+	heading: ReactNode;
+	lede?: ReactNode;
+	actions?: ReactNode;
+	align?: "start" | "center";
+	className?: string;
+}) {
+	return (
+		<div
+			className={cn(
+				"flex flex-col",
+				align === "center" && "items-center text-center",
+				className
+			)}
+		>
+			{eyebrow}
+			{heading}
+			{lede}
+			{actions ? <div className="mt-7 flex flex-wrap items-center gap-3">{actions}</div> : null}
+		</div>
 	);
 }
 
@@ -106,11 +147,11 @@ export function SectionHeading({
 			className={cn(
 				"mt-4 font-semibold text-balance",
 				size === "lg" &&
-					"text-[clamp(30px,4.2vw,52px)] leading-[1.04] tracking-[-0.035em] max-w-[20ch]",
+					"text-[clamp(34px,4.8vw,60px)] leading-[1.03] tracking-[-0.038em] max-w-[20ch]",
 				size === "md" &&
-					"text-[clamp(28px,3.6vw,46px)] leading-[1.06] tracking-[-0.035em]",
+					"text-[clamp(30px,4vw,52px)] leading-[1.05] tracking-[-0.035em] max-w-[22ch]",
 				size === "sm" &&
-					"text-[clamp(24px,2.8vw,34px)] leading-[1.1] tracking-[-0.03em]",
+					"text-[clamp(25px,3vw,38px)] leading-[1.08] tracking-[-0.03em]",
 				className
 			)}
 		>
@@ -130,7 +171,7 @@ export function Lede({
 	return (
 		<p
 			className={cn(
-				"text-[17px] leading-[1.6] text-(--ink-2) text-pretty",
+				"mt-3 text-[clamp(16.5px,1.3vw,18px)] leading-[1.6] text-(--ink-2) text-pretty",
 				className
 			)}
 		>
