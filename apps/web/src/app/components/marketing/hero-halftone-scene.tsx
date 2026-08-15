@@ -1,3 +1,4 @@
+import { DEFS, uri } from "./halftone-corners";
 import { HalftoneDash } from "./halftone-dash";
 
 /* HERO SCENE — Twenty's halftone-mountain move (see halftone-dash.tsx for the
@@ -10,17 +11,8 @@ import { HalftoneDash } from "./halftone-dash";
  * job ledger keep clear air. Dash color rides the host's `color`, so
  * text-(--accent) themes it in both schemes; hovering lights the dashes up. */
 
-const uri = (svg: string) => `data:image/svg+xml,${encodeURIComponent(svg)}`;
-
-/* Shared grayscale ramps: `g` = soft terrain, `h` = built structures (darker,
- * so houses and the van pop out of the hills at dash resolution). */
-const DEFS = `
-	<linearGradient id="g" x1="0" y1="0" x2="0" y2="1">
-		<stop offset="0" stop-color="#c2c2c2"/><stop offset="1" stop-color="#141414"/>
-	</linearGradient>
-	<linearGradient id="h" x1="0" y1="0" x2="0" y2="1">
-		<stop offset="0" stop-color="#8a8a8a"/><stop offset="1" stop-color="#0c0c0c"/>
-	</linearGradient>`;
+/* Ramps and the data-URI helper come from halftone-corners.tsx, which every
+ * section scene also draws with — one edit moves the whole page's halftone. */
 
 /* Left corner: low hill, a gable house with a chimney, a tree, a hedge. */
 const LEFT = uri(`<svg xmlns="http://www.w3.org/2000/svg" width="620" height="380" viewBox="0 0 620 380">

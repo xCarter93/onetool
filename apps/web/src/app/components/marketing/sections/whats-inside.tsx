@@ -1,6 +1,6 @@
-import SquaresTerminal from "@/components/react-bits/squares-terminal";
 import { CARD_ONLY } from "@/remotion/job-scenes/durations";
 import { AmbientLayer } from "../ambient";
+import { WorkHalftoneScene } from "../section-halftone-scenes";
 import { CardEyebrowRow, Eyebrow, Section, SectionHeading } from "../primitives";
 import { JobScenePlayer } from "../scene-player-lazy";
 import type { JobSceneKey } from "../scene-player";
@@ -54,32 +54,26 @@ const CARDS: Array<{
 
 export function WhatsInside() {
 	return (
-		<Section id="work">
+		// overflow-hidden is the fullBleed ambient's clipping ancestor.
+		<Section id="work" className="overflow-hidden">
 			{/* Legacy deep-link alias: #features pointed here on the old page. */}
 			<span id="features" aria-hidden="true" className="absolute left-0 top-0" />
 
-			<Eyebrow>What&apos;s inside</Eyebrow>
-			<SectionHeading className="max-w-[18ch]">
-				Everything the job touches, in one record.
-			</SectionHeading>
+			{/* Halftone scene: the yard behind the work — a loaded pallet rack on
+			    the left, the workshop and its water tank on the right. It lives in
+			    the gutters beside the cards, never behind the headline. */}
+			<AmbientLayer opacity={0.7} fullBleed>
+				<WorkHalftoneScene />
+			</AmbientLayer>
 
-			{/* The card band sits on its own stacking context so the ambient terminal
-			    field can run behind it (visible in the gutters, ink-only, no bloom). */}
+			<div className="relative">
+				<Eyebrow>What&apos;s inside</Eyebrow>
+				<SectionHeading className="max-w-[18ch]">
+					Everything the job touches, in one record.
+				</SectionHeading>
+			</div>
+
 			<div className="relative mt-[clamp(40px,6vw,80px)]">
-				<AmbientLayer opacity={0.07}>
-					<SquaresTerminal
-						color="#1a1a1a"
-						backgroundColor="transparent"
-						columns={44}
-						rows={26}
-						speed={1.4}
-						glow={0}
-						vignette={0}
-						cursorInteraction={false}
-						dpr={1.5}
-					/>
-				</AmbientLayer>
-
 				<div
 					className="relative grid gap-[clamp(20px,3vw,40px)]"
 					style={{

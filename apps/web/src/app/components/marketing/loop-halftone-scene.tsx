@@ -1,3 +1,4 @@
+import { DEFS, uri } from "./halftone-corners";
 import { HalftoneDash } from "./halftone-dash";
 
 /* LOOP SCENE — the hero's halftone technique (halftone-dash.tsx) aimed at its
@@ -9,17 +10,8 @@ import { HalftoneDash } from "./halftone-dash";
  * the page centre. Dash colour rides the host's `color`; the pointer lights the
  * dashes, same as the hero. */
 
-const uri = (svg: string) => `data:image/svg+xml,${encodeURIComponent(svg)}`;
-
-/* Shared ramps, matching the hero: `g` = soft planting and terrain, `h` =
- * built structures (darker, so they hold their edge at dash resolution). */
-const DEFS = `
-	<linearGradient id="g" x1="0" y1="0" x2="0" y2="1">
-		<stop offset="0" stop-color="#c2c2c2"/><stop offset="1" stop-color="#141414"/>
-	</linearGradient>
-	<linearGradient id="h" x1="0" y1="0" x2="0" y2="1">
-		<stop offset="0" stop-color="#8a8a8a"/><stop offset="1" stop-color="#0c0c0c"/>
-	</linearGradient>`;
+/* Ramps and the data-URI helper come from halftone-corners.tsx, shared with the
+ * hero and every section scene. */
 
 /* Left corner: the pole carries the height at the page edge, its wires sweep
  * off into the dissolve, and a gable house and hedge sit it on the ground. */

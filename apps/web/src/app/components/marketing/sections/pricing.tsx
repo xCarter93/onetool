@@ -1,10 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import dynamic from "next/dynamic";
 import { usePlans } from "@clerk/nextjs/experimental";
 import { cn } from "@/lib/utils";
 import { AmbientLayer } from "../ambient";
+import { PricingHalftoneScene } from "../section-halftone-scenes";
 import { CheckItem, Eyebrow, Lede, Section, SectionHeading, PlusCorners } from "../primitives";
 import { InkButton, SheetButton } from "../marketing-nav";
 import { RoughMark } from "../rough-mark";
@@ -28,13 +28,6 @@ const BUSINESS_PLAN = [
 	"Recurring work, routing and automations",
 	"Priority support with 24-hour SLAs",
 ];
-
-/* Ambient: slow ink rings under the plates. Three.js stays out of the landing's
- * first load — the chunk arrives with the section. */
-const MinimalRipple = dynamic(
-	() => import("@/components/react-bits/minimal-ripple"),
-	{ ssr: false }
-);
 
 const FALLBACK_MONTHLY = 30;
 const FALLBACK_YEARLY = 300;
@@ -112,19 +105,11 @@ export function Pricing() {
 
 	return (
 		<Section id="pricing" scheme="sheet" className="overflow-hidden">
-			<AmbientLayer opacity={0.1} fullBleed>
-				<MinimalRipple
-					className="h-full w-full"
-					color="#8a8782"
-					hotColor="#8a8782"
-					backgroundColor="transparent"
-					speed={0.22}
-					frequency={5}
-					grain={0}
-					cursorInteraction={false}
-					adaptiveQuality
-					dpr={1.25}
-				/>
+			{/* Halftone scene: the one-shed operation on the left, the shopfront it
+			    grows into on the right. No edge mask — the artwork's own dissolves
+			    already hold it to the floor and the two margins. */}
+			<AmbientLayer opacity={0.7} fullBleed>
+				<PricingHalftoneScene />
 			</AmbientLayer>
 
 			<div className="relative flex flex-wrap items-end justify-between gap-6">

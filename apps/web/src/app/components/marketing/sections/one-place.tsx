@@ -1,7 +1,7 @@
 import type { CSSProperties, ReactElement, ReactNode } from "react";
 import { ISO_T, isoGrid } from "@/components/illustrations/art/iso";
-import SquaresTerminal from "@/components/react-bits/squares-terminal";
 import { AmbientLayer } from "../ambient";
+import { OldWayHalftoneScene } from "../section-halftone-scenes";
 import {
 	Eyebrow,
 	GridBackdrop,
@@ -37,15 +37,6 @@ const RECORD_CHIPS = [
 	"Invoice",
 	"Payment",
 ] as const;
-
-/* 100deg matches the photo bands' wash angle, so the band's one texture leans
- * the same way the page already does. */
-const SCAN_MASK =
-	"linear-gradient(100deg, transparent 0%, transparent 38%, #000 62%)";
-const SCAN_MASK_STYLE = {
-	maskImage: SCAN_MASK,
-	WebkitMaskImage: SCAN_MASK,
-} as CSSProperties;
 
 /* ---------------------------------------------------------------------------
  * EXPLODED STACK — Illustration V2 language on a 340x260 canvas.
@@ -392,27 +383,14 @@ function ExplodedStack() {
 export function OnePlace() {
 	return (
 		<Section id="one-place" scheme="dark" className="overflow-hidden">
-			{/* Ambient scan field, full-bleed under the whole band. This band is dark
-			    in BOTH site themes, so the phosphor colour can be literal. The mask
-			    dissolves it to nothing under the left copy column — the headline and
-			    lede sit on clean dark paper, the texture only lives out to the right. */}
-			<AmbientLayer opacity={0.08} fullBleed style={SCAN_MASK_STYLE}>
-				<SquaresTerminal
-					className="h-full w-full"
-					color="#9fd4ee"
-					backgroundColor="transparent"
-					columns={112}
-					rows={64}
-					speed={2}
-					fillThreshold={0.62}
-					rowFloor={0.15}
-					alternateRows
-					curvature={0}
-					glow={0}
-					vignette={0}
-					cursorInteraction={false}
-					dpr={1.25}
-				/>
+			{/* Halftone scene: a flat yard stacked with things of clashing heights,
+			    the section's argument as a skyline. Both corners, no diagonal mask —
+			    the copy column clears the field's top edge on its own, and masking
+			    the left half away left a third of the band empty. Blue reads much
+			    weaker on this dark paper than on light, hence the high opacity;
+			    `--accent` is not re-inked by .lp-scheme-dark. */}
+			<AmbientLayer opacity={0.8} fullBleed>
+				<OldWayHalftoneScene />
 			</AmbientLayer>
 
 			{/* Full-bleed construction grid: the wrapper escapes the 1280px container,

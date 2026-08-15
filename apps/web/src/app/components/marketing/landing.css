@@ -178,6 +178,41 @@ html:has(.dc-landing) {
 	translate: 0 -2px;
 }
 
+/* Try-it simulation: the visitor's pointer IS the collaborator cursor, so the
+   OS one has to go everywhere inside the surface. UserCursor only puts
+   `cursor: none` on the wrapper, and the controls carry their own
+   `cursor-pointer`, which would win by inheritance. Gated to fine pointers;
+   under reduced motion the component never mounts the ghost, so the class is
+   never applied and the OS cursor comes back on its own. */
+@media (hover: hover) and (pointer: fine) {
+	.dc-landing .lp-sim-cursor,
+	.dc-landing .lp-sim-cursor * {
+		cursor: none;
+	}
+}
+
+/* Simulation toasts. Transition + @starting-style rather than a keyframe:
+   these stack, and keyframes restart from zero when a second one lands
+   mid-entrance. Exit is ~75% of the entrance. */
+.lp-toast {
+	opacity: 1;
+	translate: 0 0;
+	transition:
+		opacity 0.24s var(--lp-ease),
+		translate 0.24s var(--lp-ease);
+}
+@starting-style {
+	.lp-toast {
+		opacity: 0;
+		translate: 0 12px;
+	}
+}
+.lp-toast[data-leaving="true"] {
+	opacity: 0;
+	translate: 0 8px;
+	transition-duration: 0.18s;
+}
+
 @media (prefers-reduced-motion: reduce) {
 	.dc-landing *,
 	.dc-landing *::before,

@@ -306,12 +306,36 @@ const UserCursor = forwardRef<HTMLDivElement, UserCursorProps>(
       visible,
     ]);
 
+    /**
+     * Seed every position value from the entering pointer. Without this the
+     * cursor still rests at its (-9999,-9999) start on first hover and springs
+     * diagonally across the surface to meet the pointer; jumping the derived
+     * springs as well as the source is what makes the seed instant and
+     * velocity-free.
+     */
+    const seedFromPointer = useCallback(
+      (e: React.PointerEvent<HTMLDivElement>) => {
+        const rect = surfaceRef.current?.getBoundingClientRect();
+        if (!rect) return;
+        const x = e.clientX - rect.left + offsetX;
+        const y = e.clientY - rect.top + offsetY;
+        rawX.jump(x);
+        rawY.jump(y);
+        cursorX.jump(x);
+        cursorY.jump(y);
+        labelX.jump(x);
+        labelY.jump(y);
+      },
+      [cursorX, cursorY, labelX, labelY, offsetX, offsetY, rawX, rawY],
+    );
+
     const handlePointerEnter = useCallback(
       (e: React.PointerEvent<HTMLDivElement>) => {
+        if (!fullScreen) seedFromPointer(e);
         if (!fullScreen && trigger !== "always") setVisible(true);
         onPointerEnter?.(e);
       },
-      [fullScreen, trigger, onPointerEnter],
+      [fullScreen, seedFromPointer, trigger, onPointerEnter],
     );
 
     const handlePointerLeave = useCallback(

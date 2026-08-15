@@ -3,8 +3,8 @@
 import { useState, type CSSProperties, type ReactNode } from "react";
 import { formatCurrency } from "@/lib/money";
 import { cn } from "@/lib/utils";
-import { ThinkingDots } from "@/components/react-bits/thinking-dots";
 import { AmbientLayer } from "../ambient";
+import { CompareHalftoneScene } from "../section-halftone-scenes";
 import { Eyebrow, Lede, PlusCorners, PlusMark, Section, SectionHeading } from "../primitives";
 import {
 	CREW_SIZES,
@@ -414,17 +414,6 @@ function Footnotes() {
 
 /* --------------------------------------------------------------- the section */
 
-/** Two linear masks, unioned by the default `add` composite: the dot field
- *  shows in the outer bands of both axes and stays fully transparent over the
- *  middle rectangle, so the ledger — the one thing here that must read as flat
- *  ground — sits on clean paper. A single radial could not do this: its
- *  transparent core reached ~±49% of the layer, which cleared the whole
- *  viewport and left nothing visible anywhere. */
-const MARGIN_MASK = [
-	"linear-gradient(to right, #000 0%, transparent 22%, transparent 78%, #000 100%)",
-	"linear-gradient(to bottom, #000 0%, transparent 24%, transparent 76%, #000 100%)",
-].join(",");
-
 export function Compare() {
 	const [crew, setCrew] = useState<CrewSize>(DEFAULT_CREW);
 
@@ -434,19 +423,11 @@ export function Compare() {
 	// overflow-hidden is the fullBleed ambient's clipping ancestor.
 	return (
 		<Section id="compare" divider className="overflow-hidden">
-			<AmbientLayer
-				fullBleed
-				opacity={0.16}
-				style={{ WebkitMaskImage: MARGIN_MASK, maskImage: MARGIN_MASK }}
-			>
-				<ThinkingDots
-					className="h-full w-full"
-					color="#8a8782"
-					accentColor="#8a8782"
-					backgroundColor="transparent"
-					glow={0}
-					cursorInteraction={false}
-				/>
+			{/* Halftone scene, drawing the section's own argument: one pickup and a
+			    trailer on the left, the three-van yard on the right. The ledger is
+			    opaque --sheet, so it still reads as a card over the field. */}
+			<AmbientLayer fullBleed opacity={0.65}>
+				<CompareHalftoneScene />
 			</AmbientLayer>
 
 			<div className="relative">
