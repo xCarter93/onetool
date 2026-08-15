@@ -1,4 +1,4 @@
-import type { ElementType } from "react";
+import type { ComponentType } from "react";
 import { Badge } from "@/components/reui/badge";
 import {
 	CheckCircle2,
@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 import { RUN_STATUS_META, type RunStatus } from "../lib/run-format";
 
-const STATUS_ICON: Record<RunStatus, ElementType> = {
+const STATUS_ICON: Record<RunStatus, ComponentType<{ className?: string }>> = {
 	running: Loader2,
 	completed: CheckCircle2,
 	completed_with_errors: AlertTriangle,

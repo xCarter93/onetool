@@ -141,7 +141,9 @@ export const TextHighlighter = forwardRef<
 							? true
 							: false;
 
-		const ElementTag = as || "span";
+		// "span"-typed (not ElementType): fiber's JSX.IntrinsicElements augmentation
+		// collapses ElementType's renderable props to never
+		const ElementTag = (as || "span") as "span";
 
 		const animatedSize = useMemo(() => {
 			switch (currentDirection) {
