@@ -4,25 +4,12 @@ import { Player, Thumbnail, type PlayerRef } from "@remotion/player";
 import { useCallback, useEffect, useState } from "react";
 import { useTheme } from "next-themes";
 import { SCENE_LOADERS } from "@/remotion/scene-loaders";
-import type { FeatureKey } from "@/remotion/manifest";
-import {
-	CLIENTS_DURATION,
-	INVOICE_PAID_DURATION,
-	PORTAL_APPROVE_DURATION,
-	QUOTE_BUILD_DURATION,
-	ROUTING_DURATION,
-} from "@/remotion/durations";
+import { chapterFor, type FeatureKey } from "@/remotion/manifest";
 import { usePrefersReducedMotion } from "./use-reduced-motion";
 
-/* The job-stack's five chapters. Durations come from the scene-free constants
- * module so this file never pulls a scene into the bundle statically. */
-const DURATIONS: Partial<Record<FeatureKey, number>> = {
-	clients: CLIENTS_DURATION,
-	"quote-build": QUOTE_BUILD_DURATION,
-	"portal-approve": PORTAL_APPROVE_DURATION,
-	routing: ROUTING_DURATION,
-	"invoice-paid": INVOICE_PAID_DURATION,
-};
+/* Duration and poster frame come from the manifest, which is scene-free by
+ * contract — so every chapter works here without this file listing them, and
+ * none of them reach the landing bundle statically. */
 
 const FPS = 30; // manifest stage rate
 const STAGE = { width: 1600, height: 1000 } as const;
@@ -58,7 +45,7 @@ export function ChapterPlayer({
 	const { resolvedTheme } = useTheme();
 	const theme = resolvedTheme === "dark" ? "dark" : "light";
 
-	const durationInFrames = DURATIONS[featureKey] ?? 240;
+	const { durationInFrames, posterFrame } = chapterFor(featureKey);
 	const lazyComponent = useCallback(
 		() => SCENE_LOADERS[featureKey](),
 		[featureKey]
@@ -94,7 +81,7 @@ export function ChapterPlayer({
 			<div className={className} role="img" aria-label={label}>
 				<Thumbnail
 					lazyComponent={lazyComponent}
-					frameToDisplay={durationInFrames - 8}
+					frameToDisplay={posterFrame}
 					durationInFrames={durationInFrames}
 					fps={FPS}
 					compositionWidth={STAGE.width}

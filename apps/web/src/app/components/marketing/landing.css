@@ -65,6 +65,22 @@
 	color: var(--ink);
 }
 
+/* Workspace form primitives (Input, Label, Textarea, Button) reach for workspace
+   tokens, which this scope never redefines. Wrapping a form in `lp-form` remaps
+   just the ones those primitives read, so a real app form renders in paper-and-ink
+   without a landing-only copy of it. Status hues (danger/success) stay workspace
+   semantics on purpose. */
+.dc-landing .lp-form {
+	--background: var(--sheet);
+	--foreground: var(--ink);
+	--muted-foreground: var(--ink-3);
+	--border: var(--rule-2);
+	--input: var(--rule-2);
+	--ring: var(--accent);
+	--primary: var(--ink);
+	--primary-fg: var(--paper);
+}
+
 /* Anchored sections sit under the sticky 64px nav. */
 .dc-landing [id] {
 	scroll-margin-top: 72px;
@@ -94,15 +110,6 @@ html:has(.dc-landing) {
 	}
 	to {
 		opacity: 1;
-	}
-}
-@keyframes lp-ripple {
-	0%,
-	100% {
-		scale: 1;
-	}
-	50% {
-		scale: 0.93;
 	}
 }
 @keyframes lp-dashflow {

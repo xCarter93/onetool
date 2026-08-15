@@ -135,8 +135,14 @@ export function Pricing() {
 					</SectionHeading>
 					<Lede className="max-w-[34rem]">
 						Start on the free plan and upgrade the week it starts paying for itself. If
-						you&rsquo;d rather be walked through it first, book a demo and we&rsquo;ll call
-						you.
+						you&rsquo;d rather be walked through it first,{" "}
+						<a
+							href="#book-a-demo"
+							className="font-medium text-(--accent-ink) underline-offset-2 transition-colors hover:text-(--ink) hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--accent-ink)"
+						>
+							book a demo
+						</a>{" "}
+						and we&rsquo;ll call you.
 					</Lede>
 				</div>
 

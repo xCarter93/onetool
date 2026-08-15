@@ -10,19 +10,13 @@ import { RoughMark } from "../rough-mark";
 import { usePrefersReducedMotion } from "../use-reduced-motion";
 
 /* FINAL CTA — the page's last plus-corner card (comp lines 616–638). Copy is
- * verbatim. The only client state here is the demo modal; the lattice and the
- * hand-drawn underline are self-contained islands. CSS/canvas motion only —
- * the marketing layout has no LazyMotion provider. */
+ * verbatim; the demo form is the real one the workspace posts to, re-inked by
+ * the `lp-form` token bridge. The lattice and the hand-drawn underline are
+ * self-contained islands. CSS/canvas motion only — the marketing layout has no
+ * LazyMotion provider. */
 
 const BlinkingSquares = dynamic(
 	() => import("@/components/react-bits/blinking-squares"),
-	{ ssr: false },
-);
-
-/* Heavy (phone input + flag set): the chunk loads on the first "Book a demo"
- * click, then stays mounted so closing keeps its transition. */
-const ScheduleDemoModal = dynamic(
-	() => import("@/app/components/landing/schedule-demo-modal"),
 	{ ssr: false },
 );
 
@@ -31,17 +25,30 @@ const RisingLines = dynamic(
 	{ ssr: false },
 );
 
+/* Split (phone input + flag set) but still server-rendered: the form is always
+ * on the page, so deferring its HTML would just pop the card's height. */
+const ScheduleDemoForm = dynamic(() =>
+	import("@/app/components/landing/schedule-demo-modal").then(
+		(m) => m.ScheduleDemoForm,
+	),
+);
+
 // The canvas cannot resolve CSS custom properties — brand sky, kept literal.
 const LATTICE_DARK = "#00a6f4";
 const LATTICE_LIGHT = "#0284c7";
 
+/** The 34px rule grid the lattice has to register with (GridBackdrop below). */
+const GRID_CELL = 34;
+
 /**
- * The night-squares lattice under the card: 34px-ish cells blinking toward the
- * bottom edge, alpha capped at .105 so it stays furniture behind the grid
- * (comp tuning per design-import/particles.NOTE.md, nudged up a step so the
- * page's last card carries a texture at all). A rAF canvas ignores the
- * stylesheet's reduced-motion kill switch, so it is gated in JS — and mounted
- * only near the viewport, since this card sits at the foot of a long page.
+ * The night-squares lattice under the card: it fills the drafting grid's own
+ * cells, so a lit square is one ruled square rather than a dot floating inside
+ * one. `cellSize` (not `gridSize`) is what keeps it registered — a cell count
+ * divides the card, which drifts off the fixed 34px rules as the card resizes.
+ * Alpha stays capped at .105 so a solid cell is still furniture behind the
+ * grid. A rAF canvas ignores the stylesheet's reduced-motion kill switch, so it
+ * is gated in JS — and mounted only near the viewport, since this card sits at
+ * the foot of a long page.
  */
 function NightLattice() {
 	const ref = useRef<HTMLDivElement>(null);
@@ -70,9 +77,10 @@ function NightLattice() {
 				<BlinkingSquares
 					className="absolute inset-0"
 					direction="bottom"
-					gridSize={15}
+					cellSize={GRID_CELL}
 					squareColor={resolvedTheme === "dark" ? LATTICE_DARK : LATTICE_LIGHT}
-					squareSize={0.34}
+					/* 32 of 34px: the fill lands inside the rules instead of on them */
+					squareSize={0.94}
 					opacity={0.105}
 					intensity={1}
 					minBrightness={0.4}
@@ -91,26 +99,20 @@ function NightLattice() {
 }
 
 export function FinalCta() {
-	const [demoMounted, setDemoMounted] = useState(false);
-	const [demoOpen, setDemoOpen] = useState(false);
 	const { resolvedTheme } = useTheme();
-
-	const openDemo = () => {
-		setDemoMounted(true);
-		setDemoOpen(true);
-	};
 
 	return (
 		<Section pad="tight" divider className="overflow-hidden">
-			{/* Dawn coming up behind the last card, right above the footer. The shader
-			    is additive glow normalised against dark pixels — invisible-to-muddy on
-			    light paper — so it is mounted in the dark scheme only. */}
+			{/* Brand sky coming up behind the last card, right above the footer. The
+			    shader is additive glow normalised against dark pixels —
+			    invisible-to-muddy on light paper — so it is mounted in the dark scheme
+			    only. Hexes stay literal; the canvas cannot read the accent token. */}
 			{resolvedTheme === "dark" ? (
 				<AmbientLayer opacity={0.3} fullBleed>
 					<RisingLines
-						color="#ffb35c"
-						horizonColor="#ff9d3d"
-						haloColor="#ffd9a0"
+						color="#4cc3f7"
+						horizonColor="#00a6f4"
+						haloColor="#bae6fd"
 						riseIntensity={0.6}
 						haloIntensity={3}
 						horizonIntensity={0.4}
@@ -158,26 +160,24 @@ export function FinalCta() {
 						</SheetButton>
 					</div>
 
-					<p className="mt-6 text-[14.5px] text-(--ink-3)">
-						Want a walkthrough instead?{" "}
-						<button
-							type="button"
-							onClick={openDemo}
-							className="rounded-sm font-medium text-(--ink-2) underline underline-offset-2 transition-colors hover:text-(--ink) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--accent-ink)"
-						>
-							Book a demo
-						</button>{" "}
-						and we&apos;ll reach out shortly.
-					</p>
+					<div
+						id="book-a-demo"
+						className="mt-[clamp(36px,5vw,56px)] w-full max-w-[42rem] border-t border-(--rule) pt-[clamp(28px,3.5vw,44px)]"
+					>
+						<Eyebrow>Book a demo</Eyebrow>
+						<p className="mx-auto mt-3.5 max-w-[34rem] text-[15.5px] leading-[1.6] text-(--ink-2) text-pretty">
+							Want a walkthrough instead? Leave your details and a real person
+							gets back to you within a day to find a time.
+						</p>
+
+						{/* Recessed well on --paper so the fields read as inset into the
+						    sheet rather than floating on it. */}
+						<div className="lp-form mt-7 rounded-[14px] border border-(--rule-2) bg-(--paper) p-[clamp(18px,3vw,28px)] text-left">
+							<ScheduleDemoForm idPrefix="final-cta-demo" layout="grid" />
+						</div>
+					</div>
 				</div>
 			</div>
-
-			{demoMounted && (
-				<ScheduleDemoModal
-					isOpen={demoOpen}
-					onClose={() => setDemoOpen(false)}
-				/>
-			)}
 		</Section>
 	);
 }

@@ -39,6 +39,14 @@ export interface ScrollStackProps {
    * card slots and the progress rail.
    */
   background?: ReactNode;
+  /**
+   * Content pinned ABOVE the cards inside the same sticky viewport, so a
+   * section heading stays in view for the whole runway instead of scrolling
+   * away at the first card. Sized to `cardWidth`, so header and cards share one
+   * column; it is part of the centred group, so its own top padding is what
+   * reserves room for a fixed site header.
+   */
+  stageHeader?: ReactNode;
   /** Which stacking animation to run */
   variant?: ScrollStackVariant;
   /** Viewport heights of scrolling assigned to each card */
@@ -260,6 +268,7 @@ export const ScrollStack = ({
   items = DEFAULT_ITEMS,
   children,
   background,
+  stageHeader,
   variant = "stack",
   scrollLength = 1,
   peek = 26,
@@ -435,7 +444,7 @@ export const ScrollStack = ({
       style={{ height: `${runway}vh` }}
     >
       <div
-        className="sticky top-0 flex h-screen w-full items-center justify-center overflow-hidden px-4 sm:px-8"
+        className="sticky top-0 flex h-screen w-full flex-col items-center justify-center overflow-hidden px-4 sm:px-8"
         style={{ perspective: `${Math.max(200, perspective)}px` }}
       >
         {/* Sticky always opens a stacking context, so a negative layer here can
@@ -446,8 +455,17 @@ export const ScrollStack = ({
           </div>
         )}
 
+        {stageHeader && (
+          <div
+            className="relative w-full shrink-0"
+            style={{ maxWidth: `${Math.max(200, cardWidth)}px` }}
+          >
+            {stageHeader}
+          </div>
+        )}
+
         <div
-          className="relative w-full"
+          className="relative w-full shrink-0"
           style={{
             maxWidth: `${Math.max(200, cardWidth)}px`,
             height: `${clamp(cardHeight, 0.2, 0.95) * 100}vh`,

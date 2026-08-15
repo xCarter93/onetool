@@ -23,38 +23,59 @@ const DITHER_MASK_STYLE = {
 	WebkitMaskImage: DITHER_FADE,
 } as CSSProperties;
 
-/* FAQ — comp lines 590–614. Copy is verbatim. The panel animates on
+/* FAQ — questions and answers are the live production set (kept verbatim so the
+ * two pages answer the same questions the same way). The panel animates on
  * grid-template-rows 0fr→1fr so nothing has to be measured; landing.css already
  * disables the transition under prefers-reduced-motion. */
 
 const FAQS: ReadonlyArray<readonly [string, string]> = [
 	[
-		"Is this going to be too complicated for a two-person crew?",
-		"No. There is no setup project and no consultant. Add a client, add a property, send a quote. That is the whole first session, and the parts you do not need stay out of your way until you go looking for them.",
+		"What is OneTool and who is it for?",
+		"OneTool is a comprehensive business management platform designed for small business owners, contractors, landscapers, HVAC technicians, electricians, and other service professionals. It streamlines client management, project tracking, quoting, invoicing, and task scheduling in one unified platform.",
 	],
 	[
-		"Can clients actually sign and pay, or do I still chase them?",
-		"They get a link with your business name on it. They read the quote, sign it with a finger, and later pay the invoice by card on the same link. You see each step land as it happens.",
+		"How does OneTool help me manage my clients?",
+		"OneTool provides a centralized database for all your client information, including contact details, service history, property information, and communication logs. You can easily search, filter, and organize clients, set up automated reminders, and track every interaction to deliver exceptional service.",
 	],
 	[
-		"Where does the money go?",
-		"Straight to your own bank account through Stripe Connect, on the Business plan. OneTool never sits between you and your money.",
+		"Can I create and send professional quotes and invoices?",
+		"Yes! OneTool includes a powerful quoting and invoicing system. Create customized quotes with line items, taxes, and your company branding. Send them directly via email with e-signature capabilities for quick approvals. Convert approved quotes to invoices with one click and track payment status.",
 	],
 	[
-		"What if I have no signal at the job?",
-		"The iOS app (on the App Store now) keeps your day on the device. You can open visits, read notes and write up work with no bars, and it syncs the moment you are back in range.",
+		"Can I receive payments directly to my bank account?",
+		"Paid users of OneTool have access to our Stripe Connect integration which allows you to connect a bank account and send invoice payment links to clients.",
 	],
 	[
-		"Can my crew have their own logins?",
-		"Yes. Add them to your organisation, set what each person can see and do, and everyone works off the same live schedule. Users are included in the one organisation price.",
+		"Can I email clients directly from OneTool?",
+		"Yes, we offer the ability to draft professional emails to clients from directly within OneTool. We also support email threads so you can keep track of responses and replies without having to leave OneTool.",
 	],
 	[
-		"I have hundreds of clients in a spreadsheet. Do I retype them?",
-		"No. Upload the CSV and the AI import works out which column is the name, which is the address and which is the phone number, then matches anything that already exists so you do not end up with duplicates.",
+		"Is OneTool accessible on mobile devices?",
+		"Absolutely. OneTool is built as a responsive web application that works seamlessly on smartphones, tablets, and desktop computers. We also have a native iOS app available now on the App Store that lets you view and manage your projects, tasks, and clients for each organization you're part of - all on the go. Access your data and stay productive from anywhere with an internet connection.",
 	],
 	[
-		"What happens if I cancel?",
-		"Cancel any time, no penalty. Your data stays accessible for 30 days so you can export everything, and if OneTool is not the right fit we refund the first 14 days in full.",
+		"How does task scheduling work?",
+		"OneTool's task scheduling system lets you create tasks, assign them to team members, set due dates and priorities, and track completion status. You can view tasks in list or calendar format, set reminders, and get notifications when tasks are completed or overdue.",
+	],
+	[
+		"Can multiple team members use OneTool?",
+		"Yes! OneTool supports team collaboration with organization-based access. Add team members to your organization, assign roles and permissions, and work together in real-time. Everyone stays synchronized with instant updates across all devices.",
+	],
+	[
+		"What kind of support do you offer?",
+		"We provide comprehensive support including detailed documentation, video tutorials, and email support. Premium plan subscribers also get priority support with faster response times and access to one-on-one onboarding assistance.",
+	],
+	[
+		"How secure is my data?",
+		"Security is our top priority. OneTool uses industry-standard encryption for data transmission and storage. Your data is hosted on secure servers with regular backups, and we comply with data protection regulations. You maintain full ownership of your data and can export it at any time.",
+	],
+	[
+		"Can I import my existing client data?",
+		"Yes! OneTool supports CSV imports, making it easy to migrate your existing client data. Simply export your data from your current system, map the fields, and import it into OneTool. We also provide guidance to help you with the migration process.",
+	],
+	[
+		"What happens if I need to cancel my subscription?",
+		"You can cancel your subscription at any time with no penalties. Your data remains accessible for 30 days after cancellation, giving you time to export everything you need. We also offer a full refund within the first 14 days if OneTool isn't the right fit for you.",
 	],
 ];
 

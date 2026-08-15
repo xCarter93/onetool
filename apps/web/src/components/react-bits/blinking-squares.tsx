@@ -26,6 +26,13 @@ export interface BlinkingSquaresProps {
 	direction?: BlinkingSquaresDirection;
 	/** Number of grid cells along the long axis. */
 	gridSize?: number;
+	/**
+	 * Fixed cell edge in CSS pixels, anchored to the top-left. Overrides
+	 * `gridSize`, and is the only way to stay registered with a CSS
+	 * `background-size` grid: a cell count divides the box, so it drifts off a
+	 * fixed-pixel rule as the box resizes.
+	 */
+	cellSize?: number;
 	/** Square color (hex). */
 	squareColor?: string;
 	/** Kept for API parity; the canvas stays transparent over the page. */
@@ -78,6 +85,7 @@ const BlinkingSquares: React.FC<BlinkingSquaresProps> = ({
 	children,
 	direction = "right",
 	gridSize = 52,
+	cellSize,
 	squareColor = "#BB29FF",
 	falloff = 1.25,
 	fadeStart = 0.65,
@@ -128,10 +136,15 @@ const BlinkingSquares: React.FC<BlinkingSquaresProps> = ({
 			if (!canvas.width || !canvas.height) return;
 
 			const aspect = canvas.width / canvas.height;
-			const cols = Math.round(aspect >= 1 ? gridSize * aspect : gridSize);
-			const rows = Math.round(aspect >= 1 ? gridSize : gridSize / aspect);
-			const cellW = canvas.width / cols;
-			const cellH = canvas.height / rows;
+			const fixed = cellSize && cellSize > 0 ? cellSize * ratio : 0;
+			const cols = fixed
+				? Math.ceil(canvas.width / fixed)
+				: Math.round(aspect >= 1 ? gridSize * aspect : gridSize);
+			const rows = fixed
+				? Math.ceil(canvas.height / fixed)
+				: Math.round(aspect >= 1 ? gridSize : gridSize / aspect);
+			const cellW = fixed || canvas.width / cols;
+			const cellH = fixed || canvas.height / rows;
 			const fs = Math.min(fadeStart, 0.999);
 			const fe = Math.max(fadeEnd, fs + 0.001);
 			const side = Math.min(cellW, cellH) * Math.min(squareSize, 0.98);
@@ -195,6 +208,7 @@ const BlinkingSquares: React.FC<BlinkingSquaresProps> = ({
 	}, [
 		direction,
 		gridSize,
+		cellSize,
 		squareColor,
 		falloff,
 		fadeStart,
