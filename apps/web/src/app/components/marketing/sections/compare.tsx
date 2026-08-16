@@ -5,13 +5,15 @@ import { formatCurrency } from "@/lib/money";
 import { cn } from "@/lib/utils";
 import { AmbientLayer } from "../ambient";
 import { CompareHalftoneScene } from "../section-halftone-scenes";
+import { Frame, FrameFooter, FrameHeader, FramePanel } from "@/components/reui/frame";
 import {
-	Frame,
-	FrameFooter,
-	FrameHeader,
-	FramePanel,
-} from "@/components/reui/frame";
-import { Eyebrow, Lede, PlusCorners, PlusMark, Section, SectionHeading } from "../primitives";
+	Eyebrow,
+	Lede,
+	PlusCorners,
+	PlusMark,
+	Section,
+	SectionHeading,
+} from "../primitives";
 import {
 	CREW_SIZES,
 	DEFAULT_CREW,
@@ -38,7 +40,9 @@ import {
 /** Value swaps fade rather than count. Reused keyframe from landing.css; the
  *  reduced-motion block there kills it with `animation: none !important`, and
  *  because the opacity only lives in the keyframe the cell then renders solid. */
-const VALUE_FADE: CSSProperties = { animation: "lp-fade 260ms var(--lp-ease) both" };
+const VALUE_FADE: CSSProperties = {
+	animation: "lp-fade 260ms var(--lp-ease) both",
+};
 
 const people = (crew: number) => (crew === 1 ? "person" : "people");
 
@@ -48,7 +52,6 @@ function priceFor(v: Vendor, crew: number): string | null {
 }
 
 function planFor(v: Vendor, crew: number): string {
-	if (v.quoteOnly) return "Request pricing";
 	const quote = quoteFor(v, crew);
 	if (!quote) return "No published seat price";
 	return `${quote.planName} · ${v.quotedBillingLabel}`;
@@ -65,6 +68,18 @@ function EmDash({ note = "Not published" }: { note?: string }) {
 
 function FeatureValue({ cell, isUs }: { cell: FeatureCell; isUs: boolean }) {
 	if (cell.kind === "unpublished") return <EmDash />;
+	if (cell.kind === "soon") {
+		// Not a check and not an em dash: a stated "not yet". Mono + the accent
+		// rule reads as a dated note rather than a claim.
+		return (
+			<span className="inline-flex items-baseline gap-[7px] text-[13.5px] text-(--ink-3)">
+				<span className="font-mono text-[11px] uppercase tracking-[0.06em] text-(--accent-ink)">
+					Coming soon
+				</span>
+				{cell.label ? <span>{cell.label}</span> : null}
+			</span>
+		);
+	}
 	if (cell.kind === "tier") {
 		return <span className="text-[13.5px] text-(--ink-3)">{cell.label}</span>;
 	}
@@ -197,8 +212,12 @@ function LedgerTable({ crew }: { crew: CrewSize }) {
 			<div className="relative">
 				<table className="w-full table-fixed border-collapse">
 					<caption className="sr-only">
-						Published monthly price and included features for a crew of {crew} {people(crew)}.
+						Published monthly price and included features for a crew of {crew}{" "}
+						{people(crew)}.
 					</caption>
+					{/* 28% + 4×18% = 100%. Both numbers are load-bearing: the elevated
+					    OneTool overlay below is positioned off them, so they must move
+					    together if a vendor is ever added or dropped. */}
 					<colgroup>
 						<col className="w-[28%]" />
 						{VENDORS.map((v) => (
@@ -246,11 +265,7 @@ function LedgerTable({ crew }: { crew: CrewSize }) {
 											</span>
 										) : (
 											<span className="block text-[22px]">
-												<EmDash
-													note={
-														v.quoteOnly ? "Request pricing" : "Not published for this crew size"
-													}
-												/>
+												<EmDash note="Not published for this crew size" />
 											</span>
 										)}
 									</td>
@@ -260,23 +275,15 @@ function LedgerTable({ crew }: { crew: CrewSize }) {
 
 						<tr>
 							<th scope="row" className={ROW_LABEL}>
-								Billed
-							</th>
-							{VENDORS.map((v) => (
-								<td key={v.key} className={cellCls(v, "text-[13.5px] text-(--ink-2)")}>
-									{v.billedLabel}
-								</td>
-							))}
-						</tr>
-
-						<tr>
-							<th scope="row" className={ROW_LABEL}>
 								Plan used
 							</th>
 							{VENDORS.map((v) => (
 								<td
 									key={v.key}
-									className={cellCls(v, "font-mono text-[11px] leading-[1.45] text-(--ink-3)")}
+									className={cellCls(
+										v,
+										"font-mono text-[11px] leading-[1.45] text-(--ink-3)",
+									)}
 								>
 									<span key={crew} style={VALUE_FADE} className="block">
 										{planFor(v, crew)}
@@ -339,7 +346,6 @@ function VendorCard({ v, crew }: { v: Vendor; crew: CrewSize }) {
 				>
 					{v.name}
 				</h3>
-				<span className="font-mono text-[11px] text-(--ink-3)">{v.billedLabel}</span>
 			</div>
 
 			<div className="px-4 py-4">
@@ -356,9 +362,7 @@ function VendorCard({ v, crew }: { v: Vendor; crew: CrewSize }) {
 					</p>
 				) : (
 					<p className="text-[26px] text-(--ink-3)">
-						<EmDash
-							note={v.quoteOnly ? "Request pricing" : "Not published for this crew size"}
-						/>
+						<EmDash note="Not published for this crew size" />
 					</p>
 				)}
 				<p className="mt-1.5 font-mono text-[11px] text-(--ink-3)">{planFor(v, crew)}</p>
@@ -404,17 +408,39 @@ function Footnotes() {
 	return (
 		<div className="grid gap-2 text-[12.5px] leading-[1.65] text-(--ink-2)">
 			<p>
-				<span aria-hidden="true">✓</span> included · a plan name means it is gated to that tier
-				· <span aria-hidden="true">—</span> means the vendor does not publish it.
+				<span aria-hidden="true">✓</span> included · a plan name means it is gated to that
+				tier · &ldquo;coming soon&rdquo; means on the roadmap, not shipped yet ·{" "}
+				<span aria-hidden="true">—</span> means the vendor does not publish it.
 			</p>
 			<p>
 				{mention.name} {mention.note}, so there is no honest way to give it a column.
 			</p>
 			<p>
 				Competitor prices are their published rates as of {RETRIEVED_LABEL} ({linked}).
-				Competitors are shown at the annual-billing rate their own pricing page displays;
-				OneTool is shown month-to-month at {formatCurrency(ONETOOL_MONTHLY, { whole: true })}.
-				Every business is different, so check their sites for current pricing.
+				Every column, ours included, is the month-to-month rate — no annual commitment,
+				and the price Jobber&rsquo;s page shows on load. Jobber&rsquo;s page prices by
+				team size, so its column is the bucket Jobber itself puts that crew in.
+			</p>
+			{/* The row we lose, stated plainly. Jobber and Joby both publish the bare
+          Stripe rate; we add $1 on top. Softening this is the fastest way to
+          make the whole table untrustworthy. */}
+			<p>
+				On card processing we are the dearest of the three Stripe-based tools: Jobber and
+				Joby both pass through the standard{" "}
+				<span className="whitespace-nowrap">2.9% + 30¢</span> with nothing added, while
+				OneTool charges {formatCurrency(1, { whole: true })} per transaction on top of
+				your own Stripe rate. Housecall Pro runs its own processing from 2.59%.
+			</p>
+			{/* The concession that makes the monthly basis fair. Two of these four
+          rivals are cheaper than their column if you commit to a year, and we
+          name their numbers rather than leaving the reader to find the toggle.
+          Do not cut this paragraph to shorten the footnote. */}
+			<p>
+				Committing to a year costs less at three of the five: Jobber from{" "}
+				{formatCurrency(29, { whole: true })}/mo, Housecall Pro from{" "}
+				{formatCurrency(59, { whole: true })}/mo, and OneTool at{" "}
+				{formatCurrency(300, { whole: true })}/year. Joby publishes no annual rate. Every
+				business is different, so check their sites for current pricing.
 			</p>
 		</div>
 	);
@@ -442,10 +468,11 @@ export function Compare() {
 				<Eyebrow>Compare</Eyebrow>
 				<SectionHeading>One price for the whole crew.</SectionHeading>
 				<Lede className="max-w-[46rem]">
-					Jobber adds $29 a month for every user past the plan allowance. Housecall Pro&rsquo;s
-					entry plan covers one person, and extra seats are sold only on its top plan.
-					ServiceTitan prices per technician and publishes no number at all. OneTool is one
-					price for the whole company, however many of you there are.
+					Jobber reprices every plan as your team size grows, then adds $29 a month for
+					each user past the bundled allowance. Housecall Pro&rsquo;s entry plan covers
+					one person, and extra seats are sold only on its top plan. Joby prices flat with
+					unlimited users like we do, and starts at $89. OneTool is one price for the
+					whole company, however many of you there are.
 				</Lede>
 
 				{/* The workspace <Frame>, re-inked by the lp-frame bridge: picker in
