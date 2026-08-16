@@ -6,11 +6,12 @@ import { api } from "@onetool/backend/convex/_generated/api";
 import { useToast } from "@/hooks/use-toast";
 import type { Id, Doc } from "@onetool/backend/convex/_generated/dataModel";
 import {
-	GlassCard,
-	GlassCardContent,
-	GlassCardHeader,
-	GlassCardTitle,
-} from "@/components/shared/glass-card";
+	Frame,
+	FrameHeader,
+	FrameTitle,
+	FrameDescription,
+	FramePanel,
+} from "@/components/reui/frame";
 import {
 	Table,
 	TableBody,
@@ -52,18 +53,19 @@ type Property = {
 	formattedAddress?: string;
 };
 
+type PropertyField = "streetAddress" | "city" | "state" | "zipCode";
+type PropertyErrors = Partial<Record<PropertyField, string>>;
+
 interface PropertyTableProps {
 	clientId: Id<"clients">;
 	properties: Doc<"clientProperties">[];
 	onChange?: () => void;
-	hideCardWrapper?: boolean;
 }
 
 export function PropertyTable({
 	clientId,
 	properties,
 	onChange,
-	hideCardWrapper,
 }: PropertyTableProps) {
 	const toast = useToast();
 	const createProperty = useMutation(api.clientProperties.create);
@@ -79,26 +81,11 @@ export function PropertyTable({
 
 	// Combine saved properties with local ones
 	const allProperties = useMemo(() => {
-		// Convert saved items to our Property type
 		const savedItems: Property[] = properties.map((item) => ({
 			...item,
 			isNew: false,
 		}));
 
-		console.log("allProperties useMemo:", {
-			savedItems: savedItems.map((p) => ({
-				id: p._id,
-				name: p.streetAddress,
-				isNew: p.isNew,
-			})),
-			localProperties: localProperties.map((p) => ({
-				id: p._id,
-				name: p.streetAddress,
-				isNew: p.isNew,
-			})),
-		});
-
-		// Combine and sort by creation time (newest first)
 		return [...savedItems, ...localProperties];
 	}, [properties, localProperties]);
 
@@ -125,71 +112,53 @@ export function PropertyTable({
 	};
 
 	const handleEditProperty = (id: Id<"clientProperties"> | string) => {
-		console.log("handleEditProperty called with:", {
-			id,
-			idType: typeof id,
-			property: allProperties.find((p) => p._id === id),
-		});
 		setEditingId(id);
 	};
 
 	const handleSaveProperty = async (property: Property) => {
-		console.log("handleSaveProperty called with:", {
-			propertyId: property._id,
-			propertyIdType: typeof property._id,
-			isNew: property.isNew,
-		});
-
-		// Check if this is a new property by looking at the isNew flag or if it's a temporary ID
+		// New properties carry a temp id until the first successful write
 		const isNewProperty =
 			property.isNew ||
 			(typeof property._id === "string" && property._id.startsWith("temp-"));
 
 		if (isNewProperty) {
-		// Save new property directly to database
-		console.log("Creating new property...");
-		try {
-			await createProperty({
-				clientId,
-				streetAddress: property.streetAddress || "Address Required",
-				city: property.city || "City Required",
-				state: property.state || "State Required",
-				zipCode: property.zipCode || "ZIP Required",
-				country: property.country,
-				isPrimary: property.isPrimary,
-				// Include geocoding fields
-				latitude: property.latitude ?? undefined,
-				longitude: property.longitude ?? undefined,
-				formattedAddress: property.formattedAddress,
-			});
+			try {
+				await createProperty({
+					clientId,
+					streetAddress: property.streetAddress.trim(),
+					city: property.city.trim(),
+					state: property.state.trim(),
+					zipCode: property.zipCode.trim(),
+					country: property.country,
+					isPrimary: property.isPrimary,
+					latitude: property.latitude ?? undefined,
+					longitude: property.longitude ?? undefined,
+					formattedAddress: property.formattedAddress,
+				});
 
-			// Remove from local items
-			setLocalProperties((prev) =>
-				prev.filter((item) => item._id !== property._id)
-			);
-			setEditingId(null);
-			onChange?.();
-			toast.success(
-				"Property Saved",
-				"Property has been successfully saved!"
-			);
-		} catch (error) {
-			console.error("Failed to save property:", error);
-			toast.error("Error", "Failed to save property. Please try again.");
-		}
-	} else {
-			// Update existing item in database
-			console.log("Updating existing property with ID:", property._id);
+				setLocalProperties((prev) =>
+					prev.filter((item) => item._id !== property._id),
+				);
+				setEditingId(null);
+				onChange?.();
+				toast.success(
+					"Property saved",
+					"Property has been successfully saved.",
+				);
+			} catch (error) {
+				console.error("Failed to save property:", error);
+				toast.error("Error", "Failed to save property. Please try again.");
+			}
+		} else {
 			try {
 				await updateProperty({
 					id: property._id as Id<"clientProperties">,
-					streetAddress: property.streetAddress,
-					city: property.city,
-					state: property.state,
-					zipCode: property.zipCode,
+					streetAddress: property.streetAddress.trim(),
+					city: property.city.trim(),
+					state: property.state.trim(),
+					zipCode: property.zipCode.trim(),
 					country: property.country,
 					isPrimary: property.isPrimary,
-					// Include geocoding fields
 					latitude: property.latitude ?? undefined,
 					longitude: property.longitude ?? undefined,
 					formattedAddress: property.formattedAddress,
@@ -197,8 +166,8 @@ export function PropertyTable({
 				setEditingId(null);
 				onChange?.();
 				toast.success(
-					"Property Updated",
-					"Property has been successfully updated!"
+					"Property updated",
+					"Property has been successfully updated.",
 				);
 			} catch (error) {
 				console.error("Failed to save property:", error);
@@ -208,22 +177,20 @@ export function PropertyTable({
 	};
 
 	const handleDeleteProperty = async (id: Id<"clientProperties"> | string) => {
-		// Check if this is a temporary ID (new item not yet saved)
+		// Temp ids never reached the database
 		if (typeof id === "string" && id.startsWith("temp-")) {
-			// Remove local item
 			setLocalProperties((prev) => prev.filter((item) => item._id !== id));
 			if (editingId === id) {
 				setEditingId(null);
 			}
-			toast.success("Property Deleted", "Unsaved property has been removed.");
+			toast.success("Property removed", "Unsaved property has been removed.");
 		} else {
-			// Delete from database
 			try {
 				await deleteProperty({ id: id as Id<"clientProperties"> });
 				onChange?.();
 				toast.success(
-					"Property Deleted",
-					"Property has been successfully deleted."
+					"Property deleted",
+					"Property has been successfully deleted.",
 				);
 			} catch (error) {
 				console.error("Failed to delete property:", error);
@@ -232,75 +199,73 @@ export function PropertyTable({
 		}
 	};
 
-	const header = (
-		<div className="flex items-center justify-between pb-6">
-			<h3 className="text-xl font-semibold text-foreground">Properties</h3>
-			<Button variant="outline" size="sm" onClick={handleAddProperty}>
-				<PlusIcon className="h-4 w-4 mr-2" />
-				New Property
-			</Button>
-		</div>
-	);
-
-	const content = allProperties && allProperties.length > 0 ? (
-		<div className="overflow-hidden rounded-lg border">
-			<Table>
-				<TableHeader>
-					<TableRow>
-						<TableHead className="w-[40%]">Address</TableHead>
-						<TableHead className="w-[20%]">City</TableHead>
-						<TableHead className="w-[15%]">State</TableHead>
-						<TableHead className="w-[15%]">ZIP</TableHead>
-						<TableHead className="w-[5%]">Primary</TableHead>
-						<TableHead className="w-[5%]">Actions</TableHead>
-					</TableRow>
-				</TableHeader>
-				<TableBody>
-					{allProperties.map((property) => (
-						<PropertyRow
-							key={property._id}
-							property={property}
-							isEditing={editingId === property._id}
-							onEdit={() => handleEditProperty(property._id)}
-							onSave={handleSaveProperty}
-							onCancel={() => setEditingId(null)}
-							onDelete={() => handleDeleteProperty(property._id)}
-						/>
-					))}
-				</TableBody>
-			</Table>
-		</div>
-	) : (
-		<EmptyState
-			size="md"
-			illustration="client-properties-none"
-			title="No properties"
-			description="No properties have been added for this client yet."
-		/>
-	);
-
-	if (hideCardWrapper) {
-		return (
-			<div>
-				{header}
-				{content}
-			</div>
-		);
-	}
+	const handleCancel = (id: Id<"clientProperties"> | string) => {
+		// Cancelling a never-saved row discards it rather than leaving a blank row
+		if (typeof id === "string" && id.startsWith("temp-")) {
+			setLocalProperties((prev) => prev.filter((item) => item._id !== id));
+		}
+		setEditingId(null);
+	};
 
 	return (
-		<GlassCard>
-			<GlassCardHeader className="flex flex-row items-center justify-between pb-6">
-				<GlassCardTitle className="text-xl">Properties</GlassCardTitle>
-				<Button variant="outline" size="sm" onClick={handleAddProperty}>
-					<PlusIcon className="h-4 w-4 mr-2" />
-					New Property
-				</Button>
-			</GlassCardHeader>
-			<GlassCardContent>
-				{content}
-			</GlassCardContent>
-		</GlassCard>
+		<Frame>
+			<FrameHeader className="flex-row items-center justify-between gap-3">
+				<div className="flex flex-col gap-0.5">
+					<FrameTitle>Properties</FrameTitle>
+					<FrameDescription>
+						Service addresses for this client.
+					</FrameDescription>
+				</div>
+				<div className="flex shrink-0 items-center gap-2">
+					{allProperties.length > 0 && (
+						<Badge variant="secondary" radius="full" size="lg">
+							{allProperties.length}
+						</Badge>
+					)}
+					<Button variant="outline" size="sm" onClick={handleAddProperty}>
+						<PlusIcon className="h-4 w-4 mr-2" />
+						New Property
+					</Button>
+				</div>
+			</FrameHeader>
+
+			<FramePanel className="p-0">
+				{allProperties.length > 0 ? (
+					<Table>
+						<TableHeader>
+							<TableRow className="bg-muted/40 hover:bg-muted/40">
+								<TableHead className="w-[40%]">Address</TableHead>
+								<TableHead className="w-[20%]">City</TableHead>
+								<TableHead className="w-[15%]">State</TableHead>
+								<TableHead className="w-[15%]">ZIP</TableHead>
+								<TableHead className="w-[5%]">Primary</TableHead>
+								<TableHead className="w-[5%] text-right">Actions</TableHead>
+							</TableRow>
+						</TableHeader>
+						<TableBody>
+							{allProperties.map((property) => (
+								<PropertyRow
+									key={property._id}
+									property={property}
+									isEditing={editingId === property._id}
+									onEdit={() => handleEditProperty(property._id)}
+									onSave={handleSaveProperty}
+									onCancel={() => handleCancel(property._id)}
+									onDelete={() => handleDeleteProperty(property._id)}
+								/>
+							))}
+						</TableBody>
+					</Table>
+				) : (
+					<EmptyState
+						size="md"
+						illustration="client-properties-none"
+						title="No properties"
+						description="No properties have been added for this client yet."
+					/>
+				)}
+			</FramePanel>
+		</Frame>
 	);
 }
 
@@ -321,6 +286,7 @@ function PropertyRow({
 	onDelete: () => void;
 }) {
 	const [editedProperty, setEditedProperty] = useState<Property>(property);
+	const [errors, setErrors] = useState<PropertyErrors>({});
 
 	// Resync edits from the source property while editing
 	const [prevSource, setPrevSource] = useState({ isEditing, property });
@@ -328,27 +294,38 @@ function PropertyRow({
 		setPrevSource({ isEditing, property });
 		if (isEditing) {
 			setEditedProperty(property);
+			setErrors({});
 		}
 	}
 
 	const handleFieldChange = (
 		field: keyof Property,
-		value: string | number | boolean | undefined
+		value: string | number | boolean | undefined,
 	) => {
 		setEditedProperty((prev) => ({
 			...prev,
 			[field]: value,
 		}));
+		setErrors((prev) =>
+			prev[field as PropertyField]
+				? { ...prev, [field as PropertyField]: undefined }
+				: prev,
+		);
 	};
 
 	const handleSave = () => {
-		console.log("PropertyRow handleSave called with:", {
-			propertyId: editedProperty._id,
-			propertyIdType: typeof editedProperty._id,
-			isNew: editedProperty.isNew,
-			originalPropertyId: property._id,
-			originalPropertyIdType: typeof property._id,
-		});
+		const nextErrors: PropertyErrors = {};
+		if (!editedProperty.streetAddress.trim())
+			nextErrors.streetAddress = "Required";
+		if (!editedProperty.city.trim()) nextErrors.city = "Required";
+		if (!editedProperty.state.trim()) nextErrors.state = "Required";
+		if (!editedProperty.zipCode.trim()) nextErrors.zipCode = "Required";
+
+		if (Object.values(nextErrors).some(Boolean)) {
+			setErrors(nextErrors);
+			return;
+		}
+
 		onSave(editedProperty);
 	};
 
@@ -364,56 +341,77 @@ function PropertyRow({
 			longitude: address.longitude,
 			formattedAddress: address.formattedAddress,
 		}));
+		setErrors({});
 	};
 
 	if (isEditing) {
 		return (
-			<TableRow
-				className={`bg-blue-50/50 dark:bg-blue-900/10 border-l-4 border-l-blue-500 ${property.isNew ? "bg-yellow-50/50 dark:bg-yellow-900/10" : ""}`}
-			>
-				<TableCell>
+			<TableRow className="border-l-2 border-l-primary bg-primary/5 hover:bg-primary/5">
+				<TableCell className="align-top">
 					<AddressAutocomplete
 						value={editedProperty.streetAddress}
 						onChange={(value) => handleFieldChange("streetAddress", value)}
 						onAddressSelect={handleAddressSelect}
-						placeholder="Street address..."
+						placeholder="Street address"
+						aria-invalid={!!errors.streetAddress}
 						className="w-full"
 					/>
+					{errors.streetAddress && (
+						<p className="mt-1 text-xs text-destructive">
+							{errors.streetAddress}
+						</p>
+					)}
 				</TableCell>
-				<TableCell>
+				<TableCell className="align-top">
 					<Input
 						value={editedProperty.city}
 						onChange={(e) => handleFieldChange("city", e.target.value)}
-						placeholder="City..."
+						placeholder="City"
+						aria-label="City"
+						aria-invalid={!!errors.city}
 						className="w-full"
 					/>
+					{errors.city && (
+						<p className="mt-1 text-xs text-destructive">{errors.city}</p>
+					)}
 				</TableCell>
-				<TableCell>
+				<TableCell className="align-top">
 					<Input
 						value={editedProperty.state}
 						onChange={(e) => handleFieldChange("state", e.target.value)}
-						placeholder="State..."
+						placeholder="State"
+						aria-label="State"
+						aria-invalid={!!errors.state}
 						className="w-full"
 					/>
+					{errors.state && (
+						<p className="mt-1 text-xs text-destructive">{errors.state}</p>
+					)}
 				</TableCell>
-				<TableCell>
+				<TableCell className="align-top">
 					<Input
 						value={editedProperty.zipCode}
 						onChange={(e) => handleFieldChange("zipCode", e.target.value)}
-						placeholder="ZIP..."
+						placeholder="ZIP"
+						aria-label="ZIP code"
+						aria-invalid={!!errors.zipCode}
 						className="w-full"
 					/>
+					{errors.zipCode && (
+						<p className="mt-1 text-xs text-destructive">{errors.zipCode}</p>
+					)}
 				</TableCell>
-				<TableCell>
+				<TableCell className="align-top">
 					<Checkbox
 						checked={editedProperty.isPrimary}
 						onCheckedChange={(checked) =>
 							handleFieldChange("isPrimary", !!checked)
 						}
+						aria-label="Primary property"
 					/>
 				</TableCell>
-				<TableCell>
-					<div className="flex gap-1">
+				<TableCell className="align-top">
+					<div className="flex justify-end gap-1">
 						<Button
 							variant="outline"
 							size="icon-sm"
@@ -438,7 +436,11 @@ function PropertyRow({
 
 	return (
 		<TableRow
-			className={`hover:bg-muted/50 ${property.isNew ? "bg-yellow-50/30 dark:bg-yellow-900/20 border-l-4 border-l-yellow-400" : ""}`}
+			className={
+				property.isNew
+					? "border-l-2 border-l-warning bg-warning/5 hover:bg-warning/10"
+					: undefined
+			}
 		>
 			<TableCell className="font-medium">
 				<div className="flex items-center gap-2">
@@ -450,16 +452,24 @@ function PropertyRow({
 					)}
 				</div>
 			</TableCell>
-			<TableCell>{property.city}</TableCell>
-			<TableCell>{property.state}</TableCell>
-			<TableCell>{property.zipCode}</TableCell>
+			<TableCell className="text-muted-foreground">{property.city}</TableCell>
+			<TableCell className="text-muted-foreground">{property.state}</TableCell>
+			<TableCell className="tabular-nums text-muted-foreground">
+				{property.zipCode}
+			</TableCell>
 			<TableCell>
 				{property.isPrimary && (
-					<StarFilledIcon className="h-4 w-4 text-yellow-400" />
+					<>
+						<StarFilledIcon
+							className="h-4 w-4 text-warning"
+							aria-hidden="true"
+						/>
+						<span className="sr-only">Primary property</span>
+					</>
 				)}
 			</TableCell>
 			<TableCell>
-				<div className="flex gap-1">
+				<div className="flex justify-end gap-1">
 					<Button
 						variant="outline"
 						size="icon-sm"

@@ -181,7 +181,7 @@ export const clientsArticles: HelpArticle[] = [
 					},
 					{
 						type: "note",
-						text: "New rows show an **Unsaved** badge until you save them. Deleting an unsaved row just discards it; deleting a saved row removes it from the client record.",
+						text: "New rows show an **Unsaved** badge until you save them. Cancelling or deleting an unsaved row just discards it; deleting a saved row removes it from the client record.",
 					},
 				],
 			},
@@ -193,8 +193,8 @@ export const clientsArticles: HelpArticle[] = [
 						items: [
 							"Open the client and go to **Properties & Contacts**.",
 							"Add a new row in the contacts table.",
-							"Fill in the contact's first and last name, email, phone, and job title.",
-							"Save the row. The **Unsaved** badge disappears once the contact is stored.",
+							"Fill in the contact's first and last name, email, phone, and job title. First and last name are required.",
+							"Save the row. The **Unsaved** badge disappears once the contact is stored. If a required field is empty, the row stays open and marks what is missing.",
 						],
 					},
 				],
@@ -206,14 +206,18 @@ export const clientsArticles: HelpArticle[] = [
 						type: "steps",
 						items: [
 							"Add a new row in the properties table.",
-							"Fill in the address: street, city, state, and ZIP.",
-							"Pick a property type. Choose from Residential, Commercial, Industrial, Retail, Office, and Mixed-use.",
-							"Give the property a name if it helps you tell locations apart, then save the row.",
+							"Start typing the street address. Picking one of the suggestions fills in the city, state, and ZIP for you.",
+							"Check the address: street, city, state, and ZIP are all required.",
+							"Tick **Primary** if this is the client's main address, then save the row.",
 						],
 					},
 					{
+						type: "note",
+						text: "A property name and a property type are set on the new client form or in a CSV import. The properties table covers the address fields only, so a property added here is identified by its address.",
+					},
+					{
 						type: "tip",
-						text: "Projects and client tasks can be tied to a specific property. When a client has more than one, you pick which property the job is for, so clear property names pay off.",
+						text: "Projects and client tasks can be tied to a specific property. When a client has more than one, you pick which property the job is for. The picker shows the property's name when it has one and the street address when it does not.",
 					},
 				],
 			},

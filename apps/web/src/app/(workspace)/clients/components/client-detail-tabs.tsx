@@ -118,13 +118,11 @@ export function ClientDetailTabs({
 							<PropertyTable
 								clientId={clientId as Id<"clients">}
 								properties={clientProperties}
-								hideCardWrapper
 								onChange={() => {}}
 							/>
 							<ContactTable
 								clientId={clientId as Id<"clients">}
 								contacts={clientContacts}
-								hideCardWrapper
 								onChange={() => {}}
 							/>
 						</div>
