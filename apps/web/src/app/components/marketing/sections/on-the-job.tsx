@@ -4,9 +4,15 @@ import { Iphone } from "@/components/ui/iphone";
 import { AmbientLayer } from "../ambient";
 import { CheckItem, Eyebrow, Lede, Section, SectionHeading } from "../primitives";
 
-/* On the job — the offline story. A truck-cab photo with the shipping iOS app
- * standing in front of it, in the shared Iphone frame the rest of the app
- * uses. The screen is a real capture, not a rebuilt mock. */
+/* On the job — the "it's already in your pocket" story. A truck-cab photo with
+ * the shipping iOS app standing in front of it, in the shared Iphone frame the
+ * rest of the app uses. The screen is a real capture, not a rebuilt mock.
+ *
+ * This section used to sell offline ("even with no signal at all"). It is not
+ * built: apps/mobile has no offline code, only a PRD. Everything claimed below
+ * is live in the shipped App Store build, and offline is named as roadmap in
+ * one line rather than promised in the heading. Do not put it back until the
+ * outbox actually ships. */
 
 const APP_STORE_URL =
 	"https://apps.apple.com/us/app/onetool-small-business-crm/id6757319255";
@@ -45,18 +51,23 @@ export function OnTheJob() {
 			<div className="relative">
 				<Eyebrow>On the job</Eyebrow>
 				<SectionHeading size="md">
-					Built to work in the truck, even with no signal at all.
+					Your whole day&rsquo;s work, in your pocket.
 				</SectionHeading>
 				<Lede className="max-w-[32rem]">
-					The iOS app keeps your day on the device, so a basement with no signal
-					doesn&rsquo;t stop you writing up the visit. When you come back into range
-					it syncs by itself, with nothing lost and nothing to retry.
+					The iOS app shows the same visits, clients and numbers as the web app, updated
+					the moment anyone touches them. Write the visit up in the driveway and it is on
+					the office screen before you turn the key.
 				</Lede>
 				<ul className="mt-7 grid max-w-[30rem] gap-[10px]">
 					<CheckItem>Real-time sync between phone and web</CheckItem>
-					<CheckItem>Offline day plan with addresses and notes</CheckItem>
+					<CheckItem>The day&rsquo;s visits, addresses and notes on your phone</CheckItem>
 					<CheckItem>Switch between organisations on the go</CheckItem>
 				</ul>
+				{/* Named, not buried: the compare table says "coming soon" in the
+				    offline row, and this section has to agree with it. */}
+				<p className="mt-4 max-w-[30rem] text-[13px] leading-[1.6] text-(--ink-3)">
+					Working with no signal at all is coming — for now the app needs a connection.
+				</p>
 				<a
 					href={APP_STORE_URL}
 					target="_blank"
