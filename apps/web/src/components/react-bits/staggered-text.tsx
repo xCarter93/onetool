@@ -8,7 +8,8 @@ import React, {
   useImperativeHandle,
   forwardRef,
 } from "react";
-import { motion, Transition, Easing } from "motion/react";
+import { motion } from "motion/react";
+import type { Transition, Easing } from "motion/react";
 
 type MotionStyle = Record<string, string | number>;
 type SegmentBy = "chars" | "words" | "lines";
@@ -172,6 +173,13 @@ const StaggeredText = forwardRef<StaggeredTextHandle, StaggeredTextProps>(
 
     useEffect(() => {
       if (!rootRef.current) return;
+      // Without the observer every segment stays at the `from` snapshot, i.e.
+      // opacity 0. SectionHeading routes h1/h2 through here, so reveal at once
+      // rather than leaving the page's headings invisible.
+      if (typeof IntersectionObserver === "undefined") {
+        setHasEnteredView(true);
+        return;
+      }
 
       const observer = new IntersectionObserver(
         ([entry]) => {

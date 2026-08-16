@@ -574,20 +574,30 @@ export function TryIt() {
 									</button>
 								) : null}
 
-								{stage === "sent" || stage === "requested" ? (
-									<p
-										role="status"
-										className="inline-flex h-[46px] items-center gap-[10px] rounded-[11px] border border-(--rule-2) bg-(--sheet) px-[18px] text-[15px] text-(--ink-2)"
-									>
-										<span
-											aria-hidden="true"
-											className="h-[7px] w-[7px] animate-pulse rounded-full bg-(--accent)"
-										/>
-										{stage === "sent"
-											? "Waiting on the client…"
-											: "Waiting on the payment…"}
-									</p>
-								) : null}
+								{/* The region stays mounted like the total's at the foot of the
+								    card: a live region inserted already-populated is not
+								    announced, so idle collapses it to sr-only (out of flow,
+								    still in the a11y tree) rather than unmounting it. */}
+								<p
+									role="status"
+									className={
+										stage === "sent" || stage === "requested"
+											? "inline-flex h-[46px] items-center gap-[10px] rounded-[11px] border border-(--rule-2) bg-(--sheet) px-[18px] text-[15px] text-(--ink-2)"
+											: "sr-only"
+									}
+								>
+									{stage === "sent" || stage === "requested" ? (
+										<>
+											<span
+												aria-hidden="true"
+												className="h-[7px] w-[7px] animate-pulse rounded-full bg-(--accent)"
+											/>
+											{stage === "sent"
+												? "Waiting on the client…"
+												: "Waiting on the payment…"}
+										</>
+									) : null}
+								</p>
 
 								{stage === "signed" ? (
 									<button

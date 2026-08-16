@@ -66,7 +66,10 @@ export function HalftoneCorners({
 	right: string;
 }) {
 	return (
-		<div aria-hidden="true" className="absolute inset-0 overflow-hidden">
+		<div
+			aria-hidden="true"
+			className="pointer-events-none absolute inset-0 overflow-hidden"
+		>
 			{/* Hidden on phones: at that width the left cluster sits under the copy
 			    rather than beside it, and the right one carries the scene alone. */}
 			{left ? (

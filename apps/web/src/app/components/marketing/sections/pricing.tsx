@@ -56,15 +56,28 @@ function useBusinessPrice() {
 
 	const fee = business?.fee;
 	const annualFee = business?.annualFee;
-	const symbol = fee?.currencySymbol ?? annualFee?.currencySymbol ?? "$";
+
+	// All or nothing: the savings maths compares the two figures against each
+	// other, so pairing a live monthly with a hardcoded yearly (or the reverse)
+	// would print a percentage drawn from two unrelated price sources.
+	if (!fee || !annualFee) {
+		return {
+			symbol: "$",
+			monthly: String(FALLBACK_MONTHLY),
+			yearly: String(FALLBACK_YEARLY),
+			// Smallest currency unit, so the savings maths never rounds twice.
+			monthlyMinor: FALLBACK_MONTHLY * 100,
+			yearlyMinor: FALLBACK_YEARLY * 100,
+		};
+	}
 
 	return {
-		symbol,
-		monthly: fee ? trimCents(fee.amountFormatted) : String(FALLBACK_MONTHLY),
-		yearly: annualFee ? trimCents(annualFee.amountFormatted) : String(FALLBACK_YEARLY),
+		symbol: fee.currencySymbol ?? annualFee.currencySymbol ?? "$",
+		monthly: trimCents(fee.amountFormatted),
+		yearly: trimCents(annualFee.amountFormatted),
 		// Smallest currency unit, so the savings maths never rounds twice.
-		monthlyMinor: fee?.amount ?? FALLBACK_MONTHLY * 100,
-		yearlyMinor: annualFee?.amount ?? FALLBACK_YEARLY * 100,
+		monthlyMinor: fee.amount,
+		yearlyMinor: annualFee.amount,
 	};
 }
 

@@ -66,6 +66,9 @@ const PerspectiveGrid: React.FC<PerspectiveGridProps> = ({
     if (!containerRef.current) return;
 
     const container = containerRef.current;
+    // The ref is seeded from the first render only; without this the effect
+    // rebuilds the scene on an autoPlay change but keeps the original play state.
+    isPausedRef.current = !autoPlay;
 
     const hexToRgb = (hex: string) => {
       const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
@@ -84,11 +87,19 @@ const PerspectiveGrid: React.FC<PerspectiveGridProps> = ({
     const actualWidth = rect.width;
     const actualHeight = rect.height;
 
-    const renderer = new THREE.WebGLRenderer({
-      antialias: true,
-      alpha: true,
-      powerPreference: "high-performance",
-    });
+    // A blocked GPU, a hardened privacy setting, or too many live contexts makes
+    // this throw. It is a decorative layer, so drop it rather than take the page
+    // down with an effect that throws.
+    let renderer: THREE.WebGLRenderer;
+    try {
+      renderer = new THREE.WebGLRenderer({
+        antialias: true,
+        alpha: true,
+        powerPreference: "high-performance",
+      });
+    } catch {
+      return;
+    }
     renderer.setClearColor(0x000000, 0);
 
     const pixelRatio = Math.min(window.devicePixelRatio, 2);

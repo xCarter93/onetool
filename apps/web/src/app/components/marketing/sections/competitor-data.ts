@@ -89,7 +89,7 @@ export const VENDORS: Vendor[] = [
 		retrievedAt: RETRIEVED_AT,
 		notes: [
 			"$30/month, or $300/year. There is also a permanent Free plan.",
-			"$30 is the hardcoded fallback in pricing-section.tsx; at runtime that section prefers live Clerk plan data. Confirm the live Clerk price before changing this number.",
+			"$30 is the hardcoded fallback in sections/pricing.tsx; at runtime that section prefers live Clerk plan data. Confirm the live Clerk price before changing this number.",
 		],
 	},
 	{

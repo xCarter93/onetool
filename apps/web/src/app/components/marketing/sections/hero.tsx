@@ -184,7 +184,7 @@ export function Hero() {
 									<div className="flex items-center gap-2">
 										<span
 											aria-hidden="true"
-											className={`h-[7px] w-[7px] flex-shrink-0 rounded-full ${DOT[step.tone]}`}
+											className={`h-[7px] w-[7px] shrink-0 rounded-full ${DOT[step.tone]}`}
 										/>
 										<span
 											className={`font-mono text-[10.5px] font-medium uppercase tracking-[0.12em] ${STAGE[step.tone]}`}

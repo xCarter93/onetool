@@ -436,7 +436,17 @@ const UserCursor = forwardRef<HTMLDivElement, UserCursorProps>(
         )}
         style={surfaceStyle}
         {...(controlled
-          ? null
+          ? {
+              // Controlled mode drives position from props, but the caller's own
+              // pointer callbacks were destructured out of `rest` and would
+              // otherwise be dropped silently.
+              onPointerEnter,
+              onPointerLeave,
+              onPointerMove,
+              onPointerDown,
+              onPointerUp,
+              onPointerCancel,
+            }
           : {
               onPointerEnter: handlePointerEnter,
               onPointerLeave: handlePointerLeave,

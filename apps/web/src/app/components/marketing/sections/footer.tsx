@@ -130,7 +130,7 @@ function ParticleWordmark() {
 					mouseControls={MOUSE_CONTROLS}
 				/>
 			) : (
-				<p className="flex h-full select-none items-center justify-center text-[16vw] font-semibold leading-[0.78] tracking-[-0.05em] text-(--rule-2)">
+				<p className="flex h-full select-none items-center justify-center text-[min(16vw,300px)] font-semibold leading-[0.78] tracking-[-0.05em] text-(--rule-2)">
 					OneTool
 				</p>
 			)}

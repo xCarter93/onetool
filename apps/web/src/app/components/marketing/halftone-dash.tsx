@@ -275,6 +275,9 @@ export function HalftoneDash({
 
 		return () => {
 			if (raf) cancelAnimationFrame(raf);
+			// A decode still in flight would otherwise sample and draw into a
+			// canvas this effect has already torn down.
+			img.onload = null;
 			ro.disconnect();
 			mo.disconnect();
 			window.removeEventListener("pointermove", onMove);
