@@ -29,7 +29,9 @@ export function PostHogProvider({ children }: { children: React.ReactNode }) {
 					dom_event_allowlist: ["click", "change", "submit"],
 					element_allowlist: ["a", "button", "form", "input", "select", "textarea"],
 				},
-				capture_exceptions: true, // Capture JavaScript errors
+				// Prod only: dev bundles carry no PostHog chunk IDs and their source maps
+				// are never uploaded, so localhost frames can never symbolicate.
+				capture_exceptions: process.env.NODE_ENV === "production",
 				// Benign browser noise from layout-heavy UI (charts, data-grid,
 				// signature pad) — drop before ingestion so it can't reopen issues.
 				before_send: (event) => {
