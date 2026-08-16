@@ -7,11 +7,12 @@ import { api } from "@onetool/backend/convex/_generated/api";
 import { useToast } from "@/hooks/use-toast";
 import type { Id, Doc } from "@onetool/backend/convex/_generated/dataModel";
 import {
-	GlassCard,
-	GlassCardContent,
-	GlassCardHeader,
-	GlassCardTitle,
-} from "@/components/shared/glass-card";
+	Frame,
+	FrameHeader,
+	FrameTitle,
+	FrameDescription,
+	FramePanel,
+} from "@/components/reui/frame";
 import {
 	Table,
 	TableBody,
@@ -46,18 +47,18 @@ type Contact = {
 	isNew?: boolean; // Track if this is a new item not yet saved
 };
 
+type ContactErrors = Partial<Record<"firstName" | "lastName", string>>;
+
 interface ContactTableProps {
 	clientId: Id<"clients">;
 	contacts: Doc<"clientContacts">[];
 	onChange?: () => void;
-	hideCardWrapper?: boolean;
 }
 
 export function ContactTable({
 	clientId,
 	contacts,
 	onChange,
-	hideCardWrapper,
 }: ContactTableProps) {
 	const toast = useToast();
 	const createContact = useMutation(api.clientContacts.create);
@@ -73,26 +74,11 @@ export function ContactTable({
 
 	// Combine saved contacts with local ones
 	const allContacts = useMemo(() => {
-		// Convert saved items to our Contact type
 		const savedItems: Contact[] = contacts.map((item) => ({
 			...item,
 			isNew: false,
 		}));
 
-		console.log("allContacts useMemo:", {
-			savedItems: savedItems.map((c) => ({
-				id: c._id,
-				name: `${c.firstName} ${c.lastName}`,
-				isNew: c.isNew,
-			})),
-			localContacts: localContacts.map((c) => ({
-				id: c._id,
-				name: `${c.firstName} ${c.lastName}`,
-				isNew: c.isNew,
-			})),
-		});
-
-		// Combine and sort by creation time (newest first)
 		return [...savedItems, ...localContacts];
 	}, [contacts, localContacts]);
 
@@ -116,60 +102,43 @@ export function ContactTable({
 	};
 
 	const handleEditContact = (id: Id<"clientContacts"> | string) => {
-		console.log("handleEditContact called with:", {
-			id,
-			idType: typeof id,
-			contact: allContacts.find((c) => c._id === id),
-		});
 		setEditingId(id);
 	};
 
 	const handleSaveContact = async (contact: Contact) => {
-		console.log("handleSaveContact called with:", {
-			contactId: contact._id,
-			contactIdType: typeof contact._id,
-			isNew: contact.isNew,
-			contactName: `${contact.firstName} ${contact.lastName}`,
-		});
-
-		// Check if this is a new contact by looking at the isNew flag or if it's a temporary ID
+		// New contacts carry a temp id until the first successful write
 		const isNewContact =
 			contact.isNew ||
 			(typeof contact._id === "string" && contact._id.startsWith("temp-"));
 
 		if (isNewContact) {
-			// Save new contact directly to database
-			console.log("Creating new contact...");
 			try {
 				await createContact({
 					clientId,
-					firstName: contact.firstName || "First Name Required",
-					lastName: contact.lastName || "Last Name Required",
+					firstName: contact.firstName.trim(),
+					lastName: contact.lastName.trim(),
 					email: contact.email,
 					phone: contact.phone,
 					jobTitle: contact.jobTitle,
 					isPrimary: contact.isPrimary,
 				});
 
-				// Remove from local items
 				setLocalContacts((prev) =>
-					prev.filter((item) => item._id !== contact._id)
+					prev.filter((item) => item._id !== contact._id),
 				);
 				setEditingId(null);
 				onChange?.();
-				toast.success("Contact Saved", "Contact has been successfully saved!");
+				toast.success("Contact saved", "Contact has been successfully saved.");
 			} catch (error) {
 				console.error("Failed to save contact:", error);
 				toast.error("Error", "Failed to save contact. Please try again.");
 			}
 		} else {
-			// Update existing item in database
-			console.log("Updating existing contact with ID:", contact._id);
 			try {
 				await updateContact({
 					id: contact._id as Id<"clientContacts">,
-					firstName: contact.firstName,
-					lastName: contact.lastName,
+					firstName: contact.firstName.trim(),
+					lastName: contact.lastName.trim(),
 					email: contact.email,
 					phone: contact.phone,
 					jobTitle: contact.jobTitle,
@@ -178,8 +147,8 @@ export function ContactTable({
 				setEditingId(null);
 				onChange?.();
 				toast.success(
-					"Contact Updated",
-					"Contact has been successfully updated!"
+					"Contact updated",
+					"Contact has been successfully updated.",
 				);
 			} catch (error) {
 				console.error("Failed to save contact:", error);
@@ -189,22 +158,20 @@ export function ContactTable({
 	};
 
 	const handleDeleteContact = async (id: Id<"clientContacts"> | string) => {
-		// Check if this is a temporary ID (new item not yet saved)
+		// Temp ids never reached the database
 		if (typeof id === "string" && id.startsWith("temp-")) {
-			// Remove local item
 			setLocalContacts((prev) => prev.filter((item) => item._id !== id));
 			if (editingId === id) {
 				setEditingId(null);
 			}
-			toast.success("Contact Deleted", "Unsaved contact has been removed.");
+			toast.success("Contact removed", "Unsaved contact has been removed.");
 		} else {
-			// Delete from database
 			try {
 				await deleteContact({ id: id as Id<"clientContacts"> });
 				onChange?.();
 				toast.success(
-					"Contact Deleted",
-					"Contact has been successfully deleted."
+					"Contact deleted",
+					"Contact has been successfully deleted.",
 				);
 			} catch (error) {
 				console.error("Failed to delete contact:", error);
@@ -213,75 +180,71 @@ export function ContactTable({
 		}
 	};
 
-	const header = (
-		<div className="flex items-center justify-between pb-6">
-			<h3 className="text-xl font-semibold text-foreground">Contacts</h3>
-			<Button variant="outline" size="sm" onClick={handleAddContact}>
-				<PlusIcon className="h-4 w-4 mr-2" />
-				New Contact
-			</Button>
-		</div>
-	);
-
-	const content = allContacts && allContacts.length > 0 ? (
-		<div className="overflow-hidden rounded-lg border">
-			<Table>
-				<TableHeader>
-					<TableRow>
-						<TableHead className="w-[25%]">Name</TableHead>
-						<TableHead className="w-[25%]">Job Title</TableHead>
-						<TableHead className="w-[20%]">Phone</TableHead>
-						<TableHead className="w-[20%]">Email</TableHead>
-						<TableHead className="w-[5%]">Primary</TableHead>
-						<TableHead className="w-[5%]">Actions</TableHead>
-					</TableRow>
-				</TableHeader>
-				<TableBody>
-					{allContacts.map((contact) => (
-						<ContactRow
-							key={contact._id}
-							contact={contact}
-							isEditing={editingId === contact._id}
-							onEdit={() => handleEditContact(contact._id)}
-							onSave={handleSaveContact}
-							onCancel={() => setEditingId(null)}
-							onDelete={() => handleDeleteContact(contact._id)}
-						/>
-					))}
-				</TableBody>
-			</Table>
-		</div>
-	) : (
-		<EmptyState
-			size="md"
-			illustration="client-contacts-none"
-			title="No contacts"
-			description="No contacts have been added for this client yet."
-		/>
-	);
-
-	if (hideCardWrapper) {
-		return (
-			<div>
-				{header}
-				{content}
-			</div>
-		);
-	}
+	const handleCancel = (id: Id<"clientContacts"> | string) => {
+		// Cancelling a never-saved row discards it rather than leaving a blank row
+		if (typeof id === "string" && id.startsWith("temp-")) {
+			setLocalContacts((prev) => prev.filter((item) => item._id !== id));
+		}
+		setEditingId(null);
+	};
 
 	return (
-		<GlassCard>
-			<GlassCardHeader className="flex flex-row items-center justify-between pb-6">
-				<GlassCardTitle className="text-xl">Contacts</GlassCardTitle>
-				<Button variant="outline" size="sm" onClick={handleAddContact}>
-					<PlusIcon className="h-4 w-4 mr-2" />
-					New Contact
-				</Button>
-			</GlassCardHeader>
-			<GlassCardContent>
-				{content}
-			</GlassCardContent>
-		</GlassCard>
+		<Frame>
+			<FrameHeader className="flex-row items-center justify-between gap-3">
+				<div className="flex flex-col gap-0.5">
+					<FrameTitle>Contacts</FrameTitle>
+					<FrameDescription>People to reach at this client.</FrameDescription>
+				</div>
+				<div className="flex shrink-0 items-center gap-2">
+					{allContacts.length > 0 && (
+						<Badge variant="secondary" radius="full" size="lg">
+							{allContacts.length}
+						</Badge>
+					)}
+					<Button variant="outline" size="sm" onClick={handleAddContact}>
+						<PlusIcon className="h-4 w-4 mr-2" />
+						New Contact
+					</Button>
+				</div>
+			</FrameHeader>
+
+			<FramePanel className="p-0">
+				{allContacts.length > 0 ? (
+					<Table>
+						<TableHeader>
+							<TableRow className="bg-muted/40 hover:bg-muted/40">
+								<TableHead className="w-[26%]">Name</TableHead>
+								<TableHead className="w-[22%]">Job Title</TableHead>
+								<TableHead className="w-[20%]">Phone</TableHead>
+								<TableHead className="w-[22%]">Email</TableHead>
+								<TableHead className="w-[5%]">Primary</TableHead>
+								<TableHead className="w-[5%] text-right">Actions</TableHead>
+							</TableRow>
+						</TableHeader>
+						<TableBody>
+							{allContacts.map((contact) => (
+								<ContactRow
+									key={contact._id}
+									contact={contact}
+									isEditing={editingId === contact._id}
+									onEdit={() => handleEditContact(contact._id)}
+									onSave={handleSaveContact}
+									onCancel={() => handleCancel(contact._id)}
+									onDelete={() => handleDeleteContact(contact._id)}
+								/>
+							))}
+						</TableBody>
+					</Table>
+				) : (
+					<EmptyState
+						size="md"
+						illustration="client-contacts-none"
+						title="No contacts"
+						description="No contacts have been added for this client yet."
+					/>
+				)}
+			</FramePanel>
+		</Frame>
 	);
 }
 
@@ -306,6 +269,7 @@ function ContactRow({
 		phone: toE164(contact.phone),
 	}));
 	const [phoneTouched, setPhoneTouched] = useState(false);
+	const [errors, setErrors] = useState<ContactErrors>({});
 
 	// Legacy free-text phone we couldn't parse: field renders empty, so surface the stored value
 	const unparsedPhone =
@@ -318,6 +282,7 @@ function ContactRow({
 		if (isEditing) {
 			setEditedContact({ ...contact, phone: toE164(contact.phone) });
 			setPhoneTouched(false);
+			setErrors({});
 		}
 	}
 
@@ -326,56 +291,74 @@ function ContactRow({
 			...prev,
 			[field]: value,
 		}));
+		if (field === "firstName" || field === "lastName") {
+			setErrors((prev) => ({ ...prev, [field]: undefined }));
+		}
 	};
 
 	const handleSave = () => {
-		console.log("ContactRow handleSave called with:", {
-			contactId: editedContact._id,
-			contactIdType: typeof editedContact._id,
-			isNew: editedContact.isNew,
-			originalContactId: contact._id,
-			originalContactIdType: typeof contact._id,
-		});
+		const nextErrors: ContactErrors = {};
+		if (!editedContact.firstName.trim()) nextErrors.firstName = "Required";
+		if (!editedContact.lastName.trim()) nextErrors.lastName = "Required";
+
+		if (nextErrors.firstName || nextErrors.lastName) {
+			setErrors(nextErrors);
+			return;
+		}
+
 		// Never let an untouched, unparseable legacy phone be saved as ""
 		const phone =
-			phoneTouched || editedContact.phone
-				? editedContact.phone
-				: contact.phone;
+			phoneTouched || editedContact.phone ? editedContact.phone : contact.phone;
 		onSave({ ...editedContact, phone });
 	};
 
 	if (isEditing) {
 		return (
-			<TableRow
-				className={`bg-blue-50/50 dark:bg-blue-900/10 border-l-4 border-l-blue-500 ${contact.isNew ? "bg-yellow-50/50 dark:bg-yellow-900/10" : ""}`}
-			>
-				<TableCell>
-					<div className="space-y-2">
-						<Input
-							value={editedContact.firstName}
-							onChange={(e) => handleFieldChange("firstName", e.target.value)}
-							placeholder="First name..."
-							className="w-full"
-						/>
-						<Input
-							value={editedContact.lastName}
-							onChange={(e) => handleFieldChange("lastName", e.target.value)}
-							placeholder="Last name..."
-							className="w-full"
-						/>
+			<TableRow className="border-l-2 border-l-primary bg-primary/5 hover:bg-primary/5">
+				<TableCell className="align-top">
+					<div className="flex flex-col gap-2">
+						<div>
+							<Input
+								value={editedContact.firstName}
+								onChange={(e) => handleFieldChange("firstName", e.target.value)}
+								placeholder="First name"
+								aria-label="First name"
+								aria-invalid={!!errors.firstName}
+								className="w-full"
+							/>
+							{errors.firstName && (
+								<p className="mt-1 text-xs text-destructive">
+									{errors.firstName}
+								</p>
+							)}
+						</div>
+						<div>
+							<Input
+								value={editedContact.lastName}
+								onChange={(e) => handleFieldChange("lastName", e.target.value)}
+								placeholder="Last name"
+								aria-label="Last name"
+								aria-invalid={!!errors.lastName}
+								className="w-full"
+							/>
+							{errors.lastName && (
+								<p className="mt-1 text-xs text-destructive">
+									{errors.lastName}
+								</p>
+							)}
+						</div>
 					</div>
 				</TableCell>
-				<TableCell>
-					<div className="space-y-2">
-						<Input
-							value={editedContact.jobTitle || ""}
-							onChange={(e) => handleFieldChange("jobTitle", e.target.value)}
-							placeholder="Job title..."
-							className="w-full"
-						/>
-					</div>
+				<TableCell className="align-top">
+					<Input
+						value={editedContact.jobTitle || ""}
+						onChange={(e) => handleFieldChange("jobTitle", e.target.value)}
+						placeholder="Job title"
+						aria-label="Job title"
+						className="w-full"
+					/>
 				</TableCell>
-				<TableCell>
+				<TableCell className="align-top">
 					<PhoneInput
 						defaultCountry="US"
 						value={editedContact.phone || ""}
@@ -392,25 +375,27 @@ function ContactRow({
 						</p>
 					)}
 				</TableCell>
-				<TableCell>
+				<TableCell className="align-top">
 					<Input
 						value={editedContact.email || ""}
 						onChange={(e) => handleFieldChange("email", e.target.value)}
-						placeholder="Email..."
+						placeholder="Email"
+						aria-label="Email"
 						className="w-full"
 						type="email"
 					/>
 				</TableCell>
-				<TableCell>
+				<TableCell className="align-top">
 					<Checkbox
 						checked={editedContact.isPrimary}
 						onCheckedChange={(checked) =>
 							handleFieldChange("isPrimary", !!checked)
 						}
+						aria-label="Primary contact"
 					/>
 				</TableCell>
-				<TableCell>
-					<div className="flex gap-1">
+				<TableCell className="align-top">
+					<div className="flex justify-end gap-1">
 						<Button
 							variant="outline"
 							size="icon-sm"
@@ -435,7 +420,11 @@ function ContactRow({
 
 	return (
 		<TableRow
-			className={`hover:bg-muted/50 ${contact.isNew ? "bg-yellow-50/30 dark:bg-yellow-900/20 border-l-4 border-l-yellow-400" : ""}`}
+			className={
+				contact.isNew
+					? "border-l-2 border-l-warning bg-warning/5 hover:bg-warning/10"
+					: undefined
+			}
 		>
 			<TableCell className="font-medium">
 				<div className="flex items-center gap-2">
@@ -449,22 +438,24 @@ function ContactRow({
 					)}
 				</div>
 			</TableCell>
-			<TableCell>
-				<div>
-					{contact.jobTitle && (
-						<p className="font-medium">{contact.jobTitle}</p>
-					)}
-				</div>
+			<TableCell className="text-muted-foreground">
+				{contact.jobTitle || "—"}
 			</TableCell>
-			<TableCell>{contact.phone || "—"}</TableCell>
+			<TableCell className="tabular-nums">{contact.phone || "—"}</TableCell>
 			<TableCell>{contact.email || "—"}</TableCell>
 			<TableCell>
 				{contact.isPrimary && (
-					<StarFilledIcon className="h-4 w-4 text-yellow-400" />
+					<>
+						<StarFilledIcon
+							className="h-4 w-4 text-warning"
+							aria-hidden="true"
+						/>
+						<span className="sr-only">Primary contact</span>
+					</>
 				)}
 			</TableCell>
 			<TableCell>
-				<div className="flex gap-1">
+				<div className="flex justify-end gap-1">
 					<Button
 						variant="outline"
 						size="icon-sm"
