@@ -100,15 +100,25 @@ function NightLattice() {
 
 export function FinalCta() {
 	const { resolvedTheme } = useTheme();
+	const dark = resolvedTheme === "dark";
 
 	return (
 		<Section pad="tight" divider className="overflow-hidden">
 			{/* Brand sky coming up behind the last card, right above the footer. The
-			    shader is additive glow normalised against dark pixels —
-			    invisible-to-muddy on light paper — so it is mounted in the dark scheme
-			    only. Hexes stay literal; the canvas cannot read the accent token. */}
-			{resolvedTheme === "dark" ? (
-				<AmbientLayer opacity={0.3} fullBleed>
+			    shader renormalises its colour to full brightness and carries the
+			    intensity in alpha, so source-over it can only ADD light: right on a
+			    dark ground, invisible on paper. Light mode multiplies the same sky
+			    instead, so the glow darkens the sheet and reads as ink rising off the
+			    horizon — and it needs the higher opacity because multiplying toward
+			    paper is gentler than adding to dark. Waits for the resolved theme so a
+			    dark page never flashes the paper treatment. Hexes stay literal; the
+			    canvas cannot read the accent token. */}
+			{resolvedTheme ? (
+				<AmbientLayer
+					opacity={dark ? 0.3 : 0.5}
+					fullBleed
+					className={dark ? undefined : "mix-blend-multiply"}
+				>
 					<RisingLines
 						color="#4cc3f7"
 						horizonColor="#00a6f4"
