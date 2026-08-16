@@ -20,6 +20,11 @@ interface ScheduleDemoFormProps {
 	onSuccess?: () => void;
 	/** Prefix for field ids so two instances can coexist on one page. */
 	idPrefix?: string;
+	/**
+	 * "grid" pairs the four short fields two-up from `sm`, halving the form's
+	 * height for wide inline placements. "stack" is the modal's single column.
+	 */
+	layout?: "stack" | "grid";
 }
 
 export function ScheduleDemoForm({
@@ -27,6 +32,7 @@ export function ScheduleDemoForm({
 	onCancel,
 	onSuccess,
 	idPrefix = "demo",
+	layout = "stack",
 }: ScheduleDemoFormProps) {
 	const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 	const [isSubmitting, setIsSubmitting] = useState(false);
@@ -54,9 +60,17 @@ export function ScheduleDemoForm({
 	};
 
 	const fieldId = (name: string) => `${idPrefix}-${name}`;
+	/* The success message sits on screen for 2s before resetForm clears the
+	   fields. Releasing the controls on `isSubmitting` alone would leave a
+	   still-populated, still-valid form re-armed for that whole window, so a
+	   second click would POST again and fire a duplicate analytics event. */
+	const locked = isSubmitting || formStatus.type === "success";
+	const grid = layout === "grid";
+	const full = grid ? "sm:col-span-2" : undefined;
 
 	const handleScheduleDemo = async (e: React.FormEvent) => {
 		e.preventDefault();
+		if (locked) return;
 		setIsSubmitting(true);
 		setFormStatus({ type: null, message: "" });
 
@@ -104,7 +118,13 @@ export function ScheduleDemoForm({
 	};
 
 	return (
-		<form onSubmit={handleScheduleDemo} className={cn("space-y-4", className)}>
+		<form
+			onSubmit={handleScheduleDemo}
+			className={cn(
+				grid ? "grid gap-4 sm:grid-cols-2" : "space-y-4",
+				className
+			)}
+		>
 			<div className="space-y-2">
 				<Label htmlFor={fieldId("name")}>
 					Name <span className="text-danger">*</span>
@@ -116,7 +136,7 @@ export function ScheduleDemoForm({
 					placeholder="John Doe"
 					value={formData.name}
 					onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-					disabled={isSubmitting}
+					disabled={locked}
 				/>
 			</div>
 
@@ -131,7 +151,7 @@ export function ScheduleDemoForm({
 					placeholder="john@company.com"
 					value={formData.email}
 					onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-					disabled={isSubmitting}
+					disabled={locked}
 				/>
 			</div>
 
@@ -143,7 +163,7 @@ export function ScheduleDemoForm({
 					placeholder="Acme Inc."
 					value={formData.company}
 					onChange={(e) => setFormData({ ...formData, company: e.target.value })}
-					disabled={isSubmitting}
+					disabled={locked}
 				/>
 			</div>
 
@@ -157,25 +177,25 @@ export function ScheduleDemoForm({
 					onChange={(next) =>
 						setFormData((prev) => ({ ...prev, phone: next ?? "" }))
 					}
-					disabled={isSubmitting}
+					disabled={locked}
 				/>
 			</div>
 
-			<div className="space-y-2">
+			<div className={cn("space-y-2", full)}>
 				<Label htmlFor={fieldId("message")}>Message</Label>
 				<Textarea
 					id={fieldId("message")}
 					placeholder="Tell us about your business and what you'd like to see in the demo..."
 					value={formData.message}
 					onChange={(e) => setFormData({ ...formData, message: e.target.value })}
-					disabled={isSubmitting}
+					disabled={locked}
 					rows={4}
 				/>
 			</div>
 
 			{/* Live region stays mounted: some screen readers skip a region
 			    inserted together with its content. */}
-			<div role="status" aria-live="polite" aria-atomic="true">
+			<div role="status" aria-live="polite" aria-atomic="true" className={full}>
 				{formStatus.type && (
 					<div
 						className={`p-3 rounded-lg text-sm text-foreground border ${
@@ -189,7 +209,7 @@ export function ScheduleDemoForm({
 				)}
 			</div>
 
-			<div className="flex justify-end gap-3 pt-4">
+			<div className={cn("flex justify-end gap-3 pt-4", full)}>
 				{onCancel && (
 					<Button
 						type="button"
@@ -204,7 +224,7 @@ export function ScheduleDemoForm({
 					type="submit"
 					variant="default"
 					disabled={
-						isSubmitting || !formData.name.trim() || !formData.email.trim()
+						locked || !formData.name.trim() || !formData.email.trim()
 					}
 				>
 					{isSubmitting && <Loader2 className="h-4 w-4 animate-spin" />}

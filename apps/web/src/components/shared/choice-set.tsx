@@ -4,7 +4,7 @@ import React from "react";
 import { Check } from "lucide-react";
 
 type Option = {
-	icon: React.ElementType; // pass component directly
+	icon: React.ComponentType<{ className?: string }>; // pass component directly
 	text: string;
 	value: string;
 };

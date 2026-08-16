@@ -1,67 +1,55 @@
-import PageFrame from "@/app/components/landing/page-frame";
-import { SmoothScroll } from "@/app/components/landing/smooth-scroll";
-import { SheetIndicator } from "@/app/components/landing/sheet-indicator";
-import {
-	SheetSection,
-	SheetStack,
-} from "@/app/components/landing/sheet-stack";
-import AppNavbar from "@/app/components/app-navbar";
-import Hero from "@/app/components/landing/hero/hero";
-import { ValueProp } from "@/app/components/landing/value-prop";
-import { FeatureDetail } from "@/app/components/landing/feature-detail/feature-detail";
-import { FeatureChapters } from "@/app/components/landing/feature-chapters";
-import PricingSection from "@/app/components/pricing-section";
-import FAQSection from "@/app/components/faq-section";
-import { FinalCta } from "@/app/components/landing/final-cta";
-import Footer from "@/app/components/footer";
+import { MarketingNav } from "@/app/components/marketing/marketing-nav";
+import { TryIt } from "@/app/components/marketing/sections/try-it";
+import { DuskBand } from "@/app/components/marketing/sections/dusk-band";
+import { Hero } from "@/app/components/marketing/sections/hero";
+import { FieldBand } from "@/app/components/marketing/sections/field-band";
+import { OnePlace } from "@/app/components/marketing/sections/one-place";
+import { Loop } from "@/app/components/marketing/sections/loop";
+import { MoneyTime } from "@/app/components/marketing/sections/money-time";
+import { WhatsInside } from "@/app/components/marketing/sections/whats-inside";
+import { Numbers } from "@/app/components/marketing/sections/numbers";
+import { Compare } from "@/app/components/marketing/sections/compare";
+import { OnTheJob } from "@/app/components/marketing/sections/on-the-job";
+import { Switching } from "@/app/components/marketing/sections/switching";
+import { Pricing } from "@/app/components/marketing/sections/pricing";
+import { Faq } from "@/app/components/marketing/sections/faq";
+import { FinalCta } from "@/app/components/marketing/sections/final-cta";
+import { MarketingFooter } from "@/app/components/marketing/sections/footer";
 
+/**
+ * The landing page — paper-and-ink drafting language, implemented from the
+ * approved design comp (see .planning/landing-redesign-2026-08/DIRECTION.md).
+ * Every section reads its palette from the `.dc-landing` scope in landing.css;
+ * nothing here touches workspace tokens.
+ */
 export default function Home() {
 	return (
-		<SmoothScroll>
-			{/* First focusable element on the page. `data-no-smooth` opts it out of
-			    Lenis' anchor handler, which would preventDefault and eat the focus
-			    move that makes the skip actually skip. */}
+		<div id="top" className="dc-landing min-h-screen overflow-x-clip">
 			<a
 				href="#main-content"
-				data-no-smooth
-				className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[60] focus:inline-flex focus:h-11 focus:items-center focus:rounded-lg focus:border focus:border-border focus:bg-card focus:px-4 focus:text-sm focus:font-medium focus:text-foreground focus:shadow-md focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background"
+				className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[70] focus:inline-flex focus:h-11 focus:items-center focus:rounded-lg focus:border focus:border-(--rule-2) focus:bg-(--sheet) focus:px-4 focus:text-sm focus:font-medium focus:text-(--ink) focus:shadow-(--lp-shadow) focus:outline-none focus:ring-2 focus:ring-(--accent-ink)"
 			>
 				Skip to content
 			</a>
-			<main
-				id="main-content"
-				tabIndex={-1}
-				className="flex-1 overflow-x-clip outline-none"
-			>
-				<PageFrame />
-				<SheetIndicator />
-				<SheetStack>
-					<AppNavbar />
-					<SheetSection code="G-001" title="Cover">
-						<Hero />
-					</SheetSection>
-					<SheetSection code="A-501" title="Features" seam>
-						<ValueProp />
-					</SheetSection>
-					<SheetSection code="A-502" title="Capabilities">
-						<FeatureDetail />
-					</SheetSection>
-					{/* FeatureChapters owns id="how-it-works" itself — never duplicate it here. */}
-					<SheetSection code="A-101" title="How it works">
-						<FeatureChapters />
-					</SheetSection>
-					<SheetSection code="G-002" title="Estimate">
-						<PricingSection />
-					</SheetSection>
-					<SheetSection code="G-003" title="General notes">
-						<FAQSection />
-					</SheetSection>
-					<SheetSection code="G-004" title="Issue">
-						<FinalCta />
-					</SheetSection>
-					<Footer />
-				</SheetStack>
+			<MarketingNav />
+			<main id="main-content" tabIndex={-1} className="outline-none">
+				<Hero />
+				<FieldBand />
+				<OnePlace />
+				<Loop />
+				<TryIt />
+				<MoneyTime />
+				<WhatsInside />
+				<Numbers />
+				<Compare />
+				<OnTheJob />
+				<Switching />
+				<DuskBand />
+				<Pricing />
+				<Faq />
+				<FinalCta />
 			</main>
-		</SmoothScroll>
+			<MarketingFooter />
+		</div>
 	);
 }
