@@ -215,12 +215,30 @@ export const AppFrame: React.FC<{
 						padding: "4px 12px 22px",
 					}}
 				>
-					{/* Wordmark text is navy — swap to mark + fg text on dark surfaces */}
+					{/* Wordmark text is navy — swap to mark + fg text on dark surfaces.
+					    Dimensions are explicit and the source is pre-scaled: the
+					    full-size wordmark is 908px wide for a 176px slot, which
+					    Lighthouse flagged as ~133KB of wasted image bytes on the
+					    landing page. These scenes render in the DOM, so `alt` matters:
+					    the wordmark carries the name, the mark is decorative because
+					    the span beside it already says OneTool. */}
 					{t.name === "light" ? (
-						<Img src={staticFile("OneTool-wordmark.png")} style={{ height: 46 }} />
+						<Img
+							src={staticFile("OneTool-wordmark-sm.webp")}
+							alt="OneTool"
+							width={176}
+							height={46}
+							style={{ height: 46, width: 176 }}
+						/>
 					) : (
 						<>
-							<Img src={staticFile("OneTool-mark.png")} style={{ height: 42 }} />
+							<Img
+								src={staticFile("OneTool-mark.png")}
+								alt=""
+								width={42}
+								height={42}
+								style={{ height: 42, width: 42 }}
+							/>
 							<span style={{ fontWeight: 700, fontSize: 24 }}>OneTool</span>
 						</>
 					)}

@@ -24,6 +24,7 @@ import type { LayoutBodyProps } from "./layouts/layout-body";
 import { ShowcaseBody } from "./layouts/showcase-body";
 import { StorefrontBody } from "./layouts/storefront-body";
 import { DirectoryBody } from "./layouts/directory-body";
+import { SITE_URL } from "@/lib/site-url";
 
 export const CONTACT_FORM_ID = "contact-form-section";
 
@@ -507,7 +508,7 @@ export function CommunityPageView({
 						<p>
 							Powered by{" "}
 							<a
-								href="https://onetool.biz"
+								href={SITE_URL}
 								target="_blank"
 								rel="noopener noreferrer"
 								className="font-medium text-primary transition-colors duration-200 hover:text-primary/80"

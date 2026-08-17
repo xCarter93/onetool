@@ -160,6 +160,8 @@ export function JobStack() {
 				scrollLength={0.6}
 				cardWidth={1080}
 				cardHeight={0.58}
+				fill
+				cardMaxHeight={820}
 				showProgress
 				showCounter
 				onIndexChange={setActive}
@@ -189,16 +191,20 @@ export function JobStack() {
 							</p>
 						</header>
 
-						{/* Life-size chapter canvas: fills the row and crops rather than
-						    shrinking (the 1600×1000 stage keeps product scale). */}
-						<div className="relative overflow-hidden">
+						{/* Chapter canvas, contained rather than cropped. The row is a size
+						    container so the 1600×1000 stage can be sized off BOTH axes:
+						    160cqh is the widest it can be and still fit the row's height
+						    (1600/1000 = 1.6). A fixed min-width here used to force a
+						    675px-tall player into a ~250px row on a laptop, cropping the
+						    topbar and the last rows away. */}
+						<div className="relative overflow-hidden [container-type:size]">
 							<div className="absolute inset-0 flex items-center justify-center">
 								{i >= active - DEPTH && i <= active + 1 ? (
 									<ChapterPlayer
 										featureKey={step.chapter}
 										active={inView && i === active}
 										label={`${step.title} (product animation)`}
-										className="w-full min-w-[860px] max-w-[1100px]"
+										className="w-[min(100cqw,160cqh)]"
 									/>
 								) : null}
 							</div>

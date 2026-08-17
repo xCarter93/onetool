@@ -226,9 +226,14 @@ function LedgerTable({ crew }: { crew: CrewSize }) {
 					</colgroup>
 					<thead>
 						<tr>
-							<td className="px-5 pb-3 pt-5 align-bottom font-mono text-[11px] uppercase tracking-[0.1em] text-(--ink-3)">
+							{/* Corner cell heads the column of row labels — as a <td> it was
+							    the one cell in the grid with no header association. */}
+							<th
+								scope="col"
+								className="px-5 pb-3 pt-5 text-left align-bottom font-mono text-[11px] font-normal uppercase tracking-[0.1em] text-(--ink-3)"
+							>
 								Published rates
-							</td>
+							</th>
 							{VENDORS.map((v) => (
 								<th
 									key={v.key}
