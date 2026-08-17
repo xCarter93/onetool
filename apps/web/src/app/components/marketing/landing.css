@@ -9,13 +9,19 @@
  * Contrast contract: --accent (brand sky) is decorative-only — fills, marks,
  * rails. Text in the accent hue must use --accent-ink (AA on paper in both
  * themes). --ink-3 is timestamps/annotations only, never body copy.
+ *
+ * All three ink steps clear WCAG AA (4.5:1) against --paper AND --sheet in
+ * their own block — --ink-3 carries 11-13px type, so the large-text 3:1 bar
+ * never applies. Do not lighten --ink-3 back toward the comp's value: at
+ * oklch(0.62) it measured 3.4:1 and axe failed 17 nodes. Never stack opacity
+ * on --ink-3 text either; composite alpha eats the margin.
  * ========================================================================== */
 
 .dc-landing {
 	--paper: oklch(0.975 0.002 286);
 	--ink: oklch(0.16 0.008 285.8);
 	--ink-2: oklch(0.47 0.016 285.9);
-	--ink-3: oklch(0.62 0.014 285.9);
+	--ink-3: oklch(0.55 0.014 285.9); /* 4.53:1 on paper, 4.87:1 on sheet */
 	--sheet: oklch(1 0 0);
 	--rule: color-mix(in oklch, var(--ink) 11%, transparent);
 	--rule-2: color-mix(in oklch, var(--ink) 20%, transparent);
@@ -37,7 +43,7 @@
 	--paper: oklch(0.168 0.019 264.665);
 	--ink: oklch(0.985 0 0);
 	--ink-2: oklch(0.705 0.015 286.067);
-	--ink-3: oklch(0.6 0.015 286);
+	--ink-3: oklch(0.62 0.015 286); /* 5.25:1 on paper, 4.87:1 on sheet */
 	--sheet: oklch(0.208 0.014 265);
 	--rule: color-mix(in oklch, var(--ink) 12%, transparent);
 	--rule-2: color-mix(in oklch, var(--ink) 20%, transparent);
@@ -57,7 +63,7 @@
 	--paper: oklch(0.19 0.014 265);
 	--ink: oklch(0.975 0 0);
 	--ink-2: oklch(0.765 0.012 286);
-	--ink-3: oklch(0.615 0.014 286);
+	--ink-3: oklch(0.64 0.014 286); /* 5.48:1 on band paper, 4.94:1 on sheet */
 	--sheet: oklch(0.235 0.015 265);
 	--rule: color-mix(in oklch, #fff 12%, transparent);
 	--rule-2: color-mix(in oklch, #fff 22%, transparent);

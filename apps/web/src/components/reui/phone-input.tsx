@@ -128,6 +128,13 @@ function CountrySelect({
     )
   }, [countryList, searchValue])
 
+  // The trigger's only content is a flag graphic, so it needs an explicit name
+  // — axe reported it as an unnamed button ("button-name", critical).
+  const selectedLabel = useMemo(
+    () => countryList.find((c) => c.value === selectedCountry)?.label,
+    [countryList, selectedCountry]
+  )
+
   return (
     <Combobox
       items={filteredCountries}
@@ -143,6 +150,9 @@ function CountrySelect({
           <Button
             variant="outline"
             size={variant}
+            aria-label={
+              selectedLabel ? `Country: ${selectedLabel}` : "Select country"
+            }
             className={cn(
               "rounded-s-lg rounded-e-none flex gap-1 border-e-0 px-2.5 py-0 leading-none hover:bg-transparent focus:z-10 data-pressed:bg-transparent",
               disabled && "opacity-50"

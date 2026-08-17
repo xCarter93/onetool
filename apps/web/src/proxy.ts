@@ -102,7 +102,10 @@ export const config = {
 		// Skip Next.js internals, the PostHog reverse-proxy path, and all static
 		// files, unless found in search params. `ingest` must be excluded so the
 		// next.config rewrite to PostHog isn't intercepted by Clerk auth.
-		"/((?!_next|ingest(?:/|$)|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest|mp4|webm|mov|mp3|wav)).*)",
+		// `txt|xml` keeps /robots.txt and /sitemap.xml out of Clerk — without them
+		// signed-out crawlers get a 307 to sign-in and can never read either file.
+		// API routes stay protected via the explicit "/(api|trpc)(.*)" entry below.
+		"/((?!_next|ingest(?:/|$)|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest|txt|xml|mp4|webm|mov|mp3|wav)).*)",
 		// Always run for API routes
 		"/(api|trpc)(.*)",
 	],
