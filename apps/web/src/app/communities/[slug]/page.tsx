@@ -7,6 +7,7 @@ import {
 	CommunityPageView,
 	type CommunityPageViewData,
 } from "./community-page-view";
+import { SITE_URL } from "@/lib/site-url";
 
 // PUB-16: public near-static content — cache rendered pages for 60s
 export const revalidate = 60;
@@ -60,19 +61,19 @@ export async function generateMetadata({
 	}
 
 	const ogImage =
-		data.bannerUrl || data.avatarUrl || "https://onetool.biz/og-default.png";
+		data.bannerUrl || data.avatarUrl || `${SITE_URL}/og-default.png`;
 
 	return {
 		title: data.pageTitle,
 		description: data.metaDescription || undefined,
 		// Share-kit links carry ?src tags; this keeps them one page to crawlers.
-		alternates: { canonical: `https://onetool.biz/communities/${slug}` },
+		alternates: { canonical: `${SITE_URL}/communities/${slug}` },
 		openGraph: {
 			title: data.pageTitle,
 			description:
 				data.metaDescription || `${data.pageTitle} - Professional services`,
 			type: "website",
-			url: `https://onetool.biz/communities/${slug}`,
+			url: `${SITE_URL}/communities/${slug}`,
 			images: [{ url: ogImage }],
 		},
 		twitter: {

@@ -16,7 +16,9 @@ export function resolveFromEmail(organization: {
 
 // OneTool brand mark, served from the marketing site's public assets. Used for
 // the "Powered by OneTool" footer lockup on org-branded client emails.
-export const ONETOOL_MARK_URL = "https://onetool.biz/OneTool-mark.png";
+// www, not the apex: the apex 307s to www and some mail clients will not
+// follow a redirect for an image.
+export const ONETOOL_MARK_URL = "https://www.onetool.biz/OneTool-mark.png";
 
 // Two-letter monogram shown when an org hasn't uploaded a logo.
 export function getOrgInitials(name: string): string {
