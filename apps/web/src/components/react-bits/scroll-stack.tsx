@@ -67,6 +67,15 @@ export interface ScrollStackProps {
   cardWidth?: number;
   /** Card height as a fraction of the viewport */
   cardHeight?: number;
+  /**
+   * Let the card box grow into whatever stage height the header leaves over,
+   * treating `cardHeight` as its starting basis rather than its final size.
+   * Cards holding fixed-aspect content (a video, a canvas) can then fit a short
+   * viewport instead of cropping it.
+   */
+  fill?: boolean;
+  /** Ceiling in pixels for a filled card. Ignored unless `fill`. */
+  cardMaxHeight?: number;
   /** Corner radius of the cards in pixels */
   borderRadius?: number;
   /** Perspective depth in pixels used by the turning variants */
@@ -279,6 +288,8 @@ export const ScrollStack = ({
   depth = 3,
   cardWidth = 880,
   cardHeight = 0.68,
+  fill = false,
+  cardMaxHeight,
   borderRadius = 22,
   perspective = 1400,
   showProgress = true,
@@ -435,6 +446,7 @@ export const ScrollStack = ({
 
   const reach = Math.max(0.2, scrollLength);
   const runway = 100 + Math.max(0, count - 1) * reach * 100;
+  const cardBasis = `${clamp(cardHeight, 0.2, 0.95) * 100}vh`;
 
   return (
     <section
@@ -444,7 +456,12 @@ export const ScrollStack = ({
       style={{ height: `${runway}vh` }}
     >
       <div
-        className="sticky top-0 flex h-screen w-full flex-col items-center justify-center overflow-hidden px-4 sm:px-8"
+        className={cn(
+          "sticky top-0 flex h-screen w-full flex-col items-center justify-center overflow-hidden px-4 sm:px-8",
+          // A filled card reaches the stage floor, which is where the rail is
+          // pinned. The centred layout left that gap by accident.
+          fill && (showProgress || showCounter) && "pb-14",
+        )}
         style={{ perspective: `${Math.max(200, perspective)}px` }}
       >
         {/* Sticky always opens a stacking context, so a negative layer here can
@@ -465,10 +482,20 @@ export const ScrollStack = ({
         )}
 
         <div
-          className="relative w-full shrink-0"
+          className={cn("relative w-full", fill ? "min-h-0" : "shrink-0")}
           style={{
             maxWidth: `${Math.max(200, cardWidth)}px`,
-            height: `${clamp(cardHeight, 0.2, 0.95) * 100}vh`,
+            height: cardBasis,
+            // Basis rather than height, so the card claims the stage height the
+            // header does not use. `enter` still keys off the nominal fraction:
+            // a taller card needs LESS offset to clear the viewport, so the
+            // nominal value overshoots, which is the safe direction.
+            ...(fill
+              ? {
+                  flex: `1 1 ${cardBasis}`,
+                  maxHeight: cardMaxHeight ? `${cardMaxHeight}px` : undefined,
+                }
+              : null),
           }}
         >
           {cards.map((card, index) => (
@@ -505,8 +532,10 @@ export const ScrollStack = ({
                 />
               </span>
             )}
+            {/* No opacity on the counter — it inherits an already-quiet
+                tertiary ink, and compositing 60% on top drops it to ~2:1. */}
             {showCounter && (
-              <span className="text-[11px] font-medium tabular-nums tracking-widest opacity-60">
+              <span className="text-[11px] font-medium tabular-nums tracking-widest">
                 {String(lead + 1).padStart(2, "0")} /{" "}
                 {String(count).padStart(2, "0")}
               </span>
