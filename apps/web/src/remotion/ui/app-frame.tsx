@@ -219,7 +219,9 @@ export const AppFrame: React.FC<{
 					    Dimensions are explicit and the source is pre-scaled: the
 					    full-size wordmark is 908px wide for a 176px slot, which
 					    Lighthouse flagged as ~133KB of wasted image bytes on the
-					    landing page. Keep `alt` — these scenes render in the DOM. */}
+					    landing page. These scenes render in the DOM, so `alt` matters:
+					    the wordmark carries the name, the mark is decorative because
+					    the span beside it already says OneTool. */}
 					{t.name === "light" ? (
 						<Img
 							src={staticFile("OneTool-wordmark-sm.webp")}
@@ -232,7 +234,7 @@ export const AppFrame: React.FC<{
 						<>
 							<Img
 								src={staticFile("OneTool-mark.png")}
-								alt="OneTool"
+								alt=""
 								width={42}
 								height={42}
 								style={{ height: 42, width: 42 }}

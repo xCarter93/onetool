@@ -459,8 +459,9 @@ export const ScrollStack = ({
         className={cn(
           "sticky top-0 flex h-screen w-full flex-col items-center justify-center overflow-hidden px-4 sm:px-8",
           // A filled card reaches the stage floor, which is where the rail is
-          // pinned. The centred layout left that gap by accident.
-          fill && (showProgress || showCounter) && "pb-14",
+          // pinned. The centred layout left that gap by accident. Same guard as
+          // the rail itself so a single-card stack does not reserve empty space.
+          fill && (showProgress || showCounter) && count > 1 && "pb-14",
         )}
         style={{ perspective: `${Math.max(200, perspective)}px` }}
       >

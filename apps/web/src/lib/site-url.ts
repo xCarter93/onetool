@@ -10,6 +10,8 @@
  * should come from explicit config — an unconfigured deploy should stay silent
  * rather than advertise production URLs from a preview host.
  */
+// `||`, not `??`: a var present but blank is unconfigured, and an empty
+// SITE_URL would emit relative canonical/OG URLs, which are invalid there.
 export const SITE_URL = (
-	process.env.NEXT_PUBLIC_APP_URL ?? "https://www.onetool.biz"
+	process.env.NEXT_PUBLIC_APP_URL?.trim() || "https://www.onetool.biz"
 ).replace(/\/+$/, "");

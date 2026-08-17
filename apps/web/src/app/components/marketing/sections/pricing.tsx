@@ -124,7 +124,7 @@ function BillingToggle({
 			>
 				Yearly
 				{savingPct > 0 && (
-					<span className="font-medium opacity-75"> · save {savingPct}%</span>
+					<span className="font-medium text-(--ink-3)"> · save {savingPct}%</span>
 				)}
 			</button>
 		</div>
