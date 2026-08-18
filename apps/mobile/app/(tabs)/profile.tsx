@@ -446,16 +446,6 @@ export default function ProfileScreen({
 					<Text style={{ fontSize: 11, fontFamily: fontFamily.regular, color: t.sub }}>
 						OneTool Mobile
 					</Text>
-					<Text
-						style={{
-							fontSize: 11,
-							fontFamily: fontFamily.regular,
-							color: t.sub,
-							marginTop: 4,
-						}}
-					>
-						Version 1.0.0
-					</Text>
 				</View>
 			</ScrollView>
 		</SafeAreaView>
