@@ -142,8 +142,10 @@ export function SignInCard() {
 			if (createdSessionId && setActive) {
 				await setActive({ session: createdSessionId });
 			} else if (Date.now() - startedAt < 1500) {
+				// Copy must stay accurate for a fast human cancel too, which lands in
+				// this same window — "didn't finish" covers both, "couldn't start" lies.
 				setFormError(
-					`${provider === "apple" ? "Apple" : "Google"} sign-in couldn't start. Try again, or sign in with your email.`
+					`${provider === "apple" ? "Apple" : "Google"} sign-in didn't finish. Try again, or sign in with your email.`
 				);
 			}
 		} catch (err) {
