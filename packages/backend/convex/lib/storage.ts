@@ -31,6 +31,9 @@ export const StorageConfig = {
 		"image/gif",
 		"image/webp",
 		"image/svg+xml",
+		// iPhone camera default format
+		"image/heic",
+		"image/heif",
 		// Documents
 		"application/pdf",
 		"application/msword",
