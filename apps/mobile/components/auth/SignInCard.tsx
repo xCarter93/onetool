@@ -1,4 +1,4 @@
-import React, { useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
 	ActivityIndicator,
 	Image,
@@ -8,7 +8,7 @@ import {
 	TextInput,
 	View,
 } from "react-native";
-import { useSignIn } from "@clerk/expo";
+import { useClerk, useSignIn } from "@clerk/expo";
 import { useSignInWithApple } from "@clerk/expo/apple";
 import { useSignInWithGoogle } from "@clerk/expo/google";
 import { LinearGradient } from "expo-linear-gradient";
@@ -28,9 +28,24 @@ type Busy = null | "continue" | "verify" | "resend" | "apple" | "google";
 // first "Continue with Google" work — and users without an org still dead-end
 // at the complete-setup screen, so the 3.1.1 stance holds.
 export function SignInCard() {
+	const clerk = useClerk();
 	const { signIn, fetchStatus } = useSignIn();
 	const { startAppleAuthenticationFlow } = useSignInWithApple();
 	const { startGoogleAuthenticationFlow } = useSignInWithGoogle();
+
+	// Clerk recreates the SSO flow functions each render, and each closes over
+	// that render's isLoaded. A tap that waits out the bootstrap must call the
+	// LATEST function, not the stale not-yet-loaded one it captured at tap time.
+	const ssoFlowsRef = useRef({
+		apple: startAppleAuthenticationFlow,
+		google: startGoogleAuthenticationFlow,
+	});
+	useEffect(() => {
+		ssoFlowsRef.current = {
+			apple: startAppleAuthenticationFlow,
+			google: startGoogleAuthenticationFlow,
+		};
+	});
 
 	const [step, setStep] = useState<"start" | "code">("start");
 	const [email, setEmail] = useState("");
@@ -98,19 +113,38 @@ export function SignInCard() {
 		}
 	};
 
+	// Clerk's native SSO hooks silently return { createdSessionId: null } if the
+	// client hasn't bootstrapped yet (App Review hit this as a "dead" button), so
+	// hold the tap until it loads instead of dropping it.
+	const waitForClerk = async () => {
+		const deadline = Date.now() + 10_000;
+		while (!clerk.loaded && Date.now() < deadline) {
+			await new Promise((resolve) => setTimeout(resolve, 250));
+		}
+		return clerk.loaded;
+	};
+
 	const ssoSignIn = async (provider: "apple" | "google") => {
-		if (locked) return;
+		if (busy !== null) return;
 		setBusy(provider);
 		setFormError(null);
 		try {
+			if (!(await waitForClerk())) {
+				setFormError("Couldn't connect. Check your connection and try again.");
+				return;
+			}
 			// Both flows resolve with a null session id when the user cancels the
-			// native sheet — say nothing in that case. Real failures throw.
-			const { createdSessionId, setActive } =
-				provider === "apple"
-					? await startAppleAuthenticationFlow()
-					: await startGoogleAuthenticationFlow();
+			// native sheet. Real failures throw — except sheet-presentation failures,
+			// which iOS also reports as "canceled". Disambiguate by elapsed time: a
+			// near-instant null means the sheet never presented.
+			const startedAt = Date.now();
+			const { createdSessionId, setActive } = await ssoFlowsRef.current[provider]();
 			if (createdSessionId && setActive) {
 				await setActive({ session: createdSessionId });
+			} else if (Date.now() - startedAt < 1500) {
+				setFormError(
+					`${provider === "apple" ? "Apple" : "Google"} sign-in couldn't start. Try again, or sign in with your email.`
+				);
 			}
 		} catch (err) {
 			setFormError(err instanceof Error ? err.message : "Sign-in failed.");
@@ -249,12 +283,14 @@ export function SignInCard() {
 				<Text style={styles.dividerLabel}>or</Text>
 				<View style={styles.dividerLine} />
 			</View>
+			{/* SSO stays tappable while Clerk loads (ssoSignIn waits internally) —
+			    only an in-flight flow disables it. */}
 			<Pressable
 				onPress={() => void ssoSignIn("apple")}
-				disabled={locked}
+				disabled={busy !== null}
 				accessibilityRole="button"
 				accessibilityLabel="Continue with Apple"
-				style={({ pressed }) => [styles.provider, (pressed || locked) && styles.dimmed]}
+				style={({ pressed }) => [styles.provider, (pressed || busy !== null) && styles.dimmed]}
 			>
 				{busy === "apple" ? (
 					<ActivityIndicator color={hero.text} />
@@ -267,10 +303,10 @@ export function SignInCard() {
 			</Pressable>
 			<Pressable
 				onPress={() => void ssoSignIn("google")}
-				disabled={locked}
+				disabled={busy !== null}
 				accessibilityRole="button"
 				accessibilityLabel="Continue with Google"
-				style={({ pressed }) => [styles.provider, (pressed || locked) && styles.dimmed]}
+				style={({ pressed }) => [styles.provider, (pressed || busy !== null) && styles.dimmed]}
 			>
 				{busy === "google" ? (
 					<ActivityIndicator color={hero.text} />
