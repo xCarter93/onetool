@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import {
 	ActivityIndicator,
 	Image,
+	Linking,
 	Pressable,
 	StyleSheet,
 	Text,
@@ -319,6 +320,35 @@ export function SignInCard() {
 					</>
 				)}
 			</Pressable>
+			{/* Sign-in-wrap assent: Clerk's express-consent checkbox is off (native
+			    token sign-ups can't render it), so this notice carries agreement. */}
+			<Text style={styles.legal}>
+				By continuing, you agree to our{" "}
+				<Text
+					style={styles.legalLink}
+					accessibilityRole="link"
+					onPress={() =>
+						void Linking.openURL(
+							"https://www.onetool.biz/terms-of-service"
+						).catch(() => {})
+					}
+				>
+					Terms of Service
+				</Text>{" "}
+				and{" "}
+				<Text
+					style={styles.legalLink}
+					accessibilityRole="link"
+					onPress={() =>
+						void Linking.openURL(
+							"https://www.onetool.biz/privacy-policy"
+						).catch(() => {})
+					}
+				>
+					Privacy Policy
+				</Text>
+				.
+			</Text>
 		</View>
 	);
 }
@@ -458,5 +488,18 @@ const styles = StyleSheet.create({
 		fontFamily: fontFamily.medium,
 		fontSize: 13,
 		color: hero.textMid,
+	},
+	legal: {
+		fontFamily: fontFamily.regular,
+		fontSize: 11.5,
+		color: hero.textSub,
+		textAlign: "center",
+		lineHeight: 17,
+		marginTop: 8,
+	},
+	legalLink: {
+		fontFamily: fontFamily.medium,
+		color: hero.textMid,
+		textDecorationLine: "underline",
 	},
 });

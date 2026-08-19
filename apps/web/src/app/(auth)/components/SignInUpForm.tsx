@@ -5,6 +5,7 @@ import { dark } from "@clerk/themes";
 import { useTheme } from "next-themes";
 import { AnimatePresence, motion, type Transition } from "framer-motion";
 import Image from "next/image";
+import Link from "next/link";
 import { AuthGridBackground } from "@/components/blocks/auth-6/components/auth-grid-background";
 
 const BASE_TRANSITION: Transition = { ease: "anticipate", duration: 0.5 };
@@ -80,6 +81,26 @@ export function SignInUpForm({ mode }: SignInUpFormProps) {
 							)}
 						</motion.div>
 					</AnimatePresence>
+					{/* Sign-in-wrap assent: Clerk's express-consent checkbox is off
+					    (native mobile sign-ups can't render it), so this notice
+					    carries agreement on web too. */}
+					<p className="text-muted-foreground mt-6 text-center text-xs">
+						By continuing, you agree to our{" "}
+						<Link
+							href="/terms-of-service"
+							className="hover:text-foreground underline underline-offset-2"
+						>
+							Terms of Service
+						</Link>{" "}
+						and{" "}
+						<Link
+							href="/privacy-policy"
+							className="hover:text-foreground underline underline-offset-2"
+						>
+							Privacy Policy
+						</Link>
+						.
+					</p>
 				</div>
 			</section>
 
