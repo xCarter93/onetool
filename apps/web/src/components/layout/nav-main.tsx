@@ -35,7 +35,6 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { TaskSheet } from "@/components/shared/task-sheet";
-import { useToast } from "@/hooks/use-toast";
 import { useCreateRecord } from "@/components/domain/create-record-provider";
 import {
 	Tooltip,
@@ -130,42 +129,24 @@ export function NavMain({
 	groups,
 	showQuickActions = true,
 	quickActionAccess = DEFAULT_QUICK_ACTION_ACCESS,
-	canCreateClient = true,
-	clientLimitReason,
-	clientCurrentUsage,
-	clientLimit,
 }: {
 	groups: NavGroup[];
 	showQuickActions?: boolean;
 	quickActionAccess?: QuickActionAccess;
-	canCreateClient?: boolean;
-	clientLimitReason?: string;
-	clientCurrentUsage?: number;
-	clientLimit?: number | "unlimited";
 }) {
 	const [openQuickActions, setOpenQuickActions] = React.useState(false);
 	const [taskSheetOpen, setTaskSheetOpen] = React.useState(false);
 	const isMobile = useIsMobile();
 	const { state: sidebarState } = useSidebar();
 	const isCollapsed = sidebarState === "collapsed";
-	const toast = useToast();
 	const openCreate = useCreateRecord();
 	const openTimerRef = React.useRef<number | null>(null);
 	const closeTimerRef = React.useRef<number | null>(null);
 	
-	const handleNewClientClick = React.useCallback((e: React.MouseEvent) => {
-		if (!canCreateClient) {
-			e.preventDefault();
-			toast.error(
-				"Upgrade Required",
-				clientLimitReason || "You've reached your client limit"
-			);
-			setOpenQuickActions(false);
-			return;
-		}
+	const handleNewClientClick = React.useCallback(() => {
 		setOpenQuickActions(false);
 		openCreate({ type: "client" });
-	}, [canCreateClient, clientLimitReason, toast, openCreate]);
+	}, [openCreate]);
 
 	const handleOpenChange = React.useCallback((open: boolean) => {
 		// Clear any pending timers
@@ -276,11 +257,7 @@ export function NavMain({
 										Create new
 									</p>
 									<div className="flex flex-col gap-0.5">
-										{/* New Client is gated by plan limits. When allowed it opens the
-										    create dialog like the others; when gated it becomes a disabled
-										    button hosting the upgrade tooltip — a disabled control can't act
-										    as the menu item / tooltip trigger, so it needs the extra wrapper. */}
-										{quickActionAccess.client && (canCreateClient ? (
+										{quickActionAccess.client && (
 											<DropdownMenuItem
 												render={
 													<div className={cn(quickActionRowClass, "cursor-pointer")} />
@@ -294,49 +271,7 @@ export function NavMain({
 													description="Add a new client to your workspace"
 												/>
 											</DropdownMenuItem>
-										) : (
-											<Tooltip>
-												<TooltipTrigger
-													render={
-														<DropdownMenuItem
-															className="p-0 focus:bg-transparent"
-															onClick={(e) => {
-																e.preventDefault();
-																handleNewClientClick(e as unknown as React.MouseEvent);
-															}}
-														/>
-													}
-												>
-													<button
-														type="button"
-														disabled
-														className={cn(
-															quickActionRowClass,
-															"cursor-not-allowed opacity-50 hover:bg-transparent"
-														)}
-													>
-														<QuickActionContent
-															glyph="client"
-															title="New Client"
-															description="Add a new client to your workspace"
-														/>
-													</button>
-												</TooltipTrigger>
-												<TooltipContent>
-													<div className="space-y-1">
-														<p className="font-semibold">Upgrade Required</p>
-														<p>{clientLimitReason || "You've reached your client limit"}</p>
-														{clientLimit &&
-															clientLimit !== "unlimited" &&
-															clientCurrentUsage !== undefined && (
-															<p className="text-muted-foreground">
-																{clientCurrentUsage}/{clientLimit} clients
-															</p>
-														)}
-													</div>
-												</TooltipContent>
-											</Tooltip>
-										))}
+										)}
 										{quickActionAccess.project && (
 											<DropdownMenuItem
 												render={

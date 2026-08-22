@@ -41,11 +41,9 @@ import {
 } from "@/components/layout/nav-config";
 import { usePermissions } from "@/hooks/use-permissions";
 import { useAuth } from "@clerk/nextjs";
-import { useEntitlements } from "@/hooks/use-entitlements";
 import { useRoleAccess } from "@/hooks/use-role-access";
 import { useFeatureFlagEnabled } from "posthog-js/react";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
-import { useToast } from "@/hooks/use-toast";
 
 type GlobalSearchResult = FunctionReturnType<typeof api.search.globalSearch>;
 type TaskHit = GlobalSearchResult["tasks"][number];
@@ -82,7 +80,6 @@ export function CommandPaletteProvider({
 	children: React.ReactNode;
 }) {
 	const router = useRouter();
-	const toast = useToast();
 	const openCreate = useCreateRecord();
 	const [open, setOpen] = React.useState(false);
 	const [query, setQuery] = React.useState("");
@@ -96,21 +93,11 @@ export function CommandPaletteProvider({
 	} = usePermissions();
 	const { orgId } = useAuth();
 	const hasOrganization = !!orgId;
-	const { meter } = useEntitlements();
 	const { isAdmin, isMember } = useRoleAccess();
 	const isCommunityEnabled = useFeatureFlagEnabled("community-pages-access");
 	const isAutomationsEnabled = useFeatureFlagEnabled(
 		"workflow-automation-access",
 	);
-	const clientsMeter = meter("clients");
-	const atClientLimit =
-		!!clientsMeter &&
-		clientsMeter.remaining !== null &&
-		clientsMeter.remaining <= 0;
-	const canCreateClient = !atClientLimit;
-	const clientLimitReason = atClientLimit
-		? `You've reached your limit of ${clientsMeter.limit} clients. Upgrade to add more.`
-		: undefined;
 
 	React.useEffect(() => {
 		const onKeyDown = (event: KeyboardEvent) => {
@@ -178,16 +165,7 @@ export function CommandPaletteProvider({
 			key: "client",
 			label: "New client",
 			visible: permissionsLoading ? isAdmin : can("clients", "modify"),
-			run: () => {
-				if (!canCreateClient) {
-					toast.error(
-						clientLimitReason ??
-							"You've reached your client limit. Upgrade to add more.",
-					);
-					return;
-				}
-				openCreate({ type: "client" });
-			},
+			run: () => openCreate({ type: "client" }),
 		},
 		{
 			key: "project",

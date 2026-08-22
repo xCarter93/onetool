@@ -18,6 +18,7 @@ import {
 	CreditCard,
 	FileText,
 	Landmark,
+	Lock,
 	ShieldAlert,
 } from "lucide-react";
 
@@ -147,15 +148,19 @@ function IntegrationConnectorBand({
 	leftIcon: LeftIcon,
 	rightIcon: RightIcon,
 	status,
+	locked = false,
 }: {
 	brand: ReactNode;
 	leftIcon: ComponentType<{ className?: string }>;
 	rightIcon: ComponentType<{ className?: string }>;
 	status: ReactNode;
+	/** Plan-gated: dims the diagram and locks the brand mark. The plan badge and
+	    description in the header carry the meaning; this overlay is decorative. */
+	locked?: boolean;
 }) {
 	return (
 		<div className="relative isolate overflow-hidden border-b border-border bg-muted/40 px-6 py-6">
-			<div aria-hidden="true">
+			<div aria-hidden="true" className={locked ? "opacity-55" : undefined}>
 				<DotField className="text-muted-foreground [mask-image:radial-gradient(86%_76%_at_50%_46%,black,transparent)]" />
 				<div className="relative z-10 flex items-center justify-center">
 					<div className={`size-10 ${CONNECTOR_TILE}`}>
@@ -169,6 +174,18 @@ function IntegrationConnectorBand({
 					</div>
 				</div>
 			</div>
+			{locked && (
+				// Centered on the band = centered on the brand tile (the diagram is
+				// symmetric), so the scrim sits exactly over the brand mark.
+				<span
+					aria-hidden="true"
+					className="absolute inset-0 z-20 flex items-center justify-center"
+				>
+					<span className="flex size-13 items-center justify-center rounded-xl bg-background/60 backdrop-blur-[1px]">
+						<Lock className="size-5 text-foreground" />
+					</span>
+				</span>
+			)}
 			<div className="absolute right-3 top-3 z-10">{status}</div>
 		</div>
 	);
@@ -476,6 +493,7 @@ export function IntegrationsTab() {
 						brand={<QuickBooksMark className="size-7" />}
 						leftIcon={FileText}
 						rightIcon={Banknote}
+						locked={qboEnabled && qboPlanLocked && !isConnected}
 						status={
 							<IntegrationStatusIcon
 								tone={

@@ -15,6 +15,7 @@ import {
 	type NodeMouseHandler,
 } from "@xyflow/react";
 import { Trash2 } from "lucide-react";
+import { useTheme } from "next-themes";
 import { cn } from "@/lib/utils";
 import { HoveredEdgeContext } from "./edge-hover-context";
 import { ZoomSlider } from "@/components/zoom-slider";
@@ -130,6 +131,10 @@ function AutomationFlowInner({
 	configPanelOpen,
 }: AutomationFlowProps) {
 	const { fitView, setCenter } = useReactFlow();
+	// React Flow defaults to colorMode="light", stamping `.light` on its
+	// container — which re-resolves the app's .light theme tokens over the
+	// whole canvas subtree in dark mode. Keep it synced to the real theme.
+	const { resolvedTheme } = useTheme();
 	const [nodes, setNodes, onNodesChange] = useNodesState(incomingNodes);
 	const [edges, setEdges, onEdgesChange] = useEdgesState(incomingEdges);
 	const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
@@ -408,6 +413,7 @@ function AutomationFlowInner({
 	return (
 		<HoveredEdgeContext.Provider value={validHoveredEdgeId}>
 			<ReactFlow
+				colorMode={resolvedTheme === "dark" ? "dark" : "light"}
 				nodes={nodes}
 				edges={edges}
 				onNodesChange={onNodesChange}

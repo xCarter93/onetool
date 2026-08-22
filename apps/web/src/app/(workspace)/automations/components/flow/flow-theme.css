@@ -6,7 +6,12 @@
  * automatically between light and dark.
  */
 
-.react-flow {
+/* The .light/.dark selectors match React Flow's own colorMode class (set from
+   the app theme in automation-flow.tsx) at the same specificity as its built-in
+   `.react-flow.dark` rules, so these token-driven values keep winning. */
+.react-flow,
+.react-flow.light,
+.react-flow.dark {
 	/* Canvas paint. In light this matches the workspace paper; nodes lift via
 	   their own lighter card + border. */
 	background-color: var(--background);
