@@ -68,7 +68,7 @@ const faqs = [
 	{
 		question: "What happens if I need to cancel my subscription?",
 		answer:
-			"You can cancel your subscription at any time with no penalties. Your data remains accessible for 30 days after cancellation, giving you time to export everything you need. We also offer a full refund within the first 14 days if OneTool isn't the right fit for you.",
+			"You can cancel your subscription at any time, and you keep paid features until the end of your current billing period. Cancelling never deletes anything: your account simply continues on the free plan with all of your data intact, for as long as you keep it. Subscription fees are generally non-refundable, but we always correct genuine billing errors, and EU customers have a 14-day withdrawal right on their initial purchase.",
 	},
 ];
 
