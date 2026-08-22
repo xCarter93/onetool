@@ -8,7 +8,11 @@ import type { Doc, Id } from "./_generated/dataModel";
 import { userMutation, userQuery } from "./lib/factories";
 import type { UserMutationCtx, UserQueryCtx } from "./lib/factories";
 import { getCurrentUserOrThrow } from "./lib/auth";
-import { hasPremiumAccess } from "./lib/permissions";
+import {
+	entitlementsFromIdentity,
+	isFeatureAllowed,
+	requireFeature,
+} from "./lib/entitlements";
 
 /**
  * One-time QBO→OneTool customer import (PRD §7).
@@ -46,11 +50,7 @@ async function requireOrgOwner(ctx: UserMutationCtx): Promise<void> {
 }
 
 async function requirePremium(ctx: UserMutationCtx): Promise<void> {
-	if (!(await hasPremiumAccess(ctx))) {
-		throw new ConvexError(
-			"QuickBooks sync is available on the Business plan. Upgrade to use it."
-		);
-	}
+	await requireFeature(ctx, "quickbooks");
 }
 
 // ============================================================================
@@ -183,7 +183,7 @@ export const startRun = internalMutation({
 		if (organization.ownerUserId !== user._id) {
 			throw new ConvexError("not_owner");
 		}
-		if (!(await hasPremiumAccess(ctx))) {
+		if (!isFeatureAllowed((await entitlementsFromIdentity(ctx)).plan, "quickbooks")) {
 			throw new ConvexError("not_premium");
 		}
 
@@ -1219,7 +1219,7 @@ export const discardImportRun = userMutation({
 export const getImportRun = userQuery({
 	args: {},
 	handler: async (ctx): Promise<Doc<"quickbooksImportRuns"> | null> => {
-		if (!(await hasPremiumAccess(ctx))) {
+		if (!isFeatureAllowed((await entitlementsFromIdentity(ctx)).plan, "quickbooks")) {
 			return null;
 		}
 		return await ctx.db
@@ -1255,7 +1255,7 @@ export const listImportRows = userQuery({
 			isDone: true,
 			continueCursor: "",
 		};
-		if (!(await hasPremiumAccess(ctx))) {
+		if (!isFeatureAllowed((await entitlementsFromIdentity(ctx)).plan, "quickbooks")) {
 			return empty;
 		}
 		const run = await ctx.db.get(args.runId);
@@ -1318,7 +1318,7 @@ export type AmbiguousImportRow = {
 export const listAmbiguousRows = userQuery({
 	args: { runId: v.id("quickbooksImportRuns") },
 	handler: async (ctx: UserQueryCtx, args): Promise<AmbiguousImportRow[]> => {
-		if (!(await hasPremiumAccess(ctx))) {
+		if (!isFeatureAllowed((await entitlementsFromIdentity(ctx)).plan, "quickbooks")) {
 			return [];
 		}
 		const run = await ctx.db.get(args.runId);

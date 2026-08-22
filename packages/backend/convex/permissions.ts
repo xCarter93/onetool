@@ -12,10 +12,10 @@ import { getMembership, listMembershipsByOrg } from "./lib/memberships";
 import {
 	getEffectivePermissions,
 	getEffectivePermissionsFor,
-	hasPremiumAccess as checkPremiumAccess,
 	isAdminRole,
 	type EffectivePermissions,
 } from "./lib/permissions";
+import { entitlementsFromIdentity } from "./lib/entitlements";
 import {
 	DEFAULT_MEMBER_PERMISSIONS,
 	isPermissionObject,
@@ -177,12 +177,15 @@ export const myPermissions = optionalUserQuery({
 /**
  * Whether the caller has premium (plan or metadata override) access.
  * False — never a throw — for unauthenticated callers or users without an org.
+ * Mobile-pinned frozen alias: path, args, and boolean semantics must never
+ * change. Now resolved through the entitlement layer, which adds the
+ * trial/grace windows on top of the legacy slug+override check.
  */
 export const hasPremiumAccess = optionalUserQuery({
 	args: {},
 	handler: async (ctx): Promise<boolean> => {
 		if (!ctx.user) return false;
-		return await checkPremiumAccess(ctx);
+		return (await entitlementsFromIdentity(ctx)).plan === "business";
 	},
 });
 

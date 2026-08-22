@@ -7,7 +7,7 @@ import {
 } from "./lib/factories";
 import { ActivityHelpers } from "./lib/activities";
 import { getMembership } from "./lib/memberships";
-import { hasPremiumAccess } from "./lib/permissions";
+import { requireFeature } from "./lib/entitlements";
 import { emptyListResult } from "./lib/queries";
 
 /**
@@ -18,9 +18,6 @@ import { emptyListResult } from "./lib/queries";
  * Mapbox lives in routingActions.ts — mutations here clear stale computed
  * results whenever route inputs change.
  */
-
-const PREMIUM_REQUIRED_MESSAGE =
-	"Route planning is available on the Business plan. Upgrade to use it.";
 
 /** Directions API allows 25 coordinates: start + stops + return-to-start. */
 export const MAX_STOPS = 23;
@@ -102,9 +99,7 @@ async function assertValidStops(
 }
 
 async function requirePremium(ctx: UserMutationCtx): Promise<void> {
-	if (!(await hasPremiumAccess(ctx))) {
-		throw new Error(PREMIUM_REQUIRED_MESSAGE);
-	}
+	await requireFeature(ctx, "routing");
 }
 
 /** A route may only be assigned to a member of the calling org. */

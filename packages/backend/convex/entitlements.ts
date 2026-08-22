@@ -1,6 +1,7 @@
 import { optionalUserQuery } from "./lib/factories";
 import {
 	FEATURES,
+	METERS,
 	entitlementsFromDocs,
 	entitlementsFromIdentity,
 	getMeterUsage,
@@ -10,6 +11,7 @@ import {
 	type PlanSource,
 	type PlanTier,
 } from "./lib/entitlements";
+import { countCountedClients } from "./lib/planCaps";
 import { computeEsignaturesSentThisMonth } from "./usage";
 
 export interface MyEntitlements {
@@ -54,26 +56,31 @@ export const getMine = optionalUserQuery({
 				: entitlementsFromDocs(org, ctx.user);
 
 		const meters: MeterUsage[] = [];
-		// E-signatures still count from the documents table (the planUsage
-		// store takes over when the send meter wires up at P5).
 		if (org) {
+			// E-signatures still count from the documents table (the planUsage
+			// store takes over when the send meter wires up at P5).
 			const esigUsed = await computeEsignaturesSentThisMonth(
 				ctx,
 				org,
 				ctx.orgId
 			);
-			const esig = await getMeterUsage(
-				ctx,
-				ctx.orgId,
-				"esignatures",
-				resolved.plan
+			meters.push(
+				await getMeterUsage(ctx, ctx.orgId, "esignatures", resolved.plan, {
+					usedOverride: esigUsed,
+				})
 			);
-			meters.push({
-				...esig,
-				used: esigUsed,
-				remaining:
-					esig.limit === null ? null : Math.max(0, esig.limit - esigUsed),
-			});
+
+			// Clients count from the same live query the cap enforcement uses
+			// (planCaps). The count is clamped at the free cap — enough for every
+			// display, and it keeps the read bounded on unlimited plans.
+			const clientCap = METERS.clients.free ?? 0;
+			const clientsUsed =
+				clientCap > 0 ? await countCountedClients(ctx, ctx.orgId, clientCap) : 0;
+			meters.push(
+				await getMeterUsage(ctx, ctx.orgId, "clients", resolved.plan, {
+					usedOverride: clientsUsed,
+				})
+			);
 		}
 
 		return {

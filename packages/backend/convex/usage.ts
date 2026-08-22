@@ -1,10 +1,7 @@
-import { query, type QueryCtx } from "./_generated/server";
-import { mutation, internalMutation } from "./lib/triggers";
-import { v } from "convex/values";
+import type { QueryCtx } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
-import { getCurrentUserOrgId } from "./lib/auth";
 import { getOptionalOrgId } from "./lib/queries";
-import { optionalUserQuery, systemMutation, userMutation } from "./lib/factories";
+import { optionalUserQuery, systemMutation } from "./lib/factories";
 
 /**
  * Usage tracking for plan limits
@@ -125,80 +122,6 @@ export const getCurrentUsage = optionalUserQuery({
 });
 
 /**
- * Check if a specific action is allowed based on limits
- */
-export const checkLimit = optionalUserQuery({
-	args: {
-		limitType: v.union(
-			v.literal("clients"),
-			v.literal("projects"),
-			v.literal("esignatures")
-		),
-		clientId: v.optional(v.id("clients")), // For project limit checks
-	},
-	handler: async (ctx, args) => {
-		const userOrgId = await getOptionalOrgId(ctx);
-
-		if (!userOrgId) {
-			return { allowed: false, reason: "No organization" };
-		}
-
-		// Get current usage - we need to recompute it here
-		const organization = await ctx.db.get(userOrgId);
-		if (!organization) {
-			return { allowed: false, reason: "Organization not found" };
-		}
-
-		// Count clients
-		const clients = await ctx.db
-			.query("clients")
-			.withIndex("by_org", (q) => q.eq("orgId", userOrgId))
-			.collect();
-
-		const activeClients = clients.filter(
-			(client) => client.status !== "archived"
-		);
-
-		const usage = {
-			clientsCount: activeClients.length,
-			activeProjectsPerClient: {} as Record<string, number>,
-			esignaturesSentThisMonth:
-				organization.usageTracking?.esignaturesSentThisMonth || 0,
-		};
-
-		// Note: The actual limit checking happens on the client side
-		// by comparing with plan limits from Clerk's has() check.
-		// This query just provides the current usage numbers.
-
-		switch (args.limitType) {
-			case "clients":
-				return {
-					allowed: true,
-					currentUsage: usage.clientsCount,
-				};
-
-			case "projects":
-				if (!args.clientId) {
-					return { allowed: false, reason: "Client ID required" };
-				}
-				return {
-					allowed: true,
-					currentUsage: usage.activeProjectsPerClient[args.clientId] || 0,
-				};
-
-			case "esignatures":
-				return {
-					allowed: true,
-					currentUsage: usage.esignaturesSentThisMonth,
-				};
-
-			default:
-				return { allowed: false, reason: "Unknown limit type" };
-		}
-	},
-});
-
-/**
  * Increment e-signature count when a document is sent
  * Called from BoldSign webhook handler
  */
@@ -248,35 +171,5 @@ export const incrementEsignatureCount = systemMutation({
 				},
 			});
 		}
-	},
-});
-
-/**
- * Update client count in usage tracking
- * Called when clients are created or deleted
- */
-export const updateClientCount = userMutation({
-	args: {
-		orgId: v.id("organizations"),
-		delta: v.number(), // +1 for create, -1 for delete
-	},
-	handler: async (ctx, args) => {
-		const organization = await ctx.db.get(args.orgId);
-		if (!organization) {
-			return;
-		}
-
-		const currentCount = organization.usageTracking?.clientsCount || 0;
-		const newCount = Math.max(0, currentCount + args.delta);
-
-		await ctx.db.patch(args.orgId, {
-			usageTracking: {
-				clientsCount: newCount,
-				esignaturesSentThisMonth:
-					organization.usageTracking?.esignaturesSentThisMonth || 0,
-				lastEsignatureReset:
-					organization.usageTracking?.lastEsignatureReset || Date.now(),
-			},
-		});
 	},
 });

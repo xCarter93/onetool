@@ -9,13 +9,10 @@ import { getCurrentUser, getCurrentUserOrgId } from "./lib/auth";
 import {
 	denyPermission,
 	hasAllRecords,
-	hasPremiumAccess,
 	requireLevel,
 } from "./lib/permissions";
-import {
-	computeEsignaturesSentThisMonth,
-	FREE_ESIGNATURES_PER_MONTH,
-} from "./usage";
+import { METERS, entitlementsFromIdentity } from "./lib/entitlements";
+import { computeEsignaturesSentThisMonth } from "./usage";
 
 // ============================================================================
 // Internal Helper Functions
@@ -216,9 +213,10 @@ export const getEmbeddedRequestContext = internalQuery({
 		// Server-side monthly e-sig cap (the real enforcement boundary).
 		const organization = await ctx.db.get(orgId);
 		if (!organization) throw new Error("Organization not found");
-		const limit = (await hasPremiumAccess(ctx))
-			? null
-			: FREE_ESIGNATURES_PER_MONTH;
+		const esigRow = METERS.esignatures;
+		const limit = esigRow.enforce
+			? esigRow[(await entitlementsFromIdentity(ctx)).plan]
+			: null;
 		const used = await computeEsignaturesSentThisMonth(ctx, organization, orgId);
 
 		const quoteLabel = quote.quoteNumber || quote._id.slice(-6);

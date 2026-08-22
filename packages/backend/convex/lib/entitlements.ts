@@ -88,7 +88,10 @@ export type FeatureKey =
 	| "quickbooks"
 	| "llmCsvImport"
 	| "scheduledAutomationRuns"
-	| "automationEmails";
+	| "automationEmails"
+	| "customSkus"
+	| "orgDocuments"
+	| "stripeConnect";
 
 export type MeterKey =
 	| "esignatures"
@@ -122,6 +125,12 @@ export const FEATURES: Record<FeatureKey, SwitchRow> = {
 	llmCsvImport: businessSwitch({ type: "soft" }),
 	scheduledAutomationRuns: businessSwitch({ type: "soft" }),
 	automationEmails: businessSwitch({ type: "soft" }),
+	// UI-lock-only rows: the backend never enforces these (payments/SKUs/docs
+	// have no server gate by design); they drive the web nav/tab locks that
+	// P1 migrated off hand-flags. P3 flips them free.
+	customSkus: businessSwitch({ type: "soft" }),
+	orgDocuments: businessSwitch({ type: "soft" }),
+	stripeConnect: businessSwitch({ type: "soft" }),
 };
 
 export const METERS: Record<MeterKey, MeterRow> = {
@@ -373,17 +382,23 @@ export interface MeterUsage {
 	resetsAt: number | null;
 }
 
-/** Usage from the planUsage store for the given plan tier. */
+/**
+ * Usage from the planUsage store for the given plan tier. `usedOverride`
+ * substitutes an externally-computed tally for meters whose counts don't live
+ * in planUsage yet (e-signatures from the documents table, clients from the
+ * live cap-count query).
+ */
 export async function getMeterUsage(
 	ctx: QueryCtx | MutationCtx,
 	orgId: Id<"organizations">,
 	key: MeterKey,
 	plan: PlanTier,
-	now: number = Date.now()
+	options?: { now?: number; usedOverride?: number }
 ): Promise<MeterUsage> {
+	const now = options?.now ?? Date.now();
 	const row = METERS[key];
 	const usage = await getUsageRow(ctx, orgId, key, now);
-	const used = usage?.used ?? 0;
+	const used = options?.usedOverride ?? usage?.used ?? 0;
 	const base = row[plan];
 	const limit = base === null ? null : base + (usage?.bonus ?? 0);
 	return {
@@ -405,11 +420,11 @@ export async function requireMeter(
 	orgId: Id<"organizations">,
 	key: MeterKey,
 	plan: PlanTier,
-	now: number = Date.now()
+	options?: { now?: number; usedOverride?: number }
 ): Promise<void> {
 	const row = METERS[key];
 	if (!row.enforce) return;
-	const { limit, used } = await getMeterUsage(ctx, orgId, key, plan, now);
+	const { limit, used } = await getMeterUsage(ctx, orgId, key, plan, options);
 	if (limit === null || used < limit) return;
 	throw new ConvexError({
 		code: PLAN_LIMIT_ERROR_CODE,

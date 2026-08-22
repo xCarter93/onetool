@@ -13,7 +13,7 @@ import {
 	getFieldDefinition,
 	isCreatableObjectType,
 } from "../fieldRegistry";
-import { orgHasPremiumPlan, userHasPremiumOverride } from "../permissions";
+import { entitlementsFromDocs, isFeatureAllowed } from "../entitlements";
 import { AUTOMATION_EMAIL_DAILY_CAP, rateLimiter } from "../../rateLimits";
 import { getMembership } from "../memberships";
 import {
@@ -302,7 +302,7 @@ async function dryCreateRecordAction(
 	if (!built.ok) return { success: false, error: built.error };
 
 	const org = await ctx.db.get(env.orgId);
-	if (!orgHasPremiumPlan(org)) {
+	if (entitlementsFromDocs(org).plan !== "business") {
 		const capError = await checkCreateRecordPlanCap(
 			ctx,
 			objectType,
@@ -547,9 +547,11 @@ async function dryExecuteAction(
 		}
 		case "send_email": {
 			const org = await ctx.db.get(env.orgId);
-			const premium =
-				orgHasPremiumPlan(org) ||
-				userHasPremiumOverride(await ctx.db.get(env.createdBy));
+			const creator = await ctx.db.get(env.createdBy);
+			const premium = isFeatureAllowed(
+				entitlementsFromDocs(org, creator).plan,
+				"automationEmails"
+			);
 			if (!premium) {
 				return {
 					success: true,

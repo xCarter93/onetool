@@ -12,12 +12,9 @@ import { action, internalQuery } from "./_generated/server";
 import { assistantAgent, INSTRUCTIONS } from "./assistantAgent";
 import { SCREEN_CONTEXT_MAX_LENGTH } from "./lib/assistantShared";
 import { getCurrentUserOrgId, getCurrentUserOrThrow } from "./lib/auth";
+import { requireFeature } from "./lib/entitlements";
 import { userMutation, userQuery } from "./lib/factories";
-import { hasPremiumAccess } from "./lib/permissions";
 import { rateLimiter } from "./rateLimits";
-
-const PREMIUM_REQUIRED_MESSAGE =
-	"The AI assistant is available on the Business plan. Upgrade to use it.";
 
 /**
  * AI assistant chat plumbing.
@@ -52,9 +49,7 @@ export const createThread = userMutation({
 export const sendMessage = userMutation({
 	args: { threadId: v.string(), prompt: v.string() },
 	handler: async (ctx, args) => {
-		if (!(await hasPremiumAccess(ctx))) {
-			throw new Error(PREMIUM_REQUIRED_MESSAGE);
-		}
+		await requireFeature(ctx, "aiAssistant");
 		if (args.prompt.length > PROMPT_MAX_LENGTH) {
 			throw new Error(
 				`Message is too long (max ${PROMPT_MAX_LENGTH} characters)`
@@ -84,13 +79,11 @@ export const sendMessage = userMutation({
 });
 
 /** Auth + plan check usable from the action: identity propagates via
- *  ctx.runQuery, and hasPremiumAccess needs a database-backed ctx. */
+ *  ctx.runQuery, and the entitlement gate needs a database-backed ctx. */
 export const authorizeThread = internalQuery({
 	args: { threadId: v.string() },
 	handler: async (ctx, args): Promise<{ userId: Id<"users"> }> => {
-		if (!(await hasPremiumAccess(ctx))) {
-			throw new Error(PREMIUM_REQUIRED_MESSAGE);
-		}
+		await requireFeature(ctx, "aiAssistant");
 		const user = await getCurrentUserOrThrow(ctx);
 		const orgId = await getCurrentUserOrgId(ctx);
 		const meta = await ctx.db

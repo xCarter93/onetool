@@ -133,14 +133,8 @@ export const rateLimiter = new RateLimiter(components.rateLimiter, {
 		capacity: 5,
 	},
 
-	// PUB-12: LLM-backed routes (analyze-csv, mastra/report) — bound spend per org.
+	// PUB-12: LLM-backed routes (analyze-csv) — bound spend per org.
 	llmCsvAnalyze: {
-		kind: "token bucket",
-		rate: 30,
-		period: HOUR,
-		capacity: 10,
-	},
-	llmMastraReport: {
 		kind: "token bucket",
 		rate: 30,
 		period: HOUR,

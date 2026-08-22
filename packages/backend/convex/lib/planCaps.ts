@@ -1,7 +1,11 @@
 import { ConvexError } from "convex/values";
 import type { Id } from "../_generated/dataModel";
-import type { MutationCtx } from "../_generated/server";
-import { hasPremiumAccess } from "./permissions";
+import type { MutationCtx, QueryCtx } from "../_generated/server";
+import {
+	METERS,
+	PLAN_LIMIT_ERROR_CODE,
+	entitlementsFromIdentity,
+} from "./entitlements";
 import {
 	FREE_MAX_ACTIVE_PROJECTS_PER_CLIENT,
 	FREE_MAX_CLIENTS,
@@ -18,7 +22,7 @@ import {
  */
 
 /** Stable code on the thrown ConvexError so clients can branch on it. */
-export const PLAN_LIMIT_ERROR_CODE = "PLAN_LIMIT_REACHED";
+export { PLAN_LIMIT_ERROR_CODE };
 
 export const CLIENT_CAP_MESSAGE = `Your plan is limited to ${FREE_MAX_CLIENTS} clients — upgrade to add more.`;
 
@@ -36,8 +40,8 @@ const COUNTED_CLIENT_STATUSES = ["lead", "active", "inactive"] as const;
  * Counts non-archived clients, stopping at `limit`. Indexed per status and
  * bounded by `take`, so an org with a long archive tail is never fully read.
  */
-async function countCountedClients(
-	ctx: MutationCtx,
+export async function countCountedClients(
+	ctx: QueryCtx | MutationCtx,
 	orgId: Id<"organizations">,
 	limit: number
 ): Promise<number> {
@@ -63,10 +67,13 @@ export async function checkClientCapacity(
 	orgId: Id<"organizations">,
 	newStatus: string | undefined
 ): Promise<string | null> {
+	// The map row is the kill switch: P2 deletes the cap by flipping it there.
+	const cap = METERS.clients.enforce ? METERS.clients.free : null;
+	if (cap === null) return null;
 	// An archived client doesn't occupy a slot, so creating one never trips.
 	if (newStatus === "archived") return null;
-	const active = await countCountedClients(ctx, orgId, FREE_MAX_CLIENTS);
-	return active >= FREE_MAX_CLIENTS ? CLIENT_CAP_MESSAGE : null;
+	const active = await countCountedClients(ctx, orgId, cap);
+	return active >= cap ? CLIENT_CAP_MESSAGE : null;
 }
 
 /**
@@ -79,15 +86,17 @@ export async function checkProjectCapacity(
 	clientId: Id<"clients"> | undefined,
 	newStatus: string | undefined
 ): Promise<string | null> {
+	const cap = METERS.activeProjectsPerClient.enforce
+		? METERS.activeProjectsPerClient.free
+		: null;
+	if (cap === null) return null;
 	if (!clientId || !isActiveProjectStatus(newStatus)) return null;
 	const projects = await ctx.db
 		.query("projects")
 		.withIndex("by_client", (q) => q.eq("clientId", clientId))
 		.collect();
 	const active = projects.filter((p) => isActiveProjectStatus(p.status)).length;
-	return active >= FREE_MAX_ACTIVE_PROJECTS_PER_CLIENT
-		? PROJECT_CAP_MESSAGE
-		: null;
+	return active >= cap ? PROJECT_CAP_MESSAGE : null;
 }
 
 function planLimitError(message: string): ConvexError<{
@@ -106,7 +115,7 @@ export async function assertClientCapacity(
 	orgId: Id<"organizations">,
 	newStatus: string | undefined
 ): Promise<void> {
-	if (await hasPremiumAccess(ctx)) return;
+	if ((await entitlementsFromIdentity(ctx)).plan === "business") return;
 	const error = await checkClientCapacity(ctx, orgId, newStatus);
 	if (error) throw planLimitError(error);
 }
@@ -120,7 +129,7 @@ export async function assertProjectCapacity(
 	clientId: Id<"clients">,
 	newStatus: string | undefined
 ): Promise<void> {
-	if (await hasPremiumAccess(ctx)) return;
+	if ((await entitlementsFromIdentity(ctx)).plan === "business") return;
 	const error = await checkProjectCapacity(ctx, clientId, newStatus);
 	if (error) throw planLimitError(error);
 }

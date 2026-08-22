@@ -16,7 +16,7 @@ import {
 	type UserMutationCtx,
 } from "./lib/factories";
 import { computeNextRunAt } from "./lib/schedule";
-import { orgHasPremiumPlan, userHasPremiumOverride } from "./lib/permissions";
+import { entitlementsFromDocs, isFeatureAllowed } from "./lib/entitlements";
 import { rateLimiter } from "./rateLimits";
 import {
 	evaluateConditionGroups,
@@ -435,9 +435,11 @@ export const dispatchScheduledAutomations = internalMutation({
 				// webhook-synced doc mirrors: the org's, else the creator's (a user-level
 				// override follows the automations that user built).
 				const org = await ctx.db.get(automation.orgId);
-				const premium =
-					orgHasPremiumPlan(org) ||
-					userHasPremiumOverride(await ctx.db.get(automation.createdBy));
+				const creator = await ctx.db.get(automation.createdBy);
+				const premium = isFeatureAllowed(
+					entitlementsFromDocs(org, creator).plan,
+					"scheduledAutomationRuns"
+				);
 				if (!premium) {
 					await ctx.db.insert("workflowExecutions", {
 						orgId: automation.orgId,

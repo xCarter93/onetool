@@ -191,6 +191,21 @@ describe("entitlement parity across org/identity states", () => {
 		const esig = mine.meters.find((m) => m.key === "esignatures");
 		expect(esig).toMatchObject({ used: 3, limit: 5, remaining: 2 });
 	});
+
+	it("getMine counts clients from the same live query the cap enforces", async () => {
+		const { clerkUserId, clerkOrgId } = await seedOrg();
+		const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+		for (const companyName of ["Acme Lawn", "Bramble & Co"]) {
+			await asUser.mutation(api.clients.create, {
+				portalAccessId: crypto.randomUUID(),
+				companyName,
+				status: "active",
+			});
+		}
+		const mine = await asUser.query(api.entitlements.getMine, {});
+		const clients = mine.meters.find((m) => m.key === "clients");
+		expect(clients).toMatchObject({ used: 2, limit: 10, remaining: 8 });
+	});
 });
 
 describe("meter store behavior", () => {
@@ -210,13 +225,13 @@ describe("meter store behavior", () => {
 		const orgId = await seedOrgId();
 		await t.run(async (ctx) => {
 			for (let i = 0; i < 5; i++) {
-				await requireMeter(ctx, orgId, "esignatures", "free", NOW);
+				await requireMeter(ctx, orgId, "esignatures", "free", { now: NOW });
 				await consumeMeter(ctx, orgId, "esignatures", NOW);
 			}
-			const usage = await getMeterUsage(ctx, orgId, "esignatures", "free", NOW);
+			const usage = await getMeterUsage(ctx, orgId, "esignatures", "free", { now: NOW });
 			expect(usage).toMatchObject({ used: 5, limit: 5, remaining: 0 });
 			try {
-				await requireMeter(ctx, orgId, "esignatures", "free", NOW);
+				await requireMeter(ctx, orgId, "esignatures", "free", { now: NOW });
 				expect.unreachable("requireMeter should refuse at the limit");
 			} catch (error) {
 				expect(error).toBeInstanceOf(ConvexError);
@@ -240,14 +255,10 @@ describe("meter store behavior", () => {
 			for (let i = 0; i < 25; i++) {
 				await consumeMeter(ctx, orgId, "esignatures", NOW);
 			}
-			await requireMeter(ctx, orgId, "esignatures", "business", NOW);
-			const usage = await getMeterUsage(
-				ctx,
-				orgId,
-				"esignatures",
-				"business",
-				NOW
-			);
+			await requireMeter(ctx, orgId, "esignatures", "business", { now: NOW });
+			const usage = await getMeterUsage(ctx, orgId, "esignatures", "business", {
+				now: NOW,
+			});
 			expect(usage).toMatchObject({ used: 25, limit: null, remaining: null });
 		});
 	});
@@ -259,14 +270,12 @@ describe("meter store behavior", () => {
 			for (let i = 0; i < 5; i++) {
 				await consumeMeter(ctx, orgId, "esignatures", NOW);
 			}
-			await requireMeter(ctx, orgId, "esignatures", "free", NEXT_MONTH);
-			const usage = await getMeterUsage(
-				ctx,
-				orgId,
-				"esignatures",
-				"free",
-				NEXT_MONTH
-			);
+			await requireMeter(ctx, orgId, "esignatures", "free", {
+				now: NEXT_MONTH,
+			});
+			const usage = await getMeterUsage(ctx, orgId, "esignatures", "free", {
+				now: NEXT_MONTH,
+			});
 			expect(usage).toMatchObject({ used: 0, remaining: 5 });
 		});
 	});
@@ -278,17 +287,13 @@ describe("meter store behavior", () => {
 				await consumeMeter(ctx, orgId, "esignatures", NOW);
 			}
 			await grantMeterBonus(ctx, orgId, "esignatures", 10, NOW);
-			await requireMeter(ctx, orgId, "esignatures", "free", NOW);
-			const usage = await getMeterUsage(ctx, orgId, "esignatures", "free", NOW);
+			await requireMeter(ctx, orgId, "esignatures", "free", { now: NOW });
+			const usage = await getMeterUsage(ctx, orgId, "esignatures", "free", { now: NOW });
 			expect(usage).toMatchObject({ used: 5, limit: 15, remaining: 10 });
 			// Next month: base limit again.
-			const next = await getMeterUsage(
-				ctx,
-				orgId,
-				"esignatures",
-				"free",
-				Date.UTC(2026, 8, 2)
-			);
+			const next = await getMeterUsage(ctx, orgId, "esignatures", "free", {
+				now: Date.UTC(2026, 8, 2),
+			});
 			expect(next.limit).toBe(5);
 		});
 	});
@@ -300,7 +305,7 @@ describe("meter store behavior", () => {
 				await consumeMeter(ctx, orgId, "clientSends", NOW);
 			}
 			// clientSends ships enforce:false (observation window).
-			await requireMeter(ctx, orgId, "clientSends", "free", NOW);
+			await requireMeter(ctx, orgId, "clientSends", "free", { now: NOW });
 		});
 	});
 });
