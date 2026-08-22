@@ -125,10 +125,25 @@ export default defineSchema({
 				v.literal("incomplete"),
 				v.literal("incomplete_expired"),
 				v.literal("trialing"),
-				v.literal("unpaid")
+				v.literal("unpaid"),
+				// Clerk Billing's real status set also includes these:
+				v.literal("ended"),
+				v.literal("abandoned"),
+				v.literal("expired"),
+				v.literal("upcoming")
 			)
 		),
 		billingCycleStart: v.optional(v.number()), // Timestamp of current billing cycle start
+		// Reverse-trial / gift end. Lives on the org doc so identity-less
+		// contexts (crons, automations) see it. Written at P5; resolved by
+		// lib/entitlements.resolvePlan from day one.
+		trialEndsAt: v.optional(v.number()),
+		// 72h grace after a premium loss (billing hiccups never block invoicing
+		// day). Set/cleared by billingWebhook.ts on status transitions.
+		planGraceUntil: v.optional(v.number()),
+		// Last billing-mirror write (webhook or nightly reconcile). Orgs stale
+		// >48h get re-fetched from Clerk's backend billing API.
+		billingSyncedAt: v.optional(v.number()),
 
 		// Usage tracking for limits
 		usageTracking: v.optional(
@@ -178,6 +193,17 @@ export default defineSchema({
 		.index("by_clerk_org", ["clerkOrganizationId"])
 		.index("by_receiving_address", ["receivingAddress"])
 		.index("by_stripe_connect_account_id", ["stripeConnectAccountId"]),
+
+	// Meter store for lib/entitlements (one row per org × meter × period).
+	// Deliberately NOT in the trigger registry: debits are manual calls at
+	// explicit boundaries, same as line-item totals.
+	planUsage: defineTable({
+		orgId: v.id("organizations"),
+		meter: v.string(), // MeterKey, validated in lib/entitlements
+		periodKey: v.string(), // "2026-08" | "2026-08-22" | "lifetime" (UTC)
+		used: v.number(),
+		bonus: v.optional(v.number()), // extra capacity granted this period
+	}).index("by_org_meter_period", ["orgId", "meter", "periodKey"]),
 
 	organizationMemberships: defineTable({
 		orgId: v.id("organizations"),

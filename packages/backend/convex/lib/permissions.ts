@@ -1,5 +1,4 @@
 import type { QueryCtx, MutationCtx } from "../_generated/server";
-import { query } from "../_generated/server";
 import { getCurrentUserOrgIdOrNull } from "./auth";
 
 /**
@@ -22,60 +21,8 @@ interface ClerkIdentityWithClaims {
 		has_premium_feature_access?: boolean;
 		[key: string]: unknown;
 	};
-	// Plan claims (Clerk Billing)
-	pla?: string; // Plan claim (Clerk convention)
-	plan?: string; // Alternative plan location
 	[key: string]: unknown;
 }
-
-/**
- * Debug query to inspect JWT token structure
- * Useful for troubleshooting plan and metadata detection
- */
-// INTENTIONAL: raw public query. Out of scope for Phase 18 (see ADR-0001 §debugAuthToken).
-// Do NOT migrate to userQuery — its fate (delete vs gate) is a separate PR.
-export const debugAuthToken = query({
-	args: {},
-	handler: async (ctx) => {
-		const identity = await ctx.auth.getUserIdentity();
-		if (!identity) {
-			return { error: "Not authenticated" };
-		}
-
-		const tokenData = identity as ClerkIdentityWithClaims;
-
-		return {
-			// Safe to log these for debugging
-			subject: tokenData.subject,
-			issuer: tokenData.issuer,
-			email: tokenData.email,
-			// Full public metadata objects
-			publicMetadata:
-				tokenData.publicMetadata || tokenData.public_metadata || null,
-			orgPublicMetadata:
-				tokenData.orgPublicMetadata || tokenData.org_public_metadata || null,
-			// Check various public metadata locations
-			publicMetadataChecks: {
-				"publicMetadata.has_premium_feature_access":
-					tokenData.publicMetadata?.has_premium_feature_access,
-			},
-			// Check org public metadata locations
-			orgPublicMetadataChecks: {
-				"orgPublicMetadata.has_premium_feature_access":
-					tokenData.orgPublicMetadata?.has_premium_feature_access,
-			},
-			// Check for plan in various locations
-			planChecks: {
-				pla: tokenData.pla,
-				plan: tokenData.plan,
-			},
-			// List all top-level keys in the token (helps identify structure)
-			availableKeys: Object.keys(tokenData),
-			// Show the ENTIRE token (be careful - only use in development)
-			fullTokenData: tokenData,
-		};
-	},
-});
 
 export const PREMIUM_PLAN_SLUG = "onetool_business_plan_org";
 

@@ -413,8 +413,12 @@ http.route({
 			amount?: number;
 			status?: string;
 			plan_id?: string;
-			plan?: { id: string };
+			// On subscriptionItem.* events the data IS the item, so the plan
+			// (with slug) sits at the top level. All Clerk billing timestamps
+			// are Unix MILLISECONDS (per @clerk/backend's payload types).
+			plan?: { id?: string; slug?: string };
 			current_period_start?: number;
+			period_start?: number;
 			payer?: {
 				organization_id?: string;
 				user_id?: string;
@@ -423,6 +427,7 @@ http.route({
 			items?: Array<{
 				status?: string;
 				plan?: { id?: string; slug?: string };
+				period_start?: number;
 			}>;
 		}
 
@@ -438,6 +443,18 @@ http.route({
 				activeItems.find(
 					(item) => item.plan?.slug && !item.plan.slug.startsWith("free_")
 				)?.plan ?? activeItems[0]?.plan
+			);
+		}
+
+		// subscription.* payloads have no top-level current_period_start; the
+		// per-item period_start (already milliseconds) is the real source.
+		function getSubscriptionPeriodStart(
+			data: BillingWebhookData
+		): number | undefined {
+			return (
+				data.current_period_start ??
+				(data.items ?? []).find((item) => item.status === "active")
+					?.period_start
 			);
 		}
 
@@ -492,9 +509,7 @@ http.route({
 						planId: activePlan?.id || data.plan_id || data.plan?.id || "",
 						planSlug: activePlan?.slug,
 						status: data.status || "active",
-						currentPeriodStart: data.current_period_start
-							? secondsToMilliseconds(data.current_period_start)
-							: undefined,
+						currentPeriodStart: getSubscriptionPeriodStart(data),
 					}
 				);
 				break;
@@ -517,9 +532,7 @@ http.route({
 						organizationId: organizationId,
 						planId: activePlan?.id || data.plan_id || data.plan?.id || "",
 						planSlug: activePlan?.slug,
-						currentPeriodStart: data.current_period_start
-							? secondsToMilliseconds(data.current_period_start)
-							: undefined,
+						currentPeriodStart: getSubscriptionPeriodStart(data),
 					}
 				);
 				break;
@@ -545,9 +558,7 @@ http.route({
 						planId: activePlan?.id || data.plan_id || data.plan?.id || "",
 						planSlug: activePlan?.slug,
 						status: data.status || "active",
-						currentPeriodStart: data.current_period_start
-							? secondsToMilliseconds(data.current_period_start)
-							: undefined,
+						currentPeriodStart: getSubscriptionPeriodStart(data),
 					}
 				);
 				break;
@@ -567,6 +578,50 @@ http.route({
 					{
 						subscriptionId: data.id,
 						organizationId: organizationId,
+					}
+				);
+				break;
+			}
+
+			case "subscriptionItem.created":
+			case "subscriptionItem.active":
+			case "subscriptionItem.updated":
+			case "subscriptionItem.canceled":
+			case "subscriptionItem.ended":
+			case "subscriptionItem.abandoned":
+			case "subscriptionItem.incomplete":
+			case "subscriptionItem.pastDue":
+			case "subscriptionItem.upcoming":
+			case "subscriptionItem.freeTrialEnding": {
+				const data = event.data as unknown as BillingWebhookData;
+				const organizationId =
+					data.payer?.organization_id || data.organization_id;
+
+				if (!organizationId) {
+					console.error(`No organization_id in ${event.type} event`);
+					break;
+				}
+				// Item events fire for every item on the subscription, including
+				// the Clerk default free_user/free_org plans — only the paid item
+				// is plan truth. Skip when the slug is missing: we can't tell
+				// which item it is, and acting on it could flip the mirror wrong.
+				const slug = data.plan?.slug;
+				if (!slug || slug.startsWith("free_")) {
+					console.log(
+						`Ignored ${event.type} for plan slug ${slug ?? "(none)"}`
+					);
+					break;
+				}
+				await ctx.runMutation(
+					internal.billingWebhook.handleSubscriptionItemEvent,
+					{
+						eventType: event.type,
+						organizationId,
+						planId: data.plan?.id,
+						planSlug: slug,
+						status: data.status,
+						// Already milliseconds — do NOT convert.
+						currentPeriodStart: data.period_start,
 					}
 				);
 				break;

@@ -1,4 +1,8 @@
 import posthog from "posthog-js";
+import type { PlanSource } from "@onetool/backend";
+
+/** The backend-resolved plan (overrides, trial, and grace included). */
+export type AnalyticsPlanType = "free" | "business";
 
 export interface AnalyticsUserProperties {
 	email: string;
@@ -6,12 +10,12 @@ export interface AnalyticsUserProperties {
 	role: "admin" | "member";
 	orgId: string;
 	orgName: string;
-	planType?: "free" | "trial" | "pro";
 }
 
 export interface AnalyticsOrgProperties {
 	name: string;
-	planType: "free" | "trial" | "pro";
+	planType: AnalyticsPlanType;
+	planSource: PlanSource;
 	stripeConnected: boolean;
 	memberCount?: number;
 }
@@ -19,6 +23,8 @@ export interface AnalyticsOrgProperties {
 /**
  * Identify a user with PostHog after sign-in.
  * Sets user properties that will be associated with all future events.
+ * Plan properties arrive separately via setPersonPlan once the backend
+ * entitlement query resolves — identify never waits on Convex.
  */
 export function identifyUser(userId: string, props: AnalyticsUserProperties) {
 	posthog.identify(userId, {
@@ -27,7 +33,20 @@ export function identifyUser(userId: string, props: AnalyticsUserProperties) {
 		role: props.role,
 		org_id: props.orgId,
 		org_name: props.orgName,
-		plan_type: props.planType,
+	});
+}
+
+/**
+ * Person-level plan from entitlements.getMine — the same resolution the
+ * server enforces, so override-holders no longer report as free.
+ */
+export function setPersonPlan(
+	planType: AnalyticsPlanType,
+	planSource: PlanSource
+) {
+	posthog.setPersonProperties({
+		plan_type: planType,
+		plan_source: planSource,
 	});
 }
 
@@ -50,6 +69,7 @@ export function setOrganizationGroup(
 	posthog.group("organization", orgId, {
 		name: props.name,
 		plan_type: props.planType,
+		plan_source: props.planSource,
 		stripe_connected: props.stripeConnected,
 		member_count: props.memberCount,
 	});

@@ -77,6 +77,8 @@ export const ORG_SCOPED_CASCADE_TABLES = [
 	"quickbooksConnections",
 	// Per-category push mutes (Slice 8).
 	"notificationPreferences",
+	// Entitlement meter rows (lib/entitlements).
+	"planUsage",
 ] as const;
 
 /**
@@ -293,6 +295,19 @@ export async function cascadeDeleteOrgDataPage(
 		const rows = await ctx.db
 			.query("notificationPreferences")
 			.withIndex("by_org", (q) => q.eq("orgId", orgId))
+			.take(remaining);
+		for (const row of rows) {
+			await ctx.db.delete(row._id);
+			remaining--;
+		}
+	}
+
+	// planUsage (by_org_meter_period is orgId-prefixed)
+	{
+		if (remaining <= 0) return { done: false };
+		const rows = await ctx.db
+			.query("planUsage")
+			.withIndex("by_org_meter_period", (q) => q.eq("orgId", orgId))
 			.take(remaining);
 		for (const row of rows) {
 			await ctx.db.delete(row._id);
