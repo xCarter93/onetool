@@ -66,7 +66,10 @@ describe("entitlement parity across org/identity states", () => {
 		const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
 		const mine = await assertParity(asUser, "free org");
 		expect(mine.plan).toBe("free");
-		expect(mine.features.aiAssistant).toBe(false);
+		// Slice A: assistant access is free for all (volume rides the meter);
+		// the scale switches stay business-only.
+		expect(mine.features.aiAssistant).toBe(true);
+		expect(mine.features.routing).toBe(false);
 	});
 
 	it("state 3: paid slug + active subscription", async () => {
@@ -192,7 +195,7 @@ describe("entitlement parity across org/identity states", () => {
 		expect(esig).toMatchObject({ used: 3, limit: 5, remaining: 2 });
 	});
 
-	it("getMine counts clients from the same live query the cap enforces", async () => {
+	it("getMine no longer reports the deleted stock caps", async () => {
 		const { clerkUserId, clerkOrgId } = await seedOrg();
 		const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
 		for (const companyName of ["Acme Lawn", "Bramble & Co"]) {
@@ -203,8 +206,16 @@ describe("entitlement parity across org/identity states", () => {
 			});
 		}
 		const mine = await asUser.query(api.entitlements.getMine, {});
-		const clients = mine.meters.find((m) => m.key === "clients");
-		expect(clients).toMatchObject({ used: 2, limit: 10, remaining: 8 });
+		// Unlimited meters are omitted — only actionable (finite) meters ship.
+		expect(mine.meters.find((m) => m.key === "clients")).toBeUndefined();
+		const keys = mine.meters.map((m) => m.key).sort();
+		expect(keys).toEqual([
+			"assistantMessages",
+			"clientSends",
+			"esignatures",
+			"importedRows",
+			"savedReports",
+		]);
 	});
 });
 
@@ -226,7 +237,7 @@ describe("meter store behavior", () => {
 		await t.run(async (ctx) => {
 			for (let i = 0; i < 5; i++) {
 				await requireMeter(ctx, orgId, "esignatures", "free", { now: NOW });
-				await consumeMeter(ctx, orgId, "esignatures", NOW);
+				await consumeMeter(ctx, orgId, "esignatures", { now: NOW });
 			}
 			const usage = await getMeterUsage(ctx, orgId, "esignatures", "free", { now: NOW });
 			expect(usage).toMatchObject({ used: 5, limit: 5, remaining: 0 });
@@ -253,7 +264,7 @@ describe("meter store behavior", () => {
 		const orgId = await seedOrgId();
 		await t.run(async (ctx) => {
 			for (let i = 0; i < 25; i++) {
-				await consumeMeter(ctx, orgId, "esignatures", NOW);
+				await consumeMeter(ctx, orgId, "esignatures", { now: NOW });
 			}
 			await requireMeter(ctx, orgId, "esignatures", "business", { now: NOW });
 			const usage = await getMeterUsage(ctx, orgId, "esignatures", "business", {
@@ -268,7 +279,7 @@ describe("meter store behavior", () => {
 		const NEXT_MONTH = Date.UTC(2026, 8, 1, 0, 0, 1);
 		await t.run(async (ctx) => {
 			for (let i = 0; i < 5; i++) {
-				await consumeMeter(ctx, orgId, "esignatures", NOW);
+				await consumeMeter(ctx, orgId, "esignatures", { now: NOW });
 			}
 			await requireMeter(ctx, orgId, "esignatures", "free", {
 				now: NEXT_MONTH,
@@ -284,9 +295,9 @@ describe("meter store behavior", () => {
 		const orgId = await seedOrgId();
 		await t.run(async (ctx) => {
 			for (let i = 0; i < 5; i++) {
-				await consumeMeter(ctx, orgId, "esignatures", NOW);
+				await consumeMeter(ctx, orgId, "esignatures", { now: NOW });
 			}
-			await grantMeterBonus(ctx, orgId, "esignatures", 10, NOW);
+			await grantMeterBonus(ctx, orgId, "esignatures", 10, { now: NOW });
 			await requireMeter(ctx, orgId, "esignatures", "free", { now: NOW });
 			const usage = await getMeterUsage(ctx, orgId, "esignatures", "free", { now: NOW });
 			expect(usage).toMatchObject({ used: 5, limit: 15, remaining: 10 });
@@ -298,14 +309,40 @@ describe("meter store behavior", () => {
 		});
 	});
 
-	it("an unenforced meter never refuses", async () => {
+	it("the send meter is enforced from day one", async () => {
 		const orgId = await seedOrgId();
 		await t.run(async (ctx) => {
-			for (let i = 0; i < 60; i++) {
-				await consumeMeter(ctx, orgId, "clientSends", NOW);
+			for (let i = 0; i < 20; i++) {
+				await requireMeter(ctx, orgId, "clientSends", "free", { now: NOW });
+				await consumeMeter(ctx, orgId, "clientSends", { now: NOW });
 			}
-			// clientSends ships enforce:false (observation window).
-			await requireMeter(ctx, orgId, "clientSends", "free", { now: NOW });
+			await expect(
+				requireMeter(ctx, orgId, "clientSends", "free", { now: NOW })
+			).rejects.toThrow();
+		});
+	});
+
+	it("a once-guarded bonus grants a single +10 per period", async () => {
+		const orgId = await seedOrgId();
+		await t.run(async (ctx) => {
+			await grantMeterBonus(ctx, orgId, "clientSends", 10, { now: NOW, once: true });
+			await grantMeterBonus(ctx, orgId, "clientSends", 10, { now: NOW, once: true });
+			const usage = await getMeterUsage(ctx, orgId, "clientSends", "free", { now: NOW });
+			expect(usage.limit).toBe(30);
+			// A new month starts back at the base limit; the bonus can grant again.
+			const NEXT = Date.UTC(2026, 8, 2);
+			await grantMeterBonus(ctx, orgId, "clientSends", 10, { now: NEXT, once: true });
+			const next = await getMeterUsage(ctx, orgId, "clientSends", "free", { now: NEXT });
+			expect(next.limit).toBe(30);
+		});
+	});
+
+	it("consumeMeter debits N at once for batch meters", async () => {
+		const orgId = await seedOrgId();
+		await t.run(async (ctx) => {
+			await consumeMeter(ctx, orgId, "importedRows", { now: NOW, amount: 1995 });
+			const usage = await getMeterUsage(ctx, orgId, "importedRows", "free", { now: NOW });
+			expect(usage).toMatchObject({ used: 1995, limit: 2000, remaining: 5 });
 		});
 	});
 });

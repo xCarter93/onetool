@@ -71,7 +71,13 @@ describe("send_email automation action (D1)", () => {
 		clerkUserId?: string;
 		clerkOrgId?: string;
 	}) {
-		const setup = await t.run(async (ctx) => createTestOrg(ctx, overrides));
+		// Publishing/activating automations is Business-only, so the org resolves
+		// premium by default; free-plan tests downgrade it after publish.
+		const setup = await t.run(async (ctx) => {
+			const created = await createTestOrg(ctx, overrides);
+			await ctx.db.patch(created.orgId, { hasPremiumFeatureAccess: true });
+			return created;
+		});
 		const asUser = t.withIdentity(
 			createTestIdentity(setup.clerkUserId, setup.clerkOrgId)
 		);
@@ -212,7 +218,6 @@ describe("send_email automation action (D1)", () => {
 
 		it("a non-premium org skips the send, citing the plan requirement", async () => {
 			const { asUser, orgId } = await setupUser();
-			// No premium fields set on the org, no override on the creator user.
 
 			await asUser.mutation(api.automations.create, {
 				name: "Email on new client",
@@ -227,6 +232,11 @@ describe("send_email automation action (D1)", () => {
 				],
 				isActive: true,
 			});
+
+			// Downgrade after publishing, and no override on the creator user.
+			await t.run(async (ctx) =>
+				ctx.db.patch(orgId, { hasPremiumFeatureAccess: false })
+			);
 
 			const clientId = await asUser.mutation(api.clients.create, {
 				portalAccessId: crypto.randomUUID(),
@@ -537,7 +547,6 @@ describe("send_email automation action (D1)", () => {
 	describe("premium override", () => {
 		it("a user-level override on the automation's creator passes the premium gate", async () => {
 			const { asUser, orgId, userId } = await setupUser();
-			// Org itself stays non-premium; only the creator user is flagged.
 			await t.run(async (ctx) =>
 				ctx.db.patch(userId, { hasPremiumFeatureAccess: true })
 			);
@@ -555,6 +564,11 @@ describe("send_email automation action (D1)", () => {
 				],
 				isActive: true,
 			});
+
+			// Org drops back to free once published; only the creator user is flagged.
+			await t.run(async (ctx) =>
+				ctx.db.patch(orgId, { hasPremiumFeatureAccess: false })
+			);
 
 			const clientId = await asUser.mutation(api.clients.create, {
 				portalAccessId: crypto.randomUUID(),

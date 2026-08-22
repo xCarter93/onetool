@@ -20,6 +20,11 @@ import {
 	emitRecordUpdatedEvent,
 } from "./eventBus";
 import { computeFieldChanges } from "./lib/changeTracking";
+import {
+	consumeMeter,
+	entitlementsFromIdentity,
+	requireMeter,
+} from "./lib/entitlements";
 import { internal } from "./_generated/api";
 import {
 	optionalUserQuery,
@@ -1118,6 +1123,19 @@ export const sendToClient = userMutation({
 		// Sending is the act of sending: draft, declined, and expired all move to
 		// sent (a "send again" reopens the quote). Already-sent quotes re-send
 		// the email without a transition.
+		// The send meter debits only the FIRST send ever (no sentAt yet) —
+		// declined/expired re-entries and re-sends are free in every month.
+		if (!quote.sentAt) {
+			const { plan } = await entitlementsFromIdentity(ctx);
+			await requireMeter(ctx, ctx.orgId, "clientSends", plan);
+			await consumeMeter(ctx, ctx.orgId, "clientSends");
+			// Raw status writes (automation actions) can leave a sent quote with
+			// no sentAt; stamp it here so this debit can never repeat — the
+			// transition block below only runs for non-sent statuses.
+			if (quote.status === "sent") {
+				await ctx.db.patch(quote._id, { sentAt: Date.now() });
+			}
+		}
 		if (quote.status !== "sent") {
 			const oldStatus = quote.status;
 			const changes = computeFieldChanges(

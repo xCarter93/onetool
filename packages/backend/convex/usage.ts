@@ -1,7 +1,6 @@
 import type { QueryCtx } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
-import { getOptionalOrgId } from "./lib/queries";
-import { optionalUserQuery, systemMutation } from "./lib/factories";
+import { systemMutation } from "./lib/factories";
 
 /**
  * Usage tracking for plan limits
@@ -27,7 +26,7 @@ function startOfCurrentMonth(): number {
 /**
  * E-signatures sent by an org in the current month. Uses the cached counter
  * when it is current, else recounts from the documents table (monthly rollover).
- * Shared by getCurrentUsage and the server-side send-cap gate so both agree.
+ * Shared with the server-side send-cap gate so both agree.
  */
 export async function computeEsignaturesSentThisMonth(
 	ctx: QueryCtx,
@@ -52,74 +51,6 @@ export async function computeEsignaturesSentThisMonth(
 
 	return organization.usageTracking?.esignaturesSentThisMonth ?? 0;
 }
-
-/**
- * Get current usage statistics for the organization
- */
-export const getCurrentUsage = optionalUserQuery({
-	args: {},
-	handler: async (ctx): Promise<UsageStats> => {
-		const userOrgId = await getOptionalOrgId(ctx);
-
-		if (!userOrgId) {
-			return {
-				clientsCount: 0,
-				activeProjectsPerClient: {},
-				esignaturesSentThisMonth: 0,
-			};
-		}
-
-		// Get organization to check if usage tracking needs reset
-		const organization = await ctx.db.get(userOrgId);
-		if (!organization) {
-			return {
-				clientsCount: 0,
-				activeProjectsPerClient: {},
-				esignaturesSentThisMonth: 0,
-			};
-		}
-
-		// Count total clients (excluding archived)
-		const clients = await ctx.db
-			.query("clients")
-			.withIndex("by_org", (q) => q.eq("orgId", userOrgId))
-			.collect();
-
-		const activeClients = clients.filter(
-			(client) => client.status !== "archived"
-		);
-		const clientsCount = activeClients.length;
-
-		// Count active projects per client
-		const activeProjectsPerClient: Record<string, number> = {};
-
-		for (const client of activeClients) {
-			const projects = await ctx.db
-				.query("projects")
-				.withIndex("by_client", (q) => q.eq("clientId", client._id))
-				.collect();
-
-			// Count only planned and in-progress projects
-			const activeProjects = projects.filter(
-				(p) => p.status === "planned" || p.status === "in-progress"
-			);
-			activeProjectsPerClient[client._id] = activeProjects.length;
-		}
-
-		// Count e-signatures sent this month (shared monthly-rollover logic)
-		const esignaturesSentThisMonth = await computeEsignaturesSentThisMonth(
-			ctx,
-			organization,
-			userOrgId
-		);
-
-		return {
-			clientsCount,
-			activeProjectsPerClient,
-			esignaturesSentThisMonth,
-		};
-	},
-});
 
 /**
  * Increment e-signature count when a document is sent

@@ -10,7 +10,6 @@ import {
 	resolvePlan,
 } from "./entitlements";
 import { orgHasPremiumPlan, userHasPremiumOverride, PREMIUM_PLAN_SLUG } from "./permissions";
-import { FREE_MAX_CLIENTS, FREE_MAX_ACTIVE_PROJECTS_PER_CLIENT } from "./planLimits";
 import { FREE_ESIGNATURES_PER_MONTH } from "../usage";
 
 const NOW = Date.UTC(2026, 7, 22, 12, 0, 0); // 2026-08-22T12:00Z
@@ -151,17 +150,34 @@ describe("docs-path parity with the legacy helpers", () => {
 	});
 });
 
-describe("map values encode today's packaging", () => {
-	it("caps match the legacy constants", () => {
-		expect(METERS.clients.free).toBe(FREE_MAX_CLIENTS);
-		expect(METERS.activeProjectsPerClient.free).toBe(
-			FREE_MAX_ACTIVE_PROJECTS_PER_CLIENT
-		);
+describe("map values encode the Slice A end-state packaging", () => {
+	it("stock caps are deleted (unlimited on both tiers)", () => {
+		expect(METERS.clients.free).toBeNull();
+		expect(METERS.activeProjectsPerClient.free).toBeNull();
 		expect(METERS.esignatures.free).toBe(FREE_ESIGNATURES_PER_MONTH);
 	});
 
-	it("the send meter ships dormant (observation window)", () => {
-		expect(METERS.clientSends.enforce).toBe(false);
+	it("volume meters are enforced from day one", () => {
+		expect(METERS.clientSends).toMatchObject({
+			free: 20,
+			period: "calendarMonth",
+			enforce: true,
+		});
+		expect(METERS.assistantMessages).toMatchObject({
+			free: 10,
+			period: "day",
+			enforce: true,
+		});
+		expect(METERS.savedReports).toMatchObject({
+			free: 5,
+			period: "lifetime",
+			enforce: true,
+		});
+		expect(METERS.importedRows).toMatchObject({
+			free: 2000,
+			period: "lifetime",
+			enforce: true,
+		});
 	});
 
 	it("business is unlimited on every meter", () => {
@@ -170,11 +186,20 @@ describe("map values encode today's packaging", () => {
 		}
 	});
 
-	it("every switch is business-only and enforced", () => {
-		for (const row of Object.values(FEATURES)) {
-			expect(row.free).toBe(false);
-			expect(row.business).toBe(true);
-			expect(row.enforce).toBe(true);
+	it("the four scale switches are business-only; the rest are free for all", () => {
+		const businessOnly: ReadonlySet<string> = new Set([
+			"routing",
+			"quickbooks",
+			"automationPublish",
+			"nlReportGeneration",
+			"portalBadgeRemoval",
+			"scheduledAutomationRuns",
+			"automationEmails",
+		]);
+		for (const [key, row] of Object.entries(FEATURES)) {
+			expect(row.free, key).toBe(!businessOnly.has(key));
+			expect(row.business, key).toBe(true);
+			expect(row.enforce, key).toBe(true);
 		}
 	});
 

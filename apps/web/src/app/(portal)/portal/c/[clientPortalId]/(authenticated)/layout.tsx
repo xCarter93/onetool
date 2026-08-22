@@ -46,6 +46,7 @@ export default async function AuthenticatedPortalLayout({
 			logoUrl={branding.logoUrl}
 			businessName={branding.name}
 			logoInvertInDarkMode={branding.logoInvertInDarkMode}
+			showPoweredByBadge={branding.showPoweredByBadge ?? true}
 		>
 			{children}
 		</PortalShell>

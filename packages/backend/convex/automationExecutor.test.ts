@@ -145,7 +145,13 @@ describe("automationExecutor (v2 engine)", () => {
 		clerkUserId?: string;
 		clerkOrgId?: string;
 	}) {
-		const setup = await t.run(async (ctx) => createTestOrg(ctx, overrides));
+		// Publishing/activating automations is Business-only, so the org resolves
+		// premium by default; free-plan tests downgrade it after publish.
+		const setup = await t.run(async (ctx) => {
+			const created = await createTestOrg(ctx, overrides);
+			await ctx.db.patch(created.orgId, { hasPremiumFeatureAccess: true });
+			return created;
+		});
 		const asUser = t.withIdentity(
 			createTestIdentity(setup.clerkUserId, setup.clerkOrgId)
 		);
@@ -1900,15 +1906,19 @@ describe("automationExecutor (v2 engine)", () => {
 		});
 
 		it("skips dispatch for a non-premium org: inserts a skipped execution and still advances nextRunAt", async () => {
-			const { asUser } = await setupUser();
-			// No premium fields set on the org.
+			const { asUser, orgId } = await setupUser();
 
 			const id = await asUser.mutation(
 				api.automations.create,
 				scheduledAutomation({ isActive: true })
 			);
+			// Downgrade after publishing — how production reaches "free org with a
+			// published automation".
 			const past = Date.now() - 1000;
-			await t.run(async (ctx) => ctx.db.patch(id, { nextRunAt: past }));
+			await t.run(async (ctx) => {
+				await ctx.db.patch(orgId, { hasPremiumFeatureAccess: false });
+				await ctx.db.patch(id, { nextRunAt: past });
+			});
 
 			await t.mutation(internal.automationExecutor.dispatchScheduledAutomations, {});
 			await drainScheduled();
@@ -1953,7 +1963,7 @@ describe("automationExecutor (v2 engine)", () => {
 		it("dispatches when only the automation's creator holds a user-level override", async () => {
 			// A user-level override follows the automations that user built; the org
 			// itself stays non-premium.
-			const { asUser, userId } = await setupUser();
+			const { asUser, orgId, userId } = await setupUser();
 			await t.run(async (ctx) =>
 				ctx.db.patch(userId, { hasPremiumFeatureAccess: true })
 			);
@@ -1962,7 +1972,11 @@ describe("automationExecutor (v2 engine)", () => {
 				api.automations.create,
 				scheduledAutomation({ isActive: true })
 			);
-			await t.run(async (ctx) => ctx.db.patch(id, { nextRunAt: Date.now() - 1000 }));
+			// Org drops back to free once published; only the creator override remains.
+			await t.run(async (ctx) => {
+				await ctx.db.patch(orgId, { hasPremiumFeatureAccess: false });
+				await ctx.db.patch(id, { nextRunAt: Date.now() - 1000 });
+			});
 
 			await t.mutation(internal.automationExecutor.dispatchScheduledAutomations, {});
 			await drainScheduled();
@@ -5893,8 +5907,8 @@ describe("automationExecutor (v2 engine)", () => {
 			expect(executions[0].status).toBe("completed");
 		});
 
-		it("enforces the free-plan client cap: an 11th create_record client fails without inserting", async () => {
-			const { asUser } = await setupUser(); // free org (no premium)
+		it("creates an 11th client on a free org (Slice A: client cap deleted)", async () => {
+			const { asUser, orgId } = await setupUser();
 
 			// Ten clients already exist.
 			for (let i = 0; i < 10; i++) {
@@ -5926,6 +5940,11 @@ describe("automationExecutor (v2 engine)", () => {
 				isActive: true,
 			});
 
+			// Downgrade to free after publishing, so the cap applies at run time.
+			await t.run(async (ctx) =>
+				ctx.db.patch(orgId, { hasPremiumFeatureAccess: false })
+			);
+
 			// Firing a project create drives the automation.
 			await asUser.mutation(api.projects.create, {
 				clientId: anchorClient,
@@ -5938,15 +5957,16 @@ describe("automationExecutor (v2 engine)", () => {
 			const clients = await t.run(async (ctx) =>
 				ctx.db.query("clients").collect()
 			);
-			expect(clients).toHaveLength(10); // no 11th
-			expect(clients.some((c) => c.companyName === "Eleventh")).toBe(false);
+			// The stock cap is gone: the automation writes the 11th client even
+			// on a free org (planCaps reads free:null as unlimited).
+			expect(clients).toHaveLength(11);
+			expect(clients.some((c) => c.companyName === "Eleventh")).toBe(true);
 
 			const executions = await t.run(async (ctx) =>
 				ctx.db.query("workflowExecutions").collect()
 			);
 			expect(executions).toHaveLength(1);
-			expect(executions[0].status).toBe("failed");
-			expect(executions[0].error ?? "").toMatch(/limit|plan|upgrade/i);
+			expect(executions[0].status).toBe("completed");
 		});
 
 		it("rejects a cross-tenant FK: a supplied clientId from another org is not found", async () => {
@@ -6269,9 +6289,10 @@ describe("automationExecutor (v2 engine)", () => {
 
 		describe("C5-2 scheduled dispatch catch-up", () => {
 			it("a full batch self-reschedules until every due automation is claimed in one tick", async () => {
-				// Non-premium org: each due row just records a skipped execution,
-				// which keeps a 52-automation batch cheap while still counting claims.
-				const { asUser } = await setupUser();
+				// Downgraded to free after publishing: each due row just records a
+				// skipped execution, which keeps a 52-automation batch cheap while
+				// still counting claims.
+				const { asUser, orgId } = await setupUser();
 
 				const firstId = await asUser.mutation(
 					api.automations.create,
@@ -6279,6 +6300,7 @@ describe("automationExecutor (v2 engine)", () => {
 				);
 				const past = Date.now() - 1000;
 				await t.run(async (ctx) => {
+					await ctx.db.patch(orgId, { hasPremiumFeatureAccess: false });
 					const template = await ctx.db.get(firstId);
 					if (!template) throw new Error("seed automation missing");
 					const { _id, _creationTime, ...rest } = template;

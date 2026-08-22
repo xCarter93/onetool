@@ -39,7 +39,13 @@ export function StepUpload({
 }: StepUploadProps) {
 	return (
 		<div className="mx-auto max-w-2xl space-y-6">
-			<CsvUploadZone onFileSelect={onFileSelect} disabled={isAnalyzing} />
+			<div className="space-y-2">
+				<CsvUploadZone onFileSelect={onFileSelect} disabled={isAnalyzing} />
+				<p className="text-center text-xs text-muted-foreground">
+					Imports are limited to 500 rows per upload batch and 2,000 rows per
+					day.
+				</p>
+			</div>
 
 			{isAnalyzing && (
 				<Alert variant="info">

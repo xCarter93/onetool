@@ -18,6 +18,11 @@ import {
 	emitRecordUpdatedEvent,
 } from "./eventBus";
 import { computeFieldChanges } from "./lib/changeTracking";
+import {
+	consumeMeter,
+	entitlementsFromIdentity,
+	requireMeter,
+} from "./lib/entitlements";
 import { buildPortalInvoiceUrl } from "./portal/invoiceUrl";
 import { maybeEnqueueQboSync } from "./lib/quickbooksEnqueue";
 import { calculateInvoiceTotals, syncInvoiceTotals } from "./lib/invoiceTotals";
@@ -691,7 +696,12 @@ export const sendToClient = userMutation({
 
 		// Sending is the act of sending: flip draft→sent. Already-sent/overdue
 		// invoices can be re-sent without a status change.
+		// Invoices have no sentAt; draft status IS the first-send marker, so the
+		// send meter debits exactly once and re-sends stay free.
 		if (invoice.status === "draft") {
+			const { plan } = await entitlementsFromIdentity(ctx);
+			await requireMeter(ctx, ctx.orgId, "clientSends", plan);
+			await consumeMeter(ctx, ctx.orgId, "clientSends");
 			const changes = computeFieldChanges(
 				"invoice",
 				invoice as unknown as Record<string, unknown>,

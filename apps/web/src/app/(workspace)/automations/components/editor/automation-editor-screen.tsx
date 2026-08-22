@@ -23,6 +23,7 @@ import { ClearWorkflowDialog } from "./clear-workflow-dialog";
 import { runEdgeFlowClass, runStatusRingClass } from "../../lib/run-status";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { useEntitlements } from "@/hooks/use-entitlements";
 
 type NodeConfigType =
 	| "condition"
@@ -44,6 +45,8 @@ function toSidebarType(t: string): NodeConfigType {
 export function AutomationEditorScreen({ automationId }: { automationId: string | null }) {
 	const router = useRouter();
 	const editor = useAutomationEditor(automationId);
+	const { allows } = useEntitlements();
+	const canPublish = allows("automationPublish");
 	const sidebar = useSidebarState();
 	const [drawerOpen, setDrawerOpen] = useState(true);
 	const navigateFnRef = useRef<((nodeId: string) => void) | null>(null);
@@ -269,6 +272,7 @@ export function AutomationEditorScreen({ automationId }: { automationId: string 
 							isPublished={editor.isPublished}
 							publishLabel={editor.publishLabel}
 							isPublishing={editor.isPublishing}
+							canPublish={canPublish}
 							onPublish={editor.handlePublish}
 						/>
 					)}

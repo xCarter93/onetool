@@ -10,6 +10,8 @@ import { api } from "@onetool/backend/convex/_generated/api";
 import type { Doc, Id } from "@onetool/backend/convex/_generated/dataModel";
 import { Button } from "@/components/ui/button";
 import DeleteConfirmationModal from "@/components/ui/delete-confirmation-modal";
+import { useToast } from "@/hooks/use-toast";
+import { convexErrorMessage } from "@/lib/convex-error";
 import {
 	DataGrid,
 	DataGridContainer,
@@ -119,6 +121,7 @@ function createReportColumns(
 
 function ReportsPageContent() {
 	const router = useRouter();
+	const toast = useToast();
 	const reports = useQuery(api.reports.list);
 	const deleteReport = useMutation(api.reports.remove);
 	const duplicateReport = useMutation(api.reports.duplicate);
@@ -151,12 +154,16 @@ function ReportsPageContent() {
 				router.push(`/reports/${newId}`);
 			} catch (error) {
 				console.error("Failed to duplicate report:", error);
+				toast.error(
+					"Couldn't duplicate report",
+					convexErrorMessage(error, "Please try again.")
+				);
 			} finally {
 				duplicatingRef.current = false;
 				setDuplicatingId(null);
 			}
 		},
-		[duplicateReport, router]
+		[duplicateReport, router, toast]
 	);
 
 	const handleDeleteClick = useCallback((id: string, name: string) => {

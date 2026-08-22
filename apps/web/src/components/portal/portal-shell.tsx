@@ -29,12 +29,15 @@ export function PortalShell({
 	logoUrl,
 	businessName,
 	logoInvertInDarkMode,
+	showPoweredByBadge = true,
 	children,
 }: {
 	clientPortalId: string;
 	logoUrl: string | null;
 	businessName: string;
 	logoInvertInDarkMode?: boolean;
+	/** Free-plan portals carry the badge; defaults on so stale data never drops it. */
+	showPoweredByBadge?: boolean;
 	children: React.ReactNode;
 }) {
 	const pathname = usePathname();
@@ -143,9 +146,11 @@ export function PortalShell({
 						Sign out
 					</button>
 				</div>
-				<div className="px-5 py-4 border-t border-border">
-					<PoweredByOneTool size="compact" />
-				</div>
+				{showPoweredByBadge && (
+					<div className="px-5 py-4 border-t border-border">
+						<PoweredByOneTool size="compact" />
+					</div>
+				)}
 			</aside>
 
 			{/* Mobile brand header (<768px) */}

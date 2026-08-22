@@ -18,6 +18,11 @@ import type { Id } from "./_generated/dataModel";
 import { internalQuery } from "./_generated/server";
 import { getCurrentUserOrgId, getCurrentUserOrThrow } from "./lib/auth";
 import {
+	entitlementsFromIdentity,
+	isFeatureAllowed,
+	type PlanTier,
+} from "./lib/entitlements";
+import {
 	DEFAULT_DETAIL_COLUMNS,
 	GROUP_BY_OPTIONS,
 	getReportField,
@@ -505,17 +510,22 @@ export const reportConfigAgent = new Agent(components.agent, {
 	languageModel: openai.chat("gpt-5.4-mini"),
 });
 
-/** Resolve the calling user + org for rate limiting and usage metering.
+/** Resolve the calling user + org + plan for gating and rate limiting.
  * Identity propagates from the assistant action into this runQuery. */
 export const authContext = internalQuery({
 	args: {},
 	handler: async (
 		ctx
-	): Promise<{ userId: Id<"users">; orgId: Id<"organizations"> } | null> => {
+	): Promise<{
+		userId: Id<"users">;
+		orgId: Id<"organizations">;
+		plan: PlanTier;
+	} | null> => {
 		const user = await getCurrentUserOrThrow(ctx);
 		const orgId = await getCurrentUserOrgId(ctx);
 		if (!orgId) return null;
-		return { userId: user._id, orgId };
+		const { plan } = await entitlementsFromIdentity(ctx);
+		return { userId: user._id, orgId, plan };
 	},
 });
 
@@ -569,6 +579,18 @@ async function runReportGeneration(
 	const auth = await ctx.runQuery(internal.reportConfigGeneration.authContext, {});
 	if (!auth) {
 		return { ok: false, error: "No organization found for this user." };
+	}
+
+	// The pipeline entry is the single NL-generation gate, so every surface
+	// that ever calls it (assistant tool, future report-page buttons)
+	// enforces identically. The denial is data the model relays — the chat
+	// keeps working, and the blocked ask already debited its daily message.
+	if (!isFeatureAllowed(auth.plan, "nlReportGeneration")) {
+		return {
+			ok: false,
+			error:
+				"Generating reports with AI is part of the Business plan. Tell the user they can build and edit this report manually in the report builder, or upgrade to generate it with AI.",
+		};
 	}
 
 	const { ok: allowed, retryAfter } = await rateLimiter.limit(

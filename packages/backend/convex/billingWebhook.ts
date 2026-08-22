@@ -1,4 +1,5 @@
 import { MutationCtx, internalQuery } from "./_generated/server";
+import { internal } from "./_generated/api";
 import { internalMutation } from "./lib/triggers";
 import { v } from "convex/values";
 import { Doc, Id } from "./_generated/dataModel";
@@ -122,6 +123,22 @@ async function applyBillingPatch(
 		...grace,
 		billingSyncedAt: now,
 	});
+	// Keep Clerk's per-org seat cap in step with the resolved plan (trial and
+	// override orgs sit outside Clerk's plan-level seat limits). Scheduled
+	// UNCONDITIONALLY: a premium loss starts the 72h grace (still business at
+	// T+0), and by the time grace lapses wasPremium === nowPremium — a
+	// transition-gated schedule would never sync the org down. The nightly
+	// reconcile re-runs this, and the sync is idempotent.
+	await ctx.scheduler.runAfter(0, internal.seatSync.syncSeatCap, {
+		orgId: org._id,
+	});
+	if (grace.planGraceUntil !== undefined && grace.planGraceUntil !== null) {
+		await ctx.scheduler.runAt(
+			grace.planGraceUntil + 60_000,
+			internal.seatSync.syncSeatCap,
+			{ orgId: org._id }
+		);
+	}
 }
 
 // ============================================================================

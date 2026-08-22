@@ -6,6 +6,7 @@
 import type { MutationCtx } from "../_generated/server";
 import type { Doc, Id } from "../_generated/dataModel";
 import { celebrateInvoicePaid } from "./celebrations";
+import { grantMeterBonus } from "./entitlements";
 import { kickQboSyncWorker, maybeEnqueueQboSync } from "./quickbooksEnqueue";
 
 type ReceiptMetadata = {
@@ -126,6 +127,11 @@ export async function applyMarkPaidCascade(
 	if (payment.status === "paid") {
 		return payment._id;
 	}
+
+	// A Stripe collection this month grants +10 document sends, once per
+	// period. Runs before the early return above can re-trigger it, and the
+	// once guard makes a second collection in the same month a no-op.
+	await grantMeterBonus(ctx, payment.orgId, "clientSends", 10, { once: true });
 
 	const patch: Partial<Doc<"payments">> = {
 		status: "paid",

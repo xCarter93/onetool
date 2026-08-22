@@ -5,6 +5,8 @@ import { useMutation } from "convex/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { PermissionGate } from "@/components/domain/permission-gate";
+import { useToast } from "@/hooks/use-toast";
+import { convexErrorMessage } from "@/lib/convex-error";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { REPORT_PRESETS } from "@onetool/backend/convex/lib/reportPresets";
 import {
@@ -51,6 +53,7 @@ function buildInitialFromPreset(presetId: string): ReportBuilderInitial | null {
 function NewReportInner() {
 	const router = useRouter();
 	const params = useSearchParams();
+	const toast = useToast();
 	const createReport = useMutation(api.reports.create);
 	const [saving, setSaving] = useState(false);
 
@@ -98,6 +101,10 @@ function NewReportInner() {
 			router.push(`/reports/${reportId}`);
 		} catch (error) {
 			console.error("Failed to save report:", error);
+			toast.error(
+				"Couldn't save report",
+				convexErrorMessage(error, "Please try again.")
+			);
 			setSaving(false);
 		}
 	};

@@ -9,7 +9,8 @@ type BadgeVariant =
 	| "warning"
 	| "outline";
 
-export type LifecycleStatus = "draft" | "active" | "paused";
+/** `paused_plan`: was published, parked by the entitlement layer; resumable on upgrade. */
+export type LifecycleStatus = "draft" | "active" | "paused" | "paused_plan";
 
 export const effectiveStatus = (a: Doc<"workflowAutomations">): LifecycleStatus =>
 	a.status ?? "draft";
@@ -19,6 +20,7 @@ export const STATUS_LABEL: Record<LifecycleStatus, string> = {
 	draft: "Draft",
 	active: "Active",
 	paused: "Paused",
+	paused_plan: "Paused — plan limit",
 };
 
 /**
@@ -32,6 +34,7 @@ export const STATUS_BADGE_PROPS: Record<
 	draft: { appearance: "outline" },
 	active: { appearance: "solid" },
 	paused: { appearance: "solid" },
+	paused_plan: { appearance: "solid" },
 };
 
 type ObjectType = "client" | "project" | "quote" | "invoice" | "task";

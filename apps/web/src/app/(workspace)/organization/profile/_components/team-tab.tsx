@@ -1,8 +1,13 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useOrganization } from "@clerk/nextjs";
 import { Lock, Mail, UserPlus, Trash2, Loader2 } from "lucide-react";
+import {
+	BUSINESS_SEATS,
+	FREE_SEATS,
+} from "@onetool/backend/convex/lib/planMatrix";
 
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -36,6 +41,7 @@ import {
 } from "@/components/ui/item";
 import { useToast } from "@/hooks/use-toast";
 import { useConfirmDialog } from "@/hooks/use-confirm-dialog";
+import { useEntitlements } from "@/hooks/use-entitlements";
 import { useSaveValidation } from "../_hooks/use-save-validation";
 import { Eyebrow, SectionHeading } from "./settings-card";
 import { TeamMembersTable } from "./team-members-table";
@@ -43,7 +49,7 @@ import {
 	ADMIN_ROLE,
 	MEMBER_ROLE,
 	ROLE_OPTIONS,
-	INVITATIONS_PARAMS,
+	SEATS_AND_INVITATIONS_PARAMS,
 	roleLabel,
 	clerkErr,
 } from "../_lib/org-members";
@@ -51,8 +57,9 @@ import {
 export function TeamTab() {
 	const toast = useToast();
 	const { confirm: confirmDialog } = useConfirmDialog();
-	const { organization, membership, invitations, isLoaded } =
-		useOrganization(INVITATIONS_PARAMS);
+	const { organization, membership, invitations, memberships, isLoaded } =
+		useOrganization(SEATS_AND_INVITATIONS_PARAMS);
+	const { plan, isLoading: planLoading } = useEntitlements();
 
 	const isAdmin = membership?.role === ADMIN_ROLE;
 
@@ -71,8 +78,21 @@ export function TeamTab() {
 	const [pendingInviteId, setPendingInviteId] = useState<string | null>(null);
 	const inviteInvalid = inviteShowErrors && !inviteEmail.trim();
 
+	const pendingInvites = (invitations?.data ?? []).filter(
+		(invitation) => invitation.status === "pending",
+	);
+	// Seats are enforced by Clerk; this is a pre-flight so the invite doesn't
+	// fail at the API. Cap is unknown until the plan resolves — never assume free.
+	const seatCap = planLoading
+		? null
+		: plan === "business"
+			? BUSINESS_SEATS
+			: FREE_SEATS;
+	const seatsUsed = (memberships?.count ?? 0) + pendingInvites.length;
+	const atSeatCap = seatCap !== null && seatsUsed >= seatCap;
+
 	const handleInvite = async () => {
-		if (!organization) return;
+		if (!organization || atSeatCap) return;
 		markInviteAttempt();
 		const email = inviteEmail.trim();
 		if (!email) return;
@@ -119,9 +139,6 @@ export function TeamTab() {
 		);
 	}
 
-	const pendingInvites = (invitations?.data ?? []).filter(
-		(invitation) => invitation.status === "pending",
-	);
 	const viewOnlyBadge = !isAdmin ? (
 		<span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-muted/60 px-2.5 py-1 text-xs font-medium text-muted-foreground">
 			<Lock className="h-3 w-3" aria-hidden="true" /> View only
@@ -141,7 +158,14 @@ export function TeamTab() {
 			{isAdmin && (
 				<Frame>
 					<FrameHeader>
-						<FrameTitle>Invitations</FrameTitle>
+						<div className="flex items-center justify-between gap-3">
+							<FrameTitle>Invitations</FrameTitle>
+							{seatCap !== null && (
+								<span className="text-xs text-muted-foreground">
+									{seatsUsed} of {seatCap} seats used
+								</span>
+							)}
+						</div>
 						<FrameDescription>
 							Invite teammates by email. They&apos;ll get a link to join this
 							organization.
@@ -194,7 +218,7 @@ export function TeamTab() {
 									))}
 								</SelectContent>
 							</Select>
-							<Button onClick={handleInvite} disabled={inviting}>
+							<Button onClick={handleInvite} disabled={inviting || atSeatCap}>
 								{inviting ? (
 									<Loader2 className="h-4 w-4 animate-spin" />
 								) : (
@@ -203,6 +227,21 @@ export function TeamTab() {
 								Send invite
 							</Button>
 						</div>
+
+						{atSeatCap && plan === "free" && (
+							<div className="border-t border-border px-4 py-3.5 sm:px-5">
+								<p className="text-sm text-muted-foreground">
+									You&apos;ve used all {seatCap} seats on the Free plan.{" "}
+									<Link
+										href="/organization/profile?tab=billing"
+										className="font-medium text-primary hover:underline"
+									>
+										Upgrade to Business
+									</Link>{" "}
+									for {BUSINESS_SEATS}.
+								</p>
+							</div>
+						)}
 
 						{pendingInvites.length > 0 ? (
 							<div className="border-t border-border">

@@ -137,7 +137,7 @@ describe("assistantChat", () => {
 	});
 
 	describe("plan gate", () => {
-		it("blocks sendMessage without premium access", async () => {
+		it("free orgs can send, metered at 10 messages per UTC day", async () => {
 			const { orgA } = await seedTwoOrgs();
 			const asFree = t.withIdentity(
 				createTestIdentity(orgA.clerkUserId, orgA.clerkOrgId)
@@ -148,12 +148,26 @@ describe("assistantChat", () => {
 				{}
 			);
 
-			await expect(
-				asFree.mutation(api.assistantChat.sendMessage, {
+			for (let i = 0; i < 10; i++) {
+				const { messageId } = await asFree.mutation(
+					api.assistantChat.sendMessage,
+					{ threadId, prompt: `hello ${i}` }
+				);
+				expect(messageId).toBeTruthy();
+			}
+			// The 11th message of the day refuses with the frozen shape.
+			let caught: unknown;
+			try {
+				await asFree.mutation(api.assistantChat.sendMessage, {
 					threadId,
-					prompt: "hello",
-				})
-			).rejects.toThrow("Business plan");
+					prompt: "one too many",
+				});
+			} catch (error) {
+				caught = error;
+			}
+			expect(caught).toBeDefined();
+			expect(String(caught)).toContain("PLAN_LIMIT_REACHED");
+			expect(String(caught)).toContain("assistantMessages");
 		});
 
 		it("allows sendMessage via the org metadata flag", async () => {
@@ -174,20 +188,20 @@ describe("assistantChat", () => {
 			expect(messageId).toBeTruthy();
 		});
 
-		it("blocks streamResponse without premium access", async () => {
+		it("streamResponse authorization no longer plan-blocks free orgs", async () => {
 			const { orgA } = await seedTwoOrgs();
 			const asFree = t.withIdentity(
 				createTestIdentity(orgA.clerkUserId, orgA.clerkOrgId)
 			);
 
-			// The gate runs before thread authorization, so dummy IDs suffice —
-			// this action can be invoked directly, independent of sendMessage.
+			// The aiAssistant switch is free-for-all at Slice A, so the failure
+			// for a bogus thread is ownership, not the plan gate.
 			await expect(
 				asFree.action(api.assistantChat.streamResponse, {
 					threadId: "thread_x",
 					promptMessageId: "msg_x",
 				})
-			).rejects.toThrow("Business plan");
+			).rejects.toThrow("Thread not found");
 		});
 
 		it("allows sendMessage via the webhook-synced org subscription", async () => {
@@ -214,28 +228,29 @@ describe("assistantChat", () => {
 			expect(messageId).toBeTruthy();
 		});
 
-		it("blocks sendMessage when the org subscription is on the free plan", async () => {
+		it("business orgs are unmetered past the free daily cap", async () => {
 			const { orgA } = await seedTwoOrgs();
 			await t.run(async (ctx) => {
 				await ctx.db.patch(orgA.orgId, {
-					clerkPlanSlug: "free_org",
+					clerkPlanSlug: "onetool_business_plan_org",
 					subscriptionStatus: "active",
 				});
 			});
-			const asFree = t.withIdentity(
+			const asPaid = t.withIdentity(
 				createTestIdentity(orgA.clerkUserId, orgA.clerkOrgId)
 			);
 
-			const { threadId } = await asFree.mutation(
+			const { threadId } = await asPaid.mutation(
 				api.assistantChat.createThread,
 				{}
 			);
-			await expect(
-				asFree.mutation(api.assistantChat.sendMessage, {
-					threadId,
-					prompt: "hello",
-				})
-			).rejects.toThrow("Business plan");
+			for (let i = 0; i < 12; i++) {
+				const { messageId } = await asPaid.mutation(
+					api.assistantChat.sendMessage,
+					{ threadId, prompt: `hello ${i}` }
+				);
+				expect(messageId).toBeTruthy();
+			}
 		});
 	});
 });

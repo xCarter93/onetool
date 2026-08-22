@@ -10,6 +10,7 @@ import {
 } from "@convex-dev/agent/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { useAction, useMutation, useQuery } from "convex/react";
+import { ConvexError } from "convex/values";
 import {
 	ArrowUp,
 	Eye,
@@ -176,6 +177,21 @@ function MarkdownLink({
 			<HelpArticleDrawer article={ref} open={open} onOpenChange={setOpen} />
 		</>
 	);
+}
+
+/**
+ * The daily-message ceiling refuses with its own user-facing copy
+ * (`ConvexError({ code: "PLAN_LIMIT_REACHED", message })`) — surface that
+ * instead of the generic snag toast. Returns null for every other failure.
+ */
+function planLimitMessage(err: unknown): string | null {
+	if (!(err instanceof ConvexError)) return null;
+	const data = err.data as { code?: unknown; message?: unknown } | undefined;
+	if (!data || typeof data !== "object") return null;
+	if (data.code !== "PLAN_LIMIT_REACHED") return null;
+	return typeof data.message === "string" && data.message.trim()
+		? data.message
+		: "You've reached a plan limit.";
 }
 
 function TextPart({ text, streaming }: { text: string; streaming: boolean }) {
@@ -381,8 +397,14 @@ export function AssistantPanel() {
 	const currentRecord = useCurrentRecord();
 	// While access is loading, show the normal chat UI (no upgrade-prompt flash
 	// for premium users); the backend gate blocks any send that sneaks in.
-	const { allows, isLoading: accessLoading } = useEntitlements();
+	const { allows, meter, isLoading: accessLoading } = useEntitlements();
 	const locked = !accessLoading && !allows("aiAssistant");
+	// Free plans meter daily messages; business orgs get no meter at all.
+	const messageMeter = meter("assistantMessages");
+	const messagesLeft =
+		messageMeter && messageMeter.limit !== null && messageMeter.remaining !== null
+			? { remaining: messageMeter.remaining, limit: messageMeter.limit }
+			: null;
 	// client-executed tool calls (navigate, configureReport) already run.
 	// null = "seed from the next snapshot without executing" (set when
 	// opening a historical thread); a fresh empty Set (set at thread
@@ -546,10 +568,15 @@ export function AssistantPanel() {
 				screenContext: getScreenContext(),
 			});
 			pendingRetryRef.current = null;
-		} catch {
+		} catch (err) {
 			// Restore the failed prompt, but never clobber a newer draft.
 			setInput((current) => (current.trim() ? current : prompt));
-			toast.error("The assistant hit a snag", "Please try that again.");
+			const limitMessage = planLimitMessage(err);
+			if (limitMessage) {
+				toast.error("Daily limit reached", limitMessage);
+			} else {
+				toast.error("The assistant hit a snag", "Please try that again.");
+			}
 		} finally {
 			setIsResponding(false);
 		}
@@ -716,6 +743,12 @@ export function AssistantPanel() {
 
 					{!locked && !showHistory && (
 						<div className="shrink-0 border-t border-border p-3">
+							{messagesLeft && (
+								<p className="mb-1.5 px-1 text-right text-[11px] text-muted-foreground">
+									{messagesLeft.remaining} of {messagesLeft.limit} messages left
+									today
+								</p>
+							)}
 							<div className="flex items-end gap-2 rounded-xl border border-border bg-muted/30 p-2 focus-within:border-primary/40">
 								<Textarea
 									// During the pin handoff the exiting overlay copy unmounts

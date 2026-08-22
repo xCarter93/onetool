@@ -1,6 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { PLAN_MATRIX } from "./planMatrix";
+import { DISPLAY_ONLY_MATRIX_KEYS, PLAN_MATRIX } from "./planMatrix";
 import { FEATURES, METERS, type FeatureKey, type MeterKey } from "./entitlements";
+
+const DISPLAY_ONLY = new Set<string>(DISPLAY_ONLY_MATRIX_KEYS);
 
 /**
  * PLAN_MATRIX is the advertised copy; FEATURES/METERS are enforcement truth.
@@ -8,6 +10,18 @@ import { FEATURES, METERS, type FeatureKey, type MeterKey } from "./entitlements
  * "copy can never drift from enforcement" invariant (PRD §4).
  */
 describe("PLAN_MATRIX ↔ entitlement map consistency", () => {
+	it("every row is map-backed or on the display-only allowlist", () => {
+		for (const row of PLAN_MATRIX) {
+			if (DISPLAY_ONLY.has(row.key)) continue;
+			const backed =
+				FEATURES[row.key as FeatureKey] !== undefined ||
+				METERS[row.key as MeterKey] !== undefined;
+			expect(backed, `advertised row "${row.key}" has no enforcement-map row`).toBe(
+				true
+			);
+		}
+	});
+
 	it("switch-backed rows mirror the map's booleans", () => {
 		for (const row of PLAN_MATRIX) {
 			const feature = FEATURES[row.key as FeatureKey];

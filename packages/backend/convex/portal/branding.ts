@@ -1,5 +1,6 @@
 import { query } from "../_generated/server";
 import { v } from "convex/values";
+import { entitlementsFromDocs, isFeatureAllowed } from "../lib/entitlements";
 
 /**
  * Public unauthenticated query that resolves a portal access ID to the owning
@@ -25,11 +26,21 @@ export const getPortalBranding = query({
 		const org = await ctx.db.get(client.orgId);
 		if (!org) return null;
 
+		// The portal tree's single entitlement read, display-only by design:
+		// free orgs' portals carry the "Powered by OneTool" badge; Business
+		// removes it. Resolved via the docs path on the org already loaded —
+		// portal visitors have no identity to resolve.
+		const showPoweredByBadge = !isFeatureAllowed(
+			entitlementsFromDocs(org).plan,
+			"portalBadgeRemoval"
+		);
+
 		return {
 			clientPortalId,
 			logoUrl: org.logoUrl ?? null,
 			logoInvertInDarkMode: org.logoInvertInDarkMode ?? false,
 			name: org.name,
+			showPoweredByBadge,
 		};
 	},
 });

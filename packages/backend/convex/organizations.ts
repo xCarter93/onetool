@@ -119,6 +119,9 @@ export const createFromClerk = internalMutation({
 		}
 
 		const receivingAddress = await generateUniqueReceivingAddress(ctx);
+		// Reverse trial: every new org gets 14 days of Business at signup, no
+		// card. resolvePlan reads this window until it lapses.
+		const trialEndsAt = Date.now() + 14 * 24 * 60 * 60 * 1000;
 
 		// Create minimal organization metadata (just sync from Clerk)
 		// Full setup will happen when user completes onboarding
@@ -128,6 +131,7 @@ export const createFromClerk = internalMutation({
 			ownerUserId: ownerUser._id,
 			logoUrl: args.logoUrl,
 			hasPremiumFeatureAccess: args.hasPremiumFeatureAccess ?? false,
+			trialEndsAt,
 			isMetadataComplete: false, // User needs to complete additional setup
 			// Generate unique receiving address for this organization
 			receivingAddress,
@@ -140,6 +144,14 @@ export const createFromClerk = internalMutation({
 		});
 
 		await ensureMembership(ctx, ownerUser._id, orgId, "owner");
+
+		// Trial orgs get Business seats now; the runAt wake-up syncs back down
+		// when the trial lapses (a paying/override org resolves business then,
+		// so the second sync is a no-op for them).
+		await ctx.scheduler.runAfter(0, internal.seatSync.syncSeatCap, { orgId });
+		await ctx.scheduler.runAt(trialEndsAt + 60_000, internal.seatSync.syncSeatCap, {
+			orgId,
+		});
 
 		console.log(
 			`Created minimal organization record for Clerk org: ${args.clerkOrganizationId}`
@@ -288,6 +300,17 @@ export const updateFromClerk = internalMutation({
 		}
 
 		await ctx.db.patch(organization._id, updates);
+
+		// An override grant/revoke changes the resolved plan — keep Clerk's
+		// seat cap in step for the orgs plan-level limits can't cover.
+		if (
+			args.hasPremiumFeatureAccess !== undefined &&
+			args.hasPremiumFeatureAccess !== organization.hasPremiumFeatureAccess
+		) {
+			await ctx.scheduler.runAfter(0, internal.seatSync.syncSeatCap, {
+				orgId: organization._id,
+			});
+		}
 
 		console.log(
 			`Updated organization name for Clerk org: ${args.clerkOrganizationId}`

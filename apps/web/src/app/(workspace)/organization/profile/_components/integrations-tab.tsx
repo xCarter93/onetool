@@ -54,6 +54,8 @@ import {
 import { QuickBooksResetDialog } from "./quickbooks-reset-dialog";
 import { QuickBooksSyncIssues } from "./quickbooks-sync-issues";
 import { useQuickBooksEnabled } from "@/hooks/use-quickbooks-enabled";
+import { useEntitlements } from "@/hooks/use-entitlements";
+import Link from "next/link";
 import {
 	SectionHeading,
 	SettingsCard,
@@ -210,6 +212,14 @@ function NotConnectedBadge() {
 }
 
 /** Shown while an integration is built but deliberately not yet released. */
+function BusinessPlanBadge() {
+	return (
+		<Badge variant="primary-light" radius="full" size="sm">
+			Business plan
+		</Badge>
+	);
+}
+
 function ComingSoonBadge() {
 	return (
 		<Badge variant="primary-light" radius="full" size="sm">
@@ -229,6 +239,10 @@ export function IntegrationsTab() {
 	// OAuth routes enforce the same flag server-side, so this only controls what
 	// the card offers — it is not the security boundary.
 	const qboEnabled = useQuickBooksEnabled();
+	// The tab itself is open to every plan (it's the Stripe front door); only
+	// the QuickBooks tile is Business-gated. Server mutations enforce the same.
+	const { allows, isLoading: planLoading } = useEntitlements();
+	const qboPlanLocked = !planLoading && !allows("quickbooks");
 
 	const connection = useQuery(api.quickbooks.getConnectionStatus);
 	const importRun = useQuery(api.quickbooksImport.getImportRun);
@@ -474,7 +488,9 @@ export function IntegrationsTab() {
 								label={
 									!qboEnabled
 										? "QuickBooks is not available yet"
-										: !isConnected
+										: qboPlanLocked && !isConnected
+											? "QuickBooks is part of the Business plan"
+											: !isConnected
 											? "QuickBooks not connected"
 											: needsReauth
 												? "QuickBooks needs to be reconnected"
@@ -490,6 +506,8 @@ export function IntegrationsTab() {
 						status={
 							!qboEnabled ? (
 								<ComingSoonBadge />
+							) : qboPlanLocked && !isConnected ? (
+								<BusinessPlanBadge />
 							) : !isConnected ? (
 								<NotConnectedBadge />
 							) : (
@@ -510,7 +528,9 @@ export function IntegrationsTab() {
 						description={
 							!qboEnabled
 								? "Sync clients, invoices, and payments to QuickBooks. We're finishing certification with Intuit — this will open up soon."
-								: isConnected
+								: qboPlanLocked && !isConnected
+									? "Sync clients, invoices, and payments to QuickBooks. Included with the Business plan."
+									: isConnected
 									? (connection.companyName ?? "QuickBooks company")
 									: "Sync clients, invoices, and payments to QuickBooks."
 						}
@@ -536,6 +556,14 @@ export function IntegrationsTab() {
 								// that isn't open yet, rather than one that failed to load.
 								<Button size="sm" disabled>
 									Connect
+								</Button>
+							) : qboPlanLocked && !isConnected ? (
+								<Button
+									size="sm"
+									variant="outline"
+									render={<Link href="/organization/profile?tab=billing" />}
+								>
+									View plans
 								</Button>
 							) : !isConnected ? (
 								<Button

@@ -11,7 +11,6 @@ import {
 	type PlanSource,
 	type PlanTier,
 } from "./lib/entitlements";
-import { countCountedClients } from "./lib/planCaps";
 import { computeEsignaturesSentThisMonth } from "./usage";
 
 export interface MyEntitlements {
@@ -55,32 +54,56 @@ export const getMine = optionalUserQuery({
 				? identityResolved
 				: entitlementsFromDocs(org, ctx.user);
 
+		// Only actionable (finite-limit) meters ship — an unlimited meter has
+		// nothing to display or enforce, so business orgs get an empty list.
 		const meters: MeterUsage[] = [];
 		if (org) {
-			// E-signatures still count from the documents table (the planUsage
-			// store takes over when the send meter wires up at P5).
-			const esigUsed = await computeEsignaturesSentThisMonth(
+			// E-signatures still count from the documents table (deliberately
+			// left on the legacy counter — it works and the kill switch works).
+			const esigUsage = await getMeterUsage(
 				ctx,
-				org,
-				ctx.orgId
+				ctx.orgId,
+				"esignatures",
+				resolved.plan,
+				{
+					usedOverride: await computeEsignaturesSentThisMonth(
+						ctx,
+						org,
+						ctx.orgId
+					),
+				}
 			);
-			meters.push(
-				await getMeterUsage(ctx, ctx.orgId, "esignatures", resolved.plan, {
-					usedOverride: esigUsed,
-				})
-			);
+			if (esigUsage.limit !== null) meters.push(esigUsage);
 
-			// Clients count from the same live query the cap enforcement uses
-			// (planCaps). The count is clamped at the free cap — enough for every
-			// display, and it keeps the read bounded on unlimited plans.
-			const clientCap = METERS.clients.free ?? 0;
-			const clientsUsed =
-				clientCap > 0 ? await countCountedClients(ctx, ctx.orgId, clientCap) : 0;
-			meters.push(
-				await getMeterUsage(ctx, ctx.orgId, "clients", resolved.plan, {
-					usedOverride: clientsUsed,
-				})
-			);
+			// planUsage-native meters (Slice A).
+			for (const key of [
+				"clientSends",
+				"assistantMessages",
+				"importedRows",
+			] as const) {
+				const usage = await getMeterUsage(ctx, ctx.orgId, key, resolved.plan);
+				if (usage.limit !== null) meters.push(usage);
+			}
+
+			// Saved reports: current-count semantics, same live count the slot
+			// check enforces. Bounded well above the cap so a grandfathered org
+			// displays its real 7/5, not a clamped 5/5.
+			const reportCap = METERS.savedReports[resolved.plan];
+			if (reportCap !== null) {
+				const savedReports = await ctx.db
+					.query("reports")
+					.withIndex("by_org", (q) => q.eq("orgId", ctx.orgId!))
+					.take(reportCap * 5)
+					.then((rows) => rows.length);
+				const usage = await getMeterUsage(
+					ctx,
+					ctx.orgId,
+					"savedReports",
+					resolved.plan,
+					{ usedOverride: savedReports }
+				);
+				if (usage.limit !== null) meters.push(usage);
+			}
 		}
 
 		return {

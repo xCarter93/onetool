@@ -109,6 +109,8 @@ type RoutingMapProps = {
 	gasStations: MapGasStation[];
 	/** Positions of stops the road network can't reach; alert markers. */
 	unreachableIndices?: ReadonlySet<number>;
+	/** Free-plan preview: straight dashed path through the entered order. */
+	previewOnly?: boolean;
 	className?: string;
 };
 
@@ -159,12 +161,20 @@ export function RoutingMap({
 	geometry,
 	gasStations,
 	unreachableIndices,
+	previewOnly = false,
 	className,
 }: RoutingMapProps) {
-	const routeCoordinates = useMemo(
-		() => (geometry ? decodePolyline(geometry) : []),
-		[geometry]
-	);
+	// Preview draws the entered order as straight legs; the optimized polyline
+	// is a Business-plan result and is never decoded here.
+	const routeCoordinates = useMemo<Array<[number, number]>>(() => {
+		if (previewOnly) {
+			const pts: Array<[number, number]> = [];
+			if (start) pts.push([start.longitude, start.latitude]);
+			for (const stop of stops) pts.push([stop.longitude, stop.latitude]);
+			return pts;
+		}
+		return geometry ? decodePolyline(geometry) : [];
+	}, [previewOnly, start, stops, geometry]);
 
 	const boundsPoints = useMemo(() => {
 		const pts: Array<{ latitude: number; longitude: number }> = [];
@@ -200,8 +210,9 @@ export function RoutingMap({
 						id="planned-route"
 						coordinates={routeCoordinates}
 						color="#0ea5e9"
-						width={4}
-						opacity={0.85}
+						width={previewOnly ? 3 : 4}
+						opacity={previewOnly ? 0.6 : 0.85}
+						dashArray={previewOnly ? [2, 2] : undefined}
 						interactive={false}
 					/>
 				)}

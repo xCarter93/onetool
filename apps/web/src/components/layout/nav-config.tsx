@@ -169,7 +169,6 @@ export const NAV_GROUPS: NavGroup[] = [
 					{
 						title: "Integrations",
 						url: "/organization/profile?tab=integrations",
-						featureKey: "quickbooks",
 					},
 				],
 			},

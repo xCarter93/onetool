@@ -12,7 +12,12 @@ import { action, internalQuery } from "./_generated/server";
 import { assistantAgent, INSTRUCTIONS } from "./assistantAgent";
 import { SCREEN_CONTEXT_MAX_LENGTH } from "./lib/assistantShared";
 import { getCurrentUserOrgId, getCurrentUserOrThrow } from "./lib/auth";
-import { requireFeature } from "./lib/entitlements";
+import {
+	consumeMeter,
+	entitlementsFromIdentity,
+	requireFeature,
+	requireMeter,
+} from "./lib/entitlements";
 import { userMutation, userQuery } from "./lib/factories";
 import { rateLimiter } from "./rateLimits";
 
@@ -62,6 +67,12 @@ export const sendMessage = userMutation({
 		if (!meta || meta.orgId !== ctx.orgId || meta.userId !== ctx.user._id) {
 			throw new Error("Thread not found");
 		}
+
+		// Org-shared daily message meter, debited exactly once per user message.
+		// streamResponse retries reuse the saved messageId and never re-debit.
+		const { plan } = await entitlementsFromIdentity(ctx);
+		await requireMeter(ctx, ctx.orgId, "assistantMessages", plan);
+		await consumeMeter(ctx, ctx.orgId, "assistantMessages");
 
 		const { messageId } = await saveMessage(ctx, components.agent, {
 			threadId: args.threadId,

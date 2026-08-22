@@ -8,6 +8,34 @@ import {
 } from "./lib/crud";
 import { emptyListResult } from "./lib/queries";
 import { optionalUserQuery, userMutation } from "./lib/factories";
+import type { MutationCtx } from "./_generated/server";
+import {
+	METERS,
+	entitlementsFromIdentity,
+	requireMeter,
+} from "./lib/entitlements";
+
+/**
+ * Saved-report slot check (current-count semantics): creating past the cap
+ * refuses, deleting frees a slot, edit/run/view/export are never gated.
+ * Orgs already over the cap are grandfathered — existing rows stay, creation
+ * refuses until they're back under.
+ */
+async function assertSavedReportSlot(
+	ctx: MutationCtx,
+	orgId: Id<"organizations">
+): Promise<void> {
+	const { plan } = await entitlementsFromIdentity(ctx);
+	const cap = METERS.savedReports[plan];
+	if (cap === null) return;
+	const existing = await ctx.db
+		.query("reports")
+		.withIndex("by_org", (q) => q.eq("orgId", orgId))
+		.take(cap);
+	await requireMeter(ctx, orgId, "savedReports", plan, {
+		usedOverride: existing.length,
+	});
+}
 
 /**
  * Report operations with CRUD helpers
@@ -161,6 +189,8 @@ export const create = userMutation({
 			throw new Error("No organization found");
 		}
 
+		await assertSavedReportSlot(ctx, userOrgId);
+
 		const now = Date.now();
 
 		const reportId = await ctx.db.insert("reports", {
@@ -235,6 +265,7 @@ export const duplicate = userMutation({
 		const report = await ctx.orgEntity("reports", args.id);
 		// Scoped members may only duplicate their own reports (source content copy)
 		await ctx.requireRecordScope("reports", () => report.createdBy === ctx.user._id);
+		await assertSavedReportSlot(ctx, report.orgId);
 		const now = Date.now();
 
 		const newReportId = await ctx.db.insert("reports", {

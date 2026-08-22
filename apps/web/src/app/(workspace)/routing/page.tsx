@@ -79,7 +79,9 @@ type RoutingView = "today" | "saved";
 
 function RoutingWorkspace() {
 	const { allows, isLoading: accessLoading } = useEntitlements();
-	const hasPremiumAccess = allows("routing");
+	// Free-plan soft preview: reads still render, every write/compute path is
+	// off. Stays false while entitlements load so business users never flash it.
+	const previewOnly = !accessLoading && !allows("routing");
 	const toast = useToast();
 
 	const savedRoutes = useQuery(api.routes.list);
@@ -309,6 +311,7 @@ function RoutingWorkspace() {
 	};
 
 	const handleSeed = async () => {
+		if (previewOnly) return;
 		setSeeding(true);
 		try {
 			const result = await seedFromSchedule({ date: today, assigneeUserId });
@@ -338,7 +341,7 @@ function RoutingWorkspace() {
 	};
 
 	const handleUseToday = async () => {
-		if (!selectedRouteId) return;
+		if (previewOnly || !selectedRouteId) return;
 		try {
 			const routeId = await copyToDaily({
 				routeId: selectedRouteId,
@@ -386,6 +389,7 @@ function RoutingWorkspace() {
 	// Persist the current draft (create or update). Returns null when the
 	// draft isn't saveable yet; shared by Save and the compute buttons.
 	const persistDraft = async (): Promise<Id<"routes"> | null> => {
+		if (previewOnly) return null;
 		if (!displayStart) {
 			toast.warning("Set a start location first");
 			return null;
@@ -454,7 +458,7 @@ function RoutingWorkspace() {
 		order: number,
 		status: "pending" | "visited"
 	) => {
-		if (!selectedRouteId) return;
+		if (previewOnly || !selectedRouteId) return;
 		const stop = displayStops[order];
 		try {
 			await setStopStatus({ routeId: selectedRouteId, order, status });
@@ -478,6 +482,7 @@ function RoutingWorkspace() {
 	};
 
 	const handleCompute = async (optimize: boolean) => {
+		if (previewOnly) return;
 		setComputing(true);
 		setUnreachableIndices(new Set());
 		try {
@@ -524,6 +529,7 @@ function RoutingWorkspace() {
 	};
 
 	const handleGasToggle = (enabled: boolean) => {
+		if (previewOnly) return;
 		setGasEnabled(enabled);
 		if (!enabled) {
 			setGasStations([]);
@@ -551,7 +557,7 @@ function RoutingWorkspace() {
 	};
 
 	const handleDeleteRoute = async () => {
-		if (!selectedRouteId) return;
+		if (previewOnly || !selectedRouteId) return;
 		try {
 			await removeRoute({ routeId: selectedRouteId });
 			resetToNewRoute();
@@ -574,34 +580,9 @@ function RoutingWorkspace() {
 			: [];
 
 	const routeGeometry =
-		!dirty && selectedRoute?.geometry ? selectedRoute.geometry : undefined;
-
-	if (!accessLoading && !hasPremiumAccess) {
-		return (
-			<div className="flex h-full min-h-[60vh] items-center justify-center p-6">
-				<EmptyState
-					illustration="access-restricted"
-					title="Routing is a Business plan feature"
-					description="Plan optimized multi-stop routes between client properties with the Business plan."
-					action={
-						<div className="flex flex-col items-center gap-2">
-							<Button
-								size="sm"
-								render={<Link href="/organization/profile?tab=billing" />}
-							>
-								View plans
-							</Button>
-							<LearnMoreLink
-								article="routing/planning-a-route"
-								label="Learn how routing works"
-							/>
-						</div>
-					}
-					size="md"
-				/>
-			</div>
-		);
-	}
+		!previewOnly && !dirty && selectedRoute?.geometry
+			? selectedRoute.geometry
+			: undefined;
 
 	return (
 		<div className="flex h-full flex-col gap-4 p-6">
@@ -649,21 +630,23 @@ function RoutingWorkspace() {
 									</SelectContent>
 								</Select>
 							)}
-							<Button
-								variant="outline"
-								size="sm"
-								className="gap-1.5"
-								onClick={() => void handleSeed()}
-								disabled={seeding}
-							>
-								<CalendarPlus className="size-3.5" aria-hidden />
-								{seeding
-									? "Planning…"
-									: dailyRoute
-										? "Re-plan from schedule"
-										: "Plan from schedule"}
-							</Button>
-							{dailyRoute && selectedRouteId === dailyRoute._id && (
+							{!previewOnly && (
+								<Button
+									variant="outline"
+									size="sm"
+									className="gap-1.5"
+									onClick={() => void handleSeed()}
+									disabled={seeding}
+								>
+									<CalendarPlus className="size-3.5" aria-hidden />
+									{seeding
+										? "Planning…"
+										: dailyRoute
+											? "Re-plan from schedule"
+											: "Plan from schedule"}
+								</Button>
+							)}
+							{!previewOnly && dailyRoute && selectedRouteId === dailyRoute._id && (
 								<Button
 									variant="ghost"
 									size="icon-sm"
@@ -702,7 +685,7 @@ function RoutingWorkspace() {
 									)}
 								</DropdownMenuContent>
 							</DropdownMenu>
-							{selectedRouteId && !dirty && (
+							{!previewOnly && selectedRouteId && !dirty && (
 								<Button
 									variant="outline"
 									size="sm"
@@ -713,16 +696,18 @@ function RoutingWorkspace() {
 									Use today
 								</Button>
 							)}
-							<Button
-								variant="outline"
-								size="sm"
-								className="gap-1.5"
-								onClick={resetToNewRoute}
-							>
-								<Plus className="size-3.5" aria-hidden />
-								New route
-							</Button>
-							{selectedRouteId && (
+							{!previewOnly && (
+								<Button
+									variant="outline"
+									size="sm"
+									className="gap-1.5"
+									onClick={resetToNewRoute}
+								>
+									<Plus className="size-3.5" aria-hidden />
+									New route
+								</Button>
+							)}
+							{!previewOnly && selectedRouteId && (
 								<Button
 									variant="ghost"
 									size="icon-sm"
@@ -744,25 +729,46 @@ function RoutingWorkspace() {
 						illustration="route-none"
 						illustrationSize="hero"
 						title="No route for today yet"
-						description="Build one from today's scheduled tasks and projects, or reuse a saved route."
+						description={
+							previewOnly
+								? "Optimized routing is part of the Business plan. Upgrade to build a route from today's schedule."
+								: "Build one from today's scheduled tasks and projects, or reuse a saved route."
+						}
 						action={
-							<div className="flex items-center gap-2">
-								<Button
-									size="sm"
-									className="gap-1.5"
-									onClick={() => void handleSeed()}
-									disabled={seeding}
-								>
-									<CalendarPlus className="size-3.5" aria-hidden />
-									{seeding ? "Planning…" : "Plan from schedule"}
-								</Button>
-								<Button
-									variant="outline"
-									size="sm"
-									onClick={() => switchView("saved")}
-								>
-									Browse saved routes
-								</Button>
+							<div className="flex flex-col items-center gap-2">
+								<div className="flex items-center gap-2">
+									{previewOnly ? (
+										<Button
+											size="sm"
+											render={<Link href="/organization/profile?tab=billing" />}
+										>
+											View plans
+										</Button>
+									) : (
+										<Button
+											size="sm"
+											className="gap-1.5"
+											onClick={() => void handleSeed()}
+											disabled={seeding}
+										>
+											<CalendarPlus className="size-3.5" aria-hidden />
+											{seeding ? "Planning…" : "Plan from schedule"}
+										</Button>
+									)}
+									<Button
+										variant="outline"
+										size="sm"
+										onClick={() => switchView("saved")}
+									>
+										Browse saved routes
+									</Button>
+								</div>
+								{previewOnly && (
+									<LearnMoreLink
+										article="routing/planning-a-route"
+										label="Learn how routing works"
+									/>
+								)}
 							</div>
 						}
 						size="md"
@@ -823,7 +829,7 @@ function RoutingWorkspace() {
 						onSave={() => void handleSave()}
 						onDiscard={handleDiscard}
 						onStopStatusChange={
-							!dirty && selectedRoute?.kind === "daily"
+							!previewOnly && !dirty && selectedRoute?.kind === "daily"
 								? (order, status) => void handleStopStatus(order, status)
 								: null
 						}
@@ -835,6 +841,7 @@ function RoutingWorkspace() {
 						onGasDeviationChange={handleGasDeviationChange}
 						gasLoading={gasLoading}
 						gasCount={visibleGasStations.length}
+						previewOnly={previewOnly}
 					/>
 				</div>
 				<div className="min-h-[420px] flex-1">
@@ -844,6 +851,7 @@ function RoutingWorkspace() {
 						geometry={routeGeometry}
 						gasStations={visibleGasStations}
 						unreachableIndices={unreachableIndices}
+						previewOnly={previewOnly}
 					/>
 				</div>
 			</div>
