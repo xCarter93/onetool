@@ -385,10 +385,11 @@ export const create = userMutation({
 			});
 		}
 
-		// Minting an invoice directly as "sent" makes it portal-visible without
-		// ever passing sendToClient — meter it like a first send.
+		// Minting an invoice directly as "sent" — or "overdue", which the portal
+		// treats as visible-and-payable — makes it client-facing without ever
+		// passing sendToClient; meter it like a first send.
 		let sentStamp: { firstSentAt: number } | undefined;
-		if (args.status === "sent") {
+		if (args.status === "sent" || args.status === "overdue") {
 			const { plan } = await entitlementsFromIdentity(ctx);
 			// One timestamp so the check and debit share a billing period.
 			const now = Date.now();
@@ -564,13 +565,13 @@ export const update = userMutation({
 		) {
 			const now = Date.now();
 
-			if (
-				filteredUpdates.status === "sent" &&
-				currentInvoice.status === "draft"
-			) {
-				// A status flip to sent IS a send (portal-visible, payable):
-				// meter it exactly like sendToClient, keyed on the immutable
-				// firstSentAt so revert-to-draft can never re-arm the debit.
+			if (filteredUpdates.status === "sent") {
+				// ANY flip to sent IS a send (portal-visible, payable) — the
+				// source doesn't matter, or an invoice minted as overdue/cancelled
+				// would slip through. Keyed on the immutable firstSentAt so
+				// revert-to-draft can never re-arm the debit. (Legacy edge: a
+				// pre-firstSentAt invoice that really was sent takes one debit if
+				// manually re-flipped to sent — accepted over the mint bypass.)
 				if (!currentInvoice.firstSentAt) {
 					const { plan } = await entitlementsFromIdentity(ctx);
 					await requireMeter(ctx, ctx.orgId, "clientSends", plan, { now });

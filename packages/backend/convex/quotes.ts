@@ -877,13 +877,12 @@ export const update = userMutation({
 		) {
 			const now = Date.now();
 
-			if (
-				filteredUpdates.status === "sent" &&
-				currentQuote.status === "draft"
-			) {
-				// A status flip to sent IS a send (portal-visible, approvable):
-				// meter it exactly like sendToClient, keyed on the immutable
-				// firstSentAt so revert-to-draft can never re-arm the debit.
+			if (filteredUpdates.status === "sent") {
+				// ANY flip to sent IS a send (portal-visible, approvable) — the
+				// source doesn't matter, or a quote minted as declined/expired
+				// would slip through. Metered exactly like sendToClient, keyed on
+				// the immutable firstSentAt (legacy really-sent quotes carry
+				// sentAt) so revert-to-draft can never re-arm the debit.
 				if (!currentQuote.firstSentAt && !currentQuote.sentAt) {
 					const { plan } = await entitlementsFromIdentity(ctx);
 					await requireMeter(ctx, ctx.orgId, "clientSends", plan, { now });
@@ -1018,11 +1017,23 @@ export const extendValidUntil = userMutation({
 		}
 
 		const revived = quote.status === "expired";
+		// A genuinely expired quote was sent before (debit already taken); a
+		// quote MINTED as expired was not — reviving it is its first send.
+		let reviveStamp: { sentAt: number; firstSentAt: number } | undefined;
+		if (revived && !quote.firstSentAt && !quote.sentAt) {
+			const { plan } = await entitlementsFromIdentity(ctx);
+			// One timestamp so the check and debit share a billing period.
+			const now = Date.now();
+			await requireMeter(ctx, ctx.orgId, "clientSends", plan, { now });
+			await consumeMeter(ctx, ctx.orgId, "clientSends", { now });
+			reviveStamp = { sentAt: now, firstSentAt: now };
+		}
 		await ctx.db.patch(args.id, {
 			validUntil: args.validUntil,
 			// The date prints on the PDF, so the existing render goes stale.
 			contentUpdatedAt: Date.now(),
 			...(revived ? { status: "sent" as const } : {}),
+			...reviveStamp,
 		});
 
 		if (revived) {

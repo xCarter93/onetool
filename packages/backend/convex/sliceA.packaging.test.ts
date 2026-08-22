@@ -453,6 +453,98 @@ describe("Slice A: send meter (clientSends)", () => {
 		).toBe("draft");
 	});
 
+	// One sent quote per org below: the quotes aggregate keys every sent quote
+	// at ["sent", 0] (approvedAt || 0) and convex-test's component emulation
+	// rejects duplicate keys that prod tolerates.
+
+	it("a quote minted as declined can't dodge the debit when flipped to sent", async () => {
+		const { asUser, orgId, clientId } = await seedSendable(t);
+		const declinedId = await asUser.mutation(api.quotes.create, {
+			clientId,
+			title: "Born declined",
+			status: "declined",
+			subtotal: 100,
+			total: 100,
+		});
+		expect(await sendUsage(t, orgId)).toBeNull();
+		await asUser.mutation(api.quotes.update, {
+			id: declinedId,
+			status: "sent",
+		});
+		expect((await sendUsage(t, orgId))?.used).toBe(1);
+		expect(
+			(await t.run(async (ctx) => ctx.db.get(declinedId)))?.firstSentAt
+		).toBeDefined();
+	});
+
+	it("reviving a never-sent expired quote debits; reviving a really-sent one is free", async () => {
+		const minted = await seedSendable(t, {
+			clerkUserId: "user_mint_exp",
+			clerkOrgId: "org_mint_exp",
+		});
+		// Expired without ever being sent (draft → expired via update).
+		const mintedExpiredId = await minted.asUser.mutation(api.quotes.create, {
+			clientId: minted.clientId,
+			title: "Never sent",
+			status: "draft",
+			subtotal: 100,
+			total: 100,
+		});
+		await minted.asUser.mutation(api.quotes.update, {
+			id: mintedExpiredId,
+			status: "expired",
+		});
+		expect(await sendUsage(t, minted.orgId)).toBeNull();
+		await minted.asUser.mutation(api.quotes.extendValidUntil, {
+			id: mintedExpiredId,
+			validUntil: Date.now() + 7 * 86_400_000,
+		});
+		const revived = await t.run(async (ctx) => ctx.db.get(mintedExpiredId));
+		expect(revived?.status).toBe("sent");
+		expect(revived?.firstSentAt).toBeDefined();
+		expect((await sendUsage(t, minted.orgId))?.used).toBe(1);
+
+		const real = await seedSendable(t, {
+			clerkUserId: "user_real_exp",
+			clerkOrgId: "org_real_exp",
+		});
+		const realId = await real.asUser.mutation(api.quotes.create, {
+			clientId: real.clientId,
+			title: "Really sent",
+			status: "draft",
+			subtotal: 100,
+			total: 100,
+		});
+		await real.asUser.mutation(api.quotes.sendToClient, { id: realId });
+		expect((await sendUsage(t, real.orgId))?.used).toBe(1);
+		await real.asUser.mutation(api.quotes.update, {
+			id: realId,
+			status: "expired",
+		});
+		await real.asUser.mutation(api.quotes.extendValidUntil, {
+			id: realId,
+			validUntil: Date.now() + 7 * 86_400_000,
+		});
+		expect((await sendUsage(t, real.orgId))?.used).toBe(1);
+	});
+
+	it("minting an invoice as 'overdue' debits — the portal treats overdue as payable", async () => {
+		const { asUser, orgId, clientId } = await seedSendable(t);
+		const invoiceId = await asUser.mutation(api.invoices.create, {
+			clientId,
+			invoiceNumber: "INV-OVERDUE",
+			status: "overdue",
+			subtotal: 100,
+			total: 100,
+			issuedDate: Date.now() - 30 * 86_400_000,
+			dueDate: Date.now() - 86_400_000,
+		});
+		expect((await sendUsage(t, orgId))?.used).toBe(1);
+		expect(
+			(await t.run(async (ctx) => ctx.db.get(invoiceId)))?.firstSentAt
+		).toBeDefined();
+	});
+
 	it("each org's sends count only against its own budget", async () => {
 		const a = await seedSendable(t, {
 			clerkUserId: "user_org_a",
