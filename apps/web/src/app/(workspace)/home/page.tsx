@@ -1,14 +1,14 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
+import dynamic from "next/dynamic";
 import ActivityFeed from "@/app/(workspace)/home/components/activity-feed";
 import HomeStats from "@/app/(workspace)/home/components/home-stats-real";
 import { NeedsAttention } from "@/app/(workspace)/home/components/needs-attention";
-import { HomeCalendar } from "@/app/(workspace)/home/components/calendar/home-calendar";
 import { SchedulePanel } from "@/app/(workspace)/home/components/schedule/schedule-panel";
-import ClientPropertiesMap from "@/app/(workspace)/home/components/client-properties-map";
 import { RecentEmails } from "@/app/(workspace)/home/components/recent-emails";
 import { Frame, FramePanel } from "@/components/reui/frame";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { motion } from "motion/react";
@@ -24,6 +24,47 @@ import {
 	HOME_TOUR_CONTENT,
 	HomeTourContext,
 } from "@/components/tours";
+
+// Code-split so maplibre-gl and the event calendar stay out of the initial
+// /home chunk (field LCP p75 ~3.4s was dominated by script cost before paint).
+// Placeholders mirror each component's own loading footprint to avoid CLS.
+const ClientPropertiesMap = dynamic(
+	() => import("@/app/(workspace)/home/components/client-properties-map"),
+	{ ssr: false, loading: () => <MapLoadingFrame /> }
+);
+const HomeCalendar = dynamic(
+	() =>
+		import("@/app/(workspace)/home/components/calendar/home-calendar").then(
+			(m) => ({ default: m.HomeCalendar })
+		),
+	{ ssr: false, loading: () => <Skeleton className="h-full w-full" /> }
+);
+
+function MapLoadingFrame() {
+	return (
+		<Frame className="h-full w-full">
+			<FramePanel className="flex h-full flex-col gap-3">
+				<h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+					Client Locations
+				</h3>
+				<div
+					className="relative min-h-[300px] flex-1 overflow-hidden rounded-lg border border-border bg-muted/30"
+					role="status"
+					aria-live="polite"
+					aria-label="Loading client locations"
+				>
+					<div className="absolute inset-0 flex items-center justify-center">
+						<div className="flex gap-1">
+							<span className="size-1.5 rounded-full bg-muted-foreground/60 animate-pulse" />
+							<span className="size-1.5 rounded-full bg-muted-foreground/60 animate-pulse [animation-delay:150ms]" />
+							<span className="size-1.5 rounded-full bg-muted-foreground/60 animate-pulse [animation-delay:300ms]" />
+						</div>
+					</div>
+				</div>
+			</FramePanel>
+		</Frame>
+	);
+}
 
 type ViewMode = "dashboard" | "calendar";
 
