@@ -14,7 +14,7 @@ export function PostHogProvider({ children }: { children: React.ReactNode }) {
 				// pointing at the real PostHog app.
 				api_host: "/ingest",
 				ui_host: "https://us.posthog.com",
-				defaults: "2026-05-30",
+				defaults: "2026-08-29",
 				// Only create person profiles for identified (signed-in) users — keeps
 				// anonymous autocapture/pageviews cheap.
 				person_profiles: "identified_only",
