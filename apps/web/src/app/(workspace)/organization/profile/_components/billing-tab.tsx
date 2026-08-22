@@ -32,9 +32,9 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/reui/badge";
 import { SegmentedControl } from "@/components/domain/segmented-control";
 import { LearnMoreLink } from "@/components/help/learn-more";
-import { useFeatureAccess } from "@/hooks/use-feature-access";
+import { PLAN_MATRIX } from "@onetool/backend/convex/lib/planMatrix";
+import { useEntitlements } from "@/hooks/use-entitlements";
 import { usePermissions } from "@/hooks/use-permissions";
-import { formatLimit, getUsagePercentage } from "@/lib/plan-limits";
 import {
 	SectionHeading,
 	SettingsCard,
@@ -92,95 +92,33 @@ function useBillingDrawerAppearance() {
 	);
 }
 
-interface FeatureRow {
-	name: string;
-	icon: React.ReactNode;
-	free: string | boolean;
-	business: string | boolean;
+/** Row icons, keyed by PLAN_MATRIX row key — the labels/values come from the matrix. */
+const FEATURE_ICONS: Record<string, React.ReactNode> = {
+	clients: <Briefcase className="size-4" />,
+	activeProjectsPerClient: <CreditCard className="size-4" />,
+	esignatures: <FileSignature className="size-4" />,
+	aiAssistant: <Sparkles className="size-4" />,
+	automationPublish: <Workflow className="size-4" />,
+	llmCsvImport: <Zap className="size-4" />,
+	stripeConnect: <CreditCard className="size-4" />,
+	customSkus: <Package className="size-4" />,
+	orgDocuments: <FolderOpen className="size-4" />,
+	supportSla: <Headphones className="size-4" />,
+};
+
+const MATRIX_CATEGORIES = [...new Set(PLAN_MATRIX.map((row) => row.category))];
+
+/** Unlimited meters come back as a null limit. */
+function formatLimit(limit: number | null): string {
+	return limit === null ? "Unlimited" : limit.toString();
 }
 
-interface FeatureCategory {
-	name: string;
-	features: FeatureRow[];
+function getUsagePercentage(usage: number, limit: number | null): number {
+	if (limit === null) {
+		return 0;
+	}
+	return Math.min(100, (usage / limit) * 100);
 }
-
-const FEATURE_CATEGORIES: FeatureCategory[] = [
-	{
-		name: "Core usage",
-		features: [
-			{
-				name: "Clients",
-				icon: <Briefcase className="size-4" />,
-				free: "10",
-				business: "Unlimited",
-			},
-			{
-				name: "Active projects per client",
-				icon: <CreditCard className="size-4" />,
-				free: "3",
-				business: "Unlimited",
-			},
-			{
-				name: "E-signatures per month",
-				icon: <FileSignature className="size-4" />,
-				free: "5",
-				business: "Unlimited",
-			},
-		],
-	},
-	{
-		name: "Business tools",
-		features: [
-			{
-				name: "AI Assistant",
-				icon: <Sparkles className="size-4" />,
-				free: false,
-				business: true,
-			},
-			{
-				name: "Workflow automations",
-				icon: <Workflow className="size-4" />,
-				free: false,
-				business: true,
-			},
-			{
-				name: "AI client import",
-				icon: <Zap className="size-4" />,
-				free: false,
-				business: true,
-			},
-			{
-				name: "Online payments & Stripe payouts",
-				icon: <CreditCard className="size-4" />,
-				free: false,
-				business: true,
-			},
-			{
-				name: "Custom SKUs (reusable line items)",
-				icon: <Package className="size-4" />,
-				free: false,
-				business: true,
-			},
-			{
-				name: "Organization documents",
-				icon: <FolderOpen className="size-4" />,
-				free: false,
-				business: true,
-			},
-		],
-	},
-	{
-		name: "Support",
-		features: [
-			{
-				name: "Support SLA",
-				icon: <Headphones className="size-4" />,
-				free: "Best effort",
-				business: "24 hours",
-			},
-		],
-	},
-];
 
 function FeatureCell({ value, paid }: { value: string | boolean; paid: boolean }) {
 	if (typeof value === "boolean") {
@@ -218,7 +156,7 @@ function UsageMeter({
 	icon: React.ReactNode;
 	label: string;
 	used: number;
-	limit: number | "unlimited";
+	limit: number | null;
 }) {
 	return (
 		<div className="space-y-2">
@@ -237,12 +175,7 @@ function UsageMeter({
 }
 
 export function BillingTab() {
-	const {
-		hasPremiumAccess,
-		planLimits,
-		currentUsage,
-		isLoading: accessLoading,
-	} = useFeatureAccess();
+	const { isBusiness, meter, isLoading: accessLoading } = useEntitlements();
 	const { data: plans, isLoading: plansLoading } = usePlans({
 		for: "organization",
 	});
@@ -265,7 +198,9 @@ export function BillingTab() {
 			? Math.round((1 - annualMonthlyFee.amount / monthlyFee.amount) * 100)
 			: 0;
 
-	const planName = hasPremiumAccess ? "Business" : "Free";
+	const planName = isBusiness ? "Business" : "Free";
+	const clientsMeter = meter("clients");
+	const esignaturesMeter = meter("esignatures");
 
 	if (accessLoading) {
 		return (
@@ -283,7 +218,7 @@ export function BillingTab() {
 				title="Plan & Billing"
 				description="Manage your subscription and see everything included in each plan."
 				aside={
-					hasPremiumAccess ? (
+					isBusiness ? (
 						<Badge variant="warning-light" radius="full" className="gap-1.5 px-3">
 							<Crown className="size-3.5" aria-hidden="true" />
 							Business plan
@@ -303,12 +238,12 @@ export function BillingTab() {
 						<div className="flex items-center gap-3">
 							<div
 								className={`flex size-11 shrink-0 items-center justify-center rounded-[10px] border ${
-									hasPremiumAccess
+									isBusiness
 										? "border-warning/25 bg-warning/10"
 										: "border-primary/20 bg-primary/10"
 								}`}
 							>
-								{hasPremiumAccess ? (
+								{isBusiness ? (
 									<Crown className="size-5 text-warning" aria-hidden="true" />
 								) : (
 									<Users className="size-5 text-primary" aria-hidden="true" />
@@ -319,13 +254,13 @@ export function BillingTab() {
 									{planName} plan
 								</p>
 								<p className="mt-0.5 text-sm text-muted-foreground">
-									{hasPremiumAccess
+									{isBusiness
 										? "Full access to every OneTool feature."
 										: "Core features with usage limits."}
 								</p>
 							</div>
 						</div>
-						{hasPremiumAccess && canManageBilling && (
+						{isBusiness && canManageBilling && (
 							<SignedIn>
 								<SubscriptionDetailsButton
 									for="organization"
@@ -340,19 +275,19 @@ export function BillingTab() {
 						)}
 					</div>
 				</SettingsCardHeader>
-				{!hasPremiumAccess && currentUsage && (
+				{!isBusiness && clientsMeter && esignaturesMeter && (
 					<SettingsCardBody className="grid gap-5 border-t border-border sm:grid-cols-2">
 						<UsageMeter
 							icon={<Briefcase className="size-4" />}
 							label="Clients"
-							used={currentUsage.clientsCount}
-							limit={planLimits.clients}
+							used={clientsMeter.used}
+							limit={clientsMeter.limit}
 						/>
 						<UsageMeter
 							icon={<FileSignature className="size-4" />}
 							label="E-signatures this month"
-							used={currentUsage.esignaturesSentThisMonth}
-							limit={planLimits.esignaturesPerMonth}
+							used={esignaturesMeter.used}
+							limit={esignaturesMeter.limit}
 						/>
 					</SettingsCardBody>
 				)}
@@ -375,7 +310,7 @@ export function BillingTab() {
 							article="settings-and-team/plans-and-billing"
 							label="Compare plans in detail"
 						/>
-						{!hasPremiumAccess && (
+						{!isBusiness && (
 							<SegmentedControl<BillingPeriod>
 								value={period}
 								onValueChange={setPeriod}
@@ -409,7 +344,7 @@ export function BillingTab() {
 										<span className="text-xs text-muted-foreground">
 											$0 forever
 										</span>
-										{!hasPremiumAccess && (
+										{!isBusiness && (
 											<Badge variant="primary-light" radius="full">
 												Current
 											</Badge>
@@ -443,7 +378,7 @@ export function BillingTab() {
 												Pricing at checkout
 											</span>
 										)}
-										{hasPremiumAccess ? (
+										{isBusiness ? (
 											<Badge variant="warning-light" radius="full">
 												Current
 											</Badge>
@@ -482,42 +417,44 @@ export function BillingTab() {
 							</tr>
 						</thead>
 						<tbody>
-							{FEATURE_CATEGORIES.map((category) => (
-								<React.Fragment key={category.name}>
+							{MATRIX_CATEGORIES.map((category) => (
+								<React.Fragment key={category}>
 									<tr>
 										<td
 											colSpan={3}
 											className="border-b border-border bg-muted/40 px-[22px] py-2.5 text-xs font-semibold uppercase tracking-[0.06em] text-muted-foreground"
 										>
-											{category.name}
+											{category}
 										</td>
 									</tr>
-									{category.features.map((feature) => (
-										<tr
-											key={feature.name}
-											className="border-b border-border/50 transition-colors last:border-b-0 hover:bg-muted/20"
-										>
-											<th
-												scope="row"
-												className="px-[22px] py-3 text-left font-normal"
+									{PLAN_MATRIX.filter((row) => row.category === category).map(
+										(row) => (
+											<tr
+												key={row.key}
+												className="border-b border-border/50 transition-colors last:border-b-0 hover:bg-muted/20"
 											>
-												<div className="flex items-center gap-2.5">
-													<span className="text-muted-foreground">
-														{feature.icon}
-													</span>
-													<span className="text-sm font-medium">
-														{feature.name}
-													</span>
-												</div>
-											</th>
-											<td className="px-4 py-3 text-center">
-												<FeatureCell value={feature.free} paid={false} />
-											</td>
-											<td className="bg-primary/4 px-4 py-3 text-center">
-												<FeatureCell value={feature.business} paid />
-											</td>
-										</tr>
-									))}
+												<th
+													scope="row"
+													className="px-[22px] py-3 text-left font-normal"
+												>
+													<div className="flex items-center gap-2.5">
+														<span className="text-muted-foreground">
+															{FEATURE_ICONS[row.key]}
+														</span>
+														<span className="text-sm font-medium">
+															{row.label}
+														</span>
+													</div>
+												</th>
+												<td className="px-4 py-3 text-center">
+													<FeatureCell value={row.free} paid={false} />
+												</td>
+												<td className="bg-primary/4 px-4 py-3 text-center">
+													<FeatureCell value={row.business} paid />
+												</td>
+											</tr>
+										),
+									)}
 								</React.Fragment>
 							))}
 						</tbody>

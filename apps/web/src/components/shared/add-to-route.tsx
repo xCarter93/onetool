@@ -15,7 +15,7 @@ import {
 	DialogTitle,
 } from "@/components/ui/dialog";
 import { PropertyPicker } from "@/components/shared/property-picker";
-import { useFeatureAccess } from "@/hooks/use-feature-access";
+import { useEntitlements } from "@/hooks/use-entitlements";
 import { usePermissions } from "@/hooks/use-permissions";
 import { useToast } from "@/hooks/use-toast";
 import { todayUtcMidnightMs } from "@/lib/dates";
@@ -36,7 +36,8 @@ export function useAddToRoute() {
 	const router = useRouter();
 	const toast = useToast();
 	const { can } = usePermissions();
-	const { hasPremiumAccess, isLoading: accessLoading } = useFeatureAccess();
+	const { allows, isLoading: accessLoading } = useEntitlements();
+	const hasPremiumAccess = allows("routing");
 	const addPropertyStop = useMutation(api.routes.addPropertyStop);
 	const [isAdding, setIsAdding] = useState(false);
 

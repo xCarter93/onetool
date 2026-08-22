@@ -40,10 +40,8 @@ import {
 	type NavVisibilityContext,
 } from "@/components/layout/nav-config";
 import { usePermissions } from "@/hooks/use-permissions";
-import {
-	useFeatureAccess,
-	useCanPerformAction,
-} from "@/hooks/use-feature-access";
+import { useAuth } from "@clerk/nextjs";
+import { useEntitlements } from "@/hooks/use-entitlements";
 import { useRoleAccess } from "@/hooks/use-role-access";
 import { useFeatureFlagEnabled } from "posthog-js/react";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
@@ -96,14 +94,23 @@ export function CommandPaletteProvider({
 		hasFullAccess,
 		isLoading: permissionsLoading,
 	} = usePermissions();
-	const { hasOrganization } = useFeatureAccess();
+	const { orgId } = useAuth();
+	const hasOrganization = !!orgId;
+	const { meter } = useEntitlements();
 	const { isAdmin, isMember } = useRoleAccess();
 	const isCommunityEnabled = useFeatureFlagEnabled("community-pages-access");
 	const isAutomationsEnabled = useFeatureFlagEnabled(
 		"workflow-automation-access",
 	);
-	const { canPerform: canCreateClient, reason: clientLimitReason } =
-		useCanPerformAction("create_client");
+	const clientsMeter = meter("clients");
+	const atClientLimit =
+		!!clientsMeter &&
+		clientsMeter.remaining !== null &&
+		clientsMeter.remaining <= 0;
+	const canCreateClient = !atClientLimit;
+	const clientLimitReason = atClientLimit
+		? `You've reached your limit of ${clientsMeter.limit} clients. Upgrade to add more.`
+		: undefined;
 
 	React.useEffect(() => {
 		const onKeyDown = (event: KeyboardEvent) => {

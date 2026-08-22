@@ -61,10 +61,8 @@ import { useToast } from "@/hooks/use-toast";
 import DeleteConfirmationModal from "@/components/ui/delete-confirmation-modal";
 import { MetricFrame } from "@/components/metric-frame";
 import { useActivitySparklines } from "@/hooks/use-activity-sparklines";
-import {
-	useCanPerformAction,
-	useFeatureAccess,
-} from "@/hooks/use-feature-access";
+import { useEntitlements } from "@/hooks/use-entitlements";
+import type { MeterUsage } from "@onetool/backend";
 import { usePermissions } from "@/hooks/use-permissions";
 import {
 	Tooltip,
@@ -118,7 +116,29 @@ type ClientKanbanColumn = {
 	description: string;
 };
 
-type ClientActionGate = ReturnType<typeof useCanPerformAction>;
+type ClientActionGate = {
+	canPerform: boolean;
+	reason?: string;
+	currentUsage?: number;
+	limit?: number | "unlimited";
+};
+
+/** Client-creation gate derived from the entitlements "clients" meter. */
+function clientCreateGate(meter: MeterUsage | undefined): ClientActionGate {
+	if (!meter) return { canPerform: false, reason: "Loading..." };
+	if (meter.limit === null || meter.remaining === null) {
+		return { canPerform: true };
+	}
+	if (meter.remaining > 0) {
+		return { canPerform: true, currentUsage: meter.used, limit: meter.limit };
+	}
+	return {
+		canPerform: false,
+		reason: `You've reached your limit of ${meter.limit} clients. Upgrade to add more.`,
+		currentUsage: meter.used,
+		limit: meter.limit,
+	};
+}
 
 const kanbanColumns: ClientKanbanColumn[] = [
 	{ id: "lead", name: "Leads", description: "Potential new clients" },
@@ -413,9 +433,10 @@ function ClientsPageContent() {
 	const isOrgSwitching = useIsOrgSwitching();
 
 	// Usage gate for creating clients + premium gate for import.
-	const gate = useCanPerformAction("create_client");
+	const { allows, meter } = useEntitlements();
+	const gate = clientCreateGate(meter("clients"));
 	const { canPerform, reason } = gate;
-	const { hasPremiumAccess } = useFeatureAccess();
+	const hasPremiumAccess = allows("llmCsvImport");
 	const { can } = usePermissions();
 	const canModifyClients = can("clients", "modify");
 	const canDeleteClients = can("clients", "delete");

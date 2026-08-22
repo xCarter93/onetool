@@ -8,7 +8,7 @@ import { api } from "@onetool/backend/convex/_generated/api";
 import { EmptyState } from "@/components/domain/empty-state";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useFeatureAccess } from "@/hooks/use-feature-access";
+import { useEntitlements } from "@/hooks/use-entitlements";
 import { useOrgOwner } from "@/app/(workspace)/organization/profile/_hooks/use-org-owner";
 import { useQuickBooksEnabled } from "@/hooks/use-quickbooks-enabled";
 import { QboImportReview } from "./components/qbo-import-review";
@@ -78,7 +78,8 @@ export default function QuickBooksImportPage() {
 	const router = useRouter();
 	const qboEnabled = useQuickBooksEnabled();
 	const { isOwner, isLoading: ownerLoading } = useOrgOwner();
-	const { hasPremiumAccess, isLoading: accessLoading } = useFeatureAccess();
+	const { allows, isLoading: accessLoading } = useEntitlements();
+	const hasPremiumAccess = allows("quickbooks");
 
 	// The route is reachable by URL, so it carries the same flag gate as the
 	// Integrations card rather than trusting that nothing links here.

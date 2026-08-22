@@ -13,7 +13,9 @@ export type { MyEntitlements } from "./convex/entitlements";
 export type { UsageStats } from "./convex/usage";
 export type { HomeStats } from "./convex/homeStats";
 
-// Advertised plan-comparison rows (import-safe for web; see lib/planMatrix.ts)
-export { PLAN_MATRIX } from "./convex/lib/planMatrix";
+// PLAN_MATRIX is a VALUE export — web imports it via the
+// "@onetool/backend/convex/lib/planMatrix" subpath (like planLimits), never
+// through this index: bundling index.ts client-side breaks on the type-only
+// _generated/dataModel re-export.
 export type { PlanMatrixRow } from "./convex/lib/planMatrix";
 

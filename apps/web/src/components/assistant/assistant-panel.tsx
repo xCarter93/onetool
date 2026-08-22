@@ -35,7 +35,7 @@ import {
 } from "@/components/ui/sheet";
 import { HelpArticleDrawer, LearnMoreLink } from "@/components/help/learn-more";
 import { resolveHelpRef } from "@/lib/help";
-import { useFeatureAccess } from "@/hooks/use-feature-access";
+import { useEntitlements } from "@/hooks/use-entitlements";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import {
@@ -381,8 +381,8 @@ export function AssistantPanel() {
 	const currentRecord = useCurrentRecord();
 	// While access is loading, show the normal chat UI (no upgrade-prompt flash
 	// for premium users); the backend gate blocks any send that sneaks in.
-	const { planLimits, isLoading: accessLoading } = useFeatureAccess();
-	const locked = !accessLoading && !planLimits.canUseAiAssistant;
+	const { allows, isLoading: accessLoading } = useEntitlements();
+	const locked = !accessLoading && !allows("aiAssistant");
 	// client-executed tool calls (navigate, configureReport) already run.
 	// null = "seed from the next snapshot without executing" (set when
 	// opening a historical thread); a fresh empty Set (set at thread

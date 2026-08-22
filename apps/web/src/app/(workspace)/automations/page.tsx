@@ -14,7 +14,7 @@ import { Button } from "@/components/ui/button";
 import { PermissionGate } from "@/components/domain/permission-gate";
 import { LearnMoreLink } from "@/components/help/learn-more";
 import { useRoleAccess } from "@/hooks/use-role-access";
-import { useFeatureAccess } from "@/hooks/use-feature-access";
+import { useEntitlements } from "@/hooks/use-entitlements";
 import { RunMetricsTiles } from "./components/run-metrics-tiles";
 import { RunThroughputChart } from "./components/run-throughput-chart";
 import { RecentFailuresTimeline } from "./components/recent-failures-timeline";
@@ -24,7 +24,8 @@ import { RunsTable } from "./components/runs-table";
 // Premium feature gate — admins on a premium plan only.
 function PremiumGate({ children }: { children: React.ReactNode }) {
 	const { isAdmin, isLoading: roleLoading } = useRoleAccess();
-	const { hasPremiumAccess, isLoading: featureLoading } = useFeatureAccess();
+	const { isBusiness: hasPremiumAccess, isLoading: featureLoading } =
+		useEntitlements();
 	const router = useRouter();
 
 	if (roleLoading || featureLoading) {
