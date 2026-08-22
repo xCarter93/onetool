@@ -20,14 +20,18 @@ import { entitlementsFromDocs, isFeatureAllowed } from "../lib/entitlements";
  *      automations), then re-run without dryRun.
  */
 export const pausePublishedAutomationsOnFreeOrgs = internalMutation({
-	args: { dryRun: v.optional(v.boolean()) },
-	handler: async (ctx, { dryRun = false }) => {
+	// One bounded page per run keeps reads inside transaction limits; re-run
+	// with the returned continueCursor until isDone (a fresh dryRun:false run
+	// can also just start over — already-flipped rows are no-ops).
+	args: { dryRun: v.optional(v.boolean()), cursor: v.optional(v.string()) },
+	handler: async (ctx, { dryRun = false, cursor }) => {
 		let paused = 0;
 		let keptBusiness = 0;
-		const active = await ctx.db
+		const page = await ctx.db
 			.query("workflowAutomations")
 			.withIndex("by_status_nextRunAt", (q) => q.eq("status", "active"))
-			.collect();
+			.paginate({ numItems: 200, cursor: cursor ?? null });
+		const active = page.page;
 		for (const automation of active) {
 			const org = await ctx.db.get(automation.orgId);
 			const creator = automation.createdBy
@@ -47,6 +51,13 @@ export const pausePublishedAutomationsOnFreeOrgs = internalMutation({
 				});
 			}
 		}
-		return { scanned: active.length, paused, keptBusiness, dryRun };
+		return {
+			scanned: active.length,
+			paused,
+			keptBusiness,
+			dryRun,
+			isDone: page.isDone,
+			continueCursor: page.isDone ? null : page.continueCursor,
+		};
 	},
 });

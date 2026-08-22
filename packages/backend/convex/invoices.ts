@@ -700,8 +700,10 @@ export const sendToClient = userMutation({
 		// send meter debits exactly once and re-sends stay free.
 		if (invoice.status === "draft") {
 			const { plan } = await entitlementsFromIdentity(ctx);
-			await requireMeter(ctx, ctx.orgId, "clientSends", plan);
-			await consumeMeter(ctx, ctx.orgId, "clientSends");
+			// One timestamp so the check and debit share a billing period.
+			const now = Date.now();
+			await requireMeter(ctx, ctx.orgId, "clientSends", plan, { now });
+			await consumeMeter(ctx, ctx.orgId, "clientSends", { now });
 			const changes = computeFieldChanges(
 				"invoice",
 				invoice as unknown as Record<string, unknown>,

@@ -1127,8 +1127,10 @@ export const sendToClient = userMutation({
 		// declined/expired re-entries and re-sends are free in every month.
 		if (!quote.sentAt) {
 			const { plan } = await entitlementsFromIdentity(ctx);
-			await requireMeter(ctx, ctx.orgId, "clientSends", plan);
-			await consumeMeter(ctx, ctx.orgId, "clientSends");
+			// One timestamp so the check and debit share a billing period.
+			const now = Date.now();
+			await requireMeter(ctx, ctx.orgId, "clientSends", plan, { now });
+			await consumeMeter(ctx, ctx.orgId, "clientSends", { now });
 			// Raw status writes (automation actions) can leave a sent quote with
 			// no sentAt; stamp it here so this debit can never repeat — the
 			// transition block below only runs for non-sent statuses.

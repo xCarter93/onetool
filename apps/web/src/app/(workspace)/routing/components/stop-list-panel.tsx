@@ -445,7 +445,7 @@ export function StopListPanel({
 						</Button>
 					)}
 				</div>
-				{entryMode === "start" && (
+				{!previewOnly && entryMode === "start" && (
 					<div className="space-y-2">
 						{onUseOrgStart && (
 							<Button
@@ -533,7 +533,7 @@ export function StopListPanel({
 					</div>
 				</div>
 
-				{entryMode === "stop" && (
+				{!previewOnly && entryMode === "stop" && (
 					<InlineAddressEntry
 						label="Add a stop by address"
 						onSelect={(address) => {

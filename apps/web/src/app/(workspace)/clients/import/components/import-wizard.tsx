@@ -255,6 +255,20 @@ export function ImportWizard({ embedded = false, onComplete }: ImportWizardProps
 				</Tooltip>
 			);
 		}
+		if (reviewAction.overBudgetBy > 0) {
+			return (
+				<Tooltip>
+					<TooltipTrigger render={<span className="inline-flex" />}>
+						<Button disabled>{label}</Button>
+					</TooltipTrigger>
+					<TooltipContent>
+						This import exceeds your plan&apos;s remaining rows by{" "}
+						{reviewAction.overBudgetBy.toLocaleString()}. Skip rows or upgrade
+						to import.
+					</TooltipContent>
+				</Tooltip>
+			);
+		}
 		return (
 			<Button onClick={reviewAction.triggerImport} disabled={count === 0}>
 				{label}

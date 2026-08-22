@@ -71,8 +71,11 @@ export const sendMessage = userMutation({
 		// Org-shared daily message meter, debited exactly once per user message.
 		// streamResponse retries reuse the saved messageId and never re-debit.
 		const { plan } = await entitlementsFromIdentity(ctx);
-		await requireMeter(ctx, ctx.orgId, "assistantMessages", plan);
-		await consumeMeter(ctx, ctx.orgId, "assistantMessages");
+		// One timestamp for both calls so the check and the debit can't straddle
+		// a UTC-midnight period boundary.
+		const now = Date.now();
+		await requireMeter(ctx, ctx.orgId, "assistantMessages", plan, { now });
+		await consumeMeter(ctx, ctx.orgId, "assistantMessages", { now });
 
 		const { messageId } = await saveMessage(ctx, components.agent, {
 			threadId: args.threadId,

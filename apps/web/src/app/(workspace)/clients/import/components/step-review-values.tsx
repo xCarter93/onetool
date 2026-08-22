@@ -102,6 +102,8 @@ function StatusIcon({ item }: { item: ImportResultItem }) {
  */
 export interface ReviewActionState {
 	importableCount: number;
+	/** Rows beyond the plan's remaining lifetime import budget (0 = within budget). */
+	overBudgetBy: number;
 	hasValidationErrors: boolean;
 	validationErrorCount: number;
 	isImporting: boolean;
@@ -305,6 +307,7 @@ export function StepReviewValues({
 	useEffect(() => {
 		onActionStateChange?.({
 			importableCount,
+			overBudgetBy,
 			hasValidationErrors,
 			validationErrorCount: validationErrors.length,
 			isImporting,
@@ -314,6 +317,7 @@ export function StepReviewValues({
 	}, [
 		onActionStateChange,
 		importableCount,
+		overBudgetBy,
 		hasValidationErrors,
 		validationErrors.length,
 		isImporting,
@@ -432,13 +436,14 @@ export function StepReviewValues({
 						<Alert variant="warning">
 							<AlertTriangle />
 							<AlertTitle>
-								Only {rowBudget.remaining.toLocaleString()} of these{" "}
-								{importableCount.toLocaleString()} rows will fit
+								These {importableCount.toLocaleString()} rows exceed your{" "}
+								{rowBudget.remaining.toLocaleString()} remaining import rows
 							</AlertTitle>
 							<AlertDescription>
-								Skip or remove {overBudgetBy.toLocaleString()} row
-								{overBudgetBy !== 1 ? "s" : ""} before importing, or upgrade
-								your plan for unlimited imports.
+								The import won&apos;t run until it fits. Skip or remove{" "}
+								{overBudgetBy.toLocaleString()} row
+								{overBudgetBy !== 1 ? "s" : ""}, or upgrade your plan for
+								unlimited imports.
 							</AlertDescription>
 						</Alert>
 					)}
