@@ -418,14 +418,25 @@ export const handleSubscriptionItemEvent = internalMutation({
  * only orgs that ever had a subscription (clerkSubscriptionId set) qualify.
  */
 export const listStaleBillingOrgs = internalQuery({
-	args: { staleMs: v.number(), limit: v.number() },
+	args: {
+		staleMs: v.number(),
+		limit: v.number(),
+		cursor: v.union(v.string(), v.null()),
+	},
 	handler: async (
 		ctx,
 		args
-	): Promise<Array<{ orgId: Id<"organizations">; clerkOrganizationId: string }>> => {
+	): Promise<{
+		stale: Array<{ orgId: Id<"organizations">; clerkOrganizationId: string }>;
+		continueCursor: string;
+		isDone: boolean;
+	}> => {
 		const cutoff = Date.now() - args.staleMs;
-		const orgs = await ctx.db.query("organizations").collect();
-		return orgs
+		// Paginated so one call never scans the whole table (Convex read limits).
+		const page = await ctx.db
+			.query("organizations")
+			.paginate({ numItems: 200, cursor: args.cursor });
+		const stale = page.page
 			.filter(
 				(org) =>
 					org.clerkSubscriptionId !== undefined &&
@@ -436,6 +447,7 @@ export const listStaleBillingOrgs = internalQuery({
 				orgId: org._id,
 				clerkOrganizationId: org.clerkOrganizationId,
 			}));
+		return { stale, continueCursor: page.continueCursor, isDone: page.isDone };
 	},
 });
 

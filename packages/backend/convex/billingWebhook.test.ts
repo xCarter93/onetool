@@ -216,29 +216,33 @@ describe("billing reconcile", () => {
 
 	it("lists only subscription-bearing orgs whose mirror is stale", async () => {
 		// No subscription → never listed, however stale.
-		let stale = await t.query(internal.billingWebhook.listStaleBillingOrgs, {
+		let result = await t.query(internal.billingWebhook.listStaleBillingOrgs, {
 			staleMs: 0,
 			limit: 10,
+			cursor: null,
 		});
-		expect(stale).toEqual([]);
+		expect(result.stale).toEqual([]);
+		expect(result.isDone).toBe(true);
 
 		await t.run(async (ctx) => {
 			await ctx.db.patch(orgId, { clerkSubscriptionId: "sub_1" });
 		});
-		stale = await t.query(internal.billingWebhook.listStaleBillingOrgs, {
+		result = await t.query(internal.billingWebhook.listStaleBillingOrgs, {
 			staleMs: 48 * 60 * 60 * 1000,
 			limit: 10,
+			cursor: null,
 		});
-		expect(stale.map((o) => o.orgId)).toEqual([orgId]);
+		expect(result.stale.map((o) => o.orgId)).toEqual([orgId]);
 
 		await t.run(async (ctx) => {
 			await ctx.db.patch(orgId, { billingSyncedAt: Date.now() });
 		});
-		stale = await t.query(internal.billingWebhook.listStaleBillingOrgs, {
+		result = await t.query(internal.billingWebhook.listStaleBillingOrgs, {
 			staleMs: 48 * 60 * 60 * 1000,
 			limit: 10,
+			cursor: null,
 		});
-		expect(stale).toEqual([]);
+		expect(result.stale).toEqual([]);
 	});
 
 	it("applyReconciledSubscription repairs a deliberately-staled mirror", async () => {

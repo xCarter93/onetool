@@ -25,10 +25,22 @@ export const reconcileStaleBillingMirrors = internalAction({
 		const stale: Array<{
 			orgId: Id<"organizations">;
 			clerkOrganizationId: string;
-		}> = await ctx.runQuery(internal.billingWebhook.listStaleBillingOrgs, {
-			staleMs: STALE_MS,
-			limit: BATCH_LIMIT,
-		});
+		}> = [];
+		let cursor: string | null = null;
+		while (stale.length < BATCH_LIMIT) {
+			const page: {
+				stale: typeof stale;
+				continueCursor: string;
+				isDone: boolean;
+			} = await ctx.runQuery(internal.billingWebhook.listStaleBillingOrgs, {
+				staleMs: STALE_MS,
+				limit: BATCH_LIMIT - stale.length,
+				cursor,
+			});
+			stale.push(...page.stale);
+			if (page.isDone) break;
+			cursor = page.continueCursor;
+		}
 
 		let repaired = 0;
 		for (const org of stale) {

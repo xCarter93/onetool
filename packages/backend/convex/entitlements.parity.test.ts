@@ -175,6 +175,22 @@ describe("entitlement parity across org/identity states", () => {
 		const esig = mine.meters.find((m) => m.key === "esignatures");
 		expect(esig).toMatchObject({ used: 0, limit: 5, remaining: 5 });
 	});
+
+	it("getMine keeps e-signature remaining consistent with legacy usage", async () => {
+		const { orgId, clerkUserId, clerkOrgId } = await seedOrg();
+		const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+		// Legacy counter (documents-table truth), not the planUsage store.
+		await patchOrg(orgId, {
+			usageTracking: {
+				clientsCount: 0,
+				esignaturesSentThisMonth: 3,
+				lastEsignatureReset: Date.now(),
+			},
+		});
+		const mine = await asUser.query(api.entitlements.getMine, {});
+		const esig = mine.meters.find((m) => m.key === "esignatures");
+		expect(esig).toMatchObject({ used: 3, limit: 5, remaining: 2 });
+	});
 });
 
 describe("meter store behavior", () => {

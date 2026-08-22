@@ -68,7 +68,12 @@ export const getMine = optionalUserQuery({
 				"esignatures",
 				resolved.plan
 			);
-			meters.push({ ...esig, used: esigUsed });
+			meters.push({
+				...esig,
+				used: esigUsed,
+				remaining:
+					esig.limit === null ? null : Math.max(0, esig.limit - esigUsed),
+			});
 		}
 
 		return {

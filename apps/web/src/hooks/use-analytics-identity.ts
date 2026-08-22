@@ -90,7 +90,7 @@ export function useAnalyticsIdentity() {
 	useEffect(() => {
 		if (!isSignedIn || !organization) return;
 		if (!orgData || !entitlements) return;
-		const key = `${entitlements.plan}:${entitlements.source}`;
+		const key = `${organization.id}:${entitlements.plan}:${entitlements.source}`;
 		if (lastGroupPlanSent.current === key) return;
 
 		setOrganizationGroup(organization.id, {
