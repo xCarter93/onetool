@@ -134,6 +134,43 @@ describe("Clerk billing webhook handlers", () => {
 		expect(org.planGraceUntil).toBeUndefined();
 	});
 
+	it("an active org is not downgraded by a pre-live sibling item event", async () => {
+		await makePremium();
+		// Plan-period switch / reopened checkout: Clerk creates a second paid
+		// item in a pre-live state and fires created/updated for it.
+		await t.mutation(internal.billingWebhook.handleSubscriptionItemEvent, {
+			eventType: "subscriptionItem.created",
+			organizationId: clerkOrgId,
+			planSlug: PREMIUM_PLAN_SLUG,
+			status: "incomplete",
+		});
+		await t.mutation(internal.billingWebhook.handleSubscriptionItemEvent, {
+			eventType: "subscriptionItem.updated",
+			organizationId: clerkOrgId,
+			planSlug: PREMIUM_PLAN_SLUG,
+			status: "upcoming",
+		});
+		await t.mutation(internal.billingWebhook.handleSubscriptionItemEvent, {
+			eventType: "subscriptionItem.abandoned",
+			organizationId: clerkOrgId,
+			planSlug: PREMIUM_PLAN_SLUG,
+		});
+		const org = await getOrg();
+		expect(org.subscriptionStatus).toBe("active");
+		expect(org.planGraceUntil).toBeUndefined();
+	});
+
+	it("pre-live statuses still write when the mirror is not live", async () => {
+		await t.mutation(internal.billingWebhook.handleSubscriptionItemEvent, {
+			eventType: "subscriptionItem.created",
+			organizationId: clerkOrgId,
+			planSlug: PREMIUM_PLAN_SLUG,
+			status: "incomplete",
+		});
+		const org = await getOrg();
+		expect(org.subscriptionStatus).toBe("incomplete");
+	});
+
 	it("informational item events change nothing", async () => {
 		await makePremium();
 		for (const eventType of [

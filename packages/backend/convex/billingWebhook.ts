@@ -374,6 +374,27 @@ export const handleSubscriptionItemEvent = internalMutation({
 			return { success: false, error: "Unmapped item event" };
 		}
 
+		// A plan-period switch or reopened checkout creates a SECOND paid item in
+		// a pre-live state and fires created/updated for it. That sibling must
+		// never displace a live subscription — writing "incomplete" over "active"
+		// would lock a paying org instantly (the pre-P1 gates have no grace).
+		const PRE_LIVE_STATUSES: ReadonlySet<SubscriptionStatus> = new Set([
+			"incomplete",
+			"upcoming",
+			"abandoned",
+		]);
+		const mirrorIsLive =
+			org.subscriptionStatus === "active" ||
+			org.subscriptionStatus === "trialing";
+		if (PRE_LIVE_STATUSES.has(status) && mirrorIsLive) {
+			logWebhookSuccess(
+				WEBHOOK_SERVICE,
+				`${args.eventType} (pre-live sibling ignored)`,
+				org._id
+			);
+			return { success: true };
+		}
+
 		await applyBillingPatch(ctx, org, {
 			...(args.planId !== undefined ? { clerkPlanId: args.planId } : {}),
 			...(args.planSlug !== undefined ? { clerkPlanSlug: args.planSlug } : {}),
