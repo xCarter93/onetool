@@ -6,14 +6,15 @@ import {
 	PREMIUM_PLAN_SLUG,
 	readPremiumOverride,
 } from "./permissions";
-import { FREE_MAX_CLIENTS, FREE_MAX_ACTIVE_PROJECTS_PER_CLIENT } from "./planLimits";
 
 /**
  * Unified entitlement layer (PRD-packaging-entitlements P0).
  *
  * One map defines every commercial capability for both tiers; the resolvers
- * below enforce it. This file encodes TODAY'S packaging — the P2+ packaging
- * flips are one-line value changes here, never new call-site hunts.
+ * below enforce it. This file encodes the END-STATE packaging (Slice A,
+ * 2026-08-22): no stock caps, volume meters enforced from day one, and four
+ * scale-the-operation switches on Business. Packaging changes are value edits
+ * here, never new call-site hunts.
  *
  * Clerk is plan truth (webhook → org doc slug+status); this map is feature
  * truth. Clerk's `pla`/`fea` claims cannot ride Convex's custom JWT template.
@@ -72,16 +73,6 @@ interface MeterRow {
 	advertised: boolean;
 }
 
-interface ParamRow {
-	kind: "param";
-	free: number;
-	business: number;
-	/** Free-tier clamp: value may not exceed this % of the subject amount. */
-	clampFreePctOfSubject?: number;
-	/** false = nothing reads this row yet (wired at P6). */
-	enforce: boolean;
-}
-
 export type FeatureKey =
 	| "aiAssistant"
 	| "routing"
@@ -89,6 +80,9 @@ export type FeatureKey =
 	| "llmCsvImport"
 	| "scheduledAutomationRuns"
 	| "automationEmails"
+	| "automationPublish"
+	| "nlReportGeneration"
+	| "portalBadgeRemoval"
 	| "customSkus"
 	| "orgDocuments"
 	| "stripeConnect";
@@ -97,9 +91,10 @@ export type MeterKey =
 	| "esignatures"
 	| "clientSends"
 	| "clients"
-	| "activeProjectsPerClient";
-
-export type ParamKey = "platformFeeCents";
+	| "activeProjectsPerClient"
+	| "assistantMessages"
+	| "savedReports"
+	| "importedRows";
 
 const businessSwitch = (deny: DenyShape): SwitchRow => ({
 	kind: "switch",
@@ -109,8 +104,20 @@ const businessSwitch = (deny: DenyShape): SwitchRow => ({
 	deny,
 });
 
+/** Flipped-free row: kept as documentation/UI marker + kill-switch symmetry.
+ * The deny shape is frozen for shipped mobile builds should the row ever
+ * flip back; with free:true it is never thrown. */
+const freeForAll = (deny: DenyShape): SwitchRow => ({
+	kind: "switch",
+	free: true,
+	business: true,
+	enforce: true,
+	deny,
+});
+
 export const FEATURES: Record<FeatureKey, SwitchRow> = {
-	aiAssistant: businessSwitch({
+	// Access for all; volume rides the assistantMessages meter.
+	aiAssistant: freeForAll({
 		type: "error",
 		message: "The AI assistant is available on the Business plan. Upgrade to use it.",
 	}),
@@ -122,15 +129,23 @@ export const FEATURES: Record<FeatureKey, SwitchRow> = {
 		type: "convexErrorString",
 		message: "QuickBooks sync is available on the Business plan. Upgrade to use it.",
 	}),
-	llmCsvImport: businessSwitch({ type: "soft" }),
+	// Access for all; volume rides the importedRows meter + ops caps.
+	llmCsvImport: freeForAll({ type: "soft" }),
 	scheduledAutomationRuns: businessSwitch({ type: "soft" }),
 	automationEmails: businessSwitch({ type: "soft" }),
-	// UI-lock-only rows: the backend never enforces these (payments/SKUs/docs
-	// have no server gate by design); they drive the web nav/tab locks that
-	// P1 migrated off hand-flags. P3 flips them free.
-	customSkus: businessSwitch({ type: "soft" }),
-	orgDocuments: businessSwitch({ type: "soft" }),
-	stripeConnect: businessSwitch({ type: "soft" }),
+	automationPublish: businessSwitch({
+		type: "convexErrorString",
+		message: "Publishing automations is available on the Business plan. Upgrade to publish.",
+	}),
+	// Gated at the reportConfigGeneration pipeline entry; denial is a
+	// structured tool result the assistant relays — never a throw.
+	nlReportGeneration: businessSwitch({ type: "soft" }),
+	// Display only: free portals show the "Powered by OneTool" footer badge.
+	portalBadgeRemoval: businessSwitch({ type: "soft" }),
+	// UI-lock-only rows, flipped free at Slice A (never server-gated).
+	customSkus: freeForAll({ type: "soft" }),
+	orgDocuments: freeForAll({ type: "soft" }),
+	stripeConnect: freeForAll({ type: "soft" }),
 };
 
 export const METERS: Record<MeterKey, MeterRow> = {
@@ -142,20 +157,22 @@ export const METERS: Record<MeterKey, MeterRow> = {
 		enforce: true,
 		advertised: true,
 	},
-	// Dormant until P5: the send meter ships enforce:false for the 60-day
-	// observation window, then flips per the pre-committed calibration rule.
+	// Debited only on the first draft→sent transition in the sendToClient
+	// mutations; resends never debit. +10 bonus in months with ≥1 Stripe
+	// collection (granted once per period in applyMarkPaidCascade).
 	clientSends: {
 		kind: "meter",
 		free: 20,
 		business: null,
 		period: "calendarMonth",
-		enforce: false,
-		advertised: false,
+		enforce: true,
+		advertised: true,
 	},
-	// Today's stock caps — deleted at P2 (free → null), not before.
+	// Stock caps deleted at Slice A — rows kept for display/kill-switch
+	// symmetry (null = unlimited on both tiers).
 	clients: {
 		kind: "meter",
-		free: FREE_MAX_CLIENTS,
+		free: null,
 		business: null,
 		period: "lifetime",
 		enforce: true,
@@ -163,23 +180,40 @@ export const METERS: Record<MeterKey, MeterRow> = {
 	},
 	activeProjectsPerClient: {
 		kind: "meter",
-		free: FREE_MAX_ACTIVE_PROJECTS_PER_CLIENT,
+		free: null,
+		business: null,
+		period: "lifetime",
+		enforce: true,
+		advertised: false,
+	},
+	// Org-shared, UTC day; debited per user message in assistantChat.sendMessage.
+	assistantMessages: {
+		kind: "meter",
+		free: 10,
+		business: null,
+		period: "day",
+		enforce: true,
+		advertised: true,
+	},
+	// Current-count semantics (usedOverride from a live count; delete frees a
+	// slot) — never consumeMeter'd. Over-cap orgs are grandfathered: existing
+	// rows stay, creation refuses.
+	savedReports: {
+		kind: "meter",
+		free: 5,
 		business: null,
 		period: "lifetime",
 		enforce: true,
 		advertised: true,
 	},
-};
-
-export const PARAMS: Record<ParamKey, ParamRow> = {
-	// Dormant until P6: today the application fee is the flat env-var value at
-	// PaymentIntent creation; these values go live with the 30-day ToS notice.
-	platformFeeCents: {
-		kind: "param",
-		free: 200,
-		business: 100,
-		clampFreePctOfSubject: 4,
-		enforce: false,
+	// Lifetime import budget; only rows actually written debit.
+	importedRows: {
+		kind: "meter",
+		free: 2000,
+		business: null,
+		period: "lifetime",
+		enforce: true,
+		advertised: true,
 	},
 };
 
@@ -433,6 +467,38 @@ export async function requireMeter(
 	});
 }
 
+/**
+ * Refuse when `amount` would not fit the remaining budget — the whole call is
+ * refused, never partially applied. Same frozen error shape as requireMeter.
+ */
+export async function requireMeterCapacity(
+	ctx: QueryCtx | MutationCtx,
+	orgId: Id<"organizations">,
+	key: MeterKey,
+	plan: PlanTier,
+	amount: number,
+	options?: { now?: number; usedOverride?: number }
+): Promise<void> {
+	const row = METERS[key];
+	if (!row.enforce) return;
+	const { remaining } = await getMeterUsage(ctx, orgId, key, plan, options);
+	if (remaining === null || amount <= remaining) return;
+	throw new ConvexError({
+		code: PLAN_LIMIT_ERROR_CODE,
+		feature: key,
+		message: meterCapacityMessage(key, remaining),
+	});
+}
+
+/** Refusal copy that can name the leftover budget; falls back to the
+ * exhausted-meter message. */
+function meterCapacityMessage(key: MeterKey, remaining: number): string {
+	if (remaining > 0 && key === "importedRows") {
+		return `This plan has ${remaining} imported row${remaining === 1 ? "" : "s"} left — trim the file to fit.`;
+	}
+	return meterLimitMessage(key);
+}
+
 function meterLimitMessage(key: MeterKey): string {
 	switch (key) {
 		case "esignatures":
@@ -443,6 +509,12 @@ function meterLimitMessage(key: MeterKey): string {
 			return "You've reached this plan's client limit.";
 		case "activeProjectsPerClient":
 			return "You've reached this plan's active project limit for this client.";
+		case "assistantMessages":
+			return "You've used today's assistant messages. They reset at midnight UTC.";
+		case "savedReports":
+			return "You've reached this plan's saved report limit. Delete a report to free a slot.";
+		case "importedRows":
+			return "You've reached this plan's imported row limit.";
 	}
 }
 
@@ -454,31 +526,38 @@ export async function consumeMeter(
 	ctx: MutationCtx,
 	orgId: Id<"organizations">,
 	key: MeterKey,
-	now: number = Date.now()
+	options?: { now?: number; amount?: number }
 ): Promise<void> {
+	const now = options?.now ?? Date.now();
+	const amount = options?.amount ?? 1;
+	if (amount <= 0) return;
 	const existing = await getUsageRow(ctx, orgId, key, now);
 	if (existing) {
-		await ctx.db.patch(existing._id, { used: existing.used + 1 });
+		await ctx.db.patch(existing._id, { used: existing.used + amount });
 		return;
 	}
 	await ctx.db.insert("planUsage", {
 		orgId,
 		meter: key,
 		periodKey: periodKeyFor(METERS[key].period, now),
-		used: 1,
+		used: amount,
 	});
 }
 
-/** Grant bonus capacity on the current period (e.g. the Stripe-collection +10). */
+/** Grant bonus capacity on the current period (e.g. the Stripe-collection +10).
+ * `once: true` makes the grant idempotent per period — a second qualifying
+ * event in the same period is a no-op. */
 export async function grantMeterBonus(
 	ctx: MutationCtx,
 	orgId: Id<"organizations">,
 	key: MeterKey,
 	amount: number,
-	now: number = Date.now()
+	options?: { now?: number; once?: boolean }
 ): Promise<void> {
+	const now = options?.now ?? Date.now();
 	const existing = await getUsageRow(ctx, orgId, key, now);
 	if (existing) {
+		if (options?.once && (existing.bonus ?? 0) > 0) return;
 		await ctx.db.patch(existing._id, { bonus: (existing.bonus ?? 0) + amount });
 		return;
 	}

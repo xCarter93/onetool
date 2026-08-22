@@ -186,9 +186,11 @@ export default async function VerifyPage({
 					/>
 				</div>
 
-				<div className="mt-12 md:mt-auto md:pt-12">
-					<PoweredByOneTool />
-				</div>
+				{(branding.showPoweredByBadge ?? true) && (
+					<div className="mt-12 md:mt-auto md:pt-12">
+						<PoweredByOneTool />
+					</div>
+				)}
 			</main>
 		</div>
 	);

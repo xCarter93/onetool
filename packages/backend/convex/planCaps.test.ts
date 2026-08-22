@@ -85,15 +85,15 @@ describe("free-plan create caps", () => {
 			).resolves.toBeDefined();
 		});
 
-		it("rejects the create that would exceed the cap", async () => {
+		it("creates past the former cap succeed (Slice A: cap deleted)", async () => {
 			const { asUser } = await seedOrg();
 			await createClients(asUser, FREE_MAX_CLIENTS);
-			await expectPlanLimit(
+			await expect(
 				asUser.mutation(api.clients.create, {
 					companyName: "Over the line",
 					status: "active",
 				})
-			);
+			).resolves.toBeDefined();
 		});
 
 		it("archived clients don't consume a slot", async () => {
@@ -181,21 +181,21 @@ describe("free-plan create caps", () => {
 			).resolves.toBeDefined();
 		});
 
-		it("rejects a fourth active project on the same client", async () => {
+		it("a fourth active project succeeds (Slice A: cap deleted)", async () => {
 			const { asUser, clientId } = await seedClient();
 			await createProjects(
 				asUser,
 				clientId,
 				FREE_MAX_ACTIVE_PROJECTS_PER_CLIENT
 			);
-			await expectPlanLimit(
+			await expect(
 				asUser.mutation(api.projects.create, {
 					clientId,
-					title: "Too many",
+					title: "No longer too many",
 					status: "in-progress",
 					projectType: "one-off",
 				})
-			);
+			).resolves.toBeDefined();
 		});
 
 		it("completed and cancelled projects don't consume a slot", async () => {
@@ -273,7 +273,7 @@ describe("free-plan create caps", () => {
 			).resolves.toBeDefined();
 		});
 
-		it("reviving a completed project faces the cap", async () => {
+		it("reviving a completed project succeeds (Slice A: cap deleted)", async () => {
 			const { asUser, clientId } = await seedClient();
 			await createProjects(
 				asUser,
@@ -286,15 +286,15 @@ describe("free-plan create caps", () => {
 				status: "completed",
 				projectType: "one-off",
 			});
-			await expectPlanLimit(
+			await expect(
 				asUser.mutation(api.projects.update, {
 					id: doneId,
 					status: "in-progress",
 				})
-			);
+			).resolves.toBeDefined();
 		});
 
-		it("moving an active project onto a full client faces that client's cap", async () => {
+		it("moving an active project onto a formerly-full client succeeds", async () => {
 			const { asUser, clientId } = await seedClient();
 			await createProjects(
 				asUser,
@@ -311,12 +311,12 @@ describe("free-plan create caps", () => {
 				status: "planned",
 				projectType: "one-off",
 			});
-			await expectPlanLimit(
+			await expect(
 				asUser.mutation(api.projects.update, {
 					id: movingId,
 					clientId,
 				})
-			);
+			).resolves.toBeDefined();
 		});
 
 		it("editing a project that already holds its slot still works at the cap", async () => {
@@ -361,21 +361,21 @@ describe("free-plan create caps", () => {
 			return { asUser, orgId, archivedId: ids[0], activeId: ids[1] };
 		}
 
-		it("restore is refused at the cap", async () => {
+		it("restore succeeds at the former cap (Slice A: cap deleted)", async () => {
 			const { asUser, archivedId } = await seedFullOrgWithArchived();
-			await expectPlanLimit(
+			await expect(
 				asUser.mutation(api.clients.restore, { id: archivedId })
-			);
+			).resolves.toBeDefined();
 		});
 
-		it("un-archiving through clients.update is refused at the cap", async () => {
+		it("un-archiving through clients.update succeeds (Slice A: cap deleted)", async () => {
 			const { asUser, archivedId } = await seedFullOrgWithArchived();
-			await expectPlanLimit(
+			await expect(
 				asUser.mutation(api.clients.update, {
 					id: archivedId,
 					status: "active",
 				})
-			);
+			).resolves.toBeDefined();
 		});
 
 		it("a client that already holds a slot can still be edited at the cap", async () => {

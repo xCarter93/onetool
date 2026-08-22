@@ -24,6 +24,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import {
+	Tooltip,
+	TooltipContent,
+	TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
 	Frame,
 	FrameDescription,
 	FrameFooter,
@@ -38,6 +43,8 @@ import { DataGridColumnHeader } from "@/components/reui/data-grid/data-grid-colu
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import DeleteConfirmationModal from "@/components/ui/delete-confirmation-modal";
 import { useToast } from "@/hooks/use-toast";
+import { useEntitlements } from "@/hooks/use-entitlements";
+import { convexErrorMessage } from "@/lib/convex-error";
 import { formatRelativeTime } from "@/lib/notification-utils";
 import { ManualRunButton } from "./manual-run-button";
 import {
@@ -57,6 +64,8 @@ export function AutomationsTable() {
 	const router = useRouter();
 	const toast = useToast();
 	const automations = useQuery(api.automations.list);
+	const { allows } = useEntitlements();
+	const canPublish = allows("automationPublish");
 	const toggleActive = useMutation(api.automations.toggleActive);
 	const removeAutomation = useMutation(api.automations.remove);
 
@@ -78,9 +87,7 @@ export function AutomationsTable() {
 			} catch (error) {
 				toast.error(
 					"Couldn't update automation",
-					error instanceof Error
-						? error.message
-						: "Failed to change the automation status"
+					convexErrorMessage(error, "Failed to change the automation status")
 				);
 			}
 		},
@@ -206,27 +213,48 @@ export function AutomationsTable() {
 				size: 140,
 				cell: ({ row }) => {
 					const status = effectiveStatus(row.original);
+					// Pausing stays allowed on the free plan; only activating is gated.
+					const blocked = status !== "active" && !canPublish;
 					return (
 						<div className="flex items-center gap-2">
 							<StatusBadge status={status} {...STATUS_BADGE_PROPS[status]}>
 								{STATUS_LABEL[status]}
 							</StatusBadge>
-							<Button
-								variant="ghost"
-								size="icon-sm"
-								onClick={() => handleToggle(row.original._id)}
-								aria-label={
-									status === "active"
-										? `Pause ${row.original.name}`
-										: `Activate ${row.original.name}`
-								}
-							>
-								{status === "active" ? (
-									<PowerOff className="size-3.5" />
-								) : (
-									<Power className="size-3.5" />
+							<Tooltip>
+								<TooltipTrigger
+									render={
+										<span
+											// A disabled button swallows pointer events, so
+											// the tooltip needs a live wrapper to hang off.
+											tabIndex={blocked ? 0 : -1}
+											className="inline-flex rounded-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+										/>
+									}
+								>
+									<Button
+										variant="ghost"
+										size="icon-sm"
+										disabled={blocked}
+										onClick={() => handleToggle(row.original._id)}
+										aria-label={
+											status === "active"
+												? `Pause ${row.original.name}`
+												: `Activate ${row.original.name}`
+										}
+									>
+										{status === "active" ? (
+											<PowerOff className="size-3.5" />
+										) : (
+											<Power className="size-3.5" />
+										)}
+									</Button>
+								</TooltipTrigger>
+								{blocked && (
+									<TooltipContent side="top">
+										Publishing automations is part of the Business plan
+									</TooltipContent>
 								)}
-							</Button>
+							</Tooltip>
 						</div>
 					);
 				},
@@ -272,7 +300,7 @@ export function AutomationsTable() {
 				),
 			},
 		],
-		[handleToggle, handleEdit]
+		[handleToggle, handleEdit, canPublish]
 	);
 
 	const data = useMemo(() => {

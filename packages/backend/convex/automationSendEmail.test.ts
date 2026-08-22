@@ -7,6 +7,7 @@ import { setupConvexTest } from "./test.setup";
 import {
 	createTestOrg,
 	createTestIdentity,
+	createPremiumTestIdentity,
 	createTestClientContact,
 } from "./test.helpers";
 import { api, internal } from "./_generated/api";
@@ -71,7 +72,13 @@ describe("send_email automation action (D1)", () => {
 		clerkUserId?: string;
 		clerkOrgId?: string;
 	}) {
-		const setup = await t.run(async (ctx) => createTestOrg(ctx, overrides));
+		// Publishing/activating automations is Business-only, so the org resolves
+		// premium by default; free-plan tests downgrade it after publish.
+		const setup = await t.run(async (ctx) => {
+			const created = await createTestOrg(ctx, overrides);
+			await ctx.db.patch(created.orgId, { hasPremiumFeatureAccess: true });
+			return created;
+		});
 		const asUser = t.withIdentity(
 			createTestIdentity(setup.clerkUserId, setup.clerkOrgId)
 		);
@@ -210,9 +217,11 @@ describe("send_email automation action (D1)", () => {
 			expect(await getEmailMessages()).toHaveLength(0);
 		});
 
-		it("a non-premium org skips the send, citing the plan requirement", async () => {
+		it("a non-premium org skips the whole run before the send node", async () => {
+			// Slice A: the run-level plan gate in matchAndScheduleAutomations
+			// supersedes the node-level email gate — a free org's event never
+			// starts a run at all.
 			const { asUser, orgId } = await setupUser();
-			// No premium fields set on the org, no override on the creator user.
 
 			await asUser.mutation(api.automations.create, {
 				name: "Email on new client",
@@ -227,6 +236,11 @@ describe("send_email automation action (D1)", () => {
 				],
 				isActive: true,
 			});
+
+			// Downgrade after publishing, and no override on the creator user.
+			await t.run(async (ctx) =>
+				ctx.db.patch(orgId, { hasPremiumFeatureAccess: false })
+			);
 
 			const clientId = await asUser.mutation(api.clients.create, {
 				portalAccessId: crypto.randomUUID(),
@@ -243,9 +257,65 @@ describe("send_email automation action (D1)", () => {
 			await drainEvents();
 
 			const executions = await getExecutions();
-			const entry = executions[0].nodesExecuted.find(
-				(n) => n.nodeId === "email-1"
+			expect(executions).toHaveLength(1);
+			expect(executions[0].status).toBe("skipped");
+			expect(executions[0].error).toBe(
+				"Skipped: automations require a premium plan"
 			);
+			expect(executions[0].nodesExecuted).toEqual([]);
+			expect(await getEmailMessages()).toHaveLength(0);
+		});
+
+		it("the node-level email gate still fires for a run that passed the run gate", async () => {
+			// The two gates resolve the plan differently, and only this shape
+			// reaches the node gate: startManualRun is identity-path (the caller's
+			// JWT override lets a free org's run start), while executeSendEmailAction
+			// is docs-path (org + creator user doc, neither of which is premium).
+			const { asUser, orgId, clerkUserId, clerkOrgId } = await setupUser();
+
+			// Client first: the automation must not already have fired on it.
+			const clientId = await asUser.mutation(api.clients.create, {
+				portalAccessId: crypto.randomUUID(),
+				companyName: "Acme Co",
+				status: "lead",
+			});
+			await t.run(async (ctx) =>
+				createTestClientContact(ctx, orgId, clientId, {
+					isPrimary: true,
+					email: "primary@example.com",
+				})
+			);
+
+			const automationId = await asUser.mutation(api.automations.create, {
+				name: "Email on new client",
+				trigger: clientCreatedTrigger,
+				nodes: [
+					sendEmailNode(
+						"email-1",
+						{ kind: "primary_contact" },
+						"Hello",
+						"Body"
+					),
+				],
+				isActive: true,
+			});
+
+			// Org drops to free; the JWT override belongs to the caller only.
+			await t.run(async (ctx) =>
+				ctx.db.patch(orgId, { hasPremiumFeatureAccess: false })
+			);
+			const asPremiumCaller = t.withIdentity(
+				createPremiumTestIdentity(clerkUserId, clerkOrgId)
+			);
+
+			const executionId = await asPremiumCaller.mutation(
+				api.automationExecutor.startManualRun,
+				{ automationId, record: { entityType: "client", entityId: clientId } }
+			);
+			await drainScheduled();
+
+			const execution = await t.run(async (ctx) => ctx.db.get(executionId));
+			const entry = execution?.nodesExecuted.find((n) => n.nodeId === "email-1");
 			expect(entry?.result).toBe("skipped");
 			expect(entry?.error).toMatch(/premium/i);
 			expect(await getEmailMessages()).toHaveLength(0);
@@ -537,7 +607,6 @@ describe("send_email automation action (D1)", () => {
 	describe("premium override", () => {
 		it("a user-level override on the automation's creator passes the premium gate", async () => {
 			const { asUser, orgId, userId } = await setupUser();
-			// Org itself stays non-premium; only the creator user is flagged.
 			await t.run(async (ctx) =>
 				ctx.db.patch(userId, { hasPremiumFeatureAccess: true })
 			);
@@ -555,6 +624,11 @@ describe("send_email automation action (D1)", () => {
 				],
 				isActive: true,
 			});
+
+			// Org drops back to free once published; only the creator user is flagged.
+			await t.run(async (ctx) =>
+				ctx.db.patch(orgId, { hasPremiumFeatureAccess: false })
+			);
 
 			const clientId = await asUser.mutation(api.clients.create, {
 				portalAccessId: crypto.randomUUID(),

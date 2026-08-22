@@ -20,6 +20,12 @@ import {
 	SelectValue,
 } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
+import {
+	Alert,
+	AlertDescription,
+	AlertTitle,
+} from "@/components/reui/alert";
+import { useEntitlements } from "@/hooks/use-entitlements";
 import type { FieldMapping, ImportRecord, ImportResult, ImportResultItem, RecordValidationError } from "@/types/csv-import";
 import {
 	parseCsvData,
@@ -96,6 +102,8 @@ function StatusIcon({ item }: { item: ImportResultItem }) {
  */
 export interface ReviewActionState {
 	importableCount: number;
+	/** Rows beyond the plan's remaining lifetime import budget (0 = within budget). */
+	overBudgetBy: number;
 	hasValidationErrors: boolean;
 	validationErrorCount: number;
 	isImporting: boolean;
@@ -266,6 +274,15 @@ export function StepReviewValues({
 	const hasValidationErrors = validationErrors.length > 0;
 	const importableCount = reviewRows.filter((r) => !r.skipImport && r.status !== "error").length;
 
+	// Free plans carry a lifetime import-row budget; business orgs get no meter.
+	const { meter } = useEntitlements();
+	const rowMeter = meter("importedRows");
+	const rowBudget =
+		rowMeter && rowMeter.limit !== null && rowMeter.remaining !== null
+			? { remaining: rowMeter.remaining, limit: rowMeter.limit }
+			: null;
+	const overBudgetBy = rowBudget ? importableCount - rowBudget.remaining : 0;
+
 	// Handle import click: rebuild records, filter out skipped/error rows, pass to parent
 	const handleImportClick = useCallback(() => {
 		const builtRecords = rebuildRecordsFromCells(cellValues ?? new Map(), activeMappings, records.length);
@@ -290,6 +307,7 @@ export function StepReviewValues({
 	useEffect(() => {
 		onActionStateChange?.({
 			importableCount,
+			overBudgetBy,
 			hasValidationErrors,
 			validationErrorCount: validationErrors.length,
 			isImporting,
@@ -299,6 +317,7 @@ export function StepReviewValues({
 	}, [
 		onActionStateChange,
 		importableCount,
+		overBudgetBy,
 		hasValidationErrors,
 		validationErrors.length,
 		isImporting,
@@ -405,6 +424,32 @@ export function StepReviewValues({
 					skippedCount: importResult.skippedCount ?? 0,
 				} : undefined}
 			/>
+
+			{/* Lifetime import budget (free plan only) */}
+			{rowBudget && !isResultsMode && (
+				<div className="space-y-2">
+					<p className="text-xs text-muted-foreground">
+						{rowBudget.remaining.toLocaleString()} of{" "}
+						{rowBudget.limit.toLocaleString()} lifetime import rows remaining
+					</p>
+					{overBudgetBy > 0 && (
+						<Alert variant="warning">
+							<AlertTriangle />
+							<AlertTitle>
+								These {importableCount.toLocaleString()} rows exceed your{" "}
+								{rowBudget.remaining.toLocaleString()} remaining import rows
+							</AlertTitle>
+							<AlertDescription>
+								The import won&apos;t run until it fits. Remove{" "}
+								{overBudgetBy.toLocaleString()} row
+								{overBudgetBy !== 1 ? "s" : ""} from your file (skipping
+								duplicates counts), or upgrade your plan for unlimited
+								imports.
+							</AlertDescription>
+						</Alert>
+					)}
+				</div>
+			)}
 
 			{/* Filter tabs */}
 			<ReviewFilterTabs

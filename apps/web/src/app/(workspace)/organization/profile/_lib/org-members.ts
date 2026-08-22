@@ -19,6 +19,11 @@ export const MEMBERSHIPS_PARAMS = {
 export const INVITATIONS_PARAMS = {
 	invitations: { pageSize: 20 },
 };
+// Seat pre-flight needs both counts, so the Team tab fetches both collections.
+export const SEATS_AND_INVITATIONS_PARAMS = {
+	...MEMBERSHIPS_PARAMS,
+	...INVITATIONS_PARAMS,
+};
 
 export function roleLabel(role: string | undefined | null) {
 	if (role === ADMIN_ROLE) return "Admin";

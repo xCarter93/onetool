@@ -9,6 +9,7 @@ import {
 } from "./automationExecutor";
 import { projectCountsAggregate } from "./aggregates";
 import { LOOP_FETCH_ONLY_ERROR } from "./lib/workflowTypes";
+import { consumeMeter } from "./lib/entitlements";
 import type { Id } from "./_generated/dataModel";
 
 /**
@@ -145,7 +146,13 @@ describe("automationExecutor (v2 engine)", () => {
 		clerkUserId?: string;
 		clerkOrgId?: string;
 	}) {
-		const setup = await t.run(async (ctx) => createTestOrg(ctx, overrides));
+		// Publishing/activating automations is Business-only, so the org resolves
+		// premium by default; free-plan tests downgrade it after publish.
+		const setup = await t.run(async (ctx) => {
+			const created = await createTestOrg(ctx, overrides);
+			await ctx.db.patch(created.orgId, { hasPremiumFeatureAccess: true });
+			return created;
+		});
 		const asUser = t.withIdentity(
 			createTestIdentity(setup.clerkUserId, setup.clerkOrgId)
 		);
@@ -1900,15 +1907,19 @@ describe("automationExecutor (v2 engine)", () => {
 		});
 
 		it("skips dispatch for a non-premium org: inserts a skipped execution and still advances nextRunAt", async () => {
-			const { asUser } = await setupUser();
-			// No premium fields set on the org.
+			const { asUser, orgId } = await setupUser();
 
 			const id = await asUser.mutation(
 				api.automations.create,
 				scheduledAutomation({ isActive: true })
 			);
+			// Downgrade after publishing — how production reaches "free org with a
+			// published automation".
 			const past = Date.now() - 1000;
-			await t.run(async (ctx) => ctx.db.patch(id, { nextRunAt: past }));
+			await t.run(async (ctx) => {
+				await ctx.db.patch(orgId, { hasPremiumFeatureAccess: false });
+				await ctx.db.patch(id, { nextRunAt: past });
+			});
 
 			await t.mutation(internal.automationExecutor.dispatchScheduledAutomations, {});
 			await drainScheduled();
@@ -1953,7 +1964,7 @@ describe("automationExecutor (v2 engine)", () => {
 		it("dispatches when only the automation's creator holds a user-level override", async () => {
 			// A user-level override follows the automations that user built; the org
 			// itself stays non-premium.
-			const { asUser, userId } = await setupUser();
+			const { asUser, orgId, userId } = await setupUser();
 			await t.run(async (ctx) =>
 				ctx.db.patch(userId, { hasPremiumFeatureAccess: true })
 			);
@@ -1962,7 +1973,11 @@ describe("automationExecutor (v2 engine)", () => {
 				api.automations.create,
 				scheduledAutomation({ isActive: true })
 			);
-			await t.run(async (ctx) => ctx.db.patch(id, { nextRunAt: Date.now() - 1000 }));
+			// Org drops back to free once published; only the creator override remains.
+			await t.run(async (ctx) => {
+				await ctx.db.patch(orgId, { hasPremiumFeatureAccess: false });
+				await ctx.db.patch(id, { nextRunAt: Date.now() - 1000 });
+			});
 
 			await t.mutation(internal.automationExecutor.dispatchScheduledAutomations, {});
 			await drainScheduled();
@@ -5893,8 +5908,8 @@ describe("automationExecutor (v2 engine)", () => {
 			expect(executions[0].status).toBe("completed");
 		});
 
-		it("enforces the free-plan client cap: an 11th create_record client fails without inserting", async () => {
-			const { asUser } = await setupUser(); // free org (no premium)
+		it("creates an 11th client (Slice A: client cap deleted)", async () => {
+			const { asUser } = await setupUser();
 
 			// Ten clients already exist.
 			for (let i = 0; i < 10; i++) {
@@ -5938,15 +5953,72 @@ describe("automationExecutor (v2 engine)", () => {
 			const clients = await t.run(async (ctx) =>
 				ctx.db.query("clients").collect()
 			);
-			expect(clients).toHaveLength(10); // no 11th
-			expect(clients.some((c) => c.companyName === "Eleventh")).toBe(false);
+			// The stock cap is gone: create_record writes the 11th client
+			// (planCaps reads clients free:null as unlimited).
+			expect(clients).toHaveLength(11);
+			expect(clients.some((c) => c.companyName === "Eleventh")).toBe(true);
 
 			const executions = await t.run(async (ctx) =>
 				ctx.db.query("workflowExecutions").collect()
 			);
 			expect(executions).toHaveLength(1);
-			expect(executions[0].status).toBe("failed");
-			expect(executions[0].error ?? "").toMatch(/limit|plan|upgrade/i);
+			expect(executions[0].status).toBe("completed");
+		});
+
+		it("a free org's event dispatch skips the run and writes no record", async () => {
+			const { asUser, orgId } = await setupUser();
+
+			const anchorClient = await asUser.mutation(api.clients.create, {
+				portalAccessId: crypto.randomUUID(),
+				companyName: "Anchor",
+				status: "active",
+			});
+
+			await asUser.mutation(api.automations.create, {
+				name: "Overflow client",
+				trigger: { type: "record_created", objectType: "project" },
+				nodes: [
+					createRecordActionNode("act-1", {
+						objectType: "client",
+						fields: [
+							{
+								field: "companyName",
+								value: { kind: "static", value: "Eleventh" },
+							},
+						],
+					}),
+				],
+				isActive: true,
+			});
+
+			// Downgrade after publishing — how production reaches "free org with a
+			// published automation". The run gate, not the client cap, is what stops it.
+			await t.run(async (ctx) =>
+				ctx.db.patch(orgId, { hasPremiumFeatureAccess: false })
+			);
+
+			await asUser.mutation(api.projects.create, {
+				clientId: anchorClient,
+				title: "Trigger",
+				status: "planned",
+				projectType: "one-off",
+			});
+			await drainEvents();
+
+			const clients = await t.run(async (ctx) =>
+				ctx.db.query("clients").collect()
+			);
+			expect(clients).toHaveLength(1);
+
+			const executions = await t.run(async (ctx) =>
+				ctx.db.query("workflowExecutions").collect()
+			);
+			expect(executions).toHaveLength(1);
+			expect(executions[0].status).toBe("skipped");
+			expect(executions[0].error).toBe(
+				"Skipped: automations require a premium plan"
+			);
+			expect(executions[0].nodesExecuted).toEqual([]);
 		});
 
 		it("rejects a cross-tenant FK: a supplied clientId from another org is not found", async () => {
@@ -6269,9 +6341,10 @@ describe("automationExecutor (v2 engine)", () => {
 
 		describe("C5-2 scheduled dispatch catch-up", () => {
 			it("a full batch self-reschedules until every due automation is claimed in one tick", async () => {
-				// Non-premium org: each due row just records a skipped execution,
-				// which keeps a 52-automation batch cheap while still counting claims.
-				const { asUser } = await setupUser();
+				// Downgraded to free after publishing: each due row just records a
+				// skipped execution, which keeps a 52-automation batch cheap while
+				// still counting claims.
+				const { asUser, orgId } = await setupUser();
 
 				const firstId = await asUser.mutation(
 					api.automations.create,
@@ -6279,6 +6352,7 @@ describe("automationExecutor (v2 engine)", () => {
 				);
 				const past = Date.now() - 1000;
 				await t.run(async (ctx) => {
+					await ctx.db.patch(orgId, { hasPremiumFeatureAccess: false });
 					const template = await ctx.db.get(firstId);
 					if (!template) throw new Error("seed automation missing");
 					const { _id, _creationTime, ...rest } = template;
@@ -7064,6 +7138,426 @@ describe("automationExecutor (v2 engine)", () => {
 
 			const task = await t.run(async (ctx) => ctx.db.get(taskId));
 			expect(task?.description).toBe("(no client)");
+		});
+	});
+
+	describe("Slice A — event-dispatch plan gate", () => {
+		const SKIP_ERROR = "Skipped: automations require a premium plan";
+
+		async function drainScheduled() {
+			await t.finishAllScheduledFunctions(vi.runAllTimers);
+		}
+
+		async function executions() {
+			return await t.run(async (ctx) =>
+				ctx.db.query("workflowExecutions").collect()
+			);
+		}
+
+		/** Seeds a premium org with a published automation on `trigger`, then
+		 * applies `plan` to the org doc — the production shape is always
+		 * "published while premium, plan changed afterwards". */
+		async function publishThenSetPlan(
+			trigger: Record<string, unknown>,
+			plan: Record<string, unknown>,
+			overrides?: { clerkUserId?: string; clerkOrgId?: string }
+		) {
+			const setup = await setupUser(overrides);
+			const automationId = await setup.asUser.mutation(api.automations.create, {
+				name: "Gated automation",
+				// eslint-disable-next-line @typescript-eslint/no-explicit-any
+				trigger: trigger as any,
+				nodes: [updateFieldActionNode("act-1", "notes", "Touched")],
+				isActive: true,
+			});
+			await t.run(async (ctx) =>
+				ctx.db.patch(setup.orgId, {
+					hasPremiumFeatureAccess: false,
+					...plan,
+				})
+			);
+			return { ...setup, automationId };
+		}
+
+		describe("free orgs skip, per trigger type", () => {
+			it("status_changed: records a skipped run and writes nothing", async () => {
+				const { asUser, orgId } = await publishThenSetPlan(
+					{ type: "status_changed", objectType: "client", toStatus: "active" },
+					{}
+				);
+				void orgId;
+
+				const clientId = await asUser.mutation(api.clients.create, {
+					portalAccessId: crypto.randomUUID(),
+					companyName: "Acme Co",
+					status: "lead",
+				});
+				await asUser.mutation(api.clients.update, {
+					id: clientId,
+					status: "active",
+				});
+				await drainEvents();
+
+				const rows = await executions();
+				expect(rows).toHaveLength(1);
+				expect(rows[0].status).toBe("skipped");
+				expect(rows[0].error).toBe(SKIP_ERROR);
+				expect(rows[0].nodesExecuted).toEqual([]);
+				expect((await t.run(async (ctx) => ctx.db.get(clientId)))?.notes)
+					.toBeUndefined();
+			});
+
+			it("record_created: records a skipped run and writes nothing", async () => {
+				const { asUser } = await publishThenSetPlan(
+					{ type: "record_created", objectType: "client" },
+					{}
+				);
+
+				const clientId = await asUser.mutation(api.clients.create, {
+					portalAccessId: crypto.randomUUID(),
+					companyName: "Acme Co",
+					status: "lead",
+				});
+				await drainEvents();
+
+				const rows = await executions();
+				expect(rows).toHaveLength(1);
+				expect(rows[0].status).toBe("skipped");
+				expect(rows[0].error).toBe(SKIP_ERROR);
+				expect((await t.run(async (ctx) => ctx.db.get(clientId)))?.notes)
+					.toBeUndefined();
+			});
+
+			it("record_updated: records a skipped run and writes nothing", async () => {
+				const { asUser, orgId } = await setupUser();
+				const clientId = await asUser.mutation(api.clients.create, {
+					portalAccessId: crypto.randomUUID(),
+					companyName: "Acme Co",
+					status: "lead",
+				});
+				await asUser.mutation(api.automations.create, {
+					name: "Gated automation",
+					trigger: {
+						type: "record_updated",
+						objectType: "client",
+						fields: ["companyName"],
+					},
+					nodes: [updateFieldActionNode("act-1", "notes", "Touched")],
+					isActive: true,
+				});
+				await t.run(async (ctx) =>
+					ctx.db.patch(orgId, { hasPremiumFeatureAccess: false })
+				);
+
+				await asUser.mutation(api.clients.update, {
+					id: clientId,
+					companyName: "Acme Renamed",
+				});
+				await drainEvents();
+
+				const rows = await executions();
+				expect(rows).toHaveLength(1);
+				expect(rows[0].status).toBe("skipped");
+				expect(rows[0].error).toBe(SKIP_ERROR);
+				expect((await t.run(async (ctx) => ctx.db.get(clientId)))?.notes)
+					.toBeUndefined();
+			});
+		});
+
+		describe("orgs that still resolve business RUN", () => {
+			const premiumStates: Array<[string, Record<string, unknown>]> = [
+				["org-level override", { hasPremiumFeatureAccess: true }],
+				["an unlapsed trial", { trialEndsAt: Date.now() + 60_000 }],
+				["the post-cancel grace window", { planGraceUntil: Date.now() + 60_000 }],
+				[
+					"an active subscription",
+					{
+						clerkPlanSlug: "onetool_business_plan_org",
+						subscriptionStatus: "active",
+					},
+				],
+			];
+
+			for (const [label, plan] of premiumStates) {
+				it(`runs for an org premium via ${label}`, async () => {
+					const { asUser } = await publishThenSetPlan(
+						{ type: "record_created", objectType: "client" },
+						plan
+					);
+
+					const clientId = await asUser.mutation(api.clients.create, {
+						portalAccessId: crypto.randomUUID(),
+						companyName: "Acme Co",
+						status: "lead",
+					});
+					await drainEvents();
+
+					const rows = await executions();
+					expect(rows).toHaveLength(1);
+					expect(rows[0].status).toBe("completed");
+					expect((await t.run(async (ctx) => ctx.db.get(clientId)))?.notes).toBe(
+						"Touched"
+					);
+				});
+			}
+
+			it("runs when only the automation's creator holds a user-level override", async () => {
+				const { asUser, userId } = await publishThenSetPlan(
+					{ type: "record_created", objectType: "client" },
+					{}
+				);
+				await t.run(async (ctx) =>
+					ctx.db.patch(userId, { hasPremiumFeatureAccess: true })
+				);
+
+				const clientId = await asUser.mutation(api.clients.create, {
+					portalAccessId: crypto.randomUUID(),
+					companyName: "Acme Co",
+					status: "lead",
+				});
+				await drainEvents();
+
+				const rows = await executions();
+				expect(rows).toHaveLength(1);
+				expect(rows[0].status).toBe("completed");
+				expect((await t.run(async (ctx) => ctx.db.get(clientId)))?.notes).toBe(
+					"Touched"
+				);
+			});
+		});
+
+		describe("reclassifyAutomationsForOrg", () => {
+			function scheduledArgs(name: string) {
+				return {
+					name,
+					trigger: {
+						type: "scheduled" as const,
+						schedule: {
+							frequency: "daily" as const,
+							timezone: "UTC",
+							time: "09:00",
+						},
+					},
+					nodes: [notifyNode("notify-1")],
+					isActive: true,
+				};
+			}
+
+			it("flips a free org's active automations to paused_plan and clears nextRunAt", async () => {
+				const { asUser, orgId } = await setupUser();
+				const id = await asUser.mutation(
+					api.automations.create,
+					scheduledArgs("Nightly")
+				);
+				expect(
+					(await t.run(async (ctx) => ctx.db.get(id)))?.nextRunAt
+				).toBeGreaterThan(0);
+
+				await t.run(async (ctx) =>
+					ctx.db.patch(orgId, { hasPremiumFeatureAccess: false })
+				);
+				await t.mutation(
+					internal.automationExecutor.reclassifyAutomationsForOrg,
+					{ orgId }
+				);
+
+				const automation = await t.run(async (ctx) => ctx.db.get(id));
+				expect(automation?.status).toBe("paused_plan");
+				expect(automation?.nextRunAt).toBeUndefined();
+				// The published snapshot survives, so the row is resumable.
+				expect(automation?.publishedSnapshot).toBeDefined();
+			});
+
+			it("leaves an org that upgraded before fire time untouched", async () => {
+				const { asUser, orgId } = await setupUser();
+				const id = await asUser.mutation(
+					api.automations.create,
+					scheduledArgs("Nightly")
+				);
+				// The sweep is scheduled on a downgrade but re-resolves the plan when
+				// it fires; this org bought a subscription meanwhile.
+				await t.run(async (ctx) =>
+					ctx.db.patch(orgId, {
+						hasPremiumFeatureAccess: false,
+						clerkPlanSlug: "onetool_business_plan_org",
+						subscriptionStatus: "active",
+					})
+				);
+
+				const before = await t.run(async (ctx) => ctx.db.get(id));
+				await t.mutation(
+					internal.automationExecutor.reclassifyAutomationsForOrg,
+					{ orgId }
+				);
+				const after = await t.run(async (ctx) => ctx.db.get(id));
+				expect(after?.status).toBe("active");
+				expect(after?.nextRunAt).toBe(before?.nextRunAt);
+			});
+
+			it("pauses per creator: an override-holding creator's automation survives", async () => {
+				const { asUser, orgId, userId } = await setupUser();
+				const ownerAutomationId = await asUser.mutation(
+					api.automations.create,
+					scheduledArgs("Owner nightly")
+				);
+
+				const overrideAutomationId = await t.run(async (ctx) => {
+					const member = await addMemberToOrg(ctx, orgId, {
+						clerkUserId: "user_override_creator",
+						userEmail: "override@example.com",
+					});
+					await ctx.db.patch(member.userId, { hasPremiumFeatureAccess: true });
+					const template = await ctx.db.get(ownerAutomationId);
+					if (!template) throw new Error("seed automation missing");
+					const { _id, _creationTime, ...rest } = template;
+					void _id;
+					void _creationTime;
+					return await ctx.db.insert("workflowAutomations", {
+						...rest,
+						name: "Override-creator nightly",
+						createdBy: member.userId,
+					});
+				});
+				void userId;
+
+				await t.run(async (ctx) =>
+					ctx.db.patch(orgId, { hasPremiumFeatureAccess: false })
+				);
+				await t.mutation(
+					internal.automationExecutor.reclassifyAutomationsForOrg,
+					{ orgId }
+				);
+
+				const owner = await t.run(async (ctx) => ctx.db.get(ownerAutomationId));
+				const override = await t.run(async (ctx) =>
+					ctx.db.get(overrideAutomationId)
+				);
+				expect(owner?.status).toBe("paused_plan");
+				expect(override?.status).toBe("active");
+			});
+
+			it("is a no-op on re-run and never touches drafts or manual pauses", async () => {
+				const { asUser, orgId } = await setupUser();
+				const activeId = await asUser.mutation(
+					api.automations.create,
+					scheduledArgs("Nightly")
+				);
+				const draftId = await asUser.mutation(api.automations.create, {
+					...scheduledArgs("Draft"),
+					isActive: false,
+				});
+				const pausedId = await asUser.mutation(
+					api.automations.create,
+					scheduledArgs("Manually paused")
+				);
+				await asUser.mutation(api.automations.toggleActive, { id: pausedId });
+
+				await t.run(async (ctx) =>
+					ctx.db.patch(orgId, { hasPremiumFeatureAccess: false })
+				);
+				await t.mutation(
+					internal.automationExecutor.reclassifyAutomationsForOrg,
+					{ orgId }
+				);
+				const first = await t.run(async (ctx) => ctx.db.get(activeId));
+				await t.mutation(
+					internal.automationExecutor.reclassifyAutomationsForOrg,
+					{ orgId }
+				);
+				const second = await t.run(async (ctx) => ctx.db.get(activeId));
+
+				expect(second?.status).toBe("paused_plan");
+				expect(second?.updatedAt).toBe(first?.updatedAt);
+				expect((await t.run(async (ctx) => ctx.db.get(draftId)))?.status).toBe(
+					"draft"
+				);
+				expect((await t.run(async (ctx) => ctx.db.get(pausedId)))?.status).toBe(
+					"paused"
+				);
+			});
+		});
+
+		describe("clientSends meter on an automated move to sent", () => {
+			async function sendUsage(orgId: Id<"organizations">) {
+				return await t.run(async (ctx) => {
+					const rows = await ctx.db
+						.query("planUsage")
+						.withIndex("by_org_meter_period", (q) =>
+							q.eq("orgId", orgId).eq("meter", "clientSends")
+						)
+						.collect();
+					return rows[0] ?? null;
+				});
+			}
+
+			async function seedQuoteAutomation() {
+				const setup = await setupUser();
+				const clientId = await setup.asUser.mutation(api.clients.create, {
+					portalAccessId: crypto.randomUUID(),
+					companyName: "Acme Co",
+					status: "active",
+				});
+				await setup.asUser.mutation(api.automations.create, {
+					name: "Auto-send new quotes",
+					trigger: { type: "record_created", objectType: "quote" },
+					nodes: [updateFieldActionNode("act-1", "status", "sent")],
+					isActive: true,
+				});
+				return { ...setup, clientId };
+			}
+
+			it("debits the meter once and stamps firstSentAt", async () => {
+				const { asUser, orgId, clientId } = await seedQuoteAutomation();
+
+				const quoteId = await asUser.mutation(api.quotes.create, {
+					clientId,
+					title: "Q1",
+					status: "draft",
+					subtotal: 100,
+					total: 100,
+				});
+				await drainEvents();
+
+				const quote = await t.run(async (ctx) => ctx.db.get(quoteId));
+				expect(quote?.status).toBe("sent");
+				expect(quote?.firstSentAt).toBeGreaterThan(0);
+				expect((await sendUsage(orgId))?.used).toBe(1);
+			});
+
+			it("fails the node at the limit and leaves the quote unsent", async () => {
+				const { asUser, orgId, userId, clientId } = await seedQuoteAutomation();
+				// The meter resolves the ORG plan only, while the run gate also honors
+				// the creator — the one shape that reaches an exhausted free meter.
+				await t.run(async (ctx) => {
+					await ctx.db.patch(userId, { hasPremiumFeatureAccess: true });
+					await ctx.db.patch(orgId, { hasPremiumFeatureAccess: false });
+					await consumeMeter(ctx, orgId, "clientSends", { amount: 20 });
+				});
+
+				const quoteId = await asUser.mutation(api.quotes.create, {
+					clientId,
+					title: "Q2",
+					status: "draft",
+					subtotal: 100,
+					total: 100,
+				});
+				await drainEvents();
+				await drainScheduled();
+
+				const quote = await t.run(async (ctx) => ctx.db.get(quoteId));
+				expect(quote?.status).toBe("draft");
+				expect(quote?.firstSentAt).toBeUndefined();
+				expect((await sendUsage(orgId))?.used).toBe(20);
+
+				const rows = await executions();
+				expect(rows).toHaveLength(1);
+				expect(rows[0].status).toBe("failed");
+				expect(
+					rows[0].nodesExecuted.find((n) => n.nodeId === "act-1")?.error
+				).toBe(
+					"Send limit reached for this month. The record was not moved to sent."
+				);
+			});
 		});
 	});
 });

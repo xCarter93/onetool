@@ -61,14 +61,7 @@ import { useToast } from "@/hooks/use-toast";
 import DeleteConfirmationModal from "@/components/ui/delete-confirmation-modal";
 import { MetricFrame } from "@/components/metric-frame";
 import { useActivitySparklines } from "@/hooks/use-activity-sparklines";
-import { useEntitlements } from "@/hooks/use-entitlements";
-import type { MeterUsage } from "@onetool/backend";
 import { usePermissions } from "@/hooks/use-permissions";
-import {
-	Tooltip,
-	TooltipContent,
-	TooltipTrigger,
-} from "@/components/ui/tooltip";
 import {
 	type DragEndEvent,
 	KanbanBoard,
@@ -115,30 +108,6 @@ type ClientKanbanColumn = {
 	name: string;
 	description: string;
 };
-
-type ClientActionGate = {
-	canPerform: boolean;
-	reason?: string;
-	currentUsage?: number;
-	limit?: number | "unlimited";
-};
-
-/** Client-creation gate derived from the entitlements "clients" meter. */
-function clientCreateGate(meter: MeterUsage | undefined): ClientActionGate {
-	if (!meter) return { canPerform: false, reason: "Loading..." };
-	if (meter.limit === null || meter.remaining === null) {
-		return { canPerform: true };
-	}
-	if (meter.remaining > 0) {
-		return { canPerform: true, currentUsage: meter.used, limit: meter.limit };
-	}
-	return {
-		canPerform: false,
-		reason: `You've reached your limit of ${meter.limit} clients. Upgrade to add more.`,
-		currentUsage: meter.used,
-		limit: meter.limit,
-	};
-}
 
 const kanbanColumns: ClientKanbanColumn[] = [
 	{ id: "lead", name: "Leads", description: "Potential new clients" },
@@ -354,15 +323,12 @@ const createColumns = (
 ];
 
 function ActiveEmptyState({
-	gate,
 	onAdd,
 	canModify,
 }: {
-	gate: ClientActionGate;
 	onAdd: () => void;
 	canModify: boolean;
 }) {
-	const { canPerform, reason, currentUsage, limit } = gate;
 	return (
 		<EmptyState
 			size="md"
@@ -372,27 +338,10 @@ function ActiveEmptyState({
 			action={
 				<div className="flex flex-col items-center gap-2">
 					{canModify ? (
-						<Tooltip>
-							<TooltipTrigger render={<span className="inline-block" />}>
-								<Button onClick={onAdd} disabled={!canPerform}>
-									<Plus className="h-4 w-4" />
-									Add Your First Client
-								</Button>
-							</TooltipTrigger>
-							{!canPerform && (
-								<TooltipContent>
-									<div className="space-y-1">
-										<p className="font-semibold">Upgrade Required</p>
-										<p>{reason || "You've reached your client limit"}</p>
-										{limit && limit !== "unlimited" && currentUsage !== undefined && (
-											<p className="text-muted-foreground">
-												{currentUsage}/{limit} clients
-											</p>
-										)}
-									</div>
-								</TooltipContent>
-							)}
-						</Tooltip>
+						<Button onClick={onAdd}>
+							<Plus className="h-4 w-4" />
+							Add Your First Client
+						</Button>
 					) : undefined}
 					<LearnMoreLink article="clients/managing-clients" />
 				</div>
@@ -432,11 +381,6 @@ function ClientsPageContent() {
 	const [kanbanData, setKanbanData] = useState<ClientKanbanItem[]>([]);
 	const isOrgSwitching = useIsOrgSwitching();
 
-	// Usage gate for creating clients + premium gate for import.
-	const { allows, meter } = useEntitlements();
-	const gate = clientCreateGate(meter("clients"));
-	const { canPerform, reason } = gate;
-	const hasPremiumAccess = allows("llmCsvImport");
 	const { can } = usePermissions();
 	const canModifyClients = can("clients", "modify");
 	const canDeleteClients = can("clients", "delete");
@@ -479,15 +423,8 @@ function ClientsPageContent() {
 	const isLoading = isOrgSwitching || convexClients === undefined;
 
 	const handleAddClient = React.useCallback(() => {
-		if (!canPerform) {
-			toast.error(
-				"Upgrade Required",
-				reason || "You've reached your client limit"
-			);
-			return;
-		}
 		openCreate({ type: "client" });
-	}, [canPerform, reason, openCreate, toast]);
+	}, [openCreate]);
 
 	const openPreview = React.useCallback((id: string) => {
 		setPreviewId(id as Id<"clients">);
@@ -809,58 +746,18 @@ function ClientsPageContent() {
 				</div>
 				{canModifyClients && (
 					<div className="flex gap-2">
-						<Tooltip>
-							<TooltipTrigger render={<span className="inline-block" />}>
-								<Button
-									variant="outline"
-									onClick={() => router.push("/clients/import")}
-									disabled={!hasPremiumAccess}
-								>
-									<Upload className="h-4 w-4" />
-									Import Clients
-								</Button>
-							</TooltipTrigger>
-							{!hasPremiumAccess && (
-								<TooltipContent>
-									<div className="space-y-1">
-										<p className="font-semibold">Premium Feature</p>
-										<p>Upgrade to access client import functionality</p>
-									</div>
-								</TooltipContent>
-							)}
-						</Tooltip>
+						<Button
+							variant="outline"
+							onClick={() => router.push("/clients/import")}
+						>
+							<Upload className="h-4 w-4" />
+							Import Clients
+						</Button>
 
-						<Tooltip>
-							<TooltipTrigger render={<span className="inline-block" />}>
-								<Button onClick={handleAddClient} disabled={!canPerform}>
-									<Plus className="h-4 w-4" />
-									Add Client
-									{!canPerform &&
-										gate.limit &&
-										gate.limit !== "unlimited" &&
-										gate.currentUsage !== undefined && (
-											<Badge variant="secondary" className="ml-1 text-xs">
-												{gate.currentUsage}/{gate.limit}
-											</Badge>
-										)}
-								</Button>
-							</TooltipTrigger>
-							{!canPerform && (
-								<TooltipContent>
-									<div className="space-y-1">
-										<p className="font-semibold">Upgrade Required</p>
-										<p>{reason || "You've reached your client limit"}</p>
-										{gate.limit &&
-											gate.limit !== "unlimited" &&
-											gate.currentUsage !== undefined && (
-												<p className="text-muted-foreground">
-													{gate.currentUsage}/{gate.limit} clients
-												</p>
-											)}
-									</div>
-								</TooltipContent>
-							)}
-						</Tooltip>
+						<Button onClick={handleAddClient}>
+							<Plus className="h-4 w-4" />
+							Add Client
+						</Button>
 					</div>
 				)}
 			</div>
@@ -974,7 +871,6 @@ function ClientsPageContent() {
 							</div>
 						) : isEmpty ? (
 							<ActiveEmptyState
-								gate={gate}
 								onAdd={handleAddClient}
 								canModify={canModifyClients}
 							/>

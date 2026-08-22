@@ -12,7 +12,12 @@ import { action, internalQuery } from "./_generated/server";
 import { assistantAgent, INSTRUCTIONS } from "./assistantAgent";
 import { SCREEN_CONTEXT_MAX_LENGTH } from "./lib/assistantShared";
 import { getCurrentUserOrgId, getCurrentUserOrThrow } from "./lib/auth";
-import { requireFeature } from "./lib/entitlements";
+import {
+	consumeMeter,
+	entitlementsFromIdentity,
+	requireFeature,
+	requireMeter,
+} from "./lib/entitlements";
 import { userMutation, userQuery } from "./lib/factories";
 import { rateLimiter } from "./rateLimits";
 
@@ -63,6 +68,15 @@ export const sendMessage = userMutation({
 			throw new Error("Thread not found");
 		}
 
+		// Org-shared daily message meter, debited exactly once per user message.
+		// streamResponse retries reuse the saved messageId and never re-debit.
+		const { plan } = await entitlementsFromIdentity(ctx);
+		// One timestamp for both calls so the check and the debit can't straddle
+		// a UTC-midnight period boundary.
+		const now = Date.now();
+		await requireMeter(ctx, ctx.orgId, "assistantMessages", plan, { now });
+		await consumeMeter(ctx, ctx.orgId, "assistantMessages", { now });
+
 		const { messageId } = await saveMessage(ctx, components.agent, {
 			threadId: args.threadId,
 			userId: ctx.user._id,
@@ -71,6 +85,8 @@ export const sendMessage = userMutation({
 
 		await ctx.db.patch(meta._id, {
 			lastMessageAt: Date.now(),
+			// Pins the one message streamResponse may generate for — see authorizeThread.
+			lastPromptMessageId: messageId,
 			...(meta.title ? {} : { title: args.prompt.slice(0, TITLE_MAX_LENGTH) }),
 		});
 
@@ -81,7 +97,7 @@ export const sendMessage = userMutation({
 /** Auth + plan check usable from the action: identity propagates via
  *  ctx.runQuery, and the entitlement gate needs a database-backed ctx. */
 export const authorizeThread = internalQuery({
-	args: { threadId: v.string() },
+	args: { threadId: v.string(), promptMessageId: v.string() },
 	handler: async (ctx, args): Promise<{ userId: Id<"users"> }> => {
 		await requireFeature(ctx, "aiAssistant");
 		const user = await getCurrentUserOrThrow(ctx);
@@ -92,6 +108,15 @@ export const authorizeThread = internalQuery({
 			.unique();
 		if (!meta || meta.orgId !== orgId || meta.userId !== user._id) {
 			throw new Error("Thread not found");
+		}
+		// Only the message sendMessage last metered may be generated for; retrying
+		// that same message is free, replaying an older one is not. Threads whose
+		// meta predates the field are unpinned until their next sendMessage.
+		if (
+			meta.lastPromptMessageId !== undefined &&
+			meta.lastPromptMessageId !== args.promptMessageId
+		) {
+			throw new Error("That message can no longer be regenerated. Send it again.");
 		}
 		return { userId: user._id };
 	},
@@ -108,12 +133,12 @@ export const streamResponse = action({
 	// Explicit return type: this module is in the generated api graph, so
 	// inferring through ctx.runQuery(internal…) would create a type cycle.
 	handler: async (ctx, args): Promise<void> => {
-		// authorizeThread also enforces the plan gate — this action can be
-		// invoked directly with an existing promptMessageId, and generation
-		// must never start for free-plan callers.
+		// authorizeThread also enforces the plan gate and the metered-message
+		// pin — this action can be invoked directly with any saved
+		// promptMessageId, and each call costs a full LLM generation.
 		const { userId } = await ctx.runQuery(
 			internal.assistantChat.authorizeThread,
-			{ threadId: args.threadId }
+			{ threadId: args.threadId, promptMessageId: args.promptMessageId }
 		);
 
 		// Rate-limit here, not in sendMessage: this action can be re-invoked

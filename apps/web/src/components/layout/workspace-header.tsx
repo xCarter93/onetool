@@ -6,6 +6,7 @@ import { NotchedItem } from "@/components/layout/notched-item";
 import { NotificationBell } from "@/components/layout/notification-bell";
 import { ServiceStatusBadge } from "@/components/layout/service-status-badge";
 import { SettingsPopover } from "@/components/layout/settings-popover";
+import { TrialCountdownPill } from "@/components/layout/trial-countdown-pill";
 
 /**
  * Thin workspace navbar. On desktop the picture-frame band above the content
@@ -26,6 +27,7 @@ export function WorkspaceHeader() {
 			<div className="relative z-10 hidden md:flex items-start justify-end h-5 pr-6">
 				{/* Right side controls notch */}
 				<NotchedItem contentClassName="gap-1">
+					<TrialCountdownPill />
 					<ServiceStatusBadge />
 					<HelpMenu />
 					<NotificationBell />

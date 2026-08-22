@@ -145,25 +145,10 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 		isOrgSwitching || inboxUnread === undefined ? 0 : inboxUnread;
 	const { orgId } = useAuth();
 	const hasOrganization = !!orgId;
-	const { allows, meter } = useEntitlements();
+	const { allows } = useEntitlements();
 	const { isAdmin, isMember } = useRoleAccess();
 	const isCommunityEnabled = useFeatureFlagEnabled("community-pages-access");
 	const isAutomationsEnabled = useFeatureFlagEnabled("workflow-automation-access");
-
-	// Check if user can create new clients
-	const clientsMeter = meter("clients");
-	const atClientLimit =
-		!!clientsMeter &&
-		clientsMeter.remaining !== null &&
-		clientsMeter.remaining <= 0;
-	const canCreateClient = !atClientLimit;
-	const clientLimitReason = atClientLimit
-		? `You've reached your limit of ${clientsMeter.limit} clients. Upgrade to add more.`
-		: undefined;
-	const clientCurrentUsage = clientsMeter?.used;
-	const clientLimit = clientsMeter
-		? (clientsMeter.limit ?? ("unlimited" as const))
-		: undefined;
 
 	// Visibility predicates live in nav-config.tsx (shared with the ⌘K palette).
 	const navVisibility: NavVisibilityContext = {
@@ -276,10 +261,6 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 						groups={navigationGroups}
 						showQuickActions={showQuickActions}
 						quickActionAccess={quickActionAccess}
-						canCreateClient={canCreateClient}
-						clientLimitReason={clientLimitReason}
-						clientCurrentUsage={clientCurrentUsage}
-						clientLimit={clientLimit}
 					/>
 				</TourElement>
 				<NavFavorites />

@@ -89,6 +89,14 @@ describe("automation run entry points — per-object authorization", () => {
 		return await t.run(seedFixture);
 	}
 
+	/** Publishing and manual runs are Business-only; org-level override is the
+	 * cheapest way to keep a fixture on the paid tier. */
+	async function makePremium(orgId: Id<"organizations">) {
+		await t.run(async (ctx: { db: MutationCtx["db"] }) => {
+			await ctx.db.patch(orgId, { hasPremiumFeatureAccess: true });
+		});
+	}
+
 	async function seedFixture(ctx: {
 		db: MutationCtx["db"];
 	}): Promise<{
@@ -159,6 +167,9 @@ describe("automation run entry points — per-object authorization", () => {
 
 	it("startManualRun refuses a record type the caller has no grant on", async () => {
 		const { org, member, clientId, automationId } = await seed();
+		// startManualRun is premium-gated ahead of every authz check; keep the org
+		// on Business so this still exercises the object-authorization boundary.
+		await makePremium(org.orgId);
 		await grant(org.orgId, member.userId, {
 			automations: { level: "modify" },
 		});
@@ -188,6 +199,7 @@ describe("automation run entry points — per-object authorization", () => {
 		// record for scheduled triggers; startManualRun must too, or clients:view
 		// (allRecords) + this automation writes any client's status.
 		const { org, member } = await seed();
+		await makePremium(org.orgId);
 		await grant(org.orgId, member.userId, {
 			automations: { level: "modify" },
 			clients: { level: "view", allRecords: true },

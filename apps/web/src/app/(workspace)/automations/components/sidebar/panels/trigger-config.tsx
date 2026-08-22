@@ -3,7 +3,7 @@
 import React from "react";
 import { Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { TIMEZONES, browserTimezone } from "@/lib/timezones";
+import { browserTimezone } from "@/lib/timezones";
 import { TRIGGER_NODE_ID } from "../../../lib/flow-adapter";
 import {
 	Select,
@@ -13,7 +13,7 @@ import {
 	SelectValue,
 } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
-import ComboBox from "@/components/ui/combo-box";
+import { TimezoneCombobox } from "@/components/shared/timezone-combobox";
 import {
 	DEFAULT_SCHEDULE_TIME,
 	TRIGGERABLE_OBJECT_TYPE_OPTIONS,
@@ -357,13 +357,9 @@ export function TriggerConfigPanel({
 							</PanelField>
 
 							<PanelField label="Timezone">
-								<ComboBox
-									options={TIMEZONES}
+								<TimezoneCombobox
 									value={schedule?.timezone ?? ""}
-									placeholder="Search timezones..."
-									onSelect={(tz) => {
-										if (tz) updateSchedule({ timezone: tz });
-									}}
+									onSelect={(tz) => updateSchedule({ timezone: tz })}
 								/>
 							</PanelField>
 

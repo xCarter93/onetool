@@ -11,6 +11,7 @@ import { Doc, Id } from "./_generated/dataModel";
 import { getCurrentUserOrgId, getCurrentUserOrThrow } from "./lib/auth";
 import { FEATURE_FLAGS, isServerFlagEnabled } from "./lib/posthog";
 import { userMutation, userQuery } from "./lib/factories";
+import { requireFeature } from "./lib/entitlements";
 import {
 	AUTOMATION_OBJECT_TYPES,
 	DELAY_UNIT_MS,
@@ -166,7 +167,7 @@ async function getAutomationOrThrow(
  */
 export function effectiveStatus(
 	automation: Pick<AutomationDocument, "status">
-): "draft" | "active" | "paused" {
+): "draft" | "active" | "paused" | "paused_plan" {
 	return automation.status ?? "draft";
 }
 
@@ -1437,6 +1438,7 @@ export const create = userMutation({
 
 		const activate = args.isActive ?? false;
 		if (activate) {
+			await requireFeature(ctx, "automationPublish");
 			validateForActivation(args.trigger, args.nodes);
 		} else {
 			validateWorkflowDefinition(args.trigger, args.nodes);
@@ -1573,6 +1575,7 @@ export const publish = userMutation({
 		const automation = await getAutomationOrThrow(ctx, args.id);
 		const user = await getCurrentUserOrThrow(ctx);
 		await requireAutomationAccess(ctx, automation.orgId, user._id);
+		await requireFeature(ctx, "automationPublish");
 
 		validateForActivation(automation.trigger, automation.nodes as NodeArg[]);
 		await requireDefinitionObjectAccess(
@@ -1623,6 +1626,7 @@ export const toggleActive = userMutation({
 		// Activation paths only — pausing above stays allowed when the flag is off.
 		const user = await getCurrentUserOrThrow(ctx);
 		await requireAutomationAccess(ctx, automation.orgId, user._id);
+		await requireFeature(ctx, "automationPublish");
 
 		if (automation.publishedSnapshot) {
 			// Resume a previously-published automation on its published version.

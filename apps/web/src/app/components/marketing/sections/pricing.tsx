@@ -16,8 +16,8 @@ import { RoughMark } from "../rough-mark";
  * figures prefer the live Clerk plan and fall back to $30 / $300. */
 
 const FREE_FEATURES = [
-	"Up to 10 clients",
-	"3 active projects per client",
+	"Unlimited clients",
+	"Unlimited active projects",
 	"5 e-signature requests a month",
 	"Custom invoice and quote PDF generation",
 ];

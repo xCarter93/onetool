@@ -137,6 +137,7 @@ import type * as migrations_backfillTeamMessagesFromNotifications from "../migra
 import type * as migrations_fixInvoiceTotals from "../migrations/fixInvoiceTotals.js";
 import type * as migrations_geocodeAddresses from "../migrations/geocodeAddresses.js";
 import type * as migrations_initializeQuoteCounters from "../migrations/initializeQuoteCounters.js";
+import type * as migrations_pausePublishedAutomationsOnFreeOrgs from "../migrations/pausePublishedAutomationsOnFreeOrgs.js";
 import type * as migrations_rebuildAggregates from "../migrations/rebuildAggregates.js";
 import type * as migrations_revalidateStripeConnectAccounts from "../migrations/revalidateStripeConnectAccounts.js";
 import type * as migrations_seedServiceStatus from "../migrations/seedServiceStatus.js";
@@ -183,6 +184,7 @@ import type * as resendWebhook from "../resendWebhook.js";
 import type * as routes from "../routes.js";
 import type * as routingActions from "../routingActions.js";
 import type * as search from "../search.js";
+import type * as seatSync from "../seatSync.js";
 import type * as serviceStatus from "../serviceStatus.js";
 import type * as serviceStatusActions from "../serviceStatusActions.js";
 import type * as skus from "../skus.js";
@@ -330,6 +332,7 @@ declare const fullApi: ApiFromModules<{
   "migrations/fixInvoiceTotals": typeof migrations_fixInvoiceTotals;
   "migrations/geocodeAddresses": typeof migrations_geocodeAddresses;
   "migrations/initializeQuoteCounters": typeof migrations_initializeQuoteCounters;
+  "migrations/pausePublishedAutomationsOnFreeOrgs": typeof migrations_pausePublishedAutomationsOnFreeOrgs;
   "migrations/rebuildAggregates": typeof migrations_rebuildAggregates;
   "migrations/revalidateStripeConnectAccounts": typeof migrations_revalidateStripeConnectAccounts;
   "migrations/seedServiceStatus": typeof migrations_seedServiceStatus;
@@ -376,6 +379,7 @@ declare const fullApi: ApiFromModules<{
   routes: typeof routes;
   routingActions: typeof routingActions;
   search: typeof search;
+  seatSync: typeof seatSync;
   serviceStatus: typeof serviceStatus;
   serviceStatusActions: typeof serviceStatusActions;
   skus: typeof skus;

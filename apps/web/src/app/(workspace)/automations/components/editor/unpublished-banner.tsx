@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { Loader2, Rocket, X } from "lucide-react";
 import {
 	Alert,
@@ -15,6 +16,8 @@ interface UnpublishedBannerProps {
 	isPublished: boolean;
 	publishLabel: string;
 	isPublishing: boolean;
+	/** Publishing is Business-plan only; drafting and dry-runs stay free. */
+	canPublish: boolean;
 	onPublish: () => void;
 }
 
@@ -27,6 +30,7 @@ export function UnpublishedBanner({
 	isPublished,
 	publishLabel,
 	isPublishing,
+	canPublish,
 	onPublish,
 }: UnpublishedBannerProps) {
 	const [dismissed, setDismissed] = useState(false);
@@ -56,22 +60,35 @@ export function UnpublishedBanner({
 							</Button>
 						</AlertAction>
 						<AlertDescription>
-							{isPublished
-								? "Your edits aren't live yet. Publish them to update the running automation."
-								: "This automation is a draft. Publish it to start running."}
-							<Button
-								size="xs"
-								className="mt-1.5 [--btn-bg:var(--color-violet-600)] [--btn-fg:white] [--btn-overlay:var(--color-violet-700)]"
-								onClick={onPublish}
-								disabled={isPublishing}
-							>
-								{isPublishing ? (
-									<Loader2 data-slot="icon" className="animate-spin" />
-								) : (
-									<Rocket data-slot="icon" />
+							{!canPublish
+								? "Publishing is part of the Business plan. Keep building and dry-running this draft for free."
+								: isPublished
+									? "Your edits aren't live yet. Publish them to update the running automation."
+									: "This automation is a draft. Publish it to start running."}
+							<div className="mt-1.5 flex items-center gap-2">
+								<Button
+									size="xs"
+									className="[--btn-bg:var(--color-violet-600)] [--btn-fg:white] [--btn-overlay:var(--color-violet-700)]"
+									onClick={onPublish}
+									disabled={isPublishing || !canPublish}
+								>
+									{isPublishing ? (
+										<Loader2 data-slot="icon" className="animate-spin" />
+									) : (
+										<Rocket data-slot="icon" />
+									)}
+									{publishLabel}
+								</Button>
+								{!canPublish && (
+									<Button
+										size="xs"
+										variant="outline"
+										render={<Link href="/organization/profile?tab=billing" />}
+									>
+										View plans
+									</Button>
 								)}
-								{publishLabel}
-							</Button>
+							</div>
 						</AlertDescription>
 					</Alert>
 				</FramePanel>

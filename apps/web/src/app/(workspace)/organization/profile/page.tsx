@@ -57,11 +57,12 @@ type TabValue = (typeof TAB_VALUES)[number];
 
 // Plan gating per tab, resolved through entitlements.getMine (§P1). Billing is
 // intentionally absent — free orgs need it to upgrade.
+// Integrations is deliberately absent: it's the Stripe Connect front door for
+// every plan; only the QuickBooks tile inside it is Business-gated.
 const TAB_FEATURE: Partial<Record<TabValue, FeatureKey>> = {
 	payments: "stripeConnect",
 	documents: "orgDocuments",
 	skus: "customSkus",
-	integrations: "quickbooks",
 };
 
 // Granular-permission gating per tab (§5.4); tabs absent here are role/premium-gated only.
@@ -287,7 +288,8 @@ export default function OrganizationProfilePage() {
 				label: "Integrations",
 				sublabel: "Payments & accounting",
 				icon: Blocks,
-				locked: !allows("quickbooks") || (!permsLoading && !hasFullAccess),
+				// Admin-only, never plan-locked: free orgs connect Stripe here.
+				locked: !permsLoading && !hasFullAccess,
 			},
 			].filter((item) => item.value !== "payments" || hasStripeAccount),
 		[allows, can, permsLoading, hasFullAccess, hasStripeAccount],

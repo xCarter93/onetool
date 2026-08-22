@@ -29,12 +29,15 @@ export function PortalShell({
 	logoUrl,
 	businessName,
 	logoInvertInDarkMode,
+	showPoweredByBadge = true,
 	children,
 }: {
 	clientPortalId: string;
 	logoUrl: string | null;
 	businessName: string;
 	logoInvertInDarkMode?: boolean;
+	/** Free-plan portals carry the badge; defaults on so stale data never drops it. */
+	showPoweredByBadge?: boolean;
 	children: React.ReactNode;
 }) {
 	const pathname = usePathname();
@@ -143,9 +146,11 @@ export function PortalShell({
 						Sign out
 					</button>
 				</div>
-				<div className="px-5 py-4 border-t border-border">
-					<PoweredByOneTool size="compact" />
-				</div>
+				{showPoweredByBadge && (
+					<div className="px-5 py-4 border-t border-border">
+						<PoweredByOneTool size="compact" />
+					</div>
+				)}
 			</aside>
 
 			{/* Mobile brand header (<768px) */}
@@ -160,10 +165,19 @@ export function PortalShell({
 
 			<main
 				id="portal-main"
-				className="flex-1 px-6 py-6 md:px-9 md:py-6 pb-20 md:pb-6"
+				className={`flex-1 px-6 py-6 md:px-9 md:py-6 md:pb-6 ${
+					showPoweredByBadge ? "pb-6" : "pb-20"
+				}`}
 			>
 				{children}
 			</main>
+
+			{/* Mobile badge (<768px) — carries main's pb-20 clearance for the tab bar. */}
+			{showPoweredByBadge && (
+				<footer className="md:hidden border-t border-border px-6 pt-4 pb-20">
+					<PoweredByOneTool size="compact" />
+				</footer>
+			)}
 
 			{/* Mobile tab bar (<768px) — suppressed on quote/invoice detail routes */}
 			{!suppressTabBar && (

@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import type { Doc, Id } from "@onetool/backend/convex/_generated/dataModel";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -26,6 +27,7 @@ import {
 	Check,
 	Fuel,
 	Loader2,
+	Lock,
 	MapPin,
 	Plus,
 	Sparkles,
@@ -93,6 +95,8 @@ type StopListPanelProps = {
 	onGasDeviationChange: (deviation: GasDeviation) => void;
 	gasLoading: boolean;
 	gasCount: number | null;
+	/** Free-plan soft preview: reads render, every write/compute path is off. */
+	previewOnly: boolean;
 };
 
 function formatDistance(meters: number): string {
@@ -273,6 +277,7 @@ export function StopListPanel({
 	onGasDeviationChange,
 	gasLoading,
 	gasCount,
+	previewOnly,
 }: StopListPanelProps) {
 	const [entryMode, setEntryMode] = useState<null | "start" | "stop">(null);
 
@@ -281,12 +286,104 @@ export function StopListPanel({
 		[stops]
 	);
 
-	const hasComputedResult = !dirty && route?.geometry != null;
+	const hasComputedResult = !previewOnly && !dirty && route?.geometry != null;
 	const legs = hasComputedResult ? (route?.legs ?? null) : null;
 
 	const sortableItems = useMemo(
 		() => stops.map((s) => ({ ...s, id: s.key })),
 		[stops]
+	);
+
+	const renderStopRow = (
+		item: StopDraft & { id: string },
+		index: number
+	) => (
+		<div className="flex min-w-0 items-center gap-2.5">
+			{onStopStatusChange && !unreachableIndices.has(index) ? (
+				<button
+					type="button"
+					aria-label={
+						item.status === "visited"
+							? `Mark ${item.label} not visited`
+							: `Mark ${item.label} visited`
+					}
+					className={cn(
+						"group/check flex size-6 shrink-0 items-center justify-center rounded-full text-[10px] font-bold text-white transition-colors",
+						item.status === "visited"
+							? "bg-emerald-600 hover:bg-emerald-700"
+							: "bg-sky-600 hover:bg-emerald-600"
+					)}
+					onClick={() =>
+						onStopStatusChange(
+							index,
+							item.status === "visited" ? "pending" : "visited"
+						)
+					}
+				>
+					{item.status === "visited" ? (
+						<Check className="size-3.5" aria-hidden />
+					) : (
+						<>
+							<span className="group-hover/check:hidden">
+								{index + 1}
+							</span>
+							<Check
+								className="hidden size-3.5 group-hover/check:block"
+								aria-hidden
+							/>
+						</>
+					)}
+				</button>
+			) : (
+				<span
+					className={cn(
+						"flex size-6 shrink-0 items-center justify-center rounded-full text-[10px] font-bold text-white",
+						unreachableIndices.has(index)
+							? "bg-destructive"
+							: "bg-sky-600"
+					)}
+				>
+					{index + 1}
+				</span>
+			)}
+			<div className="min-w-0 flex-1">
+				<span
+					className={cn(
+						"block truncate text-sm",
+						item.status === "visited" &&
+							"text-muted-foreground line-through"
+					)}
+				>
+					{item.label}
+				</span>
+				{unreachableIndices.has(index) ? (
+					<span className="block text-xs text-destructive">
+						Unreachable by road — remove it or fix the address
+					</span>
+				) : (
+					legs &&
+					legs[index] && (
+						<span className="block text-xs text-muted-foreground">
+							{formatDistance(legs[index].distanceMeters)} ·{" "}
+							{formatDuration(legs[index].durationSeconds)} from
+							previous
+						</span>
+					)
+				)}
+			</div>
+			{!previewOnly && (
+				<Button
+					variant="ghost"
+					size="icon-sm"
+					aria-label={`Remove ${item.label}`}
+					onClick={() =>
+						onStopsChange(stops.filter((s) => s.key !== item.key))
+					}
+				>
+					<X className="size-3.5" aria-hidden />
+				</Button>
+			)}
+		</div>
 	);
 
 	return (
@@ -320,6 +417,7 @@ export function StopListPanel({
 					value={name}
 					onChange={(e) => onNameChange(e.target.value)}
 					placeholder="e.g. Thursday north loop"
+					disabled={previewOnly}
 				/>
 			</div>
 
@@ -335,17 +433,19 @@ export function StopListPanel({
 							{startLabel ?? "No start location set"}
 						</span>
 					</div>
-					<Button
-						variant="ghost"
-						size="sm"
-						onClick={() =>
-							setEntryMode(entryMode === "start" ? null : "start")
-						}
-					>
-						Change
-					</Button>
+					{!previewOnly && (
+						<Button
+							variant="ghost"
+							size="sm"
+							onClick={() =>
+								setEntryMode(entryMode === "start" ? null : "start")
+							}
+						>
+							Change
+						</Button>
+					)}
 				</div>
-				{entryMode === "start" && (
+				{!previewOnly && entryMode === "start" && (
 					<div className="space-y-2">
 						{onUseOrgStart && (
 							<Button
@@ -382,6 +482,7 @@ export function StopListPanel({
 						id="round-trip"
 						size="sm"
 						checked={roundTrip}
+						disabled={previewOnly}
 						onCheckedChange={(checked) => onRoundTripChange(checked === true)}
 					/>
 				</div>
@@ -398,7 +499,7 @@ export function StopListPanel({
 								: `(${stops.length})`}
 						</span>
 					</Label>
-					<div className="flex gap-1.5">
+					<div className={cn("flex gap-1.5", previewOnly && "hidden")}>
 						<PropertyPicker
 							properties={properties}
 							usedPropertyIds={usedPropertyIds}
@@ -432,7 +533,7 @@ export function StopListPanel({
 					</div>
 				</div>
 
-				{entryMode === "stop" && (
+				{!previewOnly && entryMode === "stop" && (
 					<InlineAddressEntry
 						label="Add a stop by address"
 						onSelect={(address) => {
@@ -468,102 +569,30 @@ export function StopListPanel({
 						</p>
 					</div>
 				) : (
-					<ListProvider
-						items={sortableItems}
-						onReorder={(items) => onStopsChange(items)}
-						itemClassName="p-2"
-						renderItem={(item, index) => (
-							<div className="flex min-w-0 items-center gap-2.5">
-								{onStopStatusChange && !unreachableIndices.has(index) ? (
-									<button
-										type="button"
-										aria-label={
-											item.status === "visited"
-												? `Mark ${item.label} not visited`
-												: `Mark ${item.label} visited`
-										}
-										className={cn(
-											"group/check flex size-6 shrink-0 items-center justify-center rounded-full text-[10px] font-bold text-white transition-colors",
-											item.status === "visited"
-												? "bg-emerald-600 hover:bg-emerald-700"
-												: "bg-sky-600 hover:bg-emerald-600"
-										)}
-										onClick={() =>
-											onStopStatusChange(
-												index,
-												item.status === "visited" ? "pending" : "visited"
-											)
-										}
-									>
-										{item.status === "visited" ? (
-											<Check className="size-3.5" aria-hidden />
-										) : (
-											<>
-												<span className="group-hover/check:hidden">
-													{index + 1}
-												</span>
-												<Check
-													className="hidden size-3.5 group-hover/check:block"
-													aria-hidden
-												/>
-											</>
-										)}
-									</button>
-								) : (
-									<span
-										className={cn(
-											"flex size-6 shrink-0 items-center justify-center rounded-full text-[10px] font-bold text-white",
-											unreachableIndices.has(index)
-												? "bg-destructive"
-												: "bg-sky-600"
-										)}
-									>
-										{index + 1}
-									</span>
-								)}
-								<div className="min-w-0 flex-1">
-									<span
-										className={cn(
-											"block truncate text-sm",
-											item.status === "visited" &&
-												"text-muted-foreground line-through"
-										)}
-									>
-										{item.label}
-									</span>
-									{unreachableIndices.has(index) ? (
-										<span className="block text-xs text-destructive">
-											Unreachable by road — remove it or fix the address
-										</span>
-									) : (
-										legs &&
-										legs[index] && (
-											<span className="block text-xs text-muted-foreground">
-												{formatDistance(legs[index].distanceMeters)} ·{" "}
-												{formatDuration(legs[index].durationSeconds)} from
-												previous
-											</span>
-										)
-									)}
-								</div>
-								<Button
-									variant="ghost"
-									size="icon-sm"
-									aria-label={`Remove ${item.label}`}
-									onClick={() =>
-										onStopsChange(stops.filter((s) => s.key !== item.key))
-									}
+					previewOnly ? (
+						<div className="flex flex-col gap-2">
+							{sortableItems.map((item, index) => (
+								<div
+									key={item.id}
+									className="flex items-center gap-3 rounded-lg border bg-background p-2 shadow-sm ring-1 ring-border/30"
 								>
-									<X className="size-3.5" aria-hidden />
-								</Button>
-							</div>
-						)}
-					/>
+									<div className="min-w-0 flex-1">{renderStopRow(item, index)}</div>
+								</div>
+							))}
+						</div>
+					) : (
+						<ListProvider
+							items={sortableItems}
+							onReorder={(items) => onStopsChange(items)}
+							itemClassName="p-2"
+							renderItem={renderStopRow}
+						/>
+					)
 				)}
 			</div>
 
 			{/* Save bar: edits persist only on Save (or on compute below) */}
-			{dirty && (
+			{dirty && !previewOnly && (
 				<div className="flex items-center justify-between gap-2 rounded-xl border border-warning/30 bg-warning/10 px-3 py-2">
 					<span className="text-xs font-medium text-foreground">
 						Unsaved changes
@@ -595,7 +624,7 @@ export function StopListPanel({
 			<div className="flex gap-2">
 				<Button
 					className="flex-1 gap-1.5"
-					disabled={computing || stops.length === 0 || !startLabel}
+					disabled={previewOnly || computing || stops.length === 0 || !startLabel}
 					onClick={() => onCompute(true)}
 				>
 					{computing ? (
@@ -608,14 +637,49 @@ export function StopListPanel({
 				<Button
 					variant="outline"
 					className="flex-1"
-					disabled={computing || stops.length === 0 || !startLabel}
+					disabled={previewOnly || computing || stops.length === 0 || !startLabel}
 					onClick={() => onCompute(false)}
 				>
 					Route as listed
 				</Button>
 			</div>
 
-			{/* Summary */}
+			{/* Summary — locked preview on the free plan (no compute ever ran) */}
+			{previewOnly ? (
+				<div className="relative overflow-hidden rounded-xl border border-border bg-muted/30 p-3">
+					<div
+						aria-hidden
+						className="pointer-events-none select-none space-y-2 blur-[3px]"
+					>
+						<Badge variant="primary-light" size="sm">
+							Optimized
+						</Badge>
+						<div className="flex items-baseline gap-4">
+							<div>
+								<p className="text-lg font-semibold">-- --</p>
+								<p className="text-xs text-muted-foreground">Drive time</p>
+							</div>
+							<div>
+								<p className="text-lg font-semibold">-- mi</p>
+								<p className="text-xs text-muted-foreground">Distance</p>
+							</div>
+						</div>
+					</div>
+					<div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-background/50 px-4 text-center">
+						<p className="flex items-center gap-1.5 text-xs font-medium text-foreground">
+							<Lock className="size-3.5 shrink-0" aria-hidden />
+							Optimized ordering and drive times are part of the Business plan
+						</p>
+						<Button
+							size="sm"
+							render={<Link href="/organization/profile?tab=billing" />}
+						>
+							View plans
+						</Button>
+					</div>
+				</div>
+			) : null}
+
 			{hasComputedResult && route && (
 				<div className="space-y-2 rounded-xl border border-border bg-muted/30 p-3">
 					<div className="flex items-center gap-2">

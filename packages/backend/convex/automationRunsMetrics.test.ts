@@ -89,6 +89,11 @@ describe("automation runs & latency (Slice 5)", () => {
 		clerkOrgId?: string;
 	}) {
 		const setup = await t.run(async (ctx) => createTestOrg(ctx, overrides));
+		// These suites test run mechanics, not plan gating — the executor's
+		// downgrade re-check must not skip their runs.
+		await t.run(async (ctx) => {
+			await ctx.db.patch(setup.orgId, { hasPremiumFeatureAccess: true });
+		});
 		const asUser = t.withIdentity(
 			createTestIdentity(setup.clerkUserId, setup.clerkOrgId)
 		);

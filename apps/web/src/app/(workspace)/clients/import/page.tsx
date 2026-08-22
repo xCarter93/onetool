@@ -1,31 +1,10 @@
 "use client";
 
 import { Suspense } from "react";
-import { useRouter } from "next/navigation";
-import { useEffect } from "react";
 import { PermissionGate } from "@/components/domain/permission-gate";
-import { useEntitlements } from "@/hooks/use-entitlements";
 import { ImportWizard } from "./components/import-wizard";
 
 function ImportPageContent() {
-	const router = useRouter();
-	const { allows, isLoading } = useEntitlements();
-	const hasPremiumAccess = allows("llmCsvImport");
-
-	useEffect(() => {
-		if (!isLoading && !hasPremiumAccess) {
-			router.replace("/clients");
-		}
-	}, [hasPremiumAccess, isLoading, router]);
-
-	if (isLoading) {
-		return <ImportPageSkeleton />;
-	}
-
-	if (!hasPremiumAccess) {
-		return null;
-	}
-
 	return <ImportWizard />;
 }
 

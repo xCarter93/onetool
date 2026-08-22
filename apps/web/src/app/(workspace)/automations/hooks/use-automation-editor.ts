@@ -6,6 +6,8 @@ import { useRouter } from "next/navigation";
 import { api } from "@onetool/backend/convex/_generated/api";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
 import { useToast } from "@/hooks/use-toast";
+import { convexErrorMessage } from "@/lib/convex-error";
+import type { LifecycleStatus } from "../lib/automation-display";
 import {
 	getRequiredCreateFields,
 	getStatusOptions,
@@ -896,8 +898,7 @@ export function useAutomationEditor(automationId: string | null) {
 	);
 
 	// Lifecycle + publish state derived from the loaded row and the working copy.
-	const status: "draft" | "active" | "paused" =
-		existingAutomation?.status ?? "draft";
+	const status: LifecycleStatus = existingAutomation?.status ?? "draft";
 	const isPublished = !!existingAutomation?.publishedSnapshot;
 	const hasSteps = serialized.nodes.length > 0;
 	const isDirty =
@@ -1036,9 +1037,10 @@ export function useAutomationEditor(automationId: string | null) {
 			console.error("Failed to publish automation:", error);
 			toast.error(
 				"Publish Failed",
-				error instanceof Error
-					? error.message
-					: "Could not publish. Review your workflow and try again."
+				convexErrorMessage(
+					error,
+					"Could not publish. Review your workflow and try again."
+				)
 			);
 		} finally {
 			setIsPublishing(false);

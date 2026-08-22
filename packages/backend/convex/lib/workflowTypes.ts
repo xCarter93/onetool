@@ -704,13 +704,21 @@ export const MAX_FORMULAS = 30;
 // Automation lifecycle
 // ---------------------------------------------------------------------------
 
-export const AUTOMATION_STATUSES = ["draft", "active", "paused"] as const;
+// paused_plan: paused by the entitlement layer (published automation on a
+// free org) — resumable on upgrade via toggleActive, never deleted.
+export const AUTOMATION_STATUSES = [
+	"draft",
+	"active",
+	"paused",
+	"paused_plan",
+] as const;
 export type AutomationStatus = (typeof AUTOMATION_STATUSES)[number];
 
 export const automationStatusValidator = v.union(
 	v.literal("draft"),
 	v.literal("active"),
-	v.literal("paused")
+	v.literal("paused"),
+	v.literal("paused_plan")
 );
 
 // ---------------------------------------------------------------------------

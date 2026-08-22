@@ -32,7 +32,6 @@ import {
 } from "@/components/shared/receiving-address-field";
 import { useToast } from "@/hooks/use-toast";
 import { useAutoTimezone } from "@/hooks/use-auto-timezone";
-import { useEntitlements } from "@/hooks/use-entitlements";
 import { Users, Building2, Globe, Upload, Check, Loader2 } from "lucide-react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { ImportWizard } from "@/app/(workspace)/clients/import/components/import-wizard";
@@ -40,7 +39,6 @@ import { OnboardingPageBackground } from "@/components/blocks/onboarding-2/compo
 import { OnboardingHeader } from "@/components/blocks/onboarding-2/components/onboarding-header";
 import { OnboardingStepper } from "@/components/blocks/onboarding-2/components/onboarding-stepper";
 import type { OnboardingStep } from "@/components/blocks/onboarding-2/components/data";
-import { LearnMoreLink } from "@/components/help/learn-more";
 import Image from "next/image";
 
 const ONBOARDING_STEPS: OnboardingStep[] = [
@@ -148,10 +146,6 @@ export function CompleteOrganizationMetadata() {
 	const needsCompletion = useQuery(api.organizations.needsMetadataCompletion);
 	const toast = useToast();
 	const shouldReduceMotion = useReducedMotion();
-
-	// Check if user has premium access for import feature
-	const { allows } = useEntitlements();
-	const hasPremiumAccess = allows("llmCsvImport");
 
 	// Automatically detect and save timezone if not set
 	useAutoTimezone();
@@ -1411,31 +1405,8 @@ export function CompleteOrganizationMetadata() {
 
 	const renderStep5 = () => (
 		<div className="space-y-6">
-			{!hasPremiumAccess && (
-				<div className="border border-border/60 dark:border-border/40 rounded-xl p-6 flex items-start gap-3 bg-muted/20">
-					<div className="flex items-center justify-center w-10 h-10 rounded-lg bg-primary/10 dark:bg-primary/20 shrink-0">
-						<Upload className="h-5 w-5 text-primary" />
-					</div>
-					<div className="flex-1">
-						<p className="font-semibold text-foreground mb-1">
-							Premium Feature
-						</p>
-						<p className="text-sm text-muted-foreground">
-							CSV import is a premium feature. Upgrade your plan to import
-							clients and projects in bulk. You can skip this step and add them
-							manually later.
-						</p>
-						<LearnMoreLink
-							article="clients/importing-clients"
-							label="How importing works"
-							className="mt-2"
-						/>
-					</div>
-				</div>
-			)}
-
 			{/* Import Clients -- collapsible embedded wizard */}
-			{hasPremiumAccess && importState === "collapsed" && (
+			{importState === "collapsed" && (
 				<div className="border border-border/60 rounded-xl p-6 flex items-start gap-4 bg-muted/20">
 					<Upload className="h-5 w-5 text-muted-foreground mt-0.5" />
 					<div className="flex-1">
@@ -1456,7 +1427,7 @@ export function CompleteOrganizationMetadata() {
 				</div>
 			)}
 
-			{hasPremiumAccess && importState === "expanded" && (
+			{importState === "expanded" && (
 				<div className="mt-1">
 					<ImportWizard
 						embedded
@@ -1468,7 +1439,7 @@ export function CompleteOrganizationMetadata() {
 				</div>
 			)}
 
-			{hasPremiumAccess && importState === "completed" && (
+			{importState === "completed" && (
 				<div className="flex items-center gap-2 py-4 px-2">
 					<Check className="h-5 w-5 text-green-500" />
 					<span className="text-sm text-foreground">

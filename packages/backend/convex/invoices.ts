@@ -18,6 +18,11 @@ import {
 	emitRecordUpdatedEvent,
 } from "./eventBus";
 import { computeFieldChanges } from "./lib/changeTracking";
+import {
+	consumeMeter,
+	entitlementsFromIdentity,
+	requireMeter,
+} from "./lib/entitlements";
 import { buildPortalInvoiceUrl } from "./portal/invoiceUrl";
 import { maybeEnqueueQboSync } from "./lib/quickbooksEnqueue";
 import { calculateInvoiceTotals, syncInvoiceTotals } from "./lib/invoiceTotals";
@@ -380,8 +385,22 @@ export const create = userMutation({
 			});
 		}
 
+		// Minting an invoice directly as "sent" — or "overdue", which the portal
+		// treats as visible-and-payable — makes it client-facing without ever
+		// passing sendToClient; meter it like a first send.
+		let sentStamp: { firstSentAt: number } | undefined;
+		if (args.status === "sent" || args.status === "overdue") {
+			const { plan } = await entitlementsFromIdentity(ctx);
+			// One timestamp so the check and debit share a billing period.
+			const now = Date.now();
+			await requireMeter(ctx, ctx.orgId, "clientSends", plan, { now });
+			await consumeMeter(ctx, ctx.orgId, "clientSends", { now });
+			sentStamp = { firstSentAt: now };
+		}
+
 		const invoiceId = await createInvoiceWithOrg(ctx, {
 			...args,
+			...sentStamp,
 			createdByUserId: ctx.user._id,
 		});
 
@@ -546,7 +565,23 @@ export const update = userMutation({
 		) {
 			const now = Date.now();
 
-			if (filteredUpdates.status === "paid") {
+			if (
+				filteredUpdates.status === "sent" ||
+				filteredUpdates.status === "overdue"
+			) {
+				// ANY flip to sent or overdue IS a send (portal-visible, payable) —
+				// the source doesn't matter, matching invoices.create's minted-as-
+				// overdue metering. Keyed on the immutable firstSentAt so
+				// revert-to-draft can never re-arm the debit. (Legacy edge: a
+				// pre-firstSentAt invoice that really was sent takes one debit if
+				// manually re-flipped to sent — accepted over the mint bypass.)
+				if (!currentInvoice.firstSentAt) {
+					const { plan } = await entitlementsFromIdentity(ctx);
+					await requireMeter(ctx, ctx.orgId, "clientSends", plan, { now });
+					await consumeMeter(ctx, ctx.orgId, "clientSends", { now });
+					filteredUpdates.firstSentAt = now;
+				}
+			} else if (filteredUpdates.status === "paid") {
 				filteredUpdates.paidAt = now;
 			}
 		}
@@ -691,13 +726,25 @@ export const sendToClient = userMutation({
 
 		// Sending is the act of sending: flip draft→sent. Already-sent/overdue
 		// invoices can be re-sent without a status change.
+		// The send meter debits only the FIRST send ever — keyed on the
+		// immutable firstSentAt (status can revert to draft; the key cannot).
 		if (invoice.status === "draft") {
+			const now = Date.now();
+			if (!invoice.firstSentAt) {
+				const { plan } = await entitlementsFromIdentity(ctx);
+				// One timestamp so the check and debit share a billing period.
+				await requireMeter(ctx, ctx.orgId, "clientSends", plan, { now });
+				await consumeMeter(ctx, ctx.orgId, "clientSends", { now });
+			}
 			const changes = computeFieldChanges(
 				"invoice",
 				invoice as unknown as Record<string, unknown>,
 				{ status: "sent" }
 			);
-			await ctx.db.patch(invoice._id, { status: "sent" });
+			await ctx.db.patch(invoice._id, {
+				status: "sent",
+				...(invoice.firstSentAt ? {} : { firstSentAt: now }),
+			});
 			const updated = await ctx.db.get(invoice._id);
 			if (updated) {
 				await ActivityHelpers.invoiceSent(

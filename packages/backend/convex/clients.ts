@@ -31,6 +31,17 @@ import {
 	assertClientCapacity,
 	assertClientCapacityForTransition,
 } from "./lib/planCaps";
+import { ConvexError } from "convex/values";
+import {
+	consumeMeter,
+	entitlementsFromIdentity,
+	requireMeterCapacity,
+} from "./lib/entitlements";
+import {
+	IMPORT_MAX_ROWS_PER_CALL,
+	IMPORT_MAX_ROWS_PER_DAY,
+	rateLimiter,
+} from "./rateLimits";
 
 /**
  * Client operations
@@ -678,6 +689,36 @@ export const bulkCreate = userMutation({
 	> => {
 		await ctx.requireLevel("clients", "modify");
 		const userOrgId = await getCurrentUserOrgId(ctx);
+
+		// Ops caps (all plans): bound one call, then the per-org daily budget.
+		if (args.clients.length > IMPORT_MAX_ROWS_PER_CALL) {
+			throw new ConvexError({
+				code: "IMPORT_LIMIT",
+				message: `Imports are limited to ${IMPORT_MAX_ROWS_PER_CALL} rows per request — split the file and try again.`,
+			});
+		}
+		const daily = await rateLimiter.limit(ctx, "importedRowsDaily", {
+			key: userOrgId,
+			count: args.clients.length,
+		});
+		if (!daily.ok) {
+			throw new ConvexError({
+				code: "IMPORT_LIMIT",
+				message: `Imports are limited to ${IMPORT_MAX_ROWS_PER_DAY} rows per day. Try again tomorrow.`,
+			});
+		}
+
+		// Lifetime import budget (free plan): refuse when this call would
+		// exceed it, and say how many rows still fit.
+		const { plan } = await entitlementsFromIdentity(ctx);
+		await requireMeterCapacity(
+			ctx,
+			userOrgId,
+			"importedRows",
+			plan,
+			args.clients.length
+		);
+
 		const results: Array<{
 			success: boolean;
 			id?: ClientId;
@@ -819,6 +860,10 @@ export const bulkCreate = userMutation({
 				});
 			}
 		}
+
+		// Only rows actually written debit the lifetime budget.
+		const written = results.filter((r) => r.success).length;
+		await consumeMeter(ctx, userOrgId, "importedRows", { amount: written });
 
 		if (qboSyncQueued) {
 			await kickQboSyncWorker(ctx, userOrgId);

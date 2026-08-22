@@ -1,7 +1,15 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { ArrowUpRight, Briefcase, FileSignature } from "lucide-react";
+import {
+	ArrowUpRight,
+	BarChart3,
+	FileSignature,
+	MessageSquare,
+	Send,
+	Upload,
+} from "lucide-react";
+import type { MeterUsage } from "@onetool/backend";
 import {
 	Frame,
 	FrameHeader,
@@ -15,6 +23,42 @@ import { useAuth } from "@clerk/nextjs";
 import { useEntitlements } from "@/hooks/use-entitlements";
 import { usePermissions } from "@/hooks/use-permissions";
 import { cn } from "@/lib/utils";
+
+/** Display order + chrome for the finite-limit meters the backend can return. */
+const METER_DISPLAY: {
+	key: MeterUsage["key"];
+	label: string;
+	icon: React.ReactNode;
+}[] = [
+	{
+		key: "clientSends",
+		label: "Document sends",
+		icon: <Send className="size-3.5" />,
+	},
+	{
+		key: "esignatures",
+		label: "E-signatures",
+		icon: <FileSignature className="size-3.5" />,
+	},
+	{
+		key: "assistantMessages",
+		label: "Assistant messages today",
+		icon: <MessageSquare className="size-3.5" />,
+	},
+	{
+		key: "savedReports",
+		label: "Saved reports",
+		icon: <BarChart3 className="size-3.5" />,
+	},
+	{
+		key: "importedRows",
+		label: "Imported rows",
+		icon: <Upload className="size-3.5" />,
+	},
+];
+
+/** The sidebar shows the top of the list only; the billing tab shows them all. */
+const SIDEBAR_METER_LIMIT = 3;
 
 // Meter limits arrive from the entitlements query, where null = unlimited.
 function formatLimit(limit: number | null): string {
@@ -96,10 +140,12 @@ export function PlanUsageCard() {
 	const { isBusiness, isLoading, meter } = useEntitlements();
 	const { orgId } = useAuth();
 	const { can } = usePermissions();
-	const clientsMeter = meter("clients");
-	const esignaturesMeter = meter("esignatures");
+	const rows = METER_DISPLAY.flatMap((row) => {
+		const usage = meter(row.key);
+		return usage ? [{ ...row, usage }] : [];
+	}).slice(0, SIDEBAR_METER_LIMIT);
 
-	if (isLoading || isBusiness || !orgId || !clientsMeter || !esignaturesMeter) {
+	if (isLoading || isBusiness || !orgId || rows.length === 0) {
 		return null;
 	}
 
@@ -110,18 +156,15 @@ export function PlanUsageCard() {
 					<FrameTitle className="text-xs">Free plan</FrameTitle>
 				</FrameHeader>
 				<FramePanel className="space-y-3">
-					<UsageMeter
-						icon={<Briefcase className="size-3.5" />}
-						label="Clients"
-						used={clientsMeter.used}
-						limit={clientsMeter.limit}
-					/>
-					<UsageMeter
-						icon={<FileSignature className="size-3.5" />}
-						label="E-signatures"
-						used={esignaturesMeter.used}
-						limit={esignaturesMeter.limit}
-					/>
+					{rows.map((row) => (
+						<UsageMeter
+							key={row.key}
+							icon={row.icon}
+							label={row.label}
+							used={row.usage.used}
+							limit={row.usage.limit}
+						/>
+					))}
 					{can("billing") && (
 						<Button
 							size="sm"

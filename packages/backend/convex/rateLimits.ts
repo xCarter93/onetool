@@ -12,6 +12,11 @@ export const MAX_AUTOMATION_RUNS_PER_WINDOW = 100;
 /** DEC-2 adopted default: automation emails per org per day (premium orgs only). */
 export const AUTOMATION_EMAIL_DAILY_CAP = 200;
 
+/** Ops caps on the CSV importer — abuse protection on ALL plans, not
+ * packaging. Documented on the importer page + "Limits & fair use". */
+export const IMPORT_MAX_ROWS_PER_CALL = 500;
+export const IMPORT_MAX_ROWS_PER_DAY = 2000;
+
 export const rateLimiter = new RateLimiter(components.rateLimiter, {
 	// Limit community page interest form submissions per slug
 	communityInterest: { kind: "fixed window", rate: 10, period: MINUTE },
@@ -156,6 +161,15 @@ export const rateLimiter = new RateLimiter(components.rateLimiter, {
 	automationEmailSends: {
 		kind: "fixed window",
 		rate: AUTOMATION_EMAIL_DAILY_CAP,
+		period: 24 * HOUR,
+	},
+
+	// Importer ops cap: rows attempted per org per day, all plans. Reserved
+	// per bulkCreate call (count = batch size), so it must fit one shard —
+	// fine at 2,000/day vs the 500-row per-call cap.
+	importedRowsDaily: {
+		kind: "fixed window",
+		rate: IMPORT_MAX_ROWS_PER_DAY,
 		period: 24 * HOUR,
 	},
 });

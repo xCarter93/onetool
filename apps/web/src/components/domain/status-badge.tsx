@@ -33,6 +33,7 @@ export type StatusKey =
 	| "expired"
 	| "refunded"
 	| "paused"
+	| "paused_plan"
 	| "prospect"
 	| "revoked"
 	| "viewed"
@@ -46,6 +47,7 @@ const STATUS_ROLE: Record<StatusKey, StatusRole> = {
 	"in-progress": "warning",
 	pending: "warning",
 	paused: "warning",
+	paused_plan: "warning",
 	cancelled: "danger",
 	overdue: "danger",
 	declined: "danger",

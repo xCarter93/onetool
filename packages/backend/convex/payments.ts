@@ -950,15 +950,20 @@ type LlmAccessResult = {
 	retryAfter?: number;
 };
 
-// PUB-12b: plan gate + per-org throttle for LLM-backed web API routes.
-// Gated on the llmCsvImport entitlement; the caller must forward the Clerk
-// "convex" JWT or this denies as unauthenticated.
+// PUB-12b: auth + plan gate + per-org throttle for LLM-backed web API routes.
+// The caller must forward the Clerk "convex" JWT: llmCsvImport is allowed on
+// every plan, so identity — not the entitlement — is what denies an anonymous
+// caller (who would otherwise share one rate-limiter key).
 export const checkLlmAccess = mutation({
 	args: {
 		bucket: v.union(v.literal("llmCsvAnalyze")),
 	},
 	returns: llmAccessResult,
 	handler: async (ctx, args): Promise<LlmAccessResult> => {
+		const identity = await ctx.auth.getUserIdentity();
+		if (!identity) {
+			return { ok: false, reason: "forbidden" };
+		}
 		const { plan } = await entitlementsFromIdentity(ctx);
 		if (!isFeatureAllowed(plan, "llmCsvImport")) {
 			return { ok: false, reason: "forbidden" };
@@ -966,8 +971,7 @@ export const checkLlmAccess = mutation({
 		// Key per org; a premium user-override without an active org falls back
 		// to their identity subject.
 		const orgId = await getCurrentUserOrgIdOrNull(ctx);
-		const key =
-			orgId ?? (await ctx.auth.getUserIdentity())?.subject ?? "anonymous";
+		const key = orgId ?? identity.subject;
 		const rl = await rateLimiter.limit(ctx, args.bucket, { key });
 		if (!rl.ok) {
 			return { ok: false, reason: "rate_limited", retryAfter: rl.retryAfter };

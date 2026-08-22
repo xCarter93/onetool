@@ -10,6 +10,8 @@ import {
 } from "@clerk/nextjs/experimental";
 import { useTheme } from "next-themes";
 import {
+	BadgeCheck,
+	BarChart3,
 	Briefcase,
 	Calendar,
 	Check,
@@ -18,9 +20,15 @@ import {
 	FileSignature,
 	FolderOpen,
 	Headphones,
+	MessageSquare,
 	Package,
+	RefreshCw,
+	Route,
+	Send,
 	Sparkles,
+	Upload,
 	Users,
+	Wand2,
 	Workflow,
 	X,
 	Zap,
@@ -33,6 +41,7 @@ import { Badge } from "@/components/reui/badge";
 import { SegmentedControl } from "@/components/domain/segmented-control";
 import { LearnMoreLink } from "@/components/help/learn-more";
 import { PLAN_MATRIX } from "@onetool/backend/convex/lib/planMatrix";
+import type { MeterUsage } from "@onetool/backend";
 import { useEntitlements } from "@/hooks/use-entitlements";
 import { usePermissions } from "@/hooks/use-permissions";
 import {
@@ -96,15 +105,57 @@ function useBillingDrawerAppearance() {
 const FEATURE_ICONS: Record<string, React.ReactNode> = {
 	clients: <Briefcase className="size-4" />,
 	activeProjectsPerClient: <CreditCard className="size-4" />,
+	orgMembers: <Users className="size-4" />,
+	clientSends: <Send className="size-4" />,
 	esignatures: <FileSignature className="size-4" />,
+	assistantMessages: <MessageSquare className="size-4" />,
+	savedReports: <BarChart3 className="size-4" />,
+	importedRows: <Upload className="size-4" />,
 	aiAssistant: <Sparkles className="size-4" />,
 	automationPublish: <Workflow className="size-4" />,
+	routing: <Route className="size-4" />,
+	quickbooks: <RefreshCw className="size-4" />,
+	nlReportGeneration: <Wand2 className="size-4" />,
+	portalBadgeRemoval: <BadgeCheck className="size-4" />,
 	llmCsvImport: <Zap className="size-4" />,
 	stripeConnect: <CreditCard className="size-4" />,
 	customSkus: <Package className="size-4" />,
 	orgDocuments: <FolderOpen className="size-4" />,
 	supportSla: <Headphones className="size-4" />,
 };
+
+/** Display order + chrome for the finite-limit meters the backend can return. */
+const METER_DISPLAY: {
+	key: MeterUsage["key"];
+	label: string;
+	icon: React.ReactNode;
+}[] = [
+	{
+		key: "clientSends",
+		label: "Document sends",
+		icon: <Send className="size-4" />,
+	},
+	{
+		key: "esignatures",
+		label: "E-signatures",
+		icon: <FileSignature className="size-4" />,
+	},
+	{
+		key: "assistantMessages",
+		label: "Assistant messages today",
+		icon: <MessageSquare className="size-4" />,
+	},
+	{
+		key: "savedReports",
+		label: "Saved reports",
+		icon: <BarChart3 className="size-4" />,
+	},
+	{
+		key: "importedRows",
+		label: "Imported rows",
+		icon: <Upload className="size-4" />,
+	},
+];
 
 const MATRIX_CATEGORIES = [...new Set(PLAN_MATRIX.map((row) => row.category))];
 
@@ -175,7 +226,12 @@ function UsageMeter({
 }
 
 export function BillingTab() {
-	const { isBusiness, meter, isLoading: accessLoading } = useEntitlements();
+	const { isBusiness, meter, source, isLoading: accessLoading } =
+		useEntitlements();
+	// Only these two sources have a Clerk subscription to manage; trial and the
+	// override sources grant Business access with nothing behind it in Clerk.
+	const hasClerkSubscription = source === "subscription" || source === "grace";
+	const isTrial = source === "trial";
 	const { data: plans, isLoading: plansLoading } = usePlans({
 		for: "organization",
 	});
@@ -198,9 +254,19 @@ export function BillingTab() {
 			? Math.round((1 - annualMonthlyFee.amount / monthlyFee.amount) * 100)
 			: 0;
 
-	const planName = isBusiness ? "Business" : "Free";
-	const clientsMeter = meter("clients");
-	const esignaturesMeter = meter("esignatures");
+	const planLabel = isTrial
+		? "Business trial"
+		: isBusiness
+			? "Business plan"
+			: "Free plan";
+	// An org already on Business without a subscription subscribes rather than upgrades.
+	const checkoutLabel = isBusiness
+		? "Subscribe to Business"
+		: "Upgrade to Business";
+	const meterRows = METER_DISPLAY.flatMap((row) => {
+		const usage = meter(row.key);
+		return usage ? [{ ...row, usage }] : [];
+	});
 
 	if (accessLoading) {
 		return (
@@ -221,7 +287,7 @@ export function BillingTab() {
 					isBusiness ? (
 						<Badge variant="warning-light" radius="full" className="gap-1.5 px-3">
 							<Crown className="size-3.5" aria-hidden="true" />
-							Business plan
+							{planLabel}
 						</Badge>
 					) : (
 						<Badge variant="primary-light" radius="full" className="px-3">
@@ -251,16 +317,18 @@ export function BillingTab() {
 							</div>
 							<div>
 								<p className="text-base font-semibold leading-tight">
-									{planName} plan
+									{planLabel}
 								</p>
 								<p className="mt-0.5 text-sm text-muted-foreground">
-									{isBusiness
-										? "Full access to every OneTool feature."
-										: "Core features with usage limits."}
+									{isTrial
+										? "Full access to every OneTool feature during your trial."
+										: isBusiness
+											? "Full access to every OneTool feature."
+											: "Core features with usage limits."}
 								</p>
 							</div>
 						</div>
-						{isBusiness && canManageBilling && (
+						{hasClerkSubscription && canManageBilling && (
 							<SignedIn>
 								<SubscriptionDetailsButton
 									for="organization"
@@ -275,20 +343,17 @@ export function BillingTab() {
 						)}
 					</div>
 				</SettingsCardHeader>
-				{!isBusiness && clientsMeter && esignaturesMeter && (
+				{!isBusiness && meterRows.length > 0 && (
 					<SettingsCardBody className="grid gap-5 border-t border-border sm:grid-cols-2">
-						<UsageMeter
-							icon={<Briefcase className="size-4" />}
-							label="Clients"
-							used={clientsMeter.used}
-							limit={clientsMeter.limit}
-						/>
-						<UsageMeter
-							icon={<FileSignature className="size-4" />}
-							label="E-signatures this month"
-							used={esignaturesMeter.used}
-							limit={esignaturesMeter.limit}
-						/>
+						{meterRows.map((row) => (
+							<UsageMeter
+								key={row.key}
+								icon={row.icon}
+								label={row.label}
+								used={row.usage.used}
+								limit={row.usage.limit}
+							/>
+						))}
 					</SettingsCardBody>
 				)}
 			</SettingsCard>
@@ -310,7 +375,7 @@ export function BillingTab() {
 							article="settings-and-team/plans-and-billing"
 							label="Compare plans in detail"
 						/>
-						{!isBusiness && (
+						{!hasClerkSubscription && (
 							<SegmentedControl<BillingPeriod>
 								value={period}
 								onValueChange={setPeriod}
@@ -378,39 +443,48 @@ export function BillingTab() {
 												Pricing at checkout
 											</span>
 										)}
-										{isBusiness ? (
+										{hasClerkSubscription ? (
 											<Badge variant="warning-light" radius="full">
 												Current
 											</Badge>
-										) : !canManageBilling ? (
-											<span className="mt-1 text-xs text-muted-foreground">
-												Ask an admin to upgrade
-											</span>
-										) : businessPlan ? (
-											<SignedIn>
-												<CheckoutButton
-													planId={businessPlan.id}
-													for="organization"
-													planPeriod={period}
-													newSubscriptionRedirectUrl="/organization/profile?tab=billing"
-													onSubscriptionComplete={() => {
-														window.location.reload();
-													}}
-													checkoutProps={{ appearance: drawerAppearance }}
-												>
-													<Button size="sm" className="mt-1">
-														<Crown className="size-3.5" />
-														Upgrade to Business
-													</Button>
-												</CheckoutButton>
-											</SignedIn>
 										) : (
-											<Button size="sm" className="mt-1" disabled>
-												<Crown className="size-3.5" />
-												{plansLoading
-													? "Loading plans…"
-													: "Plan unavailable"}
-											</Button>
+											<>
+												{isTrial && (
+													<Badge variant="warning-light" radius="full">
+														Trial
+													</Badge>
+												)}
+												{!canManageBilling ? (
+													<span className="mt-1 text-xs text-muted-foreground">
+														Ask an admin to {isBusiness ? "subscribe" : "upgrade"}
+													</span>
+												) : businessPlan ? (
+													<SignedIn>
+														<CheckoutButton
+															planId={businessPlan.id}
+															for="organization"
+															planPeriod={period}
+															newSubscriptionRedirectUrl="/organization/profile?tab=billing"
+															onSubscriptionComplete={() => {
+																window.location.reload();
+															}}
+															checkoutProps={{ appearance: drawerAppearance }}
+														>
+															<Button size="sm" className="mt-1">
+																<Crown className="size-3.5" />
+																{checkoutLabel}
+															</Button>
+														</CheckoutButton>
+													</SignedIn>
+												) : (
+													<Button size="sm" className="mt-1" disabled>
+														<Crown className="size-3.5" />
+														{plansLoading
+															? "Loading plans…"
+															: "Plan unavailable"}
+													</Button>
+												)}
+											</>
 										)}
 									</div>
 								</th>

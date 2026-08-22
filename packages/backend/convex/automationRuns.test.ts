@@ -161,7 +161,13 @@ describe("automation runs (test + manual)", () => {
 		clerkUserId?: string;
 		clerkOrgId?: string;
 	}) {
-		const setup = await t.run(async (ctx) => createTestOrg(ctx, overrides));
+		// Publishing/activating automations is Business-only, so the org resolves
+		// premium by default; free-plan tests downgrade it after publish.
+		const setup = await t.run(async (ctx) => {
+			const created = await createTestOrg(ctx, overrides);
+			await ctx.db.patch(created.orgId, { hasPremiumFeatureAccess: true });
+			return created;
+		});
 		const asUser = t.withIdentity(
 			createTestIdentity(setup.clerkUserId, setup.clerkOrgId)
 		);
@@ -862,6 +868,61 @@ describe("automation runs (test + manual)", () => {
 					automationId,
 				})
 			).rejects.toThrow(/pick a record/i);
+		});
+
+		it("refuses on a free org: a published automation is not runnable on demand", async () => {
+			// Slice A: the UI PremiumGate is not a boundary, so the mutation
+			// carries the same gate publish does.
+			const { asUser, orgId } = await setupUser();
+			const clientId = await makeClient(asUser);
+
+			const automationId = await asUser.mutation(api.automations.create, {
+				name: "Downgraded",
+				trigger: clientCreatedTrigger,
+				nodes: [notesActionNode("act-1", "should not run")],
+			});
+			await asUser.mutation(api.automations.publish, { id: automationId });
+			await t.run(async (ctx) =>
+				ctx.db.patch(orgId, { hasPremiumFeatureAccess: false })
+			);
+
+			await expect(
+				asUser.mutation(api.automationExecutor.startManualRun, {
+					automationId,
+					record: { entityType: "client", entityId: clientId },
+				})
+			).rejects.toThrow(/Business plan/);
+
+			expect(
+				await t.run(async (ctx) =>
+					ctx.db.query("workflowExecutions").collect()
+				)
+			).toHaveLength(0);
+			expect((await t.run(async (ctx) => ctx.db.get(clientId)))?.notes)
+				.toBeUndefined();
+		});
+
+		it("refuses a paused_plan automation even though its snapshot is intact", async () => {
+			const { asUser } = await setupUser();
+			const clientId = await makeClient(asUser);
+
+			const automationId = await asUser.mutation(api.automations.create, {
+				name: "Plan-paused",
+				trigger: clientCreatedTrigger,
+				nodes: [notesActionNode("act-1", "should not run")],
+			});
+			await asUser.mutation(api.automations.publish, { id: automationId });
+			// What the downgrade sweep leaves behind: published, but not active.
+			await t.run(async (ctx) =>
+				ctx.db.patch(automationId, { status: "paused_plan" })
+			);
+
+			await expect(
+				asUser.mutation(api.automationExecutor.startManualRun, {
+					automationId,
+					record: { entityType: "client", entityId: clientId },
+				})
+			).rejects.toThrow(/activate this automation/i);
 		});
 	});
 

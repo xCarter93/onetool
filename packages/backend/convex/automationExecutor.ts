@@ -16,7 +16,11 @@ import {
 	type UserMutationCtx,
 } from "./lib/factories";
 import { computeNextRunAt } from "./lib/schedule";
-import { entitlementsFromDocs, isFeatureAllowed } from "./lib/entitlements";
+import {
+	entitlementsFromDocs,
+	isFeatureAllowed,
+	requireFeature,
+} from "./lib/entitlements";
 import { rateLimiter } from "./rateLimits";
 import {
 	evaluateConditionGroups,
@@ -547,6 +551,62 @@ export const dispatchScheduledAutomations = internalMutation({
 	},
 });
 
+/** Max automations reclassified per downgrade sweep (org-scoped). */
+const RECLASSIFY_BATCH = 200;
+
+/**
+ * Downgrade sweep: flip an org's ACTIVE automations to `paused_plan` once the
+ * org stops resolving premium (publishing is Business-only). Resumable on
+ * upgrade via toggleActive; the published snapshot is kept.
+ *
+ * Scheduled at the trial-lapse and grace-lapse wakes and on every billing
+ * write. The plan is re-resolved at fire time, so an org still inside a trial
+ * or grace window — or one that upgraded meanwhile — is left untouched.
+ * Idempotent: only `active` rows are touched.
+ */
+export const reclassifyAutomationsForOrg = internalMutation({
+	args: { orgId: v.id("organizations"), cursor: v.optional(v.string()) },
+	returns: v.null(),
+	handler: async (ctx, args): Promise<null> => {
+		const org = await ctx.db.get(args.orgId);
+		if (!org) return null;
+		if (isFeatureAllowed(entitlementsFromDocs(org).plan, "automationPublish")) {
+			return null;
+		}
+
+		// Cursor pagination (not .take) so the follow-up hop makes progress even
+		// when creator-override-exempt rows stay `active` inside the range — a
+		// count-based re-run would loop forever on an exempt-heavy org.
+		const page = await ctx.db
+			.query("workflowAutomations")
+			.withIndex("by_org_status", (q) =>
+				q.eq("orgId", args.orgId).eq("status", "active")
+			)
+			.paginate({ numItems: RECLASSIFY_BATCH, cursor: args.cursor ?? null });
+		const now = Date.now();
+		for (const automation of page.page) {
+			// A creator-level override keeps that user's automations runnable —
+			// same (org, creator) resolution the dispatcher and the one-shot
+			// pause migration use.
+			const creator = await ctx.db.get(automation.createdBy);
+			const { plan } = entitlementsFromDocs(org, creator);
+			if (isFeatureAllowed(plan, "automationPublish")) continue;
+			await ctx.db.patch(automation._id, {
+				status: "paused_plan",
+				nextRunAt: undefined,
+				updatedAt: now,
+			});
+		}
+		if (!page.isDone) {
+			await ctx.scheduler.runAfter(
+				0,
+				internal.automationExecutor.reclassifyAutomationsForOrg,
+				{ orgId: args.orgId, cursor: page.continueCursor }
+			);
+		}
+		return null;
+	},
+});
 
 /**
  * Execute a single automation workflow.
@@ -558,6 +618,10 @@ export const dispatchScheduledAutomations = internalMutation({
  * `requireTargetRecordAccess`, which every caller-chosen record must pass
  * before a run is created. Anything that lets a user reach this without that
  * gate is a privilege escalation.
+ *
+ * Plan entitlement is the one check re-done here (and in resumeExecution):
+ * watchdog re-drives and parked resumes can start long after the entry-point
+ * gate ran, so a lapsed plan must skip rather than execute.
  */
 export const executeAutomation = systemMutation({
 	args: {
@@ -617,6 +681,30 @@ export const executeAutomation = systemMutation({
 			});
 			// No automation doc to name the alert; skip notifyAutomationFailure.
 			return;
+		}
+
+		// Downgrade re-check: the plan was gated when this run was queued, but a
+		// watchdog re-drive can start a run long after that check — skip instead
+		// of executing on a lapsed plan (creator override honored, as at every
+		// entry point). Manual runs are exempt: startManualRun authorized them
+		// identity-path moments ago, honoring JWT overrides this docs-path
+		// check can't see.
+		if (!execution.triggeredBy.startsWith("manual:")) {
+			const orgDoc = await ctx.db.get(execution.orgId);
+			if (
+				!isFeatureAllowed(entitlementsFromDocs(orgDoc).plan, "automationPublish")
+			) {
+				const creator = await ctx.db.get(automation.createdBy);
+				const { plan } = entitlementsFromDocs(orgDoc, creator);
+				if (!isFeatureAllowed(plan, "automationPublish")) {
+					await ctx.db.patch(args.executionId, {
+						status: "skipped",
+						completedAt: Date.now(),
+						error: "Skipped: automations require a premium plan",
+					});
+					return;
+				}
+			}
 		}
 
 		// Production runs execute the published snapshot (falling back to the
@@ -800,6 +888,28 @@ export const resumeExecution = systemMutation({
 			});
 			// No automation doc to name the alert; skip notifyAutomationFailure.
 			return;
+		}
+
+		// Downgrade re-check: delay-parked runs can resume days after the plan
+		// was last verified — skip instead of continuing on a lapsed plan
+		// (creator override honored, as at every entry point).
+		const orgDoc = await ctx.db.get(execution.orgId);
+		if (
+			!isFeatureAllowed(entitlementsFromDocs(orgDoc).plan, "automationPublish")
+		) {
+			const creator = await ctx.db.get(automation.createdBy);
+			const { plan } = entitlementsFromDocs(orgDoc, creator);
+			if (!isFeatureAllowed(plan, "automationPublish")) {
+				await ctx.db.patch(args.executionId, {
+					status: "skipped",
+					completedAt: Date.now(),
+					error:
+						"Skipped: the plan lapsed while the run was waiting; automations require a premium plan",
+					resumeState: undefined,
+					currentNodeId: undefined,
+				});
+				return;
+			}
 		}
 
 		const resume = execution.resumeState;
@@ -1502,15 +1612,20 @@ export const startManualRun = userMutation({
 	},
 	handler: async (ctx, args): Promise<Id<"workflowExecutions">> => {
 		await ctx.requireLevel("automations", "modify");
-		// No server-side premium check by design: the automations editor is behind
-		// PremiumGate and dispatchScheduledAutomations gates autonomous runs, so
-		// interactive manual runs stay ungated.
+		// Same gate publish uses: a free org's published automations must not be
+		// runnable on demand either (the UI PremiumGate is not a boundary).
+		await requireFeature(ctx, "automationPublish");
 		const automation = await ctx.db.get(args.automationId);
 		if (!automation || automation.orgId !== ctx.orgId) {
 			throw new Error("Automation not found");
 		}
 		if (!automation.publishedSnapshot) {
 			throw new Error("Publish this automation before running it manually");
+		}
+		// paused_plan / manually-paused rows are not runnable — a plan-paused
+		// automation would otherwise stay fully executable on demand.
+		if (automation.status !== "active") {
+			throw new Error("Activate this automation before running it manually");
 		}
 
 		const {

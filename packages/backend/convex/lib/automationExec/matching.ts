@@ -3,6 +3,7 @@ import { Id } from "../../_generated/dataModel";
 import { internal } from "../../_generated/api";
 import { rateLimiter } from "../../rateLimits";
 import type { VariableScope } from "../conditionEval";
+import { entitlementsFromDocs, isFeatureAllowed } from "../entitlements";
 import type { AutomationTrigger, FormulaResource } from "../workflowTypes";
 import type { AutomationDoc, AutomationNode, ObjectType } from "./types";
 
@@ -247,16 +248,59 @@ export async function matchAndScheduleAutomations(
 		return { triggered: 0 };
 	}
 
+	// Plan gate: a downgraded org's automations stay `active` until the
+	// reclassify sweep flips them, and events keep arriving meanwhile — skip
+	// visibly instead of running, exactly as the scheduled dispatcher does.
+	// Event dispatch has no identity, so premium is read from the doc mirrors:
+	// the org's, else (only when the org resolves free) the creator's.
+	// Runs before the rate limiter so skipped runs never burn quota (the
+	// scheduled dispatcher orders these the same way).
+	const orgDoc = await ctx.db.get(orgId);
+	const orgPremium = isFeatureAllowed(
+		entitlementsFromDocs(orgDoc).plan,
+		"automationPublish"
+	);
+	const entitled: { automation: AutomationDoc; dedupeKey: string }[] = [];
+	for (const candidate of remaining) {
+		if (!orgPremium) {
+			const creator = await ctx.db.get(candidate.automation.createdBy);
+			const { plan } = entitlementsFromDocs(orgDoc, creator);
+			if (!isFeatureAllowed(plan, "automationPublish")) {
+				const skippedAt = Date.now();
+				await ctx.db.insert("workflowExecutions", {
+					orgId,
+					automationId: candidate.automation._id,
+					triggeredBy,
+					triggeredAt: skippedAt,
+					completedAt: skippedAt,
+					status: "skipped",
+					nodesExecuted: [],
+					error: "Skipped: automations require a premium plan",
+					executionChain: params.executionChain,
+					recursionDepth: params.recursionDepth,
+					dedupeKey: candidate.dedupeKey,
+				});
+				continue;
+			}
+		}
+		entitled.push(candidate);
+	}
+
+	if (entitled.length === 0) {
+		return { triggered: 0 };
+	}
+
 	// Rate limiting check: consumes one unit per run about to start, applied
-	// after loop/dedupe filtering so duplicate re-dispatches don't burn quota.
+	// after loop/dedupe/plan filtering so duplicate re-dispatches and skipped
+	// runs don't burn quota.
 	const limit = await rateLimiter.limit(ctx, "automationRunStarts", {
 		key: orgId,
-		count: remaining.length,
+		count: entitled.length,
 	});
 	if (!limit.ok) {
 		console.warn(
 			`Automation rate limit reached for org ${orgId}. ` +
-				`${remaining.length} run(s) requested this dispatch.`
+				`${entitled.length} run(s) requested this dispatch.`
 		);
 		return { triggered: 0, rateLimited: true };
 	}
@@ -264,7 +308,8 @@ export async function matchAndScheduleAutomations(
 	let triggered = 0;
 
 	// Schedule execution for each matching automation
-	for (const { automation, dedupeKey } of remaining) {
+	for (const { automation, dedupeKey } of entitled) {
+
 		// Build new execution chain
 		const newChain = [...params.executionChain, automation._id];
 

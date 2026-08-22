@@ -1,5 +1,12 @@
 import { internalMutation } from "../lib/triggers";
 import { v } from "convex/values";
+import { internal } from "../_generated/api";
+
+type BackfillCounts = {
+	updated: number;
+	alreadySet: number;
+	notFound: string[];
+};
 
 /**
  * One-shot backfill: stamps `hasPremiumFeatureAccess = true` on the users and
@@ -42,7 +49,11 @@ export const backfillPremiumOverrides = internalMutation({
 	handler: async (
 		ctx,
 		{ clerkUserIds = [], clerkOrganizationIds = [], dryRun = false }
-	) => {
+	): Promise<{
+		users: BackfillCounts;
+		organizations: BackfillCounts;
+		dryRun: boolean;
+	}> => {
 		const users = {
 			updated: 0,
 			alreadySet: 0,
@@ -96,6 +107,11 @@ export const backfillPremiumOverrides = internalMutation({
 			}
 			if (!dryRun) {
 				await ctx.db.patch(org._id, { hasPremiumFeatureAccess: true });
+				// The override resolves Business, which carries Business seats —
+				// nothing else writes the org's Clerk seat cap. Idempotent.
+				await ctx.scheduler.runAfter(0, internal.seatSync.syncSeatCap, {
+					orgId: org._id,
+				});
 			}
 			organizations.updated++;
 		}

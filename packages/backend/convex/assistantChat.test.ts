@@ -1,5 +1,5 @@
-import { beforeEach, describe, expect, it } from "vitest";
-import { api } from "./_generated/api";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { api, internal } from "./_generated/api";
 import {
 	addMemberToOrg,
 	createPremiumTestIdentity,
@@ -137,7 +137,7 @@ describe("assistantChat", () => {
 	});
 
 	describe("plan gate", () => {
-		it("blocks sendMessage without premium access", async () => {
+		it("free orgs can send, metered at 10 messages per UTC day", async () => {
 			const { orgA } = await seedTwoOrgs();
 			const asFree = t.withIdentity(
 				createTestIdentity(orgA.clerkUserId, orgA.clerkOrgId)
@@ -148,12 +148,26 @@ describe("assistantChat", () => {
 				{}
 			);
 
-			await expect(
-				asFree.mutation(api.assistantChat.sendMessage, {
+			for (let i = 0; i < 10; i++) {
+				const { messageId } = await asFree.mutation(
+					api.assistantChat.sendMessage,
+					{ threadId, prompt: `hello ${i}` }
+				);
+				expect(messageId).toBeTruthy();
+			}
+			// The 11th message of the day refuses with the frozen shape.
+			let caught: unknown;
+			try {
+				await asFree.mutation(api.assistantChat.sendMessage, {
 					threadId,
-					prompt: "hello",
-				})
-			).rejects.toThrow("Business plan");
+					prompt: "one too many",
+				});
+			} catch (error) {
+				caught = error;
+			}
+			expect(caught).toBeDefined();
+			expect(String(caught)).toContain("PLAN_LIMIT_REACHED");
+			expect(String(caught)).toContain("assistantMessages");
 		});
 
 		it("allows sendMessage via the org metadata flag", async () => {
@@ -174,20 +188,20 @@ describe("assistantChat", () => {
 			expect(messageId).toBeTruthy();
 		});
 
-		it("blocks streamResponse without premium access", async () => {
+		it("streamResponse authorization no longer plan-blocks free orgs", async () => {
 			const { orgA } = await seedTwoOrgs();
 			const asFree = t.withIdentity(
 				createTestIdentity(orgA.clerkUserId, orgA.clerkOrgId)
 			);
 
-			// The gate runs before thread authorization, so dummy IDs suffice —
-			// this action can be invoked directly, independent of sendMessage.
+			// The aiAssistant switch is free-for-all at Slice A, so the failure
+			// for a bogus thread is ownership, not the plan gate.
 			await expect(
 				asFree.action(api.assistantChat.streamResponse, {
 					threadId: "thread_x",
 					promptMessageId: "msg_x",
 				})
-			).rejects.toThrow("Business plan");
+			).rejects.toThrow("Thread not found");
 		});
 
 		it("allows sendMessage via the webhook-synced org subscription", async () => {
@@ -214,28 +228,141 @@ describe("assistantChat", () => {
 			expect(messageId).toBeTruthy();
 		});
 
-		it("blocks sendMessage when the org subscription is on the free plan", async () => {
+		it("business orgs are unmetered past the free daily cap", async () => {
 			const { orgA } = await seedTwoOrgs();
 			await t.run(async (ctx) => {
 				await ctx.db.patch(orgA.orgId, {
-					clerkPlanSlug: "free_org",
+					clerkPlanSlug: "onetool_business_plan_org",
 					subscriptionStatus: "active",
 				});
 			});
-			const asFree = t.withIdentity(
+			const asPaid = t.withIdentity(
 				createTestIdentity(orgA.clerkUserId, orgA.clerkOrgId)
 			);
 
-			const { threadId } = await asFree.mutation(
+			const { threadId } = await asPaid.mutation(
 				api.assistantChat.createThread,
 				{}
 			);
+			for (let i = 0; i < 12; i++) {
+				const { messageId } = await asPaid.mutation(
+					api.assistantChat.sendMessage,
+					{ threadId, prompt: `hello ${i}` }
+				);
+				expect(messageId).toBeTruthy();
+			}
+		});
+
+		describe("UTC day rollover", () => {
+			// Only this block runs on fake timers; the rest of the suite is
+			// wall-clock and must stay that way.
+			afterEach(() => {
+				vi.useRealTimers();
+			});
+
+			it("the daily budget resets at UTC midnight", async () => {
+				vi.useFakeTimers();
+				vi.setSystemTime(Date.UTC(2026, 4, 12, 18));
+				const { orgA } = await seedTwoOrgs();
+				const asFree = t.withIdentity(
+					createTestIdentity(orgA.clerkUserId, orgA.clerkOrgId)
+				);
+
+				const { threadId } = await asFree.mutation(
+					api.assistantChat.createThread,
+					{}
+				);
+				for (let i = 0; i < 10; i++) {
+					await asFree.mutation(api.assistantChat.sendMessage, {
+						threadId,
+						prompt: `day one ${i}`,
+					});
+				}
+				await expect(
+					asFree.mutation(api.assistantChat.sendMessage, {
+						threadId,
+						prompt: "one too many",
+					})
+				).rejects.toThrow("PLAN_LIMIT_REACHED");
+
+				// Next UTC day: a fresh period key, so the budget is whole again.
+				vi.setSystemTime(Date.UTC(2026, 4, 13, 1));
+				const { messageId } = await asFree.mutation(
+					api.assistantChat.sendMessage,
+					{ threadId, prompt: "day two" }
+				);
+				expect(messageId).toBeTruthy();
+			});
+		});
+	});
+
+	describe("regeneration pin", () => {
+		async function seedThread() {
+			const { orgA } = await seedTwoOrgs();
+			const asUser = t.withIdentity(
+				createTestIdentity(orgA.clerkUserId, orgA.clerkOrgId)
+			);
+			const { threadId } = await asUser.mutation(
+				api.assistantChat.createThread,
+				{}
+			);
+			return { asUser, threadId };
+		}
+
+		it("only the message sendMessage last metered may be regenerated", async () => {
+			const { asUser, threadId } = await seedThread();
+
+			const first = await asUser.mutation(api.assistantChat.sendMessage, {
+				threadId,
+				prompt: "first",
+			});
 			await expect(
-				asFree.mutation(api.assistantChat.sendMessage, {
+				asUser.query(internal.assistantChat.authorizeThread, {
 					threadId,
-					prompt: "hello",
+					promptMessageId: first.messageId,
 				})
-			).rejects.toThrow("Business plan");
+			).resolves.toBeDefined();
+
+			const second = await asUser.mutation(api.assistantChat.sendMessage, {
+				threadId,
+				prompt: "second",
+			});
+			// Replaying the older message would buy an unmetered generation.
+			await expect(
+				asUser.query(internal.assistantChat.authorizeThread, {
+					threadId,
+					promptMessageId: first.messageId,
+				})
+			).rejects.toThrow("can no longer be regenerated");
+			await expect(
+				asUser.query(internal.assistantChat.authorizeThread, {
+					threadId,
+					promptMessageId: second.messageId,
+				})
+			).resolves.toBeDefined();
+		});
+
+		it("a legacy thread with no pin accepts any message id", async () => {
+			const { asUser, threadId } = await seedThread();
+			await asUser.mutation(api.assistantChat.sendMessage, {
+				threadId,
+				prompt: "first",
+			});
+			// Threads whose meta predates lastPromptMessageId stay unpinned.
+			await t.run(async (ctx) => {
+				const meta = await ctx.db
+					.query("agentThreadMeta")
+					.withIndex("by_thread", (q) => q.eq("threadId", threadId))
+					.unique();
+				await ctx.db.patch(meta!._id, { lastPromptMessageId: undefined });
+			});
+
+			await expect(
+				asUser.query(internal.assistantChat.authorizeThread, {
+					threadId,
+					promptMessageId: "msg_from_before_the_pin",
+				})
+			).resolves.toBeDefined();
 		});
 	});
 });

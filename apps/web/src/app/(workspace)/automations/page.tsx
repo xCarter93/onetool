@@ -14,21 +14,18 @@ import { Button } from "@/components/ui/button";
 import { PermissionGate } from "@/components/domain/permission-gate";
 import { LearnMoreLink } from "@/components/help/learn-more";
 import { useRoleAccess } from "@/hooks/use-role-access";
-import { useEntitlements } from "@/hooks/use-entitlements";
 import { RunMetricsTiles } from "./components/run-metrics-tiles";
 import { RunThroughputChart } from "./components/run-throughput-chart";
 import { RecentFailuresTimeline } from "./components/recent-failures-timeline";
 import { AutomationsTable } from "./components/automations-table";
 import { RunsTable } from "./components/runs-table";
 
-// Premium feature gate — admins on a premium plan only.
-function PremiumGate({ children }: { children: React.ReactNode }) {
+// Admin gate only — the canvas and drafts are free; publishing is the
+// Business-plan boundary and is gated at the publish affordances instead.
+function AdminGate({ children }: { children: React.ReactNode }) {
 	const { isAdmin, isLoading: roleLoading } = useRoleAccess();
-	const { isBusiness: hasPremiumAccess, isLoading: featureLoading } =
-		useEntitlements();
-	const router = useRouter();
 
-	if (roleLoading || featureLoading) {
+	if (roleLoading) {
 		return (
 			<div className="relative p-6 space-y-6">
 				<div className="flex items-center gap-3">
@@ -49,7 +46,7 @@ function PremiumGate({ children }: { children: React.ReactNode }) {
 		);
 	}
 
-	if (!isAdmin || !hasPremiumAccess) {
+	if (!isAdmin) {
 		return (
 			<div className="relative p-6 space-y-6">
 				<div className="flex items-center gap-3">
@@ -68,25 +65,16 @@ function PremiumGate({ children }: { children: React.ReactNode }) {
 								<Lock className="h-10 w-10 text-primary" />
 							</div>
 							<h3 className="mb-2 text-xl font-semibold text-foreground">
-								{!isAdmin ? "Admin Access Required" : "Premium Feature"}
+								Admin Access Required
 							</h3>
 							<p className="text-muted-foreground mb-6">
-								{!isAdmin
-									? "Only organization administrators can access and manage workflow automations."
-									: "Workflow automations are available on the Business plan. Upgrade to automate your workflows and save time."}
+								Only organization administrators can access and manage workflow
+								automations.
 							</p>
-							{!hasPremiumAccess && isAdmin && (
-								<>
-									<Button onClick={() => router.push("/organization/profile?tab=billing")}>
-										Upgrade to Business
-									</Button>
-									<LearnMoreLink
-										article="automations/automations-overview"
-										label="Learn what automations can do"
-										className="mt-3"
-									/>
-								</>
-							)}
+							<LearnMoreLink
+								article="automations/automations-overview"
+								label="Learn what automations can do"
+							/>
 						</div>
 					</CardContent>
 				</Card>
@@ -144,9 +132,9 @@ function AutomationsContent() {
 export default function AutomationsPage() {
 	return (
 		<PermissionGate object="automations">
-			<PremiumGate>
+			<AdminGate>
 				<AutomationsContent />
-			</PremiumGate>
+			</AdminGate>
 		</PermissionGate>
 	);
 }
