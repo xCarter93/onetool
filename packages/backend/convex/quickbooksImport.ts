@@ -7,7 +7,7 @@ import type { MutationCtx } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import { userMutation, userQuery } from "./lib/factories";
 import type { UserMutationCtx, UserQueryCtx } from "./lib/factories";
-import { getCurrentUserOrThrow } from "./lib/auth";
+import { getCurrentUserOrThrow, getCurrentUserOrgId } from "./lib/auth";
 import {
 	entitlementsFromIdentity,
 	isFeatureAllowed,
@@ -181,6 +181,10 @@ export const startRun = internalMutation({
 			throw new ConvexError("Organization not found");
 		}
 		if (organization.ownerUserId !== user._id) {
+			throw new ConvexError("not_owner");
+		}
+		// entitlementsFromIdentity gates the ACTIVE org, so args.orgId must be it
+		if ((await getCurrentUserOrgId(ctx)) !== args.orgId) {
 			throw new ConvexError("not_owner");
 		}
 		if (!isFeatureAllowed((await entitlementsFromIdentity(ctx)).plan, "quickbooks")) {

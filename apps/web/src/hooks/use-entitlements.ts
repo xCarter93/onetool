@@ -12,7 +12,7 @@ export interface Entitlements {
 	isBusiness: boolean;
 	/** True when the resolved plan allows the feature (kill switches applied server-side). */
 	allows: (key: FeatureKey) => boolean;
-	meter: (key: string) => MeterUsage | undefined;
+	meter: (key: MeterUsage["key"]) => MeterUsage | undefined;
 }
 
 /**
