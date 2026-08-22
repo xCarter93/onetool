@@ -254,12 +254,14 @@ async function applyStatusUpdate(
 			}
 		}
 
-		// A status write to "sent" IS a send (portal-visible): meter it like the
-		// send mutations, keyed on the immutable firstSentAt. Refusal fails the
+		// A status write to "sent" — or "overdue" for invoices, which is equally
+		// portal-visible and payable — IS a send: meter it like the send
+		// mutations, keyed on the immutable firstSentAt. Refusal fails the
 		// node instead of throwing so the run is recorded, never crashed.
 		if (
-			newStatus === "sent" &&
-			(targetInfo.type === "quote" || targetInfo.type === "invoice")
+			(newStatus === "sent" &&
+				(targetInfo.type === "quote" || targetInfo.type === "invoice")) ||
+			(newStatus === "overdue" && targetInfo.type === "invoice")
 		) {
 			const record = targetObject as Record<string, unknown>;
 			const alreadyDebited =

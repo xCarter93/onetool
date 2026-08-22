@@ -62,20 +62,24 @@ export const getMine = optionalUserQuery({
 		if (org) {
 			// E-signatures still count from the documents table (deliberately
 			// left on the legacy counter — it works and the kill switch works).
-			const esigUsage = await getMeterUsage(
-				ctx,
-				ctx.orgId,
-				"esignatures",
-				resolved.plan,
-				{
-					usedOverride: await computeEsignaturesSentThisMonth(
-						ctx,
-						org,
-						ctx.orgId
-					),
-				}
-			);
-			if (esigUsage.limit !== null) meters.push(esigUsage);
+			// Gated on a finite limit like savedReports below: the legacy count
+			// collects the org's documents, wasted work for an unlimited plan.
+			if (METERS.esignatures[resolved.plan] !== null) {
+				const esigUsage = await getMeterUsage(
+					ctx,
+					ctx.orgId,
+					"esignatures",
+					resolved.plan,
+					{
+						usedOverride: await computeEsignaturesSentThisMonth(
+							ctx,
+							org,
+							ctx.orgId
+						),
+					}
+				);
+				if (esigUsage.limit !== null) meters.push(esigUsage);
+			}
 
 			// planUsage-native meters (Slice A).
 			for (const key of [

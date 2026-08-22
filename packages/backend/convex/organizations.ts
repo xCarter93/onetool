@@ -310,7 +310,10 @@ export const updateFromClerk = internalMutation({
 		await ctx.db.patch(organization._id, updates);
 
 		// An override grant/revoke changes the resolved plan — keep Clerk's
-		// seat cap in step for the orgs plan-level limits can't cover.
+		// seat cap in step for the orgs plan-level limits can't cover, and
+		// reclassify published automations (a no-op on grant: the sweep
+		// re-resolves the plan at fire time). Without this, an override-only
+		// org has no billing/trial wake that would ever run the sweep.
 		if (
 			args.hasPremiumFeatureAccess !== undefined &&
 			args.hasPremiumFeatureAccess !== organization.hasPremiumFeatureAccess
@@ -318,6 +321,11 @@ export const updateFromClerk = internalMutation({
 			await ctx.scheduler.runAfter(0, internal.seatSync.syncSeatCap, {
 				orgId: organization._id,
 			});
+			await ctx.scheduler.runAfter(
+				0,
+				internal.automationExecutor.reclassifyAutomationsForOrg,
+				{ orgId: organization._id }
+			);
 		}
 
 		console.log(

@@ -545,6 +545,38 @@ describe("Slice A: send meter (clientSends)", () => {
 		).toBeDefined();
 	});
 
+	it("flipping a draft invoice to 'overdue' via update debits like sent", async () => {
+		const { asUser, orgId, clientId } = await seedSendable(t);
+		const invoiceId = await asUser.mutation(api.invoices.create, {
+			clientId,
+			invoiceNumber: "INV-DRAFT-OVERDUE",
+			status: "draft",
+			subtotal: 100,
+			total: 100,
+			issuedDate: Date.now() - 30 * 86_400_000,
+			dueDate: Date.now() - 86_400_000,
+		});
+		expect((await sendUsage(t, orgId))?.used ?? 0).toBe(0);
+		await asUser.mutation(api.invoices.update, {
+			id: invoiceId,
+			status: "overdue",
+		});
+		expect((await sendUsage(t, orgId))?.used).toBe(1);
+		expect(
+			(await t.run(async (ctx) => ctx.db.get(invoiceId)))?.firstSentAt
+		).toBeDefined();
+		// Later sent↔overdue flips never re-debit: firstSentAt is stamped.
+		await asUser.mutation(api.invoices.update, {
+			id: invoiceId,
+			status: "sent",
+		});
+		await asUser.mutation(api.invoices.update, {
+			id: invoiceId,
+			status: "overdue",
+		});
+		expect((await sendUsage(t, orgId))?.used).toBe(1);
+	});
+
 	it("each org's sends count only against its own budget", async () => {
 		const a = await seedSendable(t, {
 			clerkUserId: "user_org_a",
@@ -980,6 +1012,19 @@ describe("Slice A: NL report generation gate (nlReportGeneration)", () => {
 			{}
 		);
 		expect(trialing?.plan).toBe("business");
+
+		await t.run(async (ctx) => {
+			await ctx.db.patch(orgId, {
+				trialEndsAt: Date.now() - 60_000,
+				clerkPlanSlug: "onetool_business_plan_org",
+				subscriptionStatus: "active",
+			});
+		});
+		const business = await asUser.query(
+			internal.reportConfigGeneration.authContext,
+			{}
+		);
+		expect(business?.plan).toBe("business");
 	});
 });
 

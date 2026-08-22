@@ -899,6 +899,12 @@ export const update = userMutation({
 			} else if (filteredUpdates.status === "draft") {
 				// Revert to draft: without this the timeline (and portal sort, were
 				// it ever visible) would keep claiming the quote was sent.
+				// Backfill the debit key for legacy rows first — clearing sentAt
+				// while firstSentAt is unset would re-arm a debit for a quote that
+				// was already sent.
+				if (!currentQuote.firstSentAt && currentQuote.sentAt) {
+					filteredUpdates.firstSentAt = currentQuote.sentAt;
+				}
 				filteredUpdates.sentAt = undefined;
 			}
 		}
@@ -1019,14 +1025,24 @@ export const extendValidUntil = userMutation({
 		const revived = quote.status === "expired";
 		// A genuinely expired quote was sent before (debit already taken); a
 		// quote MINTED as expired was not — reviving it is its first send.
-		let reviveStamp: { sentAt: number; firstSentAt: number } | undefined;
-		if (revived && !quote.firstSentAt && !quote.sentAt) {
-			const { plan } = await entitlementsFromIdentity(ctx);
-			// One timestamp so the check and debit share a billing period.
-			const now = Date.now();
-			await requireMeter(ctx, ctx.orgId, "clientSends", plan, { now });
-			await consumeMeter(ctx, ctx.orgId, "clientSends", { now });
-			reviveStamp = { sentAt: now, firstSentAt: now };
+		// Legacy rows (sentAt without firstSentAt) skip the debit but still get
+		// the key backfilled, or a later revert-to-draft — which clears sentAt —
+		// would re-arm a debit for an already-sent quote.
+		let reviveStamp:
+			| { sentAt: number; firstSentAt: number }
+			| { firstSentAt: number }
+			| undefined;
+		if (revived && !quote.firstSentAt) {
+			if (!quote.sentAt) {
+				const { plan } = await entitlementsFromIdentity(ctx);
+				// One timestamp so the check and debit share a billing period.
+				const now = Date.now();
+				await requireMeter(ctx, ctx.orgId, "clientSends", plan, { now });
+				await consumeMeter(ctx, ctx.orgId, "clientSends", { now });
+				reviveStamp = { sentAt: now, firstSentAt: now };
+			} else {
+				reviveStamp = { firstSentAt: quote.sentAt };
+			}
 		}
 		await ctx.db.patch(args.id, {
 			validUntil: args.validUntil,
@@ -1162,19 +1178,26 @@ export const sendToClient = userMutation({
 		// The send meter debits only the FIRST send ever — keyed on the
 		// immutable firstSentAt (sentAt clears on revert-to-draft; legacy rows
 		// predate firstSentAt, so sentAt still counts as proof of a past debit).
-		if (!quote.firstSentAt && !quote.sentAt) {
-			const { plan } = await entitlementsFromIdentity(ctx);
-			// One timestamp so the check and debit share a billing period.
-			const now = Date.now();
-			await requireMeter(ctx, ctx.orgId, "clientSends", plan, { now });
-			await consumeMeter(ctx, ctx.orgId, "clientSends", { now });
-			// Stamp the debit key; also self-heal sentAt for raw status writes
-			// that left a sent quote without one, so this debit can never repeat
-			// — the transition block below only runs for non-sent statuses.
-			await ctx.db.patch(quote._id, {
-				firstSentAt: now,
-				...(quote.status === "sent" ? { sentAt: now } : {}),
-			});
+		if (!quote.firstSentAt) {
+			if (!quote.sentAt) {
+				const { plan } = await entitlementsFromIdentity(ctx);
+				// One timestamp so the check and debit share a billing period.
+				const now = Date.now();
+				await requireMeter(ctx, ctx.orgId, "clientSends", plan, { now });
+				await consumeMeter(ctx, ctx.orgId, "clientSends", { now });
+				// Stamp the debit key; also self-heal sentAt for raw status writes
+				// that left a sent quote without one, so this debit can never repeat
+				// — the transition block below only runs for non-sent statuses.
+				await ctx.db.patch(quote._id, {
+					firstSentAt: now,
+					...(quote.status === "sent" ? { sentAt: now } : {}),
+				});
+			} else {
+				// Legacy row sent before firstSentAt existed: backfill the key with
+				// no new debit, or a later revert-to-draft (which clears sentAt)
+				// would re-arm a debit for an already-sent quote.
+				await ctx.db.patch(quote._id, { firstSentAt: quote.sentAt });
+			}
 		}
 		if (quote.status !== "sent") {
 			const oldStatus = quote.status;

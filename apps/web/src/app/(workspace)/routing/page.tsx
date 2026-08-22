@@ -570,8 +570,10 @@ function RoutingWorkspace() {
 		}
 	};
 
-	// Stale gas pins are hidden once the route geometry moves on.
+	// Stale gas pins are hidden once the route geometry moves on. Also hidden
+	// in preview (a mid-session downgrade flips previewOnly with pins in state).
 	const visibleGasStations =
+		!previewOnly &&
 		!dirty &&
 		gasEnabled &&
 		(gasForGeometry === selectedRoute?.geometry ||

@@ -337,7 +337,11 @@ describe("meter store behavior", () => {
 			const usage = await getMeterUsage(ctx, orgId, "clientSends", "free", { now: NOW });
 			expect(usage.limit).toBe(30);
 			// A new month starts back at the base limit; the bonus can grant again.
+			// Pin the base BEFORE re-granting — 30 alone can't tell a re-armed
+			// grant apart from a bonus that wrongly carried over.
 			const NEXT = Date.UTC(2026, 8, 2);
+			const rolled = await getMeterUsage(ctx, orgId, "clientSends", "free", { now: NEXT });
+			expect(rolled.limit).toBe(20);
 			await grantMeterBonus(ctx, orgId, "clientSends", 10, { now: NEXT, once: true });
 			const next = await getMeterUsage(ctx, orgId, "clientSends", "free", { now: NEXT });
 			expect(next.limit).toBe(30);

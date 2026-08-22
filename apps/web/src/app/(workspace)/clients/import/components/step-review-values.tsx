@@ -440,10 +440,11 @@ export function StepReviewValues({
 								{rowBudget.remaining.toLocaleString()} remaining import rows
 							</AlertTitle>
 							<AlertDescription>
-								The import won&apos;t run until it fits. Skip or remove{" "}
+								The import won&apos;t run until it fits. Remove{" "}
 								{overBudgetBy.toLocaleString()} row
-								{overBudgetBy !== 1 ? "s" : ""}, or upgrade your plan for
-								unlimited imports.
+								{overBudgetBy !== 1 ? "s" : ""} from your file (skipping
+								duplicates counts), or upgrade your plan for unlimited
+								imports.
 							</AlertDescription>
 						</Alert>
 					)}

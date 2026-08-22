@@ -565,10 +565,13 @@ export const update = userMutation({
 		) {
 			const now = Date.now();
 
-			if (filteredUpdates.status === "sent") {
-				// ANY flip to sent IS a send (portal-visible, payable) — the
-				// source doesn't matter, or an invoice minted as overdue/cancelled
-				// would slip through. Keyed on the immutable firstSentAt so
+			if (
+				filteredUpdates.status === "sent" ||
+				filteredUpdates.status === "overdue"
+			) {
+				// ANY flip to sent or overdue IS a send (portal-visible, payable) —
+				// the source doesn't matter, matching invoices.create's minted-as-
+				// overdue metering. Keyed on the immutable firstSentAt so
 				// revert-to-draft can never re-arm the debit. (Legacy edge: a
 				// pre-firstSentAt invoice that really was sent takes one debit if
 				// manually re-flipped to sent — accepted over the mint bypass.)

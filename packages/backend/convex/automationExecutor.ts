@@ -565,7 +565,7 @@ const RECLASSIFY_BATCH = 200;
  * Idempotent: only `active` rows are touched.
  */
 export const reclassifyAutomationsForOrg = internalMutation({
-	args: { orgId: v.id("organizations") },
+	args: { orgId: v.id("organizations"), cursor: v.optional(v.string()) },
 	returns: v.null(),
 	handler: async (ctx, args): Promise<null> => {
 		const org = await ctx.db.get(args.orgId);
@@ -574,14 +574,17 @@ export const reclassifyAutomationsForOrg = internalMutation({
 			return null;
 		}
 
-		const active = await ctx.db
+		// Cursor pagination (not .take) so the follow-up hop makes progress even
+		// when creator-override-exempt rows stay `active` inside the range — a
+		// count-based re-run would loop forever on an exempt-heavy org.
+		const page = await ctx.db
 			.query("workflowAutomations")
 			.withIndex("by_org_status", (q) =>
 				q.eq("orgId", args.orgId).eq("status", "active")
 			)
-			.take(RECLASSIFY_BATCH);
+			.paginate({ numItems: RECLASSIFY_BATCH, cursor: args.cursor ?? null });
 		const now = Date.now();
-		for (const automation of active) {
+		for (const automation of page.page) {
 			// A creator-level override keeps that user's automations runnable —
 			// same (org, creator) resolution the dispatcher and the one-shot
 			// pause migration use.
@@ -593,6 +596,13 @@ export const reclassifyAutomationsForOrg = internalMutation({
 				nextRunAt: undefined,
 				updatedAt: now,
 			});
+		}
+		if (!page.isDone) {
+			await ctx.scheduler.runAfter(
+				0,
+				internal.automationExecutor.reclassifyAutomationsForOrg,
+				{ orgId: args.orgId, cursor: page.continueCursor }
+			);
 		}
 		return null;
 	},
@@ -608,6 +618,10 @@ export const reclassifyAutomationsForOrg = internalMutation({
  * `requireTargetRecordAccess`, which every caller-chosen record must pass
  * before a run is created. Anything that lets a user reach this without that
  * gate is a privilege escalation.
+ *
+ * Plan entitlement is the one check re-done here (and in resumeExecution):
+ * watchdog re-drives and parked resumes can start long after the entry-point
+ * gate ran, so a lapsed plan must skip rather than execute.
  */
 export const executeAutomation = systemMutation({
 	args: {
@@ -667,6 +681,30 @@ export const executeAutomation = systemMutation({
 			});
 			// No automation doc to name the alert; skip notifyAutomationFailure.
 			return;
+		}
+
+		// Downgrade re-check: the plan was gated when this run was queued, but a
+		// watchdog re-drive can start a run long after that check — skip instead
+		// of executing on a lapsed plan (creator override honored, as at every
+		// entry point). Manual runs are exempt: startManualRun authorized them
+		// identity-path moments ago, honoring JWT overrides this docs-path
+		// check can't see.
+		if (!execution.triggeredBy.startsWith("manual:")) {
+			const orgDoc = await ctx.db.get(execution.orgId);
+			if (
+				!isFeatureAllowed(entitlementsFromDocs(orgDoc).plan, "automationPublish")
+			) {
+				const creator = await ctx.db.get(automation.createdBy);
+				const { plan } = entitlementsFromDocs(orgDoc, creator);
+				if (!isFeatureAllowed(plan, "automationPublish")) {
+					await ctx.db.patch(args.executionId, {
+						status: "skipped",
+						completedAt: Date.now(),
+						error: "Skipped: automations require a premium plan",
+					});
+					return;
+				}
+			}
 		}
 
 		// Production runs execute the published snapshot (falling back to the
@@ -850,6 +888,28 @@ export const resumeExecution = systemMutation({
 			});
 			// No automation doc to name the alert; skip notifyAutomationFailure.
 			return;
+		}
+
+		// Downgrade re-check: delay-parked runs can resume days after the plan
+		// was last verified — skip instead of continuing on a lapsed plan
+		// (creator override honored, as at every entry point).
+		const orgDoc = await ctx.db.get(execution.orgId);
+		if (
+			!isFeatureAllowed(entitlementsFromDocs(orgDoc).plan, "automationPublish")
+		) {
+			const creator = await ctx.db.get(automation.createdBy);
+			const { plan } = entitlementsFromDocs(orgDoc, creator);
+			if (!isFeatureAllowed(plan, "automationPublish")) {
+				await ctx.db.patch(args.executionId, {
+					status: "skipped",
+					completedAt: Date.now(),
+					error:
+						"Skipped: the plan lapsed while the run was waiting; automations require a premium plan",
+					resumeState: undefined,
+					currentNodeId: undefined,
+				});
+				return;
+			}
 		}
 
 		const resume = execution.resumeState;
