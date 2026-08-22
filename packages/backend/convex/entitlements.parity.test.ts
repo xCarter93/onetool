@@ -155,9 +155,15 @@ describe("entitlement parity across org/identity states", () => {
 		const { orgId, clerkUserId, clerkOrgId } = await seedOrg();
 		const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
 
-		await patchOrg(orgId, { trialEndsAt: Date.now() + 60_000 });
+		const trialEnd = Date.now() + 60_000;
+		await patchOrg(orgId, { trialEndsAt: trialEnd });
 		let mine = await asUser.query(api.entitlements.getMine, {});
-		expect(mine).toMatchObject({ plan: "business", source: "trial" });
+		expect(mine).toMatchObject({
+			plan: "business",
+			source: "trial",
+			// Surfaced only during the trial — the header countdown reads it.
+			trialEndsAt: trialEnd,
+		});
 
 		await patchOrg(orgId, {
 			trialEndsAt: undefined,
@@ -165,6 +171,7 @@ describe("entitlement parity across org/identity states", () => {
 		});
 		mine = await asUser.query(api.entitlements.getMine, {});
 		expect(mine).toMatchObject({ plan: "business", source: "grace" });
+		expect(mine.trialEndsAt).toBeUndefined();
 
 		await patchOrg(orgId, { planGraceUntil: Date.now() - 1000 });
 		mine = await asUser.query(api.entitlements.getMine, {});

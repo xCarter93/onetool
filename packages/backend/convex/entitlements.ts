@@ -18,6 +18,8 @@ export interface MyEntitlements {
 	source: PlanSource;
 	features: Record<FeatureKey, boolean>;
 	meters: MeterUsage[];
+	/** Present only while source === "trial" — drives the header countdown. */
+	trialEndsAt?: number;
 }
 
 const FEATURE_KEYS = Object.keys(FEATURES) as FeatureKey[];
@@ -111,6 +113,9 @@ export const getMine = optionalUserQuery({
 			source: resolved.source,
 			features: featureMap(resolved.plan),
 			meters,
+			...(resolved.source === "trial" && org?.trialEndsAt
+				? { trialEndsAt: org.trialEndsAt }
+				: {}),
 		};
 	},
 });

@@ -20,6 +20,8 @@ export interface Entitlements {
 	/** True when the resolved plan allows the feature (kill switches applied server-side). */
 	allows: (key: FeatureKey) => boolean;
 	meter: (key: MeterUsage["key"]) => MeterUsage | undefined;
+	/** Present only while source === "trial". */
+	trialEndsAt: number | undefined;
 }
 
 /**
@@ -43,5 +45,6 @@ export function useEntitlements(): Entitlements {
 		source: entitlements?.source ?? "free",
 		allows: (key) => entitlements?.features[key] ?? false,
 		meter: (key) => entitlements?.meters.find((m) => m.key === key),
+		trialEndsAt: entitlements?.trialEndsAt,
 	};
 }
