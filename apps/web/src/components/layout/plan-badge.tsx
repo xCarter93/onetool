@@ -13,6 +13,19 @@ import {
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Crown, Users, ArrowUpRight, Check } from "lucide-react";
+import {
+	BUSINESS_SEATS,
+	PLAN_MATRIX,
+} from "@onetool/backend/convex/lib/planMatrix";
+
+/** What Business actually adds: the seat bump plus the matrix's paid-only switches. */
+const BUSINESS_BENEFITS = [
+	`${BUSINESS_SEATS} team members`,
+	"Unlimited sends, e-signatures, AI, reports and imports",
+	...PLAN_MATRIX.filter(
+		(row) => row.business === true && row.free === false
+	).map((row) => row.label),
+];
 
 export function PlanBadge() {
 	const [open, setOpen] = useState(false);
@@ -78,7 +91,7 @@ export function PlanBadge() {
 							? "Create an organization to start using OneTool"
 							: isBusiness
 							? "Enjoy unlimited access to all features"
-							: "You're on the free plan with limited features"}
+							: "You're on the free plan. Everything's included, with usage limits."}
 					</p>
 				</div>
 
@@ -102,34 +115,19 @@ export function PlanBadge() {
 					</div>
 				)}
 
-				{/* Premium Plan Features */}
+				{/* Business plan benefits */}
 				{isBusiness && hasOrganization && (
 					<div className="p-4 space-y-3 bg-background">
 						<div className="space-y-2 text-sm">
-							<div className="flex items-center gap-2 text-muted-foreground">
-								<Check className="size-3.5 shrink-0 text-success" />
-								<span>Unlimited clients</span>
-							</div>
-							<div className="flex items-center gap-2 text-muted-foreground">
-								<Check className="size-3.5 shrink-0 text-success" />
-								<span>Unlimited projects</span>
-							</div>
-							<div className="flex items-center gap-2 text-muted-foreground">
-								<Check className="size-3.5 shrink-0 text-success" />
-								<span>Unlimited e-signatures</span>
-							</div>
-							<div className="flex items-center gap-2 text-muted-foreground">
-								<Check className="size-3.5 shrink-0 text-success" />
-								<span>Custom SKUs</span>
-							</div>
-							<div className="flex items-center gap-2 text-muted-foreground">
-								<Check className="size-3.5 shrink-0 text-success" />
-								<span>Organization documents</span>
-							</div>
-							<div className="flex items-center gap-2 text-muted-foreground">
-								<Check className="size-3.5 shrink-0 text-success" />
-								<span>AI import</span>
-							</div>
+							{BUSINESS_BENEFITS.map((benefit) => (
+								<div
+									key={benefit}
+									className="flex items-center gap-2 text-muted-foreground"
+								>
+									<Check className="size-3.5 shrink-0 text-success" />
+									<span>{benefit}</span>
+								</div>
+							))}
 						</div>
 					</div>
 				)}

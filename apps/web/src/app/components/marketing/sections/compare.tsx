@@ -475,9 +475,9 @@ export function Compare() {
 				<Lede className="max-w-[46rem]">
 					Jobber reprices every plan as your team size grows, then adds $29 a month for
 					each user past the bundled allowance. Housecall Pro&rsquo;s entry plan covers
-					one person, and extra seats are sold only on its top plan. Joby prices flat with
-					unlimited users like we do, and starts at $89. OneTool is one price for the
-					whole company, however many of you there are.
+					one person, and extra seats are sold only on its top plan. Joby prices flat
+					like we do, and starts at $89. OneTool is one flat price for a crew
+					of up to 20.
 				</Lede>
 
 				{/* The workspace <Frame>, re-inked by the lp-frame bridge: picker in

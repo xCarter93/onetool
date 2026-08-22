@@ -20,9 +20,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/reui/badge";
 import { EmptyState } from "@/components/domain/empty-state";
 import { useToast } from "@/hooks/use-toast";
-import { useEntitlements } from "@/hooks/use-entitlements";
 import { usePermissions } from "@/hooks/use-permissions";
-import type { FeatureKey } from "@onetool/backend";
 import type { PermissionObject } from "@onetool/backend/convex/lib/permissionKeys";
 import { useOrgOwner } from "./_hooks/use-org-owner";
 import {
@@ -55,17 +53,9 @@ const TAB_VALUES = [
 ] as const;
 type TabValue = (typeof TAB_VALUES)[number];
 
-// Plan gating per tab, resolved through entitlements.getMine (§P1). Billing is
-// intentionally absent — free orgs need it to upgrade.
-// Integrations is deliberately absent: it's the Stripe Connect front door for
-// every plan; only the QuickBooks tile inside it is Business-gated.
-const TAB_FEATURE: Partial<Record<TabValue, FeatureKey>> = {
-	payments: "stripeConnect",
-	documents: "orgDocuments",
-	skus: "customSkus",
-};
-
-// Granular-permission gating per tab (§5.4); tabs absent here are role/premium-gated only.
+// No tab is plan-gated: payments/documents/SKUs flipped free at Slice A, and
+// only the QuickBooks tile inside Integrations stays Business-gated.
+// Granular-permission gating per tab (§5.4); tabs absent here are role-gated only.
 const TAB_PERMISSIONS: Partial<Record<TabValue, PermissionObject>> = {
 	// Billing is intentionally NOT premium-gated — free orgs need it to upgrade.
 	billing: "billing",
@@ -142,7 +132,6 @@ export default function OrganizationProfilePage() {
 	const router = useRouter();
 	const searchParams = useSearchParams();
 	const toast = useToast();
-	const { allows, isLoading: featureLoading } = useEntitlements();
 	const { can, hasFullAccess, isLoading: permsLoading } = usePermissions();
 	const { organization, isLoading } = useOrgOwner();
 
@@ -151,15 +140,6 @@ export default function OrganizationProfilePage() {
 	const activeTab: TabValue =
 		tabParam && isTabValue(tabParam) ? tabParam : "overview";
 
-	// The nav rail locks premium tabs, but typing ?tab=payments directly bypasses
-	// handleTabChange. Once access resolves, deny premium tabs to non-premium users:
-	// render the overview and replace the URL to match. (This is UI gating only —
-	// the durable boundary must live in the backend.)
-	const activeTabFeature = TAB_FEATURE[activeTab];
-	const deniedPremium =
-		!featureLoading &&
-		activeTabFeature !== undefined &&
-		!allows(activeTabFeature);
 	const tabPermission = TAB_PERMISSIONS[activeTab];
 	// Role/grant denials render an in-place no-access panel (no redirect, no
 	// error toast) — pasting ?tab=payments as a member shows the empty state.
@@ -172,36 +152,18 @@ export default function OrganizationProfilePage() {
 	// instead of a tab with no nav entry.
 	const hasStripeAccount = Boolean(organization?.stripeConnectAccountId);
 	const paymentsUnavailable = activeTab === "payments" && !hasStripeAccount;
-	const renderTab: TabValue = deniedPremium
-		? "overview"
-		: paymentsUnavailable
-			? "integrations"
-			: activeTab;
-
-	React.useEffect(() => {
-		if (deniedPremium) {
-			toast.error("Premium Feature", "Upgrade to access this feature");
-			router.replace("/organization/profile");
-		}
-	}, [deniedPremium, router, toast]);
+	const renderTab: TabValue = paymentsUnavailable ? "integrations" : activeTab;
 
 	// Keep the URL honest once the org resolves: ?tab=payments without a Stripe
 	// account renders Integrations, so the address bar should say so too.
 	React.useEffect(() => {
-		if (isLoading || deniedPremium || !paymentsUnavailable) return;
+		if (isLoading || !paymentsUnavailable) return;
 		router.replace("/organization/profile?tab=integrations");
-	}, [isLoading, deniedPremium, paymentsUnavailable, router]);
+	}, [isLoading, paymentsUnavailable, router]);
 
 	const handleTabChange = React.useCallback(
 		(value: string) => {
 			if (!isTabValue(value)) {
-				return;
-			}
-
-			// Block premium features without premium access
-			const feature = TAB_FEATURE[value];
-			if (feature !== undefined && !allows(feature)) {
-				toast.error("Premium Feature", "Upgrade to access this feature");
 				return;
 			}
 
@@ -225,7 +187,7 @@ export default function OrganizationProfilePage() {
 					: `/organization/profile?${params.toString()}`;
 			router.push(newUrl);
 		},
-		[router, allows, toast, can, permsLoading, hasFullAccess],
+		[router, can, permsLoading, hasFullAccess],
 	);
 
 	// The Integrations tab is the front door for payments setup; the Payments tab
@@ -265,23 +227,21 @@ export default function OrganizationProfilePage() {
 				label: "Payments",
 				sublabel: "Stripe & payouts",
 				icon: CreditCard,
-				locked:
-					!allows("stripeConnect") || (!permsLoading && !hasFullAccess),
+				locked: !permsLoading && !hasFullAccess,
 			},
 			{
 				value: "documents",
 				label: "Documents",
 				sublabel: "Team file library",
 				icon: FileText,
-				locked:
-					!allows("orgDocuments") || (!permsLoading && !can("orgDocuments")),
+				locked: !permsLoading && !can("orgDocuments"),
 			},
 			{
 				value: "skus",
 				label: "SKUs",
 				sublabel: "Reusable line items",
 				icon: Tags,
-				locked: !allows("customSkus") || (!permsLoading && !can("skus")),
+				locked: !permsLoading && !can("skus"),
 			},
 			{
 				value: "integrations",
@@ -292,7 +252,7 @@ export default function OrganizationProfilePage() {
 				locked: !permsLoading && !hasFullAccess,
 			},
 			].filter((item) => item.value !== "payments" || hasStripeAccount),
-		[allows, can, permsLoading, hasFullAccess, hasStripeAccount],
+		[can, permsLoading, hasFullAccess, hasStripeAccount],
 	);
 
 	if (isLoading || permsLoading) {

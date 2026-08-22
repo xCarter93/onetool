@@ -1,4 +1,5 @@
 import { HELP_CATEGORIES } from "@/lib/help";
+import { PLAN_MATRIX } from "@onetool/backend/convex/lib/planMatrix";
 
 // /llms.txt (llmstxt.org): a curated index of the public surface for LLMs and
 // agentic browsers, which otherwise have to guess at it from rendered HTML.
@@ -27,6 +28,22 @@ robots.txt), and — importantly — the client portal (/portal) and payment lin
 (/pay), which are per-recipient URLs carrying bearer credentials and are served
 noindex. Do not fetch or follow those.`;
 
+// Rendered from PLAN_MATRIX (the constant the billing tab and landing card
+// render), so an assistant quoting this file quotes the enforced limits.
+const planValue = (value: string | boolean) =>
+	typeof value === "boolean" ? (value ? "included" : "not included") : value;
+
+const PLANS = [
+	`## Plans`,
+	`Free is $0 forever. Business is $30/month or $300/year, per organisation.`,
+	`Every new account starts with a 14-day Business trial; no credit card is required.`,
+	``,
+	...PLAN_MATRIX.map(
+		(row) =>
+			`- ${row.label}: Free ${planValue(row.free)} / Business ${planValue(row.business)}`
+	),
+].join("\n");
+
 export function GET() {
 	// Relative links when the base URL is unset, matching sitemap.ts's guard
 	// without emitting an empty file.
@@ -52,6 +69,7 @@ export function GET() {
 			link("/#faq", "FAQ", "Common questions about switching, data, and billing."),
 			link("/help", "Help centre", "Every guide, grouped by area."),
 		].join("\n"),
+		PLANS,
 		...HELP_CATEGORIES.map((category) =>
 			[
 				`## ${category.name}`,

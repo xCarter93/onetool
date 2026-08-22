@@ -32,7 +32,6 @@ import { PlanUsageCard } from "@/components/layout/plan-usage-card";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { useQuery } from "convex/react";
 import { useAuth } from "@clerk/nextjs";
-import { useEntitlements } from "@/hooks/use-entitlements";
 import { useRoleAccess } from "@/hooks/use-role-access";
 import { useIsOrgSwitching } from "@/hooks/use-is-org-switching";
 import { usePermissions } from "@/hooks/use-permissions";
@@ -145,7 +144,6 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 		isOrgSwitching || inboxUnread === undefined ? 0 : inboxUnread;
 	const { orgId } = useAuth();
 	const hasOrganization = !!orgId;
-	const { allows } = useEntitlements();
 	const { isAdmin, isMember } = useRoleAccess();
 	const isCommunityEnabled = useFeatureFlagEnabled("community-pages-access");
 	const isAutomationsEnabled = useFeatureFlagEnabled("workflow-automation-access");
@@ -167,7 +165,6 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 			.map((subItem) => ({
 				...subItem,
 				isActive: isSubItemActive(subItem, item, pathname, currentParams),
-				isLocked: !!subItem.featureKey && !allows(subItem.featureKey),
 			}));
 
 		const isActive =

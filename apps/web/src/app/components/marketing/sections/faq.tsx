@@ -6,8 +6,7 @@ import { AmbientLayer } from "../ambient";
 import { Eyebrow, Lede, Section, SectionHeading } from "../primitives";
 import { FaqHalftoneScene } from "../section-halftone-scenes";
 
-/* FAQ — questions and answers are the live production set (kept verbatim so the
- * two pages answer the same questions the same way). The panel animates on
+/* FAQ — the live production question set. The panel animates on
  * grid-template-rows 0fr→1fr so nothing has to be measured; landing.css already
  * disables the transition under prefers-reduced-motion. */
 
@@ -26,7 +25,7 @@ const FAQS: ReadonlyArray<readonly [string, string]> = [
 	],
 	[
 		"Can I receive payments directly to my bank account?",
-		"Paid users of OneTool have access to our Stripe Connect integration which allows you to connect a bank account and send invoice payment links to clients.",
+		"Yes, on every plan, including Free. Connect a bank account through our Stripe integration and clients pay their invoices by card from your client portal, with the money landing in your own Stripe account.",
 	],
 	[
 		"Can I email clients directly from OneTool?",
@@ -42,11 +41,11 @@ const FAQS: ReadonlyArray<readonly [string, string]> = [
 	],
 	[
 		"Can multiple team members use OneTool?",
-		"Yes! OneTool supports team collaboration with organization-based access. Add team members to your organization, assign roles and permissions, and work together in real-time. Everyone stays synchronized with instant updates across all devices.",
+		"Yes! OneTool supports team collaboration with organization-based access. Add team members to your organization, assign roles and permissions, and work together in real-time. Everyone stays synchronized with instant updates across all devices. The free plan includes 5 team members and the Business plan includes 20.",
 	],
 	[
 		"What kind of support do you offer?",
-		"We provide comprehensive support including detailed documentation, video tutorials, and email support. Premium plan subscribers also get priority support with faster response times and access to one-on-one onboarding assistance.",
+		"We provide detailed documentation, video tutorials, and email support. Free accounts get best-effort replies; Business accounts get priority support with a 24-hour response SLA.",
 	],
 	[
 		"How secure is my data?",
@@ -54,7 +53,15 @@ const FAQS: ReadonlyArray<readonly [string, string]> = [
 	],
 	[
 		"Can I import my existing client data?",
-		"Yes! OneTool supports CSV imports, making it easy to migrate your existing client data. Simply export your data from your current system, map the fields, and import it into OneTool. We also provide guidance to help you with the migration process.",
+		"Yes! OneTool supports CSV imports on every plan, making it easy to migrate your existing client data. Simply export your data from your current system, map the fields, and import it into OneTool. The free plan includes 2,000 imported rows in total, and the Business plan has no import limit.",
+	],
+	[
+		"How does the free trial work?",
+		"Every new account starts with a 14-day trial of the Business plan, applied automatically when you create your organization. There is no credit card and nothing to cancel: when the trial ends, you simply continue on the free plan with all of your data intact. Upgrade from the Billing tab whenever it makes sense.",
+	],
+	[
+		"What are the free plan's limits?",
+		"Clients and projects are unlimited on every plan. The free plan includes 5 team members, 20 quote and invoice sends a month (plus 10 bonus sends in any month you collect a card payment), 5 e-signature requests a month, 10 AI assistant messages a day, 5 saved reports, and 2,000 imported CSV rows in total. The Business plan lifts every one of those limits and includes 20 team members.",
 	],
 	[
 		"What happens if I need to cancel my subscription?",

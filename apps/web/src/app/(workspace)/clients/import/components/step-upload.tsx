@@ -42,7 +42,7 @@ export function StepUpload({
 			<div className="space-y-2">
 				<CsvUploadZone onFileSelect={onFileSelect} disabled={isAnalyzing} />
 				<p className="text-center text-xs text-muted-foreground">
-					Imports are limited to 2,000 rows per day.
+					Free plans include 2,000 imported rows in total; Business has no limit.
 				</p>
 			</div>
 

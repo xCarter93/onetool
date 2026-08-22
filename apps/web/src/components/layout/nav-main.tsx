@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { ChevronRight, Plus, Lock, type LucideIcon } from "lucide-react";
+import { ChevronRight, Plus, type LucideIcon } from "lucide-react";
 import {
 	ActionGlyph,
 	type ActionGlyphName,
@@ -57,7 +57,6 @@ type NavItem = {
 		title: string;
 		url: string;
 		isActive?: boolean;
-		isLocked?: boolean;
 	}[];
 };
 
@@ -381,34 +380,12 @@ export function NavMain({
 											<SidebarMenuSub>
 												{item.items.map((subItem) => (
 													<SidebarMenuSubItem key={subItem.title}>
-														{subItem.isLocked ? (
-															<Tooltip>
-																<TooltipTrigger
-																	render={
-																		<SidebarMenuSubButton
-																			className="opacity-60 cursor-not-allowed"
-																			onClick={(e) => e.preventDefault()}
-																		/>
-																	}
-																>
-																	<Lock className="mr-2 h-3 w-3" />
-																	<span>{subItem.title}</span>
-																</TooltipTrigger>
-																<TooltipContent>
-																	<div className="space-y-1">
-																		<p className="font-semibold">Premium Feature</p>
-																		<p>Upgrade to access {subItem.title}</p>
-																	</div>
-																</TooltipContent>
-															</Tooltip>
-														) : (
-															<SidebarMenuSubButton
-																render={<Link href={subItem.url} />}
-																isActive={subItem.isActive}
-															>
-																<span>{subItem.title}</span>
-															</SidebarMenuSubButton>
-														)}
+														<SidebarMenuSubButton
+															render={<Link href={subItem.url} />}
+															isActive={subItem.isActive}
+														>
+															<span>{subItem.title}</span>
+														</SidebarMenuSubButton>
 													</SidebarMenuSubItem>
 												))}
 											</SidebarMenuSub>

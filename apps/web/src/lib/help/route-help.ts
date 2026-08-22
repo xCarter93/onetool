@@ -24,7 +24,7 @@ export const ROUTE_HELP: Array<{ pattern: RegExp; refs: string[] }> = [
 	},
 	{
 		pattern: /^\/clients\/import/,
-		refs: ["clients/importing-clients", "clients/managing-clients"],
+		refs: ["clients/importing-clients", "clients/managing-clients", "settings-and-team/limits-and-fair-use"],
 	},
 	{
 		pattern: /^\/clients\/[^/]+$/,
@@ -63,6 +63,7 @@ export const ROUTE_HELP: Array<{ pattern: RegExp; refs: string[] }> = [
 			"quotes/creating-a-quote",
 			"quotes/sending-quotes-and-approvals",
 			"quotes/e-signatures",
+			"settings-and-team/limits-and-fair-use",
 		],
 	},
 	{
@@ -71,6 +72,7 @@ export const ROUTE_HELP: Array<{ pattern: RegExp; refs: string[] }> = [
 			"invoices-and-payments/creating-an-invoice",
 			"invoices-and-payments/payment-schedules",
 			"invoices-and-payments/getting-paid",
+			"settings-and-team/limits-and-fair-use",
 		],
 	},
 	{
@@ -79,7 +81,7 @@ export const ROUTE_HELP: Array<{ pattern: RegExp; refs: string[] }> = [
 	},
 	{
 		pattern: /^\/reports/,
-		refs: ["reports/building-a-report", "reports/report-presets"],
+		refs: ["reports/building-a-report", "reports/report-presets", "settings-and-team/limits-and-fair-use"],
 	},
 	{
 		pattern: /^\/automations/,
@@ -106,6 +108,7 @@ export const ROUTE_HELP: Array<{ pattern: RegExp; refs: string[] }> = [
 			"settings-and-team/organization-profile",
 			"settings-and-team/inviting-your-team",
 			"settings-and-team/plans-and-billing",
+			"settings-and-team/limits-and-fair-use",
 			"settings-and-team/setting-up-online-payments",
 			"settings-and-team/quickbooks-sync",
 			"settings-and-team/documents-and-skus",

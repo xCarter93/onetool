@@ -20,6 +20,7 @@ import {
 	FileSignature,
 	FolderOpen,
 	Headphones,
+	Loader2,
 	MessageSquare,
 	Package,
 	RefreshCw,
@@ -240,6 +241,10 @@ export function BillingTab() {
 	const canManageBilling = can("billing", "modify");
 	const drawerAppearance = useBillingDrawerAppearance();
 	const [period, setPeriod] = React.useState<BillingPeriod>("annual");
+	// Checkout finished but the billing webhook hasn't flipped the org doc yet.
+	// hasClerkSubscription updates reactively, so the pending state clears itself.
+	const [checkoutDone, setCheckoutDone] = React.useState(false);
+	const isActivating = checkoutDone && !hasClerkSubscription;
 
 	const businessPlan = plans?.find((plan) => plan.slug === BUSINESS_PLAN_SLUG);
 
@@ -284,7 +289,12 @@ export function BillingTab() {
 				title="Plan & Billing"
 				description="Manage your subscription and see everything included in each plan."
 				aside={
-					isBusiness ? (
+					isActivating ? (
+						<Badge variant="warning-light" radius="full" className="gap-1.5 px-3">
+							<Loader2 className="size-3.5 animate-spin" aria-hidden="true" />
+							Activating
+						</Badge>
+					) : isBusiness ? (
 						<Badge variant="warning-light" radius="full" className="gap-1.5 px-3">
 							<Crown className="size-3.5" aria-hidden="true" />
 							{planLabel}
@@ -320,11 +330,13 @@ export function BillingTab() {
 									{planLabel}
 								</p>
 								<p className="mt-0.5 text-sm text-muted-foreground">
-									{isTrial
-										? "Full access to every OneTool feature during your trial."
-										: isBusiness
-											? "Full access to every OneTool feature."
-											: "Core features with usage limits."}
+									{isActivating
+										? "Payment received. Your Business plan is activating; this takes a few seconds."
+										: isTrial
+											? "Full access to every OneTool feature during your trial."
+											: isBusiness
+												? "Full access to every OneTool feature."
+												: "Core features with usage limits."}
 								</p>
 							</div>
 						</div>
@@ -458,6 +470,11 @@ export function BillingTab() {
 													<span className="mt-1 text-xs text-muted-foreground">
 														Ask an admin to {isBusiness ? "subscribe" : "upgrade"}
 													</span>
+												) : isActivating ? (
+													<Button size="sm" className="mt-1" disabled>
+														<Loader2 className="size-3.5 animate-spin" />
+														Activating plan…
+													</Button>
 												) : businessPlan ? (
 													<SignedIn>
 														<CheckoutButton
@@ -466,7 +483,7 @@ export function BillingTab() {
 															planPeriod={period}
 															newSubscriptionRedirectUrl="/organization/profile?tab=billing"
 															onSubscriptionComplete={() => {
-																window.location.reload();
+																setCheckoutDone(true);
 															}}
 															checkoutProps={{ appearance: drawerAppearance }}
 														>

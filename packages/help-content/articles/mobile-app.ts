@@ -49,7 +49,7 @@ export const mobileAppArticles: HelpArticle[] = [
 					},
 					{
 						type: "paragraph",
-						text: "A magnifier in the header of the other tabs jumps straight to Work with the search field ready. The center button opens the AI assistant, a Business plan feature. See [Meet the assistant](/help/ai-assistant/meet-the-assistant).",
+						text: "A magnifier in the header of the other tabs jumps straight to Work with the search field ready. The center button opens the AI assistant. In the current app version the assistant needs the Business plan; on the web it is available on every plan, and an app update to match is on the way. See [Meet the assistant](/help/ai-assistant/meet-the-assistant).",
 					},
 				],
 			},
@@ -66,7 +66,7 @@ export const mobileAppArticles: HelpArticle[] = [
 							"**New project** is built for speed: pick a client, type a title, optionally set a start date, and it's created. If the client isn't in OneTool yet, tap **+ New client** inside the picker to add them with just a name and phone without leaving the form. You can also start a project straight from a client's detail screen.",
 							"**New quote** picks a client and creates a draft, then opens it so you can add line items right away.",
 							"**New task** and **New client** open the full forms you already know.",
-							"On the Free plan, the 10-client and 3-active-projects-per-client limits apply here the same as on the web, and the app tells you when you've hit one.",
+							"Clients and projects are unlimited on every plan, so creating from the app is never capped. The Free plan's monthly document send meter applies the same as on the web. The current app version shows a generic send error when the allowance runs out; the Billing tab on the web names the limit.",
 						],
 					},
 				],
