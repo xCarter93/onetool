@@ -414,7 +414,8 @@ http.route({
 			status?: string;
 			plan_id?: string;
 			// On subscriptionItem.* events the data IS the item, so the plan
-			// (with slug) sits at the top level.
+			// (with slug) sits at the top level. All Clerk billing timestamps
+			// are Unix MILLISECONDS (per @clerk/backend's payload types).
 			plan?: { id?: string; slug?: string };
 			current_period_start?: number;
 			period_start?: number;
@@ -426,6 +427,7 @@ http.route({
 			items?: Array<{
 				status?: string;
 				plan?: { id?: string; slug?: string };
+				period_start?: number;
 			}>;
 		}
 
@@ -441,6 +443,18 @@ http.route({
 				activeItems.find(
 					(item) => item.plan?.slug && !item.plan.slug.startsWith("free_")
 				)?.plan ?? activeItems[0]?.plan
+			);
+		}
+
+		// subscription.* payloads have no top-level current_period_start; the
+		// per-item period_start (already milliseconds) is the real source.
+		function getSubscriptionPeriodStart(
+			data: BillingWebhookData
+		): number | undefined {
+			return (
+				data.current_period_start ??
+				(data.items ?? []).find((item) => item.status === "active")
+					?.period_start
 			);
 		}
 
@@ -495,9 +509,7 @@ http.route({
 						planId: activePlan?.id || data.plan_id || data.plan?.id || "",
 						planSlug: activePlan?.slug,
 						status: data.status || "active",
-						currentPeriodStart: data.current_period_start
-							? secondsToMilliseconds(data.current_period_start)
-							: undefined,
+						currentPeriodStart: getSubscriptionPeriodStart(data),
 					}
 				);
 				break;
@@ -520,9 +532,7 @@ http.route({
 						organizationId: organizationId,
 						planId: activePlan?.id || data.plan_id || data.plan?.id || "",
 						planSlug: activePlan?.slug,
-						currentPeriodStart: data.current_period_start
-							? secondsToMilliseconds(data.current_period_start)
-							: undefined,
+						currentPeriodStart: getSubscriptionPeriodStart(data),
 					}
 				);
 				break;
@@ -548,9 +558,7 @@ http.route({
 						planId: activePlan?.id || data.plan_id || data.plan?.id || "",
 						planSlug: activePlan?.slug,
 						status: data.status || "active",
-						currentPeriodStart: data.current_period_start
-							? secondsToMilliseconds(data.current_period_start)
-							: undefined,
+						currentPeriodStart: getSubscriptionPeriodStart(data),
 					}
 				);
 				break;
@@ -612,10 +620,8 @@ http.route({
 						planId: data.plan?.id,
 						planSlug: slug,
 						status: data.status,
-						currentPeriodStart:
-							data.period_start !== undefined
-								? secondsToMilliseconds(data.period_start)
-								: undefined,
+						// Already milliseconds — do NOT convert.
+						currentPeriodStart: data.period_start,
 					}
 				);
 				break;

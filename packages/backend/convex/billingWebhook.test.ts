@@ -171,6 +171,24 @@ describe("Clerk billing webhook handlers", () => {
 		expect(org.subscriptionStatus).toBe("incomplete");
 	});
 
+	it("an item event with an unrecognized status is rejected, not written", async () => {
+		await makePremium();
+		const result = await t.mutation(
+			internal.billingWebhook.handleSubscriptionItemEvent,
+			{
+				eventType: "subscriptionItem.created",
+				organizationId: clerkOrgId,
+				planSlug: PREMIUM_PLAN_SLUG,
+				status: "some_future_status",
+			}
+		);
+		expect(result).toMatchObject({
+			success: false,
+			error: "Unmapped item event",
+		});
+		expect((await getOrg()).subscriptionStatus).toBe("active");
+	});
+
 	it("informational item events change nothing", async () => {
 		await makePremium();
 		for (const eventType of [
@@ -238,6 +256,23 @@ describe("billing reconcile", () => {
 			await ctx.db.patch(orgId, { billingSyncedAt: Date.now() });
 		});
 		result = await t.query(internal.billingWebhook.listStaleBillingOrgs, {
+			staleMs: 48 * 60 * 60 * 1000,
+			limit: 10,
+			cursor: null,
+		});
+		expect(result.stale).toEqual([]);
+	});
+
+	it("markBillingSyncAttempt stamps billingSyncedAt so the org leaves the stale list", async () => {
+		await t.run(async (ctx) => {
+			await ctx.db.patch(orgId, { clerkSubscriptionId: "sub_1" });
+		});
+		await t.mutation(internal.billingWebhook.markBillingSyncAttempt, {
+			orgId,
+		});
+		const org = await t.run(async (ctx) => ctx.db.get(orgId));
+		expect(org?.billingSyncedAt).toBeDefined();
+		const result = await t.query(internal.billingWebhook.listStaleBillingOrgs, {
 			staleMs: 48 * 60 * 60 * 1000,
 			limit: 10,
 			cursor: null,

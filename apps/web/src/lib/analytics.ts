@@ -1,4 +1,5 @@
 import posthog from "posthog-js";
+import type { PlanSource } from "@onetool/backend";
 
 /** The backend-resolved plan (overrides, trial, and grace included). */
 export type AnalyticsPlanType = "free" | "business";
@@ -14,7 +15,7 @@ export interface AnalyticsUserProperties {
 export interface AnalyticsOrgProperties {
 	name: string;
 	planType: AnalyticsPlanType;
-	planSource: string;
+	planSource: PlanSource;
 	stripeConnected: boolean;
 	memberCount?: number;
 }
@@ -39,7 +40,10 @@ export function identifyUser(userId: string, props: AnalyticsUserProperties) {
  * Person-level plan from entitlements.getMine — the same resolution the
  * server enforces, so override-holders no longer report as free.
  */
-export function setPersonPlan(planType: AnalyticsPlanType, planSource: string) {
+export function setPersonPlan(
+	planType: AnalyticsPlanType,
+	planSource: PlanSource
+) {
 	posthog.setPersonProperties({
 		plan_type: planType,
 		plan_source: planSource,

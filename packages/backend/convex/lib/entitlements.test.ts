@@ -174,6 +174,7 @@ describe("map values encode today's packaging", () => {
 		for (const row of Object.values(FEATURES)) {
 			expect(row.free).toBe(false);
 			expect(row.business).toBe(true);
+			expect(row.enforce).toBe(true);
 		}
 	});
 

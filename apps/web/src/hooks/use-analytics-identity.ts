@@ -90,14 +90,15 @@ export function useAnalyticsIdentity() {
 	useEffect(() => {
 		if (!isSignedIn || !organization) return;
 		if (!orgData || !entitlements) return;
-		const key = `${organization.id}:${entitlements.plan}:${entitlements.source}`;
+		const stripeConnected = !!orgData.stripeConnectAccountId;
+		const key = `${organization.id}:${entitlements.plan}:${entitlements.source}:${stripeConnected}`;
 		if (lastGroupPlanSent.current === key) return;
 
 		setOrganizationGroup(organization.id, {
 			name: organization.name,
 			planType: entitlements.plan,
 			planSource: entitlements.source,
-			stripeConnected: !!orgData.stripeConnectAccountId,
+			stripeConnected,
 		});
 
 		lastGroupPlanSent.current = key;

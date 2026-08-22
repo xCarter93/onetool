@@ -202,7 +202,10 @@ export const handleSubscriptionCreated = internalMutation({
 			// undefined would unset the field.
 			...(args.planSlug !== undefined ? { clerkPlanSlug: args.planSlug } : {}),
 			...(status !== null ? { subscriptionStatus: status } : {}),
-			billingCycleStart: args.currentPeriodStart || Date.now(),
+			// Prefer the event's period start; keep the existing value when the
+			// event omits it; Date.now() only when neither exists.
+			billingCycleStart:
+				args.currentPeriodStart ?? org.billingCycleStart ?? Date.now(),
 		});
 
 		logWebhookSuccess(WEBHOOK_SERVICE, "subscription.created", org._id);
@@ -234,7 +237,8 @@ export const handleSubscriptionActive = internalMutation({
 			clerkPlanId: args.planId,
 			...(args.planSlug !== undefined ? { clerkPlanSlug: args.planSlug } : {}),
 			subscriptionStatus: "active",
-			billingCycleStart: args.currentPeriodStart || Date.now(),
+			billingCycleStart:
+				args.currentPeriodStart ?? org.billingCycleStart ?? Date.now(),
 		});
 
 		logWebhookSuccess(WEBHOOK_SERVICE, "subscription.active", org._id);
@@ -313,6 +317,17 @@ export const handleSubscriptionPastDue = internalMutation({
 // Subscription Item Handlers
 // ============================================================================
 
+/**
+ * Pre-live item statuses: a plan-period switch or reopened checkout creates a
+ * SECOND paid item in one of these states — it must never displace a live
+ * subscription (writing "incomplete" over "active" would lock a paying org).
+ */
+const PRE_LIVE_STATUSES: ReadonlySet<SubscriptionStatus> = new Set([
+	"incomplete",
+	"upcoming",
+	"abandoned",
+]);
+
 /** Item-level statuses that map straight onto the org mirror. */
 const ITEM_STATUS_BY_EVENT: Record<string, SubscriptionStatus> = {
 	"subscriptionItem.active": "active",
@@ -374,15 +389,6 @@ export const handleSubscriptionItemEvent = internalMutation({
 			return { success: false, error: "Unmapped item event" };
 		}
 
-		// A plan-period switch or reopened checkout creates a SECOND paid item in
-		// a pre-live state and fires created/updated for it. That sibling must
-		// never displace a live subscription — writing "incomplete" over "active"
-		// would lock a paying org instantly (the pre-P1 gates have no grace).
-		const PRE_LIVE_STATUSES: ReadonlySet<SubscriptionStatus> = new Set([
-			"incomplete",
-			"upcoming",
-			"abandoned",
-		]);
 		const mirrorIsLive =
 			org.subscriptionStatus === "active" ||
 			org.subscriptionStatus === "trialing";
