@@ -13,8 +13,11 @@
 .react-flow.light,
 .react-flow.dark {
 	/* Canvas paint. In light this matches the workspace paper; nodes lift via
-	   their own lighter card + border. */
+	   their own lighter card + border. The --xy var also covers the <Background>
+	   svg, which paints its own background-color over the container (dark-mode
+	   default #141414) and would otherwise mask this. */
 	background-color: var(--background);
+	--xy-background-color: var(--background);
 
 	/* Connector palette — the single source every edge stroke, arrowhead, and
 	   label pill reads from (see edge-style.ts). */
@@ -97,17 +100,12 @@ html:not(.dark) .react-flow {
 	--border: oklch(0.85 0.007 265);
 }
 
-/* Dark: the default card and canvas are near-identical in lightness, so nodes
-   vanish into the background. Deepen the canvas AND raise the card to a clearly
-   lighter "raised surface", with a crisper border, scoped to the flow so the
-   rest of the workspace is untouched. `bg-card` / `border-border` on the node
-   cards resolve these overrides (Tailwind v4 `@theme inline`).
-   The token itself is overridden (not just background-color) so on-canvas
-   maskers using bg-background (trigger eyebrow, label pills, plus buttons)
-   keep matching the deepened canvas; the loop hover emphasis also softens
-   against the deep canvas. */
+/* Dark: the canvas stays on the app's --background so the editor matches the
+   rest of the workspace; the default card is near-identical in lightness to
+   it, so raise the card to a clearly lighter "raised surface" with a crisper
+   border, scoped to the flow. `bg-card` / `border-border` on the node cards
+   resolve these overrides (Tailwind v4 `@theme inline`). */
 .dark .react-flow {
-	--background: oklch(0.125 0.022 264);
 	--card: oklch(0.205 0.009 264);
 	--border: oklch(0.32 0.012 270);
 	--flow-edge-loop-strong: var(--color-orange-300);
