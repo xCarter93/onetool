@@ -5,13 +5,14 @@ import { useRouter } from "next/navigation";
 import { Lock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { LearnMoreLink } from "@/components/help/learn-more";
-import { useFeatureAccess } from "@/hooks/use-feature-access";
+import { useEntitlements } from "@/hooks/use-entitlements";
 import { useRoleAccess } from "@/hooks/use-role-access";
 
 export function PremiumGate({ children }: { children: ReactNode }) {
 	const router = useRouter();
 	const { isAdmin, isLoading: roleLoading } = useRoleAccess();
-	const { hasPremiumAccess, isLoading: featureLoading } = useFeatureAccess();
+	const { isBusiness: hasPremiumAccess, isLoading: featureLoading } =
+		useEntitlements();
 
 	if (roleLoading || featureLoading) {
 		return (

@@ -18,8 +18,8 @@ import type { PermissionObject } from "@onetool/backend/convex/lib/permissionKey
 export interface NavSubItem {
 	title: string;
 	url: string;
-	/** Locked behind the paid plan (renders a lock for free orgs). */
-	requiresPremium?: boolean;
+	/** Entitlement row that unlocks this sub-item (renders a lock when denied). */
+	featureKey?: "stripeConnect" | "orgDocuments" | "customSkus" | "quickbooks";
 	/** Grant required to see this sub-item; absent = admin-only. */
 	permission?: PermissionObject;
 }
@@ -152,24 +152,24 @@ export const NAV_GROUPS: NavGroup[] = [
 					{
 						title: "Payments",
 						url: "/organization/profile?tab=payments",
-						requiresPremium: true,
+						featureKey: "stripeConnect",
 					},
 					{
 						title: "Documents",
 						url: "/organization/profile?tab=documents",
-						requiresPremium: true,
+						featureKey: "orgDocuments",
 						permission: "orgDocuments",
 					},
 					{
 						title: "SKUs",
 						url: "/organization/profile?tab=skus",
-						requiresPremium: true,
+						featureKey: "customSkus",
 						permission: "skus",
 					},
 					{
 						title: "Integrations",
 						url: "/organization/profile?tab=integrations",
-						requiresPremium: true,
+						featureKey: "quickbooks",
 					},
 				],
 			},

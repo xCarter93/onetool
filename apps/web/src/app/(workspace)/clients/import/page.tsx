@@ -4,12 +4,13 @@ import { Suspense } from "react";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { PermissionGate } from "@/components/domain/permission-gate";
-import { useFeatureAccess } from "@/hooks/use-feature-access";
+import { useEntitlements } from "@/hooks/use-entitlements";
 import { ImportWizard } from "./components/import-wizard";
 
 function ImportPageContent() {
 	const router = useRouter();
-	const { hasPremiumAccess, isLoading } = useFeatureAccess();
+	const { allows, isLoading } = useEntitlements();
+	const hasPremiumAccess = allows("llmCsvImport");
 
 	useEffect(() => {
 		if (!isLoading && !hasPremiumAccess) {

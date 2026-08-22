@@ -11,15 +11,27 @@ import {
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
 import { SidebarGroup } from "@/components/ui/sidebar";
-import { useFeatureAccess } from "@/hooks/use-feature-access";
+import { useAuth } from "@clerk/nextjs";
+import { useEntitlements } from "@/hooks/use-entitlements";
 import { usePermissions } from "@/hooks/use-permissions";
-import {
-	formatLimit,
-	getUsagePercentage,
-	isAtLimit,
-	isNearLimit,
-} from "@/lib/plan-limits";
 import { cn } from "@/lib/utils";
+
+// Meter limits arrive from the entitlements query, where null = unlimited.
+function formatLimit(limit: number | null): string {
+	return limit === null ? "Unlimited" : limit.toString();
+}
+
+function isAtLimit(used: number, limit: number | null): boolean {
+	return limit === null ? false : used >= limit;
+}
+
+function isNearLimit(used: number, limit: number | null): boolean {
+	return limit === null ? false : used >= limit * 0.8;
+}
+
+function getUsagePercentage(used: number, limit: number | null): number {
+	return limit === null ? 0 : Math.min(100, (used / limit) * 100);
+}
 
 function UsageMeter({
 	icon,
@@ -30,7 +42,7 @@ function UsageMeter({
 	icon: React.ReactNode;
 	label: string;
 	used: number;
-	limit: number | "unlimited";
+	limit: number | null;
 }) {
 	const indicatorClass = isAtLimit(used, limit)
 		? "**:data-[slot=progress-indicator]:bg-destructive"
@@ -81,16 +93,13 @@ function UsageMeter({
  */
 export function PlanUsageCard() {
 	const router = useRouter();
-	const {
-		hasPremiumAccess,
-		hasOrganization,
-		planLimits,
-		currentUsage,
-		isLoading,
-	} = useFeatureAccess();
+	const { isBusiness, isLoading, meter } = useEntitlements();
+	const { orgId } = useAuth();
 	const { can } = usePermissions();
+	const clientsMeter = meter("clients");
+	const esignaturesMeter = meter("esignatures");
 
-	if (isLoading || hasPremiumAccess || !hasOrganization || !currentUsage) {
+	if (isLoading || isBusiness || !orgId || !clientsMeter || !esignaturesMeter) {
 		return null;
 	}
 
@@ -104,14 +113,14 @@ export function PlanUsageCard() {
 					<UsageMeter
 						icon={<Briefcase className="size-3.5" />}
 						label="Clients"
-						used={currentUsage.clientsCount}
-						limit={planLimits.clients}
+						used={clientsMeter.used}
+						limit={clientsMeter.limit}
 					/>
 					<UsageMeter
 						icon={<FileSignature className="size-3.5" />}
 						label="E-signatures"
-						used={currentUsage.esignaturesSentThisMonth}
-						limit={planLimits.esignaturesPerMonth}
+						used={esignaturesMeter.used}
+						limit={esignaturesMeter.limit}
 					/>
 					{can("billing") && (
 						<Button

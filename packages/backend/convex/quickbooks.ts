@@ -6,7 +6,11 @@ import type { Doc, Id } from "./_generated/dataModel";
 import { userMutation, userQuery } from "./lib/factories";
 import type { UserMutationCtx, UserQueryCtx } from "./lib/factories";
 import { getCurrentUserOrgId, getCurrentUserOrThrow } from "./lib/auth";
-import { hasPremiumAccess } from "./lib/permissions";
+import {
+	entitlementsFromIdentity,
+	isFeatureAllowed,
+	requireFeature,
+} from "./lib/entitlements";
 import { formatCurrency } from "./lib/money";
 import { maybeEnqueueQboSync } from "./lib/quickbooksEnqueue";
 import { createActivity } from "./lib/activities";
@@ -55,11 +59,7 @@ async function requireOrgOwner(ctx: UserMutationCtx): Promise<void> {
 }
 
 async function requirePremium(ctx: UserMutationCtx): Promise<void> {
-	if (!(await hasPremiumAccess(ctx))) {
-		throw new ConvexError(
-			"QuickBooks sync is available on the Business plan. Upgrade to use it."
-		);
-	}
+	await requireFeature(ctx, "quickbooks");
 }
 
 // ============================================================================
@@ -70,7 +70,7 @@ async function requirePremium(ctx: UserMutationCtx): Promise<void> {
 export const getConnectionStatus = userQuery({
 	args: {},
 	handler: async (ctx): Promise<PublicQboConnection | null> => {
-		if (!(await hasPremiumAccess(ctx))) {
+		if (!isFeatureAllowed((await entitlementsFromIdentity(ctx)).plan, "quickbooks")) {
 			return null;
 		}
 		const connection = await connectionForOrg(ctx, ctx.orgId);
@@ -303,7 +303,7 @@ export const authorizeConnectionSetup = internalQuery({
 		if (organization.ownerUserId !== user._id) {
 			throw new ConvexError("not_owner");
 		}
-		if (!(await hasPremiumAccess(ctx))) {
+		if (!isFeatureAllowed((await entitlementsFromIdentity(ctx)).plan, "quickbooks")) {
 			throw new ConvexError("not_premium");
 		}
 		return { orgId };
@@ -355,7 +355,7 @@ export const storeConnection = internalMutation({
 		if (organization.ownerUserId !== user._id) {
 			throw new ConvexError("not_owner");
 		}
-		if (!(await hasPremiumAccess(ctx))) {
+		if (!isFeatureAllowed((await entitlementsFromIdentity(ctx)).plan, "quickbooks")) {
 			throw new ConvexError("not_premium");
 		}
 
@@ -1132,7 +1132,7 @@ export interface QboEntityLinkView {
 export const getEntityLink = userQuery({
 	args: { entityType: QBO_ENTITY_TYPE, localId: v.string() },
 	handler: async (ctx, args): Promise<QboEntityLinkView | null> => {
-		if (!(await hasPremiumAccess(ctx))) return null;
+		if (!isFeatureAllowed((await entitlementsFromIdentity(ctx)).plan, "quickbooks")) return null;
 		const connection = await connectionForOrg(ctx, ctx.orgId);
 		if (!connection || connection.status === "disconnected") return null;
 
@@ -1200,7 +1200,7 @@ async function describeEntity(
 export const listSyncErrors = userQuery({
 	args: {},
 	handler: async (ctx): Promise<QboSyncErrorView[]> => {
-		if (!(await hasPremiumAccess(ctx))) return [];
+		if (!isFeatureAllowed((await entitlementsFromIdentity(ctx)).plan, "quickbooks")) return [];
 
 		const failed = await ctx.db
 			.query("quickbooksSyncJobs")
@@ -1236,11 +1236,7 @@ export const listSyncErrors = userQuery({
 
 /** Error-center actions are member-accessible; only premium orgs have jobs. */
 async function requirePremiumMember(ctx: UserMutationCtx): Promise<void> {
-	if (!(await hasPremiumAccess(ctx))) {
-		throw new ConvexError(
-			"QuickBooks sync is available on the Business plan. Upgrade to use it."
-		);
-	}
+	await requireFeature(ctx, "quickbooks");
 }
 
 export const retryJob = userMutation({

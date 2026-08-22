@@ -2,11 +2,8 @@ import { Doc, Id } from "../../_generated/dataModel";
 import { MutationCtx } from "../../_generated/server";
 import { trackServerException } from "../posthog";
 import { ActivityHelpers } from "../activities";
-import {
-	isAdminRole,
-	orgHasPremiumPlan,
-	userHasPremiumOverride,
-} from "../permissions";
+import { isAdminRole } from "../permissions";
+import { entitlementsFromDocs, isFeatureAllowed } from "../entitlements";
 import { getMembership, listMembershipsByOrg } from "../memberships";
 import { celebrateQuoteApproved, celebrateInvoicePaid } from "../celebrations";
 import { insertTeamMessage } from "../../teamMessages";
@@ -1193,7 +1190,7 @@ export async function executeCreateRecordAction(
 	const { payload } = built;
 
 	const org = await ctx.db.get(env.orgId);
-	if (!orgHasPremiumPlan(org)) {
+	if (entitlementsFromDocs(org).plan !== "business") {
 		const capError = await checkCreateRecordPlanCap(
 			ctx,
 			objectType,
@@ -1942,9 +1939,11 @@ async function executeSendEmailAction(
 
 	// Identity-less premium gate (cron/event runs have no JWT) — same pair of
 	// webhook-synced signals the scheduled-run gate uses. Free plan sends 0.
-	const premium =
-		orgHasPremiumPlan(org) ||
-		userHasPremiumOverride(await ctx.db.get(env.automation.createdBy));
+	const creator = await ctx.db.get(env.automation.createdBy);
+	const premium = isFeatureAllowed(
+		entitlementsFromDocs(org, creator).plan,
+		"automationEmails"
+	);
 	if (!premium) {
 		return {
 			success: true,

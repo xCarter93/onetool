@@ -31,10 +31,8 @@ import { CommandPaletteTrigger } from "@/components/layout/command-palette";
 import { PlanUsageCard } from "@/components/layout/plan-usage-card";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { useQuery } from "convex/react";
-import {
-	useFeatureAccess,
-	useCanPerformAction,
-} from "@/hooks/use-feature-access";
+import { useAuth } from "@clerk/nextjs";
+import { useEntitlements } from "@/hooks/use-entitlements";
 import { useRoleAccess } from "@/hooks/use-role-access";
 import { useIsOrgSwitching } from "@/hooks/use-is-org-switching";
 import { usePermissions } from "@/hooks/use-permissions";
@@ -145,18 +143,27 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 	);
 	const inboxBadgeCount =
 		isOrgSwitching || inboxUnread === undefined ? 0 : inboxUnread;
-	const { hasOrganization, hasPremiumAccess } = useFeatureAccess();
+	const { orgId } = useAuth();
+	const hasOrganization = !!orgId;
+	const { allows, meter } = useEntitlements();
 	const { isAdmin, isMember } = useRoleAccess();
 	const isCommunityEnabled = useFeatureFlagEnabled("community-pages-access");
 	const isAutomationsEnabled = useFeatureFlagEnabled("workflow-automation-access");
 
 	// Check if user can create new clients
-	const {
-		canPerform: canCreateClient,
-		reason: clientLimitReason,
-		currentUsage: clientCurrentUsage,
-		limit: clientLimit,
-	} = useCanPerformAction("create_client");
+	const clientsMeter = meter("clients");
+	const atClientLimit =
+		!!clientsMeter &&
+		clientsMeter.remaining !== null &&
+		clientsMeter.remaining <= 0;
+	const canCreateClient = !atClientLimit;
+	const clientLimitReason = atClientLimit
+		? `You've reached your limit of ${clientsMeter.limit} clients. Upgrade to add more.`
+		: undefined;
+	const clientCurrentUsage = clientsMeter?.used;
+	const clientLimit = clientsMeter
+		? (clientsMeter.limit ?? ("unlimited" as const))
+		: undefined;
 
 	// Visibility predicates live in nav-config.tsx (shared with the ⌘K palette).
 	const navVisibility: NavVisibilityContext = {
@@ -175,7 +182,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 			.map((subItem) => ({
 				...subItem,
 				isActive: isSubItemActive(subItem, item, pathname, currentParams),
-				isLocked: subItem.requiresPremium && !hasPremiumAccess,
+				isLocked: !!subItem.featureKey && !allows(subItem.featureKey),
 			}));
 
 		const isActive =

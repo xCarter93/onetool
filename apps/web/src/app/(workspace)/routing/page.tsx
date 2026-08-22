@@ -26,7 +26,7 @@ import {
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useToast } from "@/hooks/use-toast";
-import { useFeatureAccess } from "@/hooks/use-feature-access";
+import { useEntitlements } from "@/hooks/use-entitlements";
 import { usePublishScreenContext } from "@/components/assistant/use-screen-context";
 import { usePublishCurrentRecord } from "@/components/assistant/use-current-record";
 import type { AddressData } from "@/components/ui/address-autocomplete";
@@ -78,7 +78,8 @@ function stopsFromRoute(route: Doc<"routes">): StopDraft[] {
 type RoutingView = "today" | "saved";
 
 function RoutingWorkspace() {
-	const { hasPremiumAccess, isLoading: accessLoading } = useFeatureAccess();
+	const { allows, isLoading: accessLoading } = useEntitlements();
+	const hasPremiumAccess = allows("routing");
 	const toast = useToast();
 
 	const savedRoutes = useQuery(api.routes.list);

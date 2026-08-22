@@ -20,8 +20,9 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/reui/badge";
 import { EmptyState } from "@/components/domain/empty-state";
 import { useToast } from "@/hooks/use-toast";
-import { useFeatureAccess } from "@/hooks/use-feature-access";
+import { useEntitlements } from "@/hooks/use-entitlements";
 import { usePermissions } from "@/hooks/use-permissions";
+import type { FeatureKey } from "@onetool/backend";
 import type { PermissionObject } from "@onetool/backend/convex/lib/permissionKeys";
 import { useOrgOwner } from "./_hooks/use-org-owner";
 import {
@@ -54,12 +55,14 @@ const TAB_VALUES = [
 ] as const;
 type TabValue = (typeof TAB_VALUES)[number];
 
-const PREMIUM_TABS: readonly TabValue[] = [
-	"payments",
-	"documents",
-	"skus",
-	"integrations",
-];
+// Plan gating per tab, resolved through entitlements.getMine (§P1). Billing is
+// intentionally absent — free orgs need it to upgrade.
+const TAB_FEATURE: Partial<Record<TabValue, FeatureKey>> = {
+	payments: "stripeConnect",
+	documents: "orgDocuments",
+	skus: "customSkus",
+	integrations: "quickbooks",
+};
 
 // Granular-permission gating per tab (§5.4); tabs absent here are role/premium-gated only.
 const TAB_PERMISSIONS: Partial<Record<TabValue, PermissionObject>> = {
@@ -138,7 +141,7 @@ export default function OrganizationProfilePage() {
 	const router = useRouter();
 	const searchParams = useSearchParams();
 	const toast = useToast();
-	const { hasPremiumAccess, isLoading: featureLoading } = useFeatureAccess();
+	const { allows, isLoading: featureLoading } = useEntitlements();
 	const { can, hasFullAccess, isLoading: permsLoading } = usePermissions();
 	const { organization, isLoading } = useOrgOwner();
 
@@ -151,8 +154,11 @@ export default function OrganizationProfilePage() {
 	// handleTabChange. Once access resolves, deny premium tabs to non-premium users:
 	// render the overview and replace the URL to match. (This is UI gating only —
 	// the durable boundary must live in the backend.)
+	const activeTabFeature = TAB_FEATURE[activeTab];
 	const deniedPremium =
-		!featureLoading && PREMIUM_TABS.includes(activeTab) && !hasPremiumAccess;
+		!featureLoading &&
+		activeTabFeature !== undefined &&
+		!allows(activeTabFeature);
 	const tabPermission = TAB_PERMISSIONS[activeTab];
 	// Role/grant denials render an in-place no-access panel (no redirect, no
 	// error toast) — pasting ?tab=payments as a member shows the empty state.
@@ -192,7 +198,8 @@ export default function OrganizationProfilePage() {
 			}
 
 			// Block premium features without premium access
-			if (PREMIUM_TABS.includes(value) && !hasPremiumAccess) {
+			const feature = TAB_FEATURE[value];
+			if (feature !== undefined && !allows(feature)) {
 				toast.error("Premium Feature", "Upgrade to access this feature");
 				return;
 			}
@@ -217,7 +224,7 @@ export default function OrganizationProfilePage() {
 					: `/organization/profile?${params.toString()}`;
 			router.push(newUrl);
 		},
-		[router, hasPremiumAccess, toast, can, permsLoading, hasFullAccess],
+		[router, allows, toast, can, permsLoading, hasFullAccess],
 	);
 
 	// The Integrations tab is the front door for payments setup; the Payments tab
@@ -257,7 +264,8 @@ export default function OrganizationProfilePage() {
 				label: "Payments",
 				sublabel: "Stripe & payouts",
 				icon: CreditCard,
-				locked: !hasPremiumAccess || (!permsLoading && !hasFullAccess),
+				locked:
+					!allows("stripeConnect") || (!permsLoading && !hasFullAccess),
 			},
 			{
 				value: "documents",
@@ -265,24 +273,24 @@ export default function OrganizationProfilePage() {
 				sublabel: "Team file library",
 				icon: FileText,
 				locked:
-					!hasPremiumAccess || (!permsLoading && !can("orgDocuments")),
+					!allows("orgDocuments") || (!permsLoading && !can("orgDocuments")),
 			},
 			{
 				value: "skus",
 				label: "SKUs",
 				sublabel: "Reusable line items",
 				icon: Tags,
-				locked: !hasPremiumAccess || (!permsLoading && !can("skus")),
+				locked: !allows("customSkus") || (!permsLoading && !can("skus")),
 			},
 			{
 				value: "integrations",
 				label: "Integrations",
 				sublabel: "Payments & accounting",
 				icon: Blocks,
-				locked: !hasPremiumAccess || (!permsLoading && !hasFullAccess),
+				locked: !allows("quickbooks") || (!permsLoading && !hasFullAccess),
 			},
 			].filter((item) => item.value !== "payments" || hasStripeAccount),
-		[hasPremiumAccess, can, permsLoading, hasFullAccess, hasStripeAccount],
+		[allows, can, permsLoading, hasFullAccess, hasStripeAccount],
 	);
 
 	if (isLoading || permsLoading) {

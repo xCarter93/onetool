@@ -6,7 +6,7 @@ import { useParams, useRouter } from "next/navigation";
 import { useQuery, useMutation, useConvex } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { useToast } from "@/hooks/use-toast";
-import { useCanPerformAction } from "@/hooks/use-feature-access";
+import { useEntitlements } from "@/hooks/use-entitlements";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
 import type { Id as StorageId } from "@onetool/backend/convex/_generated/dataModel";
 import { useState, useMemo, useCallback, useRef } from "react";
@@ -134,11 +134,20 @@ function QuoteDetailPageContent() {
 	const sendQuoteToClient = useMutation(api.quotes.sendToClient);
 
 	// Plan gate for e-signature sends (server-enforced; this drives button UX).
-	const esignAccess = useCanPerformAction("send_esignature");
-	// Only treat as blocked once the check has resolved (limit is known),
-	// so the button doesn't flash disabled while usage is loading.
+	const { meter } = useEntitlements();
+	const esignMeter = meter("esignatures");
+	// Only treat as blocked once the meter has resolved, so the button doesn't
+	// flash disabled while usage is loading. remaining null = unlimited.
 	const sendBlocked =
-		!esignAccess.canPerform && esignAccess.limit !== undefined;
+		esignMeter !== undefined &&
+		esignMeter.remaining !== null &&
+		esignMeter.remaining <= 0;
+	const esignReason =
+		esignMeter === undefined
+			? "Loading..."
+			: esignMeter.remaining !== null && esignMeter.remaining <= 0
+				? `You've reached your limit of ${esignMeter.limit} e-signatures this month. Upgrade for unlimited.`
+				: undefined;
 	// undefined = the latest-document query is still resolving; null = no PDF.
 	const isLatestDocumentLoading = latestDocument === undefined;
 
@@ -490,7 +499,7 @@ function QuoteDetailPageContent() {
 					sendDisabledReason={
 						isLatestDocumentLoading
 							? "Checking for a generated PDF…"
-							: esignAccess.reason
+							: esignReason
 					}
 					onGeneratePdf={() => setShowDocumentModal(true)}
 					onDelete={() => setIsDeleteModalOpen(true)}

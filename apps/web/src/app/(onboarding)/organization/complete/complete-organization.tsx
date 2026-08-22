@@ -32,7 +32,7 @@ import {
 } from "@/components/shared/receiving-address-field";
 import { useToast } from "@/hooks/use-toast";
 import { useAutoTimezone } from "@/hooks/use-auto-timezone";
-import { useFeatureAccess } from "@/hooks/use-feature-access";
+import { useEntitlements } from "@/hooks/use-entitlements";
 import { Users, Building2, Globe, Upload, Check, Loader2 } from "lucide-react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { ImportWizard } from "@/app/(workspace)/clients/import/components/import-wizard";
@@ -150,7 +150,8 @@ export function CompleteOrganizationMetadata() {
 	const shouldReduceMotion = useReducedMotion();
 
 	// Check if user has premium access for import feature
-	const { hasPremiumAccess } = useFeatureAccess();
+	const { allows } = useEntitlements();
+	const hasPremiumAccess = allows("llmCsvImport");
 
 	// Automatically detect and save timezone if not set
 	useAutoTimezone();

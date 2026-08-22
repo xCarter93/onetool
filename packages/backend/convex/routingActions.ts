@@ -4,7 +4,8 @@ import { internalMutation } from "./lib/triggers";
 import { internal } from "./_generated/api";
 import { Doc, Id } from "./_generated/dataModel";
 import { getCurrentUserOrgId, getCurrentUserOrThrow } from "./lib/auth";
-import { hasPremiumAccess, requireLevel } from "./lib/permissions";
+import { requireLevel } from "./lib/permissions";
+import { requireFeature } from "./lib/entitlements";
 import { rateLimiter } from "./rateLimits";
 import { solveStopOrder, type LatLng } from "./lib/tsp";
 import { stopValidator } from "./routes";
@@ -29,8 +30,6 @@ type MapboxService = "directions" | "matrix" | "optimization" | "search_box" | "
 
 const DIRECTIONS_PROFILE = "mapbox/driving-traffic";
 const OPTIMIZATION_MAX_COORDS = 12;
-const PREMIUM_REQUIRED_MESSAGE =
-	"Route planning is available on the Business plan. Upgrade to use it.";
 
 function getMapboxApiKey(): string {
 	const key = process.env.MAPBOX_API_KEY;
@@ -270,9 +269,7 @@ export const authorizeRoute = internalMutation({
 		// Matches every read/write in routes.ts: route data exposes client
 		// property addresses, so it gates on clients:view before premium.
 		await requireLevel(ctx, "clients", "view");
-		if (!(await hasPremiumAccess(ctx))) {
-			throw new Error(PREMIUM_REQUIRED_MESSAGE);
-		}
+		await requireFeature(ctx, "routing");
 		const route = await ctx.db.get(args.routeId);
 		if (!route || route.orgId !== orgId) {
 			throw new Error("Route not found");

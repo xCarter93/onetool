@@ -11,7 +11,7 @@ import {
 } from "./lib/crud";
 import { emptyListResult } from "./lib/queries";
 import { rateLimiter } from "./rateLimits";
-import { hasPremiumAccess } from "./lib/permissions";
+import { entitlementsFromIdentity, isFeatureAllowed } from "./lib/entitlements";
 import { getCurrentUserOrgIdOrNull } from "./lib/auth";
 import { emitStatusChangeEvent } from "./eventBus";
 import { applyMarkPaidCascade } from "./lib/payments";
@@ -951,18 +951,16 @@ type LlmAccessResult = {
 };
 
 // PUB-12b: plan gate + per-org throttle for LLM-backed web API routes.
-// Mirrors the assistant's hasPremiumAccess gate (assistantChat.ts); the caller
-// must forward the Clerk "convex" JWT or this denies as unauthenticated.
+// Gated on the llmCsvImport entitlement; the caller must forward the Clerk
+// "convex" JWT or this denies as unauthenticated.
 export const checkLlmAccess = mutation({
 	args: {
-		bucket: v.union(
-			v.literal("llmCsvAnalyze"),
-			v.literal("llmMastraReport")
-		),
+		bucket: v.union(v.literal("llmCsvAnalyze")),
 	},
 	returns: llmAccessResult,
 	handler: async (ctx, args): Promise<LlmAccessResult> => {
-		if (!(await hasPremiumAccess(ctx))) {
+		const { plan } = await entitlementsFromIdentity(ctx);
+		if (!isFeatureAllowed(plan, "llmCsvImport")) {
 			return { ok: false, reason: "forbidden" };
 		}
 		// Key per org; a premium user-override without an active org falls back
