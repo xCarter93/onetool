@@ -413,8 +413,11 @@ http.route({
 			amount?: number;
 			status?: string;
 			plan_id?: string;
-			plan?: { id: string };
+			// On subscriptionItem.* events the data IS the item, so the plan
+			// (with slug) sits at the top level.
+			plan?: { id?: string; slug?: string };
 			current_period_start?: number;
+			period_start?: number;
 			payer?: {
 				organization_id?: string;
 				user_id?: string;
@@ -567,6 +570,52 @@ http.route({
 					{
 						subscriptionId: data.id,
 						organizationId: organizationId,
+					}
+				);
+				break;
+			}
+
+			case "subscriptionItem.created":
+			case "subscriptionItem.active":
+			case "subscriptionItem.updated":
+			case "subscriptionItem.canceled":
+			case "subscriptionItem.ended":
+			case "subscriptionItem.abandoned":
+			case "subscriptionItem.incomplete":
+			case "subscriptionItem.pastDue":
+			case "subscriptionItem.upcoming":
+			case "subscriptionItem.freeTrialEnding": {
+				const data = event.data as unknown as BillingWebhookData;
+				const organizationId =
+					data.payer?.organization_id || data.organization_id;
+
+				if (!organizationId) {
+					console.error(`No organization_id in ${event.type} event`);
+					break;
+				}
+				// Item events fire for every item on the subscription, including
+				// the Clerk default free_user/free_org plans — only the paid item
+				// is plan truth. Skip when the slug is missing: we can't tell
+				// which item it is, and acting on it could flip the mirror wrong.
+				const slug = data.plan?.slug;
+				if (!slug || slug.startsWith("free_")) {
+					console.log(
+						`Ignored ${event.type} for plan slug ${slug ?? "(none)"}`
+					);
+					break;
+				}
+				await ctx.runMutation(
+					internal.billingWebhook.handleSubscriptionItemEvent,
+					{
+						eventType: event.type,
+						organizationId,
+						planId: data.plan?.id,
+						planSlug: slug,
+						status: data.status,
+						currentPeriodStart:
+							data.period_start !== undefined
+								? secondsToMilliseconds(data.period_start)
+								: undefined,
 					}
 				);
 				break;

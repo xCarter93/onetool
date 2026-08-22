@@ -73,6 +73,14 @@ crons.interval(
 	{}
 );
 
+// Repair billing mirrors a missed Clerk webhook left stale (>48h unwritten).
+crons.daily(
+	"reconcile stale billing mirrors",
+	{ hourUTC: 5, minuteUTC: 0 },
+	internal.billingReconcile.reconcileStaleBillingMirrors,
+	{}
+);
+
 // Keep QuickBooks tokens warm and surface dead grants as needs_reauth.
 crons.interval(
 	"refresh stale quickbooks connections",

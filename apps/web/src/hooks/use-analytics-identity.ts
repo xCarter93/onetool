@@ -6,21 +6,11 @@ import { useQuery } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import {
 	identifyUser,
+	setPersonPlan,
 	setUserOnce,
 	setOrganizationGroup,
 	resetAnalytics,
 } from "@/lib/analytics";
-
-/**
- * Determine plan type from subscription status.
- */
-function getPlanType(
-	subscriptionStatus: string | undefined
-): "free" | "trial" | "pro" {
-	if (subscriptionStatus === "active") return "pro";
-	if (subscriptionStatus === "trialing") return "trial";
-	return "free";
-}
 
 /**
  * Hook that handles PostHog user and organization identification.
@@ -28,7 +18,10 @@ function getPlanType(
  * associates them with their organization for B2B analytics.
  *
  * User identification happens immediately when Clerk data is available.
- * Organization group data is set separately when Convex org data loads.
+ * Plan properties come from entitlements.getMine — the backend-resolved
+ * plan (overrides, trial, grace included) — and are (re)applied whenever
+ * the resolution changes, so a checkout or override flip updates cohorts
+ * without a fresh sign-in.
  *
  * Call this hook once in a layout that wraps all authenticated routes.
  */
@@ -37,9 +30,14 @@ export function useAnalyticsIdentity() {
 	const { organization, isLoaded: orgLoaded } = useOrganization();
 	const { orgRole } = useAuth();
 	const orgData = useQuery(api.organizations.get, {});
+	const entitlements = useQuery(
+		api.entitlements.getMine,
+		isSignedIn ? {} : "skip"
+	);
 
 	const hasIdentified = useRef(false);
-	const hasSetOrgGroup = useRef(false);
+	const lastPlanSent = useRef<string | null>(null);
+	const lastGroupPlanSent = useRef<string | null>(null);
 	const prevSignedIn = useRef<boolean | null>(null);
 
 	// Handle sign-out - reset PostHog identity and flags
@@ -47,7 +45,8 @@ export function useAnalyticsIdentity() {
 		if (prevSignedIn.current === true && isSignedIn === false) {
 			resetAnalytics();
 			hasIdentified.current = false;
-			hasSetOrgGroup.current = false;
+			lastPlanSent.current = null;
+			lastGroupPlanSent.current = null;
 		}
 		prevSignedIn.current = isSignedIn ?? null;
 	}, [isSignedIn]);
@@ -59,7 +58,6 @@ export function useAnalyticsIdentity() {
 		if (hasIdentified.current) return;
 
 		const role = orgRole?.toLowerCase().includes("admin") ? "admin" : "member";
-		const planType = getPlanType(orgData?.subscriptionStatus);
 
 		identifyUser(user.id, {
 			email: user.primaryEmailAddress?.emailAddress ?? "",
@@ -67,7 +65,6 @@ export function useAnalyticsIdentity() {
 			role,
 			orgId: organization.id,
 			orgName: organization.name,
-			planType,
 		});
 
 		setUserOnce({
@@ -76,23 +73,33 @@ export function useAnalyticsIdentity() {
 		});
 
 		hasIdentified.current = true;
-	}, [user, organization, orgRole, orgData?.subscriptionStatus, isSignedIn, userLoaded, orgLoaded]);
+	}, [user, organization, orgRole, isSignedIn, userLoaded, orgLoaded]);
 
-	// Set organization group when Convex org data becomes available
-	// This runs separately to avoid blocking user identification on Convex query
+	// Person-level plan from the resolved entitlements — re-sent on change,
+	// so the pre-Convex identify above never freezes plan_type at "free".
+	useEffect(() => {
+		if (!isSignedIn || !user || !entitlements) return;
+		const key = `${entitlements.plan}:${entitlements.source}`;
+		if (lastPlanSent.current === key) return;
+		setPersonPlan(entitlements.plan, entitlements.source);
+		lastPlanSent.current = key;
+	}, [isSignedIn, user, entitlements]);
+
+	// Set organization group when Convex org data becomes available, and
+	// again whenever the resolved plan changes.
 	useEffect(() => {
 		if (!isSignedIn || !organization) return;
-		if (!orgData) return;
-		if (hasSetOrgGroup.current) return;
-
-		const planType = getPlanType(orgData.subscriptionStatus);
+		if (!orgData || !entitlements) return;
+		const key = `${entitlements.plan}:${entitlements.source}`;
+		if (lastGroupPlanSent.current === key) return;
 
 		setOrganizationGroup(organization.id, {
 			name: organization.name,
-			planType,
+			planType: entitlements.plan,
+			planSource: entitlements.source,
 			stripeConnected: !!orgData.stripeConnectAccountId,
 		});
 
-		hasSetOrgGroup.current = true;
-	}, [isSignedIn, organization, orgData]);
+		lastGroupPlanSent.current = key;
+	}, [isSignedIn, organization, orgData, entitlements]);
 }
