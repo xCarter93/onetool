@@ -226,7 +226,12 @@ function UsageMeter({
 }
 
 export function BillingTab() {
-	const { isBusiness, meter, isLoading: accessLoading } = useEntitlements();
+	const { isBusiness, meter, source, isLoading: accessLoading } =
+		useEntitlements();
+	// Only these two sources have a Clerk subscription to manage; trial and the
+	// override sources grant Business access with nothing behind it in Clerk.
+	const hasClerkSubscription = source === "subscription" || source === "grace";
+	const isTrial = source === "trial";
 	const { data: plans, isLoading: plansLoading } = usePlans({
 		for: "organization",
 	});
@@ -249,7 +254,15 @@ export function BillingTab() {
 			? Math.round((1 - annualMonthlyFee.amount / monthlyFee.amount) * 100)
 			: 0;
 
-	const planName = isBusiness ? "Business" : "Free";
+	const planLabel = isTrial
+		? "Business trial"
+		: isBusiness
+			? "Business plan"
+			: "Free plan";
+	// An org already on Business without a subscription subscribes rather than upgrades.
+	const checkoutLabel = isBusiness
+		? "Subscribe to Business"
+		: "Upgrade to Business";
 	const meterRows = METER_DISPLAY.flatMap((row) => {
 		const usage = meter(row.key);
 		return usage ? [{ ...row, usage }] : [];
@@ -274,7 +287,7 @@ export function BillingTab() {
 					isBusiness ? (
 						<Badge variant="warning-light" radius="full" className="gap-1.5 px-3">
 							<Crown className="size-3.5" aria-hidden="true" />
-							Business plan
+							{planLabel}
 						</Badge>
 					) : (
 						<Badge variant="primary-light" radius="full" className="px-3">
@@ -304,16 +317,18 @@ export function BillingTab() {
 							</div>
 							<div>
 								<p className="text-base font-semibold leading-tight">
-									{planName} plan
+									{planLabel}
 								</p>
 								<p className="mt-0.5 text-sm text-muted-foreground">
-									{isBusiness
-										? "Full access to every OneTool feature."
-										: "Core features with usage limits."}
+									{isTrial
+										? "Full access to every OneTool feature during your trial."
+										: isBusiness
+											? "Full access to every OneTool feature."
+											: "Core features with usage limits."}
 								</p>
 							</div>
 						</div>
-						{isBusiness && canManageBilling && (
+						{hasClerkSubscription && canManageBilling && (
 							<SignedIn>
 								<SubscriptionDetailsButton
 									for="organization"
@@ -360,7 +375,7 @@ export function BillingTab() {
 							article="settings-and-team/plans-and-billing"
 							label="Compare plans in detail"
 						/>
-						{!isBusiness && (
+						{!hasClerkSubscription && (
 							<SegmentedControl<BillingPeriod>
 								value={period}
 								onValueChange={setPeriod}
@@ -428,39 +443,48 @@ export function BillingTab() {
 												Pricing at checkout
 											</span>
 										)}
-										{isBusiness ? (
+										{hasClerkSubscription ? (
 											<Badge variant="warning-light" radius="full">
 												Current
 											</Badge>
-										) : !canManageBilling ? (
-											<span className="mt-1 text-xs text-muted-foreground">
-												Ask an admin to upgrade
-											</span>
-										) : businessPlan ? (
-											<SignedIn>
-												<CheckoutButton
-													planId={businessPlan.id}
-													for="organization"
-													planPeriod={period}
-													newSubscriptionRedirectUrl="/organization/profile?tab=billing"
-													onSubscriptionComplete={() => {
-														window.location.reload();
-													}}
-													checkoutProps={{ appearance: drawerAppearance }}
-												>
-													<Button size="sm" className="mt-1">
-														<Crown className="size-3.5" />
-														Upgrade to Business
-													</Button>
-												</CheckoutButton>
-											</SignedIn>
 										) : (
-											<Button size="sm" className="mt-1" disabled>
-												<Crown className="size-3.5" />
-												{plansLoading
-													? "Loading plans…"
-													: "Plan unavailable"}
-											</Button>
+											<>
+												{isTrial && (
+													<Badge variant="warning-light" radius="full">
+														Trial
+													</Badge>
+												)}
+												{!canManageBilling ? (
+													<span className="mt-1 text-xs text-muted-foreground">
+														Ask an admin to {isBusiness ? "subscribe" : "upgrade"}
+													</span>
+												) : businessPlan ? (
+													<SignedIn>
+														<CheckoutButton
+															planId={businessPlan.id}
+															for="organization"
+															planPeriod={period}
+															newSubscriptionRedirectUrl="/organization/profile?tab=billing"
+															onSubscriptionComplete={() => {
+																window.location.reload();
+															}}
+															checkoutProps={{ appearance: drawerAppearance }}
+														>
+															<Button size="sm" className="mt-1">
+																<Crown className="size-3.5" />
+																{checkoutLabel}
+															</Button>
+														</CheckoutButton>
+													</SignedIn>
+												) : (
+													<Button size="sm" className="mt-1" disabled>
+														<Crown className="size-3.5" />
+														{plansLoading
+															? "Loading plans…"
+															: "Plan unavailable"}
+													</Button>
+												)}
+											</>
 										)}
 									</div>
 								</th>

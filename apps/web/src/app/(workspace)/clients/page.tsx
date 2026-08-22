@@ -61,13 +61,7 @@ import { useToast } from "@/hooks/use-toast";
 import DeleteConfirmationModal from "@/components/ui/delete-confirmation-modal";
 import { MetricFrame } from "@/components/metric-frame";
 import { useActivitySparklines } from "@/hooks/use-activity-sparklines";
-import { useEntitlements } from "@/hooks/use-entitlements";
 import { usePermissions } from "@/hooks/use-permissions";
-import {
-	Tooltip,
-	TooltipContent,
-	TooltipTrigger,
-} from "@/components/ui/tooltip";
 import {
 	type DragEndEvent,
 	KanbanBoard,
@@ -387,9 +381,6 @@ function ClientsPageContent() {
 	const [kanbanData, setKanbanData] = useState<ClientKanbanItem[]>([]);
 	const isOrgSwitching = useIsOrgSwitching();
 
-	// Premium gate for import (client counts are uncapped on every plan).
-	const { allows } = useEntitlements();
-	const hasPremiumAccess = allows("llmCsvImport");
 	const { can } = usePermissions();
 	const canModifyClients = can("clients", "modify");
 	const canDeleteClients = can("clients", "delete");
@@ -755,26 +746,13 @@ function ClientsPageContent() {
 				</div>
 				{canModifyClients && (
 					<div className="flex gap-2">
-						<Tooltip>
-							<TooltipTrigger render={<span className="inline-block" />}>
-								<Button
-									variant="outline"
-									onClick={() => router.push("/clients/import")}
-									disabled={!hasPremiumAccess}
-								>
-									<Upload className="h-4 w-4" />
-									Import Clients
-								</Button>
-							</TooltipTrigger>
-							{!hasPremiumAccess && (
-								<TooltipContent>
-									<div className="space-y-1">
-										<p className="font-semibold">Premium Feature</p>
-										<p>Upgrade to access client import functionality</p>
-									</div>
-								</TooltipContent>
-							)}
-						</Tooltip>
+						<Button
+							variant="outline"
+							onClick={() => router.push("/clients/import")}
+						>
+							<Upload className="h-4 w-4" />
+							Import Clients
+						</Button>
 
 						<Button onClick={handleAddClient}>
 							<Plus className="h-4 w-4" />

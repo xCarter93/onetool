@@ -165,10 +165,19 @@ export function PortalShell({
 
 			<main
 				id="portal-main"
-				className="flex-1 px-6 py-6 md:px-9 md:py-6 pb-20 md:pb-6"
+				className={`flex-1 px-6 py-6 md:px-9 md:py-6 md:pb-6 ${
+					showPoweredByBadge ? "pb-6" : "pb-20"
+				}`}
 			>
 				{children}
 			</main>
+
+			{/* Mobile badge (<768px) — carries main's pb-20 clearance for the tab bar. */}
+			{showPoweredByBadge && (
+				<footer className="md:hidden border-t border-border px-6 pt-4 pb-20">
+					<PoweredByOneTool size="compact" />
+				</footer>
+			)}
 
 			{/* Mobile tab bar (<768px) — suppressed on quote/invoice detail routes */}
 			{!suppressTabBar && (

@@ -3,7 +3,12 @@ import { MutationCtx } from "../../_generated/server";
 import { trackServerException } from "../posthog";
 import { ActivityHelpers } from "../activities";
 import { isAdminRole } from "../permissions";
-import { entitlementsFromDocs, isFeatureAllowed } from "../entitlements";
+import {
+	entitlementsFromDocs,
+	isFeatureAllowed,
+	requireMeter,
+	consumeMeter,
+} from "../entitlements";
 import { getMembership, listMembershipsByOrg } from "../memberships";
 import { celebrateQuoteApproved, celebrateInvoicePaid } from "../celebrations";
 import { insertTeamMessage } from "../../teamMessages";
@@ -246,6 +251,39 @@ async function applyStatusUpdate(
 			const wasPaid = oldStatus === "paid";
 			if (!wasPaid) {
 				updatePayload.paidAt = Date.now();
+			}
+		}
+
+		// A status write to "sent" IS a send (portal-visible): meter it like the
+		// send mutations, keyed on the immutable firstSentAt. Refusal fails the
+		// node instead of throwing so the run is recorded, never crashed.
+		if (
+			newStatus === "sent" &&
+			(targetInfo.type === "quote" || targetInfo.type === "invoice")
+		) {
+			const record = targetObject as Record<string, unknown>;
+			const alreadyDebited =
+				Boolean(record.firstSentAt) ||
+				(targetInfo.type === "quote" && Boolean(record.sentAt));
+			if (!alreadyDebited) {
+				const org = await ctx.db.get(orgId);
+				const { plan } = entitlementsFromDocs(org);
+				// One timestamp so the check and debit share a billing period.
+				const now = Date.now();
+				try {
+					await requireMeter(ctx, orgId, "clientSends", plan, { now });
+				} catch {
+					return {
+						success: false,
+						error:
+							"Send limit reached for this month. The record was not moved to sent.",
+					};
+				}
+				await consumeMeter(ctx, orgId, "clientSends", { now });
+				updatePayload.firstSentAt = now;
+				if (targetInfo.type === "quote") {
+					updatePayload.sentAt = now;
+				}
 			}
 		}
 

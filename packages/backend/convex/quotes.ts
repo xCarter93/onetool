@@ -662,9 +662,23 @@ export const create = userMutation({
 			}
 		}
 
+		// Minting a quote directly as "sent" makes it portal-visible without ever
+		// passing sendToClient — meter it like a first send (approved/declined at
+		// creation are historical bookkeeping, not sends).
+		let sentStamp: { sentAt: number; firstSentAt: number } | undefined;
+		if (args.status === "sent") {
+			const { plan } = await entitlementsFromIdentity(ctx);
+			// One timestamp so the check and debit share a billing period.
+			const now = Date.now();
+			await requireMeter(ctx, ctx.orgId, "clientSends", plan, { now });
+			await consumeMeter(ctx, ctx.orgId, "clientSends", { now });
+			sentStamp = { sentAt: now, firstSentAt: now };
+		}
+
 		// Type assertion needed because schema still has deprecated publicToken field
 		const quoteId = await createQuoteWithOrg(ctx, {
 			...args,
+			...sentStamp,
 			createdByUserId: ctx.user._id,
 		} as any);
 
@@ -867,7 +881,18 @@ export const update = userMutation({
 				filteredUpdates.status === "sent" &&
 				currentQuote.status === "draft"
 			) {
+				// A status flip to sent IS a send (portal-visible, approvable):
+				// meter it exactly like sendToClient, keyed on the immutable
+				// firstSentAt so revert-to-draft can never re-arm the debit.
+				if (!currentQuote.firstSentAt && !currentQuote.sentAt) {
+					const { plan } = await entitlementsFromIdentity(ctx);
+					await requireMeter(ctx, ctx.orgId, "clientSends", plan, { now });
+					await consumeMeter(ctx, ctx.orgId, "clientSends", { now });
+				}
 				filteredUpdates.sentAt = now;
+				if (!currentQuote.firstSentAt) {
+					filteredUpdates.firstSentAt = now;
+				}
 			} else if (filteredUpdates.status === "approved") {
 				filteredUpdates.approvedAt = now;
 			} else if (filteredUpdates.status === "declined") {
@@ -1123,20 +1148,22 @@ export const sendToClient = userMutation({
 		// Sending is the act of sending: draft, declined, and expired all move to
 		// sent (a "send again" reopens the quote). Already-sent quotes re-send
 		// the email without a transition.
-		// The send meter debits only the FIRST send ever (no sentAt yet) —
-		// declined/expired re-entries and re-sends are free in every month.
-		if (!quote.sentAt) {
+		// The send meter debits only the FIRST send ever — keyed on the
+		// immutable firstSentAt (sentAt clears on revert-to-draft; legacy rows
+		// predate firstSentAt, so sentAt still counts as proof of a past debit).
+		if (!quote.firstSentAt && !quote.sentAt) {
 			const { plan } = await entitlementsFromIdentity(ctx);
 			// One timestamp so the check and debit share a billing period.
 			const now = Date.now();
 			await requireMeter(ctx, ctx.orgId, "clientSends", plan, { now });
 			await consumeMeter(ctx, ctx.orgId, "clientSends", { now });
-			// Raw status writes (automation actions) can leave a sent quote with
-			// no sentAt; stamp it here so this debit can never repeat — the
-			// transition block below only runs for non-sent statuses.
-			if (quote.status === "sent") {
-				await ctx.db.patch(quote._id, { sentAt: Date.now() });
-			}
+			// Stamp the debit key; also self-heal sentAt for raw status writes
+			// that left a sent quote without one, so this debit can never repeat
+			// — the transition block below only runs for non-sent statuses.
+			await ctx.db.patch(quote._id, {
+				firstSentAt: now,
+				...(quote.status === "sent" ? { sentAt: now } : {}),
+			});
 		}
 		if (quote.status !== "sent") {
 			const oldStatus = quote.status;

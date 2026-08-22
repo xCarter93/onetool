@@ -1,13 +1,44 @@
 import { convexTest } from "convex-test";
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { api, internal } from "./_generated/api";
 import { setupConvexTest } from "./test.setup";
+
+/** Clerk backend stub: records the seat-cap writes syncSeatCap performs, so
+ * the scheduled action is observable without the network. */
+const seatWrites: Array<{
+	organizationId: string;
+	maxAllowedMemberships: number;
+}> = [];
+vi.mock("@clerk/backend", () => ({
+	createClerkClient: () => ({
+		organizations: {
+			updateOrganization: async (
+				organizationId: string,
+				params: { maxAllowedMemberships: number }
+			) => {
+				seatWrites.push({ organizationId, ...params });
+				return {};
+			},
+		},
+	}),
+}));
 
 describe("Organizations", () => {
 	let t: ReturnType<typeof convexTest>;
 
 	beforeEach(() => {
+		// createFromClerk and every billing write schedule seatSync +
+		// reclassifyAutomationsForOrg. Under real timers those fire after the
+		// test transaction closes and surface as "Write outside of transaction"
+		// unhandled rejections that fail the run with every test green.
+		vi.useFakeTimers();
+		seatWrites.length = 0;
 		t = setupConvexTest();
+	});
+
+	afterEach(() => {
+		vi.useRealTimers();
+		vi.unstubAllEnvs();
 	});
 
 	describe("get", () => {
@@ -1717,6 +1748,96 @@ describe("Organizations", () => {
 				"123 Legacy Street, Old Town, CA 90210"
 			);
 			expect(organization?.isMetadataComplete).toBe(true);
+		});
+	});
+
+	describe("Clerk seat-cap sync (Slice A reverse trial)", () => {
+		beforeEach(() => {
+			vi.stubEnv("CLERK_SECRET_KEY", "sk_test_stub");
+		});
+
+		async function seedOwner(externalId: string) {
+			return await t.run(async (ctx) => {
+				return await ctx.db.insert("users", {
+					name: "Owner",
+					email: `${externalId}@example.com`,
+					image: "https://example.com/i.jpg",
+					externalId,
+				});
+			});
+		}
+
+		/** Fires only the jobs already due — `vi.runAllTimers` would jump the
+		 * faked clock past the trial before the immediate sync ever ran. */
+		async function drainDueSeatSyncs() {
+			vi.advanceTimersByTime(1_000);
+			await t.finishInProgressScheduledFunctions();
+		}
+
+		it("grants Business seats at signup and syncs back down when the trial lapses", async () => {
+			await seedOwner("user_seat_trial");
+			const orgId = await t.mutation(internal.organizations.createFromClerk, {
+				clerkOrganizationId: "org_seat_trial",
+				name: "Trial Org",
+				ownerClerkUserId: "user_seat_trial",
+			});
+
+			await drainDueSeatSyncs();
+			expect(seatWrites).toEqual([
+				{ organizationId: "org_seat_trial", maxAllowedMemberships: 20 },
+			]);
+
+			// The +14d wake re-resolves the now-lapsed org and writes the free cap.
+			await t.finishAllScheduledFunctions(vi.runAllTimers);
+			expect(seatWrites[seatWrites.length - 1]).toEqual({
+				organizationId: "org_seat_trial",
+				maxAllowedMemberships: 5,
+			});
+			const org = await t.run(async (ctx) => ctx.db.get(orgId!));
+			expect(org?.trialEndsAt).toBeLessThan(Date.now());
+		});
+
+		it("an override grant from the org webhook syncs the cap up to 20", async () => {
+			const ownerUserId = await seedOwner("user_seat_override");
+			await t.run(async (ctx) => {
+				await ctx.db.insert("organizations", {
+					clerkOrganizationId: "org_seat_override",
+					name: "Override Org",
+					ownerUserId,
+				});
+			});
+
+			await t.mutation(internal.organizations.updateFromClerk, {
+				clerkOrganizationId: "org_seat_override",
+				name: "Override Org",
+				hasPremiumFeatureAccess: true,
+			});
+			await drainDueSeatSyncs();
+
+			expect(seatWrites).toEqual([
+				{ organizationId: "org_seat_override", maxAllowedMemberships: 20 },
+			]);
+		});
+
+		it("an unchanged override flag schedules no sync at all", async () => {
+			const ownerUserId = await seedOwner("user_seat_noop");
+			await t.run(async (ctx) => {
+				await ctx.db.insert("organizations", {
+					clerkOrganizationId: "org_seat_noop",
+					name: "Noop Org",
+					ownerUserId,
+					hasPremiumFeatureAccess: false,
+				});
+			});
+
+			await t.mutation(internal.organizations.updateFromClerk, {
+				clerkOrganizationId: "org_seat_noop",
+				name: "Noop Org",
+				hasPremiumFeatureAccess: false,
+			});
+			await drainDueSeatSyncs();
+
+			expect(seatWrites).toEqual([]);
 		});
 	});
 });

@@ -174,7 +174,10 @@ export function QuoteDetailDrawer({
 			await updateQuote({ id: quoteId, status });
 		} catch (err) {
 			console.error("Failed to update quote status:", err);
-			toast.error("Couldn't update quote", "Please try again.");
+			toast.error(
+				"Couldn't update quote",
+				convexErrorMessage(err, "Please try again.")
+			);
 		}
 	};
 
@@ -491,7 +494,12 @@ function StatusControl({
 			await updateQuote({ id: quoteId, status });
 		} catch (err) {
 			console.error("Failed to update quote status:", err);
-			toast.error("Couldn't update quote", "Please try again.");
+			// The write was rejected, so drop the picker back to the stored status.
+			setStatus(currentStatus);
+			toast.error(
+				"Couldn't update quote",
+				convexErrorMessage(err, "Please try again.")
+			);
 		} finally {
 			setSaving(false);
 		}

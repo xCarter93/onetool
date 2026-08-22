@@ -1,6 +1,6 @@
 import { convexTest } from "convex-test";
 import { describe, it, expect, beforeEach } from "vitest";
-import { api } from "./_generated/api";
+import { api, internal } from "./_generated/api";
 import { setupConvexTest } from "./test.setup";
 import {
 	createTestOrg,
@@ -1652,6 +1652,122 @@ describe("Routes", () => {
 
 		it("returns false (not a throw) for unauthenticated callers", async () => {
 			expect(await t.query(api.permissions.hasPremiumAccess, {})).toBe(false);
+		});
+	});
+
+	describe("premium gate covers every routing write", () => {
+		/** Org with a geocoded address, one geocoded property, and one route —
+		 * everything the nine write endpoints need to get past their own
+		 * argument validation, so the only thing left to refuse is the plan. */
+		async function seedRoutingFixture() {
+			const { clerkUserId, clerkOrgId, orgId } = await setupOrgWithAddress();
+			const asPremium = t.withIdentity(
+				createPremiumTestIdentity(clerkUserId, clerkOrgId)
+			);
+			const { propertyId } = await t.run(async (ctx) => {
+				const clientId = await createTestClient(ctx, orgId);
+				const id = await createTestClientProperty(ctx, orgId, clientId, {
+					latitude: 40.71,
+					longitude: -74.01,
+				});
+				return { propertyId: id };
+			});
+			const routeId = await asPremium.mutation(api.routes.create, {
+				name: "Seeded",
+				kind: "daily",
+				date: DATE,
+				start: START,
+				roundTrip: false,
+				stops: [stop(0)],
+			});
+			const asFree = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+			return { asFree, asPremium, routeId, propertyId };
+		}
+
+		type Fixture = Awaited<ReturnType<typeof seedRoutingFixture>>;
+
+		const gatedWrites: Array<[string, (f: Fixture) => Promise<unknown>]> = [
+			[
+				"routes.create",
+				(f) =>
+					f.asFree.mutation(api.routes.create, {
+						name: "Nope",
+						start: START,
+						roundTrip: false,
+						stops: [],
+					}),
+			],
+			[
+				"routes.update",
+				(f) =>
+					f.asFree.mutation(api.routes.update, {
+						routeId: f.routeId,
+						name: "Renamed",
+					}),
+			],
+			["routes.remove", (f) => f.asFree.mutation(api.routes.remove, { routeId: f.routeId })],
+			[
+				"routes.setStopStatus",
+				(f) =>
+					f.asFree.mutation(api.routes.setStopStatus, {
+						routeId: f.routeId,
+						order: 0,
+						status: "visited",
+					}),
+			],
+			[
+				"routes.startRoute",
+				(f) => f.asFree.mutation(api.routes.startRoute, { routeId: f.routeId }),
+			],
+			[
+				"routes.completeRoute",
+				(f) =>
+					f.asFree.mutation(api.routes.completeRoute, { routeId: f.routeId }),
+			],
+			[
+				"routes.seedFromSchedule",
+				(f) => f.asFree.mutation(api.routes.seedFromSchedule, { date: DATE }),
+			],
+			[
+				"routes.copyToDaily",
+				(f) =>
+					f.asFree.mutation(api.routes.copyToDaily, {
+						routeId: f.routeId,
+						date: DATE + 86_400_000,
+					}),
+			],
+			[
+				"routes.addPropertyStop",
+				(f) =>
+					f.asFree.mutation(api.routes.addPropertyStop, {
+						date: DATE,
+						propertyId: f.propertyId,
+					}),
+			],
+			[
+				"routingActions.authorizeRoute",
+				(f) =>
+					f.asFree.mutation(internal.routingActions.authorizeRoute, {
+						routeId: f.routeId,
+						limiter: "routeCompute",
+					}),
+			],
+		];
+
+		for (const [name, call] of gatedWrites) {
+			it(`${name} rejects a free org`, async () => {
+				const fixture = await seedRoutingFixture();
+				await expect(call(fixture)).rejects.toThrow(/Business plan/);
+			});
+		}
+
+		it("authorizeRoute returns the route for a Business caller", async () => {
+			const { asPremium, routeId } = await seedRoutingFixture();
+			const route = await asPremium.mutation(
+				internal.routingActions.authorizeRoute,
+				{ routeId, limiter: "routeCompute" }
+			);
+			expect(route._id).toBe(routeId);
 		});
 	});
 });

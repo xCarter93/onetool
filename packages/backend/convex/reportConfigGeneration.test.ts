@@ -1,8 +1,10 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { api, internal } from "./_generated/api";
 import {
 	type GeneratedReport,
+	generateConfigForBuilder,
 	parseCurrentConfig,
+	reportConfigAgent,
 	sanitizeGeneratedFilters,
 	toBuilderConfig,
 	toExecuteReportArgs,
@@ -493,5 +495,96 @@ describe("recordUsage explicit attribution", () => {
 			async (ctx) => await ctx.db.query("agentUsage").collect()
 		);
 		expect(rows).toHaveLength(0);
+	});
+});
+
+describe("NL generation plan gate (nlReportGeneration)", () => {
+	let t: ReturnType<typeof setupConvexTest>;
+
+	beforeEach(() => {
+		t = setupConvexTest();
+	});
+
+	/** The pipeline reaches for runQuery/runMutation only; a free org's gate
+	 * returns before anything richer is touched. */
+	function toolCtx(asUser: ReturnType<typeof t.withIdentity>) {
+		return {
+			runQuery: (ref: never, args: never) => asUser.query(ref, args),
+			runMutation: (ref: never, args: never) => asUser.mutation(ref, args),
+			runAction: (ref: never, args: never) => asUser.action(ref, args),
+		} as unknown as Parameters<typeof generateConfigForBuilder>[0];
+	}
+
+	async function seed(premium: boolean) {
+		const org = await t.run(async (ctx) => createTestOrg(ctx));
+		if (premium) {
+			await t.run(async (ctx) => {
+				await ctx.db.patch(org.orgId, { hasPremiumFeatureAccess: true });
+			});
+		}
+		return {
+			org,
+			asUser: t.withIdentity(
+				createTestIdentity(org.clerkUserId, org.clerkOrgId)
+			),
+		};
+	}
+
+	it("a free org gets the structured denial and never reaches the model", async () => {
+		const { asUser } = await seed(false);
+		const spy = vi.spyOn(reportConfigAgent, "generateObject");
+		try {
+			const result = await generateConfigForBuilder(
+				toolCtx(asUser),
+				"invoices by status"
+			);
+			// Denial is data the assistant relays, never a throw.
+			expect(result.ok).toBe(false);
+			expect(result.ok === false && result.error).toContain("Business plan");
+			expect(spy).not.toHaveBeenCalled();
+		} finally {
+			spy.mockRestore();
+		}
+	});
+
+	it("the denied ask still costs the org its daily assistant message", async () => {
+		const { asUser } = await seed(false);
+		const { threadId } = await asUser.mutation(
+			api.assistantChat.createThread,
+			{}
+		);
+		await asUser.mutation(api.assistantChat.sendMessage, {
+			threadId,
+			prompt: "build me a report of invoices by status",
+		});
+
+		const result = await generateConfigForBuilder(
+			toolCtx(asUser),
+			"invoices by status"
+		);
+		expect(result.ok).toBe(false);
+
+		const mine = await asUser.query(api.entitlements.getMine, {});
+		expect(
+			mine.meters.find((meter) => meter.key === "assistantMessages")
+		).toMatchObject({ used: 1 });
+	});
+
+	it("a business org passes the gate into generation", async () => {
+		const { asUser } = await seed(true);
+		const spy = vi
+			.spyOn(reportConfigAgent, "generateObject")
+			.mockResolvedValue({ object: gen() } as never);
+		try {
+			const result = await generateConfigForBuilder(
+				toolCtx(asUser),
+				"invoices by status"
+			);
+			expect(spy).toHaveBeenCalled();
+			expect(result.ok).toBe(true);
+			expect(result.ok === true && result.config.entityType).toBe("invoices");
+		} finally {
+			spy.mockRestore();
+		}
 	});
 });

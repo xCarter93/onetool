@@ -3,6 +3,7 @@ import { Id } from "../../_generated/dataModel";
 import { internal } from "../../_generated/api";
 import { rateLimiter } from "../../rateLimits";
 import type { VariableScope } from "../conditionEval";
+import { entitlementsFromDocs, isFeatureAllowed } from "../entitlements";
 import type { AutomationTrigger, FormulaResource } from "../workflowTypes";
 import type { AutomationDoc, AutomationNode, ObjectType } from "./types";
 
@@ -263,8 +264,41 @@ export async function matchAndScheduleAutomations(
 
 	let triggered = 0;
 
+	// Plan gate: a downgraded org's automations stay `active` until the
+	// reclassify sweep flips them, and events keep arriving meanwhile — skip
+	// visibly instead of running, exactly as the scheduled dispatcher does.
+	// Event dispatch has no identity, so premium is read from the doc mirrors:
+	// the org's, else (only when the org resolves free) the creator's.
+	const orgDoc = await ctx.db.get(orgId);
+	const orgPremium = isFeatureAllowed(
+		entitlementsFromDocs(orgDoc).plan,
+		"automationPublish"
+	);
+
 	// Schedule execution for each matching automation
 	for (const { automation, dedupeKey } of remaining) {
+		if (!orgPremium) {
+			const creator = await ctx.db.get(automation.createdBy);
+			const { plan } = entitlementsFromDocs(orgDoc, creator);
+			if (!isFeatureAllowed(plan, "automationPublish")) {
+				const skippedAt = Date.now();
+				await ctx.db.insert("workflowExecutions", {
+					orgId,
+					automationId: automation._id,
+					triggeredBy,
+					triggeredAt: skippedAt,
+					completedAt: skippedAt,
+					status: "skipped",
+					nodesExecuted: [],
+					error: "Skipped: automations require a premium plan",
+					executionChain: params.executionChain,
+					recursionDepth: params.recursionDepth,
+					dedupeKey,
+				});
+				continue;
+			}
+		}
+
 		// Build new execution chain
 		const newChain = [...params.executionChain, automation._id];
 

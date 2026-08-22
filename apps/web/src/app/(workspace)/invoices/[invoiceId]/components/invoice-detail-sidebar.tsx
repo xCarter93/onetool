@@ -16,6 +16,7 @@ import { DatePicker } from "@/components/ui/date-picker";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
+import { convexErrorMessage } from "@/lib/convex-error";
 import { useState } from "react";
 import {
 	CircleDot,
@@ -188,9 +189,7 @@ export function InvoiceDetailSidebar({
 			toast.success("Updated", `${label} saved.`);
 			cancelEditing();
 		} catch (err) {
-			const message =
-				err instanceof Error ? err.message : "Failed to save";
-			toast.error("Error", message);
+			toast.error("Error", convexErrorMessage(err, "Failed to save"));
 		}
 	};
 

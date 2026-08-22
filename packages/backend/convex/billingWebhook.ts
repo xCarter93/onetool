@@ -132,10 +132,23 @@ async function applyBillingPatch(
 	await ctx.scheduler.runAfter(0, internal.seatSync.syncSeatCap, {
 		orgId: org._id,
 	});
+	// Published automations follow the plan the same way, on the same
+	// unconditional + grace-lapse pair: a run at T+0 no-ops while grace (or a
+	// trial) still resolves business, and the +60s run catches the real lapse.
+	await ctx.scheduler.runAfter(
+		0,
+		internal.automationExecutor.reclassifyAutomationsForOrg,
+		{ orgId: org._id }
+	);
 	if (grace.planGraceUntil !== undefined && grace.planGraceUntil !== null) {
 		await ctx.scheduler.runAt(
 			grace.planGraceUntil + 60_000,
 			internal.seatSync.syncSeatCap,
+			{ orgId: org._id }
+		);
+		await ctx.scheduler.runAt(
+			grace.planGraceUntil + 60_000,
+			internal.automationExecutor.reclassifyAutomationsForOrg,
 			{ orgId: org._id }
 		);
 	}
@@ -471,6 +484,53 @@ export const listStaleBillingOrgs = internalQuery({
 				clerkOrganizationId: org.clerkOrganizationId,
 			}));
 		return { stale, continueCursor: page.continueCursor, isDone: page.isDone };
+	},
+});
+
+/**
+ * The orgs the stale scan above can't see: no `clerkSubscriptionId` at all —
+ * trial-only and override orgs, plus any org whose FIRST billing webhook was
+ * missed — whose trial lapsed inside `lapsedWithinMs`. That window is the
+ * bound: a long-lapsed free org must not be re-fetched from Clerk nightly
+ * forever, and the lapse is the only moment their seats and automations need
+ * to re-resolve (the one-shot trial wake is a single unretried scheduler shot).
+ */
+export const listLapsedTrialOrgs = internalQuery({
+	args: {
+		lapsedWithinMs: v.number(),
+		staleMs: v.number(),
+		limit: v.number(),
+		cursor: v.union(v.string(), v.null()),
+	},
+	handler: async (
+		ctx,
+		args
+	): Promise<{
+		lapsed: Array<{ orgId: Id<"organizations">; clerkOrganizationId: string }>;
+		continueCursor: string;
+		isDone: boolean;
+	}> => {
+		const now = Date.now();
+		const staleCutoff = now - args.staleMs;
+		const lapsedAfter = now - args.lapsedWithinMs;
+		const page = await ctx.db
+			.query("organizations")
+			.paginate({ numItems: 200, cursor: args.cursor });
+		const lapsed = page.page
+			.filter(
+				(org) =>
+					org.clerkSubscriptionId === undefined &&
+					org.trialEndsAt !== undefined &&
+					org.trialEndsAt <= now &&
+					org.trialEndsAt > lapsedAfter &&
+					(org.billingSyncedAt ?? 0) < staleCutoff
+			)
+			.slice(0, args.limit)
+			.map((org) => ({
+				orgId: org._id,
+				clerkOrganizationId: org.clerkOrganizationId,
+			}));
+		return { lapsed, continueCursor: page.continueCursor, isDone: page.isDone };
 	},
 });
 

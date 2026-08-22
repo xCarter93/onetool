@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import { setupConvexTest } from "./test.setup";
@@ -6,16 +6,62 @@ import { createTestOrg } from "./test.helpers";
 import { PREMIUM_PLAN_SLUG } from "./lib/permissions";
 import { PLAN_GRACE_MS } from "./lib/entitlements";
 
+/** Clerk backend stub: records seat-cap writes and serves the reconcile's
+ * billing lookup, so the scheduled action is observable without the network. */
+const seatWrites: Array<{
+	organizationId: string;
+	maxAllowedMemberships: number;
+}> = [];
+let billingSubscription: {
+	id: string;
+	status: string;
+	subscriptionItems: Array<{
+		status?: string;
+		periodStart?: number;
+		plan?: { id: string; slug: string };
+	}>;
+} = { id: "sub_stub", status: "active", subscriptionItems: [] };
+let billingLookupFails = false;
+
+vi.mock("@clerk/backend", () => ({
+	createClerkClient: () => ({
+		organizations: {
+			updateOrganization: async (
+				organizationId: string,
+				params: { maxAllowedMemberships: number }
+			) => {
+				seatWrites.push({ organizationId, ...params });
+				return {};
+			},
+		},
+		billing: {
+			getOrganizationBillingSubscription: async () => {
+				if (billingLookupFails) throw new Error("Clerk unreachable");
+				return billingSubscription;
+			},
+		},
+	}),
+}));
+
 describe("Clerk billing webhook handlers", () => {
 	let t: ReturnType<typeof setupConvexTest>;
 	let orgId: Id<"organizations">;
 	let clerkOrgId: string;
 
 	beforeEach(async () => {
+		// Every billing write schedules seatSync + reclassifyAutomationsForOrg.
+		// Under real timers those fire after the test transaction closes and
+		// surface as "Write outside of transaction" unhandled rejections.
+		vi.useFakeTimers();
 		t = setupConvexTest();
 		const setup = await t.run(async (ctx) => createTestOrg(ctx));
 		orgId = setup.orgId;
 		clerkOrgId = setup.clerkOrgId;
+	});
+
+	afterEach(() => {
+		vi.useRealTimers();
+		vi.unstubAllEnvs();
 	});
 
 	async function getOrg() {
@@ -225,11 +271,27 @@ describe("Clerk billing webhook handlers", () => {
 describe("billing reconcile", () => {
 	let t: ReturnType<typeof setupConvexTest>;
 	let orgId: Id<"organizations">;
+	let clerkOrgId: string;
 
 	beforeEach(async () => {
+		vi.useFakeTimers();
+		vi.stubEnv("CLERK_SECRET_KEY", "sk_test_stub");
+		seatWrites.length = 0;
+		billingSubscription = {
+			id: "sub_stub",
+			status: "active",
+			subscriptionItems: [],
+		};
+		billingLookupFails = false;
 		t = setupConvexTest();
 		const setup = await t.run(async (ctx) => createTestOrg(ctx));
 		orgId = setup.orgId;
+		clerkOrgId = setup.clerkOrgId;
+	});
+
+	afterEach(() => {
+		vi.useRealTimers();
+		vi.unstubAllEnvs();
 	});
 
 	it("lists only subscription-bearing orgs whose mirror is stale", async () => {
@@ -302,5 +364,116 @@ describe("billing reconcile", () => {
 		// Losing premium via reconcile opens the same grace window.
 		expect(org?.planGraceUntil).toBeGreaterThan(Date.now());
 		expect(org?.billingSyncedAt).toBeDefined();
+	});
+
+	describe("second pass: lapsed trials with no subscription (Slice A)", () => {
+		const HOUR = 60 * 60 * 1000;
+
+		/** Moves the org into the second pass's window: trial ended, never had a
+		 * subscription, mirror never written. */
+		async function makeLapsedTrialOrg(lapsedAgoMs = HOUR) {
+			await t.run(async (ctx) => {
+				await ctx.db.patch(orgId, { trialEndsAt: Date.now() - lapsedAgoMs });
+			});
+		}
+
+		it("listLapsedTrialOrgs sees only recently-lapsed, subscription-less, stale orgs", async () => {
+			// Still inside the trial: not lapsed.
+			await t.run(async (ctx) => {
+				await ctx.db.patch(orgId, { trialEndsAt: Date.now() + HOUR });
+			});
+			let result = await t.query(internal.billingWebhook.listLapsedTrialOrgs, {
+				lapsedWithinMs: 48 * HOUR,
+				staleMs: 48 * HOUR,
+				limit: 10,
+				cursor: null,
+			});
+			expect(result.lapsed).toEqual([]);
+			expect(result.isDone).toBe(true);
+
+			await makeLapsedTrialOrg();
+			result = await t.query(internal.billingWebhook.listLapsedTrialOrgs, {
+				lapsedWithinMs: 48 * HOUR,
+				staleMs: 48 * HOUR,
+				limit: 10,
+				cursor: null,
+			});
+			expect(result.lapsed.map((o) => o.orgId)).toEqual([orgId]);
+
+			// A subscription-bearing org belongs to the first pass, not this one.
+			await t.run(async (ctx) => {
+				await ctx.db.patch(orgId, { clerkSubscriptionId: "sub_1" });
+			});
+			result = await t.query(internal.billingWebhook.listLapsedTrialOrgs, {
+				lapsedWithinMs: 48 * HOUR,
+				staleMs: 48 * HOUR,
+				limit: 10,
+				cursor: null,
+			});
+			expect(result.lapsed).toEqual([]);
+
+			// Long-lapsed orgs drop out of the window entirely.
+			await t.run(async (ctx) => {
+				await ctx.db.patch(orgId, {
+					clerkSubscriptionId: undefined,
+					trialEndsAt: Date.now() - 96 * HOUR,
+				});
+			});
+			result = await t.query(internal.billingWebhook.listLapsedTrialOrgs, {
+				lapsedWithinMs: 48 * HOUR,
+				staleMs: 48 * HOUR,
+				limit: 10,
+				cursor: null,
+			});
+			expect(result.lapsed).toEqual([]);
+		});
+
+		it("the nightly reconcile re-syncs a lapsed trial and re-schedules seats + automation reclassify", async () => {
+			await makeLapsedTrialOrg();
+
+			const result = await t.action(
+				internal.billingReconcile.reconcileStaleBillingMirrors,
+				{}
+			);
+			expect(result).toMatchObject({ checked: 0, lapsedTrials: 1, resynced: 1 });
+
+			// Clerk reported no paid item, so the org must NOT acquire a
+			// subscription id (that would move it into the stale-billing pool).
+			const org = await t.run(async (ctx) => ctx.db.get(orgId));
+			expect(org?.clerkSubscriptionId).toBeUndefined();
+			expect(org?.billingSyncedAt).toBeGreaterThan(0);
+
+			const scheduled = await t.run(async (ctx) => {
+				const rows = await ctx.db.system
+					.query("_scheduled_functions")
+					.collect();
+				return rows.map((row) => row.name);
+			});
+			expect(scheduled.some((n) => n.includes("syncSeatCap"))).toBe(true);
+			expect(
+				scheduled.some((n) => n.includes("reclassifyAutomationsForOrg"))
+			).toBe(true);
+
+			// Draining them writes the free seat cap for an org Clerk's own plan
+			// limits never covered.
+			await t.finishAllScheduledFunctions(vi.runAllTimers);
+			expect(seatWrites).toEqual([
+				{ organizationId: clerkOrgId, maxAllowedMemberships: 5 },
+			]);
+		});
+
+		it("a Clerk failure leaves billingSyncedAt unstamped so the org stays in tomorrow's pass", async () => {
+			await makeLapsedTrialOrg();
+			billingLookupFails = true;
+
+			const result = await t.action(
+				internal.billingReconcile.reconcileStaleBillingMirrors,
+				{}
+			);
+			expect(result).toMatchObject({ lapsedTrials: 1, resynced: 0 });
+
+			const org = await t.run(async (ctx) => ctx.db.get(orgId));
+			expect(org?.billingSyncedAt).toBeUndefined();
+		});
 	});
 });

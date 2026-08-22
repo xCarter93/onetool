@@ -467,6 +467,38 @@ export async function requireMeter(
 	});
 }
 
+/**
+ * Refuse when `amount` would not fit the remaining budget — the whole call is
+ * refused, never partially applied. Same frozen error shape as requireMeter.
+ */
+export async function requireMeterCapacity(
+	ctx: QueryCtx | MutationCtx,
+	orgId: Id<"organizations">,
+	key: MeterKey,
+	plan: PlanTier,
+	amount: number,
+	options?: { now?: number; usedOverride?: number }
+): Promise<void> {
+	const row = METERS[key];
+	if (!row.enforce) return;
+	const { remaining } = await getMeterUsage(ctx, orgId, key, plan, options);
+	if (remaining === null || amount <= remaining) return;
+	throw new ConvexError({
+		code: PLAN_LIMIT_ERROR_CODE,
+		feature: key,
+		message: meterCapacityMessage(key, remaining),
+	});
+}
+
+/** Refusal copy that can name the leftover budget; falls back to the
+ * exhausted-meter message. */
+function meterCapacityMessage(key: MeterKey, remaining: number): string {
+	if (remaining > 0 && key === "importedRows") {
+		return `This plan has ${remaining} imported row${remaining === 1 ? "" : "s"} left — trim the file to fit.`;
+	}
+	return meterLimitMessage(key);
+}
+
 function meterLimitMessage(key: MeterKey): string {
 	switch (key) {
 		case "esignatures":

@@ -573,6 +573,10 @@ export default defineSchema({
 
 		// Tracking
 		sentAt: v.optional(v.number()),
+		// Immutable clientSends debit key: stamped the first time this quote is
+		// ever sent and never cleared (sentAt resets on revert-to-draft; this
+		// must not, or the meter re-debits).
+		firstSentAt: v.optional(v.number()),
 		approvedAt: v.optional(v.number()),
 		declinedAt: v.optional(v.number()),
 
@@ -742,6 +746,10 @@ export default defineSchema({
 		issuedDate: v.number(),
 		dueDate: v.number(),
 		paidAt: v.optional(v.number()),
+		// Immutable clientSends debit key: stamped the first time this invoice is
+		// ever sent and never cleared (status can revert to draft; this must not,
+		// or the meter re-debits).
+		firstSentAt: v.optional(v.number()),
 
 		// Payment
 		stripeSessionId: v.optional(v.string()),
@@ -2091,6 +2099,10 @@ export default defineSchema({
 		userId: v.id("users"),
 		title: v.optional(v.string()),
 		lastMessageAt: v.number(),
+		// The one prompt message streamResponse may (re)generate for: set by
+		// sendMessage at debit time so replaying older messageIds can't buy
+		// un-metered generations.
+		lastPromptMessageId: v.optional(v.string()),
 	})
 		.index("by_thread", ["threadId"])
 		.index("by_org_user", ["orgId", "userId", "lastMessageAt"]),

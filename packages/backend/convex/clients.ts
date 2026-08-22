@@ -35,8 +35,7 @@ import { ConvexError } from "convex/values";
 import {
 	consumeMeter,
 	entitlementsFromIdentity,
-	getMeterUsage,
-	PLAN_LIMIT_ERROR_CODE,
+	requireMeterCapacity,
 } from "./lib/entitlements";
 import {
 	IMPORT_MAX_ROWS_PER_CALL,
@@ -712,20 +711,13 @@ export const bulkCreate = userMutation({
 		// Lifetime import budget (free plan): refuse when this call would
 		// exceed it, and say how many rows still fit.
 		const { plan } = await entitlementsFromIdentity(ctx);
-		const budget = await getMeterUsage(ctx, userOrgId, "importedRows", plan);
-		if (
-			budget.remaining !== null &&
-			args.clients.length > budget.remaining
-		) {
-			throw new ConvexError({
-				code: PLAN_LIMIT_ERROR_CODE,
-				feature: "importedRows",
-				message:
-					budget.remaining === 0
-						? "You've reached this plan's imported row limit."
-						: `This plan has ${budget.remaining} imported row${budget.remaining === 1 ? "" : "s"} left — trim the file to fit.`,
-			});
-		}
+		await requireMeterCapacity(
+			ctx,
+			userOrgId,
+			"importedRows",
+			plan,
+			args.clients.length
+		);
 
 		const results: Array<{
 			success: boolean;

@@ -32,7 +32,9 @@ vi.mock("next/navigation", () => ({
 // Keep the shell light: stub presentational children that pull next-themes /
 // next/image / next/link so the test focuses on sign-out behavior.
 vi.mock("../brand-header", () => ({ BrandHeader: () => <div /> }));
-vi.mock("../powered-by-onetool", () => ({ PoweredByOneTool: () => <div /> }));
+vi.mock("../powered-by-onetool", () => ({
+	PoweredByOneTool: () => <div data-testid="powered-by" />,
+}));
 vi.mock("../mobile-tab-bar", () => ({ MobileTabBar: () => <div /> }));
 vi.mock("../portal-theme-switcher", () => ({
 	PortalThemeSwitcher: () => <div />,
@@ -47,9 +49,14 @@ afterEach(() => {
 	order.length = 0;
 });
 
-function renderShell() {
+function renderShell(props: { showPoweredByBadge?: boolean } = {}) {
 	return render(
-		<PortalShell clientPortalId="abc" logoUrl={null} businessName="Acme">
+		<PortalShell
+			clientPortalId="abc"
+			logoUrl={null}
+			businessName="Acme"
+			{...props}
+		>
 			<div>child</div>
 		</PortalShell>,
 	);
@@ -79,5 +86,26 @@ describe("PortalShell sign-out", () => {
 		);
 		// Listeners must be cleared before the revoke fetch can delete the row.
 		expect(order.indexOf("close")).toBeLessThan(order.indexOf("fetch"));
+	});
+});
+
+// Free-plan portals carry the badge at every viewport. jsdom ignores media
+// queries, so both the desktop sidebar and the mobile footer copy are in the DOM.
+describe("PortalShell powered-by badge", () => {
+	it("renders on mobile as well as in the desktop sidebar", () => {
+		renderShell({ showPoweredByBadge: true });
+
+		const badges = screen.getAllByTestId("powered-by");
+		expect(badges).toHaveLength(2);
+		// One copy must live outside the desktop-only sidebar.
+		expect(
+			badges.some((badge) => !badge.closest("[data-portal-sidebar]")),
+		).toBe(true);
+	});
+
+	it("renders nowhere when the badge is suppressed", () => {
+		renderShell({ showPoweredByBadge: false });
+
+		expect(screen.queryAllByTestId("powered-by")).toHaveLength(0);
 	});
 });

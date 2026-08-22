@@ -16,7 +16,11 @@ import {
 	type UserMutationCtx,
 } from "./lib/factories";
 import { computeNextRunAt } from "./lib/schedule";
-import { entitlementsFromDocs, isFeatureAllowed } from "./lib/entitlements";
+import {
+	entitlementsFromDocs,
+	isFeatureAllowed,
+	requireFeature,
+} from "./lib/entitlements";
 import { rateLimiter } from "./rateLimits";
 import {
 	evaluateConditionGroups,
@@ -547,6 +551,52 @@ export const dispatchScheduledAutomations = internalMutation({
 	},
 });
 
+/** Max automations reclassified per downgrade sweep (org-scoped). */
+const RECLASSIFY_BATCH = 200;
+
+/**
+ * Downgrade sweep: flip an org's ACTIVE automations to `paused_plan` once the
+ * org stops resolving premium (publishing is Business-only). Resumable on
+ * upgrade via toggleActive; the published snapshot is kept.
+ *
+ * Scheduled at the trial-lapse and grace-lapse wakes and on every billing
+ * write. The plan is re-resolved at fire time, so an org still inside a trial
+ * or grace window — or one that upgraded meanwhile — is left untouched.
+ * Idempotent: only `active` rows are touched.
+ */
+export const reclassifyAutomationsForOrg = internalMutation({
+	args: { orgId: v.id("organizations") },
+	returns: v.null(),
+	handler: async (ctx, args): Promise<null> => {
+		const org = await ctx.db.get(args.orgId);
+		if (!org) return null;
+		if (isFeatureAllowed(entitlementsFromDocs(org).plan, "automationPublish")) {
+			return null;
+		}
+
+		const active = await ctx.db
+			.query("workflowAutomations")
+			.withIndex("by_org_status", (q) =>
+				q.eq("orgId", args.orgId).eq("status", "active")
+			)
+			.take(RECLASSIFY_BATCH);
+		const now = Date.now();
+		for (const automation of active) {
+			// A creator-level override keeps that user's automations runnable —
+			// same (org, creator) resolution the dispatcher and the one-shot
+			// pause migration use.
+			const creator = await ctx.db.get(automation.createdBy);
+			const { plan } = entitlementsFromDocs(org, creator);
+			if (isFeatureAllowed(plan, "automationPublish")) continue;
+			await ctx.db.patch(automation._id, {
+				status: "paused_plan",
+				nextRunAt: undefined,
+				updatedAt: now,
+			});
+		}
+		return null;
+	},
+});
 
 /**
  * Execute a single automation workflow.
@@ -1502,15 +1552,20 @@ export const startManualRun = userMutation({
 	},
 	handler: async (ctx, args): Promise<Id<"workflowExecutions">> => {
 		await ctx.requireLevel("automations", "modify");
-		// No server-side premium check by design: the automations editor is behind
-		// PremiumGate and dispatchScheduledAutomations gates autonomous runs, so
-		// interactive manual runs stay ungated.
+		// Same gate publish uses: a free org's published automations must not be
+		// runnable on demand either (the UI PremiumGate is not a boundary).
+		await requireFeature(ctx, "automationPublish");
 		const automation = await ctx.db.get(args.automationId);
 		if (!automation || automation.orgId !== ctx.orgId) {
 			throw new Error("Automation not found");
 		}
 		if (!automation.publishedSnapshot) {
 			throw new Error("Publish this automation before running it manually");
+		}
+		// paused_plan / manually-paused rows are not runnable — a plan-paused
+		// automation would otherwise stay fully executable on demand.
+		if (automation.status !== "active") {
+			throw new Error("Activate this automation before running it manually");
 		}
 
 		const {

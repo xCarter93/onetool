@@ -1,5 +1,5 @@
-import { beforeEach, describe, expect, it } from "vitest";
-import { api } from "./_generated/api";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { api, internal } from "./_generated/api";
 import {
 	addMemberToOrg,
 	createPremiumTestIdentity,
@@ -251,6 +251,118 @@ describe("assistantChat", () => {
 				);
 				expect(messageId).toBeTruthy();
 			}
+		});
+
+		describe("UTC day rollover", () => {
+			// Only this block runs on fake timers; the rest of the suite is
+			// wall-clock and must stay that way.
+			afterEach(() => {
+				vi.useRealTimers();
+			});
+
+			it("the daily budget resets at UTC midnight", async () => {
+				vi.useFakeTimers();
+				vi.setSystemTime(Date.UTC(2026, 4, 12, 18));
+				const { orgA } = await seedTwoOrgs();
+				const asFree = t.withIdentity(
+					createTestIdentity(orgA.clerkUserId, orgA.clerkOrgId)
+				);
+
+				const { threadId } = await asFree.mutation(
+					api.assistantChat.createThread,
+					{}
+				);
+				for (let i = 0; i < 10; i++) {
+					await asFree.mutation(api.assistantChat.sendMessage, {
+						threadId,
+						prompt: `day one ${i}`,
+					});
+				}
+				await expect(
+					asFree.mutation(api.assistantChat.sendMessage, {
+						threadId,
+						prompt: "one too many",
+					})
+				).rejects.toThrow("PLAN_LIMIT_REACHED");
+
+				// Next UTC day: a fresh period key, so the budget is whole again.
+				vi.setSystemTime(Date.UTC(2026, 4, 13, 1));
+				const { messageId } = await asFree.mutation(
+					api.assistantChat.sendMessage,
+					{ threadId, prompt: "day two" }
+				);
+				expect(messageId).toBeTruthy();
+			});
+		});
+	});
+
+	describe("regeneration pin", () => {
+		async function seedThread() {
+			const { orgA } = await seedTwoOrgs();
+			const asUser = t.withIdentity(
+				createTestIdentity(orgA.clerkUserId, orgA.clerkOrgId)
+			);
+			const { threadId } = await asUser.mutation(
+				api.assistantChat.createThread,
+				{}
+			);
+			return { asUser, threadId };
+		}
+
+		it("only the message sendMessage last metered may be regenerated", async () => {
+			const { asUser, threadId } = await seedThread();
+
+			const first = await asUser.mutation(api.assistantChat.sendMessage, {
+				threadId,
+				prompt: "first",
+			});
+			await expect(
+				asUser.query(internal.assistantChat.authorizeThread, {
+					threadId,
+					promptMessageId: first.messageId,
+				})
+			).resolves.toBeDefined();
+
+			const second = await asUser.mutation(api.assistantChat.sendMessage, {
+				threadId,
+				prompt: "second",
+			});
+			// Replaying the older message would buy an unmetered generation.
+			await expect(
+				asUser.query(internal.assistantChat.authorizeThread, {
+					threadId,
+					promptMessageId: first.messageId,
+				})
+			).rejects.toThrow("can no longer be regenerated");
+			await expect(
+				asUser.query(internal.assistantChat.authorizeThread, {
+					threadId,
+					promptMessageId: second.messageId,
+				})
+			).resolves.toBeDefined();
+		});
+
+		it("a legacy thread with no pin accepts any message id", async () => {
+			const { asUser, threadId } = await seedThread();
+			await asUser.mutation(api.assistantChat.sendMessage, {
+				threadId,
+				prompt: "first",
+			});
+			// Threads whose meta predates lastPromptMessageId stay unpinned.
+			await t.run(async (ctx) => {
+				const meta = await ctx.db
+					.query("agentThreadMeta")
+					.withIndex("by_thread", (q) => q.eq("threadId", threadId))
+					.unique();
+				await ctx.db.patch(meta!._id, { lastPromptMessageId: undefined });
+			});
+
+			await expect(
+				asUser.query(internal.assistantChat.authorizeThread, {
+					threadId,
+					promptMessageId: "msg_from_before_the_pin",
+				})
+			).resolves.toBeDefined();
 		});
 	});
 });

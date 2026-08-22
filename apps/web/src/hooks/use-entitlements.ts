@@ -2,7 +2,12 @@
 
 import { useQuery } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
-import type { FeatureKey, MeterUsage, MyEntitlements } from "@onetool/backend";
+import type {
+	FeatureKey,
+	MeterUsage,
+	MyEntitlements,
+	PlanSource,
+} from "@onetool/backend";
 
 export interface Entitlements {
 	/** Raw backend resolution; undefined while loading. */
@@ -10,6 +15,8 @@ export interface Entitlements {
 	isLoading: boolean;
 	plan: "free" | "business";
 	isBusiness: boolean;
+	/** Why the plan resolved this way — only "subscription"/"grace" imply a Clerk subscription. */
+	source: PlanSource;
 	/** True when the resolved plan allows the feature (kill switches applied server-side). */
 	allows: (key: FeatureKey) => boolean;
 	meter: (key: MeterUsage["key"]) => MeterUsage | undefined;
@@ -33,6 +40,7 @@ export function useEntitlements(): Entitlements {
 		isLoading: entitlements === undefined,
 		plan,
 		isBusiness: plan === "business",
+		source: entitlements?.source ?? "free",
 		allows: (key) => entitlements?.features[key] ?? false,
 		meter: (key) => entitlements?.meters.find((m) => m.key === key),
 	};

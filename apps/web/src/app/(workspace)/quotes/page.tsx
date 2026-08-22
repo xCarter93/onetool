@@ -66,6 +66,7 @@ import { useState } from "react";
 import DeleteConfirmationModal from "@/components/ui/delete-confirmation-modal";
 import { MetricFrame } from "@/components/metric-frame";
 import { useToast } from "@/hooks/use-toast";
+import { convexErrorMessage } from "@/lib/convex-error";
 import { usePermissions } from "@/hooks/use-permissions";
 import {
 	type DragEndEvent,
@@ -558,9 +559,21 @@ function QuotesPageContent() {
 					status: item.column,
 				}).catch((error) => {
 					console.error("Failed to update quote status:", error);
+					// A rejected write leaves the server data untouched, so the sync
+					// effect never re-fires — put the card back in its lane by hand.
+					setKanbanData((prev) =>
+						prev.map((card) =>
+							card.id === item.id
+								? { ...card, column: originalStatus, status: originalStatus }
+								: card
+						)
+					);
 					toast.error(
 						"Update Failed",
-						"Failed to update quote status. Please try again."
+						convexErrorMessage(
+							error,
+							"Failed to update quote status. Please try again."
+						)
 					);
 				});
 			}

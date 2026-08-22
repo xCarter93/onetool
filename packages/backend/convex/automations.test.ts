@@ -1676,4 +1676,82 @@ describe("Automations", () => {
 			expect(active.map((a) => a.name)).toEqual(["B active"]);
 		});
 	});
+
+	describe("premium gate (Slice A: publishing is Business-only)", () => {
+		/** A plain org with no override, no subscription, no trial: free. */
+		async function setupFreeUser() {
+			const setup = await t.run(async (ctx) => createTestOrg(ctx));
+			const asUser = t.withIdentity(
+				createTestIdentity(setup.clerkUserId, setup.clerkOrgId)
+			);
+			return { ...setup, asUser };
+		}
+
+		it("refuses create with isActive on a free org, but allows the draft", async () => {
+			const { asUser } = await setupFreeUser();
+
+			await expect(
+				asUser.mutation(api.automations.create, {
+					name: "Straight to live",
+					trigger: clientTrigger,
+					nodes: [actionNode("act-1")],
+					isActive: true,
+				})
+			).rejects.toThrow(/Business plan/);
+
+			// The gate is activation-only: drafting stays free.
+			const draftId = await asUser.mutation(api.automations.create, {
+				name: "Draft is fine",
+				trigger: clientTrigger,
+				nodes: [actionNode("act-1")],
+			});
+			const draft = await asUser.query(api.automations.get, { id: draftId });
+			expect(draft?.status).toBe("draft");
+		});
+
+		it("refuses publish on a free org and leaves the draft unpublished", async () => {
+			const { asUser } = await setupFreeUser();
+
+			const id = await asUser.mutation(api.automations.create, {
+				name: "Never published",
+				trigger: clientTrigger,
+				nodes: [actionNode("act-1")],
+			});
+
+			await expect(
+				asUser.mutation(api.automations.publish, { id })
+			).rejects.toThrow(/Business plan/);
+
+			const automation = await asUser.query(api.automations.get, { id });
+			expect(automation?.status).toBe("draft");
+			expect(automation?.publishedSnapshot).toBeUndefined();
+		});
+
+		it("refuses toggleActive's activation branch on a free org but still allows pausing", async () => {
+			const { asUser, orgId } = await setupUser();
+
+			const id = await asUser.mutation(api.automations.create, {
+				name: "Published then downgraded",
+				trigger: clientTrigger,
+				nodes: [actionNode("act-1")],
+				isActive: true,
+			});
+			await t.run(async (ctx) =>
+				ctx.db.patch(orgId, { hasPremiumFeatureAccess: false })
+			);
+
+			// Pausing is never gated — a downgraded org must keep control of it.
+			await asUser.mutation(api.automations.toggleActive, { id });
+			expect((await asUser.query(api.automations.get, { id }))?.status).toBe(
+				"paused"
+			);
+
+			await expect(
+				asUser.mutation(api.automations.toggleActive, { id })
+			).rejects.toThrow(/Business plan/);
+			expect((await asUser.query(api.automations.get, { id }))?.status).toBe(
+				"paused"
+			);
+		});
+	});
 });

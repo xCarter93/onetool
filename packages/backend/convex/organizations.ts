@@ -152,6 +152,14 @@ export const createFromClerk = internalMutation({
 		await ctx.scheduler.runAt(trialEndsAt + 60_000, internal.seatSync.syncSeatCap, {
 			orgId,
 		});
+		// Same wake pauses the org's published automations if the lapse leaves it
+		// free; it re-resolves the plan at fire time, so an org that upgraded or
+		// got an override mid-trial is untouched.
+		await ctx.scheduler.runAt(
+			trialEndsAt + 60_000,
+			internal.automationExecutor.reclassifyAutomationsForOrg,
+			{ orgId }
+		);
 
 		console.log(
 			`Created minimal organization record for Clerk org: ${args.clerkOrganizationId}`

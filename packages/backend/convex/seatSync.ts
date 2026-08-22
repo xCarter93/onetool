@@ -46,9 +46,19 @@ export const syncSeatCap = internalAction({
 		const secretKey = process.env.CLERK_SECRET_KEY;
 		if (!secretKey) throw new Error("CLERK_SECRET_KEY is not configured");
 		const clerk = createClerkClient({ secretKey });
-		await clerk.organizations.updateOrganization(info.clerkOrganizationId, {
-			maxAllowedMemberships: info.seats,
-		});
+		try {
+			await clerk.organizations.updateOrganization(info.clerkOrganizationId, {
+				maxAllowedMemberships: info.seats,
+			});
+		} catch (error) {
+			// Scheduled shots are never retried — a swallowed Clerk failure would
+			// otherwise leave the org on its old seat cap silently. The nightly
+			// reconcile re-syncs; this makes the miss visible meanwhile.
+			console.error(
+				`Seat sync failed for org ${info.clerkOrganizationId}:`,
+				error
+			);
+		}
 		return null;
 	},
 });

@@ -2,6 +2,8 @@
 
 import { PermissionGate } from "@/components/domain/permission-gate";
 import { usePermissions } from "@/hooks/use-permissions";
+import { useToast } from "@/hooks/use-toast";
+import { convexErrorMessage } from "@/lib/convex-error";
 import React from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -313,6 +315,7 @@ function InvoicesPageContent() {
 	const updateInvoiceStatus = useMutation(api.invoices.update);
 	const [kanbanData, setKanbanData] = useState<InvoiceKanbanItem[]>([]);
 	const isOrgSwitching = useIsOrgSwitching();
+	const toast = useToast();
 	const { can } = usePermissions();
 	const canDeleteInvoices = can("invoices", "delete");
 
@@ -593,10 +596,26 @@ function InvoicesPageContent() {
 					status: nextStatus,
 				}).catch((error) => {
 					console.error("Failed to update invoice status:", error);
+					// A rejected write leaves the server data untouched, so the sync
+					// effect never re-fires — put the card back in its lane by hand.
+					setKanbanData((prev) =>
+						prev.map((card) =>
+							card.id === item.id
+								? { ...card, column: originalStatus, status: originalStatus }
+								: card
+						)
+					);
+					toast.error(
+						"Update Failed",
+						convexErrorMessage(
+							error,
+							"Failed to update invoice status. Please try again."
+						)
+					);
 				});
 			}
 		},
-		[kanbanData, invoiceStatusMap, updateInvoiceStatus]
+		[kanbanData, invoiceStatusMap, updateInvoiceStatus, toast]
 	);
 
 	return (

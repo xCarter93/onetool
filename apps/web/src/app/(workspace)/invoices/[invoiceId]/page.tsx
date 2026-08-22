@@ -185,11 +185,7 @@ function InvoiceDetailPageContent() {
 				`Status changed to ${formatStatus(status)}`
 			);
 		} catch (err) {
-			const message =
-				err instanceof Error
-					? err.message
-					: "Failed to update status";
-			toast.error("Error", message);
+			toast.error("Error", convexErrorMessage(err, "Failed to update status"));
 		}
 	};
 

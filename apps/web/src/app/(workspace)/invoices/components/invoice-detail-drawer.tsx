@@ -434,7 +434,12 @@ function StatusControl({
 			await updateInvoice({ id: invoiceId, status });
 		} catch (err) {
 			console.error("Failed to update invoice status:", err);
-			toast.error("Couldn't update status", "Please try again.");
+			// The write was rejected, so drop the picker back to the stored status.
+			setStatus(currentStatus);
+			toast.error(
+				"Couldn't update status",
+				convexErrorMessage(err, "Please try again.")
+			);
 		} finally {
 			setSaving(false);
 		}
