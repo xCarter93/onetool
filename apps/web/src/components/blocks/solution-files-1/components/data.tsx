@@ -307,9 +307,12 @@ export function buildClientsSubtree(tree: ClientsTree): DriveNode {
 	}
 
 	// Folders have no timestamp of their own, so they take the newest thing
-	// inside them — that is what the Suggested band sorts on.
+	// inside them — that is what the Suggested band sorts on. An empty folder
+	// (only the always-visible Clients root) reads as "just now", not the epoch.
 	const newestOf = (children: DriveNode[]) =>
-		children.reduce((newest, child) => Math.max(newest, child.modifiedAt), 0)
+		children.length === 0
+			? Date.now()
+			: children.reduce((newest, child) => Math.max(newest, child.modifiedAt), 0)
 
 	const clientFolders: DriveNode[] = []
 	for (const client of tree.clients) {

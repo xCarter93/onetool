@@ -169,13 +169,15 @@ export const listClientsTree = optionalUserQuery({
 			Id<"users">,
 			{ name: string | null; image: string | null }
 		>();
-		for (const uploaderId of uploaderIds) {
-			const uploader = await ctx.db.get(uploaderId);
-			uploaders.set(uploaderId, {
-				name: uploader?.name ?? uploader?.email ?? null,
-				image: uploader?.image || null,
-			});
-		}
+		await Promise.all(
+			uploaderIds.map(async (uploaderId) => {
+				const uploader = await ctx.db.get(uploaderId);
+				uploaders.set(uploaderId, {
+					name: uploader?.name ?? uploader?.email ?? null,
+					image: uploader?.image || null,
+				});
+			})
+		);
 
 		const clientDocs = scopedClientDocs
 			.sort((a, b) => b.uploadedAt - a.uploadedAt)
