@@ -188,13 +188,11 @@ export function ClientCreateBody({
 				err,
 				"Couldn't save your changes. Check your connection and try again."
 			);
-			Alert.alert(
-				planLimit ? "Plan limit reached" : "Couldn't save",
-				planLimit
-					? `${message} Upgrade on the web app to add more.`
-					: "Couldn't save your changes. Check your connection and try again.",
-				[{ text: "OK" }]
-			);
+			// Plan-limit copy renders as-is — no directional upsell text on
+			// mobile (Apple anti-steering).
+			Alert.alert(planLimit ? "Plan limit reached" : "Couldn't save", message, [
+				{ text: "OK" },
+			]);
 		} finally {
 			setSubmitting(false);
 		}

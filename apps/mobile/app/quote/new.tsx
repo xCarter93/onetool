@@ -189,9 +189,7 @@ export default function NewQuoteSheet() {
 
 				{error ? (
 					<Text style={[styles.error, { color: t.destructive }]}>
-						{error.planLimit
-							? `${error.message} Upgrade on the web app to add more.`
-							: error.message}
+						{error.message}
 					</Text>
 				) : null}
 

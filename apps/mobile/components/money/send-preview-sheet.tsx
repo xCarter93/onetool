@@ -1,6 +1,5 @@
 import { useState } from "react";
 import {
-	Alert,
 	Modal,
 	Pressable,
 	ScrollView,
@@ -10,6 +9,8 @@ import {
 } from "react-native";
 import { Mail, X } from "lucide-react-native";
 import { fontFamily, radii, type, useTokens } from "@/lib/theme";
+import { describeMutationError } from "@/lib/mutation-error";
+import { useEntitlements } from "@/lib/use-entitlements";
 import { Button, Eyebrow, TotalsBlock } from "@/components/ui";
 import { MoneyAmount } from "./money-amount";
 
@@ -38,6 +39,7 @@ export function SendPreviewSheet({
 	totalsRows,
 	totalValue,
 	resend,
+	firstSend,
 	onSend,
 }: {
 	visible: boolean;
@@ -53,20 +55,42 @@ export function SendPreviewSheet({
 	totalValue: string;
 	/** Already sent — button reads "Resend", no status implication. */
 	resend?: boolean;
+	/**
+	 * This send would debit the clientSends meter (the doc has never been
+	 * sent). Resends never debit, so the meter line and the exhausted
+	 * disable apply only when this is true.
+	 */
+	firstSend: boolean;
 	onSend: () => Promise<void>;
 }) {
 	const t = useTokens();
 	const [sending, setSending] = useState(false);
+	const [error, setError] = useState<string | null>(null);
+
+	// Meter absent = loading, business (unlimited), or signed out — in every
+	// case there is nothing to show and nothing to disable.
+	const { meter } = useEntitlements();
+	const sends = firstSend ? meter("clientSends") : undefined;
+	const sendsExhausted =
+		sends !== undefined && sends.remaining !== null && sends.remaining <= 0;
+
+	const close = () => {
+		setError(null);
+		onClose();
+	};
 
 	const send = async () => {
 		setSending(true);
+		setError(null);
 		try {
 			await onSend();
-			onClose();
-		} catch {
-			Alert.alert(
-				`Couldn't send this ${kind}`,
-				"Check the client's portal access and try again."
+			close();
+		} catch (err) {
+			setError(
+				describeMutationError(
+					err,
+					`Couldn't send this ${kind}. Check the client's portal access and try again.`
+				).message
 			);
 		} finally {
 			setSending(false);
@@ -80,7 +104,7 @@ export function SendPreviewSheet({
 			visible={visible}
 			animationType="slide"
 			presentationStyle="pageSheet"
-			onRequestClose={onClose}
+			onRequestClose={close}
 		>
 			<View style={[styles.root, { backgroundColor: t.bg }]}>
 				<View style={styles.topBar}>
@@ -90,7 +114,7 @@ export function SendPreviewSheet({
 					<Pressable
 						accessibilityRole="button"
 						accessibilityLabel="Close"
-						onPress={onClose}
+						onPress={close}
 						hitSlop={8}
 						style={[styles.close, { backgroundColor: t.secondary }]}
 					>
@@ -174,6 +198,23 @@ export function SendPreviewSheet({
 								: "No primary contact email on this client"}
 						</Text>
 					</View>
+					{sends && sends.limit !== null && sends.remaining !== null ? (
+						<Text
+							style={[
+								styles.meterLine,
+								{ color: sendsExhausted ? t.warning : t.faint },
+							]}
+						>
+							{sendsExhausted
+								? "You've used all of this month's document sends. They reset at the start of next month."
+								: `${sends.remaining} of ${sends.limit} document sends left this month`}
+						</Text>
+					) : null}
+					{error ? (
+						<Text style={[styles.errorLine, { color: t.destructive }]}>
+							{error}
+						</Text>
+					) : null}
 					<Button
 						title={
 							sending
@@ -183,7 +224,7 @@ export function SendPreviewSheet({
 									: `Send ${kind}`
 						}
 						variant="solid"
-						disabled={sending || !recipientEmail}
+						disabled={sending || !recipientEmail || sendsExhausted}
 						onPress={send}
 					/>
 				</View>
@@ -269,5 +310,13 @@ const styles = StyleSheet.create({
 		flex: 1,
 		fontFamily: fontFamily.medium,
 		fontSize: type.sm,
+	},
+	meterLine: {
+		fontFamily: fontFamily.medium,
+		fontSize: type.xs,
+	},
+	errorLine: {
+		fontFamily: fontFamily.medium,
+		fontSize: type.xs,
 	},
 });

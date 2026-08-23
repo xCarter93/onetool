@@ -119,12 +119,13 @@ export function ClientPicker({
 			setQuickName("");
 			setQuickPhone("");
 		} catch (err) {
-			const { message, planLimit } = describeMutationError(
-				err,
-				"Couldn't add that client. Check your connection and try again."
-			);
+			// Plan-limit copy renders as-is — no directional upsell text on
+			// mobile (Apple anti-steering).
 			setQuickError(
-				planLimit ? `${message} Upgrade on the web app to continue.` : message
+				describeMutationError(
+					err,
+					"Couldn't add that client. Check your connection and try again."
+				).message
 			);
 		} finally {
 			setQuickSaving(false);

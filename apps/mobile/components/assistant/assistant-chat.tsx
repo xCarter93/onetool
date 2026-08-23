@@ -16,6 +16,8 @@ import { optimisticallySendMessage, useUIMessages } from "@convex-dev/agent/reac
 import { History, MessageSquarePlus, Sparkles } from "lucide-react-native";
 import { fontFamily, radii, touch, type, useTokens } from "@/lib/theme";
 import { mapWebPathToMobileRoute } from "@/lib/assistant-nav";
+import { describeMutationError, type MutationError } from "@/lib/mutation-error";
+import { useEntitlements } from "@/lib/use-entitlements";
 import { Composer } from "./composer";
 import { AssistantMessage, UserBubble, type AssistantToolPart } from "./message-parts";
 
@@ -41,8 +43,13 @@ export function AssistantChat({ screenContext }: { screenContext?: string }) {
 	const [resumeAttempted, setResumeAttempted] = useState(false);
 	const [input, setInput] = useState("");
 	const [isResponding, setIsResponding] = useState(false);
-	const [error, setError] = useState<string | null>(null);
+	const [error, setError] = useState<MutationError | null>(null);
 	const [showHistory, setShowHistory] = useState(false);
+
+	// Free orgs get a finite daily allowance; business orgs ship no meter at
+	// all, so the counter simply doesn't render for them.
+	const { meter } = useEntitlements();
+	const messageMeter = meter("assistantMessages");
 
 	// User message already saved but streamResponse failed — retry must reuse
 	// this messageId instead of re-saving a duplicate user message.
@@ -156,10 +163,10 @@ export function AssistantChat({ screenContext }: { screenContext?: string }) {
 				screenContext,
 			});
 			pendingRetryRef.current = null;
-		} catch {
+		} catch (err) {
 			// Restore the failed prompt, but never clobber a newer draft.
 			setInput((current) => (current.trim() ? current : prompt));
-			setError("The assistant hit a snag.");
+			setError(describeMutationError(err, "The assistant hit a snag."));
 		} finally {
 			setIsResponding(false);
 		}
@@ -330,6 +337,14 @@ export function AssistantChat({ screenContext }: { screenContext?: string }) {
 							</Pressable>
 						))}
 					</View>
+					{/* A pre-save failure (plan limit, createThread) leaves no message
+					    behind, so this branch must show the error too — there is
+					    nothing retryable, so no Try again here. */}
+					{error ? (
+						<Text style={[styles.errorText, { color: t.destructive }]}>
+							{error.message}
+						</Text>
+					) : null}
 				</View>
 			) : (
 				<ScrollView
@@ -361,30 +376,44 @@ export function AssistantChat({ screenContext }: { screenContext?: string }) {
 					{error ? (
 						<View style={styles.errorRow}>
 							<Text style={[styles.errorText, { color: t.destructive }]}>
-								{error}
+								{error.message}
 							</Text>
-							<Pressable
-								onPress={handleRetry}
-								hitSlop={8}
-								accessibilityRole="button"
-								accessibilityLabel="Try sending that again"
-							>
-								<Text style={[styles.retryText, { color: t.frostedInk }]}>
-									Try again
-								</Text>
-							</Pressable>
+							{/* A plan-limit refusal happens before the message saves, so
+							    there is nothing to retry until the meter resets. */}
+							{!error.planLimit ? (
+								<Pressable
+									onPress={handleRetry}
+									hitSlop={8}
+									accessibilityRole="button"
+									accessibilityLabel="Try sending that again"
+								>
+									<Text style={[styles.retryText, { color: t.frostedInk }]}>
+										Try again
+									</Text>
+								</Pressable>
+							) : null}
 						</View>
 					) : null}
 				</ScrollView>
 			)}
 
 			{!showHistory ? (
-				<Composer
-					value={input}
-					onChangeText={setInput}
-					onSend={() => void handleSend()}
-					disabled={isResponding}
-				/>
+				<>
+					{messageMeter &&
+					messageMeter.limit !== null &&
+					messageMeter.remaining !== null ? (
+						<Text style={[styles.meterText, { color: t.faint }]}>
+							{messageMeter.remaining} of {messageMeter.limit} messages left
+							today
+						</Text>
+					) : null}
+					<Composer
+						value={input}
+						onChangeText={setInput}
+						onSend={() => void handleSend()}
+						disabled={isResponding}
+					/>
+				</>
 			) : null}
 		</KeyboardAvoidingView>
 	);
@@ -508,6 +537,13 @@ const styles = StyleSheet.create({
 		flexDirection: "row",
 		alignItems: "center",
 		gap: 12,
+	},
+	meterText: {
+		fontFamily: fontFamily.regular,
+		fontSize: type.xs,
+		textAlign: "right",
+		paddingHorizontal: 20,
+		marginBottom: 2,
 	},
 	errorText: {
 		fontFamily: fontFamily.regular,
