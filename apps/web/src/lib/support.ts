@@ -28,6 +28,26 @@ export function showSupportWidget() {
 }
 
 /**
+ * Create a new ticket. Resolves null when conversations are unavailable
+ * (ad blocker, disabled project, remote config not loaded) or the send fails.
+ */
+export async function sendSupportMessage(
+	message: string,
+	traits: { name?: string; email?: string }
+): Promise<boolean> {
+	try {
+		const response = await posthog.conversations?.sendMessage(
+			message,
+			traits,
+			true
+		);
+		return response != null;
+	} catch {
+		return false;
+	}
+}
+
+/**
  * Suppress the default floating launcher: OneTool's entry points are the
  * HelpMenu rows, not a chat bubble. The conversations module arrives async
  * from remote config, so poll until available, then hide. Returns cleanup.

@@ -7,10 +7,13 @@ import { api } from "@onetool/backend/convex/_generated/api";
 import type { FunctionReturnType } from "convex/server";
 import {
 	Building2,
+	Bug,
 	CheckSquare,
 	FileText,
 	FolderKanban,
+	Lightbulb,
 	MapPin,
+	MessageCircle,
 	Plus,
 	Receipt,
 	Search,
@@ -34,6 +37,7 @@ import {
 } from "@/components/ui/sidebar";
 import { TaskSheet } from "@/components/shared/task-sheet";
 import { useCreateRecord } from "@/components/domain/create-record-provider";
+import { useOptionalSupportDialog } from "@/components/support/support-dialog-provider";
 import {
 	NAV_GROUPS,
 	canViewNavItem,
@@ -192,6 +196,20 @@ export function CommandPaletteProvider({
 			)
 		: createActions;
 
+	const openSupport = useOptionalSupportDialog();
+	const supportActions = openSupport
+		? ([
+				{ key: "contact", label: "Contact support", icon: MessageCircle },
+				{ key: "bug", label: "Report a bug", icon: Bug },
+				{ key: "feature", label: "Request a feature", icon: Lightbulb },
+			] as const)
+		: [];
+	const filteredSupport = trimmed
+		? supportActions.filter((action) =>
+				action.label.toLowerCase().includes(trimmed),
+			)
+		: supportActions;
+
 	return (
 		<CommandPaletteContext.Provider value={value}>
 			{children}
@@ -236,6 +254,22 @@ export function CommandPaletteProvider({
 										onSelect={() => runSelect(action.run)}
 									>
 										<Plus />
+										<span>{action.label}</span>
+									</CommandItem>
+								))}
+							</CommandGroup>
+						)}
+						{filteredSupport.length > 0 && (
+							<CommandGroup heading="Support">
+								{filteredSupport.map((action) => (
+									<CommandItem
+										key={action.key}
+										value={`support:${action.key}`}
+										onSelect={() =>
+											runSelect(() => openSupport?.(action.key))
+										}
+									>
+										<action.icon />
 										<span>{action.label}</span>
 									</CommandItem>
 								))}
