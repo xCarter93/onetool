@@ -47,6 +47,9 @@ interface QuoteDetailHeaderProps {
 	/** Disable "Send for e-signature" when the monthly e-signature cap is reached. */
 	sendDisabled?: boolean;
 	sendDisabledReason?: string;
+	/** Disable first sends when the monthly document-send meter is exhausted (resends never debit). */
+	clientSendDisabled?: boolean;
+	clientSendDisabledReason?: string;
 	onGeneratePdf: () => void;
 	onDelete: () => void;
 	onConvertToInvoice: () => void;
@@ -63,6 +66,8 @@ export function QuoteDetailHeader({
 	onSendForSignature,
 	sendDisabled = false,
 	sendDisabledReason,
+	clientSendDisabled = false,
+	clientSendDisabledReason,
 	onGeneratePdf,
 	onDelete,
 	onConvertToInvoice,
@@ -177,10 +182,13 @@ export function QuoteDetailHeader({
 			slot: "secondary",
 			variant: "outline",
 			onClick: onSendToClient,
-			disabled: !canModifyQuote || sending || validUntilPassed,
+			disabled:
+				!canModifyQuote || sending || validUntilPassed || clientSendDisabled,
 			disabledReason: validUntilPassed
 				? "Extend the valid-until date before sending"
-				: undefined,
+				: clientSendDisabled
+					? clientSendDisabledReason
+					: undefined,
 			loading: sending,
 			loadingLabel: "Sending…",
 			hidden: currentStatus === "approved",

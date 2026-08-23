@@ -37,6 +37,9 @@ interface InvoiceDetailHeaderProps {
 	onSendToClient: () => void;
 	/** True while the send-to-client mutation is in flight. */
 	sending?: boolean;
+	/** Disable draft sends when the monthly document-send meter is exhausted (resends never debit). */
+	sendCapReached?: boolean;
+	sendCapReason?: string;
 	onGeneratePdf: () => void;
 	onCancel: () => void;
 }
@@ -48,6 +51,8 @@ export function InvoiceDetailHeader({
 	onMarkPaid,
 	onSendToClient,
 	sending = false,
+	sendCapReached = false,
+	sendCapReason,
 	onGeneratePdf,
 	onCancel,
 }: InvoiceDetailHeaderProps) {
@@ -70,7 +75,8 @@ export function InvoiceDetailHeader({
 						slot: "start",
 						variant: "default",
 						onClick: () => onStatusChange("sent"),
-						disabled: !canModifyNow,
+						disabled: !canModifyNow || sendCapReached,
+						disabledReason: sendCapReached ? sendCapReason : undefined,
 					},
 					{
 						// TODO(reui-rebuild): success button intent mapped to default
@@ -147,7 +153,10 @@ export function InvoiceDetailHeader({
 			slot: "secondary",
 			variant: "outline",
 			onClick: onSendToClient,
-			disabled: !canModify || sending,
+			disabled:
+				!canModify || sending || (currentStatus === "draft" && sendCapReached),
+			disabledReason:
+				currentStatus === "draft" && sendCapReached ? sendCapReason : undefined,
 			loading: sending,
 			loadingLabel: "Sending…",
 			hidden: currentStatus === "paid" || currentStatus === "cancelled",

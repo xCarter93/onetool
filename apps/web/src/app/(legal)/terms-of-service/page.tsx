@@ -202,14 +202,18 @@ export default function TermsOfServicePage() {
 					</p>
 					<ul className="list-disc list-inside space-y-2 text-muted-foreground ml-4">
 						<li>
-							<strong>Free Plan:</strong> Limited features including up to 10
-							clients, 3 active projects per client, and 5 e-signatures per
-							month
+							<strong>Free Plan:</strong> $0 forever. Unlimited clients and
+							projects, up to 5 team members, 20 document sends per month (plus
+							10 bonus sends in any month a payment is collected through
+							Stripe), 5 e-signatures per month, 10 AI assistant messages per
+							day, 5 saved reports, and 2,000 imported CSV rows in total
 						</li>
 						<li>
-							<strong>Business Plan:</strong> Unlimited clients, projects, and
-							e-signatures, plus Stripe Connect integration and AI-powered CSV
-							import
+							<strong>Business Plan:</strong> $30 per month or $300 per year.
+							Unlimited usage on all of the above, up to 20 team members, plus
+							workflow automations, route optimization, QuickBooks sync, AI
+							report generation, and removal of the OneTool badge from your
+							client portal
 						</li>
 					</ul>
 					<p className="text-muted-foreground leading-relaxed mt-4">
@@ -257,6 +261,13 @@ export default function TermsOfServicePage() {
 						promptly updating payment methods if they expire or are no longer
 						valid. We are not responsible for failed charges due to expired or
 						invalid payment information on file.
+					</p>
+					<p className="text-muted-foreground leading-relaxed mt-4">
+						<strong>Free trial:</strong> every new organization automatically
+						receives a 14-day trial of the Business Plan when it is created. The
+						trial requires no payment method, cannot be renewed, and ends
+						automatically with no charge and no cancellation step. When it ends,
+						the organization continues on the Free Plan with its data intact.
 					</p>
 				</section>
 

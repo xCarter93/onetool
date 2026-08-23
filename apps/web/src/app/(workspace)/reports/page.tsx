@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import DeleteConfirmationModal from "@/components/ui/delete-confirmation-modal";
 import { useToast } from "@/hooks/use-toast";
 import { convexErrorMessage } from "@/lib/convex-error";
+import { useEntitlements } from "@/hooks/use-entitlements";
 import {
 	DataGrid,
 	DataGridContainer,
@@ -24,7 +25,8 @@ import { entityLabels, formatRelativeTime, groupByOptions, visualizationIcons } 
 function createReportColumns(
 	duplicatingId: string | null,
 	onDuplicate: (id: string) => void,
-	onDelete: (id: string, name: string) => void
+	onDelete: (id: string, name: string) => void,
+	duplicateDisabledReason: string | undefined
 ): ColumnDef<Doc<"reports">>[] {
 	return [
 		{
@@ -98,7 +100,11 @@ function createReportColumns(
 							variant="ghost"
 							size="icon-sm"
 							aria-label="Duplicate report"
-							disabled={duplicatingId === report._id}
+							title={duplicateDisabledReason}
+							disabled={
+								duplicatingId === report._id ||
+								duplicateDisabledReason !== undefined
+							}
 							onClick={() => onDuplicate(report._id)}
 						>
 							<Copy className="h-4 w-4" />
@@ -123,6 +129,17 @@ function ReportsPageContent() {
 	const router = useRouter();
 	const toast = useToast();
 	const reports = useQuery(api.reports.list);
+	// savedReports is a current-count meter: creating and duplicating debit,
+	// deleting frees a slot. Absent for Business (unlimited).
+	const { meter } = useEntitlements();
+	const savedMeter = meter("savedReports");
+	const savedCapReached =
+		savedMeter !== undefined &&
+		savedMeter.remaining !== null &&
+		savedMeter.remaining <= 0;
+	const savedCapReason = savedCapReached
+		? `You've used all ${savedMeter.limit} saved report slots. Delete a report to free one, or upgrade for unlimited.`
+		: undefined;
 	const deleteReport = useMutation(api.reports.remove);
 	const duplicateReport = useMutation(api.reports.duplicate);
 
@@ -172,8 +189,14 @@ function ReportsPageContent() {
 	}, []);
 
 	const columns = useMemo(
-		() => createReportColumns(duplicatingId, handleDuplicate, handleDeleteClick),
-		[duplicatingId, handleDuplicate, handleDeleteClick]
+		() =>
+			createReportColumns(
+				duplicatingId,
+				handleDuplicate,
+				handleDeleteClick,
+				savedCapReason
+			),
+		[duplicatingId, handleDuplicate, handleDeleteClick, savedCapReason]
 	);
 
 	const table = useReactTable({
@@ -208,7 +231,15 @@ function ReportsPageContent() {
 					</h2>
 					{!isLoading && reports && reports.length > 0 && (
 						<span className="rounded-full bg-muted px-1.5 text-xs font-medium text-muted-foreground">
-							{reports.length}
+							{savedMeter && savedMeter.limit !== null
+								? `${reports.length} of ${savedMeter.limit}`
+								: reports.length}
+						</span>
+					)}
+					{savedCapReached && (
+						<span className="text-xs text-muted-foreground">
+							Limit reached. Delete a report to free a slot, or upgrade for
+							unlimited.
 						</span>
 					)}
 				</div>
