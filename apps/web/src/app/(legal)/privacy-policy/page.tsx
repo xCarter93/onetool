@@ -101,9 +101,12 @@ export default function PrivacyPolicyPage() {
 							performance metrics, and application errors. Analytics is tied to
 							your account (name, email, role, organization, and plan type) so
 							we can understand usage per customer. PostHog receives your IP
-							address as part of standard event delivery. We do not use session
-							recording in our analytics configuration, and our mobile app
-							contains no analytics.
+							address as part of standard event delivery. In the signed-in web
+							workspace we also use session replay: your interactions with the
+							app may be recorded so we can reproduce bugs you report and
+							improve the product. All form inputs are masked in recordings, and
+							recordings are retained under PostHog&apos;s retention settings.
+							Our mobile app contains no analytics.
 						</li>
 						<li>
 							<strong>Log Data:</strong> Our hosting and backend providers
@@ -278,9 +281,12 @@ export default function PrivacyPolicyPage() {
 							signature and signer names and email addresses.
 						</li>
 						<li>
-							<strong>PostHog</strong> — web analytics: usage events and your
-							account identity (name, email, role, organization, plan), plus IP
-							address on event delivery.
+							<strong>PostHog</strong> — web analytics and customer support:
+							usage events, session replay (inputs masked), and your account
+							identity (name, email, role, organization, plan), plus IP address
+							on event delivery. Support messages you send us — in-app or by
+							email to support@onetool.biz — are processed in PostHog&apos;s
+							support inbox.
 						</li>
 						<li>
 							<strong>OpenAI</strong> — AI features: the data described in

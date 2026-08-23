@@ -17,9 +17,17 @@ import { api } from "@onetool/backend/convex/_generated/api";
 import { DOCK_CLEARANCE, useTokens, radii, fontFamily } from "@/lib/theme";
 import { Avatar, Card, DotGrid } from "@/components/ui";
 import { useRouter, type Href } from "expo-router";
-import { Mail, Building, LogOut, Shield, Trash2, SquarePen, ChevronRight, Bell, QrCode } from "lucide-react-native";
+import { Mail, Building, LogOut, Shield, Trash2, SquarePen, ChevronRight, Bell, QrCode, MessageCircle, Bug, Lightbulb } from "lucide-react-native";
 import { InkTabHeader } from "@/components/ink-tab-header";
 import { usePermissions } from "@/lib/use-permissions";
+import { openExternal } from "@/lib/open-external";
+
+const SUPPORT_EMAIL = "support@onetool.biz";
+
+/** Subject carries "(mobile)" — the support inbox tags mobile mail on it. */
+function supportMailto(subject: string, body: string): string {
+	return `mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+}
 
 // headerMode defaults to "root" → the iPhone path (self-mounted AppHeader,
 // edge-to-edge content) is byte-identical. The iPad shell renders Profile as a
@@ -382,6 +390,94 @@ export default function ProfileScreen({
 					</Text>
 					<ChevronRight size={18} color={t.sub} />
 				</Pressable>
+
+				{/* Support — mailto rows (no PostHog RN SDK; email is the mobile channel).
+				    Prefilled subjects carry "(mobile)" so tickets get tagged; bodies
+				    prompt the same two bug questions the web form asks. */}
+				<Text
+					style={{
+						marginTop: 24,
+						marginBottom: 8,
+						marginLeft: 4,
+						fontSize: 11,
+						fontFamily: fontFamily.semibold,
+						color: t.sub,
+						textTransform: "uppercase",
+						letterSpacing: 0.5,
+					}}
+				>
+					Support
+				</Text>
+				{(
+					[
+						{
+							key: "contact",
+							icon: MessageCircle,
+							label: "Contact support",
+							subtext: "We reply within one business day",
+							subject: "Support request (mobile)",
+							body: `How can we help?\n\n\n—\nOrganization: ${organization?.name ?? ""}\nOneTool Mobile`,
+						},
+						{
+							key: "bug",
+							icon: Bug,
+							label: "Report a bug",
+							subtext: "Something broken or not working right",
+							subject: "Bug report (mobile)",
+							body: `What were you trying to do?\n\n\nWhat happened instead?\n\n\n—\nOrganization: ${organization?.name ?? ""}\nOneTool Mobile`,
+						},
+						{
+							key: "feature",
+							icon: Lightbulb,
+							label: "Request a feature",
+							subtext: "Tell us what OneTool should do next",
+							subject: "Feature request (mobile)",
+							body: `What would you like OneTool to do?\n\n\n—\nOrganization: ${organization?.name ?? ""}\nOneTool Mobile`,
+						},
+					] as const
+				).map((row, index) => (
+					<Pressable
+						key={row.key}
+						style={{
+							flexDirection: "row",
+							alignItems: "center",
+							paddingVertical: 16,
+							paddingHorizontal: 16,
+							borderRadius: radii.lg,
+							marginTop: index === 0 ? 0 : 12,
+							backgroundColor: t.card,
+							borderWidth: 1,
+							borderColor: t.line,
+						}}
+						onPress={() =>
+							openExternal(supportMailto(row.subject, row.body), "Mail")
+						}
+					>
+						<row.icon size={20} color={t.sub} />
+						<View style={{ marginLeft: 12, flex: 1 }}>
+							<Text
+								style={{
+									color: t.ink,
+									fontFamily: fontFamily.semibold,
+									fontSize: 13,
+								}}
+							>
+								{row.label}
+							</Text>
+							<Text
+								style={{
+									marginTop: 2,
+									color: t.sub,
+									fontFamily: fontFamily.regular,
+									fontSize: 11,
+								}}
+							>
+								{row.subtext}
+							</Text>
+						</View>
+						<ChevronRight size={18} color={t.sub} />
+					</Pressable>
+				))}
 
 				{/* Sign Out Button */}
 				<Pressable
