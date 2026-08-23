@@ -5,7 +5,7 @@ import {
 	vStreamArgs,
 } from "@convex-dev/agent";
 import { paginationOptsValidator } from "convex/server";
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 import { components, internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import { action, internalQuery } from "./_generated/server";
@@ -19,6 +19,7 @@ import {
 	requireMeter,
 } from "./lib/entitlements";
 import { userMutation, userQuery } from "./lib/factories";
+import { trackServerException } from "./lib/posthog";
 import { rateLimiter } from "./rateLimits";
 
 /**
@@ -98,7 +99,10 @@ export const sendMessage = userMutation({
  *  ctx.runQuery, and the entitlement gate needs a database-backed ctx. */
 export const authorizeThread = internalQuery({
 	args: { threadId: v.string(), promptMessageId: v.string() },
-	handler: async (ctx, args): Promise<{ userId: Id<"users"> }> => {
+	handler: async (
+		ctx,
+		args
+	): Promise<{ userId: Id<"users">; distinctId: string }> => {
 		await requireFeature(ctx, "aiAssistant");
 		const user = await getCurrentUserOrThrow(ctx);
 		const orgId = await getCurrentUserOrgId(ctx);
@@ -118,7 +122,7 @@ export const authorizeThread = internalQuery({
 		) {
 			throw new Error("That message can no longer be regenerated. Send it again.");
 		}
-		return { userId: user._id };
+		return { userId: user._id, distinctId: user.externalId };
 	},
 });
 
@@ -136,7 +140,7 @@ export const streamResponse = action({
 		// authorizeThread also enforces the plan gate and the metered-message
 		// pin — this action can be invoked directly with any saved
 		// promptMessageId, and each call costs a full LLM generation.
-		const { userId } = await ctx.runQuery(
+		const { userId, distinctId } = await ctx.runQuery(
 			internal.assistantChat.authorizeThread,
 			{ threadId: args.threadId, promptMessageId: args.promptMessageId }
 		);
@@ -158,18 +162,46 @@ export const streamResponse = action({
 			args.screenContext.length <= SCREEN_CONTEXT_MAX_LENGTH
 				? `\n\n<current-screen>\n${args.screenContext}\n</current-screen>`
 				: "";
-		await assistantAgent.streamText(
-			ctx,
-			{ threadId: args.threadId, userId },
-			{
-				promptMessageId: args.promptMessageId,
-				system: `${INSTRUCTIONS}\n\nThe current date and time is ${today} (UTC).${screenBlock}`,
-				// No reasoningEffort here: gpt-5.4 chat-completions rejects
-				// reasoning_effort combined with function tools (400), and the
-				// 5.4 models already default to effort "none" — the fast path.
-			},
-			{ saveStreamDeltas: true }
-		);
+		// The AI SDK masks mid-stream provider errors as "An error occurred."
+		// before they reach a catch block; onError is the only place the real
+		// error is still visible, so capture it there and keep its message for
+		// the rethrow below.
+		let streamFailure: string | undefined;
+		try {
+			await assistantAgent.streamText(
+				ctx,
+				{ threadId: args.threadId, userId },
+				{
+					promptMessageId: args.promptMessageId,
+					system: `${INSTRUCTIONS}\n\nThe current date and time is ${today} (UTC).${screenBlock}`,
+					// No reasoningEffort here: gpt-5.4 chat-completions rejects
+					// reasoning_effort combined with function tools (400), and the
+					// 5.4 models already default to effort "none" — the fast path.
+					onError: async ({ error }) => {
+						const cause =
+							error instanceof Error && error.cause ? error.cause : error;
+						streamFailure =
+							cause instanceof Error ? cause.message : String(cause);
+						await trackServerException(ctx, {
+							error: cause,
+							source: "assistantChat.streamResponse",
+							distinctId,
+							properties: { threadId: args.threadId },
+						});
+					},
+				},
+				{ saveStreamDeltas: true }
+			);
+		} catch (error) {
+			throw new ConvexError(
+				`Assistant response failed: ${streamFailure ?? (error instanceof Error ? error.message : String(error))}`
+			);
+		}
+		// onError marks the stream failed without guaranteeing the awaited
+		// consumption throws — surface the failure to the client either way.
+		if (streamFailure !== undefined) {
+			throw new ConvexError(`Assistant response failed: ${streamFailure}`);
+		}
 	},
 });
 

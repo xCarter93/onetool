@@ -560,5 +560,36 @@ describe("Projects", () => {
 			expect(projects).toHaveLength(1);
 			expect(projects[0].title).toBe("Org 1 Project");
 		});
+
+		it("get returns null for a project id from another organization", async () => {
+			const { clerkUserId1, clerkOrgId1, org2ProjectId } = await t.run(
+				async (ctx) => {
+					const { clerkUserId, clerkOrgId } = await createTestOrg(ctx, {
+						clerkUserId: "user_1",
+						clerkOrgId: "org_1",
+					});
+
+					const { orgId: orgId2 } = await createTestOrg(ctx, {
+						clerkUserId: "user_2",
+						clerkOrgId: "org_2",
+					});
+					const clientId2 = await createTestClient(ctx, orgId2);
+					const org2ProjectId = await createTestProject(ctx, orgId2, clientId2, {
+						title: "Org 2 Project",
+					});
+
+					return { clerkUserId1: clerkUserId, clerkOrgId1: clerkOrgId, org2ProjectId };
+				}
+			);
+
+			const asUser1 = t.withIdentity(
+				createTestIdentity(clerkUserId1, clerkOrgId1)
+			);
+
+			const project = await asUser1.query(api.projects.get, {
+				id: org2ProjectId,
+			});
+			expect(project).toBeNull();
+		});
 	});
 });
