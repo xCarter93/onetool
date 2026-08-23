@@ -8,14 +8,12 @@ import {
 	Briefcase,
 	CreditCard,
 	Crown,
-	FileText,
 	LayoutGrid,
 	ShieldCheck,
 	Tags,
 	Users,
 } from "lucide-react";
 
-import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/reui/badge";
 import { EmptyState } from "@/components/domain/empty-state";
@@ -37,7 +35,6 @@ import { TeamTab } from "./_components/team-tab";
 import { BusinessInfoTab } from "./_components/business-info-tab";
 import { BillingTab } from "./_components/billing-tab";
 import { PaymentsTab } from "./_components/payments-tab";
-import { DocumentsTab } from "./_components/documents-tab";
 import { SKUsTab } from "./_components/skus-tab";
 import { IntegrationsTab } from "./_components/integrations-tab";
 
@@ -47,7 +44,6 @@ const TAB_VALUES = [
 	"business",
 	"billing",
 	"payments",
-	"documents",
 	"skus",
 	"integrations",
 ] as const;
@@ -59,7 +55,6 @@ type TabValue = (typeof TAB_VALUES)[number];
 const TAB_PERMISSIONS: Partial<Record<TabValue, PermissionObject>> = {
 	// Billing is intentionally NOT premium-gated — free orgs need it to upgrade.
 	billing: "billing",
-	documents: "orgDocuments",
 	skus: "skus",
 };
 
@@ -230,13 +225,6 @@ export default function OrganizationProfilePage() {
 				locked: !permsLoading && !hasFullAccess,
 			},
 			{
-				value: "documents",
-				label: "Documents",
-				sublabel: "Team file library",
-				icon: FileText,
-				locked: !permsLoading && !can("orgDocuments"),
-			},
-			{
 				value: "skus",
 				label: "SKUs",
 				sublabel: "Reusable line items",
@@ -325,15 +313,7 @@ export default function OrganizationProfilePage() {
 								/>
 							</div>
 							<div
-								className={cn(
-									"min-h-0 flex-1 p-5 sm:p-6 lg:overflow-y-auto lg:p-8",
-									// The documents drive owns its scrolling: the pane stops
-									// scrolling and hands the explorer its full height instead.
-									renderTab === "documents" &&
-										!deniedAccess &&
-										"lg:flex lg:flex-col lg:overflow-hidden",
-								)}
-							>
+								className="min-h-0 flex-1 p-5 sm:p-6 lg:overflow-y-auto lg:p-8">
 								{deniedAccess ? (
 									<div className="flex min-h-[40vh] items-center justify-center">
 										<EmptyState
@@ -358,7 +338,6 @@ export default function OrganizationProfilePage() {
 										{renderTab === "business" && <BusinessInfoTab />}
 										{renderTab === "billing" && <BillingTab />}
 										{renderTab === "payments" && <PaymentsTab />}
-										{renderTab === "documents" && <DocumentsTab />}
 										{renderTab === "skus" && <SKUsTab />}
 										{renderTab === "integrations" && <IntegrationsTab />}
 									</>

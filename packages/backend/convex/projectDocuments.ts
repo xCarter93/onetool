@@ -165,6 +165,33 @@ export const listByProject = optionalUserQuery({
 });
 
 /**
+ * Rename a project document (display name only)
+ */
+export const update = userMutation({
+	args: {
+		id: v.id("projectDocuments"),
+		name: v.string(),
+	},
+	handler: async (ctx, args): Promise<Id<"projectDocuments">> => {
+		await ctx.requireLevel("documents", "modify");
+		const document = await getDocumentOrThrow(ctx, args.id);
+		await ctx.requireRecordScope("documents", async () => {
+			const scope = await ctx.actorScope();
+			return scope.projectIds.has(document.projectId);
+		});
+
+		const name = args.name.trim();
+		if (name.length === 0) {
+			throw new Error("Document name is required");
+		}
+
+		await ctx.db.patch(args.id, { name });
+
+		return args.id;
+	},
+});
+
+/**
  * Delete a project document (removes from storage and DB)
  */
 export const remove = userMutation({

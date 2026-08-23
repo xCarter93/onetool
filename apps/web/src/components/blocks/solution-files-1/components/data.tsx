@@ -33,6 +33,62 @@ export interface OrgFolderRecord {
 	createdAt: number
 }
 
+/** The live Clients tree exactly as `drive.listClientsTree` returns it. */
+export interface ClientsTree {
+	clients: { _id: Id<"clients">; name: string }[]
+	projects: { _id: Id<"projects">; name: string; clientId: Id<"clients"> }[]
+	clientDocs: {
+		_id: Id<"clientDocuments">
+		clientId: Id<"clients">
+		name: string
+		fileName: string
+		fileSize: number
+		mimeType: string
+		uploadedAt: number
+		uploaderName: string | null
+		uploaderImage?: string | null
+	}[]
+	projectDocs: {
+		_id: Id<"projectDocuments">
+		projectId: Id<"projects">
+		name: string
+		fileName: string
+		fileSize: number
+		mimeType: string
+		uploadedAt: number
+		uploaderName: string | null
+		uploaderImage?: string | null
+	}[]
+	generatedDocs: {
+		_id: Id<"documents">
+		documentType: "quote" | "invoice"
+		clientId: Id<"clients">
+		projectId?: Id<"projects">
+		signed: boolean
+		generatedAt: number
+		name: string
+		fileSize: number | null
+	}[]
+}
+
+/**
+ * Marks a node as belonging to the derived Clients tree rather than the org
+ * drive. Absent on every org folder and org document, which is what every
+ * org-only code path keys off.
+ */
+export type VirtualSource =
+	| { type: "clients-root" }
+	| { type: "client-folder"; clientId: Id<"clients"> }
+	| { type: "project-folder"; projectId: Id<"projects">; clientId: Id<"clients"> }
+	| { type: "client-doc"; id: Id<"clientDocuments">; clientId: Id<"clients"> }
+	| { type: "project-doc"; id: Id<"projectDocuments">; projectId: Id<"projects"> }
+	| {
+			type: "generated-doc"
+			id: Id<"documents">
+			documentType: "quote" | "invoice"
+			signed: boolean
+	  }
+
 export interface DriveNode {
 	id: string
 	name: string
@@ -46,10 +102,12 @@ export interface DriveNode {
 	modifiedAt: number
 	description?: string
 	mimeType?: string
-	/** Set on files only. */
+	/** Set on org files only, and the discriminator every org-only path reads. */
 	documentId?: Id<"organizationDocuments">
-	/** Set on folders only. */
+	/** Set on org folders only. */
 	folderId?: Id<"organizationDocumentFolders">
+	/** Set on Clients-tree nodes only. */
+	source?: VirtualSource
 	children?: DriveNode[]
 }
 
@@ -67,6 +125,9 @@ export interface DriveRow {
 // ── Constants ──
 
 export const DRIVE_ROOT_ID = "root"
+
+/** System root of the derived Clients tree. Never an org folder id. */
+export const CLIENTS_ROOT_ID = "clients-root"
 
 // Static icon nodes per glyph family. Icon names must stay literal, so the
 // whole element lives in data.
@@ -114,7 +175,8 @@ export function typeLabelFor(name: string, mimeType: string | undefined): string
  */
 export function buildDriveTree(
 	folders: OrgFolderRecord[],
-	documents: OrgDocumentRecord[]
+	documents: OrgDocumentRecord[],
+	clientsRoot?: DriveNode
 ): DriveNode[] {
 	const folderNodes = new Map<string, DriveNode>()
 	for (const folder of folders) {
@@ -157,6 +219,10 @@ export function buildDriveTree(
 		else roots.push(node)
 	}
 
+	// Appended before the sort so the Clients root alphabetizes among the org
+	// root folders instead of being pinned anywhere.
+	if (clientsRoot) roots.push(clientsRoot)
+
 	const sortLevel = (nodes: DriveNode[]) => {
 		nodes.sort((a, b) => {
 			const folderDelta = Number(b.kind === "folder") - Number(a.kind === "folder")
@@ -167,6 +233,206 @@ export function buildDriveTree(
 	sortLevel(roots)
 
 	return roots
+}
+
+/**
+ * The Clients root and the client/project folders under it. Nothing here is
+ * stored: the hierarchy is re-derived from the attachment and generated-PDF
+ * rows on every read, so a folder exists exactly while it holds something the
+ * user can see. The root itself is always returned, empty or not.
+ */
+export function buildClientsSubtree(tree: ClientsTree): DriveNode {
+	const clientChildren = new Map<string, DriveNode[]>()
+	const projectChildren = new Map<string, DriveNode[]>()
+	const projectById = new Map(tree.projects.map((project) => [project._id as string, project]))
+
+	const push = (bucket: Map<string, DriveNode[]>, key: string, node: DriveNode) => {
+		const existing = bucket.get(key)
+		if (existing) existing.push(node)
+		else bucket.set(key, [node])
+	}
+
+	const attachment = (
+		doc: ClientsTree["clientDocs"][number] | ClientsTree["projectDocs"][number],
+		source: VirtualSource
+	): DriveNode => ({
+		id: doc._id,
+		name: doc.name,
+		kind: kindFromMimeType(doc.mimeType),
+		typeLabel: typeLabelFor(doc.fileName, doc.mimeType),
+		sizeBytes: doc.fileSize,
+		owner: { name: doc.uploaderName ?? "", image: doc.uploaderImage ?? null },
+		modifiedAt: doc.uploadedAt,
+		mimeType: doc.mimeType,
+		source,
+	})
+
+	for (const doc of tree.clientDocs) {
+		push(
+			clientChildren,
+			doc.clientId,
+			attachment(doc, { type: "client-doc", id: doc._id, clientId: doc.clientId })
+		)
+	}
+	for (const doc of tree.projectDocs) {
+		push(
+			projectChildren,
+			doc.projectId,
+			attachment(doc, { type: "project-doc", id: doc._id, projectId: doc.projectId })
+		)
+	}
+
+	for (const doc of tree.generatedDocs) {
+		const node: DriveNode = {
+			id: doc._id,
+			name: doc.name,
+			kind: "document",
+			typeLabel: doc.documentType === "quote" ? "Quote" : "Invoice",
+			sizeBytes: doc.fileSize ?? 0,
+			owner: { name: "" },
+			modifiedAt: doc.generatedAt,
+			source: {
+				type: "generated-doc",
+				id: doc._id,
+				documentType: doc.documentType,
+				signed: doc.signed,
+			},
+		}
+		// A quote or invoice with no project belongs to the client directly.
+		if (doc.projectId && projectById.has(doc.projectId)) {
+			push(projectChildren, doc.projectId, node)
+		} else {
+			push(clientChildren, doc.clientId, node)
+		}
+	}
+
+	// Folders have no timestamp of their own, so they take the newest thing
+	// inside them — that is what the Suggested band sorts on.
+	const newestOf = (children: DriveNode[]) =>
+		children.reduce((newest, child) => Math.max(newest, child.modifiedAt), 0)
+
+	const clientFolders: DriveNode[] = []
+	for (const client of tree.clients) {
+		const children = [...(clientChildren.get(client._id) ?? [])]
+
+		for (const project of tree.projects) {
+			if (project.clientId !== client._id) continue
+			const projectFiles = projectChildren.get(project._id)
+			if (!projectFiles || projectFiles.length === 0) continue
+			children.push({
+				id: `project:${project._id}`,
+				name: project.name,
+				kind: "folder",
+				typeLabel: "Folder",
+				sizeBytes: 0,
+				owner: { name: "" },
+				modifiedAt: newestOf(projectFiles),
+				source: {
+					type: "project-folder",
+					projectId: project._id,
+					clientId: client._id,
+				},
+				children: projectFiles,
+			})
+		}
+
+		if (children.length === 0) continue
+		clientFolders.push({
+			id: `client:${client._id}`,
+			name: client.name,
+			kind: "folder",
+			typeLabel: "Folder",
+			sizeBytes: 0,
+			owner: { name: "" },
+			modifiedAt: newestOf(children),
+			source: { type: "client-folder", clientId: client._id },
+			children,
+		})
+	}
+
+	return {
+		id: CLIENTS_ROOT_ID,
+		name: "Clients",
+		kind: "folder",
+		typeLabel: "Folder",
+		sizeBytes: 0,
+		owner: { name: "" },
+		modifiedAt: newestOf(clientFolders),
+		source: { type: "clients-root" },
+		children: clientFolders,
+	}
+}
+
+// ── Capabilities ──
+
+/** The two permission objects the drive spans, flattened to what rows need. */
+export interface DrivePerms {
+	orgModify: boolean
+	orgDelete: boolean
+	entityModify: boolean
+	entityDelete: boolean
+}
+
+export type UploadTarget =
+	| { kind: "org"; folderId?: Id<"organizationDocumentFolders"> }
+	| { kind: "client"; clientId: Id<"clients"> }
+	| { kind: "project"; projectId: Id<"projects"> }
+
+/** Org nodes carry no `source`; every Clients-tree node does. */
+function isOrgNode(node: DriveNode) {
+	return node.source === undefined
+}
+
+/** Attachments are the only Clients-tree files a user can edit. */
+function isEntityAttachment(node: DriveNode) {
+	const type = node.source?.type
+	return type === "client-doc" || type === "project-doc"
+}
+
+export function canRenameNode(node: DriveNode, perms: DrivePerms): boolean {
+	if (isOrgNode(node)) return perms.orgModify
+	return isEntityAttachment(node) && perms.entityModify
+}
+
+export function canDeleteNode(node: DriveNode, perms: DrivePerms): boolean {
+	if (isOrgNode(node)) return perms.orgDelete
+	return isEntityAttachment(node) && perms.entityDelete
+}
+
+/** Virtual folders are derived, so nothing can be filed into or out of them. */
+export function canMoveNode(node: DriveNode, perms: DrivePerms): boolean {
+	return isOrgNode(node) && perms.orgModify
+}
+
+/** The `drive.getFileUrls` reference for a node, or null if it is an org node. */
+export function virtualFileRef(
+	node: DriveNode
+): { kind: "client" | "project" | "generated"; id: string } | null {
+	const source = node.source
+	if (source?.type === "client-doc") return { kind: "client", id: source.id }
+	if (source?.type === "project-doc") return { kind: "project", id: source.id }
+	if (source?.type === "generated-doc") return { kind: "generated", id: source.id }
+	return null
+}
+
+/** Generated PDFs are read-only, and virtual folders are not real rows. */
+export function isSelectableNode(node: DriveNode): boolean {
+	return isOrgNode(node) || isEntityAttachment(node)
+}
+
+/**
+ * Where an upload from the open folder would land. `null` means uploads have
+ * nowhere to go: the Clients root, a virtual folder's own root, or (at the call
+ * site) a scope view. Pass `null` for the org root, which has no node.
+ */
+export function uploadTargetForSelection(folder: DriveNode | null): UploadTarget | null {
+	if (!folder) return { kind: "org" }
+
+	const source = folder.source
+	if (!source) return { kind: "org", folderId: folder.folderId }
+	if (source.type === "client-folder") return { kind: "client", clientId: source.clientId }
+	if (source.type === "project-folder") return { kind: "project", projectId: source.projectId }
+	return null
 }
 
 // ── Derivation ──
@@ -306,6 +572,9 @@ export function formatRelativeTime(timestamp: number) {
 // ── Upload validation (mirrors the server-side rules in the create mutation) ──
 
 export const UPLOAD_MAX_SIZE = 25 * 1024 * 1024
+
+/** Client and project attachments are capped lower than the org drive. */
+export const ENTITY_UPLOAD_MAX_SIZE = 10 * 1024 * 1024
 
 export const UPLOAD_ACCEPT = [
 	"application/pdf",

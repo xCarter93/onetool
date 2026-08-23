@@ -65,21 +65,31 @@ import { LearnMoreLink } from "@/components/help/learn-more"
 import { createDriveColumns, type DriveRowAction } from "./columns"
 import { DeleteDialog, NameDialog, type NamePrompt } from "./crud-dialogs"
 import {
+	buildClientsSubtree,
 	buildDriveRows,
 	buildDriveTree,
+	canDeleteNode,
+	canRenameNode,
+	CLIENTS_ROOT_ID,
+	virtualFileRef,
 	collectAllRows,
 	collectDocumentIds,
 	collectFiles,
 	DRIVE_ROOT_ID,
+	ENTITY_UPLOAD_MAX_SIZE,
 	FILE_KIND_OPTIONS,
 	findRow,
 	formatCount,
 	getFolderPath,
+	isSelectableNode,
 	listFolder,
 	UPLOAD_ACCEPT,
 	UPLOAD_MAX_SIZE,
+	uploadTargetForSelection,
+	type DrivePerms,
 	type DriveRow,
 	type FileKind,
+	type UploadTarget,
 } from "./data"
 import { DetailsSheet } from "./details-sheet"
 import { DriveEmptyState } from "./empty-state"
@@ -223,13 +233,31 @@ function uploadToStorage(
 export function DriveExplorer() {
 	const toast = useToast()
 	const convex = useConvex()
-	const { can } = usePermissions()
-	const canModify = can("orgDocuments", "modify")
-	const canDelete = can("orgDocuments", "delete")
+	const { can, isLoading: permissionsLoading } = usePermissions()
+	const canViewOrg = can("orgDocuments")
+	const canViewClients = can("documents")
+	const perms = useMemo<DrivePerms>(
+		() => ({
+			orgModify: can("orgDocuments", "modify"),
+			orgDelete: can("orgDocuments", "delete"),
+			entityModify: can("documents", "modify"),
+			entityDelete: can("documents", "delete"),
+		}),
+		[can]
+	)
 
-	const documents = useQuery(api.organizationDocuments.list)
-	const folders = useQuery(api.organizationDocumentFolders.list)
-	const isLoading = documents === undefined || folders === undefined
+	// Both backends throw without their grant, so an ungranted side must skip
+	// rather than query and fail.
+	const documents = useQuery(api.organizationDocuments.list, canViewOrg ? {} : "skip")
+	const folders = useQuery(
+		api.organizationDocumentFolders.list,
+		canViewOrg ? {} : "skip"
+	)
+	const clientsTree = useQuery(api.drive.listClientsTree, canViewClients ? {} : "skip")
+	const isLoading =
+		permissionsLoading ||
+		(canViewOrg && (documents === undefined || folders === undefined)) ||
+		(canViewClients && clientsTree === undefined)
 
 	const createDocument = useMutation(api.organizationDocuments.create)
 	const updateDocument = useMutation(api.organizationDocuments.update)
@@ -240,10 +268,30 @@ export function DriveExplorer() {
 	const renameFolder = useMutation(api.organizationDocumentFolders.rename)
 	const moveFolder = useMutation(api.organizationDocumentFolders.move)
 	const removeFolder = useMutation(api.organizationDocumentFolders.remove)
+	const generateClientUploadUrl = useMutation(api.clientDocuments.generateUploadUrl)
+	const createClientDocument = useMutation(api.clientDocuments.create)
+	const updateClientDocument = useMutation(api.clientDocuments.update)
+	const removeClientDocument = useMutation(api.clientDocuments.remove)
+	const generateProjectUploadUrl = useMutation(api.projectDocuments.generateUploadUrl)
+	const createProjectDocument = useMutation(api.projectDocuments.create)
+	const updateProjectDocument = useMutation(api.projectDocuments.update)
+	const removeProjectDocument = useMutation(api.projectDocuments.remove)
+
+	// `null` means the query ran without an org, which carries no Clients tree.
+	const clientsRoot = useMemo(
+		() => (clientsTree ? buildClientsSubtree(clientsTree) : undefined),
+		[clientsTree]
+	)
 
 	const driveRows = useMemo(
-		() => buildDriveRows(buildDriveTree(folders ?? [], documents ?? [])),
-		[folders, documents]
+		() => buildDriveRows(buildDriveTree(folders ?? [], documents ?? [], clientsRoot)),
+		[folders, documents, clientsRoot]
+	)
+
+	/** Move destinations and the move action itself are org-only. */
+	const orgDriveRows = useMemo(
+		() => driveRows.filter((row) => row.node.source === undefined),
+		[driveRows]
 	)
 
 	const [namePrompt, setNamePrompt] = useState<NamePrompt | null>(null)
@@ -363,7 +411,15 @@ export function DriveExplorer() {
 		effectiveSelection.id === DRIVE_ROOT_ID
 	const hasFilters = query.length > 0 || kindFilter !== "all"
 	const isEmpty = filteredRows.length === 0
-	const isDriveEmpty = !isLoading && driveRows.length === 0
+	// The Clients root is always present once granted, so row count alone no
+	// longer says whether the drive holds anything.
+	const isDriveEmpty =
+		!isLoading &&
+		orgDriveRows.length === 0 &&
+		(clientsRoot?.children?.length ?? 0) === 0
+	const isClientsRoot =
+		effectiveSelection.type === "folder" &&
+		effectiveSelection.id === CLIENTS_ROOT_ID
 
 	const isNarrow = useIsNarrow()
 
@@ -401,10 +457,29 @@ export function DriveExplorer() {
 
 	const currentFolderId =
 		effectiveSelection.type === "folder" ? effectiveSelection.id : DRIVE_ROOT_ID
-	const currentFolderConvexId =
-		currentFolderId === DRIVE_ROOT_ID
-			? undefined
-			: (currentFolderId as Id<"organizationDocumentFolders">)
+
+	/** Null at the drive root and in scope views, neither of which is a row. */
+	const currentFolderNode = useMemo(
+		() =>
+			currentFolderId === DRIVE_ROOT_ID
+				? null
+				: (findRow(driveRows, currentFolderId)?.node ?? null),
+		[currentFolderId, driveRows]
+	)
+
+	// Recent is a filtered view, not a place, so it takes no uploads.
+	const uploadTarget = useMemo<UploadTarget | null>(
+		() =>
+			effectiveSelection.type === "folder"
+				? uploadTargetForSelection(currentFolderNode)
+				: null,
+		[effectiveSelection, currentFolderNode]
+	)
+	const canUploadHere =
+		uploadTarget !== null &&
+		(uploadTarget.kind === "org" ? perms.orgModify : perms.entityModify)
+	const canCreateFolderHere =
+		perms.orgModify && currentFolderNode?.source === undefined
 
 	/** The folder an item currently sits in, for the "current location" chip. */
 	const parentOf = useCallback(
@@ -433,19 +508,28 @@ export function DriveExplorer() {
 
 	const downloadRows = useCallback(
 		async (rows: DriveRow[]) => {
+			const files = rows
+				.flatMap((row) => [row, ...collectAllRows(row.children ?? [])])
+				.filter((row) => row.node.kind !== "folder")
 			const ids = collectDocumentIds(rows)
-			if (ids.length === 0) return
-			const namesById = new Map(
-				rows
-					.flatMap((row) => [row, ...collectAllRows(row.children ?? [])])
-					.filter((row) => row.node.documentId)
-					.map((row) => [row.node.documentId as string, row.node.name])
-			)
+			// Clients-tree blobs live behind their own signed-url endpoint.
+			const virtualFiles = files.flatMap((row) => {
+				const ref = virtualFileRef(row.node)
+				return ref ? [ref] : []
+			})
+			if (ids.length === 0 && virtualFiles.length === 0) return
+			// Both endpoints key their results by the document id, which is also
+			// the node id, so one name lookup serves them.
+			const namesById = new Map(files.map((row) => [row.node.id, row.node.name]))
 			try {
-				const urls = await convex.query(
-					api.organizationDocuments.getDocumentUrls,
-					{ ids }
-				)
+				const urls = [
+					...(ids.length > 0
+						? await convex.query(api.organizationDocuments.getDocumentUrls, { ids })
+						: []),
+					...(virtualFiles.length > 0
+						? await convex.query(api.drive.getFileUrls, { files: virtualFiles })
+						: []),
+				]
 				let missing = 0
 				for (const entry of urls) {
 					if (!entry.url) {
@@ -454,7 +538,7 @@ export function DriveExplorer() {
 					}
 					const anchor = document.createElement("a")
 					anchor.href = entry.url
-					anchor.download = namesById.get(entry.id as string) ?? "document"
+					anchor.download = namesById.get(entry.id) ?? "document"
 					anchor.rel = "noopener"
 					document.body.appendChild(anchor)
 					anchor.click()
@@ -513,9 +597,9 @@ export function DriveExplorer() {
 	 */
 	const [uploads, setUploads] = useState<Record<string, UploadRecord>>({})
 	const [uploadPanelCollapsed, setUploadPanelCollapsed] = useState(false)
-	const uploadFilesRef = useRef(
-		new Map<string, { file: File; folderId?: Id<"organizationDocumentFolders"> }>()
-	)
+	// The target is captured at start time: a retry must land where the user
+	// dropped the file, not wherever they have navigated since.
+	const uploadFilesRef = useRef(new Map<string, { file: File; target: UploadTarget }>())
 	const uploadAbortsRef = useRef(new Map<string, () => void>())
 	const uploadCounter = useRef(0)
 
@@ -532,39 +616,75 @@ export function DriveExplorer() {
 		async (id: string) => {
 			const entry = uploadFilesRef.current.get(id)
 			if (!entry) return
+			const { file, target } = entry
 			try {
-				const uploadUrl = await generateUploadUrl()
+				const uploadUrl =
+					target.kind === "org"
+						? await generateUploadUrl()
+						: target.kind === "client"
+							? await generateClientUploadUrl()
+							: await generateProjectUploadUrl()
 				const storageId = await uploadToStorage(
 					uploadUrl,
-					entry.file,
+					file,
 					(percent) => patchUpload(id, { progress: percent }),
 					(abort) => uploadAbortsRef.current.set(id, abort)
 				)
-				await createDocument({
-					name: entry.file.name,
-					storageId,
-					folderId: entry.folderId,
-				})
+				if (target.kind === "org") {
+					await createDocument({
+						name: file.name,
+						storageId,
+						folderId: target.folderId,
+					})
+				} else {
+					// Entity attachments store the original file name alongside the
+					// display name; the org drive derives both from one field.
+					const attachment = {
+						name: file.name,
+						fileName: file.name,
+						fileSize: file.size,
+						mimeType: file.type,
+						storageId,
+					}
+					if (target.kind === "client") {
+						await createClientDocument({ clientId: target.clientId, ...attachment })
+					} else {
+						await createProjectDocument({ projectId: target.projectId, ...attachment })
+					}
+				}
 				patchUpload(id, { progress: 100, status: "done" })
 			} catch (error) {
 				// Cancelled transfers were already removed from the panel.
 				if (uploadFilesRef.current.has(id)) {
-					logError(error, { action: "organizationDocuments.upload" })
+					logError(error, {
+						action:
+							target.kind === "org"
+								? "organizationDocuments.upload"
+								: "documents.upload",
+					})
 					patchUpload(id, { status: "error" })
 				}
 			} finally {
 				uploadAbortsRef.current.delete(id)
 			}
 		},
-		[generateUploadUrl, createDocument, patchUpload]
+		[
+			generateUploadUrl,
+			generateClientUploadUrl,
+			generateProjectUploadUrl,
+			createDocument,
+			createClientDocument,
+			createProjectDocument,
+			patchUpload,
+		]
 	)
 
 	const startUploads = useCallback(
-		(files: File[], folderId?: Id<"organizationDocumentFolders">) => {
+		(files: File[], target: UploadTarget) => {
 			for (const file of files) {
 				uploadCounter.current += 1
 				const id = `upl-${uploadCounter.current}`
-				uploadFilesRef.current.set(id, { file, folderId })
+				uploadFilesRef.current.set(id, { file, target })
 				setUploads((current) => ({
 					...current,
 					[id]: {
@@ -619,7 +739,12 @@ export function DriveExplorer() {
 		},
 	] = useFileUpload({
 		multiple: true,
-		maxSize: UPLOAD_MAX_SIZE,
+		// The hook re-reads its options every render, so the cap always matches
+		// the folder that is open right now.
+		maxSize:
+			uploadTarget && uploadTarget.kind !== "org"
+				? ENTITY_UPLOAD_MAX_SIZE
+				: UPLOAD_MAX_SIZE,
 		accept: UPLOAD_ACCEPT,
 		onFilesChange: (incoming) => {
 			// The hook keeps its own accumulating list and re-emits it, so
@@ -633,14 +758,9 @@ export function DriveExplorer() {
 			const files = fresh
 				.map((entry) => entry.file)
 				.filter((file): file is File => file instanceof File)
-			if (files.length === 0) return
+			if (files.length === 0 || !uploadTarget) return
 
-			startUploads(files, currentFolderConvexId)
-			// A scope view filters by a property a brand new file has not earned
-			// yet, so land the user in the folder it actually went into.
-			if (effectiveSelection.type !== "folder") {
-				setSelection({ type: "folder", id: currentFolderId })
-			}
+			startUploads(files, uploadTarget)
 		},
 	})
 
@@ -689,10 +809,9 @@ export function DriveExplorer() {
 			createDriveColumns({
 				onOpen: handleOpen,
 				onAction: handleRowAction,
-				canModify,
-				canDelete,
+				perms,
 			}),
-		[handleOpen, handleRowAction, canModify, canDelete]
+		[handleOpen, handleRowAction, perms]
 	)
 
 	// No pager: the surface scrolls, so one page always holds every file.
@@ -706,7 +825,9 @@ export function DriveExplorer() {
 		columns,
 		getRowId: (row) => row.id,
 		state: { sorting, pagination, rowSelection, columnVisibility },
-		enableRowSelection: true,
+		// Virtual folders and generated PDFs are not actionable in bulk, so
+		// select-all skips them too.
+		enableRowSelection: (row) => isSelectableNode(row.original.node),
 		onSortingChange: setSorting,
 		onRowSelectionChange: setRowSelection,
 		getCoreRowModel: getCoreRowModel(),
@@ -735,6 +856,12 @@ export function DriveExplorer() {
 		}),
 		[selectedRows]
 	)
+
+	// A mixed selection spans two permission objects, so the bulk delete is
+	// offered only when every row in it is deletable.
+	const canDeleteSelection =
+		selectedRows.length > 0 &&
+		selectedRows.every((row) => canDeleteNode(row.node, perms))
 
 	const breadcrumb = useMemo(() => {
 		if (effectiveSelection.type === "scope") {
@@ -812,6 +939,20 @@ export function DriveExplorer() {
 		setDeleteTarget(target)
 	}
 
+	/** One rename path for both trees; the source picks the mutation. */
+	async function renameNode(target: DriveRow, name: string) {
+		const source = target.node.source
+		if (source?.type === "client-doc") {
+			await updateClientDocument({ id: source.id, name })
+		} else if (source?.type === "project-doc") {
+			await updateProjectDocument({ id: source.id, name })
+		} else if (target.node.kind === "folder") {
+			await renameFolder({ id: target.node.folderId!, name })
+		} else {
+			await updateDocument({ id: target.node.documentId!, name })
+		}
+	}
+
 	async function submitName(name: string) {
 		if (!namePrompt) return
 		const prompt = namePrompt
@@ -833,11 +974,7 @@ export function DriveExplorer() {
 			} else {
 				const target = findRow(driveRows, prompt.targetId)
 				if (!target) return
-				if (target.node.kind === "folder") {
-					await renameFolder({ id: target.node.folderId!, name })
-				} else {
-					await updateDocument({ id: target.node.documentId!, name })
-				}
+				await renameNode(target, name)
 				toast.success(`Renamed to ${name}`)
 			}
 		} catch (error) {
@@ -856,11 +993,17 @@ export function DriveExplorer() {
 
 	async function deleteRows(rows: DriveRow[]) {
 		const folderIds = rows
-			.filter((row) => row.node.kind === "folder")
+			.filter((row) => row.node.folderId)
 			.map((row) => row.node.folderId!)
 		const documentIds = rows
-			.filter((row) => row.node.kind !== "folder")
+			.filter((row) => row.node.documentId)
 			.map((row) => row.node.documentId!)
+		const clientDocIds = rows.flatMap((row) =>
+			row.node.source?.type === "client-doc" ? [row.node.source.id] : []
+		)
+		const projectDocIds = rows.flatMap((row) =>
+			row.node.source?.type === "project-doc" ? [row.node.source.id] : []
+		)
 
 		try {
 			// Sequential on purpose: folder removal cascades server-side, and the
@@ -870,6 +1013,12 @@ export function DriveExplorer() {
 			}
 			if (documentIds.length > 0) {
 				await bulkRemoveDocuments({ ids: documentIds })
+			}
+			for (const id of clientDocIds) {
+				await removeClientDocument({ id })
+			}
+			for (const id of projectDocIds) {
+				await removeProjectDocument({ id })
 			}
 			const total = rows.length
 			toast.success(
@@ -942,14 +1091,14 @@ export function DriveExplorer() {
 		if (!detailsTarget) return
 		const target = detailsTarget
 		try {
-			if (target.node.kind === "folder") {
-				await renameFolder({ id: target.node.folderId!, name: patch.name })
-			} else {
+			if (target.node.documentId) {
 				await updateDocument({
-					id: target.node.documentId!,
+					id: target.node.documentId,
 					name: patch.name,
 					description: patch.description,
 				})
+			} else {
+				await renameNode(target, patch.name)
 			}
 			toast.success("Changes saved")
 			setDetailsTarget(null)
@@ -958,11 +1107,32 @@ export function DriveExplorer() {
 		}
 	}
 
-	// Signed URL for the details sheet's preview and open/download actions.
-	const detailsUrl = useQuery(
+	// Signed URL for the details sheet's preview and open/download actions. The
+	// two trees sign through different endpoints, so only one ever runs.
+	const orgDetailsUrl = useQuery(
 		api.organizationDocuments.getDocumentUrl,
 		detailsTarget?.node.documentId ? { id: detailsTarget.node.documentId } : "skip"
 	)
+	const detailsFileRef = detailsTarget ? virtualFileRef(detailsTarget.node) : null
+	const virtualDetailsUrls = useQuery(
+		api.drive.getFileUrls,
+		detailsFileRef ? { files: [detailsFileRef] } : "skip"
+	)
+	const detailsUrl = detailsTarget?.node.documentId
+		? orgDetailsUrl
+		: virtualDetailsUrls === undefined
+			? undefined
+			: (virtualDetailsUrls[0]?.url ?? null)
+
+	const detailsEditing = detailsTarget
+		? detailsTarget.node.documentId || detailsTarget.node.folderId
+			? perms.orgModify
+				? "full"
+				: "none"
+			: canRenameNode(detailsTarget.node, perms)
+				? "name-only"
+				: "none"
+		: "none"
 
 	const rail = (
 		<FolderTree
@@ -971,8 +1141,8 @@ export function DriveExplorer() {
 			selection={effectiveSelection}
 			usedBytes={usedBytes}
 			fileCount={allFiles.length}
-			canModify={canModify}
-			canDelete={canDelete}
+			canModify={perms.orgModify}
+			canDelete={perms.orgDelete}
 			onSelect={goTo}
 			onFolderAction={handleFolderAction}
 			expandedItems={expandedFolderIds}
@@ -999,6 +1169,21 @@ export function DriveExplorer() {
 							<Skeleton key={index} className="h-9 w-full" />
 						))}
 					</div>
+				</CardContent>
+			</Card>
+		)
+	}
+
+	if (!canViewOrg && !canViewClients) {
+		return (
+			<Card className="h-full min-h-0 w-full gap-0! overflow-hidden p-0!">
+				<CardContent className="flex min-h-0 flex-1 items-center justify-center p-6">
+					<EmptyState
+						size="md"
+						illustration="access-restricted"
+						title="You don't have access to this area"
+						description="Ask an organization admin to grant you access from the team settings."
+					/>
 				</CardContent>
 			</Card>
 		)
@@ -1038,26 +1223,31 @@ export function DriveExplorer() {
 								Documents
 							</h2>
 							<p className="text-muted-foreground truncate text-xs max-sm:hidden">
-								Your team&apos;s shared file library. PDFs can be attached
-								to quotes and invoices.
+								{canViewClients
+									? "Your team's shared file library. Client and project files appear under Clients automatically."
+									: "Your team's shared file library. PDFs can be attached to quotes and invoices."}
 							</p>
 						</div>
 						{/* Below sm the two actions would squeeze the title to an
 						    ellipsis, so the labels drop and the buttons become icons. */}
-						{canModify ? (
+						{canCreateFolderHere || canUploadHere ? (
 							<div className="flex shrink-0 items-center gap-2">
-								<Button
-									type="button"
-									variant="outline"
-									onClick={() => handleFolderAction("new", currentFolderId)}
-								>
-									{TOOLBAR_ICONS.folderPlus}
-									<span className="max-sm:sr-only">New Folder</span>
-								</Button>
-								<Button type="button" onClick={openFileDialog}>
-									{TOOLBAR_ICONS.upload}
-									<span className="max-sm:sr-only">Upload</span>
-								</Button>
+								{canCreateFolderHere ? (
+									<Button
+										type="button"
+										variant="outline"
+										onClick={() => handleFolderAction("new", currentFolderId)}
+									>
+										{TOOLBAR_ICONS.folderPlus}
+										<span className="max-sm:sr-only">New Folder</span>
+									</Button>
+								) : null}
+								{canUploadHere ? (
+									<Button type="button" onClick={openFileDialog}>
+										{TOOLBAR_ICONS.upload}
+										<span className="max-sm:sr-only">Upload</span>
+									</Button>
+								) : null}
 							</div>
 						) : null}
 					</div>
@@ -1210,7 +1400,7 @@ export function DriveExplorer() {
 								<DriveSelectionBar
 									selectedCount={selectionSummary.count}
 									selectedBytes={selectionSummary.bytes}
-									canDelete={canDelete}
+									canDelete={canDeleteSelection}
 									onDownload={() => void downloadRows(selectedRows)}
 									onRemove={() => setBulkDeleteOpen(true)}
 									onClear={() => setRowSelection({})}
@@ -1223,10 +1413,10 @@ export function DriveExplorer() {
 							    with the content. */}
 							<div
 								className="relative flex min-h-0 flex-1 flex-col"
-								onDragEnter={canModify ? handleDragEnter : undefined}
-								onDragLeave={canModify ? handleDragLeave : undefined}
-								onDragOver={canModify ? handleDragOver : undefined}
-								onDrop={canModify ? handleDrop : undefined}
+								onDragEnter={canUploadHere ? handleDragEnter : undefined}
+								onDragLeave={canUploadHere ? handleDragLeave : undefined}
+								onDragOver={canUploadHere ? handleDragOver : undefined}
+								onDrop={canUploadHere ? handleDrop : undefined}
 							>
 								<input {...getInputProps()} className="sr-only" tabIndex={-1} />
 								{isDragging ? (
@@ -1250,15 +1440,27 @@ export function DriveExplorer() {
 									</div>
 								) : null}
 								<ScrollArea className="min-h-0 flex-1">
-									{isDriveEmpty && !hasFilters ? (
+									{isEmpty && isClientsRoot && !hasFilters ? (
+										<div className="flex h-full w-full items-center justify-center px-4 py-10">
+											<EmptyState
+												illustration="documents-none"
+												title="Nothing here yet"
+												description="Files added to clients and projects show up here automatically."
+											/>
+										</div>
+									) : isDriveEmpty && !hasFilters ? (
 										<div className="flex h-full w-full items-center justify-center px-4 py-10">
 											<EmptyState
 												illustration="documents-none"
 												title="No documents yet"
-												description="Upload PDFs, images, and other files to build your team's shared library."
+												description={
+													canViewClients
+														? "Upload PDFs, images, and other files to build your team's shared library. Files attached to clients and projects appear here automatically."
+														: "Upload PDFs, images, and other files to build your team's shared library."
+												}
 												action={
 													<div className="flex flex-col items-center gap-2">
-														{canModify ? (
+														{canUploadHere ? (
 															<Button type="button" onClick={openFileDialog}>
 																{TOOLBAR_ICONS.upload}
 																Upload Files
@@ -1272,7 +1474,7 @@ export function DriveExplorer() {
 									) : isEmpty ? (
 										<DriveEmptyState
 											filtered={hasFilters}
-											canUpload={canModify}
+											canUpload={canUploadHere}
 											onClearFilters={clearFilters}
 											onUpload={openFileDialog}
 										/>
@@ -1321,7 +1523,7 @@ export function DriveExplorer() {
 				open={moveTarget !== null}
 				targetId={moveTarget?.id ?? ""}
 				targetName={moveTarget?.node.name ?? ""}
-				rows={driveRows}
+				rows={orgDriveRows}
 				destId={moveDestId}
 				currentParent={labelFor(moveParentId)}
 				destPath={getFolderPath(driveRows, moveDestId).map(labelFor)}
@@ -1343,7 +1545,7 @@ export function DriveExplorer() {
 								.join(" / ")
 						: ""
 				}
-				canModify={canModify}
+				editing={detailsEditing}
 				onOpenChange={(open) => {
 					if (!open) setDetailsTarget(null)
 				}}
