@@ -208,7 +208,10 @@ export default function RootLayout() {
 
 	return (
 		<GestureHandlerRootView style={{ flex: 1 }}>
-		<KeyboardProvider enabled={Platform.OS === "ios"}>
+		{/* preload=false: skip launch-time keyboard pre-warm — the splash/first-
+		    frame hand-off below is timing-sensitive and the assistant is never
+		    the first interaction. */}
+		<KeyboardProvider enabled={Platform.OS === "ios"} preload={false}>
 		<ClerkProvider publishableKey={publishableKey} tokenCache={tokenCache}>
 			<LaunchHost fontsLoaded={fontsLoaded} fontError={fontError}>
 				{/* PushRegistrationHost mirrors LaunchHost: foreground handler + tap

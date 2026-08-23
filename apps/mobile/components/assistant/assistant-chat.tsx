@@ -15,9 +15,7 @@ import { optimisticallySendMessage, useUIMessages } from "@convex-dev/agent/reac
 import { History, MessageSquarePlus, Sparkles } from "lucide-react-native";
 import { useReanimatedKeyboardAnimation } from "react-native-keyboard-controller";
 import Animated, { useAnimatedStyle } from "react-native-reanimated";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { fontFamily, radii, touch, type, useTokens } from "@/lib/theme";
-import { useDevice } from "@/lib/use-device";
 import { mapWebPathToMobileRoute } from "@/lib/assistant-nav";
 import { describeMutationError, type MutationError } from "@/lib/mutation-error";
 import { useEntitlements } from "@/lib/use-entitlements";
@@ -38,24 +36,27 @@ const SUGGESTIONS = [
  * The parent (assistant-host.tsx) gates on premium access — this component
  * assumes it is only ever mounted for an entitled user.
  */
-export function AssistantChat({ screenContext }: { screenContext?: string }) {
+export function AssistantChat({
+	screenContext,
+	keyboardBottomGap = 0,
+}: {
+	screenContext?: string;
+	/** Distance (pt) from this chat's bottom edge to the window bottom while the
+	 *  keyboard is hidden — each mount states its own geometry so the pad needs
+	 *  no window-coordinate measurement (unreliable inside the formSheet). */
+	keyboardBottomGap?: number;
+}) {
 	const t = useTokens();
 	const scrollRef = useRef<ScrollView>(null);
 
-	// Window-coordinate measurement (KeyboardAvoidingView, measureInWindow) is
-	// unreliable inside the native formSheet this chat is presented in, so pad
-	// by the native keyboard height instead: on iPhone the sheet is pinned to
-	// the screen bottom, so needed pad = keyboard height minus the safe-area
-	// inset the screen root already applies. iPad presents a centered card
-	// (not bottom-pinned) and Android keeps stock adjustResize — no pad there.
+	// Pad by native keyboard height minus the mount-declared bottom gap.
+	// iOS-only: Android keeps stock adjustResize (module disabled there).
 	const { height: keyboardHeight } = useReanimatedKeyboardAnimation();
-	const insets = useSafeAreaInsets();
-	const { device } = useDevice();
-	const padForKeyboard = Platform.OS === "ios" && device === "phone";
+	const padForKeyboard = Platform.OS === "ios";
 	const keyboardPadStyle = useAnimatedStyle(() => ({
 		// keyboardHeight runs 0 → -keyboardHeight while the keyboard shows.
 		paddingBottom: padForKeyboard
-			? Math.max(0, -keyboardHeight.value - insets.bottom)
+			? Math.max(0, -keyboardHeight.value - keyboardBottomGap)
 			: 0,
 	}));
 

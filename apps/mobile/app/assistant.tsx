@@ -14,7 +14,7 @@ import { buildScreenContext } from "@/lib/screen-context";
 export default function AssistantSheet() {
 	const t = useTokens();
 	const insets = useSafeAreaInsets();
-	const { device } = useDevice();
+	const { device, height } = useDevice();
 	const { ctx } = useLocalSearchParams<{ ctx?: string }>();
 	const screenContext = buildScreenContext(ctx);
 
@@ -23,7 +23,12 @@ export default function AssistantSheet() {
 			<CenteredModal onScrimPress={() => router.back()} maxHeight="80%">
 				<View style={[styles.padCard, { backgroundColor: t.card }]}>
 					<AssistantInkHeader />
-					<AssistantHost screenContext={screenContext} />
+					<AssistantHost
+						screenContext={screenContext}
+						// Card is centered at 80% height (maxHeight above), so its bottom
+						// edge sits 10% of the window above the screen bottom.
+						keyboardBottomGap={Math.max(24, height * 0.1)}
+					/>
 				</View>
 			</CenteredModal>
 		);
@@ -37,7 +42,12 @@ export default function AssistantSheet() {
 			]}
 		>
 			<AssistantInkHeader grabber />
-			<AssistantHost screenContext={screenContext} />
+			{/* The container already pads insets.bottom, so that's the gap between
+			    the chat's bottom edge and the window bottom. */}
+			<AssistantHost
+				screenContext={screenContext}
+				keyboardBottomGap={insets.bottom}
+			/>
 		</View>
 	);
 }

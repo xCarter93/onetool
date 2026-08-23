@@ -444,7 +444,12 @@ function AssistantPanel({
 					</Pressable>
 				}
 			/>
-			<AssistantHost screenContext={screenContext} />
+			{/* Full-height panel pinned to the screen bottom — the panel's own
+			    paddingBottom (above) is the chat's gap to the window bottom. */}
+			<AssistantHost
+				screenContext={screenContext}
+				keyboardBottomGap={Math.max(insets.bottom, 12)}
+			/>
 		</View>
 	);
 }
