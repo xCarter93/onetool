@@ -25,7 +25,6 @@ export const settingsAndTeamArticles: HelpArticle[] = [
 							"**Business Info** holds your contact details and address.",
 							"**Billing** shows your plan and subscription.",
 							"**Payments** manages your Stripe account, payouts, and disputes. It appears once Stripe setup has been started.",
-							"**Documents** stores organization files for quotes and invoices.",
 							"**SKUs** holds your reusable products and services.",
 							"**Integrations** connects QuickBooks Online and starts your Stripe payments setup.",
 						],
@@ -858,7 +857,7 @@ export const settingsAndTeamArticles: HelpArticle[] = [
 		subtitle: "Keep reusable files and line items on hand so quotes come together faster.",
 		kind: "howto",
 		availability: "all",
-		permission: "Admins and the organization owner; members need access from an admin.",
+		permission: "The shared library is admin controlled; members need documents access from an admin. Client and project files follow each person's own client and project visibility.",
 		keywords: ["files", "attachments", "catalog", "products", "services", "line items", "insurance"],
 		sections: [
 			{
@@ -866,7 +865,7 @@ export const settingsAndTeamArticles: HelpArticle[] = [
 				blocks: [
 					{
 						type: "paragraph",
-						text: "Organization settings includes two libraries that save you from redoing the same work on every quote. The **Documents** tab stores organization files you attach to quotes and invoices. The **SKUs** tab stores the products and services you sell, ready to drop into any quote as line items.",
+						text: "OneTool has two libraries that save you from redoing the same work on every quote. **Documents** is its own page in the sidebar, under **Resources**, and it holds every file your business keeps on hand. The **SKUs** tab in organization settings stores the products and services you sell, ready to drop into any quote as line items.",
 					},
 					{
 						type: "note",
@@ -875,16 +874,16 @@ export const settingsAndTeamArticles: HelpArticle[] = [
 				],
 			},
 			{
-				heading: "The Documents library",
+				heading: "The Documents page",
 				blocks: [
 					{
 						type: "paragraph",
-						text: "Documents is a file library for the things your business keeps on hand, like proof of insurance, licenses, spec sheets, and site photos. It accepts PDFs, images, Office documents, and CSV or text files up to 25 MB each. Organize files into folders, switch between a list and a card grid, and search or filter by type when the library grows.",
+						text: "Documents opens on your shared library, the files the whole business works from, like proof of insurance, licenses, spec sheets, and site photos. It accepts PDFs, images, Office documents, and CSV or text files up to 25 MB each. Organize files into folders, switch between a list and a card grid, and search or filter by type when the library grows.",
 					},
 					{
 						type: "steps",
 						items: [
-							"Open your organization settings and select the **Documents** tab.",
+							"Select **Documents** in the sidebar, under **Resources**.",
 							"Upload files with the **Upload** button or by dragging them onto the library; they land in the folder you are viewing.",
 							"Use **New Folder** to organize files, and the row menu's **Move** action to rearrange them later.",
 							"Attach PDFs to a quote or invoice when you build it.",
@@ -897,6 +896,23 @@ export const settingsAndTeamArticles: HelpArticle[] = [
 					{
 						type: "paragraph",
 						text: "Selecting a file's **Details** opens a panel where you can rename it, give it a description, preview images, or download it. Select several rows at once to download or delete them together, and use the **Recent** view in the sidebar to jump back to the latest uploads. Deleting a file or folder is permanent, and deleting a folder also deletes everything inside it.",
+					},
+				],
+			},
+			{
+				heading: "The Clients section",
+				blocks: [
+					{
+						type: "paragraph",
+						text: "Alongside the shared library, Documents has a **Clients** section that fills itself in. Any file attached to a client or a project shows up there automatically, organized client by client and then project by project, so you can find a job's paperwork without opening the record. Quote and invoice PDFs your team generates land here too.",
+					},
+					{
+						type: "note",
+						text: "Generated quote and invoice PDFs are read only here. Client and project files are live: upload into a client or project folder directly, or from the record itself, and rename or delete them in either place. The folders themselves are managed for you.",
+					},
+					{
+						type: "paragraph",
+						text: "This section respects the access each teammate already has. Someone who only sees their assigned clients and projects sees only those files here, so nothing new is exposed by putting them in one place.",
 					},
 				],
 			},
@@ -931,15 +947,15 @@ export const settingsAndTeamArticles: HelpArticle[] = [
 		faq: [
 			{
 				question: "Can members manage documents and SKUs?",
-				answer: "Yes, if an admin grants them access to those areas in the member's access editor. Otherwise these libraries are managed by admins and the owner.",
+				answer: "Yes, if an admin grants them access to those areas in the member's access editor. Otherwise the shared library and the SKU catalog are managed by admins and the owner.",
 			},
 			{
 				question: "Does editing a SKU change quotes I already sent?",
 				answer: "A SKU is a starting point for a line item. Adjust the details on the quote itself when a specific job needs a different rate or description.",
 			},
 			{
-				question: "Why can't I see these tabs?",
-				answer: "These tabs are for admins and the organization owner. A member sees them once an admin grants access to documents or SKUs from the member's access editor. There is no plan requirement.",
+				question: "Why can't I see Documents or SKUs?",
+				answer: "Both are for admins and the organization owner by default. A member sees the Documents page once an admin grants either documents grant from the member's access editor, though the shared library itself needs the organization documents grant. The SKUs tab appears once an admin grants access to SKUs. There is no plan requirement.",
 			},
 		],
 		related: [

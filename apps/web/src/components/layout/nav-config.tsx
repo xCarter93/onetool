@@ -8,6 +8,7 @@ import {
 	Receipt,
 	Briefcase,
 	ListCheck,
+	FolderOpen,
 	BarChart3,
 	Globe,
 	Zap,
@@ -28,6 +29,8 @@ export interface NavItem {
 	icon: LucideIcon;
 	/** Grant required to see this item; absent (Home, Settings) = admin-only. */
 	permission?: PermissionObject;
+	/** Visible when ANY of these grants passes; takes precedence over `permission`. */
+	anyOfPermissions?: PermissionObject[];
 	/** Pathname prefixes that mark this item active; defaults to [url]. */
 	activePrefixes?: string[];
 	items?: NavSubItem[];
@@ -46,12 +49,6 @@ export const NAV_GROUPS: NavGroup[] = [
 				title: "Home",
 				url: "/home",
 				icon: Home,
-			},
-			{
-				title: "Inbox",
-				url: "/inbox",
-				icon: Inbox,
-				permission: "inbox",
 			},
 			{
 				title: "Clients",
@@ -98,8 +95,23 @@ export const NAV_GROUPS: NavGroup[] = [
 		],
 	},
 	{
-		label: "Insights",
+		label: "Resources",
 		items: [
+			{
+				title: "Inbox",
+				url: "/inbox",
+				icon: Inbox,
+				permission: "inbox",
+			},
+			{
+				title: "Documents",
+				url: "/documents",
+				icon: FolderOpen,
+				// The org library needs orgDocuments; the Clients section needs the
+				// per-record documents grant. Either one makes the page useful.
+				anyOfPermissions: ["orgDocuments", "documents"],
+				activePrefixes: ["/documents"],
+			},
 			{
 				title: "Reports",
 				url: "/reports",
@@ -152,11 +164,6 @@ export const NAV_GROUPS: NavGroup[] = [
 						url: "/organization/profile?tab=payments",
 					},
 					{
-						title: "Documents",
-						url: "/organization/profile?tab=documents",
-						permission: "orgDocuments",
-					},
-					{
 						title: "SKUs",
 						url: "/organization/profile?tab=skus",
 						permission: "skus",
@@ -191,6 +198,7 @@ export function canViewNavItem(
 	if (ctx.permissionsLoading) {
 		return !ctx.isMember || item.title === "Projects" || item.title === "Tasks";
 	}
+	if (item.anyOfPermissions) return item.anyOfPermissions.some((p) => ctx.can(p));
 	if (item.permission) return ctx.can(item.permission);
 	// Items with no permission object (Home, Settings) were admin-only
 	// under the old gate.

@@ -82,10 +82,10 @@ export function DocumentSelectionModal({
 							No PDF documents available
 						</p>
 						<p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
-							Upload documents in Settings → Documents to use them in quotes
+							Upload documents on the Documents page to use them in quotes
 						</p>
 						<a
-							href="/organization/profile?tab=documents"
+							href="/documents"
 							target="_blank"
 							rel="noopener noreferrer"
 						>

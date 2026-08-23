@@ -37,6 +37,8 @@ export type DriveSelection =
 export interface FolderTreeNode {
 	name: string
 	children?: string[]
+	/** Derived Clients-tree folder: system-managed, so no actions apply. */
+	virtual?: boolean
 }
 
 // prettier-ignore
@@ -58,7 +60,11 @@ export function buildFolderNodes(rows: DriveRow[]) {
 		for (const row of current) {
 			if (row.node.kind !== "folder") continue
 
-			map[row.id] = { name: row.node.name, children: [] }
+			map[row.id] = {
+				name: row.node.name,
+				children: [],
+				virtual: row.node.source !== undefined,
+			}
 			map[parentId].children?.push(row.id)
 
 			if (row.children) walk(row.children, row.id)
@@ -131,9 +137,11 @@ export function FolderTree({
 					<Tree indent={TREE_INDENT} tree={tree} className="w-full gap-0.5">
 						{tree.getItems().map((item) => {
 							const visibleActions = (
-								item.getId() === DRIVE_ROOT_ID
-									? FOLDER_ACTIONS.filter((action) => action.id === "new")
-									: FOLDER_ACTIONS
+								item.getItemData().virtual
+									? []
+									: item.getId() === DRIVE_ROOT_ID
+										? FOLDER_ACTIONS.filter((action) => action.id === "new")
+										: FOLDER_ACTIONS
 							).filter(
 								(action) =>
 									!(action.needsModify && !canModify) &&

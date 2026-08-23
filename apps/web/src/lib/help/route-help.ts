@@ -15,6 +15,10 @@ export const ROUTE_HELP: Array<{ pattern: RegExp; refs: string[] }> = [
 		refs: ["inbox/unified-inbox", "inbox/emailing-from-a-client-record"],
 	},
 	{
+		pattern: /^\/documents/,
+		refs: ["settings-and-team/documents-and-skus"],
+	},
+	{
 		pattern: /^\/clients\/import\/quickbooks/,
 		refs: [
 			"settings-and-team/quickbooks-sync",

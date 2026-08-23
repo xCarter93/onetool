@@ -168,6 +168,33 @@ export const listByClient = optionalUserQuery({
 });
 
 /**
+ * Rename a client document (display name only)
+ */
+export const update = userMutation({
+	args: {
+		id: v.id("clientDocuments"),
+		name: v.string(),
+	},
+	handler: async (ctx, args): Promise<Id<"clientDocuments">> => {
+		await ctx.requireLevel("documents", "modify");
+		const document = await getDocumentOrThrow(ctx, args.id);
+		await ctx.requireRecordScope("documents", async () => {
+			const scope = await ctx.actorScope();
+			return scope.clientIds.has(document.clientId);
+		});
+
+		const name = args.name.trim();
+		if (name.length === 0) {
+			throw new Error("Document name is required");
+		}
+
+		await ctx.db.patch(args.id, { name });
+
+		return args.id;
+	},
+});
+
+/**
  * Delete a client document (removes from storage and DB)
  */
 export const remove = userMutation({

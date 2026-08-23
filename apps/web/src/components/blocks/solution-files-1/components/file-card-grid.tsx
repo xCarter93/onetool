@@ -11,6 +11,7 @@ import {
   formatCount,
   formatRelativeTime,
   getInitials,
+  isSelectableNode,
   type DriveRow,
 } from "./data"
 import { type DriveProperty } from "./view-settings"
@@ -45,13 +46,15 @@ function FileTile({
           and a border there cut the tile into two boxes. */}
       <div className="bg-muted/30 relative flex min-h-28 items-center justify-center">
         {/* Always visible: a hover-only checkbox is unreachable on touch. */}
-        <span className="absolute start-2 top-2">
-          <Checkbox
-            checked={selected}
-            onCheckedChange={(next) => onSelectChange(row, next === true)}
-            aria-label={`Select ${node.name}`}
-          />
-        </span>
+        {isSelectableNode(node) ? (
+          <span className="absolute start-2 top-2">
+            <Checkbox
+              checked={selected}
+              onCheckedChange={(next) => onSelectChange(row, next === true)}
+              aria-label={`Select ${node.name}`}
+            />
+          </span>
+        ) : null}
         <IconTile variant="elevated" aria-hidden="true">
           {FILE_KIND_ICONS[node.kind]}
         </IconTile>

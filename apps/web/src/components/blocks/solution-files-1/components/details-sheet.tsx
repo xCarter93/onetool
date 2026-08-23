@@ -42,13 +42,16 @@ function MetaRow({ label, value }: { label: string; value: string }) {
  */
 function DetailsEditor({
 	target,
+	nameOnly,
 	onSave,
 }: {
 	target: DriveRow
+	/** Clients-tree attachments carry no description field. */
+	nameOnly: boolean
 	onSave: (patch: { name: string; description?: string }) => void
 }) {
 	const { node } = target
-	const isFolder = node.kind === "folder"
+	const hasDescription = node.kind !== "folder" && !nameOnly
 	const [name, setName] = useState(node.name)
 	const [description, setDescription] = useState(node.description ?? "")
 
@@ -67,7 +70,7 @@ function DetailsEditor({
 					autoComplete="off"
 				/>
 			</Field>
-			{!isFolder ? (
+			{hasDescription ? (
 				<Field>
 					<FieldLabel htmlFor="details-description">Description</FieldLabel>
 					<Textarea
@@ -86,7 +89,7 @@ function DetailsEditor({
 				onClick={() =>
 					onSave({
 						name: trimmedName,
-						description: isFolder ? undefined : description.trim(),
+						description: hasDescription ? description.trim() : undefined,
 					})
 				}
 			>
@@ -100,7 +103,7 @@ export function DetailsSheet({
 	target,
 	url,
 	locationLabel,
-	canModify,
+	editing,
 	onOpenChange,
 	onSave,
 	onDownload,
@@ -110,7 +113,8 @@ export function DetailsSheet({
 	url?: string | null
 	/** Human path of the folder the item sits in. */
 	locationLabel: string
-	canModify: boolean
+	/** "name-only" for Clients-tree attachments, "none" for generated PDFs. */
+	editing: "full" | "name-only" | "none"
 	onOpenChange: (open: boolean) => void
 	onSave: (patch: { name: string; description?: string }) => void
 	onDownload: (row: DriveRow) => void
@@ -174,10 +178,15 @@ export function DetailsSheet({
 							) : null}
 						</div>
 
-						{canModify ? (
+						{editing !== "none" ? (
 							<>
 								<Separator />
-								<DetailsEditor key={target.id} target={target} onSave={onSave} />
+								<DetailsEditor
+									key={target.id}
+									target={target}
+									nameOnly={editing === "name-only"}
+									onSave={onSave}
+								/>
 							</>
 						) : null}
 					</div>

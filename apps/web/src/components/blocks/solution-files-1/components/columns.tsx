@@ -16,11 +16,15 @@ import {
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import {
+	canDeleteNode,
+	canMoveNode,
+	canRenameNode,
 	FILE_KIND_ICONS,
 	formatBytes,
 	formatCount,
 	formatRelativeTime,
 	getInitials,
+	type DrivePerms,
 	type DriveRow,
 	type FileKind,
 } from "./data"
@@ -44,16 +48,14 @@ const ROW_ACTIONS: {
 	destructive?: boolean
 	/** Folders have no blob to download. */
 	filesOnly?: boolean
-	/** Requires the modify permission level. */
-	needsModify?: boolean
-	/** Requires the delete permission level. */
-	needsDelete?: boolean
+	/** Row-level gate; absent means the action is always offered. */
+	allow?: (row: DriveRow, perms: DrivePerms) => boolean
 }[] = [
 	{ id: "details", label: "Details", icon: <InfoIcon aria-hidden="true" /> },
 	{ id: "download", label: "Download", filesOnly: true, icon: <DownloadIcon aria-hidden="true" /> },
-	{ id: "rename", label: "Rename", needsModify: true, icon: <PencilIcon aria-hidden="true" /> },
-	{ id: "move", label: "Move", needsModify: true, icon: <FolderIcon aria-hidden="true" /> },
-	{ id: "remove", label: "Delete", destructive: true, needsDelete: true, icon: <Trash2Icon aria-hidden="true" /> },
+	{ id: "rename", label: "Rename", allow: (row, perms) => canRenameNode(row.node, perms), icon: <PencilIcon aria-hidden="true" /> },
+	{ id: "move", label: "Move", allow: (row, perms) => canMoveNode(row.node, perms), icon: <FolderIcon aria-hidden="true" /> },
+	{ id: "remove", label: "Delete", destructive: true, allow: (row, perms) => canDeleteNode(row.node, perms), icon: <Trash2Icon aria-hidden="true" /> },
 ]
 
 function DriveNameCell({
@@ -167,21 +169,17 @@ function DriveSizeCell({ row }: { row: DriveRow }) {
 
 function DriveActionsCell({
 	row,
-	canModify,
-	canDelete,
+	perms,
 	onAction,
 }: {
 	row: DriveRow
-	canModify: boolean
-	canDelete: boolean
+	perms: DrivePerms
 	onAction: (action: DriveRowAction, row: DriveRow) => void
 }) {
 	const isFolder = row.node.kind === "folder"
 	const actions = ROW_ACTIONS.filter(
 		(action) =>
-			!(action.filesOnly && isFolder) &&
-			!(action.needsModify && !canModify) &&
-			!(action.needsDelete && !canDelete)
+			!(action.filesOnly && isFolder) && (action.allow?.(row, perms) ?? true)
 	)
 
 	return (
@@ -261,15 +259,13 @@ export function createDriveColumns({
 	onOpen,
 	onAction,
 	uploads,
-	canModify,
-	canDelete,
+	perms,
 }: {
 	onOpen: (row: DriveRow) => void
 	onAction: (action: DriveRowAction, row: DriveRow) => void
 	/** Transfer state per node id. Absent ids are settled files and render plain. */
 	uploads?: Record<string, { progress: number; status: "uploading" | "error" | "done" }>
-	canModify: boolean
-	canDelete: boolean
+	perms: DrivePerms
 }): ColumnDef<DriveRow>[] {
 	return [
 		{
@@ -278,14 +274,15 @@ export function createDriveColumns({
 			// Plain checkbox, not DataGridTableRowSelect: that helper also paints a
 			// 2px primary edge stripe on selected rows, which reads as a stray bar
 			// inside the settings pane.
-			cell: ({ row }) => (
-				<Checkbox
-					checked={row.getIsSelected()}
-					onCheckedChange={(value) => row.toggleSelected(!!value)}
-					aria-label="Select row"
-					className="align-[inherit]"
-				/>
-			),
+			cell: ({ row }) =>
+				row.getCanSelect() ? (
+					<Checkbox
+						checked={row.getIsSelected()}
+						onCheckedChange={(value) => row.toggleSelected(!!value)}
+						aria-label="Select row"
+						className="align-[inherit]"
+					/>
+				) : null,
 			size: 32,
 			enableSorting: false,
 			enableHiding: false,
@@ -354,12 +351,7 @@ export function createDriveColumns({
 			id: "actions",
 			header: "",
 			cell: ({ row }) => (
-				<DriveActionsCell
-					row={row.original}
-					canModify={canModify}
-					canDelete={canDelete}
-					onAction={onAction}
-				/>
+				<DriveActionsCell row={row.original} perms={perms} onAction={onAction} />
 			),
 			size: 56,
 			enableSorting: false,

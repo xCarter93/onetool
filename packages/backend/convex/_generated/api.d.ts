@@ -32,6 +32,7 @@ import type * as communityLeads from "../communityLeads.js";
 import type * as communityPages from "../communityPages.js";
 import type * as crons from "../crons.js";
 import type * as documents from "../documents.js";
+import type * as drive from "../drive.js";
 import type * as email_branding from "../email/branding.js";
 import type * as email_durableResend from "../email/durableResend.js";
 import type * as email_outbound from "../email/outbound.js";
@@ -227,6 +228,7 @@ declare const fullApi: ApiFromModules<{
   communityPages: typeof communityPages;
   crons: typeof crons;
   documents: typeof documents;
+  drive: typeof drive;
   "email/branding": typeof email_branding;
   "email/durableResend": typeof email_durableResend;
   "email/outbound": typeof email_outbound;

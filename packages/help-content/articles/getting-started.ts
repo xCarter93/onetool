@@ -203,7 +203,7 @@ export const gettingStartedArticles: HelpArticle[] = [
 				blocks: [
 					{
 						type: "paragraph",
-						text: "The left sidebar is how you move around OneTool. Each entry is one area of your business: Home, Clients, Projects, Tasks, Quotes, Invoices, Inbox, Automations, Routing, Reports, and your organization settings.",
+						text: "The left sidebar is how you move around OneTool. Each entry is one area of your business: Home, Clients, Projects, Tasks, Quotes, Invoices, Inbox, Documents, Automations, Routing, Reports, and your organization settings.",
 					},
 					{
 						type: "paragraph",
