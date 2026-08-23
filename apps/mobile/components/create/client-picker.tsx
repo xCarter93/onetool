@@ -357,6 +357,7 @@ const styles = StyleSheet.create({
 		flex: 1,
 		fontFamily: fontFamily.regular,
 		fontSize: type.body,
+		letterSpacing: 0, // RN#42589: pin kern so iOS placeholder can't randomly letter-space
 	},
 	empty: {
 		fontFamily: fontFamily.medium,
@@ -386,6 +387,7 @@ const styles = StyleSheet.create({
 		paddingVertical: 11,
 		fontFamily: fontFamily.regular,
 		fontSize: type.body,
+		letterSpacing: 0,
 	},
 	quickCta: { marginTop: 2 },
 	hint: {

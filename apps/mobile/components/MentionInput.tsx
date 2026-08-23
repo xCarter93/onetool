@@ -551,6 +551,7 @@ const styles = StyleSheet.create({
 		paddingVertical: spacing.sm,
 		fontSize: 13,
 		fontFamily: fontFamily.regular,
+		letterSpacing: 0, // RN#42589: pin kern so iOS placeholder can't randomly letter-space
 		color: colors.foreground,
 	},
 	actions: {

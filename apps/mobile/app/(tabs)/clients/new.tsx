@@ -458,6 +458,7 @@ const styles = StyleSheet.create({
 		paddingVertical: 12,
 		fontFamily: fontFamily.regular,
 		fontSize: 13,
+		letterSpacing: 0, // RN#42589: pin kern so iOS placeholder can't randomly letter-space
 		minHeight: 48,
 	},
 	multiline: {

@@ -300,6 +300,7 @@ const styles = StyleSheet.create({
 		flex: 1,
 		fontFamily: fontFamily.regular,
 		fontSize: 13,
+		letterSpacing: 0, // RN#42589: pin kern so iOS placeholder can't randomly letter-space
 		paddingVertical: 10,
 	},
 	suggestions: {
@@ -340,6 +341,7 @@ const styles = StyleSheet.create({
 		paddingVertical: 12,
 		fontFamily: fontFamily.regular,
 		fontSize: 13,
+		letterSpacing: 0,
 		minHeight: 48,
 	},
 	manualRow: {
