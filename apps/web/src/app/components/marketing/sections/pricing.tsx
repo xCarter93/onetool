@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { usePlans } from "@clerk/nextjs/experimental";
 import { cn } from "@/lib/utils";
-import { isLaunchPromoActive, LAUNCH_PROMO } from "@/lib/promo";
+import { LAUNCH_PROMO, useLaunchPromoActive } from "@/lib/promo";
 import { AmbientLayer } from "../ambient";
 import { PricingHalftoneScene } from "../section-halftone-scenes";
 import { CheckItem, Eyebrow, Lede, Section, SectionHeading, PlusCorners } from "../primitives";
@@ -158,6 +158,7 @@ function BillingToggle({
 
 export function Pricing() {
 	const [annual, setAnnual] = useState(false);
+	const promoActive = useLaunchPromoActive();
 	const { symbol, monthly, yearly, monthlyMinor, yearlyMinor } = useBusinessPrice();
 
 	// What paying yearly actually saves against twelve monthly charges.
@@ -292,7 +293,7 @@ export function Pricing() {
 							<span className="text-base text-(--ink-2)">{priceUnit}</span>
 						</p>
 						<p className="mt-[10px] text-[15px] text-(--ink-2)">{priceNote}</p>
-						{isLaunchPromoActive() && (
+						{promoActive && (
 							<p className="mt-[10px] text-[15px] font-medium text-(--accent-ink)">
 								Launch offer:{" "}
 								{annual

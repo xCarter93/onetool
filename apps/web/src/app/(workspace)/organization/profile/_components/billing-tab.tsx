@@ -43,7 +43,7 @@ import { Badge } from "@/components/reui/badge";
 import { SegmentedControl } from "@/components/domain/segmented-control";
 import { PromoCodeChip } from "@/components/shared/launch-promo";
 import { LearnMoreLink } from "@/components/help/learn-more";
-import { isLaunchPromoActive, LAUNCH_PROMO } from "@/lib/promo";
+import { LAUNCH_PROMO, useLaunchPromoActive } from "@/lib/promo";
 import { PLAN_MATRIX } from "@onetool/backend/convex/lib/planMatrix";
 import type { MeterUsage } from "@onetool/backend";
 import { useEntitlements } from "@/hooks/use-entitlements";
@@ -279,10 +279,9 @@ export function BillingTab() {
 	// orgs have nothing to redeem it against.
 	const promoOffer =
 		period === "annual" ? LAUNCH_PROMO.annual : LAUNCH_PROMO.monthly;
+	const promoActive = useLaunchPromoActive();
 	const showPromo =
-		isLaunchPromoActive() &&
-		(source === "free" || source === "trial") &&
-		!checkoutDone;
+		promoActive && (source === "free" || source === "trial") && !checkoutDone;
 
 	if (accessLoading) {
 		return (

@@ -3,7 +3,7 @@
 import * as React from "react";
 import { Check, Copy, Tag } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { isLaunchPromoActive, LAUNCH_PROMO } from "@/lib/promo";
+import { LAUNCH_PROMO, useLaunchPromoActive } from "@/lib/promo";
 
 /**
  * Copyable promo-code chip. One click copies the code; feedback is the quiet
@@ -62,7 +62,8 @@ export function PromoCodeChip({
  * terms, shown only while the promo window is open.
  */
 export function LaunchPromoBanner({ className }: { className?: string }) {
-	if (!isLaunchPromoActive()) {
+	const promoActive = useLaunchPromoActive();
+	if (!promoActive) {
 		return null;
 	}
 

@@ -1,11 +1,12 @@
 "use client";
 
-import { isLaunchPromoActive, LAUNCH_PROMO } from "@/lib/promo";
+import { LAUNCH_PROMO, useLaunchPromoActive } from "@/lib/promo";
 
 /* Client island so the note self-retires at the promo deadline even on a
  * statically rendered page (hydration removes it once the window closes). */
 export function LaunchOfferNote() {
-	if (!isLaunchPromoActive()) {
+	const promoActive = useLaunchPromoActive();
+	if (!promoActive) {
 		return null;
 	}
 

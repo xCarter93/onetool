@@ -2,7 +2,7 @@
 
 import { useId, useState } from "react";
 import { cn } from "@/lib/utils";
-import { isLaunchPromoActive, LAUNCH_PROMO } from "@/lib/promo";
+import { LAUNCH_PROMO, useLaunchPromoActive } from "@/lib/promo";
 import { AmbientLayer } from "../ambient";
 import { Eyebrow, Lede, Section, SectionHeading } from "../primitives";
 import { FaqHalftoneScene } from "../section-halftone-scenes";
@@ -84,7 +84,8 @@ const DISCOUNT_FAQ_INDEX =
 export function Faq() {
 	const [openIndex, setOpenIndex] = useState(0);
 	const baseId = useId();
-	const faqs = isLaunchPromoActive()
+	const promoActive = useLaunchPromoActive();
+	const faqs = promoActive
 		? [
 				...FAQS.slice(0, DISCOUNT_FAQ_INDEX),
 				DISCOUNT_FAQ,
