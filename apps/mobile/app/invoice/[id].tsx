@@ -721,6 +721,7 @@ export function InvoiceDetailBody({
 				totalsRows={totalsRows}
 				totalValue={formatCurrency(invoice.total, { exact: true })}
 				resend={displayStatus !== "draft"}
+				firstSend={invoice.status === "draft" && !invoice.firstSentAt}
 				onSend={async () => {
 					await sendToClient({ id: invoice._id });
 				}}

@@ -79,6 +79,7 @@ const styles = StyleSheet.create({
 		flex: 1,
 		fontFamily: fontFamily.regular,
 		fontSize: type.body,
+		letterSpacing: 0, // RN#42589: pin kern so iOS placeholder can't randomly letter-space
 		maxHeight: 110,
 		paddingVertical: 8,
 	},

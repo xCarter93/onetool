@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import {
 	ActivityIndicator,
-	KeyboardAvoidingView,
+	Keyboard,
+	type KeyboardEvent,
+	LayoutAnimation,
 	Platform,
 	Pressable,
 	ScrollView,
@@ -16,6 +18,8 @@ import { optimisticallySendMessage, useUIMessages } from "@convex-dev/agent/reac
 import { History, MessageSquarePlus, Sparkles } from "lucide-react-native";
 import { fontFamily, radii, touch, type, useTokens } from "@/lib/theme";
 import { mapWebPathToMobileRoute } from "@/lib/assistant-nav";
+import { describeMutationError, type MutationError } from "@/lib/mutation-error";
+import { useEntitlements } from "@/lib/use-entitlements";
 import { Composer } from "./composer";
 import { AssistantMessage, UserBubble, type AssistantToolPart } from "./message-parts";
 
@@ -36,13 +40,45 @@ const SUGGESTIONS = [
 export function AssistantChat({ screenContext }: { screenContext?: string }) {
 	const t = useTokens();
 	const scrollRef = useRef<ScrollView>(null);
+	const containerRef = useRef<View>(null);
+
+	// KeyboardAvoidingView is broken inside the native formSheet this chat is
+	// presented in (its window-coordinate math ignores the sheet's own layer),
+	// so avoid the keyboard by hand: on every keyboard frame change, measure
+	// where this container actually sits in the window and pad by the overlap.
+	const [keyboardPad, setKeyboardPad] = useState(0);
+	useEffect(() => {
+		if (Platform.OS !== "ios") return;
+		const onFrame = (e: KeyboardEvent) => {
+			containerRef.current?.measureInWindow((_x, y, _w, h) => {
+				const overlap = Math.max(0, y + h - e.endCoordinates.screenY);
+				LayoutAnimation.configureNext({
+					duration: e.duration > 0 ? e.duration : 250,
+					update: { type: "keyboard" },
+				});
+				setKeyboardPad(overlap);
+			});
+		};
+		const sub = Keyboard.addListener("keyboardWillChangeFrame", onFrame);
+		return () => sub.remove();
+	}, []);
 
 	const [threadId, setThreadId] = useState<string | null>(null);
 	const [resumeAttempted, setResumeAttempted] = useState(false);
 	const [input, setInput] = useState("");
 	const [isResponding, setIsResponding] = useState(false);
-	const [error, setError] = useState<string | null>(null);
+	const [error, setError] = useState<MutationError | null>(null);
 	const [showHistory, setShowHistory] = useState(false);
+
+	// Free orgs get a finite daily allowance; business orgs ship no meter at
+	// all, so the counter simply doesn't render for them. Exhausted stays
+	// false while the meter loads so the composer never flashes disabled.
+	const { meter } = useEntitlements();
+	const messageMeter = meter("assistantMessages");
+	const messagesExhausted =
+		messageMeter !== undefined &&
+		messageMeter.remaining !== null &&
+		messageMeter.remaining <= 0;
 
 	// User message already saved but streamResponse failed — retry must reuse
 	// this messageId instead of re-saving a duplicate user message.
@@ -128,7 +164,7 @@ export function AssistantChat({ screenContext }: { screenContext?: string }) {
 
 	const handleSend = async (promptOverride?: string) => {
 		const prompt = (promptOverride ?? input).trim();
-		if (!prompt || isResponding) return;
+		if (!prompt || isResponding || messagesExhausted) return;
 		setInput("");
 		setIsResponding(true);
 		setError(null);
@@ -156,10 +192,10 @@ export function AssistantChat({ screenContext }: { screenContext?: string }) {
 				screenContext,
 			});
 			pendingRetryRef.current = null;
-		} catch {
+		} catch (err) {
 			// Restore the failed prompt, but never clobber a newer draft.
 			setInput((current) => (current.trim() ? current : prompt));
-			setError("The assistant hit a snag.");
+			setError(describeMutationError(err, "The assistant hit a snag."));
 		} finally {
 			setIsResponding(false);
 		}
@@ -215,9 +251,10 @@ export function AssistantChat({ screenContext }: { screenContext?: string }) {
 	const showEmptyState = !showLoadingHistory && results.length === 0;
 
 	return (
-		<KeyboardAvoidingView
-			style={styles.flex}
-			behavior={Platform.OS === "ios" ? "padding" : undefined}
+		<View
+			ref={containerRef}
+			collapsable={false}
+			style={[styles.flex, { paddingBottom: keyboardPad }]}
 		>
 			{/* The ink header above the chat already names the surface — this row is
 			    just the two actions, splitting the width evenly (visual-pass r1). */}
@@ -319,17 +356,28 @@ export function AssistantChat({ screenContext }: { screenContext?: string }) {
 							<Pressable
 								key={s}
 								onPress={() => void handleSend(s)}
-								disabled={isResponding}
+								disabled={isResponding || messagesExhausted}
 								accessibilityRole="button"
 								style={[
 									styles.suggestionChip,
-									{ borderColor: t.line, opacity: isResponding ? 0.5 : 1 },
+									{
+										borderColor: t.line,
+										opacity: isResponding || messagesExhausted ? 0.5 : 1,
+									},
 								]}
 							>
 								<Text style={[styles.suggestionText, { color: t.ink }]}>{s}</Text>
 							</Pressable>
 						))}
 					</View>
+					{/* A pre-save failure (plan limit, createThread) leaves no message
+					    behind, so this branch must show the error too — there is
+					    nothing retryable, so no Try again here. */}
+					{error ? (
+						<Text style={[styles.errorText, { color: t.destructive }]}>
+							{error.message}
+						</Text>
+					) : null}
 				</View>
 			) : (
 				<ScrollView
@@ -361,32 +409,46 @@ export function AssistantChat({ screenContext }: { screenContext?: string }) {
 					{error ? (
 						<View style={styles.errorRow}>
 							<Text style={[styles.errorText, { color: t.destructive }]}>
-								{error}
+								{error.message}
 							</Text>
-							<Pressable
-								onPress={handleRetry}
-								hitSlop={8}
-								accessibilityRole="button"
-								accessibilityLabel="Try sending that again"
-							>
-								<Text style={[styles.retryText, { color: t.frostedInk }]}>
-									Try again
-								</Text>
-							</Pressable>
+							{/* A plan-limit refusal happens before the message saves, so
+							    there is nothing to retry until the meter resets. */}
+							{!error.planLimit ? (
+								<Pressable
+									onPress={handleRetry}
+									hitSlop={8}
+									accessibilityRole="button"
+									accessibilityLabel="Try sending that again"
+								>
+									<Text style={[styles.retryText, { color: t.frostedInk }]}>
+										Try again
+									</Text>
+								</Pressable>
+							) : null}
 						</View>
 					) : null}
 				</ScrollView>
 			)}
 
 			{!showHistory ? (
-				<Composer
-					value={input}
-					onChangeText={setInput}
-					onSend={() => void handleSend()}
-					disabled={isResponding}
-				/>
+				<>
+					{messageMeter &&
+					messageMeter.limit !== null &&
+					messageMeter.remaining !== null ? (
+						<Text style={[styles.meterText, { color: t.faint }]}>
+							{messageMeter.remaining} of {messageMeter.limit} messages left
+							today
+						</Text>
+					) : null}
+					<Composer
+						value={input}
+						onChangeText={setInput}
+						onSend={() => void handleSend()}
+						disabled={isResponding || messagesExhausted}
+					/>
+				</>
 			) : null}
-		</KeyboardAvoidingView>
+		</View>
 	);
 }
 
@@ -508,6 +570,13 @@ const styles = StyleSheet.create({
 		flexDirection: "row",
 		alignItems: "center",
 		gap: 12,
+	},
+	meterText: {
+		fontFamily: fontFamily.regular,
+		fontSize: type.xs,
+		textAlign: "right",
+		paddingHorizontal: 20,
+		marginBottom: 2,
 	},
 	errorText: {
 		fontFamily: fontFamily.regular,

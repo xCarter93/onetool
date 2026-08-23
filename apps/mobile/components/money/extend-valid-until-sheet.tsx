@@ -9,6 +9,7 @@ import {
 } from "react-native";
 import { X } from "lucide-react-native";
 import { fontFamily, type, useTokens } from "@/lib/theme";
+import { describeMutationError } from "@/lib/mutation-error";
 import { Button } from "@/components/ui";
 import { AppCalendar } from "@/components/AppCalendar";
 import {
@@ -73,8 +74,13 @@ export function ExtendValidUntilSheet({
 		try {
 			await onSubmit(utcMsFromDateId(selectedId));
 			onClose();
-		} catch {
-			Alert.alert("Couldn't extend that date", "Please try again.");
+		} catch (err) {
+			// Extending an expired quote revives it to sent, which can debit the
+			// clientSends meter and refuse — show the real reason.
+			Alert.alert(
+				"Couldn't extend that date",
+				describeMutationError(err, "Please try again.").message
+			);
 			setSaving(false);
 		}
 	};

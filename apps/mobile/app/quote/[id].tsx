@@ -37,6 +37,7 @@ import {
 	type RecordActionKey,
 } from "@/lib/record-actions";
 import { useShellNav } from "@/lib/shell-nav";
+import { describeMutationError } from "@/lib/mutation-error";
 import { useQuoteCapabilities } from "@/lib/use-record-capabilities";
 import { usePermissions } from "@/lib/use-permissions";
 import { formatCurrency, formatDocumentDate } from "@/lib/format";
@@ -306,8 +307,13 @@ export function QuoteDetailBody({
 	const setStatus = async (next: "draft" | "sent" | "approved" | "declined") => {
 		try {
 			await updateQuote({ id: quote._id, status: next });
-		} catch {
-			Alert.alert("Couldn't update this quote", "Please try again.");
+		} catch (err) {
+			// Draft→sent flips debit the clientSends meter and can refuse —
+			// surface the real message instead of a generic retry prompt.
+			Alert.alert(
+				"Couldn't update this quote",
+				describeMutationError(err, "Please try again.").message
+			);
 		}
 	};
 
@@ -806,6 +812,7 @@ export function QuoteDetailBody({
 				totalsRows={totalsRows}
 				totalValue={formatCurrency(quote.total, { exact: true })}
 				resend={status === "sent"}
+				firstSend={!quote.firstSentAt && !quote.sentAt}
 				onSend={async () => {
 					await sendToClient({ id: quote._id });
 				}}

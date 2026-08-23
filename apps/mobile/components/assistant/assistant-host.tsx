@@ -1,18 +1,20 @@
 import { StyleSheet, Text, View } from "react-native";
 import { Sparkles } from "lucide-react-native";
-import { useQuery } from "convex/react";
-import { api } from "@onetool/backend/convex/_generated/api";
 import { fontFamily, radii, type, useTokens } from "@/lib/theme";
+import { useEntitlements } from "@/lib/use-entitlements";
 import { AssistantChat } from "./assistant-chat";
 
-// Server-truth plan gate around the chat. The locked copy states unavailability
-// and NOTHING else — no upsell, no "upgrade on the web", no billing link
-// (Apple anti-steering treats even directional text as a violation).
+// Server-truth access gate around the chat. The aiAssistant switch is on for
+// every plan (volume rides the assistantMessages meter inside the chat);
+// LockedBody survives only as the kill-switch state. The locked copy states
+// unavailability and NOTHING else — no upsell, no "upgrade on the web", no
+// billing link (Apple anti-steering treats even directional text as a
+// violation).
 export function AssistantHost({ screenContext }: { screenContext?: string }) {
-	const premium = useQuery(api.permissions.hasPremiumAccess);
+	const { isLoading, allows } = useEntitlements();
 
-	if (premium === undefined) return <View style={styles.fill} />;
-	if (!premium) return <LockedBody />;
+	if (isLoading) return <View style={styles.fill} />;
+	if (!allows("aiAssistant")) return <LockedBody />;
 	return <AssistantChat screenContext={screenContext} />;
 }
 

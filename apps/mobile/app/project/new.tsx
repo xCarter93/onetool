@@ -198,9 +198,7 @@ export default function NewProjectSheet() {
 
 				{error ? (
 					<Text style={[styles.error, { color: t.destructive }]}>
-						{error.planLimit
-							? `${error.message} Upgrade on the web app to add more.`
-							: error.message}
+						{error.message}
 					</Text>
 				) : null}
 
@@ -373,6 +371,7 @@ const styles = StyleSheet.create({
 		paddingVertical: 12,
 		fontSize: type.h4,
 		fontFamily: fontFamily.regular,
+		letterSpacing: 0, // RN#42589: pin kern so iOS placeholder can't randomly letter-space
 		marginTop: 8,
 	},
 	select: {

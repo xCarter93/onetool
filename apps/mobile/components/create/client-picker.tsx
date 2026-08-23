@@ -119,12 +119,13 @@ export function ClientPicker({
 			setQuickName("");
 			setQuickPhone("");
 		} catch (err) {
-			const { message, planLimit } = describeMutationError(
-				err,
-				"Couldn't add that client. Check your connection and try again."
-			);
+			// Plan-limit copy renders as-is — no directional upsell text on
+			// mobile (Apple anti-steering).
 			setQuickError(
-				planLimit ? `${message} Upgrade on the web app to continue.` : message
+				describeMutationError(
+					err,
+					"Couldn't add that client. Check your connection and try again."
+				).message
 			);
 		} finally {
 			setQuickSaving(false);
@@ -356,6 +357,7 @@ const styles = StyleSheet.create({
 		flex: 1,
 		fontFamily: fontFamily.regular,
 		fontSize: type.body,
+		letterSpacing: 0, // RN#42589: pin kern so iOS placeholder can't randomly letter-space
 	},
 	empty: {
 		fontFamily: fontFamily.medium,
@@ -385,6 +387,7 @@ const styles = StyleSheet.create({
 		paddingVertical: 11,
 		fontFamily: fontFamily.regular,
 		fontSize: type.body,
+		letterSpacing: 0,
 	},
 	quickCta: { marginTop: 2 },
 	hint: {

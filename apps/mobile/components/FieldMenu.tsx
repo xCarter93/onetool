@@ -67,18 +67,28 @@ export function FieldMenu({
 
 	if (inert) return <>{trigger}</>;
 
+	// The SwiftUI menu host under-measures its RN child, so making it the
+	// laid-out row lets it displace whatever follows (labels vanish under the
+	// painted overflow). Instead the trigger owns the layout and the host is
+	// absolutely overlaid on top — its measurement can no longer move siblings;
+	// the transparent child is the tap target and menu anchor.
 	return (
-		<MenuView
-			title={title}
-			onPressAction={({ nativeEvent }) => onSelect(nativeEvent.event)}
-			actions={options.map((o) => ({
-				id: o.value,
-				title: o.label,
-				state: o.value === value ? "on" : "off",
-			}))}
-		>
+		<View collapsable={false}>
 			{trigger}
-		</MenuView>
+			<View style={StyleSheet.absoluteFill}>
+				<MenuView
+					title={title}
+					onPressAction={({ nativeEvent }) => onSelect(nativeEvent.event)}
+					actions={options.map((o) => ({
+						id: o.value,
+						title: o.label,
+						state: o.value === value ? "on" : "off",
+					}))}
+				>
+					<View style={styles.anchor} />
+				</MenuView>
+			</View>
+		</View>
 	);
 }
 
@@ -97,5 +107,8 @@ const styles = StyleSheet.create({
 		fontSize: type.h4,
 		fontFamily: fontFamily.regular,
 		marginRight: 8,
+	},
+	anchor: {
+		flex: 1,
 	},
 });
