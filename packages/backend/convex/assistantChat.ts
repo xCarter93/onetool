@@ -197,6 +197,11 @@ export const streamResponse = action({
 				`Assistant response failed: ${streamFailure ?? (error instanceof Error ? error.message : String(error))}`
 			);
 		}
+		// onError marks the stream failed without guaranteeing the awaited
+		// consumption throws — surface the failure to the client either way.
+		if (streamFailure !== undefined) {
+			throw new ConvexError(`Assistant response failed: ${streamFailure}`);
+		}
 	},
 });
 
