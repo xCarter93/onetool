@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useSyncExternalStore } from "react";
-import { SignedIn } from "@clerk/nextjs";
+import { Show } from "@clerk/nextjs";
 import {
 	CheckoutButton,
 	SubscriptionDetailsButton,
@@ -341,7 +341,7 @@ export function BillingTab() {
 							</div>
 						</div>
 						{hasClerkSubscription && canManageBilling && (
-							<SignedIn>
+							<Show when="signed-in">
 								<SubscriptionDetailsButton
 									for="organization"
 									subscriptionDetailsProps={{ appearance: drawerAppearance }}
@@ -351,7 +351,7 @@ export function BillingTab() {
 										Manage subscription
 									</Button>
 								</SubscriptionDetailsButton>
-							</SignedIn>
+							</Show>
 						)}
 					</div>
 				</SettingsCardHeader>
@@ -476,7 +476,7 @@ export function BillingTab() {
 														Activating plan…
 													</Button>
 												) : businessPlan ? (
-													<SignedIn>
+													<Show when="signed-in">
 														<CheckoutButton
 															planId={businessPlan.id}
 															for="organization"
@@ -491,7 +491,7 @@ export function BillingTab() {
 																{checkoutLabel}
 															</Button>
 														</CheckoutButton>
-													</SignedIn>
+													</Show>
 												) : (
 													<Button size="sm" className="mt-1" disabled>
 														<Crown className="size-3.5" />

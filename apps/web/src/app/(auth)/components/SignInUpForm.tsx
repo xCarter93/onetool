@@ -1,7 +1,7 @@
 "use client";
 
 import { SignIn, SignUp } from "@clerk/nextjs";
-import { dark } from "@clerk/themes";
+import { dark } from "@clerk/ui/themes";
 import { useTheme } from "next-themes";
 import { AnimatePresence, motion, type Transition } from "framer-motion";
 import Image from "next/image";
@@ -28,8 +28,8 @@ const getSharedElements = (isDark: boolean) => ({
 	footerAction: "bg-transparent border-none shadow-none",
 	headerTitle: "text-foreground",
 	headerSubtitle: "text-muted-foreground",
-	socialButtonsBlockButton:
-		"border-border hover:bg-accent hover:text-accent-foreground",
+	// No socialButtonsBlockButton override: Core 3's Clerk UI resolves
+	// bg-accent/text-accent-foreground against its own tokens, inverting hover.
 	formFieldLabel: "text-foreground",
 	formFieldInput:
 		"bg-background border-border focus:border-primary focus:ring-primary",
@@ -45,7 +45,7 @@ export function SignInUpForm({ mode }: SignInUpFormProps) {
 	const isDark = resolvedTheme === "dark";
 
 	const clerkAppearance = {
-		baseTheme: isDark ? dark : undefined,
+		theme: isDark ? dark : undefined,
 		elements: getSharedElements(isDark),
 	};
 

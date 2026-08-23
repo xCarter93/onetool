@@ -2,7 +2,7 @@
 
 import { ReactNode } from "react";
 import { ClerkProvider } from "@clerk/nextjs";
-import { dark } from "@clerk/themes";
+import { dark } from "@clerk/ui/themes";
 import { useTheme } from "next-themes";
 import { env } from "@/env";
 
@@ -17,8 +17,8 @@ const getSharedElements = (isDark: boolean) => ({
 	card: "shadow-xl backdrop-blur-sm",
 	headerTitle: "text-foreground",
 	headerSubtitle: "text-muted-foreground",
-	socialButtonsBlockButton:
-		"border-border hover:bg-accent hover:text-accent-foreground",
+	// No socialButtonsBlockButton override: Core 3's Clerk UI resolves
+	// bg-accent/text-accent-foreground against its own tokens, inverting hover.
 	formFieldLabel: "text-foreground",
 	formFieldInput: "border-border focus:border-primary focus:ring-primary",
 	footerActionLink: "text-primary hover:text-primary/90",
@@ -39,7 +39,7 @@ export function ClerkProviderWithTheme({
 			afterSignOutUrl="/"
 			appearance={{
 				cssLayerName: "clerk",
-				baseTheme: isDark ? dark : undefined,
+				theme: isDark ? dark : undefined,
 				elements: {
 					logoImage: elements.logoImage,
 				},
