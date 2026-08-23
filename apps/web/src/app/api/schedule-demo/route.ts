@@ -67,7 +67,7 @@ export async function POST(request: NextRequest) {
 
 		// Send email via Resend
 		const data = await resend.emails.send({
-			from: "OneTool Demo Requests <support@onetool.biz>",
+			from: "OneTool Demo Requests <no-reply@onetool.biz>",
 			to: ["support@onetool.biz"],
 			subject: `New Demo Request from ${name}${company ? ` - ${company}` : ""}`,
 			html: emailHtml,

@@ -9,7 +9,11 @@ import {
 	plusTagAddress,
 } from "./email/threads";
 import { SERVER_EVENTS, trackServerEvent } from "./lib/posthog";
-import { buildEmailHtml, resolveFromEmail } from "./email/branding";
+import {
+	buildEmailHtml,
+	resolveFromEmail,
+	resolveReplyToEmail,
+} from "./email/branding";
 import { formatEmailFrom } from "./lib/emailFrom";
 import { sanitizeHtml } from "./email/sanitizeHtml";
 
@@ -115,7 +119,7 @@ export const sendClientEmail = userMutation({
 		const message: OutboundMessage = {
 			from: formatEmailFrom(fromName, fromEmail),
 			to: [recipient.email],
-			replyTo: [plusTagAddress(resolveFromEmail(organization), threadDocId)],
+			replyTo: [plusTagAddress(resolveReplyToEmail(organization), threadDocId)],
 			subject: args.subject,
 			html: emailHtml,
 			text: args.messageBody, // text/plain alternative on every send
@@ -309,7 +313,7 @@ export const replyToEmail = userMutation({
 		const message: OutboundMessage = {
 			from: formatEmailFrom(fromName, fromEmail),
 			to: [primaryContact.email],
-			replyTo: [plusTagAddress(resolveFromEmail(organization), threadDocId)],
+			replyTo: [plusTagAddress(resolveReplyToEmail(organization), threadDocId)],
 			subject,
 			html: emailHtml,
 			text: args.messageBody, // text/plain alternative on every send

@@ -13,7 +13,11 @@ import { getMembership, listMembershipsByOrg } from "../memberships";
 import { celebrateQuoteApproved, celebrateInvoicePaid } from "../celebrations";
 import { insertTeamMessage } from "../../teamMessages";
 import { AUTOMATION_EMAIL_DAILY_CAP, rateLimiter } from "../../rateLimits";
-import { buildEmailHtml, resolveFromEmail } from "../../email/branding";
+import {
+	buildEmailHtml,
+	resolveFromEmail,
+	resolveReplyToEmail,
+} from "../../email/branding";
 import { formatEmailFrom } from "../emailFrom";
 import {
 	getOrCreateOutboundThread,
@@ -2046,7 +2050,7 @@ async function executeSendEmailAction(
 		clientId: client?._id ?? null,
 		subject,
 	});
-	const replyTo = plusTagAddress(fromEmail, threadDocId);
+	const replyTo = plusTagAddress(resolveReplyToEmail(org), threadDocId);
 	const preview = body.substring(0, 100);
 
 	const nodeId = env.currentNodeId ?? "";

@@ -10,6 +10,8 @@ const MAX_LOCAL_PART_LENGTH = 24;
 const RESERVED_LOCAL_PARTS = [
 	"support",
 	"noreply",
+	"no-reply",
+	"replies", // shared fallback Reply-To base (FALLBACK_REPLY_TO_EMAIL)
 	"new",
 	"create",
 	"edit",

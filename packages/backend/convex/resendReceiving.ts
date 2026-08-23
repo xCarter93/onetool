@@ -11,6 +11,7 @@ import {
 	stripPlusTag,
 	bumpThread,
 } from "./email/threads";
+import { FALLBACK_REPLY_TO_EMAIL } from "./email/branding";
 
 // Validate RESEND_API_KEY before initializing client
 if (!process.env.RESEND_API_KEY) {
@@ -214,15 +215,20 @@ export const processInboundEmail = internalMutation({
 		}
 
 		if (!organization) {
-			// support@onetool.biz is a general inbox, not org-specific.
-			if (baseAddress === "support@onetool.biz") {
+			// Shared fallback bases are only meaningful with a resolvable plus-token:
+			// support@ is the legacy replyTo base (now PostHog's inbox), replies@ is
+			// the current one. Untokened (or dead-token) mail to either has no org.
+			if (
+				baseAddress === "support@onetool.biz" ||
+				baseAddress === FALLBACK_REPLY_TO_EMAIL
+			) {
 				console.log(
-					`Skipping inbound email for support@onetool.biz. From: ${args.from}, Subject: ${args.subject}`
+					`Skipping inbound email to shared address ${baseAddress}. From: ${args.from}, Subject: ${args.subject}`
 				);
 				return {
 					success: true,
 					skipped: true,
-					reason: "General support email - not organization-specific",
+					reason: "Shared fallback address - not organization-specific",
 				};
 			}
 
