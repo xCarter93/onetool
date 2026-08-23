@@ -503,7 +503,9 @@ function QuoteDetailPageContent() {
 							? "Checking for a generated PDF…"
 							: esignReason
 					}
-					clientSendDisabled={sendsExhausted && !quote.sentAt}
+					clientSendDisabled={
+						sendsExhausted && !quote.firstSentAt && !quote.sentAt
+					}
 					clientSendDisabledReason={sendsReason}
 					onGeneratePdf={() => setShowDocumentModal(true)}
 					onDelete={() => setIsDeleteModalOpen(true)}

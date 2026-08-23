@@ -481,8 +481,7 @@ export function BillingTab() {
 															planId={businessPlan.id}
 															for="organization"
 															planPeriod={period}
-															newSubscriptionRedirectUrl="/organization/profile?tab=billing"
-															onSubscriptionComplete={() => {
+																	onSubscriptionComplete={() => {
 																setCheckoutDone(true);
 															}}
 															checkoutProps={{ appearance: drawerAppearance }}

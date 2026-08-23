@@ -2,7 +2,7 @@ import { LegalPageLayout } from "../components/legal-page-layout";
 
 export default function TermsOfServicePage() {
 	return (
-		<LegalPageLayout title="Terms of Service" lastUpdated="July 17, 2026">
+		<LegalPageLayout title="Terms of Service" lastUpdated="August 23, 2026">
 			<div className="space-y-8">
 				<section>
 					<h2 className="text-2xl font-semibold text-foreground mb-4">
@@ -789,7 +789,7 @@ export default function TermsOfServicePage() {
 
 				<section className="pt-4 border-t border-border mt-8">
 					<p className="text-xs text-muted-foreground">
-						These Terms of Service are effective as of July 17, 2026. Please
+						These Terms of Service are effective as of August 23, 2026. Please
 						review this document regularly as we may update it. Your continued
 						use of OneTool constitutes acceptance of these terms.
 					</p>

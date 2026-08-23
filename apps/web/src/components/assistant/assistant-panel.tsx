@@ -355,8 +355,8 @@ function UpgradePrompt() {
 					The assistant isn&rsquo;t available right now
 				</p>
 				<p className="mx-auto mt-1 max-w-xs text-sm text-muted-foreground">
-					Your organization&rsquo;s plan doesn&rsquo;t include the assistant.
-					Check the Billing tab for details.
+					The assistant is turned off for your organization. Check the
+					Billing tab for details.
 				</p>
 			</div>
 			<Link

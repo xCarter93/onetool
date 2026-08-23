@@ -494,7 +494,7 @@ export const settingsAndTeamArticles: HelpArticle[] = [
 			},
 			{
 				question: "What happens if I cancel my subscription?",
-				answer: "You can cancel any time from Manage subscription on the Billing tab. Your organization keeps Business until the end of the billing period you already paid for, then continues on the Free plan with all of its data intact. Subscription fees are not refunded, so cancelling an annual plan three months in leaves you nine more months of Business rather than money back. We correct genuine billing errors, and EU customers have a 14 day withdrawal right on their first purchase.",
+				answer: "You can cancel any time from Manage subscription on the Billing tab. Your organization keeps Business until the end of the billing period you already paid for, then continues on the Free plan with all of its data intact. Subscription fees are not refunded, so cancelling an annual plan three months in leaves you nine more months of Business rather than money back. We correct genuine billing errors, and consumers in the EU may have a 14 day withdrawal right on a first purchase, depending on local consumer law.",
 			},
 		],
 		related: [

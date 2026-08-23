@@ -36,7 +36,8 @@ const planValue = (value: string | boolean) =>
 const PLANS = [
 	`## Plans`,
 	`Free is $0 forever. Business is $30/month or $300/year, per organisation.`,
-	`Every new account starts with a 14-day Business trial; no credit card is required.`,
+	`Every new organization starts with a 14-day Business trial; no credit card is required.`,
+	`Free document sends gain a +10 bonus in any month a card payment is collected through Stripe.`,
 	``,
 	...PLAN_MATRIX.map(
 		(row) =>

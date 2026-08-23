@@ -30,7 +30,7 @@ const matrixValue = (key: string, plan: "free" | "business"): string => {
 const FREE_FEATURES = [
 	"Unlimited clients and projects",
 	`${FREE_SEATS} team members`,
-	`${matrixValue("clientSends", "free")} quote and invoice sends a month`,
+	`${matrixValue("clientSends", "free")} quote and invoice sends a month, +10 in months you collect a payment`,
 	`${matrixValue("esignatures", "free")} e-signature requests a month`,
 	`AI assistant, ${matrixValue("assistantMessages", "free")} messages a day`,
 	`${matrixValue("savedReports", "free")} saved custom reports`,
@@ -190,7 +190,7 @@ export function Pricing() {
 						<RoughMark type="highlight">Free</RoughMark> until you outgrow it.
 					</SectionHeading>
 					<Lede className="max-w-[34rem]">
-						Every new account starts with two weeks of Business, no card required. After
+						Every new organization starts with two weeks of Business, no card required. After
 						that, stay free as long as you like and upgrade the week it starts paying for
 						itself. If
 						you&rsquo;d rather be walked through it first,{" "}

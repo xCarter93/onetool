@@ -216,9 +216,9 @@ export function InvoiceDetailDrawer({
 				pending ||
 				sending ||
 				!can("invoices", "modify") ||
-				(effectiveStatus === "draft" && sendsExhausted),
+				(effectiveStatus === "draft" && sendsExhausted && !invoice?.firstSentAt),
 			disabledReason:
-				effectiveStatus === "draft" && sendsExhausted
+				effectiveStatus === "draft" && sendsExhausted && !invoice?.firstSentAt
 					? sendsReason
 					: undefined,
 			loading: sending,

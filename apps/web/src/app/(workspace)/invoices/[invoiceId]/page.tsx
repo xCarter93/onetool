@@ -399,7 +399,7 @@ function InvoiceDetailPageContent() {
 					onMarkPaid={handleMarkPaid}
 					onSendToClient={handleSendToClient}
 					sending={isSending}
-					sendCapReached={sendsExhausted}
+					sendCapReached={sendsExhausted && !invoice.firstSentAt}
 					sendCapReason={sendsReason}
 					onGeneratePdf={handleGeneratePdf}
 					onCancel={() => setIsCancelModalOpen(true)}

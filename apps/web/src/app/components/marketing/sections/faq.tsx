@@ -57,7 +57,7 @@ const FAQS: ReadonlyArray<readonly [string, string]> = [
 	],
 	[
 		"How does the free trial work?",
-		"Every new account starts with a 14-day trial of the Business plan, applied automatically when you create your organization. There is no credit card and nothing to cancel: when the trial ends, you simply continue on the free plan with all of your data intact. Upgrade from the Billing tab whenever it makes sense.",
+		"Every new organization starts with a 14-day trial of the Business plan, applied automatically when it is created. There is no credit card and nothing to cancel: when the trial ends, you simply continue on the free plan with all of your data intact. Upgrade from the Billing tab whenever it makes sense.",
 	],
 	[
 		"What are the free plan's limits?",

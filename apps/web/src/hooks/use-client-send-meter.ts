@@ -4,8 +4,9 @@ import { useEntitlements } from "@/hooks/use-entitlements";
 
 /**
  * Pre-flight for the clientSends meter on send surfaces. Only FIRST sends
- * debit (resends are keyed off firstSentAt and never charge), so callers must
- * apply `exhausted` only to documents that have not been sent yet. `exhausted`
+ * debit, keyed on the immutable firstSentAt (revert-to-draft clears sentAt but
+ * never firstSentAt), so callers must apply `exhausted` only to documents with
+ * no firstSentAt (for quotes, also no legacy sentAt). `exhausted`
  * stays false until the meter resolves, so buttons don't flash disabled.
  */
 export function useClientSendMeter() {

@@ -1371,6 +1371,7 @@ interface InvoicePreview {
 		issuedDate: number;
 		dueDate: number;
 		paidAt: number | null;
+		firstSentAt: number | null;
 		createdAt: number;
 	};
 	client: {
@@ -1592,6 +1593,7 @@ export const getPreview = optionalUserQuery({
 				issuedDate: invoice.issuedDate,
 				dueDate: invoice.dueDate,
 				paidAt: invoice.paidAt ?? null,
+				firstSentAt: invoice.firstSentAt ?? null,
 				createdAt: invoice._creationTime,
 			},
 			client,
