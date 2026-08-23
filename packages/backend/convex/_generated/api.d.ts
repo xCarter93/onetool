@@ -191,6 +191,7 @@ import type * as serviceStatusActions from "../serviceStatusActions.js";
 import type * as skus from "../skus.js";
 import type * as stripeWebhookActions from "../stripeWebhookActions.js";
 import type * as stripeWebhookEvents from "../stripeWebhookEvents.js";
+import type * as support from "../support.js";
 import type * as tasks from "../tasks.js";
 import type * as teamMessages from "../teamMessages.js";
 import type * as usage from "../usage.js";
@@ -387,6 +388,7 @@ declare const fullApi: ApiFromModules<{
   skus: typeof skus;
   stripeWebhookActions: typeof stripeWebhookActions;
   stripeWebhookEvents: typeof stripeWebhookEvents;
+  support: typeof support;
   tasks: typeof tasks;
   teamMessages: typeof teamMessages;
   usage: typeof usage;
