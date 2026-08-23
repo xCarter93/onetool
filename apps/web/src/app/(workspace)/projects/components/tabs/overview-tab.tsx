@@ -225,8 +225,10 @@ export function OverviewTab({
 					</div>
 				</div>
 
-				{/* Calendar */}
+				{/* Calendar — keyed so soft-navigating between projects remounts it
+				    (its initial month is computed once from the project range) */}
 				<ProjectScheduleCalendar
+					key={projectId}
 					startDate={startDate}
 					endDate={endDate}
 					tasks={tasks}
