@@ -151,15 +151,6 @@ export function ProjectDetailHeader({
 										{ id: "in-progress", name: "In Progress", order: 2 },
 										{ id: "completed", name: "Completed", order: 3 },
 									]}
-									events={[
-										{ type: "planned", timestamp: project._creationTime },
-										...(project.startDate
-											? [{ type: "in-progress", timestamp: project.startDate }]
-											: []),
-										...(project.endDate && project.status === "completed"
-											? [{ type: "completed", timestamp: project.endDate }]
-											: []),
-									]}
 									failureStatuses={["cancelled"]}
 									successStatuses={["completed"]}
 								/>

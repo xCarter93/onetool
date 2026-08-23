@@ -74,6 +74,10 @@ export const projectsAndTasksArticles: HelpArticle[] = [
 						text: "**Generate Invoice** builds an invoice from the project's approved quotes, so it stays unavailable until at least one quote on the project is **Approved**. Send a quote, get the approval, and the button comes to life.",
 					},
 					{
+						type: "paragraph",
+						text: "The Overview tab's schedule calendar shows the month at a glance: the project's start-to-end range, each task on its scheduled day, and small markers on the days quotes were sent or approved and invoices were sent or paid. Click a task on the calendar to open and edit it.",
+					},
+					{
 						type: "media",
 						media: "image",
 						caption: "A project page with the Overview tab open",

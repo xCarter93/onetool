@@ -247,8 +247,9 @@ export function StatusProgressBar({
 										</span>
 									</span>
 
-									{/* Timestamp */}
-									{timestamp && (
+									{/* Timestamp — reached steps only, so a stale field left
+									    over from a status revert never shows on an upcoming step */}
+									{timestamp && stepStatus !== "upcoming" && (
 										<span
 											className={cn(
 												"text-[10px] font-medium ml-2 whitespace-nowrap",

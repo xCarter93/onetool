@@ -231,11 +231,13 @@ export function InvoiceDetailHeader({
 													},
 												]
 											: []),
-										...(invoice.issuedDate
+										// firstSentAt is the real send instant; issuedDate is a
+										// user-entered UTC-midnight day stamp, not a send time.
+										...(invoice.firstSentAt
 											? [
 													{
 														type: "sent",
-														timestamp: invoice.issuedDate,
+														timestamp: invoice.firstSentAt,
 													},
 												]
 											: []),

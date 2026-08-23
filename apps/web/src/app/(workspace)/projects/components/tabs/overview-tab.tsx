@@ -8,11 +8,10 @@ import { MentionSection } from "@/components/shared/mention-section";
 import { Separator } from "@/components/ui/separator";
 import { HighlightMetricGrid } from "@/components/shared/highlight-metric-grid";
 import { RelatedRecordsFrame } from "@/components/shared/related-records-frame";
-import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { ClipboardList, DollarSign, CheckCircle, FileText, Receipt, Pencil } from "lucide-react";
 import { formatCurrency } from "@/lib/money";
-import { utcMidnightMsToLocalDate } from "@/lib/dates";
+import { ProjectScheduleCalendar } from "../project-schedule-calendar";
 
 interface OverviewTabProps {
 	projectId: Id<"projects">;
@@ -42,31 +41,6 @@ function sortedByNewest<T extends { _creationTime: number }>(
 ): T[] {
 	if (!items) return [];
 	return [...items].sort((a, b) => b._creationTime - a._creationTime);
-}
-
-function getCalendarDays(date: Date) {
-	const year = date.getFullYear();
-	const month = date.getMonth();
-	const firstDay = new Date(year, month, 1);
-	const lastDay = new Date(year, month + 1, 0);
-	const startingDayOfWeek = firstDay.getDay();
-	const daysInMonth = lastDay.getDate();
-
-	const days: Array<number | null> = [];
-	for (let i = 0; i < startingDayOfWeek; i++) days.push(null);
-	for (let day = 1; day <= daysInMonth; day++) days.push(day);
-	while (days.length < 42) days.push(null);
-	return days;
-}
-
-function formatDisplayDate(timestamp?: number) {
-	if (!timestamp) return "Not set";
-	return new Date(timestamp).toLocaleDateString("en-US", {
-		year: "numeric",
-		month: "long",
-		day: "numeric",
-		timeZone: "UTC",
-	});
 }
 
 export function OverviewTab({
@@ -125,21 +99,6 @@ export function OverviewTab({
 		if (e.key === "Escape") {
 			cancelEditingDescription();
 		}
-	};
-
-	const initialCalendarDate = startDate
-		? utcMidnightMsToLocalDate(startDate)
-		: new Date();
-	const [calendarDate, setCalendarDate] = useState(
-		new Date(initialCalendarDate.getFullYear(), initialCalendarDate.getMonth(), 1)
-	);
-
-	const handleCalendarNavigation = (direction: "prev" | "next") => {
-		setCalendarDate((prev) => {
-			const next = new Date(prev);
-			next.setMonth(next.getMonth() + (direction === "next" ? 1 : -1));
-			return next;
-		});
 	};
 
 	const activeTasks =
@@ -266,162 +225,16 @@ export function OverviewTab({
 					</div>
 				</div>
 
-				{/* Calendar */}
-				<div className="relative overflow-hidden rounded-2xl p-6 shadow-sm border border-gray-200/60 dark:border-white/10 bg-white/80 dark:bg-white/[0.03] backdrop-blur supports-[backdrop-filter]:bg-white/60 ring-1 ring-black/5 dark:ring-white/10">
-					<div className="pointer-events-none absolute -top-24 -right-24 h-48 w-48 rounded-full bg-primary/10 blur-3xl" />
-					<div className="pointer-events-none absolute -bottom-24 -left-24 h-48 w-48 rounded-full bg-blue-500/10 blur-3xl" />
-
-					<div className="flex items-center justify-between mb-6">
-						<h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-							{calendarDate.toLocaleDateString("en-US", {
-								month: "long",
-								year: "numeric",
-							})}
-						</h3>
-						<div className="flex gap-2 rounded-lg bg-gray-50/80 dark:bg-white/5 p-1 ring-1 ring-inset ring-gray-200/70 dark:ring-white/10 shadow-sm">
-							<Button
-								type="button"
-								variant="outline"
-								size="sm"
-								onClick={() => handleCalendarNavigation("prev")}
-							>
-								<svg
-									className="w-4 h-4 mr-1"
-									fill="none"
-									stroke="currentColor"
-									viewBox="0 0 24 24"
-								>
-									<path
-										strokeLinecap="round"
-										strokeLinejoin="round"
-										strokeWidth="2"
-										d="M15 19l-7-7 7-7"
-									/>
-								</svg>
-							</Button>
-							<Button
-								type="button"
-								variant="outline"
-								size="sm"
-								onClick={() => handleCalendarNavigation("next")}
-							>
-								<svg
-									className="w-4 h-4 ml-1"
-									fill="none"
-									stroke="currentColor"
-									viewBox="0 0 24 24"
-								>
-									<path
-										strokeLinecap="round"
-										strokeLinejoin="round"
-										strokeWidth="2"
-										d="M9 5l7 7-7 7"
-									/>
-								</svg>
-							</Button>
-						</div>
-					</div>
-
-					<div className="grid grid-cols-7 gap-1.5">
-						{["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map(
-							(day) => (
-								<div
-									key={day}
-									className="text-center text-[11px] uppercase tracking-wide font-medium text-gray-500 dark:text-gray-400 py-3 border-b border-gray-100/80 dark:border-white/5"
-								>
-									{day}
-								</div>
-							)
-						)}
-
-						{getCalendarDays(calendarDate).map((day, index) => {
-							const isCurrentMonth = day !== null;
-							const today = new Date();
-							const isToday =
-								isCurrentMonth &&
-								day === today.getDate() &&
-								calendarDate.getMonth() === today.getMonth() &&
-								calendarDate.getFullYear() === today.getFullYear();
-
-							let isStart = false;
-							let isEnd = false;
-							let isInRange = false;
-
-							const currentDayDate = day
-								? new Date(
-										calendarDate.getFullYear(),
-										calendarDate.getMonth(),
-										day
-									)
-								: null;
-							if (currentDayDate) currentDayDate.setHours(0, 0, 0, 0);
-
-							if (day && startDate && currentDayDate) {
-								const start = utcMidnightMsToLocalDate(startDate);
-								isStart = currentDayDate.getTime() === start.getTime();
-
-								if (endDate && !isStart) {
-									const end = utcMidnightMsToLocalDate(endDate);
-									isInRange =
-										currentDayDate > start && currentDayDate < end;
-								}
-							}
-
-							if (day && endDate && currentDayDate) {
-								const end = utcMidnightMsToLocalDate(endDate);
-								isEnd = currentDayDate.getTime() === end.getTime();
-							}
-
-							const hasEvent = isStart || isEnd;
-
-							return (
-								<div
-									key={index}
-									className={`
-										relative h-11 flex items-center justify-center text-sm rounded-lg
-										${isCurrentMonth ? "text-gray-900 dark:text-white" : "text-gray-300 dark:text-gray-600"}
-										${hasEvent ? "bg-primary text-primary-foreground shadow-sm ring-1 ring-primary/40 font-medium" : ""}
-										${isInRange ? "bg-blue-100 dark:bg-blue-900/50 text-blue-900 dark:text-blue-100 font-medium" : ""}
-										${isToday && !hasEvent && !isInRange ? "ring-1 ring-amber-500/60 text-amber-600 dark:text-amber-300 bg-amber-500/10" : ""}
-									`}
-									title={
-										isStart
-											? "Project Start"
-											: isEnd
-												? "Project End"
-												: isInRange
-													? "Within project range"
-													: ""
-									}
-								>
-									{day || ""}
-									{hasEvent && (
-										<div className="absolute bottom-1 left-1/2 -translate-x-1/2 w-6 h-1 rounded-full bg-white/70 dark:bg-white/80" />
-									)}
-								</div>
-							);
-						})}
-					</div>
-
-					<div className="flex items-center justify-center gap-6 mt-5 pt-4 border-t border-gray-200/80 dark:border-white/10 text-xs">
-						{startDate && (
-							<div className="flex items-center gap-2">
-								<div className="w-3 h-3 bg-blue-600 rounded" />
-								<span className="text-xs text-gray-500 dark:text-gray-400">
-									Start: {formatDisplayDate(startDate)}
-								</span>
-							</div>
-						)}
-						{endDate && (
-							<div className="flex items-center gap-2">
-								<div className="w-3 h-3 bg-blue-600 rounded" />
-								<span className="text-xs text-gray-500 dark:text-gray-400">
-									End: {formatDisplayDate(endDate)}
-								</span>
-							</div>
-						)}
-					</div>
-				</div>
+				{/* Calendar — keyed so soft-navigating between projects remounts it
+				    (its initial month is computed once from the project range) */}
+				<ProjectScheduleCalendar
+					key={projectId}
+					startDate={startDate}
+					endDate={endDate}
+					tasks={tasks}
+					quotes={quotes}
+					invoices={invoices}
+				/>
 			</div>
 
 			<Separator className="my-6" />
