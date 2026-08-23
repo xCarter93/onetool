@@ -108,7 +108,7 @@ export const HOME_TOUR_CONTENT: Record<HomeTour, TourStepContent> = {
 	[HomeTour.ASSISTANT_NOTCH]: {
 		title: "Ask the Assistant",
 		description:
-			"Your AI teammate lives here. Ask it to draft a quote, find a client, or explain a report \u2014 it already knows the screen you\u2019re on. Available on the paid plan.",
+			"Your AI teammate lives here, on every plan. Ask it to draft a quote, find a client, or explain a report \u2014 it already knows the screen you\u2019re on. Free plans include 10 messages a day.",
 		tooltipPosition: "top",
 	},
 };

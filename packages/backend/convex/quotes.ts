@@ -361,6 +361,7 @@ interface QuotePreview {
 		status: QuoteDocument["status"];
 		validUntil: number | null;
 		sentAt: number | null;
+		firstSentAt: number | null;
 		approvedAt: number | null;
 		declinedAt: number | null;
 		createdAt: number;
@@ -557,6 +558,7 @@ export const getPreview = optionalUserQuery({
 				status: quote.status,
 				validUntil: quote.validUntil ?? null,
 				sentAt: quote.sentAt ?? null,
+				firstSentAt: quote.firstSentAt ?? null,
 				approvedAt: quote.approvedAt ?? null,
 				declinedAt: quote.declinedAt ?? null,
 				createdAt: quote._creationTime,

@@ -59,7 +59,7 @@ export const gettingStartedArticles: HelpArticle[] = [
 					},
 					{
 						type: "tip",
-						text: "You can try everything on the Free plan. Features that need the Business plan are marked in each article.",
+						text: "Every new organization starts with a 14-day Business trial, so you can try everything, including automations and routing, with no card and nothing to cancel. When it ends you move to the Free plan. Features that need the Business plan are marked in each article.",
 					},
 				],
 			},
@@ -140,6 +140,10 @@ export const gettingStartedArticles: HelpArticle[] = [
 						type: "paragraph",
 						text: "Pick the size of your team, then choose a plan. The **Plan** step shows the Free and Business plans with a monthly or annual toggle. You can start on Free and upgrade later from Billing.",
 					},
+					{
+						type: "paragraph",
+						text: "Whichever you pick, every new organization starts with a 14-day Business trial. No card is needed and there is nothing to cancel. When the trial ends you continue on the Free plan unless you subscribe from Billing.",
+					},
 				],
 			},
 			{
@@ -147,12 +151,12 @@ export const gettingStartedArticles: HelpArticle[] = [
 				blocks: [
 					{
 						type: "paragraph",
-						text: "If you already keep a client list in a spreadsheet, the **Import data** step can bring it in from a CSV file. Import is a Business plan feature, so on the Free plan you can skip this step and add clients by hand.",
+						text: "If you already keep a client list in a spreadsheet, the **Import data** step can bring it in from a CSV file. Import works on any plan. The Free plan covers 2,000 imported rows in total. You can also skip this step and add clients by hand.",
 					},
 					{
 						type: "steps",
 						items: [
-							"Upload your CSV file, or click **Skip** to finish without importing.",
+							"Upload your CSV file, or leave the import card collapsed and click **Complete Setup** to finish without importing.",
 							"Click **Complete Setup**. OneTool saves everything and opens your dashboard.",
 						],
 					},
@@ -221,7 +225,7 @@ export const gettingStartedArticles: HelpArticle[] = [
 				blocks: [
 					{
 						type: "paragraph",
-						text: "On the Business plan, the AI assistant sits in a floating dock at the bottom center of every page. Open it to ask questions about your data or to get something done without leaving the page you are on. Read more in [Meet the assistant](/help/ai-assistant).",
+						text: "The AI assistant sits in a floating dock at the bottom center of every page, on every plan. The Free plan includes 10 messages a day. Open it to ask questions about your data or to get something done without leaving the page you are on. Read more in [Meet the assistant](/help/ai-assistant).",
 					},
 				],
 			},
@@ -379,7 +383,7 @@ export const gettingStartedArticles: HelpArticle[] = [
 		faq: [
 			{
 				question: "How many clients can I have?",
-				answer: "The Free plan includes up to 10 clients. The Business plan has no limit, and also includes importing clients from a CSV file.",
+				answer: "As many as you like. Clients are unlimited on every plan, and importing from a CSV file works on Free too, up to 2,000 rows in total.",
 			},
 			{
 				question: "Can a client have more than one address?",

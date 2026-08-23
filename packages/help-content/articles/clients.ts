@@ -131,7 +131,7 @@ export const clientsArticles: HelpArticle[] = [
 			},
 			{
 				question: "How many clients can I have?",
-				answer: "The Free plan includes up to 10 clients. When you reach the cap, the Add Client button is disabled and shows your usage with an upgrade prompt. The Business plan has no client cap.",
+				answer: "As many as you like. Clients are unlimited on every plan, including Free. The Free plan meters document sends, e-signatures, assistant messages, saved reports, and CSV import rows instead.",
 			},
 			{
 				question: "Why do I not see the Clients page?",
@@ -252,8 +252,8 @@ export const clientsArticles: HelpArticle[] = [
 		title: "Importing clients",
 		subtitle: "Bring your existing client list into OneTool from a CSV file in three steps.",
 		kind: "howto",
-		availability: "business",
-		permission: "Admins, and members with access to clients, on the Business plan.",
+		availability: "all",
+		permission: "Admins, and members with access to clients.",
 		keywords: ["csv", "spreadsheet", "upload", "migration", "bulk", "duplicates", "excel", "transfer"],
 		sections: [
 			{
@@ -269,7 +269,7 @@ export const clientsArticles: HelpArticle[] = [
 					},
 					{
 						type: "note",
-						text: "Client import requires the Business plan. On the Free plan the **Import Clients** button is disabled with an upgrade prompt.",
+						text: "Import works on every plan. The Free plan includes 2,000 imported rows in total, and the wizard shows how many you have left. The Business plan has no lifetime cap, though imports on any plan are limited to 2,000 rows per day.",
 					},
 				],
 			},

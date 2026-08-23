@@ -38,7 +38,7 @@ export const settingsAndTeamArticles: HelpArticle[] = [
 					},
 					{
 						type: "note",
-						text: "Some tabs are locked depending on your role and plan. The **Team**, **Payments**, and **Integrations** tabs are for admins and the owner, and **Payments**, **Documents**, **SKUs**, and **Integrations** require the Business plan.",
+						text: "Some tabs are locked depending on your role. The **Team**, **Payments**, and **Integrations** tabs are for admins and the owner. Everything on them works on any plan except QuickBooks sync, which needs the Business plan.",
 					},
 				],
 			},
@@ -125,7 +125,7 @@ export const settingsAndTeamArticles: HelpArticle[] = [
 				blocks: [
 					{
 						type: "paragraph",
-						text: "The **Integrations** tab is available on the Business plan to organization admins. It lists one card per integration, and it is where the organization owner connects a QuickBooks Online company, which prepares your account for QuickBooks sync of clients, invoices, and payments from OneTool.",
+						text: "The **Integrations** tab is available to organization admins on any plan. It lists one card per integration: **Stripe payments**, which works on every plan, and **QuickBooks Online**, which needs the Business plan. It is where the organization owner connects a QuickBooks Online company, which prepares your account for QuickBooks sync of clients, invoices, and payments from OneTool.",
 					},
 					{
 						type: "paragraph",
@@ -236,6 +236,10 @@ export const settingsAndTeamArticles: HelpArticle[] = [
 						type: "paragraph",
 						text: "Pending invitations appear in a list with a role badge. If you sent one by mistake, revoke it with the trash button next to it. Once your teammate accepts and signs in, they appear on the roster.",
 					},
+					{
+						type: "paragraph",
+						text: "The Free plan includes 5 team members and the Business plan includes 20, counting yourself. Pending invitations hold a seat, and at the cap the invite form tells you before anything is sent. Upgrade from the **Billing** tab to raise the allowance, covered in [Plans and billing](/help/settings-and-team/plans-and-billing).",
+					},
 				],
 			},
 			{
@@ -268,6 +272,10 @@ export const settingsAndTeamArticles: HelpArticle[] = [
 			{
 				question: "Can I cancel an invitation I already sent?",
 				answer: "Yes. Pending invitations are listed on the Team tab until they are accepted, and each one has a revoke button.",
+			},
+			{
+				question: "How many people can I invite?",
+				answer: "The Free plan includes 5 team members and the Business plan includes 20, counting yourself. Members and pending invitations both count toward the limit, and at the cap the Team tab blocks new invitations until a seat frees up. Upgrade from the Billing tab to raise the allowance.",
 			},
 		],
 		related: [
@@ -399,11 +407,11 @@ export const settingsAndTeamArticles: HelpArticle[] = [
 				blocks: [
 					{
 						type: "paragraph",
-						text: "Open your organization settings and select the **Billing** tab. A badge at the top shows whether you are on the **Free plan** or the **Business plan**. On the Free plan, usage meters show how many of your included clients and monthly e-signatures you have used.",
+						text: "Open your organization settings and select the **Billing** tab. A badge at the top shows whether you are on the **Free plan** or the **Business plan**. On the Free plan, usage meters show how many document sends, e-signatures, daily assistant messages, saved reports, and imported rows you have used.",
 					},
 					{
 						type: "paragraph",
-						text: "On the Free plan the same meters also sit in a small card at the bottom of the sidebar, so you can keep an eye on your limits from any page. Its Upgrade button takes you straight to the Billing tab.",
+						text: "On the Free plan your top three meters, document sends, e-signatures, and today's assistant messages, also sit in a small card at the bottom of the sidebar; the Billing tab shows all five. Its Upgrade button takes you straight to the Billing tab. During your 14-day Business trial the desktop header shows a countdown pill with the days left instead, and the meter card appears when the trial ends.",
 					},
 				],
 			},
@@ -412,21 +420,24 @@ export const settingsAndTeamArticles: HelpArticle[] = [
 				blocks: [
 					{
 						type: "paragraph",
-						text: "The Free plan covers the core loop: clients, projects, tasks, quotes, and invoices. It includes up to 10 clients and 5 e-signature sends per month.",
+						text: "The Free plan covers the core loop with unlimited clients and unlimited active projects. It includes 5 team members, 20 document sends per month, 5 e-signatures per month, 10 AI assistant messages per day, 5 saved reports, and 2,000 CSV import rows in total. Online payments through Stripe are included too.",
 					},
 					{
 						type: "paragraph",
-						text: "The Business plan removes the client limit, makes e-signatures unlimited, and adds the features built for a growing operation:",
+						text: "Every new organization also starts on a 14-day Business trial, with no credit card and nothing to cancel. When it ends you continue on Free with all of your data intact. [Limits and fair use](/help/settings-and-team/limits-and-fair-use) walks through each meter in detail, including the 10 bonus document sends you get in any month where you collect a Stripe payment.",
+					},
+					{
+						type: "paragraph",
+						text: "The Business plan lifts every usage meter, raises your team from 5 seats to 20, and adds the features built for a growing operation:",
 					},
 					{
 						type: "list",
 						items: [
-							"[Online payments](/help/settings-and-team/setting-up-online-payments), so clients pay invoices by card.",
-							"[Client import](/help/clients/importing-clients) from a CSV file.",
-							"[Documents and SKUs](/help/settings-and-team/documents-and-skus) for reusable files and line items.",
 							"[Automations](/help/automations) that handle repetitive follow-up for you.",
-							"The [AI assistant](/help/ai-assistant), available on every page.",
 							"[Routing](/help/routing) to plan efficient driving days.",
+							"[QuickBooks sync](/help/settings-and-team/quickbooks-sync) for your clients, invoices, and payments.",
+							"[AI report generation](/help/reports), so you can describe a report and have it built for you.",
+							"Removing the OneTool badge from your client portal.",
 						],
 					},
 					{
@@ -443,7 +454,7 @@ export const settingsAndTeamArticles: HelpArticle[] = [
 						items: [
 							"Open the **Billing** tab.",
 							"Use the **Monthly** and **Annual** toggle to compare prices.",
-							"Click **Upgrade to Business** and complete checkout in the drawer that opens.",
+							"Click **Upgrade to Business** (labeled **Subscribe to Business** while your trial is running) and complete checkout in the drawer that opens.",
 						],
 					},
 					{
@@ -471,15 +482,19 @@ export const settingsAndTeamArticles: HelpArticle[] = [
 		faq: [
 			{
 				question: "What happens when I hit a Free plan limit?",
-				answer: "OneTool tells you at the moment it matters. For example, trying to send an e-signature past the monthly cap shows a notice with a View plans link that brings you to the Billing tab.",
+				answer: "OneTool tells you at the moment it matters. Sending a quote or invoice past the 20 monthly document sends, a sixth e-signature, an eleventh assistant message in a day, a sixth saved report, or importing past 2,000 rows all show a notice naming the limit you reached. The e-signature notice includes a View plans button, and the Billing tab is always one click away for the rest. Adding a team member past the seat limit is blocked on the Team tab before the invitation goes out.",
 			},
 			{
-				question: "Do I need the Business plan to take card payments?",
-				answer: "Yes. Online payments through the client portal are a Business plan feature. Recording cash and check payments by hand works on any plan.",
+				question: "Can my clients pay online?",
+				answer: "Yes, on every plan, including Free. Connect Stripe once from the Integrations tab and clients pay by card from the portal, with the money landing in your own Stripe account. Recording cash and check payments by hand also works on any plan.",
 			},
 			{
 				question: "Can I switch between monthly and annual billing?",
 				answer: "The comparison table shows both prices with a toggle before you subscribe. Once subscribed, open Manage subscription on the Billing tab to review your plan details.",
+			},
+			{
+				question: "What happens if I cancel my subscription?",
+				answer: "You can cancel any time from Manage subscription on the Billing tab. Your organization keeps Business until the end of the billing period you already paid for, then continues on the Free plan with all of its data intact. Subscription fees are not refunded, so cancelling an annual plan three months in leaves you nine more months of Business rather than money back. We correct genuine billing errors, and consumers in the EU may have a 14 day withdrawal right on a first purchase, depending on local consumer law.",
 			},
 		],
 		related: [
@@ -489,11 +504,144 @@ export const settingsAndTeamArticles: HelpArticle[] = [
 		],
 	},
 	{
+		slug: "limits-and-fair-use",
+		title: "Limits and fair use",
+		subtitle: "Know exactly what the Free plan includes so nothing stops you mid-job.",
+		kind: "howto",
+		availability: "all",
+		permission: "Anyone can see the meters; upgrading needs billing access.",
+		keywords: ["limits", "quota", "cap", "usage", "meter", "seats", "sends", "trial", "fair use"],
+		sections: [
+			{
+				heading: "The Free plan is metered, not locked",
+				blocks: [
+					{
+						type: "paragraph",
+						text: "OneTool's Free plan is not a stripped-down version of the product. Almost every feature is there, including online payments, the AI assistant, AI CSV import, custom SKUs, and organization documents. What Free limits is volume, through five usage meters. Clients and active projects are unlimited, so you can put your whole book of business in on day one.",
+					},
+					{
+						type: "list",
+						items: [
+							"**20 document sends per calendar month.** A send is a quote or an invoice sent to a client.",
+							"**5 e-signature requests per calendar month.**",
+							"**10 AI assistant messages per day**, counted against the UTC day.",
+							"**5 saved reports** at a time.",
+							"**2,000 imported CSV rows** for the life of your account.",
+						],
+					},
+					{
+						type: "paragraph",
+						text: "The **Billing** tab shows where you stand on all five meters, and the first three, document sends, e-signatures, and today's assistant messages, sit in a small card at the bottom of the sidebar so you can check them from any page.",
+					},
+				],
+			},
+			{
+				heading: "Bonus sends when you collect a payment",
+				blocks: [
+					{
+						type: "paragraph",
+						text: "Any month in which you collect a Stripe payment adds **10 extra document sends** to that month's allowance, taking you from 20 to 30. The bonus applies to the month the payment lands in, and it starts over with the rest of your sends on the 1st.",
+					},
+					{
+						type: "tip",
+						text: "Connecting Stripe from the **Integrations** tab costs nothing and works on Free, so the bonus is there for the taking as soon as one client pays online.",
+					},
+				],
+			},
+			{
+				heading: "What happens when you reach a limit",
+				blocks: [
+					{
+						type: "paragraph",
+						text: "Nothing is deleted and nothing is hidden. The action you tried is held back and OneTool shows a notice naming the limit you reached and when it resets. Everything already in your account stays exactly where it is, and the **Billing** tab always shows where each meter stands.",
+					},
+					{
+						type: "list",
+						items: [
+							"**Document sends** reset on the 1st of each month.",
+							"**E-signature requests** reset on the 1st of each month.",
+							"**Assistant messages** reset at midnight UTC.",
+							"**Saved reports** are a running count, so deleting one frees a slot straight away.",
+							"**Imported rows** are a lifetime total and do not reset.",
+						],
+					},
+				],
+			},
+			{
+				heading: "Team seats",
+				blocks: [
+					{
+						type: "paragraph",
+						text: "Free includes 5 team members and Business includes 20, counting yourself. Members and pending invitations both count toward the limit, so revoking an unused invitation frees a seat. At the cap, the Team tab blocks new invitations until a seat opens or you upgrade. [Inviting your team](/help/settings-and-team/inviting-your-team) covers sending and revoking invitations.",
+					},
+				],
+			},
+			{
+				heading: "Your 14-day Business trial",
+				blocks: [
+					{
+						type: "paragraph",
+						text: "Every new organization starts on a 14-day Business trial automatically. There is no credit card to enter and nothing to cancel. While the trial runs, a countdown pill in the desktop header shows the days left instead of the usage card.",
+					},
+					{
+						type: "paragraph",
+						text: "When the 14 days are up your organization simply continues on Free. All of your clients, projects, quotes, invoices, and files stay exactly as they are, and the usage meters take over from the countdown pill.",
+					},
+				],
+			},
+			{
+				heading: "What the Business plan adds",
+				blocks: [
+					{
+						type: "paragraph",
+						text: "Business makes every meter above unlimited and raises your team from 5 seats to 20. It also unlocks the features built for a growing operation:",
+					},
+					{
+						type: "list",
+						items: [
+							"[Automations](/help/automations) that handle repetitive follow-up for you.",
+							"[Routing](/help/routing) to plan efficient driving days.",
+							"[QuickBooks sync](/help/settings-and-team/quickbooks-sync) for your clients, invoices, and payments.",
+							"[AI report generation](/help/reports), so you can describe a report and have it built for you.",
+							"Removing the OneTool badge from your client portal.",
+						],
+					},
+					{
+						type: "paragraph",
+						text: "Business is $30 per month, or $300 per year. Free accounts get best-effort support, and Business accounts get a 24-hour response.",
+					},
+				],
+			},
+		],
+		faq: [
+			{
+				question: "What counts as a document send?",
+				answer: "Sending a quote or an invoice to a client. Drafting, editing, previewing, and downloading a PDF do not count, and resending the same document to chase a reply does not spend a second send.",
+			},
+			{
+				question: "Do my clients and projects count against anything?",
+				answer: "No. Clients and active projects are unlimited on every plan, including Free.",
+			},
+			{
+				question: "I deleted a saved report. Do I get the slot back?",
+				answer: "Yes. Saved reports are counted as a running total rather than a monthly allowance, so deleting one frees a slot immediately.",
+			},
+			{
+				question: "Do I have to cancel the trial?",
+				answer: "No. The trial takes no card details and ends on its own after 14 days, at which point your organization continues on Free with all of its data intact.",
+			},
+		],
+		related: [
+			"settings-and-team/plans-and-billing",
+			"settings-and-team/inviting-your-team",
+		],
+	},
+	{
 		slug: "setting-up-online-payments",
 		title: "Setting up online payments",
 		subtitle: "Connect Stripe once and let clients pay invoices by card in their portal.",
 		kind: "howto",
-		availability: "business",
+		availability: "all",
 		permission: "The organization owner.",
 		keywords: ["stripe", "payouts", "bank account", "card payments", "disputes", "chargeback", "onboarding"],
 		sections: [
@@ -709,7 +857,7 @@ export const settingsAndTeamArticles: HelpArticle[] = [
 		title: "Documents and SKUs",
 		subtitle: "Keep reusable files and line items on hand so quotes come together faster.",
 		kind: "howto",
-		availability: "business",
+		availability: "all",
 		permission: "Admins and the organization owner; members need access from an admin.",
 		keywords: ["files", "attachments", "catalog", "products", "services", "line items", "insurance"],
 		sections: [
@@ -722,7 +870,7 @@ export const settingsAndTeamArticles: HelpArticle[] = [
 					},
 					{
 						type: "note",
-						text: "Both are Business plan features. On the Free plan the tabs are locked, and opening one shows a prompt to upgrade.",
+						text: "Both libraries are available on every plan, including Free.",
 					},
 				],
 			},
@@ -791,7 +939,7 @@ export const settingsAndTeamArticles: HelpArticle[] = [
 			},
 			{
 				question: "Why can't I see these tabs?",
-				answer: "Documents and SKUs require the Business plan. On the Free plan the tabs are locked, and you can upgrade from the Billing tab.",
+				answer: "These tabs are for admins and the organization owner. A member sees them once an admin grants access to documents or SKUs from the member's access editor. There is no plan requirement.",
 			},
 		],
 		related: [

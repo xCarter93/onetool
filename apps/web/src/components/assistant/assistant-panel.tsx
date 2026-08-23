@@ -341,8 +341,9 @@ function HeaderButton({
 	);
 }
 
-/** Free-plan body: the panel opens, but chat is replaced by an upgrade prompt.
- *  The backend enforces the same gate in sendMessage/streamResponse. */
+/** Shown only if the aiAssistant feature is ever switched off for the org (the
+ *  entitlement map's kill switch) — the assistant itself is on every plan, with
+ *  free volume metered server-side in sendMessage. */
 function UpgradePrompt() {
 	return (
 		<div className="flex flex-1 flex-col items-center justify-center gap-4 px-6 py-8">
@@ -351,11 +352,11 @@ function UpgradePrompt() {
 			</div>
 			<div className="text-center">
 				<p className="text-sm font-medium">
-					The assistant is part of the Business plan
+					The assistant isn&rsquo;t available right now
 				</p>
 				<p className="mx-auto mt-1 max-w-xs text-sm text-muted-foreground">
-					Upgrade to ask questions about your business and let the assistant
-					make changes for you.
+					The assistant is turned off for your organization. Check the
+					Billing tab for details.
 				</p>
 			</div>
 			<Link

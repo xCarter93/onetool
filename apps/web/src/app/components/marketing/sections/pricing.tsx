@@ -8,31 +8,55 @@ import { PricingHalftoneScene } from "../section-halftone-scenes";
 import { CheckItem, Eyebrow, Lede, Section, SectionHeading, PlusCorners } from "../primitives";
 import { PrimaryButton, SecondaryButton } from "../marketing-nav";
 import { RoughMark } from "../rough-mark";
+import {
+	BUSINESS_SEATS,
+	FREE_SEATS,
+	PLAN_MATRIX,
+} from "@onetool/backend/convex/lib/planMatrix";
 
 /* Pricing — comp lines 537–589. Two plates: the free tier as a hairline card,
  * Business as the page's featured card (plus-corners + accent wash). Plan
- * contents mirror the production pricing cards, including their two-part split
- * — the caps each plan lifts, then what upgrading adds on top. The Business
+ * contents derive from PLAN_MATRIX (the same constant the billing tab renders),
+ * so the landing card can never drift from the enforcement map. The Business
  * figures prefer the live Clerk plan and fall back to $30 / $300. */
 
+/** Throws at build time if a matrix row this card quotes is ever renamed. */
+const matrixValue = (key: string, plan: "free" | "business"): string => {
+	const row = PLAN_MATRIX.find((r) => r.key === key);
+	if (!row) throw new Error(`PLAN_MATRIX row missing: ${key}`);
+	return String(row[plan]);
+};
+
 const FREE_FEATURES = [
-	"Unlimited clients",
-	"Unlimited active projects",
-	"5 e-signature requests a month",
-	"Custom invoice and quote PDF generation",
+	"Unlimited clients and projects",
+	`${FREE_SEATS} team members`,
+	`${matrixValue("clientSends", "free")} quote and invoice sends a month, +10 in months you collect a payment`,
+	`${matrixValue("esignatures", "free")} e-signature requests a month`,
+	`AI assistant, ${matrixValue("assistantMessages", "free")} messages a day`,
+	`${matrixValue("savedReports", "free")} saved custom reports`,
+	`AI client import, up to ${Number(matrixValue("importedRows", "free")).toLocaleString("en-US")} rows`,
+	"Online card payments through Stripe",
 ];
 
 const BUSINESS_FEATURES = [
-	"Unlimited clients",
-	"Unlimited active projects per client",
-	"Unlimited e-signature requests a month",
+	`${BUSINESS_SEATS} team members`,
+	"Unlimited sends and e-signatures",
+	"Unlimited AI messages, reports and imports",
 ];
 
+/** Marketing names for the Business-only switches; keys pin them to the matrix. */
+const BUSINESS_ADD_LABELS: Record<string, string> = {
+	automationPublish: "Workflow automations",
+	routing: "Route optimization for the day's jobs",
+	quickbooks: "QuickBooks sync",
+	nlReportGeneration: "AI report generation",
+	portalBadgeRemoval: "Remove the OneTool badge from your client portal",
+};
+
 const BUSINESS_INCLUDES = [
-	"Custom SKU creation",
-	"Unlimited saved organization documents",
-	"AI import for existing clients and projects",
-	"Stripe Connect — send and receive card payments",
+	...PLAN_MATRIX.filter((row) => row.business === true && row.free === false).map(
+		(row) => BUSINESS_ADD_LABELS[row.key] ?? row.label
+	),
 	"Priority support with 24-hour SLAs",
 ];
 
@@ -148,7 +172,7 @@ export function Pricing() {
 		? `Works out at ${symbol}${Math.round(yearlyMinor / 12 / 100)} a month${
 				savingPct > 0 ? `, saving ${savingPct}%` : ""
 			}.`
-		: "Per organisation, unlimited users. Cancel any time.";
+		: `Per organisation, ${BUSINESS_SEATS} seats included. Cancel any time.`;
 
 	return (
 		<Section id="pricing" scheme="sheet" className="overflow-hidden">
@@ -166,7 +190,9 @@ export function Pricing() {
 						<RoughMark type="highlight">Free</RoughMark> until you outgrow it.
 					</SectionHeading>
 					<Lede className="max-w-[34rem]">
-						Start on the free plan and upgrade the week it starts paying for itself. If
+						Every new organization starts with two weeks of Business, no card required. After
+						that, stay free as long as you like and upgrade the week it starts paying for
+						itself. If
 						you&rsquo;d rather be walked through it first,{" "}
 						<a
 							href="#book-a-demo"
@@ -211,7 +237,8 @@ export function Pricing() {
 							<span className="text-base text-(--ink-2)">{priceUnit}</span>
 						</p>
 						<p className="mt-[10px] text-[15px] text-(--ink-2)">
-							Free forever. No card required.
+							Starts with a 14-day trial of Business. Free forever after, no card
+							required.
 						</p>
 					</div>
 
@@ -254,8 +281,8 @@ export function Pricing() {
 							</span>
 						</div>
 						<p className="mt-3 text-[15px] leading-[1.55] text-(--ink-2)">
-							Best value for a growing business: everything unlimited, and money
-							moving through the app.
+							Best value for a growing crew: every limit lifted, and up to 20 people
+							on one flat price.
 						</p>
 						<p className="mt-[18px] flex items-baseline gap-2">
 							<span className="text-[clamp(38px,4.6vw,54px)] font-semibold leading-none tracking-[-0.04em] tabular-nums">

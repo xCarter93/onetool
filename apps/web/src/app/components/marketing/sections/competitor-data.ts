@@ -107,7 +107,7 @@ export const VENDORS: Vendor[] = [
 			{
 				name: "Business",
 				basePrice: ONETOOL_MONTHLY,
-				includedSeats: "unlimited",
+				includedSeats: 20,
 				extraSeatFee: null,
 			},
 		],
@@ -117,7 +117,7 @@ export const VENDORS: Vendor[] = [
 			"$30/month, or $300/year. There is also a permanent Free plan.",
 			"$30 is the hardcoded fallback in sections/pricing.tsx; at runtime that section prefers live Clerk plan data. Confirm the live Clerk price before changing this number.",
 			"Client portal ships on every plan: apps/web routes /portal/c/[clientPortalId]/{quotes,invoices} with OTP verification, quote approval, e-signature and card payment.",
-			"Seats are uncapped: lib/planLimits.ts caps only clients (10) and active projects per client (3) on the free plan, never users.",
+			"Seats (2026-08-23, Slice A packaging): Business includes 20 team members at one flat price, Free includes 5 — Clerk-enforced, see lib/planMatrix.ts. Clients and active projects are unlimited on both plans; extra seats are not sold.",
 			"Card payments run through Stripe Connect on the org's own Stripe account, so the org pays Stripe's rate directly (US standard online card is 2.9% + 30¢). OneTool adds a flat application fee of $1 per transaction on top — portal/invoicesActions.ts sets application_fee_amount from STRIPE_APPLICATION_FEE_CENTS, read as 100 off the deployment on 2026-08-16. It is env-driven, so re-read it before changing the table. Both Jobber and Joby publish the bare Stripe rate with no markup, so this is the one row where we are the most expensive.",
 		],
 	},
@@ -303,7 +303,7 @@ export const VENDORS: Vendor[] = [
 		retrievedAt: RETRIEVED_AT,
 		notes: [
 			"Read verbatim on 2026-08-16: 'Flat monthly pricing with unlimited users on every plan. 14-day free trial.' Starter $89/mo, Pro $129/mo, Grow $250/mo. No annual-billing option is published, so these ARE the cheapest published figures.",
-			"Every tier says 'Unlimited users' on the plan card and in the compare grid, so the seat argument does not separate us from Joby — only the price does.",
+			"Every tier says 'Unlimited users' on the plan card and in the compare grid. Post-Slice-A this IS a real difference: OneTool Business includes 20 seats and Free 5, so Joby wins the seat row outright and we compete on price.",
 			"'Customer self-serve portal' is checked on all three tiers in the compare grid, and joby-pay adds 'A clean, branded payment page that loads on any phone — no Joby account required'.",
 			"Compare grid, read tier-by-tier: 'Estimates & e-signatures', 'Online card payments (Joby Pay / Stripe)', 'CSV import (leads & clients)' and 'Mobile app (iOS & Android)' are checked on all three tiers. 'Workflow automations (visual)' is an em dash on Starter and checked on Pro and Grow.",
 			"joby.io/products/joby-pay publishes the rate outright, verbatim: 'Standard Stripe processing fees apply (2.9% + 30¢ for card, 0.8% for ACH capped at $5). There is no extra Joby fee on top — your seat price covers the platform. Enterprise customers can negotiate custom processing rates with Stripe.' Charges run through the org's own Stripe Express account, the same Connect model as ours, so Joby beats us on this row. Separately, 'Online card payments (Joby Pay / Stripe)' confirms Joby is on Stripe like us and Jobber — so the underlying cost is comparable and only the markup is unknown. Also, nothing about route planning or optimization appears — the closest published rows are 'Service-area matching' and 'Live location team tracking' ($5 per active worker/month add-on). No offline capability is claimed anywhere on the page.",
@@ -416,7 +416,7 @@ export const FEATURE_ROWS: FeatureRow[] = [
 	{
 		label: "Users included",
 		cells: {
-			onetool: { kind: "included", label: "Unlimited" },
+			onetool: { kind: "included", label: "20" },
 			jobber: { kind: "text", label: "1–15 by team size" },
 			housecall: { kind: "text", label: "1–8 by plan" },
 			joby: { kind: "included", label: "Unlimited" },

@@ -6,7 +6,7 @@ export const aiAssistantArticles: HelpArticle[] = [
 		title: "Meet the assistant",
 		subtitle: "Ask questions about your business and hand off small jobs from any page in OneTool.",
 		kind: "concept",
-		availability: "business",
+		availability: "all",
 		heroMedia: {
 			media: "image",
 			caption: "The assistant panel open in the workspace",
@@ -71,7 +71,7 @@ export const aiAssistantArticles: HelpArticle[] = [
 				blocks: [
 					{
 						type: "paragraph",
-						text: "The assistant is part of the Business plan and is available to every member of your organization, not just admins. If your organization is on the Free plan, the panel shows an upgrade prompt with a **View plans** button instead of the chat.",
+						text: "The assistant is available on every plan and to every member of your organization, not just admins. On the Free plan your organization shares 10 messages a day across the team, and the count resets at midnight UTC. The panel shows how many are left, and tells you when they run out. The Business plan has no daily limit.",
 					},
 					{
 						type: "paragraph",
@@ -95,7 +95,7 @@ export const aiAssistantArticles: HelpArticle[] = [
 		title: "What you can ask",
 		subtitle: "See what the assistant can look up, the changes it can make, and how to phrase your requests.",
 		kind: "concept",
-		availability: "business",
+		availability: "all",
 		heroMedia: {
 			media: "image",
 			caption: "Asking the assistant about the week's schedule",
@@ -127,7 +127,7 @@ export const aiAssistantArticles: HelpArticle[] = [
 				blocks: [
 					{
 						type: "paragraph",
-						text: "Ask how the business is doing and the assistant answers with your real numbers. It can also build reports for you and change how they are charted. Ask for a chart of revenue by month and it creates the report; open a saved report in the [report builder](/help/reports/building-a-report) and it can adjust the setup for you.",
+						text: "Ask how the business is doing and the assistant answers with your real numbers. On the Business plan it can also build reports for you and change how they are charted. Ask for a chart of revenue by month and it creates the report; open a saved report in the [report builder](/help/reports/building-a-report) and it can adjust the setup for you.",
 					},
 				],
 			},
@@ -143,7 +143,7 @@ export const aiAssistantArticles: HelpArticle[] = [
 						items: [
 							"Create new tasks and update existing ones.",
 							"Update clients and projects, like changing a status or correcting a detail.",
-							"Plan a driving route, adjust it, and optimize the stop order. See [Planning a route](/help/routing/planning-a-route).",
+							"Plan a driving route, adjust it, and optimize the stop order, on the Business plan. See [Planning a route](/help/routing/planning-a-route).",
 							"Take you places. Ask it to open a record or a page and it navigates there for you.",
 						],
 					},

@@ -80,7 +80,7 @@ export async function POST(request: NextRequest) {
 			);
 		}
 
-		// PUB-12: LLM-backed route — enforce the assistant's paid-plan gate plus a
+		// PUB-12: LLM-backed route — enforce the feature's kill switch plus a
 		// per-org rate limit before any model call (but after payload validation).
 		const convexToken = await getToken({ template: "convex" });
 		if (!convexToken) {
@@ -99,7 +99,7 @@ export async function POST(request: NextRequest) {
 				);
 			}
 			return NextResponse.json(
-				{ error: "Your plan does not include AI-assisted import." },
+				{ error: "You do not have access to AI-assisted import." },
 				{ status: 403 }
 			);
 		}

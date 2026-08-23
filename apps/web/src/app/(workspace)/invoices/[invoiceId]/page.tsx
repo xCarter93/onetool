@@ -2,6 +2,7 @@
 
 import { PermissionGate } from "@/components/domain/permission-gate";
 import { usePermissions } from "@/hooks/use-permissions";
+import { useClientSendMeter } from "@/hooks/use-client-send-meter";
 import { useParams, useRouter } from "next/navigation";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
@@ -109,6 +110,9 @@ function InvoiceDetailPageContent() {
 	// Mutations
 	const updateInvoice = useMutation(api.invoices.update);
 	const sendToClient = useMutation(api.invoices.sendToClient);
+	// clientSends pre-flight: draft sends and Mark as Sent debit; resends never do.
+	const { exhausted: sendsExhausted, reason: sendsReason } =
+		useClientSendMeter();
 	const generateUploadUrl = useMutation(api.documents.generateUploadUrl);
 	const createDocument = useMutation(api.documents.create);
 
@@ -395,6 +399,8 @@ function InvoiceDetailPageContent() {
 					onMarkPaid={handleMarkPaid}
 					onSendToClient={handleSendToClient}
 					sending={isSending}
+					sendCapReached={sendsExhausted && !invoice.firstSentAt}
+					sendCapReason={sendsReason}
 					onGeneratePdf={handleGeneratePdf}
 					onCancel={() => setIsCancelModalOpen(true)}
 				/>

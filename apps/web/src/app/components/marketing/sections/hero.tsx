@@ -137,7 +137,7 @@ export function Hero() {
 					>
 						<CheckItem>Free forever plan</CheckItem>
 						<CheckItem>No credit card</CheckItem>
-						<CheckItem>Cancel anytime</CheckItem>
+						<CheckItem>14 days of Business, free</CheckItem>
 					</ul>
 				</div>
 

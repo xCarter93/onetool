@@ -7,6 +7,7 @@ import { useQuery, useMutation, useConvex } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { useToast } from "@/hooks/use-toast";
 import { useEntitlements } from "@/hooks/use-entitlements";
+import { useClientSendMeter } from "@/hooks/use-client-send-meter";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
 import type { Id as StorageId } from "@onetool/backend/convex/_generated/dataModel";
 import { useState, useMemo, useCallback, useRef } from "react";
@@ -148,6 +149,9 @@ function QuoteDetailPageContent() {
 			: esignMeter.remaining !== null && esignMeter.remaining <= 0
 				? `You've reached your limit of ${esignMeter.limit} e-signatures this month. Upgrade for unlimited.`
 				: undefined;
+	// clientSends pre-flight: only a first send debits, so resends stay enabled.
+	const { exhausted: sendsExhausted, reason: sendsReason } =
+		useClientSendMeter();
 	// undefined = the latest-document query is still resolving; null = no PDF.
 	const isLatestDocumentLoading = latestDocument === undefined;
 
@@ -499,6 +503,10 @@ function QuoteDetailPageContent() {
 							? "Checking for a generated PDF…"
 							: esignReason
 					}
+					clientSendDisabled={
+						sendsExhausted && !quote.firstSentAt && !quote.sentAt
+					}
+					clientSendDisabledReason={sendsReason}
 					onGeneratePdf={() => setShowDocumentModal(true)}
 					onDelete={() => setIsDeleteModalOpen(true)}
 					onConvertToInvoice={handleConvertToInvoice}

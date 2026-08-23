@@ -24,6 +24,7 @@ import {
 import { StatusBadge } from "@/components/domain/status-badge";
 import { Badge } from "@/components/ui/badge";
 import { usePermissions } from "@/hooks/use-permissions";
+import { useClientSendMeter } from "@/hooks/use-client-send-meter";
 import {
 	Timeline,
 	TimelineContent,
@@ -216,6 +217,13 @@ export function QuoteDetailDrawer({
 		quote.validUntil < todayUtcMidnightMs();
 
 	const canSend = quote?.status === "draft" || quote?.status === "sent";
+	// clientSends pre-flight: only a first send debits. firstSentAt is the
+	// immutable debit key (sentAt clears on revert-to-draft); legacy rows have
+	// sentAt without firstSentAt and resend free.
+	const { exhausted: sendsExhausted, reason: sendsReason } =
+		useClientSendMeter();
+	const firstSendBlocked =
+		sendsExhausted && !quote?.firstSentAt && !quote?.sentAt;
 	const canDecide = quote?.status === "sent";
 	const isApproved = quote?.status === "approved";
 	const alreadyInvoiced = data?.hasInvoice === true;
@@ -238,10 +246,16 @@ export function QuoteDetailDrawer({
 			variant: "outline",
 			slot: "secondary",
 			onClick: () => void emailToClient(),
-			disabled: !can("quotes", "modify") || sending || validUntilPassed,
+			disabled:
+				!can("quotes", "modify") ||
+				sending ||
+				validUntilPassed ||
+				firstSendBlocked,
 			disabledReason: validUntilPassed
 				? "Extend the valid-until date on the quote first"
-				: undefined,
+				: firstSendBlocked
+					? sendsReason
+					: undefined,
 			loading: sending,
 			loadingLabel: "Sending…",
 			hidden: isApproved,

@@ -21,6 +21,7 @@ import {
 } from "@/components/domain/action-button-group";
 import { Badge } from "@/components/ui/badge";
 import { usePermissions } from "@/hooks/use-permissions";
+import { useClientSendMeter } from "@/hooks/use-client-send-meter";
 import {
 	Timeline,
 	TimelineContent,
@@ -158,6 +159,10 @@ export function InvoiceDetailDrawer({
 		}
 	};
 
+	// clientSends pre-flight: only a draft (first) send debits.
+	const { exhausted: sendsExhausted, reason: sendsReason } =
+		useClientSendMeter();
+
 	const handleSend = async () => {
 		if (!invoiceId || sending) return;
 		setSending(true);
@@ -207,7 +212,15 @@ export function InvoiceDetailDrawer({
 			onClick: () => void handleSend(),
 			variant: "outline",
 			slot: "secondary",
-			disabled: pending || sending || !can("invoices", "modify"),
+			disabled:
+				pending ||
+				sending ||
+				!can("invoices", "modify") ||
+				(effectiveStatus === "draft" && sendsExhausted && !invoice?.firstSentAt),
+			disabledReason:
+				effectiveStatus === "draft" && sendsExhausted && !invoice?.firstSentAt
+					? sendsReason
+					: undefined,
 			loading: sending,
 			loadingLabel: "Sending…",
 			hidden:
