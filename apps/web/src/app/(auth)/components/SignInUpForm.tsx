@@ -28,8 +28,8 @@ const getSharedElements = (isDark: boolean) => ({
 	footerAction: "bg-transparent border-none shadow-none",
 	headerTitle: "text-foreground",
 	headerSubtitle: "text-muted-foreground",
-	socialButtonsBlockButton:
-		"border-border hover:bg-accent hover:text-accent-foreground",
+	// No socialButtonsBlockButton override: Core 3's Clerk UI resolves
+	// bg-accent/text-accent-foreground against its own tokens, inverting hover.
 	formFieldLabel: "text-foreground",
 	formFieldInput:
 		"bg-background border-border focus:border-primary focus:ring-primary",
