@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation, useQuery } from "convex/react";
 import {
@@ -249,6 +249,10 @@ function HeroSkeleton() {
 function CommunityPageContent() {
 	const router = useRouter();
 	const toast = useToast();
+	// Pending state for the editor navigation buttons — without it the first
+	// click gives no feedback until the /community/edit route resolves.
+	const [isOpeningEditor, startOpeningEditor] = useTransition();
+	const openEditor = () => startOpeningEditor(() => router.push("/community/edit"));
 	const { organization: clerkOrganization } = useOrganization();
 
 	// Queries
@@ -621,18 +625,28 @@ function CommunityPageContent() {
 						<Button
 							variant="outline"
 							size="sm"
-							onClick={() => router.push("/community/edit")}
+							onClick={openEditor}
+							disabled={isOpeningEditor}
 						>
-							<Send className="size-4 mr-2" />
+							{isOpeningEditor ? (
+								<Loader2 className="size-4 mr-2 animate-spin" />
+							) : (
+								<Send className="size-4 mr-2" />
+							)}
 							Review and publish
 						</Button>
 					)}
 					<Button
 						variant="default"
 						size="sm"
-						onClick={() => router.push("/community/edit")}
+						onClick={openEditor}
+						disabled={isOpeningEditor}
 					>
-						<Pencil className="size-4 mr-2" />
+						{isOpeningEditor ? (
+							<Loader2 className="size-4 mr-2 animate-spin" />
+						) : (
+							<Pencil className="size-4 mr-2" />
+						)}
 						Edit page
 					</Button>
 				</div>
