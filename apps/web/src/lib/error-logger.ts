@@ -1,12 +1,4 @@
-/**
- * Secure error logging utility
- *
- * In production, this would send errors to your error reporting service
- * (e.g., Sentry, LogRocket, Rollbar, etc.)
- *
- * For now, it logs at debug level in development and can be configured
- * to send to an error reporting service in production.
- */
+import posthog from "posthog-js";
 
 interface ErrorContext {
 	userId?: string;
@@ -15,39 +7,24 @@ interface ErrorContext {
 }
 
 /**
- * Log an error securely
- * @param error - The error object or message
- * @param context - Additional context about the error
+ * Log a caught error. Dev logs to the console only; production reports to
+ * PostHog error tracking so caught failures stay investigable.
  */
 export function logError(error: unknown, context?: ErrorContext): void {
-	const errorMessage = error instanceof Error ? error.message : String(error);
-	const errorStack = error instanceof Error ? error.stack : undefined;
-
-	// In development, log to console for debugging
 	if (process.env.NODE_ENV === "development") {
 		console.error("[Error Logger]", {
-			message: errorMessage,
-			stack: errorStack,
+			message: error instanceof Error ? error.message : String(error),
+			stack: error instanceof Error ? error.stack : undefined,
 			context,
 			timestamp: new Date().toISOString(),
 		});
+		return;
 	}
 
-	// In production, send to error reporting service
-	// Example: Sentry.captureException(error, { extra: context });
-	// Example: LogRocket.captureException(error, { extra: context });
-
-	// For now, we'll just log at a lower level
-	if (process.env.NODE_ENV === "production") {
-		// Send to your error reporting service here
-		// This prevents exposing sensitive error details to the browser console
-		// Placeholder for error reporting service integration
-		// errorReportingService.captureException(error, {
-		//   user: context?.userId,
-		//   tags: { action: context?.action },
-		//   extra: context?.metadata,
-		// });
-	}
+	posthog.captureException(error, {
+		action: context?.action,
+		...context?.metadata,
+	});
 }
 
 /**
