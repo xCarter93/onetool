@@ -2,7 +2,7 @@
 
 import { ReactNode } from "react";
 import { ClerkProvider } from "@clerk/nextjs";
-import { dark } from "@clerk/themes";
+import { dark } from "@clerk/ui/themes";
 import { useTheme } from "next-themes";
 import { env } from "@/env";
 
@@ -39,7 +39,7 @@ export function ClerkProviderWithTheme({
 			afterSignOutUrl="/"
 			appearance={{
 				cssLayerName: "clerk",
-				baseTheme: isDark ? dark : undefined,
+				theme: isDark ? dark : undefined,
 				elements: {
 					logoImage: elements.logoImage,
 				},

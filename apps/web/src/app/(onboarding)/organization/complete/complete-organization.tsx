@@ -1311,17 +1311,17 @@ export function CompleteOrganizationMetadata() {
 				},
 				variables: {
 					colorPrimary: "rgb(0, 166, 244)",
-					colorText: isDark ? "oklch(0.985 0 0)" : "oklch(0.141 0.005 285.823)",
-					colorTextSecondary: isDark
+					colorForeground: isDark ? "oklch(0.985 0 0)" : "oklch(0.141 0.005 285.823)",
+					colorMutedForeground: isDark
 						? "oklch(0.705 0.015 286.067)"
 						: "oklch(0.552 0.016 285.938)",
 					colorBackground: isDark
 						? "oklch(0.091 0.005 285.823)"
 						: "oklch(1 0 0)",
-					colorInputBackground: isDark
+					colorInput: isDark
 						? "oklch(0.32 0.013 285.805)"
 						: "oklch(0.871 0.006 286.286)",
-					colorInputText: isDark
+					colorInputForeground: isDark
 						? "oklch(0.985 0 0)"
 						: "oklch(0.141 0.005 285.823)",
 					borderRadius: "0.5rem",
@@ -1389,7 +1389,7 @@ export function CompleteOrganizationMetadata() {
 					},
 					variables: {
 						colorPrimary: "rgb(0, 166, 244)",
-						colorText: isDark
+						colorForeground: isDark
 							? "oklch(0.985 0 0)"
 							: "oklch(0.141 0.005 285.823)",
 						colorBackground: isDark

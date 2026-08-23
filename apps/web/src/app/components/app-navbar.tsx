@@ -3,7 +3,7 @@
 import { useEffect, useId, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { SignInButton, SignedIn, SignedOut } from "@clerk/nextjs";
+import { SignInButton, Show } from "@clerk/nextjs";
 import { ThemeSwitcher } from "@/components/layout/theme-switcher";
 import { Button } from "@/components/ui/button";
 import { CtaButton } from "@/app/components/landing/cta-button";
@@ -67,8 +67,8 @@ const legalItems = [
 ];
 
 /** Full capability list. Anchors resolve to the feature chapters (A-101…A-107),
-    so every row lands on the scene that demos it. Copy is agent-draft, pending
-    Patrick. */
+	so every row lands on the scene that demos it. Copy is agent-draft, pending
+	Patrick. */
 const featureItems: {
 	icon: LucideIcon;
 	label: string;
@@ -521,7 +521,7 @@ function AppNavBar() {
 				<div className="flex items-center gap-3">
 					<ThemeSwitcher />
 					<div className="hidden sm:flex items-center gap-2">
-						<SignedOut>
+						<Show when="signed-out">
 							<SignInButton mode="modal" forceRedirectUrl="/home">
 								<button
 									style={{ ["--enter-delay" as string]: "260ms" }}
@@ -533,8 +533,8 @@ function AppNavBar() {
 							<CtaButton size="sm" href="/sign-up" showArrow={false}>
 								Get Started
 							</CtaButton>
-						</SignedOut>
-						<SignedIn>
+						</Show>
+						<Show when="signed-in">
 							<CtaButton
 								size="sm"
 								showArrow={false}
@@ -542,7 +542,7 @@ function AppNavBar() {
 							>
 								Go To Dashboard
 							</CtaButton>
-						</SignedIn>
+						</Show>
 					</div>
 
 					{/* Mobile menu button */}
@@ -603,7 +603,7 @@ function AppNavBar() {
 								)
 							)}
 							<div className="pt-3 mt-2 border-t border-bp-line flex items-center justify-center gap-2">
-								<SignedOut>
+								<Show when="signed-out">
 									<SignInButton mode="modal" forceRedirectUrl="/home">
 										<Button variant="outline" size="sm">
 											Sign In
@@ -617,8 +617,8 @@ function AppNavBar() {
 									>
 										Get Started
 									</CtaButton>
-								</SignedOut>
-								<SignedIn>
+								</Show>
+								<Show when="signed-in">
 									<CtaButton
 										size="sm"
 										showArrow={false}
@@ -629,7 +629,7 @@ function AppNavBar() {
 									>
 										Go To Dashboard
 									</CtaButton>
-								</SignedIn>
+								</Show>
 							</div>
 						</div>
 					</m.div>

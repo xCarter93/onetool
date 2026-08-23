@@ -3,7 +3,7 @@
 import { useEffect, useId, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { SignInButton, SignedIn, SignedOut } from "@clerk/nextjs";
+import { SignInButton, Show } from "@clerk/nextjs";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import {
 	BarChart3,
@@ -477,19 +477,19 @@ export function MarketingNav() {
 
 				<div className="flex shrink-0 items-center gap-2.5">
 					<ThemeSwitcher />
-					<SignedOut>
+					<Show when="signed-out">
 						<SignInButton mode="modal" forceRedirectUrl="/home">
 							<button className={cn(LINK_CLASS, "hidden sm:inline-flex")}>Sign in</button>
 						</SignInButton>
 						<PrimaryButton href="/sign-up" size="sm">
 							Start free
 						</PrimaryButton>
-					</SignedOut>
-					<SignedIn>
+					</Show>
+					<Show when="signed-in">
 						<PrimaryButton href="/home" size="sm">
 							Open OneTool
 						</PrimaryButton>
-					</SignedIn>
+					</Show>
 
 					{/* Mobile menu toggle */}
 					<button
@@ -571,11 +571,11 @@ export function MarketingNav() {
 							))}
 						</div>
 						<div className="mt-2 flex items-center gap-2 border-t border-(--rule) pt-3 sm:hidden">
-							<SignedOut>
+							<Show when="signed-out">
 								<SignInButton mode="modal" forceRedirectUrl="/home">
 									<button className={LINK_CLASS}>Sign in</button>
 								</SignInButton>
-							</SignedOut>
+							</Show>
 						</div>
 					</nav>
 				</div>

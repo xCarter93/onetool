@@ -105,7 +105,7 @@
  },
  "dependencies": {
   "@ai-sdk/openai": "3.0.80",
-  "@clerk/backend": "^2.19.1",
+  "@clerk/backend": "^3.16.10",
   "@convex-dev/agent": "0.6.4",
   "@convex-dev/aggregate": "^0.1.25",
   "@convex-dev/migrations": "^0.2.9",

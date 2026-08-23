@@ -1,7 +1,7 @@
 "use client";
 
 import { SignIn, SignUp } from "@clerk/nextjs";
-import { dark } from "@clerk/themes";
+import { dark } from "@clerk/ui/themes";
 import { useTheme } from "next-themes";
 import { AnimatePresence, motion, type Transition } from "framer-motion";
 import Image from "next/image";
@@ -45,7 +45,7 @@ export function SignInUpForm({ mode }: SignInUpFormProps) {
 	const isDark = resolvedTheme === "dark";
 
 	const clerkAppearance = {
-		baseTheme: isDark ? dark : undefined,
+		theme: isDark ? dark : undefined,
 		elements: getSharedElements(isDark),
 	};
 

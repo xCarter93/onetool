@@ -1,6 +1,18 @@
-import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
+import { clerkMiddleware } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse, type NextFetchEvent } from "next/server";
 import { portalMiddleware } from "@/lib/portal/middleware";
+
+// Local stand-in for Clerk's deprecated createRouteMatcher — same "(.*)"
+// pattern semantics; the full resource-based-auth migration is a separate effort.
+function createRouteMatcher(patterns: string[]) {
+	const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+	const regexes = patterns.map(
+		(pattern) =>
+			new RegExp(`^${pattern.split("(.*)").map(escape).join(".*")}$`),
+	);
+	return (request: NextRequest) =>
+		regexes.some((regex) => regex.test(request.nextUrl.pathname));
+}
 
 // Portal routes use separate OTP/JWT auth and must not enter Clerk middleware.
 const isPortalRoute = createRouteMatcher([
