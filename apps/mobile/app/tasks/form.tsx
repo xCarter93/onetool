@@ -57,10 +57,8 @@ const REPEAT_OPTIONS = [
 const SHEET_SLIDE = 600;
 
 // Layout floor for a FieldMenu row (14+14 padding + 1+1 border + ~18 line box).
-// The native SwiftUI menu host under-measures its RN child, so a bare <FieldMenu>
-// reserves less vertical space than it paints and the NEXT field's label lands
-// underneath it. The wrapper below reserves the real row box; kept at/below the
-// true height so a correctly-measured host is unchanged.
+// FieldMenu now overlays the SwiftUI menu host absolutely so its under-measuring
+// can't displace siblings; this floor stays as a cheap belt-and-suspenders.
 const MENU_ROW_MIN_HEIGHT = 48;
 
 type TaskType = "external" | "internal";
