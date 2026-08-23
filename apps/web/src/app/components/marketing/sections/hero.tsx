@@ -1,4 +1,5 @@
 import { HeroHalftoneScene } from "../hero-halftone-scene";
+import { LaunchOfferNote } from "../launch-offer-note";
 import { PrimaryButton } from "../marketing-nav";
 import { ParticleMark } from "../particle-mark";
 import { HeroReelCta } from "../reel-cta";
@@ -139,6 +140,10 @@ export function Hero() {
 						<CheckItem>No credit card</CheckItem>
 						<CheckItem>14 days of Business, free</CheckItem>
 					</ul>
+
+					<div className="lp-rise" style={at("300ms")}>
+						<LaunchOfferNote />
+					</div>
 				</div>
 
 				<div

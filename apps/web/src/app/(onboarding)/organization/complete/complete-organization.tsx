@@ -14,6 +14,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { Frame, FramePanel } from "@/components/reui/frame";
 import SelectService from "@/components/shared/choice-set";
+import { LaunchPromoBanner } from "@/components/shared/launch-promo";
 import { Input } from "@/components/ui/input";
 import { PhoneInput } from "@/components/reui/phone-input";
 import {
@@ -1134,7 +1135,9 @@ export function CompleteOrganizationMetadata() {
 	);
 
 	const renderStep4 = () => (
-		<PricingTable
+		<div className="space-y-6">
+			<LaunchPromoBanner />
+			<PricingTable
 			for="organization"
 			newSubscriptionRedirectUrl="/organization/complete"
 			fallback={
@@ -1401,6 +1404,7 @@ export function CompleteOrganizationMetadata() {
 				},
 			}}
 		/>
+		</div>
 	);
 
 	const renderStep5 = () => (

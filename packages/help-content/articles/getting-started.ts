@@ -138,7 +138,7 @@ export const gettingStartedArticles: HelpArticle[] = [
 				blocks: [
 					{
 						type: "paragraph",
-						text: "Pick the size of your team, then choose a plan. The **Plan** step shows the Free and Business plans with a monthly or annual toggle. You can start on Free and upgrade later from Billing.",
+						text: "Pick the size of your team, then choose a plan. The **Plan** step shows the Free and Business plans with a monthly or annual toggle. You can start on Free and upgrade later from Billing. Through November 23, 2026, a launch offer above the plans shows promo codes you can copy and enter at checkout under **Add promo code**.",
 					},
 					{
 						type: "paragraph",
