@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import {
 	ActivityIndicator,
-	KeyboardAvoidingView,
+	Keyboard,
+	type KeyboardEvent,
+	LayoutAnimation,
 	Platform,
 	Pressable,
 	ScrollView,
@@ -38,6 +40,28 @@ const SUGGESTIONS = [
 export function AssistantChat({ screenContext }: { screenContext?: string }) {
 	const t = useTokens();
 	const scrollRef = useRef<ScrollView>(null);
+	const containerRef = useRef<View>(null);
+
+	// KeyboardAvoidingView is broken inside the native formSheet this chat is
+	// presented in (its window-coordinate math ignores the sheet's own layer),
+	// so avoid the keyboard by hand: on every keyboard frame change, measure
+	// where this container actually sits in the window and pad by the overlap.
+	const [keyboardPad, setKeyboardPad] = useState(0);
+	useEffect(() => {
+		if (Platform.OS !== "ios") return;
+		const onFrame = (e: KeyboardEvent) => {
+			containerRef.current?.measureInWindow((_x, y, _w, h) => {
+				const overlap = Math.max(0, y + h - e.endCoordinates.screenY);
+				LayoutAnimation.configureNext({
+					duration: e.duration > 0 ? e.duration : 250,
+					update: { type: "keyboard" },
+				});
+				setKeyboardPad(overlap);
+			});
+		};
+		const sub = Keyboard.addListener("keyboardWillChangeFrame", onFrame);
+		return () => sub.remove();
+	}, []);
 
 	const [threadId, setThreadId] = useState<string | null>(null);
 	const [resumeAttempted, setResumeAttempted] = useState(false);
@@ -227,9 +251,10 @@ export function AssistantChat({ screenContext }: { screenContext?: string }) {
 	const showEmptyState = !showLoadingHistory && results.length === 0;
 
 	return (
-		<KeyboardAvoidingView
-			style={styles.flex}
-			behavior={Platform.OS === "ios" ? "padding" : undefined}
+		<View
+			ref={containerRef}
+			collapsable={false}
+			style={[styles.flex, { paddingBottom: keyboardPad }]}
 		>
 			{/* The ink header above the chat already names the surface — this row is
 			    just the two actions, splitting the width evenly (visual-pass r1). */}
@@ -423,7 +448,7 @@ export function AssistantChat({ screenContext }: { screenContext?: string }) {
 					/>
 				</>
 			) : null}
-		</KeyboardAvoidingView>
+		</View>
 	);
 }
 
