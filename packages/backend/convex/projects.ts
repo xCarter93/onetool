@@ -255,15 +255,18 @@ export const get = optionalUserQuery({
 	handler: async (ctx, args: any): Promise<ProjectDocument | null> => {
 		if (!ctx.orgId) return null;
 		await ctx.requireLevel("projects", "view");
-		let project: ProjectDocument;
+		// Stale links and org switches can carry another org's project id —
+		// return null (not-found UI) instead of an opaque server error.
+		let project: ProjectDocument | null;
 		try {
-			project = await ctx.orgEntity("projects", args.id);
+			project = await ctx.orgEntity("projects", args.id, { onMismatch: "skip" });
 		} catch (error) {
 			if (error instanceof Error && error.message.startsWith("Entity not found in projects:")) {
 				return null;
 			}
 			throw error;
 		}
+		if (project === null) return null;
 
 
 		const visibleProjects = await ctx.scopedToActor("projects", 
