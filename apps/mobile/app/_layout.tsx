@@ -15,9 +15,12 @@ import { api } from "@onetool/backend/convex/_generated/api";
 import * as Notifications from "expo-notifications";
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import { View } from "react-native";
+import { Platform, View } from "react-native";
 // Required once at the root for @gorhom/bottom-sheet gestures (Routes sheet).
 import { GestureHandlerRootView } from "react-native-gesture-handler";
+// iOS-only (enabled prop): native keyboard tracking for the assistant sheet —
+// Android keeps stock adjustResize (the module changes global Android behavior).
+import { KeyboardProvider } from "react-native-keyboard-controller";
 import { useEffect, useState, type PropsWithChildren } from "react";
 import { tokenCache } from "@clerk/expo/token-cache";
 import { useDevice } from "@/lib/use-device";
@@ -205,6 +208,10 @@ export default function RootLayout() {
 
 	return (
 		<GestureHandlerRootView style={{ flex: 1 }}>
+		{/* preload=false: skip launch-time keyboard pre-warm — the splash/first-
+		    frame hand-off below is timing-sensitive and the assistant is never
+		    the first interaction. */}
+		<KeyboardProvider enabled={Platform.OS === "ios"} preload={false}>
 		<ClerkProvider publishableKey={publishableKey} tokenCache={tokenCache}>
 			<LaunchHost fontsLoaded={fontsLoaded} fontError={fontError}>
 				{/* PushRegistrationHost mirrors LaunchHost: foreground handler + tap
@@ -323,6 +330,7 @@ export default function RootLayout() {
 				</PushRegistrationHost>
 			</LaunchHost>
 		</ClerkProvider>
+		</KeyboardProvider>
 		</GestureHandlerRootView>
 	);
 }

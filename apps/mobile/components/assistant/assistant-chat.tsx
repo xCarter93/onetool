@@ -1,9 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import {
 	ActivityIndicator,
-	Keyboard,
-	type KeyboardEvent,
-	LayoutAnimation,
 	Platform,
 	Pressable,
 	ScrollView,
@@ -16,6 +13,8 @@ import { useAction, useMutation, useQuery } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { optimisticallySendMessage, useUIMessages } from "@convex-dev/agent/react";
 import { History, MessageSquarePlus, Sparkles } from "lucide-react-native";
+import { useReanimatedKeyboardAnimation } from "react-native-keyboard-controller";
+import Animated, { useAnimatedStyle } from "react-native-reanimated";
 import { fontFamily, radii, touch, type, useTokens } from "@/lib/theme";
 import { mapWebPathToMobileRoute } from "@/lib/assistant-nav";
 import { describeMutationError, type MutationError } from "@/lib/mutation-error";
@@ -37,31 +36,29 @@ const SUGGESTIONS = [
  * The parent (assistant-host.tsx) gates on premium access — this component
  * assumes it is only ever mounted for an entitled user.
  */
-export function AssistantChat({ screenContext }: { screenContext?: string }) {
+export function AssistantChat({
+	screenContext,
+	keyboardBottomGap = 0,
+}: {
+	screenContext?: string;
+	/** Distance (pt) from this chat's bottom edge to the window bottom while the
+	 *  keyboard is hidden — each mount states its own geometry so the pad needs
+	 *  no window-coordinate measurement (unreliable inside the formSheet). */
+	keyboardBottomGap?: number;
+}) {
 	const t = useTokens();
 	const scrollRef = useRef<ScrollView>(null);
-	const containerRef = useRef<View>(null);
 
-	// KeyboardAvoidingView is broken inside the native formSheet this chat is
-	// presented in (its window-coordinate math ignores the sheet's own layer),
-	// so avoid the keyboard by hand: on every keyboard frame change, measure
-	// where this container actually sits in the window and pad by the overlap.
-	const [keyboardPad, setKeyboardPad] = useState(0);
-	useEffect(() => {
-		if (Platform.OS !== "ios") return;
-		const onFrame = (e: KeyboardEvent) => {
-			containerRef.current?.measureInWindow((_x, y, _w, h) => {
-				const overlap = Math.max(0, y + h - e.endCoordinates.screenY);
-				LayoutAnimation.configureNext({
-					duration: e.duration > 0 ? e.duration : 250,
-					update: { type: "keyboard" },
-				});
-				setKeyboardPad(overlap);
-			});
-		};
-		const sub = Keyboard.addListener("keyboardWillChangeFrame", onFrame);
-		return () => sub.remove();
-	}, []);
+	// Pad by native keyboard height minus the mount-declared bottom gap.
+	// iOS-only: Android keeps stock adjustResize (module disabled there).
+	const { height: keyboardHeight } = useReanimatedKeyboardAnimation();
+	const padForKeyboard = Platform.OS === "ios";
+	const keyboardPadStyle = useAnimatedStyle(() => ({
+		// keyboardHeight runs 0 → -keyboardHeight while the keyboard shows.
+		paddingBottom: padForKeyboard
+			? Math.max(0, -keyboardHeight.value - keyboardBottomGap)
+			: 0,
+	}));
 
 	const [threadId, setThreadId] = useState<string | null>(null);
 	const [resumeAttempted, setResumeAttempted] = useState(false);
@@ -251,11 +248,7 @@ export function AssistantChat({ screenContext }: { screenContext?: string }) {
 	const showEmptyState = !showLoadingHistory && results.length === 0;
 
 	return (
-		<View
-			ref={containerRef}
-			collapsable={false}
-			style={[styles.flex, { paddingBottom: keyboardPad }]}
-		>
+		<Animated.View style={[styles.flex, keyboardPadStyle]}>
 			{/* The ink header above the chat already names the surface — this row is
 			    just the two actions, splitting the width evenly (visual-pass r1). */}
 			<View style={[styles.header, { borderBottomColor: t.lineSoft }]}>
@@ -448,7 +441,7 @@ export function AssistantChat({ screenContext }: { screenContext?: string }) {
 					/>
 				</>
 			) : null}
-		</View>
+		</Animated.View>
 	);
 }
 

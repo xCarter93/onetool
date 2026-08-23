@@ -10,12 +10,23 @@ import { AssistantChat } from "./assistant-chat";
 // unavailability and NOTHING else — no upsell, no "upgrade on the web", no
 // billing link (Apple anti-steering treats even directional text as a
 // violation).
-export function AssistantHost({ screenContext }: { screenContext?: string }) {
+export function AssistantHost({
+	screenContext,
+	keyboardBottomGap,
+}: {
+	screenContext?: string;
+	keyboardBottomGap?: number;
+}) {
 	const { isLoading, allows } = useEntitlements();
 
 	if (isLoading) return <View style={styles.fill} />;
 	if (!allows("aiAssistant")) return <LockedBody />;
-	return <AssistantChat screenContext={screenContext} />;
+	return (
+		<AssistantChat
+			screenContext={screenContext}
+			keyboardBottomGap={keyboardBottomGap}
+		/>
+	);
 }
 
 function LockedBody() {
