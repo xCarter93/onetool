@@ -22,6 +22,7 @@ import { SidebarGroup } from "@/components/ui/sidebar";
 import { useAuth } from "@clerk/nextjs";
 import { useEntitlements } from "@/hooks/use-entitlements";
 import { usePermissions } from "@/hooks/use-permissions";
+import { isLaunchPromoActive, LAUNCH_PROMO } from "@/lib/promo";
 import { cn } from "@/lib/utils";
 
 /** Display order + chrome for the finite-limit meters the backend can return. */
@@ -166,16 +167,24 @@ export function PlanUsageCard() {
 						/>
 					))}
 					{can("billing") && (
-						<Button
-							size="sm"
-							className="w-full justify-center"
-							onClick={() =>
-								router.push("/organization/profile?tab=billing")
-							}
-						>
-							<ArrowUpRight className="size-4" />
-							Upgrade
-						</Button>
+						<div className="space-y-1.5">
+							{isLaunchPromoActive() && (
+								<p className="text-center text-[11px] font-medium text-primary">
+									Launch offer: {LAUNCH_PROMO.headline} through{" "}
+									{LAUNCH_PROMO.endsLabel}
+								</p>
+							)}
+							<Button
+								size="sm"
+								className="w-full justify-center"
+								onClick={() =>
+									router.push("/organization/profile?tab=billing")
+								}
+							>
+								<ArrowUpRight className="size-4" />
+								Upgrade
+							</Button>
+						</div>
 					)}
 				</FramePanel>
 			</Frame>

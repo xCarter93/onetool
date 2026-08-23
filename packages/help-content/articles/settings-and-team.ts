@@ -466,6 +466,10 @@ export const settingsAndTeamArticles: HelpArticle[] = [
 						type: "paragraph",
 						text: "Once you are subscribed, the button becomes **Manage subscription**, which opens your subscription details so you can review or change it.",
 					},
+					{
+						type: "paragraph",
+						text: "Through November 23, 2026, a launch offer appears on the Billing tab: a promo code for 20% off your first year on the annual plan, or 50% off your first 3 months on monthly. Click the code to copy it, then enter it at checkout under **Add promo code**.",
+					},
 				],
 			},
 			{

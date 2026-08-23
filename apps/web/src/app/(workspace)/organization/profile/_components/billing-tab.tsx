@@ -27,6 +27,7 @@ import {
 	Route,
 	Send,
 	Sparkles,
+	Tag,
 	Upload,
 	Users,
 	Wand2,
@@ -40,7 +41,9 @@ import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/reui/badge";
 import { SegmentedControl } from "@/components/domain/segmented-control";
+import { PromoCodeChip } from "@/components/shared/launch-promo";
 import { LearnMoreLink } from "@/components/help/learn-more";
+import { isLaunchPromoActive, LAUNCH_PROMO } from "@/lib/promo";
 import { PLAN_MATRIX } from "@onetool/backend/convex/lib/planMatrix";
 import type { MeterUsage } from "@onetool/backend";
 import { useEntitlements } from "@/hooks/use-entitlements";
@@ -272,6 +275,14 @@ export function BillingTab() {
 		const usage = meter(row.key);
 		return usage ? [{ ...row, usage }] : [];
 	});
+	// Launch promo: shown to free/trial orgs only — paying and override-sourced
+	// orgs have nothing to redeem it against.
+	const promoOffer =
+		period === "annual" ? LAUNCH_PROMO.annual : LAUNCH_PROMO.monthly;
+	const showPromo =
+		isLaunchPromoActive() &&
+		(source === "free" || source === "trial") &&
+		!checkoutDone;
 
 	if (accessLoading) {
 		return (
@@ -405,6 +416,22 @@ export function BillingTab() {
 						)}
 					</div>
 				</SettingsCardHeader>
+				{showPromo && (
+					<div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-border bg-primary/4 px-[22px] py-3">
+						<div className="flex items-center gap-2">
+							<Tag className="size-4 text-primary" aria-hidden="true" />
+							<p className="text-sm">
+								<span className="font-semibold">Launch offer:</span>{" "}
+								{promoOffer.label.toLowerCase()} with code
+							</p>
+						</div>
+						<PromoCodeChip code={promoOffer.code} />
+						<p className="text-xs text-muted-foreground">
+							Enter it at checkout under “Add promo code”. Ends{" "}
+							{LAUNCH_PROMO.endsLabel}.
+						</p>
+					</div>
+				)}
 				<div className="overflow-x-auto">
 					<table className="w-full min-w-[560px] border-t border-border">
 						<thead>

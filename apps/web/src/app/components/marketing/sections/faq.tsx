@@ -2,6 +2,7 @@
 
 import { useId, useState } from "react";
 import { cn } from "@/lib/utils";
+import { isLaunchPromoActive, LAUNCH_PROMO } from "@/lib/promo";
 import { AmbientLayer } from "../ambient";
 import { Eyebrow, Lede, Section, SectionHeading } from "../primitives";
 import { FaqHalftoneScene } from "../section-halftone-scenes";
@@ -69,9 +70,27 @@ const FAQS: ReadonlyArray<readonly [string, string]> = [
 	],
 ];
 
+const DISCOUNT_FAQ: readonly [string, string] = [
+	"Do you offer discounts?",
+	`Yes. Through ${LAUNCH_PROMO.endsLabel} we are running a launch offer: ${LAUNCH_PROMO.annual.label.toLowerCase()} of Business on the annual plan, or ${LAUNCH_PROMO.monthly.label.toLowerCase()} on monthly. Your promo codes are shown when you create your organization and on the Billing tab, and you enter one at checkout under "Add promo code".`,
+];
+
+// The discount entry rides directly after the trial question and disappears
+// with the promo window.
+const DISCOUNT_FAQ_INDEX =
+	FAQS.findIndex(([question]) => question === "How does the free trial work?") +
+	1;
+
 export function Faq() {
 	const [openIndex, setOpenIndex] = useState(0);
 	const baseId = useId();
+	const faqs = isLaunchPromoActive()
+		? [
+				...FAQS.slice(0, DISCOUNT_FAQ_INDEX),
+				DISCOUNT_FAQ,
+				...FAQS.slice(DISCOUNT_FAQ_INDEX),
+			]
+		: FAQS;
 
 	return (
 		<Section
@@ -103,7 +122,7 @@ export function Faq() {
 			</div>
 
 			<ul className="relative">
-				{FAQS.map(([question, answer], index) => {
+				{faqs.map(([question, answer], index) => {
 					const open = openIndex === index;
 					const panelId = `${baseId}-faq-panel-${index}`;
 					const triggerId = `${baseId}-faq-trigger-${index}`;

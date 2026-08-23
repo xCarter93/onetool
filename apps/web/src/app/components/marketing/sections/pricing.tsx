@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { usePlans } from "@clerk/nextjs/experimental";
 import { cn } from "@/lib/utils";
+import { isLaunchPromoActive, LAUNCH_PROMO } from "@/lib/promo";
 import { AmbientLayer } from "../ambient";
 import { PricingHalftoneScene } from "../section-halftone-scenes";
 import { CheckItem, Eyebrow, Lede, Section, SectionHeading, PlusCorners } from "../primitives";
@@ -291,6 +292,15 @@ export function Pricing() {
 							<span className="text-base text-(--ink-2)">{priceUnit}</span>
 						</p>
 						<p className="mt-[10px] text-[15px] text-(--ink-2)">{priceNote}</p>
+						{isLaunchPromoActive() && (
+							<p className="mt-[10px] text-[15px] font-medium text-(--accent-ink)">
+								Launch offer:{" "}
+								{annual
+									? LAUNCH_PROMO.annual.label.toLowerCase()
+									: LAUNCH_PROMO.monthly.label.toLowerCase()}
+								. Claim your code at signup. Ends {LAUNCH_PROMO.endsLabel}.
+							</p>
+						)}
 					</div>
 
 					<PrimaryButton
