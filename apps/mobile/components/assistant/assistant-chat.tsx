@@ -47,9 +47,14 @@ export function AssistantChat({ screenContext }: { screenContext?: string }) {
 	const [showHistory, setShowHistory] = useState(false);
 
 	// Free orgs get a finite daily allowance; business orgs ship no meter at
-	// all, so the counter simply doesn't render for them.
+	// all, so the counter simply doesn't render for them. Exhausted stays
+	// false while the meter loads so the composer never flashes disabled.
 	const { meter } = useEntitlements();
 	const messageMeter = meter("assistantMessages");
+	const messagesExhausted =
+		messageMeter !== undefined &&
+		messageMeter.remaining !== null &&
+		messageMeter.remaining <= 0;
 
 	// User message already saved but streamResponse failed — retry must reuse
 	// this messageId instead of re-saving a duplicate user message.
@@ -135,7 +140,7 @@ export function AssistantChat({ screenContext }: { screenContext?: string }) {
 
 	const handleSend = async (promptOverride?: string) => {
 		const prompt = (promptOverride ?? input).trim();
-		if (!prompt || isResponding) return;
+		if (!prompt || isResponding || messagesExhausted) return;
 		setInput("");
 		setIsResponding(true);
 		setError(null);
@@ -326,11 +331,14 @@ export function AssistantChat({ screenContext }: { screenContext?: string }) {
 							<Pressable
 								key={s}
 								onPress={() => void handleSend(s)}
-								disabled={isResponding}
+								disabled={isResponding || messagesExhausted}
 								accessibilityRole="button"
 								style={[
 									styles.suggestionChip,
-									{ borderColor: t.line, opacity: isResponding ? 0.5 : 1 },
+									{
+										borderColor: t.line,
+										opacity: isResponding || messagesExhausted ? 0.5 : 1,
+									},
 								]}
 							>
 								<Text style={[styles.suggestionText, { color: t.ink }]}>{s}</Text>
@@ -411,7 +419,7 @@ export function AssistantChat({ screenContext }: { screenContext?: string }) {
 						value={input}
 						onChangeText={setInput}
 						onSend={() => void handleSend()}
-						disabled={isResponding}
+						disabled={isResponding || messagesExhausted}
 					/>
 				</>
 			) : null}
