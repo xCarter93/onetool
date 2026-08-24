@@ -4,11 +4,19 @@ import type { SupportIntent } from "@/lib/support";
 
 export const INTENT_META: Record<
 	SupportIntent,
-	{ label: string; icon: typeof MessageCircle }
+	{ label: string; actionLabel: string; icon: typeof MessageCircle }
 > = {
-	contact: { label: "Support request", icon: MessageCircle },
-	bug: { label: "Bug report", icon: Bug },
-	feature: { label: "Feature request", icon: Lightbulb },
+	contact: {
+		label: "Support request",
+		actionLabel: "Contact support",
+		icon: MessageCircle,
+	},
+	bug: { label: "Bug report", actionLabel: "Report a bug", icon: Bug },
+	feature: {
+		label: "Feature request",
+		actionLabel: "Request a feature",
+		icon: Lightbulb,
+	},
 };
 
 /** Cross-device tickets whose intent we can't recover locally. */

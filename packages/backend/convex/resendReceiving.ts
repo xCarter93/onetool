@@ -222,8 +222,9 @@ export const processInboundEmail = internalMutation({
 				baseAddress === "support@onetool.biz" ||
 				baseAddress === FALLBACK_REPLY_TO_EMAIL
 			) {
+				// Don't log sender/subject: inbound mail is third-party PII.
 				console.log(
-					`Skipping inbound email to shared address ${baseAddress}. From: ${args.from}, Subject: ${args.subject}`
+					`Skipping inbound email to shared address ${baseAddress}. Resend email id: ${args.emailId}`
 				);
 				return {
 					success: true,

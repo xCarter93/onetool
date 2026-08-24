@@ -26,6 +26,9 @@ let state: SupportTicketsState = INITIAL_STATE;
 const listeners = new Set<() => void>();
 let inflight: Promise<void> | null = null;
 let rerunRequested = false;
+// Bumped on reset so a fetch that was in flight at sign-out can't emit the
+// previous user's tickets over the cleared state.
+let generation = 0;
 
 function emit(next: SupportTicketsState) {
 	state = next;
@@ -44,17 +47,20 @@ export function refreshSupportTickets(): Promise<void> {
 	inflight = (async () => {
 		do {
 			rerunRequested = false;
+			const startedGeneration = generation;
 			// Keep the current list on screen while a manual refresh runs.
 			emit({
 				status: state.status === "ready" ? "ready" : "loading",
 				tickets: state.tickets,
 			});
 			const available = await waitForSupportAvailable();
+			if (generation !== startedGeneration) continue;
 			if (!available) {
 				emit({ status: "unavailable", tickets: [] });
 				continue;
 			}
 			const tickets = await getSupportTickets();
+			if (generation !== startedGeneration) continue;
 			if (tickets === null) {
 				emit({ status: "error", tickets: state.tickets });
 			} else {
@@ -69,7 +75,13 @@ export function refreshSupportTickets(): Promise<void> {
 
 /** Sign-out: drop the previous user's tickets. */
 export function resetSupportTickets() {
+	generation += 1;
 	emit(INITIAL_STATE);
+}
+
+/** Test-only snapshot of the store state. */
+export function supportTicketsSnapshot(): SupportTicketsState {
+	return state;
 }
 
 /** Reflect a markAsRead immediately without a refetch. */

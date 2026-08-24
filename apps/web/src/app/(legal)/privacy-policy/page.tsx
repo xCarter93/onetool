@@ -106,7 +106,9 @@ export default function PrivacyPolicyPage() {
 							app may be recorded so we can reproduce bugs you report and
 							improve the product. All form inputs are masked in recordings, and
 							recordings are retained under PostHog&apos;s retention settings.
-							Our mobile app contains no analytics.
+							We honor your browser&apos;s Do Not Track setting: when it is
+							enabled, analytics and session replay are disabled for your
+							visits. Our mobile app contains no analytics.
 						</li>
 						<li>
 							<strong>Log Data:</strong> Our hosting and backend providers

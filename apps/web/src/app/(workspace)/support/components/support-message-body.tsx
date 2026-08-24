@@ -56,8 +56,14 @@ function renderMarks(text: string, marks: TipTapMark[] | undefined, key: number)
 	return <React.Fragment key={key}>{node}</React.Fragment>;
 }
 
-function renderNode(node: TipTapNode, key: number): React.ReactNode {
-	const children = node.content?.map((child, index) => renderNode(child, index));
+function renderNode(
+	node: TipTapNode,
+	key: number,
+	doc: { unsupported: boolean }
+): React.ReactNode {
+	const children = node.content?.map((child, index) =>
+		renderNode(child, index, doc)
+	);
 	switch (node.type) {
 		case "text":
 			return renderMarks(node.text ?? "", node.marks, key);
@@ -101,7 +107,9 @@ function renderNode(node: TipTapNode, key: number): React.ReactNode {
 				</pre>
 			);
 		default:
-			// Unknown block: bail so the caller falls back to plain text.
+			// Unknown node at any depth: flag it so the whole message falls
+			// back to plain text instead of silently dropping content.
+			doc.unsupported = true;
 			return null;
 	}
 }
@@ -116,8 +124,11 @@ export function SupportMessageBody({
 	const rich = message.rich_content;
 	let rendered: React.ReactNode = null;
 	if (rich?.type === "doc" && rich.content?.length) {
-		const blocks = rich.content.map((node, index) => renderNode(node, index));
-		if (!blocks.some((block) => block === null)) rendered = blocks;
+		const doc = { unsupported: false };
+		const blocks = rich.content.map((node, index) =>
+			renderNode(node, index, doc)
+		);
+		if (!doc.unsupported) rendered = blocks;
 	}
 	return (
 		<div className={className}>

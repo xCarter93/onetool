@@ -93,11 +93,7 @@ export function TicketList({
 										onClick={() => onNewRequest(intent)}
 									>
 										<meta.icon className="size-4" aria-hidden="true" />
-										{intent === "contact"
-											? "Contact support"
-											: intent === "bug"
-												? "Report a bug"
-												: "Request a feature"}
+										{meta.actionLabel}
 									</DropdownMenuItem>
 								))}
 							</DropdownMenuContent>
