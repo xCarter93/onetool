@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useUser, useOrganization } from "@clerk/nextjs";
 import { useQuery } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
@@ -13,11 +13,14 @@ import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import {
 	isSupportAvailable,
+	rememberTicketIntent,
 	sendSupportMessage,
-	showSupportWidget,
+	SUPPORT_INTENT_PREFIX,
+	type SupportIntent,
 } from "@/lib/support";
+import { refreshSupportTickets } from "@/lib/support-tickets";
 
-export type SupportIntent = "contact" | "bug" | "feature";
+export type { SupportIntent };
 
 const MAX_DETAIL_LENGTH = 2000;
 
@@ -26,33 +29,37 @@ const INTENT_COPY: Record<
 	{
 		title: string;
 		description: string;
-		/** D13: PostHog Workflows tag tickets by matching this first line. */
-		messagePrefix: string;
 		detailLabel: string;
 		detailPlaceholder: string;
+		/** V2-3: per-intent post-submit promise. */
+		toastTitle: string;
+		toastDescription: string;
 	}
 > = {
 	contact: {
 		title: "Contact support",
 		description: "Questions, billing, anything — we read every message.",
-		messagePrefix: "Support request",
 		detailLabel: "How can we help?",
 		detailPlaceholder: "Tell us what you need…",
+		toastTitle: "Message sent",
+		toastDescription: "We'll reply within one business day.",
 	},
 	bug: {
 		title: "Report a bug",
 		description:
 			"The technical details (page, session, errors) attach automatically.",
-		messagePrefix: "Bug report",
 		detailLabel: "What happened instead?",
 		detailPlaceholder: "What you saw, including any error message…",
+		toastTitle: "Bug report sent",
+		toastDescription: "We'll investigate and reply within one business day.",
 	},
 	feature: {
 		title: "Request a feature",
 		description: "Tell us what OneTool should do next.",
-		messagePrefix: "Feature request",
 		detailLabel: "What would you like OneTool to do?",
 		detailPlaceholder: "The task you're trying to get done…",
+		toastTitle: "Thanks — we've logged it",
+		toastDescription: "We'll email you if we ship it or need more detail.",
 	},
 };
 
@@ -78,6 +85,7 @@ export function SupportDialog({
 }: SupportDialogProps) {
 	const copy = INTENT_COPY[intent];
 	const pathname = usePathname();
+	const router = useRouter();
 	const { user } = useUser();
 	const { organization } = useOrganization();
 	const entitlements = useQuery(api.entitlements.getMine, {});
@@ -127,24 +135,26 @@ export function SupportDialog({
 		]
 			.filter(Boolean)
 			.join(" · ");
-		const message = `${copy.messagePrefix}\n\n${body}\n\n— ${context}`;
+		const message = `${SUPPORT_INTENT_PREFIX[intent]}\n\n${body}\n\n— ${context}`;
 
-		const sent = await sendSupportMessage(message, {
+		const ticketId = await sendSupportMessage(message, {
 			name: user?.fullName ?? undefined,
 			email: email || undefined,
 		});
 		setSubmitting(false);
 
-		if (!sent) {
+		if (!ticketId) {
 			setSubmitError(
 				"That didn't go through. Try again, or email support@onetool.biz."
 			);
 			return;
 		}
 
+		rememberTicketIntent(ticketId, intent);
+		void refreshSupportTickets();
 		onOpenChange(false);
-		toast.success("Message sent", "We'll reply within one business day.", {
-			action: { label: "View conversation", onClick: showSupportWidget },
+		toast.success(copy.toastTitle, copy.toastDescription, {
+			action: { label: "View request", onClick: () => router.push("/support") },
 		});
 	};
 

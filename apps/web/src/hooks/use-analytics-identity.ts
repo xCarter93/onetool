@@ -12,6 +12,10 @@ import {
 	resetAnalytics,
 } from "@/lib/analytics";
 import { setSupportIdentity } from "@/lib/support";
+import {
+	refreshSupportTickets,
+	resetSupportTickets,
+} from "@/lib/support-tickets";
 
 /**
  * Hook that handles PostHog user and organization identification.
@@ -50,6 +54,7 @@ export function useAnalyticsIdentity() {
 	useEffect(() => {
 		if (prevSignedIn.current === true && isSignedIn === false) {
 			resetAnalytics();
+			resetSupportTickets();
 			hasIdentified.current = false;
 			lastPlanSent.current = null;
 			lastGroupPlanSent.current = null;
@@ -66,6 +71,10 @@ export function useAnalyticsIdentity() {
 		if (lastSupportIdentitySent.current === supportIdentity.distinctId) return;
 		setSupportIdentity(supportIdentity.distinctId, supportIdentity.hash);
 		lastSupportIdentitySent.current = supportIdentity.distinctId;
+		// V2-4: the one getTickets fetch on workspace load feeds the "?" unread
+		// dot — runs after identity so it lists the user's tickets, not the
+		// anonymous widget session's.
+		void refreshSupportTickets();
 	}, [isSignedIn, supportIdentity]);
 
 	// Identify user immediately when Clerk data is available (don't wait for Convex)

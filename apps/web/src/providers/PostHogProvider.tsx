@@ -4,7 +4,6 @@ import posthog from "posthog-js";
 import { PostHogProvider as PHProvider } from "posthog-js/react";
 import { useEffect } from "react";
 import { env } from "@/env";
-import { suppressSupportLauncher } from "@/lib/support";
 
 export function PostHogProvider({ children }: { children: React.ReactNode }) {
 	useEffect(() => {
@@ -68,8 +67,8 @@ export function PostHogProvider({ children }: { children: React.ReactNode }) {
 			// PostHog init can fail (ad blockers, network). Analytics is non-critical.
 			console.error("PostHog initialization failed:", error);
 		}
-		// No floating chat bubble: HelpMenu rows are the only Support entry points.
-		return suppressSupportLauncher();
+		// No floating chat bubble: the widget UI is disabled in PostHog project
+		// settings; OneTool's /support page and dialogs are the only Support UI.
 	}, []);
 
 	return <PHProvider client={posthog}>{children}</PHProvider>;

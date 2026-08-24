@@ -12,6 +12,7 @@ import {
 	FileText,
 	FolderKanban,
 	Lightbulb,
+	MessagesSquare,
 	MapPin,
 	MessageCircle,
 	Plus,
@@ -259,7 +260,9 @@ export function CommandPaletteProvider({
 								))}
 							</CommandGroup>
 						)}
-						{filteredSupport.length > 0 && (
+						{(filteredSupport.length > 0 ||
+							!trimmed ||
+							"your support requests".includes(trimmed)) && (
 							<CommandGroup heading="Support">
 								{filteredSupport.map((action) => (
 									<CommandItem
@@ -273,6 +276,15 @@ export function CommandPaletteProvider({
 										<span>{action.label}</span>
 									</CommandItem>
 								))}
+								{(!trimmed || "your support requests".includes(trimmed)) && (
+									<CommandItem
+										value="support:requests"
+										onSelect={() => runSelect(() => router.push("/support"))}
+									>
+										<MessagesSquare />
+										<span>Your support requests</span>
+									</CommandItem>
+								)}
 							</CommandGroup>
 						)}
 						{results && results.clients.length > 0 && (

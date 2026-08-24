@@ -1,10 +1,21 @@
 import posthog from "posthog-js";
+import type { GetMessagesResponse, Ticket } from "posthog-js";
 
 /**
  * PostHog Support (conversations) wrappers. The conversations module loads
  * async from remote config, so every call is null-guarded — the SDK returns
- * null/no-ops until available.
+ * null/no-ops until available. The default floating widget stays disabled in
+ * PostHog project settings; OneTool renders its own UI (/support + dialogs).
  */
+
+export type SupportIntent = "contact" | "bug" | "feature";
+
+/** D13: PostHog Workflows tag tickets by matching this first line. */
+export const SUPPORT_INTENT_PREFIX: Record<SupportIntent, string> = {
+	contact: "Support request",
+	bug: "Bug report",
+	feature: "Feature request",
+};
 
 /**
  * Server-verified ticket ownership (hash from api.support.getConversationsIdentity).
@@ -22,52 +33,133 @@ export function isSupportAvailable(): boolean {
 	return posthog.conversations?.isAvailable() ?? false;
 }
 
-/** Open the widget (thread/reply view). */
-export function showSupportWidget() {
-	posthog.conversations?.show();
+/** Poll until the conversations module is loaded; false when it never arrives (ad blocker). */
+export function waitForSupportAvailable(timeoutMs = 10_000): Promise<boolean> {
+	if (isSupportAvailable()) return Promise.resolve(true);
+	return new Promise((resolve) => {
+		const started = Date.now();
+		const interval = window.setInterval(() => {
+			if (isSupportAvailable()) {
+				window.clearInterval(interval);
+				resolve(true);
+			} else if (Date.now() - started >= timeoutMs) {
+				window.clearInterval(interval);
+				resolve(false);
+			}
+		}, 250);
+	});
 }
 
 /**
- * Create a new ticket. Resolves null when conversations are unavailable
- * (ad blocker, disabled project, remote config not loaded) or the send fails.
+ * Create a new ticket. Resolves to the ticket id, or null when conversations
+ * are unavailable (ad blocker, disabled project, remote config not loaded) or
+ * the send fails.
  */
 export async function sendSupportMessage(
 	message: string,
 	traits: { name?: string; email?: string }
-): Promise<boolean> {
+): Promise<string | null> {
 	try {
 		const response = await posthog.conversations?.sendMessage(
 			message,
 			traits,
 			true
 		);
-		return response != null;
+		return response?.ticket_id ?? null;
+	} catch {
+		return null;
+	}
+}
+
+/** All of the user's tickets, newest activity first. */
+export async function getSupportTickets(): Promise<Ticket[] | null> {
+	try {
+		const response = await posthog.conversations?.getTickets({ limit: 100 });
+		if (!response) return null;
+		return [...response.results].sort(
+			(a, b) =>
+				Date.parse(b.last_message_at ?? b.created_at) -
+				Date.parse(a.last_message_at ?? a.created_at)
+		);
+	} catch {
+		return null;
+	}
+}
+
+export async function getSupportMessages(
+	ticketId: string
+): Promise<GetMessagesResponse | null> {
+	try {
+		return (await posthog.conversations?.getMessages(ticketId)) ?? null;
+	} catch {
+		return null;
+	}
+}
+
+export async function markSupportTicketRead(ticketId: string): Promise<boolean> {
+	try {
+		const response = await posthog.conversations?.markAsRead(ticketId);
+		return response?.success ?? false;
 	} catch {
 		return false;
 	}
 }
 
 /**
- * Suppress the default floating launcher: OneTool's entry points are the
- * HelpMenu rows, not a chat bubble. The conversations module arrives async
- * from remote config, so poll until available, then hide. Returns cleanup.
+ * Reply into an existing ticket. sendMessage has no ticket-id parameter — it
+ * targets the manager's "current ticket", and getMessages(ticketId) is the
+ * documented way to switch it, so re-target defensively before sending.
  */
-export function suppressSupportLauncher(): () => void {
-	const POLL_MS = 500;
-	const GIVE_UP_MS = 30_000;
-	const interval = window.setInterval(() => {
-		if (posthog.conversations?.isAvailable()) {
-			posthog.conversations.hide();
-			window.clearInterval(interval);
-			window.clearTimeout(timeout);
+export async function replyToSupportTicket(
+	ticketId: string,
+	message: string,
+	traits: { name?: string; email?: string }
+): Promise<boolean> {
+	try {
+		const conversations = posthog.conversations;
+		if (!conversations) return false;
+		if (conversations.getCurrentTicketId() !== ticketId) {
+			await conversations.getMessages(ticketId);
 		}
-	}, POLL_MS);
-	const timeout = window.setTimeout(
-		() => window.clearInterval(interval),
-		GIVE_UP_MS
-	);
-	return () => {
-		window.clearInterval(interval);
-		window.clearTimeout(timeout);
-	};
+		const response = await conversations.sendMessage(message, traits, false);
+		return response?.ticket_id === ticketId;
+	} catch {
+		return false;
+	}
+}
+
+/**
+ * Per-browser ticket → intent map so the /support list can show intent icons
+ * without fetching every thread. Best-effort: tickets created on another
+ * device fall back to a generic label until their thread is opened.
+ */
+const INTENT_STORE_KEY = "onetool.supportTicketIntents";
+
+export function recallTicketIntents(): Record<string, SupportIntent> {
+	try {
+		const raw = window.localStorage.getItem(INTENT_STORE_KEY);
+		return raw ? (JSON.parse(raw) as Record<string, SupportIntent>) : {};
+	} catch {
+		return {};
+	}
+}
+
+export function rememberTicketIntent(ticketId: string, intent: SupportIntent) {
+	try {
+		window.localStorage.setItem(
+			INTENT_STORE_KEY,
+			JSON.stringify({ ...recallTicketIntents(), [ticketId]: intent })
+		);
+	} catch {
+		// Storage unavailable — the list just shows the generic label.
+	}
+}
+
+/** Recover the intent from a ticket's opening message (D13 prefix line). */
+export function intentFromMessage(content: string): SupportIntent | null {
+	const firstLine = content.trimStart().split("\n", 1)[0]?.trim() ?? "";
+	for (const [intent, prefix] of Object.entries(SUPPORT_INTENT_PREFIX)) {
+		if (firstLine === prefix) return intent as SupportIntent;
+	}
+	return null;
 }
