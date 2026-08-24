@@ -216,7 +216,7 @@ export const gettingStartedArticles: HelpArticle[] = [
 				blocks: [
 					{
 						type: "paragraph",
-						text: "Admins land on **Home** after signing in: a dashboard with your key numbers, this week's schedule, a map of client locations, a Needs Attention list of overdue tasks and unpaid invoices, and your most recent client emails with a click-through into the [inbox](/help/inbox/unified-inbox). Members land on **Projects** instead, since Home is an admin view.",
+						text: "Admins land on **Home** after signing in: a dashboard with your key numbers, a schedule calendar with the day's agenda beside it, a map of client locations, a Needs Attention list of overdue tasks, unpaid invoices, and quotes awaiting signature, and your most recent client emails with a click-through into the [inbox](/help/inbox/unified-inbox). Members land on **Projects** instead, since Home is an admin view.",
 					},
 				],
 			},
@@ -693,7 +693,7 @@ export const gettingStartedArticles: HelpArticle[] = [
 				blocks: [
 					{
 						type: "paragraph",
-						text: "Everything you've sent us lives on one page: pick **Your support requests** from the **?** menu (or find it in ⌘K). Each request shows the whole thread, your messages and our replies, and you can reply right from the page.",
+						text: "Everything you've sent us lives on one page: pick **Your support requests** from the **?** menu (or find it in ⌘K). Each request shows the whole thread, your messages and our replies, and you can reply right from the page. **Take the tour again** sits in the same menu on desktop if you'd like another walkthrough of the Home dashboard.",
 					},
 					{
 						type: "list",

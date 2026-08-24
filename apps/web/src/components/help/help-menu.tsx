@@ -9,6 +9,7 @@ import {
 	Lightbulb,
 	MessageCircle,
 	MessagesSquare,
+	Route,
 	Sparkles,
 } from "lucide-react";
 import {
@@ -31,6 +32,8 @@ import { DEFAULT_HELP_REFS, getRouteHelpRefs } from "@/lib/help/route-help";
 import { useOptionalSupportDialog } from "@/components/support/support-dialog-provider";
 import type { SupportIntent } from "@/components/support/support-dialog";
 import { supportUnreadCount, useSupportTickets } from "@/lib/support-tickets";
+import { useIsMobile } from "@/hooks/use-mobile";
+import { useIsAdmin } from "@/hooks/use-role-access";
 import { cn } from "@/lib/utils";
 
 const SUPPORT_ROWS: Array<{
@@ -115,6 +118,19 @@ export function HelpMenu() {
 		(!searching ||
 			requestsRowLabel.toLowerCase().includes(query.trim().toLowerCase()));
 
+	// The tour highlights the sidebar (unmounted inside a closed Sheet below md)
+	// and lives on /home, which the proxy keeps admin-only — hidden elsewhere
+	// because the replay would dead-end.
+	const isMobile = useIsMobile();
+	const isAdmin = useIsAdmin();
+	const tourRowLabel = "Take the tour again";
+	const showTourRow =
+		!!openSupport &&
+		!isMobile &&
+		isAdmin &&
+		(!searching ||
+			tourRowLabel.toLowerCase().includes(query.trim().toLowerCase()));
+
 	return (
 		<>
 			<Popover open={open} onOpenChange={handleOpenChange}>
@@ -152,7 +168,9 @@ export function HelpMenu() {
 							onValueChange={setQuery}
 						/>
 						<CommandList>
-							{supportRows.length === 0 && !showRequestsRow && (
+							{supportRows.length === 0 &&
+								!showRequestsRow &&
+								!showTourRow && (
 								<CommandEmpty>No articles match your search.</CommandEmpty>
 							)}
 							{refs.length > 0 && (
@@ -191,7 +209,7 @@ export function HelpMenu() {
 									})}
 								</CommandGroup>
 							)}
-							{(supportRows.length > 0 || showRequestsRow) && (
+							{(supportRows.length > 0 || showRequestsRow || showTourRow) && (
 								<CommandGroup heading="Get in touch">
 									{supportRows.map((row) => (
 										<CommandItem
@@ -244,6 +262,29 @@ export function HelpMenu() {
 													{unreadCount > 0
 														? `${unreadCount} unread ${unreadCount === 1 ? "reply" : "replies"}`
 														: "See your open and past requests"}
+												</span>
+											</span>
+										</CommandItem>
+									)}
+									{showTourRow && (
+										<CommandItem
+											value="tour:replay"
+											onSelect={() => {
+												setOpen(false);
+												setQuery("");
+												router.push("/home?tour=1");
+											}}
+											className="cursor-pointer"
+										>
+											<span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
+												<Route className="size-4" aria-hidden="true" />
+											</span>
+											<span className="min-w-0">
+												<span className="block truncate text-sm font-medium text-foreground">
+													{tourRowLabel}
+												</span>
+												<span className="block truncate text-xs text-muted-foreground">
+													Walk through the dashboard tour again
 												</span>
 											</span>
 										</CommandItem>

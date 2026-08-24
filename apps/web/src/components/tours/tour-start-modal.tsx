@@ -1,11 +1,17 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
-import { createPortal } from "react-dom";
-import { motion, AnimatePresence } from "motion/react";
-import { cn } from "@/lib/utils";
-import { Sparkles, X } from "lucide-react";
+import { useState } from "react";
+import { Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+	Dialog,
+	DialogContent,
+	DialogDescription,
+	DialogHeader,
+	DialogTitle,
+} from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
 
 interface TourStartModalProps {
 	isOpen: boolean;
@@ -14,6 +20,14 @@ interface TourStartModalProps {
 	onDontShowAgain: () => void;
 }
 
+const TOUR_HIGHLIGHTS = [
+	"Navigate the sidebar and switch organizations",
+	"Search anything with ⌘K",
+	"Read your metrics, schedule, client map, and activity",
+	"Stay ahead of overdue work and ask the AI assistant",
+	"Find help and reach support",
+];
+
 export function TourStartModal({
 	isOpen,
 	onStartTour,
@@ -21,235 +35,80 @@ export function TourStartModal({
 	onDontShowAgain,
 }: TourStartModalProps) {
 	const [dontShowAgain, setDontShowAgain] = useState(false);
-	const modalRef = useRef<HTMLDivElement>(null);
-	const previousActiveElement = useRef<HTMLElement | null>(null);
 
-	const handleSkip = useCallback(() => {
+	// Every dismissal path (Skip, Esc, backdrop, close button) honors the
+	// checkbox; starting the tour deliberately does not.
+	const handleSkip = () => {
 		if (dontShowAgain) {
 			onDontShowAgain();
 		} else {
 			onSkip();
 		}
-	}, [dontShowAgain, onDontShowAgain, onSkip]);
-
-	const handleStartTour = () => {
-		onStartTour();
 	};
 
-	// Handle focus management
-	useEffect(() => {
-		if (isOpen) {
-			previousActiveElement.current = document.activeElement as HTMLElement;
+	return (
+		<Dialog
+			open={isOpen}
+			onOpenChange={(open) => {
+				if (!open) handleSkip();
+			}}
+		>
+			<DialogContent className="max-w-md sm:max-w-md">
+				<DialogHeader>
+					<div className="flex size-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
+						<Sparkles className="size-5" aria-hidden="true" />
+					</div>
+					<DialogTitle>Welcome to OneTool</DialogTitle>
+					<DialogDescription>
+						Let us show you around. This quick tour will help you get started
+						with the key features of your dashboard.
+					</DialogDescription>
+				</DialogHeader>
 
-			const focusTimeout = setTimeout(() => {
-				const modalElement = modalRef.current;
-				if (modalElement) {
-					const focusableElements = modalElement.querySelectorAll<HTMLElement>(
-						'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
-					);
-					if (focusableElements.length > 0) {
-						focusableElements[0].focus();
-					}
-				}
-			}, 100);
+				<div className="rounded-lg border border-border bg-muted/50 p-4">
+					<p className="mb-3 text-sm font-medium text-foreground">
+						In this tour, you&apos;ll learn how to:
+					</p>
+					<ul className="space-y-2 text-sm text-muted-foreground">
+						{TOUR_HIGHLIGHTS.map((item) => (
+							<li key={item} className="flex items-start gap-2.5">
+								<span
+									aria-hidden="true"
+									className="mt-1.5 size-1.5 shrink-0 rounded-full bg-primary"
+								/>
+								{item}
+							</li>
+						))}
+					</ul>
+				</div>
 
-			return () => {
-				clearTimeout(focusTimeout);
-				if (previousActiveElement.current) {
-					previousActiveElement.current.focus();
-				}
-			};
-		}
-	}, [isOpen]);
-
-	// Handle body scroll lock
-	useEffect(() => {
-		if (isOpen) {
-			const originalOverflow = document.body.style.overflow;
-			document.body.style.overflow = "hidden";
-
-			return () => {
-				document.body.style.overflow = originalOverflow || "";
-			};
-		}
-	}, [isOpen]);
-
-	// Handle escape key
-	useEffect(() => {
-		if (!isOpen) return;
-
-		const handleEscape = (event: KeyboardEvent) => {
-			if (event.key === "Escape") {
-				handleSkip();
-			}
-		};
-
-		document.addEventListener("keydown", handleEscape);
-		return () => document.removeEventListener("keydown", handleEscape);
-	}, [isOpen, handleSkip]);
-
-	if (!isOpen) return null;
-
-	const modalContent = (
-		<AnimatePresence>
-			{isOpen && (
-				<motion.div
-					className="fixed inset-0 z-9999 flex items-center justify-center pointer-events-auto"
-					initial={{ opacity: 0 }}
-					animate={{ opacity: 1 }}
-					exit={{ opacity: 0 }}
-					transition={{ duration: 0.2 }}
-				>
-					{/* Backdrop */}
-					<motion.div
-						className={cn(
-							"absolute inset-0 backdrop-blur-sm",
-							"bg-black/50 dark:bg-black/70"
-						)}
+				<div className="flex flex-col gap-2">
+					<Button onClick={onStartTour} className="w-full justify-center">
+						Start Tour
+					</Button>
+					<Button
 						onClick={handleSkip}
-						initial={{ opacity: 0 }}
-						animate={{ opacity: 1 }}
-						exit={{ opacity: 0 }}
-					/>
-
-					{/* Modal Content */}
-					<motion.div
-						ref={modalRef}
-						className={cn(
-							"relative rounded-2xl shadow-2xl w-full max-w-md mx-4 overflow-hidden",
-							"bg-white dark:bg-gray-900",
-							"border border-gray-200 dark:border-gray-700"
-						)}
-						initial={{ opacity: 0, scale: 0.9, y: 20 }}
-						animate={{ opacity: 1, scale: 1, y: 0 }}
-						exit={{ opacity: 0, scale: 0.9, y: 20 }}
-						transition={{ type: "spring", damping: 25, stiffness: 300 }}
-						role="dialog"
-						aria-modal="true"
-						aria-labelledby="tour-modal-title"
-						tabIndex={-1}
+						variant="ghost"
+						className="w-full justify-center"
 					>
-						{/* Decorative gradient header */}
-						<div className="relative h-32 bg-linear-to-br from-primary via-primary/80 to-primary/60 overflow-hidden">
-							{/* Decorative circles */}
-							<div className="absolute -top-10 -right-10 w-40 h-40 bg-white/10 rounded-full" />
-							<div className="absolute -bottom-5 -left-5 w-24 h-24 bg-white/10 rounded-full" />
+						Skip for now
+					</Button>
+				</div>
 
-							{/* Close button */}
-							<button
-								onClick={handleSkip}
-								aria-label="Close"
-								className={cn(
-									"absolute top-3 right-3 p-2 rounded-full transition-colors",
-									"text-white/80 hover:text-white hover:bg-white/20"
-								)}
-							>
-								<X className="w-5 h-5" />
-							</button>
-
-							{/* Icon */}
-							<div className="absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-1/2">
-								<div
-									className={cn(
-										"w-16 h-16 rounded-2xl flex items-center justify-center",
-										"bg-white dark:bg-gray-800 shadow-lg",
-										"border-4 border-white dark:border-gray-900"
-									)}
-								>
-									<Sparkles className="w-8 h-8 text-primary" />
-								</div>
-							</div>
-						</div>
-
-						{/* Content */}
-						<div className="px-6 pt-12 pb-6 text-center">
-							<h2
-								id="tour-modal-title"
-								className="text-2xl font-bold text-foreground mb-2"
-							>
-								Welcome to OneTool!
-							</h2>
-							<p className="text-muted-foreground mb-6">
-								Let us show you around! This quick tour will help you get
-								started with the key features of your dashboard.
-							</p>
-
-							{/* What you'll learn */}
-							<div
-								className={cn(
-									"text-left rounded-xl p-4 mb-6",
-									"bg-gray-50 dark:bg-gray-800/50",
-									"border border-gray-100 dark:border-gray-700"
-								)}
-							>
-								<p className="text-sm font-medium text-foreground mb-3">
-									In this tour, you&apos;ll learn how to:
-								</p>
-								<ul className="space-y-2 text-sm text-muted-foreground">
-									<li className="flex items-center gap-2">
-										<div className="w-1.5 h-1.5 rounded-full bg-primary shrink-0" />
-										Navigate using the sidebar menu
-									</li>
-									<li className="flex items-center gap-2">
-										<div className="w-1.5 h-1.5 rounded-full bg-primary shrink-0" />
-										Switch between organizations
-									</li>
-									<li className="flex items-center gap-2">
-										<div className="w-1.5 h-1.5 rounded-full bg-primary shrink-0" />
-										Track your business metrics at a glance
-									</li>
-									<li className="flex items-center gap-2">
-										<div className="w-1.5 h-1.5 rounded-full bg-primary shrink-0" />
-										Stay ahead of overdue work and ask the AI assistant
-									</li>
-								</ul>
-							</div>
-
-							{/* Buttons */}
-							<div className="flex flex-col gap-3">
-								<Button
-									onClick={handleStartTour}
-									size="lg"
-									className="w-full justify-center"
-								>
-									Start Tour
-								</Button>
-								<Button
-									onClick={handleSkip}
-									variant="ghost"
-									size="lg"
-									className="w-full justify-center"
-								>
-									Skip for now
-								</Button>
-							</div>
-
-							{/* Don't show again checkbox */}
-							<div className="mt-4 pt-4 border-t border-gray-100 dark:border-gray-800">
-								<label className="flex items-center justify-center gap-2 cursor-pointer text-sm text-muted-foreground">
-									<input
-										type="checkbox"
-										checked={dontShowAgain}
-										onChange={(e) => setDontShowAgain(e.target.checked)}
-										className={cn(
-											"w-4 h-4 rounded border-gray-300 dark:border-gray-600",
-											"text-primary focus:ring-primary focus:ring-offset-0"
-										)}
-									/>
-									Don&apos;t show this again
-								</label>
-							</div>
-						</div>
-					</motion.div>
-				</motion.div>
-			)}
-		</AnimatePresence>
+				<div className="flex items-center justify-center gap-2 border-t border-border pt-4">
+					<Checkbox
+						id="tour-dont-show-again"
+						checked={dontShowAgain}
+						onCheckedChange={(checked) => setDontShowAgain(checked === true)}
+					/>
+					<Label
+						htmlFor="tour-dont-show-again"
+						className="cursor-pointer text-sm text-muted-foreground"
+					>
+						Don&apos;t show this again
+					</Label>
+				</div>
+			</DialogContent>
+		</Dialog>
 	);
-
-	// Use portal to render at document root
-	if (typeof document !== "undefined") {
-		return createPortal(modalContent, document.body);
-	}
-
-	return null;
 }
