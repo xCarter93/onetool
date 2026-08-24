@@ -70,7 +70,7 @@ export const HOME_TOUR_CONTENT: Record<HomeTour, TourStepContent> = {
 	[HomeTour.GLOBAL_SEARCH]: {
 		title: "Search Everything",
 		description:
-			"Jump to any client, project, quote, or invoice from anywhere in the app. Click here or press ⌘K to open it.",
+			"Jump to any client, project, quote, or invoice from anywhere in the app. Click here or press ⌘K (Ctrl+K on Windows) to open it.",
 		tooltipPosition: "right",
 	},
 	[HomeTour.USER_MENU]: {

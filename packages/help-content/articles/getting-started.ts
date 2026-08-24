@@ -693,7 +693,7 @@ export const gettingStartedArticles: HelpArticle[] = [
 				blocks: [
 					{
 						type: "paragraph",
-						text: "Everything you've sent us lives on one page: pick **Your support requests** from the **?** menu (or find it in ⌘K). Each request shows the whole thread, your messages and our replies, and you can reply right from the page. **Take the tour again** sits in the same menu on desktop if you'd like another walkthrough of the Home dashboard.",
+						text: "Everything you've sent us lives on one page: pick **Your support requests** from the **?** menu (or find it in ⌘K). Each request shows the whole thread, your messages and our replies, and you can reply right from the page. **Take the tour again** sits in the same menu for admins on desktop if you'd like another walkthrough of the Home dashboard.",
 					},
 					{
 						type: "list",

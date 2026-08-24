@@ -140,10 +140,10 @@ export default function Page() {
 			);
 
 			if (allCompleted) {
-				markTourComplete();
+				markTourComplete().catch(() => {});
 			} else {
 				// Dismissed mid-tour — still "seen", or the welcome modal returns.
-				skipTour();
+				skipTour().catch(() => {});
 			}
 			setTourStarted(false);
 		}
@@ -180,7 +180,7 @@ export default function Page() {
 	const handleDontShowAgain = async () => {
 		tourAnsweredRef.current = true;
 		setShowTourModal(false);
-		await skipTour();
+		await skipTour().catch(() => {});
 	};
 
 	// Replay entry from the help menu (/home?tour=1).
