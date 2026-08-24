@@ -1,8 +1,16 @@
 "use client";
 
 import * as React from "react";
-import { usePathname } from "next/navigation";
-import { ArrowUpRight, CircleHelp, Sparkles } from "lucide-react";
+import { usePathname, useRouter } from "next/navigation";
+import {
+	ArrowUpRight,
+	Bug,
+	CircleHelp,
+	Lightbulb,
+	MessageCircle,
+	MessagesSquare,
+	Sparkles,
+} from "lucide-react";
 import {
 	Command,
 	CommandEmpty,
@@ -20,6 +28,36 @@ import { HelpArticleDrawer } from "@/components/help/learn-more";
 import { headerIconButtonClass } from "@/components/layout/header-icon-button";
 import { resolveHelpRef, searchHelpArticles } from "@/lib/help";
 import { DEFAULT_HELP_REFS, getRouteHelpRefs } from "@/lib/help/route-help";
+import { useOptionalSupportDialog } from "@/components/support/support-dialog-provider";
+import type { SupportIntent } from "@/components/support/support-dialog";
+import { supportUnreadCount, useSupportTickets } from "@/lib/support-tickets";
+import { cn } from "@/lib/utils";
+
+const SUPPORT_ROWS: Array<{
+	intent: SupportIntent;
+	icon: typeof MessageCircle;
+	label: string;
+	subtext: string;
+}> = [
+	{
+		intent: "contact",
+		icon: MessageCircle,
+		label: "Contact support",
+		subtext: "We reply within one business day",
+	},
+	{
+		intent: "bug",
+		icon: Bug,
+		label: "Report a bug",
+		subtext: "Something broken or not working right",
+	},
+	{
+		intent: "feature",
+		icon: Lightbulb,
+		label: "Request a feature",
+		subtext: "Tell us what OneTool should do next",
+	},
+];
 
 /**
  * Header "?" menu: suggests articles for the current page and searches the
@@ -58,6 +96,25 @@ export function HelpMenu() {
 		setDrawerOpen(true);
 	};
 
+	// Null outside the workspace provider — the section simply doesn't render.
+	const openSupport = useOptionalSupportDialog();
+	const supportRows = !openSupport
+		? []
+		: searching
+			? SUPPORT_ROWS.filter((row) =>
+					row.label.toLowerCase().includes(query.trim().toLowerCase())
+				)
+			: SUPPORT_ROWS;
+
+	const router = useRouter();
+	const { tickets } = useSupportTickets();
+	const unreadCount = supportUnreadCount(tickets);
+	const requestsRowLabel = "Your support requests";
+	const showRequestsRow =
+		!!openSupport &&
+		(!searching ||
+			requestsRowLabel.toLowerCase().includes(query.trim().toLowerCase()));
+
 	return (
 		<>
 			<Popover open={open} onOpenChange={handleOpenChange}>
@@ -65,12 +122,22 @@ export function HelpMenu() {
 					render={
 						<button
 							type="button"
-							className={headerIconButtonClass}
-							aria-label="Help"
+							className={cn(headerIconButtonClass, "relative")}
+							aria-label={
+								unreadCount > 0
+									? `Help — ${unreadCount} unread support ${unreadCount === 1 ? "reply" : "replies"}`
+									: "Help"
+							}
 						/>
 					}
 				>
 					<CircleHelp className="size-[18px]" />
+					{unreadCount > 0 && (
+						<span
+							aria-hidden="true"
+							className="absolute right-1 top-1 size-2 rounded-full bg-primary ring-2 ring-background"
+						/>
+					)}
 				</PopoverTrigger>
 				<PopoverContent
 					className="w-80 rounded-xl border-border p-0 shadow-xl"
@@ -85,7 +152,9 @@ export function HelpMenu() {
 							onValueChange={setQuery}
 						/>
 						<CommandList>
-							<CommandEmpty>No articles match your search.</CommandEmpty>
+							{supportRows.length === 0 && !showRequestsRow && (
+								<CommandEmpty>No articles match your search.</CommandEmpty>
+							)}
 							{refs.length > 0 && (
 								<CommandGroup heading={heading}>
 									{refs.map((ref) => {
@@ -120,6 +189,65 @@ export function HelpMenu() {
 											</CommandItem>
 										);
 									})}
+								</CommandGroup>
+							)}
+							{(supportRows.length > 0 || showRequestsRow) && (
+								<CommandGroup heading="Get in touch">
+									{supportRows.map((row) => (
+										<CommandItem
+											key={row.intent}
+											value={`support:${row.intent}`}
+											onSelect={() => {
+												setOpen(false);
+												setQuery("");
+												openSupport?.(row.intent);
+											}}
+											className="cursor-pointer"
+										>
+											<span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
+												<row.icon className="size-4" aria-hidden="true" />
+											</span>
+											<span className="min-w-0">
+												<span className="block truncate text-sm font-medium text-foreground">
+													{row.label}
+												</span>
+												<span className="block truncate text-xs text-muted-foreground">
+													{row.subtext}
+												</span>
+											</span>
+										</CommandItem>
+									))}
+									{showRequestsRow && (
+										<CommandItem
+											value="support:requests"
+											onSelect={() => {
+												setOpen(false);
+												setQuery("");
+												router.push("/support");
+											}}
+											className="cursor-pointer"
+										>
+											<span className="relative flex size-7 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
+												<MessagesSquare className="size-4" aria-hidden="true" />
+												{unreadCount > 0 && (
+													<span
+														aria-hidden="true"
+														className="absolute -right-0.5 -top-0.5 size-2 rounded-full bg-primary ring-2 ring-popover"
+													/>
+												)}
+											</span>
+											<span className="min-w-0">
+												<span className="block truncate text-sm font-medium text-foreground">
+													{requestsRowLabel}
+												</span>
+												<span className="block truncate text-xs text-muted-foreground">
+													{unreadCount > 0
+														? `${unreadCount} unread ${unreadCount === 1 ? "reply" : "replies"}`
+														: "See your open and past requests"}
+												</span>
+											</span>
+										</CommandItem>
+									)}
 								</CommandGroup>
 							)}
 						</CommandList>

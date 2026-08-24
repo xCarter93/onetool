@@ -24,6 +24,8 @@ export const MAX_LOCAL_PART_LENGTH = 24;
 const RESERVED_LOCAL_PARTS = new Set([
 	"support",
 	"noreply",
+	"no-reply",
+	"replies",
 	"new",
 	"create",
 	"edit",

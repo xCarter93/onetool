@@ -78,8 +78,11 @@ export function setOrganizationGroup(
 /**
  * Reset analytics identity on sign-out.
  * Clears the current user identification and starts a new anonymous session.
+ * Also clears the Support HMAC identity — reset() wipes the widget's session
+ * state, and a stale verified identity must not outlive the sign-in.
  */
 export function resetAnalytics() {
+	posthog.clearIdentity();
 	posthog.reset();
 }
 
