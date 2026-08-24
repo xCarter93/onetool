@@ -7,6 +7,12 @@ import { NotificationBell } from "@/components/layout/notification-bell";
 import { ServiceStatusBadge } from "@/components/layout/service-status-badge";
 import { SettingsPopover } from "@/components/layout/settings-popover";
 import { TrialCountdownPill } from "@/components/layout/trial-countdown-pill";
+import {
+	TourElement,
+	HomeTour,
+	HOME_TOUR_CONTENT,
+	HomeTourContext,
+} from "@/components/tours";
 
 /**
  * Thin workspace navbar. On desktop the picture-frame band above the content
@@ -29,8 +35,19 @@ export function WorkspaceHeader() {
 				<NotchedItem contentClassName="gap-1">
 					<TrialCountdownPill />
 					<ServiceStatusBadge />
-					<HelpMenu />
-					<NotificationBell />
+					<TourElement<HomeTour>
+						TourContext={HomeTourContext}
+						stepId={HomeTour.HELP_SUPPORT}
+						title={HOME_TOUR_CONTENT[HomeTour.HELP_SUPPORT].title}
+						description={HOME_TOUR_CONTENT[HomeTour.HELP_SUPPORT].description}
+						tooltipPosition={
+							HOME_TOUR_CONTENT[HomeTour.HELP_SUPPORT].tooltipPosition
+						}
+						className="flex items-center gap-1"
+					>
+						<HelpMenu />
+						<NotificationBell />
+					</TourElement>
 					<SettingsPopover />
 				</NotchedItem>
 			</div>

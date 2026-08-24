@@ -244,7 +244,15 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 				>
 					<TeamSwitcher />
 				</TourElement>
-				<CommandPaletteTrigger />
+				<TourElement<HomeTour>
+					TourContext={HomeTourContext}
+					stepId={HomeTour.GLOBAL_SEARCH}
+					title={HOME_TOUR_CONTENT[HomeTour.GLOBAL_SEARCH].title}
+					description={HOME_TOUR_CONTENT[HomeTour.GLOBAL_SEARCH].description}
+					tooltipPosition={HOME_TOUR_CONTENT[HomeTour.GLOBAL_SEARCH].tooltipPosition}
+				>
+					<CommandPaletteTrigger />
+				</TourElement>
 			</SidebarHeader>
 			<SidebarContent>
 				<TourElement<HomeTour>

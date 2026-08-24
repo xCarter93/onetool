@@ -1,7 +1,8 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { Suspense, useState, useEffect, useRef } from "react";
 import dynamic from "next/dynamic";
+import { useRouter, useSearchParams } from "next/navigation";
 import ActivityFeed from "@/app/(workspace)/home/components/activity-feed";
 import HomeStats from "@/app/(workspace)/home/components/home-stats-real";
 import { NeedsAttention } from "@/app/(workspace)/home/components/needs-attention";
@@ -13,6 +14,7 @@ import { useQuery, useMutation } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { motion } from "motion/react";
 import { useAutoTimezone } from "@/hooks/use-auto-timezone";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { usePublishScreenContext } from "@/components/assistant/use-screen-context";
 import { SegmentedControl } from "@/components/domain/segmented-control";
 import { LayoutDashboard, CalendarDays } from "lucide-react";
@@ -77,6 +79,10 @@ export default function Page() {
 	const [viewMode, setViewMode] = useState<ViewMode>("dashboard");
 	const [showTourModal, setShowTourModal] = useState(false);
 	const [tourStarted, setTourStarted] = useState(false);
+	// Once the welcome modal has been answered, never re-open it this session —
+	// the hasSeenTour round-trip is slower than the 1s timer below.
+	const tourAnsweredRef = useRef(false);
+	const isMobile = useIsMobile();
 
 	// Get tour context from layout-level provider
 	const tourContext = React.useContext(HomeTourContext);
@@ -106,14 +112,22 @@ export default function Page() {
 
 	// Show tour modal for first-time users
 	useEffect(() => {
-		if (hasSeenTour === false && user && !tourStarted) {
+		if (
+			hasSeenTour === false &&
+			user &&
+			!tourStarted &&
+			!tourAnsweredRef.current &&
+			// The sidebar lives in a closed Sheet below md, so steps 1-4 never
+			// register and the tour cannot start. Desktop-only.
+			!isMobile
+		) {
 			// Small delay to let the page render first
 			const timer = setTimeout(() => {
 				setShowTourModal(true);
 			}, 1000);
 			return () => clearTimeout(timer);
 		}
-	}, [hasSeenTour, user, tourStarted]);
+	}, [hasSeenTour, user, tourStarted, isMobile]);
 
 	// Watch for tour completion/dismissal and call appropriate mutations
 	const prevTourActive = useRef(tourContext?.state.isActive);
@@ -126,7 +140,10 @@ export default function Page() {
 			);
 
 			if (allCompleted) {
-				markTourComplete();
+				markTourComplete().catch(() => {});
+			} else {
+				// Dismissed mid-tour — still "seen", or the welcome modal returns.
+				skipTour().catch(() => {});
 			}
 			setTourStarted(false);
 		}
@@ -137,6 +154,7 @@ export default function Page() {
 		tourContext?.state.completedSteps,
 		tourStarted,
 		markTourComplete,
+		skipTour,
 	]);
 
 	// Save view preference to localStorage
@@ -146,18 +164,32 @@ export default function Page() {
 	};
 
 	const handleStartTour = () => {
+		tourAnsweredRef.current = true;
 		setShowTourModal(false);
+		// Dashboard-only steps must be mounted for the tour to register; forced
+		// via state so the saved view preference survives.
+		setViewMode("dashboard");
 		setTourStarted(true);
 	};
 
 	const handleSkipTour = () => {
+		tourAnsweredRef.current = true;
 		setShowTourModal(false);
 	};
 
 	const handleDontShowAgain = async () => {
+		tourAnsweredRef.current = true;
 		setShowTourModal(false);
-		await skipTour();
+		await skipTour().catch(() => {});
 	};
+
+	// Replay entry from the help menu (/home?tour=1).
+	const handleReplayTour = React.useCallback(() => {
+		tourAnsweredRef.current = true;
+		setShowTourModal(false);
+		setViewMode("dashboard");
+		setTourStarted(true);
+	}, []);
 
 	const formatDate = () => {
 		const now = new Date();
@@ -187,6 +219,11 @@ export default function Page() {
 
 			{/* Tour Auto-Start Trigger */}
 			<TourAutoStart tourStarted={tourStarted} />
+
+			{/* Replay entry: /home?tour=1 from the help menu */}
+			<Suspense fallback={null}>
+				<TourReplayWatcher onReplay={handleReplayTour} />
+			</Suspense>
 
 			<div
 				className={`relative p-4 sm:p-6 lg:px-8 lg:pb-8 lg:pt-12 flex flex-col ${
@@ -347,6 +384,21 @@ export default function Page() {
 			</div>
 		</>
 	);
+}
+
+// Consumes the ?tour=1 replay flag, then strips it so a refresh doesn't restart.
+function TourReplayWatcher({ onReplay }: { onReplay: () => void }) {
+	const searchParams = useSearchParams();
+	const router = useRouter();
+	const requested = searchParams.get("tour") === "1";
+
+	React.useEffect(() => {
+		if (!requested) return;
+		router.replace("/home");
+		onReplay();
+	}, [requested, router, onReplay]);
+
+	return null;
 }
 
 // Helper component to auto-start tour after modal closes

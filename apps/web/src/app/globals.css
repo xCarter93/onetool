@@ -325,13 +325,9 @@
 
 	.tour-element-wrapper[data-tour-active="true"] {
 		z-index: 9999;
-		border-radius: 8px;
-		/* Provide solid background so semi-transparent children render correctly */
-		background-color: #ffffff; /* Light mode: pure white */
-	}
-
-	.dark .tour-element-wrapper[data-tour-active="true"] {
-		background-color: #0a0a0a; /* Dark mode: near-black */
+		border-radius: var(--radius);
+		/* Opaque ground so semi-transparent children don't leak the overlay */
+		background-color: var(--background);
 	}
 
 	/* Disable backdrop-blur effects inside highlighted tour elements
@@ -345,6 +341,7 @@
 	/* Using body data attribute for reliable cross-browser targeting */
 	body[data-tour-step="sidebar-nav"] [data-slot="sidebar-container"],
 	body[data-tour-step="team-switcher"] [data-slot="sidebar-container"],
+	body[data-tour-step="global-search"] [data-slot="sidebar-container"],
 	body[data-tour-step="user-menu"] [data-slot="sidebar-container"] {
 		z-index: 9999 !important;
 	}
@@ -352,12 +349,14 @@
 	/* Also target the sidebar wrapper and inner elements */
 	body[data-tour-step="sidebar-nav"] [data-slot="sidebar-wrapper"],
 	body[data-tour-step="team-switcher"] [data-slot="sidebar-wrapper"],
+	body[data-tour-step="global-search"] [data-slot="sidebar-wrapper"],
 	body[data-tour-step="user-menu"] [data-slot="sidebar-wrapper"] {
 		z-index: 9999 !important;
 	}
 
 	body[data-tour-step="sidebar-nav"] [data-slot="sidebar"],
 	body[data-tour-step="team-switcher"] [data-slot="sidebar"],
+	body[data-tour-step="global-search"] [data-slot="sidebar"],
 	body[data-tour-step="user-menu"] [data-slot="sidebar"] {
 		z-index: 9999 !important;
 	}
@@ -365,9 +364,11 @@
 	/* Prevent overflow clipping of tour outlines in sidebar */
 	body[data-tour-step="sidebar-nav"] [data-slot="sidebar-content"],
 	body[data-tour-step="team-switcher"] [data-slot="sidebar-header"],
+	body[data-tour-step="global-search"] [data-slot="sidebar-header"],
 	body[data-tour-step="user-menu"] [data-slot="sidebar-footer"],
 	body[data-tour-step="sidebar-nav"] [data-sidebar="content"],
 	body[data-tour-step="team-switcher"] [data-sidebar="header"],
+	body[data-tour-step="global-search"] [data-sidebar="header"],
 	body[data-tour-step="user-menu"] [data-sidebar="footer"] {
 		overflow: visible !important;
 	}
@@ -375,6 +376,7 @@
 	/* Ensure the inner sidebar also allows overflow for outlines */
 	body[data-tour-step="sidebar-nav"] [data-slot="sidebar-inner"],
 	body[data-tour-step="team-switcher"] [data-slot="sidebar-inner"],
+	body[data-tour-step="global-search"] [data-slot="sidebar-inner"],
 	body[data-tour-step="user-menu"] [data-slot="sidebar-inner"] {
 		overflow: visible !important;
 	}
@@ -403,7 +405,7 @@
 		content: "";
 		position: absolute;
 		inset: -6px;
-		border-radius: 12px;
+		border-radius: calc(var(--radius) + 4px);
 		border: 3px solid var(--primary);
 		box-shadow:
 			0 0 0 4px color-mix(in oklch, var(--primary) 25%, transparent),
@@ -424,6 +426,12 @@
 			box-shadow:
 				0 0 0 6px color-mix(in oklch, var(--primary) 20%, transparent),
 				0 4px 30px -4px color-mix(in oklch, var(--primary) 50%, transparent);
+		}
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.tour-element-wrapper[data-tour-active="true"]::after {
+			animation: none;
 		}
 	}
 

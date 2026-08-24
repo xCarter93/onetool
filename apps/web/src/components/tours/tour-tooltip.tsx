@@ -7,10 +7,11 @@ import {
 	useSyncExternalStore,
 } from "react";
 import { createPortal } from "react-dom";
-import { motion } from "motion/react";
+import { motion, useReducedMotion } from "motion/react";
 import { cn } from "@/lib/utils";
-import { ChevronLeft, ChevronRight, X, Keyboard } from "lucide-react";
+import { ChevronLeft, X, Keyboard } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Kbd } from "@/components/ui/kbd";
 
 // Subscribe to viewport size so positioning stays pure and SSR-safe
 function subscribeViewport(callback: () => void) {
@@ -55,6 +56,7 @@ export function TourTooltip({
 		width: 320,
 		height: 280,
 	});
+	const reduceMotion = useReducedMotion();
 
 	// null during SSR/first render; viewport string ("WxH") on the client
 	const viewport = useSyncExternalStore(
@@ -173,15 +175,15 @@ export function TourTooltip({
 			ref={tooltipRef}
 			className="tour-tooltip w-80 max-w-[calc(100vw-2rem)]"
 			style={tooltipStyle}
-			initial={{ opacity: 0, scale: 0.9 }}
+			initial={reduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.96 }}
 			animate={{ opacity: 1, scale: 1 }}
-			exit={{ opacity: 0, scale: 0.9 }}
-			transition={{ type: "spring", damping: 25, stiffness: 300 }}
+			exit={reduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.96 }}
+			transition={{ duration: 0.18, ease: [0.23, 1, 0.32, 1] }}
 		>
 			{/* Tooltip content */}
 			<div
 				className={cn(
-					"relative rounded-xl shadow-2xl overflow-hidden",
+					"relative rounded-xl shadow-lg overflow-hidden",
 					"bg-popover text-popover-foreground",
 					"border border-border",
 					"ring-1 ring-primary/20"
@@ -190,10 +192,10 @@ export function TourTooltip({
 				{/* Progress bar at top */}
 				<div className="h-1 bg-muted">
 					<motion.div
-						className="h-full bg-linear-to-r from-primary to-primary/80"
+						className="h-full bg-primary"
 						initial={{ width: 0 }}
 						animate={{ width: `${((currentStep + 1) / totalSteps) * 100}%` }}
-						transition={{ duration: 0.3 }}
+						transition={{ duration: reduceMotion ? 0 : 0.25, ease: [0.23, 1, 0.32, 1] }}
 					/>
 				</div>
 
@@ -252,12 +254,7 @@ export function TourTooltip({
 								<ChevronLeft className="w-4 h-4" />
 							</Button>
 						)}
-						{/* TODO(reui-rebuild): showArrow (hover "→" on non-final steps) dropped — nova Button has no hover-arrow affordance */}
-						<Button
-							onClick={onNext}
-							size="sm"
-							className="shadow-sm! hover:shadow-md!"
-						>
+						<Button onClick={onNext} size="sm">
 							{isLastStep ? "Finish" : "Next"}
 						</Button>
 					</div>
@@ -268,18 +265,18 @@ export function TourTooltip({
 					<div className="flex items-center justify-center gap-4 text-xs text-muted-foreground">
 						<span className="flex items-center gap-1.5">
 							<Keyboard className="w-3 h-3" />
-							<kbd className="px-1.5 py-0.5 rounded bg-muted text-muted-foreground font-mono">
+							<Kbd>
 								←
-							</kbd>
-							<kbd className="px-1.5 py-0.5 rounded bg-muted text-muted-foreground font-mono">
+							</Kbd>
+							<Kbd>
 								→
-							</kbd>
+							</Kbd>
 							<span>Navigate</span>
 						</span>
 						<span className="flex items-center gap-1.5">
-							<kbd className="px-1.5 py-0.5 rounded bg-muted text-muted-foreground font-mono">
+							<Kbd>
 								Esc
-							</kbd>
+							</Kbd>
 							<span>Exit</span>
 						</span>
 					</div>
