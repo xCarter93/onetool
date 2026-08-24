@@ -51,24 +51,43 @@ export function waitForSupportAvailable(timeoutMs = 10_000): Promise<boolean> {
 }
 
 /**
+ * sendMessage has no ticket-id parameter — it posts to the manager's mutable
+ * "current ticket" — so every operation that moves that pointer (getMessages,
+ * sendMessage) runs through this chain. Without it, a getMessages landing
+ * between a reply's retarget and its send would post the reply into the wrong
+ * conversation.
+ */
+let conversationChain: Promise<unknown> = Promise.resolve();
+function serialized<T>(op: () => Promise<T>): Promise<T> {
+	const run = conversationChain.then(op, op);
+	conversationChain = run.then(
+		() => undefined,
+		() => undefined
+	);
+	return run;
+}
+
+/**
  * Create a new ticket. Resolves to the ticket id, or null when conversations
  * are unavailable (ad blocker, disabled project, remote config not loaded) or
  * the send fails.
  */
-export async function sendSupportMessage(
+export function sendSupportMessage(
 	message: string,
 	traits: { name?: string; email?: string }
 ): Promise<string | null> {
-	try {
-		const response = await posthog.conversations?.sendMessage(
-			message,
-			traits,
-			true
-		);
-		return response?.ticket_id ?? null;
-	} catch {
-		return null;
-	}
+	return serialized(async () => {
+		try {
+			const response = await posthog.conversations?.sendMessage(
+				message,
+				traits,
+				true
+			);
+			return response?.ticket_id ?? null;
+		} catch {
+			return null;
+		}
+	});
 }
 
 /** All of the user's tickets, newest activity first. */
@@ -86,14 +105,17 @@ export async function getSupportTickets(): Promise<Ticket[] | null> {
 	}
 }
 
-export async function getSupportMessages(
+export function getSupportMessages(
 	ticketId: string
 ): Promise<GetMessagesResponse | null> {
-	try {
-		return (await posthog.conversations?.getMessages(ticketId)) ?? null;
-	} catch {
-		return null;
-	}
+	// getMessages switches the manager's current ticket — serialize it.
+	return serialized(async () => {
+		try {
+			return (await posthog.conversations?.getMessages(ticketId)) ?? null;
+		} catch {
+			return null;
+		}
+	});
 }
 
 export async function markSupportTicketRead(ticketId: string): Promise<boolean> {
@@ -106,26 +128,28 @@ export async function markSupportTicketRead(ticketId: string): Promise<boolean> 
 }
 
 /**
- * Reply into an existing ticket. sendMessage has no ticket-id parameter — it
- * targets the manager's "current ticket", and getMessages(ticketId) is the
- * documented way to switch it, so re-target defensively before sending.
+ * Reply into an existing ticket: re-target via getMessages(ticketId) (the
+ * documented way to switch the current ticket), then send — atomically, so no
+ * other targeting call can move the pointer in between.
  */
-export async function replyToSupportTicket(
+export function replyToSupportTicket(
 	ticketId: string,
 	message: string,
 	traits: { name?: string; email?: string }
 ): Promise<boolean> {
-	try {
-		const conversations = posthog.conversations;
-		if (!conversations) return false;
-		if (conversations.getCurrentTicketId() !== ticketId) {
-			await conversations.getMessages(ticketId);
+	return serialized(async () => {
+		try {
+			const conversations = posthog.conversations;
+			if (!conversations) return false;
+			if (conversations.getCurrentTicketId() !== ticketId) {
+				await conversations.getMessages(ticketId);
+			}
+			const response = await conversations.sendMessage(message, traits, false);
+			return response?.ticket_id === ticketId;
+		} catch {
+			return false;
 		}
-		const response = await conversations.sendMessage(message, traits, false);
-		return response?.ticket_id === ticketId;
-	} catch {
-		return false;
-	}
+	});
 }
 
 /**
