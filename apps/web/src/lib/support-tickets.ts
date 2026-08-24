@@ -25,6 +25,7 @@ const INITIAL_STATE: SupportTicketsState = { status: "idle", tickets: [] };
 let state: SupportTicketsState = INITIAL_STATE;
 const listeners = new Set<() => void>();
 let inflight: Promise<void> | null = null;
+let rerunRequested = false;
 
 function emit(next: SupportTicketsState) {
 	state = next;
@@ -33,24 +34,33 @@ function emit(next: SupportTicketsState) {
 
 export function refreshSupportTickets(): Promise<void> {
 	if (typeof window === "undefined") return Promise.resolve();
-	if (inflight) return inflight;
+	if (inflight) {
+		// Don't swallow a refresh that races an in-flight one — the identity
+		// effect can land mid-fetch and its results must not be the stale
+		// anonymous-session list. Re-run once the current fetch settles.
+		rerunRequested = true;
+		return inflight;
+	}
 	inflight = (async () => {
-		// Keep the current list on screen while a manual refresh runs.
-		emit({
-			status: state.status === "ready" ? "ready" : "loading",
-			tickets: state.tickets,
-		});
-		const available = await waitForSupportAvailable();
-		if (!available) {
-			emit({ status: "unavailable", tickets: [] });
-			return;
-		}
-		const tickets = await getSupportTickets();
-		if (tickets === null) {
-			emit({ status: "error", tickets: state.tickets });
-		} else {
-			emit({ status: "ready", tickets });
-		}
+		do {
+			rerunRequested = false;
+			// Keep the current list on screen while a manual refresh runs.
+			emit({
+				status: state.status === "ready" ? "ready" : "loading",
+				tickets: state.tickets,
+			});
+			const available = await waitForSupportAvailable();
+			if (!available) {
+				emit({ status: "unavailable", tickets: [] });
+				continue;
+			}
+			const tickets = await getSupportTickets();
+			if (tickets === null) {
+				emit({ status: "error", tickets: state.tickets });
+			} else {
+				emit({ status: "ready", tickets });
+			}
+		} while (rerunRequested);
 	})().finally(() => {
 		inflight = null;
 	});
