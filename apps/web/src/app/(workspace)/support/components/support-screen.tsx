@@ -15,7 +15,7 @@ import { TicketView, TicketViewEmpty } from "./ticket-view";
 import { EmptyState } from "@/components/domain/empty-state";
 
 export function SupportScreen() {
-	const { status, tickets } = useSupportTickets();
+	const { status, tickets, refreshing } = useSupportTickets();
 	const openSupport = useSupportDialog();
 	const { user } = useUser();
 
@@ -96,7 +96,7 @@ export function SupportScreen() {
 						onSelect={setSelectedTicketId}
 						onNewRequest={openSupport}
 						onRefresh={() => void refreshSupportTickets()}
-						refreshing={status === "loading"}
+						refreshing={refreshing}
 					/>
 				)}
 			</aside>

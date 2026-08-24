@@ -17,6 +17,7 @@ import {
 	sendSupportMessage,
 	SUPPORT_INTENT_PREFIX,
 	type SupportIntent,
+	waitForSupportAvailable,
 } from "@/lib/support";
 import { refreshSupportTickets } from "@/lib/support-tickets";
 
@@ -109,7 +110,19 @@ export function SupportDialog({
 		}
 	}
 
-	const available = isSupportAvailable();
+	// The PostHog SDK loads async: a render-only check could freeze the dialog
+	// in its "unavailable" branch when opened right after page load.
+	const [available, setAvailable] = React.useState(isSupportAvailable);
+	React.useEffect(() => {
+		if (!open || available) return;
+		let cancelled = false;
+		void waitForSupportAvailable().then((ok) => {
+			if (!cancelled && ok) setAvailable(true);
+		});
+		return () => {
+			cancelled = true;
+		};
+	}, [open, available]);
 	const email = user?.primaryEmailAddress?.emailAddress ?? "";
 	const canSubmit =
 		available &&

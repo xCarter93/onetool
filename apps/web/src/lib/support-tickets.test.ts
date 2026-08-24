@@ -42,6 +42,7 @@ describe("support-tickets store", () => {
 		expect(store.supportTicketsSnapshot()).toEqual({
 			status: "ready",
 			tickets: [TICKET],
+			refreshing: false,
 		});
 	});
 
@@ -61,6 +62,7 @@ describe("support-tickets store", () => {
 		expect(store.supportTicketsSnapshot()).toEqual({
 			status: "idle",
 			tickets: [],
+			refreshing: false,
 		});
 	});
 });

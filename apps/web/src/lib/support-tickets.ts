@@ -18,9 +18,16 @@ export type SupportTicketsStatus =
 export interface SupportTicketsState {
 	status: SupportTicketsStatus;
 	tickets: Ticket[];
+	/** A fetch is running — distinct from status so a manual refresh of an
+	 * already-loaded list can show progress without blanking the tickets. */
+	refreshing: boolean;
 }
 
-const INITIAL_STATE: SupportTicketsState = { status: "idle", tickets: [] };
+const INITIAL_STATE: SupportTicketsState = {
+	status: "idle",
+	tickets: [],
+	refreshing: false,
+};
 
 let state: SupportTicketsState = INITIAL_STATE;
 const listeners = new Set<() => void>();
@@ -52,19 +59,20 @@ export function refreshSupportTickets(): Promise<void> {
 			emit({
 				status: state.status === "ready" ? "ready" : "loading",
 				tickets: state.tickets,
+				refreshing: true,
 			});
 			const available = await waitForSupportAvailable();
 			if (generation !== startedGeneration) continue;
 			if (!available) {
-				emit({ status: "unavailable", tickets: [] });
+				emit({ status: "unavailable", tickets: [], refreshing: false });
 				continue;
 			}
 			const tickets = await getSupportTickets();
 			if (generation !== startedGeneration) continue;
 			if (tickets === null) {
-				emit({ status: "error", tickets: state.tickets });
+				emit({ status: "error", tickets: state.tickets, refreshing: false });
 			} else {
-				emit({ status: "ready", tickets });
+				emit({ status: "ready", tickets, refreshing: false });
 			}
 		} while (rerunRequested);
 	})().finally(() => {
@@ -90,7 +98,7 @@ export function markTicketReadLocally(ticketId: string) {
 		return;
 	}
 	emit({
-		status: state.status,
+		...state,
 		tickets: state.tickets.map((t) =>
 			t.id === ticketId ? { ...t, unread_count: 0 } : t
 		),
