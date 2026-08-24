@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { buildEmailHtml, getOrgInitials, resolveFromEmail } from "./branding";
+import {
+	buildEmailHtml,
+	getOrgInitials,
+	resolveFromEmail,
+	resolveReplyToEmail,
+} from "./branding";
 import { EMAIL_BODY_STYLES } from "./sanitizeHtml";
 
 const base = {
@@ -138,11 +143,18 @@ describe("branding helpers", () => {
 		expect(getOrgInitials("   ")).toBe("?");
 	});
 
-	it("falls back to the support address with no receiving address", () => {
+	it("falls back to the no-reply sender with no receiving address", () => {
 		expect(resolveFromEmail({ receivingAddress: "a@b.test" })).toBe("a@b.test");
 		expect(resolveFromEmail({ receivingAddress: "  " })).toBe(
-			"support@onetool.biz"
+			"no-reply@onetool.biz"
 		);
-		expect(resolveFromEmail({})).toBe("support@onetool.biz");
+		expect(resolveFromEmail({})).toBe("no-reply@onetool.biz");
+	});
+
+	it("falls back to the shared inbound replyTo base with no receiving address", () => {
+		expect(resolveReplyToEmail({ receivingAddress: "a@b.test" })).toBe(
+			"a@b.test"
+		);
+		expect(resolveReplyToEmail({})).toBe("replies@inbound.onetool.biz");
 	});
 });

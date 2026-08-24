@@ -67,6 +67,8 @@ export function PostHogProvider({ children }: { children: React.ReactNode }) {
 			// PostHog init can fail (ad blockers, network). Analytics is non-critical.
 			console.error("PostHog initialization failed:", error);
 		}
+		// No floating chat bubble: the widget UI is disabled in PostHog project
+		// settings; OneTool's /support page and dialogs are the only Support UI.
 	}, []);
 
 	return <PHProvider client={posthog}>{children}</PHProvider>;

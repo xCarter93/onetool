@@ -84,6 +84,13 @@ export const ROUTE_HELP: Array<{ pattern: RegExp; refs: string[] }> = [
 		refs: ["routing/planning-a-route", "routing/saved-routes"],
 	},
 	{
+		pattern: /^\/support/,
+		refs: [
+			"getting-started/get-help-and-share-feedback",
+			"getting-started/welcome-to-onetool",
+		],
+	},
+	{
 		pattern: /^\/reports/,
 		refs: ["reports/building-a-report", "reports/report-presets", "settings-and-team/limits-and-fair-use"],
 	},

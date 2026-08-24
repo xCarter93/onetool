@@ -8,6 +8,8 @@ import {
 	createTestClientContact,
 } from "./test.helpers";
 import { Id } from "./_generated/dataModel";
+import { plusTagAddress } from "./email/threads";
+import { FALLBACK_REPLY_TO_EMAIL } from "./email/branding";
 
 // resendReceiving.ts constructs the raw Resend SDK client at module load and
 // throws without an API key; stub one before convex-test imports the module.
@@ -199,15 +201,15 @@ describe("resendReceiving.processInboundEmail", () => {
 		expect(second?.threadDocId).toBe(threadDocId);
 	});
 
-	it("routes a plus-tokened reply to the support@ fallback sender instead of dropping it", async () => {
-		// Org WITHOUT a receiving address sends from the shared fallback; the
-		// only routing signal on the reply is the +t<threadDocId> token.
+	// Fallback (no receivingAddress) orgs: the only routing signal on a client
+	// reply is the +t<threadDocId> token. Covers the current replies@inbound
+	// base and the legacy support@ base still present on old sent emails.
+	async function fallbackOrgWithThread(suffix: string) {
 		const { orgId } = await t.run(async (ctx) => {
-			const org = await createTestOrg(ctx, {
-				clerkUserId: "user_fallback_1",
-				clerkOrgId: "org_fallback_1",
+			return await createTestOrg(ctx, {
+				clerkUserId: `user_fallback_${suffix}`,
+				clerkOrgId: `org_fallback_${suffix}`,
 			});
-			return org;
 		});
 		const threadDocId = await t.run(async (ctx) => {
 			return await ctx.db.insert("emailThreads", {
@@ -222,8 +224,13 @@ describe("resendReceiving.processInboundEmail", () => {
 				participantEmails: ["jane@client.com"],
 			});
 		});
+		return { orgId, threadDocId };
+	}
 
-		const tagged = `support+t${threadDocId}@onetool.biz`;
+	it("routes a plus-tokened reply to the replies@inbound fallback base", async () => {
+		const { orgId, threadDocId } = await fallbackOrgWithThread("1");
+
+		const tagged = plusTagAddress(FALLBACK_REPLY_TO_EMAIL, threadDocId);
 		const result = await t.mutation(
 			internal.resendReceiving.processInboundEmail,
 			inboundArgs({
@@ -245,6 +252,31 @@ describe("resendReceiving.processInboundEmail", () => {
 		expect(message?.threadDocId).toBe(threadDocId);
 	});
 
+	it("routes a plus-tokened reply to the legacy support@ base instead of dropping it", async () => {
+		const { orgId, threadDocId } = await fallbackOrgWithThread("2");
+
+		const tagged = `support+t${threadDocId}@onetool.biz`;
+		const result = await t.mutation(
+			internal.resendReceiving.processInboundEmail,
+			inboundArgs({
+				emailId: "re_in_fallback_legacy",
+				from: "Jane Client <jane@client.com>",
+				subject: "Re: Quote",
+				rfcMessageId: "<in-fb-legacy@client.com>",
+				to: [tagged],
+				receivedForAddress: tagged,
+			})
+		);
+		expect(result.success).toBe(true);
+		expect(result.skipped).toBeUndefined();
+
+		const message = await t.run(async (ctx) => {
+			return await findByResendId(ctx, "re_in_fallback_legacy");
+		});
+		expect(message?.orgId).toBe(orgId);
+		expect(message?.threadDocId).toBe(threadDocId);
+	});
+
 	it("still skips untokened mail to the support@ general inbox", async () => {
 		const result = await t.mutation(
 			internal.resendReceiving.processInboundEmail,
@@ -252,6 +284,38 @@ describe("resendReceiving.processInboundEmail", () => {
 				emailId: "re_in_support",
 				to: ["support@onetool.biz"],
 				receivedForAddress: "support@onetool.biz",
+			})
+		);
+		expect(result.success).toBe(true);
+		expect(result.skipped).toBe(true);
+	});
+
+	it("skips untokened mail to the replies@inbound fallback base", async () => {
+		const result = await t.mutation(
+			internal.resendReceiving.processInboundEmail,
+			inboundArgs({
+				emailId: "re_in_replies_untokened",
+				to: [FALLBACK_REPLY_TO_EMAIL],
+				receivedForAddress: FALLBACK_REPLY_TO_EMAIL,
+			})
+		);
+		expect(result.success).toBe(true);
+		expect(result.skipped).toBe(true);
+	});
+
+	it("skips a plus-tokened reply to the replies@inbound base whose thread no longer exists", async () => {
+		const { threadDocId } = await fallbackOrgWithThread("3");
+		await t.run(async (ctx) => {
+			await ctx.db.delete(threadDocId);
+		});
+
+		const tagged = plusTagAddress(FALLBACK_REPLY_TO_EMAIL, threadDocId);
+		const result = await t.mutation(
+			internal.resendReceiving.processInboundEmail,
+			inboundArgs({
+				emailId: "re_in_replies_dead_token",
+				to: [tagged],
+				receivedForAddress: tagged,
 			})
 		);
 		expect(result.success).toBe(true);

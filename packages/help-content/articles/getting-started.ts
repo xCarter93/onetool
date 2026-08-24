@@ -655,4 +655,80 @@ export const gettingStartedArticles: HelpArticle[] = [
 			"client-portal/what-your-clients-see",
 		],
 	},
+	{
+		slug: "get-help-and-share-feedback",
+		title: "Get help and share feedback",
+		subtitle: "Reach a real person for questions, bug reports, and feature ideas without leaving the app.",
+		kind: "howto",
+		availability: "all",
+		keywords: ["support", "contact", "bug", "feedback", "feature request", "help", "email"],
+		sections: [
+			{
+				heading: "Message us from the workspace",
+				blocks: [
+					{
+						type: "paragraph",
+						text: "The fastest way to reach us is the **?** menu in the top-right corner of the workspace. Below the suggested articles you'll find three options under **Get in touch**:",
+					},
+					{
+						type: "list",
+						items: [
+							"**Contact support** for questions about anything: your account, billing, or how a feature works.",
+							"**Report a bug** when something is broken. Tell us what you were trying to do and what happened instead; the technical details (the page you were on, a replay of your session, and any errors) attach automatically, so you don't need screenshots.",
+							"**Request a feature** to tell us what OneTool should do next.",
+						],
+					},
+					{
+						type: "paragraph",
+						text: "The same three actions are in the command palette: press **⌘K** (or **Ctrl+K**) and look under **Support**.",
+					},
+					{
+						type: "note",
+						text: "A real person reads every message and replies within one business day. We'll email you when we reply, and the full conversation lives on your Support page in the app.",
+					},
+				],
+			},
+			{
+				heading: "See your requests and our replies",
+				blocks: [
+					{
+						type: "paragraph",
+						text: "Everything you've sent us lives on one page: pick **Your support requests** from the **?** menu (or find it in ⌘K). Each request shows the whole thread, your messages and our replies, and you can reply right from the page.",
+					},
+					{
+						type: "list",
+						items: [
+							"A dot on the **?** icon in the header means we've replied since you last looked.",
+							"Resolved requests are hidden by default. Flip **Show resolved** to see past conversations.",
+							"Use **New request** on the page to start another conversation.",
+						],
+					},
+				],
+			},
+			{
+				heading: "Email and mobile",
+				blocks: [
+					{
+						type: "paragraph",
+						text: "You can always email [support@onetool.biz](mailto:support@onetool.biz) directly; it reaches the same inbox. On the mobile app, open the **Profile** tab and use the rows under **Support**; they start a pre-filled email for you.",
+					},
+					{
+						type: "note",
+						text: "Please don't include client payment details (card or bank numbers) in support messages.",
+					},
+				],
+			},
+		],
+		faq: [
+			{
+				question: "How fast will I hear back?",
+				answer: "Within one business day. Most messages get a reply sooner.",
+			},
+			{
+				question: "The in-app form says support chat couldn't load. What now?",
+				answer: "That's usually a browser ad blocker. Email support@onetool.biz instead; it reaches the same place.",
+			},
+		],
+		related: ["mobile-app/onetool-on-iphone-and-ipad"],
+	},
 ];

@@ -3,15 +3,28 @@
 
 import { sanitizeHtml, EMAIL_BODY_STYLES } from "./sanitizeHtml";
 
-// Canonical fallback when an org has no receiving address configured (rare
+// Fallback sender when an org has no receiving address configured (rare
 // post-migration). Never throws — a missing address must not block sends.
-export const FALLBACK_FROM_EMAIL = "support@onetool.biz";
+// support@onetool.biz is owned by PostHog Support; app mail must not use it.
+export const FALLBACK_FROM_EMAIL = "no-reply@onetool.biz";
+
+// Fallback Reply-To base for the same orgs. Lives on the Resend inbound domain
+// so plus-tokened client replies reach webhook routing — the apex MX is Google,
+// so a support+token@onetool.biz replyTo would dead-end in Gmail.
+export const FALLBACK_REPLY_TO_EMAIL = "replies@inbound.onetool.biz";
 
 export function resolveFromEmail(organization: {
 	receivingAddress?: string;
 }): string {
 	const addr = organization.receivingAddress?.trim();
 	return addr && addr.length > 0 ? addr : FALLBACK_FROM_EMAIL;
+}
+
+export function resolveReplyToEmail(organization: {
+	receivingAddress?: string;
+}): string {
+	const addr = organization.receivingAddress?.trim();
+	return addr && addr.length > 0 ? addr : FALLBACK_REPLY_TO_EMAIL;
 }
 
 // OneTool brand mark, served from the marketing site's public assets. Used for

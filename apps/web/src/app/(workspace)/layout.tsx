@@ -10,6 +10,7 @@ import { CelebrationListener } from "@/components/celebrations/celebration-liste
 import { ScreenContextProvider } from "@/components/assistant/use-screen-context";
 import { CurrentRecordProvider } from "@/components/assistant/use-current-record";
 import { CreateRecordProvider } from "@/components/domain/create-record-provider";
+import { SupportDialogProvider } from "@/components/support/support-dialog-provider";
 import "./workspace-theme.css";
 
 // Every workspace route is auth-gated and user-specific; none may be
@@ -38,7 +39,9 @@ export default function WorkspaceLayout({
 								<ScreenContextProvider>
 									<CurrentRecordProvider>
 										<CreateRecordProvider>
-											<SidebarWithHeader>{children}</SidebarWithHeader>
+											<SupportDialogProvider>
+												<SidebarWithHeader>{children}</SidebarWithHeader>
+											</SupportDialogProvider>
 										</CreateRecordProvider>
 									</CurrentRecordProvider>
 								</ScreenContextProvider>

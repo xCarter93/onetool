@@ -11,6 +11,11 @@ import {
 	setOrganizationGroup,
 	resetAnalytics,
 } from "@/lib/analytics";
+import { setSupportIdentity } from "@/lib/support";
+import {
+	refreshSupportTickets,
+	resetSupportTickets,
+} from "@/lib/support-tickets";
 
 /**
  * Hook that handles PostHog user and organization identification.
@@ -34,22 +39,43 @@ export function useAnalyticsIdentity() {
 		api.entitlements.getMine,
 		isSignedIn ? {} : "skip"
 	);
+	const supportIdentity = useQuery(
+		api.support.getConversationsIdentity,
+		isSignedIn ? {} : "skip"
+	);
 
 	const hasIdentified = useRef(false);
 	const lastPlanSent = useRef<string | null>(null);
 	const lastGroupPlanSent = useRef<string | null>(null);
+	const lastSupportIdentitySent = useRef<string | null>(null);
 	const prevSignedIn = useRef<boolean | null>(null);
 
 	// Handle sign-out - reset PostHog identity and flags
 	useEffect(() => {
 		if (prevSignedIn.current === true && isSignedIn === false) {
 			resetAnalytics();
+			resetSupportTickets();
 			hasIdentified.current = false;
 			lastPlanSent.current = null;
 			lastGroupPlanSent.current = null;
+			lastSupportIdentitySent.current = null;
 		}
 		prevSignedIn.current = isSignedIn ?? null;
 	}, [isSignedIn]);
+
+	// Support (conversations) HMAC identity — ticket ownership that survives
+	// posthog.reset() and cross-device sign-ins. Null when the backend secret
+	// is unset (widget then falls back to session-based access).
+	useEffect(() => {
+		if (!isSignedIn || !supportIdentity) return;
+		if (lastSupportIdentitySent.current === supportIdentity.distinctId) return;
+		setSupportIdentity(supportIdentity.distinctId, supportIdentity.hash);
+		lastSupportIdentitySent.current = supportIdentity.distinctId;
+		// V2-4: the one getTickets fetch on workspace load feeds the "?" unread
+		// dot — runs after identity so it lists the user's tickets, not the
+		// anonymous widget session's.
+		void refreshSupportTickets();
+	}, [isSignedIn, supportIdentity]);
 
 	// Identify user immediately when Clerk data is available (don't wait for Convex)
 	useEffect(() => {
