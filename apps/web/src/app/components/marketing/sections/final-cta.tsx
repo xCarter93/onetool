@@ -153,9 +153,10 @@ export function FinalCta() {
 						</h2>
 
 						<Lede>
-							Add a client, build a quote, send it for signature. You can be
-							doing that ten minutes from now. There is nothing to install, and
-							nobody you have to talk to first.
+							Add a client, build a quote, send it for signature, and hang up a
+							hat or two while you&apos;re at it. You can be doing that ten
+							minutes from now. There is nothing to install, and nobody you
+							have to talk to first.
 						</Lede>
 
 						<div className="mt-7 flex flex-wrap gap-3">

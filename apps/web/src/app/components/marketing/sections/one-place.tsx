@@ -414,8 +414,9 @@ export function OnePlace() {
 					</SectionHeading>
 					<Lede className="max-w-[34rem]">
 						Email, a spreadsheet, a notebook, the group text and a sticky note
-						on the dash. None of them know about each other, so you become the
-						integration.
+						on the dash. A different hat for each one: dispatcher, bookkeeper,
+						scheduler, collections. None of them know about each other, so you
+						become the integration.
 					</Lede>
 
 					<div className="mt-[clamp(40px,6vw,80px)] grid max-w-[30rem] gap-[22px]">

@@ -442,7 +442,7 @@ export function TryIt() {
 					<Eyebrow>Try it yourself</Eyebrow>
 					<SectionHeading>Run the whole job in 30 seconds.</SectionHeading>
 					<Lede className="max-w-[46rem]">
-						Pick a couple of line items, then send it. You play every part: the
+						Pick a couple of line items, then send it. You wear every hat: the
 						office, the crew and the client. The money lands without a number
 						retyped.
 					</Lede>
