@@ -7,6 +7,7 @@ import {
 	at,
 	CheckItem,
 	Container,
+	Eyebrow,
 	GridBackdrop,
 	Lede,
 	PlusCorners,
@@ -92,6 +93,9 @@ export function Hero() {
 					{/* SectionHeading/Lede take className only, so the stagger delay rides
 					    on a wrapper and the primitives keep their own type scale. */}
 					<div className="lp-rise" style={at("60ms")}>
+						<Eyebrow className="mb-4">
+							You wear every hat. You only need OneTool.
+						</Eyebrow>
 						<SectionHeading
 							as="h1"
 							reveal={false}
