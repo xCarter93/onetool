@@ -1,7 +1,6 @@
 import type { ReactNode } from "react";
 import { ClerkProviderWithTheme } from "@/providers/ClerkProviderWithTheme";
 import ConvexClientProvider from "@/providers/ConvexClientProvider";
-import { PostHogProvider } from "@/providers/PostHogProvider";
 import { DynamicTitle } from "@/components/shared/dynamic-title";
 import { ConfirmDialogProvider } from "@/hooks/use-confirm-dialog";
 import { SidebarWithHeader } from "@/components/layout/sidebar-with-header";
@@ -25,31 +24,29 @@ export default function WorkspaceLayout({
 }) {
 	return (
 		<ClerkProviderWithTheme>
-			<PostHogProvider>
-				<ConvexClientProvider>
-					<DynamicTitle />
-					<ConfirmDialogProvider>
-						<div className="workspace-zone min-h-screen md:min-h-min">
-							<AnalyticsIdentity />
+			<ConvexClientProvider>
+				<DynamicTitle />
+				<ConfirmDialogProvider>
+					<div className="workspace-zone min-h-screen md:min-h-min">
+						<AnalyticsIdentity />
 						<CelebrationListener />
-							{/* No ambient blobs / grid overlays here: absolutely-positioned
-							    decorations paint over the static picture-frame background
-							    (but under the card and notches), tinting the frame unevenly. */}
-							<div className="relative bg-background min-h-screen">
-								<ScreenContextProvider>
-									<CurrentRecordProvider>
-										<CreateRecordProvider>
-											<SupportDialogProvider>
-												<SidebarWithHeader>{children}</SidebarWithHeader>
-											</SupportDialogProvider>
-										</CreateRecordProvider>
-									</CurrentRecordProvider>
-								</ScreenContextProvider>
-							</div>
+						{/* No ambient blobs / grid overlays here: absolutely-positioned
+						    decorations paint over the static picture-frame background
+						    (but under the card and notches), tinting the frame unevenly. */}
+						<div className="relative bg-background min-h-screen">
+							<ScreenContextProvider>
+								<CurrentRecordProvider>
+									<CreateRecordProvider>
+										<SupportDialogProvider>
+											<SidebarWithHeader>{children}</SidebarWithHeader>
+										</SupportDialogProvider>
+									</CreateRecordProvider>
+								</CurrentRecordProvider>
+							</ScreenContextProvider>
 						</div>
-					</ConfirmDialogProvider>
-				</ConvexClientProvider>
-			</PostHogProvider>
+					</div>
+				</ConfirmDialogProvider>
+			</ConvexClientProvider>
 		</ClerkProviderWithTheme>
 	);
 }

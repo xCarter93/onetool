@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Outfit } from "next/font/google";
 import { ThemeProvider } from "@/providers/ThemeProvider";
+import { PostHogProvider } from "@/providers/PostHogProvider";
 import { ToastProvider } from "@/hooks/use-toast";
 import "./globals.css";
 // Portal-only font assets (Caveat for typed-signature canvas rendering).
@@ -25,11 +26,16 @@ export default function RootLayout({
 	return (
 		<html suppressHydrationWarning lang="en">
 			<body className={`${outfit.className} style-nova antialiased`}>
-				<ThemeProvider>
-					<ToastProvider position="top-right" maxToasts={5}>
-						{children}
-					</ToastProvider>
-				</ThemeProvider>
+				{/* Root-level so every surface (marketing, auth, portal, communities,
+				    workspace) gets pageviews; AnalyticsIdentity stays in Clerk-wrapped
+				    layouts since identify() needs auth context. */}
+				<PostHogProvider>
+					<ThemeProvider>
+						<ToastProvider position="top-right" maxToasts={5}>
+							{children}
+						</ToastProvider>
+					</ThemeProvider>
+				</PostHogProvider>
 			</body>
 		</html>
 	);
