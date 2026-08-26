@@ -38,7 +38,6 @@ export const NAV: { group: string; items: NavItem[] }[] = [
 		group: "Workspace",
 		items: [
 			{ label: "Home", icon: stroke("M3 10.5 12 3l9 7.5V21h-6v-6h-6v6H3z") },
-			{ label: "Inbox", icon: stroke("M3 13h5l2 3h4l2-3h5M5 5h14l2 8v6H3v-6z") },
 			{ label: "Clients", icon: stroke("M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75") },
 			{ label: "Projects", icon: stroke("M3 8h18v11H3zM8 8V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v3") },
 			{ label: "Tasks", icon: stroke("M4 6.5 6 8.5 9.5 5M4 13.5 6 15.5 9.5 12M13 7h8M13 14h8M4 19h17") },
@@ -48,14 +47,19 @@ export const NAV: { group: string; items: NavItem[] }[] = [
 		],
 	},
 	{
-		group: "Insights",
-		items: [{ label: "Reports", icon: stroke("M4 20V10M10 20V4M16 20v-7M21 20H3") }],
+		group: "Resources",
+		items: [
+			{ label: "Inbox", icon: stroke("M3 13h5l2 3h4l2-3h5M5 5h14l2 8v6H3v-6z") },
+			{ label: "Documents", icon: stroke("M2 19V5a2 2 0 0 1 2-2h4l2 2.5h8a2 2 0 0 1 2 2V10M2 19l2.7-6.2A2 2 0 0 1 6.5 11.5H22l-2.6 6.3a2 2 0 0 1-1.85 1.2H2z") },
+			{ label: "Reports", icon: stroke("M4 20V10M10 20V4M16 20v-7M21 20H3") },
+		],
 	},
 	{
 		group: "Manage",
 		items: [
 			{ label: "Automations", icon: stroke("M13 2 4 14h6l-1 8 9-12h-6z") },
 			{ label: "Community", icon: stroke("M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20zM2 12h20M12 2a15 15 0 0 1 0 20a15 15 0 0 1 0-20") },
+			{ label: "Settings", icon: stroke("M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.03 1.56V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1.11-1.56 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.56-1.03H3a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.56-1.11 1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34h.08a1.7 1.7 0 0 0 1.03-1.56V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1.03 1.56 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87v.08a1.7 1.7 0 0 0 1.56 1.03H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.51.98z") },
 		],
 	},
 ];
