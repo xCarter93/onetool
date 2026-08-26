@@ -95,7 +95,6 @@ const nextConfig: NextConfig = {
 		];
 	},
 	experimental: {
-		viewTransition: true,
 		globalNotFound: true,
 	},
 	images: {

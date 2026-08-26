@@ -21,11 +21,12 @@ export default async function SignedOutPage({
 			<header className="flex items-center justify-between px-6 py-5 md:px-12">
 				<div className="flex items-center gap-2">
 					<Image
-						src="/OneTool.png"
+						src="/OneTool-mark.png"
 						alt=""
-						width={32}
-						height={32}
-						className="dark:brightness-0 dark:invert"
+						width={296}
+						height={296}
+						sizes="32px"
+						className="size-8 dark:invert dark:brightness-0"
 						aria-hidden="true"
 					/>
 					<span className="text-sm font-semibold">OneTool</span>
