@@ -155,6 +155,9 @@ interface Recipe {
 }
 
 const shade = (v: number, dim: number, blur: number) => {
+  // A no-op filter still forces the card into a composited layer; return
+  // "none" at rest so settled cards rasterize at native resolution.
+  if (v < 0.001) return "none";
   const parts: string[] = [];
   if (blur > 0.01) parts.push(`blur(${(v * blur).toFixed(2)}px)`);
   if (dim > 0.001) parts.push(`brightness(${(1 - v * dim).toFixed(3)})`);
@@ -263,13 +266,20 @@ const pose = (
         filter: shade(v, cfg.dim, cfg.blur),
         clip: full,
       };
-    default:
+    default: {
+      // Dead zone on the frontmost card: any fractional scale rasterizes the
+      // card (and the live Player inside it) as a scaled texture, blurring it
+      // while it is still essentially full size. Hold scale(1)/no filter until
+      // the next card is a quarter of the way in; deeper cards keep the
+      // original stagger.
+      const s = v >= 1 ? v : clamp((v - 0.25) / 0.75, 0, 1);
       return {
-        transform: `translate3d(0,${(-v * cfg.peek).toFixed(2)}px,0) scale(${(1 - v * cfg.scaleStep).toFixed(4)})`,
+        transform: `translate3d(0,${(-v * cfg.peek).toFixed(2)}px,0) scale(${(1 - s * cfg.scaleStep).toFixed(4)})`,
         opacity: 1,
-        filter: shade(v, cfg.dim, cfg.blur),
+        filter: shade(s, cfg.dim, cfg.blur),
         clip: full,
       };
+    }
   }
 };
 
