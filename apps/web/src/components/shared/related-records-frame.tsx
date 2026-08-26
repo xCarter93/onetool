@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import type { Route } from "next";
 import Link from "next/link";
 import type { LucideIcon } from "lucide-react";
 
@@ -117,7 +118,9 @@ export function RelatedRecordsFrame({
 												variant="outline"
 												size="xs"
 												render={
-													item.href ? <Link href={item.href} /> : undefined
+													item.href ? (
+														<Link href={item.href as Route} />
+													) : undefined
 												}
 											>
 												<ItemMedia variant="icon">

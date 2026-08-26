@@ -8,6 +8,7 @@
  */
 
 import { useMemo, useState } from "react";
+import type { Route } from "next";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -134,7 +135,8 @@ function createColumns(
 			header: "",
 			cell: ({ row }) => {
 				const inv = row.original;
-				const href = `/portal/c/${clientPortalId}/invoices/${inv._id}`;
+				const href =
+					`/portal/c/${clientPortalId}/invoices/${inv._id}` as Route;
 				const isLegacy = inv.paymentSummary.isLegacy;
 				const showPayNow =
 					!isLegacy && inv.paymentSummary.displayStatus !== "paid";

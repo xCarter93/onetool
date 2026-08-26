@@ -1,11 +1,12 @@
 import { CheckIcon } from "@heroicons/react/24/solid";
+import type { Route } from "next";
 import Link from "next/link";
 
 export interface ProgressStep {
 	id: string;
 	name: string;
 	description: string;
-	href?: string;
+	href?: Route;
 	status: "complete" | "current" | "upcoming";
 }
 

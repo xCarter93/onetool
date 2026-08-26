@@ -7,6 +7,7 @@ import {
 	useState,
 	type CSSProperties,
 } from "react";
+import type { Route } from "next";
 import Link from "next/link";
 import { formatCurrency, roundCents } from "@/lib/money";
 import { cn } from "@/lib/utils";
@@ -626,7 +627,8 @@ export function TryIt() {
 								) : null}
 
 								{stage === "paid" ? (
-									<Link href="/sign-up" className={INK_ACTION}>
+									// optional catch-all route; bare path isn't in the typed union
+									<Link href={"/sign-up" as Route} className={INK_ACTION}>
 										Start free
 										<span aria-hidden="true" className="text-[15px]">
 											→
@@ -810,7 +812,8 @@ export function TryIt() {
 						<p className="mt-7 text-center text-[15px] text-(--ink-2)">
 							Want the real thing?{" "}
 							<Link
-								href="/sign-up"
+								// optional catch-all route; bare path isn't in the typed union
+								href={"/sign-up" as Route}
 								className="rounded-sm font-semibold text-(--accent-ink) underline decoration-(--rule-3) underline-offset-4 transition-colors hover:decoration-(--accent) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--accent-ink)"
 							>
 								Start free <span aria-hidden="true">→</span>

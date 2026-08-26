@@ -1,6 +1,7 @@
 "use client";
 
 import { ArrowRight } from "lucide-react";
+import type { Route } from "next";
 import Link from "next/link";
 import { forwardRef } from "react";
 
@@ -76,7 +77,8 @@ const CtaButton = forwardRef<HTMLButtonElement, CtaButtonProps>(
 
 		if (href) {
 			return (
-				<Link href={href} className={cls}>
+				// optional catch-all route; bare path isn't in the typed union
+				<Link href={href as Route} className={cls}>
 					{inner}
 				</Link>
 			);

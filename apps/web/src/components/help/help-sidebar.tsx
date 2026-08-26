@@ -1,5 +1,6 @@
 "use client";
 
+import type { Route } from "next";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ChevronDown } from "lucide-react";
@@ -9,7 +10,7 @@ import { cn } from "@/lib/utils";
 
 function CategoryNavItem({ category }: { category: HelpCategory }) {
 	const pathname = usePathname();
-	const categoryPath = `/help/${category.slug}`;
+	const categoryPath = `/help/${category.slug}` as Route;
 	const active =
 		pathname === categoryPath || pathname.startsWith(`${categoryPath}/`);
 
@@ -36,7 +37,7 @@ function CategoryNavItem({ category }: { category: HelpCategory }) {
 			{active && category.articles.length > 0 && (
 				<ul className="mt-1 mb-2 ml-[1.4rem] space-y-0.5 border-l border-border pl-3">
 					{category.articles.map((article) => {
-						const articlePath = `${categoryPath}/${article.slug}`;
+						const articlePath = `${categoryPath}/${article.slug}` as Route;
 						const articleActive = pathname === articlePath;
 						return (
 							<li key={article.slug}>

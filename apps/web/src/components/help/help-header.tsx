@@ -1,3 +1,4 @@
+import type { Route } from "next";
 import Image from "next/image";
 import Link from "next/link";
 import { ThemeSwitcher } from "@/components/layout/theme-switcher";
@@ -34,7 +35,8 @@ export function HelpHeader() {
 					<HelpSearchButton />
 					<ThemeSwitcher />
 					<Link
-						href="/sign-in"
+						// optional catch-all route; bare path isn't in the typed union
+						href={"/sign-in" as Route}
 						className="hidden px-2 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground md:block"
 					>
 						Sign in

@@ -24,6 +24,7 @@ import {
 	SidebarMenuItem,
 	useSidebar,
 } from "@/components/ui/sidebar";
+import type { Route } from "next";
 import Link from "next/link";
 
 export function NavProjects({
@@ -31,7 +32,7 @@ export function NavProjects({
 }: {
 	projects: {
 		name: string;
-		url: string;
+		url: Route;
 		icon: LucideIcon;
 	}[];
 }) {

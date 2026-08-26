@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useId, useRef, useState } from "react";
+import type { Route } from "next";
 import Image from "next/image";
 import Link from "next/link";
 import { SignInButton, Show } from "@clerk/nextjs";
@@ -97,7 +98,7 @@ const FEATURE_ITEMS: FlyoutItem[] = [
 	},
 ];
 
-const RESOURCE_ITEMS: FlyoutItem[] = [
+const RESOURCE_ITEMS = [
 	{
 		icon: BookOpen,
 		label: "Help Center",
@@ -116,13 +117,13 @@ const RESOURCE_ITEMS: FlyoutItem[] = [
 		description: "Email our team for a hand",
 		href: "mailto:support@onetool.biz",
 	},
-];
+] as const;
 
 const LEGAL_ITEMS = [
 	{ label: "Terms of Service", href: "/terms-of-service" },
 	{ label: "Privacy Policy", href: "/privacy-policy" },
 	{ label: "Data Security", href: "/data-security" },
-];
+] as const;
 
 /** `--ease-out-quint`, the landing's canonical deceleration. */
 const EASE_OUT_QUINT = [0.23, 1, 0.32, 1] as const;
@@ -411,7 +412,8 @@ export function PrimaryButton({
 	children,
 }: ButtonProps) {
 	return (
-		<Link href={href} className={cn(LP_PRIMARY, SIZE[size], className)}>
+		// optional catch-all route; bare path isn't in the typed union
+		<Link href={href as Route} className={cn(LP_PRIMARY, SIZE[size], className)}>
 			{children}
 		</Link>
 	);

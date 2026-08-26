@@ -1,5 +1,6 @@
 "use client";
 
+import type { Route } from "next";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { FileText, Home, ReceiptText, LogOut } from "lucide-react";
@@ -49,7 +50,7 @@ export function MobileTabBar({
 				return (
 					<Link
 						key={key}
-						href={href}
+						href={href as Route}
 						className={`flex-1 flex flex-col items-center justify-center gap-0.5 text-xs min-h-[44px] ${
 							active
 								? "text-primary font-semibold"

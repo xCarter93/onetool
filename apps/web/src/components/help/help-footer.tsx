@@ -1,7 +1,8 @@
+import type { Route } from "next";
 import Image from "next/image";
 import Link from "next/link";
 
-const footerLinks = [
+const footerLinks: { label: string; href: Route }[] = [
 	{ label: "Help Center", href: "/help" },
 	{ label: "Contact support", href: "mailto:support@onetool.biz" },
 	{ label: "Terms of Service", href: "/terms-of-service" },

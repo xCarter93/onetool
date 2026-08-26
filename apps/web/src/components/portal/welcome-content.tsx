@@ -1,5 +1,6 @@
 "use client";
 
+import type { Route } from "next";
 import Link from "next/link";
 import { useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
@@ -49,12 +50,16 @@ export function WelcomeContent({
 	const firstOutstanding = outstandingInvoices[0];
 	const firstAwaitingQuote = awaitingQuotes[0];
 
-	const invoiceHref = firstOutstanding
-		? `${base}/invoices/${firstOutstanding._id}`
-		: `${base}/invoices`;
-	const quoteHref = firstAwaitingQuote
-		? `${base}/quotes/${firstAwaitingQuote._id}`
-		: `${base}/quotes`;
+	const invoiceHref = (
+		firstOutstanding
+			? `${base}/invoices/${firstOutstanding._id}`
+			: `${base}/invoices`
+	) as Route;
+	const quoteHref = (
+		firstAwaitingQuote
+			? `${base}/quotes/${firstAwaitingQuote._id}`
+			: `${base}/quotes`
+	) as Route;
 
 	const hasAttention = outstandingInvoices.length > 0 || awaitingQuotes.length > 0;
 
@@ -71,8 +76,8 @@ export function WelcomeContent({
 	// invoices page.
 	const viewAllHref = (() => {
 		const first = activity[0];
-		if (first?.kind === "quote") return `${base}/quotes`;
-		return `${base}/invoices`;
+		if (first?.kind === "quote") return `${base}/quotes` as Route;
+		return `${base}/invoices` as Route;
 	})();
 
 	return (
@@ -210,8 +215,8 @@ function AttentionCard({
 	outstandingTotal: number;
 	firstOutstanding?: PortalInvoiceListItem;
 	firstAwaitingQuote?: Quote;
-	invoiceHref: string;
-	quoteHref: string;
+	invoiceHref: Route;
+	quoteHref: Route;
 }) {
 	const lines: string[] = [];
 	if (outstandingCount > 0) {

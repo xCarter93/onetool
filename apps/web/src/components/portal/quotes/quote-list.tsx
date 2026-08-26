@@ -8,6 +8,7 @@
  */
 
 import { useMemo, useState } from "react";
+import type { Route } from "next";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import {
@@ -144,7 +145,7 @@ function createColumns(
 			header: "",
 			cell: ({ row }) => {
 				const q = row.original;
-				const href = `/portal/c/${clientPortalId}/quotes/${q._id}`;
+				const href = `/portal/c/${clientPortalId}/quotes/${q._id}` as Route;
 				const isPending = q.status === "sent";
 				return (
 					<div

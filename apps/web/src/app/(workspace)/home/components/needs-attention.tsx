@@ -22,6 +22,7 @@ import {
 	FileText,
 	FileSignature,
 } from "lucide-react";
+import type { Route } from "next";
 import Link from "next/link";
 import { Task } from "@/types/task";
 import { useIsOrgSwitching } from "@/hooks/use-is-org-switching";
@@ -276,7 +277,7 @@ interface AttentionSectionProps {
 	summary: string;
 	count: number;
 	defaultOpen: boolean;
-	viewMoreHref: string;
+	viewMoreHref: Route;
 	children: React.ReactNode;
 	totalItems: number;
 }
