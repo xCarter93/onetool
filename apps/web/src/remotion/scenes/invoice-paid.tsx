@@ -41,7 +41,7 @@ const PAD = 36;
 const LEFT_W = 690;
 const RIGHT_X = PAD + LEFT_W + 28;
 const RIGHT_W = 480;
-const DOC_H = 420;
+const DOC_H = 470;
 const RAIL_TOP = PAD + DOC_H + 30;
 const PAY_H = 430;
 
