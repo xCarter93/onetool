@@ -248,6 +248,8 @@ export function RequestsTable({
 		state: { sorting },
 		onSortingChange: setSorting,
 		getRowId: (row) => row._id,
+		// No pagination UI; stops the bundled paginatedRowModel truncating at 10 rows.
+		manualPagination: true,
 	});
 
 	return (

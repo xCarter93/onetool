@@ -336,6 +336,8 @@ function AccessMatrixTable({
 		data: MATRIX_ROWS,
 		columns,
 		getRowId: (row) => row.object,
+		// No pagination UI; stops the bundled paginatedRowModel truncating at 10 rows.
+		manualPagination: true,
 	});
 
 	return (

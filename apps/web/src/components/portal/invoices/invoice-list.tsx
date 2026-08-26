@@ -210,6 +210,8 @@ export function InvoiceList({
 		features: dataGridFeatures,
 		data: filtered,
 		columns,
+		// No pagination UI; stops the bundled paginatedRowModel truncating at 10 rows.
+		manualPagination: true,
 	});
 
 	return (

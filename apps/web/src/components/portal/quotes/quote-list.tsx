@@ -208,6 +208,8 @@ export function QuoteList({ businessName, quotes }: QuoteListProps) {
 		features: dataGridFeatures,
 		data: filtered,
 		columns,
+		// No pagination UI; stops the bundled paginatedRowModel truncating at 10 rows.
+		manualPagination: true,
 	});
 
 	return (

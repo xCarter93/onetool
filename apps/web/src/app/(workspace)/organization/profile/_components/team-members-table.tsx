@@ -343,6 +343,8 @@ export function TeamMembersTable({ readOnly = false }: { readOnly?: boolean }) {
 		state: { sorting: memberSorting },
 		onSortingChange: setMemberSorting,
 		getRowId: (member) => member.id,
+		// No pagination UI; stops the bundled paginatedRowModel truncating at 10 rows.
+		manualPagination: true,
 	});
 
 	return (

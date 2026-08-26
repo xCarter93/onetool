@@ -205,6 +205,8 @@ function ReportsPageContent() {
 		features: dataGridFeatures,
 		data: reports ?? [],
 		columns,
+		// No pagination UI; stops the bundled paginatedRowModel truncating at 10 rows.
+		manualPagination: true,
 	});
 
 	const isLoading = reports === undefined;
