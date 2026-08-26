@@ -94,9 +94,6 @@ const nextConfig: NextConfig = {
 			},
 		];
 	},
-	experimental: {
-		globalNotFound: true,
-	},
 	images: {
 		remotePatterns: [
 			{

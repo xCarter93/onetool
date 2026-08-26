@@ -1,7 +1,10 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
 import { motion, useReducedMotion } from "motion/react";
+
+const MotionLink = motion.create(Link);
 
 // Giant outlined "404" wordmark (from React Bits Pro 404-2), retinted to tokens.
 const NotFoundBackdrop = () => {
@@ -65,7 +68,7 @@ export default function NotFoundView() {
 				<NotFoundBackdrop />
 			</div>
 
-			<motion.a
+			<MotionLink
 				href="/"
 				{...enter(0)}
 				className="absolute top-8 left-1/2 z-10 flex -translate-x-1/2 items-center gap-2.5 rounded-md focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-primary"
@@ -80,7 +83,7 @@ export default function NotFoundView() {
 					priority
 					className="h-7 w-auto dark:invert dark:brightness-0"
 				/>
-			</motion.a>
+			</MotionLink>
 
 			<div className="relative z-10 flex w-full max-w-xl flex-col items-center text-center">
 				<motion.h1
@@ -102,21 +105,18 @@ export default function NotFoundView() {
 					{...enter(0.24)}
 					className="mt-8 flex flex-col items-center gap-3 sm:flex-row sm:gap-4"
 				>
-					{/* Plain anchors: global-not-found renders outside the App Router
-					    tree, so client-side Link navigation updates the URL without
-					    re-rendering. A full document navigation always works. */}
-					<a
+					<Link
 						href="/"
 						className="inline-flex min-h-11 items-center justify-center rounded-lg bg-primary px-6 text-sm font-medium text-primary-foreground transition-colors duration-150 hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
 					>
 						Back to homepage
-					</a>
-					<a
+					</Link>
+					<Link
 						href="/help"
 						className="inline-flex min-h-11 items-center justify-center rounded-lg border border-border bg-background px-6 text-sm font-medium text-foreground transition-colors duration-150 hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
 					>
 						Visit the help center
-					</a>
+					</Link>
 				</motion.div>
 			</div>
 		</main>
