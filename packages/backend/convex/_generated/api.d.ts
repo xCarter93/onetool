@@ -11,6 +11,7 @@
 import type * as __tests___fixtures_stripeEvents from "../__tests__/fixtures/stripeEvents.js";
 import type * as activities from "../activities.js";
 import type * as aggregates from "../aggregates.js";
+import type * as appVersion from "../appVersion.js";
 import type * as assistantAgent from "../assistantAgent.js";
 import type * as assistantChat from "../assistantChat.js";
 import type * as assistantTools from "../assistantTools.js";
@@ -208,6 +209,7 @@ declare const fullApi: ApiFromModules<{
   "__tests__/fixtures/stripeEvents": typeof __tests___fixtures_stripeEvents;
   activities: typeof activities;
   aggregates: typeof aggregates;
+  appVersion: typeof appVersion;
   assistantAgent: typeof assistantAgent;
   assistantChat: typeof assistantChat;
   assistantTools: typeof assistantTools;

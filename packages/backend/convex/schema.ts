@@ -1224,6 +1224,17 @@ export default defineSchema({
 		.index("by_service", ["serviceName"])
 		.index("by_provider", ["provider"]),
 
+	// App Version - singleton identifying the deployment currently serving
+	// production, written by the Vercel deploy webhook; clients on an older
+	// deployment show a refresh toast. Keyed on the per-deployment generated
+	// URL (matches the client's NEXT_PUBLIC_VERCEL_URL), not the commit SHA —
+	// the SHA is undocumented in webhook payloads and misses env-only redeploys.
+	appVersion: defineTable({
+		deploymentUrl: v.string(),
+		commitSha: v.optional(v.string()),
+		deployedAt: v.number(),
+	}),
+
 	// Email Messages - track sent and received client emails via Resend
 	emailMessages: defineTable({
 		orgId: v.id("organizations"),
