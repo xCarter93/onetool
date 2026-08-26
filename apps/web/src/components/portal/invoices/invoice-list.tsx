@@ -11,11 +11,7 @@ import { useMemo, useState } from "react";
 import type { Route } from "next";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import {
-	type ColumnDef,
-	getCoreRowModel,
-	useReactTable,
-} from "@tanstack/react-table";
+import { type ColumnDef, useTable } from "@tanstack/react-table";
 
 import { formatDate, formatMoney } from "@/lib/portal/format";
 import { Input } from "@/components/ui/input";
@@ -36,6 +32,8 @@ import {
 import {
 	DataGrid,
 	DataGridContainer,
+	dataGridFeatures,
+	type DataGridFeatures,
 } from "@/components/reui/data-grid/data-grid";
 import { DataGridTable } from "@/components/reui/data-grid/data-grid-table";
 
@@ -71,7 +69,7 @@ const FILTERS: Array<{ value: Filter; label: string }> = [
 
 function createColumns(
 	clientPortalId: string,
-): ColumnDef<PortalInvoiceListItem>[] {
+): ColumnDef<DataGridFeatures, PortalInvoiceListItem>[] {
 	return [
 		{
 			accessorKey: "invoiceNumber",
@@ -208,10 +206,10 @@ export function InvoiceList({
 		[clientPortalId],
 	);
 
-	const table = useReactTable({
+	const table = useTable({
+		features: dataGridFeatures,
 		data: filtered,
 		columns,
-		getCoreRowModel: getCoreRowModel(),
 	});
 
 	return (

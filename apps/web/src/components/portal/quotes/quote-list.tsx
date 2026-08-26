@@ -11,11 +11,7 @@ import { useMemo, useState } from "react";
 import type { Route } from "next";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import {
-	type ColumnDef,
-	getCoreRowModel,
-	useReactTable,
-} from "@tanstack/react-table";
+import { type ColumnDef, useTable } from "@tanstack/react-table";
 import { ArrowRight, Search } from "lucide-react";
 
 import { formatDate, formatMoney } from "@/lib/portal/format";
@@ -32,6 +28,8 @@ import {
 import {
 	DataGrid,
 	DataGridContainer,
+	dataGridFeatures,
+	type DataGridFeatures,
 } from "@/components/reui/data-grid/data-grid";
 import { DataGridTable } from "@/components/reui/data-grid/data-grid-table";
 
@@ -82,7 +80,7 @@ function expiryLineFor(q: QuoteListRow): string {
 
 function createColumns(
 	clientPortalId: string,
-): ColumnDef<QuoteListRow>[] {
+): ColumnDef<DataGridFeatures, QuoteListRow>[] {
 	return [
 		{
 			accessorKey: "quoteNumber",
@@ -206,10 +204,10 @@ export function QuoteList({ businessName, quotes }: QuoteListProps) {
 		[clientPortalId],
 	);
 
-	const table = useReactTable({
+	const table = useTable({
+		features: dataGridFeatures,
 		data: filtered,
 		columns,
-		getCoreRowModel: getCoreRowModel(),
 	});
 
 	return (

@@ -2,9 +2,7 @@
 
 import * as React from "react";
 import {
-	getCoreRowModel,
-	getSortedRowModel,
-	useReactTable,
+	useTable,
 	type ColumnDef,
 	type SortingState,
 } from "@tanstack/react-table";
@@ -14,7 +12,12 @@ import Link from "next/link";
 import { api } from "@onetool/backend/convex/_generated/api";
 import type { Doc } from "@onetool/backend/convex/_generated/dataModel";
 
-import { DataGrid, DataGridContainer } from "@/components/reui/data-grid/data-grid";
+import {
+	DataGrid,
+	DataGridContainer,
+	dataGridFeatures,
+	type DataGridFeatures,
+} from "@/components/reui/data-grid/data-grid";
 import { DataGridTable } from "@/components/reui/data-grid/data-grid-table";
 import { Button } from "@/components/ui/button";
 import {
@@ -119,7 +122,7 @@ export function RequestsTable({
 		[promote, openCreate]
 	);
 
-	const columns = React.useMemo<ColumnDef<Lead>[]>(
+	const columns = React.useMemo<ColumnDef<DataGridFeatures, Lead>[]>(
 		() => [
 			{
 				accessorKey: "name",
@@ -238,13 +241,12 @@ export function RequestsTable({
 		[busyId, promote, sendQuote, setStatus]
 	);
 
-	const table = useReactTable({
+	const table = useTable({
+		features: dataGridFeatures,
 		data: leads,
 		columns,
 		state: { sorting },
 		onSortingChange: setSorting,
-		getCoreRowModel: getCoreRowModel(),
-		getSortedRowModel: getSortedRowModel(),
 		getRowId: (row) => row._id,
 	});
 

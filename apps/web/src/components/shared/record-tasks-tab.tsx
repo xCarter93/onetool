@@ -16,13 +16,11 @@ import { EmptyState } from "@/components/domain/empty-state";
 import {
 	DataGrid,
 	DataGridContainer,
+	dataGridFeatures,
+	type DataGridFeatures,
 } from "@/components/reui/data-grid/data-grid";
 import { DataGridTable } from "@/components/reui/data-grid/data-grid-table";
-import {
-	ColumnDef,
-	getCoreRowModel,
-	useReactTable,
-} from "@tanstack/react-table";
+import { ColumnDef, useTable } from "@tanstack/react-table";
 import {
 	Calendar,
 	User,
@@ -134,8 +132,8 @@ function createColumns(
 	onEdit: (task: Task) => void,
 	onDelete: (task: Task) => void,
 	updatingTasks: Set<Id<"tasks">>
-): ColumnDef<Task>[] {
-	const cols: ColumnDef<Task>[] = [
+): ColumnDef<DataGridFeatures, Task>[] {
+	const cols: ColumnDef<DataGridFeatures, Task>[] = [
 		{
 			id: "complete",
 			header: "",
@@ -331,12 +329,15 @@ function GroupTable({
 	columns,
 }: {
 	group: TaskGroup;
-	columns: ColumnDef<Task>[];
+	columns: ColumnDef<DataGridFeatures, Task>[];
 }) {
-	const table = useReactTable({
+	const table = useTable({
+		features: dataGridFeatures,
 		data: group.tasks,
 		columns,
-		getCoreRowModel: getCoreRowModel(),
+		// No pagination UI here; without this dataGridFeatures' bundled
+		// paginatedRowModel would silently truncate groups at 10 rows.
+		manualPagination: true,
 	});
 
 	return (

@@ -6,10 +6,8 @@ import { useRouter } from "next/navigation";
 import { useQuery } from "convex/react";
 import {
 	ColumnDef,
-	getCoreRowModel,
-	getSortedRowModel,
 	SortingState,
-	useReactTable,
+	useTable,
 } from "@tanstack/react-table";
 import { Lock, ShieldCheck, Trash2, Loader2 } from "lucide-react";
 
@@ -32,6 +30,8 @@ import {
 import {
 	DataGrid,
 	DataGridContainer,
+	dataGridFeatures,
+	type DataGridFeatures,
 } from "@/components/reui/data-grid/data-grid";
 import { DataGridTable } from "@/components/reui/data-grid/data-grid-table";
 import {
@@ -132,8 +132,8 @@ export function TeamMembersTable({ readOnly = false }: { readOnly?: boolean }) {
 
 	const members = memberships?.data ?? [];
 
-	const memberColumns = useMemo<ColumnDef<MemberRow>[]>(() => {
-		const base: ColumnDef<MemberRow>[] = [
+	const memberColumns = useMemo<ColumnDef<DataGridFeatures, MemberRow>[]>(() => {
+		const base: ColumnDef<DataGridFeatures, MemberRow>[] = [
 			{
 				id: "member",
 				accessorFn: (member) => memberDisplayName(member),
@@ -233,7 +233,7 @@ export function TeamMembersTable({ readOnly = false }: { readOnly?: boolean }) {
 
 		if (!isAdmin) return base;
 
-		const withAccess: ColumnDef<MemberRow>[] = [
+		const withAccess: ColumnDef<DataGridFeatures, MemberRow>[] = [
 			...base,
 			{
 				id: "access",
@@ -336,14 +336,13 @@ export function TeamMembersTable({ readOnly = false }: { readOnly?: boolean }) {
 	]);
 
 	const [memberSorting, setMemberSorting] = useState<SortingState>([]);
-	const memberTable = useReactTable({
+	const memberTable = useTable({
+		features: dataGridFeatures,
 		data: members,
 		columns: memberColumns,
 		state: { sorting: memberSorting },
 		onSortingChange: setMemberSorting,
 		getRowId: (member) => member.id,
-		getCoreRowModel: getCoreRowModel(),
-		getSortedRowModel: getSortedRowModel(),
 	});
 
 	return (

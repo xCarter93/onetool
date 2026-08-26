@@ -29,16 +29,15 @@ import {
 import {
 	DataGrid,
 	DataGridContainer,
+	dataGridFeatures,
+	type DataGridFeatures,
 } from "@/components/reui/data-grid/data-grid";
 import { DataGridTable } from "@/components/reui/data-grid/data-grid-table";
 import { DataGridPagination } from "@/components/reui/data-grid/data-grid-pagination";
 import {
 	ColumnDef,
 	SortingState,
-	getCoreRowModel,
-	getPaginationRowModel,
-	getSortedRowModel,
-	useReactTable,
+	useTable,
 } from "@tanstack/react-table";
 import {
 	Building2,
@@ -170,7 +169,7 @@ const createColumns = (
 	onDelete: (id: string, name: string) => void,
 	onPreview: (id: string) => void,
 	canDelete: boolean
-): ColumnDef<InvoiceWithClient>[] => [
+): ColumnDef<DataGridFeatures, InvoiceWithClient>[] => [
 	{
 		accessorKey: "invoiceNumber",
 		header: "Invoice",
@@ -473,7 +472,8 @@ function InvoicesPageContent() {
 		[router, handleDelete, openPreview, canDeleteInvoices]
 	);
 
-	const table = useReactTable({
+	const table = useTable({
+		features: dataGridFeatures,
 		data: searchedData,
 		columns,
 		state: {
@@ -482,9 +482,6 @@ function InvoicesPageContent() {
 		},
 		onSortingChange: setSorting,
 		onPaginationChange: setPagination,
-		getCoreRowModel: getCoreRowModel(),
-		getSortedRowModel: getSortedRowModel(),
-		getPaginationRowModel: getPaginationRowModel(),
 	});
 
 	// Reset to first page when the filtered/searched set changes

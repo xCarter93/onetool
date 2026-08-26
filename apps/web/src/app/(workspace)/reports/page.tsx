@@ -5,7 +5,7 @@ import { useCallback, useMemo, useRef, useState } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { useRouter } from "next/navigation";
 import { Copy, Trash2 } from "lucide-react";
-import { ColumnDef, getCoreRowModel, useReactTable } from "@tanstack/react-table";
+import { ColumnDef, useTable } from "@tanstack/react-table";
 import { api } from "@onetool/backend/convex/_generated/api";
 import type { Doc, Id } from "@onetool/backend/convex/_generated/dataModel";
 import { Button } from "@/components/ui/button";
@@ -16,6 +16,8 @@ import { useEntitlements } from "@/hooks/use-entitlements";
 import {
 	DataGrid,
 	DataGridContainer,
+	dataGridFeatures,
+	type DataGridFeatures,
 } from "@/components/reui/data-grid/data-grid";
 import { DataGridTable } from "@/components/reui/data-grid/data-grid-table";
 import { PresetLibraryDialog } from "./components/preset-library-dialog";
@@ -27,7 +29,7 @@ function createReportColumns(
 	onDuplicate: (id: string) => void,
 	onDelete: (id: string, name: string) => void,
 	duplicateDisabledReason: string | undefined
-): ColumnDef<Doc<"reports">>[] {
+): ColumnDef<DataGridFeatures, Doc<"reports">>[] {
 	return [
 		{
 			accessorKey: "name",
@@ -199,10 +201,10 @@ function ReportsPageContent() {
 		[duplicatingId, handleDuplicate, handleDeleteClick, savedCapReason]
 	);
 
-	const table = useReactTable({
+	const table = useTable({
+		features: dataGridFeatures,
 		data: reports ?? [],
 		columns,
-		getCoreRowModel: getCoreRowModel(),
 	});
 
 	const isLoading = reports === undefined;

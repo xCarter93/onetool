@@ -23,16 +23,15 @@ import {
 import {
 	DataGrid,
 	DataGridContainer,
+	dataGridFeatures,
+	type DataGridFeatures,
 } from "@/components/reui/data-grid/data-grid";
 import { DataGridTable } from "@/components/reui/data-grid/data-grid-table";
 import { DataGridPagination } from "@/components/reui/data-grid/data-grid-pagination";
 import {
 	ColumnDef,
 	SortingState,
-	getCoreRowModel,
-	getPaginationRowModel,
-	getSortedRowModel,
-	useReactTable,
+	useTable,
 } from "@tanstack/react-table";
 import {
 	CheckCircle2,
@@ -187,7 +186,7 @@ const createColumns = (
 	onRestore: (id: string, name: string) => void,
 	canModify: boolean,
 	canDelete: boolean
-): ColumnDef<Client>[] => [
+): ColumnDef<DataGridFeatures, Client>[] => [
 	{
 		accessorKey: "name",
 		header: "Name",
@@ -541,7 +540,8 @@ function ClientsPageContent() {
 		]
 	);
 
-	const table = useReactTable({
+	const table = useTable({
+		features: dataGridFeatures,
 		data: searchedData,
 		columns,
 		state: {
@@ -550,9 +550,6 @@ function ClientsPageContent() {
 		},
 		onSortingChange: setSorting,
 		onPaginationChange: setPagination,
-		getCoreRowModel: getCoreRowModel(),
-		getSortedRowModel: getSortedRowModel(),
-		getPaginationRowModel: getPaginationRowModel(),
 	});
 
 	// Reset to the first page whenever the visible set changes (incl. after a

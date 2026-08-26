@@ -8,10 +8,7 @@ import {
 	type ColumnDef,
 	type PaginationState,
 	type SortingState,
-	getCoreRowModel,
-	getPaginationRowModel,
-	getSortedRowModel,
-	useReactTable,
+	useTable,
 } from "@tanstack/react-table";
 import { useRouter } from "next/navigation";
 import { ArrowRight, Pencil, Power, PowerOff, Search, Trash2 } from "lucide-react";
@@ -36,7 +33,11 @@ import {
 	FramePanel,
 	FrameTitle,
 } from "@/components/reui/frame";
-import { DataGrid } from "@/components/reui/data-grid/data-grid";
+import {
+	DataGrid,
+	dataGridFeatures,
+	type DataGridFeatures,
+} from "@/components/reui/data-grid/data-grid";
 import { DataGridTable } from "@/components/reui/data-grid/data-grid-table";
 import { DataGridPagination } from "@/components/reui/data-grid/data-grid-pagination";
 import { DataGridColumnHeader } from "@/components/reui/data-grid/data-grid-column-header";
@@ -107,7 +108,7 @@ export function AutomationsTable() {
 		setPendingDelete(null);
 	}, [pendingDelete, removeAutomation]);
 
-	const columns = useMemo<ColumnDef<Automation>[]>(
+	const columns = useMemo<ColumnDef<DataGridFeatures, Automation>[]>(
 		() => [
 			{
 				accessorKey: "name",
@@ -319,17 +320,14 @@ export function AutomationsTable() {
 		setPagination((p) => (p.pageIndex === 0 ? p : { ...p, pageIndex: 0 }));
 	}, [search]);
 
-	const table = useReactTable({
+	const table = useTable({
+		features: dataGridFeatures,
 		data,
 		columns,
-		pageCount: Math.max(1, Math.ceil(data.length / pagination.pageSize)),
 		state: { sorting, pagination },
 		onSortingChange: setSorting,
 		onPaginationChange: setPagination,
 		getRowId: (row) => row._id,
-		getCoreRowModel: getCoreRowModel(),
-		getSortedRowModel: getSortedRowModel(),
-		getPaginationRowModel: getPaginationRowModel(),
 	});
 
 	return (
