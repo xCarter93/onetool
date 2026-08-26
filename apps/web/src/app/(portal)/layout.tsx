@@ -1,35 +1,16 @@
+import type { Metadata } from "next";
 import type { ReactNode } from "react";
-import { Outfit } from "next/font/google";
-import "@/app/globals.css";
 import ConvexPortalProvider from "@/providers/ConvexPortalProvider";
-import { ThemeProvider } from "@/providers/ThemeProvider";
-import { ToastProvider } from "@/hooks/use-toast";
 
-const outfit = Outfit({
-	subsets: ["latin"],
-	weight: ["400", "600"],
-	variable: "--font-outfit",
-});
-
-export const metadata = {
+export const metadata: Metadata = {
 	title: "Client Portal",
 	robots: { index: false, follow: false },
 };
 
-export default function PortalRootLayout({
-	children,
-}: {
-	children: ReactNode;
-}) {
-	return (
-		<html lang="en" suppressHydrationWarning className={outfit.variable}>
-			<body className="antialiased">
-				<ThemeProvider attribute="class" defaultTheme="system" enableSystem>
-					<ToastProvider position="top-right" maxToasts={5}>
-						<ConvexPortalProvider>{children}</ConvexPortalProvider>
-					</ToastProvider>
-				</ThemeProvider>
-			</body>
-		</html>
-	);
+// Route groups nest inside the root layout, so this must NOT render its own
+// <html>/<body> — fonts, theme, and toasts already come from the root layout.
+// Rendering a second <html> here caused nested-document hydration errors on
+// every portal page.
+export default function PortalLayout({ children }: { children: ReactNode }) {
+	return <ConvexPortalProvider>{children}</ConvexPortalProvider>;
 }

@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 
 /**
@@ -8,7 +9,18 @@ import Link from "next/link";
 export default function CommunityPageNotFound() {
 	return (
 		<div className="min-h-dvh bg-background text-foreground flex flex-col items-center justify-center px-6 py-16 text-center">
-			<p className="text-sm text-muted-foreground">Powered by OneTool</p>
+			<p className="flex items-center gap-2 text-sm text-muted-foreground">
+				<Image
+					src="/OneTool-mark.png"
+					alt=""
+					width={296}
+					height={296}
+					sizes="20px"
+					className="size-5 opacity-70 dark:invert dark:brightness-0"
+					aria-hidden="true"
+				/>
+				Powered by OneTool
+			</p>
 
 			<h1 className="mt-6 text-2xl sm:text-3xl font-semibold tracking-tight text-balance">
 				This page isn&apos;t here
