@@ -12,6 +12,19 @@ export const get = query({
 	},
 });
 
+// Rollback payloads carry only deployment IDs (no URL), and clients can't
+// compare IDs — so a rollback clears the singleton instead. No client toasts
+// until the next promote records a URL again.
+export const clear = internalMutation({
+	args: {},
+	handler: async (ctx) => {
+		const existing = await ctx.db.query("appVersion").first();
+		if (existing) {
+			await ctx.db.delete(existing._id);
+		}
+	},
+});
+
 // Called by the Vercel deploy webhook (http.ts) after signature verification.
 export const record = internalMutation({
 	args: { deploymentUrl: v.string(), commitSha: v.optional(v.string()) },

@@ -1128,8 +1128,18 @@ http.route({
 			// 200 so Vercel doesn't retry events we don't care about.
 			return webhookSuccess("Ignored event type");
 		}
-		// promoted/rollback are production-only and omit target; guard anyway in
-		// case a broader event subscription ever sends a preview deploy here.
+
+		// Rollback payloads carry only deployment IDs, which clients can't
+		// compare against — clear the singleton so nobody gets a stale toast;
+		// the next promote records a URL again.
+		if (event.type === "deployment.rollback") {
+			logWebhookReceived("Vercel", event.type);
+			await ctx.runMutation(internal.appVersion.clear, {});
+			return webhookSuccess("OK");
+		}
+
+		// promoted is production-only and omits target; guard anyway in case a
+		// broader event subscription ever sends a preview deploy here.
 		if (event.payload?.target != null && event.payload.target !== "production") {
 			return webhookSuccess("Ignored non-production target");
 		}

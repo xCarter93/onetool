@@ -107,21 +107,28 @@ describe("POST /vercel-deploy-webhook", () => {
 		expect(await t.query(api.appVersion.get, {})).toBeNull();
 	});
 
-	it("updates the singleton on rollback instead of inserting a second row", async () => {
+	it("clears the singleton on rollback (payload carries only deployment IDs)", async () => {
 		const first = promotedEvent("onetool-v2.vercel.app");
 		await post(t, first, await sign(first, TEST_SECRET));
 
+		// Documented deployment.rollback shape: no payload.deployment at all.
 		const rollback = JSON.stringify({
 			type: "deployment.rollback",
-			payload: { deployment: { url: "onetool-v1.vercel.app" } },
+			payload: {
+				project: { id: "prj_123" },
+				fromDeploymentId: "dpl_new",
+				toDeploymentId: "dpl_old",
+			},
 		});
-		await post(t, rollback, await sign(rollback, TEST_SECRET));
+		const res = await post(t, rollback, await sign(rollback, TEST_SECRET));
+		expect(res.status).toBe(200);
+		expect(await t.query(api.appVersion.get, {})).toBeNull();
 
-		const version = await t.query(api.appVersion.get, {});
-		expect(version).toEqual({ deploymentUrl: "onetool-v1.vercel.app" });
-		const count = await t.run(
-			async (ctx) => (await ctx.db.query("appVersion").collect()).length
-		);
-		expect(count).toBe(1);
+		// Next promote records normally again.
+		const next = promotedEvent("onetool-v3.vercel.app");
+		await post(t, next, await sign(next, TEST_SECRET));
+		expect(await t.query(api.appVersion.get, {})).toEqual({
+			deploymentUrl: "onetool-v3.vercel.app",
+		});
 	});
 });
