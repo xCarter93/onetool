@@ -6,6 +6,7 @@ import { ConfirmDialogProvider } from "@/hooks/use-confirm-dialog";
 import { SidebarWithHeader } from "@/components/layout/sidebar-with-header";
 import { AnalyticsIdentity } from "@/components/analytics-identity";
 import { CelebrationListener } from "@/components/celebrations/celebration-listener";
+import { VersionRefreshListener } from "@/components/shared/version-refresh-listener";
 import { ScreenContextProvider } from "@/components/assistant/use-screen-context";
 import { CurrentRecordProvider } from "@/components/assistant/use-current-record";
 import { CreateRecordProvider } from "@/components/domain/create-record-provider";
@@ -30,6 +31,7 @@ export default function WorkspaceLayout({
 					<div className="workspace-zone min-h-screen md:min-h-min">
 						<AnalyticsIdentity />
 						<CelebrationListener />
+					<VersionRefreshListener />
 						{/* No ambient blobs / grid overlays here: absolutely-positioned
 						    decorations paint over the static picture-frame background
 						    (but under the card and notches), tinting the frame unevenly. */}

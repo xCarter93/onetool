@@ -1068,4 +1068,89 @@ http.route({
 	}),
 });
 
+// Vercel deploy webhook: records which deployment serves production so
+// workspace clients can prompt a refresh. Subscribed to deployment.promoted
+// (fires when production traffic switches, including promote-by-command) and
+// deployment.rollback (instant rollbacks never re-fire promoted).
+http.route({
+	path: "/vercel-deploy-webhook",
+	method: "POST",
+	handler: httpAction(async (ctx, request) => {
+		const secret = process.env.VERCEL_DEPLOY_WEBHOOK_SECRET;
+		if (!secret) {
+			console.error("VERCEL_DEPLOY_WEBHOOK_SECRET not configured");
+			return webhookError(500, "Webhook verification not configured");
+		}
+
+		// Vercel signs the raw body: x-vercel-signature = HMAC-SHA1 hex digest.
+		const rawBody = await request.text();
+		const signatureHex = request.headers.get("x-vercel-signature") ?? "";
+		if (!/^[0-9a-f]{40}$/i.test(signatureHex)) {
+			return webhookError(403, "Invalid signature");
+		}
+		const signatureBytes = new Uint8Array(
+			signatureHex.match(/../g)!.map((byte) => parseInt(byte, 16))
+		);
+		const key = await crypto.subtle.importKey(
+			"raw",
+			new TextEncoder().encode(secret),
+			{ name: "HMAC", hash: "SHA-1" },
+			false,
+			["verify"]
+		);
+		const valid = await crypto.subtle.verify(
+			"HMAC",
+			key,
+			signatureBytes,
+			new TextEncoder().encode(rawBody)
+		);
+		if (!valid) {
+			return webhookError(403, "Invalid signature");
+		}
+
+		let event: {
+			type?: string;
+			payload?: {
+				target?: string | null;
+				deployment?: { url?: string; meta?: Record<string, string> };
+			};
+		};
+		try {
+			event = JSON.parse(rawBody);
+		} catch {
+			return webhookError(400, "Invalid JSON");
+		}
+
+		if (
+			event.type !== "deployment.promoted" &&
+			event.type !== "deployment.rollback"
+		) {
+			// 200 so Vercel doesn't retry events we don't care about.
+			return webhookSuccess("Ignored event type");
+		}
+		// promoted/rollback are production-only and omit target; guard anyway in
+		// case a broader event subscription ever sends a preview deploy here.
+		if (event.payload?.target != null && event.payload.target !== "production") {
+			return webhookSuccess("Ignored non-production target");
+		}
+
+		// The payload URL format is undocumented; the client compares against
+		// scheme-less NEXT_PUBLIC_VERCEL_URL, so normalize before storing.
+		const deploymentUrl = event.payload?.deployment?.url
+			?.replace(/^https?:\/\//, "")
+			.replace(/\/$/, "");
+		if (!deploymentUrl) {
+			console.error("Vercel webhook missing deployment.url", event.type);
+			return webhookSuccess("Missing deployment url");
+		}
+
+		logWebhookReceived("Vercel", event.type, deploymentUrl);
+		await ctx.runMutation(internal.appVersion.record, {
+			deploymentUrl,
+			commitSha: event.payload?.deployment?.meta?.githubCommitSha,
+		});
+		return webhookSuccess("OK");
+	}),
+});
+
 export default http;
