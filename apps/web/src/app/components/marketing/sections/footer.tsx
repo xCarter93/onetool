@@ -1,5 +1,6 @@
 "use client";
 
+import type { Route } from "next";
 import dynamic from "next/dynamic";
 import Image from "next/image";
 import Link from "next/link";
@@ -148,7 +149,7 @@ function FooterItem({ item }: { item: FooterLink }) {
 		);
 	}
 	return (
-		<Link href={item.href} className={FOOTER_LINK}>
+		<Link href={item.href as Route} className={FOOTER_LINK}>
 			{item.name}
 		</Link>
 	);

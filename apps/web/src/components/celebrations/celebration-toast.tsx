@@ -1,5 +1,6 @@
 "use client";
 
+import type { Route } from "next";
 import Link from "next/link";
 import { PartyPopper, X } from "lucide-react";
 
@@ -52,7 +53,7 @@ export function CelebrationToast({
 				) : null}
 				{actionUrl ? (
 					<Link
-						href={actionUrl}
+						href={actionUrl as Route}
 						onClick={onDismiss}
 						className="mt-2 inline-block text-xs font-medium text-primary hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
 					>

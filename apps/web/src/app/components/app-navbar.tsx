@@ -34,12 +34,7 @@ const navigationLinks = [
 	{ href: "#faq", label: "FAQ" },
 ];
 
-const resourceItems: {
-	icon: LucideIcon;
-	label: string;
-	description: string;
-	href: string;
-}[] = [
+const resourceItems = [
 	{
 		icon: BookOpen,
 		label: "Help Center",
@@ -58,13 +53,13 @@ const resourceItems: {
 		description: "Email our team for a hand",
 		href: "mailto:support@onetool.biz",
 	},
-];
+] as const;
 
 const legalItems = [
 	{ label: "Terms of Service", href: "/terms-of-service" },
 	{ label: "Privacy Policy", href: "/privacy-policy" },
 	{ label: "Data Security", href: "/data-security" },
-];
+] as const;
 
 /** Full capability list. Anchors resolve to the feature chapters (A-101…A-107),
 	so every row lands on the scene that demos it. Copy is agent-draft, pending

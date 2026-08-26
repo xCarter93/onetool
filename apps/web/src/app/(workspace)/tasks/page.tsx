@@ -24,15 +24,12 @@ import { LearnMoreLink } from "@/components/help/learn-more";
 import {
   DataGrid,
   DataGridContainer,
+  dataGridFeatures,
+  type DataGridFeatures,
 } from "@/components/reui/data-grid/data-grid";
 import { DataGridTable } from "@/components/reui/data-grid/data-grid-table";
 import { DataGridPagination } from "@/components/reui/data-grid/data-grid-pagination";
-import {
-  ColumnDef,
-  getCoreRowModel,
-  getPaginationRowModel,
-  useReactTable,
-} from "@tanstack/react-table";
+import { ColumnDef, useTable } from "@tanstack/react-table";
 import {
   Calendar,
   User,
@@ -145,7 +142,7 @@ function createColumns(
   updatingTasks: Set<Id<"tasks">>,
   canModify: boolean,
   canDelete: boolean,
-): ColumnDef<Task>[] {
+): ColumnDef<DataGridFeatures, Task>[] {
   return [
     {
       id: "complete",
@@ -317,16 +314,15 @@ function GroupTable({
   columns,
 }: {
   group: TaskGroup;
-  columns: ColumnDef<Task>[];
+  columns: ColumnDef<DataGridFeatures, Task>[];
 }) {
   const [pagination, setPagination] = useState({ pageIndex: 0, pageSize: 10 });
-  const table = useReactTable({
+  const table = useTable({
+    features: dataGridFeatures,
     data: group.tasks,
     columns,
     state: { pagination },
     onPaginationChange: setPagination,
-    getCoreRowModel: getCoreRowModel(),
-    getPaginationRowModel: getPaginationRowModel(),
   });
 
   return (

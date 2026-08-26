@@ -1,5 +1,6 @@
 import { Fragment, type ReactNode } from "react"
 import { Badge } from "@/components/reui/badge"
+import { type DataGridFeatures } from "@/components/reui/data-grid/data-grid"
 import { DataGridColumnHeader } from "@/components/reui/data-grid/data-grid-column-header"
 import { DataGridTableRowSelectAll } from "@/components/reui/data-grid/data-grid-table"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -233,12 +234,12 @@ function DriveUploadedCell({ row }: { row: DriveRow }) {
 }
 
 /** Sorting/hiding/resizing are uniform, so only the varying bits are passed. */
-type ColSpec = Partial<ColumnDef<DriveRow>> & {
+type ColSpec = Partial<ColumnDef<DataGridFeatures, DriveRow>> & {
 	id: string
 	headerTitle: string
 }
 
-function col(spec: ColSpec): ColumnDef<DriveRow> {
+function col(spec: ColSpec): ColumnDef<DataGridFeatures, DriveRow> {
 	const { headerTitle, meta, ...rest } = spec
 	return {
 		// visibility stays false: column visibility flows through the ViewSettings
@@ -252,7 +253,7 @@ function col(spec: ColSpec): ColumnDef<DriveRow> {
 		enableResizing: false,
 		...rest,
 		meta: { headerTitle, ...meta },
-	} as ColumnDef<DriveRow>
+	} as ColumnDef<DataGridFeatures, DriveRow>
 }
 
 export function createDriveColumns({
@@ -266,7 +267,7 @@ export function createDriveColumns({
 	/** Transfer state per node id. Absent ids are settled files and render plain. */
 	uploads?: Record<string, { progress: number; status: "uploading" | "error" | "done" }>
 	perms: DrivePerms
-}): ColumnDef<DriveRow>[] {
+}): ColumnDef<DataGridFeatures, DriveRow>[] {
 	return [
 		{
 			id: "select",
@@ -323,7 +324,7 @@ export function createDriveColumns({
 				</Badge>
 			),
 			size: 84,
-			sortingFn: (rowA, rowB) => {
+			sortFn: (rowA, rowB) => {
 				const delta =
 					TYPE_RANK[rowA.original.node.kind] - TYPE_RANK[rowB.original.node.kind]
 				return delta !== 0
@@ -337,7 +338,7 @@ export function createDriveColumns({
 			accessorFn: (row) => row.sizeBytes,
 			cell: ({ row }) => <DriveSizeCell row={row.original} />,
 			size: 92,
-			sortingFn: "basic",
+			sortFn: "basic",
 		}),
 		col({
 			id: "modified",
@@ -345,7 +346,7 @@ export function createDriveColumns({
 			accessorFn: (row) => row.node.modifiedAt,
 			cell: ({ row }) => <DriveUploadedCell row={row.original} />,
 			size: 128,
-			sortingFn: "basic",
+			sortFn: "basic",
 		}),
 		{
 			id: "actions",

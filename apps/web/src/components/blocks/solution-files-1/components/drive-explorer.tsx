@@ -20,17 +20,14 @@ import { useFileUpload } from "@/hooks/use-file-upload"
 import { useToast } from "@/hooks/use-toast"
 import { usePermissions } from "@/hooks/use-permissions"
 import { logError, getUserFriendlyErrorMessage } from "@/lib/error-logger"
-import { DataGrid } from "@/components/reui/data-grid/data-grid"
+import { DataGrid, dataGridFeatures } from "@/components/reui/data-grid/data-grid"
 import { DataGridScrollArea } from "@/components/reui/data-grid/data-grid-scroll-area"
 import { DataGridTable } from "@/components/reui/data-grid/data-grid-table"
 import {
-	getCoreRowModel,
-	getPaginationRowModel,
-	getSortedRowModel,
-	useReactTable,
+	useTable,
+	type ColumnVisibilityState,
 	type RowSelectionState,
 	type SortingState,
-	type VisibilityState,
 } from "@tanstack/react-table"
 
 import {
@@ -423,7 +420,7 @@ export function DriveExplorer() {
 
 	const isNarrow = useIsNarrow()
 
-	const columnVisibility = useMemo<VisibilityState>(
+	const columnVisibility = useMemo<ColumnVisibilityState>(
 		() => ({
 			// On a phone only name and its actions survive: the rest would force
 			// a horizontal scroll. The user's own choices are preserved and
@@ -820,7 +817,8 @@ export function DriveExplorer() {
 		[filteredRows]
 	)
 
-	const table = useReactTable({
+	const table = useTable({
+		features: dataGridFeatures,
 		data: filteredRows,
 		columns,
 		getRowId: (row) => row.id,
@@ -830,9 +828,6 @@ export function DriveExplorer() {
 		enableRowSelection: (row) => isSelectableNode(row.original.node),
 		onSortingChange: setSorting,
 		onRowSelectionChange: setRowSelection,
-		getCoreRowModel: getCoreRowModel(),
-		getSortedRowModel: getSortedRowModel(),
-		getPaginationRowModel: getPaginationRowModel(),
 	})
 
 	// The grid renders the table's row model, not the raw rows, so sorting and

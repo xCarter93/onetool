@@ -6,8 +6,7 @@ import { api } from "@onetool/backend/convex/_generated/api";
 import { useRouter } from "next/navigation";
 import {
 	type ColumnDef,
-	getCoreRowModel,
-	useReactTable,
+	useTable,
 } from "@tanstack/react-table";
 
 import { AlertTriangle } from "lucide-react";
@@ -31,7 +30,11 @@ import {
 	FramePanel,
 	FrameTitle,
 } from "@/components/reui/frame";
-import { DataGrid } from "@/components/reui/data-grid/data-grid";
+import {
+	DataGrid,
+	dataGridFeatures,
+	type DataGridFeatures,
+} from "@/components/reui/data-grid/data-grid";
 import { DataGridTable } from "@/components/reui/data-grid/data-grid-table";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { formatRelativeTime } from "@/lib/notification-utils";
@@ -59,7 +62,7 @@ export function RunsTable() {
 		{ initialNumItems: PAGE_SIZE }
 	);
 
-	const columns = useMemo<ColumnDef<RunRow>[]>(
+	const columns = useMemo<ColumnDef<DataGridFeatures, RunRow>[]>(
 		() => [
 			{
 				id: "automation",
@@ -195,13 +198,13 @@ export function RunsTable() {
 
 	const data = useMemo(() => (results ?? []) as RunRow[], [results]);
 
-	const table = useReactTable({
+	const table = useTable({
+		features: dataGridFeatures,
 		data,
 		columns,
 		manualPagination: true,
 		pageCount: -1,
 		getRowId: (row) => row._id,
-		getCoreRowModel: getCoreRowModel(),
 	});
 
 	const isFirstLoad = status === "LoadingFirstPage";

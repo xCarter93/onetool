@@ -7,7 +7,7 @@ const popularLinks = [
 	{ label: "Getting paid", href: "/help/invoices-and-payments/getting-paid" },
 	{ label: "E-signatures", href: "/help/quotes/e-signatures" },
 	{ label: "Automations", href: "/help/automations/automations-overview" },
-];
+] as const;
 
 export default function HelpHomePage() {
 	const gettingStarted = getHelpCategory("getting-started");

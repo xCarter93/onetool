@@ -32,6 +32,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/reui/badge";
 import { useIsMobile } from "@/hooks/use-mobile";
+import type { Route } from "next";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { TaskSheet } from "@/components/shared/task-sheet";
@@ -44,7 +45,7 @@ import {
 
 type NavItem = {
 	title: string;
-	url: string;
+	url: Route;
 	icon?: LucideIcon;
 	isActive?: boolean;
 	disabled?: boolean;
@@ -55,7 +56,7 @@ type NavItem = {
 	badgeLabel?: string;
 	items?: {
 		title: string;
-		url: string;
+		url: Route;
 		isActive?: boolean;
 	}[];
 };

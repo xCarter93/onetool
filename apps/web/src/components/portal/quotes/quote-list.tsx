@@ -8,13 +8,10 @@
  */
 
 import { useMemo, useState } from "react";
+import type { Route } from "next";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import {
-	type ColumnDef,
-	getCoreRowModel,
-	useReactTable,
-} from "@tanstack/react-table";
+import { type ColumnDef, useTable } from "@tanstack/react-table";
 import { ArrowRight, Search } from "lucide-react";
 
 import { formatDate, formatMoney } from "@/lib/portal/format";
@@ -31,6 +28,8 @@ import {
 import {
 	DataGrid,
 	DataGridContainer,
+	dataGridFeatures,
+	type DataGridFeatures,
 } from "@/components/reui/data-grid/data-grid";
 import { DataGridTable } from "@/components/reui/data-grid/data-grid-table";
 
@@ -81,7 +80,7 @@ function expiryLineFor(q: QuoteListRow): string {
 
 function createColumns(
 	clientPortalId: string,
-): ColumnDef<QuoteListRow>[] {
+): ColumnDef<DataGridFeatures, QuoteListRow>[] {
 	return [
 		{
 			accessorKey: "quoteNumber",
@@ -144,7 +143,7 @@ function createColumns(
 			header: "",
 			cell: ({ row }) => {
 				const q = row.original;
-				const href = `/portal/c/${clientPortalId}/quotes/${q._id}`;
+				const href = `/portal/c/${clientPortalId}/quotes/${q._id}` as Route;
 				const isPending = q.status === "sent";
 				return (
 					<div
@@ -205,10 +204,12 @@ export function QuoteList({ businessName, quotes }: QuoteListProps) {
 		[clientPortalId],
 	);
 
-	const table = useReactTable({
+	const table = useTable({
+		features: dataGridFeatures,
 		data: filtered,
 		columns,
-		getCoreRowModel: getCoreRowModel(),
+		// No pagination UI; stops the bundled paginatedRowModel truncating at 10 rows.
+		manualPagination: true,
 	});
 
 	return (

@@ -5,11 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { useOrganization } from "@clerk/nextjs";
 import { isClerkAPIResponseError } from "@clerk/nextjs/errors";
 import { useMutation, useQuery } from "convex/react";
-import {
-	getCoreRowModel,
-	useReactTable,
-	type ColumnDef,
-} from "@tanstack/react-table";
+import { useTable, type ColumnDef } from "@tanstack/react-table";
 import {
 	ArrowLeft,
 	CircleCheck,
@@ -42,7 +38,11 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/reui/badge";
-import { DataGrid } from "@/components/reui/data-grid/data-grid";
+import {
+	DataGrid,
+	dataGridFeatures,
+	type DataGridFeatures,
+} from "@/components/reui/data-grid/data-grid";
 import { DataGridColumnHeader } from "@/components/reui/data-grid/data-grid-column-header";
 import { DataGridScrollArea } from "@/components/reui/data-grid/data-grid-scroll-area";
 import { DataGridTable } from "@/components/reui/data-grid/data-grid-table";
@@ -212,8 +212,8 @@ function AccessMatrixTable({
 	onToggleLevel: (object: PermissionObject, column: AccessLevel) => void;
 	onToggleAllRecords: (object: PermissionObject, on: boolean) => void;
 }) {
-	const columns = useMemo<ColumnDef<MatrixRow>[]>(() => {
-		const levelColumns: ColumnDef<MatrixRow>[] = LEVEL_COLUMNS.map(
+	const columns = useMemo<ColumnDef<DataGridFeatures, MatrixRow>[]>(() => {
+		const levelColumns: ColumnDef<DataGridFeatures, MatrixRow>[] = LEVEL_COLUMNS.map(
 			(level) => ({
 				id: level,
 				header: ({ column }) => (
@@ -331,11 +331,13 @@ function AccessMatrixTable({
 		];
 	}, [grants, onToggleLevel, onToggleAllRecords]);
 
-	const table = useReactTable({
+	const table = useTable({
+		features: dataGridFeatures,
 		data: MATRIX_ROWS,
 		columns,
 		getRowId: (row) => row.object,
-		getCoreRowModel: getCoreRowModel(),
+		// No pagination UI; stops the bundled paginatedRowModel truncating at 10 rows.
+		manualPagination: true,
 	});
 
 	return (

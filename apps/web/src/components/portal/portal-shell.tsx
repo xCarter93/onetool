@@ -1,5 +1,6 @@
 "use client";
 
+import type { Route } from "next";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useTransition } from "react";
@@ -105,7 +106,7 @@ export function PortalShell({
 				<nav className="flex-1 px-3 py-1 flex flex-col gap-1">
 					{NAV_ITEMS.map(({ key, label, icon: Icon, segment }) => {
 						const base = `/portal/c/${clientPortalId}`;
-						const href = segment ? `${base}/${segment}` : base;
+						const href = (segment ? `${base}/${segment}` : base) as Route;
 						const active = segment
 							? pathname?.startsWith(href)
 							: pathname === base || pathname === `${base}/`;

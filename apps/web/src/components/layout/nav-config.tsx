@@ -14,18 +14,20 @@ import {
 	Zap,
 	Route,
 } from "lucide-react";
+// Aliased: lucide-react also exports a `Route` icon, used below.
+import type { Route as AppRoute } from "next";
 import type { PermissionObject } from "@onetool/backend/convex/lib/permissionKeys";
 
 export interface NavSubItem {
 	title: string;
-	url: string;
+	url: AppRoute;
 	/** Grant required to see this sub-item; absent = admin-only. */
 	permission?: PermissionObject;
 }
 
 export interface NavItem {
 	title: string;
-	url: string;
+	url: AppRoute;
 	icon: LucideIcon;
 	/** Grant required to see this item; absent (Home, Settings) = admin-only. */
 	permission?: PermissionObject;

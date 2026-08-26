@@ -1,3 +1,4 @@
+import type { Route } from "next";
 import Link from "next/link";
 import React from "react";
 
@@ -27,7 +28,7 @@ export function renderInlineText(text: string): React.ReactNode {
 				"font-medium text-primary underline-offset-4 hover:underline";
 			if (href.startsWith("/")) {
 				return (
-					<Link key={index} href={href} className={linkClassName}>
+					<Link key={index} href={href as Route} className={linkClassName}>
 						{label}
 					</Link>
 				);
