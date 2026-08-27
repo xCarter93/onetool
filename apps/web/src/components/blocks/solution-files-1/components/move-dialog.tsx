@@ -19,7 +19,9 @@ import {
   selectionFeature,
   syncDataLoaderFeature,
 } from "@headless-tree/core"
-import { useTree } from "@headless-tree/react"
+// Compiler entrypoint: see folder-tree.tsx — the plain one leaves the tree
+// empty under React Compiler until an unrelated re-render.
+import { useTree } from "@headless-tree/react/react-compiler"
 
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -425,8 +427,8 @@ export function MoveDialog({
                     Unavailable: this is the item being moved, or a folder
                     inside it.
                   </span>
-                  <Tree indent={TREE_INDENT} tree={tree}>
-                    {tree.getItems().map((item) => {
+                  <Tree indent={TREE_INDENT} tree={tree()}>
+                    {tree().getItems().map((item) => {
                       const blocked = disabledIds.has(item.getId())
 
                       return (
