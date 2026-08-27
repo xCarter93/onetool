@@ -5,7 +5,10 @@ import {
 	selectionFeature,
 	syncDataLoaderFeature,
 } from "@headless-tree/core"
-import { useTree } from "@headless-tree/react"
+// The compiler entrypoint returns a getter instead of the stable instance;
+// with the plain one, React Compiler caches getItems() from the first render
+// (empty until the mount effect) and the rail stays blank until a click.
+import { useTree } from "@headless-tree/react/react-compiler"
 
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -134,8 +137,8 @@ export function FolderTree({
 			{/* Main nav: the folder tree owns the rail's scroll */}
 			<ScrollArea className="min-h-0 flex-1">
 				<div className="p-2">
-					<Tree indent={TREE_INDENT} tree={tree} className="w-full gap-0.5">
-						{tree.getItems().map((item) => {
+					<Tree indent={TREE_INDENT} tree={tree()} className="w-full gap-0.5">
+						{tree().getItems().map((item) => {
 							const visibleActions = (
 								item.getItemData().virtual
 									? []
