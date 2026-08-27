@@ -172,3 +172,53 @@ describe("ReportPreview — one visualization on the canvas (d7)", () => {
 		expect(container.querySelectorAll(".recharts-bar-rectangle")).toHaveLength(0);
 	});
 });
+
+describe("ReportPreview — segmentBy", () => {
+	function mockSegmentedResult() {
+		mockedUseQuery.mockReturnValue({
+			data: [
+				{ label: "Jan", value: 8, metadata: {}, segments: { paid: 5, unpaid: 3 } },
+				{ label: "Feb", value: 6, metadata: {}, segments: { paid: 4, unpaid: 2 } },
+			],
+			total: 14,
+			metadata: {
+				segmentBy: "status",
+				segments: [
+					{ key: "paid", label: "Paid" },
+					{ key: "unpaid", label: "Unpaid" },
+				],
+			},
+		});
+	}
+
+	const segmentedConfig = {
+		version: 2 as const,
+		entityType: "invoices" as const,
+		metric: { op: "count" as const },
+		groupBy: "month",
+		segmentBy: "status",
+	};
+
+	it("segmentBy + bar: wide rows reach the wrapper and render stacked segments", () => {
+		mockSegmentedResult();
+
+		const { container } = render(
+			<ReportPreview config={segmentedConfig} visualization={{ type: "bar" }} />
+		);
+
+		// 2 buckets x 2 segments, not the 2 rects a single-series bar would draw.
+		expect(container.querySelectorAll(".recharts-bar-rectangle")).toHaveLength(4);
+		expect(container.querySelectorAll(".recharts-bar")).toHaveLength(2);
+	});
+
+	it("segmentBy + pie: segments are ignored, a plain single-series pie renders", () => {
+		mockSegmentedResult();
+
+		const { container } = render(
+			<ReportPreview config={segmentedConfig} visualization={{ type: "pie" }} />
+		);
+
+		expect(container.querySelectorAll(".recharts-pie-sector")).toHaveLength(2);
+		expect(container.querySelectorAll(".recharts-bar-rectangle")).toHaveLength(0);
+	});
+});

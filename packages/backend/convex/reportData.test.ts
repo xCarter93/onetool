@@ -89,6 +89,75 @@ describe("reportData.executeReport", () => {
 		expect(result.metadata?.groupBy).toBe("status");
 	});
 
+	it("sort arg (R9): value_asc reorders categorical buckets and composes with seriesLimit (slice after sort)", async () => {
+		const { org, asOrg } = await seedOrg();
+		await t.run(async (ctx) => {
+			await createTestClient(ctx, org.orgId, { status: "lead" });
+			await createTestClient(ctx, org.orgId, { status: "active" });
+			await createTestClient(ctx, org.orgId, { status: "active" });
+			await createTestClient(ctx, org.orgId, { status: "archived" });
+			await createTestClient(ctx, org.orgId, { status: "archived" });
+			await createTestClient(ctx, org.orgId, { status: "archived" });
+		});
+
+		const sorted = await asOrg.query(api.reportData.executeReport, {
+			entityType: "clients",
+			config: countConfig("clients", "status"),
+			sort: "value_asc",
+		});
+		expect(sorted.data.map((d) => d.label)).toEqual(["Lead", "Active", "Archived"]);
+
+		const limited = await asOrg.query(api.reportData.executeReport, {
+			entityType: "clients",
+			config: countConfig("clients", "status"),
+			sort: "value_asc",
+			seriesLimit: 2,
+		});
+		expect(limited.data.map((d) => d.label)).toEqual(["Lead", "Active"]);
+		// total stays scan-wide regardless of the slice (d11).
+		expect(limited.total).toBe(6);
+	});
+
+	it("sort arg (R9): label_asc sorts buckets alphabetically", async () => {
+		const { org, asOrg } = await seedOrg();
+		await t.run(async (ctx) => {
+			await createTestClient(ctx, org.orgId, { status: "lead" });
+			await createTestClient(ctx, org.orgId, { status: "active" });
+			await createTestClient(ctx, org.orgId, { status: "archived" });
+		});
+
+		const result = await asOrg.query(api.reportData.executeReport, {
+			entityType: "clients",
+			config: countConfig("clients", "status"),
+			sort: "label_asc",
+		});
+		expect(result.data.map((d) => d.label)).toEqual(["Active", "Archived", "Lead"]);
+	});
+
+	it("sort arg (R9): time buckets stay chronological — user sort is ignored", async () => {
+		const { org, asOrg } = await seedOrg();
+		const clientId = await t.run((ctx) => createTestClient(ctx, org.orgId));
+		await t.run(async (ctx) => {
+			await createTestInvoice(ctx, org.orgId, clientId, {
+				issuedDate: Date.UTC(2026, 0, 15),
+			});
+			await createTestInvoice(ctx, org.orgId, clientId, {
+				issuedDate: Date.UTC(2026, 1, 10),
+			});
+			await createTestInvoice(ctx, org.orgId, clientId, {
+				issuedDate: Date.UTC(2026, 1, 20),
+			});
+		});
+
+		const result = await asOrg.query(api.reportData.executeReport, {
+			entityType: "invoices",
+			config: countConfig("invoices", "issuedDate_month"),
+			sort: "value_desc",
+		});
+		// Feb (2) would lead under value_desc; chronology wins.
+		expect(result.data.map((d) => d.value)).toEqual([1, 2]);
+	});
+
 	it("clients leadSource groups in canonical options order with capitalized labels", async () => {
 		const { org, asOrg } = await seedOrg();
 		await t.run(async (ctx) => {

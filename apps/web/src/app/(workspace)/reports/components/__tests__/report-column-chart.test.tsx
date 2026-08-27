@@ -101,4 +101,66 @@ describe("ReportColumnChart", () => {
 		);
 		expect(screen.getByText("No data for this date range.")).toBeInTheDocument();
 	});
+
+	it("segments prop stacks one rect per segment per bucket, keyed by segment", () => {
+		const { container } = render(
+			<ReportColumnChart
+				data={[
+					{ name: "Jan", value: 8, active: 5, closed: 3 },
+					{ name: "Feb", value: 6, active: 4, closed: 2 },
+					{ name: "Mar", value: 4, active: 1, closed: 3 },
+				]}
+				total={18}
+				entityType="projects"
+				groupBy="completedAt_month"
+				segments={[
+					{ key: "active", label: "Active" },
+					{ key: "closed", label: "Closed" },
+				]}
+			/>
+		);
+
+		expect(container.querySelectorAll(".recharts-bar-rectangle")).toHaveLength(6);
+		expect(container.querySelectorAll(".recharts-bar")).toHaveLength(2);
+		const style = container.querySelector("style")?.textContent ?? "";
+		expect(style).toContain("--color-active:");
+		expect(style).toContain("--color-closed:");
+	});
+
+	it("axisLabels renders both axis titles; targetLine renders a reference line", () => {
+		const { container } = render(
+			<ReportColumnChart
+				data={[
+					{ name: "Jan", value: 5 },
+					{ name: "Feb", value: 7 },
+				]}
+				total={12}
+				entityType="projects"
+				groupBy="completedAt_month"
+				axisLabels={{ x: "Completed by Month", y: "Count of records" }}
+				targetLine={40}
+			/>
+		);
+
+		expect(container.textContent).toContain("Completed by Month");
+		expect(container.textContent).toContain("Count of records");
+		expect(container.querySelectorAll(".recharts-reference-line")).toHaveLength(1);
+	});
+
+	it("neither prop set: no axis titles and no reference line", () => {
+		const { container } = render(
+			<ReportColumnChart
+				data={[
+					{ name: "Jan", value: 5 },
+					{ name: "Feb", value: 7 },
+				]}
+				total={12}
+				entityType="projects"
+				groupBy="completedAt_month"
+			/>
+		);
+
+		expect(container.textContent).not.toContain("Count of records");
+		expect(container.querySelectorAll(".recharts-reference-line")).toHaveLength(0);
+	});
 });

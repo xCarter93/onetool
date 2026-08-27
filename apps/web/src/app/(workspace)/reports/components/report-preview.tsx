@@ -6,6 +6,7 @@ import { api } from "@onetool/backend/convex/_generated/api";
 import { Loader2, AlertCircle, TriangleAlert } from "lucide-react";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import { convexErrorMessage } from "@/lib/convex-error";
+import { GROUP_BY_OPTIONS } from "@onetool/backend/convex/lib/reportFields";
 import { ReportBarChart } from "./report-bar-chart";
 import { ReportColumnChart } from "./report-column-chart";
 import { ReportLineChart } from "./report-line-chart";
@@ -157,14 +158,35 @@ function ReportPreviewInner({ config, visualization }: ReportPreviewProps) {
 		);
 	}
 
+	// Segments are authorable on bar/column only; other viz types stay single-series.
+	const segments =
+		config.segmentBy &&
+		(visualization.type === "bar" || visualization.type === "column")
+			? reportData.metadata?.segments
+			: undefined;
+
 	const chartData = reportData.data.map((item) => ({
 		name: item.label,
 		value: item.value,
 		...((item.metadata || {}) as Record<string, unknown>),
+		...(segments ? (item.segments ?? {}) : {}),
 	}));
 
 	const total = reportData.total;
 	const groupBy = config.groupBy;
+	const groupByLabel = groupBy
+		? (GROUP_BY_OPTIONS[config.entityType].find((o) => o.value === groupBy)?.label ??
+			groupBy)
+		: undefined;
+	const showAxisLabels = visualization.options?.axisLabels === true;
+	const targetLine = visualization.options?.targetLine;
+	const axisLabels = showAxisLabels
+		? { x: groupByLabel, y: metricLabelFor(config) }
+		: undefined;
+	// The bar chart is layout="vertical", so its axes are the transpose.
+	const barAxisLabels = axisLabels
+		? { x: axisLabels.y, y: axisLabels.x }
+		: undefined;
 	// The unified pipeline emits currency flags only when true — absent means
 	// "not currency"; never infer from entityType/groupBy heuristics.
 	const totalIsCurrency = reportData.metadata?.totalIsCurrency === true;
@@ -183,6 +205,9 @@ function ReportPreviewInner({ config, visualization }: ReportPreviewProps) {
 						entityType={config.entityType}
 						totalIsCurrency={totalIsCurrency}
 						itemValueIsCurrency={itemValueIsCurrency}
+						segments={segments}
+						axisLabels={barAxisLabels}
+						targetLine={targetLine}
 					/>
 				);
 			case "column":
@@ -194,6 +219,9 @@ function ReportPreviewInner({ config, visualization }: ReportPreviewProps) {
 						entityType={config.entityType}
 						totalIsCurrency={totalIsCurrency}
 						itemValueIsCurrency={itemValueIsCurrency}
+						segments={segments}
+						axisLabels={axisLabels}
+						targetLine={targetLine}
 					/>
 				);
 			case "line":
@@ -203,6 +231,8 @@ function ReportPreviewInner({ config, visualization }: ReportPreviewProps) {
 						total={total}
 						groupBy={groupBy}
 						entityType={config.entityType}
+						axisLabels={axisLabels}
+						targetLine={targetLine}
 					/>
 				);
 			case "pie":

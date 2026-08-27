@@ -12,6 +12,7 @@ import { DateRange } from "react-day-picker";
 import {
 	DEFAULT_GROUP_BY,
 	REPORT_FIELDS,
+	getGroupableFk,
 	getReportDateField,
 } from "@onetool/backend/convex/lib/reportFields";
 import type { ReportFilters } from "@onetool/backend/convex/lib/reportFilters";
@@ -38,6 +39,8 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
 import { EmptyState } from "@/components/domain/empty-state";
 import { SegmentedControl } from "@/components/domain/segmented-control";
 import { MultiSelector } from "@/components/shared/multi-selector";
@@ -45,8 +48,8 @@ import { PanelField, PanelSection } from "@/components/shared/panel-primitives";
 import DatePickerRange from "@/components/shared/date-picker-range";
 import { ReportPreview } from "./report-preview";
 import { ReportUtilityBar } from "./report-utility-bar";
+import { ReportFilterPills } from "./report-filter-pills";
 import {
-	ReportFiltersEditor,
 	countFilterRules,
 	sanitizeReportFilters,
 } from "./report-filters-editor";
@@ -70,8 +73,18 @@ import {
 	type VizType,
 } from "../report-config";
 
-/** Select sentinel for "no grouping" — Radix Select can't take an empty/undefined value. */
+/** Select sentinels — Base UI Select can't take an empty/undefined value. */
 const NO_GROUP_BY = "__none__";
+const NO_SEGMENT = "__none__";
+const DEFAULT_SORT = "__default__";
+
+const TIME_SUFFIX = /^(.+)_(day|week|month)$/;
+
+const GRANULARITY_OPTIONS = [
+	{ value: "day", label: "Day" },
+	{ value: "week", label: "Week" },
+	{ value: "month", label: "Month" },
+] as const;
 
 type ReportType = "number" | "chart" | "table";
 
@@ -260,6 +273,7 @@ export function ReportBuilder({
 			if (metric.op === "related") setMetric({ op: "count" });
 		} else if (next === "table") {
 			setVizType("table");
+			setSegmentBy(undefined);
 		} else {
 			setVizType(lastChartType);
 			if (
@@ -289,6 +303,63 @@ export function ReportBuilder({
 
 	const groupBySectionVisible =
 		reportType !== "number" && metric.op !== "ratio" && metric.op !== "related";
+
+	// Group-by picker anatomy (R9): timestamp options collapse to one entry per
+	// base field, with the day/week/month granularity chosen inline.
+	const timeGroupMatch = groupBy?.match(TIME_SUFFIX) ?? null;
+	const groupOptions = entityType ? (genericGroupByOptions[entityType] ?? []) : [];
+	const nonTimeGroupOptions = groupOptions.filter((o) => !TIME_SUFFIX.test(o.value));
+	const timeBaseOptions = entityType
+		? [
+				...new Set(
+					groupOptions
+						.map((o) => o.value.match(TIME_SUFFIX)?.[1])
+						.filter((base): base is string => base !== undefined)
+				),
+			].map((base) => ({
+				value: base,
+				label:
+					base === "creationDate"
+						? "Created"
+						: (REPORT_FIELDS[entityType].fields[base]?.label ?? base),
+			}))
+		: [];
+	const groupBySelectValue = timeGroupMatch
+		? timeGroupMatch[1]
+		: (groupBy ?? NO_GROUP_BY);
+	const groupFieldDef =
+		entityType && groupBy && !timeGroupMatch
+			? REPORT_FIELDS[entityType].fields[groupBy]
+			: undefined;
+	const fkGroupBy =
+		entityType && groupBy ? getGroupableFk(entityType, groupBy) : undefined;
+
+	const segmentCapable =
+		reportType === "chart" &&
+		(vizType === "bar" || vizType === "column") &&
+		!!groupBy &&
+		metric.op !== "ratio" &&
+		metric.op !== "related";
+	const segmentOptions = entityType
+		? nonTimeGroupOptions.filter(
+				(o) => o.value !== groupBy && !getGroupableFk(entityType, o.value)
+			)
+		: [];
+
+	const setVizOption = <K extends keyof VisualizationOptions>(
+		key: K,
+		value: VisualizationOptions[K] | undefined
+	) => {
+		setVizOptions((prev) => {
+			const next = { ...prev };
+			if (value === undefined) delete next[key];
+			else next[key] = value;
+			return Object.keys(next).length ? next : undefined;
+		});
+	};
+
+	const supportsAxisChrome =
+		vizType === "bar" || vizType === "column" || vizType === "line";
 
 	const defaultDateField = entityType ? getReportDateField(entityType) : undefined;
 	const dateFieldOptions = entityType ? dateFieldOptionsFor(entityType) : [];
@@ -520,7 +591,7 @@ export function ReportBuilder({
 										: "Filters"
 								}
 							>
-								<ReportFiltersEditor
+								<ReportFilterPills
 									entityType={entityType}
 									filters={filters}
 									onChange={setFilters}
@@ -553,10 +624,41 @@ export function ReportBuilder({
 							{groupBySectionVisible && (
 								<PanelSection title="Group by">
 									<Select
-										value={groupBy ?? NO_GROUP_BY}
+										value={groupBySelectValue}
 										onValueChange={(v) => {
 											if (!v) return;
-											setGroupBy(v === NO_GROUP_BY ? undefined : v);
+											if (v === NO_GROUP_BY) {
+												setGroupBy(undefined);
+												setSegmentBy(undefined);
+												setIncludeEmptyValues(undefined);
+												setVizOption("sort", undefined);
+												setVizOption("seriesLimit", undefined);
+												return;
+											}
+											const isTimeBase = timeBaseOptions.some(
+												(o) => o.value === v
+											);
+											setGroupBy(
+												isTimeBase
+													? `${v}_${timeGroupMatch?.[2] ?? "month"}`
+													: v
+											);
+											if (segmentBy === v) setSegmentBy(undefined);
+											// Grouping-dependent settings don't carry to a grouping
+											// that can't honor them — keep the saved config honest.
+											if (
+												isTimeBase ||
+												!REPORT_FIELDS[entityType].fields[v]?.options
+											) {
+												setIncludeEmptyValues(undefined);
+											}
+											if (
+												isTimeBase ||
+												(getGroupableFk(entityType, v) &&
+													vizOptions?.sort === "label_asc")
+											) {
+												setVizOption("sort", undefined);
+											}
 										}}
 									>
 										<SelectTrigger className="w-full">
@@ -569,13 +671,68 @@ export function ReportBuilder({
 													None (raw rows)
 												</SelectItem>
 											)}
-											{genericGroupByOptions[entityType]?.map((opt) => (
+											{nonTimeGroupOptions.map((opt) => (
+												<SelectItem key={opt.value} value={opt.value}>
+													{opt.label}
+												</SelectItem>
+											))}
+											{timeBaseOptions.map((opt) => (
 												<SelectItem key={opt.value} value={opt.value}>
 													{opt.label}
 												</SelectItem>
 											))}
 										</SelectContent>
 									</Select>
+									{timeGroupMatch && (
+										<SegmentedControl
+											value={timeGroupMatch[2]}
+											onValueChange={(g) =>
+												setGroupBy(`${timeGroupMatch[1]}_${g}`)
+											}
+											options={GRANULARITY_OPTIONS}
+											className="w-full"
+										/>
+									)}
+									{groupFieldDef?.options && (
+										<label className="flex items-center justify-between gap-2 text-sm text-foreground">
+											Include empty values
+											<Switch
+												checked={includeEmptyValues === true}
+												onCheckedChange={(checked) =>
+													setIncludeEmptyValues(checked || undefined)
+												}
+											/>
+										</label>
+									)}
+								</PanelSection>
+							)}
+
+							{segmentCapable && segmentOptions.length > 0 && (
+								<PanelSection title="Segment by">
+									<PanelField
+										label="Segment"
+										helper="Splits each bar into stacked segments."
+									>
+										<Select
+											value={segmentBy ?? NO_SEGMENT}
+											onValueChange={(v) => {
+												if (!v) return;
+												setSegmentBy(v === NO_SEGMENT ? undefined : v);
+											}}
+										>
+											<SelectTrigger className="w-full">
+												<SelectValue />
+											</SelectTrigger>
+											<SelectContent>
+												<SelectItem value={NO_SEGMENT}>None</SelectItem>
+												{segmentOptions.map((opt) => (
+													<SelectItem key={opt.value} value={opt.value}>
+														{opt.label}
+													</SelectItem>
+												))}
+											</SelectContent>
+										</Select>
+									</PanelField>
 								</PanelSection>
 							)}
 
@@ -588,6 +745,10 @@ export function ReportBuilder({
 												if (!v) return;
 												setVizType(v as VizType);
 												setLastChartType(v as VizType);
+												// Only bar/column render segments (honest encodings).
+												if (v !== "bar" && v !== "column") {
+													setSegmentBy(undefined);
+												}
 											}}
 										>
 											<SelectTrigger className="w-full">
@@ -608,6 +769,93 @@ export function ReportBuilder({
 											</SelectContent>
 										</Select>
 									</PanelField>
+									{groupBy && (
+										<PanelField
+											label="Series limit"
+											helper="Shows the first N groups in sorted order."
+										>
+											<Input
+												type="number"
+												min={1}
+												value={vizOptions?.seriesLimit ?? ""}
+												onChange={(e) =>
+													setVizOption(
+														"seriesLimit",
+														e.target.value === ""
+															? undefined
+															: Math.max(1, Math.floor(Number(e.target.value)))
+													)
+												}
+												placeholder="All groups"
+											/>
+										</PanelField>
+									)}
+									{groupBy && !timeGroupMatch && (
+										<PanelField label="Sort">
+											<Select
+												value={vizOptions?.sort ?? DEFAULT_SORT}
+												onValueChange={(v) => {
+													if (!v) return;
+													setVizOption(
+														"sort",
+														v === DEFAULT_SORT
+															? undefined
+															: (v as NonNullable<
+																	VisualizationOptions["sort"]
+																>)
+													);
+												}}
+											>
+												<SelectTrigger className="w-full">
+													<SelectValue />
+												</SelectTrigger>
+												<SelectContent>
+													<SelectItem value={DEFAULT_SORT}>
+														Chart default
+													</SelectItem>
+													<SelectItem value="value_desc">
+														Highest first
+													</SelectItem>
+													<SelectItem value="value_asc">Lowest first</SelectItem>
+													{/* FK labels resolve after the series slice, so A-to-Z can't apply to record groupings. */}
+													{!fkGroupBy && (
+														<SelectItem value="label_asc">A to Z</SelectItem>
+													)}
+												</SelectContent>
+											</Select>
+										</PanelField>
+									)}
+									{supportsAxisChrome && (
+										<label className="flex items-center justify-between gap-2 text-sm text-foreground">
+											Axis labels
+											<Switch
+												checked={vizOptions?.axisLabels === true}
+												onCheckedChange={(checked) =>
+													setVizOption("axisLabels", checked || undefined)
+												}
+											/>
+										</label>
+									)}
+									{supportsAxisChrome && (
+										<PanelField
+											label="Target line"
+											helper="Draws a reference line at this value."
+										>
+											<Input
+												type="number"
+												value={vizOptions?.targetLine ?? ""}
+												onChange={(e) =>
+													setVizOption(
+														"targetLine",
+														e.target.value === ""
+															? undefined
+															: Number(e.target.value)
+													)
+												}
+												placeholder="None"
+											/>
+										</PanelField>
+									)}
 								</PanelSection>
 							)}
 

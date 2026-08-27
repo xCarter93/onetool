@@ -26,6 +26,7 @@ export interface ExecuteReportArgs {
 	entityType: ReportEntityType;
 	config: ReportConfigV2;
 	seriesLimit?: number;
+	sort?: "value_desc" | "value_asc" | "label_asc";
 	detail?: { columns: string[] };
 }
 
@@ -74,5 +75,10 @@ export function resolveReportQueryArgs(
 	}
 
 	const seriesLimit = viz.options?.seriesLimit;
-	return { ...base, ...(seriesLimit !== undefined ? { seriesLimit } : {}) };
+	const sort = viz.options?.sort;
+	return {
+		...base,
+		...(seriesLimit !== undefined ? { seriesLimit } : {}),
+		...(sort !== undefined ? { sort } : {}),
+	};
 }

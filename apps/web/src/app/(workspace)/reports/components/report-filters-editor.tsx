@@ -1,20 +1,16 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Plus, Trash2, X } from "lucide-react";
-import {
-	REPORT_FIELDS,
-	type ReportEntityType,
-	type ReportFieldDef,
-} from "@onetool/backend/convex/lib/reportFields";
+import type { ReportEntityType } from "@onetool/backend/convex/lib/reportFields";
 import type {
 	ReportFilterGroup,
 	ReportFilterOperator,
 	ReportFilterRule,
 	ReportFilters,
 } from "@onetool/backend/convex/lib/reportFilters";
+import type { FilterAdapter } from "@/components/shared/filter-adapter";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import {
 	Popover,
 	PopoverContent,
@@ -27,68 +23,10 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@/components/ui/select";
-
-/** Verbose label used in the popover's operator Select. */
-const OPERATOR_LABELS: Record<ReportFilterOperator, string> = {
-	equals: "equals",
-	not_equals: "does not equal",
-	contains: "contains",
-	greater_than: "is greater than",
-	greater_than_or_equal: "is at least",
-	less_than: "is less than",
-	less_than_or_equal: "is at most",
-	// Timestamp operators exist in the DSL from R7; this editor offers them
-	// only once timestamp fields become filterable (R8).
-	before: "is before",
-	after: "is after",
-	on: "is on",
-	is_empty: "is empty",
-	is_not_empty: "is not empty",
-};
-
-/** Condensed phrase used on the collapsed rule card ("equals Sent", "is empty"). */
-const OPERATOR_PHRASE: Record<ReportFilterOperator, string> = OPERATOR_LABELS;
-
-const VALUELESS_OPERATORS: ReadonlySet<ReportFilterOperator> = new Set([
-	"is_empty",
-	"is_not_empty",
-]);
+import { reportFilterAdapter, VALUELESS_OPERATORS } from "./report-filter-adapter";
 
 const MAX_GROUPS = 5;
 const MAX_RULES_PER_GROUP = 8;
-
-function operatorsForField(field: ReportFieldDef): ReportFilterOperator[] {
-	switch (field.type) {
-		case "boolean":
-			return ["equals"];
-		case "number":
-		case "currency":
-			return [
-				"equals",
-				"not_equals",
-				"greater_than",
-				"greater_than_or_equal",
-				"less_than",
-				"less_than_or_equal",
-			];
-		case "string":
-		default:
-			return ["equals", "not_equals", "contains", "is_empty", "is_not_empty"];
-	}
-}
-
-function filterableFields(
-	entityType: ReportEntityType
-): { key: string; def: ReportFieldDef }[] {
-	return Object.entries(REPORT_FIELDS[entityType].fields)
-		.filter(([, def]) => def.type !== "timestamp")
-		.map(([key, def]) => ({ key, def }));
-}
-
-function defaultValueForField(field: ReportFieldDef): string | number | boolean | undefined {
-	if (field.type === "boolean") return true;
-	return undefined;
-}
 
 function blankRule(): ReportFilterRule {
 	return { field: "", operator: "equals", value: undefined };
@@ -98,18 +36,10 @@ function isEmptyValue(value: unknown): boolean {
 	return value === undefined || value === null || value === "";
 }
 
-function isDraftComplete(rule: ReportFilterRule): boolean {
+export function isDraftComplete(rule: ReportFilterRule): boolean {
 	if (!rule.field) return false;
 	if (VALUELESS_OPERATORS.has(rule.operator)) return true;
 	return !isEmptyValue(rule.value);
-}
-
-function ruleSummary(rule: ReportFilterRule): string {
-	const phrase = OPERATOR_PHRASE[rule.operator];
-	if (VALUELESS_OPERATORS.has(rule.operator)) return phrase;
-	if (rule.value === undefined || rule.value === "") return phrase;
-	const valueText = typeof rule.value === "boolean" ? (rule.value ? "True" : "False") : String(rule.value);
-	return `${phrase} ${valueText}`;
 }
 
 /**
@@ -138,7 +68,7 @@ export function sanitizeReportFilters(
 	return { logic: filters.logic, groups };
 }
 
-/** Total complete filter rules — drives the Filters tab badge count. */
+/** Total complete filter rules — drives the Filters section badge count. */
 export function countFilterRules(filters: ReportFilters | undefined): number {
 	const sanitized = sanitizeReportFilters(filters);
 	if (!sanitized) return 0;
@@ -166,7 +96,7 @@ export function ReportFiltersEditor({
 	filters,
 	onChange,
 }: ReportFiltersEditorProps) {
-	const fields = filterableFields(entityType);
+	const adapter = useMemo(() => reportFilterAdapter(entityType), [entityType]);
 	const groups = filters?.groups ?? [];
 	const topLogic = filters?.logic ?? "and";
 
@@ -249,44 +179,6 @@ export function ReportFiltersEditor({
 		closeEditor();
 	};
 
-	const setDraftField = (field: string) => {
-		if (!editor) return;
-		const nextDef = REPORT_FIELDS[entityType].fields[field];
-		const nextOperator = nextDef ? (operatorsForField(nextDef)[0] ?? "equals") : "equals";
-		setEditor({
-			...editor,
-			draft: {
-				field,
-				operator: nextOperator,
-				value: VALUELESS_OPERATORS.has(nextOperator)
-					? undefined
-					: nextDef
-						? defaultValueForField(nextDef)
-						: undefined,
-			},
-		});
-	};
-
-	const setDraftOperator = (operator: ReportFilterOperator) => {
-		if (!editor) return;
-		const fieldDef = editor.draft.field ? REPORT_FIELDS[entityType].fields[editor.draft.field] : undefined;
-		setEditor({
-			...editor,
-			draft: {
-				...editor.draft,
-				operator,
-				value: VALUELESS_OPERATORS.has(operator)
-					? undefined
-					: (editor.draft.value ?? (fieldDef ? defaultValueForField(fieldDef) : undefined)),
-			},
-		});
-	};
-
-	const setDraftValue = (value: string | number | boolean | undefined) => {
-		if (!editor) return;
-		setEditor({ ...editor, draft: { ...editor.draft, value } });
-	};
-
 	const editorPopover = (target: EditorTarget, trigger: React.ReactElement) => {
 		const isOpen = editor !== null && targetKey(editor.target) === targetKey(target);
 		return (
@@ -296,17 +188,24 @@ export function ReportFiltersEditor({
 					if (!open) closeEditor();
 				}}
 			>
-				<PopoverTrigger render={trigger} onClick={() => openEditor(target)} />
+				<PopoverTrigger
+					render={trigger}
+					onClick={() =>
+						openEditor(
+							target,
+							target.kind === "edit-rule"
+								? groups[target.groupIndex]?.rules[target.ruleIndex]
+								: undefined
+						)
+					}
+				/>
 				{isOpen && editor && (
 					// TODO(reui-rebuild): PopoverArrow has no analog in ui/popover.tsx (base-nova drops the arrow indicator entirely — no cn-popover-arrow style exists); dropped rather than invented.
 					<PopoverContent side="right" align="start" sideOffset={8} className="w-80">
 						<FilterEditorBody
-							entityType={entityType}
-							fields={fields}
+							adapter={adapter}
 							draft={editor.draft}
-							onFieldChange={setDraftField}
-							onOperatorChange={setDraftOperator}
-							onValueChange={setDraftValue}
+							onDraftChange={(draft) => setEditor({ ...editor, draft })}
 							onCancel={closeEditor}
 							onApply={applyDraft}
 							canApply={isDraftComplete(editor.draft)}
@@ -373,33 +272,32 @@ export function ReportFiltersEditor({
 			</div>
 
 			<div className="space-y-1.5 p-2.5">
-				{group?.rules.map((rule, ruleIndex) => {
-					const fieldDef = rule.field ? REPORT_FIELDS[entityType].fields[rule.field] : undefined;
-					return (
-						<div key={ruleIndex} className="group/rule relative">
-							{editorPopover(
-								{ kind: "edit-rule", groupIndex, ruleIndex },
-								<button
-									type="button"
-									className="w-full rounded-md border border-border/60 bg-background px-2.5 py-1.5 pr-7 text-left transition-colors hover:border-border"
-								>
-									<p className="truncate text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-										{fieldDef?.label ?? rule.field}
-									</p>
-									<p className="truncate text-sm text-foreground">{ruleSummary(rule)}</p>
-								</button>
-							)}
+				{group?.rules.map((rule, ruleIndex) => (
+					<div key={ruleIndex} className="group/rule relative">
+						{editorPopover(
+							{ kind: "edit-rule", groupIndex, ruleIndex },
 							<button
 								type="button"
-								onClick={() => removeRule(groupIndex, ruleIndex)}
-								className="absolute right-1.5 top-1.5 hidden rounded p-1 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive group-hover/rule:block"
-								aria-label="Remove condition"
+								className="w-full rounded-md border border-border/60 bg-background px-2.5 py-1.5 pr-7 text-left transition-colors hover:border-border"
 							>
-								<Trash2 className="h-3.5 w-3.5" />
+								<p className="truncate text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+									{adapter.fieldLabel(rule.field)}
+								</p>
+								<p className="truncate text-sm text-foreground">
+									{adapter.summarizeRule(rule)}
+								</p>
 							</button>
-						</div>
-					);
-				})}
+						)}
+						<button
+							type="button"
+							onClick={() => removeRule(groupIndex, ruleIndex)}
+							className="absolute right-1.5 top-1.5 hidden rounded p-1 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive group-hover/rule:block"
+							aria-label="Remove condition"
+						>
+							<Trash2 className="h-3.5 w-3.5" />
+						</button>
+					</div>
+				))}
 
 				{(group?.rules.length ?? 0) < MAX_RULES_PER_GROUP && addFilterRow(groupIndex)}
 			</div>
@@ -448,30 +346,49 @@ export function ReportFiltersEditor({
 	);
 }
 
-function FilterEditorBody({
-	entityType,
-	fields,
+/** Field → operator → value draft form; shared by the grouped editor and the rail pills popovers. */
+export function FilterEditorBody({
+	adapter,
 	draft,
-	onFieldChange,
-	onOperatorChange,
-	onValueChange,
+	onDraftChange,
 	onCancel,
 	onApply,
 	canApply,
 }: {
-	entityType: ReportEntityType;
-	fields: { key: string; def: ReportFieldDef }[];
+	adapter: FilterAdapter;
 	draft: ReportFilterRule;
-	onFieldChange: (field: string) => void;
-	onOperatorChange: (operator: ReportFilterOperator) => void;
-	onValueChange: (value: string | number | boolean | undefined) => void;
+	onDraftChange: (draft: ReportFilterRule) => void;
 	onCancel: () => void;
 	onApply: () => void;
 	canApply: boolean;
 }) {
-	const fieldDef = draft.field ? REPORT_FIELDS[entityType].fields[draft.field] : undefined;
-	const operators = fieldDef ? operatorsForField(fieldDef) : [];
-	const needsValue = !VALUELESS_OPERATORS.has(draft.operator);
+	const operators = draft.field ? adapter.operatorsFor(draft.field) : [];
+	const needsValue = adapter.needsValue(draft.operator);
+
+	const setField = (field: string) => {
+		const operator = adapter.defaultOperatorFor(field);
+		onDraftChange({
+			field,
+			operator: operator as ReportFilterOperator,
+			value: adapter.needsValue(operator)
+				? adapter.defaultValueFor(field)
+				: undefined,
+		});
+	};
+
+	const setOperator = (operator: string) => {
+		// A timestamp value encodes the OLD operator's day boundary — force a re-pick.
+		const staleValue = adapter.valueDependsOnOperator(draft.field);
+		onDraftChange({
+			...draft,
+			operator: operator as ReportFilterOperator,
+			value: adapter.needsValue(operator)
+				? staleValue
+					? undefined
+					: (draft.value ?? adapter.defaultValueFor(draft.field))
+				: undefined,
+		});
+	};
 
 	return (
 		<div className="space-y-3">
@@ -491,16 +408,16 @@ function FilterEditorBody({
 				<Select
 					value={draft.field}
 					onValueChange={(v) => {
-						if (v) onFieldChange(v);
+						if (v) setField(v);
 					}}
 				>
 					<SelectTrigger className="w-full">
 						<SelectValue placeholder="Field" />
 					</SelectTrigger>
 					<SelectContent>
-						{fields.map((f) => (
-							<SelectItem key={f.key} value={f.key}>
-								{f.def.label}
+						{adapter.fields.map((f) => (
+							<SelectItem key={f.value} value={f.value}>
+								{f.label}
 							</SelectItem>
 						))}
 					</SelectContent>
@@ -508,69 +425,31 @@ function FilterEditorBody({
 
 				<Select
 					value={draft.operator}
-					onValueChange={(v) => onOperatorChange(v as ReportFilterOperator)}
-					disabled={!fieldDef}
+					onValueChange={(v) => {
+						if (v) setOperator(v);
+					}}
+					disabled={!draft.field}
 				>
 					<SelectTrigger className="w-full">
 						<SelectValue placeholder="Operator" />
 					</SelectTrigger>
 					<SelectContent>
 						{operators.map((op) => (
-							<SelectItem key={op} value={op}>
-								{OPERATOR_LABELS[op]}
+							<SelectItem key={op.value} value={op.value}>
+								{op.label}
 							</SelectItem>
 						))}
 					</SelectContent>
 				</Select>
 
 				{needsValue &&
-					fieldDef &&
-					(fieldDef.options ? (
-						<Select
-							value={typeof draft.value === "string" ? draft.value : ""}
-							onValueChange={(value) => onValueChange(value ?? undefined)}
-						>
-							<SelectTrigger className="w-full">
-								<SelectValue placeholder="Value" />
-							</SelectTrigger>
-							<SelectContent>
-								{fieldDef.options.map((opt) => (
-									<SelectItem key={opt} value={opt}>
-										{opt}
-									</SelectItem>
-								))}
-							</SelectContent>
-						</Select>
-					) : fieldDef.type === "boolean" ? (
-						<Select
-							value={draft.value === false ? "false" : "true"}
-							onValueChange={(value) => onValueChange(value === "true")}
-						>
-							<SelectTrigger className="w-full">
-								<SelectValue />
-							</SelectTrigger>
-							<SelectContent>
-								<SelectItem value="true">True</SelectItem>
-								<SelectItem value="false">False</SelectItem>
-							</SelectContent>
-						</Select>
-					) : fieldDef.type === "number" || fieldDef.type === "currency" ? (
-						<Input
-							type="number"
-							value={typeof draft.value === "number" ? draft.value : ""}
-							onChange={(e) =>
-								onValueChange(e.target.value === "" ? undefined : Number(e.target.value))
-							}
-							placeholder="Value"
-						/>
-					) : (
-						<Input
-							type="text"
-							value={typeof draft.value === "string" ? draft.value : ""}
-							onChange={(e) => onValueChange(e.target.value)}
-							placeholder="Value"
-						/>
-					))}
+					draft.field &&
+					adapter.renderValue({
+						field: draft.field,
+						operator: draft.operator,
+						value: draft.value,
+						onChange: (value) => onDraftChange({ ...draft, value }),
+					})}
 			</div>
 
 			<div className="flex items-center justify-end gap-2 pt-1">

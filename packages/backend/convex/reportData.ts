@@ -383,10 +383,13 @@ interface AggregationPlan {
 	segmentBy?: string;
 	includeEmptyValues?: boolean;
 	seriesLimit?: number;
+	sort?: BucketSort;
 	timezone?: string;
 	/** Overrides metadata.groupBy (ratio metrics report their ratioKey). */
 	metadataGroupBy?: string;
 }
+
+type BucketSort = "value_desc" | "value_asc" | "label_asc";
 
 interface Bucket {
 	key: string;
@@ -633,6 +636,21 @@ async function runAggregationPlan(
 			);
 		}
 		segmentMeta = applySegments(buckets, rows, seg.sourceField, seg.def, aggregation);
+	}
+
+	// User sort (R9) never reorders time buckets (a timeline stays
+	// chronological), and label_asc is skipped for FK grouping — labels only
+	// resolve for the displayed buckets, after the slice below.
+	const timeBucketed = plan.groupBy ? timeGroupingRegex.test(plan.groupBy) : false;
+	if (buckets && plan.sort && !timeBucketed && !(fk && plan.sort === "label_asc")) {
+		const sort = plan.sort;
+		buckets = [...buckets].sort((a, b) =>
+			sort === "value_desc"
+				? b.value - a.value
+				: sort === "value_asc"
+					? a.value - b.value
+					: a.label.localeCompare(b.label)
+		);
 	}
 
 	if (buckets && plan.seriesLimit !== undefined && Number.isFinite(plan.seriesLimit)) {
@@ -888,7 +906,8 @@ function resolveConfigDates(
 function planFromConfig(
 	config: ReportConfigV2,
 	seriesLimit: number | undefined,
-	timezone: string | undefined
+	timezone: string | undefined,
+	sort?: BucketSort
 ): AggregationPlan {
 	const metric = config.metric;
 	if (metric.op === "ratio" || metric.op === "related") {
@@ -905,6 +924,7 @@ function planFromConfig(
 		segmentBy: config.segmentBy,
 		includeEmptyValues: config.includeEmptyValues,
 		seriesLimit,
+		sort,
 		timezone,
 	};
 }
@@ -1092,6 +1112,13 @@ export const executeReport = optionalUserQuery({
 		// The legacy args are deleted at R14 (§8 d11).
 		config: v.optional(reportConfigV2Validator),
 		seriesLimit: v.optional(v.number()),
+		sort: v.optional(
+			v.union(
+				v.literal("value_desc"),
+				v.literal("value_asc"),
+				v.literal("label_asc")
+			)
+		),
 	},
 	handler: async (ctx, args): Promise<ReportDataResult> => {
 		if (!ctx.orgId) return emptyReportResult();
@@ -1141,7 +1168,7 @@ export const executeReport = optionalUserQuery({
 				await requireReportEntityAccess(ctx, related.entity);
 				return await runRelatedMetric(ctx, orgId, config, related, args.seriesLimit, timezone);
 			}
-			const plan = planFromConfig(config, args.seriesLimit, timezone);
+			const plan = planFromConfig(config, args.seriesLimit, timezone, args.sort);
 			validateAggregation(entityType, plan.aggregation);
 			return await runAggregationPlan(ctx, orgId, plan);
 		}

@@ -245,7 +245,8 @@
    },
    "groupBy": "clientId"
   },
-  "seriesLimit": 10
+  "seriesLimit": 10,
+  "sort": "value_desc"
  },
  "new-clients-by-month": {
   "entityType": "clients",

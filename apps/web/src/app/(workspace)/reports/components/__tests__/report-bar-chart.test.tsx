@@ -152,4 +152,110 @@ describe("ReportBarChart", () => {
 		render(<ReportBarChart data={[]} total={0} entityType="tasks" groupBy="status" />);
 		expect(screen.getByText("No data for this date range.")).toBeInTheDocument();
 	});
+
+	describe("segmented (stacked) mode", () => {
+		const stackedData = [
+			{ name: "Jan", value: 8, paid: 5, unpaid: 3 },
+			{ name: "Feb", value: 6, paid: 4, unpaid: 2 },
+		];
+		const segments = [
+			{ key: "paid", label: "Paid" },
+			{ key: "unpaid", label: "Unpaid" },
+		];
+
+		it("renders one stacked rect per segment per bucket, keyed by segment", () => {
+			const { container } = render(
+				<ReportBarChart
+					data={stackedData}
+					total={14}
+					entityType="invoices"
+					groupBy="month"
+					segments={segments}
+				/>
+			);
+
+			// 2 buckets x 2 segments — not the 2 rects the single-series path renders.
+			expect(container.querySelectorAll(".recharts-bar-rectangle")).toHaveLength(4);
+			expect(container.querySelectorAll(".recharts-bar")).toHaveLength(2);
+		});
+
+		it("chartConfig is keyed by segment key so tooltip/legend machinery resolves segment labels", () => {
+			const { container } = render(
+				<ReportBarChart
+					data={stackedData}
+					total={14}
+					entityType="invoices"
+					groupBy="month"
+					segments={segments}
+				/>
+			);
+
+			const style = container.querySelector("style")?.textContent ?? "";
+			expect(style).toContain("--color-paid:");
+			expect(style).toContain("--color-unpaid:");
+			// Category names must NOT be config keys in stacked mode.
+			expect(style).not.toContain("--color-Jan:");
+		});
+
+		it("without the segments prop the single-series path is unchanged", () => {
+			const { container } = render(
+				<ReportBarChart data={stackedData} total={14} entityType="invoices" groupBy="month" />
+			);
+
+			expect(container.querySelectorAll(".recharts-bar-rectangle")).toHaveLength(2);
+			expect(container.querySelectorAll(".recharts-bar")).toHaveLength(1);
+		});
+	});
+
+	describe("axisLabels + targetLine", () => {
+		const data = [
+			{ name: "Pending", value: 5 },
+			{ name: "Completed", value: 7 },
+		];
+
+		it("axisLabels renders both axis titles in the SVG", () => {
+			const { container } = render(
+				<ReportBarChart
+					data={data}
+					total={12}
+					entityType="tasks"
+					groupBy="status"
+					axisLabels={{ x: "Count of records", y: "Status" }}
+				/>
+			);
+
+			expect(container.textContent).toContain("Count of records");
+			expect(container.textContent).toContain("Status");
+		});
+
+		it("no axisLabels prop renders no axis titles", () => {
+			const { container } = render(
+				<ReportBarChart data={data} total={12} entityType="tasks" groupBy="status" />
+			);
+
+			expect(container.textContent).not.toContain("Count of records");
+		});
+
+		it("targetLine renders a reference line, even above the data max", () => {
+			const { container } = render(
+				<ReportBarChart
+					data={data}
+					total={12}
+					entityType="tasks"
+					groupBy="status"
+					targetLine={50}
+				/>
+			);
+
+			expect(container.querySelectorAll(".recharts-reference-line")).toHaveLength(1);
+		});
+
+		it("no targetLine prop renders no reference line", () => {
+			const { container } = render(
+				<ReportBarChart data={data} total={12} entityType="tasks" groupBy="status" />
+			);
+
+			expect(container.querySelectorAll(".recharts-reference-line")).toHaveLength(0);
+		});
+	});
 });

@@ -29,9 +29,10 @@ export type DateRangePreset = (typeof DATE_RANGE_PRESETS)[number];
 
 export const dateRangePresetValidator = literals(...DATE_RANGE_PRESETS);
 
+// showZeros was dropped at R9 (d14): config.includeEmptyValues is the one
+// "show zero buckets" switch; nothing ever wrote the viz option.
 export const visualizationOptionsValidator = v.object({
 	axisLabels: v.optional(v.boolean()),
-	showZeros: v.optional(v.boolean()),
 	stacked: v.optional(v.boolean()),
 	sort: v.optional(literals("value_desc", "value_asc", "label_asc")),
 	targetLine: v.optional(v.number()),

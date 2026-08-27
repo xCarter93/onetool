@@ -102,7 +102,7 @@ describe("reports config v2 round-trip", () => {
 
 	const visualization: ReportVisualization = {
 		type: "column",
-		options: { showZeros: true, seriesLimit: 12 },
+		options: { axisLabels: true, seriesLimit: 12 },
 	};
 
 	it("creates, reads back, and duplicates a v2 report unchanged", async () => {

@@ -7,6 +7,7 @@ import {
 	XAxis,
 	YAxis,
 	CartesianGrid,
+	ReferenceLine,
 } from "recharts";
 import {
 	ChartConfig,
@@ -30,7 +31,11 @@ interface ReportLineChartProps {
 	total: number;
 	groupBy?: string;
 	entityType: string;
+	axisLabels?: { x?: string; y?: string };
+	targetLine?: number;
 }
+
+const AXIS_LABEL_STYLE = { fill: "var(--muted-foreground)", fontSize: 11 };
 
 // This chart's single series used to hardcode the same rgb() value as
 // CHART_COLORS.primary[0]; now sourced from the categorical palette so every
@@ -45,6 +50,8 @@ export function ReportLineChart({
 	total,
 	groupBy,
 	entityType,
+	axisLabels,
+	targetLine,
 }: ReportLineChartProps) {
 	const patternPrefix = React.useId();
 	const AREA_STRIPE_ID = stripeId(patternPrefix, 0);
@@ -99,7 +106,12 @@ export function ReportLineChart({
 			<ChartContainer config={chartConfig} className="min-h-[300px] w-full">
 				<AreaChart
 					data={data}
-					margin={{ top: 20, right: 30, left: 20, bottom: 20 }}
+					margin={{
+						top: 20,
+						right: 30,
+						left: axisLabels?.y ? 32 : 20,
+						bottom: axisLabels?.x ? 36 : 20,
+					}}
 				>
 					<ChartStripeDefs idPrefix={patternPrefix} colors={[PRIMARY_BLUE]} />
 					<CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" />
@@ -109,6 +121,7 @@ export function ReportLineChart({
 						tickLine={false}
 						tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
 						tickMargin={10}
+						label={axisLabels?.x ? { ...AXIS_LABEL_STYLE, value: axisLabels.x, position: "insideBottom", offset: -18 } : undefined}
 					/>
 					<YAxis
 						axisLine={false}
@@ -116,6 +129,7 @@ export function ReportLineChart({
 						tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
 						tickFormatter={(value) => formatValue(value)}
 						tickMargin={10}
+						label={axisLabels?.y ? { ...AXIS_LABEL_STYLE, value: axisLabels.y, angle: -90, position: "insideLeft" } : undefined}
 					/>
 					<ChartTooltip
 						cursor={{ strokeDasharray: "3 3", stroke: PRIMARY_BLUE }}
@@ -143,6 +157,16 @@ export function ReportLineChart({
 							strokeWidth: 2,
 						}}
 					/>
+					{targetLine !== undefined && (
+						// extendDomain keeps a goal above the data max visible instead of clipped.
+						<ReferenceLine
+							y={targetLine}
+							ifOverflow="extendDomain"
+							stroke="var(--muted-foreground)"
+							strokeDasharray="4 4"
+							strokeOpacity={0.6}
+						/>
+					)}
 				</AreaChart>
 			</ChartContainer>
 		</div>

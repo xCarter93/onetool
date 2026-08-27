@@ -8,6 +8,7 @@ import {
 	YAxis,
 	CartesianGrid,
 	Cell,
+	ReferenceLine,
 } from "recharts";
 import {
 	ChartConfig,
@@ -27,6 +28,13 @@ interface DataPoint {
 	[key: string]: unknown;
 }
 
+const AXIS_LABEL_STYLE = { fill: "var(--muted-foreground)", fontSize: 11 };
+
+interface SegmentMeta {
+	key: string;
+	label: string;
+}
+
 interface ReportColumnChartProps {
 	data: DataPoint[];
 	total: number;
@@ -36,6 +44,10 @@ interface ReportColumnChartProps {
 	totalIsCurrency?: boolean;
 	/** Is each item's `value` a dollar amount (vs. a count)? */
 	itemValueIsCurrency?: boolean;
+	/** Stacked mode: one bar per segment, read from wide rows keyed by segment key. */
+	segments?: SegmentMeta[];
+	axisLabels?: { x?: string; y?: string };
+	targetLine?: number;
 }
 
 /** Vertical bars — category names on the X axis, numeric value on the Y
@@ -45,21 +57,40 @@ export function ReportColumnChart({
 	total,
 	totalIsCurrency = false,
 	itemValueIsCurrency = false,
+	segments,
+	axisLabels,
+	targetLine,
 }: ReportColumnChartProps) {
 	const patternPrefix = React.useId();
+	const stacked = segments !== undefined && segments.length > 0;
 
-	const chartConfig: ChartConfig = data.reduce((acc, item, index) => {
-		acc[item.name] = {
-			label: item.name,
-			color: getChartColor(index, CHART_CATEGORICAL),
+	const chartConfig: ChartConfig = stacked
+		? segments.reduce((acc, segment, index) => {
+				acc[segment.key] = {
+					label: segment.label,
+					color: getChartColor(index, CHART_CATEGORICAL),
+				};
+				return acc;
+			}, {} as ChartConfig)
+		: data.reduce((acc, item, index) => {
+				acc[item.name] = {
+					label: item.name,
+					color: getChartColor(index, CHART_CATEGORICAL),
+				};
+				return acc;
+			}, {} as ChartConfig);
+
+	if (!stacked) {
+		chartConfig.value = {
+			label: itemValueIsCurrency ? "Amount" : "Count",
+			color: getChartColor(0, CHART_CATEGORICAL),
 		};
-		return acc;
-	}, {} as ChartConfig);
+	}
 
-	chartConfig.value = {
-		label: itemValueIsCurrency ? "Amount" : "Count",
-		color: getChartColor(0, CHART_CATEGORICAL),
-	};
+	const seriesColors = Array.from(
+		{ length: stacked ? segments.length : data.length },
+		(_, index) => getChartColor(index, CHART_CATEGORICAL)
+	);
 
 	const formatValue = (value: number) =>
 		formatReportValue(value, itemValueIsCurrency, { compact: true });
@@ -80,8 +111,16 @@ export function ReportColumnChart({
 
 			{/* Chart */}
 			<ChartContainer config={chartConfig} className="min-h-[300px] w-full">
-				<BarChart data={data} margin={{ top: 20, right: 20, left: 10, bottom: 5 }}>
-					<ChartStripeDefs idPrefix={patternPrefix} colors={data.map((_, index) => getChartColor(index, CHART_CATEGORICAL))} />
+				<BarChart
+					data={data}
+					margin={{
+						top: 20,
+						right: 20,
+						left: axisLabels?.y ? 24 : 10,
+						bottom: axisLabels?.x ? 28 : 5,
+					}}
+				>
+					<ChartStripeDefs idPrefix={patternPrefix} colors={seriesColors} />
 					<CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" />
 					<XAxis
 						dataKey="name"
@@ -89,30 +128,69 @@ export function ReportColumnChart({
 						tickLine={false}
 						tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
 						tickMargin={10}
+						label={axisLabels?.x ? { ...AXIS_LABEL_STYLE, value: axisLabels.x, position: "insideBottom", offset: -14 } : undefined}
 					/>
 					<YAxis
 						axisLine={false}
 						tickLine={false}
 						tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
 						tickFormatter={(value) => formatValue(value)}
+						label={axisLabels?.y ? { ...AXIS_LABEL_STYLE, value: axisLabels.y, angle: -90, position: "insideLeft" } : undefined}
 					/>
 					<ChartTooltip
 						cursor={{ fill: "var(--muted)", opacity: 0.2 }}
 						content={<ChartTooltipContent />}
 					/>
-					<Bar dataKey="value" radius={[4, 4, 0, 0]} maxBarSize={48}>
-						{data.map((entry, index) => {
+					{stacked ? (
+						segments.map((segment, index) => {
 							const color = getChartColor(index, CHART_CATEGORICAL);
 							return (
-								<Cell
-									key={`cell-${index}`}
-									fill={`url(#${stripeId(patternPrefix, index)})`}
-									stroke={color}
-									strokeWidth={1}
-								/>
+								// Solid series fill so the tooltip chip gets a real color; the Cells
+								// paint the stripe pattern. Radius is dropped — it would round
+								// joints mid-stack.
+								<Bar
+									key={segment.key}
+									dataKey={segment.key}
+									stackId="segments"
+									maxBarSize={48}
+									fill={color}
+								>
+									{data.map((entry, bucketIndex) => (
+										<Cell
+											key={`cell-${segment.key}-${bucketIndex}`}
+											fill={`url(#${stripeId(patternPrefix, index)})`}
+											stroke={color}
+											strokeWidth={1}
+										/>
+									))}
+								</Bar>
 							);
-						})}
-					</Bar>
+						})
+					) : (
+						<Bar dataKey="value" radius={[4, 4, 0, 0]} maxBarSize={48}>
+							{data.map((entry, index) => {
+								const color = getChartColor(index, CHART_CATEGORICAL);
+								return (
+									<Cell
+										key={`cell-${index}`}
+										fill={`url(#${stripeId(patternPrefix, index)})`}
+										stroke={color}
+										strokeWidth={1}
+									/>
+								);
+							})}
+						</Bar>
+					)}
+					{targetLine !== undefined && (
+						// extendDomain keeps a goal above the data max visible instead of clipped.
+						<ReferenceLine
+							y={targetLine}
+							ifOverflow="extendDomain"
+							stroke="var(--muted-foreground)"
+							strokeDasharray="4 4"
+							strokeOpacity={0.6}
+						/>
+					)}
 				</BarChart>
 			</ChartContainer>
 		</div>
