@@ -262,7 +262,7 @@ describe("toExecuteReportArgs", () => {
 		expect(args.detail).toEqual({
 			columns: ["invoiceNumber", "status", "total", "issuedDate"],
 		});
-		expect(args.aggregation).toBeUndefined();
+		expect(args.config.metric).toEqual({ op: "count" });
 	});
 
 	it("prefers explicit columns in detail mode", () => {
@@ -277,50 +277,39 @@ describe("toExecuteReportArgs", () => {
 		expect(args.detail).toEqual({
 			columns: ["invoiceNumber", "status", "total", "issuedDate"],
 		});
-		expect(args.aggregation).toBeUndefined();
 	});
 
-	it("omits aggregation for grouped count so legacy dispatch applies", () => {
+	it("expands the 'month' magic key to the paid-revenue v2 config", () => {
 		const args = toExecuteReportArgs(
 			gen({ groupBy: "month", measure: { op: "count", field: null } })
 		);
-		expect(args.groupBy).toBe("month");
-		expect(args.aggregation).toBeUndefined();
+		expect(args.config.groupBy).toBe("paidAt_month");
+		expect(args.config.metric).toEqual({ op: "sum", field: "total" });
 	});
 
-	it("passes non-count measures through as aggregation", () => {
+	it("carries non-count measures into the config metric", () => {
 		const args = toExecuteReportArgs(
 			gen({ groupBy: "status", measure: { op: "sum", field: "total" } })
 		);
-		expect(args.aggregation).toEqual({ op: "sum", field: "total" });
+		expect(args.config.metric).toEqual({ op: "sum", field: "total" });
 	});
 
-	it("sends an explicit count aggregation for a grouped count on a NON-legacy (generic-only) groupBy", () => {
-		// invoices.issuedDate_month is one of the newly-added, generic-only
-		// options — a grouped count must NOT fall through to legacy dispatch
-		// (which would silently mis-group it under the entity default).
+	it("registry groupBy keys become grouped count configs", () => {
 		const args = toExecuteReportArgs(
 			gen({ groupBy: "issuedDate_month", measure: { op: "count", field: null } })
 		);
-		expect(args.groupBy).toBe("issuedDate_month");
-		expect(args.aggregation).toEqual({ op: "count" });
-	});
+		expect(args.config.groupBy).toBe("issuedDate_month");
+		expect(args.config.metric).toEqual({ op: "count" });
 
-	it("still omits aggregation for a grouped count on legacy-only groupBys (status, leadSource, etc.)", () => {
-		expect(
-			toExecuteReportArgs(
-				gen({ groupBy: "status", measure: { op: "count", field: null } })
-			).aggregation
-		).toBeUndefined();
-		expect(
-			toExecuteReportArgs(
-				gen({
-					entityType: "clients",
-					groupBy: "leadSource",
-					measure: { op: "count", field: null },
-				})
-			).aggregation
-		).toBeUndefined();
+		const clients = toExecuteReportArgs(
+			gen({
+				entityType: "clients",
+				groupBy: "leadSource",
+				measure: { op: "count", field: null },
+			})
+		);
+		expect(clients.config.groupBy).toBe("leadSource");
+		expect(clients.config.metric).toEqual({ op: "count" });
 	});
 });
 

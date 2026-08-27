@@ -405,7 +405,7 @@ export function toSavedReport(gen: GeneratedReport): {
 /** executeReport args for the dry run — delegates to the shared contract
  * module (lib/reportQueryArgs.ts) so the web's resolveReportQueryArgs and
  * this path can never drift. Count/fieldless measures collapse to undefined
- * here; the contract routes legacy-vs-generic dispatch. */
+ * here; the contract expands everything (magic keys included) to a v2 config. */
 export function toExecuteReportArgs(gen: GeneratedReport): ExecuteReportArgs {
 	const measure =
 		gen.measure && gen.measure.op !== "count" && gen.measure.field

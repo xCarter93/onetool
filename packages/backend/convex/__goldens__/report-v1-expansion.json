@@ -315,5 +315,21 @@
 				"options": { "showZeros": true, "seriesLimit": 12 }
 			}
 		}
+	},
+	"tasks-status-zero-fill-carveout": {
+		"input": {
+			"config": { "entityType": "tasks", "groupBy": ["status"] },
+			"visualization": { "type": "pie" }
+		},
+		"output": {
+			"config": {
+				"version": 2,
+				"entityType": "tasks",
+				"metric": { "op": "count" },
+				"groupBy": "status",
+				"includeEmptyValues": true
+			},
+			"visualization": { "type": "pie" }
+		}
 	}
 }

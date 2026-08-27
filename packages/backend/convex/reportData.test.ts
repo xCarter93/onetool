@@ -14,18 +14,17 @@ import { evaluateReportFilters, type ReportFilters } from "./lib/reportFilters";
 import {
 	GROUP_BY_OPTIONS,
 	isGenericGroupBy,
-	usesLegacyDispatch,
 	type ReportEntityType,
 } from "./lib/reportFields";
+import { normalizeReportConfig, type ReportConfigV2 } from "./lib/reportConfig";
 import type { Id } from "./_generated/dataModel";
 
 /**
  * Pins the observable semantics of reportData.executeReport (the only live
- * export of reportData.ts) across all entity x groupBy combos, then locks in
- * two fixed TZ behaviors that the legacy implementation got wrong:
- *   - exact-ms date bounds (no server-local day re-clamping)
- *   - week bucketing computed in the org's IANA timezone
- * Also covers the new additive `filters` / `aggregation` args.
+ * export of reportData.ts) on the unified pipeline: v2 `config` requests
+ * (including v1 magic keys via normalizeReportConfig), the still-supported
+ * standalone aggregation/detail args (deleted at R14), exact-ms date bounds,
+ * and org-timezone week bucketing.
  */
 
 describe("reportData.executeReport", () => {
@@ -50,11 +49,23 @@ describe("reportData.executeReport", () => {
 		return { org, asOrg };
 	}
 
+	const countConfig = (
+		entityType: ReportConfigV2["entityType"],
+		groupBy: string,
+		extra: Partial<ReportConfigV2> = {}
+	): ReportConfigV2 => ({
+		version: 2,
+		entityType,
+		metric: { op: "count" },
+		groupBy,
+		...extra,
+	});
+
 	// ==========================================================================
 	// Clients
 	// ==========================================================================
 
-	it("clients default groupBy counts by status with prettified labels", async () => {
+	it("clients by status: canonical order, zeros dropped, Lead label (d2)", async () => {
 		const { org, asOrg } = await seedOrg();
 		await t.run(async (ctx) => {
 			await createTestClient(ctx, org.orgId, { status: "lead" });
@@ -65,16 +76,19 @@ describe("reportData.executeReport", () => {
 
 		const result = await asOrg.query(api.reportData.executeReport, {
 			entityType: "clients",
-			dateRange: undefined,
+			config: countConfig("clients", "status"),
 		});
 
 		expect(result.total).toBe(4);
-		const byLabel = Object.fromEntries(result.data.map((d) => [d.label, d.value]));
-		expect(byLabel).toEqual({ Prospective: 1, Active: 2, Archived: 1 });
+		expect(result.data).toEqual([
+			{ label: "Lead", value: 1 },
+			{ label: "Active", value: 2 },
+			{ label: "Archived", value: 1 },
+		]);
 		expect(result.metadata?.groupBy).toBe("status");
 	});
 
-	it("clients leadSource groups by lead source, capitalized, sorted desc", async () => {
+	it("clients leadSource groups in canonical options order with capitalized labels", async () => {
 		const { org, asOrg } = await seedOrg();
 		await t.run(async (ctx) => {
 			await createTestClient(ctx, org.orgId, { leadSource: "website" });
@@ -84,7 +98,7 @@ describe("reportData.executeReport", () => {
 
 		const result = await asOrg.query(api.reportData.executeReport, {
 			entityType: "clients",
-			groupBy: "leadSource",
+			config: countConfig("clients", "leadSource"),
 		});
 
 		expect(result.data[0]).toEqual({ label: "Website", value: 2 });
@@ -99,7 +113,7 @@ describe("reportData.executeReport", () => {
 
 		const result = await asOrg.query(api.reportData.executeReport, {
 			entityType: "clients",
-			groupBy: "creationDate_month",
+			config: countConfig("clients", "creationDate_month"),
 		});
 
 		expect(result.data).toHaveLength(1);
@@ -110,7 +124,7 @@ describe("reportData.executeReport", () => {
 	// Projects
 	// ==========================================================================
 
-	it("projects default groupBy counts by status (zero-filled to all statuses)", async () => {
+	it("projects by status counts with zeros dropped by default", async () => {
 		const { org, asOrg } = await seedOrg();
 		const clientId = await t.run((ctx) => createTestClient(ctx, org.orgId));
 		await t.run(async (ctx) => {
@@ -120,6 +134,7 @@ describe("reportData.executeReport", () => {
 
 		const result = await asOrg.query(api.reportData.executeReport, {
 			entityType: "projects",
+			config: countConfig("projects", "status"),
 		});
 
 		const byLabel = Object.fromEntries(result.data.map((d) => [d.label, d.value]));
@@ -136,7 +151,7 @@ describe("reportData.executeReport", () => {
 
 		const result = await asOrg.query(api.reportData.executeReport, {
 			entityType: "projects",
-			groupBy: "projectType",
+			config: countConfig("projects", "projectType"),
 		});
 
 		const byLabel = Object.fromEntries(result.data.map((d) => [d.label, d.value]));
@@ -147,7 +162,7 @@ describe("reportData.executeReport", () => {
 	// Tasks — date field is `date`, not _creationTime
 	// ==========================================================================
 
-	it("tasks default groupBy counts all statuses without zero-filtering", async () => {
+	it("tasks by status with includeEmptyValues keeps zero buckets in canonical order", async () => {
 		const { org, asOrg } = await seedOrg();
 		await t.run(async (ctx) => {
 			await createTestTask(ctx, org.orgId, { status: "pending" });
@@ -155,6 +170,7 @@ describe("reportData.executeReport", () => {
 
 		const result = await asOrg.query(api.reportData.executeReport, {
 			entityType: "tasks",
+			config: countConfig("tasks", "status", { includeEmptyValues: true }),
 		});
 
 		const byLabel = Object.fromEntries(result.data.map((d) => [d.label, d.value]));
@@ -178,7 +194,11 @@ describe("reportData.executeReport", () => {
 
 		const result = await asOrg.query(api.reportData.executeReport, {
 			entityType: "tasks",
-			groupBy: "completionRate",
+			config: {
+				version: 2,
+				entityType: "tasks",
+				metric: { op: "ratio", ratioKey: "completionRate" },
+			},
 		});
 
 		expect(result.total).toBe(50); // 2/4 = 50%
@@ -199,7 +219,15 @@ describe("reportData.executeReport", () => {
 
 		const result = await asOrg.query(api.reportData.executeReport, {
 			entityType: "tasks",
-			dateRange: { start: Date.UTC(2024, 5, 1), end: Date.UTC(2024, 5, 30) },
+			config: countConfig("tasks", "status", {
+				date: {
+					range: {
+						kind: "absolute",
+						start: Date.UTC(2024, 5, 1),
+						end: Date.UTC(2024, 5, 30),
+					},
+				},
+			}),
 		});
 
 		expect(result.total).toBe(1);
@@ -209,7 +237,7 @@ describe("reportData.executeReport", () => {
 	// Quotes
 	// ==========================================================================
 
-	it("quotes default groupBy: counts per status with dollar totalValue metadata; total = dollars", async () => {
+	it("quotes by status: counts per status with dollar totalValue metadata; total = dollars", async () => {
 		const { org, asOrg } = await seedOrg();
 		const clientId = await t.run((ctx) => createTestClient(ctx, org.orgId));
 		await t.run(async (ctx) => {
@@ -220,6 +248,7 @@ describe("reportData.executeReport", () => {
 
 		const result = await asOrg.query(api.reportData.executeReport, {
 			entityType: "quotes",
+			config: countConfig("quotes", "status"),
 		});
 
 		expect(result.total).toBe(1750.5); // dollars, never /100
@@ -239,7 +268,11 @@ describe("reportData.executeReport", () => {
 
 		const result = await asOrg.query(api.reportData.executeReport, {
 			entityType: "quotes",
-			groupBy: "conversionRate",
+			config: {
+				version: 2,
+				entityType: "quotes",
+				metric: { op: "ratio", ratioKey: "conversionRate" },
+			},
 		});
 
 		expect(result.total).toBe(50); // 1/2
@@ -249,7 +282,7 @@ describe("reportData.executeReport", () => {
 	// Invoices — default date field is issuedDate; month/client specials use paidAt
 	// ==========================================================================
 
-	it("invoices default groupBy filters by issuedDate and reports dollar totals", async () => {
+	it("invoices by status filters by issuedDate and reports dollar totals", async () => {
 		const { org, asOrg } = await seedOrg();
 		const clientId = await t.run((ctx) => createTestClient(ctx, org.orgId));
 		const inRange = Date.UTC(2024, 5, 10);
@@ -270,7 +303,15 @@ describe("reportData.executeReport", () => {
 
 		const result = await asOrg.query(api.reportData.executeReport, {
 			entityType: "invoices",
-			dateRange: { start: Date.UTC(2024, 5, 1), end: Date.UTC(2024, 5, 30) },
+			config: countConfig("invoices", "status", {
+				date: {
+					range: {
+						kind: "absolute",
+						start: Date.UTC(2024, 5, 1),
+						end: Date.UTC(2024, 5, 30),
+					},
+				},
+			}),
 		});
 
 		expect(result.total).toBe(1200);
@@ -278,7 +319,7 @@ describe("reportData.executeReport", () => {
 		expect(paid?.metadata).toEqual({ totalValue: 1200 });
 	});
 
-	it("invoices month groupBy sums paid revenue by paidAt month (paid status only)", async () => {
+	it("expanded revenue-by-month config sums paid revenue by paidAt month (paid status only)", async () => {
 		const { org, asOrg } = await seedOrg();
 		const clientId = await t.run((ctx) => createTestClient(ctx, org.orgId));
 		await t.run(async (ctx) => {
@@ -298,16 +339,22 @@ describe("reportData.executeReport", () => {
 			}); // not paid — excluded
 		});
 
+		const { config } = normalizeReportConfig(
+			{ entityType: "invoices", groupBy: ["month"] },
+			{ type: "line" }
+		);
 		const result = await asOrg.query(api.reportData.executeReport, {
 			entityType: "invoices",
-			groupBy: "month",
+			config,
 		});
 
 		expect(result.total).toBe(800);
-		expect(result.data).toEqual([{ label: "2024-01", value: 800 }]);
+		expect(result.data).toEqual([
+			{ label: "Jan 2024", value: 800, metadata: { dateKey: "2024-01" } },
+		]);
 	});
 
-	it("invoices client groupBy revenue by client, top 10, paid only", async () => {
+	it("expanded revenue-by-client config resolves labels, series-limited, paid only", async () => {
 		const { org, asOrg } = await seedOrg();
 		const clientId = await t.run((ctx) =>
 			createTestClient(ctx, org.orgId, { companyName: "Acme Co" })
@@ -320,9 +367,14 @@ describe("reportData.executeReport", () => {
 			});
 		});
 
+		const { config, visualization } = normalizeReportConfig(
+			{ entityType: "invoices", groupBy: ["client"] },
+			{ type: "bar" }
+		);
 		const result = await asOrg.query(api.reportData.executeReport, {
 			entityType: "invoices",
-			groupBy: "client",
+			config,
+			seriesLimit: visualization.options?.seriesLimit,
 		});
 
 		expect(result.data).toEqual([
@@ -354,7 +406,7 @@ describe("reportData.executeReport", () => {
 		});
 	}
 
-	it("activities default groupBy counts by activityType", async () => {
+	it("activities by activityType counts with underscore-separated labels", async () => {
 		const { org, asOrg } = await seedOrg();
 		await insertActivity(org.orgId, org.userId, { activityType: "client_created" });
 		await insertActivity(org.orgId, org.userId, { activityType: "client_created" });
@@ -362,6 +414,7 @@ describe("reportData.executeReport", () => {
 
 		const result = await asOrg.query(api.reportData.executeReport, {
 			entityType: "activities",
+			config: countConfig("activities", "activityType"),
 		});
 
 		const byLabel = Object.fromEntries(result.data.map((d) => [d.label, d.value]));
@@ -369,22 +422,18 @@ describe("reportData.executeReport", () => {
 	});
 
 	// ==========================================================================
-	// Unknown groupBy fallback (pinned: silently falls back to default grouping)
+	// Bare legacy args died with the dispatch at R4c
 	// ==========================================================================
 
-	it("unknown groupBy literal silently falls back to the entity's default grouping", async () => {
-		const { org, asOrg } = await seedOrg();
-		await t.run(async (ctx) => {
-			await createTestClient(ctx, org.orgId, { status: "active" });
-		});
+	it("a request with no config, aggregation, or detail throws", async () => {
+		const { asOrg } = await seedOrg();
 
-		const result = await asOrg.query(api.reportData.executeReport, {
-			entityType: "clients",
-			groupBy: "totallyBogusGroupBy",
-		});
-
-		expect(result.metadata?.groupBy).toBe("status");
-		expect(result.total).toBe(1);
+		await expect(
+			asOrg.query(api.reportData.executeReport, {
+				entityType: "clients",
+				groupBy: "totallyBogusGroupBy",
+			})
+		).rejects.toThrow(/requires a config/);
 	});
 
 	// ==========================================================================
@@ -403,7 +452,11 @@ describe("reportData.executeReport", () => {
 
 		const result = await asOrg.query(api.reportData.executeReport, {
 			entityType: "tasks",
-			dateRange: { start: Date.UTC(2024, 5, 1), end },
+			config: countConfig("tasks", "status", {
+				date: {
+					range: { kind: "absolute", start: Date.UTC(2024, 5, 1), end },
+				},
+			}),
 		});
 
 		expect(result.total).toBe(1);
@@ -426,7 +479,7 @@ describe("reportData.executeReport", () => {
 
 		const result = await asOrg.query(api.reportData.executeReport, {
 			entityType: "activities",
-			groupBy: "timestamp_week",
+			config: countConfig("activities", "timestamp_week"),
 		});
 
 		expect(result.data).toHaveLength(1);
@@ -447,15 +500,17 @@ describe("reportData.executeReport", () => {
 
 		const result = await asOrg.query(api.reportData.executeReport, {
 			entityType: "clients",
-			filters: {
-				logic: "and",
-				groups: [
-					{
-						logic: "and",
-						rules: [{ field: "status", operator: "equals", value: "active" }],
-					},
-				],
-			},
+			config: countConfig("clients", "status", {
+				filters: {
+					logic: "and",
+					groups: [
+						{
+							logic: "and",
+							rules: [{ field: "status", operator: "equals", value: "active" }],
+						},
+					],
+				},
+			}),
 		});
 
 		expect(result.total).toBe(1);
@@ -467,15 +522,17 @@ describe("reportData.executeReport", () => {
 		await expect(
 			asOrg.query(api.reportData.executeReport, {
 				entityType: "clients",
-				filters: {
-					logic: "and",
-					groups: [
-						{
-							logic: "and",
-							rules: [{ field: "notARealField", operator: "equals", value: "x" }],
-						},
-					],
-				},
+				config: countConfig("clients", "status", {
+					filters: {
+						logic: "and",
+						groups: [
+							{
+								logic: "and",
+								rules: [{ field: "notARealField", operator: "equals", value: "x" }],
+							},
+						],
+					},
+				}),
 			})
 		).rejects.toThrow();
 	});
@@ -856,30 +913,21 @@ describe("reportData.executeReport", () => {
 	});
 });
 
-describe("GROUP_BY_OPTIONS / usesLegacyDispatch / isGenericGroupBy invariants", () => {
-	const NEW_GENERIC_ONLY_VALUES: { entity: ReportEntityType; value: string }[] = [
-		{ entity: "projects", value: "completedAt_month" },
-		{ entity: "invoices", value: "issuedDate_month" },
-		{ entity: "invoices", value: "dueDate_month" },
-		{ entity: "tasks", value: "assigneeUserId" },
-		{ entity: "activities", value: "entityType" },
-	];
-
-	it("every GROUP_BY_OPTIONS value is handled by either legacy dispatch or the generic pipeline", () => {
+describe("GROUP_BY_OPTIONS invariants", () => {
+	it("every GROUP_BY_OPTIONS value expands to an executable v2 config", () => {
 		for (const entity of Object.keys(GROUP_BY_OPTIONS) as ReportEntityType[]) {
 			for (const { value } of GROUP_BY_OPTIONS[entity]) {
-				expect(
-					usesLegacyDispatch(entity, value) || isGenericGroupBy(entity, value),
-					`${entity}.${value} must be legacy-dispatch or generic-safe`
-				).toBe(true);
+				const { config } = normalizeReportConfig(
+					{ entityType: entity, groupBy: [value] },
+					{ type: "bar" }
+				);
+				const groupable =
+					config.metric.op === "ratio" ||
+					(config.groupBy !== undefined && isGenericGroupBy(entity, config.groupBy));
+				expect(groupable, `${entity}.${value} must expand to something executable`).toBe(
+					true
+				);
 			}
-		}
-	});
-
-	it("the five newly-added groupBy values are generic-safe and NOT legacy-dispatch", () => {
-		for (const { entity, value } of NEW_GENERIC_ONLY_VALUES) {
-			expect(isGenericGroupBy(entity, value)).toBe(true);
-			expect(usesLegacyDispatch(entity, value)).toBe(false);
 		}
 	});
 });

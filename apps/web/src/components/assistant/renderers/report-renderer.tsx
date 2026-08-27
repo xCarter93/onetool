@@ -8,7 +8,7 @@ import { ReportPieChart } from "@/app/(workspace)/reports/components/report-pie-
 import { ReportRadarChart } from "@/app/(workspace)/reports/components/report-radar-chart";
 import { ReportRadialChart } from "@/app/(workspace)/reports/components/report-radial-chart";
 import { ReportTable } from "@/app/(workspace)/reports/components/report-table";
-import { getReportValueTypes, TRUNCATION_NOTICE } from "@/app/(workspace)/reports/report-config";
+import { TRUNCATION_NOTICE } from "@/app/(workspace)/reports/report-config";
 import type { ToolRendererProps } from "./index";
 
 // Mirrors ReportDataResult (+ visualization) from convex/assistantTools.ts.
@@ -53,15 +53,9 @@ export function ReportRenderer({ input, output }: ToolRendererProps) {
 		value: point.value,
 	}));
 
-	const fallbackValueTypes = getReportValueTypes(entityType, groupBy);
-	const totalIsCurrency =
-		typeof report.metadata?.totalIsCurrency === "boolean"
-			? report.metadata.totalIsCurrency
-			: fallbackValueTypes.totalIsCurrency;
-	const itemValueIsCurrency =
-		typeof report.metadata?.itemValueIsCurrency === "boolean"
-			? report.metadata.itemValueIsCurrency
-			: fallbackValueTypes.itemValueIsCurrency;
+	// Flags are emitted only when true (unified pipeline) — absent means counts.
+	const totalIsCurrency = report.metadata?.totalIsCurrency === true;
+	const itemValueIsCurrency = report.metadata?.itemValueIsCurrency === true;
 
 	const chartProps = {
 		data: chartData,

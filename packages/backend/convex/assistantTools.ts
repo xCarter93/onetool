@@ -23,7 +23,12 @@ import {
 	type TableSummary,
 } from "./lib/schemaIntrospection";
 import type { ReportDataResult } from "./reportData";
-import { legacyConfigView } from "./lib/reportConfig";
+import { legacyConfigView, normalizeReportConfig } from "./lib/reportConfig";
+import {
+	REPORT_ENTITY_TYPES,
+	GROUP_BY_OPTIONS,
+	DEFAULT_GROUP_BY,
+} from "./lib/reportFields";
 import {
 	generateAndSaveReport,
 	generateConfigForBuilder,
@@ -828,13 +833,13 @@ export const getBusinessStats = createTool({
 export const runReport = createTool({
 	description: [
 		"Run an aggregation report and get labeled data points (good for counts, totals, and trends).",
-		"Valid groupBy values per entityType:",
-		"- clients: 'leadSource', 'creationDate_day|week|month', default = by status",
-		"- projects: 'projectType', 'creationDate_day|week|month', default = by status",
-		"- tasks: 'completionRate', 'date_day|week|month', default = by status",
-		"- quotes: 'conversionRate', default = by status",
-		"- invoices: 'month' (revenue by month), 'client' (revenue by client, top 10), default = by status",
-		"- activities: 'timestamp_day|week|month', default = by type",
+		"Valid groupBy values per entityType (omit groupBy for the default):",
+		...REPORT_ENTITY_TYPES.map(
+			(entity) =>
+				`- ${entity}: ${GROUP_BY_OPTIONS[entity]
+					.map((o) => `'${o.value}' (${o.label})`)
+					.join(", ")}; default = '${DEFAULT_GROUP_BY[entity]}'`
+		),
 		"Do not invent other groupBy values.",
 	].join("\n"),
 	inputSchema: z.object({
@@ -860,16 +865,30 @@ export const runReport = createTool({
 		ctx,
 		input
 	): Promise<ReportDataResult & { visualization: ReportVisualization }> => {
+		// Bare calls keep their historical entity-default grouping (§8 d11);
+		// the expander turns magic keys (month, conversionRate, …) into v2.
+		const groupBy = input.groupBy ?? DEFAULT_GROUP_BY[input.entityType];
+		const dateRange =
+			input.startDate || input.endDate
+				? {
+						start: input.startDate ? dayStartMs(input.startDate) : undefined,
+						end: input.endDate ? dayEndMs(input.endDate) : undefined,
+					}
+				: undefined;
+		const { config, visualization } = normalizeReportConfig(
+			{
+				entityType: input.entityType,
+				groupBy: [groupBy],
+				...(dateRange ? { dateRange } : {}),
+			},
+			{ type: input.visualization ?? "bar" }
+		);
 		const result = await ctx.runQuery(api.reportData.executeReport, {
 			entityType: input.entityType,
-			groupBy: input.groupBy,
-			dateRange:
-				input.startDate || input.endDate
-					? {
-							start: input.startDate ? dayStartMs(input.startDate) : undefined,
-							end: input.endDate ? dayEndMs(input.endDate) : undefined,
-						}
-					: undefined,
+			config,
+			...(visualization.options?.seriesLimit !== undefined
+				? { seriesLimit: visualization.options.seriesLimit }
+				: {}),
 		});
 		return { ...result, visualization: input.visualization ?? "bar" };
 	},

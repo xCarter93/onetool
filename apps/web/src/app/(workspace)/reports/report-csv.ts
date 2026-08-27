@@ -2,7 +2,7 @@ import type { FunctionReturnType } from "convex/server";
 import type { api } from "@onetool/backend/convex/_generated/api";
 import type { CsvCell } from "@/lib/csv-export";
 import { formatCurrency } from "@/lib/money";
-import { formatDate, formatReportValue, getReportValueTypes } from "./report-config";
+import { formatDate, formatReportValue } from "./report-config";
 
 type ReportResult = FunctionReturnType<typeof api.reportData.executeReport>;
 
@@ -40,11 +40,7 @@ export function reportResultToCsv(
 		};
 	}
 
-	const fallback = getReportValueTypes(opts.entityType, opts.groupBy);
-	const itemValueIsCurrency =
-		typeof result.metadata?.itemValueIsCurrency === "boolean"
-			? result.metadata.itemValueIsCurrency
-			: fallback.itemValueIsCurrency;
+	const itemValueIsCurrency = result.metadata?.itemValueIsCurrency === true;
 	const hasTotalValue = result.data.some(
 		(item) => typeof item.metadata?.totalValue === "number"
 	);

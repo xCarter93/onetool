@@ -14,7 +14,6 @@ import { ReportRadarChart } from "./report-radar-chart";
 import { ReportRadialChart } from "./report-radial-chart";
 import { ReportTable } from "./report-table";
 import {
-	getReportValueTypes,
 	resolveReportQueryArgs,
 	TRUNCATION_NOTICE,
 	type ReportConfigShape,
@@ -94,15 +93,10 @@ export function ReportPreview({ config, visualization }: ReportPreviewProps) {
 
 	const total = reportData.total;
 	const groupBy = config.groupBy?.[0];
-	const fallbackValueTypes = getReportValueTypes(config.entityType, groupBy);
-	const totalIsCurrency =
-		typeof reportData.metadata?.totalIsCurrency === "boolean"
-			? reportData.metadata.totalIsCurrency
-			: fallbackValueTypes.totalIsCurrency;
-	const itemValueIsCurrency =
-		typeof reportData.metadata?.itemValueIsCurrency === "boolean"
-			? reportData.metadata.itemValueIsCurrency
-			: fallbackValueTypes.itemValueIsCurrency;
+	// The unified pipeline emits currency flags only when true — absent means
+	// "not currency"; never infer from entityType/groupBy heuristics.
+	const totalIsCurrency = reportData.metadata?.totalIsCurrency === true;
+	const itemValueIsCurrency = reportData.metadata?.itemValueIsCurrency === true;
 
 	// The grouped table is always rendered — it's the base layer (Slice
 	// 3-D3). A chart (when vizType is a chart type — guaranteed to have a

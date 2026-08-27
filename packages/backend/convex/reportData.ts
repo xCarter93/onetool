@@ -12,12 +12,19 @@ import {
 import {
 	getReportField,
 	getReportDateField,
-	isGenericGroupBy,
-	usesLegacyDispatch,
+	getGroupableFk,
+	resolveGroupByField,
 	reportEntityTypeValidator,
+	REPORT_FIELDS,
+	RATIO_METRICS,
+	type RatioKey,
 	type ReportEntityType,
 	type ReportFieldType,
+	type ReportFieldDef,
+	type ReportGroupableFk,
 } from "./lib/reportFields";
+import { reportConfigV2Validator, type ReportConfigV2 } from "./lib/reportConfig";
+import { resolveDateRangePreset } from "./lib/reportDates";
 import {
 	reportFiltersValidator,
 	evaluateReportFilters,
@@ -30,11 +37,14 @@ import { denyPermission, getEffectivePermissions } from "./lib/permissions";
  * Report Data Queries
  * Provides aggregated data for report visualizations and analytics.
  *
- * executeReport is the only public export — it dispatches to a bounded,
- * org-scoped index scan (never `.collect()`s a whole org table) and groups
- * in memory. Legacy groupBy string literals (status, leadSource, month, ...)
- * keep their exact historical output shapes; `filters` and `aggregation` are
- * additive new capabilities layered on top via a generic pipeline.
+ * executeReport is the only public export — it runs a bounded, org-scoped
+ * index scan (never `.collect()`s a whole org table) and groups in memory
+ * through one unified pipeline. Requests arrive as v2 configs (the `config`
+ * arg, built by lib/reportQueryArgs from any caller state including v1 magic
+ * keys via the expander); the standalone aggregation/detail args survive only
+ * for tests until R14 deletes them. The 14-function legacy dispatch was
+ * retired at R4c — its outputs are pinned by __goldens__/report-legacy-dispatch.json,
+ * which reportDualRun.test.ts holds this pipeline to.
  */
 
 // ============================================================================
@@ -45,6 +55,8 @@ export interface AggregatedDataPoint {
 	label: string;
 	value: number;
 	metadata?: Record<string, unknown>;
+	/** Per-segment values, present only when the request set segmentBy. */
+	segments?: Record<string, number>;
 }
 
 export interface ReportDataResult {
@@ -57,6 +69,9 @@ export interface ReportDataResult {
 		truncated?: boolean;
 		totalIsCurrency?: boolean;
 		itemValueIsCurrency?: boolean;
+		segmentBy?: string;
+		/** Ordered segment keys (top-N by value plus "other"), present only when segmented. */
+		segments?: { key: string; label: string }[];
 	};
 	detail?: {
 		columns: { field: string; label: string; type: ReportFieldType }[];
@@ -213,32 +228,6 @@ function formatDateLabel(dateKey: string, granularity: Granularity): string {
 	}
 }
 
-function groupByDate(
-	rows: Row[],
-	getTimestamp: (row: Row) => number,
-	granularity: Granularity,
-	timezone: string | undefined,
-	aggregation?: Aggregation
-): AggregatedDataPoint[] {
-	const buckets: Record<string, Row[]> = {};
-	for (const row of rows) {
-		const key = getDateKey(getTimestamp(row), granularity, timezone);
-		(buckets[key] ??= []).push(row);
-	}
-
-	return Object.entries(buckets)
-		.map(([dateKey, bucketRows]) => ({
-			label: formatDateLabel(dateKey, granularity),
-			value: computeAggregateValue(bucketRows, aggregation),
-			metadata: { dateKey },
-		}))
-		.sort((a, b) => {
-			const aKey = a.metadata?.dateKey as string;
-			const bKey = b.metadata?.dateKey as string;
-			return aKey.localeCompare(bKey);
-		});
-}
-
 // ============================================================================
 // Label / Value Formatting Utilities
 // ============================================================================
@@ -256,28 +245,6 @@ function num(value: unknown): number {
 
 function str(value: unknown): string {
 	return typeof value === "string" ? value : "";
-}
-
-function countsToDataPoints(
-	counts: Record<string, number>,
-	labelMap?: Record<string, string>,
-	filterZero = true
-): AggregatedDataPoint[] {
-	const entries = Object.entries(counts);
-	const filtered = filterZero ? entries.filter(([, count]) => count > 0) : entries;
-	return filtered.map(([key, count]) => ({
-		label: labelMap?.[key] ?? capitalizeWords(key, "-"),
-		value: count,
-	}));
-}
-
-function countByField(rows: Row[], field: string): Record<string, number> {
-	const counts: Record<string, number> = {};
-	for (const row of rows) {
-		const value = String(row[field] ?? "unknown");
-		counts[value] = (counts[value] ?? 0) + 1;
-	}
-	return counts;
 }
 
 // ============================================================================
@@ -341,14 +308,6 @@ function validateAggregation(entityType: ReportEntityType, aggregation?: Aggrega
 	}
 }
 
-function validateGroupByField(entityType: ReportEntityType, field: string): void {
-	if (!getReportField(entityType, field)) {
-		throw new ConvexError(
-			`Unknown report groupBy field "${field}" for entity "${entityType}"`
-		);
-	}
-}
-
 function validateDetailColumns(entityType: ReportEntityType, columns: string[]): void {
 	if (columns.length === 0) {
 		throw new ConvexError(
@@ -399,100 +358,322 @@ async function scanFiltered(
 }
 
 // ============================================================================
-// Generic aggregation pipeline (new capability — used only when args.aggregation is set)
+// Unified aggregation pipeline — serves both the legacy generic args path and
+// v2 configs. Ordering/label/zero-fill semantics per PRD-reports-redesign §8
+// d11: canonical options order, currency flags only when true, rows without a
+// usable time-group timestamp excluded entirely.
 // ============================================================================
 
 const timeGroupingRegex = /^([a-zA-Z_]+)_(day|week|month)$/;
 
-async function runGenericAggregation(
+interface AggregationPlan {
+	entityType: ReportEntityType;
+	dateField: string;
+	bounds: DateBoundsResult;
+	filters?: ReportFilters;
+	aggregation: Aggregation;
+	groupBy?: string;
+	segmentBy?: string;
+	includeEmptyValues?: boolean;
+	seriesLimit?: number;
+	timezone?: string;
+	/** Overrides metadata.groupBy (ratio metrics report their ratioKey). */
+	metadataGroupBy?: string;
+}
+
+interface Bucket {
+	key: string;
+	label: string;
+	rows: Row[];
+	value: number;
+	metadata?: Record<string, unknown>;
+	segments?: Record<string, number>;
+}
+
+// §4.2: cap 8 segments plus an Other bucket.
+const SEGMENT_CAP = 8;
+
+function bucketKeyOf(raw: unknown): string {
+	return raw === undefined || raw === null || raw === "" ? "unknown" : String(raw);
+}
+
+function bucketLabel(def: ReportFieldDef | undefined, key: string): string {
+	return def?.optionLabels?.[key] ?? capitalizeWords(key, /[-_]/);
+}
+
+function groupRows(rows: Row[], sourceField: string): Record<string, Row[]> {
+	const grouped: Record<string, Row[]> = {};
+	for (const row of rows) {
+		(grouped[bucketKeyOf(row[sourceField])] ??= []).push(row);
+	}
+	return grouped;
+}
+
+function buildTimeBuckets(
+	rows: Row[],
+	sourceField: string,
+	granularity: Granularity,
+	timezone: string | undefined,
+	aggregation: Aggregation
+): Bucket[] {
+	const grouped: Record<string, Row[]> = {};
+	for (const row of rows) {
+		const key = getDateKey(row[sourceField] as number, granularity, timezone);
+		(grouped[key] ??= []).push(row);
+	}
+	return Object.entries(grouped)
+		.map(([key, bucketRows]) => ({
+			key,
+			label: formatDateLabel(key, granularity),
+			rows: bucketRows,
+			value: computeAggregateValue(bucketRows, aggregation),
+			metadata: { dateKey: key },
+		}))
+		.sort((a, b) => a.key.localeCompare(b.key));
+}
+
+function buildFieldBuckets(
+	rows: Row[],
+	sourceField: string,
+	def: ReportFieldDef,
+	aggregation: Aggregation,
+	includeEmptyValues: boolean
+): Bucket[] {
+	const grouped = groupRows(rows, sourceField);
+	const toBucket = (key: string, bucketRows: Row[]): Bucket => ({
+		key,
+		label: bucketLabel(def, key),
+		rows: bucketRows,
+		value: computeAggregateValue(bucketRows, aggregation),
+	});
+
+	if (def.options) {
+		// Canonical options order; values outside the vocabulary (and the
+		// null/empty "unknown" bucket) append after, largest first.
+		const canonical = def.options
+			.map((option) => toBucket(option, grouped[option] ?? []))
+			.filter((b) => includeEmptyValues || b.rows.length > 0);
+		const extras = Object.entries(grouped)
+			.filter(([key]) => !def.options!.includes(key))
+			.map(([key, bucketRows]) => toBucket(key, bucketRows))
+			.sort((a, b) => b.value - a.value);
+		return [...canonical, ...extras];
+	}
+
+	return Object.entries(grouped)
+		.map(([key, bucketRows]) => toBucket(key, bucketRows))
+		.sort((a, b) => b.value - a.value);
+}
+
+async function resolveFkLabel(
+	ctx: QueryCtx,
+	fk: ReportGroupableFk,
+	key: string
+): Promise<string> {
+	if (key === "unknown") return fk.refType === "users" ? "Unassigned" : "None";
+	switch (fk.refType) {
+		case "users": {
+			const user = await ctx.db.get(key as Id<"users">);
+			return user?.name ?? key;
+		}
+		case "clients": {
+			const client = await ctx.db.get(key as Id<"clients">);
+			return client?.companyName || "Unknown Client";
+		}
+		case "projects": {
+			const project = await ctx.db.get(key as Id<"projects">);
+			return project?.title || "Unknown Project";
+		}
+	}
+}
+
+function applySegments(
+	buckets: Bucket[],
+	rows: Row[],
+	sourceField: string,
+	def: ReportFieldDef,
+	aggregation: Aggregation
+): { key: string; label: string }[] {
+	// Rank segment keys over the whole scan so every bucket shares one key set.
+	const globalGroups = groupRows(rows, sourceField);
+	const ranked = Object.entries(globalGroups)
+		.map(([key, segRows]) => ({ key, value: computeAggregateValue(segRows, aggregation) }))
+		.sort((a, b) => b.value - a.value);
+	const topKeys = new Set(ranked.slice(0, SEGMENT_CAP).map((s) => s.key));
+	const hasOther = ranked.length > SEGMENT_CAP;
+
+	for (const bucket of buckets) {
+		if (bucket.rows.length === 0) continue;
+		const perSegment: Record<string, Row[]> = {};
+		for (const row of bucket.rows) {
+			const raw = bucketKeyOf(row[sourceField]);
+			const key = topKeys.has(raw) ? raw : "other";
+			(perSegment[key] ??= []).push(row);
+		}
+		bucket.segments = Object.fromEntries(
+			Object.entries(perSegment).map(([key, segRows]) => [
+				key,
+				computeAggregateValue(segRows, aggregation),
+			])
+		);
+	}
+
+	return [
+		...ranked
+			.slice(0, SEGMENT_CAP)
+			.map(({ key }) => ({ key, label: bucketLabel(def, key) })),
+		...(hasOther ? [{ key: "other", label: "Other" }] : []),
+	];
+}
+
+async function runAggregationPlan(
 	ctx: QueryCtx,
 	orgId: Id<"organizations">,
-	entityType: ReportEntityType,
-	groupBy: string | undefined,
-	bounds: DateBoundsResult,
-	filters: ReportFilters | undefined,
-	aggregation: Aggregation,
-	timezone: string | undefined
+	plan: AggregationPlan
 ): Promise<ReportDataResult> {
-	const dateField = getReportDateField(entityType);
-	const { rows, truncated } = await scanFiltered(
+	const { entityType, aggregation } = plan;
+	const scanned = await scanFiltered(
 		ctx,
 		entityType,
 		orgId,
-		dateField,
-		bounds,
-		filters
+		plan.dateField,
+		plan.bounds,
+		plan.filters
 	);
+	const truncated = scanned.truncated;
+	let rows = scanned.rows;
 
-	let data: AggregatedDataPoint[];
+	let buckets: Bucket[] | undefined;
+	let fk: ReportGroupableFk | undefined;
+	let fieldGrouping: ReportFieldDef | undefined;
 
-	const timeMatch = groupBy?.match(timeGroupingRegex);
-	if (timeMatch) {
-		const field = timeMatch[1];
-		const granularity = timeMatch[2] as Granularity;
-		const fieldDef = getReportField(entityType, field);
-		if (!fieldDef) {
-			throw new ConvexError(
-				`Unknown report groupBy time field "${field}" for entity "${entityType}"`
+	if (plan.groupBy) {
+		const timeMatch = plan.groupBy.match(timeGroupingRegex);
+		fk = getGroupableFk(entityType, plan.groupBy);
+		if (timeMatch) {
+			const resolved = resolveGroupByField(entityType, timeMatch[1]);
+			if (!resolved) {
+				throw new ConvexError(
+					`Unknown report groupBy time field "${timeMatch[1]}" for entity "${entityType}"`
+				);
+			}
+			if (resolved.def.type !== "timestamp") {
+				throw new ConvexError(
+					`Report groupBy time field "${timeMatch[1]}" is not a timestamp for entity "${entityType}"`
+				);
+			}
+			// Rows without a usable timestamp can't be bucketed — excluded from
+			// data AND totals (matches legacy scanPaidInvoices semantics).
+			rows = rows.filter((r) => typeof r[resolved.sourceField] === "number");
+			buckets = buildTimeBuckets(
+				rows,
+				resolved.sourceField,
+				timeMatch[2] as Granularity,
+				plan.timezone,
+				aggregation
 			);
-		}
-		if (fieldDef.type !== "timestamp") {
-			throw new ConvexError(
-				`Report groupBy time field "${field}" is not a timestamp for entity "${entityType}"`
-			);
-		}
-		data = groupByDate(rows, (r) => num(r[field]), granularity, timezone, aggregation);
-	} else if (groupBy) {
-		validateGroupByField(entityType, groupBy);
-		if (getReportField(entityType, groupBy)?.type === "timestamp") {
-			throw new ConvexError(
-				`Report groupBy field "${groupBy}" is a timestamp — use "${groupBy}_day", "${groupBy}_week", or "${groupBy}_month"`
-			);
-		}
-		const buckets: Record<string, Row[]> = {};
-		for (const row of rows) {
-			const raw = row[groupBy];
-			const key =
-				raw === undefined || raw === null || raw === "" ? "unknown" : String(raw);
-			(buckets[key] ??= []).push(row);
-		}
-
-		// Assignee buckets are user ids, not display strings — resolve to
-		// names (mirrors queryRevenueByClient's companyName resolution).
-		const isAssigneeGroupBy = entityType === "tasks" && groupBy === "assigneeUserId";
-		const resolveLabel = async (key: string): Promise<string> => {
-			if (!isAssigneeGroupBy) return capitalizeWords(key, "-");
-			if (key === "unknown") return "Unassigned";
-			const user = await ctx.db.get(key as Id<"users">);
-			return user?.name ?? key;
-		};
-
-		data = (
-			await Promise.all(
-				Object.entries(buckets).map(async ([key, bucketRows]) => ({
-					label: await resolveLabel(key),
+		} else if (fk) {
+			buckets = Object.entries(groupRows(rows, plan.groupBy))
+				.map(([key, bucketRows]) => ({
+					key,
+					label: key,
+					rows: bucketRows,
 					value: computeAggregateValue(bucketRows, aggregation),
+					metadata: { [plan.groupBy!]: key },
 				}))
-			)
-		).sort((a, b) => b.value - a.value);
-	} else {
-		data = [{ label: "Total", value: computeAggregateValue(rows, aggregation) }];
+				.sort((a, b) => b.value - a.value);
+		} else {
+			const resolved = resolveGroupByField(entityType, plan.groupBy);
+			if (!resolved) {
+				throw new ConvexError(
+					`Unknown report groupBy field "${plan.groupBy}" for entity "${entityType}"`
+				);
+			}
+			if (resolved.def.type === "timestamp") {
+				throw new ConvexError(
+					`Report groupBy field "${plan.groupBy}" is a timestamp — use "${plan.groupBy}_day", "${plan.groupBy}_week", or "${plan.groupBy}_month"`
+				);
+			}
+			fieldGrouping = resolved.def;
+			buckets = buildFieldBuckets(
+				rows,
+				resolved.sourceField,
+				resolved.def,
+				aggregation,
+				plan.includeEmptyValues ?? false
+			);
+		}
 	}
 
-	const total = computeAggregateValue(rows, aggregation);
-	const fieldDef = aggregation.field ? getReportField(entityType, aggregation.field) : undefined;
-	const isCurrency = aggregation.op !== "count" && fieldDef?.type === "currency";
+	let segmentMeta: { key: string; label: string }[] | undefined;
+	if (plan.segmentBy && buckets) {
+		const seg = resolveGroupByField(entityType, plan.segmentBy);
+		if (!seg || seg.def.type === "timestamp" || getGroupableFk(entityType, plan.segmentBy)) {
+			throw new ConvexError(
+				`Unknown report segmentBy field "${plan.segmentBy}" for entity "${entityType}"`
+			);
+		}
+		segmentMeta = applySegments(buckets, rows, seg.sourceField, seg.def, aggregation);
+	}
+
+	if (buckets && plan.seriesLimit !== undefined && Number.isFinite(plan.seriesLimit)) {
+		buckets = buckets.slice(0, Math.max(1, Math.floor(plan.seriesLimit)));
+	}
+
+	if (buckets && fk) {
+		const fkRef = fk;
+		await Promise.all(
+			buckets.map(async (bucket) => {
+				bucket.label = await resolveFkLabel(ctx, fkRef, bucket.key);
+			})
+		);
+	}
+
+	// Grouped count reports on entities with a summary value field keep the
+	// legacy per-bucket dollar column and currency grand total (§8 d11).
+	const summaryField =
+		aggregation.op === "count" && fieldGrouping
+			? REPORT_FIELDS[entityType].summaryValueField
+			: undefined;
+	if (summaryField && buckets) {
+		for (const bucket of buckets) {
+			bucket.metadata = {
+				...bucket.metadata,
+				totalValue: bucket.rows.reduce((sum, r) => sum + num(r[summaryField]), 0),
+			};
+		}
+	}
+
+	const data: AggregatedDataPoint[] = buckets
+		? buckets.map((b) => ({
+				label: b.label,
+				value: b.value,
+				...(b.metadata ? { metadata: b.metadata } : {}),
+				...(b.segments ? { segments: b.segments } : {}),
+			}))
+		: [{ label: "Total", value: computeAggregateValue(rows, aggregation) }];
+
+	const aggFieldDef = aggregation.field
+		? getReportField(entityType, aggregation.field)
+		: undefined;
+	const isCurrencyAgg = aggregation.op !== "count" && aggFieldDef?.type === "currency";
+	const total = summaryField
+		? rows.reduce((sum, r) => sum + num(r[summaryField]), 0)
+		: computeAggregateValue(rows, aggregation);
 
 	return {
 		data,
 		total,
 		metadata: {
 			entityType,
-			dateRange: metadataDateRange(bounds),
-			groupBy,
+			dateRange: metadataDateRange(plan.bounds),
+			groupBy: plan.metadataGroupBy ?? plan.groupBy,
 			truncated,
-			totalIsCurrency: isCurrency,
-			itemValueIsCurrency: isCurrency,
+			...(summaryField || isCurrencyAgg ? { totalIsCurrency: true } : {}),
+			...(isCurrencyAgg ? { itemValueIsCurrency: true } : {}),
+			...(plan.segmentBy && segmentMeta
+				? { segmentBy: plan.segmentBy, segments: segmentMeta }
+				: {}),
 		},
 	};
 }
@@ -516,11 +697,12 @@ async function runDetailReport(
 	entityType: ReportEntityType,
 	bounds: DateBoundsResult,
 	filters: ReportFilters | undefined,
-	detail: DetailArgs
+	detail: DetailArgs,
+	dateFieldOverride?: string
 ): Promise<ReportDataResult> {
 	validateDetailColumns(entityType, detail.columns);
 
-	const dateField = getReportDateField(entityType);
+	const dateField = dateFieldOverride ?? getReportDateField(entityType);
 	const { rows, truncated } = await scanFiltered(ctx, entityType, orgId, dateField, bounds, filters);
 
 	// Sort is exact over the scanned window; if the scan hit its ceiling
@@ -570,572 +752,6 @@ async function runDetailReport(
 			rowsTruncated: totalMatched > cap,
 		},
 	};
-}
-
-// ============================================================================
-// Legacy per-entity implementations (exact historical output shapes)
-// ============================================================================
-
-async function scanEntity(
-	ctx: QueryCtx,
-	entityType: ReportEntityType,
-	orgId: Id<"organizations">,
-	bounds: DateBoundsResult,
-	filters: ReportFilters | undefined
-): Promise<{ rows: Row[]; truncated: boolean }> {
-	return scanFiltered(ctx, entityType, orgId, getReportDateField(entityType), bounds, filters);
-}
-
-async function queryClientsByStatus(
-	ctx: QueryCtx,
-	orgId: Id<"organizations">,
-	bounds: DateBoundsResult,
-	filters: ReportFilters | undefined
-): Promise<ReportDataResult> {
-	const { rows, truncated } = await scanEntity(ctx, "clients", orgId, bounds, filters);
-	const counts = countByField(rows, "status");
-	const normalized = { lead: 0, active: 0, inactive: 0, archived: 0, ...counts };
-	const labels: Record<string, string> = {
-		lead: "Prospective",
-		active: "Active",
-		inactive: "Inactive",
-		archived: "Archived",
-	};
-	return {
-		data: countsToDataPoints(normalized, labels, true),
-		total: rows.length,
-		metadata: {
-			entityType: "clients",
-			dateRange: metadataDateRange(bounds),
-			groupBy: "status",
-			truncated,
-		},
-	};
-}
-
-async function queryClientsByLeadSource(
-	ctx: QueryCtx,
-	orgId: Id<"organizations">,
-	bounds: DateBoundsResult,
-	filters: ReportFilters | undefined
-): Promise<ReportDataResult> {
-	const { rows, truncated } = await scanEntity(ctx, "clients", orgId, bounds, filters);
-	const sourceCounts: Record<string, number> = {};
-	for (const row of rows) {
-		const source = str(row.leadSource) || "unknown";
-		sourceCounts[source] = (sourceCounts[source] ?? 0) + 1;
-	}
-	const data = Object.entries(sourceCounts)
-		.map(([source, count]) => ({ label: capitalizeWords(source, "-"), value: count }))
-		.sort((a, b) => b.value - a.value);
-	return {
-		data,
-		total: rows.length,
-		metadata: {
-			entityType: "clients",
-			dateRange: metadataDateRange(bounds),
-			groupBy: "leadSource",
-			truncated,
-		},
-	};
-}
-
-async function queryClientsByCreationDate(
-	ctx: QueryCtx,
-	orgId: Id<"organizations">,
-	bounds: DateBoundsResult,
-	filters: ReportFilters | undefined,
-	granularity: Granularity,
-	timezone: string | undefined
-): Promise<ReportDataResult> {
-	const { rows, truncated } = await scanEntity(ctx, "clients", orgId, bounds, filters);
-	const data = groupByDate(rows, (r) => r._creationTime as number, granularity, timezone);
-	return {
-		data,
-		total: rows.length,
-		metadata: {
-			entityType: "clients",
-			dateRange: metadataDateRange(bounds),
-			groupBy: `creationDate_${granularity}`,
-			truncated,
-		},
-	};
-}
-
-async function queryProjectsByStatus(
-	ctx: QueryCtx,
-	orgId: Id<"organizations">,
-	bounds: DateBoundsResult,
-	filters: ReportFilters | undefined
-): Promise<ReportDataResult> {
-	const { rows, truncated } = await scanEntity(ctx, "projects", orgId, bounds, filters);
-	const counts = countByField(rows, "status");
-	const normalized = { planned: 0, "in-progress": 0, completed: 0, cancelled: 0, ...counts };
-	return {
-		data: countsToDataPoints(normalized, undefined, true),
-		total: rows.length,
-		metadata: {
-			entityType: "projects",
-			dateRange: metadataDateRange(bounds),
-			groupBy: "status",
-			truncated,
-		},
-	};
-}
-
-async function queryProjectsByType(
-	ctx: QueryCtx,
-	orgId: Id<"organizations">,
-	bounds: DateBoundsResult,
-	filters: ReportFilters | undefined
-): Promise<ReportDataResult> {
-	const { rows, truncated } = await scanEntity(ctx, "projects", orgId, bounds, filters);
-	const counts = countByField(rows, "projectType");
-	const normalized = { "one-off": 0, recurring: 0, ...counts };
-	const labels: Record<string, string> = { "one-off": "One-off", recurring: "Recurring" };
-	return {
-		data: countsToDataPoints(normalized, labels, true),
-		total: rows.length,
-		metadata: {
-			entityType: "projects",
-			dateRange: metadataDateRange(bounds),
-			groupBy: "projectType",
-			truncated,
-		},
-	};
-}
-
-async function queryProjectsByCreationDate(
-	ctx: QueryCtx,
-	orgId: Id<"organizations">,
-	bounds: DateBoundsResult,
-	filters: ReportFilters | undefined,
-	granularity: Granularity,
-	timezone: string | undefined
-): Promise<ReportDataResult> {
-	const { rows, truncated } = await scanEntity(ctx, "projects", orgId, bounds, filters);
-	const data = groupByDate(rows, (r) => r._creationTime as number, granularity, timezone);
-	return {
-		data,
-		total: rows.length,
-		metadata: {
-			entityType: "projects",
-			dateRange: metadataDateRange(bounds),
-			groupBy: `creationDate_${granularity}`,
-			truncated,
-		},
-	};
-}
-
-async function queryTasksByStatus(
-	ctx: QueryCtx,
-	orgId: Id<"organizations">,
-	bounds: DateBoundsResult,
-	filters: ReportFilters | undefined
-): Promise<ReportDataResult> {
-	const { rows, truncated } = await scanEntity(ctx, "tasks", orgId, bounds, filters);
-	const counts = countByField(rows, "status");
-	const normalized = { pending: 0, "in-progress": 0, completed: 0, cancelled: 0, ...counts };
-	return {
-		data: countsToDataPoints(normalized, undefined, false),
-		total: rows.length,
-		metadata: {
-			entityType: "tasks",
-			dateRange: metadataDateRange(bounds),
-			groupBy: "status",
-			truncated,
-		},
-	};
-}
-
-async function queryTaskCompletionRate(
-	ctx: QueryCtx,
-	orgId: Id<"organizations">,
-	bounds: DateBoundsResult,
-	filters: ReportFilters | undefined
-): Promise<ReportDataResult> {
-	const { rows, truncated } = await scanEntity(ctx, "tasks", orgId, bounds, filters);
-	const totalTasks = rows.length;
-	const completedTasks = rows.filter((r) => r.status === "completed").length;
-	const pendingTasks = rows.filter(
-		(r) => r.status === "pending" || r.status === "in-progress"
-	).length;
-	const completionRate = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
-	return {
-		data: [
-			{ label: "Completed", value: completedTasks },
-			{ label: "Pending", value: pendingTasks },
-		],
-		total: completionRate,
-		metadata: {
-			entityType: "tasks",
-			dateRange: metadataDateRange(bounds),
-			groupBy: "completionRate",
-			truncated,
-		},
-	};
-}
-
-async function queryTasksByDate(
-	ctx: QueryCtx,
-	orgId: Id<"organizations">,
-	bounds: DateBoundsResult,
-	filters: ReportFilters | undefined,
-	granularity: Granularity,
-	timezone: string | undefined
-): Promise<ReportDataResult> {
-	const { rows, truncated } = await scanEntity(ctx, "tasks", orgId, bounds, filters);
-	const data = groupByDate(rows, (r) => num(r.date), granularity, timezone);
-	return {
-		data,
-		total: rows.length,
-		metadata: {
-			entityType: "tasks",
-			dateRange: metadataDateRange(bounds),
-			groupBy: `date_${granularity}`,
-			truncated,
-		},
-	};
-}
-
-const QUOTE_STATUSES = ["draft", "sent", "approved", "declined", "expired"] as const;
-
-async function queryQuotesByStatus(
-	ctx: QueryCtx,
-	orgId: Id<"organizations">,
-	bounds: DateBoundsResult,
-	filters: ReportFilters | undefined
-): Promise<ReportDataResult> {
-	const { rows, truncated } = await scanEntity(ctx, "quotes", orgId, bounds, filters);
-	const statusData: Record<string, { count: number; total: number }> = {};
-	for (const s of QUOTE_STATUSES) statusData[s] = { count: 0, total: 0 };
-
-	for (const row of rows) {
-		const status = str(row.status);
-		if (statusData[status]) {
-			statusData[status].count++;
-			statusData[status].total += num(row.total);
-		}
-	}
-
-	const data: AggregatedDataPoint[] = Object.entries(statusData)
-		.filter(([, info]) => info.count > 0)
-		.map(([status, info]) => ({
-			label: status.charAt(0).toUpperCase() + status.slice(1),
-			value: info.count,
-			metadata: { totalValue: info.total },
-		}));
-
-	const totalValue = rows.reduce((sum, r) => sum + num(r.total), 0);
-
-	return {
-		data,
-		total: totalValue,
-		metadata: {
-			entityType: "quotes",
-			dateRange: metadataDateRange(bounds),
-			groupBy: "status",
-			truncated,
-			totalIsCurrency: true,
-		},
-	};
-}
-
-async function queryQuoteConversionRate(
-	ctx: QueryCtx,
-	orgId: Id<"organizations">,
-	bounds: DateBoundsResult,
-	filters: ReportFilters | undefined
-): Promise<ReportDataResult> {
-	const { rows, truncated } = await scanEntity(ctx, "quotes", orgId, bounds, filters);
-	const sentOrResolved = rows.filter((r) =>
-		["sent", "approved", "declined", "expired"].includes(str(r.status))
-	);
-	const approved = rows.filter((r) => r.status === "approved");
-	const conversionRate =
-		sentOrResolved.length > 0
-			? Math.round((approved.length / sentOrResolved.length) * 100)
-			: 0;
-	return {
-		data: [
-			{ label: "Approved", value: approved.length },
-			{ label: "Not Approved", value: sentOrResolved.length - approved.length },
-		],
-		total: conversionRate,
-		metadata: {
-			entityType: "quotes",
-			dateRange: metadataDateRange(bounds),
-			groupBy: "conversionRate",
-			truncated,
-		},
-	};
-}
-
-const INVOICE_STATUSES = ["draft", "sent", "paid", "overdue", "cancelled"] as const;
-
-async function queryInvoicesByStatus(
-	ctx: QueryCtx,
-	orgId: Id<"organizations">,
-	bounds: DateBoundsResult,
-	filters: ReportFilters | undefined
-): Promise<ReportDataResult> {
-	const { rows, truncated } = await scanEntity(ctx, "invoices", orgId, bounds, filters);
-	const statusData: Record<string, { count: number; total: number }> = {};
-	for (const s of INVOICE_STATUSES) statusData[s] = { count: 0, total: 0 };
-
-	for (const row of rows) {
-		const status = str(row.status);
-		if (statusData[status]) {
-			statusData[status].count++;
-			statusData[status].total += num(row.total);
-		}
-	}
-
-	const data: AggregatedDataPoint[] = Object.entries(statusData)
-		.filter(([, info]) => info.count > 0)
-		.map(([status, info]) => ({
-			label: status.charAt(0).toUpperCase() + status.slice(1),
-			value: info.count,
-			metadata: { totalValue: info.total },
-		}));
-
-	const totalValue = rows.reduce((sum, r) => sum + num(r.total), 0);
-
-	return {
-		data,
-		total: totalValue,
-		metadata: {
-			entityType: "invoices",
-			dateRange: metadataDateRange(bounds),
-			groupBy: "status",
-			truncated,
-			totalIsCurrency: true,
-		},
-	};
-}
-
-/** Revenue reports (month/client) key off paidAt, not the entity's default dateField (issuedDate). */
-async function scanPaidInvoices(
-	ctx: QueryCtx,
-	orgId: Id<"organizations">,
-	bounds: DateBoundsResult,
-	filters: ReportFilters | undefined
-): Promise<{ rows: Row[]; truncated: boolean }> {
-	const predicate = (row: Row) => {
-		if (row.status !== "paid" || row.paidAt === undefined || row.paidAt === null) {
-			return false;
-		}
-		if (!inDateBounds(row.paidAt, bounds)) return false;
-		if (filters && !evaluateReportFilters(row, filters)) return false;
-		return true;
-	};
-	const { matches, truncated } = await scanOrgTable(ctx, "invoices", orgId, {
-		predicate,
-		maxScan: REPORT_SCAN_CEILING,
-	});
-	return { rows: matches, truncated };
-}
-
-async function queryRevenueByMonth(
-	ctx: QueryCtx,
-	orgId: Id<"organizations">,
-	bounds: DateBoundsResult,
-	filters: ReportFilters | undefined,
-	timezone: string | undefined
-): Promise<ReportDataResult> {
-	const { rows, truncated } = await scanPaidInvoices(ctx, orgId, bounds, filters);
-
-	const monthlyRevenue: Record<string, number> = {};
-	for (const row of rows) {
-		const dateStr = DateUtils.toLocalDateString(num(row.paidAt), timezone);
-		const monthKey = dateStr.substring(0, 7);
-		monthlyRevenue[monthKey] = (monthlyRevenue[monthKey] ?? 0) + num(row.total);
-	}
-
-	const data: AggregatedDataPoint[] = Object.entries(monthlyRevenue)
-		.map(([month, value]) => ({ label: month, value }))
-		.sort((a, b) => a.label.localeCompare(b.label));
-
-	const totalRevenue = rows.reduce((sum, r) => sum + num(r.total), 0);
-
-	return {
-		data,
-		total: totalRevenue,
-		metadata: {
-			entityType: "invoices",
-			dateRange: metadataDateRange(bounds),
-			groupBy: "month",
-			truncated,
-			totalIsCurrency: true,
-			itemValueIsCurrency: true,
-		},
-	};
-}
-
-async function queryRevenueByClient(
-	ctx: QueryCtx,
-	orgId: Id<"organizations">,
-	bounds: DateBoundsResult,
-	filters: ReportFilters | undefined
-): Promise<ReportDataResult> {
-	const { rows, truncated } = await scanPaidInvoices(ctx, orgId, bounds, filters);
-
-	const clientRevenue: Record<string, number> = {};
-	for (const row of rows) {
-		const clientId = String(row.clientId);
-		clientRevenue[clientId] = (clientRevenue[clientId] ?? 0) + num(row.total);
-	}
-
-	const top10 = Object.entries(clientRevenue)
-		.sort(([, a], [, b]) => b - a)
-		.slice(0, 10);
-
-	const clientDocs = await Promise.all(
-		top10.map(([id]) => ctx.db.get(id as Id<"clients">))
-	);
-
-	const data: AggregatedDataPoint[] = top10.map(([clientId, revenue], index) => ({
-		label: clientDocs[index]?.companyName || "Unknown Client",
-		value: revenue,
-		metadata: { clientId },
-	}));
-
-	const totalRevenue = rows.reduce((sum, r) => sum + num(r.total), 0);
-
-	return {
-		data,
-		total: totalRevenue,
-		metadata: {
-			entityType: "invoices",
-			dateRange: metadataDateRange(bounds),
-			groupBy: "client",
-			truncated,
-			totalIsCurrency: true,
-			itemValueIsCurrency: true,
-		},
-	};
-}
-
-async function queryActivitiesByType(
-	ctx: QueryCtx,
-	orgId: Id<"organizations">,
-	bounds: DateBoundsResult,
-	filters: ReportFilters | undefined
-): Promise<ReportDataResult> {
-	const { rows, truncated } = await scanEntity(ctx, "activities", orgId, bounds, filters);
-	const typeCounts = countByField(rows, "activityType");
-	const data = Object.entries(typeCounts)
-		.map(([type, count]) => ({ label: capitalizeWords(type, "_"), value: count }))
-		.sort((a, b) => b.value - a.value);
-	return {
-		data,
-		total: rows.length,
-		metadata: {
-			entityType: "activities",
-			dateRange: metadataDateRange(bounds),
-			groupBy: "activityType",
-			truncated,
-		},
-	};
-}
-
-async function queryActivitiesByDate(
-	ctx: QueryCtx,
-	orgId: Id<"organizations">,
-	bounds: DateBoundsResult,
-	filters: ReportFilters | undefined,
-	granularity: Granularity,
-	timezone: string | undefined
-): Promise<ReportDataResult> {
-	const { rows, truncated } = await scanEntity(ctx, "activities", orgId, bounds, filters);
-	const data = groupByDate(rows, (r) => num(r.timestamp), granularity, timezone);
-	return {
-		data,
-		total: rows.length,
-		metadata: {
-			entityType: "activities",
-			dateRange: metadataDateRange(bounds),
-			groupBy: `timestamp_${granularity}`,
-			truncated,
-		},
-	};
-}
-
-// ============================================================================
-// Generic Report Execution (legacy dispatch — preserves exact historical shapes)
-// ============================================================================
-
-async function runReportByConfig(
-	ctx: QueryCtx,
-	orgId: Id<"organizations">,
-	entityType: ReportEntityType,
-	groupBy: string | undefined,
-	dateRange: { start?: number; end?: number } | undefined,
-	filters: ReportFilters | undefined
-): Promise<ReportDataResult> {
-	const bounds = resolveDateBounds(dateRange);
-	const timeGroupingMatch = groupBy?.match(
-		/^(creationDate|date|timestamp)_(day|week|month)$/
-	);
-
-	if (timeGroupingMatch) {
-		const granularity = timeGroupingMatch[2] as Granularity;
-		const timezone = await getOrgTimezoneById(ctx, orgId);
-		switch (entityType) {
-			case "clients":
-				return await queryClientsByCreationDate(ctx, orgId, bounds, filters, granularity, timezone);
-			case "projects":
-				return await queryProjectsByCreationDate(ctx, orgId, bounds, filters, granularity, timezone);
-			case "tasks":
-				return await queryTasksByDate(ctx, orgId, bounds, filters, granularity, timezone);
-			case "activities":
-				return await queryActivitiesByDate(ctx, orgId, bounds, filters, granularity, timezone);
-			default:
-				return emptyReportResult();
-		}
-	}
-
-	switch (entityType) {
-		case "clients":
-			if (groupBy === "leadSource") {
-				return await queryClientsByLeadSource(ctx, orgId, bounds, filters);
-			}
-			return await queryClientsByStatus(ctx, orgId, bounds, filters);
-
-		case "projects":
-			if (groupBy === "projectType") {
-				return await queryProjectsByType(ctx, orgId, bounds, filters);
-			}
-			return await queryProjectsByStatus(ctx, orgId, bounds, filters);
-
-		case "tasks":
-			if (groupBy === "completionRate") {
-				return await queryTaskCompletionRate(ctx, orgId, bounds, filters);
-			}
-			return await queryTasksByStatus(ctx, orgId, bounds, filters);
-
-		case "quotes":
-			if (groupBy === "conversionRate") {
-				return await queryQuoteConversionRate(ctx, orgId, bounds, filters);
-			}
-			return await queryQuotesByStatus(ctx, orgId, bounds, filters);
-
-		case "invoices":
-			if (groupBy === "month") {
-				const timezone = await getOrgTimezoneById(ctx, orgId);
-				return await queryRevenueByMonth(ctx, orgId, bounds, filters, timezone);
-			}
-			if (groupBy === "client") {
-				return await queryRevenueByClient(ctx, orgId, bounds, filters);
-			}
-			return await queryInvoicesByStatus(ctx, orgId, bounds, filters);
-
-		case "activities":
-			return await queryActivitiesByType(ctx, orgId, bounds, filters);
-
-		default:
-			return emptyReportResult();
-	}
 }
 
 // ============================================================================
@@ -1201,6 +817,119 @@ async function requireReportEntityAccess(
 	await ctx.requireRecordScope(object, () => false);
 }
 
+/**
+ * Resolve a v2 config's date field + bounds. Preset ranges resolve server-side
+ * in the org timezone at execution (saved "this month" reports roll forward);
+ * `date.comparison` is stored but not executed until R11.
+ */
+function resolveConfigDates(
+	config: ReportConfigV2,
+	timezone: string | undefined
+): { dateField: string; bounds: DateBoundsResult } {
+	const entityType = config.entityType;
+	if (config.date?.field) {
+		const def = getReportField(entityType, config.date.field);
+		if (!def || def.type !== "timestamp") {
+			throw new ConvexError(
+				`Unknown report date field "${config.date.field}" for entity "${entityType}"`
+			);
+		}
+	}
+	const range = config.date?.range;
+	const bounds =
+		range === undefined
+			? resolveDateBounds(undefined)
+			: range.kind === "preset"
+				? resolveDateBounds(resolveDateRangePreset(range.preset, timezone))
+				: resolveDateBounds({ start: range.start, end: range.end });
+	return { dateField: config.date?.field ?? getReportDateField(entityType), bounds };
+}
+
+function planFromConfig(
+	config: ReportConfigV2,
+	seriesLimit: number | undefined,
+	timezone: string | undefined
+): AggregationPlan {
+	const metric = config.metric;
+	if (metric.op === "ratio" || metric.op === "related") {
+		throw new ConvexError(`Report metric op "${metric.op}" is not executable yet`);
+	}
+	const { dateField, bounds } = resolveConfigDates(config, timezone);
+	return {
+		entityType: config.entityType,
+		dateField,
+		bounds,
+		filters: config.filters as ReportFilters | undefined,
+		aggregation: { op: metric.op, ...(metric.field ? { field: metric.field } : {}) },
+		groupBy: config.groupBy,
+		segmentBy: config.segmentBy,
+		includeEmptyValues: config.includeEmptyValues,
+		seriesLimit,
+		timezone,
+	};
+}
+
+/**
+ * Registry-declared ratio metrics (§3.3, executable from R4b). Output shape is
+ * pinned byte-exact to the legacy dispatch: two fixed data rows, `total` IS the
+ * integer percentage, metadata.groupBy reports the ratioKey.
+ */
+async function runRatioMetric(
+	ctx: QueryCtx,
+	orgId: Id<"organizations">,
+	config: ReportConfigV2,
+	ratioKey: RatioKey,
+	timezone: string | undefined
+): Promise<ReportDataResult> {
+	const def = RATIO_METRICS[ratioKey];
+	const entityType = config.entityType;
+	if (def.entityType !== entityType) {
+		throw new ConvexError(
+			`Ratio metric "${ratioKey}" is not available for entity "${entityType}"`
+		);
+	}
+	if (config.groupBy || config.segmentBy) {
+		throw new ConvexError(`Ratio metric "${ratioKey}" does not support grouping`);
+	}
+
+	const { dateField, bounds } = resolveConfigDates(config, timezone);
+	const { rows, truncated } = await scanFiltered(
+		ctx,
+		entityType,
+		orgId,
+		dateField,
+		bounds,
+		config.filters as ReportFilters | undefined
+	);
+
+	const inSet = (values: string[]) => (r: Row) => values.includes(str(r[def.field]));
+	const denominator = def.denominatorValues ? rows.filter(inSet(def.denominatorValues)) : rows;
+	const numerator = rows.filter(inSet(def.numeratorValues));
+	const percentage =
+		denominator.length > 0
+			? Math.round((numerator.length / denominator.length) * 100)
+			: 0;
+	const secondRow = def.rows[1];
+	const secondValue =
+		"values" in secondRow
+			? rows.filter(inSet(secondRow.values)).length
+			: denominator.length - numerator.length;
+
+	return {
+		data: [
+			{ label: def.rows[0].label, value: numerator.length },
+			{ label: secondRow.label, value: secondValue },
+		],
+		total: percentage,
+		metadata: {
+			entityType,
+			dateRange: metadataDateRange(bounds),
+			groupBy: ratioKey,
+			truncated,
+		},
+	};
+}
+
 export const executeReport = optionalUserQuery({
 	args: {
 		entityType: reportEntityTypeValidator,
@@ -1209,6 +938,12 @@ export const executeReport = optionalUserQuery({
 		filters: v.optional(reportFiltersValidator),
 		aggregation: aggregationValidator,
 		detail: detailValidator,
+		// v2 request: the saved config, normalized (R2's normalizeReportConfig).
+		// When present, the legacy groupBy/dateRange/filters/aggregation args are
+		// ignored; `detail` still composes (detail mode is a caller decision).
+		// The legacy args are deleted at R14 (§8 d11).
+		config: v.optional(reportConfigV2Validator),
+		seriesLimit: v.optional(v.number()),
 	},
 	handler: async (ctx, args): Promise<ReportDataResult> => {
 		if (!ctx.orgId) return emptyReportResult();
@@ -1217,9 +952,43 @@ export const executeReport = optionalUserQuery({
 
 		const entityType = args.entityType;
 		await requireReportEntityAccess(ctx, entityType);
+		const detail = args.detail as DetailArgs | undefined;
+
+		if (args.config) {
+			const config = args.config as ReportConfigV2;
+			if (config.entityType !== entityType) {
+				throw new ConvexError(
+					`config.entityType "${config.entityType}" does not match entityType "${entityType}"`
+				);
+			}
+			const configFilters = config.filters as ReportFilters | undefined;
+			validateFilters(entityType, configFilters);
+			const timezone = await getOrgTimezoneById(ctx, orgId);
+			if (detail) {
+				const { dateField, bounds } = resolveConfigDates(config, timezone);
+				return await runDetailReport(
+					ctx,
+					orgId,
+					entityType,
+					bounds,
+					configFilters,
+					detail,
+					dateField
+				);
+			}
+			if (config.metric.op === "ratio") {
+				if (!config.metric.ratioKey) {
+					throw new ConvexError(`Ratio metric requires a ratioKey`);
+				}
+				return await runRatioMetric(ctx, orgId, config, config.metric.ratioKey, timezone);
+			}
+			const plan = planFromConfig(config, args.seriesLimit, timezone);
+			validateAggregation(entityType, plan.aggregation);
+			return await runAggregationPlan(ctx, orgId, plan);
+		}
+
 		const filters = args.filters as ReportFilters | undefined;
 		const aggregation = args.aggregation as Aggregation | undefined;
-		const detail = args.detail as DetailArgs | undefined;
 
 		validateFilters(entityType, filters);
 
@@ -1233,35 +1002,24 @@ export const executeReport = optionalUserQuery({
 		if (aggregation) {
 			const bounds = resolveDateBounds(args.dateRange);
 			const timezone = await getOrgTimezoneById(ctx, orgId);
-			return await runGenericAggregation(
-				ctx,
-				orgId,
+			return await runAggregationPlan(ctx, orgId, {
 				entityType,
-				args.groupBy,
+				dateField: getReportDateField(entityType),
 				bounds,
 				filters,
 				aggregation,
-				timezone
-			);
+				groupBy: args.groupBy,
+				seriesLimit: args.seriesLimit,
+				timezone,
+			});
 		}
 
-		// Without an aggregation, a generic-valid groupBy must not fall
-		// through to legacy dispatch — it would silently come back as the
-		// entity default, mislabeled with the requested groupBy. Real callers
-		// (web resolveReportQueryArgs, assistant toExecuteReportArgs) always
-		// send an explicit count for these. Unknown literals still fall back
-		// to the entity default (pinned legacy semantics).
-		if (
-			args.groupBy &&
-			isGenericGroupBy(entityType, args.groupBy) &&
-			!usesLegacyDispatch(entityType, args.groupBy)
-		) {
-			throw new ConvexError(
-				`groupBy "${args.groupBy}" requires an explicit aggregation (e.g. { op: "count" })`
-			);
-		}
-
-		return await runReportByConfig(ctx, orgId, entityType, args.groupBy, args.dateRange, filters);
+		// The bare-args grouped path died with the legacy dispatch at R4c —
+		// every real caller routes through resolveReportQueryArgs, which always
+		// sends a config or a detail request.
+		throw new ConvexError(
+			`executeReport requires a config, an aggregation, or a detail request`
+		);
 	},
 });
 

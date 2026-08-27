@@ -251,39 +251,9 @@ export function getDateRange(
 }
 
 /**
- * Decides whether a report's `total` and per-item `value`s are dollar
- * amounts, mirroring the semantics of packages/backend/convex/reportData.ts.
- * Charts must use this instead of inferring currency from value magnitude —
- * a magnitude heuristic mislabels a count (e.g. 12 invoices) as a dollar
- * figure when the real `total` prop is a much larger sum (e.g. $40,000).
- */
-export function getReportValueTypes(
-	entityType: string,
-	groupBy?: string
-): { totalIsCurrency: boolean; itemValueIsCurrency: boolean } {
-	// conversionRate / completionRate reports: total is a 0-100 rate, items are counts.
-	if (groupBy === "conversionRate" || groupBy === "completionRate") {
-		return { totalIsCurrency: false, itemValueIsCurrency: false };
-	}
-	if (entityType === "invoices") {
-		// "month"/"client" groupBy = revenue aggregates (item value already $).
-		// default/"status" groupBy = per-status counts (dollar total lives in
-		// each item's metadata.totalValue, not the item's `value` itself).
-		return {
-			totalIsCurrency: true,
-			itemValueIsCurrency: groupBy === "month" || groupBy === "client",
-		};
-	}
-	if (entityType === "quotes") {
-		return { totalIsCurrency: true, itemValueIsCurrency: false };
-	}
-	return { totalIsCurrency: false, itemValueIsCurrency: false };
-}
-
-/**
  * Formats a report metric as USD or a plain count. `isCurrency` must come
- * from getReportValueTypes (or be otherwise explicit) — never from the
- * value's own magnitude.
+ * from the result's explicit metadata flags (the unified pipeline emits them
+ * only when true; absent means counts) — never from the value's own magnitude.
  */
 export function formatReportValue(
 	value: number,

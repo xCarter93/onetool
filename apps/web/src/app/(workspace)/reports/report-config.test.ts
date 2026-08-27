@@ -2,69 +2,11 @@ import { describe, it, expect } from "vitest";
 import {
 	DEFAULT_DETAIL_COLUMNS,
 	dateRangeToBuilderState,
-	getReportValueTypes,
 	formatReportValue,
 	isDetailModeActive,
 	resolveReportQueryArgs,
 	type ReportConfigShape,
 } from "./report-config";
-
-describe("getReportValueTypes", () => {
-	it("invoices status-grouped (or ungrouped): total is $, item values are counts", () => {
-		expect(getReportValueTypes("invoices", "status")).toEqual({
-			totalIsCurrency: true,
-			itemValueIsCurrency: false,
-		});
-		expect(getReportValueTypes("invoices", undefined)).toEqual({
-			totalIsCurrency: true,
-			itemValueIsCurrency: false,
-		});
-	});
-
-	it("invoices revenue-by-month/client: total and item values are both $", () => {
-		expect(getReportValueTypes("invoices", "month")).toEqual({
-			totalIsCurrency: true,
-			itemValueIsCurrency: true,
-		});
-		expect(getReportValueTypes("invoices", "client")).toEqual({
-			totalIsCurrency: true,
-			itemValueIsCurrency: true,
-		});
-	});
-
-	it("quotes status-grouped: total is $, item values are counts", () => {
-		expect(getReportValueTypes("quotes", "status")).toEqual({
-			totalIsCurrency: true,
-			itemValueIsCurrency: false,
-		});
-	});
-
-	it("rate reports (conversionRate/completionRate): total is a rate, not $", () => {
-		expect(getReportValueTypes("quotes", "conversionRate")).toEqual({
-			totalIsCurrency: false,
-			itemValueIsCurrency: false,
-		});
-		expect(getReportValueTypes("tasks", "completionRate")).toEqual({
-			totalIsCurrency: false,
-			itemValueIsCurrency: false,
-		});
-	});
-
-	it("clients/projects/tasks/activities are always plain counts", () => {
-		expect(getReportValueTypes("clients", "status")).toEqual({
-			totalIsCurrency: false,
-			itemValueIsCurrency: false,
-		});
-		expect(getReportValueTypes("projects", "creationDate_month")).toEqual({
-			totalIsCurrency: false,
-			itemValueIsCurrency: false,
-		});
-		expect(getReportValueTypes("activities", "activityType")).toEqual({
-			totalIsCurrency: false,
-			itemValueIsCurrency: false,
-		});
-	});
-});
 
 describe("formatReportValue", () => {
 	it("formats counts as plain locale numbers, no currency symbol", () => {
@@ -80,18 +22,25 @@ describe("formatReportValue", () => {
 	});
 
 	it("regression: a $40,000 total must never render as the record count (12)", () => {
-		// This is the reported bug: 12 invoices worth $40k rendered "Total: $12"
-		// because the old code reduced over item counts and formatted that.
-		// The fix: format the real dollar `total`, gated by the explicit flag
-		// from getReportValueTypes — never inferred from magnitude.
+		// The reported bug: 12 invoices worth $40k rendered "Total: $12" because
+		// the old code reduced over item counts and formatted that. The fix:
+		// format the real dollar `total`, gated by the result's explicit
+		// metadata flag (emitted only when true) — never inferred from magnitude.
 		const total = 40000;
-		const { totalIsCurrency } = getReportValueTypes("invoices", "status");
+		const metadata = { totalIsCurrency: true };
 
-		const rendered = formatReportValue(total, totalIsCurrency);
+		const rendered = formatReportValue(total, metadata.totalIsCurrency === true);
 
 		expect(rendered).toBe("$40,000");
 		expect(rendered).not.toBe("$12");
 		expect(rendered).not.toBe("12");
+	});
+
+	it("an absent currency flag means counts — never fall back to entity heuristics", () => {
+		// A count grouped on issuedDate_month omits both flags; treating absence
+		// as "invoices are money" rendered a count of 12 as "$12".
+		const metadata: { totalIsCurrency?: boolean } = {};
+		expect(formatReportValue(12, metadata.totalIsCurrency === true)).toBe("12");
 	});
 });
 
@@ -108,7 +57,7 @@ describe("resolveReportQueryArgs — Group by: None", () => {
 	it("table + groupBy None + no columns checked → detail mode with the per-entity default columns", () => {
 		const args = resolveReportQueryArgs(baseConfig, "table");
 		expect(args.detail).toEqual({ columns: DEFAULT_DETAIL_COLUMNS.invoices });
-		expect(args.aggregation).toBeUndefined();
+		expect(args.config.metric).toEqual({ op: "count" });
 	});
 
 	it("table + groupBy None + explicit columns checked → detail mode with those columns", () => {
@@ -122,7 +71,7 @@ describe("resolveReportQueryArgs — Group by: None", () => {
 	it("table + groupBy set + no columns checked → aggregated mode, no detail", () => {
 		const args = resolveReportQueryArgs({ ...baseConfig, groupBy: ["status"] }, "table");
 		expect(args.detail).toBeUndefined();
-		expect(args.groupBy).toBe("status");
+		expect(args.config.groupBy).toBe("status");
 	});
 
 	it("table + groupBy set + columns checked → detail mode wins regardless of groupBy", () => {
@@ -139,7 +88,6 @@ describe("resolveReportQueryArgs — Group by: None", () => {
 		// table + groupBy None.
 		const args = resolveReportQueryArgs(baseConfig, "bar");
 		expect(args.detail).toEqual({ columns: DEFAULT_DETAIL_COLUMNS.invoices });
-		expect(args.aggregation).toBeUndefined();
 	});
 
 	it("chart + groupBy None + a non-count measure → still detail mode (measure ignored, same as table)", () => {
@@ -148,48 +96,54 @@ describe("resolveReportQueryArgs — Group by: None", () => {
 			"pie"
 		);
 		expect(args.detail).toEqual({ columns: DEFAULT_DETAIL_COLUMNS.invoices });
-		expect(args.aggregation).toBeUndefined();
 	});
 
-	it("chart + groupBy set → aggregation passes through unchanged (legacy grouped-chart behavior)", () => {
+	it("chart + groupBy set → grouped count config", () => {
 		const args = resolveReportQueryArgs({ ...baseConfig, groupBy: ["status"] }, "bar");
-		expect(args.groupBy).toBe("status");
-		expect(args.aggregation).toBeUndefined();
+		expect(args.config.groupBy).toBe("status");
+		expect(args.config.metric).toEqual({ op: "count" });
 	});
 });
 
-describe("resolveReportQueryArgs — legacy vs. generic groupBy routing", () => {
-	it("count + legacy-dispatch groupBy (invoices 'month') → no aggregation sent (legacy dispatch handles it)", () => {
+describe("resolveReportQueryArgs — magic-key expansion (post-R4c contract)", () => {
+	it("invoices 'month' expands to the paid-revenue v2 config", () => {
 		const args = resolveReportQueryArgs(
 			{ entityType: "invoices", groupBy: ["month"] },
 			"bar"
 		);
-		expect(args.groupBy).toBe("month");
-		expect(args.aggregation).toBeUndefined();
+		expect(args.config.groupBy).toBe("paidAt_month");
+		expect(args.config.metric).toEqual({ op: "sum", field: "total" });
+		expect(args.config.date?.field).toBe("paidAt");
 	});
 
-	it("count + legacy-dispatch groupBy (clients 'status') → no aggregation sent", () => {
-		const args = resolveReportQueryArgs({ entityType: "clients", groupBy: ["status"] }, "pie");
-		expect(args.groupBy).toBe("status");
-		expect(args.aggregation).toBeUndefined();
+	it("invoices 'client' expands with an explicit series limit (d3)", () => {
+		const args = resolveReportQueryArgs(
+			{ entityType: "invoices", groupBy: ["client"] },
+			"bar"
+		);
+		expect(args.config.groupBy).toBe("clientId");
+		expect(args.seriesLimit).toBe(10);
 	});
 
-	it("count + generic-only groupBy (invoices 'issuedDate_month') → explicit count aggregation, not left to legacy fallback", () => {
+	it("quotes 'conversionRate' expands to the ratio metric", () => {
+		const args = resolveReportQueryArgs(
+			{ entityType: "quotes", groupBy: ["conversionRate"] },
+			"pie"
+		);
+		expect(args.config.metric).toEqual({ op: "ratio", ratioKey: "conversionRate" });
+		expect(args.config.groupBy).toBeUndefined();
+	});
+
+	it("registry keys pass through as grouped counts", () => {
 		const args = resolveReportQueryArgs(
 			{ entityType: "invoices", groupBy: ["issuedDate_month"] },
 			"line"
 		);
-		expect(args.groupBy).toBe("issuedDate_month");
-		expect(args.aggregation).toEqual({ op: "count" });
+		expect(args.config.groupBy).toBe("issuedDate_month");
+		expect(args.config.metric).toEqual({ op: "count" });
 	});
 
-	it("count + generic-only groupBy (tasks 'assigneeUserId') → explicit count aggregation", () => {
-		const args = resolveReportQueryArgs({ entityType: "tasks", groupBy: ["assigneeUserId"] }, "bar");
-		expect(args.groupBy).toBe("assigneeUserId");
-		expect(args.aggregation).toEqual({ op: "count" });
-	});
-
-	it("non-count measure unchanged regardless of groupBy legacy/generic status", () => {
+	it("non-count measures carry into the config metric", () => {
 		const args = resolveReportQueryArgs(
 			{
 				entityType: "invoices",
@@ -198,7 +152,7 @@ describe("resolveReportQueryArgs — legacy vs. generic groupBy routing", () => 
 			},
 			"line"
 		);
-		expect(args.aggregation).toEqual({ op: "avg", field: "total" });
+		expect(args.config.metric).toEqual({ op: "avg", field: "total" });
 	});
 });
 

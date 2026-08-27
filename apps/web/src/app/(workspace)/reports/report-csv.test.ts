@@ -40,6 +40,21 @@ describe("reportResultToCsv — detail mode", () => {
 });
 
 describe("reportResultToCsv — grouped mode", () => {
+	it("absent currency flags export counts, not dollars (invoices issuedDate_month)", () => {
+		const result = {
+			data: [{ label: "Jan 2026", value: 12, metadata: { dateKey: "2026-01" } }],
+			total: 12,
+			metadata: { entityType: "invoices", groupBy: "issuedDate_month", truncated: false },
+		};
+		const { headers, rows } = reportResultToCsv(result, {
+			entityType: "invoices",
+			groupBy: "issuedDate_month",
+			groupByLabel: "Issued by Month",
+		});
+		expect(headers).toEqual(["Issued by Month", "Count"]);
+		expect(rows).toEqual([["Jan 2026", 12]]);
+	});
+
 	it("exports label + count with the groupBy label as header", () => {
 		const result = {
 			data: [

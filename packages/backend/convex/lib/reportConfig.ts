@@ -10,7 +10,7 @@
  */
 import { v, type Infer } from "convex/values";
 import { literals } from "convex-helpers/validators";
-import { reportEntityTypeValidator } from "./reportFields";
+import { RATIO_KEYS, reportEntityTypeValidator } from "./reportFields";
 import { reportFiltersValidator, type ReportFilters } from "./reportFilters";
 
 export const DATE_RANGE_PRESETS = [
@@ -51,7 +51,7 @@ export type ReportVisualization = Infer<typeof reportVisualizationValidator>;
 export const reportMetricValidator = v.object({
 	op: literals("count", "sum", "avg", "min", "max", "ratio", "related"),
 	field: v.optional(v.string()),
-	ratioKey: v.optional(literals("conversionRate", "completionRate")),
+	ratioKey: v.optional(literals(...RATIO_KEYS)),
 	// Related-rollup shape per §3.2; executable from R5.
 	related: v.optional(
 		v.object({
@@ -264,8 +264,14 @@ export function normalizeReportConfig(
 			? { op: agg.operation, field: agg.field }
 			: { op: "count" };
 
+	// Legacy tasks-by-status was the one zero-filled dispatch output (§8 d11).
+	const zeroFill =
+		config.entityType === "tasks" && groupBy === "status" && metric.op === "count"
+			? { includeEmptyValues: true }
+			: {};
+
 	return {
-		config: { ...base, metric, ...(groupBy ? { groupBy } : {}) },
+		config: { ...base, metric, ...(groupBy ? { groupBy } : {}), ...zeroFill },
 		visualization,
 	};
 }

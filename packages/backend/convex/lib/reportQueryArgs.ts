@@ -4,17 +4,18 @@
  * the assistant's config generator (reportConfigGeneration.toExecuteReportArgs)
  * — delegate here so their routing can never drift.
  *
- * Callers normalize their own measure semantics before calling: the web passes
- * its `aggregation` through raw (an explicit { op: "count" } forces the generic
- * pipeline even on a legacy groupBy), while the assistant path collapses
- * count/fieldless measures to undefined first.
+ * Since R4c every request executes as a v2 config: the input's v1-shaped state
+ * (including magic groupBy keys like "month"/"conversionRate", which the pre-R8
+ * builder still offers) runs through normalizeReportConfig, and executeReport
+ * receives `{ entityType, config, seriesLimit?, detail? }`. The legacy args are
+ * deleted at R14 (§8 d11).
  */
 import type { ReportFilters } from "./reportFilters";
 import {
-	DEFAULT_DETAIL_COLUMNS,
-	usesLegacyDispatch,
-	type ReportEntityType,
-} from "./reportFields";
+	normalizeReportConfig,
+	type ReportConfigV2,
+} from "./reportConfig";
+import { DEFAULT_DETAIL_COLUMNS, type ReportEntityType } from "./reportFields";
 
 export type ReportVisualizationType =
 	| "table"
@@ -30,10 +31,8 @@ export type ReportAggregationOp = "count" | "sum" | "avg" | "min" | "max";
 /** The args shape reportData.executeReport accepts. */
 export interface ExecuteReportArgs {
 	entityType: ReportEntityType;
-	groupBy?: string;
-	dateRange?: { start?: number; end?: number };
-	filters?: ReportFilters;
-	aggregation?: { op: ReportAggregationOp; field?: string };
+	config: ReportConfigV2;
+	seriesLimit?: number;
 	detail?: { columns: string[] };
 }
 
@@ -77,20 +76,26 @@ export interface ReportQueryArgsInput {
  * none are checked) — for every viz type, not just table, since a chart with
  * nothing to group on has nothing to chart above (see isDetailModeActive).
  *
- * Once a groupBy IS set: a legacy-dispatch groupBy (status, leadSource,
- * month, ...) with no measure must omit `aggregation` so runReportByConfig
- * keeps its exact historical output, while a generic-only groupBy (e.g.
- * issuedDate_month, assigneeUserId) needs an explicit { op: "count" } so the
- * generic pipeline runs instead of legacy dispatch silently falling back to
- * the entity default.
+ * A non-count measure missing its field is forwarded with an empty field so
+ * executeReport's validateAggregation rejects it, matching the pre-R4c error.
  */
 export function resolveReportQueryArgs(input: ReportQueryArgsInput): ExecuteReportArgs {
-	const base = {
-		entityType: input.entityType,
-		groupBy: input.groupBy,
-		dateRange: input.dateRange,
-		filters: input.filters,
-	};
+	const measure = input.measure;
+	const { config, visualization } = normalizeReportConfig(
+		{
+			entityType: input.entityType,
+			...(input.groupBy ? { groupBy: [input.groupBy] } : {}),
+			...(input.dateRange ? { dateRange: input.dateRange } : {}),
+			...(input.filters ? { filters: input.filters } : {}),
+			...(measure && measure.op !== "count"
+				? { aggregations: [{ field: measure.field ?? "", operation: measure.op }] }
+				: {}),
+			...(input.columns ? { columns: input.columns } : {}),
+		},
+		{ type: input.visualization }
+	);
+
+	const base = { entityType: input.entityType, config };
 
 	if (isDetailModeActive(input.visualization, input.groupBy, input.columns)) {
 		return {
@@ -99,13 +104,6 @@ export function resolveReportQueryArgs(input: ReportQueryArgsInput): ExecuteRepo
 		};
 	}
 
-	// isDetailModeActive already returned above whenever groupBy is unset, so
-	// groupBy is guaranteed defined past this point.
-	const aggregation =
-		input.measure ??
-		(usesLegacyDispatch(input.entityType, input.groupBy!)
-			? undefined
-			: { op: "count" as const });
-
-	return { ...base, ...(aggregation ? { aggregation } : {}) };
+	const seriesLimit = visualization.options?.seriesLimit;
+	return { ...base, ...(seriesLimit !== undefined ? { seriesLimit } : {}) };
 }

@@ -128,32 +128,6 @@
   },
   "total": 5
  },
- "clients::__unknown_literal_fallback__": {
-  "data": [
-   {
-    "label": "Prospective",
-    "value": 1
-   },
-   {
-    "label": "Active",
-    "value": 2
-   },
-   {
-    "label": "Inactive",
-    "value": 1
-   },
-   {
-    "label": "Archived",
-    "value": 1
-   }
-  ],
-  "metadata": {
-   "entityType": "clients",
-   "groupBy": "status",
-   "truncated": false
-  },
-  "total": 5
- },
  "projects::__default__": {
   "data": [
    {
