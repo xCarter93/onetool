@@ -41,6 +41,8 @@ export function isDetailModeActive(
 	vizType: ReportVisualizationType
 ): boolean {
 	if (config.metric.op === "ratio" || config.metric.op === "related") return false;
+	// Number is the scalar aggregate ("Total" point), never raw rows.
+	if (vizType === "number") return false;
 	if (!config.groupBy) return true;
 	return vizType === "table" && (config.columns?.length ?? 0) > 0;
 }

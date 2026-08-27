@@ -4,7 +4,7 @@ import { PermissionGate } from "@/components/domain/permission-gate";
 import { useState } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { useRouter, useParams } from "next/navigation";
-import { ArrowLeft, Copy, Download, Eye, EyeOff, Loader2, Pencil } from "lucide-react";
+import { ArrowLeft, Copy, Loader2, Pencil } from "lucide-react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
 import { Button } from "@/components/ui/button";
@@ -13,33 +13,15 @@ import {
 	type ReportBuilderSavePayload,
 } from "../components/report-builder";
 import { ReportPreview } from "../components/report-preview";
+import { ReportUtilityBar } from "../components/report-utility-bar";
 import {
 	dateRangeOptions,
 	entityLabels,
 	groupByOptions,
-	resolveReportQueryArgs,
 	visualizationIcons,
 	visualizationOptions,
-	type ReportVisualization,
 } from "../report-config";
 import { normalizeReportConfig } from "@onetool/backend/convex/lib/reportConfig";
-import { reportResultToCsv } from "../report-csv";
-import { buildCsv, downloadCsv, sanitizeCsvFilename } from "@/lib/csv-export";
-
-/** localStorage key for the per-report chart-visible toggle (Slice 3-D3). */
-function chartVisibleKey(reportId: string) {
-	return `report-chart-visible:${reportId}`;
-}
-
-/** Chart hidden → force the table view, keeping the same query the CSV export runs. */
-function effectiveVisualization(
-	visualization: ReportVisualization,
-	chartVisible: boolean
-): ReportVisualization {
-	return visualization.type !== "table" && !chartVisible
-		? { ...visualization, type: "table" }
-		: visualization;
-}
 
 function ReportViewPageContent() {
 	const router = useRouter();
@@ -52,38 +34,10 @@ function ReportViewPageContent() {
 
 	const [isEditing, setIsEditing] = useState(false);
 	const [isSaving, setIsSaving] = useState(false);
-	// Lazy localStorage read is hydration-safe here: the toggle only affects
-	// the report body, which isn't in the HTML while `report` is still
-	// loading (this same early-return-before-hydration pattern is used for
-	// "assistant-panel-pinned" in sidebar-with-header.tsx).
-	const [chartVisible, setChartVisible] = useState(
-		() =>
-			typeof window === "undefined" ||
-			localStorage.getItem(chartVisibleKey(reportId)) !== "false"
-	);
-	const toggleChartVisible = () => {
-		setChartVisible((prev) => {
-			const next = !prev;
-			localStorage.setItem(chartVisibleKey(reportId), String(next));
-			return next;
-		});
-	};
 
 	const normalized = report
 		? normalizeReportConfig(report.config, report.visualization)
 		: null;
-
-	// Same args ReportPreview subscribes with (Convex dedupes the
-	// subscription), so Download CSV exports exactly what's on screen.
-	const reportData = useQuery(
-		api.reportData.executeReport,
-		normalized && !isEditing
-			? resolveReportQueryArgs(
-					normalized.config,
-					effectiveVisualization(normalized.visualization, chartVisible)
-				)
-			: "skip"
-	);
 
 	if (report === undefined) {
 		return (
@@ -156,24 +110,7 @@ function ReportViewPageContent() {
 		}
 	};
 
-	const csvReady =
-		reportData !== undefined &&
-		(reportData.detail
-			? reportData.detail.rows.length > 0
-			: reportData.data.length > 0);
-
-	const handleDownloadCsv = () => {
-		if (!reportData) return;
-		const { headers, rows } = reportResultToCsv(reportData, {
-			entityType: viewConfig.entityType,
-			groupBy: viewConfig.groupBy,
-			groupByLabel,
-		});
-		downloadCsv(sanitizeCsvFilename(report.name), buildCsv(headers, rows));
-	};
-
 	const VizIcon = visualizationIcons[report.visualization.type];
-	const isChartVisualization = report.visualization.type !== "table";
 	const groupByLabel =
 		groupByOptions[viewConfig.entityType]?.find(
 			(o) => o.value === viewConfig.groupBy
@@ -191,11 +128,13 @@ function ReportViewPageContent() {
 		visualizationOptions.find((o) => o.value === report.visualization.type)
 			?.label ?? report.visualization.type;
 
+	const isChartVisualization =
+		report.visualization.type !== "table" && report.visualization.type !== "number";
 	const metaChips = [
 		entityLabels[viewConfig.entityType] ?? viewConfig.entityType,
 		groupByLabel ? `by ${groupByLabel}` : null,
 		rangeLabel,
-		`${vizLabel} chart`,
+		isChartVisualization ? `${vizLabel} chart` : vizLabel,
 	].filter(Boolean) as string[];
 
 	return (
@@ -226,10 +165,6 @@ function ReportViewPageContent() {
 					</div>
 				</div>
 				<div className="flex items-center gap-2">
-					<Button variant="outline" onClick={handleDownloadCsv} disabled={!csvReady}>
-						<Download className="mr-2 h-4 w-4" />
-						Download CSV
-					</Button>
 					<Button variant="outline" onClick={handleDuplicate}>
 						<Copy className="mr-2 h-4 w-4" />
 						Duplicate
@@ -253,28 +188,19 @@ function ReportViewPageContent() {
 				))}
 			</div>
 
-			{/* Chart toggle — chart visualizations only; the table is always shown */}
-			{isChartVisualization && (
-				<div className="flex justify-end">
-					<Button variant="ghost" size="sm" onClick={toggleChartVisible}>
-						{chartVisible ? (
-							<EyeOff className="mr-2 h-4 w-4" />
-						) : (
-							<Eye className="mr-2 h-4 w-4" />
-						)}
-						{chartVisible ? "Hide chart" : "Show chart"}
-					</Button>
-				</div>
-			)}
-
 			{/* Report */}
-			<div className="rounded-2xl border border-border/60 bg-background p-5 shadow-sm sm:p-7">
-				<ReportPreview
-					config={viewConfig}
-					visualization={effectiveVisualization(
-						normalized!.visualization,
-						chartVisible
-					)}
+			<div className="flex flex-col rounded-2xl border border-border/60 bg-background shadow-sm">
+				<div className="p-5 sm:p-7">
+					<ReportPreview
+						config={viewConfig}
+						visualization={normalized!.visualization}
+					/>
+				</div>
+				<ReportUtilityBar
+					saved={{ config: viewConfig, visualization: normalized!.visualization }}
+					reportName={report.name}
+					groupByLabel={groupByLabel}
+					rangeLabel={rangeLabel}
 				/>
 			</div>
 		</div>

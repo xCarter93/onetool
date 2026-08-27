@@ -6,6 +6,7 @@ import {
 	CreditCard,
 	DollarSign,
 	FileText,
+	Hash,
 	ListChecks,
 	ListOrdered,
 	PieChart,
@@ -22,8 +23,14 @@ import type { ReportFilters } from "@onetool/backend/convex/lib/reportFilters";
 import {
 	DEFAULT_DETAIL_COLUMNS,
 	GROUP_BY_OPTIONS,
+	RATIO_KEYS,
+	RATIO_METRICS,
 	REPORT_ENTITY_TYPES,
+	REPORT_FIELDS,
+	REPORT_GROUPABLE_FKS,
+	getReportDateField,
 	isGenericGroupBy,
+	type RatioKey,
 	type ReportEntityType,
 } from "@onetool/backend/convex/lib/reportFields";
 import { REPORT_SCAN_CEILING } from "@onetool/backend/convex/lib/orgScan";
@@ -47,7 +54,7 @@ import { formatCurrency } from "@/lib/money";
 
 export type EntityType = ReportEntityType;
 
-export type VizType = "table" | "bar" | "column" | "line" | "pie" | "radar" | "radial";
+export type VizType = ReportVisualization["type"];
 
 export type MeasureOp = "count" | "sum" | "avg" | "min" | "max";
 export type ReportMeasure =
@@ -126,26 +133,6 @@ export function builderStateToSaved(state: BuilderConfigState): {
 		type: state.vizType,
 		...(state.vizOptions ? { options: state.vizOptions } : {}),
 	};
-
-	// Legacy magic groupBy keys (still offered by the pre-R8b picker) expand
-	// through the same golden-pinned normalizer as saved v1 rows; their date
-	// presets resolve client-side to absolute ms, as they always have.
-	if (state.groupBy && !isGenericGroupBy(state.entityType, state.groupBy)) {
-		const absolute =
-			state.dateRangePreset === "custom"
-				? customAbsoluteRange(state.customDateRange)
-				: getDateRange(state.dateRangePreset);
-		return normalizeReportConfig(
-			{
-				entityType: state.entityType,
-				groupBy: [state.groupBy],
-				...(absolute ? { dateRange: { start: absolute.start, end: absolute.end } } : {}),
-				...(state.filters ? { filters: state.filters } : {}),
-				...(state.columns.length ? { columns: state.columns } : {}),
-			},
-			visualization
-		);
-	}
 
 	const date = buildConfigDate(state);
 	return {
@@ -233,6 +220,116 @@ export const entityOptions: {
 export const groupByOptions: Record<string, { value: string; label: string }[]> =
 	GROUP_BY_OPTIONS;
 
+// The builder's picker offers only generic registry keys — the legacy magic
+// keys (month/client/conversionRate/completionRate) stay in GROUP_BY_OPTIONS
+// for the AI vocabulary and label lookups, but their behaviors are authored
+// through the metric picker and date-field select since R8b.
+export const genericGroupByOptions: Record<
+	string,
+	{ value: string; label: string }[]
+> = Object.fromEntries(
+	REPORT_ENTITY_TYPES.map((entity) => [
+		entity,
+		GROUP_BY_OPTIONS[entity].filter((o) => isGenericGroupBy(entity, o.value)),
+	])
+);
+
+const RATIO_LABELS: Record<RatioKey, string> = {
+	conversionRate: "Conversion rate",
+	completionRate: "Completion rate",
+};
+
+export type MetricOption = {
+	value: string;
+	label: string;
+	metric: ReportMetric;
+};
+
+/** Stable select value for a metric; ratio/related metrics are addressable since R8b. */
+export function metricToValue(metric: ReportMetric): string {
+	if (metric.op === "count") return "count";
+	if (metric.op === "ratio") return `ratio:${metric.ratioKey}`;
+	if (metric.op === "related" && metric.related) {
+		const r = metric.related;
+		return `related:${r.entity}:${r.fk}:${r.op}${r.field ? `:${r.field}` : ""}`;
+	}
+	return `${metric.op}:${metric.field}`;
+}
+
+const AGG_OPS: { op: "sum" | "avg" | "min" | "max"; label: string }[] = [
+	{ op: "sum", label: "Sum" },
+	{ op: "avg", label: "Average" },
+	{ op: "min", label: "Min" },
+	{ op: "max", label: "Max" },
+];
+
+/**
+ * The full metric picker (R8b): count, aggregations over numeric/currency
+ * fields, named ratio metrics, and one-hop related rollups (count + sum) for
+ * every child entity whose FK points at this entity.
+ */
+export function metricOptionsFor(entityType: EntityType): MetricOption[] {
+	const options: MetricOption[] = [
+		{ value: "count", label: "Count of records", metric: { op: "count" } },
+	];
+	for (const [field, def] of Object.entries(REPORT_FIELDS[entityType].fields)) {
+		if (def.type !== "number" && def.type !== "currency") continue;
+		for (const { op, label } of AGG_OPS) {
+			options.push({
+				value: `${op}:${field}`,
+				label: `${label} of ${def.label}`,
+				metric: { op, field },
+			});
+		}
+	}
+	for (const key of RATIO_KEYS) {
+		if (RATIO_METRICS[key].entityType !== entityType) continue;
+		options.push({
+			value: `ratio:${key}`,
+			label: RATIO_LABELS[key],
+			metric: { op: "ratio", ratioKey: key },
+		});
+	}
+	for (const child of REPORT_ENTITY_TYPES) {
+		if (child === entityType) continue;
+		for (const [fk, ref] of Object.entries(REPORT_GROUPABLE_FKS[child])) {
+			if (ref.refType !== entityType) continue;
+			const childLabel = entityLabels[child] ?? child;
+			options.push({
+				value: `related:${child}:${fk}:count`,
+				label: `Count of ${childLabel}`,
+				metric: { op: "related", related: { entity: child, fk, op: "count" } },
+			});
+			for (const [field, def] of Object.entries(REPORT_FIELDS[child].fields)) {
+				if (def.type !== "number" && def.type !== "currency") continue;
+				options.push({
+					value: `related:${child}:${fk}:sum:${field}`,
+					label: `Sum of ${childLabel} › ${def.label}`,
+					metric: {
+						op: "related",
+						related: { entity: child, fk, op: "sum", field },
+					},
+				});
+			}
+		}
+	}
+	return options;
+}
+
+/** Timestamp fields eligible as the date-range field; the entity default first. */
+export function dateFieldOptionsFor(
+	entityType: EntityType
+): { value: string; label: string }[] {
+	const defaultField = getReportDateField(entityType);
+	const options = Object.entries(REPORT_FIELDS[entityType].fields)
+		.filter(([, def]) => def.type === "timestamp")
+		.map(([field, def]) => ({ value: field, label: def.label }));
+	options.sort((a, b) =>
+		a.value === defaultField ? -1 : b.value === defaultField ? 1 : 0
+	);
+	return options;
+}
+
 export const visualizationOptions: {
 	value: VizType;
 	label: string;
@@ -247,7 +344,13 @@ export const visualizationOptions: {
 	{ value: "radar", label: "Radar", icon: Radar },
 	{ value: "radial", label: "Radial", icon: Target },
 	{ value: "table", label: "Table", icon: TableIcon },
+	{ value: "number", label: "Number", icon: Hash },
 ];
+
+/** The six pickable chart types — table and number are report types, not charts. */
+export const chartTypeOptions = visualizationOptions.filter(
+	(o) => o.value !== "table" && o.value !== "number"
+);
 
 export const dateRangeOptions = [
 	{ value: "all_time", label: "All Time" },
@@ -275,6 +378,7 @@ export const visualizationIcons: Record<VizType, LucideIcon> = {
 	radar: Radar,
 	radial: Target,
 	table: TableIcon,
+	number: Hash,
 };
 
 export function formatDate(timestamp: number) {

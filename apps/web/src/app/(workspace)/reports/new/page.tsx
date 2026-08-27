@@ -63,44 +63,45 @@ function NewReportInner() {
 	const presetId = params.get("preset");
 	const presetInitial = presetId ? buildInitialFromPreset(presetId) : null;
 
-	// Seed from template query params (?entity=&group=&viz=&range=&name=)
+	// Legacy template query params (?entity=&group=&viz=&range=&name=) still
+	// seed a full config; without them a new report is a blank start (d14) —
+	// no source selected, the canvas asks for one.
 	const entityParam = params.get("entity");
-	const entityType: EntityType = isEntity(entityParam) ? entityParam : "clients";
 	const groupParam = params.get("group");
-	const validGroup = groupByOptions[entityType]?.some(
-		(o) => o.value === groupParam
-	);
-	const groupBy = validGroup && groupParam ? groupParam : "status";
 	const vizParam = params.get("viz");
-	// Slice 3-D3: the table is the base layer — a blank new report starts as
-	// a plain table, not a chart (charts are an opt-in "Add chart" layer that
-	// requires a Group by). Legacy ?viz= links keep working.
-	const vizType: VizType = isViz(vizParam) ? vizParam : "table";
 	const rangeParam = params.get("range") ?? "all_time";
 	const name = params.get("name") ?? "";
 
-	// Legacy links may carry a magic groupBy (?group=month) — the v1 shape lets
-	// the builder's normalizer expand it; generic groupBys get native v2 with
-	// the preset range preserved.
-	const paramConfig: ReportBuilderInitial["config"] = groupByOptions[
-		entityType
-	]?.some((o) => o.value === groupBy)
-		? {
-				version: 2,
-				entityType,
-				metric: { op: "count" },
-				groupBy,
-				...(rangeParam !== "all_time" && isRangePreset(rangeParam)
-					? { date: { range: { kind: "preset", preset: rangeParam } } }
-					: {}),
-			}
-		: {
-				entityType,
-				groupBy: [groupBy],
-				...(getDateRange(rangeParam)
-					? { dateRange: getDateRange(rangeParam) }
-					: {}),
-			};
+	let paramConfig: ReportBuilderInitial["config"];
+	let vizType: VizType = "table";
+	if (isEntity(entityParam)) {
+		const entityType: EntityType = entityParam;
+		const validGroup = groupByOptions[entityType]?.some(
+			(o) => o.value === groupParam
+		);
+		const groupBy = validGroup && groupParam ? groupParam : "status";
+		vizType = isViz(vizParam) ? vizParam : "table";
+		// A magic ?group= (e.g. month) rides the v1 shape so the builder's
+		// normalizer expands it; generic groupBys get native v2 with the
+		// preset range preserved.
+		paramConfig = groupByOptions[entityType]?.some((o) => o.value === groupBy)
+			? {
+					version: 2,
+					entityType,
+					metric: { op: "count" },
+					groupBy,
+					...(rangeParam !== "all_time" && isRangePreset(rangeParam)
+						? { date: { range: { kind: "preset", preset: rangeParam } } }
+						: {}),
+				}
+			: {
+					entityType,
+					groupBy: [groupBy],
+					...(getDateRange(rangeParam)
+						? { dateRange: getDateRange(rangeParam) }
+						: {}),
+				};
+	}
 
 	const initial: ReportBuilderInitial =
 		presetInitial ?? {

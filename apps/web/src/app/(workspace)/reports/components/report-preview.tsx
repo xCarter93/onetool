@@ -1,10 +1,11 @@
 "use client";
 
+import { Component, type ReactNode } from "react";
 import { useQuery } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { Loader2, AlertCircle, TriangleAlert } from "lucide-react";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
-import { Separator } from "@/components/ui/separator";
+import { convexErrorMessage } from "@/lib/convex-error";
 import { ReportBarChart } from "./report-bar-chart";
 import { ReportColumnChart } from "./report-column-chart";
 import { ReportLineChart } from "./report-line-chart";
@@ -13,6 +14,9 @@ import { ReportRadarChart } from "./report-radar-chart";
 import { ReportRadialChart } from "./report-radial-chart";
 import { ReportTable } from "./report-table";
 import {
+	formatReportValue,
+	metricOptionsFor,
+	metricToValue,
 	resolveReportQueryArgs,
 	TRUNCATION_NOTICE,
 	type ReportConfigV2,
@@ -24,8 +28,60 @@ interface ReportPreviewProps {
 	visualization: ReportVisualization;
 }
 
-export function ReportPreview({ config, visualization }: ReportPreviewProps) {
-	const queryArgs = useDebouncedValue(resolveReportQueryArgs(config, visualization), 300);
+/** Honest failure state: a config the pipeline rejects (or a denied read) shows why instead of white-screening. */
+class ReportPreviewBoundary extends Component<
+	{ children: ReactNode },
+	{ error: unknown }
+> {
+	state = { error: null as unknown };
+
+	static getDerivedStateFromError(error: unknown) {
+		return { error };
+	}
+
+	render() {
+		if (this.state.error !== null) {
+			return (
+				<div className="flex min-h-[300px] flex-1 flex-col items-center justify-center text-center">
+					<AlertCircle className="mb-4 h-12 w-12 text-muted-foreground" />
+					<h3 className="mb-2 text-lg font-medium text-foreground">
+						This report can&apos;t run
+					</h3>
+					<p className="max-w-sm text-sm text-muted-foreground">
+						{convexErrorMessage(
+							this.state.error,
+							"Something in the configuration isn't valid. Adjust it to continue."
+						)}
+					</p>
+				</div>
+			);
+		}
+		return this.props.children;
+	}
+}
+
+export function ReportPreview(props: ReportPreviewProps) {
+	// Keyed so a config change remounts the boundary and retries after an error.
+	return (
+		<ReportPreviewBoundary key={JSON.stringify(props.config)}>
+			<ReportPreviewInner {...props} />
+		</ReportPreviewBoundary>
+	);
+}
+
+function metricLabelFor(config: ReportConfigV2): string {
+	return (
+		metricOptionsFor(config.entityType).find(
+			(o) => o.value === metricToValue(config.metric)
+		)?.label ?? "Count of records"
+	);
+}
+
+function ReportPreviewInner({ config, visualization }: ReportPreviewProps) {
+	const queryArgs = useDebouncedValue(
+		resolveReportQueryArgs(config, visualization),
+		300
+	);
 	const reportData = useQuery(api.reportData.executeReport, queryArgs);
 
 	if (reportData === undefined) {
@@ -35,6 +91,13 @@ export function ReportPreview({ config, visualization }: ReportPreviewProps) {
 			</div>
 		);
 	}
+
+	const truncationBanner = reportData.metadata?.truncated === true && (
+		<div className="flex items-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
+			<TriangleAlert className="h-3.5 w-3.5 shrink-0" />
+			<span>{TRUNCATION_NOTICE}</span>
+		</div>
+	);
 
 	if (reportData.detail) {
 		if (reportData.detail.rows.length === 0) {
@@ -50,12 +113,7 @@ export function ReportPreview({ config, visualization }: ReportPreviewProps) {
 		}
 		return (
 			<div className="flex min-h-0 flex-1 flex-col gap-3">
-				{reportData.metadata?.truncated === true && (
-					<div className="flex items-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
-						<TriangleAlert className="h-3.5 w-3.5 shrink-0" />
-						<span>{TRUNCATION_NOTICE}</span>
-					</div>
-				)}
+				{truncationBanner}
 				<ReportTable
 					data={[]}
 					total={reportData.total}
@@ -67,13 +125,33 @@ export function ReportPreview({ config, visualization }: ReportPreviewProps) {
 		);
 	}
 
-	if (!reportData || reportData.data.length === 0) {
+	// The Number type renders the scalar aggregate as a KPI figure — the
+	// "Total" data point is the whole result.
+	if (visualization.type === "number") {
+		const totalIsCurrency = reportData.metadata?.totalIsCurrency === true;
+		const display =
+			config.metric.op === "ratio"
+				? `${reportData.total}%`
+				: formatReportValue(reportData.total, totalIsCurrency);
+		return (
+			<div className="flex min-h-[300px] flex-1 flex-col items-center justify-center gap-2 text-center">
+				{truncationBanner}
+				<p className="text-5xl font-semibold tabular-nums text-foreground">
+					{display}
+				</p>
+				<p className="text-sm text-muted-foreground">{metricLabelFor(config)}</p>
+			</div>
+		);
+	}
+
+	if (reportData.data.length === 0) {
 		return (
 			<div className="flex min-h-[300px] flex-1 flex-col items-center justify-center text-center">
 				<AlertCircle className="w-12 h-12 text-muted-foreground mb-4" />
 				<h3 className="text-lg font-medium text-foreground mb-2">No data available</h3>
 				<p className="text-sm text-muted-foreground max-w-sm">
-					There&apos;s no data matching your report criteria. Try adjusting the date range or data source.
+					{metricLabelFor(config)} found nothing in this date range. Try a
+					wider range or different filters.
 				</p>
 			</div>
 		);
@@ -92,22 +170,9 @@ export function ReportPreview({ config, visualization }: ReportPreviewProps) {
 	const totalIsCurrency = reportData.metadata?.totalIsCurrency === true;
 	const itemValueIsCurrency = reportData.metadata?.itemValueIsCurrency === true;
 
-	// The grouped table is always rendered — it's the base layer (Slice
-	// 3-D3). A chart (when vizType is a chart type — guaranteed to have a
-	// groupBy at this point, since chart + no groupBy already went through
-	// the reportData.detail branch above) renders ABOVE it, fed by this same
-	// grouped query result.
-	const table = (
-		<ReportTable
-			data={chartData}
-			total={total}
-			groupBy={groupBy}
-			entityType={config.entityType}
-			totalIsCurrency={totalIsCurrency}
-		/>
-	);
-
-	const chart = (() => {
+	// One visualization on the canvas (d7): the grouped summary table moved to
+	// the utility bar's Calculated values; only the table type renders it here.
+	const body = (() => {
 		switch (visualization.type) {
 			case "bar":
 				return (
@@ -174,28 +239,22 @@ export function ReportPreview({ config, visualization }: ReportPreviewProps) {
 				);
 			case "table":
 			default:
-				return null;
+				return (
+					<ReportTable
+						data={chartData}
+						total={total}
+						groupBy={groupBy}
+						entityType={config.entityType}
+						totalIsCurrency={totalIsCurrency}
+					/>
+				);
 		}
 	})();
 
 	return (
 		<div className="flex min-h-0 flex-1 flex-col gap-3">
-			{reportData.metadata?.truncated === true && (
-				<div className="flex items-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
-					<TriangleAlert className="h-3.5 w-3.5 shrink-0" />
-					<span>{TRUNCATION_NOTICE}</span>
-				</div>
-			)}
-			{chart ? (
-				<>
-					{chart}
-					<Separator className="my-1" />
-					{table}
-				</>
-			) : (
-				table
-			)}
+			{truncationBanner}
+			{body}
 		</div>
 	);
 }
-

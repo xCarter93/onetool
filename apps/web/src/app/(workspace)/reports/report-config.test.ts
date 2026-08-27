@@ -287,19 +287,6 @@ describe("builderStateToSaved ↔ savedToBuilderState round trips (R8a)", () => 
 		expect(state.dateField).toBe("paidAt");
 	});
 
-	it("a magic groupBy still in builder state (pre-R8b picker) saves as the expanded v2 config", () => {
-		const saved = builderStateToSaved(
-			baseState({ groupBy: "month", vizType: "bar" })
-		);
-		expect(saved.config.groupBy).toBe("paidAt_month");
-		expect(saved.config.metric).toEqual({ op: "sum", field: "total" });
-		expect(saved.config.filters?.groups?.[0]?.rules?.[0]).toEqual({
-			field: "status",
-			operator: "equals",
-			value: "paid",
-		});
-	});
-
 	it("all-time with no field override stores no date at all", () => {
 		const saved = builderStateToSaved(baseState({ groupBy: "status" }));
 		expect(saved.config.date).toBeUndefined();

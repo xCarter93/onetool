@@ -41,7 +41,8 @@ export const visualizationOptionsValidator = v.object({
 export type VisualizationOptions = Infer<typeof visualizationOptionsValidator>;
 
 export const reportVisualizationValidator = v.object({
-	type: literals("table", "bar", "column", "line", "pie", "radar", "radial"),
+	// "number" (R8b) renders the ungrouped aggregate as a KPI figure.
+	type: literals("table", "number", "bar", "column", "line", "pie", "radar", "radial"),
 	options: v.optional(visualizationOptionsValidator),
 });
 

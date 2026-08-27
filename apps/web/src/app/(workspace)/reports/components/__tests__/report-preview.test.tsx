@@ -69,8 +69,8 @@ afterEach(() => {
 	mockedUseQuery.mockReset();
 });
 
-describe("ReportPreview — Slice 3-D3 (chart renders above the data table)", () => {
-	it("chart + groupBy set: renders BOTH the chart and the grouped table from one query result", () => {
+describe("ReportPreview — one visualization on the canvas (d7)", () => {
+	it("chart + groupBy set: renders ONLY the chart — the summary table lives in Calculated values", () => {
 		mockedUseQuery.mockReturnValue({
 			data: [
 				{ label: "Active", value: 5, metadata: {} },
@@ -92,15 +92,34 @@ describe("ReportPreview — Slice 3-D3 (chart renders above the data table)", ()
 			/>
 		);
 
-		// Chart-specific evidence: one rendered bar per category (the chart's
-		// own per-item HTML legend was removed — the table now carries labels).
+		// Chart-specific evidence: one rendered bar per category.
 		expect(container.querySelectorAll(".recharts-bar-rectangle")).toHaveLength(2);
-		// Table-specific evidence: ReportTable's grouped-mode row summary,
-		// per-row "%"-of-category column, and the group label cell — none of
-		// which the chart itself renders now that its legend is gone.
-		expect(screen.getByText("2 rows")).toBeInTheDocument();
-		expect(screen.getByText("62.5%")).toBeInTheDocument();
-		expect(screen.getByText("Active")).toBeInTheDocument();
+		// The grouped table no longer renders under the chart (d7).
+		expect(screen.queryByText("2 rows")).not.toBeInTheDocument();
+		expect(screen.queryByText("62.5%")).not.toBeInTheDocument();
+	});
+
+	it("number type: renders the scalar aggregate as a KPI figure", () => {
+		mockedUseQuery.mockReturnValue({
+			data: [{ label: "Total", value: 40000 }],
+			total: 40000,
+			metadata: { totalIsCurrency: true },
+		});
+
+		const { container } = render(
+			<ReportPreview
+				config={{
+					version: 2,
+					entityType: "invoices",
+					metric: { op: "sum", field: "total" },
+				}}
+				visualization={{ type: "number" }}
+			/>
+		);
+
+		expect(screen.getByText("$40,000")).toBeInTheDocument();
+		expect(screen.getByText("Sum of Total")).toBeInTheDocument();
+		expect(container.querySelectorAll(".recharts-bar-rectangle")).toHaveLength(0);
 	});
 
 	it("vizType 'table': renders only the table, no chart", () => {
