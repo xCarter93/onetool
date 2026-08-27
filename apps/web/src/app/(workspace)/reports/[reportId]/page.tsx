@@ -11,7 +11,6 @@ import type { Id } from "@onetool/backend/convex/_generated/dataModel";
 import { Button } from "@/components/ui/button";
 import {
 	ReportBuilder,
-	isValidReportFilters,
 	type ReportBuilderSavePayload,
 } from "../components/report-builder";
 import type { ReportMeasure } from "../report-config";
@@ -22,6 +21,7 @@ import {
 	entityLabels,
 	groupByOptions,
 	resolveReportQueryArgs,
+	savedConfigView,
 	visualizationIcons,
 	visualizationOptions,
 	type ReportConfigShape,
@@ -38,20 +38,19 @@ type ReportDoc = NonNullable<FunctionReturnType<typeof api.reports.get>>;
 
 /** The exact config shape the view passes to ReportPreview — the CSV export runs the same query so it exports what's on screen. */
 function toConfigShape(report: ReportDoc): ReportConfigShape {
+	const saved = savedConfigView(report.config);
 	return {
-		entityType: report.config.entityType,
-		groupBy: report.config.groupBy,
-		dateRange: report.config.dateRange,
-		filters: isValidReportFilters(report.config.filters)
-			? report.config.filters
-			: undefined,
-		aggregation: report.config.aggregations?.[0]
+		entityType: saved.entityType,
+		groupBy: saved.groupBy,
+		dateRange: saved.dateRange,
+		filters: saved.filters,
+		aggregation: saved.aggregations?.[0]
 			? {
-					op: report.config.aggregations[0].operation,
-					field: report.config.aggregations[0].field,
+					op: saved.aggregations[0].operation,
+					field: saved.aggregations[0].field,
 				}
 			: undefined,
-		columns: report.config.columns,
+		columns: saved.columns,
 	};
 }
 
@@ -121,11 +120,10 @@ function ReportViewPageContent() {
 		);
 	}
 
+	const savedConfig = savedConfigView(report.config);
+
 	if (isEditing) {
-		const savedFilters = isValidReportFilters(report.config.filters)
-			? report.config.filters
-			: undefined;
-		const savedAggregation = report.config.aggregations?.[0];
+		const savedAggregation = savedConfig.aggregations?.[0];
 		const measure: ReportMeasure | undefined = savedAggregation
 			? { op: savedAggregation.operation, field: savedAggregation.field }
 			: undefined;
@@ -154,15 +152,15 @@ function ReportViewPageContent() {
 				initial={{
 					name: report.name,
 					description: report.description || "",
-					entityType: report.config.entityType,
-					groupBy: report.config.groupBy?.[0],
+					entityType: savedConfig.entityType,
+					groupBy: savedConfig.groupBy?.[0],
 					vizType: report.visualization.type,
-					dateRangePreset: report.config.dateRange
-						? detectDateRangePreset(report.config.dateRange)
+					dateRangePreset: savedConfig.dateRange
+						? detectDateRangePreset(savedConfig.dateRange)
 						: "all_time",
-					filters: savedFilters,
+					filters: savedConfig.filters,
 					measure,
-					columns: report.config.columns,
+					columns: savedConfig.columns,
 				}}
 				saving={isSaving}
 				onSave={handleSave}
@@ -189,8 +187,8 @@ function ReportViewPageContent() {
 	const handleDownloadCsv = () => {
 		if (!reportData) return;
 		const { headers, rows } = reportResultToCsv(reportData, {
-			entityType: report.config.entityType,
-			groupBy: report.config.groupBy?.[0],
+			entityType: savedConfig.entityType,
+			groupBy: savedConfig.groupBy?.[0],
 			groupByLabel,
 		});
 		downloadCsv(sanitizeCsvFilename(report.name), buildCsv(headers, rows));
@@ -199,12 +197,12 @@ function ReportViewPageContent() {
 	const VizIcon = visualizationIcons[report.visualization.type];
 	const isChartVisualization = report.visualization.type !== "table";
 	const groupByLabel =
-		groupByOptions[report.config.entityType]?.find(
-			(o) => o.value === report.config.groupBy?.[0]
-		)?.label ?? report.config.groupBy?.[0];
-	const rangeLabel = report.config.dateRange
+		groupByOptions[savedConfig.entityType]?.find(
+			(o) => o.value === savedConfig.groupBy?.[0]
+		)?.label ?? savedConfig.groupBy?.[0];
+	const rangeLabel = savedConfig.dateRange
 		? (dateRangeOptions.find(
-				(o) => o.value === detectDateRangePreset(report.config.dateRange!)
+				(o) => o.value === detectDateRangePreset(savedConfig.dateRange!)
 			)?.label ?? "All Time")
 		: "All Time";
 	const vizLabel =
@@ -212,7 +210,7 @@ function ReportViewPageContent() {
 			?.label ?? report.visualization.type;
 
 	const metaChips = [
-		entityLabels[report.config.entityType] ?? report.config.entityType,
+		entityLabels[savedConfig.entityType] ?? savedConfig.entityType,
 		groupByLabel ? `by ${groupByLabel}` : null,
 		rangeLabel,
 		`${vizLabel} chart`,

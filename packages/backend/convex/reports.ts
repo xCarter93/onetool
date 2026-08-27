@@ -14,6 +14,10 @@ import {
 	entitlementsFromIdentity,
 	requireMeter,
 } from "./lib/entitlements";
+import {
+	reportConfigValidator,
+	reportVisualizationValidator,
+} from "./lib/reportConfig";
 
 /**
  * Saved-report slot check (current-count semantics): creating past the cap
@@ -42,53 +46,9 @@ async function assertSavedReportSlot(
  * Handles saved report configurations for analytics and data visualization
  */
 
-// Report configuration validators
-const reportConfigValidator = v.object({
-	entityType: v.union(
-		v.literal("clients"),
-		v.literal("projects"),
-		v.literal("tasks"),
-		v.literal("quotes"),
-		v.literal("invoices"),
-		v.literal("activities")
-	),
-	filters: v.optional(v.any()),
-	aggregations: v.optional(
-		v.array(
-			v.object({
-				field: v.string(),
-				operation: v.union(
-					v.literal("count"),
-					v.literal("sum"),
-					v.literal("avg"),
-					v.literal("min"),
-					v.literal("max")
-				),
-			})
-		)
-	),
-	groupBy: v.optional(v.array(v.string())),
-	columns: v.optional(v.array(v.string())),
-	dateRange: v.optional(
-		v.object({
-			start: v.optional(v.number()),
-			end: v.optional(v.number()),
-		})
-	),
-});
-
-const visualizationValidator = v.object({
-	type: v.union(
-		v.literal("table"),
-		v.literal("bar"),
-		v.literal("column"),
-		v.literal("line"),
-		v.literal("pie"),
-		v.literal("radar"),
-		v.literal("radial")
-	),
-	options: v.optional(v.any()),
-});
+// Shared with schema.ts — accepts both config versions (writes still emit v1
+// until R8; the v1 arm is deleted at cutover).
+const visualizationValidator = reportVisualizationValidator;
 
 // ============================================================================
 // Query Operations

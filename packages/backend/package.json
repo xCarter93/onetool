@@ -89,6 +89,10 @@
    "types": "./convex/lib/reportQueryArgs.ts",
    "default": "./convex/lib/reportQueryArgs.ts"
   },
+  "./convex/lib/reportConfig": {
+   "types": "./convex/lib/reportConfig.ts",
+   "default": "./convex/lib/reportConfig.ts"
+  },
   "./convex/lib/orgScan": {
    "types": "./convex/lib/orgScan.ts",
    "default": "./convex/lib/orgScan.ts"

@@ -124,23 +124,6 @@ export interface ReportBuilderSavePayload {
 	visualization: { type: VizType };
 }
 
-/** Saved-report `config.filters` is v.any() — legacy rows may carry junk. Defensive shape check before hydrating. */
-export function isValidReportFilters(value: unknown): value is ReportFilters {
-	if (!value || typeof value !== "object") return false;
-	const v = value as { logic?: unknown; groups?: unknown };
-	if (v.logic !== "and" && v.logic !== "or") return false;
-	if (!Array.isArray(v.groups)) return false;
-	return v.groups.every((g) => {
-		if (!g || typeof g !== "object") return false;
-		const group = g as { logic?: unknown; rules?: unknown };
-		if (group.logic !== "and" && group.logic !== "or") return false;
-		if (!Array.isArray(group.rules)) return false;
-		return group.rules.every(
-			(r) => r && typeof r === "object" && typeof (r as { field?: unknown }).field === "string"
-		);
-	});
-}
-
 interface ReportBuilderProps {
 	mode: "create" | "edit";
 	initial: ReportBuilderInitial;

@@ -23,6 +23,7 @@ import {
 	type TableSummary,
 } from "./lib/schemaIntrospection";
 import type { ReportDataResult } from "./reportData";
+import { legacyConfigView } from "./lib/reportConfig";
 import {
 	generateAndSaveReport,
 	generateConfigForBuilder,
@@ -1471,20 +1472,21 @@ export const getSavedReport = createTool({
 			id: input.reportId as Id<"reports">,
 		});
 		if (!report) return { found: false };
+		const config = legacyConfigView(report.config);
 		return {
 			found: true,
 			report: {
 				id: report._id,
 				name: report.name,
 				description: truncate(report.description, TEXT_CAP),
-				entityType: report.config.entityType,
+				entityType: config.entityType,
 				visualization: report.visualization.type,
 				updatedAt: isoInstant(report.updatedAt),
-				groupBy: report.config.groupBy,
-				dateRange: report.config.dateRange
+				groupBy: config.groupBy,
+				dateRange: config.dateRange
 					? {
-							start: isoDay(report.config.dateRange.start),
-							end: isoDay(report.config.dateRange.end),
+							start: isoDay(config.dateRange.start),
+							end: isoDay(config.dateRange.end),
 						}
 					: undefined,
 			},

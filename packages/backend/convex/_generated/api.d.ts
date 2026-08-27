@@ -112,6 +112,7 @@ import type * as lib_quickbooksEnqueue from "../lib/quickbooksEnqueue.js";
 import type * as lib_quickbooksMappers from "../lib/quickbooksMappers.js";
 import type * as lib_quoteTotals from "../lib/quoteTotals.js";
 import type * as lib_relationRefs from "../lib/relationRefs.js";
+import type * as lib_reportConfig from "../lib/reportConfig.js";
 import type * as lib_reportFields from "../lib/reportFields.js";
 import type * as lib_reportFilters from "../lib/reportFilters.js";
 import type * as lib_reportPresets from "../lib/reportPresets.js";
@@ -311,6 +312,7 @@ declare const fullApi: ApiFromModules<{
   "lib/quickbooksMappers": typeof lib_quickbooksMappers;
   "lib/quoteTotals": typeof lib_quoteTotals;
   "lib/relationRefs": typeof lib_relationRefs;
+  "lib/reportConfig": typeof lib_reportConfig;
   "lib/reportFields": typeof lib_reportFields;
   "lib/reportFilters": typeof lib_reportFilters;
   "lib/reportPresets": typeof lib_reportPresets;

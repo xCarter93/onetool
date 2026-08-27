@@ -28,6 +28,11 @@ import {
 	effectiveDetailColumns,
 	type ExecuteReportArgs,
 } from "@onetool/backend/convex/lib/reportQueryArgs";
+import {
+	isReportFilters,
+	legacyConfigView,
+	type ReportConfig as ReportDocConfig,
+} from "@onetool/backend/convex/lib/reportConfig";
 import { formatCurrency } from "@/lib/money";
 
 export type EntityType = ReportEntityType;
@@ -64,6 +69,28 @@ export type ReportSavedConfigShape = {
 	aggregations?: { field: string; operation: Exclude<MeasureOp, "count"> }[];
 	columns?: string[];
 };
+
+/**
+ * Flattens a saved report's config (either version) to the v1-shaped view the
+ * pre-R8 UI consumes. Wraps the backend `legacyConfigView` to re-validate
+ * filters (v1 rows store them untyped) and drop count aggregations, which the
+ * saved shape represents by omission.
+ */
+export function savedConfigView(config: ReportDocConfig): ReportSavedConfigShape {
+	const view = legacyConfigView(config);
+	const aggregations = view.aggregations?.filter(
+		(a): a is { field: string; operation: Exclude<MeasureOp, "count"> } =>
+			a.operation !== "count"
+	);
+	return {
+		entityType: view.entityType,
+		groupBy: view.groupBy,
+		dateRange: view.dateRange,
+		filters: isReportFilters(view.filters) ? view.filters : undefined,
+		aggregations: aggregations?.length ? aggregations : undefined,
+		columns: view.columns,
+	};
+}
 
 // Keyed off the backend catalog so adding a report entity fails web compile
 // until it gets a label/description/icon here; display order = catalog order.

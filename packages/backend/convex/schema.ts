@@ -17,6 +17,10 @@ import {
 	communitySectionConfigValidator,
 	communityTeamMembersValidator,
 } from "./lib/communityTypes";
+import {
+	reportConfigValidator,
+	reportVisualizationValidator,
+} from "./lib/reportConfig";
 
 // v2 workflow node shape: each node carries the unified `config` union
 // (see lib/workflowTypes.ts). Legacy v1 fields were dropped post-migration.
@@ -1629,54 +1633,12 @@ export default defineSchema({
 		name: v.string(),
 		description: v.optional(v.string()),
 
-		// Report configuration (what data to fetch)
-		config: v.object({
-			entityType: v.union(
-				v.literal("clients"),
-				v.literal("projects"),
-				v.literal("tasks"),
-				v.literal("quotes"),
-				v.literal("invoices"),
-				v.literal("activities")
-			),
-			filters: v.optional(v.any()), // Dynamic filter conditions
-			aggregations: v.optional(
-				v.array(
-					v.object({
-						field: v.string(),
-						operation: v.union(
-							v.literal("count"),
-							v.literal("sum"),
-							v.literal("avg"),
-							v.literal("min"),
-							v.literal("max")
-						),
-					})
-				)
-			),
-			groupBy: v.optional(v.array(v.string())),
-			columns: v.optional(v.array(v.string())),
-			dateRange: v.optional(
-				v.object({
-					start: v.optional(v.number()),
-					end: v.optional(v.number()),
-				})
-			),
-		}),
+		// Report configuration (what data to fetch); v1 arm is in-PRD scaffolding
+		// deleted at cutover — see lib/reportConfig.ts.
+		config: reportConfigValidator,
 
 		// Visualization settings
-		visualization: v.object({
-			type: v.union(
-				v.literal("table"),
-				v.literal("bar"),
-				v.literal("column"),
-				v.literal("line"),
-				v.literal("pie"),
-				v.literal("radar"),
-				v.literal("radial")
-			),
-			options: v.optional(v.any()),
-		}),
+		visualization: reportVisualizationValidator,
 
 		// Metadata
 		createdAt: v.number(),
