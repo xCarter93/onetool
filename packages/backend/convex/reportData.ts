@@ -23,7 +23,11 @@ import {
 	type ReportFieldDef,
 	type ReportGroupableFk,
 } from "./lib/reportFields";
-import { reportConfigV2Validator, type ReportConfigV2 } from "./lib/reportConfig";
+import {
+	reportConfigV2Validator,
+	type ReportConfigV2,
+	type ReportMetric,
+} from "./lib/reportConfig";
 import { resolveDateRangePreset } from "./lib/reportDates";
 import {
 	reportFiltersValidator,
@@ -67,6 +71,8 @@ export interface ReportDataResult {
 		dateRange?: { start: number; end: number };
 		groupBy?: string;
 		truncated?: boolean;
+		/** Which scans hit their ceiling; present only on truncated related rollups. */
+		truncatedEntities?: string[];
 		totalIsCurrency?: boolean;
 		itemValueIsCurrency?: boolean;
 		segmentBy?: string;
@@ -465,26 +471,29 @@ function buildFieldBuckets(
 		.sort((a, b) => b.value - a.value);
 }
 
+function fkDocLabel(
+	refType: ReportGroupableFk["refType"],
+	doc: Row | null,
+	key: string
+): string {
+	switch (refType) {
+		case "users":
+			return (doc?.name as string | undefined) ?? key;
+		case "clients":
+			return (doc?.companyName as string | undefined) || "Unknown Client";
+		case "projects":
+			return (doc?.title as string | undefined) || "Unknown Project";
+	}
+}
+
 async function resolveFkLabel(
 	ctx: QueryCtx,
 	fk: ReportGroupableFk,
 	key: string
 ): Promise<string> {
 	if (key === "unknown") return fk.refType === "users" ? "Unassigned" : "None";
-	switch (fk.refType) {
-		case "users": {
-			const user = await ctx.db.get(key as Id<"users">);
-			return user?.name ?? key;
-		}
-		case "clients": {
-			const client = await ctx.db.get(key as Id<"clients">);
-			return client?.companyName || "Unknown Client";
-		}
-		case "projects": {
-			const project = await ctx.db.get(key as Id<"projects">);
-			return project?.title || "Unknown Project";
-		}
-	}
+	const doc = (await ctx.db.get(key as Id<"users">)) as Row | null;
+	return fkDocLabel(fk.refType, doc, key);
 }
 
 function applySegments(
@@ -822,27 +831,34 @@ async function requireReportEntityAccess(
  * in the org timezone at execution (saved "this month" reports roll forward);
  * `date.comparison` is stored but not executed until R11.
  */
-function resolveConfigDates(
-	config: ReportConfigV2,
+function resolveConfigDatesFor(
+	entityType: ReportEntityType,
+	date: ReportConfigV2["date"],
 	timezone: string | undefined
 ): { dateField: string; bounds: DateBoundsResult } {
-	const entityType = config.entityType;
-	if (config.date?.field) {
-		const def = getReportField(entityType, config.date.field);
+	if (date?.field) {
+		const def = getReportField(entityType, date.field);
 		if (!def || def.type !== "timestamp") {
 			throw new ConvexError(
-				`Unknown report date field "${config.date.field}" for entity "${entityType}"`
+				`Unknown report date field "${date.field}" for entity "${entityType}"`
 			);
 		}
 	}
-	const range = config.date?.range;
+	const range = date?.range;
 	const bounds =
 		range === undefined
 			? resolveDateBounds(undefined)
 			: range.kind === "preset"
 				? resolveDateBounds(resolveDateRangePreset(range.preset, timezone))
 				: resolveDateBounds({ start: range.start, end: range.end });
-	return { dateField: config.date?.field ?? getReportDateField(entityType), bounds };
+	return { dateField: date?.field ?? getReportDateField(entityType), bounds };
+}
+
+function resolveConfigDates(
+	config: ReportConfigV2,
+	timezone: string | undefined
+): { dateField: string; bounds: DateBoundsResult } {
+	return resolveConfigDatesFor(config.entityType, config.date, timezone);
 }
 
 function planFromConfig(
@@ -930,6 +946,111 @@ async function runRatioMetric(
 	};
 }
 
+/**
+ * Related-rollup metric (§3.2, executable from R5). The report's entityType is
+ * the parent; buckets are parent records rolled up from a second bounded child
+ * scan. Per §8 d12: config.date bounds the CHILD scan, config.filters narrow
+ * the parent universe, children with no fk or a parent outside that universe
+ * are dropped, and zero-children parents appear only with includeEmptyValues.
+ */
+async function runRelatedMetric(
+	ctx: QueryCtx,
+	orgId: Id<"organizations">,
+	config: ReportConfigV2,
+	related: NonNullable<ReportMetric["related"]>,
+	seriesLimit: number | undefined,
+	timezone: string | undefined
+): Promise<ReportDataResult> {
+	const parent = config.entityType;
+	const child = related.entity;
+	if (config.groupBy || config.segmentBy) {
+		throw new ConvexError(`Related metrics do not support grouping`);
+	}
+	const fk = getGroupableFk(child, related.fk);
+	if (!fk || fk.refType !== parent) {
+		throw new ConvexError(
+			`No registry FK "${related.fk}" from entity "${child}" to entity "${parent}"`
+		);
+	}
+	const aggregation: Aggregation = {
+		op: related.op,
+		...(related.field ? { field: related.field } : {}),
+	};
+	validateAggregation(child, aggregation);
+	const childFilters = related.filters as ReportFilters | undefined;
+	validateFilters(child, childFilters);
+
+	const { dateField: childDateField, bounds: childBounds } = resolveConfigDatesFor(
+		child,
+		config.date,
+		timezone
+	);
+	const parentScan = await scanFiltered(
+		ctx,
+		parent,
+		orgId,
+		getReportDateField(parent),
+		resolveDateBounds(undefined),
+		config.filters as ReportFilters | undefined
+	);
+	const childScan = await scanFiltered(
+		ctx,
+		child,
+		orgId,
+		childDateField,
+		childBounds,
+		childFilters
+	);
+
+	const parents = new Map<string, Row>();
+	for (const row of parentScan.rows) parents.set(String(row._id), row);
+
+	const childrenByParent = new Map<string, Row[]>();
+	for (const row of childScan.rows) {
+		const key = bucketKeyOf(row[related.fk]);
+		if (!parents.has(key)) continue;
+		const list = childrenByParent.get(key);
+		if (list) list.push(row);
+		else childrenByParent.set(key, [row]);
+	}
+
+	const includedChildRows = [...childrenByParent.values()].flat();
+	let buckets: Bucket[] = [...parents.entries()]
+		.filter(([key]) => (config.includeEmptyValues ?? false) || childrenByParent.has(key))
+		.map(([key, parentRow]) => ({
+			key,
+			label: fkDocLabel(fk.refType, parentRow, key),
+			rows: childrenByParent.get(key) ?? [],
+			value: computeAggregateValue(childrenByParent.get(key) ?? [], aggregation),
+			metadata: { [related.fk]: key },
+		}))
+		.sort((a, b) => b.value - a.value);
+
+	if (seriesLimit !== undefined && Number.isFinite(seriesLimit)) {
+		buckets = buckets.slice(0, Math.max(1, Math.floor(seriesLimit)));
+	}
+
+	const aggFieldDef = related.field ? getReportField(child, related.field) : undefined;
+	const isCurrencyAgg = related.op !== "count" && aggFieldDef?.type === "currency";
+	const truncatedEntities = [
+		...(parentScan.truncated ? [parent] : []),
+		...(childScan.truncated ? [child] : []),
+	];
+
+	return {
+		data: buckets.map((b) => ({ label: b.label, value: b.value, metadata: b.metadata })),
+		total: computeAggregateValue(includedChildRows, aggregation),
+		metadata: {
+			entityType: parent,
+			dateRange: metadataDateRange(childBounds),
+			groupBy: related.fk,
+			truncated: truncatedEntities.length > 0,
+			...(truncatedEntities.length > 0 ? { truncatedEntities } : {}),
+			...(isCurrencyAgg ? { totalIsCurrency: true, itemValueIsCurrency: true } : {}),
+		},
+	};
+}
+
 export const executeReport = optionalUserQuery({
 	args: {
 		entityType: reportEntityTypeValidator,
@@ -981,6 +1102,16 @@ export const executeReport = optionalUserQuery({
 					throw new ConvexError(`Ratio metric requires a ratioKey`);
 				}
 				return await runRatioMetric(ctx, orgId, config, config.metric.ratioKey, timezone);
+			}
+			if (config.metric.op === "related") {
+				const related = config.metric.related;
+				if (!related) {
+					throw new ConvexError(`Related metric requires a related descriptor`);
+				}
+				// Permission intersection (§8 d12): parent was checked above, the
+				// child scan needs its own entity access, fail closed.
+				await requireReportEntityAccess(ctx, related.entity);
+				return await runRelatedMetric(ctx, orgId, config, related, args.seriesLimit, timezone);
 			}
 			const plan = planFromConfig(config, args.seriesLimit, timezone);
 			validateAggregation(entityType, plan.aggregation);
