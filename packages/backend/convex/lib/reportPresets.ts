@@ -68,6 +68,32 @@ export const REPORT_PRESETS: ReportPresetDefinition[] = [
 		visualization: "table",
 	},
 	{
+		id: "payments-due",
+		name: "Payments due",
+		description: "Every payment still waiting to be collected.",
+		entityType: "payments",
+		groupBy: null,
+		measure: null,
+		filters: {
+			logic: "and",
+			groups: [
+				{
+					logic: "or",
+					rules: [
+						{ field: "status", operator: "equals", value: "pending" },
+						{ field: "status", operator: "equals", value: "sent" },
+						{ field: "status", operator: "equals", value: "overdue" },
+					],
+				},
+			],
+		},
+		columns: ["description", "status", "paymentAmount", "dueDate"],
+		// all_time on purpose: dueDate is the entity dateField, so a bounded
+		// window would silently hide old unpaid payments (§8 d12).
+		dateRangePreset: "all_time",
+		visualization: "table",
+	},
+	{
 		id: "quote-conversion",
 		name: "Quote conversion rate",
 		description: "Share of sent quotes that were approved this quarter.",

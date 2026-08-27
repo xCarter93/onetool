@@ -51,6 +51,7 @@ const PRESET_CATEGORY_BY_ID: Record<string, PresetCategoryId> = {
 	"projected-income": "revenue",
 	"top-clients": "revenue",
 	"overdue-invoices": "revenue",
+	"payments-due": "revenue",
 	"quote-conversion": "sales",
 	"quotes-awaiting-response": "sales",
 	"lead-source-breakdown": "sales",

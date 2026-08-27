@@ -300,6 +300,162 @@
   },
   "total": 6
  },
+ "payments": {
+  "data": [],
+  "detail": {
+   "columns": [
+    {
+     "field": "description",
+     "label": "Description",
+     "type": "string"
+    },
+    {
+     "field": "status",
+     "label": "Status",
+     "type": "string"
+    },
+    {
+     "field": "paymentAmount",
+     "label": "Amount",
+     "type": "currency"
+    },
+    {
+     "field": "dueDate",
+     "label": "Due Date",
+     "type": "timestamp"
+    }
+   ],
+   "rows": [
+    {
+     "description": null,
+     "dueDate": 1773586800000,
+     "paymentAmount": 300,
+     "status": "overdue"
+    },
+    {
+     "description": null,
+     "dueDate": 1770735600000,
+     "paymentAmount": 200,
+     "status": "sent"
+    },
+    {
+     "description": null,
+     "dueDate": 1769958000000,
+     "paymentAmount": 1200,
+     "status": "paid"
+    },
+    {
+     "description": null,
+     "dueDate": 1768921200000,
+     "paymentAmount": 100,
+     "status": "pending"
+    }
+   ],
+   "rowsTruncated": false,
+   "totalMatched": 4
+  },
+  "metadata": {
+   "entityType": "payments",
+   "truncated": false
+  },
+  "total": 4
+ },
+ "quoteLineItems": {
+  "data": [],
+  "detail": {
+   "columns": [
+    {
+     "field": "description",
+     "label": "Description",
+     "type": "string"
+    },
+    {
+     "field": "quantity",
+     "label": "Quantity",
+     "type": "number"
+    },
+    {
+     "field": "rate",
+     "label": "Unit Price",
+     "type": "currency"
+    },
+    {
+     "field": "amount",
+     "label": "Total",
+     "type": "currency"
+    }
+   ],
+   "rows": [
+    {
+     "amount": 110,
+     "description": "Edging",
+     "quantity": 2,
+     "rate": 55
+    },
+    {
+     "amount": 240,
+     "description": "Weekly mowing",
+     "quantity": 4,
+     "rate": 60
+    }
+   ],
+   "rowsTruncated": false,
+   "totalMatched": 2
+  },
+  "metadata": {
+   "entityType": "quoteLineItems",
+   "truncated": false
+  },
+  "total": 2
+ },
+ "invoiceLineItems": {
+  "data": [],
+  "detail": {
+   "columns": [
+    {
+     "field": "description",
+     "label": "Description",
+     "type": "string"
+    },
+    {
+     "field": "quantity",
+     "label": "Quantity",
+     "type": "number"
+    },
+    {
+     "field": "unitPrice",
+     "label": "Unit Price",
+     "type": "currency"
+    },
+    {
+     "field": "total",
+     "label": "Total",
+     "type": "currency"
+    }
+   ],
+   "rows": [
+    {
+     "description": "Supplies",
+     "quantity": 1,
+     "total": 300,
+     "unitPrice": 300
+    },
+    {
+     "description": "Deep clean",
+     "quantity": 3,
+     "total": 900,
+     "unitPrice": 300
+    }
+   ],
+   "rowsTruncated": false,
+   "totalMatched": 2
+  },
+  "metadata": {
+   "entityType": "invoiceLineItems",
+   "truncated": false
+  },
+  "total": 2
+ },
  "activities": {
   "data": [],
   "detail": {

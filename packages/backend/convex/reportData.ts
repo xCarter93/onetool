@@ -483,6 +483,10 @@ function fkDocLabel(
 			return (doc?.companyName as string | undefined) || "Unknown Client";
 		case "projects":
 			return (doc?.title as string | undefined) || "Unknown Project";
+		case "invoices":
+			return (doc?.invoiceNumber as string | undefined) || "Unknown Invoice";
+		case "skus":
+			return (doc?.name as string | undefined) || "Unknown SKU";
 	}
 }
 
@@ -491,7 +495,11 @@ async function resolveFkLabel(
 	fk: ReportGroupableFk,
 	key: string
 ): Promise<string> {
-	if (key === "unknown") return fk.refType === "users" ? "Unassigned" : "None";
+	if (key === "unknown") {
+		if (fk.refType === "users") return "Unassigned";
+		if (fk.refType === "skus") return "No SKU";
+		return "None";
+	}
 	const doc = (await ctx.db.get(key as Id<"users">)) as Row | null;
 	return fkDocLabel(fk.refType, doc, key);
 }
@@ -783,6 +791,11 @@ const REPORT_PERMISSION_OBJECT: Record<
 	tasks: "tasks",
 	quotes: "quotes",
 	invoices: "invoices",
+	// Payments and line items have no standalone RBAC objects — payments.ts
+	// gates every payment on the invoices object; line items follow their parent.
+	payments: "invoices",
+	invoiceLineItems: "invoices",
+	quoteLineItems: "quotes",
 };
 
 /**

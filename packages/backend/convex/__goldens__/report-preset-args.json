@@ -74,6 +74,55 @@
    ]
   }
  },
+ "payments-due": {
+  "entityType": "payments",
+  "config": {
+   "version": 2,
+   "entityType": "payments",
+   "filters": {
+    "logic": "and",
+    "groups": [
+     {
+      "logic": "or",
+      "rules": [
+       {
+        "field": "status",
+        "operator": "equals",
+        "value": "pending"
+       },
+       {
+        "field": "status",
+        "operator": "equals",
+        "value": "sent"
+       },
+       {
+        "field": "status",
+        "operator": "equals",
+        "value": "overdue"
+       }
+      ]
+     }
+    ]
+   },
+   "columns": [
+    "description",
+    "status",
+    "paymentAmount",
+    "dueDate"
+   ],
+   "metric": {
+    "op": "count"
+   }
+  },
+  "detail": {
+   "columns": [
+    "description",
+    "status",
+    "paymentAmount",
+    "dueDate"
+   ]
+  }
+ },
  "quote-conversion": {
   "entityType": "quotes",
   "config": {

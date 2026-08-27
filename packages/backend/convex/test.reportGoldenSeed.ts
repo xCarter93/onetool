@@ -141,6 +141,7 @@ export async function seedCanonicalOrg(t: ReturnType<typeof setupConvexTest>) {
 		await t.run((ctx) => createTestTask(ctx, org.orgId, { ...task }));
 	}
 
+	const quoteIds: Id<"quotes">[] = [];
 	const quotes = [
 		{ quoteNumber: "Q-1001", status: "draft", total: 500 },
 		{ quoteNumber: "Q-1002", status: "sent", total: 1000.5 },
@@ -150,7 +151,7 @@ export async function seedCanonicalOrg(t: ReturnType<typeof setupConvexTest>) {
 	] as const;
 	for (const q of quotes) {
 		tick();
-		await t.run((ctx) => createTestQuote(ctx, org.orgId, clientIds[0], { ...q }));
+		quoteIds.push(await t.run((ctx) => createTestQuote(ctx, org.orgId, clientIds[0], { ...q })));
 	}
 
 	const invoices = [
@@ -205,10 +206,77 @@ export async function seedCanonicalOrg(t: ReturnType<typeof setupConvexTest>) {
 			dueDate: Date.UTC(2026, 2, 20, 15),
 		},
 	] as const;
+	const invoiceIds: Id<"invoices">[] = [];
 	for (const { client, ...inv } of invoices) {
 		tick();
+		invoiceIds.push(
+			await t.run((ctx) => createTestInvoice(ctx, org.orgId, clientIds[client], { ...inv }))
+		);
+	}
+
+	tick();
+	const skuId = await t.run((ctx) =>
+		ctx.db.insert("skus", {
+			orgId: org.orgId,
+			name: "Standard Mow",
+			unit: "hour",
+			rate: 60,
+			isActive: true,
+			createdAt: Date.UTC(2026, 0, 2, 15),
+			updatedAt: Date.UTC(2026, 0, 2, 15),
+		})
+	);
+
+	const payments = [
+		{ invoice: 0, status: "pending", paymentAmount: 100, dueDate: Date.UTC(2026, 0, 20, 15) },
+		{ invoice: 1, status: "sent", paymentAmount: 200, dueDate: Date.UTC(2026, 1, 10, 15) },
+		{
+			invoice: 2,
+			status: "paid",
+			paymentAmount: 1200,
+			dueDate: Date.UTC(2026, 1, 1, 15),
+			paidAt: Date.UTC(2026, 1, 1, 15),
+		},
+		{ invoice: 4, status: "overdue", paymentAmount: 300, dueDate: Date.UTC(2026, 2, 15, 15) },
+	] as const;
+	for (const [i, { invoice, ...p }] of payments.entries()) {
+		tick();
 		await t.run((ctx) =>
-			createTestInvoice(ctx, org.orgId, clientIds[client], { ...inv })
+			ctx.db.insert("payments", { orgId: org.orgId, invoiceId: invoiceIds[invoice], sortOrder: i, ...p })
+		);
+	}
+
+	const quoteLineItems = [
+		{ description: "Weekly mowing", quantity: 4, unit: "hour", rate: 60, amount: 240, cost: 25, sku: true },
+		{ description: "Edging", quantity: 2, unit: "hour", rate: 55, amount: 110, sku: false },
+	] as const;
+	for (const [i, { sku, ...li }] of quoteLineItems.entries()) {
+		tick();
+		await t.run((ctx) =>
+			ctx.db.insert("quoteLineItems", {
+				orgId: org.orgId,
+				quoteId: quoteIds[0],
+				sortOrder: i,
+				...(sku ? { skuId } : {}),
+				...li,
+			})
+		);
+	}
+
+	const invoiceLineItems = [
+		{ description: "Deep clean", quantity: 3, unitPrice: 300, total: 900, cost: 120, sku: true },
+		{ description: "Supplies", quantity: 1, unitPrice: 300, total: 300, sku: false },
+	] as const;
+	for (const [i, { sku, ...li }] of invoiceLineItems.entries()) {
+		tick();
+		await t.run((ctx) =>
+			ctx.db.insert("invoiceLineItems", {
+				orgId: org.orgId,
+				invoiceId: invoiceIds[2],
+				sortOrder: i,
+				...(sku ? { skuId } : {}),
+				...li,
+			})
 		);
 	}
 

@@ -1346,3 +1346,212 @@ describe("related-rollup metrics (R5)", () => {
 		expect(result.total).toBe(1000);
 	});
 });
+
+describe("registry widening (R6): payments + line items", () => {
+	let t: ReturnType<typeof setupConvexTest>;
+
+	beforeEach(() => {
+		t = setupConvexTest();
+	});
+
+	async function seedFinancials() {
+		const org = await t.run((ctx) =>
+			createTestOrg(ctx, { clerkUserId: "user_1", clerkOrgId: "org_1" })
+		);
+		const asOrg = t.withIdentity(createTestIdentity(org.clerkUserId, org.clerkOrgId));
+		const seeded = await t.run(async (ctx) => {
+			const clientId = await createTestClient(ctx, org.orgId, {});
+			const inv1 = await createTestInvoice(ctx, org.orgId, clientId, {
+				invoiceNumber: "INV-A",
+			});
+			const inv2 = await createTestInvoice(ctx, org.orgId, clientId, {
+				invoiceNumber: "INV-B",
+			});
+			const skuId = await ctx.db.insert("skus", {
+				orgId: org.orgId,
+				name: "Standard Mow",
+				unit: "hour",
+				rate: 60,
+				isActive: true,
+				createdAt: 1,
+				updatedAt: 1,
+			});
+			const base = { orgId: org.orgId, sortOrder: 0 };
+			await ctx.db.insert("payments", {
+				...base,
+				invoiceId: inv1,
+				paymentAmount: 100,
+				dueDate: Date.UTC(2026, 0, 20),
+				status: "pending",
+			});
+			await ctx.db.insert("payments", {
+				...base,
+				invoiceId: inv1,
+				paymentAmount: 250,
+				dueDate: Date.UTC(2026, 1, 20),
+				status: "overdue",
+			});
+			await ctx.db.insert("payments", {
+				...base,
+				invoiceId: inv2,
+				paymentAmount: 900,
+				dueDate: Date.UTC(2026, 2, 20),
+				status: "paid",
+				paidAt: Date.UTC(2026, 2, 25),
+			});
+			await ctx.db.insert("invoiceLineItems", {
+				...base,
+				invoiceId: inv1,
+				description: "Deep clean",
+				quantity: 3,
+				unitPrice: 300,
+				total: 900,
+				cost: 120,
+				skuId,
+			});
+			await ctx.db.insert("invoiceLineItems", {
+				...base,
+				invoiceId: inv1,
+				description: "Supplies",
+				quantity: 1,
+				unitPrice: 50,
+				total: 50,
+			});
+			return { clientId, inv1, inv2, skuId };
+		});
+		return { org, asOrg, ...seeded };
+	}
+
+	it("payments by status: canonical registry order, summary Value column, currency total", async () => {
+		const { asOrg } = await seedFinancials();
+		const result = await asOrg.query(api.reportData.executeReport, {
+			entityType: "payments",
+			config: { version: 2, entityType: "payments", metric: { op: "count" }, groupBy: "status" },
+		});
+		expect(result.data).toStrictEqual([
+			{ label: "Pending", value: 1, metadata: { totalValue: 100 } },
+			{ label: "Paid", value: 1, metadata: { totalValue: 900 } },
+			{ label: "Overdue", value: 1, metadata: { totalValue: 250 } },
+		]);
+		expect(result.total).toBe(1250);
+		expect(result.metadata?.totalIsCurrency).toBe(true);
+	});
+
+	it("payments date range applies to dueDate (the entity dateField)", async () => {
+		const { asOrg } = await seedFinancials();
+		const result = await asOrg.query(api.reportData.executeReport, {
+			entityType: "payments",
+			config: {
+				version: 2,
+				entityType: "payments",
+				metric: { op: "sum", field: "paymentAmount" },
+				date: {
+					range: {
+						kind: "absolute",
+						start: Date.UTC(2026, 0, 1),
+						end: Date.UTC(2026, 1, 28),
+					},
+				},
+			},
+		});
+		expect(result.total).toBe(350);
+		expect(result.metadata?.totalIsCurrency).toBe(true);
+	});
+
+	it("payments group by invoiceId label-resolves invoice numbers", async () => {
+		const { asOrg } = await seedFinancials();
+		const result = await asOrg.query(api.reportData.executeReport, {
+			entityType: "payments",
+			config: {
+				version: 2,
+				entityType: "payments",
+				metric: { op: "sum", field: "paymentAmount" },
+				groupBy: "invoiceId",
+			},
+		});
+		expect(result.data.map((d) => ({ label: d.label, value: d.value }))).toStrictEqual([
+			{ label: "INV-B", value: 900 },
+			{ label: "INV-A", value: 350 },
+		]);
+	});
+
+	it("line items group by skuId: SKU name labels, null fk becomes No SKU", async () => {
+		const { asOrg } = await seedFinancials();
+		const result = await asOrg.query(api.reportData.executeReport, {
+			entityType: "invoiceLineItems",
+			config: {
+				version: 2,
+				entityType: "invoiceLineItems",
+				metric: { op: "sum", field: "total" },
+				groupBy: "skuId",
+			},
+		});
+		expect(result.data.map((d) => ({ label: d.label, value: d.value }))).toStrictEqual([
+			{ label: "Standard Mow", value: 900 },
+			{ label: "No SKU", value: 50 },
+		]);
+		expect(result.metadata?.itemValueIsCurrency).toBe(true);
+	});
+
+	it("invoices can roll up their payments (derived pair via payments.invoiceId)", async () => {
+		const { asOrg } = await seedFinancials();
+		const result = await asOrg.query(api.reportData.executeReport, {
+			entityType: "invoices",
+			config: {
+				version: 2,
+				entityType: "invoices",
+				metric: {
+					op: "related",
+					related: { entity: "payments", fk: "invoiceId", field: "paymentAmount", op: "sum" },
+				},
+			},
+		});
+		expect(result.data.map((d) => ({ label: d.label, value: d.value }))).toStrictEqual([
+			{ label: "INV-B", value: 900 },
+			{ label: "INV-A", value: 350 },
+		]);
+		expect(result.total).toBe(1250);
+	});
+
+	it("permission mapping: payments and invoiceLineItems gate on invoices, quoteLineItems on quotes", async () => {
+		const { org } = await seedFinancials();
+		const member = await t.run((ctx) => addMemberToOrg(ctx, org.orgId));
+		await t.run(async (ctx) => {
+			const membership = await ctx.db
+				.query("organizationMemberships")
+				.withIndex("by_org_user", (q) => q.eq("orgId", org.orgId).eq("userId", member.userId))
+				.unique();
+			if (!membership) throw new Error("membership not found");
+			await ctx.db.patch(membership._id, {
+				permissions: {
+					reports: { level: "view" },
+					quotes: { level: "view", allRecords: true },
+					invoices: { level: "view" },
+				},
+			});
+		});
+		const asMember = t.withIdentity(createTestIdentity(member.clerkUserId, org.clerkOrgId));
+
+		const bare = { version: 2, metric: { op: "count" } } as const;
+		// quotes allRecords covers quoteLineItems…
+		const qli = await asMember.query(api.reportData.executeReport, {
+			entityType: "quoteLineItems",
+			config: { ...bare, entityType: "quoteLineItems" },
+		});
+		expect(qli.total).toBe(0);
+
+		// …but invoices without allRecords denies payments and invoiceLineItems.
+		for (const entityType of ["payments", "invoiceLineItems"] as const) {
+			const caught = await asMember
+				.query(api.reportData.executeReport, {
+					entityType,
+					config: { ...bare, entityType },
+				})
+				.then(
+					() => null,
+					(error: unknown) => error
+				);
+			expect(caught, entityType).not.toBeNull();
+		}
+	});
+});

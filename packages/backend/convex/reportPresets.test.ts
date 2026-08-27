@@ -56,9 +56,9 @@ function presetToGeneratedReport(preset: ReportPresetDefinition): GeneratedRepor
 const TABLE_WORKLIST_PRESET_IDS = new Set(["overdue-invoices", "quotes-awaiting-response"]);
 
 describe("REPORT_PRESETS", () => {
-	it("has 14 presets with unique ids", () => {
-		expect(REPORT_PRESETS).toHaveLength(14);
-		expect(new Set(REPORT_PRESETS.map((p) => p.id)).size).toBe(14);
+	it("has 15 presets with unique ids", () => {
+		expect(REPORT_PRESETS).toHaveLength(15);
+		expect(new Set(REPORT_PRESETS.map((p) => p.id)).size).toBe(15);
 	});
 
 	describe("round-trip through the real executeReport", () => {

@@ -20,6 +20,9 @@ export const REPORT_ENTITY_TYPES = [
 	"tasks",
 	"quotes",
 	"invoices",
+	"payments",
+	"quoteLineItems",
+	"invoiceLineItems",
 	"activities",
 ] as const;
 
@@ -211,6 +214,54 @@ export const REPORT_FIELDS: Record<ReportEntityType, ReportEntityFields> = {
 			discountAmount: { type: "currency", label: "Discount Amount" },
 		},
 	},
+	payments: {
+		dateField: "dueDate",
+		summaryValueField: "paymentAmount",
+		fields: {
+			status: {
+				type: "string",
+				label: "Status",
+				options: ["pending", "sent", "paid", "refunded", "overdue", "cancelled"],
+			},
+			paymentAmount: { type: "currency", label: "Amount" },
+			dueDate: { type: "timestamp", label: "Due Date" },
+			paidAt: { type: "timestamp", label: "Paid At" },
+			_creationTime: { type: "timestamp", label: "Created" },
+			manualMethod: {
+				type: "string",
+				label: "Manual Method",
+				options: ["cash", "check", "other"],
+			},
+			description: { type: "string", label: "Description" },
+		},
+	},
+	quoteLineItems: {
+		dateField: "_creationTime",
+		summaryValueField: "amount",
+		fields: {
+			description: { type: "string", label: "Description" },
+			quantity: { type: "number", label: "Quantity" },
+			unit: { type: "string", label: "Unit" },
+			// rate/cost are per-unit in schema.ts — "Unit" labels keep sums honest (§8 d12).
+			rate: { type: "currency", label: "Unit Price" },
+			amount: { type: "currency", label: "Total" },
+			cost: { type: "currency", label: "Unit Cost" },
+			_creationTime: { type: "timestamp", label: "Created" },
+		},
+	},
+	invoiceLineItems: {
+		dateField: "_creationTime",
+		summaryValueField: "total",
+		fields: {
+			description: { type: "string", label: "Description" },
+			quantity: { type: "number", label: "Quantity" },
+			unit: { type: "string", label: "Unit" },
+			unitPrice: { type: "currency", label: "Unit Price" },
+			total: { type: "currency", label: "Total" },
+			cost: { type: "currency", label: "Unit Cost" },
+			_creationTime: { type: "timestamp", label: "Created" },
+		},
+	},
 	activities: {
 		dateField: "timestamp",
 		fields: {
@@ -319,6 +370,23 @@ export const GROUP_BY_OPTIONS: Record<
 		{ value: "issuedDate_month", label: "Issued by Month" },
 		{ value: "dueDate_month", label: "Due by Month" },
 	],
+	payments: [
+		{ value: "status", label: "Status" },
+		{ value: "invoiceId", label: "Invoice" },
+		{ value: "manualMethod", label: "Manual Method" },
+		{ value: "dueDate_month", label: "Due by Month" },
+		{ value: "paidAt_month", label: "Paid by Month" },
+	],
+	quoteLineItems: [
+		{ value: "skuId", label: "SKU" },
+		{ value: "unit", label: "Unit" },
+		{ value: "creationDate_month", label: "Created by Month" },
+	],
+	invoiceLineItems: [
+		{ value: "skuId", label: "SKU" },
+		{ value: "unit", label: "Unit" },
+		{ value: "creationDate_month", label: "Created by Month" },
+	],
 	activities: [
 		{ value: "activityType", label: "Activity Type" },
 		{ value: "timestamp_month", label: "By Month" },
@@ -334,7 +402,7 @@ export const GROUP_BY_OPTIONS: Record<
  * these become user-pickable at R9 via RecordPicker.
  */
 export interface ReportGroupableFk {
-	refType: "clients" | "projects" | "users";
+	refType: "clients" | "projects" | "users" | "invoices" | "skus";
 }
 
 export const REPORT_GROUPABLE_FKS: Record<
@@ -346,6 +414,9 @@ export const REPORT_GROUPABLE_FKS: Record<
 	tasks: { assigneeUserId: { refType: "users" } },
 	quotes: { clientId: { refType: "clients" } },
 	invoices: { clientId: { refType: "clients" }, projectId: { refType: "projects" } },
+	payments: { invoiceId: { refType: "invoices" } },
+	quoteLineItems: { skuId: { refType: "skus" } },
+	invoiceLineItems: { skuId: { refType: "skus" } },
 	activities: {},
 };
 
@@ -427,6 +498,9 @@ export const DEFAULT_GROUP_BY: Record<ReportEntityType, string> = {
 	tasks: "status",
 	quotes: "status",
 	invoices: "status",
+	payments: "status",
+	quoteLineItems: "skuId",
+	invoiceLineItems: "skuId",
 	activities: "activityType",
 };
 
@@ -437,6 +511,9 @@ export const DEFAULT_DETAIL_COLUMNS: Record<ReportEntityType, string[]> = {
 	tasks: ["title", "status", "date"],
 	quotes: ["quoteNumber", "status", "total"],
 	invoices: ["invoiceNumber", "status", "total", "issuedDate"],
+	payments: ["description", "status", "paymentAmount", "dueDate"],
+	quoteLineItems: ["description", "quantity", "rate", "amount"],
+	invoiceLineItems: ["description", "quantity", "unitPrice", "total"],
 	activities: ["activityType", "description", "timestamp"],
 };
 
