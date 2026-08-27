@@ -4,27 +4,20 @@
  * the assistant's config generator (reportConfigGeneration.toExecuteReportArgs)
  * — delegate here so their routing can never drift.
  *
- * Since R4c every request executes as a v2 config: the input's v1-shaped state
- * (including magic groupBy keys like "month"/"conversionRate", which the pre-R8
- * builder still offers) runs through normalizeReportConfig, and executeReport
- * receives `{ entityType, config, seriesLimit?, detail? }`. The legacy args are
- * deleted at R14 (§8 d11).
+ * Since R8a the input is a saved (config, visualization) pair: v2 configs pass
+ * through, v1 rows (staging scaffolding until R14) expand via
+ * normalizeReportConfig, and executeReport receives
+ * `{ entityType, config, seriesLimit?, detail? }`.
  */
-import type { ReportFilters } from "./reportFilters";
 import {
 	normalizeReportConfig,
+	type ReportConfig,
 	type ReportConfigV2,
+	type ReportVisualization,
 } from "./reportConfig";
 import { DEFAULT_DETAIL_COLUMNS, type ReportEntityType } from "./reportFields";
 
-export type ReportVisualizationType =
-	| "table"
-	| "bar"
-	| "column"
-	| "line"
-	| "pie"
-	| "radar"
-	| "radial";
+export type ReportVisualizationType = ReportVisualization["type"];
 
 export type ReportAggregationOp = "count" | "sum" | "avg" | "min" | "max";
 
@@ -38,18 +31,18 @@ export interface ExecuteReportArgs {
 
 /**
  * True when the report should render raw rows instead of aggregated groups.
- * Charts require a Group by (Slice 3-D3: chart renders above the data table,
- * fed by the same grouped query) — with no Group by, there's nothing to
- * chart, so ANY viz type (table or chart) falls back to detail rows. Beyond
- * that, only the table view has its own explicit-columns override.
+ * Ratio and related metrics always aggregate (they bucket without a groupBy);
+ * otherwise no Group by means there's nothing to chart, so ANY viz type falls
+ * back to detail rows, and the table view alone has an explicit-columns
+ * override.
  */
 export function isDetailModeActive(
-	vizType: ReportVisualizationType,
-	groupBy: string | undefined,
-	columns: string[] | undefined
+	config: ReportConfigV2,
+	vizType: ReportVisualizationType
 ): boolean {
-	if (!groupBy) return true;
-	return vizType === "table" && (columns?.length ?? 0) > 0;
+	if (config.metric.op === "ratio" || config.metric.op === "related") return false;
+	if (!config.groupBy) return true;
+	return vizType === "table" && (config.columns?.length ?? 0) > 0;
 }
 
 /** Columns to actually query/display in detail mode — falls back to a sensible per-entity default so the table (and its Columns checklist) never looks empty. */
@@ -60,50 +53,24 @@ export function effectiveDetailColumns(
 	return columns && columns.length > 0 ? columns : DEFAULT_DETAIL_COLUMNS[entityType];
 }
 
-export interface ReportQueryArgsInput {
-	entityType: ReportEntityType;
-	groupBy?: string;
-	dateRange?: { start?: number; end?: number };
-	filters?: ReportFilters;
-	/** Caller-normalized measure — see module doc. */
-	measure?: { op: ReportAggregationOp; field?: string };
-	columns?: string[];
-	visualization: ReportVisualizationType;
-}
-
-/**
- * "Group by: None" always means raw-row detail mode (with default columns if
- * none are checked) — for every viz type, not just table, since a chart with
- * nothing to group on has nothing to chart above (see isDetailModeActive).
- *
- * A non-count measure missing its field is forwarded with an empty field so
- * executeReport's validateAggregation rejects it, matching the pre-R4c error.
- */
-export function resolveReportQueryArgs(input: ReportQueryArgsInput): ExecuteReportArgs {
-	const measure = input.measure;
-	const { config, visualization } = normalizeReportConfig(
-		{
-			entityType: input.entityType,
-			...(input.groupBy ? { groupBy: [input.groupBy] } : {}),
-			...(input.dateRange ? { dateRange: input.dateRange } : {}),
-			...(input.filters ? { filters: input.filters } : {}),
-			...(measure && measure.op !== "count"
-				? { aggregations: [{ field: measure.field ?? "", operation: measure.op }] }
-				: {}),
-			...(input.columns ? { columns: input.columns } : {}),
-		},
-		{ type: input.visualization }
+export function resolveReportQueryArgs(
+	savedConfig: ReportConfig,
+	visualization: ReportVisualization
+): ExecuteReportArgs {
+	const { config, visualization: viz } = normalizeReportConfig(
+		savedConfig,
+		visualization
 	);
 
-	const base = { entityType: input.entityType, config };
+	const base = { entityType: config.entityType, config };
 
-	if (isDetailModeActive(input.visualization, input.groupBy, input.columns)) {
+	if (isDetailModeActive(config, viz.type)) {
 		return {
 			...base,
-			detail: { columns: effectiveDetailColumns(input.entityType, input.columns) },
+			detail: { columns: effectiveDetailColumns(config.entityType, config.columns) },
 		};
 	}
 
-	const seriesLimit = visualization.options?.seriesLimit;
+	const seriesLimit = viz.options?.seriesLimit;
 	return { ...base, ...(seriesLimit !== undefined ? { seriesLimit } : {}) };
 }

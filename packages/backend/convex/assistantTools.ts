@@ -23,7 +23,12 @@ import {
 	type TableSummary,
 } from "./lib/schemaIntrospection";
 import type { ReportDataResult } from "./reportData";
-import { legacyConfigView, normalizeReportConfig } from "./lib/reportConfig";
+import {
+	normalizeReportConfig,
+	type DateRangePreset,
+	type ReportMetric,
+} from "./lib/reportConfig";
+import type { ReportFilters } from "./lib/reportFilters";
 import {
 	REPORT_ENTITY_TYPES,
 	GROUP_BY_OPTIONS,
@@ -408,8 +413,13 @@ interface SavedReportItem {
 interface SavedReportDetail {
 	found: true;
 	report: SavedReportItem & {
-		groupBy?: string[];
-		dateRange?: { start?: string; end?: string };
+		metric: ReportMetric;
+		groupBy?: string;
+		segmentBy?: string;
+		dateField?: string;
+		dateRange?: { preset?: DateRangePreset; start?: string; end?: string };
+		filters?: ReportFilters;
+		columns?: string[];
 	};
 }
 
@@ -1484,14 +1494,18 @@ export const listSavedReports = createTool({
 
 export const getSavedReport = createTool({
 	description:
-		"Get one saved report's settings (entity type, groupBy, date range, visualization). Re-run it by passing those settings to runReport.",
+		"Get one saved report's settings (entity type, metric, grouping, date range, filters, visualization). Re-run it by passing those settings to runReport.",
 	inputSchema: z.object({ reportId: z.string() }),
 	execute: async (ctx, input): Promise<SavedReportDetail | NotFound> => {
 		const report = await ctx.runQuery(api.reports.get, {
 			id: input.reportId as Id<"reports">,
 		});
 		if (!report) return { found: false };
-		const config = legacyConfigView(report.config);
+		const { config, visualization } = normalizeReportConfig(
+			report.config,
+			report.visualization
+		);
+		const range = config.date?.range;
 		return {
 			found: true,
 			report: {
@@ -1499,15 +1513,20 @@ export const getSavedReport = createTool({
 				name: report.name,
 				description: truncate(report.description, TEXT_CAP),
 				entityType: config.entityType,
-				visualization: report.visualization.type,
+				visualization: visualization.type,
 				updatedAt: isoInstant(report.updatedAt),
+				metric: config.metric,
 				groupBy: config.groupBy,
-				dateRange: config.dateRange
-					? {
-							start: isoDay(config.dateRange.start),
-							end: isoDay(config.dateRange.end),
-						}
-					: undefined,
+				segmentBy: config.segmentBy,
+				dateField: config.date?.field,
+				dateRange:
+					range === undefined
+						? undefined
+						: range.kind === "preset"
+							? { preset: range.preset }
+							: { start: isoDay(range.start), end: isoDay(range.end) },
+				filters: config.filters,
+				columns: config.columns,
 			},
 		};
 	},

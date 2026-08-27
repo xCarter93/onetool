@@ -82,7 +82,12 @@ describe("ReportPreview — Slice 3-D3 (chart renders above the data table)", ()
 
 		const { container } = render(
 			<ReportPreview
-				config={{ entityType: "clients", groupBy: ["status"] }}
+				config={{
+					version: 2,
+					entityType: "clients",
+					metric: { op: "count" },
+					groupBy: "status",
+				}}
 				visualization={{ type: "bar" }}
 			/>
 		);
@@ -107,7 +112,12 @@ describe("ReportPreview — Slice 3-D3 (chart renders above the data table)", ()
 
 		const { container } = render(
 			<ReportPreview
-				config={{ entityType: "clients", groupBy: ["status"] }}
+				config={{
+					version: 2,
+					entityType: "clients",
+					metric: { op: "count" },
+					groupBy: "status",
+				}}
 				visualization={{ type: "table" }}
 			/>
 		);
@@ -129,7 +139,11 @@ describe("ReportPreview — Slice 3-D3 (chart renders above the data table)", ()
 
 		const { container } = render(
 			<ReportPreview
-				config={{ entityType: "clients" }}
+				config={{
+					version: 2,
+					entityType: "clients",
+					metric: { op: "count" },
+				}}
 				visualization={{ type: "bar" }}
 			/>
 		);

@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { api, internal } from "./_generated/api";
 import {
 	type GeneratedReport,
+	describeCurrentConfig,
 	generateConfigForBuilder,
 	parseCurrentConfig,
 	reportConfigAgent,
@@ -216,21 +217,31 @@ describe("toSavedReport", () => {
 		expect(saved.visualization).toEqual({ type: "pie" });
 	});
 
-	it("maps count measure to omitted aggregations and wraps groupBy", () => {
+	it("saves a native v2 config", () => {
+		const saved = toSavedReport(gen());
+		expect(saved.config.version).toBe(2);
+		expect(saved.config.entityType).toBe("invoices");
+	});
+
+	it("maps a count measure to a count metric and a plain-string groupBy", () => {
 		const saved = toSavedReport(gen({ measure: { op: "count", field: null } }));
-		expect(saved.config.groupBy).toEqual(["status"]);
-		expect(saved.config.aggregations).toBeUndefined();
+		expect(saved.config.groupBy).toBe("status");
+		expect(saved.config.metric).toEqual({ op: "count" });
 		expect(saved.config.columns).toBeUndefined();
 		expect(saved.visualization).toEqual({ type: "bar" });
 	});
 
-	it("maps a sum measure to the saved aggregations shape", () => {
+	it("maps a sum measure to the v2 metric shape", () => {
 		const saved = toSavedReport(
 			gen({ measure: { op: "sum", field: "total" } })
 		);
-		expect(saved.config.aggregations).toEqual([
-			{ field: "total", operation: "sum" },
-		]);
+		expect(saved.config.metric).toEqual({ op: "sum", field: "total" });
+	});
+
+	it("expands generatable magic group-bys so the saved config is executable", () => {
+		const saved = toSavedReport(gen({ groupBy: "month" }));
+		expect(saved.config.groupBy).toBe("paidAt_month");
+		expect(saved.config.metric).toEqual({ op: "sum", field: "total" });
 	});
 
 	it("keeps columns only for table viz and converts dates to day bounds", () => {
@@ -244,9 +255,12 @@ describe("toSavedReport", () => {
 			})
 		);
 		expect(saved.config.columns).toEqual(["invoiceNumber", "total"]);
-		expect(saved.config.dateRange).toEqual({
-			start: Date.parse("2026-01-01T00:00:00.000Z"),
-			end: Date.parse("2026-01-31T23:59:59.999Z"),
+		expect(saved.config.date).toEqual({
+			range: {
+				kind: "absolute",
+				start: Date.parse("2026-01-01T00:00:00.000Z"),
+				end: Date.parse("2026-01-31T23:59:59.999Z"),
+			},
 		});
 
 		const chart = toSavedReport(gen({ columns: ["invoiceNumber"] }));
@@ -314,21 +328,107 @@ describe("toExecuteReportArgs", () => {
 });
 
 describe("parseCurrentConfig", () => {
-	it("parses a JSON object and rejects everything else", () => {
-		expect(parseCurrentConfig('{"entityType":"invoices"}')).toEqual({
-			entityType: "invoices",
+	/** The builder publishes its live draft as a saved (config, visualization) pair. */
+	function relay(
+		config: Record<string, unknown> = {},
+		visualization: unknown = { type: "bar" }
+	): string {
+		return JSON.stringify({
+			config: {
+				version: 2,
+				entityType: "invoices",
+				metric: { op: "count" },
+				...config,
+			},
+			visualization,
 		});
+	}
+
+	it("parses a v2 (config, visualization) pair", () => {
+		expect(parseCurrentConfig(relay({ groupBy: "status" }))).toEqual({
+			config: {
+				version: 2,
+				entityType: "invoices",
+				metric: { op: "count" },
+				groupBy: "status",
+			},
+			visualization: { type: "bar" },
+		});
+	});
+
+	it("keeps the config when the visualization is missing or unusable", () => {
+		expect(parseCurrentConfig(relay({}, null))?.visualization).toBeNull();
+		expect(parseCurrentConfig(relay({}, { nope: 1 }))?.visualization).toBeNull();
+	});
+
+	it("rejects malformed, oversized, and non-v2 relays", () => {
 		expect(parseCurrentConfig("not json")).toBeNull();
 		expect(parseCurrentConfig('["array"]')).toBeNull();
 		expect(parseCurrentConfig('"string"')).toBeNull();
 		expect(parseCurrentConfig(null)).toBeNull();
 		expect(parseCurrentConfig(undefined)).toBeNull();
 		expect(parseCurrentConfig(`{"pad":"${"x".repeat(5000)}"}`)).toBeNull();
+		// The pre-R8a flat shape is no longer accepted.
+		expect(parseCurrentConfig('{"entityType":"invoices"}')).toBeNull();
+		expect(parseCurrentConfig(relay({ version: 1 }))).toBeNull();
+		expect(parseCurrentConfig(relay({ entityType: "aliens" }))).toBeNull();
+		expect(parseCurrentConfig(relay({ metric: { op: "median" } }))).toBeNull();
+	});
+
+	it("renders the draft in v2 vocabulary for the prompt", () => {
+		const current = parseCurrentConfig(
+			relay({
+				groupBy: "clientId",
+				metric: { op: "sum", field: "total" },
+				date: { field: "paidAt", range: { kind: "preset", preset: "this_year" } },
+				filters: {
+					logic: "and",
+					groups: [
+						{
+							logic: "and",
+							rules: [{ field: "status", operator: "equals", value: "paid" }],
+						},
+					],
+				},
+			})
+		);
+		expect(describeCurrentConfig(current!)).toBe(
+			[
+				"entity: invoices",
+				"metric: sum of total",
+				"group by: clientId",
+				"date range: this_year on paidAt",
+				"filters: 1 rule",
+				"visualization: bar",
+			].join("\n")
+		);
+	});
+
+	it("renders ratio metrics and absolute ranges", () => {
+		const current = parseCurrentConfig(
+			relay({
+				entityType: "quotes",
+				metric: { op: "ratio", ratioKey: "conversionRate" },
+				date: {
+					range: {
+						kind: "absolute",
+						start: Date.parse("2026-01-01T00:00:00.000Z"),
+					},
+				},
+			})
+		);
+		expect(describeCurrentConfig(current!)).toContain(
+			"metric: ratio (conversionRate)"
+		);
+		expect(describeCurrentConfig(current!)).toContain(
+			"date range: 2026-01-01 to now"
+		);
+		expect(describeCurrentConfig(current!)).toContain("group by: none");
 	});
 });
 
 describe("toBuilderConfig", () => {
-	it("normalizes the generated config for the builder", () => {
+	it("seeds the builder with the same v2 pair the saved report gets", () => {
 		const config = toBuilderConfig(
 			gen({
 				groupBy: null,
@@ -353,36 +453,59 @@ describe("toBuilderConfig", () => {
 			})
 		);
 		expect(config).toEqual({
-			entityType: "invoices",
-			groupBy: null,
-			filters: {
-				logic: "and",
-				groups: [
-					{
-						logic: "and",
-						rules: [{ field: "status", operator: "equals", value: "paid" }],
-					},
-				],
-			},
-			measure: { op: "sum", field: "total" },
-			columns: ["invoiceNumber", "total"],
-			dateRange: { start: Date.parse("2026-01-01T00:00:00.000Z") },
-			visualization: "table",
 			name: "Paid invoices",
-			description: null,
+			config: {
+				version: 2,
+				entityType: "invoices",
+				metric: { op: "sum", field: "total" },
+				filters: {
+					logic: "and",
+					groups: [
+						{
+							logic: "and",
+							rules: [{ field: "status", operator: "equals", value: "paid" }],
+						},
+					],
+				},
+				date: {
+					range: {
+						kind: "absolute",
+						start: Date.parse("2026-01-01T00:00:00.000Z"),
+					},
+				},
+				columns: ["invoiceNumber", "total"],
+			},
+			visualization: { type: "table" },
 		});
+	});
+
+	it("applies and saves identically — same input, same config", () => {
+		for (const generated of [
+			gen(),
+			gen({ groupBy: "month" }),
+			gen({ groupBy: null, visualization: "column" }),
+			gen({
+				visualization: "table",
+				groupBy: null,
+				columns: ["invoiceNumber"],
+				startDate: "2026-01-01",
+			}),
+			gen({ entityType: "tasks", groupBy: "status" }),
+		]) {
+			expect(toBuilderConfig(generated)).toEqual(toSavedReport(generated));
+		}
 	});
 
 	it("drops columns for chart visualizations", () => {
 		const config = toBuilderConfig(gen({ columns: ["invoiceNumber"] }));
-		expect(config.columns).toBeNull();
-		expect(config.dateRange).toBeNull();
+		expect(config.config.columns).toBeUndefined();
+		expect(config.config.date).toBeUndefined();
 	});
 
 	it("Slice 3-D3: a chart visualization with null groupBy is coerced to table (keeps the builder's chart-requires-groupBy invariant)", () => {
 		const config = toBuilderConfig(gen({ groupBy: null, visualization: "column" }));
-		expect(config.visualization).toBe("table");
-		expect(config.groupBy).toBeNull();
+		expect(config.visualization).toEqual({ type: "table" });
+		expect(config.config.groupBy).toBeUndefined();
 	});
 });
 
@@ -571,7 +694,9 @@ describe("NL generation plan gate (nlReportGeneration)", () => {
 			);
 			expect(spy).toHaveBeenCalled();
 			expect(result.ok).toBe(true);
-			expect(result.ok === true && result.config.entityType).toBe("invoices");
+			expect(result.ok === true && result.config.config.entityType).toBe(
+				"invoices"
+			);
 		} finally {
 			spy.mockRestore();
 		}

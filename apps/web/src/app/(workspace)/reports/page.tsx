@@ -26,9 +26,9 @@ import {
 	entityLabels,
 	formatRelativeTime,
 	groupByOptions,
-	savedConfigView,
 	visualizationIcons,
 } from "./report-config";
+import { normalizeReportConfig } from "@onetool/backend/convex/lib/reportConfig";
 
 function createReportColumns(
 	duplicatingId: string | null,
@@ -43,8 +43,11 @@ function createReportColumns(
 			cell: ({ row }) => {
 				const report = row.original;
 				const VizIcon = visualizationIcons[report.visualization.type];
-				const config = savedConfigView(report.config);
-				const groupBy = config.groupBy?.[0];
+				const { config } = normalizeReportConfig(
+					report.config,
+					report.visualization
+				);
+				const groupBy = config.groupBy;
 				const groupByLabel =
 					groupByOptions[config.entityType]?.find(
 						(o) => o.value === groupBy

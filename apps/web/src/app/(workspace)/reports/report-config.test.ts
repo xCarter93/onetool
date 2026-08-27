@@ -1,11 +1,13 @@
 import { describe, it, expect } from "vitest";
 import {
 	DEFAULT_DETAIL_COLUMNS,
-	dateRangeToBuilderState,
+	builderStateToSaved,
 	formatReportValue,
 	isDetailModeActive,
 	resolveReportQueryArgs,
-	type ReportConfigShape,
+	savedToBuilderState,
+	type BuilderConfigState,
+	type ReportConfigV2,
 } from "./report-config";
 
 describe("formatReportValue", () => {
@@ -44,72 +46,83 @@ describe("formatReportValue", () => {
 	});
 });
 
-describe("resolveReportQueryArgs — Group by: None", () => {
-	const baseConfig: ReportConfigShape = {
-		entityType: "invoices",
-		groupBy: undefined,
-		dateRange: undefined,
-		filters: undefined,
-		aggregation: undefined,
-		columns: undefined,
-	};
+const v2 = (over: Partial<ReportConfigV2> = {}): ReportConfigV2 => ({
+	version: 2,
+	entityType: "invoices",
+	metric: { op: "count" },
+	...over,
+});
 
+describe("resolveReportQueryArgs — Group by: None", () => {
 	it("table + groupBy None + no columns checked → detail mode with the per-entity default columns", () => {
-		const args = resolveReportQueryArgs(baseConfig, "table");
+		const args = resolveReportQueryArgs(v2(), { type: "table" });
 		expect(args.detail).toEqual({ columns: DEFAULT_DETAIL_COLUMNS.invoices });
 		expect(args.config.metric).toEqual({ op: "count" });
 	});
 
 	it("table + groupBy None + explicit columns checked → detail mode with those columns", () => {
 		const args = resolveReportQueryArgs(
-			{ ...baseConfig, columns: ["invoiceNumber", "total"] },
-			"table"
+			v2({ columns: ["invoiceNumber", "total"] }),
+			{ type: "table" }
 		);
 		expect(args.detail).toEqual({ columns: ["invoiceNumber", "total"] });
 	});
 
 	it("table + groupBy set + no columns checked → aggregated mode, no detail", () => {
-		const args = resolveReportQueryArgs({ ...baseConfig, groupBy: ["status"] }, "table");
+		const args = resolveReportQueryArgs(v2({ groupBy: "status" }), {
+			type: "table",
+		});
 		expect(args.detail).toBeUndefined();
 		expect(args.config.groupBy).toBe("status");
 	});
 
 	it("table + groupBy set + columns checked → detail mode wins regardless of groupBy", () => {
 		const args = resolveReportQueryArgs(
-			{ ...baseConfig, groupBy: ["status"], columns: ["invoiceNumber"] },
-			"table"
+			v2({ groupBy: "status", columns: ["invoiceNumber"] }),
+			{ type: "table" }
 		);
 		expect(args.detail).toEqual({ columns: ["invoiceNumber"] });
 	});
 
 	it("chart + groupBy None → detail mode (Slice 3-D3: charts require a groupBy; nothing to chart above)", () => {
-		// A chart with no grouping has nothing to chart above the table —
-		// falls back to raw-row detail mode with default columns, same as
-		// table + groupBy None.
-		const args = resolveReportQueryArgs(baseConfig, "bar");
-		expect(args.detail).toEqual({ columns: DEFAULT_DETAIL_COLUMNS.invoices });
-	});
-
-	it("chart + groupBy None + a non-count measure → still detail mode (measure ignored, same as table)", () => {
-		const args = resolveReportQueryArgs(
-			{ ...baseConfig, aggregation: { op: "sum", field: "total" } },
-			"pie"
-		);
+		const args = resolveReportQueryArgs(v2(), { type: "bar" });
 		expect(args.detail).toEqual({ columns: DEFAULT_DETAIL_COLUMNS.invoices });
 	});
 
 	it("chart + groupBy set → grouped count config", () => {
-		const args = resolveReportQueryArgs({ ...baseConfig, groupBy: ["status"] }, "bar");
+		const args = resolveReportQueryArgs(v2({ groupBy: "status" }), {
+			type: "bar",
+		});
 		expect(args.config.groupBy).toBe("status");
 		expect(args.config.metric).toEqual({ op: "count" });
 	});
+
+	it("ratio metric → aggregated mode even with no groupBy", () => {
+		const args = resolveReportQueryArgs(
+			{
+				version: 2,
+				entityType: "quotes",
+				metric: { op: "ratio", ratioKey: "conversionRate" },
+			},
+			{ type: "pie" }
+		);
+		expect(args.detail).toBeUndefined();
+	});
+
+	it("seriesLimit rides in from visualization.options", () => {
+		const args = resolveReportQueryArgs(v2({ groupBy: "clientId" }), {
+			type: "bar",
+			options: { seriesLimit: 10 },
+		});
+		expect(args.seriesLimit).toBe(10);
+	});
 });
 
-describe("resolveReportQueryArgs — magic-key expansion (post-R4c contract)", () => {
+describe("resolveReportQueryArgs — v1 magic-key expansion (staging rows until R14)", () => {
 	it("invoices 'month' expands to the paid-revenue v2 config", () => {
 		const args = resolveReportQueryArgs(
 			{ entityType: "invoices", groupBy: ["month"] },
-			"bar"
+			{ type: "bar" }
 		);
 		expect(args.config.groupBy).toBe("paidAt_month");
 		expect(args.config.metric).toEqual({ op: "sum", field: "total" });
@@ -119,7 +132,7 @@ describe("resolveReportQueryArgs — magic-key expansion (post-R4c contract)", (
 	it("invoices 'client' expands with an explicit series limit (d3)", () => {
 		const args = resolveReportQueryArgs(
 			{ entityType: "invoices", groupBy: ["client"] },
-			"bar"
+			{ type: "bar" }
 		);
 		expect(args.config.groupBy).toBe("clientId");
 		expect(args.seriesLimit).toBe(10);
@@ -128,29 +141,20 @@ describe("resolveReportQueryArgs — magic-key expansion (post-R4c contract)", (
 	it("quotes 'conversionRate' expands to the ratio metric", () => {
 		const args = resolveReportQueryArgs(
 			{ entityType: "quotes", groupBy: ["conversionRate"] },
-			"pie"
+			{ type: "pie" }
 		);
 		expect(args.config.metric).toEqual({ op: "ratio", ratioKey: "conversionRate" });
 		expect(args.config.groupBy).toBeUndefined();
 	});
 
-	it("registry keys pass through as grouped counts", () => {
-		const args = resolveReportQueryArgs(
-			{ entityType: "invoices", groupBy: ["issuedDate_month"] },
-			"line"
-		);
-		expect(args.config.groupBy).toBe("issuedDate_month");
-		expect(args.config.metric).toEqual({ op: "count" });
-	});
-
-	it("non-count measures carry into the config metric", () => {
+	it("v1 aggregations carry into the config metric", () => {
 		const args = resolveReportQueryArgs(
 			{
 				entityType: "invoices",
 				groupBy: ["issuedDate_month"],
-				aggregation: { op: "avg", field: "total" },
+				aggregations: [{ field: "total", operation: "avg" }],
 			},
-			"line"
+			{ type: "line" }
 		);
 		expect(args.config.metric).toEqual({ op: "avg", field: "total" });
 	});
@@ -158,62 +162,157 @@ describe("resolveReportQueryArgs — magic-key expansion (post-R4c contract)", (
 
 describe("isDetailModeActive — Slice 3-D3 (chart above table model)", () => {
 	it("any viz type with groupBy None → detail (a chart with nothing to group on has nothing to chart above)", () => {
-		expect(isDetailModeActive("table", undefined, undefined)).toBe(true);
-		expect(isDetailModeActive("bar", undefined, undefined)).toBe(true);
-		expect(isDetailModeActive("pie", undefined, ["invoiceNumber"])).toBe(true);
+		expect(isDetailModeActive(v2(), "table")).toBe(true);
+		expect(isDetailModeActive(v2(), "bar")).toBe(true);
+		expect(isDetailModeActive(v2({ columns: ["invoiceNumber"] }), "pie")).toBe(true);
 	});
 
 	it("table + groupBy set + columns checked → detail (explicit raw-row override)", () => {
-		expect(isDetailModeActive("table", "status", ["invoiceNumber"])).toBe(true);
+		expect(
+			isDetailModeActive(
+				v2({ groupBy: "status", columns: ["invoiceNumber"] }),
+				"table"
+			)
+		).toBe(true);
 	});
 
 	it("table + groupBy set + no columns → grouped table, not detail", () => {
-		expect(isDetailModeActive("table", "status", undefined)).toBe(false);
+		expect(isDetailModeActive(v2({ groupBy: "status" }), "table")).toBe(false);
 	});
 
 	it("chart + groupBy set → grouped (aggregated) mode, not detail — feeds chart + table together", () => {
-		expect(isDetailModeActive("bar", "status", undefined)).toBe(false);
+		expect(isDetailModeActive(v2({ groupBy: "status" }), "bar")).toBe(false);
 		// Columns are table-viz-only; a chart ignores any leftover column
 		// selection and still aggregates instead of going to detail mode.
-		expect(isDetailModeActive("bar", "status", ["invoiceNumber"])).toBe(false);
+		expect(
+			isDetailModeActive(v2({ groupBy: "status", columns: ["invoiceNumber"] }), "bar")
+		).toBe(false);
+	});
+
+	it("ratio and related metrics are never detail — they aggregate without a groupBy", () => {
+		expect(
+			isDetailModeActive(
+				{
+					version: 2,
+					entityType: "quotes",
+					metric: { op: "ratio", ratioKey: "conversionRate" },
+				},
+				"table"
+			)
+		).toBe(false);
 	});
 });
 
-describe("dateRangeToBuilderState", () => {
-	it("maps an empty range to All Time", () => {
-		expect(dateRangeToBuilderState(null)).toEqual({ preset: "all_time" });
-		expect(dateRangeToBuilderState(undefined)).toEqual({ preset: "all_time" });
-		expect(dateRangeToBuilderState({})).toEqual({ preset: "all_time" });
+const baseState = (over: Partial<BuilderConfigState> = {}): BuilderConfigState => ({
+	entityType: "invoices",
+	dateRangePreset: "all_time",
+	metric: { op: "count" },
+	columns: [],
+	vizType: "table",
+	...over,
+});
+
+describe("builderStateToSaved ↔ savedToBuilderState round trips (R8a)", () => {
+	it("a preset date range survives hydrate → save unchanged", () => {
+		const config = v2({
+			groupBy: "issuedDate_month",
+			date: { range: { kind: "preset", preset: "this_year" } },
+		});
+		const state = savedToBuilderState(config, { type: "column" });
+		expect(state.dateRangePreset).toBe("this_year");
+
+		const saved = builderStateToSaved(state);
+		expect(saved.config).toEqual(config);
+		expect(saved.visualization).toEqual({ type: "column" });
 	});
 
-	it("recognizes a current-period preset", () => {
-		const now = new Date();
-		const monthStart = new Date(
-			now.getFullYear(),
-			now.getMonth(),
-			1
-		).getTime();
-		expect(dateRangeToBuilderState({ start: monthStart })).toEqual({
-			preset: "this_month",
+	it("regression: a custom absolute range survives hydrate → save (the old builder reset it to All Time)", () => {
+		const start = Date.parse("2024-02-15T00:00:00.000");
+		const end = new Date(2024, 2, 15, 23, 59, 59, 999).getTime();
+		const config = v2({
+			groupBy: "status",
+			date: { range: { kind: "absolute", start, end } },
+		});
+
+		const state = savedToBuilderState(config, { type: "table" });
+		expect(state.dateRangePreset).toBe("custom");
+		expect(state.customDateRange?.from?.getTime()).toBe(start);
+
+		const saved = builderStateToSaved(state);
+		expect(saved.config).toEqual(config);
+	});
+
+	it("v2-only fields (date.field, ratio metric, includeEmptyValues, segmentBy, viz options) all round-trip", () => {
+		const ratioConfig: ReportConfigV2 = {
+			version: 2,
+			entityType: "quotes",
+			metric: { op: "ratio", ratioKey: "conversionRate" },
+			date: { range: { kind: "preset", preset: "this_quarter" } },
+		};
+		const ratioTrip = builderStateToSaved(
+			savedToBuilderState(ratioConfig, { type: "pie" })
+		);
+		expect(ratioTrip.config).toEqual(ratioConfig);
+
+		const fullConfig = v2({
+			groupBy: "issuedDate_month",
+			segmentBy: "status",
+			includeEmptyValues: true,
+			date: { field: "paidAt", range: { kind: "preset", preset: "this_year" } },
+			metric: { op: "sum", field: "total" },
+		});
+		const viz = { type: "bar" as const, options: { seriesLimit: 10, sort: "value_desc" as const } };
+		const fullTrip = builderStateToSaved(savedToBuilderState(fullConfig, viz));
+		expect(fullTrip.config).toEqual(fullConfig);
+		expect(fullTrip.visualization).toEqual(viz);
+	});
+
+	it("a date.field override with an all-time range keeps its date object", () => {
+		const config = v2({
+			groupBy: "paidAt_month",
+			metric: { op: "sum", field: "total" },
+			date: { field: "paidAt", range: { kind: "preset", preset: "all_time" } },
+		});
+		const trip = builderStateToSaved(savedToBuilderState(config, { type: "line" }));
+		expect(trip.config).toEqual(config);
+	});
+
+	it("v1 rows hydrate through the normalizer (magic keys expand before reaching state)", () => {
+		const state = savedToBuilderState(
+			{ entityType: "invoices", groupBy: ["month"] },
+			{ type: "bar" }
+		);
+		expect(state.groupBy).toBe("paidAt_month");
+		expect(state.metric).toEqual({ op: "sum", field: "total" });
+		expect(state.dateField).toBe("paidAt");
+	});
+
+	it("a magic groupBy still in builder state (pre-R8b picker) saves as the expanded v2 config", () => {
+		const saved = builderStateToSaved(
+			baseState({ groupBy: "month", vizType: "bar" })
+		);
+		expect(saved.config.groupBy).toBe("paidAt_month");
+		expect(saved.config.metric).toEqual({ op: "sum", field: "total" });
+		expect(saved.config.filters?.groups?.[0]?.rules?.[0]).toEqual({
+			field: "status",
+			operator: "equals",
+			value: "paid",
 		});
 	});
 
-	it("falls back to the custom preset for arbitrary ranges instead of All Time", () => {
-		// Regression: detectDateRangePreset returns "all_time" for anything it
-		// doesn't recognize, which would silently drop an AI-generated bound.
-		const start = Date.parse("2024-02-15T00:00:00.000Z");
-		const end = Date.parse("2024-03-15T23:59:59.999Z");
-		const state = dateRangeToBuilderState({ start, end });
-		expect(state.preset).toBe("custom");
-		expect(state.customRange?.from?.getTime()).toBe(start);
-		expect(state.customRange?.to?.getTime()).toBe(end);
+	it("all-time with no field override stores no date at all", () => {
+		const saved = builderStateToSaved(baseState({ groupBy: "status" }));
+		expect(saved.config.date).toBeUndefined();
 	});
 
-	it("handles a one-sided range as custom", () => {
-		const end = Date.parse("2024-03-15T23:59:59.999Z");
-		const state = dateRangeToBuilderState({ end });
-		expect(state.preset).toBe("custom");
-		expect(state.customRange?.from).toBeUndefined();
-		expect(state.customRange?.to?.getTime()).toBe(end);
+	it("a one-sided absolute range hydrates as custom", () => {
+		const end = new Date(2024, 2, 15, 23, 59, 59, 999).getTime();
+		const state = savedToBuilderState(
+			v2({ date: { range: { kind: "absolute", end } } }),
+			{ type: "table" }
+		);
+		expect(state.dateRangePreset).toBe("custom");
+		expect(state.customDateRange?.from).toBeUndefined();
+		expect(state.customDateRange?.to?.getTime()).toBe(end);
 	});
 });

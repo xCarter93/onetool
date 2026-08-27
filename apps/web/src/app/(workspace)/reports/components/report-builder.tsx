@@ -55,21 +55,25 @@ import {
 	sanitizeReportFilters,
 } from "./report-filters-editor";
 import {
+	builderStateToSaved,
 	dateRangeOptions,
-	dateRangeToBuilderState,
 	effectiveDetailColumns,
 	entityOptions,
-	getDateRange,
 	groupByOptions,
 	isDetailModeActive,
 	resolveReportQueryArgs,
+	savedToBuilderState,
 	visualizationOptions,
+	type BuilderConfigState,
 	type EntityType,
-	type ReportConfigShape,
+	type ReportConfigV2,
 	type ReportMeasure,
-	type ReportSavedConfigShape,
+	type ReportMetric,
+	type ReportVisualization,
+	type VisualizationOptions,
 	type VizType,
 } from "../report-config";
+import type { ReportConfig as ReportDocConfig } from "@onetool/backend/convex/lib/reportConfig";
 
 /** Select sentinel for "no grouping" — Radix Select can't take an empty/undefined value. */
 const NO_GROUP_BY = "__none__";
@@ -100,28 +104,27 @@ function measureOptionsFor(
 	return options;
 }
 
-function measureToValue(measure: ReportMeasure): string {
-	return measure.op === "count" ? "count" : `${measure.op}:${measure.field}`;
+function measureToValue(metric: ReportMetric): string {
+	if (metric.op === "count") return "count";
+	// Ratio/related metrics (hydrated from presets/AI) have no Measure option
+	// until R8b's full picker — the select shows its placeholder.
+	if (metric.op === "ratio" || metric.op === "related") return "";
+	return `${metric.op}:${metric.field}`;
 }
 
 export interface ReportBuilderInitial {
 	name: string;
 	description: string;
-	entityType: EntityType;
-	groupBy: string | undefined;
-	vizType: VizType;
-	dateRangePreset: string;
-	customDateRange?: DateRange;
-	filters?: ReportFilters;
-	measure?: ReportMeasure;
-	columns?: string[];
+	/** Either config version — v1 rows expand through the normalizer on hydrate. */
+	config: ReportDocConfig;
+	visualization: ReportVisualization;
 }
 
 export interface ReportBuilderSavePayload {
 	name: string;
 	description?: string;
-	config: ReportSavedConfigShape;
-	visualization: { type: VizType };
+	config: ReportConfigV2;
+	visualization: ReportVisualization;
 }
 
 interface ReportBuilderProps {
@@ -139,37 +142,38 @@ export function ReportBuilder({
 	onSave,
 	onBack,
 }: ReportBuilderProps) {
+	// Hydrated once — useState initializers only read the first render's value.
+	const [init] = useState(() =>
+		savedToBuilderState(initial.config, initial.visualization)
+	);
 	const [name, setName] = useState(initial.name);
 	const [description, setDescription] = useState(initial.description);
-	const [entityType, setEntityType] = useState<EntityType>(initial.entityType);
-	const [groupBy, setGroupBy] = useState<string | undefined>(initial.groupBy);
-	const [vizType, setVizType] = useState<VizType>(initial.vizType);
-	const [dateRangePreset, setDateRangePreset] = useState(initial.dateRangePreset);
+	const [entityType, setEntityType] = useState<EntityType>(init.entityType);
+	const [groupBy, setGroupBy] = useState<string | undefined>(init.groupBy);
+	const [vizType, setVizType] = useState<VizType>(init.vizType);
+	const [dateRangePreset, setDateRangePreset] = useState(init.dateRangePreset);
 	const [customDateRange, setCustomDateRange] = useState<DateRange | undefined>(
-		initial.customDateRange
+		init.customDateRange
 	);
-	const [filters, setFilters] = useState<ReportFilters | undefined>(initial.filters);
-	const [measure, setMeasure] = useState<ReportMeasure>(initial.measure ?? { op: "count" });
-	const [columns, setColumns] = useState<string[]>(initial.columns ?? []);
+	// R8a fidelity state: no rail controls yet (dateField/segmentBy arrive at
+	// R8b, vizOptions at R9), but hydration/apply/save must round-trip them.
+	const [dateField, setDateField] = useState<string | undefined>(init.dateField);
+	const [segmentBy, setSegmentBy] = useState<string | undefined>(init.segmentBy);
+	const [includeEmptyValues, setIncludeEmptyValues] = useState<boolean | undefined>(
+		init.includeEmptyValues
+	);
+	const [vizOptions, setVizOptions] = useState<VisualizationOptions | undefined>(
+		init.vizOptions
+	);
+	const [filters, setFilters] = useState<ReportFilters | undefined>(init.filters);
+	const [metric, setMetric] = useState<ReportMetric>(init.metric);
+	const [columns, setColumns] = useState<string[]>(init.columns);
 	const [configTab, setConfigTab] = useState<"outline" | "filters">("outline");
 
 	const openAssistant = useAssistantOpener();
 
-	const effectiveDateRange = () => {
-		if (dateRangePreset === "custom" && customDateRange) {
-			return {
-				start: customDateRange.from?.getTime(),
-				end: customDateRange.to
-					? new Date(customDateRange.to).setHours(23, 59, 59, 999)
-					: undefined,
-			};
-		}
-		return getDateRange(dateRangePreset);
-	};
-
 	const sanitizedFilters = useMemo(() => sanitizeReportFilters(filters), [filters]);
 	const activeFilterCount = useMemo(() => countFilterRules(filters), [filters]);
-	const aggregation = measure.op === "count" ? undefined : measure;
 	// Non-count measures only work when groupBy is None or generic-safe — a
 	// legacy-only groupBy (e.g. invoices "month") only ever ran through the
 	// hardcoded dispatch, which ignores measures entirely.
@@ -177,33 +181,38 @@ export function ReportBuilder({
 	const availableMeasureOptions = groupByIsGenericSafe
 		? measureOptionsFor(entityType)
 		: measureOptionsFor(entityType).filter((o) => o.value === "count");
-	const detailModeActive = isDetailModeActive(vizType, groupBy, columns);
+
+	const builderState: BuilderConfigState = {
+		entityType,
+		dateField,
+		dateRangePreset,
+		customDateRange,
+		filters: sanitizedFilters,
+		metric,
+		groupBy,
+		segmentBy,
+		includeEmptyValues,
+		columns,
+		vizType,
+		vizOptions,
+	};
+	// One construction feeds save, preview, the status bar, and the published
+	// assistant context — what the user sees is exactly what persists.
+	const saved = builderStateToSaved(builderState);
+
+	const detailModeActive = isDetailModeActive(saved.config, vizType);
 	// What the Columns checklist actually shows as checked: the user's raw
 	// selection, or the per-entity default once detail mode is implied by
 	// Group by = None (so the checklist and the table never disagree).
 	const displayColumns = detailModeActive ? effectiveDetailColumns(entityType, columns) : columns;
-
-	const config: ReportConfigShape = {
-		entityType,
-		groupBy: groupBy ? [groupBy] : undefined,
-		dateRange: effectiveDateRange(),
-		filters: sanitizedFilters,
-		aggregation,
-		columns: columns.length ? columns : undefined,
-	};
 
 	// Agent sees what the user sees: the assistant's configureReport tool
 	// relays this as currentConfig so a request modifies the open draft
 	// instead of starting over.
 	usePublishScreenContext(() => ({
 		reportBuilderConfig: {
-			entityType,
-			groupBy: groupBy ?? null,
-			visualization: vizType,
-			dateRange: effectiveDateRange() ?? null,
-			filters: sanitizedFilters ?? null,
-			measure,
-			columns: columns.length ? columns : null,
+			config: saved.config,
+			visualization: saved.visualization,
 			name: name || null,
 		},
 	}));
@@ -211,39 +220,43 @@ export function ReportBuilder({
 	// Client-executed configureReport: the panel forwards the validated
 	// config here (navigate-tool pattern); the user reviews, then saves.
 	useRegisterReportConfigApply((applied: BuilderReportConfig) => {
-		setEntityType(applied.entityType);
-		setGroupBy(applied.groupBy ?? undefined);
-		setVizType(applied.visualization);
-		const { preset, customRange } = dateRangeToBuilderState(applied.dateRange);
-		setDateRangePreset(preset);
-		setCustomDateRange(customRange);
-		setFilters(applied.filters ?? undefined);
-		setMeasure(
-			applied.measure && applied.measure.op !== "count" && applied.measure.field
-				? { op: applied.measure.op, field: applied.measure.field }
-				: { op: "count" }
-		);
-		setColumns(applied.columns ?? []);
+		const next = savedToBuilderState(applied.config, applied.visualization);
+		setEntityType(next.entityType);
+		setGroupBy(next.groupBy);
+		setVizType(next.vizType);
+		setDateRangePreset(next.dateRangePreset);
+		setCustomDateRange(next.customDateRange);
+		setDateField(next.dateField);
+		setSegmentBy(next.segmentBy);
+		setIncludeEmptyValues(next.includeEmptyValues);
+		setVizOptions(next.vizOptions);
+		setFilters(next.filters);
+		setMetric(next.metric);
+		setColumns(next.columns);
 		if (applied.name) setName(applied.name);
-		// null description = "unchanged" — the model omits rather than clears.
-		if (applied.description !== null) setDescription(applied.description);
+		// Omitted description = "unchanged" — the model leaves it out rather than clearing.
+		if (applied.description !== undefined) setDescription(applied.description);
 	});
 
 	// Drives the footer summary; Convex dedupes this against ReportPreview's
 	// identical subscription, so there's no extra fetch.
-	const queryArgs = useDebouncedValue(resolveReportQueryArgs(config, vizType), 300);
+	const queryArgs = useDebouncedValue(
+		resolveReportQueryArgs(saved.config, saved.visualization),
+		300
+	);
 	const reportData = useQuery(api.reportData.executeReport, queryArgs);
 
 	const groupByLabel = groupBy
 		? (groupByOptions[entityType]?.find((o) => o.value === groupBy)?.label ?? groupBy)
 		: undefined;
-	// Which field the date range filters — from the registry, except the legacy
-	// invoice revenue group-bys (month/client), which actually filter on paidAt.
+	// Which field the date range filters — the hydrated v2 override, or the
+	// registry default, except the legacy invoice revenue group-bys
+	// (month/client), which actually filter on paidAt.
 	const dateFieldHint = (() => {
 		if (entityType === "invoices" && (groupBy === "month" || groupBy === "client")) {
 			return "paid date";
 		}
-		const field = getReportDateField(entityType);
+		const field = dateField ?? getReportDateField(entityType);
 		if (field === "_creationTime") return "record creation date";
 		return REPORT_FIELDS[entityType].fields[field]?.label.toLowerCase() ?? field;
 	})();
@@ -255,18 +268,8 @@ export function ReportBuilder({
 		void onSave({
 			name: name.trim(),
 			description: description.trim() || undefined,
-			config: {
-				entityType,
-				groupBy: groupBy ? [groupBy] : undefined,
-				dateRange: effectiveDateRange(),
-				filters: sanitizedFilters,
-				aggregations:
-					measure.op === "count"
-						? undefined
-						: [{ field: measure.field, operation: measure.op }],
-				columns: columns.length ? columns : undefined,
-			},
-			visualization: { type: vizType },
+			config: saved.config,
+			visualization: saved.visualization,
 		});
 	};
 
@@ -349,8 +352,12 @@ export function ReportBuilder({
 										const first = groupByOptions[v]?.[0]?.value;
 										if (first) setGroupBy(first);
 										setFilters(undefined);
-										setMeasure({ op: "count" });
+										setMetric({ op: "count" });
 										setColumns([]);
+										// Entity-scoped v2 fields can't survive a source change.
+										setDateField(undefined);
+										setSegmentBy(undefined);
+										setIncludeEmptyValues(undefined);
 									}}
 								>
 									<SelectTrigger className="w-full">
@@ -417,8 +424,8 @@ export function ReportBuilder({
 										// dispatch (which ignores measures) — coerce back to count
 										// here rather than in an effect (this repo lints
 										// set-state-in-effect).
-										if (next && !isGenericGroupBy(entityType, next) && measure.op !== "count") {
-											setMeasure({ op: "count" });
+										if (next && !isGenericGroupBy(entityType, next) && metric.op !== "count") {
+											setMetric({ op: "count" });
 										}
 										// Charts require a groupBy (Slice 3-D3) — dropping to "None"
 										// while a chart is active leaves nothing to chart above the
@@ -445,10 +452,10 @@ export function ReportBuilder({
 							<div className="space-y-1.5">
 								<Label className="text-xs">Measure</Label>
 								<Select
-									value={measureToValue(measure)}
+									value={measureToValue(metric)}
 									onValueChange={(v) => {
 										const opt = availableMeasureOptions.find((o) => o.value === v);
-										if (opt) setMeasure(opt.measure);
+										if (opt) setMetric(opt.measure);
 									}}
 								>
 									<SelectTrigger className="w-full">
@@ -528,7 +535,7 @@ export function ReportBuilder({
 				<main className="flex min-w-0 flex-1 flex-col lg:h-full lg:overflow-hidden">
 					<div className="flex-1 overflow-auto bg-muted/20 p-4 sm:p-8">
 						<div className="flex min-h-full w-full flex-col rounded-2xl border border-border/60 bg-background p-5 shadow-sm sm:p-7">
-							<ReportPreview config={config} visualization={{ type: vizType }} />
+							<ReportPreview config={saved.config} visualization={saved.visualization} />
 						</div>
 					</div>
 

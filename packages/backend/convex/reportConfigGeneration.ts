@@ -31,6 +31,12 @@ import {
 	type ReportEntityType,
 } from "./lib/reportFields";
 import {
+	normalizeReportConfig,
+	type ReportConfigV2,
+	type ReportMetric,
+	type ReportVisualization,
+} from "./lib/reportConfig";
+import {
 	resolveReportQueryArgs,
 	type ExecuteReportArgs,
 } from "./lib/reportQueryArgs";
@@ -168,6 +174,11 @@ export const REPORT_CONFIG_SYSTEM_PROMPT = [
 	"- columns: only for table visualization; use exact field names.",
 	"- Resolve relative dates (this month, last quarter) from the current date given in the request.",
 	"- name: a short title like a human would write; description: one sentence or null.",
+	"",
+	"When the request comes with a configuration the user already has open, it is described in saved-report terms — reproduce every part of it you were not asked to change:",
+	'- "metric: count of records" is measure null; "metric: sum of total" is measure {op: "sum", field: "total"}.',
+	'- Its date range (a named period like this_month, or explicit days) is what startDate/endDate must reproduce.',
+	'- Saved reports may describe settings you cannot generate. "metric: ratio (conversionRate)" is groupBy "conversionRate" and "metric: ratio (completionRate)" is groupBy "completionRate"; invoices summing total over paid records grouped by paidAt_month or clientId are groupBy "month" and "client". Anything else you cannot express, leave out.',
 ].join("\n");
 
 // ---------------------------------------------------------------------------
@@ -205,6 +216,15 @@ export function sanitizeGeneratedFilters(
 		.filter((group) => group.rules.length > 0);
 	if (groups.length === 0) return null;
 	return { logic: filters.logic, groups };
+}
+
+/** Rule count across groups; tolerant of untrusted (relayed) filter shapes. */
+function countFilterRules(filters: ReportFilters | null | undefined): number {
+	if (!filters || !Array.isArray(filters.groups)) return 0;
+	return filters.groups.reduce(
+		(n, group) => n + (Array.isArray(group?.rules) ? group.rules.length : 0),
+		0
+	);
 }
 
 /** Registry/coherence errors in a generated config; empty when valid. */
@@ -358,69 +378,67 @@ function resolveVisualization(gen: GeneratedReport): GeneratedReport["visualizat
 	return gen.groupBy === null && gen.visualization !== "table" ? "table" : gen.visualization;
 }
 
-/** Saved shape for reports.create — matches the builder's persistence rules
- * (count measure = omitted aggregations; columns only for table viz). */
-export function toSavedReport(gen: GeneratedReport): {
-	name: string;
-	description?: string;
-	config: {
-		entityType: ReportEntityType;
-		groupBy?: string[];
-		dateRange?: { start?: number; end?: number };
-		filters?: ReportFilters;
-		aggregations?: {
-			field: string;
-			operation: "sum" | "avg" | "min" | "max";
-		}[];
-		columns?: string[];
-	};
-	visualization: { type: "bar" | "column" | "line" | "pie" | "radar" | "radial" | "table" };
+/**
+ * Generated config → the canonical v2 pair every downstream path uses.
+ * Routed through the v1 normalizer because the generatable Group-by
+ * vocabulary still includes the magic keys (month, client, conversionRate,
+ * completionRate), which only become executable v2 configs by expansion.
+ */
+function toGeneratedConfig(gen: GeneratedReport): {
+	config: ReportConfigV2;
+	visualization: ReportVisualization;
 } {
 	const filters = sanitizeGeneratedFilters(gen.filters);
+	const dateRange = toDateRange(gen);
 	const measure = gen.measure;
 	const visualization = resolveVisualization(gen);
-	return {
-		name: gen.name.trim(),
-		...(gen.description ? { description: gen.description } : {}),
-		config: {
+	return normalizeReportConfig(
+		{
 			entityType: gen.entityType,
 			...(gen.groupBy ? { groupBy: [gen.groupBy] } : {}),
-			...(toDateRange(gen) ? { dateRange: toDateRange(gen) } : {}),
+			...(dateRange ? { dateRange } : {}),
 			...(filters ? { filters } : {}),
 			...(measure && measure.op !== "count" && measure.field
-				? {
-						aggregations: [
-							{ field: measure.field, operation: measure.op },
-						],
-					}
+				? { aggregations: [{ field: measure.field, operation: measure.op }] }
 				: {}),
 			...(visualization === "table" && gen.columns?.length
 				? { columns: gen.columns }
 				: {}),
 		},
-		visualization: { type: visualization },
+		{ type: visualization }
+	);
+}
+
+/**
+ * What a generated report becomes: the saved-report arguments AND the seed the
+ * builder applies to its live state — deliberately the same shape, so applying
+ * a generated config then saving it can't produce a different report.
+ * An omitted description means "leave it as it is".
+ */
+export type BuilderReportConfig = {
+	name: string;
+	description?: string;
+	config: ReportConfigV2;
+	visualization: ReportVisualization;
+};
+
+/** Saved shape for reports.create. */
+export function toSavedReport(gen: GeneratedReport): BuilderReportConfig {
+	const { config, visualization } = toGeneratedConfig(gen);
+	return {
+		name: gen.name.trim(),
+		...(gen.description ? { description: gen.description } : {}),
+		config,
+		visualization,
 	};
 }
 
 /** executeReport args for the dry run — delegates to the shared contract
  * module (lib/reportQueryArgs.ts) so the web's resolveReportQueryArgs and
- * this path can never drift. Count/fieldless measures collapse to undefined
- * here; the contract expands everything (magic keys included) to a v2 config. */
+ * this path can never drift. */
 export function toExecuteReportArgs(gen: GeneratedReport): ExecuteReportArgs {
-	const measure =
-		gen.measure && gen.measure.op !== "count" && gen.measure.field
-			? { op: gen.measure.op, field: gen.measure.field }
-			: undefined;
-
-	return resolveReportQueryArgs({
-		entityType: gen.entityType,
-		groupBy: gen.groupBy ?? undefined,
-		dateRange: toDateRange(gen),
-		filters: sanitizeGeneratedFilters(gen.filters) ?? undefined,
-		measure,
-		columns: gen.columns ?? undefined,
-		visualization: gen.visualization,
-	});
+	const { config, visualization } = toGeneratedConfig(gen);
+	return resolveReportQueryArgs(config, visualization);
 }
 
 /** One short sentence the assistant can echo about what was built. */
@@ -440,9 +458,7 @@ export function summarizeGeneratedReport(gen: GeneratedReport): string {
 	if (gen.measure && gen.measure.op !== "count" && gen.measure.field) {
 		parts.push(`measuring ${gen.measure.op} of ${gen.measure.field}`);
 	}
-	const filters = sanitizeGeneratedFilters(gen.filters);
-	const ruleCount =
-		filters?.groups.reduce((n, g) => n + g.rules.length, 0) ?? 0;
+	const ruleCount = countFilterRules(sanitizeGeneratedFilters(gen.filters));
 	if (ruleCount > 0) parts.push(`with ${ruleCount} filter${ruleCount === 1 ? "" : "s"}`);
 	if (gen.startDate || gen.endDate) {
 		parts.push(
@@ -490,27 +506,111 @@ export const authContext = internalQuery({
 /** Cap on the current-config JSON the model relays from screen context. */
 const CURRENT_CONFIG_MAX_LENGTH = 4000;
 
+const METRIC_OPS: readonly ReportMetric["op"][] = [
+	"count",
+	"sum",
+	"avg",
+	"min",
+	"max",
+	"ratio",
+	"related",
+];
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+	return value && typeof value === "object" && !Array.isArray(value)
+		? (value as Record<string, unknown>)
+		: null;
+}
+
+/** The builder's live draft, as relayed from screen context. */
+export type CurrentReportConfig = {
+	config: ReportConfigV2;
+	visualization: ReportVisualization | null;
+};
+
 /**
  * The current-config JSON arrives via the model (copied from the
- * <current-screen> block), so treat it as untrusted prompt input: parse
- * leniently, drop it if malformed. It only steers generation — the output
- * is still fully validated.
+ * <current-screen> block), so treat it as untrusted prompt input: it's
+ * accepted only as a `{ config, visualization }` pair carrying the v2 marker,
+ * a known entity and a known metric op, and everything below that is rendered
+ * defensively. It only steers generation — the output is still fully
+ * validated.
  */
 export function parseCurrentConfig(
 	currentConfig: string | null | undefined
-): Record<string, unknown> | null {
+): CurrentReportConfig | null {
 	if (!currentConfig || currentConfig.length > CURRENT_CONFIG_MAX_LENGTH) {
 		return null;
 	}
+	let parsed: unknown;
 	try {
-		const parsed: unknown = JSON.parse(currentConfig);
-		if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-			return parsed as Record<string, unknown>;
-		}
+		parsed = JSON.parse(currentConfig);
 	} catch {
-		// Malformed relay — generate from the request alone.
+		return null;
 	}
-	return null;
+	const root = asRecord(parsed);
+	const config = asRecord(root?.config);
+	const metric = asRecord(config?.metric);
+	if (!config || !metric || config.version !== 2) return null;
+	if (!ENTITY_TYPES.includes(config.entityType as ReportEntityType)) return null;
+	if (!METRIC_OPS.includes(metric.op as ReportMetric["op"])) return null;
+	const visualization = asRecord(root?.visualization);
+	return {
+		config: config as unknown as ReportConfigV2,
+		visualization:
+			typeof visualization?.type === "string"
+				? (visualization as unknown as ReportVisualization)
+				: null,
+	};
+}
+
+function isoDay(ms: number | undefined): string | undefined {
+	return typeof ms === "number"
+		? new Date(ms).toISOString().slice(0, 10)
+		: undefined;
+}
+
+function describeMetric(metric: ReportMetric): string {
+	if (metric.op === "count") return "count of records";
+	if (metric.op === "ratio") return `ratio (${metric.ratioKey ?? "unknown"})`;
+	if (metric.op === "related") {
+		const related = metric.related;
+		return related
+			? `${related.op} of related ${related.entity}${related.field ? ` ${related.field}` : ""}`
+			: "related rollup";
+	}
+	return `${metric.op} of ${metric.field ?? "(no field)"}`;
+}
+
+function describeDateRange(date: ReportConfigV2["date"]): string {
+	const scope = typeof date?.field === "string" ? ` on ${date.field}` : "";
+	const range = date?.range;
+	if (range?.kind === "preset") return `${range.preset}${scope}`;
+	const start = isoDay(range?.start);
+	const end = isoDay(range?.end);
+	if (!start && !end) return `all time${scope}`;
+	return `${start ?? "the beginning"} to ${end ?? "now"}${scope}`;
+}
+
+/** Prompt rendering of the open draft — v2 vocabulary, no raw JSON relay. */
+export function describeCurrentConfig(current: CurrentReportConfig): string {
+	const { config, visualization } = current;
+	const rules = countFilterRules(config.filters);
+	const lines = [
+		`entity: ${config.entityType}`,
+		`metric: ${describeMetric(config.metric)}`,
+		`group by: ${typeof config.groupBy === "string" ? config.groupBy : "none"}`,
+		`date range: ${describeDateRange(config.date)}`,
+		`filters: ${rules} rule${rules === 1 ? "" : "s"}`,
+	];
+	if (typeof config.segmentBy === "string") {
+		lines.push(`segment by: ${config.segmentBy}`);
+	}
+	if (Array.isArray(config.columns)) {
+		lines.push(`columns: ${config.columns.join(", ")}`);
+	}
+	if (visualization) lines.push(`visualization: ${visualization.type}`);
+	return lines.join("\n");
 }
 
 type GenerationOutcome =
@@ -570,7 +670,7 @@ async function runReportGeneration(
 	];
 	if (current) {
 		promptParts.push(
-			`The user currently has this report configuration open:\n${JSON.stringify(current, null, 2)}\nApply the requested change to it — keep every setting the request doesn't mention.`
+			`The user currently has this report configuration open:\n${describeCurrentConfig(current)}\nApply the requested change to it — keep every setting the request doesn't mention.`
 		);
 	}
 	promptParts.push(`Request: ${request}`);
@@ -661,26 +761,6 @@ export async function generateAndSaveReport(
 	};
 }
 
-/**
- * Normalized config the report builder applies to its live state. Shapes
- * match the builder's own state model (ms date bounds like a saved config;
- * null = absent). The panel client-executes this, like the navigate tool.
- */
-export type BuilderReportConfig = {
-	entityType: ReportEntityType;
-	groupBy: string | null;
-	filters: ReportFilters | null;
-	measure: {
-		op: "count" | "sum" | "avg" | "min" | "max";
-		field: string | null;
-	} | null;
-	columns: string[] | null;
-	dateRange: { start?: number; end?: number } | null;
-	visualization: "bar" | "column" | "line" | "pie" | "radar" | "radial" | "table";
-	name: string;
-	description: string | null;
-};
-
 export type ConfigureReportResult =
 	| {
 			ok: true;
@@ -693,20 +773,7 @@ export type ConfigureReportResult =
 
 /** Generated config → the shape the builder applies (exported for tests). */
 export function toBuilderConfig(gen: GeneratedReport): BuilderReportConfig {
-	// Coerced the same way as toSavedReport — the builder's "Add chart"
-	// affordance assumes a chart is only ever active when groupBy is set.
-	const visualization = resolveVisualization(gen);
-	return {
-		entityType: gen.entityType,
-		groupBy: gen.groupBy,
-		filters: sanitizeGeneratedFilters(gen.filters),
-		measure: gen.measure,
-		columns: visualization === "table" ? (gen.columns ?? null) : null,
-		dateRange: toDateRange(gen) ?? null,
-		visualization,
-		name: gen.name.trim(),
-		description: gen.description,
-	};
+	return toSavedReport(gen);
 }
 
 /**

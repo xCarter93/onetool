@@ -17,24 +17,31 @@ import {
 	Users,
 	type LucideIcon,
 } from "lucide-react";
+import type { DateRange } from "react-day-picker";
 import type { ReportFilters } from "@onetool/backend/convex/lib/reportFilters";
 import {
 	DEFAULT_DETAIL_COLUMNS,
 	GROUP_BY_OPTIONS,
 	REPORT_ENTITY_TYPES,
+	isGenericGroupBy,
 	type ReportEntityType,
 } from "@onetool/backend/convex/lib/reportFields";
 import { REPORT_SCAN_CEILING } from "@onetool/backend/convex/lib/orgScan";
 import {
-	resolveReportQueryArgs as resolveReportQueryArgsShared,
+	resolveReportQueryArgs,
 	isDetailModeActive,
 	effectiveDetailColumns,
 	type ExecuteReportArgs,
 } from "@onetool/backend/convex/lib/reportQueryArgs";
 import {
-	isReportFilters,
-	legacyConfigView,
+	DATE_RANGE_PRESETS,
+	normalizeReportConfig,
+	type DateRangePreset,
 	type ReportConfig as ReportDocConfig,
+	type ReportConfigV2,
+	type ReportMetric,
+	type ReportVisualization,
+	type VisualizationOptions,
 } from "@onetool/backend/convex/lib/reportConfig";
 import { formatCurrency } from "@/lib/money";
 
@@ -47,51 +54,153 @@ export type ReportMeasure =
 	| { op: "count" }
 	| { op: Exclude<MeasureOp, "count">; field: string };
 
-export type ReportConfigShape = {
+/**
+ * The builder's working state, mirroring ReportConfigV2 plus the UI-level date
+ * vocabulary ("custom" + a picked DateRange instead of an absolute range).
+ * Converted both ways by builderStateToSaved / savedToBuilderState so preset
+ * seeding, edit hydration, the AI apply bridge, save, and the live preview all
+ * share one config construction.
+ */
+export type BuilderConfigState = {
 	entityType: EntityType;
-	groupBy?: string[];
-	dateRange?: { start?: number; end?: number };
+	/** v2 date.field override (e.g. invoices paidAt vs issuedDate). */
+	dateField?: string;
+	/** "all_time" | DateRangePreset | "custom". */
+	dateRangePreset: string;
+	customDateRange?: DateRange;
+	/** Callers pass sanitized filters (sanitizeReportFilters). */
 	filters?: ReportFilters;
-	aggregation?: ReportMeasure;
-	/** Registry field names for detail-mode table columns; table viz only. */
-	columns?: string[];
+	metric: ReportMetric;
+	groupBy?: string;
+	segmentBy?: string;
+	includeEmptyValues?: boolean;
+	columns: string[];
+	vizType: VizType;
+	vizOptions?: VisualizationOptions;
 };
 
-/**
- * Shape persisted to `reports.config` (matches packages/backend/convex/reports.ts
- * `reportConfigValidator`) — distinct from ReportConfigShape because saved
- * aggregations are a single-entry array keyed `operation`, not the `aggregation`
- * object executeReport takes (`op`). Count is represented by omitting
- * `aggregations` entirely (field is required for non-count operations).
- */
-export type ReportSavedConfigShape = {
-	entityType: EntityType;
-	groupBy?: string[];
-	dateRange?: { start?: number; end?: number };
-	filters?: ReportFilters;
-	aggregations?: { field: string; operation: Exclude<MeasureOp, "count"> }[];
-	columns?: string[];
-};
+function isDateRangePreset(value: string): value is DateRangePreset {
+	return (DATE_RANGE_PRESETS as readonly string[]).includes(value);
+}
 
-/**
- * Flattens a saved report's config (either version) to the v1-shaped view the
- * pre-R8 UI consumes. Wraps the backend `legacyConfigView` to re-validate
- * filters (v1 rows store them untyped) and drop count aggregations, which the
- * saved shape represents by omission.
- */
-export function savedConfigView(config: ReportDocConfig): ReportSavedConfigShape {
-	const view = legacyConfigView(config);
-	const aggregations = view.aggregations?.filter(
-		(a): a is { field: string; operation: Exclude<MeasureOp, "count"> } =>
-			a.operation !== "count"
-	);
+function customAbsoluteRange(
+	range: DateRange | undefined
+): { kind: "absolute"; start?: number; end?: number } | undefined {
+	const start = range?.from?.getTime();
+	const end = range?.to
+		? new Date(range.to).setHours(23, 59, 59, 999)
+		: undefined;
+	if (start === undefined && end === undefined) return undefined;
 	return {
-		entityType: view.entityType,
-		groupBy: view.groupBy,
-		dateRange: view.dateRange,
-		filters: isReportFilters(view.filters) ? view.filters : undefined,
-		aggregations: aggregations?.length ? aggregations : undefined,
-		columns: view.columns,
+		kind: "absolute",
+		...(start !== undefined ? { start } : {}),
+		...(end !== undefined ? { end } : {}),
+	};
+}
+
+function buildConfigDate(state: BuilderConfigState): ReportConfigV2["date"] {
+	const field = state.dateField;
+	const range =
+		state.dateRangePreset === "custom"
+			? customAbsoluteRange(state.customDateRange)
+			: isDateRangePreset(state.dateRangePreset) &&
+				  state.dateRangePreset !== "all_time"
+				? { kind: "preset" as const, preset: state.dateRangePreset }
+				: undefined;
+	// No bounds (all-time, unknown preset, custom-with-nothing-picked) — the
+	// date object only survives to carry a field override.
+	if (!range) {
+		return field
+			? { field, range: { kind: "preset", preset: "all_time" } }
+			: undefined;
+	}
+	return { ...(field ? { field } : {}), range };
+}
+
+/** Builder state → the exact (config, visualization) pair that is saved, previewed, and published to the assistant. */
+export function builderStateToSaved(state: BuilderConfigState): {
+	config: ReportConfigV2;
+	visualization: ReportVisualization;
+} {
+	const visualization: ReportVisualization = {
+		type: state.vizType,
+		...(state.vizOptions ? { options: state.vizOptions } : {}),
+	};
+
+	// Legacy magic groupBy keys (still offered by the pre-R8b picker) expand
+	// through the same golden-pinned normalizer as saved v1 rows; their date
+	// presets resolve client-side to absolute ms, as they always have.
+	if (state.groupBy && !isGenericGroupBy(state.entityType, state.groupBy)) {
+		const absolute =
+			state.dateRangePreset === "custom"
+				? customAbsoluteRange(state.customDateRange)
+				: getDateRange(state.dateRangePreset);
+		return normalizeReportConfig(
+			{
+				entityType: state.entityType,
+				groupBy: [state.groupBy],
+				...(absolute ? { dateRange: { start: absolute.start, end: absolute.end } } : {}),
+				...(state.filters ? { filters: state.filters } : {}),
+				...(state.columns.length ? { columns: state.columns } : {}),
+			},
+			visualization
+		);
+	}
+
+	const date = buildConfigDate(state);
+	return {
+		config: {
+			version: 2,
+			entityType: state.entityType,
+			...(date ? { date } : {}),
+			...(state.filters ? { filters: state.filters } : {}),
+			metric: state.metric,
+			...(state.groupBy ? { groupBy: state.groupBy } : {}),
+			...(state.segmentBy ? { segmentBy: state.segmentBy } : {}),
+			...(state.includeEmptyValues ? { includeEmptyValues: true } : {}),
+			...(state.columns.length ? { columns: state.columns } : {}),
+		},
+		visualization,
+	};
+}
+
+/** Saved (config, visualization) of either version → builder state. v1 rows expand through the normalizer first. */
+export function savedToBuilderState(
+	savedConfig: ReportDocConfig,
+	savedVisualization: ReportVisualization
+): BuilderConfigState {
+	const { config, visualization } = normalizeReportConfig(
+		savedConfig,
+		savedVisualization
+	);
+	const range = config.date?.range;
+	let dateRangePreset = "all_time";
+	let customDateRange: DateRange | undefined;
+	if (range?.kind === "preset") {
+		dateRangePreset = range.preset;
+	} else if (
+		range?.kind === "absolute" &&
+		(range.start !== undefined || range.end !== undefined)
+	) {
+		dateRangePreset = "custom";
+		customDateRange = {
+			from: range.start !== undefined ? new Date(range.start) : undefined,
+			to: range.end !== undefined ? new Date(range.end) : undefined,
+		};
+	}
+	return {
+		entityType: config.entityType,
+		dateField: config.date?.field,
+		dateRangePreset,
+		customDateRange,
+		filters: config.filters,
+		metric: config.metric,
+		groupBy: config.groupBy,
+		segmentBy: config.segmentBy,
+		includeEmptyValues: config.includeEmptyValues,
+		columns: config.columns ?? [],
+		vizType: visualization.type,
+		vizOptions: visualization.options,
 	};
 }
 
@@ -278,92 +387,18 @@ export { DEFAULT_DETAIL_COLUMNS };
 
 // Shared with the assistant's toExecuteReportArgs via the backend contract
 // module — both feed the same executeReport query and must never drift.
-export { isDetailModeActive, effectiveDetailColumns };
+export { isDetailModeActive, effectiveDetailColumns, resolveReportQueryArgs };
+export type {
+	ReportConfigV2,
+	ReportMetric,
+	ReportVisualization,
+	VisualizationOptions,
+};
 
 export type ReportQueryArgs = ExecuteReportArgs;
-
-/** Turns a builder/saved config into executeReport args via the shared contract module (lib/reportQueryArgs.ts). */
-export function resolveReportQueryArgs(
-	config: ReportConfigShape,
-	vizType: VizType
-): ReportQueryArgs {
-	return resolveReportQueryArgsShared({
-		entityType: config.entityType,
-		groupBy: config.groupBy?.[0],
-		dateRange: config.dateRange,
-		filters: config.filters,
-		measure: config.aggregation,
-		columns: config.columns,
-		visualization: vizType,
-	});
-}
 
 /** Shown when a report's underlying query hit the scan ceiling. */
 export const TRUNCATION_NOTICE = `Based on the most recent ${REPORT_SCAN_CEILING.toLocaleString(
 	"en-US"
 )} records — results may be incomplete.`;
 
-export function detectDateRangePreset(dateRange: {
-	start?: number;
-	end?: number;
-}): string {
-	if (!dateRange.start) return "all_time";
-
-	const now = new Date();
-	const startDate = new Date(dateRange.start);
-
-	if (
-		startDate.getMonth() === now.getMonth() &&
-		startDate.getFullYear() === now.getFullYear() &&
-		startDate.getDate() === 1
-	) {
-		return "this_month";
-	}
-
-	const currentQuarter = Math.floor(now.getMonth() / 3);
-	const startQuarter = Math.floor(startDate.getMonth() / 3);
-	if (startQuarter === currentQuarter && startDate.getFullYear() === now.getFullYear()) {
-		return "this_quarter";
-	}
-
-	if (
-		startDate.getFullYear() === now.getFullYear() &&
-		startDate.getMonth() === 0 &&
-		startDate.getDate() === 1
-	) {
-		return "this_year";
-	}
-
-	return "all_time";
-}
-
-/**
- * Map a concrete ms date range (e.g. from the assistant's configureReport
- * tool) onto builder state. detectDateRangePreset only recognizes a few
- * current-period presets and never returns "custom", so any other real
- * range must land on the custom preset — mapping it to "all_time" would
- * silently drop the bound.
- */
-export function dateRangeToBuilderState(
-	dateRange: { start?: number; end?: number } | null | undefined
-): {
-	preset: string;
-	customRange?: { from: Date | undefined; to: Date | undefined };
-} {
-	if (
-		!dateRange ||
-		(dateRange.start === undefined && dateRange.end === undefined)
-	) {
-		return { preset: "all_time" };
-	}
-	const preset = detectDateRangePreset(dateRange);
-	if (preset !== "all_time") return { preset };
-	return {
-		preset: "custom",
-		customRange: {
-			from:
-				dateRange.start !== undefined ? new Date(dateRange.start) : undefined,
-			to: dateRange.end !== undefined ? new Date(dateRange.end) : undefined,
-		},
-	};
-}

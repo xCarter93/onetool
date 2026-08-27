@@ -23,7 +23,7 @@
     "field": "paidAt",
     "range": {
      "kind": "preset",
-     "preset": "all_time"
+     "preset": "this_year"
     }
    },
    "metric": {
@@ -128,6 +128,12 @@
   "config": {
    "version": 2,
    "entityType": "quotes",
+   "date": {
+    "range": {
+     "kind": "preset",
+     "preset": "this_quarter"
+    }
+   },
    "metric": {
     "op": "ratio",
     "ratioKey": "conversionRate"
@@ -176,6 +182,12 @@
   "config": {
    "version": 2,
    "entityType": "invoices",
+   "date": {
+    "range": {
+     "kind": "preset",
+     "preset": "this_year"
+    }
+   },
    "metric": {
     "op": "avg",
     "field": "total"
@@ -188,6 +200,12 @@
   "config": {
    "version": 2,
    "entityType": "tasks",
+   "date": {
+    "range": {
+     "kind": "preset",
+     "preset": "this_month"
+    }
+   },
    "metric": {
     "op": "count"
    },
@@ -234,6 +252,12 @@
   "config": {
    "version": 2,
    "entityType": "clients",
+   "date": {
+    "range": {
+     "kind": "preset",
+     "preset": "this_year"
+    }
+   },
    "metric": {
     "op": "count"
    },
@@ -327,6 +351,12 @@
   "config": {
    "version": 2,
    "entityType": "tasks",
+   "date": {
+    "range": {
+     "kind": "preset",
+     "preset": "this_week"
+    }
+   },
    "metric": {
     "op": "count"
    },

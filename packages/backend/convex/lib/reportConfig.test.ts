@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import expansionGolden from "../__goldens__/report-v1-expansion.json";
 import {
 	isV2Config,
-	legacyConfigView,
 	normalizeReportConfig,
 	type ReportConfig,
 	type ReportConfigV2,
@@ -108,63 +107,5 @@ describe("normalizeReportConfig — edge cases", () => {
 				{ type: "column" }
 			)
 		).toThrowError(/no v2 filter representation/);
-	});
-});
-
-describe("legacyConfigView", () => {
-	it("returns v1 configs untouched", () => {
-		const config: ReportConfig = {
-			entityType: "invoices",
-			groupBy: ["month"],
-			dateRange: { start: 1 },
-		};
-		expect(legacyConfigView(config)).toBe(config);
-	});
-
-	it("flattens a v2 sum config to the v1 shape", () => {
-		expect(
-			legacyConfigView({
-				version: 2,
-				entityType: "invoices",
-				metric: { op: "sum", field: "total" },
-				groupBy: "status",
-				date: { range: { kind: "absolute", start: 1, end: 2 } },
-				columns: ["total"],
-			})
-		).toStrictEqual({
-			entityType: "invoices",
-			aggregations: [{ field: "total", operation: "sum" }],
-			groupBy: ["status"],
-			columns: ["total"],
-			dateRange: { start: 1, end: 2 },
-		});
-	});
-
-	it("omits aggregations for count, ratio, and related metrics", () => {
-		for (const metric of [
-			{ op: "count" as const },
-			{ op: "ratio" as const, ratioKey: "conversionRate" as const },
-			{
-				op: "related" as const,
-				related: { entity: "invoices" as const, fk: "projectId", op: "sum" as const },
-			},
-		]) {
-			const view = legacyConfigView({
-				version: 2,
-				entityType: "quotes",
-				metric,
-			});
-			expect(view.aggregations).toBeUndefined();
-		}
-	});
-
-	it("omits dateRange for preset ranges (nothing to resolve before R4a)", () => {
-		const view = legacyConfigView({
-			version: 2,
-			entityType: "clients",
-			metric: { op: "count" },
-			date: { range: { kind: "preset", preset: "this_month" } },
-		});
-		expect(view.dateRange).toBeUndefined();
 	});
 });

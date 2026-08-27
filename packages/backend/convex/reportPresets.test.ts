@@ -10,52 +10,16 @@ import {
 	createTestInvoice,
 } from "./test.helpers";
 import { api } from "./_generated/api";
-import { REPORT_PRESETS, type ReportPresetDefinition } from "./lib/reportPresets";
-import { toExecuteReportArgs, type GeneratedReport } from "./reportConfigGeneration";
-import type { ReportFilters } from "./lib/reportFilters";
+import { REPORT_PRESETS } from "./lib/reportPresets";
+import { resolveReportQueryArgs } from "./lib/reportQueryArgs";
 
 /**
  * Every preset in the curated library must actually run through
- * executeReport without throwing. Reuses the real toExecuteReportArgs
- * routing (grouped-count legacy-vs-generic dispatch, detail mode, measures)
- * rather than duplicating it — presets are converted into the same
- * GeneratedReport shape the assistant's generation pipeline produces, with
- * a thin filter-shape adapter since GeneratedReport's filter rules carry a
- * nullable `value`, while ReportFilters rules carry an optional one.
+ * executeReport without throwing. Presets are native v2 (config,
+ * visualization) pairs, so they route through the same
+ * resolveReportQueryArgs contract a saved report uses rather than a
+ * test-local mapping.
  */
-function toGenFilters(filters: ReportFilters | null): GeneratedReport["filters"] {
-	if (!filters) return null;
-	return {
-		logic: filters.logic,
-		groups: filters.groups.map((group) => ({
-			logic: group.logic,
-			rules: group.rules.map((rule) => ({
-				field: rule.field,
-				// Presets only use the AI-generatable operator subset; the DSL
-				// union is wider (before/after/on).
-				operator: rule.operator as NonNullable<
-					GeneratedReport["filters"]
-				>["groups"][number]["rules"][number]["operator"],
-				value: rule.value ?? null,
-			})),
-		})),
-	};
-}
-
-function presetToGeneratedReport(preset: ReportPresetDefinition): GeneratedReport {
-	return {
-		entityType: preset.entityType,
-		groupBy: preset.groupBy,
-		measure: preset.measure,
-		filters: toGenFilters(preset.filters),
-		columns: preset.columns,
-		startDate: null,
-		endDate: null,
-		visualization: preset.visualization,
-		name: preset.name,
-		description: preset.description,
-	};
-}
 
 const TABLE_WORKLIST_PRESET_IDS = new Set(["overdue-invoices", "quotes-awaiting-response"]);
 
@@ -129,7 +93,7 @@ describe("REPORT_PRESETS", () => {
 			});
 
 			for (const preset of REPORT_PRESETS) {
-				const args = toExecuteReportArgs(presetToGeneratedReport(preset));
+				const args = resolveReportQueryArgs(preset.config, preset.visualization);
 				const result = await asOrg.query(api.reportData.executeReport, args);
 
 				if (TABLE_WORKLIST_PRESET_IDS.has(preset.id)) {

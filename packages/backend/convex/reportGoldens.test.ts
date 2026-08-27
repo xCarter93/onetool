@@ -3,10 +3,9 @@ import { setupConvexTest } from "./test.setup";
 import { createTestOrg, createTestIdentity } from "./test.helpers";
 import { api } from "./_generated/api";
 import { GOLDEN_T0, seedCanonicalOrg } from "./test.reportGoldenSeed";
-import { REPORT_PRESETS, type ReportPresetDefinition } from "./lib/reportPresets";
-import { toExecuteReportArgs, type GeneratedReport } from "./reportConfigGeneration";
+import { REPORT_PRESETS } from "./lib/reportPresets";
+import { resolveReportQueryArgs } from "./lib/reportQueryArgs";
 import { DEFAULT_DETAIL_COLUMNS, type ReportEntityType } from "./lib/reportFields";
-import type { ReportFilters } from "./lib/reportFilters";
 import presetArgsGolden from "./__goldens__/report-preset-args.json";
 import detailModeGolden from "./__goldens__/report-detail-mode.json";
 
@@ -18,50 +17,14 @@ import detailModeGolden from "./__goldens__/report-detail-mode.json";
  * deliberately hand-rewritten at R4c when the contract began emitting v2
  * configs), the detail-mode fixtures, and the scan-ceiling pin.
  *
- * Preset args are pinned with null start/end dates: the fixture pins the
- * config→args mapping; relative date windows resolve server-side from the
- * stored preset. Fixtures are hand-checked JSON in __goldens__/ compared with
+ * Preset args carry no resolved dates: the fixture pins the config→args
+ * mapping; relative date windows resolve server-side from the stored preset.
+ * Fixtures are hand-checked JSON in __goldens__/ compared with
  * toStrictEqual after a JSON round-trip (so key presence matters, undefined
  * doesn't hide drift). There is deliberately NO regeneration flag: to
  * regenerate one, temporarily log the actual JSON, review the diff by hand,
  * and commit — blessing drift must stay a deliberate act.
  */
-
-// Duplicated from reportPresets.test.ts (test-local helpers can't be imported
-// across test files without executing the other suite).
-function toGenFilters(filters: ReportFilters | null): GeneratedReport["filters"] {
-	if (!filters) return null;
-	return {
-		logic: filters.logic,
-		groups: filters.groups.map((group) => ({
-			logic: group.logic,
-			rules: group.rules.map((rule) => ({
-				field: rule.field,
-				// Presets only use the AI-generatable operator subset; the DSL
-				// union is wider (before/after/on).
-				operator: rule.operator as NonNullable<
-					GeneratedReport["filters"]
-				>["groups"][number]["rules"][number]["operator"],
-				value: rule.value ?? null,
-			})),
-		})),
-	};
-}
-
-function presetToGeneratedReport(preset: ReportPresetDefinition): GeneratedReport {
-	return {
-		entityType: preset.entityType,
-		groupBy: preset.groupBy,
-		measure: preset.measure,
-		filters: toGenFilters(preset.filters),
-		columns: preset.columns,
-		startDate: null,
-		endDate: null,
-		visualization: preset.visualization,
-		name: preset.name,
-		description: preset.description,
-	};
-}
 
 function roundTrip(value: unknown): unknown {
 	return JSON.parse(JSON.stringify(value));
@@ -72,7 +35,7 @@ describe("preset → executeReport args goldens", () => {
 		const actual = Object.fromEntries(
 			REPORT_PRESETS.map((preset) => [
 				preset.id,
-				roundTrip(toExecuteReportArgs(presetToGeneratedReport(preset))),
+				roundTrip(resolveReportQueryArgs(preset.config, preset.visualization)),
 			])
 		);
 		expect(actual).toStrictEqual(presetArgsGolden);

@@ -3,7 +3,6 @@
 import { PermissionGate } from "@/components/domain/permission-gate";
 import { useState } from "react";
 import { useQuery, useMutation } from "convex/react";
-import type { FunctionReturnType } from "convex/server";
 import { useRouter, useParams } from "next/navigation";
 import { ArrowLeft, Copy, Download, Eye, EyeOff, Loader2, Pencil } from "lucide-react";
 import { api } from "@onetool/backend/convex/_generated/api";
@@ -13,19 +12,17 @@ import {
 	ReportBuilder,
 	type ReportBuilderSavePayload,
 } from "../components/report-builder";
-import type { ReportMeasure } from "../report-config";
 import { ReportPreview } from "../components/report-preview";
 import {
 	dateRangeOptions,
-	detectDateRangePreset,
 	entityLabels,
 	groupByOptions,
 	resolveReportQueryArgs,
-	savedConfigView,
 	visualizationIcons,
 	visualizationOptions,
-	type ReportConfigShape,
+	type ReportVisualization,
 } from "../report-config";
+import { normalizeReportConfig } from "@onetool/backend/convex/lib/reportConfig";
 import { reportResultToCsv } from "../report-csv";
 import { buildCsv, downloadCsv, sanitizeCsvFilename } from "@/lib/csv-export";
 
@@ -34,24 +31,14 @@ function chartVisibleKey(reportId: string) {
 	return `report-chart-visible:${reportId}`;
 }
 
-type ReportDoc = NonNullable<FunctionReturnType<typeof api.reports.get>>;
-
-/** The exact config shape the view passes to ReportPreview — the CSV export runs the same query so it exports what's on screen. */
-function toConfigShape(report: ReportDoc): ReportConfigShape {
-	const saved = savedConfigView(report.config);
-	return {
-		entityType: saved.entityType,
-		groupBy: saved.groupBy,
-		dateRange: saved.dateRange,
-		filters: saved.filters,
-		aggregation: saved.aggregations?.[0]
-			? {
-					op: saved.aggregations[0].operation,
-					field: saved.aggregations[0].field,
-				}
-			: undefined,
-		columns: saved.columns,
-	};
+/** Chart hidden → force the table view, keeping the same query the CSV export runs. */
+function effectiveVisualization(
+	visualization: ReportVisualization,
+	chartVisible: boolean
+): ReportVisualization {
+	return visualization.type !== "table" && !chartVisible
+		? { ...visualization, type: "table" }
+		: visualization;
 }
 
 function ReportViewPageContent() {
@@ -82,16 +69,18 @@ function ReportViewPageContent() {
 		});
 	};
 
+	const normalized = report
+		? normalizeReportConfig(report.config, report.visualization)
+		: null;
+
 	// Same args ReportPreview subscribes with (Convex dedupes the
 	// subscription), so Download CSV exports exactly what's on screen.
 	const reportData = useQuery(
 		api.reportData.executeReport,
-		report && !isEditing
+		normalized && !isEditing
 			? resolveReportQueryArgs(
-					toConfigShape(report),
-					report.visualization.type !== "table" && chartVisible
-						? report.visualization.type
-						: "table"
+					normalized.config,
+					effectiveVisualization(normalized.visualization, chartVisible)
 				)
 			: "skip"
 	);
@@ -120,14 +109,10 @@ function ReportViewPageContent() {
 		);
 	}
 
-	const savedConfig = savedConfigView(report.config);
+	// report is non-null past the guards above, so normalized is too.
+	const viewConfig = normalized!.config;
 
 	if (isEditing) {
-		const savedAggregation = savedConfig.aggregations?.[0];
-		const measure: ReportMeasure | undefined = savedAggregation
-			? { op: savedAggregation.operation, field: savedAggregation.field }
-			: undefined;
-
 		const handleSave = async (payload: ReportBuilderSavePayload) => {
 			setIsSaving(true);
 			try {
@@ -152,15 +137,8 @@ function ReportViewPageContent() {
 				initial={{
 					name: report.name,
 					description: report.description || "",
-					entityType: savedConfig.entityType,
-					groupBy: savedConfig.groupBy?.[0],
-					vizType: report.visualization.type,
-					dateRangePreset: savedConfig.dateRange
-						? detectDateRangePreset(savedConfig.dateRange)
-						: "all_time",
-					filters: savedConfig.filters,
-					measure,
-					columns: savedConfig.columns,
+					config: report.config,
+					visualization: report.visualization,
 				}}
 				saving={isSaving}
 				onSave={handleSave}
@@ -187,8 +165,8 @@ function ReportViewPageContent() {
 	const handleDownloadCsv = () => {
 		if (!reportData) return;
 		const { headers, rows } = reportResultToCsv(reportData, {
-			entityType: savedConfig.entityType,
-			groupBy: savedConfig.groupBy?.[0],
+			entityType: viewConfig.entityType,
+			groupBy: viewConfig.groupBy,
 			groupByLabel,
 		});
 		downloadCsv(sanitizeCsvFilename(report.name), buildCsv(headers, rows));
@@ -197,20 +175,24 @@ function ReportViewPageContent() {
 	const VizIcon = visualizationIcons[report.visualization.type];
 	const isChartVisualization = report.visualization.type !== "table";
 	const groupByLabel =
-		groupByOptions[savedConfig.entityType]?.find(
-			(o) => o.value === savedConfig.groupBy?.[0]
-		)?.label ?? savedConfig.groupBy?.[0];
-	const rangeLabel = savedConfig.dateRange
-		? (dateRangeOptions.find(
-				(o) => o.value === detectDateRangePreset(savedConfig.dateRange!)
-			)?.label ?? "All Time")
-		: "All Time";
+		groupByOptions[viewConfig.entityType]?.find(
+			(o) => o.value === viewConfig.groupBy
+		)?.label ?? viewConfig.groupBy;
+	const range = viewConfig.date?.range;
+	const rangeLabel =
+		range?.kind === "preset"
+			? (dateRangeOptions.find((o) => o.value === range.preset)?.label ??
+				"All Time")
+			: range?.kind === "absolute" &&
+				  (range.start !== undefined || range.end !== undefined)
+				? "Custom Range"
+				: "All Time";
 	const vizLabel =
 		visualizationOptions.find((o) => o.value === report.visualization.type)
 			?.label ?? report.visualization.type;
 
 	const metaChips = [
-		entityLabels[savedConfig.entityType] ?? savedConfig.entityType,
+		entityLabels[viewConfig.entityType] ?? viewConfig.entityType,
 		groupByLabel ? `by ${groupByLabel}` : null,
 		rangeLabel,
 		`${vizLabel} chart`,
@@ -288,10 +270,11 @@ function ReportViewPageContent() {
 			{/* Report */}
 			<div className="rounded-2xl border border-border/60 bg-background p-5 shadow-sm sm:p-7">
 				<ReportPreview
-					config={toConfigShape(report)}
-					visualization={{
-						type: isChartVisualization && chartVisible ? report.visualization.type : "table",
-					}}
+					config={viewConfig}
+					visualization={effectiveVisualization(
+						normalized!.visualization,
+						chartVisible
+					)}
 				/>
 			</div>
 		</div>

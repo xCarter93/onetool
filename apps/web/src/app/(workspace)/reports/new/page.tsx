@@ -16,11 +16,16 @@ import {
 } from "../components/report-builder";
 import {
 	entityOptions,
+	getDateRange,
 	groupByOptions,
 	visualizationOptions,
 	type EntityType,
 	type VizType,
 } from "../report-config";
+import {
+	DATE_RANGE_PRESETS,
+	type DateRangePreset,
+} from "@onetool/backend/convex/lib/reportConfig";
 
 function isEntity(v: string | null): v is EntityType {
 	return !!v && entityOptions.some((o) => o.value === v);
@@ -30,6 +35,10 @@ function isViz(v: string | null): v is VizType {
 	return !!v && visualizationOptions.some((o) => o.value === v);
 }
 
+function isRangePreset(v: string): v is DateRangePreset {
+	return (DATE_RANGE_PRESETS as readonly string[]).includes(v);
+}
+
 /** Builds full builder-initial state from a REPORT_PRESETS entry, or null if the id is unknown. */
 function buildInitialFromPreset(presetId: string): ReportBuilderInitial | null {
 	const preset = REPORT_PRESETS.find((p) => p.id === presetId);
@@ -37,16 +46,8 @@ function buildInitialFromPreset(presetId: string): ReportBuilderInitial | null {
 	return {
 		name: preset.name,
 		description: preset.description,
-		entityType: preset.entityType,
-		groupBy: preset.groupBy ?? undefined,
-		vizType: preset.visualization,
-		dateRangePreset: preset.dateRangePreset,
-		filters: preset.filters ?? undefined,
-		measure:
-			preset.measure && preset.measure.op !== "count" && preset.measure.field
-				? { op: preset.measure.op, field: preset.measure.field }
-				: { op: "count" },
-		columns: preset.columns ?? [],
+		config: preset.config,
+		visualization: preset.visualization,
 	};
 }
 
@@ -75,17 +76,38 @@ function NewReportInner() {
 	// a plain table, not a chart (charts are an opt-in "Add chart" layer that
 	// requires a Group by). Legacy ?viz= links keep working.
 	const vizType: VizType = isViz(vizParam) ? vizParam : "table";
-	const dateRangePreset = params.get("range") ?? "all_time";
+	const rangeParam = params.get("range") ?? "all_time";
 	const name = params.get("name") ?? "";
+
+	// Legacy links may carry a magic groupBy (?group=month) — the v1 shape lets
+	// the builder's normalizer expand it; generic groupBys get native v2 with
+	// the preset range preserved.
+	const paramConfig: ReportBuilderInitial["config"] = groupByOptions[
+		entityType
+	]?.some((o) => o.value === groupBy)
+		? {
+				version: 2,
+				entityType,
+				metric: { op: "count" },
+				groupBy,
+				...(rangeParam !== "all_time" && isRangePreset(rangeParam)
+					? { date: { range: { kind: "preset", preset: rangeParam } } }
+					: {}),
+			}
+		: {
+				entityType,
+				groupBy: [groupBy],
+				...(getDateRange(rangeParam)
+					? { dateRange: getDateRange(rangeParam) }
+					: {}),
+			};
 
 	const initial: ReportBuilderInitial =
 		presetInitial ?? {
 			name,
 			description: "",
-			entityType,
-			groupBy,
-			vizType,
-			dateRangePreset,
+			config: paramConfig,
+			visualization: { type: vizType },
 		};
 
 	const handleSave = async (payload: ReportBuilderSavePayload) => {

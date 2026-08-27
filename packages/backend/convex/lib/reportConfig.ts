@@ -2,11 +2,10 @@
  * Saved report config v2: canonical types/validators plus the v1 normalizer.
  *
  * Lifecycle (PRD-reports-redesign §8 d9): zero v1 reports exist in production,
- * so the v1 arm and this normalizer are in-PRD scaffolding — writes flip to v2
- * at R8, R14 converts the staging rows through `normalizeReportConfig` and then
- * deletes the v1 validator, the union arm, and the expander. Until R4a lands,
- * nothing executes the expanded v2 shapes (dateField override, ratio metrics);
- * the normalizer is exercised by tests and read-path narrowing only.
+ * so the v1 arm and this normalizer are in-PRD scaffolding. Since R8a every
+ * write (builder, presets, AI) emits native v2 and every read normalizes
+ * through here; R14 converts the remaining staging rows and then deletes the
+ * v1 validator, the union arm, and the expander.
  */
 import { v, type Infer } from "convex/values";
 import { literals } from "convex-helpers/validators";
@@ -276,38 +275,3 @@ export function normalizeReportConfig(
 	};
 }
 
-/**
- * Flattens either config version to the v1-shaped view the current (pre-R8)
- * builder, view page, and assistant tools consume. The v2 branch covers only
- * what those surfaces can express — ratio/related metrics and preset ranges
- * can't exist before R4c/R8, by which point the v2-native builder replaces
- * this adapter.
- */
-export function legacyConfigView(config: ReportConfig): ReportConfigV1 {
-	if (!isV2Config(config)) return config;
-	const aggregations =
-		config.metric.op === "sum" ||
-		config.metric.op === "avg" ||
-		config.metric.op === "min" ||
-		config.metric.op === "max"
-			? config.metric.field
-				? [{ field: config.metric.field, operation: config.metric.op }]
-				: undefined
-			: undefined;
-	const range = config.date?.range;
-	return {
-		entityType: config.entityType,
-		...(config.filters ? { filters: config.filters } : {}),
-		...(aggregations ? { aggregations } : {}),
-		...(config.groupBy ? { groupBy: [config.groupBy] } : {}),
-		...(config.columns ? { columns: config.columns } : {}),
-		...(range?.kind === "absolute"
-			? {
-					dateRange: {
-						...(range.start !== undefined ? { start: range.start } : {}),
-						...(range.end !== undefined ? { end: range.end } : {}),
-					},
-				}
-			: {}),
-	};
-}

@@ -1,45 +1,49 @@
 import { describe, it, expect } from "vitest";
 import { REPORT_PRESETS } from "@onetool/backend/convex/lib/reportPresets";
 import { REPORT_FIELDS, isGenericGroupBy } from "@onetool/backend/convex/lib/reportFields";
-import { dateRangeOptions, groupByOptions, visualizationOptions } from "./report-config";
+import { DATE_RANGE_PRESETS } from "@onetool/backend/convex/lib/reportConfig";
+import { visualizationOptions } from "./report-config";
 import { PRESET_LIST } from "./report-presets";
 
 const validVizValues = new Set(visualizationOptions.map((o) => o.value));
-const validDateRangeValues = new Set(
-	dateRangeOptions.map((o) => o.value).filter((v) => v !== "custom")
-);
+const validDatePresets = new Set<string>(DATE_RANGE_PRESETS);
 
 describe("REPORT_PRESETS — builder validity", () => {
 	it.each(REPORT_PRESETS.map((p) => [p.id, p] as const))(
 		"%s is a valid builder config",
 		(_id, preset) => {
-			// groupBy is null or a registered Group-by option for this entity.
-			if (preset.groupBy !== null) {
-				const options = groupByOptions[preset.entityType]?.map((o) => o.value) ?? [];
-				expect(options).toContain(preset.groupBy);
+			const { config } = preset;
+			const fields = Object.keys(REPORT_FIELDS[config.entityType].fields);
+
+			// groupBy, when set, is a generic registry key — the magic keys
+			// ("month", "client", "conversionRate") are gone from v2 presets.
+			if (config.groupBy !== undefined) {
+				expect(isGenericGroupBy(config.entityType, config.groupBy)).toBe(true);
 			}
 
-			// dateRangePreset is a real, non-custom dateRangeOptions value.
-			expect(validDateRangeValues.has(preset.dateRangePreset)).toBe(true);
+			// A preset date window uses a real DATE_RANGE_PRESETS value.
+			if (config.date && config.date.range.kind === "preset") {
+				expect(validDatePresets.has(config.date.range.preset)).toBe(true);
+			}
 
 			// visualization is one of the builder's viz types.
-			expect(validVizValues.has(preset.visualization)).toBe(true);
+			expect(validVizValues.has(preset.visualization.type)).toBe(true);
 
 			// columns, when set, are registry fields of this entity.
-			if (preset.columns) {
-				const fields = Object.keys(REPORT_FIELDS[preset.entityType].fields);
-				for (const col of preset.columns) {
+			if (config.columns) {
+				for (const col of config.columns) {
 					expect(fields).toContain(col);
 				}
 			}
 
-			// A non-count measure requires groupBy to be null or generic-safe —
-			// legacy-only groupBy values ignore measures entirely.
-			if (preset.measure && preset.measure.op !== "count") {
-				expect(preset.measure.field).not.toBeNull();
-				const groupByIsSafe =
-					preset.groupBy === null || isGenericGroupBy(preset.entityType, preset.groupBy);
-				expect(groupByIsSafe).toBe(true);
+			// Field-taking metrics name a registered field; ratio metrics carry a
+			// ratioKey instead and are computed without a groupBy.
+			const { metric } = config;
+			if (metric.op === "ratio") {
+				expect(metric.ratioKey).toBeDefined();
+			} else if (metric.op !== "count") {
+				expect(metric.field).toBeDefined();
+				expect(fields).toContain(metric.field);
 			}
 		}
 	);

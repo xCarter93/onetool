@@ -1,6 +1,5 @@
 "use client";
 
-import React from "react";
 import { useQuery } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { Loader2, AlertCircle, TriangleAlert } from "lucide-react";
@@ -16,22 +15,17 @@ import { ReportTable } from "./report-table";
 import {
 	resolveReportQueryArgs,
 	TRUNCATION_NOTICE,
-	type ReportConfigShape,
-	type VizType,
+	type ReportConfigV2,
+	type ReportVisualization,
 } from "../report-config";
 
-type Visualization = {
-	type: VizType;
-	options?: Record<string, unknown>;
-};
-
 interface ReportPreviewProps {
-	config: ReportConfigShape;
-	visualization: Visualization;
+	config: ReportConfigV2;
+	visualization: ReportVisualization;
 }
 
 export function ReportPreview({ config, visualization }: ReportPreviewProps) {
-	const queryArgs = useDebouncedValue(resolveReportQueryArgs(config, visualization.type), 300);
+	const queryArgs = useDebouncedValue(resolveReportQueryArgs(config, visualization), 300);
 	const reportData = useQuery(api.reportData.executeReport, queryArgs);
 
 	if (reportData === undefined) {
@@ -65,7 +59,7 @@ export function ReportPreview({ config, visualization }: ReportPreviewProps) {
 				<ReportTable
 					data={[]}
 					total={reportData.total}
-					groupBy={config.groupBy?.[0]}
+					groupBy={config.groupBy}
 					entityType={config.entityType}
 					detail={reportData.detail}
 				/>
@@ -92,7 +86,7 @@ export function ReportPreview({ config, visualization }: ReportPreviewProps) {
 	}));
 
 	const total = reportData.total;
-	const groupBy = config.groupBy?.[0];
+	const groupBy = config.groupBy;
 	// The unified pipeline emits currency flags only when true — absent means
 	// "not currency"; never infer from entityType/groupBy heuristics.
 	const totalIsCurrency = reportData.metadata?.totalIsCurrency === true;
