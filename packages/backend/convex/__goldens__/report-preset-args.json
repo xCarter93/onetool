@@ -1,0 +1,152 @@
+{
+ "revenue-by-month": {
+  "entityType": "invoices",
+  "groupBy": "month"
+ },
+ "overdue-invoices": {
+  "entityType": "invoices",
+  "filters": {
+   "logic": "and",
+   "groups": [
+    {
+     "logic": "and",
+     "rules": [
+      {
+       "field": "status",
+       "operator": "equals",
+       "value": "overdue"
+      }
+     ]
+    }
+   ]
+  },
+  "detail": {
+   "columns": [
+    "invoiceNumber",
+    "status",
+    "total",
+    "issuedDate",
+    "dueDate"
+   ]
+  }
+ },
+ "quote-conversion": {
+  "entityType": "quotes",
+  "groupBy": "conversionRate"
+ },
+ "projects-by-status": {
+  "entityType": "projects",
+  "groupBy": "status"
+ },
+ "jobs-completed-by-month": {
+  "entityType": "projects",
+  "groupBy": "completedAt_month",
+  "filters": {
+   "logic": "and",
+   "groups": [
+    {
+     "logic": "and",
+     "rules": [
+      {
+       "field": "status",
+       "operator": "equals",
+       "value": "completed"
+      }
+     ]
+    }
+   ]
+  },
+  "aggregation": {
+   "op": "count"
+  }
+ },
+ "average-invoice-value": {
+  "entityType": "invoices",
+  "groupBy": "issuedDate_month",
+  "aggregation": {
+   "op": "avg",
+   "field": "total"
+  }
+ },
+ "team-workload": {
+  "entityType": "tasks",
+  "groupBy": "assigneeUserId",
+  "aggregation": {
+   "op": "count"
+  }
+ },
+ "top-clients": {
+  "entityType": "invoices",
+  "groupBy": "client"
+ },
+ "new-clients-by-month": {
+  "entityType": "clients",
+  "groupBy": "creationDate_month"
+ },
+ "lead-source-breakdown": {
+  "entityType": "clients",
+  "groupBy": "leadSource"
+ },
+ "projected-income": {
+  "entityType": "invoices",
+  "groupBy": "dueDate_month",
+  "filters": {
+   "logic": "and",
+   "groups": [
+    {
+     "logic": "or",
+     "rules": [
+      {
+       "field": "status",
+       "operator": "equals",
+       "value": "sent"
+      },
+      {
+       "field": "status",
+       "operator": "equals",
+       "value": "overdue"
+      }
+     ]
+    }
+   ]
+  },
+  "aggregation": {
+   "op": "sum",
+   "field": "total"
+  }
+ },
+ "quotes-awaiting-response": {
+  "entityType": "quotes",
+  "filters": {
+   "logic": "and",
+   "groups": [
+    {
+     "logic": "and",
+     "rules": [
+      {
+       "field": "status",
+       "operator": "equals",
+       "value": "sent"
+      }
+     ]
+    }
+   ]
+  },
+  "detail": {
+   "columns": [
+    "quoteNumber",
+    "title",
+    "total",
+    "sentAt"
+   ]
+  }
+ },
+ "tasks-by-status": {
+  "entityType": "tasks",
+  "groupBy": "status"
+ },
+ "clients-by-status": {
+  "entityType": "clients",
+  "groupBy": "status"
+ }
+}

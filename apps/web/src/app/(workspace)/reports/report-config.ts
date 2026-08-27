@@ -18,9 +18,14 @@ import type { ReportFilters } from "@onetool/backend/convex/lib/reportFilters";
 import {
 	DEFAULT_DETAIL_COLUMNS,
 	GROUP_BY_OPTIONS,
-	usesLegacyDispatch,
 } from "@onetool/backend/convex/lib/reportFields";
 import { REPORT_SCAN_CEILING } from "@onetool/backend/convex/lib/orgScan";
+import {
+	resolveReportQueryArgs as resolveReportQueryArgsShared,
+	isDetailModeActive,
+	effectiveDetailColumns,
+	type ExecuteReportArgs,
+} from "@onetool/backend/convex/lib/reportQueryArgs";
 import { formatCurrency } from "@/lib/money";
 
 export type EntityType =
@@ -265,93 +270,26 @@ export function formatReportValue(
 // assistant's report-config generator).
 export { DEFAULT_DETAIL_COLUMNS };
 
-/**
- * True when the report should render raw rows instead of aggregated groups.
- * Charts require a Group by (Slice 3-D3: chart renders above the data table,
- * fed by the same grouped query) — with no Group by, there's nothing to
- * chart, so ANY viz type (table or chart) falls back to detail rows. Beyond
- * that, only the table view has its own explicit-columns override.
- */
-export function isDetailModeActive(
-	vizType: VizType,
-	groupBy: string | undefined,
-	columns: string[] | undefined
-): boolean {
-	if (!groupBy) return true;
-	return vizType === "table" && (columns?.length ?? 0) > 0;
-}
+// Shared with the assistant's toExecuteReportArgs via the backend contract
+// module — both feed the same executeReport query and must never drift.
+export { isDetailModeActive, effectiveDetailColumns };
 
-/** Columns to actually query/display in detail mode — falls back to a sensible per-entity default so the table (and its Columns checklist) never looks empty. */
-export function effectiveDetailColumns(
-	entityType: EntityType,
-	columns: string[] | undefined
-): string[] {
-	return columns && columns.length > 0 ? columns : DEFAULT_DETAIL_COLUMNS[entityType];
-}
+export type ReportQueryArgs = ExecuteReportArgs;
 
-export type ReportQueryArgs = {
-	entityType: EntityType;
-	groupBy?: string;
-	dateRange?: { start?: number; end?: number };
-	filters?: ReportFilters;
-	aggregation?: ReportMeasure;
-	detail?: { columns: string[] };
-};
-
-/**
- * Single source of truth for turning a builder/saved config into
- * executeReport args — must mirror the backend's toExecuteReportArgs
- * (reportConfigGeneration.ts) exactly, since both feed the same
- * executeReport query.
- *
- * "Group by: None" always means raw-row detail mode (with default columns
- * if none are checked) — this applies to every viz type, not just table,
- * since a chart with nothing to group on has nothing to chart above (see
- * isDetailModeActive). Once a groupBy IS set, chart views must send an
- * explicit `aggregation` (count included) when they don't already have a
- * measure — the backend's legacy dispatch (runReportByConfig) silently
- * re-groups by status when both `groupBy` and `aggregation` are omitted,
- * which is wrong for an intentional grouping.
- *
- * For a count measure with a groupBy set, whether that omission is safe
- * depends on the groupBy: legacy-dispatch values (status, leadSource,
- * creationDate_*, etc.) must still omit `aggregation` to hit the legacy
- * dispatch unchanged, but generic-only values (e.g. issuedDate_month,
- * assigneeUserId) need an explicit `{ op: "count" }` so the generic
- * pipeline runs instead of legacy dispatch silently falling back to the
- * entity default.
- */
+/** Turns a builder/saved config into executeReport args via the shared contract module (lib/reportQueryArgs.ts). */
 export function resolveReportQueryArgs(
 	config: ReportConfigShape,
 	vizType: VizType
 ): ReportQueryArgs {
-	const groupBy = config.groupBy?.[0];
-	const base = {
+	return resolveReportQueryArgsShared({
 		entityType: config.entityType,
-		groupBy,
+		groupBy: config.groupBy?.[0],
 		dateRange: config.dateRange,
 		filters: config.filters,
-	};
-
-	if (isDetailModeActive(vizType, groupBy, config.columns)) {
-		return {
-			...base,
-			detail: { columns: effectiveDetailColumns(config.entityType, config.columns) },
-		};
-	}
-
-	// isDetailModeActive already returned above whenever groupBy is unset, so
-	// groupBy is guaranteed defined past this point.
-	let aggregation: ReportMeasure | undefined;
-	if (config.aggregation) {
-		aggregation = config.aggregation;
-	} else if (usesLegacyDispatch(config.entityType, groupBy!)) {
-		aggregation = undefined;
-	} else {
-		aggregation = { op: "count" };
-	}
-
-	return { ...base, aggregation };
+		measure: config.aggregation,
+		columns: config.columns,
+		visualization: vizType,
+	});
 }
 
 /** Shown when a report's underlying query hit the scan ceiling. */

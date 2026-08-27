@@ -23,14 +23,16 @@ import {
 	type PlanTier,
 } from "./lib/entitlements";
 import {
-	DEFAULT_DETAIL_COLUMNS,
 	GROUP_BY_OPTIONS,
 	getReportField,
 	isGenericGroupBy,
 	REPORT_FIELDS,
-	usesLegacyDispatch,
 	type ReportEntityType,
 } from "./lib/reportFields";
+import {
+	resolveReportQueryArgs,
+	type ExecuteReportArgs,
+} from "./lib/reportQueryArgs";
 import type {
 	ReportFilterRule,
 	ReportFilters,
@@ -406,63 +408,25 @@ export function toSavedReport(gen: GeneratedReport): {
 	};
 }
 
-/** executeReport args for the dry run — mirrors the web's
- * resolveReportQueryArgs semantics for detail mode and "Group by: None". */
-export function toExecuteReportArgs(gen: GeneratedReport): {
-	entityType: ReportEntityType;
-	groupBy?: string;
-	dateRange?: { start?: number; end?: number };
-	filters?: ReportFilters;
-	aggregation?: { op: "count" | "sum" | "avg" | "min" | "max"; field?: string };
-	detail?: { columns: string[] };
-} {
-	const groupBy = gen.groupBy ?? undefined;
-	const filters = sanitizeGeneratedFilters(gen.filters) ?? undefined;
-	const base = {
-		entityType: gen.entityType,
-		groupBy,
-		dateRange: toDateRange(gen),
-		filters,
-	};
-
-	// No groupBy means raw-row detail mode for every viz type, not just
-	// table — a chart with nothing to group on has nothing to chart above
-	// (Slice 3-D3: chart renders above the data table, fed by the same
-	// grouped query). Mirrors the web's isDetailModeActive.
-	const detailMode = !groupBy || (gen.visualization === "table" && (gen.columns?.length ?? 0) > 0);
-	if (detailMode) {
-		return {
-			...base,
-			detail: {
-				columns: gen.columns?.length
-					? gen.columns
-					: DEFAULT_DETAIL_COLUMNS[gen.entityType],
-			},
-		};
-	}
-
+/** executeReport args for the dry run — delegates to the shared contract
+ * module (lib/reportQueryArgs.ts) so the web's resolveReportQueryArgs and
+ * this path can never drift. Count/fieldless measures collapse to undefined
+ * here; the contract routes legacy-vs-generic dispatch. */
+export function toExecuteReportArgs(gen: GeneratedReport): ExecuteReportArgs {
 	const measure =
 		gen.measure && gen.measure.op !== "count" && gen.measure.field
 			? { op: gen.measure.op, field: gen.measure.field }
 			: undefined;
 
-	// detailMode already returned above whenever groupBy is unset, so
-	// groupBy is guaranteed defined past this point. Non-count measures
-	// always need the generic pipeline; a legacy-only groupBy must keep
-	// hitting the legacy dispatch for unchanged output; any other groupBy
-	// (including the newer generic-only options) needs an explicit count so
-	// the generic pipeline — not the legacy fallback — runs and validates
-	// the groupBy.
-	let aggregation: { op: "count" | "sum" | "avg" | "min" | "max"; field?: string } | undefined;
-	if (measure) {
-		aggregation = measure;
-	} else if (usesLegacyDispatch(gen.entityType, groupBy!)) {
-		aggregation = undefined;
-	} else {
-		aggregation = { op: "count" as const };
-	}
-
-	return { ...base, ...(aggregation ? { aggregation } : {}) };
+	return resolveReportQueryArgs({
+		entityType: gen.entityType,
+		groupBy: gen.groupBy ?? undefined,
+		dateRange: toDateRange(gen),
+		filters: sanitizeGeneratedFilters(gen.filters) ?? undefined,
+		measure,
+		columns: gen.columns ?? undefined,
+		visualization: gen.visualization,
+	});
 }
 
 /** One short sentence the assistant can echo about what was built. */

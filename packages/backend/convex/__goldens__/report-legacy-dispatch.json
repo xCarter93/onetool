@@ -1,0 +1,897 @@
+{
+ "clients::__default__": {
+  "data": [
+   {
+    "label": "Prospective",
+    "value": 1
+   },
+   {
+    "label": "Active",
+    "value": 2
+   },
+   {
+    "label": "Inactive",
+    "value": 1
+   },
+   {
+    "label": "Archived",
+    "value": 1
+   }
+  ],
+  "metadata": {
+   "entityType": "clients",
+   "groupBy": "status",
+   "truncated": false
+  },
+  "total": 5
+ },
+ "clients::status": {
+  "data": [
+   {
+    "label": "Prospective",
+    "value": 1
+   },
+   {
+    "label": "Active",
+    "value": 2
+   },
+   {
+    "label": "Inactive",
+    "value": 1
+   },
+   {
+    "label": "Archived",
+    "value": 1
+   }
+  ],
+  "metadata": {
+   "entityType": "clients",
+   "groupBy": "status",
+   "truncated": false
+  },
+  "total": 5
+ },
+ "clients::leadSource": {
+  "data": [
+   {
+    "label": "Website",
+    "value": 2
+   },
+   {
+    "label": "Unknown",
+    "value": 1
+   },
+   {
+    "label": "Advertising",
+    "value": 1
+   },
+   {
+    "label": "Referral",
+    "value": 1
+   }
+  ],
+  "metadata": {
+   "entityType": "clients",
+   "groupBy": "leadSource",
+   "truncated": false
+  },
+  "total": 5
+ },
+ "clients::creationDate_month": {
+  "data": [
+   {
+    "label": "Jun 2026",
+    "metadata": {
+     "dateKey": "2026-06"
+    },
+    "value": 5
+   }
+  ],
+  "metadata": {
+   "entityType": "clients",
+   "groupBy": "creationDate_month",
+   "truncated": false
+  },
+  "total": 5
+ },
+ "clients::creationDate_week": {
+  "data": [
+   {
+    "label": "Week of Jun 14",
+    "metadata": {
+     "dateKey": "2026-06-14"
+    },
+    "value": 5
+   }
+  ],
+  "metadata": {
+   "entityType": "clients",
+   "groupBy": "creationDate_week",
+   "truncated": false
+  },
+  "total": 5
+ },
+ "clients::creationDate_day": {
+  "data": [
+   {
+    "label": "Jun 15, 2026",
+    "metadata": {
+     "dateKey": "2026-06-15"
+    },
+    "value": 5
+   }
+  ],
+  "metadata": {
+   "entityType": "clients",
+   "groupBy": "creationDate_day",
+   "truncated": false
+  },
+  "total": 5
+ },
+ "clients::__unknown_literal_fallback__": {
+  "data": [
+   {
+    "label": "Prospective",
+    "value": 1
+   },
+   {
+    "label": "Active",
+    "value": 2
+   },
+   {
+    "label": "Inactive",
+    "value": 1
+   },
+   {
+    "label": "Archived",
+    "value": 1
+   }
+  ],
+  "metadata": {
+   "entityType": "clients",
+   "groupBy": "status",
+   "truncated": false
+  },
+  "total": 5
+ },
+ "projects::__default__": {
+  "data": [
+   {
+    "label": "Planned",
+    "value": 1
+   },
+   {
+    "label": "In Progress",
+    "value": 1
+   },
+   {
+    "label": "Completed",
+    "value": 1
+   },
+   {
+    "label": "Cancelled",
+    "value": 1
+   }
+  ],
+  "metadata": {
+   "entityType": "projects",
+   "groupBy": "status",
+   "truncated": false
+  },
+  "total": 4
+ },
+ "projects::status": {
+  "data": [
+   {
+    "label": "Planned",
+    "value": 1
+   },
+   {
+    "label": "In Progress",
+    "value": 1
+   },
+   {
+    "label": "Completed",
+    "value": 1
+   },
+   {
+    "label": "Cancelled",
+    "value": 1
+   }
+  ],
+  "metadata": {
+   "entityType": "projects",
+   "groupBy": "status",
+   "truncated": false
+  },
+  "total": 4
+ },
+ "projects::projectType": {
+  "data": [
+   {
+    "label": "One-off",
+    "value": 2
+   },
+   {
+    "label": "Recurring",
+    "value": 2
+   }
+  ],
+  "metadata": {
+   "entityType": "projects",
+   "groupBy": "projectType",
+   "truncated": false
+  },
+  "total": 4
+ },
+ "projects::creationDate_month": {
+  "data": [
+   {
+    "label": "Jun 2026",
+    "metadata": {
+     "dateKey": "2026-06"
+    },
+    "value": 4
+   }
+  ],
+  "metadata": {
+   "entityType": "projects",
+   "groupBy": "creationDate_month",
+   "truncated": false
+  },
+  "total": 4
+ },
+ "projects::creationDate_week": {
+  "data": [
+   {
+    "label": "Week of Jun 14",
+    "metadata": {
+     "dateKey": "2026-06-14"
+    },
+    "value": 4
+   }
+  ],
+  "metadata": {
+   "entityType": "projects",
+   "groupBy": "creationDate_week",
+   "truncated": false
+  },
+  "total": 4
+ },
+ "projects::creationDate_day": {
+  "data": [
+   {
+    "label": "Jun 15, 2026",
+    "metadata": {
+     "dateKey": "2026-06-15"
+    },
+    "value": 4
+   }
+  ],
+  "metadata": {
+   "entityType": "projects",
+   "groupBy": "creationDate_day",
+   "truncated": false
+  },
+  "total": 4
+ },
+ "tasks::__default__": {
+  "data": [
+   {
+    "label": "Pending",
+    "value": 1
+   },
+   {
+    "label": "In Progress",
+    "value": 1
+   },
+   {
+    "label": "Completed",
+    "value": 2
+   },
+   {
+    "label": "Cancelled",
+    "value": 1
+   }
+  ],
+  "metadata": {
+   "entityType": "tasks",
+   "groupBy": "status",
+   "truncated": false
+  },
+  "total": 5
+ },
+ "tasks::status": {
+  "data": [
+   {
+    "label": "Pending",
+    "value": 1
+   },
+   {
+    "label": "In Progress",
+    "value": 1
+   },
+   {
+    "label": "Completed",
+    "value": 2
+   },
+   {
+    "label": "Cancelled",
+    "value": 1
+   }
+  ],
+  "metadata": {
+   "entityType": "tasks",
+   "groupBy": "status",
+   "truncated": false
+  },
+  "total": 5
+ },
+ "tasks::completionRate": {
+  "data": [
+   {
+    "label": "Completed",
+    "value": 2
+   },
+   {
+    "label": "Pending",
+    "value": 2
+   }
+  ],
+  "metadata": {
+   "entityType": "tasks",
+   "groupBy": "completionRate",
+   "truncated": false
+  },
+  "total": 40
+ },
+ "tasks::date_month": {
+  "data": [
+   {
+    "label": "May 2026",
+    "metadata": {
+     "dateKey": "2026-05"
+    },
+    "value": 3
+   },
+   {
+    "label": "Jun 2026",
+    "metadata": {
+     "dateKey": "2026-06"
+    },
+    "value": 2
+   }
+  ],
+  "metadata": {
+   "entityType": "tasks",
+   "groupBy": "date_month",
+   "truncated": false
+  },
+  "total": 5
+ },
+ "tasks::date_week": {
+  "data": [
+   {
+    "label": "Week of May 3",
+    "metadata": {
+     "dateKey": "2026-05-03"
+    },
+    "value": 1
+   },
+   {
+    "label": "Week of May 10",
+    "metadata": {
+     "dateKey": "2026-05-10"
+    },
+    "value": 1
+   },
+   {
+    "label": "Week of May 17",
+    "metadata": {
+     "dateKey": "2026-05-17"
+    },
+    "value": 1
+   },
+   {
+    "label": "Week of May 31",
+    "metadata": {
+     "dateKey": "2026-05-31"
+    },
+    "value": 1
+   },
+   {
+    "label": "Week of Jun 7",
+    "metadata": {
+     "dateKey": "2026-06-07"
+    },
+    "value": 1
+   }
+  ],
+  "metadata": {
+   "entityType": "tasks",
+   "groupBy": "date_week",
+   "truncated": false
+  },
+  "total": 5
+ },
+ "tasks::date_day": {
+  "data": [
+   {
+    "label": "May 4, 2026",
+    "metadata": {
+     "dateKey": "2026-05-04"
+    },
+    "value": 1
+   },
+   {
+    "label": "May 12, 2026",
+    "metadata": {
+     "dateKey": "2026-05-12"
+    },
+    "value": 1
+   },
+   {
+    "label": "May 20, 2026",
+    "metadata": {
+     "dateKey": "2026-05-20"
+    },
+    "value": 1
+   },
+   {
+    "label": "Jun 2, 2026",
+    "metadata": {
+     "dateKey": "2026-06-02"
+    },
+    "value": 1
+   },
+   {
+    "label": "Jun 10, 2026",
+    "metadata": {
+     "dateKey": "2026-06-10"
+    },
+    "value": 1
+   }
+  ],
+  "metadata": {
+   "entityType": "tasks",
+   "groupBy": "date_day",
+   "truncated": false
+  },
+  "total": 5
+ },
+ "quotes::__default__": {
+  "data": [
+   {
+    "label": "Draft",
+    "metadata": {
+     "totalValue": 500
+    },
+    "value": 1
+   },
+   {
+    "label": "Sent",
+    "metadata": {
+     "totalValue": 1250.5
+    },
+    "value": 2
+   },
+   {
+    "label": "Approved",
+    "metadata": {
+     "totalValue": 2000
+    },
+    "value": 1
+   },
+   {
+    "label": "Declined",
+    "metadata": {
+     "totalValue": 750
+    },
+    "value": 1
+   }
+  ],
+  "metadata": {
+   "entityType": "quotes",
+   "groupBy": "status",
+   "totalIsCurrency": true,
+   "truncated": false
+  },
+  "total": 4500.5
+ },
+ "quotes::status": {
+  "data": [
+   {
+    "label": "Draft",
+    "metadata": {
+     "totalValue": 500
+    },
+    "value": 1
+   },
+   {
+    "label": "Sent",
+    "metadata": {
+     "totalValue": 1250.5
+    },
+    "value": 2
+   },
+   {
+    "label": "Approved",
+    "metadata": {
+     "totalValue": 2000
+    },
+    "value": 1
+   },
+   {
+    "label": "Declined",
+    "metadata": {
+     "totalValue": 750
+    },
+    "value": 1
+   }
+  ],
+  "metadata": {
+   "entityType": "quotes",
+   "groupBy": "status",
+   "totalIsCurrency": true,
+   "truncated": false
+  },
+  "total": 4500.5
+ },
+ "quotes::conversionRate": {
+  "data": [
+   {
+    "label": "Approved",
+    "value": 1
+   },
+   {
+    "label": "Not Approved",
+    "value": 3
+   }
+  ],
+  "metadata": {
+   "entityType": "quotes",
+   "groupBy": "conversionRate",
+   "truncated": false
+  },
+  "total": 25
+ },
+ "invoices::__default__": {
+  "data": [
+   {
+    "label": "Draft",
+    "metadata": {
+     "totalValue": 100
+    },
+    "value": 1
+   },
+   {
+    "label": "Sent",
+    "metadata": {
+     "totalValue": 200
+    },
+    "value": 1
+   },
+   {
+    "label": "Paid",
+    "metadata": {
+     "totalValue": 2000
+    },
+    "value": 2
+   },
+   {
+    "label": "Overdue",
+    "metadata": {
+     "totalValue": 300
+    },
+    "value": 1
+   },
+   {
+    "label": "Cancelled",
+    "metadata": {
+     "totalValue": 50
+    },
+    "value": 1
+   }
+  ],
+  "metadata": {
+   "entityType": "invoices",
+   "groupBy": "status",
+   "totalIsCurrency": true,
+   "truncated": false
+  },
+  "total": 2650
+ },
+ "invoices::status": {
+  "data": [
+   {
+    "label": "Draft",
+    "metadata": {
+     "totalValue": 100
+    },
+    "value": 1
+   },
+   {
+    "label": "Sent",
+    "metadata": {
+     "totalValue": 200
+    },
+    "value": 1
+   },
+   {
+    "label": "Paid",
+    "metadata": {
+     "totalValue": 2000
+    },
+    "value": 2
+   },
+   {
+    "label": "Overdue",
+    "metadata": {
+     "totalValue": 300
+    },
+    "value": 1
+   },
+   {
+    "label": "Cancelled",
+    "metadata": {
+     "totalValue": 50
+    },
+    "value": 1
+   }
+  ],
+  "metadata": {
+   "entityType": "invoices",
+   "groupBy": "status",
+   "totalIsCurrency": true,
+   "truncated": false
+  },
+  "total": 2650
+ },
+ "invoices::month": {
+  "data": [
+   {
+    "label": "2026-02",
+    "value": 1200
+   },
+   {
+    "label": "2026-03",
+    "value": 800
+   }
+  ],
+  "metadata": {
+   "entityType": "invoices",
+   "groupBy": "month",
+   "itemValueIsCurrency": true,
+   "totalIsCurrency": true,
+   "truncated": false
+  },
+  "total": 2000
+ },
+ "invoices::client": {
+  "data": [
+   {
+    "label": "Acme Cleaning",
+    "metadata": {
+     "clientId": "10003;clients"
+    },
+    "value": 1200
+   },
+   {
+    "label": "Birch Landscaping",
+    "metadata": {
+     "clientId": "10004;clients"
+    },
+    "value": 800
+   }
+  ],
+  "metadata": {
+   "entityType": "invoices",
+   "groupBy": "client",
+   "itemValueIsCurrency": true,
+   "totalIsCurrency": true,
+   "truncated": false
+  },
+  "total": 2000
+ },
+ "activities::__default__": {
+  "data": [
+   {
+    "label": "Client Created",
+    "value": 2
+   },
+   {
+    "label": "Invoice Paid",
+    "value": 1
+   },
+   {
+    "label": "Quote Sent",
+    "value": 1
+   }
+  ],
+  "metadata": {
+   "entityType": "activities",
+   "groupBy": "activityType",
+   "truncated": false
+  },
+  "total": 4
+ },
+ "activities::activityType": {
+  "data": [
+   {
+    "label": "Client Created",
+    "value": 2
+   },
+   {
+    "label": "Invoice Paid",
+    "value": 1
+   },
+   {
+    "label": "Quote Sent",
+    "value": 1
+   }
+  ],
+  "metadata": {
+   "entityType": "activities",
+   "groupBy": "activityType",
+   "truncated": false
+  },
+  "total": 4
+ },
+ "activities::timestamp_month": {
+  "data": [
+   {
+    "label": "Jan 2026",
+    "metadata": {
+     "dateKey": "2026-01"
+    },
+    "value": 2
+   },
+   {
+    "label": "Feb 2026",
+    "metadata": {
+     "dateKey": "2026-02"
+    },
+    "value": 1
+   },
+   {
+    "label": "Mar 2026",
+    "metadata": {
+     "dateKey": "2026-03"
+    },
+    "value": 1
+   }
+  ],
+  "metadata": {
+   "entityType": "activities",
+   "groupBy": "timestamp_month",
+   "truncated": false
+  },
+  "total": 4
+ },
+ "activities::timestamp_week": {
+  "data": [
+   {
+    "label": "Week of Jan 4",
+    "metadata": {
+     "dateKey": "2026-01-04"
+    },
+    "value": 1
+   },
+   {
+    "label": "Week of Jan 18",
+    "metadata": {
+     "dateKey": "2026-01-18"
+    },
+    "value": 1
+   },
+   {
+    "label": "Week of Feb 1",
+    "metadata": {
+     "dateKey": "2026-02-01"
+    },
+    "value": 1
+   },
+   {
+    "label": "Week of Mar 15",
+    "metadata": {
+     "dateKey": "2026-03-15"
+    },
+    "value": 1
+   }
+  ],
+  "metadata": {
+   "entityType": "activities",
+   "groupBy": "timestamp_week",
+   "truncated": false
+  },
+  "total": 4
+ },
+ "activities::timestamp_day": {
+  "data": [
+   {
+    "label": "Jan 6, 2026",
+    "metadata": {
+     "dateKey": "2026-01-06"
+    },
+    "value": 1
+   },
+   {
+    "label": "Jan 20, 2026",
+    "metadata": {
+     "dateKey": "2026-01-20"
+    },
+    "value": 1
+   },
+   {
+    "label": "Feb 7, 2026",
+    "metadata": {
+     "dateKey": "2026-02-07"
+    },
+    "value": 1
+   },
+   {
+    "label": "Mar 21, 2026",
+    "metadata": {
+     "dateKey": "2026-03-21"
+    },
+    "value": 1
+   }
+  ],
+  "metadata": {
+   "entityType": "activities",
+   "groupBy": "timestamp_day",
+   "truncated": false
+  },
+  "total": 4
+ },
+ "invoices::month::feb-2026": {
+  "data": [
+   {
+    "label": "2026-02",
+    "value": 1200
+   }
+  ],
+  "metadata": {
+   "dateRange": {
+    "end": 1772323199999,
+    "start": 1769904000000
+   },
+   "entityType": "invoices",
+   "groupBy": "month",
+   "itemValueIsCurrency": true,
+   "totalIsCurrency": true,
+   "truncated": false
+  },
+  "total": 1200
+ },
+ "tasks::status::may-2026": {
+  "data": [
+   {
+    "label": "Pending",
+    "value": 1
+   },
+   {
+    "label": "In Progress",
+    "value": 0
+   },
+   {
+    "label": "Completed",
+    "value": 2
+   },
+   {
+    "label": "Cancelled",
+    "value": 0
+   }
+  ],
+  "metadata": {
+   "dateRange": {
+    "end": 1780271999999,
+    "start": 1777593600000
+   },
+   "entityType": "tasks",
+   "groupBy": "status",
+   "truncated": false
+  },
+  "total": 3
+ }
+}
