@@ -14,6 +14,7 @@ import {
 	getReportDateField,
 	isGenericGroupBy,
 	usesLegacyDispatch,
+	reportEntityTypeValidator,
 	type ReportEntityType,
 	type ReportFieldType,
 } from "./lib/reportFields";
@@ -1202,14 +1203,7 @@ async function requireReportEntityAccess(
 
 export const executeReport = optionalUserQuery({
 	args: {
-		entityType: v.union(
-			v.literal("clients"),
-			v.literal("projects"),
-			v.literal("tasks"),
-			v.literal("quotes"),
-			v.literal("invoices"),
-			v.literal("activities")
-		),
+		entityType: reportEntityTypeValidator,
 		groupBy: v.optional(v.string()),
 		dateRange: dateRangeValidator,
 		filters: v.optional(reportFiltersValidator),
@@ -1221,7 +1215,7 @@ export const executeReport = optionalUserQuery({
 		await ctx.requireLevel("reports", "view");
 		const orgId = ctx.orgId;
 
-		const entityType = args.entityType as ReportEntityType;
+		const entityType = args.entityType;
 		await requireReportEntityAccess(ctx, entityType);
 		const filters = args.filters as ReportFilters | undefined;
 		const aggregation = args.aggregation as Aggregation | undefined;

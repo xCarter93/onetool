@@ -18,6 +18,8 @@ import type { ReportFilters } from "@onetool/backend/convex/lib/reportFilters";
 import {
 	DEFAULT_DETAIL_COLUMNS,
 	GROUP_BY_OPTIONS,
+	REPORT_ENTITY_TYPES,
+	type ReportEntityType,
 } from "@onetool/backend/convex/lib/reportFields";
 import { REPORT_SCAN_CEILING } from "@onetool/backend/convex/lib/orgScan";
 import {
@@ -28,13 +30,7 @@ import {
 } from "@onetool/backend/convex/lib/reportQueryArgs";
 import { formatCurrency } from "@/lib/money";
 
-export type EntityType =
-	| "clients"
-	| "projects"
-	| "tasks"
-	| "quotes"
-	| "invoices"
-	| "activities";
+export type EntityType = ReportEntityType;
 
 export type VizType = "table" | "bar" | "column" | "line" | "pie" | "radar" | "radial";
 
@@ -69,19 +65,26 @@ export type ReportSavedConfigShape = {
 	columns?: string[];
 };
 
+// Keyed off the backend catalog so adding a report entity fails web compile
+// until it gets a label/description/icon here; display order = catalog order.
+const entityDisplay = {
+	clients: { label: "Clients", description: "Customers and prospects", icon: Users },
+	projects: { label: "Projects", description: "Project information", icon: Briefcase },
+	tasks: { label: "Tasks", description: "Tasks and schedule items", icon: ListChecks },
+	quotes: { label: "Quotes", description: "Quotes and proposals", icon: FileText },
+	invoices: { label: "Invoices", description: "Invoices and revenue", icon: DollarSign },
+	activities: { label: "Activities", description: "Activity log", icon: TrendingUp },
+} satisfies Record<
+	ReportEntityType,
+	{ label: string; description: string; icon: LucideIcon }
+>;
+
 export const entityOptions: {
 	value: EntityType;
 	label: string;
 	description: string;
 	icon: LucideIcon;
-}[] = [
-	{ value: "clients", label: "Clients", description: "Customers and prospects", icon: Users },
-	{ value: "projects", label: "Projects", description: "Project information", icon: Briefcase },
-	{ value: "tasks", label: "Tasks", description: "Tasks and schedule items", icon: ListChecks },
-	{ value: "quotes", label: "Quotes", description: "Quotes and proposals", icon: FileText },
-	{ value: "invoices", label: "Invoices", description: "Invoices and revenue", icon: DollarSign },
-	{ value: "activities", label: "Activities", description: "Activity log", icon: TrendingUp },
-];
+}[] = REPORT_ENTITY_TYPES.map((value) => ({ value, ...entityDisplay[value] }));
 
 // Canonical list lives in the backend field registry so the builder, the
 // assistant's report-config generator, and executeReport can't drift.

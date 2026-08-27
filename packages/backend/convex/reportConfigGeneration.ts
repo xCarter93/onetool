@@ -26,6 +26,7 @@ import {
 	GROUP_BY_OPTIONS,
 	getReportField,
 	isGenericGroupBy,
+	REPORT_ENTITY_TYPES,
 	REPORT_FIELDS,
 	type ReportEntityType,
 } from "./lib/reportFields";
@@ -41,14 +42,7 @@ import { rateLimiter } from "./rateLimits";
 
 const REQUEST_MAX_LENGTH = 2000;
 
-const ENTITY_TYPES = [
-	"clients",
-	"projects",
-	"tasks",
-	"quotes",
-	"invoices",
-	"activities",
-] as const;
+const ENTITY_TYPES = REPORT_ENTITY_TYPES;
 
 const FILTER_OPERATORS = [
 	"equals",

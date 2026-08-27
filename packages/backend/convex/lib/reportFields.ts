@@ -11,14 +11,20 @@
  * - Anything secret- or token-like (portalAccessId, publicToken, stripe*):
  *   must never be exposable via reports.
  */
+import { literals } from "convex-helpers/validators";
 
-export type ReportEntityType =
-	| "clients"
-	| "projects"
-	| "tasks"
-	| "quotes"
-	| "invoices"
-	| "activities";
+export const REPORT_ENTITY_TYPES = [
+	"clients",
+	"projects",
+	"tasks",
+	"quotes",
+	"invoices",
+	"activities",
+] as const;
+
+export type ReportEntityType = (typeof REPORT_ENTITY_TYPES)[number];
+
+export const reportEntityTypeValidator = literals(...REPORT_ENTITY_TYPES);
 
 export type ReportFieldType =
 	| "string"
