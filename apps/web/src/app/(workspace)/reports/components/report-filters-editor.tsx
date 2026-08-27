@@ -37,6 +37,11 @@ const OPERATOR_LABELS: Record<ReportFilterOperator, string> = {
 	greater_than_or_equal: "is at least",
 	less_than: "is less than",
 	less_than_or_equal: "is at most",
+	// Timestamp operators exist in the DSL from R7; this editor offers them
+	// only once timestamp fields become filterable (R8).
+	before: "is before",
+	after: "is after",
+	on: "is on",
 	is_empty: "is empty",
 	is_not_empty: "is not empty",
 };

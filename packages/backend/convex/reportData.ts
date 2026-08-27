@@ -339,11 +339,12 @@ async function scanFiltered(
 	orgId: Id<"organizations">,
 	dateField: string,
 	bounds: DateBoundsResult,
-	filters: ReportFilters | undefined
+	filters: ReportFilters | undefined,
+	timezone: string | undefined
 ): Promise<{ rows: Row[]; truncated: boolean }> {
 	const predicate = (row: Row) => {
 		if (!inDateBounds(row[dateField], bounds)) return false;
-		if (filters && !evaluateReportFilters(row, filters)) return false;
+		if (filters && !evaluateReportFilters(row, filters, timezone)) return false;
 		return true;
 	};
 
@@ -555,7 +556,8 @@ async function runAggregationPlan(
 		orgId,
 		plan.dateField,
 		plan.bounds,
-		plan.filters
+		plan.filters,
+		plan.timezone
 	);
 	const truncated = scanned.truncated;
 	let rows = scanned.rows;
@@ -715,12 +717,21 @@ async function runDetailReport(
 	bounds: DateBoundsResult,
 	filters: ReportFilters | undefined,
 	detail: DetailArgs,
+	timezone: string | undefined,
 	dateFieldOverride?: string
 ): Promise<ReportDataResult> {
 	validateDetailColumns(entityType, detail.columns);
 
 	const dateField = dateFieldOverride ?? getReportDateField(entityType);
-	const { rows, truncated } = await scanFiltered(ctx, entityType, orgId, dateField, bounds, filters);
+	const { rows, truncated } = await scanFiltered(
+		ctx,
+		entityType,
+		orgId,
+		dateField,
+		bounds,
+		filters,
+		timezone
+	);
 
 	// Sort is exact over the scanned window; if the scan hit its ceiling
 	// (metadata.truncated), top-N by a non-creation date field is approximate —
@@ -928,7 +939,8 @@ async function runRatioMetric(
 		orgId,
 		dateField,
 		bounds,
-		config.filters as ReportFilters | undefined
+		config.filters as ReportFilters | undefined,
+		timezone
 	);
 
 	const inSet = (values: string[]) => (r: Row) => values.includes(str(r[def.field]));
@@ -1004,7 +1016,8 @@ async function runRelatedMetric(
 		orgId,
 		getReportDateField(parent),
 		resolveDateBounds(undefined),
-		config.filters as ReportFilters | undefined
+		config.filters as ReportFilters | undefined,
+		timezone
 	);
 	const childScan = await scanFiltered(
 		ctx,
@@ -1012,7 +1025,8 @@ async function runRelatedMetric(
 		orgId,
 		childDateField,
 		childBounds,
-		childFilters
+		childFilters,
+		timezone
 	);
 
 	const parents = new Map<string, Row>();
@@ -1107,6 +1121,7 @@ export const executeReport = optionalUserQuery({
 					bounds,
 					configFilters,
 					detail,
+					timezone,
 					dateField
 				);
 			}
@@ -1138,7 +1153,8 @@ export const executeReport = optionalUserQuery({
 
 		if (detail) {
 			const bounds = resolveDateBounds(args.dateRange);
-			return await runDetailReport(ctx, orgId, entityType, bounds, filters, detail);
+			const timezone = await getOrgTimezoneById(ctx, orgId);
+			return await runDetailReport(ctx, orgId, entityType, bounds, filters, detail, timezone);
 		}
 
 		validateAggregation(entityType, aggregation);

@@ -985,6 +985,63 @@ describe("evaluateReportFilters (pure function)", () => {
 		expect(evaluateReportFilters({ notes: "hi" }, isEmpty)).toBe(false);
 	});
 
+	it("before / after are strict instant comparisons on numbers only (R7)", () => {
+		const before: ReportFilters = {
+			logic: "and",
+			groups: [
+				{ logic: "and", rules: [{ field: "dueDate", operator: "before", value: 1000 }] },
+			],
+		};
+		expect(evaluateReportFilters({ dueDate: 999 }, before)).toBe(true);
+		expect(evaluateReportFilters({ dueDate: 1000 }, before)).toBe(false);
+		expect(evaluateReportFilters({ dueDate: "999" }, before)).toBe(false);
+
+		const after: ReportFilters = {
+			logic: "and",
+			groups: [
+				{ logic: "and", rules: [{ field: "dueDate", operator: "after", value: 1000 }] },
+			],
+		};
+		expect(evaluateReportFilters({ dueDate: 1001 }, after)).toBe(true);
+		expect(evaluateReportFilters({ dueDate: 1000 }, after)).toBe(false);
+		expect(evaluateReportFilters({ dueDate: undefined }, after)).toBe(false);
+	});
+
+	it("on matches the org-timezone calendar day, not the UTC day (R7)", () => {
+		// 2026-08-28T02:00Z is still Aug 27 in New York (10pm EDT). A rule value
+		// anywhere inside Aug 27 ET must match it; the same rule under UTC
+		// (timezone omitted) must not.
+		const row = { paidAt: Date.UTC(2026, 7, 28, 2, 0) };
+		const onAug27: ReportFilters = {
+			logic: "and",
+			groups: [
+				{
+					logic: "and",
+					rules: [
+						{ field: "paidAt", operator: "on", value: Date.UTC(2026, 7, 27, 15, 0) },
+					],
+				},
+			],
+		};
+		expect(evaluateReportFilters(row, onAug27, "America/New_York")).toBe(true);
+		expect(evaluateReportFilters(row, onAug27)).toBe(false);
+
+		const onAug28: ReportFilters = {
+			logic: "and",
+			groups: [
+				{
+					logic: "and",
+					rules: [
+						{ field: "paidAt", operator: "on", value: Date.UTC(2026, 7, 28, 15, 0) },
+					],
+				},
+			],
+		};
+		expect(evaluateReportFilters(row, onAug28, "America/New_York")).toBe(false);
+		expect(evaluateReportFilters(row, onAug28)).toBe(true);
+		expect(evaluateReportFilters({ paidAt: null }, onAug28, "America/New_York")).toBe(false);
+	});
+
 	it("comparison operators only match numbers", () => {
 		const filters: ReportFilters = {
 			logic: "and",

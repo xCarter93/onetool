@@ -46,7 +46,7 @@ export type DrillPage = {
  * descends. Typing flattens across all levels (cmdk filters each row by its
  * `value`), ignoring the current page. Resets to root when `open` goes false.
  */
-export function VariableDrillList({
+export function DrillList({
 	rootGroups,
 	pages,
 	open,

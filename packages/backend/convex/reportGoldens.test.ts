@@ -37,7 +37,11 @@ function toGenFilters(filters: ReportFilters | null): GeneratedReport["filters"]
 			logic: group.logic,
 			rules: group.rules.map((rule) => ({
 				field: rule.field,
-				operator: rule.operator,
+				// Presets only use the AI-generatable operator subset; the DSL
+				// union is wider (before/after/on).
+				operator: rule.operator as NonNullable<
+					GeneratedReport["filters"]
+				>["groups"][number]["rules"][number]["operator"],
 				value: rule.value ?? null,
 			})),
 		})),

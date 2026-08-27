@@ -17,10 +17,10 @@ import {
 	PopoverTrigger,
 } from "@/components/ui/popover";
 import {
-	VariableDrillList,
+	DrillList,
 	type DrillGroup,
 	type DrillPage,
-} from "./variable-drill-list";
+} from "@/components/shared/drill-list";
 import {
 	MAX_CONDITION_GROUPS,
 	MAX_RULES_PER_GROUP,
@@ -40,7 +40,7 @@ import {
 	type WorkflowNode,
 } from "../../../lib/node-types";
 import { ValueInput } from "./value-input";
-import { PickerChip } from "./picker-chip";
+import { PickerChip } from "@/components/shared/picker-chip";
 import { OPERATOR_LABELS } from "../../../lib/condition-sentence";
 import type { VariableOption } from "../../../lib/variables";
 
@@ -190,7 +190,7 @@ function FieldPicker({
 				<ChevronsUpDown className="h-4 w-4 shrink-0 opacity-50" />
 			</PopoverTrigger>
 			<PopoverContent align="start" className="w-80 p-0">
-				<VariableDrillList
+				<DrillList
 					rootGroups={rootGroups}
 					pages={pages}
 					open={open}

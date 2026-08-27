@@ -20,12 +20,9 @@ import {
 import { getUpstreamFetchNodes } from "../../../lib/variables";
 import type { ConfigPanelProps } from "../automation-sidebar";
 import { ConfigPanelHeader } from "./config-panel-header";
-import {
-	DeleteStepButton,
-	PanelField,
-	PanelSection,
-} from "./panel-primitives";
-import { PickerChip } from "./picker-chip";
+import { PanelField, PanelSection } from "@/components/shared/panel-primitives";
+import { DeleteStepButton } from "./delete-step-button";
+import { PickerChip } from "@/components/shared/picker-chip";
 
 const OPERATION_LABELS: Record<AggregateOperation, string> = {
 	sum: "Sum",

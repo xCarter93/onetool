@@ -52,13 +52,10 @@ import {
 import { getScopeObjectType } from "../../../lib/variables";
 import type { ConfigPanelProps } from "../automation-sidebar";
 import { ConfigPanelHeader } from "./config-panel-header";
-import {
-	DeleteStepButton,
-	PanelField,
-	PanelSection,
-} from "./panel-primitives";
+import { PanelField, PanelSection } from "@/components/shared/panel-primitives";
+import { DeleteStepButton } from "./delete-step-button";
 import { ValueInput, VariableInsertButton } from "./value-input";
-import { PickerChip } from "./picker-chip";
+import { PickerChip } from "@/components/shared/picker-chip";
 
 function defaultConfig(objectType: AutomationObjectType): ActionNodeConfig {
 	const firstWritable = getWritableFields(objectType)[0];
