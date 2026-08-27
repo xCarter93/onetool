@@ -3,8 +3,9 @@
 import { PermissionGate } from "@/components/domain/permission-gate";
 import { useState } from "react";
 import { useQuery, useMutation } from "convex/react";
+import type { FunctionReturnType } from "convex/server";
 import { useRouter, useParams } from "next/navigation";
-import { ArrowLeft, Copy, Eye, EyeOff, Loader2, Pencil } from "lucide-react";
+import { ArrowLeft, Copy, Download, Eye, EyeOff, Loader2, Pencil } from "lucide-react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
 import { Button } from "@/components/ui/button";
@@ -20,13 +21,38 @@ import {
 	detectDateRangePreset,
 	entityLabels,
 	groupByOptions,
+	resolveReportQueryArgs,
 	visualizationIcons,
 	visualizationOptions,
+	type ReportConfigShape,
 } from "../report-config";
+import { reportResultToCsv } from "../report-csv";
+import { buildCsv, downloadCsv, sanitizeCsvFilename } from "@/lib/csv-export";
 
 /** localStorage key for the per-report chart-visible toggle (Slice 3-D3). */
 function chartVisibleKey(reportId: string) {
 	return `report-chart-visible:${reportId}`;
+}
+
+type ReportDoc = NonNullable<FunctionReturnType<typeof api.reports.get>>;
+
+/** The exact config shape the view passes to ReportPreview — the CSV export runs the same query so it exports what's on screen. */
+function toConfigShape(report: ReportDoc): ReportConfigShape {
+	return {
+		entityType: report.config.entityType,
+		groupBy: report.config.groupBy,
+		dateRange: report.config.dateRange,
+		filters: isValidReportFilters(report.config.filters)
+			? report.config.filters
+			: undefined,
+		aggregation: report.config.aggregations?.[0]
+			? {
+					op: report.config.aggregations[0].operation,
+					field: report.config.aggregations[0].field,
+				}
+			: undefined,
+		columns: report.config.columns,
+	};
 }
 
 function ReportViewPageContent() {
@@ -56,6 +82,20 @@ function ReportViewPageContent() {
 			return next;
 		});
 	};
+
+	// Same args ReportPreview subscribes with (Convex dedupes the
+	// subscription), so Download CSV exports exactly what's on screen.
+	const reportData = useQuery(
+		api.reportData.executeReport,
+		report && !isEditing
+			? resolveReportQueryArgs(
+					toConfigShape(report),
+					report.visualization.type !== "table" && chartVisible
+						? report.visualization.type
+						: "table"
+				)
+			: "skip"
+	);
 
 	if (report === undefined) {
 		return (
@@ -140,6 +180,22 @@ function ReportViewPageContent() {
 		}
 	};
 
+	const csvReady =
+		reportData !== undefined &&
+		(reportData.detail
+			? reportData.detail.rows.length > 0
+			: reportData.data.length > 0);
+
+	const handleDownloadCsv = () => {
+		if (!reportData) return;
+		const { headers, rows } = reportResultToCsv(reportData, {
+			entityType: report.config.entityType,
+			groupBy: report.config.groupBy?.[0],
+			groupByLabel,
+		});
+		downloadCsv(sanitizeCsvFilename(report.name), buildCsv(headers, rows));
+	};
+
 	const VizIcon = visualizationIcons[report.visualization.type];
 	const isChartVisualization = report.visualization.type !== "table";
 	const groupByLabel =
@@ -190,6 +246,10 @@ function ReportViewPageContent() {
 					</div>
 				</div>
 				<div className="flex items-center gap-2">
+					<Button variant="outline" onClick={handleDownloadCsv} disabled={!csvReady}>
+						<Download className="mr-2 h-4 w-4" />
+						Download CSV
+					</Button>
 					<Button variant="outline" onClick={handleDuplicate}>
 						<Copy className="mr-2 h-4 w-4" />
 						Duplicate
@@ -230,21 +290,7 @@ function ReportViewPageContent() {
 			{/* Report */}
 			<div className="rounded-2xl border border-border/60 bg-background p-5 shadow-sm sm:p-7">
 				<ReportPreview
-					config={{
-						entityType: report.config.entityType,
-						groupBy: report.config.groupBy,
-						dateRange: report.config.dateRange,
-						filters: isValidReportFilters(report.config.filters)
-							? report.config.filters
-							: undefined,
-						aggregation: report.config.aggregations?.[0]
-							? {
-									op: report.config.aggregations[0].operation,
-									field: report.config.aggregations[0].field,
-								}
-							: undefined,
-						columns: report.config.columns,
-					}}
+					config={toConfigShape(report)}
 					visualization={{
 						type: isChartVisualization && chartVisible ? report.visualization.type : "table",
 					}}
