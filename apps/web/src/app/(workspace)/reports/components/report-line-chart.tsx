@@ -9,14 +9,10 @@ import {
 	CartesianGrid,
 	ReferenceLine,
 } from "recharts";
-import {
-	ChartConfig,
-	ChartContainer,
-	ChartTooltip,
-	ChartTooltipContent,
-} from "@/components/ui/chart";
+import { ChartConfig, ChartContainer, ChartTooltip } from "@/components/ui/chart";
 import { CHART_CATEGORICAL } from "@/lib/chart-colors";
 import { ChartNoData, isChartDataEmpty } from "./chart-no-data";
+import { ReportChartTooltip, measureLabel } from "./report-chart-tooltip";
 import { ChartStripeDefs, stripeId } from "@/components/charts/chart-stripe-defs";
 import { formatCurrency } from "@/lib/money";
 
@@ -31,6 +27,8 @@ interface ReportLineChartProps {
 	total: number;
 	groupBy?: string;
 	entityType: string;
+	/** Is each item's `value` a dollar amount (vs. a count)? */
+	itemValueIsCurrency?: boolean;
 	axisLabels?: { x?: string; y?: string };
 	targetLine?: number;
 }
@@ -50,6 +48,7 @@ export function ReportLineChart({
 	total,
 	groupBy,
 	entityType,
+	itemValueIsCurrency = false,
 	axisLabels,
 	targetLine,
 }: ReportLineChartProps) {
@@ -58,7 +57,7 @@ export function ReportLineChart({
 
 	const chartConfig: ChartConfig = {
 		value: {
-			label: "Value",
+			label: measureLabel(itemValueIsCurrency),
 			color: PRIMARY_BLUE,
 		},
 	};
@@ -133,7 +132,7 @@ export function ReportLineChart({
 					/>
 					<ChartTooltip
 						cursor={{ strokeDasharray: "3 3", stroke: PRIMARY_BLUE }}
-						content={<ChartTooltipContent />}
+						content={<ReportChartTooltip isCurrency={itemValueIsCurrency} />}
 					/>
 					{/* Solid 2px stroke for the curve, diagonal-stripe pattern (not a
 					    gradient) filling the area beneath it. */}

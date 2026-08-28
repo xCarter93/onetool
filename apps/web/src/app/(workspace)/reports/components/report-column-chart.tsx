@@ -10,15 +10,11 @@ import {
 	Cell,
 	ReferenceLine,
 } from "recharts";
-import {
-	ChartConfig,
-	ChartContainer,
-	ChartTooltip,
-	ChartTooltipContent,
-} from "@/components/ui/chart";
+import { ChartConfig, ChartContainer, ChartTooltip } from "@/components/ui/chart";
 import { CHART_CATEGORICAL, getChartColor } from "@/lib/chart-colors";
 import { formatReportValue } from "../report-config";
 import { ChartNoData, isChartDataEmpty } from "./chart-no-data";
+import { ReportChartTooltip, reportChartConfig } from "./report-chart-tooltip";
 import { ChartStripeDefs, stripeId } from "@/components/charts/chart-stripe-defs";
 
 interface DataPoint {
@@ -72,20 +68,10 @@ export function ReportColumnChart({
 				};
 				return acc;
 			}, {} as ChartConfig)
-		: data.reduce((acc, item, index) => {
-				acc[item.name] = {
-					label: item.name,
-					color: getChartColor(index, CHART_CATEGORICAL),
-				};
-				return acc;
-			}, {} as ChartConfig);
-
-	if (!stacked) {
-		chartConfig.value = {
-			label: itemValueIsCurrency ? "Amount" : "Count",
-			color: getChartColor(0, CHART_CATEGORICAL),
-		};
-	}
+		: reportChartConfig(
+				data.map((item) => item.name),
+				itemValueIsCurrency
+			);
 
 	const seriesColors = Array.from(
 		{ length: stacked ? segments.length : data.length },
@@ -139,7 +125,7 @@ export function ReportColumnChart({
 					/>
 					<ChartTooltip
 						cursor={{ fill: "var(--muted)", opacity: 0.2 }}
-						content={<ChartTooltipContent />}
+						content={<ReportChartTooltip isCurrency={itemValueIsCurrency} />}
 					/>
 					{stacked ? (
 						segments.map((segment, index) => {

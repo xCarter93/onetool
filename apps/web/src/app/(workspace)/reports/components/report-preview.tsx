@@ -232,6 +232,7 @@ function ReportPreviewInner({ config, visualization }: ReportPreviewProps) {
 						total={total}
 						groupBy={groupBy}
 						entityType={config.entityType}
+						itemValueIsCurrency={itemValueIsCurrency}
 						axisLabels={axisLabels}
 						targetLine={targetLine}
 					/>
@@ -244,6 +245,7 @@ function ReportPreviewInner({ config, visualization }: ReportPreviewProps) {
 						groupBy={groupBy}
 						entityType={config.entityType}
 						totalIsCurrency={totalIsCurrency}
+						itemValueIsCurrency={itemValueIsCurrency}
 					/>
 				);
 			case "radar":

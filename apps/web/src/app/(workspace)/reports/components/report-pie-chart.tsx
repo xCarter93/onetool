@@ -2,15 +2,11 @@
 
 import React from "react";
 import { Pie, PieChart, Cell, ResponsiveContainer, Sector } from "recharts";
-import {
-	ChartConfig,
-	ChartContainer,
-	ChartTooltip,
-	ChartTooltipContent,
-} from "@/components/ui/chart";
+import { ChartContainer, ChartTooltip } from "@/components/ui/chart";
 import { CHART_CATEGORICAL, getChartColor } from "@/lib/chart-colors";
 import { formatReportValue } from "../report-config";
 import { ChartNoData, isChartDataEmpty } from "./chart-no-data";
+import { ReportChartTooltip, reportChartConfig } from "./report-chart-tooltip";
 import { ChartStripeDefs, stripeId } from "@/components/charts/chart-stripe-defs";
 
 interface DataPoint {
@@ -26,24 +22,23 @@ interface ReportPieChartProps {
 	entityType: string;
 	/** Is `total` a dollar amount? Explicit, from the caller — see getReportValueTypes. */
 	totalIsCurrency?: boolean;
+	/** Is each item's `value` a dollar amount (vs. a count)? */
+	itemValueIsCurrency?: boolean;
 }
 
 export function ReportPieChart({
 	data,
 	total,
 	totalIsCurrency = false,
+	itemValueIsCurrency = false,
 }: ReportPieChartProps) {
 	const [activeIndex, setActiveIndex] = React.useState<number | undefined>();
 	const patternPrefix = React.useId();
 
-	// Build chart config dynamically
-	const chartConfig: ChartConfig = data.reduce((acc, item, index) => {
-		acc[item.name] = {
-			label: item.name,
-			color: getChartColor(index, CHART_CATEGORICAL),
-		};
-		return acc;
-	}, {} as ChartConfig);
+	const chartConfig = reportChartConfig(
+		data.map((item) => item.name),
+		itemValueIsCurrency
+	);
 
 	if (isChartDataEmpty(data)) {
 		return <ChartNoData />;
@@ -162,8 +157,11 @@ export function ReportPieChart({
 							);
 						})}
 					</Pie>
+					{/* nameKey: pie payloads are named after the bucket, which the heading already shows. */}
 					<ChartTooltip
-						content={<ChartTooltipContent hideLabel />}
+						content={
+							<ReportChartTooltip nameKey="value" isCurrency={itemValueIsCurrency} />
+						}
 					/>
 				</PieChart>
 			</ChartContainer>

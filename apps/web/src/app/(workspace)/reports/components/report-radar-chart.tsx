@@ -8,15 +8,11 @@ import {
 	PolarAngleAxis,
 	PolarRadiusAxis,
 } from "recharts";
-import {
-	ChartConfig,
-	ChartContainer,
-	ChartTooltip,
-	ChartTooltipContent,
-} from "@/components/ui/chart";
+import { ChartConfig, ChartContainer, ChartTooltip } from "@/components/ui/chart";
 import { CHART_CATEGORICAL, getChartColor } from "@/lib/chart-colors";
 import { formatReportValue } from "../report-config";
 import { ChartNoData, isChartDataEmpty } from "./chart-no-data";
+import { ReportChartTooltip, measureLabel } from "./report-chart-tooltip";
 import { ChartStripeDefs, stripeId } from "@/components/charts/chart-stripe-defs";
 
 interface DataPoint {
@@ -43,13 +39,14 @@ export function ReportRadarChart({
 	data,
 	total,
 	totalIsCurrency = false,
+	itemValueIsCurrency = false,
 }: ReportRadarChartProps) {
 	const patternPrefix = React.useId();
 	const RADAR_STRIPE_ID = stripeId(patternPrefix, 0);
 
 	const chartConfig: ChartConfig = {
 		value: {
-			label: "Value",
+			label: measureLabel(itemValueIsCurrency),
 			color: RADAR_COLOR,
 		},
 	};
@@ -90,7 +87,9 @@ export function ReportRadarChart({
 						tick={{ fontSize: 10, fill: "var(--muted-foreground)" }}
 						axisLine={false}
 					/>
-					<ChartTooltip content={<ChartTooltipContent />} />
+					<ChartTooltip
+						content={<ReportChartTooltip isCurrency={itemValueIsCurrency} />}
+					/>
 					<Radar
 						dataKey="value"
 						fill={`url(#${RADAR_STRIPE_ID})`}
