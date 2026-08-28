@@ -33,6 +33,42 @@
    "groupBy": "paidAt_month"
   }
  },
+ "revenue-by-project": {
+  "entityType": "invoices",
+  "config": {
+   "version": 2,
+   "entityType": "invoices",
+   "filters": {
+    "logic": "and",
+    "groups": [
+     {
+      "logic": "and",
+      "rules": [
+       {
+        "field": "status",
+        "operator": "equals",
+        "value": "paid"
+       }
+      ]
+     }
+    ]
+   },
+   "date": {
+    "field": "paidAt",
+    "range": {
+     "kind": "preset",
+     "preset": "this_year"
+    }
+   },
+   "metric": {
+    "op": "sum",
+    "field": "total"
+   },
+   "groupBy": "projectId"
+  },
+  "seriesLimit": 10,
+  "sort": "value_desc"
+ },
  "overdue-invoices": {
   "entityType": "invoices",
   "config": {

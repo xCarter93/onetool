@@ -15,7 +15,7 @@ import {
 	requireMeter,
 } from "./lib/entitlements";
 import {
-	reportConfigValidator,
+	reportConfigV2Validator,
 	reportVisualizationValidator,
 } from "./lib/reportConfig";
 
@@ -129,8 +129,7 @@ export const create = userMutation({
 	args: {
 		name: v.string(),
 		description: v.optional(v.string()),
-		// Writes emit native v2 since R8a; the v1 arm stays readable until the R14 cutover.
-		config: reportConfigValidator,
+		config: reportConfigV2Validator,
 		visualization: reportVisualizationValidator,
 		isPublic: v.optional(v.boolean()),
 	},
@@ -174,7 +173,7 @@ export const update = userMutation({
 		id: v.id("reports"),
 		name: v.optional(v.string()),
 		description: v.optional(v.string()),
-		config: v.optional(reportConfigValidator),
+		config: v.optional(reportConfigV2Validator),
 		visualization: v.optional(reportVisualizationValidator),
 		isPublic: v.optional(v.boolean()),
 	},

@@ -1,15 +1,18 @@
 /**
  * Server-side resolution of report date-range presets into absolute ms bounds.
  *
- * Lands with R4a of PRD-reports-redesign: report runs happen on the server, so
- * the calendar math that the web `getDateRange`
- * (apps/web/src/app/(workspace)/reports/report-config.ts) does in the browser's
- * local zone has to be redone in the org's IANA timezone. Semantics mirror that
- * function exactly — only the zone the calendar day is measured in differs.
+ * Report runs happen on the server, so a saved preset resolves in the org's
+ * IANA timezone rather than the browser's local zone; the calendar day is the
+ * only thing the zone changes.
  */
-import { type DateRangePreset } from "./reportConfig";
+import {
+	type DateRangePreset,
+	type ReportDateComparison,
+	type ReportDateRange,
+} from "./reportConfig";
 
 type CalendarDate = { year: number; month: number; day: number };
+type CalendarTime = { hour: number; minute: number; second: number };
 
 function resolveFormatter(timezone: string | undefined): Intl.DateTimeFormat {
 	const options: Intl.DateTimeFormatOptions = {
@@ -39,21 +42,27 @@ function resolveFormatter(timezone: string | undefined): Intl.DateTimeFormat {
 function wallClockAt(
 	timestamp: number,
 	formatter: Intl.DateTimeFormat
-): { date: CalendarDate; utcEquivalent: number } {
+): { date: CalendarDate; time: CalendarTime; utcEquivalent: number } {
 	const parts = formatter.formatToParts(new Date(timestamp));
 	const read = (type: Intl.DateTimeFormatPartTypes) =>
 		Number(parts.find((part) => part.type === type)?.value);
 
 	const date = { year: read("year"), month: read("month"), day: read("day") };
+	const time = {
+		hour: read("hour"),
+		minute: read("minute"),
+		second: read("second"),
+	};
 	return {
 		date,
+		time,
 		utcEquivalent: Date.UTC(
 			date.year,
 			date.month - 1,
 			date.day,
-			read("hour"),
-			read("minute"),
-			read("second")
+			time.hour,
+			time.minute,
+			time.second
 		),
 	};
 }
@@ -197,4 +206,70 @@ export function resolveDateRangePreset(
 			// A new DATE_RANGE_PRESETS member must be handled here, not fall through.
 			return preset satisfies never;
 	}
+}
+
+/**
+ * The same wall-clock instant one calendar year earlier on the org calendar.
+ * Feb 29 clamps to Feb 28 — the preceding year is never itself a leap year.
+ */
+export function shiftYearBack(
+	timestamp: number,
+	timezone: string | undefined
+): number {
+	const formatter = resolveFormatter(timezone);
+	const { date, time } = wallClockAt(timestamp, formatter);
+	const day = date.month === 2 && date.day === 29 ? 28 : date.day;
+	// Offsets are whole minutes, so the sub-second part carries over untouched.
+	const millisecond = ((timestamp % 1000) + 1000) % 1000;
+	return toTimestamp(
+		{ year: date.year - 1, month: date.month, day },
+		time.hour,
+		time.minute,
+		time.second,
+		millisecond,
+		formatter
+	);
+}
+
+/**
+ * Absolute bounds of a report's comparison range (PRD-reports-redesign R11),
+ * given the already-resolved bounds of its current range.
+ *
+ * Preset ranges re-resolve the SAME preset at an anchor inside the earlier
+ * window, so "previous" is exactly what the preset itself would have produced
+ * there (Sunday-start weeks, month lengths, DST). `last_year` is the one preset
+ * whose predecessor is a different preset: another full calendar year, which
+ * `this_year` resolves at that anchor.
+ *
+ * Returns undefined only for an unbounded (all_time) range, which the caller
+ * rejects before comparison ever executes.
+ */
+export function resolveComparisonRange(
+	range: ReportDateRange,
+	comparison: ReportDateComparison,
+	current: { start: number; end: number },
+	timezone: string | undefined
+): { start: number; end: number } | undefined {
+	if (comparison.kind === "absolute") {
+		return { start: comparison.start, end: comparison.end };
+	}
+
+	if (range.kind === "preset") {
+		const preset = range.preset === "last_year" ? "this_year" : range.preset;
+		const anchor =
+			comparison.kind === "previous_period"
+				? current.start - 1
+				: shiftYearBack(current.end, timezone);
+		return resolveDateRangePreset(preset, timezone, anchor);
+	}
+
+	if (comparison.kind === "previous_year") {
+		return {
+			start: shiftYearBack(current.start, timezone),
+			end: shiftYearBack(current.end, timezone),
+		};
+	}
+
+	const span = current.end - current.start + 1;
+	return { start: current.start - span, end: current.end - span };
 }

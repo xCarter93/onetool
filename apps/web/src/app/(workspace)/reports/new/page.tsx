@@ -16,14 +16,15 @@ import {
 } from "../components/report-builder";
 import {
 	entityOptions,
-	getDateRange,
 	groupByOptions,
 	visualizationOptions,
 	type EntityType,
 	type VizType,
 } from "../report-config";
+import { DEFAULT_GROUP_BY } from "@onetool/backend/convex/lib/reportFields";
 import {
 	DATE_RANGE_PRESETS,
+	configForGroupByKey,
 	type DateRangePreset,
 } from "@onetool/backend/convex/lib/reportConfig";
 
@@ -73,34 +74,29 @@ function NewReportInner() {
 	const name = params.get("name") ?? "";
 
 	let paramConfig: ReportBuilderInitial["config"];
-	let vizType: VizType = "table";
+	let paramVisualization: ReportBuilderInitial["visualization"] = {
+		type: "table",
+	};
 	if (isEntity(entityParam)) {
 		const entityType: EntityType = entityParam;
 		const validGroup = groupByOptions[entityType]?.some(
 			(o) => o.value === groupParam
 		);
-		const groupBy = validGroup && groupParam ? groupParam : "status";
-		vizType = isViz(vizParam) ? vizParam : "table";
-		// A magic ?group= (e.g. month) rides the v1 shape so the builder's
-		// normalizer expands it; generic groupBys get native v2 with the
-		// preset range preserved.
-		paramConfig = groupByOptions[entityType]?.some((o) => o.value === groupBy)
-			? {
-					version: 2,
-					entityType,
-					metric: { op: "count" },
-					groupBy,
-					...(rangeParam !== "all_time" && isRangePreset(rangeParam)
-						? { date: { range: { kind: "preset", preset: rangeParam } } }
-						: {}),
-				}
-			: {
-					entityType,
-					groupBy: [groupBy],
-					...(getDateRange(rangeParam)
-						? { dateRange: getDateRange(rangeParam) }
-						: {}),
-				};
+		const groupBy =
+			validGroup && groupParam ? groupParam : DEFAULT_GROUP_BY[entityType];
+		const vizType: VizType = isViz(vizParam) ? vizParam : "table";
+		const preset =
+			rangeParam !== "all_time" && isRangePreset(rangeParam)
+				? rangeParam
+				: undefined;
+		// ?group= may name a composite key (month, conversionRate, …), which
+		// stands for a whole config rather than a field.
+		const built = configForGroupByKey(entityType, groupBy, {
+			...(preset ? { range: { kind: "preset" as const, preset } } : {}),
+			visualization: { type: vizType },
+		});
+		paramConfig = built.config;
+		paramVisualization = built.visualization;
 	}
 
 	const initial: ReportBuilderInitial =
@@ -108,7 +104,7 @@ function NewReportInner() {
 			name,
 			description: "",
 			config: paramConfig,
-			visualization: { type: vizType },
+			visualization: paramVisualization,
 		};
 
 	const handleSave = async (payload: ReportBuilderSavePayload) => {

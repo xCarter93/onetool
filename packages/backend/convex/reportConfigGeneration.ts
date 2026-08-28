@@ -37,7 +37,7 @@ import {
 } from "./lib/reportFields";
 import {
 	DATE_RANGE_PRESETS,
-	normalizeReportConfig,
+	configForGroupByKey,
 	type ReportConfigV2,
 	type ReportMetric,
 	type ReportVisualization,
@@ -48,6 +48,7 @@ import {
 	resolveReportPath,
 } from "./lib/reportRelations";
 import {
+	comparisonIsExecutable,
 	resolveReportQueryArgs,
 	type ExecuteReportArgs,
 } from "./lib/reportQueryArgs";
@@ -105,7 +106,7 @@ export const generatedReportSchema = z.object({
 		),
 	measure: z
 		.object({
-			op: z.enum(["count", "sum", "avg", "min", "max", "ratio", "related"]),
+			op: z.enum(["count", "sum", "avg", "min", "max", "ratio"]),
 			field: z
 				.string()
 				.nullable()
@@ -114,17 +115,6 @@ export const generatedReportSchema = z.object({
 				.enum(RATIO_KEYS)
 				.nullable()
 				.describe('Required for op "ratio"; null otherwise.'),
-			related: z
-				.object({
-					entity: z.enum(ENTITY_TYPES),
-					field: z
-						.string()
-						.nullable()
-						.describe("A number/currency field of that entity; null for count."),
-					op: z.enum(["count", "sum", "avg", "min", "max"]),
-				})
-				.nullable()
-				.describe('Required for op "related"; null otherwise.'),
 		})
 		.nullable()
 		.describe("What each group's value is. Null means count of records."),
@@ -162,7 +152,22 @@ export const generatedReportSchema = z.object({
 		.describe(
 			"Named period for the date range. Preferred over startDate/endDate when the request names one; never both."
 		),
-	visualization: z.enum(["bar", "column", "line", "pie", "radar", "radial", "table"]),
+	comparison: z
+		.enum(["previous_period", "previous_year"])
+		.nullable()
+		.describe(
+			"Compare the date range against the period before it or the same period a year earlier; null for no comparison."
+		),
+	visualization: z.enum([
+		"bar",
+		"column",
+		"line",
+		"pie",
+		"radar",
+		"radial",
+		"table",
+		"number",
+	]),
 	name: z.string().describe("Short report title."),
 	description: z.string().nullable().describe("One sentence, or null."),
 });
@@ -231,22 +236,23 @@ export const REPORT_CONFIG_SYSTEM_PROMPT = [
 	'- groupBy must be exactly one of the listed Group-by values for the chosen entity, a dotted path, or null. Never invent values.',
 	'- A list of individual records ("show me all overdue invoices") is visualization "table" with groupBy null and 3-5 relevant columns.',
 	'- Charts (bar/column/line/pie/radar/radial) render above the aggregated data table and require a groupBy. "table" means no chart — groupBy null there is fine for raw rows.',
-	'- Visualization choice: "column" for time-bucketed groupBy (month/week/day); "bar" for named categories (status, client, lead source, etc.); "line" for a trend over time; "pie" for share-of-total; "table" for exact values or raw rows. Only use "radar" or "radial" when the user explicitly asks for that chart type.',
+	'- Visualization choice: "column" for time-bucketed groupBy (month/week/day); "bar" for named categories (status, client, lead source, etc.); "line" for a trend over time; "pie" for share-of-total; "table" for exact values or raw rows; "number" for a single headline figure ("how much did we invoice this month") — groupBy must be null. Only use "radar" or "radial" when the user explicitly asks for that chart type.',
 	"- measure: null (count of records) unless the user asks about amounts — then sum/avg/min/max of a number or currency field. A non-count measure only combines with the measure-compatible Group-by values listed per entity, or groupBy null.",
 	`- measure {op: "ratio", ratioKey}: a built-in percentage. Available: ${RATIO_KEYS.map(
 		(key) => `"${key}" on ${RATIO_METRICS[key].entityType}`
 	).join(", ")}. groupBy must be null.`,
-	'- measure {op: "related", related: {entity, field, op}}: rolls a linked entity up onto each record of the report entity — e.g. entityType "clients" with related {entity: "invoices", field: "total", op: "sum"} is total invoiced per client. The related entity must link to the report entity in the list above; field is null for op "count". groupBy must be null.',
-	'- A ratio or related measure renders as one figure, so the visualization you pick is ignored — use "table".',
+	'- To roll a linked entity up per record, report on the child entity and group by the link: "total invoiced per client" is entityType "invoices" with measure {op: "sum", field: "total"} and groupBy "clientId"; "count of line items per quote" is entityType "quoteLineItems" with measure null and groupBy "quoteId" (a parent path like "quoteId.quoteNumber" labels the buckets by that field instead).',
+	'- A ratio measure renders as one figure, so the visualization you pick is ignored — use "number".',
 	"- filters: fields listed for the entity, or a dotted path ending in one. Timestamp fields filter with before/after/on and a YYYY-MM-DD value — no other operator applies to a date, and those three apply to nothing else. When a field lists allowed values, equals/not_equals values must match one exactly.",
 	'- "contains" is for free-text string fields only; greater/less operators are for number and currency fields.',
 	"- Money values are dollars (e.g. 500 means $500).",
 	"- columns: only for table visualization; use exact field names.",
 	`- Date range: prefer datePreset when the request names a period (${DATE_RANGE_PRESETS.join(", ")}) — "this month" is "this_month" — since a preset re-resolves in the org's timezone every time the report runs. Use startDate/endDate only for an explicit or unusual range, resolved from the current date given in the request. Never set both.`,
+	'- comparison: only when the request asks to compare two periods — "compare revenue this month to last month" is datePreset "this_month" with comparison "previous_period"; "vs last year" is "previous_year". Null otherwise, and null whenever the date range is all_time or open-ended.',
 	"- name: a short title like a human would write; description: one sentence or null.",
 	"",
 	"When the request comes with a configuration the user already has open, it is described in saved-report terms — reproduce every part of it you were not asked to change:",
-	'- "metric: count of records" is measure null; "metric: sum of total" is measure {op: "sum", field: "total"}; "metric: ratio (conversionRate)" is measure {op: "ratio", ratioKey: "conversionRate"}; "metric: sum of related invoices total" is measure {op: "related", related: {entity: "invoices", field: "total", op: "sum"}}.',
+	'- "metric: count of records" is measure null; "metric: sum of total" is measure {op: "sum", field: "total"}; "metric: ratio (conversionRate)" is measure {op: "ratio", ratioKey: "conversionRate"}.',
 	'- A date range named as a period ("date range: this_month") is that datePreset; explicit days are startDate/endDate.',
 	'- A dotted "group by" is that exact string.',
 	'- invoices summing total over paid records grouped by paidAt_month or clientId are groupBy "month" and "client".',
@@ -307,32 +313,6 @@ function pathErrorMessage(error: unknown): string {
 	return error instanceof Error ? error.message : String(error);
 }
 
-/**
- * The FK field linking a child entity to the report entity — derived here so
- * the model never has to know column names. Ambiguity (two edges to the same
- * parent) doesn't exist in today's registry, but fails closed if one is added.
- */
-export function relatedFkField(
-	child: ReportEntityType,
-	parent: ReportEntityType
-): { fk: string } | { error: string } {
-	const candidates = Object.entries(REPORT_RELATIONS[child])
-		.filter(([, edge]) => edge.refType === parent)
-		.map(([field]) => field);
-	if (candidates.length === 1) return { fk: candidates[0] };
-	if (candidates.length > 1) {
-		return {
-			error: `related entity "${child}" links to ${parent} through more than one field (${candidates.join(", ")}) — that rollup is ambiguous`,
-		};
-	}
-	const linked = ENTITY_TYPES.filter((entity) =>
-		Object.values(REPORT_RELATIONS[entity]).some((edge) => edge.refType === parent)
-	);
-	return {
-		error: `related entity "${child}" has no link to ${parent}; entities that link to ${parent} are ${linked.join(", ") || "(none)"}`,
-	};
-}
-
 /** Field def a filter rule ends on — direct or through a dotted path. */
 function resolveFilterFieldDef(
 	entityType: ReportEntityType,
@@ -383,13 +363,9 @@ export function validateGeneratedReport(gen: GeneratedReport): string[] {
 	}
 
 	const measure = gen.measure;
-	if (measure?.op === "ratio" || measure?.op === "related") {
-		// Both bucket without a dimension — reportData rejects any grouping.
-		if (gen.groupBy !== null) {
-			errors.push(
-				`a ${measure.op} measure cannot combine with a groupBy — use groupBy null`
-			);
-		}
+	if (measure?.op === "ratio" && gen.groupBy !== null) {
+		// A ratio buckets without a dimension — reportData rejects any grouping.
+		errors.push("a ratio measure cannot combine with a groupBy — use groupBy null");
 	}
 	if (measure?.op === "ratio") {
 		if (!measure.ratioKey) {
@@ -398,28 +374,6 @@ export function validateGeneratedReport(gen: GeneratedReport): string[] {
 			errors.push(
 				`ratio "${measure.ratioKey}" is only available for ${RATIO_METRICS[measure.ratioKey].entityType}, not ${entityType}`
 			);
-		}
-	} else if (measure?.op === "related") {
-		const related = measure.related;
-		if (!related) {
-			errors.push("measure related requires a related entity, field and op");
-		} else {
-			const fk = relatedFkField(related.entity, entityType);
-			if ("error" in fk) errors.push(fk.error);
-			if (related.op === "count") {
-				if (related.field) {
-					errors.push(`a related count does not take a field`);
-				}
-			} else if (!related.field) {
-				errors.push(`related ${related.op} requires a field`);
-			} else {
-				const def = getReportField(related.entity, related.field);
-				if (!def || (def.type !== "number" && def.type !== "currency")) {
-					errors.push(
-						`related field "${related.field}" must be a number or currency field of ${related.entity}`
-					);
-				}
-			}
 		}
 	} else if (measure && measure.op !== "count") {
 		if (!measure.field) {
@@ -440,6 +394,19 @@ export function validateGeneratedReport(gen: GeneratedReport): string[] {
 	}
 
 	const filters = sanitizeGeneratedFilters(gen.filters);
+	// Revenue keys AND a paid-status rule onto the filters (configForGroupByKey);
+	// that expansion has no representation over an OR of multi-rule OR groups, so
+	// reject here with a retryable message instead of a generic dry-run failure.
+	if (
+		entityType === "invoices" &&
+		(gen.groupBy === "month" || gen.groupBy === "client") &&
+		filters?.logic === "or" &&
+		filters.groups.some((g) => g.logic === "or" && g.rules.length > 1)
+	) {
+		errors.push(
+			`groupBy "${gen.groupBy}" adds a paid-status filter, which cannot combine with a top-level OR over multi-rule OR groups — restructure the filters using "and" groups`
+		);
+	}
 	for (const group of filters?.groups ?? []) {
 		for (const rule of group.rules) {
 			const resolved = resolveFilterFieldDef(entityType, rule.field);
@@ -599,29 +566,18 @@ function toExecutableFilters(
 	};
 }
 
-/** Metrics the v1 shape cannot carry; undefined leaves the normalizer's own. */
+/** The generated measure as a v2 metric; composite group-by keys override it. */
 function toNativeMetric(gen: GeneratedReport): ReportMetric | undefined {
 	const measure = gen.measure;
-	if (measure?.op === "ratio") {
+	if (!measure) return undefined;
+	if (measure.op === "ratio") {
 		return measure.ratioKey
 			? { op: "ratio", ratioKey: measure.ratioKey }
 			: undefined;
 	}
-	if (measure?.op === "related" && measure.related) {
-		const related = measure.related;
-		const fk = relatedFkField(related.entity, gen.entityType);
-		if ("error" in fk) return undefined;
-		return {
-			op: "related",
-			related: {
-				entity: related.entity,
-				fk: fk.fk,
-				...(related.field ? { field: related.field } : {}),
-				op: related.op,
-			},
-		};
-	}
-	return undefined;
+	return isAggregationOp(measure.op) && measure.field
+		? { op: measure.op, field: measure.field }
+		: undefined;
 }
 
 /**
@@ -635,21 +591,25 @@ function resolveVisualization(
 	gen: GeneratedReport
 ): ReportVisualization["type"] {
 	// One value, no dimension — the KPI figure is the only rendering with data.
-	if (isMetricOnlyMeasure(gen.measure)) return "number";
+	if (isMetricOnlyMeasure(gen.measure) || gen.visualization === "number") {
+		return "number";
+	}
 	return gen.groupBy === null && gen.visualization !== "table" ? "table" : gen.visualization;
 }
 
+/** A number report is one figure, so it carries no grouping — the builder clears it too. */
+function effectiveGroupBy(gen: GeneratedReport): string | null {
+	return resolveVisualization(gen) === "number" ? null : gen.groupBy;
+}
+
 function isMetricOnlyMeasure(measure: GeneratedReport["measure"]): boolean {
-	return measure?.op === "ratio" || measure?.op === "related";
+	return measure?.op === "ratio";
 }
 
 /**
  * Generated config → the canonical v2 pair every downstream path uses.
- * Routed through the v1 normalizer because the generatable Group-by
- * vocabulary still includes the magic keys (month, client, conversionRate,
- * completionRate), which only become executable v2 configs by expansion; the
- * two things v1 cannot carry (ratio/related metrics, preset ranges) are laid
- * over the expansion, so a preset keeps the date FIELD the expansion chose.
+ * `datePreset` is laid over the built config so a preset keeps the date FIELD
+ * a composite group-by key chose (revenue keys scope to paidAt).
  */
 function toGeneratedConfig(
 	gen: GeneratedReport,
@@ -663,38 +623,37 @@ function toGeneratedConfig(
 		timezone
 	);
 	const dateRange = toDateRange(gen, timezone);
-	const measure = gen.measure;
 	const visualization = resolveVisualization(gen);
-	const normalized = normalizeReportConfig(
-		{
-			entityType: gen.entityType,
-			...(gen.groupBy ? { groupBy: [gen.groupBy] } : {}),
-			...(dateRange ? { dateRange } : {}),
-			...(filters ? { filters } : {}),
-			...(measure && isAggregationOp(measure.op) && measure.field
-				? { aggregations: [{ field: measure.field, operation: measure.op }] }
-				: {}),
-			...(visualization === "table" && gen.columns?.length
-				? { columns: gen.columns }
-				: {}),
-		},
-		{ type: visualization }
-	);
+	const groupBy = effectiveGroupBy(gen);
 	const metric = toNativeMetric(gen);
+	const built = configForGroupByKey(gen.entityType, groupBy ?? undefined, {
+		...(metric ? { metric } : {}),
+		...(filters ? { filters } : {}),
+		...(dateRange ? { range: { kind: "absolute" as const, ...dateRange } } : {}),
+		...(visualization === "table" && gen.columns?.length
+			? { columns: gen.columns }
+			: {}),
+		visualization: { type: visualization },
+	});
+	const config: ReportConfigV2 = {
+		...built.config,
+		...(gen.datePreset
+			? {
+					date: {
+						...built.config.date,
+						range: { kind: "preset" as const, preset: gen.datePreset },
+					},
+				}
+			: {}),
+	};
+	// A comparison the gating would strip is never saved in the first place.
+	const compared: ReportConfigV2 =
+		gen.comparison && config.date
+			? { ...config, date: { ...config.date, comparison: { kind: gen.comparison } } }
+			: config;
 	return {
-		config: {
-			...normalized.config,
-			...(metric ? { metric } : {}),
-			...(gen.datePreset
-				? {
-						date: {
-							...normalized.config.date,
-							range: { kind: "preset" as const, preset: gen.datePreset },
-						},
-					}
-				: {}),
-		},
-		visualization: normalized.visualization,
+		config: comparisonIsExecutable(compared, visualization) ? compared : config,
+		visualization: built.visualization,
 	};
 }
 
@@ -741,23 +700,19 @@ export function summarizeGeneratedReport(gen: GeneratedReport): string {
 	// Reflect what's actually saved/applied, not the model's raw guess — a
 	// chart with null groupBy is coerced to table (see resolveVisualization).
 	const visualization = resolveVisualization(gen);
+	const groupBy = effectiveGroupBy(gen);
 	const measure = gen.measure;
 	const parts: string[] = [gen.entityType];
-	if (gen.groupBy) {
+	if (groupBy) {
 		const label = GROUP_BY_OPTIONS[gen.entityType].find(
-			(o) => o.value === gen.groupBy
+			(o) => o.value === groupBy
 		)?.label;
-		parts.push(`grouped by ${label ?? gen.groupBy}`);
+		parts.push(`grouped by ${label ?? groupBy}`);
 	} else if (visualization === "table" && !isMetricOnlyMeasure(measure)) {
 		parts.push("as individual rows");
 	}
 	if (measure?.op === "ratio" && measure.ratioKey) {
 		parts.push(`measuring ratio (${measure.ratioKey})`);
-	} else if (measure?.op === "related" && measure.related) {
-		const related = measure.related;
-		parts.push(
-			`measuring ${related.op} of related ${related.entity}${related.field ? ` ${related.field}` : ""}`
-		);
 	} else if (measure && isAggregationOp(measure.op) && measure.field) {
 		parts.push(`measuring ${measure.op} of ${measure.field}`);
 	}
@@ -823,7 +778,6 @@ const METRIC_OPS: readonly ReportMetric["op"][] = [
 	"min",
 	"max",
 	"ratio",
-	"related",
 ];
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -883,12 +837,6 @@ function isoDay(ms: number | undefined): string | undefined {
 function describeMetric(metric: ReportMetric): string {
 	if (metric.op === "count") return "count of records";
 	if (metric.op === "ratio") return `ratio (${metric.ratioKey ?? "unknown"})`;
-	if (metric.op === "related") {
-		const related = metric.related;
-		return related
-			? `${related.op} of related ${related.entity}${related.field ? ` ${related.field}` : ""}`
-			: "related rollup";
-	}
 	return `${metric.op} of ${metric.field ?? "(no field)"}`;
 }
 
@@ -913,6 +861,11 @@ export function describeCurrentConfig(current: CurrentReportConfig): string {
 		`date range: ${describeDateRange(config.date)}`,
 		`filters: ${rules} rule${rules === 1 ? "" : "s"}`,
 	];
+	// An absolute comparison is builder-only — the schema can't carry it back.
+	const comparison = config.date?.comparison;
+	if (comparison && comparison.kind !== "absolute") {
+		lines.push(`comparison: ${comparison.kind}`);
+	}
 	if (typeof config.segmentBy === "string") {
 		lines.push(`segment by: ${config.segmentBy}`);
 	}

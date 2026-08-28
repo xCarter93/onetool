@@ -3,15 +3,18 @@
 import { useState } from "react";
 import { useQuery } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
-import { ChevronDown, ChevronUp, Download } from "lucide-react";
+import { ChevronDown, ChevronUp, Download, Rows3 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import { buildCsv, downloadCsv, sanitizeCsvFilename } from "@/lib/csv-export";
 import { reportResultToCsv } from "../report-csv";
-import { entityLabel } from "../report-path-options";
 import { ReportTable } from "./report-table";
 import {
+	comparisonKindLabel,
 	formatReportValue,
+	isDetailModeActive,
+	percentChange,
+	pointsChange,
 	metricOptionsFor,
 	metricToValue,
 	resolveReportQueryArgs,
@@ -26,6 +29,10 @@ interface ReportUtilityBarProps {
 	rangeLabel: string;
 	/** CSV export is a saved-report affordance — the builder leaves it off. */
 	showCsvDownload?: boolean;
+	/** Opens the contributing-data sheet over the whole report (R10). */
+	onViewContributingData?: () => void;
+	/** Opens it scoped to one Calculated-values row. */
+	onBucketClick?: (bucketKey: string, bucketLabel: string) => void;
 }
 
 /**
@@ -40,6 +47,8 @@ export function ReportUtilityBar({
 	groupByLabel,
 	rangeLabel,
 	showCsvDownload = false,
+	onViewContributingData,
+	onBucketClick,
 }: ReportUtilityBarProps) {
 	const [expanded, setExpanded] = useState(false);
 
@@ -86,10 +95,6 @@ export function ReportUtilityBar({
 			entityType: config.entityType,
 			groupBy: config.groupBy,
 			groupByLabel,
-			// A related rollup can't group, so its rows are source records — same
-			// header the on-screen table shows.
-			rowLabel:
-				config.metric.op === "related" ? entityLabel(config.entityType) : undefined,
 		});
 		downloadCsv(
 			sanitizeCsvFilename(reportName.trim() || "report"),
@@ -109,6 +114,24 @@ export function ReportUtilityBar({
 			: config.metric.op === "ratio"
 				? `${reportData.total}%`
 				: formatReportValue(reportData.total, totalIsCurrency);
+	const comparison = config?.date?.comparison;
+	const compareLabel = comparison
+		? comparisonKindLabel(comparison.kind)
+		: undefined;
+	const compareTotal = reportData?.metadata?.compareTotal;
+	const isRatio = config?.metric.op === "ratio";
+	// 0 is a real comparison total, so test the type, not truthiness.
+	const comparisonStats =
+		typeof compareTotal === "number" && compareLabel && reportData
+			? {
+					previous: isRatio
+						? `${compareTotal}%`
+						: formatReportValue(compareTotal, totalIsCurrency),
+					change: isRatio
+						? pointsChange(reportData.total, compareTotal)
+						: (percentChange(reportData.total, compareTotal) ?? "—"),
+				}
+			: undefined;
 	// Grouped, non-detail results have a summary table; for chart types it
 	// lives here since d7 removed the always-on table under the chart.
 	const summaryRows =
@@ -117,10 +140,19 @@ export function ReportUtilityBar({
 					name: item.label,
 					value: item.value,
 					...((item.metadata || {}) as Record<string, unknown>),
+					// After the spread so a metadata key can't shadow them.
+					compareValue: item.compareValue,
+					bucketKey: item.bucketKey,
 				}))
 			: null;
 
 	const calcAvailable = saved !== null && reportData !== undefined;
+
+	// The canvas already lists the rows in raw-rows mode, so drilling adds nothing.
+	const showContributingData =
+		onViewContributingData !== undefined &&
+		saved !== null &&
+		!isDetailModeActive(saved.config, saved.visualization.type);
 
 	return (
 		<div className="border-t border-border/60">
@@ -133,6 +165,23 @@ export function ReportUtilityBar({
 								{totalDisplay}
 							</dd>
 						</div>
+						{comparisonStats && (
+							<>
+								<div>
+									<dt className="text-muted-foreground">Previous total</dt>
+									<dd className="font-medium tabular-nums text-foreground">
+										{comparisonStats.previous}
+									</dd>
+								</div>
+								<div>
+									<dt className="text-muted-foreground">Change</dt>
+									{/* Direction reads from the sign, never from a red/green tint. */}
+									<dd className="font-medium tabular-nums text-primary">
+										{comparisonStats.change}
+									</dd>
+								</div>
+							</>
+						)}
 						{reportData && !reportData.detail && (
 							<div>
 								<dt className="text-muted-foreground">Groups</dt>
@@ -160,6 +209,10 @@ export function ReportUtilityBar({
 								itemValueIsCurrency={
 									reportData!.metadata?.itemValueIsCurrency === true
 								}
+								compareLabel={compareLabel}
+								// Mid-debounce the rows still describe the OLD args; a click then
+								// would drill into a bucket the user no longer sees.
+								onBucketClick={argsSettled ? onBucketClick : undefined}
 							/>
 						</div>
 					)}
@@ -181,6 +234,17 @@ export function ReportUtilityBar({
 						)}
 						Calculated values
 					</Button>
+					{showContributingData && (
+						<Button
+							variant="ghost"
+							size="sm"
+							onClick={onViewContributingData}
+							disabled={!argsSettled}
+						>
+							<Rows3 className="h-3.5 w-3.5" />
+							View contributing data
+						</Button>
+					)}
 					<span className="truncate text-xs text-muted-foreground">
 						{statusText}
 					</span>

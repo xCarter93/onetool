@@ -4,9 +4,11 @@ import {
 	type GeneratedReport,
 	describeCurrentConfig,
 	generateConfigForBuilder,
+	generatedReportSchema,
 	parseCurrentConfig,
 	reportConfigAgent,
 	sanitizeGeneratedFilters,
+	summarizeGeneratedReport,
 	toBuilderConfig,
 	toExecuteReportArgs,
 	toSavedReport,
@@ -27,6 +29,7 @@ function gen(overrides: Partial<GeneratedReport> = {}): GeneratedReport {
 		startDate: null,
 		endDate: null,
 		datePreset: null,
+		comparison: null,
 		visualization: "bar",
 		name: "Invoices by status",
 		description: null,
@@ -40,7 +43,7 @@ function measure(
 		op: NonNullable<GeneratedReport["measure"]>["op"];
 	}
 ): GeneratedReport["measure"] {
-	return { field: null, ratioKey: null, related: null, ...partial };
+	return { field: null, ratioKey: null, ...partial };
 }
 
 describe("sanitizeGeneratedFilters", () => {
@@ -210,6 +213,48 @@ describe("validateGeneratedReport", () => {
 		expect(validateGeneratedReport(gen({ name: "  " }))[0]).toMatch(
 			/name must not be empty/
 		);
+	});
+
+	it("rejects revenue group-bys over filters the paid-rule expansion cannot represent", () => {
+		const orOverMultiRuleOr = {
+			logic: "or" as const,
+			groups: [
+				{
+					logic: "or" as const,
+					rules: [
+						{ field: "status", operator: "equals" as const, value: "paid" },
+						{ field: "status", operator: "equals" as const, value: "sent" },
+					],
+				},
+				{
+					logic: "and" as const,
+					rules: [{ field: "total", operator: "greater_than" as const, value: 100 }],
+				},
+			],
+		};
+		expect(
+			validateGeneratedReport(gen({ groupBy: "month", filters: orOverMultiRuleOr }))[0]
+		).toMatch(/cannot combine with a top-level OR/);
+		expect(
+			validateGeneratedReport(gen({ groupBy: "client", filters: orOverMultiRuleOr }))[0]
+		).toMatch(/cannot combine with a top-level OR/);
+		// Single-rule OR groups distribute fine — no error.
+		expect(
+			validateGeneratedReport(
+				gen({
+					groupBy: "month",
+					filters: {
+						logic: "or",
+						groups: [
+							{
+								logic: "or",
+								rules: [{ field: "status", operator: "equals", value: "paid" }],
+							},
+						],
+					},
+				})
+			)
+		).toEqual([]);
 	});
 });
 
@@ -520,6 +565,40 @@ describe("toBuilderConfig", () => {
 	});
 });
 
+describe('"number" visualization', () => {
+	it("the schema accepts it, so an edit of a saved KPI can round-trip", () => {
+		const parsed = generatedReportSchema.parse(
+			gen({ visualization: "number", groupBy: null })
+		);
+		expect(parsed.visualization).toBe("number");
+	});
+
+	it("stays a number with a null groupBy instead of falling back to table", () => {
+		const saved = toSavedReport(
+			gen({
+				visualization: "number",
+				groupBy: null,
+				measure: measure({ op: "sum", field: "total" }),
+			})
+		);
+		expect(saved.visualization).toEqual({ type: "number" });
+		expect(saved.config.groupBy).toBeUndefined();
+		expect(saved.config.metric).toEqual({ op: "sum", field: "total" });
+	});
+
+	it("drops a groupBy the model sent alongside it, matching the builder", () => {
+		const saved = toSavedReport(gen({ visualization: "number", groupBy: "status" }));
+		expect(saved.visualization).toEqual({ type: "number" });
+		expect(saved.config.groupBy).toBeUndefined();
+	});
+
+	it("applies and saves identically, and summarizes without the dropped grouping", () => {
+		const generated = gen({ visualization: "number", groupBy: "status" });
+		expect(toBuilderConfig(generated)).toEqual(toSavedReport(generated));
+		expect(summarizeGeneratedReport(generated)).toBe("single metric of invoices");
+	});
+});
+
 describe("generated configs execute end-to-end", () => {
 	let t: ReturnType<typeof setupConvexTest>;
 
@@ -579,7 +658,7 @@ describe("new-vocabulary configs execute end-to-end", () => {
 		t = setupConvexTest();
 	});
 
-	it("ratio, related, preset, dotted groupBy and date filters all run through executeReport", async () => {
+	it("ratio, preset, dotted groupBy and date filters all run through executeReport", async () => {
 		const org = await t.run(async (ctx) => await createTestOrg(ctx));
 		const asUser = t.withIdentity(
 			createTestIdentity(org.clerkUserId, org.clerkOrgId)
@@ -590,14 +669,6 @@ describe("new-vocabulary configs execute end-to-end", () => {
 				entityType: "quotes",
 				groupBy: null,
 				measure: measure({ op: "ratio", ratioKey: "conversionRate" }),
-			}),
-			gen({
-				entityType: "clients",
-				groupBy: null,
-				measure: measure({
-					op: "related",
-					related: { entity: "invoices", field: "total", op: "sum" },
-				}),
 			}),
 			gen({ groupBy: "clientId.leadSource", datePreset: "this_year" }),
 			gen({
@@ -625,6 +696,61 @@ describe("new-vocabulary configs execute end-to-end", () => {
 				asUser.query(api.reportData.executeReport, toExecuteReportArgs(generated))
 			).resolves.toBeDefined();
 		}
+	});
+});
+
+describe("comparison", () => {
+	it("maps a generated comparison onto the date range", () => {
+		const saved = toSavedReport(
+			gen({ datePreset: "this_month", comparison: "previous_period" })
+		);
+		expect(saved.config.date).toEqual({
+			range: { kind: "preset", preset: "this_month" },
+			comparison: { kind: "previous_period" },
+		});
+	});
+
+	it("drops a comparison the gating would strip rather than saving it", () => {
+		const dropped = (overrides: Partial<GeneratedReport>) =>
+			toSavedReport(gen({ comparison: "previous_year", ...overrides })).config.date
+				?.comparison;
+
+		// No date range at all, and an explicitly unbounded one.
+		expect(dropped({})).toBeUndefined();
+		expect(dropped({ datePreset: "all_time" })).toBeUndefined();
+		expect(dropped({ startDate: "2026-01-01" })).toBeUndefined();
+		// Share-of-total charts and raw-row tables have no second series.
+		expect(
+			dropped({ datePreset: "this_month", visualization: "pie" })
+		).toBeUndefined();
+		expect(
+			dropped({ datePreset: "this_month", visualization: "radial" })
+		).toBeUndefined();
+		expect(
+			dropped({ datePreset: "this_month", visualization: "table", groupBy: null })
+		).toBeUndefined();
+		expect(dropped({ datePreset: "this_month" })).toEqual({
+			kind: "previous_year",
+		});
+	});
+
+	it("describes a saved comparison so a follow-up request reproduces it", () => {
+		const current = parseCurrentConfig(
+			JSON.stringify({
+				config: {
+					version: 2,
+					entityType: "invoices",
+					metric: { op: "count" },
+					groupBy: "issuedDate_month",
+					date: {
+						range: { kind: "preset", preset: "this_month" },
+						comparison: { kind: "previous_period" },
+					},
+				},
+				visualization: { type: "column" },
+			})
+		);
+		expect(describeCurrentConfig(current!)).toContain("comparison: previous_period");
 	});
 });
 
@@ -771,7 +897,7 @@ describe("NL generation plan gate (nlReportGeneration)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// F4 vocabulary expansion (d15): presets, ratio/related metrics, date filter
+// F4 vocabulary expansion (d15): presets, ratio metrics, date filter
 // operators, dotted traversal paths.
 // ---------------------------------------------------------------------------
 
@@ -848,95 +974,21 @@ describe("ratio measures", () => {
 	});
 });
 
-describe("related measures", () => {
-	const related = gen({
-		entityType: "clients",
-		groupBy: null,
-		measure: measure({
-			op: "related",
-			related: { entity: "invoices", field: "total", op: "sum" },
-		}),
-		visualization: "bar",
-		name: "Invoiced per client",
-	});
-
-	it("accepts a rollup whose child links to the report entity", () => {
-		expect(validateGeneratedReport(related)).toEqual([]);
-	});
-
-	it("derives the fk from the registry", () => {
-		const saved = toSavedReport(related);
-		expect(saved.config.metric).toEqual({
-			op: "related",
-			related: { entity: "invoices", fk: "clientId", field: "total", op: "sum" },
-		});
-		expect(saved.config.groupBy).toBeUndefined();
-		expect(saved.visualization).toEqual({ type: "number" });
-	});
-
-	it("fails closed when no fk edge links the child to the report entity", () => {
-		const errors = validateGeneratedReport({
-			...related,
-			entityType: "invoices",
-			measure: measure({
-				op: "related",
-				related: { entity: "tasks", field: null, op: "count" },
-			}),
-		});
-		expect(errors[0]).toMatch(/tasks.*invoices/);
-	});
-
-	it("enforces the child field rules and forbids grouping", () => {
-		expect(
-			validateGeneratedReport({
-				...related,
-				measure: measure({
+describe("related rollup measures are not generatable", () => {
+	it("the schema rejects a measure with op \"related\"", () => {
+		const parsed = generatedReportSchema.safeParse(
+			gen({
+				entityType: "clients",
+				groupBy: null,
+				measure: {
 					op: "related",
-					related: { entity: "invoices", field: null, op: "sum" },
-				}),
-			})[0]
-		).toMatch(/requires a field/);
-		expect(
-			validateGeneratedReport({
-				...related,
-				measure: measure({
-					op: "related",
-					related: { entity: "invoices", field: "total", op: "count" },
-				}),
-			})[0]
-		).toMatch(/count/);
-		expect(
-			validateGeneratedReport({
-				...related,
-				measure: measure({
-					op: "related",
-					related: { entity: "invoices", field: "status", op: "sum" },
-				}),
-			})[0]
-		).toMatch(/number or currency field of invoices/);
-		expect(
-			validateGeneratedReport({ ...related, groupBy: "status" })[0]
-		).toMatch(/cannot combine with a groupBy/);
-		expect(
-			validateGeneratedReport({
-				...related,
-				measure: measure({ op: "related" }),
-			})[0]
-		).toMatch(/requires a related/);
-	});
-
-	it("counts related children with no field", () => {
-		const saved = toSavedReport({
-			...related,
-			measure: measure({
-				op: "related",
-				related: { entity: "invoices", field: null, op: "count" },
-			}),
-		});
-		expect(saved.config.metric).toEqual({
-			op: "related",
-			related: { entity: "invoices", fk: "clientId", op: "count" },
-		});
+					field: null,
+					ratioKey: null,
+					related: { entity: "invoices", field: "total", op: "sum" },
+				},
+			} as unknown as GeneratedReport)
+		);
+		expect(parsed.success).toBe(false);
 	});
 });
 
@@ -1141,33 +1193,6 @@ describe("describeCurrentConfig round-trips", () => {
 				entityType: "quotes",
 				groupBy: null,
 				measure: measure({ op: "ratio", ratioKey: "conversionRate" }),
-			})
-		);
-		expect(saved.config.metric).toEqual(config.metric);
-	});
-
-	it("re-expresses a related rollup, deriving the same fk", () => {
-		const config = {
-			entityType: "clients" as const,
-			metric: {
-				op: "related" as const,
-				related: {
-					entity: "invoices" as const,
-					fk: "clientId",
-					field: "total",
-					op: "sum" as const,
-				},
-			},
-		};
-		expect(render(config)).toContain("metric: sum of related invoices total");
-		const saved = toSavedReport(
-			gen({
-				entityType: "clients",
-				groupBy: null,
-				measure: measure({
-					op: "related",
-					related: { entity: "invoices", field: "total", op: "sum" },
-				}),
 			})
 		);
 		expect(saved.config.metric).toEqual(config.metric);

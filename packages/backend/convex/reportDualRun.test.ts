@@ -9,7 +9,7 @@ import {
 	createTestTask,
 } from "./test.helpers";
 import { api } from "./_generated/api";
-import { normalizeReportConfig, type ReportConfigV2 } from "./lib/reportConfig";
+import { configForGroupByKey, type ReportConfigV2 } from "./lib/reportConfig";
 import {
 	DEFAULT_GROUP_BY,
 	DEFAULT_DETAIL_COLUMNS,
@@ -28,8 +28,8 @@ import detailModeGolden from "./__goldens__/report-detail-mode.json";
 
 /**
  * The unified pipeline's regression pin (PRD-reports-redesign §3.3, §8 d11):
- * every retired-dispatch fixture must be reproduced when the R2 expander's v2
- * config is executed through executeReport's `config` arg. This suite owns
+ * every retired-dispatch fixture must be reproduced when configForGroupByKey's
+ * v2 config is executed through executeReport's `config` arg. This suite owns
  * report-legacy-dispatch.json since R4c deleted the dispatch itself (the
  * unknown-literal-fallback key was deleted with it — v2 validates groupBy and
  * throws).
@@ -40,18 +40,42 @@ import detailModeGolden from "./__goldens__/report-detail-mode.json";
 
 const roundTrip = <T>(value: T): T => JSON.parse(JSON.stringify(value));
 
-/** v1 magic keys → the registry keys the expander emits (§8 d11). */
+/** Composite group-by keys → the registry keys they resolve to (§8 d11). */
 const GROUP_BY_EXPANSION: Record<string, string> = {
 	month: "paidAt_month",
 	client: "clientId",
 };
 
-type GoldenPoint = { label: string; value: number; metadata?: Record<string, unknown> };
+type GoldenPoint = {
+	label: string;
+	value: number;
+	bucketKey?: string;
+	metadata?: Record<string, unknown>;
+};
 type GoldenResult = {
 	data: GoldenPoint[];
 	total: number;
 	metadata?: Record<string, unknown>;
+	detail?: { rows: Record<string, unknown>[] };
 };
+
+/**
+ * Drill-down added `bucketKey` per data point and `id`/`refs` per detail row,
+ * all additive and (for ids) non-deterministic, so the fixtures predate them:
+ * strip before comparing. bucketKey is deleted unconditionally because the
+ * ratio matrix keys legitimately have none; presence is pinned in
+ * reportData.test.ts, not here.
+ */
+function stripDrillDownFields(result: unknown): GoldenResult {
+	const value = roundTrip(result) as GoldenResult;
+	for (const point of value.data) delete point.bucketKey;
+	for (const row of value.detail?.rows ?? []) {
+		expect(typeof row.id).toBe("string");
+		delete row.id;
+		delete row.refs;
+	}
+	return value;
+}
 
 function optionLabel(def: ReportFieldDef, option: string): string {
 	return (
@@ -125,18 +149,16 @@ function toV2Request(args: MatrixArgs): {
 	seriesLimit?: number;
 } {
 	const groupBy = args.groupBy ?? DEFAULT_GROUP_BY[args.entityType];
-	const { config, visualization } = normalizeReportConfig(
-		{
-			entityType: args.entityType,
-			groupBy: [groupBy],
-			...(args.dateRange ? { dateRange: args.dateRange } : {}),
-		},
-		{ type: "bar" }
-	);
+	const { config, visualization } = configForGroupByKey(args.entityType, groupBy, {
+		...(args.dateRange
+			? { range: { kind: "absolute" as const, ...args.dateRange } }
+			: {}),
+		visualization: { type: "bar" },
+	});
 	return { config, seriesLimit: visualization.options?.seriesLimit };
 }
 
-describe("R4a dual-run: expanded v2 configs reproduce the legacy fixtures", () => {
+describe("dual-run: composite-key v2 configs reproduce the legacy fixtures", () => {
 	let t: ReturnType<typeof setupConvexTest>;
 
 	beforeEach(() => {
@@ -161,7 +183,9 @@ describe("R4a dual-run: expanded v2 configs reproduce the legacy fixtures", () =
 				config,
 				...(seriesLimit !== undefined ? { seriesLimit } : {}),
 			});
-			expect(roundTrip(result), key).toStrictEqual(transformExpected(args, golden[key]));
+			expect(stripDrillDownFields(result), key).toStrictEqual(
+				transformExpected(args, golden[key])
+			);
 		}
 	});
 
@@ -170,13 +194,17 @@ describe("R4a dual-run: expanded v2 configs reproduce the legacy fixtures", () =
 		const golden = detailModeGolden as Record<string, unknown>;
 
 		for (const entityType of Object.keys(DEFAULT_DETAIL_COLUMNS) as ReportEntityType[]) {
-			const { config } = normalizeReportConfig({ entityType }, { type: "table" });
+			const config: ReportConfigV2 = {
+				version: 2,
+				entityType,
+				metric: { op: "count" },
+			};
 			const result = await asOrg.query(api.reportData.executeReport, {
 				entityType,
 				config,
 				detail: { columns: DEFAULT_DETAIL_COLUMNS[entityType] },
 			});
-			expect(roundTrip(result), entityType).toStrictEqual(golden[entityType]);
+			expect(stripDrillDownFields(result), entityType).toStrictEqual(golden[entityType]);
 		}
 	});
 });
@@ -297,7 +325,7 @@ describe("v2 execution semantics beyond the fixtures", () => {
 			config,
 		});
 
-		expect(result.data).toEqual([{ label: "Pending", value: 1 }]);
+		expect(result.data).toEqual([{ label: "Pending", value: 1, bucketKey: "pending" }]);
 	});
 
 	it("segmentBy stacks a second dimension with a shared ordered key set", async () => {
@@ -446,22 +474,6 @@ describe("v2 execution semantics beyond the fixtures", () => {
 		).rejects.toThrow(/does not support grouping/);
 	});
 
-	it("related metrics execute from R5 (deep coverage in reportData.test.ts)", async () => {
-		const { asOrg } = await seedOrg();
-		const result = await asOrg.query(api.reportData.executeReport, {
-			entityType: "projects",
-			config: {
-				version: 2,
-				entityType: "projects",
-				metric: {
-					op: "related",
-					related: { entity: "invoices", fk: "projectId", field: "total", op: "sum" },
-				},
-			},
-		});
-		expect(result.metadata?.groupBy).toBe("projectId");
-	});
-
 	it("grouped count on an entity with a summary value field keeps the dollar column on the generic path too", async () => {
 		const { org, asOrg } = await seedOrg();
 		const clientId = await t.run((ctx) => createTestClient(ctx, org.orgId));
@@ -482,7 +494,7 @@ describe("v2 execution semantics beyond the fixtures", () => {
 		});
 
 		expect(result.data).toEqual([
-			{ label: "Sent", value: 2, metadata: { totalValue: 500 } },
+			{ label: "Sent", value: 2, bucketKey: "sent", metadata: { totalValue: 500 } },
 		]);
 		expect(result.total).toBe(500);
 		expect(result.metadata?.totalIsCurrency).toBe(true);

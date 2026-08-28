@@ -1,15 +1,14 @@
 /**
- * Saved report config v2: canonical types/validators plus the v1 normalizer.
- *
- * Lifecycle (PRD-reports-redesign §8 d9): zero v1 reports exist in production,
- * so the v1 arm and this normalizer are in-PRD scaffolding. Since R8a every
- * write (builder, presets, AI) emits native v2 and every read normalizes
- * through here; R14 converts the remaining staging rows and then deletes the
- * v1 validator, the union arm, and the expander.
+ * Saved report config: canonical v2 types and validators. Every stored report
+ * is v2 — the builder, presets and the AI all write it natively.
  */
 import { v, type Infer } from "convex/values";
 import { literals } from "convex-helpers/validators";
-import { RATIO_KEYS, reportEntityTypeValidator } from "./reportFields";
+import {
+	RATIO_KEYS,
+	reportEntityTypeValidator,
+	type ReportEntityType,
+} from "./reportFields";
 import { reportFiltersValidator, type ReportFilters } from "./reportFilters";
 
 export const DATE_RANGE_PRESETS = [
@@ -50,19 +49,9 @@ export const reportVisualizationValidator = v.object({
 export type ReportVisualization = Infer<typeof reportVisualizationValidator>;
 
 export const reportMetricValidator = v.object({
-	op: literals("count", "sum", "avg", "min", "max", "ratio", "related"),
+	op: literals("count", "sum", "avg", "min", "max", "ratio"),
 	field: v.optional(v.string()),
 	ratioKey: v.optional(literals(...RATIO_KEYS)),
-	// Related-rollup shape per §3.2; executable from R5.
-	related: v.optional(
-		v.object({
-			entity: reportEntityTypeValidator,
-			fk: v.string(),
-			field: v.optional(v.string()),
-			op: literals("count", "sum", "avg", "min", "max"),
-			filters: v.optional(reportFiltersValidator),
-		})
-	),
 });
 
 export type ReportMetric = Infer<typeof reportMetricValidator>;
@@ -86,6 +75,10 @@ export const reportDateValidator = v.object({
 	),
 });
 
+export type ReportDate = Infer<typeof reportDateValidator>;
+export type ReportDateRange = ReportDate["range"];
+export type ReportDateComparison = NonNullable<ReportDate["comparison"]>;
+
 export const reportConfigV2Validator = v.object({
 	version: v.literal(2),
 	entityType: reportEntityTypeValidator,
@@ -101,38 +94,7 @@ export const reportConfigV2Validator = v.object({
 
 export type ReportConfigV2 = Infer<typeof reportConfigV2Validator>;
 
-export const reportConfigV1Validator = v.object({
-	entityType: reportEntityTypeValidator,
-	filters: v.optional(v.any()),
-	aggregations: v.optional(
-		v.array(
-			v.object({
-				field: v.string(),
-				operation: literals("count", "sum", "avg", "min", "max"),
-			})
-		)
-	),
-	groupBy: v.optional(v.array(v.string())),
-	columns: v.optional(v.array(v.string())),
-	dateRange: v.optional(
-		v.object({ start: v.optional(v.number()), end: v.optional(v.number()) })
-	),
-});
-
-export type ReportConfigV1 = Infer<typeof reportConfigV1Validator>;
-
-export const reportConfigValidator = v.union(
-	reportConfigV1Validator,
-	reportConfigV2Validator
-);
-
-export type ReportConfig = Infer<typeof reportConfigValidator>;
-
-export function isV2Config(config: ReportConfig): config is ReportConfigV2 {
-	return "version" in config && config.version === 2;
-}
-
-/** Legacy revenue reports only counted paid invoices (see scanPaidInvoices). */
+/** Revenue group-by keys mean "paid invoices only" (report-fields §8 d3). */
 const PAID_RULE = { field: "status", operator: "equals" as const, value: "paid" };
 
 function andPaidRule(filters: ReportFilters | undefined): ReportFilters {
@@ -157,81 +119,55 @@ function andPaidRule(filters: ReportFilters | undefined): ReportFilters {
 		};
 	}
 	throw new Error(
-		"Cannot expand legacy revenue report: top-level OR over multi-rule OR groups has no v2 filter representation"
+		"Cannot expand revenue report: top-level OR over multi-rule OR groups has no filter representation"
 	);
 }
 
-/** v1 `config.filters` is untyped — deep shape check before treating it as ReportFilters. */
-export function isReportFilters(value: unknown): value is ReportFilters {
-	if (typeof value !== "object" || value === null) return false;
-	const candidate = value as { logic?: unknown; groups?: unknown };
-	if (candidate.logic !== "and" && candidate.logic !== "or") return false;
-	if (!Array.isArray(candidate.groups)) return false;
-	return candidate.groups.every((g) => {
-		if (typeof g !== "object" || g === null) return false;
-		const group = g as { logic?: unknown; rules?: unknown };
-		if (group.logic !== "and" && group.logic !== "or") return false;
-		if (!Array.isArray(group.rules)) return false;
-		return group.rules.every(
-			(r) =>
-				typeof r === "object" &&
-				r !== null &&
-				typeof (r as { field?: unknown }).field === "string"
-		);
-	});
-}
-
-function toAbsoluteRange(
-	dateRange: ReportConfigV1["dateRange"]
-): { kind: "absolute"; start?: number; end?: number } | undefined {
-	if (!dateRange || (dateRange.start === undefined && dateRange.end === undefined)) {
-		return undefined;
-	}
-	return {
-		kind: "absolute",
-		...(dateRange.start !== undefined ? { start: dateRange.start } : {}),
-		...(dateRange.end !== undefined ? { end: dateRange.end } : {}),
-	};
+export interface GroupByKeyOptions {
+	metric?: ReportMetric;
+	filters?: ReportFilters;
+	range?: ReportDateRange;
+	columns?: string[];
+	visualization: ReportVisualization;
 }
 
 /**
- * Normalizes any saved (config, visualization) pair to canonical v2. v1 magic
- * groupBy keys expand to explicit v2 configs; the mapping is pinned by the
- * `report-v1-expansion.json` golden, and R4a's dual-run is what proves the
- * expanded configs reproduce legacy output. Expansion assumes the count
- * measure legacy dispatch implied — a v1 aggregation alongside a magic key
- * never routed to dispatch and is dropped here.
+ * Builds a v2 config from the AI's Group-by vocabulary (GROUP_BY_OPTIONS),
+ * which still offers four composite keys — invoices `month`/`client`, quotes
+ * `conversionRate`, tasks `completionRate` — that stand for whole configs
+ * rather than fields. The builder authors those through the metric picker and
+ * date-field select instead, so this is the assistant's path only. Composite
+ * keys override any caller-supplied metric; plain registry keys pass through.
  */
-export function normalizeReportConfig(
-	config: ReportConfig,
-	visualization: ReportVisualization
+export function configForGroupByKey(
+	entityType: ReportEntityType,
+	groupBy: string | undefined,
+	options: GroupByKeyOptions
 ): { config: ReportConfigV2; visualization: ReportVisualization } {
-	if (isV2Config(config)) return { config, visualization };
-
-	const filters = isReportFilters(config.filters) ? config.filters : undefined;
-	const range = toAbsoluteRange(config.dateRange);
-	const groupBy = config.groupBy?.[0];
+	const { filters, range, columns, visualization } = options;
 	const base = {
 		version: 2 as const,
-		entityType: config.entityType,
+		entityType,
 		...(filters ? { filters } : {}),
 		...(range ? { date: { range } } : {}),
-		...(config.columns ? { columns: config.columns } : {}),
+		...(columns ? { columns } : {}),
 	};
 
-	if (config.entityType === "invoices" && (groupBy === "month" || groupBy === "client")) {
-		// Legacy revenue: sum of totals over paid invoices, bucketed on paidAt.
+	if (entityType === "invoices" && (groupBy === "month" || groupBy === "client")) {
 		const revenue = {
 			...base,
 			filters: andPaidRule(filters),
-			date: { field: "paidAt", range: range ?? { kind: "preset" as const, preset: "all_time" as const } },
+			date: {
+				field: "paidAt",
+				range: range ?? { kind: "preset" as const, preset: "all_time" as const },
+			},
 			metric: { op: "sum" as const, field: "total" },
 		};
 		if (groupBy === "month") {
 			return { config: { ...revenue, groupBy: "paidAt_month" }, visualization };
 		}
-		// Top-10 clients becomes an explicit series limit (§8 d3) — written into
-		// options so migrated reports keep behavior if the render default changes.
+		// Top-10 clients is an explicit series limit (§8 d3) — written into
+		// options so the report keeps behavior if the render default changes.
 		return {
 			config: { ...revenue, groupBy: "clientId" },
 			visualization: {
@@ -245,29 +181,25 @@ export function normalizeReportConfig(
 		};
 	}
 
-	if (config.entityType === "quotes" && groupBy === "conversionRate") {
+	if (entityType === "quotes" && groupBy === "conversionRate") {
 		return {
 			config: { ...base, metric: { op: "ratio", ratioKey: "conversionRate" } },
 			visualization,
 		};
 	}
 
-	if (config.entityType === "tasks" && groupBy === "completionRate") {
+	if (entityType === "tasks" && groupBy === "completionRate") {
 		return {
 			config: { ...base, metric: { op: "ratio", ratioKey: "completionRate" } },
 			visualization,
 		};
 	}
 
-	const agg = config.aggregations?.[0];
-	const metric: ReportMetric =
-		agg && agg.operation !== "count"
-			? { op: agg.operation, field: agg.field }
-			: { op: "count" };
+	const metric: ReportMetric = options.metric ?? { op: "count" };
 
-	// Legacy tasks-by-status was the one zero-filled dispatch output (§8 d11).
+	// Tasks-by-status is the one grouping that zero-fills its option buckets.
 	const zeroFill =
-		config.entityType === "tasks" && groupBy === "status" && metric.op === "count"
+		entityType === "tasks" && groupBy === "status" && metric.op === "count"
 			? { includeEmptyValues: true }
 			: {};
 

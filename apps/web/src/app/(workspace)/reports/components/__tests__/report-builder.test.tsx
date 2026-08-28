@@ -342,36 +342,6 @@ describe("ReportBuilder — metric target + aggregation (d15 amendment)", () => 
 		expect(section("Metric").queryByText("per")).toBeNull();
 	});
 
-	it("a related count target hides the aggregation dropdown", () => {
-		renderBuilder(
-			quotesReport({
-				op: "related",
-				related: { entity: "quoteLineItems", fk: "quoteId", op: "count" },
-			})
-		);
-
-		expect(metricControls()).toHaveLength(1);
-		expect(metricControls()[0]).toHaveTextContent("Count of Quote Line Items");
-	});
-
-	it("a related field metric hydrates both controls from its breadcrumb and op", () => {
-		renderBuilder(
-			quotesReport({
-				op: "related",
-				related: {
-					entity: "quoteLineItems",
-					fk: "quoteId",
-					op: "avg",
-					field: "amount",
-				},
-			})
-		);
-
-		const [target, agg] = metricControls();
-		expect(target).toHaveTextContent("Quote Line Items › Total");
-		expect(agg).toHaveTextContent("Average");
-	});
-
 	it("changing the aggregation keeps the target and marks the report dirty", async () => {
 		renderBuilder(quotesReport({ op: "sum", field: "total" }, { groupBy: "status" }));
 
@@ -403,18 +373,6 @@ describe("ReportBuilder — metric target + aggregation (d15 amendment)", () => 
 		expect(metricControls()[1]).toHaveTextContent("Sum");
 	});
 
-	it("new capability: Average over a related child field is authorable from the two controls", async () => {
-		renderBuilder(quotesReport({ op: "count" }, { groupBy: "status" }));
-
-		await pickFrom(metricControls()[0], "Quote Line Items › Total");
-		await pickFrom(metricControls()[1], "Average");
-
-		const [target, agg] = metricControls();
-		expect(target).toHaveTextContent("Quote Line Items › Total");
-		expect(agg).toHaveTextContent("Average");
-		// A related rollup buckets itself — the backend rejects grouping on it.
-		expect(section("Metric").queryByText("per")).toBeNull();
-	});
 });
 
 function quotesTable(
@@ -434,11 +392,6 @@ function quotesTable(
 		visualization: { type: "table" },
 	};
 }
-
-const RELATED_METRIC: ReportMetric = {
-	op: "related",
-	related: { entity: "quoteLineItems", fk: "quoteId", op: "count" },
-};
 
 /** Columns rides inside the merged Metric section, so scope to its own field. */
 function columnsField() {
@@ -461,17 +414,6 @@ function groupByTrigger() {
 }
 
 describe("ReportBuilder — Table raw-rows legibility", () => {
-	it("a related rollup makes the Columns picker inert and says how to get raw rows", () => {
-		renderBuilder(quotesTable(RELATED_METRIC));
-
-		expect(columnsPicker()).toBeDisabled();
-		expect(
-			columnsField().getByText(
-				"Showing this metric instead of raw rows. Set the metric to Count of records to pick columns."
-			)
-		).toBeInTheDocument();
-	});
-
 	it("a ratio metric makes the Columns picker inert too", () => {
 		renderBuilder(quotesTable({ op: "ratio", ratioKey: "conversionRate" }));
 
@@ -524,14 +466,6 @@ describe("ReportBuilder — Table raw-rows legibility", () => {
 			section("Metric").getByText(
 				"The table lists raw rows. This metric applies once the table is grouped."
 			)
-		).toBeInTheDocument();
-	});
-
-	it("a related rollup says the table lists one row per source record", () => {
-		renderBuilder(quotesTable(RELATED_METRIC));
-
-		expect(
-			section("Metric").getByText("One row per Quote with this rollup.")
 		).toBeInTheDocument();
 	});
 
@@ -649,5 +583,123 @@ describe("ReportBuilder — assistant entry point (F4, d15)", () => {
 		);
 		expect(screen.queryByRole("button", { name: "Ask AI" })).toBeNull();
 		expect(screen.queryByText(/Describe the report you want/i)).toBeNull();
+	});
+});
+
+function comparableChart(
+	over: {
+		type?: "column" | "pie" | "radar" | "radial" | "table";
+		allTime?: boolean;
+		groupBy?: string | null;
+	} = {}
+): ReportBuilderInitial {
+	const groupBy = over.groupBy === null ? undefined : (over.groupBy ?? "status");
+	return {
+		name: "Clients",
+		description: "",
+		config: {
+			version: 2,
+			// clients has two non-time, non-FK groupings, so Segment by is offered.
+			entityType: "clients",
+			metric: { op: "count" },
+			...(groupBy ? { groupBy } : {}),
+			...(over.allTime
+				? {}
+				: { date: { range: { kind: "preset" as const, preset: "this_year" as const } } }),
+		},
+		visualization: { type: over.type ?? "column" },
+	};
+}
+
+/** PanelField wraps label + control + helper in one div, so scope from the label. */
+function compareField() {
+	const label = section("Date").queryByText("Compare");
+	return label ? within(label.parentElement!) : null;
+}
+
+function segmentControl() {
+	return section("Segment by").getByRole("combobox");
+}
+
+describe("ReportBuilder — comparison range control (R11)", () => {
+	it("offers None, Previous period, Previous year, and Custom range", async () => {
+		renderBuilder(comparableChart());
+
+		fireEvent.click(compareField()!.getByRole("combobox"));
+		await screen.findByRole("option", { name: "None" });
+		expect(
+			screen.getAllByRole("option").map((o) => o.textContent?.trim())
+		).toEqual(["None", "Previous period", "Previous year", "Custom range"]);
+	});
+
+	it("is hidden on pie, radar, and radial — they have no second-series encoding", () => {
+		for (const type of ["pie", "radar", "radial"] as const) {
+			renderBuilder(comparableChart({ type }));
+			expect(compareField()).toBeNull();
+			cleanup();
+		}
+	});
+
+	it("is hidden in raw-rows detail mode", () => {
+		renderBuilder(comparableChart({ type: "table", groupBy: null }));
+		expect(compareField()).toBeNull();
+	});
+
+	it("All Time disables it and says why", () => {
+		renderBuilder(comparableChart({ allTime: true }));
+
+		expect(compareField()!.getByRole("combobox")).toBeDisabled();
+		expect(
+			compareField()!.getByText(
+				"Comparison needs a date range with a start and an end."
+			)
+		).toBeInTheDocument();
+	});
+
+	it("a bounded range enables it with no cause copy", () => {
+		renderBuilder(comparableChart());
+
+		expect(compareField()!.getByRole("combobox")).not.toBeDisabled();
+		expect(
+			compareField()!.queryByText(
+				"Comparison needs a date range with a start and an end."
+			)
+		).toBeNull();
+	});
+
+	it("setting a comparison clears Segment by", async () => {
+		renderBuilder(comparableChart());
+
+		await pickFrom(segmentControl(), "Lead Source");
+		expect(segmentControl()).toHaveTextContent("Lead Source");
+
+		await pickFrom(compareField()!.getByRole("combobox"), "Previous period");
+
+		expect(compareField()!.getByRole("combobox")).toHaveTextContent(
+			"Previous period"
+		);
+		expect(segmentControl()).toHaveTextContent("None");
+	});
+
+	it("setting Segment by clears the comparison", async () => {
+		renderBuilder(comparableChart());
+
+		await pickFrom(compareField()!.getByRole("combobox"), "Previous year");
+		expect(compareField()!.getByRole("combobox")).toHaveTextContent(
+			"Previous year"
+		);
+
+		await pickFrom(segmentControl(), "Lead Source");
+
+		expect(compareField()!.getByRole("combobox")).toHaveTextContent("None");
+	});
+
+	it("choosing a comparison marks the report dirty", async () => {
+		renderBuilder(comparableChart());
+		expect(screen.queryByText("Unsaved changes")).toBeNull();
+
+		await pickFrom(compareField()!.getByRole("combobox"), "Previous period");
+
+		expect(screen.getByText("Unsaved changes")).toBeInTheDocument();
 	});
 });

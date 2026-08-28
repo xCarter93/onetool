@@ -32,7 +32,6 @@ import {
 	type RatioKey,
 	type ReportEntityType,
 } from "@onetool/backend/convex/lib/reportFields";
-import { REPORT_RELATIONS } from "@onetool/backend/convex/lib/reportRelations";
 import { REPORT_SCAN_CEILING } from "@onetool/backend/convex/lib/orgScan";
 import {
 	resolveReportQueryArgs,
@@ -42,9 +41,7 @@ import {
 } from "@onetool/backend/convex/lib/reportQueryArgs";
 import {
 	DATE_RANGE_PRESETS,
-	normalizeReportConfig,
 	type DateRangePreset,
-	type ReportConfig as ReportDocConfig,
 	type ReportConfigV2,
 	type ReportMetric,
 	type ReportVisualization,
@@ -61,6 +58,36 @@ export type ReportMeasure =
 	| { op: "count" }
 	| { op: Exclude<MeasureOp, "count">; field: string };
 
+export type ReportComparison = NonNullable<
+	NonNullable<ReportConfigV2["date"]>["comparison"]
+>;
+
+/** Rail vocabulary for `date.comparison`; "none" is the absent comparison. */
+export type CompareMode =
+	| "none"
+	| "previous_period"
+	| "previous_year"
+	| "custom";
+
+export const compareModeOptions: { value: CompareMode; label: string }[] = [
+	{ value: "none", label: "None" },
+	{ value: "previous_period", label: "Previous period" },
+	{ value: "previous_year", label: "Previous year" },
+	{ value: "custom", label: "Custom range" },
+];
+
+/** One label per comparison kind — the number sublabel, chart tooltip, and table header all read it. */
+export function comparisonKindLabel(kind: ReportComparison["kind"]): string {
+	switch (kind) {
+		case "previous_period":
+			return "Previous period";
+		case "previous_year":
+			return "Previous year";
+		case "absolute":
+			return "Custom range";
+	}
+}
+
 /**
  * The builder's working state, mirroring ReportConfigV2 plus the UI-level date
  * vocabulary ("custom" + a picked DateRange instead of an absolute range).
@@ -75,6 +102,9 @@ export type BuilderConfigState = {
 	/** "all_time" | DateRangePreset | "custom". */
 	dateRangePreset: string;
 	customDateRange?: DateRange;
+	/** Comparison range vocabulary; emitted as date.comparison only where the pipeline supports it. */
+	compareMode?: CompareMode;
+	compareDateRange?: DateRange;
 	/** Callers pass sanitized filters (sanitizeReportFilters). */
 	filters?: ReportFilters;
 	metric: ReportMetric;
@@ -124,6 +154,40 @@ function buildConfigDate(state: BuilderConfigState): ReportConfigV2["date"] {
 	return { ...(field ? { field } : {}), range };
 }
 
+/** A comparison needs both ends of the current range to subtract from; all-time and half-open ranges have none. */
+export function comparisonRangeBounded(
+	date: ReportConfigV2["date"]
+): boolean {
+	const range = date?.range;
+	if (!range) return false;
+	if (range.kind === "preset") return range.preset !== "all_time";
+	return range.start !== undefined && range.end !== undefined;
+}
+
+/** Pie/radar/radial have no second-series encoding, and raw rows aren't aggregated at all. */
+export function comparisonAuthorable(
+	config: ReportConfigV2,
+	vizType: VizType
+): boolean {
+	if (vizType === "pie" || vizType === "radar" || vizType === "radial") {
+		return false;
+	}
+	return !isDetailModeActive(config, vizType);
+}
+
+function buildComparison(
+	state: BuilderConfigState
+): ReportComparison | undefined {
+	const mode = state.compareMode;
+	if (mode === undefined || mode === "none") return undefined;
+	if (mode !== "custom") return { kind: mode };
+	const absolute = customAbsoluteRange(state.compareDateRange);
+	if (absolute?.start === undefined || absolute.end === undefined) {
+		return undefined;
+	}
+	return { kind: "absolute", start: absolute.start, end: absolute.end };
+}
+
 /** Builder state → the exact (config, visualization) pair that is saved, previewed, and published to the assistant. */
 export function builderStateToSaved(state: BuilderConfigState): {
 	config: ReportConfigV2;
@@ -135,31 +199,41 @@ export function builderStateToSaved(state: BuilderConfigState): {
 	};
 
 	const date = buildConfigDate(state);
+	const config: ReportConfigV2 = {
+		version: 2,
+		entityType: state.entityType,
+		...(date ? { date } : {}),
+		...(state.filters ? { filters: state.filters } : {}),
+		metric: state.metric,
+		...(state.groupBy ? { groupBy: state.groupBy } : {}),
+		...(state.segmentBy ? { segmentBy: state.segmentBy } : {}),
+		...(state.includeEmptyValues ? { includeEmptyValues: true } : {}),
+		...(state.columns.length ? { columns: state.columns } : {}),
+	};
+
+	// Gated at emission, not per-handler: raw-rows detail mode is reachable from
+	// several controls, so an unsupported comparison must never reach a saved doc.
+	const comparison =
+		date !== undefined &&
+		comparisonRangeBounded(date) &&
+		state.segmentBy === undefined &&
+		comparisonAuthorable(config, state.vizType)
+			? buildComparison(state)
+			: undefined;
+
 	return {
-		config: {
-			version: 2,
-			entityType: state.entityType,
-			...(date ? { date } : {}),
-			...(state.filters ? { filters: state.filters } : {}),
-			metric: state.metric,
-			...(state.groupBy ? { groupBy: state.groupBy } : {}),
-			...(state.segmentBy ? { segmentBy: state.segmentBy } : {}),
-			...(state.includeEmptyValues ? { includeEmptyValues: true } : {}),
-			...(state.columns.length ? { columns: state.columns } : {}),
-		},
+		config: comparison
+			? { ...config, date: { ...date!, comparison } }
+			: config,
 		visualization,
 	};
 }
 
-/** Saved (config, visualization) of either version → builder state. v1 rows expand through the normalizer first. */
+/** Saved (config, visualization) → builder state. */
 export function savedToBuilderState(
-	savedConfig: ReportDocConfig,
-	savedVisualization: ReportVisualization
+	config: ReportConfigV2,
+	visualization: ReportVisualization
 ): BuilderConfigState {
-	const { config, visualization } = normalizeReportConfig(
-		savedConfig,
-		savedVisualization
-	);
 	const range = config.date?.range;
 	let dateRangePreset = "all_time";
 	let customDateRange: DateRange | undefined;
@@ -175,6 +249,18 @@ export function savedToBuilderState(
 			to: range.end !== undefined ? new Date(range.end) : undefined,
 		};
 	}
+	const comparison = config.date?.comparison;
+	let compareMode: CompareMode = "none";
+	let compareDateRange: DateRange | undefined;
+	if (comparison?.kind === "absolute") {
+		compareMode = "custom";
+		compareDateRange = {
+			from: new Date(comparison.start),
+			to: new Date(comparison.end),
+		};
+	} else if (comparison) {
+		compareMode = comparison.kind;
+	}
 	// isDetailModeActive lets a Table's explicit columns override its grouping,
 	// so the builder must show the grouping the report actually renders: none.
 	const columns = config.columns ?? [];
@@ -187,6 +273,8 @@ export function savedToBuilderState(
 		dateField: config.date?.field,
 		dateRangePreset,
 		customDateRange,
+		compareMode,
+		compareDateRange,
 		filters: config.filters,
 		metric: config.metric,
 		groupBy,
@@ -252,14 +340,10 @@ export type MetricOption = {
 	metric: ReportMetric;
 };
 
-/** Stable select value for a metric; ratio/related metrics are addressable since R8b. */
+/** Stable select value for a metric; ratio metrics are addressable since R8b. */
 export function metricToValue(metric: ReportMetric): string {
 	if (metric.op === "count") return "count";
 	if (metric.op === "ratio") return `ratio:${metric.ratioKey}`;
-	if (metric.op === "related" && metric.related) {
-		const r = metric.related;
-		return `related:${r.entity}:${r.fk}:${r.op}${r.field ? `:${r.field}` : ""}`;
-	}
 	return `${metric.op}:${metric.field}`;
 }
 
@@ -276,21 +360,15 @@ export const metricAggOptions: { op: MetricAgg; label: string }[] = [
 export type MetricTarget =
 	| { kind: "count" }
 	| { kind: "field"; field: string }
-	| { kind: "ratio"; ratioKey: RatioKey }
-	| { kind: "relatedCount"; entity: EntityType; fk: string }
-	| { kind: "relatedField"; entity: EntityType; fk: string; field: string };
+	| { kind: "ratio"; ratioKey: RatioKey };
 
 export type MetricTargetOption = {
 	value: string;
 	label: string;
-	/** Select heading; also the breadcrumb prefix of a related field's label. */
 	group: string;
 	target: MetricTarget;
 	aggregatable: boolean;
 };
-
-/** Breadcrumb joiner in related-target labels; the picker splits on it. */
-export const METRIC_TARGET_SEPARATOR = " › ";
 
 function numericFieldsOf(entityType: EntityType) {
 	return Object.entries(REPORT_FIELDS[entityType].fields).filter(
@@ -298,22 +376,10 @@ function numericFieldsOf(entityType: EntityType) {
 	);
 }
 
-/** Inverted REPORT_RELATIONS edges: children whose FK points at this entity. */
-function childEdgesOf(entityType: EntityType): { child: EntityType; fk: string }[] {
-	const edges: { child: EntityType; fk: string }[] = [];
-	for (const child of REPORT_ENTITY_TYPES) {
-		if (child === entityType) continue;
-		for (const [fk, edge] of Object.entries(REPORT_RELATIONS[child])) {
-			if (edge.refType === entityType) edges.push({ child, fk });
-		}
-	}
-	return edges;
-}
-
 /**
  * What a metric can measure: the record count, direct numeric/currency fields,
- * named ratio metrics, and one-hop child rollups. Aggregatable targets pair
- * with a separate Sum/Average/Min/Max control.
+ * and named ratio metrics. Aggregatable targets pair with a separate
+ * Sum/Average/Min/Max control.
  */
 export function metricTargetOptionsFor(
 	entityType: EntityType
@@ -346,25 +412,6 @@ export function metricTargetOptionsFor(
 			aggregatable: false,
 		});
 	}
-	for (const { child, fk } of childEdgesOf(entityType)) {
-		const childLabel = entityLabels[child] ?? child;
-		options.push({
-			value: `related:${child}:${fk}:count`,
-			label: `Count of ${childLabel}`,
-			group: childLabel,
-			target: { kind: "relatedCount", entity: child, fk },
-			aggregatable: false,
-		});
-		for (const [field, def] of numericFieldsOf(child)) {
-			options.push({
-				value: `related:${child}:${fk}:field:${field}`,
-				label: `${childLabel}${METRIC_TARGET_SEPARATOR}${def.label}`,
-				group: childLabel,
-				target: { kind: "relatedField", entity: child, fk, field },
-				aggregatable: true,
-			});
-		}
-	}
 	return options;
 }
 
@@ -377,21 +424,6 @@ export function buildMetric(target: MetricTarget, agg: MetricAgg): ReportMetric 
 			return { op: agg, field: target.field };
 		case "ratio":
 			return { op: "ratio", ratioKey: target.ratioKey };
-		case "relatedCount":
-			return {
-				op: "related",
-				related: { entity: target.entity, fk: target.fk, op: "count" },
-			};
-		case "relatedField":
-			return {
-				op: "related",
-				related: {
-					entity: target.entity,
-					fk: target.fk,
-					op: agg,
-					field: target.field,
-				},
-			};
 	}
 }
 
@@ -399,21 +431,11 @@ export function buildMetric(target: MetricTarget, agg: MetricAgg): ReportMetric 
 export function metricTargetValue(metric: ReportMetric): string {
 	if (metric.op === "count") return "count";
 	if (metric.op === "ratio") return `ratio:${metric.ratioKey}`;
-	if (metric.op === "related" && metric.related) {
-		const r = metric.related;
-		return r.op === "count" || !r.field
-			? `related:${r.entity}:${r.fk}:count`
-			: `related:${r.entity}:${r.fk}:field:${r.field}`;
-	}
 	return `field:${metric.field}`;
 }
 
-/** Undefined where the target is its own aggregation (count, related count, ratio). */
+/** Undefined where the target is its own aggregation (count, ratio). */
 export function metricAggOf(metric: ReportMetric): MetricAgg | undefined {
-	if (metric.op === "related") {
-		const op = metric.related?.op;
-		return op && op !== "count" ? op : undefined;
-	}
 	if (metric.op === "count" || metric.op === "ratio") return undefined;
 	return metric.op;
 }
@@ -530,72 +552,6 @@ export function formatRelativeTime(timestamp: number) {
 	return formatDate(timestamp);
 }
 
-export function getDateRange(
-	preset: string
-): { start?: number; end?: number } | undefined {
-	const now = new Date();
-	const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-	const endOfToday = new Date(today);
-	endOfToday.setHours(23, 59, 59, 999);
-
-	switch (preset) {
-		case "today":
-			return { start: today.getTime(), end: endOfToday.getTime() };
-		case "this_week": {
-			const dayOfWeek = today.getDay();
-			const startOfWeek = new Date(today);
-			startOfWeek.setDate(today.getDate() - dayOfWeek);
-			const endOfWeek = new Date(startOfWeek);
-			endOfWeek.setDate(startOfWeek.getDate() + 6);
-			endOfWeek.setHours(23, 59, 59, 999);
-			return { start: startOfWeek.getTime(), end: endOfWeek.getTime() };
-		}
-		case "this_month": {
-			const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
-			const endOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0);
-			endOfMonth.setHours(23, 59, 59, 999);
-			return { start: startOfMonth.getTime(), end: endOfMonth.getTime() };
-		}
-		case "this_quarter": {
-			const quarter = Math.floor(today.getMonth() / 3);
-			const startOfQuarter = new Date(today.getFullYear(), quarter * 3, 1);
-			const endOfQuarter = new Date(today.getFullYear(), (quarter + 1) * 3, 0);
-			endOfQuarter.setHours(23, 59, 59, 999);
-			return { start: startOfQuarter.getTime(), end: endOfQuarter.getTime() };
-		}
-		case "this_year": {
-			const startOfYear = new Date(today.getFullYear(), 0, 1);
-			const endOfYear = new Date(today.getFullYear(), 11, 31);
-			endOfYear.setHours(23, 59, 59, 999);
-			return { start: startOfYear.getTime(), end: endOfYear.getTime() };
-		}
-		case "last_7_days": {
-			const start = new Date(today);
-			start.setDate(today.getDate() - 6);
-			return { start: start.getTime(), end: endOfToday.getTime() };
-		}
-		case "last_30_days": {
-			const start = new Date(today);
-			start.setDate(today.getDate() - 29);
-			return { start: start.getTime(), end: endOfToday.getTime() };
-		}
-		case "last_90_days": {
-			const start = new Date(today);
-			start.setDate(today.getDate() - 89);
-			return { start: start.getTime(), end: endOfToday.getTime() };
-		}
-		case "last_year": {
-			const startOfLastYear = new Date(today.getFullYear() - 1, 0, 1);
-			const endOfLastYear = new Date(today.getFullYear() - 1, 11, 31);
-			endOfLastYear.setHours(23, 59, 59, 999);
-			return { start: startOfLastYear.getTime(), end: endOfLastYear.getTime() };
-		}
-		case "all_time":
-		default:
-			return undefined;
-	}
-}
-
 /**
  * Formats a report metric as USD or a plain count. `isCurrency` must come
  * from the result's explicit metadata flags (the unified pipeline emits them
@@ -632,4 +588,30 @@ export type ReportQueryArgs = ExecuteReportArgs;
 export const TRUNCATION_NOTICE = `Based on the most recent ${REPORT_SCAN_CEILING.toLocaleString(
 	"en-US"
 )} records — results may be incomplete.`;
+
+/** Same ceiling, but only the comparison scan hit it — the current range is complete. */
+export const COMPARE_TRUNCATION_NOTICE = `The comparison range is based on the most recent ${REPORT_SCAN_CEILING.toLocaleString(
+	"en-US"
+)} records — its figures may be incomplete.`;
+
+/**
+ * Signed percent change against a comparison value. Undefined when there is
+ * nothing to divide by — callers show the previous figure instead.
+ */
+export function percentChange(
+	current: number,
+	previous: number
+): string | undefined {
+	if (previous === 0) return undefined;
+	const change = ((current - previous) / Math.abs(previous)) * 100;
+	const rounded = Math.abs(change) < 0.05 ? 0 : change;
+	return `${rounded > 0 ? "+" : rounded < 0 ? "-" : ""}${Math.abs(rounded).toFixed(1)}%`;
+}
+
+/** Ratio metrics move in percentage points, so their delta is a subtraction, not a ratio. */
+export function pointsChange(current: number, previous: number): string {
+	const delta = current - previous;
+	const rounded = Math.abs(delta) < 0.05 ? 0 : delta;
+	return `${rounded > 0 ? "+" : rounded < 0 ? "-" : ""}${Math.abs(rounded).toFixed(1)} pts`;
+}
 

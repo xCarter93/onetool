@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
-import { describe, it, expect, afterEach, beforeAll, afterAll } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { describe, it, expect, afterEach, beforeAll, afterAll, vi } from "vitest";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import "@testing-library/jest-dom/vitest";
 
 afterEach(() => cleanup());
@@ -226,6 +226,45 @@ describe("ReportBarChart", () => {
 		});
 	});
 
+	describe("bucket drill-down", () => {
+		const buckets = [
+			{ name: "Paid", value: 5, bucketKey: "paid" },
+			{ name: "Sent", value: 3, bucketKey: "sent" },
+		];
+
+		it("clicking a bar opens that bucket", () => {
+			const onBucketClick = vi.fn();
+			const { container } = render(
+				<ReportBarChart
+					data={buckets}
+					total={8}
+					entityType="invoices"
+					groupBy="status"
+					onBucketClick={onBucketClick}
+				/>
+			);
+
+			fireEvent.click(container.querySelectorAll(".recharts-bar-rectangle")[1]);
+			expect(onBucketClick).toHaveBeenCalledWith("sent", "Sent");
+		});
+
+		it("a point the pipeline gave no bucketKey is not clickable", () => {
+			const onBucketClick = vi.fn();
+			const { container } = render(
+				<ReportBarChart
+					data={[{ name: "Total", value: 8 }]}
+					total={8}
+					entityType="invoices"
+					groupBy="status"
+					onBucketClick={onBucketClick}
+				/>
+			);
+
+			fireEvent.click(container.querySelector(".recharts-bar-rectangle")!);
+			expect(onBucketClick).not.toHaveBeenCalled();
+		});
+	});
+
 	describe("axisLabels + targetLine", () => {
 		const data = [
 			{ name: "Pending", value: 5 },
@@ -276,5 +315,56 @@ describe("ReportBarChart", () => {
 
 			expect(container.querySelectorAll(".recharts-reference-line")).toHaveLength(0);
 		});
+	});
+});
+
+describe("ReportBarChart — comparison series (R11)", () => {
+	const compared = [
+		{ name: "Pending", value: 5, compareValue: 3 },
+		{ name: "Completed", value: 7, compareValue: 9 },
+	];
+
+	it("draws a second bar per bucket when the points carry compareValue", () => {
+		const { container } = render(
+			<ReportBarChart
+				data={compared}
+				total={12}
+				entityType="tasks"
+				groupBy="status"
+				compareLabel="Previous period"
+			/>
+		);
+
+		expect(container.querySelectorAll(".recharts-bar-rectangle")).toHaveLength(4);
+	});
+
+	it("no comparison label: only the current series draws", () => {
+		const { container } = render(
+			<ReportBarChart data={compared} total={12} entityType="tasks" groupBy="status" />
+		);
+
+		expect(container.querySelectorAll(".recharts-bar-rectangle")).toHaveLength(2);
+	});
+
+	it("stacked segments own the second encoding, so no comparison bars render", () => {
+		const { container } = render(
+			<ReportBarChart
+				data={[
+					{ name: "Pending", value: 5, compareValue: 3, active: 3, done: 2 },
+					{ name: "Completed", value: 7, compareValue: 9, active: 4, done: 3 },
+				]}
+				total={12}
+				entityType="tasks"
+				groupBy="status"
+				segments={[
+					{ key: "active", label: "Active" },
+					{ key: "done", label: "Done" },
+				]}
+				compareLabel="Previous period"
+			/>
+		);
+
+		// Two buckets × two segments — a comparison bar would make six.
+		expect(container.querySelectorAll(".recharts-bar-rectangle")).toHaveLength(4);
 	});
 });

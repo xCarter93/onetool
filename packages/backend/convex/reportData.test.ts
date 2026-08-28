@@ -17,16 +17,25 @@ import {
 	isGenericGroupBy,
 	type ReportEntityType,
 } from "./lib/reportFields";
-import { normalizeReportConfig, type ReportConfigV2 } from "./lib/reportConfig";
+import { configForGroupByKey, type ReportConfigV2 } from "./lib/reportConfig";
 import type { Id } from "./_generated/dataModel";
 
 /**
  * Pins the observable semantics of reportData.executeReport (the only live
- * export of reportData.ts) on the unified pipeline: v2 `config` requests
- * (including v1 magic keys via normalizeReportConfig), the still-supported
- * standalone aggregation/detail args (deleted at R14), exact-ms date bounds,
- * and org-timezone week bucketing.
+ * export of reportData.ts): v2 `config` requests, detail mode, exact-ms date
+ * bounds, and org-timezone week bucketing.
  */
+
+/** An ungrouped count config — the shape every detail-mode request carries. */
+const detailConfig = (
+	entityType: ReportConfigV2["entityType"],
+	extra: Partial<ReportConfigV2> = {}
+): ReportConfigV2 => ({
+	version: 2,
+	entityType,
+	metric: { op: "count" },
+	...extra,
+});
 
 describe("reportData.executeReport", () => {
 	let t: ReturnType<typeof setupConvexTest>;
@@ -82,9 +91,9 @@ describe("reportData.executeReport", () => {
 
 		expect(result.total).toBe(4);
 		expect(result.data).toEqual([
-			{ label: "Lead", value: 1 },
-			{ label: "Active", value: 2 },
-			{ label: "Archived", value: 1 },
+			{ label: "Lead", value: 1, bucketKey: "lead" },
+			{ label: "Active", value: 2, bucketKey: "active" },
+			{ label: "Archived", value: 1, bucketKey: "archived" },
 		]);
 		expect(result.metadata?.groupBy).toBe("status");
 	});
@@ -171,8 +180,8 @@ describe("reportData.executeReport", () => {
 			config: countConfig("clients", "leadSource"),
 		});
 
-		expect(result.data[0]).toEqual({ label: "Website", value: 2 });
-		expect(result.data[1]).toEqual({ label: "Referral", value: 1 });
+		expect(result.data[0]).toEqual({ label: "Website", value: 2, bucketKey: "website" });
+		expect(result.data[1]).toEqual({ label: "Referral", value: 1, bucketKey: "referral" });
 	});
 
 	it("clients creationDate_month buckets by creation time", async () => {
@@ -323,7 +332,12 @@ describe("reportData.executeReport", () => {
 
 		expect(result.total).toBe(1750.5); // dollars, never /100
 		const sent = result.data.find((d) => d.label === "Sent");
-		expect(sent).toEqual({ label: "Sent", value: 2, metadata: { totalValue: 750.5 } });
+		expect(sent).toEqual({
+			label: "Sent",
+			value: 2,
+			bucketKey: "sent",
+			metadata: { totalValue: 750.5 },
+		});
 		expect(result.metadata?.totalIsCurrency).toBe(true);
 	});
 
@@ -409,10 +423,9 @@ describe("reportData.executeReport", () => {
 			}); // not paid — excluded
 		});
 
-		const { config } = normalizeReportConfig(
-			{ entityType: "invoices", groupBy: ["month"] },
-			{ type: "line" }
-		);
+		const { config } = configForGroupByKey("invoices", "month", {
+			visualization: { type: "line" },
+		});
 		const result = await asOrg.query(api.reportData.executeReport, {
 			entityType: "invoices",
 			config,
@@ -420,7 +433,7 @@ describe("reportData.executeReport", () => {
 
 		expect(result.total).toBe(800);
 		expect(result.data).toEqual([
-			{ label: "Jan 2024", value: 800, metadata: { dateKey: "2024-01" } },
+			{ label: "Jan 2024", value: 800, bucketKey: "2024-01", metadata: { dateKey: "2024-01" } },
 		]);
 	});
 
@@ -437,10 +450,9 @@ describe("reportData.executeReport", () => {
 			});
 		});
 
-		const { config, visualization } = normalizeReportConfig(
-			{ entityType: "invoices", groupBy: ["client"] },
-			{ type: "bar" }
-		);
+		const { config, visualization } = configForGroupByKey("invoices", "client", {
+			visualization: { type: "bar" },
+		});
 		const result = await asOrg.query(api.reportData.executeReport, {
 			entityType: "invoices",
 			config,
@@ -448,7 +460,7 @@ describe("reportData.executeReport", () => {
 		});
 
 		expect(result.data).toEqual([
-			{ label: "Acme Co", value: 750, metadata: { clientId } },
+			{ label: "Acme Co", value: 750, bucketKey: clientId, metadata: { clientId } },
 		]);
 	});
 
@@ -492,20 +504,6 @@ describe("reportData.executeReport", () => {
 	});
 
 	// ==========================================================================
-	// Bare legacy args died with the dispatch at R4c
-	// ==========================================================================
-
-	it("a request with no config, aggregation, or detail throws", async () => {
-		const { asOrg } = await seedOrg();
-
-		await expect(
-			asOrg.query(api.reportData.executeReport, {
-				entityType: "clients",
-				groupBy: "totallyBogusGroupBy",
-			})
-		).rejects.toThrow(/requires a config/);
-	});
-
 	// ==========================================================================
 	// TZ bug A (FIXED): exact millisecond date bounds, no re-clamping
 	// ==========================================================================
@@ -622,8 +620,12 @@ describe("reportData.executeReport", () => {
 
 		const result = await asOrg.query(api.reportData.executeReport, {
 			entityType: "quotes",
-			groupBy: "status",
-			aggregation: { op: "sum", field: "total" },
+			config: {
+				version: 2,
+				entityType: "quotes",
+				metric: { op: "sum", field: "total" },
+				groupBy: "status",
+			},
 		});
 
 		const byLabel = Object.fromEntries(result.data.map((d) => [d.label, d.value]));
@@ -632,40 +634,37 @@ describe("reportData.executeReport", () => {
 		expect(result.metadata?.totalIsCurrency).toBe(true);
 	});
 
-	it("generic-only groupBy without aggregation throws instead of silently returning the legacy default", async () => {
-		const { asOrg } = await seedOrg();
-
-		await expect(
-			asOrg.query(api.reportData.executeReport, {
-				entityType: "invoices",
-				groupBy: "issuedDate_month",
-			})
-		).rejects.toThrow();
-	});
-
-	it("aggregation: unknown field throws a ConvexError", async () => {
+	it("metric: unknown field throws a ConvexError", async () => {
 		const { asOrg } = await seedOrg();
 
 		await expect(
 			asOrg.query(api.reportData.executeReport, {
 				entityType: "quotes",
-				aggregation: { op: "sum", field: "notARealField" },
+				config: {
+					version: 2,
+					entityType: "quotes",
+					metric: { op: "sum", field: "notARealField" },
+				},
 			})
 		).rejects.toThrow();
 	});
 
-	it("aggregation: non-numeric field throws a ConvexError", async () => {
+	it("metric: non-numeric field throws a ConvexError", async () => {
 		const { asOrg } = await seedOrg();
 
 		await expect(
 			asOrg.query(api.reportData.executeReport, {
 				entityType: "quotes",
-				aggregation: { op: "sum", field: "status" },
+				config: {
+					version: 2,
+					entityType: "quotes",
+					metric: { op: "sum", field: "status" },
+				},
 			})
 		).rejects.toThrow();
 	});
 
-	it("aggregation groupBy: boolean field values keep distinct buckets", async () => {
+	it("groupBy: boolean field values keep distinct buckets", async () => {
 		const { org, asOrg } = await seedOrg();
 		await t.run(async (ctx) => {
 			const a = await createTestClient(ctx, org.orgId);
@@ -678,34 +677,31 @@ describe("reportData.executeReport", () => {
 
 		const result = await asOrg.query(api.reportData.executeReport, {
 			entityType: "clients",
-			groupBy: "isActive",
-			aggregation: { op: "count" },
+			config: countConfig("clients", "isActive"),
 		});
 
 		const byLabel = Object.fromEntries(result.data.map((d) => [d.label, d.value]));
 		expect(byLabel).toEqual({ True: 2, False: 1 });
 	});
 
-	it("aggregation groupBy: non-timestamp time-bucket field throws a ConvexError", async () => {
+	it("groupBy: non-timestamp time-bucket field throws a ConvexError", async () => {
 		const { asOrg } = await seedOrg();
 
 		await expect(
 			asOrg.query(api.reportData.executeReport, {
 				entityType: "quotes",
-				groupBy: "status_month",
-				aggregation: { op: "count" },
+				config: countConfig("quotes", "status_month"),
 			})
 		).rejects.toThrow();
 	});
 
-	it("aggregation groupBy: bare timestamp field throws a ConvexError", async () => {
+	it("groupBy: bare timestamp field throws a ConvexError", async () => {
 		const { asOrg } = await seedOrg();
 
 		await expect(
 			asOrg.query(api.reportData.executeReport, {
 				entityType: "invoices",
-				groupBy: "issuedDate",
-				aggregation: { op: "count" },
+				config: countConfig("invoices", "issuedDate"),
 			})
 		).rejects.toThrow();
 	});
@@ -737,6 +733,7 @@ describe("reportData.executeReport", () => {
 
 		const result = await asOrg.query(api.reportData.executeReport, {
 			entityType: "quotes",
+			config: detailConfig("quotes"),
 			detail: { columns: ["quoteNumber", "status", "total"] },
 		});
 
@@ -749,14 +746,18 @@ describe("reportData.executeReport", () => {
 		expect(result.detail?.rows).toHaveLength(2);
 		// Newest first (second-created quote sorts before the first by _creationTime).
 		expect(result.detail?.rows[0]).toEqual({
+			id: expect.any(String),
 			quoteNumber: null,
 			status: "draft",
 			total: 200,
+			refs: { clientId },
 		});
 		expect(result.detail?.rows[1]).toEqual({
+			id: expect.any(String),
 			quoteNumber: "Q-1",
 			status: "sent",
 			total: 100,
+			refs: { clientId },
 		});
 		expect(result.detail?.totalMatched).toBe(2);
 		expect(result.detail?.rowsTruncated).toBe(false);
@@ -769,6 +770,7 @@ describe("reportData.executeReport", () => {
 		await expect(
 			asOrg.query(api.reportData.executeReport, {
 				entityType: "quotes",
+				config: detailConfig("quotes"),
 				detail: { columns: ["notARealColumn"] },
 			})
 		).rejects.toThrow();
@@ -780,6 +782,7 @@ describe("reportData.executeReport", () => {
 		await expect(
 			asOrg.query(api.reportData.executeReport, {
 				entityType: "quotes",
+				config: detailConfig("quotes"),
 				detail: { columns: [] },
 			})
 		).rejects.toThrow();
@@ -796,6 +799,7 @@ describe("reportData.executeReport", () => {
 
 		const result = await asOrg.query(api.reportData.executeReport, {
 			entityType: "quotes",
+			config: detailConfig("quotes"),
 			detail: { columns: ["status"], limit: 3 },
 		});
 
@@ -815,19 +819,23 @@ describe("reportData.executeReport", () => {
 
 		const result = await asOrg.query(api.reportData.executeReport, {
 			entityType: "quotes",
+			config: detailConfig("quotes", {
+				filters: {
+					logic: "and",
+					groups: [
+						{
+							logic: "and",
+							rules: [{ field: "status", operator: "equals", value: "sent" }],
+						},
+					],
+				},
+			}),
 			detail: { columns: ["status"] },
-			filters: {
-				logic: "and",
-				groups: [
-					{
-						logic: "and",
-						rules: [{ field: "status", operator: "equals", value: "sent" }],
-					},
-				],
-			},
 		});
 
-		expect(result.detail?.rows).toEqual([{ status: "sent" }]);
+		expect(result.detail?.rows).toEqual([
+			{ id: expect.any(String), status: "sent", refs: { clientId } },
+		]);
 		expect(result.detail?.totalMatched).toBe(1);
 	});
 
@@ -864,8 +872,7 @@ describe("reportData.executeReport", () => {
 
 		const result = await asOrg.query(api.reportData.executeReport, {
 			entityType: "activities",
-			groupBy: "entityType",
-			aggregation: { op: "count" },
+			config: countConfig("activities", "entityType"),
 		});
 
 		const byLabel = Object.fromEntries(result.data.map((d) => [d.label, d.value]));
@@ -886,21 +893,23 @@ describe("reportData.executeReport", () => {
 
 		const result = await asOrg.query(api.reportData.executeReport, {
 			entityType: "projects",
-			groupBy: "completedAt_month",
-			aggregation: { op: "count" },
-			filters: {
-				logic: "and",
-				groups: [
-					{
-						logic: "and",
-						rules: [{ field: "status", operator: "equals", value: "completed" }],
-					},
-				],
-			},
+			config: countConfig("projects", "completedAt_month", {
+				filters: {
+					logic: "and",
+					groups: [
+						{
+							logic: "and",
+							rules: [{ field: "status", operator: "equals", value: "completed" }],
+						},
+					],
+				},
+			}),
 		});
 
 		expect(result.total).toBe(1);
-		expect(result.data).toEqual([{ label: "Apr 2024", value: 1, metadata: { dateKey: "2024-04" } }]);
+		expect(result.data).toEqual([
+			{ label: "Apr 2024", value: 1, bucketKey: "2024-04", metadata: { dateKey: "2024-04" } },
+		]);
 	});
 
 	it("invoices dueDate_month groupBy + sum(total) + or-filters (sent/overdue) runs through the generic pipeline", async () => {
@@ -927,24 +936,30 @@ describe("reportData.executeReport", () => {
 
 		const result = await asOrg.query(api.reportData.executeReport, {
 			entityType: "invoices",
-			groupBy: "dueDate_month",
-			aggregation: { op: "sum", field: "total" },
-			filters: {
-				logic: "and",
-				groups: [
-					{
-						logic: "or",
-						rules: [
-							{ field: "status", operator: "equals", value: "sent" },
-							{ field: "status", operator: "equals", value: "overdue" },
-						],
-					},
-				],
+			config: {
+				version: 2,
+				entityType: "invoices",
+				metric: { op: "sum", field: "total" },
+				groupBy: "dueDate_month",
+				filters: {
+					logic: "and",
+					groups: [
+						{
+							logic: "or",
+							rules: [
+								{ field: "status", operator: "equals", value: "sent" },
+								{ field: "status", operator: "equals", value: "overdue" },
+							],
+						},
+					],
+				},
 			},
 		});
 
 		expect(result.total).toBe(500);
-		expect(result.data).toEqual([{ label: "Jul 2024", value: 500, metadata: { dateKey: "2024-07" } }]);
+		expect(result.data).toEqual([
+			{ label: "Jul 2024", value: 500, bucketKey: "2024-07", metadata: { dateKey: "2024-07" } },
+		]);
 	});
 
 	// ==========================================================================
@@ -970,8 +985,7 @@ describe("reportData.executeReport", () => {
 
 		const result = await asOrg.query(api.reportData.executeReport, {
 			entityType: "tasks",
-			groupBy: "assigneeUserId",
-			aggregation: { op: "count" },
+			config: countConfig("tasks", "assigneeUserId"),
 		});
 
 		const byLabel = Object.fromEntries(result.data.map((d) => [d.label, d.value]));
@@ -984,17 +998,16 @@ describe("reportData.executeReport", () => {
 });
 
 describe("GROUP_BY_OPTIONS invariants", () => {
-	it("every GROUP_BY_OPTIONS value expands to an executable v2 config", () => {
+	it("every GROUP_BY_OPTIONS value resolves to an executable v2 config", () => {
 		for (const entity of Object.keys(GROUP_BY_OPTIONS) as ReportEntityType[]) {
 			for (const { value } of GROUP_BY_OPTIONS[entity]) {
-				const { config } = normalizeReportConfig(
-					{ entityType: entity, groupBy: [value] },
-					{ type: "bar" }
-				);
+				const { config } = configForGroupByKey(entity, value, {
+					visualization: { type: "bar" },
+				});
 				const groupable =
 					config.metric.op === "ratio" ||
 					(config.groupBy !== undefined && isGenericGroupBy(entity, config.groupBy));
-				expect(groupable, `${entity}.${value} must expand to something executable`).toBe(
+				expect(groupable, `${entity}.${value} must resolve to something executable`).toBe(
 					true
 				);
 			}
@@ -1132,347 +1145,6 @@ describe("evaluateReportFilters (pure function)", () => {
 	});
 });
 
-describe("related-rollup metrics (R5)", () => {
-	let t: ReturnType<typeof setupConvexTest>;
-
-	beforeEach(() => {
-		t = setupConvexTest();
-	});
-
-	async function seedOrg() {
-		const org = await t.run((ctx) =>
-			createTestOrg(ctx, { clerkUserId: "user_1", clerkOrgId: "org_1" })
-		);
-		const asOrg = t.withIdentity(createTestIdentity(org.clerkUserId, org.clerkOrgId));
-		return { org, asOrg };
-	}
-
-	const relatedConfig = (
-		entityType: ReportConfigV2["entityType"],
-		related: NonNullable<ReportConfigV2["metric"]["related"]>,
-		extra: Partial<ReportConfigV2> = {}
-	): ReportConfigV2 => ({
-		version: 2,
-		entityType,
-		metric: { op: "related", related },
-		...extra,
-	});
-
-	const sumInvoicesByProject = {
-		entity: "invoices",
-		fk: "projectId",
-		field: "total",
-		op: "sum",
-	} as const;
-
-	/** Three projects; Alpha has invoices totaling 800, Beta 200, Gamma none. */
-	async function seedProjectsWithInvoices() {
-		const { org, asOrg } = await seedOrg();
-		const seeded = await t.run(async (ctx) => {
-			const clientId = await createTestClient(ctx, org.orgId, {});
-			const alpha = await createTestProject(ctx, org.orgId, clientId, { title: "Alpha" });
-			const beta = await createTestProject(ctx, org.orgId, clientId, { title: "Beta" });
-			const gamma = await createTestProject(ctx, org.orgId, clientId, { title: "Gamma" });
-			await createTestInvoice(ctx, org.orgId, clientId, { projectId: alpha, total: 500 });
-			await createTestInvoice(ctx, org.orgId, clientId, { projectId: alpha, total: 300 });
-			await createTestInvoice(ctx, org.orgId, clientId, { projectId: beta, total: 200 });
-			return { clientId, alpha, beta, gamma };
-		});
-		return { org, asOrg, ...seeded };
-	}
-
-	it("equivalence pin: projects related sum(invoices.total) matches invoices groupBy projectId", async () => {
-		const { asOrg } = await seedProjectsWithInvoices();
-
-		const related = await asOrg.query(api.reportData.executeReport, {
-			entityType: "projects",
-			config: relatedConfig("projects", sumInvoicesByProject),
-		});
-		const grouped = await asOrg.query(api.reportData.executeReport, {
-			entityType: "invoices",
-			config: {
-				version: 2,
-				entityType: "invoices",
-				metric: { op: "sum", field: "total" },
-				groupBy: "projectId",
-			},
-		});
-
-		expect(related.data).toStrictEqual(grouped.data);
-		expect(related.total).toBe(grouped.total);
-		expect(related.total).toBe(1000);
-		expect(related.data.map((d) => d.label)).toStrictEqual(["Alpha", "Beta"]);
-		expect(related.metadata?.entityType).toBe("projects");
-		expect(related.metadata?.groupBy).toBe("projectId");
-		expect(related.metadata?.totalIsCurrency).toBe(true);
-		expect(related.metadata?.itemValueIsCurrency).toBe(true);
-		expect(related.metadata?.truncated).toBe(false);
-		expect(related.metadata?.truncatedEntities).toBeUndefined();
-	});
-
-	it("includeEmptyValues surfaces zero-children parents at 0", async () => {
-		const { asOrg } = await seedProjectsWithInvoices();
-		const result = await asOrg.query(api.reportData.executeReport, {
-			entityType: "projects",
-			config: relatedConfig("projects", sumInvoicesByProject, {
-				includeEmptyValues: true,
-			}),
-		});
-		expect(result.data.map((d) => ({ label: d.label, value: d.value }))).toStrictEqual([
-			{ label: "Alpha", value: 800 },
-			{ label: "Beta", value: 200 },
-			{ label: "Gamma", value: 0 },
-		]);
-		expect(result.total).toBe(1000);
-	});
-
-	it("parent filters narrow the universe and drop outside children from buckets AND total", async () => {
-		const { org, asOrg, clientId, beta } = await seedProjectsWithInvoices();
-		await t.run(async (ctx) => {
-			await ctx.db.patch(beta, { status: "cancelled" });
-			// A null-fk child: excluded everywhere (a rollup reports on parent records).
-			await createTestInvoice(ctx, org.orgId, clientId, { total: 9999 });
-		});
-		const result = await asOrg.query(api.reportData.executeReport, {
-			entityType: "projects",
-			config: relatedConfig("projects", sumInvoicesByProject, {
-				filters: {
-					logic: "and",
-					groups: [
-						{
-							logic: "and",
-							rules: [{ field: "status", operator: "equals", value: "planned" }],
-						},
-					],
-				},
-			}),
-		});
-		expect(result.data.map((d) => d.label)).toStrictEqual(["Alpha"]);
-		expect(result.total).toBe(800);
-	});
-
-	it("config.date bounds the CHILD scan with a child-registry date field", async () => {
-		const { org, asOrg, clientId, alpha } = await seedProjectsWithInvoices();
-		const jan = Date.UTC(2026, 0, 15);
-		const jun = Date.UTC(2026, 5, 15);
-		await t.run(async (ctx) => {
-			await createTestInvoice(ctx, org.orgId, clientId, {
-				projectId: alpha,
-				total: 50,
-				paidAt: jan,
-			});
-			await createTestInvoice(ctx, org.orgId, clientId, {
-				projectId: alpha,
-				total: 70,
-				paidAt: jun,
-			});
-		});
-		const result = await asOrg.query(api.reportData.executeReport, {
-			entityType: "projects",
-			config: relatedConfig("projects", sumInvoicesByProject, {
-				// paidAt exists on invoices (the child), not on projects — proving
-				// date.field resolves against the child registry.
-				date: {
-					field: "paidAt",
-					range: { kind: "absolute", start: Date.UTC(2026, 0, 1), end: Date.UTC(2026, 1, 1) },
-				},
-			}),
-		});
-		expect(result.data).toStrictEqual([
-			{ label: "Alpha", value: 50, metadata: { projectId: String(alpha) } },
-		]);
-		expect(result.total).toBe(50);
-	});
-
-	it("related.filters apply to the child scan and validate against the child registry", async () => {
-		const { org, asOrg, clientId, alpha } = await seedProjectsWithInvoices();
-		await t.run(async (ctx) => {
-			await createTestInvoice(ctx, org.orgId, clientId, {
-				projectId: alpha,
-				total: 60,
-				status: "paid",
-			});
-		});
-		const paidOnly = await asOrg.query(api.reportData.executeReport, {
-			entityType: "projects",
-			config: relatedConfig("projects", {
-				...sumInvoicesByProject,
-				filters: {
-					logic: "and",
-					groups: [
-						{ logic: "and", rules: [{ field: "status", operator: "equals", value: "paid" }] },
-					],
-				},
-			}),
-		});
-		expect(paidOnly.total).toBe(60);
-
-		await expect(
-			asOrg.query(api.reportData.executeReport, {
-				entityType: "projects",
-				config: relatedConfig("projects", {
-					...sumInvoicesByProject,
-					filters: {
-						logic: "and",
-						groups: [
-							{ logic: "and", rules: [{ field: "bogus", operator: "equals", value: 1 }] },
-						],
-					},
-				}),
-			})
-		).rejects.toThrow(/Unknown report filter field "bogus"/);
-	});
-
-	it("fail-closed validation: bad pair, bad date field, bad measure field, grouping", async () => {
-		const { asOrg } = await seedProjectsWithInvoices();
-
-		// quotes.clientId points at clients, not projects.
-		await expect(
-			asOrg.query(api.reportData.executeReport, {
-				entityType: "projects",
-				config: relatedConfig("projects", {
-					entity: "quotes",
-					fk: "clientId",
-					op: "count",
-				}),
-			})
-		).rejects.toThrow(/No registry FK "clientId" from entity "quotes" to entity "projects"/);
-
-		// tasks.assigneeUserId targets users, which is not a report entity.
-		await expect(
-			asOrg.query(api.reportData.executeReport, {
-				entityType: "clients",
-				config: relatedConfig("clients", {
-					entity: "tasks",
-					fk: "assigneeUserId",
-					op: "count",
-				}),
-			})
-		).rejects.toThrow(/No registry FK "assigneeUserId"/);
-
-		await expect(
-			asOrg.query(api.reportData.executeReport, {
-				entityType: "projects",
-				config: relatedConfig("projects", sumInvoicesByProject, {
-					date: { field: "companyName", range: { kind: "absolute", start: 0, end: 1 } },
-				}),
-			})
-		).rejects.toThrow(/Unknown report date field "companyName" for entity "invoices"/);
-
-		await expect(
-			asOrg.query(api.reportData.executeReport, {
-				entityType: "projects",
-				config: relatedConfig("projects", {
-					entity: "invoices",
-					fk: "projectId",
-					field: "status",
-					op: "sum",
-				}),
-			})
-		).rejects.toThrow(/not numeric/);
-
-		for (const extra of [{ groupBy: "status" }, { segmentBy: "status" }]) {
-			await expect(
-				asOrg.query(api.reportData.executeReport, {
-					entityType: "projects",
-					config: relatedConfig("projects", sumInvoicesByProject, extra),
-				})
-			).rejects.toThrow(/Related metrics do not support grouping/);
-		}
-	});
-
-	it("permission intersection: denied without allRecords on the CHILD entity", async () => {
-		const { org, asOrg } = await seedProjectsWithInvoices();
-		const member = await t.run((ctx) => addMemberToOrg(ctx, org.orgId));
-		await t.run(async (ctx) => {
-			const membership = await ctx.db
-				.query("organizationMemberships")
-				.withIndex("by_org_user", (q) => q.eq("orgId", org.orgId).eq("userId", member.userId))
-				.unique();
-			if (!membership) throw new Error("membership not found");
-			await ctx.db.patch(membership._id, {
-				permissions: {
-					reports: { level: "view" },
-					projects: { level: "view", allRecords: true },
-					invoices: { level: "view" },
-				},
-			});
-		});
-		const asMember = t.withIdentity(createTestIdentity(member.clerkUserId, org.clerkOrgId));
-
-		// Sanity: the parent-only report is allowed…
-		const plain = await asMember.query(api.reportData.executeReport, {
-			entityType: "projects",
-			config: { version: 2, entityType: "projects", metric: { op: "count" } },
-		});
-		expect(plain.total).toBe(3);
-
-		// …but the rollup needs the child's allRecords too, fail closed.
-		const caught = await asMember
-			.query(api.reportData.executeReport, {
-				entityType: "projects",
-				config: relatedConfig("projects", sumInvoicesByProject),
-			})
-			.then(
-				() => null,
-				(error: unknown) => error
-			);
-		expect(caught).not.toBeNull();
-
-		// The org admin still succeeds (control for the seed).
-		const admin = await asOrg.query(api.reportData.executeReport, {
-			entityType: "projects",
-			config: relatedConfig("projects", sumInvoicesByProject),
-		});
-		expect(admin.total).toBe(1000);
-	});
-
-	it(
-		"truncation provenance names the scan that hit the ceiling",
-		{ timeout: 120_000 },
-		async () => {
-			const { org, asOrg } = await seedOrg();
-			const clientId = await t.run((ctx) => createTestClient(ctx, org.orgId, {}));
-			const TOTAL = 10_001;
-			const BATCH = 500;
-			for (let start = 0; start < TOTAL; start += BATCH) {
-				const count = Math.min(BATCH, TOTAL - start);
-				await t.run(async (ctx) => {
-					for (let i = 0; i < count; i++) {
-						await ctx.db.insert("projects", {
-							orgId: org.orgId,
-							clientId,
-							title: "P",
-							status: "planned",
-							projectType: "one-off",
-						});
-					}
-				});
-			}
-			const result = await asOrg.query(api.reportData.executeReport, {
-				entityType: "projects",
-				config: relatedConfig("projects", { entity: "invoices", fk: "projectId", op: "count" }),
-			});
-			expect(result.metadata?.truncated).toBe(true);
-			expect(result.metadata?.truncatedEntities).toStrictEqual(["projects"]);
-		}
-	);
-
-	it("seriesLimit truncates parent buckets after sort; labels resolve from parent rows", async () => {
-		const { asOrg } = await seedProjectsWithInvoices();
-		const result = await asOrg.query(api.reportData.executeReport, {
-			entityType: "projects",
-			config: relatedConfig("projects", sumInvoicesByProject),
-			seriesLimit: 1,
-		});
-		expect(result.data.map((d) => ({ label: d.label, value: d.value }))).toStrictEqual([
-			{ label: "Alpha", value: 800 },
-		]);
-		// Scan-wide total is unaffected by the series limit.
-		expect(result.total).toBe(1000);
-	});
-});
-
 describe("registry widening (R6): payments + line items", () => {
 	let t: ReturnType<typeof setupConvexTest>;
 
@@ -1555,9 +1227,9 @@ describe("registry widening (R6): payments + line items", () => {
 			config: { version: 2, entityType: "payments", metric: { op: "count" }, groupBy: "status" },
 		});
 		expect(result.data).toStrictEqual([
-			{ label: "Pending", value: 1, metadata: { totalValue: 100 } },
-			{ label: "Paid", value: 1, metadata: { totalValue: 900 } },
-			{ label: "Overdue", value: 1, metadata: { totalValue: 250 } },
+			{ label: "Pending", value: 1, bucketKey: "pending", metadata: { totalValue: 100 } },
+			{ label: "Paid", value: 1, bucketKey: "paid", metadata: { totalValue: 900 } },
+			{ label: "Overdue", value: 1, bucketKey: "overdue", metadata: { totalValue: 250 } },
 		]);
 		expect(result.total).toBe(1250);
 		expect(result.metadata?.totalIsCurrency).toBe(true);
@@ -1619,26 +1291,6 @@ describe("registry widening (R6): payments + line items", () => {
 		expect(result.metadata?.itemValueIsCurrency).toBe(true);
 	});
 
-	it("invoices can roll up their payments (derived pair via payments.invoiceId)", async () => {
-		const { asOrg } = await seedFinancials();
-		const result = await asOrg.query(api.reportData.executeReport, {
-			entityType: "invoices",
-			config: {
-				version: 2,
-				entityType: "invoices",
-				metric: {
-					op: "related",
-					related: { entity: "payments", fk: "invoiceId", field: "paymentAmount", op: "sum" },
-				},
-			},
-		});
-		expect(result.data.map((d) => ({ label: d.label, value: d.value }))).toStrictEqual([
-			{ label: "INV-B", value: 900 },
-			{ label: "INV-A", value: 350 },
-		]);
-		expect(result.total).toBe(1250);
-	});
-
 	it("permission mapping: payments and invoiceLineItems gate on invoices, quoteLineItems on quotes", async () => {
 		const { org } = await seedFinancials();
 		const member = await t.run((ctx) => addMemberToOrg(ctx, org.orgId));
@@ -1679,5 +1331,460 @@ describe("registry widening (R6): payments + line items", () => {
 				);
 			expect(caught, entityType).not.toBeNull();
 		}
+	});
+});
+
+describe("drill-down: bucketKey on data points and detail scoping", () => {
+	let t: ReturnType<typeof setupConvexTest>;
+
+	beforeEach(() => {
+		t = setupConvexTest();
+	});
+
+	async function seedOrg(timezone?: string) {
+		const org = await t.run(async (ctx) => {
+			const setup = await createTestOrg(ctx, {
+				clerkUserId: "user_1",
+				clerkOrgId: "org_1",
+			});
+			if (timezone) await ctx.db.patch(setup.orgId, { timezone });
+			return setup;
+		});
+		const asOrg = t.withIdentity(createTestIdentity(org.clerkUserId, org.clerkOrgId));
+		return { org, asOrg };
+	}
+
+	const countConfig = (
+		entityType: ReportConfigV2["entityType"],
+		groupBy?: string,
+		extra: Partial<ReportConfigV2> = {}
+	): ReportConfigV2 => ({
+		version: 2,
+		entityType,
+		metric: { op: "count" },
+		...(groupBy ? { groupBy } : {}),
+		...extra,
+	});
+
+	// ==========================================================================
+	// 1. Data points expose the raw bucket key
+	// ==========================================================================
+
+	it("bucketKey: direct field grouping carries the raw field value", async () => {
+		const { org, asOrg } = await seedOrg();
+		await t.run(async (ctx) => {
+			await createTestClient(ctx, org.orgId, { status: "lead" });
+			await createTestClient(ctx, org.orgId, { status: "active" });
+			await createTestClient(ctx, org.orgId, {});
+		});
+
+		const result = await asOrg.query(api.reportData.executeReport, {
+			entityType: "clients",
+			config: countConfig("clients", "leadSource"),
+		});
+
+		// Only the null-leadSource rows exist, so the single bucket is "unknown".
+		expect(result.data.map((d) => d.bucketKey)).toEqual(["unknown"]);
+
+		const byStatus = await asOrg.query(api.reportData.executeReport, {
+			entityType: "clients",
+			config: countConfig("clients", "status"),
+		});
+		expect(byStatus.data.map((d) => ({ label: d.label, bucketKey: d.bucketKey }))).toEqual([
+			{ label: "Lead", bucketKey: "lead" },
+			{ label: "Active", bucketKey: "active" },
+		]);
+	});
+
+	it("bucketKey: month grouping carries the dateKey", async () => {
+		const { org, asOrg } = await seedOrg();
+		const clientId = await t.run((ctx) => createTestClient(ctx, org.orgId));
+		await t.run(async (ctx) => {
+			await createTestInvoice(ctx, org.orgId, clientId, {
+				issuedDate: Date.UTC(2026, 0, 15),
+			});
+			await createTestInvoice(ctx, org.orgId, clientId, {
+				issuedDate: Date.UTC(2026, 1, 10),
+			});
+		});
+
+		const result = await asOrg.query(api.reportData.executeReport, {
+			entityType: "invoices",
+			config: countConfig("invoices", "issuedDate_month"),
+		});
+
+		expect(result.data.map((d) => d.bucketKey)).toEqual(["2026-01", "2026-02"]);
+	});
+
+	it("bucketKey: dotted-path grouping carries the resolved value, broken paths their prefixed key", async () => {
+		const { org, asOrg } = await seedOrg();
+		await t.run(async (ctx) => {
+			const acme = await createTestClient(ctx, org.orgId, {
+				companyName: "Acme",
+				leadSource: "website",
+			});
+			await createTestTask(ctx, org.orgId, { clientId: acme });
+			await createTestTask(ctx, org.orgId, {});
+		});
+
+		const result = await asOrg.query(api.reportData.executeReport, {
+			entityType: "tasks",
+			config: countConfig("tasks", "clientId.leadSource"),
+		});
+
+		expect(result.data.map((d) => ({ label: d.label, bucketKey: d.bucketKey }))).toEqual([
+			{ label: "Website", bucketKey: "website" },
+			{ label: "No Client", bucketKey: "__broken:clients" },
+		]);
+	});
+
+	it("bucketKey: the ungrouped Total point has none", async () => {
+		const { org, asOrg } = await seedOrg();
+		await t.run((ctx) => createTestClient(ctx, org.orgId));
+
+		const result = await asOrg.query(api.reportData.executeReport, {
+			entityType: "clients",
+			config: countConfig("clients"),
+		});
+
+		expect(result.data).toEqual([{ label: "Total", value: 1 }]);
+	});
+
+	// ==========================================================================
+	// 2. detail.bucketKey scopes the scanned rows
+	// ==========================================================================
+
+	it("detail bucketKey: direct-field bucket returns only its rows", async () => {
+		const { org, asOrg } = await seedOrg();
+		const clientId = await t.run((ctx) => createTestClient(ctx, org.orgId));
+		await t.run(async (ctx) => {
+			await createTestQuote(ctx, org.orgId, clientId, { status: "sent", quoteNumber: "Q-1" });
+			await createTestQuote(ctx, org.orgId, clientId, { status: "sent", quoteNumber: "Q-2" });
+			await createTestQuote(ctx, org.orgId, clientId, { status: "draft", quoteNumber: "Q-3" });
+		});
+
+		const result = await asOrg.query(api.reportData.executeReport, {
+			entityType: "quotes",
+			config: countConfig("quotes", "status"),
+			detail: { columns: ["quoteNumber", "status"], bucketKey: "sent" },
+		});
+
+		expect(result.detail?.rows.map((r) => r.quoteNumber).sort()).toEqual(["Q-1", "Q-2"]);
+		expect(result.detail?.totalMatched).toBe(2);
+		expect(result.detail?.rowsTruncated).toBe(false);
+		expect(result.total).toBe(2);
+	});
+
+	it("detail bucketKey: the 'unknown' bucket returns the null-valued rows", async () => {
+		const { org, asOrg } = await seedOrg();
+		await t.run(async (ctx) => {
+			await createTestClient(ctx, org.orgId, {
+				companyName: "Has Source",
+				leadSource: "website",
+			});
+			await createTestClient(ctx, org.orgId, { companyName: "No Source" });
+		});
+
+		const result = await asOrg.query(api.reportData.executeReport, {
+			entityType: "clients",
+			config: countConfig("clients", "leadSource"),
+			detail: { columns: ["companyName"], bucketKey: "unknown" },
+		});
+
+		expect(result.detail?.rows.map((r) => r.companyName)).toEqual(["No Source"]);
+		expect(result.detail?.totalMatched).toBe(1);
+	});
+
+	it("detail bucketKey: month bucket uses the org calendar, not UTC", async () => {
+		const { org, asOrg } = await seedOrg("Pacific/Auckland");
+		const clientId = await t.run((ctx) => createTestClient(ctx, org.orgId));
+		// 2026-01-31 20:00 UTC is 2026-02-01 09:00 in Auckland (UTC+13 in January).
+		await t.run(async (ctx) => {
+			await createTestInvoice(ctx, org.orgId, clientId, {
+				invoiceNumber: "INV-BOUNDARY",
+				issuedDate: Date.UTC(2026, 0, 31, 20, 0),
+			});
+			await createTestInvoice(ctx, org.orgId, clientId, {
+				invoiceNumber: "INV-MID-JAN",
+				issuedDate: Date.UTC(2026, 0, 15, 0, 0),
+			});
+		});
+
+		const config = countConfig("invoices", "issuedDate_month");
+		const feb = await asOrg.query(api.reportData.executeReport, {
+			entityType: "invoices",
+			config,
+			detail: { columns: ["invoiceNumber"], bucketKey: "2026-02" },
+		});
+		expect(feb.detail?.rows.map((r) => r.invoiceNumber)).toEqual(["INV-BOUNDARY"]);
+		expect(feb.detail?.totalMatched).toBe(1);
+
+		const jan = await asOrg.query(api.reportData.executeReport, {
+			entityType: "invoices",
+			config,
+			detail: { columns: ["invoiceNumber"], bucketKey: "2026-01" },
+		});
+		expect(jan.detail?.rows.map((r) => r.invoiceNumber)).toEqual(["INV-MID-JAN"]);
+	});
+
+	it("detail bucketKey: dotted-path bucket scopes line items to one client", async () => {
+		const { org, asOrg } = await seedOrg();
+		await t.run(async (ctx) => {
+			const acme = await createTestClient(ctx, org.orgId, { companyName: "Acme" });
+			const globex = await createTestClient(ctx, org.orgId, { companyName: "Globex" });
+			const acmeQuote = await createTestQuote(ctx, org.orgId, acme, { quoteNumber: "Q-A" });
+			const globexQuote = await createTestQuote(ctx, org.orgId, globex, { quoteNumber: "Q-G" });
+			const lineItem = (quoteId: Id<"quotes">, description: string) =>
+				ctx.db.insert("quoteLineItems", {
+					orgId: org.orgId,
+					quoteId,
+					description,
+					quantity: 1,
+					unit: "hour",
+					rate: 100,
+					amount: 100,
+					sortOrder: 0,
+				});
+			await lineItem(acmeQuote, "Acme mow");
+			await lineItem(acmeQuote, "Acme edge");
+			await lineItem(globexQuote, "Globex mow");
+		});
+
+		const result = await asOrg.query(api.reportData.executeReport, {
+			entityType: "quoteLineItems",
+			config: countConfig("quoteLineItems", "quoteId.clientId.companyName"),
+			detail: { columns: ["description", "amount"], bucketKey: "Acme" },
+		});
+
+		expect(result.detail?.rows.map((r) => r.description).sort()).toEqual([
+			"Acme edge",
+			"Acme mow",
+		]);
+		expect(result.detail?.totalMatched).toBe(2);
+	});
+
+	it("detail bucketKey: the broken-path bucket returns the rows whose path breaks", async () => {
+		const { org, asOrg } = await seedOrg();
+		await t.run(async (ctx) => {
+			const acme = await createTestClient(ctx, org.orgId, {
+				companyName: "Acme",
+				leadSource: "website",
+			});
+			await createTestTask(ctx, org.orgId, { clientId: acme, title: "Has client" });
+			await createTestTask(ctx, org.orgId, { title: "No client" });
+		});
+
+		const result = await asOrg.query(api.reportData.executeReport, {
+			entityType: "tasks",
+			config: countConfig("tasks", "clientId.leadSource"),
+			detail: { columns: ["title"], bucketKey: "__broken:clients" },
+		});
+
+		expect(result.detail?.rows.map((r) => r.title)).toEqual(["No client"]);
+		expect(result.detail?.totalMatched).toBe(1);
+	});
+
+	it("detail bucketKey: without a groupBy it throws", async () => {
+		const { asOrg } = await seedOrg();
+
+		await expect(
+			asOrg.query(api.reportData.executeReport, {
+				entityType: "quotes",
+				config: countConfig("quotes"),
+				detail: { columns: ["quoteNumber"], bucketKey: "sent" },
+			})
+		).rejects.toThrow(/requires a groupBy/);
+	});
+
+	it("detail bucketKey: scoping composes with the row cap", async () => {
+		const { org, asOrg } = await seedOrg();
+		const clientId = await t.run((ctx) => createTestClient(ctx, org.orgId));
+		await t.run(async (ctx) => {
+			for (let i = 0; i < 5; i++) {
+				await createTestQuote(ctx, org.orgId, clientId, { status: "sent" });
+			}
+			await createTestQuote(ctx, org.orgId, clientId, { status: "draft" });
+		});
+
+		const result = await asOrg.query(api.reportData.executeReport, {
+			entityType: "quotes",
+			config: countConfig("quotes", "status"),
+			detail: { columns: ["status"], bucketKey: "sent", limit: 3 },
+		});
+
+		expect(result.detail?.rows).toHaveLength(3);
+		expect(result.detail?.totalMatched).toBe(5);
+		expect(result.detail?.rowsTruncated).toBe(true);
+		expect(result.total).toBe(5);
+	});
+
+	// ==========================================================================
+	// 3. Detail rows carry their record id
+	// ==========================================================================
+
+	it("detail rows carry the record _id as `id`", async () => {
+		const { org, asOrg } = await seedOrg();
+		const clientId = await t.run((ctx) => createTestClient(ctx, org.orgId));
+		const quoteId = await t.run((ctx) =>
+			createTestQuote(ctx, org.orgId, clientId, { status: "sent", quoteNumber: "Q-1" })
+		);
+
+		const result = await asOrg.query(api.reportData.executeReport, {
+			entityType: "quotes",
+			config: detailConfig("quotes"),
+			detail: { columns: ["quoteNumber"] },
+		});
+
+		expect(result.detail?.rows).toEqual([
+			{ id: quoteId, quoteNumber: "Q-1", refs: { clientId } },
+		]);
+	});
+
+	// ==========================================================================
+	// 4. FK fields as detail columns
+	// ==========================================================================
+
+	it("detail: a registered FK column returns the raw id string", async () => {
+		const { org, asOrg } = await seedOrg();
+		await t.run((ctx) =>
+			createTestTask(ctx, org.orgId, { assigneeUserId: org.userId, title: "Mow" })
+		);
+
+		const result = await asOrg.query(api.reportData.executeReport, {
+			entityType: "tasks",
+			config: detailConfig("tasks"),
+			detail: { columns: ["title", "assigneeUserId"] },
+		});
+
+		expect(result.detail?.rows[0].assigneeUserId).toBe(org.userId);
+		expect(result.detail?.columns).toContainEqual({
+			field: "assigneeUserId",
+			label: "Assignee",
+			type: "string",
+		});
+	});
+
+	// REPORT_FIELDS deliberately omits v.id foreign keys, so parent links come
+	// from the per-row `refs` map, never from a column.
+	it.each([
+		["tasks", "projectId"],
+		["payments", "invoiceId"],
+		["quoteLineItems", "quoteId"],
+	] as const)("detail: %s.%s is not an accepted column", async (entityType, column) => {
+		const { asOrg } = await seedOrg();
+
+		await expect(
+			asOrg.query(api.reportData.executeReport, {
+				entityType,
+				config: detailConfig(entityType),
+				detail: { columns: [column] },
+			})
+		).rejects.toThrow(/Unknown report detail column/);
+	});
+
+	// ==========================================================================
+	// 4b. Detail rows expose their FK ids through `refs`
+	// ==========================================================================
+
+	it("detail refs: line item rows carry their parent quote id", async () => {
+		const { org, asOrg } = await seedOrg();
+		const { quoteId } = await t.run(async (ctx) => {
+			const clientId = await createTestClient(ctx, org.orgId, { companyName: "Acme" });
+			const quoteId = await createTestQuote(ctx, org.orgId, clientId, {
+				quoteNumber: "Q-A",
+			});
+			await ctx.db.insert("quoteLineItems", {
+				orgId: org.orgId,
+				quoteId,
+				description: "Acme mow",
+				quantity: 1,
+				unit: "hour",
+				rate: 100,
+				amount: 100,
+				sortOrder: 0,
+			});
+			return { quoteId };
+		});
+
+		const result = await asOrg.query(api.reportData.executeReport, {
+			entityType: "quoteLineItems",
+			config: detailConfig("quoteLineItems"),
+			detail: { columns: ["description"] },
+		});
+
+		// skuId is unset, so only the edge the row actually carries appears.
+		expect(result.detail?.rows).toEqual([
+			{ id: expect.any(String), description: "Acme mow", refs: { quoteId } },
+		]);
+	});
+
+	it("detail refs: every set edge appears; a row with no edges has no refs", async () => {
+		const { org, asOrg } = await seedOrg();
+		const { clientId, projectId } = await t.run(async (ctx) => {
+			const clientId = await createTestClient(ctx, org.orgId);
+			const projectId = await createTestProject(ctx, org.orgId, clientId);
+			await createTestTask(ctx, org.orgId, {
+				title: "Linked",
+				clientId,
+				projectId,
+				date: Date.UTC(2026, 0, 2),
+			});
+			await createTestTask(ctx, org.orgId, { title: "Orphan", date: Date.UTC(2026, 0, 1) });
+			return { clientId, projectId };
+		});
+
+		const result = await asOrg.query(api.reportData.executeReport, {
+			entityType: "tasks",
+			config: detailConfig("tasks"),
+			detail: { columns: ["title"] },
+		});
+
+		const rows = result.detail?.rows ?? [];
+		const linked = rows.find((r) => r.title === "Linked");
+		const orphan = rows.find((r) => r.title === "Orphan");
+		expect(linked?.refs).toEqual({ projectId, clientId });
+		// No assignee, project or client — the map is omitted, not left empty.
+		expect(orphan).toEqual({ id: expect.any(String), title: "Orphan" });
+	});
+
+	it("detail refs: an entity with no relation edges never carries refs", async () => {
+		const { org, asOrg } = await seedOrg();
+		await t.run((ctx) => createTestClient(ctx, org.orgId, { companyName: "Acme" }));
+
+		const result = await asOrg.query(api.reportData.executeReport, {
+			entityType: "clients",
+			config: detailConfig("clients"),
+			detail: { columns: ["companyName"] },
+		});
+
+		expect(result.detail?.rows).toEqual([
+			{ id: expect.any(String), companyName: "Acme" },
+		]);
+	});
+
+	// ==========================================================================
+	// 5. Ratio config + detail
+	// ==========================================================================
+
+	it("detail against a ratio config returns plain rows instead of throwing", async () => {
+		const { org, asOrg } = await seedOrg();
+		const clientId = await t.run((ctx) => createTestClient(ctx, org.orgId));
+		await t.run(async (ctx) => {
+			await createTestQuote(ctx, org.orgId, clientId, { status: "approved" });
+			await createTestQuote(ctx, org.orgId, clientId, { status: "declined" });
+		});
+
+		const result = await asOrg.query(api.reportData.executeReport, {
+			entityType: "quotes",
+			config: {
+				version: 2,
+				entityType: "quotes",
+				metric: { op: "ratio", ratioKey: "conversionRate" },
+			},
+			detail: { columns: ["status"] },
+		});
+
+		expect(result.detail?.rows.map((r) => r.status).sort()).toEqual(["approved", "declined"]);
+		expect(result.detail?.totalMatched).toBe(2);
 	});
 });

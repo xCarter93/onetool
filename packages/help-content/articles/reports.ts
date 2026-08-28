@@ -45,11 +45,12 @@ export const reportsArticles: HelpArticle[] = [
 					{
 						type: "steps",
 						items: [
-							"Pick a **Visualization**: **Single metric** shows one figure, like total revenue this month. **Table** lists grouped totals, or raw records when nothing is grouped, except for rate and linked-record metrics, which always show totals. **Bar**, **Column**, **Area**, **Pie**, **Radar**, and **Radial** draw grouped data. Your choice decides which settings appear below it.",
+							"Pick a **Visualization**: **Single metric** shows one figure, like total revenue this month. **Table** lists grouped totals, or raw records when nothing is grouped, except for rate metrics, which always show totals. **Bar**, **Column**, **Area**, **Pie**, **Radar**, and **Radial** draw grouped data. Your choice decides which settings appear below it.",
 							"Under **Data source**, pick what you are reporting on: Clients, Projects, Tasks, Quotes, Invoices, Payments, Quote Line Items, Invoice Line Items, or Activities.",
 							"Set the **Date range**. Choose a ready-made range (Today through Last Year, or All Time) or pick **Custom Range** to set exact dates. When the source has more than one date, a **Date field** picker chooses which one the range applies to, like an invoice's issued date versus its paid date.",
+							"Use **Compare** to measure the range against a second one: **Previous period**, **Previous year**, or a **Custom range** you pick. A comparison needs both a start and an end date, so All Time greys the control out, and Pie, Radar, and Radial charts do not offer it. A chart can draw only one second series, so turning on Compare clears **Segment by**, and picking a segment clears Compare.",
 							"Add **Filters** to narrow the data. Each filter is a row: a field, a condition, and a value. The **And/Or** chip between rows switches how they combine, and fields from linked records work too, so line items can filter by **Quote › Status**. Date fields filter with **is before**, **is after**, and **is on**. For rules in separate groups, open **Advanced filter**: a panel opens beside the settings where you build groups of rules and drag filters between them.",
-							"The **Metric** section sets what the report counts and what each row stands for. Start at the top with what to measure. The target can be the count of records, a number field, a field from linked records like **Invoices › Total** on a client report, or a named rate like **Conversion rate**. Fields get an aggregation dropdown next to the target: **Sum**, **Average**, **Min**, or **Max**.",
+							"The **Metric** section sets what the report counts and what each row stands for. Start at the top with what to measure. The target can be the count of records, a number field, or a named rate like **Conversion rate**. Number fields get an aggregation dropdown next to the target: **Sum**, **Average**, **Min**, or **Max**. To total one record type against another, report on those records themselves and group them by the linked record, so invoices summed by **Client** gives you total invoiced per client.",
 							"Under the metric, the **per** row decides what each bar, slice, or row represents, so the panel reads \"Count of records per Status\". The picker lists the source's own fields first, and entries like **Quote ›** step into a linked record, so line items can group by their quote's project or client. Typing in the search box finds fields anywhere in the chain. Date groupings offer **Day**, **Week**, and **Month** buckets, and groupings with a fixed set of values can **Include empty values** to show zero-count groups.",
 							"On a Table, a **Columns** picker sits at the bottom of the **Metric** section and chooses the fields each record row shows. A table shows grouped totals or raw records, never both, so picking columns sets **per** to **None (raw rows)**, and picking a grouping clears the columns.",
 						"On bar and column charts, **Segment by** splits each bar into stacked segments by a second field, like status within each month.",
@@ -81,7 +82,7 @@ export const reportsArticles: HelpArticle[] = [
 				blocks: [
 					{
 						type: "paragraph",
-						text: "The bar under the preview keeps the numbers behind the picture. **Calculated values** expands to show the total, the group count, what the report measures, and for charts the full data table. The same bar appears on saved reports, where it also has **Download CSV** to save exactly what is on screen as a spreadsheet file.",
+						text: "The bar under the preview keeps the numbers behind the picture. **Calculated values** expands to show the total, the group count, what the report measures, and for charts the full data table. With a comparison set, every figure gets its earlier value alongside it. A single metric shows the change under the headline number, tables and Calculated values add **Previous** and **Change** columns, and bar, column, and area charts draw the comparison as a second muted series. **View contributing data** opens a panel listing the records those numbers come from, and each row links to the record itself. Click a chart bar or slice, or a row in Calculated values, to narrow the panel to that group. The same bar appears on saved reports, where it also has **Download CSV** to save exactly what is on screen as a spreadsheet file, and the panel gets its own **Download CSV** there too.",
 					},
 				],
 			},
@@ -98,6 +99,10 @@ export const reportsArticles: HelpArticle[] = [
 					{
 						type: "paragraph",
 						text: "Saved reports live in the **Your reports** list on the Reports page, with their type and when they were last updated. Click one to open it. From an open report, **Edit** reopens the builder and **Duplicate** makes a copy you can change without touching the original. To delete a report, hover its row in the list and click the trash icon; OneTool asks you to confirm first.",
+					},
+					{
+						type: "note",
+						text: "The Free plan includes 5 saved reports at a time, and the Business plan has no limit. Creating a report uses a slot, and so does duplicating one; deleting a report frees its slot straight away.",
 					},
 					{
 						type: "media",
@@ -150,11 +155,11 @@ export const reportsArticles: HelpArticle[] = [
 				blocks: [
 					{
 						type: "paragraph",
-						text: "A preset is a ready-made report: the source, grouping, date range, and chart type come pre-filled, so you get a working answer in a couple of clicks. OneTool includes 14 presets across three groups: Revenue & money (invoices, income, and billing), Sales pipeline (quotes, leads, and conversion), and Operations (projects, tasks, and team).",
+						text: "A preset is a ready-made report: the source, grouping, date range, and chart type come pre-filled, so you get a working answer in a couple of clicks. OneTool includes 16 presets across three groups: Revenue & money (invoices, income, and billing), Sales pipeline (quotes, leads, and conversion), and Operations (projects, tasks, and team).",
 					},
 					{
 						type: "paragraph",
-						text: "Highlights include Revenue by month, Overdue invoices, Quote conversion rate, Top clients by revenue, and Team workload.",
+						text: "Highlights include Revenue by month, Revenue by project, Overdue invoices, Quote conversion rate, Top clients by revenue, and Team workload.",
 					},
 				],
 			},

@@ -11,13 +11,17 @@ import {
 	TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { formatDate, formatReportValue } from "../report-config";
-import { entityLabel } from "../report-path-options";
+import { formatCurrency } from "@/lib/money";
+import { formatDate, formatReportValue, percentChange } from "../report-config";
 
 interface DataPoint {
 	name: string;
 	value: number;
 	totalValue?: number;
+	/** Same bucket over the comparison range (R11); absent when not comparing. */
+	compareValue?: number;
+	/** Drill-down key for this bucket; absent on ungrouped results. */
+	bucketKey?: string;
 	[key: string]: unknown;
 }
 
@@ -32,22 +36,26 @@ interface ReportTableProps {
 	data: DataPoint[];
 	total: number;
 	groupBy?: string;
+	/** Part of the shared chart-props bag; the aggregated table doesn't read it. */
 	entityType: string;
-	/** A related rollup buckets by source record, so its rows are records, not categories. */
-	metricIsRelated?: boolean;
 	/** Is `total` a dollar amount? Explicit, from the caller — see getReportValueTypes. */
 	totalIsCurrency?: boolean;
 	/** Is each row's `value` a dollar amount (vs. a count)? */
 	itemValueIsCurrency?: boolean;
 	/** Names the aggregated value column; callers that always count can omit it. */
 	valueHeader?: string;
+	/** Names the comparison range ("Previous period"); adds Previous + Change columns. */
+	compareLabel?: string;
 	/** When set, renders the flat detail-mode table instead of the aggregated one. */
 	detail?: DetailResult;
+	/** Drill-down (R10): makes each group label a button opening that bucket's records. */
+	onBucketClick?: (bucketKey: string, bucketLabel: string) => void;
 }
 
 function formatDetailCell(value: string | number | boolean | null, type: ReportFieldType): string {
 	if (value === null) return "—";
-	if (type === "currency" && typeof value === "number") return formatReportValue(value, true);
+	// Raw rows are record-level amounts — exact cents, matching the CSV export.
+	if (type === "currency" && typeof value === "number") return formatCurrency(value);
 	if (type === "timestamp" && typeof value === "number") return formatDate(value);
 	if (type === "boolean") return value ? "Yes" : "No";
 	if (type === "number" && typeof value === "number") return value.toLocaleString("en-US");
@@ -93,12 +101,12 @@ export function ReportTable({
 	data,
 	total,
 	groupBy,
-	entityType,
-	metricIsRelated = false,
 	totalIsCurrency = false,
 	itemValueIsCurrency = false,
 	valueHeader = "Count",
+	compareLabel,
 	detail,
+	onBucketClick,
 }: ReportTableProps) {
 	if (detail) {
 		return <ReportDetailTable detail={detail} />;
@@ -106,7 +114,7 @@ export function ReportTable({
 
 	// Sum of item `value`s, used only for the %-of-category and average calcs
 	// below. Never the headline "Total:" figure — that must come from the
-	// `total` prop (a ratio/related metric's total is not this sum).
+	// `total` prop (a ratio metric's total is not this sum).
 	const itemValueSum = data.reduce((sum, d) => sum + d.value, 0);
 	const averageValue = itemValueSum / (data.length || 1);
 
@@ -117,6 +125,10 @@ export function ReportTable({
 
 	// Sort by value descending
 	const sortedData = [...data].sort((a, b) => b.value - a.value);
+
+	const showCompare =
+		compareLabel !== undefined &&
+		data.some((d) => typeof d.compareValue === "number");
 
 	return (
 		<div className="space-y-4">
@@ -139,11 +151,15 @@ export function ReportTable({
 							<TableHead>
 								{groupBy
 									? groupBy.charAt(0).toUpperCase() + groupBy.slice(1)
-									: metricIsRelated
-										? entityLabel(entityType)
-										: "Category"}
+									: "Category"}
 							</TableHead>
 							<TableHead className="text-right">{valueHeader}</TableHead>
+							{showCompare && (
+								<>
+									<TableHead className="text-right">Previous</TableHead>
+									<TableHead className="text-right">Change</TableHead>
+								</>
+							)}
 							<TableHead className="text-right">%</TableHead>
 							{sortedData.some((d) => d.totalValue !== undefined) && (
 								<TableHead className="text-right">Value</TableHead>
@@ -157,6 +173,11 @@ export function ReportTable({
 									? ((item.value / itemValueSum) * 100).toFixed(1)
 									: "0";
 
+							const change =
+								typeof item.compareValue === "number"
+									? percentChange(item.value, item.compareValue)
+									: undefined;
+
 							return (
 								<TableRow key={item.name}>
 									<TableCell className="text-muted-foreground font-mono text-sm">
@@ -164,9 +185,21 @@ export function ReportTable({
 									</TableCell>
 									<TableCell>
 										<div className="flex items-center gap-2">
-											<span className="font-medium text-foreground">
-												{item.name}
-											</span>
+											{onBucketClick && item.bucketKey ? (
+												<button
+													type="button"
+													onClick={() =>
+														onBucketClick(item.bucketKey!, item.name)
+													}
+													className="rounded-sm font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+												>
+													{item.name}
+												</button>
+											) : (
+												<span className="font-medium text-foreground">
+													{item.name}
+												</span>
+											)}
 											{index === 0 && (
 												<Badge variant="secondary" className="text-xs">
 													Top
@@ -177,6 +210,22 @@ export function ReportTable({
 									<TableCell className="text-right font-mono">
 										{formatReportValue(item.value, itemValueIsCurrency)}
 									</TableCell>
+									{showCompare && (
+										<>
+											<TableCell className="text-right font-mono">
+												{typeof item.compareValue === "number"
+													? formatReportValue(
+															item.compareValue,
+															itemValueIsCurrency
+														)
+													: "—"}
+											</TableCell>
+											{/* Direction reads from the sign, never from color. */}
+											<TableCell className="text-right font-mono text-primary">
+												{change ?? "—"}
+											</TableCell>
+										</>
+									)}
 									<TableCell className="text-right">
 										<div className="flex items-center justify-end gap-2">
 											<div className="w-16 h-2 rounded-full bg-muted overflow-hidden">

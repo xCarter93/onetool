@@ -15,9 +15,13 @@ import { ReportRadarChart } from "./report-radar-chart";
 import { ReportRadialChart } from "./report-radial-chart";
 import { ReportTable } from "./report-table";
 import {
+	COMPARE_TRUNCATION_NOTICE,
+	comparisonKindLabel,
 	formatReportValue,
 	metricOptionsFor,
 	metricToValue,
+	percentChange,
+	pointsChange,
 	resolveReportQueryArgs,
 	TRUNCATION_NOTICE,
 	type ReportConfigV2,
@@ -28,6 +32,8 @@ import { pathLabel } from "../report-path-options";
 interface ReportPreviewProps {
 	config: ReportConfigV2;
 	visualization: ReportVisualization;
+	/** Drill-down (R10): fires when a chart element with a bucketKey is clicked. */
+	onBucketClick?: (bucketKey: string, bucketLabel: string) => void;
 }
 
 /** Honest failure state: a config the pipeline rejects (or a denied read) shows why instead of white-screening. */
@@ -81,7 +87,11 @@ function metricLabelFor(config: ReportConfigV2): string {
 	);
 }
 
-function ReportPreviewInner({ config, visualization }: ReportPreviewProps) {
+function ReportPreviewInner({
+	config,
+	visualization,
+	onBucketClick,
+}: ReportPreviewProps) {
 	const queryArgs = useDebouncedValue(
 		resolveReportQueryArgs(config, visualization),
 		300
@@ -97,12 +107,20 @@ function ReportPreviewInner({ config, visualization }: ReportPreviewProps) {
 	}
 
 	// Every branch renders this, empty states included — a truncated scan may have stopped before finding matches.
-	const truncationBanner = reportData.metadata?.truncated === true && (
+	const truncated = reportData.metadata?.truncated === true;
+	const compareTruncated = reportData.metadata?.compareTruncated === true;
+	const truncationBanner = (truncated || compareTruncated) && (
 		<div className="flex items-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
 			<TriangleAlert className="h-3.5 w-3.5 shrink-0" />
-			<span>{TRUNCATION_NOTICE}</span>
+			<span>{truncated ? TRUNCATION_NOTICE : COMPARE_TRUNCATION_NOTICE}</span>
 		</div>
 	);
+
+	// Absent unless the pipeline actually ran a comparison (it strips unsupported ones).
+	const comparison = config.date?.comparison;
+	const compareLabel = comparison
+		? comparisonKindLabel(comparison.kind)
+		: undefined;
 
 	if (reportData.detail) {
 		if (reportData.detail.rows.length === 0) {
@@ -135,10 +153,18 @@ function ReportPreviewInner({ config, visualization }: ReportPreviewProps) {
 	// "Total" data point is the whole result.
 	if (visualization.type === "number") {
 		const totalIsCurrency = reportData.metadata?.totalIsCurrency === true;
-		const display =
-			config.metric.op === "ratio"
-				? `${reportData.total}%`
-				: formatReportValue(reportData.total, totalIsCurrency);
+		const isRatio = config.metric.op === "ratio";
+		const display = isRatio
+			? `${reportData.total}%`
+			: formatReportValue(reportData.total, totalIsCurrency);
+		const compareTotal = reportData.metadata?.compareTotal;
+		// 0 is a real comparison total, so test the type, not truthiness.
+		const delta =
+			typeof compareTotal === "number" && compareLabel
+				? isRatio
+					? pointsChange(reportData.total, compareTotal)
+					: percentChange(reportData.total, compareTotal)
+				: undefined;
 		return (
 			<div className="flex min-h-[300px] flex-1 flex-col items-center justify-center gap-2 text-center">
 				{truncationBanner}
@@ -146,6 +172,22 @@ function ReportPreviewInner({ config, visualization }: ReportPreviewProps) {
 					{display}
 				</p>
 				<p className="text-sm text-muted-foreground">{metricLabelFor(config)}</p>
+				{typeof compareTotal === "number" && compareLabel && (
+					<p className="text-sm">
+						{/* Direction reads from the sign, never from a red/green tint. */}
+						<span className="font-medium tabular-nums text-primary">
+							{delta ??
+								`Previous: ${
+									isRatio
+										? `${compareTotal}%`
+										: formatReportValue(compareTotal, totalIsCurrency)
+								}`}
+						</span>{" "}
+						<span className="text-muted-foreground">
+							vs {compareLabel.toLowerCase()}
+						</span>
+					</p>
+				)}
 			</div>
 		);
 	}
@@ -171,11 +213,14 @@ function ReportPreviewInner({ config, visualization }: ReportPreviewProps) {
 			? reportData.metadata?.segments
 			: undefined;
 
+	// bucketKey lands after the metadata spread so a metadata key can't shadow it.
 	const chartData = reportData.data.map((item) => ({
 		name: item.label,
 		value: item.value,
 		...((item.metadata || {}) as Record<string, unknown>),
 		...(segments ? (item.segments ?? {}) : {}),
+		compareValue: item.compareValue,
+		bucketKey: item.bucketKey,
 	}));
 
 	const total = reportData.total;
@@ -212,8 +257,10 @@ function ReportPreviewInner({ config, visualization }: ReportPreviewProps) {
 						totalIsCurrency={totalIsCurrency}
 						itemValueIsCurrency={itemValueIsCurrency}
 						segments={segments}
+						compareLabel={compareLabel}
 						axisLabels={barAxisLabels}
 						targetLine={targetLine}
+						onBucketClick={onBucketClick}
 					/>
 				);
 			case "column":
@@ -226,8 +273,10 @@ function ReportPreviewInner({ config, visualization }: ReportPreviewProps) {
 						totalIsCurrency={totalIsCurrency}
 						itemValueIsCurrency={itemValueIsCurrency}
 						segments={segments}
+						compareLabel={compareLabel}
 						axisLabels={axisLabels}
 						targetLine={targetLine}
+						onBucketClick={onBucketClick}
 					/>
 				);
 			case "line":
@@ -238,8 +287,10 @@ function ReportPreviewInner({ config, visualization }: ReportPreviewProps) {
 						groupBy={groupBy}
 						totalIsCurrency={totalIsCurrency}
 						itemValueIsCurrency={itemValueIsCurrency}
+						compareLabel={compareLabel}
 						axisLabels={axisLabels}
 						targetLine={targetLine}
+						onBucketClick={onBucketClick}
 					/>
 				);
 			case "pie":
@@ -251,8 +302,11 @@ function ReportPreviewInner({ config, visualization }: ReportPreviewProps) {
 						entityType={config.entityType}
 						totalIsCurrency={totalIsCurrency}
 						itemValueIsCurrency={itemValueIsCurrency}
+						onBucketClick={onBucketClick}
 					/>
 				);
+			// Radar has no reliable per-element click target; Calculated values
+			// rows are the drill-down for it.
 			case "radar":
 				return (
 					<ReportRadarChart
@@ -273,6 +327,7 @@ function ReportPreviewInner({ config, visualization }: ReportPreviewProps) {
 						entityType={config.entityType}
 						totalIsCurrency={totalIsCurrency}
 						itemValueIsCurrency={itemValueIsCurrency}
+						onBucketClick={onBucketClick}
 					/>
 				);
 			case "table":
@@ -283,10 +338,10 @@ function ReportPreviewInner({ config, visualization }: ReportPreviewProps) {
 						total={total}
 						groupBy={groupBy}
 						entityType={config.entityType}
-						metricIsRelated={config.metric.op === "related"}
 						totalIsCurrency={totalIsCurrency}
 						itemValueIsCurrency={itemValueIsCurrency}
 						valueHeader={metricLabelFor(config)}
+						compareLabel={compareLabel}
 					/>
 				);
 		}

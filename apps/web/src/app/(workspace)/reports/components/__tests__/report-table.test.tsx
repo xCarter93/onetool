@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
-import { describe, it, expect, afterEach, beforeAll, afterAll } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { describe, it, expect, afterEach, beforeAll, afterAll, vi } from "vitest";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import "@testing-library/jest-dom/vitest";
 
 afterEach(() => cleanup());
@@ -24,22 +24,6 @@ afterAll(() => {
 import { ReportTable } from "../report-table";
 
 describe("ReportTable", () => {
-	it("related rollup with no grouping labels rows by the source entity", () => {
-		render(
-			<ReportTable
-				data={[{ name: "Q-1001", value: 3 }]}
-				total={3}
-				entityType="quotes"
-				metricIsRelated
-			/>
-		);
-
-		expect(
-			screen.getByRole("columnheader", { name: "Quote" })
-		).toBeInTheDocument();
-		expect(screen.queryByRole("columnheader", { name: "Category" })).toBeNull();
-	});
-
 	it("a grouped table still labels its rows by the grouping", () => {
 		render(
 			<ReportTable
@@ -202,7 +186,7 @@ describe("ReportTable", () => {
 						rows: [
 							{
 								invoiceNumber: "INV-001",
-								total: 1200,
+								total: 1200.5,
 								issuedDate: new Date(2026, 0, 15).getTime(),
 								isActive: true,
 							},
@@ -225,7 +209,8 @@ describe("ReportTable", () => {
 			expect(screen.getByText("Active")).toBeInTheDocument();
 
 			expect(screen.getByText("INV-001")).toBeInTheDocument();
-			expect(screen.getByText("$1,200")).toBeInTheDocument();
+			// Detail rows are record-level amounts — exact cents, like the CSV export.
+			expect(screen.getByText("$1,200.50")).toBeInTheDocument();
 			expect(screen.getByText("Jan 15, 2026")).toBeInTheDocument();
 			expect(screen.getByText("Yes")).toBeInTheDocument();
 
@@ -253,5 +238,90 @@ describe("ReportTable", () => {
 				screen.getByText("Showing first 1 of 500 records.")
 			).toBeInTheDocument();
 		});
+	});
+});
+
+describe("ReportTable — bucket drill-down", () => {
+	const rows = [
+		{ name: "Active", value: 5, bucketKey: "active" },
+		{ name: "Lead", value: 3 },
+	];
+
+	it("a row with a bucketKey becomes a button that opens it", () => {
+		const onBucketClick = vi.fn();
+		render(
+			<ReportTable
+				data={rows}
+				total={8}
+				entityType="clients"
+				groupBy="status"
+				onBucketClick={onBucketClick}
+			/>
+		);
+
+		fireEvent.click(screen.getByRole("button", { name: "Active" }));
+		expect(onBucketClick).toHaveBeenCalledWith("active", "Active");
+		// No bucketKey means no drillable scope, so the label stays plain text.
+		expect(screen.queryByRole("button", { name: "Lead" })).not.toBeInTheDocument();
+	});
+
+	it("without a handler the labels stay plain text", () => {
+		render(<ReportTable data={rows} total={8} entityType="clients" groupBy="status" />);
+
+		expect(screen.queryByRole("button")).not.toBeInTheDocument();
+	});
+});
+
+describe("ReportTable — comparison columns (R11)", () => {
+	it("adds Previous and Change only when the points carry comparison values", () => {
+		render(
+			<ReportTable
+				data={[
+					{ name: "Active", value: 12, compareValue: 10 },
+					{ name: "Lead", value: 5, compareValue: 8 },
+				]}
+				total={17}
+				entityType="clients"
+				groupBy="status"
+				compareLabel="Previous period"
+			/>
+		);
+
+		expect(
+			screen.getByRole("columnheader", { name: "Previous" })
+		).toBeInTheDocument();
+		expect(
+			screen.getByRole("columnheader", { name: "Change" })
+		).toBeInTheDocument();
+		expect(screen.getByText("+20.0%")).toBeInTheDocument();
+		expect(screen.getByText("-37.5%")).toBeInTheDocument();
+	});
+
+	it("no comparison label: the columns stay off", () => {
+		render(
+			<ReportTable
+				data={[{ name: "Active", value: 12, compareValue: 10 }]}
+				total={12}
+				entityType="clients"
+				groupBy="status"
+			/>
+		);
+
+		expect(screen.queryByRole("columnheader", { name: "Previous" })).toBeNull();
+		expect(screen.queryByRole("columnheader", { name: "Change" })).toBeNull();
+	});
+
+	it("a zero previous value has no percent to show, so Change reads —", () => {
+		render(
+			<ReportTable
+				data={[{ name: "Active", value: 12, compareValue: 0 }]}
+				total={12}
+				entityType="clients"
+				groupBy="status"
+				compareLabel="Previous period"
+			/>
+		);
+
+		expect(screen.getByText("—")).toBeInTheDocument();
 	});
 });

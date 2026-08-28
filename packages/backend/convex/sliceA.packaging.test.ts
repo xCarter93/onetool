@@ -641,7 +641,11 @@ describe("Slice A: saved-report slots (savedReports)", () => {
 
 	const REPORT_ARGS = {
 		description: undefined,
-		config: { entityType: "clients" as const },
+		config: {
+			version: 2 as const,
+			entityType: "clients" as const,
+			metric: { op: "count" as const },
+		},
 		visualization: { type: "table" as const },
 	};
 
@@ -751,6 +755,7 @@ describe("Slice A: saved-report slots (savedReports)", () => {
 		// Running a report is never slot-gated — only creating one is.
 		const result = await asUser.query(api.reportData.executeReport, {
 			entityType: "clients",
+			config: { version: 2, entityType: "clients", metric: { op: "count" } },
 			detail: { columns: ["companyName", "status"] },
 		});
 		expect(result.detail?.rows).toHaveLength(1);

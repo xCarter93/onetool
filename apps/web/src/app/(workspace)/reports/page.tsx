@@ -29,7 +29,6 @@ import {
 	visualizationIcons,
 } from "./report-config";
 import { pathLabel } from "./report-path-options";
-import { normalizeReportConfig } from "@onetool/backend/convex/lib/reportConfig";
 
 function createReportColumns(
 	duplicatingId: string | null,
@@ -44,10 +43,7 @@ function createReportColumns(
 			cell: ({ row }) => {
 				const report = row.original;
 				const VizIcon = visualizationIcons[report.visualization.type];
-				const { config } = normalizeReportConfig(
-					report.config,
-					report.visualization
-				);
+				const config = report.config;
 				const groupBy = config.groupBy;
 				const groupByLabel =
 					groupByOptions[config.entityType]?.find(

@@ -13,7 +13,6 @@ import {
 	resolveReportPath,
 } from "@onetool/backend/convex/lib/reportRelations";
 import type { ReportFilters } from "@onetool/backend/convex/lib/reportFilters";
-import type { ReportConfig as ReportDocConfig } from "@onetool/backend/convex/lib/reportConfig";
 import { usePublishAssistantDockFrame } from "@/components/assistant/assistant-dock-frame-context";
 import { useRegisterReportConfigApply } from "@/components/assistant/report-config-apply-context";
 import { usePublishScreenContext } from "@/components/assistant/use-screen-context";
@@ -50,6 +49,10 @@ import { PanelField, PanelSection } from "@/components/shared/panel-primitives";
 import DatePickerRange from "@/components/shared/date-picker-range";
 import { ReportPreview } from "./report-preview";
 import { ReportUtilityBar } from "./report-utility-bar";
+import {
+	ReportContributingSheet,
+	type ContributingScope,
+} from "./report-contributing-sheet";
 import { ReportFieldPicker } from "./report-field-picker";
 import { ReportFilterRows } from "./report-filter-rows";
 import { ReportMetricControls } from "./report-metric-controls";
@@ -57,9 +60,12 @@ import {
 	countFilterRules,
 	sanitizeReportFilters,
 } from "./report-filter-model";
-import { entityLabel, pathLabel } from "../report-path-options";
+import { pathLabel } from "../report-path-options";
 import {
 	builderStateToSaved,
+	compareModeOptions,
+	comparisonAuthorable,
+	comparisonRangeBounded,
 	dateFieldOptionsFor,
 	dateRangeOptions,
 	entityOptions,
@@ -70,6 +76,7 @@ import {
 	savedToBuilderState,
 	visualizationOptions,
 	type BuilderConfigState,
+	type CompareMode,
 	type EntityType,
 	type ReportConfigV2,
 	type ReportMetric,
@@ -91,14 +98,11 @@ const GRANULARITY_OPTIONS = [
 	{ value: "month", label: "Month" },
 ] as const;
 
-/** Where a metric that can't render as a single value lands. */
-const FALLBACK_CHART_TYPE: VizType = "bar";
-
 export interface ReportBuilderInitial {
 	name: string;
 	description: string;
-	/** Either config version — v1 rows expand through the normalizer on hydrate. Absent = blank start. */
-	config?: ReportDocConfig;
+	/** Absent = blank start. */
+	config?: ReportConfigV2;
 	visualization: ReportVisualization;
 }
 
@@ -145,6 +149,12 @@ export function ReportBuilder({
 	const [customDateRange, setCustomDateRange] = useState<DateRange | undefined>(
 		init?.customDateRange
 	);
+	const [compareMode, setCompareMode] = useState<CompareMode>(
+		init?.compareMode ?? "none"
+	);
+	const [compareDateRange, setCompareDateRange] = useState<DateRange | undefined>(
+		init?.compareDateRange
+	);
 	const [dateField, setDateField] = useState<string | undefined>(init?.dateField);
 	const [segmentBy, setSegmentBy] = useState<string | undefined>(init?.segmentBy);
 	const [includeEmptyValues, setIncludeEmptyValues] = useState<boolean | undefined>(
@@ -158,6 +168,8 @@ export function ReportBuilder({
 	const [columns, setColumns] = useState<string[]>(init?.columns ?? []);
 	const [pendingEntity, setPendingEntity] = useState<EntityType | null>(null);
 	const [groupByPickerOpen, setGroupByPickerOpen] = useState(false);
+	const [contributingScope, setContributingScope] =
+		useState<ContributingScope | null>(null);
 
 	usePublishAssistantDockFrame({
 		title: "Report assistant",
@@ -177,6 +189,8 @@ export function ReportBuilder({
 				dateField,
 				dateRangePreset,
 				customDateRange,
+				compareMode,
+				compareDateRange,
 				filters: sanitizedFilters,
 				metric,
 				groupBy,
@@ -220,6 +234,8 @@ export function ReportBuilder({
 		setVizType(next.vizType);
 		setDateRangePreset(next.dateRangePreset);
 		setCustomDateRange(next.customDateRange);
+		setCompareMode(next.compareMode ?? "none");
+		setCompareDateRange(next.compareDateRange);
 		setDateField(next.dateField);
 		setSegmentBy(next.segmentBy);
 		setIncludeEmptyValues(next.includeEmptyValues);
@@ -263,8 +279,6 @@ export function ReportBuilder({
 		if (next === "number") {
 			setGroupBy(undefined);
 			setSegmentBy(undefined);
-			// A related rollup is inherently bucketed — no scalar rendering.
-			if (metric.op === "related") setMetric({ op: "count" });
 			return;
 		}
 		if (next === "table") {
@@ -275,35 +289,46 @@ export function ReportBuilder({
 		}
 		// Only bar/column render segments (honest encodings).
 		if (next !== "bar" && next !== "column") setSegmentBy(undefined);
-		if (
-			entityType &&
-			!groupBy &&
-			metric.op !== "ratio" &&
-			metric.op !== "related"
-		) {
+		if (entityType && !groupBy && metric.op !== "ratio") {
 			setGroupBy(DEFAULT_GROUP_BY[entityType]);
 		}
 	};
 
 	const changeMetric = (next: ReportMetric) => {
 		setMetric(next);
-		if (next.op === "ratio" || next.op === "related") {
-			// Backend rejects grouping on ratio/related — they bucket themselves.
+		if (next.op === "ratio") {
+			// Backend rejects grouping on a ratio — it buckets itself.
 			setGroupBy(undefined);
 			setSegmentBy(undefined);
-			if (next.op === "related" && vizType === "number") {
-				setVizType(FALLBACK_CHART_TYPE);
-			}
 		} else if (isChart && !groupBy && entityType) {
 			setGroupBy(DEFAULT_GROUP_BY[entityType]);
 		}
 	};
 
-	const perRowVisible =
-		vizType !== "number" && metric.op !== "ratio" && metric.op !== "related";
+	// Compare and Segment by both need the second encoding slot, so the last one
+	// touched wins (same shape as Group by ↔ Columns).
+	const selectCompareMode = (next: CompareMode) => {
+		setCompareMode(next);
+		if (next !== "custom") setCompareDateRange(undefined);
+		if (next !== "none") setSegmentBy(undefined);
+	};
 
-	// Ratio and related metrics bucket themselves — no column choice makes their table raw rows.
-	const metricBucketsItself = metric.op === "ratio" || metric.op === "related";
+	const selectSegmentBy = (next: string | undefined) => {
+		setSegmentBy(next);
+		if (next !== undefined) selectCompareMode("none");
+	};
+
+	const compareVisible = saved
+		? comparisonAuthorable(saved.config, vizType)
+		: false;
+	const compareEnabled = saved
+		? comparisonRangeBounded(saved.config.date)
+		: false;
+
+	const perRowVisible = vizType !== "number" && metric.op !== "ratio";
+
+	// A ratio metric buckets itself — no column choice makes its table raw rows.
+	const metricBucketsItself = metric.op === "ratio";
 	const rawRowsActive = saved ? isDetailModeActive(saved.config, vizType) : false;
 	const columnsHelper = metricBucketsItself
 		? "Showing this metric instead of raw rows. Set the metric to Count of records to pick columns."
@@ -313,13 +338,11 @@ export function ReportBuilder({
 
 	const tableMetricHelper =
 		vizType === "table" && !groupBy && entityType
-			? metric.op === "related"
-				? `One row per ${entityLabel(entityType)} with this rollup.`
-				: metric.op === "ratio"
-					? "The table shows this ratio's breakdown instead of raw rows."
-					: metric.op === "count"
-						? "Counting records with no grouping — the table lists each record as a row."
-						: "The table lists raw rows. This metric applies once the table is grouped."
+			? metric.op === "ratio"
+				? "The table shows this ratio's breakdown instead of raw rows."
+				: metric.op === "count"
+					? "Counting records with no grouping — the table lists each record as a row."
+					: "The table lists raw rows. This metric applies once the table is grouped."
 			: undefined;
 
 	// Group-by picker anatomy (R9): timestamp options collapse to one entry per
@@ -367,8 +390,7 @@ export function ReportBuilder({
 	const segmentCapable =
 		(vizType === "bar" || vizType === "column") &&
 		!!groupBy &&
-		metric.op !== "ratio" &&
-		metric.op !== "related";
+		metric.op !== "ratio";
 	const segmentOptions = entityType
 		? nonTimeGroupOptions.filter(
 				(o) => o.value !== groupBy && !getRelationEdge(entityType, o.value)
@@ -460,6 +482,9 @@ export function ReportBuilder({
 	const rangeLabel =
 		dateRangeOptions.find((o) => o.value === dateRangePreset)?.label ?? "All Time";
 
+	const openBucket = (bucketKey: string, bucketLabel: string) =>
+		setContributingScope({ bucketKey, bucketLabel });
+
 	const handleSave = () => {
 		if (!name.trim() || !saved) return;
 		void onSave({
@@ -530,6 +555,7 @@ export function ReportBuilder({
 								<ReportPreview
 									config={saved.config}
 									visualization={saved.visualization}
+									onBucketClick={openBucket}
 								/>
 							) : (
 								<div className="flex min-h-[300px] flex-1 items-center justify-center">
@@ -549,6 +575,8 @@ export function ReportBuilder({
 						reportName={name}
 						groupByLabel={groupByLabel}
 						rangeLabel={rangeLabel}
+						onViewContributingData={() => setContributingScope({})}
+						onBucketClick={openBucket}
 					/>
 				</main>
 
@@ -642,6 +670,45 @@ export function ReportBuilder({
 										)}
 									</div>
 								</PanelField>
+								{compareVisible && (
+									<PanelField
+										label="Compare"
+										helper={
+											compareEnabled
+												? undefined
+												: "Comparison needs a date range with a start and an end."
+										}
+									>
+										<div className="space-y-1.5">
+											<Select
+												value={compareMode}
+												disabled={!compareEnabled}
+												onValueChange={(value) => {
+													if (!value) return;
+													selectCompareMode(value as CompareMode);
+												}}
+											>
+												<SelectTrigger className="w-full">
+													<SelectValue />
+												</SelectTrigger>
+												<SelectContent>
+													{compareModeOptions.map((opt) => (
+														<SelectItem key={opt.value} value={opt.value}>
+															{opt.label}
+														</SelectItem>
+													))}
+												</SelectContent>
+											</Select>
+											{compareEnabled && compareMode === "custom" && (
+												<DatePickerRange
+													value={compareDateRange}
+													onChange={setCompareDateRange}
+													showArrow={false}
+												/>
+											)}
+										</div>
+									</PanelField>
+								)}
 								{dateFieldOptions.length > 1 && (
 									<PanelField label="Date field">
 										<Select
@@ -800,7 +867,7 @@ export function ReportBuilder({
 											value={segmentBy ?? NO_SEGMENT}
 											onValueChange={(v) => {
 												if (!v) return;
-												setSegmentBy(v === NO_SEGMENT ? undefined : v);
+												selectSegmentBy(v === NO_SEGMENT ? undefined : v);
 											}}
 										>
 											<SelectTrigger className="w-full">
@@ -915,6 +982,16 @@ export function ReportBuilder({
 					)}
 				</aside>
 			</div>
+
+			{saved && (
+				<ReportContributingSheet
+					scope={contributingScope}
+					onClose={() => setContributingScope(null)}
+					config={saved.config}
+					visualization={saved.visualization}
+					reportName={name}
+				/>
+			)}
 
 			<AlertDialog
 				open={pendingEntity !== null}

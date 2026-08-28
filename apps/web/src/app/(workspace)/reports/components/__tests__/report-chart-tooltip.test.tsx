@@ -24,6 +24,7 @@ import { CHART_CATEGORICAL, getChartColor } from "@/lib/chart-colors";
 import { ChartStripeDefs, stripeId } from "@/components/charts/chart-stripe-defs";
 import {
 	ReportChartTooltip,
+	chartConfigKeys,
 	measureLabel,
 	reportChartConfig,
 } from "../report-chart-tooltip";
@@ -120,6 +121,30 @@ function PieReplica({ isCurrency }: { isCurrency: boolean }) {
 	);
 }
 
+// Bucket labels with spaces reach the charts from any capitalized group-by key
+// (leadSource "google_ads" → "Google Ads").
+const SPACED = [
+	{ name: "Google Ads", value: 1200 },
+	{ name: "Word of mouth", value: 800 },
+];
+
+function SpacedPieReplica() {
+	const prefix = React.useId();
+	return (
+		<ChartContainer config={reportChartConfig(SPACED.map((d) => d.name), true)}>
+			<PieChart>
+				<ChartStripeDefs idPrefix={prefix} colors={SPACED.map((_, i) => getChartColor(i, CHART_CATEGORICAL))} />
+				<Pie data={SPACED} dataKey="value" nameKey="name" isAnimationActive={false}>
+					{SPACED.map((_, i) => (
+						<Cell key={i} fill={`url(#${stripeId(prefix, i)})`} stroke={getChartColor(i, CHART_CATEGORICAL)} strokeWidth={1} />
+					))}
+				</Pie>
+				<ChartTooltip defaultIndex={HOVERED} content={<ReportChartTooltip nameKey="value" isCurrency />} />
+			</PieChart>
+		</ChartContainer>
+	);
+}
+
 function RadialReplica({ isCurrency }: { isCurrency: boolean }) {
 	const prefix = React.useId();
 	const chartData = DATA.map((item, i) => ({ ...item, fill: `url(#${stripeId(prefix, i)})` }));
@@ -166,22 +191,38 @@ const WIDE = [
 	{ name: "Feb", value: 50, paid: 20, unpaid: 30 },
 ];
 
-function StackedReplica() {
+const SPACED_SEGMENTS = [
+	{ key: "Google Ads", label: "Google Ads" },
+	{ key: "Word of mouth", label: "Word of mouth" },
+];
+const SPACED_WIDE = [
+	{ name: "Jan", value: 30, "Google Ads": 10, "Word of mouth": 20 },
+	{ name: "Feb", value: 50, "Google Ads": 20, "Word of mouth": 30 },
+];
+
+function StackedReplica({
+	segments = SEGMENTS,
+	rows = WIDE,
+}: {
+	segments?: { key: string; label: string }[];
+	rows?: Record<string, string | number>[];
+}) {
 	const prefix = React.useId();
-	const config = SEGMENTS.reduce((acc, segment, index) => {
-		acc[segment.key] = { label: segment.label, color: getChartColor(index, CHART_CATEGORICAL) };
+	const keys = chartConfigKeys(segments.map((s) => s.key));
+	const config = segments.reduce((acc, segment, index) => {
+		acc[keys[index]] = { label: segment.label, color: getChartColor(index, CHART_CATEGORICAL) };
 		return acc;
 	}, {} as ChartConfig);
 	return (
 		<ChartContainer config={config}>
-			<BarChart data={WIDE}>
-				<ChartStripeDefs idPrefix={prefix} colors={SEGMENTS.map((_, i) => getChartColor(i, CHART_CATEGORICAL))} />
+			<BarChart data={rows}>
+				<ChartStripeDefs idPrefix={prefix} colors={segments.map((_, i) => getChartColor(i, CHART_CATEGORICAL))} />
 				<XAxis dataKey="name" />
 				<YAxis />
 				<ChartTooltip defaultIndex={HOVERED} content={<ReportChartTooltip />} />
-				{SEGMENTS.map((segment, index) => (
-					<Bar key={segment.key} dataKey={segment.key} stackId="segments" fill={getChartColor(index, CHART_CATEGORICAL)}>
-						{WIDE.map((_, bucket) => (
+				{segments.map((segment, index) => (
+					<Bar key={segment.key} dataKey={segment.key} name={keys[index]} stackId="segments" fill={getChartColor(index, CHART_CATEGORICAL)}>
+						{rows.map((_, bucket) => (
 							<Cell key={bucket} fill={`url(#${stripeId(prefix, index)})`} stroke={getChartColor(index, CHART_CATEGORICAL)} strokeWidth={1} />
 						))}
 					</Bar>
@@ -234,6 +275,29 @@ describe("reportChartConfig", () => {
 		expect(config.Sent).toEqual({ label: "Sent", color: COLOR_1 });
 		expect(config.value?.label).toBe("Amount");
 	});
+
+	it("slugs a bucket label with spaces, keeping the label human", () => {
+		const config = reportChartConfig(["Google Ads"], true);
+		expect(config["Google-Ads"]).toEqual({ label: "Google Ads", color: COLOR_0 });
+	});
+
+	it("keeps two labels that slug the same from collapsing into one entry", () => {
+		const config = reportChartConfig(["A B", "A-B"], false);
+		const buckets = Object.entries(config).filter(([key]) => key !== "value");
+		expect(buckets.map(([key]) => key)).toEqual(["A-B", "A-B-2"]);
+		expect(buckets.map(([, entry]) => entry.label)).toEqual(["A B", "A-B"]);
+		expect(buckets.map(([, entry]) => entry.color)).toEqual([COLOR_0, COLOR_1]);
+	});
+
+	it("emits only valid --color-* property names into ChartStyle", () => {
+		const { container } = render(<SpacedPieReplica />);
+		const css = container.querySelector("style")?.innerHTML ?? "";
+		const properties = css.match(/--color-[^:\n]*/g) ?? [];
+		expect(properties.length).toBeGreaterThan(0);
+		for (const property of properties) {
+			expect(property).toMatch(/^--color-[A-Za-z0-9_-]+$/);
+		}
+	});
 });
 
 describe("ReportChartTooltip", () => {
@@ -272,10 +336,26 @@ describe("ReportChartTooltip", () => {
 		expect(t.chipColor).toBe(COLOR_0);
 	});
 
+	it("pie: a bucket label with spaces still resolves its chip color", () => {
+		const t = tooltip(render(<SpacedPieReplica />).container);
+		expect(t.heading).toBe("Word of mouth");
+		expect(t.text).toBe("Word of mouthAmount$800");
+		expect(t.chipColor).toBe(COLOR_1);
+	});
+
 	it("stacked: one row per segment, each keeping its own segment color", () => {
 		const t = tooltip(render(<StackedReplica />).container);
 		expect(t.heading).toBe("Feb");
 		expect(t.text).toBe("FebPaid20Unpaid30");
+		expect(t.values).toEqual(["20", "30"]);
+	});
+
+	it("stacked: segment keys with spaces still label their rows", () => {
+		const t = tooltip(
+			render(<StackedReplica segments={SPACED_SEGMENTS} rows={SPACED_WIDE} />).container
+		);
+		expect(t.heading).toBe("Feb");
+		expect(t.text).toBe("FebGoogle Ads20Word of mouth30");
 		expect(t.values).toEqual(["20", "30"]);
 	});
 

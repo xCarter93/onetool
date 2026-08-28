@@ -139,7 +139,7 @@ describe("report traversal: dotted-path filters", () => {
 
 	it("is_empty passes on a broken path and is_not_empty fails", async () => {
 		const { org, asOrg } = await seedQuoteLineItems();
-		await t.run(async (ctx) => {
+		const { clientId, projectId } = await t.run(async (ctx) => {
 			const clientId = await createTestClient(ctx, org.orgId, { companyName: "Beta Co" });
 			const projectId = await createTestProject(ctx, org.orgId, clientId, {
 				title: "Beta Build",
@@ -149,6 +149,7 @@ describe("report traversal: dotted-path filters", () => {
 				projectId,
 			});
 			await createTestInvoice(ctx, org.orgId, clientId, { invoiceNumber: "INV-WITHOUT" });
+			return { clientId, projectId };
 		});
 
 		const empty = await asOrg.query(api.reportData.executeReport, {
@@ -161,7 +162,9 @@ describe("report traversal: dotted-path filters", () => {
 			},
 			detail: { columns: ["invoiceNumber"] },
 		});
-		expect(empty.detail?.rows).toStrictEqual([{ invoiceNumber: "INV-WITHOUT" }]);
+		expect(empty.detail?.rows).toStrictEqual([
+			{ id: expect.any(String), invoiceNumber: "INV-WITHOUT", refs: { clientId } },
+		]);
 
 		const notEmpty = await asOrg.query(api.reportData.executeReport, {
 			entityType: "invoices",
@@ -173,7 +176,9 @@ describe("report traversal: dotted-path filters", () => {
 			},
 			detail: { columns: ["invoiceNumber"] },
 		});
-		expect(notEmpty.detail?.rows).toStrictEqual([{ invoiceNumber: "INV-WITH" }]);
+		expect(notEmpty.detail?.rows).toStrictEqual([
+			{ id: expect.any(String), invoiceNumber: "INV-WITH", refs: { clientId, projectId } },
+		]);
 	});
 
 	it("evaluates an OR group mixing a direct rule with a dotted rule", async () => {
@@ -201,14 +206,16 @@ describe("report traversal: dotted-path filters", () => {
 	});
 
 	it("detail mode returns the raw rows a dotted filter matched", async () => {
-		const { asOrg } = await seedQuoteLineItems();
+		const { asOrg, draft } = await seedQuoteLineItems();
 
 		const result = await asOrg.query(api.reportData.executeReport, {
 			entityType: "quoteLineItems",
 			config: lineItemConfig({ filters: oneRule("quoteId.status", "equals", "draft") }),
 			detail: { columns: ["description", "amount"] },
 		});
-		expect(result.detail?.rows).toStrictEqual([{ description: "day work", amount: 400 }]);
+		expect(result.detail?.rows).toStrictEqual([
+			{ id: expect.any(String), description: "day work", amount: 400, refs: { quoteId: draft } },
+		]);
 		expect(result.detail?.totalMatched).toBe(1);
 	});
 });
@@ -358,7 +365,7 @@ describe("report traversal: dotted-path groupBy", () => {
 			},
 		});
 		expect(result.data).toStrictEqual([
-			{ label: "Sent", value: 1, metadata: { totalValue: 250 } },
+			{ label: "Sent", value: 1, bucketKey: "sent", metadata: { totalValue: 250 } },
 		]);
 		expect(result.total).toBe(250);
 	});
@@ -419,18 +426,16 @@ describe("report traversal: registry-derived FK pairs", () => {
 		return { org, asOrg, ...seeded };
 	}
 
-	it("quotes roll up their line items (pair derived from REPORT_RELATIONS)", async () => {
+	it("line items roll up per quote by grouping on the registry FK", async () => {
 		const { asOrg } = await seedQuotesWithLineItems();
 
 		const result = await asOrg.query(api.reportData.executeReport, {
-			entityType: "quotes",
+			entityType: "quoteLineItems",
 			config: {
 				version: 2,
-				entityType: "quotes",
-				metric: {
-					op: "related",
-					related: { entity: "quoteLineItems", fk: "quoteId", field: "amount", op: "sum" },
-				},
+				entityType: "quoteLineItems",
+				metric: { op: "sum", field: "amount" },
+				groupBy: "quoteId",
 			},
 		});
 		expect(labelValues(result.data)).toStrictEqual([
@@ -639,62 +644,4 @@ describe("report traversal: permissions and validation", () => {
 		).rejects.toThrow(/is a time bucket/);
 	});
 
-	it("rejects dotted fields in related.filters", async () => {
-		const { asOrg } = await seedForPermissions();
-		await expect(
-			asOrg.query(api.reportData.executeReport, {
-				entityType: "quotes",
-				config: {
-					version: 2,
-					entityType: "quotes",
-					metric: {
-						op: "related",
-						related: {
-							entity: "quoteLineItems",
-							fk: "quoteId",
-							op: "count",
-							filters: {
-								logic: "and",
-								groups: [
-									{
-										logic: "and",
-										rules: [
-											{ field: "quoteId.status", operator: "equals", value: "draft" },
-										],
-									},
-								],
-							},
-						},
-					},
-				},
-			})
-		).rejects.toThrow(/Related-path report filter field/);
-	});
-
-	it("rejects dotted filters and groupBy on the legacy args path", async () => {
-		const { asOrg } = await seedForPermissions();
-		await expect(
-			asOrg.query(api.reportData.executeReport, {
-				entityType: "quoteLineItems",
-				aggregation: { op: "count" },
-				filters: {
-					logic: "and",
-					groups: [
-						{
-							logic: "and",
-							rules: [{ field: "quoteId.status", operator: "equals", value: "draft" }],
-						},
-					],
-				},
-			})
-		).rejects.toThrow(/Related-path report filter field/);
-
-		await expect(
-			asOrg.query(api.reportData.executeReport, {
-				entityType: "quoteLineItems",
-				aggregation: { op: "count" },
-				groupBy: "quoteId.status",
-			})
-		).rejects.toThrow(/Related-path groupBy/);
-	});
 });

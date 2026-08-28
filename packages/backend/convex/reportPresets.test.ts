@@ -24,9 +24,46 @@ import { resolveReportQueryArgs } from "./lib/reportQueryArgs";
 const TABLE_WORKLIST_PRESET_IDS = new Set(["overdue-invoices", "quotes-awaiting-response"]);
 
 describe("REPORT_PRESETS", () => {
-	it("has 15 presets with unique ids", () => {
-		expect(REPORT_PRESETS).toHaveLength(15);
-		expect(new Set(REPORT_PRESETS.map((p) => p.id)).size).toBe(15);
+	it("has 16 presets with unique ids", () => {
+		expect(REPORT_PRESETS).toHaveLength(16);
+		expect(new Set(REPORT_PRESETS.map((p) => p.id)).size).toBe(16);
+	});
+
+	it("revenue-by-project resolves to a top-10 paid-revenue-by-project query", () => {
+		const preset = REPORT_PRESETS.find((p) => p.id === "revenue-by-project");
+		if (!preset) throw new Error("revenue-by-project preset is missing");
+
+		expect(resolveReportQueryArgs(preset.config, preset.visualization)).toStrictEqual({
+			entityType: "invoices",
+			config: {
+				version: 2,
+				entityType: "invoices",
+				filters: {
+					logic: "and",
+					groups: [
+						{
+							logic: "and",
+							rules: [{ field: "status", operator: "equals", value: "paid" }],
+						},
+					],
+				},
+				date: { field: "paidAt", range: { kind: "preset", preset: "this_year" } },
+				metric: { op: "sum", field: "total" },
+				groupBy: "projectId",
+			},
+			seriesLimit: 10,
+			sort: "value_desc",
+		});
+	});
+
+	it("revenue-by-project and revenue-by-month share their revenue definition", () => {
+		const byProject = REPORT_PRESETS.find((p) => p.id === "revenue-by-project");
+		const byMonth = REPORT_PRESETS.find((p) => p.id === "revenue-by-month");
+		if (!byProject || !byMonth) throw new Error("revenue presets are missing");
+
+		expect(byProject.config.filters).toStrictEqual(byMonth.config.filters);
+		expect(byProject.config.date).toStrictEqual(byMonth.config.date);
+		expect(byProject.config.metric).toStrictEqual(byMonth.config.metric);
 	});
 
 	describe("round-trip through the real executeReport", () => {

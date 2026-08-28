@@ -39,6 +39,29 @@ export const REPORT_PRESETS: ReportPresetDefinition[] = [
 		visualization: { type: "line" },
 	},
 	{
+		id: "revenue-by-project",
+		name: "Revenue by project",
+		description: "Paid invoice revenue totaled by project.",
+		config: {
+			version: 2,
+			entityType: "invoices",
+			// Filter/date shape is revenue-by-month's, verbatim, so the two reconcile.
+			filters: {
+				logic: "and",
+				groups: [
+					{
+						logic: "and",
+						rules: [{ field: "status", operator: "equals", value: "paid" }],
+					},
+				],
+			},
+			date: { field: "paidAt", range: { kind: "preset", preset: "this_year" } },
+			metric: { op: "sum", field: "total" },
+			groupBy: "projectId",
+		},
+		visualization: { type: "column", options: { sort: "value_desc", seriesLimit: 10 } },
+	},
+	{
 		id: "overdue-invoices",
 		name: "Overdue invoices",
 		description: "Every invoice currently past its due date.",

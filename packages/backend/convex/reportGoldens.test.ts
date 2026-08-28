@@ -30,8 +30,23 @@ function roundTrip(value: unknown): unknown {
 	return JSON.parse(JSON.stringify(value));
 }
 
+/**
+ * Detail rows gained a non-deterministic `id` and a `refs` map of FK ids
+ * (drill-down parent links), which no fixture can pin: assert the id's shape,
+ * then strip both before comparing.
+ */
+function stripRowIds(result: unknown): unknown {
+	const value = roundTrip(result) as { detail?: { rows: Record<string, unknown>[] } };
+	for (const row of value.detail?.rows ?? []) {
+		expect(typeof row.id).toBe("string");
+		delete row.id;
+		delete row.refs;
+	}
+	return value;
+}
+
 describe("preset → executeReport args goldens", () => {
-	it("all 15 presets map to their pinned args", () => {
+	it("all 16 presets map to their pinned args", () => {
 		const actual = Object.fromEntries(
 			REPORT_PRESETS.map((preset) => [
 				preset.id,
@@ -71,9 +86,10 @@ describe("executeReport output goldens", () => {
 		for (const entityType of entities) {
 			const result = await asOrg.query(api.reportData.executeReport, {
 				entityType,
+				config: { version: 2, entityType, metric: { op: "count" } },
 				detail: { columns: DEFAULT_DETAIL_COLUMNS[entityType] },
 			});
-			expect(roundTrip(result), entityType).toStrictEqual(golden[entityType]);
+			expect(stripRowIds(result), entityType).toStrictEqual(golden[entityType]);
 		}
 	});
 
@@ -107,7 +123,7 @@ describe("executeReport output goldens", () => {
 
 			const result = await asOrg.query(api.reportData.executeReport, {
 				entityType: "tasks",
-				aggregation: { op: "count" },
+				config: { version: 2, entityType: "tasks", metric: { op: "count" } },
 			});
 
 			expect(result.metadata?.truncated).toBe(true);

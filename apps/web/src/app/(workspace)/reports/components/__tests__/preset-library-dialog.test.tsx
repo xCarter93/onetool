@@ -33,9 +33,9 @@ beforeEach(() => {
 import { PresetLibraryDialog } from "../preset-library-dialog";
 
 describe("PresetLibraryDialog", () => {
-	it("renders all 15 presets under 'All presets'", () => {
+	it("renders all 16 presets under 'All presets'", () => {
 		render(<PresetLibraryDialog open onOpenChange={() => {}} />);
-		expect(REPORT_PRESETS.length).toBe(15);
+		expect(REPORT_PRESETS.length).toBe(16);
 		for (const preset of REPORT_PRESETS) {
 			expect(screen.getByText(preset.name)).toBeInTheDocument();
 		}

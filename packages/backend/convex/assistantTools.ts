@@ -24,7 +24,7 @@ import {
 } from "./lib/schemaIntrospection";
 import type { ReportDataResult } from "./reportData";
 import {
-	normalizeReportConfig,
+	configForGroupByKey,
 	type DateRangePreset,
 	type ReportMetric,
 } from "./lib/reportConfig";
@@ -868,23 +868,20 @@ export const runReport = createTool({
 		ctx,
 		input
 	): Promise<ReportDataResult & { visualization: ReportVisualization }> => {
-		// Bare calls keep their historical entity-default grouping (§8 d11);
-		// the expander turns magic keys (month, conversionRate, …) into v2.
+		// Bare calls keep the entity-default grouping the tool advertises.
 		const groupBy = input.groupBy ?? DEFAULT_GROUP_BY[input.entityType];
-		const dateRange =
+		const range =
 			input.startDate || input.endDate
 				? {
-						start: input.startDate ? dayStartMs(input.startDate) : undefined,
-						end: input.endDate ? dayEndMs(input.endDate) : undefined,
+						kind: "absolute" as const,
+						...(input.startDate ? { start: dayStartMs(input.startDate) } : {}),
+						...(input.endDate ? { end: dayEndMs(input.endDate) } : {}),
 					}
 				: undefined;
-		const { config, visualization } = normalizeReportConfig(
-			{
-				entityType: input.entityType,
-				groupBy: [groupBy],
-				...(dateRange ? { dateRange } : {}),
-			},
-			{ type: input.visualization ?? "bar" }
+		const { config, visualization } = configForGroupByKey(
+			input.entityType,
+			groupBy,
+			{ range, visualization: { type: input.visualization ?? "bar" } }
 		);
 		const result = await ctx.runQuery(api.reportData.executeReport, {
 			entityType: input.entityType,
@@ -899,7 +896,7 @@ export const runReport = createTool({
 
 export const createReport = createTool({
 	description: [
-		"Build and SAVE a report from the user's plain-English description. Supports the full builder surface: grouping (including related-record paths, or raw-row tables with columns), sum/avg/min/max/ratio/related measures, field and date filters, named or explicit date ranges, and chart type.",
+		"Build and SAVE a report from the user's plain-English description. Supports the full builder surface: grouping (including related-record paths, or raw-row tables with columns), sum/avg/min/max/ratio measures, field and date filters, named or explicit date ranges, and chart type.",
 		"Pass the user's request verbatim, including names, amounts, and time phrases.",
 		"On success it returns the saved report's path — offer to open it with navigate.",
 		"Use this when the user wants a report they can keep, edit, or share; use runReport for a quick one-off answer in chat.",
@@ -1494,10 +1491,7 @@ export const getSavedReport = createTool({
 			id: input.reportId as Id<"reports">,
 		});
 		if (!report) return { found: false };
-		const { config, visualization } = normalizeReportConfig(
-			report.config,
-			report.visualization
-		);
+		const { config, visualization } = report;
 		const range = config.date?.range;
 		return {
 			found: true,

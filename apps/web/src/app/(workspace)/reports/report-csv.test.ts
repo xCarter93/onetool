@@ -14,12 +14,19 @@ describe("reportResultToCsv — detail mode", () => {
 			],
 			rows: [
 				{
+					id: "inv_1",
 					invoiceNumber: "INV-1",
 					total: 1234.5,
 					issuedDate: Date.UTC(2026, 0, 15, 12),
 					isActive: true,
 				},
-				{ invoiceNumber: null, total: null, issuedDate: null, isActive: null },
+				{
+					id: "inv_2",
+					invoiceNumber: null,
+					total: null,
+					issuedDate: null,
+					isActive: null,
+				},
 			],
 			totalMatched: 2,
 			rowsTruncated: false,
@@ -97,20 +104,13 @@ describe("reportResultToCsv — grouped mode", () => {
 		expect(rows).toEqual([["2026-02", "$1,200"]]);
 	});
 
-	it("row-label header precedence: rowLabel wins, then groupByLabel, then Category", () => {
+	it("row-label header precedence: groupByLabel wins, then Category", () => {
 		const result = {
 			data: [{ label: "Q-1001", value: 3 }],
 			total: 3,
 			metadata: { entityType: "quotes", truncated: false },
 		};
 
-		expect(
-			reportResultToCsv(result, {
-				entityType: "quotes",
-				rowLabel: "Quote",
-				groupByLabel: "Status",
-			}).headers[0]
-		).toBe("Quote");
 		expect(
 			reportResultToCsv(result, { entityType: "quotes", groupByLabel: "Status" })
 				.headers[0]
@@ -144,5 +144,88 @@ describe("reportResultToCsv — grouped mode", () => {
 			["Paid", 2, "$2,000"],
 			["Sent", 1, "$200"],
 		]);
+	});
+});
+
+describe("reportResultToCsv — comparison ranges (R11)", () => {
+	const base = {
+		data: [
+			{ label: "Active", value: 12 },
+			{ label: "Lead", value: 5 },
+		],
+		total: 17,
+		metadata: { entityType: "clients", groupBy: "status" },
+	};
+
+	it("appends Previous and Change % when points carry compareValue", () => {
+		const { headers, rows } = reportResultToCsv(
+			{
+				...base,
+				data: [
+					{ label: "Active", value: 12, compareValue: 10 },
+					{ label: "Lead", value: 5, compareValue: 0 },
+				],
+			},
+			{ entityType: "clients", groupBy: "status", groupByLabel: "Status" }
+		);
+
+		expect(headers).toEqual(["Status", "Count", "Previous", "Change %"]);
+		expect(rows[0]).toEqual(["Active", 12, 10, "+20.0%"]);
+		// Mirrors the on-screen table: no percent exists against a zero previous.
+		expect(rows[1]).toEqual(["Lead", 5, 0, "—"]);
+	});
+
+	it("output is byte-identical to the uncompared export when no point carries one", () => {
+		const withoutCompare = reportResultToCsv(base, {
+			entityType: "clients",
+			groupBy: "status",
+			groupByLabel: "Status",
+		});
+
+		expect(withoutCompare).toEqual({
+			headers: ["Status", "Count"],
+			rows: [
+				["Active", 12],
+				["Lead", 5],
+			],
+		});
+	});
+
+	it("a single-metric report reads its comparison from metadata.compareTotal", () => {
+		const { headers, rows } = reportResultToCsv(
+			{
+				data: [{ label: "Total", value: 40000 }],
+				total: 40000,
+				metadata: {
+					entityType: "invoices",
+					itemValueIsCurrency: true,
+					compareTotal: 32000,
+				},
+			},
+			{ entityType: "invoices" }
+		);
+
+		expect(headers).toEqual(["Category", "Value", "Previous", "Change %"]);
+		expect(rows[0]).toEqual(["Total", "$40,000", "$32,000", "+25.0%"]);
+	});
+});
+
+describe("reportResultToCsv — the metadata.compareTotal backfill is ungrouped-only", () => {
+	it("a one-bucket grouped result keeps its honest empty comparison", () => {
+		const { headers } = reportResultToCsv(
+			{
+				data: [{ label: "Active", value: 12 }],
+				total: 12,
+				// compareTotal spans every bucket, so it is not this row's previous value.
+				metadata: {
+					entityType: "clients",
+					groupBy: "status",
+					compareTotal: 30,
+				},
+			},
+			{ entityType: "clients", groupBy: "status", groupByLabel: "Status" }
+		);
+
+		expect(headers).toEqual(["Status", "Count"]);
 	});
 });

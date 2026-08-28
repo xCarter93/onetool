@@ -111,8 +111,7 @@ describe("granular RBAC domain-function gating", () => {
 	// over unscoped raw rows of every entity the admin had withheld.
 	const reportArgs = (entityType: "clients" | "activities") => ({
 		entityType,
-		dateRange: {},
-		aggregation: { op: "count" as const },
+		config: { version: 2 as const, entityType, metric: { op: "count" as const } },
 	});
 
 	it("reports:view alone does NOT grant a clients report (SEC-6)", async () => {
@@ -818,7 +817,7 @@ describe("granular RBAC domain-function gating", () => {
 
 		const reportId = await asMemberA.mutation(api.reports.create, {
 			name: "Member A's report",
-			config: { entityType: "clients" },
+			config: { version: 2, entityType: "clients", metric: { op: "count" } },
 			visualization: { type: "table" },
 		});
 

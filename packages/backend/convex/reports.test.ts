@@ -32,7 +32,7 @@ describe("reports.getMyReports", () => {
 			orgId,
 			createdBy,
 			name,
-			config: { entityType: "clients" },
+			config: { version: 2, entityType: "clients", metric: { op: "count" } },
 			visualization: { type: "table" },
 			createdAt: now,
 			updatedAt: now,
@@ -72,11 +72,7 @@ describe("reports.getMyReports", () => {
 	});
 });
 
-/**
- * R2: the reports table accepts both config versions through the public API
- * (writes emit v1 until R8; the v1 arm is deleted at cutover — see
- * lib/reportConfig.ts).
- */
+/** The reports table stores v2 configs verbatim through the public API. */
 describe("reports config v2 round-trip", () => {
 	const v2Config: ReportConfigV2 = {
 		version: 2,

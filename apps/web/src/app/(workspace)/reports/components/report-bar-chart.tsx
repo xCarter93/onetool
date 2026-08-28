@@ -15,13 +15,26 @@ import { ChartConfig, ChartContainer, ChartTooltip } from "@/components/ui/chart
 import { CHART_CATEGORICAL, getChartColor } from "@/lib/chart-colors";
 import { formatReportValue } from "../report-config";
 import { ChartNoData, isChartDataEmpty } from "./chart-no-data";
-import { ReportChartTooltip, reportChartConfig } from "./report-chart-tooltip";
+import {
+	COMPARE_COLOR,
+	COMPARE_FILL,
+	COMPARE_KEY,
+	ReportChartTooltip,
+	chartConfigKeys,
+	hasCompareValues,
+	reportChartConfig,
+} from "./report-chart-tooltip";
 import { ChartStripeDefs, stripeId } from "@/components/charts/chart-stripe-defs";
+import { bucketElementClick, type BucketClickHandler } from "./report-bucket-click";
 
 interface DataPoint {
 	name: string;
 	value: number;
 	totalValue?: number;
+	/** Same bucket over the comparison range (R11); absent when not comparing. */
+	compareValue?: number;
+	/** Drill-down key for this bucket; absent on ungrouped results. */
+	bucketKey?: string;
 	[key: string]: unknown;
 }
 
@@ -43,9 +56,13 @@ interface ReportBarChartProps {
 	itemValueIsCurrency?: boolean;
 	/** Stacked mode: one bar per segment, read from wide rows keyed by segment key. */
 	segments?: SegmentMeta[];
+	/** Names the comparison series ("Previous period"); absent when not comparing. */
+	compareLabel?: string;
 	axisLabels?: { x?: string; y?: string };
 	/** Value-axis goal marker — X here, since this chart is layout="vertical". */
 	targetLine?: number;
+	/** Drill-down (R10): opens the records behind the clicked bar. */
+	onBucketClick?: BucketClickHandler;
 }
 
 export function ReportBarChart({
@@ -54,15 +71,24 @@ export function ReportBarChart({
 	totalIsCurrency = false,
 	itemValueIsCurrency = false,
 	segments,
+	compareLabel,
 	axisLabels,
 	targetLine,
+	onBucketClick,
 }: ReportBarChartProps) {
 	const patternPrefix = React.useId();
+	const handleBarClick = bucketElementClick(onBucketClick);
 	const stacked = segments !== undefined && segments.length > 0;
+
+	const segmentConfigKeys = chartConfigKeys(segments?.map((s) => s.key) ?? []);
+
+	// Segments already own the second encoding slot, so the two never coexist.
+	const showCompare =
+		compareLabel !== undefined && !stacked && hasCompareValues(data);
 
 	const chartConfig: ChartConfig = stacked
 		? segments.reduce((acc, segment, index) => {
-				acc[segment.key] = {
+				acc[segmentConfigKeys[index]] = {
 					label: segment.label,
 					color: getChartColor(index, CHART_CATEGORICAL),
 				};
@@ -70,7 +96,8 @@ export function ReportBarChart({
 			}, {} as ChartConfig)
 		: reportChartConfig(
 				data.map((item) => item.name),
-				itemValueIsCurrency
+				itemValueIsCurrency,
+				showCompare ? compareLabel : undefined
 			);
 
 	const seriesColors = Array.from(
@@ -142,9 +169,13 @@ export function ReportBarChart({
 								<Bar
 									key={segment.key}
 									dataKey={segment.key}
+									// Payload name, not the raw data key — that's what resolves the config entry.
+									name={segmentConfigKeys[index]}
 									stackId="segments"
 									maxBarSize={40}
 									fill={color}
+									onClick={handleBarClick}
+									className={handleBarClick ? "cursor-pointer" : undefined}
 								>
 									{data.map((entry, bucketIndex) => (
 										<Cell
@@ -158,7 +189,13 @@ export function ReportBarChart({
 							);
 						})
 					) : (
-						<Bar dataKey="value" radius={[0, 4, 4, 0]} maxBarSize={40}>
+						<Bar
+								dataKey="value"
+								radius={[0, 4, 4, 0]}
+								maxBarSize={40}
+								onClick={handleBarClick}
+								className={handleBarClick ? "cursor-pointer" : undefined}
+							>
 							{data.map((entry, index) => {
 								const color = getChartColor(index, CHART_CATEGORICAL);
 								return (
@@ -171,6 +208,17 @@ export function ReportBarChart({
 								);
 							})}
 						</Bar>
+					)}
+					{showCompare && (
+						// Flat muted fill, no stripe — the current range keeps the texture.
+						<Bar
+							dataKey={COMPARE_KEY}
+							radius={[0, 4, 4, 0]}
+							maxBarSize={40}
+							fill={COMPARE_FILL}
+							stroke={COMPARE_COLOR}
+							strokeWidth={1}
+						/>
 					)}
 					{targetLine !== undefined && (
 						// extendDomain keeps a goal above the data max visible instead of clipped.

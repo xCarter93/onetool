@@ -16,6 +16,10 @@ import {
 import { ReportPreview } from "../components/report-preview";
 import { ReportUtilityBar } from "../components/report-utility-bar";
 import {
+	ReportContributingSheet,
+	type ContributingScope,
+} from "../components/report-contributing-sheet";
+import {
 	dateRangeOptions,
 	entityLabels,
 	groupByOptions,
@@ -23,7 +27,6 @@ import {
 	visualizationOptions,
 } from "../report-config";
 import { pathLabel } from "../report-path-options";
-import { normalizeReportConfig } from "@onetool/backend/convex/lib/reportConfig";
 
 function ReportViewPageContent() {
 	const router = useRouter();
@@ -36,6 +39,8 @@ function ReportViewPageContent() {
 
 	const [isEditing, setIsEditing] = useState(false);
 	const [isSaving, setIsSaving] = useState(false);
+	const [contributingScope, setContributingScope] =
+		useState<ContributingScope | null>(null);
 
 	// While editing, the builder publishes its own frame.
 	usePublishAssistantDockFrame(
@@ -46,10 +51,6 @@ function ReportViewPageContent() {
 					description: "Ask me about this report.",
 				}
 	);
-
-	const normalized = report
-		? normalizeReportConfig(report.config, report.visualization)
-		: null;
 
 	if (report === undefined) {
 		return (
@@ -75,8 +76,7 @@ function ReportViewPageContent() {
 		);
 	}
 
-	// report is non-null past the guards above, so normalized is too.
-	const viewConfig = normalized!.config;
+	const viewConfig = report.config;
 
 	if (isEditing) {
 		const handleSave = async (payload: ReportBuilderSavePayload) => {
@@ -121,6 +121,9 @@ function ReportViewPageContent() {
 			console.error("Failed to duplicate report:", error);
 		}
 	};
+
+	const openBucket = (bucketKey: string, bucketLabel: string) =>
+		setContributingScope({ bucketKey, bucketLabel });
 
 	const VizIcon = visualizationIcons[report.visualization.type];
 	const groupByLabel =
@@ -209,17 +212,29 @@ function ReportViewPageContent() {
 				<div className="p-5 sm:p-7">
 					<ReportPreview
 						config={viewConfig}
-						visualization={normalized!.visualization}
+						visualization={report.visualization}
+						onBucketClick={openBucket}
 					/>
 				</div>
 				<ReportUtilityBar
-					saved={{ config: viewConfig, visualization: normalized!.visualization }}
+					saved={{ config: viewConfig, visualization: report.visualization }}
 					reportName={report.name}
 					groupByLabel={groupByLabel}
 					rangeLabel={rangeLabel}
 					showCsvDownload
+					onViewContributingData={() => setContributingScope({})}
+					onBucketClick={openBucket}
 				/>
 			</div>
+
+			<ReportContributingSheet
+				scope={contributingScope}
+				onClose={() => setContributingScope(null)}
+				config={viewConfig}
+				visualization={report.visualization}
+				reportName={report.name}
+				showCsvDownload
+			/>
 		</div>
 	);
 }

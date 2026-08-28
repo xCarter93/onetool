@@ -47,6 +47,7 @@ export const ALL_PRESET_CATEGORY = "all";
 
 const PRESET_CATEGORY_BY_ID: Record<string, PresetCategoryId> = {
 	"revenue-by-month": "revenue",
+	"revenue-by-project": "revenue",
 	"average-invoice-value": "revenue",
 	"projected-income": "revenue",
 	"top-clients": "revenue",

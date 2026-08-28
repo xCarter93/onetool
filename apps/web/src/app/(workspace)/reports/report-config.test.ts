@@ -10,6 +10,8 @@ import {
 	metricOptionsFor,
 	metricTargetOptionsFor,
 	metricTargetValue,
+	percentChange,
+	pointsChange,
 	resolveReportQueryArgs,
 	savedToBuilderState,
 	type BuilderConfigState,
@@ -124,48 +126,6 @@ describe("resolveReportQueryArgs — Group by: None", () => {
 	});
 });
 
-describe("resolveReportQueryArgs — v1 magic-key expansion (staging rows until R14)", () => {
-	it("invoices 'month' expands to the paid-revenue v2 config", () => {
-		const args = resolveReportQueryArgs(
-			{ entityType: "invoices", groupBy: ["month"] },
-			{ type: "bar" }
-		);
-		expect(args.config.groupBy).toBe("paidAt_month");
-		expect(args.config.metric).toEqual({ op: "sum", field: "total" });
-		expect(args.config.date?.field).toBe("paidAt");
-	});
-
-	it("invoices 'client' expands with an explicit series limit (d3)", () => {
-		const args = resolveReportQueryArgs(
-			{ entityType: "invoices", groupBy: ["client"] },
-			{ type: "bar" }
-		);
-		expect(args.config.groupBy).toBe("clientId");
-		expect(args.seriesLimit).toBe(10);
-	});
-
-	it("quotes 'conversionRate' expands to the ratio metric", () => {
-		const args = resolveReportQueryArgs(
-			{ entityType: "quotes", groupBy: ["conversionRate"] },
-			{ type: "pie" }
-		);
-		expect(args.config.metric).toEqual({ op: "ratio", ratioKey: "conversionRate" });
-		expect(args.config.groupBy).toBeUndefined();
-	});
-
-	it("v1 aggregations carry into the config metric", () => {
-		const args = resolveReportQueryArgs(
-			{
-				entityType: "invoices",
-				groupBy: ["issuedDate_month"],
-				aggregations: [{ field: "total", operation: "avg" }],
-			},
-			{ type: "line" }
-		);
-		expect(args.config.metric).toEqual({ op: "avg", field: "total" });
-	});
-});
-
 describe("isDetailModeActive — Slice 3-D3 (chart above table model)", () => {
 	it("any viz type with groupBy None → detail (a chart with nothing to group on has nothing to chart above)", () => {
 		expect(isDetailModeActive(v2(), "table")).toBe(true);
@@ -195,7 +155,7 @@ describe("isDetailModeActive — Slice 3-D3 (chart above table model)", () => {
 		).toBe(false);
 	});
 
-	it("ratio and related metrics are never detail — they aggregate without a groupBy", () => {
+	it("a ratio metric is never detail — it aggregates without a groupBy", () => {
 		expect(
 			isDetailModeActive(
 				{
@@ -283,16 +243,6 @@ describe("builderStateToSaved ↔ savedToBuilderState round trips (R8a)", () => 
 		expect(trip.config).toEqual(config);
 	});
 
-	it("v1 rows hydrate through the normalizer (magic keys expand before reaching state)", () => {
-		const state = savedToBuilderState(
-			{ entityType: "invoices", groupBy: ["month"] },
-			{ type: "bar" }
-		);
-		expect(state.groupBy).toBe("paidAt_month");
-		expect(state.metric).toEqual({ op: "sum", field: "total" });
-		expect(state.dateField).toBe("paidAt");
-	});
-
 	it("all-time with no field override stores no date at all", () => {
 		const saved = builderStateToSaved(baseState({ groupBy: "status" }));
 		expect(saved.config.date).toBeUndefined();
@@ -327,26 +277,7 @@ describe("builderStateToSaved ↔ savedToBuilderState round trips (R8a)", () => 
 	});
 });
 
-describe("related-object traversal (d15) — options derived from REPORT_RELATIONS", () => {
-	it("quotes gain a line-item rollup from the quoteLineItems.quoteId edge", () => {
-		const option = metricOptionsFor("quotes").find(
-			(o) => o.value === "related:quoteLineItems:quoteId:sum:amount"
-		);
-		expect(option).toEqual({
-			value: "related:quoteLineItems:quoteId:sum:amount",
-			label: "Sum of Quote Line Items › Total",
-			metric: {
-				op: "related",
-				related: {
-					entity: "quoteLineItems",
-					fk: "quoteId",
-					op: "sum",
-					field: "amount",
-				},
-			},
-		});
-	});
-
+describe("related-object traversal (d15) — dotted paths from REPORT_RELATIONS", () => {
 	it("quoteLineItems can group by quoteId in the picker", () => {
 		expect(genericGroupByOptions.quoteLineItems).toContainEqual({
 			value: "quoteId",
@@ -405,31 +336,6 @@ describe("metric target + aggregation split (d15 amendment)", () => {
 		expect(quoteTargets().filter((o) => o.label === "Total")).toHaveLength(1);
 	});
 
-	it("a related child field is one aggregatable target labeled with its breadcrumb", () => {
-		expect(targetFor("related:quoteLineItems:quoteId:field:amount")).toEqual({
-			value: "related:quoteLineItems:quoteId:field:amount",
-			label: "Quote Line Items › Total",
-			group: "Quote Line Items",
-			target: {
-				kind: "relatedField",
-				entity: "quoteLineItems",
-				fk: "quoteId",
-				field: "amount",
-			},
-			aggregatable: true,
-		});
-	});
-
-	it("counting a child entity is its own non-aggregatable target", () => {
-		expect(targetFor("related:quoteLineItems:quoteId:count")).toEqual({
-			value: "related:quoteLineItems:quoteId:count",
-			label: "Count of Quote Line Items",
-			group: "Quote Line Items",
-			target: { kind: "relatedCount", entity: "quoteLineItems", fk: "quoteId" },
-			aggregatable: false,
-		});
-	});
-
 	it("named ratios are entity-gated, non-aggregatable targets", () => {
 		expect(targetFor("ratio:conversionRate")).toEqual({
 			value: "ratio:conversionRate",
@@ -452,34 +358,6 @@ describe("metric target + aggregation split (d15 amendment)", () => {
 		expect(
 			buildMetric({ kind: "ratio", ratioKey: "conversionRate" }, "sum")
 		).toEqual({ op: "ratio", ratioKey: "conversionRate" });
-		expect(
-			buildMetric(
-				{ kind: "relatedCount", entity: "quoteLineItems", fk: "quoteId" },
-				"max"
-			)
-		).toEqual({
-			op: "related",
-			related: { entity: "quoteLineItems", fk: "quoteId", op: "count" },
-		});
-		expect(
-			buildMetric(
-				{
-					kind: "relatedField",
-					entity: "quoteLineItems",
-					fk: "quoteId",
-					field: "amount",
-				},
-				"min"
-			)
-		).toEqual({
-			op: "related",
-			related: {
-				entity: "quoteLineItems",
-				fk: "quoteId",
-				op: "min",
-				field: "amount",
-			},
-		});
 	});
 
 	it("every metric shape reads back as its target value plus aggregation", () => {
@@ -495,93 +373,160 @@ describe("metric target + aggregation split (d15 amendment)", () => {
 		expect(
 			metricAggOf({ op: "ratio", ratioKey: "conversionRate" })
 		).toBeUndefined();
-
-		const relatedCount = {
-			op: "related" as const,
-			related: { entity: "quoteLineItems" as const, fk: "quoteId", op: "count" as const },
-		};
-		expect(metricTargetValue(relatedCount)).toBe(
-			"related:quoteLineItems:quoteId:count"
-		);
-		expect(metricAggOf(relatedCount)).toBeUndefined();
-
-		const relatedAvg = {
-			op: "related" as const,
-			related: {
-				entity: "quoteLineItems" as const,
-				fk: "quoteId",
-				op: "avg" as const,
-				field: "amount",
-			},
-		};
-		expect(metricTargetValue(relatedAvg)).toBe(
-			"related:quoteLineItems:quoteId:field:amount"
-		);
-		expect(metricAggOf(relatedAvg)).toBe("avg");
 	});
 
-	it("new capability: Average over a related child field is authorable", () => {
-		const target = targetFor("related:quoteLineItems:quoteId:field:amount")!.target;
-
-		expect(buildMetric(target, "avg")).toEqual({
-			op: "related",
-			related: {
-				entity: "quoteLineItems",
-				fk: "quoteId",
-				op: "avg",
-				field: "amount",
-			},
-		});
-	});
-
-	it("an avg-over-related config survives hydrate → save", () => {
-		const config: ReportConfigV2 = {
-			version: 2,
-			entityType: "quotes",
-			metric: {
-				op: "related",
-				related: {
-					entity: "quoteLineItems",
-					fk: "quoteId",
-					op: "avg",
-					field: "amount",
-				},
-			},
-		};
-		const state = savedToBuilderState(config, { type: "bar" });
-
-		expect(metricTargetValue(state.metric)).toBe(
-			"related:quoteLineItems:quoteId:field:amount"
-		);
-		expect(metricAggOf(state.metric)).toBe("avg");
-		expect(builderStateToSaved(state).config).toEqual(config);
-	});
-
-	it("the flat label vocabulary keeps its old entries and gains related avg/min/max", () => {
+	it("the flat label vocabulary keeps its old entries", () => {
 		const options = metricOptionsFor("quotes");
 		const byValue = (value: string) => options.find((o) => o.value === value);
 
 		expect(byValue("count")?.label).toBe("Count of records");
 		expect(byValue("sum:total")?.label).toBe("Sum of Total");
 		expect(byValue("ratio:conversionRate")?.label).toBe("Conversion rate");
-		expect(byValue("related:quoteLineItems:quoteId:count")?.label).toBe(
-			"Count of Quote Line Items"
+		expect(byValue("avg:total")?.label).toBe("Average of Total");
+	});
+});
+
+describe("comparison ranges (R11)", () => {
+	const bounded = { range: { kind: "preset" as const, preset: "this_year" as const } };
+
+	it("emits date.comparison for a bounded range on a supported visualization", () => {
+		const { config } = builderStateToSaved(
+			baseState({
+				vizType: "column",
+				groupBy: "issuedDate_month",
+				dateRangePreset: "this_year",
+				compareMode: "previous_year",
+			})
 		);
-		expect(byValue("related:quoteLineItems:quoteId:sum:amount")?.label).toBe(
-			"Sum of Quote Line Items › Total"
+		expect(config.date?.comparison).toEqual({ kind: "previous_year" });
+	});
+
+	it("strips the comparison on an unbounded (All Time) range", () => {
+		const { config } = builderStateToSaved(
+			baseState({
+				vizType: "column",
+				groupBy: "issuedDate_month",
+				dateRangePreset: "all_time",
+				compareMode: "previous_period",
+			})
 		);
-		expect(byValue("related:quoteLineItems:quoteId:avg:amount")).toEqual({
-			value: "related:quoteLineItems:quoteId:avg:amount",
-			label: "Average of Quote Line Items › Total",
-			metric: {
-				op: "related",
-				related: {
-					entity: "quoteLineItems",
-					fk: "quoteId",
-					op: "avg",
-					field: "amount",
+		expect(config.date?.comparison).toBeUndefined();
+	});
+
+	it("strips the comparison on pie, radar, and radial", () => {
+		for (const vizType of ["pie", "radar", "radial"] as const) {
+			const { config } = builderStateToSaved(
+				baseState({
+					vizType,
+					groupBy: "status",
+					dateRangePreset: "this_year",
+					compareMode: "previous_period",
+				})
+			);
+			expect(config.date?.comparison).toBeUndefined();
+		}
+	});
+
+	it("strips the comparison in raw-rows detail mode", () => {
+		const { config } = builderStateToSaved(
+			baseState({
+				vizType: "table",
+				dateRangePreset: "this_year",
+				compareMode: "previous_period",
+			})
+		);
+		expect(isDetailModeActive(config, "table")).toBe(true);
+		expect(config.date?.comparison).toBeUndefined();
+	});
+
+	it("strips the comparison when segmentBy is set", () => {
+		const { config } = builderStateToSaved(
+			baseState({
+				vizType: "column",
+				groupBy: "issuedDate_month",
+				segmentBy: "status",
+				dateRangePreset: "this_year",
+				compareMode: "previous_period",
+			})
+		);
+		expect(config.date?.comparison).toBeUndefined();
+	});
+
+	it("a half-picked custom comparison range emits nothing", () => {
+		const { config } = builderStateToSaved(
+			baseState({
+				vizType: "column",
+				groupBy: "issuedDate_month",
+				dateRangePreset: "this_year",
+				compareMode: "custom",
+				compareDateRange: { from: new Date(2025, 0, 1) },
+			})
+		);
+		expect(config.date?.comparison).toBeUndefined();
+	});
+
+	it("a custom comparison range stores day-start/day-end absolute ms", () => {
+		const { config } = builderStateToSaved(
+			baseState({
+				vizType: "column",
+				groupBy: "issuedDate_month",
+				dateRangePreset: "this_year",
+				compareMode: "custom",
+				compareDateRange: {
+					from: new Date(2025, 0, 1),
+					to: new Date(2025, 11, 31),
+				},
+			})
+		);
+		expect(config.date?.comparison).toEqual({
+			kind: "absolute",
+			start: new Date(2025, 0, 1).getTime(),
+			end: new Date(2025, 11, 31, 23, 59, 59, 999).getTime(),
+		});
+	});
+
+	it("an absolute comparison survives hydrate → save unchanged", () => {
+		const config = v2({
+			groupBy: "issuedDate_month",
+			date: {
+				...bounded,
+				comparison: {
+					kind: "absolute",
+					start: new Date(2025, 0, 1).getTime(),
+					end: new Date(2025, 11, 31, 23, 59, 59, 999).getTime(),
 				},
 			},
 		});
+		const state = savedToBuilderState(config, { type: "column" });
+		expect(state.compareMode).toBe("custom");
+		expect(builderStateToSaved(state).config).toEqual(config);
+	});
+
+	it("a preset-kind comparison survives hydrate → save unchanged", () => {
+		const config = v2({
+			groupBy: "issuedDate_month",
+			date: { ...bounded, comparison: { kind: "previous_period" } },
+		});
+		const state = savedToBuilderState(config, { type: "column" });
+		expect(state.compareMode).toBe("previous_period");
+		expect(builderStateToSaved(state).config).toEqual(config);
+	});
+});
+
+describe("percentChange / pointsChange (R11)", () => {
+	it("signs the percent change and never colors it", () => {
+		expect(percentChange(120, 100)).toBe("+20.0%");
+		expect(percentChange(80, 100)).toBe("-20.0%");
+		expect(percentChange(100, 100)).toBe("0.0%");
+	});
+
+	it("is undefined against a zero previous — callers show the previous value instead", () => {
+		expect(percentChange(50, 0)).toBeUndefined();
+	});
+
+	it("ratio metrics move in percentage points, not percent", () => {
+		expect(pointsChange(43, 40)).toBe("+3.0 pts");
+		expect(pointsChange(40, 43)).toBe("-3.0 pts");
+		expect(pointsChange(5, 0)).toBe("+5.0 pts");
 	});
 });
