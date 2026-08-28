@@ -15,7 +15,11 @@ import { ChartConfig, ChartContainer, ChartTooltip } from "@/components/ui/chart
 import { CHART_CATEGORICAL, getChartColor } from "@/lib/chart-colors";
 import { formatReportValue } from "../report-config";
 import { ChartNoData, isChartDataEmpty } from "./chart-no-data";
-import { ReportChartTooltip, reportChartConfig } from "./report-chart-tooltip";
+import {
+	ReportChartTooltip,
+	chartConfigKeys,
+	reportChartConfig,
+} from "./report-chart-tooltip";
 import { ChartStripeDefs, stripeId } from "@/components/charts/chart-stripe-defs";
 import { bucketElementClick, type BucketClickHandler } from "./report-bucket-click";
 
@@ -67,9 +71,11 @@ export function ReportBarChart({
 	const handleBarClick = bucketElementClick(onBucketClick);
 	const stacked = segments !== undefined && segments.length > 0;
 
+	const segmentConfigKeys = chartConfigKeys(segments?.map((s) => s.key) ?? []);
+
 	const chartConfig: ChartConfig = stacked
 		? segments.reduce((acc, segment, index) => {
-				acc[segment.key] = {
+				acc[segmentConfigKeys[index]] = {
 					label: segment.label,
 					color: getChartColor(index, CHART_CATEGORICAL),
 				};
@@ -149,6 +155,8 @@ export function ReportBarChart({
 								<Bar
 									key={segment.key}
 									dataKey={segment.key}
+									// Payload name, not the raw data key — that's what resolves the config entry.
+									name={segmentConfigKeys[index]}
 									stackId="segments"
 									maxBarSize={40}
 									fill={color}

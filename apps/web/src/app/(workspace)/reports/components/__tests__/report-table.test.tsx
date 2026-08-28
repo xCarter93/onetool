@@ -186,7 +186,7 @@ describe("ReportTable", () => {
 						rows: [
 							{
 								invoiceNumber: "INV-001",
-								total: 1200,
+								total: 1200.5,
 								issuedDate: new Date(2026, 0, 15).getTime(),
 								isActive: true,
 							},
@@ -209,7 +209,8 @@ describe("ReportTable", () => {
 			expect(screen.getByText("Active")).toBeInTheDocument();
 
 			expect(screen.getByText("INV-001")).toBeInTheDocument();
-			expect(screen.getByText("$1,200")).toBeInTheDocument();
+			// Detail rows are record-level amounts — exact cents, like the CSV export.
+			expect(screen.getByText("$1,200.50")).toBeInTheDocument();
 			expect(screen.getByText("Jan 15, 2026")).toBeInTheDocument();
 			expect(screen.getByText("Yes")).toBeInTheDocument();
 

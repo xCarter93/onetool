@@ -8,6 +8,7 @@ import {
 	parseCurrentConfig,
 	reportConfigAgent,
 	sanitizeGeneratedFilters,
+	summarizeGeneratedReport,
 	toBuilderConfig,
 	toExecuteReportArgs,
 	toSavedReport,
@@ -518,6 +519,40 @@ describe("toBuilderConfig", () => {
 		const config = toBuilderConfig(gen({ groupBy: null, visualization: "column" }));
 		expect(config.visualization).toEqual({ type: "table" });
 		expect(config.config.groupBy).toBeUndefined();
+	});
+});
+
+describe('"number" visualization', () => {
+	it("the schema accepts it, so an edit of a saved KPI can round-trip", () => {
+		const parsed = generatedReportSchema.parse(
+			gen({ visualization: "number", groupBy: null })
+		);
+		expect(parsed.visualization).toBe("number");
+	});
+
+	it("stays a number with a null groupBy instead of falling back to table", () => {
+		const saved = toSavedReport(
+			gen({
+				visualization: "number",
+				groupBy: null,
+				measure: measure({ op: "sum", field: "total" }),
+			})
+		);
+		expect(saved.visualization).toEqual({ type: "number" });
+		expect(saved.config.groupBy).toBeUndefined();
+		expect(saved.config.metric).toEqual({ op: "sum", field: "total" });
+	});
+
+	it("drops a groupBy the model sent alongside it, matching the builder", () => {
+		const saved = toSavedReport(gen({ visualization: "number", groupBy: "status" }));
+		expect(saved.visualization).toEqual({ type: "number" });
+		expect(saved.config.groupBy).toBeUndefined();
+	});
+
+	it("applies and saves identically, and summarizes without the dropped grouping", () => {
+		const generated = gen({ visualization: "number", groupBy: "status" });
+		expect(toBuilderConfig(generated)).toEqual(toSavedReport(generated));
+		expect(summarizeGeneratedReport(generated)).toBe("single metric of invoices");
 	});
 });
 

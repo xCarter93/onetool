@@ -151,7 +151,16 @@ export const generatedReportSchema = z.object({
 		.describe(
 			"Named period for the date range. Preferred over startDate/endDate when the request names one; never both."
 		),
-	visualization: z.enum(["bar", "column", "line", "pie", "radar", "radial", "table"]),
+	visualization: z.enum([
+		"bar",
+		"column",
+		"line",
+		"pie",
+		"radar",
+		"radial",
+		"table",
+		"number",
+	]),
 	name: z.string().describe("Short report title."),
 	description: z.string().nullable().describe("One sentence, or null."),
 });
@@ -220,13 +229,13 @@ export const REPORT_CONFIG_SYSTEM_PROMPT = [
 	'- groupBy must be exactly one of the listed Group-by values for the chosen entity, a dotted path, or null. Never invent values.',
 	'- A list of individual records ("show me all overdue invoices") is visualization "table" with groupBy null and 3-5 relevant columns.',
 	'- Charts (bar/column/line/pie/radar/radial) render above the aggregated data table and require a groupBy. "table" means no chart — groupBy null there is fine for raw rows.',
-	'- Visualization choice: "column" for time-bucketed groupBy (month/week/day); "bar" for named categories (status, client, lead source, etc.); "line" for a trend over time; "pie" for share-of-total; "table" for exact values or raw rows. Only use "radar" or "radial" when the user explicitly asks for that chart type.',
+	'- Visualization choice: "column" for time-bucketed groupBy (month/week/day); "bar" for named categories (status, client, lead source, etc.); "line" for a trend over time; "pie" for share-of-total; "table" for exact values or raw rows; "number" for a single headline figure ("how much did we invoice this month") — groupBy must be null. Only use "radar" or "radial" when the user explicitly asks for that chart type.',
 	"- measure: null (count of records) unless the user asks about amounts — then sum/avg/min/max of a number or currency field. A non-count measure only combines with the measure-compatible Group-by values listed per entity, or groupBy null.",
 	`- measure {op: "ratio", ratioKey}: a built-in percentage. Available: ${RATIO_KEYS.map(
 		(key) => `"${key}" on ${RATIO_METRICS[key].entityType}`
 	).join(", ")}. groupBy must be null.`,
 	'- To roll a linked entity up per record, report on the child entity and group by the link: "total invoiced per client" is entityType "invoices" with measure {op: "sum", field: "total"} and groupBy "clientId"; "count of line items per quote" is entityType "quoteLineItems" with measure null and groupBy "quoteId" (a parent path like "quoteId.quoteNumber" labels the buckets by that field instead).',
-	'- A ratio measure renders as one figure, so the visualization you pick is ignored — use "table".',
+	'- A ratio measure renders as one figure, so the visualization you pick is ignored — use "number".',
 	"- filters: fields listed for the entity, or a dotted path ending in one. Timestamp fields filter with before/after/on and a YYYY-MM-DD value — no other operator applies to a date, and those three apply to nothing else. When a field lists allowed values, equals/not_equals values must match one exactly.",
 	'- "contains" is for free-text string fields only; greater/less operators are for number and currency fields.',
 	"- Money values are dollars (e.g. 500 means $500).",
@@ -558,8 +567,15 @@ function resolveVisualization(
 	gen: GeneratedReport
 ): ReportVisualization["type"] {
 	// One value, no dimension — the KPI figure is the only rendering with data.
-	if (isMetricOnlyMeasure(gen.measure)) return "number";
+	if (isMetricOnlyMeasure(gen.measure) || gen.visualization === "number") {
+		return "number";
+	}
 	return gen.groupBy === null && gen.visualization !== "table" ? "table" : gen.visualization;
+}
+
+/** A number report is one figure, so it carries no grouping — the builder clears it too. */
+function effectiveGroupBy(gen: GeneratedReport): string | null {
+	return resolveVisualization(gen) === "number" ? null : gen.groupBy;
 }
 
 function isMetricOnlyMeasure(measure: GeneratedReport["measure"]): boolean {
@@ -588,10 +604,11 @@ function toGeneratedConfig(
 	const dateRange = toDateRange(gen, timezone);
 	const measure = gen.measure;
 	const visualization = resolveVisualization(gen);
+	const groupBy = effectiveGroupBy(gen);
 	const normalized = normalizeReportConfig(
 		{
 			entityType: gen.entityType,
-			...(gen.groupBy ? { groupBy: [gen.groupBy] } : {}),
+			...(groupBy ? { groupBy: [groupBy] } : {}),
 			...(dateRange ? { dateRange } : {}),
 			...(filters ? { filters } : {}),
 			...(measure && isAggregationOp(measure.op) && measure.field
@@ -664,13 +681,14 @@ export function summarizeGeneratedReport(gen: GeneratedReport): string {
 	// Reflect what's actually saved/applied, not the model's raw guess — a
 	// chart with null groupBy is coerced to table (see resolveVisualization).
 	const visualization = resolveVisualization(gen);
+	const groupBy = effectiveGroupBy(gen);
 	const measure = gen.measure;
 	const parts: string[] = [gen.entityType];
-	if (gen.groupBy) {
+	if (groupBy) {
 		const label = GROUP_BY_OPTIONS[gen.entityType].find(
-			(o) => o.value === gen.groupBy
+			(o) => o.value === groupBy
 		)?.label;
-		parts.push(`grouped by ${label ?? gen.groupBy}`);
+		parts.push(`grouped by ${label ?? groupBy}`);
 	} else if (visualization === "table" && !isMetricOnlyMeasure(measure)) {
 		parts.push("as individual rows");
 	}

@@ -11,6 +11,7 @@ import {
 	TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import { formatCurrency } from "@/lib/money";
 import { formatDate, formatReportValue } from "../report-config";
 
 interface DataPoint {
@@ -49,7 +50,8 @@ interface ReportTableProps {
 
 function formatDetailCell(value: string | number | boolean | null, type: ReportFieldType): string {
 	if (value === null) return "—";
-	if (type === "currency" && typeof value === "number") return formatReportValue(value, true);
+	// Raw rows are record-level amounts — exact cents, matching the CSV export.
+	if (type === "currency" && typeof value === "number") return formatCurrency(value);
 	if (type === "timestamp" && typeof value === "number") return formatDate(value);
 	if (type === "boolean") return value ? "Yes" : "No";
 	if (type === "number" && typeof value === "number") return value.toLocaleString("en-US");

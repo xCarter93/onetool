@@ -18,16 +18,34 @@ export function measureLabel(isCurrency: boolean) {
 }
 
 /**
+ * Config keys for a chart's series, one per name, in order. ChartStyle
+ * interpolates the key straight into `--color-<key>`, so a raw display label
+ * ("Google Ads") would emit a declaration the browser drops — slugged here,
+ * with the human string kept in the entry's `label`.
+ */
+export function chartConfigKeys(names: string[]): string[] {
+	const used = new Set([MEASURE_KEY]);
+	return names.map((name) => {
+		const slug = name.replace(/[^A-Za-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "") || "bucket";
+		let key = slug;
+		for (let suffix = 2; used.has(key); suffix++) key = `${slug}-${suffix}`;
+		used.add(key);
+		return key;
+	});
+}
+
+/**
  * One entry per bucket (chip color) plus the measure row label. Bucket entries
- * also feed ChartStyle's `--color-<bucket>` vars.
+ * also feed ChartStyle's `--color-<key>` vars.
  */
 export function reportChartConfig(
 	names: string[],
 	isCurrency: boolean
 ): ChartConfig {
 	const config: ChartConfig = {};
+	const keys = chartConfigKeys(names);
 	names.forEach((name, index) => {
-		config[name] = {
+		config[keys[index]] = {
 			label: name,
 			color: getChartColor(index, CHART_CATEGORICAL),
 		};
@@ -37,6 +55,11 @@ export function reportChartConfig(
 		color: getChartColor(0, CHART_CATEGORICAL),
 	};
 	return config;
+}
+
+/** Bucket entries are keyed by slug, so the display name only matches on `label`. */
+function bucketColor(config: ChartConfig, bucket: string): string | undefined {
+	return Object.values(config).find((entry) => entry.label === bucket)?.color;
 }
 
 type TooltipPayload = React.ComponentProps<typeof ChartTooltipContent>["payload"];
@@ -70,7 +93,7 @@ export function ReportChartTooltip({
 			hideLabel={bucket === undefined}
 			labelFormatter={() => bucket}
 			// Stripe fills reach the chip as paint-server urls, so take the bucket's real color.
-			color={bucket ? config[bucket]?.color : undefined}
+			color={bucket ? bucketColor(config, bucket) : undefined}
 			valueFormatter={(value) =>
 				typeof value === "number"
 					? formatReportValue(value, isCurrency)
