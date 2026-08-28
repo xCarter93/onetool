@@ -57,7 +57,7 @@ import {
 	countFilterRules,
 	sanitizeReportFilters,
 } from "./report-filter-model";
-import { pathLabel } from "../report-path-options";
+import { entityLabel, pathLabel } from "../report-path-options";
 import {
 	builderStateToSaved,
 	dateFieldOptionsFor,
@@ -66,6 +66,7 @@ import {
 	genericGroupByOptions,
 	groupByOptions,
 	isChartVizType,
+	isDetailModeActive,
 	savedToBuilderState,
 	visualizationOptions,
 	type BuilderConfigState,
@@ -298,6 +299,26 @@ export function ReportBuilder({
 
 	const groupBySectionVisible =
 		vizType !== "number" && metric.op !== "ratio" && metric.op !== "related";
+
+	// Ratio and related metrics bucket themselves — no column choice makes their table raw rows.
+	const metricBucketsItself = metric.op === "ratio" || metric.op === "related";
+	const rawRowsActive = saved ? isDetailModeActive(saved.config, vizType) : false;
+	const columnsHelper = metricBucketsItself
+		? "Showing this metric instead of raw rows. Set the metric to Count of records to pick columns."
+		: rawRowsActive
+			? "Pick the columns each row shows."
+			: "Showing one row per group. Picking columns switches to raw rows.";
+
+	const tableMetricHelper =
+		vizType === "table" && !groupBy && entityType
+			? metric.op === "related"
+				? `One row per ${entityLabel(entityType)} with this rollup.`
+				: metric.op === "ratio"
+					? "The table shows this ratio's breakdown instead of raw rows."
+					: metric.op === "count"
+						? "Counting records with no grouping — the table lists each record as a row."
+						: "The table lists raw rows. This metric applies once the table is grouped."
+			: undefined;
 
 	// Group-by picker anatomy (R9): timestamp options collapse to one entry per
 	// base field, with the day/week/month granularity chosen inline.
@@ -639,11 +660,18 @@ export function ReportBuilder({
 							</PanelSection>
 
 							<PanelSection title="Metric">
-								<ReportMetricControls
-									entityType={entityType}
-									metric={metric}
-									onChange={changeMetric}
-								/>
+								<div>
+									<ReportMetricControls
+										entityType={entityType}
+										metric={metric}
+										onChange={changeMetric}
+									/>
+									{tableMetricHelper && (
+										<p className="mt-1.5 text-xs text-muted-foreground">
+											{tableMetricHelper}
+										</p>
+									)}
+								</div>
 							</PanelSection>
 
 							{groupBySectionVisible && (
@@ -839,10 +867,7 @@ export function ReportBuilder({
 
 							{vizType === "table" && (
 								<PanelSection title="Table options">
-									<PanelField
-										label="Columns"
-										helper="Columns appear when showing raw rows."
-									>
+									<PanelField label="Columns" helper={columnsHelper}>
 										<MultiSelector
 											options={Object.entries(
 												REPORT_FIELDS[entityType].fields
@@ -862,7 +887,9 @@ export function ReportBuilder({
 											}
 											placeholder="Default columns"
 											maxCount={2}
-											className="w-full"
+											// MultiSelector pins disabled buttons to full opacity; re-mute it here.
+											className="w-full disabled:opacity-60"
+											disabled={metricBucketsItself}
 										/>
 									</PanelField>
 								</PanelSection>

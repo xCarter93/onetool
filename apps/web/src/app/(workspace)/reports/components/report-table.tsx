@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { formatDate, formatReportValue } from "../report-config";
+import { entityLabel } from "../report-path-options";
 
 interface DataPoint {
 	name: string;
@@ -32,6 +33,8 @@ interface ReportTableProps {
 	total: number;
 	groupBy?: string;
 	entityType: string;
+	/** A related rollup buckets by source record, so its rows are records, not categories. */
+	metricIsRelated?: boolean;
 	/** Is `total` a dollar amount? Explicit, from the caller — see getReportValueTypes. */
 	totalIsCurrency?: boolean;
 	/** When set, renders the flat detail-mode table instead of the aggregated one. */
@@ -86,6 +89,8 @@ export function ReportTable({
 	data,
 	total,
 	groupBy,
+	entityType,
+	metricIsRelated = false,
 	totalIsCurrency = false,
 	detail,
 }: ReportTableProps) {
@@ -127,7 +132,9 @@ export function ReportTable({
 							<TableHead>
 								{groupBy
 									? groupBy.charAt(0).toUpperCase() + groupBy.slice(1)
-									: "Category"}
+									: metricIsRelated
+										? entityLabel(entityType)
+										: "Category"}
 							</TableHead>
 							<TableHead className="text-right">Count</TableHead>
 							<TableHead className="text-right">%</TableHead>

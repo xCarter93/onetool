@@ -414,6 +414,118 @@ describe("ReportBuilder — metric target + aggregation (d15 amendment)", () => 
 	});
 });
 
+function quotesTable(
+	metric: ReportMetric,
+	over: { groupBy?: string; columns?: string[] } = {}
+): ReportBuilderInitial {
+	return {
+		name: "Quotes",
+		description: "",
+		config: {
+			version: 2,
+			entityType: "quotes",
+			metric,
+			...(over.groupBy ? { groupBy: over.groupBy } : {}),
+			...(over.columns ? { columns: over.columns } : {}),
+		},
+		visualization: { type: "table" },
+	};
+}
+
+const RELATED_METRIC: ReportMetric = {
+	op: "related",
+	related: { entity: "quoteLineItems", fk: "quoteId", op: "count" },
+};
+
+function columnsPicker() {
+	return section("Table options").getByRole("button");
+}
+
+describe("ReportBuilder — Table raw-rows legibility", () => {
+	it("a related rollup makes the Columns picker inert and says how to get raw rows", () => {
+		renderBuilder(quotesTable(RELATED_METRIC));
+
+		expect(columnsPicker()).toBeDisabled();
+		expect(
+			section("Table options").getByText(
+				"Showing this metric instead of raw rows. Set the metric to Count of records to pick columns."
+			)
+		).toBeInTheDocument();
+	});
+
+	it("a ratio metric makes the Columns picker inert too", () => {
+		renderBuilder(quotesTable({ op: "ratio", ratioKey: "conversionRate" }));
+
+		expect(columnsPicker()).toBeDisabled();
+	});
+
+	it("count with no grouping keeps the picker live and names what columns do", () => {
+		renderBuilder(quotesTable({ op: "count" }));
+
+		expect(columnsPicker()).toBeEnabled();
+		expect(
+			section("Table options").getByText("Pick the columns each row shows.")
+		).toBeInTheDocument();
+		expect(
+			section("Metric").getByText(
+				"Counting records with no grouping — the table lists each record as a row."
+			)
+		).toBeInTheDocument();
+	});
+
+	it("a grouped table keeps the picker live: columns are the way into raw rows", () => {
+		renderBuilder(quotesTable({ op: "count" }, { groupBy: "status" }));
+
+		expect(columnsPicker()).toBeEnabled();
+		expect(
+			section("Table options").getByText(
+				"Showing one row per group. Picking columns switches to raw rows."
+			)
+		).toBeInTheDocument();
+	});
+
+	it("a grouped table with columns picked is already raw rows", () => {
+		renderBuilder(
+			quotesTable({ op: "count" }, { groupBy: "status", columns: ["quoteNumber"] })
+		);
+
+		expect(
+			section("Table options").getByText("Pick the columns each row shows.")
+		).toBeInTheDocument();
+	});
+
+	it("a field metric with no grouping says the metric is not what the table shows", () => {
+		renderBuilder(quotesTable({ op: "sum", field: "total" }));
+
+		expect(columnsPicker()).toBeEnabled();
+		expect(
+			section("Metric").getByText(
+				"The table lists raw rows. This metric applies once the table is grouped."
+			)
+		).toBeInTheDocument();
+	});
+
+	it("a related rollup says the table lists one row per source record", () => {
+		renderBuilder(quotesTable(RELATED_METRIC));
+
+		expect(
+			section("Metric").getByText("One row per Quote with this rollup.")
+		).toBeInTheDocument();
+	});
+
+	it("charts get no table-consequence helper", () => {
+		renderBuilder(quotesReport({ op: "count" }, { groupBy: "status" }));
+
+		expect(section("Metric").queryByText(/the table/i)).toBeNull();
+	});
+
+	it("Single metric gets no table-consequence helper", () => {
+		renderBuilder(quotesReport({ op: "count" }, { type: "number" }));
+
+		expect(section("Metric").queryByText(/the table/i)).toBeNull();
+	});
+});
+
 describe("ReportBuilder — assistant entry point (F4, d15)", () => {
 	it("no longer renders an Ask AI card in the config rail", () => {
 		// With an opener in context the old rail card would render; the dock's

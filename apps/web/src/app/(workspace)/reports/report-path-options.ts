@@ -43,6 +43,11 @@ const PATH_ENTITY_LABELS: Record<ReportRelationTarget, string> = {
 	skus: "SKU",
 };
 
+/** Singular display name for an entity, e.g. a table header over one row per record. Unknown names pass through. */
+export function entityLabel(entityType: string): string {
+	return PATH_ENTITY_LABELS[entityType as ReportRelationTarget] ?? entityType;
+}
+
 const SEPARATOR = " › ";
 
 const DIRECT_GROUP = "Fields";

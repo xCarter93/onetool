@@ -276,6 +276,7 @@ function ReportPreviewInner({ config, visualization }: ReportPreviewProps) {
 						total={total}
 						groupBy={groupBy}
 						entityType={config.entityType}
+						metricIsRelated={config.metric.op === "related"}
 						totalIsCurrency={totalIsCurrency}
 					/>
 				);

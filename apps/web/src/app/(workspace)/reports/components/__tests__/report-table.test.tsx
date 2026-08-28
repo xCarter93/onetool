@@ -24,6 +24,37 @@ afterAll(() => {
 import { ReportTable } from "../report-table";
 
 describe("ReportTable", () => {
+	it("related rollup with no grouping labels rows by the source entity", () => {
+		render(
+			<ReportTable
+				data={[{ name: "Q-1001", value: 3 }]}
+				total={3}
+				entityType="quotes"
+				metricIsRelated
+			/>
+		);
+
+		expect(
+			screen.getByRole("columnheader", { name: "Quote" })
+		).toBeInTheDocument();
+		expect(screen.queryByRole("columnheader", { name: "Category" })).toBeNull();
+	});
+
+	it("a grouped table still labels its rows by the grouping", () => {
+		render(
+			<ReportTable
+				data={[{ name: "Active", value: 7 }]}
+				total={7}
+				entityType="clients"
+				groupBy="status"
+			/>
+		);
+
+		expect(
+			screen.getByRole("columnheader", { name: "Status" })
+		).toBeInTheDocument();
+	});
+
 	it("count report (clients by status): Total is the plain record count", () => {
 		render(
 			<ReportTable

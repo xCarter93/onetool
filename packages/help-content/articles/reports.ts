@@ -45,14 +45,14 @@ export const reportsArticles: HelpArticle[] = [
 					{
 						type: "steps",
 						items: [
-							"Pick a **Visualization**: **Single metric** shows one figure, like total revenue this month. **Table** lists grouped totals, or raw records when nothing is grouped. **Bar**, **Column**, **Area**, **Pie**, **Radar**, and **Radial** draw grouped data. Your choice decides which settings appear below it.",
+							"Pick a **Visualization**: **Single metric** shows one figure, like total revenue this month. **Table** lists grouped totals, or raw records when nothing is grouped, except for rate and linked-record metrics, which always show totals. **Bar**, **Column**, **Area**, **Pie**, **Radar**, and **Radial** draw grouped data. Your choice decides which settings appear below it.",
 							"Under **Data source**, pick what you are reporting on: Clients, Projects, Tasks, Quotes, Invoices, Payments, Quote Line Items, Invoice Line Items, or Activities.",
 							"Set the **Date range**. Choose a ready-made range (Today through Last Year, or All Time) or pick **Custom Range** to set exact dates. When the source has more than one date, a **Date field** picker chooses which one the range applies to, like an invoice's issued date versus its paid date.",
 							"Add **Filters** to narrow the data. Each filter is a row: a field, a condition, and a value. The **And/Or** chip between rows switches how they combine, and fields from linked records work too, so line items can filter by **Quote › Status**. Date fields filter with **is before**, **is after**, and **is on**. For rules in separate groups, open **Advanced filter**: a panel opens beside the settings where you build groups of rules and drag filters between them.",
 							"Pick a **Metric**: what to measure, then how to aggregate it. The target can be the count of records, a number field, a field from linked records like **Invoices › Total** on a client report, or a named rate like **Conversion rate**. Fields get an aggregation dropdown next to the target: **Sum**, **Average**, **Min**, or **Max**.",
 							"Pick a **Group by** to decide what each bar, slice, or row represents. The picker lists the source's own fields first, and entries like **Quote ›** step into a linked record, so line items can group by their quote's project or client. Typing in the search box finds fields anywhere in the chain. Date groupings offer **Day**, **Week**, and **Month** buckets, and groupings with a fixed set of values can **Include empty values** to show zero-count groups.",
 						"On bar and column charts, **Segment by** splits each bar into stacked segments by a second field, like status within each month.",
-							"Fine-tune under **Chart options**: cap how many groups show (**Series limit**), change the ordering (**Sort**), label the axes, and draw a **Target line** at a value you set. Tables showing raw records get a **Table options** section with a **Columns** picker instead.",
+							"Fine-tune under **Chart options**: cap how many groups show (**Series limit**), change the ordering (**Sort**), label the axes, and draw a **Target line** at a value you set. Table reports get a **Table options** section with a **Columns** picker instead, which chooses the fields each record row shows. Picking columns on a grouped table switches it to raw records.",
 						],
 					},
 					{
