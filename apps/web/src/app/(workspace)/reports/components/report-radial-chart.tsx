@@ -2,15 +2,11 @@
 
 import React from "react";
 import { RadialBar, RadialBarChart, Cell, PolarGrid } from "recharts";
-import {
-	ChartConfig,
-	ChartContainer,
-	ChartTooltip,
-	ChartTooltipContent,
-} from "@/components/ui/chart";
+import { ChartContainer, ChartTooltip } from "@/components/ui/chart";
 import { CHART_CATEGORICAL, getChartColor } from "@/lib/chart-colors";
 import { formatReportValue } from "../report-config";
 import { ChartNoData, isChartDataEmpty } from "./chart-no-data";
+import { ReportChartTooltip, reportChartConfig } from "./report-chart-tooltip";
 import { ChartStripeDefs, stripeId } from "@/components/charts/chart-stripe-defs";
 
 interface DataPoint {
@@ -33,15 +29,13 @@ export function ReportRadialChart({
 	data,
 	total,
 	totalIsCurrency = false,
+	itemValueIsCurrency = false,
 }: ReportRadialChartProps) {
 	const patternPrefix = React.useId();
-	const chartConfig: ChartConfig = data.reduce((acc, item, index) => {
-		acc[item.name] = {
-			label: item.name,
-			color: getChartColor(index, CHART_CATEGORICAL),
-		};
-		return acc;
-	}, {} as ChartConfig);
+	const chartConfig = reportChartConfig(
+		data.map((item) => item.name),
+		itemValueIsCurrency
+	);
 
 	if (isChartDataEmpty(data)) {
 		return <ChartNoData />;
@@ -53,7 +47,7 @@ export function ReportRadialChart({
 	}));
 
 	return (
-		<div className="space-y-4">
+		<div className="flex flex-1 flex-col gap-4">
 			{/* Summary stats */}
 			<div className="flex items-center justify-between text-sm">
 				<span className="text-muted-foreground">{data.length} categories</span>
@@ -62,8 +56,8 @@ export function ReportRadialChart({
 				</span>
 			</div>
 
-			{/* Chart */}
-			<ChartContainer config={chartConfig} className="h-[420px] w-full">
+			{/* grow fills a tall canvas; shrink-0 keeps 420px as the floor — the % radii follow. */}
+			<ChartContainer config={chartConfig} className="h-[420px] w-full shrink-0 grow">
 				<RadialBarChart
 					data={chartData}
 					innerRadius="20%"
@@ -73,7 +67,9 @@ export function ReportRadialChart({
 				>
 					<ChartStripeDefs idPrefix={patternPrefix} colors={data.map((_, index) => getChartColor(index, CHART_CATEGORICAL))} />
 					<PolarGrid stroke="var(--border)" gridType="circle" radialLines={false} />
-					<ChartTooltip content={<ChartTooltipContent hideLabel />} />
+					<ChartTooltip
+						content={<ReportChartTooltip isCurrency={itemValueIsCurrency} />}
+					/>
 					{/* recharts 3.8.0 animated Pie/RadialBar (shared polar animation
 					    path) paints no sectors on initial mount — keep animation off
 					    until a fixed release is verified. */}

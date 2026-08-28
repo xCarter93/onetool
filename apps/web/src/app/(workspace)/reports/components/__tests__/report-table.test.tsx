@@ -24,6 +24,37 @@ afterAll(() => {
 import { ReportTable } from "../report-table";
 
 describe("ReportTable", () => {
+	it("related rollup with no grouping labels rows by the source entity", () => {
+		render(
+			<ReportTable
+				data={[{ name: "Q-1001", value: 3 }]}
+				total={3}
+				entityType="quotes"
+				metricIsRelated
+			/>
+		);
+
+		expect(
+			screen.getByRole("columnheader", { name: "Quote" })
+		).toBeInTheDocument();
+		expect(screen.queryByRole("columnheader", { name: "Category" })).toBeNull();
+	});
+
+	it("a grouped table still labels its rows by the grouping", () => {
+		render(
+			<ReportTable
+				data={[{ name: "Active", value: 7 }]}
+				total={7}
+				entityType="clients"
+				groupBy="status"
+			/>
+		);
+
+		expect(
+			screen.getByRole("columnheader", { name: "Status" })
+		).toBeInTheDocument();
+	});
+
 	it("count report (clients by status): Total is the plain record count", () => {
 		render(
 			<ReportTable
@@ -78,6 +109,80 @@ describe("ReportTable", () => {
 		// $50 is under the old ">100" heuristic threshold and would have
 		// rendered as the bare number "50" instead of "$50".
 		expect(screen.getByText("$50")).toBeInTheDocument();
+	});
+
+	it("the value column header names the metric when the caller passes one", () => {
+		render(
+			<ReportTable
+				data={[{ name: "Paid", value: 8, totalValue: 35000 }]}
+				total={35000}
+				entityType="invoices"
+				groupBy="status"
+				totalIsCurrency
+				valueHeader="Sum of Total"
+			/>
+		);
+
+		expect(
+			screen.getByRole("columnheader", { name: "Sum of Total" })
+		).toBeInTheDocument();
+		expect(screen.queryByRole("columnheader", { name: "Count" })).toBeNull();
+	});
+
+	it("the value column header falls back to Count", () => {
+		render(
+			<ReportTable
+				data={[{ name: "Active", value: 7 }]}
+				total={7}
+				entityType="clients"
+				groupBy="status"
+			/>
+		);
+
+		expect(
+			screen.getByRole("columnheader", { name: "Count" })
+		).toBeInTheDocument();
+	});
+
+	describe("aggregated value column currency", () => {
+		it("itemValueIsCurrency: value cells and the average render as dollars", () => {
+			render(
+				<ReportTable
+					data={[
+						{ name: "Jan 2026", value: 1000 },
+						{ name: "Feb 2026", value: 500 },
+					]}
+					total={1500}
+					entityType="invoices"
+					groupBy="month"
+					totalIsCurrency
+					itemValueIsCurrency
+					valueHeader="Sum of Total"
+				/>
+			);
+
+			expect(screen.getByText("$1,000")).toBeInTheDocument();
+			expect(screen.getByText("$500")).toBeInTheDocument();
+			expect(screen.getByText("Average: $750 per category")).toBeInTheDocument();
+		});
+
+		it("no flag: value cells stay counts and the average keeps its decimal", () => {
+			render(
+				<ReportTable
+					data={[
+						{ name: "Active", value: 1000 },
+						{ name: "Lead", value: 500 },
+					]}
+					total={1500}
+					entityType="clients"
+					groupBy="status"
+				/>
+			);
+
+			expect(screen.getByText("1,000")).toBeInTheDocument();
+			expect(screen.getByText("500")).toBeInTheDocument();
+			expect(screen.getByText("Average: 750.0 per category")).toBeInTheDocument();
+		});
 	});
 
 	describe("detail mode", () => {

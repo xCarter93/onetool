@@ -1,70 +1,20 @@
 import { describe, it, expect } from "vitest";
 import {
 	DEFAULT_DETAIL_COLUMNS,
-	dateRangeToBuilderState,
-	getReportValueTypes,
+	buildMetric,
+	builderStateToSaved,
 	formatReportValue,
+	genericGroupByOptions,
 	isDetailModeActive,
+	metricAggOf,
+	metricOptionsFor,
+	metricTargetOptionsFor,
+	metricTargetValue,
 	resolveReportQueryArgs,
-	type ReportConfigShape,
+	savedToBuilderState,
+	type BuilderConfigState,
+	type ReportConfigV2,
 } from "./report-config";
-
-describe("getReportValueTypes", () => {
-	it("invoices status-grouped (or ungrouped): total is $, item values are counts", () => {
-		expect(getReportValueTypes("invoices", "status")).toEqual({
-			totalIsCurrency: true,
-			itemValueIsCurrency: false,
-		});
-		expect(getReportValueTypes("invoices", undefined)).toEqual({
-			totalIsCurrency: true,
-			itemValueIsCurrency: false,
-		});
-	});
-
-	it("invoices revenue-by-month/client: total and item values are both $", () => {
-		expect(getReportValueTypes("invoices", "month")).toEqual({
-			totalIsCurrency: true,
-			itemValueIsCurrency: true,
-		});
-		expect(getReportValueTypes("invoices", "client")).toEqual({
-			totalIsCurrency: true,
-			itemValueIsCurrency: true,
-		});
-	});
-
-	it("quotes status-grouped: total is $, item values are counts", () => {
-		expect(getReportValueTypes("quotes", "status")).toEqual({
-			totalIsCurrency: true,
-			itemValueIsCurrency: false,
-		});
-	});
-
-	it("rate reports (conversionRate/completionRate): total is a rate, not $", () => {
-		expect(getReportValueTypes("quotes", "conversionRate")).toEqual({
-			totalIsCurrency: false,
-			itemValueIsCurrency: false,
-		});
-		expect(getReportValueTypes("tasks", "completionRate")).toEqual({
-			totalIsCurrency: false,
-			itemValueIsCurrency: false,
-		});
-	});
-
-	it("clients/projects/tasks/activities are always plain counts", () => {
-		expect(getReportValueTypes("clients", "status")).toEqual({
-			totalIsCurrency: false,
-			itemValueIsCurrency: false,
-		});
-		expect(getReportValueTypes("projects", "creationDate_month")).toEqual({
-			totalIsCurrency: false,
-			itemValueIsCurrency: false,
-		});
-		expect(getReportValueTypes("activities", "activityType")).toEqual({
-			totalIsCurrency: false,
-			itemValueIsCurrency: false,
-		});
-	});
-});
 
 describe("formatReportValue", () => {
 	it("formats counts as plain locale numbers, no currency symbol", () => {
@@ -80,186 +30,558 @@ describe("formatReportValue", () => {
 	});
 
 	it("regression: a $40,000 total must never render as the record count (12)", () => {
-		// This is the reported bug: 12 invoices worth $40k rendered "Total: $12"
-		// because the old code reduced over item counts and formatted that.
-		// The fix: format the real dollar `total`, gated by the explicit flag
-		// from getReportValueTypes — never inferred from magnitude.
+		// The reported bug: 12 invoices worth $40k rendered "Total: $12" because
+		// the old code reduced over item counts and formatted that. The fix:
+		// format the real dollar `total`, gated by the result's explicit
+		// metadata flag (emitted only when true) — never inferred from magnitude.
 		const total = 40000;
-		const { totalIsCurrency } = getReportValueTypes("invoices", "status");
+		const metadata = { totalIsCurrency: true };
 
-		const rendered = formatReportValue(total, totalIsCurrency);
+		const rendered = formatReportValue(total, metadata.totalIsCurrency === true);
 
 		expect(rendered).toBe("$40,000");
 		expect(rendered).not.toBe("$12");
 		expect(rendered).not.toBe("12");
 	});
+
+	it("an absent currency flag means counts — never fall back to entity heuristics", () => {
+		// A count grouped on issuedDate_month omits both flags; treating absence
+		// as "invoices are money" rendered a count of 12 as "$12".
+		const metadata: { totalIsCurrency?: boolean } = {};
+		expect(formatReportValue(12, metadata.totalIsCurrency === true)).toBe("12");
+	});
+});
+
+const v2 = (over: Partial<ReportConfigV2> = {}): ReportConfigV2 => ({
+	version: 2,
+	entityType: "invoices",
+	metric: { op: "count" },
+	...over,
 });
 
 describe("resolveReportQueryArgs — Group by: None", () => {
-	const baseConfig: ReportConfigShape = {
-		entityType: "invoices",
-		groupBy: undefined,
-		dateRange: undefined,
-		filters: undefined,
-		aggregation: undefined,
-		columns: undefined,
-	};
-
 	it("table + groupBy None + no columns checked → detail mode with the per-entity default columns", () => {
-		const args = resolveReportQueryArgs(baseConfig, "table");
+		const args = resolveReportQueryArgs(v2(), { type: "table" });
 		expect(args.detail).toEqual({ columns: DEFAULT_DETAIL_COLUMNS.invoices });
-		expect(args.aggregation).toBeUndefined();
+		expect(args.config.metric).toEqual({ op: "count" });
 	});
 
 	it("table + groupBy None + explicit columns checked → detail mode with those columns", () => {
 		const args = resolveReportQueryArgs(
-			{ ...baseConfig, columns: ["invoiceNumber", "total"] },
-			"table"
+			v2({ columns: ["invoiceNumber", "total"] }),
+			{ type: "table" }
 		);
 		expect(args.detail).toEqual({ columns: ["invoiceNumber", "total"] });
 	});
 
 	it("table + groupBy set + no columns checked → aggregated mode, no detail", () => {
-		const args = resolveReportQueryArgs({ ...baseConfig, groupBy: ["status"] }, "table");
+		const args = resolveReportQueryArgs(v2({ groupBy: "status" }), {
+			type: "table",
+		});
 		expect(args.detail).toBeUndefined();
-		expect(args.groupBy).toBe("status");
+		expect(args.config.groupBy).toBe("status");
 	});
 
 	it("table + groupBy set + columns checked → detail mode wins regardless of groupBy", () => {
 		const args = resolveReportQueryArgs(
-			{ ...baseConfig, groupBy: ["status"], columns: ["invoiceNumber"] },
-			"table"
+			v2({ groupBy: "status", columns: ["invoiceNumber"] }),
+			{ type: "table" }
 		);
 		expect(args.detail).toEqual({ columns: ["invoiceNumber"] });
 	});
 
 	it("chart + groupBy None → detail mode (Slice 3-D3: charts require a groupBy; nothing to chart above)", () => {
-		// A chart with no grouping has nothing to chart above the table —
-		// falls back to raw-row detail mode with default columns, same as
-		// table + groupBy None.
-		const args = resolveReportQueryArgs(baseConfig, "bar");
+		const args = resolveReportQueryArgs(v2(), { type: "bar" });
 		expect(args.detail).toEqual({ columns: DEFAULT_DETAIL_COLUMNS.invoices });
-		expect(args.aggregation).toBeUndefined();
 	});
 
-	it("chart + groupBy None + a non-count measure → still detail mode (measure ignored, same as table)", () => {
+	it("chart + groupBy set → grouped count config", () => {
+		const args = resolveReportQueryArgs(v2({ groupBy: "status" }), {
+			type: "bar",
+		});
+		expect(args.config.groupBy).toBe("status");
+		expect(args.config.metric).toEqual({ op: "count" });
+	});
+
+	it("ratio metric → aggregated mode even with no groupBy", () => {
 		const args = resolveReportQueryArgs(
-			{ ...baseConfig, aggregation: { op: "sum", field: "total" } },
-			"pie"
+			{
+				version: 2,
+				entityType: "quotes",
+				metric: { op: "ratio", ratioKey: "conversionRate" },
+			},
+			{ type: "pie" }
 		);
-		expect(args.detail).toEqual({ columns: DEFAULT_DETAIL_COLUMNS.invoices });
-		expect(args.aggregation).toBeUndefined();
+		expect(args.detail).toBeUndefined();
 	});
 
-	it("chart + groupBy set → aggregation passes through unchanged (legacy grouped-chart behavior)", () => {
-		const args = resolveReportQueryArgs({ ...baseConfig, groupBy: ["status"] }, "bar");
-		expect(args.groupBy).toBe("status");
-		expect(args.aggregation).toBeUndefined();
+	it("seriesLimit rides in from visualization.options", () => {
+		const args = resolveReportQueryArgs(v2({ groupBy: "clientId" }), {
+			type: "bar",
+			options: { seriesLimit: 10 },
+		});
+		expect(args.seriesLimit).toBe(10);
 	});
 });
 
-describe("resolveReportQueryArgs — legacy vs. generic groupBy routing", () => {
-	it("count + legacy-dispatch groupBy (invoices 'month') → no aggregation sent (legacy dispatch handles it)", () => {
+describe("resolveReportQueryArgs — v1 magic-key expansion (staging rows until R14)", () => {
+	it("invoices 'month' expands to the paid-revenue v2 config", () => {
 		const args = resolveReportQueryArgs(
 			{ entityType: "invoices", groupBy: ["month"] },
-			"bar"
+			{ type: "bar" }
 		);
-		expect(args.groupBy).toBe("month");
-		expect(args.aggregation).toBeUndefined();
+		expect(args.config.groupBy).toBe("paidAt_month");
+		expect(args.config.metric).toEqual({ op: "sum", field: "total" });
+		expect(args.config.date?.field).toBe("paidAt");
 	});
 
-	it("count + legacy-dispatch groupBy (clients 'status') → no aggregation sent", () => {
-		const args = resolveReportQueryArgs({ entityType: "clients", groupBy: ["status"] }, "pie");
-		expect(args.groupBy).toBe("status");
-		expect(args.aggregation).toBeUndefined();
-	});
-
-	it("count + generic-only groupBy (invoices 'issuedDate_month') → explicit count aggregation, not left to legacy fallback", () => {
+	it("invoices 'client' expands with an explicit series limit (d3)", () => {
 		const args = resolveReportQueryArgs(
-			{ entityType: "invoices", groupBy: ["issuedDate_month"] },
-			"line"
+			{ entityType: "invoices", groupBy: ["client"] },
+			{ type: "bar" }
 		);
-		expect(args.groupBy).toBe("issuedDate_month");
-		expect(args.aggregation).toEqual({ op: "count" });
+		expect(args.config.groupBy).toBe("clientId");
+		expect(args.seriesLimit).toBe(10);
 	});
 
-	it("count + generic-only groupBy (tasks 'assigneeUserId') → explicit count aggregation", () => {
-		const args = resolveReportQueryArgs({ entityType: "tasks", groupBy: ["assigneeUserId"] }, "bar");
-		expect(args.groupBy).toBe("assigneeUserId");
-		expect(args.aggregation).toEqual({ op: "count" });
+	it("quotes 'conversionRate' expands to the ratio metric", () => {
+		const args = resolveReportQueryArgs(
+			{ entityType: "quotes", groupBy: ["conversionRate"] },
+			{ type: "pie" }
+		);
+		expect(args.config.metric).toEqual({ op: "ratio", ratioKey: "conversionRate" });
+		expect(args.config.groupBy).toBeUndefined();
 	});
 
-	it("non-count measure unchanged regardless of groupBy legacy/generic status", () => {
+	it("v1 aggregations carry into the config metric", () => {
 		const args = resolveReportQueryArgs(
 			{
 				entityType: "invoices",
 				groupBy: ["issuedDate_month"],
-				aggregation: { op: "avg", field: "total" },
+				aggregations: [{ field: "total", operation: "avg" }],
 			},
-			"line"
+			{ type: "line" }
 		);
-		expect(args.aggregation).toEqual({ op: "avg", field: "total" });
+		expect(args.config.metric).toEqual({ op: "avg", field: "total" });
 	});
 });
 
 describe("isDetailModeActive — Slice 3-D3 (chart above table model)", () => {
 	it("any viz type with groupBy None → detail (a chart with nothing to group on has nothing to chart above)", () => {
-		expect(isDetailModeActive("table", undefined, undefined)).toBe(true);
-		expect(isDetailModeActive("bar", undefined, undefined)).toBe(true);
-		expect(isDetailModeActive("pie", undefined, ["invoiceNumber"])).toBe(true);
+		expect(isDetailModeActive(v2(), "table")).toBe(true);
+		expect(isDetailModeActive(v2(), "bar")).toBe(true);
+		expect(isDetailModeActive(v2({ columns: ["invoiceNumber"] }), "pie")).toBe(true);
 	});
 
 	it("table + groupBy set + columns checked → detail (explicit raw-row override)", () => {
-		expect(isDetailModeActive("table", "status", ["invoiceNumber"])).toBe(true);
+		expect(
+			isDetailModeActive(
+				v2({ groupBy: "status", columns: ["invoiceNumber"] }),
+				"table"
+			)
+		).toBe(true);
 	});
 
 	it("table + groupBy set + no columns → grouped table, not detail", () => {
-		expect(isDetailModeActive("table", "status", undefined)).toBe(false);
+		expect(isDetailModeActive(v2({ groupBy: "status" }), "table")).toBe(false);
 	});
 
 	it("chart + groupBy set → grouped (aggregated) mode, not detail — feeds chart + table together", () => {
-		expect(isDetailModeActive("bar", "status", undefined)).toBe(false);
+		expect(isDetailModeActive(v2({ groupBy: "status" }), "bar")).toBe(false);
 		// Columns are table-viz-only; a chart ignores any leftover column
 		// selection and still aggregates instead of going to detail mode.
-		expect(isDetailModeActive("bar", "status", ["invoiceNumber"])).toBe(false);
+		expect(
+			isDetailModeActive(v2({ groupBy: "status", columns: ["invoiceNumber"] }), "bar")
+		).toBe(false);
+	});
+
+	it("ratio and related metrics are never detail — they aggregate without a groupBy", () => {
+		expect(
+			isDetailModeActive(
+				{
+					version: 2,
+					entityType: "quotes",
+					metric: { op: "ratio", ratioKey: "conversionRate" },
+				},
+				"table"
+			)
+		).toBe(false);
 	});
 });
 
-describe("dateRangeToBuilderState", () => {
-	it("maps an empty range to All Time", () => {
-		expect(dateRangeToBuilderState(null)).toEqual({ preset: "all_time" });
-		expect(dateRangeToBuilderState(undefined)).toEqual({ preset: "all_time" });
-		expect(dateRangeToBuilderState({})).toEqual({ preset: "all_time" });
+const baseState = (over: Partial<BuilderConfigState> = {}): BuilderConfigState => ({
+	entityType: "invoices",
+	dateRangePreset: "all_time",
+	metric: { op: "count" },
+	columns: [],
+	vizType: "table",
+	...over,
+});
+
+describe("builderStateToSaved ↔ savedToBuilderState round trips (R8a)", () => {
+	it("a preset date range survives hydrate → save unchanged", () => {
+		const config = v2({
+			groupBy: "issuedDate_month",
+			date: { range: { kind: "preset", preset: "this_year" } },
+		});
+		const state = savedToBuilderState(config, { type: "column" });
+		expect(state.dateRangePreset).toBe("this_year");
+
+		const saved = builderStateToSaved(state);
+		expect(saved.config).toEqual(config);
+		expect(saved.visualization).toEqual({ type: "column" });
 	});
 
-	it("recognizes a current-period preset", () => {
-		const now = new Date();
-		const monthStart = new Date(
-			now.getFullYear(),
-			now.getMonth(),
-			1
-		).getTime();
-		expect(dateRangeToBuilderState({ start: monthStart })).toEqual({
-			preset: "this_month",
+	it("regression: a custom absolute range survives hydrate → save (the old builder reset it to All Time)", () => {
+		const start = Date.parse("2024-02-15T00:00:00.000");
+		const end = new Date(2024, 2, 15, 23, 59, 59, 999).getTime();
+		const config = v2({
+			groupBy: "status",
+			date: { range: { kind: "absolute", start, end } },
+		});
+
+		const state = savedToBuilderState(config, { type: "table" });
+		expect(state.dateRangePreset).toBe("custom");
+		expect(state.customDateRange?.from?.getTime()).toBe(start);
+
+		const saved = builderStateToSaved(state);
+		expect(saved.config).toEqual(config);
+	});
+
+	it("v2-only fields (date.field, ratio metric, includeEmptyValues, segmentBy, viz options) all round-trip", () => {
+		const ratioConfig: ReportConfigV2 = {
+			version: 2,
+			entityType: "quotes",
+			metric: { op: "ratio", ratioKey: "conversionRate" },
+			date: { range: { kind: "preset", preset: "this_quarter" } },
+		};
+		const ratioTrip = builderStateToSaved(
+			savedToBuilderState(ratioConfig, { type: "pie" })
+		);
+		expect(ratioTrip.config).toEqual(ratioConfig);
+
+		const fullConfig = v2({
+			groupBy: "issuedDate_month",
+			segmentBy: "status",
+			includeEmptyValues: true,
+			date: { field: "paidAt", range: { kind: "preset", preset: "this_year" } },
+			metric: { op: "sum", field: "total" },
+		});
+		const viz = { type: "bar" as const, options: { seriesLimit: 10, sort: "value_desc" as const } };
+		const fullTrip = builderStateToSaved(savedToBuilderState(fullConfig, viz));
+		expect(fullTrip.config).toEqual(fullConfig);
+		expect(fullTrip.visualization).toEqual(viz);
+	});
+
+	it("a date.field override with an all-time range keeps its date object", () => {
+		const config = v2({
+			groupBy: "paidAt_month",
+			metric: { op: "sum", field: "total" },
+			date: { field: "paidAt", range: { kind: "preset", preset: "all_time" } },
+		});
+		const trip = builderStateToSaved(savedToBuilderState(config, { type: "line" }));
+		expect(trip.config).toEqual(config);
+	});
+
+	it("v1 rows hydrate through the normalizer (magic keys expand before reaching state)", () => {
+		const state = savedToBuilderState(
+			{ entityType: "invoices", groupBy: ["month"] },
+			{ type: "bar" }
+		);
+		expect(state.groupBy).toBe("paidAt_month");
+		expect(state.metric).toEqual({ op: "sum", field: "total" });
+		expect(state.dateField).toBe("paidAt");
+	});
+
+	it("all-time with no field override stores no date at all", () => {
+		const saved = builderStateToSaved(baseState({ groupBy: "status" }));
+		expect(saved.config.date).toBeUndefined();
+	});
+
+	it("a Table saved with both a grouping and columns hydrates to columns only", () => {
+		const state = savedToBuilderState(
+			v2({ groupBy: "status", columns: ["invoiceNumber"] }),
+			{ type: "table" }
+		);
+		expect(state.groupBy).toBeUndefined();
+		expect(state.columns).toEqual(["invoiceNumber"]);
+	});
+
+	it("a chart keeps its grouping even when stale columns ride along", () => {
+		const state = savedToBuilderState(
+			v2({ groupBy: "status", columns: ["invoiceNumber"] }),
+			{ type: "bar" }
+		);
+		expect(state.groupBy).toBe("status");
+	});
+
+	it("a one-sided absolute range hydrates as custom", () => {
+		const end = new Date(2024, 2, 15, 23, 59, 59, 999).getTime();
+		const state = savedToBuilderState(
+			v2({ date: { range: { kind: "absolute", end } } }),
+			{ type: "table" }
+		);
+		expect(state.dateRangePreset).toBe("custom");
+		expect(state.customDateRange?.from).toBeUndefined();
+		expect(state.customDateRange?.to?.getTime()).toBe(end);
+	});
+});
+
+describe("related-object traversal (d15) — options derived from REPORT_RELATIONS", () => {
+	it("quotes gain a line-item rollup from the quoteLineItems.quoteId edge", () => {
+		const option = metricOptionsFor("quotes").find(
+			(o) => o.value === "related:quoteLineItems:quoteId:sum:amount"
+		);
+		expect(option).toEqual({
+			value: "related:quoteLineItems:quoteId:sum:amount",
+			label: "Sum of Quote Line Items › Total",
+			metric: {
+				op: "related",
+				related: {
+					entity: "quoteLineItems",
+					fk: "quoteId",
+					op: "sum",
+					field: "amount",
+				},
+			},
 		});
 	});
 
-	it("falls back to the custom preset for arbitrary ranges instead of All Time", () => {
-		// Regression: detectDateRangePreset returns "all_time" for anything it
-		// doesn't recognize, which would silently drop an AI-generated bound.
-		const start = Date.parse("2024-02-15T00:00:00.000Z");
-		const end = Date.parse("2024-03-15T23:59:59.999Z");
-		const state = dateRangeToBuilderState({ start, end });
-		expect(state.preset).toBe("custom");
-		expect(state.customRange?.from?.getTime()).toBe(start);
-		expect(state.customRange?.to?.getTime()).toBe(end);
+	it("quoteLineItems can group by quoteId in the picker", () => {
+		expect(genericGroupByOptions.quoteLineItems).toContainEqual({
+			value: "quoteId",
+			label: "Quote",
+		});
 	});
 
-	it("handles a one-sided range as custom", () => {
-		const end = Date.parse("2024-03-15T23:59:59.999Z");
-		const state = dateRangeToBuilderState({ end });
-		expect(state.preset).toBe("custom");
-		expect(state.customRange?.from).toBeUndefined();
-		expect(state.customRange?.to?.getTime()).toBe(end);
+	it("a dotted groupBy with a granularity suffix survives hydrate → save", () => {
+		const config: ReportConfigV2 = {
+			version: 2,
+			entityType: "quoteLineItems",
+			metric: { op: "count" },
+			groupBy: "quoteId.projectId.startDate_month",
+		};
+		const state = savedToBuilderState(config, { type: "column" });
+		expect(state.groupBy).toBe("quoteId.projectId.startDate_month");
+		expect(builderStateToSaved(state).config).toEqual(config);
+	});
+
+	it("an fk-terminal dotted groupBy survives hydrate → save", () => {
+		const config: ReportConfigV2 = {
+			version: 2,
+			entityType: "quoteLineItems",
+			metric: { op: "count" },
+			groupBy: "quoteId.projectId",
+		};
+		const state = savedToBuilderState(config, { type: "bar" });
+		expect(state.groupBy).toBe("quoteId.projectId");
+		expect(builderStateToSaved(state).config).toEqual(config);
+	});
+});
+
+describe("metric target + aggregation split (d15 amendment)", () => {
+	const quoteTargets = () => metricTargetOptionsFor("quotes");
+	const targetFor = (value: string) =>
+		quoteTargets().find((o) => o.value === value);
+
+	it("count of records leads the target list and takes no aggregation", () => {
+		expect(quoteTargets()[0]).toEqual({
+			value: "count",
+			label: "Count of records",
+			group: "Fields",
+			target: { kind: "count" },
+			aggregatable: false,
+		});
+	});
+
+	it("a direct currency field is one aggregatable target, not four entries", () => {
+		expect(targetFor("field:total")).toEqual({
+			value: "field:total",
+			label: "Total",
+			group: "Fields",
+			target: { kind: "field", field: "total" },
+			aggregatable: true,
+		});
+		expect(quoteTargets().filter((o) => o.label === "Total")).toHaveLength(1);
+	});
+
+	it("a related child field is one aggregatable target labeled with its breadcrumb", () => {
+		expect(targetFor("related:quoteLineItems:quoteId:field:amount")).toEqual({
+			value: "related:quoteLineItems:quoteId:field:amount",
+			label: "Quote Line Items › Total",
+			group: "Quote Line Items",
+			target: {
+				kind: "relatedField",
+				entity: "quoteLineItems",
+				fk: "quoteId",
+				field: "amount",
+			},
+			aggregatable: true,
+		});
+	});
+
+	it("counting a child entity is its own non-aggregatable target", () => {
+		expect(targetFor("related:quoteLineItems:quoteId:count")).toEqual({
+			value: "related:quoteLineItems:quoteId:count",
+			label: "Count of Quote Line Items",
+			group: "Quote Line Items",
+			target: { kind: "relatedCount", entity: "quoteLineItems", fk: "quoteId" },
+			aggregatable: false,
+		});
+	});
+
+	it("named ratios are entity-gated, non-aggregatable targets", () => {
+		expect(targetFor("ratio:conversionRate")).toEqual({
+			value: "ratio:conversionRate",
+			label: "Conversion rate",
+			group: "Ratios",
+			target: { kind: "ratio", ratioKey: "conversionRate" },
+			aggregatable: false,
+		});
+		expect(
+			metricTargetOptionsFor("clients").some((o) => o.group === "Ratios")
+		).toBe(false);
+	});
+
+	it("buildMetric maps every target kind onto a ReportMetric", () => {
+		expect(buildMetric({ kind: "count" }, "sum")).toEqual({ op: "count" });
+		expect(buildMetric({ kind: "field", field: "total" }, "avg")).toEqual({
+			op: "avg",
+			field: "total",
+		});
+		expect(
+			buildMetric({ kind: "ratio", ratioKey: "conversionRate" }, "sum")
+		).toEqual({ op: "ratio", ratioKey: "conversionRate" });
+		expect(
+			buildMetric(
+				{ kind: "relatedCount", entity: "quoteLineItems", fk: "quoteId" },
+				"max"
+			)
+		).toEqual({
+			op: "related",
+			related: { entity: "quoteLineItems", fk: "quoteId", op: "count" },
+		});
+		expect(
+			buildMetric(
+				{
+					kind: "relatedField",
+					entity: "quoteLineItems",
+					fk: "quoteId",
+					field: "amount",
+				},
+				"min"
+			)
+		).toEqual({
+			op: "related",
+			related: {
+				entity: "quoteLineItems",
+				fk: "quoteId",
+				op: "min",
+				field: "amount",
+			},
+		});
+	});
+
+	it("every metric shape reads back as its target value plus aggregation", () => {
+		expect(metricTargetValue({ op: "count" })).toBe("count");
+		expect(metricAggOf({ op: "count" })).toBeUndefined();
+
+		expect(metricTargetValue({ op: "avg", field: "total" })).toBe("field:total");
+		expect(metricAggOf({ op: "avg", field: "total" })).toBe("avg");
+
+		expect(
+			metricTargetValue({ op: "ratio", ratioKey: "conversionRate" })
+		).toBe("ratio:conversionRate");
+		expect(
+			metricAggOf({ op: "ratio", ratioKey: "conversionRate" })
+		).toBeUndefined();
+
+		const relatedCount = {
+			op: "related" as const,
+			related: { entity: "quoteLineItems" as const, fk: "quoteId", op: "count" as const },
+		};
+		expect(metricTargetValue(relatedCount)).toBe(
+			"related:quoteLineItems:quoteId:count"
+		);
+		expect(metricAggOf(relatedCount)).toBeUndefined();
+
+		const relatedAvg = {
+			op: "related" as const,
+			related: {
+				entity: "quoteLineItems" as const,
+				fk: "quoteId",
+				op: "avg" as const,
+				field: "amount",
+			},
+		};
+		expect(metricTargetValue(relatedAvg)).toBe(
+			"related:quoteLineItems:quoteId:field:amount"
+		);
+		expect(metricAggOf(relatedAvg)).toBe("avg");
+	});
+
+	it("new capability: Average over a related child field is authorable", () => {
+		const target = targetFor("related:quoteLineItems:quoteId:field:amount")!.target;
+
+		expect(buildMetric(target, "avg")).toEqual({
+			op: "related",
+			related: {
+				entity: "quoteLineItems",
+				fk: "quoteId",
+				op: "avg",
+				field: "amount",
+			},
+		});
+	});
+
+	it("an avg-over-related config survives hydrate → save", () => {
+		const config: ReportConfigV2 = {
+			version: 2,
+			entityType: "quotes",
+			metric: {
+				op: "related",
+				related: {
+					entity: "quoteLineItems",
+					fk: "quoteId",
+					op: "avg",
+					field: "amount",
+				},
+			},
+		};
+		const state = savedToBuilderState(config, { type: "bar" });
+
+		expect(metricTargetValue(state.metric)).toBe(
+			"related:quoteLineItems:quoteId:field:amount"
+		);
+		expect(metricAggOf(state.metric)).toBe("avg");
+		expect(builderStateToSaved(state).config).toEqual(config);
+	});
+
+	it("the flat label vocabulary keeps its old entries and gains related avg/min/max", () => {
+		const options = metricOptionsFor("quotes");
+		const byValue = (value: string) => options.find((o) => o.value === value);
+
+		expect(byValue("count")?.label).toBe("Count of records");
+		expect(byValue("sum:total")?.label).toBe("Sum of Total");
+		expect(byValue("ratio:conversionRate")?.label).toBe("Conversion rate");
+		expect(byValue("related:quoteLineItems:quoteId:count")?.label).toBe(
+			"Count of Quote Line Items"
+		);
+		expect(byValue("related:quoteLineItems:quoteId:sum:amount")?.label).toBe(
+			"Sum of Quote Line Items › Total"
+		);
+		expect(byValue("related:quoteLineItems:quoteId:avg:amount")).toEqual({
+			value: "related:quoteLineItems:quoteId:avg:amount",
+			label: "Average of Quote Line Items › Total",
+			metric: {
+				op: "related",
+				related: {
+					entity: "quoteLineItems",
+					fk: "quoteId",
+					op: "avg",
+					field: "amount",
+				},
+			},
+		});
 	});
 });

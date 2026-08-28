@@ -72,7 +72,7 @@ export function PresetLibraryDialog({ open, onOpenChange }: PresetLibraryDialogP
 			const haystack = [
 				preset.name,
 				preset.description,
-				entityLabels[preset.entityType] ?? preset.entityType,
+				entityLabels[preset.config.entityType] ?? preset.config.entityType,
 			]
 				.join(" ")
 				.toLowerCase();
@@ -317,7 +317,7 @@ function PresetRow({
 				<div className="flex items-center justify-between gap-2">
 					<p className="truncate font-medium text-foreground">{preset.name}</p>
 					<Badge variant={isSelected ? "primary-light" : "outline"}>
-						{entityLabels[preset.entityType] ?? preset.entityType}
+						{entityLabels[preset.config.entityType] ?? preset.config.entityType}
 					</Badge>
 				</div>
 				<p className="mt-0.5 line-clamp-1 text-xs text-muted-foreground">{preset.description}</p>

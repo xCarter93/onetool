@@ -15,7 +15,7 @@ export const reportsArticles: HelpArticle[] = [
 				blocks: [
 					{
 						type: "paragraph",
-						text: "A report answers a question about your business: how much revenue came in each month, which invoices are overdue, how work is spread across your team. You pick a data source, choose how to slice it, and OneTool draws the result as a table or chart. Save it once and it reruns on your live data every time you open it.",
+						text: "A report answers a question about your business: how much revenue came in each month, which invoices are overdue, how work is spread across your team. You pick a data source, choose how to slice it, and the preview on the left redraws with your live data as you go. Save it once and it reruns on current data every time you open it.",
 					},
 				],
 			},
@@ -29,51 +29,59 @@ export const reportsArticles: HelpArticle[] = [
 							"Click **Start blank** to open an empty builder. To begin from a ready-made report instead, see [Report presets](/help/reports/report-presets).",
 						],
 					},
+					{
+						type: "paragraph",
+						text: "A blank report starts with nothing selected. The preview asks you to pick a data source, and the rest of the settings appear once you do.",
+					},
 				],
 			},
 			{
-				heading: "Choose your data",
+				heading: "Set up the report",
 				blocks: [
 					{
 						type: "paragraph",
-						text: "The builder's left panel has two tabs. **Outline** holds the shape of the report, and **Filters** narrows which records it counts.",
+						text: "All settings live in the panel on the right. Work down it from top to bottom.",
 					},
 					{
 						type: "steps",
 						items: [
-							"Under **Source**, pick what you are reporting on: Clients, Projects, Tasks, Quotes, Invoices, or Activities.",
-							"Set the **Date range**. Choose a ready-made range (Today through Last Year, or All Time) or pick **Custom Range** to set exact dates. A hint below the picker shows which date field the range applies to.",
-							"Pick a **Group by** to decide what each bar or slice represents, like status or month. Choose **None (raw rows)** to see a plain table of matching records instead.",
-							"Pick a **Measure**: the count of records, or the sum or average of a number field, like invoice totals.",
-							"Open the **Filters** tab to narrow the data, for example only invoices with a certain status.",
+							"Pick a **Visualization**: **Single metric** shows one figure, like total revenue this month. **Table** lists grouped totals, or raw records when nothing is grouped, except for rate and linked-record metrics, which always show totals. **Bar**, **Column**, **Area**, **Pie**, **Radar**, and **Radial** draw grouped data. Your choice decides which settings appear below it.",
+							"Under **Data source**, pick what you are reporting on: Clients, Projects, Tasks, Quotes, Invoices, Payments, Quote Line Items, Invoice Line Items, or Activities.",
+							"Set the **Date range**. Choose a ready-made range (Today through Last Year, or All Time) or pick **Custom Range** to set exact dates. When the source has more than one date, a **Date field** picker chooses which one the range applies to, like an invoice's issued date versus its paid date.",
+							"Add **Filters** to narrow the data. Each filter is a row: a field, a condition, and a value. The **And/Or** chip between rows switches how they combine, and fields from linked records work too, so line items can filter by **Quote › Status**. Date fields filter with **is before**, **is after**, and **is on**. For rules in separate groups, open **Advanced filter**: a panel opens beside the settings where you build groups of rules and drag filters between them.",
+							"The **Metric** section sets what the report counts and what each row stands for. Start at the top with what to measure. The target can be the count of records, a number field, a field from linked records like **Invoices › Total** on a client report, or a named rate like **Conversion rate**. Fields get an aggregation dropdown next to the target: **Sum**, **Average**, **Min**, or **Max**.",
+							"Under the metric, the **per** row decides what each bar, slice, or row represents, so the panel reads \"Count of records per Status\". The picker lists the source's own fields first, and entries like **Quote ›** step into a linked record, so line items can group by their quote's project or client. Typing in the search box finds fields anywhere in the chain. Date groupings offer **Day**, **Week**, and **Month** buckets, and groupings with a fixed set of values can **Include empty values** to show zero-count groups.",
+							"On a Table, a **Columns** picker sits at the bottom of the **Metric** section and chooses the fields each record row shows. A table shows grouped totals or raw records, never both, so picking columns sets **per** to **None (raw rows)**, and picking a grouping clears the columns.",
+						"On bar and column charts, **Segment by** splits each bar into stacked segments by a second field, like status within each month.",
+							"Fine-tune a chart under **Chart options**: cap how many groups show (**Series limit**), change the ordering (**Sort**), label the axes, and draw a **Target line** at a value you set.",
 						],
 					},
 					{
 						type: "media",
 						media: "image",
-						caption: "The report builder with the Outline panel open",
+						caption: "The report builder with the preview on the left and settings on the right",
 						asset: "reports/building-a-report/report-builder-with-the-outline-panel",
 					},
 					{
 						type: "note",
-						text: "With **Group by** set to **None (raw rows)**, the report is always a table. Use the **Columns** picker to choose which fields the table shows.",
+						text: "Picking a chart type applies a sensible grouping for you if none is set; change it in the **per** row. **None (raw rows)** is available on Table reports only, since a chart needs grouped data to draw.",
+					},
+					{
+						type: "note",
+						text: "Changing the data source resets filters, metric, and columns, because they belong to the old source. OneTool asks you to confirm before it clears them.",
+					},
+					{
+						type: "tip",
+						text: "On the Business plan, click the assistant bar at the bottom of the screen, labeled **Report assistant** on report pages, and describe the report you want in plain English. The [assistant](/help/ai-assistant) fills in the builder for you, and you review and save.",
 					},
 				],
 			},
 			{
-				heading: "Add a chart",
+				heading: "Read the results",
 				blocks: [
 					{
 						type: "paragraph",
-						text: "Every report starts as a table. To chart it, click **Add chart** at the top of the builder and pick one of six chart types: Bar, Column, Area, Pie, Radar, or Radial. **Remove chart** drops the report back to a plain table.",
-					},
-					{
-						type: "note",
-						text: "**Add chart** stays disabled until you pick a **Group by**. A chart needs grouped data to have something to draw.",
-					},
-					{
-						type: "tip",
-						text: "On the Business plan, click **Ask AI** in the builder and describe the report you want in plain English. The [assistant](/help/ai-assistant) fills in the builder for you, and you review and save.",
+						text: "The bar under the preview keeps the numbers behind the picture. **Calculated values** expands to show the total, the group count, what the report measures, and for charts the full data table. The same bar appears on saved reports, where it also has **Download CSV** to save exactly what is on screen as a spreadsheet file.",
 					},
 				],
 			},
@@ -83,17 +91,13 @@ export const reportsArticles: HelpArticle[] = [
 					{
 						type: "steps",
 						items: [
-							"Name the report in the field at the top of the builder, and add a description if it helps.",
+							"Name the report in the field at the top of the builder, and add a description if it helps. An **Unsaved changes** marker appears next to Save while there is something to keep.",
 							"Click **Save report**.",
 						],
 					},
 					{
 						type: "paragraph",
 						text: "Saved reports live in the **Your reports** list on the Reports page, with their type and when they were last updated. Click one to open it. From an open report, **Edit** reopens the builder and **Duplicate** makes a copy you can change without touching the original. To delete a report, hover its row in the list and click the trash icon; OneTool asks you to confirm first.",
-					},
-					{
-						type: "note",
-						text: "On an open chart report, **Hide chart** collapses the view to just the underlying data table. OneTool remembers that choice per report in your browser.",
 					},
 					{
 						type: "media",
@@ -106,8 +110,12 @@ export const reportsArticles: HelpArticle[] = [
 		],
 		faq: [
 			{
-				question: "Why is Add chart grayed out?",
-				answer: "Charts need a Group by. When Group by is set to None (raw rows), the report is a table of individual records and there is nothing to aggregate, so pick a grouping first.",
+				question: "Where is the table that used to sit under my chart?",
+				answer: "It moved into Calculated values, in the bar under the chart. Expand it to see every group's value alongside the total.",
+			},
+			{
+				question: "Why can't I pick None (raw rows) on a chart?",
+				answer: "A chart needs grouped data to have something to draw. Switch the report type to Table to see individual records instead.",
 			},
 			{
 				question: "Is a saved report a snapshot?",

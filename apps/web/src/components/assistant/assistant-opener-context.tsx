@@ -3,8 +3,8 @@
 import { createContext, useContext } from "react";
 
 /**
- * Lets workspace surfaces (e.g. the report builder's "Ask AI" button) open
- * the assistant panel. Provided by AssistantSurfaceProvider, which owns the
+ * Lets workspace surfaces open the assistant panel.
+ * Provided by AssistantSurfaceProvider, which owns the
  * panel's open state; null outside that tree so consumers can hide their
  * affordance.
  */

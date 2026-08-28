@@ -14,10 +14,13 @@ import { cn } from "@/lib/utils";
 export function AssistantDock({
 	open,
 	pinned = false,
+	framed = false,
 	onOpen,
 }: {
 	open: boolean;
 	pinned?: boolean;
+	/** A surface published a contextual header above the dock: they read as one unit. */
+	framed?: boolean;
 	onOpen: () => void;
 }) {
 	return (
@@ -28,7 +31,10 @@ export function AssistantDock({
 			aria-label="Open assistant chat"
 			className={cn(
 				"pointer-events-auto relative flex w-full max-w-sm cursor-pointer items-center gap-3 rounded-2xl border border-border bg-popover p-2 pr-2.5 text-left shadow-lg transition-[transform,opacity,box-shadow] duration-300 ease-out",
-				"hover:-translate-y-0.5 hover:shadow-xl focus-visible:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40",
+				"hover:shadow-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40",
+				// Framed, the dock is the bottom half of a taller unit — lifting it
+				// would tear it away from its header.
+				framed ? "rounded-t-none" : "hover:-translate-y-0.5 focus-visible:-translate-y-0.5",
 				open && "pointer-events-none opacity-0 duration-150"
 			)}
 		>
@@ -51,8 +57,9 @@ export function AssistantDock({
 			    already know where the assistant lives. Radial (rotationally
 			    symmetric) glow instead of the default linear tail — the beam
 			    auto-rotates through corners, and a directional gradient makes
-			    that read as a snap. */}
-			{!open && !pinned && (
+			    that read as a snap. Framed, the header is the cue and the beam's
+			    radius no longer matches the flattened top corners. */}
+			{!open && !pinned && !framed && (
 				<BorderBeam
 					size={90}
 					duration={6}

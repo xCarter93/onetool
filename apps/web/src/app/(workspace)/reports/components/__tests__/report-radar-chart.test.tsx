@@ -49,8 +49,13 @@ afterAll(() => {
 	globalThis.ResizeObserver = originalResizeObserver;
 	if (originalOffsetWidth) Object.defineProperty(HTMLElement.prototype, "offsetWidth", originalOffsetWidth);
 	if (originalOffsetHeight) Object.defineProperty(HTMLElement.prototype, "offsetHeight", originalOffsetHeight);
-	if (originalGetBoundingClientRect)
+	// getBoundingClientRect is inherited from Element.prototype, so there is no
+	// HTMLElement descriptor to restore — deleting the stub restores inheritance.
+	if (originalGetBoundingClientRect) {
 		Object.defineProperty(HTMLElement.prototype, "getBoundingClientRect", originalGetBoundingClientRect);
+	} else {
+		delete (HTMLElement.prototype as Partial<HTMLElement>).getBoundingClientRect;
+	}
 });
 
 import { ReportRadarChart } from "../report-radar-chart";
@@ -62,6 +67,15 @@ const THREE_BUCKETS = [
 ];
 
 describe("ReportRadarChart", () => {
+	it("fills a height-constrained canvas: flex-fill root, growable chart box", () => {
+		const { container } = render(
+			<ReportRadarChart data={THREE_BUCKETS} total={10} entityType="tasks" groupBy="status" />
+		);
+		const chart = container.querySelector('[data-slot="chart"]');
+		expect(chart).toHaveClass("grow", "shrink-0", "h-[420px]");
+		expect(chart?.parentElement).toHaveClass("flex", "flex-1", "flex-col");
+	});
+
 	it("renders a radar polygon for 3+ buckets", () => {
 		const { container } = render(
 			<ReportRadarChart data={THREE_BUCKETS} total={10} entityType="tasks" groupBy="status" />

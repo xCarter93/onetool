@@ -21,11 +21,8 @@ import {
 } from "../../../lib/node-types";
 import type { ConfigPanelProps } from "../automation-sidebar";
 import { ConfigPanelHeader } from "./config-panel-header";
-import {
-	DeleteStepButton,
-	PanelField,
-	PanelSection,
-} from "./panel-primitives";
+import { PanelField, PanelSection } from "@/components/shared/panel-primitives";
+import { DeleteStepButton } from "./delete-step-button";
 import { FilterGroupsEditor } from "./filter-groups-editor";
 
 export function FetchConfigPanel({

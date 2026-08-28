@@ -24,6 +24,17 @@ import {
 } from "./lib/schemaIntrospection";
 import type { ReportDataResult } from "./reportData";
 import {
+	normalizeReportConfig,
+	type DateRangePreset,
+	type ReportMetric,
+} from "./lib/reportConfig";
+import type { ReportFilters } from "./lib/reportFilters";
+import {
+	REPORT_ENTITY_TYPES,
+	GROUP_BY_OPTIONS,
+	DEFAULT_GROUP_BY,
+} from "./lib/reportFields";
+import {
 	generateAndSaveReport,
 	generateConfigForBuilder,
 	type ConfigureReportResult,
@@ -402,8 +413,13 @@ interface SavedReportItem {
 interface SavedReportDetail {
 	found: true;
 	report: SavedReportItem & {
-		groupBy?: string[];
-		dateRange?: { start?: string; end?: string };
+		metric: ReportMetric;
+		groupBy?: string;
+		segmentBy?: string;
+		dateField?: string;
+		dateRange?: { preset?: DateRangePreset; start?: string; end?: string };
+		filters?: ReportFilters;
+		columns?: string[];
 	};
 }
 
@@ -827,24 +843,17 @@ export const getBusinessStats = createTool({
 export const runReport = createTool({
 	description: [
 		"Run an aggregation report and get labeled data points (good for counts, totals, and trends).",
-		"Valid groupBy values per entityType:",
-		"- clients: 'leadSource', 'creationDate_day|week|month', default = by status",
-		"- projects: 'projectType', 'creationDate_day|week|month', default = by status",
-		"- tasks: 'completionRate', 'date_day|week|month', default = by status",
-		"- quotes: 'conversionRate', default = by status",
-		"- invoices: 'month' (revenue by month), 'client' (revenue by client, top 10), default = by status",
-		"- activities: 'timestamp_day|week|month', default = by type",
+		"Valid groupBy values per entityType (omit groupBy for the default):",
+		...REPORT_ENTITY_TYPES.map(
+			(entity) =>
+				`- ${entity}: ${GROUP_BY_OPTIONS[entity]
+					.map((o) => `'${o.value}' (${o.label})`)
+					.join(", ")}; default = '${DEFAULT_GROUP_BY[entity]}'`
+		),
 		"Do not invent other groupBy values.",
 	].join("\n"),
 	inputSchema: z.object({
-		entityType: z.enum([
-			"clients",
-			"projects",
-			"tasks",
-			"quotes",
-			"invoices",
-			"activities",
-		]),
+		entityType: z.enum(REPORT_ENTITY_TYPES),
 		groupBy: z.string().optional(),
 		startDate: isoDate.optional(),
 		endDate: isoDate.optional(),
@@ -859,16 +868,30 @@ export const runReport = createTool({
 		ctx,
 		input
 	): Promise<ReportDataResult & { visualization: ReportVisualization }> => {
+		// Bare calls keep their historical entity-default grouping (§8 d11);
+		// the expander turns magic keys (month, conversionRate, …) into v2.
+		const groupBy = input.groupBy ?? DEFAULT_GROUP_BY[input.entityType];
+		const dateRange =
+			input.startDate || input.endDate
+				? {
+						start: input.startDate ? dayStartMs(input.startDate) : undefined,
+						end: input.endDate ? dayEndMs(input.endDate) : undefined,
+					}
+				: undefined;
+		const { config, visualization } = normalizeReportConfig(
+			{
+				entityType: input.entityType,
+				groupBy: [groupBy],
+				...(dateRange ? { dateRange } : {}),
+			},
+			{ type: input.visualization ?? "bar" }
+		);
 		const result = await ctx.runQuery(api.reportData.executeReport, {
 			entityType: input.entityType,
-			groupBy: input.groupBy,
-			dateRange:
-				input.startDate || input.endDate
-					? {
-							start: input.startDate ? dayStartMs(input.startDate) : undefined,
-							end: input.endDate ? dayEndMs(input.endDate) : undefined,
-						}
-					: undefined,
+			config,
+			...(visualization.options?.seriesLimit !== undefined
+				? { seriesLimit: visualization.options.seriesLimit }
+				: {}),
 		});
 		return { ...result, visualization: input.visualization ?? "bar" };
 	},
@@ -876,7 +899,7 @@ export const runReport = createTool({
 
 export const createReport = createTool({
 	description: [
-		"Build and SAVE a report from the user's plain-English description. Supports the full builder surface: grouping (or raw-row tables with columns), sum/avg/min/max measures, field filters, date ranges, and chart type.",
+		"Build and SAVE a report from the user's plain-English description. Supports the full builder surface: grouping (including related-record paths, or raw-row tables with columns), sum/avg/min/max/ratio/related measures, field and date filters, named or explicit date ranges, and chart type.",
 		"Pass the user's request verbatim, including names, amounts, and time phrases.",
 		"On success it returns the saved report's path — offer to open it with navigate.",
 		"Use this when the user wants a report they can keep, edit, or share; use runReport for a quick one-off answer in chat.",
@@ -1464,29 +1487,39 @@ export const listSavedReports = createTool({
 
 export const getSavedReport = createTool({
 	description:
-		"Get one saved report's settings (entity type, groupBy, date range, visualization). Re-run it by passing those settings to runReport.",
+		"Get one saved report's settings (entity type, metric, grouping, date range, filters, visualization). Re-run it by passing those settings to runReport.",
 	inputSchema: z.object({ reportId: z.string() }),
 	execute: async (ctx, input): Promise<SavedReportDetail | NotFound> => {
 		const report = await ctx.runQuery(api.reports.get, {
 			id: input.reportId as Id<"reports">,
 		});
 		if (!report) return { found: false };
+		const { config, visualization } = normalizeReportConfig(
+			report.config,
+			report.visualization
+		);
+		const range = config.date?.range;
 		return {
 			found: true,
 			report: {
 				id: report._id,
 				name: report.name,
 				description: truncate(report.description, TEXT_CAP),
-				entityType: report.config.entityType,
-				visualization: report.visualization.type,
+				entityType: config.entityType,
+				visualization: visualization.type,
 				updatedAt: isoInstant(report.updatedAt),
-				groupBy: report.config.groupBy,
-				dateRange: report.config.dateRange
-					? {
-							start: isoDay(report.config.dateRange.start),
-							end: isoDay(report.config.dateRange.end),
-						}
-					: undefined,
+				metric: config.metric,
+				groupBy: config.groupBy,
+				segmentBy: config.segmentBy,
+				dateField: config.date?.field,
+				dateRange:
+					range === undefined
+						? undefined
+						: range.kind === "preset"
+							? { preset: range.preset }
+							: { start: isoDay(range.start), end: isoDay(range.end) },
+				filters: config.filters,
+				columns: config.columns,
 			},
 		};
 	},

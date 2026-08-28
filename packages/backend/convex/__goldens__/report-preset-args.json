@@ -1,0 +1,379 @@
+{
+ "revenue-by-month": {
+  "entityType": "invoices",
+  "config": {
+   "version": 2,
+   "entityType": "invoices",
+   "filters": {
+    "logic": "and",
+    "groups": [
+     {
+      "logic": "and",
+      "rules": [
+       {
+        "field": "status",
+        "operator": "equals",
+        "value": "paid"
+       }
+      ]
+     }
+    ]
+   },
+   "date": {
+    "field": "paidAt",
+    "range": {
+     "kind": "preset",
+     "preset": "this_year"
+    }
+   },
+   "metric": {
+    "op": "sum",
+    "field": "total"
+   },
+   "groupBy": "paidAt_month"
+  }
+ },
+ "overdue-invoices": {
+  "entityType": "invoices",
+  "config": {
+   "version": 2,
+   "entityType": "invoices",
+   "filters": {
+    "logic": "and",
+    "groups": [
+     {
+      "logic": "and",
+      "rules": [
+       {
+        "field": "status",
+        "operator": "equals",
+        "value": "overdue"
+       }
+      ]
+     }
+    ]
+   },
+   "columns": [
+    "invoiceNumber",
+    "status",
+    "total",
+    "issuedDate",
+    "dueDate"
+   ],
+   "metric": {
+    "op": "count"
+   }
+  },
+  "detail": {
+   "columns": [
+    "invoiceNumber",
+    "status",
+    "total",
+    "issuedDate",
+    "dueDate"
+   ]
+  }
+ },
+ "payments-due": {
+  "entityType": "payments",
+  "config": {
+   "version": 2,
+   "entityType": "payments",
+   "filters": {
+    "logic": "and",
+    "groups": [
+     {
+      "logic": "or",
+      "rules": [
+       {
+        "field": "status",
+        "operator": "equals",
+        "value": "pending"
+       },
+       {
+        "field": "status",
+        "operator": "equals",
+        "value": "sent"
+       },
+       {
+        "field": "status",
+        "operator": "equals",
+        "value": "overdue"
+       }
+      ]
+     }
+    ]
+   },
+   "columns": [
+    "description",
+    "status",
+    "paymentAmount",
+    "dueDate"
+   ],
+   "metric": {
+    "op": "count"
+   }
+  },
+  "detail": {
+   "columns": [
+    "description",
+    "status",
+    "paymentAmount",
+    "dueDate"
+   ]
+  }
+ },
+ "quote-conversion": {
+  "entityType": "quotes",
+  "config": {
+   "version": 2,
+   "entityType": "quotes",
+   "date": {
+    "range": {
+     "kind": "preset",
+     "preset": "this_quarter"
+    }
+   },
+   "metric": {
+    "op": "ratio",
+    "ratioKey": "conversionRate"
+   }
+  }
+ },
+ "projects-by-status": {
+  "entityType": "projects",
+  "config": {
+   "version": 2,
+   "entityType": "projects",
+   "metric": {
+    "op": "count"
+   },
+   "groupBy": "status"
+  }
+ },
+ "jobs-completed-by-month": {
+  "entityType": "projects",
+  "config": {
+   "version": 2,
+   "entityType": "projects",
+   "filters": {
+    "logic": "and",
+    "groups": [
+     {
+      "logic": "and",
+      "rules": [
+       {
+        "field": "status",
+        "operator": "equals",
+        "value": "completed"
+       }
+      ]
+     }
+    ]
+   },
+   "metric": {
+    "op": "count"
+   },
+   "groupBy": "completedAt_month"
+  }
+ },
+ "average-invoice-value": {
+  "entityType": "invoices",
+  "config": {
+   "version": 2,
+   "entityType": "invoices",
+   "date": {
+    "range": {
+     "kind": "preset",
+     "preset": "this_year"
+    }
+   },
+   "metric": {
+    "op": "avg",
+    "field": "total"
+   },
+   "groupBy": "issuedDate_month"
+  }
+ },
+ "team-workload": {
+  "entityType": "tasks",
+  "config": {
+   "version": 2,
+   "entityType": "tasks",
+   "date": {
+    "range": {
+     "kind": "preset",
+     "preset": "this_month"
+    }
+   },
+   "metric": {
+    "op": "count"
+   },
+   "groupBy": "assigneeUserId"
+  }
+ },
+ "top-clients": {
+  "entityType": "invoices",
+  "config": {
+   "version": 2,
+   "entityType": "invoices",
+   "filters": {
+    "logic": "and",
+    "groups": [
+     {
+      "logic": "and",
+      "rules": [
+       {
+        "field": "status",
+        "operator": "equals",
+        "value": "paid"
+       }
+      ]
+     }
+    ]
+   },
+   "date": {
+    "field": "paidAt",
+    "range": {
+     "kind": "preset",
+     "preset": "all_time"
+    }
+   },
+   "metric": {
+    "op": "sum",
+    "field": "total"
+   },
+   "groupBy": "clientId"
+  },
+  "seriesLimit": 10,
+  "sort": "value_desc"
+ },
+ "new-clients-by-month": {
+  "entityType": "clients",
+  "config": {
+   "version": 2,
+   "entityType": "clients",
+   "date": {
+    "range": {
+     "kind": "preset",
+     "preset": "this_year"
+    }
+   },
+   "metric": {
+    "op": "count"
+   },
+   "groupBy": "creationDate_month"
+  }
+ },
+ "lead-source-breakdown": {
+  "entityType": "clients",
+  "config": {
+   "version": 2,
+   "entityType": "clients",
+   "metric": {
+    "op": "count"
+   },
+   "groupBy": "leadSource"
+  }
+ },
+ "projected-income": {
+  "entityType": "invoices",
+  "config": {
+   "version": 2,
+   "entityType": "invoices",
+   "filters": {
+    "logic": "and",
+    "groups": [
+     {
+      "logic": "or",
+      "rules": [
+       {
+        "field": "status",
+        "operator": "equals",
+        "value": "sent"
+       },
+       {
+        "field": "status",
+        "operator": "equals",
+        "value": "overdue"
+       }
+      ]
+     }
+    ]
+   },
+   "metric": {
+    "op": "sum",
+    "field": "total"
+   },
+   "groupBy": "dueDate_month"
+  }
+ },
+ "quotes-awaiting-response": {
+  "entityType": "quotes",
+  "config": {
+   "version": 2,
+   "entityType": "quotes",
+   "filters": {
+    "logic": "and",
+    "groups": [
+     {
+      "logic": "and",
+      "rules": [
+       {
+        "field": "status",
+        "operator": "equals",
+        "value": "sent"
+       }
+      ]
+     }
+    ]
+   },
+   "columns": [
+    "quoteNumber",
+    "title",
+    "total",
+    "sentAt"
+   ],
+   "metric": {
+    "op": "count"
+   }
+  },
+  "detail": {
+   "columns": [
+    "quoteNumber",
+    "title",
+    "total",
+    "sentAt"
+   ]
+  }
+ },
+ "tasks-by-status": {
+  "entityType": "tasks",
+  "config": {
+   "version": 2,
+   "entityType": "tasks",
+   "date": {
+    "range": {
+     "kind": "preset",
+     "preset": "this_week"
+    }
+   },
+   "metric": {
+    "op": "count"
+   },
+   "groupBy": "status",
+   "includeEmptyValues": true
+  }
+ },
+ "clients-by-status": {
+  "entityType": "clients",
+  "config": {
+   "version": 2,
+   "entityType": "clients",
+   "metric": {
+    "op": "count"
+   },
+   "groupBy": "status"
+  }
+ }
+}

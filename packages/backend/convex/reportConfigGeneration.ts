@@ -17,20 +17,40 @@ import { api, components, internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import { internalQuery } from "./_generated/server";
 import { getCurrentUserOrgId, getCurrentUserOrThrow } from "./lib/auth";
+import { getOrgTimezoneById } from "./lib/organization";
+import { resolveDayAnchors } from "./lib/reportDates";
 import {
 	entitlementsFromIdentity,
 	isFeatureAllowed,
 	type PlanTier,
 } from "./lib/entitlements";
 import {
-	DEFAULT_DETAIL_COLUMNS,
 	GROUP_BY_OPTIONS,
 	getReportField,
 	isGenericGroupBy,
+	RATIO_KEYS,
+	RATIO_METRICS,
+	REPORT_ENTITY_TYPES,
 	REPORT_FIELDS,
-	usesLegacyDispatch,
 	type ReportEntityType,
+	type ReportFieldDef,
 } from "./lib/reportFields";
+import {
+	DATE_RANGE_PRESETS,
+	normalizeReportConfig,
+	type ReportConfigV2,
+	type ReportMetric,
+	type ReportVisualization,
+} from "./lib/reportConfig";
+import {
+	isRelatedPath,
+	REPORT_RELATIONS,
+	resolveReportPath,
+} from "./lib/reportRelations";
+import {
+	resolveReportQueryArgs,
+	type ExecuteReportArgs,
+} from "./lib/reportQueryArgs";
 import type {
 	ReportFilterRule,
 	ReportFilters,
@@ -39,14 +59,7 @@ import { rateLimiter } from "./rateLimits";
 
 const REQUEST_MAX_LENGTH = 2000;
 
-const ENTITY_TYPES = [
-	"clients",
-	"projects",
-	"tasks",
-	"quotes",
-	"invoices",
-	"activities",
-] as const;
+const ENTITY_TYPES = REPORT_ENTITY_TYPES;
 
 const FILTER_OPERATORS = [
 	"equals",
@@ -56,9 +69,29 @@ const FILTER_OPERATORS = [
 	"greater_than_or_equal",
 	"less_than",
 	"less_than_or_equal",
+	"before",
+	"after",
+	"on",
 	"is_empty",
 	"is_not_empty",
 ] as const;
+
+/** The only operators a timestamp field accepts, on either side. */
+const DATE_OPERATORS = ["before", "after", "on"] as const;
+
+type DateOperator = (typeof DATE_OPERATORS)[number];
+
+function isDateOperator(operator: string): operator is DateOperator {
+	return (DATE_OPERATORS as readonly string[]).includes(operator);
+}
+
+const AGGREGATION_OPS = ["sum", "avg", "min", "max"] as const;
+
+type AggregationOp = (typeof AGGREGATION_OPS)[number];
+
+function isAggregationOp(op: string): op is AggregationOp {
+	return (AGGREGATION_OPS as readonly string[]).includes(op);
+}
 
 // Structured-output providers require every property; "optional" is
 // expressed as nullable throughout.
@@ -72,11 +105,26 @@ export const generatedReportSchema = z.object({
 		),
 	measure: z
 		.object({
-			op: z.enum(["count", "sum", "avg", "min", "max"]),
+			op: z.enum(["count", "sum", "avg", "min", "max", "ratio", "related"]),
 			field: z
 				.string()
 				.nullable()
-				.describe("Required for sum/avg/min/max; null for count."),
+				.describe("Required for sum/avg/min/max; null otherwise."),
+			ratioKey: z
+				.enum(RATIO_KEYS)
+				.nullable()
+				.describe('Required for op "ratio"; null otherwise.'),
+			related: z
+				.object({
+					entity: z.enum(ENTITY_TYPES),
+					field: z
+						.string()
+						.nullable()
+						.describe("A number/currency field of that entity; null for count."),
+					op: z.enum(["count", "sum", "avg", "min", "max"]),
+				})
+				.nullable()
+				.describe('Required for op "related"; null otherwise.'),
 		})
 		.nullable()
 		.describe("What each group's value is. Null means count of records."),
@@ -108,6 +156,12 @@ export const generatedReportSchema = z.object({
 		.nullable()
 		.describe("YYYY-MM-DD lower bound for the entity's date field, or null."),
 	endDate: z.string().nullable().describe("YYYY-MM-DD upper bound, or null."),
+	datePreset: z
+		.enum(DATE_RANGE_PRESETS)
+		.nullable()
+		.describe(
+			"Named period for the date range. Preferred over startDate/endDate when the request names one; never both."
+		),
 	visualization: z.enum(["bar", "column", "line", "pie", "radar", "radial", "table"]),
 	name: z.string().describe("Short report title."),
 	description: z.string().nullable().describe("One sentence, or null."),
@@ -154,24 +208,49 @@ function describeEntity(entityType: ReportEntityType): string {
 	].join("\n");
 }
 
+/** Every FK edge in the registry, so the path grammar can't drift from it. */
+const RELATION_EDGES = ENTITY_TYPES.flatMap((entity) =>
+	Object.entries(REPORT_RELATIONS[entity]).map(
+		([field, edge]) => `${entity}.${field} → ${edge.refType}`
+	)
+);
+
 export const REPORT_CONFIG_SYSTEM_PROMPT = [
 	"You convert a user's plain-English request into a report configuration for OneTool, a business management app for field-service businesses.",
 	"",
 	"Entities:",
 	...ENTITY_TYPES.map(describeEntity),
 	"",
+	"Links between entities (child.field → parent):",
+	`  ${RELATION_EDGES.join(", ")}`,
+	"A groupBy or filter field may be a dotted path: link field names joined by dots, ending in a field of the entity you arrive at.",
+	'  e.g. on invoices "clientId.leadSource" is the client\'s lead source; "quoteId.projectId.startDate_month" buckets by the month the quote\'s project started; on invoiceLineItems "invoiceId.quoteId.projectId.clientId" reaches the client record.',
+	"A path may end on a link field itself (groups by that related record) — groupBy only; filter paths must end on a field. Never traverse through users or skus, and never invent a link.",
+	"",
 	"Rules:",
-	'- groupBy must be exactly one of the listed Group-by values for the chosen entity, or null. Never invent values.',
+	'- groupBy must be exactly one of the listed Group-by values for the chosen entity, a dotted path, or null. Never invent values.',
 	'- A list of individual records ("show me all overdue invoices") is visualization "table" with groupBy null and 3-5 relevant columns.',
 	'- Charts (bar/column/line/pie/radar/radial) render above the aggregated data table and require a groupBy. "table" means no chart — groupBy null there is fine for raw rows.',
 	'- Visualization choice: "column" for time-bucketed groupBy (month/week/day); "bar" for named categories (status, client, lead source, etc.); "line" for a trend over time; "pie" for share-of-total; "table" for exact values or raw rows. Only use "radar" or "radial" when the user explicitly asks for that chart type.',
 	"- measure: null (count of records) unless the user asks about amounts — then sum/avg/min/max of a number or currency field. A non-count measure only combines with the measure-compatible Group-by values listed per entity, or groupBy null.",
-	"- filters: only fields listed for the entity. Timestamp fields are never filterable — use startDate/endDate for time. When a field lists allowed values, equals/not_equals values must match one exactly.",
+	`- measure {op: "ratio", ratioKey}: a built-in percentage. Available: ${RATIO_KEYS.map(
+		(key) => `"${key}" on ${RATIO_METRICS[key].entityType}`
+	).join(", ")}. groupBy must be null.`,
+	'- measure {op: "related", related: {entity, field, op}}: rolls a linked entity up onto each record of the report entity — e.g. entityType "clients" with related {entity: "invoices", field: "total", op: "sum"} is total invoiced per client. The related entity must link to the report entity in the list above; field is null for op "count". groupBy must be null.',
+	'- A ratio or related measure renders as one figure, so the visualization you pick is ignored — use "table".',
+	"- filters: fields listed for the entity, or a dotted path ending in one. Timestamp fields filter with before/after/on and a YYYY-MM-DD value — no other operator applies to a date, and those three apply to nothing else. When a field lists allowed values, equals/not_equals values must match one exactly.",
 	'- "contains" is for free-text string fields only; greater/less operators are for number and currency fields.',
 	"- Money values are dollars (e.g. 500 means $500).",
 	"- columns: only for table visualization; use exact field names.",
-	"- Resolve relative dates (this month, last quarter) from the current date given in the request.",
+	`- Date range: prefer datePreset when the request names a period (${DATE_RANGE_PRESETS.join(", ")}) — "this month" is "this_month" — since a preset re-resolves in the org's timezone every time the report runs. Use startDate/endDate only for an explicit or unusual range, resolved from the current date given in the request. Never set both.`,
 	"- name: a short title like a human would write; description: one sentence or null.",
+	"",
+	"When the request comes with a configuration the user already has open, it is described in saved-report terms — reproduce every part of it you were not asked to change:",
+	'- "metric: count of records" is measure null; "metric: sum of total" is measure {op: "sum", field: "total"}; "metric: ratio (conversionRate)" is measure {op: "ratio", ratioKey: "conversionRate"}; "metric: sum of related invoices total" is measure {op: "related", related: {entity: "invoices", field: "total", op: "sum"}}.',
+	'- A date range named as a period ("date range: this_month") is that datePreset; explicit days are startDate/endDate.',
+	'- A dotted "group by" is that exact string.',
+	'- invoices summing total over paid records grouped by paidAt_month or clientId are groupBy "month" and "client".',
+	'- A setting the schema has no field for (segment by, a date range scoped "on <field>") you cannot reproduce — leave it out.',
 ].join("\n");
 
 // ---------------------------------------------------------------------------
@@ -211,35 +290,151 @@ export function sanitizeGeneratedFilters(
 	return { logic: filters.logic, groups };
 }
 
+/** Rule count across groups; tolerant of untrusted (relayed) filter shapes. */
+function countFilterRules(filters: ReportFilters | null | undefined): number {
+	if (!filters || !Array.isArray(filters.groups)) return 0;
+	return filters.groups.reduce(
+		(n, group) => n + (Array.isArray(group?.rules) ? group.rules.length : 0),
+		0
+	);
+}
+
+/** ConvexError carries its message in `data`; plain errors in `message`. */
+function pathErrorMessage(error: unknown): string {
+	if (error instanceof ConvexError && typeof error.data === "string") {
+		return error.data;
+	}
+	return error instanceof Error ? error.message : String(error);
+}
+
+/**
+ * The FK field linking a child entity to the report entity — derived here so
+ * the model never has to know column names. Ambiguity (two edges to the same
+ * parent) doesn't exist in today's registry, but fails closed if one is added.
+ */
+export function relatedFkField(
+	child: ReportEntityType,
+	parent: ReportEntityType
+): { fk: string } | { error: string } {
+	const candidates = Object.entries(REPORT_RELATIONS[child])
+		.filter(([, edge]) => edge.refType === parent)
+		.map(([field]) => field);
+	if (candidates.length === 1) return { fk: candidates[0] };
+	if (candidates.length > 1) {
+		return {
+			error: `related entity "${child}" links to ${parent} through more than one field (${candidates.join(", ")}) — that rollup is ambiguous`,
+		};
+	}
+	const linked = ENTITY_TYPES.filter((entity) =>
+		Object.values(REPORT_RELATIONS[entity]).some((edge) => edge.refType === parent)
+	);
+	return {
+		error: `related entity "${child}" has no link to ${parent}; entities that link to ${parent} are ${linked.join(", ") || "(none)"}`,
+	};
+}
+
+/** Field def a filter rule ends on — direct or through a dotted path. */
+function resolveFilterFieldDef(
+	entityType: ReportEntityType,
+	field: string
+): { def: ReportFieldDef } | { error: string } {
+	if (!isRelatedPath(field)) {
+		const def = getReportField(entityType, field);
+		return def
+			? { def }
+			: { error: `filter field "${field}" does not exist on ${entityType}` };
+	}
+	try {
+		const { terminal } = resolveReportPath(entityType, field);
+		if (terminal.kind === "fk") {
+			return {
+				error: `filter field "${field}" resolves to a related record, not a filterable value`,
+			};
+		}
+		if (terminal.granularity) {
+			return { error: `filter field "${field}" is a time bucket, not a filterable value` };
+		}
+		return { def: terminal.def };
+	} catch (error) {
+		return { error: pathErrorMessage(error) };
+	}
+}
+
 /** Registry/coherence errors in a generated config; empty when valid. */
 export function validateGeneratedReport(gen: GeneratedReport): string[] {
 	const errors: string[] = [];
 	const entityType = gen.entityType;
-	const registry = REPORT_FIELDS[entityType];
 
 	if (gen.groupBy !== null) {
-		const allowed = GROUP_BY_OPTIONS[entityType].map((o) => o.value);
-		if (!allowed.includes(gen.groupBy)) {
-			errors.push(
-				`groupBy "${gen.groupBy}" is not valid for ${entityType}; use one of ${allowed.join(", ")} or null`
-			);
+		if (isRelatedPath(gen.groupBy)) {
+			try {
+				resolveReportPath(entityType, gen.groupBy);
+			} catch (error) {
+				errors.push(pathErrorMessage(error));
+			}
+		} else {
+			const allowed = GROUP_BY_OPTIONS[entityType].map((o) => o.value);
+			if (!allowed.includes(gen.groupBy)) {
+				errors.push(
+					`groupBy "${gen.groupBy}" is not valid for ${entityType}; use one of ${allowed.join(", ")} or null`
+				);
+			}
 		}
 	}
 
-	if (gen.measure && gen.measure.op !== "count") {
-		if (!gen.measure.field) {
-			errors.push(`measure ${gen.measure.op} requires a field`);
+	const measure = gen.measure;
+	if (measure?.op === "ratio" || measure?.op === "related") {
+		// Both bucket without a dimension — reportData rejects any grouping.
+		if (gen.groupBy !== null) {
+			errors.push(
+				`a ${measure.op} measure cannot combine with a groupBy — use groupBy null`
+			);
+		}
+	}
+	if (measure?.op === "ratio") {
+		if (!measure.ratioKey) {
+			errors.push("measure ratio requires a ratioKey");
+		} else if (RATIO_METRICS[measure.ratioKey].entityType !== entityType) {
+			errors.push(
+				`ratio "${measure.ratioKey}" is only available for ${RATIO_METRICS[measure.ratioKey].entityType}, not ${entityType}`
+			);
+		}
+	} else if (measure?.op === "related") {
+		const related = measure.related;
+		if (!related) {
+			errors.push("measure related requires a related entity, field and op");
 		} else {
-			const def = getReportField(entityType, gen.measure.field);
+			const fk = relatedFkField(related.entity, entityType);
+			if ("error" in fk) errors.push(fk.error);
+			if (related.op === "count") {
+				if (related.field) {
+					errors.push(`a related count does not take a field`);
+				}
+			} else if (!related.field) {
+				errors.push(`related ${related.op} requires a field`);
+			} else {
+				const def = getReportField(related.entity, related.field);
+				if (!def || (def.type !== "number" && def.type !== "currency")) {
+					errors.push(
+						`related field "${related.field}" must be a number or currency field of ${related.entity}`
+					);
+				}
+			}
+		}
+	} else if (measure && measure.op !== "count") {
+		if (!measure.field) {
+			errors.push(`measure ${measure.op} requires a field`);
+		} else {
+			const def = getReportField(entityType, measure.field);
 			if (!def || (def.type !== "number" && def.type !== "currency")) {
 				errors.push(
-					`measure field "${gen.measure.field}" must be a number or currency field of ${entityType}`
+					`measure field "${measure.field}" must be a number or currency field of ${entityType}`
 				);
 			}
 		}
 		if (gen.groupBy !== null && !isGenericGroupBy(entityType, gen.groupBy)) {
 			errors.push(
-				`a ${gen.measure.op} measure cannot combine with groupBy "${gen.groupBy}" — use a measure-compatible grouping or none`
+				`a ${measure.op} measure cannot combine with groupBy "${gen.groupBy}" — use a measure-compatible grouping or none`
 			);
 		}
 	}
@@ -247,14 +442,29 @@ export function validateGeneratedReport(gen: GeneratedReport): string[] {
 	const filters = sanitizeGeneratedFilters(gen.filters);
 	for (const group of filters?.groups ?? []) {
 		for (const rule of group.rules) {
-			const def = getReportField(entityType, rule.field);
-			if (!def) {
-				errors.push(`filter field "${rule.field}" does not exist on ${entityType}`);
+			const resolved = resolveFilterFieldDef(entityType, rule.field);
+			if ("error" in resolved) {
+				errors.push(resolved.error);
 				continue;
 			}
+			const def = resolved.def;
 			if (def.type === "timestamp") {
+				if (!isDateOperator(rule.operator)) {
+					errors.push(
+						`filter field "${rule.field}" is a date — use before/after/on with a YYYY-MM-DD value`
+					);
+				} else if (typeof rule.value !== "string" || !ISO_DATE.test(rule.value)) {
+					errors.push(`"${rule.operator}" on "${rule.field}" needs a YYYY-MM-DD value`);
+				} else if (!isRealCalendarDate(rule.value)) {
+					errors.push(
+						`"${rule.operator}" on "${rule.field}" needs a real calendar date`
+					);
+				}
+				continue;
+			}
+			if (isDateOperator(rule.operator)) {
 				errors.push(
-					`filter field "${rule.field}" is a date — use startDate/endDate instead`
+					`"${rule.operator}" only applies to date fields, not "${rule.field}"`
 				);
 				continue;
 			}
@@ -314,6 +524,11 @@ export function validateGeneratedReport(gen: GeneratedReport): string[] {
 	) {
 		errors.push("startDate is after endDate");
 	}
+	if (gen.datePreset && (gen.startDate || gen.endDate)) {
+		errors.push(
+			"datePreset and startDate/endDate are mutually exclusive — use one or the other"
+		);
+	}
 
 	if (!gen.name.trim()) errors.push("name must not be empty");
 
@@ -333,22 +548,80 @@ function isRealCalendarDate(date: string): boolean {
 	);
 }
 
-function dayStartMs(date: string): number {
-	return Date.parse(`${date}T00:00:00.000Z`);
-}
-
-function dayEndMs(date: string): number {
-	return Date.parse(`${date}T23:59:59.999Z`);
-}
-
 function toDateRange(
-	gen: GeneratedReport
+	gen: GeneratedReport,
+	timezone?: string
 ): { start?: number; end?: number } | undefined {
 	if (!gen.startDate && !gen.endDate) return undefined;
 	return {
-		...(gen.startDate ? { start: dayStartMs(gen.startDate) } : {}),
-		...(gen.endDate ? { end: dayEndMs(gen.endDate) } : {}),
+		...(gen.startDate
+			? { start: resolveDayAnchors(gen.startDate, timezone).start }
+			: {}),
+		...(gen.endDate ? { end: resolveDayAnchors(gen.endDate, timezone).end } : {}),
 	};
+}
+
+/**
+ * Date-op rule values are authored as YYYY-MM-DD but evaluated as ms instants
+ * on the org calendar, encoded the way the builder's date picker does it
+ * (report-filter-adapter): "before" excludes the whole picked day, "after"
+ * starts after it, and "on" is org-local noon so the day key survives DST.
+ */
+function dateOperatorInstant(
+	operator: DateOperator,
+	date: string,
+	timezone?: string
+): number {
+	const anchors = resolveDayAnchors(date, timezone);
+	if (operator === "before") return anchors.start;
+	if (operator === "after") return anchors.end;
+	return anchors.noon;
+}
+
+function toExecutableFilters(
+	filters: ReportFilters | null,
+	timezone?: string
+): ReportFilters | null {
+	if (!filters) return null;
+	return {
+		logic: filters.logic,
+		groups: filters.groups.map((group) => ({
+			logic: group.logic,
+			rules: group.rules.map((rule) =>
+				isDateOperator(rule.operator) && typeof rule.value === "string"
+					? {
+							...rule,
+							value: dateOperatorInstant(rule.operator, rule.value, timezone),
+						}
+					: rule
+			),
+		})),
+	};
+}
+
+/** Metrics the v1 shape cannot carry; undefined leaves the normalizer's own. */
+function toNativeMetric(gen: GeneratedReport): ReportMetric | undefined {
+	const measure = gen.measure;
+	if (measure?.op === "ratio") {
+		return measure.ratioKey
+			? { op: "ratio", ratioKey: measure.ratioKey }
+			: undefined;
+	}
+	if (measure?.op === "related" && measure.related) {
+		const related = measure.related;
+		const fk = relatedFkField(related.entity, gen.entityType);
+		if ("error" in fk) return undefined;
+		return {
+			op: "related",
+			related: {
+				entity: related.entity,
+				fk: fk.fk,
+				...(related.field ? { field: related.field } : {}),
+				op: related.op,
+			},
+		};
+	}
+	return undefined;
 }
 
 /**
@@ -358,111 +631,109 @@ function toDateRange(
  * instead of silently producing a chart-labeled report that only ever
  * renders a table (see toExecuteReportArgs' matching detailMode fallback).
  */
-function resolveVisualization(gen: GeneratedReport): GeneratedReport["visualization"] {
+function resolveVisualization(
+	gen: GeneratedReport
+): ReportVisualization["type"] {
+	// One value, no dimension — the KPI figure is the only rendering with data.
+	if (isMetricOnlyMeasure(gen.measure)) return "number";
 	return gen.groupBy === null && gen.visualization !== "table" ? "table" : gen.visualization;
 }
 
-/** Saved shape for reports.create — matches the builder's persistence rules
- * (count measure = omitted aggregations; columns only for table viz). */
-export function toSavedReport(gen: GeneratedReport): {
-	name: string;
-	description?: string;
-	config: {
-		entityType: ReportEntityType;
-		groupBy?: string[];
-		dateRange?: { start?: number; end?: number };
-		filters?: ReportFilters;
-		aggregations?: {
-			field: string;
-			operation: "sum" | "avg" | "min" | "max";
-		}[];
-		columns?: string[];
-	};
-	visualization: { type: "bar" | "column" | "line" | "pie" | "radar" | "radial" | "table" };
+function isMetricOnlyMeasure(measure: GeneratedReport["measure"]): boolean {
+	return measure?.op === "ratio" || measure?.op === "related";
+}
+
+/**
+ * Generated config → the canonical v2 pair every downstream path uses.
+ * Routed through the v1 normalizer because the generatable Group-by
+ * vocabulary still includes the magic keys (month, client, conversionRate,
+ * completionRate), which only become executable v2 configs by expansion; the
+ * two things v1 cannot carry (ratio/related metrics, preset ranges) are laid
+ * over the expansion, so a preset keeps the date FIELD the expansion chose.
+ */
+function toGeneratedConfig(
+	gen: GeneratedReport,
+	timezone?: string
+): {
+	config: ReportConfigV2;
+	visualization: ReportVisualization;
 } {
-	const filters = sanitizeGeneratedFilters(gen.filters);
+	const filters = toExecutableFilters(
+		sanitizeGeneratedFilters(gen.filters),
+		timezone
+	);
+	const dateRange = toDateRange(gen, timezone);
 	const measure = gen.measure;
 	const visualization = resolveVisualization(gen);
-	return {
-		name: gen.name.trim(),
-		...(gen.description ? { description: gen.description } : {}),
-		config: {
+	const normalized = normalizeReportConfig(
+		{
 			entityType: gen.entityType,
 			...(gen.groupBy ? { groupBy: [gen.groupBy] } : {}),
-			...(toDateRange(gen) ? { dateRange: toDateRange(gen) } : {}),
+			...(dateRange ? { dateRange } : {}),
 			...(filters ? { filters } : {}),
-			...(measure && measure.op !== "count" && measure.field
-				? {
-						aggregations: [
-							{ field: measure.field, operation: measure.op },
-						],
-					}
+			...(measure && isAggregationOp(measure.op) && measure.field
+				? { aggregations: [{ field: measure.field, operation: measure.op }] }
 				: {}),
 			...(visualization === "table" && gen.columns?.length
 				? { columns: gen.columns }
 				: {}),
 		},
-		visualization: { type: visualization },
+		{ type: visualization }
+	);
+	const metric = toNativeMetric(gen);
+	return {
+		config: {
+			...normalized.config,
+			...(metric ? { metric } : {}),
+			...(gen.datePreset
+				? {
+						date: {
+							...normalized.config.date,
+							range: { kind: "preset" as const, preset: gen.datePreset },
+						},
+					}
+				: {}),
+		},
+		visualization: normalized.visualization,
 	};
 }
 
-/** executeReport args for the dry run — mirrors the web's
- * resolveReportQueryArgs semantics for detail mode and "Group by: None". */
-export function toExecuteReportArgs(gen: GeneratedReport): {
-	entityType: ReportEntityType;
-	groupBy?: string;
-	dateRange?: { start?: number; end?: number };
-	filters?: ReportFilters;
-	aggregation?: { op: "count" | "sum" | "avg" | "min" | "max"; field?: string };
-	detail?: { columns: string[] };
-} {
-	const groupBy = gen.groupBy ?? undefined;
-	const filters = sanitizeGeneratedFilters(gen.filters) ?? undefined;
-	const base = {
-		entityType: gen.entityType,
-		groupBy,
-		dateRange: toDateRange(gen),
-		filters,
+/**
+ * What a generated report becomes: the saved-report arguments AND the seed the
+ * builder applies to its live state — deliberately the same shape, so applying
+ * a generated config then saving it can't produce a different report.
+ * An omitted description means "leave it as it is".
+ */
+export type BuilderReportConfig = {
+	name: string;
+	description?: string;
+	config: ReportConfigV2;
+	visualization: ReportVisualization;
+};
+
+/** Saved shape for reports.create. */
+export function toSavedReport(
+	gen: GeneratedReport,
+	timezone?: string
+): BuilderReportConfig {
+	const { config, visualization } = toGeneratedConfig(gen, timezone);
+	return {
+		name: gen.name.trim(),
+		...(gen.description ? { description: gen.description } : {}),
+		config,
+		visualization,
 	};
+}
 
-	// No groupBy means raw-row detail mode for every viz type, not just
-	// table — a chart with nothing to group on has nothing to chart above
-	// (Slice 3-D3: chart renders above the data table, fed by the same
-	// grouped query). Mirrors the web's isDetailModeActive.
-	const detailMode = !groupBy || (gen.visualization === "table" && (gen.columns?.length ?? 0) > 0);
-	if (detailMode) {
-		return {
-			...base,
-			detail: {
-				columns: gen.columns?.length
-					? gen.columns
-					: DEFAULT_DETAIL_COLUMNS[gen.entityType],
-			},
-		};
-	}
-
-	const measure =
-		gen.measure && gen.measure.op !== "count" && gen.measure.field
-			? { op: gen.measure.op, field: gen.measure.field }
-			: undefined;
-
-	// detailMode already returned above whenever groupBy is unset, so
-	// groupBy is guaranteed defined past this point. Non-count measures
-	// always need the generic pipeline; a legacy-only groupBy must keep
-	// hitting the legacy dispatch for unchanged output; any other groupBy
-	// (including the newer generic-only options) needs an explicit count so
-	// the generic pipeline — not the legacy fallback — runs and validates
-	// the groupBy.
-	let aggregation: { op: "count" | "sum" | "avg" | "min" | "max"; field?: string } | undefined;
-	if (measure) {
-		aggregation = measure;
-	} else if (usesLegacyDispatch(gen.entityType, groupBy!)) {
-		aggregation = undefined;
-	} else {
-		aggregation = { op: "count" as const };
-	}
-
-	return { ...base, ...(aggregation ? { aggregation } : {}) };
+/** executeReport args for the dry run — delegates to the shared contract
+ * module (lib/reportQueryArgs.ts) so the web's resolveReportQueryArgs and
+ * this path can never drift. */
+export function toExecuteReportArgs(
+	gen: GeneratedReport,
+	timezone?: string
+): ExecuteReportArgs {
+	const { config, visualization } = toGeneratedConfig(gen, timezone);
+	return resolveReportQueryArgs(config, visualization);
 }
 
 /** One short sentence the assistant can echo about what was built. */
@@ -470,26 +741,37 @@ export function summarizeGeneratedReport(gen: GeneratedReport): string {
 	// Reflect what's actually saved/applied, not the model's raw guess — a
 	// chart with null groupBy is coerced to table (see resolveVisualization).
 	const visualization = resolveVisualization(gen);
+	const measure = gen.measure;
 	const parts: string[] = [gen.entityType];
 	if (gen.groupBy) {
 		const label = GROUP_BY_OPTIONS[gen.entityType].find(
 			(o) => o.value === gen.groupBy
 		)?.label;
 		parts.push(`grouped by ${label ?? gen.groupBy}`);
-	} else if (visualization === "table") {
+	} else if (visualization === "table" && !isMetricOnlyMeasure(measure)) {
 		parts.push("as individual rows");
 	}
-	if (gen.measure && gen.measure.op !== "count" && gen.measure.field) {
-		parts.push(`measuring ${gen.measure.op} of ${gen.measure.field}`);
+	if (measure?.op === "ratio" && measure.ratioKey) {
+		parts.push(`measuring ratio (${measure.ratioKey})`);
+	} else if (measure?.op === "related" && measure.related) {
+		const related = measure.related;
+		parts.push(
+			`measuring ${related.op} of related ${related.entity}${related.field ? ` ${related.field}` : ""}`
+		);
+	} else if (measure && isAggregationOp(measure.op) && measure.field) {
+		parts.push(`measuring ${measure.op} of ${measure.field}`);
 	}
-	const filters = sanitizeGeneratedFilters(gen.filters);
-	const ruleCount =
-		filters?.groups.reduce((n, g) => n + g.rules.length, 0) ?? 0;
+	const ruleCount = countFilterRules(sanitizeGeneratedFilters(gen.filters));
 	if (ruleCount > 0) parts.push(`with ${ruleCount} filter${ruleCount === 1 ? "" : "s"}`);
-	if (gen.startDate || gen.endDate) {
+	if (gen.datePreset) {
+		parts.push(`over ${gen.datePreset}`);
+	} else if (gen.startDate || gen.endDate) {
 		parts.push(
 			`from ${gen.startDate ?? "the beginning"} to ${gen.endDate ?? "now"}`
 		);
+	}
+	if (visualization === "number") {
+		return `single metric of ${parts.join(", ")}`;
 	}
 	return `${visualization} of ${parts.join(", ")}`;
 }
@@ -520,43 +802,135 @@ export const authContext = internalQuery({
 		userId: Id<"users">;
 		orgId: Id<"organizations">;
 		plan: PlanTier;
+		timezone: string | undefined;
 	} | null> => {
 		const user = await getCurrentUserOrThrow(ctx);
 		const orgId = await getCurrentUserOrgId(ctx);
 		if (!orgId) return null;
 		const { plan } = await entitlementsFromIdentity(ctx);
-		return { userId: user._id, orgId, plan };
+		const timezone = await getOrgTimezoneById(ctx, orgId);
+		return { userId: user._id, orgId, plan, timezone };
 	},
 });
 
 /** Cap on the current-config JSON the model relays from screen context. */
 const CURRENT_CONFIG_MAX_LENGTH = 4000;
 
+const METRIC_OPS: readonly ReportMetric["op"][] = [
+	"count",
+	"sum",
+	"avg",
+	"min",
+	"max",
+	"ratio",
+	"related",
+];
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+	return value && typeof value === "object" && !Array.isArray(value)
+		? (value as Record<string, unknown>)
+		: null;
+}
+
+/** The builder's live draft, as relayed from screen context. */
+export type CurrentReportConfig = {
+	config: ReportConfigV2;
+	visualization: ReportVisualization | null;
+};
+
 /**
  * The current-config JSON arrives via the model (copied from the
- * <current-screen> block), so treat it as untrusted prompt input: parse
- * leniently, drop it if malformed. It only steers generation — the output
- * is still fully validated.
+ * <current-screen> block), so treat it as untrusted prompt input: it's
+ * accepted only as a `{ config, visualization }` pair carrying the v2 marker,
+ * a known entity and a known metric op, and everything below that is rendered
+ * defensively. It only steers generation — the output is still fully
+ * validated.
  */
 export function parseCurrentConfig(
 	currentConfig: string | null | undefined
-): Record<string, unknown> | null {
+): CurrentReportConfig | null {
 	if (!currentConfig || currentConfig.length > CURRENT_CONFIG_MAX_LENGTH) {
 		return null;
 	}
+	let parsed: unknown;
 	try {
-		const parsed: unknown = JSON.parse(currentConfig);
-		if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-			return parsed as Record<string, unknown>;
-		}
+		parsed = JSON.parse(currentConfig);
 	} catch {
-		// Malformed relay — generate from the request alone.
+		return null;
 	}
-	return null;
+	const root = asRecord(parsed);
+	const config = asRecord(root?.config);
+	const metric = asRecord(config?.metric);
+	if (!config || !metric || config.version !== 2) return null;
+	if (!ENTITY_TYPES.includes(config.entityType as ReportEntityType)) return null;
+	if (!METRIC_OPS.includes(metric.op as ReportMetric["op"])) return null;
+	const visualization = asRecord(root?.visualization);
+	return {
+		config: config as unknown as ReportConfigV2,
+		visualization:
+			typeof visualization?.type === "string"
+				? (visualization as unknown as ReportVisualization)
+				: null,
+	};
+}
+
+function isoDay(ms: number | undefined): string | undefined {
+	return typeof ms === "number"
+		? new Date(ms).toISOString().slice(0, 10)
+		: undefined;
+}
+
+function describeMetric(metric: ReportMetric): string {
+	if (metric.op === "count") return "count of records";
+	if (metric.op === "ratio") return `ratio (${metric.ratioKey ?? "unknown"})`;
+	if (metric.op === "related") {
+		const related = metric.related;
+		return related
+			? `${related.op} of related ${related.entity}${related.field ? ` ${related.field}` : ""}`
+			: "related rollup";
+	}
+	return `${metric.op} of ${metric.field ?? "(no field)"}`;
+}
+
+function describeDateRange(date: ReportConfigV2["date"]): string {
+	const scope = typeof date?.field === "string" ? ` on ${date.field}` : "";
+	const range = date?.range;
+	if (range?.kind === "preset") return `${range.preset}${scope}`;
+	const start = isoDay(range?.start);
+	const end = isoDay(range?.end);
+	if (!start && !end) return `all time${scope}`;
+	return `${start ?? "the beginning"} to ${end ?? "now"}${scope}`;
+}
+
+/** Prompt rendering of the open draft — v2 vocabulary, no raw JSON relay. */
+export function describeCurrentConfig(current: CurrentReportConfig): string {
+	const { config, visualization } = current;
+	const rules = countFilterRules(config.filters);
+	const lines = [
+		`entity: ${config.entityType}`,
+		`metric: ${describeMetric(config.metric)}`,
+		`group by: ${typeof config.groupBy === "string" ? config.groupBy : "none"}`,
+		`date range: ${describeDateRange(config.date)}`,
+		`filters: ${rules} rule${rules === 1 ? "" : "s"}`,
+	];
+	if (typeof config.segmentBy === "string") {
+		lines.push(`segment by: ${config.segmentBy}`);
+	}
+	if (Array.isArray(config.columns)) {
+		lines.push(`columns: ${config.columns.join(", ")}`);
+	}
+	if (visualization) lines.push(`visualization: ${visualization.type}`);
+	return lines.join("\n");
 }
 
 type GenerationOutcome =
-	| { ok: true; generated: GeneratedReport; total: number; truncated: boolean }
+	| {
+			ok: true;
+			generated: GeneratedReport;
+			total: number;
+			truncated: boolean;
+			timezone: string | undefined;
+	  }
 	| { ok: false; error: string };
 
 /**
@@ -612,7 +986,7 @@ async function runReportGeneration(
 	];
 	if (current) {
 		promptParts.push(
-			`The user currently has this report configuration open:\n${JSON.stringify(current, null, 2)}\nApply the requested change to it — keep every setting the request doesn't mention.`
+			`The user currently has this report configuration open:\n${describeCurrentConfig(current)}\nApply the requested change to it — keep every setting the request doesn't mention.`
 		);
 	}
 	promptParts.push(`Request: ${request}`);
@@ -663,13 +1037,14 @@ async function runReportGeneration(
 	try {
 		const result = await ctx.runQuery(
 			api.reportData.executeReport,
-			toExecuteReportArgs(generated)
+			toExecuteReportArgs(generated, auth.timezone)
 		);
 		return {
 			ok: true,
 			generated,
 			total: result.total,
 			truncated: result.metadata?.truncated === true,
+			timezone: auth.timezone,
 		};
 	} catch (error) {
 		const message =
@@ -687,9 +1062,9 @@ export async function generateAndSaveReport(
 ): Promise<CreateReportResult> {
 	const outcome = await runReportGeneration(ctx, request);
 	if (!outcome.ok) return outcome;
-	const { generated, total, truncated } = outcome;
+	const { generated, total, truncated, timezone } = outcome;
 
-	const saved = toSavedReport(generated);
+	const saved = toSavedReport(generated, timezone);
 	const reportId = await ctx.runMutation(api.reports.create, saved);
 
 	return {
@@ -703,26 +1078,6 @@ export async function generateAndSaveReport(
 	};
 }
 
-/**
- * Normalized config the report builder applies to its live state. Shapes
- * match the builder's own state model (ms date bounds like a saved config;
- * null = absent). The panel client-executes this, like the navigate tool.
- */
-export type BuilderReportConfig = {
-	entityType: ReportEntityType;
-	groupBy: string | null;
-	filters: ReportFilters | null;
-	measure: {
-		op: "count" | "sum" | "avg" | "min" | "max";
-		field: string | null;
-	} | null;
-	columns: string[] | null;
-	dateRange: { start?: number; end?: number } | null;
-	visualization: "bar" | "column" | "line" | "pie" | "radar" | "radial" | "table";
-	name: string;
-	description: string | null;
-};
-
 export type ConfigureReportResult =
 	| {
 			ok: true;
@@ -734,21 +1089,11 @@ export type ConfigureReportResult =
 	| { ok: false; error: string };
 
 /** Generated config → the shape the builder applies (exported for tests). */
-export function toBuilderConfig(gen: GeneratedReport): BuilderReportConfig {
-	// Coerced the same way as toSavedReport — the builder's "Add chart"
-	// affordance assumes a chart is only ever active when groupBy is set.
-	const visualization = resolveVisualization(gen);
-	return {
-		entityType: gen.entityType,
-		groupBy: gen.groupBy,
-		filters: sanitizeGeneratedFilters(gen.filters),
-		measure: gen.measure,
-		columns: visualization === "table" ? (gen.columns ?? null) : null,
-		dateRange: toDateRange(gen) ?? null,
-		visualization,
-		name: gen.name.trim(),
-		description: gen.description,
-	};
+export function toBuilderConfig(
+	gen: GeneratedReport,
+	timezone?: string
+): BuilderReportConfig {
+	return toSavedReport(gen, timezone);
 }
 
 /**
@@ -762,11 +1107,11 @@ export async function generateConfigForBuilder(
 ): Promise<ConfigureReportResult> {
 	const outcome = await runReportGeneration(ctx, request, currentConfig);
 	if (!outcome.ok) return outcome;
-	const { generated, total, truncated } = outcome;
+	const { generated, total, truncated, timezone } = outcome;
 
 	return {
 		ok: true,
-		config: toBuilderConfig(generated),
+		config: toBuilderConfig(generated, timezone),
 		summary: summarizeGeneratedReport(generated),
 		total,
 		truncated,

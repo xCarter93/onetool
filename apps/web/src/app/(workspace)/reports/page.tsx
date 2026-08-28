@@ -22,7 +22,14 @@ import {
 import { DataGridTable } from "@/components/reui/data-grid/data-grid-table";
 import { PresetLibraryDialog } from "./components/preset-library-dialog";
 import { ReportCreatePanel } from "./components/report-create-panel";
-import { entityLabels, formatRelativeTime, groupByOptions, visualizationIcons } from "./report-config";
+import {
+	entityLabels,
+	formatRelativeTime,
+	groupByOptions,
+	visualizationIcons,
+} from "./report-config";
+import { pathLabel } from "./report-path-options";
+import { normalizeReportConfig } from "@onetool/backend/convex/lib/reportConfig";
 
 function createReportColumns(
 	duplicatingId: string | null,
@@ -37,13 +44,16 @@ function createReportColumns(
 			cell: ({ row }) => {
 				const report = row.original;
 				const VizIcon = visualizationIcons[report.visualization.type];
-				const groupBy = report.config.groupBy?.[0];
+				const { config } = normalizeReportConfig(
+					report.config,
+					report.visualization
+				);
+				const groupBy = config.groupBy;
 				const groupByLabel =
-					groupByOptions[report.config.entityType]?.find(
+					groupByOptions[config.entityType]?.find(
 						(o) => o.value === groupBy
-					)?.label ?? groupBy;
-				const source =
-					entityLabels[report.config.entityType] ?? report.config.entityType;
+					)?.label ?? (groupBy ? pathLabel(config.entityType, groupBy) : groupBy);
+				const source = entityLabels[config.entityType] ?? config.entityType;
 				return (
 					<div className="flex items-center gap-3">
 						<div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">

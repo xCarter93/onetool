@@ -6,8 +6,7 @@ import { cn } from "@/lib/utils";
 /**
  * The chip a resource picker (a record/relation field, or a variable) renders
  * inside its trigger to show the current selection — the Salesforce-style
- * outlined pill shared by filter-groups-editor's FieldPicker and the flat
- * field-picker Selects across the config panels.
+ * outlined pill used by field pickers across builder panels.
  */
 export function PickerChip({
 	label,

@@ -4,6 +4,8 @@
  * variable resolution (node outputs, trigger scope), which reports don't have.
  */
 import { v } from "convex/values";
+import { DateUtils } from "./shared";
+import { isRelatedPath, type PathResolution } from "./reportRelations";
 
 export const reportFilterOperator = v.union(
 	v.literal("equals"),
@@ -13,6 +15,9 @@ export const reportFilterOperator = v.union(
 	v.literal("greater_than_or_equal"),
 	v.literal("less_than"),
 	v.literal("less_than_or_equal"),
+	v.literal("before"),
+	v.literal("after"),
+	v.literal("on"),
 	v.literal("is_empty"),
 	v.literal("is_not_empty")
 );
@@ -43,6 +48,9 @@ export type ReportFilterOperator =
 	| "greater_than_or_equal"
 	| "less_than"
 	| "less_than_or_equal"
+	| "before"
+	| "after"
+	| "on"
 	| "is_empty"
 	| "is_not_empty";
 
@@ -66,8 +74,30 @@ function isEmptyValue(value: unknown): boolean {
 	return value === undefined || value === null || value === "";
 }
 
-function evaluateRule(row: Record<string, unknown>, rule: ReportFilterRule): boolean {
-	const rowValue = row[rule.field];
+/**
+ * Resolves a dotted (related-record) rule field for one row. Sync by
+ * construction — the hydrator batches its reads before evaluation starts.
+ */
+export type ReportPathResolver = (
+	row: Record<string, unknown>,
+	field: string
+) => PathResolution;
+
+function evaluateRule(
+	row: Record<string, unknown>,
+	rule: ReportFilterRule,
+	timezone: string | undefined,
+	resolvePath: ReportPathResolver | undefined
+): boolean {
+	let rowValue: unknown;
+	if (resolvePath && isRelatedPath(rule.field)) {
+		const resolution = resolvePath(row, rule.field);
+		// A path that can't be walked fails every rule but is_empty (§8 d15).
+		if ("brokenAt" in resolution) return rule.operator === "is_empty";
+		rowValue = resolution.value;
+	} else {
+		rowValue = row[rule.field];
+	}
 
 	switch (rule.operator) {
 		case "is_empty":
@@ -101,19 +131,40 @@ function evaluateRule(row: Record<string, unknown>, rule: ReportFilterRule): boo
 					return rowValue <= rule.value;
 			}
 		}
+		// Timestamp operators (ms epoch values). before/after are strict instant
+		// comparisons; "on" matches the org-timezone calendar day of the value —
+		// via the same day-key helper as time bucketing, so an "on day X" filter
+		// and the day-X bucket always agree on which day a row belongs to.
+		case "before":
+			return typeof rowValue === "number" && typeof rule.value === "number"
+				? rowValue < rule.value
+				: false;
+		case "after":
+			return typeof rowValue === "number" && typeof rule.value === "number"
+				? rowValue > rule.value
+				: false;
+		case "on":
+			return typeof rowValue === "number" && typeof rule.value === "number"
+				? DateUtils.toLocalDateString(rowValue, timezone) ===
+						DateUtils.toLocalDateString(rule.value, timezone)
+				: false;
 	}
 }
 
 /** Pure filter-group evaluator. Assumes fields have already been validated. */
 export function evaluateReportFilters(
 	row: Record<string, unknown>,
-	filters: ReportFilters
+	filters: ReportFilters,
+	timezone?: string,
+	resolvePath?: ReportPathResolver
 ): boolean {
 	if (filters.groups.length === 0) return true;
 
 	const groupResults = filters.groups.map((group) => {
 		if (group.rules.length === 0) return true;
-		const ruleResults = group.rules.map((rule) => evaluateRule(row, rule));
+		const ruleResults = group.rules.map((rule) =>
+			evaluateRule(row, rule, timezone, resolvePath)
+		);
 		return group.logic === "and"
 			? ruleResults.every(Boolean)
 			: ruleResults.some(Boolean);

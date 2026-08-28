@@ -51,6 +51,7 @@ const PRESET_CATEGORY_BY_ID: Record<string, PresetCategoryId> = {
 	"projected-income": "revenue",
 	"top-clients": "revenue",
 	"overdue-invoices": "revenue",
+	"payments-due": "revenue",
 	"quote-conversion": "sales",
 	"quotes-awaiting-response": "sales",
 	"lead-source-breakdown": "sales",
@@ -71,7 +72,7 @@ export interface PresetListItem extends ReportPresetDefinition {
 export const PRESET_LIST: PresetListItem[] = REPORT_PRESETS.map((preset) => ({
 	...preset,
 	categoryId: PRESET_CATEGORY_BY_ID[preset.id],
-	icon: visualizationIcons[preset.visualization],
+	icon: visualizationIcons[preset.visualization.type],
 }));
 
 /** Tonal icon-box classes per category (shared by the dialog rail/rows and the create panel). */

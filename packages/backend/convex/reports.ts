@@ -14,6 +14,10 @@ import {
 	entitlementsFromIdentity,
 	requireMeter,
 } from "./lib/entitlements";
+import {
+	reportConfigValidator,
+	reportVisualizationValidator,
+} from "./lib/reportConfig";
 
 /**
  * Saved-report slot check (current-count semantics): creating past the cap
@@ -41,54 +45,6 @@ async function assertSavedReportSlot(
  * Report operations with CRUD helpers
  * Handles saved report configurations for analytics and data visualization
  */
-
-// Report configuration validators
-const reportConfigValidator = v.object({
-	entityType: v.union(
-		v.literal("clients"),
-		v.literal("projects"),
-		v.literal("tasks"),
-		v.literal("quotes"),
-		v.literal("invoices"),
-		v.literal("activities")
-	),
-	filters: v.optional(v.any()),
-	aggregations: v.optional(
-		v.array(
-			v.object({
-				field: v.string(),
-				operation: v.union(
-					v.literal("count"),
-					v.literal("sum"),
-					v.literal("avg"),
-					v.literal("min"),
-					v.literal("max")
-				),
-			})
-		)
-	),
-	groupBy: v.optional(v.array(v.string())),
-	columns: v.optional(v.array(v.string())),
-	dateRange: v.optional(
-		v.object({
-			start: v.optional(v.number()),
-			end: v.optional(v.number()),
-		})
-	),
-});
-
-const visualizationValidator = v.object({
-	type: v.union(
-		v.literal("table"),
-		v.literal("bar"),
-		v.literal("column"),
-		v.literal("line"),
-		v.literal("pie"),
-		v.literal("radar"),
-		v.literal("radial")
-	),
-	options: v.optional(v.any()),
-});
 
 // ============================================================================
 // Query Operations
@@ -173,8 +129,9 @@ export const create = userMutation({
 	args: {
 		name: v.string(),
 		description: v.optional(v.string()),
+		// Writes emit native v2 since R8a; the v1 arm stays readable until the R14 cutover.
 		config: reportConfigValidator,
-		visualization: visualizationValidator,
+		visualization: reportVisualizationValidator,
 		isPublic: v.optional(v.boolean()),
 	},
 	handler: async (ctx, args): Promise<Id<"reports">> => {
@@ -218,7 +175,7 @@ export const update = userMutation({
 		name: v.optional(v.string()),
 		description: v.optional(v.string()),
 		config: v.optional(reportConfigValidator),
-		visualization: v.optional(visualizationValidator),
+		visualization: v.optional(reportVisualizationValidator),
 		isPublic: v.optional(v.boolean()),
 	},
 	handler: async (ctx, args): Promise<Id<"reports">> => {

@@ -1,0 +1,510 @@
+{
+ "clients": {
+  "data": [],
+  "detail": {
+   "columns": [
+    {
+     "field": "companyName",
+     "label": "Company Name",
+     "type": "string"
+    },
+    {
+     "field": "status",
+     "label": "Status",
+     "type": "string"
+    },
+    {
+     "field": "leadSource",
+     "label": "Lead Source",
+     "type": "string"
+    },
+    {
+     "field": "_creationTime",
+     "label": "Created",
+     "type": "timestamp"
+    }
+   ],
+   "rows": [
+    {
+     "_creationTime": 1781524805000,
+     "companyName": "Elm Roofing",
+     "leadSource": null,
+     "status": "archived"
+    },
+    {
+     "_creationTime": 1781524804000,
+     "companyName": "Dogwood Plumbing",
+     "leadSource": "advertising",
+     "status": "inactive"
+    },
+    {
+     "_creationTime": 1781524803000,
+     "companyName": "Cedar HVAC",
+     "leadSource": "referral",
+     "status": "active"
+    },
+    {
+     "_creationTime": 1781524802000,
+     "companyName": "Birch Landscaping",
+     "leadSource": "website",
+     "status": "active"
+    },
+    {
+     "_creationTime": 1781524801000,
+     "companyName": "Acme Cleaning",
+     "leadSource": "website",
+     "status": "lead"
+    }
+   ],
+   "rowsTruncated": false,
+   "totalMatched": 5
+  },
+  "metadata": {
+   "entityType": "clients",
+   "truncated": false
+  },
+  "total": 5
+ },
+ "projects": {
+  "data": [],
+  "detail": {
+   "columns": [
+    {
+     "field": "title",
+     "label": "Title",
+     "type": "string"
+    },
+    {
+     "field": "status",
+     "label": "Status",
+     "type": "string"
+    },
+    {
+     "field": "projectType",
+     "label": "Project Type",
+     "type": "string"
+    }
+   ],
+   "rows": [
+    {
+     "projectType": "recurring",
+     "status": "cancelled",
+     "title": "Test Project"
+    },
+    {
+     "projectType": "one-off",
+     "status": "completed",
+     "title": "Test Project"
+    },
+    {
+     "projectType": "recurring",
+     "status": "in-progress",
+     "title": "Test Project"
+    },
+    {
+     "projectType": "one-off",
+     "status": "planned",
+     "title": "Test Project"
+    }
+   ],
+   "rowsTruncated": false,
+   "totalMatched": 4
+  },
+  "metadata": {
+   "entityType": "projects",
+   "truncated": false
+  },
+  "total": 4
+ },
+ "tasks": {
+  "data": [],
+  "detail": {
+   "columns": [
+    {
+     "field": "title",
+     "label": "Title",
+     "type": "string"
+    },
+    {
+     "field": "status",
+     "label": "Status",
+     "type": "string"
+    },
+    {
+     "field": "date",
+     "label": "Date",
+     "type": "timestamp"
+    }
+   ],
+   "rows": [
+    {
+     "date": 1781103600000,
+     "status": "cancelled",
+     "title": "Test Task"
+    },
+    {
+     "date": 1780412400000,
+     "status": "in-progress",
+     "title": "Test Task"
+    },
+    {
+     "date": 1779289200000,
+     "status": "pending",
+     "title": "Test Task"
+    },
+    {
+     "date": 1778598000000,
+     "status": "completed",
+     "title": "Test Task"
+    },
+    {
+     "date": 1777906800000,
+     "status": "completed",
+     "title": "Test Task"
+    }
+   ],
+   "rowsTruncated": false,
+   "totalMatched": 5
+  },
+  "metadata": {
+   "entityType": "tasks",
+   "truncated": false
+  },
+  "total": 5
+ },
+ "quotes": {
+  "data": [],
+  "detail": {
+   "columns": [
+    {
+     "field": "quoteNumber",
+     "label": "Quote Number",
+     "type": "string"
+    },
+    {
+     "field": "status",
+     "label": "Status",
+     "type": "string"
+    },
+    {
+     "field": "total",
+     "label": "Total",
+     "type": "currency"
+    }
+   ],
+   "rows": [
+    {
+     "quoteNumber": "Q-1005",
+     "status": "declined",
+     "total": 750
+    },
+    {
+     "quoteNumber": "Q-1004",
+     "status": "approved",
+     "total": 2000
+    },
+    {
+     "quoteNumber": "Q-1003",
+     "status": "sent",
+     "total": 250
+    },
+    {
+     "quoteNumber": "Q-1002",
+     "status": "sent",
+     "total": 1000.5
+    },
+    {
+     "quoteNumber": "Q-1001",
+     "status": "draft",
+     "total": 500
+    }
+   ],
+   "rowsTruncated": false,
+   "totalMatched": 5
+  },
+  "metadata": {
+   "entityType": "quotes",
+   "truncated": false
+  },
+  "total": 5
+ },
+ "invoices": {
+  "data": [],
+  "detail": {
+   "columns": [
+    {
+     "field": "invoiceNumber",
+     "label": "Invoice Number",
+     "type": "string"
+    },
+    {
+     "field": "status",
+     "label": "Status",
+     "type": "string"
+    },
+    {
+     "field": "total",
+     "label": "Total",
+     "type": "currency"
+    },
+    {
+     "field": "issuedDate",
+     "label": "Issued Date",
+     "type": "timestamp"
+    }
+   ],
+   "rows": [
+    {
+     "invoiceNumber": "INV-6",
+     "issuedDate": 1772377200000,
+     "status": "cancelled",
+     "total": 50
+    },
+    {
+     "invoiceNumber": "INV-5",
+     "issuedDate": 1771167600000,
+     "status": "overdue",
+     "total": 300
+    },
+    {
+     "invoiceNumber": "INV-4",
+     "issuedDate": 1770735600000,
+     "status": "paid",
+     "total": 800
+    },
+    {
+     "invoiceNumber": "INV-3",
+     "issuedDate": 1768489200000,
+     "status": "paid",
+     "total": 1200
+    },
+    {
+     "invoiceNumber": "INV-2",
+     "issuedDate": 1768057200000,
+     "status": "sent",
+     "total": 200
+    },
+    {
+     "invoiceNumber": "INV-1",
+     "issuedDate": 1767625200000,
+     "status": "draft",
+     "total": 100
+    }
+   ],
+   "rowsTruncated": false,
+   "totalMatched": 6
+  },
+  "metadata": {
+   "entityType": "invoices",
+   "truncated": false
+  },
+  "total": 6
+ },
+ "payments": {
+  "data": [],
+  "detail": {
+   "columns": [
+    {
+     "field": "description",
+     "label": "Description",
+     "type": "string"
+    },
+    {
+     "field": "status",
+     "label": "Status",
+     "type": "string"
+    },
+    {
+     "field": "paymentAmount",
+     "label": "Amount",
+     "type": "currency"
+    },
+    {
+     "field": "dueDate",
+     "label": "Due Date",
+     "type": "timestamp"
+    }
+   ],
+   "rows": [
+    {
+     "description": null,
+     "dueDate": 1773586800000,
+     "paymentAmount": 300,
+     "status": "overdue"
+    },
+    {
+     "description": null,
+     "dueDate": 1770735600000,
+     "paymentAmount": 200,
+     "status": "sent"
+    },
+    {
+     "description": null,
+     "dueDate": 1769958000000,
+     "paymentAmount": 1200,
+     "status": "paid"
+    },
+    {
+     "description": null,
+     "dueDate": 1768921200000,
+     "paymentAmount": 100,
+     "status": "pending"
+    }
+   ],
+   "rowsTruncated": false,
+   "totalMatched": 4
+  },
+  "metadata": {
+   "entityType": "payments",
+   "truncated": false
+  },
+  "total": 4
+ },
+ "quoteLineItems": {
+  "data": [],
+  "detail": {
+   "columns": [
+    {
+     "field": "description",
+     "label": "Description",
+     "type": "string"
+    },
+    {
+     "field": "quantity",
+     "label": "Quantity",
+     "type": "number"
+    },
+    {
+     "field": "rate",
+     "label": "Unit Price",
+     "type": "currency"
+    },
+    {
+     "field": "amount",
+     "label": "Total",
+     "type": "currency"
+    }
+   ],
+   "rows": [
+    {
+     "amount": 110,
+     "description": "Edging",
+     "quantity": 2,
+     "rate": 55
+    },
+    {
+     "amount": 240,
+     "description": "Weekly mowing",
+     "quantity": 4,
+     "rate": 60
+    }
+   ],
+   "rowsTruncated": false,
+   "totalMatched": 2
+  },
+  "metadata": {
+   "entityType": "quoteLineItems",
+   "truncated": false
+  },
+  "total": 2
+ },
+ "invoiceLineItems": {
+  "data": [],
+  "detail": {
+   "columns": [
+    {
+     "field": "description",
+     "label": "Description",
+     "type": "string"
+    },
+    {
+     "field": "quantity",
+     "label": "Quantity",
+     "type": "number"
+    },
+    {
+     "field": "unitPrice",
+     "label": "Unit Price",
+     "type": "currency"
+    },
+    {
+     "field": "total",
+     "label": "Total",
+     "type": "currency"
+    }
+   ],
+   "rows": [
+    {
+     "description": "Supplies",
+     "quantity": 1,
+     "total": 300,
+     "unitPrice": 300
+    },
+    {
+     "description": "Deep clean",
+     "quantity": 3,
+     "total": 900,
+     "unitPrice": 300
+    }
+   ],
+   "rowsTruncated": false,
+   "totalMatched": 2
+  },
+  "metadata": {
+   "entityType": "invoiceLineItems",
+   "truncated": false
+  },
+  "total": 2
+ },
+ "activities": {
+  "data": [],
+  "detail": {
+   "columns": [
+    {
+     "field": "activityType",
+     "label": "Activity Type",
+     "type": "string"
+    },
+    {
+     "field": "description",
+     "label": "Description",
+     "type": "string"
+    },
+    {
+     "field": "timestamp",
+     "label": "Timestamp",
+     "type": "timestamp"
+    }
+   ],
+   "rows": [
+    {
+     "activityType": "invoice_paid",
+     "description": "golden seed activity",
+     "timestamp": 1774105200000
+    },
+    {
+     "activityType": "quote_sent",
+     "description": "golden seed activity",
+     "timestamp": 1770476400000
+    },
+    {
+     "activityType": "client_created",
+     "description": "golden seed activity",
+     "timestamp": 1768921200000
+    },
+    {
+     "activityType": "client_created",
+     "description": "golden seed activity",
+     "timestamp": 1767711600000
+    }
+   ],
+   "rowsTruncated": false,
+   "totalMatched": 4
+  },
+  "metadata": {
+   "entityType": "activities",
+   "truncated": false
+  },
+  "total": 4
+ }
+}

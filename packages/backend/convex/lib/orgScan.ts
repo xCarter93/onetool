@@ -1,7 +1,7 @@
 /**
  * Bounded, org-scoped, newest-first index scanner for report queries.
  * Mirrors the proven scanOrgRows/takeOrgPage pattern in automationExecutor.ts
- * (scoped to the six report tables) so reports never `.collect()` a whole
+ * (scoped to the report tables) so reports never `.collect()` a whole
  * org table into memory.
  */
 import { QueryCtx } from "../_generated/server";
@@ -13,6 +13,9 @@ export type ReportTable =
 	| "tasks"
 	| "quotes"
 	| "invoices"
+	| "payments"
+	| "quoteLineItems"
+	| "invoiceLineItems"
 	| "activities";
 
 /** Default bound on rows scanned per report query. */
@@ -79,6 +82,33 @@ async function takeOrgPage(
 		case "invoices":
 			return await ctx.db
 				.query("invoices")
+				.withIndex("by_org", (q) => {
+					const r = q.eq("orgId", orgId);
+					return before === undefined ? r : r.lte("_creationTime", before);
+				})
+				.order("desc")
+				.take(count);
+		case "payments":
+			return await ctx.db
+				.query("payments")
+				.withIndex("by_org", (q) => {
+					const r = q.eq("orgId", orgId);
+					return before === undefined ? r : r.lte("_creationTime", before);
+				})
+				.order("desc")
+				.take(count);
+		case "quoteLineItems":
+			return await ctx.db
+				.query("quoteLineItems")
+				.withIndex("by_org", (q) => {
+					const r = q.eq("orgId", orgId);
+					return before === undefined ? r : r.lte("_creationTime", before);
+				})
+				.order("desc")
+				.take(count);
+		case "invoiceLineItems":
+			return await ctx.db
+				.query("invoiceLineItems")
 				.withIndex("by_org", (q) => {
 					const r = q.eq("orgId", orgId);
 					return before === undefined ? r : r.lte("_creationTime", before);

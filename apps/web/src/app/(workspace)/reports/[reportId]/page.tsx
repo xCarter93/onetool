@@ -4,30 +4,26 @@ import { PermissionGate } from "@/components/domain/permission-gate";
 import { useState } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { useRouter, useParams } from "next/navigation";
-import { ArrowLeft, Copy, Eye, EyeOff, Loader2, Pencil } from "lucide-react";
+import { ArrowLeft, Copy, Loader2, Pencil } from "lucide-react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
+import { usePublishAssistantDockFrame } from "@/components/assistant/assistant-dock-frame-context";
 import { Button } from "@/components/ui/button";
 import {
 	ReportBuilder,
-	isValidReportFilters,
 	type ReportBuilderSavePayload,
 } from "../components/report-builder";
-import type { ReportMeasure } from "../report-config";
 import { ReportPreview } from "../components/report-preview";
+import { ReportUtilityBar } from "../components/report-utility-bar";
 import {
 	dateRangeOptions,
-	detectDateRangePreset,
 	entityLabels,
 	groupByOptions,
 	visualizationIcons,
 	visualizationOptions,
 } from "../report-config";
-
-/** localStorage key for the per-report chart-visible toggle (Slice 3-D3). */
-function chartVisibleKey(reportId: string) {
-	return `report-chart-visible:${reportId}`;
-}
+import { pathLabel } from "../report-path-options";
+import { normalizeReportConfig } from "@onetool/backend/convex/lib/reportConfig";
 
 function ReportViewPageContent() {
 	const router = useRouter();
@@ -40,22 +36,20 @@ function ReportViewPageContent() {
 
 	const [isEditing, setIsEditing] = useState(false);
 	const [isSaving, setIsSaving] = useState(false);
-	// Lazy localStorage read is hydration-safe here: the toggle only affects
-	// the report body, which isn't in the HTML while `report` is still
-	// loading (this same early-return-before-hydration pattern is used for
-	// "assistant-panel-pinned" in sidebar-with-header.tsx).
-	const [chartVisible, setChartVisible] = useState(
-		() =>
-			typeof window === "undefined" ||
-			localStorage.getItem(chartVisibleKey(reportId)) !== "false"
+
+	// While editing, the builder publishes its own frame.
+	usePublishAssistantDockFrame(
+		isEditing || !report
+			? null
+			: {
+					title: "Report assistant",
+					description: "Ask me about this report.",
+				}
 	);
-	const toggleChartVisible = () => {
-		setChartVisible((prev) => {
-			const next = !prev;
-			localStorage.setItem(chartVisibleKey(reportId), String(next));
-			return next;
-		});
-	};
+
+	const normalized = report
+		? normalizeReportConfig(report.config, report.visualization)
+		: null;
 
 	if (report === undefined) {
 		return (
@@ -81,15 +75,10 @@ function ReportViewPageContent() {
 		);
 	}
 
-	if (isEditing) {
-		const savedFilters = isValidReportFilters(report.config.filters)
-			? report.config.filters
-			: undefined;
-		const savedAggregation = report.config.aggregations?.[0];
-		const measure: ReportMeasure | undefined = savedAggregation
-			? { op: savedAggregation.operation, field: savedAggregation.field }
-			: undefined;
+	// report is non-null past the guards above, so normalized is too.
+	const viewConfig = normalized!.config;
 
+	if (isEditing) {
 		const handleSave = async (payload: ReportBuilderSavePayload) => {
 			setIsSaving(true);
 			try {
@@ -114,15 +103,8 @@ function ReportViewPageContent() {
 				initial={{
 					name: report.name,
 					description: report.description || "",
-					entityType: report.config.entityType,
-					groupBy: report.config.groupBy?.[0],
-					vizType: report.visualization.type,
-					dateRangePreset: report.config.dateRange
-						? detectDateRangePreset(report.config.dateRange)
-						: "all_time",
-					filters: savedFilters,
-					measure,
-					columns: report.config.columns,
+					config: report.config,
+					visualization: report.visualization,
 				}}
 				saving={isSaving}
 				onSave={handleSave}
@@ -141,29 +123,38 @@ function ReportViewPageContent() {
 	};
 
 	const VizIcon = visualizationIcons[report.visualization.type];
-	const isChartVisualization = report.visualization.type !== "table";
 	const groupByLabel =
-		groupByOptions[report.config.entityType]?.find(
-			(o) => o.value === report.config.groupBy?.[0]
-		)?.label ?? report.config.groupBy?.[0];
-	const rangeLabel = report.config.dateRange
-		? (dateRangeOptions.find(
-				(o) => o.value === detectDateRangePreset(report.config.dateRange!)
-			)?.label ?? "All Time")
-		: "All Time";
+		groupByOptions[viewConfig.entityType]?.find(
+			(o) => o.value === viewConfig.groupBy
+		)?.label ??
+		(viewConfig.groupBy
+			? pathLabel(viewConfig.entityType, viewConfig.groupBy)
+			: viewConfig.groupBy);
+	const range = viewConfig.date?.range;
+	const rangeLabel =
+		range?.kind === "preset"
+			? (dateRangeOptions.find((o) => o.value === range.preset)?.label ??
+				"All Time")
+			: range?.kind === "absolute" &&
+				  (range.start !== undefined || range.end !== undefined)
+				? "Custom Range"
+				: "All Time";
 	const vizLabel =
 		visualizationOptions.find((o) => o.value === report.visualization.type)
 			?.label ?? report.visualization.type;
 
+	const isChartVisualization =
+		report.visualization.type !== "table" && report.visualization.type !== "number";
 	const metaChips = [
-		entityLabels[report.config.entityType] ?? report.config.entityType,
+		entityLabels[viewConfig.entityType] ?? viewConfig.entityType,
 		groupByLabel ? `by ${groupByLabel}` : null,
 		rangeLabel,
-		`${vizLabel} chart`,
+		isChartVisualization ? `${vizLabel} chart` : vizLabel,
 	].filter(Boolean) as string[];
 
+	// pb clears the assistant dock so the utility bar can scroll past it.
 	return (
-		<div className="space-y-6 p-6">
+		<div className="space-y-6 p-6 pb-24">
 			{/* Header */}
 			<div className="flex flex-wrap items-start justify-between gap-3">
 				<div className="flex min-w-0 items-center gap-3">
@@ -213,41 +204,20 @@ function ReportViewPageContent() {
 				))}
 			</div>
 
-			{/* Chart toggle — chart visualizations only; the table is always shown */}
-			{isChartVisualization && (
-				<div className="flex justify-end">
-					<Button variant="ghost" size="sm" onClick={toggleChartVisible}>
-						{chartVisible ? (
-							<EyeOff className="mr-2 h-4 w-4" />
-						) : (
-							<Eye className="mr-2 h-4 w-4" />
-						)}
-						{chartVisible ? "Hide chart" : "Show chart"}
-					</Button>
-				</div>
-			)}
-
 			{/* Report */}
-			<div className="rounded-2xl border border-border/60 bg-background p-5 shadow-sm sm:p-7">
-				<ReportPreview
-					config={{
-						entityType: report.config.entityType,
-						groupBy: report.config.groupBy,
-						dateRange: report.config.dateRange,
-						filters: isValidReportFilters(report.config.filters)
-							? report.config.filters
-							: undefined,
-						aggregation: report.config.aggregations?.[0]
-							? {
-									op: report.config.aggregations[0].operation,
-									field: report.config.aggregations[0].field,
-								}
-							: undefined,
-						columns: report.config.columns,
-					}}
-					visualization={{
-						type: isChartVisualization && chartVisible ? report.visualization.type : "table",
-					}}
+			<div className="flex flex-col rounded-2xl border border-border/60 bg-background shadow-sm">
+				<div className="p-5 sm:p-7">
+					<ReportPreview
+						config={viewConfig}
+						visualization={normalized!.visualization}
+					/>
+				</div>
+				<ReportUtilityBar
+					saved={{ config: viewConfig, visualization: normalized!.visualization }}
+					reportName={report.name}
+					groupByLabel={groupByLabel}
+					rangeLabel={rangeLabel}
+					showCsvDownload
 				/>
 			</div>
 		</div>

@@ -4,21 +4,38 @@
  * against schema.ts; do not invent fields here.
  *
  * Deliberately excluded from every entity:
- * - v.id(...) foreign keys (clientId, projectId, userId, ...) — raw ids are
- *   useless in report cells; label-resolving joins are future work.
+ * - v.id(...) foreign keys (clientId, projectId, ...) — raw ids are useless in
+ *   report cells; grouping on them goes through REPORT_RELATIONS edges,
+ *   which label-resolves without exposing ids to filters/columns/AI.
  * - Nested objects/arrays (tags, pdfSettings, metadata, assignedUserIds).
  * - orgId / audit ids.
  * - Anything secret- or token-like (portalAccessId, publicToken, stripe*):
  *   must never be exposable via reports.
  */
+import { literals } from "convex-helpers/validators";
+// Circular by design (reportRelations reads this registry back): both sides
+// only touch the other's bindings at call time, never at module init.
+import {
+	REPORT_RELATIONS,
+	resolveReportPath,
+	type ReportRelationTarget,
+} from "./reportRelations";
 
-export type ReportEntityType =
-	| "clients"
-	| "projects"
-	| "tasks"
-	| "quotes"
-	| "invoices"
-	| "activities";
+export const REPORT_ENTITY_TYPES = [
+	"clients",
+	"projects",
+	"tasks",
+	"quotes",
+	"invoices",
+	"payments",
+	"quoteLineItems",
+	"invoiceLineItems",
+	"activities",
+] as const;
+
+export type ReportEntityType = (typeof REPORT_ENTITY_TYPES)[number];
+
+export const reportEntityTypeValidator = literals(...REPORT_ENTITY_TYPES);
 
 export type ReportFieldType =
 	| "string"
@@ -33,11 +50,19 @@ export interface ReportFieldDef {
 	label: string;
 	/** Literal union values, verified against schema.ts, for string fields with a fixed vocabulary. */
 	options?: string[];
+	/** Bucket labels that the default capitalization would get wrong (e.g. "one-off" → "One-off"). */
+	optionLabels?: Record<string, string>;
 }
 
 export interface ReportEntityFields {
 	/** The field dateRange filtering applies to for this entity. */
 	dateField: string;
+	/**
+	 * Currency field summed into per-bucket metadata.totalValue (and a currency
+	 * grand total) on grouped count reports — preserves the legacy quotes/invoices
+	 * by-status "Value" column (§8 d11).
+	 */
+	summaryValueField?: string;
 	fields: Record<string, ReportFieldDef>;
 }
 
@@ -93,6 +118,7 @@ export const REPORT_FIELDS: Record<ReportEntityType, ReportEntityFields> = {
 				type: "string",
 				label: "Project Type",
 				options: ["one-off", "recurring"],
+				optionLabels: { "one-off": "One-off" },
 			},
 			title: { type: "string", label: "Title" },
 			_creationTime: { type: "timestamp", label: "Created" },
@@ -134,6 +160,7 @@ export const REPORT_FIELDS: Record<ReportEntityType, ReportEntityFields> = {
 	},
 	quotes: {
 		dateField: "_creationTime",
+		summaryValueField: "total",
 		fields: {
 			status: {
 				type: "string",
@@ -176,6 +203,7 @@ export const REPORT_FIELDS: Record<ReportEntityType, ReportEntityFields> = {
 	},
 	invoices: {
 		dateField: "issuedDate",
+		summaryValueField: "total",
 		fields: {
 			status: {
 				type: "string",
@@ -191,6 +219,54 @@ export const REPORT_FIELDS: Record<ReportEntityType, ReportEntityFields> = {
 			paidAt: { type: "timestamp", label: "Paid At" },
 			_creationTime: { type: "timestamp", label: "Created" },
 			discountAmount: { type: "currency", label: "Discount Amount" },
+		},
+	},
+	payments: {
+		dateField: "dueDate",
+		summaryValueField: "paymentAmount",
+		fields: {
+			status: {
+				type: "string",
+				label: "Status",
+				options: ["pending", "sent", "paid", "refunded", "overdue", "cancelled"],
+			},
+			paymentAmount: { type: "currency", label: "Amount" },
+			dueDate: { type: "timestamp", label: "Due Date" },
+			paidAt: { type: "timestamp", label: "Paid At" },
+			_creationTime: { type: "timestamp", label: "Created" },
+			manualMethod: {
+				type: "string",
+				label: "Manual Method",
+				options: ["cash", "check", "other"],
+			},
+			description: { type: "string", label: "Description" },
+		},
+	},
+	quoteLineItems: {
+		dateField: "_creationTime",
+		summaryValueField: "amount",
+		fields: {
+			description: { type: "string", label: "Description" },
+			quantity: { type: "number", label: "Quantity" },
+			unit: { type: "string", label: "Unit" },
+			// rate/cost are per-unit in schema.ts — "Unit" labels keep sums honest (§8 d12).
+			rate: { type: "currency", label: "Unit Price" },
+			amount: { type: "currency", label: "Total" },
+			cost: { type: "currency", label: "Unit Cost" },
+			_creationTime: { type: "timestamp", label: "Created" },
+		},
+	},
+	invoiceLineItems: {
+		dateField: "_creationTime",
+		summaryValueField: "total",
+		fields: {
+			description: { type: "string", label: "Description" },
+			quantity: { type: "number", label: "Quantity" },
+			unit: { type: "string", label: "Unit" },
+			unitPrice: { type: "currency", label: "Unit Price" },
+			total: { type: "currency", label: "Total" },
+			cost: { type: "currency", label: "Unit Cost" },
+			_creationTime: { type: "timestamp", label: "Created" },
 		},
 	},
 	activities: {
@@ -258,10 +334,10 @@ export const REPORT_FIELDS: Record<ReportEntityType, ReportEntityFields> = {
 /**
  * Canonical Group-by choices per entity — the builder's select, the AI
  * config generator, and saved-config hydration all share this list.
- * Values mix registry fields (status, leadSource…) with legacy specials
- * the pre-registry dispatch understands (month, client, conversionRate,
- * completionRate, creationDate_*) — see isGenericGroupBy for which of
- * these the generic aggregation pipeline accepts.
+ * Values mix registry fields (status, leadSource…) with v1 magic keys
+ * (month, client, conversionRate, completionRate, creationDate_*) that
+ * normalizeReportConfig expands to explicit v2 configs; R8's v2-native
+ * builder replaces the magic keys with the expanded forms.
  */
 export const GROUP_BY_OPTIONS: Record<
 	ReportEntityType,
@@ -281,6 +357,7 @@ export const GROUP_BY_OPTIONS: Record<
 		{ value: "creationDate_week", label: "Created by Week" },
 		{ value: "creationDate_day", label: "Created by Day" },
 		{ value: "completedAt_month", label: "Completed by Month" },
+		{ value: "clientId", label: "Client" },
 	],
 	tasks: [
 		{ value: "status", label: "Status" },
@@ -289,10 +366,14 @@ export const GROUP_BY_OPTIONS: Record<
 		{ value: "date_week", label: "By Week" },
 		{ value: "date_day", label: "By Day" },
 		{ value: "assigneeUserId", label: "Assignee" },
+		{ value: "projectId", label: "Project" },
+		{ value: "clientId", label: "Client" },
 	],
 	quotes: [
 		{ value: "status", label: "Status" },
 		{ value: "conversionRate", label: "Conversion Rate" },
+		{ value: "clientId", label: "Client" },
+		{ value: "projectId", label: "Project" },
 	],
 	invoices: [
 		{ value: "status", label: "Status" },
@@ -300,6 +381,28 @@ export const GROUP_BY_OPTIONS: Record<
 		{ value: "client", label: "Revenue by Client" },
 		{ value: "issuedDate_month", label: "Issued by Month" },
 		{ value: "dueDate_month", label: "Due by Month" },
+		{ value: "clientId", label: "Client" },
+		{ value: "projectId", label: "Project" },
+		{ value: "quoteId", label: "Quote" },
+	],
+	payments: [
+		{ value: "status", label: "Status" },
+		{ value: "invoiceId", label: "Invoice" },
+		{ value: "manualMethod", label: "Manual Method" },
+		{ value: "dueDate_month", label: "Due by Month" },
+		{ value: "paidAt_month", label: "Paid by Month" },
+	],
+	quoteLineItems: [
+		{ value: "skuId", label: "SKU" },
+		{ value: "unit", label: "Unit" },
+		{ value: "creationDate_month", label: "Created by Month" },
+		{ value: "quoteId", label: "Quote" },
+	],
+	invoiceLineItems: [
+		{ value: "skuId", label: "SKU" },
+		{ value: "unit", label: "Unit" },
+		{ value: "creationDate_month", label: "Created by Month" },
+		{ value: "invoiceId", label: "Invoice" },
 	],
 	activities: [
 		{ value: "activityType", label: "Activity Type" },
@@ -311,41 +414,98 @@ export const GROUP_BY_OPTIONS: Record<
 };
 
 /**
- * Per-entity groupBy values that predate the generic aggregation pipeline —
- * the exact set that only ever worked through the legacy hardcoded dispatch
- * (runReportByConfig). Callers with a count measure route these through
- * legacy dispatch to preserve existing saved-report output byte-for-byte;
- * everything else (new options added after the generic pipeline landed, plus
- * any measure-bearing aggregation) runs through the generic pipeline instead.
+ * FK fields groupable via label resolution (§3.2 mechanism 1). Derived from
+ * REPORT_RELATIONS since F2+F6; kept out of `fields` on purpose: filter/
+ * column/AI enumeration must not expose raw ids.
  */
-const LEGACY_DISPATCH_GROUP_BY: Record<ReportEntityType, ReadonlySet<string>> = {
-	clients: new Set([
-		"status",
-		"leadSource",
-		"creationDate_month",
-		"creationDate_week",
-		"creationDate_day",
-	]),
-	projects: new Set([
-		"status",
-		"projectType",
-		"creationDate_month",
-		"creationDate_week",
-		"creationDate_day",
-	]),
-	tasks: new Set(["status", "completionRate", "date_month", "date_week", "date_day"]),
-	quotes: new Set(["status", "conversionRate"]),
-	invoices: new Set(["status", "month", "client"]),
-	activities: new Set(["activityType", "timestamp_month", "timestamp_week", "timestamp_day"]),
+export interface ReportGroupableFk {
+	refType: ReportRelationTarget;
+}
+
+export function getGroupableFk(
+	entityType: ReportEntityType,
+	field: string
+): ReportGroupableFk | undefined {
+	const edge = REPORT_RELATIONS[entityType][field];
+	return edge ? { refType: edge.refType } : undefined;
+}
+
+/** Legacy time keys bucket _creationTime under the "creationDate" name (metadata.groupBy keeps the alias). */
+export const GROUP_BY_FIELD_ALIASES: Record<string, string> = {
+	creationDate: "_creationTime",
 };
 
-/** True when this groupBy value only works through the legacy dispatch path. */
-export function usesLegacyDispatch(
+/** Resolve a groupBy field name to its row property + def, honoring aliases. */
+export function resolveGroupByField(
 	entityType: ReportEntityType,
-	groupBy: string
-): boolean {
-	return LEGACY_DISPATCH_GROUP_BY[entityType].has(groupBy);
+	field: string
+): { sourceField: string; def: ReportFieldDef } | undefined {
+	const sourceField = GROUP_BY_FIELD_ALIASES[field] ?? field;
+	const def = getReportField(entityType, sourceField);
+	return def ? { sourceField, def } : undefined;
 }
+
+export const RATIO_KEYS = ["conversionRate", "completionRate"] as const;
+
+export type RatioKey = (typeof RATIO_KEYS)[number];
+
+export interface RatioMetricDef {
+	entityType: ReportEntityType;
+	field: string;
+	/** Values forming the denominator; absent = every scanned row. */
+	denominatorValues?: string[];
+	numeratorValues: string[];
+	/**
+	 * The two fixed data rows of the pinned legacy output shape. "rest" =
+	 * denominator minus numerator; an explicit values list may undercount the
+	 * denominator (completionRate keeps cancelled in the denominator with no
+	 * row — §9 banked quirk, preserved byte-exact per §8 d11).
+	 */
+	rows: [
+		{ label: string; from: "numerator" },
+		{ label: string; from: "rest" } | { label: string; values: string[] },
+	];
+}
+
+/** Named ratio metrics (§3.3): percentage = numerator / denominator, reported as `total`. */
+export const RATIO_METRICS: Record<RatioKey, RatioMetricDef> = {
+	conversionRate: {
+		entityType: "quotes",
+		field: "status",
+		denominatorValues: ["sent", "approved", "declined", "expired"],
+		numeratorValues: ["approved"],
+		rows: [
+			{ label: "Approved", from: "numerator" },
+			{ label: "Not Approved", from: "rest" },
+		],
+	},
+	completionRate: {
+		entityType: "tasks",
+		field: "status",
+		numeratorValues: ["completed"],
+		rows: [
+			{ label: "Completed", from: "numerator" },
+			{ label: "Pending", values: ["pending", "in-progress"] },
+		],
+	},
+};
+
+/**
+ * The grouping legacy dispatch applied to bare calls (no groupBy). The web
+ * never sends grouped no-groupBy requests (detail mode wins), so this pins the
+ * assistant chat tool's behavior — made explicit there at R4c (§8 d11).
+ */
+export const DEFAULT_GROUP_BY: Record<ReportEntityType, string> = {
+	clients: "status",
+	projects: "status",
+	tasks: "status",
+	quotes: "status",
+	invoices: "status",
+	payments: "status",
+	quoteLineItems: "skuId",
+	invoiceLineItems: "skuId",
+	activities: "activityType",
+};
 
 /** Per-entity fallback columns for detail (raw-row) mode when nothing is checked. */
 export const DEFAULT_DETAIL_COLUMNS: Record<ReportEntityType, string[]> = {
@@ -354,13 +514,17 @@ export const DEFAULT_DETAIL_COLUMNS: Record<ReportEntityType, string[]> = {
 	tasks: ["title", "status", "date"],
 	quotes: ["quoteNumber", "status", "total"],
 	invoices: ["invoiceNumber", "status", "total", "issuedDate"],
+	payments: ["description", "status", "paymentAmount", "dueDate"],
+	quoteLineItems: ["description", "quantity", "rate", "amount"],
+	invoiceLineItems: ["description", "quantity", "unitPrice", "total"],
 	activities: ["activityType", "description", "timestamp"],
 };
 
 /**
  * True when the generic aggregation pipeline (executeReport with an explicit
- * `aggregation`) accepts this groupBy: a non-timestamp registry field, or a
- * `<timestamp-field>_day|week|month` bucket. Legacy specials (month, client,
+ * `aggregation`) accepts this groupBy: an FK edge, a non-timestamp registry
+ * field, or a `<timestamp-field>_day|week|month` bucket — bare or as a dotted
+ * related path. Legacy specials (month, client,
  * conversionRate, completionRate, creationDate_*) only work through the
  * legacy dispatch, which ignores measures — so a non-count measure must
  * pair with a generic-safe groupBy (or none).
@@ -369,11 +533,16 @@ export function isGenericGroupBy(
 	entityType: ReportEntityType,
 	groupBy: string
 ): boolean {
-	const direct = getReportField(entityType, groupBy);
-	if (direct) return direct.type !== "timestamp";
-	const timeMatch = groupBy.match(/^(.+)_(day|week|month)$/);
-	if (!timeMatch) return false;
-	return getReportField(entityType, timeMatch[1])?.type === "timestamp";
+	try {
+		const { terminal } = resolveReportPath(entityType, groupBy);
+		return (
+			terminal.kind === "fk" ||
+			terminal.granularity !== undefined ||
+			terminal.def.type !== "timestamp"
+		);
+	} catch {
+		return false;
+	}
 }
 
 /** Look up a field def, or undefined if unknown for this entity. */

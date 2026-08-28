@@ -1,37 +1,34 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useQuery } from "convex/react";
-import { api } from "@onetool/backend/convex/_generated/api";
-import {
-	ArrowLeft,
-	ChartColumn,
-	Filter,
-	ListTree,
-	Loader2,
-	Save,
-	Sparkles,
-	X,
-} from "lucide-react";
+import { ArrowLeft, ChevronDown, Database, Loader2, Save } from "lucide-react";
 import { DateRange } from "react-day-picker";
 import {
-	getReportDateField,
-	isGenericGroupBy,
+	DEFAULT_GROUP_BY,
 	REPORT_FIELDS,
+	getReportDateField,
 } from "@onetool/backend/convex/lib/reportFields";
+import {
+	getRelationEdge,
+	resolveReportPath,
+} from "@onetool/backend/convex/lib/reportRelations";
 import type { ReportFilters } from "@onetool/backend/convex/lib/reportFilters";
-import { cn } from "@/lib/utils";
-import { useAssistantOpener } from "@/components/assistant/assistant-opener-context";
+import type { ReportConfig as ReportDocConfig } from "@onetool/backend/convex/lib/reportConfig";
+import { usePublishAssistantDockFrame } from "@/components/assistant/assistant-dock-frame-context";
 import { useRegisterReportConfigApply } from "@/components/assistant/report-config-apply-context";
 import { usePublishScreenContext } from "@/components/assistant/use-screen-context";
 import type { BuilderReportConfig } from "@onetool/backend/convex/reportConfigGeneration";
 import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
 import {
-	Popover,
-	PopoverContent,
-	PopoverTrigger,
-} from "@/components/ui/popover";
+	AlertDialog,
+	AlertDialogAction,
+	AlertDialogCancel,
+	AlertDialogContent,
+	AlertDialogDescription,
+	AlertDialogFooter,
+	AlertDialogHeader,
+	AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import {
 	Select,
 	SelectContent,
@@ -39,106 +36,77 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
+import {
+	Popover,
+	PopoverContent,
+	PopoverTrigger,
+} from "@/components/ui/popover";
+import { Switch } from "@/components/ui/switch";
+import { EmptyState } from "@/components/domain/empty-state";
+import { SegmentedControl } from "@/components/domain/segmented-control";
 import { MultiSelector } from "@/components/shared/multi-selector";
-import {
-	PillTabs,
-	PillTabsContent,
-	PillTabsList,
-	PillTabsTrigger,
-} from "@/components/shared/pill-tabs";
+import { PanelField, PanelSection } from "@/components/shared/panel-primitives";
 import DatePickerRange from "@/components/shared/date-picker-range";
-import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import { ReportPreview } from "./report-preview";
+import { ReportUtilityBar } from "./report-utility-bar";
+import { ReportFieldPicker } from "./report-field-picker";
+import { ReportFilterRows } from "./report-filter-rows";
+import { ReportMetricControls } from "./report-metric-controls";
 import {
-	ReportFiltersEditor,
 	countFilterRules,
 	sanitizeReportFilters,
-} from "./report-filters-editor";
+} from "./report-filter-model";
+import { entityLabel, pathLabel } from "../report-path-options";
 import {
+	builderStateToSaved,
+	dateFieldOptionsFor,
 	dateRangeOptions,
-	dateRangeToBuilderState,
-	effectiveDetailColumns,
 	entityOptions,
-	getDateRange,
+	genericGroupByOptions,
 	groupByOptions,
+	isChartVizType,
 	isDetailModeActive,
-	resolveReportQueryArgs,
+	savedToBuilderState,
 	visualizationOptions,
+	type BuilderConfigState,
 	type EntityType,
-	type ReportConfigShape,
-	type ReportMeasure,
-	type ReportSavedConfigShape,
+	type ReportConfigV2,
+	type ReportMetric,
+	type ReportVisualization,
+	type VisualizationOptions,
 	type VizType,
 } from "../report-config";
 
-/** Select sentinel for "no grouping" — Radix Select can't take an empty/undefined value. */
+/** Select sentinels — Base UI Select can't take an empty/undefined value. */
 const NO_GROUP_BY = "__none__";
+const NO_SEGMENT = "__none__";
+const DEFAULT_SORT = "__default__";
 
-/** Flattened "Measure" options for the current entity: count + sum/avg/min/max per numeric field. */
-function measureOptionsFor(
-	entityType: EntityType
-): { value: string; label: string; measure: ReportMeasure }[] {
-	const options: { value: string; label: string; measure: ReportMeasure }[] = [
-		{ value: "count", label: "Count of records", measure: { op: "count" } },
-	];
-	const opLabels: { op: "sum" | "avg" | "min" | "max"; label: string }[] = [
-		{ op: "sum", label: "Sum" },
-		{ op: "avg", label: "Average" },
-		{ op: "min", label: "Min" },
-		{ op: "max", label: "Max" },
-	];
-	for (const [field, def] of Object.entries(REPORT_FIELDS[entityType].fields)) {
-		if (def.type !== "number" && def.type !== "currency") continue;
-		for (const { op, label } of opLabels) {
-			options.push({
-				value: `${op}:${field}`,
-				label: `${label} of ${def.label}`,
-				measure: { op, field },
-			});
-		}
-	}
-	return options;
-}
+const TIME_SUFFIX = /^(.+)_(day|week|month)$/;
 
-function measureToValue(measure: ReportMeasure): string {
-	return measure.op === "count" ? "count" : `${measure.op}:${measure.field}`;
-}
+const GRANULARITY_OPTIONS = [
+	{ value: "day", label: "Day" },
+	{ value: "week", label: "Week" },
+	{ value: "month", label: "Month" },
+] as const;
+
+/** Where a metric that can't render as a single value lands. */
+const FALLBACK_CHART_TYPE: VizType = "bar";
 
 export interface ReportBuilderInitial {
 	name: string;
 	description: string;
-	entityType: EntityType;
-	groupBy: string | undefined;
-	vizType: VizType;
-	dateRangePreset: string;
-	customDateRange?: DateRange;
-	filters?: ReportFilters;
-	measure?: ReportMeasure;
-	columns?: string[];
+	/** Either config version — v1 rows expand through the normalizer on hydrate. Absent = blank start. */
+	config?: ReportDocConfig;
+	visualization: ReportVisualization;
 }
 
 export interface ReportBuilderSavePayload {
 	name: string;
 	description?: string;
-	config: ReportSavedConfigShape;
-	visualization: { type: VizType };
-}
-
-/** Saved-report `config.filters` is v.any() — legacy rows may carry junk. Defensive shape check before hydrating. */
-export function isValidReportFilters(value: unknown): value is ReportFilters {
-	if (!value || typeof value !== "object") return false;
-	const v = value as { logic?: unknown; groups?: unknown };
-	if (v.logic !== "and" && v.logic !== "or") return false;
-	if (!Array.isArray(v.groups)) return false;
-	return v.groups.every((g) => {
-		if (!g || typeof g !== "object") return false;
-		const group = g as { logic?: unknown; rules?: unknown };
-		if (group.logic !== "and" && group.logic !== "or") return false;
-		if (!Array.isArray(group.rules)) return false;
-		return group.rules.every(
-			(r) => r && typeof r === "object" && typeof (r as { field?: unknown }).field === "string"
-		);
-	});
+	config: ReportConfigV2;
+	visualization: ReportVisualization;
 }
 
 interface ReportBuilderProps {
@@ -156,111 +124,336 @@ export function ReportBuilder({
 	onSave,
 	onBack,
 }: ReportBuilderProps) {
+	// Hydrated once — useState initializers only read the first render's value.
+	const [init] = useState(() =>
+		initial.config
+			? savedToBuilderState(initial.config, initial.visualization)
+			: null
+	);
 	const [name, setName] = useState(initial.name);
 	const [description, setDescription] = useState(initial.description);
-	const [entityType, setEntityType] = useState<EntityType>(initial.entityType);
-	const [groupBy, setGroupBy] = useState<string | undefined>(initial.groupBy);
-	const [vizType, setVizType] = useState<VizType>(initial.vizType);
-	const [dateRangePreset, setDateRangePreset] = useState(initial.dateRangePreset);
-	const [customDateRange, setCustomDateRange] = useState<DateRange | undefined>(
-		initial.customDateRange
+	const [entityType, setEntityType] = useState<EntityType | null>(
+		init?.entityType ?? null
 	);
-	const [filters, setFilters] = useState<ReportFilters | undefined>(initial.filters);
-	const [measure, setMeasure] = useState<ReportMeasure>(initial.measure ?? { op: "count" });
-	const [columns, setColumns] = useState<string[]>(initial.columns ?? []);
-	const [configTab, setConfigTab] = useState<"outline" | "filters">("outline");
+	const [groupBy, setGroupBy] = useState<string | undefined>(init?.groupBy);
+	const [vizType, setVizType] = useState<VizType>(
+		init?.vizType ?? initial.visualization.type
+	);
+	const [dateRangePreset, setDateRangePreset] = useState(
+		init?.dateRangePreset ?? "all_time"
+	);
+	const [customDateRange, setCustomDateRange] = useState<DateRange | undefined>(
+		init?.customDateRange
+	);
+	const [dateField, setDateField] = useState<string | undefined>(init?.dateField);
+	const [segmentBy, setSegmentBy] = useState<string | undefined>(init?.segmentBy);
+	const [includeEmptyValues, setIncludeEmptyValues] = useState<boolean | undefined>(
+		init?.includeEmptyValues
+	);
+	const [vizOptions, setVizOptions] = useState<VisualizationOptions | undefined>(
+		init?.vizOptions
+	);
+	const [filters, setFilters] = useState<ReportFilters | undefined>(init?.filters);
+	const [metric, setMetric] = useState<ReportMetric>(init?.metric ?? { op: "count" });
+	const [columns, setColumns] = useState<string[]>(init?.columns ?? []);
+	const [pendingEntity, setPendingEntity] = useState<EntityType | null>(null);
+	const [groupByPickerOpen, setGroupByPickerOpen] = useState(false);
 
-	const openAssistant = useAssistantOpener();
+	usePublishAssistantDockFrame({
+		title: "Report assistant",
+		description: "Describe the report you want — I'll build it right here.",
+	});
 
-	const effectiveDateRange = () => {
-		if (dateRangePreset === "custom" && customDateRange) {
-			return {
-				start: customDateRange.from?.getTime(),
-				end: customDateRange.to
-					? new Date(customDateRange.to).setHours(23, 59, 59, 999)
-					: undefined,
-			};
-		}
-		return getDateRange(dateRangePreset);
-	};
+	const isChart = isChartVizType(vizType);
 
 	const sanitizedFilters = useMemo(() => sanitizeReportFilters(filters), [filters]);
 	const activeFilterCount = useMemo(() => countFilterRules(filters), [filters]);
-	const aggregation = measure.op === "count" ? undefined : measure;
-	// Non-count measures only work when groupBy is None or generic-safe — a
-	// legacy-only groupBy (e.g. invoices "month") only ever ran through the
-	// hardcoded dispatch, which ignores measures entirely.
-	const groupByIsGenericSafe = !groupBy || isGenericGroupBy(entityType, groupBy);
-	const availableMeasureOptions = groupByIsGenericSafe
-		? measureOptionsFor(entityType)
-		: measureOptionsFor(entityType).filter((o) => o.value === "count");
-	const detailModeActive = isDetailModeActive(vizType, groupBy, columns);
-	// What the Columns checklist actually shows as checked: the user's raw
-	// selection, or the per-entity default once detail mode is implied by
-	// Group by = None (so the checklist and the table never disagree).
-	const displayColumns = detailModeActive ? effectiveDetailColumns(entityType, columns) : columns;
 
-	const config: ReportConfigShape = {
-		entityType,
-		groupBy: groupBy ? [groupBy] : undefined,
-		dateRange: effectiveDateRange(),
-		filters: sanitizedFilters,
-		aggregation,
-		columns: columns.length ? columns : undefined,
-	};
+	// One construction feeds save, preview, the utility bar, and the published
+	// assistant context — what the user sees is exactly what persists.
+	const saved = entityType
+		? builderStateToSaved({
+				entityType,
+				dateField,
+				dateRangePreset,
+				customDateRange,
+				filters: sanitizedFilters,
+				metric,
+				groupBy,
+				segmentBy,
+				includeEmptyValues,
+				columns,
+				vizType,
+				vizOptions,
+			} satisfies BuilderConfigState)
+		: null;
+
+	const [initialSnapshot] = useState(() =>
+		init ? JSON.stringify(builderStateToSaved(init)) : null
+	);
+	const isDirty =
+		name !== initial.name ||
+		description !== initial.description ||
+		(saved ? JSON.stringify(saved) : null) !== initialSnapshot;
 
 	// Agent sees what the user sees: the assistant's configureReport tool
 	// relays this as currentConfig so a request modifies the open draft
 	// instead of starting over.
-	usePublishScreenContext(() => ({
-		reportBuilderConfig: {
-			entityType,
-			groupBy: groupBy ?? null,
-			visualization: vizType,
-			dateRange: effectiveDateRange() ?? null,
-			filters: sanitizedFilters ?? null,
-			measure,
-			columns: columns.length ? columns : null,
-			name: name || null,
-		},
-	}));
+	usePublishScreenContext(() =>
+		saved
+			? {
+					reportBuilderConfig: {
+						config: saved.config,
+						visualization: saved.visualization,
+						name: name || null,
+					},
+				}
+			: {}
+	);
 
 	// Client-executed configureReport: the panel forwards the validated
 	// config here (navigate-tool pattern); the user reviews, then saves.
 	useRegisterReportConfigApply((applied: BuilderReportConfig) => {
-		setEntityType(applied.entityType);
-		setGroupBy(applied.groupBy ?? undefined);
-		setVizType(applied.visualization);
-		const { preset, customRange } = dateRangeToBuilderState(applied.dateRange);
-		setDateRangePreset(preset);
-		setCustomDateRange(customRange);
-		setFilters(applied.filters ?? undefined);
-		setMeasure(
-			applied.measure && applied.measure.op !== "count" && applied.measure.field
-				? { op: applied.measure.op, field: applied.measure.field }
-				: { op: "count" }
-		);
-		setColumns(applied.columns ?? []);
+		const next = savedToBuilderState(applied.config, applied.visualization);
+		setEntityType(next.entityType);
+		setGroupBy(next.groupBy);
+		setVizType(next.vizType);
+		setDateRangePreset(next.dateRangePreset);
+		setCustomDateRange(next.customDateRange);
+		setDateField(next.dateField);
+		setSegmentBy(next.segmentBy);
+		setIncludeEmptyValues(next.includeEmptyValues);
+		setVizOptions(next.vizOptions);
+		setFilters(next.filters);
+		setMetric(next.metric);
+		setColumns(next.columns);
 		if (applied.name) setName(applied.name);
-		// null description = "unchanged" — the model omits rather than clears.
-		if (applied.description !== null) setDescription(applied.description);
+		// Omitted description = "unchanged" — the model leaves it out rather than clearing.
+		if (applied.description !== undefined) setDescription(applied.description);
 	});
 
-	// Drives the footer summary; Convex dedupes this against ReportPreview's
-	// identical subscription, so there's no extra fetch.
-	const queryArgs = useDebouncedValue(resolveReportQueryArgs(config, vizType), 300);
-	const reportData = useQuery(api.reportData.executeReport, queryArgs);
+	const hasMeaningfulConfig =
+		activeFilterCount > 0 ||
+		metric.op !== "count" ||
+		columns.length > 0 ||
+		dateField !== undefined;
 
-	const groupByLabel = groupBy
-		? (groupByOptions[entityType]?.find((o) => o.value === groupBy)?.label ?? groupBy)
-		: undefined;
-	// Which field the date range filters — from the registry, except the legacy
-	// invoice revenue group-bys (month/client), which actually filter on paidAt.
-	const dateFieldHint = (() => {
-		if (entityType === "invoices" && (groupBy === "month" || groupBy === "client")) {
-			return "paid date";
+	const applySourceChange = (next: EntityType) => {
+		setEntityType(next);
+		setGroupBy(isChart ? DEFAULT_GROUP_BY[next] : undefined);
+		setFilters(undefined);
+		setMetric({ op: "count" });
+		setColumns([]);
+		setDateField(undefined);
+		setSegmentBy(undefined);
+		setIncludeEmptyValues(undefined);
+	};
+
+	const requestSourceChange = (next: EntityType) => {
+		if (entityType && next !== entityType && hasMeaningfulConfig) {
+			setPendingEntity(next);
+		} else {
+			applySourceChange(next);
 		}
-		const field = getReportDateField(entityType);
+	};
+
+	const changeVisualization = (next: VizType) => {
+		if (next === vizType) return;
+		setVizType(next);
+		if (next === "number") {
+			setGroupBy(undefined);
+			setSegmentBy(undefined);
+			// A related rollup is inherently bucketed — no scalar rendering.
+			if (metric.op === "related") setMetric({ op: "count" });
+			return;
+		}
+		if (next === "table") {
+			setSegmentBy(undefined);
+			// Columns outrank a grouping on a table, so a chart's grouping can't ride back in.
+			if (columns.length > 0) clearGroupBy();
+			return;
+		}
+		// Only bar/column render segments (honest encodings).
+		if (next !== "bar" && next !== "column") setSegmentBy(undefined);
+		if (
+			entityType &&
+			!groupBy &&
+			metric.op !== "ratio" &&
+			metric.op !== "related"
+		) {
+			setGroupBy(DEFAULT_GROUP_BY[entityType]);
+		}
+	};
+
+	const changeMetric = (next: ReportMetric) => {
+		setMetric(next);
+		if (next.op === "ratio" || next.op === "related") {
+			// Backend rejects grouping on ratio/related — they bucket themselves.
+			setGroupBy(undefined);
+			setSegmentBy(undefined);
+			if (next.op === "related" && vizType === "number") {
+				setVizType(FALLBACK_CHART_TYPE);
+			}
+		} else if (isChart && !groupBy && entityType) {
+			setGroupBy(DEFAULT_GROUP_BY[entityType]);
+		}
+	};
+
+	const perRowVisible =
+		vizType !== "number" && metric.op !== "ratio" && metric.op !== "related";
+
+	// Ratio and related metrics bucket themselves — no column choice makes their table raw rows.
+	const metricBucketsItself = metric.op === "ratio" || metric.op === "related";
+	const rawRowsActive = saved ? isDetailModeActive(saved.config, vizType) : false;
+	const columnsHelper = metricBucketsItself
+		? "Showing this metric instead of raw rows. Set the metric to Count of records to pick columns."
+		: rawRowsActive
+			? "Pick the columns each row shows."
+			: "Showing one row per group. Picking columns switches to raw rows.";
+
+	const tableMetricHelper =
+		vizType === "table" && !groupBy && entityType
+			? metric.op === "related"
+				? `One row per ${entityLabel(entityType)} with this rollup.`
+				: metric.op === "ratio"
+					? "The table shows this ratio's breakdown instead of raw rows."
+					: metric.op === "count"
+						? "Counting records with no grouping — the table lists each record as a row."
+						: "The table lists raw rows. This metric applies once the table is grouped."
+			: undefined;
+
+	// Group-by picker anatomy (R9): timestamp options collapse to one entry per
+	// base field, with the day/week/month granularity chosen inline.
+	const timeGroupMatch = groupBy?.match(TIME_SUFFIX) ?? null;
+	const groupByBase = timeGroupMatch ? timeGroupMatch[1] : groupBy;
+	const groupOptions = entityType ? (genericGroupByOptions[entityType] ?? []) : [];
+	const nonTimeGroupOptions = groupOptions.filter((o) => !TIME_SUFFIX.test(o.value));
+	const timeBaseOptions = entityType
+		? [
+				...new Set(
+					groupOptions
+						.map((o) => o.value.match(TIME_SUFFIX)?.[1])
+						.filter((base): base is string => base !== undefined)
+				),
+			].map((base) => ({
+				value: base,
+				label:
+					base === "creationDate"
+						? "Created"
+						: (REPORT_FIELDS[entityType].fields[base]?.label ?? base),
+			}))
+		: [];
+	const directGroupByOptions = [...nonTimeGroupOptions, ...timeBaseOptions];
+
+	// One resolver for direct and dotted groupings — a saved path can outlive a
+	// registry change, so an unresolvable one degrades instead of throwing.
+	const groupByTerminal = useMemo(() => {
+		if (!entityType || !groupBy) return undefined;
+		try {
+			return resolveReportPath(entityType, groupBy).terminal;
+		} catch {
+			return undefined;
+		}
+	}, [entityType, groupBy]);
+	const groupFieldDef =
+		groupByTerminal?.kind === "field" ? groupByTerminal.def : undefined;
+	const isFkGroupBy = groupByTerminal?.kind === "fk";
+	const isTimeGroupBy = groupFieldDef?.type === "timestamp";
+	const groupByLabelText = !groupByBase
+		? "None (raw rows)"
+		: (directGroupByOptions.find((o) => o.value === groupByBase)?.label ??
+			(entityType ? pathLabel(entityType, groupByBase) : groupByBase));
+
+	const segmentCapable =
+		(vizType === "bar" || vizType === "column") &&
+		!!groupBy &&
+		metric.op !== "ratio" &&
+		metric.op !== "related";
+	const segmentOptions = entityType
+		? nonTimeGroupOptions.filter(
+				(o) => o.value !== groupBy && !getRelationEdge(entityType, o.value)
+			)
+		: [];
+
+	const setVizOption = <K extends keyof VisualizationOptions>(
+		key: K,
+		value: VisualizationOptions[K] | undefined
+	) => {
+		setVizOptions((prev) => {
+			const next = { ...prev };
+			if (value === undefined) delete next[key];
+			else next[key] = value;
+			return Object.keys(next).length ? next : undefined;
+		});
+	};
+
+	const clearGroupBy = () => {
+		setGroupBy(undefined);
+		setSegmentBy(undefined);
+		setIncludeEmptyValues(undefined);
+		setVizOption("sort", undefined);
+		setVizOption("seriesLimit", undefined);
+	};
+
+	const changeColumns = (vals: string[]) => {
+		if (!entityType) return;
+		// Keep table column order stable in registry order, regardless of the
+		// order fields were picked in.
+		setColumns(
+			Object.keys(REPORT_FIELDS[entityType].fields).filter((f) =>
+				vals.includes(f)
+			)
+		);
+		// Columns override the grouping in the backend's table render.
+		if (vals.length > 0) clearGroupBy();
+	};
+
+	const selectGroupBy = (value: string) => {
+		if (!entityType) return;
+		if (value === NO_GROUP_BY) {
+			clearGroupBy();
+			return;
+		}
+		// The backend's explicit-columns override would ignore this grouping.
+		setColumns([]);
+		let terminal: ReturnType<typeof resolveReportPath>["terminal"] | undefined;
+		try {
+			terminal = resolveReportPath(entityType, value).terminal;
+		} catch {
+			terminal = undefined;
+		}
+		const isTime = terminal?.kind === "field" && terminal.def.type === "timestamp";
+		const next =
+			isTime && !TIME_SUFFIX.test(value)
+				? `${value}_${timeGroupMatch?.[2] ?? "month"}`
+				: value;
+		setGroupBy(next);
+		if (segmentBy === next || segmentBy === value) setSegmentBy(undefined);
+		// Grouping-dependent settings don't carry to a grouping that can't honor
+		// them — keep the saved config honest.
+		if (!(terminal?.kind === "field" && terminal.def.options)) {
+			setIncludeEmptyValues(undefined);
+		}
+		if (isTime || (terminal?.kind === "fk" && vizOptions?.sort === "label_asc")) {
+			setVizOption("sort", undefined);
+		}
+	};
+
+	const supportsAxisChrome =
+		vizType === "bar" || vizType === "column" || vizType === "line";
+	const chartOptionsVisible = isChart && (!!groupBy || supportsAxisChrome);
+
+	const defaultDateField = entityType ? getReportDateField(entityType) : undefined;
+	const dateFieldOptions = entityType ? dateFieldOptionsFor(entityType) : [];
+
+	const groupByLabel =
+		entityType && groupBy
+			? (groupByOptions[entityType]?.find((o) => o.value === groupBy)?.label ??
+				groupByLabelText)
+			: undefined;
+	const dateFieldHint = (() => {
+		if (!entityType) return undefined;
+		const field = dateField ?? getReportDateField(entityType);
 		if (field === "_creationTime") return "record creation date";
 		return REPORT_FIELDS[entityType].fields[field]?.label.toLowerCase() ?? field;
 	})();
@@ -268,28 +461,18 @@ export function ReportBuilder({
 		dateRangeOptions.find((o) => o.value === dateRangePreset)?.label ?? "All Time";
 
 	const handleSave = () => {
-		if (!name.trim()) return;
+		if (!name.trim() || !saved) return;
 		void onSave({
 			name: name.trim(),
 			description: description.trim() || undefined,
-			config: {
-				entityType,
-				groupBy: groupBy ? [groupBy] : undefined,
-				dateRange: effectiveDateRange(),
-				filters: sanitizedFilters,
-				aggregations:
-					measure.op === "count"
-						? undefined
-						: [{ field: measure.field, operation: measure.op }],
-				columns: columns.length ? columns : undefined,
-			},
-			visualization: { type: vizType },
+			config: saved.config,
+			visualization: saved.visualization,
 		});
 	};
 
 	return (
 		<div className="flex flex-col lg:h-[calc(100svh-1.75rem)] lg:overflow-hidden">
-			{/* Top strip — spans rail + canvas; pt clears the header notch (~48px) */}
+			{/* Top strip — spans canvas + rail; pt clears the header notch (~48px) */}
 			<div className="flex flex-wrap items-center gap-3 border-b border-border/60 px-4 pb-3 pt-3 lg:pt-7">
 				<Button
 					variant="ghost"
@@ -315,11 +498,16 @@ export function ReportBuilder({
 						className="w-full border-none bg-transparent px-1.5 text-xs text-muted-foreground outline-none placeholder:text-muted-foreground/60 focus-visible:ring-0"
 					/>
 				</div>
-				<AddChartControl value={vizType} groupBy={groupBy} onChange={setVizType} />
+				{isDirty && (
+					<span className="hidden items-center gap-1.5 text-xs text-muted-foreground sm:flex">
+						<span className="h-1.5 w-1.5 rounded-full bg-warning" aria-hidden />
+						Unsaved changes
+					</span>
+				)}
 				<Button
 					size="sm"
 					onClick={handleSave}
-					disabled={!name.trim() || saving}
+					disabled={!name.trim() || !entityType || saving}
 				>
 					{saving ? (
 						<Loader2 className="h-4 w-4 animate-spin" />
@@ -330,340 +518,431 @@ export function ReportBuilder({
 				</Button>
 			</div>
 
-			{/* Body — config rail + chart canvas */}
+			{/* Body — canvas left, config rail right; narrow widths stack canvas first */}
 			<div className="flex min-h-0 flex-1 flex-col lg:flex-row lg:overflow-hidden">
-				{/* Config rail */}
-				<aside className="flex shrink-0 flex-col gap-6 border-b border-border/60 bg-background/50 px-4 py-5 lg:h-full lg:w-80 lg:overflow-y-auto lg:border-b-0 lg:border-r">
-					{/* Outline / Filters tab strip */}
-					<PillTabs
-						value={configTab}
-						onValueChange={(v) => setConfigTab(v as "outline" | "filters")}
-					>
-						<PillTabsList className="w-full">
-							<PillTabsTrigger value="outline">
-								<ListTree className="size-3.5" />
-								Outline
-							</PillTabsTrigger>
-							<PillTabsTrigger value="filters">
-								<Filter className="size-3.5" />
-								Filters
-								{activeFilterCount > 0 && (
-									<span className="ml-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary/15 px-1 text-[10px] font-semibold text-primary">
-										{activeFilterCount}
-									</span>
-								)}
-							</PillTabsTrigger>
-						</PillTabsList>
-
-						<PillTabsContent value="outline" className="mt-4 space-y-4">
-							<div className="space-y-1.5">
-								<Label className="text-xs">Source</Label>
-								<Select
-									value={entityType}
-									onValueChange={(v) => {
-										if (!v) return;
-										setEntityType(v as EntityType);
-										const first = groupByOptions[v]?.[0]?.value;
-										if (first) setGroupBy(first);
-										setFilters(undefined);
-										setMeasure({ op: "count" });
-										setColumns([]);
-									}}
-								>
-									<SelectTrigger className="w-full">
-										<SelectValue />
-									</SelectTrigger>
-									<SelectContent>
-										{entityOptions.map((opt) => {
-											const Icon = opt.icon;
-											return (
-												<SelectItem key={opt.value} value={opt.value}>
-													<span className="flex items-center gap-2">
-														<Icon className="h-4 w-4 text-muted-foreground" />
-														{opt.label}
-													</span>
-												</SelectItem>
-											);
-										})}
-									</SelectContent>
-								</Select>
-							</div>
-
-							<div className="space-y-1.5">
-								<Label className="text-xs">Date range</Label>
-								<Select
-									value={dateRangePreset}
-									onValueChange={(value) => {
-										if (!value) return;
-										setDateRangePreset(value);
-										if (value !== "custom") setCustomDateRange(undefined);
-									}}
-								>
-									<SelectTrigger className="w-full">
-										<SelectValue />
-									</SelectTrigger>
-									<SelectContent>
-										{dateRangeOptions.map((opt) => (
-											<SelectItem key={opt.value} value={opt.value}>
-												{opt.label}
-											</SelectItem>
-										))}
-									</SelectContent>
-								</Select>
-								{dateRangePreset === "custom" && (
-									<DatePickerRange
-										value={customDateRange}
-										onChange={setCustomDateRange}
-										showArrow={false}
-									/>
-								)}
-								<p className="text-xs text-muted-foreground">
-									Filters {entityType} by {dateFieldHint}
-								</p>
-							</div>
-
-							<div className="space-y-1.5">
-								<Label className="text-xs">Group by</Label>
-								<Select
-									value={groupBy ?? NO_GROUP_BY}
-									onValueChange={(v) => {
-										if (!v) return;
-										const next = v === NO_GROUP_BY ? undefined : v;
-										setGroupBy(next);
-										// A legacy-only groupBy only ever ran through the hardcoded
-										// dispatch (which ignores measures) — coerce back to count
-										// here rather than in an effect (this repo lints
-										// set-state-in-effect).
-										if (next && !isGenericGroupBy(entityType, next) && measure.op !== "count") {
-											setMeasure({ op: "count" });
-										}
-										// Charts require a groupBy (Slice 3-D3) — dropping to "None"
-										// while a chart is active leaves nothing to chart above the
-										// table, so fall back to table here rather than in an effect.
-										if (!next && vizType !== "table") {
-											setVizType("table");
-										}
-									}}
-								>
-									<SelectTrigger className="w-full">
-										<SelectValue />
-									</SelectTrigger>
-									<SelectContent>
-										<SelectItem value={NO_GROUP_BY}>None (raw rows)</SelectItem>
-										{groupByOptions[entityType]?.map((opt) => (
-											<SelectItem key={opt.value} value={opt.value}>
-												{opt.label}
-											</SelectItem>
-										))}
-									</SelectContent>
-								</Select>
-							</div>
-
-							<div className="space-y-1.5">
-								<Label className="text-xs">Measure</Label>
-								<Select
-									value={measureToValue(measure)}
-									onValueChange={(v) => {
-										const opt = availableMeasureOptions.find((o) => o.value === v);
-										if (opt) setMeasure(opt.measure);
-									}}
-								>
-									<SelectTrigger className="w-full">
-										<SelectValue />
-									</SelectTrigger>
-									<SelectContent>
-										{availableMeasureOptions.map((opt) => (
-											<SelectItem key={opt.value} value={opt.value}>
-												{opt.label}
-											</SelectItem>
-										))}
-									</SelectContent>
-								</Select>
-								{!groupByIsGenericSafe && (
-									<p className="text-xs text-muted-foreground">
-										This grouping only supports record counts.
-									</p>
-								)}
-							</div>
-
-							<div className={cn("space-y-1.5", vizType !== "table" && "opacity-60")}>
-								<Label className="text-xs">Columns</Label>
-								<MultiSelector
-									options={Object.entries(REPORT_FIELDS[entityType].fields).map(
-										([field, def]) => ({ label: def.label, value: field })
-									)}
-									value={displayColumns}
-									onValueChange={(vals) =>
-										// Keep table column order stable in registry order,
-										// regardless of the order fields were picked in.
-										setColumns(
-											Object.keys(REPORT_FIELDS[entityType].fields).filter((f) =>
-												vals.includes(f)
-											)
-										)
-									}
-									placeholder="Select columns"
-									maxCount={2}
-									className="w-full"
-								/>
-								<p className="text-xs text-muted-foreground">
-									Columns appear in the table view.
-								</p>
-							</div>
-						</PillTabsContent>
-
-						<PillTabsContent value="filters" className="mt-4">
-							<ReportFiltersEditor
-								entityType={entityType}
-								filters={filters}
-								onChange={setFilters}
-							/>
-						</PillTabsContent>
-					</PillTabs>
-
-					{/* NL report building lives in the assistant panel (createReport tool). */}
-					{openAssistant && (
-						<section className="space-y-2 rounded-xl border border-border/60 bg-muted/30 p-3">
-							<Button
-								variant="outline"
-								size="sm"
-								onClick={openAssistant}
-								className="w-full"
-							>
-								<Sparkles className="h-4 w-4 text-primary" data-slot="icon" />
-								Ask AI
-							</Button>
-							<p className="text-xs text-muted-foreground">
-								Describe the report you want — the assistant builds and
-								saves it for you.
-							</p>
-						</section>
-					)}
-				</aside>
-
-				{/* Chart canvas */}
-				<main className="flex min-w-0 flex-1 flex-col lg:h-full lg:overflow-hidden">
+				{/* Preview canvas */}
+				{/* lg+ pins the utility bar to the card bottom, where the assistant
+				    dock overlays it; below lg the config rail follows it instead. */}
+				<main className="flex min-w-0 flex-1 flex-col lg:h-full lg:overflow-hidden lg:pb-24">
 					<div className="flex-1 overflow-auto bg-muted/20 p-4 sm:p-8">
 						<div className="flex min-h-full w-full flex-col rounded-2xl border border-border/60 bg-background p-5 shadow-sm sm:p-7">
-							<ReportPreview config={config} visualization={{ type: vizType }} />
+							{saved ? (
+								<ReportPreview
+									config={saved.config}
+									visualization={saved.visualization}
+								/>
+							) : (
+								<div className="flex min-h-[300px] flex-1 items-center justify-center">
+									<EmptyState
+										icon={<Database />}
+										size="md"
+										title="Select a data source"
+										description="Choose what this report is about — the preview fills in with live data."
+									/>
+								</div>
+							)}
 						</div>
 					</div>
 
-					{/* Status bar */}
-					<div className="flex items-center justify-between border-t border-border/60 px-4 py-2 text-xs text-muted-foreground">
-						<span>
-							{reportData === undefined
-								? "Loading…"
-								: reportData.detail
-									? `${reportData.detail.totalMatched.toLocaleString()} ${
-											reportData.detail.totalMatched === 1 ? "record" : "records"
-										}`
-									: reportData.data.length === 0
-										? "No data for this selection"
-										: `${reportData.data.length} ${
-												reportData.data.length === 1 ? "group" : "groups"
-											}${groupByLabel ? ` · grouped by ${groupByLabel}` : ""}`}
-						</span>
-						<span>{rangeLabel}</span>
-					</div>
+					<ReportUtilityBar
+						saved={saved}
+						reportName={name}
+						groupByLabel={groupByLabel}
+						rangeLabel={rangeLabel}
+					/>
 				</main>
-			</div>
-		</div>
-	);
-}
 
-/** The six chart types, excluding "table" (table is the base layer, not a pickable "chart"). */
-const chartVizOptions = visualizationOptions.filter((o) => o.value !== "table");
+				{/* Config rail */}
+				<aside className="flex shrink-0 flex-col border-t border-border/60 bg-background/50 px-6 py-4 lg:h-full lg:w-[440px] lg:overflow-y-auto lg:border-l lg:border-t-0">
+					<PanelSection title="Visualization">
+						<Select
+							value={vizType}
+							onValueChange={(v) => {
+								if (v) changeVisualization(v as VizType);
+							}}
+						>
+							<SelectTrigger className="w-full">
+								<SelectValue />
+							</SelectTrigger>
+							<SelectContent>
+								{visualizationOptions.map((opt) => {
+									const Icon = opt.icon;
+									return (
+										<SelectItem key={opt.value} value={opt.value}>
+											<span className="flex items-center gap-2">
+												<Icon className="h-4 w-4 text-muted-foreground" />
+												{opt.label}
+											</span>
+										</SelectItem>
+									);
+								})}
+							</SelectContent>
+						</Select>
+					</PanelSection>
 
-/**
- * Salesforce-style "Add chart" control (Slice 3-D3): the table is always the
- * base layer; this is how the user opts a chart in ABOVE it. Disabled
- * without a Group by — a chart needs something to aggregate on. Once a
- * chart is active, the trigger shows that chart's icon/label and the
- * popover gains a "Remove chart" row that drops back to table.
- */
-export function AddChartControl({
-	value,
-	groupBy,
-	onChange,
-}: {
-	value: VizType;
-	groupBy: string | undefined;
-	onChange: (v: VizType) => void;
-}) {
-	const [open, setOpen] = useState(false);
-	const isChartActive = value !== "table";
-	const disabled = !groupBy;
-	const active = isChartActive ? visualizationOptions.find((o) => o.value === value) : undefined;
-	const TriggerIcon = active?.icon ?? ChartColumn;
-	const triggerLabel = active?.label ?? "Add chart";
+					<PanelSection title="Data source">
+						<Select
+							value={entityType ?? ""}
+							onValueChange={(v) => {
+								if (v) requestSourceChange(v as EntityType);
+							}}
+						>
+							<SelectTrigger className="w-full">
+								<SelectValue placeholder="Select a data source" />
+							</SelectTrigger>
+							<SelectContent>
+								{entityOptions.map((opt) => {
+									const Icon = opt.icon;
+									return (
+										<SelectItem key={opt.value} value={opt.value}>
+											<span className="flex items-center gap-2">
+												<Icon className="h-4 w-4 text-muted-foreground" />
+												{opt.label}
+											</span>
+										</SelectItem>
+									);
+								})}
+							</SelectContent>
+						</Select>
+					</PanelSection>
 
-	const select = (viz: VizType) => {
-		onChange(viz);
-		setOpen(false);
-	};
-
-	return (
-		<div className="flex items-center gap-2">
-			<Popover open={open} onOpenChange={setOpen}>
-				<PopoverTrigger
-					render={
-						<Button
-							variant="outline"
-							size="sm"
-							disabled={disabled}
-							title={disabled ? "Group your data to add a chart." : undefined}
-						/>
-					}
-				>
-					<TriggerIcon className="h-4 w-4" />
-					{triggerLabel}
-				</PopoverTrigger>
-				{/* TODO(reui-rebuild): PopoverArrow has no analog in ui/popover.tsx (base-nova drops the arrow indicator entirely — no cn-popover-arrow style exists); dropped rather than invented. */}
-				<PopoverContent side="bottom" align="end" sideOffset={8} className="w-60">
-					<div className="grid grid-cols-3 gap-1.5">
-						{chartVizOptions.map((opt) => {
-							const Icon = opt.icon;
-							const isActive = value === opt.value;
-							return (
-								<button
-									key={opt.value}
-									type="button"
-									aria-pressed={isActive}
-									onClick={() => select(opt.value)}
-									className={cn(
-										"flex flex-col items-center gap-1 rounded-md px-2 py-2.5 text-xs font-medium transition-colors",
-										isActive
-											? "bg-primary/10 text-primary ring-1 ring-primary/30"
-											: "text-muted-foreground hover:bg-muted hover:text-foreground"
-									)}
-								>
-									<Icon className="h-4 w-4" />
-									{opt.label}
-								</button>
-							);
-						})}
-					</div>
-					{isChartActive && (
+					{entityType && (
 						<>
-							<div className="my-2 border-t border-border/60" />
-							<button
-								type="button"
-								onClick={() => select("table")}
-								className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-destructive"
+							<PanelSection title="Date">
+								<PanelField
+									label="Date range"
+									helper={`Filters ${entityType} by ${dateFieldHint}`}
+								>
+									<div className="space-y-1.5">
+										<Select
+											value={dateRangePreset}
+											onValueChange={(value) => {
+												if (!value) return;
+												setDateRangePreset(value);
+												if (value !== "custom") setCustomDateRange(undefined);
+											}}
+										>
+											<SelectTrigger className="w-full">
+												<SelectValue />
+											</SelectTrigger>
+											<SelectContent>
+												{dateRangeOptions.map((opt) => (
+													<SelectItem key={opt.value} value={opt.value}>
+														{opt.label}
+													</SelectItem>
+												))}
+											</SelectContent>
+										</Select>
+										{dateRangePreset === "custom" && (
+											<DatePickerRange
+												value={customDateRange}
+												onChange={setCustomDateRange}
+												showArrow={false}
+											/>
+										)}
+									</div>
+								</PanelField>
+								{dateFieldOptions.length > 1 && (
+									<PanelField label="Date field">
+										<Select
+											value={dateField ?? defaultDateField ?? ""}
+											onValueChange={(v) => {
+												if (!v) return;
+												setDateField(v === defaultDateField ? undefined : v);
+											}}
+										>
+											<SelectTrigger className="w-full">
+												<SelectValue />
+											</SelectTrigger>
+											<SelectContent>
+												{dateFieldOptions.map((opt) => (
+													<SelectItem key={opt.value} value={opt.value}>
+														{opt.label}
+													</SelectItem>
+												))}
+											</SelectContent>
+										</Select>
+									</PanelField>
+								)}
+							</PanelSection>
+
+							<PanelSection
+								title={
+									activeFilterCount > 0
+										? `Filters (${activeFilterCount})`
+										: "Filters"
+								}
 							>
-								<X className="h-3.5 w-3.5" />
-								Remove chart
-							</button>
+								<ReportFilterRows
+									entityType={entityType}
+									filters={filters}
+									onChange={setFilters}
+								/>
+							</PanelSection>
+
+							<PanelSection title="Metric">
+								<div>
+									<ReportMetricControls
+										entityType={entityType}
+										metric={metric}
+										onChange={changeMetric}
+									/>
+									{tableMetricHelper && (
+										<p className="mt-1.5 text-xs text-muted-foreground">
+											{tableMetricHelper}
+										</p>
+									)}
+								</div>
+
+								{perRowVisible && (
+									<div className="space-y-3">
+										<div className="flex items-center gap-2">
+											<span className="shrink-0 text-xs text-muted-foreground">
+												per
+											</span>
+											<Popover
+												open={groupByPickerOpen}
+												onOpenChange={setGroupByPickerOpen}
+											>
+												<PopoverTrigger
+													render={
+														<button
+															type="button"
+															className="flex min-w-0 flex-1 items-center justify-between gap-2 rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+														>
+															<span className="truncate">{groupByLabelText}</span>
+															<ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+														</button>
+													}
+												/>
+												{groupByPickerOpen && (
+													<PopoverContent
+														side="left"
+														align="start"
+														sideOffset={8}
+														className="w-80 p-0"
+													>
+														<ReportFieldPicker
+															entityType={entityType}
+															mode="groupBy"
+															value={groupByBase}
+															directOptions={
+																// A chart must group; raw rows are the Table type's territory.
+																vizType === "table"
+																	? [
+																			{
+																				value: NO_GROUP_BY,
+																				label: "None (raw rows)",
+																			},
+																			...directGroupByOptions,
+																		]
+																	: directGroupByOptions
+															}
+															onSelect={(value) => {
+																selectGroupBy(value);
+																setGroupByPickerOpen(false);
+															}}
+														/>
+													</PopoverContent>
+												)}
+											</Popover>
+										</div>
+										{isTimeGroupBy && groupByBase && (
+											<SegmentedControl
+												value={timeGroupMatch?.[2] ?? "month"}
+												onValueChange={(g) => setGroupBy(`${groupByBase}_${g}`)}
+												options={GRANULARITY_OPTIONS}
+												className="w-full"
+											/>
+										)}
+										{groupFieldDef?.options && (
+											<label className="flex items-center justify-between gap-2 text-sm text-foreground">
+												Include empty values
+												<Switch
+													checked={includeEmptyValues === true}
+													onCheckedChange={(checked) =>
+														setIncludeEmptyValues(checked || undefined)
+													}
+												/>
+											</label>
+										)}
+									</div>
+								)}
+
+								{vizType === "table" && (
+									<PanelField label="Columns" helper={columnsHelper}>
+										<MultiSelector
+											options={Object.entries(
+												REPORT_FIELDS[entityType].fields
+											).map(([field, def]) => ({
+												label: def.label,
+												value: field,
+											}))}
+											value={columns}
+											onValueChange={changeColumns}
+											placeholder="Default columns"
+											maxCount={2}
+											// MultiSelector pins disabled buttons to full opacity; re-mute it here.
+											className="w-full disabled:opacity-60"
+											disabled={metricBucketsItself}
+										/>
+									</PanelField>
+								)}
+							</PanelSection>
+
+							{segmentCapable && segmentOptions.length > 0 && (
+								<PanelSection title="Segment by">
+									<PanelField
+										label="Segment"
+										helper="Splits each bar into stacked segments."
+									>
+										<Select
+											value={segmentBy ?? NO_SEGMENT}
+											onValueChange={(v) => {
+												if (!v) return;
+												setSegmentBy(v === NO_SEGMENT ? undefined : v);
+											}}
+										>
+											<SelectTrigger className="w-full">
+												<SelectValue />
+											</SelectTrigger>
+											<SelectContent>
+												<SelectItem value={NO_SEGMENT}>None</SelectItem>
+												{segmentOptions.map((opt) => (
+													<SelectItem key={opt.value} value={opt.value}>
+														{opt.label}
+													</SelectItem>
+												))}
+											</SelectContent>
+										</Select>
+									</PanelField>
+								</PanelSection>
+							)}
+
+							{chartOptionsVisible && (
+								<PanelSection title="Chart options">
+									{groupBy && (
+										<PanelField
+											label="Series limit"
+											helper="Shows the first N groups in sorted order."
+										>
+											<Input
+												type="number"
+												min={1}
+												value={vizOptions?.seriesLimit ?? ""}
+												onChange={(e) =>
+													setVizOption(
+														"seriesLimit",
+														e.target.value === ""
+															? undefined
+															: Math.max(1, Math.floor(Number(e.target.value)))
+													)
+												}
+												placeholder="All groups"
+											/>
+										</PanelField>
+									)}
+									{groupBy && !timeGroupMatch && (
+										<PanelField label="Sort">
+											<Select
+												value={vizOptions?.sort ?? DEFAULT_SORT}
+												onValueChange={(v) => {
+													if (!v) return;
+													setVizOption(
+														"sort",
+														v === DEFAULT_SORT
+															? undefined
+															: (v as NonNullable<
+																	VisualizationOptions["sort"]
+																>)
+													);
+												}}
+											>
+												<SelectTrigger className="w-full">
+													<SelectValue />
+												</SelectTrigger>
+												<SelectContent>
+													<SelectItem value={DEFAULT_SORT}>
+														Chart default
+													</SelectItem>
+													<SelectItem value="value_desc">
+														Highest first
+													</SelectItem>
+													<SelectItem value="value_asc">Lowest first</SelectItem>
+													{/* FK labels resolve after the series slice, so A-to-Z can't apply to record groupings. */}
+													{!isFkGroupBy && (
+														<SelectItem value="label_asc">A to Z</SelectItem>
+													)}
+												</SelectContent>
+											</Select>
+										</PanelField>
+									)}
+									{supportsAxisChrome && (
+										<label className="flex items-center justify-between gap-2 text-sm text-foreground">
+											Axis labels
+											<Switch
+												checked={vizOptions?.axisLabels === true}
+												onCheckedChange={(checked) =>
+													setVizOption("axisLabels", checked || undefined)
+												}
+											/>
+										</label>
+									)}
+									{supportsAxisChrome && (
+										<PanelField
+											label="Target line"
+											helper="Draws a reference line at this value."
+										>
+											<Input
+												type="number"
+												value={vizOptions?.targetLine ?? ""}
+												onChange={(e) =>
+													setVizOption(
+														"targetLine",
+														e.target.value === ""
+															? undefined
+															: Number(e.target.value)
+													)
+												}
+												placeholder="None"
+											/>
+										</PanelField>
+									)}
+								</PanelSection>
+							)}
+
 						</>
 					)}
-				</PopoverContent>
-			</Popover>
-			{disabled && (
-				<span className="hidden text-xs text-muted-foreground/70 md:inline">
-					Group your data to add a chart.
-				</span>
-			)}
+				</aside>
+			</div>
+
+			<AlertDialog
+				open={pendingEntity !== null}
+				onOpenChange={(open) => {
+					if (!open) setPendingEntity(null);
+				}}
+			>
+				<AlertDialogContent size="sm">
+					<AlertDialogHeader>
+						<AlertDialogTitle>Change data source?</AlertDialogTitle>
+						<AlertDialogDescription>
+							Filters, metric, and columns don&apos;t carry over to a new
+							source.
+						</AlertDialogDescription>
+					</AlertDialogHeader>
+					<AlertDialogFooter>
+						<AlertDialogCancel>Keep current source</AlertDialogCancel>
+						<AlertDialogAction
+							onClick={() => {
+								if (pendingEntity) applySourceChange(pendingEntity);
+								setPendingEntity(null);
+							}}
+						>
+							Change source
+						</AlertDialogAction>
+					</AlertDialogFooter>
+				</AlertDialogContent>
+			</AlertDialog>
 		</div>
 	);
 }

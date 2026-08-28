@@ -206,7 +206,8 @@ export const MultiSelect = React.forwardRef<
                   {!showall && selectedValues.length > maxCount && (
                     <div
                       className={cn(
-                        'bg-primary-foreground inline-flex items-center border px-2 py-0.5 rounded-lg text-foreground border-foreground/1 hover:bg-transparent'
+                        // Same palette as the value chips — bg-primary-foreground was white-on-white in dark mode.
+                        'inline-flex items-center px-2 py-1 rounded-lg text-xs font-semibold dark:bg-neutral-950 bg-neutral-200 text-primary'
                       )}
                       style={{ animationDuration: `${animation}s` }}
                     >

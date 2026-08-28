@@ -54,13 +54,35 @@ afterAll(() => {
 	globalThis.ResizeObserver = originalResizeObserver;
 	if (originalOffsetWidth) Object.defineProperty(HTMLElement.prototype, "offsetWidth", originalOffsetWidth);
 	if (originalOffsetHeight) Object.defineProperty(HTMLElement.prototype, "offsetHeight", originalOffsetHeight);
-	if (originalGetBoundingClientRect)
+	// getBoundingClientRect is inherited from Element.prototype, so there is no
+	// HTMLElement descriptor to restore — deleting the stub restores inheritance.
+	if (originalGetBoundingClientRect) {
 		Object.defineProperty(HTMLElement.prototype, "getBoundingClientRect", originalGetBoundingClientRect);
+	} else {
+		delete (HTMLElement.prototype as Partial<HTMLElement>).getBoundingClientRect;
+	}
 });
 
 import { ReportPieChart } from "../report-pie-chart";
 
 describe("ReportPieChart", () => {
+	it("fills a height-constrained canvas: flex-fill root, growable chart box", () => {
+		const { container } = render(
+			<ReportPieChart
+				data={[
+					{ name: "A", value: 6 },
+					{ name: "B", value: 3 },
+				]}
+				total={9}
+				entityType="tasks"
+				groupBy="status"
+			/>
+		);
+		const chart = container.querySelector('[data-slot="chart"]');
+		expect(chart).toHaveClass("grow", "shrink-0", "h-[420px]");
+		expect(chart?.parentElement).toHaveClass("flex", "flex-1", "flex-col");
+	});
+
 	it("regression: renders a sector per nonzero category on initial mount (recharts 3.8.0 animated-Pie mount bug)", () => {
 		// Must stay isAnimationActive={false} in report-pie-chart.tsx — recharts
 		// 3.8.0 paints zero sectors on first mount when Pie animation is on.

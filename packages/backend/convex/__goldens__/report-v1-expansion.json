@@ -1,0 +1,392 @@
+{
+	"count-default": {
+		"input": {
+			"config": { "entityType": "clients", "groupBy": ["status"] },
+			"visualization": { "type": "bar" }
+		},
+		"output": {
+			"config": {
+				"version": 2,
+				"entityType": "clients",
+				"metric": { "op": "count" },
+				"groupBy": "status"
+			},
+			"visualization": { "type": "bar" }
+		}
+	},
+	"structural-sum-with-range": {
+		"input": {
+			"config": {
+				"entityType": "invoices",
+				"groupBy": ["status"],
+				"aggregations": [{ "field": "total", "operation": "sum" }],
+				"dateRange": { "start": 1767225600000, "end": 1769904000000 }
+			},
+			"visualization": { "type": "column" }
+		},
+		"output": {
+			"config": {
+				"version": 2,
+				"entityType": "invoices",
+				"date": {
+					"range": { "kind": "absolute", "start": 1767225600000, "end": 1769904000000 }
+				},
+				"metric": { "op": "sum", "field": "total" },
+				"groupBy": "status"
+			},
+			"visualization": { "type": "column" }
+		}
+	},
+	"detail-mode": {
+		"input": {
+			"config": {
+				"entityType": "invoices",
+				"columns": ["invoiceNumber", "status", "total"]
+			},
+			"visualization": { "type": "table" }
+		},
+		"output": {
+			"config": {
+				"version": 2,
+				"entityType": "invoices",
+				"columns": ["invoiceNumber", "status", "total"],
+				"metric": { "op": "count" }
+			},
+			"visualization": { "type": "table" }
+		}
+	},
+	"suffix-key-passthrough": {
+		"input": {
+			"config": { "entityType": "clients", "groupBy": ["creationDate_month"] },
+			"visualization": { "type": "line" }
+		},
+		"output": {
+			"config": {
+				"version": 2,
+				"entityType": "clients",
+				"metric": { "op": "count" },
+				"groupBy": "creationDate_month"
+			},
+			"visualization": { "type": "line" }
+		}
+	},
+	"invoices-month-no-filters": {
+		"input": {
+			"config": { "entityType": "invoices", "groupBy": ["month"] },
+			"visualization": { "type": "column" }
+		},
+		"output": {
+			"config": {
+				"version": 2,
+				"entityType": "invoices",
+				"filters": {
+					"logic": "and",
+					"groups": [
+						{
+							"logic": "and",
+							"rules": [{ "field": "status", "operator": "equals", "value": "paid" }]
+						}
+					]
+				},
+				"date": { "field": "paidAt", "range": { "kind": "preset", "preset": "all_time" } },
+				"metric": { "op": "sum", "field": "total" },
+				"groupBy": "paidAt_month"
+			},
+			"visualization": { "type": "column" }
+		}
+	},
+	"invoices-month-merges-user-filters": {
+		"input": {
+			"config": {
+				"entityType": "invoices",
+				"groupBy": ["month"],
+				"filters": {
+					"logic": "and",
+					"groups": [
+						{
+							"logic": "or",
+							"rules": [
+								{ "field": "clientId", "operator": "equals", "value": "abc" },
+								{ "field": "total", "operator": "greater_than", "value": 100 }
+							]
+						}
+					]
+				},
+				"dateRange": { "start": 1767225600000 }
+			},
+			"visualization": { "type": "column" }
+		},
+		"output": {
+			"config": {
+				"version": 2,
+				"entityType": "invoices",
+				"filters": {
+					"logic": "and",
+					"groups": [
+						{
+							"logic": "or",
+							"rules": [
+								{ "field": "clientId", "operator": "equals", "value": "abc" },
+								{ "field": "total", "operator": "greater_than", "value": 100 }
+							]
+						},
+						{
+							"logic": "and",
+							"rules": [{ "field": "status", "operator": "equals", "value": "paid" }]
+						}
+					]
+				},
+				"date": {
+					"field": "paidAt",
+					"range": { "kind": "absolute", "start": 1767225600000 }
+				},
+				"metric": { "op": "sum", "field": "total" },
+				"groupBy": "paidAt_month"
+			},
+			"visualization": { "type": "column" }
+		}
+	},
+	"invoices-month-distributes-or-filters": {
+		"input": {
+			"config": {
+				"entityType": "invoices",
+				"groupBy": ["month"],
+				"filters": {
+					"logic": "or",
+					"groups": [
+						{
+							"logic": "and",
+							"rules": [{ "field": "clientId", "operator": "equals", "value": "abc" }]
+						},
+						{
+							"logic": "or",
+							"rules": [{ "field": "total", "operator": "greater_than", "value": 500 }]
+						}
+					]
+				}
+			},
+			"visualization": { "type": "column" }
+		},
+		"output": {
+			"config": {
+				"version": 2,
+				"entityType": "invoices",
+				"filters": {
+					"logic": "or",
+					"groups": [
+						{
+							"logic": "and",
+							"rules": [
+								{ "field": "clientId", "operator": "equals", "value": "abc" },
+								{ "field": "status", "operator": "equals", "value": "paid" }
+							]
+						},
+						{
+							"logic": "and",
+							"rules": [
+								{ "field": "total", "operator": "greater_than", "value": 500 },
+								{ "field": "status", "operator": "equals", "value": "paid" }
+							]
+						}
+					]
+				},
+				"date": { "field": "paidAt", "range": { "kind": "preset", "preset": "all_time" } },
+				"metric": { "op": "sum", "field": "total" },
+				"groupBy": "paidAt_month"
+			},
+			"visualization": { "type": "column" }
+		}
+	},
+	"invoices-month-distributes-into-multi-rule-groups": {
+		"input": {
+			"config": {
+				"entityType": "invoices",
+				"groupBy": ["month"],
+				"filters": {
+					"logic": "or",
+					"groups": [
+						{
+							"logic": "and",
+							"rules": [
+								{ "field": "clientId", "operator": "equals", "value": "abc" },
+								{ "field": "total", "operator": "greater_than", "value": 500 }
+							]
+						},
+						{
+							"logic": "or",
+							"rules": [
+								{ "field": "status", "operator": "equals", "value": "overdue" }
+							]
+						}
+					]
+				}
+			},
+			"visualization": { "type": "column" }
+		},
+		"output": {
+			"config": {
+				"version": 2,
+				"entityType": "invoices",
+				"filters": {
+					"logic": "or",
+					"groups": [
+						{
+							"logic": "and",
+							"rules": [
+								{ "field": "clientId", "operator": "equals", "value": "abc" },
+								{ "field": "total", "operator": "greater_than", "value": 500 },
+								{ "field": "status", "operator": "equals", "value": "paid" }
+							]
+						},
+						{
+							"logic": "and",
+							"rules": [
+								{ "field": "status", "operator": "equals", "value": "overdue" },
+								{ "field": "status", "operator": "equals", "value": "paid" }
+							]
+						}
+					]
+				},
+				"date": { "field": "paidAt", "range": { "kind": "preset", "preset": "all_time" } },
+				"metric": { "op": "sum", "field": "total" },
+				"groupBy": "paidAt_month"
+			},
+			"visualization": { "type": "column" }
+		}
+	},
+	"invoices-client-top10": {
+		"input": {
+			"config": { "entityType": "invoices", "groupBy": ["client"] },
+			"visualization": { "type": "bar" }
+		},
+		"output": {
+			"config": {
+				"version": 2,
+				"entityType": "invoices",
+				"filters": {
+					"logic": "and",
+					"groups": [
+						{
+							"logic": "and",
+							"rules": [{ "field": "status", "operator": "equals", "value": "paid" }]
+						}
+					]
+				},
+				"date": { "field": "paidAt", "range": { "kind": "preset", "preset": "all_time" } },
+				"metric": { "op": "sum", "field": "total" },
+				"groupBy": "clientId"
+			},
+			"visualization": {
+				"type": "bar",
+				"options": { "sort": "value_desc", "seriesLimit": 10 }
+			}
+		}
+	},
+	"quotes-conversion-rate": {
+		"input": {
+			"config": { "entityType": "quotes", "groupBy": ["conversionRate"] },
+			"visualization": { "type": "radial" }
+		},
+		"output": {
+			"config": {
+				"version": 2,
+				"entityType": "quotes",
+				"metric": { "op": "ratio", "ratioKey": "conversionRate" }
+			},
+			"visualization": { "type": "radial" }
+		}
+	},
+	"tasks-completion-rate": {
+		"input": {
+			"config": {
+				"entityType": "tasks",
+				"groupBy": ["completionRate"],
+				"dateRange": { "start": 1767225600000, "end": 1769904000000 }
+			},
+			"visualization": { "type": "radial" }
+		},
+		"output": {
+			"config": {
+				"version": 2,
+				"entityType": "tasks",
+				"date": {
+					"range": { "kind": "absolute", "start": 1767225600000, "end": 1769904000000 }
+				},
+				"metric": { "op": "ratio", "ratioKey": "completionRate" }
+			},
+			"visualization": { "type": "radial" }
+		}
+	},
+	"v2-passthrough": {
+		"input": {
+			"config": {
+				"version": 2,
+				"entityType": "invoices",
+				"date": {
+					"field": "paidAt",
+					"range": { "kind": "preset", "preset": "this_month" },
+					"comparison": { "kind": "previous_period" }
+				},
+				"filters": {
+					"logic": "and",
+					"groups": [
+						{
+							"logic": "and",
+							"rules": [{ "field": "status", "operator": "equals", "value": "paid" }]
+						}
+					]
+				},
+				"metric": { "op": "sum", "field": "total" },
+				"groupBy": "paidAt_month",
+				"includeEmptyValues": true
+			},
+			"visualization": {
+				"type": "column",
+				"options": { "showZeros": true, "seriesLimit": 12 }
+			}
+		},
+		"output": {
+			"config": {
+				"version": 2,
+				"entityType": "invoices",
+				"date": {
+					"field": "paidAt",
+					"range": { "kind": "preset", "preset": "this_month" },
+					"comparison": { "kind": "previous_period" }
+				},
+				"filters": {
+					"logic": "and",
+					"groups": [
+						{
+							"logic": "and",
+							"rules": [{ "field": "status", "operator": "equals", "value": "paid" }]
+						}
+					]
+				},
+				"metric": { "op": "sum", "field": "total" },
+				"groupBy": "paidAt_month",
+				"includeEmptyValues": true
+			},
+			"visualization": {
+				"type": "column",
+				"options": { "showZeros": true, "seriesLimit": 12 }
+			}
+		}
+	},
+	"tasks-status-zero-fill-carveout": {
+		"input": {
+			"config": { "entityType": "tasks", "groupBy": ["status"] },
+			"visualization": { "type": "pie" }
+		},
+		"output": {
+			"config": {
+				"version": 2,
+				"entityType": "tasks",
+				"metric": { "op": "count" },
+				"groupBy": "status",
+				"includeEmptyValues": true
+			},
+			"visualization": { "type": "pie" }
+		}
+	}
+}

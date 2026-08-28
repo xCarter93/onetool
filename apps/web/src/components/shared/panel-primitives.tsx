@@ -1,15 +1,13 @@
 "use client";
 
 import React from "react";
-import { Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Label } from "@/components/ui/label";
 
 /**
  * Shared side-panel building blocks (Attio-style anatomy): a titled section
- * ("Inputs", "Next step"), a labeled field row with optional helper text,
- * and the destructive footer action. Every config panel composes these so
- * the panels read as one surface.
+ * ("Inputs", "Next step") and a labeled field row with optional helper text.
+ * Builder config panels compose these so the panels read as one surface.
  */
 
 export function PanelSection({
@@ -56,27 +54,6 @@ export function PanelField({
 					<p className="text-xs text-muted-foreground mt-1.5">{helper}</p>
 				)
 			)}
-		</div>
-	);
-}
-
-export function DeleteStepButton({
-	label = "Delete step",
-	onDelete,
-}: {
-	label?: string;
-	onDelete: () => void;
-}) {
-	return (
-		<div className="pt-4 border-t border-border mt-2">
-			<button
-				type="button"
-				className="text-destructive hover:bg-destructive/10 focus-visible:ring-ring/50 focus-visible:ring-[3px] outline-none flex items-center gap-2 px-3 py-2 rounded-md transition-colors w-full cursor-pointer"
-				onClick={onDelete}
-			>
-				<Trash2 className="h-4 w-4" />
-				<span className="text-sm font-medium">{label}</span>
-			</button>
 		</div>
 	);
 }

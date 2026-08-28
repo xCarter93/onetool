@@ -1,50 +1,36 @@
 "use client";
 
 import React, { useMemo, useState } from "react";
-import { Braces, Check, ChevronsUpDown, X } from "lucide-react";
+import { Braces, X } from "lucide-react";
 import { useQuery } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
-import {
-	utcMidnightMsToLocalDate,
-	localDateToUtcMidnightMs,
-} from "@/lib/dates";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { EmptyState } from "@/components/domain/empty-state";
-import { Input } from "@/components/ui/input";
-import { DatePicker } from "@/components/ui/date-picker";
-import {
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-} from "@/components/ui/select";
 import {
 	Popover,
 	PopoverContent,
 	PopoverTrigger,
 } from "@/components/ui/popover";
 import {
-	Command,
-	CommandEmpty,
-	CommandGroup,
-	CommandInput,
-	CommandItem,
-	CommandList,
-} from "@/components/ui/command";
-import {
 	getAvailableVariables,
 	partitionVariableGroups,
 	type VariableOption,
 } from "../../../lib/variables";
 import {
-	VariableDrillList,
+	DrillList,
 	type DrillGroup,
 	type DrillItem,
 	type DrillPage,
-} from "./variable-drill-list";
-import { PickerChip } from "./picker-chip";
+} from "@/components/shared/drill-list";
+import { PickerChip } from "@/components/shared/picker-chip";
+import {
+	RecordPicker,
+	type RecordPickerOption,
+} from "@/components/shared/record-picker";
+import {
+	TypedPrimitiveControl,
+	type PrimitiveValue,
+} from "@/components/shared/typed-primitive-control";
 import type {
 	AutomationTrigger,
 	FieldDefinition,
@@ -116,9 +102,6 @@ export type ValueInputFieldSpec = {
 	/** For an `id` field, the entity a record picker should search. */
 	refType?: FieldDefinition["refType"];
 };
-
-/** A resolved static/fallback primitive. `null` means "cleared / no value". */
-type PrimitiveValue = string | number | boolean | null;
 
 /** A stored fallback that doesn't match the field's type (legacy / hand-authored). */
 function fallbackTypeError(
@@ -193,9 +176,9 @@ const REF_PLACEHOLDER: Record<NonNullable<FieldDefinition["refType"]>, string> =
 };
 
 /**
- * Searchable record picker for an `id` field (client/project/user/quote),
- * replacing the raw-Convex-id text box. Stores the selected `_id` string and
- * resolves the display name for whatever id is already stored.
+ * The shared RecordPicker fed by automations' per-refType queries. Stores the
+ * selected `_id` string and resolves the display name for whatever id is
+ * already stored.
  */
 function IdValueControl({
 	refType,
@@ -210,8 +193,6 @@ function IdValueControl({
 	placeholder?: string;
 	invalid?: boolean;
 }) {
-	const [open, setOpen] = useState(false);
-
 	const clients = useQuery(api.clients.list, refType === "client" ? {} : "skip");
 	const projects = useQuery(api.projects.list, refType === "project" ? {} : "skip");
 	const users = useQuery(api.users.listByOrg, refType === "user" ? {} : "skip");
@@ -221,7 +202,7 @@ function IdValueControl({
 		refType === "invoice" ? {} : "skip"
 	);
 
-	const options = useMemo<{ id: string; label: string }[]>(() => {
+	const options = useMemo<RecordPickerOption[]>(() => {
 		switch (refType) {
 			case "client":
 				return (clients ?? []).map((c) => ({ id: c._id, label: c.companyName }));
@@ -254,99 +235,25 @@ function IdValueControl({
 		(refType === "quote" && quotes === undefined) ||
 		(refType === "invoice" && invoices === undefined);
 
-	const selected = value ? options.find((o) => o.id === value) : undefined;
-	const triggerLabel = selected
-		? selected.label
-		: value
-			? loading
-				? "Loading…"
-				: "Unknown record"
-			: (placeholder ?? REF_PLACEHOLDER[refType]);
-
 	return (
-		<Popover open={open} onOpenChange={setOpen}>
-			<PopoverTrigger
-				render={
-					<Button
-						variant="outline"
-						aria-invalid={invalid || undefined}
-						className={cn(
-							"w-full justify-between font-normal",
-							!selected && "text-muted-foreground",
-							invalid && "border-destructive"
-						)}
-					/>
-				}
-			>
-				<span className="truncate">{triggerLabel}</span>
-				<ChevronsUpDown className="h-4 w-4 shrink-0 opacity-50" />
-			</PopoverTrigger>
-			<PopoverContent align="start" className="w-(--anchor-width) min-w-56 p-0">
-				<Command>
-					<CommandInput placeholder={`Search ${refType}s...`} />
-					<CommandList>
-						<CommandEmpty>
-							{loading ? (
-								"Loading…"
-							) : (
-								<EmptyState
-									size="sm"
-									illustration="no-filter-match"
-									title="No records found"
-								/>
-							)}
-						</CommandEmpty>
-						<CommandGroup>
-							{value && (
-								<CommandItem
-									value="__clear__"
-									onSelect={() => {
-										onChange(null);
-										setOpen(false);
-									}}
-									className="cursor-pointer text-muted-foreground"
-								>
-									Clear selection
-								</CommandItem>
-							)}
-							{options.map((opt) => (
-								<CommandItem
-									key={opt.id}
-									value={`${opt.label} ${opt.id}`}
-									onSelect={() => {
-										onChange(opt.id);
-										setOpen(false);
-									}}
-									className="cursor-pointer"
-								>
-									<Check
-										className={cn(
-											"h-4 w-4",
-											opt.id === value ? "opacity-100" : "opacity-0"
-										)}
-									/>
-									<span className="truncate">{opt.label}</span>
-								</CommandItem>
-							))}
-						</CommandGroup>
-					</CommandList>
-				</Command>
-			</PopoverContent>
-		</Popover>
+		<RecordPicker
+			options={options}
+			loading={loading}
+			value={value}
+			onChange={onChange}
+			placeholder={placeholder ?? REF_PLACEHOLDER[refType]}
+			searchPlaceholder={`Search ${refType}s...`}
+			invalid={invalid}
+		/>
 	);
 }
 
 /**
- * Type-matched primitive control, shared by the static-value branch and the
- * variable-fallback branch so a boolean is always a Select, a date always the
- * DatePicker, an id always a record picker — never a raw text box.
- *
- * `onChange` receives the typed primitive, or `null` when cleared. When
- * `emptyLabel` is set, boolean/select gain an explicit "clear" option (used by
- * the optional fallback); without it the control always holds a concrete value
- * (used by the required static value).
+ * The shared TypedPrimitiveControl with automations' record picker injected
+ * for id fields, so every usage site (static value, variable fallback) gets
+ * the same id handling.
  */
-function TypedPrimitiveControl({
+function AutomationPrimitiveControl({
 	field,
 	value,
 	onChange,
@@ -361,159 +268,25 @@ function TypedPrimitiveControl({
 	emptyLabel?: string;
 	invalid?: boolean;
 }) {
-	const NONE = "__none__";
-
-	if (field.type === "boolean") {
-		const current = value === true ? "true" : value === false ? "false" : NONE;
-		return (
-			<Select
-				value={current}
-				onValueChange={(v) =>
-					onChange(v === NONE ? null : v === "true")
-				}
-			>
-				<SelectTrigger aria-invalid={invalid || undefined}>
-					<SelectValue placeholder={emptyLabel ?? placeholder} />
-				</SelectTrigger>
-				<SelectContent>
-					{emptyLabel && <SelectItem value={NONE}>{emptyLabel}</SelectItem>}
-					<SelectItem value="true">True</SelectItem>
-					<SelectItem value="false">False</SelectItem>
-				</SelectContent>
-			</Select>
-		);
-	}
-
-	if (field.type === "select" && field.options) {
-		const current = typeof value === "string" && value !== "" ? value : NONE;
-		return (
-			<Select
-				value={current}
-				onValueChange={(v) => onChange(v === NONE ? null : v)}
-			>
-				<SelectTrigger aria-invalid={invalid || undefined}>
-					<SelectValue placeholder={placeholder ?? "Select value"} />
-				</SelectTrigger>
-				<SelectContent>
-					{emptyLabel && <SelectItem value={NONE}>{emptyLabel}</SelectItem>}
-					{field.options.map((opt) => (
-						<SelectItem key={opt.value} value={opt.value}>
-							{opt.label}
-						</SelectItem>
-					))}
-				</SelectContent>
-			</Select>
-		);
-	}
-
-	if (field.type === "number" || field.type === "currency") {
-		return (
-			<Input
-				type="number"
-				aria-invalid={invalid || undefined}
-				value={
-					typeof value === "number" && !Number.isNaN(value) ? value : ""
-				}
-				onChange={(e) =>
-					onChange(
-						e.target.value === "" || Number.isNaN(Number(e.target.value))
-							? null
-							: Number(e.target.value)
-					)
-				}
-				placeholder={placeholder}
-			/>
-		);
-	}
-
-	if (field.type === "date") {
-		return (
-			<DatePicker
-				value={
-					typeof value === "number"
-						? utcMidnightMsToLocalDate(value)
-						: undefined
-				}
-				onChange={(d) => onChange(d ? localDateToUtcMidnightMs(d) : null)}
-				className={cn("w-full", invalid && "border-destructive")}
-				placeholder={placeholder}
-			/>
-		);
-	}
-
-	if (field.type === "datetime") {
-		// Datetime stores an exact epoch-ms instant, composed/decomposed in the
-		// browser's local zone (plain Date getters — the UTC helpers above are
-		// for calendar dates only).
-		const current =
-			typeof value === "number" && !Number.isNaN(value)
-				? new Date(value)
-				: null;
-		const timeText = current
-			? `${String(current.getHours()).padStart(2, "0")}:${String(
-					current.getMinutes()
-				).padStart(2, "0")}`
-			: "";
-		const compose = (day: Date, hours: number, minutes: number) =>
-			new Date(
-				day.getFullYear(),
-				day.getMonth(),
-				day.getDate(),
-				hours,
-				minutes
-			).getTime();
-		return (
-			<div className="flex items-center gap-1.5">
-				<DatePicker
-					value={current ?? undefined}
-					onChange={(d) =>
-						onChange(
-							d
-								? compose(d, current?.getHours() ?? 0, current?.getMinutes() ?? 0)
-								: null
-						)
-					}
-					className={cn("flex-1 min-w-0", invalid && "border-destructive")}
-					placeholder={placeholder}
-				/>
-				<Input
-					type="time"
-					aria-label="Time"
-					aria-invalid={invalid || undefined}
-					value={timeText}
-					onChange={(e) => {
-						// "".split(":") yields [""] -> m === undefined, which
-						// Number.isNaN misses and compose() would turn into NaN.
-						if (!e.target.value) return;
-						const [h, m] = e.target.value.split(":").map(Number);
-						if (Number.isNaN(h) || Number.isNaN(m)) return;
-						onChange(compose(current ?? new Date(), h, m));
-					}}
-					className="w-28 shrink-0"
-				/>
-			</div>
-		);
-	}
-
-	if (field.type === "id" && field.refType) {
-		return (
-			<IdValueControl
-				refType={field.refType}
-				value={typeof value === "string" && value !== "" ? value : null}
-				onChange={(id) => onChange(id)}
-				placeholder={placeholder}
-				invalid={invalid}
-			/>
-		);
-	}
-
 	return (
-		<Input
-			type="text"
-			aria-invalid={invalid || undefined}
-			value={typeof value === "string" ? value : String(value ?? "")}
-			onChange={(e) => onChange(e.target.value)}
-			placeholder={placeholder ?? "Value"}
+		<TypedPrimitiveControl
+			field={field}
+			value={value}
+			onChange={onChange}
+			placeholder={placeholder}
+			emptyLabel={emptyLabel}
+			invalid={invalid}
+			renderRecordPicker={(slot) =>
+				field.refType ? (
+					<IdValueControl
+						refType={field.refType}
+						value={slot.value}
+						onChange={slot.onChange}
+						placeholder={slot.placeholder}
+						invalid={slot.invalid}
+					/>
+				) : null
+			}
 		/>
 	);
 }
@@ -533,7 +306,7 @@ function StaticControl({
 }) {
 	const staticValue = value?.kind === "static" ? value.value : null;
 	return (
-		<TypedPrimitiveControl
+		<AutomationPrimitiveControl
 			field={field}
 			value={staticValue}
 			onChange={(v) => onChange({ kind: "static", value: v })}
@@ -606,7 +379,7 @@ export function ValueInput({
 						<X className="h-3.5 w-3.5" />
 					</button>
 				</div>
-				<TypedPrimitiveControl
+				<AutomationPrimitiveControl
 					field={field}
 					value={value.fallback ?? null}
 					onChange={(v) =>
@@ -714,7 +487,7 @@ export function ValueInput({
 									)
 							);
 							return (
-								<VariableDrillList
+								<DrillList
 									rootGroups={rootGroups}
 									pages={pages}
 									open={open}
@@ -775,7 +548,7 @@ export function VariableInsertButton({
 				Insert variable
 			</PopoverTrigger>
 			<PopoverContent align="start" className="w-80 p-0">
-				<VariableDrillList
+				<DrillList
 					rootGroups={rootGroups}
 					pages={pages}
 					open={open}

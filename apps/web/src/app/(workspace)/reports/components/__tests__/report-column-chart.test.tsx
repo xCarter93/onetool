@@ -53,13 +53,32 @@ afterAll(() => {
 	globalThis.ResizeObserver = originalResizeObserver;
 	if (originalOffsetWidth) Object.defineProperty(HTMLElement.prototype, "offsetWidth", originalOffsetWidth);
 	if (originalOffsetHeight) Object.defineProperty(HTMLElement.prototype, "offsetHeight", originalOffsetHeight);
-	if (originalGetBoundingClientRect)
+	// getBoundingClientRect is inherited from Element.prototype, so there is no
+	// HTMLElement descriptor to restore — deleting the stub restores inheritance.
+	if (originalGetBoundingClientRect) {
 		Object.defineProperty(HTMLElement.prototype, "getBoundingClientRect", originalGetBoundingClientRect);
+	} else {
+		delete (HTMLElement.prototype as Partial<HTMLElement>).getBoundingClientRect;
+	}
 });
 
 import { ReportColumnChart } from "../report-column-chart";
 
 describe("ReportColumnChart", () => {
+	it("fills a height-constrained canvas: flex-fill root, growable chart box", () => {
+		const { container } = render(
+			<ReportColumnChart
+				data={[{ name: "Jan", value: 5 }]}
+				total={5}
+				entityType="projects"
+				groupBy="completedAt_month"
+			/>
+		);
+		const chart = container.querySelector('[data-slot="chart"]');
+		expect(chart).toHaveClass("grow", "shrink-0", "min-h-[300px]");
+		expect(chart?.parentElement).toHaveClass("flex", "flex-1", "flex-col");
+	});
+
 	it("renders a vertical bar per category", () => {
 		const { container } = render(
 			<ReportColumnChart
@@ -100,5 +119,67 @@ describe("ReportColumnChart", () => {
 			<ReportColumnChart data={[]} total={0} entityType="projects" groupBy="completedAt_month" />
 		);
 		expect(screen.getByText("No data for this date range.")).toBeInTheDocument();
+	});
+
+	it("segments prop stacks one rect per segment per bucket, keyed by segment", () => {
+		const { container } = render(
+			<ReportColumnChart
+				data={[
+					{ name: "Jan", value: 8, active: 5, closed: 3 },
+					{ name: "Feb", value: 6, active: 4, closed: 2 },
+					{ name: "Mar", value: 4, active: 1, closed: 3 },
+				]}
+				total={18}
+				entityType="projects"
+				groupBy="completedAt_month"
+				segments={[
+					{ key: "active", label: "Active" },
+					{ key: "closed", label: "Closed" },
+				]}
+			/>
+		);
+
+		expect(container.querySelectorAll(".recharts-bar-rectangle")).toHaveLength(6);
+		expect(container.querySelectorAll(".recharts-bar")).toHaveLength(2);
+		const style = container.querySelector("style")?.textContent ?? "";
+		expect(style).toContain("--color-active:");
+		expect(style).toContain("--color-closed:");
+	});
+
+	it("axisLabels renders both axis titles; targetLine renders a reference line", () => {
+		const { container } = render(
+			<ReportColumnChart
+				data={[
+					{ name: "Jan", value: 5 },
+					{ name: "Feb", value: 7 },
+				]}
+				total={12}
+				entityType="projects"
+				groupBy="completedAt_month"
+				axisLabels={{ x: "Completed by Month", y: "Count of records" }}
+				targetLine={40}
+			/>
+		);
+
+		expect(container.textContent).toContain("Completed by Month");
+		expect(container.textContent).toContain("Count of records");
+		expect(container.querySelectorAll(".recharts-reference-line")).toHaveLength(1);
+	});
+
+	it("neither prop set: no axis titles and no reference line", () => {
+		const { container } = render(
+			<ReportColumnChart
+				data={[
+					{ name: "Jan", value: 5 },
+					{ name: "Feb", value: 7 },
+				]}
+				total={12}
+				entityType="projects"
+				groupBy="completedAt_month"
+			/>
+		);
+
+		expect(container.textContent).not.toContain("Count of records");
+		expect(container.querySelectorAll(".recharts-reference-line")).toHaveLength(0);
 	});
 });

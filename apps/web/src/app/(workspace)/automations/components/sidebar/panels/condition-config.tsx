@@ -10,7 +10,8 @@ import { triggerScopeObjectType } from "../../../lib/node-types";
 import { getAvailableVariables, getScopeObjectType } from "../../../lib/variables";
 import type { ConfigPanelProps } from "../automation-sidebar";
 import { ConfigPanelHeader } from "./config-panel-header";
-import { DeleteStepButton, PanelSection } from "./panel-primitives";
+import { PanelSection } from "@/components/shared/panel-primitives";
+import { DeleteStepButton } from "./delete-step-button";
 import { FilterGroupsEditor } from "./filter-groups-editor";
 import { ConditionSentenceSummary } from "./condition-sentence-summary";
 

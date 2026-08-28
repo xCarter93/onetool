@@ -126,7 +126,7 @@ export function ReportCreatePanel({ onBrowsePresets }: ReportCreatePanelProps) {
 												{preset.name}
 											</span>
 											<span className="block truncate text-xs text-muted-foreground">
-												{entityLabels[preset.entityType] ?? preset.entityType} ·{" "}
+												{entityLabels[preset.config.entityType] ?? preset.config.entityType} ·{" "}
 												{preset.description}
 											</span>
 										</span>

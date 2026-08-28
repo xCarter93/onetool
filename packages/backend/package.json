@@ -77,6 +77,10 @@
    "types": "./convex/lib/reportFields.ts",
    "default": "./convex/lib/reportFields.ts"
   },
+  "./convex/lib/reportRelations": {
+   "types": "./convex/lib/reportRelations.ts",
+   "default": "./convex/lib/reportRelations.ts"
+  },
   "./convex/lib/reportPresets": {
    "types": "./convex/lib/reportPresets.ts",
    "default": "./convex/lib/reportPresets.ts"
@@ -84,6 +88,14 @@
   "./convex/lib/reportFilters": {
    "types": "./convex/lib/reportFilters.ts",
    "default": "./convex/lib/reportFilters.ts"
+  },
+  "./convex/lib/reportQueryArgs": {
+   "types": "./convex/lib/reportQueryArgs.ts",
+   "default": "./convex/lib/reportQueryArgs.ts"
+  },
+  "./convex/lib/reportConfig": {
+   "types": "./convex/lib/reportConfig.ts",
+   "default": "./convex/lib/reportConfig.ts"
   },
   "./convex/lib/orgScan": {
    "types": "./convex/lib/orgScan.ts",
