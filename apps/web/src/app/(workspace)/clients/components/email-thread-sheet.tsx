@@ -22,6 +22,8 @@ import {
 } from "@/components/shared/email/email-composer";
 import {
 	EmailRecipientsField,
+	mergeCc,
+	NO_RECIPIENTS,
 	type RecipientsValue,
 } from "@/components/shared/email/email-recipients-field";
 import {
@@ -36,19 +38,6 @@ import {
 	formatMessageTimestamp,
 } from "@/components/shared/email/email-delivery-indicator";
 import { initialsOf } from "@/app/(workspace)/inbox/lib/inbox-utils";
-
-const NO_RECIPIENTS: RecipientsValue = { to: [], cc: [], bcc: [] };
-
-/** Case-insensitive dedupe that also drops anything already addressed in `to`. */
-function mergeCc(to: string[], cc: string[]): string[] {
-	const seen = new Set(to.map((email) => email.toLowerCase()));
-	return cc.filter((email) => {
-		const key = email.toLowerCase();
-		if (seen.has(key)) return false;
-		seen.add(key);
-		return true;
-	});
-}
 
 interface EmailThreadSheetProps {
 	isOpen: boolean;

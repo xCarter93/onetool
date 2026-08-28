@@ -220,7 +220,7 @@ export const clientPortalArticles: HelpArticle[] = [
 					},
 					{
 						type: "paragraph",
-						text: "For jobs where you want a formal, emailed signing request instead, click **Send to Client** on the quote and choose **Send for e-signature**. Both paths end with an approved quote. See [E-signatures](/help/quotes/e-signatures).",
+						text: "For jobs where you want a formal, emailed signing request instead, click **Send to Client** on the quote and choose **Send for e-signature**. The quote becomes Approved when your client approves it in the portal or completes the signature. See [E-signatures](/help/quotes/e-signatures).",
 					},
 				],
 			},

@@ -191,15 +191,19 @@ describe("invoices.sendToClient", () => {
 		expect(invoice?.status).toBe("sent");
 	});
 
-	it("throws when the client has no portal access", async () => {
-		const { asUser, invoiceId } = await seed({
+	it("mints portal access for a client that has none", async () => {
+		const { asUser, invoiceId, clientId } = await seed({
 			portalAccess: false,
 			contactEmail: "client@example.com",
 		});
 
-		await expect(
-			asUser.mutation(api.invoices.sendToClient, { id: invoiceId })
-		).rejects.toThrow(/portal access/i);
+		await asUser.mutation(api.invoices.sendToClient, { id: invoiceId });
+		await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+		const client = await t.run(async (ctx) => ctx.db.get(clientId));
+		expect(client?.portalAccessId).toBeTruthy();
+		const invoice = await asUser.query(api.invoices.get, { id: invoiceId });
+		expect(invoice?.status).toBe("sent");
 	});
 
 	it("throws when the primary contact has no email", async () => {

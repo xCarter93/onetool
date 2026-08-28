@@ -27,6 +27,7 @@ import {
 	buildPortalInvoiceUrl,
 	optionalPortalInvoiceUrl,
 } from "./portal/invoiceUrl";
+import { mintPortalAccessId } from "./clients";
 import {
 	assertNoSuppressedRecipients,
 	entitySendArgs,
@@ -721,12 +722,12 @@ export const sendToClient = userMutation({
 				message: "Invoice client not found.",
 			});
 		}
-		if (!client.portalAccessId) {
-			throw new ConvexError({
-				code: "CONFLICT",
-				message:
-					"This client has no portal access yet. Enable it on the client before sending.",
-			});
+		// Nothing ever clears portalAccessId (rotation replaces it), so minting on
+		// demand can't revive access someone revoked.
+		let portalAccessId = client.portalAccessId;
+		if (!portalAccessId) {
+			portalAccessId = await mintPortalAccessId(ctx);
+			await ctx.db.patch(client._id, { portalAccessId });
 		}
 		const primaryContact = await ctx.db
 			.query("clientContacts")
@@ -751,7 +752,12 @@ export const sendToClient = userMutation({
 			...recipients.cc,
 			...recipients.bcc,
 		]);
-		const attachments = await resolveOutboundAttachments(ctx, args.attachments);
+		const attachments = await resolveOutboundAttachments(
+			ctx,
+			invoice.orgId,
+			args.attachments,
+			{ type: "invoice", id: args.id }
+		);
 		const customHtml =
 			args.mode === "custom"
 				? sanitizeHtml(args.html ?? "").trim() || undefined
@@ -760,6 +766,16 @@ export const sendToClient = userMutation({
 			throw new ConvexError({
 				code: "CONFLICT",
 				message: "Write a message before sending.",
+			});
+		}
+		// The template email is nothing but the portal link, so a deployment
+		// without an origin must fail here rather than flip the invoice to sent
+		// and let the scheduled action drop the send.
+		if (!customHtml && !process.env.PORTAL_JWT_ISSUER) {
+			throw new ConvexError({
+				code: "CONFLICT",
+				message:
+					"Portal links aren't configured for this workspace, so the invoice email can't be sent. Contact support.",
 			});
 		}
 
@@ -888,10 +904,7 @@ export const sendToClient = userMutation({
 
 		if (customHtml) {
 			const bodyText = htmlToPlainText(customHtml);
-			const portalUrl = optionalPortalInvoiceUrl(
-				client.portalAccessId,
-				invoice._id
-			);
+			const portalUrl = optionalPortalInvoiceUrl(portalAccessId, invoice._id);
 			const html = buildEmailHtml({
 				logoUrl: organization.logoUrl,
 				organizationName: organization.name,

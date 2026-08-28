@@ -48,6 +48,7 @@ import {
 import { getOrCreateOutboundThread, plusTagAddress } from "./email/threads";
 import { formatEmailFrom } from "./lib/emailFrom";
 import { optionalPortalQuoteUrl } from "./portal/quoteUrl";
+import { mintPortalAccessId } from "./clients";
 
 /**
  * Quote operations
@@ -1169,12 +1170,12 @@ export const sendToClient = userMutation({
 				message: "Quote client not found.",
 			});
 		}
-		if (!client.portalAccessId) {
-			throw new ConvexError({
-				code: "CONFLICT",
-				message:
-					"This client has no portal access yet. Enable it on the client before sending.",
-			});
+		// Nothing ever clears portalAccessId (rotation replaces it), so minting on
+		// demand can't revive access someone revoked.
+		let portalAccessId = client.portalAccessId;
+		if (!portalAccessId) {
+			portalAccessId = await mintPortalAccessId(ctx);
+			await ctx.db.patch(client._id, { portalAccessId });
 		}
 		const primaryContact = await ctx.db
 			.query("clientContacts")
@@ -1199,7 +1200,12 @@ export const sendToClient = userMutation({
 			...recipients.cc,
 			...recipients.bcc,
 		]);
-		const attachments = await resolveOutboundAttachments(ctx, args.attachments);
+		const attachments = await resolveOutboundAttachments(
+			ctx,
+			quote.orgId,
+			args.attachments,
+			{ type: "quote", id: args.id }
+		);
 		const customHtml =
 			args.mode === "custom"
 				? sanitizeHtml(args.html ?? "").trim() || undefined
@@ -1208,6 +1214,16 @@ export const sendToClient = userMutation({
 			throw new ConvexError({
 				code: "CONFLICT",
 				message: "Write a message before sending.",
+			});
+		}
+		// The template email is nothing but the portal link, so a deployment
+		// without an origin must fail here rather than flip the quote to sent and
+		// let the scheduled action drop the send.
+		if (!customHtml && !process.env.PORTAL_JWT_ISSUER) {
+			throw new ConvexError({
+				code: "CONFLICT",
+				message:
+					"Portal links aren't configured for this workspace, so the quote email can't be sent. Contact support.",
 			});
 		}
 
@@ -1326,7 +1342,7 @@ export const sendToClient = userMutation({
 
 		if (customHtml) {
 			const bodyText = htmlToPlainText(customHtml);
-			const portalUrl = optionalPortalQuoteUrl(client.portalAccessId, quote._id);
+			const portalUrl = optionalPortalQuoteUrl(portalAccessId, quote._id);
 			const html = buildEmailHtml({
 				logoUrl: organization.logoUrl,
 				organizationName: organization.name,

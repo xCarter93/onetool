@@ -126,7 +126,11 @@ export const sendClientEmail = userMutation({
 		});
 
 		const recipients = resolveRecipients(args, recipient.email);
-		const attachments = await resolveOutboundAttachments(ctx, args.attachments);
+		const attachments = await resolveOutboundAttachments(
+			ctx,
+			orgId,
+			args.attachments
+		);
 
 		const message: OutboundMessage = {
 			from: formatEmailFrom(fromName, fromEmail),
@@ -144,8 +148,7 @@ export const sendClientEmail = userMutation({
 		if (result.skipped === "suppressed") {
 			throw new ConvexError({
 				code: "RECIPIENT_SUPPRESSED",
-				message:
-					"This recipient's address is suppressed (a previous email hard-bounced or was marked as spam).",
+				message: `${result.suppressedAddress ?? "This recipient"} can't receive email — a previous message hard-bounced or was marked as spam.`,
 			});
 		}
 		// Attachment sends learn their provider id in the scheduled action below.
@@ -351,7 +354,11 @@ export const replyToEmail = userMutation({
 		});
 
 		const recipients = resolveRecipients(args, primaryContact.email);
-		const attachments = await resolveOutboundAttachments(ctx, args.attachments);
+		const attachments = await resolveOutboundAttachments(
+			ctx,
+			orgId,
+			args.attachments
+		);
 
 		const message: OutboundMessage = {
 			from: formatEmailFrom(fromName, fromEmail),
@@ -372,8 +379,7 @@ export const replyToEmail = userMutation({
 		if (result.skipped === "suppressed") {
 			throw new ConvexError({
 				code: "RECIPIENT_SUPPRESSED",
-				message:
-					"This recipient's address is suppressed (a previous email hard-bounced or was marked as spam).",
+				message: `${result.suppressedAddress ?? "This recipient"} can't receive email — a previous message hard-bounced or was marked as spam.`,
 			});
 		}
 		// Attachment sends learn their provider id in the scheduled action below.

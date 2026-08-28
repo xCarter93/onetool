@@ -36,6 +36,8 @@ import {
 } from "@/components/shared/email/email-composer";
 import {
 	EmailRecipientsField,
+	mergeCc,
+	NO_RECIPIENTS,
 	type RecipientsValue,
 } from "@/components/shared/email/email-recipients-field";
 import {
@@ -43,19 +45,6 @@ import {
 	type ComposerAttachment,
 } from "@/components/shared/email/attachment-types";
 import { emailSendErrorMessage } from "@/components/shared/email/send-error";
-
-const NO_RECIPIENTS: RecipientsValue = { to: [], cc: [], bcc: [] };
-
-/** Case-insensitive dedupe that also drops anything already addressed in `to`. */
-function mergeCc(to: string[], cc: string[]): string[] {
-	const seen = new Set(to.map((email) => email.toLowerCase()));
-	return cc.filter((email) => {
-		const key = email.toLowerCase();
-		if (seen.has(key)) return false;
-		seen.add(key);
-		return true;
-	});
-}
 
 interface NewEmailDialogProps {
 	open: boolean;
@@ -203,6 +192,9 @@ export function NewEmailDialog({ open, onOpenChange }: NewEmailDialogProps) {
 							value={recipients}
 							// sendClientEmail addresses one contact; the rest move to cc.
 							onChange={(next) => {
+								// A typed recipient outranks the primary-contact seed,
+								// which may still be resolving.
+								setSeeded(true);
 								const to = next.to.slice(-1);
 								setRecipients({
 									...next,

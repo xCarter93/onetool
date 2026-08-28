@@ -18,6 +18,8 @@ export interface EntityEmailPreviewProps {
 	/** Formatted valid-until (quote) or due date (invoice). */
 	dateLabel?: string;
 	ctaLabel: string;
+	/** Invoices only: the org can collect card payments in the portal. */
+	takesPayment?: boolean;
 }
 
 function initials(name: string): string {
@@ -60,6 +62,7 @@ export function EntityEmailPreview({
 	amount,
 	dateLabel,
 	ctaLabel,
+	takesPayment = false,
 }: EntityEmailPreviewProps) {
 	const isQuote = entityType === "quote";
 	const contactLine = [orgEmail, orgPhone].filter(Boolean).join(" · ");
@@ -100,7 +103,7 @@ export function EntityEmailPreview({
 					<p className="text-sm text-foreground">
 						{isQuote
 							? `${orgName} has prepared a quote for you. You can review the details and approve it from your client portal.`
-							: `${orgName} has sent you an invoice. You can view the details and pay securely from your client portal.`}
+							: `${orgName} has sent you an invoice. You can view the details ${takesPayment ? "and pay securely " : ""}from your client portal.`}
 					</p>
 				</div>
 

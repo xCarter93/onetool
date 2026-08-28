@@ -113,6 +113,15 @@ export function QuoteDetailDrawer({
 		quoteId ? { id: quoteId } : "skip"
 	);
 
+	// The email modal renders outside the drawer, so it would otherwise survive
+	// a close or a swap to another quote.
+	const openQuoteId = open ? quoteId : null;
+	const [lastOpenQuoteId, setLastOpenQuoteId] = React.useState(openQuoteId);
+	if (openQuoteId !== lastOpenQuoteId) {
+		setLastOpenQuoteId(openQuoteId);
+		setEmailOpen(false);
+	}
+
 	const loading = quoteId !== null && preview === undefined;
 	const notFound = quoteId !== null && preview === null;
 	const data = preview ?? null;

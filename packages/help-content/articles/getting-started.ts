@@ -552,7 +552,7 @@ export const gettingStartedArticles: HelpArticle[] = [
 					},
 					{
 						type: "note",
-						text: "The same modal offers **Send for e-signature** when you want a formal signing request instead. Both paths end with an approved quote.",
+						text: "The same modal offers **Send for e-signature** when you want a formal signing request instead. The quote becomes Approved when your client approves it in the portal or completes the signature. A signing request can also expire before your client signs, which leaves the quote unapproved.",
 					},
 				],
 			},

@@ -258,7 +258,7 @@ export const invoicesAndPaymentsArticles: HelpArticle[] = [
 					},
 					{
 						type: "note",
-						text: "Sending requires the client to have portal access turned on and a primary contact with an email address on file. Add one on the client record first if it is missing. To send the same link again later, use **Resend to Client**. On the Free plan the modal says how many sends you have left this month. The first send of an invoice uses one, and resending is free. You can also send straight from the invoice list: open an invoice\u2019s quick-view drawer and use the same action there.",
+						text: "Sending requires the client to have a primary contact with an email address on file. Add one on the client record first if it is missing. To send the same link again later, use **Resend to Client**. On the Free plan the modal says how many sends you have left this month. The first send of an invoice uses one, and resending is free. You can also send straight from the invoice list: open an invoice\u2019s quick-view drawer and use the same action there.",
 					},
 				],
 			},

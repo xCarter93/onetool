@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { useMutation } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import type { Doc, Id } from "@onetool/backend/convex/_generated/dataModel";
@@ -25,6 +25,7 @@ import {
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useToast } from "@/hooks/use-toast";
+import { convexErrorMessage } from "@/lib/convex-error";
 import {
 	isBlockedAttachmentFilename,
 	type ComposerAttachment,
@@ -110,10 +111,23 @@ export function EntityEmailAttachments({
 }: EntityEmailAttachmentsProps) {
 	const toast = useToast();
 	const generateUploadUrl = useMutation(api.emailAttachments.generateUploadUrl);
+	const registerUpload = useMutation(api.emailAttachments.registerUpload);
 	const fileInputRef = useRef<HTMLInputElement>(null);
 	const [isUploading, setIsUploading] = useState(false);
 	const [isRegenerating, setIsRegenerating] = useState(false);
 	const [attachmentError, setAttachmentError] = useState<string | null>(null);
+
+	const uploadsRef = useRef(uploads);
+	useEffect(() => {
+		uploadsRef.current = uploads;
+	});
+
+	// Write the ref before the parent re-renders, so an upload still in flight
+	// appends to this list instead of the snapshot it started from.
+	const commitUploads = (next: ComposerAttachment[]) => {
+		uploadsRef.current = next;
+		onUploadsChange(next);
+	};
 
 	const resolved = resolvePdfSelection(selection, latestDocument, versions);
 	const pickerVersions = versions ?? [];
@@ -161,20 +175,23 @@ export function EntityEmailAttachments({
 					body: file,
 				});
 				if (!res.ok) throw new Error(`Failed to upload ${file.name}`);
-				const { storageId } = await res.json();
+				const { storageId } = (await res.json()) as {
+					storageId: Id<"_storage">;
+				};
+				await registerUpload({ storageId, filename: file.name });
 				added.push({
-					storageId: storageId as Id<"_storage">,
+					storageId,
 					filename: file.name,
 					mimeType: file.type || "application/octet-stream",
 					size: file.size,
 					source: "upload",
 				});
 			}
-			onUploadsChange([...uploads, ...added]);
+			commitUploads([...uploadsRef.current, ...added]);
 		} catch (error) {
 			toast.error(
 				"Upload failed",
-				error instanceof Error ? error.message : "Try attaching the file again."
+				convexErrorMessage(error, "Try attaching the file again.")
 			);
 		} finally {
 			setIsUploading(false);
@@ -322,8 +339,10 @@ export function EntityEmailAttachments({
 									variant="ghost"
 									size="icon-sm"
 									onClick={() =>
-										onUploadsChange(
-											uploads.filter((f) => f.storageId !== upload.storageId)
+										commitUploads(
+											uploadsRef.current.filter(
+												(f) => f.storageId !== upload.storageId
+											)
 										)
 									}
 									disabled={disabled}

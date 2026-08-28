@@ -603,6 +603,7 @@ export function EntityEmailModal({
 										: undefined
 								}
 								ctaLabel={ctaLabel}
+								takesPayment={takesPayment}
 							/>
 						) : (
 							<EmailComposer

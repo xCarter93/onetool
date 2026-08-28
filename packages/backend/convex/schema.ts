@@ -1345,6 +1345,18 @@ export default defineSchema({
 		.index("by_email", ["emailMessageId"])
 		.index("by_org", ["orgId"]),
 
+	// Composer uploads claimed at upload time. First writer wins, so a storageId
+	// guessed from another tenant can never be attached to an outbound send.
+	emailUploads: defineTable({
+		orgId: v.id("organizations"),
+		storageId: v.id("_storage"),
+		filename: v.string(),
+		uploadedBy: v.id("users"),
+		createdAt: v.number(),
+	})
+		.index("by_storage", ["storageId"])
+		.index("by_org", ["orgId"]),
+
 	// Email Threads - first-class conversations keyed on the RFC Message-ID chain
 	emailThreads: defineTable({
 		orgId: v.id("organizations"),

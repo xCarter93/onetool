@@ -64,6 +64,7 @@ import type * as invoiceLineItems from "../invoiceLineItems.js";
 import type * as invoices from "../invoices.js";
 import type * as lib_activities from "../lib/activities.js";
 import type * as lib_assistantShared from "../lib/assistantShared.js";
+import type * as lib_attachmentPolicy from "../lib/attachmentPolicy.js";
 import type * as lib_auth from "../lib/auth.js";
 import type * as lib_automationExec_actions from "../lib/automationExec/actions.js";
 import type * as lib_automationExec_authz from "../lib/automationExec/authz.js";
@@ -270,6 +271,7 @@ declare const fullApi: ApiFromModules<{
   invoices: typeof invoices;
   "lib/activities": typeof lib_activities;
   "lib/assistantShared": typeof lib_assistantShared;
+  "lib/attachmentPolicy": typeof lib_attachmentPolicy;
   "lib/auth": typeof lib_auth;
   "lib/automationExec/actions": typeof lib_automationExec_actions;
   "lib/automationExec/authz": typeof lib_automationExec_authz;

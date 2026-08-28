@@ -321,6 +321,10 @@ describe("unified quote/invoice email sending", () => {
 		const storageId = await t.run(async (ctx) =>
 			ctx.storage.store(new Blob(["%PDF-1.7 fake"], { type: "application/pdf" }))
 		);
+		await asUser.mutation(api.emailAttachments.registerUpload, {
+			storageId,
+			filename: "quote.pdf",
+		});
 
 		await asUser.mutation(api.quotes.sendToClient, {
 			id: quoteId,
@@ -375,6 +379,110 @@ describe("unified quote/invoice email sending", () => {
 				],
 			})
 		).rejects.toThrow(/no longer available/);
+	});
+
+	it("refuses a storageId another org uploaded", async () => {
+		const { asUser, quoteId } = await seedQuote();
+		const storageId = await t.run(async (ctx) =>
+			ctx.storage.store(new Blob(["other org file"], { type: "text/plain" }))
+		);
+		// Fake timers freeze Date.now(), so the helper's default clerk ids would
+		// collide with the first org's.
+		const otherOrg = await t.run(async (ctx) =>
+			createTestOrg(ctx, {
+				clerkUserId: "user_other_org",
+				clerkOrgId: "org_other_org",
+			})
+		);
+		await t
+			.withIdentity(
+				createTestIdentity(otherOrg.clerkUserId, otherOrg.clerkOrgId)
+			)
+			.mutation(api.emailAttachments.registerUpload, {
+				storageId,
+				filename: "theirs.txt",
+			});
+
+		const error = await asUser
+			.mutation(api.quotes.sendToClient, {
+				id: quoteId,
+				attachments: [
+					{
+						storageId,
+						filename: "theirs.txt",
+						mimeType: "text/plain",
+						size: 1,
+					},
+				],
+			})
+			.catch((e: unknown) => e);
+
+		expect(errorCode(error)).toBe("NOT_FOUND");
+		expect(await messages()).toHaveLength(0);
+	});
+
+	it("refuses a blocked extension renamed onto a registered upload", async () => {
+		const { asUser, quoteId } = await seedQuote();
+		const storageId = await t.run(async (ctx) =>
+			ctx.storage.store(new Blob(["MZ"], { type: "application/octet-stream" }))
+		);
+		await asUser.mutation(api.emailAttachments.registerUpload, {
+			storageId,
+			filename: "safe.pdf",
+		});
+
+		const error = await asUser
+			.mutation(api.quotes.sendToClient, {
+				id: quoteId,
+				attachments: [
+					{
+						storageId,
+						filename: "payload.exe",
+						mimeType: "application/octet-stream",
+						size: 1,
+					},
+				],
+			})
+			.catch((e: unknown) => e);
+
+		expect(errorCode(error)).toBe("BAD_REQUEST");
+		expect(await messages()).toHaveLength(0);
+	});
+
+	it("accepts the quote's own generated PDF without an upload claim", async () => {
+		const { asUser, quoteId, orgId } = await seedQuote();
+		const storageId = await t.run(async (ctx) => {
+			const id = await ctx.storage.store(
+				new Blob(["%PDF-1.7 generated"], { type: "application/pdf" })
+			);
+			await ctx.db.insert("documents", {
+				orgId,
+				documentType: "quote",
+				documentId: quoteId,
+				storageId: id,
+				generatedAt: Date.now(),
+				version: 1,
+			});
+			return id;
+		});
+
+		await asUser.mutation(api.quotes.sendToClient, {
+			id: quoteId,
+			mode: "custom",
+			html: "<p>Quote attached.</p>",
+			attachments: [
+				{
+					storageId,
+					filename: "quote.pdf",
+					mimeType: "application/pdf",
+					size: 1,
+				},
+			],
+		});
+
+		const files = await attachments();
+		expect(files).toHaveLength(1);
+		expect(files[0].filename).toBe("quote.pdf");
 	});
 
 	// ------------------------------------------------------------------
@@ -479,6 +587,10 @@ describe("unified quote/invoice email sending", () => {
 		const storageId = await t.run(async (ctx) =>
 			ctx.storage.store(new Blob(["hello"], { type: "text/plain" }))
 		);
+		await asUser.mutation(api.emailAttachments.registerUpload, {
+			storageId,
+			filename: "notes.txt",
+		});
 
 		await asUser.mutation(api.resend.sendClientEmail, {
 			clientId,

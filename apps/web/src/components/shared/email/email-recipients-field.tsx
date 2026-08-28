@@ -27,6 +27,19 @@ export interface RecipientSuggestion {
 	name?: string;
 }
 
+export const NO_RECIPIENTS: RecipientsValue = { to: [], cc: [], bcc: [] };
+
+/** Case-insensitive dedupe that also drops anything already addressed in `to`. */
+export function mergeCc(to: string[], cc: string[]): string[] {
+	const seen = new Set(to.map((email) => email.toLowerCase()));
+	return cc.filter((email) => {
+		const key = email.toLowerCase();
+		if (seen.has(key)) return false;
+		seen.add(key);
+		return true;
+	});
+}
+
 export interface EmailRecipientsFieldProps {
 	value: RecipientsValue;
 	onChange: (next: RecipientsValue) => void;

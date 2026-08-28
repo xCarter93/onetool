@@ -218,7 +218,7 @@ export const quotesArticles: HelpArticle[] = [
 					},
 					{
 						type: "note",
-						text: "Sending needs the client to have portal access turned on and a primary contact with an email address; OneTool tells you if either is missing. **Mark as Sent** flips the status without emailing anyone, so save it for quotes you delivered outside OneTool. On the Free plan the modal says how many sends you have left this month. The first send of a quote uses one, and resending is free. You can also send from the quotes list: open a quote's quick-view drawer and use the same action there.",
+						text: "Sending needs the client to have a primary contact with an email address; OneTool tells you if one is missing. **Mark as Sent** flips the status without emailing anyone, so save it for quotes you delivered outside OneTool. On the Free plan the modal says how many sends you have left this month. The first send of a quote uses one, and resending is free. You can also send from the quotes list: open a quote's quick-view drawer and use the same action there.",
 					},
 				],
 			},

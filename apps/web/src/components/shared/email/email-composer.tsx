@@ -137,6 +137,7 @@ export function EmailComposer({
 
 	const attachmentsEnabled = !!attachments && !!onAttachmentsChange;
 	const generateUploadUrl = useMutation(api.emailAttachments.generateUploadUrl);
+	const registerUpload = useMutation(api.emailAttachments.registerUpload);
 	const fileInputRef = useRef<HTMLInputElement>(null);
 	const [pendingUploads, setPendingUploads] = useState<PendingUpload[]>([]);
 	const [attachmentError, setAttachmentError] = useState<string | null>(null);
@@ -147,6 +148,13 @@ export function EmailComposer({
 	useEffect(() => {
 		attachmentsRef.current = attachments;
 	});
+
+	// Write the ref before the parent re-renders, so an upload still in flight
+	// appends to this list instead of the snapshot it started from.
+	const commitAttachments = (next: ComposerAttachment[]) => {
+		attachmentsRef.current = next;
+		onAttachmentsChange?.(next);
+	};
 
 	const uploadFile = async (file: File): Promise<ComposerAttachment> => {
 		const uploadUrl = await generateUploadUrl();
@@ -162,6 +170,7 @@ export function EmailComposer({
 		const { storageId } = (await response.json()) as {
 			storageId: Id<"_storage">;
 		};
+		await registerUpload({ storageId, filename: file.name });
 		return {
 			storageId,
 			filename: file.name,
@@ -220,7 +229,7 @@ export function EmailComposer({
 		}
 
 		if (uploaded.length > 0) {
-			onAttachmentsChange([...(attachmentsRef.current ?? []), ...uploaded]);
+			commitAttachments([...(attachmentsRef.current ?? []), ...uploaded]);
 		}
 		if (failed.length > 0) {
 			setAttachmentError(
@@ -231,8 +240,10 @@ export function EmailComposer({
 
 	const removeAttachment = (storageId: Id<"_storage">) => {
 		setAttachmentError(null);
-		onAttachmentsChange?.(
-			(attachments ?? []).filter((item) => item.storageId !== storageId)
+		commitAttachments(
+			(attachmentsRef.current ?? []).filter(
+				(item) => item.storageId !== storageId
+			)
 		);
 	};
 

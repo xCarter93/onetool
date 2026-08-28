@@ -7,6 +7,7 @@ import { isSuppressed } from "./suppressions";
 export interface SendResult {
 	resendEmailId: string | null; // null when skipped or deferred
 	skipped?: "suppressed" | "duplicate";
+	suppressedAddress?: string; // set alongside skipped: "suppressed"
 	emailMessageId?: Id<"emailMessages">; // set when a duplicate short-circuits
 	/**
 	 * Attachment send: enqueued for the manual transport instead of the durable
@@ -50,7 +51,11 @@ export async function sendOutbound(
 	// address, on any recipient line.
 	for (const to of [...msg.to, ...(msg.cc ?? []), ...(msg.bcc ?? [])]) {
 		if (await isSuppressed(ctx, orgId, to)) {
-			return { resendEmailId: null, skipped: "suppressed" };
+			return {
+				resendEmailId: null,
+				skipped: "suppressed",
+				suppressedAddress: to,
+			};
 		}
 	}
 

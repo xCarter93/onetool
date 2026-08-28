@@ -343,15 +343,19 @@ describe("quotes.sendToClient", () => {
 		).rejects.toThrow(/already approved/i);
 	});
 
-	it("throws when the client has no portal access", async () => {
-		const { asUser, quoteId } = await seed({
+	it("mints portal access for a client that has none", async () => {
+		const { asUser, quoteId, clientId } = await seed({
 			portalAccess: false,
 			contactEmail: "client@example.com",
 		});
 
-		await expect(
-			asUser.mutation(api.quotes.sendToClient, { id: quoteId })
-		).rejects.toThrow(/portal access/i);
+		await asUser.mutation(api.quotes.sendToClient, { id: quoteId });
+		await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+		const client = await t.run(async (ctx) => ctx.db.get(clientId));
+		expect(client?.portalAccessId).toBeTruthy();
+		const quote = await asUser.query(api.quotes.get, { id: quoteId });
+		expect(quote?.status).toBe("sent");
 	});
 
 	it("throws when the primary contact has no email", async () => {

@@ -3,6 +3,7 @@ import { MutationCtx } from "../_generated/server";
 import { Id } from "../_generated/dataModel";
 import { internal } from "../_generated/api";
 import type { OutboundAttachment } from "./types";
+import { isBlockedAttachmentFilename } from "../lib/attachmentPolicy";
 
 /**
  * Total raw bytes allowed per email. Resend's own ceiling is 40MB *after*
@@ -19,22 +20,73 @@ export const outboundAttachmentValidator = v.object({
 	size: v.number(),
 });
 
+/** The quote or invoice whose generated PDFs may be attached without a claim. */
+export interface AttachmentEntity {
+	type: "quote" | "invoice";
+	id: string;
+}
+
+/**
+ * A storageId is attachable only if this org claimed it at upload time, or it
+ * is a PDF this org generated for the entity being sent.
+ */
+async function ownsStorage(
+	ctx: MutationCtx,
+	orgId: Id<"organizations">,
+	storageId: Id<"_storage">,
+	entity: AttachmentEntity | undefined
+): Promise<boolean> {
+	const claim = await ctx.db
+		.query("emailUploads")
+		.withIndex("by_storage", (q) => q.eq("storageId", storageId))
+		.first();
+	if (claim) return claim.orgId === orgId;
+
+	if (!entity) return false;
+	const documents = await ctx.db
+		.query("documents")
+		.withIndex("by_document", (q) =>
+			q.eq("documentType", entity.type).eq("documentId", entity.id)
+		)
+		.collect();
+	return documents.some(
+		(doc) =>
+			doc.orgId === orgId &&
+			(doc.storageId === storageId || doc.signedStorageId === storageId)
+	);
+}
+
 /**
  * Resolve client-supplied attachment descriptors against real storage
- * metadata: the blob must exist, and the true total must fit the cap. The
- * client's `size` is advisory only — never trusted for the cap.
+ * metadata: the filename must be sendable, the org must own the blob, and the
+ * true total must fit the cap. The client's `size` is advisory only — never
+ * trusted for the cap.
  */
 export async function resolveOutboundAttachments(
 	ctx: MutationCtx,
-	attachments: OutboundAttachment[] | undefined
+	orgId: Id<"organizations">,
+	attachments: OutboundAttachment[] | undefined,
+	entity?: AttachmentEntity
 ): Promise<OutboundAttachment[] | undefined> {
 	if (!attachments || attachments.length === 0) return undefined;
 
 	const resolved: OutboundAttachment[] = [];
 	let total = 0;
 	for (const attachment of attachments) {
+		// Re-checked on the SEND filename, not just at upload: otherwise a blob
+		// claimed as "safe.pdf" could be sent as "payload.exe".
+		if (isBlockedAttachmentFilename(attachment.filename)) {
+			throw new ConvexError({
+				code: "BAD_REQUEST",
+				message: `"${attachment.filename}" is a file type email providers refuse. Remove it and try again.`,
+			});
+		}
+
 		const meta = await ctx.db.system.get(attachment.storageId);
-		if (!meta) {
+		if (
+			!meta ||
+			!(await ownsStorage(ctx, orgId, attachment.storageId, entity))
+		) {
 			throw new ConvexError({
 				code: "NOT_FOUND",
 				message: `Attachment "${attachment.filename}" is no longer available. Remove it and try again.`,

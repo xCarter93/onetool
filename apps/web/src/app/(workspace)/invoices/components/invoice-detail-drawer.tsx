@@ -123,6 +123,16 @@ export function InvoiceDetailDrawer({
 	const [pending, setPending] = React.useState(false);
 	const [emailOpen, setEmailOpen] = React.useState(false);
 
+	// The email modal renders outside the drawer, so it would otherwise survive
+	// a close or a swap to another invoice.
+	const openInvoiceId = open ? invoiceId : null;
+	const [lastOpenInvoiceId, setLastOpenInvoiceId] =
+		React.useState(openInvoiceId);
+	if (openInvoiceId !== lastOpenInvoiceId) {
+		setLastOpenInvoiceId(openInvoiceId);
+		setEmailOpen(false);
+	}
+
 	const loading = invoiceId !== null && preview === undefined;
 	const notFound = invoiceId !== null && preview === null;
 	const data = preview ?? null;
