@@ -24,7 +24,7 @@ export function ChartNoData({
 	return (
 		<div
 			data-slot="chart-no-data"
-			className="flex min-h-[300px] w-full items-center justify-center"
+			className="flex min-h-[300px] w-full flex-1 items-center justify-center"
 		>
 			<EmptyState
 				size="md"

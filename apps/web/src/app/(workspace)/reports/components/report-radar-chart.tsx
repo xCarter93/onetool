@@ -68,7 +68,7 @@ export function ReportRadarChart({
 	}
 
 	return (
-		<div className="space-y-4">
+		<div className="flex flex-1 flex-col gap-4">
 			{/* Summary stats */}
 			<div className="flex items-center justify-between text-sm">
 				<span className="text-muted-foreground">{data.length} categories</span>
@@ -77,8 +77,8 @@ export function ReportRadarChart({
 				</span>
 			</div>
 
-			{/* Chart */}
-			<ChartContainer config={chartConfig} className="h-[420px] w-full">
+			{/* grow fills a tall canvas; shrink-0 keeps 420px as the floor — the % radii follow. */}
+			<ChartContainer config={chartConfig} className="h-[420px] w-full shrink-0 grow">
 				<RadarChart data={data} outerRadius="80%">
 					<ChartStripeDefs idPrefix={patternPrefix} colors={[RADAR_COLOR]} />
 					<PolarGrid stroke="var(--border)" />

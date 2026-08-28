@@ -101,7 +101,7 @@ export function ReportBarChart({
 	}
 
 	return (
-		<div className="space-y-4">
+		<div className="flex flex-1 flex-col gap-4">
 			{/* Summary stats */}
 			<div className="flex items-center justify-between text-sm">
 				<span className="text-muted-foreground">
@@ -112,8 +112,8 @@ export function ReportBarChart({
 				</span>
 			</div>
 
-			{/* Chart */}
-			<ChartContainer config={chartConfig} className="min-h-[300px] w-full">
+			{/* grow fills a tall canvas; shrink-0 keeps today's height as the floor. */}
+			<ChartContainer config={chartConfig} className="min-h-[300px] w-full shrink-0 grow">
 				<BarChart
 					data={data}
 					layout="vertical"

@@ -60,6 +60,20 @@ afterAll(() => {
 import { ReportColumnChart } from "../report-column-chart";
 
 describe("ReportColumnChart", () => {
+	it("fills a height-constrained canvas: flex-fill root, growable chart box", () => {
+		const { container } = render(
+			<ReportColumnChart
+				data={[{ name: "Jan", value: 5 }]}
+				total={5}
+				entityType="projects"
+				groupBy="completedAt_month"
+			/>
+		);
+		const chart = container.querySelector('[data-slot="chart"]');
+		expect(chart).toHaveClass("grow", "shrink-0", "min-h-[300px]");
+		expect(chart?.parentElement).toHaveClass("flex", "flex-1", "flex-col");
+	});
+
 	it("renders a vertical bar per category", () => {
 		const { container } = render(
 			<ReportColumnChart

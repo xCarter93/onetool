@@ -69,6 +69,20 @@ function tickTexts(container: HTMLElement): string[] {
 }
 
 describe("ReportBarChart", () => {
+	it("fills a height-constrained canvas: flex-fill root, growable chart box", () => {
+		const { container } = render(
+			<ReportBarChart
+				data={[{ name: "Pending", value: 5 }]}
+				total={5}
+				entityType="tasks"
+				groupBy="status"
+			/>
+		);
+		const chart = container.querySelector('[data-slot="chart"]');
+		expect(chart).toHaveClass("grow", "shrink-0", "min-h-[300px]");
+		expect(chart?.parentElement).toHaveClass("flex", "flex-1", "flex-col");
+	});
+
 	// Slice 3-D3: the per-item HTML legend was removed (the data table now
 	// renders beneath the chart and carries labels/values). These assertions
 	// are re-anchored to the header total and the rendered bars/axis ticks.

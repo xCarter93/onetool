@@ -56,6 +56,23 @@ afterAll(() => {
 import { ReportRadialChart } from "../report-radial-chart";
 
 describe("ReportRadialChart", () => {
+	it("fills a height-constrained canvas: flex-fill root, growable chart box", () => {
+		const { container } = render(
+			<ReportRadialChart
+				data={[
+					{ name: "A", value: 6 },
+					{ name: "B", value: 3 },
+				]}
+				total={9}
+				entityType="tasks"
+				groupBy="status"
+			/>
+		);
+		const chart = container.querySelector('[data-slot="chart"]');
+		expect(chart).toHaveClass("grow", "shrink-0", "h-[420px]");
+		expect(chart?.parentElement).toHaveClass("flex", "flex-1", "flex-col");
+	});
+
 	it("renders one radial bar per category", () => {
 		// Slice 3-D3: the per-item HTML legend (which used to render "A"/"B"/"C"
 		// labels) was removed — the data table beneath the chart now carries

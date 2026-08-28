@@ -61,6 +61,23 @@ afterAll(() => {
 import { ReportPieChart } from "../report-pie-chart";
 
 describe("ReportPieChart", () => {
+	it("fills a height-constrained canvas: flex-fill root, growable chart box", () => {
+		const { container } = render(
+			<ReportPieChart
+				data={[
+					{ name: "A", value: 6 },
+					{ name: "B", value: 3 },
+				]}
+				total={9}
+				entityType="tasks"
+				groupBy="status"
+			/>
+		);
+		const chart = container.querySelector('[data-slot="chart"]');
+		expect(chart).toHaveClass("grow", "shrink-0", "h-[420px]");
+		expect(chart?.parentElement).toHaveClass("flex", "flex-1", "flex-col");
+	});
+
 	it("regression: renders a sector per nonzero category on initial mount (recharts 3.8.0 animated-Pie mount bug)", () => {
 		// Must stay isAnimationActive={false} in report-pie-chart.tsx — recharts
 		// 3.8.0 paints zero sectors on first mount when Pie animation is on.

@@ -58,6 +58,23 @@ afterAll(() => {
 import { ReportLineChart } from "../report-line-chart";
 
 describe("ReportLineChart", () => {
+	it("fills a height-constrained canvas: flex-fill root, growable chart box", () => {
+		const { container } = render(
+			<ReportLineChart
+				data={[
+					{ name: "Jan", value: 5 },
+					{ name: "Feb", value: 9 },
+				]}
+				total={14}
+				entityType="invoices"
+				groupBy="month"
+			/>
+		);
+		const chart = container.querySelector('[data-slot="chart"]');
+		expect(chart).toHaveClass("grow", "shrink-0", "min-h-[300px]");
+		expect(chart?.parentElement).toHaveClass("flex", "flex-1", "flex-col");
+	});
+
 	it("renders the trend summary for real data", () => {
 		render(
 			<ReportLineChart
