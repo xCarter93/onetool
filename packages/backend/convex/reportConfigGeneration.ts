@@ -26,16 +26,25 @@ import {
 	GROUP_BY_OPTIONS,
 	getReportField,
 	isGenericGroupBy,
+	RATIO_KEYS,
+	RATIO_METRICS,
 	REPORT_ENTITY_TYPES,
 	REPORT_FIELDS,
 	type ReportEntityType,
+	type ReportFieldDef,
 } from "./lib/reportFields";
 import {
+	DATE_RANGE_PRESETS,
 	normalizeReportConfig,
 	type ReportConfigV2,
 	type ReportMetric,
 	type ReportVisualization,
 } from "./lib/reportConfig";
+import {
+	isRelatedPath,
+	REPORT_RELATIONS,
+	resolveReportPath,
+} from "./lib/reportRelations";
 import {
 	resolveReportQueryArgs,
 	type ExecuteReportArgs,
@@ -58,9 +67,29 @@ const FILTER_OPERATORS = [
 	"greater_than_or_equal",
 	"less_than",
 	"less_than_or_equal",
+	"before",
+	"after",
+	"on",
 	"is_empty",
 	"is_not_empty",
 ] as const;
+
+/** The only operators a timestamp field accepts, on either side. */
+const DATE_OPERATORS = ["before", "after", "on"] as const;
+
+type DateOperator = (typeof DATE_OPERATORS)[number];
+
+function isDateOperator(operator: string): operator is DateOperator {
+	return (DATE_OPERATORS as readonly string[]).includes(operator);
+}
+
+const AGGREGATION_OPS = ["sum", "avg", "min", "max"] as const;
+
+type AggregationOp = (typeof AGGREGATION_OPS)[number];
+
+function isAggregationOp(op: string): op is AggregationOp {
+	return (AGGREGATION_OPS as readonly string[]).includes(op);
+}
 
 // Structured-output providers require every property; "optional" is
 // expressed as nullable throughout.
@@ -74,11 +103,26 @@ export const generatedReportSchema = z.object({
 		),
 	measure: z
 		.object({
-			op: z.enum(["count", "sum", "avg", "min", "max"]),
+			op: z.enum(["count", "sum", "avg", "min", "max", "ratio", "related"]),
 			field: z
 				.string()
 				.nullable()
-				.describe("Required for sum/avg/min/max; null for count."),
+				.describe("Required for sum/avg/min/max; null otherwise."),
+			ratioKey: z
+				.enum(RATIO_KEYS)
+				.nullable()
+				.describe('Required for op "ratio"; null otherwise.'),
+			related: z
+				.object({
+					entity: z.enum(ENTITY_TYPES),
+					field: z
+						.string()
+						.nullable()
+						.describe("A number/currency field of that entity; null for count."),
+					op: z.enum(["count", "sum", "avg", "min", "max"]),
+				})
+				.nullable()
+				.describe('Required for op "related"; null otherwise.'),
 		})
 		.nullable()
 		.describe("What each group's value is. Null means count of records."),
@@ -110,6 +154,12 @@ export const generatedReportSchema = z.object({
 		.nullable()
 		.describe("YYYY-MM-DD lower bound for the entity's date field, or null."),
 	endDate: z.string().nullable().describe("YYYY-MM-DD upper bound, or null."),
+	datePreset: z
+		.enum(DATE_RANGE_PRESETS)
+		.nullable()
+		.describe(
+			"Named period for the date range. Preferred over startDate/endDate when the request names one; never both."
+		),
 	visualization: z.enum(["bar", "column", "line", "pie", "radar", "radial", "table"]),
 	name: z.string().describe("Short report title."),
 	description: z.string().nullable().describe("One sentence, or null."),
@@ -156,29 +206,49 @@ function describeEntity(entityType: ReportEntityType): string {
 	].join("\n");
 }
 
+/** Every FK edge in the registry, so the path grammar can't drift from it. */
+const RELATION_EDGES = ENTITY_TYPES.flatMap((entity) =>
+	Object.entries(REPORT_RELATIONS[entity]).map(
+		([field, edge]) => `${entity}.${field} → ${edge.refType}`
+	)
+);
+
 export const REPORT_CONFIG_SYSTEM_PROMPT = [
 	"You convert a user's plain-English request into a report configuration for OneTool, a business management app for field-service businesses.",
 	"",
 	"Entities:",
 	...ENTITY_TYPES.map(describeEntity),
 	"",
+	"Links between entities (child.field → parent):",
+	`  ${RELATION_EDGES.join(", ")}`,
+	"A groupBy or filter field may be a dotted path: link field names joined by dots, ending in a field of the entity you arrive at.",
+	'  e.g. on invoices "clientId.leadSource" is the client\'s lead source; "quoteId.projectId.startDate_month" buckets by the month the quote\'s project started; on invoiceLineItems "invoiceId.quoteId.projectId.clientId" reaches the client record.',
+	"A path may end on a link field itself (groups by that related record) — groupBy only; filter paths must end on a field. Never traverse through users or skus, and never invent a link.",
+	"",
 	"Rules:",
-	'- groupBy must be exactly one of the listed Group-by values for the chosen entity, or null. Never invent values.',
+	'- groupBy must be exactly one of the listed Group-by values for the chosen entity, a dotted path, or null. Never invent values.',
 	'- A list of individual records ("show me all overdue invoices") is visualization "table" with groupBy null and 3-5 relevant columns.',
 	'- Charts (bar/column/line/pie/radar/radial) render above the aggregated data table and require a groupBy. "table" means no chart — groupBy null there is fine for raw rows.',
 	'- Visualization choice: "column" for time-bucketed groupBy (month/week/day); "bar" for named categories (status, client, lead source, etc.); "line" for a trend over time; "pie" for share-of-total; "table" for exact values or raw rows. Only use "radar" or "radial" when the user explicitly asks for that chart type.',
 	"- measure: null (count of records) unless the user asks about amounts — then sum/avg/min/max of a number or currency field. A non-count measure only combines with the measure-compatible Group-by values listed per entity, or groupBy null.",
-	"- filters: only fields listed for the entity. Timestamp fields are never filterable — use startDate/endDate for time. When a field lists allowed values, equals/not_equals values must match one exactly.",
+	`- measure {op: "ratio", ratioKey}: a built-in percentage. Available: ${RATIO_KEYS.map(
+		(key) => `"${key}" on ${RATIO_METRICS[key].entityType}`
+	).join(", ")}. groupBy must be null.`,
+	'- measure {op: "related", related: {entity, field, op}}: rolls a linked entity up onto each record of the report entity — e.g. entityType "clients" with related {entity: "invoices", field: "total", op: "sum"} is total invoiced per client. The related entity must link to the report entity in the list above; field is null for op "count". groupBy must be null.',
+	'- A ratio or related measure renders as one figure, so the visualization you pick is ignored — use "table".',
+	"- filters: fields listed for the entity, or a dotted path ending in one. Timestamp fields filter with before/after/on and a YYYY-MM-DD value — no other operator applies to a date, and those three apply to nothing else. When a field lists allowed values, equals/not_equals values must match one exactly.",
 	'- "contains" is for free-text string fields only; greater/less operators are for number and currency fields.',
 	"- Money values are dollars (e.g. 500 means $500).",
 	"- columns: only for table visualization; use exact field names.",
-	"- Resolve relative dates (this month, last quarter) from the current date given in the request.",
+	`- Date range: prefer datePreset when the request names a period (${DATE_RANGE_PRESETS.join(", ")}) — "this month" is "this_month" — since a preset re-resolves in the org's timezone every time the report runs. Use startDate/endDate only for an explicit or unusual range, resolved from the current date given in the request. Never set both.`,
 	"- name: a short title like a human would write; description: one sentence or null.",
 	"",
 	"When the request comes with a configuration the user already has open, it is described in saved-report terms — reproduce every part of it you were not asked to change:",
-	'- "metric: count of records" is measure null; "metric: sum of total" is measure {op: "sum", field: "total"}.',
-	'- Its date range (a named period like this_month, or explicit days) is what startDate/endDate must reproduce.',
-	'- Saved reports may describe settings you cannot generate. "metric: ratio (conversionRate)" is groupBy "conversionRate" and "metric: ratio (completionRate)" is groupBy "completionRate"; invoices summing total over paid records grouped by paidAt_month or clientId are groupBy "month" and "client". Anything else you cannot express, leave out.',
+	'- "metric: count of records" is measure null; "metric: sum of total" is measure {op: "sum", field: "total"}; "metric: ratio (conversionRate)" is measure {op: "ratio", ratioKey: "conversionRate"}; "metric: sum of related invoices total" is measure {op: "related", related: {entity: "invoices", field: "total", op: "sum"}}.',
+	'- A date range named as a period ("date range: this_month") is that datePreset; explicit days are startDate/endDate.',
+	'- A dotted "group by" is that exact string.',
+	'- invoices summing total over paid records grouped by paidAt_month or clientId are groupBy "month" and "client".',
+	'- A setting the schema has no field for (segment by, a date range scoped "on <field>") you cannot reproduce — leave it out.',
 ].join("\n");
 
 // ---------------------------------------------------------------------------
@@ -227,35 +297,142 @@ function countFilterRules(filters: ReportFilters | null | undefined): number {
 	);
 }
 
+/** ConvexError carries its message in `data`; plain errors in `message`. */
+function pathErrorMessage(error: unknown): string {
+	if (error instanceof ConvexError && typeof error.data === "string") {
+		return error.data;
+	}
+	return error instanceof Error ? error.message : String(error);
+}
+
+/**
+ * The FK field linking a child entity to the report entity — derived here so
+ * the model never has to know column names. Ambiguity (two edges to the same
+ * parent) doesn't exist in today's registry, but fails closed if one is added.
+ */
+export function relatedFkField(
+	child: ReportEntityType,
+	parent: ReportEntityType
+): { fk: string } | { error: string } {
+	const candidates = Object.entries(REPORT_RELATIONS[child])
+		.filter(([, edge]) => edge.refType === parent)
+		.map(([field]) => field);
+	if (candidates.length === 1) return { fk: candidates[0] };
+	if (candidates.length > 1) {
+		return {
+			error: `related entity "${child}" links to ${parent} through more than one field (${candidates.join(", ")}) — that rollup is ambiguous`,
+		};
+	}
+	const linked = ENTITY_TYPES.filter((entity) =>
+		Object.values(REPORT_RELATIONS[entity]).some((edge) => edge.refType === parent)
+	);
+	return {
+		error: `related entity "${child}" has no link to ${parent}; entities that link to ${parent} are ${linked.join(", ") || "(none)"}`,
+	};
+}
+
+/** Field def a filter rule ends on — direct or through a dotted path. */
+function resolveFilterFieldDef(
+	entityType: ReportEntityType,
+	field: string
+): { def: ReportFieldDef } | { error: string } {
+	if (!isRelatedPath(field)) {
+		const def = getReportField(entityType, field);
+		return def
+			? { def }
+			: { error: `filter field "${field}" does not exist on ${entityType}` };
+	}
+	try {
+		const { terminal } = resolveReportPath(entityType, field);
+		if (terminal.kind === "fk") {
+			return {
+				error: `filter field "${field}" resolves to a related record, not a filterable value`,
+			};
+		}
+		if (terminal.granularity) {
+			return { error: `filter field "${field}" is a time bucket, not a filterable value` };
+		}
+		return { def: terminal.def };
+	} catch (error) {
+		return { error: pathErrorMessage(error) };
+	}
+}
+
 /** Registry/coherence errors in a generated config; empty when valid. */
 export function validateGeneratedReport(gen: GeneratedReport): string[] {
 	const errors: string[] = [];
 	const entityType = gen.entityType;
-	const registry = REPORT_FIELDS[entityType];
 
 	if (gen.groupBy !== null) {
-		const allowed = GROUP_BY_OPTIONS[entityType].map((o) => o.value);
-		if (!allowed.includes(gen.groupBy)) {
-			errors.push(
-				`groupBy "${gen.groupBy}" is not valid for ${entityType}; use one of ${allowed.join(", ")} or null`
-			);
+		if (isRelatedPath(gen.groupBy)) {
+			try {
+				resolveReportPath(entityType, gen.groupBy);
+			} catch (error) {
+				errors.push(pathErrorMessage(error));
+			}
+		} else {
+			const allowed = GROUP_BY_OPTIONS[entityType].map((o) => o.value);
+			if (!allowed.includes(gen.groupBy)) {
+				errors.push(
+					`groupBy "${gen.groupBy}" is not valid for ${entityType}; use one of ${allowed.join(", ")} or null`
+				);
+			}
 		}
 	}
 
-	if (gen.measure && gen.measure.op !== "count") {
-		if (!gen.measure.field) {
-			errors.push(`measure ${gen.measure.op} requires a field`);
+	const measure = gen.measure;
+	if (measure?.op === "ratio" || measure?.op === "related") {
+		// Both bucket without a dimension — reportData rejects any grouping.
+		if (gen.groupBy !== null) {
+			errors.push(
+				`a ${measure.op} measure cannot combine with a groupBy — use groupBy null`
+			);
+		}
+	}
+	if (measure?.op === "ratio") {
+		if (!measure.ratioKey) {
+			errors.push("measure ratio requires a ratioKey");
+		} else if (RATIO_METRICS[measure.ratioKey].entityType !== entityType) {
+			errors.push(
+				`ratio "${measure.ratioKey}" is only available for ${RATIO_METRICS[measure.ratioKey].entityType}, not ${entityType}`
+			);
+		}
+	} else if (measure?.op === "related") {
+		const related = measure.related;
+		if (!related) {
+			errors.push("measure related requires a related entity, field and op");
 		} else {
-			const def = getReportField(entityType, gen.measure.field);
+			const fk = relatedFkField(related.entity, entityType);
+			if ("error" in fk) errors.push(fk.error);
+			if (related.op === "count") {
+				if (related.field) {
+					errors.push(`a related count does not take a field`);
+				}
+			} else if (!related.field) {
+				errors.push(`related ${related.op} requires a field`);
+			} else {
+				const def = getReportField(related.entity, related.field);
+				if (!def || (def.type !== "number" && def.type !== "currency")) {
+					errors.push(
+						`related field "${related.field}" must be a number or currency field of ${related.entity}`
+					);
+				}
+			}
+		}
+	} else if (measure && measure.op !== "count") {
+		if (!measure.field) {
+			errors.push(`measure ${measure.op} requires a field`);
+		} else {
+			const def = getReportField(entityType, measure.field);
 			if (!def || (def.type !== "number" && def.type !== "currency")) {
 				errors.push(
-					`measure field "${gen.measure.field}" must be a number or currency field of ${entityType}`
+					`measure field "${measure.field}" must be a number or currency field of ${entityType}`
 				);
 			}
 		}
 		if (gen.groupBy !== null && !isGenericGroupBy(entityType, gen.groupBy)) {
 			errors.push(
-				`a ${gen.measure.op} measure cannot combine with groupBy "${gen.groupBy}" — use a measure-compatible grouping or none`
+				`a ${measure.op} measure cannot combine with groupBy "${gen.groupBy}" — use a measure-compatible grouping or none`
 			);
 		}
 	}
@@ -263,14 +440,29 @@ export function validateGeneratedReport(gen: GeneratedReport): string[] {
 	const filters = sanitizeGeneratedFilters(gen.filters);
 	for (const group of filters?.groups ?? []) {
 		for (const rule of group.rules) {
-			const def = getReportField(entityType, rule.field);
-			if (!def) {
-				errors.push(`filter field "${rule.field}" does not exist on ${entityType}`);
+			const resolved = resolveFilterFieldDef(entityType, rule.field);
+			if ("error" in resolved) {
+				errors.push(resolved.error);
 				continue;
 			}
+			const def = resolved.def;
 			if (def.type === "timestamp") {
+				if (!isDateOperator(rule.operator)) {
+					errors.push(
+						`filter field "${rule.field}" is a date — use before/after/on with a YYYY-MM-DD value`
+					);
+				} else if (typeof rule.value !== "string" || !ISO_DATE.test(rule.value)) {
+					errors.push(`"${rule.operator}" on "${rule.field}" needs a YYYY-MM-DD value`);
+				} else if (!isRealCalendarDate(rule.value)) {
+					errors.push(
+						`"${rule.operator}" on "${rule.field}" needs a real calendar date`
+					);
+				}
+				continue;
+			}
+			if (isDateOperator(rule.operator)) {
 				errors.push(
-					`filter field "${rule.field}" is a date — use startDate/endDate instead`
+					`"${rule.operator}" only applies to date fields, not "${rule.field}"`
 				);
 				continue;
 			}
@@ -330,6 +522,11 @@ export function validateGeneratedReport(gen: GeneratedReport): string[] {
 	) {
 		errors.push("startDate is after endDate");
 	}
+	if (gen.datePreset && (gen.startDate || gen.endDate)) {
+		errors.push(
+			"datePreset and startDate/endDate are mutually exclusive — use one or the other"
+		);
+	}
 
 	if (!gen.name.trim()) errors.push("name must not be empty");
 
@@ -357,6 +554,10 @@ function dayEndMs(date: string): number {
 	return Date.parse(`${date}T23:59:59.999Z`);
 }
 
+function dayNoonMs(date: string): number {
+	return Date.parse(`${date}T12:00:00.000Z`);
+}
+
 function toDateRange(
 	gen: GeneratedReport
 ): { start?: number; end?: number } | undefined {
@@ -368,37 +569,99 @@ function toDateRange(
 }
 
 /**
+ * Date-op rule values are authored as YYYY-MM-DD but evaluated as ms instants,
+ * encoded the way the builder's date picker does it (report-filter-adapter):
+ * "before" excludes the whole day, "after" starts at the next one, and "on"
+ * uses noon so the org-timezone day key lands on the picked day.
+ */
+const DATE_OPERATOR_INSTANT: Record<DateOperator, (date: string) => number> = {
+	before: dayStartMs,
+	after: dayEndMs,
+	on: dayNoonMs,
+};
+
+function toExecutableFilters(filters: ReportFilters | null): ReportFilters | null {
+	if (!filters) return null;
+	return {
+		logic: filters.logic,
+		groups: filters.groups.map((group) => ({
+			logic: group.logic,
+			rules: group.rules.map((rule) =>
+				isDateOperator(rule.operator) && typeof rule.value === "string"
+					? { ...rule, value: DATE_OPERATOR_INSTANT[rule.operator](rule.value) }
+					: rule
+			),
+		})),
+	};
+}
+
+/** Metrics the v1 shape cannot carry; undefined leaves the normalizer's own. */
+function toNativeMetric(gen: GeneratedReport): ReportMetric | undefined {
+	const measure = gen.measure;
+	if (measure?.op === "ratio") {
+		return measure.ratioKey
+			? { op: "ratio", ratioKey: measure.ratioKey }
+			: undefined;
+	}
+	if (measure?.op === "related" && measure.related) {
+		const related = measure.related;
+		const fk = relatedFkField(related.entity, gen.entityType);
+		if ("error" in fk) return undefined;
+		return {
+			op: "related",
+			related: {
+				entity: related.entity,
+				fk: fk.fk,
+				...(related.field ? { field: related.field } : {}),
+				op: related.op,
+			},
+		};
+	}
+	return undefined;
+}
+
+/**
  * Charts require a groupBy to aggregate on (Slice 3-D3: the chart renders
  * above the data table, fed by the same grouped query) — a chart with no
  * groupBy has nothing to chart above, so it's coerced to a plain table
  * instead of silently producing a chart-labeled report that only ever
  * renders a table (see toExecuteReportArgs' matching detailMode fallback).
  */
-function resolveVisualization(gen: GeneratedReport): GeneratedReport["visualization"] {
+function resolveVisualization(
+	gen: GeneratedReport
+): ReportVisualization["type"] {
+	// One value, no dimension — the KPI figure is the only rendering with data.
+	if (isMetricOnlyMeasure(gen.measure)) return "number";
 	return gen.groupBy === null && gen.visualization !== "table" ? "table" : gen.visualization;
+}
+
+function isMetricOnlyMeasure(measure: GeneratedReport["measure"]): boolean {
+	return measure?.op === "ratio" || measure?.op === "related";
 }
 
 /**
  * Generated config → the canonical v2 pair every downstream path uses.
  * Routed through the v1 normalizer because the generatable Group-by
  * vocabulary still includes the magic keys (month, client, conversionRate,
- * completionRate), which only become executable v2 configs by expansion.
+ * completionRate), which only become executable v2 configs by expansion; the
+ * two things v1 cannot carry (ratio/related metrics, preset ranges) are laid
+ * over the expansion, so a preset keeps the date FIELD the expansion chose.
  */
 function toGeneratedConfig(gen: GeneratedReport): {
 	config: ReportConfigV2;
 	visualization: ReportVisualization;
 } {
-	const filters = sanitizeGeneratedFilters(gen.filters);
+	const filters = toExecutableFilters(sanitizeGeneratedFilters(gen.filters));
 	const dateRange = toDateRange(gen);
 	const measure = gen.measure;
 	const visualization = resolveVisualization(gen);
-	return normalizeReportConfig(
+	const normalized = normalizeReportConfig(
 		{
 			entityType: gen.entityType,
 			...(gen.groupBy ? { groupBy: [gen.groupBy] } : {}),
 			...(dateRange ? { dateRange } : {}),
 			...(filters ? { filters } : {}),
-			...(measure && measure.op !== "count" && measure.field
+			...(measure && isAggregationOp(measure.op) && measure.field
 				? { aggregations: [{ field: measure.field, operation: measure.op }] }
 				: {}),
 			...(visualization === "table" && gen.columns?.length
@@ -407,6 +670,22 @@ function toGeneratedConfig(gen: GeneratedReport): {
 		},
 		{ type: visualization }
 	);
+	const metric = toNativeMetric(gen);
+	return {
+		config: {
+			...normalized.config,
+			...(metric ? { metric } : {}),
+			...(gen.datePreset
+				? {
+						date: {
+							...normalized.config.date,
+							range: { kind: "preset" as const, preset: gen.datePreset },
+						},
+					}
+				: {}),
+		},
+		visualization: normalized.visualization,
+	};
 }
 
 /**
@@ -446,24 +725,37 @@ export function summarizeGeneratedReport(gen: GeneratedReport): string {
 	// Reflect what's actually saved/applied, not the model's raw guess — a
 	// chart with null groupBy is coerced to table (see resolveVisualization).
 	const visualization = resolveVisualization(gen);
+	const measure = gen.measure;
 	const parts: string[] = [gen.entityType];
 	if (gen.groupBy) {
 		const label = GROUP_BY_OPTIONS[gen.entityType].find(
 			(o) => o.value === gen.groupBy
 		)?.label;
 		parts.push(`grouped by ${label ?? gen.groupBy}`);
-	} else if (visualization === "table") {
+	} else if (visualization === "table" && !isMetricOnlyMeasure(measure)) {
 		parts.push("as individual rows");
 	}
-	if (gen.measure && gen.measure.op !== "count" && gen.measure.field) {
-		parts.push(`measuring ${gen.measure.op} of ${gen.measure.field}`);
+	if (measure?.op === "ratio" && measure.ratioKey) {
+		parts.push(`measuring ratio (${measure.ratioKey})`);
+	} else if (measure?.op === "related" && measure.related) {
+		const related = measure.related;
+		parts.push(
+			`measuring ${related.op} of related ${related.entity}${related.field ? ` ${related.field}` : ""}`
+		);
+	} else if (measure && isAggregationOp(measure.op) && measure.field) {
+		parts.push(`measuring ${measure.op} of ${measure.field}`);
 	}
 	const ruleCount = countFilterRules(sanitizeGeneratedFilters(gen.filters));
 	if (ruleCount > 0) parts.push(`with ${ruleCount} filter${ruleCount === 1 ? "" : "s"}`);
-	if (gen.startDate || gen.endDate) {
+	if (gen.datePreset) {
+		parts.push(`over ${gen.datePreset}`);
+	} else if (gen.startDate || gen.endDate) {
 		parts.push(
 			`from ${gen.startDate ?? "the beginning"} to ${gen.endDate ?? "now"}`
 		);
+	}
+	if (visualization === "number") {
+		return `single metric of ${parts.join(", ")}`;
 	}
 	return `${visualization} of ${parts.join(", ")}`;
 }

@@ -25,11 +25,21 @@ function gen(overrides: Partial<GeneratedReport> = {}): GeneratedReport {
 		columns: null,
 		startDate: null,
 		endDate: null,
+		datePreset: null,
 		visualization: "bar",
 		name: "Invoices by status",
 		description: null,
 		...overrides,
 	};
+}
+
+/** Measure literal with the nullable extension fields filled in. */
+function measure(
+	partial: Partial<NonNullable<GeneratedReport["measure"]>> & {
+		op: NonNullable<GeneratedReport["measure"]>["op"];
+	}
+): GeneratedReport["measure"] {
+	return { field: null, ratioKey: null, related: null, ...partial };
 }
 
 describe("sanitizeGeneratedFilters", () => {
@@ -85,7 +95,7 @@ describe("validateGeneratedReport", () => {
 			validateGeneratedReport(
 				gen({
 					groupBy: "status",
-					measure: { op: "sum", field: "total" },
+					measure: measure({ op: "sum", field: "total" }),
 					filters: {
 						logic: "and",
 						groups: [
@@ -119,11 +129,11 @@ describe("validateGeneratedReport", () => {
 
 	it("rejects non-count measures without a numeric field", () => {
 		expect(
-			validateGeneratedReport(gen({ measure: { op: "sum", field: null } }))[0]
+			validateGeneratedReport(gen({ measure: measure({ op: "sum", field: null }) }))[0]
 		).toMatch(/requires a field/);
 		expect(
 			validateGeneratedReport(
-				gen({ measure: { op: "avg", field: "invoiceNumber" } })
+				gen({ measure: measure({ op: "avg", field: "invoiceNumber" }) })
 			)[0]
 		).toMatch(/must be a number or currency field/);
 	});
@@ -131,13 +141,13 @@ describe("validateGeneratedReport", () => {
 	it("rejects non-count measures on legacy-only groupBys", () => {
 		expect(
 			validateGeneratedReport(
-				gen({ groupBy: "month", measure: { op: "sum", field: "total" } })
+				gen({ groupBy: "month", measure: measure({ op: "sum", field: "total" }) })
 			)[0]
 		).toMatch(/cannot combine with groupBy "month"/);
 		// Same measure with a registry groupBy is fine.
 		expect(
 			validateGeneratedReport(
-				gen({ groupBy: "status", measure: { op: "sum", field: "total" } })
+				gen({ groupBy: "status", measure: measure({ op: "sum", field: "total" }) })
 			)
 		).toEqual([]);
 	});
@@ -224,7 +234,7 @@ describe("toSavedReport", () => {
 	});
 
 	it("maps a count measure to a count metric and a plain-string groupBy", () => {
-		const saved = toSavedReport(gen({ measure: { op: "count", field: null } }));
+		const saved = toSavedReport(gen({ measure: measure({ op: "count", field: null }) }));
 		expect(saved.config.groupBy).toBe("status");
 		expect(saved.config.metric).toEqual({ op: "count" });
 		expect(saved.config.columns).toBeUndefined();
@@ -233,7 +243,7 @@ describe("toSavedReport", () => {
 
 	it("maps a sum measure to the v2 metric shape", () => {
 		const saved = toSavedReport(
-			gen({ measure: { op: "sum", field: "total" } })
+			gen({ measure: measure({ op: "sum", field: "total" }) })
 		);
 		expect(saved.config.metric).toEqual({ op: "sum", field: "total" });
 	});
@@ -295,7 +305,7 @@ describe("toExecuteReportArgs", () => {
 
 	it("expands the 'month' magic key to the paid-revenue v2 config", () => {
 		const args = toExecuteReportArgs(
-			gen({ groupBy: "month", measure: { op: "count", field: null } })
+			gen({ groupBy: "month", measure: measure({ op: "count", field: null }) })
 		);
 		expect(args.config.groupBy).toBe("paidAt_month");
 		expect(args.config.metric).toEqual({ op: "sum", field: "total" });
@@ -303,14 +313,14 @@ describe("toExecuteReportArgs", () => {
 
 	it("carries non-count measures into the config metric", () => {
 		const args = toExecuteReportArgs(
-			gen({ groupBy: "status", measure: { op: "sum", field: "total" } })
+			gen({ groupBy: "status", measure: measure({ op: "sum", field: "total" }) })
 		);
 		expect(args.config.metric).toEqual({ op: "sum", field: "total" });
 	});
 
 	it("registry groupBy keys become grouped count configs", () => {
 		const args = toExecuteReportArgs(
-			gen({ groupBy: "issuedDate_month", measure: { op: "count", field: null } })
+			gen({ groupBy: "issuedDate_month", measure: measure({ op: "count", field: null }) })
 		);
 		expect(args.config.groupBy).toBe("issuedDate_month");
 		expect(args.config.metric).toEqual({ op: "count" });
@@ -319,7 +329,7 @@ describe("toExecuteReportArgs", () => {
 			gen({
 				entityType: "clients",
 				groupBy: "leadSource",
-				measure: { op: "count", field: null },
+				measure: measure({ op: "count", field: null }),
 			})
 		);
 		expect(clients.config.groupBy).toBe("leadSource");
@@ -434,7 +444,7 @@ describe("toBuilderConfig", () => {
 				groupBy: null,
 				visualization: "table",
 				columns: ["invoiceNumber", "total"],
-				measure: { op: "sum", field: "total" },
+				measure: measure({ op: "sum", field: "total" }),
 				filters: {
 					logic: "and",
 					groups: [
@@ -553,11 +563,67 @@ describe("generated configs execute end-to-end", () => {
 		const grouped = await asUser.query(
 			api.reportData.executeReport,
 			toExecuteReportArgs(
-				gen({ groupBy: "status", measure: { op: "sum", field: "total" } })
+				gen({ groupBy: "status", measure: measure({ op: "sum", field: "total" }) })
 			)
 		);
 		expect(grouped.data).toEqual([]);
 		expect(grouped.total).toBe(0);
+	});
+});
+
+describe("new-vocabulary configs execute end-to-end", () => {
+	let t: ReturnType<typeof setupConvexTest>;
+
+	beforeEach(() => {
+		t = setupConvexTest();
+	});
+
+	it("ratio, related, preset, dotted groupBy and date filters all run through executeReport", async () => {
+		const org = await t.run(async (ctx) => await createTestOrg(ctx));
+		const asUser = t.withIdentity(
+			createTestIdentity(org.clerkUserId, org.clerkOrgId)
+		);
+
+		for (const generated of [
+			gen({
+				entityType: "quotes",
+				groupBy: null,
+				measure: measure({ op: "ratio", ratioKey: "conversionRate" }),
+			}),
+			gen({
+				entityType: "clients",
+				groupBy: null,
+				measure: measure({
+					op: "related",
+					related: { entity: "invoices", field: "total", op: "sum" },
+				}),
+			}),
+			gen({ groupBy: "clientId.leadSource", datePreset: "this_year" }),
+			gen({
+				groupBy: "status",
+				filters: {
+					logic: "and",
+					groups: [
+						{
+							logic: "and",
+							rules: [
+								{ field: "issuedDate", operator: "after", value: "2026-01-01" },
+								{
+									field: "clientId.leadSource",
+									operator: "equals",
+									value: "referral",
+								},
+							],
+						},
+					],
+				},
+			}),
+		]) {
+			expect(validateGeneratedReport(generated)).toEqual([]);
+			await expect(
+				asUser.query(api.reportData.executeReport, toExecuteReportArgs(generated))
+			).resolves.toBeDefined();
+		}
 	});
 });
 
@@ -700,5 +766,431 @@ describe("NL generation plan gate (nlReportGeneration)", () => {
 		} finally {
 			spy.mockRestore();
 		}
+	});
+});
+
+// ---------------------------------------------------------------------------
+// F4 vocabulary expansion (d15): presets, ratio/related metrics, date filter
+// operators, dotted traversal paths.
+// ---------------------------------------------------------------------------
+
+const DAY = (iso: string, time: string) => Date.parse(`${iso}T${time}Z`);
+
+describe("datePreset", () => {
+	it("accepts a preset and rejects it alongside explicit days", () => {
+		expect(validateGeneratedReport(gen({ datePreset: "this_month" }))).toEqual([]);
+		expect(
+			validateGeneratedReport(
+				gen({ datePreset: "this_month", startDate: "2026-01-01" })
+			)[0]
+		).toMatch(/datePreset/);
+		expect(
+			validateGeneratedReport(
+				gen({ datePreset: "last_year", endDate: "2026-01-01" })
+			)[0]
+		).toMatch(/datePreset/);
+	});
+
+	it("maps a preset to the native v2 preset range", () => {
+		const saved = toSavedReport(gen({ datePreset: "last_30_days" }));
+		expect(saved.config.date).toEqual({
+			range: { kind: "preset", preset: "last_30_days" },
+		});
+	});
+
+	it("keeps the legacy revenue date-field scope when combined with a magic groupBy", () => {
+		const saved = toSavedReport(gen({ groupBy: "month", datePreset: "this_year" }));
+		expect(saved.config.date).toEqual({
+			field: "paidAt",
+			range: { kind: "preset", preset: "this_year" },
+		});
+		expect(saved.config.groupBy).toBe("paidAt_month");
+	});
+});
+
+describe("ratio measures", () => {
+	const ratio = gen({
+		entityType: "quotes",
+		groupBy: null,
+		measure: measure({ op: "ratio", ratioKey: "conversionRate" }),
+		visualization: "pie",
+		name: "Quote conversion",
+	});
+
+	it("accepts a ratio on its own entity with no grouping", () => {
+		expect(validateGeneratedReport(ratio)).toEqual([]);
+	});
+
+	it("rejects a ratio on the wrong entity, with a groupBy, or without a key", () => {
+		expect(
+			validateGeneratedReport(gen({ measure: measure({ op: "ratio", ratioKey: "conversionRate" }), groupBy: null }))[0]
+		).toMatch(/conversionRate/);
+		expect(
+			validateGeneratedReport({ ...ratio, groupBy: "status" })[0]
+		).toMatch(/cannot combine with a groupBy/);
+		expect(
+			validateGeneratedReport({ ...ratio, measure: measure({ op: "ratio" }) })[0]
+		).toMatch(/requires a ratioKey/);
+	});
+
+	it("maps to the native ratio metric as a single-metric visualization", () => {
+		const saved = toSavedReport(ratio);
+		expect(saved.config.metric).toEqual({
+			op: "ratio",
+			ratioKey: "conversionRate",
+		});
+		expect(saved.config.groupBy).toBeUndefined();
+		// One value, no dimension — a chart pick would render an empty state.
+		expect(saved.visualization).toEqual({ type: "number" });
+		// Ratio metrics aggregate without a groupBy — never detail rows.
+		expect(toExecuteReportArgs(ratio).detail).toBeUndefined();
+	});
+});
+
+describe("related measures", () => {
+	const related = gen({
+		entityType: "clients",
+		groupBy: null,
+		measure: measure({
+			op: "related",
+			related: { entity: "invoices", field: "total", op: "sum" },
+		}),
+		visualization: "bar",
+		name: "Invoiced per client",
+	});
+
+	it("accepts a rollup whose child links to the report entity", () => {
+		expect(validateGeneratedReport(related)).toEqual([]);
+	});
+
+	it("derives the fk from the registry", () => {
+		const saved = toSavedReport(related);
+		expect(saved.config.metric).toEqual({
+			op: "related",
+			related: { entity: "invoices", fk: "clientId", field: "total", op: "sum" },
+		});
+		expect(saved.config.groupBy).toBeUndefined();
+		expect(saved.visualization).toEqual({ type: "number" });
+	});
+
+	it("fails closed when no fk edge links the child to the report entity", () => {
+		const errors = validateGeneratedReport({
+			...related,
+			entityType: "invoices",
+			measure: measure({
+				op: "related",
+				related: { entity: "tasks", field: null, op: "count" },
+			}),
+		});
+		expect(errors[0]).toMatch(/tasks.*invoices/);
+	});
+
+	it("enforces the child field rules and forbids grouping", () => {
+		expect(
+			validateGeneratedReport({
+				...related,
+				measure: measure({
+					op: "related",
+					related: { entity: "invoices", field: null, op: "sum" },
+				}),
+			})[0]
+		).toMatch(/requires a field/);
+		expect(
+			validateGeneratedReport({
+				...related,
+				measure: measure({
+					op: "related",
+					related: { entity: "invoices", field: "total", op: "count" },
+				}),
+			})[0]
+		).toMatch(/count/);
+		expect(
+			validateGeneratedReport({
+				...related,
+				measure: measure({
+					op: "related",
+					related: { entity: "invoices", field: "status", op: "sum" },
+				}),
+			})[0]
+		).toMatch(/number or currency field of invoices/);
+		expect(
+			validateGeneratedReport({ ...related, groupBy: "status" })[0]
+		).toMatch(/cannot combine with a groupBy/);
+		expect(
+			validateGeneratedReport({
+				...related,
+				measure: measure({ op: "related" }),
+			})[0]
+		).toMatch(/requires a related/);
+	});
+
+	it("counts related children with no field", () => {
+		const saved = toSavedReport({
+			...related,
+			measure: measure({
+				op: "related",
+				related: { entity: "invoices", field: null, op: "count" },
+			}),
+		});
+		expect(saved.config.metric).toEqual({
+			op: "related",
+			related: { entity: "invoices", fk: "clientId", op: "count" },
+		});
+	});
+});
+
+describe("timestamp filter operators", () => {
+	function dateRule(field: string, operator: "before" | "after" | "on", value: unknown) {
+		return gen({
+			filters: {
+				logic: "and",
+				groups: [
+					{
+						logic: "and",
+						rules: [
+							{ field, operator, value: value as string },
+						],
+					},
+				],
+			},
+		});
+	}
+
+	it("accepts before/after/on with a YYYY-MM-DD value on a timestamp field", () => {
+		for (const op of ["before", "after", "on"] as const) {
+			expect(
+				validateGeneratedReport(dateRule("issuedDate", op, "2026-09-01"))
+			).toEqual([]);
+		}
+	});
+
+	it("rejects date operators on non-timestamp fields and bad values", () => {
+		expect(validateGeneratedReport(dateRule("status", "before", "2026-09-01"))[0]).toMatch(
+			/only applies to date fields/
+		);
+		expect(validateGeneratedReport(dateRule("issuedDate", "on", "Sept 1"))[0]).toMatch(
+			/YYYY-MM-DD/
+		);
+		expect(
+			validateGeneratedReport(dateRule("issuedDate", "on", "2026-02-31"))[0]
+		).toMatch(/real calendar date/);
+		expect(validateGeneratedReport(dateRule("issuedDate", "after", 1234))[0]).toMatch(
+			/YYYY-MM-DD/
+		);
+	});
+
+	it("still rejects the other operators on a timestamp field", () => {
+		expect(
+			validateGeneratedReport(
+				gen({
+					filters: {
+						logic: "and",
+						groups: [
+							{
+								logic: "and",
+								rules: [{ field: "issuedDate", operator: "equals", value: "2026-09-01" }],
+							},
+						],
+					},
+				})
+			)[0]
+		).toMatch(/is a date/);
+	});
+
+	it("converts day strings to the instants the web date picker writes", () => {
+		const saved = toSavedReport(
+			gen({
+				filters: {
+					logic: "and",
+					groups: [
+						{
+							logic: "and",
+							rules: [
+								{ field: "issuedDate", operator: "before", value: "2026-09-01" },
+								{ field: "dueDate", operator: "after", value: "2026-09-01" },
+								{ field: "paidAt", operator: "on", value: "2026-09-01" },
+							],
+						},
+					],
+				},
+			})
+		);
+		expect(saved.config.filters?.groups[0].rules).toEqual([
+			{ field: "issuedDate", operator: "before", value: DAY("2026-09-01", "00:00:00.000") },
+			{ field: "dueDate", operator: "after", value: DAY("2026-09-01", "23:59:59.999") },
+			{ field: "paidAt", operator: "on", value: DAY("2026-09-01", "12:00:00.000") },
+		]);
+	});
+});
+
+describe("dotted traversal paths", () => {
+	it("accepts a registry-resolvable dotted groupBy and passes it through verbatim", () => {
+		const dotted = gen({ groupBy: "clientId.leadSource" });
+		expect(validateGeneratedReport(dotted)).toEqual([]);
+		expect(toSavedReport(dotted).config.groupBy).toBe("clientId.leadSource");
+	});
+
+	it("accepts a multi-hop path and an fk terminal", () => {
+		expect(
+			validateGeneratedReport(
+				gen({ entityType: "invoiceLineItems", groupBy: "invoiceId.clientId.leadSource" })
+			)
+		).toEqual([]);
+		expect(
+			validateGeneratedReport(
+				gen({ entityType: "invoiceLineItems", groupBy: "invoiceId.clientId" })
+			)
+		).toEqual([]);
+		expect(
+			validateGeneratedReport(
+				gen({ groupBy: "clientId._creationTime_month" })
+			)
+		).toEqual([]);
+	});
+
+	it("rejects unresolvable paths", () => {
+		expect(validateGeneratedReport(gen({ groupBy: "clientId.nope" }))[0]).toMatch(
+			/Unknown report field "nope"/
+		);
+		expect(validateGeneratedReport(gen({ groupBy: "nope.status" }))[0]).toMatch(
+			/Unknown relation "nope"/
+		);
+		expect(
+			validateGeneratedReport(gen({ entityType: "tasks", groupBy: "assigneeUserId.status" }))[0]
+		).toMatch(/not drillable/);
+	});
+
+	it("accepts a dotted filter with a field terminal", () => {
+		const dotted = gen({
+			filters: {
+				logic: "and",
+				groups: [
+					{
+						logic: "and",
+						rules: [
+							{ field: "clientId.leadSource", operator: "equals", value: "referral" },
+							{ field: "clientId._creationTime", operator: "after", value: "2026-01-01" },
+						],
+					},
+				],
+			},
+		});
+		expect(validateGeneratedReport(dotted)).toEqual([]);
+		expect(toSavedReport(dotted).config.filters?.groups[0].rules).toEqual([
+			{ field: "clientId.leadSource", operator: "equals", value: "referral" },
+			{
+				field: "clientId._creationTime",
+				operator: "after",
+				value: DAY("2026-01-01", "23:59:59.999"),
+			},
+		]);
+	});
+
+	it("rejects fk terminals, time buckets, and option mismatches in dotted filters", () => {
+		function rule(field: string, value: string, overrides: Partial<GeneratedReport> = {}) {
+			return gen({
+				filters: {
+					logic: "and",
+					groups: [
+						{ logic: "and", rules: [{ field, operator: "equals", value }] },
+					],
+				},
+				...overrides,
+			});
+		}
+		// A bare fk isn't in the registry at all; a dotted one resolves to a record.
+		expect(validateGeneratedReport(rule("clientId", "x"))[0]).toMatch(
+			/does not exist on invoices/
+		);
+		expect(
+			validateGeneratedReport(
+				rule("invoiceId.clientId", "x", {
+					entityType: "invoiceLineItems",
+					groupBy: "unit",
+				})
+			)[0]
+		).toMatch(/related record, not a filterable value/);
+		expect(
+			validateGeneratedReport(rule("clientId._creationTime_month", "x"))[0]
+		).toMatch(/time bucket/);
+		expect(validateGeneratedReport(rule("clientId.leadSource", "nope"))[0]).toMatch(
+			/not a valid clientId.leadSource value/
+		);
+	});
+});
+
+describe("describeCurrentConfig round-trips", () => {
+	/** Render a v2 config the way the prompt sees it, then map back the way a
+	 * well-behaved model would answer — the config must survive the round trip. */
+	function render(config: Record<string, unknown>): string {
+		const current = parseCurrentConfig(
+			JSON.stringify({ config: { version: 2, ...config }, visualization: { type: "bar" } })
+		);
+		return describeCurrentConfig(current!);
+	}
+
+	it("re-expresses a ratio metric", () => {
+		const config = {
+			entityType: "quotes" as const,
+			metric: { op: "ratio" as const, ratioKey: "conversionRate" as const },
+		};
+		expect(render(config)).toContain("metric: ratio (conversionRate)");
+		const saved = toSavedReport(
+			gen({
+				entityType: "quotes",
+				groupBy: null,
+				measure: measure({ op: "ratio", ratioKey: "conversionRate" }),
+			})
+		);
+		expect(saved.config.metric).toEqual(config.metric);
+	});
+
+	it("re-expresses a related rollup, deriving the same fk", () => {
+		const config = {
+			entityType: "clients" as const,
+			metric: {
+				op: "related" as const,
+				related: {
+					entity: "invoices" as const,
+					fk: "clientId",
+					field: "total",
+					op: "sum" as const,
+				},
+			},
+		};
+		expect(render(config)).toContain("metric: sum of related invoices total");
+		const saved = toSavedReport(
+			gen({
+				entityType: "clients",
+				groupBy: null,
+				measure: measure({
+					op: "related",
+					related: { entity: "invoices", field: "total", op: "sum" },
+				}),
+			})
+		);
+		expect(saved.config.metric).toEqual(config.metric);
+	});
+
+	it("re-expresses a preset date range", () => {
+		const config = {
+			entityType: "invoices" as const,
+			metric: { op: "count" as const },
+			date: { range: { kind: "preset" as const, preset: "this_quarter" as const } },
+		};
+		expect(render(config)).toContain("date range: this_quarter");
+		const saved = toSavedReport(gen({ groupBy: null, datePreset: "this_quarter" }));
+		expect(saved.config.date).toEqual(config.date);
+	});
+
+	it("re-expresses a dotted groupBy", () => {
+		const config = {
+			entityType: "invoices" as const,
+			metric: { op: "count" as const },
+			groupBy: "clientId.leadSource",
+		};
+		expect(render(config)).toContain("group by: clientId.leadSource");
+		const saved = toSavedReport(gen({ groupBy: "clientId.leadSource" }));
+		expect(saved.config.groupBy).toBe(config.groupBy);
 	});
 });
