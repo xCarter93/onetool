@@ -48,6 +48,7 @@ import {
 	resolveReportPath,
 } from "./lib/reportRelations";
 import {
+	comparisonIsExecutable,
 	resolveReportQueryArgs,
 	type ExecuteReportArgs,
 } from "./lib/reportQueryArgs";
@@ -151,6 +152,12 @@ export const generatedReportSchema = z.object({
 		.describe(
 			"Named period for the date range. Preferred over startDate/endDate when the request names one; never both."
 		),
+	comparison: z
+		.enum(["previous_period", "previous_year"])
+		.nullable()
+		.describe(
+			"Compare the date range against the period before it or the same period a year earlier; null for no comparison."
+		),
 	visualization: z.enum([
 		"bar",
 		"column",
@@ -241,6 +248,7 @@ export const REPORT_CONFIG_SYSTEM_PROMPT = [
 	"- Money values are dollars (e.g. 500 means $500).",
 	"- columns: only for table visualization; use exact field names.",
 	`- Date range: prefer datePreset when the request names a period (${DATE_RANGE_PRESETS.join(", ")}) — "this month" is "this_month" — since a preset re-resolves in the org's timezone every time the report runs. Use startDate/endDate only for an explicit or unusual range, resolved from the current date given in the request. Never set both.`,
+	'- comparison: only when the request asks to compare two periods — "compare revenue this month to last month" is datePreset "this_month" with comparison "previous_period"; "vs last year" is "previous_year". Null otherwise, and null whenever the date range is all_time or open-ended.',
 	"- name: a short title like a human would write; description: one sentence or null.",
 	"",
 	"When the request comes with a configuration the user already has open, it is described in saved-report terms — reproduce every part of it you were not asked to change:",
@@ -621,19 +629,25 @@ function toGeneratedConfig(
 		{ type: visualization }
 	);
 	const metric = toNativeMetric(gen);
+	const config: ReportConfigV2 = {
+		...normalized.config,
+		...(metric ? { metric } : {}),
+		...(gen.datePreset
+			? {
+					date: {
+						...normalized.config.date,
+						range: { kind: "preset" as const, preset: gen.datePreset },
+					},
+				}
+			: {}),
+	};
+	// A comparison the gating would strip is never saved in the first place.
+	const compared: ReportConfigV2 =
+		gen.comparison && config.date
+			? { ...config, date: { ...config.date, comparison: { kind: gen.comparison } } }
+			: config;
 	return {
-		config: {
-			...normalized.config,
-			...(metric ? { metric } : {}),
-			...(gen.datePreset
-				? {
-						date: {
-							...normalized.config.date,
-							range: { kind: "preset" as const, preset: gen.datePreset },
-						},
-					}
-				: {}),
-		},
+		config: comparisonIsExecutable(compared, visualization) ? compared : config,
 		visualization: normalized.visualization,
 	};
 }
@@ -842,6 +856,11 @@ export function describeCurrentConfig(current: CurrentReportConfig): string {
 		`date range: ${describeDateRange(config.date)}`,
 		`filters: ${rules} rule${rules === 1 ? "" : "s"}`,
 	];
+	// An absolute comparison is builder-only — the schema can't carry it back.
+	const comparison = config.date?.comparison;
+	if (comparison && comparison.kind !== "absolute") {
+		lines.push(`comparison: ${comparison.kind}`);
+	}
 	if (typeof config.segmentBy === "string") {
 		lines.push(`segment by: ${config.segmentBy}`);
 	}

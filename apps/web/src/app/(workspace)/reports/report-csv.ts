@@ -2,7 +2,7 @@ import type { FunctionReturnType } from "convex/server";
 import type { api } from "@onetool/backend/convex/_generated/api";
 import type { CsvCell } from "@/lib/csv-export";
 import { formatCurrency } from "@/lib/money";
-import { formatDate, formatReportValue } from "./report-config";
+import { formatDate, formatReportValue, percentChange } from "./report-config";
 
 type ReportResult = FunctionReturnType<typeof api.reportData.executeReport>;
 
@@ -48,17 +48,46 @@ export function reportResultToCsv(
 	const hasTotalValue = result.data.some(
 		(item) => typeof item.metadata?.totalValue === "number"
 	);
+	// A single-metric report's lone "Total" point carries its comparison in
+	// metadata rather than on the point, so the columns would otherwise skip it.
+	// Ungrouped only: a one-bucket grouped result's compareTotal spans every
+	// bucket, so attributing it to that row would be a lie.
+	const points =
+		result.metadata?.groupBy === undefined &&
+		result.data.length === 1 &&
+		result.data[0].compareValue === undefined &&
+		typeof result.metadata?.compareTotal === "number"
+			? [{ ...result.data[0], compareValue: result.metadata.compareTotal }]
+			: result.data;
+	const hasCompare = points.some(
+		(item) => typeof item.compareValue === "number"
+	);
 
 	const headers = [
 		opts.groupByLabel ?? "Category",
 		itemValueIsCurrency ? "Value" : "Count",
+		...(hasCompare ? ["Previous", "Change %"] : []),
 		...(hasTotalValue ? ["Value"] : []),
 	];
-	const rows = result.data.map((item) => {
+	const rows = points.map((item) => {
 		const totalValue = item.metadata?.totalValue;
+		const compareValue = item.compareValue;
 		return [
 			item.label,
 			itemValueIsCurrency ? formatReportValue(item.value, true) : item.value,
+			...(hasCompare
+				? [
+						typeof compareValue === "number"
+							? itemValueIsCurrency
+								? formatReportValue(compareValue, true)
+								: compareValue
+							: "",
+						// "—" matches the on-screen table, which this export mirrors.
+						typeof compareValue === "number"
+							? (percentChange(item.value, compareValue) ?? "—")
+							: "",
+					]
+				: []),
 			...(hasTotalValue
 				? [typeof totalValue === "number" ? formatReportValue(totalValue, true) : ""]
 				: []),

@@ -55,14 +55,48 @@ export function effectiveDetailColumns(
 	return columns && columns.length > 0 ? columns : DEFAULT_DETAIL_COLUMNS[entityType];
 }
 
+/** A comparison range needs two bounded windows to compare. */
+function hasBoundedRange(config: ReportConfigV2): boolean {
+	const range = config.date?.range;
+	if (!range) return false;
+	if (range.kind === "preset") return range.preset !== "all_time";
+	return range.start !== undefined && range.end !== undefined;
+}
+
+/**
+ * Whether a saved `date.comparison` actually runs (R11). Detail rows have no
+ * buckets to pair; share-of-total charts have no second series to draw; an
+ * unbounded range has no previous window; segments already own the second
+ * dimension. Anything else reaches executeReport with the comparison intact.
+ */
+export function comparisonIsExecutable(
+	config: ReportConfigV2,
+	vizType: ReportVisualizationType
+): boolean {
+	if (!config.date?.comparison) return false;
+	if (isDetailModeActive(config, vizType)) return false;
+	if (vizType === "pie" || vizType === "radar" || vizType === "radial") return false;
+	if (!hasBoundedRange(config)) return false;
+	return !config.segmentBy;
+}
+
+function withoutComparison(config: ReportConfigV2): ReportConfigV2 {
+	if (!config.date?.comparison) return config;
+	const { comparison: _dropped, ...date } = config.date;
+	return { ...config, date };
+}
+
 export function resolveReportQueryArgs(
 	savedConfig: ReportConfig,
 	visualization: ReportVisualization
 ): ExecuteReportArgs {
-	const { config, visualization: viz } = normalizeReportConfig(
+	const { config: normalized, visualization: viz } = normalizeReportConfig(
 		savedConfig,
 		visualization
 	);
+	const config = comparisonIsExecutable(normalized, viz.type)
+		? normalized
+		: withoutComparison(normalized);
 
 	const base = { entityType: config.entityType, config };
 

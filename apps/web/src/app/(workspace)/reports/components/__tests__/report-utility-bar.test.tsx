@@ -1,6 +1,13 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+	act,
+	cleanup,
+	fireEvent,
+	render,
+	screen,
+	within,
+} from "@testing-library/react";
 import "@testing-library/jest-dom/vitest";
 
 vi.mock("convex/react", () => ({
@@ -132,5 +139,60 @@ describe("ReportUtilityBar — View contributing data", () => {
 			vi.advanceTimersByTime(300);
 		});
 		expect(contributing()).toBeEnabled();
+	});
+});
+
+describe("ReportUtilityBar — comparison stats (R11)", () => {
+	const compared: ReportConfigV2 = {
+		...byStatus,
+		date: {
+			range: { kind: "preset", preset: "this_year" },
+			comparison: { kind: "previous_period" },
+		},
+	};
+
+	it("Calculated values gains Previous total and Change rows", () => {
+		mockedUseQuery.mockReturnValue({
+			data: [
+				{ label: "Active", value: 5, compareValue: 4, metadata: {} },
+				{ label: "Lead", value: 3, compareValue: 6, metadata: {} },
+			],
+			total: 8,
+			metadata: { compareTotal: 10 },
+		});
+
+		render(bar(compared, "Status"));
+		fireEvent.click(screen.getByRole("button", { name: /Calculated values/ }));
+
+		// The summary table below carries a "Change" column too, so scope to the stats list.
+		const stats = within(screen.getByText("Previous total").closest("dl")!);
+		expect(stats.getByText("Change")).toBeInTheDocument();
+		expect(screen.getByText("-20.0%")).toBeInTheDocument();
+	});
+
+	it("the summary table gains a Previous column", () => {
+		mockedUseQuery.mockReturnValue({
+			data: [
+				{ label: "Active", value: 5, compareValue: 4, metadata: {} },
+				{ label: "Lead", value: 3, compareValue: 6, metadata: {} },
+			],
+			total: 8,
+			metadata: { compareTotal: 10 },
+		});
+
+		render(bar(compared, "Status"));
+		fireEvent.click(screen.getByRole("button", { name: /Calculated values/ }));
+
+		expect(
+			screen.getByRole("columnheader", { name: "Previous" })
+		).toBeInTheDocument();
+	});
+
+	it("no comparison in the config: the stats block is unchanged", () => {
+		render(bar(byStatus, "Status"));
+		fireEvent.click(screen.getByRole("button", { name: /Calculated values/ }));
+
+		expect(screen.queryByText("Previous total")).toBeNull();
+		expect(screen.queryByRole("columnheader", { name: "Previous" })).toBeNull();
 	});
 });

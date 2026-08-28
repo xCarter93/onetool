@@ -22,8 +22,9 @@ import {
 import {
 	reportConfigV2Validator,
 	type ReportConfigV2,
+	type ReportDateComparison,
 } from "./lib/reportConfig";
-import { resolveDateRangePreset } from "./lib/reportDates";
+import { resolveComparisonRange, resolveDateRangePreset } from "./lib/reportDates";
 import {
 	reportFiltersValidator,
 	evaluateReportFilters,
@@ -69,6 +70,8 @@ export interface AggregatedDataPoint {
 	 * this point's records. Absent on the ungrouped "Total" point.
 	 */
 	bucketKey?: string;
+	/** Same bucket's value over the comparison range; absent when no comparison or no match. */
+	compareValue?: number;
 	metadata?: Record<string, unknown>;
 	/** Per-segment values, present only when the request set segmentBy. */
 	segments?: Record<string, number>;
@@ -98,6 +101,10 @@ export interface ReportDataResult {
 		segmentBy?: string;
 		/** Ordered segment keys (top-N by value plus "other"), present only when segmented. */
 		segments?: { key: string; label: string }[];
+		/** Comparison-range total (ratio reports: the previous ratio percentage). */
+		compareTotal?: number;
+		/** The comparison scan hit its ceiling; kept separate from `truncated` (current scan). */
+		compareTruncated?: boolean;
 	};
 	detail?: {
 		columns: { field: string; label: string; type: ReportFieldType }[];
@@ -770,10 +777,156 @@ function applySegments(
 	];
 }
 
+// ============================================================================
+// Comparison ranges (R11): a second scan over the earlier window, merged into
+// the current series by calendar position — never by array index, since both
+// series only have buckets where records exist.
+// ============================================================================
+
+interface ComparisonRun {
+	bounds: DateBoundsResult;
+	/** Comparison bucket key → the current-series key it pairs with; null drops it. */
+	shiftKey: (key: string) => string | null;
+}
+
+function pad2(value: number): string {
+	return String(value).padStart(2, "0");
+}
+
+function shiftMonthKey(key: string, months: number): string {
+	const [year, month] = key.split("-").map(Number);
+	const shifted = new Date(Date.UTC(year, month - 1 + months, 1));
+	return `${shifted.getUTCFullYear()}-${pad2(shifted.getUTCMonth() + 1)}`;
+}
+
+function shiftDayKey(key: string, days: number): string {
+	const [year, month, day] = key.split("-").map(Number);
+	const shifted = new Date(Date.UTC(year, month - 1, day + days));
+	return shifted.toISOString().split("T")[0];
+}
+
+function daysBetweenKeys(from: string, to: string): number {
+	return Math.round(
+		(Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000
+	);
+}
+
+function monthsBetweenKeys(from: string, to: string): number {
+	const [fromYear, fromMonth] = from.split("-").map(Number);
+	const [toYear, toMonth] = to.split("-").map(Number);
+	return (toYear - fromYear) * 12 + (toMonth - fromMonth);
+}
+
+function timeGranularityOf(
+	entityType: ReportEntityType,
+	groupBy: string | undefined
+): Granularity | undefined {
+	if (!groupBy) return undefined;
+	if (isRelatedPath(groupBy)) {
+		const { terminal } = resolveReportPath(entityType, groupBy);
+		return terminal.kind === "field" ? terminal.granularity : undefined;
+	}
+	const match = groupBy.match(timeGroupingRegex);
+	return match ? (match[2] as Granularity) : undefined;
+}
+
+/**
+ * Time buckets pair by calendar slot, so a comparison key is moved forward by
+ * the offset between the two windows and then matched byte-for-byte against
+ * the current keys. Non-time buckets (enum, FK, dotted, `__broken:`) pair on
+ * their raw key.
+ */
+function comparisonKeyShift(
+	granularity: Granularity | undefined,
+	kind: ReportDateComparison["kind"],
+	current: { start: number },
+	compare: { start: number },
+	timezone: string | undefined
+): (key: string) => string | null {
+	if (!granularity) return (key) => key;
+
+	if (kind === "previous_year") {
+		if (granularity === "month") return (key) => shiftMonthKey(key, 12);
+		// 52 aligned weeks keeps the shifted key on a Sunday, as week keys are.
+		if (granularity === "week") return (key) => shiftDayKey(key, 364);
+		return (key) => {
+			const [year, month, day] = key.split("-").map(Number);
+			// Feb 29 has no counterpart in the following (never leap) year.
+			if (month === 2 && day === 29) return null;
+			return `${year + 1}-${pad2(month)}-${pad2(day)}`;
+		};
+	}
+
+	const currentStart = DateUtils.toLocalDateString(current.start, timezone);
+	const compareStart = DateUtils.toLocalDateString(compare.start, timezone);
+	if (granularity === "month") {
+		const months = monthsBetweenKeys(compareStart, currentStart);
+		return (key) => shiftMonthKey(key, months);
+	}
+	const days = daysBetweenKeys(compareStart, currentStart);
+	if (granularity === "week") {
+		const weekAlignedDays = Math.round(days / 7) * 7;
+		return (key) => shiftDayKey(key, weekAlignedDays);
+	}
+	return (key) => shiftDayKey(key, days);
+}
+
+/**
+ * Comparison bounds + bucket pairing for a config, or undefined when it has no
+ * comparison. The throws are backstops for the gating lib/reportQueryArgs
+ * already applies (`comparisonIsExecutable`) — reachable only if a caller
+ * skipped it. Detail requests never get here: drill-down on a compared report
+ * ignores the comparison rather than failing.
+ */
+function resolveComparisonRun(
+	config: ReportConfigV2,
+	current: DateBoundsResult,
+	timezone: string | undefined
+): ComparisonRun | undefined {
+	const comparison = config.date?.comparison;
+	if (!comparison) return undefined;
+	if (config.segmentBy) {
+		throw new ConvexError(
+			`Report comparison ranges are not supported with segmentBy "${config.segmentBy}"`
+		);
+	}
+	const range = config.date?.range;
+	const unbounded =
+		!range ||
+		(range.kind === "preset" && range.preset === "all_time") ||
+		(range.kind === "absolute" && (range.start === undefined || range.end === undefined));
+	if (unbounded || current.start === undefined || current.end === undefined) {
+		throw new ConvexError(
+			`Report comparison ranges require a date range with both bounds`
+		);
+	}
+
+	const compare = resolveComparisonRange(
+		range,
+		comparison,
+		{ start: current.start, end: current.end },
+		timezone
+	);
+	// Undefined only for an unbounded preset, rejected above.
+	if (!compare) return undefined;
+
+	return {
+		bounds: { start: compare.start, end: compare.end, hasDateFilter: true },
+		shiftKey: comparisonKeyShift(
+			timeGranularityOf(config.entityType, config.groupBy),
+			comparison.kind,
+			{ start: current.start },
+			compare,
+			timezone
+		),
+	};
+}
+
 async function runAggregationPlan(
 	ctx: QueryCtx,
 	orgId: Id<"organizations">,
-	plan: AggregationPlan
+	plan: AggregationPlan,
+	comparison?: ComparisonRun
 ): Promise<ReportDataResult> {
 	const { entityType, aggregation } = plan;
 	const groupByPath =
@@ -958,6 +1111,31 @@ async function runAggregationPlan(
 		? rows.reduce((sum, r) => sum + num(r[summaryField]), 0)
 		: computeAggregateValue(rows, aggregation);
 
+	// The comparison series is the same plan over the earlier window: no
+	// segments, no slice, no sort — only its bucket values and scan-wide total
+	// are read, and the survivors of THIS series' slice keep their labels/order.
+	let compared: ReportDataResult | undefined;
+	if (comparison) {
+		compared = await runAggregationPlan(ctx, orgId, {
+			...plan,
+			bounds: comparison.bounds,
+			segmentBy: undefined,
+			seriesLimit: undefined,
+			sort: undefined,
+		});
+		const paired = new Map<string, number>();
+		for (const point of compared.data) {
+			if (point.bucketKey === undefined) continue;
+			const key = comparison.shiftKey(point.bucketKey);
+			if (key !== null) paired.set(key, point.value);
+		}
+		for (const point of data) {
+			const value =
+				point.bucketKey === undefined ? undefined : paired.get(point.bucketKey);
+			if (value !== undefined) point.compareValue = value;
+		}
+	}
+
 	return {
 		data,
 		total,
@@ -973,6 +1151,12 @@ async function runAggregationPlan(
 			...(isCurrencyAgg ? { itemValueIsCurrency: true } : {}),
 			...(plan.segmentBy && segmentMeta
 				? { segmentBy: plan.segmentBy, segments: segmentMeta }
+				: {}),
+			...(compared
+				? {
+						compareTotal: compared.total,
+						compareTruncated: compared.metadata?.truncated ?? false,
+					}
 				: {}),
 		},
 	};
@@ -1208,7 +1392,7 @@ async function requireReportPathAccess(
 /**
  * Resolve a v2 config's date field + bounds. Preset ranges resolve server-side
  * in the org timezone at execution (saved "this month" reports roll forward);
- * `date.comparison` is stored but not executed until R11.
+ * `date.comparison` resolves off these bounds in resolveComparisonRun.
  */
 function resolveConfigDatesFor(
 	entityType: ReportEntityType,
@@ -1276,7 +1460,8 @@ async function runRatioMetric(
 	orgId: Id<"organizations">,
 	config: ReportConfigV2,
 	ratioKey: RatioKey,
-	timezone: string | undefined
+	timezone: string | undefined,
+	compareBounds?: DateBoundsResult
 ): Promise<ReportDataResult> {
 	const def = RATIO_METRICS[ratioKey];
 	const entityType = config.entityType;
@@ -1290,41 +1475,57 @@ async function runRatioMetric(
 	}
 
 	const { dateField, bounds } = resolveConfigDates(config, timezone);
-	const { rows, truncated, truncatedEntities } = await scanFiltered(
-		ctx,
-		entityType,
-		orgId,
-		dateField,
-		bounds,
-		config.filters as ReportFilters | undefined,
-		timezone
-	);
+	const over = async (window: DateBoundsResult) => {
+		const { rows, truncated, truncatedEntities } = await scanFiltered(
+			ctx,
+			entityType,
+			orgId,
+			dateField,
+			window,
+			config.filters as ReportFilters | undefined,
+			timezone
+		);
+		const inSet = (values: string[]) => (r: Row) => values.includes(str(r[def.field]));
+		const denominator = def.denominatorValues
+			? rows.filter(inSet(def.denominatorValues))
+			: rows;
+		const numerator = rows.filter(inSet(def.numeratorValues));
+		const secondRow = def.rows[1];
+		return {
+			percentage:
+				denominator.length > 0
+					? Math.round((numerator.length / denominator.length) * 100)
+					: 0,
+			numerator: numerator.length,
+			secondValue:
+				"values" in secondRow
+					? rows.filter(inSet(secondRow.values)).length
+					: denominator.length - numerator.length,
+			truncated,
+			truncatedEntities,
+		};
+	};
 
-	const inSet = (values: string[]) => (r: Row) => values.includes(str(r[def.field]));
-	const denominator = def.denominatorValues ? rows.filter(inSet(def.denominatorValues)) : rows;
-	const numerator = rows.filter(inSet(def.numeratorValues));
-	const percentage =
-		denominator.length > 0
-			? Math.round((numerator.length / denominator.length) * 100)
-			: 0;
-	const secondRow = def.rows[1];
-	const secondValue =
-		"values" in secondRow
-			? rows.filter(inSet(secondRow.values)).length
-			: denominator.length - numerator.length;
+	const current = await over(bounds);
+	const compared = compareBounds ? await over(compareBounds) : undefined;
 
 	return {
 		data: [
-			{ label: def.rows[0].label, value: numerator.length },
-			{ label: secondRow.label, value: secondValue },
+			{ label: def.rows[0].label, value: current.numerator },
+			{ label: def.rows[1].label, value: current.secondValue },
 		],
-		total: percentage,
+		total: current.percentage,
 		metadata: {
 			entityType,
 			dateRange: metadataDateRange(bounds),
 			groupBy: ratioKey,
-			truncated,
-			...(truncatedEntities.length > 0 ? { truncatedEntities } : {}),
+			truncated: current.truncated,
+			...(current.truncatedEntities.length > 0
+				? { truncatedEntities: current.truncatedEntities }
+				: {}),
+			...(compared
+				? { compareTotal: compared.percentage, compareTruncated: compared.truncated }
+				: {}),
 		},
 	};
 }
@@ -1389,11 +1590,24 @@ export const executeReport = optionalUserQuery({
 				if (!config.metric.ratioKey) {
 					throw new ConvexError(`Ratio metric requires a ratioKey`);
 				}
-				return await runRatioMetric(ctx, orgId, config, config.metric.ratioKey, timezone);
+				const { bounds } = resolveConfigDates(config, timezone);
+				return await runRatioMetric(
+					ctx,
+					orgId,
+					config,
+					config.metric.ratioKey,
+					timezone,
+					resolveComparisonRun(config, bounds, timezone)?.bounds
+				);
 			}
 			const plan = planFromConfig(config, args.seriesLimit, timezone, args.sort);
 			validateAggregation(entityType, plan.aggregation);
-			return await runAggregationPlan(ctx, orgId, plan);
+			return await runAggregationPlan(
+				ctx,
+				orgId,
+				plan,
+				resolveComparisonRun(config, plan.bounds, timezone)
+			);
 		}
 
 		const filters = args.filters as ReportFilters | undefined;

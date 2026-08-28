@@ -12,12 +12,14 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { formatCurrency } from "@/lib/money";
-import { formatDate, formatReportValue } from "../report-config";
+import { formatDate, formatReportValue, percentChange } from "../report-config";
 
 interface DataPoint {
 	name: string;
 	value: number;
 	totalValue?: number;
+	/** Same bucket over the comparison range (R11); absent when not comparing. */
+	compareValue?: number;
 	/** Drill-down key for this bucket; absent on ungrouped results. */
 	bucketKey?: string;
 	[key: string]: unknown;
@@ -42,6 +44,8 @@ interface ReportTableProps {
 	itemValueIsCurrency?: boolean;
 	/** Names the aggregated value column; callers that always count can omit it. */
 	valueHeader?: string;
+	/** Names the comparison range ("Previous period"); adds Previous + Change columns. */
+	compareLabel?: string;
 	/** When set, renders the flat detail-mode table instead of the aggregated one. */
 	detail?: DetailResult;
 	/** Drill-down (R10): makes each group label a button opening that bucket's records. */
@@ -100,6 +104,7 @@ export function ReportTable({
 	totalIsCurrency = false,
 	itemValueIsCurrency = false,
 	valueHeader = "Count",
+	compareLabel,
 	detail,
 	onBucketClick,
 }: ReportTableProps) {
@@ -120,6 +125,10 @@ export function ReportTable({
 
 	// Sort by value descending
 	const sortedData = [...data].sort((a, b) => b.value - a.value);
+
+	const showCompare =
+		compareLabel !== undefined &&
+		data.some((d) => typeof d.compareValue === "number");
 
 	return (
 		<div className="space-y-4">
@@ -145,6 +154,12 @@ export function ReportTable({
 									: "Category"}
 							</TableHead>
 							<TableHead className="text-right">{valueHeader}</TableHead>
+							{showCompare && (
+								<>
+									<TableHead className="text-right">Previous</TableHead>
+									<TableHead className="text-right">Change</TableHead>
+								</>
+							)}
 							<TableHead className="text-right">%</TableHead>
 							{sortedData.some((d) => d.totalValue !== undefined) && (
 								<TableHead className="text-right">Value</TableHead>
@@ -157,6 +172,11 @@ export function ReportTable({
 								itemValueSum > 0
 									? ((item.value / itemValueSum) * 100).toFixed(1)
 									: "0";
+
+							const change =
+								typeof item.compareValue === "number"
+									? percentChange(item.value, item.compareValue)
+									: undefined;
 
 							return (
 								<TableRow key={item.name}>
@@ -190,6 +210,22 @@ export function ReportTable({
 									<TableCell className="text-right font-mono">
 										{formatReportValue(item.value, itemValueIsCurrency)}
 									</TableCell>
+									{showCompare && (
+										<>
+											<TableCell className="text-right font-mono">
+												{typeof item.compareValue === "number"
+													? formatReportValue(
+															item.compareValue,
+															itemValueIsCurrency
+														)
+													: "—"}
+											</TableCell>
+											{/* Direction reads from the sign, never from color. */}
+											<TableCell className="text-right font-mono text-primary">
+												{change ?? "—"}
+											</TableCell>
+										</>
+									)}
 									<TableCell className="text-right">
 										<div className="flex items-center justify-end gap-2">
 											<div className="w-16 h-2 rounded-full bg-muted overflow-hidden">

@@ -60,6 +60,36 @@ export type ReportMeasure =
 	| { op: "count" }
 	| { op: Exclude<MeasureOp, "count">; field: string };
 
+export type ReportComparison = NonNullable<
+	NonNullable<ReportConfigV2["date"]>["comparison"]
+>;
+
+/** Rail vocabulary for `date.comparison`; "none" is the absent comparison. */
+export type CompareMode =
+	| "none"
+	| "previous_period"
+	| "previous_year"
+	| "custom";
+
+export const compareModeOptions: { value: CompareMode; label: string }[] = [
+	{ value: "none", label: "None" },
+	{ value: "previous_period", label: "Previous period" },
+	{ value: "previous_year", label: "Previous year" },
+	{ value: "custom", label: "Custom range" },
+];
+
+/** One label per comparison kind — the number sublabel, chart tooltip, and table header all read it. */
+export function comparisonKindLabel(kind: ReportComparison["kind"]): string {
+	switch (kind) {
+		case "previous_period":
+			return "Previous period";
+		case "previous_year":
+			return "Previous year";
+		case "absolute":
+			return "Custom range";
+	}
+}
+
 /**
  * The builder's working state, mirroring ReportConfigV2 plus the UI-level date
  * vocabulary ("custom" + a picked DateRange instead of an absolute range).
@@ -74,6 +104,9 @@ export type BuilderConfigState = {
 	/** "all_time" | DateRangePreset | "custom". */
 	dateRangePreset: string;
 	customDateRange?: DateRange;
+	/** Comparison range vocabulary; emitted as date.comparison only where the pipeline supports it. */
+	compareMode?: CompareMode;
+	compareDateRange?: DateRange;
 	/** Callers pass sanitized filters (sanitizeReportFilters). */
 	filters?: ReportFilters;
 	metric: ReportMetric;
@@ -123,6 +156,40 @@ function buildConfigDate(state: BuilderConfigState): ReportConfigV2["date"] {
 	return { ...(field ? { field } : {}), range };
 }
 
+/** A comparison needs both ends of the current range to subtract from; all-time and half-open ranges have none. */
+export function comparisonRangeBounded(
+	date: ReportConfigV2["date"]
+): boolean {
+	const range = date?.range;
+	if (!range) return false;
+	if (range.kind === "preset") return range.preset !== "all_time";
+	return range.start !== undefined && range.end !== undefined;
+}
+
+/** Pie/radar/radial have no second-series encoding, and raw rows aren't aggregated at all. */
+export function comparisonAuthorable(
+	config: ReportConfigV2,
+	vizType: VizType
+): boolean {
+	if (vizType === "pie" || vizType === "radar" || vizType === "radial") {
+		return false;
+	}
+	return !isDetailModeActive(config, vizType);
+}
+
+function buildComparison(
+	state: BuilderConfigState
+): ReportComparison | undefined {
+	const mode = state.compareMode;
+	if (mode === undefined || mode === "none") return undefined;
+	if (mode !== "custom") return { kind: mode };
+	const absolute = customAbsoluteRange(state.compareDateRange);
+	if (absolute?.start === undefined || absolute.end === undefined) {
+		return undefined;
+	}
+	return { kind: "absolute", start: absolute.start, end: absolute.end };
+}
+
 /** Builder state → the exact (config, visualization) pair that is saved, previewed, and published to the assistant. */
 export function builderStateToSaved(state: BuilderConfigState): {
 	config: ReportConfigV2;
@@ -134,18 +201,32 @@ export function builderStateToSaved(state: BuilderConfigState): {
 	};
 
 	const date = buildConfigDate(state);
+	const config: ReportConfigV2 = {
+		version: 2,
+		entityType: state.entityType,
+		...(date ? { date } : {}),
+		...(state.filters ? { filters: state.filters } : {}),
+		metric: state.metric,
+		...(state.groupBy ? { groupBy: state.groupBy } : {}),
+		...(state.segmentBy ? { segmentBy: state.segmentBy } : {}),
+		...(state.includeEmptyValues ? { includeEmptyValues: true } : {}),
+		...(state.columns.length ? { columns: state.columns } : {}),
+	};
+
+	// Gated at emission, not per-handler: raw-rows detail mode is reachable from
+	// several controls, so an unsupported comparison must never reach a saved doc.
+	const comparison =
+		date !== undefined &&
+		comparisonRangeBounded(date) &&
+		state.segmentBy === undefined &&
+		comparisonAuthorable(config, state.vizType)
+			? buildComparison(state)
+			: undefined;
+
 	return {
-		config: {
-			version: 2,
-			entityType: state.entityType,
-			...(date ? { date } : {}),
-			...(state.filters ? { filters: state.filters } : {}),
-			metric: state.metric,
-			...(state.groupBy ? { groupBy: state.groupBy } : {}),
-			...(state.segmentBy ? { segmentBy: state.segmentBy } : {}),
-			...(state.includeEmptyValues ? { includeEmptyValues: true } : {}),
-			...(state.columns.length ? { columns: state.columns } : {}),
-		},
+		config: comparison
+			? { ...config, date: { ...date!, comparison } }
+			: config,
 		visualization,
 	};
 }
@@ -174,6 +255,18 @@ export function savedToBuilderState(
 			to: range.end !== undefined ? new Date(range.end) : undefined,
 		};
 	}
+	const comparison = config.date?.comparison;
+	let compareMode: CompareMode = "none";
+	let compareDateRange: DateRange | undefined;
+	if (comparison?.kind === "absolute") {
+		compareMode = "custom";
+		compareDateRange = {
+			from: new Date(comparison.start),
+			to: new Date(comparison.end),
+		};
+	} else if (comparison) {
+		compareMode = comparison.kind;
+	}
 	// isDetailModeActive lets a Table's explicit columns override its grouping,
 	// so the builder must show the grouping the report actually renders: none.
 	const columns = config.columns ?? [];
@@ -186,6 +279,8 @@ export function savedToBuilderState(
 		dateField: config.date?.field,
 		dateRangePreset,
 		customDateRange,
+		compareMode,
+		compareDateRange,
 		filters: config.filters,
 		metric: config.metric,
 		groupBy,
@@ -565,4 +660,30 @@ export type ReportQueryArgs = ExecuteReportArgs;
 export const TRUNCATION_NOTICE = `Based on the most recent ${REPORT_SCAN_CEILING.toLocaleString(
 	"en-US"
 )} records — results may be incomplete.`;
+
+/** Same ceiling, but only the comparison scan hit it — the current range is complete. */
+export const COMPARE_TRUNCATION_NOTICE = `The comparison range is based on the most recent ${REPORT_SCAN_CEILING.toLocaleString(
+	"en-US"
+)} records — its figures may be incomplete.`;
+
+/**
+ * Signed percent change against a comparison value. Undefined when there is
+ * nothing to divide by — callers show the previous figure instead.
+ */
+export function percentChange(
+	current: number,
+	previous: number
+): string | undefined {
+	if (previous === 0) return undefined;
+	const change = ((current - previous) / Math.abs(previous)) * 100;
+	const rounded = Math.abs(change) < 0.05 ? 0 : change;
+	return `${rounded > 0 ? "+" : rounded < 0 ? "-" : ""}${Math.abs(rounded).toFixed(1)}%`;
+}
+
+/** Ratio metrics move in percentage points, so their delta is a subtraction, not a ratio. */
+export function pointsChange(current: number, previous: number): string {
+	const delta = current - previous;
+	const rounded = Math.abs(delta) < 0.05 ? 0 : delta;
+	return `${rounded > 0 ? "+" : rounded < 0 ? "-" : ""}${Math.abs(rounded).toFixed(1)} pts`;
+}
 

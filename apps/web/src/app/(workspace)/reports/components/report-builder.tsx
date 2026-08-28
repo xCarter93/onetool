@@ -64,6 +64,9 @@ import {
 import { pathLabel } from "../report-path-options";
 import {
 	builderStateToSaved,
+	compareModeOptions,
+	comparisonAuthorable,
+	comparisonRangeBounded,
 	dateFieldOptionsFor,
 	dateRangeOptions,
 	entityOptions,
@@ -74,6 +77,7 @@ import {
 	savedToBuilderState,
 	visualizationOptions,
 	type BuilderConfigState,
+	type CompareMode,
 	type EntityType,
 	type ReportConfigV2,
 	type ReportMetric,
@@ -146,6 +150,12 @@ export function ReportBuilder({
 	const [customDateRange, setCustomDateRange] = useState<DateRange | undefined>(
 		init?.customDateRange
 	);
+	const [compareMode, setCompareMode] = useState<CompareMode>(
+		init?.compareMode ?? "none"
+	);
+	const [compareDateRange, setCompareDateRange] = useState<DateRange | undefined>(
+		init?.compareDateRange
+	);
 	const [dateField, setDateField] = useState<string | undefined>(init?.dateField);
 	const [segmentBy, setSegmentBy] = useState<string | undefined>(init?.segmentBy);
 	const [includeEmptyValues, setIncludeEmptyValues] = useState<boolean | undefined>(
@@ -180,6 +190,8 @@ export function ReportBuilder({
 				dateField,
 				dateRangePreset,
 				customDateRange,
+				compareMode,
+				compareDateRange,
 				filters: sanitizedFilters,
 				metric,
 				groupBy,
@@ -223,6 +235,8 @@ export function ReportBuilder({
 		setVizType(next.vizType);
 		setDateRangePreset(next.dateRangePreset);
 		setCustomDateRange(next.customDateRange);
+		setCompareMode(next.compareMode ?? "none");
+		setCompareDateRange(next.compareDateRange);
 		setDateField(next.dateField);
 		setSegmentBy(next.segmentBy);
 		setIncludeEmptyValues(next.includeEmptyValues);
@@ -291,6 +305,26 @@ export function ReportBuilder({
 			setGroupBy(DEFAULT_GROUP_BY[entityType]);
 		}
 	};
+
+	// Compare and Segment by both need the second encoding slot, so the last one
+	// touched wins (same shape as Group by ↔ Columns).
+	const selectCompareMode = (next: CompareMode) => {
+		setCompareMode(next);
+		if (next !== "custom") setCompareDateRange(undefined);
+		if (next !== "none") setSegmentBy(undefined);
+	};
+
+	const selectSegmentBy = (next: string | undefined) => {
+		setSegmentBy(next);
+		if (next !== undefined) selectCompareMode("none");
+	};
+
+	const compareVisible = saved
+		? comparisonAuthorable(saved.config, vizType)
+		: false;
+	const compareEnabled = saved
+		? comparisonRangeBounded(saved.config.date)
+		: false;
 
 	const perRowVisible = vizType !== "number" && metric.op !== "ratio";
 
@@ -637,6 +671,45 @@ export function ReportBuilder({
 										)}
 									</div>
 								</PanelField>
+								{compareVisible && (
+									<PanelField
+										label="Compare"
+										helper={
+											compareEnabled
+												? undefined
+												: "Comparison needs a date range with a start and an end."
+										}
+									>
+										<div className="space-y-1.5">
+											<Select
+												value={compareMode}
+												disabled={!compareEnabled}
+												onValueChange={(value) => {
+													if (!value) return;
+													selectCompareMode(value as CompareMode);
+												}}
+											>
+												<SelectTrigger className="w-full">
+													<SelectValue />
+												</SelectTrigger>
+												<SelectContent>
+													{compareModeOptions.map((opt) => (
+														<SelectItem key={opt.value} value={opt.value}>
+															{opt.label}
+														</SelectItem>
+													))}
+												</SelectContent>
+											</Select>
+											{compareEnabled && compareMode === "custom" && (
+												<DatePickerRange
+													value={compareDateRange}
+													onChange={setCompareDateRange}
+													showArrow={false}
+												/>
+											)}
+										</div>
+									</PanelField>
+								)}
 								{dateFieldOptions.length > 1 && (
 									<PanelField label="Date field">
 										<Select
@@ -795,7 +868,7 @@ export function ReportBuilder({
 											value={segmentBy ?? NO_SEGMENT}
 											onValueChange={(v) => {
 												if (!v) return;
-												setSegmentBy(v === NO_SEGMENT ? undefined : v);
+												selectSegmentBy(v === NO_SEGMENT ? undefined : v);
 											}}
 										>
 											<SelectTrigger className="w-full">

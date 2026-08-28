@@ -67,7 +67,10 @@ vi.mock("convex/react", () => ({
 
 import { useQuery } from "convex/react";
 import { ReportPreview } from "../report-preview";
-import { TRUNCATION_NOTICE } from "../../report-config";
+import {
+	COMPARE_TRUNCATION_NOTICE,
+	TRUNCATION_NOTICE,
+} from "../../report-config";
 
 const mockedUseQuery = vi.mocked(useQuery);
 
@@ -350,5 +353,154 @@ describe("ReportPreview — dotted groupBy labels (F5, d15)", () => {
 
 		expect(screen.getByText("Quote › Project")).toBeInTheDocument();
 		expect(screen.queryByText("quoteId.projectId")).not.toBeInTheDocument();
+	});
+});
+
+describe("ReportPreview — comparison ranges (R11)", () => {
+	const boundedDate = {
+		range: { kind: "preset" as const, preset: "this_year" as const },
+	};
+
+	function numberReport(
+		comparison: { kind: "previous_period" | "previous_year" } | undefined,
+		metric: { op: "sum"; field: string } | { op: "ratio"; ratioKey: "conversionRate" }
+	) {
+		return (
+			<ReportPreview
+				config={{
+					version: 2,
+					entityType: metric.op === "ratio" ? "quotes" : "invoices",
+					metric,
+					date: { ...boundedDate, ...(comparison ? { comparison } : {}) },
+				}}
+				visualization={{ type: "number" }}
+			/>
+		);
+	}
+
+	it("number canvas: signed percent delta plus the comparison kind", () => {
+		mockedUseQuery.mockReturnValue({
+			data: [{ label: "Total", value: 40000 }],
+			total: 40000,
+			metadata: { totalIsCurrency: true, compareTotal: 32000 },
+		});
+
+		render(numberReport({ kind: "previous_period" }, { op: "sum", field: "total" }));
+
+		expect(screen.getByText("+25.0%")).toBeInTheDocument();
+		expect(screen.getByText("vs previous period")).toBeInTheDocument();
+	});
+
+	it("number canvas: no comparison in the config renders no delta line", () => {
+		mockedUseQuery.mockReturnValue({
+			data: [{ label: "Total", value: 40000 }],
+			total: 40000,
+			metadata: { totalIsCurrency: true },
+		});
+
+		render(numberReport(undefined, { op: "sum", field: "total" }));
+
+		expect(screen.queryByText(/vs previous/)).toBeNull();
+	});
+
+	it("number canvas: a ratio metric moves in percentage points", () => {
+		mockedUseQuery.mockReturnValue({
+			data: [{ label: "Total", value: 43 }],
+			total: 43,
+			metadata: { compareTotal: 40 },
+		});
+
+		render(
+			numberReport({ kind: "previous_year" }, { op: "ratio", ratioKey: "conversionRate" })
+		);
+
+		expect(screen.getByText("+3.0 pts")).toBeInTheDocument();
+		expect(screen.getByText("vs previous year")).toBeInTheDocument();
+	});
+
+	it("number canvas: a zero previous total shows the previous value, not an undefined percent", () => {
+		mockedUseQuery.mockReturnValue({
+			data: [{ label: "Total", value: 40000 }],
+			total: 40000,
+			metadata: { totalIsCurrency: true, compareTotal: 0 },
+		});
+
+		render(numberReport({ kind: "previous_period" }, { op: "sum", field: "total" }));
+
+		expect(screen.getByText("Previous: $0")).toBeInTheDocument();
+	});
+
+	it("column chart: compareValue points draw a second series", () => {
+		mockedUseQuery.mockReturnValue({
+			data: [
+				{ label: "Jan", value: 5, compareValue: 3, metadata: {} },
+				{ label: "Feb", value: 7, compareValue: 9, metadata: {} },
+			],
+			total: 12,
+			metadata: {},
+		});
+
+		const { container } = render(
+			<ReportPreview
+				config={{
+					version: 2,
+					entityType: "invoices",
+					metric: { op: "count" },
+					groupBy: "issuedDate_month",
+					date: { ...boundedDate, comparison: { kind: "previous_year" } },
+				}}
+				visualization={{ type: "column" }}
+			/>
+		);
+
+		// Two buckets × (current + comparison).
+		expect(container.querySelectorAll(".recharts-bar-rectangle")).toHaveLength(4);
+	});
+
+	it("only the comparison scan truncated: the banner names the comparison range", () => {
+		mockedUseQuery.mockReturnValue({
+			data: [{ label: "Jan", value: 5, compareValue: 3, metadata: {} }],
+			total: 5,
+			metadata: { compareTruncated: true },
+		});
+
+		render(
+			<ReportPreview
+				config={{
+					version: 2,
+					entityType: "invoices",
+					metric: { op: "count" },
+					groupBy: "issuedDate_month",
+					date: { ...boundedDate, comparison: { kind: "previous_year" } },
+				}}
+				visualization={{ type: "column" }}
+			/>
+		);
+
+		expect(screen.getByText(COMPARE_TRUNCATION_NOTICE)).toBeInTheDocument();
+		expect(screen.queryByText(TRUNCATION_NOTICE)).toBeNull();
+	});
+
+	it("the current scan truncated: the banner keeps the existing copy", () => {
+		mockedUseQuery.mockReturnValue({
+			data: [{ label: "Jan", value: 5, compareValue: 3, metadata: {} }],
+			total: 5,
+			metadata: { truncated: true, compareTruncated: true },
+		});
+
+		render(
+			<ReportPreview
+				config={{
+					version: 2,
+					entityType: "invoices",
+					metric: { op: "count" },
+					groupBy: "issuedDate_month",
+					date: { ...boundedDate, comparison: { kind: "previous_year" } },
+				}}
+				visualization={{ type: "column" }}
+			/>
+		);
+
+		expect(screen.getByText(TRUNCATION_NOTICE)).toBeInTheDocument();
 	});
 });

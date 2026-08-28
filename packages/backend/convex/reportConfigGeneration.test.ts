@@ -29,6 +29,7 @@ function gen(overrides: Partial<GeneratedReport> = {}): GeneratedReport {
 		startDate: null,
 		endDate: null,
 		datePreset: null,
+		comparison: null,
 		visualization: "bar",
 		name: "Invoices by status",
 		description: null,
@@ -653,6 +654,61 @@ describe("new-vocabulary configs execute end-to-end", () => {
 				asUser.query(api.reportData.executeReport, toExecuteReportArgs(generated))
 			).resolves.toBeDefined();
 		}
+	});
+});
+
+describe("comparison", () => {
+	it("maps a generated comparison onto the date range", () => {
+		const saved = toSavedReport(
+			gen({ datePreset: "this_month", comparison: "previous_period" })
+		);
+		expect(saved.config.date).toEqual({
+			range: { kind: "preset", preset: "this_month" },
+			comparison: { kind: "previous_period" },
+		});
+	});
+
+	it("drops a comparison the gating would strip rather than saving it", () => {
+		const dropped = (overrides: Partial<GeneratedReport>) =>
+			toSavedReport(gen({ comparison: "previous_year", ...overrides })).config.date
+				?.comparison;
+
+		// No date range at all, and an explicitly unbounded one.
+		expect(dropped({})).toBeUndefined();
+		expect(dropped({ datePreset: "all_time" })).toBeUndefined();
+		expect(dropped({ startDate: "2026-01-01" })).toBeUndefined();
+		// Share-of-total charts and raw-row tables have no second series.
+		expect(
+			dropped({ datePreset: "this_month", visualization: "pie" })
+		).toBeUndefined();
+		expect(
+			dropped({ datePreset: "this_month", visualization: "radial" })
+		).toBeUndefined();
+		expect(
+			dropped({ datePreset: "this_month", visualization: "table", groupBy: null })
+		).toBeUndefined();
+		expect(dropped({ datePreset: "this_month" })).toEqual({
+			kind: "previous_year",
+		});
+	});
+
+	it("describes a saved comparison so a follow-up request reproduces it", () => {
+		const current = parseCurrentConfig(
+			JSON.stringify({
+				config: {
+					version: 2,
+					entityType: "invoices",
+					metric: { op: "count" },
+					groupBy: "issuedDate_month",
+					date: {
+						range: { kind: "preset", preset: "this_month" },
+						comparison: { kind: "previous_period" },
+					},
+				},
+				visualization: { type: "column" },
+			})
+		);
+		expect(describeCurrentConfig(current!)).toContain("comparison: previous_period");
 	});
 });
 

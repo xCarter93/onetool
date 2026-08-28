@@ -585,3 +585,121 @@ describe("ReportBuilder — assistant entry point (F4, d15)", () => {
 		expect(screen.queryByText(/Describe the report you want/i)).toBeNull();
 	});
 });
+
+function comparableChart(
+	over: {
+		type?: "column" | "pie" | "radar" | "radial" | "table";
+		allTime?: boolean;
+		groupBy?: string | null;
+	} = {}
+): ReportBuilderInitial {
+	const groupBy = over.groupBy === null ? undefined : (over.groupBy ?? "status");
+	return {
+		name: "Clients",
+		description: "",
+		config: {
+			version: 2,
+			// clients has two non-time, non-FK groupings, so Segment by is offered.
+			entityType: "clients",
+			metric: { op: "count" },
+			...(groupBy ? { groupBy } : {}),
+			...(over.allTime
+				? {}
+				: { date: { range: { kind: "preset" as const, preset: "this_year" as const } } }),
+		},
+		visualization: { type: over.type ?? "column" },
+	};
+}
+
+/** PanelField wraps label + control + helper in one div, so scope from the label. */
+function compareField() {
+	const label = section("Date").queryByText("Compare");
+	return label ? within(label.parentElement!) : null;
+}
+
+function segmentControl() {
+	return section("Segment by").getByRole("combobox");
+}
+
+describe("ReportBuilder — comparison range control (R11)", () => {
+	it("offers None, Previous period, Previous year, and Custom range", async () => {
+		renderBuilder(comparableChart());
+
+		fireEvent.click(compareField()!.getByRole("combobox"));
+		await screen.findByRole("option", { name: "None" });
+		expect(
+			screen.getAllByRole("option").map((o) => o.textContent?.trim())
+		).toEqual(["None", "Previous period", "Previous year", "Custom range"]);
+	});
+
+	it("is hidden on pie, radar, and radial — they have no second-series encoding", () => {
+		for (const type of ["pie", "radar", "radial"] as const) {
+			renderBuilder(comparableChart({ type }));
+			expect(compareField()).toBeNull();
+			cleanup();
+		}
+	});
+
+	it("is hidden in raw-rows detail mode", () => {
+		renderBuilder(comparableChart({ type: "table", groupBy: null }));
+		expect(compareField()).toBeNull();
+	});
+
+	it("All Time disables it and says why", () => {
+		renderBuilder(comparableChart({ allTime: true }));
+
+		expect(compareField()!.getByRole("combobox")).toBeDisabled();
+		expect(
+			compareField()!.getByText(
+				"Comparison needs a date range with a start and an end."
+			)
+		).toBeInTheDocument();
+	});
+
+	it("a bounded range enables it with no cause copy", () => {
+		renderBuilder(comparableChart());
+
+		expect(compareField()!.getByRole("combobox")).not.toBeDisabled();
+		expect(
+			compareField()!.queryByText(
+				"Comparison needs a date range with a start and an end."
+			)
+		).toBeNull();
+	});
+
+	it("setting a comparison clears Segment by", async () => {
+		renderBuilder(comparableChart());
+
+		await pickFrom(segmentControl(), "Lead Source");
+		expect(segmentControl()).toHaveTextContent("Lead Source");
+
+		await pickFrom(compareField()!.getByRole("combobox"), "Previous period");
+
+		expect(compareField()!.getByRole("combobox")).toHaveTextContent(
+			"Previous period"
+		);
+		expect(segmentControl()).toHaveTextContent("None");
+	});
+
+	it("setting Segment by clears the comparison", async () => {
+		renderBuilder(comparableChart());
+
+		await pickFrom(compareField()!.getByRole("combobox"), "Previous year");
+		expect(compareField()!.getByRole("combobox")).toHaveTextContent(
+			"Previous year"
+		);
+
+		await pickFrom(segmentControl(), "Lead Source");
+
+		expect(compareField()!.getByRole("combobox")).toHaveTextContent("None");
+	});
+
+	it("choosing a comparison marks the report dirty", async () => {
+		renderBuilder(comparableChart());
+		expect(screen.queryByText("Unsaved changes")).toBeNull();
+
+		await pickFrom(compareField()!.getByRole("combobox"), "Previous period");
+
+		expect(screen.getByText("Unsaved changes")).toBeInTheDocument();
+	});
+});

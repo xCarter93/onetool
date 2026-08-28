@@ -76,6 +76,10 @@ export const reportDateValidator = v.object({
 	),
 });
 
+export type ReportDate = Infer<typeof reportDateValidator>;
+export type ReportDateRange = ReportDate["range"];
+export type ReportDateComparison = NonNullable<ReportDate["comparison"]>;
+
 export const reportConfigV2Validator = v.object({
 	version: v.literal(2),
 	entityType: reportEntityTypeValidator,

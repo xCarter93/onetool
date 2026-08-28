@@ -15,8 +15,12 @@ import { CHART_CATEGORICAL, getChartColor } from "@/lib/chart-colors";
 import { formatReportValue } from "../report-config";
 import { ChartNoData, isChartDataEmpty } from "./chart-no-data";
 import {
+	COMPARE_COLOR,
+	COMPARE_FILL,
+	COMPARE_KEY,
 	ReportChartTooltip,
 	chartConfigKeys,
+	hasCompareValues,
 	reportChartConfig,
 } from "./report-chart-tooltip";
 import { ChartStripeDefs, stripeId } from "@/components/charts/chart-stripe-defs";
@@ -26,6 +30,8 @@ interface DataPoint {
 	name: string;
 	value: number;
 	totalValue?: number;
+	/** Same bucket over the comparison range (R11); absent when not comparing. */
+	compareValue?: number;
 	/** Drill-down key for this bucket; absent on ungrouped results. */
 	bucketKey?: string;
 	[key: string]: unknown;
@@ -49,6 +55,8 @@ interface ReportColumnChartProps {
 	itemValueIsCurrency?: boolean;
 	/** Stacked mode: one bar per segment, read from wide rows keyed by segment key. */
 	segments?: SegmentMeta[];
+	/** Names the comparison series ("Previous period"); absent when not comparing. */
+	compareLabel?: string;
 	axisLabels?: { x?: string; y?: string };
 	targetLine?: number;
 	/** Drill-down (R10): opens the records behind the clicked column. */
@@ -63,6 +71,7 @@ export function ReportColumnChart({
 	totalIsCurrency = false,
 	itemValueIsCurrency = false,
 	segments,
+	compareLabel,
 	axisLabels,
 	targetLine,
 	onBucketClick,
@@ -72,6 +81,10 @@ export function ReportColumnChart({
 	const stacked = segments !== undefined && segments.length > 0;
 
 	const segmentConfigKeys = chartConfigKeys(segments?.map((s) => s.key) ?? []);
+
+	// Segments already own the second encoding slot, so the two never coexist.
+	const showCompare =
+		compareLabel !== undefined && !stacked && hasCompareValues(data);
 
 	const chartConfig: ChartConfig = stacked
 		? segments.reduce((acc, segment, index) => {
@@ -83,7 +96,8 @@ export function ReportColumnChart({
 			}, {} as ChartConfig)
 		: reportChartConfig(
 				data.map((item) => item.name),
-				itemValueIsCurrency
+				itemValueIsCurrency,
+				showCompare ? compareLabel : undefined
 			);
 
 	const seriesColors = Array.from(
@@ -189,6 +203,17 @@ export function ReportColumnChart({
 								);
 							})}
 						</Bar>
+					)}
+					{showCompare && (
+						// Flat muted fill, no stripe — the current range keeps the texture.
+						<Bar
+							dataKey={COMPARE_KEY}
+							radius={[4, 4, 0, 0]}
+							maxBarSize={48}
+							fill={COMPARE_FILL}
+							stroke={COMPARE_COLOR}
+							strokeWidth={1}
+						/>
 					)}
 					{targetLine !== undefined && (
 						// extendDomain keeps a goal above the data max visible instead of clipped.

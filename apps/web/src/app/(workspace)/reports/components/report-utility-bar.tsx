@@ -10,8 +10,11 @@ import { buildCsv, downloadCsv, sanitizeCsvFilename } from "@/lib/csv-export";
 import { reportResultToCsv } from "../report-csv";
 import { ReportTable } from "./report-table";
 import {
+	comparisonKindLabel,
 	formatReportValue,
 	isDetailModeActive,
+	percentChange,
+	pointsChange,
 	metricOptionsFor,
 	metricToValue,
 	resolveReportQueryArgs,
@@ -111,6 +114,24 @@ export function ReportUtilityBar({
 			: config.metric.op === "ratio"
 				? `${reportData.total}%`
 				: formatReportValue(reportData.total, totalIsCurrency);
+	const comparison = config?.date?.comparison;
+	const compareLabel = comparison
+		? comparisonKindLabel(comparison.kind)
+		: undefined;
+	const compareTotal = reportData?.metadata?.compareTotal;
+	const isRatio = config?.metric.op === "ratio";
+	// 0 is a real comparison total, so test the type, not truthiness.
+	const comparisonStats =
+		typeof compareTotal === "number" && compareLabel && reportData
+			? {
+					previous: isRatio
+						? `${compareTotal}%`
+						: formatReportValue(compareTotal, totalIsCurrency),
+					change: isRatio
+						? pointsChange(reportData.total, compareTotal)
+						: (percentChange(reportData.total, compareTotal) ?? "—"),
+				}
+			: undefined;
 	// Grouped, non-detail results have a summary table; for chart types it
 	// lives here since d7 removed the always-on table under the chart.
 	const summaryRows =
@@ -119,7 +140,8 @@ export function ReportUtilityBar({
 					name: item.label,
 					value: item.value,
 					...((item.metadata || {}) as Record<string, unknown>),
-					// After the spread so a metadata key can't shadow it.
+					// After the spread so a metadata key can't shadow them.
+					compareValue: item.compareValue,
 					bucketKey: item.bucketKey,
 				}))
 			: null;
@@ -143,6 +165,23 @@ export function ReportUtilityBar({
 								{totalDisplay}
 							</dd>
 						</div>
+						{comparisonStats && (
+							<>
+								<div>
+									<dt className="text-muted-foreground">Previous total</dt>
+									<dd className="font-medium tabular-nums text-foreground">
+										{comparisonStats.previous}
+									</dd>
+								</div>
+								<div>
+									<dt className="text-muted-foreground">Change</dt>
+									{/* Direction reads from the sign, never from a red/green tint. */}
+									<dd className="font-medium tabular-nums text-primary">
+										{comparisonStats.change}
+									</dd>
+								</div>
+							</>
+						)}
 						{reportData && !reportData.detail && (
 							<div>
 								<dt className="text-muted-foreground">Groups</dt>
@@ -170,6 +209,7 @@ export function ReportUtilityBar({
 								itemValueIsCurrency={
 									reportData!.metadata?.itemValueIsCurrency === true
 								}
+								compareLabel={compareLabel}
 								// Mid-debounce the rows still describe the OLD args; a click then
 								// would drill into a bucket the user no longer sees.
 								onBucketClick={argsSettled ? onBucketClick : undefined}

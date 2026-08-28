@@ -271,3 +271,57 @@ describe("ReportTable — bucket drill-down", () => {
 		expect(screen.queryByRole("button")).not.toBeInTheDocument();
 	});
 });
+
+describe("ReportTable — comparison columns (R11)", () => {
+	it("adds Previous and Change only when the points carry comparison values", () => {
+		render(
+			<ReportTable
+				data={[
+					{ name: "Active", value: 12, compareValue: 10 },
+					{ name: "Lead", value: 5, compareValue: 8 },
+				]}
+				total={17}
+				entityType="clients"
+				groupBy="status"
+				compareLabel="Previous period"
+			/>
+		);
+
+		expect(
+			screen.getByRole("columnheader", { name: "Previous" })
+		).toBeInTheDocument();
+		expect(
+			screen.getByRole("columnheader", { name: "Change" })
+		).toBeInTheDocument();
+		expect(screen.getByText("+20.0%")).toBeInTheDocument();
+		expect(screen.getByText("-37.5%")).toBeInTheDocument();
+	});
+
+	it("no comparison label: the columns stay off", () => {
+		render(
+			<ReportTable
+				data={[{ name: "Active", value: 12, compareValue: 10 }]}
+				total={12}
+				entityType="clients"
+				groupBy="status"
+			/>
+		);
+
+		expect(screen.queryByRole("columnheader", { name: "Previous" })).toBeNull();
+		expect(screen.queryByRole("columnheader", { name: "Change" })).toBeNull();
+	});
+
+	it("a zero previous value has no percent to show, so Change reads —", () => {
+		render(
+			<ReportTable
+				data={[{ name: "Active", value: 12, compareValue: 0 }]}
+				total={12}
+				entityType="clients"
+				groupBy="status"
+				compareLabel="Previous period"
+			/>
+		);
+
+		expect(screen.getByText("—")).toBeInTheDocument();
+	});
+});

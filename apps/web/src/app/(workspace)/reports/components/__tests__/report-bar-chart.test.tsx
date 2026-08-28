@@ -317,3 +317,54 @@ describe("ReportBarChart", () => {
 		});
 	});
 });
+
+describe("ReportBarChart — comparison series (R11)", () => {
+	const compared = [
+		{ name: "Pending", value: 5, compareValue: 3 },
+		{ name: "Completed", value: 7, compareValue: 9 },
+	];
+
+	it("draws a second bar per bucket when the points carry compareValue", () => {
+		const { container } = render(
+			<ReportBarChart
+				data={compared}
+				total={12}
+				entityType="tasks"
+				groupBy="status"
+				compareLabel="Previous period"
+			/>
+		);
+
+		expect(container.querySelectorAll(".recharts-bar-rectangle")).toHaveLength(4);
+	});
+
+	it("no comparison label: only the current series draws", () => {
+		const { container } = render(
+			<ReportBarChart data={compared} total={12} entityType="tasks" groupBy="status" />
+		);
+
+		expect(container.querySelectorAll(".recharts-bar-rectangle")).toHaveLength(2);
+	});
+
+	it("stacked segments own the second encoding, so no comparison bars render", () => {
+		const { container } = render(
+			<ReportBarChart
+				data={[
+					{ name: "Pending", value: 5, compareValue: 3, active: 3, done: 2 },
+					{ name: "Completed", value: 7, compareValue: 9, active: 4, done: 3 },
+				]}
+				total={12}
+				entityType="tasks"
+				groupBy="status"
+				segments={[
+					{ key: "active", label: "Active" },
+					{ key: "done", label: "Done" },
+				]}
+				compareLabel="Previous period"
+			/>
+		);
+
+		// Two buckets × two segments — a comparison bar would make six.
+		expect(container.querySelectorAll(".recharts-bar-rectangle")).toHaveLength(4);
+	});
+});

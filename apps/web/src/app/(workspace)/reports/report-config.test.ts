@@ -10,6 +10,8 @@ import {
 	metricOptionsFor,
 	metricTargetOptionsFor,
 	metricTargetValue,
+	percentChange,
+	pointsChange,
 	resolveReportQueryArgs,
 	savedToBuilderState,
 	type BuilderConfigState,
@@ -433,5 +435,150 @@ describe("metric target + aggregation split (d15 amendment)", () => {
 		expect(byValue("sum:total")?.label).toBe("Sum of Total");
 		expect(byValue("ratio:conversionRate")?.label).toBe("Conversion rate");
 		expect(byValue("avg:total")?.label).toBe("Average of Total");
+	});
+});
+
+describe("comparison ranges (R11)", () => {
+	const bounded = { range: { kind: "preset" as const, preset: "this_year" as const } };
+
+	it("emits date.comparison for a bounded range on a supported visualization", () => {
+		const { config } = builderStateToSaved(
+			baseState({
+				vizType: "column",
+				groupBy: "issuedDate_month",
+				dateRangePreset: "this_year",
+				compareMode: "previous_year",
+			})
+		);
+		expect(config.date?.comparison).toEqual({ kind: "previous_year" });
+	});
+
+	it("strips the comparison on an unbounded (All Time) range", () => {
+		const { config } = builderStateToSaved(
+			baseState({
+				vizType: "column",
+				groupBy: "issuedDate_month",
+				dateRangePreset: "all_time",
+				compareMode: "previous_period",
+			})
+		);
+		expect(config.date?.comparison).toBeUndefined();
+	});
+
+	it("strips the comparison on pie, radar, and radial", () => {
+		for (const vizType of ["pie", "radar", "radial"] as const) {
+			const { config } = builderStateToSaved(
+				baseState({
+					vizType,
+					groupBy: "status",
+					dateRangePreset: "this_year",
+					compareMode: "previous_period",
+				})
+			);
+			expect(config.date?.comparison).toBeUndefined();
+		}
+	});
+
+	it("strips the comparison in raw-rows detail mode", () => {
+		const { config } = builderStateToSaved(
+			baseState({
+				vizType: "table",
+				dateRangePreset: "this_year",
+				compareMode: "previous_period",
+			})
+		);
+		expect(isDetailModeActive(config, "table")).toBe(true);
+		expect(config.date?.comparison).toBeUndefined();
+	});
+
+	it("strips the comparison when segmentBy is set", () => {
+		const { config } = builderStateToSaved(
+			baseState({
+				vizType: "column",
+				groupBy: "issuedDate_month",
+				segmentBy: "status",
+				dateRangePreset: "this_year",
+				compareMode: "previous_period",
+			})
+		);
+		expect(config.date?.comparison).toBeUndefined();
+	});
+
+	it("a half-picked custom comparison range emits nothing", () => {
+		const { config } = builderStateToSaved(
+			baseState({
+				vizType: "column",
+				groupBy: "issuedDate_month",
+				dateRangePreset: "this_year",
+				compareMode: "custom",
+				compareDateRange: { from: new Date(2025, 0, 1) },
+			})
+		);
+		expect(config.date?.comparison).toBeUndefined();
+	});
+
+	it("a custom comparison range stores day-start/day-end absolute ms", () => {
+		const { config } = builderStateToSaved(
+			baseState({
+				vizType: "column",
+				groupBy: "issuedDate_month",
+				dateRangePreset: "this_year",
+				compareMode: "custom",
+				compareDateRange: {
+					from: new Date(2025, 0, 1),
+					to: new Date(2025, 11, 31),
+				},
+			})
+		);
+		expect(config.date?.comparison).toEqual({
+			kind: "absolute",
+			start: new Date(2025, 0, 1).getTime(),
+			end: new Date(2025, 11, 31, 23, 59, 59, 999).getTime(),
+		});
+	});
+
+	it("an absolute comparison survives hydrate → save unchanged", () => {
+		const config = v2({
+			groupBy: "issuedDate_month",
+			date: {
+				...bounded,
+				comparison: {
+					kind: "absolute",
+					start: new Date(2025, 0, 1).getTime(),
+					end: new Date(2025, 11, 31, 23, 59, 59, 999).getTime(),
+				},
+			},
+		});
+		const state = savedToBuilderState(config, { type: "column" });
+		expect(state.compareMode).toBe("custom");
+		expect(builderStateToSaved(state).config).toEqual(config);
+	});
+
+	it("a preset-kind comparison survives hydrate → save unchanged", () => {
+		const config = v2({
+			groupBy: "issuedDate_month",
+			date: { ...bounded, comparison: { kind: "previous_period" } },
+		});
+		const state = savedToBuilderState(config, { type: "column" });
+		expect(state.compareMode).toBe("previous_period");
+		expect(builderStateToSaved(state).config).toEqual(config);
+	});
+});
+
+describe("percentChange / pointsChange (R11)", () => {
+	it("signs the percent change and never colors it", () => {
+		expect(percentChange(120, 100)).toBe("+20.0%");
+		expect(percentChange(80, 100)).toBe("-20.0%");
+		expect(percentChange(100, 100)).toBe("0.0%");
+	});
+
+	it("is undefined against a zero previous — callers show the previous value instead", () => {
+		expect(percentChange(50, 0)).toBeUndefined();
+	});
+
+	it("ratio metrics move in percentage points, not percent", () => {
+		expect(pointsChange(43, 40)).toBe("+3.0 pts");
+		expect(pointsChange(40, 43)).toBe("-3.0 pts");
+		expect(pointsChange(5, 0)).toBe("+5.0 pts");
 	});
 });

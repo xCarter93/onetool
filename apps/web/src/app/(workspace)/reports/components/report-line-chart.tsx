@@ -12,7 +12,13 @@ import {
 import { ChartConfig, ChartContainer, ChartTooltip } from "@/components/ui/chart";
 import { CHART_CATEGORICAL } from "@/lib/chart-colors";
 import { ChartNoData, isChartDataEmpty } from "./chart-no-data";
-import { ReportChartTooltip, measureLabel } from "./report-chart-tooltip";
+import {
+	COMPARE_COLOR,
+	COMPARE_KEY,
+	ReportChartTooltip,
+	hasCompareValues,
+	measureLabel,
+} from "./report-chart-tooltip";
 import { ChartStripeDefs, stripeId } from "@/components/charts/chart-stripe-defs";
 import { formatReportValue } from "../report-config";
 import { bucketElementClick, type BucketClickHandler } from "./report-bucket-click";
@@ -20,6 +26,8 @@ import { bucketElementClick, type BucketClickHandler } from "./report-bucket-cli
 interface DataPoint {
 	name: string;
 	value: number;
+	/** Same bucket over the comparison range (R11); absent when not comparing. */
+	compareValue?: number;
 	/** Drill-down key for this bucket; absent on ungrouped results. */
 	bucketKey?: string;
 	[key: string]: unknown;
@@ -33,6 +41,8 @@ interface ReportLineChartProps {
 	totalIsCurrency?: boolean;
 	/** Is each item's `value` a dollar amount (vs. a count)? */
 	itemValueIsCurrency?: boolean;
+	/** Names the comparison series ("Previous period"); absent when not comparing. */
+	compareLabel?: string;
 	axisLabels?: { x?: string; y?: string };
 	targetLine?: number;
 	/** Drill-down (R10): opens the records behind the clicked point. */
@@ -62,6 +72,7 @@ export function ReportLineChart({
 	groupBy,
 	totalIsCurrency = false,
 	itemValueIsCurrency = false,
+	compareLabel,
 	axisLabels,
 	targetLine,
 	onBucketClick,
@@ -92,11 +103,17 @@ export function ReportLineChart({
 			}
 		: DOT_STYLE;
 
+	const showCompare =
+		compareLabel !== undefined && hasCompareValues(data);
+
 	const chartConfig: ChartConfig = {
 		value: {
 			label: measureLabel(itemValueIsCurrency),
 			color: PRIMARY_BLUE,
 		},
+		...(showCompare
+			? { [COMPARE_KEY]: { label: compareLabel, color: COMPARE_COLOR } }
+			: {}),
 	};
 
 	if (isChartDataEmpty(data)) {
@@ -181,6 +198,20 @@ export function ReportLineChart({
 							strokeWidth: 2,
 						}}
 					/>
+					{showCompare && (
+						// Dashed muted stroke, no area fill — the current range keeps the fill.
+						<Area
+							type="monotone"
+							dataKey={COMPARE_KEY}
+							stroke={COMPARE_COLOR}
+							strokeWidth={2}
+							strokeDasharray="4 4"
+							fill="transparent"
+							connectNulls
+							dot={false}
+							activeDot={false}
+						/>
+					)}
 					{targetLine !== undefined && (
 						// extendDomain keeps a goal above the data max visible instead of clipped.
 						<ReferenceLine
