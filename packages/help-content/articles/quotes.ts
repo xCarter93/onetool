@@ -163,6 +163,10 @@ export const quotesArticles: HelpArticle[] = [
 			"declined",
 			"expired",
 			"convert to invoice",
+				"custom email",
+				"attachments",
+				"cc",
+				"bcc",
 			"status",
 		],
 		sections: [
@@ -185,7 +189,7 @@ export const quotesArticles: HelpArticle[] = [
 					},
 					{
 						type: "paragraph",
-						text: "**Send to Client**, **Send for e-signature**, **Generate PDF**, and **Delete** are available in every status, with these exceptions: **Send to Client** disappears once a quote is approved (convert it to an invoice instead) and greys out once the **Valid until** date has passed (extend it first), and a quote cannot be deleted once an invoice has been created from it until you remove or unlink that invoice.",
+						text: "**Send to Client**, **Generate PDF**, and **Delete** are available in every status, with these exceptions. **Send to Client** greys out once the **Valid until** date has passed, so extend the date first. On an approved quote the button still opens the send modal, but the two email choices are refused and only **Send for e-signature** is left; convert the quote to an invoice instead. And a quote cannot be deleted once an invoice has been created from it, until you remove or unlink that invoice.",
 					},
 				],
 			},
@@ -197,15 +201,49 @@ export const quotesArticles: HelpArticle[] = [
 						items: [
 							"Open the quote and give the line items and total a final look.",
 							"Open the **⋯** menu in the quote header and click **Send to Client**.",
+							"Pick how you want to send it.",
+						],
+					},
+					{
+						type: "list",
+						items: [
+							"**Portal template**: the branded email with a link to review and approve. You see a preview of the exact email before it goes out, and its wording is fixed.",
+							"**Custom email**: write your own subject and message. The portal link still goes with it.",
+							"**Send for e-signature**: collect a signature on the quote PDF instead. See [E-signatures](/help/quotes/e-signatures).",
 						],
 					},
 					{
 						type: "paragraph",
-						text: "That is the whole send. Your client's primary contact gets an email with a link straight to the quote in their portal, where they can approve or decline it, and the quote moves to **Sent**. Sending again on a quote that is already sent reads **Resend to Client** and emails the same link without changing anything else.",
+						text: "Either email choice sends to your client's primary contact by default, moves the quote to **Sent**, and gives them a link straight to the quote in their portal, where they can approve or decline it. Sending again on a quote that is already sent reads **Resend to Client**.",
 					},
 					{
 						type: "note",
-						text: "Sending needs the client to have portal access turned on and a primary contact with an email address; OneTool tells you if either is missing. **Mark as Sent** flips the status without emailing anyone, so save it for quotes you delivered outside OneTool. A formal e-signature request is a separate, optional path. See [E-signatures](/help/quotes/e-signatures). You can also send from the quotes list: open a quote's quick-view drawer and use the same action there.",
+						text: "Sending needs the client to have portal access turned on and a primary contact with an email address; OneTool tells you if either is missing. **Mark as Sent** flips the status without emailing anyone, so save it for quotes you delivered outside OneTool. On the Free plan the modal says how many sends you have left this month. The first send of a quote uses one, and resending is free. You can also send from the quotes list: open a quote's quick-view drawer and use the same action there.",
+					},
+				],
+			},
+			{
+				heading: "Recipients and attachments",
+				blocks: [
+					{
+						type: "paragraph",
+						text: "Both email choices share the same recipient lines and attachment tray, so you can add a second reader or send a photo with the quote.",
+					},
+					{
+						type: "list",
+						items: [
+							"**Recipients.** **To** starts with the primary contact. Click **Add CC/BCC** to reveal the other two lines, which take any address you type. A custom email lets you type any address on the **To** line as well; the portal template keeps **To** on the client's own contacts, because the portal link belongs to them.",
+							"**The quote PDF.** The most recent version you generated is attached already. Remove it with the X, or use the clock icon to pick a different version, including a signed PDF where one exists.",
+							"**Your own files.** **Attach file** adds photos, documents, and anything else the job needs. All attachments together can total 20MB, and program files are refused.",
+						],
+					},
+					{
+						type: "note",
+						text: "If you edited the quote after generating its PDF, the attachment reads **Content changed since generation**. The refresh button beside it rebuilds the PDF from the current numbers. Sending the older version is still allowed, so this is a warning rather than a block.",
+					},
+					{
+						type: "paragraph",
+						text: "Every quote you send this way lands in the client's conversation in your [inbox](/help/inbox/unified-inbox), and their reply comes back to the same place. If an address has hard-bounced or marked one of your emails as spam, the send is refused and OneTool names the address.",
 					},
 				],
 			},
@@ -294,6 +332,7 @@ export const quotesArticles: HelpArticle[] = [
 			"quotes/e-signatures",
 			"client-portal/approving-quotes-and-paying-invoices",
 			"invoices-and-payments/creating-an-invoice",
+			"inbox/unified-inbox",
 		],
 	},
 	{
@@ -331,7 +370,8 @@ export const quotesArticles: HelpArticle[] = [
 					{
 						type: "steps",
 						items: [
-							"Open the quote and click **Send for e-signature**.",
+							"Open the **⋯** menu in the quote header and click **Send to Client**.",
+							"Choose **Send for e-signature**.",
 							"Wait a moment while OneTool builds the request from the quote's latest PDF and opens the embedded signing editor.",
 							"Place the signature fields and review the recipients in the editor.",
 							"Send the request from inside the editor. Your client receives the signature request by email.",
@@ -345,7 +385,7 @@ export const quotesArticles: HelpArticle[] = [
 					},
 					{
 						type: "note",
-						text: "Sending needs a generated PDF. Until you click **Generate PDF** on the quote, **Send for e-signature** is unavailable and the page shows **Generate a PDF for this quote first** instead of the editor.",
+						text: "Sending needs a generated PDF. Until you click **Generate PDF** on the quote, choosing **Send for e-signature** tells you to generate one first and goes no further.",
 					},
 					{
 						type: "note",

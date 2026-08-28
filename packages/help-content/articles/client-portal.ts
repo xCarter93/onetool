@@ -58,7 +58,7 @@ export const clientPortalArticles: HelpArticle[] = [
 				blocks: [
 					{
 						type: "paragraph",
-						text: "The portal is the client-facing half of your quote and invoice flow. When you click **Send to Client** on a quote or an invoice, your client gets an email inviting them into the portal: to approve or decline the quote, or to view and pay the invoice.",
+						text: "The portal is the client-facing half of your quote and invoice flow. When you click **Send to Client** on a quote or an invoice, your client gets an email inviting them into the portal: to approve or decline the quote, or to view and pay the invoice. That link is carried by every send, whether you use the branded template or write the email yourself.",
 					},
 					{
 						type: "paragraph",
@@ -220,7 +220,7 @@ export const clientPortalArticles: HelpArticle[] = [
 					},
 					{
 						type: "paragraph",
-						text: "For jobs where you want a formal, emailed signing request instead, use **Send for e-signature**. Both paths end with an approved quote. See [E-signatures](/help/quotes/e-signatures).",
+						text: "For jobs where you want a formal, emailed signing request instead, click **Send to Client** on the quote and choose **Send for e-signature**. Both paths end with an approved quote. See [E-signatures](/help/quotes/e-signatures).",
 					},
 				],
 			},
