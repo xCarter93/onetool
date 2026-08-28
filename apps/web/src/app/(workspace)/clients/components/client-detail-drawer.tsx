@@ -55,7 +55,7 @@ import {
 import { QuickBooksSyncField } from "@/components/quickbooks/sync-status-row";
 import { formatCurrency } from "@/lib/money";
 import { useToast } from "@/hooks/use-toast";
-import { SendClientEmailPopover } from "./send-client-email-popover";
+import { EmailThreadSheet } from "./email-thread-sheet";
 
 type ClientStatus = Doc<"clients">["status"];
 
@@ -207,26 +207,24 @@ export function ClientDetailDrawer({
 						slot: "secondary" as const,
 						label: "Email",
 						node: (
-							<SendClientEmailPopover
-								isOpen={emailOpen}
-								onOpenChange={setEmailOpen}
-								clientId={client._id}
-								clientName={client.companyName}
-								primaryContact={{
-									firstName: emailName.firstName,
-									lastName: emailName.lastName,
-									email: contactEmail,
-								}}
-							>
+							<>
 								<Button
 									variant="outline"
 									size="sm"
 									disabled={!can("inbox", "modify")}
+									onClick={() => setEmailOpen(true)}
 								>
 									<Mail className="size-3.5" />
 									Email
 								</Button>
-							</SendClientEmailPopover>
+								<EmailThreadSheet
+									isOpen={emailOpen}
+									onOpenChange={setEmailOpen}
+									clientId={client._id}
+									mode="new"
+									onComplete={() => setEmailOpen(false)}
+								/>
+							</>
 						),
 					},
 				]

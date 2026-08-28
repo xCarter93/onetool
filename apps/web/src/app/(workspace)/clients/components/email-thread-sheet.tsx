@@ -14,19 +14,21 @@ import {
 	SheetDescription,
 } from "@/components/ui/sheet";
 import { Input } from "@/components/ui/input";
-import {
-	Select,
-	SelectTrigger,
-	SelectContent,
-	SelectValue,
-	SelectItem,
-} from "@/components/ui/select";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useToast } from "@/hooks/use-toast";
 import {
 	EmailComposer,
 	type EmailComposerPayload,
 } from "@/components/shared/email/email-composer";
+import {
+	EmailRecipientsField,
+	type RecipientsValue,
+} from "@/components/shared/email/email-recipients-field";
+import {
+	toOutboundAttachments,
+	type ComposerAttachment,
+} from "@/components/shared/email/attachment-types";
+import { emailSendErrorMessage } from "@/components/shared/email/send-error";
 import { EmailMessageBody } from "@/components/shared/email/email-message-body";
 import { EmailAttachmentList } from "@/components/shared/email/email-attachment-list";
 import {
@@ -34,6 +36,19 @@ import {
 	formatMessageTimestamp,
 } from "@/components/shared/email/email-delivery-indicator";
 import { initialsOf } from "@/app/(workspace)/inbox/lib/inbox-utils";
+
+const NO_RECIPIENTS: RecipientsValue = { to: [], cc: [], bcc: [] };
+
+/** Case-insensitive dedupe that also drops anything already addressed in `to`. */
+function mergeCc(to: string[], cc: string[]): string[] {
+	const seen = new Set(to.map((email) => email.toLowerCase()));
+	return cc.filter((email) => {
+		const key = email.toLowerCase();
+		if (seen.has(key)) return false;
+		seen.add(key);
+		return true;
+	});
+}
 
 interface EmailThreadSheetProps {
 	isOpen: boolean;
@@ -55,8 +70,8 @@ export function EmailThreadSheet({
 	const toast = useToast();
 	const [subject, setSubject] = useState("");
 	const [isSending, setIsSending] = useState(false);
-	const [selectedContactId, setSelectedContactId] =
-		useState<Id<"clientContacts"> | null>(null);
+	const [recipients, setRecipients] = useState<RecipientsValue>(NO_RECIPIENTS);
+	const [attachments, setAttachments] = useState<ComposerAttachment[]>([]);
 	const messagesEndRef = useRef<HTMLDivElement>(null);
 
 	const thread = useQuery(
@@ -72,9 +87,21 @@ export function EmailThreadSheet({
 	const replyToEmail = useMutation(api.resend.replyToEmail);
 	const sendClientEmail = useMutation(api.resend.sendClientEmail);
 
-	const selectedContact = selectedContactId
-		? allContacts?.find((c) => c._id === selectedContactId)
-		: primaryContact;
+	const suggestions = (allContacts ?? []).flatMap((contact) =>
+		contact.email
+			? [
+					{
+						email: contact.email,
+						name: `${contact.firstName} ${contact.lastName}`.trim(),
+					},
+				]
+			: []
+	);
+
+	const selectedContact = allContacts?.find(
+		(contact) =>
+			contact.email?.toLowerCase() === recipients.to[0]?.toLowerCase()
+	);
 
 	// Auto-scroll to bottom when thread updates
 	useEffect(() => {
@@ -85,12 +112,18 @@ export function EmailThreadSheet({
 
 	// Reset form when sheet closes
 	const [wasOpen, setWasOpen] = useState(isOpen);
+	const [seeded, setSeeded] = useState(false);
 	if (isOpen !== wasOpen) {
 		setWasOpen(isOpen);
 		if (!isOpen) {
 			setSubject("");
-			setSelectedContactId(null);
+			setRecipients(NO_RECIPIENTS);
+			setAttachments([]);
+			setSeeded(false);
 		}
+	} else if (isOpen && !seeded && primaryContact?.email) {
+		setSeeded(true);
+		setRecipients({ to: [primaryContact.email], cc: [], bcc: [] });
 	}
 
 	// While the thread query is loading (undefined), a reply sheet must not
@@ -106,11 +139,8 @@ export function EmailThreadSheet({
 			toast.error("Subject required", "Please enter a subject for the email");
 			return false;
 		}
-		if (!selectedContact?.email) {
-			toast.error(
-				"No email address",
-				"The selected contact doesn't have an email address"
-			);
+		if (isNewEmail && !selectedContact?.email) {
+			toast.error("Add a recipient", "Choose a contact to send this to.");
 			return false;
 		}
 
@@ -122,7 +152,10 @@ export function EmailThreadSheet({
 					subject: subject.trim(),
 					messageBody: payload.text,
 					messageHtml: payload.html,
-					contactId: selectedContactId ?? primaryContact?._id,
+					contactId: selectedContact?._id,
+					cc: recipients.cc,
+					bcc: recipients.bcc,
+					attachments: toOutboundAttachments(attachments),
 				});
 				toast.success("Email sent", "Your email has been sent");
 			} else {
@@ -137,19 +170,19 @@ export function EmailThreadSheet({
 					emailMessageId: latestMessage._id,
 					messageBody: payload.text,
 					messageHtml: payload.html,
+					attachments: toOutboundAttachments(attachments),
 				});
 				toast.success("Reply sent", "Your reply has been sent");
 			}
 
 			setSubject("");
-			setSelectedContactId(null);
+			setAttachments([]);
 			onComplete?.();
 			return true;
 		} catch (error) {
-			console.error("Error sending email:", error);
 			toast.error(
 				"Send failed",
-				error instanceof Error ? error.message : "Failed to send email"
+				emailSendErrorMessage(error, "Failed to send email")
 			);
 			return false;
 		} finally {
@@ -169,9 +202,9 @@ export function EmailThreadSheet({
 							{client
 								? `Conversation with ${client.companyName}`
 								: "Loading..."}
-							{selectedContact && (
+							{(selectedContact ?? primaryContact)?.email && (
 								<span className="block text-xs mt-1">
-									To: {selectedContact.email}
+									To: {(selectedContact ?? primaryContact)?.email}
 								</span>
 							)}
 						</SheetDescription>
@@ -206,42 +239,35 @@ export function EmailThreadSheet({
 					<div className="border-t border-border shrink-0 bg-background">
 						<div className="p-6 space-y-4">
 							{isNewEmail && allContacts && allContacts.length > 0 && (
-								<div className="space-y-2">
-									<label
-										htmlFor="contact-select"
-										className="text-sm font-medium text-foreground"
+								<div
+									role="group"
+									aria-labelledby="thread-recipients-label"
+									className="space-y-2"
+								>
+									<span
+										id="thread-recipients-label"
+										className="block text-sm font-medium text-foreground"
 									>
-										Send To
-									</label>
-									<Select
-										value={selectedContactId ?? primaryContact?._id ?? ""}
-										onValueChange={(value) =>
-											setSelectedContactId(value as Id<"clientContacts">)
-										}
-									>
-										<SelectTrigger id="contact-select">
-											<SelectValue placeholder="Select a contact" />
-										</SelectTrigger>
-										<SelectContent>
-											{allContacts.map((contact) => (
-												<SelectItem key={contact._id} value={contact._id}>
-													<div className="flex items-center gap-2">
-														<span className="font-medium">
-															{contact.firstName} {contact.lastName}
-														</span>
-														{contact.isPrimary && (
-															<span className="text-xs text-primary">
-																(Primary)
-															</span>
-														)}
-														<span className="text-xs text-muted-foreground">
-															{contact.email}
-														</span>
-													</div>
-												</SelectItem>
-											))}
-										</SelectContent>
-									</Select>
+										Recipients
+									</span>
+									<EmailRecipientsField
+										value={recipients}
+										// sendClientEmail addresses one contact; the rest move to cc.
+										onChange={(next) => {
+											// A typed recipient outranks the primary-contact seed,
+											// which may still be resolving.
+											setSeeded(true);
+											const to = next.to.slice(-1);
+											setRecipients({
+												...next,
+												to,
+												cc: mergeCc(to, [...next.cc, ...next.to.slice(0, -1)]),
+											});
+										}}
+										suggestions={suggestions}
+										toLocked
+										disabled={isSending}
+									/>
 								</div>
 							)}
 
@@ -272,6 +298,8 @@ export function EmailThreadSheet({
 									isSending={isSending}
 									placeholder="Type your message here…"
 									sendLabel={isNewEmail ? "Send email" : "Send reply"}
+									attachments={attachments}
+									onAttachmentsChange={setAttachments}
 								/>
 								<p className="text-xs text-muted-foreground">
 									A greeting and your signature are added automatically.

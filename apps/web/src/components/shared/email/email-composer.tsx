@@ -13,15 +13,23 @@ import Placeholder from "@tiptap/extension-placeholder";
 import { Extension } from "@tiptap/core";
 import {
 	Bold,
+	File,
+	FileText,
+	Image as ImageIcon,
 	Italic,
 	Link2,
 	List,
 	ListOrdered,
 	Loader2,
+	Paperclip,
 	Send,
 	TextQuote,
 	Underline,
+	X,
 } from "lucide-react";
+import { useMutation } from "convex/react";
+import { api } from "@onetool/backend/convex/_generated/api";
+import type { Id } from "@onetool/backend/convex/_generated/dataModel";
 
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -33,7 +41,23 @@ import {
 	PopoverContent,
 	PopoverTrigger,
 } from "@/components/ui/popover";
+import {
+	Attachment,
+	AttachmentAction,
+	AttachmentActions,
+	AttachmentContent,
+	AttachmentDescription,
+	AttachmentMedia,
+	AttachmentTitle,
+} from "@/components/ui/attachment";
 import { EMAIL_HTML_CLASSES } from "./email-message-body";
+import { formatBytes } from "./email-attachment-list";
+import {
+	isBlockedAttachmentFilename,
+	MAX_TOTAL_ATTACHMENT_BYTES,
+	totalAttachmentBytes,
+	type ComposerAttachment,
+} from "./attachment-types";
 
 export interface EmailComposerPayload {
 	/** Rich body as TipTap HTML (server sanitizes before sending/storing). */
@@ -57,6 +81,24 @@ interface EmailComposerProps {
 	className?: string;
 	/** Compact for inline replies, roomy for standalone compose. */
 	size?: "default" | "large";
+	/** Pass with `onAttachmentsChange` to turn on the attachment tray. */
+	attachments?: ComposerAttachment[];
+	onAttachmentsChange?: (next: ComposerAttachment[]) => void;
+	/** Hide the toolbar send button when the host renders its own; Mod+Enter still submits. */
+	hideSendButton?: boolean;
+}
+
+interface PendingUpload {
+	id: string;
+	filename: string;
+	size: number;
+}
+
+function fileIconFor(mimeType: string) {
+	if (mimeType.startsWith("image/")) return ImageIcon;
+	if (mimeType === "application/pdf" || mimeType.startsWith("text/"))
+		return FileText;
+	return File;
 }
 
 /** Allowed link schemes, mirroring the backend sanitizer. */
@@ -85,10 +127,114 @@ export function EmailComposer({
 	sendLabel = "Send",
 	className,
 	size = "default",
+	attachments,
+	onAttachmentsChange,
+	hideSendButton = false,
 }: EmailComposerProps) {
 	// The submit extension is created once; route through a ref so it always
 	// calls the latest handler without rebuilding the editor.
 	const submitRef = useRef<() => void>(() => {});
+
+	const attachmentsEnabled = !!attachments && !!onAttachmentsChange;
+	const generateUploadUrl = useMutation(api.emailAttachments.generateUploadUrl);
+	const fileInputRef = useRef<HTMLInputElement>(null);
+	const [pendingUploads, setPendingUploads] = useState<PendingUpload[]>([]);
+	const [attachmentError, setAttachmentError] = useState<string | null>(null);
+
+	// Uploads resolve out of order and the parent owns the list, so append
+	// against the newest props rather than the closure that started the upload.
+	const attachmentsRef = useRef(attachments);
+	useEffect(() => {
+		attachmentsRef.current = attachments;
+	});
+
+	const uploadFile = async (file: File): Promise<ComposerAttachment> => {
+		const uploadUrl = await generateUploadUrl();
+		const mimeType = file.type || "application/octet-stream";
+		const response = await fetch(uploadUrl, {
+			method: "POST",
+			headers: { "Content-Type": mimeType },
+			body: file,
+		});
+		if (!response.ok) {
+			throw new Error(`Upload failed with status ${response.status}`);
+		}
+		const { storageId } = (await response.json()) as {
+			storageId: Id<"_storage">;
+		};
+		return {
+			storageId,
+			filename: file.name,
+			mimeType,
+			size: file.size,
+			source: "upload",
+		};
+	};
+
+	const handleFilesPicked = async (fileList: FileList | null) => {
+		const files = Array.from(fileList ?? []);
+		if (files.length === 0 || !onAttachmentsChange) return;
+
+		const blocked = files.filter((file) =>
+			isBlockedAttachmentFilename(file.name)
+		);
+		if (blocked.length > 0) {
+			setAttachmentError(
+				`Programs and scripts can't be emailed (${blocked
+					.map((file) => file.name)
+					.join(", ")}). Attach a document, image, or PDF instead.`
+			);
+			return;
+		}
+
+		const already =
+			totalAttachmentBytes(attachmentsRef.current ?? []) +
+			totalAttachmentBytes(pendingUploads);
+		const incoming = totalAttachmentBytes(files);
+		if (already + incoming > MAX_TOTAL_ATTACHMENT_BYTES) {
+			setAttachmentError(
+				`Attachments can total ${formatBytes(MAX_TOTAL_ATTACHMENT_BYTES)}. Remove a file and try again.`
+			);
+			return;
+		}
+
+		setAttachmentError(null);
+		const queued = files.map((file) => ({
+			id: crypto.randomUUID(),
+			filename: file.name,
+			size: file.size,
+		}));
+		setPendingUploads((prev) => [...prev, ...queued]);
+
+		const uploaded: ComposerAttachment[] = [];
+		const failed: string[] = [];
+		for (const [index, file] of files.entries()) {
+			try {
+				uploaded.push(await uploadFile(file));
+			} catch {
+				failed.push(file.name);
+			} finally {
+				const { id } = queued[index];
+				setPendingUploads((prev) => prev.filter((item) => item.id !== id));
+			}
+		}
+
+		if (uploaded.length > 0) {
+			onAttachmentsChange([...(attachmentsRef.current ?? []), ...uploaded]);
+		}
+		if (failed.length > 0) {
+			setAttachmentError(
+				`Couldn't upload ${failed.join(", ")}. Check your connection and try again.`
+			);
+		}
+	};
+
+	const removeAttachment = (storageId: Id<"_storage">) => {
+		setAttachmentError(null);
+		onAttachmentsChange?.(
+			(attachments ?? []).filter((item) => item.storageId !== storageId)
+		);
+	};
 
 	const extensions = useMemo(
 		() => [
@@ -158,7 +304,11 @@ export function EmailComposer({
 		editor?.setEditable(!disabled);
 	}, [editor, disabled]);
 
-	const canSend = !disabled && !isSending && !(state?.isEmpty ?? true);
+	const canSend =
+		!disabled &&
+		!isSending &&
+		!(state?.isEmpty ?? true) &&
+		pendingUploads.length === 0;
 
 	const handleSend = async () => {
 		if (!editor || !canSend) return;
@@ -191,7 +341,8 @@ export function EmailComposer({
 				editor={editor}
 				className={cn(
 					"overflow-y-auto px-3 py-2",
-					size === "large" ? "max-h-[45vh]" : "max-h-[240px]",
+					// Large lives inside a scrolling modal body; a second cap would nest scrollers.
+					size === "large" ? undefined : "max-h-[240px]",
 					EMAIL_HTML_CLASSES,
 					size === "large"
 						? "[&_.tiptap]:min-h-[180px]"
@@ -200,6 +351,64 @@ export function EmailComposer({
 					"[&_.is-editor-empty]:before:pointer-events-none [&_.is-editor-empty]:before:float-left [&_.is-editor-empty]:before:h-0 [&_.is-editor-empty]:before:text-muted-foreground [&_.is-editor-empty]:before:content-[attr(data-placeholder)]"
 				)}
 			/>
+
+			{attachmentsEnabled &&
+				(attachments.length > 0 || pendingUploads.length > 0) && (
+					<ul
+						aria-label="Attachments"
+						className="flex flex-wrap gap-2 border-t border-border px-2 py-2"
+					>
+						{attachments.map((attachment) => {
+							const Icon = fileIconFor(attachment.mimeType);
+							return (
+								<li key={attachment.storageId}>
+									<Attachment size="sm" state="done">
+										<AttachmentMedia>
+											<Icon aria-hidden="true" />
+										</AttachmentMedia>
+										<AttachmentContent>
+											<AttachmentTitle>{attachment.filename}</AttachmentTitle>
+											<AttachmentDescription>
+												{formatBytes(attachment.size)}
+											</AttachmentDescription>
+										</AttachmentContent>
+										<AttachmentActions>
+											<AttachmentAction
+												aria-label={`Remove ${attachment.filename}`}
+												onClick={() => removeAttachment(attachment.storageId)}
+												disabled={disabled || isSending}
+											>
+												<X className="size-3.5" aria-hidden="true" />
+											</AttachmentAction>
+										</AttachmentActions>
+									</Attachment>
+								</li>
+							);
+						})}
+						{pendingUploads.map((upload) => (
+							<li key={upload.id}>
+								<Attachment size="sm" state="uploading" aria-busy="true">
+									<AttachmentMedia>
+										<Loader2 className="animate-spin" aria-hidden="true" />
+									</AttachmentMedia>
+									<AttachmentContent>
+										<AttachmentTitle>{upload.filename}</AttachmentTitle>
+										<AttachmentDescription>Uploading</AttachmentDescription>
+									</AttachmentContent>
+								</Attachment>
+							</li>
+						))}
+					</ul>
+				)}
+
+			{attachmentError && (
+				<p
+					role="alert"
+					className="border-t border-border px-3 py-2 text-xs text-destructive"
+				>
+					{attachmentError}
+				</p>
+			)}
 
 			<div className="flex items-center justify-between gap-2 border-t border-border px-2 py-1.5">
 				<div
@@ -256,20 +465,48 @@ export function EmailComposer({
 					/>
 				</div>
 
-				<Button
-					size="sm"
-					onClick={() => void handleSend()}
-					disabled={!canSend}
-					aria-keyshortcuts="Meta+Enter Control+Enter"
-				>
-					{isSending ? (
-						<Loader2 className="size-4 animate-spin" aria-hidden="true" />
-					) : (
-						<Send className="size-4" aria-hidden="true" />
+				<div className="flex items-center gap-1">
+					{attachmentsEnabled && (
+						<>
+							<input
+								ref={fileInputRef}
+								type="file"
+								multiple
+								className="hidden"
+								onChange={(e) => {
+									void handleFilesPicked(e.target.files);
+									e.target.value = "";
+								}}
+							/>
+							<Button
+								variant="ghost"
+								size="sm"
+								className="size-7 p-0"
+								aria-label="Attach files"
+								onClick={() => fileInputRef.current?.click()}
+								disabled={disabled || isSending}
+							>
+								<Paperclip className="size-3.5" aria-hidden="true" />
+							</Button>
+						</>
 					)}
-					{sendLabel}
-					<Kbd className="ml-1">{isMac ? "⌘↵" : "Ctrl ↵"}</Kbd>
-				</Button>
+					{!hideSendButton && (
+						<Button
+							size="sm"
+							onClick={() => void handleSend()}
+							disabled={!canSend}
+							aria-keyshortcuts="Meta+Enter Control+Enter"
+						>
+							{isSending ? (
+								<Loader2 className="size-4 animate-spin" aria-hidden="true" />
+							) : (
+								<Send className="size-4" aria-hidden="true" />
+							)}
+							{sendLabel}
+							<Kbd className="ml-1">{isMac ? "⌘↵" : "Ctrl ↵"}</Kbd>
+						</Button>
+					)}
+				</div>
 			</div>
 		</div>
 	);
