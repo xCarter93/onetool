@@ -2119,6 +2119,8 @@ async function executeSendEmailAction(
 				status: "sent",
 				sentAt: Date.now(),
 				idempotencyKey: message.idempotencyKey,
+				// No sentBy — the inbox labels these as automation-sent.
+				systemSent: true,
 			});
 			await bumpThread(ctx, threadDocId, {
 				sentAt: Date.now(),

@@ -32,6 +32,22 @@ import {
 	userQuery,
 	type UserMutationCtx,
 } from "./lib/factories";
+import {
+	assertNoSuppressedRecipients,
+	entitySendArgs,
+	resolveRecipients,
+} from "./email/entitySend";
+import { resolveOutboundAttachments } from "./email/attachments";
+import { deliverOutbound } from "./email/deliver";
+import { htmlToPlainText, sanitizeHtml } from "./email/sanitizeHtml";
+import {
+	buildEmailHtml,
+	resolveFromEmail,
+	resolveReplyToEmail,
+} from "./email/branding";
+import { getOrCreateOutboundThread, plusTagAddress } from "./email/threads";
+import { formatEmailFrom } from "./lib/emailFrom";
+import { optionalPortalQuoteUrl } from "./portal/quoteUrl";
 
 /**
  * Quote operations
@@ -1107,7 +1123,7 @@ export const extendValidUntil = userMutation({
  * status change.
  */
 export const sendToClient = userMutation({
-	args: { id: v.id("quotes") },
+	args: { id: v.id("quotes"), ...entitySendArgs },
 	returns: v.id("quotes"),
 	handler: async (ctx, args): Promise<QuoteId> => {
 		await ctx.requireLevel("quotes", "modify");
@@ -1171,6 +1187,27 @@ export const sendToClient = userMutation({
 			throw new ConvexError({
 				code: "CONFLICT",
 				message: "Add an email to this client's primary contact before sending.",
+			});
+		}
+
+		// Everything the send needs is resolved before the status flip and meter
+		// debit, so a suppressed recipient or a missing attachment can't leave a
+		// quote marked sent with nothing delivered.
+		const recipients = resolveRecipients(args, recipientEmail);
+		await assertNoSuppressedRecipients(ctx, quote.orgId, [
+			...recipients.to,
+			...recipients.cc,
+			...recipients.bcc,
+		]);
+		const attachments = await resolveOutboundAttachments(ctx, args.attachments);
+		const customHtml =
+			args.mode === "custom"
+				? sanitizeHtml(args.html ?? "").trim() || undefined
+				: undefined;
+		if (args.mode === "custom" && !customHtml) {
+			throw new ConvexError({
+				code: "CONFLICT",
+				message: "Write a message before sending.",
 			});
 		}
 
@@ -1251,12 +1288,123 @@ export const sendToClient = userMutation({
 			});
 		}
 
-		// Fire-and-forget the branded portal-invite email.
-		await ctx.scheduler.runAfter(
-			0,
-			internal.portal.quoteEmail.sendQuoteReadyEmail,
-			{ quoteId: quote._id }
-		);
+		const organization = await ctx.db.get(quote.orgId);
+		if (!organization) {
+			throw new ConvexError({
+				code: "NOT_FOUND",
+				message: "Organization not found.",
+			});
+		}
+		const senderName = ctx.user.name || organization.name || "OneTool";
+		const subject =
+			args.subject?.trim() ||
+			(quote.quoteNumber
+				? `Quote ${quote.quoteNumber} from ${organization.name}`
+				: `New quote from ${organization.name}`);
+		// A resend must land in the thread the client already replied into, so
+		// reuse the newest message sent for this quote rather than forking.
+		const priorSend = await ctx.db
+			.query("emailMessages")
+			.withIndex("by_quote", (q) => q.eq("quoteId", quote._id))
+			.order("desc")
+			.first();
+		const priorForOrg =
+			priorSend && priorSend.orgId === quote.orgId ? priorSend : null;
+		const threadDocId = await getOrCreateOutboundThread(ctx, {
+			orgId: quote.orgId,
+			clientId: quote.clientId,
+			subject,
+			...(priorForOrg?.threadDocId
+				? { existingThreadDocId: priorForOrg.threadDocId }
+				: priorForOrg?.threadId
+					? { legacyThreadId: priorForOrg.threadId }
+					: {}),
+		});
+		const idempotencyKey = args.requestId
+			? `quote-${quote._id}-${args.requestId}`
+			: undefined;
+
+		if (customHtml) {
+			const bodyText = htmlToPlainText(customHtml);
+			const portalUrl = optionalPortalQuoteUrl(client.portalAccessId, quote._id);
+			const html = buildEmailHtml({
+				logoUrl: organization.logoUrl,
+				organizationName: organization.name,
+				organizationEmail: organization.email,
+				organizationPhone: organization.phone,
+				organizationAddress: organization.address,
+				clientName: primaryContact
+					? `${primaryContact.firstName} ${primaryContact.lastName}`.trim()
+					: undefined,
+				messageBody: bodyText,
+				messageHtml: customHtml,
+				senderName,
+				// Non-removable: a freeform quote email without the approval link
+				// is a PDF the client can't act on.
+				...(portalUrl
+					? { cta: { url: portalUrl, label: "Review quote" } }
+					: {}),
+			});
+			const fromEmail = resolveFromEmail(organization);
+			const result = await deliverOutbound(ctx, {
+				orgId: quote.orgId,
+				clientId: quote.clientId,
+				threadDocId,
+				message: {
+					from: formatEmailFrom(senderName, fromEmail),
+					to: recipients.to,
+					cc: recipients.cc,
+					bcc: recipients.bcc,
+					replyTo: [
+						plusTagAddress(resolveReplyToEmail(organization), threadDocId),
+					],
+					subject,
+					html,
+					text: bodyText,
+					idempotencyKey,
+					attachments,
+				},
+				record: {
+					messageBody: bodyText,
+					messagePreview: bodyText.substring(0, 100),
+					htmlBody: customHtml,
+					visibleText: bodyText,
+					fromEmail,
+					fromName: senderName,
+					toName: primaryContact
+						? `${primaryContact.firstName} ${primaryContact.lastName}`.trim()
+						: recipients.to[0],
+					sentBy: ctx.user._id,
+					quoteId: quote._id,
+					...(quote.projectId ? { projectId: quote.projectId } : {}),
+				},
+			});
+			if (result.outcome === "suppressed") {
+				throw new ConvexError({
+					code: "RECIPIENT_SUPPRESSED",
+					message:
+						"This recipient can't receive email — a previous message hard-bounced or was marked as spam.",
+				});
+			}
+		} else {
+			// Template mode renders react-email, which needs an action.
+			await ctx.scheduler.runAfter(
+				0,
+				internal.portal.quoteEmail.sendQuoteReadyEmail,
+				{
+					quoteId: quote._id,
+					threadDocId,
+					subject,
+					senderName,
+					sentBy: ctx.user._id,
+					to: recipients.to,
+					cc: recipients.cc,
+					bcc: recipients.bcc,
+					attachments,
+					idempotencyKey,
+				}
+			);
+		}
 
 		return args.id;
 	},

@@ -1271,9 +1271,19 @@ export default defineSchema({
 		// Recipients
 		toEmail: v.string(),
 		toName: v.string(),
+		cc: v.optional(v.array(v.string())),
+		bcc: v.optional(v.array(v.string())),
 
 		// Attachments
 		hasAttachments: v.optional(v.boolean()),
+
+		// Entity linkage — set when the send was launched from a quote/invoice
+		// compose modal, so the inbox row can name what it was about.
+		quoteId: v.optional(v.id("quotes")),
+		invoiceId: v.optional(v.id("invoices")),
+		projectId: v.optional(v.id("projects")),
+		// Sent by an automation/cron rather than a person; sentBy is absent.
+		systemSent: v.optional(v.boolean()),
 
 		// Status tracking
 		status: v.union(
@@ -1304,23 +1314,32 @@ export default defineSchema({
 		.index("by_thread", ["threadId", "sentAt"])
 		.index("by_rfc_message_id", ["rfcMessageId"])
 		.index("by_thread_doc", ["threadDocId", "sentAt"])
-		.index("by_idempotency_key", ["idempotencyKey"]),
+		.index("by_idempotency_key", ["idempotencyKey"])
+		// Resends look up the entity's newest message to reuse its thread.
+		.index("by_quote", ["quoteId"])
+		.index("by_invoice", ["invoiceId"]),
 
 	// Email Attachments - files attached to emails
 	emailAttachments: defineTable({
 		orgId: v.id("organizations"),
 		emailMessageId: v.id("emailMessages"),
 
-		// Attachment metadata (from Resend)
-		attachmentId: v.string(), // Resend attachment ID
+		// Absent on legacy rows, which are all inbound.
+		direction: v.optional(
+			v.union(v.literal("inbound"), v.literal("outbound"))
+		),
+
+		// Attachment metadata (from Resend) — outbound rows have no Resend id.
+		attachmentId: v.optional(v.string()),
 		filename: v.string(),
 		contentType: v.string(),
 		size: v.number(), // Size in bytes
 
-		// Storage
-		storageId: v.optional(v.id("_storage")), // After downloading from Resend
+		// Storage. Inbound: set after downloading from Resend. Outbound: the
+		// uploaded/generated file, present from insert.
+		storageId: v.optional(v.id("_storage")),
 
-		// Tracking
+		// Inbound receipt time; outbound rows stamp the send time.
 		receivedAt: v.number(),
 	})
 		.index("by_email", ["emailMessageId"])

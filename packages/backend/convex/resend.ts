@@ -1,5 +1,11 @@
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 import { getCurrentUserOrThrow, getCurrentUserOrgId } from "./lib/auth";
+import { resolveRecipients } from "./email/entitySend";
+import {
+	outboundAttachmentValidator,
+	recordOutboundAttachments,
+	resolveOutboundAttachments,
+} from "./email/attachments";
 import { userMutation } from "./lib/factories";
 import { sendOutbound } from "./email/outbound";
 import type { OutboundMessage } from "./email/types";
@@ -43,6 +49,9 @@ export const sendClientEmail = userMutation({
 		messageHtml: v.optional(v.string()), // Rich-text body; sanitized server-side
 		threadId: v.optional(v.string()), // Optional for starting a thread
 		contactId: v.optional(v.id("clientContacts")), // Recipient; defaults to primary
+		cc: v.optional(v.array(v.string())),
+		bcc: v.optional(v.array(v.string())),
+		attachments: v.optional(v.array(outboundAttachmentValidator)),
 	},
 	handler: async (ctx, args) => {
 		await ctx.requireLevel("inbox", "modify");
@@ -116,23 +125,32 @@ export const sendClientEmail = userMutation({
 			legacyThreadId: args.threadId,
 		});
 
+		const recipients = resolveRecipients(args, recipient.email);
+		const attachments = await resolveOutboundAttachments(ctx, args.attachments);
+
 		const message: OutboundMessage = {
 			from: formatEmailFrom(fromName, fromEmail),
 			to: [recipient.email],
+			cc: recipients.cc,
+			bcc: recipients.bcc,
 			replyTo: [plusTagAddress(resolveReplyToEmail(organization), threadDocId)],
 			subject: args.subject,
 			html: emailHtml,
 			text: args.messageBody, // text/plain alternative on every send
+			attachments,
 		};
 
 		const result = await sendOutbound(ctx, orgId, message);
 		if (result.skipped === "suppressed") {
-			throw new Error(
-				"This recipient's address is suppressed (a previous email hard-bounced or was marked as spam)."
-			);
+			throw new ConvexError({
+				code: "RECIPIENT_SUPPRESSED",
+				message:
+					"This recipient's address is suppressed (a previous email hard-bounced or was marked as spam).",
+			});
 		}
+		// Attachment sends learn their provider id in the scheduled action below.
 		const emailId = result.resendEmailId;
-		if (!emailId) {
+		if (!emailId && !result.deferred) {
 			throw new Error("Email could not be sent.");
 		}
 
@@ -147,13 +165,16 @@ export const sendClientEmail = userMutation({
 		const emailMessageId = await ctx.db.insert("emailMessages", {
 			orgId,
 			clientId: args.clientId,
-			resendEmailId: emailId,
+			resendEmailId: emailId ?? "",
 			direction: "outbound",
 			threadId,
 			threadDocId,
 			subject: args.subject,
 			messageBody: args.messageBody,
 			messagePreview,
+			...(recipients.cc.length > 0 ? { cc: recipients.cc } : {}),
+			...(recipients.bcc.length > 0 ? { bcc: recipients.bcc } : {}),
+			...(attachments ? { hasAttachments: true } : {}),
 			// Rich-text sends keep the sanitized HTML for inbox rendering; the
 			// plain text doubles as the visible-text digest.
 			...(sanitizedHtml
@@ -167,6 +188,22 @@ export const sendClientEmail = userMutation({
 			sentAt: Date.now(),
 			sentBy: user._id,
 		});
+
+		if (result.deferred && attachments) {
+			await recordOutboundAttachments(ctx, {
+				orgId,
+				emailMessageId,
+				attachments,
+				from: message.from,
+				to: message.to,
+				cc: message.cc,
+				bcc: message.bcc,
+				replyTo: message.replyTo,
+				subject: message.subject,
+				html: message.html,
+				text: message.text,
+			});
+		}
 
 		await bumpThread(ctx, threadDocId, {
 			sentAt: Date.now(),
@@ -222,6 +259,9 @@ export const replyToEmail = userMutation({
 		emailMessageId: v.id("emailMessages"), // The message being replied to
 		messageBody: v.string(), // Plain-text body (composer: editor.getText())
 		messageHtml: v.optional(v.string()), // Rich-text body; sanitized server-side
+		cc: v.optional(v.array(v.string())),
+		bcc: v.optional(v.array(v.string())),
+		attachments: v.optional(v.array(outboundAttachmentValidator)),
 	},
 	handler: async (ctx, args) => {
 		await ctx.requireLevel("inbox", "modify");
@@ -310,9 +350,14 @@ export const replyToEmail = userMutation({
 			legacyThreadId: originalEmail.threadId,
 		});
 
+		const recipients = resolveRecipients(args, primaryContact.email);
+		const attachments = await resolveOutboundAttachments(ctx, args.attachments);
+
 		const message: OutboundMessage = {
 			from: formatEmailFrom(fromName, fromEmail),
 			to: [primaryContact.email],
+			cc: recipients.cc,
+			bcc: recipients.bcc,
 			replyTo: [plusTagAddress(resolveReplyToEmail(organization), threadDocId)],
 			subject,
 			html: emailHtml,
@@ -320,16 +365,20 @@ export const replyToEmail = userMutation({
 			// RFC threading headers so the recipient's client threads our reply.
 			...(parentRfcId ? { inReplyTo: parentRfcId } : {}),
 			...(references.length > 0 ? { references } : {}),
+			attachments,
 		};
 
 		const result = await sendOutbound(ctx, orgId, message);
 		if (result.skipped === "suppressed") {
-			throw new Error(
-				"This recipient's address is suppressed (a previous email hard-bounced or was marked as spam)."
-			);
+			throw new ConvexError({
+				code: "RECIPIENT_SUPPRESSED",
+				message:
+					"This recipient's address is suppressed (a previous email hard-bounced or was marked as spam).",
+			});
 		}
+		// Attachment sends learn their provider id in the scheduled action below.
 		const emailId = result.resendEmailId;
-		if (!emailId) {
+		if (!emailId && !result.deferred) {
 			throw new Error("Email could not be sent.");
 		}
 
@@ -340,7 +389,7 @@ export const replyToEmail = userMutation({
 		const emailMessageId = await ctx.db.insert("emailMessages", {
 			orgId,
 			clientId,
-			resendEmailId: emailId,
+			resendEmailId: emailId ?? "",
 			direction: "outbound",
 			threadId: threadDocId,
 			threadDocId,
@@ -349,6 +398,9 @@ export const replyToEmail = userMutation({
 			subject,
 			messageBody: args.messageBody,
 			messagePreview,
+			...(recipients.cc.length > 0 ? { cc: recipients.cc } : {}),
+			...(recipients.bcc.length > 0 ? { bcc: recipients.bcc } : {}),
+			...(attachments ? { hasAttachments: true } : {}),
 			...(sanitizedHtml
 				? { htmlBody: sanitizedHtml, visibleText: args.messageBody }
 				: {}),
@@ -360,6 +412,24 @@ export const replyToEmail = userMutation({
 			sentAt: Date.now(),
 			sentBy: user._id,
 		});
+
+		if (result.deferred && attachments) {
+			await recordOutboundAttachments(ctx, {
+				orgId,
+				emailMessageId,
+				attachments,
+				from: message.from,
+				to: message.to,
+				cc: message.cc,
+				bcc: message.bcc,
+				replyTo: message.replyTo,
+				subject: message.subject,
+				html: message.html,
+				text: message.text,
+				inReplyTo: message.inReplyTo,
+				references: message.references,
+			});
+		}
 
 		await bumpThread(ctx, threadDocId, {
 			sentAt: Date.now(),

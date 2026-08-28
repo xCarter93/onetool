@@ -169,6 +169,16 @@ export function setupConvexTest() {
 	// internal delivery loop doesn't run under convex-test — sends enqueue into
 	// component tables and return an id, which is all the app contract needs.
 	registerResendComponent(t);
+	// The resend component mounts its own rate-limiter and workpool children;
+	// without them its batch loop throws once per enqueued email.
+	if (Object.keys(rateLimiterModules).length > 0) {
+		t.registerComponent(
+			"resend/rateLimiter",
+			rateLimitSchema,
+			rateLimiterModules
+		);
+	}
+	registerWorkpoolComponent(t, "resend/emailWorkpool");
 
 	return t;
 }

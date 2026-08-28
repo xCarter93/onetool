@@ -16,3 +16,15 @@ export function buildPortalInvoiceUrl(options: {
 	const origin = issuer.replace(/\/+$/, "");
 	return `${origin}/portal/c/${options.portalAccessId}/invoices/${options.invoiceId}`;
 }
+
+/**
+ * Same link, but null instead of a throw when the portal origin isn't
+ * configured — a deployment without it must still be able to send email.
+ */
+export function optionalPortalInvoiceUrl(
+	portalAccessId: string | undefined,
+	invoiceId: string
+): string | null {
+	if (!portalAccessId || !process.env.PORTAL_JWT_ISSUER) return null;
+	return buildPortalInvoiceUrl({ portalAccessId, invoiceId });
+}

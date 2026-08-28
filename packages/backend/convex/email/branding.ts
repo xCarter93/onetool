@@ -64,6 +64,13 @@ export function buildEmailHtml(options: {
 	 */
 	messageHtml?: string;
 	senderName: string; // Name of the person (or org) sending the email
+	/**
+	 * Portal call-to-action rendered below the body. Built here rather than
+	 * folded into `messageHtml` because the body sanitizer strips tables and
+	 * inline styles — a button pushed through that path would come out a bare
+	 * link.
+	 */
+	cta?: { url: string; label: string };
 }): string {
 	const {
 		logoUrl,
@@ -122,6 +129,26 @@ export function buildEmailHtml(options: {
 					})
 					.join("");
 
+	// escapeHtml also escapes "/", which would leave the href full of &#x2F;.
+	const ctaUrl = options.cta
+		? options.cta.url
+				.replace(/&/g, "&amp;")
+				.replace(/"/g, "&quot;")
+				.replace(/</g, "&lt;")
+				.replace(/>/g, "&gt;")
+		: undefined;
+	const ctaHtml =
+		options.cta && ctaUrl
+			? `
+							<table role="presentation" cellpadding="0" cellspacing="0" style="margin: 26px 0 4px 0;">
+								<tr>
+									<td style="background-color: #2563eb; border-radius: 8px;">
+										<a href="${ctaUrl}" style="display: inline-block; padding: 12px 22px; font-size: 15px; font-weight: 600; color: #ffffff; text-decoration: none;">${escapeHtml(options.cta.label)}</a>
+									</td>
+								</tr>
+							</table>`
+			: "";
+
 	return `
 <!DOCTYPE html>
 <html lang="en">
@@ -164,7 +191,7 @@ export function buildEmailHtml(options: {
 							${escapedClientName ? `<p style="margin: 0 0 18px 0; font-size: 16px; line-height: 1.6; color: #0f172a;">Hi ${escapedClientName},</p>` : ""}
 							<div style="font-size: 15px; line-height: 1.7; color: #334155;">
 								${bodyHtml}
-							</div>
+							</div>${ctaHtml}
 							<p style="margin: 28px 0 4px 0; font-size: 15px; line-height: 1.6; color: #334155;">Best regards,</p>
 							<p style="margin: 0; font-size: 15px; font-weight: 700; color: #0f172a;">${escapedSenderName}</p>
 							${senderName === organizationName ? "" : `<p style="margin: 2px 0 0 0; font-size: 13px; color: #64748b;">${escapedOrganizationName}</p>`}

@@ -1,9 +1,28 @@
-import { query } from "./_generated/server";
-import { mutation } from "./lib/triggers";
 import { v } from "convex/values";
-import { getCurrentUser, getCurrentUserOrgId } from "./lib/auth";
+import { getCurrentUser } from "./lib/auth";
 import { getOptionalOrgId } from "./lib/queries";
 import { optionalUserQuery, userMutation } from "./lib/factories";
+
+/**
+ * Signed upload URL for a composer attachment. The returned storageId is
+ * passed back on the send mutation's `attachments` argument.
+ */
+export const generateUploadUrl = userMutation({
+	args: {},
+	returns: v.string(),
+	handler: async (ctx) => {
+		// Reachable from inbox compose and the quote/invoice modals; any of the
+		// three modify grants suffices.
+		const allowed =
+			(await ctx.can("inbox", "modify")) ||
+			(await ctx.can("quotes", "modify")) ||
+			(await ctx.can("invoices", "modify"));
+		if (!allowed) {
+			await ctx.requireLevel("inbox", "modify");
+		}
+		return await ctx.storage.generateUploadUrl();
+	},
+});
 
 /**
  * List all attachments for an email message
