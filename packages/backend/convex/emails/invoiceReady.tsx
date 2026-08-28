@@ -25,6 +25,8 @@ interface InvoiceReadyEmailProps {
 	dueDateFormatted?: string;
 	portalUrl: string;
 	clientName?: string;
+	/** Stripe Connect state: without charges the CTA and copy can't promise payment. */
+	chargesEnabled?: boolean;
 }
 
 import { ONETOOL_MARK_URL, getOrgInitials } from "../email/branding";
@@ -39,8 +41,13 @@ export function InvoiceReadyEmail({
 	dueDateFormatted,
 	portalUrl,
 	clientName,
+	chargesEnabled = true,
 }: InvoiceReadyEmailProps) {
 	const greetingName = clientName ? clientName : "there";
+	const ctaLabel = chargesEnabled ? "View & pay invoice" : "View invoice online";
+	const introCopy = chargesEnabled
+		? `${businessName} has sent you an invoice. You can view the details and pay securely from your client portal.`
+		: `${businessName} has sent you an invoice. You can view the full details in your client portal.`;
 	const initials = getOrgInitials(businessName);
 	const hasContactLine = Boolean(businessEmail || businessPhone);
 
@@ -76,10 +83,7 @@ export function InvoiceReadyEmail({
 						<Heading style={styles.heading}>Your invoice is ready</Heading>
 
 						<Text style={styles.paragraph}>Hi {greetingName},</Text>
-						<Text style={styles.paragraph}>
-							{businessName} has sent you an invoice. You can view the details
-							and pay securely from your client portal.
-						</Text>
+						<Text style={styles.paragraph}>{introCopy}</Text>
 
 						<Section style={styles.summaryBox}>
 							<Row>
@@ -104,7 +108,7 @@ export function InvoiceReadyEmail({
 
 						<Section style={{ textAlign: "center" as const }}>
 							<Button href={portalUrl} style={styles.button}>
-								View &amp; Pay Invoice
+								{ctaLabel}
 							</Button>
 						</Section>
 

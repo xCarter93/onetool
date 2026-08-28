@@ -235,25 +235,55 @@ export const invoicesAndPaymentsArticles: HelpArticle[] = [
 		kind: "howto",
 		availability: "all",
 		permission: "Admins, and members with access to invoices.",
-		keywords: ["stripe", "card payment", "receipt", "cash", "check", "send to client", "portal"],
+		keywords: ["stripe", "card payment", "receipt", "cash", "check", "send to client", "portal", "custom email", "attachments", "cc", "bcc"],
 		sections: [
 			{
 				heading: "Send the invoice",
 				blocks: [
 					{
 						type: "paragraph",
-						text: "**Send to Client** does two things: it marks the invoice as sent and emails your client a branded invitation to view and pay it in their portal.",
+						text: "**Send to Client** does two things: it marks the invoice as sent and emails your client a link to view and pay it in their portal.",
 					},
 					{
 						type: "steps",
 						items: [
 							"Open the invoice and review the total.",
 							"Open the **⋯** menu in the invoice header and click **Send to Client**.",
+							"Choose **Portal template** for the branded email, or **Custom email** to write your own subject and message.",
+						],
+					},
+					{
+						type: "paragraph",
+						text: "The portal template is fixed wording, and you see a preview of the exact email before it goes out. A custom email is yours to write, and the portal button is added underneath it either way. That button reads **View & pay invoice** once online payments are set up, and **View invoice online** until then.",
+					},
+					{
+						type: "note",
+						text: "Sending requires the client to have a primary contact with an email address on file. Add one on the client record first if it is missing. To send the same link again later, use **Resend to Client**. On the Free plan the modal says how many sends you have left this month. The first send of an invoice uses one, and resending is free. You can also send straight from the invoice list: open an invoice\u2019s quick-view drawer and use the same action there.",
+					},
+				],
+			},
+			{
+				heading: "Recipients and attachments",
+				blocks: [
+					{
+						type: "paragraph",
+						text: "Both email choices share the same recipient lines and attachment tray.",
+					},
+					{
+						type: "list",
+						items: [
+							"**Recipients.** **To** starts with the primary contact. Click **Add CC/BCC** to reveal the other two lines, which take any address you type. A custom email lets you type any address on the **To** line as well; the portal template keeps **To** on the client's own contacts, because the portal link belongs to them.",
+							"**The invoice PDF.** The most recent version you generated is attached already. Remove it with the X, or use the clock icon to pick an older version.",
+							"**Your own files.** **Attach file** adds photos, receipts, and anything else the client asked for. All attachments together can total 20MB, and program files are refused.",
 						],
 					},
 					{
 						type: "note",
-						text: "Sending requires the client to have portal access turned on and a primary contact with an email address on file. Add one on the client record first if it is missing. To send the same link again later, use **Resend to Client**; nothing else about the invoice changes. You can also send straight from the invoice list: open an invoice\u2019s quick-view drawer and use the same action there.",
+						text: "If you edited the invoice after generating its PDF, the attachment reads **Content changed since generation**. The refresh button beside it rebuilds the PDF from the current numbers. Sending the older version is still allowed, so this is a warning rather than a block.",
+					},
+					{
+						type: "paragraph",
+						text: "Every invoice you send this way lands in the client's conversation in your [inbox](/help/inbox/unified-inbox), and their reply comes back to the same place. If an address has hard-bounced or marked one of your emails as spam, the send is refused and OneTool names the address.",
 					},
 				],
 			},

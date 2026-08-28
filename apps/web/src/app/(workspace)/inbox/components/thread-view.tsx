@@ -15,6 +15,11 @@ import {
 	EmailComposer,
 	type EmailComposerPayload,
 } from "@/components/shared/email/email-composer";
+import {
+	toOutboundAttachments,
+	type ComposerAttachment,
+} from "@/components/shared/email/attachment-types";
+import { emailSendErrorMessage } from "@/components/shared/email/send-error";
 import { EmailMessageBody } from "@/components/shared/email/email-message-body";
 import { EmailAttachmentList } from "@/components/shared/email/email-attachment-list";
 import {
@@ -59,6 +64,13 @@ export function ThreadView({
 	const toast = useToast();
 
 	const [isSending, setIsSending] = useState(false);
+	const [attachments, setAttachments] = useState<ComposerAttachment[]>([]);
+	// Attachments belong to the thread they were picked for; drop them on switch.
+	const [attachedForThread, setAttachedForThread] = useState(threadDocId);
+	if (attachedForThread !== threadDocId) {
+		setAttachedForThread(threadDocId);
+		setAttachments([]);
+	}
 	// Explicit expand/collapse choices; anything untouched derives its state
 	// from position (only the newest message starts expanded).
 	const [manualExpanded, setManualExpanded] = useState<
@@ -112,7 +124,7 @@ export function ThreadView({
 		if (!lastMessageId) {
 			toast.error(
 				"Couldn't send reply",
-				"Thread isn't ready yet — try again in a moment."
+				"Thread isn't ready yet. Try again in a moment."
 			);
 			return false;
 		}
@@ -122,10 +134,15 @@ export function ThreadView({
 				emailMessageId: lastMessageId,
 				messageBody: payload.text,
 				messageHtml: payload.html,
+				attachments: toOutboundAttachments(attachments),
 			});
+			setAttachments([]);
 			return true;
-		} catch {
-			toast.error("Couldn't send reply", "Please try again.");
+		} catch (error) {
+			toast.error(
+				"Couldn't send reply",
+				emailSendErrorMessage(error, "Please try again.")
+			);
 			return false;
 		} finally {
 			setIsSending(false);
@@ -246,6 +263,8 @@ export function ThreadView({
 						sendLabel="Send"
 						initialHtml={draft}
 						onChangeHtml={onDraftChange}
+						attachments={attachments}
+						onAttachmentsChange={setAttachments}
 					/>
 				) : (
 					<div className="flex flex-col items-start gap-2 rounded-lg bg-muted/20 p-3 text-sm text-muted-foreground">

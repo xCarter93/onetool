@@ -34,9 +34,8 @@ interface InvoiceDetailHeaderProps {
 	currentStatus: InvoiceStatus;
 	onStatusChange: (status: InvoiceStatus) => void;
 	onMarkPaid: () => void;
-	onSendToClient: () => void;
-	/** True while the send-to-client mutation is in flight. */
-	sending?: boolean;
+	/** Opens the send-email modal (portal template or custom email). */
+	onSendEmail: () => void;
 	/** Disable draft sends when the monthly document-send meter is exhausted (resends never debit). */
 	sendCapReached?: boolean;
 	sendCapReason?: string;
@@ -49,8 +48,7 @@ export function InvoiceDetailHeader({
 	currentStatus,
 	onStatusChange,
 	onMarkPaid,
-	onSendToClient,
-	sending = false,
+	onSendEmail,
 	sendCapReached = false,
 	sendCapReason,
 	onGeneratePdf,
@@ -58,9 +56,6 @@ export function InvoiceDetailHeader({
 }: InvoiceDetailHeaderProps) {
 	const { can } = usePermissions();
 	const canModify = can("invoices", "modify");
-	// Status writes race an in-flight send, so they wait it out. The send row
-	// itself and Cancel (modal-gated) keep using `canModify` directly.
-	const canModifyNow = canModify && !sending;
 
 	// Status-dependent actions. The primary next step for each status is pinned
 	// left ("start"); everything else is secondary and collapses into the ⋯ menu.
@@ -75,7 +70,7 @@ export function InvoiceDetailHeader({
 						slot: "start",
 						variant: "default",
 						onClick: () => onStatusChange("sent"),
-						disabled: !canModifyNow || sendCapReached,
+						disabled: !canModify || sendCapReached,
 						disabledReason: sendCapReached ? sendCapReason : undefined,
 					},
 					{
@@ -86,7 +81,7 @@ export function InvoiceDetailHeader({
 						slot: "start",
 						variant: "default",
 						onClick: onMarkPaid,
-						disabled: !canModifyNow,
+						disabled: !canModify,
 					},
 				];
 			case "sent":
@@ -100,7 +95,7 @@ export function InvoiceDetailHeader({
 						slot: "start",
 						variant: "default",
 						onClick: onMarkPaid,
-						disabled: !canModifyNow,
+						disabled: !canModify,
 					},
 					{
 						key: "revert-draft",
@@ -109,7 +104,7 @@ export function InvoiceDetailHeader({
 						slot: "secondary",
 						variant: "outline",
 						onClick: () => onStatusChange("draft"),
-						disabled: !canModifyNow,
+						disabled: !canModify,
 					},
 				];
 			case "paid":
@@ -121,7 +116,7 @@ export function InvoiceDetailHeader({
 						slot: "start",
 						variant: "outline",
 						onClick: () => onStatusChange("sent"),
-						disabled: !canModifyNow,
+						disabled: !canModify,
 					},
 				];
 			case "cancelled":
@@ -133,7 +128,7 @@ export function InvoiceDetailHeader({
 						slot: "start",
 						variant: "outline",
 						onClick: () => onStatusChange("draft"),
-						disabled: !canModifyNow,
+						disabled: !canModify,
 					},
 				];
 			default:
@@ -144,21 +139,16 @@ export function InvoiceDetailHeader({
 	const actions: RecordAction[] = [
 		...statusActions,
 		{
-			// Emails the portal invite. Hidden on paid/cancelled invoices, which the
+			// Opens the send modal. Hidden on paid/cancelled invoices, which the
 			// backend rejects; sent/overdue re-send the same link.
 			key: "send-to-client",
-			label:
-				currentStatus === "draft" ? "Send to Client" : "Resend to Client",
+			label: invoice.firstSentAt ? "Resend to Client" : "Send to Client",
 			icon: <Mail className="h-4 w-4" />,
 			slot: "secondary",
 			variant: "outline",
-			onClick: onSendToClient,
-			disabled:
-				!canModify || sending || (currentStatus === "draft" && sendCapReached),
-			disabledReason:
-				currentStatus === "draft" && sendCapReached ? sendCapReason : undefined,
-			loading: sending,
-			loadingLabel: "Sending…",
+			onClick: onSendEmail,
+			disabled: !canModify || sendCapReached,
+			disabledReason: sendCapReached ? sendCapReason : undefined,
 			hidden: currentStatus === "paid" || currentStatus === "cancelled",
 		},
 		{

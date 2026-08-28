@@ -33,6 +33,7 @@ export const ORG_SCOPED_CASCADE_TABLES = [
 	"messageAttachments",
 	"teamMessages",
 	"emailAttachments",
+	"emailUploads",
 	"projectDocuments",
 	"clientDocuments",
 	"documents",
@@ -186,6 +187,21 @@ export async function cascadeDeleteOrgDataPage(
 			if (row.storageId) {
 				await StorageHelpers.deleteFromStorage(ctx, row.storageId);
 			}
+			await ctx.db.delete(row._id);
+			remaining--;
+		}
+	}
+
+	// emailUploads — storageId (required). Drained after emailAttachments, so a
+	// blob shared with a sent attachment is already gone; the delete is tolerant.
+	{
+		if (remaining <= 0) return { done: false };
+		const rows = await ctx.db
+			.query("emailUploads")
+			.withIndex("by_org", (q) => q.eq("orgId", orgId))
+			.take(remaining);
+		for (const row of rows) {
+			await StorageHelpers.deleteFromStorage(ctx, row.storageId);
 			await ctx.db.delete(row._id);
 			remaining--;
 		}

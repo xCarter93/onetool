@@ -101,6 +101,10 @@
    "types": "./convex/lib/orgScan.ts",
    "default": "./convex/lib/orgScan.ts"
   },
+  "./convex/lib/attachmentPolicy": {
+   "types": "./convex/lib/attachmentPolicy.ts",
+   "default": "./convex/lib/attachmentPolicy.ts"
+  },
   "./convex/lib/permissionKeys": {
    "types": "./convex/lib/permissionKeys.ts",
    "default": "./convex/lib/permissionKeys.ts"

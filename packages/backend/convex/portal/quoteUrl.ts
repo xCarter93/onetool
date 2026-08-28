@@ -16,3 +16,15 @@ export function buildPortalQuoteUrl(options: {
 	const origin = issuer.replace(/\/+$/, "");
 	return `${origin}/portal/c/${options.portalAccessId}/quotes/${options.quoteId}`;
 }
+
+/**
+ * Same link, but null instead of a throw when the portal origin isn't
+ * configured — a deployment without it must still be able to send email.
+ */
+export function optionalPortalQuoteUrl(
+	portalAccessId: string | undefined,
+	quoteId: string
+): string | null {
+	if (!portalAccessId || !process.env.PORTAL_JWT_ISSUER) return null;
+	return buildPortalQuoteUrl({ portalAccessId, quoteId });
+}

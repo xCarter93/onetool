@@ -545,12 +545,14 @@ export const gettingStartedArticles: HelpArticle[] = [
 						type: "steps",
 						items: [
 							"Open the quote and review the total.",
-							"Open the **⋯** menu in the quote header and click **Send to Client**. Your client gets an email with a link to the quote in their portal, where they can approve or decline it with a signature. (**Mark as Sent** just flips the status, so use it for quotes you delivered outside OneTool.)",
+							"Open the **⋯** menu in the quote header and click **Send to Client**.",
+							"Choose **Portal template** to send the branded email as written, or **Custom email** to write your own note. Either way your client gets a link to the quote in their portal, where they can approve or decline it with a signature.",
+							"Check the recipients and the attached PDF, then send. (**Mark as Sent** just flips the status, so use it for quotes you delivered outside OneTool.)",
 						],
 					},
 					{
 						type: "note",
-						text: "For a formal signature ceremony with an emailed signing request, use **Send for e-signature** instead. Both paths end with an approved quote.",
+						text: "The same modal offers **Send for e-signature** when you want a formal signing request instead. The quote becomes Approved when your client approves it in the portal or completes the signature. A signing request can also expire before your client signs, which leaves the quote unapproved.",
 					},
 				],
 			},
@@ -592,7 +594,7 @@ export const gettingStartedArticles: HelpArticle[] = [
 						items: [
 							"Open the approved quote.",
 							"Click **Convert to Invoice**. OneTool creates the invoice with the same line items and gives it the next invoice number.",
-							"Review the invoice, then click **Send to Client**. Your client gets an email inviting them to view and pay it in their portal.",
+							"Review the invoice, then click **Send to Client** and choose **Portal template** or **Custom email**. Your client gets a link to view and pay the invoice in their portal.",
 						],
 					},
 					{

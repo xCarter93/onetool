@@ -23,7 +23,26 @@ import {
 	entitlementsFromIdentity,
 	requireMeter,
 } from "./lib/entitlements";
-import { buildPortalInvoiceUrl } from "./portal/invoiceUrl";
+import {
+	buildPortalInvoiceUrl,
+	optionalPortalInvoiceUrl,
+} from "./portal/invoiceUrl";
+import { mintPortalAccessId } from "./clients";
+import {
+	assertNoSuppressedRecipients,
+	entitySendArgs,
+	resolveRecipients,
+} from "./email/entitySend";
+import { resolveOutboundAttachments } from "./email/attachments";
+import { deliverOutbound } from "./email/deliver";
+import { htmlToPlainText, sanitizeHtml } from "./email/sanitizeHtml";
+import {
+	buildEmailHtml,
+	resolveFromEmail,
+	resolveReplyToEmail,
+} from "./email/branding";
+import { getOrCreateOutboundThread, plusTagAddress } from "./email/threads";
+import { formatEmailFrom } from "./lib/emailFrom";
 import { maybeEnqueueQboSync } from "./lib/quickbooksEnqueue";
 import { calculateInvoiceTotals, syncInvoiceTotals } from "./lib/invoiceTotals";
 import { assertInvoiceContentEditable } from "./lib/editLocks";
@@ -674,7 +693,7 @@ export const update = userMutation({
  * The portal is the payment surface; no bearer pay-link is generated.
  */
 export const sendToClient = userMutation({
-	args: { id: v.id("invoices") },
+	args: { id: v.id("invoices"), ...entitySendArgs },
 	returns: v.id("invoices"),
 	handler: async (ctx, args): Promise<InvoiceId> => {
 		await ctx.requireLevel("invoices", "modify");
@@ -703,12 +722,12 @@ export const sendToClient = userMutation({
 				message: "Invoice client not found.",
 			});
 		}
-		if (!client.portalAccessId) {
-			throw new ConvexError({
-				code: "CONFLICT",
-				message:
-					"This client has no portal access yet. Enable it on the client before sending.",
-			});
+		// Nothing ever clears portalAccessId (rotation replaces it), so minting on
+		// demand can't revive access someone revoked.
+		let portalAccessId = client.portalAccessId;
+		if (!portalAccessId) {
+			portalAccessId = await mintPortalAccessId(ctx);
+			await ctx.db.patch(client._id, { portalAccessId });
 		}
 		const primaryContact = await ctx.db
 			.query("clientContacts")
@@ -721,6 +740,42 @@ export const sendToClient = userMutation({
 			throw new ConvexError({
 				code: "CONFLICT",
 				message: "Add an email to this client's primary contact before sending.",
+			});
+		}
+
+		// Everything the send needs is resolved before the status flip and meter
+		// debit, so a suppressed recipient or a missing attachment can't leave an
+		// invoice marked sent with nothing delivered.
+		const recipients = resolveRecipients(args, recipientEmail);
+		await assertNoSuppressedRecipients(ctx, invoice.orgId, [
+			...recipients.to,
+			...recipients.cc,
+			...recipients.bcc,
+		]);
+		const attachments = await resolveOutboundAttachments(
+			ctx,
+			invoice.orgId,
+			args.attachments,
+			{ type: "invoice", id: args.id }
+		);
+		const customHtml =
+			args.mode === "custom"
+				? sanitizeHtml(args.html ?? "").trim() || undefined
+				: undefined;
+		if (args.mode === "custom" && !customHtml) {
+			throw new ConvexError({
+				code: "CONFLICT",
+				message: "Write a message before sending.",
+			});
+		}
+		// The template email is nothing but the portal link, so a deployment
+		// without an origin must fail here rather than flip the invoice to sent
+		// and let the scheduled action drop the send.
+		if (!customHtml && !process.env.PORTAL_JWT_ISSUER) {
+			throw new ConvexError({
+				code: "CONFLICT",
+				message:
+					"Portal links aren't configured for this workspace, so the invoice email can't be sent. Contact support.",
 			});
 		}
 
@@ -808,12 +863,125 @@ export const sendToClient = userMutation({
 			});
 		}
 
-		// Fire-and-forget the branded portal-invite email.
-		await ctx.scheduler.runAfter(
-			0,
-			internal.portal.invoiceEmail.sendInvoiceReadyEmail,
-			{ invoiceId: invoice._id }
-		);
+		const organization = await ctx.db.get(invoice.orgId);
+		if (!organization) {
+			throw new ConvexError({
+				code: "NOT_FOUND",
+				message: "Organization not found.",
+			});
+		}
+		const senderName = ctx.user.name || organization.name || "OneTool";
+		const subject =
+			args.subject?.trim() ||
+			`Invoice ${invoice.invoiceNumber} from ${organization.name}`;
+		// An org that can't take charges yet must not promise a payment flow.
+		const chargesEnabled = organization.stripeChargesEnabled === true;
+		const ctaLabel = chargesEnabled
+			? "View & pay invoice"
+			: "View invoice online";
+		// A resend must land in the thread the client already replied into, so
+		// reuse the newest message sent for this invoice rather than forking.
+		const priorSend = await ctx.db
+			.query("emailMessages")
+			.withIndex("by_invoice", (q) => q.eq("invoiceId", invoice._id))
+			.order("desc")
+			.first();
+		const priorForOrg =
+			priorSend && priorSend.orgId === invoice.orgId ? priorSend : null;
+		const threadDocId = await getOrCreateOutboundThread(ctx, {
+			orgId: invoice.orgId,
+			clientId: invoice.clientId,
+			subject,
+			...(priorForOrg?.threadDocId
+				? { existingThreadDocId: priorForOrg.threadDocId }
+				: priorForOrg?.threadId
+					? { legacyThreadId: priorForOrg.threadId }
+					: {}),
+		});
+		const idempotencyKey = args.requestId
+			? `invoice-${invoice._id}-${args.requestId}`
+			: undefined;
+
+		if (customHtml) {
+			const bodyText = htmlToPlainText(customHtml);
+			const portalUrl = optionalPortalInvoiceUrl(portalAccessId, invoice._id);
+			const html = buildEmailHtml({
+				logoUrl: organization.logoUrl,
+				organizationName: organization.name,
+				organizationEmail: organization.email,
+				organizationPhone: organization.phone,
+				organizationAddress: organization.address,
+				clientName: primaryContact
+					? `${primaryContact.firstName} ${primaryContact.lastName}`.trim()
+					: undefined,
+				messageBody: bodyText,
+				messageHtml: customHtml,
+				senderName,
+				// Non-removable: a freeform invoice email without the portal link
+				// is a PDF the client can't pay.
+				...(portalUrl ? { cta: { url: portalUrl, label: ctaLabel } } : {}),
+			});
+			const fromEmail = resolveFromEmail(organization);
+			const result = await deliverOutbound(ctx, {
+				orgId: invoice.orgId,
+				clientId: invoice.clientId,
+				threadDocId,
+				message: {
+					from: formatEmailFrom(senderName, fromEmail),
+					to: recipients.to,
+					cc: recipients.cc,
+					bcc: recipients.bcc,
+					replyTo: [
+						plusTagAddress(resolveReplyToEmail(organization), threadDocId),
+					],
+					subject,
+					html,
+					text: bodyText,
+					idempotencyKey,
+					attachments,
+				},
+				record: {
+					messageBody: bodyText,
+					messagePreview: bodyText.substring(0, 100),
+					htmlBody: customHtml,
+					visibleText: bodyText,
+					fromEmail,
+					fromName: senderName,
+					toName: primaryContact
+						? `${primaryContact.firstName} ${primaryContact.lastName}`.trim()
+						: recipients.to[0],
+					sentBy: ctx.user._id,
+					invoiceId: invoice._id,
+					...(invoice.projectId ? { projectId: invoice.projectId } : {}),
+				},
+			});
+			if (result.outcome === "suppressed") {
+				throw new ConvexError({
+					code: "RECIPIENT_SUPPRESSED",
+					message:
+						"This recipient can't receive email — a previous message hard-bounced or was marked as spam.",
+				});
+			}
+		} else {
+			// Template mode renders react-email, which needs an action.
+			await ctx.scheduler.runAfter(
+				0,
+				internal.portal.invoiceEmail.sendInvoiceReadyEmail,
+				{
+					invoiceId: invoice._id,
+					threadDocId,
+					subject,
+					senderName,
+					sentBy: ctx.user._id,
+					to: recipients.to,
+					cc: recipients.cc,
+					bcc: recipients.bcc,
+					attachments,
+					idempotencyKey,
+					chargesEnabled,
+				}
+			);
+		}
 
 		return invoice._id;
 	},

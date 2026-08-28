@@ -4,7 +4,6 @@ import { Doc } from "@onetool/backend/convex/_generated/dataModel";
 import { StatusProgressBar } from "@/components/shared/status-progress-bar";
 import { StickyDetailHeader } from "@/components/shared/sticky-detail-header";
 import {
-	PenLine,
 	Mail,
 	FileText,
 	Trash2,
@@ -39,17 +38,8 @@ interface QuoteDetailHeaderProps {
 	quote: Doc<"quotes">;
 	currentStatus: QuoteStatus;
 	onStatusChange: (status: QuoteStatus) => void;
-	/** Emails the client a portal invite for this quote (quotes.sendToClient). */
-	onSendToClient: () => void;
-	/** True while the send-to-client mutation is in flight. */
-	sending?: boolean;
-	onSendForSignature: () => void;
-	/** Disable "Send for e-signature" when the monthly e-signature cap is reached. */
-	sendDisabled?: boolean;
-	sendDisabledReason?: string;
-	/** Disable first sends when the monthly document-send meter is exhausted (resends never debit). */
-	clientSendDisabled?: boolean;
-	clientSendDisabledReason?: string;
+	/** Opens the send-email modal (portal template, custom email, or e-signature). */
+	onSendEmail: () => void;
 	onGeneratePdf: () => void;
 	onDelete: () => void;
 	onConvertToInvoice: () => void;
@@ -61,13 +51,7 @@ export function QuoteDetailHeader({
 	quote,
 	currentStatus,
 	onStatusChange,
-	onSendToClient,
-	sending = false,
-	onSendForSignature,
-	sendDisabled = false,
-	sendDisabledReason,
-	clientSendDisabled = false,
-	clientSendDisabledReason,
+	onSendEmail,
 	onGeneratePdf,
 	onDelete,
 	onConvertToInvoice,
@@ -77,10 +61,6 @@ export function QuoteDetailHeader({
 	const canModifyQuote = can("quotes", "modify");
 	const canDeleteQuote = can("quotes", "delete");
 	const canModifyInvoice = can("invoices", "modify");
-	// A send in flight races any status write on the same quote: approve first
-	// and the send comes back "already approved". The conflicting writes wait it
-	// out; Delete stays live, being modal-gated and an abort either way.
-	const canModifyNow = canModifyQuote && !sending;
 
 	// The backend refuses to send a quote whose valid-until day has passed; the
 	// sidebar's Valid until field is the revive path. Compared as calendar days,
@@ -105,7 +85,7 @@ export function QuoteDetailHeader({
 						slot: "start",
 						variant: "default",
 						onClick: () => onStatusChange("sent"),
-						disabled: !canModifyNow,
+						disabled: !canModifyQuote,
 					},
 				];
 			case "sent":
@@ -118,7 +98,7 @@ export function QuoteDetailHeader({
 						slot: "start",
 						variant: "default",
 						onClick: () => onStatusChange("approved"),
-						disabled: !canModifyNow,
+						disabled: !canModifyQuote,
 					},
 					{
 						key: "revert-to-draft",
@@ -127,7 +107,7 @@ export function QuoteDetailHeader({
 						slot: "secondary",
 						variant: "outline",
 						onClick: () => setShowRevertConfirm(true),
-						disabled: !canModifyNow,
+						disabled: !canModifyQuote,
 					},
 				];
 			case "approved":
@@ -139,7 +119,7 @@ export function QuoteDetailHeader({
 						slot: "start",
 						variant: "default",
 						onClick: onConvertToInvoice,
-						disabled: !canModifyInvoice || converting || sending,
+						disabled: !canModifyInvoice || converting,
 						loading: converting,
 					},
 					{
@@ -149,7 +129,7 @@ export function QuoteDetailHeader({
 						slot: "secondary",
 						variant: "outline",
 						onClick: () => onStatusChange("draft"),
-						disabled: !canModifyNow,
+						disabled: !canModifyQuote,
 					},
 				];
 			case "declined":
@@ -162,7 +142,7 @@ export function QuoteDetailHeader({
 						slot: "start",
 						variant: "outline",
 						onClick: () => onStatusChange("draft"),
-						disabled: !canModifyNow,
+						disabled: !canModifyQuote,
 					},
 				];
 			default:
@@ -173,35 +153,21 @@ export function QuoteDetailHeader({
 	const actions: RecordAction[] = [
 		...statusActions,
 		{
-			// Emails the portal invite. Hidden on approved quotes — the backend
-			// rejects those (convert to an invoice instead), same as mobile.
+			// Opens the send modal: portal template, custom email, or e-signature.
+			// Stays visible on approved quotes, where email is refused but the
+			// e-signature route is still the right next step.
 			key: "send-to-client",
-			label:
-				currentStatus === "sent" ? "Resend to Client" : "Send to Client",
+			label: quote.firstSentAt || quote.sentAt
+				? "Resend to Client"
+				: "Send to Client",
 			icon: <Mail className="h-4 w-4" />,
 			slot: "secondary",
 			variant: "outline",
-			onClick: onSendToClient,
-			disabled:
-				!canModifyQuote || sending || validUntilPassed || clientSendDisabled,
+			onClick: onSendEmail,
+			disabled: !canModifyQuote || validUntilPassed,
 			disabledReason: validUntilPassed
 				? "Extend the valid-until date before sending"
-				: clientSendDisabled
-					? clientSendDisabledReason
-					: undefined,
-			loading: sending,
-			loadingLabel: "Sending…",
-			hidden: currentStatus === "approved",
-		},
-		{
-			key: "send-esign",
-			label: "Send for e-signature",
-			icon: <PenLine className="h-4 w-4" />,
-			slot: "secondary",
-			variant: "outline",
-			onClick: onSendForSignature,
-			disabled: sendDisabled || !canModifyQuote,
-			disabledReason: sendDisabled ? sendDisabledReason : undefined,
+				: undefined,
 		},
 		{
 			key: "generate-pdf",

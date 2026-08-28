@@ -8,7 +8,7 @@ export const inboxArticles: HelpArticle[] = [
 		kind: "howto",
 		availability: "all",
 		permission: "Admins, and members with access to the inbox.",
-		keywords: ["email", "messages", "threads", "reply", "unread", "archive", "unlinked"],
+		keywords: ["email", "messages", "threads", "reply", "unread", "archive", "unlinked", "cc", "bcc", "attachments"],
 		sections: [
 			{
 				heading: "One inbox for the whole team",
@@ -16,6 +16,10 @@ export const inboxArticles: HelpArticle[] = [
 					{
 						type: "paragraph",
 						text: "The inbox is your organization's shared mailbox for client email. Every message your team sends or receives lands in the same place, so anyone with access can see the full history of a conversation and pick it up where a teammate left off. There are no per-person mailboxes to check.",
+					},
+					{
+						type: "paragraph",
+						text: "Quotes and invoices you send with **Send to Client** show up here too, in that client's conversation, and their reply comes back to the same thread. The inbox holds the whole record of what you sent a client and what they said back.",
 					},
 					{
 						type: "note",
@@ -55,6 +59,7 @@ export const inboxArticles: HelpArticle[] = [
 						items: [
 							"Click a thread to open it in the right pane. OneTool marks it as read automatically. Older messages are collapsed to one line; click one to expand it.",
 							"Type your reply in the box at the bottom of the thread. Use the toolbar to format it: bold, italic, underline, lists, links, and quotes.",
+							"Use **Attach file** to send a photo or document with the reply.",
 							"Click **Send**, or press Cmd+Enter (Ctrl+Enter on Windows).",
 						],
 					},
@@ -64,7 +69,7 @@ export const inboxArticles: HelpArticle[] = [
 					},
 					{
 						type: "note",
-						text: "Replies go to the client's primary contact, even if a different contact sent the last message. Check who is marked primary before replying to anything sensitive.",
+						text: "Replies go to the client's primary contact, even if a different contact sent the last message, and a reply has no Cc or Bcc lines. To copy someone, start a new email instead. Check who is marked primary before replying to anything sensitive.",
 					},
 					{
 						type: "tip",
@@ -80,12 +85,18 @@ export const inboxArticles: HelpArticle[] = [
 						items: [
 							"Click **New email** at the top of the inbox.",
 							"Pick the client, then the contact to send to. It defaults to their primary contact.",
-							"Add a subject, write your message, and click **Send email**.",
+							"To copy someone else, click **Add CC/BCC** and type their address on the **Cc** or **Bcc** line.",
+							"Add a subject and write your message. Use **Attach file** to send photos or documents along with it.",
+							"Click **Send email**.",
 						],
 					},
 					{
 						type: "paragraph",
 						text: "The conversation starts already linked to that client, and their reply lands back in this inbox. A greeting and your signature are added around what you write, so the email arrives looking professional without extra work.",
+					},
+					{
+						type: "note",
+						text: "Attachments on one email can total 20MB, and program files are refused.",
 					},
 				],
 			},
@@ -154,7 +165,7 @@ export const inboxArticles: HelpArticle[] = [
 			},
 			{
 				question: "Can I attach a file to a reply?",
-				answer: "Not currently. Files that clients email you appear on their messages in the inbox and on the client's Email Threads tab, ready to download.",
+				answer: "Yes. Use Attach file below the message box. Everything on one email can total 20MB, and program files are refused. Files that clients email you appear on their messages in the inbox and on the client's Email Threads tab, ready to download.",
 			},
 			{
 				question: "What address do my emails come from?",
@@ -174,7 +185,7 @@ export const inboxArticles: HelpArticle[] = [
 		kind: "howto",
 		availability: "all",
 		permission: "Admins, and members with access to the inbox.",
-		keywords: ["attachments", "downloads", "compose", "reply", "messages", "threads", "files"],
+		keywords: ["attachments", "downloads", "compose", "reply", "messages", "threads", "files", "cc", "bcc"],
 		sections: [
 			{
 				heading: "The Email Threads tab",
@@ -185,7 +196,7 @@ export const inboxArticles: HelpArticle[] = [
 					},
 					{
 						type: "paragraph",
-						text: "Composing and replying happen in a slide-over panel on top of the client's page, so their details stay in view while you write.",
+						text: "Composing and replying happen in a slide-over panel on top of the client's page, so their details stay in view while you write. The **Email** button on a client's quick-view drawer opens the same panel, so you get the full editor there too.",
 					},
 				],
 			},
@@ -196,8 +207,10 @@ export const inboxArticles: HelpArticle[] = [
 						type: "steps",
 						items: [
 							"Open the client and click **Compose Email** at the top of the page.",
-							"Pick the recipient under **Send To**. It defaults to the client's primary contact.",
+							"Pick the recipient on the **To** line. It defaults to the client's primary contact.",
+							"To copy someone else, click **Add CC/BCC** and type their address on the **Cc** or **Bcc** line.",
 							"Enter a **Subject** and write your **Message**. Use the toolbar to format it: bold, italic, underline, lists, links, and quotes.",
+							"Use **Attach file** to send photos or documents along with it.",
 							"Click **Send email**. OneTool adds a greeting and your signature around what you wrote.",
 						],
 					},
@@ -227,7 +240,7 @@ export const inboxArticles: HelpArticle[] = [
 				],
 			},
 			{
-				heading: "Attachments from your clients",
+				heading: "Attachments",
 				blocks: [
 					{
 						type: "paragraph",
@@ -241,7 +254,7 @@ export const inboxArticles: HelpArticle[] = [
 					},
 					{
 						type: "note",
-						text: "Attaching files to an email you send is not currently supported.",
+						text: "You can send files as well as receive them. **Attach file** sits under the message box on both a new email and a reply. Everything on one email can total 20MB, and program files are refused.",
 					},
 				],
 			},
@@ -253,7 +266,7 @@ export const inboxArticles: HelpArticle[] = [
 			},
 			{
 				question: "Who receives the email?",
-				answer: "A new email goes to the contact you choose under Send To, which defaults to the primary contact. Replies always go to the client's primary contact.",
+				answer: "A new email goes to the contact on the To line, which defaults to the primary contact. Anyone you add on Cc or Bcc gets a copy. Replies always go to the client's primary contact.",
 			},
 			{
 				question: "Why don't I see the Email Threads tab?",
