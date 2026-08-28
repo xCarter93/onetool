@@ -59,6 +59,7 @@ import { ReportPreview } from "./report-preview";
 import { ReportUtilityBar } from "./report-utility-bar";
 import { ReportFieldPicker } from "./report-field-picker";
 import { ReportFilterRows } from "./report-filter-rows";
+import { ReportMetricControls } from "./report-metric-controls";
 import {
 	countFilterRules,
 	sanitizeReportFilters,
@@ -72,8 +73,6 @@ import {
 	genericGroupByOptions,
 	groupByOptions,
 	isChartVizType,
-	metricOptionsFor,
-	metricToValue,
 	savedToBuilderState,
 	visualizationOptions,
 	type BuilderConfigState,
@@ -660,26 +659,11 @@ export function ReportBuilder({
 							</PanelSection>
 
 							<PanelSection title="Metric">
-								<Select
-									value={metricToValue(metric)}
-									onValueChange={(v) => {
-										const opt = metricOptionsFor(entityType).find(
-											(o) => o.value === v
-										);
-										if (opt) changeMetric(opt.metric);
-									}}
-								>
-									<SelectTrigger className="w-full">
-										<SelectValue placeholder="Count of records" />
-									</SelectTrigger>
-									<SelectContent>
-										{metricOptionsFor(entityType).map((opt) => (
-											<SelectItem key={opt.value} value={opt.value}>
-												{opt.label}
-											</SelectItem>
-										))}
-									</SelectContent>
-								</Select>
+								<ReportMetricControls
+									entityType={entityType}
+									metric={metric}
+									onChange={changeMetric}
+								/>
 							</PanelSection>
 
 							{groupBySectionVisible && (

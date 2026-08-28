@@ -256,64 +256,181 @@ export function metricToValue(metric: ReportMetric): string {
 	return `${metric.op}:${metric.field}`;
 }
 
-const AGG_OPS: { op: "sum" | "avg" | "min" | "max"; label: string }[] = [
+export type MetricAgg = Exclude<MeasureOp, "count">;
+
+export const metricAggOptions: { op: MetricAgg; label: string }[] = [
 	{ op: "sum", label: "Sum" },
 	{ op: "avg", label: "Average" },
 	{ op: "min", label: "Min" },
 	{ op: "max", label: "Max" },
 ];
 
-/**
- * The full metric picker (R8b): count, aggregations over numeric/currency
- * fields, named ratio metrics, and one-hop related rollups (count + sum) for
- * every child entity whose FK points at this entity.
- */
-export function metricOptionsFor(entityType: EntityType): MetricOption[] {
-	const options: MetricOption[] = [
-		{ value: "count", label: "Count of records", metric: { op: "count" } },
-	];
-	for (const [field, def] of Object.entries(REPORT_FIELDS[entityType].fields)) {
-		if (def.type !== "number" && def.type !== "currency") continue;
-		for (const { op, label } of AGG_OPS) {
-			options.push({
-				value: `${op}:${field}`,
-				label: `${label} of ${def.label}`,
-				metric: { op, field },
-			});
+/** What a metric measures, separated from how it aggregates (d15 amendment). */
+export type MetricTarget =
+	| { kind: "count" }
+	| { kind: "field"; field: string }
+	| { kind: "ratio"; ratioKey: RatioKey }
+	| { kind: "relatedCount"; entity: EntityType; fk: string }
+	| { kind: "relatedField"; entity: EntityType; fk: string; field: string };
+
+export type MetricTargetOption = {
+	value: string;
+	label: string;
+	/** Select heading; also the breadcrumb prefix of a related field's label. */
+	group: string;
+	target: MetricTarget;
+	aggregatable: boolean;
+};
+
+/** Breadcrumb joiner in related-target labels; the picker splits on it. */
+export const METRIC_TARGET_SEPARATOR = " › ";
+
+function numericFieldsOf(entityType: EntityType) {
+	return Object.entries(REPORT_FIELDS[entityType].fields).filter(
+		([, def]) => def.type === "number" || def.type === "currency"
+	);
+}
+
+/** Inverted REPORT_RELATIONS edges: children whose FK points at this entity. */
+function childEdgesOf(entityType: EntityType): { child: EntityType; fk: string }[] {
+	const edges: { child: EntityType; fk: string }[] = [];
+	for (const child of REPORT_ENTITY_TYPES) {
+		if (child === entityType) continue;
+		for (const [fk, edge] of Object.entries(REPORT_RELATIONS[child])) {
+			if (edge.refType === entityType) edges.push({ child, fk });
 		}
+	}
+	return edges;
+}
+
+/**
+ * What a metric can measure: the record count, direct numeric/currency fields,
+ * named ratio metrics, and one-hop child rollups. Aggregatable targets pair
+ * with a separate Sum/Average/Min/Max control.
+ */
+export function metricTargetOptionsFor(
+	entityType: EntityType
+): MetricTargetOption[] {
+	const options: MetricTargetOption[] = [
+		{
+			value: "count",
+			label: "Count of records",
+			group: "Fields",
+			target: { kind: "count" },
+			aggregatable: false,
+		},
+	];
+	for (const [field, def] of numericFieldsOf(entityType)) {
+		options.push({
+			value: `field:${field}`,
+			label: def.label,
+			group: "Fields",
+			target: { kind: "field", field },
+			aggregatable: true,
+		});
 	}
 	for (const key of RATIO_KEYS) {
 		if (RATIO_METRICS[key].entityType !== entityType) continue;
 		options.push({
 			value: `ratio:${key}`,
 			label: RATIO_LABELS[key],
-			metric: { op: "ratio", ratioKey: key },
+			group: "Ratios",
+			target: { kind: "ratio", ratioKey: key },
+			aggregatable: false,
 		});
 	}
-	for (const child of REPORT_ENTITY_TYPES) {
-		if (child === entityType) continue;
-		for (const [fk, edge] of Object.entries(REPORT_RELATIONS[child])) {
-			if (edge.refType !== entityType) continue;
-			const childLabel = entityLabels[child] ?? child;
+	for (const { child, fk } of childEdgesOf(entityType)) {
+		const childLabel = entityLabels[child] ?? child;
+		options.push({
+			value: `related:${child}:${fk}:count`,
+			label: `Count of ${childLabel}`,
+			group: childLabel,
+			target: { kind: "relatedCount", entity: child, fk },
+			aggregatable: false,
+		});
+		for (const [field, def] of numericFieldsOf(child)) {
 			options.push({
-				value: `related:${child}:${fk}:count`,
-				label: `Count of ${childLabel}`,
-				metric: { op: "related", related: { entity: child, fk, op: "count" } },
+				value: `related:${child}:${fk}:field:${field}`,
+				label: `${childLabel}${METRIC_TARGET_SEPARATOR}${def.label}`,
+				group: childLabel,
+				target: { kind: "relatedField", entity: child, fk, field },
+				aggregatable: true,
 			});
-			for (const [field, def] of Object.entries(REPORT_FIELDS[child].fields)) {
-				if (def.type !== "number" && def.type !== "currency") continue;
-				options.push({
-					value: `related:${child}:${fk}:sum:${field}`,
-					label: `Sum of ${childLabel} › ${def.label}`,
-					metric: {
-						op: "related",
-						related: { entity: child, fk, op: "sum", field },
-					},
-				});
-			}
 		}
 	}
 	return options;
+}
+
+/** Target + aggregation → the saved metric. Non-aggregatable targets ignore `agg`. */
+export function buildMetric(target: MetricTarget, agg: MetricAgg): ReportMetric {
+	switch (target.kind) {
+		case "count":
+			return { op: "count" };
+		case "field":
+			return { op: agg, field: target.field };
+		case "ratio":
+			return { op: "ratio", ratioKey: target.ratioKey };
+		case "relatedCount":
+			return {
+				op: "related",
+				related: { entity: target.entity, fk: target.fk, op: "count" },
+			};
+		case "relatedField":
+			return {
+				op: "related",
+				related: {
+					entity: target.entity,
+					fk: target.fk,
+					op: agg,
+					field: target.field,
+				},
+			};
+	}
+}
+
+/** The two controls read from the metric itself — no duplicated picker state. */
+export function metricTargetValue(metric: ReportMetric): string {
+	if (metric.op === "count") return "count";
+	if (metric.op === "ratio") return `ratio:${metric.ratioKey}`;
+	if (metric.op === "related" && metric.related) {
+		const r = metric.related;
+		return r.op === "count" || !r.field
+			? `related:${r.entity}:${r.fk}:count`
+			: `related:${r.entity}:${r.fk}:field:${r.field}`;
+	}
+	return `field:${metric.field}`;
+}
+
+/** Undefined where the target is its own aggregation (count, related count, ratio). */
+export function metricAggOf(metric: ReportMetric): MetricAgg | undefined {
+	if (metric.op === "related") {
+		const op = metric.related?.op;
+		return op && op !== "count" ? op : undefined;
+	}
+	if (metric.op === "count" || metric.op === "ratio") return undefined;
+	return metric.op;
+}
+
+/**
+ * The flat metric vocabulary — every target × its allowed aggregations. The
+ * builder authors metrics through the split controls; this stays the label
+ * lookup for the preview header and the utility bar.
+ */
+export function metricOptionsFor(entityType: EntityType): MetricOption[] {
+	return metricTargetOptionsFor(entityType).flatMap((option) => {
+		if (!option.aggregatable) {
+			const metric = buildMetric(option.target, "sum");
+			return [{ value: metricToValue(metric), label: option.label, metric }];
+		}
+		return metricAggOptions.map(({ op, label }) => {
+			const metric = buildMetric(option.target, op);
+			return {
+				value: metricToValue(metric),
+				label: `${label} of ${option.label}`,
+				metric,
+			};
+		});
+	});
 }
 
 /** Timestamp fields eligible as the date-range field; the entity default first. */

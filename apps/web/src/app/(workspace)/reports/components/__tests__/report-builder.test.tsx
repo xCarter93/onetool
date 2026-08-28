@@ -38,6 +38,7 @@ vi.mock("convex/react", () => ({
 }));
 
 import { ReportBuilder, type ReportBuilderInitial } from "../report-builder";
+import type { ReportMetric } from "../../report-config";
 
 function renderBuilder(initial: ReportBuilderInitial) {
 	return render(
@@ -277,5 +278,137 @@ describe("ReportBuilder — group-by field picker (F5, d15)", () => {
 		fireEvent.click(section("Chart options").getByRole("combobox"));
 
 		expect(await screen.findByRole("option", { name: "A to Z" })).toBeInTheDocument();
+	});
+});
+
+function quotesReport(
+	metric: ReportMetric,
+	over: { groupBy?: string; type?: "bar" | "number" } = {}
+): ReportBuilderInitial {
+	return {
+		name: "Quotes",
+		description: "",
+		config: {
+			version: 2,
+			entityType: "quotes",
+			metric,
+			...(over.groupBy ? { groupBy: over.groupBy } : {}),
+		},
+		visualization: { type: over.type ?? "bar" },
+	};
+}
+
+function metricControls() {
+	return section("Metric").getAllByRole("combobox");
+}
+
+/** Base UI select items only commit on a click that follows a pointer sequence. */
+async function pickFrom(combobox: HTMLElement, label: string) {
+	fireEvent.click(combobox);
+	const option = await screen.findByRole("option", { name: label });
+	fireEvent.pointerDown(option, { pointerType: "mouse" });
+	fireEvent.pointerUp(option, { pointerType: "mouse" });
+	fireEvent.click(option);
+}
+
+describe("ReportBuilder — metric target + aggregation (d15 amendment)", () => {
+	it("an aggregated field metric renders a target picker and an aggregation dropdown", () => {
+		renderBuilder(quotesReport({ op: "sum", field: "total" }, { groupBy: "status" }));
+
+		const [target, agg] = metricControls();
+		expect(metricControls()).toHaveLength(2);
+		expect(target).toHaveTextContent("Total");
+		expect(agg).toHaveTextContent("Sum");
+	});
+
+	it("Count of records hides the aggregation dropdown", () => {
+		renderBuilder(quotesReport({ op: "count" }, { groupBy: "status" }));
+
+		expect(metricControls()).toHaveLength(1);
+		expect(metricControls()[0]).toHaveTextContent("Count of records");
+	});
+
+	it("a ratio target hides the aggregation dropdown and the Group by section", () => {
+		renderBuilder(
+			quotesReport({ op: "ratio", ratioKey: "conversionRate" }, { groupBy: undefined })
+		);
+
+		expect(metricControls()).toHaveLength(1);
+		expect(metricControls()[0]).toHaveTextContent("Conversion rate");
+		expect(screen.queryByText("Group by", { selector: "h4" })).toBeNull();
+	});
+
+	it("a related count target hides the aggregation dropdown", () => {
+		renderBuilder(
+			quotesReport({
+				op: "related",
+				related: { entity: "quoteLineItems", fk: "quoteId", op: "count" },
+			})
+		);
+
+		expect(metricControls()).toHaveLength(1);
+		expect(metricControls()[0]).toHaveTextContent("Count of Quote Line Items");
+	});
+
+	it("a related field metric hydrates both controls from its breadcrumb and op", () => {
+		renderBuilder(
+			quotesReport({
+				op: "related",
+				related: {
+					entity: "quoteLineItems",
+					fk: "quoteId",
+					op: "avg",
+					field: "amount",
+				},
+			})
+		);
+
+		const [target, agg] = metricControls();
+		expect(target).toHaveTextContent("Quote Line Items › Total");
+		expect(agg).toHaveTextContent("Average");
+	});
+
+	it("changing the aggregation keeps the target and marks the report dirty", async () => {
+		renderBuilder(quotesReport({ op: "sum", field: "total" }, { groupBy: "status" }));
+
+		await pickFrom(metricControls()[1], "Average");
+
+		const [target, agg] = metricControls();
+		expect(target).toHaveTextContent("Total");
+		expect(agg).toHaveTextContent("Average");
+		expect(screen.getByText("Unsaved changes")).toBeInTheDocument();
+	});
+
+	it("switching to another aggregatable target keeps the aggregation", async () => {
+		renderBuilder(quotesReport({ op: "avg", field: "total" }, { groupBy: "status" }));
+
+		await pickFrom(metricControls()[0], "Subtotal");
+
+		const [target, agg] = metricControls();
+		expect(target).toHaveTextContent("Subtotal");
+		expect(agg).toHaveTextContent("Average");
+	});
+
+	it("a target that carries no aggregation resets the dropdown to Sum on the way back", async () => {
+		renderBuilder(quotesReport({ op: "avg", field: "total" }, { groupBy: "status" }));
+
+		await pickFrom(metricControls()[0], "Count of records");
+		expect(metricControls()).toHaveLength(1);
+
+		await pickFrom(metricControls()[0], "Total");
+		expect(metricControls()[1]).toHaveTextContent("Sum");
+	});
+
+	it("new capability: Average over a related child field is authorable from the two controls", async () => {
+		renderBuilder(quotesReport({ op: "count" }, { groupBy: "status" }));
+
+		await pickFrom(metricControls()[0], "Quote Line Items › Total");
+		await pickFrom(metricControls()[1], "Average");
+
+		const [target, agg] = metricControls();
+		expect(target).toHaveTextContent("Quote Line Items › Total");
+		expect(agg).toHaveTextContent("Average");
+		// A related rollup buckets itself — the backend rejects grouping on it.
+		expect(screen.queryByText("Group by", { selector: "h4" })).toBeNull();
 	});
 });
