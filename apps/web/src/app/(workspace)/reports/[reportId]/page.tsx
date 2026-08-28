@@ -21,6 +21,7 @@ import {
 	visualizationIcons,
 	visualizationOptions,
 } from "../report-config";
+import { pathLabel } from "../report-path-options";
 import { normalizeReportConfig } from "@onetool/backend/convex/lib/reportConfig";
 
 function ReportViewPageContent() {
@@ -114,7 +115,10 @@ function ReportViewPageContent() {
 	const groupByLabel =
 		groupByOptions[viewConfig.entityType]?.find(
 			(o) => o.value === viewConfig.groupBy
-		)?.label ?? viewConfig.groupBy;
+		)?.label ??
+		(viewConfig.groupBy
+			? pathLabel(viewConfig.entityType, viewConfig.groupBy)
+			: viewConfig.groupBy);
 	const range = viewConfig.date?.range;
 	const rangeLabel =
 		range?.kind === "preset"

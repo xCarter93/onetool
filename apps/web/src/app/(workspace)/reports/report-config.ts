@@ -330,11 +330,16 @@ export function dateFieldOptionsFor(
 	return options;
 }
 
+/** Rail dropdown order (F1): the two non-chart types first, then the charts. */
 export const visualizationOptions: {
 	value: VizType;
 	label: string;
 	icon: LucideIcon;
 }[] = [
+	// Value stays "number" (schema/presets/saved reports unchanged); the label is
+	// Attio's name for a single-value report.
+	{ value: "number", label: "Single metric", icon: Hash },
+	{ value: "table", label: "Table", icon: TableIcon },
 	{ value: "bar", label: "Bar", icon: BarChart3 },
 	{ value: "column", label: "Column", icon: ChartColumn },
 	// Value stays "line" (schema/presets/saved reports unchanged) — user-facing
@@ -343,14 +348,12 @@ export const visualizationOptions: {
 	{ value: "pie", label: "Pie", icon: PieChart },
 	{ value: "radar", label: "Radar", icon: Radar },
 	{ value: "radial", label: "Radial", icon: Target },
-	{ value: "table", label: "Table", icon: TableIcon },
-	{ value: "number", label: "Number", icon: Hash },
 ];
 
-/** The six pickable chart types — table and number are report types, not charts. */
-export const chartTypeOptions = visualizationOptions.filter(
-	(o) => o.value !== "table" && o.value !== "number"
-);
+/** Table and single-metric render themselves; everything else is a chart. */
+export function isChartVizType(type: VizType): boolean {
+	return type !== "table" && type !== "number";
+}
 
 export const dateRangeOptions = [
 	{ value: "all_time", label: "All Time" },

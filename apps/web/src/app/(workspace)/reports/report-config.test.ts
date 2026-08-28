@@ -332,4 +332,28 @@ describe("related-object traversal (d15) — options derived from REPORT_RELATIO
 			label: "Quote",
 		});
 	});
+
+	it("a dotted groupBy with a granularity suffix survives hydrate → save", () => {
+		const config: ReportConfigV2 = {
+			version: 2,
+			entityType: "quoteLineItems",
+			metric: { op: "count" },
+			groupBy: "quoteId.projectId.startDate_month",
+		};
+		const state = savedToBuilderState(config, { type: "column" });
+		expect(state.groupBy).toBe("quoteId.projectId.startDate_month");
+		expect(builderStateToSaved(state).config).toEqual(config);
+	});
+
+	it("an fk-terminal dotted groupBy survives hydrate → save", () => {
+		const config: ReportConfigV2 = {
+			version: 2,
+			entityType: "quoteLineItems",
+			metric: { op: "count" },
+			groupBy: "quoteId.projectId",
+		};
+		const state = savedToBuilderState(config, { type: "bar" });
+		expect(state.groupBy).toBe("quoteId.projectId");
+		expect(builderStateToSaved(state).config).toEqual(config);
+	});
 });

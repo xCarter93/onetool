@@ -1,78 +1,66 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { Plus, Trash2, X } from "lucide-react";
+import { Fragment, useMemo, useState } from "react";
+import {
+	DndContext,
+	KeyboardSensor,
+	PointerSensor,
+	closestCenter,
+	useDroppable,
+	useSensor,
+	useSensors,
+	type DragEndEvent,
+	type DragStartEvent,
+} from "@dnd-kit/core";
+import {
+	SortableContext,
+	sortableKeyboardCoordinates,
+	useSortable,
+	verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import { GripVertical, MoreHorizontal, Plus, X } from "lucide-react";
 import type { ReportEntityType } from "@onetool/backend/convex/lib/reportFields";
 import type {
 	ReportFilterGroup,
-	ReportFilterOperator,
 	ReportFilterRule,
 	ReportFilters,
 } from "@onetool/backend/convex/lib/reportFilters";
 import type { FilterAdapter } from "@/components/shared/filter-adapter";
 import { Button } from "@/components/ui/button";
 import {
-	Popover,
-	PopoverContent,
-	PopoverTrigger,
-} from "@/components/ui/popover";
+	DropdownMenu,
+	DropdownMenuContent,
+	DropdownMenuItem,
+	DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { usePrefersReducedMotion } from "@/hooks/use-prefers-reduced-motion";
+import { cn } from "@/lib/utils";
+import { reportFilterAdapter } from "./report-filter-adapter";
 import {
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-} from "@/components/ui/select";
-import { reportFilterAdapter, VALUELESS_OPERATORS } from "./report-filter-adapter";
-
-const MAX_GROUPS = 5;
-const MAX_RULES_PER_GROUP = 8;
+	MAX_GROUPS,
+	MAX_RULES_PER_GROUP,
+	isDraftComplete,
+	moveRuleBetweenGroups,
+	reorderGroups,
+	type RuleDropTarget,
+} from "./report-filter-model";
+import { FilterRuleControls } from "./report-filter-rule-controls";
 
 function blankRule(): ReportFilterRule {
 	return { field: "", operator: "equals", value: undefined };
 }
 
-function isEmptyValue(value: unknown): boolean {
-	return value === undefined || value === null || value === "";
-}
+const groupId = (index: number) => `group:${index}`;
+const groupDropId = (index: number) => `group-drop:${index}`;
+const ruleId = (groupIndex: number, ruleIndex: number) =>
+	`rule:${groupIndex}:${ruleIndex}`;
 
-export function isDraftComplete(rule: ReportFilterRule): boolean {
-	if (!rule.field) return false;
-	if (VALUELESS_OPERATORS.has(rule.operator)) return true;
-	return !isEmptyValue(rule.value);
-}
-
-/**
- * Strips incomplete rules (missing value, unless the operator is valueless),
- * drops groups left with zero rules, and returns undefined when nothing
- * meaningful remains. Used before both querying and saving.
- */
-export function sanitizeReportFilters(
-	filters: ReportFilters | undefined
-): ReportFilters | undefined {
-	if (!filters) return undefined;
-
-	const groups = filters.groups
-		.map((group) => ({
-			logic: group.logic,
-			rules: group.rules.filter((rule) => {
-				if (!rule.field) return false;
-				if (VALUELESS_OPERATORS.has(rule.operator)) return true;
-				return !isEmptyValue(rule.value);
-			}),
-		}))
-		.filter((group) => group.rules.length > 0);
-
-	if (groups.length === 0) return undefined;
-
-	return { logic: filters.logic, groups };
-}
-
-/** Total complete filter rules — drives the Filters section badge count. */
-export function countFilterRules(filters: ReportFilters | undefined): number {
-	const sanitized = sanitizeReportFilters(filters);
-	if (!sanitized) return 0;
-	return sanitized.groups.reduce((sum, g) => sum + g.rules.length, 0);
+/** Every draggable id encodes its group, so any drop id yields a target group. */
+function groupIndexOf(id: string): number | null {
+	const parts = id.split(":");
+	const index = Number(parts[1]);
+	return Number.isInteger(index) ? index : null;
 }
 
 export interface ReportFiltersEditorProps {
@@ -81,16 +69,11 @@ export interface ReportFiltersEditorProps {
 	onChange: (filters: ReportFilters | undefined) => void;
 }
 
-type EditorTarget =
-	| { kind: "add-rule"; groupIndex: number }
-	| { kind: "edit-rule"; groupIndex: number; ruleIndex: number };
-
-function targetKey(target: EditorTarget): string {
-	return target.kind === "add-rule"
-		? `add-rule-${target.groupIndex}`
-		: `edit-rule-${target.groupIndex}-${target.ruleIndex}`;
-}
-
+/**
+ * The grouped AND/OR editor (§8 d15 F5): group cards mirroring the v2 model,
+ * live-applied on every change. Rules drag between cards (that changes the
+ * query, so drop targets are emphasized); cards reorder cosmetically.
+ */
 export function ReportFiltersEditor({
 	entityType,
 	filters,
@@ -99,367 +82,365 @@ export function ReportFiltersEditor({
 	const adapter = useMemo(() => reportFilterAdapter(entityType), [entityType]);
 	const groups = filters?.groups ?? [];
 	const topLogic = filters?.logic ?? "and";
+	const reducedMotion = usePrefersReducedMotion();
 
-	const [editor, setEditor] = useState<{ target: EditorTarget; draft: ReportFilterRule } | null>(
-		null
+	const [dragging, setDragging] = useState<string | null>(null);
+	const sensors = useSensors(
+		// A short drag threshold keeps the grip's own click/focus behavior intact.
+		useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+		useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
 	);
 
 	const commit = (nextGroups: ReportFilterGroup[]) => {
-		if (nextGroups.length === 0) {
-			onChange(undefined);
-			return;
-		}
-		onChange({ logic: topLogic, groups: nextGroups });
-	};
-
-	const setTopLogic = (logic: "and" | "or") => {
-		if (groups.length === 0) return;
-		onChange({ logic, groups });
-	};
-
-	const removeGroup = (groupIndex: number) => {
-		commit(groups.filter((_, i) => i !== groupIndex));
+		onChange(
+			nextGroups.length === 0 ? undefined : { logic: topLogic, groups: nextGroups }
+		);
 	};
 
 	const updateGroup = (groupIndex: number, group: ReportFilterGroup) => {
 		commit(groups.map((g, i) => (i === groupIndex ? group : g)));
 	};
 
-	// Empty groups are kept as containers in UI state — sanitizeReportFilters
-	// strips them at query/save time, so they never reach the backend.
-	const addGroup = () => {
-		if (groups.length >= MAX_GROUPS) return;
-		commit([...groups, { logic: "and", rules: [] }]);
+	const moveRule = (
+		from: { groupIndex: number; ruleIndex: number },
+		to: RuleDropTarget
+	) => {
+		const next = moveRuleBetweenGroups(groups, from, to);
+		if (next !== groups) commit(next);
 	};
 
-	const removeRule = (groupIndex: number, ruleIndex: number) => {
-		const group = groups[groupIndex];
-		if (!group) return;
-		updateGroup(groupIndex, {
-			...group,
-			rules: group.rules.filter((_, i) => i !== ruleIndex),
-		});
-	};
+	const handleDragEnd = ({ active, over }: DragEndEvent) => {
+		setDragging(null);
+		if (!over || over.id === active.id) return;
+		const activeId = String(active.id);
+		const targetGroup = groupIndexOf(String(over.id));
+		if (targetGroup === null) return;
 
-	const openEditor = (target: EditorTarget, initial?: ReportFilterRule) => {
-		setEditor({ target, draft: initial ?? blankRule() });
-	};
-
-	const closeEditor = () => setEditor(null);
-
-	const applyDraft = () => {
-		if (!editor || !isDraftComplete(editor.draft)) return;
-		const { target, draft } = editor;
-
-		switch (target.kind) {
-			case "add-rule": {
-				const group = groups[target.groupIndex];
-				if (!group) {
-					// Empty-state placeholder group (index 0, nothing in state yet):
-					// materialize it with the first rule.
-					if (target.groupIndex === 0 && groups.length === 0) {
-						commit([{ logic: "and", rules: [draft] }]);
-					}
-					break;
-				}
-				if (group.rules.length >= MAX_RULES_PER_GROUP) break;
-				updateGroup(target.groupIndex, { ...group, rules: [...group.rules, draft] });
-				break;
-			}
-			case "edit-rule": {
-				const group = groups[target.groupIndex];
-				if (!group) break;
-				updateGroup(target.groupIndex, {
-					...group,
-					rules: group.rules.map((r, i) => (i === target.ruleIndex ? draft : r)),
-				});
-				break;
-			}
+		if (activeId.startsWith("group:")) {
+			const from = groupIndexOf(activeId);
+			if (from === null) return;
+			const next = reorderGroups(groups, from, targetGroup);
+			if (next !== groups) commit(next);
+			return;
 		}
-		closeEditor();
-	};
 
-	const editorPopover = (target: EditorTarget, trigger: React.ReactElement) => {
-		const isOpen = editor !== null && targetKey(editor.target) === targetKey(target);
-		return (
-			<Popover
-				open={isOpen}
-				onOpenChange={(open) => {
-					if (!open) closeEditor();
-				}}
-			>
-				<PopoverTrigger
-					render={trigger}
-					onClick={() =>
-						openEditor(
-							target,
-							target.kind === "edit-rule"
-								? groups[target.groupIndex]?.rules[target.ruleIndex]
-								: undefined
-						)
-					}
-				/>
-				{isOpen && editor && (
-					// TODO(reui-rebuild): PopoverArrow has no analog in ui/popover.tsx (base-nova drops the arrow indicator entirely — no cn-popover-arrow style exists); dropped rather than invented.
-					<PopoverContent side="right" align="start" sideOffset={8} className="w-80">
-						<FilterEditorBody
-							adapter={adapter}
-							draft={editor.draft}
-							onDraftChange={(draft) => setEditor({ ...editor, draft })}
-							onCancel={closeEditor}
-							onApply={applyDraft}
-							canApply={isDraftComplete(editor.draft)}
-						/>
-					</PopoverContent>
-				)}
-			</Popover>
+		const [, sourceGroup, sourceRule] = activeId.split(":").map(Number);
+		const overId = String(over.id);
+		moveRule(
+			{ groupIndex: sourceGroup, ruleIndex: sourceRule },
+			overId.startsWith("rule:")
+				? { groupIndex: targetGroup, ruleIndex: Number(overId.split(":")[2]) }
+				: { groupIndex: targetGroup }
 		);
 	};
 
-	/** Dashed "+ Add filter" placeholder row inside a group — the only way to add a filter. */
-	const addFilterRow = (groupIndex: number) =>
-		editorPopover(
-			{ kind: "add-rule", groupIndex },
-			<button
-				type="button"
-				className="flex w-full items-center gap-1.5 rounded-md border border-dashed border-border/50 px-2.5 py-1.5 text-left text-xs text-muted-foreground transition-colors hover:border-border hover:text-foreground"
-			>
-				<Plus className="h-3 w-3" /> Add filter
-			</button>
-		);
-
-	/**
-	 * A group container card. `group` is undefined for the empty-state
-	 * placeholder (no groups in state yet) — same visual, no remove button;
-	 * its "+ Add filter" materializes the group on Apply.
-	 */
-	const groupCard = (group: ReportFilterGroup | undefined, groupIndex: number) => (
-		<div key={groupIndex} className="rounded-lg border border-border/60 bg-muted/30">
-			<div className="flex items-center justify-between gap-2 border-b border-border/40 px-2.5 py-1.5">
-				<p className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
-					Group {groupIndex + 1}
-					{group && group.rules.length > 1 && (
-						<>
-							<span className="font-normal">—</span>
-							<Select
-								value={group.logic}
-								onValueChange={(v) =>
-									updateGroup(groupIndex, { ...group, logic: v as "and" | "or" })
-								}
-							>
-								<SelectTrigger className="h-6 w-16 px-2 py-0 text-xs">
-									<SelectValue />
-								</SelectTrigger>
-								<SelectContent>
-									<SelectItem value="and">all</SelectItem>
-									<SelectItem value="or">any</SelectItem>
-								</SelectContent>
-							</Select>
-							<span className="font-normal">of the following</span>
-						</>
-					)}
-				</p>
-				{group && (
-					<button
-						type="button"
-						onClick={() => removeGroup(groupIndex)}
-						className="rounded-md p-1 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
-						aria-label="Remove filter group"
-					>
-						<X className="h-3.5 w-3.5" />
-					</button>
-				)}
-			</div>
-
-			<div className="space-y-1.5 p-2.5">
-				{group?.rules.map((rule, ruleIndex) => (
-					<div key={ruleIndex} className="group/rule relative">
-						{editorPopover(
-							{ kind: "edit-rule", groupIndex, ruleIndex },
-							<button
-								type="button"
-								className="w-full rounded-md border border-border/60 bg-background px-2.5 py-1.5 pr-7 text-left transition-colors hover:border-border"
-							>
-								<p className="truncate text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-									{adapter.fieldLabel(rule.field)}
-								</p>
-								<p className="truncate text-sm text-foreground">
-									{adapter.summarizeRule(rule)}
-								</p>
-							</button>
-						)}
-						<button
-							type="button"
-							onClick={() => removeRule(groupIndex, ruleIndex)}
-							className="absolute right-1.5 top-1.5 hidden rounded p-1 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive group-hover/rule:block"
-							aria-label="Remove condition"
-						>
-							<Trash2 className="h-3.5 w-3.5" />
-						</button>
-					</div>
-				))}
-
-				{(group?.rules.length ?? 0) < MAX_RULES_PER_GROUP && addFilterRow(groupIndex)}
-			</div>
-		</div>
-	);
-
-	/** Between-group connector carrying the top-level AND/OR. */
-	const groupConnector = (key: string) => (
-		<div key={key} className="flex items-center justify-center gap-2 px-4">
-			<div className="h-px flex-1 bg-border/60" />
-			<Select value={topLogic} onValueChange={(v) => setTopLogic(v as "and" | "or")}>
-				<SelectTrigger
-					aria-label="Match all or any group"
-					className="h-6 w-[4.25rem] px-2 py-0 text-xs uppercase"
-				>
-					<SelectValue />
-				</SelectTrigger>
-				<SelectContent>
-					<SelectItem value="and">AND</SelectItem>
-					<SelectItem value="or">OR</SelectItem>
-				</SelectContent>
-			</Select>
-			<div className="h-px flex-1 bg-border/60" />
-		</div>
-	);
+	const draggingRule = dragging?.startsWith("rule:") ?? false;
+	const draggingFromGroup = draggingRule
+		? groupIndexOf(dragging as string)
+		: null;
 
 	return (
-		<div className="space-y-2">
-			{groups.length === 0
-				? groupCard(undefined, 0)
-				: groups.flatMap((group, groupIndex) => [
-						...(groupIndex > 0 ? [groupConnector(`connector-${groupIndex}`)] : []),
-						groupCard(group, groupIndex),
-					])}
-
-			{groups.length > 0 && groups.length < MAX_GROUPS && (
-				<button
-					type="button"
-					onClick={addGroup}
-					className="flex w-full items-center justify-center gap-1.5 rounded-md border border-dashed border-border/60 px-2.5 py-1.5 text-sm text-muted-foreground transition-colors hover:border-border hover:text-foreground"
+		<DndContext
+			sensors={sensors}
+			collisionDetection={closestCenter}
+			onDragStart={({ active }: DragStartEvent) => setDragging(String(active.id))}
+			onDragCancel={() => setDragging(null)}
+			onDragEnd={handleDragEnd}
+		>
+			<div className="space-y-2">
+				<SortableContext
+					items={groups.map((_, i) => groupId(i))}
+					strategy={verticalListSortingStrategy}
 				>
-					<Plus className="h-3.5 w-3.5" /> Add group
-				</button>
-			)}
-		</div>
+					{groups.map((group, groupIndex) => (
+						<Fragment key={groupId(groupIndex)}>
+							{groupIndex > 0 && (
+								<div className="flex items-center gap-2 px-4">
+									<div className="h-px flex-1 bg-border/60" />
+									<button
+										type="button"
+										onClick={() =>
+											onChange({
+												logic: topLogic === "and" ? "or" : "and",
+												groups,
+											})
+										}
+										className="rounded-full border border-border/60 px-2.5 py-0.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground transition-colors hover:border-primary/60 hover:text-foreground"
+									>
+										{topLogic === "and" ? "And" : "Or"}
+									</button>
+									<div className="h-px flex-1 bg-border/60" />
+								</div>
+							)}
+							<GroupCard
+								entityType={entityType}
+								adapter={adapter}
+								group={group}
+								groupIndex={groupIndex}
+								groupCount={groups.length}
+								reducedMotion={reducedMotion}
+								isRuleDropTarget={
+									draggingRule && draggingFromGroup !== groupIndex
+								}
+								onChange={(next) => updateGroup(groupIndex, next)}
+								onRemove={() =>
+									commit(groups.filter((_, i) => i !== groupIndex))
+								}
+								onMoveRule={moveRule}
+							/>
+						</Fragment>
+					))}
+				</SortableContext>
+
+				{groups.length < MAX_GROUPS && (
+					<button
+						type="button"
+						onClick={() => commit([...groups, { logic: "and", rules: [blankRule()] }])}
+						className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-border/60 px-2.5 py-2 text-sm text-muted-foreground transition-colors hover:border-border hover:text-foreground"
+					>
+						<Plus className="h-3.5 w-3.5" /> Add group
+					</button>
+				)}
+
+				<div className="flex justify-end border-t border-border/60 pt-2">
+					<Button
+						type="button"
+						variant="ghost"
+						size="sm"
+						disabled={groups.length === 0}
+						onClick={() => onChange(undefined)}
+					>
+						Clear all filters
+					</Button>
+				</div>
+			</div>
+		</DndContext>
 	);
 }
 
-/** Field → operator → value draft form; shared by the grouped editor and the rail pills popovers. */
-export function FilterEditorBody({
+function GroupCard({
+	entityType,
 	adapter,
-	draft,
-	onDraftChange,
-	onCancel,
-	onApply,
-	canApply,
+	group,
+	groupIndex,
+	groupCount,
+	reducedMotion,
+	isRuleDropTarget,
+	onChange,
+	onRemove,
+	onMoveRule,
 }: {
+	entityType: ReportEntityType;
 	adapter: FilterAdapter;
-	draft: ReportFilterRule;
-	onDraftChange: (draft: ReportFilterRule) => void;
-	onCancel: () => void;
-	onApply: () => void;
-	canApply: boolean;
+	group: ReportFilterGroup;
+	groupIndex: number;
+	groupCount: number;
+	reducedMotion: boolean;
+	isRuleDropTarget: boolean;
+	onChange: (group: ReportFilterGroup) => void;
+	onRemove: () => void;
+	onMoveRule: (
+		from: { groupIndex: number; ruleIndex: number },
+		to: RuleDropTarget
+	) => void;
 }) {
-	const operators = draft.field ? adapter.operatorsFor(draft.field) : [];
-	const needsValue = adapter.needsValue(draft.operator);
+	const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
+		useSortable({ id: groupId(groupIndex) });
+	const { setNodeRef: setDropRef, isOver } = useDroppable({
+		id: groupDropId(groupIndex),
+	});
 
-	const setField = (field: string) => {
-		const operator = adapter.defaultOperatorFor(field);
-		onDraftChange({
-			field,
-			operator: operator as ReportFilterOperator,
-			value: adapter.needsValue(operator)
-				? adapter.defaultValueFor(field)
-				: undefined,
-		});
-	};
-
-	const setOperator = (operator: string) => {
-		// A timestamp value encodes the OLD operator's day boundary — force a re-pick.
-		const staleValue = adapter.valueDependsOnOperator(draft.field);
-		onDraftChange({
-			...draft,
-			operator: operator as ReportFilterOperator,
-			value: adapter.needsValue(operator)
-				? staleValue
-					? undefined
-					: (draft.value ?? adapter.defaultValueFor(draft.field))
-				: undefined,
-		});
-	};
+	const setRules = (rules: ReportFilterRule[]) => onChange({ ...group, rules });
 
 	return (
-		<div className="space-y-3">
-			<div className="flex items-center justify-between">
-				<h3 className="text-sm font-semibold text-foreground">Filter by</h3>
+		<div
+			ref={setNodeRef}
+			style={{
+				transform: CSS.Transform.toString(transform),
+				transition: reducedMotion ? undefined : transition,
+			}}
+			className={cn(
+				"rounded-xl border border-border/60 bg-muted/20",
+				isDragging && "opacity-50",
+				isRuleDropTarget && "border-dashed border-primary/50",
+				isRuleDropTarget && isOver && "border-solid border-primary bg-primary/5"
+			)}
+		>
+			<div className="flex items-center gap-1.5 border-b border-border/40 px-2 py-1.5">
 				<button
 					type="button"
-					onClick={onCancel}
-					className="rounded-md p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-					aria-label="Close"
+					aria-label={`Reorder group ${groupIndex + 1}`}
+					className="cursor-grab rounded p-0.5 text-muted-foreground/70 transition-colors hover:text-foreground"
+					{...attributes}
+					{...listeners}
+				>
+					<GripVertical className="h-3.5 w-3.5" />
+				</button>
+				<p className="text-xs font-medium text-muted-foreground">
+					Group {groupIndex + 1}
+				</p>
+				{group.rules.length > 1 && (
+					<button
+						type="button"
+						onClick={() =>
+							onChange({ ...group, logic: group.logic === "and" ? "or" : "and" })
+						}
+						className="rounded-full border border-border/60 px-2 py-0.5 text-[11px] font-medium text-muted-foreground transition-colors hover:border-primary/60 hover:text-foreground"
+					>
+						{group.logic === "and" ? "Match all" : "Match any"}
+					</button>
+				)}
+				<button
+					type="button"
+					onClick={onRemove}
+					aria-label={`Remove group ${groupIndex + 1}`}
+					className="ml-auto rounded-md p-1 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
 				>
 					<X className="h-3.5 w-3.5" />
 				</button>
 			</div>
 
-			<div className="space-y-1.5">
-				<Select
-					value={draft.field}
-					onValueChange={(v) => {
-						if (v) setField(v);
-					}}
+			<div ref={setDropRef} className="space-y-1.5 p-2">
+				<SortableContext
+					items={group.rules.map((_, i) => ruleId(groupIndex, i))}
+					strategy={verticalListSortingStrategy}
 				>
-					<SelectTrigger className="w-full">
-						<SelectValue placeholder="Field" />
-					</SelectTrigger>
-					<SelectContent>
-						{adapter.fields.map((f) => (
-							<SelectItem key={f.value} value={f.value}>
-								{f.label}
-							</SelectItem>
-						))}
-					</SelectContent>
-				</Select>
+					{group.rules.map((rule, ruleIndex) => (
+						<GroupRuleRow
+							key={ruleId(groupIndex, ruleIndex)}
+							entityType={entityType}
+							adapter={adapter}
+							rule={rule}
+							groupIndex={groupIndex}
+							ruleIndex={ruleIndex}
+							groupCount={groupCount}
+							reducedMotion={reducedMotion}
+							onChange={(next) =>
+								setRules(group.rules.map((r, i) => (i === ruleIndex ? next : r)))
+							}
+							onRemove={() =>
+								setRules(group.rules.filter((_, i) => i !== ruleIndex))
+							}
+							onMoveToGroup={(target) =>
+								onMoveRule({ groupIndex, ruleIndex }, { groupIndex: target })
+							}
+						/>
+					))}
+				</SortableContext>
 
-				<Select
-					value={draft.operator}
-					onValueChange={(v) => {
-						if (v) setOperator(v);
-					}}
-					disabled={!draft.field}
-				>
-					<SelectTrigger className="w-full">
-						<SelectValue placeholder="Operator" />
-					</SelectTrigger>
-					<SelectContent>
-						{operators.map((op) => (
-							<SelectItem key={op.value} value={op.value}>
-								{op.label}
-							</SelectItem>
-						))}
-					</SelectContent>
-				</Select>
-
-				{needsValue &&
-					draft.field &&
-					adapter.renderValue({
-						field: draft.field,
-						operator: draft.operator,
-						value: draft.value,
-						onChange: (value) => onDraftChange({ ...draft, value }),
-					})}
+				{group.rules.length < MAX_RULES_PER_GROUP && (
+					<button
+						type="button"
+						onClick={() => setRules([...group.rules, blankRule()])}
+						className="flex w-full items-center gap-1.5 rounded-md border border-dashed border-border/50 px-2.5 py-1.5 text-left text-xs text-muted-foreground transition-colors hover:border-border hover:text-foreground"
+					>
+						<Plus className="h-3 w-3" /> Add filter
+					</button>
+				)}
 			</div>
+		</div>
+	);
+}
 
-			<div className="flex items-center justify-end gap-2 pt-1">
-				<Button type="button" variant="ghost" size="sm" onClick={onCancel}>
-					Cancel
-				</Button>
-				<Button type="button" variant="default" size="sm" onClick={onApply} disabled={!canApply}>
-					Apply
-				</Button>
-			</div>
+function GroupRuleRow({
+	entityType,
+	adapter,
+	rule,
+	groupIndex,
+	ruleIndex,
+	groupCount,
+	reducedMotion,
+	onChange,
+	onRemove,
+	onMoveToGroup,
+}: {
+	entityType: ReportEntityType;
+	adapter: FilterAdapter;
+	rule: ReportFilterRule;
+	groupIndex: number;
+	ruleIndex: number;
+	groupCount: number;
+	reducedMotion: boolean;
+	onChange: (rule: ReportFilterRule) => void;
+	onRemove: () => void;
+	onMoveToGroup: (groupIndex: number) => void;
+}) {
+	const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
+		useSortable({ id: ruleId(groupIndex, ruleIndex) });
+	const label = rule.field ? adapter.fieldLabel(rule.field) : "filter";
+	const targets = Array.from({ length: groupCount }, (_, i) => i).filter(
+		(i) => i !== groupIndex
+	);
+
+	return (
+		<div
+			ref={setNodeRef}
+			style={{
+				transform: CSS.Transform.toString(transform),
+				transition: reducedMotion ? undefined : transition,
+			}}
+			className={isDragging ? "opacity-50" : undefined}
+		>
+			<FilterRuleControls
+				entityType={entityType}
+				adapter={adapter}
+				rule={rule}
+				onChange={onChange}
+				className="bg-background"
+				leading={
+					<button
+						type="button"
+						aria-label={`Reorder ${label}`}
+						className="cursor-grab rounded p-0.5 text-muted-foreground/70 transition-colors hover:text-foreground"
+						{...attributes}
+						{...listeners}
+					>
+						<GripVertical className="h-3.5 w-3.5" />
+					</button>
+				}
+				trailing={
+					<div className="flex shrink-0 items-center">
+						{targets.length > 0 && (
+							<DropdownMenu>
+								<DropdownMenuTrigger
+									aria-label={`More actions for ${label}`}
+									render={
+										<button
+											type="button"
+											className="rounded-md p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+										/>
+									}
+								>
+									<MoreHorizontal className="h-3.5 w-3.5" />
+								</DropdownMenuTrigger>
+								<DropdownMenuContent align="end">
+									{targets.map((target) => (
+										<DropdownMenuItem
+											key={target}
+											onClick={() => onMoveToGroup(target)}
+										>
+											Move to group {target + 1}
+										</DropdownMenuItem>
+									))}
+								</DropdownMenuContent>
+							</DropdownMenu>
+						)}
+						<button
+							type="button"
+							onClick={onRemove}
+							aria-label={`Remove ${label} filter`}
+							className="rounded-md p-1 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+						>
+							<X className="h-3.5 w-3.5" />
+						</button>
+					</div>
+				}
+			/>
+			{!isDraftComplete(rule) && rule.field && (
+				<p className="px-2 pt-1 text-[11px] text-muted-foreground">
+					Add a value to apply this filter.
+				</p>
+			)}
 		</div>
 	);
 }

@@ -6,6 +6,10 @@ import {
 	type ReportFieldDef,
 } from "@onetool/backend/convex/lib/reportFields";
 import type { ReportFilterOperator } from "@onetool/backend/convex/lib/reportFilters";
+import {
+	isRelatedPath,
+	resolveReportPath,
+} from "@onetool/backend/convex/lib/reportRelations";
 import type {
 	FilterAdapter,
 	FilterValueProps,
@@ -13,6 +17,7 @@ import type {
 import { TypedPrimitiveControl } from "@/components/shared/typed-primitive-control";
 import { DatePicker } from "@/components/ui/date-picker";
 import { formatDate } from "../report-config";
+import { pathLabel } from "../report-path-options";
 
 export const OPERATOR_LABELS: Record<ReportFilterOperator, string> = {
 	equals: "equals",
@@ -85,14 +90,24 @@ function TimestampValue({ operator, value, onChange }: FilterValueProps) {
 
 export function reportFilterAdapter(entityType: ReportEntityType): FilterAdapter {
 	const fields = REPORT_FIELDS[entityType].fields;
-	const defFor = (field: string): ReportFieldDef | undefined => fields[field];
+	// A dotted path filters on its terminal field. Resolution throws on a path a
+	// registry change invalidated, and no adapter method may throw in a render.
+	const defFor = (field: string): ReportFieldDef | undefined => {
+		if (!isRelatedPath(field)) return fields[field];
+		try {
+			const { terminal } = resolveReportPath(entityType, field);
+			return terminal.kind === "field" ? terminal.def : undefined;
+		} catch {
+			return undefined;
+		}
+	};
 
 	return {
 		fields: Object.entries(fields).map(([value, def]) => ({
 			value,
 			label: def.label,
 		})),
-		fieldLabel: (field) => defFor(field)?.label ?? field,
+		fieldLabel: (field) => pathLabel(entityType, field),
 		operatorsFor: (field) => {
 			const def = defFor(field);
 			if (!def) return [];

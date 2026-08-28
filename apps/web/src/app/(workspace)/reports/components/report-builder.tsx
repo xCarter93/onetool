@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import {
 	ArrowLeft,
+	ChevronDown,
 	Database,
 	Loader2,
 	Save,
@@ -14,7 +15,10 @@ import {
 	REPORT_FIELDS,
 	getReportDateField,
 } from "@onetool/backend/convex/lib/reportFields";
-import { getRelationEdge } from "@onetool/backend/convex/lib/reportRelations";
+import {
+	getRelationEdge,
+	resolveReportPath,
+} from "@onetool/backend/convex/lib/reportRelations";
 import type { ReportFilters } from "@onetool/backend/convex/lib/reportFilters";
 import type { ReportConfig as ReportDocConfig } from "@onetool/backend/convex/lib/reportConfig";
 import { useAssistantOpener } from "@/components/assistant/assistant-opener-context";
@@ -40,6 +44,11 @@ import {
 	SelectValue,
 } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
+import {
+	Popover,
+	PopoverContent,
+	PopoverTrigger,
+} from "@/components/ui/popover";
 import { Switch } from "@/components/ui/switch";
 import { EmptyState } from "@/components/domain/empty-state";
 import { SegmentedControl } from "@/components/domain/segmented-control";
@@ -48,22 +57,25 @@ import { PanelField, PanelSection } from "@/components/shared/panel-primitives";
 import DatePickerRange from "@/components/shared/date-picker-range";
 import { ReportPreview } from "./report-preview";
 import { ReportUtilityBar } from "./report-utility-bar";
-import { ReportFilterPills } from "./report-filter-pills";
+import { ReportFieldPicker } from "./report-field-picker";
+import { ReportFilterRows } from "./report-filter-rows";
 import {
 	countFilterRules,
 	sanitizeReportFilters,
-} from "./report-filters-editor";
+} from "./report-filter-model";
+import { pathLabel } from "../report-path-options";
 import {
 	builderStateToSaved,
-	chartTypeOptions,
 	dateFieldOptionsFor,
 	dateRangeOptions,
 	entityOptions,
 	genericGroupByOptions,
 	groupByOptions,
+	isChartVizType,
 	metricOptionsFor,
 	metricToValue,
 	savedToBuilderState,
+	visualizationOptions,
 	type BuilderConfigState,
 	type EntityType,
 	type ReportConfigV2,
@@ -86,19 +98,8 @@ const GRANULARITY_OPTIONS = [
 	{ value: "month", label: "Month" },
 ] as const;
 
-type ReportType = "number" | "chart" | "table";
-
-const REPORT_TYPE_OPTIONS: { value: ReportType; label: string }[] = [
-	{ value: "number", label: "Number" },
-	{ value: "chart", label: "Chart" },
-	{ value: "table", label: "Table" },
-];
-
-function reportTypeOf(vizType: VizType): ReportType {
-	if (vizType === "number") return "number";
-	if (vizType === "table") return "table";
-	return "chart";
-}
+/** Where a metric that can't render as a single value lands. */
+const FALLBACK_CHART_TYPE: VizType = "bar";
 
 export interface ReportBuilderInitial {
 	name: string;
@@ -145,10 +146,6 @@ export function ReportBuilder({
 	const [vizType, setVizType] = useState<VizType>(
 		init?.vizType ?? initial.visualization.type
 	);
-	// Remembered so Number/Table → Chart returns to the last chart, not a reset.
-	const [lastChartType, setLastChartType] = useState<VizType>(
-		init && reportTypeOf(init.vizType) === "chart" ? init.vizType : "bar"
-	);
 	const [dateRangePreset, setDateRangePreset] = useState(
 		init?.dateRangePreset ?? "all_time"
 	);
@@ -167,9 +164,10 @@ export function ReportBuilder({
 	const [metric, setMetric] = useState<ReportMetric>(init?.metric ?? { op: "count" });
 	const [columns, setColumns] = useState<string[]>(init?.columns ?? []);
 	const [pendingEntity, setPendingEntity] = useState<EntityType | null>(null);
+	const [groupByPickerOpen, setGroupByPickerOpen] = useState(false);
 
 	const openAssistant = useAssistantOpener();
-	const reportType = reportTypeOf(vizType);
+	const isChart = isChartVizType(vizType);
 
 	const sanitizedFilters = useMemo(() => sanitizeReportFilters(filters), [filters]);
 	const activeFilterCount = useMemo(() => countFilterRules(filters), [filters]);
@@ -223,7 +221,6 @@ export function ReportBuilder({
 		setEntityType(next.entityType);
 		setGroupBy(next.groupBy);
 		setVizType(next.vizType);
-		if (reportTypeOf(next.vizType) === "chart") setLastChartType(next.vizType);
 		setDateRangePreset(next.dateRangePreset);
 		setCustomDateRange(next.customDateRange);
 		setDateField(next.dateField);
@@ -246,7 +243,7 @@ export function ReportBuilder({
 
 	const applySourceChange = (next: EntityType) => {
 		setEntityType(next);
-		setGroupBy(reportType === "chart" ? DEFAULT_GROUP_BY[next] : undefined);
+		setGroupBy(isChart ? DEFAULT_GROUP_BY[next] : undefined);
 		setFilters(undefined);
 		setMetric({ op: "count" });
 		setColumns([]);
@@ -263,27 +260,29 @@ export function ReportBuilder({
 		}
 	};
 
-	const changeReportType = (next: ReportType) => {
-		if (next === reportType) return;
+	const changeVisualization = (next: VizType) => {
+		if (next === vizType) return;
+		setVizType(next);
 		if (next === "number") {
-			setVizType("number");
 			setGroupBy(undefined);
 			setSegmentBy(undefined);
 			// A related rollup is inherently bucketed — no scalar rendering.
 			if (metric.op === "related") setMetric({ op: "count" });
-		} else if (next === "table") {
-			setVizType("table");
+			return;
+		}
+		if (next === "table") {
 			setSegmentBy(undefined);
-		} else {
-			setVizType(lastChartType);
-			if (
-				entityType &&
-				!groupBy &&
-				metric.op !== "ratio" &&
-				metric.op !== "related"
-			) {
-				setGroupBy(DEFAULT_GROUP_BY[entityType]);
-			}
+			return;
+		}
+		// Only bar/column render segments (honest encodings).
+		if (next !== "bar" && next !== "column") setSegmentBy(undefined);
+		if (
+			entityType &&
+			!groupBy &&
+			metric.op !== "ratio" &&
+			metric.op !== "related"
+		) {
+			setGroupBy(DEFAULT_GROUP_BY[entityType]);
 		}
 	};
 
@@ -294,19 +293,20 @@ export function ReportBuilder({
 			setGroupBy(undefined);
 			setSegmentBy(undefined);
 			if (next.op === "related" && vizType === "number") {
-				setVizType(lastChartType);
+				setVizType(FALLBACK_CHART_TYPE);
 			}
-		} else if (reportType === "chart" && !groupBy && entityType) {
+		} else if (isChart && !groupBy && entityType) {
 			setGroupBy(DEFAULT_GROUP_BY[entityType]);
 		}
 	};
 
 	const groupBySectionVisible =
-		reportType !== "number" && metric.op !== "ratio" && metric.op !== "related";
+		vizType !== "number" && metric.op !== "ratio" && metric.op !== "related";
 
 	// Group-by picker anatomy (R9): timestamp options collapse to one entry per
 	// base field, with the day/week/month granularity chosen inline.
 	const timeGroupMatch = groupBy?.match(TIME_SUFFIX) ?? null;
+	const groupByBase = timeGroupMatch ? timeGroupMatch[1] : groupBy;
 	const groupOptions = entityType ? (genericGroupByOptions[entityType] ?? []) : [];
 	const nonTimeGroupOptions = groupOptions.filter((o) => !TIME_SUFFIX.test(o.value));
 	const timeBaseOptions = entityType
@@ -324,18 +324,28 @@ export function ReportBuilder({
 						: (REPORT_FIELDS[entityType].fields[base]?.label ?? base),
 			}))
 		: [];
-	const groupBySelectValue = timeGroupMatch
-		? timeGroupMatch[1]
-		: (groupBy ?? NO_GROUP_BY);
+	const directGroupByOptions = [...nonTimeGroupOptions, ...timeBaseOptions];
+
+	// One resolver for direct and dotted groupings — a saved path can outlive a
+	// registry change, so an unresolvable one degrades instead of throwing.
+	const groupByTerminal = useMemo(() => {
+		if (!entityType || !groupBy) return undefined;
+		try {
+			return resolveReportPath(entityType, groupBy).terminal;
+		} catch {
+			return undefined;
+		}
+	}, [entityType, groupBy]);
 	const groupFieldDef =
-		entityType && groupBy && !timeGroupMatch
-			? REPORT_FIELDS[entityType].fields[groupBy]
-			: undefined;
-	const fkGroupBy =
-		entityType && groupBy ? getRelationEdge(entityType, groupBy) : undefined;
+		groupByTerminal?.kind === "field" ? groupByTerminal.def : undefined;
+	const isFkGroupBy = groupByTerminal?.kind === "fk";
+	const isTimeGroupBy = groupFieldDef?.type === "timestamp";
+	const groupByLabelText = !groupByBase
+		? "None (raw rows)"
+		: (directGroupByOptions.find((o) => o.value === groupByBase)?.label ??
+			(entityType ? pathLabel(entityType, groupByBase) : groupByBase));
 
 	const segmentCapable =
-		reportType === "chart" &&
 		(vizType === "bar" || vizType === "column") &&
 		!!groupBy &&
 		metric.op !== "ratio" &&
@@ -358,8 +368,42 @@ export function ReportBuilder({
 		});
 	};
 
+	const selectGroupBy = (value: string) => {
+		if (!entityType) return;
+		if (value === NO_GROUP_BY) {
+			setGroupBy(undefined);
+			setSegmentBy(undefined);
+			setIncludeEmptyValues(undefined);
+			setVizOption("sort", undefined);
+			setVizOption("seriesLimit", undefined);
+			return;
+		}
+		let terminal: ReturnType<typeof resolveReportPath>["terminal"] | undefined;
+		try {
+			terminal = resolveReportPath(entityType, value).terminal;
+		} catch {
+			terminal = undefined;
+		}
+		const isTime = terminal?.kind === "field" && terminal.def.type === "timestamp";
+		const next =
+			isTime && !TIME_SUFFIX.test(value)
+				? `${value}_${timeGroupMatch?.[2] ?? "month"}`
+				: value;
+		setGroupBy(next);
+		if (segmentBy === next || segmentBy === value) setSegmentBy(undefined);
+		// Grouping-dependent settings don't carry to a grouping that can't honor
+		// them — keep the saved config honest.
+		if (!(terminal?.kind === "field" && terminal.def.options)) {
+			setIncludeEmptyValues(undefined);
+		}
+		if (isTime || (terminal?.kind === "fk" && vizOptions?.sort === "label_asc")) {
+			setVizOption("sort", undefined);
+		}
+	};
+
 	const supportsAxisChrome =
 		vizType === "bar" || vizType === "column" || vizType === "line";
+	const chartOptionsVisible = isChart && (!!groupBy || supportsAxisChrome);
 
 	const defaultDateField = entityType ? getReportDateField(entityType) : undefined;
 	const dateFieldOptions = entityType ? dateFieldOptionsFor(entityType) : [];
@@ -367,7 +411,7 @@ export function ReportBuilder({
 	const groupByLabel =
 		entityType && groupBy
 			? (groupByOptions[entityType]?.find((o) => o.value === groupBy)?.label ??
-				groupBy)
+				groupByLabelText)
 			: undefined;
 	const dateFieldHint = (() => {
 		if (!entityType) return undefined;
@@ -489,13 +533,30 @@ export function ReportBuilder({
 						</section>
 					)}
 
-					<PanelSection title="Report type">
-						<SegmentedControl
-							value={reportType}
-							onValueChange={changeReportType}
-							options={REPORT_TYPE_OPTIONS}
-							className="w-full"
-						/>
+					<PanelSection title="Visualization">
+						<Select
+							value={vizType}
+							onValueChange={(v) => {
+								if (v) changeVisualization(v as VizType);
+							}}
+						>
+							<SelectTrigger className="w-full">
+								<SelectValue />
+							</SelectTrigger>
+							<SelectContent>
+								{visualizationOptions.map((opt) => {
+									const Icon = opt.icon;
+									return (
+										<SelectItem key={opt.value} value={opt.value}>
+											<span className="flex items-center gap-2">
+												<Icon className="h-4 w-4 text-muted-foreground" />
+												{opt.label}
+											</span>
+										</SelectItem>
+									);
+								})}
+							</SelectContent>
+						</Select>
 					</PanelSection>
 
 					<PanelSection title="Data source">
@@ -591,7 +652,7 @@ export function ReportBuilder({
 										: "Filters"
 								}
 							>
-								<ReportFilterPills
+								<ReportFilterRows
 									entityType={entityType}
 									filters={filters}
 									onChange={setFilters}
@@ -623,72 +684,56 @@ export function ReportBuilder({
 
 							{groupBySectionVisible && (
 								<PanelSection title="Group by">
-									<Select
-										value={groupBySelectValue}
-										onValueChange={(v) => {
-											if (!v) return;
-											if (v === NO_GROUP_BY) {
-												setGroupBy(undefined);
-												setSegmentBy(undefined);
-												setIncludeEmptyValues(undefined);
-												setVizOption("sort", undefined);
-												setVizOption("seriesLimit", undefined);
-												return;
-											}
-											const isTimeBase = timeBaseOptions.some(
-												(o) => o.value === v
-											);
-											setGroupBy(
-												isTimeBase
-													? `${v}_${timeGroupMatch?.[2] ?? "month"}`
-													: v
-											);
-											if (segmentBy === v) setSegmentBy(undefined);
-											// Grouping-dependent settings don't carry to a grouping
-											// that can't honor them — keep the saved config honest.
-											if (
-												isTimeBase ||
-												!REPORT_FIELDS[entityType].fields[v]?.options
-											) {
-												setIncludeEmptyValues(undefined);
-											}
-											if (
-												isTimeBase ||
-												(getRelationEdge(entityType, v) &&
-													vizOptions?.sort === "label_asc")
-											) {
-												setVizOption("sort", undefined);
-											}
-										}}
+									<Popover
+										open={groupByPickerOpen}
+										onOpenChange={setGroupByPickerOpen}
 									>
-										<SelectTrigger className="w-full">
-											<SelectValue />
-										</SelectTrigger>
-										<SelectContent>
-											{/* A chart must group; raw rows are the Table type's territory. */}
-											{reportType === "table" && (
-												<SelectItem value={NO_GROUP_BY}>
-													None (raw rows)
-												</SelectItem>
-											)}
-											{nonTimeGroupOptions.map((opt) => (
-												<SelectItem key={opt.value} value={opt.value}>
-													{opt.label}
-												</SelectItem>
-											))}
-											{timeBaseOptions.map((opt) => (
-												<SelectItem key={opt.value} value={opt.value}>
-													{opt.label}
-												</SelectItem>
-											))}
-										</SelectContent>
-									</Select>
-									{timeGroupMatch && (
-										<SegmentedControl
-											value={timeGroupMatch[2]}
-											onValueChange={(g) =>
-												setGroupBy(`${timeGroupMatch[1]}_${g}`)
+										<PopoverTrigger
+											render={
+												<button
+													type="button"
+													className="flex w-full items-center justify-between gap-2 rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+												>
+													<span className="truncate">{groupByLabelText}</span>
+													<ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+												</button>
 											}
+										/>
+										{groupByPickerOpen && (
+											<PopoverContent
+												side="left"
+												align="start"
+												sideOffset={8}
+												className="w-80 p-0"
+											>
+												<ReportFieldPicker
+													entityType={entityType}
+													mode="groupBy"
+													value={groupByBase}
+													directOptions={
+														// A chart must group; raw rows are the Table type's territory.
+														vizType === "table"
+															? [
+																	{
+																		value: NO_GROUP_BY,
+																		label: "None (raw rows)",
+																	},
+																	...directGroupByOptions,
+																]
+															: directGroupByOptions
+													}
+													onSelect={(value) => {
+														selectGroupBy(value);
+														setGroupByPickerOpen(false);
+													}}
+												/>
+											</PopoverContent>
+										)}
+									</Popover>
+									{isTimeGroupBy && groupByBase && (
+										<SegmentedControl
+											value={timeGroupMatch?.[2] ?? "month"}
+											onValueChange={(g) => setGroupBy(`${groupByBase}_${g}`)}
 											options={GRANULARITY_OPTIONS}
 											className="w-full"
 										/>
@@ -736,39 +781,8 @@ export function ReportBuilder({
 								</PanelSection>
 							)}
 
-							{reportType === "chart" && (
-								<PanelSection title="Visualization">
-									<PanelField label="Chart type">
-										<Select
-											value={vizType}
-											onValueChange={(v) => {
-												if (!v) return;
-												setVizType(v as VizType);
-												setLastChartType(v as VizType);
-												// Only bar/column render segments (honest encodings).
-												if (v !== "bar" && v !== "column") {
-													setSegmentBy(undefined);
-												}
-											}}
-										>
-											<SelectTrigger className="w-full">
-												<SelectValue />
-											</SelectTrigger>
-											<SelectContent>
-												{chartTypeOptions.map((opt) => {
-													const Icon = opt.icon;
-													return (
-														<SelectItem key={opt.value} value={opt.value}>
-															<span className="flex items-center gap-2">
-																<Icon className="h-4 w-4 text-muted-foreground" />
-																{opt.label}
-															</span>
-														</SelectItem>
-													);
-												})}
-											</SelectContent>
-										</Select>
-									</PanelField>
+							{chartOptionsVisible && (
+								<PanelSection title="Chart options">
 									{groupBy && (
 										<PanelField
 											label="Series limit"
@@ -818,7 +832,7 @@ export function ReportBuilder({
 													</SelectItem>
 													<SelectItem value="value_asc">Lowest first</SelectItem>
 													{/* FK labels resolve after the series slice, so A-to-Z can't apply to record groupings. */}
-													{!fkGroupBy && (
+													{!isFkGroupBy && (
 														<SelectItem value="label_asc">A to Z</SelectItem>
 													)}
 												</SelectContent>
@@ -859,8 +873,8 @@ export function ReportBuilder({
 								</PanelSection>
 							)}
 
-							{reportType === "table" && (
-								<PanelSection title="Visualization">
+							{vizType === "table" && (
+								<PanelSection title="Table options">
 									<PanelField
 										label="Columns"
 										helper="Columns appear when showing raw rows."

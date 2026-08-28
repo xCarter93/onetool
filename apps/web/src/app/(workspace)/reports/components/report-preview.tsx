@@ -23,6 +23,7 @@ import {
 	type ReportConfigV2,
 	type ReportVisualization,
 } from "../report-config";
+import { pathLabel } from "../report-path-options";
 
 interface ReportPreviewProps {
 	config: ReportConfigV2;
@@ -176,7 +177,7 @@ function ReportPreviewInner({ config, visualization }: ReportPreviewProps) {
 	const groupBy = config.groupBy;
 	const groupByLabel = groupBy
 		? (GROUP_BY_OPTIONS[config.entityType].find((o) => o.value === groupBy)?.label ??
-			groupBy)
+			pathLabel(config.entityType, groupBy))
 		: undefined;
 	const showAxisLabels = visualization.options?.axisLabels === true;
 	const targetLine = visualization.options?.targetLine;

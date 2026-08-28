@@ -28,6 +28,7 @@ import {
 	groupByOptions,
 	visualizationIcons,
 } from "./report-config";
+import { pathLabel } from "./report-path-options";
 import { normalizeReportConfig } from "@onetool/backend/convex/lib/reportConfig";
 
 function createReportColumns(
@@ -51,7 +52,7 @@ function createReportColumns(
 				const groupByLabel =
 					groupByOptions[config.entityType]?.find(
 						(o) => o.value === groupBy
-					)?.label ?? groupBy;
+					)?.label ?? (groupBy ? pathLabel(config.entityType, groupBy) : groupBy);
 				const source = entityLabels[config.entityType] ?? config.entityType;
 				return (
 					<div className="flex items-center gap-3">

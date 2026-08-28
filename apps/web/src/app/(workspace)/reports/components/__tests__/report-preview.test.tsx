@@ -222,3 +222,31 @@ describe("ReportPreview — segmentBy", () => {
 		expect(container.querySelectorAll(".recharts-bar-rectangle")).toHaveLength(0);
 	});
 });
+
+describe("ReportPreview — dotted groupBy labels (F5, d15)", () => {
+	it("a saved traversal groupBy renders its breadcrumb on the axis, not the raw path", () => {
+		mockedUseQuery.mockReturnValue({
+			data: [
+				{ label: "Spring Cleanup", value: 5, metadata: {} },
+				{ label: "Lawn Care", value: 3, metadata: {} },
+			],
+			total: 8,
+			metadata: {},
+		});
+
+		render(
+			<ReportPreview
+				config={{
+					version: 2,
+					entityType: "quoteLineItems",
+					metric: { op: "count" },
+					groupBy: "quoteId.projectId",
+				}}
+				visualization={{ type: "column", options: { axisLabels: true } }}
+			/>
+		);
+
+		expect(screen.getByText("Quote › Project")).toBeInTheDocument();
+		expect(screen.queryByText("quoteId.projectId")).not.toBeInTheDocument();
+	});
+});
