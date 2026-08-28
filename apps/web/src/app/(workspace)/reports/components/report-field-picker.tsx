@@ -19,9 +19,9 @@ const SEPARATOR = " › ";
 
 /**
  * The shared drill-in field picker for filter rows and the group-by control
- * (§8 d15 F1+F5). Relation pages are flat — each carries the full breadcrumb —
- * so a deep path is one hop from the root and search reaches all of them.
- * The caller hosts this in a popover.
+ * (§8 d15 F1+F5). Relation pages nest along the FK DAG: each page shows its own
+ * fields plus a nav row per direct edge, and search still flattens every level
+ * with full breadcrumbs. The caller hosts this in a popover.
  */
 export function ReportFieldPicker({
 	entityType,
@@ -67,13 +67,40 @@ export function ReportFieldPicker({
 		? [{ id: "fields", heading: "Fields", items: direct }]
 		: [];
 
+	const dotted = options.filter((option) => option.group !== "Fields");
+	// A page is an FK prefix; an option whose whole value is a prefix is that
+	// record's own terminal (group by mode only) and leads its page.
+	const pageIds = new Set(dotted.map(parentPath));
+
 	const pages = new Map<string, DrillPage>();
-	for (const option of options) {
-		if (option.group === "Fields") continue;
-		const id = option.value.split(".").slice(0, -1).join(".");
-		const page = pages.get(id) ?? { id, navLabel: option.group, items: [] };
-		page.items.push(toItem({ ...option, label: breadcrumbLabel(option) }));
+	const pageFor = (id: string, navLabel: string) => {
+		const existing = pages.get(id);
+		if (existing) return existing;
+		const parentId = id.split(".").slice(0, -1).join(".");
+		const page: DrillPage = {
+			id,
+			navLabel,
+			navRowLabel: lastCrumb(navLabel),
+			items: [],
+		};
+		if (parentId) page.parentId = parentId;
 		pages.set(id, page);
+		return page;
+	};
+
+	// Breadth-first option order puts each record terminal before that page's
+	// own fields, so the record row lands first without an explicit sort.
+	for (const option of dotted) {
+		if (pageIds.has(option.value)) {
+			pageFor(option.value, option.label).items.push({
+				...toItem({ ...option, label: `${lastCrumb(option.label)} record` }),
+				searchLabel: breadcrumbLabel(option),
+			});
+			continue;
+		}
+		pageFor(parentPath(option), option.group).items.push(
+			toItem({ ...option, label: breadcrumbLabel(option) })
+		);
 	}
 
 	return (
@@ -86,6 +113,14 @@ export function ReportFieldPicker({
 			placeholder="Search fields..."
 		/>
 	);
+}
+
+function parentPath(option: PathOption) {
+	return option.value.split(".").slice(0, -1).join(".");
+}
+
+function lastCrumb(breadcrumb: string) {
+	return breadcrumb.split(SEPARATOR).at(-1);
 }
 
 /** Muted trail + the field itself, so flat search results stay unambiguous. */

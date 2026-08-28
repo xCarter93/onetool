@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 // Pins the shared drill-in field picker (§8 d15 F1+F5): own fields first,
-// relation pages along the FK DAG, and a search that flattens across paths.
+// nested relation pages along the FK DAG (one nav row per direct edge), and a
+// search that flattens across paths.
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import "@testing-library/jest-dom/vitest";
@@ -25,11 +26,17 @@ afterAll(() => {
 	Element.prototype.scrollIntoView = originalScrollIntoView;
 });
 
-/** Rows render their breadcrumb across two spans; nav rows append a count. */
+/** Field/back/record rows render their text exactly; nav rows append a count. */
 function row(text: string) {
+	return screen.getAllByRole("option").find((el) => el.textContent === text);
+}
+function navRow(text: string) {
 	return screen
 		.getAllByRole("option")
-		.find((el) => el.textContent?.replace(/\d+$/, "") === text);
+		.find(
+			(el) =>
+				el.textContent?.replace(/\d+$/, "") === text && el.textContent !== text
+		);
 }
 
 function search(term: string) {
@@ -39,35 +46,42 @@ function search(term: string) {
 }
 
 describe("ReportFieldPicker", () => {
-	it("shows the entity's own fields and one entry per relation path", () => {
+	it("shows the entity's own fields and one nav row per direct edge", () => {
 		render(
-			<ReportFieldPicker
-				entityType="quoteLineItems"
-				mode="filter"
-				onSelect={vi.fn()}
-			/>
+			<ReportFieldPicker entityType="payments" mode="filter" onSelect={vi.fn()} />
 		);
-		expect(row("Description")).toBeInTheDocument();
-		expect(row("Quote")).toBeInTheDocument();
-		expect(row("Quote › Project")).toBeInTheDocument();
-		expect(row("Quote › Project › Client")).toBeInTheDocument();
+		expect(row("Amount")).toBeInTheDocument();
+		expect(navRow("Invoice")).toBeInTheDocument();
+		expect(navRow("Invoice › Client")).toBeUndefined();
+		expect(navRow("Invoice › Quote › Project")).toBeUndefined();
 	});
 
-	it("drills into a relation and backs out via the breadcrumb", () => {
+	it("drills into a relation and offers that record's own edges", () => {
 		render(
-			<ReportFieldPicker
-				entityType="quoteLineItems"
-				mode="filter"
-				onSelect={vi.fn()}
-			/>
+			<ReportFieldPicker entityType="payments" mode="filter" onSelect={vi.fn()} />
 		);
-		fireEvent.click(row("Quote")!);
-		expect(row("Quote › Status")).toBeInTheDocument();
-		expect(row("Description")).toBeUndefined();
+		fireEvent.click(navRow("Invoice")!);
+		expect(row("Invoice › Status")).toBeInTheDocument();
+		expect(row("Amount")).toBeUndefined();
+		expect(navRow("Client")).toBeInTheDocument();
+		expect(navRow("Project")).toBeInTheDocument();
+		expect(navRow("Quote")).toBeInTheDocument();
+	});
 
-		fireEvent.click(row("Quote")!);
-		expect(row("Description")).toBeInTheDocument();
-		expect(row("Quote › Status")).toBeUndefined();
+	it("backs out one level at a time", () => {
+		render(
+			<ReportFieldPicker entityType="payments" mode="filter" onSelect={vi.fn()} />
+		);
+		fireEvent.click(navRow("Invoice")!);
+		fireEvent.click(navRow("Client")!);
+		expect(row("Invoice › Client › Lead Source")).toBeInTheDocument();
+
+		fireEvent.click(row("Invoice › Client")!);
+		expect(row("Invoice › Status")).toBeInTheDocument();
+		expect(navRow("Client")).toBeInTheDocument();
+
+		fireEvent.click(row("Invoice")!);
+		expect(row("Amount")).toBeInTheDocument();
 	});
 
 	it("searches flat across every path without drilling", () => {
@@ -108,31 +122,46 @@ describe("ReportFieldPicker", () => {
 		expect(onSelect).toHaveBeenCalledWith("description");
 	});
 
-	it("offers parent records as buckets in groupBy mode only", () => {
+	it("selects a deep field found by search from the root", () => {
 		const onSelect = vi.fn();
 		render(
 			<ReportFieldPicker
-				entityType="quoteLineItems"
-				mode="groupBy"
-				onSelect={onSelect}
-				directOptions={[{ value: "skuId", label: "SKU" }]}
-			/>
-		);
-		expect(row("SKU")).toBeInTheDocument();
-		fireEvent.click(row("Quote")!);
-		fireEvent.click(row("Quote › Project")!);
-		expect(onSelect).toHaveBeenCalledWith("quoteId.projectId");
-
-		cleanup();
-		render(
-			<ReportFieldPicker
-				entityType="quoteLineItems"
+				entityType="payments"
 				mode="filter"
 				onSelect={onSelect}
 			/>
 		);
-		fireEvent.click(row("Quote")!);
-		expect(row("Quote › Project")).toBeUndefined();
-		expect(row("Quote › Status")).toBeInTheDocument();
+		search("quote project client lead source");
+		fireEvent.click(row("Invoice › Quote › Project › Client › Lead Source")!);
+		expect(onSelect).toHaveBeenCalledWith(
+			"invoiceId.quoteId.projectId.clientId.leadSource"
+		);
+	});
+
+	it("offers the record itself as the first row of its page in groupBy mode", () => {
+		const onSelect = vi.fn();
+		render(
+			<ReportFieldPicker
+				entityType="payments"
+				mode="groupBy"
+				onSelect={onSelect}
+				directOptions={[{ value: "invoiceId", label: "Invoice" }]}
+			/>
+		);
+		fireEvent.click(navRow("Invoice")!);
+		fireEvent.click(navRow("Client")!);
+		expect(row("Client record")).toBeInTheDocument();
+		fireEvent.click(row("Client record")!);
+		expect(onSelect).toHaveBeenCalledWith("invoiceId.clientId");
+	});
+
+	it("has no record row in filter mode", () => {
+		render(
+			<ReportFieldPicker entityType="payments" mode="filter" onSelect={vi.fn()} />
+		);
+		fireEvent.click(navRow("Invoice")!);
+		fireEvent.click(navRow("Client")!);
+		expect(row("Client record")).toBeUndefined();
+		expect(row("Invoice › Client › Lead Source")).toBeInTheDocument();
 	});
 });

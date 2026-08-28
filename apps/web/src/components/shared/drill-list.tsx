@@ -21,6 +21,8 @@ export type DrillItem = {
 	id: string;
 	value: string;
 	label: React.ReactNode;
+	/** Shown instead of `label` while searching, where a row needs its breadcrumb. */
+	searchLabel?: React.ReactNode;
 	className?: string;
 	trailing?: React.ReactNode;
 	onSelect: () => void;
@@ -37,14 +39,19 @@ export type DrillGroup = {
 export type DrillPage = {
 	id: string;
 	navLabel: string;
+	/** Nav-row text when nested under `parentId`; the back row keeps `navLabel`. */
+	navRowLabel?: React.ReactNode;
+	/** Page this one is reached from; parentless pages sit at the root. */
+	parentId?: string;
 	items: DrillItem[];
 };
 
 /**
- * The cmdk "pages" drill-down shared by every relation-aware picker: root shows
- * `rootGroups` plus one nav row per relation `page`; selecting a nav row
- * descends. Typing flattens across all levels (cmdk filters each row by its
- * `value`), ignoring the current page. Resets to root when `open` goes false.
+ * The cmdk "pages" drill-down shared by every relation-aware picker: the root
+ * shows `rootGroups` plus one nav row per parentless `page`, and each page
+ * shows its own rows plus a nav row per child page; back steps up one level.
+ * Typing flattens across all levels (cmdk filters each row by its `value`),
+ * ignoring the current page. Resets to root when `open` goes false.
  */
 export function DrillList({
 	rootGroups,
@@ -60,7 +67,7 @@ export function DrillList({
 	placeholder: string;
 }) {
 	const [search, setSearch] = useState("");
-	const [page, setPage] = useState<string | null>(null);
+	const [stack, setStack] = useState<string[]>([]);
 
 	// Reopen at the root: clear navigation + search when the popover closes.
 	// Render-time derivation (not an effect) so no cascading-render lint error.
@@ -69,7 +76,7 @@ export function DrillList({
 		setPrevOpen(open);
 		if (!open) {
 			setSearch("");
-			setPage(null);
+			setStack([]);
 		}
 	}
 
@@ -83,8 +90,16 @@ export function DrillList({
 		[rootGroups, pages]
 	);
 
-	// A stale page id (options changed) resolves to null -> falls back to root.
-	const activePage = page ? (pages.find((p) => p.id === page) ?? null) : null;
+	// A stale page id (options changed) resolves to null -> falls back to root,
+	// whose nav rows reset the stack rather than pushing onto the stale one.
+	const activeId = stack[stack.length - 1];
+	const activePage = activeId
+		? (pages.find((p) => p.id === activeId) ?? null)
+		: null;
+	const childPages = activePage
+		? pages.filter((p) => p.parentId === activePage.id)
+		: [];
+	const rootPages = pages.filter((p) => !p.parentId);
 
 	// cmdk keys rows by `value`; append the id so rows with identical display
 	// text (an own ref field "Client" vs the "Client" nav row) don't highlight
@@ -96,8 +111,29 @@ export function DrillList({
 			onSelect={item.onSelect}
 			className={cn("cursor-pointer", item.className)}
 		>
-			<span className="flex-1 truncate">{item.label}</span>
+			<span className="flex-1 truncate">
+				{searching ? (item.searchLabel ?? item.label) : item.label}
+			</span>
 			{item.trailing}
+		</CommandItem>
+	);
+
+	const renderNavRow = (
+		page: DrillPage,
+		label: React.ReactNode,
+		onSelect: () => void
+	) => (
+		<CommandItem
+			key={page.id}
+			value={`__nav__ ${page.navLabel} ${page.id}`}
+			onSelect={onSelect}
+			className="cursor-pointer"
+		>
+			<span className="flex-1 truncate">{label}</span>
+			<span className="ml-2 shrink-0 text-[10px] tabular-nums text-muted-foreground">
+				{page.items.length}
+			</span>
+			<ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
 		</CommandItem>
 	);
 
@@ -108,7 +144,7 @@ export function DrillList({
 				// rather than dismissing the popover.
 				if (e.key === "Backspace" && !search && activePage) {
 					e.preventDefault();
-					setPage(null);
+					setStack((s) => s.slice(0, -1));
 				}
 			}}
 		>
@@ -126,7 +162,7 @@ export function DrillList({
 						<CommandGroup>
 							<CommandItem
 								value={`__back__ ${activePage.navLabel}`}
-								onSelect={() => setPage(null)}
+								onSelect={() => setStack((s) => s.slice(0, -1))}
 								className="cursor-pointer text-muted-foreground"
 							>
 								<ChevronLeft className="h-4 w-4 shrink-0" />
@@ -134,6 +170,15 @@ export function DrillList({
 							</CommandItem>
 						</CommandGroup>
 						<CommandGroup>{activePage.items.map(renderItem)}</CommandGroup>
+						{childPages.length > 0 && (
+							<CommandGroup>
+								{childPages.map((p) =>
+									renderNavRow(p, p.navRowLabel ?? p.navLabel, () =>
+										setStack((s) => [...s, p.id])
+									)
+								)}
+							</CommandGroup>
+						)}
 					</>
 				) : (
 					<>
@@ -142,22 +187,11 @@ export function DrillList({
 								{g.items.map(renderItem)}
 							</CommandGroup>
 						))}
-						{pages.length > 0 && (
+						{rootPages.length > 0 && (
 							<CommandGroup heading="Related records">
-								{pages.map((p) => (
-									<CommandItem
-										key={p.id}
-										value={`__nav__ ${p.navLabel} ${p.id}`}
-										onSelect={() => setPage(p.id)}
-										className="cursor-pointer"
-									>
-										<span className="flex-1 truncate">{p.navLabel}</span>
-										<span className="ml-2 shrink-0 text-[10px] tabular-nums text-muted-foreground">
-											{p.items.length}
-										</span>
-										<ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
-									</CommandItem>
-								))}
+								{rootPages.map((p) =>
+									renderNavRow(p, p.navLabel, () => setStack([p.id]))
+								)}
 							</CommandGroup>
 						)}
 					</>
