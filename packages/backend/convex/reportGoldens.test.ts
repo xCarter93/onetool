@@ -30,6 +30,21 @@ function roundTrip(value: unknown): unknown {
 	return JSON.parse(JSON.stringify(value));
 }
 
+/**
+ * Detail rows gained a non-deterministic `id` and a `refs` map of FK ids
+ * (drill-down parent links), which no fixture can pin: assert the id's shape,
+ * then strip both before comparing.
+ */
+function stripRowIds(result: unknown): unknown {
+	const value = roundTrip(result) as { detail?: { rows: Record<string, unknown>[] } };
+	for (const row of value.detail?.rows ?? []) {
+		expect(typeof row.id).toBe("string");
+		delete row.id;
+		delete row.refs;
+	}
+	return value;
+}
+
 describe("preset → executeReport args goldens", () => {
 	it("all 15 presets map to their pinned args", () => {
 		const actual = Object.fromEntries(
@@ -73,7 +88,7 @@ describe("executeReport output goldens", () => {
 				entityType,
 				detail: { columns: DEFAULT_DETAIL_COLUMNS[entityType] },
 			});
-			expect(roundTrip(result), entityType).toStrictEqual(golden[entityType]);
+			expect(stripRowIds(result), entityType).toStrictEqual(golden[entityType]);
 		}
 	});
 

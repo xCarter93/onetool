@@ -28,6 +28,8 @@ import { pathLabel } from "../report-path-options";
 interface ReportPreviewProps {
 	config: ReportConfigV2;
 	visualization: ReportVisualization;
+	/** Drill-down (R10): fires when a chart element with a bucketKey is clicked. */
+	onBucketClick?: (bucketKey: string, bucketLabel: string) => void;
 }
 
 /** Honest failure state: a config the pipeline rejects (or a denied read) shows why instead of white-screening. */
@@ -81,7 +83,11 @@ function metricLabelFor(config: ReportConfigV2): string {
 	);
 }
 
-function ReportPreviewInner({ config, visualization }: ReportPreviewProps) {
+function ReportPreviewInner({
+	config,
+	visualization,
+	onBucketClick,
+}: ReportPreviewProps) {
 	const queryArgs = useDebouncedValue(
 		resolveReportQueryArgs(config, visualization),
 		300
@@ -171,11 +177,13 @@ function ReportPreviewInner({ config, visualization }: ReportPreviewProps) {
 			? reportData.metadata?.segments
 			: undefined;
 
+	// bucketKey lands after the metadata spread so a metadata key can't shadow it.
 	const chartData = reportData.data.map((item) => ({
 		name: item.label,
 		value: item.value,
 		...((item.metadata || {}) as Record<string, unknown>),
 		...(segments ? (item.segments ?? {}) : {}),
+		bucketKey: item.bucketKey,
 	}));
 
 	const total = reportData.total;
@@ -214,6 +222,7 @@ function ReportPreviewInner({ config, visualization }: ReportPreviewProps) {
 						segments={segments}
 						axisLabels={barAxisLabels}
 						targetLine={targetLine}
+						onBucketClick={onBucketClick}
 					/>
 				);
 			case "column":
@@ -228,6 +237,7 @@ function ReportPreviewInner({ config, visualization }: ReportPreviewProps) {
 						segments={segments}
 						axisLabels={axisLabels}
 						targetLine={targetLine}
+						onBucketClick={onBucketClick}
 					/>
 				);
 			case "line":
@@ -240,6 +250,7 @@ function ReportPreviewInner({ config, visualization }: ReportPreviewProps) {
 						itemValueIsCurrency={itemValueIsCurrency}
 						axisLabels={axisLabels}
 						targetLine={targetLine}
+						onBucketClick={onBucketClick}
 					/>
 				);
 			case "pie":
@@ -251,8 +262,11 @@ function ReportPreviewInner({ config, visualization }: ReportPreviewProps) {
 						entityType={config.entityType}
 						totalIsCurrency={totalIsCurrency}
 						itemValueIsCurrency={itemValueIsCurrency}
+						onBucketClick={onBucketClick}
 					/>
 				);
+			// Radar has no reliable per-element click target; Calculated values
+			// rows are the drill-down for it.
 			case "radar":
 				return (
 					<ReportRadarChart
@@ -273,6 +287,7 @@ function ReportPreviewInner({ config, visualization }: ReportPreviewProps) {
 						entityType={config.entityType}
 						totalIsCurrency={totalIsCurrency}
 						itemValueIsCurrency={itemValueIsCurrency}
+						onBucketClick={onBucketClick}
 					/>
 				);
 			case "table":

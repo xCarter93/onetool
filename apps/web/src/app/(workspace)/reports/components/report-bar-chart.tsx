@@ -17,11 +17,14 @@ import { formatReportValue } from "../report-config";
 import { ChartNoData, isChartDataEmpty } from "./chart-no-data";
 import { ReportChartTooltip, reportChartConfig } from "./report-chart-tooltip";
 import { ChartStripeDefs, stripeId } from "@/components/charts/chart-stripe-defs";
+import { bucketElementClick, type BucketClickHandler } from "./report-bucket-click";
 
 interface DataPoint {
 	name: string;
 	value: number;
 	totalValue?: number;
+	/** Drill-down key for this bucket; absent on ungrouped results. */
+	bucketKey?: string;
 	[key: string]: unknown;
 }
 
@@ -46,6 +49,8 @@ interface ReportBarChartProps {
 	axisLabels?: { x?: string; y?: string };
 	/** Value-axis goal marker — X here, since this chart is layout="vertical". */
 	targetLine?: number;
+	/** Drill-down (R10): opens the records behind the clicked bar. */
+	onBucketClick?: BucketClickHandler;
 }
 
 export function ReportBarChart({
@@ -56,8 +61,10 @@ export function ReportBarChart({
 	segments,
 	axisLabels,
 	targetLine,
+	onBucketClick,
 }: ReportBarChartProps) {
 	const patternPrefix = React.useId();
+	const handleBarClick = bucketElementClick(onBucketClick);
 	const stacked = segments !== undefined && segments.length > 0;
 
 	const chartConfig: ChartConfig = stacked
@@ -145,6 +152,8 @@ export function ReportBarChart({
 									stackId="segments"
 									maxBarSize={40}
 									fill={color}
+									onClick={handleBarClick}
+									className={handleBarClick ? "cursor-pointer" : undefined}
 								>
 									{data.map((entry, bucketIndex) => (
 										<Cell
@@ -158,7 +167,13 @@ export function ReportBarChart({
 							);
 						})
 					) : (
-						<Bar dataKey="value" radius={[0, 4, 4, 0]} maxBarSize={40}>
+						<Bar
+								dataKey="value"
+								radius={[0, 4, 4, 0]}
+								maxBarSize={40}
+								onClick={handleBarClick}
+								className={handleBarClick ? "cursor-pointer" : undefined}
+							>
 							{data.map((entry, index) => {
 								const color = getChartColor(index, CHART_CATEGORICAL);
 								return (

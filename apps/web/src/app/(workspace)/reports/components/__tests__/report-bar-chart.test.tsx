@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
-import { describe, it, expect, afterEach, beforeAll, afterAll } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { describe, it, expect, afterEach, beforeAll, afterAll, vi } from "vitest";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import "@testing-library/jest-dom/vitest";
 
 afterEach(() => cleanup());
@@ -223,6 +223,45 @@ describe("ReportBarChart", () => {
 
 			expect(container.querySelectorAll(".recharts-bar-rectangle")).toHaveLength(2);
 			expect(container.querySelectorAll(".recharts-bar")).toHaveLength(1);
+		});
+	});
+
+	describe("bucket drill-down", () => {
+		const buckets = [
+			{ name: "Paid", value: 5, bucketKey: "paid" },
+			{ name: "Sent", value: 3, bucketKey: "sent" },
+		];
+
+		it("clicking a bar opens that bucket", () => {
+			const onBucketClick = vi.fn();
+			const { container } = render(
+				<ReportBarChart
+					data={buckets}
+					total={8}
+					entityType="invoices"
+					groupBy="status"
+					onBucketClick={onBucketClick}
+				/>
+			);
+
+			fireEvent.click(container.querySelectorAll(".recharts-bar-rectangle")[1]);
+			expect(onBucketClick).toHaveBeenCalledWith("sent", "Sent");
+		});
+
+		it("a point the pipeline gave no bucketKey is not clickable", () => {
+			const onBucketClick = vi.fn();
+			const { container } = render(
+				<ReportBarChart
+					data={[{ name: "Total", value: 8 }]}
+					total={8}
+					entityType="invoices"
+					groupBy="status"
+					onBucketClick={onBucketClick}
+				/>
+			);
+
+			fireEvent.click(container.querySelector(".recharts-bar-rectangle")!);
+			expect(onBucketClick).not.toHaveBeenCalled();
 		});
 	});
 

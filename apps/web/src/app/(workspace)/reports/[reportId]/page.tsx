@@ -16,6 +16,10 @@ import {
 import { ReportPreview } from "../components/report-preview";
 import { ReportUtilityBar } from "../components/report-utility-bar";
 import {
+	ReportContributingSheet,
+	type ContributingScope,
+} from "../components/report-contributing-sheet";
+import {
 	dateRangeOptions,
 	entityLabels,
 	groupByOptions,
@@ -36,6 +40,8 @@ function ReportViewPageContent() {
 
 	const [isEditing, setIsEditing] = useState(false);
 	const [isSaving, setIsSaving] = useState(false);
+	const [contributingScope, setContributingScope] =
+		useState<ContributingScope | null>(null);
 
 	// While editing, the builder publishes its own frame.
 	usePublishAssistantDockFrame(
@@ -121,6 +127,9 @@ function ReportViewPageContent() {
 			console.error("Failed to duplicate report:", error);
 		}
 	};
+
+	const openBucket = (bucketKey: string, bucketLabel: string) =>
+		setContributingScope({ bucketKey, bucketLabel });
 
 	const VizIcon = visualizationIcons[report.visualization.type];
 	const groupByLabel =
@@ -210,6 +219,7 @@ function ReportViewPageContent() {
 					<ReportPreview
 						config={viewConfig}
 						visualization={normalized!.visualization}
+						onBucketClick={openBucket}
 					/>
 				</div>
 				<ReportUtilityBar
@@ -218,8 +228,19 @@ function ReportViewPageContent() {
 					groupByLabel={groupByLabel}
 					rangeLabel={rangeLabel}
 					showCsvDownload
+					onViewContributingData={() => setContributingScope({})}
+					onBucketClick={openBucket}
 				/>
 			</div>
+
+			<ReportContributingSheet
+				scope={contributingScope}
+				onClose={() => setContributingScope(null)}
+				config={viewConfig}
+				visualization={normalized!.visualization}
+				reportName={report.name}
+				showCsvDownload
+			/>
 		</div>
 	);
 }

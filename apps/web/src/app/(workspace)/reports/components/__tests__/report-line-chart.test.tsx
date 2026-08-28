@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
-import { describe, it, expect, afterEach, beforeAll, afterAll } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { describe, it, expect, afterEach, beforeAll, afterAll, vi } from "vitest";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import "@testing-library/jest-dom/vitest";
 
 afterEach(() => cleanup());
@@ -167,5 +167,38 @@ describe("ReportLineChart — currency is an explicit flag, never inferred", () 
 		render(<ReportLineChart data={data} total={1500} groupBy="month" />);
 
 		expect(screen.getByText("Total: 1,500")).toBeInTheDocument();
+	});
+});
+
+describe("ReportLineChart — bucket drill-down", () => {
+	it("clicking a point opens that bucket", () => {
+		const onBucketClick = vi.fn();
+		const { container } = render(
+			<ReportLineChart
+				data={[
+					{ name: "Jan", value: 700, bucketKey: "2026-01" },
+					{ name: "Feb", value: 800, bucketKey: "2026-02" },
+				]}
+				total={1500}
+				groupBy="month"
+				onBucketClick={onBucketClick}
+			/>
+		);
+
+		const dots = container.querySelectorAll(".cursor-pointer");
+		fireEvent.click(dots[1]);
+		expect(onBucketClick).toHaveBeenCalledWith("2026-02", "Feb");
+	});
+
+	it("without a handler the points render as plain dots", () => {
+		const { container } = render(
+			<ReportLineChart
+				data={[{ name: "Jan", value: 700, bucketKey: "2026-01" }]}
+				total={700}
+				groupBy="month"
+			/>
+		);
+
+		expect(container.querySelectorAll(".cursor-pointer")).toHaveLength(0);
 	});
 });

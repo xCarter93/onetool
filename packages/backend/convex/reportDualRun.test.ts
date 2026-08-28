@@ -46,12 +46,36 @@ const GROUP_BY_EXPANSION: Record<string, string> = {
 	client: "clientId",
 };
 
-type GoldenPoint = { label: string; value: number; metadata?: Record<string, unknown> };
+type GoldenPoint = {
+	label: string;
+	value: number;
+	bucketKey?: string;
+	metadata?: Record<string, unknown>;
+};
 type GoldenResult = {
 	data: GoldenPoint[];
 	total: number;
 	metadata?: Record<string, unknown>;
+	detail?: { rows: Record<string, unknown>[] };
 };
+
+/**
+ * Drill-down added `bucketKey` per data point and `id`/`refs` per detail row,
+ * all additive and (for ids) non-deterministic, so the fixtures predate them:
+ * strip before comparing. bucketKey is deleted unconditionally because the
+ * ratio matrix keys legitimately have none; presence is pinned in
+ * reportData.test.ts, not here.
+ */
+function stripDrillDownFields(result: unknown): GoldenResult {
+	const value = roundTrip(result) as GoldenResult;
+	for (const point of value.data) delete point.bucketKey;
+	for (const row of value.detail?.rows ?? []) {
+		expect(typeof row.id).toBe("string");
+		delete row.id;
+		delete row.refs;
+	}
+	return value;
+}
 
 function optionLabel(def: ReportFieldDef, option: string): string {
 	return (
@@ -161,7 +185,9 @@ describe("R4a dual-run: expanded v2 configs reproduce the legacy fixtures", () =
 				config,
 				...(seriesLimit !== undefined ? { seriesLimit } : {}),
 			});
-			expect(roundTrip(result), key).toStrictEqual(transformExpected(args, golden[key]));
+			expect(stripDrillDownFields(result), key).toStrictEqual(
+				transformExpected(args, golden[key])
+			);
 		}
 	});
 
@@ -176,7 +202,7 @@ describe("R4a dual-run: expanded v2 configs reproduce the legacy fixtures", () =
 				config,
 				detail: { columns: DEFAULT_DETAIL_COLUMNS[entityType] },
 			});
-			expect(roundTrip(result), entityType).toStrictEqual(golden[entityType]);
+			expect(stripDrillDownFields(result), entityType).toStrictEqual(golden[entityType]);
 		}
 	});
 });
@@ -297,7 +323,7 @@ describe("v2 execution semantics beyond the fixtures", () => {
 			config,
 		});
 
-		expect(result.data).toEqual([{ label: "Pending", value: 1 }]);
+		expect(result.data).toEqual([{ label: "Pending", value: 1, bucketKey: "pending" }]);
 	});
 
 	it("segmentBy stacks a second dimension with a shared ordered key set", async () => {
@@ -466,7 +492,7 @@ describe("v2 execution semantics beyond the fixtures", () => {
 		});
 
 		expect(result.data).toEqual([
-			{ label: "Sent", value: 2, metadata: { totalValue: 500 } },
+			{ label: "Sent", value: 2, bucketKey: "sent", metadata: { totalValue: 500 } },
 		]);
 		expect(result.total).toBe(500);
 		expect(result.metadata?.totalIsCurrency).toBe(true);

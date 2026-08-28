@@ -50,6 +50,10 @@ import { PanelField, PanelSection } from "@/components/shared/panel-primitives";
 import DatePickerRange from "@/components/shared/date-picker-range";
 import { ReportPreview } from "./report-preview";
 import { ReportUtilityBar } from "./report-utility-bar";
+import {
+	ReportContributingSheet,
+	type ContributingScope,
+} from "./report-contributing-sheet";
 import { ReportFieldPicker } from "./report-field-picker";
 import { ReportFilterRows } from "./report-filter-rows";
 import { ReportMetricControls } from "./report-metric-controls";
@@ -155,6 +159,8 @@ export function ReportBuilder({
 	const [columns, setColumns] = useState<string[]>(init?.columns ?? []);
 	const [pendingEntity, setPendingEntity] = useState<EntityType | null>(null);
 	const [groupByPickerOpen, setGroupByPickerOpen] = useState(false);
+	const [contributingScope, setContributingScope] =
+		useState<ContributingScope | null>(null);
 
 	usePublishAssistantDockFrame({
 		title: "Report assistant",
@@ -443,6 +449,9 @@ export function ReportBuilder({
 	const rangeLabel =
 		dateRangeOptions.find((o) => o.value === dateRangePreset)?.label ?? "All Time";
 
+	const openBucket = (bucketKey: string, bucketLabel: string) =>
+		setContributingScope({ bucketKey, bucketLabel });
+
 	const handleSave = () => {
 		if (!name.trim() || !saved) return;
 		void onSave({
@@ -513,6 +522,7 @@ export function ReportBuilder({
 								<ReportPreview
 									config={saved.config}
 									visualization={saved.visualization}
+									onBucketClick={openBucket}
 								/>
 							) : (
 								<div className="flex min-h-[300px] flex-1 items-center justify-center">
@@ -532,6 +542,8 @@ export function ReportBuilder({
 						reportName={name}
 						groupByLabel={groupByLabel}
 						rangeLabel={rangeLabel}
+						onViewContributingData={() => setContributingScope({})}
+						onBucketClick={openBucket}
 					/>
 				</main>
 
@@ -898,6 +910,16 @@ export function ReportBuilder({
 					)}
 				</aside>
 			</div>
+
+			{saved && (
+				<ReportContributingSheet
+					scope={contributingScope}
+					onClose={() => setContributingScope(null)}
+					config={saved.config}
+					visualization={saved.visualization}
+					reportName={name}
+				/>
+			)}
 
 			<AlertDialog
 				open={pendingEntity !== null}

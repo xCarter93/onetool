@@ -14,12 +14,19 @@ describe("reportResultToCsv — detail mode", () => {
 			],
 			rows: [
 				{
+					id: "inv_1",
 					invoiceNumber: "INV-1",
 					total: 1234.5,
 					issuedDate: Date.UTC(2026, 0, 15, 12),
 					isActive: true,
 				},
-				{ invoiceNumber: null, total: null, issuedDate: null, isActive: null },
+				{
+					id: "inv_2",
+					invoiceNumber: null,
+					total: null,
+					issuedDate: null,
+					isActive: null,
+				},
 			],
 			totalMatched: 2,
 			rowsTruncated: false,

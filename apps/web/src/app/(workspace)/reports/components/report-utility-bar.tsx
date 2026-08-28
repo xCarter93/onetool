@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useQuery } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
-import { ChevronDown, ChevronUp, Download } from "lucide-react";
+import { ChevronDown, ChevronUp, Download, Rows3 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import { buildCsv, downloadCsv, sanitizeCsvFilename } from "@/lib/csv-export";
@@ -11,6 +11,7 @@ import { reportResultToCsv } from "../report-csv";
 import { ReportTable } from "./report-table";
 import {
 	formatReportValue,
+	isDetailModeActive,
 	metricOptionsFor,
 	metricToValue,
 	resolveReportQueryArgs,
@@ -25,6 +26,10 @@ interface ReportUtilityBarProps {
 	rangeLabel: string;
 	/** CSV export is a saved-report affordance — the builder leaves it off. */
 	showCsvDownload?: boolean;
+	/** Opens the contributing-data sheet over the whole report (R10). */
+	onViewContributingData?: () => void;
+	/** Opens it scoped to one Calculated-values row. */
+	onBucketClick?: (bucketKey: string, bucketLabel: string) => void;
 }
 
 /**
@@ -39,6 +44,8 @@ export function ReportUtilityBar({
 	groupByLabel,
 	rangeLabel,
 	showCsvDownload = false,
+	onViewContributingData,
+	onBucketClick,
 }: ReportUtilityBarProps) {
 	const [expanded, setExpanded] = useState(false);
 
@@ -112,10 +119,18 @@ export function ReportUtilityBar({
 					name: item.label,
 					value: item.value,
 					...((item.metadata || {}) as Record<string, unknown>),
+					// After the spread so a metadata key can't shadow it.
+					bucketKey: item.bucketKey,
 				}))
 			: null;
 
 	const calcAvailable = saved !== null && reportData !== undefined;
+
+	// The canvas already lists the rows in raw-rows mode, so drilling adds nothing.
+	const showContributingData =
+		onViewContributingData !== undefined &&
+		saved !== null &&
+		!isDetailModeActive(saved.config, saved.visualization.type);
 
 	return (
 		<div className="border-t border-border/60">
@@ -155,6 +170,9 @@ export function ReportUtilityBar({
 								itemValueIsCurrency={
 									reportData!.metadata?.itemValueIsCurrency === true
 								}
+								// Mid-debounce the rows still describe the OLD args; a click then
+								// would drill into a bucket the user no longer sees.
+								onBucketClick={argsSettled ? onBucketClick : undefined}
 							/>
 						</div>
 					)}
@@ -176,6 +194,17 @@ export function ReportUtilityBar({
 						)}
 						Calculated values
 					</Button>
+					{showContributingData && (
+						<Button
+							variant="ghost"
+							size="sm"
+							onClick={onViewContributingData}
+							disabled={!argsSettled}
+						>
+							<Rows3 className="h-3.5 w-3.5" />
+							View contributing data
+						</Button>
+					)}
 					<span className="truncate text-xs text-muted-foreground">
 						{statusText}
 					</span>

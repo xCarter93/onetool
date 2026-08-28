@@ -34,6 +34,7 @@ import {
 	buildPathHydrator,
 	isRelatedPath,
 	pathTables,
+	REPORT_RELATIONS,
 	resolveReportPath,
 	type PathHydrator,
 	type ReportRelationTarget,
@@ -63,10 +64,24 @@ import { denyPermission, getEffectivePermissions } from "./lib/permissions";
 export interface AggregatedDataPoint {
 	label: string;
 	value: number;
+	/**
+	 * Raw internal bucket key, echoed back as `detail.bucketKey` to drill into
+	 * this point's records. Absent on the ungrouped "Total" point.
+	 */
+	bucketKey?: string;
 	metadata?: Record<string, unknown>;
 	/** Per-segment values, present only when the request set segmentBy. */
 	segments?: Record<string, number>;
 }
+
+/**
+ * A detail row: the record's id, its FK ids (parent links — ids are never
+ * exposed as columns), and one entry per requested column.
+ */
+export type DetailRow = { id: string; refs?: Record<string, string> } & Record<
+	string,
+	string | number | boolean | null
+>;
 
 export interface ReportDataResult {
 	data: AggregatedDataPoint[];
@@ -86,7 +101,7 @@ export interface ReportDataResult {
 	};
 	detail?: {
 		columns: { field: string; label: string; type: ReportFieldType }[];
-		rows: Record<string, string | number | boolean | null>[];
+		rows: DetailRow[];
 		totalMatched: number;
 		rowsTruncated: boolean;
 	};
@@ -130,12 +145,15 @@ const detailValidator = v.optional(
 	v.object({
 		columns: v.array(v.string()),
 		limit: v.optional(v.number()),
+		/** Drill-down: the `bucketKey` of the data point being opened. */
+		bucketKey: v.optional(v.string()),
 	})
 );
 
 interface DetailArgs {
 	columns: string[];
 	limit?: number;
+	bucketKey?: string;
 }
 
 // ============================================================================
@@ -517,31 +535,29 @@ function bucketKeyOf(raw: unknown): string {
 	return raw === undefined || raw === null || raw === "" ? "unknown" : String(raw);
 }
 
+/** Row → bucket key; null for rows a time bucket can't place (dropped from data AND totals). */
+type BucketKeyFn = (row: Row) => string | null;
+
 function bucketLabel(def: ReportFieldDef | undefined, key: string): string {
 	return def?.optionLabels?.[key] ?? capitalizeWords(key, /[-_]/);
 }
 
-function groupRows(rows: Row[], sourceField: string): Record<string, Row[]> {
+function groupRows(rows: Row[], keyOf: BucketKeyFn): Record<string, Row[]> {
 	const grouped: Record<string, Row[]> = {};
 	for (const row of rows) {
-		(grouped[bucketKeyOf(row[sourceField])] ??= []).push(row);
+		const key = keyOf(row);
+		if (key !== null) (grouped[key] ??= []).push(row);
 	}
 	return grouped;
 }
 
 function buildTimeBuckets(
 	rows: Row[],
-	sourceField: string,
+	keyOf: BucketKeyFn,
 	granularity: Granularity,
-	timezone: string | undefined,
 	aggregation: Aggregation
 ): Bucket[] {
-	const grouped: Record<string, Row[]> = {};
-	for (const row of rows) {
-		const key = getDateKey(row[sourceField] as number, granularity, timezone);
-		(grouped[key] ??= []).push(row);
-	}
-	return Object.entries(grouped)
+	return Object.entries(groupRows(rows, keyOf))
 		.map(([key, bucketRows]) => ({
 			key,
 			label: formatDateLabel(key, granularity),
@@ -554,12 +570,12 @@ function buildTimeBuckets(
 
 function buildFieldBuckets(
 	rows: Row[],
-	sourceField: string,
+	keyOf: BucketKeyFn,
 	def: ReportFieldDef,
 	aggregation: Aggregation,
 	includeEmptyValues: boolean
 ): Bucket[] {
-	const grouped = groupRows(rows, sourceField);
+	const grouped = groupRows(rows, keyOf);
 	const toBucket = (key: string, bucketRows: Row[]): Bucket => ({
 		key,
 		label: bucketLabel(def, key),
@@ -585,10 +601,12 @@ function buildFieldBuckets(
 		.sort((a, b) => b.value - a.value);
 }
 
-/** Row property the resolved groupBy path is annotated onto before bucketing. */
-const PATH_GROUP_FIELD = "__pathGroupValue";
 /** Bucket key for rows whose groupBy path broke, suffixed with the missing hop's table. */
 const BROKEN_KEY_PREFIX = "__broken:";
+
+function isBrokenKey(key: string | null): boolean {
+	return key !== null && key.startsWith(BROKEN_KEY_PREFIX);
+}
 
 const NO_RELATION_LABEL: Partial<Record<ReportRelationTarget, string>> = {
 	clients: "No Client",
@@ -641,6 +659,77 @@ async function resolveFkLabel(
 	return fkDocLabel(fk.refType, doc, key);
 }
 
+/**
+ * The single row→bucket-key definition: aggregation buckets on it and detail
+ * drill-down re-derives the same keys to scope its rows. Throws the groupBy
+ * validation errors for direct (non-path) fields.
+ */
+function bucketKeyResolver(
+	entityType: ReportEntityType,
+	groupBy: string,
+	timezone: string | undefined,
+	groupByPath?: ResolvedPath,
+	hydrator?: PathHydrator
+): BucketKeyFn {
+	if (groupByPath && hydrator) {
+		const { terminal } = groupByPath;
+		const granularity =
+			terminal.kind === "field" ? terminal.granularity : undefined;
+		return (row) => {
+			const resolution = hydrator.resolve(row, groupByPath);
+			if ("brokenAt" in resolution) {
+				// A timeline has no "No X" bucket — unreachable rows drop out entirely.
+				return granularity ? null : BROKEN_KEY_PREFIX + resolution.brokenAt.refType;
+			}
+			if (granularity) {
+				return typeof resolution.value === "number"
+					? getDateKey(resolution.value, granularity, timezone)
+					: null;
+			}
+			return bucketKeyOf(resolution.value);
+		};
+	}
+
+	const timeMatch = groupBy.match(timeGroupingRegex);
+	if (timeMatch) {
+		const resolved = resolveGroupByField(entityType, timeMatch[1]);
+		if (!resolved) {
+			throw new ConvexError(
+				`Unknown report groupBy time field "${timeMatch[1]}" for entity "${entityType}"`
+			);
+		}
+		if (resolved.def.type !== "timestamp") {
+			throw new ConvexError(
+				`Report groupBy time field "${timeMatch[1]}" is not a timestamp for entity "${entityType}"`
+			);
+		}
+		const { sourceField } = resolved;
+		const granularity = timeMatch[2] as Granularity;
+		return (row) => {
+			const value = row[sourceField];
+			return typeof value === "number" ? getDateKey(value, granularity, timezone) : null;
+		};
+	}
+
+	if (getGroupableFk(entityType, groupBy)) {
+		return (row) => bucketKeyOf(row[groupBy]);
+	}
+
+	const resolved = resolveGroupByField(entityType, groupBy);
+	if (!resolved) {
+		throw new ConvexError(
+			`Unknown report groupBy field "${groupBy}" for entity "${entityType}"`
+		);
+	}
+	if (resolved.def.type === "timestamp") {
+		throw new ConvexError(
+			`Report groupBy field "${groupBy}" is a timestamp — use "${groupBy}_day", "${groupBy}_week", or "${groupBy}_month"`
+		);
+	}
+	const { sourceField } = resolved;
+	return (row) => bucketKeyOf(row[sourceField]);
+}
+
 function applySegments(
 	buckets: Bucket[],
 	rows: Row[],
@@ -648,8 +737,9 @@ function applySegments(
 	def: ReportFieldDef,
 	aggregation: Aggregation
 ): { key: string; label: string }[] {
+	const segmentKeyOf: BucketKeyFn = (row) => bucketKeyOf(row[sourceField]);
 	// Rank segment keys over the whole scan so every bucket shares one key set.
-	const globalGroups = groupRows(rows, sourceField);
+	const globalGroups = groupRows(rows, segmentKeyOf);
 	const ranked = Object.entries(globalGroups)
 		.map(([key, segRows]) => ({ key, value: computeAggregateValue(segRows, aggregation) }))
 		.sort((a, b) => b.value - a.value);
@@ -709,145 +799,85 @@ async function runAggregationPlan(
 	let resolveLabel: ((key: string) => Promise<string>) | undefined;
 	let pathTimeBucketed = false;
 
-	if (groupByPath && scanned.hydrator) {
-		const hydrator = scanned.hydrator;
-		const terminal = groupByPath.terminal;
-		const resolutions = rows.map((row) => hydrator.resolve(row, groupByPath));
-		const annotate = (row: Row, value: unknown): Row => ({
-			...row,
-			[PATH_GROUP_FIELD]: value,
-		});
-
-		if (terminal.kind === "field" && terminal.granularity) {
-			// A timeline has no "No X" bucket: rows with no reachable timestamp are
-			// excluded from data AND totals, like the direct time-grouping path.
-			const granularity = terminal.granularity;
-			rows = rows.flatMap((row, index) => {
-				const resolution = resolutions[index];
-				return "value" in resolution && typeof resolution.value === "number"
-					? [annotate(row, resolution.value)]
-					: [];
-			});
-			buckets = buildTimeBuckets(
-				rows,
-				PATH_GROUP_FIELD,
-				granularity,
-				plan.timezone,
-				aggregation
-			);
-			pathTimeBucketed = true;
-		} else if (terminal.kind === "fk") {
-			const refType = terminal.refType;
-			const annotated = rows.map((row, index) => {
-				const resolution = resolutions[index];
-				return annotate(
-					row,
-					"brokenAt" in resolution
-						? BROKEN_KEY_PREFIX + resolution.brokenAt.refType
-						: resolution.value
-				);
-			});
-			buckets = Object.entries(groupRows(annotated, PATH_GROUP_FIELD))
+	if (plan.groupBy) {
+		const groupBy = plan.groupBy;
+		const keyOf = bucketKeyResolver(
+			entityType,
+			groupBy,
+			plan.timezone,
+			groupByPath,
+			scanned.hydrator
+		);
+		const fkBuckets = (): Bucket[] =>
+			Object.entries(groupRows(rows, keyOf))
 				.map(([key, bucketRows]) => ({
 					key,
 					label: key,
 					rows: bucketRows,
 					value: computeAggregateValue(bucketRows, aggregation),
-					metadata: { [plan.groupBy!]: key },
+					metadata: { [groupBy]: key },
 				}))
 				.sort((a, b) => b.value - a.value);
-			resolveLabel = async (key) =>
-				key.startsWith(BROKEN_KEY_PREFIX)
-					? brokenBucketLabel(key.slice(BROKEN_KEY_PREFIX.length))
-					: fkDocLabel(
-							refType,
-							(await ctx.db.get(key as Id<"users">)) as Row | null,
-							key
-						);
-		} else {
-			fieldGrouping = terminal.def;
-			const reached: Row[] = [];
-			const broken = new Map<string, Row[]>();
-			rows.forEach((row, index) => {
-				const resolution = resolutions[index];
-				if ("brokenAt" in resolution) {
-					const list = broken.get(resolution.brokenAt.refType);
-					if (list) list.push(row);
-					else broken.set(resolution.brokenAt.refType, [row]);
-				} else {
-					reached.push(annotate(row, resolution.value));
+
+		const terminal = groupByPath && scanned.hydrator ? groupByPath.terminal : undefined;
+		const timeMatch = terminal ? null : groupBy.match(timeGroupingRegex);
+		fk = terminal ? undefined : getGroupableFk(entityType, groupBy);
+		if (terminal) {
+			if (terminal.kind === "field" && terminal.granularity) {
+				// Rows with no reachable timestamp are excluded from data AND totals.
+				rows = rows.filter((row) => keyOf(row) !== null);
+				buckets = buildTimeBuckets(rows, keyOf, terminal.granularity, aggregation);
+				pathTimeBucketed = true;
+			} else if (terminal.kind === "fk") {
+				const refType = terminal.refType;
+				buckets = fkBuckets();
+				resolveLabel = async (key) =>
+					isBrokenKey(key)
+						? brokenBucketLabel(key.slice(BROKEN_KEY_PREFIX.length))
+						: fkDocLabel(
+								refType,
+								(await ctx.db.get(key as Id<"users">)) as Row | null,
+								key
+							);
+			} else {
+				fieldGrouping = terminal.def;
+				const reached: Row[] = [];
+				const broken: Row[] = [];
+				for (const row of rows) {
+					(isBrokenKey(keyOf(row)) ? broken : reached).push(row);
 				}
-			});
-			buckets = [
-				...buildFieldBuckets(
-					reached,
-					PATH_GROUP_FIELD,
-					terminal.def,
-					aggregation,
-					plan.includeEmptyValues ?? false
-				),
-				...[...broken.entries()].map(([refType, bucketRows]) => ({
-					key: BROKEN_KEY_PREFIX + refType,
-					label: brokenBucketLabel(refType),
-					rows: bucketRows,
-					value: computeAggregateValue(bucketRows, aggregation),
-				})),
-			];
-		}
-	} else if (plan.groupBy) {
-		const timeMatch = plan.groupBy.match(timeGroupingRegex);
-		fk = getGroupableFk(entityType, plan.groupBy);
-		if (timeMatch) {
-			const resolved = resolveGroupByField(entityType, timeMatch[1]);
-			if (!resolved) {
-				throw new ConvexError(
-					`Unknown report groupBy time field "${timeMatch[1]}" for entity "${entityType}"`
-				);
+				buckets = [
+					...buildFieldBuckets(
+						reached,
+						keyOf,
+						terminal.def,
+						aggregation,
+						plan.includeEmptyValues ?? false
+					),
+					...Object.entries(groupRows(broken, keyOf)).map(([key, bucketRows]) => ({
+						key,
+						label: brokenBucketLabel(key.slice(BROKEN_KEY_PREFIX.length)),
+						rows: bucketRows,
+						value: computeAggregateValue(bucketRows, aggregation),
+					})),
+				];
 			}
-			if (resolved.def.type !== "timestamp") {
-				throw new ConvexError(
-					`Report groupBy time field "${timeMatch[1]}" is not a timestamp for entity "${entityType}"`
-				);
-			}
+		} else if (timeMatch) {
 			// Rows without a usable timestamp can't be bucketed — excluded from
 			// data AND totals (matches legacy scanPaidInvoices semantics).
-			rows = rows.filter((r) => typeof r[resolved.sourceField] === "number");
-			buckets = buildTimeBuckets(
-				rows,
-				resolved.sourceField,
-				timeMatch[2] as Granularity,
-				plan.timezone,
-				aggregation
-			);
+			rows = rows.filter((row) => keyOf(row) !== null);
+			buckets = buildTimeBuckets(rows, keyOf, timeMatch[2] as Granularity, aggregation);
 		} else if (fk) {
 			const fkRef = fk;
-			buckets = Object.entries(groupRows(rows, plan.groupBy))
-				.map(([key, bucketRows]) => ({
-					key,
-					label: key,
-					rows: bucketRows,
-					value: computeAggregateValue(bucketRows, aggregation),
-					metadata: { [plan.groupBy!]: key },
-				}))
-				.sort((a, b) => b.value - a.value);
+			buckets = fkBuckets();
 			resolveLabel = (key) => resolveFkLabel(ctx, fkRef, key);
 		} else {
-			const resolved = resolveGroupByField(entityType, plan.groupBy);
-			if (!resolved) {
-				throw new ConvexError(
-					`Unknown report groupBy field "${plan.groupBy}" for entity "${entityType}"`
-				);
-			}
-			if (resolved.def.type === "timestamp") {
-				throw new ConvexError(
-					`Report groupBy field "${plan.groupBy}" is a timestamp — use "${plan.groupBy}_day", "${plan.groupBy}_week", or "${plan.groupBy}_month"`
-				);
-			}
-			fieldGrouping = resolved.def;
+			// Presence and non-timestamp type already enforced by bucketKeyResolver.
+			fieldGrouping = resolveGroupByField(entityType, groupBy)!.def;
 			buckets = buildFieldBuckets(
 				rows,
-				resolved.sourceField,
-				resolved.def,
+				keyOf,
+				fieldGrouping,
 				aggregation,
 				plan.includeEmptyValues ?? false
 			);
@@ -914,6 +944,7 @@ async function runAggregationPlan(
 		? buckets.map((b) => ({
 				label: b.label,
 				value: b.value,
+				bucketKey: b.key,
 				...(b.metadata ? { metadata: b.metadata } : {}),
 				...(b.segments ? { segments: b.segments } : {}),
 			}))
@@ -948,9 +979,27 @@ async function runAggregationPlan(
 }
 
 // ============================================================================
-// Detail pipeline (new capability — used only when args.detail is set;
-// exclusive of groupBy/aggregation, which are ignored in this mode)
+// Detail pipeline (used only when args.detail is set; the aggregation is
+// ignored, and groupBy only serves detail.bucketKey drill-down scoping)
 // ============================================================================
+
+/**
+ * The row's FK ids, keyed by edge field — the drill-down sheet's parent links.
+ * Independent of the requested columns: REPORT_FIELDS excludes ids on purpose,
+ * so `refs` is the only place a report exposes them.
+ */
+function rowRefs(
+	entityType: ReportEntityType,
+	row: Row
+): Record<string, string> | undefined {
+	let refs: Record<string, string> | undefined;
+	for (const field of Object.keys(REPORT_RELATIONS[entityType])) {
+		const value = row[field];
+		if (value === undefined || value === null) continue;
+		(refs ??= {})[field] = String(value);
+	}
+	return refs;
+}
 
 function detailCellValue(value: unknown): string | number | boolean | null {
 	if (value === undefined || value === null) return null;
@@ -968,20 +1017,47 @@ async function runDetailReport(
 	filters: ReportFilters | undefined,
 	detail: DetailArgs,
 	timezone: string | undefined,
-	dateFieldOverride?: string
+	dateFieldOverride?: string,
+	groupBy?: string
 ): Promise<ReportDataResult> {
 	validateDetailColumns(entityType, detail.columns);
 
+	const bucketKey = detail.bucketKey;
+	if (bucketKey !== undefined && !groupBy) {
+		throw new ConvexError(
+			`Detail bucketKey "${bucketKey}" requires a groupBy in the report config`
+		);
+	}
+	// Only a scoped request pays for path hydration — unscoped detail is untouched.
+	const groupByPath =
+		bucketKey !== undefined && groupBy && isRelatedPath(groupBy)
+			? resolveReportPath(entityType, groupBy)
+			: undefined;
+
 	const dateField = dateFieldOverride ?? getReportDateField(entityType);
-	const { rows, truncated, truncatedEntities } = await scanFiltered(
+	const scanned = await scanFiltered(
 		ctx,
 		entityType,
 		orgId,
 		dateField,
 		bounds,
 		filters,
-		timezone
+		timezone,
+		groupByPath
 	);
+	const { truncated, truncatedEntities } = scanned;
+
+	let rows = scanned.rows;
+	if (bucketKey !== undefined && groupBy) {
+		const keyOf = bucketKeyResolver(
+			entityType,
+			groupBy,
+			timezone,
+			groupByPath,
+			scanned.hydrator
+		);
+		rows = rows.filter((row) => keyOf(row) === bucketKey);
+	}
 
 	// Sort is exact over the scanned window; if the scan hit its ceiling
 	// (metadata.truncated), top-N by a non-creation date field is approximate —
@@ -1008,11 +1084,16 @@ async function runDetailReport(
 	});
 
 	const rowsOut = cappedRows.map((row) => {
-		const out: Record<string, string | number | boolean | null> = {};
+		const cells: Record<string, string | number | boolean | null> = {};
 		for (const field of detail.columns) {
-			out[field] = detailCellValue(row[field]);
+			cells[field] = detailCellValue(row[field]);
 		}
-		return out;
+		const refs = rowRefs(entityType, row);
+		return {
+			id: String(row._id),
+			...(refs ? { refs } : {}),
+			...cells,
+		} as DetailRow;
 	});
 
 	return {
@@ -1300,7 +1381,8 @@ export const executeReport = optionalUserQuery({
 					configFilters,
 					detail,
 					timezone,
-					dateField
+					dateField,
+					config.groupBy
 				);
 			}
 			if (config.metric.op === "ratio") {

@@ -8,10 +8,13 @@ import { formatReportValue } from "../report-config";
 import { ChartNoData, isChartDataEmpty } from "./chart-no-data";
 import { ReportChartTooltip, reportChartConfig } from "./report-chart-tooltip";
 import { ChartStripeDefs, stripeId } from "@/components/charts/chart-stripe-defs";
+import { bucketElementClick, type BucketClickHandler } from "./report-bucket-click";
 
 interface DataPoint {
 	name: string;
 	value: number;
+	/** Drill-down key for this bucket; absent on ungrouped results. */
+	bucketKey?: string;
 	[key: string]: unknown;
 }
 
@@ -24,6 +27,8 @@ interface ReportPieChartProps {
 	totalIsCurrency?: boolean;
 	/** Is each item's `value` a dollar amount (vs. a count)? */
 	itemValueIsCurrency?: boolean;
+	/** Drill-down (R10): opens the records behind the clicked slice. */
+	onBucketClick?: BucketClickHandler;
 }
 
 export function ReportPieChart({
@@ -31,9 +36,11 @@ export function ReportPieChart({
 	total,
 	totalIsCurrency = false,
 	itemValueIsCurrency = false,
+	onBucketClick,
 }: ReportPieChartProps) {
 	const [activeIndex, setActiveIndex] = React.useState<number | undefined>();
 	const patternPrefix = React.useId();
+	const handleSliceClick = bucketElementClick(onBucketClick);
 
 	const chartConfig = reportChartConfig(
 		data.map((item) => item.name),
@@ -141,6 +148,8 @@ export function ReportPieChart({
 						activeShape={renderActiveShape}
 						onMouseEnter={onPieEnter}
 						onMouseLeave={onPieLeave}
+						onClick={handleSliceClick}
+						className={handleSliceClick ? "cursor-pointer" : undefined}
 						// recharts 3.8.0 animated Pie paints no sectors on initial
 						// mount — keep animation off until a fixed release is verified.
 						isAnimationActive={false}

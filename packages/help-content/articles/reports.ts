@@ -81,7 +81,7 @@ export const reportsArticles: HelpArticle[] = [
 				blocks: [
 					{
 						type: "paragraph",
-						text: "The bar under the preview keeps the numbers behind the picture. **Calculated values** expands to show the total, the group count, what the report measures, and for charts the full data table. The same bar appears on saved reports, where it also has **Download CSV** to save exactly what is on screen as a spreadsheet file.",
+						text: "The bar under the preview keeps the numbers behind the picture. **Calculated values** expands to show the total, the group count, what the report measures, and for charts the full data table. **View contributing data** opens a panel listing the records those numbers come from, and each row links to the record itself. Click a chart bar or slice, or a row in Calculated values, to narrow the panel to that group. The same bar appears on saved reports, where it also has **Download CSV** to save exactly what is on screen as a spreadsheet file, and the panel gets its own **Download CSV** there too.",
 					},
 				],
 			},

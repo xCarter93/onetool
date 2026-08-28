@@ -17,6 +17,8 @@ interface DataPoint {
 	name: string;
 	value: number;
 	totalValue?: number;
+	/** Drill-down key for this bucket; absent on ungrouped results. */
+	bucketKey?: string;
 	[key: string]: unknown;
 }
 
@@ -41,6 +43,8 @@ interface ReportTableProps {
 	valueHeader?: string;
 	/** When set, renders the flat detail-mode table instead of the aggregated one. */
 	detail?: DetailResult;
+	/** Drill-down (R10): makes each group label a button opening that bucket's records. */
+	onBucketClick?: (bucketKey: string, bucketLabel: string) => void;
 }
 
 function formatDetailCell(value: string | number | boolean | null, type: ReportFieldType): string {
@@ -95,6 +99,7 @@ export function ReportTable({
 	itemValueIsCurrency = false,
 	valueHeader = "Count",
 	detail,
+	onBucketClick,
 }: ReportTableProps) {
 	if (detail) {
 		return <ReportDetailTable detail={detail} />;
@@ -158,9 +163,21 @@ export function ReportTable({
 									</TableCell>
 									<TableCell>
 										<div className="flex items-center gap-2">
-											<span className="font-medium text-foreground">
-												{item.name}
-											</span>
+											{onBucketClick && item.bucketKey ? (
+												<button
+													type="button"
+													onClick={() =>
+														onBucketClick(item.bucketKey!, item.name)
+													}
+													className="rounded-sm font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+												>
+													{item.name}
+												</button>
+											) : (
+												<span className="font-medium text-foreground">
+													{item.name}
+												</span>
+											)}
 											{index === 0 && (
 												<Badge variant="secondary" className="text-xs">
 													Top

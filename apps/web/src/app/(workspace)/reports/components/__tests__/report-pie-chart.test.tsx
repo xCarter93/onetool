@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
-import { describe, it, expect, afterEach, beforeAll, afterAll } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { describe, it, expect, afterEach, beforeAll, afterAll, vi } from "vitest";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import "@testing-library/jest-dom/vitest";
 
 afterEach(() => cleanup());
@@ -115,5 +115,24 @@ describe("ReportPieChart", () => {
 			/>
 		);
 		expect(screen.getByText("No data for this date range.")).toBeInTheDocument();
+	});
+
+	it("clicking a slice opens that bucket", () => {
+		const onBucketClick = vi.fn();
+		const { container } = render(
+			<ReportPieChart
+				data={[
+					{ name: "Paid", value: 6, bucketKey: "paid" },
+					{ name: "Sent", value: 3, bucketKey: "sent" },
+				]}
+				total={9}
+				entityType="invoices"
+				groupBy="status"
+				onBucketClick={onBucketClick}
+			/>
+		);
+
+		fireEvent.click(container.querySelectorAll(".recharts-pie-sector")[1]);
+		expect(onBucketClick).toHaveBeenCalledWith("sent", "Sent");
 	});
 });

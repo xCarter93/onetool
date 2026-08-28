@@ -16,11 +16,14 @@ import { formatReportValue } from "../report-config";
 import { ChartNoData, isChartDataEmpty } from "./chart-no-data";
 import { ReportChartTooltip, reportChartConfig } from "./report-chart-tooltip";
 import { ChartStripeDefs, stripeId } from "@/components/charts/chart-stripe-defs";
+import { bucketElementClick, type BucketClickHandler } from "./report-bucket-click";
 
 interface DataPoint {
 	name: string;
 	value: number;
 	totalValue?: number;
+	/** Drill-down key for this bucket; absent on ungrouped results. */
+	bucketKey?: string;
 	[key: string]: unknown;
 }
 
@@ -44,6 +47,8 @@ interface ReportColumnChartProps {
 	segments?: SegmentMeta[];
 	axisLabels?: { x?: string; y?: string };
 	targetLine?: number;
+	/** Drill-down (R10): opens the records behind the clicked column. */
+	onBucketClick?: BucketClickHandler;
 }
 
 /** Vertical bars — category names on the X axis, numeric value on the Y
@@ -56,8 +61,10 @@ export function ReportColumnChart({
 	segments,
 	axisLabels,
 	targetLine,
+	onBucketClick,
 }: ReportColumnChartProps) {
 	const patternPrefix = React.useId();
+	const handleBarClick = bucketElementClick(onBucketClick);
 	const stacked = segments !== undefined && segments.length > 0;
 
 	const chartConfig: ChartConfig = stacked
@@ -140,6 +147,8 @@ export function ReportColumnChart({
 									stackId="segments"
 									maxBarSize={48}
 									fill={color}
+									onClick={handleBarClick}
+									className={handleBarClick ? "cursor-pointer" : undefined}
 								>
 									{data.map((entry, bucketIndex) => (
 										<Cell
@@ -153,7 +162,13 @@ export function ReportColumnChart({
 							);
 						})
 					) : (
-						<Bar dataKey="value" radius={[4, 4, 0, 0]} maxBarSize={48}>
+						<Bar
+								dataKey="value"
+								radius={[4, 4, 0, 0]}
+								maxBarSize={48}
+								onClick={handleBarClick}
+								className={handleBarClick ? "cursor-pointer" : undefined}
+							>
 							{data.map((entry, index) => {
 								const color = getChartColor(index, CHART_CATEGORICAL);
 								return (

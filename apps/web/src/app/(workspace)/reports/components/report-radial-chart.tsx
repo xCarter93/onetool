@@ -8,10 +8,13 @@ import { formatReportValue } from "../report-config";
 import { ChartNoData, isChartDataEmpty } from "./chart-no-data";
 import { ReportChartTooltip, reportChartConfig } from "./report-chart-tooltip";
 import { ChartStripeDefs, stripeId } from "@/components/charts/chart-stripe-defs";
+import { bucketElementClick, type BucketClickHandler } from "./report-bucket-click";
 
 interface DataPoint {
 	name: string;
 	value: number;
+	/** Drill-down key for this bucket; absent on ungrouped results. */
+	bucketKey?: string;
 	[key: string]: unknown;
 }
 
@@ -22,6 +25,8 @@ interface ReportRadialChartProps {
 	entityType: string;
 	totalIsCurrency?: boolean;
 	itemValueIsCurrency?: boolean;
+	/** Drill-down (R10): opens the records behind the clicked arc. */
+	onBucketClick?: BucketClickHandler;
 }
 
 /** One radial bar per category, stripe fill + solid stroke like ReportBarChart. */
@@ -30,8 +35,10 @@ export function ReportRadialChart({
 	total,
 	totalIsCurrency = false,
 	itemValueIsCurrency = false,
+	onBucketClick,
 }: ReportRadialChartProps) {
 	const patternPrefix = React.useId();
+	const handleArcClick = bucketElementClick(onBucketClick);
 	const chartConfig = reportChartConfig(
 		data.map((item) => item.name),
 		itemValueIsCurrency
@@ -73,7 +80,14 @@ export function ReportRadialChart({
 					{/* recharts 3.8.0 animated Pie/RadialBar (shared polar animation
 					    path) paints no sectors on initial mount — keep animation off
 					    until a fixed release is verified. */}
-					<RadialBar dataKey="value" background cornerRadius={4} isAnimationActive={false}>
+					<RadialBar
+						dataKey="value"
+						background
+						cornerRadius={4}
+						isAnimationActive={false}
+						onClick={handleArcClick}
+						className={handleArcClick ? "cursor-pointer" : undefined}
+					>
 						{chartData.map((entry, index) => (
 							<Cell
 								key={`cell-${index}`}

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
-import { describe, it, expect, afterEach, beforeAll, afterAll } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { describe, it, expect, afterEach, beforeAll, afterAll, vi } from "vitest";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import "@testing-library/jest-dom/vitest";
 
 afterEach(() => cleanup());
@@ -237,5 +237,36 @@ describe("ReportTable", () => {
 				screen.getByText("Showing first 1 of 500 records.")
 			).toBeInTheDocument();
 		});
+	});
+});
+
+describe("ReportTable — bucket drill-down", () => {
+	const rows = [
+		{ name: "Active", value: 5, bucketKey: "active" },
+		{ name: "Lead", value: 3 },
+	];
+
+	it("a row with a bucketKey becomes a button that opens it", () => {
+		const onBucketClick = vi.fn();
+		render(
+			<ReportTable
+				data={rows}
+				total={8}
+				entityType="clients"
+				groupBy="status"
+				onBucketClick={onBucketClick}
+			/>
+		);
+
+		fireEvent.click(screen.getByRole("button", { name: "Active" }));
+		expect(onBucketClick).toHaveBeenCalledWith("active", "Active");
+		// No bucketKey means no drillable scope, so the label stays plain text.
+		expect(screen.queryByRole("button", { name: "Lead" })).not.toBeInTheDocument();
+	});
+
+	it("without a handler the labels stay plain text", () => {
+		render(<ReportTable data={rows} total={8} entityType="clients" groupBy="status" />);
+
+		expect(screen.queryByRole("button")).not.toBeInTheDocument();
 	});
 });
