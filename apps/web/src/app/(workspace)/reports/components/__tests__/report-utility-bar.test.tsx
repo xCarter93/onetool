@@ -39,18 +39,31 @@ const byStatus: ReportConfigV2 = {
 };
 const byMonth: ReportConfigV2 = { ...byStatus, groupBy: "createdAt_month" };
 
-function bar(config: ReportConfigV2, groupByLabel: string) {
+function bar(
+	config: ReportConfigV2,
+	groupByLabel: string,
+	showCsvDownload = true
+) {
 	return (
 		<ReportUtilityBar
 			saved={{ config, visualization: { type: "bar" } }}
 			reportName="Clients"
 			groupByLabel={groupByLabel}
 			rangeLabel="Last 30 days"
+			showCsvDownload={showCsvDownload}
 		/>
 	);
 }
 
 describe("ReportUtilityBar — CSV waits for the debounced args to settle", () => {
+	it("without showCsvDownload (the builder), no download button renders", () => {
+		render(bar(byStatus, "Status", false));
+
+		expect(
+			screen.queryByRole("button", { name: /Download CSV/ })
+		).not.toBeInTheDocument();
+	});
+
 	it("settled args with data present: Download CSV is enabled", () => {
 		render(bar(byStatus, "Status"));
 

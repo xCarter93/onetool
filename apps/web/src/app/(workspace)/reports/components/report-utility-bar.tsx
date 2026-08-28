@@ -24,19 +24,22 @@ interface ReportUtilityBarProps {
 	reportName: string;
 	groupByLabel?: string;
 	rangeLabel: string;
+	/** CSV export is a saved-report affordance — the builder leaves it off. */
+	showCsvDownload?: boolean;
 }
 
 /**
  * Canvas footer (d14): status summary + the Calculated values expander that
- * absorbed the always-on table under charts (d7), plus Download CSV. Runs the
- * same executeReport args as the preview — Convex dedupes the subscription, so
- * the export and totals always match what's on screen.
+ * absorbed the always-on table under charts (d7), plus Download CSV on saved
+ * reports. Runs the same executeReport args as the preview — Convex dedupes
+ * the subscription, so the export and totals always match what's on screen.
  */
 export function ReportUtilityBar({
 	saved,
 	reportName,
 	groupByLabel,
 	rangeLabel,
+	showCsvDownload = false,
 }: ReportUtilityBarProps) {
 	const [expanded, setExpanded] = useState(false);
 
@@ -186,15 +189,17 @@ export function ReportUtilityBar({
 					<span className="hidden text-xs text-muted-foreground sm:inline">
 						{rangeLabel}
 					</span>
-					<Button
-						variant="ghost"
-						size="sm"
-						onClick={handleDownloadCsv}
-						disabled={!csvReady}
-					>
-						<Download className="h-3.5 w-3.5" />
-						Download CSV
-					</Button>
+					{showCsvDownload && (
+						<Button
+							variant="ghost"
+							size="sm"
+							onClick={handleDownloadCsv}
+							disabled={!csvReady}
+						>
+							<Download className="h-3.5 w-3.5" />
+							Download CSV
+						</Button>
+					)}
 				</div>
 			</div>
 		</div>

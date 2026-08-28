@@ -7,19 +7,6 @@ import { cn } from "@/lib/utils";
 import { AssistantDock } from "./assistant-dock";
 import { useAssistantDockFrame } from "./assistant-dock-frame-context";
 
-const FRAME_DISMISSED_KEY = "assistant-report-frame-dismissed";
-
-function readDismissed() {
-	try {
-		return (
-			typeof window !== "undefined" &&
-			localStorage.getItem(FRAME_DISMISSED_KEY) === "true"
-		);
-	} catch {
-		return false;
-	}
-}
-
 /**
  * The dock plus the contextual header a surface published, styled as one unit.
  * Header and dock carry the same fade so they leave together when the panel
@@ -36,18 +23,11 @@ export function FramedAssistantDock({
 }) {
 	const frame = useAssistantDockFrame();
 	const { allows, isLoading } = useEntitlements();
-	const [dismissed, setDismissed] = useState(readDismissed);
+	// Dismissal is deliberately in-memory only: there's no other way to bring
+	// the hint back, so it returns on the next full page load.
+	const [dismissed, setDismissed] = useState(false);
 	const framed =
 		frame !== null && !dismissed && !isLoading && allows("nlReportGeneration");
-
-	const dismiss = () => {
-		setDismissed(true);
-		try {
-			localStorage.setItem(FRAME_DISMISSED_KEY, "true");
-		} catch {
-			// Private-mode storage failures shouldn't keep the hint on screen.
-		}
-	};
 
 	return (
 		<div className="flex w-full max-w-sm flex-col">
@@ -74,7 +54,7 @@ export function FramedAssistantDock({
 						</button>
 						<button
 							type="button"
-							onClick={dismiss}
+							onClick={() => setDismissed(true)}
 							aria-label="Dismiss report assistant hint"
 							className="flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-foreground/5 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
 						>

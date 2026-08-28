@@ -217,6 +217,7 @@ function ReportViewPageContent() {
 					reportName={report.name}
 					groupByLabel={groupByLabel}
 					rangeLabel={rangeLabel}
+					showCsvDownload
 				/>
 			</div>
 		</div>

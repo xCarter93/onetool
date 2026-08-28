@@ -22,7 +22,6 @@ vi.mock("../assistant-dock-frame-context", async () => {
 });
 
 beforeEach(() => {
-	localStorage.clear();
 	entitlements.isLoading = false;
 	entitlements.allows = () => true;
 	frame.current = {
@@ -33,8 +32,6 @@ beforeEach(() => {
 afterEach(() => cleanup());
 
 import { FramedAssistantDock } from "../framed-assistant-dock";
-
-const DISMISS_KEY = "assistant-report-frame-dismissed";
 
 function renderDock(onOpen = () => {}) {
 	return render(
@@ -73,21 +70,24 @@ describe("FramedAssistantDock", () => {
 		expect(screen.queryByText("Report assistant")).not.toBeInTheDocument();
 	});
 
-	it("renders no frame once dismissed in storage", () => {
-		localStorage.setItem(DISMISS_KEY, "true");
-		renderDock();
-		expect(screen.queryByText("Report assistant")).not.toBeInTheDocument();
-	});
-
-	it("persists the dismissal and hides the frame on X, without opening", () => {
+	it("hides the frame on X without opening the assistant", () => {
 		const onOpen = vi.fn();
 		renderDock(onOpen);
 		fireEvent.click(
 			screen.getByRole("button", { name: "Dismiss report assistant hint" })
 		);
-		expect(localStorage.getItem(DISMISS_KEY)).toBe("true");
 		expect(screen.queryByText("Report assistant")).not.toBeInTheDocument();
 		expect(onOpen).not.toHaveBeenCalled();
+	});
+
+	it("shows the frame again on a fresh mount (dismissal is not persisted)", () => {
+		const first = renderDock();
+		fireEvent.click(
+			screen.getByRole("button", { name: "Dismiss report assistant hint" })
+		);
+		first.unmount();
+		renderDock();
+		expect(screen.getByText("Report assistant")).toBeInTheDocument();
 	});
 
 	it("opens the assistant from the frame header text", () => {
