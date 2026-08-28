@@ -27,7 +27,6 @@ import {
 	visualizationOptions,
 } from "../report-config";
 import { pathLabel } from "../report-path-options";
-import { normalizeReportConfig } from "@onetool/backend/convex/lib/reportConfig";
 
 function ReportViewPageContent() {
 	const router = useRouter();
@@ -53,10 +52,6 @@ function ReportViewPageContent() {
 				}
 	);
 
-	const normalized = report
-		? normalizeReportConfig(report.config, report.visualization)
-		: null;
-
 	if (report === undefined) {
 		return (
 			<div className="flex min-h-[400px] items-center justify-center p-6">
@@ -81,8 +76,7 @@ function ReportViewPageContent() {
 		);
 	}
 
-	// report is non-null past the guards above, so normalized is too.
-	const viewConfig = normalized!.config;
+	const viewConfig = report.config;
 
 	if (isEditing) {
 		const handleSave = async (payload: ReportBuilderSavePayload) => {
@@ -218,12 +212,12 @@ function ReportViewPageContent() {
 				<div className="p-5 sm:p-7">
 					<ReportPreview
 						config={viewConfig}
-						visualization={normalized!.visualization}
+						visualization={report.visualization}
 						onBucketClick={openBucket}
 					/>
 				</div>
 				<ReportUtilityBar
-					saved={{ config: viewConfig, visualization: normalized!.visualization }}
+					saved={{ config: viewConfig, visualization: report.visualization }}
 					reportName={report.name}
 					groupByLabel={groupByLabel}
 					rangeLabel={rangeLabel}
@@ -237,7 +231,7 @@ function ReportViewPageContent() {
 				scope={contributingScope}
 				onClose={() => setContributingScope(null)}
 				config={viewConfig}
-				visualization={normalized!.visualization}
+				visualization={report.visualization}
 				reportName={report.name}
 				showCsvDownload
 			/>

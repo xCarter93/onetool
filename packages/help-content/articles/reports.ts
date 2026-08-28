@@ -101,6 +101,10 @@ export const reportsArticles: HelpArticle[] = [
 						text: "Saved reports live in the **Your reports** list on the Reports page, with their type and when they were last updated. Click one to open it. From an open report, **Edit** reopens the builder and **Duplicate** makes a copy you can change without touching the original. To delete a report, hover its row in the list and click the trash icon; OneTool asks you to confirm first.",
 					},
 					{
+						type: "note",
+						text: "The Free plan includes 5 saved reports at a time, and the Business plan has no limit. Only creating a report counts against it, so deleting one frees a slot straight away.",
+					},
+					{
 						type: "media",
 						media: "video",
 						caption: "Building and saving a report from start to finish",

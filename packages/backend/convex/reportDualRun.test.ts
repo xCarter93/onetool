@@ -9,7 +9,7 @@ import {
 	createTestTask,
 } from "./test.helpers";
 import { api } from "./_generated/api";
-import { normalizeReportConfig, type ReportConfigV2 } from "./lib/reportConfig";
+import { configForGroupByKey, type ReportConfigV2 } from "./lib/reportConfig";
 import {
 	DEFAULT_GROUP_BY,
 	DEFAULT_DETAIL_COLUMNS,
@@ -28,8 +28,8 @@ import detailModeGolden from "./__goldens__/report-detail-mode.json";
 
 /**
  * The unified pipeline's regression pin (PRD-reports-redesign §3.3, §8 d11):
- * every retired-dispatch fixture must be reproduced when the R2 expander's v2
- * config is executed through executeReport's `config` arg. This suite owns
+ * every retired-dispatch fixture must be reproduced when configForGroupByKey's
+ * v2 config is executed through executeReport's `config` arg. This suite owns
  * report-legacy-dispatch.json since R4c deleted the dispatch itself (the
  * unknown-literal-fallback key was deleted with it — v2 validates groupBy and
  * throws).
@@ -40,7 +40,7 @@ import detailModeGolden from "./__goldens__/report-detail-mode.json";
 
 const roundTrip = <T>(value: T): T => JSON.parse(JSON.stringify(value));
 
-/** v1 magic keys → the registry keys the expander emits (§8 d11). */
+/** Composite group-by keys → the registry keys they resolve to (§8 d11). */
 const GROUP_BY_EXPANSION: Record<string, string> = {
 	month: "paidAt_month",
 	client: "clientId",
@@ -149,18 +149,16 @@ function toV2Request(args: MatrixArgs): {
 	seriesLimit?: number;
 } {
 	const groupBy = args.groupBy ?? DEFAULT_GROUP_BY[args.entityType];
-	const { config, visualization } = normalizeReportConfig(
-		{
-			entityType: args.entityType,
-			groupBy: [groupBy],
-			...(args.dateRange ? { dateRange: args.dateRange } : {}),
-		},
-		{ type: "bar" }
-	);
+	const { config, visualization } = configForGroupByKey(args.entityType, groupBy, {
+		...(args.dateRange
+			? { range: { kind: "absolute" as const, ...args.dateRange } }
+			: {}),
+		visualization: { type: "bar" },
+	});
 	return { config, seriesLimit: visualization.options?.seriesLimit };
 }
 
-describe("R4a dual-run: expanded v2 configs reproduce the legacy fixtures", () => {
+describe("dual-run: composite-key v2 configs reproduce the legacy fixtures", () => {
 	let t: ReturnType<typeof setupConvexTest>;
 
 	beforeEach(() => {
@@ -196,7 +194,11 @@ describe("R4a dual-run: expanded v2 configs reproduce the legacy fixtures", () =
 		const golden = detailModeGolden as Record<string, unknown>;
 
 		for (const entityType of Object.keys(DEFAULT_DETAIL_COLUMNS) as ReportEntityType[]) {
-			const { config } = normalizeReportConfig({ entityType }, { type: "table" });
+			const config: ReportConfigV2 = {
+				version: 2,
+				entityType,
+				metric: { op: "count" },
+			};
 			const result = await asOrg.query(api.reportData.executeReport, {
 				entityType,
 				config,

@@ -17,16 +17,25 @@ import {
 	isGenericGroupBy,
 	type ReportEntityType,
 } from "./lib/reportFields";
-import { normalizeReportConfig, type ReportConfigV2 } from "./lib/reportConfig";
+import { configForGroupByKey, type ReportConfigV2 } from "./lib/reportConfig";
 import type { Id } from "./_generated/dataModel";
 
 /**
  * Pins the observable semantics of reportData.executeReport (the only live
- * export of reportData.ts) on the unified pipeline: v2 `config` requests
- * (including v1 magic keys via normalizeReportConfig), the still-supported
- * standalone aggregation/detail args (deleted at R14), exact-ms date bounds,
- * and org-timezone week bucketing.
+ * export of reportData.ts): v2 `config` requests, detail mode, exact-ms date
+ * bounds, and org-timezone week bucketing.
  */
+
+/** An ungrouped count config — the shape every detail-mode request carries. */
+const detailConfig = (
+	entityType: ReportConfigV2["entityType"],
+	extra: Partial<ReportConfigV2> = {}
+): ReportConfigV2 => ({
+	version: 2,
+	entityType,
+	metric: { op: "count" },
+	...extra,
+});
 
 describe("reportData.executeReport", () => {
 	let t: ReturnType<typeof setupConvexTest>;
@@ -414,10 +423,9 @@ describe("reportData.executeReport", () => {
 			}); // not paid — excluded
 		});
 
-		const { config } = normalizeReportConfig(
-			{ entityType: "invoices", groupBy: ["month"] },
-			{ type: "line" }
-		);
+		const { config } = configForGroupByKey("invoices", "month", {
+			visualization: { type: "line" },
+		});
 		const result = await asOrg.query(api.reportData.executeReport, {
 			entityType: "invoices",
 			config,
@@ -442,10 +450,9 @@ describe("reportData.executeReport", () => {
 			});
 		});
 
-		const { config, visualization } = normalizeReportConfig(
-			{ entityType: "invoices", groupBy: ["client"] },
-			{ type: "bar" }
-		);
+		const { config, visualization } = configForGroupByKey("invoices", "client", {
+			visualization: { type: "bar" },
+		});
 		const result = await asOrg.query(api.reportData.executeReport, {
 			entityType: "invoices",
 			config,
@@ -497,20 +504,6 @@ describe("reportData.executeReport", () => {
 	});
 
 	// ==========================================================================
-	// Bare legacy args died with the dispatch at R4c
-	// ==========================================================================
-
-	it("a request with no config, aggregation, or detail throws", async () => {
-		const { asOrg } = await seedOrg();
-
-		await expect(
-			asOrg.query(api.reportData.executeReport, {
-				entityType: "clients",
-				groupBy: "totallyBogusGroupBy",
-			})
-		).rejects.toThrow(/requires a config/);
-	});
-
 	// ==========================================================================
 	// TZ bug A (FIXED): exact millisecond date bounds, no re-clamping
 	// ==========================================================================
@@ -627,8 +620,12 @@ describe("reportData.executeReport", () => {
 
 		const result = await asOrg.query(api.reportData.executeReport, {
 			entityType: "quotes",
-			groupBy: "status",
-			aggregation: { op: "sum", field: "total" },
+			config: {
+				version: 2,
+				entityType: "quotes",
+				metric: { op: "sum", field: "total" },
+				groupBy: "status",
+			},
 		});
 
 		const byLabel = Object.fromEntries(result.data.map((d) => [d.label, d.value]));
@@ -637,40 +634,37 @@ describe("reportData.executeReport", () => {
 		expect(result.metadata?.totalIsCurrency).toBe(true);
 	});
 
-	it("generic-only groupBy without aggregation throws instead of silently returning the legacy default", async () => {
-		const { asOrg } = await seedOrg();
-
-		await expect(
-			asOrg.query(api.reportData.executeReport, {
-				entityType: "invoices",
-				groupBy: "issuedDate_month",
-			})
-		).rejects.toThrow();
-	});
-
-	it("aggregation: unknown field throws a ConvexError", async () => {
+	it("metric: unknown field throws a ConvexError", async () => {
 		const { asOrg } = await seedOrg();
 
 		await expect(
 			asOrg.query(api.reportData.executeReport, {
 				entityType: "quotes",
-				aggregation: { op: "sum", field: "notARealField" },
+				config: {
+					version: 2,
+					entityType: "quotes",
+					metric: { op: "sum", field: "notARealField" },
+				},
 			})
 		).rejects.toThrow();
 	});
 
-	it("aggregation: non-numeric field throws a ConvexError", async () => {
+	it("metric: non-numeric field throws a ConvexError", async () => {
 		const { asOrg } = await seedOrg();
 
 		await expect(
 			asOrg.query(api.reportData.executeReport, {
 				entityType: "quotes",
-				aggregation: { op: "sum", field: "status" },
+				config: {
+					version: 2,
+					entityType: "quotes",
+					metric: { op: "sum", field: "status" },
+				},
 			})
 		).rejects.toThrow();
 	});
 
-	it("aggregation groupBy: boolean field values keep distinct buckets", async () => {
+	it("groupBy: boolean field values keep distinct buckets", async () => {
 		const { org, asOrg } = await seedOrg();
 		await t.run(async (ctx) => {
 			const a = await createTestClient(ctx, org.orgId);
@@ -683,34 +677,31 @@ describe("reportData.executeReport", () => {
 
 		const result = await asOrg.query(api.reportData.executeReport, {
 			entityType: "clients",
-			groupBy: "isActive",
-			aggregation: { op: "count" },
+			config: countConfig("clients", "isActive"),
 		});
 
 		const byLabel = Object.fromEntries(result.data.map((d) => [d.label, d.value]));
 		expect(byLabel).toEqual({ True: 2, False: 1 });
 	});
 
-	it("aggregation groupBy: non-timestamp time-bucket field throws a ConvexError", async () => {
+	it("groupBy: non-timestamp time-bucket field throws a ConvexError", async () => {
 		const { asOrg } = await seedOrg();
 
 		await expect(
 			asOrg.query(api.reportData.executeReport, {
 				entityType: "quotes",
-				groupBy: "status_month",
-				aggregation: { op: "count" },
+				config: countConfig("quotes", "status_month"),
 			})
 		).rejects.toThrow();
 	});
 
-	it("aggregation groupBy: bare timestamp field throws a ConvexError", async () => {
+	it("groupBy: bare timestamp field throws a ConvexError", async () => {
 		const { asOrg } = await seedOrg();
 
 		await expect(
 			asOrg.query(api.reportData.executeReport, {
 				entityType: "invoices",
-				groupBy: "issuedDate",
-				aggregation: { op: "count" },
+				config: countConfig("invoices", "issuedDate"),
 			})
 		).rejects.toThrow();
 	});
@@ -742,6 +733,7 @@ describe("reportData.executeReport", () => {
 
 		const result = await asOrg.query(api.reportData.executeReport, {
 			entityType: "quotes",
+			config: detailConfig("quotes"),
 			detail: { columns: ["quoteNumber", "status", "total"] },
 		});
 
@@ -778,6 +770,7 @@ describe("reportData.executeReport", () => {
 		await expect(
 			asOrg.query(api.reportData.executeReport, {
 				entityType: "quotes",
+				config: detailConfig("quotes"),
 				detail: { columns: ["notARealColumn"] },
 			})
 		).rejects.toThrow();
@@ -789,6 +782,7 @@ describe("reportData.executeReport", () => {
 		await expect(
 			asOrg.query(api.reportData.executeReport, {
 				entityType: "quotes",
+				config: detailConfig("quotes"),
 				detail: { columns: [] },
 			})
 		).rejects.toThrow();
@@ -805,6 +799,7 @@ describe("reportData.executeReport", () => {
 
 		const result = await asOrg.query(api.reportData.executeReport, {
 			entityType: "quotes",
+			config: detailConfig("quotes"),
 			detail: { columns: ["status"], limit: 3 },
 		});
 
@@ -824,16 +819,18 @@ describe("reportData.executeReport", () => {
 
 		const result = await asOrg.query(api.reportData.executeReport, {
 			entityType: "quotes",
+			config: detailConfig("quotes", {
+				filters: {
+					logic: "and",
+					groups: [
+						{
+							logic: "and",
+							rules: [{ field: "status", operator: "equals", value: "sent" }],
+						},
+					],
+				},
+			}),
 			detail: { columns: ["status"] },
-			filters: {
-				logic: "and",
-				groups: [
-					{
-						logic: "and",
-						rules: [{ field: "status", operator: "equals", value: "sent" }],
-					},
-				],
-			},
 		});
 
 		expect(result.detail?.rows).toEqual([
@@ -875,8 +872,7 @@ describe("reportData.executeReport", () => {
 
 		const result = await asOrg.query(api.reportData.executeReport, {
 			entityType: "activities",
-			groupBy: "entityType",
-			aggregation: { op: "count" },
+			config: countConfig("activities", "entityType"),
 		});
 
 		const byLabel = Object.fromEntries(result.data.map((d) => [d.label, d.value]));
@@ -897,17 +893,17 @@ describe("reportData.executeReport", () => {
 
 		const result = await asOrg.query(api.reportData.executeReport, {
 			entityType: "projects",
-			groupBy: "completedAt_month",
-			aggregation: { op: "count" },
-			filters: {
-				logic: "and",
-				groups: [
-					{
-						logic: "and",
-						rules: [{ field: "status", operator: "equals", value: "completed" }],
-					},
-				],
-			},
+			config: countConfig("projects", "completedAt_month", {
+				filters: {
+					logic: "and",
+					groups: [
+						{
+							logic: "and",
+							rules: [{ field: "status", operator: "equals", value: "completed" }],
+						},
+					],
+				},
+			}),
 		});
 
 		expect(result.total).toBe(1);
@@ -940,19 +936,23 @@ describe("reportData.executeReport", () => {
 
 		const result = await asOrg.query(api.reportData.executeReport, {
 			entityType: "invoices",
-			groupBy: "dueDate_month",
-			aggregation: { op: "sum", field: "total" },
-			filters: {
-				logic: "and",
-				groups: [
-					{
-						logic: "or",
-						rules: [
-							{ field: "status", operator: "equals", value: "sent" },
-							{ field: "status", operator: "equals", value: "overdue" },
-						],
-					},
-				],
+			config: {
+				version: 2,
+				entityType: "invoices",
+				metric: { op: "sum", field: "total" },
+				groupBy: "dueDate_month",
+				filters: {
+					logic: "and",
+					groups: [
+						{
+							logic: "or",
+							rules: [
+								{ field: "status", operator: "equals", value: "sent" },
+								{ field: "status", operator: "equals", value: "overdue" },
+							],
+						},
+					],
+				},
 			},
 		});
 
@@ -985,8 +985,7 @@ describe("reportData.executeReport", () => {
 
 		const result = await asOrg.query(api.reportData.executeReport, {
 			entityType: "tasks",
-			groupBy: "assigneeUserId",
-			aggregation: { op: "count" },
+			config: countConfig("tasks", "assigneeUserId"),
 		});
 
 		const byLabel = Object.fromEntries(result.data.map((d) => [d.label, d.value]));
@@ -999,17 +998,16 @@ describe("reportData.executeReport", () => {
 });
 
 describe("GROUP_BY_OPTIONS invariants", () => {
-	it("every GROUP_BY_OPTIONS value expands to an executable v2 config", () => {
+	it("every GROUP_BY_OPTIONS value resolves to an executable v2 config", () => {
 		for (const entity of Object.keys(GROUP_BY_OPTIONS) as ReportEntityType[]) {
 			for (const { value } of GROUP_BY_OPTIONS[entity]) {
-				const { config } = normalizeReportConfig(
-					{ entityType: entity, groupBy: [value] },
-					{ type: "bar" }
-				);
+				const { config } = configForGroupByKey(entity, value, {
+					visualization: { type: "bar" },
+				});
 				const groupable =
 					config.metric.op === "ratio" ||
 					(config.groupBy !== undefined && isGenericGroupBy(entity, config.groupBy));
-				expect(groupable, `${entity}.${value} must expand to something executable`).toBe(
+				expect(groupable, `${entity}.${value} must resolve to something executable`).toBe(
 					true
 				);
 			}
@@ -1633,6 +1631,7 @@ describe("drill-down: bucketKey on data points and detail scoping", () => {
 
 		const result = await asOrg.query(api.reportData.executeReport, {
 			entityType: "quotes",
+			config: detailConfig("quotes"),
 			detail: { columns: ["quoteNumber"] },
 		});
 
@@ -1653,6 +1652,7 @@ describe("drill-down: bucketKey on data points and detail scoping", () => {
 
 		const result = await asOrg.query(api.reportData.executeReport, {
 			entityType: "tasks",
+			config: detailConfig("tasks"),
 			detail: { columns: ["title", "assigneeUserId"] },
 		});
 
@@ -1676,6 +1676,7 @@ describe("drill-down: bucketKey on data points and detail scoping", () => {
 		await expect(
 			asOrg.query(api.reportData.executeReport, {
 				entityType,
+				config: detailConfig(entityType),
 				detail: { columns: [column] },
 			})
 		).rejects.toThrow(/Unknown report detail column/);
@@ -1707,6 +1708,7 @@ describe("drill-down: bucketKey on data points and detail scoping", () => {
 
 		const result = await asOrg.query(api.reportData.executeReport, {
 			entityType: "quoteLineItems",
+			config: detailConfig("quoteLineItems"),
 			detail: { columns: ["description"] },
 		});
 
@@ -1733,6 +1735,7 @@ describe("drill-down: bucketKey on data points and detail scoping", () => {
 
 		const result = await asOrg.query(api.reportData.executeReport, {
 			entityType: "tasks",
+			config: detailConfig("tasks"),
 			detail: { columns: ["title"] },
 		});
 
@@ -1750,6 +1753,7 @@ describe("drill-down: bucketKey on data points and detail scoping", () => {
 
 		const result = await asOrg.query(api.reportData.executeReport, {
 			entityType: "clients",
+			config: detailConfig("clients"),
 			detail: { columns: ["companyName"] },
 		});
 

@@ -37,7 +37,7 @@ import {
 } from "./lib/reportFields";
 import {
 	DATE_RANGE_PRESETS,
-	normalizeReportConfig,
+	configForGroupByKey,
 	type ReportConfigV2,
 	type ReportMetric,
 	type ReportVisualization,
@@ -553,15 +553,18 @@ function toExecutableFilters(
 	};
 }
 
-/** Metrics the v1 shape cannot carry; undefined leaves the normalizer's own. */
+/** The generated measure as a v2 metric; composite group-by keys override it. */
 function toNativeMetric(gen: GeneratedReport): ReportMetric | undefined {
 	const measure = gen.measure;
-	if (measure?.op === "ratio") {
+	if (!measure) return undefined;
+	if (measure.op === "ratio") {
 		return measure.ratioKey
 			? { op: "ratio", ratioKey: measure.ratioKey }
 			: undefined;
 	}
-	return undefined;
+	return isAggregationOp(measure.op) && measure.field
+		? { op: measure.op, field: measure.field }
+		: undefined;
 }
 
 /**
@@ -592,11 +595,8 @@ function isMetricOnlyMeasure(measure: GeneratedReport["measure"]): boolean {
 
 /**
  * Generated config → the canonical v2 pair every downstream path uses.
- * Routed through the v1 normalizer because the generatable Group-by
- * vocabulary still includes the magic keys (month, client, conversionRate,
- * completionRate), which only become executable v2 configs by expansion; the
- * two things v1 cannot carry (ratio metrics, preset ranges) are laid over the
- * expansion, so a preset keeps the date FIELD the expansion chose.
+ * `datePreset` is laid over the built config so a preset keeps the date FIELD
+ * a composite group-by key chose (revenue keys scope to paidAt).
  */
 function toGeneratedConfig(
 	gen: GeneratedReport,
@@ -610,32 +610,24 @@ function toGeneratedConfig(
 		timezone
 	);
 	const dateRange = toDateRange(gen, timezone);
-	const measure = gen.measure;
 	const visualization = resolveVisualization(gen);
 	const groupBy = effectiveGroupBy(gen);
-	const normalized = normalizeReportConfig(
-		{
-			entityType: gen.entityType,
-			...(groupBy ? { groupBy: [groupBy] } : {}),
-			...(dateRange ? { dateRange } : {}),
-			...(filters ? { filters } : {}),
-			...(measure && isAggregationOp(measure.op) && measure.field
-				? { aggregations: [{ field: measure.field, operation: measure.op }] }
-				: {}),
-			...(visualization === "table" && gen.columns?.length
-				? { columns: gen.columns }
-				: {}),
-		},
-		{ type: visualization }
-	);
 	const metric = toNativeMetric(gen);
-	const config: ReportConfigV2 = {
-		...normalized.config,
+	const built = configForGroupByKey(gen.entityType, groupBy ?? undefined, {
 		...(metric ? { metric } : {}),
+		...(filters ? { filters } : {}),
+		...(dateRange ? { range: { kind: "absolute" as const, ...dateRange } } : {}),
+		...(visualization === "table" && gen.columns?.length
+			? { columns: gen.columns }
+			: {}),
+		visualization: { type: visualization },
+	});
+	const config: ReportConfigV2 = {
+		...built.config,
 		...(gen.datePreset
 			? {
 					date: {
-						...normalized.config.date,
+						...built.config.date,
 						range: { kind: "preset" as const, preset: gen.datePreset },
 					},
 				}
@@ -648,7 +640,7 @@ function toGeneratedConfig(
 			: config;
 	return {
 		config: comparisonIsExecutable(compared, visualization) ? compared : config,
-		visualization: normalized.visualization,
+		visualization: built.visualization,
 	};
 }
 

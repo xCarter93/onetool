@@ -333,11 +333,10 @@ export const REPORT_FIELDS: Record<ReportEntityType, ReportEntityFields> = {
 
 /**
  * Canonical Group-by choices per entity — the builder's select, the AI
- * config generator, and saved-config hydration all share this list.
- * Values mix registry fields (status, leadSource…) with v1 magic keys
- * (month, client, conversionRate, completionRate, creationDate_*) that
- * normalizeReportConfig expands to explicit v2 configs; R8's v2-native
- * builder replaces the magic keys with the expanded forms.
+ * config generator, and saved-config hydration all share this list. Values mix
+ * registry fields (status, leadSource…) with the composite keys (month,
+ * client, conversionRate, completionRate) that configForGroupByKey resolves
+ * into whole configs; the builder's picker filters those out.
  */
 export const GROUP_BY_OPTIONS: Record<
 	ReportEntityType,
@@ -521,13 +520,11 @@ export const DEFAULT_DETAIL_COLUMNS: Record<ReportEntityType, string[]> = {
 };
 
 /**
- * True when the generic aggregation pipeline (executeReport with an explicit
- * `aggregation`) accepts this groupBy: an FK edge, a non-timestamp registry
- * field, or a `<timestamp-field>_day|week|month` bucket — bare or as a dotted
- * related path. Legacy specials (month, client,
- * conversionRate, completionRate, creationDate_*) only work through the
- * legacy dispatch, which ignores measures — so a non-count measure must
- * pair with a generic-safe groupBy (or none).
+ * True when a groupBy names something executable on its own: an FK edge, a
+ * non-timestamp registry field, or a `<timestamp-field>_day|week|month`
+ * bucket — bare or as a dotted related path. The composite keys (month,
+ * client, conversionRate, completionRate) pin their own measure, so a
+ * non-count measure must pair with a generic groupBy (or none).
  */
 export function isGenericGroupBy(
 	entityType: ReportEntityType,

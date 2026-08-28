@@ -1,20 +1,11 @@
 /**
- * Shared contract for turning a report configuration into executeReport args.
- * Both callers — the web builder (report-config.ts resolveReportQueryArgs) and
- * the assistant's config generator (reportConfigGeneration.toExecuteReportArgs)
- * — delegate here so their routing can never drift.
- *
- * Since R8a the input is a saved (config, visualization) pair: v2 configs pass
- * through, v1 rows (staging scaffolding until R14) expand via
- * normalizeReportConfig, and executeReport receives
- * `{ entityType, config, seriesLimit?, detail? }`.
+ * Shared contract for turning a saved (config, visualization) pair into
+ * executeReport args. Both callers — the web builder (report-config.ts
+ * resolveReportQueryArgs) and the assistant's config generator
+ * (reportConfigGeneration.toExecuteReportArgs) — delegate here so their
+ * routing can never drift.
  */
-import {
-	normalizeReportConfig,
-	type ReportConfig,
-	type ReportConfigV2,
-	type ReportVisualization,
-} from "./reportConfig";
+import type { ReportConfigV2, ReportVisualization } from "./reportConfig";
 import { DEFAULT_DETAIL_COLUMNS, type ReportEntityType } from "./reportFields";
 
 export type ReportVisualizationType = ReportVisualization["type"];
@@ -87,16 +78,12 @@ function withoutComparison(config: ReportConfigV2): ReportConfigV2 {
 }
 
 export function resolveReportQueryArgs(
-	savedConfig: ReportConfig,
-	visualization: ReportVisualization
+	savedConfig: ReportConfigV2,
+	viz: ReportVisualization
 ): ExecuteReportArgs {
-	const { config: normalized, visualization: viz } = normalizeReportConfig(
-		savedConfig,
-		visualization
-	);
-	const config = comparisonIsExecutable(normalized, viz.type)
-		? normalized
-		: withoutComparison(normalized);
+	const config = comparisonIsExecutable(savedConfig, viz.type)
+		? savedConfig
+		: withoutComparison(savedConfig);
 
 	const base = { entityType: config.entityType, config };
 

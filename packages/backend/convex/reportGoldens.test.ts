@@ -86,6 +86,7 @@ describe("executeReport output goldens", () => {
 		for (const entityType of entities) {
 			const result = await asOrg.query(api.reportData.executeReport, {
 				entityType,
+				config: { version: 2, entityType, metric: { op: "count" } },
 				detail: { columns: DEFAULT_DETAIL_COLUMNS[entityType] },
 			});
 			expect(stripRowIds(result), entityType).toStrictEqual(golden[entityType]);
@@ -122,7 +123,7 @@ describe("executeReport output goldens", () => {
 
 			const result = await asOrg.query(api.reportData.executeReport, {
 				entityType: "tasks",
-				aggregation: { op: "count" },
+				config: { version: 2, entityType: "tasks", metric: { op: "count" } },
 			});
 
 			expect(result.metadata?.truncated).toBe(true);

@@ -1,11 +1,9 @@
 /**
  * Server-side resolution of report date-range presets into absolute ms bounds.
  *
- * Lands with R4a of PRD-reports-redesign: report runs happen on the server, so
- * the calendar math that the web `getDateRange`
- * (apps/web/src/app/(workspace)/reports/report-config.ts) does in the browser's
- * local zone has to be redone in the org's IANA timezone. Semantics mirror that
- * function exactly — only the zone the calendar day is measured in differs.
+ * Report runs happen on the server, so a saved preset resolves in the org's
+ * IANA timezone rather than the browser's local zone; the calendar day is the
+ * only thing the zone changes.
  */
 import {
 	type DateRangePreset,

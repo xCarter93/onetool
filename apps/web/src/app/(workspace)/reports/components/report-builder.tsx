@@ -13,7 +13,6 @@ import {
 	resolveReportPath,
 } from "@onetool/backend/convex/lib/reportRelations";
 import type { ReportFilters } from "@onetool/backend/convex/lib/reportFilters";
-import type { ReportConfig as ReportDocConfig } from "@onetool/backend/convex/lib/reportConfig";
 import { usePublishAssistantDockFrame } from "@/components/assistant/assistant-dock-frame-context";
 import { useRegisterReportConfigApply } from "@/components/assistant/report-config-apply-context";
 import { usePublishScreenContext } from "@/components/assistant/use-screen-context";
@@ -102,8 +101,8 @@ const GRANULARITY_OPTIONS = [
 export interface ReportBuilderInitial {
 	name: string;
 	description: string;
-	/** Either config version — v1 rows expand through the normalizer on hydrate. Absent = blank start. */
-	config?: ReportDocConfig;
+	/** Absent = blank start. */
+	config?: ReportConfigV2;
 	visualization: ReportVisualization;
 }
 

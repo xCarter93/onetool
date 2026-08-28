@@ -18,7 +18,7 @@ import {
 	communityTeamMembersValidator,
 } from "./lib/communityTypes";
 import {
-	reportConfigValidator,
+	reportConfigV2Validator,
 	reportVisualizationValidator,
 } from "./lib/reportConfig";
 
@@ -1633,9 +1633,8 @@ export default defineSchema({
 		name: v.string(),
 		description: v.optional(v.string()),
 
-		// Report configuration (what data to fetch); v1 arm is in-PRD scaffolding
-		// deleted at cutover — see lib/reportConfig.ts.
-		config: reportConfigValidator,
+		// Report configuration (what data to fetch)
+		config: reportConfigV2Validator,
 
 		// Visualization settings
 		visualization: reportVisualizationValidator,

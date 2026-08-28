@@ -644,30 +644,4 @@ describe("report traversal: permissions and validation", () => {
 		).rejects.toThrow(/is a time bucket/);
 	});
 
-	it("rejects dotted filters and groupBy on the legacy args path", async () => {
-		const { asOrg } = await seedForPermissions();
-		await expect(
-			asOrg.query(api.reportData.executeReport, {
-				entityType: "quoteLineItems",
-				aggregation: { op: "count" },
-				filters: {
-					logic: "and",
-					groups: [
-						{
-							logic: "and",
-							rules: [{ field: "quoteId.status", operator: "equals", value: "draft" }],
-						},
-					],
-				},
-			})
-		).rejects.toThrow(/Related-path report filter field/);
-
-		await expect(
-			asOrg.query(api.reportData.executeReport, {
-				entityType: "quoteLineItems",
-				aggregation: { op: "count" },
-				groupBy: "quoteId.status",
-			})
-		).rejects.toThrow(/Related-path groupBy/);
-	});
 });

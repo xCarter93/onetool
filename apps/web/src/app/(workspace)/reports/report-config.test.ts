@@ -126,48 +126,6 @@ describe("resolveReportQueryArgs — Group by: None", () => {
 	});
 });
 
-describe("resolveReportQueryArgs — v1 magic-key expansion (staging rows until R14)", () => {
-	it("invoices 'month' expands to the paid-revenue v2 config", () => {
-		const args = resolveReportQueryArgs(
-			{ entityType: "invoices", groupBy: ["month"] },
-			{ type: "bar" }
-		);
-		expect(args.config.groupBy).toBe("paidAt_month");
-		expect(args.config.metric).toEqual({ op: "sum", field: "total" });
-		expect(args.config.date?.field).toBe("paidAt");
-	});
-
-	it("invoices 'client' expands with an explicit series limit (d3)", () => {
-		const args = resolveReportQueryArgs(
-			{ entityType: "invoices", groupBy: ["client"] },
-			{ type: "bar" }
-		);
-		expect(args.config.groupBy).toBe("clientId");
-		expect(args.seriesLimit).toBe(10);
-	});
-
-	it("quotes 'conversionRate' expands to the ratio metric", () => {
-		const args = resolveReportQueryArgs(
-			{ entityType: "quotes", groupBy: ["conversionRate"] },
-			{ type: "pie" }
-		);
-		expect(args.config.metric).toEqual({ op: "ratio", ratioKey: "conversionRate" });
-		expect(args.config.groupBy).toBeUndefined();
-	});
-
-	it("v1 aggregations carry into the config metric", () => {
-		const args = resolveReportQueryArgs(
-			{
-				entityType: "invoices",
-				groupBy: ["issuedDate_month"],
-				aggregations: [{ field: "total", operation: "avg" }],
-			},
-			{ type: "line" }
-		);
-		expect(args.config.metric).toEqual({ op: "avg", field: "total" });
-	});
-});
-
 describe("isDetailModeActive — Slice 3-D3 (chart above table model)", () => {
 	it("any viz type with groupBy None → detail (a chart with nothing to group on has nothing to chart above)", () => {
 		expect(isDetailModeActive(v2(), "table")).toBe(true);
@@ -283,16 +241,6 @@ describe("builderStateToSaved ↔ savedToBuilderState round trips (R8a)", () => 
 		});
 		const trip = builderStateToSaved(savedToBuilderState(config, { type: "line" }));
 		expect(trip.config).toEqual(config);
-	});
-
-	it("v1 rows hydrate through the normalizer (magic keys expand before reaching state)", () => {
-		const state = savedToBuilderState(
-			{ entityType: "invoices", groupBy: ["month"] },
-			{ type: "bar" }
-		);
-		expect(state.groupBy).toBe("paidAt_month");
-		expect(state.metric).toEqual({ op: "sum", field: "total" });
-		expect(state.dateField).toBe("paidAt");
 	});
 
 	it("all-time with no field override stores no date at all", () => {

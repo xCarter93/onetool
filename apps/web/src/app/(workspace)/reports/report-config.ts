@@ -41,9 +41,7 @@ import {
 } from "@onetool/backend/convex/lib/reportQueryArgs";
 import {
 	DATE_RANGE_PRESETS,
-	normalizeReportConfig,
 	type DateRangePreset,
-	type ReportConfig as ReportDocConfig,
 	type ReportConfigV2,
 	type ReportMetric,
 	type ReportVisualization,
@@ -231,15 +229,11 @@ export function builderStateToSaved(state: BuilderConfigState): {
 	};
 }
 
-/** Saved (config, visualization) of either version → builder state. v1 rows expand through the normalizer first. */
+/** Saved (config, visualization) → builder state. */
 export function savedToBuilderState(
-	savedConfig: ReportDocConfig,
-	savedVisualization: ReportVisualization
+	config: ReportConfigV2,
+	visualization: ReportVisualization
 ): BuilderConfigState {
-	const { config, visualization } = normalizeReportConfig(
-		savedConfig,
-		savedVisualization
-	);
 	const range = config.date?.range;
 	let dateRangePreset = "all_time";
 	let customDateRange: DateRange | undefined;
@@ -556,72 +550,6 @@ export function formatRelativeTime(timestamp: number) {
 	if (hours < 24) return `${hours}h ago`;
 	if (days < 7) return `${days}d ago`;
 	return formatDate(timestamp);
-}
-
-export function getDateRange(
-	preset: string
-): { start?: number; end?: number } | undefined {
-	const now = new Date();
-	const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-	const endOfToday = new Date(today);
-	endOfToday.setHours(23, 59, 59, 999);
-
-	switch (preset) {
-		case "today":
-			return { start: today.getTime(), end: endOfToday.getTime() };
-		case "this_week": {
-			const dayOfWeek = today.getDay();
-			const startOfWeek = new Date(today);
-			startOfWeek.setDate(today.getDate() - dayOfWeek);
-			const endOfWeek = new Date(startOfWeek);
-			endOfWeek.setDate(startOfWeek.getDate() + 6);
-			endOfWeek.setHours(23, 59, 59, 999);
-			return { start: startOfWeek.getTime(), end: endOfWeek.getTime() };
-		}
-		case "this_month": {
-			const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
-			const endOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0);
-			endOfMonth.setHours(23, 59, 59, 999);
-			return { start: startOfMonth.getTime(), end: endOfMonth.getTime() };
-		}
-		case "this_quarter": {
-			const quarter = Math.floor(today.getMonth() / 3);
-			const startOfQuarter = new Date(today.getFullYear(), quarter * 3, 1);
-			const endOfQuarter = new Date(today.getFullYear(), (quarter + 1) * 3, 0);
-			endOfQuarter.setHours(23, 59, 59, 999);
-			return { start: startOfQuarter.getTime(), end: endOfQuarter.getTime() };
-		}
-		case "this_year": {
-			const startOfYear = new Date(today.getFullYear(), 0, 1);
-			const endOfYear = new Date(today.getFullYear(), 11, 31);
-			endOfYear.setHours(23, 59, 59, 999);
-			return { start: startOfYear.getTime(), end: endOfYear.getTime() };
-		}
-		case "last_7_days": {
-			const start = new Date(today);
-			start.setDate(today.getDate() - 6);
-			return { start: start.getTime(), end: endOfToday.getTime() };
-		}
-		case "last_30_days": {
-			const start = new Date(today);
-			start.setDate(today.getDate() - 29);
-			return { start: start.getTime(), end: endOfToday.getTime() };
-		}
-		case "last_90_days": {
-			const start = new Date(today);
-			start.setDate(today.getDate() - 89);
-			return { start: start.getTime(), end: endOfToday.getTime() };
-		}
-		case "last_year": {
-			const startOfLastYear = new Date(today.getFullYear() - 1, 0, 1);
-			const endOfLastYear = new Date(today.getFullYear() - 1, 11, 31);
-			endOfLastYear.setHours(23, 59, 59, 999);
-			return { start: startOfLastYear.getTime(), end: endOfLastYear.getTime() };
-		}
-		case "all_time":
-		default:
-			return undefined;
-	}
 }
 
 /**

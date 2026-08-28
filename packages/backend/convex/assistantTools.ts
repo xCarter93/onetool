@@ -24,7 +24,7 @@ import {
 } from "./lib/schemaIntrospection";
 import type { ReportDataResult } from "./reportData";
 import {
-	normalizeReportConfig,
+	configForGroupByKey,
 	type DateRangePreset,
 	type ReportMetric,
 } from "./lib/reportConfig";
@@ -868,23 +868,20 @@ export const runReport = createTool({
 		ctx,
 		input
 	): Promise<ReportDataResult & { visualization: ReportVisualization }> => {
-		// Bare calls keep their historical entity-default grouping (§8 d11);
-		// the expander turns magic keys (month, conversionRate, …) into v2.
+		// Bare calls keep the entity-default grouping the tool advertises.
 		const groupBy = input.groupBy ?? DEFAULT_GROUP_BY[input.entityType];
-		const dateRange =
+		const range =
 			input.startDate || input.endDate
 				? {
-						start: input.startDate ? dayStartMs(input.startDate) : undefined,
-						end: input.endDate ? dayEndMs(input.endDate) : undefined,
+						kind: "absolute" as const,
+						...(input.startDate ? { start: dayStartMs(input.startDate) } : {}),
+						...(input.endDate ? { end: dayEndMs(input.endDate) } : {}),
 					}
 				: undefined;
-		const { config, visualization } = normalizeReportConfig(
-			{
-				entityType: input.entityType,
-				groupBy: [groupBy],
-				...(dateRange ? { dateRange } : {}),
-			},
-			{ type: input.visualization ?? "bar" }
+		const { config, visualization } = configForGroupByKey(
+			input.entityType,
+			groupBy,
+			{ range, visualization: { type: input.visualization ?? "bar" } }
 		);
 		const result = await ctx.runQuery(api.reportData.executeReport, {
 			entityType: input.entityType,
@@ -1494,10 +1491,7 @@ export const getSavedReport = createTool({
 			id: input.reportId as Id<"reports">,
 		});
 		if (!report) return { found: false };
-		const { config, visualization } = normalizeReportConfig(
-			report.config,
-			report.visualization
-		);
+		const { config, visualization } = report;
 		const range = config.date?.range;
 		return {
 			found: true,

@@ -26,7 +26,6 @@ import {
 } from "./lib/reportConfig";
 import { resolveComparisonRange, resolveDateRangePreset } from "./lib/reportDates";
 import {
-	reportFiltersValidator,
 	evaluateReportFilters,
 	type ReportFilters,
 	type ReportPathResolver,
@@ -50,12 +49,11 @@ import { denyPermission, getEffectivePermissions } from "./lib/permissions";
  *
  * executeReport is the only public export — it runs a bounded, org-scoped
  * index scan (never `.collect()`s a whole org table) and groups in memory
- * through one unified pipeline. Requests arrive as v2 configs (the `config`
- * arg, built by lib/reportQueryArgs from any caller state including v1 magic
- * keys via the expander); the standalone aggregation/detail args survive only
- * for tests until R14 deletes them. The 14-function legacy dispatch was
- * retired at R4c — its outputs are pinned by __goldens__/report-legacy-dispatch.json,
- * which reportDualRun.test.ts holds this pipeline to.
+ * through one unified pipeline. Every request is a v2 `config` (built by
+ * lib/reportQueryArgs) plus an optional `detail` request. The 14-function
+ * legacy dispatch was retired at R4c — its outputs are pinned by
+ * __goldens__/report-legacy-dispatch.json, which reportDualRun.test.ts holds
+ * this pipeline to.
  */
 
 // ============================================================================
@@ -121,26 +119,6 @@ const emptyReportResult = (): ReportDataResult => ({ data: [], total: 0 });
 // ============================================================================
 // Validators
 // ============================================================================
-
-const dateRangeValidator = v.optional(
-	v.object({
-		start: v.optional(v.number()),
-		end: v.optional(v.number()),
-	})
-);
-
-const aggregationValidator = v.optional(
-	v.object({
-		op: v.union(
-			v.literal("count"),
-			v.literal("sum"),
-			v.literal("avg"),
-			v.literal("min"),
-			v.literal("max")
-		),
-		field: v.optional(v.string()),
-	})
-);
 
 type AggregationOp = "count" | "sum" | "avg" | "min" | "max";
 interface Aggregation {
@@ -312,25 +290,6 @@ function computeAggregateValue(rows: Row[], aggregation?: Aggregation): number {
 // ============================================================================
 // Filter / Aggregation Validation
 // ============================================================================
-
-/** Direct-only surface: the legacy args path, which has no dotted-path support. */
-function validateFilters(entityType: ReportEntityType, filters?: ReportFilters): void {
-	if (!filters) return;
-	for (const group of filters.groups) {
-		for (const rule of group.rules) {
-			if (isRelatedPath(rule.field)) {
-				throw new ConvexError(
-					`Related-path report filter field "${rule.field}" is not supported for entity "${entityType}"`
-				);
-			}
-			if (!getReportField(entityType, rule.field)) {
-				throw new ConvexError(
-					`Unknown report filter field "${rule.field}" for entity "${entityType}"`
-				);
-			}
-		}
-	}
-}
 
 /**
  * Config filters may traverse related records (§8 d15), but a dotted field
@@ -1533,16 +1492,8 @@ async function runRatioMetric(
 export const executeReport = optionalUserQuery({
 	args: {
 		entityType: reportEntityTypeValidator,
-		groupBy: v.optional(v.string()),
-		dateRange: dateRangeValidator,
-		filters: v.optional(reportFiltersValidator),
-		aggregation: aggregationValidator,
 		detail: detailValidator,
-		// v2 request: the saved config, normalized (R2's normalizeReportConfig).
-		// When present, the legacy groupBy/dateRange/filters/aggregation args are
-		// ignored; `detail` still composes (detail mode is a caller decision).
-		// The legacy args are deleted at R14 (§8 d11).
-		config: v.optional(reportConfigV2Validator),
+		config: reportConfigV2Validator,
 		seriesLimit: v.optional(v.number()),
 		sort: v.optional(
 			v.union(
@@ -1561,93 +1512,53 @@ export const executeReport = optionalUserQuery({
 		await requireReportEntityAccess(ctx, entityType);
 		const detail = args.detail as DetailArgs | undefined;
 
-		if (args.config) {
-			const config = args.config as ReportConfigV2;
-			if (config.entityType !== entityType) {
-				throw new ConvexError(
-					`config.entityType "${config.entityType}" does not match entityType "${entityType}"`
-				);
-			}
-			const configFilters = config.filters as ReportFilters | undefined;
-			validateConfigFilters(entityType, configFilters);
-			await requireReportPathAccess(ctx, config);
-			const timezone = await getOrgTimezoneById(ctx, orgId);
-			if (detail) {
-				const { dateField, bounds } = resolveConfigDates(config, timezone);
-				return await runDetailReport(
-					ctx,
-					orgId,
-					entityType,
-					bounds,
-					configFilters,
-					detail,
-					timezone,
-					dateField,
-					config.groupBy
-				);
-			}
-			if (config.metric.op === "ratio") {
-				if (!config.metric.ratioKey) {
-					throw new ConvexError(`Ratio metric requires a ratioKey`);
-				}
-				const { bounds } = resolveConfigDates(config, timezone);
-				return await runRatioMetric(
-					ctx,
-					orgId,
-					config,
-					config.metric.ratioKey,
-					timezone,
-					resolveComparisonRun(config, bounds, timezone)?.bounds
-				);
-			}
-			const plan = planFromConfig(config, args.seriesLimit, timezone, args.sort);
-			validateAggregation(entityType, plan.aggregation);
-			return await runAggregationPlan(
+		const config = args.config as ReportConfigV2;
+		if (config.entityType !== entityType) {
+			throw new ConvexError(
+				`config.entityType "${config.entityType}" does not match entityType "${entityType}"`
+			);
+		}
+		const configFilters = config.filters as ReportFilters | undefined;
+		validateConfigFilters(entityType, configFilters);
+		await requireReportPathAccess(ctx, config);
+		const timezone = await getOrgTimezoneById(ctx, orgId);
+
+		// Detail mode is a caller decision — it composes with any config.
+		if (detail) {
+			const { dateField, bounds } = resolveConfigDates(config, timezone);
+			return await runDetailReport(
 				ctx,
 				orgId,
-				plan,
-				resolveComparisonRun(config, plan.bounds, timezone)
-			);
-		}
-
-		const filters = args.filters as ReportFilters | undefined;
-		const aggregation = args.aggregation as Aggregation | undefined;
-
-		validateFilters(entityType, filters);
-		if (args.groupBy && isRelatedPath(args.groupBy)) {
-			throw new ConvexError(
-				`Related-path groupBy "${args.groupBy}" requires a report config`
-			);
-		}
-
-		if (detail) {
-			const bounds = resolveDateBounds(args.dateRange);
-			const timezone = await getOrgTimezoneById(ctx, orgId);
-			return await runDetailReport(ctx, orgId, entityType, bounds, filters, detail, timezone);
-		}
-
-		validateAggregation(entityType, aggregation);
-
-		if (aggregation) {
-			const bounds = resolveDateBounds(args.dateRange);
-			const timezone = await getOrgTimezoneById(ctx, orgId);
-			return await runAggregationPlan(ctx, orgId, {
 				entityType,
-				dateField: getReportDateField(entityType),
 				bounds,
-				filters,
-				aggregation,
-				groupBy: args.groupBy,
-				seriesLimit: args.seriesLimit,
+				configFilters,
+				detail,
 				timezone,
-			});
+				dateField,
+				config.groupBy
+			);
 		}
-
-		// The bare-args grouped path died with the legacy dispatch at R4c —
-		// every real caller routes through resolveReportQueryArgs, which always
-		// sends a config or a detail request.
-		throw new ConvexError(
-			`executeReport requires a config, an aggregation, or a detail request`
+		if (config.metric.op === "ratio") {
+			if (!config.metric.ratioKey) {
+				throw new ConvexError(`Ratio metric requires a ratioKey`);
+			}
+			const { bounds } = resolveConfigDates(config, timezone);
+			return await runRatioMetric(
+				ctx,
+				orgId,
+				config,
+				config.metric.ratioKey,
+				timezone,
+				resolveComparisonRun(config, bounds, timezone)?.bounds
+			);
+		}
+		const plan = planFromConfig(config, args.seriesLimit, timezone, args.sort);
+		validateAggregation(entityType, plan.aggregation);
+		return await runAggregationPlan(
+			ctx,
+			orgId,
+			plan,
+			resolveComparisonRun(config, plan.bounds, timezone)
 		);
 	},
 });
