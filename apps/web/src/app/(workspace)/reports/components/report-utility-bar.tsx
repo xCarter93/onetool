@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import { buildCsv, downloadCsv, sanitizeCsvFilename } from "@/lib/csv-export";
 import { reportResultToCsv } from "../report-csv";
+import { entityLabel } from "../report-path-options";
 import { ReportTable } from "./report-table";
 import {
 	formatReportValue,
@@ -39,11 +40,14 @@ export function ReportUtilityBar({
 }: ReportUtilityBarProps) {
 	const [expanded, setExpanded] = useState(false);
 
-	const queryArgs = useDebouncedValue(
-		saved ? resolveReportQueryArgs(saved.config, saved.visualization) : "skip",
-		300
-	);
+	const liveArgs = saved
+		? resolveReportQueryArgs(saved.config, saved.visualization)
+		: "skip";
+	const queryArgs = useDebouncedValue(liveArgs, 300);
 	const reportData = useQuery(api.reportData.executeReport, queryArgs);
+	// During the debounce window reportData still answers the OLD args while the
+	// label/config props are already NEW — exporting then would mix them.
+	const argsSettled = JSON.stringify(liveArgs) === JSON.stringify(queryArgs);
 
 	const config = saved?.config;
 	const isChart =
@@ -67,6 +71,7 @@ export function ReportUtilityBar({
 
 	const csvReady =
 		saved !== null &&
+		argsSettled &&
 		reportData !== undefined &&
 		(reportData.detail
 			? reportData.detail.rows.length > 0
@@ -78,6 +83,10 @@ export function ReportUtilityBar({
 			entityType: config.entityType,
 			groupBy: config.groupBy,
 			groupByLabel,
+			// A related rollup can't group, so its rows are source records — same
+			// header the on-screen table shows.
+			rowLabel:
+				config.metric.op === "related" ? entityLabel(config.entityType) : undefined,
 		});
 		downloadCsv(
 			sanitizeCsvFilename(reportName.trim() || "report"),
@@ -145,6 +154,9 @@ export function ReportUtilityBar({
 								groupBy={config.groupBy}
 								entityType={config.entityType}
 								totalIsCurrency={totalIsCurrency}
+								itemValueIsCurrency={
+									reportData!.metadata?.itemValueIsCurrency === true
+								}
 							/>
 						</div>
 					)}

@@ -51,8 +51,13 @@ afterAll(() => {
 	globalThis.ResizeObserver = originalResizeObserver;
 	if (originalOffsetWidth) Object.defineProperty(HTMLElement.prototype, "offsetWidth", originalOffsetWidth);
 	if (originalOffsetHeight) Object.defineProperty(HTMLElement.prototype, "offsetHeight", originalOffsetHeight);
-	if (originalGetBoundingClientRect)
+	// getBoundingClientRect is inherited from Element.prototype, so there is no
+	// HTMLElement descriptor to restore — deleting the stub restores inheritance.
+	if (originalGetBoundingClientRect) {
 		Object.defineProperty(HTMLElement.prototype, "getBoundingClientRect", originalGetBoundingClientRect);
+	} else {
+		delete (HTMLElement.prototype as Partial<HTMLElement>).getBoundingClientRect;
+	}
 });
 
 import { ReportLineChart } from "../report-line-chart";
@@ -66,7 +71,6 @@ describe("ReportLineChart", () => {
 					{ name: "Feb", value: 9 },
 				]}
 				total={14}
-				entityType="invoices"
 				groupBy="month"
 			/>
 		);
@@ -83,7 +87,6 @@ describe("ReportLineChart", () => {
 					{ name: "Feb", value: 9 },
 				]}
 				total={14}
-				entityType="invoices"
 				groupBy="month"
 			/>
 		);
@@ -98,7 +101,6 @@ describe("ReportLineChart", () => {
 					{ name: "Feb", value: 0 },
 				]}
 				total={0}
-				entityType="invoices"
 				groupBy="month"
 			/>
 		);
@@ -106,7 +108,7 @@ describe("ReportLineChart", () => {
 	});
 
 	it("empty data array renders the no-data hint", () => {
-		render(<ReportLineChart data={[]} total={0} entityType="invoices" groupBy="month" />);
+		render(<ReportLineChart data={[]} total={0} groupBy="month" />);
 		expect(screen.getByText("No data for this date range.")).toBeInTheDocument();
 	});
 
@@ -120,7 +122,6 @@ describe("ReportLineChart", () => {
 			<ReportLineChart
 				data={trendData}
 				total={14}
-				entityType="invoices"
 				groupBy="month"
 				axisLabels={{ x: "Revenue by Month", y: "Sum of Total" }}
 				targetLine={100}
@@ -134,10 +135,37 @@ describe("ReportLineChart", () => {
 
 	it("neither prop set: no axis titles and no reference line", () => {
 		const { container } = render(
-			<ReportLineChart data={trendData} total={14} entityType="invoices" groupBy="month" />
+			<ReportLineChart data={trendData} total={14} groupBy="month" />
 		);
 
 		expect(container.textContent).not.toContain("Revenue by Month");
 		expect(container.querySelectorAll(".recharts-reference-line")).toHaveLength(0);
+	});
+});
+
+describe("ReportLineChart — currency is an explicit flag, never inferred", () => {
+	const data = [
+		{ name: "Jan", value: 700 },
+		{ name: "Feb", value: 800 },
+	];
+
+	it("currency report: the summary total renders as compact dollars", () => {
+		render(
+			<ReportLineChart
+				data={data}
+				total={1500}
+				groupBy="month"
+				totalIsCurrency
+				itemValueIsCurrency
+			/>
+		);
+
+		expect(screen.getByText("Total: $1.5K")).toBeInTheDocument();
+	});
+
+	it("count report: the summary total renders as a plain number", () => {
+		render(<ReportLineChart data={data} total={1500} groupBy="month" />);
+
+		expect(screen.getByText("Total: 1,500")).toBeInTheDocument();
 	});
 });

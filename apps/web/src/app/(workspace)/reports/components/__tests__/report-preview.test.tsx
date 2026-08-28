@@ -52,8 +52,13 @@ afterAll(() => {
 	globalThis.ResizeObserver = originalResizeObserver;
 	if (originalOffsetWidth) Object.defineProperty(HTMLElement.prototype, "offsetWidth", originalOffsetWidth);
 	if (originalOffsetHeight) Object.defineProperty(HTMLElement.prototype, "offsetHeight", originalOffsetHeight);
-	if (originalGetBoundingClientRect)
+	// getBoundingClientRect is inherited from Element.prototype, so there is no
+	// HTMLElement descriptor to restore — deleting the stub restores inheritance.
+	if (originalGetBoundingClientRect) {
 		Object.defineProperty(HTMLElement.prototype, "getBoundingClientRect", originalGetBoundingClientRect);
+	} else {
+		delete (HTMLElement.prototype as Partial<HTMLElement>).getBoundingClientRect;
+	}
 });
 
 vi.mock("convex/react", () => ({
@@ -62,6 +67,7 @@ vi.mock("convex/react", () => ({
 
 import { useQuery } from "convex/react";
 import { ReportPreview } from "../report-preview";
+import { TRUNCATION_NOTICE } from "../../report-config";
 
 const mockedUseQuery = vi.mocked(useQuery);
 
@@ -245,6 +251,77 @@ describe("ReportPreview — segmentBy", () => {
 
 		expect(container.querySelectorAll(".recharts-pie-sector")).toHaveLength(2);
 		expect(container.querySelectorAll(".recharts-bar-rectangle")).toHaveLength(0);
+	});
+});
+
+describe("ReportPreview — truncation notice on empty results", () => {
+	const groupedConfig = {
+		version: 2 as const,
+		entityType: "clients" as const,
+		metric: { op: "count" as const },
+		groupBy: "status",
+	};
+	const detailConfig = {
+		version: 2 as const,
+		entityType: "clients" as const,
+		metric: { op: "count" as const },
+	};
+
+	it("truncated + no grouped data: says the scan was bounded, not that nothing exists", () => {
+		mockedUseQuery.mockReturnValue({
+			data: [],
+			total: 0,
+			metadata: { truncated: true },
+		});
+
+		render(<ReportPreview config={groupedConfig} visualization={{ type: "bar" }} />);
+
+		expect(screen.getByText("No data available")).toBeInTheDocument();
+		expect(screen.getByText(TRUNCATION_NOTICE)).toBeInTheDocument();
+	});
+
+	it("truncated + no detail rows: says the scan was bounded", () => {
+		mockedUseQuery.mockReturnValue({
+			total: 0,
+			metadata: { truncated: true },
+			detail: {
+				columns: [{ field: "companyName", label: "Company Name", type: "string" }],
+				rows: [],
+				totalMatched: 0,
+				rowsTruncated: false,
+			},
+		});
+
+		render(<ReportPreview config={detailConfig} visualization={{ type: "bar" }} />);
+
+		expect(screen.getByText("No records available")).toBeInTheDocument();
+		expect(screen.getByText(TRUNCATION_NOTICE)).toBeInTheDocument();
+	});
+
+	it("not truncated + empty: the empty state stands alone", () => {
+		mockedUseQuery.mockReturnValue({ data: [], total: 0, metadata: {} });
+
+		render(<ReportPreview config={groupedConfig} visualization={{ type: "bar" }} />);
+
+		expect(screen.getByText("No data available")).toBeInTheDocument();
+		expect(screen.queryByText(TRUNCATION_NOTICE)).not.toBeInTheDocument();
+	});
+
+	it("not truncated + no detail rows: the empty state stands alone", () => {
+		mockedUseQuery.mockReturnValue({
+			total: 0,
+			detail: {
+				columns: [{ field: "companyName", label: "Company Name", type: "string" }],
+				rows: [],
+				totalMatched: 0,
+				rowsTruncated: false,
+			},
+		});
+
+		render(<ReportPreview config={detailConfig} visualization={{ type: "bar" }} />);
+
+		expect(screen.getByText("No records available")).toBeInTheDocument();
+		expect(screen.queryByText(TRUNCATION_NOTICE)).not.toBeInTheDocument();
 	});
 });
 

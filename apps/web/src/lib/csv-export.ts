@@ -10,9 +10,9 @@ export type CsvCell = string | number | boolean | null | undefined;
 /** UTF-8 BOM so Excel detects the encoding. Prepended by downloadCsv. */
 export const CSV_BOM = "\uFEFF";
 
-// Leading = + - @ tab or CR can be interpreted as a formula by spreadsheet
+// Leading = + - @ tab CR or LF can be interpreted as a formula by spreadsheet
 // apps (CSV injection); such strings get an apostrophe prefix.
-const FORMULA_TRIGGER = /^[=+\-@\t\r]/;
+const FORMULA_TRIGGER = /^[=+\-@\t\r\n]/;
 
 function escapeCell(cell: CsvCell): string {
 	if (cell === null || cell === undefined) return "";

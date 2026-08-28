@@ -5,9 +5,12 @@ import {
 	assistantTools,
 	isAllowedWorkspacePath,
 	resolveRouteFromList,
+	runReport,
 	untrusted,
 	untrustedIfPublic,
 } from "./assistantTools";
+import { z } from "zod";
+import { REPORT_ENTITY_TYPES } from "./lib/reportFields";
 import type { Doc, Id } from "./_generated/dataModel";
 
 describe("isAllowedWorkspacePath", () => {
@@ -415,5 +418,15 @@ describe("untrusted-data envelope (SEC-8)", () => {
 		// Internal tasks are first-party — fencing them all would drown the signal.
 		expect(untrustedIfPublic("Fix the van", undefined)).toBe("Fix the van");
 		expect(untrustedIfPublic(undefined, "public_form")).toBeUndefined();
+	});
+});
+
+describe("runReport entityType", () => {
+	it("accepts every report entity type the description advertises", () => {
+		const schema = runReport.inputSchema as z.ZodType<{ entityType: string }>;
+		for (const entity of REPORT_ENTITY_TYPES) {
+			expect(schema.safeParse({ entityType: entity }).success).toBe(true);
+		}
+		expect(schema.safeParse({ entityType: "nope" }).success).toBe(false);
 	});
 });

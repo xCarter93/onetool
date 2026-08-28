@@ -853,14 +853,7 @@ export const runReport = createTool({
 		"Do not invent other groupBy values.",
 	].join("\n"),
 	inputSchema: z.object({
-		entityType: z.enum([
-			"clients",
-			"projects",
-			"tasks",
-			"quotes",
-			"invoices",
-			"activities",
-		]),
+		entityType: z.enum(REPORT_ENTITY_TYPES),
 		groupBy: z.string().optional(),
 		startDate: isoDate.optional(),
 		endDate: isoDate.optional(),

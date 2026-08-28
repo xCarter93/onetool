@@ -118,6 +118,21 @@ function dayOfWeek(date: CalendarDate): number {
 	return new Date(Date.UTC(date.year, date.month - 1, date.day)).getUTCDay();
 }
 
+/** Absolute ms anchors of one YYYY-MM-DD day on the org calendar (UTC fallback). */
+export function resolveDayAnchors(
+	date: string,
+	timezone: string | undefined
+): { start: number; end: number; noon: number } {
+	const [year, month, day] = date.split("-").map(Number);
+	const calendar = { year, month, day };
+	const formatter = resolveFormatter(timezone);
+	return {
+		start: toTimestamp(calendar, 0, 0, 0, 0, formatter),
+		end: toTimestamp(calendar, 23, 59, 59, 999, formatter),
+		noon: toTimestamp(calendar, 12, 0, 0, 0, formatter),
+	};
+}
+
 /**
  * Absolute ms bounds for a preset, measured on the calendar of `timezone`
  * (undefined or invalid falls back to UTC). `all_time` has no bounds.
@@ -178,5 +193,8 @@ export function resolveDateRangePreset(
 			return rollingWindow(90);
 		case "all_time":
 			return undefined;
+		default:
+			// A new DATE_RANGE_PRESETS member must be handled here, not fall through.
+			return preset satisfies never;
 	}
 }

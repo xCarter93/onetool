@@ -46,10 +46,6 @@ async function assertSavedReportSlot(
  * Handles saved report configurations for analytics and data visualization
  */
 
-// Shared with schema.ts — accepts both config versions (writes still emit v1
-// until R8; the v1 arm is deleted at cutover).
-const visualizationValidator = reportVisualizationValidator;
-
 // ============================================================================
 // Query Operations
 // ============================================================================
@@ -133,8 +129,9 @@ export const create = userMutation({
 	args: {
 		name: v.string(),
 		description: v.optional(v.string()),
+		// Writes emit native v2 since R8a; the v1 arm stays readable until the R14 cutover.
 		config: reportConfigValidator,
-		visualization: visualizationValidator,
+		visualization: reportVisualizationValidator,
 		isPublic: v.optional(v.boolean()),
 	},
 	handler: async (ctx, args): Promise<Id<"reports">> => {
@@ -178,7 +175,7 @@ export const update = userMutation({
 		name: v.optional(v.string()),
 		description: v.optional(v.string()),
 		config: v.optional(reportConfigValidator),
-		visualization: v.optional(visualizationValidator),
+		visualization: v.optional(reportVisualizationValidator),
 		isPublic: v.optional(v.boolean()),
 	},
 	handler: async (ctx, args): Promise<Id<"reports">> => {

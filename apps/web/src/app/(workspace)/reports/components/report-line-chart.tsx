@@ -14,7 +14,7 @@ import { CHART_CATEGORICAL } from "@/lib/chart-colors";
 import { ChartNoData, isChartDataEmpty } from "./chart-no-data";
 import { ReportChartTooltip, measureLabel } from "./report-chart-tooltip";
 import { ChartStripeDefs, stripeId } from "@/components/charts/chart-stripe-defs";
-import { formatCurrency } from "@/lib/money";
+import { formatReportValue } from "../report-config";
 
 interface DataPoint {
 	name: string;
@@ -26,7 +26,8 @@ interface ReportLineChartProps {
 	data: DataPoint[];
 	total: number;
 	groupBy?: string;
-	entityType: string;
+	/** Is `total` a dollar amount? Explicit, from the caller — never inferred. */
+	totalIsCurrency?: boolean;
 	/** Is each item's `value` a dollar amount (vs. a count)? */
 	itemValueIsCurrency?: boolean;
 	axisLabels?: { x?: string; y?: string };
@@ -47,7 +48,7 @@ export function ReportLineChart({
 	data,
 	total,
 	groupBy,
-	entityType,
+	totalIsCurrency = false,
 	itemValueIsCurrency = false,
 	axisLabels,
 	targetLine,
@@ -66,15 +67,6 @@ export function ReportLineChart({
 		return <ChartNoData />;
 	}
 
-	const formatValue = (value: number) => {
-		if (entityType === "invoices" || entityType === "quotes") {
-			if (total > 1000) {
-				return formatCurrency(value, { compact: true });
-			}
-		}
-		return value.toString();
-	};
-
 	// Calculate trend
 	const trend = data.length >= 2
 		? data[data.length - 1].value - data[0].value
@@ -89,7 +81,7 @@ export function ReportLineChart({
 				</span>
 				<div className="flex items-center gap-3">
 					<span className="font-medium text-foreground">
-						Total: {formatValue(total)}
+						Total: {formatReportValue(total, totalIsCurrency, { compact: true })}
 					</span>
 					{trend !== 0 && (
 						<span
@@ -126,7 +118,9 @@ export function ReportLineChart({
 						axisLine={false}
 						tickLine={false}
 						tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
-						tickFormatter={(value) => formatValue(value)}
+						tickFormatter={(value: number) =>
+							formatReportValue(value, itemValueIsCurrency, { compact: true })
+						}
 						tickMargin={10}
 						label={axisLabels?.y ? { ...AXIS_LABEL_STYLE, value: axisLabels.y, angle: -90, position: "insideLeft" } : undefined}
 					/>

@@ -37,6 +37,8 @@ interface ReportTableProps {
 	metricIsRelated?: boolean;
 	/** Is `total` a dollar amount? Explicit, from the caller — see getReportValueTypes. */
 	totalIsCurrency?: boolean;
+	/** Is each row's `value` a dollar amount (vs. a count)? */
+	itemValueIsCurrency?: boolean;
 	/** Names the aggregated value column; callers that always count can omit it. */
 	valueHeader?: string;
 	/** When set, renders the flat detail-mode table instead of the aggregated one. */
@@ -94,6 +96,7 @@ export function ReportTable({
 	entityType,
 	metricIsRelated = false,
 	totalIsCurrency = false,
+	itemValueIsCurrency = false,
 	valueHeader = "Count",
 	detail,
 }: ReportTableProps) {
@@ -101,10 +104,11 @@ export function ReportTable({
 		return <ReportDetailTable detail={detail} />;
 	}
 
-	// Sum of item `value`s — always a count (per-status/category record count),
-	// used only for the %-of-category and average calcs below. Never the
-	// headline "Total:" figure — that must come from the `total` prop.
+	// Sum of item `value`s, used only for the %-of-category and average calcs
+	// below. Never the headline "Total:" figure — that must come from the
+	// `total` prop (a ratio/related metric's total is not this sum).
 	const itemValueSum = data.reduce((sum, d) => sum + d.value, 0);
+	const averageValue = itemValueSum / (data.length || 1);
 
 	// item.totalValue (the optional "Value" column) is only ever populated for
 	// status-grouped quotes/invoices reports, where it's always a dollar sum —
@@ -171,7 +175,7 @@ export function ReportTable({
 										</div>
 									</TableCell>
 									<TableCell className="text-right font-mono">
-										{item.value}
+										{formatReportValue(item.value, itemValueIsCurrency)}
 									</TableCell>
 									<TableCell className="text-right">
 										<div className="flex items-center justify-end gap-2">
@@ -204,7 +208,11 @@ export function ReportTable({
 			<div className="flex items-center justify-between pt-2 text-sm text-muted-foreground border-t">
 				<span>Showing all {data.length} items</span>
 				<span>
-					Average: {(itemValueSum / (data.length || 1)).toFixed(1)} per category
+					Average:{" "}
+					{itemValueIsCurrency
+						? formatReportValue(averageValue, true)
+						: averageValue.toFixed(1)}{" "}
+					per category
 				</span>
 			</div>
 		</div>

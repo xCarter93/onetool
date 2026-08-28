@@ -63,9 +63,11 @@ class ReportPreviewBoundary extends Component<
 }
 
 export function ReportPreview(props: ReportPreviewProps) {
-	// Keyed so a config change remounts the boundary and retries after an error.
+	// Keyed so a config or visualization change remounts the boundary and retries after an error.
 	return (
-		<ReportPreviewBoundary key={JSON.stringify(props.config)}>
+		<ReportPreviewBoundary
+			key={JSON.stringify([props.config, props.visualization])}
+		>
 			<ReportPreviewInner {...props} />
 		</ReportPreviewBoundary>
 	);
@@ -94,6 +96,7 @@ function ReportPreviewInner({ config, visualization }: ReportPreviewProps) {
 		);
 	}
 
+	// Every branch renders this, empty states included — a truncated scan may have stopped before finding matches.
 	const truncationBanner = reportData.metadata?.truncated === true && (
 		<div className="flex items-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
 			<TriangleAlert className="h-3.5 w-3.5 shrink-0" />
@@ -105,6 +108,7 @@ function ReportPreviewInner({ config, visualization }: ReportPreviewProps) {
 		if (reportData.detail.rows.length === 0) {
 			return (
 				<div className="flex min-h-[300px] flex-1 flex-col items-center justify-center text-center">
+					{truncationBanner && <div className="mb-3">{truncationBanner}</div>}
 					<AlertCircle className="w-12 h-12 text-muted-foreground mb-4" />
 					<h3 className="text-lg font-medium text-foreground mb-2">No records available</h3>
 					<p className="text-sm text-muted-foreground max-w-sm">
@@ -149,6 +153,7 @@ function ReportPreviewInner({ config, visualization }: ReportPreviewProps) {
 	if (reportData.data.length === 0) {
 		return (
 			<div className="flex min-h-[300px] flex-1 flex-col items-center justify-center text-center">
+				{truncationBanner && <div className="mb-3">{truncationBanner}</div>}
 				<AlertCircle className="w-12 h-12 text-muted-foreground mb-4" />
 				<h3 className="text-lg font-medium text-foreground mb-2">No data available</h3>
 				<p className="text-sm text-muted-foreground max-w-sm">
@@ -231,7 +236,7 @@ function ReportPreviewInner({ config, visualization }: ReportPreviewProps) {
 						data={chartData}
 						total={total}
 						groupBy={groupBy}
-						entityType={config.entityType}
+						totalIsCurrency={totalIsCurrency}
 						itemValueIsCurrency={itemValueIsCurrency}
 						axisLabels={axisLabels}
 						targetLine={targetLine}
@@ -280,6 +285,7 @@ function ReportPreviewInner({ config, visualization }: ReportPreviewProps) {
 						entityType={config.entityType}
 						metricIsRelated={config.metric.op === "related"}
 						totalIsCurrency={totalIsCurrency}
+						itemValueIsCurrency={itemValueIsCurrency}
 						valueHeader={metricLabelFor(config)}
 					/>
 				);

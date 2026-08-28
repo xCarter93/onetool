@@ -12,6 +12,7 @@ import {
 	toSavedReport,
 	validateGeneratedReport,
 } from "./reportConfigGeneration";
+import { DateUtils } from "./lib/shared";
 import { createTestIdentity, createTestOrg } from "./test.helpers";
 import { setupConvexTest } from "./test.setup";
 
@@ -1192,5 +1193,95 @@ describe("describeCurrentConfig round-trips", () => {
 		expect(render(config)).toContain("group by: clientId.leadSource");
 		const saved = toSavedReport(gen({ groupBy: "clientId.leadSource" }));
 		expect(saved.config.groupBy).toBe(config.groupBy);
+	});
+});
+
+describe("org-timezone date anchors", () => {
+	// Auckland is UTC+13 in January — far enough east that UTC noon is already
+	// the next local day, which is what the pre-fix anchors got wrong.
+	const TZ = "Pacific/Auckland";
+
+	function dateRules(rules: GeneratedReport["filters"]) {
+		return gen({ filters: rules });
+	}
+
+	it("anchors an \"on\" value to org-local noon so the day key matches", () => {
+		const saved = toSavedReport(
+			dateRules({
+				logic: "and",
+				groups: [
+					{
+						logic: "and",
+						rules: [{ field: "paidAt", operator: "on", value: "2026-01-15" }],
+					},
+				],
+			}),
+			TZ
+		);
+		const value = saved.config.filters?.groups[0].rules[0].value as number;
+		expect(DateUtils.toLocalDateString(value, TZ)).toBe("2026-01-15");
+		expect(value).toBe(Date.parse("2026-01-14T23:00:00.000Z"));
+	});
+
+	it("anchors before/after to org-local day bounds", () => {
+		const saved = toSavedReport(
+			dateRules({
+				logic: "and",
+				groups: [
+					{
+						logic: "and",
+						rules: [
+							{ field: "issuedDate", operator: "before", value: "2026-01-15" },
+							{ field: "dueDate", operator: "after", value: "2026-01-15" },
+						],
+					},
+				],
+			}),
+			TZ
+		);
+		expect(saved.config.filters?.groups[0].rules).toEqual([
+			{
+				field: "issuedDate",
+				operator: "before",
+				value: Date.parse("2026-01-14T11:00:00.000Z"),
+			},
+			{
+				field: "dueDate",
+				operator: "after",
+				value: Date.parse("2026-01-15T10:59:59.999Z"),
+			},
+		]);
+	});
+
+	it("anchors an explicit startDate/endDate range to org-local day bounds", () => {
+		const saved = toSavedReport(
+			gen({ startDate: "2026-01-01", endDate: "2026-01-31" }),
+			TZ
+		);
+		expect(saved.config.date?.range).toEqual({
+			kind: "absolute",
+			start: Date.parse("2025-12-31T11:00:00.000Z"),
+			end: Date.parse("2026-01-31T10:59:59.999Z"),
+		});
+	});
+
+	it("passes the timezone through toExecuteReportArgs and toBuilderConfig", () => {
+		const generated = gen({ startDate: "2026-01-01", endDate: "2026-01-31" });
+		expect(toExecuteReportArgs(generated, TZ).config.date?.range).toEqual({
+			kind: "absolute",
+			start: Date.parse("2025-12-31T11:00:00.000Z"),
+			end: Date.parse("2026-01-31T10:59:59.999Z"),
+		});
+		expect(toBuilderConfig(generated, TZ)).toEqual(toSavedReport(generated, TZ));
+	});
+
+	it("falls back to UTC when the org has no timezone", () => {
+		const generated = gen({ startDate: "2026-01-01", endDate: "2026-01-31" });
+		expect(toSavedReport(generated, undefined)).toEqual(toSavedReport(generated));
+		expect(toSavedReport(generated).config.date?.range).toEqual({
+			kind: "absolute",
+			start: Date.parse("2026-01-01T00:00:00.000Z"),
+			end: Date.parse("2026-01-31T23:59:59.999Z"),
+		});
 	});
 });

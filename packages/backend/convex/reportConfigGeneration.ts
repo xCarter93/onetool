@@ -17,6 +17,8 @@ import { api, components, internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import { internalQuery } from "./_generated/server";
 import { getCurrentUserOrgId, getCurrentUserOrThrow } from "./lib/auth";
+import { getOrgTimezoneById } from "./lib/organization";
+import { resolveDayAnchors } from "./lib/reportDates";
 import {
 	entitlementsFromIdentity,
 	isFeatureAllowed,
@@ -546,41 +548,40 @@ function isRealCalendarDate(date: string): boolean {
 	);
 }
 
-function dayStartMs(date: string): number {
-	return Date.parse(`${date}T00:00:00.000Z`);
-}
-
-function dayEndMs(date: string): number {
-	return Date.parse(`${date}T23:59:59.999Z`);
-}
-
-function dayNoonMs(date: string): number {
-	return Date.parse(`${date}T12:00:00.000Z`);
-}
-
 function toDateRange(
-	gen: GeneratedReport
+	gen: GeneratedReport,
+	timezone?: string
 ): { start?: number; end?: number } | undefined {
 	if (!gen.startDate && !gen.endDate) return undefined;
 	return {
-		...(gen.startDate ? { start: dayStartMs(gen.startDate) } : {}),
-		...(gen.endDate ? { end: dayEndMs(gen.endDate) } : {}),
+		...(gen.startDate
+			? { start: resolveDayAnchors(gen.startDate, timezone).start }
+			: {}),
+		...(gen.endDate ? { end: resolveDayAnchors(gen.endDate, timezone).end } : {}),
 	};
 }
 
 /**
- * Date-op rule values are authored as YYYY-MM-DD but evaluated as ms instants,
- * encoded the way the builder's date picker does it (report-filter-adapter):
- * "before" excludes the whole day, "after" starts at the next one, and "on"
- * uses noon so the org-timezone day key lands on the picked day.
+ * Date-op rule values are authored as YYYY-MM-DD but evaluated as ms instants
+ * on the org calendar, encoded the way the builder's date picker does it
+ * (report-filter-adapter): "before" excludes the whole picked day, "after"
+ * starts after it, and "on" is org-local noon so the day key survives DST.
  */
-const DATE_OPERATOR_INSTANT: Record<DateOperator, (date: string) => number> = {
-	before: dayStartMs,
-	after: dayEndMs,
-	on: dayNoonMs,
-};
+function dateOperatorInstant(
+	operator: DateOperator,
+	date: string,
+	timezone?: string
+): number {
+	const anchors = resolveDayAnchors(date, timezone);
+	if (operator === "before") return anchors.start;
+	if (operator === "after") return anchors.end;
+	return anchors.noon;
+}
 
-function toExecutableFilters(filters: ReportFilters | null): ReportFilters | null {
+function toExecutableFilters(
+	filters: ReportFilters | null,
+	timezone?: string
+): ReportFilters | null {
 	if (!filters) return null;
 	return {
 		logic: filters.logic,
@@ -588,7 +589,10 @@ function toExecutableFilters(filters: ReportFilters | null): ReportFilters | nul
 			logic: group.logic,
 			rules: group.rules.map((rule) =>
 				isDateOperator(rule.operator) && typeof rule.value === "string"
-					? { ...rule, value: DATE_OPERATOR_INSTANT[rule.operator](rule.value) }
+					? {
+							...rule,
+							value: dateOperatorInstant(rule.operator, rule.value, timezone),
+						}
 					: rule
 			),
 		})),
@@ -647,12 +651,18 @@ function isMetricOnlyMeasure(measure: GeneratedReport["measure"]): boolean {
  * two things v1 cannot carry (ratio/related metrics, preset ranges) are laid
  * over the expansion, so a preset keeps the date FIELD the expansion chose.
  */
-function toGeneratedConfig(gen: GeneratedReport): {
+function toGeneratedConfig(
+	gen: GeneratedReport,
+	timezone?: string
+): {
 	config: ReportConfigV2;
 	visualization: ReportVisualization;
 } {
-	const filters = toExecutableFilters(sanitizeGeneratedFilters(gen.filters));
-	const dateRange = toDateRange(gen);
+	const filters = toExecutableFilters(
+		sanitizeGeneratedFilters(gen.filters),
+		timezone
+	);
+	const dateRange = toDateRange(gen, timezone);
 	const measure = gen.measure;
 	const visualization = resolveVisualization(gen);
 	const normalized = normalizeReportConfig(
@@ -702,8 +712,11 @@ export type BuilderReportConfig = {
 };
 
 /** Saved shape for reports.create. */
-export function toSavedReport(gen: GeneratedReport): BuilderReportConfig {
-	const { config, visualization } = toGeneratedConfig(gen);
+export function toSavedReport(
+	gen: GeneratedReport,
+	timezone?: string
+): BuilderReportConfig {
+	const { config, visualization } = toGeneratedConfig(gen, timezone);
 	return {
 		name: gen.name.trim(),
 		...(gen.description ? { description: gen.description } : {}),
@@ -715,8 +728,11 @@ export function toSavedReport(gen: GeneratedReport): BuilderReportConfig {
 /** executeReport args for the dry run — delegates to the shared contract
  * module (lib/reportQueryArgs.ts) so the web's resolveReportQueryArgs and
  * this path can never drift. */
-export function toExecuteReportArgs(gen: GeneratedReport): ExecuteReportArgs {
-	const { config, visualization } = toGeneratedConfig(gen);
+export function toExecuteReportArgs(
+	gen: GeneratedReport,
+	timezone?: string
+): ExecuteReportArgs {
+	const { config, visualization } = toGeneratedConfig(gen, timezone);
 	return resolveReportQueryArgs(config, visualization);
 }
 
@@ -786,12 +802,14 @@ export const authContext = internalQuery({
 		userId: Id<"users">;
 		orgId: Id<"organizations">;
 		plan: PlanTier;
+		timezone: string | undefined;
 	} | null> => {
 		const user = await getCurrentUserOrThrow(ctx);
 		const orgId = await getCurrentUserOrgId(ctx);
 		if (!orgId) return null;
 		const { plan } = await entitlementsFromIdentity(ctx);
-		return { userId: user._id, orgId, plan };
+		const timezone = await getOrgTimezoneById(ctx, orgId);
+		return { userId: user._id, orgId, plan, timezone };
 	},
 });
 
@@ -906,7 +924,13 @@ export function describeCurrentConfig(current: CurrentReportConfig): string {
 }
 
 type GenerationOutcome =
-	| { ok: true; generated: GeneratedReport; total: number; truncated: boolean }
+	| {
+			ok: true;
+			generated: GeneratedReport;
+			total: number;
+			truncated: boolean;
+			timezone: string | undefined;
+	  }
 	| { ok: false; error: string };
 
 /**
@@ -1013,13 +1037,14 @@ async function runReportGeneration(
 	try {
 		const result = await ctx.runQuery(
 			api.reportData.executeReport,
-			toExecuteReportArgs(generated)
+			toExecuteReportArgs(generated, auth.timezone)
 		);
 		return {
 			ok: true,
 			generated,
 			total: result.total,
 			truncated: result.metadata?.truncated === true,
+			timezone: auth.timezone,
 		};
 	} catch (error) {
 		const message =
@@ -1037,9 +1062,9 @@ export async function generateAndSaveReport(
 ): Promise<CreateReportResult> {
 	const outcome = await runReportGeneration(ctx, request);
 	if (!outcome.ok) return outcome;
-	const { generated, total, truncated } = outcome;
+	const { generated, total, truncated, timezone } = outcome;
 
-	const saved = toSavedReport(generated);
+	const saved = toSavedReport(generated, timezone);
 	const reportId = await ctx.runMutation(api.reports.create, saved);
 
 	return {
@@ -1064,8 +1089,11 @@ export type ConfigureReportResult =
 	| { ok: false; error: string };
 
 /** Generated config → the shape the builder applies (exported for tests). */
-export function toBuilderConfig(gen: GeneratedReport): BuilderReportConfig {
-	return toSavedReport(gen);
+export function toBuilderConfig(
+	gen: GeneratedReport,
+	timezone?: string
+): BuilderReportConfig {
+	return toSavedReport(gen, timezone);
 }
 
 /**
@@ -1079,11 +1107,11 @@ export async function generateConfigForBuilder(
 ): Promise<ConfigureReportResult> {
 	const outcome = await runReportGeneration(ctx, request, currentConfig);
 	if (!outcome.ok) return outcome;
-	const { generated, total, truncated } = outcome;
+	const { generated, total, truncated, timezone } = outcome;
 
 	return {
 		ok: true,
-		config: toBuilderConfig(generated),
+		config: toBuilderConfig(generated, timezone),
 		summary: summarizeGeneratedReport(generated),
 		total,
 		truncated,

@@ -144,6 +144,47 @@ describe("ReportTable", () => {
 		).toBeInTheDocument();
 	});
 
+	describe("aggregated value column currency", () => {
+		it("itemValueIsCurrency: value cells and the average render as dollars", () => {
+			render(
+				<ReportTable
+					data={[
+						{ name: "Jan 2026", value: 1000 },
+						{ name: "Feb 2026", value: 500 },
+					]}
+					total={1500}
+					entityType="invoices"
+					groupBy="month"
+					totalIsCurrency
+					itemValueIsCurrency
+					valueHeader="Sum of Total"
+				/>
+			);
+
+			expect(screen.getByText("$1,000")).toBeInTheDocument();
+			expect(screen.getByText("$500")).toBeInTheDocument();
+			expect(screen.getByText("Average: $750 per category")).toBeInTheDocument();
+		});
+
+		it("no flag: value cells stay counts and the average keeps its decimal", () => {
+			render(
+				<ReportTable
+					data={[
+						{ name: "Active", value: 1000 },
+						{ name: "Lead", value: 500 },
+					]}
+					total={1500}
+					entityType="clients"
+					groupBy="status"
+				/>
+			);
+
+			expect(screen.getByText("1,000")).toBeInTheDocument();
+			expect(screen.getByText("500")).toBeInTheDocument();
+			expect(screen.getByText("Average: 750.0 per category")).toBeInTheDocument();
+		});
+	});
+
 	describe("detail mode", () => {
 		it("renders column headers and formats cells by type (currency, timestamp, boolean, null)", () => {
 			render(

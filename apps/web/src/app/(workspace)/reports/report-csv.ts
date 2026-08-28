@@ -15,7 +15,13 @@ type ReportResult = FunctionReturnType<typeof api.reportData.executeReport>;
  */
 export function reportResultToCsv(
 	result: ReportResult,
-	opts: { entityType: string; groupBy?: string; groupByLabel?: string }
+	opts: {
+		entityType: string;
+		groupBy?: string;
+		groupByLabel?: string;
+		/** Overrides the row header when rows aren't groupBy buckets (related rollups). */
+		rowLabel?: string;
+	}
 ): { headers: string[]; rows: CsvCell[][] } {
 	if (result.detail) {
 		const { columns, rows } = result.detail;
@@ -46,7 +52,7 @@ export function reportResultToCsv(
 	);
 
 	const headers = [
-		opts.groupByLabel ?? "Category",
+		opts.rowLabel ?? opts.groupByLabel ?? "Category",
 		itemValueIsCurrency ? "Value" : "Count",
 		...(hasTotalValue ? ["Value"] : []),
 	];

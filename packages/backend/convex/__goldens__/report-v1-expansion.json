@@ -197,6 +197,63 @@
 			"visualization": { "type": "column" }
 		}
 	},
+	"invoices-month-distributes-into-multi-rule-groups": {
+		"input": {
+			"config": {
+				"entityType": "invoices",
+				"groupBy": ["month"],
+				"filters": {
+					"logic": "or",
+					"groups": [
+						{
+							"logic": "and",
+							"rules": [
+								{ "field": "clientId", "operator": "equals", "value": "abc" },
+								{ "field": "total", "operator": "greater_than", "value": 500 }
+							]
+						},
+						{
+							"logic": "or",
+							"rules": [
+								{ "field": "status", "operator": "equals", "value": "overdue" }
+							]
+						}
+					]
+				}
+			},
+			"visualization": { "type": "column" }
+		},
+		"output": {
+			"config": {
+				"version": 2,
+				"entityType": "invoices",
+				"filters": {
+					"logic": "or",
+					"groups": [
+						{
+							"logic": "and",
+							"rules": [
+								{ "field": "clientId", "operator": "equals", "value": "abc" },
+								{ "field": "total", "operator": "greater_than", "value": 500 },
+								{ "field": "status", "operator": "equals", "value": "paid" }
+							]
+						},
+						{
+							"logic": "and",
+							"rules": [
+								{ "field": "status", "operator": "equals", "value": "overdue" },
+								{ "field": "status", "operator": "equals", "value": "paid" }
+							]
+						}
+					]
+				},
+				"date": { "field": "paidAt", "range": { "kind": "preset", "preset": "all_time" } },
+				"metric": { "op": "sum", "field": "total" },
+				"groupBy": "paidAt_month"
+			},
+			"visualization": { "type": "column" }
+		}
+	},
 	"invoices-client-top10": {
 		"input": {
 			"config": { "entityType": "invoices", "groupBy": ["client"] },

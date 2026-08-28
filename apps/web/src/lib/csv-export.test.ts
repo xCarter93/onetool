@@ -24,6 +24,10 @@ describe("buildCsv", () => {
 		]);
 	});
 
+	it("escapes a formula hidden behind a leading newline", () => {
+		expect(buildCsv(["h"], [["\n=SUM(A1)"]])).toBe("h\r\n\"'\n=SUM(A1)\"\r\n");
+	});
+
 	it("passes numbers through raw, without formula escaping", () => {
 		expect(buildCsv(["n"], [[-42], [3.5]])).toBe("n\r\n-42\r\n3.5\r\n");
 	});
