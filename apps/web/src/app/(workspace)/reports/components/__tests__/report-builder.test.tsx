@@ -37,6 +37,7 @@ vi.mock("convex/react", () => ({
 	useQuery: vi.fn(),
 }));
 
+import { AssistantOpenerContext } from "@/components/assistant/assistant-opener-context";
 import { ReportBuilder, type ReportBuilderInitial } from "../report-builder";
 import type { ReportMetric } from "../../report-config";
 
@@ -410,5 +411,25 @@ describe("ReportBuilder — metric target + aggregation (d15 amendment)", () => 
 		expect(agg).toHaveTextContent("Average");
 		// A related rollup buckets itself — the backend rejects grouping on it.
 		expect(screen.queryByText("Group by", { selector: "h4" })).toBeNull();
+	});
+});
+
+describe("ReportBuilder — assistant entry point (F4, d15)", () => {
+	it("no longer renders an Ask AI card in the config rail", () => {
+		// With an opener in context the old rail card would render; the dock's
+		// contextual frame is the entry point now.
+		render(
+			<AssistantOpenerContext.Provider value={() => {}}>
+				<ReportBuilder
+					mode="create"
+					initial={clientsChartInitial}
+					saving={false}
+					onSave={() => {}}
+					onBack={() => {}}
+				/>
+			</AssistantOpenerContext.Provider>
+		);
+		expect(screen.queryByRole("button", { name: "Ask AI" })).toBeNull();
+		expect(screen.queryByText(/Describe the report you want/i)).toBeNull();
 	});
 });

@@ -1,11 +1,12 @@
 "use client";
 
 import { ReactNode } from "react";
-import { AssistantDock } from "@/components/assistant/assistant-dock";
+import { FramedAssistantDock } from "@/components/assistant/framed-assistant-dock";
 import {
 	AssistantSurfaceProvider,
 	useAssistantSurface,
 } from "@/components/assistant/assistant-surface-context";
+import { AssistantDockFrameProvider } from "@/components/assistant/assistant-dock-frame-context";
 import { ReportConfigApplyProvider } from "@/components/assistant/report-config-apply-context";
 import { AssistantPanel } from "@/components/assistant/assistant-panel";
 import { AppSidebar } from "@/components/layout/app-sidebar";
@@ -68,11 +69,11 @@ function AssistantDockHost() {
 						HOME_TOUR_CONTENT[HomeTour.ASSISTANT_NOTCH].tooltipPosition
 					}
 				>
-					<AssistantDock
-							open={open}
-							pinned={pinned}
-							onOpen={() => setOpen(true)}
-						/>
+					<FramedAssistantDock
+						open={open}
+						pinned={pinned}
+						onOpen={() => setOpen(true)}
+					/>
 				</TourElement>
 			</div>
 			{/* Floating-panel anchor: AssistantPanel portals its unpinned overlay
@@ -92,37 +93,39 @@ export function SidebarWithHeader({ children }: SidebarWithHeaderProps) {
 			orderedStepIds={ORDERED_HOME_TOUR}
 		>
 			<AssistantSurfaceProvider>
-				<ReportConfigApplyProvider>
-					<SidebarProvider>
-						{/* Inside SidebarProvider so the sidebar trigger can consume it;
-						    the dialog itself portals to the body. */}
-						<CommandPaletteProvider>
-							{/* variant="inset" picture-frames the content: the wrapper turns
-						    sidebar-colored and SidebarInset becomes a rounded card floating
-						    inside it, so the assistant notch below has a frame to rise from. */}
-							<AppSidebar variant="inset" />
-							<SidebarInset className="min-w-0 md:h-[calc(100svh-1rem)] md:overflow-hidden">
-								<WorkspaceHeader />
+				<AssistantDockFrameProvider>
+					<ReportConfigApplyProvider>
+						<SidebarProvider>
+							{/* Inside SidebarProvider so the sidebar trigger can consume it;
+							    the dialog itself portals to the body. */}
+							<CommandPaletteProvider>
+								{/* variant="inset" picture-frames the content: the wrapper turns
+							    sidebar-colored and SidebarInset becomes a rounded card floating
+							    inside it, so the assistant notch below has a frame to rise from. */}
+								<AppSidebar variant="inset" />
+								<SidebarInset className="min-w-0 md:h-[calc(100svh-1rem)] md:overflow-hidden">
+									<WorkspaceHeader />
 
-								{/* Card interior scrolls; the frame and notch stay put.
-							    data-workspace-scroller is the lookup contract for page code
-							    (lib/workspace-scroller.ts); .workspace-canvas stays for CSS. */}
-								<div
-									data-workspace-scroller
-									className="workspace-canvas flex flex-1 flex-col gap-4 pt-12 md:pt-0 min-w-0 md:min-h-0 md:overflow-y-auto"
-								>
-									{children}
-								</div>
+									{/* Card interior scrolls; the frame and notch stay put.
+								    data-workspace-scroller is the lookup contract for page code
+								    (lib/workspace-scroller.ts); .workspace-canvas stays for CSS. */}
+									<div
+										data-workspace-scroller
+										className="workspace-canvas flex flex-1 flex-col gap-4 pt-12 md:pt-0 min-w-0 md:min-h-0 md:overflow-y-auto"
+									>
+										{children}
+									</div>
 
-								<AssistantDockHost />
-							</SidebarInset>
+									<AssistantDockHost />
+								</SidebarInset>
 
-							{/* When docked, the panel is the next flex sibling of the card;
-						    other surfaces portal/position themselves. */}
-							<AssistantPanel />
-						</CommandPaletteProvider>
-					</SidebarProvider>
-				</ReportConfigApplyProvider>
+								{/* When docked, the panel is the next flex sibling of the card;
+							    other surfaces portal/position themselves. */}
+								<AssistantPanel />
+							</CommandPaletteProvider>
+						</SidebarProvider>
+					</ReportConfigApplyProvider>
+				</AssistantDockFrameProvider>
 			</AssistantSurfaceProvider>
 		</TourContextProvider>
 	);

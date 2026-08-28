@@ -71,7 +71,7 @@ export const reportsArticles: HelpArticle[] = [
 					},
 					{
 						type: "tip",
-						text: "On the Business plan, click **Ask AI** at the top of the panel and describe the report you want in plain English. The [assistant](/help/ai-assistant) fills in the builder for you, and you review and save.",
+						text: "On the Business plan, click the assistant bar at the bottom of the screen, labeled **Report assistant** on report pages, and describe the report you want in plain English. The [assistant](/help/ai-assistant) fills in the builder for you, and you review and save.",
 					},
 				],
 			},

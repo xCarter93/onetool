@@ -1,14 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import {
-	ArrowLeft,
-	ChevronDown,
-	Database,
-	Loader2,
-	Save,
-	Sparkles,
-} from "lucide-react";
+import { ArrowLeft, ChevronDown, Database, Loader2, Save } from "lucide-react";
 import { DateRange } from "react-day-picker";
 import {
 	DEFAULT_GROUP_BY,
@@ -21,7 +14,7 @@ import {
 } from "@onetool/backend/convex/lib/reportRelations";
 import type { ReportFilters } from "@onetool/backend/convex/lib/reportFilters";
 import type { ReportConfig as ReportDocConfig } from "@onetool/backend/convex/lib/reportConfig";
-import { useAssistantOpener } from "@/components/assistant/assistant-opener-context";
+import { usePublishAssistantDockFrame } from "@/components/assistant/assistant-dock-frame-context";
 import { useRegisterReportConfigApply } from "@/components/assistant/report-config-apply-context";
 import { usePublishScreenContext } from "@/components/assistant/use-screen-context";
 import type { BuilderReportConfig } from "@onetool/backend/convex/reportConfigGeneration";
@@ -165,7 +158,11 @@ export function ReportBuilder({
 	const [pendingEntity, setPendingEntity] = useState<EntityType | null>(null);
 	const [groupByPickerOpen, setGroupByPickerOpen] = useState(false);
 
-	const openAssistant = useAssistantOpener();
+	usePublishAssistantDockFrame({
+		title: "Report assistant",
+		description: "Describe the report you want — I'll build it right here.",
+	});
+
 	const isChart = isChartVizType(vizType);
 
 	const sanitizedFilters = useMemo(() => sanitizeReportFilters(filters), [filters]);
@@ -482,7 +479,9 @@ export function ReportBuilder({
 			{/* Body — canvas left, config rail right; narrow widths stack canvas first */}
 			<div className="flex min-h-0 flex-1 flex-col lg:flex-row lg:overflow-hidden">
 				{/* Preview canvas */}
-				<main className="flex min-w-0 flex-1 flex-col lg:h-full lg:overflow-hidden">
+				{/* lg+ pins the utility bar to the card bottom, where the assistant
+				    dock overlays it; below lg the config rail follows it instead. */}
+				<main className="flex min-w-0 flex-1 flex-col lg:h-full lg:overflow-hidden lg:pb-24">
 					<div className="flex-1 overflow-auto bg-muted/20 p-4 sm:p-8">
 						<div className="flex min-h-full w-full flex-col rounded-2xl border border-border/60 bg-background p-5 shadow-sm sm:p-7">
 							{saved ? (
@@ -513,25 +512,6 @@ export function ReportBuilder({
 
 				{/* Config rail */}
 				<aside className="flex shrink-0 flex-col border-t border-border/60 bg-background/50 px-6 py-4 lg:h-full lg:w-[440px] lg:overflow-y-auto lg:border-l lg:border-t-0">
-					{/* NL report building lives in the assistant panel (createReport tool). */}
-					{openAssistant && (
-						<section className="mb-2 space-y-2 rounded-xl border border-border/60 bg-muted/30 p-3">
-							<Button
-								variant="outline"
-								size="sm"
-								onClick={openAssistant}
-								className="w-full"
-							>
-								<Sparkles className="h-4 w-4 text-primary" data-slot="icon" />
-								Ask AI
-							</Button>
-							<p className="text-xs text-muted-foreground">
-								Describe the report you want — the assistant builds and saves
-								it for you.
-							</p>
-						</section>
-					)}
-
 					<PanelSection title="Visualization">
 						<Select
 							value={vizType}

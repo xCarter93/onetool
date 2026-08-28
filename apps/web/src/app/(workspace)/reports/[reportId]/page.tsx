@@ -7,6 +7,7 @@ import { useRouter, useParams } from "next/navigation";
 import { ArrowLeft, Copy, Loader2, Pencil } from "lucide-react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
+import { usePublishAssistantDockFrame } from "@/components/assistant/assistant-dock-frame-context";
 import { Button } from "@/components/ui/button";
 import {
 	ReportBuilder,
@@ -35,6 +36,16 @@ function ReportViewPageContent() {
 
 	const [isEditing, setIsEditing] = useState(false);
 	const [isSaving, setIsSaving] = useState(false);
+
+	// While editing, the builder publishes its own frame.
+	usePublishAssistantDockFrame(
+		isEditing || !report
+			? null
+			: {
+					title: "Report assistant",
+					description: "Ask me about this report.",
+				}
+	);
 
 	const normalized = report
 		? normalizeReportConfig(report.config, report.visualization)
@@ -141,8 +152,9 @@ function ReportViewPageContent() {
 		isChartVisualization ? `${vizLabel} chart` : vizLabel,
 	].filter(Boolean) as string[];
 
+	// pb clears the assistant dock so the utility bar can scroll past it.
 	return (
-		<div className="space-y-6 p-6">
+		<div className="space-y-6 p-6 pb-24">
 			{/* Header */}
 			<div className="flex flex-wrap items-start justify-between gap-3">
 				<div className="flex min-w-0 items-center gap-3">
