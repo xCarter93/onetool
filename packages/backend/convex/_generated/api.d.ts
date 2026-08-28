@@ -118,6 +118,7 @@ import type * as lib_reportFields from "../lib/reportFields.js";
 import type * as lib_reportFilters from "../lib/reportFilters.js";
 import type * as lib_reportPresets from "../lib/reportPresets.js";
 import type * as lib_reportQueryArgs from "../lib/reportQueryArgs.js";
+import type * as lib_reportRelations from "../lib/reportRelations.js";
 import type * as lib_resendClient from "../lib/resendClient.js";
 import type * as lib_schedule from "../lib/schedule.js";
 import type * as lib_schemaIntrospection from "../lib/schemaIntrospection.js";
@@ -319,6 +320,7 @@ declare const fullApi: ApiFromModules<{
   "lib/reportFilters": typeof lib_reportFilters;
   "lib/reportPresets": typeof lib_reportPresets;
   "lib/reportQueryArgs": typeof lib_reportQueryArgs;
+  "lib/reportRelations": typeof lib_reportRelations;
   "lib/resendClient": typeof lib_resendClient;
   "lib/schedule": typeof lib_schedule;
   "lib/schemaIntrospection": typeof lib_schemaIntrospection;

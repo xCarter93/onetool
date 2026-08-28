@@ -4,11 +4,7 @@ import { Id } from "./_generated/dataModel";
 import { getOrgTimezoneById } from "./lib/organization";
 import { DateUtils } from "./lib/shared";
 import { optionalUserQuery } from "./lib/factories";
-import {
-	scanOrgTable,
-	REPORT_SCAN_CEILING,
-	type ReportTable,
-} from "./lib/orgScan";
+import { scanOrgTable, REPORT_SCAN_CEILING } from "./lib/orgScan";
 import {
 	getReportField,
 	getReportDateField,
@@ -33,7 +29,17 @@ import {
 	reportFiltersValidator,
 	evaluateReportFilters,
 	type ReportFilters,
+	type ReportPathResolver,
 } from "./lib/reportFilters";
+import {
+	buildPathHydrator,
+	isRelatedPath,
+	pathTables,
+	resolveReportPath,
+	type PathHydrator,
+	type ReportRelationTarget,
+	type ResolvedPath,
+} from "./lib/reportRelations";
 import type { PermissionObject } from "./lib/permissionKeys";
 import { denyPermission, getEffectivePermissions } from "./lib/permissions";
 
@@ -283,10 +289,16 @@ function computeAggregateValue(rows: Row[], aggregation?: Aggregation): number {
 // Filter / Aggregation Validation
 // ============================================================================
 
+/** Direct-only surfaces: the legacy args path and the R5 child `related.filters`. */
 function validateFilters(entityType: ReportEntityType, filters?: ReportFilters): void {
 	if (!filters) return;
 	for (const group of filters.groups) {
 		for (const rule of group.rules) {
+			if (isRelatedPath(rule.field)) {
+				throw new ConvexError(
+					`Related-path report filter field "${rule.field}" is not supported for entity "${entityType}"`
+				);
+			}
 			if (!getReportField(entityType, rule.field)) {
 				throw new ConvexError(
 					`Unknown report filter field "${rule.field}" for entity "${entityType}"`
@@ -294,6 +306,58 @@ function validateFilters(entityType: ReportEntityType, filters?: ReportFilters):
 			}
 		}
 	}
+}
+
+/**
+ * Config filters may traverse related records (§8 d15), but a dotted field
+ * must land on a plain value: ids were never filterable, and a time bucket is
+ * a grouping, not a value.
+ */
+function validateConfigFilters(
+	entityType: ReportEntityType,
+	filters?: ReportFilters
+): void {
+	if (!filters) return;
+	for (const group of filters.groups) {
+		for (const rule of group.rules) {
+			if (!isRelatedPath(rule.field)) {
+				if (!getReportField(entityType, rule.field)) {
+					throw new ConvexError(
+						`Unknown report filter field "${rule.field}" for entity "${entityType}"`
+					);
+				}
+				continue;
+			}
+			const { terminal } = resolveReportPath(entityType, rule.field);
+			if (terminal.kind === "fk") {
+				throw new ConvexError(
+					`Report filter field "${rule.field}" resolves to a related record, not a filterable value`
+				);
+			}
+			if (terminal.granularity) {
+				throw new ConvexError(
+					`Report filter field "${rule.field}" is a time bucket, not a filterable value`
+				);
+			}
+		}
+	}
+}
+
+/** The dotted filter fields of a filter set, resolved once and keyed by field. */
+function resolveFilterPaths(
+	entityType: ReportEntityType,
+	filters: ReportFilters | undefined
+): Map<string, ResolvedPath> {
+	const paths = new Map<string, ResolvedPath>();
+	if (!filters) return paths;
+	for (const group of filters.groups) {
+		for (const rule of group.rules) {
+			if (isRelatedPath(rule.field) && !paths.has(rule.field)) {
+				paths.set(rule.field, resolveReportPath(entityType, rule.field));
+			}
+		}
+	}
+	return paths;
 }
 
 function validateAggregation(entityType: ReportEntityType, aggregation?: Aggregation): void {
@@ -333,18 +397,36 @@ function validateDetailColumns(entityType: ReportEntityType, columns: string[]):
 // Scanning helper
 // ============================================================================
 
+interface ScanResult {
+	rows: Row[];
+	truncated: boolean;
+	/** Tables whose hydration hit the budget; merged into metadata.truncatedEntities. */
+	truncatedEntities: string[];
+	/** Present whenever the scan resolved any dotted path. */
+	hydrator?: PathHydrator;
+}
+
 async function scanFiltered(
 	ctx: QueryCtx,
-	table: ReportTable,
+	entityType: ReportEntityType,
 	orgId: Id<"organizations">,
 	dateField: string,
 	bounds: DateBoundsResult,
 	filters: ReportFilters | undefined,
-	timezone: string | undefined
-): Promise<{ rows: Row[]; truncated: boolean }> {
+	timezone: string | undefined,
+	groupByPath?: ResolvedPath
+): Promise<ScanResult> {
+	const filterPaths = resolveFilterPaths(entityType, filters);
+	const hasPathFilters = filterPaths.size > 0;
+
 	const predicate = (row: Row) => {
 		if (!inDateBounds(row[dateField], bounds)) return false;
-		if (filters && !evaluateReportFilters(row, filters, timezone)) return false;
+		// OR across rules forbids splitting direct rules from dotted ones, so one
+		// dotted rule defers the whole set to post-scan — which means the ceiling
+		// then counts date-bounded rows rather than filter-matched ones.
+		if (!hasPathFilters && filters && !evaluateReportFilters(row, filters, timezone)) {
+			return false;
+		}
 		return true;
 	};
 
@@ -355,13 +437,42 @@ async function scanFiltered(
 			? bounds.start
 			: undefined;
 
-	const { matches, truncated } = await scanOrgTable(ctx, table, orgId, {
+	const { matches, truncated } = await scanOrgTable(ctx, entityType, orgId, {
 		predicate,
 		maxScan: REPORT_SCAN_CEILING,
 		stopBelowCreationTime,
 	});
 
-	return { rows: matches, truncated };
+	const paths = [...filterPaths.values(), ...(groupByPath ? [groupByPath] : [])];
+	if (paths.length === 0) {
+		return { rows: matches, truncated, truncatedEntities: [] };
+	}
+
+	// One hydrator per execution so the memo and the budget are shared; §8 d15
+	// counts hydration reads against the same scan ceiling.
+	const hydrator = await buildPathHydrator(
+		async (id) =>
+			(await ctx.db.get(id as Id<"clients">)) as Record<string, unknown> | null,
+		matches,
+		paths,
+		Math.max(0, REPORT_SCAN_CEILING - matches.length)
+	);
+
+	let rows: Row[] = matches;
+	if (hasPathFilters && filters) {
+		const resolvePath: ReportPathResolver = (row, field) =>
+			hydrator.resolve(row, filterPaths.get(field)!);
+		rows = rows.filter((row) =>
+			evaluateReportFilters(row, filters, timezone, resolvePath)
+		);
+	}
+
+	return {
+		rows,
+		truncated: truncated || hydrator.truncated,
+		truncatedEntities: hydrator.truncatedTables,
+		hydrator,
+	};
 }
 
 // ============================================================================
@@ -475,8 +586,26 @@ function buildFieldBuckets(
 		.sort((a, b) => b.value - a.value);
 }
 
+/** Row property the resolved groupBy path is annotated onto before bucketing. */
+const PATH_GROUP_FIELD = "__pathGroupValue";
+/** Bucket key for rows whose groupBy path broke, suffixed with the missing hop's table. */
+const BROKEN_KEY_PREFIX = "__broken:";
+
+const NO_RELATION_LABEL: Partial<Record<ReportRelationTarget, string>> = {
+	clients: "No Client",
+	projects: "No Project",
+	quotes: "No Quote",
+	invoices: "No Invoice",
+	skus: "No SKU",
+	users: "Unassigned",
+};
+
+function brokenBucketLabel(refType: string): string {
+	return NO_RELATION_LABEL[refType as ReportRelationTarget] ?? "None";
+}
+
 function fkDocLabel(
-	refType: ReportGroupableFk["refType"],
+	refType: ReportRelationTarget,
 	doc: Row | null,
 	key: string
 ): string {
@@ -487,10 +616,15 @@ function fkDocLabel(
 			return (doc?.companyName as string | undefined) || "Unknown Client";
 		case "projects":
 			return (doc?.title as string | undefined) || "Unknown Project";
+		case "quotes":
+			// quoteNumber is optional in schema.ts.
+			return (doc?.quoteNumber as string | undefined) || "Unknown Quote";
 		case "invoices":
 			return (doc?.invoiceNumber as string | undefined) || "Unknown Invoice";
 		case "skus":
 			return (doc?.name as string | undefined) || "Unknown SKU";
+		default:
+			return key;
 	}
 }
 
@@ -553,6 +687,10 @@ async function runAggregationPlan(
 	plan: AggregationPlan
 ): Promise<ReportDataResult> {
 	const { entityType, aggregation } = plan;
+	const groupByPath =
+		plan.groupBy && isRelatedPath(plan.groupBy)
+			? resolveReportPath(entityType, plan.groupBy)
+			: undefined;
 	const scanned = await scanFiltered(
 		ctx,
 		entityType,
@@ -560,7 +698,8 @@ async function runAggregationPlan(
 		plan.dateField,
 		plan.bounds,
 		plan.filters,
-		plan.timezone
+		plan.timezone,
+		groupByPath
 	);
 	const truncated = scanned.truncated;
 	let rows = scanned.rows;
@@ -568,8 +707,95 @@ async function runAggregationPlan(
 	let buckets: Bucket[] | undefined;
 	let fk: ReportGroupableFk | undefined;
 	let fieldGrouping: ReportFieldDef | undefined;
+	let resolveLabel: ((key: string) => Promise<string>) | undefined;
+	let pathTimeBucketed = false;
 
-	if (plan.groupBy) {
+	if (groupByPath && scanned.hydrator) {
+		const hydrator = scanned.hydrator;
+		const terminal = groupByPath.terminal;
+		const resolutions = rows.map((row) => hydrator.resolve(row, groupByPath));
+		const annotate = (row: Row, value: unknown): Row => ({
+			...row,
+			[PATH_GROUP_FIELD]: value,
+		});
+
+		if (terminal.kind === "field" && terminal.granularity) {
+			// A timeline has no "No X" bucket: rows with no reachable timestamp are
+			// excluded from data AND totals, like the direct time-grouping path.
+			const granularity = terminal.granularity;
+			rows = rows.flatMap((row, index) => {
+				const resolution = resolutions[index];
+				return "value" in resolution && typeof resolution.value === "number"
+					? [annotate(row, resolution.value)]
+					: [];
+			});
+			buckets = buildTimeBuckets(
+				rows,
+				PATH_GROUP_FIELD,
+				granularity,
+				plan.timezone,
+				aggregation
+			);
+			pathTimeBucketed = true;
+		} else if (terminal.kind === "fk") {
+			const refType = terminal.refType;
+			const annotated = rows.map((row, index) => {
+				const resolution = resolutions[index];
+				return annotate(
+					row,
+					"brokenAt" in resolution
+						? BROKEN_KEY_PREFIX + resolution.brokenAt.refType
+						: resolution.value
+				);
+			});
+			buckets = Object.entries(groupRows(annotated, PATH_GROUP_FIELD))
+				.map(([key, bucketRows]) => ({
+					key,
+					label: key,
+					rows: bucketRows,
+					value: computeAggregateValue(bucketRows, aggregation),
+					metadata: { [plan.groupBy!]: key },
+				}))
+				.sort((a, b) => b.value - a.value);
+			resolveLabel = async (key) =>
+				key.startsWith(BROKEN_KEY_PREFIX)
+					? brokenBucketLabel(key.slice(BROKEN_KEY_PREFIX.length))
+					: fkDocLabel(
+							refType,
+							(await ctx.db.get(key as Id<"users">)) as Row | null,
+							key
+						);
+		} else {
+			fieldGrouping = terminal.def;
+			const reached: Row[] = [];
+			const broken = new Map<string, Row[]>();
+			rows.forEach((row, index) => {
+				const resolution = resolutions[index];
+				if ("brokenAt" in resolution) {
+					const list = broken.get(resolution.brokenAt.refType);
+					if (list) list.push(row);
+					else broken.set(resolution.brokenAt.refType, [row]);
+				} else {
+					reached.push(annotate(row, resolution.value));
+				}
+			});
+			buckets = [
+				...buildFieldBuckets(
+					reached,
+					PATH_GROUP_FIELD,
+					terminal.def,
+					aggregation,
+					plan.includeEmptyValues ?? false
+				),
+				...[...broken.entries()].map(([refType, bucketRows]) => ({
+					key: BROKEN_KEY_PREFIX + refType,
+					label: brokenBucketLabel(refType),
+					rows: bucketRows,
+					value: computeAggregateValue(bucketRows, aggregation),
+				})),
+			];
+		}
+	} else if (plan.groupBy) {
 		const timeMatch = plan.groupBy.match(timeGroupingRegex);
 		fk = getGroupableFk(entityType, plan.groupBy);
 		if (timeMatch) {
@@ -595,6 +821,7 @@ async function runAggregationPlan(
 				aggregation
 			);
 		} else if (fk) {
+			const fkRef = fk;
 			buckets = Object.entries(groupRows(rows, plan.groupBy))
 				.map(([key, bucketRows]) => ({
 					key,
@@ -604,6 +831,7 @@ async function runAggregationPlan(
 					metadata: { [plan.groupBy!]: key },
 				}))
 				.sort((a, b) => b.value - a.value);
+			resolveLabel = (key) => resolveFkLabel(ctx, fkRef, key);
 		} else {
 			const resolved = resolveGroupByField(entityType, plan.groupBy);
 			if (!resolved) {
@@ -641,8 +869,10 @@ async function runAggregationPlan(
 	// User sort (R9) never reorders time buckets (a timeline stays
 	// chronological), and label_asc is skipped for FK grouping — labels only
 	// resolve for the displayed buckets, after the slice below.
-	const timeBucketed = plan.groupBy ? timeGroupingRegex.test(plan.groupBy) : false;
-	if (buckets && plan.sort && !timeBucketed && !(fk && plan.sort === "label_asc")) {
+	const timeBucketed =
+		pathTimeBucketed || (plan.groupBy ? timeGroupingRegex.test(plan.groupBy) : false);
+	const fkBucketed = fk !== undefined || groupByPath?.terminal.kind === "fk";
+	if (buckets && plan.sort && !timeBucketed && !(fkBucketed && plan.sort === "label_asc")) {
 		const sort = plan.sort;
 		buckets = [...buckets].sort((a, b) =>
 			sort === "value_desc"
@@ -657,11 +887,11 @@ async function runAggregationPlan(
 		buckets = buckets.slice(0, Math.max(1, Math.floor(plan.seriesLimit)));
 	}
 
-	if (buckets && fk) {
-		const fkRef = fk;
+	if (buckets && resolveLabel) {
+		const resolve = resolveLabel;
 		await Promise.all(
 			buckets.map(async (bucket) => {
-				bucket.label = await resolveFkLabel(ctx, fkRef, bucket.key);
+				bucket.label = await resolve(bucket.key);
 			})
 		);
 	}
@@ -706,6 +936,9 @@ async function runAggregationPlan(
 			dateRange: metadataDateRange(plan.bounds),
 			groupBy: plan.metadataGroupBy ?? plan.groupBy,
 			truncated,
+			...(scanned.truncatedEntities.length > 0
+				? { truncatedEntities: scanned.truncatedEntities }
+				: {}),
 			...(summaryField || isCurrencyAgg ? { totalIsCurrency: true } : {}),
 			...(isCurrencyAgg ? { itemValueIsCurrency: true } : {}),
 			...(plan.segmentBy && segmentMeta
@@ -741,7 +974,7 @@ async function runDetailReport(
 	validateDetailColumns(entityType, detail.columns);
 
 	const dateField = dateFieldOverride ?? getReportDateField(entityType);
-	const { rows, truncated } = await scanFiltered(
+	const { rows, truncated, truncatedEntities } = await scanFiltered(
 		ctx,
 		entityType,
 		orgId,
@@ -790,6 +1023,7 @@ async function runDetailReport(
 			entityType,
 			dateRange: metadataDateRange(bounds),
 			truncated,
+			...(truncatedEntities.length > 0 ? { truncatedEntities } : {}),
 		},
 		detail: {
 			columns,
@@ -866,6 +1100,29 @@ async function requireReportEntityAccess(
 	// Denies unless the caller holds allRecords; requireRecordScope short-circuits
 	// for hasAllRecords and otherwise runs this predicate.
 	await ctx.requireRecordScope(object, () => false);
+}
+
+/**
+ * Every drillable table a config's dotted paths reach needs its own report
+ * access, fail closed (§8 d15, R5 precedent). users/skus terminals are
+ * label-only and excluded by pathTables.
+ */
+async function requireReportPathAccess(
+	ctx: Parameters<typeof requireReportEntityAccess>[0],
+	config: ReportConfigV2
+): Promise<void> {
+	const paths = [
+		...resolveFilterPaths(
+			config.entityType,
+			config.filters as ReportFilters | undefined
+		).values(),
+		...(config.groupBy && isRelatedPath(config.groupBy)
+			? [resolveReportPath(config.entityType, config.groupBy)]
+			: []),
+	];
+	for (const table of new Set(paths.flatMap(pathTables))) {
+		await requireReportEntityAccess(ctx, table);
+	}
 }
 
 /**
@@ -953,7 +1210,7 @@ async function runRatioMetric(
 	}
 
 	const { dateField, bounds } = resolveConfigDates(config, timezone);
-	const { rows, truncated } = await scanFiltered(
+	const { rows, truncated, truncatedEntities } = await scanFiltered(
 		ctx,
 		entityType,
 		orgId,
@@ -987,6 +1244,7 @@ async function runRatioMetric(
 			dateRange: metadataDateRange(bounds),
 			groupBy: ratioKey,
 			truncated,
+			...(truncatedEntities.length > 0 ? { truncatedEntities } : {}),
 		},
 	};
 }
@@ -1080,8 +1338,12 @@ async function runRelatedMetric(
 	const aggFieldDef = related.field ? getReportField(child, related.field) : undefined;
 	const isCurrencyAgg = related.op !== "count" && aggFieldDef?.type === "currency";
 	const truncatedEntities = [
-		...(parentScan.truncated ? [parent] : []),
-		...(childScan.truncated ? [child] : []),
+		...new Set([
+			...(parentScan.truncated ? [parent] : []),
+			...(childScan.truncated ? [child] : []),
+			...parentScan.truncatedEntities,
+			...childScan.truncatedEntities,
+		]),
 	];
 
 	return {
@@ -1137,7 +1399,8 @@ export const executeReport = optionalUserQuery({
 				);
 			}
 			const configFilters = config.filters as ReportFilters | undefined;
-			validateFilters(entityType, configFilters);
+			validateConfigFilters(entityType, configFilters);
+			await requireReportPathAccess(ctx, config);
 			const timezone = await getOrgTimezoneById(ctx, orgId);
 			if (detail) {
 				const { dateField, bounds } = resolveConfigDates(config, timezone);
@@ -1177,6 +1440,11 @@ export const executeReport = optionalUserQuery({
 		const aggregation = args.aggregation as Aggregation | undefined;
 
 		validateFilters(entityType, filters);
+		if (args.groupBy && isRelatedPath(args.groupBy)) {
+			throw new ConvexError(
+				`Related-path groupBy "${args.groupBy}" requires a report config`
+			);
+		}
 
 		if (detail) {
 			const bounds = resolveDateBounds(args.dateRange);

@@ -5,6 +5,7 @@
  */
 import { v } from "convex/values";
 import { DateUtils } from "./shared";
+import { isRelatedPath, type PathResolution } from "./reportRelations";
 
 export const reportFilterOperator = v.union(
 	v.literal("equals"),
@@ -73,12 +74,30 @@ function isEmptyValue(value: unknown): boolean {
 	return value === undefined || value === null || value === "";
 }
 
+/**
+ * Resolves a dotted (related-record) rule field for one row. Sync by
+ * construction — the hydrator batches its reads before evaluation starts.
+ */
+export type ReportPathResolver = (
+	row: Record<string, unknown>,
+	field: string
+) => PathResolution;
+
 function evaluateRule(
 	row: Record<string, unknown>,
 	rule: ReportFilterRule,
-	timezone: string | undefined
+	timezone: string | undefined,
+	resolvePath: ReportPathResolver | undefined
 ): boolean {
-	const rowValue = row[rule.field];
+	let rowValue: unknown;
+	if (resolvePath && isRelatedPath(rule.field)) {
+		const resolution = resolvePath(row, rule.field);
+		// A path that can't be walked fails every rule but is_empty (§8 d15).
+		if ("brokenAt" in resolution) return rule.operator === "is_empty";
+		rowValue = resolution.value;
+	} else {
+		rowValue = row[rule.field];
+	}
 
 	switch (rule.operator) {
 		case "is_empty":
@@ -136,13 +155,16 @@ function evaluateRule(
 export function evaluateReportFilters(
 	row: Record<string, unknown>,
 	filters: ReportFilters,
-	timezone?: string
+	timezone?: string,
+	resolvePath?: ReportPathResolver
 ): boolean {
 	if (filters.groups.length === 0) return true;
 
 	const groupResults = filters.groups.map((group) => {
 		if (group.rules.length === 0) return true;
-		const ruleResults = group.rules.map((rule) => evaluateRule(row, rule, timezone));
+		const ruleResults = group.rules.map((rule) =>
+			evaluateRule(row, rule, timezone, resolvePath)
+		);
 		return group.logic === "and"
 			? ruleResults.every(Boolean)
 			: ruleResults.some(Boolean);

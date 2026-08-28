@@ -3,7 +3,9 @@ import {
 	DEFAULT_DETAIL_COLUMNS,
 	builderStateToSaved,
 	formatReportValue,
+	genericGroupByOptions,
 	isDetailModeActive,
+	metricOptionsFor,
 	resolveReportQueryArgs,
 	savedToBuilderState,
 	type BuilderConfigState,
@@ -301,5 +303,33 @@ describe("builderStateToSaved ↔ savedToBuilderState round trips (R8a)", () => 
 		expect(state.dateRangePreset).toBe("custom");
 		expect(state.customDateRange?.from).toBeUndefined();
 		expect(state.customDateRange?.to?.getTime()).toBe(end);
+	});
+});
+
+describe("related-object traversal (d15) — options derived from REPORT_RELATIONS", () => {
+	it("quotes gain a line-item rollup from the quoteLineItems.quoteId edge", () => {
+		const option = metricOptionsFor("quotes").find(
+			(o) => o.value === "related:quoteLineItems:quoteId:sum:amount"
+		);
+		expect(option).toEqual({
+			value: "related:quoteLineItems:quoteId:sum:amount",
+			label: "Sum of Quote Line Items › Total",
+			metric: {
+				op: "related",
+				related: {
+					entity: "quoteLineItems",
+					fk: "quoteId",
+					op: "sum",
+					field: "amount",
+				},
+			},
+		});
+	});
+
+	it("quoteLineItems can group by quoteId in the picker", () => {
+		expect(genericGroupByOptions.quoteLineItems).toContainEqual({
+			value: "quoteId",
+			label: "Quote",
+		});
 	});
 });

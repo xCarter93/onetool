@@ -5,7 +5,7 @@
  *
  * Deliberately excluded from every entity:
  * - v.id(...) foreign keys (clientId, projectId, ...) — raw ids are useless in
- *   report cells; grouping on them goes through REPORT_GROUPABLE_FKS below,
+ *   report cells; grouping on them goes through REPORT_RELATIONS edges,
  *   which label-resolves without exposing ids to filters/columns/AI.
  * - Nested objects/arrays (tags, pdfSettings, metadata, assignedUserIds).
  * - orgId / audit ids.
@@ -13,6 +13,13 @@
  *   must never be exposable via reports.
  */
 import { literals } from "convex-helpers/validators";
+// Circular by design (reportRelations reads this registry back): both sides
+// only touch the other's bindings at call time, never at module init.
+import {
+	REPORT_RELATIONS,
+	resolveReportPath,
+	type ReportRelationTarget,
+} from "./reportRelations";
 
 export const REPORT_ENTITY_TYPES = [
 	"clients",
@@ -350,6 +357,7 @@ export const GROUP_BY_OPTIONS: Record<
 		{ value: "creationDate_week", label: "Created by Week" },
 		{ value: "creationDate_day", label: "Created by Day" },
 		{ value: "completedAt_month", label: "Completed by Month" },
+		{ value: "clientId", label: "Client" },
 	],
 	tasks: [
 		{ value: "status", label: "Status" },
@@ -358,10 +366,14 @@ export const GROUP_BY_OPTIONS: Record<
 		{ value: "date_week", label: "By Week" },
 		{ value: "date_day", label: "By Day" },
 		{ value: "assigneeUserId", label: "Assignee" },
+		{ value: "projectId", label: "Project" },
+		{ value: "clientId", label: "Client" },
 	],
 	quotes: [
 		{ value: "status", label: "Status" },
 		{ value: "conversionRate", label: "Conversion Rate" },
+		{ value: "clientId", label: "Client" },
+		{ value: "projectId", label: "Project" },
 	],
 	invoices: [
 		{ value: "status", label: "Status" },
@@ -369,6 +381,9 @@ export const GROUP_BY_OPTIONS: Record<
 		{ value: "client", label: "Revenue by Client" },
 		{ value: "issuedDate_month", label: "Issued by Month" },
 		{ value: "dueDate_month", label: "Due by Month" },
+		{ value: "clientId", label: "Client" },
+		{ value: "projectId", label: "Project" },
+		{ value: "quoteId", label: "Quote" },
 	],
 	payments: [
 		{ value: "status", label: "Status" },
@@ -381,11 +396,13 @@ export const GROUP_BY_OPTIONS: Record<
 		{ value: "skuId", label: "SKU" },
 		{ value: "unit", label: "Unit" },
 		{ value: "creationDate_month", label: "Created by Month" },
+		{ value: "quoteId", label: "Quote" },
 	],
 	invoiceLineItems: [
 		{ value: "skuId", label: "SKU" },
 		{ value: "unit", label: "Unit" },
 		{ value: "creationDate_month", label: "Created by Month" },
+		{ value: "invoiceId", label: "Invoice" },
 	],
 	activities: [
 		{ value: "activityType", label: "Activity Type" },
@@ -397,34 +414,20 @@ export const GROUP_BY_OPTIONS: Record<
 };
 
 /**
- * FK fields groupable via label resolution (§3.2 mechanism 1). Kept out of
- * `fields` on purpose: filter/column/AI enumeration must not expose raw ids —
- * these become user-pickable at R9 via RecordPicker.
+ * FK fields groupable via label resolution (§3.2 mechanism 1). Derived from
+ * REPORT_RELATIONS since F2+F6; kept out of `fields` on purpose: filter/
+ * column/AI enumeration must not expose raw ids.
  */
 export interface ReportGroupableFk {
-	refType: "clients" | "projects" | "users" | "invoices" | "skus";
+	refType: ReportRelationTarget;
 }
-
-export const REPORT_GROUPABLE_FKS: Record<
-	ReportEntityType,
-	Record<string, ReportGroupableFk>
-> = {
-	clients: {},
-	projects: { clientId: { refType: "clients" } },
-	tasks: { assigneeUserId: { refType: "users" } },
-	quotes: { clientId: { refType: "clients" } },
-	invoices: { clientId: { refType: "clients" }, projectId: { refType: "projects" } },
-	payments: { invoiceId: { refType: "invoices" } },
-	quoteLineItems: { skuId: { refType: "skus" } },
-	invoiceLineItems: { skuId: { refType: "skus" } },
-	activities: {},
-};
 
 export function getGroupableFk(
 	entityType: ReportEntityType,
 	field: string
 ): ReportGroupableFk | undefined {
-	return REPORT_GROUPABLE_FKS[entityType][field];
+	const edge = REPORT_RELATIONS[entityType][field];
+	return edge ? { refType: edge.refType } : undefined;
 }
 
 /** Legacy time keys bucket _creationTime under the "creationDate" name (metadata.groupBy keeps the alias). */
@@ -519,8 +522,9 @@ export const DEFAULT_DETAIL_COLUMNS: Record<ReportEntityType, string[]> = {
 
 /**
  * True when the generic aggregation pipeline (executeReport with an explicit
- * `aggregation`) accepts this groupBy: a non-timestamp registry field, or a
- * `<timestamp-field>_day|week|month` bucket. Legacy specials (month, client,
+ * `aggregation`) accepts this groupBy: an FK edge, a non-timestamp registry
+ * field, or a `<timestamp-field>_day|week|month` bucket — bare or as a dotted
+ * related path. Legacy specials (month, client,
  * conversionRate, completionRate, creationDate_*) only work through the
  * legacy dispatch, which ignores measures — so a non-count measure must
  * pair with a generic-safe groupBy (or none).
@@ -529,12 +533,16 @@ export function isGenericGroupBy(
 	entityType: ReportEntityType,
 	groupBy: string
 ): boolean {
-	if (getGroupableFk(entityType, groupBy)) return true;
-	const direct = resolveGroupByField(entityType, groupBy);
-	if (direct) return direct.def.type !== "timestamp";
-	const timeMatch = groupBy.match(/^(.+)_(day|week|month)$/);
-	if (!timeMatch) return false;
-	return resolveGroupByField(entityType, timeMatch[1])?.def.type === "timestamp";
+	try {
+		const { terminal } = resolveReportPath(entityType, groupBy);
+		return (
+			terminal.kind === "fk" ||
+			terminal.granularity !== undefined ||
+			terminal.def.type !== "timestamp"
+		);
+	} catch {
+		return false;
+	}
 }
 
 /** Look up a field def, or undefined if unknown for this entity. */

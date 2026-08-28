@@ -12,9 +12,9 @@ import { DateRange } from "react-day-picker";
 import {
 	DEFAULT_GROUP_BY,
 	REPORT_FIELDS,
-	getGroupableFk,
 	getReportDateField,
 } from "@onetool/backend/convex/lib/reportFields";
+import { getRelationEdge } from "@onetool/backend/convex/lib/reportRelations";
 import type { ReportFilters } from "@onetool/backend/convex/lib/reportFilters";
 import type { ReportConfig as ReportDocConfig } from "@onetool/backend/convex/lib/reportConfig";
 import { useAssistantOpener } from "@/components/assistant/assistant-opener-context";
@@ -332,7 +332,7 @@ export function ReportBuilder({
 			? REPORT_FIELDS[entityType].fields[groupBy]
 			: undefined;
 	const fkGroupBy =
-		entityType && groupBy ? getGroupableFk(entityType, groupBy) : undefined;
+		entityType && groupBy ? getRelationEdge(entityType, groupBy) : undefined;
 
 	const segmentCapable =
 		reportType === "chart" &&
@@ -342,7 +342,7 @@ export function ReportBuilder({
 		metric.op !== "related";
 	const segmentOptions = entityType
 		? nonTimeGroupOptions.filter(
-				(o) => o.value !== groupBy && !getGroupableFk(entityType, o.value)
+				(o) => o.value !== groupBy && !getRelationEdge(entityType, o.value)
 			)
 		: [];
 
@@ -654,7 +654,7 @@ export function ReportBuilder({
 											}
 											if (
 												isTimeBase ||
-												(getGroupableFk(entityType, v) &&
+												(getRelationEdge(entityType, v) &&
 													vizOptions?.sort === "label_asc")
 											) {
 												setVizOption("sort", undefined);

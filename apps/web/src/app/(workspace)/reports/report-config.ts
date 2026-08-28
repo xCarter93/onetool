@@ -27,12 +27,12 @@ import {
 	RATIO_METRICS,
 	REPORT_ENTITY_TYPES,
 	REPORT_FIELDS,
-	REPORT_GROUPABLE_FKS,
 	getReportDateField,
 	isGenericGroupBy,
 	type RatioKey,
 	type ReportEntityType,
 } from "@onetool/backend/convex/lib/reportFields";
+import { REPORT_RELATIONS } from "@onetool/backend/convex/lib/reportRelations";
 import { REPORT_SCAN_CEILING } from "@onetool/backend/convex/lib/orgScan";
 import {
 	resolveReportQueryArgs,
@@ -292,8 +292,8 @@ export function metricOptionsFor(entityType: EntityType): MetricOption[] {
 	}
 	for (const child of REPORT_ENTITY_TYPES) {
 		if (child === entityType) continue;
-		for (const [fk, ref] of Object.entries(REPORT_GROUPABLE_FKS[child])) {
-			if (ref.refType !== entityType) continue;
+		for (const [fk, edge] of Object.entries(REPORT_RELATIONS[child])) {
+			if (edge.refType !== entityType) continue;
 			const childLabel = entityLabels[child] ?? child;
 			options.push({
 				value: `related:${child}:${fk}:count`,
