@@ -394,6 +394,19 @@ export function validateGeneratedReport(gen: GeneratedReport): string[] {
 	}
 
 	const filters = sanitizeGeneratedFilters(gen.filters);
+	// Revenue keys AND a paid-status rule onto the filters (configForGroupByKey);
+	// that expansion has no representation over an OR of multi-rule OR groups, so
+	// reject here with a retryable message instead of a generic dry-run failure.
+	if (
+		entityType === "invoices" &&
+		(gen.groupBy === "month" || gen.groupBy === "client") &&
+		filters?.logic === "or" &&
+		filters.groups.some((g) => g.logic === "or" && g.rules.length > 1)
+	) {
+		errors.push(
+			`groupBy "${gen.groupBy}" adds a paid-status filter, which cannot combine with a top-level OR over multi-rule OR groups — restructure the filters using "and" groups`
+		);
+	}
 	for (const group of filters?.groups ?? []) {
 		for (const rule of group.rules) {
 			const resolved = resolveFilterFieldDef(entityType, rule.field);

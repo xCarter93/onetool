@@ -102,7 +102,7 @@ export const reportsArticles: HelpArticle[] = [
 					},
 					{
 						type: "note",
-						text: "The Free plan includes 5 saved reports at a time, and the Business plan has no limit. Only creating a report counts against it, so deleting one frees a slot straight away.",
+						text: "The Free plan includes 5 saved reports at a time, and the Business plan has no limit. Creating a report uses a slot, and so does duplicating one; deleting a report frees its slot straight away.",
 					},
 					{
 						type: "media",

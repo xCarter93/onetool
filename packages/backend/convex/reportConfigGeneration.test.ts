@@ -214,6 +214,48 @@ describe("validateGeneratedReport", () => {
 			/name must not be empty/
 		);
 	});
+
+	it("rejects revenue group-bys over filters the paid-rule expansion cannot represent", () => {
+		const orOverMultiRuleOr = {
+			logic: "or" as const,
+			groups: [
+				{
+					logic: "or" as const,
+					rules: [
+						{ field: "status", operator: "equals" as const, value: "paid" },
+						{ field: "status", operator: "equals" as const, value: "sent" },
+					],
+				},
+				{
+					logic: "and" as const,
+					rules: [{ field: "total", operator: "greater_than" as const, value: 100 }],
+				},
+			],
+		};
+		expect(
+			validateGeneratedReport(gen({ groupBy: "month", filters: orOverMultiRuleOr }))[0]
+		).toMatch(/cannot combine with a top-level OR/);
+		expect(
+			validateGeneratedReport(gen({ groupBy: "client", filters: orOverMultiRuleOr }))[0]
+		).toMatch(/cannot combine with a top-level OR/);
+		// Single-rule OR groups distribute fine — no error.
+		expect(
+			validateGeneratedReport(
+				gen({
+					groupBy: "month",
+					filters: {
+						logic: "or",
+						groups: [
+							{
+								logic: "or",
+								rules: [{ field: "status", operator: "equals", value: "paid" }],
+							},
+						],
+					},
+				})
+			)
+		).toEqual([]);
+	});
 });
 
 describe("toSavedReport", () => {

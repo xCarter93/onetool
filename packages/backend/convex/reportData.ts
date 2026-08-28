@@ -824,6 +824,8 @@ function comparisonKeyShift(
 	}
 	const days = daysBetweenKeys(compareStart, currentStart);
 	if (granularity === "week") {
+		// Nearest whole week keeps shifted keys on the Sunday grid — an exact
+		// non-multiple-of-7 offset would land off-grid and pair nothing.
 		const weekAlignedDays = Math.round(days / 7) * 7;
 		return (key) => shiftDayKey(key, weekAlignedDays);
 	}
