@@ -46,7 +46,7 @@ function stripRowIds(result: unknown): unknown {
 }
 
 describe("preset → executeReport args goldens", () => {
-	it("all 15 presets map to their pinned args", () => {
+	it("all 16 presets map to their pinned args", () => {
 		const actual = Object.fromEntries(
 			REPORT_PRESETS.map((preset) => [
 				preset.id,

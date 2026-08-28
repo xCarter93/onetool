@@ -151,11 +151,11 @@ export const reportsArticles: HelpArticle[] = [
 				blocks: [
 					{
 						type: "paragraph",
-						text: "A preset is a ready-made report: the source, grouping, date range, and chart type come pre-filled, so you get a working answer in a couple of clicks. OneTool includes 14 presets across three groups: Revenue & money (invoices, income, and billing), Sales pipeline (quotes, leads, and conversion), and Operations (projects, tasks, and team).",
+						text: "A preset is a ready-made report: the source, grouping, date range, and chart type come pre-filled, so you get a working answer in a couple of clicks. OneTool includes 16 presets across three groups: Revenue & money (invoices, income, and billing), Sales pipeline (quotes, leads, and conversion), and Operations (projects, tasks, and team).",
 					},
 					{
 						type: "paragraph",
-						text: "Highlights include Revenue by month, Overdue invoices, Quote conversion rate, Top clients by revenue, and Team workload.",
+						text: "Highlights include Revenue by month, Revenue by project, Overdue invoices, Quote conversion rate, Top clients by revenue, and Team workload.",
 					},
 				],
 			},
