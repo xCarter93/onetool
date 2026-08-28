@@ -145,6 +145,31 @@ describe("ReportPreview — one visualization on the canvas (d7)", () => {
 		expect(container.querySelectorAll(".recharts-bar-rectangle")).toHaveLength(0);
 	});
 
+	it("the grouped table's value column is headed by the metric, not a hard-coded Count", () => {
+		mockedUseQuery.mockReturnValue({
+			data: [{ label: "Paid", value: 40000, metadata: {} }],
+			total: 40000,
+			metadata: { totalIsCurrency: true },
+		});
+
+		render(
+			<ReportPreview
+				config={{
+					version: 2,
+					entityType: "invoices",
+					metric: { op: "sum", field: "total" },
+					groupBy: "status",
+				}}
+				visualization={{ type: "table" }}
+			/>
+		);
+
+		expect(
+			screen.getByRole("columnheader", { name: "Sum of Total" })
+		).toBeInTheDocument();
+		expect(screen.queryByRole("columnheader", { name: "Count" })).toBeNull();
+	});
+
 	it("chart + groupBy None (legacy saved report): renders no chart, just the detail table", () => {
 		mockedUseQuery.mockReturnValue({
 			total: 2,

@@ -37,6 +37,8 @@ interface ReportTableProps {
 	metricIsRelated?: boolean;
 	/** Is `total` a dollar amount? Explicit, from the caller — see getReportValueTypes. */
 	totalIsCurrency?: boolean;
+	/** Names the aggregated value column; callers that always count can omit it. */
+	valueHeader?: string;
 	/** When set, renders the flat detail-mode table instead of the aggregated one. */
 	detail?: DetailResult;
 }
@@ -92,6 +94,7 @@ export function ReportTable({
 	entityType,
 	metricIsRelated = false,
 	totalIsCurrency = false,
+	valueHeader = "Count",
 	detail,
 }: ReportTableProps) {
 	if (detail) {
@@ -136,7 +139,7 @@ export function ReportTable({
 										? entityLabel(entityType)
 										: "Category"}
 							</TableHead>
-							<TableHead className="text-right">Count</TableHead>
+							<TableHead className="text-right">{valueHeader}</TableHead>
 							<TableHead className="text-right">%</TableHead>
 							{sortedData.some((d) => d.totalValue !== undefined) && (
 								<TableHead className="text-right">Value</TableHead>

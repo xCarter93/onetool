@@ -111,6 +111,39 @@ describe("ReportTable", () => {
 		expect(screen.getByText("$50")).toBeInTheDocument();
 	});
 
+	it("the value column header names the metric when the caller passes one", () => {
+		render(
+			<ReportTable
+				data={[{ name: "Paid", value: 8, totalValue: 35000 }]}
+				total={35000}
+				entityType="invoices"
+				groupBy="status"
+				totalIsCurrency
+				valueHeader="Sum of Total"
+			/>
+		);
+
+		expect(
+			screen.getByRole("columnheader", { name: "Sum of Total" })
+		).toBeInTheDocument();
+		expect(screen.queryByRole("columnheader", { name: "Count" })).toBeNull();
+	});
+
+	it("the value column header falls back to Count", () => {
+		render(
+			<ReportTable
+				data={[{ name: "Active", value: 7 }]}
+				total={7}
+				entityType="clients"
+				groupBy="status"
+			/>
+		);
+
+		expect(
+			screen.getByRole("columnheader", { name: "Count" })
+		).toBeInTheDocument();
+	});
+
 	describe("detail mode", () => {
 		it("renders column headers and formats cells by type (currency, timestamp, boolean, null)", () => {
 			render(

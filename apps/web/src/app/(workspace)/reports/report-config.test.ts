@@ -298,6 +298,23 @@ describe("builderStateToSaved ↔ savedToBuilderState round trips (R8a)", () => 
 		expect(saved.config.date).toBeUndefined();
 	});
 
+	it("a Table saved with both a grouping and columns hydrates to columns only", () => {
+		const state = savedToBuilderState(
+			v2({ groupBy: "status", columns: ["invoiceNumber"] }),
+			{ type: "table" }
+		);
+		expect(state.groupBy).toBeUndefined();
+		expect(state.columns).toEqual(["invoiceNumber"]);
+	});
+
+	it("a chart keeps its grouping even when stale columns ride along", () => {
+		const state = savedToBuilderState(
+			v2({ groupBy: "status", columns: ["invoiceNumber"] }),
+			{ type: "bar" }
+		);
+		expect(state.groupBy).toBe("status");
+	});
+
 	it("a one-sided absolute range hydrates as custom", () => {
 		const end = new Date(2024, 2, 15, 23, 59, 59, 999).getTime();
 		const state = savedToBuilderState(

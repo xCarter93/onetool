@@ -175,6 +175,13 @@ export function savedToBuilderState(
 			to: range.end !== undefined ? new Date(range.end) : undefined,
 		};
 	}
+	// isDetailModeActive lets a Table's explicit columns override its grouping,
+	// so the builder must show the grouping the report actually renders: none.
+	const columns = config.columns ?? [];
+	const groupBy =
+		visualization.type === "table" && columns.length > 0
+			? undefined
+			: config.groupBy;
 	return {
 		entityType: config.entityType,
 		dateField: config.date?.field,
@@ -182,10 +189,10 @@ export function savedToBuilderState(
 		customDateRange,
 		filters: config.filters,
 		metric: config.metric,
-		groupBy: config.groupBy,
+		groupBy,
 		segmentBy: config.segmentBy,
 		includeEmptyValues: config.includeEmptyValues,
-		columns: config.columns ?? [],
+		columns,
 		vizType: visualization.type,
 		vizOptions: visualization.options,
 	};

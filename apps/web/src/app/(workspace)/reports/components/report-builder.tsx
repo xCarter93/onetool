@@ -269,6 +269,8 @@ export function ReportBuilder({
 		}
 		if (next === "table") {
 			setSegmentBy(undefined);
+			// Columns outrank a grouping on a table, so a chart's grouping can't ride back in.
+			if (columns.length > 0) clearGroupBy();
 			return;
 		}
 		// Only bar/column render segments (honest encodings).
@@ -297,7 +299,7 @@ export function ReportBuilder({
 		}
 	};
 
-	const groupBySectionVisible =
+	const perRowVisible =
 		vizType !== "number" && metric.op !== "ratio" && metric.op !== "related";
 
 	// Ratio and related metrics bucket themselves — no column choice makes their table raw rows.
@@ -385,16 +387,35 @@ export function ReportBuilder({
 		});
 	};
 
+	const clearGroupBy = () => {
+		setGroupBy(undefined);
+		setSegmentBy(undefined);
+		setIncludeEmptyValues(undefined);
+		setVizOption("sort", undefined);
+		setVizOption("seriesLimit", undefined);
+	};
+
+	const changeColumns = (vals: string[]) => {
+		if (!entityType) return;
+		// Keep table column order stable in registry order, regardless of the
+		// order fields were picked in.
+		setColumns(
+			Object.keys(REPORT_FIELDS[entityType].fields).filter((f) =>
+				vals.includes(f)
+			)
+		);
+		// Columns override the grouping in the backend's table render.
+		if (vals.length > 0) clearGroupBy();
+	};
+
 	const selectGroupBy = (value: string) => {
 		if (!entityType) return;
 		if (value === NO_GROUP_BY) {
-			setGroupBy(undefined);
-			setSegmentBy(undefined);
-			setIncludeEmptyValues(undefined);
-			setVizOption("sort", undefined);
-			setVizOption("seriesLimit", undefined);
+			clearGroupBy();
 			return;
 		}
+		// The backend's explicit-columns override would ignore this grouping.
+		setColumns([]);
 		let terminal: ReturnType<typeof resolveReportPath>["terminal"] | undefined;
 		try {
 			terminal = resolveReportPath(entityType, value).terminal;
@@ -672,77 +693,102 @@ export function ReportBuilder({
 										</p>
 									)}
 								</div>
-							</PanelSection>
 
-							{groupBySectionVisible && (
-								<PanelSection title="Group by">
-									<Popover
-										open={groupByPickerOpen}
-										onOpenChange={setGroupByPickerOpen}
-									>
-										<PopoverTrigger
-											render={
-												<button
-													type="button"
-													className="flex w-full items-center justify-between gap-2 rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-												>
-													<span className="truncate">{groupByLabelText}</span>
-													<ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
-												</button>
-											}
-										/>
-										{groupByPickerOpen && (
-											<PopoverContent
-												side="left"
-												align="start"
-												sideOffset={8}
-												className="w-80 p-0"
+								{perRowVisible && (
+									<div className="space-y-3">
+										<div className="flex items-center gap-2">
+											<span className="shrink-0 text-xs text-muted-foreground">
+												per
+											</span>
+											<Popover
+												open={groupByPickerOpen}
+												onOpenChange={setGroupByPickerOpen}
 											>
-												<ReportFieldPicker
-													entityType={entityType}
-													mode="groupBy"
-													value={groupByBase}
-													directOptions={
-														// A chart must group; raw rows are the Table type's territory.
-														vizType === "table"
-															? [
-																	{
-																		value: NO_GROUP_BY,
-																		label: "None (raw rows)",
-																	},
-																	...directGroupByOptions,
-																]
-															: directGroupByOptions
+												<PopoverTrigger
+													render={
+														<button
+															type="button"
+															className="flex min-w-0 flex-1 items-center justify-between gap-2 rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+														>
+															<span className="truncate">{groupByLabelText}</span>
+															<ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+														</button>
 													}
-													onSelect={(value) => {
-														selectGroupBy(value);
-														setGroupByPickerOpen(false);
-													}}
 												/>
-											</PopoverContent>
-										)}
-									</Popover>
-									{isTimeGroupBy && groupByBase && (
-										<SegmentedControl
-											value={timeGroupMatch?.[2] ?? "month"}
-											onValueChange={(g) => setGroupBy(`${groupByBase}_${g}`)}
-											options={GRANULARITY_OPTIONS}
-											className="w-full"
-										/>
-									)}
-									{groupFieldDef?.options && (
-										<label className="flex items-center justify-between gap-2 text-sm text-foreground">
-											Include empty values
-											<Switch
-												checked={includeEmptyValues === true}
-												onCheckedChange={(checked) =>
-													setIncludeEmptyValues(checked || undefined)
-												}
+												{groupByPickerOpen && (
+													<PopoverContent
+														side="left"
+														align="start"
+														sideOffset={8}
+														className="w-80 p-0"
+													>
+														<ReportFieldPicker
+															entityType={entityType}
+															mode="groupBy"
+															value={groupByBase}
+															directOptions={
+																// A chart must group; raw rows are the Table type's territory.
+																vizType === "table"
+																	? [
+																			{
+																				value: NO_GROUP_BY,
+																				label: "None (raw rows)",
+																			},
+																			...directGroupByOptions,
+																		]
+																	: directGroupByOptions
+															}
+															onSelect={(value) => {
+																selectGroupBy(value);
+																setGroupByPickerOpen(false);
+															}}
+														/>
+													</PopoverContent>
+												)}
+											</Popover>
+										</div>
+										{isTimeGroupBy && groupByBase && (
+											<SegmentedControl
+												value={timeGroupMatch?.[2] ?? "month"}
+												onValueChange={(g) => setGroupBy(`${groupByBase}_${g}`)}
+												options={GRANULARITY_OPTIONS}
+												className="w-full"
 											/>
-										</label>
-									)}
-								</PanelSection>
-							)}
+										)}
+										{groupFieldDef?.options && (
+											<label className="flex items-center justify-between gap-2 text-sm text-foreground">
+												Include empty values
+												<Switch
+													checked={includeEmptyValues === true}
+													onCheckedChange={(checked) =>
+														setIncludeEmptyValues(checked || undefined)
+													}
+												/>
+											</label>
+										)}
+									</div>
+								)}
+
+								{vizType === "table" && (
+									<PanelField label="Columns" helper={columnsHelper}>
+										<MultiSelector
+											options={Object.entries(
+												REPORT_FIELDS[entityType].fields
+											).map(([field, def]) => ({
+												label: def.label,
+												value: field,
+											}))}
+											value={columns}
+											onValueChange={changeColumns}
+											placeholder="Default columns"
+											maxCount={2}
+											// MultiSelector pins disabled buttons to full opacity; re-mute it here.
+											className="w-full disabled:opacity-60"
+											disabled={metricBucketsItself}
+										/>
+									</PanelField>
+								)}
+							</PanelSection>
 
 							{segmentCapable && segmentOptions.length > 0 && (
 								<PanelSection title="Segment by">
@@ -865,35 +911,6 @@ export function ReportBuilder({
 								</PanelSection>
 							)}
 
-							{vizType === "table" && (
-								<PanelSection title="Table options">
-									<PanelField label="Columns" helper={columnsHelper}>
-										<MultiSelector
-											options={Object.entries(
-												REPORT_FIELDS[entityType].fields
-											).map(([field, def]) => ({
-												label: def.label,
-												value: field,
-											}))}
-											value={columns}
-											onValueChange={(vals) =>
-												// Keep table column order stable in registry order,
-												// regardless of the order fields were picked in.
-												setColumns(
-													Object.keys(REPORT_FIELDS[entityType].fields).filter(
-														(f) => vals.includes(f)
-													)
-												)
-											}
-											placeholder="Default columns"
-											maxCount={2}
-											// MultiSelector pins disabled buttons to full opacity; re-mute it here.
-											className="w-full disabled:opacity-60"
-											disabled={metricBucketsItself}
-										/>
-									</PanelField>
-								</PanelSection>
-							)}
 						</>
 					)}
 				</aside>

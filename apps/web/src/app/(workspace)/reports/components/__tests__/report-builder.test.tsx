@@ -111,7 +111,7 @@ describe("ReportBuilder — visualization dropdown (F1, d15)", () => {
 		expect(screen.getByRole("button", { name: /Save report/ })).toBeDisabled();
 		expect(screen.queryByText("Metric", { selector: "h4" })).toBeNull();
 		expect(screen.queryByText("Date", { selector: "h4" })).toBeNull();
-		expect(screen.queryByText("Group by", { selector: "h4" })).toBeNull();
+		expect(screen.queryByText("per")).toBeNull();
 	});
 
 	it("lists every visualization type, Single metric first", async () => {
@@ -134,14 +134,14 @@ describe("ReportBuilder — visualization dropdown (F1, d15)", () => {
 		]);
 	});
 
-	it("Single metric clears grouping: the Group by section disappears", async () => {
+	it("Single metric clears grouping: the per row disappears", async () => {
 		renderBuilder(clientsChartInitial);
 
-		expect(screen.getByText("Group by", { selector: "h4" })).toBeInTheDocument();
+		expect(section("Metric").getByText("per")).toBeInTheDocument();
 
 		await pickVisualization("Single metric");
 
-		expect(screen.queryByText("Group by", { selector: "h4" })).toBeNull();
+		expect(section("Metric").queryByText("per")).toBeNull();
 		expect(section("Visualization").getByRole("combobox")).toHaveTextContent(
 			"Single metric"
 		);
@@ -150,13 +150,13 @@ describe("ReportBuilder — visualization dropdown (F1, d15)", () => {
 	it("a chart pick auto-applies the entity's default groupBy in place of raw rows", async () => {
 		renderBuilder(clientsTableInitial);
 
-		expect(section("Group by").getByText("None (raw rows)")).toBeInTheDocument();
+		expect(section("Metric").getByText("None (raw rows)")).toBeInTheDocument();
 
 		await pickVisualization("Column");
 
-		const groupBy = section("Group by");
-		expect(groupBy.getByText("Status")).toBeInTheDocument();
-		expect(groupBy.queryByText("None (raw rows)")).toBeNull();
+		const metric = section("Metric");
+		expect(metric.getByText("Status")).toBeInTheDocument();
+		expect(metric.queryByText("None (raw rows)")).toBeNull();
 	});
 
 	it("dirty indicator: absent on hydrate, appears after a visualization change", async () => {
@@ -178,13 +178,14 @@ describe("ReportBuilder — visualization dropdown (F1, d15)", () => {
 		expect(section("Visualization").getByRole("combobox")).toHaveTextContent(
 			"Table"
 		);
-		expect(section("Group by").getByText("None (raw rows)")).toBeInTheDocument();
+		expect(section("Metric").getByText("None (raw rows)")).toBeInTheDocument();
 	});
 
-	it("Table options hold the Columns picker; charts get Chart options instead", () => {
+	it("the Columns picker rides in the Metric section; charts get Chart options instead", () => {
 		renderBuilder(clientsTableInitial);
 
-		expect(section("Table options").getByText("Columns")).toBeInTheDocument();
+		expect(section("Metric").getByText("Columns")).toBeInTheDocument();
+		expect(screen.queryByText("Table options", { selector: "h4" })).toBeNull();
 		expect(screen.queryByText("Chart options", { selector: "h4" })).toBeNull();
 	});
 
@@ -233,35 +234,37 @@ describe("ReportBuilder — group-by field picker (F5, d15)", () => {
 	it("the group-by control is a button labeled with the current selection", () => {
 		renderBuilder(lineItemsChart("skuId"));
 
-		expect(section("Group by").getByRole("button", { name: "SKU" })).toBeInTheDocument();
+		expect(section("Metric").getByRole("button", { name: "SKU" })).toBeInTheDocument();
 	});
 
 	it("picking a dotted timestamp path keeps the day/week/month granularity control", () => {
 		renderBuilder(lineItemsChart("skuId"));
 
-		fireEvent.click(section("Group by").getByRole("button", { name: "SKU" }));
+		fireEvent.click(section("Metric").getByRole("button", { name: "SKU" }));
 		fireEvent.change(screen.getByPlaceholderText("Search fields..."), {
 			target: { value: "start date" },
 		});
 		fireEvent.click(pickerRow("Quote › Project › Start Date")!);
 
-		const groupBy = section("Group by");
+		const metricSection = section("Metric");
 		expect(
-			groupBy.getByRole("button", { name: "Quote › Project › Start Date" })
+			metricSection.getByRole("button", { name: "Quote › Project › Start Date" })
 		).toBeInTheDocument();
-		expect(groupBy.getByRole("button", { name: "Month", pressed: true })).toBeInTheDocument();
+		expect(
+			metricSection.getByRole("button", { name: "Month", pressed: true })
+		).toBeInTheDocument();
 	});
 
 	it("a dotted terminal with options keeps the Include empty values switch", () => {
 		renderBuilder(lineItemsChart("quoteId.status"));
 
-		expect(section("Group by").getByText("Include empty values")).toBeInTheDocument();
+		expect(section("Metric").getByText("Include empty values")).toBeInTheDocument();
 	});
 
 	it("a dotted timestamp grouping offers no Include empty values switch", () => {
 		renderBuilder(lineItemsChart("quoteId.projectId.startDate_month"));
 
-		expect(section("Group by").queryByText("Include empty values")).toBeNull();
+		expect(section("Metric").queryByText("Include empty values")).toBeNull();
 	});
 
 	it("an fk-terminal path hides A-to-Z sorting, like a direct FK grouping", async () => {
@@ -329,14 +332,14 @@ describe("ReportBuilder — metric target + aggregation (d15 amendment)", () => 
 		expect(metricControls()[0]).toHaveTextContent("Count of records");
 	});
 
-	it("a ratio target hides the aggregation dropdown and the Group by section", () => {
+	it("a ratio target hides the aggregation dropdown and the per row", () => {
 		renderBuilder(
 			quotesReport({ op: "ratio", ratioKey: "conversionRate" }, { groupBy: undefined })
 		);
 
 		expect(metricControls()).toHaveLength(1);
 		expect(metricControls()[0]).toHaveTextContent("Conversion rate");
-		expect(screen.queryByText("Group by", { selector: "h4" })).toBeNull();
+		expect(section("Metric").queryByText("per")).toBeNull();
 	});
 
 	it("a related count target hides the aggregation dropdown", () => {
@@ -410,7 +413,7 @@ describe("ReportBuilder — metric target + aggregation (d15 amendment)", () => 
 		expect(target).toHaveTextContent("Quote Line Items › Total");
 		expect(agg).toHaveTextContent("Average");
 		// A related rollup buckets itself — the backend rejects grouping on it.
-		expect(screen.queryByText("Group by", { selector: "h4" })).toBeNull();
+		expect(section("Metric").queryByText("per")).toBeNull();
 	});
 });
 
@@ -437,8 +440,24 @@ const RELATED_METRIC: ReportMetric = {
 	related: { entity: "quoteLineItems", fk: "quoteId", op: "count" },
 };
 
+/** Columns rides inside the merged Metric section, so scope to its own field. */
+function columnsField() {
+	const label = screen.getByText("Columns", { selector: "label" });
+	const field = label.parentElement;
+	if (!field) throw new Error("No field wrapper for the Columns picker");
+	return within(field);
+}
+
 function columnsPicker() {
-	return section("Table options").getByRole("button");
+	return columnsField().getByRole("button");
+}
+
+/** The group-by control: the only button in the "per" row. */
+function groupByTrigger() {
+	const label = screen.getByText("per", { selector: "span" });
+	const row = label.parentElement;
+	if (!row) throw new Error("No per row around the group-by control");
+	return within(row).getByRole("button");
 }
 
 describe("ReportBuilder — Table raw-rows legibility", () => {
@@ -447,7 +466,7 @@ describe("ReportBuilder — Table raw-rows legibility", () => {
 
 		expect(columnsPicker()).toBeDisabled();
 		expect(
-			section("Table options").getByText(
+			columnsField().getByText(
 				"Showing this metric instead of raw rows. Set the metric to Count of records to pick columns."
 			)
 		).toBeInTheDocument();
@@ -464,7 +483,7 @@ describe("ReportBuilder — Table raw-rows legibility", () => {
 
 		expect(columnsPicker()).toBeEnabled();
 		expect(
-			section("Table options").getByText("Pick the columns each row shows.")
+			columnsField().getByText("Pick the columns each row shows.")
 		).toBeInTheDocument();
 		expect(
 			section("Metric").getByText(
@@ -478,20 +497,23 @@ describe("ReportBuilder — Table raw-rows legibility", () => {
 
 		expect(columnsPicker()).toBeEnabled();
 		expect(
-			section("Table options").getByText(
+			columnsField().getByText(
 				"Showing one row per group. Picking columns switches to raw rows."
 			)
 		).toBeInTheDocument();
 	});
 
-	it("a grouped table with columns picked is already raw rows", () => {
+	it("a table saved with both a grouping and columns lands on columns, unmodified", () => {
 		renderBuilder(
 			quotesTable({ op: "count" }, { groupBy: "status", columns: ["quoteNumber"] })
 		);
 
+		expect(groupByTrigger()).toHaveTextContent("None (raw rows)");
 		expect(
-			section("Table options").getByText("Pick the columns each row shows.")
+			columnsField().getByText("Pick the columns each row shows.")
 		).toBeInTheDocument();
+		// Normalizing on hydrate must not read as an edit the user made.
+		expect(screen.queryByText("Unsaved changes")).toBeNull();
 	});
 
 	it("a field metric with no grouping says the metric is not what the table shows", () => {
@@ -523,6 +545,90 @@ describe("ReportBuilder — Table raw-rows legibility", () => {
 		renderBuilder(quotesReport({ op: "count" }, { type: "number" }));
 
 		expect(section("Metric").queryByText(/the table/i)).toBeNull();
+	});
+});
+
+describe("ReportBuilder — Group by and Columns are mutually exclusive", () => {
+	it("choosing a grouping clears the picked columns", () => {
+		renderBuilder(quotesTable({ op: "count" }, { columns: ["quoteNumber"] }));
+
+		expect(columnsPicker()).toHaveTextContent("Quote Number");
+
+		fireEvent.click(groupByTrigger());
+		fireEvent.change(screen.getByPlaceholderText("Search fields..."), {
+			target: { value: "status" },
+		});
+		fireEvent.click(pickerRow("Status")!);
+
+		expect(groupByTrigger()).toHaveTextContent("Status");
+		expect(columnsPicker()).toHaveTextContent("Default columns");
+		expect(
+			columnsField().getByText(
+				"Showing one row per group. Picking columns switches to raw rows."
+			)
+		).toBeInTheDocument();
+	});
+
+	it("a round trip through a chart comes back to columns, not the chart's grouping", async () => {
+		renderBuilder(quotesTable({ op: "count" }, { columns: ["quoteNumber"] }));
+
+		await pickVisualization("Column");
+		await pickVisualization("Table");
+
+		expect(groupByTrigger()).toHaveTextContent("None (raw rows)");
+		expect(columnsPicker()).toHaveTextContent("Quote Number");
+	});
+
+	it("picking a column drops the grouping to None", async () => {
+		renderBuilder(quotesTable({ op: "count" }, { groupBy: "status" }));
+
+		fireEvent.click(columnsPicker());
+		fireEvent.click(await screen.findByRole("option", { name: "Quote Number" }));
+
+		expect(groupByTrigger()).toHaveTextContent("None (raw rows)");
+		expect(columnsPicker()).toHaveTextContent("Quote Number");
+	});
+});
+
+describe("ReportBuilder — one Metric section (metric, per, columns)", () => {
+	it("the rail asks one question: the metric, then per what, then which columns", () => {
+		renderBuilder(quotesTable({ op: "count" }, { groupBy: "status" }));
+
+		const metric = section("Metric");
+		expect(metric.getAllByRole("combobox")[0]).toHaveTextContent(
+			"Count of records"
+		);
+		expect(metric.getByText("per")).toBeInTheDocument();
+		expect(groupByTrigger()).toHaveTextContent("Status");
+		expect(metric.getByText("Columns")).toBeInTheDocument();
+		expect(screen.queryByText("Group by", { selector: "h4" })).toBeNull();
+		expect(screen.queryByText("Table options", { selector: "h4" })).toBeNull();
+	});
+
+	it("a grouping's dependents ride with it into the Metric section", () => {
+		renderBuilder(quotesTable({ op: "count" }, { groupBy: "_creationTime_month" }));
+
+		const metric = section("Metric");
+		expect(
+			metric.getByRole("button", { name: "Month", pressed: true })
+		).toBeInTheDocument();
+		expect(metric.queryByText("Include empty values")).toBeNull();
+
+		cleanup();
+		renderBuilder(quotesTable({ op: "count" }, { groupBy: "status" }));
+
+		expect(section("Metric").getByText("Include empty values")).toBeInTheDocument();
+	});
+
+	it("a ratio metric keeps the metric row and drops the per row", () => {
+		renderBuilder(quotesTable({ op: "ratio", ratioKey: "conversionRate" }));
+
+		const metric = section("Metric");
+		expect(metric.getAllByRole("combobox")[0]).toHaveTextContent(
+			"Conversion rate"
+		);
+		expect(metric.queryByText("per")).toBeNull();
+		expect(metric.getByText("Columns")).toBeInTheDocument();
 	});
 });
 

@@ -278,6 +278,7 @@ function ReportPreviewInner({ config, visualization }: ReportPreviewProps) {
 						entityType={config.entityType}
 						metricIsRelated={config.metric.op === "related"}
 						totalIsCurrency={totalIsCurrency}
+						valueHeader={metricLabelFor(config)}
 					/>
 				);
 		}
