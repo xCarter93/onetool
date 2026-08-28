@@ -13,6 +13,7 @@ import type { Id as StorageId } from "@onetool/backend/convex/_generated/dataMod
 import { useState, useMemo, useCallback, useRef } from "react";
 import { DocumentSelectionModal } from "@/app/(workspace)/quotes/components/document-selection-modal";
 import { DocumentPreviewModal } from "@/components/shared/document-preview-modal";
+import { EntityEmailModal } from "@/components/shared/email/entity-email-modal";
 import { buildQuotePdfBlob } from "./components/build-quote-pdf-blob";
 import DeleteConfirmationModal from "@/components/ui/delete-confirmation-modal";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -68,7 +69,7 @@ function QuoteDetailPageContent() {
 	const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
 	const [isDeleting, setIsDeleting] = useState(false);
 	const [isConverting, setIsConverting] = useState(false);
-	const [isSending, setIsSending] = useState(false);
+	const [isEmailModalOpen, setIsEmailModalOpen] = useState(false);
 
 	// Queries
 	const quote = useQuery(api.quotes.get, { id: quoteId });
@@ -132,28 +133,21 @@ function QuoteDetailPageContent() {
 	const generateUploadUrl = useMutation(api.documents.generateUploadUrl);
 	const createDocument = useMutation(api.documents.create);
 	const createInvoiceFromQuote = useMutation(api.invoices.createFromQuote);
-	const sendQuoteToClient = useMutation(api.quotes.sendToClient);
 
-	// Plan gate for e-signature sends (server-enforced; this drives button UX).
+	// Plan gate for e-signature sends (server-enforced; this drives modal UX).
 	const { meter } = useEntitlements();
 	const esignMeter = meter("esignatures");
-	// Only treat as blocked once the meter has resolved, so the button doesn't
-	// flash disabled while usage is loading. remaining null = unlimited.
-	const sendBlocked =
+	// Only treat as blocked once the meter has resolved, so the option doesn't
+	// flash unavailable while usage is loading. remaining null = unlimited.
+	const esignReason =
 		esignMeter !== undefined &&
 		esignMeter.remaining !== null &&
-		esignMeter.remaining <= 0;
-	const esignReason =
-		esignMeter === undefined
-			? "Loading..."
-			: esignMeter.remaining !== null && esignMeter.remaining <= 0
-				? `You've reached your limit of ${esignMeter.limit} e-signatures this month. Upgrade for unlimited.`
-				: undefined;
+		esignMeter.remaining <= 0
+			? `You've reached your limit of ${esignMeter.limit} e-signatures this month. Upgrade for unlimited.`
+			: undefined;
 	// clientSends pre-flight: only a first send debits, so resends stay enabled.
 	const { exhausted: sendsExhausted, reason: sendsReason } =
 		useClientSendMeter();
-	// undefined = the latest-document query is still resolving; null = no PDF.
-	const isLatestDocumentLoading = latestDocument === undefined;
 
 	// Last render produced by the preview, kept so Generate can skip a second
 	// identical render. Invalidated by any client-visible content change.
@@ -412,40 +406,6 @@ function QuoteDetailPageContent() {
 		}
 	};
 
-	const handleSendForSignature = () => {
-		if (isLatestDocumentLoading) return; // still resolving — ignore the click
-		if (latestDocument === null) {
-			toast.error("No PDF", "Generate a PDF first");
-			return;
-		}
-		if (isPdfStale) {
-			// Non-blocking: warning toasts survive the route change into /sign,
-			// so the notice rides along with the user instead of preventing send.
-			toast.warning(
-				"PDF may be out of date",
-				"The attached PDF is older than the latest edits. Regenerate first?"
-			);
-		}
-		router.push(`/quotes/${quoteId}/sign`);
-	};
-
-	const handleSendToClient = async () => {
-		if (isSending) return;
-		setIsSending(true);
-		try {
-			await sendQuoteToClient({ id: quoteId });
-			toast.success(
-				"Quote sent",
-				"Your client will get an email to view and approve it in the portal."
-			);
-		} catch (err) {
-			const message = convexErrorMessage(err, "Failed to send quote");
-			toast.error("Couldn't send quote", message);
-		} finally {
-			setIsSending(false);
-		}
-	};
-
 	// Loading state
 	if (quote === undefined) {
 		return (
@@ -494,19 +454,7 @@ function QuoteDetailPageContent() {
 					quote={quote}
 					currentStatus={currentStatus}
 					onStatusChange={handleStatusChange}
-					onSendToClient={handleSendToClient}
-					sending={isSending}
-					onSendForSignature={handleSendForSignature}
-					sendDisabled={sendBlocked || isLatestDocumentLoading}
-					sendDisabledReason={
-						isLatestDocumentLoading
-							? "Checking for a generated PDF…"
-							: esignReason
-					}
-					clientSendDisabled={
-						sendsExhausted && !quote.firstSentAt && !quote.sentAt
-					}
-					clientSendDisabledReason={sendsReason}
+					onSendEmail={() => setIsEmailModalOpen(true)}
 					onGeneratePdf={() => setShowDocumentModal(true)}
 					onDelete={() => setIsDeleteModalOpen(true)}
 					onConvertToInvoice={handleConvertToInvoice}
@@ -545,6 +493,32 @@ function QuoteDetailPageContent() {
 			</div>
 
 			{/* Modals */}
+			<EntityEmailModal
+				open={isEmailModalOpen}
+				onOpenChange={setIsEmailModalOpen}
+				entity={{
+					type: "quote",
+					id: quoteId,
+					number: quote.quoteNumber,
+					title: quote.title,
+					clientId: quote.clientId,
+					total: quote.total,
+					dateStamp: quote.validUntil,
+					contentUpdatedAt: quote.contentUpdatedAt,
+					firstSentAt: quote.firstSentAt,
+					sentAt: quote.sentAt,
+				}}
+				onNavigateToSignature={() => router.push(`/quotes/${quoteId}/sign`)}
+				signatureDisabledReason={esignReason}
+				emailDisabledReason={
+					currentStatus === "approved"
+						? "This quote is already approved. Convert it to an invoice instead."
+						: sendsExhausted && !quote.firstSentAt && !quote.sentAt
+							? sendsReason
+							: undefined
+				}
+				onRegeneratePdf={() => handleGeneratePdf()}
+			/>
 			<DeleteConfirmationModal
 				isOpen={isDeleteModalOpen}
 				onClose={() => setIsDeleteModalOpen(false)}

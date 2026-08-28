@@ -47,6 +47,7 @@ import {
 	DrawerSkeleton,
 	formatActivityTime,
 } from "@/components/shared/detail-drawer";
+import { EntityEmailModal } from "@/components/shared/email/entity-email-modal";
 import { QuickBooksSyncField } from "@/components/quickbooks/sync-status-row";
 import { formatCurrency } from "@/lib/money";
 import { utcMidnightMsToLocalDate } from "@/lib/dates";
@@ -119,10 +120,8 @@ export function InvoiceDetailDrawer({
 		invoiceId ? { id: invoiceId } : "skip"
 	);
 	const markPaid = useMutation(api.invoices.markPaid);
-	const sendInvoiceToClient = useMutation(api.invoices.sendToClient);
 	const [pending, setPending] = React.useState(false);
-	// Separate from `pending` so the spinner lands on the send row only.
-	const [sending, setSending] = React.useState(false);
+	const [emailOpen, setEmailOpen] = React.useState(false);
 
 	const loading = invoiceId !== null && preview === undefined;
 	const notFound = invoiceId !== null && preview === null;
@@ -163,25 +162,6 @@ export function InvoiceDetailDrawer({
 	const { exhausted: sendsExhausted, reason: sendsReason } =
 		useClientSendMeter();
 
-	const handleSend = async () => {
-		if (!invoiceId || sending) return;
-		setSending(true);
-		try {
-			await sendInvoiceToClient({ id: invoiceId });
-			toast.success(
-				"Invoice sent",
-				"Your client will get an email to view and pay it in the portal."
-			);
-		} catch (err) {
-			console.error("Failed to send invoice:", err);
-			toast.error(
-				"Couldn't send invoice",
-				convexErrorMessage(err, "Please try again.")
-			);
-		} finally {
-			setSending(false);
-		}
-	};
 
 	const recordActions: RecordAction[] = [
 		{
@@ -199,30 +179,26 @@ export function InvoiceDetailDrawer({
 			onClick: handleMarkPaid,
 			variant: "default",
 			slot: "start",
-			disabled: pending || sending || !can("invoices", "modify"),
+			disabled: pending || !can("invoices", "modify"),
 			hidden: !canMarkPaid,
 		},
 		{
-			// Emails the portal invite. Hidden on paid/cancelled invoices, which the
+			// Opens the send modal. Hidden on paid/cancelled invoices, which the
 			// backend rejects; sent/overdue re-send the same link.
 			key: "send-to-client",
-			label:
-				effectiveStatus === "draft" ? "Send to client" : "Resend to client",
+			label: invoice?.firstSentAt ? "Resend to client" : "Send to client",
 			icon: <Mail className="size-3.5" />,
-			onClick: () => void handleSend(),
+			onClick: () => setEmailOpen(true),
 			variant: "outline",
 			slot: "secondary",
+			// The modal needs the client record, so stay disabled until it loads.
 			disabled:
 				pending ||
-				sending ||
 				!can("invoices", "modify") ||
-				(effectiveStatus === "draft" && sendsExhausted && !invoice?.firstSentAt),
+				!client ||
+				(sendsExhausted && !invoice?.firstSentAt),
 			disabledReason:
-				effectiveStatus === "draft" && sendsExhausted && !invoice?.firstSentAt
-					? sendsReason
-					: undefined,
-			loading: sending,
-			loadingLabel: "Sending…",
+				sendsExhausted && !invoice?.firstSentAt ? sendsReason : undefined,
 			hidden:
 				effectiveStatus === "paid" || effectiveStatus === "cancelled",
 		},
@@ -235,6 +211,7 @@ export function InvoiceDetailDrawer({
 			: "Invoice";
 
 	return (
+		<>
 		<DetailDrawer
 			open={open}
 			onOpenChange={onOpenChange}
@@ -309,7 +286,6 @@ export function InvoiceDetailDrawer({
 							invoiceId={invoice._id}
 							currentStatus={effectiveStatus}
 							canModify={canModify}
-							busy={sending}
 						/>
 					</DrawerSection>
 
@@ -407,6 +383,22 @@ export function InvoiceDetailDrawer({
 				</>
 			)}
 		</DetailDrawer>
+		{invoice && client ? (
+			<EntityEmailModal
+				open={emailOpen}
+				onOpenChange={setEmailOpen}
+				entity={{
+					type: "invoice",
+					id: invoice._id,
+					number: invoice.invoiceNumber,
+					clientId: client._id,
+					total: invoice.total,
+					dateStamp: invoice.dueDate,
+					firstSentAt: invoice.firstSentAt ?? undefined,
+				}}
+			/>
+		) : null}
+		</>
 	);
 }
 
@@ -420,13 +412,10 @@ function StatusControl({
 	invoiceId,
 	currentStatus,
 	canModify,
-	busy = false,
 }: {
 	invoiceId: Id<"invoices">;
 	currentStatus: InvoiceStatus;
 	canModify: boolean;
-	/** A send is in flight: its status write would race this one. */
-	busy?: boolean;
 }) {
 	const updateInvoice = useMutation(api.invoices.update);
 	const toast = useToast();
@@ -464,7 +453,7 @@ function StatusControl({
 				<Select
 					value={status}
 					onValueChange={(v) => setStatus(v as InvoiceStatus)}
-					disabled={!canModify || busy}
+					disabled={!canModify}
 				>
 					<SelectTrigger className="h-9 flex-1">
 						<SelectValue />
@@ -478,7 +467,7 @@ function StatusControl({
 					</SelectContent>
 				</Select>
 				{dirty ? (
-					<Button size="sm" disabled={saving || busy} onClick={handleSave}>
+					<Button size="sm" disabled={saving} onClick={handleSave}>
 						{saving && <Loader2 className="h-4 w-4 animate-spin" />}
 						{saving ? "Saving…" : "Save"}
 					</Button>
