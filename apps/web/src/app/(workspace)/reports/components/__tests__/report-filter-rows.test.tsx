@@ -2,7 +2,13 @@
 // Pins the compact rail filter rows (§8 d15 F1+F5): inline field/operator/value
 // rows, one global And/Or connector, and the auto-collapse to Advanced filter.
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+	cleanup,
+	fireEvent,
+	render,
+	screen,
+	waitFor,
+} from "@testing-library/react";
 import "@testing-library/jest-dom/vitest";
 import type { ReportEntityType } from "@onetool/backend/convex/lib/reportFields";
 import type { ReportFilters } from "@onetool/backend/convex/lib/reportFilters";
@@ -183,6 +189,46 @@ describe("ReportFilterRows — compact rows", () => {
 		fireEvent.click(screen.getByRole("button", { name: "Remove Status filter" }));
 
 		expect(onChange).toHaveBeenCalledWith(undefined);
+	});
+
+	it("keeps field, operator and value on one row, with remove outside it", () => {
+		renderRows(
+			"clients",
+			oneGroup([{ field: "status", operator: "equals", value: "active" }])
+		);
+
+		const field = screen.getByRole("button", { name: "Status" });
+		const remove = screen.getByRole("button", { name: "Remove Status filter" });
+		const [operator, value] = screen.getAllByRole("combobox");
+		const row = field.parentElement as HTMLElement;
+
+		expect(row).toContainElement(operator);
+		expect(row).toContainElement(value);
+		expect(row).not.toContainElement(remove);
+	});
+
+	it("the field trigger carries the full breadcrumb path as its tooltip", async () => {
+		renderRows(
+			"quoteLineItems",
+			oneGroup([
+				{
+					field: "quoteId.projectId.startDate",
+					operator: "before",
+					value: undefined,
+				},
+			])
+		);
+
+		screen
+			.getByRole("button", { name: "Quote › Project › Start Date" })
+			.focus();
+
+		// Base UI's tooltip popup carries no `role`, so it's found by its slot.
+		await waitFor(() =>
+			expect(
+				document.querySelector('[data-slot="tooltip-content"]')
+			).toHaveTextContent("Quote › Project › Start Date")
+		);
 	});
 
 	it("offers the advanced editor from compact mode", () => {
