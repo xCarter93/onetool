@@ -32,7 +32,6 @@ import {
 	type RatioKey,
 	type ReportEntityType,
 } from "@onetool/backend/convex/lib/reportFields";
-import { REPORT_RELATIONS } from "@onetool/backend/convex/lib/reportRelations";
 import { REPORT_SCAN_CEILING } from "@onetool/backend/convex/lib/orgScan";
 import {
 	resolveReportQueryArgs,
@@ -252,14 +251,10 @@ export type MetricOption = {
 	metric: ReportMetric;
 };
 
-/** Stable select value for a metric; ratio/related metrics are addressable since R8b. */
+/** Stable select value for a metric; ratio metrics are addressable since R8b. */
 export function metricToValue(metric: ReportMetric): string {
 	if (metric.op === "count") return "count";
 	if (metric.op === "ratio") return `ratio:${metric.ratioKey}`;
-	if (metric.op === "related" && metric.related) {
-		const r = metric.related;
-		return `related:${r.entity}:${r.fk}:${r.op}${r.field ? `:${r.field}` : ""}`;
-	}
 	return `${metric.op}:${metric.field}`;
 }
 
@@ -276,21 +271,15 @@ export const metricAggOptions: { op: MetricAgg; label: string }[] = [
 export type MetricTarget =
 	| { kind: "count" }
 	| { kind: "field"; field: string }
-	| { kind: "ratio"; ratioKey: RatioKey }
-	| { kind: "relatedCount"; entity: EntityType; fk: string }
-	| { kind: "relatedField"; entity: EntityType; fk: string; field: string };
+	| { kind: "ratio"; ratioKey: RatioKey };
 
 export type MetricTargetOption = {
 	value: string;
 	label: string;
-	/** Select heading; also the breadcrumb prefix of a related field's label. */
 	group: string;
 	target: MetricTarget;
 	aggregatable: boolean;
 };
-
-/** Breadcrumb joiner in related-target labels; the picker splits on it. */
-export const METRIC_TARGET_SEPARATOR = " › ";
 
 function numericFieldsOf(entityType: EntityType) {
 	return Object.entries(REPORT_FIELDS[entityType].fields).filter(
@@ -298,22 +287,10 @@ function numericFieldsOf(entityType: EntityType) {
 	);
 }
 
-/** Inverted REPORT_RELATIONS edges: children whose FK points at this entity. */
-function childEdgesOf(entityType: EntityType): { child: EntityType; fk: string }[] {
-	const edges: { child: EntityType; fk: string }[] = [];
-	for (const child of REPORT_ENTITY_TYPES) {
-		if (child === entityType) continue;
-		for (const [fk, edge] of Object.entries(REPORT_RELATIONS[child])) {
-			if (edge.refType === entityType) edges.push({ child, fk });
-		}
-	}
-	return edges;
-}
-
 /**
  * What a metric can measure: the record count, direct numeric/currency fields,
- * named ratio metrics, and one-hop child rollups. Aggregatable targets pair
- * with a separate Sum/Average/Min/Max control.
+ * and named ratio metrics. Aggregatable targets pair with a separate
+ * Sum/Average/Min/Max control.
  */
 export function metricTargetOptionsFor(
 	entityType: EntityType
@@ -346,25 +323,6 @@ export function metricTargetOptionsFor(
 			aggregatable: false,
 		});
 	}
-	for (const { child, fk } of childEdgesOf(entityType)) {
-		const childLabel = entityLabels[child] ?? child;
-		options.push({
-			value: `related:${child}:${fk}:count`,
-			label: `Count of ${childLabel}`,
-			group: childLabel,
-			target: { kind: "relatedCount", entity: child, fk },
-			aggregatable: false,
-		});
-		for (const [field, def] of numericFieldsOf(child)) {
-			options.push({
-				value: `related:${child}:${fk}:field:${field}`,
-				label: `${childLabel}${METRIC_TARGET_SEPARATOR}${def.label}`,
-				group: childLabel,
-				target: { kind: "relatedField", entity: child, fk, field },
-				aggregatable: true,
-			});
-		}
-	}
 	return options;
 }
 
@@ -377,21 +335,6 @@ export function buildMetric(target: MetricTarget, agg: MetricAgg): ReportMetric 
 			return { op: agg, field: target.field };
 		case "ratio":
 			return { op: "ratio", ratioKey: target.ratioKey };
-		case "relatedCount":
-			return {
-				op: "related",
-				related: { entity: target.entity, fk: target.fk, op: "count" },
-			};
-		case "relatedField":
-			return {
-				op: "related",
-				related: {
-					entity: target.entity,
-					fk: target.fk,
-					op: agg,
-					field: target.field,
-				},
-			};
 	}
 }
 
@@ -399,21 +342,11 @@ export function buildMetric(target: MetricTarget, agg: MetricAgg): ReportMetric 
 export function metricTargetValue(metric: ReportMetric): string {
 	if (metric.op === "count") return "count";
 	if (metric.op === "ratio") return `ratio:${metric.ratioKey}`;
-	if (metric.op === "related" && metric.related) {
-		const r = metric.related;
-		return r.op === "count" || !r.field
-			? `related:${r.entity}:${r.fk}:count`
-			: `related:${r.entity}:${r.fk}:field:${r.field}`;
-	}
 	return `field:${metric.field}`;
 }
 
-/** Undefined where the target is its own aggregation (count, related count, ratio). */
+/** Undefined where the target is its own aggregation (count, ratio). */
 export function metricAggOf(metric: ReportMetric): MetricAgg | undefined {
-	if (metric.op === "related") {
-		const op = metric.related?.op;
-		return op && op !== "count" ? op : undefined;
-	}
 	if (metric.op === "count" || metric.op === "ratio") return undefined;
 	return metric.op;
 }

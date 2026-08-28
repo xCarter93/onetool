@@ -19,8 +19,6 @@ export function reportResultToCsv(
 		entityType: string;
 		groupBy?: string;
 		groupByLabel?: string;
-		/** Overrides the row header when rows aren't groupBy buckets (related rollups). */
-		rowLabel?: string;
 	}
 ): { headers: string[]; rows: CsvCell[][] } {
 	if (result.detail) {
@@ -52,7 +50,7 @@ export function reportResultToCsv(
 	);
 
 	const headers = [
-		opts.rowLabel ?? opts.groupByLabel ?? "Category",
+		opts.groupByLabel ?? "Category",
 		itemValueIsCurrency ? "Value" : "Count",
 		...(hasTotalValue ? ["Value"] : []),
 	];

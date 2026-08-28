@@ -419,18 +419,16 @@ describe("report traversal: registry-derived FK pairs", () => {
 		return { org, asOrg, ...seeded };
 	}
 
-	it("quotes roll up their line items (pair derived from REPORT_RELATIONS)", async () => {
+	it("line items roll up per quote by grouping on the registry FK", async () => {
 		const { asOrg } = await seedQuotesWithLineItems();
 
 		const result = await asOrg.query(api.reportData.executeReport, {
-			entityType: "quotes",
+			entityType: "quoteLineItems",
 			config: {
 				version: 2,
-				entityType: "quotes",
-				metric: {
-					op: "related",
-					related: { entity: "quoteLineItems", fk: "quoteId", field: "amount", op: "sum" },
-				},
+				entityType: "quoteLineItems",
+				metric: { op: "sum", field: "amount" },
+				groupBy: "quoteId",
 			},
 		});
 		expect(labelValues(result.data)).toStrictEqual([
@@ -637,38 +635,6 @@ describe("report traversal: permissions and validation", () => {
 				},
 			})
 		).rejects.toThrow(/is a time bucket/);
-	});
-
-	it("rejects dotted fields in related.filters", async () => {
-		const { asOrg } = await seedForPermissions();
-		await expect(
-			asOrg.query(api.reportData.executeReport, {
-				entityType: "quotes",
-				config: {
-					version: 2,
-					entityType: "quotes",
-					metric: {
-						op: "related",
-						related: {
-							entity: "quoteLineItems",
-							fk: "quoteId",
-							op: "count",
-							filters: {
-								logic: "and",
-								groups: [
-									{
-										logic: "and",
-										rules: [
-											{ field: "quoteId.status", operator: "equals", value: "draft" },
-										],
-									},
-								],
-							},
-						},
-					},
-				},
-			})
-		).rejects.toThrow(/Related-path report filter field/);
 	});
 
 	it("rejects dotted filters and groupBy on the legacy args path", async () => {

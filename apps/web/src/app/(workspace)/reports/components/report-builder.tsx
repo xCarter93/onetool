@@ -57,7 +57,7 @@ import {
 	countFilterRules,
 	sanitizeReportFilters,
 } from "./report-filter-model";
-import { entityLabel, pathLabel } from "../report-path-options";
+import { pathLabel } from "../report-path-options";
 import {
 	builderStateToSaved,
 	dateFieldOptionsFor,
@@ -90,9 +90,6 @@ const GRANULARITY_OPTIONS = [
 	{ value: "week", label: "Week" },
 	{ value: "month", label: "Month" },
 ] as const;
-
-/** Where a metric that can't render as a single value lands. */
-const FALLBACK_CHART_TYPE: VizType = "bar";
 
 export interface ReportBuilderInitial {
 	name: string;
@@ -263,8 +260,6 @@ export function ReportBuilder({
 		if (next === "number") {
 			setGroupBy(undefined);
 			setSegmentBy(undefined);
-			// A related rollup is inherently bucketed — no scalar rendering.
-			if (metric.op === "related") setMetric({ op: "count" });
 			return;
 		}
 		if (next === "table") {
@@ -275,35 +270,26 @@ export function ReportBuilder({
 		}
 		// Only bar/column render segments (honest encodings).
 		if (next !== "bar" && next !== "column") setSegmentBy(undefined);
-		if (
-			entityType &&
-			!groupBy &&
-			metric.op !== "ratio" &&
-			metric.op !== "related"
-		) {
+		if (entityType && !groupBy && metric.op !== "ratio") {
 			setGroupBy(DEFAULT_GROUP_BY[entityType]);
 		}
 	};
 
 	const changeMetric = (next: ReportMetric) => {
 		setMetric(next);
-		if (next.op === "ratio" || next.op === "related") {
-			// Backend rejects grouping on ratio/related — they bucket themselves.
+		if (next.op === "ratio") {
+			// Backend rejects grouping on a ratio — it buckets itself.
 			setGroupBy(undefined);
 			setSegmentBy(undefined);
-			if (next.op === "related" && vizType === "number") {
-				setVizType(FALLBACK_CHART_TYPE);
-			}
 		} else if (isChart && !groupBy && entityType) {
 			setGroupBy(DEFAULT_GROUP_BY[entityType]);
 		}
 	};
 
-	const perRowVisible =
-		vizType !== "number" && metric.op !== "ratio" && metric.op !== "related";
+	const perRowVisible = vizType !== "number" && metric.op !== "ratio";
 
-	// Ratio and related metrics bucket themselves — no column choice makes their table raw rows.
-	const metricBucketsItself = metric.op === "ratio" || metric.op === "related";
+	// A ratio metric buckets itself — no column choice makes its table raw rows.
+	const metricBucketsItself = metric.op === "ratio";
 	const rawRowsActive = saved ? isDetailModeActive(saved.config, vizType) : false;
 	const columnsHelper = metricBucketsItself
 		? "Showing this metric instead of raw rows. Set the metric to Count of records to pick columns."
@@ -313,13 +299,11 @@ export function ReportBuilder({
 
 	const tableMetricHelper =
 		vizType === "table" && !groupBy && entityType
-			? metric.op === "related"
-				? `One row per ${entityLabel(entityType)} with this rollup.`
-				: metric.op === "ratio"
-					? "The table shows this ratio's breakdown instead of raw rows."
-					: metric.op === "count"
-						? "Counting records with no grouping — the table lists each record as a row."
-						: "The table lists raw rows. This metric applies once the table is grouped."
+			? metric.op === "ratio"
+				? "The table shows this ratio's breakdown instead of raw rows."
+				: metric.op === "count"
+					? "Counting records with no grouping — the table lists each record as a row."
+					: "The table lists raw rows. This metric applies once the table is grouped."
 			: undefined;
 
 	// Group-by picker anatomy (R9): timestamp options collapse to one entry per
@@ -367,8 +351,7 @@ export function ReportBuilder({
 	const segmentCapable =
 		(vizType === "bar" || vizType === "column") &&
 		!!groupBy &&
-		metric.op !== "ratio" &&
-		metric.op !== "related";
+		metric.op !== "ratio";
 	const segmentOptions = entityType
 		? nonTimeGroupOptions.filter(
 				(o) => o.value !== groupBy && !getRelationEdge(entityType, o.value)

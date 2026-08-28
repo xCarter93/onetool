@@ -97,20 +97,13 @@ describe("reportResultToCsv — grouped mode", () => {
 		expect(rows).toEqual([["2026-02", "$1,200"]]);
 	});
 
-	it("row-label header precedence: rowLabel wins, then groupByLabel, then Category", () => {
+	it("row-label header precedence: groupByLabel wins, then Category", () => {
 		const result = {
 			data: [{ label: "Q-1001", value: 3 }],
 			total: 3,
 			metadata: { entityType: "quotes", truncated: false },
 		};
 
-		expect(
-			reportResultToCsv(result, {
-				entityType: "quotes",
-				rowLabel: "Quote",
-				groupByLabel: "Status",
-			}).headers[0]
-		).toBe("Quote");
 		expect(
 			reportResultToCsv(result, { entityType: "quotes", groupByLabel: "Status" })
 				.headers[0]

@@ -50,19 +50,9 @@ export const reportVisualizationValidator = v.object({
 export type ReportVisualization = Infer<typeof reportVisualizationValidator>;
 
 export const reportMetricValidator = v.object({
-	op: literals("count", "sum", "avg", "min", "max", "ratio", "related"),
+	op: literals("count", "sum", "avg", "min", "max", "ratio"),
 	field: v.optional(v.string()),
 	ratioKey: v.optional(literals(...RATIO_KEYS)),
-	// Related-rollup shape per §3.2; executable from R5.
-	related: v.optional(
-		v.object({
-			entity: reportEntityTypeValidator,
-			fk: v.string(),
-			field: v.optional(v.string()),
-			op: literals("count", "sum", "avg", "min", "max"),
-			filters: v.optional(reportFiltersValidator),
-		})
-	),
 });
 
 export type ReportMetric = Infer<typeof reportMetricValidator>;

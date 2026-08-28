@@ -105,7 +105,7 @@ export const generatedReportSchema = z.object({
 		),
 	measure: z
 		.object({
-			op: z.enum(["count", "sum", "avg", "min", "max", "ratio", "related"]),
+			op: z.enum(["count", "sum", "avg", "min", "max", "ratio"]),
 			field: z
 				.string()
 				.nullable()
@@ -114,17 +114,6 @@ export const generatedReportSchema = z.object({
 				.enum(RATIO_KEYS)
 				.nullable()
 				.describe('Required for op "ratio"; null otherwise.'),
-			related: z
-				.object({
-					entity: z.enum(ENTITY_TYPES),
-					field: z
-						.string()
-						.nullable()
-						.describe("A number/currency field of that entity; null for count."),
-					op: z.enum(["count", "sum", "avg", "min", "max"]),
-				})
-				.nullable()
-				.describe('Required for op "related"; null otherwise.'),
 		})
 		.nullable()
 		.describe("What each group's value is. Null means count of records."),
@@ -236,8 +225,8 @@ export const REPORT_CONFIG_SYSTEM_PROMPT = [
 	`- measure {op: "ratio", ratioKey}: a built-in percentage. Available: ${RATIO_KEYS.map(
 		(key) => `"${key}" on ${RATIO_METRICS[key].entityType}`
 	).join(", ")}. groupBy must be null.`,
-	'- measure {op: "related", related: {entity, field, op}}: rolls a linked entity up onto each record of the report entity — e.g. entityType "clients" with related {entity: "invoices", field: "total", op: "sum"} is total invoiced per client. The related entity must link to the report entity in the list above; field is null for op "count". groupBy must be null.',
-	'- A ratio or related measure renders as one figure, so the visualization you pick is ignored — use "table".',
+	'- To roll a linked entity up per record, report on the child entity and group by the link: "total invoiced per client" is entityType "invoices" with measure {op: "sum", field: "total"} and groupBy "clientId"; "count of line items per quote" is entityType "quoteLineItems" with measure null and groupBy "quoteId" (a parent path like "quoteId.quoteNumber" labels the buckets by that field instead).',
+	'- A ratio measure renders as one figure, so the visualization you pick is ignored — use "table".',
 	"- filters: fields listed for the entity, or a dotted path ending in one. Timestamp fields filter with before/after/on and a YYYY-MM-DD value — no other operator applies to a date, and those three apply to nothing else. When a field lists allowed values, equals/not_equals values must match one exactly.",
 	'- "contains" is for free-text string fields only; greater/less operators are for number and currency fields.',
 	"- Money values are dollars (e.g. 500 means $500).",
@@ -246,7 +235,7 @@ export const REPORT_CONFIG_SYSTEM_PROMPT = [
 	"- name: a short title like a human would write; description: one sentence or null.",
 	"",
 	"When the request comes with a configuration the user already has open, it is described in saved-report terms — reproduce every part of it you were not asked to change:",
-	'- "metric: count of records" is measure null; "metric: sum of total" is measure {op: "sum", field: "total"}; "metric: ratio (conversionRate)" is measure {op: "ratio", ratioKey: "conversionRate"}; "metric: sum of related invoices total" is measure {op: "related", related: {entity: "invoices", field: "total", op: "sum"}}.',
+	'- "metric: count of records" is measure null; "metric: sum of total" is measure {op: "sum", field: "total"}; "metric: ratio (conversionRate)" is measure {op: "ratio", ratioKey: "conversionRate"}.',
 	'- A date range named as a period ("date range: this_month") is that datePreset; explicit days are startDate/endDate.',
 	'- A dotted "group by" is that exact string.',
 	'- invoices summing total over paid records grouped by paidAt_month or clientId are groupBy "month" and "client".',
@@ -307,32 +296,6 @@ function pathErrorMessage(error: unknown): string {
 	return error instanceof Error ? error.message : String(error);
 }
 
-/**
- * The FK field linking a child entity to the report entity — derived here so
- * the model never has to know column names. Ambiguity (two edges to the same
- * parent) doesn't exist in today's registry, but fails closed if one is added.
- */
-export function relatedFkField(
-	child: ReportEntityType,
-	parent: ReportEntityType
-): { fk: string } | { error: string } {
-	const candidates = Object.entries(REPORT_RELATIONS[child])
-		.filter(([, edge]) => edge.refType === parent)
-		.map(([field]) => field);
-	if (candidates.length === 1) return { fk: candidates[0] };
-	if (candidates.length > 1) {
-		return {
-			error: `related entity "${child}" links to ${parent} through more than one field (${candidates.join(", ")}) — that rollup is ambiguous`,
-		};
-	}
-	const linked = ENTITY_TYPES.filter((entity) =>
-		Object.values(REPORT_RELATIONS[entity]).some((edge) => edge.refType === parent)
-	);
-	return {
-		error: `related entity "${child}" has no link to ${parent}; entities that link to ${parent} are ${linked.join(", ") || "(none)"}`,
-	};
-}
-
 /** Field def a filter rule ends on — direct or through a dotted path. */
 function resolveFilterFieldDef(
 	entityType: ReportEntityType,
@@ -383,13 +346,9 @@ export function validateGeneratedReport(gen: GeneratedReport): string[] {
 	}
 
 	const measure = gen.measure;
-	if (measure?.op === "ratio" || measure?.op === "related") {
-		// Both bucket without a dimension — reportData rejects any grouping.
-		if (gen.groupBy !== null) {
-			errors.push(
-				`a ${measure.op} measure cannot combine with a groupBy — use groupBy null`
-			);
-		}
+	if (measure?.op === "ratio" && gen.groupBy !== null) {
+		// A ratio buckets without a dimension — reportData rejects any grouping.
+		errors.push("a ratio measure cannot combine with a groupBy — use groupBy null");
 	}
 	if (measure?.op === "ratio") {
 		if (!measure.ratioKey) {
@@ -398,28 +357,6 @@ export function validateGeneratedReport(gen: GeneratedReport): string[] {
 			errors.push(
 				`ratio "${measure.ratioKey}" is only available for ${RATIO_METRICS[measure.ratioKey].entityType}, not ${entityType}`
 			);
-		}
-	} else if (measure?.op === "related") {
-		const related = measure.related;
-		if (!related) {
-			errors.push("measure related requires a related entity, field and op");
-		} else {
-			const fk = relatedFkField(related.entity, entityType);
-			if ("error" in fk) errors.push(fk.error);
-			if (related.op === "count") {
-				if (related.field) {
-					errors.push(`a related count does not take a field`);
-				}
-			} else if (!related.field) {
-				errors.push(`related ${related.op} requires a field`);
-			} else {
-				const def = getReportField(related.entity, related.field);
-				if (!def || (def.type !== "number" && def.type !== "currency")) {
-					errors.push(
-						`related field "${related.field}" must be a number or currency field of ${related.entity}`
-					);
-				}
-			}
 		}
 	} else if (measure && measure.op !== "count") {
 		if (!measure.field) {
@@ -607,20 +544,6 @@ function toNativeMetric(gen: GeneratedReport): ReportMetric | undefined {
 			? { op: "ratio", ratioKey: measure.ratioKey }
 			: undefined;
 	}
-	if (measure?.op === "related" && measure.related) {
-		const related = measure.related;
-		const fk = relatedFkField(related.entity, gen.entityType);
-		if ("error" in fk) return undefined;
-		return {
-			op: "related",
-			related: {
-				entity: related.entity,
-				fk: fk.fk,
-				...(related.field ? { field: related.field } : {}),
-				op: related.op,
-			},
-		};
-	}
 	return undefined;
 }
 
@@ -640,7 +563,7 @@ function resolveVisualization(
 }
 
 function isMetricOnlyMeasure(measure: GeneratedReport["measure"]): boolean {
-	return measure?.op === "ratio" || measure?.op === "related";
+	return measure?.op === "ratio";
 }
 
 /**
@@ -648,8 +571,8 @@ function isMetricOnlyMeasure(measure: GeneratedReport["measure"]): boolean {
  * Routed through the v1 normalizer because the generatable Group-by
  * vocabulary still includes the magic keys (month, client, conversionRate,
  * completionRate), which only become executable v2 configs by expansion; the
- * two things v1 cannot carry (ratio/related metrics, preset ranges) are laid
- * over the expansion, so a preset keeps the date FIELD the expansion chose.
+ * two things v1 cannot carry (ratio metrics, preset ranges) are laid over the
+ * expansion, so a preset keeps the date FIELD the expansion chose.
  */
 function toGeneratedConfig(
 	gen: GeneratedReport,
@@ -753,11 +676,6 @@ export function summarizeGeneratedReport(gen: GeneratedReport): string {
 	}
 	if (measure?.op === "ratio" && measure.ratioKey) {
 		parts.push(`measuring ratio (${measure.ratioKey})`);
-	} else if (measure?.op === "related" && measure.related) {
-		const related = measure.related;
-		parts.push(
-			`measuring ${related.op} of related ${related.entity}${related.field ? ` ${related.field}` : ""}`
-		);
 	} else if (measure && isAggregationOp(measure.op) && measure.field) {
 		parts.push(`measuring ${measure.op} of ${measure.field}`);
 	}
@@ -823,7 +741,6 @@ const METRIC_OPS: readonly ReportMetric["op"][] = [
 	"min",
 	"max",
 	"ratio",
-	"related",
 ];
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -883,12 +800,6 @@ function isoDay(ms: number | undefined): string | undefined {
 function describeMetric(metric: ReportMetric): string {
 	if (metric.op === "count") return "count of records";
 	if (metric.op === "ratio") return `ratio (${metric.ratioKey ?? "unknown"})`;
-	if (metric.op === "related") {
-		const related = metric.related;
-		return related
-			? `${related.op} of related ${related.entity}${related.field ? ` ${related.field}` : ""}`
-			: "related rollup";
-	}
 	return `${metric.op} of ${metric.field ?? "(no field)"}`;
 }
 

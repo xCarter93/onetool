@@ -4,6 +4,7 @@ import {
 	type GeneratedReport,
 	describeCurrentConfig,
 	generateConfigForBuilder,
+	generatedReportSchema,
 	parseCurrentConfig,
 	reportConfigAgent,
 	sanitizeGeneratedFilters,
@@ -40,7 +41,7 @@ function measure(
 		op: NonNullable<GeneratedReport["measure"]>["op"];
 	}
 ): GeneratedReport["measure"] {
-	return { field: null, ratioKey: null, related: null, ...partial };
+	return { field: null, ratioKey: null, ...partial };
 }
 
 describe("sanitizeGeneratedFilters", () => {
@@ -579,7 +580,7 @@ describe("new-vocabulary configs execute end-to-end", () => {
 		t = setupConvexTest();
 	});
 
-	it("ratio, related, preset, dotted groupBy and date filters all run through executeReport", async () => {
+	it("ratio, preset, dotted groupBy and date filters all run through executeReport", async () => {
 		const org = await t.run(async (ctx) => await createTestOrg(ctx));
 		const asUser = t.withIdentity(
 			createTestIdentity(org.clerkUserId, org.clerkOrgId)
@@ -590,14 +591,6 @@ describe("new-vocabulary configs execute end-to-end", () => {
 				entityType: "quotes",
 				groupBy: null,
 				measure: measure({ op: "ratio", ratioKey: "conversionRate" }),
-			}),
-			gen({
-				entityType: "clients",
-				groupBy: null,
-				measure: measure({
-					op: "related",
-					related: { entity: "invoices", field: "total", op: "sum" },
-				}),
 			}),
 			gen({ groupBy: "clientId.leadSource", datePreset: "this_year" }),
 			gen({
@@ -771,7 +764,7 @@ describe("NL generation plan gate (nlReportGeneration)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// F4 vocabulary expansion (d15): presets, ratio/related metrics, date filter
+// F4 vocabulary expansion (d15): presets, ratio metrics, date filter
 // operators, dotted traversal paths.
 // ---------------------------------------------------------------------------
 
@@ -848,95 +841,21 @@ describe("ratio measures", () => {
 	});
 });
 
-describe("related measures", () => {
-	const related = gen({
-		entityType: "clients",
-		groupBy: null,
-		measure: measure({
-			op: "related",
-			related: { entity: "invoices", field: "total", op: "sum" },
-		}),
-		visualization: "bar",
-		name: "Invoiced per client",
-	});
-
-	it("accepts a rollup whose child links to the report entity", () => {
-		expect(validateGeneratedReport(related)).toEqual([]);
-	});
-
-	it("derives the fk from the registry", () => {
-		const saved = toSavedReport(related);
-		expect(saved.config.metric).toEqual({
-			op: "related",
-			related: { entity: "invoices", fk: "clientId", field: "total", op: "sum" },
-		});
-		expect(saved.config.groupBy).toBeUndefined();
-		expect(saved.visualization).toEqual({ type: "number" });
-	});
-
-	it("fails closed when no fk edge links the child to the report entity", () => {
-		const errors = validateGeneratedReport({
-			...related,
-			entityType: "invoices",
-			measure: measure({
-				op: "related",
-				related: { entity: "tasks", field: null, op: "count" },
-			}),
-		});
-		expect(errors[0]).toMatch(/tasks.*invoices/);
-	});
-
-	it("enforces the child field rules and forbids grouping", () => {
-		expect(
-			validateGeneratedReport({
-				...related,
-				measure: measure({
+describe("related rollup measures are not generatable", () => {
+	it("the schema rejects a measure with op \"related\"", () => {
+		const parsed = generatedReportSchema.safeParse(
+			gen({
+				entityType: "clients",
+				groupBy: null,
+				measure: {
 					op: "related",
-					related: { entity: "invoices", field: null, op: "sum" },
-				}),
-			})[0]
-		).toMatch(/requires a field/);
-		expect(
-			validateGeneratedReport({
-				...related,
-				measure: measure({
-					op: "related",
-					related: { entity: "invoices", field: "total", op: "count" },
-				}),
-			})[0]
-		).toMatch(/count/);
-		expect(
-			validateGeneratedReport({
-				...related,
-				measure: measure({
-					op: "related",
-					related: { entity: "invoices", field: "status", op: "sum" },
-				}),
-			})[0]
-		).toMatch(/number or currency field of invoices/);
-		expect(
-			validateGeneratedReport({ ...related, groupBy: "status" })[0]
-		).toMatch(/cannot combine with a groupBy/);
-		expect(
-			validateGeneratedReport({
-				...related,
-				measure: measure({ op: "related" }),
-			})[0]
-		).toMatch(/requires a related/);
-	});
-
-	it("counts related children with no field", () => {
-		const saved = toSavedReport({
-			...related,
-			measure: measure({
-				op: "related",
-				related: { entity: "invoices", field: null, op: "count" },
-			}),
-		});
-		expect(saved.config.metric).toEqual({
-			op: "related",
-			related: { entity: "invoices", fk: "clientId", op: "count" },
-		});
+					field: null,
+					ratioKey: null,
+					related: { entity: "invoices", field: "total", op: "sum" },
+				},
+			} as unknown as GeneratedReport)
+		);
+		expect(parsed.success).toBe(false);
 	});
 });
 
@@ -1141,33 +1060,6 @@ describe("describeCurrentConfig round-trips", () => {
 				entityType: "quotes",
 				groupBy: null,
 				measure: measure({ op: "ratio", ratioKey: "conversionRate" }),
-			})
-		);
-		expect(saved.config.metric).toEqual(config.metric);
-	});
-
-	it("re-expresses a related rollup, deriving the same fk", () => {
-		const config = {
-			entityType: "clients" as const,
-			metric: {
-				op: "related" as const,
-				related: {
-					entity: "invoices" as const,
-					fk: "clientId",
-					field: "total",
-					op: "sum" as const,
-				},
-			},
-		};
-		expect(render(config)).toContain("metric: sum of related invoices total");
-		const saved = toSavedReport(
-			gen({
-				entityType: "clients",
-				groupBy: null,
-				measure: measure({
-					op: "related",
-					related: { entity: "invoices", field: "total", op: "sum" },
-				}),
 			})
 		);
 		expect(saved.config.metric).toEqual(config.metric);

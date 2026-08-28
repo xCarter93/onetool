@@ -1,6 +1,5 @@
 "use client";
 
-import type { ReactNode } from "react";
 import {
 	Select,
 	SelectContent,
@@ -21,7 +20,6 @@ import {
 	metricAggOptions,
 	metricTargetOptionsFor,
 	metricTargetValue,
-	METRIC_TARGET_SEPARATOR,
 	type EntityType,
 	type MetricAgg,
 	type MetricTargetOption,
@@ -31,8 +29,8 @@ import {
 /**
  * Attio's two-control metric (§8 d15 amendment): what to measure on the left,
  * how to aggregate on the right. Both controls derive from the metric itself —
- * switching to a target that carries its own aggregation (count, related count,
- * ratio) hides the dropdown, and coming back defaults to Sum.
+ * switching to a target that carries its own aggregation (count, ratio) hides
+ * the dropdown, and coming back defaults to Sum.
  */
 export function ReportMetricControls({
 	entityType,
@@ -80,13 +78,8 @@ export function ReportMetricControls({
 						<SelectGroup key={heading}>
 							<SelectLabel>{heading}</SelectLabel>
 							{items.map((option) => (
-								<SelectItem
-									key={option.value}
-									value={option.value}
-									// The label splits across nodes for the muted trail; name it whole.
-									aria-label={option.label}
-								>
-									{targetItemLabel(option)}
+								<SelectItem key={option.value} value={option.value}>
+									{option.label}
 								</SelectItem>
 							))}
 						</SelectGroup>
@@ -113,17 +106,5 @@ export function ReportMetricControls({
 				</Select>
 			)}
 		</div>
-	);
-}
-
-/** Muted parent trail so the trigger reads as a breadcrumb once truncated. */
-function targetItemLabel(option: MetricTargetOption): ReactNode {
-	const prefix = `${option.group}${METRIC_TARGET_SEPARATOR}`;
-	if (!option.label.startsWith(prefix)) return option.label;
-	return (
-		<>
-			<span className="text-muted-foreground">{prefix}</span>
-			{option.label.slice(prefix.length)}
-		</>
 	);
 }

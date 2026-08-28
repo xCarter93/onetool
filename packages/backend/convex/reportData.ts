@@ -22,7 +22,6 @@ import {
 import {
 	reportConfigV2Validator,
 	type ReportConfigV2,
-	type ReportMetric,
 } from "./lib/reportConfig";
 import { resolveDateRangePreset } from "./lib/reportDates";
 import {
@@ -77,7 +76,7 @@ export interface ReportDataResult {
 		dateRange?: { start: number; end: number };
 		groupBy?: string;
 		truncated?: boolean;
-		/** Which scans hit their ceiling; present only on truncated related rollups. */
+		/** Which scans hit their ceiling; present only when a traversed scan truncated. */
 		truncatedEntities?: string[];
 		totalIsCurrency?: boolean;
 		itemValueIsCurrency?: boolean;
@@ -289,7 +288,7 @@ function computeAggregateValue(rows: Row[], aggregation?: Aggregation): number {
 // Filter / Aggregation Validation
 // ============================================================================
 
-/** Direct-only surfaces: the legacy args path and the R5 child `related.filters`. */
+/** Direct-only surface: the legacy args path, which has no dotted-path support. */
 function validateFilters(entityType: ReportEntityType, filters?: ReportFilters): void {
 	if (!filters) return;
 	for (const group of filters.groups) {
@@ -1167,7 +1166,7 @@ function planFromConfig(
 	sort?: BucketSort
 ): AggregationPlan {
 	const metric = config.metric;
-	if (metric.op === "ratio" || metric.op === "related") {
+	if (metric.op === "ratio") {
 		throw new ConvexError(`Report metric op "${metric.op}" is not executable yet`);
 	}
 	const { dateField, bounds } = resolveConfigDates(config, timezone);
@@ -1249,117 +1248,6 @@ async function runRatioMetric(
 	};
 }
 
-/**
- * Related-rollup metric (§3.2, executable from R5). The report's entityType is
- * the parent; buckets are parent records rolled up from a second bounded child
- * scan. Per §8 d12: config.date bounds the CHILD scan, config.filters narrow
- * the parent universe, children with no fk or a parent outside that universe
- * are dropped, and zero-children parents appear only with includeEmptyValues.
- */
-async function runRelatedMetric(
-	ctx: QueryCtx,
-	orgId: Id<"organizations">,
-	config: ReportConfigV2,
-	related: NonNullable<ReportMetric["related"]>,
-	seriesLimit: number | undefined,
-	timezone: string | undefined
-): Promise<ReportDataResult> {
-	const parent = config.entityType;
-	const child = related.entity;
-	if (config.groupBy || config.segmentBy) {
-		throw new ConvexError(`Related metrics do not support grouping`);
-	}
-	const fk = getGroupableFk(child, related.fk);
-	if (!fk || fk.refType !== parent) {
-		throw new ConvexError(
-			`No registry FK "${related.fk}" from entity "${child}" to entity "${parent}"`
-		);
-	}
-	const aggregation: Aggregation = {
-		op: related.op,
-		...(related.field ? { field: related.field } : {}),
-	};
-	validateAggregation(child, aggregation);
-	const childFilters = related.filters as ReportFilters | undefined;
-	validateFilters(child, childFilters);
-
-	const { dateField: childDateField, bounds: childBounds } = resolveConfigDatesFor(
-		child,
-		config.date,
-		timezone
-	);
-	const parentScan = await scanFiltered(
-		ctx,
-		parent,
-		orgId,
-		getReportDateField(parent),
-		resolveDateBounds(undefined),
-		config.filters as ReportFilters | undefined,
-		timezone
-	);
-	const childScan = await scanFiltered(
-		ctx,
-		child,
-		orgId,
-		childDateField,
-		childBounds,
-		childFilters,
-		timezone
-	);
-
-	const parents = new Map<string, Row>();
-	for (const row of parentScan.rows) parents.set(String(row._id), row);
-
-	const childrenByParent = new Map<string, Row[]>();
-	for (const row of childScan.rows) {
-		const key = bucketKeyOf(row[related.fk]);
-		if (!parents.has(key)) continue;
-		const list = childrenByParent.get(key);
-		if (list) list.push(row);
-		else childrenByParent.set(key, [row]);
-	}
-
-	const includedChildRows = [...childrenByParent.values()].flat();
-	let buckets: Bucket[] = [...parents.entries()]
-		.filter(([key]) => (config.includeEmptyValues ?? false) || childrenByParent.has(key))
-		.map(([key, parentRow]) => ({
-			key,
-			label: fkDocLabel(fk.refType, parentRow, key),
-			rows: childrenByParent.get(key) ?? [],
-			value: computeAggregateValue(childrenByParent.get(key) ?? [], aggregation),
-			metadata: { [related.fk]: key },
-		}))
-		.sort((a, b) => b.value - a.value);
-
-	if (seriesLimit !== undefined && Number.isFinite(seriesLimit)) {
-		buckets = buckets.slice(0, Math.max(1, Math.floor(seriesLimit)));
-	}
-
-	const aggFieldDef = related.field ? getReportField(child, related.field) : undefined;
-	const isCurrencyAgg = related.op !== "count" && aggFieldDef?.type === "currency";
-	const truncatedEntities = [
-		...new Set([
-			...(parentScan.truncated ? [parent] : []),
-			...(childScan.truncated ? [child] : []),
-			...parentScan.truncatedEntities,
-			...childScan.truncatedEntities,
-		]),
-	];
-
-	return {
-		data: buckets.map((b) => ({ label: b.label, value: b.value, metadata: b.metadata })),
-		total: computeAggregateValue(includedChildRows, aggregation),
-		metadata: {
-			entityType: parent,
-			dateRange: metadataDateRange(childBounds),
-			groupBy: related.fk,
-			truncated: truncatedEntities.length > 0,
-			...(truncatedEntities.length > 0 ? { truncatedEntities } : {}),
-			...(isCurrencyAgg ? { totalIsCurrency: true, itemValueIsCurrency: true } : {}),
-		},
-	};
-}
-
 export const executeReport = optionalUserQuery({
 	args: {
 		entityType: reportEntityTypeValidator,
@@ -1420,16 +1308,6 @@ export const executeReport = optionalUserQuery({
 					throw new ConvexError(`Ratio metric requires a ratioKey`);
 				}
 				return await runRatioMetric(ctx, orgId, config, config.metric.ratioKey, timezone);
-			}
-			if (config.metric.op === "related") {
-				const related = config.metric.related;
-				if (!related) {
-					throw new ConvexError(`Related metric requires a related descriptor`);
-				}
-				// Permission intersection (§8 d12): parent was checked above, the
-				// child scan needs its own entity access, fail closed.
-				await requireReportEntityAccess(ctx, related.entity);
-				return await runRelatedMetric(ctx, orgId, config, related, args.seriesLimit, timezone);
 			}
 			const plan = planFromConfig(config, args.seriesLimit, timezone, args.sort);
 			validateAggregation(entityType, plan.aggregation);

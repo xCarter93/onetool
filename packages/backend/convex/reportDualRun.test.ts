@@ -446,22 +446,6 @@ describe("v2 execution semantics beyond the fixtures", () => {
 		).rejects.toThrow(/does not support grouping/);
 	});
 
-	it("related metrics execute from R5 (deep coverage in reportData.test.ts)", async () => {
-		const { asOrg } = await seedOrg();
-		const result = await asOrg.query(api.reportData.executeReport, {
-			entityType: "projects",
-			config: {
-				version: 2,
-				entityType: "projects",
-				metric: {
-					op: "related",
-					related: { entity: "invoices", fk: "projectId", field: "total", op: "sum" },
-				},
-			},
-		});
-		expect(result.metadata?.groupBy).toBe("projectId");
-	});
-
 	it("grouped count on an entity with a summary value field keeps the dollar column on the generic path too", async () => {
 		const { org, asOrg } = await seedOrg();
 		const clientId = await t.run((ctx) => createTestClient(ctx, org.orgId));

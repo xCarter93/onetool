@@ -342,36 +342,6 @@ describe("ReportBuilder — metric target + aggregation (d15 amendment)", () => 
 		expect(section("Metric").queryByText("per")).toBeNull();
 	});
 
-	it("a related count target hides the aggregation dropdown", () => {
-		renderBuilder(
-			quotesReport({
-				op: "related",
-				related: { entity: "quoteLineItems", fk: "quoteId", op: "count" },
-			})
-		);
-
-		expect(metricControls()).toHaveLength(1);
-		expect(metricControls()[0]).toHaveTextContent("Count of Quote Line Items");
-	});
-
-	it("a related field metric hydrates both controls from its breadcrumb and op", () => {
-		renderBuilder(
-			quotesReport({
-				op: "related",
-				related: {
-					entity: "quoteLineItems",
-					fk: "quoteId",
-					op: "avg",
-					field: "amount",
-				},
-			})
-		);
-
-		const [target, agg] = metricControls();
-		expect(target).toHaveTextContent("Quote Line Items › Total");
-		expect(agg).toHaveTextContent("Average");
-	});
-
 	it("changing the aggregation keeps the target and marks the report dirty", async () => {
 		renderBuilder(quotesReport({ op: "sum", field: "total" }, { groupBy: "status" }));
 
@@ -403,18 +373,6 @@ describe("ReportBuilder — metric target + aggregation (d15 amendment)", () => 
 		expect(metricControls()[1]).toHaveTextContent("Sum");
 	});
 
-	it("new capability: Average over a related child field is authorable from the two controls", async () => {
-		renderBuilder(quotesReport({ op: "count" }, { groupBy: "status" }));
-
-		await pickFrom(metricControls()[0], "Quote Line Items › Total");
-		await pickFrom(metricControls()[1], "Average");
-
-		const [target, agg] = metricControls();
-		expect(target).toHaveTextContent("Quote Line Items › Total");
-		expect(agg).toHaveTextContent("Average");
-		// A related rollup buckets itself — the backend rejects grouping on it.
-		expect(section("Metric").queryByText("per")).toBeNull();
-	});
 });
 
 function quotesTable(
@@ -434,11 +392,6 @@ function quotesTable(
 		visualization: { type: "table" },
 	};
 }
-
-const RELATED_METRIC: ReportMetric = {
-	op: "related",
-	related: { entity: "quoteLineItems", fk: "quoteId", op: "count" },
-};
 
 /** Columns rides inside the merged Metric section, so scope to its own field. */
 function columnsField() {
@@ -461,17 +414,6 @@ function groupByTrigger() {
 }
 
 describe("ReportBuilder — Table raw-rows legibility", () => {
-	it("a related rollup makes the Columns picker inert and says how to get raw rows", () => {
-		renderBuilder(quotesTable(RELATED_METRIC));
-
-		expect(columnsPicker()).toBeDisabled();
-		expect(
-			columnsField().getByText(
-				"Showing this metric instead of raw rows. Set the metric to Count of records to pick columns."
-			)
-		).toBeInTheDocument();
-	});
-
 	it("a ratio metric makes the Columns picker inert too", () => {
 		renderBuilder(quotesTable({ op: "ratio", ratioKey: "conversionRate" }));
 
@@ -524,14 +466,6 @@ describe("ReportBuilder — Table raw-rows legibility", () => {
 			section("Metric").getByText(
 				"The table lists raw rows. This metric applies once the table is grouped."
 			)
-		).toBeInTheDocument();
-	});
-
-	it("a related rollup says the table lists one row per source record", () => {
-		renderBuilder(quotesTable(RELATED_METRIC));
-
-		expect(
-			section("Metric").getByText("One row per Quote with this rollup.")
 		).toBeInTheDocument();
 	});
 

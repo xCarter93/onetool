@@ -12,7 +12,6 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { formatDate, formatReportValue } from "../report-config";
-import { entityLabel } from "../report-path-options";
 
 interface DataPoint {
 	name: string;
@@ -32,9 +31,8 @@ interface ReportTableProps {
 	data: DataPoint[];
 	total: number;
 	groupBy?: string;
+	/** Part of the shared chart-props bag; the aggregated table doesn't read it. */
 	entityType: string;
-	/** A related rollup buckets by source record, so its rows are records, not categories. */
-	metricIsRelated?: boolean;
 	/** Is `total` a dollar amount? Explicit, from the caller — see getReportValueTypes. */
 	totalIsCurrency?: boolean;
 	/** Is each row's `value` a dollar amount (vs. a count)? */
@@ -93,8 +91,6 @@ export function ReportTable({
 	data,
 	total,
 	groupBy,
-	entityType,
-	metricIsRelated = false,
 	totalIsCurrency = false,
 	itemValueIsCurrency = false,
 	valueHeader = "Count",
@@ -106,7 +102,7 @@ export function ReportTable({
 
 	// Sum of item `value`s, used only for the %-of-category and average calcs
 	// below. Never the headline "Total:" figure — that must come from the
-	// `total` prop (a ratio/related metric's total is not this sum).
+	// `total` prop (a ratio metric's total is not this sum).
 	const itemValueSum = data.reduce((sum, d) => sum + d.value, 0);
 	const averageValue = itemValueSum / (data.length || 1);
 
@@ -139,9 +135,7 @@ export function ReportTable({
 							<TableHead>
 								{groupBy
 									? groupBy.charAt(0).toUpperCase() + groupBy.slice(1)
-									: metricIsRelated
-										? entityLabel(entityType)
-										: "Category"}
+									: "Category"}
 							</TableHead>
 							<TableHead className="text-right">{valueHeader}</TableHead>
 							<TableHead className="text-right">%</TableHead>

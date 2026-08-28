@@ -32,16 +32,15 @@ export interface ExecuteReportArgs {
 
 /**
  * True when the report should render raw rows instead of aggregated groups.
- * Ratio and related metrics always aggregate (they bucket without a groupBy);
- * otherwise no Group by means there's nothing to chart, so ANY viz type falls
- * back to detail rows, and the table view alone has an explicit-columns
- * override.
+ * Ratio metrics always aggregate (they bucket without a groupBy); otherwise no
+ * Group by means there's nothing to chart, so ANY viz type falls back to detail
+ * rows, and the table view alone has an explicit-columns override.
  */
 export function isDetailModeActive(
 	config: ReportConfigV2,
 	vizType: ReportVisualizationType
 ): boolean {
-	if (config.metric.op === "ratio" || config.metric.op === "related") return false;
+	if (config.metric.op === "ratio") return false;
 	// Number is the scalar aggregate ("Total" point), never raw rows.
 	if (vizType === "number") return false;
 	if (!config.groupBy) return true;

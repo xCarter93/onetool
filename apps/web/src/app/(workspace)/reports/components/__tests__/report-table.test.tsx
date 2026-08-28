@@ -24,22 +24,6 @@ afterAll(() => {
 import { ReportTable } from "../report-table";
 
 describe("ReportTable", () => {
-	it("related rollup with no grouping labels rows by the source entity", () => {
-		render(
-			<ReportTable
-				data={[{ name: "Q-1001", value: 3 }]}
-				total={3}
-				entityType="quotes"
-				metricIsRelated
-			/>
-		);
-
-		expect(
-			screen.getByRole("columnheader", { name: "Quote" })
-		).toBeInTheDocument();
-		expect(screen.queryByRole("columnheader", { name: "Category" })).toBeNull();
-	});
-
 	it("a grouped table still labels its rows by the grouping", () => {
 		render(
 			<ReportTable

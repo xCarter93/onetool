@@ -899,7 +899,7 @@ export const runReport = createTool({
 
 export const createReport = createTool({
 	description: [
-		"Build and SAVE a report from the user's plain-English description. Supports the full builder surface: grouping (including related-record paths, or raw-row tables with columns), sum/avg/min/max/ratio/related measures, field and date filters, named or explicit date ranges, and chart type.",
+		"Build and SAVE a report from the user's plain-English description. Supports the full builder surface: grouping (including related-record paths, or raw-row tables with columns), sum/avg/min/max/ratio measures, field and date filters, named or explicit date ranges, and chart type.",
 		"Pass the user's request verbatim, including names, amounts, and time phrases.",
 		"On success it returns the saved report's path — offer to open it with navigate.",
 		"Use this when the user wants a report they can keep, edit, or share; use runReport for a quick one-off answer in chat.",

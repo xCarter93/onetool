@@ -8,7 +8,6 @@ import { Button } from "@/components/ui/button";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import { buildCsv, downloadCsv, sanitizeCsvFilename } from "@/lib/csv-export";
 import { reportResultToCsv } from "../report-csv";
-import { entityLabel } from "../report-path-options";
 import { ReportTable } from "./report-table";
 import {
 	formatReportValue,
@@ -86,10 +85,6 @@ export function ReportUtilityBar({
 			entityType: config.entityType,
 			groupBy: config.groupBy,
 			groupByLabel,
-			// A related rollup can't group, so its rows are source records — same
-			// header the on-screen table shows.
-			rowLabel:
-				config.metric.op === "related" ? entityLabel(config.entityType) : undefined,
 		});
 		downloadCsv(
 			sanitizeCsvFilename(reportName.trim() || "report"),

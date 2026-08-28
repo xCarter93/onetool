@@ -195,7 +195,7 @@ describe("isDetailModeActive — Slice 3-D3 (chart above table model)", () => {
 		).toBe(false);
 	});
 
-	it("ratio and related metrics are never detail — they aggregate without a groupBy", () => {
+	it("a ratio metric is never detail — it aggregates without a groupBy", () => {
 		expect(
 			isDetailModeActive(
 				{
@@ -327,26 +327,7 @@ describe("builderStateToSaved ↔ savedToBuilderState round trips (R8a)", () => 
 	});
 });
 
-describe("related-object traversal (d15) — options derived from REPORT_RELATIONS", () => {
-	it("quotes gain a line-item rollup from the quoteLineItems.quoteId edge", () => {
-		const option = metricOptionsFor("quotes").find(
-			(o) => o.value === "related:quoteLineItems:quoteId:sum:amount"
-		);
-		expect(option).toEqual({
-			value: "related:quoteLineItems:quoteId:sum:amount",
-			label: "Sum of Quote Line Items › Total",
-			metric: {
-				op: "related",
-				related: {
-					entity: "quoteLineItems",
-					fk: "quoteId",
-					op: "sum",
-					field: "amount",
-				},
-			},
-		});
-	});
-
+describe("related-object traversal (d15) — dotted paths from REPORT_RELATIONS", () => {
 	it("quoteLineItems can group by quoteId in the picker", () => {
 		expect(genericGroupByOptions.quoteLineItems).toContainEqual({
 			value: "quoteId",
@@ -405,31 +386,6 @@ describe("metric target + aggregation split (d15 amendment)", () => {
 		expect(quoteTargets().filter((o) => o.label === "Total")).toHaveLength(1);
 	});
 
-	it("a related child field is one aggregatable target labeled with its breadcrumb", () => {
-		expect(targetFor("related:quoteLineItems:quoteId:field:amount")).toEqual({
-			value: "related:quoteLineItems:quoteId:field:amount",
-			label: "Quote Line Items › Total",
-			group: "Quote Line Items",
-			target: {
-				kind: "relatedField",
-				entity: "quoteLineItems",
-				fk: "quoteId",
-				field: "amount",
-			},
-			aggregatable: true,
-		});
-	});
-
-	it("counting a child entity is its own non-aggregatable target", () => {
-		expect(targetFor("related:quoteLineItems:quoteId:count")).toEqual({
-			value: "related:quoteLineItems:quoteId:count",
-			label: "Count of Quote Line Items",
-			group: "Quote Line Items",
-			target: { kind: "relatedCount", entity: "quoteLineItems", fk: "quoteId" },
-			aggregatable: false,
-		});
-	});
-
 	it("named ratios are entity-gated, non-aggregatable targets", () => {
 		expect(targetFor("ratio:conversionRate")).toEqual({
 			value: "ratio:conversionRate",
@@ -452,34 +408,6 @@ describe("metric target + aggregation split (d15 amendment)", () => {
 		expect(
 			buildMetric({ kind: "ratio", ratioKey: "conversionRate" }, "sum")
 		).toEqual({ op: "ratio", ratioKey: "conversionRate" });
-		expect(
-			buildMetric(
-				{ kind: "relatedCount", entity: "quoteLineItems", fk: "quoteId" },
-				"max"
-			)
-		).toEqual({
-			op: "related",
-			related: { entity: "quoteLineItems", fk: "quoteId", op: "count" },
-		});
-		expect(
-			buildMetric(
-				{
-					kind: "relatedField",
-					entity: "quoteLineItems",
-					fk: "quoteId",
-					field: "amount",
-				},
-				"min"
-			)
-		).toEqual({
-			op: "related",
-			related: {
-				entity: "quoteLineItems",
-				fk: "quoteId",
-				op: "min",
-				field: "amount",
-			},
-		});
 	});
 
 	it("every metric shape reads back as its target value plus aggregation", () => {
@@ -495,93 +423,15 @@ describe("metric target + aggregation split (d15 amendment)", () => {
 		expect(
 			metricAggOf({ op: "ratio", ratioKey: "conversionRate" })
 		).toBeUndefined();
-
-		const relatedCount = {
-			op: "related" as const,
-			related: { entity: "quoteLineItems" as const, fk: "quoteId", op: "count" as const },
-		};
-		expect(metricTargetValue(relatedCount)).toBe(
-			"related:quoteLineItems:quoteId:count"
-		);
-		expect(metricAggOf(relatedCount)).toBeUndefined();
-
-		const relatedAvg = {
-			op: "related" as const,
-			related: {
-				entity: "quoteLineItems" as const,
-				fk: "quoteId",
-				op: "avg" as const,
-				field: "amount",
-			},
-		};
-		expect(metricTargetValue(relatedAvg)).toBe(
-			"related:quoteLineItems:quoteId:field:amount"
-		);
-		expect(metricAggOf(relatedAvg)).toBe("avg");
 	});
 
-	it("new capability: Average over a related child field is authorable", () => {
-		const target = targetFor("related:quoteLineItems:quoteId:field:amount")!.target;
-
-		expect(buildMetric(target, "avg")).toEqual({
-			op: "related",
-			related: {
-				entity: "quoteLineItems",
-				fk: "quoteId",
-				op: "avg",
-				field: "amount",
-			},
-		});
-	});
-
-	it("an avg-over-related config survives hydrate → save", () => {
-		const config: ReportConfigV2 = {
-			version: 2,
-			entityType: "quotes",
-			metric: {
-				op: "related",
-				related: {
-					entity: "quoteLineItems",
-					fk: "quoteId",
-					op: "avg",
-					field: "amount",
-				},
-			},
-		};
-		const state = savedToBuilderState(config, { type: "bar" });
-
-		expect(metricTargetValue(state.metric)).toBe(
-			"related:quoteLineItems:quoteId:field:amount"
-		);
-		expect(metricAggOf(state.metric)).toBe("avg");
-		expect(builderStateToSaved(state).config).toEqual(config);
-	});
-
-	it("the flat label vocabulary keeps its old entries and gains related avg/min/max", () => {
+	it("the flat label vocabulary keeps its old entries", () => {
 		const options = metricOptionsFor("quotes");
 		const byValue = (value: string) => options.find((o) => o.value === value);
 
 		expect(byValue("count")?.label).toBe("Count of records");
 		expect(byValue("sum:total")?.label).toBe("Sum of Total");
 		expect(byValue("ratio:conversionRate")?.label).toBe("Conversion rate");
-		expect(byValue("related:quoteLineItems:quoteId:count")?.label).toBe(
-			"Count of Quote Line Items"
-		);
-		expect(byValue("related:quoteLineItems:quoteId:sum:amount")?.label).toBe(
-			"Sum of Quote Line Items › Total"
-		);
-		expect(byValue("related:quoteLineItems:quoteId:avg:amount")).toEqual({
-			value: "related:quoteLineItems:quoteId:avg:amount",
-			label: "Average of Quote Line Items › Total",
-			metric: {
-				op: "related",
-				related: {
-					entity: "quoteLineItems",
-					fk: "quoteId",
-					op: "avg",
-					field: "amount",
-				},
-			},
-		});
+		expect(byValue("avg:total")?.label).toBe("Average of Total");
 	});
 });
