@@ -102,8 +102,9 @@ export const BLOCKED_ATTACHMENT_EXTENSIONS = [
 ] as const;
 
 export function attachmentExtension(filename: string): string {
-	const dot = filename.lastIndexOf(".");
-	return dot === -1 ? "" : filename.slice(dot + 1).toLowerCase();
+	const normalized = filename.replace(/[.\s]+$/, "");
+	const dot = normalized.lastIndexOf(".");
+	return dot === -1 ? "" : normalized.slice(dot + 1).toLowerCase();
 }
 
 export function isBlockedAttachmentFilename(filename: string): boolean {

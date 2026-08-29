@@ -254,7 +254,7 @@ export const invoicesAndPaymentsArticles: HelpArticle[] = [
 					},
 					{
 						type: "paragraph",
-						text: "The portal template is fixed wording, and you see a preview of the exact email before it goes out. A custom email is yours to write, and the portal button is added underneath it either way. That button reads **View & pay invoice** once online payments are set up, and **View invoice online** until then.",
+						text: "The portal template is fixed wording, and you see a preview of the exact email before it goes out. A custom email has your subject and message only, with no automatic greeting, signature, or footer. The portal button is added underneath it either way. That button reads **View & pay invoice** once online payments are set up, and **View invoice online** until then.",
 					},
 					{
 						type: "note",
@@ -272,7 +272,7 @@ export const invoicesAndPaymentsArticles: HelpArticle[] = [
 					{
 						type: "list",
 						items: [
-							"**Recipients.** **To** starts with the primary contact. Click **Add CC/BCC** to reveal the other two lines, which take any address you type. A custom email lets you type any address on the **To** line as well; the portal template keeps **To** on the client's own contacts, because the portal link belongs to them.",
+							"**Recipients.** **To** starts with the primary contact. Click **Add CC/BCC** to reveal the other two lines, which take any address you type. A custom email lets you type any address on the **To** line as well. Any typed address can receive the email, but only an email saved as a contact on this client can sign in to view or pay the invoice. The portal template keeps **To** on the client's own contacts.",
 							"**The invoice PDF.** The most recent version you generated is attached already. Remove it with the X, or use the clock icon to pick an older version.",
 							"**Your own files.** **Attach file** adds photos, receipts, and anything else the client asked for. All attachments together can total 20MB, and program files are refused.",
 						],

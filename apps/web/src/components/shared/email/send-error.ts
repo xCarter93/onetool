@@ -12,6 +12,5 @@ export function emailSendErrorMessage(error: unknown, fallback: string): string 
 			return data.message;
 		}
 	}
-	if (error instanceof Error && error.message.trim()) return error.message;
 	return fallback;
 }

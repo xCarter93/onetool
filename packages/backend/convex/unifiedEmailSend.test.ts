@@ -228,6 +228,9 @@ describe("unified quote/invoice email sending", () => {
 		const html = sentMessages[0].html;
 		expect(html).toContain(`/portal/c/portal-abc-123/quotes/${quoteId}`);
 		expect(html).toContain("Review quote");
+		expect(html).not.toContain("Hi Ada Lovelace");
+		expect(html).not.toContain("Best regards");
+		expect(html).not.toContain("Powered by OneTool");
 	});
 
 	it("rejects a custom send with an empty body", async () => {
@@ -361,6 +364,59 @@ describe("unified quote/invoice email sending", () => {
 			)
 		);
 		expect(pending).toHaveLength(1);
+	});
+
+	it("rechecks suppression before a deferred attachment reaches the provider", async () => {
+		const { asUser, quoteId, orgId } = await seedQuote();
+		const storageId = await t.run(async (ctx) =>
+			ctx.storage.store(new Blob(["attachment"], { type: "text/plain" }))
+		);
+		await asUser.mutation(api.emailAttachments.registerUpload, {
+			storageId,
+			filename: "notes.txt",
+		});
+		await asUser.mutation(api.quotes.sendToClient, {
+			id: quoteId,
+			mode: "custom",
+			html: "<p>Notes attached.</p>",
+			attachments: [
+				{
+					storageId,
+					filename: "notes.txt",
+					mimeType: "text/plain",
+					size: 1,
+				},
+			],
+		});
+
+		await t.run(async (ctx) => {
+			await ctx.db.insert("emailSuppressions", {
+				orgId,
+				email: "ada@example.test",
+				reason: "manual",
+				source: "test",
+				createdAt: Date.now(),
+			});
+		});
+
+		vi.stubEnv("RESEND_API_KEY", "re_test_dummy_key");
+		const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+		try {
+			await t.finishAllScheduledFunctions(vi.runAllTimers);
+			expect(errorSpy).toHaveBeenCalledWith(
+				expect.stringContaining("email.attachmentSend.deliver failed"),
+				expect.objectContaining({
+					message: "A recipient was suppressed before delivery.",
+				})
+			);
+		} finally {
+			errorSpy.mockRestore();
+		}
+
+		const rows = await messages();
+		expect(rows).toHaveLength(1);
+		expect(rows[0].status).toBe("failed");
+		expect(rows[0].resendEmailId).toBe("");
 	});
 
 	it("refuses attachments whose blob is gone", async () => {
@@ -532,6 +588,9 @@ describe("unified quote/invoice email sending", () => {
 		});
 
 		expect(sentMessages[0].html).toContain("View &amp; pay invoice");
+		expect(sentMessages[0].html).not.toContain("Hi Ada Lovelace");
+		expect(sentMessages[0].html).not.toContain("Best regards");
+		expect(sentMessages[0].html).not.toContain("Powered by OneTool");
 	});
 
 	it("offers a view-only CTA when the org can't take charges", async () => {

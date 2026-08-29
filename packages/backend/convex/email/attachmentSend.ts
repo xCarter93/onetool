@@ -11,6 +11,7 @@ import { internal } from "../_generated/api";
 import { resend } from "./durableResend";
 import { getResendClient } from "../lib/resendClient";
 import { MAX_ATTACHMENT_BYTES } from "./attachments";
+import { isSuppressed } from "./suppressions";
 
 /** Chunked so a multi-MB blob can't blow the argument limit of `apply`. */
 function toBase64(bytes: Uint8Array): string {
@@ -52,6 +53,22 @@ export const _loadAttachments = internalQuery({
 	},
 });
 
+export const _hasSuppressedRecipient = internalQuery({
+	args: {
+		orgId: v.id("organizations"),
+		to: v.array(v.string()),
+		cc: v.optional(v.array(v.string())),
+		bcc: v.optional(v.array(v.string())),
+	},
+	returns: v.boolean(),
+	handler: async (ctx, args) => {
+		for (const address of [...args.to, ...(args.cc ?? []), ...(args.bcc ?? [])]) {
+			if (await isSuppressed(ctx, args.orgId, address)) return true;
+		}
+		return false;
+	},
+});
+
 export const _markSent = internalMutation({
 	args: {
 		emailMessageId: v.id("emailMessages"),
@@ -88,6 +105,7 @@ export const _markFailed = internalMutation({
 export const deliver = internalAction({
 	args: {
 		emailMessageId: v.id("emailMessages"),
+		orgId: v.id("organizations"),
 		from: v.string(),
 		to: v.array(v.string()),
 		cc: v.optional(v.array(v.string())),
@@ -174,6 +192,18 @@ export const deliver = internalAction({
 					...(headerList.length > 0 ? { headers: headerList } : {}),
 				},
 				async (emailId) => {
+					const suppressed = await ctx.runQuery(
+						internal.email.attachmentSend._hasSuppressedRecipient,
+						{
+							orgId: args.orgId,
+							to: args.to,
+							cc: args.cc,
+							bcc: args.bcc,
+						}
+					);
+					if (suppressed) {
+						throw new Error("A recipient was suppressed before delivery.");
+					}
 					const { data, error } = await getResendClient().emails.send(
 						{
 							from: args.from,

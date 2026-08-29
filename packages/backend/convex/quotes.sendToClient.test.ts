@@ -371,6 +371,26 @@ describe("quotes.sendToClient", () => {
 		).rejects.toThrow(/email/i);
 	});
 
+	it("refuses a custom send without a portal issuer before changing status", async () => {
+		const { asUser, quoteId } = await seed({
+			portalAccess: true,
+			contactEmail: "client@example.com",
+		});
+		vi.stubEnv("PORTAL_JWT_ISSUER", "");
+
+		await expect(
+			asUser.mutation(api.quotes.sendToClient, {
+				id: quoteId,
+				mode: "custom",
+				html: "<p>Custom quote message</p>",
+			})
+		).rejects.toThrow(/Portal links aren't configured/);
+
+		const quote = await asUser.query(api.quotes.get, { id: quoteId });
+		expect(quote?.status).toBe("draft");
+		expect(quote?.firstSentAt).toBeUndefined();
+	});
+
 	it("refuses to send a quote belonging to another organization", async () => {
 		const { quoteId } = await seed({
 			portalAccess: true,

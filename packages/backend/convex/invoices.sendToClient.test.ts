@@ -219,6 +219,30 @@ describe("invoices.sendToClient", () => {
 		).rejects.toThrow(/email/i);
 	});
 
+	it("refuses a custom send without a portal issuer before changing status", async () => {
+		const { asUser, invoiceId } = await seed({
+			portalAccess: true,
+			contactEmail: "client@example.com",
+		});
+		vi.stubEnv("PORTAL_JWT_ISSUER", "");
+
+		try {
+			await expect(
+				asUser.mutation(api.invoices.sendToClient, {
+					id: invoiceId,
+					mode: "custom",
+					html: "<p>Custom invoice message</p>",
+				})
+			).rejects.toThrow(/Portal links aren't configured/);
+
+			const invoice = await asUser.query(api.invoices.get, { id: invoiceId });
+			expect(invoice?.status).toBe("draft");
+			expect(invoice?.firstSentAt).toBeUndefined();
+		} finally {
+			vi.unstubAllEnvs();
+		}
+	});
+
 	it("seeds a 'Full Payment' row when a manual invoice has none, so it is portal-payable", async () => {
 		// invoices.create adds no payment rows (unlike createFromQuote). Without a
 		// row the portal can't mint a PaymentIntent, so sendToClient backfills one.

@@ -208,7 +208,7 @@ export const quotesArticles: HelpArticle[] = [
 						type: "list",
 						items: [
 							"**Portal template**: the branded email with a link to review and approve. You see a preview of the exact email before it goes out, and its wording is fixed.",
-							"**Custom email**: write your own subject and message. The portal link still goes with it.",
+							"**Custom email**: write your own subject and message. OneTool adds no greeting, signature, or footer, and the portal link still goes with it.",
 							"**Send for e-signature**: collect a signature on the quote PDF instead. See [E-signatures](/help/quotes/e-signatures).",
 						],
 					},
@@ -232,7 +232,7 @@ export const quotesArticles: HelpArticle[] = [
 					{
 						type: "list",
 						items: [
-							"**Recipients.** **To** starts with the primary contact. Click **Add CC/BCC** to reveal the other two lines, which take any address you type. A custom email lets you type any address on the **To** line as well; the portal template keeps **To** on the client's own contacts, because the portal link belongs to them.",
+							"**Recipients.** **To** starts with the primary contact. Click **Add CC/BCC** to reveal the other two lines, which take any address you type. A custom email lets you type any address on the **To** line as well. Any typed address can receive the email, but only an email saved as a contact on this client can sign in to review or approve the quote. The portal template keeps **To** on the client's own contacts.",
 							"**The quote PDF.** The most recent version you generated is attached already. Remove it with the X, or use the clock icon to pick a different version, including a signed PDF where one exists.",
 							"**Your own files.** **Attach file** adds photos, documents, and anything else the job needs. All attachments together can total 20MB, and program files are refused.",
 						],

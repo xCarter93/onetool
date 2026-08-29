@@ -25,7 +25,6 @@ import {
 } from "./lib/entitlements";
 import {
 	buildPortalInvoiceUrl,
-	optionalPortalInvoiceUrl,
 } from "./portal/invoiceUrl";
 import { mintPortalAccessId } from "./clients";
 import {
@@ -768,10 +767,7 @@ export const sendToClient = userMutation({
 				message: "Write a message before sending.",
 			});
 		}
-		// The template email is nothing but the portal link, so a deployment
-		// without an origin must fail here rather than flip the invoice to sent
-		// and let the scheduled action drop the send.
-		if (!customHtml && !process.env.PORTAL_JWT_ISSUER) {
+		if (!process.env.PORTAL_JWT_ISSUER) {
 			throw new ConvexError({
 				code: "CONFLICT",
 				message:
@@ -904,7 +900,10 @@ export const sendToClient = userMutation({
 
 		if (customHtml) {
 			const bodyText = htmlToPlainText(customHtml);
-			const portalUrl = optionalPortalInvoiceUrl(portalAccessId, invoice._id);
+			const portalUrl = buildPortalInvoiceUrl({
+				portalAccessId,
+				invoiceId: invoice._id,
+			});
 			const html = buildEmailHtml({
 				logoUrl: organization.logoUrl,
 				organizationName: organization.name,
@@ -917,9 +916,8 @@ export const sendToClient = userMutation({
 				messageBody: bodyText,
 				messageHtml: customHtml,
 				senderName,
-				// Non-removable: a freeform invoice email without the portal link
-				// is a PDF the client can't pay.
-				...(portalUrl ? { cta: { url: portalUrl, label: ctaLabel } } : {}),
+				customPortalEmail: true,
+				cta: { url: portalUrl, label: ctaLabel },
 			});
 			const fromEmail = resolveFromEmail(organization);
 			const result = await deliverOutbound(ctx, {

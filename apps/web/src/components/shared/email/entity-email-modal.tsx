@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { ConvexError } from "convex/values";
 import { AnimatePresence, motion } from "motion/react";
@@ -169,10 +169,16 @@ export function EntityEmailModal({
 		kind: "latest",
 	});
 	const [notice, setNotice] = useState<string | null>(null);
+	const [isAttachmentUploading, setIsAttachmentUploading] = useState(false);
 	const [isSending, setIsSending] = useState(false);
 	const [navDirection, setNavDirection] = useState(1);
 	const [requestId, setRequestId] = useState(() => crypto.randomUUID());
+	const activeRequestIdRef = useRef(requestId);
 	const backButtonRef = useRef<HTMLButtonElement>(null);
+
+	useLayoutEffect(() => {
+		activeRequestIdRef.current = requestId;
+	}, [requestId]);
 
 	// The chooser's focused row unmounts on the swap; land focus at the top of compose.
 	useEffect(() => {
@@ -241,6 +247,7 @@ export function EntityEmailModal({
 			setUploads([]);
 			setPdfSelection({ kind: "latest" });
 			setNotice(null);
+			setIsAttachmentUploading(false);
 			setRequestId(crypto.randomUUID());
 		}
 	}
@@ -275,6 +282,7 @@ export function EntityEmailModal({
 	const hasBody = bodyHtml.trim().length > 0;
 	const canSend =
 		!isSending &&
+		!isAttachmentUploading &&
 		!emailDisabledReason &&
 		!overSizeLimit &&
 		to.length > 0 &&
@@ -630,7 +638,14 @@ export function EntityEmailModal({
 							isStale={isPdfStale}
 							onRegenerate={onRegeneratePdf}
 							uploads={uploads}
-							onUploadsChange={setUploads}
+							onUploadsChange={(next) => {
+								if (requestId === activeRequestIdRef.current) setUploads(next);
+							}}
+							onUploadStateChange={(uploading) => {
+								if (requestId === activeRequestIdRef.current) {
+									setIsAttachmentUploading(uploading);
+								}
+							}}
 							canUpload={can(entity.type === "quote" ? "quotes" : "invoices", "modify")}
 							disabled={isSending}
 						/>

@@ -5,7 +5,7 @@ import {
 	resolveFromEmail,
 	resolveReplyToEmail,
 } from "./branding";
-import { EMAIL_BODY_STYLES } from "./sanitizeHtml";
+import { EMAIL_BODY_STYLES, sanitizeHref } from "./sanitizeHtml";
 
 const base = {
 	organizationName: "Acme Cleaning",
@@ -134,6 +134,28 @@ describe("buildEmailHtml", () => {
 			expect(bodySlot(html)).toBe(`<p style="${EMAIL_BODY_STYLES.p}">hi</p>`);
 		});
 	});
+
+	describe("custom portal email", () => {
+		it("keeps only the custom body and portal CTA inside the safe card", () => {
+			const html = buildEmailHtml({
+				...base,
+				messageBody: "Custom message",
+				messageHtml: "<p>Custom message</p>",
+				customPortalEmail: true,
+				cta: { url: "https://portal.example.test/quote", label: "Review quote" },
+			});
+
+			expect(bodySlot(html)).toBe(
+				`<p style="${EMAIL_BODY_STYLES.p}">Custom message</p>`
+			);
+			expect(html).toContain('href="https://portal.example.test/quote"');
+			expect(html).toContain(">Review quote</a>");
+			expect(html).not.toContain("Hi Ada Lovelace,");
+			expect(html).not.toContain("Best regards,");
+			expect(html).not.toContain("Sender Person</p>");
+			expect(html).not.toContain("Powered by OneTool");
+		});
+	});
 });
 
 describe("branding helpers", () => {
@@ -156,5 +178,31 @@ describe("branding helpers", () => {
 			"a@b.test"
 		);
 		expect(resolveReplyToEmail({})).toBe("replies@inbound.onetool.biz");
+	});
+
+	it("allows only safe CTA schemes, including encoded unsafe schemes", () => {
+		for (const href of [
+			"https://portal.example.test",
+			"http://portal.example.test",
+			"mailto:client@example.test",
+			"tel:+15555550100",
+		]) {
+			expect(sanitizeHref(href)).toBe(href);
+		}
+		for (const href of [
+			"javascript:alert(1)",
+			"java&#x0A;script:alert(1)",
+			"java&#58;script:alert(1)",
+			"java\u0000script:alert(1)",
+		]) {
+			expect(sanitizeHref(href)).toBeNull();
+			expect(
+				buildEmailHtml({
+					...base,
+					messageBody: "Hello",
+					cta: { url: href, label: "Unsafe" },
+				})
+			).not.toContain(">Unsafe</a>");
+		}
 	});
 });

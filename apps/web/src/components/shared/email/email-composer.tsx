@@ -28,9 +28,11 @@ import {
 	X,
 } from "lucide-react";
 import { useMutation } from "convex/react";
+import { ConvexError } from "convex/values";
 import { api } from "@onetool/backend/convex/_generated/api";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
 
+import { convexErrorMessage } from "@/lib/convex-error";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -217,11 +219,15 @@ export function EmailComposer({
 
 		const uploaded: ComposerAttachment[] = [];
 		const failed: string[] = [];
+		let serverMessage: string | null = null;
 		for (const [index, file] of files.entries()) {
 			try {
 				uploaded.push(await uploadFile(file));
-			} catch {
+			} catch (error) {
 				failed.push(file.name);
+				if (error instanceof ConvexError) {
+					serverMessage ||= convexErrorMessage(error, "") || null;
+				}
 			} finally {
 				const { id } = queued[index];
 				setPendingUploads((prev) => prev.filter((item) => item.id !== id));
@@ -233,7 +239,9 @@ export function EmailComposer({
 		}
 		if (failed.length > 0) {
 			setAttachmentError(
-				`Couldn't upload ${failed.join(", ")}. Check your connection and try again.`
+				serverMessage
+					? `Couldn't upload ${failed.join(", ")}. ${serverMessage}`
+					: `Couldn't upload ${failed.join(", ")}. Check your connection and try again.`
 			);
 		}
 	};

@@ -1,7 +1,11 @@
 // Org-branded email shell, shared by manual client emails (resend.ts) and the
 // automation send_email action. Pure string builders — no ctx, no env vars.
 
-import { sanitizeHtml, EMAIL_BODY_STYLES } from "./sanitizeHtml";
+import {
+	sanitizeHref,
+	sanitizeHtml,
+	EMAIL_BODY_STYLES,
+} from "./sanitizeHtml";
 
 // Fallback sender when an org has no receiving address configured (rare
 // post-migration). Never throws — a missing address must not block sends.
@@ -71,6 +75,8 @@ export function buildEmailHtml(options: {
 	 * link.
 	 */
 	cta?: { url: string; label: string };
+	/** Custom quote/invoice email: retain the safe card, omit branded copy. */
+	customPortalEmail?: boolean;
 }): string {
 	const {
 		logoUrl,
@@ -82,6 +88,7 @@ export function buildEmailHtml(options: {
 		messageBody,
 		senderName,
 	} = options;
+	const customPortalEmail = options.customPortalEmail === true;
 
 	// Current year for the footer copyright line.
 	const year = new Date().getFullYear();
@@ -129,9 +136,10 @@ export function buildEmailHtml(options: {
 					})
 					.join("");
 
-	// escapeHtml also escapes "/", which would leave the href full of &#x2F;.
-	const ctaUrl = options.cta
-		? options.cta.url
+	// Escape only after rejecting schemes that can execute in an email client.
+	const safeCtaUrl = options.cta ? sanitizeHref(options.cta.url) : undefined;
+	const ctaUrl = safeCtaUrl
+		? safeCtaUrl
 				.replace(/&/g, "&amp;")
 				.replace(/"/g, "&quot;")
 				.replace(/</g, "&lt;")
@@ -163,7 +171,10 @@ export function buildEmailHtml(options: {
 			<td align="center">
 				<!-- Main card -->
 				<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width: 600px; background-color: #ffffff; border: 1px solid #e6eaf0; border-radius: 14px; overflow: hidden;">
-					<!-- Org identity lockup -->
+					${
+						customPortalEmail
+							? ""
+							: `<!-- Org identity lockup -->
 					<tr>
 						<td style="padding: 30px 40px 22px 40px; border-bottom: 1px solid #e2e8f0;">
 							<table role="presentation" cellpadding="0" cellspacing="0">
@@ -183,22 +194,29 @@ export function buildEmailHtml(options: {
 								</tr>
 							</table>
 						</td>
-					</tr>
+					</tr>`
+					}
 
 					<!-- Letter body -->
 					<tr>
 						<td style="padding: 26px 40px 30px 40px;">
-							${escapedClientName ? `<p style="margin: 0 0 18px 0; font-size: 16px; line-height: 1.6; color: #0f172a;">Hi ${escapedClientName},</p>` : ""}
+							${!customPortalEmail && escapedClientName ? `<p style="margin: 0 0 18px 0; font-size: 16px; line-height: 1.6; color: #0f172a;">Hi ${escapedClientName},</p>` : ""}
 							<div style="font-size: 15px; line-height: 1.7; color: #334155;">
 								${bodyHtml}
-							</div>${ctaHtml}
-							<p style="margin: 28px 0 4px 0; font-size: 15px; line-height: 1.6; color: #334155;">Best regards,</p>
+							</div>${ctaHtml}${
+								customPortalEmail
+									? ""
+									: `<p style="margin: 28px 0 4px 0; font-size: 15px; line-height: 1.6; color: #334155;">Best regards,</p>
 							<p style="margin: 0; font-size: 15px; font-weight: 700; color: #0f172a;">${escapedSenderName}</p>
-							${senderName === organizationName ? "" : `<p style="margin: 2px 0 0 0; font-size: 13px; color: #64748b;">${escapedOrganizationName}</p>`}
+							${senderName === organizationName ? "" : `<p style="margin: 2px 0 0 0; font-size: 13px; color: #64748b;">${escapedOrganizationName}</p>`}`
+							}
 						</td>
 					</tr>
 
-					<!-- Footer: org contact + OneTool branding -->
+					${
+						customPortalEmail
+							? ""
+							: `<!-- Footer: org contact + OneTool branding -->
 					<tr>
 						<td style="background-color: #f8fafc; border-top: 1px solid #e2e8f0; padding: 24px 40px;">
 							<p style="margin: 0 0 5px 0; font-size: 13px; font-weight: 700; color: #0f172a;">${escapedOrganizationName}</p>
@@ -216,7 +234,8 @@ export function buildEmailHtml(options: {
 								</tr>
 							</table>
 						</td>
-					</tr>
+					</tr>`
+					}
 				</table>
 			</td>
 		</tr>

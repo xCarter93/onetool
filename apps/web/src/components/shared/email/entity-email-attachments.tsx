@@ -2,6 +2,7 @@
 
 import { Fragment, useEffect, useRef, useState } from "react";
 import { useMutation } from "convex/react";
+import { ConvexError } from "convex/values";
 import { api } from "@onetool/backend/convex/_generated/api";
 import type { Doc, Id } from "@onetool/backend/convex/_generated/dataModel";
 import { FileText, History, Paperclip, RefreshCw, X } from "lucide-react";
@@ -88,6 +89,7 @@ interface EntityEmailAttachmentsProps {
 	onRegenerate?: () => Promise<void> | void;
 	uploads: ComposerAttachment[];
 	onUploadsChange: (uploads: ComposerAttachment[]) => void;
+	onUploadStateChange?: (isUploading: boolean) => void;
 	canUpload: boolean;
 	disabled?: boolean;
 }
@@ -106,6 +108,7 @@ export function EntityEmailAttachments({
 	onRegenerate,
 	uploads,
 	onUploadsChange,
+	onUploadStateChange,
 	canUpload,
 	disabled = false,
 }: EntityEmailAttachmentsProps) {
@@ -164,37 +167,54 @@ export function EntityEmailAttachments({
 		}
 
 		setAttachmentError(null);
+		onUploadStateChange?.(true);
 		setIsUploading(true);
+		const added: ComposerAttachment[] = [];
+		const failures: unknown[] = [];
 		try {
-			const added: ComposerAttachment[] = [];
 			for (const file of picked) {
-				const uploadUrl = await generateUploadUrl({});
-				const res = await fetch(uploadUrl, {
-					method: "POST",
-					headers: { "Content-Type": file.type || "application/octet-stream" },
-					body: file,
-				});
-				if (!res.ok) throw new Error(`Failed to upload ${file.name}`);
-				const { storageId } = (await res.json()) as {
-					storageId: Id<"_storage">;
-				};
-				await registerUpload({ storageId, filename: file.name });
-				added.push({
-					storageId,
-					filename: file.name,
-					mimeType: file.type || "application/octet-stream",
-					size: file.size,
-					source: "upload",
-				});
+				try {
+					const uploadUrl = await generateUploadUrl({});
+					const res = await fetch(uploadUrl, {
+						method: "POST",
+						headers: {
+							"Content-Type": file.type || "application/octet-stream",
+						},
+						body: file,
+					});
+					if (!res.ok) throw new Error(`Failed to upload ${file.name}`);
+					const { storageId } = (await res.json()) as {
+						storageId: Id<"_storage">;
+					};
+					await registerUpload({ storageId, filename: file.name });
+					added.push({
+						storageId,
+						filename: file.name,
+						mimeType: file.type || "application/octet-stream",
+						size: file.size,
+						source: "upload",
+					});
+				} catch (error) {
+					failures.push(error);
+				}
 			}
-			commitUploads([...uploadsRef.current, ...added]);
-		} catch (error) {
-			toast.error(
-				"Upload failed",
-				convexErrorMessage(error, "Try attaching the file again.")
-			);
+			if (added.length > 0) {
+				commitUploads([...uploadsRef.current, ...added]);
+			}
+			if (failures.length > 0) {
+				const serverError = failures.find(
+					(error) => error instanceof ConvexError
+				);
+				toast.error(
+					"Upload failed",
+					serverError
+						? convexErrorMessage(serverError, "Try attaching the file again.")
+						: "Try attaching the file again."
+				);
+			}
 		} finally {
 			setIsUploading(false);
+			onUploadStateChange?.(false);
 			if (fileInputRef.current) fileInputRef.current.value = "";
 		}
 	};

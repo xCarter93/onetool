@@ -151,6 +151,7 @@ export async function recordOutboundAttachments(
 
 	await ctx.scheduler.runAfter(0, internal.email.attachmentSend.deliver, {
 		emailMessageId: args.emailMessageId,
+		orgId: args.orgId,
 		from: args.from,
 		to: args.to,
 		cc: args.cc,
