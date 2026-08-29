@@ -191,15 +191,19 @@ describe("invoices.sendToClient", () => {
 		expect(invoice?.status).toBe("sent");
 	});
 
-	it("throws when the client has no portal access", async () => {
-		const { asUser, invoiceId } = await seed({
+	it("mints portal access for a client that has none", async () => {
+		const { asUser, invoiceId, clientId } = await seed({
 			portalAccess: false,
 			contactEmail: "client@example.com",
 		});
 
-		await expect(
-			asUser.mutation(api.invoices.sendToClient, { id: invoiceId })
-		).rejects.toThrow(/portal access/i);
+		await asUser.mutation(api.invoices.sendToClient, { id: invoiceId });
+		await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+		const client = await t.run(async (ctx) => ctx.db.get(clientId));
+		expect(client?.portalAccessId).toBeTruthy();
+		const invoice = await asUser.query(api.invoices.get, { id: invoiceId });
+		expect(invoice?.status).toBe("sent");
 	});
 
 	it("throws when the primary contact has no email", async () => {
@@ -213,6 +217,30 @@ describe("invoices.sendToClient", () => {
 		await expect(
 			asUser.mutation(api.invoices.sendToClient, { id: invoiceId })
 		).rejects.toThrow(/email/i);
+	});
+
+	it("refuses a custom send without a portal issuer before changing status", async () => {
+		const { asUser, invoiceId } = await seed({
+			portalAccess: true,
+			contactEmail: "client@example.com",
+		});
+		vi.stubEnv("PORTAL_JWT_ISSUER", "");
+
+		try {
+			await expect(
+				asUser.mutation(api.invoices.sendToClient, {
+					id: invoiceId,
+					mode: "custom",
+					html: "<p>Custom invoice message</p>",
+				})
+			).rejects.toThrow(/Portal links aren't configured/);
+
+			const invoice = await asUser.query(api.invoices.get, { id: invoiceId });
+			expect(invoice?.status).toBe("draft");
+			expect(invoice?.firstSentAt).toBeUndefined();
+		} finally {
+			vi.unstubAllEnvs();
+		}
 	});
 
 	it("seeds a 'Full Payment' row when a manual invoice has none, so it is portal-payable", async () => {

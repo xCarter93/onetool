@@ -1,4 +1,4 @@
-import { MutationCtx } from "../_generated/server";
+import { MutationCtx, QueryCtx } from "../_generated/server";
 import { Id } from "../_generated/dataModel";
 
 function normalizeEmail(email: string): string {
@@ -7,7 +7,7 @@ function normalizeEmail(email: string): string {
 
 /** True if `email` must not be sent to for this org (org-scoped or global suppression). */
 export async function isSuppressed(
-	ctx: MutationCtx,
+	ctx: QueryCtx | MutationCtx,
 	orgId: Id<"organizations">,
 	email: string
 ): Promise<boolean> {

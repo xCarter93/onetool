@@ -3,7 +3,7 @@
 import { PermissionGate } from "@/components/domain/permission-gate";
 import { usePermissions } from "@/hooks/use-permissions";
 import { useClientSendMeter } from "@/hooks/use-client-send-meter";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { useToast } from "@/hooks/use-toast";
@@ -11,6 +11,7 @@ import type { Id } from "@onetool/backend/convex/_generated/dataModel";
 import type { Id as StorageId } from "@onetool/backend/convex/_generated/dataModel";
 import { useState, useMemo, useCallback, useRef } from "react";
 import { DocumentPreviewModal } from "@/components/shared/document-preview-modal";
+import { EntityEmailModal } from "@/components/shared/email/entity-email-modal";
 import { buildInvoicePdfBlob } from "./components/build-invoice-pdf-blob";
 import DeleteConfirmationModal from "@/components/ui/delete-confirmation-modal";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -48,7 +49,6 @@ const formatStatus = (status: InvoiceStatus) => {
 };
 
 function InvoiceDetailPageContent() {
-	const router = useRouter();
 	const params = useParams();
 	const toast = useToast();
 	const invoiceId = params.invoiceId as Id<"invoices">;
@@ -62,7 +62,7 @@ function InvoiceDetailPageContent() {
 	const [isPaymentsModalOpen, setIsPaymentsModalOpen] = useState(false);
 	const [isCancelModalOpen, setIsCancelModalOpen] = useState(false);
 	const [showPreviewModal, setShowPreviewModal] = useState(false);
-	const [isSending, setIsSending] = useState(false);
+	const [isEmailModalOpen, setIsEmailModalOpen] = useState(false);
 
 	// Queries
 	const invoiceWithPayments = useQuery(api.invoices.getWithPayments, {
@@ -109,7 +109,6 @@ function InvoiceDetailPageContent() {
 
 	// Mutations
 	const updateInvoice = useMutation(api.invoices.update);
-	const sendToClient = useMutation(api.invoices.sendToClient);
 	// clientSends pre-flight: draft sends and Mark as Sent debit; resends never do.
 	const { exhausted: sendsExhausted, reason: sendsReason } =
 		useClientSendMeter();
@@ -213,24 +212,6 @@ function InvoiceDetailPageContent() {
 		// Success toast + modal close are owned by DeleteConfirmationModal;
 		// let errors propagate so the modal shows a single error toast.
 		await updateInvoice({ id: invoiceId, status: "cancelled" });
-	};
-
-	const handleSendToClient = async () => {
-		if (isSending) return;
-		setIsSending(true);
-		try {
-			await sendToClient({ id: invoiceId });
-			toast.success(
-				"Invoice sent",
-				"Your client will get an email to view and pay it in the portal."
-			);
-		} catch (err) {
-			const message =
-				convexErrorMessage(err, "Failed to send invoice");
-			toast.error("Couldn't send invoice", message);
-		} finally {
-			setIsSending(false);
-		}
 	};
 
 	// Renders the invoice PDF exactly the way Generate does, so what the preview
@@ -397,8 +378,7 @@ function InvoiceDetailPageContent() {
 					currentStatus={currentStatus}
 					onStatusChange={handleStatusChange}
 					onMarkPaid={handleMarkPaid}
-					onSendToClient={handleSendToClient}
-					sending={isSending}
+					onSendEmail={() => setIsEmailModalOpen(true)}
 					sendCapReached={sendsExhausted && !invoice.firstSentAt}
 					sendCapReason={sendsReason}
 					onGeneratePdf={handleGeneratePdf}
@@ -438,6 +418,21 @@ function InvoiceDetailPageContent() {
 			</div>
 
 			{/* Modals */}
+			<EntityEmailModal
+				open={isEmailModalOpen}
+				onOpenChange={setIsEmailModalOpen}
+				entity={{
+					type: "invoice",
+					id: invoiceId,
+					number: invoice.invoiceNumber,
+					clientId: invoice.clientId,
+					total: invoice.total,
+					dateStamp: invoice.dueDate,
+					contentUpdatedAt: invoice.contentUpdatedAt,
+					firstSentAt: invoice.firstSentAt,
+				}}
+				onRegeneratePdf={handleGeneratePdf}
+			/>
 			<DeleteConfirmationModal
 				isOpen={isCancelModalOpen}
 				onClose={() => setIsCancelModalOpen(false)}

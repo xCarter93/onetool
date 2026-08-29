@@ -343,15 +343,19 @@ describe("quotes.sendToClient", () => {
 		).rejects.toThrow(/already approved/i);
 	});
 
-	it("throws when the client has no portal access", async () => {
-		const { asUser, quoteId } = await seed({
+	it("mints portal access for a client that has none", async () => {
+		const { asUser, quoteId, clientId } = await seed({
 			portalAccess: false,
 			contactEmail: "client@example.com",
 		});
 
-		await expect(
-			asUser.mutation(api.quotes.sendToClient, { id: quoteId })
-		).rejects.toThrow(/portal access/i);
+		await asUser.mutation(api.quotes.sendToClient, { id: quoteId });
+		await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+		const client = await t.run(async (ctx) => ctx.db.get(clientId));
+		expect(client?.portalAccessId).toBeTruthy();
+		const quote = await asUser.query(api.quotes.get, { id: quoteId });
+		expect(quote?.status).toBe("sent");
 	});
 
 	it("throws when the primary contact has no email", async () => {
@@ -365,6 +369,26 @@ describe("quotes.sendToClient", () => {
 		await expect(
 			asUser.mutation(api.quotes.sendToClient, { id: quoteId })
 		).rejects.toThrow(/email/i);
+	});
+
+	it("refuses a custom send without a portal issuer before changing status", async () => {
+		const { asUser, quoteId } = await seed({
+			portalAccess: true,
+			contactEmail: "client@example.com",
+		});
+		vi.stubEnv("PORTAL_JWT_ISSUER", "");
+
+		await expect(
+			asUser.mutation(api.quotes.sendToClient, {
+				id: quoteId,
+				mode: "custom",
+				html: "<p>Custom quote message</p>",
+			})
+		).rejects.toThrow(/Portal links aren't configured/);
+
+		const quote = await asUser.query(api.quotes.get, { id: quoteId });
+		expect(quote?.status).toBe("draft");
+		expect(quote?.firstSentAt).toBeUndefined();
 	});
 
 	it("refuses to send a quote belonging to another organization", async () => {

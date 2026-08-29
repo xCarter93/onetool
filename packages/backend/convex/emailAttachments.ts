@@ -1,9 +1,92 @@
-import { query } from "./_generated/server";
-import { mutation } from "./lib/triggers";
-import { v } from "convex/values";
-import { getCurrentUser, getCurrentUserOrgId } from "./lib/auth";
+import { ConvexError, v } from "convex/values";
+import { getCurrentUser } from "./lib/auth";
 import { getOptionalOrgId } from "./lib/queries";
-import { optionalUserQuery, userMutation } from "./lib/factories";
+import {
+	optionalUserQuery,
+	userMutation,
+	type UserMutationCtx,
+} from "./lib/factories";
+import { isBlockedAttachmentFilename } from "./lib/attachmentPolicy";
+
+/** Reachable from inbox compose and the quote/invoice modals. */
+async function requireComposeAccess(ctx: UserMutationCtx): Promise<void> {
+	const allowed =
+		(await ctx.can("inbox", "modify")) ||
+		(await ctx.can("quotes", "modify")) ||
+		(await ctx.can("invoices", "modify"));
+	if (!allowed) {
+		await ctx.requireLevel("inbox", "modify");
+	}
+}
+
+/**
+ * Signed upload URL for a composer attachment. The returned storageId is
+ * passed back on the send mutation's `attachments` argument.
+ */
+export const generateUploadUrl = userMutation({
+	args: {},
+	returns: v.string(),
+	handler: async (ctx) => {
+		await requireComposeAccess(ctx);
+		return await ctx.storage.generateUploadUrl();
+	},
+});
+
+/**
+ * Claim an uploaded blob for this org. Call right after the signed upload
+ * completes: without a claim the send path refuses the storageId, which is what
+ * stops one org attaching another's file.
+ */
+export const registerUpload = userMutation({
+	args: {
+		storageId: v.id("_storage"),
+		filename: v.string(),
+	},
+	returns: v.null(),
+	handler: async (ctx, args) => {
+		await requireComposeAccess(ctx);
+
+		if (isBlockedAttachmentFilename(args.filename)) {
+			throw new ConvexError({
+				code: "BAD_REQUEST",
+				message: `"${args.filename}" is a file type email providers refuse. Attach it as a PDF or zip instead.`,
+			});
+		}
+
+		const meta = await ctx.db.system.get(args.storageId);
+		if (!meta) {
+			throw new ConvexError({
+				code: "NOT_FOUND",
+				message: "That upload is no longer available. Try uploading it again.",
+			});
+		}
+
+		const existing = await ctx.db
+			.query("emailUploads")
+			.withIndex("by_storage", (q) => q.eq("storageId", args.storageId))
+			.first();
+		if (existing) {
+			// Another org already claimed it — say nothing that confirms it exists.
+			if (existing.orgId !== ctx.orgId) {
+				throw new ConvexError({
+					code: "NOT_FOUND",
+					message:
+						"That upload is no longer available. Try uploading it again.",
+				});
+			}
+			return null;
+		}
+
+		await ctx.db.insert("emailUploads", {
+			orgId: ctx.orgId,
+			storageId: args.storageId,
+			filename: args.filename,
+			uploadedBy: ctx.user._id,
+			createdAt: Date.now(),
+		});
+		return null;
+	},
+});
 
 /**
  * List all attachments for an email message

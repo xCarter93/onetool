@@ -100,7 +100,9 @@ async function listClientsForOrg(
  * `.unique()`, which throws on two matches. A duplicate therefore takes the
  * other tenant's portal offline entirely — shell, sign-in, and pay links.
  */
-async function mintPortalAccessId(ctx: UserMutationCtx): Promise<string> {
+export async function mintPortalAccessId(
+	ctx: UserMutationCtx
+): Promise<string> {
 	for (let attempt = 0; attempt < 5; attempt++) {
 		const candidate = crypto.randomUUID();
 		const collision = await ctx.db

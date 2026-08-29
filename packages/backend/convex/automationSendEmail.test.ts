@@ -385,6 +385,9 @@ describe("send_email automation action (D1)", () => {
 				/^automation-.+-email-1-rprimary@example\.com$/
 			);
 			expect(message.threadDocId).toBeDefined();
+			// Automation sends land in the inbox marked as system-sent.
+			expect(message.systemSent).toBe(true);
+			expect(message.sentBy).toBeUndefined();
 
 			const threads = await getEmailThreads();
 			expect(threads).toHaveLength(1);

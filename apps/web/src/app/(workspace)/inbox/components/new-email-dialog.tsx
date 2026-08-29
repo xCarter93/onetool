@@ -27,13 +27,6 @@ import {
 	PopoverContent,
 	PopoverTrigger,
 } from "@/components/ui/popover";
-import {
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-} from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
@@ -41,6 +34,17 @@ import {
 	EmailComposer,
 	type EmailComposerPayload,
 } from "@/components/shared/email/email-composer";
+import {
+	EmailRecipientsField,
+	mergeCc,
+	NO_RECIPIENTS,
+	type RecipientsValue,
+} from "@/components/shared/email/email-recipients-field";
+import {
+	toOutboundAttachments,
+	type ComposerAttachment,
+} from "@/components/shared/email/attachment-types";
+import { emailSendErrorMessage } from "@/components/shared/email/send-error";
 
 interface NewEmailDialogProps {
 	open: boolean;
@@ -53,7 +57,8 @@ export function NewEmailDialog({ open, onOpenChange }: NewEmailDialogProps) {
 	const sendClientEmail = useMutation(api.resend.sendClientEmail);
 
 	const [clientId, setClientId] = useState<Id<"clients"> | null>(null);
-	const [contactId, setContactId] = useState<Id<"clientContacts"> | null>(null);
+	const [recipients, setRecipients] = useState<RecipientsValue>(NO_RECIPIENTS);
+	const [attachments, setAttachments] = useState<ComposerAttachment[]>([]);
 	const [subject, setSubject] = useState("");
 	const [isSending, setIsSending] = useState(false);
 
@@ -66,13 +71,37 @@ export function NewEmailDialog({ open, onOpenChange }: NewEmailDialogProps) {
 		clientId ? { clientId } : "skip"
 	);
 
-	const selectedContact = contactId
-		? contacts?.find((c) => c._id === contactId)
-		: primaryContact;
+	const [lastClientId, setLastClientId] = useState<Id<"clients"> | null>(null);
+	const [seeded, setSeeded] = useState(false);
+	if (lastClientId !== clientId) {
+		setLastClientId(clientId);
+		setRecipients(NO_RECIPIENTS);
+		setSeeded(false);
+	} else if (clientId && !seeded && primaryContact?.email) {
+		setSeeded(true);
+		setRecipients({ to: [primaryContact.email], cc: [], bcc: [] });
+	}
+
+	const suggestions = (contacts ?? []).flatMap((contact) =>
+		contact.email
+			? [
+					{
+						email: contact.email,
+						name: `${contact.firstName} ${contact.lastName}`.trim(),
+					},
+				]
+			: []
+	);
+
+	const selectedContact = contacts?.find(
+		(contact) =>
+			contact.email?.toLowerCase() === recipients.to[0]?.toLowerCase()
+	);
 
 	const resetAndClose = () => {
 		setClientId(null);
-		setContactId(null);
+		setRecipients(NO_RECIPIENTS);
+		setAttachments([]);
 		setSubject("");
 		onOpenChange(false);
 	};
@@ -85,10 +114,7 @@ export function NewEmailDialog({ open, onOpenChange }: NewEmailDialogProps) {
 			return false;
 		}
 		if (!selectedContact?.email) {
-			toast.error(
-				"No email address",
-				"The selected contact doesn't have an email address."
-			);
+			toast.error("Add a recipient", "Choose a contact to send this to.");
 			return false;
 		}
 		if (!subject.trim()) {
@@ -103,6 +129,9 @@ export function NewEmailDialog({ open, onOpenChange }: NewEmailDialogProps) {
 				subject: subject.trim(),
 				messageBody: payload.text,
 				messageHtml: payload.html,
+				cc: recipients.cc,
+				bcc: recipients.bcc,
+				attachments: toOutboundAttachments(attachments),
 			});
 			toast.success("Email sent", `Sent to ${selectedContact.email}.`);
 			resetAndClose();
@@ -110,7 +139,7 @@ export function NewEmailDialog({ open, onOpenChange }: NewEmailDialogProps) {
 		} catch (error) {
 			toast.error(
 				"Couldn't send",
-				error instanceof Error ? error.message : "Please try again."
+				emailSendErrorMessage(error, "Please try again.")
 			);
 			return false;
 		} finally {
@@ -134,71 +163,59 @@ export function NewEmailDialog({ open, onOpenChange }: NewEmailDialogProps) {
 				</DialogHeader>
 
 				<div className="space-y-4 p-4 pt-2">
-					<div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-						<div className="space-y-1.5">
-							<label
-								htmlFor="new-email-client"
-								className="text-sm font-medium text-foreground"
-							>
-								Client
-							</label>
-							<ClientPicker
-								id="new-email-client"
-								value={clientId}
-								onChange={(id) => {
-									setClientId(id);
-									setContactId(null);
-								}}
-							/>
-						</div>
+					<div className="space-y-1.5">
+						<label
+							htmlFor="new-email-client"
+							className="text-sm font-medium text-foreground"
+						>
+							Client
+						</label>
+						<ClientPicker
+							id="new-email-client"
+							value={clientId}
+							onChange={setClientId}
+						/>
+					</div>
 
-						<div className="space-y-1.5">
-							<label
-								htmlFor="new-email-contact"
-								className="text-sm font-medium text-foreground"
-							>
-								Send to
-							</label>
-							<Select
-								value={selectedContact?._id ?? ""}
-								onValueChange={(value) =>
-									setContactId(value as Id<"clientContacts">)
-								}
-								disabled={!clientId}
-							>
-								<SelectTrigger id="new-email-contact" className="w-full">
-									<SelectValue
-										placeholder={
-											clientId ? "Select a contact" : "Pick a client first"
-										}
-									/>
-								</SelectTrigger>
-								<SelectContent>
-									{(contacts ?? []).map((contact) => (
-										<SelectItem key={contact._id} value={contact._id}>
-											<span className="flex items-center gap-2">
-												<span className="font-medium">
-													{contact.firstName} {contact.lastName}
-												</span>
-												{contact.isPrimary && (
-													<span className="text-xs text-primary">
-														(Primary)
-													</span>
-												)}
-												<span className="text-xs text-muted-foreground">
-													{contact.email}
-												</span>
-											</span>
-										</SelectItem>
-									))}
-								</SelectContent>
-							</Select>
-							{clientId && contacts && contacts.length === 0 && (
-								<p className="text-xs text-muted-foreground">
-									This client has no contacts yet. Add one on their page first.
-								</p>
-							)}
-						</div>
+					<div
+						role="group"
+						aria-labelledby="new-email-recipients-label"
+						className="space-y-1.5"
+					>
+						<span
+							id="new-email-recipients-label"
+							className="block text-sm font-medium text-foreground"
+						>
+							Recipients
+						</span>
+						<EmailRecipientsField
+							value={recipients}
+							// sendClientEmail addresses one contact; the rest move to cc.
+							onChange={(next) => {
+								// A typed recipient outranks the primary-contact seed,
+								// which may still be resolving.
+								setSeeded(true);
+								const to = next.to.slice(-1);
+								setRecipients({
+									...next,
+									to,
+									cc: mergeCc(to, [...next.cc, ...next.to.slice(0, -1)]),
+								});
+							}}
+							suggestions={suggestions}
+							toLocked
+							disabled={!clientId || isSending}
+						/>
+						{!clientId && (
+							<p className="text-xs text-muted-foreground">
+								Choose a client to add recipients.
+							</p>
+						)}
+						{clientId && contacts && contacts.length === 0 && (
+							<p className="text-xs text-muted-foreground">
+								This client has no contacts yet. Add one on their page first.
+							</p>
+						)}
 					</div>
 
 					<div className="space-y-1.5">
@@ -226,6 +243,8 @@ export function NewEmailDialog({ open, onOpenChange }: NewEmailDialogProps) {
 							sendLabel="Send email"
 							disabled={!clientId}
 							size="large"
+							attachments={attachments}
+							onAttachmentsChange={setAttachments}
 						/>
 						<p className="text-xs text-muted-foreground">
 							A greeting and your signature are added automatically.

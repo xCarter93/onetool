@@ -5,9 +5,17 @@ import { OutboundMessage } from "./types";
 import { isSuppressed } from "./suppressions";
 
 export interface SendResult {
-	resendEmailId: string | null; // null when skipped
+	resendEmailId: string | null; // null when skipped or deferred
 	skipped?: "suppressed" | "duplicate";
+	suppressedAddress?: string; // set alongside skipped: "suppressed"
 	emailMessageId?: Id<"emailMessages">; // set when a duplicate short-circuits
+	/**
+	 * Attachment send: enqueued for the manual transport instead of the durable
+	 * component. The caller records the message row, then hands it to
+	 * recordOutboundAttachments, which schedules the action that fills in
+	 * resendEmailId.
+	 */
+	deferred?: boolean;
 }
 
 /**
@@ -39,11 +47,20 @@ export async function sendOutbound(
 		}
 	}
 
-	// Suppression: never send to a hard-bounced/complained/manually-blocked address.
-	for (const to of msg.to) {
+	// Suppression: never send to a hard-bounced/complained/manually-blocked
+	// address, on any recipient line.
+	for (const to of [...msg.to, ...(msg.cc ?? []), ...(msg.bcc ?? [])]) {
 		if (await isSuppressed(ctx, orgId, to)) {
-			return { resendEmailId: null, skipped: "suppressed" };
+			return {
+				resendEmailId: null,
+				skipped: "suppressed",
+				suppressedAddress: to,
+			};
 		}
+	}
+
+	if (msg.attachments && msg.attachments.length > 0) {
+		return { resendEmailId: null, deferred: true };
 	}
 
 	// Map normalized message -> durable component options. RFC threading headers
@@ -59,6 +76,8 @@ export async function sendOutbound(
 		to: msg.to,
 		subject: msg.subject,
 		html: msg.html,
+		...(msg.cc && msg.cc.length > 0 ? { cc: msg.cc } : {}),
+		...(msg.bcc && msg.bcc.length > 0 ? { bcc: msg.bcc } : {}),
 		...(msg.text ? { text: msg.text } : {}),
 		...(msg.replyTo && msg.replyTo.length > 0 ? { replyTo: msg.replyTo } : {}),
 		...(headers.length > 0 ? { headers } : {}),

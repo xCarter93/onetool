@@ -166,7 +166,7 @@ export function decodeEntities(text: string): string {
  * Entities and control characters are stripped first so tricks like
  * `java&#115;cript:` or `java\tscript:` can't slip past.
  */
-function sanitizeHref(raw: string): string | null {
+export function sanitizeHref(raw: string): string | null {
 	const decoded = decodeEntities(raw).replace(/[\u0000-\u0020\u007f]/g, "");
 	if (decoded.length === 0) return null;
 	if (!URL_SCHEME_ALLOWLIST.test(decoded)) return null;

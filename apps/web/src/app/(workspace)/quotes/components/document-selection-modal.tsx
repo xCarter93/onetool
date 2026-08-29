@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useQuery } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
+import { usePermissions } from "@/hooks/use-permissions";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
 import { FileText, ExternalLink } from "lucide-react";
 
@@ -23,12 +24,21 @@ export function DocumentSelectionModal({
 	const [selectedIds, setSelectedIds] = useState<Id<"organizationDocuments">[]>(
 		[]
 	);
-	const allDocuments = useQuery(api.organizationDocuments.list);
-	// Appending merges with pdf-lib, which can only consume PDFs; the documents
-	// library itself now accepts other types too.
-	const documents = allDocuments?.filter(
-		(doc) => doc.mimeType === "application/pdf"
+	const { can, isLoading: permissionsLoading } = usePermissions();
+	// list throws FORBIDDEN without an orgDocuments grant, so skip until open and permitted
+	const canViewOrgDocuments = !permissionsLoading && can("orgDocuments");
+	const allDocuments = useQuery(
+		api.organizationDocuments.list,
+		isOpen && canViewOrgDocuments ? {} : "skip"
 	);
+	// Appending merges with pdf-lib, which can only consume PDFs; the documents
+	// library itself now accepts other types too. Undefined while permissions
+	// resolve, so the empty state can't flash before access is known.
+	const documents = permissionsLoading
+		? undefined
+		: canViewOrgDocuments
+			? allDocuments?.filter((doc) => doc.mimeType === "application/pdf")
+			: [];
 
 	const handleToggle = (id: Id<"organizationDocuments">) => {
 		setSelectedIds((prev) =>
