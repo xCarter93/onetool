@@ -35,7 +35,7 @@ const ORG_PAGE_SIZE = 200;
  * the remainder on the next daily sweep — the index range holds only flippable
  * rows, so a full window never starves the ones that just came due.
  */
-const ORG_FLIP_CAP = 200;
+export const ORG_FLIP_CAP = 200;
 
 /**
  * How late an invoice may be, in the org's own calendar days, and still
@@ -57,7 +57,10 @@ const SWEEP_SOURCE = "invoices.overdueSweep";
  * organizations table so one hop stays inside transaction limits.
  */
 export const sweepOverdueInvoices = internalMutation({
-	args: { cursor: v.optional(v.string()) },
+	// `now` is threaded through the continuations rather than re-read, so a
+	// paginated run that straddles the top of the hour still selects every org
+	// against the instant the sweep started.
+	args: { cursor: v.optional(v.string()), now: v.optional(v.number()) },
 	returns: v.object({
 		scanned: v.number(),
 		dispatched: v.number(),
@@ -67,7 +70,7 @@ export const sweepOverdueInvoices = internalMutation({
 		ctx,
 		args
 	): Promise<{ scanned: number; dispatched: number; isDone: boolean }> => {
-		const now = Date.now();
+		const now = args.now ?? Date.now();
 		const page = await ctx.db
 			.query("organizations")
 			.paginate({ numItems: ORG_PAGE_SIZE, cursor: args.cursor ?? null });
@@ -87,7 +90,7 @@ export const sweepOverdueInvoices = internalMutation({
 			await ctx.scheduler.runAfter(
 				0,
 				internal.invoiceOverdue.sweepOverdueInvoices,
-				{ cursor: page.continueCursor }
+				{ cursor: page.continueCursor, now }
 			);
 		}
 
@@ -114,14 +117,15 @@ export const sweepOrgOverdueInvoices = internalMutation({
 		// be against the org's own today — not Date.now(), which reads a
 		// due-today invoice as late for every zone west of UTC.
 		const today = localTodayUtcMidnight(now, org.timezone);
+		// Newest due date first: a backlog past ORG_FLIP_CAP then drains from its
+		// recent end, so an invoice that just came due is never left queued
+		// behind older ones until it ages out of the announcement window.
 		const overdue: Doc<"invoices">[] = await ctx.db
 			.query("invoices")
 			.withIndex("by_status_due_date", (q) =>
-				q
-					.eq("orgId", args.orgId)
-					.eq("status", "sent")
-					.lt("dueDate", today)
+				q.eq("orgId", args.orgId).eq("status", "sent").lt("dueDate", today)
 			)
+			.order("desc")
 			.take(ORG_FLIP_CAP);
 
 		let announced = 0;

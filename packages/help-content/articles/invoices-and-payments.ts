@@ -93,7 +93,7 @@ export const invoicesAndPaymentsArticles: HelpArticle[] = [
 							"**Draft**: you are still working on it, and it is not visible in the client portal.",
 							"**Sent**: the client has been billed and payment is open.",
 							"**Paid**: the invoice is settled.",
-							"**Overdue**: the invoice was sent and its due date has passed. OneTool moves it there for you at 1:00 AM in your organization's timezone, the morning after the due date, and notifies the organization owner. It stays overdue until it is paid.",
+							"**Overdue**: the invoice was sent and its due date has passed. OneTool moves it there for you at 1:00 AM in your organization's timezone, the morning after the due date, and notifies the organization owner. An invoice that was already more than a week past due moves quietly instead, with no notification and no automation, so a long-neglected backlog does not suddenly start chasing clients. It stays overdue until it is paid.",
 							"**Cancelled**: the invoice is void.",
 						],
 					},
@@ -135,7 +135,7 @@ export const invoicesAndPaymentsArticles: HelpArticle[] = [
 			},
 			{
 				question: "Why does my invoice show as overdue?",
-				answer: "It was sent and its due date has passed. OneTool moves sent invoices to Overdue on its own, at 1:00 AM in your organization's timezone the morning after the due date, and notifies the organization owner. It stays overdue until it is paid, either online through the portal or by you recording the payment.",
+				answer: "It was sent and its due date has passed. OneTool moves sent invoices to Overdue on its own, at 1:00 AM in your organization's timezone the morning after the due date, and notifies the organization owner. Invoices that were already more than a week past due move quietly, without a notification. It stays overdue until it is paid, either online through the portal or by you recording the payment.",
 			},
 			{
 				question: "Can I edit an invoice after sending it?",

@@ -8,7 +8,9 @@ import {
 	createTestClient,
 	createTestClientContact,
 	createTestIdentity,
+	createTestInvoice,
 } from "./test.helpers";
+import { ORG_FLIP_CAP } from "./invoiceOverdue";
 
 const DAY = 24 * 60 * 60 * 1000;
 // 06:00 UTC = 01:00 America/New_York (EST, the sweep hour) and 00:00
@@ -246,6 +248,39 @@ describe("invoice overdue sweep", () => {
 			expect(await sweepEvents()).toHaveLength(0);
 			expect(await overdueNotifications(org.orgId)).toHaveLength(0);
 		});
+
+		it("a backlog past the flip cap can't delay a freshly-due invoice out of the window", async () => {
+			const org = await seedOrg("a", "America/New_York");
+			// One full cap's worth of long-dead invoices, oldest first. Taking the
+			// range ascending would spend the whole run on these and leave the
+			// fresh one queued until it too aged past the grace window.
+			const freshId = await t.run(async (ctx) => {
+				for (let i = 0; i < ORG_FLIP_CAP; i++) {
+					await createTestInvoice(ctx, org.orgId, org.clientId, {
+						invoiceNumber: `INV-OLD-${i}`,
+						status: "sent",
+						dueDate: TODAY - (100 + i) * DAY,
+						firstSentAt: TODAY - (101 + i) * DAY,
+					});
+				}
+				return createTestInvoice(ctx, org.orgId, org.clientId, {
+					invoiceNumber: "INV-FRESH",
+					status: "sent",
+					dueDate: TODAY - DAY,
+					firstSentAt: TODAY - 2 * DAY,
+				});
+			});
+
+			expect(await sweepOrg(org.orgId)).toEqual({
+				flipped: ORG_FLIP_CAP,
+				announced: 1,
+			});
+
+			expect(await statusOf(freshId)).toBe("overdue");
+			const notifications = await overdueNotifications(org.orgId);
+			expect(notifications).toHaveLength(1);
+			expect(notifications[0].entityId).toBe(freshId);
+		});
 	});
 
 	it("only sweeps orgs whose local clock reads the sweep hour", async () => {
@@ -272,5 +307,26 @@ describe("invoice overdue sweep", () => {
 
 		expect(await statusOf(easternInvoice)).toBe("overdue");
 		expect(await statusOf(centralInvoice)).toBe("sent");
+	});
+
+	it("honors the start instant on a continuation that crosses the hour", async () => {
+		// Stands in for a paginated run whose later pages land after 01:59:
+		// re-reading the clock there would skip every org on those pages.
+		const org = await seedOrg("a", "America/New_York");
+		const invoiceId = await createInvoice(org, {
+			number: "INV-EAST",
+			dueDate: TODAY - 3 * DAY,
+			send: true,
+		});
+
+		vi.setSystemTime(NOW + 60 * 60 * 1000);
+		const dispatch = await t.mutation(
+			internal.invoiceOverdue.sweepOverdueInvoices,
+			{ now: NOW }
+		);
+		expect(dispatch).toMatchObject({ dispatched: 1 });
+		await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+		expect(await statusOf(invoiceId)).toBe("overdue");
 	});
 });
