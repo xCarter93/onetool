@@ -37,7 +37,7 @@ export type InvoiceTransitionOpts = {
 	actor: { userId: Id<"users"> } | "system";
 	/** eventSource on the emitted status_changed event. */
 	source: string;
-	/** Default true. A backfill that must not wake automations passes false. */
+	/** Default true. False moves the invoice without waking automations. */
 	emit?: boolean;
 	/**
 	 * Default "debit". "skip" moves the invoice without touching the send meter

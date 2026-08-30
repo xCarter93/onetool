@@ -63,6 +63,7 @@ import type * as geocodeActions from "../geocodeActions.js";
 import type * as homeStats from "../homeStats.js";
 import type * as http from "../http.js";
 import type * as invoiceLineItems from "../invoiceLineItems.js";
+import type * as invoiceOverdue from "../invoiceOverdue.js";
 import type * as invoices from "../invoices.js";
 import type * as lib_activities from "../lib/activities.js";
 import type * as lib_assistantShared from "../lib/assistantShared.js";
@@ -275,6 +276,7 @@ declare const fullApi: ApiFromModules<{
   homeStats: typeof homeStats;
   http: typeof http;
   invoiceLineItems: typeof invoiceLineItems;
+  invoiceOverdue: typeof invoiceOverdue;
   invoices: typeof invoices;
   "lib/activities": typeof lib_activities;
   "lib/assistantShared": typeof lib_assistantShared;

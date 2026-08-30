@@ -53,6 +53,39 @@ function getWallParts(ms: number, timezone: string) {
 	};
 }
 
+/**
+ * Wall-clock hour (0–23) in `timezone` at instant `ms`. Unset or invalid
+ * timezones fall back to UTC, matching DateUtils.toLocalDateString.
+ */
+export function localHourAt(ms: number, timezone?: string): number {
+	if (!timezone) return new Date(ms).getUTCHours();
+	try {
+		return getWallParts(ms, timezone).hour;
+	} catch {
+		return new Date(ms).getUTCHours();
+	}
+}
+
+/**
+ * UTC-midnight epoch of the calendar day it currently is in `timezone` — the
+ * server-side twin of the web app's todayUtcMidnightMs. Date-only fields
+ * (dueDate, issuedDate, validUntil) store UTC midnight of their calendar day,
+ * so this is what they must be compared against; comparing them to Date.now()
+ * reads them as past a day early for every zone west of UTC.
+ */
+export function localTodayUtcMidnight(ms: number, timezone?: string): number {
+	const utc = new Date(ms);
+	if (!timezone) {
+		return Date.UTC(utc.getUTCFullYear(), utc.getUTCMonth(), utc.getUTCDate());
+	}
+	try {
+		const p = getWallParts(ms, timezone);
+		return Date.UTC(p.year, p.month - 1, p.day);
+	} catch {
+		return Date.UTC(utc.getUTCFullYear(), utc.getUTCMonth(), utc.getUTCDate());
+	}
+}
+
 /** UTC offset of `timezone` at instant `ms`, in milliseconds (negative = west). */
 function offsetAt(ms: number, timezone: string): number {
 	const p = getWallParts(ms, timezone);
