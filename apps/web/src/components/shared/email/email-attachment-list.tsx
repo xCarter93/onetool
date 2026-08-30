@@ -1,7 +1,8 @@
 "use client";
 
 import { useQuery } from "convex/react";
-import { Download, Paperclip } from "lucide-react";
+import { AlertTriangle, Download, Paperclip } from "lucide-react";
+import type { ReactNode } from "react";
 
 import { api } from "@onetool/backend/convex/_generated/api";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
@@ -12,6 +13,8 @@ export interface EmailAttachment {
 	filename: string;
 	size: number;
 	contentType: string;
+	// Absent on legacy and outbound rows, which are stored by construction.
+	downloadState?: "pending" | "stored" | "failed";
 }
 
 export function formatBytes(bytes: number): string {
@@ -53,40 +56,73 @@ export function EmailAttachmentList({
 	);
 }
 
-function AttachmentChip({ attachment }: { attachment: EmailAttachment }) {
-	const downloadUrl = useQuery(api.emailAttachments.getDownloadUrl, {
-		attachmentId: attachment._id,
-	});
+const chipClass =
+	"flex items-center gap-2 rounded-md border border-border bg-background px-2.5 py-1.5 transition-colors duration-150";
 
-	const inner = (
+function AttachmentChip({ attachment }: { attachment: EmailAttachment }) {
+	const pending = attachment.downloadState === "pending";
+	const failed = attachment.downloadState === "failed";
+
+	// A row that can never resolve to a URL shouldn't ask for one.
+	const downloadUrl = useQuery(
+		api.emailAttachments.getDownloadUrl,
+		pending || failed ? "skip" : { attachmentId: attachment._id }
+	);
+
+	const label = (
+		icon: ReactNode,
+		detail: string,
+		detailClass = "text-muted-foreground"
+	) => (
 		<>
-			<Paperclip
-				className="size-3.5 shrink-0 text-muted-foreground"
-				aria-hidden="true"
-			/>
+			{icon}
 			<span className="min-w-0">
 				<span className="block max-w-[180px] truncate text-xs font-medium text-foreground">
 					{attachment.filename}
 				</span>
-				<span className="block text-[11px] text-muted-foreground">
-					{formatBytes(attachment.size)}
-				</span>
+				<span className={cn("block text-[11px]", detailClass)}>{detail}</span>
 			</span>
-			<Download
-				className="size-3.5 shrink-0 text-muted-foreground"
-				aria-hidden="true"
-			/>
 		</>
 	);
 
-	const chipClass =
-		"flex items-center gap-2 rounded-md border border-border bg-background px-2.5 py-1.5 transition-colors duration-150";
+	const paperclip = (
+		<Paperclip
+			className="size-3.5 shrink-0 text-muted-foreground"
+			aria-hidden="true"
+		/>
+	);
 
-	// No dead href while the URL query resolves; swap to a real link once ready.
+	// The label carries the state, not a dimmed chip: pending can last through a
+	// full retry budget, and opacity on the whole chip puts the filename under
+	// AA contrast for the duration.
+	if (pending) {
+		return (
+			<span className={cn(chipClass, "border-dashed")} aria-busy="true">
+				{label(paperclip, "Downloading…")}
+			</span>
+		);
+	}
+
+	if (failed) {
+		return (
+			<span className={cn(chipClass, "border-danger/30 bg-danger/10")}>
+				{label(
+					<AlertTriangle
+						className="size-3.5 shrink-0 text-danger"
+						aria-hidden="true"
+					/>,
+					"Couldn't download",
+					"text-danger"
+				)}
+			</span>
+		);
+	}
+
+	// Stored, but the signed URL query hasn't come back yet — genuinely transient.
 	if (!downloadUrl) {
 		return (
-			<span className={cn(chipClass, "opacity-60")} aria-busy="true">
-				{inner}
+			<span className={chipClass} aria-busy="true">
+				{label(paperclip, formatBytes(attachment.size))}
 			</span>
 		);
 	}
@@ -100,7 +136,11 @@ function AttachmentChip({ attachment }: { attachment: EmailAttachment }) {
 				"hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
 			)}
 		>
-			{inner}
+			{label(paperclip, formatBytes(attachment.size))}
+			<Download
+				className="size-3.5 shrink-0 text-muted-foreground"
+				aria-hidden="true"
+			/>
 		</a>
 	);
 }

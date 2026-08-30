@@ -436,6 +436,10 @@ export const quotesArticles: HelpArticle[] = [
 						caption: "The Signatures tab with a completed request",
 						asset: "quotes/e-signatures/signatures-tab-with-a-completed-request",
 					},
+					{
+						type: "note",
+						text: "The signed PDF is fetched and filed on its own once a request completes, so it turns up with the quote's other documents without you doing anything. On the rare occasion it can't be retrieved, admins get a notification naming the quote — the signature itself is still valid and on file with the signing provider, so nobody has to sign again.",
+					},
 				],
 			},
 			{

@@ -2,6 +2,7 @@
 import { v } from "convex/values";
 import { action, internalAction } from "./_generated/server";
 import { internal } from "./_generated/api";
+import { NonRetryableError } from "@convex-dev/workpool";
 import {
 	DocumentApi,
 	DocumentSigner,
@@ -278,8 +279,8 @@ export const discardEmbeddedSignatureRequest = action({
  * Download a completed/signed document from BoldSign.
  *
  * Internal-only: it spends the shared platform API key and writes into storage,
- * so it must never be client-callable. Its sole caller is
- * `boldsign.triggerDocumentDownload`, scheduled from the verified webhook.
+ * so it must never be client-callable. Enqueued on `externalIoPool` from the
+ * verified Completed webhook, which retries it; keep it idempotent.
  */
 export const downloadCompletedDocument = internalAction({
 	args: {
@@ -358,7 +359,12 @@ export const downloadCompletedDocument = internalAction({
 				await ctx.storage.delete(signedStorageId).catch(() => {
 					/* swallow cleanup error so the original is the one re-thrown */
 				});
-				throw err;
+				// Every way this mutation fails (row gone, BoldSign ID mismatch) is
+				// permanent, so retrying just re-downloads the PDF to reject it again.
+				throw new NonRetryableError(
+					err instanceof Error ? err.message : String(err),
+					{ cause: err }
+				);
 			}
 
 			return { success: true, signedStorageId };

@@ -98,4 +98,22 @@ crons.interval(
 	{}
 );
 
+// Attachment downloads whose pool job vanished. Hourly, because Resend's
+// signed download_url lives an hour and a re-enqueue mints a fresh one.
+crons.interval(
+	"reconcile stuck attachment downloads",
+	{ hours: 1 },
+	internal.externalFetchReconcile.reconcileStuckAttachments,
+	{}
+);
+
+// Backstop for signed PDFs that gave up without the completion hook telling
+// anyone. Daily is enough: nobody is waiting on this in real time.
+crons.daily(
+	"reconcile failed signed pdf downloads",
+	{ hourUTC: 5, minuteUTC: 30 },
+	internal.externalFetchReconcile.reconcileFailedSignedPdfs,
+	{}
+);
+
 export default crons;
