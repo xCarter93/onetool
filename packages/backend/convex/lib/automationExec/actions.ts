@@ -27,7 +27,11 @@ import {
 import { isSuppressed } from "../../email/suppressions";
 import type { OutboundMessage } from "../../email/types";
 import { runExternalEffect } from "./externalEffects";
-import { scheduleEventProcessing } from "../../eventBus";
+import {
+	emitStatusChangeEvent,
+	emitRecordCreatedEvent,
+	emitRecordUpdatedEvent,
+} from "../../eventBus";
 import {
 	evaluateConditionGroups,
 	interpolateTemplate,
@@ -327,39 +331,22 @@ async function applyStatusUpdate(
 			}
 		}
 
-		// Emit cascading status change event with execution chain context
-		// The event bus will handle dispatching to automation handler with recursion protection
+		// Emit cascading status change event; the cascade context rides in
+		// metadata so the event bus keeps recursion protection. Date.now() is
+		// frozen within a Convex transaction, so a per-module counter keeps
+		// correlation IDs unique when one run emits several cascade events.
 		if (oldStatus && oldStatus !== newStatus) {
-			// Create correlation ID that includes chain info for the event bus.
-			// Date.now() is frozen within a Convex transaction, so a per-module
-			// counter keeps IDs unique when one run emits several cascade events.
-			const correlationId = nextCascadeCorrelationId(executionChain);
-
-			await ctx.db.insert("domainEvents", {
+			await emitStatusChangeEvent(
+				ctx,
 				orgId,
-				eventType: "entity.status_changed",
-				eventSource: "automationExecutor.applyStatusUpdate",
-				payload: {
-					entityType: targetInfo.type,
-					entityId: targetInfo.id,
-					field: "status",
-					oldValue: oldStatus,
-					newValue: newStatus,
-					// Pass execution chain in metadata for recursion prevention
-					metadata: {
-						executionChain,
-						recursionDepth,
-						isCascade: true,
-					},
-				},
-				status: "pending",
-				correlationId,
-				createdAt: Date.now(),
-				attemptCount: 0,
-			});
-
-			// Trigger event processing
-			await scheduleEventProcessing(ctx);
+				targetInfo.type,
+				targetInfo.id,
+				oldStatus,
+				newStatus,
+				"automationExecutor.applyStatusUpdate",
+				nextCascadeCorrelationId(executionChain),
+				{ executionChain, recursionDepth }
+			);
 		}
 
 		return { success: true };
@@ -683,38 +670,23 @@ export async function executeUpdateFieldsAction(
 
 			// Emit record_updated so automations chained on these fields actually
 			// fire (a status row emits its own event via applyStatusUpdate below).
-			// The chain rides in metadata — the emitRecordUpdatedEvent helper would
-			// drop it and defeat the recursion guard. One event per action, so a
-			// trigger watching any of the changed fields fires exactly once.
+			// One event per action, so a trigger watching any of the changed
+			// fields fires exactly once.
 			if (changed.length > 0) {
 				const single = changed.length === 1 ? changed[0] : undefined;
-				await ctx.db.insert("domainEvents", {
+				await emitRecordUpdatedEvent(
+					ctx,
 					orgId,
-					eventType: "entity.record_updated",
-					eventSource: "automationExecutor.executeActionNodeV2",
-					payload: {
-						entityType: targetInfo.type,
-						entityId: targetInfo.id,
-						...(single
-							? {
-									field: single.field,
-									oldValue: single.oldValue,
-									newValue: single.newValue,
-								}
-							: {}),
-						metadata: {
-							changedFields: changed.map((c) => c.field),
-							executionChain,
-							recursionDepth,
-							isCascade: true,
-						},
-					},
-					status: "pending",
-					correlationId: nextCascadeCorrelationId(executionChain),
-					createdAt: Date.now(),
-					attemptCount: 0,
-				});
-				await scheduleEventProcessing(ctx);
+					targetInfo.type,
+					targetInfo.id,
+					changed.map((c) => c.field),
+					"automationExecutor.executeActionNodeV2",
+					nextCascadeCorrelationId(executionChain),
+					{
+						cascade: { executionChain, recursionDepth },
+						singleChange: single,
+					}
+				);
 			}
 		} catch (error) {
 			return {
@@ -912,27 +884,19 @@ async function executeCreateTaskAction(
 			await ActivityHelpers.taskCreated(ctx, task, actor);
 
 			// Emit record_created with the execution chain in metadata so
-			// cascading automations keep recursion protection (the plain
-			// emitRecordCreatedEvent helper would drop the chain).
-			await ctx.db.insert("domainEvents", {
-				orgId: env.orgId,
-				eventType: "entity.record_created",
-				eventSource: "automationExecutor.executeCreateTaskAction",
-				payload: {
-					entityType: "task",
-					entityId: taskId,
-					metadata: {
-						executionChain: env.executionChain,
-						recursionDepth: env.recursionDepth,
-						isCascade: true,
-					},
-				},
-				status: "pending",
-				correlationId: nextCascadeCorrelationId(env.executionChain),
-				createdAt: Date.now(),
-				attemptCount: 0,
-			});
-			await scheduleEventProcessing(ctx);
+			// cascading automations keep recursion protection.
+			await emitRecordCreatedEvent(
+				ctx,
+				env.orgId,
+				"task",
+				taskId,
+				"automationExecutor.executeCreateTaskAction",
+				nextCascadeCorrelationId(env.executionChain),
+				{
+					executionChain: env.executionChain,
+					recursionDepth: env.recursionDepth,
+				}
+			);
 		}
 
 		return { success: true };
@@ -1300,25 +1264,18 @@ export async function executeCreateRecordAction(
 
 			// Emit record_created with the execution chain in metadata so cascading
 			// automations keep recursion protection (mirrors executeCreateTaskAction).
-			await ctx.db.insert("domainEvents", {
-				orgId: env.orgId,
-				eventType: "entity.record_created",
-				eventSource: "automationExecutor.executeCreateRecordAction",
-				payload: {
-					entityType: objectType,
-					entityId: newId,
-					metadata: {
-						executionChain: env.executionChain,
-						recursionDepth: env.recursionDepth,
-						isCascade: true,
-					},
-				},
-				status: "pending",
-				correlationId: nextCascadeCorrelationId(env.executionChain),
-				createdAt: Date.now(),
-				attemptCount: 0,
-			});
-			await scheduleEventProcessing(ctx);
+			await emitRecordCreatedEvent(
+				ctx,
+				env.orgId,
+				objectType,
+				newId,
+				"automationExecutor.executeCreateRecordAction",
+				nextCascadeCorrelationId(env.executionChain),
+				{
+					executionChain: env.executionChain,
+					recursionDepth: env.recursionDepth,
+				}
+			);
 		}
 
 		return { success: true };
