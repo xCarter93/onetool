@@ -10,7 +10,9 @@ import { getWeekRange } from "./lib/queries";
  * Pin-down tests for api.homeStats.getHomeStats (homeStats.ts:120-341), taken
  * BEFORE the aggregate-backed rewrite. These capture exact current behavior,
  * including quirks — not what the function "should" do. If the rewrite is
- * behavior-preserving, every test here stays green unmodified.
+ * behavior-preserving, every test here stays green unmodified. One deliberate
+ * exception since: completedProjects.totalValue now values a completed project
+ * by its invoices rather than its approved quotes, and its test was updated.
  *
  * All records are created through the real public mutations (never raw
  * db.insert for tracked entities) so aggregates stay seeded and these tests
@@ -140,6 +142,30 @@ describe("homeStats.getHomeStats", () => {
 		return invoiceId;
 	}
 
+	/** Invoice attached to a project (or none), created at the current clock. */
+	async function createProjectInvoice(
+		asUser: ReturnType<typeof t.withIdentity>,
+		clientId: Id<"clients">,
+		projectId: Id<"projects"> | undefined,
+		opts: {
+			total: number;
+			invoiceNumber: string;
+			status?: "draft" | "sent" | "paid" | "overdue" | "cancelled";
+		}
+	): Promise<Id<"invoices">> {
+		return await asUser.mutation(api.invoices.create, {
+			clientId,
+			projectId,
+			invoiceNumber: opts.invoiceNumber,
+			status: opts.status ?? "sent",
+			subtotal: opts.total,
+			taxAmount: 0,
+			total: opts.total,
+			issuedDate: Date.now(),
+			dueDate: Date.now() + 30 * DAY,
+		});
+	}
+
 	// =====================================================================
 	// Behaviors 1 & 2: all-time "current" vs "total - thisMonth" previous
 	// =====================================================================
@@ -232,7 +258,7 @@ describe("homeStats.getHomeStats", () => {
 	// Behavior 6: completedProjects.totalValue
 	// =====================================================================
 
-	it("completedProjects.totalValue sums approved-quote totals only for projects completed THIS month", async () => {
+	it("completedProjects.totalValue sums invoice totals for projects completed THIS month", async () => {
 		const { asUser } = await seedOrg("totalvalue");
 		const clientId = await createClient(asUser, "Value Co");
 
@@ -248,37 +274,48 @@ describe("homeStats.getHomeStats", () => {
 			LAST_MONTH,
 			"Last Month Project"
 		);
-
-		// Counted: two approved quotes tied to the this-month-completed project.
-		await createApprovedQuote(asUser, clientId, NOW, {
-			total: 500,
-			quoteNumber: "Q-TV-1",
-			projectId: projectThisMonth,
-		});
-		await createApprovedQuote(asUser, clientId, NOW, {
-			total: 250,
-			quoteNumber: "Q-TV-2",
-			projectId: projectThisMonth,
-		});
-
-		// Excluded: approved, but its project completed last month, not this one.
-		await createApprovedQuote(asUser, clientId, LAST_MONTH, {
-			total: 700,
-			quoteNumber: "Q-TV-3",
-			projectId: projectLastMonth,
-		});
-
-		// Excluded: tied to the this-month project, but never approved (status stays "sent").
-		vi.setSystemTime(NOW);
-		await asUser.mutation(api.quotes.create, {
+		const quoteOnlyProject = await createCompletedProject(
+			asUser,
 			clientId,
-			projectId: projectThisMonth,
-			title: "Unapproved",
-			quoteNumber: "Q-TV-4",
-			status: "sent",
-			subtotal: 1000,
-			taxAmount: 0,
+			NOW,
+			"Quote Only Project"
+		);
+
+		// Counted: two invoices tied to the this-month-completed project.
+		await createProjectInvoice(asUser, clientId, projectThisMonth, {
+			total: 500,
+			invoiceNumber: "INV-TV-1",
+		});
+		await createProjectInvoice(asUser, clientId, projectThisMonth, {
+			total: 250,
+			invoiceNumber: "INV-TV-2",
+		});
+
+		// Excluded: its project completed last month, not this one.
+		await createProjectInvoice(asUser, clientId, projectLastMonth, {
+			total: 700,
+			invoiceNumber: "INV-TV-3",
+		});
+
+		// Excluded: voided.
+		await createProjectInvoice(asUser, clientId, projectThisMonth, {
 			total: 1000,
+			invoiceNumber: "INV-TV-4",
+			status: "cancelled",
+		});
+
+		// Excluded: no project to attribute it to.
+		await createProjectInvoice(asUser, clientId, undefined, {
+			total: 1234,
+			invoiceNumber: "INV-TV-5",
+		});
+
+		// Excluded since the switch to invoice-based valuation: an approved quote
+		// on a completed project that was never invoiced is worth 0 here.
+		await createApprovedQuote(asUser, clientId, NOW, {
+			total: 400,
+			quoteNumber: "Q-TV-1",
+			projectId: quoteOnlyProject,
 		});
 
 		const stats = await asUser.query(api.homeStats.getHomeStats, {});

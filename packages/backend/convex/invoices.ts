@@ -6,6 +6,7 @@ import { ConvexError, v } from "convex/values";
 import { Doc, Id } from "./_generated/dataModel";
 import { ActivityHelpers } from "./lib/activities";
 import { celebrateInvoicePaid } from "./lib/celebrations";
+import { remainingBalanceLookup } from "./lib/paymentInsights";
 import {
 	validateParentAccess,
 	filterUndefined,
@@ -1164,14 +1165,19 @@ export const getOverdue = optionalUserQuery({
 			paymentsByInvoice.set(p.invoiceId, list);
 		}
 
-		// Filter to invoices that need attention and enrich with earliest payment due date
-		const results: (InvoiceDocument & { earliestPaymentDueDate?: number })[] = [];
+		// Filter to invoices that need attention and enrich with earliest payment
+		// due date plus the balance still owed (totals overstate partial payments).
+		const remainingFor = remainingBalanceLookup(allPayments);
+		const results: (InvoiceDocument & {
+			earliestPaymentDueDate?: number;
+			remainingBalance: number;
+		})[] = [];
 		for (const invoice of allInvoices) {
 			const payments = paymentsByInvoice.get(invoice._id) ?? [];
 			if (payments.length === 0) {
 				// No payment records — include if invoice itself is past due
 				if (invoice.dueDate <= now) {
-					results.push(invoice);
+					results.push({ ...invoice, remainingBalance: invoice.total });
 				}
 				continue;
 			}
@@ -1185,7 +1191,11 @@ export const getOverdue = optionalUserQuery({
 
 			if (unpaidPayments.length > 0) {
 				const earliestDueDate = Math.min(...unpaidPayments.map((p) => p.dueDate));
-				results.push({ ...invoice, earliestPaymentDueDate: earliestDueDate });
+				results.push({
+					...invoice,
+					earliestPaymentDueDate: earliestDueDate,
+					remainingBalance: remainingFor(invoice),
+				});
 			}
 		}
 

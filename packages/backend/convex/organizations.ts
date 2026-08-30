@@ -488,6 +488,34 @@ export const update = userMutation({
 });
 
 /**
+ * Set or clear the monthly revenue target (null clears; `update` can't unset
+ * fields since it filters undefined args). Owner-only like other org settings.
+ */
+export const setMonthlyRevenueTarget = userMutation({
+	args: { target: v.union(v.number(), v.null()) },
+	handler: async (ctx, args) => {
+		const organization = await ctx.db.get(ctx.orgId);
+		if (!organization) {
+			throw new Error("Organization not found");
+		}
+		if (organization.ownerUserId !== ctx.user._id) {
+			throw new Error(
+				"Only organization owner can update organization details"
+			);
+		}
+		if (
+			args.target !== null &&
+			(!Number.isFinite(args.target) || args.target < 0)
+		) {
+			throw new Error("Revenue target must be a non-negative number");
+		}
+		await ctx.db.patch(ctx.orgId, {
+			monthlyRevenueTarget: args.target ?? undefined,
+		});
+	},
+});
+
+/**
  * Regenerate the receiving email address for the organization
  * Only organization owner can perform this action
  */

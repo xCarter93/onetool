@@ -3,12 +3,13 @@
 import React, { Suspense, useState, useEffect, useRef } from "react";
 import dynamic from "next/dynamic";
 import { useRouter, useSearchParams } from "next/navigation";
-import ActivityFeed from "@/app/(workspace)/home/components/activity-feed";
-import HomeStats from "@/app/(workspace)/home/components/home-stats-real";
-import { NeedsAttention } from "@/app/(workspace)/home/components/needs-attention";
+import { ActivityCard } from "@/app/(workspace)/home/components/activity-card";
+import { BusinessOverviewPanel } from "@/app/(workspace)/home/components/business-overview-panel";
+import { CollectionPaceCard } from "@/app/(workspace)/home/components/collection-pace-card";
+import { TopClientsCard } from "@/app/(workspace)/home/components/top-clients-card";
 import { SchedulePanel } from "@/app/(workspace)/home/components/schedule/schedule-panel";
 import { RecentEmails } from "@/app/(workspace)/home/components/recent-emails";
-import { Frame, FramePanel } from "@/components/reui/frame";
+import type { DashboardPeriod } from "@/app/(workspace)/home/components/dashboard-period";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
@@ -27,13 +28,8 @@ import {
 	HomeTourContext,
 } from "@/components/tours";
 
-// Code-split so maplibre-gl and the event calendar stay out of the initial
-// /home chunk (field LCP p75 ~3.4s was dominated by script cost before paint).
-// Placeholders mirror each component's own loading footprint to avoid CLS.
-const ClientPropertiesMap = dynamic(
-	() => import("@/app/(workspace)/home/components/client-properties-map"),
-	{ ssr: false, loading: () => <MapLoadingFrame /> }
-);
+// Code-split so the event calendar stays out of the initial /home chunk
+// (field LCP p75 ~3.4s was dominated by script cost before paint).
 const HomeCalendar = dynamic(
 	() =>
 		import("@/app/(workspace)/home/components/calendar/home-calendar").then(
@@ -41,32 +37,6 @@ const HomeCalendar = dynamic(
 		),
 	{ ssr: false, loading: () => <Skeleton className="h-full w-full" /> }
 );
-
-function MapLoadingFrame() {
-	return (
-		<Frame className="h-full w-full">
-			<FramePanel className="flex h-full flex-col gap-3">
-				<h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-					Client Locations
-				</h3>
-				<div
-					className="relative min-h-[300px] flex-1 overflow-hidden rounded-lg border border-border bg-muted/30"
-					role="status"
-					aria-live="polite"
-					aria-label="Loading client locations"
-				>
-					<div className="absolute inset-0 flex items-center justify-center">
-						<div className="flex gap-1">
-							<span className="size-1.5 rounded-full bg-muted-foreground/60 animate-pulse" />
-							<span className="size-1.5 rounded-full bg-muted-foreground/60 animate-pulse [animation-delay:150ms]" />
-							<span className="size-1.5 rounded-full bg-muted-foreground/60 animate-pulse [animation-delay:300ms]" />
-						</div>
-					</div>
-				</div>
-			</FramePanel>
-		</Frame>
-	);
-}
 
 type ViewMode = "dashboard" | "calendar";
 
@@ -77,6 +47,8 @@ export default function Page() {
 	const skipTour = useMutation(api.userTour.skipTour);
 
 	const [viewMode, setViewMode] = useState<ViewMode>("dashboard");
+	// Lifted so the overview, collection pace and top clients share one window.
+	const [period, setPeriod] = useState<DashboardPeriod>("month");
 	const [showTourModal, setShowTourModal] = useState(false);
 	const [tourStarted, setTourStarted] = useState(false);
 	// Once the welcome modal has been answered, never re-open it this session —
@@ -231,7 +203,7 @@ export default function Page() {
 				}`}
 			>
 				{/* Header */}
-				<div className="mb-8 sm:mb-10 flex items-start justify-between">
+				<div className="mb-6 sm:mb-8 flex items-start justify-between">
 					<div>
 						<h1 className="text-3xl sm:text-4xl font-bold text-foreground leading-tight tracking-tight">
 							{getGreeting()}
@@ -277,39 +249,44 @@ export default function Page() {
 				{/* Conditional View Rendering */}
 				{viewMode === "dashboard" ? (
 					<>
-						{/* Animation Group 1: Stats - no delay */}
+						{/* Animation Group 1: Business overview + Needs Attention queue */}
 						<motion.div
 							initial={{ opacity: 0, y: 10 }}
 							animate={{ opacity: 1, y: 0 }}
 							transition={{ duration: 0.3, ease: "easeOut" }}
 						>
-							{/* Home Stats - Tour Step */}
-							<div>
-								<TourElement<HomeTour>
-									TourContext={HomeTourContext}
-									stepId={HomeTour.HOME_STATS}
-									title={HOME_TOUR_CONTENT[HomeTour.HOME_STATS].title}
-									description={
-										HOME_TOUR_CONTENT[HomeTour.HOME_STATS].description
-									}
-									tooltipPosition={
-										HOME_TOUR_CONTENT[HomeTour.HOME_STATS].tooltipPosition
-									}
-								>
-									<HomeStats />
-								</TourElement>
-							</div>
+							<TourElement<HomeTour>
+								TourContext={HomeTourContext}
+								stepId={HomeTour.HOME_STATS}
+								title={HOME_TOUR_CONTENT[HomeTour.HOME_STATS].title}
+								description={
+									HOME_TOUR_CONTENT[HomeTour.HOME_STATS].description
+								}
+								tooltipPosition={
+									HOME_TOUR_CONTENT[HomeTour.HOME_STATS].tooltipPosition
+								}
+							>
+								<BusinessOverviewPanel
+									period={period}
+									onPeriodChange={setPeriod}
+								/>
+							</TourElement>
 						</motion.div>
 
-						{/* Animation Group 2: Content bento — asymmetric tiles */}
+						{/* Animation Group 2: money + schedule, then clients + activity */}
 						<motion.div
-							className="mt-8"
+							className="mt-4"
 							initial={{ opacity: 0, y: 10 }}
 							animate={{ opacity: 1, y: 0 }}
 							transition={{ duration: 0.3, ease: "easeOut", delay: 0.05 }}
 						>
 							<div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
-								{/* Schedule — 7 cols */}
+								<CollectionPaceCard
+									period={period}
+									className="lg:col-span-7"
+								/>
+								<TopClientsCard period={period} className="lg:col-span-5" />
+
 								<div className="lg:col-span-7">
 									<TourElement<HomeTour>
 										TourContext={HomeTourContext}
@@ -325,47 +302,19 @@ export default function Page() {
 										/>
 									</TourElement>
 								</div>
-								{/* Client Locations map — 5 cols (Frame owned by component) */}
 								<div className="lg:col-span-5 [&>.tour-element-wrapper]:h-full">
 									<TourElement<HomeTour>
 										TourContext={HomeTourContext}
-										stepId={HomeTour.CLIENT_MAP}
-										title={HOME_TOUR_CONTENT[HomeTour.CLIENT_MAP].title}
-										description={HOME_TOUR_CONTENT[HomeTour.CLIENT_MAP].description}
-										tooltipPosition={HOME_TOUR_CONTENT[HomeTour.CLIENT_MAP].tooltipPosition}
+										stepId={HomeTour.ACTIVITY_FEED}
+										title={HOME_TOUR_CONTENT[HomeTour.ACTIVITY_FEED].title}
+										description={HOME_TOUR_CONTENT[HomeTour.ACTIVITY_FEED].description}
+										tooltipPosition={HOME_TOUR_CONTENT[HomeTour.ACTIVITY_FEED].tooltipPosition}
 									>
-										<ClientPropertiesMap />
+										<ActivityCard className="h-full" />
 									</TourElement>
 								</div>
-								{/* Needs Attention — 7 cols */}
-								<Frame className="w-full lg:col-span-7">
-									<FramePanel className="grow">
-										<TourElement<HomeTour>
-											TourContext={HomeTourContext}
-											stepId={HomeTour.TASKS}
-											title={HOME_TOUR_CONTENT[HomeTour.TASKS].title}
-											description={HOME_TOUR_CONTENT[HomeTour.TASKS].description}
-											tooltipPosition={HOME_TOUR_CONTENT[HomeTour.TASKS].tooltipPosition}
-										>
-											<NeedsAttention />
-										</TourElement>
-									</FramePanel>
-								</Frame>
-								{/* Activity Feed — 5 cols */}
-								<Frame className="w-full lg:col-span-5">
-									<FramePanel className="grow">
-										<TourElement<HomeTour>
-											TourContext={HomeTourContext}
-											stepId={HomeTour.ACTIVITY_FEED}
-											title={HOME_TOUR_CONTENT[HomeTour.ACTIVITY_FEED].title}
-											description={HOME_TOUR_CONTENT[HomeTour.ACTIVITY_FEED].description}
-											tooltipPosition={HOME_TOUR_CONTENT[HomeTour.ACTIVITY_FEED].tooltipPosition}
-										>
-											<ActivityFeed />
-										</TourElement>
-									</FramePanel>
-								</Frame>
-								{/* Recent Emails — full-width strip; single-line rows want the
+
+								{/* Recent emails — full-width strip; single-line rows want the
 								    width (Frame owned by component) */}
 								<RecentEmails className="w-full lg:col-span-12" />
 							</div>

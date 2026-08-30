@@ -216,7 +216,7 @@ export const gettingStartedArticles: HelpArticle[] = [
 				blocks: [
 					{
 						type: "paragraph",
-						text: "Admins land on **Home** after signing in: a dashboard with your key numbers, a schedule calendar with the day's agenda beside it, a map of client locations, a Needs Attention list of overdue tasks, unpaid invoices, and quotes awaiting signature, and your most recent client emails with a click-through into the [inbox](/help/inbox/unified-inbox). Members land on **Projects** instead, since Home is an admin view.",
+						text: "Admins land on **Home** after signing in. The dashboard opens with a Business overview panel covering revenue collected, new clients, jobs completed, average job value, average days to get paid, and open jobs. Week, Month, and Year tabs on that panel set the window for most of those metrics, plus Collection pace and Top clients. Two ignore the tabs: average days to get paid always covers the last 30 days, and open jobs is a live count of what's planned or in progress right now. Directly under the overview sits the Needs attention queue, which groups the tasks, invoices, and quotes running late; **Open the queue** shows the full list. Below that, Collection pace charts what you billed in the period and how much of it has been paid, with Top clients beside it showing who the revenue came from. Then your schedule sits next to Recent activity, and a strip of your newest client emails links into the [inbox](/help/inbox/unified-inbox). Members land on **Projects** instead, since Home is an admin view.",
 					},
 				],
 			},

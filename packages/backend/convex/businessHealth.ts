@@ -1,8 +1,12 @@
 import type { Doc, Id } from "./_generated/dataModel";
 import { optionalUserQuery } from "./lib/factories";
-import { roundCents, sumMoney } from "./lib/money";
+import { sumMoney } from "./lib/money";
 import { getOrgTimezoneById } from "./lib/organization";
-import { DateUtils } from "./lib/shared";
+import {
+	monthKey,
+	remainingBalanceLookup,
+	settledPayments,
+} from "./lib/paymentInsights";
 
 /**
  * Business health — the mobile Money hub's single read.
@@ -51,11 +55,6 @@ function emptyPayload(): BusinessHealthPayload {
 		needsAttention: [],
 		recentPayments: [],
 	};
-}
-
-/** "YYYY-MM" in the org's timezone (UTC when unset/invalid). */
-function monthKey(timestamp: number, timezone?: string): string {
-	return DateUtils.toLocalDateString(timestamp, timezone).slice(0, 7);
 }
 
 /** Oldest→newest month keys ending at `endKey`. Integer math — setMonth() skips months on the 31st. */
@@ -132,20 +131,7 @@ export const get = optionalUserQuery({
 		// A payment is visible iff its parent invoice survived read scoping.
 		const payments = allPayments.filter((p) => invoiceById.has(p.invoiceId));
 
-		const paidByInvoice = new Map<Id<"invoices">, number[]>();
-		for (const payment of payments) {
-			if (payment.status !== "paid") continue;
-			const list = paidByInvoice.get(payment.invoiceId) ?? [];
-			list.push(payment.paymentAmount);
-			paidByInvoice.set(payment.invoiceId, list);
-		}
-		const remainingFor = (invoice: Doc<"invoices">) =>
-			Math.max(
-				0,
-				roundCents(
-					invoice.total - sumMoney(paidByInvoice.get(invoice._id) ?? [])
-				)
-			);
+		const remainingFor = remainingBalanceLookup(payments);
 
 		// ── Outstanding ──────────────────────────────────────────────────
 		const outstandingTotals: number[] = [];
@@ -199,10 +185,7 @@ export const get = optionalUserQuery({
 		}
 
 		// ── Settled money over time ──────────────────────────────────────
-		const settled = payments.filter(
-			(p): p is Doc<"payments"> & { paidAt: number } =>
-				p.status === "paid" && p.paidAt != null
-		);
+		const settled = settledPayments(payments);
 		const currentMonthKey = monthKey(now, timezone);
 		const monthKeys = monthKeySeries(currentMonthKey, MONTH_BUCKETS);
 		const monthAmounts = new Map<string, number[]>(

@@ -107,6 +107,18 @@ async function enrichActivitiesWithUsers(
 	return activitiesWithUsers;
 }
 
+const ENTITY_TYPE_VALIDATOR = v.union(
+	v.literal("client"),
+	v.literal("project"),
+	v.literal("quote"),
+	v.literal("invoice"),
+	v.literal("payment"),
+	v.literal("task"),
+	v.literal("route"),
+	v.literal("user"),
+	v.literal("organization")
+);
+
 // ============================================================================
 // Queries
 // ============================================================================
@@ -142,10 +154,16 @@ export const getRecent = optionalUserQuery({
  * Cursor-based (`.paginate`) so long-tenured orgs never re-scan the whole
  * feed on "load more"; same org scoping, visibility, permission gating, and
  * user enrichment as `getRecent`.
+ *
+ * Optional `entityType` / `entityId` / `since` narrow the feed. `entityId`
+ * requires `entityType` (it selects `by_entity`, which is keyed on both).
  */
 export const feed = optionalUserQuery({
 	args: {
 		paginationOpts: paginationOptsValidator,
+		entityType: v.optional(ENTITY_TYPE_VALIDATOR),
+		entityId: v.optional(v.string()),
+		since: v.optional(v.number()),
 	},
 	handler: async (
 		ctx,
@@ -155,12 +173,43 @@ export const feed = optionalUserQuery({
 			return { page: [], isDone: true, continueCursor: "" };
 		}
 		const orgId = ctx.orgId;
+		const { entityType, entityId, since } = args;
+		if (entityId !== undefined && !entityType) {
+			throw new Error("feed: entityId requires entityType");
+		}
 
-		const result = await ctx.db
-			.query("activities")
-			.withIndex("by_org_timestamp", (q) => q.eq("orgId", orgId))
+		// Index choice narrows on whichever filters arrived; `by_entity` is not
+		// org-scoped, so that branch filters orgId explicitly (mirrors getByEntity).
+		const scoped =
+			entityType && entityId
+				? ctx.db
+						.query("activities")
+						.withIndex("by_entity", (q) =>
+							q.eq("entityType", entityType).eq("entityId", entityId)
+						)
+						.filter((q) => q.eq(q.field("orgId"), orgId))
+				: entityType
+					? ctx.db
+							.query("activities")
+							.withIndex("by_org_entityType_timestamp", (q) => {
+								const base = q.eq("orgId", orgId).eq("entityType", entityType);
+								return since ? base.gte("timestamp", since) : base;
+							})
+					: ctx.db.query("activities").withIndex("by_org_timestamp", (q) => {
+							const base = q.eq("orgId", orgId);
+							return since ? base.gte("timestamp", since) : base;
+						});
+
+		const result = await scoped
 			.order("desc")
-			.filter((q) => q.eq(q.field("isVisible"), true))
+			.filter((q) =>
+				since && entityType && entityId
+					? q.and(
+							q.eq(q.field("isVisible"), true),
+							q.gte(q.field("timestamp"), since)
+						)
+					: q.eq(q.field("isVisible"), true)
+			)
 			.paginate(args.paginationOpts);
 
 		return {

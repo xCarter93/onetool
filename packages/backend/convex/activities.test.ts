@@ -283,6 +283,158 @@ describe("Activities", () => {
 			]);
 			expect(second.isDone).toBe(true);
 		});
+
+		it("narrows to one entity when entityType and entityId are given", async () => {
+			const { clerkUserId, clerkOrgId } = await t.run(async (ctx) => {
+				const setup = await createTestOrg(ctx);
+				await createTestActivity(ctx, setup.orgId, setup.userId, {
+					entityType: "invoice",
+					entityId: "inv_1",
+					entityName: "Target",
+				});
+				await createTestActivity(ctx, setup.orgId, setup.userId, {
+					entityType: "invoice",
+					entityId: "inv_2",
+					entityName: "Other invoice",
+				});
+				await createTestActivity(ctx, setup.orgId, setup.userId, {
+					entityType: "client",
+					entityId: "inv_1",
+					entityName: "Same id, other type",
+				});
+				return setup;
+			});
+
+			const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+			const result = await asUser.query(api.activities.feed, {
+				paginationOpts: { numItems: 10, cursor: null },
+				entityType: "invoice",
+				entityId: "inv_1",
+			});
+
+			expect(result.page.map((a) => a.entityName)).toEqual(["Target"]);
+		});
+
+		it("narrows to one entity type when only entityType is given", async () => {
+			const { clerkUserId, clerkOrgId } = await t.run(async (ctx) => {
+				const setup = await createTestOrg(ctx);
+				await createTestActivity(ctx, setup.orgId, setup.userId, {
+					entityType: "invoice",
+					entityName: "Invoice activity",
+				});
+				await createTestActivity(ctx, setup.orgId, setup.userId, {
+					entityType: "client",
+					entityName: "Client activity",
+				});
+				return setup;
+			});
+
+			const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+			const result = await asUser.query(api.activities.feed, {
+				paginationOpts: { numItems: 10, cursor: null },
+				entityType: "invoice",
+			});
+
+			expect(result.page.map((a) => a.entityName)).toEqual(["Invoice activity"]);
+		});
+
+		it("drops rows older than `since`, with and without an entity filter", async () => {
+			const { clerkUserId, clerkOrgId } = await t.run(async (ctx) => {
+				const setup = await createTestOrg(ctx);
+				await createTestActivity(ctx, setup.orgId, setup.userId, {
+					entityType: "invoice",
+					entityId: "inv_1",
+					entityName: "Old",
+					timestamp: 1000,
+				});
+				await createTestActivity(ctx, setup.orgId, setup.userId, {
+					entityType: "invoice",
+					entityId: "inv_1",
+					entityName: "New",
+					timestamp: 5000,
+				});
+				return setup;
+			});
+
+			const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+
+			const orgWide = await asUser.query(api.activities.feed, {
+				paginationOpts: { numItems: 10, cursor: null },
+				since: 2000,
+			});
+			expect(orgWide.page.map((a) => a.entityName)).toEqual(["New"]);
+
+			const byType = await asUser.query(api.activities.feed, {
+				paginationOpts: { numItems: 10, cursor: null },
+				entityType: "invoice",
+				since: 2000,
+			});
+			expect(byType.page.map((a) => a.entityName)).toEqual(["New"]);
+
+			const byEntity = await asUser.query(api.activities.feed, {
+				paginationOpts: { numItems: 10, cursor: null },
+				entityType: "invoice",
+				entityId: "inv_1",
+				since: 2000,
+			});
+			expect(byEntity.page.map((a) => a.entityName)).toEqual(["New"]);
+		});
+
+		it("rejects entityId without entityType", async () => {
+			const { clerkUserId, clerkOrgId } = await t.run((ctx) =>
+				createTestOrg(ctx)
+			);
+			const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+
+			await expect(
+				asUser.query(api.activities.feed, {
+					paginationOpts: { numItems: 10, cursor: null },
+					entityId: "inv_1",
+				})
+			).rejects.toThrow(/entityId requires entityType/);
+
+			// Empty string is still a present filter, not "no filter".
+			await expect(
+				asUser.query(api.activities.feed, {
+					paginationOpts: { numItems: 10, cursor: null },
+					entityId: "",
+				})
+			).rejects.toThrow(/entityId requires entityType/);
+		});
+
+		it("keeps another org's activities out of an entity-filtered feed", async () => {
+			// by_entity is not org-keyed — the orgId filter is what scopes it.
+			const { clerkUserId, clerkOrgId } = await t.run(async (ctx) => {
+				const setup = await createTestOrg(ctx, {
+					clerkUserId: "user_feed_a",
+					clerkOrgId: "org_feed_a",
+				});
+				const other = await createTestOrg(ctx, {
+					clerkUserId: "user_feed_b",
+					clerkOrgId: "org_feed_b",
+				});
+				await createTestActivity(ctx, setup.orgId, setup.userId, {
+					entityType: "invoice",
+					entityId: "shared_id",
+					entityName: "Mine",
+				});
+				await createTestActivity(ctx, other.orgId, other.userId, {
+					entityType: "invoice",
+					entityId: "shared_id",
+					entityName: "Theirs",
+				});
+				return setup;
+			});
+
+			const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+			const result = await asUser.query(api.activities.feed, {
+				paginationOpts: { numItems: 10, cursor: null },
+				entityType: "invoice",
+				entityId: "shared_id",
+			});
+
+			expect(result.page.map((a) => a.entityName)).toEqual(["Mine"]);
+		});
 	});
 
 	describe("getByType", () => {
