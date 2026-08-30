@@ -249,6 +249,7 @@ export async function createTestInvoice(
 		issuedDate?: number;
 		dueDate?: number;
 		paidAt?: number;
+		firstSentAt?: number;
 		publicToken?: string;
 	} = {}
 ): Promise<Id<"invoices">> {
@@ -265,6 +266,7 @@ export async function createTestInvoice(
 		issuedDate: overrides.issuedDate ?? Date.now(),
 		dueDate: overrides.dueDate ?? Date.now() + 30 * 24 * 60 * 60 * 1000,
 		paidAt: overrides.paidAt,
+		firstSentAt: overrides.firstSentAt,
 		publicToken: overrides.publicToken ?? `token_${Date.now()}`,
 	};
 	return await ctx.db.insert("invoices", {

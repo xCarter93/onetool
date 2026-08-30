@@ -17,7 +17,6 @@ export const enum HomeTour {
 	VIEW_TOGGLE = "view-toggle",
 	HOME_STATS = "home-stats",
 	WEEKLY_CALENDAR = "weekly-calendar",
-	CLIENT_MAP = "client-map",
 	TASKS = "tasks",
 	ACTIVITY_FEED = "activity-feed",
 	// Workspace chrome (not the home page)
@@ -37,7 +36,6 @@ export const ORDERED_HOME_TOUR: HomeTour[] = [
 	HomeTour.VIEW_TOGGLE,
 	HomeTour.HOME_STATS,
 	HomeTour.WEEKLY_CALENDAR,
-	HomeTour.CLIENT_MAP,
 	HomeTour.TASKS,
 	HomeTour.ACTIVITY_FEED,
 	HomeTour.ASSISTANT_NOTCH,
@@ -88,7 +86,7 @@ export const HOME_TOUR_CONTENT: Record<HomeTour, TourStepContent> = {
 	[HomeTour.HOME_STATS]: {
 		title: "Your Business at a Glance",
 		description:
-			"Total Clients, Projects Completed, Approved Quotes, Invoices Paid, Revenue, and Pending Tasks — all updating in real time as you work.",
+			"Revenue collected, new clients, jobs completed, average job value, average days to get paid, and active jobs. Switch between Week, Month, and Year to change the window.",
 		tooltipPosition: "bottom",
 	},
 	[HomeTour.WEEKLY_CALENDAR]: {
@@ -97,22 +95,16 @@ export const HOME_TOUR_CONTENT: Record<HomeTour, TourStepContent> = {
 			"Pick a day on the month calendar and the agenda beside it shows the projects and tasks scheduled for it. Dots mark the days that have work on them.",
 		tooltipPosition: "top",
 	},
-	[HomeTour.CLIENT_MAP]: {
-		title: "Client Locations",
-		description:
-			"View all your client properties on a map. Click any marker to see property details and quickly navigate to that client.",
-		tooltipPosition: "left",
-	},
 	[HomeTour.TASKS]: {
 		title: "Needs Attention",
 		description:
-			"Anything running late surfaces here — overdue tasks, unpaid invoices, and quotes still waiting on a signature, most urgent first. Tick a task off inline, or click through to chase an invoice or quote.",
+			"Anything running late shows up here: overdue tasks, unpaid invoices, and quotes still waiting on a signature, most urgent first. Open the queue to see all of it and tick tasks off.",
 		tooltipPosition: "top",
 	},
 	[HomeTour.ACTIVITY_FEED]: {
-		title: "Activity Feed",
+		title: "Recent Activity",
 		description:
-			"Keep track of everything happening in your workspace. See when quotes are approved, invoices are paid, and projects are completed.",
+			"The last five things that happened in your workspace: quotes approved, invoices paid, jobs finished. Choose View all for the full history with filters.",
 		tooltipPosition: "top",
 	},
 	[HomeTour.ASSISTANT_NOTCH]: {

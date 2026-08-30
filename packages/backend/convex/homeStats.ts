@@ -16,35 +16,8 @@ import {
 	invoiceRevenueAggregate,
 	invoiceCountsAggregate,
 } from "./aggregates";
-import type { PermissionObject } from "./lib/permissionKeys";
-
-/**
- * Gate a dashboard statistic on org-wide visibility of what it counts.
- *
- * Every figure here is an org-wide total — the aggregate components are keyed
- * by org, and the `.collect()` fallbacks page `by_org` — so `view` alone is not
- * enough. Without the allRecords check a member restricted to their own
- * assignments still read the organisation's client counts, revenue and pipeline.
- * Owners and admins resolve to "all" grants and are unaffected, and members are
- * routed to /projects rather than /home, so the practical reach of this is the
- * assistant's getHomeStats tool.
- */
-async function requireOrgWideView(
-	ctx: {
-		requireLevel: (o: PermissionObject, l: "view") => Promise<void>;
-		requireRecordScope: (
-			o: PermissionObject,
-			isInScope: () => boolean | Promise<boolean>
-		) => Promise<void>;
-	},
-	...objects: PermissionObject[]
-): Promise<void> {
-	for (const object of objects) {
-		await ctx.requireLevel(object, "view");
-		// Denies unless the caller holds allRecords.
-		await ctx.requireRecordScope(object, () => false);
-	}
-}
+import { requireOrgWideView } from "./lib/orgWideView";
+import { sumMoney } from "./lib/money";
 
 /**
  * Home dashboard statistics queries
@@ -248,9 +221,10 @@ export const getHomeStats = optionalUserQuery({
 			{ namespace: userOrgId, bounds: { prefix: ["overdue"] as [string] } },
 		]);
 
-		const [completedProjects, approvedQuotes, allTasks] = await Promise.all([
-			// completedProjects.totalValue needs a project→quote join no aggregate
-			// models; both scans bind status instead of sweeping the whole org.
+		const [completedProjects, orgInvoices, allTasks] = await Promise.all([
+			// completedProjects.totalValue needs a project→invoice join no
+			// aggregate models. Invoices are what a job is actually worth —
+			// valuing them by approved quotes scored quote-less jobs at 0.
 			ctx.db
 				.query("projects")
 				.withIndex("by_status", (q) =>
@@ -258,10 +232,8 @@ export const getHomeStats = optionalUserQuery({
 				)
 				.collect(),
 			ctx.db
-				.query("quotes")
-				.withIndex("by_status", (q) =>
-					q.eq("orgId", userOrgId).eq("status", "approved")
-				)
+				.query("invoices")
+				.withIndex("by_org", (q) => q.eq("orgId", userOrgId))
 				.collect(),
 			// No status index on tasks — still a full org scan.
 			ctx.db
@@ -292,9 +264,16 @@ export const getHomeStats = optionalUserQuery({
 				.filter((p) => p.completedAt && p.completedAt >= thisMonthStart)
 				.map((p) => p._id)
 		);
-		const projectsValue = approvedQuotes
-			.filter((q) => q.projectId && completedProjectIds.has(q.projectId))
-			.reduce((sum, q) => sum + q.total, 0);
+		const projectsValue = sumMoney(
+			orgInvoices
+				.filter(
+					(invoice) =>
+						invoice.status !== "cancelled" &&
+						invoice.projectId &&
+						completedProjectIds.has(invoice.projectId)
+				)
+				.map((invoice) => invoice.total)
+		);
 
 		const outstandingInvoices = sentValue + overdueValue;
 
