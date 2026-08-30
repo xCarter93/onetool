@@ -27,6 +27,7 @@ import { ChartContainer, ChartTooltip } from "@/components/ui/chart";
 import { DotField } from "@/components/ui/dot-field";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useIsOrgSwitching } from "@/hooks/use-is-org-switching";
 import {
 	HOME_TOUR_CONTENT,
 	HomeTour,
@@ -188,7 +189,7 @@ function MetricTile({ tile }: { tile: Tile }) {
 			</div>
 			{/* Full-width footer pinned to the tile bottom so all six align. */}
 			<div className="mt-auto flex min-w-0 items-center gap-1.5 pt-1.5">
-				{tile.delta && (
+				{!tile.isLoading && tile.delta && (
 					<Badge variant={TONE_BADGE[tile.tone]} size="sm">
 						{tile.delta}
 					</Badge>
@@ -253,6 +254,7 @@ export function BusinessOverviewPanel({
 	period: DashboardPeriod;
 	onPeriodChange: (period: DashboardPeriod) => void;
 }) {
+	const isOrgSwitching = useIsOrgSwitching();
 	const range = usePeriodRange(period);
 
 	const homeArgs = { from: range.startDate, to: range.endDate };
@@ -324,9 +326,13 @@ export function BusinessOverviewPanel({
 				delta: percentDelta(revenueTotal, prevRevenueTotal),
 				tone: toneFor(revenueTotal, prevRevenueTotal),
 				summary: vsPrevious,
-				series: cumulative(revenue ?? [], bucketDates),
+				series:
+					revenue === undefined ? null : cumulative(revenue, bucketDates),
 				formatPoint: (v) => formatCurrency(v, { whole: true }),
-				isLoading: revenue === undefined,
+				isLoading:
+					isOrgSwitching ||
+					revenue === undefined ||
+					prevRevenue === undefined,
 			},
 			{
 				id: "clients",
@@ -339,9 +345,12 @@ export function BusinessOverviewPanel({
 				),
 				tone: toneFor(clientBaseline + clientsInRange, clientBaseline),
 				summary: `${(clientBaseline + clientsInRange).toLocaleString()} total`,
-				series: cumulative(clients?.data ?? [], bucketDates),
+				series:
+					clients === undefined
+						? null
+						: cumulative(clients.data, bucketDates),
 				formatPoint: (v) => v.toLocaleString(),
-				isLoading: clients === undefined,
+				isLoading: isOrgSwitching || clients === undefined,
 			},
 			{
 				id: "jobs",
@@ -351,9 +360,12 @@ export function BusinessOverviewPanel({
 				delta: percentDelta(jobsBaseline + jobsInRange, jobsBaseline),
 				tone: toneFor(jobsBaseline + jobsInRange, jobsBaseline),
 				summary: `${(jobsBaseline + jobsInRange).toLocaleString()} all time`,
-				series: cumulative(projects?.data ?? [], bucketDates),
+				series:
+					projects === undefined
+						? null
+						: cumulative(projects.data, bucketDates),
 				formatPoint: (v) => v.toLocaleString(),
-				isLoading: projects === undefined,
+				isLoading: isOrgSwitching || projects === undefined,
 			},
 			{
 				id: "avg-job-value",
@@ -366,12 +378,18 @@ export function BusinessOverviewPanel({
 				delta: percentDelta(avgValue, prevAvgValue),
 				tone: toneFor(avgValue, prevAvgValue),
 				summary: vsPrevious,
-				series: (avgJobValue?.series ?? []).map((point) => ({
-					label: shortLabel(point.date),
-					value: point.value,
-				})),
+				series:
+					avgJobValue === undefined
+						? null
+						: avgJobValue.series.map((point) => ({
+								label: shortLabel(point.date),
+								value: point.value,
+							})),
 				formatPoint: (v) => formatCurrency(v, { whole: true }),
-				isLoading: avgJobValue === undefined,
+				isLoading:
+					isOrgSwitching ||
+					avgJobValue === undefined ||
+					prevAvgJobValue === undefined,
 			},
 			{
 				id: "days-to-pay",
@@ -389,7 +407,7 @@ export function BusinessOverviewPanel({
 				summary: "Last 30 days",
 				series: null,
 				formatPoint: (v) => `${v}`,
-				isLoading: avgDaysToPay === undefined,
+				isLoading: isOrgSwitching || avgDaysToPay === undefined,
 			},
 			{
 				id: "active-jobs",
@@ -403,10 +421,11 @@ export function BusinessOverviewPanel({
 				summary: `${(activeJobs?.inProgress ?? 0).toLocaleString()} in progress, ${(activeJobs?.planned ?? 0).toLocaleString()} planned`,
 				series: null,
 				formatPoint: (v) => `${v}`,
-				isLoading: activeJobs === undefined,
+				isLoading: isOrgSwitching || activeJobs === undefined,
 			},
 		];
 	}, [
+		isOrgSwitching,
 		range,
 		revenue,
 		prevRevenue,

@@ -503,8 +503,11 @@ export const setMonthlyRevenueTarget = userMutation({
 				"Only organization owner can update organization details"
 			);
 		}
-		if (args.target !== null && args.target < 0) {
-			throw new Error("Revenue target must be non-negative");
+		if (
+			args.target !== null &&
+			(!Number.isFinite(args.target) || args.target < 0)
+		) {
+			throw new Error("Revenue target must be a non-negative number");
 		}
 		await ctx.db.patch(ctx.orgId, {
 			monthlyRevenueTarget: args.target ?? undefined,

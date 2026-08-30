@@ -147,6 +147,7 @@ function ActivitySheet() {
 		getScrollElement: () => scrollRef.current,
 		estimateSize: () => ESTIMATED_ROW_HEIGHT,
 		overscan: 8,
+		getItemKey: (index) => items[index]?._id ?? index,
 	});
 
 	// Keep pulling pages until the cap is reached; the text filter is applied
@@ -155,7 +156,12 @@ function ActivitySheet() {
 	useEffect(() => {
 		if (status !== "CanLoadMore") return;
 		if (results.length >= SHEET_MAX_ITEMS) return;
-		if (!lastVirtualItem || lastVirtualItem.index < items.length - 5) return;
+		// A filter with zero matches so far still has backlog to search through.
+		if (
+			items.length > 0 &&
+			(!lastVirtualItem || lastVirtualItem.index < items.length - 5)
+		)
+			return;
 		loadMore(SHEET_PAGE_SIZE);
 	}, [status, results.length, items.length, lastVirtualItem, loadMore]);
 

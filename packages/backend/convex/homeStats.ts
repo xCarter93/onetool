@@ -268,6 +268,7 @@ export const getHomeStats = optionalUserQuery({
 			orgInvoices
 				.filter(
 					(invoice) =>
+						invoice.status !== "draft" &&
 						invoice.status !== "cancelled" &&
 						invoice.projectId &&
 						completedProjectIds.has(invoice.projectId)

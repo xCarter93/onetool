@@ -40,6 +40,28 @@ export interface CollectionPace {
 const granularityValidator = v.union(v.literal("day"), v.literal("month"));
 type Granularity = "day" | "month";
 
+// Caps keep the dense bucket-key loops bounded; the widest UI range is one
+// year, so these leave headroom without allowing runaway allocation.
+const MAX_DAY_SPAN_MS = 400 * DAY_MS;
+const MAX_MONTH_SPAN_MS = 240 * 31 * DAY_MS;
+
+function validateRange(
+	startDate: number,
+	endDate: number,
+	granularity: "day" | "week" | "month"
+): void {
+	if (!Number.isFinite(startDate) || !Number.isFinite(endDate)) {
+		throw new Error("Invalid date range");
+	}
+	if (endDate < startDate) {
+		throw new Error("Invalid date range");
+	}
+	const maxSpan = granularity === "month" ? MAX_MONTH_SPAN_MS : MAX_DAY_SPAN_MS;
+	if (endDate - startDate > maxSpan) {
+		throw new Error("Date range too large");
+	}
+}
+
 function bucketKey(
 	timestamp: number,
 	granularity: Granularity,
@@ -136,6 +158,7 @@ export const getCollectionPace = optionalUserQuery({
 		}
 		const orgId = ctx.orgId;
 		await requireOrgWideView(ctx, "invoices");
+		validateRange(args.startDate, args.endDate, args.granularity);
 
 		const organization = await ctx.db.get(orgId);
 		const timezone = organization?.timezone;
@@ -279,10 +302,11 @@ export const getAvgJobValue = optionalUserQuery({
 		if (!ctx.orgId) return { value: null, series: [] };
 		const orgId = ctx.orgId;
 		await requireOrgWideView(ctx, "invoices");
+		const granularity = args.granularity ?? "day";
+		validateRange(args.startDate, args.endDate, granularity);
 
 		const organization = await ctx.db.get(orgId);
 		const timezone = organization?.timezone;
-		const granularity = args.granularity ?? "day";
 
 		const invoices = await ctx.db
 			.query("invoices")
@@ -391,6 +415,7 @@ export const getTopClientsByRevenue = optionalUserQuery({
 			return { clients: [], otherTotal: 0, grandTotal: 0, series: [] };
 		const orgId = ctx.orgId;
 		await requireOrgWideView(ctx, "invoices", "clients");
+		validateRange(args.startDate, args.endDate, args.granularity ?? "day");
 
 		const limit = Math.min(
 			TOP_CLIENTS_MAX_LIMIT,
@@ -451,7 +476,11 @@ export const getTopClientsByRevenue = optionalUserQuery({
 					continue;
 				const invoice = invoiceById.get(payment.invoiceId);
 				if (!invoice) continue;
-				const slot = slotByClient.get(invoice.clientId) ?? slots - 1;
+				// No "other" slot exists when otherTotal is 0; skipping avoids piling
+				// a zero-total outsider onto the last top client's stack.
+				const topSlot = slotByClient.get(invoice.clientId);
+				if (topSlot === undefined && otherTotal <= 0) continue;
+				const slot = topSlot ?? slots - 1;
 				const key =
 					args.granularity === "week"
 						? weekStartKey(payment.paidAt, timezone)

@@ -142,6 +142,45 @@ describe("dashboardStats.getCollectionPace", () => {
 		expect(jan.totals).toEqual({ invoiced: 700, collected: 700 });
 	});
 
+	it("rejects non-finite, inverted, and oversized ranges", async () => {
+		const { clerkUserId, clerkOrgId } = await t.run((ctx) => createTestOrg(ctx));
+		const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+
+		await expect(
+			asUser.query(api.dashboardStats.getCollectionPace, {
+				startDate: Number.NaN,
+				endDate: JAN_5,
+				granularity: "day",
+			})
+		).rejects.toThrow("Invalid date range");
+		await expect(
+			asUser.query(api.dashboardStats.getCollectionPace, {
+				startDate: JAN_6,
+				endDate: JAN_5,
+				granularity: "day",
+			})
+		).rejects.toThrow("Invalid date range");
+		await expect(
+			asUser.query(api.dashboardStats.getCollectionPace, {
+				startDate: JAN_5,
+				endDate: JAN_5 + 401 * DAY_MS,
+				granularity: "day",
+			})
+		).rejects.toThrow("Date range too large");
+		await expect(
+			asUser.query(api.dashboardStats.getAvgJobValue, {
+				startDate: JAN_5,
+				endDate: JAN_5 + 401 * DAY_MS,
+			})
+		).rejects.toThrow("Date range too large");
+		await expect(
+			asUser.query(api.dashboardStats.getTopClientsByRevenue, {
+				startDate: JAN_5,
+				endDate: JAN_5 + 401 * DAY_MS,
+			})
+		).rejects.toThrow("Date range too large");
+	});
+
 	it("keeps a refunded payment invoiced but never collected", async () => {
 		const { clerkUserId, clerkOrgId } = await t.run(async (ctx) => {
 			const org = await createTestOrg(ctx);
@@ -561,6 +600,85 @@ describe("dashboardStats.getTopClientsByRevenue", () => {
 			},
 		]);
 		expect(result.otherTotal).toBe(0);
+	});
+
+	it("stacks weekly buckets with a trailing slot for the remainder", async () => {
+		const { clerkUserId, clerkOrgId } = await t.run(async (ctx) => {
+			const org = await createTestOrg(ctx);
+			const seed = async (name: string, amount: number) => {
+				const clientId = await createTestClient(ctx, org.orgId, {
+					companyName: name,
+				});
+				const invoiceId = await createTestInvoice(ctx, org.orgId, clientId, {
+					status: "sent",
+					total: 10000,
+					issuedDate: JAN_5,
+					dueDate: JAN_5,
+				});
+				await insertPayment(ctx, org.orgId, invoiceId, {
+					paymentAmount: amount,
+					dueDate: JAN_5,
+					status: "paid",
+					paidAt: JAN_5,
+				});
+			};
+			await seed("Alpha", 600);
+			await seed("Bravo", 300);
+			await seed("Charlie", 100);
+			return org;
+		});
+
+		const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+		const result = await asUser.query(
+			api.dashboardStats.getTopClientsByRevenue,
+			{ startDate: JAN_5, endDate: JAN_6, limit: 2, granularity: "week" }
+		);
+
+		// Jan 5 2026 is a Monday, so both days fall into one week bucket.
+		expect(result.otherTotal).toBe(100);
+		expect(result.series).toEqual([
+			{ date: "2026-01-05", totals: [600, 300, 100] },
+		]);
+	});
+
+	it("drops a zero-total outsider instead of stacking it on the last top client", async () => {
+		const { clerkUserId, clerkOrgId } = await t.run(async (ctx) => {
+			const org = await createTestOrg(ctx);
+			const seed = async (name: string, amount: number) => {
+				const clientId = await createTestClient(ctx, org.orgId, {
+					companyName: name,
+				});
+				const invoiceId = await createTestInvoice(ctx, org.orgId, clientId, {
+					status: "sent",
+					total: 10000,
+					issuedDate: JAN_5,
+					dueDate: JAN_5,
+				});
+				await insertPayment(ctx, org.orgId, invoiceId, {
+					paymentAmount: amount,
+					dueDate: JAN_5,
+					status: "paid",
+					paidAt: JAN_5,
+				});
+			};
+			await seed("Alpha", 400);
+			await seed("Bravo", 300);
+			await seed("Charlie", 0);
+			return org;
+		});
+
+		const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+		const result = await asUser.query(
+			api.dashboardStats.getTopClientsByRevenue,
+			{ startDate: JAN_5, endDate: JAN_5, limit: 2, granularity: "day" }
+		);
+
+		// otherTotal is 0, so no "other" slot exists and Charlie must not leak
+		// into Bravo's stack.
+		expect(result.otherTotal).toBe(0);
+		expect(result.series).toEqual([
+			{ date: "2026-01-05", totals: [400, 300] },
+		]);
 	});
 });
 

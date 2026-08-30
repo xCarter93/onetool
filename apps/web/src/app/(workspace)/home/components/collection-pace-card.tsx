@@ -133,7 +133,11 @@ function TargetPopover({ current }: { current: number | null }) {
 	};
 
 	const parsed = parseCurrencyInput(value);
-	const canSave = value.trim() !== "" && Number.isFinite(parsed) && parsed >= 0;
+	// Validate the raw text: parseCurrencyInput falls back to 0 on garbage,
+	// which would silently save a $0 target. An explicit "0" stays allowed.
+	const cleaned = value.replace(/[$,\s]/g, "");
+	const canSave =
+		cleaned !== "" && Number.isFinite(Number(cleaned)) && parsed >= 0;
 
 	return (
 		<Popover
@@ -158,7 +162,8 @@ function TargetPopover({ current }: { current: number | null }) {
 				<PopoverHeader>
 					<PopoverTitle>Monthly revenue target</PopoverTitle>
 					<PopoverDescription>
-						Drawn on the pace chart as the line to beat by month end.
+						Drawn on the Month view of the pace chart as the line to beat by
+						month end.
 					</PopoverDescription>
 				</PopoverHeader>
 				<form
