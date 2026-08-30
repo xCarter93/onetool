@@ -2,7 +2,11 @@ import { convexTest } from "convex-test";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { api, internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
+import { isNonRetryableError } from "@convex-dev/workpool";
+import { getFunctionName, type FunctionReference } from "convex/server";
 import { setupConvexTest } from "./test.setup";
+import { shouldDownloadSignedPdf } from "./boldsign";
+import { externalIoPool } from "./externalIoPool";
 import {
 	createTestOrg,
 	createTestClient,
@@ -598,6 +602,104 @@ describe("BoldSign embedded sending", () => {
 	});
 
 	// ========================================================================
+	// Signed-PDF download dispatch (roadmap chunk 01)
+	// ========================================================================
+
+	describe("signed-PDF download dispatch", () => {
+		/**
+		 * convex-test can't run the workpool's loop (see externalIoPool.test.ts),
+		 * so the enqueue call itself is the furthest observable point. Spying the
+		 * shared singleton is what makes the retry config assertable as behavior
+		 * rather than as a constant compared against itself.
+		 */
+		let enqueue: ReturnType<typeof vi.spyOn>;
+
+		beforeEach(() => {
+			enqueue = vi
+				.spyOn(externalIoPool, "enqueueAction")
+				.mockResolvedValue("test_work_id" as never);
+		});
+		afterEach(() => {
+			enqueue.mockRestore();
+		});
+
+		async function completeQuote(
+			boldsignDocumentId: string,
+			options: { alreadySigned?: boolean } = {}
+		) {
+			await t.run(async (ctx) => {
+				const org = await createTestOrg(ctx);
+				const clientId = await createTestClient(ctx, org.orgId);
+				// seedQuote never sets projectId, which is the whole point here.
+				const quoteId = await seedQuote(ctx, org.orgId, clientId);
+				const documentId = await seedDocument(ctx, org.orgId, quoteId, 1, {
+					documentId: boldsignDocumentId,
+					status: "Sent",
+				});
+				if (options.alreadySigned) {
+					await ctx.db.patch(documentId, {
+						signedStorageId: await ctx.storage.store(
+							new Blob(["signed"], { type: "application/pdf" })
+						),
+					});
+				}
+			});
+
+			await t.mutation(internal.boldsign.handleWebhook, {
+				boldsignDocumentId,
+				eventType: "Completed",
+			});
+		}
+
+		it("enqueues the download for a quote with no project (previously skipped outright)", async () => {
+			await completeQuote("bs_no_project");
+
+			expect(enqueue).toHaveBeenCalledTimes(1);
+			const [, fn, args] = enqueue.mock.calls[0]!;
+			// Function references are proxies, so compare names, not identities.
+			expect(getFunctionName(fn as FunctionReference<"action">)).toBe(
+				getFunctionName(internal.boldsignActions.downloadCompletedDocument)
+			);
+			expect(args).toMatchObject({ boldsignDocumentId: "bs_no_project" });
+		});
+
+		it("retries on the pool rather than the at-most-once scheduler", async () => {
+			await completeQuote("bs_retry_config");
+
+			const [, , , options] = enqueue.mock.calls[0]!;
+			expect(options).toEqual({
+				retry: { maxAttempts: 5, initialBackoffMs: 5000, base: 2 },
+			});
+		});
+
+		it("enqueues nothing when the signed PDF is already stored (webhook redelivery)", async () => {
+			await completeQuote("bs_already_signed", { alreadySigned: true });
+
+			expect(enqueue).not.toHaveBeenCalled();
+		});
+
+		it("shouldDownloadSignedPdf gates on signedStorageId alone", async () => {
+			const { unsigned, signed } = await t.run(async (ctx) => {
+				const org = await createTestOrg(ctx);
+				const clientId = await createTestClient(ctx, org.orgId);
+				const quoteId = await seedQuote(ctx, org.orgId, clientId);
+				const unsignedId = await seedDocument(ctx, org.orgId, quoteId, 1);
+				const signedId = await seedDocument(ctx, org.orgId, quoteId, 2);
+				await ctx.db.patch(signedId, {
+					signedStorageId: await ctx.storage.store(new Blob(["signed"])),
+				});
+				return {
+					unsigned: (await ctx.db.get(unsignedId))!,
+					signed: (await ctx.db.get(signedId))!,
+				};
+			});
+
+			expect(shouldDownloadSignedPdf(unsigned)).toBe(true);
+			expect(shouldDownloadSignedPdf(signed)).toBe(false);
+		});
+	});
+
+	// ========================================================================
 	// downloadCompletedDocument (action-level storage cleanup)
 	// ========================================================================
 
@@ -629,12 +731,18 @@ describe("BoldSign embedded sending", () => {
 			});
 
 			// Stale delivery: the document has since been re-linked to bs_current.
-			await expect(
-				t.action(internal.boldsignActions.downloadCompletedDocument, {
+			const rejection = await t
+				.action(internal.boldsignActions.downloadCompletedDocument, {
 					documentId,
 					boldsignDocumentId: "bs_stale",
 				})
-			).rejects.toThrow(/not linked to BoldSign document/);
+				.catch((e: unknown) => e);
+
+			expect(rejection).toMatchObject({
+				message: expect.stringMatching(/not linked to BoldSign document/),
+			});
+			// A mismatch never resolves, so the pool must not spend retries on it.
+			expect(isNonRetryableError(rejection)).toBe(true);
 
 			// The blob stored for the rejected delivery must have been reclaimed.
 			const finalCount = await t.run(

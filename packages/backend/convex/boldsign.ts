@@ -13,6 +13,24 @@ import {
 } from "./lib/permissions";
 import { METERS, entitlementsFromIdentity } from "./lib/entitlements";
 import { computeEsignaturesSentThisMonth } from "./usage";
+import { externalIoPool } from "./externalIoPool";
+
+// ~5s/10s/20s/40s. Nobody waits on a signed PDF, so the long tail is free and
+// outlasts a BoldSign rate-limit window; their 429s carry Retry-After, which
+// the pool's fixed backoff can't read.
+const SIGNED_PDF_RETRY = {
+	maxAttempts: 5,
+	initialBackoffMs: 5000,
+	base: 2,
+} as const;
+
+/**
+ * A stored signed PDF means this Completed event is a redelivery. Downloading
+ * again would overwrite signedStorageId and orphan the first blob.
+ */
+export function shouldDownloadSignedPdf(document: Doc<"documents">): boolean {
+	return document.signedStorageId === undefined;
+}
 
 // ============================================================================
 // Internal Helper Functions
@@ -451,8 +469,8 @@ export const handleWebhook = internalMutation({
 		};
 
 		// Count usage only on the genuine Draft→Sent transition. BoldSign
-		// redelivers webhooks (at-least-once), so guarding on the current status
-		// stops a replayed "Sent" from double-counting and wrongly tripping the cap.
+		// publishes no redelivery policy, so this guards defensively: if a "Sent"
+		// is ever replayed it can't double-count and wrongly trip the cap.
 		if (typedEventType === "Sent" && document.boldsign.status === "Draft") {
 			await ctx.scheduler.runAfter(
 				0,
@@ -528,22 +546,18 @@ async function handleQuoteStatusUpdate(
 			quoteUpdates.status = "approved";
 			quoteUpdates.approvedAt = timestamp;
 
-			// Schedule signed document download if quote has a project
-			if (quote.projectId) {
+			// Pool-routed rather than a raw scheduler kick: a scheduled action is
+			// at-most-once, so a dropped container silently loses a signed legal
+			// document. The pool's job record survives and retries.
+			if (shouldDownloadSignedPdf(document)) {
 				console.log(
-					`[BoldSign] Scheduling signed document download for quote ${quote._id} (project: ${quote.projectId})`
+					`[BoldSign] Enqueueing signed document download for quote ${quote._id}`
 				);
-				await ctx.scheduler.runAfter(
-					0,
-					internal.boldsign.triggerDocumentDownload,
-					{
-						documentId: document._id,
-						boldsignDocumentId,
-					}
-				);
-			} else {
-				console.log(
-					`[BoldSign] Skipping download for quote ${quote._id} - no project linked`
+				await externalIoPool.enqueueAction(
+					ctx,
+					internal.boldsignActions.downloadCompletedDocument,
+					{ documentId: document._id, boldsignDocumentId },
+					{ retry: SIGNED_PDF_RETRY }
 				);
 			}
 			break;
@@ -600,27 +614,6 @@ export const updateDocumentWithSignedPdf = internalMutation({
 
 		console.log(
 			`[BoldSign] Document ${args.documentId} updated with signed storage ID: ${args.signedStorageId}`
-		);
-	},
-});
-
-/**
- * Trigger download of completed/signed document from BoldSign.
- * Schedules the download action to run immediately.
- */
-export const triggerDocumentDownload = internalMutation({
-	args: {
-		documentId: v.id("documents"),
-		boldsignDocumentId: v.string(),
-	},
-	handler: async (ctx, args) => {
-		await ctx.scheduler.runAfter(
-			0,
-			internal.boldsignActions.downloadCompletedDocument,
-			{
-				documentId: args.documentId,
-				boldsignDocumentId: args.boldsignDocumentId,
-			}
 		);
 	},
 });
