@@ -56,6 +56,7 @@ import type * as emails_portalOtp from "../emails/portalOtp.js";
 import type * as emails_quoteReady from "../emails/quoteReady.js";
 import type * as entitlements from "../entitlements.js";
 import type * as eventBus from "../eventBus.js";
+import type * as externalFetchReconcile from "../externalFetchReconcile.js";
 import type * as externalIoPool from "../externalIoPool.js";
 import type * as favorites from "../favorites.js";
 import type * as geocodeActions from "../geocodeActions.js";
@@ -266,6 +267,7 @@ declare const fullApi: ApiFromModules<{
   "emails/quoteReady": typeof emails_quoteReady;
   entitlements: typeof entitlements;
   eventBus: typeof eventBus;
+  externalFetchReconcile: typeof externalFetchReconcile;
   externalIoPool: typeof externalIoPool;
   favorites: typeof favorites;
   geocodeActions: typeof geocodeActions;

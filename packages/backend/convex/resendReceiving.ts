@@ -4,7 +4,6 @@ import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import { getResendClient } from "./lib/resendClient";
 import type { Doc, Id } from "./_generated/dataModel";
-import { systemMutation } from "./lib/factories";
 import { deriveVisibleText, stripTagBlocks } from "./email/replyParser";
 import {
 	resolveInboundThread,
@@ -12,6 +11,7 @@ import {
 	bumpThread,
 } from "./email/threads";
 import { FALLBACK_REPLY_TO_EMAIL } from "./email/branding";
+import { externalIoPool, EXTERNAL_FETCH_RETRY } from "./externalIoPool";
 
 // Validate RESEND_API_KEY before initializing client
 if (!process.env.RESEND_API_KEY) {
@@ -20,6 +20,9 @@ if (!process.env.RESEND_API_KEY) {
 			"Please configure it in your Convex dashboard under Settings > Environment Variables."
 	);
 }
+
+/** Cap on vendor error text copied onto an attachment row. */
+const ATTACHMENT_ERROR_CAP = 1000;
 
 
 /**
@@ -110,27 +113,9 @@ export const handleInboundEmail = internalAction({
 			visibleText,
 		});
 
-		// Step 3: Download attachments if present (requires network access).
-		// emailMessageId is absent when the mutation skipped (duplicate delivery,
-		// general-inbox mail) — nothing to attach to in that case.
-		if (
-			result.success &&
-			result.emailMessageId &&
-			args.attachments &&
-			args.attachments.length > 0
-		) {
-			for (const attachment of args.attachments) {
-				await ctx.runAction(internal.resendReceiving.downloadAttachmentAction, {
-					emailId: args.emailId,
-					emailMessageId: result.emailMessageId!,
-					orgId: result.orgId!,
-					attachmentId: attachment.id,
-					filename: attachment.filename,
-					contentType: attachment.content_type,
-				});
-			}
-		}
-
+		// Attachments are enqueued inside processInboundEmail, in the same
+		// transaction as the message row. A duplicate delivery returns without
+		// an emailMessageId and enqueues nothing.
 		return result;
 	},
 });
@@ -253,8 +238,9 @@ export const processInboundEmail = internalMutation({
 		const { email: fromEmail, name: fromName } = parseEmailAddress(args.from);
 		const clientContact = await ctx.db
 			.query("clientContacts")
-			.withIndex("by_org", (q) => q.eq("orgId", organization._id))
-			.filter((q) => q.eq(q.field("email"), fromEmail))
+			.withIndex("by_org_email", (q) =>
+				q.eq("orgId", organization._id).eq("email", fromEmail)
+			)
 			.first();
 		let clientId: Id<"clients"> | null = clientContact?.clientId ?? null;
 
@@ -370,6 +356,40 @@ export const processInboundEmail = internalMutation({
 			});
 		}
 
+		// Attachment rows land here, pending, and their downloads run on the
+		// pool. Same transaction as the message, so a row and its job either
+		// both exist or neither does. The message itself is never held back:
+		// a flaky vendor fetch shouldn't delay mail that already arrived.
+		for (const attachment of args.attachments ?? []) {
+			const attachmentRowId = await ctx.db.insert("emailAttachments", {
+				orgId: organization._id,
+				emailMessageId,
+				direction: "inbound",
+				attachmentId: attachment.id,
+				filename: attachment.filename,
+				contentType: attachment.content_type,
+				size: 0, // real size lands with the bytes
+				downloadState: "pending",
+				receivedAt,
+			});
+
+			await externalIoPool.enqueueAction(
+				ctx,
+				internal.resendReceiving.downloadAttachmentAction,
+				{
+					emailId: args.emailId,
+					attachmentRowId,
+					attachmentId: attachment.id,
+					contentType: attachment.content_type,
+				},
+				{
+					retry: EXTERNAL_FETCH_RETRY,
+					onComplete: internal.resendReceiving.onAttachmentDownloadComplete,
+					context: { attachmentRowId },
+				}
+			);
+		}
+
 		return {
 			success: true,
 			emailMessageId,
@@ -379,85 +399,97 @@ export const processInboundEmail = internalMutation({
 });
 
 /**
- * Download and store email attachment from Resend (Action)
+ * Fetch one attachment's bytes and attach them to its pending row.
  *
- * This is an ACTION because it needs to fetch data from external API and store in Convex storage.
+ * Enqueued on `externalIoPool`, which retries it, so every failure throws
+ * rather than returning a status nobody reads. Idempotent: re-running against
+ * an already-stored row is a no-op.
  */
 export const downloadAttachmentAction = internalAction({
 	args: {
 		emailId: v.string(),
-		emailMessageId: v.string(),
-		orgId: v.string(),
+		attachmentRowId: v.id("emailAttachments"),
 		attachmentId: v.string(),
-		filename: v.string(),
 		contentType: v.string(),
 	},
 	handler: async (ctx, args) => {
+		const bytes = await fetchAttachment(args.emailId, args.attachmentId);
+
+		const storageId = await ctx.storage.store(
+			new Blob([bytes], { type: args.contentType })
+		);
+
 		try {
-			// Fetch attachment from Resend API
-			const attachmentData = await fetchAttachment(
-				args.emailId,
-				args.attachmentId
-			);
-
-			if (!attachmentData) {
-				console.error(`Failed to download attachment: ${args.filename}`);
-				return { success: false };
-			}
-
-			// Store in Convex storage (actions have access to store())
-			const storageId = await ctx.storage.store(
-				new Blob([attachmentData], { type: args.contentType })
-			);
-
-			// Call mutation to create the database record
-			await ctx.runMutation(internal.resendReceiving.createAttachmentRecord, {
-				emailMessageId: args.emailMessageId as Id<"emailMessages">,
-				orgId: args.orgId as Id<"organizations">,
-				attachmentId: args.attachmentId,
-				filename: args.filename,
-				contentType: args.contentType,
+			await ctx.runMutation(internal.resendReceiving.attachStoredFile, {
+				attachmentRowId: args.attachmentRowId,
 				storageId,
-				size: attachmentData.byteLength,
+				size: bytes.byteLength,
 			});
-
-			return { success: true };
-		} catch (error) {
-			console.error(`Error downloading attachment ${args.filename}:`, error);
-			return { success: false, error: String(error) };
+		} catch (err) {
+			// Reclaim the blob we just wrote; the row it belonged to is gone or
+			// already stored, so nothing will ever reference it.
+			await ctx.storage.delete(storageId).catch(() => {});
+			throw err;
 		}
 	},
 });
 
 /**
- * Create attachment record in database (Mutation)
+ * Attach a downloaded file to its pending row.
  *
- * This is a MUTATION because it writes to the database.
- * The file is already stored in the action, so we just need to create the record.
+ * Internal rather than `systemMutation`: the row already carries the org that
+ * the inbound webhook resolved, and re-deriving it here would just be a second
+ * chance to get it wrong.
  */
-export const createAttachmentRecord = systemMutation({
+export const attachStoredFile = internalMutation({
 	args: {
-		emailMessageId: v.id("emailMessages"),
-		attachmentId: v.string(),
-		filename: v.string(),
-		contentType: v.string(),
+		attachmentRowId: v.id("emailAttachments"),
 		storageId: v.id("_storage"),
 		size: v.number(),
 	},
 	handler: async (ctx, args) => {
-		// Create attachment record
-		await ctx.db.insert("emailAttachments", {
-			orgId: ctx.orgId,
-			emailMessageId: args.emailMessageId,
-			attachmentId: args.attachmentId,
-			filename: args.filename,
-			contentType: args.contentType,
-			size: args.size,
-			storageId: args.storageId,
-			receivedAt: Date.now(),
-		});
+		const row = await ctx.db.get(args.attachmentRowId);
+		if (!row) {
+			throw new Error(
+				`Attachment row ${args.attachmentRowId} no longer exists`
+			);
+		}
+		if (row.storageId) return; // already stored; a retry raced the original
 
-		return { success: true, storageId: args.storageId };
+		await ctx.db.patch(args.attachmentRowId, {
+			storageId: args.storageId,
+			size: args.size,
+			downloadState: "stored",
+			downloadError: undefined,
+			downloadFailedAt: undefined,
+		});
+	},
+});
+
+/**
+ * Terminal outcome of a pooled attachment download. Marks the row failed so
+ * the message can say the file didn't make it, rather than showing a chip that
+ * spins forever.
+ */
+export const onAttachmentDownloadComplete = internalMutation({
+	args: {
+		workId: v.string(),
+		context: v.object({ attachmentRowId: v.id("emailAttachments") }),
+		result: v.any(),
+	},
+	handler: async (ctx, { context, result }) => {
+		const row = await ctx.db.get(context.attachmentRowId);
+		if (!row || row.storageId) return;
+		if (result?.kind === "success") return;
+
+		await ctx.db.patch(context.attachmentRowId, {
+			downloadState: "failed",
+			downloadFailedAt: Date.now(),
+			downloadError:
+				result?.kind === "failed"
+					? String(result.error).slice(0, ATTACHMENT_ERROR_CAP)
+					: "Download was cancelled",
+		});
 	},
 });
 
@@ -614,32 +646,39 @@ async function fetchInboundContent(
 }
 
 /**
- * Fetch attachment from Resend API
+ * Fetch one inbound attachment's bytes from Resend.
+ *
+ * Two steps, because the API never returns bytes: it returns a signed
+ * `download_url` good for one hour. Both steps live in one call so a retry
+ * always mints a fresh URL instead of reusing an expired one.
+ *
+ * Throws on every failure — the pool only retries what propagates.
  */
 async function fetchAttachment(
 	emailId: string,
 	attachmentId: string
-): Promise<ArrayBuffer | null> {
-	try {
-		const response = await fetch(
-			`https://api.resend.com/emails/${emailId}/attachments/${attachmentId}`,
-			{
-				headers: {
-					Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
-				},
-			}
+): Promise<ArrayBuffer> {
+	const { data, error } =
+		await getResendClient().emails.receiving.attachments.get({
+			emailId,
+			id: attachmentId,
+		});
+
+	if (error) {
+		throw new Error(
+			`Resend attachment metadata failed for ${attachmentId}: ${error.message}`
 		);
-
-		if (!response.ok) {
-			console.error(
-				`Resend API error: ${response.status} ${response.statusText}`
-			);
-			return null;
-		}
-
-		return await response.arrayBuffer();
-	} catch (error) {
-		console.error("Error fetching attachment:", error);
-		return null;
 	}
+	if (!data?.download_url) {
+		throw new Error(`Resend returned no download_url for ${attachmentId}`);
+	}
+
+	const response = await fetch(data.download_url);
+	if (!response.ok) {
+		throw new Error(
+			`Attachment download failed for ${attachmentId}: ${response.status} ${response.statusText}`
+		);
+	}
+
+	return await response.arrayBuffer();
 }

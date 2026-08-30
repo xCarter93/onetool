@@ -7,6 +7,7 @@ import { getFunctionName, type FunctionReference } from "convex/server";
 import { setupConvexTest } from "./test.setup";
 import { shouldDownloadSignedPdf } from "./boldsign";
 import { externalIoPool } from "./externalIoPool";
+import { PUSHABLE_TYPES } from "./push";
 import {
 	createTestOrg,
 	createTestClient,
@@ -667,9 +668,40 @@ describe("BoldSign embedded sending", () => {
 			await completeQuote("bs_retry_config");
 
 			const [, , , options] = enqueue.mock.calls[0]!;
-			expect(options).toEqual({
-				retry: { maxAttempts: 5, initialBackoffMs: 5000, base: 2 },
+			// Assert field-by-field: onComplete is a proxy, and putting one inside
+			// a toEqual crashes vitest's diff formatter.
+			expect((options as { retry: unknown }).retry).toEqual({
+				maxAttempts: 5,
+				initialBackoffMs: 5000,
+				base: 2,
 			});
+		});
+
+		it("routes terminal failure to the completion hook with the document in context", async () => {
+			await completeQuote("bs_on_complete");
+
+			const [, , , options] = enqueue.mock.calls[0]!;
+			const { onComplete, context } = options as {
+				onComplete: FunctionReference<"mutation">;
+				context: { documentId: Id<"documents"> };
+			};
+			expect(getFunctionName(onComplete)).toBe(
+				getFunctionName(internal.boldsign.onSignedPdfDownloadComplete)
+			);
+			// onComplete never receives the action's args, so the row to mark has
+			// to arrive via context or the hook has nothing to patch.
+			expect(context.documentId).toBeDefined();
+		});
+
+		it("records the in-flight workId so a redelivery can't double-enqueue", async () => {
+			await completeQuote("bs_in_flight");
+
+			const document = await t.run(async (ctx) => {
+				const all = await ctx.db.query("documents").collect();
+				return all.find((d) => d.boldsignDocumentId === "bs_in_flight") ?? null;
+			});
+			expect(document?.signedPdfDownload?.workId).toBe("test_work_id");
+			expect(shouldDownloadSignedPdf(document!)).toBe(false);
 		});
 
 		it("enqueues nothing when the signed PDF is already stored (webhook redelivery)", async () => {
@@ -678,24 +710,179 @@ describe("BoldSign embedded sending", () => {
 			expect(enqueue).not.toHaveBeenCalled();
 		});
 
-		it("shouldDownloadSignedPdf gates on signedStorageId alone", async () => {
-			const { unsigned, signed } = await t.run(async (ctx) => {
-				const org = await createTestOrg(ctx);
-				const clientId = await createTestClient(ctx, org.orgId);
-				const quoteId = await seedQuote(ctx, org.orgId, clientId);
-				const unsignedId = await seedDocument(ctx, org.orgId, quoteId, 1);
-				const signedId = await seedDocument(ctx, org.orgId, quoteId, 2);
-				await ctx.db.patch(signedId, {
-					signedStorageId: await ctx.storage.store(new Blob(["signed"])),
-				});
-				return {
-					unsigned: (await ctx.db.get(unsignedId))!,
-					signed: (await ctx.db.get(signedId))!,
-				};
-			});
+		it("shouldDownloadSignedPdf gates on a stored PDF and on an in-flight job", async () => {
+			const { unsigned, signed, inFlight, failed } = await t.run(
+				async (ctx) => {
+					const org = await createTestOrg(ctx);
+					const clientId = await createTestClient(ctx, org.orgId);
+					const quoteId = await seedQuote(ctx, org.orgId, clientId);
+					const unsignedId = await seedDocument(ctx, org.orgId, quoteId, 1);
+					const signedId = await seedDocument(ctx, org.orgId, quoteId, 2);
+					const inFlightId = await seedDocument(ctx, org.orgId, quoteId, 3);
+					const failedId = await seedDocument(ctx, org.orgId, quoteId, 4);
+					await ctx.db.patch(signedId, {
+						signedStorageId: await ctx.storage.store(new Blob(["signed"])),
+					});
+					await ctx.db.patch(inFlightId, {
+						signedPdfDownload: { workId: "work_running" },
+					});
+					// A job that gave up clears its workId, so the sweep can retry it.
+					await ctx.db.patch(failedId, {
+						signedPdfDownload: { failedAt: Date.now(), error: "boom" },
+					});
+					return {
+						unsigned: (await ctx.db.get(unsignedId))!,
+						signed: (await ctx.db.get(signedId))!,
+						inFlight: (await ctx.db.get(inFlightId))!,
+						failed: (await ctx.db.get(failedId))!,
+					};
+				}
+			);
 
 			expect(shouldDownloadSignedPdf(unsigned)).toBe(true);
 			expect(shouldDownloadSignedPdf(signed)).toBe(false);
+			expect(shouldDownloadSignedPdf(inFlight)).toBe(false);
+			expect(shouldDownloadSignedPdf(failed)).toBe(true);
+		});
+	});
+
+	// ========================================================================
+	// Terminal download failure: marker + admin notification + sweep backstop
+	// ========================================================================
+
+	describe("signed-PDF download failure", () => {
+		async function seedCompletedDocument() {
+			return await t.run(async (ctx) => {
+				const org = await createTestOrg(ctx);
+				const clientId = await createTestClient(ctx, org.orgId);
+				const quoteId = await seedQuote(ctx, org.orgId, clientId);
+				const documentId = await seedDocument(ctx, org.orgId, quoteId, 1, {
+					documentId: "bs_failed",
+					status: "Completed",
+				});
+				await ctx.db.patch(documentId, {
+					signedPdfDownload: { workId: "work_running" },
+				});
+				return { ...org, quoteId, documentId };
+			});
+		}
+
+		async function notifications() {
+			return await t.run(async (ctx) =>
+				ctx.db.query("notifications").collect()
+			);
+		}
+
+		async function failDownload(documentId: Id<"documents">) {
+			await t.mutation(internal.boldsign.onSignedPdfDownloadComplete, {
+				workId: "work_running",
+				context: { documentId },
+				result: { kind: "failed", error: "BoldSign 503" },
+			});
+		}
+
+		it("records the failure and clears the in-flight workId", async () => {
+			const { documentId } = await seedCompletedDocument();
+			await failDownload(documentId);
+
+			const document = await t.run(async (ctx) => ctx.db.get(documentId));
+			expect(document?.signedPdfDownload?.error).toBe("BoldSign 503");
+			expect(document?.signedPdfDownload?.failedAt).toBeGreaterThan(0);
+			// Cleared so the sweep is free to re-enqueue.
+			expect(document?.signedPdfDownload?.workId).toBeUndefined();
+		});
+
+		it("tells the org admins, pointing at the quote that was signed", async () => {
+			const { documentId, userId, quoteId } = await seedCompletedDocument();
+			await failDownload(documentId);
+
+			const [notification] = await notifications();
+			expect(notification).toMatchObject({
+				userId,
+				notificationType: "boldsign_download_failed",
+				entityType: "quote",
+				sentVia: "in_app",
+			});
+			expect(notification!.actionUrl).toBe(`/quotes/${quoteId}`);
+		});
+
+		it("stays out of PUSHABLE_TYPES — a failed download is not a 3am buzz", () => {
+			expect(PUSHABLE_TYPES.has("boldsign_download_failed")).toBe(false);
+		});
+
+		it("notifies once even if the completion hook fires twice", async () => {
+			const { documentId } = await seedCompletedDocument();
+			await failDownload(documentId);
+			await failDownload(documentId);
+
+			expect(await notifications()).toHaveLength(1);
+		});
+
+		it("notifies once per document even after the alert is read", async () => {
+			const { documentId } = await seedCompletedDocument();
+			await failDownload(documentId);
+
+			// The sweep's predicate stays true until the PDF actually arrives, so
+			// an unread-based guard would re-alert the day after someone reads it.
+			await t.run(async (ctx) => {
+				for (const n of await ctx.db.query("notifications").collect()) {
+					await ctx.db.patch(n._id, { isRead: true, readAt: Date.now() });
+				}
+			});
+
+			await t.mutation(
+				internal.externalFetchReconcile.reconcileFailedSignedPdfs,
+				{}
+			);
+
+			expect(await notifications()).toHaveLength(1);
+		});
+
+		it("clears the marker when a retry finally succeeds", async () => {
+			const { documentId } = await seedCompletedDocument();
+			await t.mutation(internal.boldsign.onSignedPdfDownloadComplete, {
+				workId: "work_running",
+				context: { documentId },
+				result: { kind: "success", returnValue: null },
+			});
+
+			const document = await t.run(async (ctx) => ctx.db.get(documentId));
+			expect(document?.signedPdfDownload).toBeUndefined();
+			expect(await notifications()).toHaveLength(0);
+		});
+
+		it("the sweep surfaces a failure the completion hook never announced", async () => {
+			const { documentId } = await seedCompletedDocument();
+			// A failure marker with no notifiedAt: onComplete's own notify failed.
+			await t.run(async (ctx) =>
+				ctx.db.patch(documentId, {
+					signedPdfDownload: { failedAt: Date.now(), error: "orphaned" },
+				})
+			);
+
+			await t.mutation(
+				internal.externalFetchReconcile.reconcileFailedSignedPdfs,
+				{}
+			);
+
+			expect(await notifications()).toHaveLength(1);
+		});
+
+		it("the sweep ignores a document whose PDF arrived after the failure", async () => {
+			const { documentId } = await seedCompletedDocument();
+			await t.run(async (ctx) =>
+				ctx.db.patch(documentId, {
+					signedPdfDownload: { failedAt: Date.now(), error: "transient" },
+					signedStorageId: await ctx.storage.store(new Blob(["signed"])),
+				})
+			);
+
+			await t.mutation(
+				internal.externalFetchReconcile.reconcileFailedSignedPdfs,
+				{}
+			);
+
+			expect(await notifications()).toHaveLength(0);
 		});
 	});
 

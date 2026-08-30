@@ -110,6 +110,8 @@ interface NotificationStats {
 		automation_failed: number;
 		// QuickBooks sync failure alerts.
 		quickbooks_sync_failed: number;
+		// Signed PDF never arrived after retries were exhausted.
+		boldsign_download_failed: number;
 	};
 	today: number;
 	pending: number; // scheduled but not sent yet
@@ -142,6 +144,7 @@ function createEmptyNotificationStats(): NotificationStats {
 			automation_message: 0,
 			automation_failed: 0,
 			quickbooks_sync_failed: 0,
+			boldsign_download_failed: 0,
 		},
 		today: 0,
 		pending: 0,

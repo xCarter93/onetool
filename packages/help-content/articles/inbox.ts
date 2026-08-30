@@ -253,6 +253,10 @@ export const inboxArticles: HelpArticle[] = [
 						asset: "inbox/emailing-from-a-client-record/incoming-message-with-a-downloadable-attachment",
 					},
 					{
+						type: "paragraph",
+						text: "A large file can take a moment to arrive. While it does, the attachment shows **Downloading…** and the message itself is already readable. If a file never makes it, the attachment says **Couldn't download** instead of going quiet, so you know to ask the client to resend it rather than wondering whether they attached anything.",
+					},
+					{
 						type: "note",
 						text: "You can send files as well as receive them. **Attach file** sits under the message box on both a new email and a reply. Everything on one email can total 20MB, and program files are refused.",
 					},

@@ -13,24 +13,124 @@ import {
 } from "./lib/permissions";
 import { METERS, entitlementsFromIdentity } from "./lib/entitlements";
 import { computeEsignaturesSentThisMonth } from "./usage";
-import { externalIoPool } from "./externalIoPool";
-
-// ~5s/10s/20s/40s. Nobody waits on a signed PDF, so the long tail is free and
-// outlasts a BoldSign rate-limit window; their 429s carry Retry-After, which
-// the pool's fixed backoff can't read.
-const SIGNED_PDF_RETRY = {
-	maxAttempts: 5,
-	initialBackoffMs: 5000,
-	base: 2,
-} as const;
+import { externalIoPool, EXTERNAL_FETCH_RETRY } from "./externalIoPool";
+import { resolveMemberUserIds } from "./lib/automationExec/actions";
 
 /**
- * A stored signed PDF means this Completed event is a redelivery. Downloading
- * again would overwrite signedStorageId and orphan the first blob.
+ * Two ways a Completed event turns out to be a redelivery. A stored signed PDF
+ * means the first download finished, and re-downloading would overwrite
+ * signedStorageId and orphan that blob. A live `workId` means the first one is
+ * still running, so enqueueing again would race it for the same row.
+ *
+ * Failure clears the workId, so a later redelivery is free to try again. A job
+ * that dies without `onComplete` ever firing is the pool's recovery to resolve,
+ * not this predicate's.
  */
 export function shouldDownloadSignedPdf(document: Doc<"documents">): boolean {
-	return document.signedStorageId === undefined;
+	if (document.signedStorageId !== undefined) return false;
+	return document.signedPdfDownload?.workId === undefined;
 }
+
+/** Cap on vendor error text copied onto the document row. */
+const DOWNLOAD_ERROR_CAP = 1000;
+
+/**
+ * Tell the org's admins one time that a signed PDF never arrived. In-app only
+ * and deliberately absent from PUSHABLE_TYPES, matching the other failure
+ * alerts — this is a next-morning problem, not a 3am buzz.
+ *
+ * Never throws: an alert hiccup must not roll back the failure patch.
+ */
+export async function notifySignedPdfDownloadFailed(
+	ctx: MutationCtx,
+	documentId: Id<"documents">
+): Promise<void> {
+	try {
+		const document = await ctx.db.get(documentId);
+		if (!document || document.signedPdfDownload?.notifiedAt) return;
+		if (document.documentType !== "quote") return;
+
+		const quoteId = ctx.db.normalizeId("quotes", document.documentId);
+		const quote = quoteId ? await ctx.db.get(quoteId) : null;
+		const label = quote?.quoteNumber ?? "a quote";
+
+		for (const userId of await resolveMemberUserIds(
+			ctx,
+			document.orgId,
+			true
+		)) {
+			await ctx.db.insert("notifications", {
+				orgId: document.orgId,
+				userId,
+				notificationType: "boldsign_download_failed",
+				title: "Signed document didn't arrive",
+				message: `${label} was signed, but we couldn't retrieve the signed PDF. Open the quote to try again.`,
+				entityType: "quote",
+				entityId: document.documentId,
+				actionUrl: quoteId ? `/quotes/${quoteId}` : "/quotes",
+				isRead: false,
+				sentVia: "in_app",
+				sentAt: Date.now(),
+				priority: "high",
+			});
+		}
+
+		await ctx.db.patch(documentId, {
+			signedPdfDownload: {
+				...document.signedPdfDownload,
+				notifiedAt: Date.now(),
+			},
+		});
+	} catch (err) {
+		console.error(
+			`[BoldSign] notifySignedPdfDownloadFailed failed for document ${documentId}`,
+			err
+		);
+	}
+}
+
+/**
+ * Terminal outcome of a pooled signed-PDF download. Success clears the marker;
+ * anything else records the failure and tells the org's admins, because a
+ * client has signed a quote whose countersigned PDF never made it into the
+ * account.
+ *
+ * Notifies once per document, keyed on `notifiedAt` rather than on an unread
+ * notification: the reconcile sweep re-detects the same document every run
+ * until it is fixed, so an unread check would re-alert the moment someone
+ * reads the last one.
+ */
+export const onSignedPdfDownloadComplete = internalMutation({
+	args: {
+		workId: v.string(),
+		context: v.object({ documentId: v.id("documents") }),
+		result: v.any(),
+	},
+	handler: async (ctx, { context, result }) => {
+		const document = await ctx.db.get(context.documentId);
+		if (!document) return;
+
+		if (result?.kind === "success") {
+			await ctx.db.patch(document._id, { signedPdfDownload: undefined });
+			return;
+		}
+
+		const error =
+			result?.kind === "failed"
+				? String(result.error).slice(0, DOWNLOAD_ERROR_CAP)
+				: "Download was cancelled";
+
+		await ctx.db.patch(document._id, {
+			signedPdfDownload: {
+				failedAt: Date.now(),
+				error,
+				notifiedAt: document.signedPdfDownload?.notifiedAt,
+			},
+		});
+
+		await notifySignedPdfDownloadFailed(ctx, document._id);
+	},
+});
 
 // ============================================================================
 // Internal Helper Functions
@@ -553,12 +653,21 @@ async function handleQuoteStatusUpdate(
 				console.log(
 					`[BoldSign] Enqueueing signed document download for quote ${quote._id}`
 				);
-				await externalIoPool.enqueueAction(
+				const workId = await externalIoPool.enqueueAction(
 					ctx,
 					internal.boldsignActions.downloadCompletedDocument,
 					{ documentId: document._id, boldsignDocumentId },
-					{ retry: SIGNED_PDF_RETRY }
+					{
+						retry: EXTERNAL_FETCH_RETRY,
+						onComplete: internal.boldsign.onSignedPdfDownloadComplete,
+						// onComplete receives only this context, never the action's
+						// args, so the row to mark has to travel here.
+						context: { documentId: document._id },
+					}
 				);
+				await ctx.db.patch(document._id, {
+					signedPdfDownload: { workId },
+				});
 			}
 			break;
 

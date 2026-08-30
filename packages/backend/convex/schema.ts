@@ -318,6 +318,7 @@ export default defineSchema({
 	})
 		.index("by_client", ["clientId"])
 		.index("by_org", ["orgId"])
+		.index("by_org_email", ["orgId", "email"])
 		.index("by_primary", ["clientId", "isPrimary"])
 		.searchIndex("search_text", {
 			searchField: "searchText",
@@ -884,6 +885,20 @@ export default defineSchema({
 		// Top-level BoldSign document ID for efficient querying
 		boldsignDocumentId: v.optional(v.string()),
 
+		// Signed-PDF download bookkeeping. `workId` guards against a redelivered
+		// webhook double-enqueueing while the first job is still running;
+		// `notifiedAt` is the dedupe key for the reconcile sweep, which must not
+		// key off the notification's read state (the sweep's predicate stays
+		// true until the download actually succeeds).
+		signedPdfDownload: v.optional(
+			v.object({
+				workId: v.optional(v.string()),
+				failedAt: v.optional(v.number()),
+				error: v.optional(v.string()),
+				notifiedAt: v.optional(v.number()),
+			})
+		),
+
 		// BoldSign integration fields
 		boldsign: v.optional(
 			v.object({
@@ -925,7 +940,10 @@ export default defineSchema({
 		.index("by_org", ["orgId"])
 		.index("by_document", ["documentType", "documentId"])
 		.index("by_document_version", ["documentType", "documentId", "version"])
-		.index("by_boldsign_documentId", ["boldsignDocumentId"]),
+		.index("by_boldsign_documentId", ["boldsignDocumentId"])
+		// Reconcile sweep: only failed downloads carry failedAt, so a range scan
+		// over it visits the handful that gave up, not every document.
+		.index("by_signed_pdf_failed", ["signedPdfDownload.failedAt"]),
 
 	// Activities - for home route activity feed
 	activities: defineTable({
@@ -1019,7 +1037,11 @@ export default defineSchema({
 			v.literal("automation_failed"),
 			// QuickBooks sync failure alert (admins, in-app only, debounced to
 			// one while any unresolved terminal failure exists).
-			v.literal("quickbooks_sync_failed")
+			v.literal("quickbooks_sync_failed"),
+			// Signed PDF never arrived after the download exhausted its retries
+			// (admins, in-app only, one per document — the client has signed but
+			// the countersigned file isn't in the account).
+			v.literal("boldsign_download_failed")
 		),
 		title: v.string(), // Notification title
 		message: v.string(), // Notification message content
@@ -1339,11 +1361,26 @@ export default defineSchema({
 		// uploaded/generated file, present from insert.
 		storageId: v.optional(v.id("_storage")),
 
+		// Inbound download state. Absent on legacy and outbound rows, which are
+		// stored by construction. A null storageId alone can't carry this: it
+		// means both "queued" and "gave up", and the UI reads it as "loading".
+		downloadState: v.optional(
+			v.union(
+				v.literal("pending"),
+				v.literal("stored"),
+				v.literal("failed")
+			)
+		),
+		downloadFailedAt: v.optional(v.number()),
+		downloadError: v.optional(v.string()),
+
 		// Inbound receipt time; outbound rows stamp the send time.
 		receivedAt: v.number(),
 	})
 		.index("by_email", ["emailMessageId"])
-		.index("by_org", ["orgId"]),
+		.index("by_org", ["orgId"])
+		// Reconcile sweep: find rows stuck pending/failed without scanning.
+		.index("by_download_state", ["downloadState"]),
 
 	// Composer uploads claimed at upload time. First writer wins, so a storageId
 	// guessed from another tenant can never be attached to an outbound send.
