@@ -84,6 +84,12 @@ describe("inbound attachment durability", () => {
 		);
 	}
 
+	async function storedBlobCount() {
+		return await t.run(
+			async (ctx) => (await ctx.db.system.query("_storage").collect()).length
+		);
+	}
+
 	it("writes a pending row per attachment instead of nothing until success", async () => {
 		await orgSetup();
 		await t.mutation(
@@ -192,20 +198,21 @@ describe("inbound attachment durability", () => {
 			second: await ctx.storage.store(new Blob(["second"])),
 		}));
 
-		await t.mutation(internal.resendReceiving.attachStoredFile, {
-			attachmentRowId: pending!._id,
-			storageId: first,
-			size: 5,
-		});
-		await t.mutation(internal.resendReceiving.attachStoredFile, {
-			attachmentRowId: pending!._id,
-			storageId: second,
-			size: 6,
-		});
+		const adoptedFirst = await t.mutation(
+			internal.resendReceiving.attachStoredFile,
+			{ attachmentRowId: pending!._id, storageId: first, size: 5 }
+		);
+		const adoptedSecond = await t.mutation(
+			internal.resendReceiving.attachStoredFile,
+			{ attachmentRowId: pending!._id, storageId: second, size: 6 }
+		);
 
 		const [row] = await rows();
 		expect(row!.storageId).toBe(first);
 		expect(row!.size).toBe(5);
+		// The caller reclaims the loser's blob, so it has to be told which is which.
+		expect(adoptedFirst).toBe(true);
+		expect(adoptedSecond).toBe(false);
 	});
 
 	it("marks the row failed when the pool gives up, so the chip can say so", async () => {
@@ -395,6 +402,43 @@ describe("inbound attachment durability", () => {
 				})
 			).rejects.toThrow(/410/);
 		});
+
+		it("reclaims the blob when the row already adopted another one", async () => {
+			const attachmentRowId = await seedPendingRow();
+			const winner = await t.run(async (ctx) =>
+				ctx.storage.store(new Blob(["already here"]))
+			);
+			await t.mutation(internal.resendReceiving.attachStoredFile, {
+				attachmentRowId,
+				storageId: winner,
+				size: 12,
+			});
+
+			const blobsBefore = await storedBlobCount();
+			mockResend(
+				vi.fn(async () => ({
+					data: { download_url: "https://signed.example/att_1" },
+					error: null,
+				}))
+			);
+			vi.stubGlobal(
+				"fetch",
+				vi.fn(async () => new Response("pdf bytes", { status: 200 }))
+			);
+
+			await t.action(internal.resendReceiving.downloadAttachmentAction, {
+				emailId: "re_attach_1",
+				attachmentRowId,
+				attachmentId: "att_1",
+				contentType: "application/pdf",
+			});
+
+			// The losing blob is unreferenced the moment the row declines it, and
+			// nothing else will ever come back for it.
+			expect(await storedBlobCount()).toBe(blobsBefore);
+			const [row] = await rows();
+			expect(row!.storageId).toBe(winner);
+		});
 	});
 
 	it("leaves failed rows out of the stuck sweep", async () => {
@@ -421,5 +465,64 @@ describe("inbound attachment durability", () => {
 		// Retrying a download that already exhausted its budget just burns
 		// requests; the chip is already telling the user it failed.
 		expect(enqueue).not.toHaveBeenCalled();
+	});
+
+	/**
+	 * The sweep reads a bounded window of the oldest pending rows. A row it can
+	 * neither rescue nor settle stays at the head of that window forever and
+	 * starves out every rescuable row behind it, so both dead ends below have to
+	 * leave "pending".
+	 */
+	describe("stuck sweep settles rows it can't rescue", () => {
+		async function seedStuckRow() {
+			await orgSetup();
+			await t.mutation(
+				internal.resendReceiving.processInboundEmail,
+				inboundArgs(ONE_PDF)
+			);
+			const [row] = await rows();
+			await t.run(async (ctx) =>
+				ctx.db.patch(row!._id as Id<"emailAttachments">, {
+					receivedAt: Date.now() - 2 * 60 * 60 * 1000,
+				})
+			);
+			return row!._id as Id<"emailAttachments">;
+		}
+
+		it("fails a row whose Resend reference is gone", async () => {
+			const rowId = await seedStuckRow();
+			await t.run(async (ctx) =>
+				ctx.db.patch(rowId, { attachmentId: undefined })
+			);
+			enqueue.mockClear();
+
+			await t.mutation(
+				internal.externalFetchReconcile.reconcileStuckAttachments,
+				{}
+			);
+
+			const [row] = await rows();
+			expect(row!.downloadState).toBe("failed");
+			expect(row!.downloadError).toMatch(/missing/);
+			expect(enqueue).not.toHaveBeenCalled();
+		});
+
+		it("marks a row that has its bytes but never lost the pending flag", async () => {
+			const rowId = await seedStuckRow();
+			const storageId = await t.run(async (ctx) =>
+				ctx.storage.store(new Blob(["pdf"]))
+			);
+			await t.run(async (ctx) => ctx.db.patch(rowId, { storageId }));
+			enqueue.mockClear();
+
+			await t.mutation(
+				internal.externalFetchReconcile.reconcileStuckAttachments,
+				{}
+			);
+
+			const [row] = await rows();
+			expect(row!.downloadState).toBe("stored");
+			expect(enqueue).not.toHaveBeenCalled();
+		});
 	});
 });

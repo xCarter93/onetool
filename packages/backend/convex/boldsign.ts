@@ -64,7 +64,9 @@ export async function notifySignedPdfDownloadFailed(
 				userId,
 				notificationType: "boldsign_download_failed",
 				title: "Signed document didn't arrive",
-				message: `${label} was signed, but we couldn't retrieve the signed PDF. Open the quote to try again.`,
+				// No user-triggerable retry exists for this download, so don't
+				// promise one.
+				message: `${label} was signed, but we couldn't retrieve the signed PDF. Contact support and we'll recover it.`,
 				entityType: "quote",
 				entityId: document.documentId,
 				actionUrl: quoteId ? `/quotes/${quoteId}` : "/quotes",

@@ -37,10 +37,25 @@ export const reconcileStuckAttachments = internalMutation({
 		let requeued = 0;
 		for (const row of stuck) {
 			if (row.receivedAt > cutoff) continue;
-			if (row.storageId) continue;
+
+			// Both branches below settle the row rather than skipping it. A row
+			// that can never leave "pending" otherwise sits at the head of this
+			// bounded window forever, starving out the ones still rescuable.
+			if (row.storageId) {
+				await ctx.db.patch(row._id, { downloadState: "stored" });
+				continue;
+			}
 
 			const message = await ctx.db.get(row.emailMessageId);
-			if (!message?.resendEmailId || !row.attachmentId) continue;
+			if (!message?.resendEmailId || !row.attachmentId) {
+				await ctx.db.patch(row._id, {
+					downloadState: "failed",
+					downloadFailedAt: Date.now(),
+					downloadError:
+						"The reference needed to fetch this file from Resend is missing.",
+				});
+				continue;
+			}
 
 			await externalIoPool.enqueueAction(
 				ctx,
@@ -73,26 +88,26 @@ export const reconcileStuckAttachments = internalMutation({
  * notifies on the spot; this catches the case where that mutation failed, and
  * it is the only thing that will ever surface such a document.
  *
- * Dedupe is `notifiedAt` on the document, never the notification's read state:
- * this predicate stays true until the download succeeds, so keying off unread
- * would re-alert every admin the day after they read the last one.
+ * Dedupe is `notifiedAt` on the document — carried by the index, so notified
+ * rows leave the window entirely — never the notification's read state: this
+ * predicate stays true until the download succeeds, so keying off unread would
+ * re-alert every admin the day after they read the last one.
  */
 export const reconcileFailedSignedPdfs = internalMutation({
 	args: {},
 	handler: async (ctx) => {
 		const failed = await ctx.db
 			.query("documents")
-			.withIndex("by_signed_pdf_failed", (q) =>
-				q.gt("signedPdfDownload.failedAt", 0)
+			.withIndex("by_signed_pdf_unnotified", (q) =>
+				q
+					.eq("signedPdfDownload.notifiedAt", undefined)
+					.gt("signedPdfDownload.failedAt", 0)
 			)
 			.take(SWEEP_LIMIT);
 
 		let notified = 0;
 		for (const document of failed) {
 			if (document.signedStorageId) continue; // recovered since
-			// The helper is idempotent on notifiedAt anyway; skipping here is what
-			// keeps the count below honest.
-			if (document.signedPdfDownload?.notifiedAt) continue;
 
 			await notifySignedPdfDownloadFailed(ctx, document._id);
 			notified++;

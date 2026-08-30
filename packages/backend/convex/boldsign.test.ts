@@ -884,6 +884,43 @@ describe("BoldSign embedded sending", () => {
 
 			expect(await notifications()).toHaveLength(0);
 		});
+
+		it("a backlog of already-announced failures can't starve the sweep", async () => {
+			const { orgId, quoteId, documentId } = await seedCompletedDocument();
+
+			// Enough settled failures to fill the sweep's bounded window. They must
+			// leave it via the index, not via a per-row skip, or the newest failure
+			// is never reached.
+			await t.run(async (ctx) => {
+				for (let i = 0; i < 100; i++) {
+					const old = await seedDocument(ctx, orgId, quoteId, i + 10, {
+						documentId: `bs_old_${i}`,
+						status: "Completed",
+					});
+					await ctx.db.patch(old, {
+						signedPdfDownload: {
+							failedAt: 1000 + i,
+							error: "old",
+							notifiedAt: 2000 + i,
+						},
+					});
+				}
+			});
+
+			// Un-announced, and newest — so it sorts behind the whole backlog.
+			await t.run(async (ctx) =>
+				ctx.db.patch(documentId, {
+					signedPdfDownload: { failedAt: Date.now(), error: "orphaned" },
+				})
+			);
+
+			await t.mutation(
+				internal.externalFetchReconcile.reconcileFailedSignedPdfs,
+				{}
+			);
+
+			expect(await notifications()).toHaveLength(1);
+		});
 	});
 
 	// ========================================================================

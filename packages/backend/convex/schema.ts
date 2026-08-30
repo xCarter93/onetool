@@ -887,9 +887,9 @@ export default defineSchema({
 
 		// Signed-PDF download bookkeeping. `workId` guards against a redelivered
 		// webhook double-enqueueing while the first job is still running;
-		// `notifiedAt` is the dedupe key for the reconcile sweep, which must not
-		// key off the notification's read state (the sweep's predicate stays
-		// true until the download actually succeeds).
+		// `notifiedAt` is both the dedupe key and the reconcile sweep's index
+		// prefix. It must not key off the notification's read state (the sweep's
+		// predicate stays true until the download actually succeeds).
 		signedPdfDownload: v.optional(
 			v.object({
 				workId: v.optional(v.string()),
@@ -941,9 +941,13 @@ export default defineSchema({
 		.index("by_document", ["documentType", "documentId"])
 		.index("by_document_version", ["documentType", "documentId", "version"])
 		.index("by_boldsign_documentId", ["boldsignDocumentId"])
-		// Reconcile sweep: only failed downloads carry failedAt, so a range scan
-		// over it visits the handful that gave up, not every document.
-		.index("by_signed_pdf_failed", ["signedPdfDownload.failedAt"]),
+		// Reconcile sweep. notifiedAt leads so the scan starts at the un-notified
+		// failures; without it, already-announced rows accumulate at the head of
+		// the bounded window and starve out new ones.
+		.index("by_signed_pdf_unnotified", [
+			"signedPdfDownload.notifiedAt",
+			"signedPdfDownload.failedAt",
+		]),
 
 	// Activities - for home route activity feed
 	activities: defineTable({

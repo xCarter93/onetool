@@ -419,18 +419,25 @@ export const downloadAttachmentAction = internalAction({
 			new Blob([bytes], { type: args.contentType })
 		);
 
+		let adopted = false;
 		try {
-			await ctx.runMutation(internal.resendReceiving.attachStoredFile, {
-				attachmentRowId: args.attachmentRowId,
-				storageId,
-				size: bytes.byteLength,
-			});
+			adopted = await ctx.runMutation(
+				internal.resendReceiving.attachStoredFile,
+				{
+					attachmentRowId: args.attachmentRowId,
+					storageId,
+					size: bytes.byteLength,
+				}
+			);
 		} catch (err) {
-			// Reclaim the blob we just wrote; the row it belonged to is gone or
-			// already stored, so nothing will ever reference it.
+			// Reclaim the blob we just wrote; the row it belonged to is gone, so
+			// nothing will ever reference it.
 			await ctx.storage.delete(storageId).catch(() => {});
 			throw err;
 		}
+		// Same reclaim for the quiet case: a retry raced the original and the row
+		// already points at someone else's blob.
+		if (!adopted) await ctx.storage.delete(storageId).catch(() => {});
 	},
 });
 
@@ -440,6 +447,9 @@ export const downloadAttachmentAction = internalAction({
  * Internal rather than `systemMutation`: the row already carries the org that
  * the inbound webhook resolved, and re-deriving it here would just be a second
  * chance to get it wrong.
+ *
+ * Returns whether the row adopted this blob; `false` means the caller owns an
+ * orphan and has to reclaim it.
  */
 export const attachStoredFile = internalMutation({
 	args: {
@@ -447,6 +457,7 @@ export const attachStoredFile = internalMutation({
 		storageId: v.id("_storage"),
 		size: v.number(),
 	},
+	returns: v.boolean(),
 	handler: async (ctx, args) => {
 		const row = await ctx.db.get(args.attachmentRowId);
 		if (!row) {
@@ -454,7 +465,7 @@ export const attachStoredFile = internalMutation({
 				`Attachment row ${args.attachmentRowId} no longer exists`
 			);
 		}
-		if (row.storageId) return; // already stored; a retry raced the original
+		if (row.storageId) return false; // already stored; a retry raced the original
 
 		await ctx.db.patch(args.attachmentRowId, {
 			storageId: args.storageId,
@@ -463,6 +474,7 @@ export const attachStoredFile = internalMutation({
 			downloadError: undefined,
 			downloadFailedAt: undefined,
 		});
+		return true;
 	},
 });
 
