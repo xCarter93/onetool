@@ -11,10 +11,11 @@ import { consumeMeter } from "./lib/entitlements";
 
 /**
  * CHARACTERIZATION suite for every writer that flips an invoice's status.
- * These tests pin what the code does TODAY, ahead of extracting a shared
- * `transitionInvoice` seam — including the places where today's behavior is
- * the bug the seam exists to fix. Those assertions carry the marker comment
- * so the refactor has to update them deliberately.
+ * Every writer now routes through the shared `lib/invoiceTransitions.ts` seam,
+ * so these tests assert the normalized behavior: whoever moves the invoice,
+ * the same settlement, activity, celebration, QuickBooks enqueue and
+ * entity.status_changed event happen. What differs between paths is only the
+ * eventSource and the activity's actor.
  *
  * Meter accounting on send transitions is owned by sliceA.packaging.test.ts;
  * nothing here re-tests it except the automation-executor paths (E), which
@@ -208,9 +209,10 @@ describe("invoice status writers (characterization)", () => {
 			const paidAt = (await t.run(async (ctx) => ctx.db.get(invoiceId)))?.paidAt;
 			expect(paidAt).toBeTypeOf("number");
 
-			// PINNED CURRENT BEHAVIOR — the transitionInvoice seam will change this
-			// There is no transition matrix: paid→draft is accepted, paidAt is left
-			// stamped, and the settled installment rows are never un-settled.
+			// DELIBERATE: the seam has no transition matrix and no compensation.
+			// paid→draft is accepted, paidAt stays stamped, and settled installment
+			// rows are never un-settled — reopening an invoice is a manual repair,
+			// not something a status flip should silently undo.
 			await asUser.mutation(api.invoices.update, {
 				id: invoiceId,
 				status: "draft",
@@ -226,7 +228,7 @@ describe("invoice status writers (characterization)", () => {
 			expect(rows[0]!.recordedOutsidePortal).toBe(true);
 		});
 
-		it("paid→paid duplicates the activity but re-stamps nothing else", async () => {
+		it("paid→paid is a no-op: no second activity, nothing re-stamped", async () => {
 			const { asUser, clientId } = await seedOrg();
 			const invoiceId = await createDraftInvoice(asUser, clientId, 1000);
 			await asUser.mutation(api.invoices.update, {
@@ -244,12 +246,10 @@ describe("invoice status writers (characterization)", () => {
 			});
 			await drain();
 
-			// PINNED CURRENT BEHAVIOR — the transitionInvoice seam will change this
-			// The activity write is the one branch not guarded on the status having
-			// actually changed, so re-saving a paid invoice logs a second payment.
-			expect(await activitiesOfType(invoiceId, "invoice_paid")).toHaveLength(2);
+			// The seam returns early on a same-status write, so re-saving a paid
+			// invoice no longer logs a second payment in the activity feed.
+			expect(await activitiesOfType(invoiceId, "invoice_paid")).toHaveLength(1);
 
-			// Everything guarded on the change stays put.
 			const invoice = await t.run(async (ctx) => ctx.db.get(invoiceId));
 			expect(invoice?.paidAt).toBe(firstPaidAt);
 			expect(await statusEvents(invoiceId)).toHaveLength(1);
@@ -261,7 +261,7 @@ describe("invoice status writers (characterization)", () => {
 	// =====================================================================
 
 	describe("B. invoices.markPaid", () => {
-		it("settles rows and writes an invoice_paid activity, but emits no entity.status_changed", async () => {
+		it("settles rows, writes an invoice_paid activity and emits entity.status_changed", async () => {
 			const { asUser, clientId } = await seedOrg();
 			const invoiceId = await createDraftInvoice(asUser, clientId, 1000);
 			await asUser.mutation(api.payments.configurePayments, {
@@ -299,10 +299,13 @@ describe("invoice status writers (characterization)", () => {
 
 			expect(await activitiesOfType(invoiceId, "invoice_paid")).toHaveLength(1);
 
-			// PINNED CURRENT BEHAVIOR — the transitionInvoice seam will change this
-			// markPaid never calls emitStatusChangeEvent, so no automation can
-			// trigger off an invoice marked paid from the workspace.
-			expect(await statusEvents(invoiceId)).toHaveLength(0);
+			// The seam emits, so an automation can trigger off an invoice marked
+			// paid from the workspace.
+			const events = await statusEvents(invoiceId);
+			expect(events).toHaveLength(1);
+			expect(events[0]!.eventSource).toBe("invoices.markPaid");
+			expect(events[0]!.payload.oldValue).toBe("draft");
+			expect(events[0]!.payload.newValue).toBe("paid");
 		});
 
 		it("throws CONFLICT on an already-paid invoice", async () => {
@@ -339,8 +342,11 @@ describe("invoice status writers (characterization)", () => {
 	// =====================================================================
 
 	describe("C. invoices.markInvoicePaidFromWebhookInternal", () => {
-		it("flips !paid→paid and settles rows, with no activity row and no status event", async () => {
+		it("flips !paid→paid, settles rows, writes an owner-attributed activity and emits", async () => {
 			const { asUser, clientId, orgId } = await seedOrg();
+			const ownerUserId = await t.run(
+				async (ctx) => (await ctx.db.get(orgId))!.ownerUserId
+			);
 			const invoiceId = await createDraftInvoice(asUser, clientId, 1000);
 			await asUser.mutation(api.payments.configurePayments, {
 				invoiceId,
@@ -379,14 +385,18 @@ describe("invoice status writers (characterization)", () => {
 			expect(rows[0]!.status).toBe("paid");
 			expect(rows[0]!.recordedOutsidePortal).toBe(true);
 
-			// PINNED CURRENT BEHAVIOR — the transitionInvoice seam will change this
-			// The handler *calls* ActivityHelpers.invoicePaid, but createActivity
-			// resolves the actor from auth and this mutation runs unauthenticated,
-			// so it throws into the warn-and-continue catch: no activity is written.
-			expect(await activitiesOfType(invoiceId, "invoice_paid")).toHaveLength(0);
+			// actor:"system" hands createActivity an explicit org-owner actor, so
+			// the row lands even though the webhook runs unauthenticated.
+			const paidActivities = await activitiesOfType(invoiceId, "invoice_paid");
+			expect(paidActivities).toHaveLength(1);
+			expect(paidActivities[0]!.userId).toBe(ownerUserId);
 
-			// PINNED CURRENT BEHAVIOR — the transitionInvoice seam will change this
-			expect(await statusEvents(invoiceId)).toHaveLength(0);
+			const events = await statusEvents(invoiceId);
+			expect(events).toHaveLength(1);
+			expect(events[0]!.eventSource).toBe(
+				"invoices.markInvoicePaidFromWebhookInternal"
+			);
+			expect(events[0]!.payload.newValue).toBe("paid");
 		});
 
 		it("is idempotent on an already-paid invoice", async () => {
@@ -418,7 +428,7 @@ describe("invoice status writers (characterization)", () => {
 	// =====================================================================
 
 	describe("D. payments.markPaidByPublicTokenInternal cascade", () => {
-		it("flips the invoice to paid only once every row settles, with no activity row and no status event", async () => {
+		it("flips the invoice to paid only once every row settles, then writes an activity and emits", async () => {
 			const { asUser, clientId, orgId } = await seedOrg();
 			const invoiceId = await createDraftInvoice(asUser, clientId, 1000);
 			await asUser.mutation(api.payments.configurePayments, {
@@ -482,13 +492,13 @@ describe("invoice status writers (characterization)", () => {
 			expect(usage?.bonus).toBe(10);
 			expect(usage?.used).toBe(0);
 
-			// PINNED CURRENT BEHAVIOR — the transitionInvoice seam will change this
-			// updateInvoiceStatusIfFullyPaid patches status + paidAt and celebrates,
-			// but writes no activity row and emits no status event, so a portal
-			// payment is invisible to the activity feed and to automations.
-			expect(await activitiesOfType(invoiceId, "invoice_paid")).toHaveLength(0);
-			// PINNED CURRENT BEHAVIOR — the transitionInvoice seam will change this
-			expect(await statusEvents(invoiceId)).toHaveLength(0);
+			// The cascade goes through the seam, so a portal payment reaches the
+			// activity feed and automations like every other paid path.
+			expect(await activitiesOfType(invoiceId, "invoice_paid")).toHaveLength(1);
+			const events = await statusEvents(invoiceId);
+			expect(events).toHaveLength(1);
+			expect(events[0]!.eventSource).toBe("payments.applyMarkPaidCascade");
+			expect(events[0]!.payload.newValue).toBe("paid");
 		});
 	});
 
@@ -588,7 +598,7 @@ describe("invoice status writers (characterization)", () => {
 			);
 		});
 
-		it("any→paid stamps paidAt but leaves installments outstanding, writes no activity, and emits a raw cascade event", async () => {
+		it("any→paid settles installments, writes an activity, and emits a cascade event", async () => {
 			const { asUser, clientId, automationId } =
 				await seedInvoiceAutomation("paid");
 
@@ -610,19 +620,17 @@ describe("invoice status writers (characterization)", () => {
 			expect(invoice?.status).toBe("paid");
 			expect(invoice?.paidAt).toBeTypeOf("number");
 
-			// PINNED CURRENT BEHAVIOR — the transitionInvoice seam will change this
-			// applyStatusUpdate patches the status directly: it never calls
-			// settleOutstandingPaymentsForInvoice, so the portal still shows a Pay
-			// button on an invoice the automation just marked paid.
+			// The seam settles, so the portal never shows a Pay button on an
+			// invoice the automation just marked paid.
 			const rows = await paymentRows(invoiceId);
 			expect(rows).toHaveLength(1);
-			expect(rows[0]!.status).toBe("pending");
+			expect(rows[0]!.status).toBe("paid");
+			expect(rows[0]!.recordedOutsidePortal).toBe(true);
 
-			// PINNED CURRENT BEHAVIOR — the transitionInvoice seam will change this
-			expect(await activitiesOfType(invoiceId, "invoice_paid")).toHaveLength(0);
+			// Attributed to the automation's creator.
+			expect(await activitiesOfType(invoiceId, "invoice_paid")).toHaveLength(1);
 
-			// The event is a raw domainEvents insert (not emitStatusChangeEvent),
-			// carrying the executor's recursion-protection metadata.
+			// The event still carries the executor's recursion-protection metadata.
 			const events = await statusEvents(invoiceId);
 			expect(events).toHaveLength(1);
 			expect(events[0]!.eventSource).toBe(

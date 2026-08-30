@@ -97,6 +97,7 @@ import type * as lib_formula_parser from "../lib/formula/parser.js";
 import type * as lib_formula_tokenizer from "../lib/formula/tokenizer.js";
 import type * as lib_geocode from "../lib/geocode.js";
 import type * as lib_invoiceTotals from "../lib/invoiceTotals.js";
+import type * as lib_invoiceTransitions from "../lib/invoiceTransitions.js";
 import type * as lib_lineItems from "../lib/lineItems.js";
 import type * as lib_memberships from "../lib/memberships.js";
 import type * as lib_money from "../lib/money.js";
@@ -308,6 +309,7 @@ declare const fullApi: ApiFromModules<{
   "lib/formula/tokenizer": typeof lib_formula_tokenizer;
   "lib/geocode": typeof lib_geocode;
   "lib/invoiceTotals": typeof lib_invoiceTotals;
+  "lib/invoiceTransitions": typeof lib_invoiceTransitions;
   "lib/lineItems": typeof lib_lineItems;
   "lib/memberships": typeof lib_memberships;
   "lib/money": typeof lib_money;

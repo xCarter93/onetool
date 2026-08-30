@@ -1,3 +1,4 @@
+import { ConvexError } from "convex/values";
 import { Doc, Id } from "../../_generated/dataModel";
 import { MutationCtx } from "../../_generated/server";
 import { trackServerException } from "../posthog";
@@ -8,9 +9,11 @@ import {
 	isFeatureAllowed,
 	requireMeter,
 	consumeMeter,
+	PLAN_LIMIT_ERROR_CODE,
 } from "../entitlements";
 import { getMembership, listMembershipsByOrg } from "../memberships";
-import { celebrateQuoteApproved, celebrateInvoicePaid } from "../celebrations";
+import { celebrateQuoteApproved } from "../celebrations";
+import { transitionInvoice } from "../invoiceTransitions";
 import { insertTeamMessage } from "../../teamMessages";
 import { AUTOMATION_EMAIL_DAILY_CAP, rateLimiter } from "../../rateLimits";
 import {
@@ -218,10 +221,9 @@ async function applyStatusUpdate(
 			| Id<"tasks">;
 	},
 	newStatus: string,
-	orgId: Id<"organizations">,
-	executionChain: Id<"workflowAutomations">[],
-	recursionDepth: number
+	env: WalkEnv
 ): Promise<{ success: boolean; skipped?: boolean; error?: string }> {
+	const { orgId, executionChain, recursionDepth } = env;
 	// Validate the new status is valid for the target type
 	if (!isValidStatus(targetInfo.type, newStatus)) {
 		return {
@@ -239,6 +241,15 @@ async function applyStatusUpdate(
 		| string
 		| undefined;
 
+	if (targetInfo.type === "invoice") {
+		return applyInvoiceStatusUpdate(
+			ctx,
+			targetObject as Doc<"invoices">,
+			newStatus as Doc<"invoices">["status"],
+			env
+		);
+	}
+
 	// Update the target object's status
 	try {
 		// Prepare update payload
@@ -255,26 +266,15 @@ async function applyStatusUpdate(
 			if (!wasApproved) {
 				updatePayload.approvedAt = Date.now();
 			}
-		} else if (newStatus === "paid" && targetInfo.type === "invoice") {
-			const wasPaid = oldStatus === "paid";
-			if (!wasPaid) {
-				updatePayload.paidAt = Date.now();
-			}
 		}
 
-		// A status write to "sent" — or "overdue" for invoices, which is equally
-		// portal-visible and payable — IS a send: meter it like the send
-		// mutations, keyed on the immutable firstSentAt. Refusal fails the
-		// node instead of throwing so the run is recorded, never crashed.
-		if (
-			(newStatus === "sent" &&
-				(targetInfo.type === "quote" || targetInfo.type === "invoice")) ||
-			(newStatus === "overdue" && targetInfo.type === "invoice")
-		) {
+		// A status write to "sent" IS a send: meter it like the send mutations,
+		// keyed on the immutable firstSentAt. Refusal fails the node instead of
+		// throwing so the run is recorded, never crashed.
+		if (newStatus === "sent" && targetInfo.type === "quote") {
 			const record = targetObject as Record<string, unknown>;
 			const alreadyDebited =
-				Boolean(record.firstSentAt) ||
-				(targetInfo.type === "quote" && Boolean(record.sentAt));
+				Boolean(record.firstSentAt) || Boolean(record.sentAt);
 			if (!alreadyDebited) {
 				const org = await ctx.db.get(orgId);
 				const { plan } = entitlementsFromDocs(org);
@@ -291,9 +291,7 @@ async function applyStatusUpdate(
 				}
 				await consumeMeter(ctx, orgId, "clientSends", { now });
 				updatePayload.firstSentAt = now;
-				if (targetInfo.type === "quote") {
-					updatePayload.sentAt = now;
-				}
+				updatePayload.sentAt = now;
 			}
 		}
 
@@ -309,15 +307,6 @@ async function applyStatusUpdate(
 			const updated = await ctx.db.get(targetInfo.id);
 			if (updated) {
 				await celebrateQuoteApproved(ctx, updated as Doc<"quotes">);
-			}
-		} else if (
-			newStatus === "paid" &&
-			targetInfo.type === "invoice" &&
-			oldStatus !== "paid"
-		) {
-			const updated = await ctx.db.get(targetInfo.id);
-			if (updated) {
-				await celebrateInvoicePaid(ctx, updated as Doc<"invoices">);
 			}
 		}
 
@@ -356,6 +345,53 @@ async function applyStatusUpdate(
 			error: error instanceof Error ? error.message : "Failed to update status",
 		};
 	}
+}
+
+/**
+ * Invoice status writes delegate to the shared transition seam, so an
+ * automation-paid invoice settles its installments, logs an activity and syncs
+ * to QuickBooks exactly like the workspace paths do.
+ */
+async function applyInvoiceStatusUpdate(
+	ctx: MutationCtx,
+	invoice: Doc<"invoices">,
+	newStatus: Doc<"invoices">["status"],
+	env: WalkEnv
+): Promise<{ success: boolean; skipped?: boolean; error?: string }> {
+	const { orgId, executionChain, recursionDepth } = env;
+	// Attribute the activity to the automation's creator; if they have since
+	// left the org, "system" resolves it to the owner (mirrors
+	// executeCreateTaskAction).
+	const creatorId = env.automation.createdBy;
+	const creatorMembership = await getMembership(ctx, creatorId, orgId);
+
+	try {
+		await transitionInvoice(ctx, invoice, newStatus, {
+			actor: creatorMembership ? { userId: creatorId } : "system",
+			source: "automationExecutor.applyStatusUpdate",
+			correlationId: nextCascadeCorrelationId(executionChain),
+			cascade: { executionChain, recursionDepth },
+		});
+	} catch (error) {
+		// An exhausted send meter fails the node instead of crashing the run.
+		if (
+			error instanceof ConvexError &&
+			(error.data as { code?: string } | undefined)?.code ===
+				PLAN_LIMIT_ERROR_CODE
+		) {
+			return {
+				success: false,
+				error:
+					"Send limit reached for this month. The record was not moved to sent.",
+			};
+		}
+		return {
+			success: false,
+			error: error instanceof Error ? error.message : "Failed to update status",
+		};
+	}
+
+	return { success: true };
 }
 
 /**
@@ -699,14 +735,7 @@ export async function executeUpdateFieldsAction(
 
 	// Status writes reuse the existing validation + aggregate + cascade flow.
 	if (statusWrite) {
-		return applyStatusUpdate(
-			ctx,
-			targetInfo,
-			statusWrite.value as string,
-			orgId,
-			executionChain,
-			recursionDepth
-		);
+		return applyStatusUpdate(ctx, targetInfo, statusWrite.value as string, env);
 	}
 
 	return { success: true };

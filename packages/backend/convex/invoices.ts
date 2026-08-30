@@ -5,19 +5,15 @@ import { internal } from "./_generated/api";
 import { ConvexError, v } from "convex/values";
 import { Doc, Id } from "./_generated/dataModel";
 import { ActivityHelpers } from "./lib/activities";
-import { celebrateInvoicePaid } from "./lib/celebrations";
 import { remainingBalanceLookup } from "./lib/paymentInsights";
+import { transitionInvoice } from "./lib/invoiceTransitions";
 import {
 	validateParentAccess,
 	filterUndefined,
 	requireUpdates,
 } from "./lib/crud";
 import { emptyListResult } from "./lib/queries";
-import {
-	emitStatusChangeEvent,
-	emitRecordCreatedEvent,
-	emitRecordUpdatedEvent,
-} from "./eventBus";
+import { emitRecordCreatedEvent, emitRecordUpdatedEvent } from "./eventBus";
 import { computeFieldChanges } from "./lib/changeTracking";
 import {
 	consumeMeter,
@@ -46,7 +42,6 @@ import { formatEmailFrom } from "./lib/emailFrom";
 import { maybeEnqueueQboSync } from "./lib/quickbooksEnqueue";
 import { calculateInvoiceTotals, syncInvoiceTotals } from "./lib/invoiceTotals";
 import { assertInvoiceContentEditable } from "./lib/editLocks";
-import { settleOutstandingPaymentsForInvoice } from "./lib/payments";
 import { roundCents, sumMoney, dollarsToCents } from "./lib/money";
 import {
 	optionalUserQuery,
@@ -309,38 +304,16 @@ export const markInvoicePaidFromWebhookInternal = internalMutation({
 			return null;
 		}
 
+		// Stripe bookkeeping is this path's own; the seam owns status + stamps.
 		await ctx.db.patch(invoice._id, {
-			status: "paid",
 			stripeSessionId: args.sessionId,
 			stripePaymentIntentId: args.paymentIntentId,
-			paidAt: Date.now(),
 		});
 
-		// Settle installment payment rows like the workspace paid paths do, so a
-		// webhook-paid invoice never leaves pending rows behind.
-		await settleOutstandingPaymentsForInvoice(ctx, invoice._id);
-
-		try {
-			const client = await ctx.db.get(invoice.clientId);
-			await ActivityHelpers.invoicePaid(
-				ctx,
-				invoice,
-				client?.companyName || "Unknown Client"
-			);
-		} catch (err) {
-			console.warn("Invoice paid activity logging skipped:", err);
-		}
-
-		const paidInvoice = await ctx.db.get(invoice._id);
-		if (paidInvoice) {
-			await celebrateInvoicePaid(ctx, paidInvoice);
-			await maybeEnqueueQboSync(
-				ctx,
-				paidInvoice.orgId,
-				"invoice",
-				paidInvoice._id
-			);
-		}
+		await transitionInvoice(ctx, invoice, "paid", {
+			actor: "system",
+			source: "invoices.markInvoicePaidFromWebhookInternal",
+		});
 
 		return null;
 	},
@@ -577,110 +550,57 @@ export const update = userMutation({
 			filteredUpdates as Record<string, unknown>
 		);
 
-		// Handle status-specific updates
-		if (
-			filteredUpdates.status &&
-			filteredUpdates.status !== currentInvoice.status
-		) {
-			const now = Date.now();
+		// Status is owned by the transition seam; everything else lands here.
+		const newStatus = filteredUpdates.status;
+		const statusChanging = newStatus !== undefined && newStatus !== oldStatus;
+		const fieldUpdates: Partial<InvoiceDocument> = { ...filteredUpdates };
+		delete fieldUpdates.status;
 
-			if (
-				filteredUpdates.status === "sent" ||
-				filteredUpdates.status === "overdue"
-			) {
-				// ANY flip to sent or overdue IS a send (portal-visible, payable) —
-				// the source doesn't matter, matching invoices.create's minted-as-
-				// overdue metering. Keyed on the immutable firstSentAt so
-				// revert-to-draft can never re-arm the debit. (Legacy edge: a
-				// pre-firstSentAt invoice that really was sent takes one debit if
-				// manually re-flipped to sent — accepted over the mint bypass.)
-				if (!currentInvoice.firstSentAt) {
-					const { plan } = await entitlementsFromIdentity(ctx);
-					await requireMeter(ctx, ctx.orgId, "clientSends", plan, { now });
-					await consumeMeter(ctx, ctx.orgId, "clientSends", { now });
-					filteredUpdates.firstSentAt = now;
-				}
-			} else if (filteredUpdates.status === "paid") {
-				filteredUpdates.paidAt = now;
-			}
+		if (Object.keys(fieldUpdates).length > 0) {
+			await ctx.db.patch(id, fieldUpdates);
 		}
-
-		await ctx.db.patch(id, filteredUpdates);
 
 		// Callers send their own subtotal/total next to a discount or tax edit.
 		// Recompute from the line items so the stored figures — which list,
 		// payment validation and the revenue aggregates all read — stay
 		// authoritative. "stored" leaves line-item-less invoices alone rather
 		// than zeroing a total the caller just set.
-		if (INVOICE_TOTAL_FIELDS.some((field) => field in filteredUpdates)) {
+		if (INVOICE_TOTAL_FIELDS.some((field) => field in fieldUpdates)) {
 			await syncInvoiceTotals(ctx, id, { emptyFallback: "stored" });
 		}
 
-		// Settle outstanding installments when this transition marks the invoice
-		// paid, so a payment taken outside the portal reflects there as completed.
-		if (filteredUpdates.status === "paid" && oldStatus !== "paid") {
-			await settleOutstandingPaymentsForInvoice(ctx, id);
-		}
+		const stamps = statusChanging
+			? await transitionInvoice(ctx, currentInvoice, newStatus, {
+					actor: { userId: ctx.user._id },
+					source: "invoices.update",
+					changes,
+				})
+			: {};
 
-		// Log appropriate activity based on status change
 		const updatedInvoice = await ctx.db.get(id);
 		if (updatedInvoice) {
-			const client = await ctx.db.get(updatedInvoice.clientId);
-			const clientName = client?.companyName || "Unknown Client";
-			if (
-				filteredUpdates.status === "sent" &&
-				currentInvoice.status === "draft"
-			) {
-				await ActivityHelpers.invoiceSent(
-					ctx,
-					updatedInvoice as InvoiceDocument,
-					clientName,
-					changes
-				);
-			} else if (filteredUpdates.status === "paid") {
-				await ActivityHelpers.invoicePaid(
-					ctx,
-					updatedInvoice as InvoiceDocument,
-					clientName,
-					changes
-				);
-			}
-
-			if (filteredUpdates.status === "paid" && oldStatus !== "paid") {
-				await celebrateInvoicePaid(
-					ctx,
-					updatedInvoice as InvoiceDocument,
-					ctx.user._id
-				);
-			}
-
-			// Emit status change event if status changed
-			if (args.status && args.status !== oldStatus) {
-				await emitStatusChangeEvent(
-					ctx,
-					updatedInvoice.orgId,
-					"invoice",
-					updatedInvoice._id,
-					oldStatus,
-					args.status,
-					"invoices.update"
-				);
-			}
-
+			// The seam's stamps belong in the changed-field list: automations
+			// triggered on record_updated can watch firstSentAt/paidAt.
 			await emitRecordUpdatedEvent(
 				ctx,
 				updatedInvoice.orgId,
 				"invoice",
 				updatedInvoice._id,
-				Object.keys(filteredUpdates).filter((key) => key !== "updatedAt"),
+				[...Object.keys(filteredUpdates), ...Object.keys(stamps)].filter(
+					(key) => key !== "updatedAt"
+				),
 				"invoices.update"
 			);
-			await maybeEnqueueQboSync(
-				ctx,
-				updatedInvoice.orgId,
-				"invoice",
-				updatedInvoice._id
-			);
+			// The seam already enqueued for a status flip; this covers the
+			// field-only patches it never sees.
+			if (!statusChanging) {
+				await maybeEnqueueQboSync(
+					ctx,
+					updatedInvoice.orgId,
+					"invoice",
+					updatedInvoice._id
+				);
+			}
 		}
 
 		return id;
@@ -777,44 +697,19 @@ export const sendToClient = userMutation({
 		}
 
 		// Sending is the act of sending: flip draft→sent. Already-sent/overdue
-		// invoices can be re-sent without a status change.
-		// The send meter debits only the FIRST send ever — keyed on the
-		// immutable firstSentAt (status can revert to draft; the key cannot).
-		if (invoice.status === "draft") {
-			const now = Date.now();
-			if (!invoice.firstSentAt) {
-				const { plan } = await entitlementsFromIdentity(ctx);
-				// One timestamp so the check and debit share a billing period.
-				await requireMeter(ctx, ctx.orgId, "clientSends", plan, { now });
-				await consumeMeter(ctx, ctx.orgId, "clientSends", { now });
-			}
-			const changes = computeFieldChanges(
-				"invoice",
-				invoice as unknown as Record<string, unknown>,
-				{ status: "sent" }
-			);
-			await ctx.db.patch(invoice._id, {
-				status: "sent",
-				...(invoice.firstSentAt ? {} : { firstSentAt: now }),
-			});
-			const updated = await ctx.db.get(invoice._id);
-			if (updated) {
-				await ActivityHelpers.invoiceSent(
-					ctx,
-					updated as InvoiceDocument,
-					client.companyName || "Unknown Client",
-					changes
-				);
-				await emitStatusChangeEvent(
-					ctx,
-					updated.orgId,
+		// invoices can be re-sent without a status change. The seam owns the
+		// first-send meter debit, the activity and the event.
+		const sending = invoice.status === "draft";
+		if (sending) {
+			await transitionInvoice(ctx, invoice, "sent", {
+				actor: { userId: ctx.user._id },
+				source: "invoices.sendToClient",
+				changes: computeFieldChanges(
 					"invoice",
-					updated._id,
-					"draft",
-					"sent",
-					"invoices.sendToClient"
-				);
-			}
+					invoice as unknown as Record<string, unknown>,
+					{ status: "sent" }
+				),
+			});
 		}
 
 		// Guarantee portal payability: the portal's native Elements flow pays against
@@ -837,7 +732,10 @@ export const sendToClient = userMutation({
 			});
 		}
 
-		await maybeEnqueueQboSync(ctx, invoice.orgId, "invoice", invoice._id);
+		// A re-send has no transition, so the seam never enqueued for it.
+		if (!sending) {
+			await maybeEnqueueQboSync(ctx, invoice.orgId, "invoice", invoice._id);
+		}
 
 		// Sent invoices should carry a CURRENT PDF like web-sent ones do (portal
 		// download, consistent records). Self-heal with a server-side render of
@@ -1055,35 +953,10 @@ export const markPaid = userMutation({
 			});
 		}
 
-		await ctx.db.patch(args.id, {
-			status: "paid",
-			paidAt: Date.now(),
+		await transitionInvoice(ctx, invoice, "paid", {
+			actor: { userId: ctx.user._id },
+			source: "invoices.markPaid",
 		});
-		// Settle any outstanding installments so the portal shows this invoice as
-		// paid and never offers a Pay button for a payment taken outside it.
-		await settleOutstandingPaymentsForInvoice(ctx, args.id);
-
-		// Log activity
-		const updatedInvoice = await ctx.db.get(args.id);
-		if (updatedInvoice) {
-			const client = await ctx.db.get(updatedInvoice.clientId);
-			await ActivityHelpers.invoicePaid(
-				ctx,
-				updatedInvoice as InvoiceDocument,
-				client?.companyName || "Unknown Client"
-			);
-			await celebrateInvoicePaid(
-					ctx,
-					updatedInvoice as InvoiceDocument,
-					ctx.user._id
-				);
-			await maybeEnqueueQboSync(
-				ctx,
-				updatedInvoice.orgId,
-				"invoice",
-				updatedInvoice._id
-			);
-		}
 
 		return args.id;
 	},
