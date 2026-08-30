@@ -776,6 +776,9 @@ export default defineSchema({
 		.index("by_quote", ["quoteId"])
 		.index("by_status", ["orgId", "status"])
 		.index("by_due_date", ["orgId", "dueDate"])
+		// Overdue sweep. dueDate trails status so the scan window holds only
+		// invoices that are actually flippable, never not-yet-due ones.
+		.index("by_status_due_date", ["orgId", "status", "dueDate"])
 		.index("by_public_token", ["publicToken"])
 		.searchIndex("search_text", {
 			searchField: "searchText",

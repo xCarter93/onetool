@@ -232,7 +232,7 @@ export const automationsArticles: HelpArticle[] = [
 					{
 						type: "list",
 						items: [
-							"**Status changes** fires when a record moves to a new status, like a quote being approved or an invoice being paid.",
+							"**Status changes** fires when a record moves to a new status, like a quote being approved, an invoice being paid, or a sent invoice turning overdue.",
 							"**Record created** fires when a new record is added.",
 							"**Record updated** fires when a record's details change.",
 							"**On a schedule** fires at times you set, with no record attached.",

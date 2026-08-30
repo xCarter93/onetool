@@ -644,7 +644,7 @@ export const gettingStartedArticles: HelpArticle[] = [
 		faq: [
 			{
 				question: "What do the invoice statuses mean?",
-				answer: "Draft is unsent, Sent is awaiting payment, Paid is settled, and Cancelled is void. An invoice past its due date shows as Overdue until it is paid.",
+				answer: "Draft is unsent, Sent is awaiting payment, Paid is settled, and Cancelled is void. The morning after a sent invoice's due date passes, OneTool moves it to Overdue, where it stays until it is paid.",
 			},
 			{
 				question: "Do my clients need an account to pay?",

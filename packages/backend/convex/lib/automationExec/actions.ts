@@ -1,3 +1,4 @@
+import { ConvexError } from "convex/values";
 import { Doc, Id } from "../../_generated/dataModel";
 import { MutationCtx } from "../../_generated/server";
 import { trackServerException } from "../posthog";
@@ -8,9 +9,11 @@ import {
 	isFeatureAllowed,
 	requireMeter,
 	consumeMeter,
+	PLAN_LIMIT_ERROR_CODE,
 } from "../entitlements";
 import { getMembership, listMembershipsByOrg } from "../memberships";
-import { celebrateQuoteApproved, celebrateInvoicePaid } from "../celebrations";
+import { celebrateQuoteApproved } from "../celebrations";
+import { transitionInvoice } from "../invoiceTransitions";
 import { insertTeamMessage } from "../../teamMessages";
 import { AUTOMATION_EMAIL_DAILY_CAP, rateLimiter } from "../../rateLimits";
 import {
@@ -27,7 +30,11 @@ import {
 import { isSuppressed } from "../../email/suppressions";
 import type { OutboundMessage } from "../../email/types";
 import { runExternalEffect } from "./externalEffects";
-import { scheduleEventProcessing } from "../../eventBus";
+import {
+	emitStatusChangeEvent,
+	emitRecordCreatedEvent,
+	emitRecordUpdatedEvent,
+} from "../../eventBus";
 import {
 	evaluateConditionGroups,
 	interpolateTemplate,
@@ -214,10 +221,9 @@ async function applyStatusUpdate(
 			| Id<"tasks">;
 	},
 	newStatus: string,
-	orgId: Id<"organizations">,
-	executionChain: Id<"workflowAutomations">[],
-	recursionDepth: number
+	env: WalkEnv
 ): Promise<{ success: boolean; skipped?: boolean; error?: string }> {
+	const { orgId, executionChain, recursionDepth } = env;
 	// Validate the new status is valid for the target type
 	if (!isValidStatus(targetInfo.type, newStatus)) {
 		return {
@@ -235,6 +241,15 @@ async function applyStatusUpdate(
 		| string
 		| undefined;
 
+	if (targetInfo.type === "invoice") {
+		return applyInvoiceStatusUpdate(
+			ctx,
+			targetObject as Doc<"invoices">,
+			newStatus as Doc<"invoices">["status"],
+			env
+		);
+	}
+
 	// Update the target object's status
 	try {
 		// Prepare update payload
@@ -251,26 +266,15 @@ async function applyStatusUpdate(
 			if (!wasApproved) {
 				updatePayload.approvedAt = Date.now();
 			}
-		} else if (newStatus === "paid" && targetInfo.type === "invoice") {
-			const wasPaid = oldStatus === "paid";
-			if (!wasPaid) {
-				updatePayload.paidAt = Date.now();
-			}
 		}
 
-		// A status write to "sent" — or "overdue" for invoices, which is equally
-		// portal-visible and payable — IS a send: meter it like the send
-		// mutations, keyed on the immutable firstSentAt. Refusal fails the
-		// node instead of throwing so the run is recorded, never crashed.
-		if (
-			(newStatus === "sent" &&
-				(targetInfo.type === "quote" || targetInfo.type === "invoice")) ||
-			(newStatus === "overdue" && targetInfo.type === "invoice")
-		) {
+		// A status write to "sent" IS a send: meter it like the send mutations,
+		// keyed on the immutable firstSentAt. Refusal fails the node instead of
+		// throwing so the run is recorded, never crashed.
+		if (newStatus === "sent" && targetInfo.type === "quote") {
 			const record = targetObject as Record<string, unknown>;
 			const alreadyDebited =
-				Boolean(record.firstSentAt) ||
-				(targetInfo.type === "quote" && Boolean(record.sentAt));
+				Boolean(record.firstSentAt) || Boolean(record.sentAt);
 			if (!alreadyDebited) {
 				const org = await ctx.db.get(orgId);
 				const { plan } = entitlementsFromDocs(org);
@@ -287,9 +291,7 @@ async function applyStatusUpdate(
 				}
 				await consumeMeter(ctx, orgId, "clientSends", { now });
 				updatePayload.firstSentAt = now;
-				if (targetInfo.type === "quote") {
-					updatePayload.sentAt = now;
-				}
+				updatePayload.sentAt = now;
 			}
 		}
 
@@ -306,15 +308,6 @@ async function applyStatusUpdate(
 			if (updated) {
 				await celebrateQuoteApproved(ctx, updated as Doc<"quotes">);
 			}
-		} else if (
-			newStatus === "paid" &&
-			targetInfo.type === "invoice" &&
-			oldStatus !== "paid"
-		) {
-			const updated = await ctx.db.get(targetInfo.id);
-			if (updated) {
-				await celebrateInvoicePaid(ctx, updated as Doc<"invoices">);
-			}
 		}
 
 		if (oldStatus && oldStatus !== newStatus) {
@@ -327,39 +320,22 @@ async function applyStatusUpdate(
 			}
 		}
 
-		// Emit cascading status change event with execution chain context
-		// The event bus will handle dispatching to automation handler with recursion protection
+		// Emit cascading status change event; the cascade context rides in
+		// metadata so the event bus keeps recursion protection. Date.now() is
+		// frozen within a Convex transaction, so a per-module counter keeps
+		// correlation IDs unique when one run emits several cascade events.
 		if (oldStatus && oldStatus !== newStatus) {
-			// Create correlation ID that includes chain info for the event bus.
-			// Date.now() is frozen within a Convex transaction, so a per-module
-			// counter keeps IDs unique when one run emits several cascade events.
-			const correlationId = nextCascadeCorrelationId(executionChain);
-
-			await ctx.db.insert("domainEvents", {
+			await emitStatusChangeEvent(
+				ctx,
 				orgId,
-				eventType: "entity.status_changed",
-				eventSource: "automationExecutor.applyStatusUpdate",
-				payload: {
-					entityType: targetInfo.type,
-					entityId: targetInfo.id,
-					field: "status",
-					oldValue: oldStatus,
-					newValue: newStatus,
-					// Pass execution chain in metadata for recursion prevention
-					metadata: {
-						executionChain,
-						recursionDepth,
-						isCascade: true,
-					},
-				},
-				status: "pending",
-				correlationId,
-				createdAt: Date.now(),
-				attemptCount: 0,
-			});
-
-			// Trigger event processing
-			await scheduleEventProcessing(ctx);
+				targetInfo.type,
+				targetInfo.id,
+				oldStatus,
+				newStatus,
+				"automationExecutor.applyStatusUpdate",
+				nextCascadeCorrelationId(executionChain),
+				{ executionChain, recursionDepth }
+			);
 		}
 
 		return { success: true };
@@ -369,6 +345,53 @@ async function applyStatusUpdate(
 			error: error instanceof Error ? error.message : "Failed to update status",
 		};
 	}
+}
+
+/**
+ * Invoice status writes delegate to the shared transition seam, so an
+ * automation-paid invoice settles its installments, logs an activity and syncs
+ * to QuickBooks exactly like the workspace paths do.
+ */
+async function applyInvoiceStatusUpdate(
+	ctx: MutationCtx,
+	invoice: Doc<"invoices">,
+	newStatus: Doc<"invoices">["status"],
+	env: WalkEnv
+): Promise<{ success: boolean; skipped?: boolean; error?: string }> {
+	const { orgId, executionChain, recursionDepth } = env;
+	// Attribute the activity to the automation's creator; if they have since
+	// left the org, "system" resolves it to the owner (mirrors
+	// executeCreateTaskAction).
+	const creatorId = env.automation.createdBy;
+	const creatorMembership = await getMembership(ctx, creatorId, orgId);
+
+	try {
+		await transitionInvoice(ctx, invoice, newStatus, {
+			actor: creatorMembership ? { userId: creatorId } : "system",
+			source: "automationExecutor.applyStatusUpdate",
+			correlationId: nextCascadeCorrelationId(executionChain),
+			cascade: { executionChain, recursionDepth },
+		});
+	} catch (error) {
+		// An exhausted send meter fails the node instead of crashing the run.
+		if (
+			error instanceof ConvexError &&
+			(error.data as { code?: string } | undefined)?.code ===
+				PLAN_LIMIT_ERROR_CODE
+		) {
+			return {
+				success: false,
+				error:
+					"Send limit reached for this month. The record was not moved to sent.",
+			};
+		}
+		return {
+			success: false,
+			error: error instanceof Error ? error.message : "Failed to update status",
+		};
+	}
+
+	return { success: true };
 }
 
 /**
@@ -683,38 +706,23 @@ export async function executeUpdateFieldsAction(
 
 			// Emit record_updated so automations chained on these fields actually
 			// fire (a status row emits its own event via applyStatusUpdate below).
-			// The chain rides in metadata — the emitRecordUpdatedEvent helper would
-			// drop it and defeat the recursion guard. One event per action, so a
-			// trigger watching any of the changed fields fires exactly once.
+			// One event per action, so a trigger watching any of the changed
+			// fields fires exactly once.
 			if (changed.length > 0) {
 				const single = changed.length === 1 ? changed[0] : undefined;
-				await ctx.db.insert("domainEvents", {
+				await emitRecordUpdatedEvent(
+					ctx,
 					orgId,
-					eventType: "entity.record_updated",
-					eventSource: "automationExecutor.executeActionNodeV2",
-					payload: {
-						entityType: targetInfo.type,
-						entityId: targetInfo.id,
-						...(single
-							? {
-									field: single.field,
-									oldValue: single.oldValue,
-									newValue: single.newValue,
-								}
-							: {}),
-						metadata: {
-							changedFields: changed.map((c) => c.field),
-							executionChain,
-							recursionDepth,
-							isCascade: true,
-						},
-					},
-					status: "pending",
-					correlationId: nextCascadeCorrelationId(executionChain),
-					createdAt: Date.now(),
-					attemptCount: 0,
-				});
-				await scheduleEventProcessing(ctx);
+					targetInfo.type,
+					targetInfo.id,
+					changed.map((c) => c.field),
+					"automationExecutor.executeActionNodeV2",
+					nextCascadeCorrelationId(executionChain),
+					{
+						cascade: { executionChain, recursionDepth },
+						singleChange: single,
+					}
+				);
 			}
 		} catch (error) {
 			return {
@@ -727,14 +735,7 @@ export async function executeUpdateFieldsAction(
 
 	// Status writes reuse the existing validation + aggregate + cascade flow.
 	if (statusWrite) {
-		return applyStatusUpdate(
-			ctx,
-			targetInfo,
-			statusWrite.value as string,
-			orgId,
-			executionChain,
-			recursionDepth
-		);
+		return applyStatusUpdate(ctx, targetInfo, statusWrite.value as string, env);
 	}
 
 	return { success: true };
@@ -912,27 +913,19 @@ async function executeCreateTaskAction(
 			await ActivityHelpers.taskCreated(ctx, task, actor);
 
 			// Emit record_created with the execution chain in metadata so
-			// cascading automations keep recursion protection (the plain
-			// emitRecordCreatedEvent helper would drop the chain).
-			await ctx.db.insert("domainEvents", {
-				orgId: env.orgId,
-				eventType: "entity.record_created",
-				eventSource: "automationExecutor.executeCreateTaskAction",
-				payload: {
-					entityType: "task",
-					entityId: taskId,
-					metadata: {
-						executionChain: env.executionChain,
-						recursionDepth: env.recursionDepth,
-						isCascade: true,
-					},
-				},
-				status: "pending",
-				correlationId: nextCascadeCorrelationId(env.executionChain),
-				createdAt: Date.now(),
-				attemptCount: 0,
-			});
-			await scheduleEventProcessing(ctx);
+			// cascading automations keep recursion protection.
+			await emitRecordCreatedEvent(
+				ctx,
+				env.orgId,
+				"task",
+				taskId,
+				"automationExecutor.executeCreateTaskAction",
+				nextCascadeCorrelationId(env.executionChain),
+				{
+					executionChain: env.executionChain,
+					recursionDepth: env.recursionDepth,
+				}
+			);
 		}
 
 		return { success: true };
@@ -1300,25 +1293,18 @@ export async function executeCreateRecordAction(
 
 			// Emit record_created with the execution chain in metadata so cascading
 			// automations keep recursion protection (mirrors executeCreateTaskAction).
-			await ctx.db.insert("domainEvents", {
-				orgId: env.orgId,
-				eventType: "entity.record_created",
-				eventSource: "automationExecutor.executeCreateRecordAction",
-				payload: {
-					entityType: objectType,
-					entityId: newId,
-					metadata: {
-						executionChain: env.executionChain,
-						recursionDepth: env.recursionDepth,
-						isCascade: true,
-					},
-				},
-				status: "pending",
-				correlationId: nextCascadeCorrelationId(env.executionChain),
-				createdAt: Date.now(),
-				attemptCount: 0,
-			});
-			await scheduleEventProcessing(ctx);
+			await emitRecordCreatedEvent(
+				ctx,
+				env.orgId,
+				objectType,
+				newId,
+				"automationExecutor.executeCreateRecordAction",
+				nextCascadeCorrelationId(env.executionChain),
+				{
+					executionChain: env.executionChain,
+					recursionDepth: env.recursionDepth,
+				}
+			);
 		}
 
 		return { success: true };

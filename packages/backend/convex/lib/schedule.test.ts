@@ -4,6 +4,8 @@ import {
 	validateSchedule,
 	describeSchedule,
 	timezoneLabel,
+	localHourAt,
+	localTodayUtcMidnight,
 	DEFAULT_SCHEDULE_TIME,
 } from "./schedule";
 import type { AutomationSchedule } from "./workflowTypes";
@@ -305,5 +307,45 @@ describe("describeSchedule", () => {
 			refMs
 		);
 		expect(result).toContain("2:30 PM");
+	});
+});
+
+describe("localHourAt", () => {
+	// 2026-01-15T11:00:00Z — EST is UTC-5, IST is UTC+5:30.
+	const ms = Date.UTC(2026, 0, 15, 11, 0, 0);
+
+	it("returns the wall-clock hour in the given zone", () => {
+		expect(localHourAt(ms, "America/New_York")).toBe(6);
+		expect(localHourAt(ms, "Asia/Kolkata")).toBe(16);
+	});
+
+	it("falls back to UTC when the timezone is unset or invalid", () => {
+		expect(localHourAt(ms)).toBe(11);
+		expect(localHourAt(ms, "Not/AZone")).toBe(11);
+	});
+});
+
+describe("localTodayUtcMidnight", () => {
+	it("returns the UTC midnight of the zone's current calendar day", () => {
+		// 2026-01-15T04:00:00Z — already the 15th in UTC, still the 14th in EST.
+		const ms = Date.UTC(2026, 0, 15, 4, 0, 0);
+		expect(localTodayUtcMidnight(ms, "America/New_York")).toBe(
+			Date.UTC(2026, 0, 14)
+		);
+		expect(localTodayUtcMidnight(ms, "Asia/Kolkata")).toBe(
+			Date.UTC(2026, 0, 15)
+		);
+	});
+
+	it("crosses forward for zones already on the next day", () => {
+		// 2026-01-15T22:00:00Z — the 16th in Tokyo.
+		const ms = Date.UTC(2026, 0, 15, 22, 0, 0);
+		expect(localTodayUtcMidnight(ms, "Asia/Tokyo")).toBe(Date.UTC(2026, 0, 16));
+	});
+
+	it("falls back to UTC when the timezone is unset or invalid", () => {
+		const ms = Date.UTC(2026, 0, 15, 4, 0, 0);
+		expect(localTodayUtcMidnight(ms)).toBe(Date.UTC(2026, 0, 15));
+		expect(localTodayUtcMidnight(ms, "Not/AZone")).toBe(Date.UTC(2026, 0, 15));
 	});
 });

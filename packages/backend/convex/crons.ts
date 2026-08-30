@@ -107,6 +107,15 @@ crons.interval(
 	{}
 );
 
+// Persist invoice lateness. Hourly because the dispatcher picks the orgs whose
+// LOCAL clock reads SWEEP_LOCAL_HOUR; each org is swept once per day.
+crons.hourly(
+	"sweep overdue invoices",
+	{ minuteUTC: 10 },
+	internal.invoiceOverdue.sweepOverdueInvoices,
+	{}
+);
+
 // Backstop for signed PDFs that gave up without the completion hook telling
 // anyone. Daily is enough: nobody is waiting on this in real time.
 crons.daily(

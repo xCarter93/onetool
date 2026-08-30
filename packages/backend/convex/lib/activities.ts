@@ -268,7 +268,8 @@ export const ActivityHelpers = {
 		ctx: MutationCtx,
 		invoice: Doc<"invoices">,
 		clientName: string,
-		changes?: FieldChange[]
+		changes?: FieldChange[],
+		actor?: { userId: Id<"users">; orgId: Id<"organizations"> }
 	) {
 		return createActivity(ctx, {
 			activityType: "invoice_sent",
@@ -281,6 +282,7 @@ export const ActivityHelpers = {
 				total: invoice.total,
 				...(changes && changes.length > 0 ? { changes } : {}),
 			},
+			actor,
 		});
 	},
 
@@ -288,7 +290,8 @@ export const ActivityHelpers = {
 		ctx: MutationCtx,
 		invoice: Doc<"invoices">,
 		clientName: string,
-		changes?: FieldChange[]
+		changes?: FieldChange[],
+		actor?: { userId: Id<"users">; orgId: Id<"organizations"> }
 	) {
 		return createActivity(ctx, {
 			activityType: "invoice_paid",
@@ -301,6 +304,7 @@ export const ActivityHelpers = {
 				total: invoice.total,
 				...(changes && changes.length > 0 ? { changes } : {}),
 			},
+			actor,
 		});
 	},
 

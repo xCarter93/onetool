@@ -20,6 +20,27 @@ import { trackServerEvent, statusChangeEvent, createdEvent,
 type EmitterCtx = MutationCtx & { user?: { _id: Id<"users"> } };
 
 /**
+ * Cascade context from the automation executor. Rides in event metadata so
+ * the recursion guard survives — before this param existed the executor had
+ * to hand-roll domainEvents inserts (and silently lost the analytics call).
+ */
+export type CascadeContext = {
+	executionChain: Id<"workflowAutomations">[];
+	recursionDepth: number;
+};
+
+function emitterMetadata(
+	ctx: EmitterCtx,
+	cascade?: CascadeContext
+): Record<string, unknown> | undefined {
+	if (!ctx.user && !cascade) return undefined;
+	return {
+		...(ctx.user ? { actorUserId: ctx.user._id } : {}),
+		...(cascade ? { ...cascade, isCascade: true } : {}),
+	};
+}
+
+/**
  * Event Bus - Event-Driven Architecture for Convex
  *
  * This module implements an event-driven architecture pattern that:
@@ -159,7 +180,8 @@ export async function emitStatusChangeEvent(
 	oldStatus: string,
 	newStatus: string,
 	source: string,
-	correlationId?: string
+	correlationId?: string,
+	cascade?: CascadeContext
 ): Promise<Id<"domainEvents">> {
 	const eventId = await ctx.db.insert("domainEvents", {
 		orgId,
@@ -171,7 +193,7 @@ export async function emitStatusChangeEvent(
 			field: "status",
 			oldValue: oldStatus,
 			newValue: newStatus,
-			metadata: ctx.user ? { actorUserId: ctx.user._id } : undefined,
+			metadata: emitterMetadata(ctx, cascade),
 		},
 		status: "pending",
 		correlationId: correlationId || `${entityType}-${entityId}-${Date.now()}`,
@@ -208,7 +230,8 @@ export async function emitRecordCreatedEvent(
 	entityType: EntityType,
 	entityId: string,
 	source: string,
-	correlationId?: string
+	correlationId?: string,
+	cascade?: CascadeContext
 ): Promise<Id<"domainEvents">> {
 	const eventId = await ctx.db.insert("domainEvents", {
 		orgId,
@@ -217,7 +240,7 @@ export async function emitRecordCreatedEvent(
 		payload: {
 			entityType,
 			entityId,
-			metadata: ctx.user ? { actorUserId: ctx.user._id } : undefined,
+			metadata: emitterMetadata(ctx, cascade),
 		},
 		status: "pending",
 		correlationId: correlationId || `${entityType}-${entityId}-${Date.now()}`,
@@ -252,7 +275,12 @@ export async function emitRecordUpdatedEvent(
 	entityId: string,
 	changedFields: string[],
 	source: string,
-	correlationId?: string
+	correlationId?: string,
+	opts?: {
+		cascade?: CascadeContext;
+		/** When exactly one field changed, surfaces it at payload top-level so field-scoped triggers can match. */
+		singleChange?: { field: string; oldValue?: unknown; newValue?: unknown };
+	}
 ): Promise<Id<"domainEvents">> {
 	const eventId = await ctx.db.insert("domainEvents", {
 		orgId,
@@ -261,9 +289,10 @@ export async function emitRecordUpdatedEvent(
 		payload: {
 			entityType,
 			entityId,
+			...(opts?.singleChange ?? {}),
 			metadata: {
 				changedFields,
-				...(ctx.user ? { actorUserId: ctx.user._id } : {}),
+				...(emitterMetadata(ctx, opts?.cascade) ?? {}),
 			},
 		},
 		status: "pending",

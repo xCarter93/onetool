@@ -5,8 +5,9 @@
 // nested ctx.runMutation between internal mutations.
 import type { MutationCtx } from "../_generated/server";
 import type { Doc, Id } from "../_generated/dataModel";
-import { celebrateInvoicePaid } from "./celebrations";
 import { grantMeterBonus } from "./entitlements";
+// Deliberate cycle with lib/invoiceTransitions.ts — see the note there.
+import { transitionInvoice } from "./invoiceTransitions";
 import { kickQboSyncWorker, maybeEnqueueQboSync } from "./quickbooksEnqueue";
 
 type ReceiptMetadata = {
@@ -50,17 +51,11 @@ export async function updateInvoiceStatusIfFullyPaid(
 	const allPaid = await checkAllPaymentsPaid(ctx, invoiceId, paymentId);
 	if (!allPaid) return;
 	const invoice = await ctx.db.get(invoiceId);
-	if (invoice && invoice.status !== "paid") {
-		await ctx.db.patch(invoiceId, {
-			status: "paid",
-			paidAt: Date.now(),
-		});
-		const paidInvoice = await ctx.db.get(invoiceId);
-		if (paidInvoice) {
-			await celebrateInvoicePaid(ctx, paidInvoice);
-			await maybeEnqueueQboSync(ctx, paidInvoice.orgId, "invoice", invoiceId);
-		}
-	}
+	if (!invoice) return;
+	await transitionInvoice(ctx, invoice, "paid", {
+		actor: "system",
+		source: "payments.applyMarkPaidCascade",
+	});
 }
 
 /**
