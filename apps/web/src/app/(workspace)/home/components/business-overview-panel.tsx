@@ -4,6 +4,7 @@ import { useMemo } from "react";
 import { useQuery } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { Line, LineChart, XAxis } from "recharts";
+import { format as formatDate } from "date-fns";
 import {
 	Banknote,
 	Briefcase,
@@ -71,15 +72,17 @@ interface Tile {
 
 const sparkConfig = { value: { label: "Value", color: "var(--primary)" } };
 
+// Recharts injects its own `label` prop into the tooltip content element,
+// so the metric name must ride on a different prop name.
 function SparkTooltip({
 	active,
 	payload,
-	label,
+	metricLabel,
 	format,
 }: {
 	active?: boolean;
 	payload?: Array<{ payload: SparkPoint }>;
-	label: string;
+	metricLabel: string;
 	format: (value: number) => string;
 }) {
 	const point = payload?.[0]?.payload;
@@ -87,7 +90,7 @@ function SparkTooltip({
 	return (
 		<div className="min-w-28 rounded-lg border bg-popover p-2.5 shadow-sm">
 			<div className="mb-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-				{label} / {point.label}
+				{metricLabel} · {point.label}
 			</div>
 			<div className="text-sm font-semibold tabular-nums text-popover-foreground">
 				{format(point.value)}
@@ -111,7 +114,7 @@ function Sparkline({ tile }: { tile: Tile }) {
 				<XAxis dataKey="label" hide />
 				<ChartTooltip
 					content={
-						<SparkTooltip label={tile.label} format={tile.formatPoint} />
+						<SparkTooltip metricLabel={tile.label} format={tile.formatPoint} />
 					}
 					allowEscapeViewBox={{ x: true, y: true }}
 					wrapperStyle={{ zIndex: 50 }}
@@ -221,8 +224,9 @@ function toneFor(
 
 function shortLabel(date: string): string {
 	// Bucket keys are "YYYY-MM-DD" (day) or "YYYY-MM" (month).
-	const parts = date.split("-");
-	return parts.length === 3 ? `${parts[1]}/${parts[2]}` : date;
+	const [year, month, day] = date.split("-");
+	if (day) return `${month}/${day}`;
+	return formatDate(new Date(Number(year), Number(month) - 1, 1), "MMM yyyy");
 }
 
 /**
