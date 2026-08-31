@@ -16,8 +16,15 @@ import { DocumentPreviewModal } from "@/components/shared/document-preview-modal
 import { EntityEmailModal } from "@/components/shared/email/entity-email-modal";
 import { buildInvoicePdfBlob } from "./components/build-invoice-pdf-blob";
 import DeleteConfirmationModal from "@/components/ui/delete-confirmation-modal";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import {
+	Alert,
+	AlertAction,
+	AlertDescription,
+	AlertTitle,
+} from "@/components/reui/alert";
+import { Frame, FramePanel } from "@/components/reui/frame";
 import { Button } from "@/components/ui/button";
+import { CalendarClock } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatCalendarDate } from "@/lib/dates";
 import { ExclamationTriangleIcon } from "@heroicons/react/24/outline";
@@ -380,28 +387,38 @@ function InvoiceDetailPageContent() {
 					onCancel={() => setIsCancelModalOpen(true)}
 				/>
 
-				{currentStatus === "overdue" && (
-					<Alert variant="destructive" className="mt-4 mr-6">
-						<AlertTitle>This invoice is past due</AlertTitle>
-						<AlertDescription>
-							It was due {formatCalendarDate(invoice.dueDate)}. Reschedule the
-							payments to give the client a new deadline.
-						</AlertDescription>
-						{can("invoices", "modify") && (
-							<Button
-								variant="outline"
-								size="sm"
-								className="mt-2 w-fit"
-								onClick={() => setIsPaymentsModalOpen(true)}
-							>
-								Reschedule payments
-							</Button>
-						)}
-					</Alert>
-				)}
-
 				{/* Tabs + Sidebar */}
 				<InvoiceDetailTabs
+					banner={
+						currentStatus === "overdue" ? (
+							<Frame>
+								<FramePanel className="overflow-hidden p-0!">
+									<Alert
+										variant="destructive"
+										className="border-0 bg-destructive/5 shadow-none"
+									>
+										<CalendarClock />
+										<AlertTitle>This invoice is past due</AlertTitle>
+										{can("invoices", "modify") && (
+											<AlertAction>
+												<Button
+													size="xs"
+													variant="destructive"
+													onClick={() => setIsPaymentsModalOpen(true)}
+												>
+													Reschedule payments
+												</Button>
+											</AlertAction>
+										)}
+										<AlertDescription>
+											It was due {formatCalendarDate(invoice.dueDate)}.
+											Reschedule the payments to give the client a new deadline.
+										</AlertDescription>
+									</Alert>
+								</FramePanel>
+							</Frame>
+						) : null
+					}
 					activeTab={activeTab}
 					onTabChange={setActiveTab}
 					invoice={invoice}
