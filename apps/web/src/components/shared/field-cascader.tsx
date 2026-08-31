@@ -10,7 +10,6 @@ import {
 	type CascaderItemState,
 } from "@/components/reui/cascader/cascader";
 import {
-	CascaderBreadcrumb,
 	CascaderInput,
 	CascaderNav,
 } from "@/components/reui/cascader/cascader-nav";
@@ -26,7 +25,7 @@ export type { CascaderNode };
 const SEPARATOR = "›";
 
 /** Keep in step with the `min-h-*` on the list below. */
-const LIST_HEIGHT = "16rem";
+const LIST_HEIGHT = "14rem";
 
 /**
  * The relation-aware field picker every workspace picker drills with: own fields
@@ -69,6 +68,9 @@ export function FieldCascader<T = unknown>({
 			searchScope="deep"
 			labels={{
 				empty: emptyText,
+				// Naming the level here rather than in a breadcrumb keeps the panel
+				// one height, and puts the name where the cursor already is.
+				search: (parent) => (parent ? `Search ${parent}...` : placeholder),
 				// The breadcrumb character the rest of the reports UI already uses.
 				pathSeparator: SEPARATOR,
 				...(rootLabel ? { rootLevel: rootLabel } : {}),
@@ -77,18 +79,14 @@ export function FieldCascader<T = unknown>({
 		>
 			<CascaderPanel>
 				<CascaderNav>
-					{/* The input draws its own back control; adding one duplicates it. */}
-					<CascaderInput placeholder={placeholder} />
+					{/* The input draws its own back control; adding one duplicates it.
+					    No placeholder prop: `labels.search` names the level instead. */}
+					<CascaderInput />
 				</CascaderNav>
-				{/* The trail renders nothing at the root, so its row is reserved
-				    rather than added on the first drill. */}
-				<div className="h-6 shrink-0">
-					<CascaderBreadcrumb />
-				</div>
 				{/* Floor and cap are the same number on purpose: a level's row count
 				    then never changes the panel's height, so the popover cannot flip
 				    sides part-way through a drill-down. */}
-				<CascaderList maxHeight={LIST_HEIGHT} className="min-h-64">
+				<CascaderList maxHeight={LIST_HEIGHT} className="min-h-56">
 					<CascaderItems />
 					<CascaderEmpty />
 				</CascaderList>
