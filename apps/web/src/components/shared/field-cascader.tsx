@@ -25,6 +25,9 @@ export type { CascaderNode };
 /** Breadcrumb separator, shared with `reports/report-path-options`. */
 const SEPARATOR = "›";
 
+/** Keep in step with the `min-h-*` on the list below. */
+const LIST_HEIGHT = "16rem";
+
 /**
  * The relation-aware field picker every workspace picker drills with: own fields
  * and relation branches in one run, search across the current level and below.
@@ -77,8 +80,15 @@ export function FieldCascader<T = unknown>({
 					{/* The input draws its own back control; adding one duplicates it. */}
 					<CascaderInput placeholder={placeholder} />
 				</CascaderNav>
-				<CascaderBreadcrumb />
-				<CascaderList>
+				{/* The trail renders nothing at the root, so its row is reserved
+				    rather than added on the first drill. */}
+				<div className="h-6 shrink-0">
+					<CascaderBreadcrumb />
+				</div>
+				{/* Floor and cap are the same number on purpose: a level's row count
+				    then never changes the panel's height, so the popover cannot flip
+				    sides part-way through a drill-down. */}
+				<CascaderList maxHeight={LIST_HEIGHT} className="min-h-64">
 					<CascaderItems />
 					<CascaderEmpty />
 				</CascaderList>
