@@ -4,7 +4,9 @@ import { useMemo } from "react";
 import { useQuery } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import type { Doc, Id } from "@onetool/backend/convex/_generated/dataModel";
+import { daysLate, isPastDue } from "@onetool/backend/convex/lib/invoiceLateness";
 import { useIsOrgSwitching } from "@/hooks/use-is-org-switching";
+import { useOrgToday } from "@/hooks/use-org-today";
 import { formatCurrency } from "@/lib/money";
 import type { Task } from "@/types/task";
 
@@ -59,20 +61,22 @@ export type AttentionInvoice = Doc<"invoices"> & {
 	remainingBalance?: number;
 };
 
-export function invoiceUrgency(invoice: AttentionInvoice): {
+export function invoiceUrgency(
+	invoice: AttentionInvoice,
+	orgToday: number
+): {
 	label: string;
 	overdue: boolean;
 } {
-	const daysUntilDue = getDaysUntil(
-		invoice.earliestPaymentDueDate ?? invoice.dueDate
-	);
-	if (daysUntilDue < 0) {
-		const daysOverdue = Math.abs(daysUntilDue);
+	const due = invoice.earliestPaymentDueDate ?? invoice.dueDate;
+	if (isPastDue(due, orgToday)) {
+		const daysOverdue = daysLate(due, orgToday);
 		return {
 			label: `${daysOverdue} day${daysOverdue !== 1 ? "s" : ""} overdue`,
 			overdue: true,
 		};
 	}
+	const daysUntilDue = Math.round((due - orgToday) / 86_400_000);
 	return {
 		label:
 			daysUntilDue === 0
@@ -121,6 +125,7 @@ export interface AttentionQueue {
 
 export function useAttentionQueue(): AttentionQueue {
 	const isOrgSwitching = useIsOrgSwitching();
+	const orgToday = useOrgToday();
 	const overdueTasks = useQuery(api.tasks.getOverdue, {});
 	const upcomingTasks = useQuery(api.tasks.getUpcoming, { daysAhead: 7 });
 	const overdueInvoices = useQuery(api.invoices.getOverdue, {});
@@ -179,7 +184,7 @@ export function useAttentionQueue(): AttentionQueue {
 			(t) => getDaysUntil(t.date) === 0 && !taskUrgency(t).overdue
 		).length;
 		const overdueInvoiceCount = invoices.filter(
-			(inv) => invoiceUrgency(inv).overdue
+			(inv) => invoiceUrgency(inv, orgToday).overdue
 		).length;
 
 		const taskParts: string[] = [];
@@ -233,5 +238,5 @@ export function useAttentionQueue(): AttentionQueue {
 					? (clientNames.get(clientId) ?? "Unknown client")
 					: "No client",
 		};
-	}, [isLoading, tasks, invoices, quotes, clientNames]);
+	}, [isLoading, tasks, invoices, quotes, clientNames, orgToday]);
 }

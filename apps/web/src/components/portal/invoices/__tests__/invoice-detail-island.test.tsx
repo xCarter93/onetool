@@ -169,6 +169,7 @@ function buildData(
 			displayStatus: "awaiting",
 			isLegacy: false,
 			installmentCount: 1,
+			hasPayableRow: true,
 		},
 		activePaymentPublic: {
 			_id: "pmt_1",
@@ -183,6 +184,7 @@ function buildData(
 			receiptUrl: null,
 			recordedOutsidePortal: false,
 		},
+		orgToday: Date.UTC(2026, 7, 27),
 		businessName: "Acme Landscape",
 		businessLogoUrl: null,
 		stripeChargesEnabled: true,
@@ -270,6 +272,7 @@ describe("InvoiceDetailIsland", () => {
 				displayStatus: "paid",
 				isLegacy: false,
 				installmentCount: 1,
+				hasPayableRow: false,
 			},
 			payments: [
 				{
@@ -330,6 +333,7 @@ describe("InvoiceDetailIsland", () => {
 				displayStatus: "awaiting",
 				isLegacy: true,
 				installmentCount: 0,
+				hasPayableRow: true,
 			},
 		});
 		const { container } = render(
@@ -414,6 +418,7 @@ describe("InvoiceDetailIsland", () => {
 				displayStatus: "awaiting",
 				isLegacy: false,
 				installmentCount: 2,
+				hasPayableRow: true,
 			},
 			activePaymentPublic: {
 				_id: "pmt_1",

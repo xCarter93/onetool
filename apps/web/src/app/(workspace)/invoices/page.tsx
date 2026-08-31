@@ -58,8 +58,12 @@ import {
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useQuery, useMutation } from "convex/react";
-import { todayUtcMidnightMs } from "@/lib/dates";
+import {
+	deriveInvoiceStatus,
+	isPastDue,
+} from "@onetool/backend/convex/lib/invoiceLateness";
 import { api } from "@onetool/backend/convex/_generated/api";
+import { useOrgToday } from "@/hooks/use-org-today";
 import { useIsOrgSwitching } from "@/hooks/use-is-org-switching";
 import { useActivitySparklines } from "@/hooks/use-activity-sparklines";
 import type { Doc, Id } from "@onetool/backend/convex/_generated/dataModel";
@@ -75,6 +79,7 @@ import {
 	KanbanProvider,
 } from "../projects/components/kanban";
 import { InvoiceDetailDrawer } from "./components/invoice-detail-drawer";
+import { PaymentsConfigurationModal } from "./components/payments-configuration-modal";
 import { ActivitySparkline } from "@/components/shared/activity-sparkline";
 import { ActivityColumnHeader } from "@/components/shared/activity-column-header";
 import { cn } from "@/lib/utils";
@@ -107,14 +112,6 @@ type InvoiceKanbanColumn = {
 	name: string;
 	description: string;
 };
-
-// Overdue is a computed state: a sent invoice past its due date. Reads the clock
-// inside this module-level helper so component render stays pure.
-const getEffectiveStatus = (
-	status: InvoiceStatus,
-	dueDate: number
-): InvoiceStatus =>
-	status === "sent" && dueDate < todayUtcMidnightMs() ? "overdue" : status;
 
 // appearance chosen to match the legacy statusVariant() boldness: solid for the
 // primary/positive status, soft for the mid-weight statuses, outline for the rest.
@@ -168,7 +165,8 @@ const createColumns = (
 	router: ReturnType<typeof useRouter>,
 	onDelete: (id: string, name: string) => void,
 	onPreview: (id: string) => void,
-	canDelete: boolean
+	canDelete: boolean,
+	orgToday: number
 ): ColumnDef<DataGridFeatures, InvoiceWithClient>[] => [
 	{
 		accessorKey: "invoiceNumber",
@@ -204,10 +202,7 @@ const createColumns = (
 		accessorKey: "status",
 		header: "Status",
 		cell: ({ row }) => {
-			const effective = getEffectiveStatus(
-				row.original.status,
-				row.original.dueDate
-			);
+			const effective = deriveInvoiceStatus(row.original, orgToday);
 			return (
 				<StatusBadge status={effective} appearance={statusAppearance(effective)}>
 					{formatStatus(effective)}
@@ -229,7 +224,7 @@ const createColumns = (
 		header: "Due Date",
 		cell: ({ row }) => {
 			const isOverdue =
-				row.original.dueDate < todayUtcMidnightMs() &&
+				isPastDue(row.original.dueDate, orgToday) &&
 				row.original.status !== "paid";
 			return (
 				<span
@@ -295,6 +290,7 @@ const createColumns = (
 
 function InvoicesPageContent() {
 	const router = useRouter();
+	const orgToday = useOrgToday();
 	const [viewMode, setViewMode] = useState<"table" | "kanban">("table");
 	const [sorting, setSorting] = React.useState<SortingState>([]);
 	const [query, setQuery] = React.useState("");
@@ -310,6 +306,9 @@ function InvoicesPageContent() {
 	} | null>(null);
 	const [previewId, setPreviewId] = useState<Id<"invoices"> | null>(null);
 	const [previewOpen, setPreviewOpen] = useState(false);
+	// Set by an overdue card dropped onto Sent: the deadline has to move before
+	// the status can, so the board hands the job to the schedule modal.
+	const [rescheduleId, setRescheduleId] = useState<Id<"invoices"> | null>(null);
 	const deleteInvoice = useMutation(api.invoices.remove);
 	const updateInvoiceStatus = useMutation(api.invoices.update);
 	const [kanbanData, setKanbanData] = useState<InvoiceKanbanItem[]>([]);
@@ -325,6 +324,10 @@ function InvoicesPageContent() {
 	const sparklines = useActivitySparklines("invoice");
 	const clients = useQuery(api.clients.list, can("clients") ? {} : "skip");
 	const projects = useQuery(api.projects.list, can("projects") ? {} : "skip");
+	const rescheduleTarget = useQuery(
+		api.invoices.getWithPayments,
+		rescheduleId ? { id: rescheduleId } : "skip"
+	);
 
 	// Combine invoices with resolved client and project names
 	const data = React.useMemo((): InvoiceWithClient[] => {
@@ -351,7 +354,7 @@ function InvoicesPageContent() {
 				case "status":
 					result = result.filter((inv) =>
 						filter.values.includes(
-							getEffectiveStatus(inv.status, inv.dueDate) as unknown
+							deriveInvoiceStatus(inv, orgToday) as unknown
 						)
 					);
 					break;
@@ -390,14 +393,14 @@ function InvoicesPageContent() {
 			}
 		});
 		return result;
-	}, [data, filters]);
+	}, [data, filters, orgToday]);
 
 	// Free-text search on top of the advanced filters; drives table + kanban.
 	const searchedData = React.useMemo(() => {
 		const q = query.trim().toLowerCase();
 		if (!q) return filteredData;
 		return filteredData.filter((inv) => {
-			const effectiveStatus = getEffectiveStatus(inv.status, inv.dueDate);
+			const effectiveStatus = deriveInvoiceStatus(inv, orgToday);
 			return (
 				inv.invoiceNumber?.toLowerCase().includes(q) ||
 				inv.clientName?.toLowerCase().includes(q) ||
@@ -407,24 +410,21 @@ function InvoicesPageContent() {
 				formatStatus(effectiveStatus).toLowerCase().includes(q)
 			);
 		});
-	}, [filteredData, query]);
+	}, [filteredData, query, orgToday]);
 
 	// Effective-status map keyed by invoice id, used to detect kanban drag changes.
 	const invoiceStatusMap = React.useMemo(() => {
 		const statusMap = new Map<string, InvoiceStatus>();
 		data.forEach((invoice) =>
-			statusMap.set(
-				invoice._id,
-				getEffectiveStatus(invoice.status, invoice.dueDate)
-			)
+			statusMap.set(invoice._id, deriveInvoiceStatus(invoice, orgToday))
 		);
 		return statusMap;
-	}, [data]);
+	}, [data, orgToday]);
 
 	React.useEffect(() => {
 		setKanbanData(
 			searchedData.map((invoice) => {
-				const effective = getEffectiveStatus(invoice.status, invoice.dueDate);
+				const effective = deriveInvoiceStatus(invoice, orgToday);
 				return {
 					id: invoice._id,
 					name: invoice.invoiceNumber,
@@ -439,7 +439,7 @@ function InvoicesPageContent() {
 				};
 			})
 		);
-	}, [searchedData]);
+	}, [searchedData, orgToday]);
 
 	// Loading state — gate only on the primary invoices query. The clients and
 	// projects reads are permission-skipped and stay undefined without the grant,
@@ -468,8 +468,15 @@ function InvoicesPageContent() {
 	};
 
 	const columns = React.useMemo(
-		() => createColumns(router, handleDelete, openPreview, canDeleteInvoices),
-		[router, handleDelete, openPreview, canDeleteInvoices]
+		() =>
+			createColumns(
+				router,
+				handleDelete,
+				openPreview,
+				canDeleteInvoices,
+				orgToday
+			),
+		[router, handleDelete, openPreview, canDeleteInvoices, orgToday]
 	);
 
 	const table = useTable({
@@ -564,16 +571,10 @@ function InvoicesPageContent() {
 	// optimistic; the DB write happens once on drop via handleKanbanDragEnd.
 	const handleKanbanDataChange = React.useCallback(
 		(nextData: InvoiceKanbanItem[]) => {
-			// Overdue is a computed lane. Dropping a card there stores "sent"; a
-			// future-due invoice then normalizes back to "sent" instead of sticking
-			// in Overdue. Renormalize each card to its effective status first.
-			const normalized = nextData.map((item) => {
-				const storedStatus: InvoiceStatus =
-					item.column === "overdue" ? "sent" : item.column;
-				const effective = getEffectiveStatus(storedStatus, item.dueDate);
-				return { ...item, column: effective, status: effective };
-			});
-			setKanbanData(normalized);
+			// Overdue is a stored status since the sweep persists it, so a card
+			// stays in the lane it was dragged to; re-deriving here yanked it back
+			// out mid-drag. The drop handler decides what actually gets written.
+			setKanbanData(nextData.map((item) => ({ ...item, status: item.column })));
 		},
 		[]
 	);
@@ -583,34 +584,43 @@ function InvoicesPageContent() {
 			const item = kanbanData.find((i) => i.id === event.active.id);
 			if (!item) return;
 			const originalStatus = invoiceStatusMap.get(item.id);
-			if (originalStatus && originalStatus !== item.column) {
-				// Overdue is computed from a past-due "sent" invoice, so dropping into
-				// either the sent or overdue lane writes the stored status "sent".
-				const nextStatus: InvoiceStatus =
-					item.column === "overdue" ? "sent" : item.column;
-				updateInvoiceStatus({
-					id: item.id as Id<"invoices">,
-					status: nextStatus,
-				}).catch((error) => {
-					console.error("Failed to update invoice status:", error);
-					// A rejected write leaves the server data untouched, so the sync
-					// effect never re-fires — put the card back in its lane by hand.
-					setKanbanData((prev) =>
-						prev.map((card) =>
-							card.id === item.id
-								? { ...card, column: originalStatus, status: originalStatus }
-								: card
-						)
-					);
-					toast.error(
-						"Update Failed",
-						convexErrorMessage(
-							error,
-							"Failed to update invoice status. Please try again."
-						)
-					);
-				});
+			if (!originalStatus || originalStatus === item.column) return;
+
+			const restoreCard = () =>
+				setKanbanData((prev) =>
+					prev.map((card) =>
+						card.id === item.id
+							? { ...card, column: originalStatus, status: originalStatus }
+							: card
+					)
+				);
+
+			// Writing "sent" on a still-past-due invoice just gets reversed by the
+			// overnight sweep. Moving the deadline is what actually un-flips it.
+			if (originalStatus === "overdue" && item.column === "sent") {
+				restoreCard();
+				setRescheduleId(item.id as Id<"invoices">);
+				return;
 			}
+
+			const nextStatus: InvoiceStatus =
+				item.column === "overdue" ? "sent" : item.column;
+			updateInvoiceStatus({
+				id: item.id as Id<"invoices">,
+				status: nextStatus,
+			}).catch((error) => {
+				console.error("Failed to update invoice status:", error);
+				// A rejected write leaves the server data untouched, so the sync
+				// effect never re-fires — put the card back in its lane by hand.
+				restoreCard();
+				toast.error(
+					"Update Failed",
+					convexErrorMessage(
+						error,
+						"Failed to update invoice status. Please try again."
+					)
+				);
+			});
 		},
 		[kanbanData, invoiceStatusMap, updateInvoiceStatus, toast]
 	);
@@ -666,8 +676,7 @@ function InvoicesPageContent() {
 						: `${
 								data.filter(
 									(inv) =>
-										inv.status === "sent" &&
-										inv.dueDate < todayUtcMidnightMs()
+										deriveInvoiceStatus(inv, orgToday) === "overdue"
 								).length
 							} overdue · ${formatCurrency(
 								data
@@ -871,7 +880,7 @@ function InvoicesPageContent() {
 																	<span aria-hidden>·</span>
 																	<span
 																		className={cn(
-																			item.dueDate < todayUtcMidnightMs() &&
+																			isPastDue(item.dueDate, orgToday) &&
 																				item.status !== "paid" &&
 																				"text-destructive font-medium"
 																		)}
@@ -923,6 +932,25 @@ function InvoicesPageContent() {
 				open={previewOpen}
 				onOpenChange={setPreviewOpen}
 			/>
+
+			{rescheduleId && rescheduleTarget && (
+				<PaymentsConfigurationModal
+					isOpen
+					onClose={() => setRescheduleId(null)}
+					invoiceId={rescheduleId}
+					invoiceTotal={rescheduleTarget.total}
+					invoiceDueDate={rescheduleTarget.dueDate}
+					existingPayments={rescheduleTarget.payments.map((p) => ({
+						_id: p._id,
+						paymentAmount: p.paymentAmount,
+						dueDate: p.dueDate,
+						description: p.description,
+						status: p.status,
+						sortOrder: p.sortOrder,
+						refundedAmount: p.refundedAmount,
+					}))}
+				/>
+			)}
 
 			{/* Delete Confirmation Modal */}
 			{invoiceToDelete && (

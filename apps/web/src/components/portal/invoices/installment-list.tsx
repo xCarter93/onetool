@@ -1,5 +1,8 @@
 "use client";
 
+import { isPastDue } from "@onetool/backend/convex/lib/invoiceLateness";
+
+import { StatusBadge, type StatusRole } from "@/components/domain/status-badge";
 import { formatDate, formatMoney } from "@/lib/portal/format";
 
 import { PaymentReceipt } from "./payment-receipt";
@@ -16,46 +19,46 @@ export interface InstallmentRow {
 	cardBrand: string | null;
 	receiptUrl: string | null;
 	recordedOutsidePortal: boolean;
+	// Dollars refunded on this row; absent or null means nothing came back out.
+	refundedAmount?: number | null;
 }
 
 export interface InstallmentListProps {
 	installments: InstallmentRow[];
 	activeIndex: number | null;
+	/** The business's calendar day, from the server — never the visitor's clock. */
+	orgToday: number;
 }
 
-function pillFor(row: InstallmentRow, isUpcoming: boolean) {
+function pillFor(
+	row: InstallmentRow,
+	isUpcoming: boolean,
+	orgToday: number
+): { label: string; role: StatusRole } {
+	// Terminal states first — a refunded row past its due date is not overdue,
+	// and telling the client to pay money the business returned is the worst
+	// thing this list can say.
+	if (row.status === "refunded") return { label: "Refunded", role: "neutral" };
+	if (row.status === "cancelled") return { label: "Cancelled", role: "neutral" };
 	if (row.status === "paid") {
-		const paidLabel = row.paidAt
-			? `Paid · ${formatDate(row.paidAt)}`
-			: "Paid";
+		if (row.refundedAmount) {
+			return { label: "Partially refunded", role: "warning" };
+		}
 		return {
-			label: paidLabel,
-			cls: "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-900",
+			label: row.paidAt ? `Paid · ${formatDate(row.paidAt)}` : "Paid",
+			role: "success",
 		};
 	}
-	const now = Date.now();
-	const isOverdue = row.dueDate < now && row.status !== "cancelled";
-	if (isOverdue) {
-		return {
-			label: "Overdue",
-			cls: "bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/40 dark:text-rose-300 dark:border-rose-900",
-		};
-	}
-	if (isUpcoming) {
-		return {
-			label: "Upcoming",
-			cls: "bg-muted text-muted-foreground border-border",
-		};
-	}
-	return {
-		label: "Due",
-		cls: "bg-sky-50 text-sky-700 border-sky-200 dark:bg-sky-950/40 dark:text-sky-300 dark:border-sky-900",
-	};
+	if (isPastDue(row.dueDate, orgToday))
+		return { label: "Overdue", role: "danger" };
+	if (isUpcoming) return { label: "Upcoming", role: "neutral" };
+	return { label: "Due", role: "info" };
 }
 
 export function InstallmentList({
 	installments,
 	activeIndex,
+	orgToday,
 }: InstallmentListProps) {
 	if (installments.length === 0) {
 		return (
@@ -76,7 +79,7 @@ export function InstallmentList({
 				const isActive = activeIndex !== null && idx === activeIndex;
 				const isUpcoming =
 					activeIndex !== null && idx > activeIndex && row.status !== "paid";
-				const pill = pillFor(row, isUpcoming);
+				const pill = pillFor(row, isUpcoming, orgToday);
 				return (
 					<li
 						key={row._id}
@@ -101,14 +104,17 @@ export function InstallmentList({
 								<span className="text-[18px] font-semibold tabular-nums">
 									{formatMoney(row.paymentAmount)}
 								</span>
-								<span
-									className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[11px] font-medium ${pill.cls}`}
-								>
-									<span className="h-1.5 w-1.5 rounded-full bg-current" />
+								<StatusBadge role={pill.role} appearance="soft">
 									{pill.label}
-								</span>
+								</StatusBadge>
 							</div>
 						</div>
+						{row.refundedAmount ? (
+							<p className="mt-3 text-[13px] text-muted-foreground">
+								{formatMoney(row.refundedAmount)} was refunded to your original
+								payment method.
+							</p>
+						) : null}
 						{row.status === "paid" ? (
 							<div className="mt-3">
 								<PaymentReceipt

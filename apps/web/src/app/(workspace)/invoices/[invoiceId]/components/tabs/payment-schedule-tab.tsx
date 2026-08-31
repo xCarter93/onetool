@@ -14,6 +14,7 @@ import {
 	AlertCircle,
 	Ban,
 } from "lucide-react";
+import { formatCalendarDate } from "@/lib/dates";
 import { formatCurrency } from "@/lib/money";
 
 type PaymentStatus = "pending" | "sent" | "paid" | "overdue" | "cancelled";
@@ -54,14 +55,6 @@ const paymentStatusConfig: Record<
 		className: "line-through opacity-60",
 	},
 };
-
-function formatPaymentDueDate(timestamp: number): string {
-	return new Date(timestamp).toLocaleDateString("en-US", {
-		month: "short",
-		day: "numeric",
-		year: "numeric",
-	});
-}
 
 interface PaymentScheduleTabProps {
 	invoiceWithPayments: {
@@ -194,7 +187,7 @@ export function PaymentScheduleTab({
 														</p>
 														<p className="text-xs text-muted-foreground">
 															Due:{" "}
-															{formatPaymentDueDate(
+															{formatCalendarDate(
 																payment.dueDate
 															)}
 														</p>

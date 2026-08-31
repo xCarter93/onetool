@@ -21,6 +21,7 @@ import { StatusBadge } from "@/components/domain/status-badge";
 import {
 	INVOICE_STATUS_LABEL,
 	INVOICE_STATUS_ROLE,
+	type PortalPaymentSummary,
 } from "./invoice-paper";
 import {
 	Frame,
@@ -49,13 +50,7 @@ export interface PortalInvoiceListItem {
 	dueDate: number;
 	total: number;
 	clientName: string;
-	paymentSummary: {
-		totalPaid: number;
-		totalRemaining: number;
-		displayStatus: "awaiting" | "partial" | "paid" | "overdue";
-		isLegacy: boolean;
-		installmentCount: number;
-	};
+	paymentSummary: PortalPaymentSummary;
 }
 
 type Filter = "all" | "outstanding" | "paid";
@@ -136,8 +131,9 @@ function createColumns(
 				const href =
 					`/portal/c/${clientPortalId}/invoices/${inv._id}` as Route;
 				const isLegacy = inv.paymentSummary.isLegacy;
-				const showPayNow =
-					!isLegacy && inv.paymentSummary.displayStatus !== "paid";
+				// Payability, not status: a refunded invoice shows a balance but has
+				// no installment left to collect, and offering to pay it 422s.
+				const showPayNow = !isLegacy && inv.paymentSummary.hasPayableRow;
 				return (
 					<div
 						className="flex items-center justify-end"

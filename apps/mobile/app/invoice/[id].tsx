@@ -20,6 +20,11 @@ import {
 import { api } from "@onetool/backend/convex/_generated/api";
 import { Id } from "@onetool/backend/convex/_generated/dataModel";
 import {
+	daysLate,
+	deriveInvoiceStatus,
+} from "@onetool/backend/convex/lib/invoiceLateness";
+import { useOrgToday } from "@/lib/use-org-today";
+import {
 	badgeTone,
 	fontFamily,
 	radii,
@@ -94,8 +99,7 @@ export function InvoiceDetailBody({
 		) : (
 			<InkTabHeader title={title} onBack={() => router.back()} />
 		);
-	// Seed "now" once (lazy) — react-hooks/purity forbids Date.now() during render.
-	const [now] = useState(() => Date.now());
+	const orgToday = useOrgToday();
 	const [sendOpen, setSendOpen] = useState(false);
 	const [recordOpen, setRecordOpen] = useState(false);
 	// null = closed; item null = adding, item set = editing that row.
@@ -205,17 +209,13 @@ export function InvoiceDetailBody({
 		);
 	}
 
-	// Effective status: a past-due sent invoice displays as Overdue to match the
-	// list + hero (mirrors web invoices/page.tsx). Stored status alone would
-	// show "Sent" on an already-overdue invoice.
-	const displayStatus = (
-		invoice.status === "sent" && invoice.dueDate < now
-			? "overdue"
-			: invoice.status
+	const displayStatus = deriveInvoiceStatus(
+		invoice,
+		orgToday
 	) as InvoiceStatus;
 
 	const client = clientName.get(invoice.clientId) ?? "Client";
-	const daysLate = Math.floor((now - invoice.dueDate) / 86_400_000);
+	const lateDays = daysLate(invoice.dueDate, orgToday);
 
 	// TOTALS — straight from invoice.* (calculated by get). Never sum line items.
 	// The legacy/quote pricing split and its cent rounding live in the shared
@@ -391,8 +391,8 @@ export function InvoiceDetailBody({
 								<CalendarX2 size={13} color={badgeTone.late.fg} />
 								<Text style={[styles.dueLate, { color: badgeTone.late.fg }]}>
 									Due {formatDocumentDate(invoice.dueDate)}
-									{daysLate > 0
-										? ` · ${daysLate} day${daysLate === 1 ? "" : "s"} late`
+									{lateDays > 0
+										? ` · ${lateDays} day${lateDays === 1 ? "" : "s"} late`
 										: ""}
 								</Text>
 							</View>

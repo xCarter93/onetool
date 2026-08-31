@@ -31,6 +31,7 @@ import {
 } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 import { formatCurrency } from "@/lib/money";
+import { useOrgToday } from "@/hooks/use-org-today";
 import type { Task } from "@/types/task";
 import {
 	invoiceUrgency,
@@ -226,6 +227,7 @@ function ColumnRows({
 	limit?: number;
 	withCheckbox?: boolean;
 }) {
+	const orgToday = useOrgToday();
 	let rows: React.ReactNode;
 	if (column === "tasks") {
 		const tasks = limit ? queue.tasks.slice(0, limit) : queue.tasks;
@@ -251,7 +253,7 @@ function ColumnRows({
 	} else if (column === "invoices") {
 		const invoices = limit ? queue.invoices.slice(0, limit) : queue.invoices;
 		rows = invoices.map((invoice) => {
-			const urgency = invoiceUrgency(invoice);
+			const urgency = invoiceUrgency(invoice, orgToday);
 			return (
 				<QueueRow
 					key={invoice._id}

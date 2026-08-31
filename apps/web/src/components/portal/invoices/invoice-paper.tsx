@@ -6,32 +6,53 @@ import Image from "next/image";
 import { Card, CardContent } from "@/components/ui/card";
 import { Item, ItemMedia } from "@/components/ui/item";
 import { Separator } from "@/components/ui/separator";
-import { StatusBadge } from "@/components/domain/status-badge";
+import { StatusBadge, type StatusRole } from "@/components/domain/status-badge";
 import { cn } from "@/lib/utils";
 import { formatDate, formatMoney } from "@/lib/portal/format";
 
 import { TotalsBreakdown } from "../totals-breakdown";
 import { deriveInvoiceDisplayPricing } from "@onetool/backend/pdf/invoicePricing";
 
-export type InvoiceDisplayStatus = "awaiting" | "partial" | "paid" | "overdue";
+export type InvoiceDisplayStatus =
+	| "awaiting"
+	| "partial"
+	| "paid"
+	| "overdue"
+	| "refunded";
 
 // Single source of truth for portal invoice status colors/labels — the list
-// view imports these so list and detail never disagree.
-export const INVOICE_STATUS_ROLE: Record<
-	InvoiceDisplayStatus,
-	"success" | "warning" | "danger" | "info"
-> = {
+// view imports these so list and detail never disagree. The portal's status
+// vocabulary is its own; only the roles come from the app's status palette.
+export const INVOICE_STATUS_ROLE: Record<InvoiceDisplayStatus, StatusRole> = {
 	paid: "success",
 	partial: "warning",
 	overdue: "danger",
 	awaiting: "info",
+	// Terminal and not the client's problem to solve — danger would read as
+	// something they must act on. Matches StatusBadge's canonical refunded role.
+	refunded: "neutral",
 };
+
+/**
+ * The portal's payment roll-up, mirroring PortalPaymentSummary in
+ * packages/backend/convex/portal/invoices.ts. Declared once here so the list
+ * and detail mirrors can't drift apart on the status vocabulary.
+ */
+export interface PortalPaymentSummary {
+	totalPaid: number;
+	totalRemaining: number;
+	displayStatus: InvoiceDisplayStatus;
+	isLegacy: boolean;
+	installmentCount: number;
+	hasPayableRow: boolean;
+}
 
 export const INVOICE_STATUS_LABEL: Record<InvoiceDisplayStatus, string> = {
 	paid: "Paid",
 	partial: "Partially paid",
 	overdue: "Overdue",
 	awaiting: "Awaiting payment",
+	refunded: "Refunded",
 };
 
 export interface InvoicePaperLineItem {

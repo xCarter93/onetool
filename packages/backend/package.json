@@ -65,6 +65,14 @@
    "types": "./convex/lib/schedule.ts",
    "default": "./convex/lib/schedule.ts"
   },
+  "./convex/lib/invoiceLateness": {
+   "types": "./convex/lib/invoiceLateness.ts",
+   "default": "./convex/lib/invoiceLateness.ts"
+  },
+  "./convex/lib/paymentInsights": {
+   "types": "./convex/lib/paymentInsights.ts",
+   "default": "./convex/lib/paymentInsights.ts"
+  },
   "./convex/lib/formula": {
    "types": "./convex/lib/formula/index.ts",
    "default": "./convex/lib/formula/index.ts"

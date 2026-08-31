@@ -14,6 +14,8 @@ import { InvoiceDetailSidebar } from "./invoice-detail-sidebar";
 interface InvoiceDetailTabsProps {
 	activeTab: string;
 	onTabChange: (tab: string) => void;
+	/** Page-level notice, rendered in the content column so it clears the sidebar. */
+	banner?: React.ReactNode;
 	invoice: Doc<"invoices">;
 	invoiceId: Id<"invoices">;
 	// Data
@@ -59,6 +61,7 @@ interface InvoiceDetailTabsProps {
 export function InvoiceDetailTabs({
 	activeTab,
 	onTabChange,
+	banner,
 	invoice,
 	invoiceId,
 	lineItems,
@@ -101,6 +104,7 @@ export function InvoiceDetailTabs({
 		onSelectVersion,
 		showVersionHistory,
 		onToggleVersionHistory,
+		onConfigurePayments,
 	};
 
 	return (
@@ -109,6 +113,8 @@ export function InvoiceDetailTabs({
 			<div className="flex gap-0">
 				{/* Left: Tabs list + tab content */}
 				<div className="flex-1 min-w-0 pr-6 pt-6 pb-20">
+					{banner && <div className="mb-5">{banner}</div>}
+
 					<PillTabsList className="overflow-x-auto">
 						<PillTabsTrigger value="overview">
 							Overview

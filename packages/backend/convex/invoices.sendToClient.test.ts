@@ -243,20 +243,21 @@ describe("invoices.sendToClient", () => {
 		}
 	});
 
-	it("seeds a 'Full Payment' row when a manual invoice has none, so it is portal-payable", async () => {
-		// invoices.create adds no payment rows (unlike createFromQuote). Without a
-		// row the portal can't mint a PaymentIntent, so sendToClient backfills one.
+	it("backfills a 'Full Payment' row on an invoice that predates create-time seeding", async () => {
+		// Without a row the portal can't mint a PaymentIntent, so an invoice old
+		// enough to have none still gets one on its way to the client.
 		const { asUser, invoiceId } = await seed({
 			portalAccess: true,
 			contactEmail: "client@example.com",
 		});
-
-		const before = await t.run(async (ctx) =>
-			(await ctx.db.query("payments").collect()).filter(
-				(p) => p.invoiceId === invoiceId
-			)
-		);
-		expect(before.length).toBe(0);
+		await t.run(async (ctx) => {
+			for (const row of await ctx.db
+				.query("payments")
+				.withIndex("by_invoice", (q) => q.eq("invoiceId", invoiceId))
+				.collect()) {
+				await ctx.db.delete(row._id);
+			}
+		});
 
 		await asUser.mutation(api.invoices.sendToClient, { id: invoiceId });
 		await t.finishAllScheduledFunctions(vi.runAllTimers);
@@ -277,9 +278,15 @@ describe("invoices.sendToClient", () => {
 			portalAccess: true,
 			contactEmail: "client@example.com",
 		});
-		// Seed an existing installment row.
-		await t.run(async (ctx) =>
-			ctx.db.insert("payments", {
+		// Replace the create-time row with a custom schedule of the same shape.
+		await t.run(async (ctx) => {
+			for (const row of await ctx.db
+				.query("payments")
+				.withIndex("by_invoice", (q) => q.eq("invoiceId", invoiceId))
+				.collect()) {
+				await ctx.db.delete(row._id);
+			}
+			await ctx.db.insert("payments", {
 				orgId,
 				invoiceId,
 				paymentAmount: 1000,
@@ -288,8 +295,8 @@ describe("invoices.sendToClient", () => {
 				sortOrder: 0,
 				status: "pending",
 				publicToken: `tok_${Math.random().toString(36).slice(2)}`,
-			})
-		);
+			});
+		});
 
 		await asUser.mutation(api.invoices.sendToClient, { id: invoiceId });
 		await t.finishAllScheduledFunctions(vi.runAllTimers);

@@ -727,5 +727,164 @@ describe("invoice status writers (characterization)", () => {
 
 			expect(await invoiceJobs(orgId, invoiceId)).toHaveLength(1);
 		});
+
+		it("payments.recordManualPayment queues the invoice when the last row settles", async () => {
+			const { asUser, orgId, clientId } = await seedOrg();
+			await connectQbo(orgId);
+			const invoiceId = await createDraftInvoice(asUser, clientId, 1000);
+			await asUser.mutation(api.payments.configurePayments, {
+				invoiceId,
+				payments: [
+					{
+						paymentAmount: 1000,
+						dueDate: Date.now() + 86_400_000,
+						description: "Full payment",
+						sortOrder: 0,
+					},
+				],
+			});
+
+			await asUser.mutation(api.payments.recordManualPayment, {
+				invoiceId,
+				amount: 400,
+				method: "cash",
+			});
+			expect(await invoiceJobs(orgId, invoiceId)).toHaveLength(0);
+
+			await asUser.mutation(api.payments.recordManualPayment, {
+				invoiceId,
+				amount: 600,
+				method: "cash",
+			});
+			expect(await invoiceJobs(orgId, invoiceId)).toHaveLength(1);
+		});
+	});
+
+	// =====================================================================
+	// G. payments.recordManualPayment
+	// =====================================================================
+
+	describe("G. payments.recordManualPayment", () => {
+		async function celebrations(invoiceId: Id<"invoices">) {
+			return await t.run(async (ctx) => {
+				const rows = await ctx.db.query("notifications").collect();
+				return rows.filter(
+					(row) =>
+						row.notificationType === "payment_received" &&
+						row.entityId === invoiceId
+				);
+			});
+		}
+
+		it("the last settling row flips the invoice with the same effect set as every other paid writer", async () => {
+			const { asUser, clientId, userId } = await seedOrg();
+			const invoiceId = await createDraftInvoice(asUser, clientId, 1000);
+			await asUser.mutation(api.payments.configurePayments, {
+				invoiceId,
+				payments: [
+					{
+						paymentAmount: 600,
+						dueDate: Date.now() + 86_400_000,
+						description: "Deposit",
+						sortOrder: 0,
+					},
+					{
+						paymentAmount: 400,
+						dueDate: Date.now() + 2 * 86_400_000,
+						description: "Balance",
+						sortOrder: 1,
+					},
+				],
+			});
+			await drain();
+
+			await asUser.mutation(api.payments.recordManualPayment, {
+				invoiceId,
+				amount: 1000,
+				method: "check",
+				note: "cheque 1042",
+			});
+			await drain();
+
+			const invoice = await t.run(async (ctx) => ctx.db.get(invoiceId));
+			expect(invoice?.status).toBe("paid");
+			expect(invoice?.paidAt).toBeTypeOf("number");
+
+			// The mutation settles every row itself, so the seam's
+			// settleOutstandingPaymentsForInvoice finds nothing left to touch —
+			// manualMethod/manualNote survive the transition unclobbered.
+			const rows = await paymentRows(invoiceId);
+			expect(rows.map((r) => r.status)).toEqual(["paid", "paid"]);
+			expect(rows.every((r) => r.manualMethod === "check")).toBe(true);
+			expect(rows.every((r) => r.manualNote === "cheque 1042")).toBe(true);
+			expect(rows.every((r) => r.recordedOutsidePortal === true)).toBe(true);
+
+			const paidActivities = await activitiesOfType(invoiceId, "invoice_paid");
+			expect(paidActivities).toHaveLength(1);
+			// Attributed to the person who recorded it, not the org owner.
+			expect(paidActivities[0]!.userId).toBe(userId);
+
+			expect(await celebrations(invoiceId)).toHaveLength(1);
+
+			const events = await statusEvents(invoiceId);
+			expect(events).toHaveLength(1);
+			expect(events[0]!.eventSource).toBe("payments.recordManualPayment");
+			expect(events[0]!.payload.oldValue).toBe("draft");
+			expect(events[0]!.payload.newValue).toBe("paid");
+		});
+
+		it("a partial payment leaves the invoice status alone and emits nothing", async () => {
+			const { asUser, clientId } = await seedOrg();
+			const invoiceId = await createDraftInvoice(asUser, clientId, 1000);
+			await asUser.mutation(api.payments.configurePayments, {
+				invoiceId,
+				payments: [
+					{
+						paymentAmount: 1000,
+						dueDate: Date.now() + 86_400_000,
+						description: "Full payment",
+						sortOrder: 0,
+					},
+				],
+			});
+			await drain();
+
+			await asUser.mutation(api.payments.recordManualPayment, {
+				invoiceId,
+				amount: 250,
+				method: "cash",
+			});
+			await drain();
+
+			const invoice = await t.run(async (ctx) => ctx.db.get(invoiceId));
+			expect(invoice?.status).toBe("draft");
+			expect(invoice?.paidAt).toBeUndefined();
+			expect(await activitiesOfType(invoiceId, "invoice_paid")).toHaveLength(0);
+			expect(await celebrations(invoiceId)).toHaveLength(0);
+			expect(await statusEvents(invoiceId)).toHaveLength(0);
+		});
+
+		it("settling a sent invoice does not re-debit the clientSends meter", async () => {
+			const { asUser, orgId, clientId } = await seedOrg();
+			const invoiceId = await createDraftInvoice(asUser, clientId, 1000);
+			await asUser.mutation(api.invoices.update, {
+				id: invoiceId,
+				status: "sent",
+			});
+			await drain();
+			expect((await sendUsage(orgId))?.used).toBe(1);
+
+			await asUser.mutation(api.payments.recordManualPayment, {
+				invoiceId,
+				amount: 1000,
+				method: "cash",
+			});
+			await drain();
+
+			expect((await t.run(async (ctx) => ctx.db.get(invoiceId)))?.status).toBe(
+				"paid"
+			);
+			expect((await sendUsage(orgId))?.used).toBe(1);
+		});
 	});
 });

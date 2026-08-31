@@ -93,7 +93,7 @@ export const invoicesAndPaymentsArticles: HelpArticle[] = [
 							"**Draft**: you are still working on it, and it is not visible in the client portal.",
 							"**Sent**: the client has been billed and payment is open.",
 							"**Paid**: the invoice is settled.",
-							"**Overdue**: the invoice was sent and its due date has passed. OneTool moves it there for you at 1:00 AM in your organization's timezone, the morning after the due date, and notifies the organization owner. An invoice that was already more than a week past due moves quietly instead, with no notification and no automation, so a long-neglected backlog does not suddenly start chasing clients. It stays overdue until it is paid.",
+							"**Overdue**: the invoice was sent and its due date has passed. OneTool moves it there for you at 1:00 AM in your organization's timezone, the morning after the due date, and notifies the organization owner. An invoice that was already more than a week past due moves quietly instead, with no notification and no automation, so a long-neglected backlog does not suddenly start chasing clients. It stays overdue until the client pays, or until you reschedule the installments so the last one is due in the future.",
 							"**Cancelled**: the invoice is void.",
 						],
 					},
@@ -135,7 +135,7 @@ export const invoicesAndPaymentsArticles: HelpArticle[] = [
 			},
 			{
 				question: "Why does my invoice show as overdue?",
-				answer: "It was sent and its due date has passed. OneTool moves sent invoices to Overdue on its own, at 1:00 AM in your organization's timezone the morning after the due date, and notifies the organization owner. Invoices that were already more than a week past due move quietly, without a notification. It stays overdue until it is paid, either online through the portal or by you recording the payment.",
+				answer: "It was sent and its due date has passed. OneTool moves sent invoices to Overdue on its own, at 1:00 AM in your organization's timezone the morning after the due date, and notifies the organization owner. Invoices that were already more than a week past due move quietly, without a notification. It stays overdue until the client pays, online through the portal or with you recording the payment. If they need more time, reschedule the installments. Once the last one is due in the future, the invoice goes back to Sent.",
 			},
 			{
 				question: "Can I edit an invoice after sending it?",
@@ -172,6 +172,10 @@ export const invoicesAndPaymentsArticles: HelpArticle[] = [
 						type: "note",
 						text: "Invoices converted from a quote start with the **Full Payment** row right away. Invoices created from scratch get it automatically when you send them.",
 					},
+					{
+						type: "paragraph",
+						text: "The invoice's own due date is the last installment's date. Move that installment and the invoice's deadline moves with it.",
+					},
 				],
 			},
 			{
@@ -194,7 +198,7 @@ export const invoicesAndPaymentsArticles: HelpArticle[] = [
 					},
 					{
 						type: "note",
-						text: "Installments that are already paid are locked. You can rework the unpaid remainder, but money you have collected stays where it is.",
+						text: "Paid, refunded, and voided installments are locked, so you rework the unpaid ones around them. Each locked installment counts for what you kept from it, which means a refunded or voided amount counts for nothing and the unpaid installments have to cover it. The installment amounts then add up to more than the invoice total, which is expected: the panel counts what you kept, not what you charged.",
 					},
 				],
 			},
@@ -211,7 +215,11 @@ export const invoicesAndPaymentsArticles: HelpArticle[] = [
 		faq: [
 			{
 				question: "Can I change the schedule after the client has paid an installment?",
-				answer: "Yes. Open **Configure** again and adjust the unpaid installments. Paid installments are locked, so money you have already collected is never redistributed.",
+				answer: "Yes. Open **Configure** again and adjust the unpaid installments. Locked installments stay as they are, and money you kept from them is never redistributed, but anything refunded or voided counts as uncollected and the unpaid installments have to cover it.",
+			},
+			{
+				question: "How do I give a client more time on an overdue invoice?",
+				answer: "Open the invoice and click **Reschedule payments** on the overdue banner, or click **Configure** on the Payment Schedule tab. Give the unpaid installments later dates. **Shift dates** moves them all by the same number of days at once. When the last installment is due in the future, the invoice goes back to Sent.",
 			},
 			{
 				question: "Why is the schedule empty on a new invoice?",
@@ -378,15 +386,32 @@ export const invoicesAndPaymentsArticles: HelpArticle[] = [
 				],
 			},
 			{
+				heading: "Refunds start in Stripe",
+				blocks: [
+					{
+						type: "paragraph",
+						text: "You issue a refund from the Stripe dashboard, not from OneTool. Find the payment, refund all or part of it, and OneTool records what Stripe reports. A notification tells you the amount and which invoice it landed on.",
+					},
+				],
+			},
+			{
 				heading: "What a refund does to the invoice",
 				blocks: [
 					{
 						type: "paragraph",
-						text: "When a payment is refunded, that amount no longer counts as collected. The invoice's remaining balance reopens by the refunded amount, and the client's portal offers payment again for what is now outstanding.",
+						text: "Refunded money stops counting as collected, so the invoice's balance reopens by that amount. An invoice is only Paid when nothing is owed on it, so one that read Paid moves back to Sent.",
 					},
 					{
 						type: "paragraph",
-						text: "The portal does not announce the refund. Your client sees the reopened balance, not a message explaining it, so tell them directly when you issue a refund and what you expect to happen next.",
+						text: "The refunded installment itself is closed. The portal drops its Pay button rather than ask your client to pay the same money twice, and an invoice with nothing left to collect reads Refunded.",
+					},
+					{
+						type: "paragraph",
+						text: "So a refund that reopens a balance needs a new installment before your client can pay it. Open **Configure** and the panel shows how far the schedule now falls short of the invoice total. Add a row for the difference and the Pay button comes back.",
+					},
+					{
+						type: "paragraph",
+						text: "Your client sees the refund on the installment it came from, with the amount that went back to their card. They do not see why, so tell them directly when you issue one.",
 					},
 				],
 			},

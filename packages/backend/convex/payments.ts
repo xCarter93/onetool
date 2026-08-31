@@ -1,4 +1,4 @@
-import { query, internalQuery, QueryCtx, MutationCtx } from "./_generated/server";
+import { internalQuery, QueryCtx, MutationCtx } from "./_generated/server";
 import { mutation, internalMutation } from "./lib/triggers";
 import { touchInvoiceContent } from "./lib/editLocks";
 import { ConvexError, v } from "convex/values";
@@ -14,11 +14,25 @@ import { rateLimiter } from "./rateLimits";
 import { entitlementsFromIdentity, isFeatureAllowed } from "./lib/entitlements";
 import { getCurrentUserOrgIdOrNull } from "./lib/auth";
 import { emitStatusChangeEvent } from "./eventBus";
-import { applyMarkPaidCascade } from "./lib/payments";
+import {
+	applyMarkPaidCascade,
+	ensureFullPaymentRow,
+	reconcileInvoiceSettlement,
+} from "./lib/payments";
+import { collectedAmount, refundedAmountOf } from "./lib/paymentInsights";
+import { syncInvoiceDueDate } from "./lib/paymentSchedule";
+import { transitionInvoice } from "./lib/invoiceTransitions";
 import { calculateInvoiceTotals } from "./lib/invoiceTotals";
-import { dollarsToCents, formatCurrency, roundCents, sumMoney } from "./lib/money";
-import { ActivityHelpers } from "./lib/activities";
-import { celebrateInvoicePaid } from "./lib/celebrations";
+import { isPastDue } from "./lib/invoiceLateness";
+import { getOrgTimezoneById } from "./lib/organization";
+import { localTodayUtcMidnight } from "./lib/schedule";
+import {
+	centsToDollars,
+	dollarsToCents,
+	formatCurrency,
+	roundCents,
+	sumMoney,
+} from "./lib/money";
 import { kickQboSyncWorker, maybeEnqueueQboSync } from "./lib/quickbooksEnqueue";
 import {
 	optionalUserQuery,
@@ -230,7 +244,7 @@ export const getInvoiceSummary = optionalUserQuery({
 				p.status === "pending" || p.status === "sent" || p.status === "overdue"
 		);
 
-		const paidAmount = sumMoney(paidPayments.map((p) => p.paymentAmount));
+		const paidAmount = sumMoney(payments.map(collectedAmount));
 
 		return {
 			totalPayments: payments.length,
@@ -286,6 +300,7 @@ export const create = userMutation({
 
 		// The payment schedule prints on the invoice PDF.
 		await touchInvoiceContent(ctx, args.invoiceId);
+		await syncInvoiceDueDate(ctx, args.invoiceId);
 
 		return paymentId;
 	},
@@ -300,11 +315,12 @@ export const update = userMutation({
 		paymentAmount: v.optional(v.number()),
 		dueDate: v.optional(v.number()),
 		description: v.optional(v.string()),
+		// No "overdue": per-installment lateness is derived for display, never
+		// stored. Only the invoice carries a persisted overdue status.
 		status: v.optional(
 			v.union(
 				v.literal("pending"),
 				v.literal("sent"),
-				v.literal("overdue"),
 				v.literal("cancelled")
 			)
 		),
@@ -349,6 +365,15 @@ export const update = userMutation({
 			await touchInvoiceContent(ctx, payment.invoiceId);
 		}
 
+		// A moved deadline — or a cancelled row dropping out of the schedule —
+		// changes which installment is last.
+		if (
+			filteredUpdates.dueDate !== undefined ||
+			filteredUpdates.status !== undefined
+		) {
+			await syncInvoiceDueDate(ctx, payment.invoiceId);
+		}
+
 		return id;
 	},
 });
@@ -379,22 +404,33 @@ export const remove = userMutation({
 
 		// The payment schedule prints on the invoice PDF.
 		await touchInvoiceContent(ctx, payment.invoiceId);
+		await syncInvoiceDueDate(ctx, payment.invoiceId);
 
 		return args.id;
 	},
 });
 
 /**
- * Configure payments for an invoice (bulk create/update)
- * This replaces all unpaid payments with the new configuration
- * Paid payments are preserved and cannot be modified
+ * Rewrite an invoice's payment schedule.
+ *
+ * Rows arriving with an `id` are patched in place rather than recreated, so a
+ * reschedule keeps the cached Stripe PaymentIntent and the client's open
+ * checkout survives it. Editable rows the caller omits are deleted.
+ *
+ * Paid and refunded rows are untouchable, and count toward the sum at what was
+ * kept rather than what was charged. Cancelled rows and refunded money are both
+ * balance nobody collected, so the live schedule has to cover them.
+ *
+ * Rescheduling an overdue invoice past today un-flips it back to sent. This is
+ * the one sanctioned un-flip: someone deliberately granted more time.
  */
 export const configurePayments = userMutation({
 	args: {
 		invoiceId: v.id("invoices"),
 		payments: v.array(
 			v.object({
-				id: v.optional(v.id("payments")), // Existing payment ID if updating
+				/** Patch this existing row instead of recreating it. */
+				id: v.optional(v.id("payments")),
 				paymentAmount: v.number(),
 				dueDate: v.number(),
 				description: v.optional(v.string()),
@@ -420,14 +456,23 @@ export const configurePayments = userMutation({
 			.withIndex("by_invoice", (q) => q.eq("invoiceId", args.invoiceId))
 			.collect();
 
-		// Separate paid and unpaid payments
-		const paidPayments = existingPayments.filter((p) => p.status === "paid");
-		const unpaidPayments = existingPayments.filter((p) => p.status !== "paid");
+		// Money that already moved, and so is spoken for in the invoice total.
+		const settledPayments = existingPayments.filter(
+			(p) => p.status === "paid" || p.status === "refunded"
+		);
+		const editablePayments = existingPayments.filter(
+			(p) =>
+				p.status !== "paid" &&
+				p.status !== "refunded" &&
+				p.status !== "cancelled"
+		);
 
-		// Calculate total from new payments + paid payments
-		const newPaymentAmounts = args.payments.map((p) => p.paymentAmount);
-		const paidPaymentAmounts = paidPayments.map((p) => p.paymentAmount);
-		const allPaymentAmounts = [...newPaymentAmounts, ...paidPaymentAmounts];
+		// Settled rows count at what was KEPT, not what was charged: money that
+		// went back out to the client is balance the live schedule has to re-cover.
+		const allPaymentAmounts = [
+			...args.payments.map((p) => p.paymentAmount),
+			...settledPayments.map(collectedAmount),
+		];
 
 		// Validate that payments sum equals invoice total
 		const validation = await validatePaymentSum(
@@ -451,35 +496,101 @@ export const configurePayments = userMutation({
 			}
 		}
 
-		// Delete existing unpaid payments
-		for (const unpaidPayment of unpaidPayments) {
-			await ctx.db.delete(unpaidPayment._id);
-		}
-
-		// Create new payments
-		const createdIds: PaymentId[] = [];
+		const editableById = new Map(editablePayments.map((p) => [p._id, p]));
+		const keptIds = new Set<PaymentId>();
+		const scheduleIds: PaymentId[] = [];
 
 		for (const paymentData of args.payments) {
-			const paymentId = await ctx.db.insert("payments", {
-				orgId: ctx.orgId,
-				invoiceId: args.invoiceId,
-				paymentAmount: paymentData.paymentAmount,
-				dueDate: paymentData.dueDate,
-				description: paymentData.description,
-				sortOrder: paymentData.sortOrder,
-				status: "pending",
-			});
+			const existing = paymentData.id
+				? editableById.get(paymentData.id)
+				: undefined;
 
-			createdIds.push(paymentId);
+			if (paymentData.id && !existing) {
+				throw new ConvexError({
+					code: "BAD_REQUEST",
+					message:
+						"That installment is no longer editable. Reopen the schedule and try again.",
+				});
+			}
+
+			if (existing) {
+				// Two args claiming one row would collapse into a single patch and
+				// leave the schedule short of the invoice total.
+				if (keptIds.has(existing._id)) {
+					throw new ConvexError({
+						code: "BAD_REQUEST",
+						message: "Each installment can only appear once in a schedule.",
+					});
+				}
+				keptIds.add(existing._id);
+				scheduleIds.push(existing._id);
+				// Deliberately narrow: the pending Stripe caches stay, which is the
+				// whole reason a reschedule patches instead of recreating.
+				await ctx.db.patch(existing._id, {
+					paymentAmount: paymentData.paymentAmount,
+					dueDate: paymentData.dueDate,
+					description: paymentData.description,
+					sortOrder: paymentData.sortOrder,
+				});
+				continue;
+			}
+
+			scheduleIds.push(
+				await ctx.db.insert("payments", {
+					orgId: ctx.orgId,
+					invoiceId: args.invoiceId,
+					paymentAmount: paymentData.paymentAmount,
+					dueDate: paymentData.dueDate,
+					description: paymentData.description,
+					sortOrder: paymentData.sortOrder,
+					status: "pending",
+				})
+			);
 		}
+
+		for (const dropped of editablePayments) {
+			if (!keptIds.has(dropped._id)) await ctx.db.delete(dropped._id);
+		}
+
+		// invoice.dueDate is the schedule's final deadline, so it follows the rows.
+		await syncInvoiceDueDate(ctx, args.invoiceId);
 
 		// The payment schedule prints on the invoice PDF.
 		await touchInvoiceContent(ctx, args.invoiceId);
 
-		// Return paid payment IDs followed by new payment IDs
-		return [...paidPayments.map((p) => p._id), ...createdIds];
+		await unflipRescheduledInvoice(ctx, args.invoiceId);
+
+		// Settled rows first, then the live schedule in the order it was sent.
+		return [...settledPayments.map((p) => p._id), ...scheduleIds];
 	},
 });
+
+/**
+ * The only path out of `overdue` short of payment: a person moved the deadline
+ * past today. Deliberately not in `payments.update` or the sweep — an invoice
+ * correcting its own status without anyone asking was rejected.
+ */
+async function unflipRescheduledInvoice(
+	ctx: MutationCtx & { orgId: Id<"organizations">; user: Doc<"users"> },
+	invoiceId: InvoiceId
+): Promise<void> {
+	const invoice = await ctx.db.get(invoiceId);
+	if (!invoice || invoice.status !== "overdue") return;
+
+	const today = localTodayUtcMidnight(
+		Date.now(),
+		await getOrgTimezoneById(ctx, invoice.orgId)
+	);
+	if (isPastDue(invoice.dueDate, today)) return;
+
+	await transitionInvoice(ctx, invoice, "sent", {
+		actor: { userId: ctx.user._id },
+		source: "payments.configurePayments",
+		// An invoice flipped to overdue by hand never got a firstSentAt, so an
+		// unskipped debit here would fail an otherwise valid reschedule.
+		meter: "skip",
+	});
+}
 
 /**
  * Create a default single payment for the full invoice amount
@@ -530,9 +641,9 @@ export const createDefaultPayment = userMutation({
  * bent: the received amount settles unpaid installment rows in order, and when
  * it lands mid-row the row is SPLIT — the settled part keeps the row, the
  * still-owed remainder becomes a new row. Settling the last outstanding row
- * flips the invoice to paid with the same effects as invoices.markPaid
- * (activity, celebration, status event, QuickBooks sync). A full-amount
- * payment therefore degenerates to exactly the markPaid behavior.
+ * flips the invoice to paid through the shared status seam, so a field payment
+ * reaches the activity feed, celebrations, automations and QuickBooks exactly
+ * like every other paid path.
  *
  * Manual invoices created without installment rows (rows are normally
  * backfilled at send time) get the standard full-amount row first, so
@@ -580,28 +691,13 @@ export const recordManualPayment = userMutation({
 			});
 		}
 
-		// Rows are normally backfilled at send time; a never-sent invoice may
-		// have none. Mirror the send-time backfill so there is something to
-		// settle against.
-		let rows = await ctx.db
+		// Invoices that predate the create-time seed may still have no rows, and
+		// cash-first field jobs are the point of this mutation.
+		await ensureFullPaymentRow(ctx, invoice);
+		const rows = await ctx.db
 			.query("payments")
 			.withIndex("by_invoice_sort", (q) => q.eq("invoiceId", invoice._id))
 			.collect();
-		if (rows.length === 0 && invoice.total > 0) {
-			await ctx.db.insert("payments", {
-				orgId: invoice.orgId,
-				invoiceId: invoice._id,
-				paymentAmount: invoice.total,
-				dueDate: invoice.dueDate,
-				description: "Full Payment",
-				sortOrder: 0,
-				status: "pending",
-			});
-			rows = await ctx.db
-				.query("payments")
-				.withIndex("by_invoice_sort", (q) => q.eq("invoiceId", invoice._id))
-				.collect();
-		}
 
 		const outstanding = rows.filter(
 			(p) =>
@@ -691,40 +787,10 @@ export const recordManualPayment = userMutation({
 		const fullySettled = remaining === 0;
 
 		if (fullySettled) {
-			// Same effect set as invoices.markPaid, plus the status event that the
-			// automation triggers and payment-received notifications hang off.
-			const oldStatus = invoice.status;
-			await ctx.db.patch(invoice._id, { status: "paid", paidAt: now });
-			const updatedInvoice = await ctx.db.get(invoice._id);
-			if (updatedInvoice) {
-				const client = await ctx.db.get(updatedInvoice.clientId);
-				await ActivityHelpers.invoicePaid(
-					ctx,
-					updatedInvoice as Doc<"invoices">,
-					client?.companyName || "Unknown Client"
-				);
-				await celebrateInvoicePaid(ctx, updatedInvoice, ctx.user._id);
-				await emitStatusChangeEvent(
-					ctx,
-					updatedInvoice.orgId,
-					"invoice",
-					updatedInvoice._id,
-					oldStatus,
-					"paid",
-					"payments.recordManualPayment"
-				);
-				if (
-					await maybeEnqueueQboSync(
-						ctx,
-						updatedInvoice.orgId,
-						"invoice",
-						updatedInvoice._id,
-						{ kick: false }
-					)
-				) {
-					qboSyncQueued = true;
-				}
-			}
+			await transitionInvoice(ctx, invoice, "paid", {
+				actor: { userId: ctx.user._id },
+				source: "payments.recordManualPayment",
+			});
 		}
 		if (qboSyncQueued) {
 			await kickQboSyncWorker(ctx, invoice.orgId);
@@ -862,35 +928,6 @@ export const markAsSent = userMutation({
 	},
 });
 
-/**
- * Mark payment as overdue
- */
-export const markAsOverdue = userMutation({
-	args: { id: v.id("payments") },
-	handler: async (ctx, args): Promise<PaymentId> => {
-		await ctx.requireLevel("invoices", "modify");
-		const payment = await ctx.orgEntity("payments", args.id);
-		const parentInvoice = await validateInvoiceAccess(ctx, payment.invoiceId, ctx.orgId);
-		await ctx.requireRecordScope("invoices", () =>
-			ctx.actorScope().then((s) =>
-				parentInvoice.projectId
-					? s.projectIds.has(parentInvoice.projectId)
-					: s.clientIds.has(parentInvoice.clientId)
-			)
-		);
-
-		if (payment.status === "paid") {
-			throw new Error("Cannot mark a paid payment as overdue");
-		}
-
-		await ctx.db.patch(args.id, {
-			status: "overdue",
-		});
-
-		return args.id;
-	},
-});
-
 // ============================================================================
 // Checkout session lifecycle
 // ============================================================================
@@ -997,9 +1034,10 @@ export const getByPaymentIntentIdInternal = internalQuery({
 	handler: async (ctx, args) => {
 		const payment = await ctx.db
 			.query("payments")
-			.withIndex("by_org", (q) => q.eq("orgId", args.orgId))
-			.filter((q) =>
-				q.eq(q.field("stripePaymentIntentId"), args.paymentIntentId)
+			.withIndex("by_org_payment_intent", (q) =>
+				q
+					.eq("orgId", args.orgId)
+					.eq("stripePaymentIntentId", args.paymentIntentId)
 			)
 			.first();
 		return payment ? { _id: payment._id } : null;
@@ -1241,14 +1279,19 @@ export const markRefundedFromWebhookInternal = systemMutation({
 	args: {
 		paymentIntentId: v.string(),
 		refundedAt: v.number(),
+		/** charge.amount_refunded, cumulative across every refund on the charge. */
+		refundedAmountCents: v.number(),
+		/** charge.refunded, or amount_refunded covering the captured amount. */
+		fullyRefunded: v.boolean(),
 	},
 	returns: v.null(),
 	handler: async (ctx, args): Promise<null> => {
 		const payment = await ctx.db
 			.query("payments")
-			.withIndex("by_org", (q) => q.eq("orgId", ctx.orgId))
-			.filter((q) =>
-				q.eq(q.field("stripePaymentIntentId"), args.paymentIntentId)
+			.withIndex("by_org_payment_intent", (q) =>
+				q
+					.eq("orgId", ctx.orgId)
+					.eq("stripePaymentIntentId", args.paymentIntentId)
 			)
 			.first();
 		if (!payment) {
@@ -1258,23 +1301,45 @@ export const markRefundedFromWebhookInternal = systemMutation({
 			return null;
 		}
 
-		const oldStatus = payment.status;
+		const alreadyRefunded = refundedAmountOf(payment);
+		const refundedAmount = roundCents(centsToDollars(args.refundedAmountCents));
+		// The cumulative value makes the write itself idempotent; bailing when it
+		// hasn't grown is what keeps a replay from re-notifying.
+		if (refundedAmount <= alreadyRefunded) return null;
+
+		const fully =
+			args.fullyRefunded || refundedAmount >= roundCents(payment.paymentAmount);
 		await ctx.db.patch(payment._id, {
-			status: "refunded",
+			refundedAmount,
 			refundedAt: args.refundedAt,
+			...(fully ? { status: "refunded" as const } : {}),
 		});
 
-		// Emit status-change event so existing workflows fire. The entityId
-		// must point at the invoice (not the payment row) because downstream
-		// automation handlers resolve it as Id<"invoices">.
-		await emitStatusChangeEvent(
+		// An invoice is paid iff its balance is zero, so a refund that reopens a
+		// balance sends it back to sent — and emits, so dunning can pick it up.
+		await reconcileInvoiceSettlement(
 			ctx,
-			payment.orgId,
-			"invoice",
 			payment.invoiceId,
-			oldStatus,
-			"refunded",
 			"stripeWebhookActions.charge.refunded"
+		);
+
+		const invoice = await ctx.db.get(payment.invoiceId);
+		const thisRefund = roundCents(refundedAmount - alreadyRefunded);
+		const stillCollected = roundCents(payment.paymentAmount - refundedAmount);
+		await ctx.runMutation(
+			internal.notifications.createWebhookNotificationInternal,
+			{
+				orgId: ctx.orgId,
+				type: "charge_refunded",
+				paymentId: payment._id,
+				priority: "normal",
+				message:
+					`${formatCurrency(thisRefund)} was refunded on invoice ` +
+					`${invoice?.invoiceNumber ?? "(unknown)"}. ` +
+					(fully
+						? "That payment no longer counts as collected."
+						: `${formatCurrency(stillCollected)} of that payment still counts as collected.`),
+			}
 		);
 		return null;
 	},
@@ -1292,9 +1357,10 @@ export const flagDisputedFromWebhookInternal = systemMutation({
 	handler: async (ctx, args): Promise<null> => {
 		const payment = await ctx.db
 			.query("payments")
-			.withIndex("by_org", (q) => q.eq("orgId", ctx.orgId))
-			.filter((q) =>
-				q.eq(q.field("stripePaymentIntentId"), args.paymentIntentId)
+			.withIndex("by_org_payment_intent", (q) =>
+				q
+					.eq("orgId", ctx.orgId)
+					.eq("stripePaymentIntentId", args.paymentIntentId)
 			)
 			.first();
 		if (!payment) {
@@ -1361,9 +1427,10 @@ export const syncDisputeFromWebhookInternal = systemMutation({
 	handler: async (ctx, args): Promise<null> => {
 		const payment = await ctx.db
 			.query("payments")
-			.withIndex("by_org", (q) => q.eq("orgId", ctx.orgId))
-			.filter((q) =>
-				q.eq(q.field("stripePaymentIntentId"), args.paymentIntentId)
+			.withIndex("by_org_payment_intent", (q) =>
+				q
+					.eq("orgId", ctx.orgId)
+					.eq("stripePaymentIntentId", args.paymentIntentId)
 			)
 			.first();
 		if (!payment) {
@@ -1434,21 +1501,26 @@ export const syncDisputeFromWebhookInternal = systemMutation({
 
 /**
  * Revert a payment when an initiated refund later fails (charge.refund.updated
- * with refund.status === "failed", e.g. bank-transfer-backed refunds).
+ * with refund.status === "failed", e.g. bank-transfer-backed refunds). The caller
+ * supplies what Stripe still counts as refunded on the charge; this only ever
+ * lowers `refundedAmount` toward it, since charge.refunded owns every increase.
  */
 export const revertFailedRefundFromWebhookInternal = systemMutation({
 	args: {
 		paymentIntentId: v.string(),
 		refundId: v.string(),
+		/** Sum of every refund on the charge Stripe still counts as standing. */
+		netRefundedAmountCents: v.number(),
 		failureReason: v.optional(v.string()),
 	},
 	returns: v.null(),
 	handler: async (ctx, args): Promise<null> => {
 		const payment = await ctx.db
 			.query("payments")
-			.withIndex("by_org", (q) => q.eq("orgId", ctx.orgId))
-			.filter((q) =>
-				q.eq(q.field("stripePaymentIntentId"), args.paymentIntentId)
+			.withIndex("by_org_payment_intent", (q) =>
+				q
+					.eq("orgId", ctx.orgId)
+					.eq("stripePaymentIntentId", args.paymentIntentId)
 			)
 			.first();
 		if (!payment) {
@@ -1457,23 +1529,40 @@ export const revertFailedRefundFromWebhookInternal = systemMutation({
 			);
 			return null;
 		}
-		// Only revert a refund we actually recorded; a refund that failed before
-		// charge.refunded ever fired needs no compensation.
-		if (payment.status !== "refunded") return null;
+		// Webhooks are at-least-once; the id is what stops a redelivery re-notifying.
+		const reverted = payment.revertedRefundIds ?? [];
+		if (reverted.includes(args.refundId)) return null;
+
+		// Stripe's own refund records are the authority. Subtracting this refund's
+		// amount instead would eat an unrelated refund whenever the failed one was
+		// never recorded here, e.g. its charge.refunded arrived late or not at all.
+		const recorded = refundedAmountOf(payment);
+		const remainingRefund = Math.min(
+			recorded,
+			roundCents(centsToDollars(args.netRefundedAmountCents))
+		);
+		const gaveMoneyBack = remainingRefund < recorded;
 
 		await ctx.db.patch(payment._id, {
-			status: "paid",
-			refundedAt: undefined,
+			revertedRefundIds: [...reverted, args.refundId],
+			...(gaveMoneyBack
+				? {
+						...(payment.status === "refunded" &&
+						remainingRefund < roundCents(payment.paymentAmount)
+							? { status: "paid" as const }
+							: {}),
+						refundedAmount: remainingRefund === 0 ? undefined : remainingRefund,
+						...(remainingRefund === 0 ? { refundedAt: undefined } : {}),
+					}
+				: {}),
 		});
-		await emitStatusChangeEvent(
-			ctx,
-			payment.orgId,
-			"invoice",
-			payment.invoiceId,
-			"refunded",
-			"paid",
-			"stripeWebhookActions.charge.refund.updated"
-		);
+		if (gaveMoneyBack) {
+			await reconcileInvoiceSettlement(
+				ctx,
+				payment.invoiceId,
+				"stripeWebhookActions.charge.refund.updated"
+			);
+		}
 		await ctx.runMutation(
 			internal.notifications.createWebhookNotificationInternal,
 			{
@@ -1484,8 +1573,13 @@ export const revertFailedRefundFromWebhookInternal = systemMutation({
 				message:
 					`Refund ${args.refundId} failed` +
 					(args.failureReason ? ` (${args.failureReason})` : "") +
-					` and the money was not returned to your client. The payment is` +
-					` recorded as paid again - retry the refund from your Payments tab.`,
+					` and the money was not returned to your client. ` +
+					(gaveMoneyBack
+						? remainingRefund === 0
+							? "The payment is recorded as paid again"
+							: `${formatCurrency(remainingRefund)} of that payment stays refunded`
+						: "Your records already showed it as collected") +
+					` - retry the refund from your Payments tab.`,
 			}
 		);
 		return null;
@@ -1502,9 +1596,10 @@ export const clearExpiredCheckoutSessionInternal = systemMutation({
 	handler: async (ctx, args): Promise<null> => {
 		const payment = await ctx.db
 			.query("payments")
-			.withIndex("by_org", (q) => q.eq("orgId", ctx.orgId))
-			.filter((q) =>
-				q.eq(q.field("pendingCheckoutSessionId"), args.sessionId)
+			.withIndex("by_org_pending_checkout_session", (q) =>
+				q
+					.eq("orgId", ctx.orgId)
+					.eq("pendingCheckoutSessionId", args.sessionId)
 			)
 			.first();
 		if (!payment) return null;
@@ -1541,6 +1636,9 @@ export const cancel = userMutation({
 		await ctx.db.patch(args.id, {
 			status: "cancelled",
 		});
+
+		// A voided installment is no longer a deadline.
+		await syncInvoiceDueDate(ctx, payment.invoiceId);
 
 		return args.id;
 	},

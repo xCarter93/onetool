@@ -8,6 +8,7 @@ import type { Doc, Id } from "../_generated/dataModel";
 import { grantMeterBonus } from "./entitlements";
 // Deliberate cycle with lib/invoiceTransitions.ts — see the note there.
 import { transitionInvoice } from "./invoiceTransitions";
+import { remainingBalance } from "./paymentInsights";
 import { kickQboSyncWorker, maybeEnqueueQboSync } from "./quickbooksEnqueue";
 
 type ReceiptMetadata = {
@@ -24,37 +25,77 @@ type ApplyMarkPaidCascadeArgs = {
 	receiptMetadata?: ReceiptMetadata;
 };
 
-async function checkAllPaymentsPaid(
+/**
+ * Guarantee the invoice has something to collect against. The portal pays
+ * against payment rows, so an invoice with none is view-only — dragging a draft
+ * onto the Sent lane used to produce exactly that. Idempotent: an invoice that
+ * already has a schedule is never touched.
+ */
+export async function ensureFullPaymentRow(
 	ctx: MutationCtx,
-	invoiceId: Id<"invoices">,
-	currentPaymentId: Id<"payments">,
-): Promise<boolean> {
-	const all = await ctx.db
+	invoice: Doc<"invoices">,
+): Promise<void> {
+	if (invoice.total <= 0) return;
+	const existing = await ctx.db
 		.query("payments")
-		.withIndex("by_invoice", (q) => q.eq("invoiceId", invoiceId))
-		.collect();
-	return all.every(
-		(p) => p._id === currentPaymentId || p.status === "paid",
-	);
+		.withIndex("by_invoice", (q) => q.eq("invoiceId", invoice._id))
+		.first();
+	if (existing) return;
+	await ctx.db.insert("payments", {
+		orgId: invoice.orgId,
+		invoiceId: invoice._id,
+		paymentAmount: invoice.total,
+		dueDate: invoice.dueDate,
+		description: "Full Payment",
+		sortOrder: 0,
+		status: "pending",
+	});
 }
 
 /**
- * Mark the invoice paid when every installment row has flipped to paid.
+ * Bring an invoice's status in line with what it still owes: an invoice is paid
+ * if and only if its remaining balance is zero. Both directions matter — a
+ * settling installment closes it out, and a refund that reopens a balance drops
+ * a paid invoice back to `sent`.
+ *
+ * The reverse never derives `overdue`; the org-local cron owns that flip, and
+ * guessing at it here from a webhook's UTC clock would fight the sweep. Nor does
+ * it create a row for a balance a refund reopened (Patrick, 2026-08-31) — the
+ * owner schedules that through `configurePayments`.
+ *
  * Lives here (rather than payments.ts) so the cascade helper has no upward
  * import dependency.
  */
-export async function updateInvoiceStatusIfFullyPaid(
+export async function reconcileInvoiceSettlement(
 	ctx: MutationCtx,
 	invoiceId: Id<"invoices">,
-	paymentId: Id<"payments">,
+	source: string,
 ): Promise<void> {
-	const allPaid = await checkAllPaymentsPaid(ctx, invoiceId, paymentId);
-	if (!allPaid) return;
 	const invoice = await ctx.db.get(invoiceId);
 	if (!invoice) return;
-	await transitionInvoice(ctx, invoice, "paid", {
+	const rows = await ctx.db
+		.query("payments")
+		.withIndex("by_invoice", (q) => q.eq("invoiceId", invoiceId))
+		.collect();
+	// No rows means nothing has been scheduled to collect against — the invoice's
+	// own status is the only signal, so leave it be.
+	if (rows.length === 0) return;
+
+	if (remainingBalance(invoice.total, rows) === 0) {
+		await transitionInvoice(ctx, invoice, "paid", {
+			actor: "system",
+			source,
+		});
+		return;
+	}
+	if (invoice.status !== "paid") return;
+	await transitionInvoice(ctx, invoice, "sent", {
 		actor: "system",
-		source: "payments.applyMarkPaidCascade",
+		source,
+		// Money coming back out is not a client send. Without this a row whose
+		// firstSentAt predates metering would debit the meter, and an exhausted
+		// one would throw PLAN_LIMIT_REACHED out of a Stripe webhook.
+		meter: "skip",
 	});
 }
 
@@ -150,7 +191,11 @@ export async function applyMarkPaidCascade(
 	}
 
 	await ctx.db.patch(payment._id, patch);
-	await updateInvoiceStatusIfFullyPaid(ctx, payment.invoiceId, payment._id);
+	await reconcileInvoiceSettlement(
+		ctx,
+		payment.invoiceId,
+		"payments.applyMarkPaidCascade",
+	);
 	// QuickBooks: the settled installment becomes a QBO Payment (PRD §6.3).
 	await maybeEnqueueQboSync(ctx, payment.orgId, "payment", payment._id);
 	return payment._id;

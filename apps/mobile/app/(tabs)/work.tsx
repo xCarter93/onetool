@@ -20,6 +20,7 @@ import { Illustration, type IllustrationName } from "@/components/illustrations"
 import { formatCurrency } from "@/lib/format";
 import { getRecents, type RecentRecord } from "@/lib/recents";
 import { consumeSearchFocus } from "@/lib/search-focus";
+import { useOrgToday } from "@/lib/use-org-today";
 import { sameRef, type RecordRef } from "@/lib/selection-context";
 import {
 	DOCK_CLEARANCE,
@@ -165,8 +166,7 @@ export default function WorkScreen({
 	const kind = kindProp !== undefined ? kindProp : localKind;
 	const setKind = (next: WorkChipKind | null) =>
 		onKindChange ? onKindChange(next) : setLocalKind(next);
-	// Seed "now" once — react-hooks/purity forbids Date.now() during render.
-	const [now] = useState(() => Date.now());
+	const orgToday = useOrgToday();
 
 	// ── Search field focus ──────────────────────────────────────────────────
 	// One-shot latch set by the header magnifier on the other tab roots. Never in
@@ -291,7 +291,7 @@ export default function WorkScreen({
 							? (invoices ?? []).map((inv) =>
 									toInvoiceRecord(inv, {
 										clientName: clientNames.get(inv.clientId),
-										now,
+										orgToday,
 									}),
 								)
 							: (tasks ?? []).map((task) => toTaskRecord(task));
@@ -299,7 +299,16 @@ export default function WorkScreen({
 		return sorted.length
 			? [{ key: browseKind, label: KIND_LABEL[browseKind], records: sorted }]
 			: [];
-	}, [browseKind, clients, projects, quotes, invoices, tasks, clientNames, now]);
+	}, [
+		browseKind,
+		clients,
+		projects,
+		quotes,
+		invoices,
+		tasks,
+		clientNames,
+		orgToday,
+	]);
 
 	const recentSections = useMemo<Section[]>(() => {
 		const list = resting ? (recents ?? []) : [];

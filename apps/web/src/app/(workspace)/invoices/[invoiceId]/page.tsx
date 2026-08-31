@@ -1,7 +1,14 @@
 "use client";
 
+import { deriveInvoiceStatus } from "@onetool/backend/convex/lib/invoiceLateness";
+import {
+	isPayableRow,
+	refundedAmountOf,
+	remainingBalance,
+} from "@onetool/backend/convex/lib/paymentInsights";
 import { PermissionGate } from "@/components/domain/permission-gate";
 import { usePermissions } from "@/hooks/use-permissions";
+import { useOrgToday } from "@/hooks/use-org-today";
 import { useClientSendMeter } from "@/hooks/use-client-send-meter";
 import { useParams } from "next/navigation";
 import { useQuery, useMutation } from "convex/react";
@@ -14,7 +21,18 @@ import { DocumentPreviewModal } from "@/components/shared/document-preview-modal
 import { EntityEmailModal } from "@/components/shared/email/entity-email-modal";
 import { buildInvoicePdfBlob } from "./components/build-invoice-pdf-blob";
 import DeleteConfirmationModal from "@/components/ui/delete-confirmation-modal";
+import {
+	Alert,
+	AlertAction,
+	AlertDescription,
+	AlertTitle,
+} from "@/components/reui/alert";
+import { Frame, FramePanel } from "@/components/reui/frame";
+import { Button } from "@/components/ui/button";
+import { CalendarClock, Undo2 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
+import { formatCalendarDate } from "@/lib/dates";
+import { formatCurrency } from "@/lib/money";
 import { ExclamationTriangleIcon } from "@heroicons/react/24/outline";
 import { InvoiceDetailHeader } from "./components/invoice-detail-header";
 import { InvoiceDetailTabs } from "./components/invoice-detail-tabs";
@@ -22,14 +40,6 @@ import { PaymentsConfigurationModal } from "../components/payments-configuration
 import { convexErrorMessage } from "@/lib/convex-error";
 
 type InvoiceStatus = "draft" | "sent" | "paid" | "overdue" | "cancelled";
-
-const getInvoiceStatus = (
-	status: InvoiceStatus,
-	dueDate?: number
-): InvoiceStatus => {
-	if (status === "sent" && dueDate && dueDate < Date.now()) return "overdue";
-	return status;
-};
 
 const formatStatus = (status: InvoiceStatus) => {
 	switch (status) {
@@ -53,6 +63,7 @@ function InvoiceDetailPageContent() {
 	const toast = useToast();
 	const invoiceId = params.invoiceId as Id<"invoices">;
 	const { can } = usePermissions();
+	const orgToday = useOrgToday();
 
 	// State
 	const [activeTab, setActiveTab] = useState("overview");
@@ -364,10 +375,15 @@ function InvoiceDetailPageContent() {
 		);
 	}
 
-	const currentStatus = getInvoiceStatus(
-		invoice.status as InvoiceStatus,
-		invoice.dueDate
-	);
+	const currentStatus = deriveInvoiceStatus(invoice, orgToday);
+
+	// A refund reopens the balance but never mints a row to collect it, so the
+	// client is left with nothing to pay until the owner schedules one.
+	const payments = invoiceWithPayments?.payments ?? [];
+	const uncoveredByRefund =
+		payments.some((p) => refundedAmountOf(p) > 0) &&
+		!payments.some(isPayableRow) &&
+		remainingBalance(invoice.total, payments) > 0;
 
 	return (
 		<>
@@ -387,6 +403,71 @@ function InvoiceDetailPageContent() {
 
 				{/* Tabs + Sidebar */}
 				<InvoiceDetailTabs
+					banner={
+						// A refund the schedule doesn't cover blocks payment outright, so
+						// it outranks a deadline the client cannot act on anyway.
+						uncoveredByRefund ? (
+							<Frame>
+								<FramePanel className="overflow-hidden p-0!">
+									<Alert
+										variant="warning"
+										// The warning token is a bright amber; its icon needs the
+										// readable-on-tint counterpart to clear AA in light mode.
+										className="border-0 bg-warning/5 shadow-none [&>svg]:text-warning-foreground"
+									>
+										<Undo2 />
+										<AlertTitle>Your client cannot pay this invoice</AlertTitle>
+										{can("invoices", "modify") && (
+											<AlertAction>
+												<Button
+													size="xs"
+													variant="outline"
+													onClick={() => setIsPaymentsModalOpen(true)}
+												>
+													Configure
+												</Button>
+											</AlertAction>
+										)}
+										<AlertDescription>
+											A refund reopened{" "}
+											{formatCurrency(
+												remainingBalance(invoice.total, payments)
+											)}{" "}
+											of the balance, and no installment covers it. Add one to
+											the schedule and the Pay button comes back.
+										</AlertDescription>
+									</Alert>
+								</FramePanel>
+							</Frame>
+						) : currentStatus === "overdue" ? (
+							<Frame>
+								<FramePanel className="overflow-hidden p-0!">
+									<Alert
+										variant="destructive"
+										className="border-0 bg-destructive/5 shadow-none"
+									>
+										<CalendarClock />
+										<AlertTitle>This invoice is past due</AlertTitle>
+										{can("invoices", "modify") && (
+											<AlertAction>
+												<Button
+													size="xs"
+													variant="destructive"
+													onClick={() => setIsPaymentsModalOpen(true)}
+												>
+													Reschedule payments
+												</Button>
+											</AlertAction>
+										)}
+										<AlertDescription>
+											It was due {formatCalendarDate(invoice.dueDate)}.
+											Reschedule the payments to give the client a new deadline.
+										</AlertDescription>
+									</Alert>
+								</FramePanel>
+							</Frame>
+						) : null
+					}
 					activeTab={activeTab}
 					onTabChange={setActiveTab}
 					invoice={invoice}
@@ -469,6 +550,7 @@ function InvoiceDetailPageContent() {
 					onClose={() => setIsPaymentsModalOpen(false)}
 					invoiceId={invoiceId}
 					invoiceTotal={invoice.total}
+					invoiceDueDate={invoice.dueDate}
 					existingPayments={
 						invoiceWithPayments?.payments?.map((p) => ({
 							_id: p._id,
@@ -477,6 +559,7 @@ function InvoiceDetailPageContent() {
 							description: p.description,
 							status: p.status,
 							sortOrder: p.sortOrder,
+							refundedAmount: p.refundedAmount,
 						})) || []
 					}
 				/>

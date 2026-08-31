@@ -165,21 +165,29 @@ describe("list adapters", () => {
 
 	it("carries the raw total as `amount` on money records", () => {
 		const q = toQuoteRecord(quote({ total: 1200 }));
-		const i = toInvoiceRecord(invoice({ total: 980.5 }), { now: T0 });
+		const i = toInvoiceRecord(invoice({ total: 980.5 }), { orgToday: T0 });
 		expect(q.kind === "quote" && q.amount).toBe(1200);
 		expect(i.kind === "invoice" && i.amount).toBe(980.5);
 	});
 
 	it("displays a past-due sent invoice as overdue", () => {
-		expect(toInvoiceRecord(invoice(), { now: T0 + 60 * DAY }).status).toBe(
+		expect(toInvoiceRecord(invoice(), { orgToday: T0 + 60 * DAY }).status).toBe(
 			"overdue"
 		);
 	});
 
-	it("leaves a not-yet-due sent invoice alone, and never re-flags paid", () => {
-		expect(toInvoiceRecord(invoice(), { now: T0 }).status).toBe("sent");
+	it("leaves an invoice due TODAY alone", () => {
+		// The clock is the org's calendar day, so lateness starts the day AFTER
+		// the deadline — not at UTC midnight of the deadline itself.
 		expect(
-			toInvoiceRecord(invoice({ status: "paid" }), { now: T0 + 60 * DAY }).status
+			toInvoiceRecord(invoice(), { orgToday: T0 + 30 * DAY }).status
+		).toBe("sent");
+	});
+
+	it("leaves a not-yet-due sent invoice alone, and never re-flags paid", () => {
+		expect(toInvoiceRecord(invoice(), { orgToday: T0 }).status).toBe("sent");
+		expect(
+			toInvoiceRecord(invoice({ status: "paid" }), { orgToday: T0 + 60 * DAY }).status
 		).toBe("paid");
 	});
 

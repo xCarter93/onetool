@@ -1,3 +1,8 @@
+import {
+	deriveInvoiceStatus,
+	type StoredInvoiceStatus,
+} from "@onetool/backend/convex/lib/invoiceLateness";
+
 import { formatDocumentDate } from "@/lib/format";
 
 // ============================================================================
@@ -101,7 +106,7 @@ export type InvoiceInput = {
 	_creationTime: number;
 	clientId: string;
 	invoiceNumber: string;
-	status: string;
+	status: StoredInvoiceStatus;
 	total: number;
 	dueDate: number;
 	paidAt?: number;
@@ -121,13 +126,22 @@ export type TaskInput = {
 export type AdapterOptions = {
 	/** Resolved client display name — see `buildClientNameMap`. */
 	clientName?: string;
-	/** Reference time for the synthetic overdue status. Defaults to now. */
-	now?: number;
+	/**
+	 * The org's calendar day (UTC-midnight epoch) that lateness is judged
+	 * against. Defaults to the device's day.
+	 */
+	orgToday?: number;
 };
 
 // ----------------------------------------------------------------------------
 // Helpers
 // ----------------------------------------------------------------------------
+
+/** Device calendar day as a UTC-midnight epoch, for callers with no org clock. */
+function deviceToday(): number {
+	const d = new Date();
+	return Date.UTC(d.getFullYear(), d.getMonth(), d.getDate());
+}
 
 function joinMeta(parts: (string | undefined | null)[]): string {
 	return parts
@@ -210,10 +224,8 @@ export function toInvoiceRecord(
 	options: AdapterOptions = {}
 ): WorkRecord {
 	// A past-due `sent` invoice DISPLAYS as overdue (money tab / web parity — the
-	// stored status is only flipped by the reconcile cron).
-	const now = options.now ?? Date.now();
-	const status =
-		doc.status === "sent" && doc.dueDate < now ? "overdue" : doc.status;
+	// stored status is only flipped by the overdue sweep).
+	const status = deriveInvoiceStatus(doc, options.orgToday ?? deviceToday());
 	return {
 		kind: "invoice",
 		id: doc._id,

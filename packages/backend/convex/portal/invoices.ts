@@ -11,6 +11,15 @@ import { internalMutation } from "../lib/triggers";
 import { ConvexError, v } from "convex/values";
 import type { Doc, Id } from "../_generated/dataModel";
 import { getPortalSessionOrThrow } from "./helpers";
+import {
+	collectedAmount,
+	isPayableRow,
+	refundedAmountOf,
+} from "../lib/paymentInsights";
+import { roundCents, sumMoney } from "../lib/money";
+import { isPastDue } from "../lib/invoiceLateness";
+import { getOrgTimezoneById } from "../lib/organization";
+import { localTodayUtcMidnight } from "../lib/schedule";
 import { rateLimiter } from "../rateLimits";
 
 // ---------------------------------------------------------------------------
@@ -31,14 +40,22 @@ export type PortalPaymentPublic = {
 	receiptUrl: string | null;
 	// True when this installment was settled outside the portal (cash/check).
 	recordedOutsidePortal: boolean;
+	// Dollars refunded on this row. Null when nothing came back out.
+	refundedAmount: number | null;
 };
 
 export type PortalPaymentSummary = {
 	totalPaid: number;
 	totalRemaining: number;
-	displayStatus: "awaiting" | "partial" | "paid" | "overdue";
+	displayStatus: "awaiting" | "partial" | "paid" | "overdue" | "refunded";
 	isLegacy: boolean;
 	installmentCount: number;
+	/**
+	 * Whether an installment the client can still pay actually exists. The Pay
+	 * button keys off this, not off the status — a refunded invoice shows a
+	 * balance but has nothing payable, and offering to collect it 422s.
+	 */
+	hasPayableRow: boolean;
 };
 
 export type PortalInvoiceListItemPublic = {
@@ -87,6 +104,8 @@ export type PortalInvoiceGetResponse = {
 	payments: PortalPaymentPublic[];
 	paymentSummary: PortalPaymentSummary;
 	activePaymentPublic: PortalPaymentPublic | null;
+	/** UTC-midnight epoch of the business's calendar day; the lateness clock. */
+	orgToday: number;
 	businessName: string;
 	businessLogoUrl: string | null;
 	stripeChargesEnabled: boolean;
@@ -119,6 +138,7 @@ const portalPaymentPublicValidator = v.object({
 	cardBrand: v.union(v.string(), v.null()),
 	receiptUrl: v.union(v.string(), v.null()),
 	recordedOutsidePortal: v.boolean(),
+	refundedAmount: v.union(v.number(), v.null()),
 });
 
 const portalInvoiceStatusValidator = v.union(
@@ -135,9 +155,11 @@ const portalPaymentSummaryValidator = v.object({
 		v.literal("partial"),
 		v.literal("paid"),
 		v.literal("overdue"),
+		v.literal("refunded"),
 	),
 	isLegacy: v.boolean(),
 	installmentCount: v.number(),
+	hasPayableRow: v.boolean(),
 });
 
 const portalInvoiceListItemValidator = v.object({
@@ -187,6 +209,7 @@ const portalInvoiceGetValidator = v.object({
 	payments: v.array(portalPaymentPublicValidator),
 	paymentSummary: portalPaymentSummaryValidator,
 	activePaymentPublic: v.union(portalPaymentPublicValidator, v.null()),
+	orgToday: v.number(),
 	businessName: v.string(),
 	businessLogoUrl: v.union(v.string(), v.null()),
 	stripeChargesEnabled: v.boolean(),
@@ -212,41 +235,50 @@ function toPortalPaymentPublic(row: Doc<"payments">): PortalPaymentPublic {
 		cardBrand: isPaid ? row.cardBrand ?? null : null,
 		receiptUrl: isPaid ? row.stripeReceiptUrl ?? null : null,
 		recordedOutsidePortal: row.recordedOutsidePortal ?? false,
+		refundedAmount: refundedAmountOf(row) || null,
 	};
 }
 
 type DerivedSummary = {
 	totalPaid: number;
 	totalRemaining: number;
-	displayStatus: "awaiting" | "partial" | "paid" | "overdue";
+	displayStatus: "awaiting" | "partial" | "paid" | "overdue" | "refunded";
 	isLegacy: boolean;
 	installmentCount: number;
+	hasPayableRow: boolean;
 };
 
 function deriveSummary(
 	invoice: Doc<"invoices">,
 	payments: Doc<"payments">[],
+	todayUtcMidnight: number,
 ): DerivedSummary {
 	const isLegacy = payments.length === 0;
-	let totalPaid: number;
-	if (isLegacy) {
-		totalPaid = invoice.status === "paid" ? invoice.total : 0;
-	} else {
-		totalPaid = payments
-			.filter((p) => p.status === "paid")
-			.reduce((sum, p) => sum + p.paymentAmount, 0);
-	}
-	const totalRemaining = Math.max(0, invoice.total - totalPaid);
-	const now = Date.now();
+	const totalPaid = isLegacy
+		? invoice.status === "paid"
+			? invoice.total
+			: 0
+		: sumMoney(payments.map(collectedAmount));
+	const totalRemaining = Math.max(0, roundCents(invoice.total - totalPaid));
+	const refunded = sumMoney(payments.map(refundedAmountOf));
+	const hasPayableRow = isLegacy
+		? invoice.status !== "paid" && invoice.status !== "cancelled"
+		: payments.some(isPayableRow);
+
 	let displayStatus: DerivedSummary["displayStatus"];
-	if (
-		now > invoice.dueDate &&
-		totalRemaining > 0 &&
+	if (totalRemaining === 0) {
+		displayStatus = "paid";
+	} else if (refunded > 0 && !hasPayableRow) {
+		// Money went back out and nothing is left to collect. Labelling this
+		// "overdue" would tell the client to pay an invoice they cannot pay.
+		// A refund that reopens a balance deliberately does NOT mint a row here
+		// (Patrick, 2026-08-31): the owner adds one through Configure payments.
+		displayStatus = "refunded";
+	} else if (
+		isPastDue(invoice.dueDate, todayUtcMidnight) &&
 		invoice.status !== "cancelled"
 	) {
 		displayStatus = "overdue";
-	} else if (totalRemaining === 0) {
-		displayStatus = "paid";
 	} else if (totalPaid > 0) {
 		displayStatus = "partial";
 	} else {
@@ -258,6 +290,7 @@ function deriveSummary(
 		displayStatus,
 		isLegacy,
 		installmentCount: payments.length,
+		hasPayableRow,
 	};
 }
 
@@ -300,6 +333,11 @@ export const list = query({
 			)
 			.sort((a, b) => b.issuedDate - a.issuedDate);
 
+		const today = localTodayUtcMidnight(
+			Date.now(),
+			await getOrgTimezoneById(ctx, session.orgId),
+		);
+
 		// Client lookup keyed on invoice.clientId mirrors portal/quotes shape.
 		const clientCache = new Map<string, string>();
 		async function getClientName(
@@ -319,7 +357,7 @@ export const list = query({
 					.query("payments")
 					.withIndex("by_invoice_sort", (q) => q.eq("invoiceId", inv._id))
 					.collect();
-				const summary = deriveSummary(inv, payments);
+				const summary = deriveSummary(inv, payments, today);
 				const clientName = await getClientName(inv.clientId);
 				return {
 					_id: inv._id,
@@ -375,25 +413,24 @@ export const get = query({
 			.slice()
 			.sort((a, b) => a.sortOrder - b.sortOrder);
 
-		const summary = deriveSummary(invoice, sortedPayments);
+		const org = await ctx.db.get(invoice.orgId);
+		// Shipped to the client so installment rows judge lateness on the same
+		// calendar day the summary did — the browser's clock is the client's, and
+		// a portal visitor is routinely in a different zone from the business.
+		const orgToday = localTodayUtcMidnight(Date.now(), org?.timezone);
+
+		const summary = deriveSummary(invoice, sortedPayments, orgToday);
 
 		const paymentsPublic: PortalPaymentPublic[] = sortedPayments.map(
 			toPortalPaymentPublic,
 		);
 
-		const firstUnpaid =
-			sortedPayments.find(
-				(p) =>
-					p.status !== "paid" &&
-					p.status !== "cancelled" &&
-					p.status !== "refunded",
-			) ?? null;
+		const firstUnpaid = sortedPayments.find(isPayableRow) ?? null;
 
 		const activePaymentPublic: PortalPaymentPublic | null = firstUnpaid
 			? toPortalPaymentPublic(firstUnpaid)
 			: null;
 
-		const org = await ctx.db.get(invoice.orgId);
 		const businessName = org?.name ?? "";
 		const businessLogoUrl = org?.logoUrl ?? null;
 		const stripeChargesEnabled = org?.stripeChargesEnabled === true;
@@ -436,6 +473,7 @@ export const get = query({
 			payments: paymentsPublic,
 			paymentSummary: summary,
 			activePaymentPublic,
+			orgToday,
 			businessName,
 			businessLogoUrl,
 			stripeChargesEnabled,

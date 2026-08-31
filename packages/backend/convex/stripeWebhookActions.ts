@@ -223,12 +223,20 @@ export const handleEvent = internalAction({
 						);
 						break;
 					}
+					// amount_refunded is cumulative across every refund on the charge,
+					// and `refunded` is true only once the whole charge is back out.
+					const amountCaptured = charge.amount_captured || charge.amount;
 					await ctx.runMutation(
 						internal.payments.markRefundedFromWebhookInternal,
 						{
 							orgId: org!._id,
 							paymentIntentId: piId,
 							refundedAt: Date.now(),
+							refundedAmountCents: charge.amount_refunded,
+							fullyRefunded:
+								charge.refunded ||
+								(amountCaptured > 0 &&
+									charge.amount_refunded >= amountCaptured),
 						}
 					);
 					break;
@@ -290,18 +298,37 @@ export const handleEvent = internalAction({
 						typeof refund.payment_intent === "string"
 							? refund.payment_intent
 							: refund.payment_intent?.id;
-					if (!refundPiId) {
+					const refundChargeId =
+						typeof refund.charge === "string"
+							? refund.charge
+							: refund.charge?.id;
+					if (!refundPiId || !refundChargeId) {
 						console.warn(
-							`charge.refund.updated missing payment_intent for refund ${refund.id}`
+							`charge.refund.updated missing payment_intent or charge for refund ${refund.id}`
 						);
 						break;
 					}
+					// Ask Stripe what is still refunded rather than subtracting this
+					// refund's amount: the failed one may never have been recorded here,
+					// and the subtraction would then come out of an unrelated refund.
+					// A throw here returns 5xx and Stripe retries, which beats guessing.
+					const stripe = getStripeClient();
+					const refunds = await stripe.refunds
+						.list(
+							{ charge: refundChargeId, limit: 100 },
+							{ stripeAccount: org!.stripeConnectAccountId },
+						)
+						.autoPagingToArray({ limit: 1000 });
+					const netRefundedAmountCents = refunds
+						.filter((r) => r.status !== "failed" && r.status !== "canceled")
+						.reduce((sum, r) => sum + r.amount, 0);
 					await ctx.runMutation(
 						internal.payments.revertFailedRefundFromWebhookInternal,
 						{
 							orgId: org!._id,
 							paymentIntentId: refundPiId,
 							refundId: refund.id,
+							netRefundedAmountCents,
 							failureReason: refund.failure_reason ?? undefined,
 						}
 					);

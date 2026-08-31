@@ -6,6 +6,7 @@ import { ConvexError, v } from "convex/values";
 import { Doc, Id } from "./_generated/dataModel";
 import { ActivityHelpers } from "./lib/activities";
 import { remainingBalanceLookup } from "./lib/paymentInsights";
+import { ensureFullPaymentRow } from "./lib/payments";
 import { transitionInvoice } from "./lib/invoiceTransitions";
 import {
 	validateParentAccess,
@@ -42,6 +43,8 @@ import { formatEmailFrom } from "./lib/emailFrom";
 import { maybeEnqueueQboSync } from "./lib/quickbooksEnqueue";
 import { calculateInvoiceTotals, syncInvoiceTotals } from "./lib/invoiceTotals";
 import { assertInvoiceContentEditable } from "./lib/editLocks";
+import { getOrgTimezoneById } from "./lib/organization";
+import { localTodayUtcMidnight } from "./lib/schedule";
 import { roundCents, sumMoney, dollarsToCents } from "./lib/money";
 import {
 	optionalUserQuery,
@@ -399,6 +402,7 @@ export const create = userMutation({
 		// Get the created invoice for activity logging
 		const invoice = await ctx.db.get(invoiceId);
 		if (invoice) {
+			await ensureFullPaymentRow(ctx, invoice);
 			const client = await ctx.db.get(invoice.clientId);
 			await ActivityHelpers.invoiceCreated(
 				ctx,
@@ -712,25 +716,9 @@ export const sendToClient = userMutation({
 			});
 		}
 
-		// Guarantee portal payability: the portal's native Elements flow pays against
-		// payment rows, so an invoice with none is view-only. Quote-derived invoices
-		// already carry a "Full Payment" row; manual invoices (invoices.create) do not.
-		// Backfill one at send time so every sent invoice is payable in the portal.
-		const existingPayments = await ctx.db
-			.query("payments")
-			.withIndex("by_invoice", (q) => q.eq("invoiceId", invoice._id))
-			.collect();
-		if (existingPayments.length === 0 && invoice.total > 0) {
-			await ctx.db.insert("payments", {
-				orgId: invoice.orgId,
-				invoiceId: invoice._id,
-				paymentAmount: invoice.total,
-				dueDate: invoice.dueDate,
-				description: "Full Payment",
-				sortOrder: 0,
-				status: "pending",
-			});
-		}
+		// Belt and braces: creation seeds the row, but invoices that predate that
+		// still reach the portal through here.
+		await ensureFullPaymentRow(ctx, invoice);
 
 		// A re-send has no transition, so the seam never enqueued for it.
 		if (!sending) {
@@ -1009,7 +997,11 @@ export const getOverdue = optionalUserQuery({
 		await ctx.requireLevel("invoices", "view");
 
 		const now = Date.now();
-		const sevenDaysFromNow = now + 7 * 24 * 60 * 60 * 1000;
+		const today = localTodayUtcMidnight(
+			now,
+			await getOrgTimezoneById(ctx, orgId)
+		);
+		const sevenDaysFromNow = today + 7 * 24 * 60 * 60 * 1000;
 
 		// Get invoices that are sent or overdue
 		const invoices = await ctx.db
@@ -1048,8 +1040,10 @@ export const getOverdue = optionalUserQuery({
 		for (const invoice of allInvoices) {
 			const payments = paymentsByInvoice.get(invoice._id) ?? [];
 			if (payments.length === 0) {
-				// No payment records — include if invoice itself is past due
-				if (invoice.dueDate <= now) {
+				// No payment records — include if the invoice is due today or earlier.
+				// Deliberately looser than isPastDue: the widget is "needs attention",
+				// and the payments branch below reaches a week ahead.
+				if (invoice.dueDate <= today) {
 					results.push({ ...invoice, remainingBalance: invoice.total });
 				}
 				continue;
