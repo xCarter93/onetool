@@ -273,6 +273,7 @@ describe("portal.invoices", () => {
 		});
 		await insertPayment(t, s, invId, {
 			paymentAmount: 100,
+			dueDate: today,
 			sortOrder: 0,
 			status: "sent",
 		});

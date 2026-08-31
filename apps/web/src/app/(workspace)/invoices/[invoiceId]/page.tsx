@@ -510,6 +510,7 @@ function InvoiceDetailPageContent() {
 							description: p.description,
 							status: p.status,
 							sortOrder: p.sortOrder,
+							refundedAmount: p.refundedAmount,
 						})) || []
 					}
 				/>

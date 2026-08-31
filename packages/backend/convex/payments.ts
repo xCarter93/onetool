@@ -417,10 +417,9 @@ export const remove = userMutation({
  * reschedule keeps the cached Stripe PaymentIntent and the client's open
  * checkout survives it. Editable rows the caller omits are deleted.
  *
- * Paid and refunded rows are untouchable and count toward the sum — their money
- * is part of the invoice total. Cancelled rows are voided installments: they
- * stay on the record but are excluded from the sum, so the live schedule has to
- * cover what they no longer will.
+ * Paid and refunded rows are untouchable, and count toward the sum at what was
+ * kept rather than what was charged. Cancelled rows and refunded money are both
+ * balance nobody collected, so the live schedule has to cover them.
  *
  * Rescheduling an overdue invoice past today un-flips it back to sent. This is
  * the one sanctioned un-flip: someone deliberately granted more time.
@@ -468,9 +467,11 @@ export const configurePayments = userMutation({
 				p.status !== "cancelled"
 		);
 
+		// Settled rows count at what was KEPT, not what was charged: money that
+		// went back out to the client is balance the live schedule has to re-cover.
 		const allPaymentAmounts = [
 			...args.payments.map((p) => p.paymentAmount),
-			...settledPayments.map((p) => p.paymentAmount),
+			...settledPayments.map(collectedAmount),
 		];
 
 		// Validate that payments sum equals invoice total
@@ -1531,11 +1532,17 @@ export const revertFailedRefundFromWebhookInternal = systemMutation({
 		const recorded = refundedAmountOf(payment);
 		if (recorded <= 0) return null;
 
+		// refundedAmount is cumulative but this subtraction is not idempotent, so
+		// a redelivered failure would eat an unrelated refund's money.
+		const reverted = payment.revertedRefundIds ?? [];
+		if (reverted.includes(args.refundId)) return null;
+
 		const remainingRefund = Math.max(
 			0,
 			roundCents(recorded - centsToDollars(args.refundAmountCents))
 		);
 		await ctx.db.patch(payment._id, {
+			revertedRefundIds: [...reverted, args.refundId],
 			// Whatever is left is no longer the whole row, so a fully refunded row
 			// goes back to paid even when earlier partial refunds still stand.
 			...(payment.status === "refunded" ? { status: "paid" as const } : {}),

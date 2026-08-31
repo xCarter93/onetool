@@ -162,9 +162,7 @@ describe("payments.configurePayments", () => {
 	});
 
 	describe("rows a reschedule may not touch", () => {
-		it("preserves a refunded row and counts it toward the total", async () => {
-			// Refunded money is still part of what the invoice billed, so the live
-			// schedule only has to cover the rest.
+		it("preserves a refunded row but makes the live schedule re-cover its amount", async () => {
 			const { orgId, invoiceId, asUser } = await seed();
 			const refundedId = await insertRow(orgId, invoiceId, {
 				paymentAmount: 400,
@@ -174,16 +172,58 @@ describe("payments.configurePayments", () => {
 				refundedAt: TODAY - DAY,
 			});
 
+			// The 400 went back to the client, so 600 leaves the invoice short.
+			await expect(
+				asUser.mutation(api.payments.configurePayments, {
+					invoiceId,
+					payments: [
+						{ paymentAmount: 600, dueDate: TODAY + 7 * DAY, sortOrder: 0 },
+					],
+				})
+			).rejects.toThrowError(/must equal invoice total/);
+
 			await asUser.mutation(api.payments.configurePayments, {
 				invoiceId,
 				payments: [
-					{ paymentAmount: 600, dueDate: TODAY + 7 * DAY, sortOrder: 0 },
+					{ paymentAmount: 1000, dueDate: TODAY + 7 * DAY, sortOrder: 0 },
 				],
 			});
 
 			const rows = await rowsOf(invoiceId);
 			expect(rows.map((r) => r._id)).toContain(refundedId);
 			expect(rows.find((r) => r._id === refundedId)?.status).toBe("refunded");
+		});
+
+		it("counts a partially refunded paid row at what was kept", async () => {
+			const { orgId, invoiceId, asUser } = await seed();
+			await insertRow(orgId, invoiceId, {
+				paymentAmount: 400,
+				dueDate: TODAY - 10 * DAY,
+				status: "paid",
+				paidAt: TODAY - 9 * DAY,
+				refundedAmount: 100,
+				refundedAt: TODAY - DAY,
+			});
+
+			// 300 kept, so the live schedule owes 700 rather than 600.
+			await expect(
+				asUser.mutation(api.payments.configurePayments, {
+					invoiceId,
+					payments: [
+						{ paymentAmount: 600, dueDate: TODAY + 7 * DAY, sortOrder: 0 },
+					],
+				})
+			).rejects.toThrowError(/must equal invoice total/);
+
+			await asUser.mutation(api.payments.configurePayments, {
+				invoiceId,
+				payments: [
+					{ paymentAmount: 700, dueDate: TODAY + 7 * DAY, sortOrder: 0 },
+				],
+			});
+
+			const rows = await rowsOf(invoiceId);
+			expect(rows).toHaveLength(2);
 		});
 
 		it("preserves a cancelled row but makes the live schedule cover its amount", async () => {

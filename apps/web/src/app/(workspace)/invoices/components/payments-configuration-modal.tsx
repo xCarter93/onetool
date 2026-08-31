@@ -54,6 +54,7 @@ interface ExistingPayment {
 	description?: string;
 	status: string;
 	sortOrder: number;
+	refundedAmount?: number;
 }
 
 interface PaymentsConfigurationModalProps {
@@ -73,6 +74,8 @@ interface LocalPayment {
 	dueDate: number;
 	description: string;
 	lock?: RowLock;
+	/** Dollars kept on a locked row, net of refunds. Undefined while editable. */
+	collected?: number;
 	sortOrder: number;
 }
 
@@ -85,25 +88,45 @@ const lockOf = (status: string): RowLock | undefined =>
 		? status
 		: undefined;
 
+/** Dollars kept on a locked row; mirrors `collectedAmount` on the backend. */
+const collectedOf = (
+	payment: ExistingPayment,
+	lock: RowLock | undefined
+): number | undefined => {
+	if (lock === undefined) return undefined;
+	if (lock === "paid") {
+		return roundCents(payment.paymentAmount - (payment.refundedAmount ?? 0));
+	}
+	// A refunded or voided installment kept nothing.
+	return 0;
+};
+
 /**
- * A voided installment is money nobody will collect, so the live schedule has
- * to cover its amount. Paid and refunded rows already account for theirs.
+ * What a row contributes to the invoice total. Refunded money and voided
+ * installments are balance nobody collected, so the live schedule re-covers it.
  */
-const countsTowardTotal = (payment: LocalPayment) =>
-	payment.lock !== "cancelled";
+const countedAmount = (payment: LocalPayment) =>
+	payment.collected ?? payment.paymentAmount;
+
+/** Mirrors `syncInvoiceDueDate`: a voided installment is not a deadline. */
+const setsDeadline = (payment: LocalPayment) => payment.lock !== "cancelled";
 
 const mapExistingPayments = (
 	existingPayments: ExistingPayment[]
 ): LocalPayment[] =>
-	existingPayments.map((p) => ({
-		id: p._id,
-		originalId: p._id,
-		paymentAmount: p.paymentAmount,
-		dueDate: p.dueDate,
-		description: p.description || "",
-		lock: lockOf(p.status),
-		sortOrder: p.sortOrder,
-	}));
+	existingPayments.map((p) => {
+		const lock = lockOf(p.status);
+		return {
+			id: p._id,
+			originalId: p._id,
+			paymentAmount: p.paymentAmount,
+			dueDate: p.dueDate,
+			description: p.description || "",
+			lock,
+			collected: collectedOf(p, lock),
+			sortOrder: p.sortOrder,
+		};
+	});
 
 const formatCurrencyInput = (value: string): string => {
 	// Remove all non-numeric characters except decimal
@@ -346,19 +369,33 @@ interface PaymentsSummaryProps {
 function PaymentsSummary({ payments, invoiceTotal }: PaymentsSummaryProps) {
 	const { sum, difference, isValid, paidAmount, refundedAmount, voidedAmount } =
 		useMemo(() => {
-			const totalOf = (rows: LocalPayment[]) =>
-				roundCents(rows.reduce((acc, p) => acc + p.paymentAmount, 0));
+			const sumOf = (
+				rows: LocalPayment[],
+				amountOf: (p: LocalPayment) => number
+			) => roundCents(rows.reduce((acc, p) => acc + amountOf(p), 0));
 
-			const sum = totalOf(payments.filter(countsTowardTotal));
+			const sum = sumOf(payments, countedAmount);
 			const difference = roundCents(sum - roundCents(invoiceTotal));
+			const settled = payments.filter(
+				(p) => p.lock === "paid" || p.lock === "refunded"
+			);
 
 			return {
 				sum,
 				difference,
 				isValid: difference === 0,
-				paidAmount: totalOf(payments.filter((p) => p.lock === "paid")),
-				refundedAmount: totalOf(payments.filter((p) => p.lock === "refunded")),
-				voidedAmount: totalOf(payments.filter((p) => p.lock === "cancelled")),
+				paidAmount: sumOf(
+					payments.filter((p) => p.lock === "paid"),
+					countedAmount
+				),
+				refundedAmount: sumOf(
+					settled,
+					(p) => roundCents(p.paymentAmount - countedAmount(p))
+				),
+				voidedAmount: sumOf(
+					payments.filter((p) => p.lock === "cancelled"),
+					(p) => p.paymentAmount
+				),
 			};
 		}, [payments, invoiceTotal]);
 
@@ -517,9 +554,7 @@ export function PaymentsConfigurationModal({
 	// Calculate validation state
 	const { isValid, difference } = useMemo(() => {
 		const sum = roundCents(
-			payments
-				.filter(countsTowardTotal)
-				.reduce((acc, p) => acc + p.paymentAmount, 0)
+			payments.reduce((acc, p) => acc + countedAmount(p), 0)
 		);
 		const diff = roundCents(sum - roundCents(invoiceTotal));
 		return { isValid: diff === 0, difference: diff };
@@ -563,9 +598,7 @@ export function PaymentsConfigurationModal({
 	}, [canShift, parsedShiftDays]);
 
 	const handleAddPayment = useCallback(() => {
-		const currentSum = payments
-			.filter(countsTowardTotal)
-			.reduce((acc, p) => acc + p.paymentAmount, 0);
+		const currentSum = payments.reduce((acc, p) => acc + countedAmount(p), 0);
 		const remaining = Math.max(0, invoiceTotal - currentSum);
 		const maxSortOrder = Math.max(...payments.map((p) => p.sortOrder), -1);
 
@@ -617,7 +650,7 @@ export function PaymentsConfigurationModal({
 			});
 
 			const deadline = Math.max(
-				...payments.filter(countsTowardTotal).map((p) => p.dueDate)
+				...payments.filter(setsDeadline).map((p) => p.dueDate)
 			);
 			toast.success(
 				"Schedule saved",

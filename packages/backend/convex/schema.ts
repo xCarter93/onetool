@@ -858,6 +858,10 @@ export default defineSchema({
 		// field existed leave it unset — read them through
 		// lib/paymentInsights.collectedAmount, never raw.
 		refundedAmount: v.optional(v.number()),
+		// Stripe refund ids already subtracted back out of refundedAmount after
+		// the refund failed. Webhooks are at-least-once and that subtraction is
+		// not idempotent, so a redelivery would erase an unrelated refund.
+		revertedRefundIds: v.optional(v.array(v.string())),
 		// Shared counter — advances for any flow that mints a new Stripe object (Checkout Session or PaymentIntent).
 		checkoutAttemptCounter: v.optional(v.number()),
 		// Active Checkout Session cache for retry reuse.

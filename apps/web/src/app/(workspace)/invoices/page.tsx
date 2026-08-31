@@ -393,7 +393,7 @@ function InvoicesPageContent() {
 			}
 		});
 		return result;
-	}, [data, filters]);
+	}, [data, filters, orgToday]);
 
 	// Free-text search on top of the advanced filters; drives table + kanban.
 	const searchedData = React.useMemo(() => {
@@ -410,7 +410,7 @@ function InvoicesPageContent() {
 				formatStatus(effectiveStatus).toLowerCase().includes(q)
 			);
 		});
-	}, [filteredData, query]);
+	}, [filteredData, query, orgToday]);
 
 	// Effective-status map keyed by invoice id, used to detect kanban drag changes.
 	const invoiceStatusMap = React.useMemo(() => {
@@ -439,7 +439,7 @@ function InvoicesPageContent() {
 				};
 			})
 		);
-	}, [searchedData]);
+	}, [searchedData, orgToday]);
 
 	// Loading state — gate only on the primary invoices query. The clients and
 	// projects reads are permission-skipped and stay undefined without the grant,
@@ -947,6 +947,7 @@ function InvoicesPageContent() {
 						description: p.description,
 						status: p.status,
 						sortOrder: p.sortOrder,
+						refundedAmount: p.refundedAmount,
 					}))}
 				/>
 			)}
