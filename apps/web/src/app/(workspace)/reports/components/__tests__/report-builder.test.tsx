@@ -210,10 +210,16 @@ describe("ReportBuilder — visualization dropdown (F1, d15)", () => {
 });
 
 /** cmdk rows render their breadcrumb across two spans; nav rows append a count. */
-function pickerRow(text: string) {
-	return screen
-		.getAllByRole("option")
-		.find((el) => el.textContent?.replace(/\d+$/, "") === text);
+/** A picker row by its own label; `trail` is the ancestor path search adds under it. */
+function pickerRow(label: string, trail?: string) {
+	return screen.getAllByRole("option").find((el) => {
+		const path = el.querySelector('[data-slot="cascader-item-path"]');
+		const text = el.textContent ?? "";
+		const own = text
+			.slice(0, text.length - (path?.textContent?.length ?? 0))
+			.replace(/\d+$/, "");
+		return own === label && (trail === undefined || path?.textContent === trail);
+	});
 }
 
 function lineItemsChart(groupBy: string): ReportBuilderInitial {
@@ -244,7 +250,7 @@ describe("ReportBuilder — group-by field picker (F5, d15)", () => {
 		fireEvent.change(screen.getByPlaceholderText("Search fields..."), {
 			target: { value: "start date" },
 		});
-		fireEvent.click(pickerRow("Quote › Project › Start Date")!);
+		fireEvent.click(pickerRow("Start Date", "Quote›Project")!);
 
 		const metricSection = section("Metric");
 		expect(

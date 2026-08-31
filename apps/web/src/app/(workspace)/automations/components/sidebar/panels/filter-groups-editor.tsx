@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { ChevronsUpDown, Plus, X } from "lucide-react";
+import { Braces, ChevronsUpDown, Plus, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import {
@@ -17,10 +17,9 @@ import {
 	PopoverTrigger,
 } from "@/components/ui/popover";
 import {
-	DrillList,
-	type DrillGroup,
-	type DrillPage,
-} from "@/components/shared/drill-list";
+	FieldCascader,
+	type CascaderNode,
+} from "@/components/shared/field-cascader";
 import {
 	MAX_CONDITION_GROUPS,
 	MAX_RULES_PER_GROUP,
@@ -130,44 +129,29 @@ function FieldPicker({
 		setOpen(false);
 	};
 
-	const rootGroups: DrillGroup[] = [];
-	if (fields.length > 0) {
-		rootGroups.push({
-			id: "__fields__",
-			heading: objectType ? OBJECT_TYPE_LABELS[objectType] : undefined,
-			items: fields.map((f) => ({
-				id: f.key,
-				value: f.label,
-				label: f.label,
-				onSelect: () => pick(f.key),
+	// Each node's value IS the string the rule stores, so committing one needs no
+	// lookup. Branch values carry a prefix a field key can never produce.
+	const items: CascaderNode[] = [
+		...fields.map((f) => ({ value: f.key, label: f.label })),
+		...relationFieldGroups
+			.filter((g) => g.fields.length > 0)
+			.map((g) => ({
+				value: `relation:${g.relation}`,
+				label: g.label,
+				children: g.fields.map((f) => ({
+					value: `${g.relation}.${f.key}`,
+					label: f.label,
+				})),
 			})),
-		});
-	}
-	if (variableOptions.length > 0) {
-		rootGroups.push({
-			id: "__vars__",
-			heading: "Step results",
-			items: variableOptions.map((o) => ({
-				id: `${VAR_PREFIX}${o.path}`,
-				value: `${o.group} ${o.label}`,
-				label: o.label,
-				onSelect: () => pick(`${VAR_PREFIX}${o.path}`),
-			})),
-		});
-	}
-
-	const pages: DrillPage[] = relationFieldGroups
-		.filter((g) => g.fields.length > 0)
-		.map((g) => ({
-			id: g.relation,
-			navLabel: g.label,
-			items: g.fields.map((f) => ({
-				id: `${g.relation}.${f.key}`,
-				value: `${g.label} ${f.label}`,
-				label: `${g.label} → ${f.label}`,
-				onSelect: () => pick(`${g.relation}.${f.key}`),
-			})),
-		}));
+		// No heading separates these from real fields at the root, so the icon is
+		// what says a row came from an earlier step.
+		...variableOptions.map((o) => ({
+			value: `${VAR_PREFIX}${o.path}`,
+			label: o.label,
+			icon: <Braces className="h-3.5 w-3.5" />,
+			keywords: [o.group],
+		})),
+	];
 
 	return (
 		<Popover open={open} onOpenChange={setOpen}>
@@ -190,10 +174,11 @@ function FieldPicker({
 				<ChevronsUpDown className="h-4 w-4 shrink-0 opacity-50" />
 			</PopoverTrigger>
 			<PopoverContent align="start" className="w-80 p-0">
-				<DrillList
-					rootGroups={rootGroups}
-					pages={pages}
-					open={open}
+				<FieldCascader
+					items={items}
+					value={value}
+					onValueChange={pick}
+					rootLabel={objectType ? OBJECT_TYPE_LABELS[objectType] : undefined}
 					emptyText="No fields available."
 					placeholder="Search fields..."
 				/>
