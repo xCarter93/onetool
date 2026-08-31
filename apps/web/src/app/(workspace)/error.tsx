@@ -2,7 +2,6 @@
 
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
-import posthog from "posthog-js";
 import { AlertCircle } from "lucide-react";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
@@ -14,6 +13,7 @@ import {
 	GlassCardTitle,
 	GlassCardDescription,
 } from "@/components/shared/glass-card";
+import { logError } from "@/lib/error-logger";
 
 const LOOP_DURATION = 4;
 
@@ -89,8 +89,8 @@ export default function Error({
 	const router = useRouter();
 
 	useEffect(() => {
-		// Log the error to PostHog
-		posthog.captureException(error);
+		// Via logError so dev-only hot-reload errors stay off the production stream.
+		logError(error, { action: "workspace_route_error" });
 	}, [error]);
 
 	return (

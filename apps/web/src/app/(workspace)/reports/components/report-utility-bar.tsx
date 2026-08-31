@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { Component, useState, type ReactNode } from "react";
 import { useQuery } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { ChevronDown, ChevronUp, Download, Rows3 } from "lucide-react";
@@ -41,7 +41,53 @@ interface ReportUtilityBarProps {
  * reports. Runs the same executeReport args as the preview — Convex dedupes
  * the subscription, so the export and totals always match what's on screen.
  */
-export function ReportUtilityBar({
+/**
+ * The bar runs its own executeReport subscription, so a config the pipeline
+ * rejects would throw past the preview's boundary and white-screen the route.
+ * The preview already shows why — here just keep the chrome standing.
+ */
+class ReportUtilityBarBoundary extends Component<
+	{ resetKey: string; children: ReactNode },
+	{ failed: boolean; resetKey: string }
+> {
+	state = { failed: false, resetKey: this.props.resetKey };
+
+	static getDerivedStateFromError() {
+		return { failed: true };
+	}
+
+	// Reset on config change rather than keying the boundary — a remount would
+	// also reset the inner debounce that keeps CSV in step with the args.
+	static getDerivedStateFromProps(
+		props: { resetKey: string },
+		state: { resetKey: string }
+	) {
+		return props.resetKey === state.resetKey
+			? null
+			: { failed: false, resetKey: props.resetKey };
+	}
+
+	render() {
+		if (this.state.failed) {
+			return (
+				<div className="border-t border-border/60 px-4 py-2 text-xs text-muted-foreground">
+					Calculated values are unavailable for this configuration.
+				</div>
+			);
+		}
+		return this.props.children;
+	}
+}
+
+export function ReportUtilityBar(props: ReportUtilityBarProps) {
+	return (
+		<ReportUtilityBarBoundary resetKey={JSON.stringify(props.saved)}>
+			<ReportUtilityBarInner {...props} />
+		</ReportUtilityBarBoundary>
+	);
+}
+
+function ReportUtilityBarInner({
 	saved,
 	reportName,
 	groupByLabel,

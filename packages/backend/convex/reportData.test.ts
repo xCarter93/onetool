@@ -684,6 +684,24 @@ describe("reportData.executeReport", () => {
 		expect(byLabel).toEqual({ True: 2, False: 1 });
 	});
 
+	it("groupBy: prototype-named group values bucket like any other text", async () => {
+		const { org, asOrg } = await seedOrg();
+		await t.run(async (ctx) => {
+			await createTestClient(ctx, org.orgId, { companyName: "constructor" });
+			await createTestClient(ctx, org.orgId, { companyName: "constructor" });
+			await createTestClient(ctx, org.orgId, { companyName: "__proto__" });
+			await createTestClient(ctx, org.orgId, { companyName: "Acme" });
+		});
+
+		const result = await asOrg.query(api.reportData.executeReport, {
+			entityType: "clients",
+			config: countConfig("clients", "companyName"),
+		});
+
+		const byLabel = Object.fromEntries(result.data.map((d) => [d.label, d.value]));
+		expect(byLabel).toEqual({ Constructor: 2, "  Proto  ": 1, Acme: 1 });
+	});
+
 	it("groupBy: non-timestamp time-bucket field throws a ConvexError", async () => {
 		const { asOrg } = await seedOrg();
 

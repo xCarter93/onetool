@@ -5,6 +5,13 @@ import { PostHogProvider as PHProvider } from "posthog-js/react";
 import { useEffect } from "react";
 import { env } from "@/env";
 
+const EXCEPTION_NOISE_PATTERNS = [
+	"ResizeObserver loop",
+	"Java object is gone",
+	"window.webkit.messageHandlers",
+	"window.__firefox__",
+];
+
 export function PostHogProvider({ children }: { children: React.ReactNode }) {
 	useEffect(() => {
 		try {
@@ -32,8 +39,9 @@ export function PostHogProvider({ children }: { children: React.ReactNode }) {
 				// Prod only: dev bundles carry no PostHog chunk IDs and their source maps
 				// are never uploaded, so localhost frames can never symbolicate.
 				capture_exceptions: process.env.NODE_ENV === "production",
-				// Benign browser noise from layout-heavy UI (charts, data-grid,
-				// signature pad) — drop before ingestion so it can't reopen issues.
+				// Noise that isn't ours: layout churn from charts/data-grid, plus the
+				// JS bridges Facebook/Instagram/Firefox-iOS inject into the page.
+				// Matched on message text — some variants minify away our frames.
 				before_send: (event) => {
 					if (event?.event === "$exception") {
 						const values: unknown[] = [
@@ -48,7 +56,7 @@ export function PostHogProvider({ children }: { children: React.ReactNode }) {
 							values.some(
 								(v) =>
 									typeof v === "string" &&
-									v.includes("ResizeObserver loop")
+									EXCEPTION_NOISE_PATTERNS.some((p) => v.includes(p))
 							)
 						) {
 							return null;

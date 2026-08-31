@@ -505,11 +505,16 @@ function bucketKeyOf(raw: unknown): string {
 type BucketKeyFn = (row: Row) => string | null;
 
 function bucketLabel(def: ReportFieldDef | undefined, key: string): string {
-	return def?.optionLabels?.[key] ?? capitalizeWords(key, /[-_]/);
+	const label = def?.optionLabels;
+	return label && Object.hasOwn(label, key)
+		? label[key]
+		: capitalizeWords(key, /[-_]/);
 }
 
 function groupRows(rows: Row[], keyOf: BucketKeyFn): Record<string, Row[]> {
-	const grouped: Record<string, Row[]> = {};
+	// Null-prototype: a bucket key of "constructor"/"__proto__" is ordinary user
+	// text, and on a plain object `??=` would see the inherited member and skip.
+	const grouped: Record<string, Row[]> = Object.create(null);
 	for (const row of rows) {
 		const key = keyOf(row);
 		if (key !== null) (grouped[key] ??= []).push(row);
@@ -714,7 +719,7 @@ function applySegments(
 
 	for (const bucket of buckets) {
 		if (bucket.rows.length === 0) continue;
-		const perSegment: Record<string, Row[]> = {};
+		const perSegment: Record<string, Row[]> = Object.create(null);
 		for (const row of bucket.rows) {
 			const raw = bucketKeyOf(row[sourceField]);
 			const key = topKeys.has(raw) ? raw : "other";
