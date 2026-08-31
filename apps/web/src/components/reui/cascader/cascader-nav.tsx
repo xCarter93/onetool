@@ -265,8 +265,7 @@ function CascaderInput({
     baseId,
   } = useCascaderActions()
   const direction = useDirection()
-  const { currentParent, query, path, renderedItems, treeRows } =
-    useCascaderState()
+  const { currentParent, path, renderedItems, treeRows } = useCascaderState()
 
   const resolvedPlaceholder =
     placeholder ?? resolveCascaderSearchLabel(labels, currentParent?.label)
@@ -390,10 +389,12 @@ function CascaderInput({
     if (event.defaultPrevented) return
 
     const field = event.currentTarget
+    // Measured against the DOM string the caret indexes into, not `query`:
+    // composition and autofill land in the field a render before state.
+    const text = field.value
     const caretAtStart = field.selectionStart === 0 && field.selectionEnd === 0
     const caretAtEnd =
-      field.selectionStart === query.length &&
-      field.selectionEnd === query.length
+      field.selectionStart === text.length && field.selectionEnd === text.length
 
     // ArrowDown at the END of the list hands real focus to the pinned footer,
     // the key a combobox is actually navigated with; Tab still works and still
@@ -455,7 +456,7 @@ function CascaderInput({
     // a level is symmetric with typing into it.
     if (
       (event.key === backKey && caretAtStart) ||
-      (event.key === "Backspace" && query.length === 0)
+      (event.key === "Backspace" && text.length === 0)
     ) {
       if (path.length > 0) {
         event.preventDefault()

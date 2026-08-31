@@ -489,7 +489,7 @@ const CascaderItem = React.memo(function CascaderItem({
   // What the markup cannot say: a branch would announce "Person 24", a naked
   // number. Trail rows are outside the listbox, so they need words for state.
   const srDetails = [
-    branch ? labels.itemCount(count) : null,
+    branch && count > 0 ? labels.itemCount(count) : null,
     showsSelectedCount ? labels.selectedCount(selectedDescendants) : null,
     branch && mode !== "tree" ? labels.branchAffordance : null,
     as === "button" && selected ? labels.selectedState : null,

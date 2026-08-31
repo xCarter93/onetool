@@ -47,6 +47,7 @@ function CascaderColumns({
   columnWidth = 220,
   maxHeight: maxHeightProp,
   children,
+  style,
   ...props
 }: CascaderColumnsProps) {
   const { maxHeight, mode, labels } = useCascaderActions()
@@ -75,6 +76,9 @@ function CascaderColumns({
       aria-label={labels.columnsLabel}
       style={
         {
+          // Consumer first: the vars are what `columnWidth` and `maxHeight`
+          // already own, so a passed `style` must not be able to drop them.
+          ...style,
           "--cascader-column-width": toCss(columnWidth),
           /* Set only from an EXPLICIT cap: unset means "24rem or what the
              viewport leaves", via the `min()` fallback on the panel. A `?? 280`

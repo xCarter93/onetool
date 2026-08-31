@@ -650,7 +650,12 @@ export function useCascaderLoader<T = unknown>({
         )
         .then((chain) => {
           settle()
-          if (controller.signal.aborted || startEpoch !== epoch.current) return
+          if (controller.signal.aborted || startEpoch !== epoch.current) {
+            // Same reason as the catch below: nothing was stored, so leaving
+            // the value attempted would bar the retry after a popup close.
+            attempted.current.delete(value)
+            return
+          }
           if (!chain?.length) return
           remember(chain)
           setStore((prev) => withChain(prev, chain))
@@ -677,6 +682,9 @@ export function useCascaderLoader<T = unknown>({
     for (const controller of controllers.current.values()) controller.abort()
     controllers.current.clear()
     inflight.current.clear()
+    // The aborted page never arrived, so the latch has nothing to dedupe;
+    // keeping it would make `loadMore` a no-op on the reopened level.
+    for (const key of keys) moreLatch.current.delete(key)
 
     const holder = timers.current
     if (holder.prefetch) {
