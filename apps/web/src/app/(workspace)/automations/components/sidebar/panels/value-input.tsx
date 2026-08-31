@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Braces, X } from "lucide-react";
 import { useQuery } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
@@ -17,11 +17,9 @@ import {
 	type VariableOption,
 } from "../../../lib/variables";
 import {
-	DrillList,
-	type DrillGroup,
-	type DrillItem,
-	type DrillPage,
-} from "@/components/shared/drill-list";
+	FieldCascader,
+	type CascaderNode,
+} from "@/components/shared/field-cascader";
 import { PickerChip } from "@/components/shared/picker-chip";
 import {
 	RecordPicker,
@@ -54,45 +52,39 @@ function useAvailableVariables(
 	);
 }
 
+/** Prefix for a relation branch row, so it can never collide with a variable path. */
+const RELATION_PREFIX = "relation:";
+
 /**
- * Builds the drill-down model (root groups + relation pages) from variable
- * options. `decorate` adds per-row styling/hints; `sortWithin` orders a group's
- * rows (used to float compatible-type options first).
+ * Builds the cascader tree from variable options: every direct variable at the
+ * root, one drill-in branch per relation. `hint` becomes the row's second line
+ * (type mismatch, array resolution); `sortWithin` orders a level's rows.
  */
-function buildVariableDrill(
+function buildVariableNodes(
 	variables: VariableOption[],
-	onPick: (option: VariableOption) => void,
-	decorate?: (
-		option: VariableOption
-	) => { className?: string; trailing?: React.ReactNode },
+	hint?: (option: VariableOption) => string | undefined,
 	sortWithin?: (options: VariableOption[]) => VariableOption[]
-): { rootGroups: DrillGroup[]; pages: DrillPage[] } {
+): CascaderNode<VariableOption>[] {
 	const { rootGroups, relationPages } = partitionVariableGroups(variables);
-	const toItem = (option: VariableOption): DrillItem => {
-		const decoration = decorate?.(option);
-		return {
-			id: option.path,
-			value: `${option.group} ${option.label}`,
-			label: option.label,
-			className: decoration?.className,
-			trailing: decoration?.trailing,
-			onSelect: () => onPick(option),
-		};
-	};
+	const toNode = (option: VariableOption): CascaderNode<VariableOption> => ({
+		value: option.path,
+		label: option.label,
+		// The group is searchable without being drawn: deep search already
+		// renders each hit's path, so repeating it in the row would double up.
+		keywords: [option.group],
+		description: hint?.(option),
+		data: option,
+	});
 	const order = (options: VariableOption[]) =>
-		(sortWithin ? sortWithin(options) : options).map(toItem);
-	return {
-		rootGroups: rootGroups.map(([group, options]) => ({
-			id: group,
-			heading: group,
-			items: order(options),
+		(sortWithin ? sortWithin(options) : options).map(toNode);
+	return [
+		...rootGroups.flatMap(([, options]) => order(options)),
+		...relationPages.map((page) => ({
+			value: `${RELATION_PREFIX}${page.id}`,
+			label: page.navLabel,
+			children: order(page.options),
 		})),
-		pages: relationPages.map((page) => ({
-			id: page.id,
-			navLabel: page.navLabel,
-			items: order(page.options),
-		})),
-	};
+	];
 }
 
 /** The subset of FieldDefinition ValueInput needs to pick a static control. */
@@ -427,70 +419,59 @@ export function ValueInput({
 					</PopoverTrigger>
 					<PopoverContent align="end" className="w-80 p-0">
 						{(() => {
-							const { rootGroups, pages } = buildVariableDrill(
+							const needsConversion = (option: VariableOption) =>
+								variableNeedsConversion(
+									field.type,
+									option.fieldType,
+									field.refType,
+									option.refType
+								);
+							const items = buildVariableNodes(
 								variables,
 								(option) => {
-									onChange({ kind: "var", path: option.path });
-									setOpen(false);
-								},
-								(option) => {
-									const needsConversion = variableNeedsConversion(
-										field.type,
-										option.fieldType,
-										field.refType,
-										option.refType
-									);
+									if (needsConversion(option)) return "Needs conversion";
 									// An array feeding this single-valued field resolves per
 									// arrayResolution — say so rather than let the author assume
 									// all of them land.
-									const arrayHint =
-										option.isArray &&
-										!needsConversion &&
-										arrayResolution !== "none"
-											? arrayResolution === "first"
-												? "uses first"
-												: "matches any"
-											: null;
-									return {
-										// Incompatible-type options stay selectable but render greyed.
-										className: needsConversion
-											? "text-muted-foreground"
-											: undefined,
-										trailing:
-											needsConversion || arrayHint ? (
-												<span className="ml-2 shrink-0 text-[10px] uppercase tracking-wide text-muted-foreground">
-													{needsConversion ? "needs conversion" : arrayHint}
-												</span>
-											) : undefined,
-									};
+									if (!option.isArray || arrayResolution === "none") return undefined;
+									return arrayResolution === "first"
+										? "Uses the first value"
+										: "Matches any value";
 								},
-								// Compatible-type options first within each group/page.
+								// Compatible-type options first within each level.
 								(options) =>
 									[...options].sort(
 										(a, b) =>
-											Number(
-												variableNeedsConversion(
-													field.type,
-													a.fieldType,
-													field.refType,
-													a.refType
-												)
-											) -
-											Number(
-												variableNeedsConversion(
-													field.type,
-													b.fieldType,
-													field.refType,
-													b.refType
-												)
-											)
+											Number(needsConversion(a)) - Number(needsConversion(b))
 									)
 							);
 							return (
-								<DrillList
-									rootGroups={rootGroups}
-									pages={pages}
-									open={open}
+								<FieldCascader
+									items={items}
+									onValueChange={(path) => {
+										onChange({ kind: "var", path });
+										setOpen(false);
+									}}
+									// Incompatible-type options stay selectable but render greyed.
+									renderLabel={(node) => (
+										<>
+											<span
+												className={cn(
+													"w-full truncate text-start",
+													node.data &&
+														needsConversion(node.data) &&
+														"text-muted-foreground"
+												)}
+											>
+												{node.label}
+											</span>
+											{node.description ? (
+												<span className="w-full truncate text-start text-xs text-muted-foreground">
+													{node.description}
+												</span>
+											) : null}
+										</>
+									)}
 									emptyText="No variables available yet."
 									placeholder="Search variables..."
 								/>
@@ -527,10 +508,7 @@ export function VariableInsertButton({
 }) {
 	const [open, setOpen] = useState(false);
 	const variables = useAvailableVariables(nodes, trigger, targetNodeId, formulas);
-	const { rootGroups, pages } = buildVariableDrill(variables, (option) => {
-		onInsert(option.path);
-		setOpen(false);
-	});
+	const items = buildVariableNodes(variables);
 
 	return (
 		<Popover open={open} onOpenChange={setOpen}>
@@ -548,10 +526,12 @@ export function VariableInsertButton({
 				Insert variable
 			</PopoverTrigger>
 			<PopoverContent align="start" className="w-80 p-0">
-				<DrillList
-					rootGroups={rootGroups}
-					pages={pages}
-					open={open}
+				<FieldCascader
+					items={items}
+					onValueChange={(path) => {
+						onInsert(path);
+						setOpen(false);
+					}}
 					emptyText="No variables available yet."
 					placeholder="Search variables..."
 				/>

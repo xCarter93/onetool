@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
-// Pins the shared drill-in field picker (§8 d15 F1+F5): own fields first,
-// nested relation pages along the FK DAG (one nav row per direct edge), and a
-// search that flattens across paths.
+// Pins the shared drill-in field picker (§8 d15 F1+F5): own fields and relation
+// branches in one root run, nesting along the FK DAG, and a search that reaches
+// every level below the one you are standing on.
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import "@testing-library/jest-dom/vitest";
@@ -9,7 +9,8 @@ import { ReportFieldPicker } from "../report-field-picker";
 
 afterEach(() => cleanup());
 
-// jsdom lacks both; cmdk measures its list and scrolls the active item.
+// jsdom has none of these; the cascader measures its list, scrolls the active
+// row, and Base UI's scroll area waits on the viewport's running animations.
 class ResizeObserverStub {
 	observe() {}
 	unobserve() {}
@@ -17,26 +18,40 @@ class ResizeObserverStub {
 }
 const originalResizeObserver = globalThis.ResizeObserver;
 const originalScrollIntoView = Element.prototype.scrollIntoView;
+const originalGetAnimations = Element.prototype.getAnimations;
 beforeAll(() => {
 	globalThis.ResizeObserver = ResizeObserverStub as unknown as typeof ResizeObserver;
 	Element.prototype.scrollIntoView = () => {};
+	Element.prototype.getAnimations = () => [];
 });
 afterAll(() => {
 	globalThis.ResizeObserver = originalResizeObserver;
 	Element.prototype.scrollIntoView = originalScrollIntoView;
+	Element.prototype.getAnimations = originalGetAnimations;
 });
 
-/** Field/back/record rows render their text exactly; nav rows append a count. */
-function row(text: string) {
-	return screen.getAllByRole("option").find((el) => el.textContent === text);
+/** A row's visible label, without the count, screen-reader details or search path. */
+function labelOf(el: Element) {
+	const clone = el.cloneNode(true) as Element;
+	for (const extra of clone.querySelectorAll("[data-slot^='cascader-item-']")) {
+		extra.remove();
+	}
+	return clone.textContent?.trim() ?? "";
 }
-function navRow(text: string) {
-	return screen
-		.getAllByRole("option")
-		.find(
-			(el) =>
-				el.textContent?.replace(/\d+$/, "") === text && el.textContent !== text
+
+/** A row by its own label; `trail` is the ancestor path a search hit adds under it. */
+function row(label: string, trail?: string) {
+	return screen.getAllByRole("option").find((el) => {
+		const path = el.querySelector('[data-slot="cascader-item-path"]');
+		return (
+			labelOf(el) === label && (trail === undefined || path?.textContent === trail)
 		);
+	});
+}
+
+/** Opens a branch. A relation row never commits, so anywhere on it drills. */
+function drill(label: string) {
+	fireEvent.click(row(label)!);
 }
 
 function search(term: string) {
@@ -46,45 +61,46 @@ function search(term: string) {
 }
 
 describe("ReportFieldPicker", () => {
-	it("shows the entity's own fields and one nav row per direct edge", () => {
+	it("shows the entity's own fields and one branch per direct edge", () => {
 		render(
 			<ReportFieldPicker entityType="payments" mode="filter" onSelect={vi.fn()} />
 		);
 		expect(row("Amount")).toBeInTheDocument();
-		expect(navRow("Invoice")).toBeInTheDocument();
-		expect(navRow("Invoice › Client")).toBeUndefined();
-		expect(navRow("Invoice › Quote › Project")).toBeUndefined();
+		expect(row("Invoice")).toBeInTheDocument();
+		// Deeper edges belong to the level they hang off, not the root.
+		expect(row("Client")).toBeUndefined();
+		expect(row("Project")).toBeUndefined();
 	});
 
 	it("drills into a relation and offers that record's own edges", () => {
 		render(
 			<ReportFieldPicker entityType="payments" mode="filter" onSelect={vi.fn()} />
 		);
-		fireEvent.click(navRow("Invoice")!);
-		expect(row("Invoice › Status")).toBeInTheDocument();
+		drill("Invoice");
+		expect(row("Status")).toBeInTheDocument();
 		expect(row("Amount")).toBeUndefined();
-		expect(navRow("Client")).toBeInTheDocument();
-		expect(navRow("Project")).toBeInTheDocument();
-		expect(navRow("Quote")).toBeInTheDocument();
+		expect(row("Client")).toBeInTheDocument();
+		expect(row("Project")).toBeInTheDocument();
+		expect(row("Quote")).toBeInTheDocument();
 	});
 
 	it("backs out one level at a time", () => {
 		render(
 			<ReportFieldPicker entityType="payments" mode="filter" onSelect={vi.fn()} />
 		);
-		fireEvent.click(navRow("Invoice")!);
-		fireEvent.click(navRow("Client")!);
-		expect(row("Invoice › Client › Lead Source")).toBeInTheDocument();
+		drill("Invoice");
+		drill("Client");
+		expect(row("Lead Source")).toBeInTheDocument();
 
-		fireEvent.click(row("Invoice › Client")!);
-		expect(row("Invoice › Status")).toBeInTheDocument();
-		expect(navRow("Client")).toBeInTheDocument();
+		fireEvent.click(screen.getByRole("button", { name: /back/i }));
+		expect(row("Status")).toBeInTheDocument();
+		expect(row("Client")).toBeInTheDocument();
 
-		fireEvent.click(row("Invoice")!);
+		fireEvent.click(screen.getByRole("button", { name: /back/i }));
 		expect(row("Amount")).toBeInTheDocument();
 	});
 
-	it("searches flat across every path without drilling", () => {
+	it("searches every level below the root without drilling", () => {
 		render(
 			<ReportFieldPicker
 				entityType="quoteLineItems"
@@ -93,7 +109,7 @@ describe("ReportFieldPicker", () => {
 			/>
 		);
 		search("start date");
-		expect(row("Quote › Project › Start Date")).toBeInTheDocument();
+		expect(row("Start Date", "Quote›Project")).toBeInTheDocument();
 		expect(row("Description")).toBeUndefined();
 	});
 
@@ -107,7 +123,7 @@ describe("ReportFieldPicker", () => {
 			/>
 		);
 		search("start date");
-		fireEvent.click(row("Quote › Project › Start Date")!);
+		fireEvent.click(row("Start Date", "Quote›Project")!);
 		expect(onSelect).toHaveBeenCalledWith("quoteId.projectId.startDate");
 
 		cleanup();
@@ -125,20 +141,16 @@ describe("ReportFieldPicker", () => {
 	it("selects a deep field found by search from the root", () => {
 		const onSelect = vi.fn();
 		render(
-			<ReportFieldPicker
-				entityType="payments"
-				mode="filter"
-				onSelect={onSelect}
-			/>
+			<ReportFieldPicker entityType="payments" mode="filter" onSelect={onSelect} />
 		);
-		search("quote project client lead source");
-		fireEvent.click(row("Invoice › Quote › Project › Client › Lead Source")!);
+		search("lead source");
+		fireEvent.click(row("Lead Source", "Invoice›Quote›Project›Client")!);
 		expect(onSelect).toHaveBeenCalledWith(
 			"invoiceId.quoteId.projectId.clientId.leadSource"
 		);
 	});
 
-	it("offers the record itself as the first row of its page in groupBy mode", () => {
+	it("commits a relation from the row leading its own page in groupBy mode", () => {
 		const onSelect = vi.fn();
 		render(
 			<ReportFieldPicker
@@ -148,20 +160,25 @@ describe("ReportFieldPicker", () => {
 				directOptions={[{ value: "invoiceId", label: "Invoice" }]}
 			/>
 		);
-		fireEvent.click(navRow("Invoice")!);
-		fireEvent.click(navRow("Client")!);
-		expect(row("Client record")).toBeInTheDocument();
-		fireEvent.click(row("Client record")!);
+		drill("Invoice");
+		expect(row("Invoice itself")).toBeInTheDocument();
+
+		drill("Client");
+		fireEvent.click(row("Client itself")!);
 		expect(onSelect).toHaveBeenCalledWith("invoiceId.clientId");
 	});
 
-	it("has no record row in filter mode", () => {
+	it("offers no such row in filter mode, where a relation is not a field", () => {
+		const onSelect = vi.fn();
 		render(
-			<ReportFieldPicker entityType="payments" mode="filter" onSelect={vi.fn()} />
+			<ReportFieldPicker entityType="payments" mode="filter" onSelect={onSelect} />
 		);
-		fireEvent.click(navRow("Invoice")!);
-		fireEvent.click(navRow("Client")!);
-		expect(row("Client record")).toBeUndefined();
-		expect(row("Invoice › Client › Lead Source")).toBeInTheDocument();
+		drill("Invoice");
+		expect(row("Invoice itself")).toBeUndefined();
+
+		// Pressing a relation drills rather than selecting, in either mode.
+		fireEvent.click(row("Client")!);
+		expect(onSelect).not.toHaveBeenCalled();
+		expect(row("Lead Source")).toBeInTheDocument();
 	});
 });
