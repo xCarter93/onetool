@@ -9,6 +9,7 @@ import type { Id } from "@onetool/backend/convex/_generated/dataModel";
 import {
 	ArrowRight,
 	CheckCircle2,
+	ChevronRight,
 	Circle,
 	ClipboardList,
 	FileSignature,
@@ -19,6 +20,18 @@ import { Badge } from "@/components/reui/badge";
 import { IconTile } from "@/components/reui/icon-tile";
 import { StatusBadge } from "@/components/domain/status-badge";
 import { Button } from "@/components/ui/button";
+import {
+	Collapsible,
+	CollapsibleContent,
+	CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import {
+	Item,
+	ItemActions,
+	ItemContent,
+	ItemDescription,
+	ItemTitle,
+} from "@/components/ui/item";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -42,8 +55,6 @@ import {
 } from "./use-attention-queue";
 
 const COMPACT_ROWS = 3;
-/** Three rows plus their dividers — held constant so the panel never resizes. */
-const ROWS_MIN_HEIGHT = "min-h-[9.75rem]";
 
 type ColumnKey = "tasks" | "invoices" | "quotes";
 
@@ -77,13 +88,7 @@ const COLUMNS: Array<{
 	},
 ];
 
-function UrgencyLabel({
-	label,
-	overdue,
-}: {
-	label: string;
-	overdue: boolean;
-}) {
+function UrgencyLabel({ label, overdue }: { label: string; overdue: boolean }) {
 	if (overdue) {
 		return (
 			<StatusBadge status="overdue" size="sm" className="shrink-0">
@@ -96,53 +101,25 @@ function UrgencyLabel({
 	);
 }
 
-function QueueRow({
-	href,
-	title,
-	meta,
-	urgency,
-	leading,
+/** Urgency-tinted icon tile: overdue rows read red at a glance. */
+function RowTile({
+	icon: Icon,
+	overdue,
 }: {
-	href?: string;
-	title: string;
-	meta: string;
-	urgency: { label: string; overdue: boolean };
-	leading?: React.ReactNode;
+	icon: typeof ClipboardList;
+	overdue: boolean;
 }) {
-	const body = (
-		<div className="flex min-w-0 flex-1 flex-col gap-0.5">
-			<div className="flex items-center justify-between gap-2">
-				<span className="truncate text-sm font-medium text-foreground">
-					{title}
-				</span>
-				<UrgencyLabel {...urgency} />
-			</div>
-			<span className="truncate text-xs text-muted-foreground">{meta}</span>
-		</div>
-	);
-
-	const rowClass =
-		"flex h-13 items-center gap-2.5 px-2.5 transition-colors duration-150 hover:bg-muted/40";
-
-	if (!href) {
-		return (
-			<div className={rowClass}>
-				{leading}
-				{body}
-			</div>
-		);
-	}
-
 	return (
-		<div className={rowClass}>
-			{leading}
-			<Link
-				href={href as Route}
-				className="min-w-0 flex-1 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-			>
-				{body}
-			</Link>
-		</div>
+		<IconTile
+			variant={overdue ? "soft" : "outline"}
+			size="sm"
+			className={cn(
+				"shrink-0",
+				overdue ? "text-destructive" : "text-muted-foreground"
+			)}
+		>
+			<Icon aria-hidden="true" />
+		</IconTile>
 	);
 }
 
@@ -197,22 +174,78 @@ function taskMeta(queue: QueueData, task: Task): string {
 	return task.description || queue.getClientName(task.clientId);
 }
 
-/** Urgency-tinted icon tile: overdue rows read red at a glance. */
-function RowTile({
-	icon: Icon,
-	overdue,
+function AttentionItem({
+	href,
+	title,
+	meta,
+	amount,
+	urgency,
+	icon,
+	checkbox,
 }: {
-	icon: typeof ClipboardList;
-	overdue: boolean;
+	href?: string;
+	title: string;
+	meta: string;
+	amount?: string;
+	urgency: { label: string; overdue: boolean };
+	icon?: typeof ClipboardList;
+	checkbox?: React.ReactNode;
 }) {
+	// Elevated card matching FramePanel's language; overdue reads as a whole-card
+	// soft destructive treatment (side-stripes are banned by anti-slop).
+	const itemClass = urgency.overdue
+		? "border-destructive/30 bg-destructive/5 shadow-xs dark:bg-destructive/10"
+		: "bg-card shadow-xs";
+
+	const body = (
+		<>
+			<ItemContent className="min-w-0">
+				<ItemTitle className="w-full">
+					<span className="truncate text-sm font-medium">{title}</span>
+				</ItemTitle>
+				<ItemDescription className="truncate text-xs">{meta}</ItemDescription>
+			</ItemContent>
+			<ItemActions className="flex-col items-end gap-1 self-center">
+				{amount !== undefined && (
+					<span className="text-sm font-semibold tabular-nums leading-none">
+						{amount}
+					</span>
+				)}
+				<UrgencyLabel {...urgency} />
+			</ItemActions>
+		</>
+	);
+
+	// An interactive leading control can't live inside an anchor, so the link
+	// wraps only the row body when a checkbox is present.
+	if (checkbox) {
+		return (
+			<Item variant="outline" size="xs" className={itemClass}>
+				{checkbox}
+				{href ? (
+					<Link
+						href={href as Route}
+						className="flex min-w-0 flex-1 items-center gap-2 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+					>
+						{body}
+					</Link>
+				) : (
+					body
+				)}
+			</Item>
+		);
+	}
+
 	return (
-		<IconTile
-			variant={overdue ? "soft" : "outline"}
-			size="sm"
-			className={overdue ? "text-destructive" : "text-muted-foreground"}
+		<Item
+			variant="outline"
+			size="xs"
+			className={itemClass}
+			render={href ? <Link href={href as Route} /> : undefined}
 		>
-			<Icon aria-hidden="true" />
-		</IconTile>
+			{icon && <RowTile icon={icon} overdue={urgency.overdue} />}
+			{body}
+		</Item>
 	);
 }
 
@@ -234,19 +267,14 @@ function ColumnRows({
 		rows = tasks.map((task) => {
 			const urgency = taskUrgency(task);
 			return (
-				<QueueRow
+				<AttentionItem
 					key={task._id}
 					href="/tasks"
 					title={task.title}
 					meta={taskMeta(queue, task)}
 					urgency={urgency}
-					leading={
-						withCheckbox ? (
-							<TaskCheckbox task={task} />
-						) : (
-							<RowTile icon={ClipboardList} overdue={urgency.overdue} />
-						)
-					}
+					icon={withCheckbox ? undefined : ClipboardList}
+					checkbox={withCheckbox ? <TaskCheckbox task={task} /> : undefined}
 				/>
 			);
 		});
@@ -255,13 +283,14 @@ function ColumnRows({
 		rows = invoices.map((invoice) => {
 			const urgency = invoiceUrgency(invoice, orgToday);
 			return (
-				<QueueRow
+				<AttentionItem
 					key={invoice._id}
 					href={`/invoices/${invoice._id}`}
-					title={`${invoice.invoiceNumber} · ${formatCurrency(invoice.remainingBalance ?? invoice.total)}`}
+					title={invoice.invoiceNumber}
 					meta={queue.getClientName(invoice.clientId)}
+					amount={formatCurrency(invoice.remainingBalance ?? invoice.total)}
 					urgency={urgency}
-					leading={<RowTile icon={FileText} overdue={urgency.overdue} />}
+					icon={FileText}
 				/>
 			);
 		});
@@ -270,28 +299,33 @@ function ColumnRows({
 		rows = quotes.map((quote) => {
 			const urgency = quoteUrgency(quote);
 			return (
-				<QueueRow
+				<AttentionItem
 					key={quote._id}
 					href={`/quotes/${quote._id}`}
-					title={`${quote.quoteNumber ?? "Draft"} · ${formatCurrency(quote.total)}`}
+					title={quote.quoteNumber ?? "Draft"}
 					meta={queue.getClientName(quote.clientId)}
+					amount={formatCurrency(quote.total)}
 					urgency={urgency}
-					leading={<RowTile icon={FileSignature} overdue={urgency.overdue} />}
+					icon={FileSignature}
 				/>
 			);
 		});
 	}
 
-	return (
-		<div className="divide-y divide-border/60 overflow-hidden rounded-lg border border-border bg-card">
-			{rows}
-		</div>
-	);
+	return <div className="flex flex-col gap-1.5">{rows}</div>;
 }
 
-function QueueSheet({ queue }: { queue: QueueData }) {
+function QueueSheet({
+	queue,
+	open,
+	onOpenChange,
+}: {
+	queue: QueueData;
+	open: boolean;
+	onOpenChange: (open: boolean) => void;
+}) {
 	return (
-		<Sheet>
+		<Sheet open={open} onOpenChange={onOpenChange}>
 			<SheetTrigger
 				render={
 					<Button variant="ghost" size="sm" className="-me-2 shrink-0" />
@@ -309,42 +343,20 @@ function QueueSheet({ queue }: { queue: QueueData }) {
 					<SheetDescription>
 						{queue.counts.total} open item
 						{queue.counts.total === 1 ? "" : "s"}
-						{queue.overdueCount > 0
-							? `, ${queue.overdueCount} overdue`
-							: ""}
+						{queue.overdueCount > 0 ? `, ${queue.overdueCount} overdue` : ""}
 					</SheetDescription>
 				</SheetHeader>
 				<ScrollArea className="min-h-0 flex-1">
-					<div className="px-5 pb-6">
+					<div className="flex flex-col gap-4 px-5 py-5">
 						{COLUMNS.map((column) => {
 							const count = queue.counts[column.key];
 							return (
-								<section key={column.key} className="pt-5">
-									<div className="flex items-center gap-2 pb-1">
-										<column.icon
-											className="size-4 text-muted-foreground"
-											aria-hidden="true"
-										/>
-										<h3 className="text-sm font-semibold">{column.label}</h3>
-										<Badge variant="secondary" size="sm">
-											{count}
-										</Badge>
-										<span className="ml-auto text-xs text-muted-foreground">
-											{queue.summaries[column.key]}
-										</span>
-									</div>
-									{count === 0 ? (
-										<p className="py-3 text-sm text-muted-foreground">
-											{column.emptyLabel}.
-										</p>
-									) : (
-										<ColumnRows
-											queue={queue}
-											column={column.key}
-											withCheckbox
-										/>
-									)}
-								</section>
+								<QueueSheetSection
+									key={column.key}
+									queue={queue}
+									column={column}
+									count={count}
+								/>
 							);
 						})}
 					</div>
@@ -354,8 +366,56 @@ function QueueSheet({ queue }: { queue: QueueData }) {
 	);
 }
 
+function QueueSheetSection({
+	queue,
+	column,
+	count,
+}: {
+	queue: QueueData;
+	column: (typeof COLUMNS)[number];
+	count: number;
+}) {
+	const [open, setOpen] = useState(true);
+	return (
+		<Collapsible open={open} onOpenChange={setOpen}>
+			<CollapsibleTrigger className="flex w-full items-center gap-2 rounded-lg bg-muted/50 px-3 py-2.5 transition-colors duration-150 hover:bg-muted/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+				<ChevronRight
+					className={cn(
+						"size-3.5 shrink-0 text-muted-foreground transition-transform duration-200",
+						open && "rotate-90"
+					)}
+					aria-hidden="true"
+				/>
+				<column.icon
+					className="size-4 shrink-0 text-muted-foreground"
+					aria-hidden="true"
+				/>
+				<span className="text-sm font-semibold">{column.label}</span>
+				<Badge variant="secondary" size="sm">
+					{count}
+				</Badge>
+				<span className="ml-auto truncate text-xs text-muted-foreground">
+					{queue.summaries[column.key]}
+				</span>
+			</CollapsibleTrigger>
+			<CollapsibleContent>
+				{count === 0 ? (
+					<p className="px-3 py-3 text-sm text-muted-foreground">
+						{column.emptyLabel}.
+					</p>
+				) : (
+					<div className="pt-2">
+						<ColumnRows queue={queue} column={column.key} withCheckbox />
+					</div>
+				)}
+			</CollapsibleContent>
+		</Collapsible>
+	);
+}
+
 export function AttentionQueue() {
 	const queue = useAttentionQueue();
+	const [sheetOpen, setSheetOpen] = useState(false);
 
 	if (queue.isLoading) {
 		return (
@@ -366,10 +426,10 @@ export function AttentionQueue() {
 				</div>
 				<div className="grid gap-x-6 gap-y-4 sm:grid-cols-3">
 					{COLUMNS.map((column) => (
-						<div key={column.key} className={cn("space-y-2", ROWS_MIN_HEIGHT)}>
+						<div key={column.key} className="space-y-2">
 							<Skeleton className="h-4 w-24" />
 							{Array.from({ length: COMPACT_ROWS }).map((_, i) => (
-								<Skeleton key={i} className="h-9 w-full" />
+								<Skeleton key={i} className="h-12 w-full" />
 							))}
 						</div>
 					))}
@@ -382,7 +442,10 @@ export function AttentionQueue() {
 	if (queue.counts.total === 0) {
 		return (
 			<div className="flex w-full items-center gap-2.5">
-				<CheckCircle2 className="size-4 shrink-0 text-success" aria-hidden="true" />
+				<CheckCircle2
+					className="size-4 shrink-0 text-success"
+					aria-hidden="true"
+				/>
 				<p className="text-sm text-foreground">
 					You&apos;re all caught up.
 					<span className="text-muted-foreground">
@@ -415,15 +478,20 @@ export function AttentionQueue() {
 						</StatusBadge>
 					)}
 				</div>
-				<QueueSheet queue={queue} />
+				<QueueSheet
+					queue={queue}
+					open={sheetOpen}
+					onOpenChange={setSheetOpen}
+				/>
 			</div>
 
 			<div className="grid gap-x-6 gap-y-4 sm:grid-cols-3">
 				{COLUMNS.map((column) => {
 					const count = queue.counts[column.key];
+					const overflow = count - COMPACT_ROWS;
 					return (
 						<div key={column.key} className="min-w-0">
-							<div className="flex items-center gap-2 pb-0.5">
+							<div className="flex items-center gap-2 pb-1.5">
 								<column.icon
 									className="size-3.5 shrink-0 text-muted-foreground"
 									aria-hidden="true"
@@ -436,6 +504,9 @@ export function AttentionQueue() {
 										{count}
 									</Badge>
 								)}
+								<span className="ml-auto truncate text-xs text-muted-foreground">
+									{count > 0 ? queue.summaries[column.key] : ""}
+								</span>
 							</div>
 							{count === 0 ? (
 								<p className="pt-1 text-sm text-muted-foreground">
@@ -443,14 +514,21 @@ export function AttentionQueue() {
 								</p>
 							) : (
 								<>
-									<p className="truncate pb-1 text-xs text-muted-foreground">
-										{queue.summaries[column.key]}
-									</p>
 									<ColumnRows
 										queue={queue}
 										column={column.key}
 										limit={COMPACT_ROWS}
 									/>
+									{overflow > 0 && (
+										<button
+											type="button"
+											onClick={() => setSheetOpen(true)}
+											className="mt-1.5 inline-flex items-center gap-1 rounded-md px-1 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+										>
+											+{overflow} more
+											<ArrowRight className="size-3" aria-hidden="true" />
+										</button>
+									)}
 								</>
 							)}
 						</div>
