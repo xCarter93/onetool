@@ -59,7 +59,9 @@ export async function ensureFullPaymentRow(
  * a paid invoice back to `sent`.
  *
  * The reverse never derives `overdue`; the org-local cron owns that flip, and
- * guessing at it here from a webhook's UTC clock would fight the sweep.
+ * guessing at it here from a webhook's UTC clock would fight the sweep. Nor does
+ * it create a row for a balance a refund reopened (Patrick, 2026-08-31) — the
+ * owner schedules that through `configurePayments`.
  *
  * Lives here (rather than payments.ts) so the cascade helper has no upward
  * import dependency.

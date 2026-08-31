@@ -13,6 +13,7 @@ import type { Doc, Id } from "../_generated/dataModel";
 import { getPortalSessionOrThrow } from "./helpers";
 import {
 	collectedAmount,
+	isPayableRow,
 	refundedAmountOf,
 } from "../lib/paymentInsights";
 import { roundCents, sumMoney } from "../lib/money";
@@ -247,15 +248,6 @@ type DerivedSummary = {
 	hasPayableRow: boolean;
 };
 
-/** An installment the client can still pay through the portal. */
-export function isPayableRow(row: Doc<"payments">): boolean {
-	return (
-		row.status !== "paid" &&
-		row.status !== "cancelled" &&
-		row.status !== "refunded"
-	);
-}
-
 function deriveSummary(
 	invoice: Doc<"invoices">,
 	payments: Doc<"payments">[],
@@ -279,6 +271,8 @@ function deriveSummary(
 	} else if (refunded > 0 && !hasPayableRow) {
 		// Money went back out and nothing is left to collect. Labelling this
 		// "overdue" would tell the client to pay an invoice they cannot pay.
+		// A refund that reopens a balance deliberately does NOT mint a row here
+		// (Patrick, 2026-08-31): the owner adds one through Configure payments.
 		displayStatus = "refunded";
 	} else if (
 		isPastDue(invoice.dueDate, todayUtcMidnight) &&

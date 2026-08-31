@@ -29,6 +29,15 @@ export function collectedAmount(payment: Doc<"payments">): number {
 	);
 }
 
+/** An installment the client can still pay. */
+export function isPayableRow(payment: Doc<"payments">): boolean {
+	return (
+		payment.status !== "paid" &&
+		payment.status !== "cancelled" &&
+		payment.status !== "refunded"
+	);
+}
+
 /** Dollars refunded on a row, whether it was refunded in full or in part. */
 export function refundedAmountOf(payment: Doc<"payments">): number {
 	if (payment.status === "refunded") {

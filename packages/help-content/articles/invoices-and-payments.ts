@@ -198,7 +198,7 @@ export const invoicesAndPaymentsArticles: HelpArticle[] = [
 					},
 					{
 						type: "note",
-						text: "Paid, refunded, and voided installments are locked. You can rework the unpaid ones, but money you have already collected or returned stays where it is.",
+						text: "Paid, refunded, and voided installments are locked, so you rework the unpaid ones around them. Each locked installment counts for what you kept from it, which means a refunded or voided amount counts for nothing and the unpaid installments have to cover it.",
 					},
 				],
 			},
@@ -215,7 +215,7 @@ export const invoicesAndPaymentsArticles: HelpArticle[] = [
 		faq: [
 			{
 				question: "Can I change the schedule after the client has paid an installment?",
-				answer: "Yes. Open **Configure** again and adjust the unpaid installments. Paid and refunded installments are locked, so money you have already collected is never redistributed.",
+				answer: "Yes. Open **Configure** again and adjust the unpaid installments. Locked installments stay as they are, and money you kept from them is never redistributed, but anything refunded or voided counts as uncollected and the unpaid installments have to cover it.",
 			},
 			{
 				question: "How do I give a client more time on an overdue invoice?",
@@ -403,7 +403,11 @@ export const invoicesAndPaymentsArticles: HelpArticle[] = [
 					},
 					{
 						type: "paragraph",
-						text: "That balance is not payable again. A refunded installment is closed, so the portal labels the invoice Refunded and drops the Pay button instead of asking your client to pay the same money twice.",
+						text: "The refunded installment itself is closed. The portal drops its Pay button rather than ask your client to pay the same money twice, and an invoice with nothing left to collect reads Refunded.",
+					},
+					{
+						type: "paragraph",
+						text: "So a refund that reopens a balance needs a new installment before your client can pay it. Open **Configure** and the panel shows how far the schedule now falls short of the invoice total. Add a row for the difference and the Pay button comes back.",
 					},
 					{
 						type: "paragraph",
