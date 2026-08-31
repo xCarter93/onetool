@@ -1501,14 +1501,16 @@ export const syncDisputeFromWebhookInternal = systemMutation({
 
 /**
  * Revert a payment when an initiated refund later fails (charge.refund.updated
- * with refund.status === "failed", e.g. bank-transfer-backed refunds).
+ * with refund.status === "failed", e.g. bank-transfer-backed refunds). The caller
+ * supplies what Stripe still counts as refunded on the charge; this only ever
+ * lowers `refundedAmount` toward it, since charge.refunded owns every increase.
  */
 export const revertFailedRefundFromWebhookInternal = systemMutation({
 	args: {
 		paymentIntentId: v.string(),
 		refundId: v.string(),
-		/** Refund.amount — this refund alone, not the charge's cumulative total. */
-		refundAmountCents: v.number(),
+		/** Sum of every refund on the charge Stripe still counts as standing. */
+		netRefundedAmountCents: v.number(),
 		failureReason: v.optional(v.string()),
 	},
 	returns: v.null(),
@@ -1527,33 +1529,40 @@ export const revertFailedRefundFromWebhookInternal = systemMutation({
 			);
 			return null;
 		}
-		// Only revert a refund we actually recorded; a refund that failed before
-		// charge.refunded ever fired needs no compensation.
-		const recorded = refundedAmountOf(payment);
-		if (recorded <= 0) return null;
-
-		// refundedAmount is cumulative but this subtraction is not idempotent, so
-		// a redelivered failure would eat an unrelated refund's money.
+		// Webhooks are at-least-once; the id is what stops a redelivery re-notifying.
 		const reverted = payment.revertedRefundIds ?? [];
 		if (reverted.includes(args.refundId)) return null;
 
-		const remainingRefund = Math.max(
-			0,
-			roundCents(recorded - centsToDollars(args.refundAmountCents))
+		// Stripe's own refund records are the authority. Subtracting this refund's
+		// amount instead would eat an unrelated refund whenever the failed one was
+		// never recorded here, e.g. its charge.refunded arrived late or not at all.
+		const recorded = refundedAmountOf(payment);
+		const remainingRefund = Math.min(
+			recorded,
+			roundCents(centsToDollars(args.netRefundedAmountCents))
 		);
+		const gaveMoneyBack = remainingRefund < recorded;
+
 		await ctx.db.patch(payment._id, {
 			revertedRefundIds: [...reverted, args.refundId],
-			// Whatever is left is no longer the whole row, so a fully refunded row
-			// goes back to paid even when earlier partial refunds still stand.
-			...(payment.status === "refunded" ? { status: "paid" as const } : {}),
-			refundedAmount: remainingRefund === 0 ? undefined : remainingRefund,
-			...(remainingRefund === 0 ? { refundedAt: undefined } : {}),
+			...(gaveMoneyBack
+				? {
+						...(payment.status === "refunded" &&
+						remainingRefund < roundCents(payment.paymentAmount)
+							? { status: "paid" as const }
+							: {}),
+						refundedAmount: remainingRefund === 0 ? undefined : remainingRefund,
+						...(remainingRefund === 0 ? { refundedAt: undefined } : {}),
+					}
+				: {}),
 		});
-		await reconcileInvoiceSettlement(
-			ctx,
-			payment.invoiceId,
-			"stripeWebhookActions.charge.refund.updated"
-		);
+		if (gaveMoneyBack) {
+			await reconcileInvoiceSettlement(
+				ctx,
+				payment.invoiceId,
+				"stripeWebhookActions.charge.refund.updated"
+			);
+		}
 		await ctx.runMutation(
 			internal.notifications.createWebhookNotificationInternal,
 			{
@@ -1564,8 +1573,13 @@ export const revertFailedRefundFromWebhookInternal = systemMutation({
 				message:
 					`Refund ${args.refundId} failed` +
 					(args.failureReason ? ` (${args.failureReason})` : "") +
-					` and the money was not returned to your client. The payment is` +
-					` recorded as paid again - retry the refund from your Payments tab.`,
+					` and the money was not returned to your client. ` +
+					(gaveMoneyBack
+						? remainingRefund === 0
+							? "The payment is recorded as paid again"
+							: `${formatCurrency(remainingRefund)} of that payment stays refunded`
+						: "Your records already showed it as collected") +
+					` - retry the refund from your Payments tab.`,
 			}
 		);
 		return null;

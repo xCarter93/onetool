@@ -9,9 +9,9 @@ import {
 import type { Doc, Id } from "./_generated/dataModel";
 
 /**
- * Unwinding a refund that Stripe later reported as failed. `refundedAmount` is
- * cumulative but the unwind subtracts one refund's own amount, so the handler
- * has to recognise a refund it already compensated.
+ * Unwinding a refund that Stripe later reported as failed. The caller passes what
+ * Stripe still counts as refunded on the charge, so the handler lowers
+ * `refundedAmount` toward that figure and never subtracts an amount of its own.
  */
 describe("payments.revertFailedRefundFromWebhookInternal", () => {
 	let t: ReturnType<typeof setupConvexTest>;
@@ -45,24 +45,30 @@ describe("payments.revertFailedRefundFromWebhookInternal", () => {
 		});
 	}
 
-	function revert(orgId: Id<"organizations">, refundId: string, cents: number) {
+	/** `netCents` is what Stripe's remaining refunds add up to on the charge. */
+	function revert(
+		orgId: Id<"organizations">,
+		refundId: string,
+		netCents: number
+	) {
 		return t.mutation(internal.payments.revertFailedRefundFromWebhookInternal, {
 			orgId,
 			paymentIntentId: PI,
 			refundId,
-			refundAmountCents: cents,
+			netRefundedAmountCents: netCents,
 			failureReason: "declined",
 		});
 	}
 
-	it("subtracts only the failed refund's own amount", async () => {
+	it("lowers the refund to what Stripe still counts as standing", async () => {
+		// $50 + $70 refunded, so the row reads fully refunded; the $70 then fails.
 		const { orgId, paymentId } = await seed({
 			status: "refunded",
 			refundedAmount: 120,
 			refundedAt: Date.now(),
 		});
 
-		await revert(orgId, "re_b", 7000);
+		await revert(orgId, "re_b", 5000);
 
 		const payment = await t.run((ctx) => ctx.db.get(paymentId));
 		expect(payment?.status).toBe("paid");
@@ -76,8 +82,8 @@ describe("payments.revertFailedRefundFromWebhookInternal", () => {
 			refundedAt: Date.now(),
 		});
 
-		await revert(orgId, "re_b", 7000);
-		await revert(orgId, "re_b", 7000);
+		await revert(orgId, "re_b", 5000);
+		await revert(orgId, "re_b", 5000);
 
 		const payment = await t.run((ctx) => ctx.db.get(paymentId));
 		expect(payment?.refundedAmount).toBe(50);
@@ -91,21 +97,26 @@ describe("payments.revertFailedRefundFromWebhookInternal", () => {
 			refundedAt: Date.now(),
 		});
 
-		await revert(orgId, "re_b", 7000);
-		await revert(orgId, "re_c", 3000);
+		await revert(orgId, "re_b", 5000);
+		await revert(orgId, "re_c", 0);
 
 		const payment = await t.run((ctx) => ctx.db.get(paymentId));
-		expect(payment?.refundedAmount).toBe(20);
+		expect(payment?.status).toBe("paid");
+		expect(payment?.refundedAmount).toBeUndefined();
+		expect(payment?.refundedAt).toBeUndefined();
 		expect(payment?.revertedRefundIds).toEqual(["re_b", "re_c"]);
 	});
 
-	it("does nothing when no refund was ever recorded", async () => {
+	it("leaves a refund alone when the failed one was never recorded", async () => {
+		// charge.refunded for the $50 that still stands hasn't landed yet, so a
+		// failure must not be the event that starts counting it.
 		const { orgId, paymentId } = await seed({});
 
-		await revert(orgId, "re_b", 7000);
+		await revert(orgId, "re_b", 5000);
 
 		const payment = await t.run((ctx) => ctx.db.get(paymentId));
+		expect(payment?.status).toBe("paid");
 		expect(payment?.refundedAmount).toBeUndefined();
-		expect(payment?.revertedRefundIds).toBeUndefined();
+		expect(payment?.revertedRefundIds).toEqual(["re_b"]);
 	});
 });

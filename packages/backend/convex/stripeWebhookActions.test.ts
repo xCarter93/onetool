@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { convexTest } from "convex-test";
 import { api, internal } from "./_generated/api";
 import { setupConvexTest } from "./test.setup";
@@ -13,6 +13,7 @@ import {
 } from "./__tests__/fixtures/stripeEvents";
 import type { Id } from "./_generated/dataModel";
 import type Stripe from "stripe";
+import { __setStripeClientForTests } from "./stripeWebhookActions";
 
 /**
  * Webhook integration tests for `stripeWebhookActions.handleEvent` covering
@@ -42,6 +43,19 @@ async function seedConnectedOrg(
 		});
 		return { orgId, userId };
 	});
+}
+
+/** charge.refund.updated reads the charge's live refunds to see what still stands. */
+function mockRefundList(
+	refunds: { id: string; amount: number; status: string }[]
+) {
+	__setStripeClientForTests({
+		refunds: {
+			list: vi.fn().mockReturnValue({
+				autoPagingToArray: vi.fn().mockResolvedValue(refunds),
+			}),
+		},
+	} as unknown as Parameters<typeof __setStripeClientForTests>[0]);
 }
 
 async function seedPayment(
@@ -99,6 +113,10 @@ describe("stripeWebhookActions.handleEvent integration", () => {
 
 	beforeEach(() => {
 		t = setupConvexTest();
+	});
+
+	afterEach(() => {
+		__setStripeClientForTests(null);
 	});
 
 	it("idempotent replay: second call with same eventId returns duplicate=true and does not re-mark payment", async () => {
@@ -222,6 +240,7 @@ describe("stripeWebhookActions.handleEvent integration", () => {
 		await t.run((ctx) =>
 			ctx.db.patch(paymentId, { status: "refunded", refundedAt: Date.now() })
 		);
+		mockRefundList([{ id: "re_fail_1", amount: 12000, status: "failed" }]);
 		const event = buildStripeEvent({
 			id: "evt_refund_fail",
 			type: "charge.refund.updated",
@@ -230,6 +249,7 @@ describe("stripeWebhookActions.handleEvent integration", () => {
 				object: {
 					id: "re_fail_1",
 					payment_intent: "pi_refund_fail",
+					charge: "ch_refund_fail",
 					amount: 12000,
 					status: "failed",
 					failure_reason: "insufficient_funds",
@@ -265,6 +285,11 @@ describe("stripeWebhookActions.handleEvent integration", () => {
 				refundedAmount: 120,
 			})
 		);
+		// The $50 refund still stands; only the $70 came back.
+		mockRefundList([
+			{ id: "re_ok_2", amount: 5000, status: "succeeded" },
+			{ id: "re_fail_2", amount: 7000, status: "failed" },
+		]);
 		await t.action(
 			internal.stripeWebhookActions.handleEvent,
 			buildHandleEventArgs(
@@ -276,6 +301,7 @@ describe("stripeWebhookActions.handleEvent integration", () => {
 						object: {
 							id: "re_fail_2",
 							payment_intent: "pi_refund_partial_fail",
+							charge: "ch_refund_partial_fail",
 							amount: 7000,
 							status: "failed",
 							failure_reason: "declined",

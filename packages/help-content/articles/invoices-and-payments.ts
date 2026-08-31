@@ -93,7 +93,7 @@ export const invoicesAndPaymentsArticles: HelpArticle[] = [
 							"**Draft**: you are still working on it, and it is not visible in the client portal.",
 							"**Sent**: the client has been billed and payment is open.",
 							"**Paid**: the invoice is settled.",
-							"**Overdue**: the invoice was sent and its due date has passed. OneTool moves it there for you at 1:00 AM in your organization's timezone, the morning after the due date, and notifies the organization owner. An invoice that was already more than a week past due moves quietly instead, with no notification and no automation, so a long-neglected backlog does not suddenly start chasing clients. It stays overdue until the client pays, or until you move the installments to later dates.",
+							"**Overdue**: the invoice was sent and its due date has passed. OneTool moves it there for you at 1:00 AM in your organization's timezone, the morning after the due date, and notifies the organization owner. An invoice that was already more than a week past due moves quietly instead, with no notification and no automation, so a long-neglected backlog does not suddenly start chasing clients. It stays overdue until the client pays, or until you reschedule the installments so the last one is due in the future.",
 							"**Cancelled**: the invoice is void.",
 						],
 					},
@@ -198,7 +198,7 @@ export const invoicesAndPaymentsArticles: HelpArticle[] = [
 					},
 					{
 						type: "note",
-						text: "Paid, refunded, and voided installments are locked, so you rework the unpaid ones around them. Each locked installment counts for what you kept from it, which means a refunded or voided amount counts for nothing and the unpaid installments have to cover it.",
+						text: "Paid, refunded, and voided installments are locked, so you rework the unpaid ones around them. Each locked installment counts for what you kept from it, which means a refunded or voided amount counts for nothing and the unpaid installments have to cover it. The installment amounts then add up to more than the invoice total, which is expected: the panel counts what you kept, not what you charged.",
 					},
 				],
 			},
