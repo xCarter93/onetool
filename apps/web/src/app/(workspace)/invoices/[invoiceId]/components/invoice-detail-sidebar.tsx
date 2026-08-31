@@ -12,7 +12,6 @@ import {
 } from "@/components/ui/select";
 import { ProminentStatusBadge } from "@/components/shared/prominent-status-badge";
 import { Separator } from "@/components/ui/separator";
-import { DatePicker } from "@/components/ui/date-picker";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
@@ -47,11 +46,7 @@ import { QuickBooksSyncRow } from "@/components/quickbooks/sync-status-row";
 import { deriveInvoiceStatus } from "@onetool/backend/convex/lib/invoiceLateness";
 import { usePermissions } from "@/hooks/use-permissions";
 import { useOrgToday } from "@/hooks/use-org-today";
-import {
-	formatCalendarDate,
-	localDateToUtcMidnightMs,
-	utcMidnightMsToLocalDate,
-} from "@/lib/dates";
+import { formatCalendarDate } from "@/lib/dates";
 
 type InvoiceStatus = "draft" | "sent" | "paid" | "overdue" | "cancelled";
 
@@ -72,7 +67,7 @@ const STATUS_OPTIONS = [
 	{ value: "cancelled", label: "Cancelled" },
 ];
 
-type EditingField = "status" | "dueDate" | null;
+type EditingField = "status" | null;
 
 interface InvoiceDetailSidebarProps {
 	invoice: Doc<"invoices">;
@@ -94,6 +89,8 @@ interface InvoiceDetailSidebarProps {
 	onSelectVersion: (id: Id<"documents"> | null) => void;
 	showVersionHistory: boolean;
 	onToggleVersionHistory: () => void;
+	/** Due date is derived from the schedule, so editing it means opening it. */
+	onConfigurePayments: () => void;
 }
 
 export function InvoiceDetailSidebar({
@@ -114,6 +111,7 @@ export function InvoiceDetailSidebar({
 	onSelectVersion,
 	showVersionHistory,
 	onToggleVersionHistory,
+	onConfigurePayments,
 }: InvoiceDetailSidebarProps) {
 	const toast = useToast();
 	const updateInvoice = useMutation(api.invoices.update);
@@ -131,9 +129,6 @@ export function InvoiceDetailSidebar({
 
 	const [editingField, setEditingField] = useState<EditingField>(null);
 	const [editValue, setEditValue] = useState("");
-	const [editDateValue, setEditDateValue] = useState<Date | undefined>(
-		undefined
-	);
 	const orgToday = useOrgToday();
 	const currentStatus = deriveInvoiceStatus(invoice, orgToday);
 
@@ -143,21 +138,9 @@ export function InvoiceDetailSidebar({
 		setEditValue(currentValue);
 	};
 
-	const startEditingDate = (
-		field: "dueDate",
-		currentTimestamp?: number
-	) => {
-		if (!canModify) return;
-		setEditingField(field);
-		setEditDateValue(
-			currentTimestamp ? utcMidnightMsToLocalDate(currentTimestamp) : undefined
-		);
-	};
-
 	const cancelEditing = () => {
 		setEditingField(null);
 		setEditValue("");
-		setEditDateValue(undefined);
 	};
 
 	const saveField = async (
@@ -169,10 +152,7 @@ export function InvoiceDetailSidebar({
 				id: invoiceId,
 				[field]: value,
 			});
-			const labels: Record<string, string> = {
-				status: "Status",
-				dueDate: "Due date",
-			};
+			const labels: Record<string, string> = { status: "Status" };
 			const label = labels[field] || field;
 			toast.success("Updated", `${label} saved.`);
 			cancelEditing();
@@ -283,62 +263,42 @@ export function InvoiceDetailSidebar({
 						: renderPencil()}
 				</div>
 
-				{/* Due Date (editable) */}
+				{/* Due Date — derived from the schedule, so the pencil opens it */}
 				<div
-					className={rowClass}
-					onClick={() =>
-						editingField !== "dueDate" &&
-						startEditingDate("dueDate", invoice.dueDate)
-					}
+					className={`${rowClass} focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring`}
+					role={canModify ? "button" : undefined}
+					tabIndex={canModify ? 0 : undefined}
+					aria-label={canModify ? "Edit due date in the payment schedule" : undefined}
+					onClick={() => canModify && onConfigurePayments()}
+					onKeyDown={(e) => {
+						if (canModify && (e.key === "Enter" || e.key === " ")) {
+							e.preventDefault();
+							onConfigurePayments();
+						}
+					}}
 				>
 					<CalendarCheck className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
 					<span className="text-sm text-muted-foreground w-28 shrink-0">
 						Due Date
 					</span>
-					<div
-						className="flex-1 min-w-0"
-						onClick={(e) =>
-							editingField === "dueDate" && e.stopPropagation()
-						}
-					>
-						{editingField === "dueDate" ? (
-							<DatePicker
-								open={true}
-								onOpenChange={(open) => {
-									if (!open) cancelEditing();
-								}}
-								value={editDateValue}
-								onChange={(date) => {
-									if (date) {
-										saveField(
-											"dueDate",
-											localDateToUtcMidnightMs(date)
-										);
-									}
-								}}
-								formatDate={(date) => formatDate(date.getTime())}
-								placeholder="Select date..."
-								className="h-8"
-							/>
-						) : (
-							<span
-								className={`text-sm ${
-									currentStatus === "overdue"
-										? "text-red-600 dark:text-red-400 font-medium"
-										: "text-foreground"
-								}`}
-							>
-								{invoice.dueDate ? (
-									formatCalendarDate(invoice.dueDate)
-								) : (
-									<span className="text-muted-foreground italic">
-										Not set
-									</span>
-								)}
-							</span>
-						)}
+					<div className="flex-1 min-w-0">
+						<span
+							className={`text-sm ${
+								currentStatus === "overdue"
+									? "text-danger font-medium"
+									: "text-foreground"
+							}`}
+						>
+							{invoice.dueDate ? (
+								formatCalendarDate(invoice.dueDate)
+							) : (
+								<span className="text-muted-foreground italic">
+									Not set
+								</span>
+							)}
+						</span>
 					</div>
-					{editingField !== "dueDate" && renderPencil()}
+					{renderPencil()}
 				</div>
 
 				{/* Invoice No. (read-only) */}

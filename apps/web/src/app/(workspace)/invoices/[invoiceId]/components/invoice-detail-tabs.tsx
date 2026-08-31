@@ -101,6 +101,7 @@ export function InvoiceDetailTabs({
 		onSelectVersion,
 		showVersionHistory,
 		onToggleVersionHistory,
+		onConfigurePayments,
 	};
 
 	return (

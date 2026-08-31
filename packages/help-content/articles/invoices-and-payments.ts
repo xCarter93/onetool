@@ -93,7 +93,7 @@ export const invoicesAndPaymentsArticles: HelpArticle[] = [
 							"**Draft**: you are still working on it, and it is not visible in the client portal.",
 							"**Sent**: the client has been billed and payment is open.",
 							"**Paid**: the invoice is settled.",
-							"**Overdue**: the invoice was sent and its due date has passed. OneTool moves it there for you at 1:00 AM in your organization's timezone, the morning after the due date, and notifies the organization owner. An invoice that was already more than a week past due moves quietly instead, with no notification and no automation, so a long-neglected backlog does not suddenly start chasing clients. It stays overdue until it is paid.",
+							"**Overdue**: the invoice was sent and its due date has passed. OneTool moves it there for you at 1:00 AM in your organization's timezone, the morning after the due date, and notifies the organization owner. An invoice that was already more than a week past due moves quietly instead, with no notification and no automation, so a long-neglected backlog does not suddenly start chasing clients. It stays overdue until the client pays, or until you move the installments to later dates.",
 							"**Cancelled**: the invoice is void.",
 						],
 					},
@@ -135,7 +135,7 @@ export const invoicesAndPaymentsArticles: HelpArticle[] = [
 			},
 			{
 				question: "Why does my invoice show as overdue?",
-				answer: "It was sent and its due date has passed. OneTool moves sent invoices to Overdue on its own, at 1:00 AM in your organization's timezone the morning after the due date, and notifies the organization owner. Invoices that were already more than a week past due move quietly, without a notification. It stays overdue until it is paid, either online through the portal or by you recording the payment.",
+				answer: "It was sent and its due date has passed. OneTool moves sent invoices to Overdue on its own, at 1:00 AM in your organization's timezone the morning after the due date, and notifies the organization owner. Invoices that were already more than a week past due move quietly, without a notification. It stays overdue until the client pays, online through the portal or with you recording the payment. If they need more time, reschedule the installments. Once the last one is due in the future, the invoice goes back to Sent.",
 			},
 			{
 				question: "Can I edit an invoice after sending it?",
@@ -172,6 +172,10 @@ export const invoicesAndPaymentsArticles: HelpArticle[] = [
 						type: "note",
 						text: "Invoices converted from a quote start with the **Full Payment** row right away. Invoices created from scratch get it automatically when you send them.",
 					},
+					{
+						type: "paragraph",
+						text: "The invoice's own due date is the last installment's date. Move that installment and the invoice's deadline moves with it.",
+					},
 				],
 			},
 			{
@@ -194,7 +198,7 @@ export const invoicesAndPaymentsArticles: HelpArticle[] = [
 					},
 					{
 						type: "note",
-						text: "Installments that are already paid are locked. You can rework the unpaid remainder, but money you have collected stays where it is.",
+						text: "Paid, refunded, and voided installments are locked. You can rework the unpaid ones, but money you have already collected or returned stays where it is.",
 					},
 				],
 			},
@@ -211,7 +215,11 @@ export const invoicesAndPaymentsArticles: HelpArticle[] = [
 		faq: [
 			{
 				question: "Can I change the schedule after the client has paid an installment?",
-				answer: "Yes. Open **Configure** again and adjust the unpaid installments. Paid installments are locked, so money you have already collected is never redistributed.",
+				answer: "Yes. Open **Configure** again and adjust the unpaid installments. Paid and refunded installments are locked, so money you have already collected is never redistributed.",
+			},
+			{
+				question: "How do I give a client more time on an overdue invoice?",
+				answer: "Open the invoice and click **Reschedule payments** on the overdue banner, or click **Configure** on the Payment Schedule tab. Give the unpaid installments later dates. **Shift dates** moves them all by the same number of days at once. When the last installment is due in the future, the invoice goes back to Sent.",
 			},
 			{
 				question: "Why is the schedule empty on a new invoice?",

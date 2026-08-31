@@ -79,6 +79,7 @@ import {
 	KanbanProvider,
 } from "../projects/components/kanban";
 import { InvoiceDetailDrawer } from "./components/invoice-detail-drawer";
+import { PaymentsConfigurationModal } from "./components/payments-configuration-modal";
 import { ActivitySparkline } from "@/components/shared/activity-sparkline";
 import { ActivityColumnHeader } from "@/components/shared/activity-column-header";
 import { cn } from "@/lib/utils";
@@ -305,6 +306,9 @@ function InvoicesPageContent() {
 	} | null>(null);
 	const [previewId, setPreviewId] = useState<Id<"invoices"> | null>(null);
 	const [previewOpen, setPreviewOpen] = useState(false);
+	// Set by an overdue card dropped onto Sent: the deadline has to move before
+	// the status can, so the board hands the job to the schedule modal.
+	const [rescheduleId, setRescheduleId] = useState<Id<"invoices"> | null>(null);
 	const deleteInvoice = useMutation(api.invoices.remove);
 	const updateInvoiceStatus = useMutation(api.invoices.update);
 	const [kanbanData, setKanbanData] = useState<InvoiceKanbanItem[]>([]);
@@ -320,6 +324,10 @@ function InvoicesPageContent() {
 	const sparklines = useActivitySparklines("invoice");
 	const clients = useQuery(api.clients.list, can("clients") ? {} : "skip");
 	const projects = useQuery(api.projects.list, can("projects") ? {} : "skip");
+	const rescheduleTarget = useQuery(
+		api.invoices.getWithPayments,
+		rescheduleId ? { id: rescheduleId } : "skip"
+	);
 
 	// Combine invoices with resolved client and project names
 	const data = React.useMemo((): InvoiceWithClient[] => {
@@ -576,34 +584,43 @@ function InvoicesPageContent() {
 			const item = kanbanData.find((i) => i.id === event.active.id);
 			if (!item) return;
 			const originalStatus = invoiceStatusMap.get(item.id);
-			if (originalStatus && originalStatus !== item.column) {
-				// Overdue is computed from a past-due "sent" invoice, so dropping into
-				// either the sent or overdue lane writes the stored status "sent".
-				const nextStatus: InvoiceStatus =
-					item.column === "overdue" ? "sent" : item.column;
-				updateInvoiceStatus({
-					id: item.id as Id<"invoices">,
-					status: nextStatus,
-				}).catch((error) => {
-					console.error("Failed to update invoice status:", error);
-					// A rejected write leaves the server data untouched, so the sync
-					// effect never re-fires — put the card back in its lane by hand.
-					setKanbanData((prev) =>
-						prev.map((card) =>
-							card.id === item.id
-								? { ...card, column: originalStatus, status: originalStatus }
-								: card
-						)
-					);
-					toast.error(
-						"Update Failed",
-						convexErrorMessage(
-							error,
-							"Failed to update invoice status. Please try again."
-						)
-					);
-				});
+			if (!originalStatus || originalStatus === item.column) return;
+
+			const restoreCard = () =>
+				setKanbanData((prev) =>
+					prev.map((card) =>
+						card.id === item.id
+							? { ...card, column: originalStatus, status: originalStatus }
+							: card
+					)
+				);
+
+			// Writing "sent" on a still-past-due invoice just gets reversed by the
+			// overnight sweep. Moving the deadline is what actually un-flips it.
+			if (originalStatus === "overdue" && item.column === "sent") {
+				restoreCard();
+				setRescheduleId(item.id as Id<"invoices">);
+				return;
 			}
+
+			const nextStatus: InvoiceStatus =
+				item.column === "overdue" ? "sent" : item.column;
+			updateInvoiceStatus({
+				id: item.id as Id<"invoices">,
+				status: nextStatus,
+			}).catch((error) => {
+				console.error("Failed to update invoice status:", error);
+				// A rejected write leaves the server data untouched, so the sync
+				// effect never re-fires — put the card back in its lane by hand.
+				restoreCard();
+				toast.error(
+					"Update Failed",
+					convexErrorMessage(
+						error,
+						"Failed to update invoice status. Please try again."
+					)
+				);
+			});
 		},
 		[kanbanData, invoiceStatusMap, updateInvoiceStatus, toast]
 	);
@@ -915,6 +932,24 @@ function InvoicesPageContent() {
 				open={previewOpen}
 				onOpenChange={setPreviewOpen}
 			/>
+
+			{rescheduleId && rescheduleTarget && (
+				<PaymentsConfigurationModal
+					isOpen
+					onClose={() => setRescheduleId(null)}
+					invoiceId={rescheduleId}
+					invoiceTotal={rescheduleTarget.total}
+					invoiceDueDate={rescheduleTarget.dueDate}
+					existingPayments={rescheduleTarget.payments.map((p) => ({
+						_id: p._id,
+						paymentAmount: p.paymentAmount,
+						dueDate: p.dueDate,
+						description: p.description,
+						status: p.status,
+						sortOrder: p.sortOrder,
+					}))}
+				/>
+			)}
 
 			{/* Delete Confirmation Modal */}
 			{invoiceToDelete && (

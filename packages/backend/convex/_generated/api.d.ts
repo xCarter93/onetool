@@ -108,6 +108,7 @@ import type * as lib_orgScan from "../lib/orgScan.js";
 import type * as lib_orgWideView from "../lib/orgWideView.js";
 import type * as lib_organization from "../lib/organization.js";
 import type * as lib_paymentInsights from "../lib/paymentInsights.js";
+import type * as lib_paymentSchedule from "../lib/paymentSchedule.js";
 import type * as lib_payments from "../lib/payments.js";
 import type * as lib_permissionKeys from "../lib/permissionKeys.js";
 import type * as lib_permissions from "../lib/permissions.js";
@@ -322,6 +323,7 @@ declare const fullApi: ApiFromModules<{
   "lib/orgWideView": typeof lib_orgWideView;
   "lib/organization": typeof lib_organization;
   "lib/paymentInsights": typeof lib_paymentInsights;
+  "lib/paymentSchedule": typeof lib_paymentSchedule;
   "lib/payments": typeof lib_payments;
   "lib/permissionKeys": typeof lib_permissionKeys;
   "lib/permissions": typeof lib_permissions;

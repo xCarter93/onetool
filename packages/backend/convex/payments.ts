@@ -20,8 +20,12 @@ import {
 	reconcileInvoiceSettlement,
 } from "./lib/payments";
 import { collectedAmount, refundedAmountOf } from "./lib/paymentInsights";
+import { syncInvoiceDueDate } from "./lib/paymentSchedule";
 import { transitionInvoice } from "./lib/invoiceTransitions";
 import { calculateInvoiceTotals } from "./lib/invoiceTotals";
+import { isPastDue } from "./lib/invoiceLateness";
+import { getOrgTimezoneById } from "./lib/organization";
+import { localTodayUtcMidnight } from "./lib/schedule";
 import {
 	centsToDollars,
 	dollarsToCents,
@@ -296,6 +300,7 @@ export const create = userMutation({
 
 		// The payment schedule prints on the invoice PDF.
 		await touchInvoiceContent(ctx, args.invoiceId);
+		await syncInvoiceDueDate(ctx, args.invoiceId);
 
 		return paymentId;
 	},
@@ -360,6 +365,15 @@ export const update = userMutation({
 			await touchInvoiceContent(ctx, payment.invoiceId);
 		}
 
+		// A moved deadline — or a cancelled row dropping out of the schedule —
+		// changes which installment is last.
+		if (
+			filteredUpdates.dueDate !== undefined ||
+			filteredUpdates.status !== undefined
+		) {
+			await syncInvoiceDueDate(ctx, payment.invoiceId);
+		}
+
 		return id;
 	},
 });
@@ -390,22 +404,34 @@ export const remove = userMutation({
 
 		// The payment schedule prints on the invoice PDF.
 		await touchInvoiceContent(ctx, payment.invoiceId);
+		await syncInvoiceDueDate(ctx, payment.invoiceId);
 
 		return args.id;
 	},
 });
 
 /**
- * Configure payments for an invoice (bulk create/update)
- * This replaces all unpaid payments with the new configuration
- * Paid payments are preserved and cannot be modified
+ * Rewrite an invoice's payment schedule.
+ *
+ * Rows arriving with an `id` are patched in place rather than recreated, so a
+ * reschedule keeps the cached Stripe PaymentIntent and the client's open
+ * checkout survives it. Editable rows the caller omits are deleted.
+ *
+ * Paid and refunded rows are untouchable and count toward the sum — their money
+ * is part of the invoice total. Cancelled rows are voided installments: they
+ * stay on the record but are excluded from the sum, so the live schedule has to
+ * cover what they no longer will.
+ *
+ * Rescheduling an overdue invoice past today un-flips it back to sent. This is
+ * the one sanctioned un-flip: someone deliberately granted more time.
  */
 export const configurePayments = userMutation({
 	args: {
 		invoiceId: v.id("invoices"),
 		payments: v.array(
 			v.object({
-				id: v.optional(v.id("payments")), // Existing payment ID if updating
+				/** Patch this existing row instead of recreating it. */
+				id: v.optional(v.id("payments")),
 				paymentAmount: v.number(),
 				dueDate: v.number(),
 				description: v.optional(v.string()),
@@ -431,14 +457,21 @@ export const configurePayments = userMutation({
 			.withIndex("by_invoice", (q) => q.eq("invoiceId", args.invoiceId))
 			.collect();
 
-		// Separate paid and unpaid payments
-		const paidPayments = existingPayments.filter((p) => p.status === "paid");
-		const unpaidPayments = existingPayments.filter((p) => p.status !== "paid");
+		// Money that already moved, and so is spoken for in the invoice total.
+		const settledPayments = existingPayments.filter(
+			(p) => p.status === "paid" || p.status === "refunded"
+		);
+		const editablePayments = existingPayments.filter(
+			(p) =>
+				p.status !== "paid" &&
+				p.status !== "refunded" &&
+				p.status !== "cancelled"
+		);
 
-		// Calculate total from new payments + paid payments
-		const newPaymentAmounts = args.payments.map((p) => p.paymentAmount);
-		const paidPaymentAmounts = paidPayments.map((p) => p.paymentAmount);
-		const allPaymentAmounts = [...newPaymentAmounts, ...paidPaymentAmounts];
+		const allPaymentAmounts = [
+			...args.payments.map((p) => p.paymentAmount),
+			...settledPayments.map((p) => p.paymentAmount),
+		];
 
 		// Validate that payments sum equals invoice total
 		const validation = await validatePaymentSum(
@@ -462,35 +495,101 @@ export const configurePayments = userMutation({
 			}
 		}
 
-		// Delete existing unpaid payments
-		for (const unpaidPayment of unpaidPayments) {
-			await ctx.db.delete(unpaidPayment._id);
-		}
-
-		// Create new payments
-		const createdIds: PaymentId[] = [];
+		const editableById = new Map(editablePayments.map((p) => [p._id, p]));
+		const keptIds = new Set<PaymentId>();
+		const scheduleIds: PaymentId[] = [];
 
 		for (const paymentData of args.payments) {
-			const paymentId = await ctx.db.insert("payments", {
-				orgId: ctx.orgId,
-				invoiceId: args.invoiceId,
-				paymentAmount: paymentData.paymentAmount,
-				dueDate: paymentData.dueDate,
-				description: paymentData.description,
-				sortOrder: paymentData.sortOrder,
-				status: "pending",
-			});
+			const existing = paymentData.id
+				? editableById.get(paymentData.id)
+				: undefined;
 
-			createdIds.push(paymentId);
+			if (paymentData.id && !existing) {
+				throw new ConvexError({
+					code: "BAD_REQUEST",
+					message:
+						"That installment is no longer editable. Reopen the schedule and try again.",
+				});
+			}
+
+			if (existing) {
+				// Two args claiming one row would collapse into a single patch and
+				// leave the schedule short of the invoice total.
+				if (keptIds.has(existing._id)) {
+					throw new ConvexError({
+						code: "BAD_REQUEST",
+						message: "Each installment can only appear once in a schedule.",
+					});
+				}
+				keptIds.add(existing._id);
+				scheduleIds.push(existing._id);
+				// Deliberately narrow: the pending Stripe caches stay, which is the
+				// whole reason a reschedule patches instead of recreating.
+				await ctx.db.patch(existing._id, {
+					paymentAmount: paymentData.paymentAmount,
+					dueDate: paymentData.dueDate,
+					description: paymentData.description,
+					sortOrder: paymentData.sortOrder,
+				});
+				continue;
+			}
+
+			scheduleIds.push(
+				await ctx.db.insert("payments", {
+					orgId: ctx.orgId,
+					invoiceId: args.invoiceId,
+					paymentAmount: paymentData.paymentAmount,
+					dueDate: paymentData.dueDate,
+					description: paymentData.description,
+					sortOrder: paymentData.sortOrder,
+					status: "pending",
+				})
+			);
 		}
+
+		for (const dropped of editablePayments) {
+			if (!keptIds.has(dropped._id)) await ctx.db.delete(dropped._id);
+		}
+
+		// invoice.dueDate is the schedule's final deadline, so it follows the rows.
+		await syncInvoiceDueDate(ctx, args.invoiceId);
 
 		// The payment schedule prints on the invoice PDF.
 		await touchInvoiceContent(ctx, args.invoiceId);
 
-		// Return paid payment IDs followed by new payment IDs
-		return [...paidPayments.map((p) => p._id), ...createdIds];
+		await unflipRescheduledInvoice(ctx, args.invoiceId);
+
+		// Settled rows first, then the live schedule in the order it was sent.
+		return [...settledPayments.map((p) => p._id), ...scheduleIds];
 	},
 });
+
+/**
+ * The only path out of `overdue` short of payment: a person moved the deadline
+ * past today. Deliberately not in `payments.update` or the sweep — an invoice
+ * correcting its own status without anyone asking was rejected.
+ */
+async function unflipRescheduledInvoice(
+	ctx: MutationCtx & { orgId: Id<"organizations">; user: Doc<"users"> },
+	invoiceId: InvoiceId
+): Promise<void> {
+	const invoice = await ctx.db.get(invoiceId);
+	if (!invoice || invoice.status !== "overdue") return;
+
+	const today = localTodayUtcMidnight(
+		Date.now(),
+		await getOrgTimezoneById(ctx, invoice.orgId)
+	);
+	if (isPastDue(invoice.dueDate, today)) return;
+
+	await transitionInvoice(ctx, invoice, "sent", {
+		actor: { userId: ctx.user._id },
+		source: "payments.configurePayments",
+		// An invoice flipped to overdue by hand never got a firstSentAt, so an
+		// unskipped debit here would fail an otherwise valid reschedule.
+		meter: "skip",
+	});
+}
 
 /**
  * Create a default single payment for the full invoice amount
@@ -1516,6 +1615,9 @@ export const cancel = userMutation({
 		await ctx.db.patch(args.id, {
 			status: "cancelled",
 		});
+
+		// A voided installment is no longer a deadline.
+		await syncInvoiceDueDate(ctx, payment.invoiceId);
 
 		return args.id;
 	},
