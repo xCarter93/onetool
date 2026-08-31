@@ -64,6 +64,24 @@ function bar(
 	);
 }
 
+describe("ReportUtilityBar — a rejected query stays inside the bar", () => {
+	it("renders the fallback line instead of throwing to the route boundary", () => {
+		mockedUseQuery.mockImplementation(() => {
+			throw new Error("This report can't run");
+		});
+		// React logs the caught error; the assertion is that render() returns.
+		const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+
+		render(bar(byStatus, "Status"));
+
+		expect(
+			screen.getByText("Calculated values are unavailable for this configuration.")
+		).toBeInTheDocument();
+		expect(screen.queryByRole("button", { name: /calculated values/i })).toBeNull();
+		consoleError.mockRestore();
+	});
+});
+
 describe("ReportUtilityBar — CSV waits for the debounced args to settle", () => {
 	it("without showCsvDownload (the builder), no download button renders", () => {
 		render(bar(byStatus, "Status", false));
