@@ -14,7 +14,9 @@ import {
 	Receipt,
 } from "lucide-react";
 
+import { deriveInvoiceStatus } from "@onetool/backend/convex/lib/invoiceLateness";
 import { StatusBadge } from "@/components/domain/status-badge";
+import { useOrgToday } from "@/hooks/use-org-today";
 import {
 	ActionButtonGroup,
 	type RecordAction,
@@ -87,12 +89,6 @@ function formatDate(ts: number | null | undefined): string {
 	});
 }
 
-// Overdue is computed from a past-due "sent" invoice. Reads the clock inside a
-// module helper so the component render stays pure.
-function getEffectiveStatus(status: InvoiceStatus, dueDate: number): InvoiceStatus {
-	return status === "sent" && dueDate < Date.now() ? "overdue" : status;
-}
-
 export interface InvoiceDetailDrawerProps {
 	invoiceId: Id<"invoices"> | null;
 	open: boolean;
@@ -105,6 +101,7 @@ export function InvoiceDetailDrawer({
 	onOpenChange,
 }: InvoiceDetailDrawerProps) {
 	const router = useRouter();
+	const orgToday = useOrgToday();
 	const { can, isLoading: permissionsLoading } = usePermissions();
 	const canModify = can("invoices", "modify");
 	const showReadOnly = !permissionsLoading && !canModify;
@@ -134,9 +131,8 @@ export function InvoiceDetailDrawer({
 	const client = data?.client ?? null;
 	const project = data?.project ?? null;
 
-	// Computed display status (overdue when a sent invoice is past due).
 	const effectiveStatus = invoice
-		? getEffectiveStatus(invoice.status, invoice.dueDate)
+		? deriveInvoiceStatus(invoice, orgToday)
 		: null;
 	const canMarkPaid =
 		effectiveStatus !== null &&

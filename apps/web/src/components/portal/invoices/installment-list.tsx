@@ -1,5 +1,7 @@
 "use client";
 
+import { isPastDue } from "@onetool/backend/convex/lib/invoiceLateness";
+
 import { StatusBadge, type StatusRole } from "@/components/domain/status-badge";
 import { formatDate, formatMoney } from "@/lib/portal/format";
 
@@ -24,11 +26,14 @@ export interface InstallmentRow {
 export interface InstallmentListProps {
 	installments: InstallmentRow[];
 	activeIndex: number | null;
+	/** The business's calendar day, from the server — never the visitor's clock. */
+	orgToday: number;
 }
 
 function pillFor(
 	row: InstallmentRow,
-	isUpcoming: boolean
+	isUpcoming: boolean,
+	orgToday: number
 ): { label: string; role: StatusRole } {
 	// Terminal states first — a refunded row past its due date is not overdue,
 	// and telling the client to pay money the business returned is the worst
@@ -44,7 +49,8 @@ function pillFor(
 			role: "success",
 		};
 	}
-	if (row.dueDate < Date.now()) return { label: "Overdue", role: "danger" };
+	if (isPastDue(row.dueDate, orgToday))
+		return { label: "Overdue", role: "danger" };
 	if (isUpcoming) return { label: "Upcoming", role: "neutral" };
 	return { label: "Due", role: "info" };
 }
@@ -52,6 +58,7 @@ function pillFor(
 export function InstallmentList({
 	installments,
 	activeIndex,
+	orgToday,
 }: InstallmentListProps) {
 	if (installments.length === 0) {
 		return (
@@ -72,7 +79,7 @@ export function InstallmentList({
 				const isActive = activeIndex !== null && idx === activeIndex;
 				const isUpcoming =
 					activeIndex !== null && idx > activeIndex && row.status !== "paid";
-				const pill = pillFor(row, isUpcoming);
+				const pill = pillFor(row, isUpcoming, orgToday);
 				return (
 					<li
 						key={row._id}

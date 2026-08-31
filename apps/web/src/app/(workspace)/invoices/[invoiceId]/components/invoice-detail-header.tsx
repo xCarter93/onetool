@@ -21,14 +21,6 @@ import { cn } from "@/lib/utils";
 
 type InvoiceStatus = "draft" | "sent" | "paid" | "overdue" | "cancelled";
 
-const getInvoiceStatus = (
-	status: InvoiceStatus,
-	dueDate?: number
-): InvoiceStatus => {
-	if (status === "sent" && dueDate && dueDate < Date.now()) return "overdue";
-	return status;
-};
-
 interface InvoiceDetailHeaderProps {
 	invoice: Doc<"invoices">;
 	currentStatus: InvoiceStatus;
@@ -172,11 +164,6 @@ export function InvoiceDetailHeader({
 		},
 	];
 
-	const computedStatus = getInvoiceStatus(
-		invoice.status as InvoiceStatus,
-		invoice.dueDate
-	);
-
 	return (
 		<StickyDetailHeader>
 			{(isSticky) => (
@@ -206,7 +193,7 @@ export function InvoiceDetailHeader({
 								style={{ originY: 0 }}
 							>
 								<StatusProgressBar
-									status={computedStatus}
+									status={currentStatus}
 									steps={[
 										{ id: "draft", name: "Draft", order: 1 },
 										{ id: "sent", name: "Sent", order: 2 },

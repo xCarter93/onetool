@@ -56,6 +56,7 @@ export interface PortalInvoiceGetData {
 	payments: InstallmentRow[];
 	paymentSummary: PortalPaymentSummary;
 	activePaymentPublic: InstallmentRow | null;
+	orgToday: number;
 	businessName: string;
 	businessLogoUrl: string | null;
 	stripeChargesEnabled: boolean;
@@ -165,6 +166,7 @@ export function InvoiceDetailIsland({
 				<InstallmentList
 					installments={data.payments}
 					activeIndex={activeIndex}
+					orgToday={data.orgToday}
 				/>
 				{active && isDesktop !== false ? (
 					<PaymentRail

@@ -16,11 +16,14 @@ import {
 	type InstallmentRow,
 } from "../installment-list";
 
+const TODAY = Date.UTC(2026, 7, 27);
+const DAY = 86_400_000;
+
 function row(overrides: Partial<InstallmentRow> = {}): InstallmentRow {
 	return {
 		_id: overrides._id ?? `p_${Math.random().toString(36).slice(2)}`,
 		paymentAmount: overrides.paymentAmount ?? 100,
-		dueDate: overrides.dueDate ?? Date.now() + 7 * 24 * 60 * 60 * 1000,
+		dueDate: overrides.dueDate ?? TODAY + 7 * DAY,
 		description: overrides.description ?? null,
 		sortOrder: overrides.sortOrder ?? 0,
 		status: overrides.status ?? "sent",
@@ -41,7 +44,7 @@ describe("InstallmentList", () => {
 			row({ _id: "c", sortOrder: 2, description: "Final" }),
 		];
 		const { container } = render(
-			<InstallmentList installments={installments} activeIndex={0} />,
+			<InstallmentList installments={installments} activeIndex={0} orgToday={TODAY} />,
 		);
 		const rows = container.querySelectorAll("[data-installment-row]");
 		expect(rows.length).toBe(3);
@@ -57,13 +60,13 @@ describe("InstallmentList", () => {
 				_id: "paid",
 				sortOrder: 0,
 				status: "paid",
-				paidAt: Date.now() - 1000,
+				paidAt: TODAY - 1000,
 			}),
 			row({ _id: "active", sortOrder: 1, status: "sent" }),
 			row({ _id: "future", sortOrder: 2, status: "pending" }),
 		];
 		const { container } = render(
-			<InstallmentList installments={installments} activeIndex={1} />,
+			<InstallmentList installments={installments} activeIndex={1} orgToday={TODAY} />,
 		);
 		const rows = container.querySelectorAll("[data-installment-row]");
 		expect(rows[1]!.getAttribute("data-active")).toBe("true");
@@ -86,7 +89,7 @@ describe("InstallmentList", () => {
 			}),
 		];
 		const { container, getByRole } = render(
-			<InstallmentList installments={installments} activeIndex={null} />,
+			<InstallmentList installments={installments} activeIndex={null} orgToday={TODAY} />,
 		);
 		// Pill stays inline; card details live in the expandable receipt.
 		expect(container.textContent ?? "").toMatch(/Paid · /);
@@ -107,11 +110,12 @@ describe("InstallmentList", () => {
 					row({
 						_id: "refunded",
 						status: "refunded",
-						dueDate: Date.now() - 30 * 24 * 60 * 60 * 1000,
+						dueDate: TODAY - 30 * DAY,
 						refundedAmount: 100,
 					}),
 				]}
 				activeIndex={null}
+				orgToday={TODAY}
 			/>,
 		);
 		const text = container.textContent ?? "";
@@ -127,12 +131,13 @@ describe("InstallmentList", () => {
 					row({
 						_id: "partial",
 						status: "paid",
-						paidAt: Date.now() - 1000,
+						paidAt: TODAY - 1000,
 						paymentAmount: 200,
 						refundedAmount: 60,
 					}),
 				]}
 				activeIndex={null}
+				orgToday={TODAY}
 			/>,
 		);
 		const text = container.textContent ?? "";
@@ -147,10 +152,11 @@ describe("InstallmentList", () => {
 					row({
 						_id: "cancelled",
 						status: "cancelled",
-						dueDate: Date.now() - 24 * 60 * 60 * 1000,
+						dueDate: TODAY - DAY,
 					}),
 				]}
 				activeIndex={null}
+				orgToday={TODAY}
 			/>,
 		);
 		const text = container.textContent ?? "";
@@ -160,7 +166,7 @@ describe("InstallmentList", () => {
 
 	it("zero-payment-row invoices render an empty state, not installment rows (view-only backstop)", () => {
 		const { container } = render(
-			<InstallmentList installments={[]} activeIndex={null} />,
+			<InstallmentList installments={[]} activeIndex={null} orgToday={TODAY} />,
 		);
 		// No installment rows rendered.
 		expect(

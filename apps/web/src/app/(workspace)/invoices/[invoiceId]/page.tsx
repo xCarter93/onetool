@@ -1,7 +1,9 @@
 "use client";
 
+import { deriveInvoiceStatus } from "@onetool/backend/convex/lib/invoiceLateness";
 import { PermissionGate } from "@/components/domain/permission-gate";
 import { usePermissions } from "@/hooks/use-permissions";
+import { useOrgToday } from "@/hooks/use-org-today";
 import { useClientSendMeter } from "@/hooks/use-client-send-meter";
 import { useParams } from "next/navigation";
 import { useQuery, useMutation } from "convex/react";
@@ -22,14 +24,6 @@ import { PaymentsConfigurationModal } from "../components/payments-configuration
 import { convexErrorMessage } from "@/lib/convex-error";
 
 type InvoiceStatus = "draft" | "sent" | "paid" | "overdue" | "cancelled";
-
-const getInvoiceStatus = (
-	status: InvoiceStatus,
-	dueDate?: number
-): InvoiceStatus => {
-	if (status === "sent" && dueDate && dueDate < Date.now()) return "overdue";
-	return status;
-};
 
 const formatStatus = (status: InvoiceStatus) => {
 	switch (status) {
@@ -53,6 +47,7 @@ function InvoiceDetailPageContent() {
 	const toast = useToast();
 	const invoiceId = params.invoiceId as Id<"invoices">;
 	const { can } = usePermissions();
+	const orgToday = useOrgToday();
 
 	// State
 	const [activeTab, setActiveTab] = useState("overview");
@@ -364,10 +359,7 @@ function InvoiceDetailPageContent() {
 		);
 	}
 
-	const currentStatus = getInvoiceStatus(
-		invoice.status as InvoiceStatus,
-		invoice.dueDate
-	);
+	const currentStatus = deriveInvoiceStatus(invoice, orgToday);
 
 	return (
 		<>

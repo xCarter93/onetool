@@ -1,7 +1,9 @@
 import type { Doc, Id } from "./_generated/dataModel";
 import { optionalUserQuery } from "./lib/factories";
 import { sumMoney } from "./lib/money";
+import { isPastDue } from "./lib/invoiceLateness";
 import { getOrgTimezoneById } from "./lib/organization";
+import { localTodayUtcMidnight } from "./lib/schedule";
 import {
 	collectedAmount,
 	monthKey,
@@ -98,6 +100,7 @@ export const get = optionalUserQuery({
 
 		const timezone = await getOrgTimezoneById(ctx, orgId);
 		const now = Date.now();
+		const today = localTodayUtcMidnight(now, timezone);
 
 		// One org-wide read per table; no per-row queries below.
 		const allInvoices = await ctx.db
@@ -149,7 +152,7 @@ export const get = optionalUserQuery({
 			const isEffectiveOverdue =
 				invoice.status === "overdue" ||
 				((invoice.status === "sent" || isRefundRestored) &&
-					invoice.dueDate < now);
+					isPastDue(invoice.dueDate, today));
 			if (
 				invoice.status !== "sent" &&
 				!isRefundRestored &&

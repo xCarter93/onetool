@@ -44,11 +44,12 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { QuickBooksSyncRow } from "@/components/quickbooks/sync-status-row";
+import { deriveInvoiceStatus } from "@onetool/backend/convex/lib/invoiceLateness";
 import { usePermissions } from "@/hooks/use-permissions";
+import { useOrgToday } from "@/hooks/use-org-today";
 import {
 	formatCalendarDate,
 	localDateToUtcMidnightMs,
-	todayUtcMidnightMs,
 	utcMidnightMsToLocalDate,
 } from "@/lib/dates";
 
@@ -133,16 +134,8 @@ export function InvoiceDetailSidebar({
 	const [editDateValue, setEditDateValue] = useState<Date | undefined>(
 		undefined
 	);
-	// Capture today's calendar-day start once at mount to keep the overdue
-	// check pure across renders; dueDate is a UTC-midnight calendar epoch.
-	const [todayStart] = useState(() => todayUtcMidnightMs());
-
-	const currentStatus =
-		invoice.status === "sent" &&
-		invoice.dueDate &&
-		invoice.dueDate < todayStart
-			? "overdue"
-			: (invoice.status as InvoiceStatus);
+	const orgToday = useOrgToday();
+	const currentStatus = deriveInvoiceStatus(invoice, orgToday);
 
 	const startEditing = (field: EditingField, currentValue: string) => {
 		if (!canModify) return;

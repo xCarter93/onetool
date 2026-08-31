@@ -254,7 +254,35 @@ describe("portal.invoices", () => {
 		expect(rows[0]!.paymentSummary.isLegacy).toBe(false);
 	});
 
-	it("list: displayStatus = overdue when Date.now() > invoice.dueDate AND totalRemaining > 0 AND status !== cancelled", async () => {
+	it("list: an invoice due TODAY is not overdue", async () => {
+		// Boundary the shared predicate moved: the old rule compared the instant
+		// to a UTC-midnight dueDate, so a due-today invoice read Overdue to the
+		// client from UTC midnight onward — hours before it was actually late.
+		const s = await seedOrg(t, "p-list-due-today");
+		const jti = "l-due-today";
+		await seedSession(t, s, jti);
+		const today = Date.UTC(
+			new Date().getUTCFullYear(),
+			new Date().getUTCMonth(),
+			new Date().getUTCDate()
+		);
+		const invId = await insertInvoice(t, s, {
+			status: "sent",
+			total: 100,
+			dueDate: today,
+		});
+		await insertPayment(t, s, invId, {
+			paymentAmount: 100,
+			sortOrder: 0,
+			status: "sent",
+		});
+
+		const asPortal = t.withIdentity(ident(s, jti));
+		const rows = await asPortal.query(api.portal.invoices.list, {});
+		expect(rows[0]!.paymentSummary.displayStatus).toBe("awaiting");
+	});
+
+	it("list: displayStatus = overdue once the due day has passed AND totalRemaining > 0 AND status !== cancelled", async () => {
 		const s = await seedOrg(t, "p-list-overdue");
 		const jti = "l-overdue";
 		await seedSession(t, s, jti);

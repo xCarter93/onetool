@@ -43,6 +43,8 @@ import { formatEmailFrom } from "./lib/emailFrom";
 import { maybeEnqueueQboSync } from "./lib/quickbooksEnqueue";
 import { calculateInvoiceTotals, syncInvoiceTotals } from "./lib/invoiceTotals";
 import { assertInvoiceContentEditable } from "./lib/editLocks";
+import { getOrgTimezoneById } from "./lib/organization";
+import { localTodayUtcMidnight } from "./lib/schedule";
 import { roundCents, sumMoney, dollarsToCents } from "./lib/money";
 import {
 	optionalUserQuery,
@@ -995,7 +997,11 @@ export const getOverdue = optionalUserQuery({
 		await ctx.requireLevel("invoices", "view");
 
 		const now = Date.now();
-		const sevenDaysFromNow = now + 7 * 24 * 60 * 60 * 1000;
+		const today = localTodayUtcMidnight(
+			now,
+			await getOrgTimezoneById(ctx, orgId)
+		);
+		const sevenDaysFromNow = today + 7 * 24 * 60 * 60 * 1000;
 
 		// Get invoices that are sent or overdue
 		const invoices = await ctx.db
@@ -1034,8 +1040,10 @@ export const getOverdue = optionalUserQuery({
 		for (const invoice of allInvoices) {
 			const payments = paymentsByInvoice.get(invoice._id) ?? [];
 			if (payments.length === 0) {
-				// No payment records — include if invoice itself is past due
-				if (invoice.dueDate <= now) {
+				// No payment records — include if the invoice is due today or earlier.
+				// Deliberately looser than isPastDue: the widget is "needs attention",
+				// and the payments branch below reaches a week ahead.
+				if (invoice.dueDate <= today) {
 					results.push({ ...invoice, remainingBalance: invoice.total });
 				}
 				continue;

@@ -58,8 +58,12 @@ import {
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useQuery, useMutation } from "convex/react";
-import { todayUtcMidnightMs } from "@/lib/dates";
+import {
+	deriveInvoiceStatus,
+	isPastDue,
+} from "@onetool/backend/convex/lib/invoiceLateness";
 import { api } from "@onetool/backend/convex/_generated/api";
+import { useOrgToday } from "@/hooks/use-org-today";
 import { useIsOrgSwitching } from "@/hooks/use-is-org-switching";
 import { useActivitySparklines } from "@/hooks/use-activity-sparklines";
 import type { Doc, Id } from "@onetool/backend/convex/_generated/dataModel";
@@ -107,14 +111,6 @@ type InvoiceKanbanColumn = {
 	name: string;
 	description: string;
 };
-
-// Overdue is a computed state: a sent invoice past its due date. Reads the clock
-// inside this module-level helper so component render stays pure.
-const getEffectiveStatus = (
-	status: InvoiceStatus,
-	dueDate: number
-): InvoiceStatus =>
-	status === "sent" && dueDate < todayUtcMidnightMs() ? "overdue" : status;
 
 // appearance chosen to match the legacy statusVariant() boldness: solid for the
 // primary/positive status, soft for the mid-weight statuses, outline for the rest.
@@ -168,7 +164,8 @@ const createColumns = (
 	router: ReturnType<typeof useRouter>,
 	onDelete: (id: string, name: string) => void,
 	onPreview: (id: string) => void,
-	canDelete: boolean
+	canDelete: boolean,
+	orgToday: number
 ): ColumnDef<DataGridFeatures, InvoiceWithClient>[] => [
 	{
 		accessorKey: "invoiceNumber",
@@ -204,10 +201,7 @@ const createColumns = (
 		accessorKey: "status",
 		header: "Status",
 		cell: ({ row }) => {
-			const effective = getEffectiveStatus(
-				row.original.status,
-				row.original.dueDate
-			);
+			const effective = deriveInvoiceStatus(row.original, orgToday);
 			return (
 				<StatusBadge status={effective} appearance={statusAppearance(effective)}>
 					{formatStatus(effective)}
@@ -229,7 +223,7 @@ const createColumns = (
 		header: "Due Date",
 		cell: ({ row }) => {
 			const isOverdue =
-				row.original.dueDate < todayUtcMidnightMs() &&
+				isPastDue(row.original.dueDate, orgToday) &&
 				row.original.status !== "paid";
 			return (
 				<span
@@ -295,6 +289,7 @@ const createColumns = (
 
 function InvoicesPageContent() {
 	const router = useRouter();
+	const orgToday = useOrgToday();
 	const [viewMode, setViewMode] = useState<"table" | "kanban">("table");
 	const [sorting, setSorting] = React.useState<SortingState>([]);
 	const [query, setQuery] = React.useState("");
@@ -351,7 +346,7 @@ function InvoicesPageContent() {
 				case "status":
 					result = result.filter((inv) =>
 						filter.values.includes(
-							getEffectiveStatus(inv.status, inv.dueDate) as unknown
+							deriveInvoiceStatus(inv, orgToday) as unknown
 						)
 					);
 					break;
@@ -397,7 +392,7 @@ function InvoicesPageContent() {
 		const q = query.trim().toLowerCase();
 		if (!q) return filteredData;
 		return filteredData.filter((inv) => {
-			const effectiveStatus = getEffectiveStatus(inv.status, inv.dueDate);
+			const effectiveStatus = deriveInvoiceStatus(inv, orgToday);
 			return (
 				inv.invoiceNumber?.toLowerCase().includes(q) ||
 				inv.clientName?.toLowerCase().includes(q) ||
@@ -413,18 +408,15 @@ function InvoicesPageContent() {
 	const invoiceStatusMap = React.useMemo(() => {
 		const statusMap = new Map<string, InvoiceStatus>();
 		data.forEach((invoice) =>
-			statusMap.set(
-				invoice._id,
-				getEffectiveStatus(invoice.status, invoice.dueDate)
-			)
+			statusMap.set(invoice._id, deriveInvoiceStatus(invoice, orgToday))
 		);
 		return statusMap;
-	}, [data]);
+	}, [data, orgToday]);
 
 	React.useEffect(() => {
 		setKanbanData(
 			searchedData.map((invoice) => {
-				const effective = getEffectiveStatus(invoice.status, invoice.dueDate);
+				const effective = deriveInvoiceStatus(invoice, orgToday);
 				return {
 					id: invoice._id,
 					name: invoice.invoiceNumber,
@@ -468,8 +460,15 @@ function InvoicesPageContent() {
 	};
 
 	const columns = React.useMemo(
-		() => createColumns(router, handleDelete, openPreview, canDeleteInvoices),
-		[router, handleDelete, openPreview, canDeleteInvoices]
+		() =>
+			createColumns(
+				router,
+				handleDelete,
+				openPreview,
+				canDeleteInvoices,
+				orgToday
+			),
+		[router, handleDelete, openPreview, canDeleteInvoices, orgToday]
 	);
 
 	const table = useTable({
@@ -564,16 +563,10 @@ function InvoicesPageContent() {
 	// optimistic; the DB write happens once on drop via handleKanbanDragEnd.
 	const handleKanbanDataChange = React.useCallback(
 		(nextData: InvoiceKanbanItem[]) => {
-			// Overdue is a computed lane. Dropping a card there stores "sent"; a
-			// future-due invoice then normalizes back to "sent" instead of sticking
-			// in Overdue. Renormalize each card to its effective status first.
-			const normalized = nextData.map((item) => {
-				const storedStatus: InvoiceStatus =
-					item.column === "overdue" ? "sent" : item.column;
-				const effective = getEffectiveStatus(storedStatus, item.dueDate);
-				return { ...item, column: effective, status: effective };
-			});
-			setKanbanData(normalized);
+			// Overdue is a stored status since the sweep persists it, so a card
+			// stays in the lane it was dragged to; re-deriving here yanked it back
+			// out mid-drag. The drop handler decides what actually gets written.
+			setKanbanData(nextData.map((item) => ({ ...item, status: item.column })));
 		},
 		[]
 	);
@@ -666,8 +659,7 @@ function InvoicesPageContent() {
 						: `${
 								data.filter(
 									(inv) =>
-										inv.status === "sent" &&
-										inv.dueDate < todayUtcMidnightMs()
+										deriveInvoiceStatus(inv, orgToday) === "overdue"
 								).length
 							} overdue · ${formatCurrency(
 								data
@@ -871,7 +863,7 @@ function InvoicesPageContent() {
 																	<span aria-hidden>·</span>
 																	<span
 																		className={cn(
-																			item.dueDate < todayUtcMidnightMs() &&
+																			isPastDue(item.dueDate, orgToday) &&
 																				item.status !== "paid" &&
 																				"text-destructive font-medium"
 																		)}

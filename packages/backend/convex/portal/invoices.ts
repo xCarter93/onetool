@@ -16,6 +16,9 @@ import {
 	refundedAmountOf,
 } from "../lib/paymentInsights";
 import { roundCents, sumMoney } from "../lib/money";
+import { isPastDue } from "../lib/invoiceLateness";
+import { getOrgTimezoneById } from "../lib/organization";
+import { localTodayUtcMidnight } from "../lib/schedule";
 import { rateLimiter } from "../rateLimits";
 
 // ---------------------------------------------------------------------------
@@ -100,6 +103,8 @@ export type PortalInvoiceGetResponse = {
 	payments: PortalPaymentPublic[];
 	paymentSummary: PortalPaymentSummary;
 	activePaymentPublic: PortalPaymentPublic | null;
+	/** UTC-midnight epoch of the business's calendar day; the lateness clock. */
+	orgToday: number;
 	businessName: string;
 	businessLogoUrl: string | null;
 	stripeChargesEnabled: boolean;
@@ -203,6 +208,7 @@ const portalInvoiceGetValidator = v.object({
 	payments: v.array(portalPaymentPublicValidator),
 	paymentSummary: portalPaymentSummaryValidator,
 	activePaymentPublic: v.union(portalPaymentPublicValidator, v.null()),
+	orgToday: v.number(),
 	businessName: v.string(),
 	businessLogoUrl: v.union(v.string(), v.null()),
 	stripeChargesEnabled: v.boolean(),
@@ -253,6 +259,7 @@ export function isPayableRow(row: Doc<"payments">): boolean {
 function deriveSummary(
 	invoice: Doc<"invoices">,
 	payments: Doc<"payments">[],
+	todayUtcMidnight: number,
 ): DerivedSummary {
 	const isLegacy = payments.length === 0;
 	const totalPaid = isLegacy
@@ -266,7 +273,6 @@ function deriveSummary(
 		? invoice.status !== "paid" && invoice.status !== "cancelled"
 		: payments.some(isPayableRow);
 
-	const now = Date.now();
 	let displayStatus: DerivedSummary["displayStatus"];
 	if (totalRemaining === 0) {
 		displayStatus = "paid";
@@ -274,7 +280,10 @@ function deriveSummary(
 		// Money went back out and nothing is left to collect. Labelling this
 		// "overdue" would tell the client to pay an invoice they cannot pay.
 		displayStatus = "refunded";
-	} else if (now > invoice.dueDate && invoice.status !== "cancelled") {
+	} else if (
+		isPastDue(invoice.dueDate, todayUtcMidnight) &&
+		invoice.status !== "cancelled"
+	) {
 		displayStatus = "overdue";
 	} else if (totalPaid > 0) {
 		displayStatus = "partial";
@@ -330,6 +339,11 @@ export const list = query({
 			)
 			.sort((a, b) => b.issuedDate - a.issuedDate);
 
+		const today = localTodayUtcMidnight(
+			Date.now(),
+			await getOrgTimezoneById(ctx, session.orgId),
+		);
+
 		// Client lookup keyed on invoice.clientId mirrors portal/quotes shape.
 		const clientCache = new Map<string, string>();
 		async function getClientName(
@@ -349,7 +363,7 @@ export const list = query({
 					.query("payments")
 					.withIndex("by_invoice_sort", (q) => q.eq("invoiceId", inv._id))
 					.collect();
-				const summary = deriveSummary(inv, payments);
+				const summary = deriveSummary(inv, payments, today);
 				const clientName = await getClientName(inv.clientId);
 				return {
 					_id: inv._id,
@@ -405,7 +419,13 @@ export const get = query({
 			.slice()
 			.sort((a, b) => a.sortOrder - b.sortOrder);
 
-		const summary = deriveSummary(invoice, sortedPayments);
+		const org = await ctx.db.get(invoice.orgId);
+		// Shipped to the client so installment rows judge lateness on the same
+		// calendar day the summary did — the browser's clock is the client's, and
+		// a portal visitor is routinely in a different zone from the business.
+		const orgToday = localTodayUtcMidnight(Date.now(), org?.timezone);
+
+		const summary = deriveSummary(invoice, sortedPayments, orgToday);
 
 		const paymentsPublic: PortalPaymentPublic[] = sortedPayments.map(
 			toPortalPaymentPublic,
@@ -417,7 +437,6 @@ export const get = query({
 			? toPortalPaymentPublic(firstUnpaid)
 			: null;
 
-		const org = await ctx.db.get(invoice.orgId);
 		const businessName = org?.name ?? "";
 		const businessLogoUrl = org?.logoUrl ?? null;
 		const stripeChargesEnabled = org?.stripeChargesEnabled === true;
@@ -460,6 +479,7 @@ export const get = query({
 			payments: paymentsPublic,
 			paymentSummary: summary,
 			activePaymentPublic,
+			orgToday,
 			businessName,
 			businessLogoUrl,
 			stripeChargesEnabled,
