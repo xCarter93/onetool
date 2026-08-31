@@ -49,11 +49,9 @@ function row(label: string, trail?: string) {
 	});
 }
 
-/** Opens a branch. A committable branch commits on row press, so drilling is the chevron. */
+/** Opens a branch. A relation row never commits, so anywhere on it drills. */
 function drill(label: string) {
-	const branch = row(label);
-	const chevron = branch?.querySelector('[data-slot="cascader-item-chevron"]');
-	fireEvent.click(chevron ?? branch!);
+	fireEvent.click(row(label)!);
 }
 
 function search(term: string) {
@@ -152,7 +150,7 @@ describe("ReportFieldPicker", () => {
 		);
 	});
 
-	it("commits the relation itself in groupBy mode", () => {
+	it("commits a relation from the row leading its own page in groupBy mode", () => {
 		const onSelect = vi.fn();
 		render(
 			<ReportFieldPicker
@@ -163,18 +161,23 @@ describe("ReportFieldPicker", () => {
 			/>
 		);
 		drill("Invoice");
-		fireEvent.click(row("Client")!);
+		expect(row("Invoice itself")).toBeInTheDocument();
+
+		drill("Client");
+		fireEvent.click(row("Client itself")!);
 		expect(onSelect).toHaveBeenCalledWith("invoiceId.clientId");
 	});
 
-	it("leaves a relation uncommittable in filter mode", () => {
+	it("offers no such row in filter mode, where a relation is not a field", () => {
 		const onSelect = vi.fn();
 		render(
 			<ReportFieldPicker entityType="payments" mode="filter" onSelect={onSelect} />
 		);
 		drill("Invoice");
+		expect(row("Invoice itself")).toBeUndefined();
+
+		// Pressing a relation drills rather than selecting, in either mode.
 		fireEvent.click(row("Client")!);
-		// Pressing an uncommittable branch drills instead of selecting.
 		expect(onSelect).not.toHaveBeenCalled();
 		expect(row("Lead Source")).toBeInTheDocument();
 	});

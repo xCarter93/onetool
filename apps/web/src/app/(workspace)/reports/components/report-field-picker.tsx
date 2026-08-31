@@ -38,13 +38,14 @@ export function ReportFieldPicker({
 
 	// One node per dotted path, ancestors included: a traversed record has no
 	// option of its own in filter mode, and the branch it names still has to
-	// exist for its fields to hang off. `selectablePaths` is what then decides
-	// whether pressing that branch commits or only drills.
+	// exist for its fields to hang off.
 	const nodes = new Map<string, CascaderNode>();
+	const branches = new Set<string>();
 	const addPath = (path: string, crumbs: string[]) => {
 		const segments = path.split(".");
 		for (let depth = 0; depth < segments.length; depth++) {
 			const nodeValue = segments.slice(0, depth + 1).join(".");
+			if (depth > 0) branches.add(segments.slice(0, depth).join("."));
 			if (nodes.has(nodeValue)) continue;
 			nodes.set(nodeValue, { value: nodeValue, label: crumbs[depth] ?? nodeValue });
 		}
@@ -56,20 +57,40 @@ export function ReportFieldPicker({
 		addPath(option.value, option.label.split(SEPARATOR));
 	}
 
+	// Pressing a relation always drills, so grouping BY that relation needs a row
+	// of its own. It leads the record's page and commits the branch's own path.
+	const items: CascaderNode[] = [];
+	for (const node of nodes.values()) {
+		items.push(node);
+		if (branches.has(node.value) && selectablePaths.has(node.value)) {
+			items.push({ value: selfValue(node.value), label: `${node.label} itself` });
+		}
+	}
+
 	return (
 		<FieldCascader
-			items={[...nodes.values()]}
+			items={items}
 			getParent={parentPath}
-			selectable={(node) => selectablePaths.has(node.value)}
-			value={value}
-			onValueChange={onSelect}
+			value={
+				value && branches.has(value) && selectablePaths.has(value)
+					? selfValue(value)
+					: value
+			}
+			onValueChange={(path) =>
+				onSelect(path.startsWith(SELF_PREFIX) ? path.slice(SELF_PREFIX.length) : path)
+			}
 			emptyText="No fields found."
 			placeholder="Search fields..."
 		/>
 	);
 }
 
+/** Marks the row that commits a relation, so it never collides with the branch. */
+const SELF_PREFIX = "self:";
+const selfValue = (path: string) => `${SELF_PREFIX}${path}`;
+
 function parentPath(node: CascaderNode): string | null {
+	if (node.value.startsWith(SELF_PREFIX)) return node.value.slice(SELF_PREFIX.length);
 	const cut = node.value.lastIndexOf(".");
 	return cut < 0 ? null : node.value.slice(0, cut);
 }
