@@ -10,7 +10,7 @@ import { useMediaQuery } from "@/hooks/use-media-query";
 import { formatMoney } from "@/lib/portal/format";
 
 import { DownloadPdfButton } from "./download-pdf-button";
-import { InvoicePaper } from "./invoice-paper";
+import { InvoicePaper, type PortalPaymentSummary } from "./invoice-paper";
 import {
 	InstallmentList,
 	type InstallmentRow,
@@ -54,13 +54,7 @@ export interface PortalInvoiceGetData {
 		sortOrder: number;
 	}>;
 	payments: InstallmentRow[];
-	paymentSummary: {
-		totalPaid: number;
-		totalRemaining: number;
-		displayStatus: "awaiting" | "partial" | "paid" | "overdue";
-		isLegacy: boolean;
-		installmentCount: number;
-	};
+	paymentSummary: PortalPaymentSummary;
 	activePaymentPublic: InstallmentRow | null;
 	businessName: string;
 	businessLogoUrl: string | null;

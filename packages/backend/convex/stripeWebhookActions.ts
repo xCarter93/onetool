@@ -223,12 +223,20 @@ export const handleEvent = internalAction({
 						);
 						break;
 					}
+					// amount_refunded is cumulative across every refund on the charge,
+					// and `refunded` is true only once the whole charge is back out.
+					const amountCaptured = charge.amount_captured || charge.amount;
 					await ctx.runMutation(
 						internal.payments.markRefundedFromWebhookInternal,
 						{
 							orgId: org!._id,
 							paymentIntentId: piId,
 							refundedAt: Date.now(),
+							refundedAmountCents: charge.amount_refunded,
+							fullyRefunded:
+								charge.refunded ||
+								(amountCaptured > 0 &&
+									charge.amount_refunded >= amountCaptured),
 						}
 					);
 					break;
@@ -302,6 +310,7 @@ export const handleEvent = internalAction({
 							orgId: org!._id,
 							paymentIntentId: refundPiId,
 							refundId: refund.id,
+							refundAmountCents: refund.amount,
 							failureReason: refund.failure_reason ?? undefined,
 						}
 					);

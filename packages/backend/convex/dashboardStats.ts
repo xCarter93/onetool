@@ -5,7 +5,11 @@ import type { QueryCtx } from "./_generated/server";
 import { optionalUserQuery } from "./lib/factories";
 import { roundCents, sumMoney } from "./lib/money";
 import { requireOrgWideView } from "./lib/orgWideView";
-import { monthKey, settledPayments } from "./lib/paymentInsights";
+import {
+	collectedAmount,
+	monthKey,
+	settledPayments,
+} from "./lib/paymentInsights";
 import { DateUtils } from "./lib/shared";
 
 /**
@@ -196,7 +200,7 @@ export const getCollectionPace = optionalUserQuery({
 			);
 			collectedAmounts
 				.get(bucketKey(paidAt, args.granularity, timezone))
-				?.push(payment.paymentAmount);
+				?.push(collectedAmount(payment));
 		}
 
 		const series = (amounts: Map<string, number[]>): Bucket[] =>
@@ -266,16 +270,17 @@ export const getAvgDaysToPay = optionalUserQuery({
 
 		for (const payment of settledPayments(billable)) {
 			const invoice = invoiceById.get(payment.invoiceId);
-			if (!invoice || payment.paymentAmount <= 0) continue;
+			const amount = collectedAmount(payment);
+			if (!invoice || amount <= 0) continue;
 			const anchor = invoice.firstSentAt ?? invoice.issuedDate;
 			// Field payments get recorded before the invoice is ever sent.
 			const days = Math.max(0, (payment.paidAt - anchor) / DAY_MS);
 			if (payment.paidAt >= windowStart && payment.paidAt < now) {
-				weight += payment.paymentAmount;
-				weighted += payment.paymentAmount * days;
+				weight += amount;
+				weighted += amount * days;
 			} else if (payment.paidAt >= prevStart && payment.paidAt < windowStart) {
-				prevWeight += payment.paymentAmount;
-				prevWeighted += payment.paymentAmount * days;
+				prevWeight += amount;
+				prevWeighted += amount * days;
 			}
 		}
 
@@ -436,7 +441,7 @@ export const getTopClientsByRevenue = optionalUserQuery({
 			const invoice = invoiceById.get(payment.invoiceId);
 			if (!invoice) continue;
 			const list = amountsByClient.get(invoice.clientId) ?? [];
-			list.push(payment.paymentAmount);
+			list.push(collectedAmount(payment));
 			amountsByClient.set(invoice.clientId, list);
 		}
 
@@ -485,7 +490,7 @@ export const getTopClientsByRevenue = optionalUserQuery({
 					args.granularity === "week"
 						? weekStartKey(payment.paidAt, timezone)
 						: bucketKey(payment.paidAt, args.granularity, timezone);
-				amounts.get(key)?.[slot]?.push(payment.paymentAmount);
+				amounts.get(key)?.[slot]?.push(collectedAmount(payment));
 			}
 			series = keys.map((date) => ({
 				date,

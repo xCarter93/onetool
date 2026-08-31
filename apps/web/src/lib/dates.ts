@@ -27,3 +27,20 @@ export function localDateToUtcMidnightMs(d: Date): number {
 export function todayUtcMidnightMs(): number {
 	return localDateToUtcMidnightMs(new Date());
 }
+
+/**
+ * Render a stored calendar-date epoch as its own calendar day. Formatting the
+ * raw epoch instead prints the day before for every viewer west of UTC, since
+ * UTC midnight is still the previous evening there.
+ */
+export function formatCalendarDate(
+	ms: number | null | undefined,
+	options: Intl.DateTimeFormatOptions = {
+		month: "short",
+		day: "numeric",
+		year: "numeric",
+	}
+): string {
+	if (!ms) return "—";
+	return utcMidnightMsToLocalDate(ms).toLocaleDateString("en-US", options);
+}

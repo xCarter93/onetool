@@ -3,6 +3,7 @@ import { optionalUserQuery } from "./lib/factories";
 import { sumMoney } from "./lib/money";
 import { getOrgTimezoneById } from "./lib/organization";
 import {
+	collectedAmount,
 	monthKey,
 	remainingBalanceLookup,
 	settledPayments,
@@ -141,9 +142,9 @@ export const get = optionalUserQuery({
 
 		for (const invoice of invoices) {
 			const remaining = remainingFor(invoice);
-			// A paid invoice with a remaining balance can only mean a refund
-			// (markPaid settles every payment row) — per the header contract, the
-			// refund restores the balance to outstanding.
+			// Legacy shape: a paid invoice still carrying a balance. Refunds now
+			// demote the invoice to sent, but rows refunded before that leave this
+			// behind, and per the header contract the balance is outstanding.
 			const isRefundRestored = invoice.status === "paid" && remaining > 0;
 			const isEffectiveOverdue =
 				invoice.status === "overdue" ||
@@ -195,9 +196,10 @@ export const get = optionalUserQuery({
 
 		for (const payment of settled) {
 			const key = monthKey(payment.paidAt, timezone);
-			if (key === currentMonthKey) collectedThisMonth.push(payment.paymentAmount);
+			const amount = collectedAmount(payment);
+			if (key === currentMonthKey) collectedThisMonth.push(amount);
 			const bucket = monthAmounts.get(key);
-			if (bucket) bucket.push(payment.paymentAmount);
+			if (bucket) bucket.push(amount);
 		}
 
 		const months = monthKeys.map((key) => ({

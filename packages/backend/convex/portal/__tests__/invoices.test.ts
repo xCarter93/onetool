@@ -274,6 +274,85 @@ describe("portal.invoices", () => {
 		expect(rows[0]!.paymentSummary.displayStatus).toBe("overdue");
 	});
 
+	it("list: a fully refunded invoice reads refunded and offers nothing to pay", async () => {
+		// Regression: refunds restore the invoice balance, so the portal used to
+		// show money owed with a Pay button that 422'd on the mint's paid-invoice
+		// backstop. hasPayableRow is what the button keys off now.
+		const s = await seedOrg(t, "p-list-refunded");
+		const jti = "l-refunded";
+		await seedSession(t, s, jti);
+		const invId = await insertInvoice(t, s, {
+			status: "sent",
+			total: 100,
+			dueDate: Date.now() - 24 * 60 * 60 * 1000,
+		});
+		await insertPayment(t, s, invId, {
+			paymentAmount: 100,
+			sortOrder: 0,
+			status: "refunded",
+		});
+
+		const asPortal = t.withIdentity(ident(s, jti));
+		const rows = await asPortal.query(api.portal.invoices.list, {});
+		expect(rows[0]!.paymentSummary.totalPaid).toBe(0);
+		expect(rows[0]!.paymentSummary.totalRemaining).toBe(100);
+		// Past due, but "Overdue" would tell the client to pay what they cannot.
+		expect(rows[0]!.paymentSummary.displayStatus).toBe("refunded");
+		expect(rows[0]!.paymentSummary.hasPayableRow).toBe(false);
+	});
+
+	it("list: a partial refund reopens the balance and stops counting the refunded part", async () => {
+		const s = await seedOrg(t, "p-list-partial-refund");
+		const jti = "l-partial-refund";
+		await seedSession(t, s, jti);
+		const invId = await insertInvoice(t, s, {
+			status: "paid",
+			total: 100,
+			paidAt: Date.now(),
+		});
+		await t.run(async (ctx) => {
+			await ctx.db.insert("payments", {
+				orgId: s.orgId,
+				invoiceId: invId,
+				paymentAmount: 100,
+				dueDate: Date.now(),
+				sortOrder: 0,
+				status: "paid",
+				paidAt: Date.now(),
+				refundedAmount: 40,
+			});
+		});
+
+		const asPortal = t.withIdentity(ident(s, jti));
+		const rows = await asPortal.query(api.portal.invoices.list, {});
+		expect(rows[0]!.paymentSummary.totalPaid).toBe(60);
+		expect(rows[0]!.paymentSummary.totalRemaining).toBe(40);
+		expect(rows[0]!.paymentSummary.displayStatus).toBe("refunded");
+		expect(rows[0]!.paymentSummary.hasPayableRow).toBe(false);
+	});
+
+	it("list: a refunded installment alongside an unpaid one stays payable", async () => {
+		const s = await seedOrg(t, "p-list-refund-mixed");
+		const jti = "l-refund-mixed";
+		await seedSession(t, s, jti);
+		const invId = await insertInvoice(t, s, { status: "sent", total: 200 });
+		await insertPayment(t, s, invId, {
+			paymentAmount: 100,
+			sortOrder: 0,
+			status: "refunded",
+		});
+		await insertPayment(t, s, invId, {
+			paymentAmount: 100,
+			sortOrder: 1,
+			status: "sent",
+		});
+
+		const asPortal = t.withIdentity(ident(s, jti));
+		const rows = await asPortal.query(api.portal.invoices.list, {});
+		expect(rows[0]!.paymentSummary.hasPayableRow).toBe(true);
+		expect(rows[0]!.paymentSummary.displayStatus).toBe("awaiting");
+	});
+
 	it("list: returns PortalInvoiceListItemPublic DTO — never raw payment rows with pendingPaymentIntentClientSecret or stripePaymentIntentId", async () => {
 		const s = await seedOrg(t, "p-list-dto");
 		const jti = "l-dto";

@@ -50,7 +50,7 @@ import {
 import { EntityEmailModal } from "@/components/shared/email/entity-email-modal";
 import { QuickBooksSyncField } from "@/components/quickbooks/sync-status-row";
 import { formatCurrency } from "@/lib/money";
-import { utcMidnightMsToLocalDate } from "@/lib/dates";
+import { formatCalendarDate } from "@/lib/dates";
 import { useToast } from "@/hooks/use-toast";
 import { convexErrorMessage } from "@/lib/convex-error";
 
@@ -85,12 +85,6 @@ function formatDate(ts: number | null | undefined): string {
 		day: "numeric",
 		year: "numeric",
 	});
-}
-
-/** Stored UTC-midnight calendar dates re-projected so the local render shows the right day. */
-function formatCalendarDate(ts: number | null | undefined): string {
-	if (!ts) return "—";
-	return formatDate(utcMidnightMsToLocalDate(ts).getTime());
 }
 
 // Overdue is computed from a past-due "sent" invoice. Reads the clock inside a

@@ -852,6 +852,12 @@ export default defineSchema({
 		disputeStatus: v.optional(v.string()),
 		disputeResolvedAt: v.optional(v.number()),
 		refundedAt: v.optional(v.number()),
+		// Cumulative dollars refunded on this row, mirroring Stripe's
+		// charge.amount_refunded. A partial refund keeps status "paid" and only
+		// sets this; a full one also flips the status. Rows refunded before this
+		// field existed leave it unset — read them through
+		// lib/paymentInsights.collectedAmount, never raw.
+		refundedAmount: v.optional(v.number()),
 		// Shared counter — advances for any flow that mints a new Stripe object (Checkout Session or PaymentIntent).
 		checkoutAttemptCounter: v.optional(v.number()),
 		// Active Checkout Session cache for retry reuse.
@@ -872,7 +878,14 @@ export default defineSchema({
 		.index("by_public_token", ["publicToken"])
 		.index("by_status", ["orgId", "status"])
 		.index("by_due_date", ["orgId", "dueDate"])
-		.index("by_invoice_sort", ["invoiceId", "sortOrder"]),
+		.index("by_invoice_sort", ["invoiceId", "sortOrder"])
+		// Stripe webhook correlation. Org-prefixed so the lookup stays inside the
+		// event's connected account rather than matching a PI across tenants.
+		.index("by_org_payment_intent", ["orgId", "stripePaymentIntentId"])
+		.index("by_org_pending_checkout_session", [
+			"orgId",
+			"pendingCheckoutSessionId",
+		]),
 
 	// PDF Documents (for quotes and invoices)
 	documents: defineTable({

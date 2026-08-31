@@ -655,13 +655,12 @@ describe("QuickBooks sync engine", () => {
 				status: "active",
 			});
 			const invoiceId = await createInvoice(asOwner, clientId, "sent");
-			const paymentId = await asOwner.mutation(api.payments.create, {
+			// Every invoice is created with a "Full Payment" row; appending a second
+			// would over-schedule it past the total.
+			const [payment] = await asOwner.query(api.payments.listByInvoice, {
 				invoiceId,
-				paymentAmount: 100,
-				dueDate: Date.now() + DAY,
-				description: "Full Payment",
-				sortOrder: 0,
 			});
+			const paymentId = payment!._id;
 
 			await asOwner.mutation(api.invoices.markPaid, { id: invoiceId });
 
@@ -682,13 +681,6 @@ describe("QuickBooks sync engine", () => {
 				status: "active",
 			});
 			const invoiceId = await createInvoice(asOwner, clientId, "sent");
-			await asOwner.mutation(api.payments.create, {
-				invoiceId,
-				paymentAmount: 100,
-				dueDate: Date.now() + DAY,
-				description: "Full Payment",
-				sortOrder: 0,
-			});
 
 			await asOwner.mutation(api.invoices.markPaid, { id: invoiceId });
 

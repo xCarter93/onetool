@@ -29,6 +29,7 @@ function row(overrides: Partial<InstallmentRow> = {}): InstallmentRow {
 		cardBrand: overrides.cardBrand ?? null,
 		receiptUrl: overrides.receiptUrl ?? null,
 		recordedOutsidePortal: overrides.recordedOutsidePortal ?? false,
+		refundedAmount: overrides.refundedAmount ?? null,
 	};
 }
 
@@ -94,6 +95,67 @@ describe("InstallmentList", () => {
 		const expandedText = container.textContent ?? "";
 		expect(expandedText).toMatch(/VISA/);
 		expect(expandedText).toContain("4242");
+	});
+
+	it("a refunded row past its due date reads Refunded, never Overdue", () => {
+		// Regression: pillFor only special-cased paid, so a refunded row fell
+		// through to the raw date check and told the client to pay money the
+		// business had already sent back.
+		const { container } = render(
+			<InstallmentList
+				installments={[
+					row({
+						_id: "refunded",
+						status: "refunded",
+						dueDate: Date.now() - 30 * 24 * 60 * 60 * 1000,
+						refundedAmount: 100,
+					}),
+				]}
+				activeIndex={null}
+			/>,
+		);
+		const text = container.textContent ?? "";
+		expect(text).toContain("Refunded");
+		expect(text).not.toContain("Overdue");
+		expect(text).toMatch(/\$100\.00 was refunded/);
+	});
+
+	it("a partially refunded row reads Partially refunded and names the amount", () => {
+		const { container } = render(
+			<InstallmentList
+				installments={[
+					row({
+						_id: "partial",
+						status: "paid",
+						paidAt: Date.now() - 1000,
+						paymentAmount: 200,
+						refundedAmount: 60,
+					}),
+				]}
+				activeIndex={null}
+			/>,
+		);
+		const text = container.textContent ?? "";
+		expect(text).toContain("Partially refunded");
+		expect(text).toMatch(/\$60\.00 was refunded/);
+	});
+
+	it("a cancelled row past its due date reads Cancelled, not Overdue or Due", () => {
+		const { container } = render(
+			<InstallmentList
+				installments={[
+					row({
+						_id: "cancelled",
+						status: "cancelled",
+						dueDate: Date.now() - 24 * 60 * 60 * 1000,
+					}),
+				]}
+				activeIndex={null}
+			/>,
+		);
+		const text = container.textContent ?? "";
+		expect(text).toContain("Cancelled");
+		expect(text).not.toContain("Overdue");
 	});
 
 	it("zero-payment-row invoices render an empty state, not installment rows (view-only backstop)", () => {

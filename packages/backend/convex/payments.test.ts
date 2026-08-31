@@ -1192,33 +1192,6 @@ describe("Payments", () => {
 			expect(payment?.status).toBe("sent");
 		});
 
-		it("should mark payment as overdue", async () => {
-			const { paymentId, clerkUserId, clerkOrgId } = await t.run(async (ctx) => {
-				const { orgId, clerkUserId, clerkOrgId } = await createTestOrg(ctx);
-				const clientId = await createTestClient(ctx, orgId);
-				const invoiceId = await createTestInvoice(ctx, orgId, clientId);
-
-				const paymentId = await ctx.db.insert("payments", {
-					orgId,
-					invoiceId,
-					paymentAmount: 500,
-					dueDate: Date.now() - 1000, // Past due date
-					sortOrder: 0,
-					status: "sent",
-					publicToken: `token_${Date.now()}`,
-				});
-
-				return { paymentId, clerkUserId, clerkOrgId };
-			});
-
-			const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
-
-			await asUser.mutation(api.payments.markAsOverdue, { id: paymentId });
-
-			const payment = await asUser.query(api.payments.get, { id: paymentId });
-			expect(payment?.status).toBe("overdue");
-		});
-
 		it("should cancel a payment", async () => {
 			const { paymentId, clerkUserId, clerkOrgId } = await t.run(async (ctx) => {
 				const { orgId, clerkUserId, clerkOrgId } = await createTestOrg(ctx);
@@ -1271,10 +1244,6 @@ describe("Payments", () => {
 			await expect(
 				asUser.mutation(api.payments.markAsSent, { id: paymentId })
 			).rejects.toThrowError("Cannot send a paid payment");
-
-			await expect(
-				asUser.mutation(api.payments.markAsOverdue, { id: paymentId })
-			).rejects.toThrowError("Cannot mark a paid payment as overdue");
 
 			await expect(
 				asUser.mutation(api.payments.cancel, { id: paymentId })

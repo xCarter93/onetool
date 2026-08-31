@@ -270,11 +270,11 @@ describe("payments.recordManualPayment", () => {
 		).rejects.toThrow(/cancelled invoice/i);
 	});
 
-	it("backfills a 'Full Payment' row on a never-sent draft, then splits it", async () => {
-		// invoices.create adds no payment rows; the mutation mirrors the send-time
-		// backfill so cash-first field jobs work against a draft.
+	it("splits the 'Full Payment' row on a never-sent draft", async () => {
+		// Every invoice is born with one full-amount row, so cash-first field jobs
+		// have something to settle against before the invoice is ever sent.
 		const { asUser, invoiceId } = await seed({ total: 500 });
-		expect((await rowsFor(invoiceId)).length).toBe(0);
+		expect((await rowsFor(invoiceId)).length).toBe(1);
 
 		const result = await asUser.mutation(api.payments.recordManualPayment, {
 			invoiceId,

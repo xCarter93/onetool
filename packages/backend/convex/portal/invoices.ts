@@ -11,6 +11,11 @@ import { internalMutation } from "../lib/triggers";
 import { ConvexError, v } from "convex/values";
 import type { Doc, Id } from "../_generated/dataModel";
 import { getPortalSessionOrThrow } from "./helpers";
+import {
+	collectedAmount,
+	refundedAmountOf,
+} from "../lib/paymentInsights";
+import { roundCents, sumMoney } from "../lib/money";
 import { rateLimiter } from "../rateLimits";
 
 // ---------------------------------------------------------------------------
@@ -31,14 +36,22 @@ export type PortalPaymentPublic = {
 	receiptUrl: string | null;
 	// True when this installment was settled outside the portal (cash/check).
 	recordedOutsidePortal: boolean;
+	// Dollars refunded on this row. Null when nothing came back out.
+	refundedAmount: number | null;
 };
 
 export type PortalPaymentSummary = {
 	totalPaid: number;
 	totalRemaining: number;
-	displayStatus: "awaiting" | "partial" | "paid" | "overdue";
+	displayStatus: "awaiting" | "partial" | "paid" | "overdue" | "refunded";
 	isLegacy: boolean;
 	installmentCount: number;
+	/**
+	 * Whether an installment the client can still pay actually exists. The Pay
+	 * button keys off this, not off the status — a refunded invoice shows a
+	 * balance but has nothing payable, and offering to collect it 422s.
+	 */
+	hasPayableRow: boolean;
 };
 
 export type PortalInvoiceListItemPublic = {
@@ -119,6 +132,7 @@ const portalPaymentPublicValidator = v.object({
 	cardBrand: v.union(v.string(), v.null()),
 	receiptUrl: v.union(v.string(), v.null()),
 	recordedOutsidePortal: v.boolean(),
+	refundedAmount: v.union(v.number(), v.null()),
 });
 
 const portalInvoiceStatusValidator = v.union(
@@ -135,9 +149,11 @@ const portalPaymentSummaryValidator = v.object({
 		v.literal("partial"),
 		v.literal("paid"),
 		v.literal("overdue"),
+		v.literal("refunded"),
 	),
 	isLegacy: v.boolean(),
 	installmentCount: v.number(),
+	hasPayableRow: v.boolean(),
 });
 
 const portalInvoiceListItemValidator = v.object({
@@ -212,41 +228,54 @@ function toPortalPaymentPublic(row: Doc<"payments">): PortalPaymentPublic {
 		cardBrand: isPaid ? row.cardBrand ?? null : null,
 		receiptUrl: isPaid ? row.stripeReceiptUrl ?? null : null,
 		recordedOutsidePortal: row.recordedOutsidePortal ?? false,
+		refundedAmount: refundedAmountOf(row) || null,
 	};
 }
 
 type DerivedSummary = {
 	totalPaid: number;
 	totalRemaining: number;
-	displayStatus: "awaiting" | "partial" | "paid" | "overdue";
+	displayStatus: "awaiting" | "partial" | "paid" | "overdue" | "refunded";
 	isLegacy: boolean;
 	installmentCount: number;
+	hasPayableRow: boolean;
 };
+
+/** An installment the client can still pay through the portal. */
+export function isPayableRow(row: Doc<"payments">): boolean {
+	return (
+		row.status !== "paid" &&
+		row.status !== "cancelled" &&
+		row.status !== "refunded"
+	);
+}
 
 function deriveSummary(
 	invoice: Doc<"invoices">,
 	payments: Doc<"payments">[],
 ): DerivedSummary {
 	const isLegacy = payments.length === 0;
-	let totalPaid: number;
-	if (isLegacy) {
-		totalPaid = invoice.status === "paid" ? invoice.total : 0;
-	} else {
-		totalPaid = payments
-			.filter((p) => p.status === "paid")
-			.reduce((sum, p) => sum + p.paymentAmount, 0);
-	}
-	const totalRemaining = Math.max(0, invoice.total - totalPaid);
+	const totalPaid = isLegacy
+		? invoice.status === "paid"
+			? invoice.total
+			: 0
+		: sumMoney(payments.map(collectedAmount));
+	const totalRemaining = Math.max(0, roundCents(invoice.total - totalPaid));
+	const refunded = sumMoney(payments.map(refundedAmountOf));
+	const hasPayableRow = isLegacy
+		? invoice.status !== "paid" && invoice.status !== "cancelled"
+		: payments.some(isPayableRow);
+
 	const now = Date.now();
 	let displayStatus: DerivedSummary["displayStatus"];
-	if (
-		now > invoice.dueDate &&
-		totalRemaining > 0 &&
-		invoice.status !== "cancelled"
-	) {
-		displayStatus = "overdue";
-	} else if (totalRemaining === 0) {
+	if (totalRemaining === 0) {
 		displayStatus = "paid";
+	} else if (refunded > 0 && !hasPayableRow) {
+		// Money went back out and nothing is left to collect. Labelling this
+		// "overdue" would tell the client to pay an invoice they cannot pay.
+		displayStatus = "refunded";
+	} else if (now > invoice.dueDate && invoice.status !== "cancelled") {
+		displayStatus = "overdue";
 	} else if (totalPaid > 0) {
 		displayStatus = "partial";
 	} else {
@@ -258,6 +287,7 @@ function deriveSummary(
 		displayStatus,
 		isLegacy,
 		installmentCount: payments.length,
+		hasPayableRow,
 	};
 }
 
@@ -381,13 +411,7 @@ export const get = query({
 			toPortalPaymentPublic,
 		);
 
-		const firstUnpaid =
-			sortedPayments.find(
-				(p) =>
-					p.status !== "paid" &&
-					p.status !== "cancelled" &&
-					p.status !== "refunded",
-			) ?? null;
+		const firstUnpaid = sortedPayments.find(isPayableRow) ?? null;
 
 		const activePaymentPublic: PortalPaymentPublic | null = firstUnpaid
 			? toPortalPaymentPublic(firstUnpaid)

@@ -46,6 +46,7 @@ import Link from "next/link";
 import { QuickBooksSyncRow } from "@/components/quickbooks/sync-status-row";
 import { usePermissions } from "@/hooks/use-permissions";
 import {
+	formatCalendarDate,
 	localDateToUtcMidnightMs,
 	todayUtcMidnightMs,
 	utcMidnightMsToLocalDate,
@@ -60,12 +61,6 @@ function formatDate(timestamp?: number) {
 		day: "numeric",
 		year: "numeric",
 	});
-}
-
-/** Stored UTC-midnight calendar dates re-projected so the local render shows the right day. */
-function formatCalendarDate(timestamp?: number) {
-	if (!timestamp) return "\u2014";
-	return formatDate(utcMidnightMsToLocalDate(timestamp).getTime());
 }
 
 const STATUS_OPTIONS = [

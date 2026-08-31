@@ -378,15 +378,28 @@ export const invoicesAndPaymentsArticles: HelpArticle[] = [
 				],
 			},
 			{
+				heading: "Refunds start in Stripe",
+				blocks: [
+					{
+						type: "paragraph",
+						text: "You issue a refund from the Stripe dashboard, not from OneTool. Find the payment, refund all or part of it, and OneTool records what Stripe reports. A notification tells you the amount and which invoice it landed on.",
+					},
+				],
+			},
+			{
 				heading: "What a refund does to the invoice",
 				blocks: [
 					{
 						type: "paragraph",
-						text: "When a payment is refunded, that amount no longer counts as collected. The invoice's remaining balance reopens by the refunded amount, and the client's portal offers payment again for what is now outstanding.",
+						text: "Refunded money stops counting as collected, so the invoice's balance reopens by that amount. An invoice is only Paid when nothing is owed on it, so one that read Paid moves back to Sent.",
 					},
 					{
 						type: "paragraph",
-						text: "The portal does not announce the refund. Your client sees the reopened balance, not a message explaining it, so tell them directly when you issue a refund and what you expect to happen next.",
+						text: "That balance is not payable again. A refunded installment is closed, so the portal labels the invoice Refunded and drops the Pay button instead of asking your client to pay the same money twice.",
+					},
+					{
+						type: "paragraph",
+						text: "Your client sees the refund on the installment it came from, with the amount that went back to their card. They do not see why, so tell them directly when you issue one.",
 					},
 				],
 			},
