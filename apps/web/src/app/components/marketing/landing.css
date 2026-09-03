@@ -175,6 +175,21 @@ html:has(.dc-landing) {
 	animation: lp-fade 1s var(--lp-ease) var(--lp-delay, 0s) both;
 }
 
+/* Old-way stack: plates hover, leaders stream toward the record. Frame 0 is the
+   rest pose, so the reduced-motion rule below needs no companion here. */
+@keyframes lp-bob {
+	to {
+		translate: 0 -3px;
+	}
+}
+.lp-bob {
+	animation: lp-bob 1.4s cubic-bezier(0.77, 0, 0.175, 1) var(--lp-bob-delay, 0s)
+		infinite alternate;
+}
+.lp-flow {
+	animation: lp-dashflow 1.1s linear infinite;
+}
+
 /* Cards rest flat (hairline + surface only); shadow is a hover reward.
    Reduced motion zeroes the transition but the hover state still applies. */
 .lp-lift {

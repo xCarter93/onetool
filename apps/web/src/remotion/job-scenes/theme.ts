@@ -27,6 +27,10 @@ export interface JobPalette {
 	paidWash: string;
 	danger: string;
 	shadow: string;
+	/** Iso stage: paper cut-outs on the card sheet — light faces, dark edges in both schemes. */
+	stageLine: string;
+	stageFace: string;
+	stageCast: string;
 }
 
 const LIGHT: JobPalette = {
@@ -45,6 +49,9 @@ const LIGHT: JobPalette = {
 	paidWash: "color-mix(in oklch, oklch(0.596 0.145 163.225) 12%, oklch(0.975 0.002 286))",
 	danger: "oklch(0.577 0.245 27.325)",
 	shadow: "0 1px 2px rgba(16,24,40,.04), 0 8px 24px -12px rgba(16,24,40,.12)",
+	stageLine: "oklch(0.16 0.008 285.8)",
+	stageFace: "oklch(1 0 0)",
+	stageCast: "rgba(16,24,40,.1)",
 };
 
 const DARK: JobPalette = {
@@ -63,6 +70,9 @@ const DARK: JobPalette = {
 	paidWash: "color-mix(in oklch, oklch(0.596 0.145 163.225) 18%, oklch(0.168 0.019 264.665))",
 	danger: "oklch(0.704 0.191 22.216)",
 	shadow: "0 2px 4px rgba(0,0,0,.3), 0 24px 64px -24px rgba(0,0,0,.7)",
+	stageLine: "oklch(0.168 0.019 264.665)",
+	stageFace: "oklch(0.985 0 0)",
+	stageCast: "rgba(0,0,0,.45)",
 };
 
 /** Composition props of every card cut — mirrors lib/themed's contract, so a
