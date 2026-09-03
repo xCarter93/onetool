@@ -1,6 +1,19 @@
 import React from "react";
 import { interpolate, useCurrentFrame, useVideoConfig } from "remotion";
+import { progress } from "../../lib/anim";
 import { CardHead, Note, SceneFrame } from "../Chrome";
+import {
+  Cast,
+  flowAt,
+  isoGrid,
+  Leader,
+  onAccentStyle,
+  outlineStyle,
+  Ring,
+  Slab,
+  stagePaint,
+  type StagePaint,
+} from "../iso-stage";
 import {
   CARD,
   JobThemeProvider,
@@ -17,6 +30,94 @@ const THREAD = [
 
 const PROMPT = "“Book the Northgate filter change Tuesday and plan the day's route.”";
 const RESULT = "Visit scheduled Tue 8:00 · route rebuilt, 5 stops, 41 min driving";
+
+/* ------------------------------------------------------------------ stage ---
+ * Left, the inbox tray takes an envelope per message on the thread's own beat.
+ * Right, the assistant rises as the ask types and rings when the work lands.
+ */
+export const STAGE_H = 200;
+
+const TRAY = isoGrid(210, 130, 12);
+const ASSIST = isoGrid(500, 130, 12);
+const ASSIST_HT = 14;
+
+const LEADER_D = (() => {
+  const r = (n: number) => Math.round(n * 100) / 100;
+  const [x1, y1] = TRAY.pt(3.4, -1.7, 0);
+  const [x2, y2] = ASSIST.pt(-2.6, -1.7, ASSIST_HT);
+  return `M${r(x1)} ${r(y1)} L${r(x2)} ${r(y2)}`;
+})();
+
+function EnvelopeMark({ P }: { P: StagePaint }) {
+  return (
+    <>
+      <path d="M-1.4 -0.95H1.4V0.95H-1.4Z" style={{ fill: P.knock }} />
+      <path
+        d="M-1.4 -0.95H1.4V0.95H-1.4Z"
+        style={outlineStyle(P)}
+        vectorEffect="non-scaling-stroke"
+      />
+      <path
+        d="M-1.4 -0.95L0 0.2L1.4 -0.95"
+        style={{ ...outlineStyle(P), stroke: P.accent }}
+        vectorEffect="non-scaling-stroke"
+      />
+    </>
+  );
+}
+
+export const ThreadStage: React.FC<{ frame: number; fps: number; P: StagePaint }> = ({
+  frame,
+  P,
+}) => {
+  const slabHt = ASSIST_HT * progress(frame, 116, 20);
+  return (
+    <svg viewBox={`0 0 700 ${STAGE_H}`} width={700} height={STAGE_H} style={{ display: "block" }}>
+      <Cast g={TRAY} a={-4.4} b={-4.4} w={8.8} d={8.8} h={-14} P={P} />
+      <Slab g={TRAY} a={-3.4} b={-3.4} w={6.8} d={6.8} h={-8} ht={8} P={P} />
+
+      {THREAD.map((m, i) => {
+        const e = progress(frame, 26 + i * 22, 18);
+        return (
+          <g key={m.when} style={{ opacity: e, translate: `0 ${(1 - e) * -30}px` }}>
+            <Slab
+              g={TRAY}
+              a={-2.1 + i * 0.25}
+              b={-2.1 + i * 0.25}
+              w={4.2}
+              d={4.2}
+              h={i * 10}
+              ht={7}
+              P={P}
+            />
+            <g transform={TRAY.topMatrix(i * 0.25, i * 0.25, i * 10 + 7)}>
+              <EnvelopeMark P={P} />
+            </g>
+          </g>
+        );
+      })}
+
+      <g style={{ opacity: progress(frame, 116, 14) }}>
+        <Leader d={LEADER_D} P={P} flow={flowAt(frame)} />
+      </g>
+
+      <Cast g={ASSIST} a={-4.6} b={-4.6} w={9.2} d={9.2} h={-14} P={P} />
+      <Slab g={ASSIST} a={-3.6} b={-3.6} w={7.2} d={7.2} h={-8} ht={8} P={P} />
+      <Ring g={ASSIST} hw={3.1} P={P} opacity={progress(frame, 196, 16)} />
+      {/* Below half a pixel the slab reads as a stray line on the plinth. */}
+      {slabHt > 0.5 ? (
+        <Slab g={ASSIST} a={-2.6} b={-2.6} w={5.2} d={5.2} h={0} ht={slabHt} P={P} tone="accent" />
+      ) : null}
+      <g
+        transform={ASSIST.topMatrix(0, 0, ASSIST_HT)}
+        style={{ opacity: progress(frame, 196, 14) }}
+      >
+        <path d="M-1.6 -0.3H1.4" style={onAccentStyle(P)} vectorEffect="non-scaling-stroke" />
+        <path d="M-1.6 0.5H0.6" style={onAccentStyle(P)} vectorEffect="non-scaling-stroke" />
+      </g>
+    </svg>
+  );
+};
 
 /**
  * Scene 03 — the thread arriving message by message, then the assistant: the
@@ -38,6 +139,9 @@ export const ThreadAssistant: React.FC<{ bare?: boolean }> = ({ bare }) => {
 
   return (
     <SceneFrame bare={bare} eyebrow="Inbox & assistant" title="The thread stays on the record. The assistant does the typing.">
+      <div style={{ height: STAGE_H, borderBottom: `1px solid ${T.rule}` }}>
+        <ThreadStage frame={frame} fps={fps} P={stagePaint(T)} />
+      </div>
       <CardHead>
         <div
           style={{

@@ -29,7 +29,7 @@ const CARDS: Array<{
 		label: "Clients & properties",
 		index: "01",
 		sceneLabel:
-			"The client record filling in: properties, contacts and every job to date",
+			"The property, the contact and the signed quote dropping onto one client record, which then fills in with its counts and every property to date",
 		caption:
 			"Every quote, visit, invoice and email for this client hangs off this one record. Nothing lives in a spreadsheet you have to remember to open.",
 	},
@@ -37,7 +37,8 @@ const CARDS: Array<{
 		scene: "weekPlan",
 		label: "Schedule & crew",
 		index: "02",
-		sceneLabel: "The week's workload and the day's tasks landing on the schedule",
+		sceneLabel:
+			"The week's workload rising as blocks on a shelf, Tuesday lit up, then the day's tasks landing on the schedule",
 		caption:
 			"Recurring work like weekly mows and quarterly filter changes repeats itself, and lands on the crew's phone with the address and notes already on it.",
 	},
@@ -46,7 +47,7 @@ const CARDS: Array<{
 		label: "Inbox & assistant",
 		index: "03",
 		sceneLabel:
-			"A client email thread, then a plain-English ask answered by the assistant",
+			"Three client emails stacking into an inbox tray, then a plain-English ask answered by the assistant",
 		caption:
 			"Email to and from a client stays beside their jobs, and the assistant turns a sentence into the task, the route or the report, showing its work as it goes.",
 	},

@@ -14,7 +14,7 @@ export const DUR = {
  */
 export const CARD_ONLY = {
 	width: 700,
-	clientRecord: 620,
+	clientRecord: 820,
 	weekPlan: 850,
-	threadAssistant: 820,
+	threadAssistant: 1020,
 } as const;
