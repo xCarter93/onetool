@@ -4,7 +4,11 @@ import { v } from "convex/values";
 import { Doc, Id } from "./_generated/dataModel";
 import { getCurrentUserOrgId } from "./lib/auth";
 import { ActivityHelpers } from "./lib/activities";
-import { optionalUserQuery, userMutation } from "./lib/factories";
+import {
+	isRecordInActorScope,
+	optionalUserQuery,
+	userMutation,
+} from "./lib/factories";
 
 /**
  * Document operations with embedded CRUD helpers
@@ -80,10 +84,8 @@ async function validateDocumentOwnership(
  */
 async function isDocumentParentInScope(
 	ctx: (QueryCtx | MutationCtx) & {
-		actorScope: () => Promise<{
-			projectIds: Set<Id<"projects">>;
-			clientIds: Set<Id<"clients">>;
-		}>;
+		user: Doc<"users">;
+		orgId: Id<"organizations">;
 	},
 	documentType: "quote" | "invoice",
 	documentId: string
@@ -93,10 +95,10 @@ async function isDocumentParentInScope(
 			? await ctx.db.get(documentId as Id<"quotes">)
 			: await ctx.db.get(documentId as Id<"invoices">);
 	if (!parent) return false;
-	const scope = await ctx.actorScope();
-	return parent.projectId
-		? scope.projectIds.has(parent.projectId)
-		: scope.clientIds.has(parent.clientId);
+	return isRecordInActorScope(ctx, ctx.user._id, ctx.orgId, {
+		projectId: parent.projectId,
+		clientId: parent.clientId,
+	});
 }
 
 /**
@@ -199,7 +201,7 @@ export const list = optionalUserQuery({
 					(doc) => doc.documentType === args.documentType
 				);
 			}
-			// KNOWN LIMIT (parity with quoteLineItems.list / invoiceLineItems.list):
+			// KNOWN LIMIT:
 			// rows here span arbitrary quotes/invoices (documents carries only
 			// documentType + a generic documentId, no clientId/projectId of its
 			// own), so per-row scoping would need one parent fetch per distinct
@@ -563,74 +565,6 @@ export const getStats = optionalUserQuery({
 });
 
 /**
- * Clean up old document versions (keep only the latest N versions)
- */
-// TODO: Candidate for deletion if confirmed unused.
-export const cleanupOldVersions = userMutation({
-	args: {
-		documentType: v.union(v.literal("quote"), v.literal("invoice")),
-		documentId: v.string(),
-		keepVersions: v.number(), // How many versions to keep
-	},
-	handler: async (ctx, args): Promise<{ deletedCount: number }> => {
-		await ctx.requireLevel("documents", "delete");
-		// Validate document ownership
-		await validateDocumentOwnership(ctx, args.documentType, args.documentId);
-		await ctx.requireRecordScope("documents", () =>
-			isDocumentParentInScope(ctx, args.documentType, args.documentId)
-		);
-
-		if (args.keepVersions < 1) {
-			throw new Error("Must keep at least 1 version");
-		}
-
-		// Get all documents for this reference
-		const documents = await ctx.db
-			.query("documents")
-			.withIndex("by_document", (q) =>
-				q
-					.eq("documentType", args.documentType)
-					.eq("documentId", args.documentId)
-			)
-			.collect();
-
-		// Filter by organization
-		const userOrgId = await getCurrentUserOrgId(ctx);
-		const orgDocuments = documents.filter((doc) => doc.orgId === userOrgId);
-
-		if (orgDocuments.length <= args.keepVersions) {
-			return { deletedCount: 0 };
-		}
-
-		// Sort by version (descending) or generation time (descending)
-		orgDocuments.sort((a, b) => {
-			if (a.version && b.version) {
-				return b.version - a.version;
-			}
-			return b.generatedAt - a.generatedAt;
-		});
-
-		// Keep only the latest N versions
-		const toDelete = orgDocuments.slice(args.keepVersions);
-
-		// Delete old versions
-		for (const doc of toDelete) {
-			// Delete from storage
-			try {
-				await ctx.storage.delete(doc.storageId);
-			} catch (error) {
-				console.warn(`Failed to delete file from storage: ${error}`);
-			}
-
-			// Delete document record
-			await ctx.db.delete(doc._id);
-		}
-
-		return { deletedCount: toDelete.length };
-	},
-});
-
-/**
  * Get document URL from storage
  */
 export const getDocumentUrl = optionalUserQuery({
@@ -801,18 +735,27 @@ export const listSignedByProject = optionalUserQuery({
 			return [];
 		}
 
-		// Get all documents for these quotes that have signed PDFs
+		// The stable sort below relies on _creationTime order for ties.
 		const quoteIds = quotes.map((q) => q._id);
-		const allDocuments = await ctx.db
-			.query("documents")
-			.withIndex("by_org", (q) => q.eq("orgId", userOrgId))
-			.collect();
+		const quoteDocuments = (
+			await Promise.all(
+				quoteIds.map((quoteId) =>
+					ctx.db
+						.query("documents")
+						.withIndex("by_document", (q) =>
+							q.eq("documentType", "quote").eq("documentId", quoteId)
+						)
+						.collect()
+				)
+			)
+		)
+			.flat()
+			.sort((a, b) => a._creationTime - b._creationTime);
 
-		// Filter to documents for our quotes that have signed storage IDs
-		let signedDocuments = allDocuments.filter(
+		// `by_document` is not org-scoped, so the org check stays explicit.
+		let signedDocuments = quoteDocuments.filter(
 			(doc) =>
-				doc.documentType === "quote" &&
-				quoteIds.includes(doc.documentId as Id<"quotes">) &&
+				doc.orgId === userOrgId &&
 				doc.signedStorageId !== undefined &&
 				doc.boldsign?.status === "Completed"
 		);

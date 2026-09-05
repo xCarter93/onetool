@@ -85,7 +85,7 @@ export function NewQuoteDialog({
 
 	// Gated reads — skip without the grant to avoid a FORBIDDEN crash. A skipped
 	// query stays `undefined` forever, so "loading" must be grant-aware.
-	const clients = useQuery(api.clients.list, canReadClients ? {} : "skip");
+	const clients = useQuery(api.clients.listNamesForOrg, canReadClients ? {} : "skip");
 	const defaultProject = useQuery(
 		api.projects.get,
 		defaultProjectId && canReadProjects ? { id: defaultProjectId } : "skip"

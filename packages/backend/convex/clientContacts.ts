@@ -1,6 +1,7 @@
 import { query, QueryCtx, MutationCtx } from "./_generated/server";
-import { mutation } from "./lib/triggers";
+import { internalMutation, mutation } from "./lib/triggers";
 import { v } from "convex/values";
+import { internal } from "./_generated/api";
 import { Doc, Id } from "./_generated/dataModel";
 import { getCurrentUserOrgId } from "./lib/auth";
 import { ActivityHelpers } from "./lib/activities";
@@ -28,6 +29,11 @@ import {
 // ============================================================================
 // Local Helper Functions (entity-specific logic only)
 // ============================================================================
+
+/** Portal OTP and thread resolution match on an exact equality index, so every write site stores this form. */
+export function normalizeContactEmail(email?: string): string | undefined {
+	return email ? email.trim().toLowerCase() : email;
+}
 
 /**
  * Validate client access (wrapper for shared utility)
@@ -70,9 +76,7 @@ async function createContactWithOrg(
 ): Promise<Id<"clientContacts">> {
 	// Validate client access
 	await validateClientAccess(ctx, data.clientId, ctx.orgId);
-	await ctx.requireRecordScope("clients", () =>
-		ctx.actorScope().then((s) => s.clientIds.has(data.clientId))
-	);
+	await ctx.requireRecordScope("clients", { clientId: data.clientId });
 
 	return await ctx.db.insert("clientContacts", {
 		...data,
@@ -103,26 +107,6 @@ export const listByClient = optionalUserQuery({
 		const contacts = await ctx.db
 			.query("clientContacts")
 			.withIndex("by_client", (q) => q.eq("clientId", args.clientId))
-			.collect();
-		return await ctx.applyReadScope("clients", contacts, (row, s) =>
-			s.clientIds.has(row.clientId)
-		);
-	},
-});
-
-/**
- * Get all contacts for the current user's organization
- */
-export const list = optionalUserQuery({
-	args: {},
-	handler: async (ctx): Promise<ClientContactDocument[]> => {
-		const orgId = ctx.orgId;
-		if (!orgId) return emptyListResult();
-		await ctx.requireLevel("clients", "view");
-
-		const contacts = await ctx.db
-			.query("clientContacts")
-			.withIndex("by_org", (q) => q.eq("orgId", orgId))
 			.collect();
 		return await ctx.applyReadScope("clients", contacts, (row, s) =>
 			s.clientIds.has(row.clientId)
@@ -200,14 +184,9 @@ export const create = userMutation({
 			throw new Error("Invalid phone format");
 		}
 
-		// [Review fix WR-03] Normalize email at write time. Portal OTP lookup
-		// uses an exact equality filter (q.eq("email", normalizedEmail)) on
-		// the trim-lowercased input, so a contact saved as "User@Example.COM"
-		// would silently never receive codes. Normalize once on write so the
-		// stored value matches the lookup key.
 		const normalized = {
 			...args,
-			email: args.email ? args.email.trim().toLowerCase() : args.email,
+			email: normalizeContactEmail(args.email),
 		};
 
 		// Handle primary contact uniqueness
@@ -255,11 +234,7 @@ export const update = userMutation({
 			throw new Error("Invalid phone format");
 		}
 
-		// [Review fix WR-03] Normalize email at write time so the stored
-		// value matches the portal OTP lookup key (trim + lowercase).
-		if (updates.email) {
-			updates.email = updates.email.trim().toLowerCase();
-		}
+		updates.email = normalizeContactEmail(updates.email);
 
 		// Filter and validate updates
 		const filteredUpdates = filterUndefined(updates);
@@ -274,9 +249,7 @@ export const update = userMutation({
 			await validateClientAccess(ctx, filteredUpdates.clientId);
 		}
 
-		await ctx.requireRecordScope("clients", () =>
-			ctx.actorScope().then((s) => s.clientIds.has(clientId))
-		);
+		await ctx.requireRecordScope("clients", { clientId });
 
 		// Handle primary contact uniqueness
 		if (filteredUpdates.isPrimary === true) {
@@ -310,9 +283,7 @@ export const remove = userMutation({
 	handler: async (ctx, args): Promise<ClientContactId> => {
 		await ctx.requireLevel("clients", "delete");
 		const contact = await ctx.orgEntity("clientContacts", args.id);
-		await ctx.requireRecordScope("clients", () =>
-			ctx.actorScope().then((s) => s.clientIds.has(contact.clientId))
-		);
+		await ctx.requireRecordScope("clients", { clientId: contact.clientId });
 
 		// Delete the contact
 		await ctx.db.delete(args.id);
@@ -324,54 +295,6 @@ export const remove = userMutation({
 		}
 
 		return args.id;
-	},
-});
-
-/**
- * Search contacts across the organization
- */
-// TODO: Candidate for deletion if confirmed unused.
-export const search = optionalUserQuery({
-	args: {
-		query: v.string(),
-		clientId: v.optional(v.id("clients")),
-	},
-	handler: async (ctx, args): Promise<ClientContactDocument[]> => {
-		const userOrgId = ctx.orgId;
-		if (!userOrgId) {
-			return [];
-		}
-		await ctx.requireLevel("clients", "view");
-
-		let contacts: ClientContactDocument[];
-
-		if (args.clientId) {
-			await validateClientAccess(ctx, args.clientId, userOrgId);
-			contacts = await ctx.db
-				.query("clientContacts")
-				.withIndex("by_client", (q) => q.eq("clientId", args.clientId!))
-				.collect();
-		} else {
-			contacts = await ctx.db
-				.query("clientContacts")
-				.withIndex("by_org", (q) => q.eq("orgId", userOrgId))
-				.collect();
-		}
-
-		contacts = await ctx.applyReadScope("clients", contacts, (row, s) =>
-			s.clientIds.has(row.clientId)
-		);
-
-		// Search in first name, last name, email, and job title
-		const searchQuery = args.query.toLowerCase();
-		return contacts.filter(
-			(contact: ClientContactDocument) =>
-				contact.firstName.toLowerCase().includes(searchQuery) ||
-				contact.lastName.toLowerCase().includes(searchQuery) ||
-				(contact.email && contact.email.toLowerCase().includes(searchQuery)) ||
-				(contact.jobTitle &&
-					contact.jobTitle.toLowerCase().includes(searchQuery))
-		);
 	},
 });
 
@@ -399,9 +322,7 @@ export const bulkCreate = userMutation({
 
 		// Validate client access
 		await validateClientAccess(ctx, args.clientId);
-		await ctx.requireRecordScope("clients", () =>
-			ctx.actorScope().then((s) => s.clientIds.has(args.clientId))
-		);
+		await ctx.requireRecordScope("clients", { clientId: args.clientId });
 
 		const contactIds: ClientContactId[] = [];
 		let hasPrimary = false;
@@ -450,10 +371,7 @@ export const bulkCreate = userMutation({
 
 			const contactId = await ctx.db.insert("clientContacts", {
 				...contactData,
-				// [Review fix WR-03] Normalize email at write time.
-				email: contactData.email
-					? contactData.email.trim().toLowerCase()
-					: contactData.email,
+				email: normalizeContactEmail(contactData.email),
 				clientId: args.clientId,
 				orgId: userOrgId,
 			});
@@ -480,9 +398,7 @@ export const setPrimary = userMutation({
 	handler: async (ctx, args): Promise<ClientContactId> => {
 		await ctx.requireLevel("clients", "modify");
 		const contact = await ctx.orgEntity("clientContacts", args.id);
-		await ctx.requireRecordScope("clients", () =>
-			ctx.actorScope().then((s) => s.clientIds.has(contact.clientId))
-		);
+		await ctx.requireRecordScope("clients", { clientId: contact.clientId });
 
 		// Unset any existing primary contact for this client
 		const existingPrimary = await ctx.db
@@ -506,5 +422,45 @@ export const setPrimary = userMutation({
 		}
 
 		return args.id;
+	},
+});
+
+/** Contacts read per backfill hop. */
+const NORMALIZE_BATCH_SIZE = 200;
+
+/** One-off backfill for rows stored before the write sites normalized; idempotent. */
+export const normalizeEmailCase = internalMutation({
+	args: { cursor: v.optional(v.string()) },
+	returns: v.object({
+		scanned: v.number(),
+		patched: v.number(),
+		isDone: v.boolean(),
+	}),
+	handler: async (
+		ctx,
+		args
+	): Promise<{ scanned: number; patched: number; isDone: boolean }> => {
+		const page = await ctx.db.query("clientContacts").paginate({
+			numItems: NORMALIZE_BATCH_SIZE,
+			cursor: args.cursor ?? null,
+		});
+
+		let patched = 0;
+		for (const contact of page.page) {
+			const email = normalizeContactEmail(contact.email);
+			if (email === contact.email) continue;
+			await ctx.db.patch(contact._id, { email });
+			patched++;
+		}
+
+		if (!page.isDone) {
+			await ctx.scheduler.runAfter(
+				0,
+				internal.clientContacts.normalizeEmailCase,
+				{ cursor: page.continueCursor }
+			);
+		}
+
+		return { scanned: page.page.length, patched, isDone: page.isDone };
 	},
 });

@@ -206,7 +206,7 @@ describe("Event Bus - single-flight claim", () => {
 			// Assert before draining — fake timers mean nothing has fired yet.
 			expect(await countScheduledProcessEvents()).toBe(1);
 			const claim = await getClaim();
-			expect(claim?.generation).toBe(1);
+			expect(claim?.scheduledUntil).toBeGreaterThan(Date.now());
 
 			// Drain so nothing is left scheduled when the test ends.
 			await t.finishAllScheduledFunctions(vi.runAllTimers);
@@ -227,7 +227,7 @@ describe("Event Bus - single-flight claim", () => {
 				);
 			});
 			const claimAfterFirst = await getClaim();
-			expect(claimAfterFirst?.generation).toBe(1);
+			expect(claimAfterFirst?.scheduledUntil).toBeGreaterThan(Date.now());
 
 			await t.run(async (ctx) => {
 				await emitRecordCreatedEvent(
@@ -240,9 +240,11 @@ describe("Event Bus - single-flight claim", () => {
 			});
 			const claimAfterSecond = await getClaim();
 
-			// Still one live lease, unchanged generation — the second emit rode
-			// the existing wake instead of claiming a new one.
-			expect(claimAfterSecond?.generation).toBe(claimAfterFirst?.generation);
+			// Still one live lease, untouched — the second emit rode the existing
+			// wake instead of claiming a new one.
+			expect(claimAfterSecond?.scheduledUntil).toBe(
+				claimAfterFirst?.scheduledUntil
+			);
 			expect(await countScheduledProcessEvents()).toBe(1);
 
 			await t.finishAllScheduledFunctions(vi.runAllTimers);
@@ -261,6 +263,16 @@ describe("Event Bus - lease lifecycle in processEvents", () => {
 	afterEach(() => {
 		vi.useRealTimers();
 	});
+
+	async function countScheduledProcessEvents() {
+		return await t.run(async (ctx) => {
+			const rows = await ctx.db.system.query("_scheduled_functions").collect();
+			return rows.filter(
+				(row) =>
+					row.name.includes("processEvents") && row.state.kind === "pending"
+			).length;
+		});
+	}
 
 	async function insertPendingEvents(
 		orgId: Awaited<ReturnType<typeof createTestOrg>>["orgId"],
@@ -299,6 +311,72 @@ describe("Event Bus - lease lifecycle in processEvents", () => {
 		});
 	});
 
+	it("extends a lease inside the half-TTL window on rechain", async () => {
+		const { orgId } = await t.run(async (ctx) => createTestOrg(ctx));
+		await insertPendingEvents(orgId, 60);
+		const nearExpiry = Date.now() + 5_000;
+		await t.run(async (ctx) => {
+			await ctx.db.insert("eventDispatchState", { scheduledUntil: nearExpiry });
+		});
+
+		await withoutVitestGuard(async () => {
+			await t.mutation(internal.eventBus.processEvents, {});
+
+			const claim = await t.run(async (ctx) => {
+				return await ctx.db.query("eventDispatchState").first();
+			});
+			expect(claim?.scheduledUntil).toBeGreaterThan(nearExpiry);
+			expect(await countScheduledProcessEvents()).toBe(1);
+
+			await t.finishAllScheduledFunctions(vi.runAllTimers);
+		});
+	});
+
+	it("accepts a pre-deploy row still carrying `generation` and strips it on release", async () => {
+		const { orgId } = await t.run(async (ctx) => createTestOrg(ctx));
+		await insertPendingEvents(orgId, 3);
+		await t.run(async (ctx) => {
+			await ctx.db.insert("eventDispatchState", {
+				scheduledUntil: 0,
+				generation: 7,
+			});
+		});
+
+		await withoutVitestGuard(async () => {
+			await t.mutation(internal.eventBus.processEvents, {});
+
+			const claim = await t.run(async (ctx) => {
+				return await ctx.db.query("eventDispatchState").first();
+			});
+			expect(claim?.scheduledUntil).toBe(0);
+			expect(claim?.generation).toBeUndefined();
+
+			await t.finishAllScheduledFunctions(vi.runAllTimers);
+		});
+	});
+
+	it("skips the lease write when the rechain's lease is still comfortably valid", async () => {
+		const { orgId } = await t.run(async (ctx) => createTestOrg(ctx));
+		await insertPendingEvents(orgId, 60);
+		const liveUntil = Date.now() + 30_000;
+		await t.run(async (ctx) => {
+			await ctx.db.insert("eventDispatchState", { scheduledUntil: liveUntil });
+		});
+
+		await withoutVitestGuard(async () => {
+			await t.mutation(internal.eventBus.processEvents, {});
+
+			const claim = await t.run(async (ctx) => {
+				return await ctx.db.query("eventDispatchState").first();
+			});
+			expect(claim?.scheduledUntil).toBe(liveUntil);
+			// Skipping the write must not skip the rechain.
+			expect(await countScheduledProcessEvents()).toBe(1);
+
+			await t.finishAllScheduledFunctions(vi.runAllTimers);
+		});
+	});
+
 	it("extends the lease and rechains when backlog exceeds one batch", async () => {
 		const { orgId } = await t.run(async (ctx) => createTestOrg(ctx));
 		// BATCH_SIZE is 50 — 60 pending events guarantees a remainder after
@@ -313,7 +391,6 @@ describe("Event Bus - lease lifecycle in processEvents", () => {
 				return await ctx.db.query("eventDispatchState").first();
 			});
 			expect(claim?.scheduledUntil).toBeGreaterThan(before);
-			expect(claim?.generation).toBeGreaterThan(0);
 
 			const remaining = await t.run(async (ctx) => {
 				return await ctx.db
@@ -345,10 +422,7 @@ describe("Event Bus - kickEventProcessing", () => {
 	it("schedules processing when pending events exist and the lease has expired", async () => {
 		const { orgId } = await t.run(async (ctx) => createTestOrg(ctx));
 		await t.run(async (ctx) => {
-			await ctx.db.insert("eventDispatchState", {
-				scheduledUntil: 0,
-				generation: 0,
-			});
+			await ctx.db.insert("eventDispatchState", { scheduledUntil: 0 });
 			await ctx.db.insert("domainEvents", {
 				orgId,
 				eventType: "automation.triggered",
@@ -366,18 +440,25 @@ describe("Event Bus - kickEventProcessing", () => {
 			const claim = await t.run(async (ctx) => {
 				return await ctx.db.query("eventDispatchState").first();
 			});
-			expect(claim?.generation).toBe(1);
 			expect(claim?.scheduledUntil).toBeGreaterThan(Date.now());
 
 			await t.finishAllScheduledFunctions(vi.runAllTimers);
 		});
 	});
 
-	it("does nothing when there is no pending backlog", async () => {
+	it("leaves a live lease untouched — a chain is already running", async () => {
+		const { orgId } = await t.run(async (ctx) => createTestOrg(ctx));
+		const liveUntil = Date.now() + 30_000;
 		await t.run(async (ctx) => {
-			await ctx.db.insert("eventDispatchState", {
-				scheduledUntil: 0,
-				generation: 0,
+			await ctx.db.insert("eventDispatchState", { scheduledUntil: liveUntil });
+			await ctx.db.insert("domainEvents", {
+				orgId,
+				eventType: "automation.triggered",
+				eventSource: "test.kick",
+				payload: { entityType: "client", entityId: "kick-live" },
+				status: "pending",
+				createdAt: Date.now(),
+				attemptCount: 0,
 			});
 		});
 
@@ -387,7 +468,29 @@ describe("Event Bus - kickEventProcessing", () => {
 			const claim = await t.run(async (ctx) => {
 				return await ctx.db.query("eventDispatchState").first();
 			});
-			expect(claim?.generation).toBe(0);
+			expect(claim?.scheduledUntil).toBe(liveUntil);
+
+			const scheduled = await t.run(async (ctx) => {
+				const rows = await ctx.db.system
+					.query("_scheduled_functions")
+					.collect();
+				return rows.filter((row) => row.name.includes("processEvents")).length;
+			});
+			expect(scheduled).toBe(0);
+		});
+	});
+
+	it("does nothing when there is no pending backlog", async () => {
+		await t.run(async (ctx) => {
+			await ctx.db.insert("eventDispatchState", { scheduledUntil: 0 });
+		});
+
+		await withoutVitestGuard(async () => {
+			await t.mutation(internal.eventBus.kickEventProcessing, {});
+
+			const claim = await t.run(async (ctx) => {
+				return await ctx.db.query("eventDispatchState").first();
+			});
 			expect(claim?.scheduledUntil).toBe(0);
 		});
 	});

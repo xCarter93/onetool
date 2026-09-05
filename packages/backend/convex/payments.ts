@@ -193,13 +193,10 @@ export const get = optionalUserQuery({
 		}
 		// Payments belong to the invoices permission object — scope via the parent invoice.
 		const parentInvoice = await validateInvoiceAccess(ctx, payment.invoiceId, orgId);
-		await ctx.requireRecordScope("invoices", () =>
-			ctx.actorScope().then((s) =>
-				parentInvoice.projectId
-					? s.projectIds.has(parentInvoice.projectId)
-					: s.clientIds.has(parentInvoice.clientId)
-			)
-		);
+		await ctx.requireRecordScope("invoices", {
+			projectId: parentInvoice.projectId,
+			clientId: parentInvoice.clientId,
+		});
 		return payment;
 	},
 });
@@ -276,13 +273,10 @@ export const create = userMutation({
 		await ctx.requireLevel("invoices", "modify");
 		// Validate invoice access
 		const parentInvoice = await validateInvoiceAccess(ctx, args.invoiceId, ctx.orgId);
-		await ctx.requireRecordScope("invoices", () =>
-			ctx.actorScope().then((s) =>
-				parentInvoice.projectId
-					? s.projectIds.has(parentInvoice.projectId)
-					: s.clientIds.has(parentInvoice.clientId)
-			)
-		);
+		await ctx.requireRecordScope("invoices", {
+			projectId: parentInvoice.projectId,
+			clientId: parentInvoice.clientId,
+		});
 
 		// Validate payment amount and sort order
 		validatePaymentAmount(args.paymentAmount);
@@ -332,13 +326,10 @@ export const update = userMutation({
 		// Get payment and validate access
 		const payment = await ctx.orgEntity("payments", id);
 		const parentInvoice = await validateInvoiceAccess(ctx, payment.invoiceId, ctx.orgId);
-		await ctx.requireRecordScope("invoices", () =>
-			ctx.actorScope().then((s) =>
-				parentInvoice.projectId
-					? s.projectIds.has(parentInvoice.projectId)
-					: s.clientIds.has(parentInvoice.clientId)
-			)
-		);
+		await ctx.requireRecordScope("invoices", {
+			projectId: parentInvoice.projectId,
+			clientId: parentInvoice.clientId,
+		});
 
 		// Cannot update paid payments
 		if (payment.status === "paid") {
@@ -387,13 +378,10 @@ export const remove = userMutation({
 		await ctx.requireLevel("invoices", "delete");
 		const payment = await ctx.orgEntity("payments", args.id);
 		const parentInvoice = await validateInvoiceAccess(ctx, payment.invoiceId, ctx.orgId);
-		await ctx.requireRecordScope("invoices", () =>
-			ctx.actorScope().then((s) =>
-				parentInvoice.projectId
-					? s.projectIds.has(parentInvoice.projectId)
-					: s.clientIds.has(parentInvoice.clientId)
-			)
-		);
+		await ctx.requireRecordScope("invoices", {
+			projectId: parentInvoice.projectId,
+			clientId: parentInvoice.clientId,
+		});
 
 		// Cannot delete paid payments
 		if (payment.status === "paid") {
@@ -442,13 +430,10 @@ export const configurePayments = userMutation({
 		await ctx.requireLevel("invoices", "modify");
 		// Validate invoice access
 		const parentInvoice = await validateInvoiceAccess(ctx, args.invoiceId, ctx.orgId);
-		await ctx.requireRecordScope("invoices", () =>
-			ctx.actorScope().then((s) =>
-				parentInvoice.projectId
-					? s.projectIds.has(parentInvoice.projectId)
-					: s.clientIds.has(parentInvoice.clientId)
-			)
-		);
+		await ctx.requireRecordScope("invoices", {
+			projectId: parentInvoice.projectId,
+			clientId: parentInvoice.clientId,
+		});
 
 		// Get existing payments
 		const existingPayments = await ctx.db
@@ -602,13 +587,10 @@ export const createDefaultPayment = userMutation({
 		await ctx.requireLevel("invoices", "modify");
 		// Validate invoice access
 		const invoice = await validateInvoiceAccess(ctx, args.invoiceId, ctx.orgId);
-		await ctx.requireRecordScope("invoices", () =>
-			ctx.actorScope().then((s) =>
-				invoice.projectId
-					? s.projectIds.has(invoice.projectId)
-					: s.clientIds.has(invoice.clientId)
-			)
-		);
+		await ctx.requireRecordScope("invoices", {
+			projectId: invoice.projectId,
+			clientId: invoice.clientId,
+		});
 
 		// Check if payments already exist
 		const existingPayments = await ctx.db
@@ -668,13 +650,10 @@ export const recordManualPayment = userMutation({
 	): Promise<{ invoicePaid: boolean; remaining: number }> => {
 		await ctx.requireLevel("invoices", "modify");
 		const invoice = await validateInvoiceAccess(ctx, args.invoiceId, ctx.orgId);
-		await ctx.requireRecordScope("invoices", () =>
-			ctx.actorScope().then((s) =>
-				invoice.projectId
-					? s.projectIds.has(invoice.projectId)
-					: s.clientIds.has(invoice.clientId)
-			)
-		);
+		await ctx.requireRecordScope("invoices", {
+			projectId: invoice.projectId,
+			clientId: invoice.clientId,
+		});
 
 		if (invoice.status === "paid" || invoice.status === "cancelled") {
 			throw new ConvexError({
@@ -871,13 +850,10 @@ export const reorder = userMutation({
 	handler: async (ctx, args): Promise<void> => {
 		await ctx.requireLevel("invoices", "modify");
 		const parentInvoice = await validateInvoiceAccess(ctx, args.invoiceId);
-		await ctx.requireRecordScope("invoices", () =>
-			ctx.actorScope().then((s) =>
-				parentInvoice.projectId
-					? s.projectIds.has(parentInvoice.projectId)
-					: s.clientIds.has(parentInvoice.clientId)
-			)
-		);
+		await ctx.requireRecordScope("invoices", {
+			projectId: parentInvoice.projectId,
+			clientId: parentInvoice.clientId,
+		});
 
 		// Validate that all payments belong to the invoice
 		for (const paymentId of args.paymentIds) {
@@ -908,13 +884,10 @@ export const markAsSent = userMutation({
 		await ctx.requireLevel("invoices", "modify");
 		const payment = await ctx.orgEntity("payments", args.id);
 		const parentInvoice = await validateInvoiceAccess(ctx, payment.invoiceId, ctx.orgId);
-		await ctx.requireRecordScope("invoices", () =>
-			ctx.actorScope().then((s) =>
-				parentInvoice.projectId
-					? s.projectIds.has(parentInvoice.projectId)
-					: s.clientIds.has(parentInvoice.clientId)
-			)
-		);
+		await ctx.requireRecordScope("invoices", {
+			projectId: parentInvoice.projectId,
+			clientId: parentInvoice.clientId,
+		});
 
 		if (payment.status === "paid") {
 			throw new Error("Cannot send a paid payment");
@@ -1621,13 +1594,10 @@ export const cancel = userMutation({
 		await ctx.requireLevel("invoices", "delete");
 		const payment = await ctx.orgEntity("payments", args.id);
 		const parentInvoice = await validateInvoiceAccess(ctx, payment.invoiceId, ctx.orgId);
-		await ctx.requireRecordScope("invoices", () =>
-			ctx.actorScope().then((s) =>
-				parentInvoice.projectId
-					? s.projectIds.has(parentInvoice.projectId)
-					: s.clientIds.has(parentInvoice.clientId)
-			)
-		);
+		await ctx.requireRecordScope("invoices", {
+			projectId: parentInvoice.projectId,
+			clientId: parentInvoice.clientId,
+		});
 
 		if (payment.status === "paid") {
 			throw new Error("Cannot cancel a paid payment");

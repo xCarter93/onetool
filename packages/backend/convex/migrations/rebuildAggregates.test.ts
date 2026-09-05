@@ -9,7 +9,6 @@ import {
 	projectCountsAggregate,
 	quoteCountsAggregate,
 	invoiceRevenueAggregate,
-	invoiceCountsAggregate,
 } from "../aggregates";
 
 /**
@@ -171,20 +170,20 @@ describe("rebuildAggregates", () => {
 		});
 
 		expect(
-			await t.run((ctx) => invoiceCountsAggregate.count(ctx, { namespace: orgId }))
+			await t.run((ctx) => invoiceRevenueAggregate.count(ctx, { namespace: orgId }))
 		).toBe(2);
 
 		// Raw delete bypasses the trigger — the aggregate entry survives as a phantom.
 		await t.run((ctx) => ctx.db.delete(deleteId));
 
 		expect(
-			await t.run((ctx) => invoiceCountsAggregate.count(ctx, { namespace: orgId }))
+			await t.run((ctx) => invoiceRevenueAggregate.count(ctx, { namespace: orgId }))
 		).toBe(2);
 
 		await runRebuild();
 
 		expect(
-			await t.run((ctx) => invoiceCountsAggregate.count(ctx, { namespace: orgId }))
+			await t.run((ctx) => invoiceRevenueAggregate.count(ctx, { namespace: orgId }))
 		).toBe(1);
 		expect(
 			await t.run((ctx) => invoiceRevenueAggregate.sum(ctx, { namespace: orgId }))
@@ -222,7 +221,7 @@ describe("rebuildAggregates", () => {
 		expect(await t.run((ctx) => projectCountsAggregate.count(ctx, { namespace: orgId }))).toBe(1);
 		expect(await t.run((ctx) => quoteCountsAggregate.count(ctx, { namespace: orgId }))).toBe(1);
 		expect(await t.run((ctx) => quoteCountsAggregate.sum(ctx, { namespace: orgId }))).toBe(500);
-		expect(await t.run((ctx) => invoiceCountsAggregate.count(ctx, { namespace: orgId }))).toBe(1);
+		expect(await t.run((ctx) => invoiceRevenueAggregate.count(ctx, { namespace: orgId }))).toBe(1);
 		expect(await t.run((ctx) => invoiceRevenueAggregate.sum(ctx, { namespace: orgId }))).toBe(300);
 	});
 
@@ -248,7 +247,7 @@ describe("rebuildAggregates", () => {
 		// Pause landed before the chain's first batch (which would clear the
 		// invoices step) ran at all, so the trigger-seeded value is untouched.
 		expect(
-			await t.run((ctx) => invoiceCountsAggregate.count(ctx, { namespace: orgId }))
+			await t.run((ctx) => invoiceRevenueAggregate.count(ctx, { namespace: orgId }))
 		).toBe(1);
 
 		await t.mutation(internal.migrations.rebuildAggregates.resumeAggregateRebuild, {});
@@ -257,7 +256,7 @@ describe("rebuildAggregates", () => {
 		status = await t.query(internal.migrations.rebuildAggregates.aggregateRebuildStatus, {});
 		expect(status?.status).toBe("done");
 		expect(
-			await t.run((ctx) => invoiceCountsAggregate.count(ctx, { namespace: orgId }))
+			await t.run((ctx) => invoiceRevenueAggregate.count(ctx, { namespace: orgId }))
 		).toBe(1);
 		expect(
 			await t.run((ctx) => invoiceRevenueAggregate.sum(ctx, { namespace: orgId }))
@@ -322,13 +321,13 @@ describe("rebuildAggregates", () => {
 		await runRebuild();
 
 		expect(
-			await t.run((ctx) => invoiceCountsAggregate.count(ctx, { namespace: orgA.orgId }))
+			await t.run((ctx) => invoiceRevenueAggregate.count(ctx, { namespace: orgA.orgId }))
 		).toBe(1);
 		expect(
 			await t.run((ctx) => invoiceRevenueAggregate.sum(ctx, { namespace: orgA.orgId }))
 		).toBe(111);
 		expect(
-			await t.run((ctx) => invoiceCountsAggregate.count(ctx, { namespace: orgB.orgId }))
+			await t.run((ctx) => invoiceRevenueAggregate.count(ctx, { namespace: orgB.orgId }))
 		).toBe(2);
 		expect(
 			await t.run((ctx) => invoiceRevenueAggregate.sum(ctx, { namespace: orgB.orgId }))

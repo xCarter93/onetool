@@ -1,11 +1,10 @@
 import { View, Text, Modal, Pressable, ScrollView, Alert, Image } from "react-native";
 import { useState } from "react";
 import { useUser, useAuth, useOrganization } from "@clerk/expo";
-import { useQuery } from "convex/react";
-import { api } from "@onetool/backend/convex/_generated/api";
 import { colors, spacing, styles, fontFamily } from "@/lib/theme";
 import { User, Mail, Building, LogOut, Shield, X, Bell } from "lucide-react-native";
 import { NotificationModal } from "./NotificationModal";
+import { useNotificationData } from "@/lib/use-notification-data";
 
 export function ProfileModal() {
 	const [modalVisible, setModalVisible] = useState(false);
@@ -14,10 +13,7 @@ export function ProfileModal() {
 	const { signOut } = useAuth();
 	const { organization, membership } = useOrganization();
 
-	// Fetch notification count for badge
-	const notificationData = useQuery(api.notifications.listForCurrentUser, {
-		limit: 1,
-	});
+	const notificationData = useNotificationData();
 	const unreadCount = notificationData?.unreadCount || 0;
 
 	const handleSignOut = () => {

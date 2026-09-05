@@ -91,25 +91,6 @@ export const listByQuote = optionalUserQuery({
 });
 
 /**
- * Get all line items for the current user's organization
- */
-export const list = optionalUserQuery({
-	args: {},
-	handler: async (ctx): Promise<QuoteLineItemDocument[]> => {
-		const orgId = ctx.orgId;
-		if (!orgId) return emptyListResult();
-		// Org-wide list: no parent-quote context per row without an extra fetch
-		// per distinct quoteId. Level-gate only (see RBAC gating report).
-		await ctx.requireLevel("quotes", "view");
-
-		return await ctx.db
-			.query("quoteLineItems")
-			.withIndex("by_org", (q) => q.eq("orgId", orgId))
-			.collect();
-	},
-});
-
-/**
  * Get a specific quote line item by ID
  */
 // TODO: Candidate for deletion if confirmed unused.
@@ -140,13 +121,10 @@ export const get = optionalUserQuery({
 		}
 
 		const parentQuote = await ctx.orgEntity("quotes", lineItem.quoteId);
-		await ctx.requireRecordScope("quotes", () =>
-			ctx.actorScope().then((s) =>
-				parentQuote.projectId
-					? s.projectIds.has(parentQuote.projectId)
-					: s.clientIds.has(parentQuote.clientId)
-			)
-		);
+		await ctx.requireRecordScope("quotes", {
+			projectId: parentQuote.projectId,
+			clientId: parentQuote.clientId,
+		});
 
 		return lineItem;
 	},
@@ -229,13 +207,10 @@ export const create = userMutation({
 		}
 
 		const parentQuote = await validateQuoteAccess(ctx, args.quoteId);
-		await ctx.requireRecordScope("quotes", () =>
-			ctx.actorScope().then((s) =>
-				parentQuote.projectId
-					? s.projectIds.has(parentQuote.projectId)
-					: s.clientIds.has(parentQuote.clientId)
-			)
-		);
+		await ctx.requireRecordScope("quotes", {
+			projectId: parentQuote.projectId,
+			clientId: parentQuote.clientId,
+		});
 
 		assertQuoteContentEditable(parentQuote);
 
@@ -284,13 +259,10 @@ export const update = userMutation({
 		// Get current line item
 		const currentLineItem = await ctx.orgEntity("quoteLineItems", id);
 		const parentQuote = await ctx.orgEntity("quotes", currentLineItem.quoteId);
-		await ctx.requireRecordScope("quotes", () =>
-			ctx.actorScope().then((s) =>
-				parentQuote.projectId
-					? s.projectIds.has(parentQuote.projectId)
-					: s.clientIds.has(parentQuote.clientId)
-			)
-		);
+		await ctx.requireRecordScope("quotes", {
+			projectId: parentQuote.projectId,
+			clientId: parentQuote.clientId,
+		});
 
 		assertQuoteContentEditable(parentQuote);
 
@@ -298,13 +270,10 @@ export const update = userMutation({
 		if (filteredUpdates.quoteId) {
 			const newParent = await validateQuoteAccess(ctx, filteredUpdates.quoteId);
 			// Reassignment: target quote must also be in the actor's scope
-			await ctx.requireRecordScope("quotes", () =>
-				ctx.actorScope().then((s) =>
-					newParent.projectId
-						? s.projectIds.has(newParent.projectId)
-						: s.clientIds.has(newParent.clientId)
-				)
-			);
+			await ctx.requireRecordScope("quotes", {
+				projectId: newParent.projectId,
+				clientId: newParent.clientId,
+			});
 			// …and must itself accept content edits.
 			assertQuoteContentEditable(newParent);
 		}
@@ -351,13 +320,10 @@ export const remove = userMutation({
 
 		const lineItem = await ctx.orgEntity("quoteLineItems", args.id);
 		const parentQuote = await ctx.orgEntity("quotes", lineItem.quoteId);
-		await ctx.requireRecordScope("quotes", () =>
-			ctx.actorScope().then((s) =>
-				parentQuote.projectId
-					? s.projectIds.has(parentQuote.projectId)
-					: s.clientIds.has(parentQuote.clientId)
-			)
-		);
+		await ctx.requireRecordScope("quotes", {
+			projectId: parentQuote.projectId,
+			clientId: parentQuote.clientId,
+		});
 
 		assertQuoteContentEditable(parentQuote);
 
@@ -390,13 +356,10 @@ export const bulkCreate = userMutation({
 
 		// Validate quote access once
 		const parentQuote = await validateQuoteAccess(ctx, args.quoteId);
-		await ctx.requireRecordScope("quotes", () =>
-			ctx.actorScope().then((s) =>
-				parentQuote.projectId
-					? s.projectIds.has(parentQuote.projectId)
-					: s.clientIds.has(parentQuote.clientId)
-			)
-		);
+		await ctx.requireRecordScope("quotes", {
+			projectId: parentQuote.projectId,
+			clientId: parentQuote.clientId,
+		});
 
 		assertQuoteContentEditable(parentQuote);
 
@@ -446,13 +409,10 @@ export const reorder = userMutation({
 		await ctx.requireLevel("quotes", "modify");
 
 		const parentQuote = await validateQuoteAccess(ctx, args.quoteId);
-		await ctx.requireRecordScope("quotes", () =>
-			ctx.actorScope().then((s) =>
-				parentQuote.projectId
-					? s.projectIds.has(parentQuote.projectId)
-					: s.clientIds.has(parentQuote.clientId)
-			)
-		);
+		await ctx.requireRecordScope("quotes", {
+			projectId: parentQuote.projectId,
+			clientId: parentQuote.clientId,
+		});
 
 		assertQuoteContentEditable(parentQuote);
 
@@ -484,13 +444,10 @@ export const duplicate = userMutation({
 
 		const originalItem = await ctx.orgEntity("quoteLineItems", args.id);
 		const parentQuote = await ctx.orgEntity("quotes", originalItem.quoteId);
-		await ctx.requireRecordScope("quotes", () =>
-			ctx.actorScope().then((s) =>
-				parentQuote.projectId
-					? s.projectIds.has(parentQuote.projectId)
-					: s.clientIds.has(parentQuote.clientId)
-			)
-		);
+		await ctx.requireRecordScope("quotes", {
+			projectId: parentQuote.projectId,
+			clientId: parentQuote.clientId,
+		});
 
 		assertQuoteContentEditable(parentQuote);
 

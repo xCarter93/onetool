@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { api } from "./_generated/api";
+import { api, internal } from "./_generated/api";
 import { setupConvexTest } from "./test.setup";
 import { Id } from "./_generated/dataModel";
 
@@ -708,6 +708,42 @@ describe("Clients", () => {
 			await expect(
 				asUser.mutation(api.clients.restore, { id: clientId })
 			).rejects.toThrowError("Only archived clients can be restored");
+		});
+	});
+
+	describe("cleanupOrgArchivedClients", () => {
+		it("queues archived clients older than the cutoff regardless of creation order", async () => {
+			const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
+			const orgId = await t.run(async (ctx) => {
+				const userId = await ctx.db.insert("users", {
+					name: "Test User",
+					email: "cleanup@example.com",
+					image: "https://example.com/image.jpg",
+					externalId: "user_cleanup",
+				});
+				const orgId = await ctx.db.insert("organizations", {
+					clerkOrganizationId: "org_cleanup",
+					name: "Cleanup Org",
+					ownerUserId: userId,
+				});
+				const insert = (
+					companyName: string,
+					status: "archived" | "active",
+					archivedAt?: number
+				) => ctx.db.insert("clients", { orgId, companyName, status, archivedAt });
+				// Recent rows come first so they would fill a creation-ordered prefix.
+				await insert("Recent", "archived", cutoff + 60_000);
+				await insert("Old", "archived", cutoff - 60_000);
+				await insert("Legacy", "archived");
+				await insert("Active", "active", cutoff - 60_000);
+				return orgId;
+			});
+
+			const result = await t.mutation(internal.clients.cleanupOrgArchivedClients, {
+				orgId,
+				cutoff,
+			});
+			expect(result).toEqual({ queued: 2 });
 		});
 	});
 
@@ -1440,6 +1476,105 @@ describe("Clients", () => {
 				email: "john@testclient.com",
 				jobTitle: "CEO",
 			});
+		});
+	});
+
+	describe("cleanupArchivedClients", () => {
+		const DAY_MS = 24 * 60 * 60 * 1000;
+
+		async function seedOrg(suffix: string) {
+			return await t.run(async (ctx) => {
+				const userId = await ctx.db.insert("users", {
+					name: `User ${suffix}`,
+					email: `user_${suffix}@example.com`,
+					image: "https://example.com/image.jpg",
+					externalId: `user_${suffix}`,
+				});
+				const orgId = await ctx.db.insert("organizations", {
+					clerkOrganizationId: `org_${suffix}`,
+					name: `Org ${suffix}`,
+					ownerUserId: userId,
+				});
+				await ctx.db.insert("organizationMemberships", {
+					orgId,
+					userId,
+					role: "admin",
+				});
+				return { orgId };
+			});
+		}
+
+		async function seedClient(
+			orgId: Id<"organizations">,
+			companyName: string,
+			overrides: { status?: string; archivedAt?: number } = {}
+		) {
+			return await t.run(async (ctx) =>
+				ctx.db.insert("clients", {
+					orgId,
+					companyName,
+					status: (overrides.status ?? "archived") as "archived" | "active",
+					archivedAt: overrides.archivedAt,
+					searchText: companyName.toLowerCase(),
+				})
+			);
+		}
+
+		it("deletes only clients archived 7+ days ago, across every org", async () => {
+			const { orgId: orgA } = await seedOrg("a");
+			const { orgId: orgB } = await seedOrg("b");
+			const now = Date.now();
+
+			const staleA = await seedClient(orgA, "Stale A", {
+				archivedAt: now - 8 * DAY_MS,
+			});
+			const staleB = await seedClient(orgB, "Stale B", {
+				archivedAt: now - 30 * DAY_MS,
+			});
+			const freshA = await seedClient(orgA, "Fresh A", {
+				archivedAt: now - 2 * DAY_MS,
+			});
+			const activeB = await seedClient(orgB, "Active B", {
+				status: "active",
+			});
+
+			await t.mutation(internal.clients.cleanupArchivedClients, {});
+			await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+			const survivors = await t.run(async (ctx) => ({
+				staleA: await ctx.db.get(staleA),
+				staleB: await ctx.db.get(staleB),
+				freshA: await ctx.db.get(freshA),
+				activeB: await ctx.db.get(activeB),
+			}));
+
+			expect(survivors.staleA).toBeNull();
+			expect(survivors.staleB).toBeNull();
+			expect(survivors.freshA).not.toBeNull();
+			expect(survivors.activeB).not.toBeNull();
+		});
+
+		it("cascades the archived client's related records", async () => {
+			const { orgId } = await seedOrg("cascade");
+			const clientId = await seedClient(orgId, "Stale", {
+				archivedAt: Date.now() - 10 * DAY_MS,
+			});
+			const contactId = await t.run(async (ctx) =>
+				ctx.db.insert("clientContacts", {
+					orgId,
+					clientId,
+					firstName: "Jane",
+					lastName: "Doe",
+					isPrimary: true,
+					searchText: "jane doe",
+				})
+			);
+
+			await t.mutation(internal.clients.cleanupArchivedClients, {});
+			await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+			const contact = await t.run(async (ctx) => ctx.db.get(contactId));
+			expect(contact).toBeNull();
 		});
 	});
 });

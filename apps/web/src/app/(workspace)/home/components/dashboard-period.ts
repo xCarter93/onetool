@@ -61,7 +61,9 @@ export function resolvePeriodRange(
 		endDate,
 		previous: {
 			startDate: shift(start).getTime(),
-			endDate: shift(reference).getTime(),
+			// Day-rounded like `endDate`: a millisecond-precision bound gives every
+			// re-render a fresh args object, so the query never hits the cache.
+			endDate: endOfDay(shift(reference)).getTime(),
 		},
 		granularity: period === "year" ? "month" : "day",
 	};

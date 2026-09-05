@@ -389,6 +389,13 @@ interface ScanResult {
 	hydrator?: PathHydrator;
 }
 
+/**
+ * Ceiling on `db.get` calls spent hydrating dotted paths, so hydration can't eat
+ * the whole per-query read budget on top of the scan itself. `truncatedEntities`
+ * tells the client when it was cut short.
+ */
+const HYDRATION_BUDGET = 2_000;
+
 async function scanFiltered(
 	ctx: QueryCtx,
 	entityType: ReportEntityType,
@@ -397,7 +404,8 @@ async function scanFiltered(
 	bounds: DateBoundsResult,
 	filters: ReportFilters | undefined,
 	timezone: string | undefined,
-	groupByPath?: ResolvedPath
+	groupByPath?: ResolvedPath,
+	hydrationBudget: number = HYDRATION_BUDGET
 ): Promise<ScanResult> {
 	const filterPaths = resolveFilterPaths(entityType, filters);
 	const hasPathFilters = filterPaths.size > 0;
@@ -438,7 +446,7 @@ async function scanFiltered(
 			(await ctx.db.get(id as Id<"clients">)) as Record<string, unknown> | null,
 		matches,
 		paths,
-		Math.max(0, REPORT_SCAN_CEILING - matches.length)
+		Math.max(0, Math.min(hydrationBudget, REPORT_SCAN_CEILING - matches.length))
 	);
 
 	let rows: Row[] = matches;
@@ -892,9 +900,14 @@ async function runAggregationPlan(
 	ctx: QueryCtx,
 	orgId: Id<"organizations">,
 	plan: AggregationPlan,
-	comparison?: ComparisonRun
+	comparison?: ComparisonRun,
+	hydrationBudget?: number
 ): Promise<ReportDataResult> {
 	const { entityType, aggregation } = plan;
+	// A comparison re-runs this plan over the earlier window in the same
+	// transaction, so the two runs split one budget.
+	const budget =
+		hydrationBudget ?? (comparison ? HYDRATION_BUDGET / 2 : HYDRATION_BUDGET);
 	const groupByPath =
 		plan.groupBy && isRelatedPath(plan.groupBy)
 			? resolveReportPath(entityType, plan.groupBy)
@@ -907,7 +920,8 @@ async function runAggregationPlan(
 		plan.bounds,
 		plan.filters,
 		plan.timezone,
-		groupByPath
+		groupByPath,
+		budget
 	);
 	const truncated = scanned.truncated;
 	let rows = scanned.rows;
@@ -943,7 +957,7 @@ async function runAggregationPlan(
 		fk = terminal ? undefined : getGroupableFk(entityType, groupBy);
 		if (terminal) {
 			if (terminal.kind === "field" && terminal.granularity) {
-				// Rows with no reachable timestamp are excluded from data AND totals.
+				// No reachable timestamp (or hydration budget exhausted): dropped from data AND totals.
 				rows = rows.filter((row) => keyOf(row) !== null);
 				buckets = buildTimeBuckets(rows, keyOf, terminal.granularity, aggregation);
 				pathTimeBucketed = true;
@@ -1082,13 +1096,19 @@ async function runAggregationPlan(
 	// are read, and the survivors of THIS series' slice keep their labels/order.
 	let compared: ReportDataResult | undefined;
 	if (comparison) {
-		compared = await runAggregationPlan(ctx, orgId, {
-			...plan,
-			bounds: comparison.bounds,
-			segmentBy: undefined,
-			seriesLimit: undefined,
-			sort: undefined,
-		});
+		compared = await runAggregationPlan(
+			ctx,
+			orgId,
+			{
+				...plan,
+				bounds: comparison.bounds,
+				segmentBy: undefined,
+				seriesLimit: undefined,
+				sort: undefined,
+			},
+			undefined,
+			budget
+		);
 		const paired = new Map<string, number>();
 		for (const point of compared.data) {
 			if (point.bucketKey === undefined) continue;

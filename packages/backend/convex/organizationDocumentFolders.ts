@@ -1,5 +1,8 @@
 import { v } from "convex/values";
+import { internal } from "./_generated/api";
+import type { MutationCtx } from "./_generated/server";
 import { Doc, Id } from "./_generated/dataModel";
+import { internalMutation } from "./lib/triggers";
 import { optionalUserQuery, userMutation } from "./lib/factories";
 import type { UserMutationCtx, UserQueryCtx } from "./lib/factories";
 
@@ -191,9 +194,51 @@ export const getDeleteImpact = optionalUserQuery({
 	},
 });
 
+/** Documents deleted per transaction; the rest sweep in scheduled batches. */
+const DELETE_BATCH = 100;
+
+/** Deletes up to DELETE_BATCH documents across the subtree, blobs included. */
+async function deleteDocumentsPage(
+	ctx: MutationCtx,
+	orgId: Id<"organizations">,
+	folderIds: FolderId[]
+): Promise<number> {
+	let deleted = 0;
+	for (const folderId of folderIds) {
+		if (deleted >= DELETE_BATCH) break;
+		const docs = await ctx.db
+			.query("organizationDocuments")
+			.withIndex("by_org_folder", (q) =>
+				q.eq("orgId", orgId).eq("folderId", folderId)
+			)
+			.take(DELETE_BATCH - deleted);
+		for (const doc of docs) {
+			try {
+				await ctx.storage.delete(doc.storageId);
+			} catch (error) {
+				console.warn(`Failed to delete file from storage: ${error}`);
+			}
+			await ctx.db.delete(doc._id);
+			deleted++;
+		}
+	}
+	return deleted;
+}
+
+/** Deepest-first so no row briefly points at a deleted parent. */
+async function deleteFolderRows(ctx: MutationCtx, folderIds: FolderId[]) {
+	for (const folderId of [...folderIds].reverse()) {
+		if (await ctx.db.get(folderId)) {
+			await ctx.db.delete(folderId);
+		}
+	}
+}
+
 /**
  * Recursively delete a folder: all descendant folders, every document inside
- * them, and each document's stored blob (best effort).
+ * them, and each document's stored blob (best effort). Subtrees larger than
+ * one batch finish in `sweepPage`; the folder rows go last so the explorer
+ * never shows the contents orphaned to the drive root mid-delete.
  */
 export const remove = userMutation({
 	args: { id: v.id("organizationDocumentFolders") },
@@ -206,31 +251,41 @@ export const remove = userMutation({
 
 		const orgId = ctx.orgId;
 		const folderIds = await collectSubtree(ctx, orgId, args.id);
+		const documentCount = await deleteDocumentsPage(ctx, orgId, folderIds);
 
-		let documentCount = 0;
-		for (const folderId of folderIds) {
-			const docs = await ctx.db
-				.query("organizationDocuments")
-				.withIndex("by_org_folder", (q) =>
-					q.eq("orgId", orgId).eq("folderId", folderId)
-				)
-				.collect();
-			for (const doc of docs) {
-				try {
-					await ctx.storage.delete(doc.storageId);
-				} catch (error) {
-					console.warn(`Failed to delete file from storage: ${error}`);
-				}
-				await ctx.db.delete(doc._id);
-				documentCount++;
-			}
-		}
-
-		// Deepest-first so no row briefly points at a deleted parent.
-		for (const folderId of [...folderIds].reverse()) {
-			await ctx.db.delete(folderId);
+		if (documentCount < DELETE_BATCH) {
+			await deleteFolderRows(ctx, folderIds);
+		} else {
+			await ctx.scheduler.runAfter(
+				0,
+				internal.organizationDocumentFolders.sweepPage,
+				{ orgId, folderIds }
+			);
 		}
 
 		return { folderCount: folderIds.length, documentCount };
+	},
+});
+
+/** One batch of a large recursive delete; reschedules until the subtree is empty. */
+export const sweepPage = internalMutation({
+	args: {
+		orgId: v.id("organizations"),
+		folderIds: v.array(v.id("organizationDocumentFolders")),
+	},
+	returns: v.null(),
+	handler: async (ctx, args): Promise<null> => {
+		const deleted = await deleteDocumentsPage(ctx, args.orgId, args.folderIds);
+		if (deleted === DELETE_BATCH) {
+			await ctx.scheduler.runAfter(
+				0,
+				internal.organizationDocumentFolders.sweepPage,
+				args
+			);
+			return null;
+		}
+
+		await deleteFolderRows(ctx, args.folderIds);
+		return null;
 	},
 });

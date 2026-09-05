@@ -10,7 +10,6 @@ import {
 	resolvePlan,
 } from "./entitlements";
 import { orgHasPremiumPlan, userHasPremiumOverride, PREMIUM_PLAN_SLUG } from "./permissions";
-import { FREE_ESIGNATURES_PER_MONTH } from "../usage";
 
 const NOW = Date.UTC(2026, 7, 22, 12, 0, 0); // 2026-08-22T12:00Z
 
@@ -154,7 +153,7 @@ describe("map values encode the Slice A end-state packaging", () => {
 	it("stock caps are deleted (unlimited on both tiers)", () => {
 		expect(METERS.clients.free).toBeNull();
 		expect(METERS.activeProjectsPerClient.free).toBeNull();
-		expect(METERS.esignatures.free).toBe(FREE_ESIGNATURES_PER_MONTH);
+		expect(METERS.esignatures.free).toBe(5);
 	});
 
 	it("volume meters are enforced from day one", () => {

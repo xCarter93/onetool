@@ -88,26 +88,6 @@ export const listByInvoice = optionalUserQuery({
 });
 
 /**
- * Get all line items for the current user's organization
- */
-// TODO: Candidate for deletion if confirmed unused.
-export const list = optionalUserQuery({
-	args: {},
-	handler: async (ctx): Promise<InvoiceLineItemDocument[]> => {
-		const orgId = ctx.orgId;
-		if (!orgId) return emptyListResult();
-		// Rows span arbitrary invoices; scoping would require a per-row parent
-		// fetch. Level-gate only — see report.
-		await ctx.requireLevel("invoices", "view");
-
-		return await ctx.db
-			.query("invoiceLineItems")
-			.withIndex("by_org", (q) => q.eq("orgId", orgId))
-			.collect();
-	},
-});
-
-/**
  * Get a specific invoice line item by ID
  */
 // TODO: Candidate for deletion if confirmed unused.
@@ -137,13 +117,10 @@ export const get = optionalUserQuery({
 		}
 
 		const parentInvoice = await validateInvoiceAccess(ctx, lineItem.invoiceId);
-		await ctx.requireRecordScope("invoices", () =>
-			ctx.actorScope().then((s) =>
-				parentInvoice.projectId
-					? s.projectIds.has(parentInvoice.projectId)
-					: s.clientIds.has(parentInvoice.clientId)
-			)
-		);
+		await ctx.requireRecordScope("invoices", {
+			projectId: parentInvoice.projectId,
+			clientId: parentInvoice.clientId,
+		});
 
 		return lineItem;
 	},
@@ -170,13 +147,10 @@ export const create = userMutation({
 	handler: async (ctx, args): Promise<InvoiceLineItemId> => {
 		await ctx.requireLevel("invoices", "modify");
 		const parentInvoice = await validateInvoiceAccess(ctx, args.invoiceId);
-		await ctx.requireRecordScope("invoices", () =>
-			ctx.actorScope().then((s) =>
-				parentInvoice.projectId
-					? s.projectIds.has(parentInvoice.projectId)
-					: s.clientIds.has(parentInvoice.clientId)
-			)
-		);
+		await ctx.requireRecordScope("invoices", {
+			projectId: parentInvoice.projectId,
+			clientId: parentInvoice.clientId,
+		});
 
 		await assertInvoiceContentEditable(ctx, parentInvoice);
 
@@ -235,13 +209,10 @@ export const update = userMutation({
 			currentLineItem.invoiceId,
 			ctx.orgId
 		);
-		await ctx.requireRecordScope("invoices", () =>
-			ctx.actorScope().then((s) =>
-				parentInvoice.projectId
-					? s.projectIds.has(parentInvoice.projectId)
-					: s.clientIds.has(parentInvoice.clientId)
-			)
-		);
+		await ctx.requireRecordScope("invoices", {
+			projectId: parentInvoice.projectId,
+			clientId: parentInvoice.clientId,
+		});
 
 		await assertInvoiceContentEditable(ctx, parentInvoice);
 
@@ -249,13 +220,10 @@ export const update = userMutation({
 		if (filteredUpdates.invoiceId) {
 			const newParent = await validateInvoiceAccess(ctx, filteredUpdates.invoiceId);
 			// Reassignment: target invoice must also be in the actor's scope
-			await ctx.requireRecordScope("invoices", () =>
-				ctx.actorScope().then((s) =>
-					newParent.projectId
-						? s.projectIds.has(newParent.projectId)
-						: s.clientIds.has(newParent.clientId)
-				)
-			);
+			await ctx.requireRecordScope("invoices", {
+				projectId: newParent.projectId,
+				clientId: newParent.clientId,
+			});
 			// …and must itself accept content edits.
 			await assertInvoiceContentEditable(ctx, newParent);
 		}
@@ -308,13 +276,10 @@ export const remove = userMutation({
 			lineItem.invoiceId,
 			ctx.orgId
 		);
-		await ctx.requireRecordScope("invoices", () =>
-			ctx.actorScope().then((s) =>
-				parentInvoice.projectId
-					? s.projectIds.has(parentInvoice.projectId)
-					: s.clientIds.has(parentInvoice.clientId)
-			)
-		);
+		await ctx.requireRecordScope("invoices", {
+			projectId: parentInvoice.projectId,
+			clientId: parentInvoice.clientId,
+		});
 		await assertInvoiceContentEditable(ctx, parentInvoice);
 
 		await ctx.db.delete(args.id);
@@ -345,13 +310,10 @@ export const bulkCreate = userMutation({
 		await ctx.requireLevel("invoices", "modify");
 		// Validate invoice access once
 		const parentInvoice = await validateInvoiceAccess(ctx, args.invoiceId);
-		await ctx.requireRecordScope("invoices", () =>
-			ctx.actorScope().then((s) =>
-				parentInvoice.projectId
-					? s.projectIds.has(parentInvoice.projectId)
-					: s.clientIds.has(parentInvoice.clientId)
-			)
-		);
+		await ctx.requireRecordScope("invoices", {
+			projectId: parentInvoice.projectId,
+			clientId: parentInvoice.clientId,
+		});
 
 		await assertInvoiceContentEditable(ctx, parentInvoice);
 
@@ -401,13 +363,10 @@ export const reorder = userMutation({
 	handler: async (ctx, args): Promise<void> => {
 		await ctx.requireLevel("invoices", "modify");
 		const parentInvoice = await validateInvoiceAccess(ctx, args.invoiceId);
-		await ctx.requireRecordScope("invoices", () =>
-			ctx.actorScope().then((s) =>
-				parentInvoice.projectId
-					? s.projectIds.has(parentInvoice.projectId)
-					: s.clientIds.has(parentInvoice.clientId)
-			)
-		);
+		await ctx.requireRecordScope("invoices", {
+			projectId: parentInvoice.projectId,
+			clientId: parentInvoice.clientId,
+		});
 
 		await assertInvoiceContentEditable(ctx, parentInvoice);
 
@@ -444,13 +403,10 @@ export const duplicate = userMutation({
 			originalItem.invoiceId,
 			ctx.orgId
 		);
-		await ctx.requireRecordScope("invoices", () =>
-			ctx.actorScope().then((s) =>
-				parentInvoice.projectId
-					? s.projectIds.has(parentInvoice.projectId)
-					: s.clientIds.has(parentInvoice.clientId)
-			)
-		);
+		await ctx.requireRecordScope("invoices", {
+			projectId: parentInvoice.projectId,
+			clientId: parentInvoice.clientId,
+		});
 
 		await assertInvoiceContentEditable(ctx, parentInvoice);
 

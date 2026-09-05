@@ -35,6 +35,7 @@ import { useAuth } from "@clerk/nextjs";
 import { useRoleAccess } from "@/hooks/use-role-access";
 import { useIsOrgSwitching } from "@/hooks/use-is-org-switching";
 import { usePermissions } from "@/hooks/use-permissions";
+import { useUtcToday } from "@/hooks/use-org-today";
 import { useFeatureFlagEnabled } from "posthog-js/react";
 import {
 	TourElement,
@@ -126,15 +127,19 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 	const searchParams = useSearchParams();
 	const isOrgSwitching = useIsOrgSwitching();
 	const { can, hasFullAccess, isLoading: permissionsLoading } = usePermissions();
+	const utcToday = useUtcToday();
 	// Badge queries hit view-gated endpoints — skip them for users without the
 	// grant or they throw FORBIDDEN.
-	const taskStats = useQuery(api.tasks.getStats, can("tasks") ? {} : "skip");
+	const taskStats = useQuery(
+		api.tasks.getSidebarCounts,
+		can("tasks") ? { today: utcToday } : "skip"
+	);
 	// Suppress the badge during the org-switch grace window so a stale count
 	// (or a transient "0") never flashes for the new org.
 	const tasksBadgeCount =
 		isOrgSwitching || taskStats === undefined
 			? 0
-			: (taskStats.todayTasks ?? 0) + (taskStats.overdue ?? 0);
+			: taskStats.todayTasks + taskStats.overdue;
 	// Org-wide count of email threads with unread inbound messages (Inbox badge).
 	const inboxUnread = useQuery(
 		api.emailThreads.countUnreadThreads,

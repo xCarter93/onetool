@@ -123,6 +123,72 @@ describe("EmailThreads (Unified Inbox)", () => {
 		});
 	});
 
+	describe("contact enrichment", () => {
+		it("resolves the counterparty contact per org, ignoring address case", async () => {
+			const { orgA, orgB } = await twoOrgSetup();
+			const asA = t.withIdentity(
+				createTestIdentity(orgA.clerkUserId, orgA.clerkOrgId)
+			);
+			const asB = t.withIdentity(
+				createTestIdentity(orgB.clerkUserId, orgB.clerkOrgId)
+			);
+
+			const { clientA, clientB } = await t.run(async (ctx) => ({
+				clientA: await createTestClient(ctx, orgA.orgId),
+				clientB: await createTestClient(ctx, orgB.orgId),
+			}));
+
+			const contactA = await asA.mutation(api.clientContacts.create, {
+				clientId: clientA,
+				firstName: "Ada",
+				lastName: "Lovelace",
+				email: "Ada.Lovelace@Example.com",
+				isPrimary: true,
+			});
+			// Same address in another org: must never resolve for org A.
+			await asB.mutation(api.clientContacts.create, {
+				clientId: clientB,
+				firstName: "Other",
+				lastName: "Org",
+				email: "ada.lovelace@example.com",
+				isPrimary: true,
+			});
+
+			const knownThread = await t.run(async (ctx) => {
+				const known = await createThread(ctx, orgA.orgId, clientA, {
+					subject: "Known sender",
+					participantEmails: ["ADA.Lovelace@EXAMPLE.com"],
+					lastMessageAt: 2000,
+				});
+				await createThread(ctx, orgA.orgId, null, {
+					subject: "Unknown sender",
+					participantEmails: ["stranger@example.com"],
+					lastMessageAt: 1000,
+				});
+				return known;
+			});
+
+			const threads = await asA.query(api.emailThreads.listThreadsByOrg, {});
+			const bySubject = new Map(threads.map((th) => [th.subject, th]));
+			expect(bySubject.get("Known sender")?.contact).toEqual({
+				contactId: contactA,
+				name: "Ada Lovelace",
+				email: "ADA.Lovelace@EXAMPLE.com",
+			});
+			expect(bySubject.get("Unknown sender")?.contact).toEqual({
+				contactId: null,
+				name: "stranger@example.com",
+				email: "stranger@example.com",
+			});
+
+			const single = await asA.query(api.emailThreads.getThread, {
+				threadDocId: knownThread,
+			});
+			expect(single?.contact?.contactId).toBe(contactA);
+			expect(single?.contact?.name).toBe("Ada Lovelace");
+		});
+	});
+
 	describe("getThread", () => {
 		it("returns null for a thread belonging to another org", async () => {
 			const { orgA, orgB } = await twoOrgSetup();

@@ -67,6 +67,45 @@ export type ActorScope = {
 	clientIds: Set<Id<"clients">>;
 };
 
+/**
+ * Where a single record sits in the assignment closure. `projectId` wins when
+ * both are set, mirroring every call site's `projectId ? … : clientId` ternary.
+ */
+export type RecordScopeRef = {
+	projectId?: Id<"projects"> | null;
+	clientId?: Id<"clients"> | null;
+};
+
+/**
+ * Point-read equivalent of `actorScope().projectIds/clientIds.has(id)` for one
+ * record. Same verdict as the org-wide scan, but keeps the org's whole projects
+ * range out of the transaction's read set (OCC conflicts on unrelated writes).
+ */
+export async function isRecordInActorScope(
+	ctx: QueryCtx | MutationCtx,
+	userId: Id<"users">,
+	orgId: Id<"organizations">,
+	ref: RecordScopeRef
+): Promise<boolean> {
+	const assignedToActor = (project: Doc<"projects">) =>
+		project.orgId === orgId &&
+		(project.assignedUserIds?.includes(userId) ?? false);
+
+	if (ref.projectId) {
+		const project = await ctx.db.get(ref.projectId);
+		return project !== null && assignedToActor(project);
+	}
+	if (ref.clientId) {
+		const clientId = ref.clientId;
+		const projects = await ctx.db
+			.query("projects")
+			.withIndex("by_client", (q) => q.eq("clientId", clientId))
+			.collect();
+		return projects.some(assignedToActor);
+	}
+	return false;
+}
+
 export type UserFunctionExtras = {
 	user: Doc<"users">;
 	orgId: Id<"organizations">;
@@ -84,12 +123,14 @@ export type UserFunctionExtras = {
 	actorScope: () => Promise<ActorScope>;
 	/**
 	 * Record-scope gate for writes on scopable objects. Skipped under
-	 * hasAllRecords; otherwise `isInScope` decides (compute lazily — only runs
-	 * when needed). Throws FORBIDDEN(scope) when out of scope.
+	 * hasAllRecords; otherwise the second argument decides (evaluated lazily —
+	 * only when needed). Prefer a `RecordScopeRef` over a closure that reads
+	 * `actorScope()`: it resolves by point read instead of scanning the org.
+	 * Throws FORBIDDEN(scope) when out of scope.
 	 */
 	requireRecordScope: (
 		object: PermissionObject,
-		isInScope: () => boolean | Promise<boolean>
+		isInScope: (() => boolean | Promise<boolean>) | RecordScopeRef
 	) => Promise<void>;
 	/**
 	 * Derived-scope list filter. Under hasAllRecords returns `rows` untouched;
@@ -222,7 +263,11 @@ function makeOrgExtras(
 		},
 		requireRecordScope: async (object, isInScope) => {
 			if (await hasAllRecords(object)) return;
-			if (!(await isInScope())) {
+			const inScope =
+				typeof isInScope === "function"
+					? await isInScope()
+					: await isRecordInActorScope(ctx, user._id, orgId, isInScope);
+			if (!inScope) {
 				denyPermission({ object, scope: true, userId: user._id, orgId });
 			}
 		},

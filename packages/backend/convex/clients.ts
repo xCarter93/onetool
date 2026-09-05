@@ -4,6 +4,7 @@ import { mutation, internalMutation } from "./lib/triggers";
 import { v } from "convex/values";
 import { Doc, Id } from "./_generated/dataModel";
 import { getCurrentUserOrgId } from "./lib/auth";
+import { normalizeContactEmail } from "./clientContacts";
 import { ActivityHelpers } from "./lib/activities";
 import { calculateQuoteTotals } from "./lib/quoteTotals";
 import {
@@ -203,10 +204,8 @@ export const list = optionalUserQuery({
 });
 
 /**
- * Get lightweight client names for the current user's organization.
- * Used for duplicate detection during CSV import.
- * Returns only {_id, companyName} to minimize data transfer.
- * Excludes archived clients to match the default list behavior.
+ * Lightweight {_id, companyName} for every non-archived client — the pick-list
+ * read for callers that never touch the rest of the document.
  */
 export const listNamesForOrg = optionalUserQuery({
 	args: {},
@@ -272,9 +271,7 @@ export const get = optionalUserQuery({
 			}
 			throw error;
 		}
-		await ctx.requireRecordScope("clients", () =>
-			ctx.actorScope().then((s) => s.clientIds.has(client._id))
-		);
+		await ctx.requireRecordScope("clients", { clientId: client._id });
 		return client;
 	},
 });
@@ -317,11 +314,12 @@ interface ClientPreview {
 /**
  * Get a compact, self-contained preview of a client for the detail drawer.
  * Resolves the primary contact + primary address, rolls up related
- * projects/quotes/invoices with ACCURATE totals recomputed from line items
- * (stored totals can be stale), and returns the last 7 days of activity.
+ * projects/quotes/invoices with ACCURATE totals recomputed from line items,
+ * and returns the last 7 days of activity.
  */
 export const getPreview = optionalUserQuery({
-	args: { id: v.id("clients") },
+	// `now` pins the activity window to a caller-rounded instant so the result is cacheable.
+	args: { id: v.id("clients"), now: v.optional(v.number()) },
 	handler: async (ctx, args: any): Promise<ClientPreview | null> => {
 		const orgId = ctx.orgId;
 		if (!orgId) return null;
@@ -339,9 +337,7 @@ export const getPreview = optionalUserQuery({
 			}
 			throw error;
 		}
-		await ctx.requireRecordScope("clients", () =>
-			ctx.actorScope().then((s) => s.clientIds.has(client._id))
-		);
+		await ctx.requireRecordScope("clients", { clientId: client._id });
 
 		// Primary contact (from clientContacts, not the client doc)
 		const primaryContactDoc = await ctx.db
@@ -445,7 +441,7 @@ export const getPreview = optionalUserQuery({
 
 		// Recent activity for this client (last 7 days). Activities are keyed
 		// generically by entityType/entityId, so query by_entity then filter.
-		const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
+		const cutoff = (args.now ?? Date.now()) - 7 * 24 * 60 * 60 * 1000;
 		const activityRows = await ctx.db
 			.query("activities")
 			.withIndex("by_entity", (q: any) =>
@@ -777,6 +773,7 @@ export const bulkCreate = userMutation({
 							}
 							await ctx.db.insert("clientContacts", {
 								...contact,
+								email: normalizeContactEmail(contact.email),
 								clientId,
 								orgId: userOrgId,
 								isPrimary: i === 0,
@@ -921,9 +918,7 @@ export const update = userMutation({
 
 		// Get existing client to track status changes
 		const existingClient = await ctx.orgEntity("clients", id);
-		await ctx.requireRecordScope("clients", () =>
-			ctx.actorScope().then((s) => s.clientIds.has(id))
-		);
+		await ctx.requireRecordScope("clients", { clientId: id });
 		const oldStatus = existingClient.status;
 
 		// Un-archiving through a status edit re-occupies a slot, so it faces the
@@ -988,9 +983,7 @@ export const archive = userMutation({
 		await ctx.requireLevel("clients", "modify");
 		// Validate client exists and belongs to user's org
 		await ctx.orgEntity("clients", args.id);
-		await ctx.requireRecordScope("clients", () =>
-			ctx.actorScope().then((s) => s.clientIds.has(args.id))
-		);
+		await ctx.requireRecordScope("clients", { clientId: args.id });
 
 		// Archive the client by setting status to archived and adding archivedAt timestamp
 		await ctx.db.patch(args.id, {
@@ -1031,9 +1024,7 @@ export const revokePortalAccess = userMutation({
 	handler: async (ctx, args): Promise<{ portalAccessId: string }> => {
 		await ctx.requireLevel("clients", "modify");
 		await ctx.orgEntity("clients", args.id);
-		await ctx.requireRecordScope("clients", () =>
-			ctx.actorScope().then((sc) => sc.clientIds.has(args.id))
-		);
+		await ctx.requireRecordScope("clients", { clientId: args.id });
 
 		const contacts = await ctx.db
 			.query("clientContacts")
@@ -1076,9 +1067,7 @@ export const restore = userMutation({
 		await ctx.requireLevel("clients", "modify");
 		// Validate client exists and belongs to user's org
 		const client = await ctx.orgEntity("clients", args.id);
-		await ctx.requireRecordScope("clients", () =>
-			ctx.actorScope().then((s) => s.clientIds.has(args.id))
-		);
+		await ctx.requireRecordScope("clients", { clientId: args.id });
 
 		if (client.status !== "archived") {
 			throw new Error("Only archived clients can be restored");
@@ -1117,9 +1106,7 @@ async function permanentlyDeleteHandler(
 ): Promise<ClientId> {
 	// Validate client exists and belongs to user's org
 	const client = await ctx.orgEntity("clients", args.id);
-	await ctx.requireRecordScope("clients", () =>
-		ctx.actorScope().then((s) => s.clientIds.has(args.id))
-	);
+	await ctx.requireRecordScope("clients", { clientId: args.id });
 
 	if (client.status !== "archived") {
 		throw new Error("Only archived clients can be permanently deleted");
@@ -1295,9 +1282,7 @@ export const remove = userMutation({
 	args: { id: v.id("clients") },
 	handler: async (ctx, args): Promise<ClientId> => {
 		await ctx.requireLevel("clients", "delete");
-		await ctx.requireRecordScope("clients", () =>
-			ctx.actorScope().then((s) => s.clientIds.has(args.id))
-		);
+		await ctx.requireRecordScope("clients", { clientId: args.id });
 		// For backward compatibility, redirect to archive
 		// Archive the client by setting status to archived and adding archivedAt timestamp
 		await ctx.db.patch(args.id, {
@@ -1382,8 +1367,9 @@ const EMPTY_CLIENT_STATS: ClientStats = {
 };
 
 export const getStats = optionalUserQuery({
-	args: {},
-	handler: async (ctx): Promise<ClientStats> => {
+	// `now` anchors the 30-day "recently created" window.
+	args: { now: v.optional(v.number()) },
+	handler: async (ctx, args): Promise<ClientStats> => {
 		if (!ctx.orgId) return EMPTY_CLIENT_STATS;
 		await ctx.requireLevel("clients", "view");
 		const allClients = await listClientsForOrg(ctx, "by_org", true);
@@ -1407,7 +1393,7 @@ export const getStats = optionalUserQuery({
 			recentlyCreated: 0, // Last 30 days
 		};
 
-		const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
+		const thirtyDaysAgo = (args.now ?? Date.now()) - 30 * 24 * 60 * 60 * 1000;
 
 		clients.forEach((client: ClientDocument) => {
 			// Type-safe status counting
@@ -1623,61 +1609,99 @@ export const listWithProjectCounts = optionalUserQuery({
 	},
 });
 
-/**
- * Internal function to cleanup archived clients that have been archived for 7+ days
- * This is called by the cron job and should not be called directly
- */
-/**
- * System-level cleanup function that doesn't require user authentication
- * This is used by cron jobs and can be run manually from the dashboard
- */
+/** Organizations dispatched per hop of the daily sweep. */
+const CLEANUP_ORG_PAGE_SIZE = 200;
+
+/** Bounds one org run's read and the deletes it schedules; the rest waits a day. */
+const CLEANUP_ORG_CAP = 100;
+
+const ARCHIVE_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
+
+/** Cron entry for the archived-client sweep; argless so crons.ts stays a bare ref. */
 export const cleanupArchivedClients = internalMutation({
 	args: {},
-	handler: async (ctx): Promise<{ deleted: number; errors: string[] }> => {
-		const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
-		const errors: string[] = [];
-		let deletedCount = 0;
+	returns: v.null(),
+	handler: async (ctx): Promise<null> => {
+		await ctx.scheduler.runAfter(
+			0,
+			internal.clients.sweepArchivedClientOrgs,
+			{ cutoff: Date.now() - ARCHIVE_RETENTION_MS }
+		);
+		return null;
+	},
+});
 
-		try {
-			// Find all archived clients that were archived 7+ days ago
-			const archivedClients = await ctx.db
-				.query("clients")
-				.filter((q) =>
-					q.and(
-						q.eq(q.field("status"), "archived"),
-						q.lt(q.field("archivedAt"), sevenDaysAgo)
-					)
-				)
-				.collect();
+/** Pages organizations so no single transaction scans the whole clients table. */
+export const sweepArchivedClientOrgs = internalMutation({
+	// `cutoff` is threaded through continuations so every page uses one instant.
+	args: { cursor: v.optional(v.string()), cutoff: v.number() },
+	returns: v.object({ scanned: v.number(), isDone: v.boolean() }),
+	handler: async (
+		ctx,
+		args
+	): Promise<{ scanned: number; isDone: boolean }> => {
+		const cutoff = args.cutoff;
+		const page = await ctx.db.query("organizations").paginate({
+			numItems: CLEANUP_ORG_PAGE_SIZE,
+			cursor: args.cursor ?? null,
+		});
 
-			console.log(
-				`Found ${archivedClients.length} archived clients to cleanup`
+		for (const org of page.page) {
+			await ctx.scheduler.runAfter(
+				0,
+				internal.clients.cleanupOrgArchivedClients,
+				{ orgId: org._id, cutoff }
 			);
-
-			// Permanently delete each archived client using system-level deletion
-			for (const client of archivedClients) {
-				try {
-					await permanentlyDeleteSystemHandler(ctx, { id: client._id });
-					deletedCount++;
-					console.log(
-						`Deleted archived client: ${client.companyName} (${client._id})`
-					);
-				} catch (error) {
-					const errorMsg = `Failed to delete client ${client.companyName} (${client._id}): ${error}`;
-					console.error(errorMsg);
-					errors.push(errorMsg);
-				}
-			}
-
-			console.log(
-				`Cleanup completed: ${deletedCount} clients deleted, ${errors.length} errors`
-			);
-		} catch (error) {
-			const errorMsg = `Failed to run archived clients cleanup: ${error}`;
-			console.error(errorMsg);
-			errors.push(errorMsg);
 		}
 
-		return { deleted: deletedCount, errors };
+		if (!page.isDone) {
+			await ctx.scheduler.runAfter(
+				0,
+				internal.clients.sweepArchivedClientOrgs,
+				{ cursor: page.continueCursor, cutoff }
+			);
+		}
+
+		return { scanned: page.page.length, isDone: page.isDone };
+	},
+});
+
+export const cleanupOrgArchivedClients = internalMutation({
+	args: { orgId: v.id("organizations"), cutoff: v.number() },
+	returns: v.object({ queued: v.number() }),
+	handler: async (ctx, args): Promise<{ queued: number }> => {
+		// Unset archivedAt sorts before every number, so legacy archived rows
+		// without one stay eligible.
+		const eligible = await ctx.db
+			.query("clients")
+			.withIndex("by_status_archived", (q) =>
+				q
+					.eq("orgId", args.orgId)
+					.eq("status", "archived")
+					.lt("archivedAt", args.cutoff)
+			)
+			.take(CLEANUP_ORG_CAP);
+
+		for (const client of eligible) {
+			await ctx.scheduler.runAfter(
+				0,
+				internal.clients.permanentlyDeleteArchivedClient,
+				{ id: client._id }
+			);
+		}
+
+		return { queued: eligible.length };
+	},
+});
+
+/** One client's cascade; scheduled per client to keep each transaction bounded. */
+export const permanentlyDeleteArchivedClient = internalMutation({
+	args: { id: v.id("clients") },
+	returns: v.null(),
+	handler: async (ctx, args): Promise<null> => {
+		const client = await ctx.db.get(args.id);
+		if (!client || client.status !== "archived") return null;
+		await permanentlyDeleteSystemHandler(ctx, { id: args.id });
+		return null;
 	},
 });

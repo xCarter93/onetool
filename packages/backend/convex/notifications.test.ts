@@ -105,59 +105,6 @@ describe("Notifications", () => {
 		});
 	});
 
-	describe("list", () => {
-		it("should return empty array when no notifications exist", async () => {
-			const { clerkUserId, clerkOrgId } = await t.run(async (ctx) => {
-				return await createTestOrg(ctx);
-			});
-
-			const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
-
-			const notifications = await asUser.query(api.notifications.list, {});
-			expect(notifications).toEqual([]);
-		});
-
-		it("should return notifications filtered by type", async () => {
-			const { userId, clerkUserId, clerkOrgId } = await t.run(async (ctx) => {
-				return await createTestOrg(ctx);
-			});
-
-			const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
-
-			// Create notifications of different types
-			await asUser.mutation(api.notifications.create, {
-				userId,
-				notificationType: "task_reminder",
-				title: "Task Reminder",
-				message: "Task due soon",
-			});
-
-			await asUser.mutation(api.notifications.create, {
-				userId,
-				notificationType: "quote_approved",
-				title: "Quote Approved",
-				message: "Your quote was approved",
-			});
-
-			await asUser.mutation(api.notifications.create, {
-				userId,
-				notificationType: "task_reminder",
-				title: "Another Task Reminder",
-				message: "Another task due soon",
-			});
-
-			// Filter by task_reminder
-			const taskNotifications = await asUser.query(api.notifications.list, {
-				notificationType: "task_reminder",
-			});
-
-			expect(taskNotifications).toHaveLength(2);
-			expect(
-				taskNotifications.every((n) => n.notificationType === "task_reminder")
-			).toBe(true);
-		});
-	});
-
 	describe("get", () => {
 		it("should return a specific notification by ID", async () => {
 			const { userId, clerkUserId, clerkOrgId } = await t.run(async (ctx) => {
@@ -371,71 +318,6 @@ describe("Notifications", () => {
 		});
 	});
 
-	describe("getStats", () => {
-		it("should return correct notification statistics", async () => {
-			const { userId, clerkUserId, clerkOrgId } = await t.run(async (ctx) => {
-				return await createTestOrg(ctx);
-			});
-
-			const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
-
-			// Create various notifications
-			const id1 = await asUser.mutation(api.notifications.create, {
-				userId,
-				notificationType: "task_reminder",
-				title: "Task 1",
-				message: "Task 1 reminder",
-			});
-
-			await asUser.mutation(api.notifications.create, {
-				userId,
-				notificationType: "task_reminder",
-				title: "Task 2",
-				message: "Task 2 reminder",
-			});
-
-			await asUser.mutation(api.notifications.create, {
-				userId,
-				notificationType: "quote_approved",
-				title: "Quote Approved",
-				message: "Quote approved",
-			});
-
-			await asUser.mutation(api.notifications.create, {
-				userId,
-				notificationType: "invoice_overdue",
-				title: "Invoice Overdue",
-				message: "Invoice overdue",
-			});
-
-			// Mark one as read
-			await asUser.mutation(api.notifications.markRead, { id: id1 });
-
-			const stats = await asUser.query(api.notifications.getStats, {});
-
-			expect(stats.total).toBe(4);
-			expect(stats.unread).toBe(3);
-			expect(stats.byType.task_reminder).toBe(2);
-			expect(stats.byType.quote_approved).toBe(1);
-			expect(stats.byType.invoice_overdue).toBe(1);
-			expect(stats.today).toBe(4);
-		});
-
-		it("should return empty stats when no notifications exist", async () => {
-			const { clerkUserId, clerkOrgId } = await t.run(async (ctx) => {
-				return await createTestOrg(ctx);
-			});
-
-			const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
-
-			const stats = await asUser.query(api.notifications.getStats, {});
-
-			expect(stats.total).toBe(0);
-			expect(stats.unread).toBe(0);
-			expect(stats.today).toBe(0);
-		});
-	});
-
 	describe("cleanupOldNotifications", () => {
 		// Note: _creationTime is set automatically by Convex and cannot be controlled in tests,
 		// so we cannot easily test deletion of truly "old" notifications. Instead, we verify
@@ -474,8 +356,11 @@ describe("Notifications", () => {
 			expect(result.deletedCount).toBe(0);
 
 			// Both notifications should still exist
-			const afterCleanup = await asUser.query(api.notifications.list, {});
-			expect(afterCleanup).toHaveLength(2);
+			const afterCleanup = await asUser.query(
+				api.notifications.listForCurrentUser,
+				{}
+			);
+			expect(afterCleanup.notifications).toHaveLength(2);
 		});
 
 		it("should not delete unread notifications regardless of age", async () => {
@@ -502,8 +387,11 @@ describe("Notifications", () => {
 			expect(result.deletedCount).toBe(0);
 
 			// Notification should still exist
-			const afterCleanup = await asUser.query(api.notifications.list, {});
-			expect(afterCleanup).toHaveLength(1);
+			const afterCleanup = await asUser.query(
+				api.notifications.listForCurrentUser,
+				{}
+			);
+			expect(afterCleanup.notifications).toHaveLength(1);
 		});
 
 		it("should reject daysOld less than 1", async () => {
@@ -567,14 +455,24 @@ describe("Notifications", () => {
 			});
 
 			// User 1 should only see org 1's notifications
-			const user1Notifications = await asUser1.query(api.notifications.list, {});
-			expect(user1Notifications).toHaveLength(1);
-			expect(user1Notifications[0].title).toBe("Org 1 Notification");
+			const user1Notifications = await asUser1.query(
+				api.notifications.listForCurrentUser,
+				{}
+			);
+			expect(user1Notifications.notifications).toHaveLength(1);
+			expect(user1Notifications.notifications[0].title).toBe(
+				"Org 1 Notification"
+			);
 
 			// User 2 should only see org 2's notifications
-			const user2Notifications = await asUser2.query(api.notifications.list, {});
-			expect(user2Notifications).toHaveLength(1);
-			expect(user2Notifications[0].title).toBe("Org 2 Notification");
+			const user2Notifications = await asUser2.query(
+				api.notifications.listForCurrentUser,
+				{}
+			);
+			expect(user2Notifications.notifications).toHaveLength(1);
+			expect(user2Notifications.notifications[0].title).toBe(
+				"Org 2 Notification"
+			);
 		});
 
 		it("should not allow accessing notifications from another organization", async () => {
@@ -624,113 +522,6 @@ describe("Notifications", () => {
 					id: notificationId,
 				})
 			).rejects.toThrowError("Notification does not belong to your organization");
-		});
-	});
-
-	describe("listByUser", () => {
-		it("should list notifications for a specific user", async () => {
-			const { userId, orgId, clerkUserId, clerkOrgId } = await t.run(
-				async (ctx) => {
-					return await createTestOrg(ctx);
-				}
-			);
-
-			const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
-
-			// Create notifications
-			await asUser.mutation(api.notifications.create, {
-				userId,
-				notificationType: "task_reminder",
-				title: "Task 1",
-				message: "Task 1 reminder",
-			});
-
-			await asUser.mutation(api.notifications.create, {
-				userId,
-				notificationType: "quote_approved",
-				title: "Quote Approved",
-				message: "Quote approved",
-			});
-
-			const notifications = await asUser.query(api.notifications.listByUser, {
-				userId,
-			});
-
-			expect(notifications).toHaveLength(2);
-		});
-
-		it("should filter by isRead status", async () => {
-			const { userId, clerkUserId, clerkOrgId } = await t.run(async (ctx) => {
-				return await createTestOrg(ctx);
-			});
-
-			const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
-
-			const id1 = await asUser.mutation(api.notifications.create, {
-				userId,
-				notificationType: "task_reminder",
-				title: "Task 1",
-				message: "Task 1 reminder",
-			});
-
-			await asUser.mutation(api.notifications.create, {
-				userId,
-				notificationType: "quote_approved",
-				title: "Quote Approved",
-				message: "Quote approved",
-			});
-
-			// Mark first one as read
-			await asUser.mutation(api.notifications.markRead, { id: id1 });
-
-			// Get unread only
-			const unreadNotifications = await asUser.query(
-				api.notifications.listByUser,
-				{
-					userId,
-					isRead: false,
-				}
-			);
-
-			expect(unreadNotifications).toHaveLength(1);
-			expect(unreadNotifications[0].title).toBe("Quote Approved");
-		});
-	});
-
-	describe("getStatsForUser", () => {
-		it("should return correct stats for a specific user", async () => {
-			const { userId, clerkUserId, clerkOrgId } = await t.run(async (ctx) => {
-				return await createTestOrg(ctx);
-			});
-
-			const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
-
-			// Create notifications
-			const id1 = await asUser.mutation(api.notifications.create, {
-				userId,
-				notificationType: "task_reminder",
-				title: "Task 1",
-				message: "Task 1 reminder",
-			});
-
-			await asUser.mutation(api.notifications.create, {
-				userId,
-				notificationType: "invoice_overdue",
-				title: "Invoice Overdue",
-				message: "Invoice overdue",
-			});
-
-			// Mark one as read
-			await asUser.mutation(api.notifications.markRead, { id: id1 });
-
-			const stats = await asUser.query(api.notifications.getStatsForUser, {
-				userId,
-			});
-
-			expect(stats.total).toBe(2);
-			expect(stats.unread).toBe(1);
-			expect(stats.byType.task_reminder).toBe(1);
-			expect(stats.byType.invoice_overdue).toBe(1);
 		});
 	});
 

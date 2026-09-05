@@ -461,61 +461,6 @@ describe("Projects", () => {
 		});
 	});
 
-	describe("getUpcomingDeadlines", () => {
-		it("should return projects with upcoming end dates", async () => {
-			const { clerkUserId, clerkOrgId } = await t.run(async (ctx) => {
-				const { orgId, clerkUserId, clerkOrgId } = await createTestOrg(ctx);
-				const clientId = await createTestClient(ctx, orgId);
-
-				const now = Date.now();
-				const oneWeekFromNow = now + 7 * 24 * 60 * 60 * 1000;
-				const twoWeeksFromNow = now + 14 * 24 * 60 * 60 * 1000;
-				const oneMonthFromNow = now + 30 * 24 * 60 * 60 * 1000;
-
-				// Project due in 1 week
-				await createTestProject(ctx, orgId, clientId, {
-					title: "Due Soon",
-					status: "in-progress",
-					endDate: oneWeekFromNow,
-				});
-
-				// Project due in 2 weeks
-				await createTestProject(ctx, orgId, clientId, {
-					title: "Due Later",
-					status: "in-progress",
-					endDate: twoWeeksFromNow,
-				});
-
-				// Project due in 1 month (outside default window)
-				await createTestProject(ctx, orgId, clientId, {
-					title: "Due Much Later",
-					status: "in-progress",
-					endDate: oneMonthFromNow,
-				});
-
-				// Completed project (shouldn't show in upcoming)
-				await createTestProject(ctx, orgId, clientId, {
-					title: "Already Done",
-					status: "completed",
-					endDate: oneWeekFromNow,
-				});
-
-				return { clerkUserId, clerkOrgId };
-			});
-
-			const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
-
-			const upcomingProjects = await asUser.query(
-				api.projects.getUpcomingDeadlines,
-				{}
-			);
-
-			// Should include projects due within default window (14 days), excluding completed
-			expect(upcomingProjects.length).toBeGreaterThanOrEqual(1);
-			expect(upcomingProjects.every((p) => p.status !== "completed")).toBe(true);
-		});
-	});
-
 	describe("organization isolation", () => {
 		it("should not return projects from other organizations", async () => {
 			const { clerkUserId1, clerkOrgId1, clerkOrgId2 } = await t.run(
@@ -590,6 +535,28 @@ describe("Projects", () => {
 				id: org2ProjectId,
 			});
 			expect(project).toBeNull();
+		});
+	});
+
+	describe("list ordering", () => {
+		it("returns projects in ascending creation order (pinned by mobile)", async () => {
+			const { clerkUserId, clerkOrgId } = await t.run(async (ctx) => {
+				const org = await createTestOrg(ctx);
+				const clientId = await createTestClient(ctx, org.orgId);
+				for (const title of ["first", "second", "third"]) {
+					await createTestProject(ctx, org.orgId, clientId, { title });
+				}
+				return org;
+			});
+
+			const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+
+			const projects = await asUser.query(api.projects.list, {});
+			expect(projects.map((p) => p.title)).toEqual([
+				"first",
+				"second",
+				"third",
+			]);
 		});
 	});
 });

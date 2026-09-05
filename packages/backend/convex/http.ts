@@ -34,7 +34,6 @@ const http = httpRouter();
  * Supported Events:
  * - user.created / user.updated: Sync user data to Convex
  * - user.deleted: Clean up user data
- * - session.created: Update last sign-in date
  * - organization.created: Create organization metadata in Convex
  * - organization.updated: Sync organization name changes
  * - organization.deleted: Clean up organization and remove all members
@@ -69,14 +68,6 @@ http.route({
 			case "user.deleted": {
 				const clerkUserId = event.data.id!;
 				await ctx.runMutation(internal.users.deleteFromClerk, { clerkUserId });
-				break;
-			}
-
-			case "session.created": {
-				const clerkUserId = event.data.user_id!;
-				await ctx.runMutation(internal.users.updateLastSignedInDate, {
-					clerkUserId,
-				});
 				break;
 			}
 

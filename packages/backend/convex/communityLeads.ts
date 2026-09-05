@@ -2,6 +2,7 @@ import { v } from "convex/values";
 import { Doc, Id } from "./_generated/dataModel";
 import { userMutation, userQuery } from "./lib/factories";
 import { createClient } from "./clients";
+import { normalizeContactEmail } from "./clientContacts";
 
 /**
  * Community leads — quote requests captured by the public community page.
@@ -125,7 +126,7 @@ export const promoteToClient = userMutation({
 			orgId: ctx.orgId,
 			firstName: firstName || lead.name,
 			lastName: rest.join(" "),
-			email: lead.email,
+			email: normalizeContactEmail(lead.email),
 			phone: lead.phone,
 			isPrimary: true,
 		});

@@ -15,6 +15,7 @@ export interface EmailAttachment {
 	contentType: string;
 	// Absent on legacy and outbound rows, which are stored by construction.
 	downloadState?: "pending" | "stored" | "failed";
+	downloadUrl: string | null;
 }
 
 export function formatBytes(bytes: number): string {
@@ -62,12 +63,7 @@ const chipClass =
 function AttachmentChip({ attachment }: { attachment: EmailAttachment }) {
 	const pending = attachment.downloadState === "pending";
 	const failed = attachment.downloadState === "failed";
-
-	// A row that can never resolve to a URL shouldn't ask for one.
-	const downloadUrl = useQuery(
-		api.emailAttachments.getDownloadUrl,
-		pending || failed ? "skip" : { attachmentId: attachment._id }
-	);
+	const downloadUrl = attachment.downloadUrl;
 
 	const label = (
 		icon: ReactNode,
@@ -118,10 +114,10 @@ function AttachmentChip({ attachment }: { attachment: EmailAttachment }) {
 		);
 	}
 
-	// Stored, but the signed URL query hasn't come back yet — genuinely transient.
+	// Stored, but no signed URL — the file is gone, so the chip can't be a link.
 	if (!downloadUrl) {
 		return (
-			<span className={chipClass} aria-busy="true">
+			<span className={chipClass}>
 				{label(paperclip, formatBytes(attachment.size))}
 			</span>
 		);

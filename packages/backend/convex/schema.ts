@@ -196,7 +196,15 @@ export default defineSchema({
 		.index("by_owner", ["ownerUserId"])
 		.index("by_clerk_org", ["clerkOrganizationId"])
 		.index("by_receiving_address", ["receivingAddress"])
-		.index("by_stripe_connect_account_id", ["stripeConnectAccountId"]),
+		.index("by_stripe_connect_account_id", ["stripeConnectAccountId"])
+		.index("by_billing_synced", ["billingSyncedAt"]),
+
+	// Off the org doc so quote/invoice creates don't write the most-subscribed document.
+	orgCounters: defineTable({
+		orgId: v.id("organizations"),
+		lastQuoteNumber: v.number(),
+		lastInvoiceNumber: v.number(),
+	}).index("by_org", ["orgId"]),
 
 	// Meter store for lib/entitlements (one row per org × meter × period).
 	// Deliberately NOT in the trigger registry: debits are manual calls at
@@ -291,6 +299,7 @@ export default defineSchema({
 	})
 		.index("by_org", ["orgId"])
 		.index("by_status", ["orgId", "status"])
+		.index("by_status_archived", ["orgId", "status", "archivedAt"])
 		.index("by_portal_access_id", ["portalAccessId"])
 		.searchIndex("search_text", {
 			searchField: "searchText",
@@ -531,6 +540,7 @@ export default defineSchema({
 		// assigneeUserId lookup reads their tasks in every tenant.
 		.index("by_org_assignee", ["orgId", "assigneeUserId"])
 		.index("by_date", ["orgId", "date"])
+		.index("by_org_status_date", ["orgId", "status", "date"])
 		.index("by_parent_task", ["parentTaskId"])
 		.searchIndex("search_text", {
 			searchField: "searchText",
@@ -881,6 +891,7 @@ export default defineSchema({
 		.index("by_public_token", ["publicToken"])
 		.index("by_status", ["orgId", "status"])
 		.index("by_due_date", ["orgId", "dueDate"])
+		.index("by_org_paid", ["orgId", "paidAt"])
 		.index("by_invoice_sort", ["invoiceId", "sortOrder"])
 		// Stripe webhook correlation. Org-prefixed so the lookup stays inside the
 		// event's connected account rather than matching a PI across tenants.
@@ -960,6 +971,8 @@ export default defineSchema({
 		.index("by_document", ["documentType", "documentId"])
 		.index("by_document_version", ["documentType", "documentId", "version"])
 		.index("by_boldsign_documentId", ["boldsignDocumentId"])
+		.index("by_org_generated", ["orgId", "generatedAt"])
+		.index("by_org_boldsign", ["orgId", "boldsignDocumentId"])
 		// Reconcile sweep. notifiedAt leads so the scan starts at the un-notified
 		// failures; without it, already-announced rows accumulate at the head of
 		// the bounded window and starve out new ones.
@@ -1101,7 +1114,9 @@ export default defineSchema({
 		// Once-per-record celebration dedup lookup.
 		.index("by_org_type_entity", ["orgId", "notificationType", "entityId"])
 		// Per-user celebration feed, range-bounded on _creationTime.
-		.index("by_user_type", ["userId", "notificationType"]),
+		.index("by_user_type", ["userId", "notificationType"])
+		.index("by_user_org", ["userId", "orgId"])
+		.index("by_user_org_read", ["userId", "orgId", "isRead"]),
 
 	// Organization Document Folders - drive-explorer tree for organizationDocuments
 	organizationDocumentFolders: defineTable({
@@ -1216,8 +1231,7 @@ export default defineSchema({
 		.index("by_teamMessage", ["teamMessageId"])
 		.index("by_org", ["orgId"])
 		.index("by_uploader", ["uploadedBy"])
-		.index("by_entity", ["entityType", "entityId"]) // NEW: Efficient lookup for "all attachments on entity X"
-		.index("by_org_entity", ["orgId", "entityType", "entityId"]), // NEW: Org-scoped entity lookup
+		.index("by_entity", ["entityType", "entityId"]),
 
 	// Push notification device tokens.
 	// INTENTIONALLY userId-scoped, NOT orgId-scoped: a mention can originate in
@@ -1785,11 +1799,12 @@ export default defineSchema({
 		.index("by_correlation", ["correlationId"]),
 
 	// Single-row claim doc making processEvents effectively single-flight.
-	// scheduledUntil is a TTL lease (0 = no wake scheduled); generation counts
-	// claims for debugging.
+	// scheduledUntil is a TTL lease (0 = no wake scheduled).
 	eventDispatchState: defineTable({
 		scheduledUntil: v.number(),
-		generation: v.number(),
+		// Retired; still on the prod row, and a schema push rejects undeclared
+		// fields. releaseClaimLease strips it — drop both after one deploy.
+		generation: v.optional(v.number()),
 	}),
 
 	// Resume/stop state for long-running backfills (one row per job name).
@@ -2043,7 +2058,8 @@ export default defineSchema({
 	})
 		.index("by_org", ["orgId"])
 		.index("by_client", ["clientId"])
-		.index("by_client_uploaded", ["clientId", "uploadedAt"]),
+		.index("by_client_uploaded", ["clientId", "uploadedAt"])
+		.index("by_org_uploaded", ["orgId", "uploadedAt"]),
 
 	// Project Documents - files uploaded directly to project records
 	projectDocuments: defineTable({
@@ -2065,7 +2081,8 @@ export default defineSchema({
 	})
 		.index("by_org", ["orgId"])
 		.index("by_project", ["projectId"])
-		.index("by_project_uploaded", ["projectId", "uploadedAt"]),
+		.index("by_project_uploaded", ["projectId", "uploadedAt"])
+		.index("by_org_uploaded", ["orgId", "uploadedAt"]),
 
 	// User Favorites - user-specific client favorites
 	userFavorites: defineTable({
@@ -2150,8 +2167,7 @@ export default defineSchema({
 		failureReason: v.optional(v.string()),
 		attemptCount: v.number(),
 	})
-		.index("by_stripe_event_id", ["stripeEventId"])
-		.index("by_status", ["status"]),
+		.index("by_stripe_event_id", ["stripeEventId"]),
 
 	// App-side metadata for AI assistant threads. The @convex-dev/agent
 	// component owns the threads/messages themselves; this table lets us list
@@ -2217,7 +2233,8 @@ export default defineSchema({
 		defaultServiceItemQboId: v.optional(v.string()), // "OneTool Service"
 	})
 		.index("by_org", ["orgId"])
-		.index("by_realm", ["realmId"]),
+		.index("by_realm", ["realmId"])
+		.index("by_status", ["status"]),
 
 	// OneTool entity ↔ QBO entity mapping (survives disconnect/reconnect)
 	quickbooksEntityLinks: defineTable({

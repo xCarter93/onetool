@@ -47,6 +47,7 @@ import {
 } from "./email/branding";
 import { getOrCreateOutboundThread, plusTagAddress } from "./email/threads";
 import { formatEmailFrom } from "./lib/emailFrom";
+import { nextQuoteNumber, reserveQuoteNumber } from "./lib/orgCounters";
 import { buildPortalQuoteUrl } from "./portal/quoteUrl";
 import { mintPortalAccessId } from "./clients";
 
@@ -91,54 +92,6 @@ async function validateProjectAccess(
 }
 
 /**
- * Generate the next sequential quote number for an organization
- * Uses a counter stored in the organization for O(1) performance
- */
-async function generateNextQuoteNumber(
-	ctx: MutationCtx,
-	orgId: Id<"organizations">
-): Promise<string> {
-	const org = await ctx.db.get(orgId);
-	if (!org) {
-		throw new Error("Organization not found");
-	}
-
-	let nextNumber: number;
-
-	// If organization doesn't have a lastQuoteNumber (legacy), scan all quotes once
-	if (org.lastQuoteNumber === undefined) {
-		const quotes = await ctx.db
-			.query("quotes")
-			.withIndex("by_org", (q) => q.eq("orgId", orgId))
-			.collect();
-
-		let maxNumber = 0;
-		for (const quote of quotes) {
-			if (quote.quoteNumber) {
-				// Extract number from format Q-000001
-				const match = quote.quoteNumber.match(/^Q-(\d+)$/);
-				if (match) {
-					const num = parseInt(match[1], 10);
-					if (num > maxNumber) {
-						maxNumber = num;
-					}
-				}
-			}
-		}
-		nextNumber = maxNumber + 1;
-	} else {
-		// Use the counter - much faster!
-		nextNumber = org.lastQuoteNumber + 1;
-	}
-
-	// Update the organization's counter
-	await ctx.db.patch(orgId, { lastQuoteNumber: nextNumber });
-
-	// Format with leading zeros (6 digits)
-	return `Q-${nextNumber.toString().padStart(6, "0")}`;
-}
-
-/**
  * Create a quote with automatic orgId assignment
  */
 async function createQuoteWithOrg(
@@ -162,9 +115,9 @@ async function createQuoteWithOrg(
 		}
 	}
 
-	// Auto-generate quote number if not provided
+	if (data.quoteNumber) await reserveQuoteNumber(ctx, ctx.orgId, data.quoteNumber);
 	const quoteNumber =
-		data.quoteNumber || (await generateNextQuoteNumber(ctx, ctx.orgId));
+		data.quoteNumber || (await nextQuoteNumber(ctx, ctx.orgId));
 
 	const quoteData = {
 		...data,
@@ -239,22 +192,6 @@ async function updateQuoteWithValidation(
 type QuoteDocument = Doc<"quotes">;
 type QuoteId = Id<"quotes">;
 
-// Interface for quote statistics
-interface QuoteStats {
-	total: number;
-	byStatus: {
-		draft: number;
-		sent: number;
-		approved: number;
-		declined: number;
-		expired: number;
-	};
-	totalValue: number;
-	averageValue: number;
-	approvalRate: number;
-	thisMonth: number;
-}
-
 /**
  * Get all quotes for the current user's organization with calculated totals
  * Optimized to avoid N+1 query problem by batching line item fetches
@@ -280,41 +217,49 @@ export const list = optionalUserQuery({
 
 		let quotes: QuoteDocument[];
 
+		// Every index above ends in _creationTime, so .order("desc") IS the
+		// newest-first order the callers expect — no JS sort needed.
 		if (args.projectId) {
 			await validateProjectAccess(ctx, args.projectId, orgId);
-			quotes = await ctx.db
-				.query("quotes")
-				.withIndex("by_project", (q) => q.eq("projectId", args.projectId))
-				.collect();
+			quotes = (
+				await ctx.db
+					.query("quotes")
+					.withIndex("by_project", (q) => q.eq("projectId", args.projectId))
+					.order("desc")
+					.collect()
+			).filter((quote) => quote.orgId === orgId);
 		} else if (args.clientId) {
 			await validateClientAccess(ctx, args.clientId, orgId);
-			quotes = await ctx.db
-				.query("quotes")
-				.withIndex("by_client", (q) => q.eq("clientId", args.clientId!))
-				.collect();
+			quotes = (
+				await ctx.db
+					.query("quotes")
+					.withIndex("by_client", (q) => q.eq("clientId", args.clientId!))
+					.order("desc")
+					.collect()
+			).filter((quote) => quote.orgId === orgId);
 		} else if (args.status) {
 			quotes = await ctx.db
 				.query("quotes")
 				.withIndex("by_status", (q) =>
 					q.eq("orgId", orgId).eq("status", args.status!)
 				)
+				.order("desc")
 				.collect();
 		} else {
 			quotes = await ctx.db
 				.query("quotes")
 				.withIndex("by_org", (q) => q.eq("orgId", orgId))
+				.order("desc")
 				.collect();
 		}
-
-		quotes = await ctx.applyReadScope("quotes", quotes, (q, s) =>
-			q.projectId ? s.projectIds.has(q.projectId) : s.clientIds.has(q.clientId)
-		);
 
 		// Stored totals, not a recompute: syncQuoteTotals keeps subtotal/taxAmount/
 		// total in step with the line items on every line-item mutation and on
 		// every discount/tax edit in `update`. Recomputing here meant collecting
 		// the org's entire quoteLineItems table on each list call.
-		return quotes.sort((a, b) => b._creationTime - a._creationTime);
+		return await ctx.applyReadScope("quotes", quotes, (q, s) =>
+			q.projectId ? s.projectIds.has(q.projectId) : s.clientIds.has(q.clientId)
+		);
 	},
 });
 
@@ -339,13 +284,10 @@ export const get = optionalUserQuery({
 		}
 		// Cross-org quote: degrade to an empty state instead of throwing.
 		if (!quote) return null;
-		await ctx.requireRecordScope("quotes", () =>
-			ctx.actorScope().then((s) =>
-				quote.projectId
-					? s.projectIds.has(quote.projectId)
-					: s.clientIds.has(quote.clientId)
-			)
-		);
+		await ctx.requireRecordScope("quotes", {
+			projectId: quote.projectId,
+			clientId: quote.clientId,
+		});
 
 		// Calculate totals from line items
 		const calculatedTotals = await calculateQuoteTotals(ctx, args.id, {
@@ -424,7 +366,8 @@ interface QuotePreview {
  * activity from the last 7 days.
  */
 export const getPreview = optionalUserQuery({
-	args: { id: v.id("quotes") },
+	// Callers pass a day-rounded `now` so the result is cacheable.
+	args: { id: v.id("quotes"), now: v.optional(v.number()) },
 	handler: async (ctx, args: any): Promise<QuotePreview | null> => {
 		const orgId = ctx.orgId;
 		if (!orgId) return null;
@@ -444,13 +387,10 @@ export const getPreview = optionalUserQuery({
 		}
 		// Cross-org quote: degrade to an empty state instead of throwing.
 		if (!quote) return null;
-		await ctx.requireRecordScope("quotes", () =>
-			ctx.actorScope().then((s) =>
-				quote.projectId
-					? s.projectIds.has(quote.projectId)
-					: s.clientIds.has(quote.clientId)
-			)
-		);
+		await ctx.requireRecordScope("quotes", {
+			projectId: quote.projectId,
+			clientId: quote.clientId,
+		});
 
 		// Recompute totals from current line items (stored values can be stale)
 		const totals = await calculateQuoteTotals(ctx, args.id, {
@@ -533,7 +473,7 @@ export const getPreview = optionalUserQuery({
 
 		// Recent activity for this quote (last 7 days). Activities are keyed
 		// generically by entityType/entityId, so query by_entity then filter.
-		const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
+		const cutoff = (args.now ?? Date.now()) - 7 * 24 * 60 * 60 * 1000;
 		const activityRows = await ctx.db
 			.query("activities")
 			.withIndex("by_entity", (q: any) =>
@@ -777,6 +717,12 @@ export const update = userMutation({
 
 		const currentQuote = await ctx.orgEntity("quotes", id);
 		const filteredUpdates = filterUndefined(updates) as Partial<QuoteDocument>;
+		if (
+			filteredUpdates.quoteNumber &&
+			filteredUpdates.quoteNumber !== currentQuote.quoteNumber
+		) {
+			await reserveQuoteNumber(ctx, ctx.orgId, filteredUpdates.quoteNumber);
+		}
 		// Paired fields (discount type/amount, countersignature/countersigner) are
 		// validated on the merged result, so patching one half can't bypass a rule
 		// or trip one that the merged quote satisfies.
@@ -854,13 +800,10 @@ export const update = userMutation({
 
 		requireUpdates(filteredUpdates);
 
-		await ctx.requireRecordScope("quotes", () =>
-			ctx.actorScope().then((s) =>
-				currentQuote.projectId
-					? s.projectIds.has(currentQuote.projectId)
-					: s.clientIds.has(currentQuote.clientId)
-			)
-		);
+		await ctx.requireRecordScope("quotes", {
+			projectId: currentQuote.projectId,
+			clientId: currentQuote.clientId,
+		});
 
 		// Content edits are locked to draft quotes. Status transitions and every
 		// other field stay editable.
@@ -1017,13 +960,10 @@ export const extendValidUntil = userMutation({
 	handler: async (ctx, args): Promise<QuoteId> => {
 		await ctx.requireLevel("quotes", "modify");
 		const quote = await ctx.orgEntity("quotes", args.id);
-		await ctx.requireRecordScope("quotes", () =>
-			ctx.actorScope().then((s) =>
-				quote.projectId
-					? s.projectIds.has(quote.projectId)
-					: s.clientIds.has(quote.clientId)
-			)
-		);
+		await ctx.requireRecordScope("quotes", {
+			projectId: quote.projectId,
+			clientId: quote.clientId,
+		});
 
 		if (quote.status === "approved" || quote.status === "declined") {
 			throw new ConvexError({
@@ -1129,13 +1069,10 @@ export const sendToClient = userMutation({
 	handler: async (ctx, args): Promise<QuoteId> => {
 		await ctx.requireLevel("quotes", "modify");
 		const quote = await ctx.orgEntity("quotes", args.id);
-		await ctx.requireRecordScope("quotes", () =>
-			ctx.actorScope().then((s) =>
-				quote.projectId
-					? s.projectIds.has(quote.projectId)
-					: s.clientIds.has(quote.clientId)
-			)
-		);
+		await ctx.requireRecordScope("quotes", {
+			projectId: quote.projectId,
+			clientId: quote.clientId,
+		});
 
 		if (quote.status === "approved") {
 			throw new ConvexError({
@@ -1432,13 +1369,10 @@ export const recalculateTotals = userMutation({
 		await ctx.requireLevel("quotes", "modify");
 
 		const quote = await ctx.orgEntity("quotes", args.id);
-		await ctx.requireRecordScope("quotes", () =>
-			ctx.actorScope().then((s) =>
-				quote.projectId
-					? s.projectIds.has(quote.projectId)
-					: s.clientIds.has(quote.clientId)
-			)
-		);
+		await ctx.requireRecordScope("quotes", {
+			projectId: quote.projectId,
+			clientId: quote.clientId,
+		});
 
 		// Recompute + persist totals and keep aggregates in step
 		await syncQuoteTotals(ctx, args.id);
@@ -1457,13 +1391,10 @@ export const remove = userMutation({
 
 		// Validate access before any destructive side effects
 		const quote = await ctx.orgEntity("quotes", args.id);
-		await ctx.requireRecordScope("quotes", () =>
-			ctx.actorScope().then((s) =>
-				quote.projectId
-					? s.projectIds.has(quote.projectId)
-					: s.clientIds.has(quote.clientId)
-			)
-		);
+		await ctx.requireRecordScope("quotes", {
+			projectId: quote.projectId,
+			clientId: quote.clientId,
+		});
 
 		// Check if quote has related invoices
 		const invoices = await ctx.db
@@ -1497,167 +1428,17 @@ export const remove = userMutation({
 });
 
 /**
- * Search quotes
- */
-export const search = optionalUserQuery({
-	args: {
-		query: v.string(),
-		status: v.optional(
-			v.union(
-				v.literal("draft"),
-				v.literal("sent"),
-				v.literal("approved"),
-				v.literal("declined"),
-				v.literal("expired")
-			)
-		),
-		clientId: v.optional(v.id("clients")),
-	},
-	handler: async (ctx, args): Promise<QuoteDocument[]> => {
-		const orgId = ctx.orgId;
-		if (!orgId) return emptyListResult();
-		await ctx.requireLevel("quotes", "view");
-
-		let quotes = await ctx.db
-			.query("quotes")
-			.withIndex("by_org", (q) => q.eq("orgId", orgId))
-			.collect();
-
-		quotes = await ctx.applyReadScope("quotes", quotes, (q, s) =>
-			q.projectId ? s.projectIds.has(q.projectId) : s.clientIds.has(q.clientId)
-		);
-
-		// Filter by status if specified
-		if (args.status) {
-			quotes = quotes.filter((quote) => quote.status === args.status);
-		}
-
-		// Filter by client if specified
-		if (args.clientId) {
-			await validateClientAccess(ctx, args.clientId, orgId);
-			quotes = quotes.filter((quote) => quote.clientId === args.clientId);
-		}
-
-		// Search in title, quote number, client message, and terms
-		const searchQuery = args.query.toLowerCase();
-		return quotes.filter(
-			(quote: QuoteDocument) =>
-				(quote.title && quote.title.toLowerCase().includes(searchQuery)) ||
-				(quote.quoteNumber &&
-					quote.quoteNumber.toLowerCase().includes(searchQuery)) ||
-				(quote.clientMessage &&
-					quote.clientMessage.toLowerCase().includes(searchQuery)) ||
-				(quote.terms && quote.terms.toLowerCase().includes(searchQuery))
-		);
-	},
-});
-
-/**
- * Get quote statistics for dashboard
- */
-export const getStats = optionalUserQuery({
-	args: {},
-	handler: async (ctx): Promise<QuoteStats> => {
-		const orgId = ctx.orgId;
-		if (!orgId) {
-			return {
-				total: 0,
-				byStatus: {
-					draft: 0,
-					sent: 0,
-					approved: 0,
-					declined: 0,
-					expired: 0,
-				},
-				totalValue: 0,
-				averageValue: 0,
-				approvalRate: 0,
-				thisMonth: 0,
-			};
-		}
-		await ctx.requireLevel("quotes", "view");
-
-		let quotes = await ctx.db
-			.query("quotes")
-			.withIndex("by_org", (q) => q.eq("orgId", orgId))
-			.collect();
-
-		quotes = await ctx.applyReadScope("quotes", quotes, (q, s) =>
-			q.projectId ? s.projectIds.has(q.projectId) : s.clientIds.has(q.clientId)
-		);
-
-		const stats: QuoteStats = {
-			total: quotes.length,
-			byStatus: {
-				draft: 0,
-				sent: 0,
-				approved: 0,
-				declined: 0,
-				expired: 0,
-			},
-			totalValue: 0,
-			averageValue: 0,
-			approvalRate: 0,
-			thisMonth: 0,
-		};
-
-		const monthStart = new Date();
-		monthStart.setDate(1);
-		monthStart.setHours(0, 0, 0, 0);
-		const monthStartTime = monthStart.getTime();
-
-		let sentCount = 0;
-		let approvedCount = 0;
-
-		quotes.forEach((quote: QuoteDocument) => {
-			// Count by status
-			stats.byStatus[quote.status]++;
-
-			// Count this month's quotes
-			if (quote._creationTime >= monthStartTime) {
-				stats.thisMonth++;
-			}
-
-			// Calculate total value (only for approved quotes)
-			if (quote.status === "approved") {
-				stats.totalValue += quote.total;
-				approvedCount++;
-			}
-
-			// Count for approval rate calculation
-			if (
-				quote.status === "sent" ||
-				quote.status === "approved" ||
-				quote.status === "declined"
-			) {
-				sentCount++;
-			}
-		});
-
-		// Calculate averages and rates
-		if (approvedCount > 0) {
-			stats.averageValue = stats.totalValue / approvedCount;
-		}
-
-		if (sentCount > 0) {
-			stats.approvalRate = (approvedCount / sentCount) * 100;
-		}
-
-		return stats;
-	},
-});
-
-/**
  * Get sent quotes expiring or already expired within the next 7 days
  */
 export const getAwaitingSigning = optionalUserQuery({
-	args: {},
-	handler: async (ctx) => {
+	// Callers pass a day-rounded `now` so the result is cacheable.
+	args: { now: v.optional(v.number()) },
+	handler: async (ctx, args) => {
 		const orgId = ctx.orgId;
 		if (!orgId) return [];
 		await ctx.requireLevel("quotes", "view");
 
-		const now = Date.now();
+		const now = args.now ?? Date.now();
 		const sevenDaysFromNow = now + 7 * 24 * 60 * 60 * 1000;
 
 		// Get all sent quotes (non-completed, non-approved, non-declined, non-expired)
@@ -1673,40 +1454,6 @@ export const getAwaitingSigning = optionalUserQuery({
 		);
 
 		return await ctx.applyReadScope("quotes", upcoming, (q, s) =>
-			q.projectId ? s.projectIds.has(q.projectId) : s.clientIds.has(q.clientId)
-		);
-	},
-});
-
-/**
- * Get quotes expiring soon
- */
-export const getExpiringSoon = optionalUserQuery({
-	args: { days: v.optional(v.number()) },
-	handler: async (ctx, args): Promise<QuoteDocument[]> => {
-		const orgId = ctx.orgId;
-		if (!orgId) return emptyListResult();
-		await ctx.requireLevel("quotes", "view");
-
-		const daysAhead = args.days || 7;
-
-		const quotes = await ctx.db
-			.query("quotes")
-			.withIndex("by_org", (q) => q.eq("orgId", orgId))
-			.collect();
-
-		const now = Date.now();
-		const expirationThreshold = now + daysAhead * 24 * 60 * 60 * 1000;
-
-		const expiringSoon = quotes.filter(
-			(quote: QuoteDocument) =>
-				quote.status === "sent" &&
-				quote.validUntil &&
-				quote.validUntil <= expirationThreshold &&
-				quote.validUntil > now
-		);
-
-		return await ctx.applyReadScope("quotes", expiringSoon, (q, s) =>
 			q.projectId ? s.projectIds.has(q.projectId) : s.clientIds.has(q.clientId)
 		);
 	},
@@ -1733,13 +1480,10 @@ export const getApprovalAudit = userQuery({
 		if (!quote) throw new ConvexError({ code: "NOT_FOUND" });
 		if (quote.orgId !== orgId)
 			throw new ConvexError({ code: "FORBIDDEN" });
-		await ctx.requireRecordScope("quotes", () =>
-			ctx.actorScope().then((s) =>
-				quote.projectId
-					? s.projectIds.has(quote.projectId)
-					: s.clientIds.has(quote.clientId)
-			)
-		);
+		await ctx.requireRecordScope("quotes", {
+			projectId: quote.projectId,
+			clientId: quote.clientId,
+		});
 
 		const rows = await ctx.db
 			.query("quoteApprovals")
@@ -1855,13 +1599,10 @@ export const approveInPerson = userMutation({
 	handler: async (ctx, args) => {
 		await ctx.requireLevel("quotes", "modify");
 		const quote = await ctx.orgEntity("quotes", args.id);
-		await ctx.requireRecordScope("quotes", () =>
-			ctx.actorScope().then((s) =>
-				quote.projectId
-					? s.projectIds.has(quote.projectId)
-					: s.clientIds.has(quote.clientId)
-			)
-		);
+		await ctx.requireRecordScope("quotes", {
+			projectId: quote.projectId,
+			clientId: quote.clientId,
+		});
 
 		if (quote.status !== "sent") {
 			throw new ConvexError({

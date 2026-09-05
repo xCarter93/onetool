@@ -437,61 +437,6 @@ describe("Activities", () => {
 		});
 	});
 
-	describe("getByType", () => {
-		it("should filter activities by type", async () => {
-			const { clerkUserId, clerkOrgId } = await t.run(async (ctx) => {
-				const setup = await createTestOrg(ctx);
-
-				await createTestActivity(ctx, setup.orgId, setup.userId, {
-					activityType: "client_created",
-					entityName: "Client Activity",
-				});
-				await createTestActivity(ctx, setup.orgId, setup.userId, {
-					activityType: "project_created",
-					entityType: "project",
-					entityName: "Project Activity",
-				});
-				await createTestActivity(ctx, setup.orgId, setup.userId, {
-					activityType: "invoice_paid",
-					entityType: "invoice",
-					entityName: "Invoice Activity",
-				});
-
-				return setup;
-			});
-
-			const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
-
-			const clientActivities = await asUser.query(api.activities.getByType, {
-				activityType: "client_created",
-			});
-
-			expect(clientActivities).toHaveLength(1);
-			expect(clientActivities[0].activityType).toBe("client_created");
-			expect(clientActivities[0].entityName).toBe("Client Activity");
-		});
-
-		it("should return empty array when no activities match type", async () => {
-			const { clerkUserId, clerkOrgId } = await t.run(async (ctx) => {
-				const setup = await createTestOrg(ctx);
-
-				await createTestActivity(ctx, setup.orgId, setup.userId, {
-					activityType: "client_created",
-				});
-
-				return setup;
-			});
-
-			const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
-
-			const activities = await asUser.query(api.activities.getByType, {
-				activityType: "invoice_paid",
-			});
-
-			expect(activities).toEqual([]);
-		});
-	});
-
 	describe("getByEntity", () => {
 		it("should filter activities by entity type and ID", async () => {
 			const { clerkUserId, clerkOrgId } = await t.run(async (ctx) => {
@@ -548,59 +493,6 @@ describe("Activities", () => {
 			});
 
 			expect(activities).toEqual([]);
-		});
-	});
-
-	describe("getCount", () => {
-		it("should return total count of visible activities", async () => {
-			const { clerkUserId, clerkOrgId } = await t.run(async (ctx) => {
-				const setup = await createTestOrg(ctx);
-
-				for (let i = 0; i < 5; i++) {
-					await createTestActivity(ctx, setup.orgId, setup.userId, {
-						isVisible: true,
-					});
-				}
-				// Add one hidden activity
-				await createTestActivity(ctx, setup.orgId, setup.userId, {
-					isVisible: false,
-				});
-
-				return setup;
-			});
-
-			const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
-
-			const count = await asUser.query(api.activities.getCount, {});
-
-			expect(count).toBe(5);
-		});
-
-		it("should filter count by activity type", async () => {
-			const { clerkUserId, clerkOrgId } = await t.run(async (ctx) => {
-				const setup = await createTestOrg(ctx);
-
-				await createTestActivity(ctx, setup.orgId, setup.userId, {
-					activityType: "client_created",
-				});
-				await createTestActivity(ctx, setup.orgId, setup.userId, {
-					activityType: "client_created",
-				});
-				await createTestActivity(ctx, setup.orgId, setup.userId, {
-					activityType: "project_created",
-					entityType: "project",
-				});
-
-				return setup;
-			});
-
-			const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
-
-			const clientCount = await asUser.query(api.activities.getCount, {
-				activityType: "client_created",
-			});
-
-			expect(clientCount).toBe(2);
 		});
 	});
 

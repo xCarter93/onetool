@@ -1244,6 +1244,7 @@ export const searchClientEmails = createTool({
 		const emails: Doc<"emailMessages">[] = input.clientId
 			? await ctx.runQuery(api.emailMessages.listByClient, {
 					clientId: input.clientId as Id<"clients">,
+					limit: input.limit ?? EMAIL_CAP,
 				})
 			: await ctx.runQuery(api.emailMessages.getRecentEmails, {
 					limit: input.limit ?? EMAIL_CAP,

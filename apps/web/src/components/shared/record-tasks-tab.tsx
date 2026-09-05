@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { useMutation, useQuery } from "convex/react";
+import { useMutation } from "convex/react";
+import { useQuery } from "convex-helpers/react/cache/hooks";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { usePermissions } from "@/hooks/use-permissions";
 import { Doc, Id } from "@onetool/backend/convex/_generated/dataModel";
@@ -393,7 +394,7 @@ export function RecordTasksTab({
 
 	// Queries for related data — skip without the view grant, gated endpoints
 	// throw FORBIDDEN otherwise. This component is shared across record types.
-	const clients = useQuery(api.clients.list, can("clients") ? {} : "skip");
+	const clients = useQuery(api.clients.listNamesForOrg, can("clients") ? {} : "skip");
 	const projects = useQuery(api.projects.list, can("projects") ? {} : "skip");
 	const users = useQuery(api.users.listByOrg, {});
 
@@ -481,9 +482,7 @@ export function RecordTasksTab({
 				entityType,
 				canModifyTasks,
 				canDeleteTasks,
-				clients as
-					| { _id: Id<"clients">; companyName: string }[]
-					| undefined,
+				clients,
 				projects as
 					| { _id: Id<"projects">; title: string }[]
 					| undefined,

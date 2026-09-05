@@ -133,40 +133,6 @@ describe("ClientProperties", () => {
 		});
 	});
 
-	describe("list", () => {
-		it("should return empty array when no properties exist", async () => {
-			const { clerkUserId, clerkOrgId } = await t.run(async (ctx) => {
-				return await createTestOrg(ctx);
-			});
-
-			const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
-
-			const properties = await asUser.query(api.clientProperties.list, {});
-			expect(properties).toEqual([]);
-		});
-
-		it("should return all properties for the organization", async () => {
-			const { orgId, clerkUserId, clerkOrgId } = await t.run(async (ctx) => {
-				const testOrg = await createTestOrg(ctx);
-				const clientId = await createTestClient(ctx, testOrg.orgId);
-				await createTestClientProperty(ctx, testOrg.orgId, clientId, {
-					streetAddress: "100 First St",
-					city: "City A",
-				});
-				await createTestClientProperty(ctx, testOrg.orgId, clientId, {
-					streetAddress: "200 Second St",
-					city: "City B",
-				});
-				return testOrg;
-			});
-
-			const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
-
-			const properties = await asUser.query(api.clientProperties.list, {});
-			expect(properties).toHaveLength(2);
-		});
-	});
-
 	describe("listByClient", () => {
 		it("should return only properties for the specified client", async () => {
 			const { orgId, clerkUserId, clerkOrgId, clientId1, clientId2 } =
@@ -468,59 +434,6 @@ describe("ClientProperties", () => {
 		});
 	});
 
-	describe("search", () => {
-		it("should search properties by address", async () => {
-			const { clerkUserId, clerkOrgId, clientId } = await t.run(async (ctx) => {
-				const testOrg = await createTestOrg(ctx);
-				const clientId = await createTestClient(ctx, testOrg.orgId);
-				await createTestClientProperty(ctx, testOrg.orgId, clientId, {
-					streetAddress: "123 Oak Street",
-					city: "Springfield",
-				});
-				await createTestClientProperty(ctx, testOrg.orgId, clientId, {
-					streetAddress: "456 Maple Avenue",
-					city: "Riverside",
-				});
-				return { ...testOrg, clientId };
-			});
-
-			const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
-
-			const results = await asUser.query(api.clientProperties.search, {
-				query: "oak",
-			});
-
-			expect(results).toHaveLength(1);
-			expect(results[0].streetAddress).toBe("123 Oak Street");
-		});
-
-		it("should filter search by property type", async () => {
-			const { clerkUserId, clerkOrgId, clientId } = await t.run(async (ctx) => {
-				const testOrg = await createTestOrg(ctx);
-				const clientId = await createTestClient(ctx, testOrg.orgId);
-				await createTestClientProperty(ctx, testOrg.orgId, clientId, {
-					streetAddress: "100 Commercial Blvd",
-					propertyType: "commercial",
-				});
-				await createTestClientProperty(ctx, testOrg.orgId, clientId, {
-					streetAddress: "200 Home Lane",
-					propertyType: "residential",
-				});
-				return { ...testOrg, clientId };
-			});
-
-			const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
-
-			const commercialResults = await asUser.query(api.clientProperties.search, {
-				query: "",
-				propertyType: "commercial",
-			});
-
-			expect(commercialResults).toHaveLength(1);
-			expect(commercialResults[0].propertyType).toBe("commercial");
-		});
-	});
-
 	describe("bulkCreate", () => {
 		it("should create multiple properties successfully", async () => {
 			const { clerkUserId, clerkOrgId, clientId } = await t.run(async (ctx) => {
@@ -592,95 +505,60 @@ describe("ClientProperties", () => {
 		});
 	});
 
-	describe("getStats", () => {
-		it("should return correct property statistics", async () => {
-			const { clerkUserId, clerkOrgId, clientId } = await t.run(async (ctx) => {
-				const testOrg = await createTestOrg(ctx);
+	describe("organization isolation", () => {
+		it("should not return properties from other organizations", async () => {
+			// Create org 1 with properties
+			const {
+				clerkUserId: user1,
+				clerkOrgId: org1Id,
+				clientId: client1,
+			} = await t.run(async (ctx) => {
+				const testOrg = await createTestOrg(ctx, {
+					clerkUserId: "user_org1",
+					clerkOrgId: "org_1",
+					orgName: "Organization 1",
+				});
 				const clientId = await createTestClient(ctx, testOrg.orgId);
 				await createTestClientProperty(ctx, testOrg.orgId, clientId, {
-					propertyType: "residential",
-				});
-				await createTestClientProperty(ctx, testOrg.orgId, clientId, {
-					propertyType: "commercial",
-				});
-				await createTestClientProperty(ctx, testOrg.orgId, clientId, {
-					propertyType: "commercial",
-				});
-				await createTestClientProperty(ctx, testOrg.orgId, clientId, {
-					propertyType: undefined,
+					streetAddress: "Org 1 Property",
 				});
 				return { ...testOrg, clientId };
 			});
 
-			const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
-
-			const stats = await asUser.query(api.clientProperties.getStats, {});
-
-			expect(stats.total).toBe(4);
-			expect(stats.byType.residential).toBe(1);
-			expect(stats.byType.commercial).toBe(2);
-			expect(stats.byType.unspecified).toBe(1);
-		});
-
-		it("should return zero stats when no properties exist", async () => {
-			const { clerkUserId, clerkOrgId } = await t.run(async (ctx) => {
-				return await createTestOrg(ctx);
-			});
-
-			const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
-
-			const stats = await asUser.query(api.clientProperties.getStats, {});
-
-			expect(stats.total).toBe(0);
-			expect(stats.byType.residential).toBe(0);
-			expect(stats.byType.commercial).toBe(0);
-		});
-	});
-
-	describe("organization isolation", () => {
-		it("should not return properties from other organizations", async () => {
-			// Create org 1 with properties
-			const { clerkUserId: user1, clerkOrgId: org1Id } = await t.run(
-				async (ctx) => {
-					const testOrg = await createTestOrg(ctx, {
-						clerkUserId: "user_org1",
-						clerkOrgId: "org_1",
-						orgName: "Organization 1",
-					});
-					const clientId = await createTestClient(ctx, testOrg.orgId);
-					await createTestClientProperty(ctx, testOrg.orgId, clientId, {
-						streetAddress: "Org 1 Property",
-					});
-					return testOrg;
-				}
-			);
-
 			// Create org 2 with properties
-			const { clerkUserId: user2, clerkOrgId: org2Id } = await t.run(
-				async (ctx) => {
-					const testOrg = await createTestOrg(ctx, {
-						clerkUserId: "user_org2",
-						clerkOrgId: "org_2",
-						orgName: "Organization 2",
-					});
-					const clientId = await createTestClient(ctx, testOrg.orgId);
-					await createTestClientProperty(ctx, testOrg.orgId, clientId, {
-						streetAddress: "Org 2 Property",
-					});
-					return testOrg;
-				}
-			);
+			const {
+				clerkUserId: user2,
+				clerkOrgId: org2Id,
+				clientId: client2,
+			} = await t.run(async (ctx) => {
+				const testOrg = await createTestOrg(ctx, {
+					clerkUserId: "user_org2",
+					clerkOrgId: "org_2",
+					orgName: "Organization 2",
+				});
+				const clientId = await createTestClient(ctx, testOrg.orgId);
+				await createTestClientProperty(ctx, testOrg.orgId, clientId, {
+					streetAddress: "Org 2 Property",
+				});
+				return { ...testOrg, clientId };
+			});
 
 			// User from org 1 should only see org 1 properties
 			const asUser1 = t.withIdentity(createTestIdentity(user1, org1Id));
-			const org1Properties = await asUser1.query(api.clientProperties.list, {});
+			const org1Properties = await asUser1.query(
+				api.clientProperties.listByClient,
+				{ clientId: client1 }
+			);
 
 			expect(org1Properties).toHaveLength(1);
 			expect(org1Properties[0].streetAddress).toBe("Org 1 Property");
 
 			// User from org 2 should only see org 2 properties
 			const asUser2 = t.withIdentity(createTestIdentity(user2, org2Id));
-			const org2Properties = await asUser2.query(api.clientProperties.list, {});
+			const org2Properties = await asUser2.query(
+				api.clientProperties.listByClient,
+				{ clientId: client2 }
+			);
 
 			expect(org2Properties).toHaveLength(1);
 			expect(org2Properties[0].streetAddress).toBe("Org 2 Property");

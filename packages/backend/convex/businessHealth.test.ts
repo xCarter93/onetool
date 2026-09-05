@@ -1,5 +1,5 @@
 import { convexTest } from "convex-test";
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { api } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import type { MutationCtx } from "./_generated/server";
@@ -29,6 +29,7 @@ type PaymentOverrides = {
 	sortOrder?: number;
 	manualMethod?: "cash" | "check" | "other";
 	recordedOutsidePortal?: boolean;
+	refundedAmount?: number;
 };
 
 /**
@@ -53,6 +54,7 @@ async function insertPayment(
 		paidAt: overrides.paidAt,
 		manualMethod: overrides.manualMethod,
 		recordedOutsidePortal: overrides.recordedOutsidePortal,
+		refundedAmount: overrides.refundedAmount,
 	});
 }
 
@@ -511,5 +513,336 @@ describe("businessHealth.get", () => {
 			needsAttention: [],
 			recentPayments: [],
 		});
+	});
+});
+
+/**
+ * Byte-identity oracle for the pinned mobile read (mobilePinnedPaths.test.ts).
+ * Shipped binaries have no OTA, so the payload shape, element order and numbers
+ * must survive any read-path refactor unchanged. The fixture deliberately
+ * includes a paid payment on a CANCELLED invoice — a row that an
+ * index-narrowed invoice read would otherwise drop out of `recentPayments`.
+ */
+describe("businessHealth.get payload is stable across read-path changes", () => {
+	let t: ReturnType<typeof convexTest>;
+
+	// Mid-month, mid-day UTC so no bucket, label or due-date comparison sits on
+	// a boundary that a few ms of test runtime could cross.
+	const NOW = Date.UTC(2026, 2, 15, 12, 0, 0);
+
+	beforeEach(() => {
+		vi.useFakeTimers({ toFake: ["Date"], shouldAdvanceTime: true });
+		vi.setSystemTime(NOW);
+		t = setupConvexTest();
+	});
+
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	it("matches the recorded payload for a full-status org", async () => {
+		const seed = await t.run(async (ctx) => {
+			const org = await createTestOrg(ctx);
+			const alpha = await createTestClient(ctx, org.orgId, {
+				companyName: "Alpha Co",
+			});
+			const beta = await createTestClient(ctx, org.orgId, {
+				companyName: "Beta LLC",
+			});
+			const gamma = await createTestClient(ctx, org.orgId, {
+				companyName: "Gamma Inc",
+			});
+
+			const draft = await createTestInvoice(ctx, org.orgId, alpha, {
+				invoiceNumber: "INV-DRAFT",
+				status: "draft",
+				total: 500,
+				dueDate: NOW - 2 * DAY_MS,
+			});
+			const sentFuture = await createTestInvoice(ctx, org.orgId, alpha, {
+				invoiceNumber: "INV-SENT-FUTURE",
+				status: "sent",
+				total: 1000,
+				dueDate: NOW + 10 * DAY_MS,
+			});
+			const sentOverdue = await createTestInvoice(ctx, org.orgId, beta, {
+				invoiceNumber: "INV-SENT-OVERDUE",
+				status: "sent",
+				total: 2000,
+				dueDate: NOW - 5 * DAY_MS,
+			});
+			const overdue = await createTestInvoice(ctx, org.orgId, beta, {
+				invoiceNumber: "INV-OVERDUE",
+				status: "overdue",
+				total: 1500,
+				dueDate: NOW - 20 * DAY_MS,
+			});
+			const paid = await createTestInvoice(ctx, org.orgId, gamma, {
+				invoiceNumber: "INV-PAID",
+				status: "paid",
+				total: 800,
+				dueDate: NOW - 60 * DAY_MS,
+			});
+			const refundRestored = await createTestInvoice(ctx, org.orgId, gamma, {
+				invoiceNumber: "INV-REFUND-RESTORED",
+				status: "paid",
+				total: 1200,
+				dueDate: NOW - 3 * DAY_MS,
+			});
+			const cancelled = await createTestInvoice(ctx, org.orgId, alpha, {
+				invoiceNumber: "INV-CANCELLED",
+				status: "cancelled",
+				total: 900,
+				dueDate: NOW - DAY_MS,
+			});
+			const paidOld = await createTestInvoice(ctx, org.orgId, beta, {
+				invoiceNumber: "INV-PAID-OLD",
+				status: "paid",
+				total: 600,
+				dueDate: NOW - 160 * DAY_MS,
+			});
+
+			const pSentFuture = await insertPayment(ctx, org.orgId, sentFuture, {
+				paymentAmount: 300,
+				status: "paid",
+				paidAt: NOW - DAY_MS,
+				manualMethod: "cash",
+				recordedOutsidePortal: true,
+			});
+			const pOverdue = await insertPayment(ctx, org.orgId, overdue, {
+				paymentAmount: 500,
+				status: "paid",
+				paidAt: NOW - 40 * DAY_MS,
+			});
+			const pPaid = await insertPayment(ctx, org.orgId, paid, {
+				paymentAmount: 800,
+				status: "paid",
+				paidAt: NOW - 70 * DAY_MS,
+			});
+			const pRefundRestored = await insertPayment(
+				ctx,
+				org.orgId,
+				refundRestored,
+				{
+					paymentAmount: 1200,
+					status: "paid",
+					paidAt: NOW - 2 * DAY_MS,
+					refundedAmount: 400,
+				}
+			);
+			const pCancelled = await insertPayment(ctx, org.orgId, cancelled, {
+				paymentAmount: 900,
+				status: "paid",
+				paidAt: NOW - 3 * DAY_MS,
+			});
+			const pPaidOld = await insertPayment(ctx, org.orgId, paidOld, {
+				paymentAmount: 600,
+				status: "paid",
+				paidAt: NOW - 150 * DAY_MS,
+			});
+			// Neither of these is settled money; both must stay out of the buckets.
+			await insertPayment(ctx, org.orgId, sentOverdue, {
+				paymentAmount: 100,
+				status: "refunded",
+				paidAt: NOW - 6 * DAY_MS,
+			});
+			await insertPayment(ctx, org.orgId, sentFuture, {
+				paymentAmount: 700,
+				status: "pending",
+				dueDate: NOW + 10 * DAY_MS,
+				sortOrder: 1,
+			});
+
+			await createTestQuote(ctx, org.orgId, alpha, {
+				quoteNumber: "Q-DRAFT",
+				status: "draft",
+				total: 100,
+			});
+			const sentQuoteOld = await createTestQuote(ctx, org.orgId, beta, {
+				quoteNumber: "Q-OLD",
+				title: "Spring cleanup",
+				status: "sent",
+				total: 3000,
+			});
+			await ctx.db.patch(sentQuoteOld, { sentAt: NOW - 30 * DAY_MS });
+			const sentQuoteNew = await createTestQuote(ctx, org.orgId, alpha, {
+				quoteNumber: "Q-NEW",
+				status: "sent",
+				total: 2500,
+			});
+			await ctx.db.patch(sentQuoteNew, { sentAt: NOW - 10 * DAY_MS });
+			await createTestQuote(ctx, org.orgId, gamma, {
+				quoteNumber: "Q-APPROVED",
+				status: "approved",
+				total: 5000,
+			});
+
+			return {
+				clerkUserId: org.clerkUserId,
+				clerkOrgId: org.clerkOrgId,
+				aliases: {
+					[draft]: "invoice:draft",
+					[sentFuture]: "invoice:sentFuture",
+					[sentOverdue]: "invoice:sentOverdue",
+					[overdue]: "invoice:overdue",
+					[paid]: "invoice:paid",
+					[refundRestored]: "invoice:refundRestored",
+					[cancelled]: "invoice:cancelled",
+					[paidOld]: "invoice:paidOld",
+					[pSentFuture]: "payment:sentFuture",
+					[pOverdue]: "payment:overdue",
+					[pPaid]: "payment:paid",
+					[pRefundRestored]: "payment:refundRestored",
+					[pCancelled]: "payment:cancelled",
+					[pPaidOld]: "payment:paidOld",
+					[sentQuoteOld]: "quote:sentOld",
+					[sentQuoteNew]: "quote:sentNew",
+				} as Record<string, string>,
+			};
+		});
+
+		const asUser = t.withIdentity(
+			createTestIdentity(seed.clerkUserId, seed.clerkOrgId)
+		);
+		const health = await asUser.query(api.businessHealth.get, {});
+
+		const alias = (id: string) => seed.aliases[id] ?? id;
+		const normalized = {
+			...health,
+			needsAttention: health.needsAttention.map((row) => ({
+				...row,
+				id: alias(row.id),
+			})),
+			recentPayments: health.recentPayments.map((row) => ({
+				...row,
+				id: alias(row.id),
+				invoiceId: alias(row.invoiceId),
+			})),
+		};
+
+		expect(normalized).toMatchInlineSnapshot(`
+			{
+			  "awaiting": {
+			    "count": 2,
+			    "total": 5500,
+			  },
+			  "collectedThisMonth": 2000,
+			  "months": [
+			    {
+			      "label": "OCT",
+			      "value": 600,
+			    },
+			    {
+			      "label": "NOV",
+			      "value": 0,
+			    },
+			    {
+			      "label": "DEC",
+			      "value": 0,
+			    },
+			    {
+			      "label": "JAN",
+			      "value": 800,
+			    },
+			    {
+			      "label": "FEB",
+			      "value": 500,
+			    },
+			    {
+			      "label": "MAR",
+			      "value": 2000,
+			    },
+			  ],
+			  "needsAttention": [
+			    {
+			      "amount": 1000,
+			      "clientName": "Beta LLC",
+			      "dueDate": 1771848000000,
+			      "id": "invoice:overdue",
+			      "kind": "invoice",
+			      "label": "Invoice #INV-OVERDUE",
+			    },
+			    {
+			      "amount": 2000,
+			      "clientName": "Beta LLC",
+			      "dueDate": 1773144000000,
+			      "id": "invoice:sentOverdue",
+			      "kind": "invoice",
+			      "label": "Invoice #INV-SENT-OVERDUE",
+			    },
+			    {
+			      "amount": 400,
+			      "clientName": "Gamma Inc",
+			      "dueDate": 1773316800000,
+			      "id": "invoice:refundRestored",
+			      "kind": "invoice",
+			      "label": "Invoice #INV-REFUND-RESTORED",
+			    },
+			    {
+			      "amount": 3000,
+			      "clientName": "Beta LLC",
+			      "id": "quote:sentOld",
+			      "kind": "quote",
+			      "label": "Quote #Q-OLD — Spring cleanup",
+			      "sentAt": 1770984000000,
+			    },
+			    {
+			      "amount": 2500,
+			      "clientName": "Alpha Co",
+			      "id": "quote:sentNew",
+			      "kind": "quote",
+			      "label": "Quote #Q-NEW — Test Quote",
+			      "sentAt": 1772712000000,
+			    },
+			  ],
+			  "outstanding": {
+			    "invoiceCount": 4,
+			    "overdue": 3400,
+			    "total": 4100,
+			  },
+			  "recentPayments": [
+			    {
+			      "amount": 300,
+			      "clientName": "Alpha Co",
+			      "id": "payment:sentFuture",
+			      "invoiceId": "invoice:sentFuture",
+			      "method": "cash",
+			      "paidAt": 1773489600000,
+			    },
+			    {
+			      "amount": 1200,
+			      "clientName": "Gamma Inc",
+			      "id": "payment:refundRestored",
+			      "invoiceId": "invoice:refundRestored",
+			      "method": "card",
+			      "paidAt": 1773403200000,
+			    },
+			    {
+			      "amount": 900,
+			      "clientName": "Alpha Co",
+			      "id": "payment:cancelled",
+			      "invoiceId": "invoice:cancelled",
+			      "method": "card",
+			      "paidAt": 1773316800000,
+			    },
+			    {
+			      "amount": 500,
+			      "clientName": "Beta LLC",
+			      "id": "payment:overdue",
+			      "invoiceId": "invoice:overdue",
+			      "method": "card",
+			      "paidAt": 1770120000000,
+			    },
+			    {
+			      "amount": 800,
+			      "clientName": "Gamma Inc",
+			      "id": "payment:paid",
+			      "invoiceId": "invoice:paid",
+			      "method": "card",
+			      "paidAt": 1767528000000,
+			    },
+			  ],
+			}
+		`);
 	});
 });

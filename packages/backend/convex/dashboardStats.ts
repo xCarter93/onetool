@@ -114,35 +114,63 @@ function bucketKeysForRange(
 	return keys;
 }
 
-/** Org payment rows surviving the billable rule, plus their parent invoices. */
-async function loadBillable(
+/** Apply the billable rule to an already-windowed set of payment rows. */
+async function applyBillableRule(
 	ctx: QueryCtx,
-	orgId: Id<"organizations">
+	orgId: Id<"organizations">,
+	payments: Doc<"payments">[]
 ): Promise<{
 	billable: Doc<"payments">[];
 	invoiceById: Map<Id<"invoices">, Doc<"invoices">>;
 }> {
-	const [invoices, payments] = await Promise.all([
-		ctx.db
-			.query("invoices")
-			.withIndex("by_org", (q) => q.eq("orgId", orgId))
-			.collect(),
-		ctx.db
-			.query("payments")
-			.withIndex("by_org", (q) => q.eq("orgId", orgId))
-			.collect(),
-	]);
-	const invoiceById = new Map(
-		invoices
-			.filter((i) => i.status !== "draft" && i.status !== "cancelled")
-			.map((i) => [i._id, i])
-	);
+	const candidates = payments.filter((p) => p.status !== "cancelled");
+	const invoiceIds = [...new Set(candidates.map((p) => p.invoiceId))];
+	const invoices = await Promise.all(invoiceIds.map((id) => ctx.db.get(id)));
+	const invoiceById = new Map<Id<"invoices">, Doc<"invoices">>();
+	for (const invoice of invoices) {
+		if (!invoice || invoice.orgId !== orgId) continue;
+		if (invoice.status === "draft" || invoice.status === "cancelled") continue;
+		invoiceById.set(invoice._id, invoice);
+	}
 	return {
-		billable: payments.filter(
-			(p) => p.status !== "cancelled" && invoiceById.has(p.invoiceId)
-		),
+		billable: candidates.filter((p) => invoiceById.has(p.invoiceId)),
 		invoiceById,
 	};
+}
+
+/** Payments due inside [start, end]. */
+async function billableByDueDate(
+	ctx: QueryCtx,
+	orgId: Id<"organizations">,
+	start: number,
+	end: number
+) {
+	const payments = await ctx.db
+		.query("payments")
+		.withIndex("by_due_date", (q) =>
+			q.eq("orgId", orgId).gte("dueDate", start).lte("dueDate", end)
+		)
+		.collect();
+	return applyBillableRule(ctx, orgId, payments);
+}
+
+/** Payments settled inside [start, end). undefined paidAt sorts below the
+ * lower bound, so unpaid rows never enter the range. */
+async function billableByPaidAt(
+	ctx: QueryCtx,
+	orgId: Id<"organizations">,
+	start: number,
+	end: number,
+	endInclusive = false
+) {
+	const payments = await ctx.db
+		.query("payments")
+		.withIndex("by_org_paid", (q) => {
+			const lower = q.eq("orgId", orgId).gte("paidAt", start);
+			return endInclusive ? lower.lte("paidAt", end) : lower.lt("paidAt", end);
+		})
+		.collect();
+	return applyBillableRule(ctx, orgId, payments);
 }
 
 export const getCollectionPace = optionalUserQuery({
@@ -167,7 +195,12 @@ export const getCollectionPace = optionalUserQuery({
 		const organization = await ctx.db.get(orgId);
 		const timezone = organization?.timezone;
 
-		const { billable } = await loadBillable(ctx, orgId);
+		const { billable } = await billableByDueDate(
+			ctx,
+			orgId,
+			args.startDate,
+			args.endDate
+		);
 
 		const keys = bucketKeysForRange(
 			args.startDate,
@@ -258,10 +291,15 @@ export const getAvgDaysToPay = optionalUserQuery({
 		const orgId = ctx.orgId;
 		await requireOrgWideView(ctx, "invoices");
 
-		const { billable, invoiceById } = await loadBillable(ctx, orgId);
 		const now = Date.now();
 		const windowStart = now - AVG_DAYS_WINDOW * DAY_MS;
 		const prevStart = now - 2 * AVG_DAYS_WINDOW * DAY_MS;
+		const { billable, invoiceById } = await billableByPaidAt(
+			ctx,
+			orgId,
+			prevStart,
+			now
+		);
 
 		let weight = 0;
 		let weighted = 0;
@@ -315,7 +353,7 @@ export const getAvgJobValue = optionalUserQuery({
 
 		const invoices = await ctx.db
 			.query("invoices")
-			.withIndex("by_org", (q) => q.eq("orgId", orgId))
+			.withIndex("by_status", (q) => q.eq("orgId", orgId).eq("status", "paid"))
 			.collect();
 
 		const keys = bucketKeysForRange(
@@ -427,12 +465,13 @@ export const getTopClientsByRevenue = optionalUserQuery({
 			Math.max(1, Math.trunc(args.limit ?? TOP_CLIENTS_DEFAULT_LIMIT))
 		);
 
-		const { billable, invoiceById } = await loadBillable(ctx, orgId);
-		const clients = await ctx.db
-			.query("clients")
-			.withIndex("by_org", (q) => q.eq("orgId", orgId))
-			.collect();
-		const clientNames = new Map(clients.map((c) => [c._id, c.companyName]));
+		const { billable, invoiceById } = await billableByPaidAt(
+			ctx,
+			orgId,
+			args.startDate,
+			args.endDate,
+			true
+		);
 
 		const amountsByClient = new Map<Id<"clients">, number[]>();
 		for (const payment of settledPayments(billable)) {
@@ -448,13 +487,21 @@ export const getTopClientsByRevenue = optionalUserQuery({
 		const ranked = [...amountsByClient.entries()]
 			.map(([clientId, amounts]) => ({
 				clientId,
-				name: clientNames.get(clientId) ?? "Client",
 				total: sumMoney(amounts),
 			}))
 			.sort((a, b) => b.total - a.total);
 
 		const grandTotal = sumMoney(ranked.map((r) => r.total));
-		const top = ranked.slice(0, limit);
+		// Only the top slice is ever rendered.
+		const topRanked = ranked.slice(0, limit);
+		const topClients = await Promise.all(
+			topRanked.map((row) => ctx.db.get(row.clientId))
+		);
+		const top = topRanked.map((row, i) => ({
+			clientId: row.clientId,
+			name: topClients[i]?.companyName ?? "Client",
+			total: row.total,
+		}));
 		const otherTotal = roundCents(
 			grandTotal - sumMoney(top.map((r) => r.total))
 		);

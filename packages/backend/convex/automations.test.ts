@@ -1,6 +1,13 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { setupConvexTest } from "./test.setup";
-import { createTestOrg, createTestIdentity } from "./test.helpers";
+import {
+	addMemberToOrg,
+	createTestClient,
+	createTestIdentity,
+	createTestOrg,
+	createTestProject,
+	createTestQuote,
+} from "./test.helpers";
 import { api, internal } from "./_generated/api";
 import { computeNextRunAt } from "./lib/schedule";
 
@@ -1753,5 +1760,132 @@ describe("Automations", () => {
 				"paused"
 			);
 		});
+	});
+});
+
+/**
+ * getSampleRelatedFields mirrors each entity's own record scope. The quote leg
+ * resolves through the parent project, so an assigned vs unassigned project is
+ * the allow/deny boundary.
+ */
+describe("automations.getSampleRelatedFields — record scope", () => {
+	let t: ReturnType<typeof setupConvexTest>;
+
+	beforeEach(() => {
+		t = setupConvexTest();
+	});
+
+	async function seed() {
+		const org = await t.run((ctx) => createTestOrg(ctx));
+		const member = await t.run((ctx) =>
+			addMemberToOrg(ctx, org.orgId, {
+				clerkUserId: "user_preview_member",
+				userEmail: "preview-member@example.com",
+			})
+		);
+
+		const ids = await t.run(async (ctx) => {
+			const membership = await ctx.db
+				.query("organizationMemberships")
+				.withIndex("by_org_user", (q) =>
+					q.eq("orgId", org.orgId).eq("userId", member.userId)
+				)
+				.unique();
+			if (!membership) throw new Error("membership not found");
+			// Scoped grants: view without allRecords, so the scope checks run.
+			await ctx.db.patch(membership._id, {
+				permissions: {
+					automations: { level: "view" as const },
+					quotes: { level: "view" as const },
+					clients: { level: "view" as const },
+					projects: { level: "view" as const },
+				},
+			});
+
+			const assignedClientId = await createTestClient(ctx, org.orgId, {
+				companyName: "Assigned Client",
+			});
+			const otherClientId = await createTestClient(ctx, org.orgId, {
+				companyName: "Other Client",
+			});
+			const assignedProjectId = await createTestProject(
+				ctx,
+				org.orgId,
+				assignedClientId,
+				{ title: "Assigned Project" }
+			);
+			await ctx.db.patch(assignedProjectId, {
+				assignedUserIds: [member.userId],
+			});
+			const unassignedProjectId = await createTestProject(
+				ctx,
+				org.orgId,
+				otherClientId,
+				{ title: "Unassigned Project" }
+			);
+
+			return {
+				assignedQuoteId: await createTestQuote(
+					ctx,
+					org.orgId,
+					assignedClientId,
+					{ projectId: assignedProjectId, quoteNumber: "Q-200001" }
+				),
+				unassignedQuoteId: await createTestQuote(
+					ctx,
+					org.orgId,
+					otherClientId,
+					{ projectId: unassignedProjectId, quoteNumber: "Q-200002" }
+				),
+				mixedQuoteId: await createTestQuote(
+					ctx,
+					org.orgId,
+					assignedClientId,
+					{ projectId: unassignedProjectId, quoteNumber: "Q-200003" }
+				),
+			};
+		});
+
+		return {
+			asMember: t.withIdentity(
+				createTestIdentity(member.clerkUserId, org.clerkOrgId)
+			),
+			...ids,
+		};
+	}
+
+	it("returns relations for a quote on an assigned project", async () => {
+		const { asMember, assignedQuoteId } = await seed();
+
+		const result = await asMember.query(api.automations.getSampleRelatedFields, {
+			entityType: "quote",
+			entityId: assignedQuoteId,
+		});
+
+		expect(result.client).toMatchObject({ companyName: "Assigned Client" });
+		expect(result.project).toMatchObject({ title: "Assigned Project" });
+	});
+
+	it("returns nothing for a quote on an unassigned project", async () => {
+		const { asMember, unassignedQuoteId } = await seed();
+
+		expect(
+			await asMember.query(api.automations.getSampleRelatedFields, {
+				entityType: "quote",
+				entityId: unassignedQuoteId,
+			})
+		).toEqual({});
+	});
+
+	// The project decides when a quote has one; an assigned client does not lift it.
+	it("returns nothing for a quote on an unassigned project of an assigned client", async () => {
+		const { asMember, mixedQuoteId } = await seed();
+
+		expect(
+			await asMember.query(api.automations.getSampleRelatedFields, {
+				entityType: "quote",
+				entityId: mixedQuoteId,
+			})
+		).toEqual({});
 	});
 });

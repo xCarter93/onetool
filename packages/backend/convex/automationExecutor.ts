@@ -13,6 +13,7 @@ import {
 	userMutation,
 	userQuery,
 	type ActorScope,
+	type RecordScopeRef,
 	type UserMutationCtx,
 } from "./lib/factories";
 import { computeNextRunAt } from "./lib/schedule";
@@ -1315,9 +1316,35 @@ async function requireTargetRecordAccess(
 		throw new Error(`Unsupported automation record type: ${objectType}`);
 	}
 	await ctx.requireLevel(permissionObject, "view");
-	await ctx.requireRecordScope(permissionObject, async () =>
-		inActorScope(objectType, record, await ctx.actorScope(), ctx.user._id)
+	await ctx.requireRecordScope(
+		permissionObject,
+		targetRecordScopeArg(objectType, record, ctx.user._id)
 	);
+}
+
+/** Single-record form of `inActorScope`, resolved by point read rather than an org scan. */
+function targetRecordScopeArg(
+	objectType: TriggerableObjectType,
+	record: Record<string, unknown>,
+	userId: Id<"users">
+): RecordScopeRef | (() => boolean) {
+	switch (objectType) {
+		case "client":
+			return { clientId: record._id as Id<"clients"> };
+		case "quote":
+		case "invoice":
+			return {
+				projectId: record.projectId as Id<"projects"> | undefined,
+				clientId: record.clientId as Id<"clients"> | undefined,
+			};
+		case "project":
+			return () =>
+				(record.assignedUserIds as Id<"users">[] | undefined)?.includes(
+					userId
+				) ?? false;
+		case "task":
+			return () => record.assigneeUserId === userId;
+	}
 }
 
 /** Per-entity record-scope rule, mirroring each CRUD module's own predicate. */

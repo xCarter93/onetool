@@ -6,7 +6,7 @@ import { api } from "@onetool/backend/convex/_generated/api";
 import type { Doc, Id } from "@onetool/backend/convex/_generated/dataModel";
 import { daysLate, isPastDue } from "@onetool/backend/convex/lib/invoiceLateness";
 import { useIsOrgSwitching } from "@/hooks/use-is-org-switching";
-import { useOrgToday } from "@/hooks/use-org-today";
+import { useOrgToday, useUtcToday } from "@/hooks/use-org-today";
 import { formatCurrency } from "@/lib/money";
 import type { Task } from "@/types/task";
 
@@ -14,19 +14,20 @@ import type { Task } from "@/types/task";
  * One source of truth for the Needs Attention queue. The compact panel, its
  * header badge and the full-queue sheet all read this hook, so a count can
  * never drift from the rows it summarizes.
+ *
+ * Two clocks, matching the queries: tasks compare against the UTC day passed
+ * to tasks.getOverdue/getUpcoming, invoices against the org-local day
+ * invoices.getOverdue resolves server-side.
  */
 
-function todayUTC(): number {
-	const now = new Date();
-	return Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+export function getDaysLate(dateTimestamp: number, utcToday: number): number {
+	return Math.floor((utcToday - dateTimestamp) / DAY_MS);
 }
 
-export function getDaysLate(dateTimestamp: number): number {
-	return Math.floor((todayUTC() - dateTimestamp) / (24 * 60 * 60 * 1000));
-}
-
-export function getDaysUntil(dateTimestamp: number): number {
-	return Math.floor((dateTimestamp - todayUTC()) / (24 * 60 * 60 * 1000));
+export function getDaysUntil(dateTimestamp: number, utcToday: number): number {
+	return Math.floor((dateTimestamp - utcToday) / DAY_MS);
 }
 
 function formatTime(time?: string): string | null {
@@ -38,15 +39,18 @@ function formatTime(time?: string): string | null {
 	return `${displayHour}:${minutes} ${ampm}`;
 }
 
-export function taskUrgency(task: Task): { label: string; overdue: boolean } {
-	const daysLate = getDaysLate(task.date);
+export function taskUrgency(
+	task: Task,
+	utcToday: number
+): { label: string; overdue: boolean } {
+	const daysLate = getDaysLate(task.date, utcToday);
 	if (daysLate > 0) {
 		return {
 			label: `${daysLate} day${daysLate !== 1 ? "s" : ""} late`,
 			overdue: true,
 		};
 	}
-	const daysUntil = getDaysUntil(task.date);
+	const daysUntil = getDaysUntil(task.date, utcToday);
 	return {
 		label:
 			daysUntil === 0
@@ -86,12 +90,15 @@ export function invoiceUrgency(
 	};
 }
 
-export function quoteUrgency(quote: Doc<"quotes">): {
+export function quoteUrgency(
+	quote: Doc<"quotes">,
+	utcToday: number
+): {
 	label: string;
 	overdue: boolean;
 } {
 	const daysUntilExpiry = quote.validUntil
-		? getDaysUntil(quote.validUntil)
+		? getDaysUntil(quote.validUntil, utcToday)
 		: null;
 	if (daysUntilExpiry === null) {
 		return { label: "Awaiting signature", overdue: false };
@@ -125,12 +132,16 @@ export interface AttentionQueue {
 
 export function useAttentionQueue(): AttentionQueue {
 	const isOrgSwitching = useIsOrgSwitching();
+	const utcToday = useUtcToday();
 	const orgToday = useOrgToday();
-	const overdueTasks = useQuery(api.tasks.getOverdue, {});
-	const upcomingTasks = useQuery(api.tasks.getUpcoming, { daysAhead: 7 });
+	const overdueTasks = useQuery(api.tasks.getOverdue, { today: utcToday });
+	const upcomingTasks = useQuery(api.tasks.getUpcoming, {
+		daysAhead: 7,
+		today: utcToday,
+	});
 	const overdueInvoices = useQuery(api.invoices.getOverdue, {});
 	const awaitingQuotes = useQuery(api.quotes.getAwaitingSigning, {});
-	const clients = useQuery(api.clients.list, {});
+	const clients = useQuery(api.clients.listNamesForOrg, {});
 
 	const isLoading =
 		isOrgSwitching ||
@@ -178,10 +189,12 @@ export function useAttentionQueue(): AttentionQueue {
 
 	return useMemo(() => {
 		const overdueTaskCount = tasks.filter(
-			(t) => taskUrgency(t).overdue
+			(t) => taskUrgency(t, utcToday).overdue
 		).length;
 		const todayTaskCount = tasks.filter(
-			(t) => getDaysUntil(t.date) === 0 && !taskUrgency(t).overdue
+			(t) =>
+				getDaysUntil(t.date, utcToday) === 0 &&
+				!taskUrgency(t, utcToday).overdue
 		).length;
 		const overdueInvoiceCount = invoices.filter(
 			(inv) => invoiceUrgency(inv, orgToday).overdue
@@ -201,7 +214,7 @@ export function useAttentionQueue(): AttentionQueue {
 
 		const expiringSoon = quotes.filter((q) => {
 			if (q.validUntil === undefined) return false;
-			const days = getDaysUntil(q.validUntil);
+			const days = getDaysUntil(q.validUntil, utcToday);
 			return days >= 0 && days <= 3;
 		}).length;
 
@@ -232,11 +245,11 @@ export function useAttentionQueue(): AttentionQueue {
 			overdueCount:
 				overdueTaskCount +
 				overdueInvoiceCount +
-				quotes.filter((q) => quoteUrgency(q).overdue).length,
+				quotes.filter((q) => quoteUrgency(q, utcToday).overdue).length,
 			getClientName: (clientId?: Id<"clients">) =>
 				clientId
 					? (clientNames.get(clientId) ?? "Unknown client")
 					: "No client",
 		};
-	}, [isLoading, tasks, invoices, quotes, clientNames, orgToday]);
+	}, [isLoading, tasks, invoices, quotes, clientNames, utcToday, orgToday]);
 }

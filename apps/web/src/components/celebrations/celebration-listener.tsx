@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { toast as sonnerToast } from "sonner";
 import confetti from "canvas-confetti";
@@ -70,8 +70,18 @@ function fireConfetti(): number {
  * from any source — workspace clicks, portal approvals, Stripe webhooks) and
  * fires the confetti toast once per notification. Renders nothing.
  */
+function minuteFloor(): number {
+	return Math.floor(Date.now() / 60_000) * 60_000;
+}
+
 export function CelebrationListener() {
-	const rows = useQuery(api.notifications.celebrationsForCurrentUser, {});
+	// Minute-rounded so every subscriber shares one server cache key.
+	const [now, setNow] = useState(minuteFloor);
+	useEffect(() => {
+		const id = setInterval(() => setNow(minuteFloor()), 60_000);
+		return () => clearInterval(id);
+	}, []);
+	const rows = useQuery(api.notifications.celebrationsForCurrentUser, { now });
 	const markCelebrated = useMutation(api.notifications.markCelebrated);
 	const processedIds = useRef(new Set<string>());
 	const burstTimer = useRef<number | undefined>(undefined);

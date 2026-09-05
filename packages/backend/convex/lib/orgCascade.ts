@@ -80,6 +80,8 @@ export const ORG_SCOPED_CASCADE_TABLES = [
 	"notificationPreferences",
 	// Entitlement meter rows (lib/entitlements).
 	"planUsage",
+	// Sequential-number counters split off the org doc.
+	"orgCounters",
 ] as const;
 
 /**
@@ -324,6 +326,19 @@ export async function cascadeDeleteOrgDataPage(
 		const rows = await ctx.db
 			.query("planUsage")
 			.withIndex("by_org_meter_period", (q) => q.eq("orgId", orgId))
+			.take(remaining);
+		for (const row of rows) {
+			await ctx.db.delete(row._id);
+			remaining--;
+		}
+	}
+
+	// orgCounters
+	{
+		if (remaining <= 0) return { done: false };
+		const rows = await ctx.db
+			.query("orgCounters")
+			.withIndex("by_org", (q) => q.eq("orgId", orgId))
 			.take(remaining);
 		for (const row of rows) {
 			await ctx.db.delete(row._id);

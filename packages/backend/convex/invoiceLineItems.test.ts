@@ -464,58 +464,6 @@ describe("InvoiceLineItems", () => {
 	});
 
 	describe("organization isolation", () => {
-		it("should not return line items from other organizations", async () => {
-			const { invoiceId1, invoiceId2, clerkUserId1, clerkOrgId1, clerkOrgId2 } =
-				await t.run(async (ctx) => {
-					// Create first org with invoice and line item
-					const {
-						orgId: orgId1,
-						clerkUserId: clerkUserId1,
-						clerkOrgId: clerkOrgId1,
-					} = await createTestOrg(ctx, {
-						clerkUserId: "user_1",
-						clerkOrgId: "org_1",
-					});
-					const clientId1 = await createTestClient(ctx, orgId1);
-					const invoiceId1 = await createTestInvoice(ctx, orgId1, clientId1);
-
-					// Create second org with invoice and line item
-					const {
-						orgId: orgId2,
-						clerkUserId: clerkUserId2,
-						clerkOrgId: clerkOrgId2,
-					} = await createTestOrg(ctx, {
-						clerkUserId: "user_2",
-						clerkOrgId: "org_2",
-					});
-					const clientId2 = await createTestClient(ctx, orgId2);
-					const invoiceId2 = await createTestInvoice(ctx, orgId2, clientId2);
-
-					return {
-						invoiceId1,
-						invoiceId2,
-						clerkUserId1,
-						clerkOrgId1,
-						clerkOrgId2,
-					};
-				});
-
-			// Create line items as each user
-			const asUser1 = t.withIdentity(createTestIdentity(clerkUserId1, clerkOrgId1));
-			await asUser1.mutation(api.invoiceLineItems.create, {
-				invoiceId: invoiceId1,
-				description: "Org 1 Item",
-				quantity: 1,
-				unitPrice: 1000,
-				sortOrder: 0,
-			});
-
-			// User 1 should only see their own items
-			const user1Items = await asUser1.query(api.invoiceLineItems.list, {});
-			expect(user1Items).toHaveLength(1);
-			expect(user1Items[0].description).toBe("Org 1 Item");
-		});
-
 		it("should throw error when accessing line items from other organizations", async () => {
 			const { lineItemId1, clerkUserId2, clerkOrgId2 } = await t.run(
 				async (ctx) => {

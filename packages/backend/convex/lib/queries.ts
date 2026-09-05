@@ -1,8 +1,6 @@
 /**
- * Shared Query Utilities
- *
- * Common patterns for querying data with organization scoping,
- * pagination, filtering, and sorting.
+ * Shared query utilities: org-id resolution, empty results, and the date
+ * ranges the home dashboard reads.
  */
 
 import { QueryCtx, MutationCtx } from "../_generated/server";
@@ -31,13 +29,6 @@ export interface PeriodData {
 	lastMonthEnd: number;
 }
 
-/**
- * Empty stats return type helper
- */
-export interface EmptyStatsResult {
-	[key: string]: number | string | boolean | null | undefined;
-}
-
 // ============================================================================
 // Date Range Helpers
 // ============================================================================
@@ -51,15 +42,13 @@ export function getDateRangeBounds(
 	from?: number,
 	to?: number
 ): DateRange {
-	const now = Date.now();
-	const defaultStart = DateUtils.startOfDay(
-		new Date(new Date(now).setDate(1)).getTime()
-	);
-	const defaultEnd = DateUtils.endOfDay(now);
-
+	// Read the clock only for a missing bound: Convex expires cached results
+	// early for any query that touches Date.now().
 	return {
-		start: from ? DateUtils.startOfDay(from) : defaultStart,
-		end: to ? DateUtils.endOfDay(to) : defaultEnd,
+		start: from
+			? DateUtils.startOfDay(from)
+			: DateUtils.startOfDay(new Date(new Date(Date.now()).setDate(1)).getTime()),
+		end: to ? DateUtils.endOfDay(to) : DateUtils.endOfDay(Date.now()),
 	};
 }
 
@@ -144,206 +133,4 @@ function extractActiveOrgId(identity: unknown): string | null {
  */
 export function emptyListResult<T>(): T[] {
 	return [];
-}
-
-/**
- * Create empty stats object with numeric values
- */
-export function createEmptyStats<T extends Record<string, number | string | boolean | null>>(
-	defaults: T
-): T {
-	return { ...defaults };
-}
-
-// ============================================================================
-// Common Query Patterns
-// ============================================================================
-
-// Note: Due to Convex's strong typing, generic query functions like queryByOrg
-// are implemented inline in each entity file. The patterns above provide
-// org ID retrieval and empty result helpers that work across all entity types.
-//
-// Standard pattern for org-scoped queries:
-// ```typescript
-// const orgId = await getOptionalOrgId(ctx);
-// if (!orgId) return emptyListResult();
-//
-// return await ctx.db
-//   .query("tableName")
-//   .withIndex("by_org", (q) => q.eq("orgId", orgId))
-//   .collect();
-// ```
-
-// ============================================================================
-// Filtering Helpers
-// ============================================================================
-
-/**
- * Filter items by creation time within a date range
- */
-export function filterByCreationTime<T extends { _creationTime: number }>(
-	items: T[],
-	range: DateRange
-): T[] {
-	return items.filter(
-		(item) =>
-			item._creationTime >= range.start && item._creationTime <= range.end
-	);
-}
-
-/**
- * Filter items by a timestamp field within a date range
- */
-export function filterByTimestamp<T extends Record<string, unknown>>(
-	items: T[],
-	field: keyof T,
-	range: DateRange
-): T[] {
-	return items.filter((item) => {
-		const timestamp = item[field];
-		if (typeof timestamp !== "number") return false;
-		return timestamp >= range.start && timestamp <= range.end;
-	});
-}
-
-/**
- * Filter items by status
- */
-export function filterByStatus<T extends { status: string }>(
-	items: T[],
-	status: string | string[]
-): T[] {
-	const statuses = Array.isArray(status) ? status : [status];
-	return items.filter((item) => statuses.includes(item.status));
-}
-
-// ============================================================================
-// Aggregation Helpers
-// ============================================================================
-
-/**
- * Sum a numeric field across items
- */
-export function sumField<T extends Record<string, unknown>>(
-	items: T[],
-	field: keyof T
-): number {
-	return items.reduce((sum, item) => {
-		const value = item[field];
-		return sum + (typeof value === "number" ? value : 0);
-	}, 0);
-}
-
-/**
- * Count items by a field value
- */
-export function countByField<T extends Record<string, unknown>>(
-	items: T[],
-	field: keyof T
-): Record<string, number> {
-	return items.reduce(
-		(counts, item) => {
-			const value = String(item[field] ?? "unknown");
-			counts[value] = (counts[value] || 0) + 1;
-			return counts;
-		},
-		{} as Record<string, number>
-	);
-}
-
-/**
- * Group items by a field value
- */
-export function groupByField<T extends Record<string, unknown>>(
-	items: T[],
-	field: keyof T
-): Record<string, T[]> {
-	return items.reduce(
-		(groups, item) => {
-			const value = String(item[field] ?? "unknown");
-			if (!groups[value]) {
-				groups[value] = [];
-			}
-			groups[value].push(item);
-			return groups;
-		},
-		{} as Record<string, T[]>
-	);
-}
-
-// ============================================================================
-// Date Grouping for Charts
-// ============================================================================
-
-/**
- * Convert items to chart data points grouped by date
- */
-export function toChartData<T extends { _creationTime: number }>(
-	items: T[],
-	timestampField: keyof T | "_creationTime" = "_creationTime",
-	valueField?: keyof T,
-	timezone?: string
-): Array<{ date: string; count: number; _creationTime: number }> {
-	return items.map((item) => {
-		const timestamp =
-			timestampField === "_creationTime"
-				? item._creationTime
-				: (item[timestampField] as number);
-
-		return {
-			date: DateUtils.toLocalDateString(timestamp, timezone),
-			count: valueField ? (item[valueField] as number) : 1,
-			_creationTime: timestamp,
-		};
-	});
-}
-
-/**
- * Aggregate chart data by date (sum values on same date)
- */
-export function aggregateChartDataByDate(
-	data: Array<{ date: string; count: number; _creationTime: number }>
-): Array<{ date: string; count: number }> {
-	const aggregated = new Map<string, number>();
-
-	for (const point of data) {
-		const current = aggregated.get(point.date) || 0;
-		aggregated.set(point.date, current + point.count);
-	}
-
-	return Array.from(aggregated.entries())
-		.map(([date, count]) => ({ date, count }))
-		.sort((a, b) => a.date.localeCompare(b.date));
-}
-
-// ============================================================================
-// Pagination Helpers
-// ============================================================================
-
-/**
- * Apply offset and limit to an array (basic pagination)
- */
-export function paginate<T>(items: T[], offset: number, limit: number): T[] {
-	return items.slice(offset, offset + limit);
-}
-
-/**
- * Calculate pagination metadata
- */
-export function getPaginationMeta(
-	totalItems: number,
-	offset: number,
-	limit: number
-): {
-	total: number;
-	offset: number;
-	limit: number;
-	hasMore: boolean;
-} {
-	return {
-		total: totalItems,
-		offset,
-		limit,
-		hasMore: offset + limit < totalItems,
-	};
 }

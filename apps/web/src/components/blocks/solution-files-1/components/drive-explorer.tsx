@@ -13,10 +13,12 @@ import {
 	useRef,
 	useState,
 } from "react"
+import { useOrganization } from "@clerk/nextjs"
 import { useConvex, useMutation, useQuery } from "convex/react"
 import { api } from "@onetool/backend/convex/_generated/api"
 import type { Id } from "@onetool/backend/convex/_generated/dataModel"
 import { useFileUpload } from "@/hooks/use-file-upload"
+import { useIsOrgSwitching } from "@/hooks/use-is-org-switching"
 import { useToast } from "@/hooks/use-toast"
 import { usePermissions } from "@/hooks/use-permissions"
 import { logError, getUserFriendlyErrorMessage } from "@/lib/error-logger"
@@ -83,6 +85,7 @@ import {
 	UPLOAD_ACCEPT,
 	UPLOAD_MAX_SIZE,
 	uploadTargetForSelection,
+	type ClientsTree,
 	type DrivePerms,
 	type DriveRow,
 	type FileKind,
@@ -110,6 +113,9 @@ import {
 import { FolderPlusIcon, UploadIcon, MenuIcon, SearchIcon, ListIcon, LayoutGridIcon } from "lucide-react"
 
 const RECENT_LIMIT = 12
+// Mirrors drive.listClientsTree's own page size and ceiling.
+const CLIENTS_PAGE_SIZE = 200
+const CLIENTS_MAX_PAGE = 1000
 const SUGGESTED_FOLDER_LIMIT = 4
 const VIEW_PREFS_KEY = "onetool.org-documents.view"
 
@@ -250,11 +256,45 @@ export function DriveExplorer() {
 		api.organizationDocumentFolders.list,
 		canViewOrg ? {} : "skip"
 	)
-	const clientsTree = useQuery(api.drive.listClientsTree, canViewClients ? {} : "skip")
+	// The Clients tree is paged server-side; "Show older files" widens the page.
+	const [clientsLimit, setClientsLimit] = useState(CLIENTS_PAGE_SIZE)
+	const clientsTree = useQuery(
+		api.drive.listClientsTree,
+		canViewClients ? { limit: clientsLimit } : "skip"
+	)
+	// Widening the page re-runs the query; keep the loaded tree on screen so the
+	// explorer does not flash back to its skeleton on every "Show older files".
+	// This page can stay mounted across an org switch, and the previous org's
+	// tree must not fill the gap while the new one loads. Clerk's org id moves
+	// before Convex re-auths, so the switch window is gated as well as the key.
+	const { organization } = useOrganization()
+	const orgId = organization?.id
+	const isOrgSwitching = useIsOrgSwitching()
+	const loadedClientsTree = useRef<{
+		orgId: string | undefined
+		tree: ClientsTree | null
+	} | null>(null)
+	useEffect(() => {
+		if (clientsTree !== undefined && !isOrgSwitching) {
+			loadedClientsTree.current = { orgId, tree: clientsTree }
+		}
+	}, [clientsTree, orgId, isOrgSwitching])
+	// Gated on the grant so a revoked permission drops the tree instead of
+	// leaving the last loaded one on screen.
+	const retainedTree = loadedClientsTree.current
+	const shownClientsTree =
+		!canViewClients || isOrgSwitching
+			? undefined
+			: clientsTree !== undefined
+				? clientsTree
+				: retainedTree !== null && retainedTree.orgId === orgId
+					? retainedTree.tree
+					: undefined
+
 	const isLoading =
 		permissionsLoading ||
 		(canViewOrg && (documents === undefined || folders === undefined)) ||
-		(canViewClients && clientsTree === undefined)
+		(canViewClients && shownClientsTree === undefined)
 
 	const createDocument = useMutation(api.organizationDocuments.create)
 	const updateDocument = useMutation(api.organizationDocuments.update)
@@ -276,8 +316,8 @@ export function DriveExplorer() {
 
 	// `null` means the query ran without an org, which carries no Clients tree.
 	const clientsRoot = useMemo(
-		() => (clientsTree ? buildClientsSubtree(clientsTree) : undefined),
-		[clientsTree]
+		() => (shownClientsTree ? buildClientsSubtree(shownClientsTree) : undefined),
+		[shownClientsTree]
 	)
 
 	const driveRows = useMemo(
@@ -403,6 +443,12 @@ export function DriveExplorer() {
 		[filteredRows]
 	)
 
+	// Only offered where the paged Clients-tree files are what's on screen.
+	const canLoadOlderFiles =
+		(shownClientsTree?.hasMore ?? false) &&
+		clientsLimit < CLIENTS_MAX_PAGE &&
+		scopeRows.some((row) => row.node.source !== undefined)
+
 	const isDriveRoot =
 		effectiveSelection.type === "folder" &&
 		effectiveSelection.id === DRIVE_ROOT_ID
@@ -519,13 +565,22 @@ export function DriveExplorer() {
 			// the node id, so one name lookup serves them.
 			const namesById = new Map(files.map((row) => [row.node.id, row.node.name]))
 			try {
+				// drive.getFileUrls caps each call at 100 ids and drops the rest.
+				const virtualBatches: (typeof virtualFiles)[] = []
+				for (let i = 0; i < virtualFiles.length; i += 100) {
+					virtualBatches.push(virtualFiles.slice(i, i + 100))
+				}
 				const urls = [
 					...(ids.length > 0
 						? await convex.query(api.organizationDocuments.getDocumentUrls, { ids })
 						: []),
-					...(virtualFiles.length > 0
-						? await convex.query(api.drive.getFileUrls, { files: virtualFiles })
-						: []),
+					...(
+						await Promise.all(
+							virtualBatches.map((files) =>
+								convex.query(api.drive.getFileUrls, { files })
+							)
+						)
+					).flat(),
 				]
 				let missing = 0
 				for (const entry of urls) {
@@ -1497,6 +1552,27 @@ export function DriveExplorer() {
 														<DataGridTable />
 													</DataGridScrollArea>
 												)}
+
+												{canLoadOlderFiles ? (
+													<div className="flex justify-center px-4 pt-1">
+														<Button
+															type="button"
+															variant="outline"
+															size="sm"
+															disabled={clientsTree === undefined}
+															onClick={() =>
+																setClientsLimit((current) =>
+																	Math.min(
+																		current + CLIENTS_PAGE_SIZE,
+																		CLIENTS_MAX_PAGE
+																	)
+																)
+															}
+														>
+															Show older files
+														</Button>
+													</div>
+												) : null}
 											</div>
 										</div>
 									)}

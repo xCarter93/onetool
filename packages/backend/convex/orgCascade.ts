@@ -55,6 +55,17 @@ export const reconcileOrphanedOrgData = internalMutation({
 	handler: async (ctx) => {
 		const orphanOrgIds = new Set<Id<"organizations">>();
 
+		// One get per DISTINCT orgId across all ~48 samples: the naive per-row
+		// get runs ~4,700 reads against Convex's 4,096 index-range ceiling.
+		const orgExists = new Map<Id<"organizations">, boolean>();
+		const exists = async (orgId: Id<"organizations">) => {
+			const cached = orgExists.get(orgId);
+			if (cached !== undefined) return cached;
+			const found = (await ctx.db.get(orgId)) !== null;
+			orgExists.set(orgId, found);
+			return found;
+		};
+
 		// Sweep a bounded sample of each cascade-covered table for orphan orgIds.
 		// A plain bounded sample (not index-scoped) is sufficient for this
 		// rare-orphan backstop; the primary path is the synchronous schedule at
@@ -63,8 +74,7 @@ export const reconcileOrphanedOrgData = internalMutation({
 			const sample = await ctx.db.query(table).take(RECONCILE_SAMPLE);
 			for (const row of sample) {
 				const orgId = row.orgId as Id<"organizations">;
-				const org = await ctx.db.get(orgId);
-				if (org === null) {
+				if (!(await exists(orgId))) {
 					orphanOrgIds.add(orgId);
 				}
 			}
@@ -75,8 +85,7 @@ export const reconcileOrphanedOrgData = internalMutation({
 			.query("organizationMemberships")
 			.take(RECONCILE_SAMPLE);
 		for (const membership of memberships) {
-			const org = await ctx.db.get(membership.orgId);
-			if (org === null) {
+			if (!(await exists(membership.orgId))) {
 				orphanOrgIds.add(membership.orgId);
 				await ctx.db.delete(membership._id);
 			}

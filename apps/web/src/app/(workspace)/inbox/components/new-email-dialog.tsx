@@ -267,7 +267,7 @@ function ClientPicker({
 }) {
 	const [open, setOpen] = useState(false);
 	// Subscribe only while the picker is open or a name needs resolving.
-	const clients = useQuery(api.clients.list, open || value ? {} : "skip");
+	const clients = useQuery(api.clients.listNamesForOrg, open || value ? {} : "skip");
 	const selected = value ? clients?.find((c) => c._id === value) : null;
 
 	return (

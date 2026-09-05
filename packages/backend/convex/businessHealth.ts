@@ -102,25 +102,47 @@ export const get = optionalUserQuery({
 		const now = Date.now();
 		const today = localTodayUtcMidnight(now, timezone);
 
-		// One org-wide read per table; no per-row queries below.
-		const allInvoices = await ctx.db
-			.query("invoices")
-			.withIndex("by_org", (q) => q.eq("orgId", orgId))
-			.collect();
+		// Only "paid" rows reach the output: remainingBalanceLookup and
+		// settledPayments both discard every other status.
 		const allPayments = await ctx.db
 			.query("payments")
-			.withIndex("by_org", (q) => q.eq("orgId", orgId))
-			.collect();
-		const clients = await ctx.db
-			.query("clients")
-			.withIndex("by_org", (q) => q.eq("orgId", orgId))
+			.withIndex("by_status", (q) => q.eq("orgId", orgId).eq("status", "paid"))
 			.collect();
 
-		const clientNames = new Map<Id<"clients">, string>(
-			clients.map((c) => [c._id, c.companyName])
+		// Draft/cancelled invoices can never be outstanding, but one can still
+		// carry a paid payment that recentPayments has to name a client for.
+		const invoiceCandidates = new Map<Id<"invoices">, Doc<"invoices">>();
+		for (const status of ["sent", "overdue", "paid"] as const) {
+			const rows = await ctx.db
+				.query("invoices")
+				.withIndex("by_status", (q) => q.eq("orgId", orgId).eq("status", status))
+				.collect();
+			for (const invoice of rows) invoiceCandidates.set(invoice._id, invoice);
+		}
+		for (const payment of allPayments) {
+			if (invoiceCandidates.has(payment.invoiceId)) continue;
+			const invoice: Doc<"invoices"> | null = await ctx.db.get(
+				payment.invoiceId
+			);
+			if (invoice && invoice.orgId === orgId) {
+				invoiceCandidates.set(invoice._id, invoice);
+			}
+		}
+		// Creation order breaks dueDate ties in needsAttention.
+		const allInvoices = [...invoiceCandidates.values()].sort(
+			(a, b) => a._creationTime - b._creationTime
 		);
-		const nameFor = (clientId: Id<"clients">) =>
-			clientNames.get(clientId) ?? "Client";
+
+		const clientNames = new Map<Id<"clients">, string>();
+		const nameFor = async (clientId: Id<"clients">): Promise<string> => {
+			const cached = clientNames.get(clientId);
+			if (cached !== undefined) return cached;
+			const client = await ctx.db.get(clientId);
+			const name =
+				client && client.orgId === orgId ? client.companyName : "Client";
+			clientNames.set(clientId, name);
+			return name;
+		};
 
 		const invoices = await ctx.applyReadScope(
 			"invoices",
@@ -175,9 +197,9 @@ export const get = optionalUserQuery({
 		if (canViewQuotes) {
 			const allQuotes = await ctx.db
 				.query("quotes")
-				.withIndex("by_org", (q) => q.eq("orgId", orgId))
+				.withIndex("by_status", (q) => q.eq("orgId", orgId).eq("status", "sent"))
 				.collect();
-			const scopedQuotes = await ctx.applyReadScope(
+			sentQuotes = await ctx.applyReadScope(
 				"quotes",
 				allQuotes,
 				(quote, scope) =>
@@ -185,7 +207,6 @@ export const get = optionalUserQuery({
 						? scope.projectIds.has(quote.projectId)
 						: scope.clientIds.has(quote.clientId)
 			);
-			sentQuotes = scopedQuotes.filter((q) => q.status === "sent");
 		}
 
 		// ── Settled money over time ──────────────────────────────────────
@@ -212,13 +233,15 @@ export const get = optionalUserQuery({
 
 		// ── Needs attention: overdue invoices first, then aging sent quotes ──
 		const needsAttention: BusinessHealthPayload["needsAttention"] = [];
-		for (const invoice of [...overdueInvoices].sort(
-			(a, b) => a.dueDate - b.dueDate
-		)) {
+		// Anything past the limit is sliced off below, so don't resolve its name.
+		const attentionInvoices = [...overdueInvoices]
+			.sort((a, b) => a.dueDate - b.dueDate)
+			.slice(0, NEEDS_ATTENTION_LIMIT);
+		for (const invoice of attentionInvoices) {
 			needsAttention.push({
 				kind: "invoice",
 				id: invoice._id,
-				clientName: nameFor(invoice.clientId),
+				clientName: await nameFor(invoice.clientId),
 				label: `Invoice #${invoice.invoiceNumber}`,
 				amount: remainingFor(invoice),
 				dueDate: invoice.dueDate,
@@ -233,7 +256,7 @@ export const get = optionalUserQuery({
 			needsAttention.push({
 				kind: "quote",
 				id: quote._id,
-				clientName: nameFor(quote.clientId),
+				clientName: await nameFor(quote.clientId),
 				label: quote.title
 					? `Quote #${number} — ${quote.title}`
 					: `Quote #${number}`,
@@ -243,20 +266,22 @@ export const get = optionalUserQuery({
 		}
 
 		// ── Recent payments ──────────────────────────────────────────────
-		const recentPayments = [...settled]
-			.sort((a, b) => b.paidAt - a.paidAt)
-			.slice(0, RECENT_PAYMENTS_LIMIT)
-			.map((payment) => {
-				const invoice = invoiceById.get(payment.invoiceId);
-				return {
-					id: payment._id as string,
-					invoiceId: payment.invoiceId as string,
-					clientName: invoice ? nameFor(invoice.clientId) : "Client",
-					amount: payment.paymentAmount,
-					paidAt: payment.paidAt,
-					method: paymentMethod(payment),
-				};
-			});
+		const recentPayments = await Promise.all(
+			[...settled]
+				.sort((a, b) => b.paidAt - a.paidAt)
+				.slice(0, RECENT_PAYMENTS_LIMIT)
+				.map(async (payment) => {
+					const invoice = invoiceById.get(payment.invoiceId);
+					return {
+						id: payment._id as string,
+						invoiceId: payment.invoiceId as string,
+						clientName: invoice ? await nameFor(invoice.clientId) : "Client",
+						amount: payment.paymentAmount,
+						paidAt: payment.paidAt,
+						method: paymentMethod(payment),
+					};
+				})
+		);
 
 		return {
 			outstanding: {

@@ -40,3 +40,28 @@ export function useOrgToday(): number {
 
 	return orgDay(now, timezone);
 }
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+function utcDay(now: number): number {
+	return Math.floor(now / DAY_MS) * DAY_MS;
+}
+
+/**
+ * UTC midnight of the current UTC date — the value the server defaults `today`
+ * to (`DateUtils.startOfDay` runs in Convex's UTC runtime). Passed as a query
+ * arg so every tab shares one cache key while mobile keeps the server default.
+ */
+export function useUtcToday(): number {
+	const [today, setToday] = useState(() => utcDay(Date.now()));
+	useEffect(() => {
+		const id = setInterval(() => {
+			setToday((prev) => {
+				const next = utcDay(Date.now());
+				return next === prev ? prev : next;
+			});
+		}, ROLLOVER_POLL_MS);
+		return () => clearInterval(id);
+	}, []);
+	return today;
+}

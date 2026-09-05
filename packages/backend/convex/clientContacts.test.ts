@@ -1,16 +1,17 @@
-import { convexTest } from "convex-test";
 import { describe, it, expect, beforeEach } from "vitest";
-import { api } from "./_generated/api";
+import { api, internal } from "./_generated/api";
 import { setupConvexTest } from "./test.setup";
 import {
+	addMemberToOrg,
 	createTestOrg,
 	createTestClient,
 	createTestIdentity,
 	createTestClientContact,
+	createTestProject,
 } from "./test.helpers";
 
 describe("ClientContacts", () => {
-	let t: ReturnType<typeof convexTest>;
+	let t: ReturnType<typeof setupConvexTest>;
 
 	beforeEach(() => {
 		t = setupConvexTest();
@@ -103,40 +104,6 @@ describe("ClientContacts", () => {
 					isPrimary: false,
 				})
 			).rejects.toThrowError("Invalid email format");
-		});
-	});
-
-	describe("list", () => {
-		it("should return empty array when no contacts exist", async () => {
-			const { clerkUserId, clerkOrgId } = await t.run(async (ctx) => {
-				return await createTestOrg(ctx);
-			});
-
-			const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
-
-			const contacts = await asUser.query(api.clientContacts.list, {});
-			expect(contacts).toEqual([]);
-		});
-
-		it("should return all contacts for organization", async () => {
-			const { clerkUserId, clerkOrgId } = await t.run(async (ctx) => {
-				const testOrg = await createTestOrg(ctx);
-				const clientId = await createTestClient(ctx, testOrg.orgId);
-				await createTestClientContact(ctx, testOrg.orgId, clientId, {
-					firstName: "John",
-					lastName: "Doe",
-				});
-				await createTestClientContact(ctx, testOrg.orgId, clientId, {
-					firstName: "Jane",
-					lastName: "Smith",
-				});
-				return testOrg;
-			});
-
-			const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
-
-			const contacts = await asUser.query(api.clientContacts.list, {});
-			expect(contacts).toHaveLength(2);
 		});
 	});
 
@@ -437,63 +404,6 @@ describe("ClientContacts", () => {
 		});
 	});
 
-	describe("search", () => {
-		it("should search contacts by name", async () => {
-			const { clerkUserId, clerkOrgId } = await t.run(async (ctx) => {
-				const testOrg = await createTestOrg(ctx);
-				const clientId = await createTestClient(ctx, testOrg.orgId);
-				await createTestClientContact(ctx, testOrg.orgId, clientId, {
-					firstName: "Alice",
-					lastName: "Williams",
-					email: "alice@test.com",
-				});
-				await createTestClientContact(ctx, testOrg.orgId, clientId, {
-					firstName: "Bob",
-					lastName: "Williams",
-					email: "bob@test.com",
-				});
-				await createTestClientContact(ctx, testOrg.orgId, clientId, {
-					firstName: "Charlie",
-					lastName: "Brown",
-					email: "charlie@test.com",
-				});
-				return testOrg;
-			});
-
-			const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
-
-			// Search for "williams" should match Alice Williams and Bob Williams
-			const results = await asUser.query(api.clientContacts.search, {
-				query: "williams",
-			});
-			expect(results).toHaveLength(2);
-		});
-
-		it("should search contacts by email", async () => {
-			const { clerkUserId, clerkOrgId } = await t.run(async (ctx) => {
-				const testOrg = await createTestOrg(ctx);
-				const clientId = await createTestClient(ctx, testOrg.orgId);
-				await createTestClientContact(ctx, testOrg.orgId, clientId, {
-					firstName: "John",
-					email: "john@acme.com",
-				});
-				await createTestClientContact(ctx, testOrg.orgId, clientId, {
-					firstName: "Jane",
-					email: "jane@example.com",
-				});
-				return testOrg;
-			});
-
-			const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
-
-			const results = await asUser.query(api.clientContacts.search, {
-				query: "acme",
-			});
-			expect(results).toHaveLength(1);
-			expect(results[0].firstName).toBe("John");
-		});
-	});
-
 	describe("bulkCreate", () => {
 		it("should create multiple contacts", async () => {
 			const { clerkUserId, clerkOrgId, clientId } = await t.run(async (ctx) => {
@@ -544,44 +454,55 @@ describe("ClientContacts", () => {
 
 	describe("organization isolation", () => {
 		it("should not return contacts from other organizations", async () => {
-			const { clerkUserId1, clerkOrgId1, clerkUserId2, clerkOrgId2 } =
-				await t.run(async (ctx) => {
-					// Create first org with contacts
-					const org1 = await createTestOrg(ctx, {
-						clerkUserId: "user_org1",
-						clerkOrgId: "org_1",
-					});
-					const client1 = await createTestClient(ctx, org1.orgId);
-					await createTestClientContact(ctx, org1.orgId, client1, {
-						firstName: "Org1Contact",
-					});
-
-					// Create second org with contacts
-					const org2 = await createTestOrg(ctx, {
-						clerkUserId: "user_org2",
-						clerkOrgId: "org_2",
-						userName: "User 2",
-						userEmail: "user2@example.com",
-						orgName: "Org 2",
-					});
-					const client2 = await createTestClient(ctx, org2.orgId);
-					await createTestClientContact(ctx, org2.orgId, client2, {
-						firstName: "Org2Contact",
-					});
-
-					return {
-						clerkUserId1: org1.clerkUserId,
-						clerkOrgId1: org1.clerkOrgId,
-						clerkUserId2: org2.clerkUserId,
-						clerkOrgId2: org2.clerkOrgId,
-					};
+			const {
+				clerkUserId1,
+				clerkOrgId1,
+				clerkUserId2,
+				clerkOrgId2,
+				clientId1,
+				clientId2,
+			} = await t.run(async (ctx) => {
+				// Create first org with contacts
+				const org1 = await createTestOrg(ctx, {
+					clerkUserId: "user_org1",
+					clerkOrgId: "org_1",
 				});
+				const client1 = await createTestClient(ctx, org1.orgId);
+				await createTestClientContact(ctx, org1.orgId, client1, {
+					firstName: "Org1Contact",
+				});
+
+				// Create second org with contacts
+				const org2 = await createTestOrg(ctx, {
+					clerkUserId: "user_org2",
+					clerkOrgId: "org_2",
+					userName: "User 2",
+					userEmail: "user2@example.com",
+					orgName: "Org 2",
+				});
+				const client2 = await createTestClient(ctx, org2.orgId);
+				await createTestClientContact(ctx, org2.orgId, client2, {
+					firstName: "Org2Contact",
+				});
+
+				return {
+					clientId1: client1,
+					clientId2: client2,
+					clerkUserId1: org1.clerkUserId,
+					clerkOrgId1: org1.clerkOrgId,
+					clerkUserId2: org2.clerkUserId,
+					clerkOrgId2: org2.clerkOrgId,
+				};
+			});
 
 			// User from org1 should only see org1 contacts
 			const asUser1 = t.withIdentity(
 				createTestIdentity(clerkUserId1, clerkOrgId1)
 			);
-			const org1Contacts = await asUser1.query(api.clientContacts.list, {});
+			const org1Contacts = await asUser1.query(
+				api.clientContacts.listByClient,
+				{ clientId: clientId1 }
+			);
 			expect(org1Contacts).toHaveLength(1);
 			expect(org1Contacts[0].firstName).toBe("Org1Contact");
 
@@ -589,7 +510,10 @@ describe("ClientContacts", () => {
 			const asUser2 = t.withIdentity(
 				createTestIdentity(clerkUserId2, clerkOrgId2)
 			);
-			const org2Contacts = await asUser2.query(api.clientContacts.list, {});
+			const org2Contacts = await asUser2.query(
+				api.clientContacts.listByClient,
+				{ clientId: clientId2 }
+			);
 			expect(org2Contacts).toHaveLength(1);
 			expect(org2Contacts[0].firstName).toBe("Org2Contact");
 		});
@@ -633,6 +557,139 @@ describe("ClientContacts", () => {
 			await expect(
 				asUser2.query(api.clientContacts.get, { id: contactId1 })
 			).rejects.toThrowError("Contact does not belong to your organization");
+		});
+	});
+
+	describe("email normalization", () => {
+		it("normalizeEmailCase lowercases stored emails and is idempotent", async () => {
+			const { contactId, alreadyNormalizedId } = await t.run(async (ctx) => {
+				const org = await createTestOrg(ctx);
+				const clientId = await createTestClient(ctx, org.orgId);
+				const contactId = await createTestClientContact(
+					ctx,
+					org.orgId,
+					clientId,
+					{ email: "  Mixed.Case@Example.COM " }
+				);
+				const alreadyNormalizedId = await createTestClientContact(
+					ctx,
+					org.orgId,
+					clientId,
+					{ email: "plain@example.com" }
+				);
+				return { contactId, alreadyNormalizedId };
+			});
+
+			const first = await t.mutation(
+				internal.clientContacts.normalizeEmailCase,
+				{}
+			);
+			expect(first).toMatchObject({ patched: 1, isDone: true });
+
+			const patched = await t.run(async (ctx) => ({
+				mixed: await ctx.db.get(contactId),
+				plain: await ctx.db.get(alreadyNormalizedId),
+			}));
+			expect(patched.mixed?.email).toBe("mixed.case@example.com");
+			expect(patched.plain?.email).toBe("plain@example.com");
+
+			const second = await t.mutation(
+				internal.clientContacts.normalizeEmailCase,
+				{}
+			);
+			expect(second).toMatchObject({ patched: 0, isDone: true });
+		});
+
+		it("create stores the normalized address", async () => {
+			const { clerkUserId, clerkOrgId, clientId } = await t.run(async (ctx) => {
+				const org = await createTestOrg(ctx);
+				const clientId = await createTestClient(ctx, org.orgId);
+				return { ...org, clientId };
+			});
+
+			const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+			const contactId = await asUser.mutation(api.clientContacts.create, {
+				clientId,
+				firstName: "Jane",
+				lastName: "Doe",
+				email: "Jane.Doe@Example.COM",
+				isPrimary: false,
+			});
+
+			const contact = await asUser.query(api.clientContacts.get, {
+				id: contactId,
+			});
+			expect(contact?.email).toBe("jane.doe@example.com");
+		});
+	});
+
+	describe("derived record scope", () => {
+		it("a scoped member may update a contact only on an in-scope client", async () => {
+			const { clerkOrgId, memberClerkId, inScopeContact, outOfScopeContact } =
+				await t.run(async (ctx) => {
+					const org = await createTestOrg(ctx);
+					const member = await addMemberToOrg(ctx, org.orgId, {
+						clerkUserId: "member_scope",
+					});
+
+					const membership = await ctx.db
+						.query("organizationMemberships")
+						.withIndex("by_org_user", (q) =>
+							q.eq("orgId", org.orgId).eq("userId", member.userId)
+						)
+						.unique();
+					await ctx.db.patch(membership!._id, {
+						permissions: { clients: { level: "modify" } },
+					});
+
+					const inScopeClient = await createTestClient(ctx, org.orgId, {
+						companyName: "In scope",
+					});
+					const outOfScopeClient = await createTestClient(ctx, org.orgId, {
+						companyName: "Out of scope",
+					});
+					// Only the assigned project pulls its client into the member's scope.
+					const assignedProject = await createTestProject(
+						ctx,
+						org.orgId,
+						inScopeClient
+					);
+					await ctx.db.patch(assignedProject, {
+						assignedUserIds: [member.userId],
+					});
+					await createTestProject(ctx, org.orgId, outOfScopeClient);
+
+					return {
+						clerkOrgId: org.clerkOrgId,
+						memberClerkId: member.clerkUserId,
+						inScopeContact: await createTestClientContact(
+							ctx,
+							org.orgId,
+							inScopeClient
+						),
+						outOfScopeContact: await createTestClientContact(
+							ctx,
+							org.orgId,
+							outOfScopeClient
+						),
+					};
+				});
+
+			const asMember = t.withIdentity(
+				createTestIdentity(memberClerkId, clerkOrgId)
+			);
+
+			await asMember.mutation(api.clientContacts.update, {
+				id: inScopeContact,
+				jobTitle: "Allowed",
+			});
+
+			await expect(
+				asMember.mutation(api.clientContacts.update, {
+					id: outOfScopeContact,
+					jobTitle: "Denied",
+				})
+			).rejects.toThrow(/FORBIDDEN/);
 		});
 	});
 });

@@ -908,7 +908,7 @@ export const settingsAndTeamArticles: HelpArticle[] = [
 				blocks: [
 					{
 						type: "paragraph",
-						text: "Alongside the shared library, Documents has a **Clients** section that fills itself in. Any file attached to a client or a project shows up there automatically, organized client by client and then project by project, so you can find a job's paperwork without opening the record. Quote and invoice PDFs your team generates land here too.",
+						text: "Alongside the shared library, Documents has a **Clients** section that fills itself in. Any file attached to a client or a project shows up there automatically, organized client by client and then project by project, so you can find a job's paperwork without opening the record. Quote and invoice PDFs your team generates land here too. The section starts with your newest 200 files; select **Show older files** at the bottom to bring in the rest.",
 					},
 					{
 						type: "note",

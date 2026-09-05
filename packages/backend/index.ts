@@ -10,7 +10,6 @@ export type {
 	MeterUsage,
 } from "./convex/lib/entitlements";
 export type { MyEntitlements } from "./convex/entitlements";
-export type { UsageStats } from "./convex/usage";
 export type { HomeStats } from "./convex/homeStats";
 
 // PLAN_MATRIX is a VALUE export — web imports it via the

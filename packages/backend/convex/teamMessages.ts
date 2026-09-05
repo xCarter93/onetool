@@ -1,8 +1,12 @@
-import { MutationCtx } from "./_generated/server";
+import { MutationCtx, QueryCtx } from "./_generated/server";
 import { v } from "convex/values";
 import { Doc, Id } from "./_generated/dataModel";
-import { getOptionalOrgId, emptyListResult } from "./lib/queries";
-import { optionalUserQuery } from "./lib/factories";
+import { emptyListResult } from "./lib/queries";
+import {
+	isRecordInActorScope,
+	optionalUserQuery,
+	type RecordScopeRef,
+} from "./lib/factories";
 
 /**
  * Team Communication messages.
@@ -69,6 +73,29 @@ export async function insertTeamMessage(
 // Feed is capped to the newest N by createdAt (by_org_entity index's trailing field).
 const TEAM_MESSAGE_FEED_LIMIT = 200;
 
+/** The parent record's scope ref; null when it is missing or in another org. */
+async function entityScopeRef(
+	ctx: QueryCtx,
+	orgId: Id<"organizations">,
+	args: { entityType: TeamMessageEntityType; entityId: string }
+): Promise<RecordScopeRef | null> {
+	if (args.entityType === "client") {
+		const id = ctx.db.normalizeId("clients", args.entityId);
+		const client = id && (await ctx.db.get(id));
+		return client && client.orgId === orgId ? { clientId: client._id } : null;
+	}
+	if (args.entityType === "project") {
+		const id = ctx.db.normalizeId("projects", args.entityId);
+		const project = id && (await ctx.db.get(id));
+		return project && project.orgId === orgId ? { projectId: project._id } : null;
+	}
+	const id = ctx.db.normalizeId("quotes", args.entityId);
+	const quote = id && (await ctx.db.get(id));
+	return quote && quote.orgId === orgId
+		? { projectId: quote.projectId, clientId: quote.clientId }
+		: null;
+}
+
 /**
  * List the newest 200 Team Communication messages for a specific entity, with
  * author identity resolved for rendering.
@@ -83,8 +110,25 @@ export const listByEntity = optionalUserQuery({
 		entityId: v.string(),
 	},
 	handler: async (ctx, args): Promise<TeamMessageFeedItem[]> => {
-		const orgId = await getOptionalOrgId(ctx);
+		const orgId = ctx.orgId;
 		if (!orgId) return emptyListResult<TeamMessageFeedItem>();
+
+		// Team chat follows the parent entity's view grant (as messageAttachments does).
+		const entityObject = (
+			{ client: "clients", project: "projects", quote: "quotes" } as const
+		)[args.entityType];
+		if (!(await ctx.gateRead(entityObject))) {
+			return emptyListResult<TeamMessageFeedItem>();
+		}
+		// Record scope too: a scoped member sees only assigned records' chat.
+		const scopeRef = await entityScopeRef(ctx, orgId, args);
+		if (!scopeRef) return emptyListResult<TeamMessageFeedItem>();
+		if (
+			!(await ctx.hasAllRecords(entityObject)) &&
+			!(await isRecordInActorScope(ctx, ctx.user._id, orgId, scopeRef))
+		) {
+			return emptyListResult<TeamMessageFeedItem>();
+		}
 
 		const messages = await ctx.db
 			.query("teamMessages")
@@ -97,6 +141,28 @@ export const listByEntity = optionalUserQuery({
 			.order("desc")
 			.take(TEAM_MESSAGE_FEED_LIMIT);
 
+		// A feed page repeats a few authors across many rows, and an automation
+		// doc carries its whole node graph — resolve each distinct id once.
+		const userCache = new Map<Id<"users">, Promise<Doc<"users"> | null>>();
+		const automationCache = new Map<
+			Id<"workflowAutomations">,
+			Promise<Doc<"workflowAutomations"> | null>
+		>();
+		const getUser = (id: Id<"users">) => {
+			const cached = userCache.get(id);
+			if (cached) return cached;
+			const pending = ctx.db.get(id);
+			userCache.set(id, pending);
+			return pending;
+		};
+		const getAutomation = (id: Id<"workflowAutomations">) => {
+			const cached = automationCache.get(id);
+			if (cached) return cached;
+			const pending = ctx.db.get(id);
+			automationCache.set(id, pending);
+			return pending;
+		};
+
 		const items = await Promise.all(
 			messages.map(async (m): Promise<TeamMessageFeedItem> => {
 				let authorName = "Automation";
@@ -104,7 +170,7 @@ export const listByEntity = optionalUserQuery({
 				let authorUserId: Id<"users"> | null = null;
 
 				if (m.authorType === "user" && m.authorUserId) {
-					const author: Doc<"users"> | null = await ctx.db.get(m.authorUserId);
+					const author: Doc<"users"> | null = await getUser(m.authorUserId);
 					if (author) {
 						authorUserId = author._id;
 						authorName = author.name;
@@ -113,9 +179,8 @@ export const listByEntity = optionalUserQuery({
 						authorName = "Unknown user";
 					}
 				} else if (m.authorType === "automation" && m.automationId) {
-					const automation: Doc<"workflowAutomations"> | null = await ctx.db.get(
-						m.automationId
-					);
+					const automation: Doc<"workflowAutomations"> | null =
+						await getAutomation(m.automationId);
 					authorName = automation?.name ?? "Automation";
 				}
 

@@ -6,6 +6,7 @@ import { ConvexError, v } from "convex/values";
 import { Doc, Id } from "./_generated/dataModel";
 import { ActivityHelpers } from "./lib/activities";
 import { remainingBalanceLookup } from "./lib/paymentInsights";
+import { nextInvoiceNumber, reserveInvoiceNumber } from "./lib/orgCounters";
 import { ensureFullPaymentRow } from "./lib/payments";
 import { transitionInvoice } from "./lib/invoiceTransitions";
 import {
@@ -141,23 +142,48 @@ export const list = optionalUserQuery({
 
 		let invoices: InvoiceDocument[];
 
+		// status wins the index because it is the only filter that can't be
+		// re-derived cheaply; the others still narrow in JS below so every
+		// combination keeps today's AND semantics. Each index ends in
+		// _creationTime, so .order("desc") IS the newest-first order.
+		if (args.clientId) {
+			await validateClientAccess(ctx, args.clientId, orgId);
+		}
+
 		if (args.status) {
 			invoices = await ctx.db
 				.query("invoices")
 				.withIndex("by_status", (q) =>
 					q.eq("orgId", orgId).eq("status", args.status!)
 				)
+				.order("desc")
 				.collect();
+		} else if (args.projectId) {
+			const projectId = args.projectId;
+			invoices = await ctx.db
+				.query("invoices")
+				.withIndex("by_project", (q) => q.eq("projectId", projectId))
+				.order("desc")
+				.collect();
+			// by_project is not org-scoped; a foreign projectId must still yield [].
+			invoices = invoices.filter((invoice) => invoice.orgId === orgId);
+		} else if (args.clientId) {
+			invoices = await ctx.db
+				.query("invoices")
+				.withIndex("by_client", (q) => q.eq("clientId", args.clientId!))
+				.order("desc")
+				.collect();
+			invoices = invoices.filter((invoice) => invoice.orgId === orgId);
 		} else {
 			invoices = await ctx.db
 				.query("invoices")
 				.withIndex("by_org", (q) => q.eq("orgId", orgId))
+				.order("desc")
 				.collect();
 		}
 
-		// Apply additional filters
+		// Whichever filter didn't win the index narrows here.
 		if (args.clientId) {
-			await validateClientAccess(ctx, args.clientId, orgId);
 			invoices = invoices.filter(
 				(invoice) => invoice.clientId === args.clientId
 			);
@@ -175,9 +201,7 @@ export const list = optionalUserQuery({
 		// org's entire invoiceLineItems table on each list call — and it did the
 		// arithmetic in raw floats, so the list could disagree with `get` by a
 		// fraction of a cent.
-		const sorted = invoices.sort((a, b) => b._creationTime - a._creationTime);
-
-		return await ctx.applyReadScope("invoices", sorted, (invoice, scope) =>
+		return await ctx.applyReadScope("invoices", invoices, (invoice, scope) =>
 			invoice.projectId
 				? scope.projectIds.has(invoice.projectId)
 				: scope.clientIds.has(invoice.clientId)
@@ -208,13 +232,10 @@ export const get = optionalUserQuery({
 		// Cross-org invoice (stale bookmark, shared link, or org switch): degrade
 		// to an empty state instead of throwing an uncaught org-mismatch error.
 		if (!invoice) return null;
-		await ctx.requireRecordScope("invoices", () =>
-			ctx.actorScope().then((s) =>
-				invoice.projectId
-					? s.projectIds.has(invoice.projectId)
-					: s.clientIds.has(invoice.clientId)
-			)
-		);
+		await ctx.requireRecordScope("invoices", {
+			projectId: invoice.projectId,
+			clientId: invoice.clientId,
+		});
 
 		// Calculate totals from line items. "stored" so an invoice that never had
 		// line items shows the amount payment validation enforces (payments.ts)
@@ -356,6 +377,7 @@ export const create = userMutation({
 				message: "Invoice number is required",
 			});
 		}
+		await reserveInvoiceNumber(ctx, ctx.orgId, args.invoiceNumber);
 
 		// Validate financial values
 		if (args.subtotal < 0) {
@@ -501,13 +523,10 @@ export const update = userMutation({
 		// Get current invoice to check for status changes
 		const currentInvoice = await ctx.orgEntity("invoices", id);
 		const oldStatus = currentInvoice.status;
-		await ctx.requireRecordScope("invoices", () =>
-			ctx.actorScope().then((s) =>
-				currentInvoice.projectId
-					? s.projectIds.has(currentInvoice.projectId)
-					: s.clientIds.has(currentInvoice.clientId)
-			)
-		);
+		await ctx.requireRecordScope("invoices", {
+			projectId: currentInvoice.projectId,
+			clientId: currentInvoice.clientId,
+		});
 
 		// Paired discount fields are validated on the merged result, so patching
 		// one half can't bypass a rule or trip one the merged invoice satisfies.
@@ -622,13 +641,10 @@ export const sendToClient = userMutation({
 	handler: async (ctx, args): Promise<InvoiceId> => {
 		await ctx.requireLevel("invoices", "modify");
 		const invoice = await ctx.orgEntity("invoices", args.id);
-		await ctx.requireRecordScope("invoices", () =>
-			ctx.actorScope().then((s) =>
-				invoice.projectId
-					? s.projectIds.has(invoice.projectId)
-					: s.clientIds.has(invoice.clientId)
-			)
-		);
+		await ctx.requireRecordScope("invoices", {
+			projectId: invoice.projectId,
+			clientId: invoice.clientId,
+		});
 
 		if (invoice.status === "paid" || invoice.status === "cancelled") {
 			throw new ConvexError({
@@ -884,13 +900,10 @@ export const getPortalLink = userQuery({
 	handler: async (ctx, args): Promise<string | null> => {
 		await ctx.requireLevel("invoices", "view");
 		const invoice = await ctx.orgEntity("invoices", args.id);
-		await ctx.requireRecordScope("invoices", () =>
-			ctx.actorScope().then((s) =>
-				invoice.projectId
-					? s.projectIds.has(invoice.projectId)
-					: s.clientIds.has(invoice.clientId)
-			)
-		);
+		await ctx.requireRecordScope("invoices", {
+			projectId: invoice.projectId,
+			clientId: invoice.clientId,
+		});
 		const client = await ctx.db.get(invoice.clientId);
 		if (!client || client.orgId !== invoice.orgId || !client.portalAccessId) {
 			return null;
@@ -919,13 +932,10 @@ export const markPaid = userMutation({
 	handler: async (ctx, args): Promise<InvoiceId> => {
 		await ctx.requireLevel("invoices", "modify");
 		const invoice = await ctx.orgEntity("invoices", args.id);
-		await ctx.requireRecordScope("invoices", () =>
-			ctx.actorScope().then((s) =>
-				invoice.projectId
-					? s.projectIds.has(invoice.projectId)
-					: s.clientIds.has(invoice.clientId)
-			)
-		);
+		await ctx.requireRecordScope("invoices", {
+			projectId: invoice.projectId,
+			clientId: invoice.clientId,
+		});
 
 		if (invoice.status === "paid") {
 			throw new ConvexError({
@@ -960,13 +970,10 @@ export const remove = userMutation({
 		await ctx.requireLevel("invoices", "delete");
 		// Validate access + scope before any deletes (checks-before-writes).
 		const invoice = await ctx.orgEntity("invoices", args.id);
-		await ctx.requireRecordScope("invoices", () =>
-			ctx.actorScope().then((s) =>
-				invoice.projectId
-					? s.projectIds.has(invoice.projectId)
-					: s.clientIds.has(invoice.clientId)
-			)
-		);
+		await ctx.requireRecordScope("invoices", {
+			projectId: invoice.projectId,
+			clientId: invoice.clientId,
+		});
 
 		// Delete line items first
 		const lineItems = await ctx.db
@@ -990,13 +997,14 @@ export const remove = userMutation({
  * so the frontend can display accurate urgency labels.
  */
 export const getOverdue = optionalUserQuery({
-	args: {},
-	handler: async (ctx) => {
+	// Callers pass a day-rounded `now` so the result is cacheable.
+	args: { now: v.optional(v.number()) },
+	handler: async (ctx, args) => {
 		const orgId = ctx.orgId;
 		if (!orgId) return [];
 		await ctx.requireLevel("invoices", "view");
 
-		const now = Date.now();
+		const now = args.now ?? Date.now();
 		const today = localTodayUtcMidnight(
 			now,
 			await getOrgTimezoneById(ctx, orgId)
@@ -1016,19 +1024,20 @@ export const getOverdue = optionalUserQuery({
 
 		const allInvoices = [...invoices, ...overdueInvoices];
 
-		// Fetch all payments for this org in a single query to avoid N+1
-		const allPayments = await ctx.db
-			.query("payments")
-			.withIndex("by_org", (q) => q.eq("orgId", orgId))
-			.collect();
-
-		// Group payments by invoiceId
-		const paymentsByInvoice = new Map<string, typeof allPayments>();
-		for (const p of allPayments) {
-			const list = paymentsByInvoice.get(p.invoiceId) ?? [];
-			list.push(p);
-			paymentsByInvoice.set(p.invoiceId, list);
-		}
+		// Per-invoice reads, not the org's whole payments table: this widget only
+		// ever needs the sent+overdue set.
+		const paymentsPerInvoice = await Promise.all(
+			allInvoices.map((invoice) =>
+				ctx.db
+					.query("payments")
+					.withIndex("by_invoice", (q) => q.eq("invoiceId", invoice._id))
+					.collect()
+			)
+		);
+		const allPayments = paymentsPerInvoice.flat();
+		const paymentsByInvoice = new Map<string, typeof allPayments>(
+			allInvoices.map((invoice, i) => [invoice._id, paymentsPerInvoice[i]])
+		);
 
 		// Filter to invoices that need attention and enrich with earliest payment
 		// due date plus the balance still owed (totals overstate partial payments).
@@ -1084,50 +1093,16 @@ export const recalculateTotals = userMutation({
 		await ctx.requireLevel("invoices", "modify");
 		// Validate access
 		const invoice = await ctx.orgEntity("invoices", args.id);
-		await ctx.requireRecordScope("invoices", () =>
-			ctx.actorScope().then((s) =>
-				invoice.projectId
-					? s.projectIds.has(invoice.projectId)
-					: s.clientIds.has(invoice.clientId)
-			)
-		);
+		await ctx.requireRecordScope("invoices", {
+			projectId: invoice.projectId,
+			clientId: invoice.clientId,
+		});
 
 		// Recompute + persist totals and keep aggregates in step
 		await syncInvoiceTotals(ctx, args.id);
 	},
 });
 
-/**
- * Generate next invoice number for organization
- */
-export const generateInvoiceNumber = userMutation({
-	args: {},
-	handler: async (ctx): Promise<string> => {
-		await ctx.requireLevel("invoices", "view");
-		// Get all invoices for this organization
-		const orgInvoices = await ctx.db
-			.query("invoices")
-			.withIndex("by_org", (q) => q.eq("orgId", ctx.orgId))
-			.collect();
-
-		// Find the maximum invoice number
-		const maxNumber = orgInvoices.reduce((max, inv) => {
-			const match = inv.invoiceNumber.match(/INV-(\d{6})/);
-			if (match) {
-				const num = parseInt(match[1]);
-				return num > max ? num : max;
-			}
-			return max;
-		}, 0);
-
-		// Return next number with proper padding
-		return `INV-${String(maxNumber + 1).padStart(6, "0")}`;
-	},
-});
-
-/**
- * Create invoice from quote
- */
 /**
  * The invoice created from a quote, if any — drives mobile's "View invoice"
  * CTA and hasInvoice capability without the drawer's heavy getPreview.
@@ -1184,22 +1159,7 @@ export const createFromQuote = userMutation({
 			});
 		}
 
-		// Generate invoice number automatically
-		const orgInvoices = await ctx.db
-			.query("invoices")
-			.withIndex("by_org", (q) => q.eq("orgId", ctx.orgId))
-			.collect();
-
-		const maxNumber = orgInvoices.reduce((max, inv) => {
-			const match = inv.invoiceNumber.match(/INV-(\d{6})/);
-			if (match) {
-				const num = parseInt(match[1]);
-				return num > max ? num : max;
-			}
-			return max;
-		}, 0);
-
-		const invoiceNumber = `INV-${String(maxNumber + 1).padStart(6, "0")}`;
+		const invoiceNumber = await nextInvoiceNumber(ctx, ctx.orgId);
 
 		// Default dates are calendar dates (UTC-midnight epochs), not instants —
 		// today / today+30d as seen from the org timezone.
@@ -1287,14 +1247,12 @@ export const createFromQuote = userMutation({
 			});
 		}
 
-		// Calculate accurate totals from the copied line items
-		const { subtotal, total } = await calculateInvoiceTotals(ctx, invoiceId);
-
-		// Update invoice with calculated totals (overwrite the copied quote values)
-		await ctx.db.patch(invoiceId, {
-			subtotal,
-			total,
-		});
+		// Overwrite the copied quote values; under quote pricing taxAmount is derived too.
+		const { subtotal, taxAmount, total } = await calculateInvoiceTotals(
+			ctx,
+			invoiceId
+		);
+		await ctx.db.patch(invoiceId, { subtotal, taxAmount, total });
 
 		// Log activity with updated totals
 		const invoice = await ctx.db.get(invoiceId);
@@ -1352,13 +1310,10 @@ export const getWithPayments = optionalUserQuery({
 		// Cross-org invoice (stale bookmark, shared link, or org switch): degrade
 		// to an empty state instead of throwing an uncaught org-mismatch error.
 		if (!invoice) return null;
-		await ctx.requireRecordScope("invoices", () =>
-			ctx.actorScope().then((s) =>
-				invoice.projectId
-					? s.projectIds.has(invoice.projectId)
-					: s.clientIds.has(invoice.clientId)
-			)
-		);
+		await ctx.requireRecordScope("invoices", {
+			projectId: invoice.projectId,
+			clientId: invoice.clientId,
+		});
 
 		// Calculate totals from line items ("stored" fallback — see invoices.get).
 		const { subtotal, total } = await calculateInvoiceTotals(ctx, args.id, {
@@ -1462,7 +1417,8 @@ interface InvoicePreview {
  * payment schedule with a summary, and returns the last 7 days of activity.
  */
 export const getPreview = optionalUserQuery({
-	args: { id: v.id("invoices") },
+	// Callers pass a day-rounded `now` so the result is cacheable.
+	args: { id: v.id("invoices"), now: v.optional(v.number()) },
 	handler: async (ctx, args: any): Promise<InvoicePreview | null> => {
 		const orgId = ctx.orgId;
 		if (!orgId) return null;
@@ -1484,13 +1440,10 @@ export const getPreview = optionalUserQuery({
 		}
 		// Cross-org invoice: degrade to an empty state instead of throwing.
 		if (!invoice) return null;
-		await ctx.requireRecordScope("invoices", () =>
-			ctx.actorScope().then((s) =>
-				invoice.projectId
-					? s.projectIds.has(invoice.projectId)
-					: s.clientIds.has(invoice.clientId)
-			)
-		);
+		await ctx.requireRecordScope("invoices", {
+			projectId: invoice.projectId,
+			clientId: invoice.clientId,
+		});
 
 		// Recompute total from line items (source of truth; stored total can be
 		// stale). Reuse the shared helper so discount/tax logic can't diverge.
@@ -1593,7 +1546,7 @@ export const getPreview = optionalUserQuery({
 
 		// Recent activity for this invoice (last 7 days). Activities are keyed
 		// generically by entityType/entityId, so query by_entity then filter.
-		const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
+		const cutoff = (args.now ?? Date.now()) - 7 * 24 * 60 * 60 * 1000;
 		const activityRows = await ctx.db
 			.query("activities")
 			.withIndex("by_entity", (q: any) =>

@@ -9,7 +9,6 @@ import {
 	projectCountsAggregate,
 	quoteCountsAggregate,
 	invoiceRevenueAggregate,
-	invoiceCountsAggregate,
 } from "./aggregates";
 import { dollarsToCents } from "./lib/money";
 
@@ -17,7 +16,7 @@ import { dollarsToCents } from "./lib/money";
  * Regression coverage for aggregate maintenance on write paths that patch or
  * delete documents keyed by an aggregate.
  *
- * `invoiceRevenueAggregate` / `invoiceCountsAggregate` sort on
+ * `invoiceRevenueAggregate` sorts on
  * [status, paidAt || 0]; `quoteCountsAggregate` on [status, approvedAt || 0].
  * A write path that patches status/paidAt (or deletes a row) without calling
  * the matching AggregateHelpers leaves a phantom entry under the OLD key, so
@@ -64,7 +63,7 @@ describe("aggregate maintenance", () => {
 
 	const invoiceCountFor = (orgId: Id<"organizations">, status: string) =>
 		t.run((ctx) =>
-			invoiceCountsAggregate.count(ctx, {
+			invoiceRevenueAggregate.count(ctx, {
 				namespace: orgId,
 				bounds: { prefix: [status] },
 			})
@@ -87,7 +86,7 @@ describe("aggregate maintenance", () => {
 		);
 
 	const totalInvoiceCount = (orgId: Id<"organizations">) =>
-		t.run((ctx) => invoiceCountsAggregate.count(ctx, { namespace: orgId }));
+		t.run((ctx) => invoiceRevenueAggregate.count(ctx, { namespace: orgId }));
 
 	const totalInvoiceRevenue = (orgId: Id<"organizations">) =>
 		t.run((ctx) => invoiceRevenueAggregate.sum(ctx, { namespace: orgId }));

@@ -327,7 +327,8 @@ interface ProjectPreview {
  * totals can be stale), and returns the project's activity from the last 7 days.
  */
 export const getPreview = optionalUserQuery({
-	args: { id: v.id("projects") },
+	// `now` pins the activity window to a caller-rounded instant so the result is cacheable.
+	args: { id: v.id("projects"), now: v.optional(v.number()) },
 	handler: async (ctx, args: any): Promise<ProjectPreview | null> => {
 		const orgId = ctx.orgId;
 		if (!orgId) return null;
@@ -477,7 +478,7 @@ export const getPreview = optionalUserQuery({
 
 		// Recent activity for this project (last 7 days). Activities are keyed
 		// generically by entityType/entityId, so query by_entity then filter.
-		const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
+		const cutoff = (args.now ?? Date.now()) - 7 * 24 * 60 * 60 * 1000;
 		const activityRows = await ctx.db
 			.query("activities")
 			.withIndex("by_entity", (q: any) =>
@@ -604,140 +605,6 @@ export const create = userMutation({
 		}
 
 		return projectId;
-	},
-});
-
-/**
- * Bulk create projects from CSV import
- */
-export const bulkCreate = userMutation({
-	args: {
-		projects: v.array(
-			v.object({
-				clientId: v.optional(v.id("clients")),
-				clientName: v.optional(v.string()), // For lookup if clientId not provided
-				title: v.string(),
-				description: v.optional(v.string()),
-				projectNumber: v.optional(v.string()),
-				status: v.union(
-					v.literal("planned"),
-					v.literal("in-progress"),
-					v.literal("completed"),
-					v.literal("cancelled")
-				),
-				projectType: v.union(v.literal("one-off"), v.literal("recurring")),
-				startDate: v.optional(v.number()),
-				endDate: v.optional(v.number()),
-				assignedUserIds: v.optional(v.array(v.id("users"))),
-			})
-		),
-	},
-	handler: async (
-		ctx: UserMutationCtx,
-		args: any
-	): Promise<Array<{ success: boolean; id?: ProjectId; error?: string }>> => {
-		await ctx.requireLevel("projects", "modify");
-
-		const results: Array<{
-			success: boolean;
-			id?: ProjectId;
-			error?: string;
-		}> = [];
-
-		const userOrgId = ctx.orgId;
-
-		for (const projectData of args.projects) {
-			try {
-				// Validate required fields
-				if (!projectData.title || !projectData.title.trim()) {
-					results.push({
-						success: false,
-						error: "Project title is required",
-					});
-					continue;
-				}
-
-				// Resolve clientId if clientName is provided instead
-				let clientId = projectData.clientId;
-				if (!clientId && projectData.clientName) {
-					const clients = await ctx.db
-						.query("clients")
-						.withIndex("by_org", (q: any) => q.eq("orgId", userOrgId))
-						.collect();
-
-					const matchedClient = clients.find(
-						(c: any) =>
-							c.companyName.toLowerCase() ===
-							projectData.clientName!.toLowerCase()
-					);
-
-					if (matchedClient) {
-						clientId = matchedClient._id;
-					} else {
-						results.push({
-							success: false,
-							error: `Client "${projectData.clientName}" not found`,
-						});
-						continue;
-					}
-				}
-
-				if (!clientId) {
-					results.push({
-						success: false,
-						error: "Client ID or client name is required",
-					});
-					continue;
-				}
-
-				// Validate dates if provided
-				if (
-					projectData.startDate &&
-					projectData.endDate &&
-					projectData.startDate > projectData.endDate
-				) {
-					results.push({
-						success: false,
-						error: "Start date cannot be after end date",
-					});
-					continue;
-				}
-
-				// Create the project
-				// Omit clientName as it's only used for lookup, not stored in the project
-				// eslint-disable-next-line @typescript-eslint/no-unused-vars
-				const { clientName, ...projectCreateData } = projectData;
-				const assignedUserIds = await resolveScopedCreateAssignees(
-					ctx,
-					projectCreateData.assignedUserIds
-				);
-				const projectId = await createProjectWithOrg(ctx, {
-					...projectCreateData,
-					clientId,
-					assignedUserIds,
-					createdByUserId: ctx.user._id,
-				});
-
-				// Get the created project for activity logging
-				const project = await ctx.db.get(projectId);
-				if (project) {
-					await ActivityHelpers.projectCreated(ctx, project as ProjectDocument);
-				}
-
-				results.push({
-					success: true,
-					id: projectId,
-				});
-			} catch (error) {
-				results.push({
-					success: false,
-					error:
-						error instanceof Error ? error.message : "Unknown error occurred",
-				});
-			}
-		}
-
-		return results;
 	},
 });
 
@@ -1059,8 +926,10 @@ export const search = optionalUserQuery({
  * Get project statistics for dashboard
  */
 export const getStats = optionalUserQuery({
-	args: {},
-	handler: async (ctx): Promise<ProjectStats> => {
+	// Round `now` to the minute at most: a day-rounded value drops projects whose
+	// endDate is today's midnight out of both the overdue and upcoming buckets.
+	args: { now: v.optional(v.number()) },
+	handler: async (ctx, args): Promise<ProjectStats> => {
 		const orgId = ctx.orgId;
 		if (!orgId) {
 			return createEmptyProjectStats();
@@ -1090,7 +959,7 @@ export const getStats = optionalUserQuery({
 			overdue: 0,
 		};
 
-		const now = Date.now();
+		const now = args.now ?? Date.now();
 		const nextWeek = DateUtils.addDays(now, 7);
 
 		projects.forEach((project: any) => {
@@ -1120,100 +989,5 @@ export const getStats = optionalUserQuery({
 		});
 
 		return stats;
-	},
-});
-
-/**
- * Get projects assigned to a specific user
- */
-// TODO: Candidate for deletion if confirmed unused.
-export const getByAssignee = optionalUserQuery({
-	args: { userId: v.id("users") },
-	handler: async (ctx, args: any): Promise<ProjectDocument[]> => {
-		const orgId = ctx.orgId;
-		if (!orgId) return emptyListResult();
-		await ctx.requireLevel("projects", "view");
-
-		// Validate user belongs to organization
-		await validateUserAccess(ctx, [args.userId], orgId);
-
-
-		const projects = await ctx.db
-			.query("projects")
-			.withIndex("by_org", (q: any) => q.eq("orgId", orgId))
-			.collect();
-
-		// Filter projects where user is assigned
-		let filteredProjects = projects.filter(
-			(project: any) =>
-				project.assignedUserIds && project.assignedUserIds.includes(args.userId)
-		);
-
-		filteredProjects = await ctx.scopedToActor("projects", filteredProjects, (project) => project.assignedUserIds);
-
-		return filteredProjects;
-	},
-});
-
-/**
- * Get projects with upcoming deadlines
- */
-// TODO: Candidate for deletion if confirmed unused.
-export const getUpcomingDeadlines = optionalUserQuery({
-	args: { days: v.optional(v.number()) },
-	handler: async (ctx, args: any): Promise<ProjectDocument[]> => {
-		const orgId = ctx.orgId;
-		if (!orgId) return emptyListResult();
-		await ctx.requireLevel("projects", "view");
-
-		const daysAhead = args.days || 7;
-
-		let projects = await ctx.db
-			.query("projects")
-			.withIndex("by_org", (q: any) => q.eq("orgId", orgId))
-			.collect();
-
-		projects = await ctx.scopedToActor("projects", projects, (project) => project.assignedUserIds);
-
-		const now = Date.now();
-		const deadline = DateUtils.addDays(now, daysAhead);
-
-		return projects.filter(
-			(project: ProjectDocument) =>
-				project.endDate &&
-				project.endDate <= deadline &&
-				project.endDate > now &&
-				project.status !== "completed" &&
-				project.status !== "cancelled"
-		);
-	},
-});
-
-/**
- * Get overdue projects
- */
-// TODO: Candidate for deletion if confirmed unused.
-export const getOverdue = optionalUserQuery({
-	args: {},
-	handler: async (ctx): Promise<ProjectDocument[]> => {
-		const orgId = ctx.orgId;
-		if (!orgId) return emptyListResult();
-		await ctx.requireLevel("projects", "view");
-
-		const projects = await ctx.db
-			.query("projects")
-			.withIndex("by_org", (q: any) => q.eq("orgId", orgId))
-			.collect();
-
-		const now = Date.now();
-
-		const overdue = projects.filter(
-			(project: any) =>
-				project.endDate &&
-				project.endDate < now &&
-				project.status !== "completed" &&
-				project.status !== "cancelled"
-		);
-		return ctx.scopedToActor("projects", overdue, (p) => p.assignedUserIds);
 	},
 });

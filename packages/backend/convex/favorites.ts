@@ -2,7 +2,6 @@ import { query } from "./_generated/server";
 import { mutation } from "./lib/triggers";
 import { v } from "convex/values";
 import { getCurrentUserOrgId, getCurrentUserOrThrow } from "./lib/auth";
-import { getOptionalOrgId } from "./lib/queries";
 import { optionalUserQuery, userMutation } from "./lib/factories";
 
 /**
@@ -28,23 +27,21 @@ export const list = optionalUserQuery({
 		// Mid-signup users have a Clerk identity but no activeOrgId claim yet.
 		// Mirrors the pattern used by tasks.getStats, homeStats.getJourneyProgress,
 		// and other layout-level queries that mount before org creation completes.
-		const orgId = await getOptionalOrgId(ctx);
+		const orgId = ctx.orgId;
 		if (!orgId) return [];
+		const user = ctx.user;
 
-		const user = await getCurrentUserOrThrow(ctx);
-
-		// Get all favorites for this user in this org
-		const favorites = await ctx.db
-			.query("userFavorites")
-			.withIndex("by_user_org", (q) =>
-				q.eq("userId", user._id).eq("orgId", orgId)
-			)
-			.collect();
-
-		// Sort by createdAt DESC (most recent first) and limit to 20
-		const sortedFavorites = favorites
-			.sort((a, b) => b.createdAt - a.createdAt)
-			.slice(0, 20);
+		// createdAt is stamped at insert, so the index's creation order is the
+		// same order — take the newest 20 rather than reading the whole list.
+		const sortedFavorites = (
+			await ctx.db
+				.query("userFavorites")
+				.withIndex("by_user_org", (q) =>
+					q.eq("userId", user._id).eq("orgId", orgId)
+				)
+				.order("desc")
+				.take(20)
+		).sort((a, b) => b.createdAt - a.createdAt);
 
 		// Fetch client details for each favorite
 		const favoritesWithClients = await Promise.all(

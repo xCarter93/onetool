@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { useQuery, useMutation } from "convex/react";
+import { useMutation } from "convex/react";
+import { useQuery } from "convex-helpers/react/cache/hooks";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { Id } from "@onetool/backend/convex/_generated/dataModel";
 import { cn } from "@/lib/utils";
@@ -107,7 +108,7 @@ export function TaskSheet({
 	// Form-data queries run only while the sheet is open, and each selector's
 	// query is skipped without the view grant (gated endpoints throw FORBIDDEN).
 	const clients = useQuery(
-		api.clients.list,
+		api.clients.listNamesForOrg,
 		sheetOpen && can("clients") ? {} : "skip"
 	);
 	const projects = useQuery(

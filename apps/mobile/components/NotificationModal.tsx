@@ -7,7 +7,7 @@ import {
 	ActivityIndicator,
 	Dimensions,
 } from "react-native";
-import { useQuery, useMutation } from "convex/react";
+import { useMutation } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { useRouter, type Href } from "expo-router";
 import { colors, spacing, styles, fontFamily } from "@/lib/theme";
@@ -18,6 +18,7 @@ import {
 	stripAuthorIdFromMessage,
 } from "@/lib/notification-utils";
 import { normalizeActionUrl } from "@/lib/push-deeplink";
+import { useNotificationData } from "@/lib/use-notification-data";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
 
 const { height: SCREEN_HEIGHT } = Dimensions.get("window");
@@ -33,10 +34,7 @@ export function NotificationModal({
 }: NotificationModalProps) {
 	const router = useRouter();
 
-	// Fetch notifications
-	const notificationData = useQuery(api.notifications.listForCurrentUser, {
-		limit: 50,
-	});
+	const notificationData = useNotificationData();
 
 	const markAsRead = useMutation(api.notifications.markRead);
 

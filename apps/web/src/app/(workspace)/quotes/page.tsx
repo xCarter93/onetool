@@ -56,7 +56,8 @@ import {
 	X,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useQuery, useMutation } from "convex/react";
+import { useMutation } from "convex/react";
+import { useQuery } from "convex-helpers/react/cache/hooks";
 import { todayUtcMidnightMs } from "@/lib/dates";
 import { api } from "@onetool/backend/convex/_generated/api";
 import type { Doc, Id } from "@onetool/backend/convex/_generated/dataModel";
@@ -310,7 +311,7 @@ function QuotesPageContent() {
 	const quotes = useQuery(api.quotes.list, {});
 	// 30-day activity sparkline data, keyed by quote id (presentational).
 	const sparklines = useActivitySparklines("quote");
-	const clients = useQuery(api.clients.list, can("clients") ? {} : "skip");
+	const clients = useQuery(api.clients.listNamesForOrg, can("clients") ? {} : "skip");
 	const projects = useQuery(api.projects.list, can("projects") ? {} : "skip");
 
 	// Combine quotes with client and project data

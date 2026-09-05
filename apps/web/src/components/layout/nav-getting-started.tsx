@@ -110,8 +110,12 @@ function ProgressRing({
 
 export function NavGettingStarted() {
 	const isOrgSwitching = useIsOrgSwitching();
-	const journeyProgress = useQuery(api.homeStats.getJourneyProgress);
 	const { state } = useSidebar();
+	// The collapsed rail renders nothing, so don't hold the subscription open.
+	const journeyProgress = useQuery(
+		api.homeStats.getJourneyProgress,
+		state === "collapsed" ? "skip" : {}
+	);
 	const [isOpen, setIsOpen] = React.useState(false);
 	const checklistId = React.useId();
 

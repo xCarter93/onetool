@@ -39,26 +39,31 @@ export type InboxThread = {
 // ============================================================================
 
 /**
- * Build a lookup of the org's client contacts keyed by lowercased email.
- * `clientContacts` has no email index, so we scan the org's contacts once
- * (via `by_org`) and reuse the map across every thread in the request.
+ * Look up the contacts for the addresses this request renders — one point
+ * lookup each on `by_org_email`, keyed lowercase because the contact write
+ * paths normalize on save.
  */
 async function buildContactIndex(
   ctx: QueryCtx | MutationCtx,
   orgId: Id<"organizations">,
+  participantEmails: string[],
 ): Promise<Map<string, Doc<"clientContacts">>> {
-  const contacts = await ctx.db
-    .query("clientContacts")
-    .withIndex("by_org", (q) => q.eq("orgId", orgId))
-    .collect();
+  const keys = new Set<string>();
+  for (const email of participantEmails) {
+    const key = email.trim().toLowerCase();
+    if (key) keys.add(key);
+  }
 
   const byEmail = new Map<string, Doc<"clientContacts">>();
-  for (const contact of contacts) {
-    if (!contact.email) continue;
-    const key = contact.email.trim().toLowerCase();
-    if (!key || byEmail.has(key)) continue;
-    byEmail.set(key, contact);
-  }
+  await Promise.all(
+    Array.from(keys, async (key) => {
+      const contact = await ctx.db
+        .query("clientContacts")
+        .withIndex("by_org_email", (q) => q.eq("orgId", orgId).eq("email", key))
+        .first();
+      if (contact) byEmail.set(key, contact);
+    }),
+  );
   return byEmail;
 }
 
@@ -171,7 +176,12 @@ export const listThreadsByOrg = optionalUserQuery({
       })
       .slice(0, limit);
 
-    const contactIndex = await buildContactIndex(ctx, orgId);
+    // Only participantEmails[0] is ever rendered (see resolveContact).
+    const contactIndex = await buildContactIndex(
+      ctx,
+      orgId,
+      visibleThreads.flatMap((t) => t.participantEmails.slice(0, 1)),
+    );
     const clientCache = new Map<Id<"clients">, Doc<"clients"> | null>();
 
     return await Promise.all(
@@ -197,7 +207,11 @@ export const getThread = optionalUserQuery({
     const thread = await ctx.db.get(args.threadDocId);
     if (!thread || thread.orgId !== orgId) return null;
 
-    const contactIndex = await buildContactIndex(ctx, orgId);
+    const contactIndex = await buildContactIndex(
+      ctx,
+      orgId,
+      thread.participantEmails.slice(0, 1),
+    );
     const clientCache = new Map<Id<"clients">, Doc<"clients"> | null>();
 
     return await enrichThread(ctx, thread, contactIndex, clientCache);

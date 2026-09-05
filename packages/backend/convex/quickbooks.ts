@@ -320,12 +320,22 @@ export const getConnection = internalQuery({
 	},
 });
 
-/** Cron sweep input: every live connection. Small table — a full scan is fine. */
+const HEALTH_CHECK_SCAN_LIMIT = 1000;
+
+/** Cron sweep input: every live connection. */
 export const listConnectionsForHealthCheck = internalQuery({
 	args: {},
 	handler: async (ctx): Promise<Doc<"quickbooksConnections">[]> => {
-		const all = await ctx.db.query("quickbooksConnections").take(1000);
-		return all.filter((c) => c.status === "connected");
+		const connected = await ctx.db
+			.query("quickbooksConnections")
+			.withIndex("by_status", (q) => q.eq("status", "connected"))
+			.take(HEALTH_CHECK_SCAN_LIMIT);
+		if (connected.length === HEALTH_CHECK_SCAN_LIMIT) {
+			console.warn(
+				"[QuickBooks] health check hit the scan limit — connections beyond it went unrefreshed"
+			);
+		}
+		return connected;
 	},
 });
 
@@ -708,16 +718,16 @@ async function notifySyncFailure(
 	try {
 		const adminIds = await resolveMemberUserIds(ctx, orgId, true);
 		for (const userId of adminIds) {
-			const unread = await ctx.db
+			// Only the newest row can be unread: this is the sole inserter, it
+			// inserts only when none is unread, and nothing marks one unread again.
+			const latest = await ctx.db
 				.query("notifications")
-				.withIndex("by_user_read", (q) =>
-					q.eq("userId", userId).eq("isRead", false)
+				.withIndex("by_user_type", (q) =>
+					q.eq("userId", userId).eq("notificationType", "quickbooks_sync_failed")
 				)
-				.filter((q) =>
-					q.eq(q.field("notificationType"), "quickbooks_sync_failed")
-				)
+				.order("desc")
 				.first();
-			if (unread) continue;
+			if (latest && !latest.isRead) continue;
 			await ctx.db.insert("notifications", {
 				orgId,
 				userId,

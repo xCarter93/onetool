@@ -202,7 +202,12 @@ export interface CommunityDashboard {
 }
 
 export const dashboard = userQuery({
-	args: { days: v.union(v.literal(7), v.literal(30), v.literal(90)) },
+	args: {
+		days: v.union(v.literal(7), v.literal(30), v.literal(90)),
+		// Callers pass a minute-rounded clock so repeated evaluations of the same
+		// subscription share a server cache key; Date.now() never would.
+		now: v.optional(v.number()),
+	},
 	handler: async (ctx, args): Promise<CommunityDashboard> => {
 		await ctx.requireLevel("community", "view");
 
@@ -213,7 +218,7 @@ export const dashboard = userQuery({
 		// the stored view buckets. A rolling "N × 24h" request window would
 		// divide requests by a slightly wider pool of views and understate
 		// conversion, so leads are bucketed with the same key function.
-		const todayKey = DateUtils.toLocalDateString(Date.now(), timezone);
+		const todayKey = DateUtils.toLocalDateString(args.now ?? Date.now(), timezone);
 		const keys = dayKeysEndingAt(todayKey, args.days);
 		const firstKey = keys[0];
 		const previousFirstKey = shiftDayKey(firstKey, -args.days);

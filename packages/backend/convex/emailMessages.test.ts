@@ -166,6 +166,25 @@ describe("EmailMessages", () => {
 			expect(emails[2].subject).toBe("Oldest Email");
 		});
 
+		it("caps the result at `limit`, keeping the newest first", async () => {
+			const { clerkUserId, clerkOrgId, clientId } = await t.run(async (ctx) => {
+				const { orgId, clerkUserId, clerkOrgId } = await createTestOrg(ctx);
+				const clientId = await createTestClient(ctx, orgId);
+				for (const subject of ["Oldest", "Middle", "Newest"]) {
+					await createTestEmailMessage(ctx, orgId, clientId, { subject });
+				}
+				return { clerkUserId, clerkOrgId, clientId };
+			});
+
+			const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+			const emails = await asUser.query(api.emailMessages.listByClient, {
+				clientId,
+				limit: 2,
+			});
+
+			expect(emails.map((e) => e.subject)).toEqual(["Newest", "Middle"]);
+		});
+
 		it("should return empty array when user is not authenticated", async () => {
 			const { clientId } = await t.run(async (ctx) => {
 				const { orgId } = await createTestOrg(ctx);
