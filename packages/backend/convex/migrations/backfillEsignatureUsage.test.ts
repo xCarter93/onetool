@@ -84,4 +84,56 @@ describe("backfillEsignatureUsage", () => {
 			limit: 7,
 		});
 	});
+
+	it("never lowers a meter the live webhook already advanced past the document count", async () => {
+		const now = Date.now();
+		const periodKey = periodKeyFor("calendarMonth", now);
+
+		const org = await t.run(async (ctx) => {
+			const created = await createTestOrg(ctx);
+			const storageId = await ctx.storage.store(new Blob(["pdf"]));
+			await ctx.db.insert("documents", {
+				orgId: created.orgId,
+				documentType: "quote",
+				documentId: "quote_1",
+				storageId,
+				generatedAt: now,
+				version: 1,
+				boldsign: { documentId: "bs_1", status: "Sent", sentTo: [], sentAt: now },
+			});
+			await ctx.db.insert("planUsage", {
+				orgId: created.orgId,
+				meter: "esignatures",
+				periodKey,
+				used: 3,
+			});
+			return created;
+		});
+		const orgWithNoDocs = await t.run(async (ctx) => {
+			const created = await createTestOrg(ctx);
+			await ctx.db.insert("planUsage", {
+				orgId: created.orgId,
+				meter: "esignatures",
+				periodKey,
+				used: 1,
+			});
+			return created;
+		});
+
+		await t.mutation(
+			internal.migrations.backfillEsignatureUsage.backfillEsignatureUsage,
+			{}
+		);
+		const readRow = (orgId: Id<"organizations">) =>
+			t.run((ctx: { db: MutationCtx["db"] }) =>
+				ctx.db
+					.query("planUsage")
+					.withIndex("by_org_meter_period", (q) =>
+						q.eq("orgId", orgId).eq("meter", "esignatures").eq("periodKey", periodKey)
+					)
+					.unique()
+			);
+		expect(await readRow(org.orgId)).toMatchObject({ used: 3 });
+		expect(await readRow(orgWithNoDocs.orgId)).toMatchObject({ used: 1 });
+	});
 });

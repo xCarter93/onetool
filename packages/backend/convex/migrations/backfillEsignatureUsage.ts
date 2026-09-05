@@ -8,8 +8,8 @@ const ORG_PAGE_SIZE = 20;
 /**
  * Seed this month's `esignatures` planUsage row from documents.boldsign.sentAt,
  * which the legacy counter read directly. Without it every free org restarts
- * at 0/5 on deploy. Idempotent: `used` is set to the document count, never
- * incremented, and a bonus already on the row is kept. Run once from the
+ * at 0/5 on deploy. Idempotent: `used` is raised to the document count when
+ * lower, never decremented, and a bonus already on the row is kept. Run once from the
  * dashboard right after deploy: migrations/backfillEsignatureUsage:backfillEsignatureUsage {}.
  */
 export const backfillEsignatureUsage = internalMutation({
@@ -42,7 +42,8 @@ export const backfillEsignatureUsage = internalMutation({
 				)
 				.unique();
 			if (existing) {
-				if (existing.used !== used) await ctx.db.patch(existing._id, { used });
+				// Never lower: a webhook may have consumed the meter since deploy.
+				if (existing.used < used) await ctx.db.patch(existing._id, { used });
 			} else {
 				await ctx.db.insert("planUsage", {
 					orgId: org._id,
