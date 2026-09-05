@@ -13,7 +13,6 @@ import {
 	projectCountsAggregate,
 	quoteCountsAggregate,
 	invoiceRevenueAggregate,
-	invoiceCountsAggregate,
 } from "../aggregates";
 import {
 	clientSearchText,
@@ -46,7 +45,6 @@ triggers.register("clients", clientCountsAggregate.idempotentTrigger());
 triggers.register("projects", projectCountsAggregate.idempotentTrigger());
 triggers.register("quotes", quoteCountsAggregate.idempotentTrigger());
 triggers.register("invoices", invoiceRevenueAggregate.idempotentTrigger());
-triggers.register("invoices", invoiceCountsAggregate.idempotentTrigger());
 
 /**
  * search.ts reads these tables through their `search_text` search index, so the

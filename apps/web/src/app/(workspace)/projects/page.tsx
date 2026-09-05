@@ -57,7 +57,8 @@ import {
 	X,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useQuery, useMutation } from "convex/react";
+import { useMutation } from "convex/react";
+import { useQuery } from "convex-helpers/react/cache/hooks";
 import { useActivitySparklines } from "@/hooks/use-activity-sparklines";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { useIsOrgSwitching } from "@/hooks/use-is-org-switching";
@@ -80,7 +81,7 @@ import { cn } from "@/lib/utils";
 
 // Enhanced project type that includes client information for display
 type ProjectWithClient = Doc<"projects"> & {
-	client?: Doc<"clients">;
+	client?: { _id: Id<"clients">; companyName: string };
 	activity?: number[];
 };
 
@@ -307,7 +308,7 @@ function ProjectsPageContent() {
 	// Fetch projects and clients from Convex
 	const projects = useQuery(api.projects.list, {});
 	// Skip without the clients grant — gated endpoint throws FORBIDDEN otherwise.
-	const clients = useQuery(api.clients.list, can("clients") ? {} : "skip");
+	const clients = useQuery(api.clients.listNamesForOrg, can("clients") ? {} : "skip");
 	const projectStats = useQuery(api.projects.getStats, {});
 	// 30-day activity sparkline data, keyed by project id (presentational).
 	const sparklines = useActivitySparklines("project");

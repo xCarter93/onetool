@@ -8,7 +8,6 @@ import {
 	projectCountsAggregate,
 	quoteCountsAggregate,
 	invoiceRevenueAggregate,
-	invoiceCountsAggregate,
 } from "../aggregates";
 
 /**
@@ -75,7 +74,6 @@ async function clearStep(ctx: MutationCtx, step: Step): Promise<void> {
 			return;
 		case "invoices":
 			await invoiceRevenueAggregate.clearAll(ctx);
-			await invoiceCountsAggregate.clearAll(ctx);
 			return;
 	}
 }
@@ -149,7 +147,6 @@ async function seedPage(
 			for (const doc of page.page) {
 				await record(doc._id, async () => {
 					await invoiceRevenueAggregate.insertIfDoesNotExist(ctx, doc);
-					await invoiceCountsAggregate.insertIfDoesNotExist(ctx, doc);
 				});
 			}
 			return {

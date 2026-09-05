@@ -185,7 +185,7 @@ function IdValueControl({
 	placeholder?: string;
 	invalid?: boolean;
 }) {
-	const clients = useQuery(api.clients.list, refType === "client" ? {} : "skip");
+	const clients = useQuery(api.clients.listNamesForOrg, refType === "client" ? {} : "skip");
 	const projects = useQuery(api.projects.list, refType === "project" ? {} : "skip");
 	const users = useQuery(api.users.listByOrg, refType === "user" ? {} : "skip");
 	const quotes = useQuery(api.quotes.list, refType === "quote" ? {} : "skip");

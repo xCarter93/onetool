@@ -1,7 +1,7 @@
 import { MutationCtx } from "./_generated/server";
 import { v } from "convex/values";
 import { Doc, Id } from "./_generated/dataModel";
-import { getOptionalOrgId, emptyListResult } from "./lib/queries";
+import { emptyListResult } from "./lib/queries";
 import { optionalUserQuery } from "./lib/factories";
 
 /**
@@ -83,8 +83,16 @@ export const listByEntity = optionalUserQuery({
 		entityId: v.string(),
 	},
 	handler: async (ctx, args): Promise<TeamMessageFeedItem[]> => {
-		const orgId = await getOptionalOrgId(ctx);
+		const orgId = ctx.orgId;
 		if (!orgId) return emptyListResult<TeamMessageFeedItem>();
+
+		// Team chat follows the parent entity's view grant (as messageAttachments does).
+		const entityObject = (
+			{ client: "clients", project: "projects", quote: "quotes" } as const
+		)[args.entityType];
+		if (!(await ctx.gateRead(entityObject))) {
+			return emptyListResult<TeamMessageFeedItem>();
+		}
 
 		const messages = await ctx.db
 			.query("teamMessages")
@@ -97,6 +105,28 @@ export const listByEntity = optionalUserQuery({
 			.order("desc")
 			.take(TEAM_MESSAGE_FEED_LIMIT);
 
+		// A feed page repeats a few authors across many rows, and an automation
+		// doc carries its whole node graph — resolve each distinct id once.
+		const userCache = new Map<Id<"users">, Promise<Doc<"users"> | null>>();
+		const automationCache = new Map<
+			Id<"workflowAutomations">,
+			Promise<Doc<"workflowAutomations"> | null>
+		>();
+		const getUser = (id: Id<"users">) => {
+			const cached = userCache.get(id);
+			if (cached) return cached;
+			const pending = ctx.db.get(id);
+			userCache.set(id, pending);
+			return pending;
+		};
+		const getAutomation = (id: Id<"workflowAutomations">) => {
+			const cached = automationCache.get(id);
+			if (cached) return cached;
+			const pending = ctx.db.get(id);
+			automationCache.set(id, pending);
+			return pending;
+		};
+
 		const items = await Promise.all(
 			messages.map(async (m): Promise<TeamMessageFeedItem> => {
 				let authorName = "Automation";
@@ -104,7 +134,7 @@ export const listByEntity = optionalUserQuery({
 				let authorUserId: Id<"users"> | null = null;
 
 				if (m.authorType === "user" && m.authorUserId) {
-					const author: Doc<"users"> | null = await ctx.db.get(m.authorUserId);
+					const author: Doc<"users"> | null = await getUser(m.authorUserId);
 					if (author) {
 						authorUserId = author._id;
 						authorName = author.name;
@@ -113,9 +143,8 @@ export const listByEntity = optionalUserQuery({
 						authorName = "Unknown user";
 					}
 				} else if (m.authorType === "automation" && m.automationId) {
-					const automation: Doc<"workflowAutomations"> | null = await ctx.db.get(
-						m.automationId
-					);
+					const automation: Doc<"workflowAutomations"> | null =
+						await getAutomation(m.automationId);
 					authorName = automation?.name ?? "Automation";
 				}
 

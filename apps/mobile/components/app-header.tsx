@@ -10,11 +10,10 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BlurView } from "expo-blur";
 import { useRouter, type Href } from "expo-router";
 import { useUser } from "@clerk/expo";
-import { useQuery } from "convex/react";
-import { api } from "@onetool/backend/convex/_generated/api";
 import { ArrowLeft, Bell, Plus } from "lucide-react-native";
 import { fontFamily, radii, tokens, tracking, type, useTokens } from "@/lib/theme";
 import { Avatar, HalftoneBg, ScrollFade } from "@/components/ui";
+import { useNotificationData } from "@/lib/use-notification-data";
 
 // Every call site is a pushed record screen ("detail") or an iPad pane
 // ("pane"): the tab roots all mount the ink band (InkTabHeader) instead, so
@@ -76,10 +75,7 @@ export function AppHeader({
 	// Pane mode (iPad panes) renders no bell — so the notifications query must
 	// not run. Skip-gate it on mode !== "pane".
 	const pane = mode === "pane";
-	const notificationData = useQuery(
-		api.notifications.listForCurrentUser,
-		pane ? "skip" : { limit: 1 },
-	);
+	const notificationData = useNotificationData(pane);
 	const unreadCount = notificationData?.unreadCount ?? 0;
 
 	// Measure the header so the brand wash gets a DEFINITE-height box. HalftoneBg /

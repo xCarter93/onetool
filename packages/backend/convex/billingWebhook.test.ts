@@ -325,6 +325,47 @@ describe("billing reconcile", () => {
 		expect(result.stale).toEqual([]);
 	});
 
+	it("the stale scan spans never-synced and long-stale orgs but not fresh ones", async () => {
+		const staleMs = 48 * 60 * 60 * 1000;
+		const now = Date.now();
+		const seeded = await t.run(async (ctx) => {
+			const never = await createTestOrg(ctx, {
+				clerkOrgId: "org_never",
+				clerkUserId: "user_never",
+			});
+			const long = await createTestOrg(ctx, {
+				clerkOrgId: "org_long",
+				clerkUserId: "user_long",
+			});
+			const fresh = await createTestOrg(ctx, {
+				clerkOrgId: "org_fresh",
+				clerkUserId: "user_fresh",
+			});
+			await ctx.db.patch(never.orgId, { clerkSubscriptionId: "sub_never" });
+			await ctx.db.patch(long.orgId, {
+				clerkSubscriptionId: "sub_long",
+				billingSyncedAt: now - staleMs - 1000,
+			});
+			await ctx.db.patch(fresh.orgId, {
+				clerkSubscriptionId: "sub_fresh",
+				billingSyncedAt: now,
+			});
+			return { never: never.orgId, long: long.orgId, fresh: fresh.orgId };
+		});
+
+		const result = await t.query(internal.billingWebhook.listStaleBillingOrgs, {
+			staleMs,
+			limit: 10,
+			cursor: null,
+		});
+		const ids = result.stale.map((o) => o.orgId);
+		expect(ids).toContain(seeded.never);
+		expect(ids).toContain(seeded.long);
+		expect(ids).not.toContain(seeded.fresh);
+		// The beforeEach org has no subscription at all.
+		expect(ids).not.toContain(orgId);
+	});
+
 	it("markBillingSyncAttempt stamps billingSyncedAt so the org leaves the stale list", async () => {
 		await t.run(async (ctx) => {
 			await ctx.db.patch(orgId, { clerkSubscriptionId: "sub_1" });
@@ -425,6 +466,23 @@ describe("billing reconcile", () => {
 				limit: 10,
 				cursor: null,
 			});
+			expect(result.lapsed).toEqual([]);
+		});
+
+		it("a freshly-synced lapsed trial is out of the second pass", async () => {
+			await makeLapsedTrialOrg();
+			await t.run(async (ctx) => {
+				await ctx.db.patch(orgId, { billingSyncedAt: Date.now() });
+			});
+			const result = await t.query(
+				internal.billingWebhook.listLapsedTrialOrgs,
+				{
+					lapsedWithinMs: 48 * HOUR,
+					staleMs: 48 * HOUR,
+					limit: 10,
+					cursor: null,
+				}
+			);
 			expect(result.lapsed).toEqual([]);
 		});
 

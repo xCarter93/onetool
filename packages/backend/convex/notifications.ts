@@ -3,7 +3,6 @@ import { mutation, internalMutation } from "./lib/triggers";
 import { v } from "convex/values";
 import { Doc, Id } from "./_generated/dataModel";
 import { getCurrentUserOrgId } from "./lib/auth";
-import { DateUtils } from "./lib/shared";
 import { requireMembership } from "./lib/memberships";
 import {
 	filterUndefined,
@@ -23,7 +22,7 @@ import {
  * Notification operations
  *
  * Uses shared CRUD utilities from lib/crud.ts for consistent patterns.
- * Notification-specific business logic (validation, stats, mentions) remains here.
+ * Notification-specific business logic (validation, mentions) remains here.
  */
 
 // ============================================================================
@@ -75,244 +74,8 @@ type NotificationDocument = Doc<"notifications">;
 type NotificationId = Id<"notifications">;
 
 // ============================================================================
-// Statistics Types and Helpers
-// ============================================================================
-
-// Interface for notification statistics
-interface NotificationStats {
-	total: number;
-	unread: number;
-	byType: {
-		task_reminder: number;
-		quote_approved: number;
-		invoice_overdue: number;
-		payment_received: number;
-		project_deadline: number;
-		team_assignment: number;
-		client_mention: number;
-		project_mention: number;
-		quote_mention: number;
-		// Stripe webhook lifecycle types.
-		payment_failed: number;
-		dispute_created: number;
-		dispute_resolved: number;
-		charge_refunded: number;
-		refund_failed: number;
-		// Connect lifecycle additions.
-		payout_paid: number;
-		payout_failed: number;
-		capability_degraded: number;
-		bank_account_changed: number;
-		stripe_disconnected: number;
-		// Workflow-automation messages.
-		automation_message: number;
-		// Workflow-automation production failure alerts.
-		automation_failed: number;
-		// QuickBooks sync failure alerts.
-		quickbooks_sync_failed: number;
-		// Signed PDF never arrived after retries were exhausted.
-		boldsign_download_failed: number;
-	};
-	today: number;
-	pending: number; // scheduled but not sent yet
-}
-
-function createEmptyNotificationStats(): NotificationStats {
-	return {
-		total: 0,
-		unread: 0,
-		byType: {
-			task_reminder: 0,
-			quote_approved: 0,
-			invoice_overdue: 0,
-			payment_received: 0,
-			project_deadline: 0,
-			team_assignment: 0,
-			client_mention: 0,
-			project_mention: 0,
-			quote_mention: 0,
-			payment_failed: 0,
-			dispute_created: 0,
-			dispute_resolved: 0,
-			charge_refunded: 0,
-			refund_failed: 0,
-			payout_paid: 0,
-			payout_failed: 0,
-			capability_degraded: 0,
-			bank_account_changed: 0,
-			stripe_disconnected: 0,
-			automation_message: 0,
-			automation_failed: 0,
-			quickbooks_sync_failed: 0,
-			boldsign_download_failed: 0,
-		},
-		today: 0,
-		pending: 0,
-	};
-}
-
-/**
- * Calculate notification statistics from a list of notifications
- */
-function calculateNotificationStats(
-	notifications: NotificationDocument[]
-): NotificationStats {
-	const stats = createEmptyNotificationStats();
-	stats.total = notifications.length;
-
-	const now = Date.now();
-	const todayStart = DateUtils.startOfDay(now);
-	const todayEnd = DateUtils.endOfDay(now);
-
-	notifications.forEach((notification: NotificationDocument) => {
-		// Count unread
-		if (!notification.isRead) {
-			stats.unread++;
-		}
-
-		// Count by type
-		stats.byType[notification.notificationType]++;
-
-		// Count today's notifications
-		if (
-			notification._creationTime >= todayStart &&
-			notification._creationTime <= todayEnd
-		) {
-			stats.today++;
-		}
-
-		// Count pending (scheduled but not sent)
-		if (
-			notification.scheduledFor &&
-			notification.scheduledFor > now &&
-			!notification.sentAt
-		) {
-			stats.pending++;
-		}
-	});
-
-	return stats;
-}
-
-// ============================================================================
 // Queries
 // ============================================================================
-
-/**
- * Get all notifications for a specific user
- */
-// TODO: Candidate for deletion if confirmed unused.
-export const listByUser = optionalUserQuery({
-	args: {
-		userId: v.id("users"),
-		isRead: v.optional(v.boolean()),
-		notificationType: v.optional(
-			v.union(
-				v.literal("task_reminder"),
-				v.literal("quote_approved"),
-				v.literal("invoice_overdue"),
-				v.literal("payment_received"),
-				v.literal("project_deadline"),
-				v.literal("team_assignment")
-			)
-		),
-		limit: v.optional(v.number()),
-	},
-	handler: async (ctx, args): Promise<NotificationDocument[]> => {
-		const orgId = await getOptionalOrgId(ctx);
-		if (!orgId) return emptyListResult();
-
-		// Validate user access
-		await validateUserAccess(ctx, args.userId, orgId);
-
-		let notifications: NotificationDocument[];
-
-		if (args.isRead !== undefined) {
-			notifications = await ctx.db
-				.query("notifications")
-				.withIndex("by_user_read", (q) =>
-					q.eq("userId", args.userId).eq("isRead", args.isRead as boolean)
-				)
-				.collect();
-		} else {
-			// Binding only the index prefix scopes the read to this user's
-			// notifications instead of scanning the whole table.
-			notifications = await ctx.db
-				.query("notifications")
-				.withIndex("by_user_read", (q) => q.eq("userId", args.userId))
-				.collect();
-		}
-
-		// Org scoping: the target user may belong to multiple orgs.
-		notifications = notifications.filter((n) => n.orgId === orgId);
-
-		// Filter by notification type if specified
-		if (args.notificationType) {
-			notifications = notifications.filter(
-				(notification) =>
-					notification.notificationType === args.notificationType
-			);
-		}
-
-		// Sort by creation time (newest first)
-		notifications.sort((a, b) => b._creationTime - a._creationTime);
-
-		// Apply limit if specified
-		if (args.limit) {
-			notifications = notifications.slice(0, args.limit);
-		}
-
-		return notifications;
-	},
-});
-
-/**
- * Get all notifications for the current user's organization
- */
-// TODO: Candidate for deletion if confirmed unused.
-export const list = optionalUserQuery({
-	args: {
-		notificationType: v.optional(
-			v.union(
-				v.literal("task_reminder"),
-				v.literal("quote_approved"),
-				v.literal("invoice_overdue"),
-				v.literal("payment_received"),
-				v.literal("project_deadline"),
-				v.literal("team_assignment")
-			)
-		),
-	},
-	handler: async (ctx, args): Promise<NotificationDocument[]> => {
-		const orgId = await getOptionalOrgId(ctx);
-		if (!orgId) return emptyListResult();
-
-		let notifications: NotificationDocument[];
-
-		if (args.notificationType) {
-			notifications = await ctx.db
-				.query("notifications")
-				.withIndex("by_type", (q) =>
-					q.eq(
-						"notificationType",
-						args.notificationType as NonNullable<typeof args.notificationType>
-					)
-				)
-				.collect();
-
-			// Filter by organization
-			notifications = notifications.filter((n) => n.orgId === orgId);
-		} else {
-			notifications = await ctx.db
-				.query("notifications")
-				.withIndex("by_org", (q) => q.eq("orgId", orgId))
-				.collect();
-		}
-
-		// Sort by creation time (newest first)
-		return notifications.sort((a, b) => b._creationTime - a._creationTime);
-	},
-});
 
 /**
  * Get a specific notification by ID
@@ -331,50 +94,6 @@ export const get = optionalUserQuery({
 			}
 			throw error;
 		}
-	},
-});
-
-/**
- * Get notification statistics for a user
- */
-// TODO: Candidate for deletion if confirmed unused.
-export const getStatsForUser = optionalUserQuery({
-	args: { userId: v.id("users") },
-	handler: async (ctx, args): Promise<NotificationStats> => {
-		const orgId = await getOptionalOrgId(ctx);
-		if (!orgId) return createEmptyNotificationStats();
-
-		// Validate user access
-		await validateUserAccess(ctx, args.userId, orgId);
-
-		const notifications = await ctx.db
-			.query("notifications")
-			.withIndex("by_user_read", (q) => q.eq("userId", args.userId))
-			.collect();
-
-		// Org scoping: the target user may belong to multiple orgs.
-		return calculateNotificationStats(
-			notifications.filter((n) => n.orgId === orgId)
-		);
-	},
-});
-
-/**
- * Get notification statistics for the organization
- */
-// TODO: Candidate for deletion if confirmed unused.
-export const getStats = optionalUserQuery({
-	args: {},
-	handler: async (ctx): Promise<NotificationStats> => {
-		const orgId = await getOptionalOrgId(ctx);
-		if (!orgId) return createEmptyNotificationStats();
-
-		const notifications = await ctx.db
-			.query("notifications")
-			.withIndex("by_org", (q) => q.eq("orgId", orgId))
-			.collect();
-
-		return calculateNotificationStats(notifications);
 	},
 });
 
@@ -409,47 +128,38 @@ export const listForCurrentUser = optionalUserQuery({
 			return { notifications: [], unreadCount: 0 };
 		}
 
-		// Get notifications for this user in the current organization
-		let notifications: NotificationDocument[];
+		// Org-bounded index binds: both branches are already _creationTime desc,
+		// so the limit can be pushed into the read.
+		const ordered =
+			args.isRead !== undefined
+				? ctx.db
+						.query("notifications")
+						.withIndex("by_user_org_read", (q) =>
+							q
+								.eq("userId", user._id)
+								.eq("orgId", orgId)
+								.eq("isRead", args.isRead as boolean)
+						)
+						.order("desc")
+				: ctx.db
+						.query("notifications")
+						.withIndex("by_user_org", (q) =>
+							q.eq("userId", user._id).eq("orgId", orgId)
+						)
+						.order("desc");
 
-		if (args.isRead !== undefined) {
-			notifications = await ctx.db
-				.query("notifications")
-				.withIndex("by_user_read", (q) =>
-					q.eq("userId", user._id).eq("isRead", args.isRead as boolean)
-				)
-				.order("desc")
-				.collect();
+		// limit 0 means "no limit" here, as it always has.
+		const notifications: NotificationDocument[] = args.limit
+			? await ordered.take(args.limit)
+			: await ordered.collect();
 
-			// Filter by current organization
-			notifications = notifications.filter((n) => n.orgId === orgId);
-		} else {
-			// Prefix-only index bind: ordered by isRead before _creationTime, so
-			// re-sort below before applying the limit.
-			notifications = await ctx.db
-				.query("notifications")
-				.withIndex("by_user_read", (q) => q.eq("userId", user._id))
-				.collect();
-			notifications = notifications.filter((n) => n.orgId === orgId);
-			notifications.sort((a, b) => b._creationTime - a._creationTime);
-		}
-
-		// Apply limit if specified
-		if (args.limit) {
-			notifications = notifications.slice(0, args.limit);
-		}
-
-		// Count unread notifications for current organization only
 		const unreadCount = await ctx.db
 			.query("notifications")
-			.withIndex("by_user_read", (q) =>
-				q.eq("userId", user._id).eq("isRead", false)
+			.withIndex("by_user_org_read", (q) =>
+				q.eq("userId", user._id).eq("orgId", orgId).eq("isRead", false)
 			)
 			.collect()
-			.then(
-				(notifications) =>
-					notifications.filter((n) => n.orgId === orgId).length
-			);
+			.then((unread) => unread.length);
 
 		return { notifications, unreadCount };
 	},
@@ -468,12 +178,14 @@ const CELEBRATION_FRESHNESS_MS = 15 * 60 * 1000;
  * workspace CelebrationListener watches this and fires the confetti toast.
  */
 export const celebrationsForCurrentUser = optionalUserQuery({
-	args: {},
-	handler: async (ctx) => {
+	// `now` is the client's minute-rounded clock: without it every subscriber
+	// gets a distinct cache key on every re-evaluation.
+	args: { now: v.optional(v.number()) },
+	handler: async (ctx, args) => {
 		if (!ctx.user || !ctx.orgId) return [];
 		const { user, orgId } = ctx;
 
-		const cutoff = Date.now() - CELEBRATION_FRESHNESS_MS;
+		const cutoff = (args.now ?? Date.now()) - CELEBRATION_FRESHNESS_MS;
 		const perType = [];
 		for (const notificationType of CELEBRATION_TYPES) {
 			perType.push(
@@ -557,24 +269,21 @@ export const listByEntity = optionalUserQuery({
 		const orgId = await getOptionalOrgId(ctx);
 		if (!orgId) return emptyListResult<NotificationWithAuthor>();
 
-		// Get all notifications for this entity
-		const notifications = await ctx.db
-			.query("notifications")
-			.withIndex("by_org", (q) => q.eq("orgId", orgId))
-			.collect();
-
-		// Filter for mentions on this specific entity
-		const mentionTypes: Record<string, string> = {
+		const mentionTypes = {
 			client: "client_mention",
 			project: "project_mention",
 			quote: "quote_mention",
-		};
+		} as const;
 
-		const entityNotifications = notifications.filter(
-			(notification) =>
-				notification.notificationType === mentionTypes[args.entityType] &&
-				notification.entityId === args.entityId
-		);
+		const entityNotifications = await ctx.db
+			.query("notifications")
+			.withIndex("by_org_type_entity", (q) =>
+				q
+					.eq("orgId", orgId)
+					.eq("notificationType", mentionTypes[args.entityType])
+					.eq("entityId", args.entityId)
+			)
+			.collect();
 
 		// Fetch user details for each notification (author, not recipient)
 		const notificationsWithUsers = await Promise.all(
@@ -804,41 +513,18 @@ export const markAllRead = userMutation({
 		const now = Date.now();
 		const unread = await ctx.db
 			.query("notifications")
-			.withIndex("by_user_read", (q) =>
-				q.eq("userId", ctx.user._id).eq("isRead", false)
+			.withIndex("by_user_org_read", (q) =>
+				q.eq("userId", ctx.user._id).eq("orgId", ctx.orgId).eq("isRead", false)
 			)
 			.collect();
 
 		let updated = 0;
 		for (const notification of unread) {
-			// by_user_read isn't org-scoped; skip notifications from other orgs.
-			if (notification.orgId !== ctx.orgId) continue;
 			await ctx.db.patch(notification._id, { isRead: true, readAt: now });
 			updated++;
 		}
 
 		return { updated };
-	},
-});
-
-/**
- * Mark a notification as sent
- */
-// TODO: Candidate for deletion if confirmed unused.
-export const markSent = userMutation({
-	args: {
-		id: v.id("notifications"),
-		sentVia: v.union(v.literal("email"), v.literal("sms"), v.literal("in_app")),
-	},
-	handler: async (ctx, args): Promise<NotificationId> => {
-		await ctx.orgEntity("notifications", args.id);
-
-		await ctx.db.patch(args.id, {
-			sentAt: Date.now(),
-			sentVia: args.sentVia,
-		});
-
-		return args.id;
 	},
 });
 

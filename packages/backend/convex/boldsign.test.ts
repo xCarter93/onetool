@@ -2,12 +2,14 @@ import { convexTest } from "convex-test";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { api, internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
+import type { MutationCtx } from "./_generated/server";
 import { isNonRetryableError } from "@convex-dev/workpool";
 import { getFunctionName, type FunctionReference } from "convex/server";
 import { setupConvexTest } from "./test.setup";
 import { shouldDownloadSignedPdf } from "./boldsign";
 import { externalIoPool } from "./externalIoPool";
 import { PUSHABLE_TYPES } from "./push";
+import { consumeMeter } from "./lib/entitlements";
 import {
 	createTestOrg,
 	createTestClient,
@@ -340,6 +342,7 @@ describe("BoldSign embedded sending", () => {
 								sentAt: Date.now(),
 								sentTo: [],
 							});
+							await consumeMeter(ctx, org.orgId, "esignatures");
 						}
 						return { ...org, quoteId };
 					}
@@ -373,6 +376,7 @@ describe("BoldSign embedded sending", () => {
 								sentAt: Date.now(),
 								sentTo: [],
 							});
+							await consumeMeter(ctx, org.orgId, "esignatures");
 						}
 						return { ...org, quoteId };
 					}
@@ -1208,9 +1212,9 @@ describe("BoldSign embedded sending", () => {
 	// ========================================================================
 
 	describe("handleWebhook", () => {
-		// The Sent event schedules internal.usage.incrementEsignatureCount via
-		// runAfter(0); fake timers + finishAllScheduledFunctions(vi.runAllTimers)
-		// is the convex-test pattern for draining it inside a transaction.
+		// Other webhook branches still schedule work (signed-PDF download); fake
+		// timers + finishAllScheduledFunctions(vi.runAllTimers) is the
+		// convex-test pattern for draining it inside a transaction.
 		beforeEach(() => {
 			vi.useFakeTimers();
 		});
@@ -1276,9 +1280,16 @@ describe("BoldSign embedded sending", () => {
 			});
 			await t.finishAllScheduledFunctions(vi.runAllTimers);
 
-			const org = await t.run((ctx) => ctx.db.get(orgId));
+			const usage = await t.run((ctx: MutationCtx) =>
+				ctx.db
+					.query("planUsage")
+					.withIndex("by_org_meter_period", (q) =>
+						q.eq("orgId", orgId).eq("meter", "esignatures")
+					)
+					.collect()
+			);
 			// Only the genuine Draft→Sent transition counts; the replay is ignored.
-			expect(org?.usageTracking?.esignaturesSentThisMonth).toBe(1);
+			expect(usage.map((row) => row.used)).toEqual([1]);
 		});
 
 		it("marks the document Completed and transitions the quote to approved on a Completed event", async () => {

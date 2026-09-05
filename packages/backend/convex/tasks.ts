@@ -785,69 +785,11 @@ export const remove = userMutation({
 });
 
 /**
- * Search tasks
- */
-// TODO: Candidate for deletion if confirmed unused.
-export const search = optionalUserQuery({
-	args: {
-		query: v.string(),
-		status: v.optional(
-			v.union(
-				v.literal("pending"),
-				v.literal("in-progress"),
-				v.literal("completed"),
-				v.literal("cancelled")
-			)
-		),
-		clientId: v.optional(v.id("clients")),
-		assigneeUserId: v.optional(v.id("users")),
-	},
-	handler: async (ctx, args): Promise<TaskDocument[]> => {
-		const orgId = ctx.orgId;
-		if (!orgId) return emptyListResult();
-		await ctx.requireLevel("tasks", "view");
-
-		let tasks = await ctx.db
-			.query("tasks")
-			.withIndex("by_org", (q) => q.eq("orgId", orgId))
-			.collect();
-
-		// Filter by status if specified
-		if (args.status) {
-			tasks = tasks.filter((task) => task.status === args.status);
-		}
-
-		// Filter by client if specified
-		if (args.clientId) {
-			await validateClientAccess(ctx, args.clientId, orgId);
-			tasks = tasks.filter((task) => task.clientId === args.clientId);
-		}
-
-		// Filter by assignee if specified
-		if (args.assigneeUserId) {
-			await validateUserAccess(ctx, args.assigneeUserId, orgId);
-			tasks = tasks.filter(
-				(task) => task.assigneeUserId === args.assigneeUserId
-			);
-		}
-
-		// Search in title and description
-		const searchQuery = args.query.toLowerCase();
-		return tasks.filter(
-			(task: TaskDocument) =>
-				task.title.toLowerCase().includes(searchQuery) ||
-				(task.description &&
-					task.description.toLowerCase().includes(searchQuery))
-		);
-	},
-});
-
-/**
  * Get task statistics for dashboard
  */
 export const getStats = optionalUserQuery({
-	args: {},
-	handler: async (ctx): Promise<TaskStats> => {
+	args: { today: v.optional(v.number()) },
+	handler: async (ctx, args): Promise<TaskStats> => {
 		const orgId = ctx.orgId;
 		if (!orgId) return createEmptyTaskStats();
 		await ctx.requireLevel("tasks", "view");
@@ -873,8 +815,7 @@ export const getStats = optionalUserQuery({
 			recurring: 0,
 		};
 
-		const now = Date.now();
-		const today = DateUtils.startOfDay(now);
+		const today = args.today ?? DateUtils.startOfDay(Date.now());
 		const tomorrow = DateUtils.addDays(today, 1);
 		const nextWeek = DateUtils.addDays(today, 7);
 
@@ -927,6 +868,42 @@ export const getStats = optionalUserQuery({
 });
 
 /**
+ * Sidebar badge: actionable tasks due today or overdue. Web-only; getStats
+ * stays for mobile but needs the whole table for its totals.
+ */
+export const getSidebarCounts = optionalUserQuery({
+	args: { today: v.number() },
+	handler: async (ctx, args): Promise<{ todayTasks: number; overdue: number }> => {
+		const orgId = ctx.orgId;
+		if (!orgId) return { todayTasks: 0, overdue: 0 };
+		await ctx.requireLevel("tasks", "view");
+
+		const tomorrow = DateUtils.addDays(args.today, 1);
+		const actionable = ["pending", "in-progress"] as const;
+		const range = (status: (typeof actionable)[number], from: number | null, to: number) =>
+			ctx.db
+				.query("tasks")
+				.withIndex("by_org_status_date", (q) => {
+					const byStatus = q.eq("orgId", orgId).eq("status", status);
+					return from === null
+						? byStatus.lt("date", to)
+						: byStatus.gte("date", from).lt("date", to);
+				})
+				.collect();
+
+		const [overdueRows, todayRows] = await Promise.all([
+			Promise.all(actionable.map((s) => range(s, null, args.today))),
+			Promise.all(actionable.map((s) => range(s, args.today, tomorrow))),
+		]);
+		const [overdue, todayTasks] = await Promise.all([
+			ctx.scopedToActor("tasks", overdueRows.flat(), (t) => t.assigneeUserId),
+			ctx.scopedToActor("tasks", todayRows.flat(), (t) => t.assigneeUserId),
+		]);
+		return { todayTasks: todayTasks.length, overdue: overdue.length };
+	},
+});
+
+/**
  * Get today's tasks
  */
 // TODO: Candidate for deletion if confirmed unused.
@@ -971,23 +948,33 @@ export const getToday = optionalUserQuery({
  * Get overdue tasks
  */
 export const getOverdue = optionalUserQuery({
-	args: { assigneeUserId: v.optional(v.id("users")) },
+	args: {
+		assigneeUserId: v.optional(v.id("users")),
+		today: v.optional(v.number()),
+	},
 	handler: async (ctx, args): Promise<TaskDocument[]> => {
 		const orgId = ctx.orgId;
 		if (!orgId) return emptyListResult();
 		await ctx.requireLevel("tasks", "view");
 
-		const today = DateUtils.startOfDay(Date.now());
+		const today = args.today ?? DateUtils.startOfDay(Date.now());
 
-		let tasks = await ctx.db
-			.query("tasks")
-			.withIndex("by_date", (q) => q.eq("orgId", orgId).lt("date", today))
-			.collect();
+		const [pending, inProgress] = await Promise.all([
+			ctx.db
+				.query("tasks")
+				.withIndex("by_org_status_date", (q) =>
+					q.eq("orgId", orgId).eq("status", "pending").lt("date", today)
+				)
+				.collect(),
+			ctx.db
+				.query("tasks")
+				.withIndex("by_org_status_date", (q) =>
+					q.eq("orgId", orgId).eq("status", "in-progress").lt("date", today)
+				)
+				.collect(),
+		]);
 
-		// Only include pending and in-progress tasks (not completed or cancelled)
-		tasks = tasks.filter(
-			(task) => task.status === "pending" || task.status === "in-progress"
-		);
+		let tasks = [...pending, ...inProgress];
 
 		// Filter by assignee if specified
 		if (args.assigneeUserId) {
@@ -999,7 +986,10 @@ export const getOverdue = optionalUserQuery({
 
 		tasks = await ctx.scopedToActor("tasks", tasks, (task) => task.assigneeUserId);
 
-		return tasks.sort((a, b) => b.date - a.date); // Most recent overdue first
+		// Most recent overdue first, creation order within a date — mobile pins it.
+		return tasks.sort(
+			(a, b) => b.date - a.date || a._creationTime - b._creationTime
+		);
 	},
 });
 
@@ -1010,13 +1000,14 @@ export const getUpcoming = optionalUserQuery({
 	args: {
 		assigneeUserId: v.optional(v.id("users")),
 		daysAhead: v.optional(v.number()), // Default to 7 days if not specified
+		today: v.optional(v.number()),
 	},
 	handler: async (ctx, args): Promise<TaskDocument[]> => {
 		const orgId = ctx.orgId;
 		if (!orgId) return emptyListResult();
 		await ctx.requireLevel("tasks", "view");
 
-		const today = DateUtils.startOfDay(Date.now());
+		const today = args.today ?? DateUtils.startOfDay(Date.now());
 		const daysAhead = args.daysAhead || 7;
 		const futureDate = DateUtils.addDays(today, daysAhead);
 

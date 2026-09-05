@@ -3,7 +3,8 @@
 import { PermissionGate } from "@/components/domain/permission-gate";
 import { usePermissions } from "@/hooks/use-permissions";
 import { useState, useMemo } from "react";
-import { useQuery, useMutation } from "convex/react";
+import { useMutation } from "convex/react";
+import { useQuery } from "convex-helpers/react/cache/hooks";
 import { useSearchParams } from "next/navigation";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { Id } from "@onetool/backend/convex/_generated/dataModel";
@@ -383,7 +384,7 @@ function TasksPageContent() {
   const allTasks = useQuery(api.tasks.list, {});
   // Skip without the projects/clients grant — gated endpoints throw FORBIDDEN otherwise.
   const projects = useQuery(api.projects.list, can("projects") ? {} : "skip");
-  const clients = useQuery(api.clients.list, can("clients") ? {} : "skip");
+  const clients = useQuery(api.clients.listNamesForOrg, can("clients") ? {} : "skip");
   const users = useQuery(api.users.listByOrg, {});
 
   // Mutations
@@ -617,7 +618,7 @@ function TasksPageContent() {
   const columns = useMemo(
     () =>
       createColumns(
-        clients as { _id: Id<"clients">; companyName: string }[] | undefined,
+        clients,
         projects as { _id: Id<"projects">; title: string }[] | undefined,
         users as
           | { _id: Id<"users">; name?: string; email: string }[]

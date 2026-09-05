@@ -8,8 +8,8 @@
 //
 // These tests pin the contract:
 //   A) get() recomputes when stored values are stale (0)
-//   B) list() recomputes per-row total (defense-in-depth — list page reads
-//      quote.total directly)
+//   B) list() returns the stored total; syncQuoteTotals keeps it in step with
+//      the line items on every line-item mutation, so no per-row recompute
 //   C) tax is applied to recomputed subtotal (taxRate as percentage, e.g. 10
 //      means 10% — matches BusinessUtils.calculateTax in lib/shared.ts)
 import { describe, it, expect, beforeEach, beforeAll } from "vitest";
@@ -162,7 +162,7 @@ describe("portal.quotes totals recompute (Gap 5 / UAT Test 3)", () => {
 		expect(result.quote.taxAmount).toBe(0);
 	});
 
-	it("Test B: list() returns recomputed total per row (defense-in-depth for list page)", async () => {
+	it("Test B: list() returns the stored total (syncQuoteTotals keeps it authoritative)", async () => {
 		const s = await seed(t);
 		const jti = "totals-recompute-jti-B";
 		await seedSession(t, s, jti);
@@ -175,7 +175,8 @@ describe("portal.quotes totals recompute (Gap 5 / UAT Test 3)", () => {
 
 		const row = list.find((q) => q._id === quoteId);
 		expect(row).toBeDefined();
-		expect(row?.total).toBe(11000);
+		// Stored total is served as-is (0 here); only get() recomputes.
+		expect(row?.total).toBe(0);
 	});
 
 	it("Test C: tax is applied to recomputed subtotal (taxRate=10 → 10% of subtotal)", async () => {

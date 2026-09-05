@@ -1,6 +1,12 @@
 "use client";
 
-import React, { useCallback, useEffect, useState, useTransition } from "react";
+import React, {
+	useCallback,
+	useEffect,
+	useRef,
+	useState,
+	useTransition,
+} from "react";
 import { useRouter } from "next/navigation";
 import { useMutation, useQuery } from "convex/react";
 import {
@@ -37,6 +43,7 @@ import { Frame, FramePanel } from "@/components/reui/frame";
 import { DotField } from "@/components/ui/dot-field";
 import { Illustration } from "@/components/illustrations";
 import { useToast } from "@/hooks/use-toast";
+import { useOrgToday } from "@/hooks/use-org-today";
 import { api } from "@onetool/backend/convex/_generated/api";
 import type { Doc } from "@onetool/backend/convex/_generated/dataModel";
 import { useOrganization } from "@clerk/nextjs";
@@ -50,6 +57,8 @@ import {
 } from "./components/performance-panel";
 
 const COPY_FEEDBACK_DURATION_MS = 2000;
+
+const minuteFloor = () => Math.floor(Date.now() / 60_000) * 60_000;
 
 type CommunityPageDoc = Doc<"communityPages">;
 
@@ -309,9 +318,21 @@ function CommunityPageContent() {
 		api.communityLeads.list,
 		communityPage ? (requestFilter === "new" ? { status: "new" } : {}) : "skip",
 	);
+	// A minute-rounded clock keeps the query arg stable across re-evaluations so
+	// the server cache can serve them; Date.now() on the server never repeats.
+	// Re-read only when the org's calendar day rolls over, so a tab left open
+	// past midnight doesn't keep charting yesterday.
+	const orgToday = useOrgToday();
+	const [analyticsNow, setAnalyticsNow] = useState(minuteFloor);
+	const analyticsDay = useRef(orgToday);
+	useEffect(() => {
+		if (analyticsDay.current === orgToday) return;
+		analyticsDay.current = orgToday;
+		setAnalyticsNow(minuteFloor());
+	}, [orgToday]);
 	const stats = useQuery(
 		api.communityAnalytics.dashboard,
-		communityPage ? { days: rangeDays } : "skip",
+		communityPage ? { days: rangeDays, now: analyticsNow } : "skip",
 	);
 
 	// Initialize form from organization data once it loads (no community page yet).

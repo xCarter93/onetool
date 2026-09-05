@@ -88,23 +88,25 @@ async function enrichActivitiesWithUsers(
 	ctx: QueryCtx,
 	activities: Doc<"activities">[]
 ): Promise<ActivityWithUser[]> {
-	const activitiesWithUsers: ActivityWithUser[] = [];
+	// A feed page is usually a handful of distinct actors over many rows.
+	const userIds = [...new Set(activities.map((a) => a.userId))];
+	const users = await Promise.all(userIds.map((id) => ctx.db.get(id)));
+	const userById = new Map(userIds.map((id, i) => [id, users[i]]));
 
-	for (const activity of activities) {
-		const activityUser = await ctx.db.get(activity.userId);
-		if (activityUser) {
-			activitiesWithUsers.push({
+	return activities.flatMap((activity) => {
+		const activityUser = userById.get(activity.userId);
+		if (!activityUser) return [];
+		return [
+			{
 				...activity,
 				user: {
 					name: activityUser.name,
 					email: activityUser.email,
 					image: activityUser.image,
 				},
-			});
-		}
-	}
-
-	return activitiesWithUsers;
+			},
+		];
+	});
 }
 
 const ENTITY_TYPE_VALIDATOR = v.union(
@@ -223,53 +225,6 @@ export const feed = optionalUserQuery({
 });
 
 /**
- * Get activities by type for the current organization
- */
-// TODO: Candidate for deletion if confirmed unused.
-export const getByType = optionalUserQuery({
-	args: {
-		activityType: v.union(
-			v.literal("client_created"),
-			v.literal("client_updated"),
-			v.literal("project_created"),
-			v.literal("project_updated"),
-			v.literal("project_completed"),
-			v.literal("quote_created"),
-			v.literal("quote_sent"),
-			v.literal("quote_approved"),
-			v.literal("quote_declined"),
-			v.literal("invoice_created"),
-			v.literal("invoice_sent"),
-			v.literal("invoice_paid"),
-			v.literal("task_created"),
-			v.literal("task_completed"),
-			v.literal("user_invited"),
-			v.literal("user_removed"),
-			v.literal("organization_updated")
-		),
-		limit: v.optional(v.number()),
-	},
-	handler: async (ctx, args): Promise<ActivityWithUser[]> => {
-		if (!ctx.orgId) return emptyListResult();
-		const orgId = ctx.orgId;
-
-		const activities = await ctx.db
-			.query("activities")
-			.withIndex("by_type", (q) =>
-				q.eq("orgId", orgId).eq("activityType", args.activityType)
-			)
-			.order("desc")
-			.filter((q) => q.eq(q.field("isVisible"), true))
-			.take(args.limit || 25);
-
-		return await enrichActivitiesWithUsers(
-			ctx,
-			await filterByEntityGrant(ctx, activities)
-		);
-	},
-});
-
-/**
  * Get activities for a specific entity
  */
 // TODO: Candidate for deletion if confirmed unused.
@@ -306,75 +261,6 @@ export const getByEntity = optionalUserQuery({
 			.take(args.limit || 25);
 
 		return await enrichActivitiesWithUsers(ctx, activities);
-	},
-});
-
-/**
- * Get activity count for the current organization
- */
-// TODO: Candidate for deletion if confirmed unused.
-export const getCount = optionalUserQuery({
-	args: {
-		dayRange: v.optional(v.number()),
-		activityType: v.optional(
-			v.union(
-				v.literal("client_created"),
-				v.literal("client_updated"),
-				v.literal("project_created"),
-				v.literal("project_updated"),
-				v.literal("project_completed"),
-				v.literal("quote_created"),
-				v.literal("quote_sent"),
-				v.literal("quote_approved"),
-				v.literal("quote_declined"),
-				v.literal("invoice_created"),
-				v.literal("invoice_sent"),
-				v.literal("invoice_paid"),
-				v.literal("task_created"),
-				v.literal("task_completed"),
-				v.literal("user_invited"),
-				v.literal("user_removed"),
-				v.literal("organization_updated")
-			)
-		),
-	},
-	handler: async (ctx, args): Promise<number> => {
-		if (!ctx.orgId) return 0;
-		const orgId = ctx.orgId;
-
-		// Calculate timestamp filter if dayRange is provided
-		let timestampFilter: number | undefined;
-		if (args.dayRange) {
-			const daysInMs = args.dayRange * 24 * 60 * 60 * 1000;
-			timestampFilter = Date.now() - daysInMs;
-		}
-
-		// Build the query based on filters
-		let activities;
-
-		if (args.activityType) {
-			activities = await ctx.db
-				.query("activities")
-				.withIndex("by_type", (q) =>
-					q.eq("orgId", orgId).eq("activityType", args.activityType!)
-				)
-				.filter((q) => q.eq(q.field("isVisible"), true))
-				.collect();
-		} else {
-			activities = await ctx.db
-				.query("activities")
-				.withIndex("by_org_timestamp", (q) => {
-					if (timestampFilter) {
-						return q.eq("orgId", orgId).gte("timestamp", timestampFilter);
-					} else {
-						return q.eq("orgId", orgId);
-					}
-				})
-				.filter((q) => q.eq(q.field("isVisible"), true))
-				.collect();
-		}
-
-		return (await filterByEntityGrant(ctx, activities)).length;
 	},
 });
 

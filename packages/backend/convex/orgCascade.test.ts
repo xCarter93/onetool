@@ -8,7 +8,6 @@ import {
 	projectCountsAggregate,
 	quoteCountsAggregate,
 	invoiceRevenueAggregate,
-	invoiceCountsAggregate,
 } from "./aggregates";
 import { ORG_SCOPED_CASCADE_TABLES } from "./lib/orgCascade";
 
@@ -151,7 +150,6 @@ describe("orgCascade", () => {
 				});
 				const invoice = await ctx.db.get(invoiceId);
 				await invoiceRevenueAggregate.insertIfDoesNotExist(ctx, invoice!);
-				await invoiceCountsAggregate.insertIfDoesNotExist(ctx, invoice!);
 				await ctx.db.insert("invoiceLineItems", {
 					invoiceId,
 					orgId,
@@ -405,6 +403,66 @@ describe("orgCascade", () => {
 
 			expect(clientCount).toBe(0);
 			expect(membershipCount).toBe(0);
+		});
+
+		it("separates orphans across distinct orgs and tables from a live org", async () => {
+			const { ghostA, ghostB, liveOrgId } = await t.run(async (ctx) => {
+				const userId = await ctx.db.insert("users", {
+					name: "Ghosts",
+					email: "ghosts@example.com",
+					image: "x",
+					externalId: "user_ghosts",
+				});
+				const mintDeadOrg = async (slug: string) => {
+					const id = await ctx.db.insert("organizations", {
+						clerkOrganizationId: `org_${slug}`,
+						name: slug,
+						ownerUserId: userId,
+					});
+					await ctx.db.delete(id);
+					return id;
+				};
+				const ghostA = await mintDeadOrg("ghost_a");
+				const ghostB = await mintDeadOrg("ghost_b");
+				const liveOrgId = await ctx.db.insert("organizations", {
+					clerkOrganizationId: "org_live",
+					name: "Live Org",
+					ownerUserId: userId,
+				});
+
+				for (const orgId of [ghostA, ghostB, liveOrgId]) {
+					await ctx.db.insert("clients", {
+						orgId,
+						companyName: "Orphan Co",
+						status: "active",
+					});
+					await ctx.db.insert("tasks", {
+						orgId,
+						title: "Orphan task",
+						date: Date.now(),
+						status: "pending",
+					});
+				}
+				return { ghostA, ghostB, liveOrgId };
+			});
+
+			const result = await t.mutation(
+				internal.orgCascade.reconcileOrphanedOrgData,
+				{}
+			);
+			expect(result.orphanOrgCount).toBe(2);
+			await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+			const { clients, tasks } = await t.run(async (ctx) => ({
+				clients: await ctx.db.query("clients").collect(),
+				tasks: await ctx.db.query("tasks").collect(),
+			}));
+			for (const ghost of [ghostA, ghostB]) {
+				expect(clients.filter((c) => c.orgId === ghost)).toHaveLength(0);
+				expect(tasks.filter((r) => r.orgId === ghost)).toHaveLength(0);
+			}
+			expect(clients.filter((c) => c.orgId === liveOrgId)).toHaveLength(1);
+			expect(tasks.filter((r) => r.orgId === liveOrgId)).toHaveLength(1);
 		});
 	});
 

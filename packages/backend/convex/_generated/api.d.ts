@@ -104,6 +104,7 @@ import type * as lib_lineItems from "../lib/lineItems.js";
 import type * as lib_memberships from "../lib/memberships.js";
 import type * as lib_money from "../lib/money.js";
 import type * as lib_orgCascade from "../lib/orgCascade.js";
+import type * as lib_orgCounters from "../lib/orgCounters.js";
 import type * as lib_orgScan from "../lib/orgScan.js";
 import type * as lib_orgWideView from "../lib/orgWideView.js";
 import type * as lib_organization from "../lib/organization.js";
@@ -151,11 +152,11 @@ import type * as migrations_backfillEmailThreads from "../migrations/backfillEma
 import type * as migrations_backfillInvoicePaymentRows from "../migrations/backfillInvoicePaymentRows.js";
 import type * as migrations_backfillMemberPermissions from "../migrations/backfillMemberPermissions.js";
 import type * as migrations_backfillPremiumOverrides from "../migrations/backfillPremiumOverrides.js";
+import type * as migrations_backfillQuoteTotals from "../migrations/backfillQuoteTotals.js";
 import type * as migrations_backfillSearchText from "../migrations/backfillSearchText.js";
 import type * as migrations_backfillTeamMessagesFromNotifications from "../migrations/backfillTeamMessagesFromNotifications.js";
 import type * as migrations_fixInvoiceTotals from "../migrations/fixInvoiceTotals.js";
 import type * as migrations_geocodeAddresses from "../migrations/geocodeAddresses.js";
-import type * as migrations_initializeQuoteCounters from "../migrations/initializeQuoteCounters.js";
 import type * as migrations_pausePublishedAutomationsOnFreeOrgs from "../migrations/pausePublishedAutomationsOnFreeOrgs.js";
 import type * as migrations_rebuildAggregates from "../migrations/rebuildAggregates.js";
 import type * as migrations_revalidateStripeConnectAccounts from "../migrations/revalidateStripeConnectAccounts.js";
@@ -212,7 +213,6 @@ import type * as stripeWebhookEvents from "../stripeWebhookEvents.js";
 import type * as support from "../support.js";
 import type * as tasks from "../tasks.js";
 import type * as teamMessages from "../teamMessages.js";
-import type * as usage from "../usage.js";
 import type * as userTour from "../userTour.js";
 import type * as users from "../users.js";
 
@@ -319,6 +319,7 @@ declare const fullApi: ApiFromModules<{
   "lib/memberships": typeof lib_memberships;
   "lib/money": typeof lib_money;
   "lib/orgCascade": typeof lib_orgCascade;
+  "lib/orgCounters": typeof lib_orgCounters;
   "lib/orgScan": typeof lib_orgScan;
   "lib/orgWideView": typeof lib_orgWideView;
   "lib/organization": typeof lib_organization;
@@ -366,11 +367,11 @@ declare const fullApi: ApiFromModules<{
   "migrations/backfillInvoicePaymentRows": typeof migrations_backfillInvoicePaymentRows;
   "migrations/backfillMemberPermissions": typeof migrations_backfillMemberPermissions;
   "migrations/backfillPremiumOverrides": typeof migrations_backfillPremiumOverrides;
+  "migrations/backfillQuoteTotals": typeof migrations_backfillQuoteTotals;
   "migrations/backfillSearchText": typeof migrations_backfillSearchText;
   "migrations/backfillTeamMessagesFromNotifications": typeof migrations_backfillTeamMessagesFromNotifications;
   "migrations/fixInvoiceTotals": typeof migrations_fixInvoiceTotals;
   "migrations/geocodeAddresses": typeof migrations_geocodeAddresses;
-  "migrations/initializeQuoteCounters": typeof migrations_initializeQuoteCounters;
   "migrations/pausePublishedAutomationsOnFreeOrgs": typeof migrations_pausePublishedAutomationsOnFreeOrgs;
   "migrations/rebuildAggregates": typeof migrations_rebuildAggregates;
   "migrations/revalidateStripeConnectAccounts": typeof migrations_revalidateStripeConnectAccounts;
@@ -427,7 +428,6 @@ declare const fullApi: ApiFromModules<{
   support: typeof support;
   tasks: typeof tasks;
   teamMessages: typeof teamMessages;
-  usage: typeof usage;
   userTour: typeof userTour;
   users: typeof users;
 }>;
@@ -463,7 +463,6 @@ export declare const components: {
   projectCounts: import("@convex-dev/aggregate/_generated/component.js").ComponentApi<"projectCounts">;
   quoteCounts: import("@convex-dev/aggregate/_generated/component.js").ComponentApi<"quoteCounts">;
   invoiceRevenue: import("@convex-dev/aggregate/_generated/component.js").ComponentApi<"invoiceRevenue">;
-  invoiceCounts: import("@convex-dev/aggregate/_generated/component.js").ComponentApi<"invoiceCounts">;
   resend: import("@convex-dev/resend/_generated/component.js").ComponentApi<"resend">;
   rateLimiter: import("@convex-dev/rate-limiter/_generated/component.js").ComponentApi<"rateLimiter">;
   migrations: import("@convex-dev/migrations/_generated/component.js").ComponentApi<"migrations">;

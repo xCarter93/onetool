@@ -44,11 +44,13 @@ const PINNED_PATHS = [
 	"clients.get",
 	"clients.list",
 	"clients.listWithProjectCounts",
+	"clients.listNamesForOrg",
 	"clients.search", // removed from mobile 2026-07-25; in the 1.0.1 build
 	"clients.update",
 	"communityPages.get",
 	"documents.getLatest",
 	"documents.listSignedByProject", // June-era TestFlight builds
+	"entitlements.getMine",
 	"homeStats.getJourneyProgress", // 1.0.1 build
 	"invoiceLineItems.create",
 	"invoiceLineItems.listByInvoice",
@@ -177,4 +179,35 @@ describe("mobile pinned Convex paths", () => {
 	it("the pinned list has no duplicates", () => {
 		expect(new Set(PINNED_PATHS).size).toBe(PINNED_PATHS.length);
 	});
+
+	it("every api.* reference in apps/mobile source is pinned", () => {
+		const pinned = new Set<string>(PINNED_PATHS);
+		const unpinned = new Set<string>();
+		for (const file of walkMobileSource()) {
+			const source = fs.readFileSync(file, "utf8");
+			for (const match of source.matchAll(API_REF)) {
+				const ref = `${match[1]}.${match[2]}`;
+				if (!pinned.has(ref)) unpinned.add(`${ref} (${path.relative(MOBILE_DIR, file)})`);
+			}
+		}
+		expect(
+			[...unpinned],
+			"add these to PINNED_PATHS before the build that calls them ships"
+		).toEqual([]);
+	});
 });
+
+const MOBILE_DIR = path.resolve(CONVEX_DIR, "../../../apps/mobile");
+// Lookbehind rejects URLs like https://api.mapbox.com and nested members.
+const API_REF = /(?<![\w/.])api\.([A-Za-z]\w*)\.([A-Za-z]\w*)/g;
+const SKIP_DIRS = new Set(["node_modules", ".expo", "ios", "android", "dist", ".git"]);
+
+function* walkMobileSource(dir = MOBILE_DIR): Generator<string> {
+	for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+		if (entry.isDirectory()) {
+			if (!SKIP_DIRS.has(entry.name)) yield* walkMobileSource(path.join(dir, entry.name));
+		} else if (/\.tsx?$/.test(entry.name)) {
+			yield path.join(dir, entry.name);
+		}
+	}
+}

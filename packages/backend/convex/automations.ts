@@ -10,7 +10,7 @@ import { paginationOptsValidator, type PaginationResult } from "convex/server";
 import { Doc, Id } from "./_generated/dataModel";
 import { getCurrentUserOrgId, getCurrentUserOrThrow } from "./lib/auth";
 import { FEATURE_FLAGS, isServerFlagEnabled } from "./lib/posthog";
-import { userMutation, userQuery } from "./lib/factories";
+import { userMutation, userQuery, type RecordScopeRef } from "./lib/factories";
 import { requireFeature } from "./lib/entitlements";
 import {
 	AUTOMATION_OBJECT_TYPES,
@@ -1977,7 +1977,9 @@ export const getRunMetrics = userQuery({
 		await ctx.requireLevel("automations", "view");
 		const orgId = ctx.orgId;
 		const windowDays = clampInt(args.windowDays ?? 30, 1, 365);
-		const windowStart = Date.now() - windowDays * DAY_MS;
+		// UTC-day floor, as getRunThroughput: the bound moves once a day so the cache holds.
+		const todayMidnight = Math.floor(Date.now() / DAY_MS) * DAY_MS;
+		const windowStart = todayMidnight - (windowDays - 1) * DAY_MS;
 
 		const executions = await ctx.db
 			.query("workflowExecutions")
@@ -2240,6 +2242,30 @@ const OBJECT_TYPE_TABLE: Record<
 	task: "tasks",
 };
 
+/** Per-entity record-scope argument, resolved by point read rather than an org scan. */
+function recordScopeArg(
+	type: TriggerableObjectType,
+	doc: Record<string, unknown>,
+	userId: Id<"users">
+): RecordScopeRef | (() => boolean) {
+	switch (type) {
+		case "client":
+			return { clientId: doc._id as Id<"clients"> };
+		case "quote":
+		case "invoice":
+			return {
+				projectId: doc.projectId as Id<"projects"> | undefined,
+				clientId: doc.clientId as Id<"clients"> | undefined,
+			};
+		case "project":
+			return () =>
+				(doc.assignedUserIds as Id<"users">[] | undefined)?.includes(userId) ??
+				false;
+		case "task":
+			return () => doc.assigneeUserId === userId;
+	}
+}
+
 /**
  * One-hop related-record fields for the formula editor's live preview (C6).
  * Additive alongside the individual per-type `.get` queries the modal already
@@ -2287,29 +2313,10 @@ export const getSampleRelatedFields = userQuery({
 			const permObj = ENTITY_PERMISSION_OBJECT[type];
 			if (!permObj) return false;
 			try {
-				await ctx.requireRecordScope(permObj, async () => {
-					switch (type) {
-						case "client":
-							return (await ctx.actorScope()).clientIds.has(
-								doc._id as Id<"clients">
-							);
-						case "project":
-							return (
-								(doc.assignedUserIds as Id<"users">[] | undefined)?.includes(
-									ctx.user._id
-								) ?? false
-							);
-						case "quote":
-						case "invoice": {
-							const s = await ctx.actorScope();
-							return doc.projectId
-								? s.projectIds.has(doc.projectId as Id<"projects">)
-								: s.clientIds.has(doc.clientId as Id<"clients">);
-						}
-						case "task":
-							return doc.assigneeUserId === ctx.user._id;
-					}
-				});
+				await ctx.requireRecordScope(
+					permObj,
+					recordScopeArg(type, doc, ctx.user._id)
+				);
 				return true;
 			} catch {
 				return false;

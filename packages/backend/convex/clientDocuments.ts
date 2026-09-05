@@ -88,10 +88,7 @@ export const create = userMutation({
 			throw new Error("Client does not belong to your organization");
 		}
 
-		await ctx.requireRecordScope("documents", async () => {
-			const scope = await ctx.actorScope();
-			return scope.clientIds.has(args.clientId);
-		});
+		await ctx.requireRecordScope("documents", { clientId: args.clientId });
 
 		// Validate file metadata
 		const validation = StorageHelpers.validateFileMetadata(
@@ -178,9 +175,8 @@ export const update = userMutation({
 	handler: async (ctx, args): Promise<Id<"clientDocuments">> => {
 		await ctx.requireLevel("documents", "modify");
 		const document = await getDocumentOrThrow(ctx, args.id);
-		await ctx.requireRecordScope("documents", async () => {
-			const scope = await ctx.actorScope();
-			return scope.clientIds.has(document.clientId);
+		await ctx.requireRecordScope("documents", {
+			clientId: document.clientId,
 		});
 
 		const name = args.name.trim();
@@ -202,9 +198,8 @@ export const remove = userMutation({
 	handler: async (ctx, args): Promise<Id<"clientDocuments">> => {
 		await ctx.requireLevel("documents", "delete");
 		const document = await getDocumentOrThrow(ctx, args.id);
-		await ctx.requireRecordScope("documents", async () => {
-			const scope = await ctx.actorScope();
-			return scope.clientIds.has(document.clientId);
+		await ctx.requireRecordScope("documents", {
+			clientId: document.clientId,
 		});
 
 		// Delete from storage

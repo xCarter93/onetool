@@ -33,6 +33,13 @@ crons.daily(
 );
 
 crons.daily(
+	"cleanup processed stripe webhook events",
+	{ hourUTC: 4, minuteUTC: 45 },
+	internal.stripeWebhookEvents.cleanupProcessedEvents,
+	{}
+);
+
+crons.daily(
 	"cleanup old workflow executions",
 	{ hourUTC: 4, minuteUTC: 30 },
 	internal.automationExecutor.cleanupOldExecutions,

@@ -9,7 +9,6 @@ import {
 	ConvexReactClient,
 	useConvexAuth,
 	useMutation,
-	useQuery,
 } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import * as Notifications from "expo-notifications";
@@ -24,6 +23,7 @@ import { KeyboardProvider } from "react-native-keyboard-controller";
 import { useEffect, useState, type PropsWithChildren } from "react";
 import { tokenCache } from "@clerk/expo/token-cache";
 import { useDevice } from "@/lib/use-device";
+import { useNotificationData } from "@/lib/use-notification-data";
 import { useFonts } from "expo-font";
 import {
 	Outfit_400Regular,
@@ -86,9 +86,7 @@ function PushConvexChild() {
 	const { isAuthenticated } = useConvexAuth();
 	const registerToken = useMutation(api.push.registerToken);
 	const markRead = useMutation(api.notifications.markRead);
-	const notificationData = useQuery(api.notifications.listForCurrentUser, {
-		limit: 1,
-	});
+	const notificationData = useNotificationData();
 	const unreadCount = notificationData?.unreadCount;
 
 	// Publish markRead up to the host (re-publishes after each org-switch remount).

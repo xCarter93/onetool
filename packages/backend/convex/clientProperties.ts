@@ -69,9 +69,7 @@ async function createPropertyWithOrg(
 ): Promise<Id<"clientProperties">> {
 	// Validate client access
 	await validateClientAccess(ctx, data.clientId, ctx.orgId);
-	await ctx.requireRecordScope("clients", () =>
-		ctx.actorScope().then((s) => s.clientIds.has(data.clientId))
-	);
+	await ctx.requireRecordScope("clients", { clientId: data.clientId });
 
 	return await ctx.db.insert("clientProperties", {
 		...data,
@@ -102,26 +100,6 @@ export const listByClient = optionalUserQuery({
 		const properties = await ctx.db
 			.query("clientProperties")
 			.withIndex("by_client", (q) => q.eq("clientId", args.clientId))
-			.collect();
-		return await ctx.applyReadScope("clients", properties, (row, s) =>
-			s.clientIds.has(row.clientId)
-		);
-	},
-});
-
-/**
- * Get all properties for the current user's organization
- */
-export const list = optionalUserQuery({
-	args: {},
-	handler: async (ctx): Promise<ClientPropertyDocument[]> => {
-		const orgId = ctx.orgId;
-		if (!orgId) return emptyListResult();
-		await ctx.requireLevel("clients", "view");
-
-		const properties = await ctx.db
-			.query("clientProperties")
-			.withIndex("by_org", (q) => q.eq("orgId", orgId))
 			.collect();
 		return await ctx.applyReadScope("clients", properties, (row, s) =>
 			s.clientIds.has(row.clientId)
@@ -365,9 +343,7 @@ export const update = userMutation({
 			await validateClientAccess(ctx, filteredUpdates.clientId);
 		}
 
-		await ctx.requireRecordScope("clients", () =>
-			ctx.actorScope().then((s) => s.clientIds.has(clientId))
-		);
+		await ctx.requireRecordScope("clients", { clientId });
 
 		// Handle primary property uniqueness
 		if (filteredUpdates.isPrimary === true) {
@@ -401,9 +377,7 @@ export const remove = userMutation({
 	handler: async (ctx, args): Promise<ClientPropertyId> => {
 		await ctx.requireLevel("clients", "delete");
 		const property = await ctx.orgEntity("clientProperties", args.id);
-		await ctx.requireRecordScope("clients", () =>
-			ctx.actorScope().then((s) => s.clientIds.has(property.clientId))
-		);
+		await ctx.requireRecordScope("clients", { clientId: property.clientId });
 
 		// Delete the property
 		await ctx.db.delete(args.id);
@@ -419,73 +393,6 @@ export const remove = userMutation({
 });
 
 /**
- * Search properties across the organization
- */
-// TODO: Candidate for deletion if confirmed unused.
-export const search = optionalUserQuery({
-	args: {
-		query: v.string(),
-		clientId: v.optional(v.id("clients")),
-		propertyType: v.optional(
-			v.union(
-				v.literal("residential"),
-				v.literal("commercial"),
-				v.literal("industrial"),
-				v.literal("retail"),
-				v.literal("office"),
-				v.literal("mixed-use")
-			)
-		),
-	},
-	handler: async (ctx, args): Promise<ClientPropertyDocument[]> => {
-		const userOrgId = ctx.orgId;
-		if (!userOrgId) {
-			return [];
-		}
-		await ctx.requireLevel("clients", "view");
-
-		let properties: ClientPropertyDocument[];
-
-		if (args.clientId) {
-			await validateClientAccess(ctx, args.clientId, userOrgId);
-			properties = await ctx.db
-				.query("clientProperties")
-				.withIndex("by_client", (q) => q.eq("clientId", args.clientId!))
-				.collect();
-		} else {
-			properties = await ctx.db
-				.query("clientProperties")
-				.withIndex("by_org", (q) => q.eq("orgId", userOrgId))
-				.collect();
-		}
-
-		properties = await ctx.applyReadScope("clients", properties, (row, s) =>
-			s.clientIds.has(row.clientId)
-		);
-
-		// Filter by property type if specified
-		if (args.propertyType) {
-			properties = properties.filter(
-				(property: ClientPropertyDocument) =>
-					property.propertyType === args.propertyType
-			);
-		}
-
-		// Search in property name, address, city, state, and zip code
-		const searchQuery = args.query.toLowerCase();
-		return properties.filter(
-			(property: ClientPropertyDocument) =>
-				(property.propertyName &&
-					property.propertyName.toLowerCase().includes(searchQuery)) ||
-				property.streetAddress.toLowerCase().includes(searchQuery) ||
-				property.city.toLowerCase().includes(searchQuery) ||
-				property.state.toLowerCase().includes(searchQuery) ||
-				property.zipCode.toLowerCase().includes(searchQuery)
-		);
-	},
-});
-
-/**
  * Set a property as primary (and unset others)
  */
 // TODO: Candidate for deletion if confirmed unused.
@@ -494,9 +401,7 @@ export const setPrimary = userMutation({
 	handler: async (ctx, args): Promise<ClientPropertyId> => {
 		await ctx.requireLevel("clients", "modify");
 		const property = await ctx.orgEntity("clientProperties", args.id);
-		await ctx.requireRecordScope("clients", () =>
-			ctx.actorScope().then((s) => s.clientIds.has(property.clientId))
-		);
+		await ctx.requireRecordScope("clients", { clientId: property.clientId });
 
 		// Unset any existing primary property for this client
 		await handlePrimaryProperty(ctx, property.clientId, args.id);
@@ -553,9 +458,7 @@ export const bulkCreate = userMutation({
 
 		// Validate client access
 		await validateClientAccess(ctx, args.clientId);
-		await ctx.requireRecordScope("clients", () =>
-			ctx.actorScope().then((s) => s.clientIds.has(args.clientId))
-		);
+		await ctx.requireRecordScope("clients", { clientId: args.clientId });
 
 		const propertyIds: ClientPropertyId[] = [];
 		let hasPrimary = false;
@@ -607,65 +510,5 @@ export const bulkCreate = userMutation({
 		}
 
 		return propertyIds;
-	},
-});
-
-/**
- * Get property statistics for the organization
- */
-// TODO: Candidate for deletion if confirmed unused.
-export const getStats = optionalUserQuery({
-	args: {},
-	handler: async (ctx) => {
-		const orgId = ctx.orgId;
-		if (!orgId) {
-			return {
-				total: 0,
-				byType: {
-					residential: 0,
-					commercial: 0,
-					industrial: 0,
-					retail: 0,
-					office: 0,
-					"mixed-use": 0,
-					unspecified: 0,
-				},
-			};
-		}
-		await ctx.requireLevel("clients", "view");
-
-		const orgProperties = await ctx.db
-			.query("clientProperties")
-			.withIndex("by_org", (q) => q.eq("orgId", orgId))
-			.collect();
-		const properties = await ctx.applyReadScope(
-			"clients",
-			orgProperties,
-			(row, s) => s.clientIds.has(row.clientId)
-		);
-
-		const stats = {
-			total: properties.length,
-			byType: {
-				residential: 0,
-				commercial: 0,
-				industrial: 0,
-				retail: 0,
-				office: 0,
-				"mixed-use": 0,
-				unspecified: 0,
-			},
-		};
-
-		properties.forEach((property: ClientPropertyDocument) => {
-			// Count by type
-			if (property.propertyType) {
-				stats.byType[property.propertyType]++;
-			} else {
-				stats.byType.unspecified++;
-			}
-		});
-
-		return stats;
 	},
 });

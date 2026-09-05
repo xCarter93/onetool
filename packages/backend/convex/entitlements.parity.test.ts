@@ -178,24 +178,33 @@ describe("entitlement parity across org/identity states", () => {
 		expect(mine.plan).toBe("free");
 	});
 
-	it("getMine reports the e-signature meter with the legacy limit", async () => {
+	it("getMine reports the e-signature meter first, with the free limit", async () => {
 		const { clerkUserId, clerkOrgId } = await seedOrg();
 		const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
 		const mine = await asUser.query(api.entitlements.getMine, {});
+		expect(mine.meters[0]?.key).toBe("esignatures");
 		const esig = mine.meters.find((m) => m.key === "esignatures");
 		expect(esig).toMatchObject({ used: 0, limit: 5, remaining: 5 });
+		// Mobile-pinned shape: keys are frozen for shipped binaries.
+		expect(Object.keys(mine).sort()).toEqual(["features", "meters", "plan", "source"]);
+		for (const meter of mine.meters) {
+			expect(Object.keys(meter).sort()).toEqual([
+				"key",
+				"limit",
+				"remaining",
+				"resetsAt",
+				"used",
+			]);
+		}
 	});
 
-	it("getMine keeps e-signature remaining consistent with legacy usage", async () => {
+	it("getMine reads e-signature usage from the planUsage meter", async () => {
 		const { orgId, clerkUserId, clerkOrgId } = await seedOrg();
 		const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
-		// Legacy counter (documents-table truth), not the planUsage store.
-		await patchOrg(orgId, {
-			usageTracking: {
-				clientsCount: 0,
-				esignaturesSentThisMonth: 3,
-				lastEsignatureReset: Date.now(),
-			},
+		await t.run(async (ctx) => {
+			for (let i = 0; i < 3; i++) {
+				await consumeMeter(ctx, orgId, "esignatures");
+			}
 		});
 		const mine = await asUser.query(api.entitlements.getMine, {});
 		const esig = mine.meters.find((m) => m.key === "esignatures");

@@ -133,8 +133,8 @@ export default function TodayScreen({
 	// Spillover predates any window, so it needs its own query.
 	const overdue = useQuery(api.tasks.getOverdue, {});
 	// Only used to name the overdue rows — getOverdue returns raw task docs, with
-	// no client name of their own.
-	const clients = useQuery(api.clients.list, {});
+	// no client name of their own. Names-only keeps this off Work's clients.list.
+	const clients = useQuery(api.clients.listNamesForOrg, {});
 	const sentQuotes = useQuery(api.quotes.list, { status: "sent" });
 	const overdueInvoices = useQuery(api.invoices.getOverdue, {});
 	// Scope plumbing: me = current user's Convex id; org members drive both the

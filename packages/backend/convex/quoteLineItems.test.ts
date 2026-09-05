@@ -584,10 +584,6 @@ describe("QuoteLineItems", () => {
 			await expect(
 				asUser2.query(api.quoteLineItems.get, { id: lineItemId })
 			).rejects.toThrowError("Quote line item does not belong to your organization");
-
-			// User 2's list should not include User 1's line items
-			const user2Items = await asUser2.query(api.quoteLineItems.list, {});
-			expect(user2Items).toHaveLength(0);
 		});
 	});
 });

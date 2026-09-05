@@ -55,29 +55,61 @@ function generatedDisplayName(
 	return `Invoice ${(parent as Doc<"invoices">).invoiceNumber}${suffix}.pdf`;
 }
 
+/**
+ * Newest rows per source bucket. Unbounded collects broke past ~4k documents;
+ * the explorer pages up to MAX_PAGE with its "Show older files" control.
+ */
+const DEFAULT_PAGE = 200;
+const MAX_PAGE = 1000;
+
 export const listClientsTree = optionalUserQuery({
-	args: {},
-	handler: async (ctx) => {
+	args: { limit: v.optional(v.number()) },
+	handler: async (ctx, args) => {
 		const userOrgId = ctx.orgId;
 		if (!userOrgId) {
 			return null;
 		}
 		await ctx.requireLevel("documents", "view");
 
-		const [allClientDocs, allProjectDocs, allGenerated] = await Promise.all([
-			ctx.db
-				.query("clientDocuments")
-				.withIndex("by_org", (q) => q.eq("orgId", userOrgId))
-				.collect(),
-			ctx.db
-				.query("projectDocuments")
-				.withIndex("by_org", (q) => q.eq("orgId", userOrgId))
-				.collect(),
-			ctx.db
-				.query("documents")
-				.withIndex("by_org", (q) => q.eq("orgId", userOrgId))
-				.collect(),
-		]);
+		const limit = Math.min(
+			Math.max(Math.floor(args.limit ?? DEFAULT_PAGE), 1),
+			MAX_PAGE
+		);
+
+		// Paging happens before read-scoping, so a scoped member's visible rows
+		// could sit behind a page of rows they cannot see. They keep the full
+		// collect; only all-records actors take the bounded path.
+		const unscoped = await ctx.hasAllRecords("documents");
+
+		// Each bucket pages on the field the tree sorts by, so a page is exactly
+		// the newest rows the explorer would have shown first.
+		const clientDocsQuery = ctx.db
+			.query("clientDocuments")
+			.withIndex("by_org_uploaded", (q) => q.eq("orgId", userOrgId));
+		const projectDocsQuery = ctx.db
+			.query("projectDocuments")
+			.withIndex("by_org_uploaded", (q) => q.eq("orgId", userOrgId));
+		const generatedQuery = ctx.db
+			.query("documents")
+			.withIndex("by_org_generated", (q) => q.eq("orgId", userOrgId));
+
+		const [allClientDocs, allProjectDocs, allGenerated] = unscoped
+			? await Promise.all([
+					clientDocsQuery.order("desc").take(limit),
+					projectDocsQuery.order("desc").take(limit),
+					generatedQuery.order("desc").take(limit),
+				])
+			: await Promise.all([
+					clientDocsQuery.collect(),
+					projectDocsQuery.collect(),
+					generatedQuery.collect(),
+				]);
+
+		const hasMore =
+			unscoped &&
+			(allClientDocs.length === limit ||
+				allProjectDocs.length === limit ||
+				allGenerated.length === limit);
 
 		const scopedClientDocs = await ctx.applyReadScope(
 			"documents",
@@ -243,9 +275,12 @@ export const listClientsTree = optionalUserQuery({
 			clients.push({ _id: client._id, name: client.companyName });
 		}
 
-		return { clients, projects, clientDocs, projectDocs, generatedDocs };
+		return { clients, projects, clientDocs, projectDocs, generatedDocs, hasMore };
 	},
 });
+
+/** Per-call ceiling; extra ids are dropped, so callers chunk their batches. */
+const MAX_FILE_URLS = 100;
 
 export const getFileUrls = optionalUserQuery({
 	args: {
@@ -267,11 +302,12 @@ export const getFileUrls = optionalUserQuery({
 		}
 		await ctx.requireLevel("documents", "view");
 
-		const results: { id: string; url: string | null }[] = [];
-
 		// Batch downloads must degrade, not throw: anything missing or out of
 		// scope resolves to a null url.
-		for (const file of args.files) {
+		const resolve = async (file: {
+			kind: "client" | "project" | "generated";
+			id: string;
+		}): Promise<{ id: string; url: string | null }> => {
 			let url: string | null = null;
 
 			if (file.kind === "client") {
@@ -340,9 +376,9 @@ export const getFileUrls = optionalUserQuery({
 				}
 			}
 
-			results.push({ id: file.id, url });
-		}
+			return { id: file.id, url };
+		};
 
-		return results;
+		return await Promise.all(args.files.slice(0, MAX_FILE_URLS).map(resolve));
 	},
 });

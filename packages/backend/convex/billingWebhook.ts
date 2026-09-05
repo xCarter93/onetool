@@ -468,16 +468,13 @@ export const listStaleBillingOrgs = internalQuery({
 		isDone: boolean;
 	}> => {
 		const cutoff = Date.now() - args.staleMs;
-		// Paginated so one call never scans the whole table (Convex read limits).
+		// Unset billingSyncedAt sorts before every number, so lt(cutoff) includes never-synced orgs.
 		const page = await ctx.db
 			.query("organizations")
+			.withIndex("by_billing_synced", (q) => q.lt("billingSyncedAt", cutoff))
 			.paginate({ numItems: 200, cursor: args.cursor });
 		const stale = page.page
-			.filter(
-				(org) =>
-					org.clerkSubscriptionId !== undefined &&
-					(org.billingSyncedAt ?? 0) < cutoff
-			)
+			.filter((org) => org.clerkSubscriptionId !== undefined)
 			.slice(0, args.limit)
 			.map((org) => ({
 				orgId: org._id,
@@ -515,6 +512,9 @@ export const listLapsedTrialOrgs = internalQuery({
 		const lapsedAfter = now - args.lapsedWithinMs;
 		const page = await ctx.db
 			.query("organizations")
+			.withIndex("by_billing_synced", (q) =>
+				q.lt("billingSyncedAt", staleCutoff)
+			)
 			.paginate({ numItems: 200, cursor: args.cursor });
 		const lapsed = page.page
 			.filter(
@@ -522,8 +522,7 @@ export const listLapsedTrialOrgs = internalQuery({
 					org.clerkSubscriptionId === undefined &&
 					org.trialEndsAt !== undefined &&
 					org.trialEndsAt <= now &&
-					org.trialEndsAt > lapsedAfter &&
-					(org.billingSyncedAt ?? 0) < staleCutoff
+					org.trialEndsAt > lapsedAfter
 			)
 			.slice(0, args.limit)
 			.map((org) => ({

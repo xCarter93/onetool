@@ -6,7 +6,7 @@ import { api } from "@onetool/backend/convex/_generated/api";
 import type { Doc, Id } from "@onetool/backend/convex/_generated/dataModel";
 import { daysLate, isPastDue } from "@onetool/backend/convex/lib/invoiceLateness";
 import { useIsOrgSwitching } from "@/hooks/use-is-org-switching";
-import { useOrgToday } from "@/hooks/use-org-today";
+import { useUtcToday } from "@/hooks/use-org-today";
 import { formatCurrency } from "@/lib/money";
 import type { Task } from "@/types/task";
 
@@ -63,20 +63,20 @@ export type AttentionInvoice = Doc<"invoices"> & {
 
 export function invoiceUrgency(
 	invoice: AttentionInvoice,
-	orgToday: number
+	utcToday: number
 ): {
 	label: string;
 	overdue: boolean;
 } {
 	const due = invoice.earliestPaymentDueDate ?? invoice.dueDate;
-	if (isPastDue(due, orgToday)) {
-		const daysOverdue = daysLate(due, orgToday);
+	if (isPastDue(due, utcToday)) {
+		const daysOverdue = daysLate(due, utcToday);
 		return {
 			label: `${daysOverdue} day${daysOverdue !== 1 ? "s" : ""} overdue`,
 			overdue: true,
 		};
 	}
-	const daysUntilDue = Math.round((due - orgToday) / 86_400_000);
+	const daysUntilDue = Math.round((due - utcToday) / 86_400_000);
 	return {
 		label:
 			daysUntilDue === 0
@@ -125,12 +125,15 @@ export interface AttentionQueue {
 
 export function useAttentionQueue(): AttentionQueue {
 	const isOrgSwitching = useIsOrgSwitching();
-	const orgToday = useOrgToday();
-	const overdueTasks = useQuery(api.tasks.getOverdue, {});
-	const upcomingTasks = useQuery(api.tasks.getUpcoming, { daysAhead: 7 });
+	const utcToday = useUtcToday();
+	const overdueTasks = useQuery(api.tasks.getOverdue, { today: utcToday });
+	const upcomingTasks = useQuery(api.tasks.getUpcoming, {
+		daysAhead: 7,
+		today: utcToday,
+	});
 	const overdueInvoices = useQuery(api.invoices.getOverdue, {});
 	const awaitingQuotes = useQuery(api.quotes.getAwaitingSigning, {});
-	const clients = useQuery(api.clients.list, {});
+	const clients = useQuery(api.clients.listNamesForOrg, {});
 
 	const isLoading =
 		isOrgSwitching ||
@@ -184,7 +187,7 @@ export function useAttentionQueue(): AttentionQueue {
 			(t) => getDaysUntil(t.date) === 0 && !taskUrgency(t).overdue
 		).length;
 		const overdueInvoiceCount = invoices.filter(
-			(inv) => invoiceUrgency(inv, orgToday).overdue
+			(inv) => invoiceUrgency(inv, utcToday).overdue
 		).length;
 
 		const taskParts: string[] = [];
@@ -238,5 +241,5 @@ export function useAttentionQueue(): AttentionQueue {
 					? (clientNames.get(clientId) ?? "Unknown client")
 					: "No client",
 		};
-	}, [isLoading, tasks, invoices, quotes, clientNames, orgToday]);
+	}, [isLoading, tasks, invoices, quotes, clientNames, utcToday]);
 }

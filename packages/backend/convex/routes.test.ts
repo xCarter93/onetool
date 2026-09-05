@@ -1770,4 +1770,25 @@ describe("Routes", () => {
 			expect(route._id).toBe(routeId);
 		});
 	});
+
+	describe("list ordering", () => {
+		it("returns routes newest-first", async () => {
+			const { clerkUserId, clerkOrgId } = await setupOrg();
+			const asUser = t.withIdentity(
+				createPremiumTestIdentity(clerkUserId, clerkOrgId)
+			);
+
+			for (const name of ["first", "second", "third"]) {
+				await asUser.mutation(api.routes.create, {
+					name,
+					start: START,
+					roundTrip: false,
+					stops: [stop(0)],
+				});
+			}
+
+			const routes = await asUser.query(api.routes.list, {});
+			expect(routes.map((r) => r.name)).toEqual(["third", "second", "first"]);
+		});
+	});
 });

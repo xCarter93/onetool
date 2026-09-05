@@ -1327,10 +1327,6 @@ describe("Organizations", () => {
 				expect(org?.receivingAddress).toMatch(
 					/^org-[a-f0-9]+@inbound\.onetool\.biz$/
 				);
-				expect(org?.usageTracking).toMatchObject({
-					clientsCount: 0,
-					esignaturesSentThisMonth: 0,
-				});
 			});
 
 			it("should return existing org ID if organization already exists", async () => {

@@ -21,7 +21,7 @@ process.env.PORTAL_JWT_ISSUER =
 // the scheduled email action is drained to a guarded no-op so it can't leak a
 // post-transaction write.
 describe("invoices.sendToClient", () => {
-	let t: ReturnType<typeof convexTest>;
+	let t: ReturnType<typeof setupConvexTest>;
 
 	beforeEach(() => {
 		t = setupConvexTest();

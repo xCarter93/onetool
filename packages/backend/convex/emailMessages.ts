@@ -10,6 +10,7 @@ import { optionalUserQuery, userMutation } from "./lib/factories";
 export const listByClient = optionalUserQuery({
 	args: {
 		clientId: v.id("clients"),
+		limit: v.optional(v.number()),
 	},
 	handler: async (ctx, args): Promise<Doc<"emailMessages">[]> => {
 		if (!ctx.orgId) return emptyListResult<Doc<"emailMessages">>();
@@ -17,11 +18,14 @@ export const listByClient = optionalUserQuery({
 		const orgId = ctx.orgId;
 
 		// Get emails for this client, filtered by org
-		const emails = await ctx.db
+		const byClient = ctx.db
 			.query("emailMessages")
 			.withIndex("by_client", (q) => q.eq("clientId", args.clientId))
-			.order("desc")
-			.collect();
+			.order("desc");
+		const emails =
+			args.limit === undefined
+				? await byClient.collect()
+				: await byClient.take(Math.max(1, Math.floor(args.limit)));
 
 		return emails.filter((email) => email.orgId === orgId);
 	},

@@ -35,7 +35,7 @@ export const current = optionalUserQuery({
 export const listByOrg = optionalUserQuery({
 	args: {},
 	handler: async (ctx) => {
-		const userOrgId = await getOptionalOrgId(ctx);
+		const userOrgId = ctx.orgId;
 		if (!userOrgId) {
 			return [];
 		}
@@ -88,7 +88,6 @@ export const upsertFromClerk = internalMutation({
 			name: `${data.first_name ?? ""} ${data.last_name ?? ""}`.trim(),
 			email: data.email_addresses?.[0]?.email_address || "",
 			image: data.image_url || "",
-			lastSignedInDate: Date.now(),
 			externalId: data.id,
 			// Always written, so a revoke (metadata key set back to null) clears it.
 			hasPremiumFeatureAccess: readPremiumOverride(data.public_metadata),
@@ -164,23 +163,6 @@ export const deleteFromClerk = internalMutation({
 		}
 
 		await ctx.db.delete(user._id);
-	},
-});
-
-export const updateLastSignedInDate = internalMutation({
-	args: { clerkUserId: v.string() },
-	async handler(ctx, { clerkUserId }) {
-		const user = await userByExternalId(ctx, clerkUserId);
-
-		if (user !== null) {
-			await ctx.db.patch(user._id, {
-				lastSignedInDate: Date.now(),
-			});
-		} else {
-			console.warn(
-				`Can't update last signed in date, no user found for Clerk user ID: ${clerkUserId}`
-			);
-		}
 	},
 });
 
@@ -286,8 +268,6 @@ export const upsertVerifiedClerkUser = internalMutation({
 			return existingUser._id;
 		}
 
-		// No lastSignedInDate: this user hasn't signed in — the session webhook
-		// stamps it when they actually do.
 		const userId = await ctx.db.insert("users", {
 			name: args.name,
 			email: args.email,

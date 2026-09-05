@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { convexTest } from "convex-test";
 import { internal } from "./_generated/api";
 import { setupConvexTest } from "./test.setup";
@@ -173,5 +173,88 @@ describe("stripeWebhookEvents lifecycle", () => {
 			ctx.db.query("stripeWebhookEvents").collect()
 		);
 		expect(rows).toHaveLength(2);
+	});
+});
+
+describe("stripeWebhookEvents retention sweep", () => {
+	let t: ReturnType<typeof setupConvexTest>;
+
+	beforeEach(() => {
+		t = setupConvexTest();
+		vi.useFakeTimers();
+	});
+
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	async function record(
+		stripeEventId: string,
+		outcome: "processed" | "failed"
+	) {
+		const { eventDocId } = await t.mutation(
+			internal.stripeWebhookEvents.startProcessingEvent,
+			{
+				stripeEventId,
+				eventType: "checkout.session.completed",
+				receivedAt: Date.now(),
+			}
+		);
+		if (!eventDocId) throw new Error("event row not created");
+		if (outcome === "processed") {
+			await t.mutation(internal.stripeWebhookEvents.markEventProcessed, {
+				eventDocId,
+			});
+		} else {
+			await t.mutation(internal.stripeWebhookEvents.markEventFailed, {
+				eventDocId,
+				failureReason: "boom",
+			});
+		}
+	}
+
+	it("deletes processed events past the replay window and keeps everything else", async () => {
+		const now = Date.now();
+		vi.setSystemTime(now - 40 * 24 * 60 * 60 * 1000);
+		await record("evt_old_processed", "processed");
+		await record("evt_old_failed", "failed");
+
+		vi.setSystemTime(now);
+		await record("evt_recent_processed", "processed");
+
+		await t.mutation(internal.stripeWebhookEvents.cleanupProcessedEvents, {});
+
+		const remaining = await t.run((ctx) =>
+			ctx.db.query("stripeWebhookEvents").collect()
+		);
+		expect(remaining.map((r) => r.stripeEventId).sort()).toEqual([
+			"evt_old_failed",
+			"evt_recent_processed",
+		]);
+	});
+
+	it("resumes past retained rows when a page is full", async () => {
+		const now = Date.now();
+		vi.setSystemTime(now - 40 * 24 * 60 * 60 * 1000);
+		await record("evt_keep", "failed");
+		await record("evt_drop", "processed");
+
+		const kept = await t.run((ctx) =>
+			ctx.db
+				.query("stripeWebhookEvents")
+				.withIndex("by_stripe_event_id", (q) =>
+					q.eq("stripeEventId", "evt_keep")
+				)
+				.unique()
+		);
+		vi.setSystemTime(now);
+		await t.mutation(internal.stripeWebhookEvents.cleanupProcessedEvents, {
+			after: kept!._creationTime,
+		});
+
+		const remaining = await t.run((ctx) =>
+			ctx.db.query("stripeWebhookEvents").collect()
+		);
+		expect(remaining.map((r) => r.stripeEventId)).toEqual(["evt_keep"]);
 	});
 });

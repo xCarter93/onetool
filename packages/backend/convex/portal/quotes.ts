@@ -45,29 +45,20 @@ export const list = query({
 		const visible = quotes
 			.filter((q) => q.orgId === session.orgId && q.status !== "draft")
 			.sort((a, b) => (b.sentAt ?? 0) - (a.sentAt ?? 0));
-		return await Promise.all(
-			visible.map(async (q) => {
-				const totals = await calculateQuoteTotals(ctx, q._id, {
-					discountEnabled: q.discountEnabled,
-					discountAmount: q.discountAmount,
-					discountType: q.discountType,
-					taxEnabled: q.taxEnabled,
-					taxRate: q.taxRate,
-				});
-				return {
-					_id: q._id,
-					quoteNumber: q.quoteNumber,
-					title: q.title,
-					status: q.status,
-					sentAt: q.sentAt,
-					validUntil: q.validUntil,
-					total: totals.total,
-					latestDocumentId: q.latestDocumentId,
-					approvedAt: q.approvedAt,
-					declinedAt: q.declinedAt,
-				};
-			}),
-		);
+		// Stored total: syncQuoteTotals keeps it current, and a recompute would read
+		// every line item per quote on a live subscription. `get` still recomputes.
+		return visible.map((q) => ({
+			_id: q._id,
+			quoteNumber: q.quoteNumber,
+			title: q.title,
+			status: q.status,
+			sentAt: q.sentAt,
+			validUntil: q.validUntil,
+			total: q.total,
+			latestDocumentId: q.latestDocumentId,
+			approvedAt: q.approvedAt,
+			declinedAt: q.declinedAt,
+		}));
 	},
 });
 

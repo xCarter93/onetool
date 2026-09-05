@@ -54,8 +54,7 @@ export const get = optionalUserQuery({
 	handler: async (ctx): Promise<CommunityPageDocument | null> => {
 		if (!ctx.user) return null;
 		await ctx.requireLevel("community", "view");
-		const userOrgId = await getOptionalOrgId(ctx);
-		if (!userOrgId) return null;
+		const userOrgId = ctx.orgId;
 
 		return await ctx.db
 			.query("communityPages")

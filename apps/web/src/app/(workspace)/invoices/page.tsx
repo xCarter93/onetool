@@ -57,7 +57,8 @@ import {
 	X,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useQuery, useMutation } from "convex/react";
+import { useMutation } from "convex/react";
+import { useQuery } from "convex-helpers/react/cache/hooks";
 import {
 	deriveInvoiceStatus,
 	isPastDue,
@@ -322,7 +323,7 @@ function InvoicesPageContent() {
 	const invoices = useQuery(api.invoices.list, {});
 	// 30-day activity sparkline data, keyed by invoice id (presentational).
 	const sparklines = useActivitySparklines("invoice");
-	const clients = useQuery(api.clients.list, can("clients") ? {} : "skip");
+	const clients = useQuery(api.clients.listNamesForOrg, can("clients") ? {} : "skip");
 	const projects = useQuery(api.projects.list, can("projects") ? {} : "skip");
 	const rescheduleTarget = useQuery(
 		api.invoices.getWithPayments,

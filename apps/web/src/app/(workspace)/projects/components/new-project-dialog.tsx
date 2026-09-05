@@ -92,7 +92,7 @@ export function NewProjectDialog({
 
 	const canReadClients = can("clients");
 	// Skip without the clients grant — the gated endpoint throws FORBIDDEN otherwise.
-	const clients = useQuery(api.clients.list, canReadClients ? {} : "skip");
+	const clients = useQuery(api.clients.listNamesForOrg, canReadClients ? {} : "skip");
 	const users = useQuery(api.users.listByOrg);
 	const createProject = useMutation(api.projects.create);
 

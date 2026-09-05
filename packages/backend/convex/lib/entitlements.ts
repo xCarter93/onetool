@@ -149,6 +149,8 @@ export const FEATURES: Record<FeatureKey, SwitchRow> = {
 };
 
 export const METERS: Record<MeterKey, MeterRow> = {
+	// Debited on the genuine BoldSign Draft→Sent transition (boldsign.ts);
+	// redeliveries of a "Sent" webhook never double-debit.
 	esignatures: {
 		kind: "meter",
 		free: 5,
@@ -418,9 +420,8 @@ export interface MeterUsage {
 
 /**
  * Usage from the planUsage store for the given plan tier. `usedOverride`
- * substitutes an externally-computed tally for meters whose counts don't live
- * in planUsage yet (e-signatures from the documents table, clients from the
- * live cap-count query).
+ * substitutes an externally-computed tally for current-count meters, whose
+ * truth is a live row count rather than a debit log (savedReports).
  */
 export async function getMeterUsage(
 	ctx: QueryCtx | MutationCtx,

@@ -3,14 +3,13 @@ import { Image, Pressable, StyleSheet, Text, View } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter, type Href } from "expo-router";
 import { useOrganization, useUser } from "@clerk/expo";
-import { useQuery } from "convex/react";
-import { api } from "@onetool/backend/convex/_generated/api";
 import {
 	Activity as ActivityIcon,
 	Bell,
 	ChevronDown,
 } from "lucide-react-native";
 import { fontFamily, hero, useTokens } from "@/lib/theme";
+import { useNotificationData } from "@/lib/use-notification-data";
 
 const NOTIFICATIONS: Href = "/notifications" as Href;
 const ACTIVITY: Href = "/(tabs)/activity" as Href;
@@ -88,9 +87,7 @@ export function InkHeaderCluster({
 }: InkHeaderClusterProps) {
 	const router = useRouter();
 	const { user } = useUser();
-	const notificationData = useQuery(api.notifications.listForCurrentUser, {
-		limit: 1,
-	});
+	const notificationData = useNotificationData();
 	const unread = (notificationData?.unreadCount ?? 0) > 0;
 
 	const userInitials = initialsFrom(

@@ -11,7 +11,6 @@ import {
 	type PlanSource,
 	type PlanTier,
 } from "./lib/entitlements";
-import { computeEsignaturesSentThisMonth } from "./usage";
 
 export interface MyEntitlements {
 	plan: PlanTier;
@@ -60,33 +59,15 @@ export const getMine = optionalUserQuery({
 		// nothing to display or enforce, so business orgs get an empty list.
 		const meters: MeterUsage[] = [];
 		if (org) {
-			// E-signatures still count from the documents table (deliberately
-			// left on the legacy counter — it works and the kill switch works).
-			// Gated on a finite limit like savedReports below: the legacy count
-			// collects the org's documents, wasted work for an unlimited plan.
-			if (METERS.esignatures[resolved.plan] !== null) {
-				const esigUsage = await getMeterUsage(
-					ctx,
-					ctx.orgId,
-					"esignatures",
-					resolved.plan,
-					{
-						usedOverride: await computeEsignaturesSentThisMonth(
-							ctx,
-							org,
-							ctx.orgId
-						),
-					}
-				);
-				if (esigUsage.limit !== null) meters.push(esigUsage);
-			}
-
-			// planUsage-native meters (Slice A).
+			// esignatures stays first: `meters` element order is pinned shape.
 			for (const key of [
+				"esignatures",
 				"clientSends",
 				"assistantMessages",
 				"importedRows",
 			] as const) {
+				// Unlimited on this plan — skip the read, nothing would ship.
+				if (METERS[key][resolved.plan] === null) continue;
 				const usage = await getMeterUsage(ctx, ctx.orgId, key, resolved.plan);
 				if (usage.limit !== null) meters.push(usage);
 			}

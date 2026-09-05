@@ -135,12 +135,6 @@ export const createFromClerk = internalMutation({
 			isMetadataComplete: false, // User needs to complete additional setup
 			// Generate unique receiving address for this organization
 			receivingAddress,
-			// Initialize usage tracking
-			usageTracking: {
-				clientsCount: 0,
-				esignaturesSentThisMonth: 0,
-				lastEsignatureReset: Date.now(),
-			},
 		});
 
 		await ensureMembership(ctx, ownerUser._id, orgId, "owner");

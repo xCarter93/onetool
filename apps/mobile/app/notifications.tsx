@@ -9,7 +9,7 @@ import {
 import { useEffect, useState } from "react";
 import { router, type Href } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useQuery, useMutation } from "convex/react";
+import { useMutation } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
 import { BellRing, Settings, X } from "lucide-react-native";
@@ -32,6 +32,7 @@ import { CenteredModal } from "@/components/ipad/centered-modal";
 import { useDevice } from "@/lib/use-device";
 import { normalizeActionUrl } from "@/lib/push-deeplink";
 import { usePushRegistration } from "@/lib/use-push-registration";
+import { useNotificationData } from "@/lib/use-notification-data";
 import { PushPrePrompt } from "@/components/push/PushPrePrompt";
 
 // Notifications form-sheet route — same native sheet type + chrome as /org-switch
@@ -40,9 +41,7 @@ export default function NotificationsSheet() {
 	const t = useTokens();
 	const insets = useSafeAreaInsets();
 	const { device } = useDevice();
-	const notificationData = useQuery(api.notifications.listForCurrentUser, {
-		limit: 50,
-	});
+	const notificationData = useNotificationData();
 	const markRead = useMutation(api.notifications.markRead);
 
 	const { getPushPermissionStatus, enablePushNotifications } =

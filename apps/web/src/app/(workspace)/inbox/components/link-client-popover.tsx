@@ -37,7 +37,7 @@ export function LinkClientPopover({
 	const [open, setOpen] = useState(false);
 	// Skip while closed: several instances render per thread view and none
 	// should subscribe to the client list until actually opened.
-	const clients = useQuery(api.clients.list, open ? {} : "skip");
+	const clients = useQuery(api.clients.listNamesForOrg, open ? {} : "skip");
 
 	const handleSelect = (clientId: Id<"clients">) => {
 		onSelect(clientId);

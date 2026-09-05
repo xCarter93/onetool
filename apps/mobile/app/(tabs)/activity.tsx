@@ -29,9 +29,10 @@ import {
 } from "@/lib/activity-feed";
 import { sameRef, type RecordRef } from "@/lib/selection-context";
 
-// Cursor-paginated feed: each "load older" fetches only the next page, so
-// there's no hard ceiling. PAGE_SIZE keeps the first paint cheap.
-const PAGE_SIZE = 100;
+// Every loaded page stays a live subscription; cap mirrors web's SHEET_MAX_ITEMS
+// (home/components/activity-card.tsx).
+const PAGE_SIZE = 25;
+const MAX_ITEMS = 200;
 
 /**
  * ActivityLink → detail-pane ref, for the iPad shell's onSelect. Null for
@@ -179,10 +180,15 @@ export default function ActivityScreen({
 	);
 
 	const loadingMore = status === "LoadingMore";
+	const atCap = activities.length >= MAX_ITEMS;
 	const Footer =
 		items.length === 0 ? null : status === "Exhausted" ? (
 			<Text style={[styles.footerNote, { color: t.sub }]}>
 				{"You're all caught up — that's everything."}
+			</Text>
+		) : atCap ? (
+			<Text style={[styles.footerNote, { color: t.sub }]}>
+				{`Showing the ${MAX_ITEMS} most recent events.`}
 			</Text>
 		) : (
 			<Pressable

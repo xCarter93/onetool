@@ -12,11 +12,23 @@ export async function isSuppressed(
 	email: string
 ): Promise<boolean> {
 	const normalized = normalizeEmail(email);
-	const matches = await ctx.db
-		.query("emailSuppressions")
-		.withIndex("by_email", (q) => q.eq("email", normalized))
-		.collect();
-	return matches.some((s) => s.orgId === undefined || s.orgId === orgId);
+	// Global suppressions are the rows with no orgId, which the index stores
+	// under the `undefined` key — two point lookups instead of a cross-org scan.
+	const [orgRow, globalRow] = await Promise.all([
+		ctx.db
+			.query("emailSuppressions")
+			.withIndex("by_org_email", (q) =>
+				q.eq("orgId", orgId).eq("email", normalized)
+			)
+			.first(),
+		ctx.db
+			.query("emailSuppressions")
+			.withIndex("by_org_email", (q) =>
+				q.eq("orgId", undefined).eq("email", normalized)
+			)
+			.first(),
+	]);
+	return orgRow !== null || globalRow !== null;
 }
 
 /** Idempotently record a suppression; returns the (existing or new) row id. */

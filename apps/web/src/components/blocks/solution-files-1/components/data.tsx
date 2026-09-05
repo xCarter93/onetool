@@ -69,6 +69,8 @@ export interface ClientsTree {
 		name: string
 		fileSize: number | null
 	}[]
+	/** The server capped a bucket: older files are not in this tree. */
+	hasMore: boolean
 }
 
 /**

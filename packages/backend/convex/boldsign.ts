@@ -11,8 +11,13 @@ import {
 	hasAllRecords,
 	requireLevel,
 } from "./lib/permissions";
-import { METERS, entitlementsFromIdentity } from "./lib/entitlements";
-import { computeEsignaturesSentThisMonth } from "./usage";
+import {
+	METERS,
+	consumeMeter,
+	entitlementsFromIdentity,
+	getMeterUsage,
+} from "./lib/entitlements";
+import { isRecordInActorScope } from "./lib/factories";
 import { externalIoPool, EXTERNAL_FETCH_RETRY } from "./externalIoPool";
 import { resolveMemberUserIds } from "./lib/automationExec/actions";
 
@@ -262,16 +267,12 @@ async function authorizeQuoteModify(
 	await requireLevel(ctx, "quotes", "modify");
 	if (!(await hasAllRecords(ctx, "quotes"))) {
 		const user = await getCurrentUser(ctx);
-		const projects = await ctx.db
-			.query("projects")
-			.withIndex("by_org", (q) => q.eq("orgId", orgId))
-			.collect();
-		const mine = projects.filter(
-			(p) => user && p.assignedUserIds?.includes(user._id)
-		);
-		const inScope = quote.projectId
-			? mine.some((p) => p._id === quote.projectId)
-			: mine.some((p) => p.clientId === quote.clientId);
+		const inScope = user
+			? await isRecordInActorScope(ctx, user._id, orgId, {
+					projectId: quote.projectId,
+					clientId: quote.clientId,
+				})
+			: false;
 		if (!inScope) {
 			denyPermission({ object: "quotes", scope: true, userId: user?._id, orgId });
 		}
@@ -331,13 +332,14 @@ export const getEmbeddedRequestContext = internalQuery({
 		}
 
 		// Server-side monthly e-sig cap (the real enforcement boundary).
-		const organization = await ctx.db.get(orgId);
-		if (!organization) throw new Error("Organization not found");
-		const esigRow = METERS.esignatures;
-		const limit = esigRow.enforce
-			? esigRow[(await entitlementsFromIdentity(ctx)).plan]
-			: null;
-		const used = await computeEsignaturesSentThisMonth(ctx, organization, orgId);
+		const esigUsage = await getMeterUsage(
+			ctx,
+			orgId,
+			"esignatures",
+			(await entitlementsFromIdentity(ctx)).plan
+		);
+		const limit = METERS.esignatures.enforce ? esigUsage.limit : null;
+		const used = esigUsage.used;
 
 		const quoteLabel = quote.quoteNumber || quote._id.slice(-6);
 		return {
@@ -574,11 +576,7 @@ export const handleWebhook = internalMutation({
 		// publishes no redelivery policy, so this guards defensively: if a "Sent"
 		// is ever replayed it can't double-count and wrongly trip the cap.
 		if (typedEventType === "Sent" && document.boldsign.status === "Draft") {
-			await ctx.scheduler.runAfter(
-				0,
-				internal.usage.incrementEsignatureCount,
-				{ orgId: document.orgId }
-			);
+			await consumeMeter(ctx, document.orgId, "esignatures");
 		}
 
 		// Update the document

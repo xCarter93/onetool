@@ -98,24 +98,20 @@ export async function scheduleEventProcessing(ctx: MutationCtx): Promise<void> {
 		return;
 	}
 
-	let row = await ctx.db.query("eventDispatchState").first();
-	if (!row) {
-		const id = await ctx.db.insert("eventDispatchState", {
-			scheduledUntil: 0,
-			generation: 0,
-		});
-		row = (await ctx.db.get(id))!;
-	}
+	const row = await ctx.db.query("eventDispatchState").first();
 
-	if (row.scheduledUntil > Date.now()) {
+	if (row && row.scheduledUntil > Date.now()) {
 		// A live wake already exists; ride it instead of scheduling another.
 		return;
 	}
 
-	await ctx.db.patch(row._id, {
-		scheduledUntil: Date.now() + CLAIM_TTL_MS,
-		generation: row.generation + 1,
-	});
+	if (row) {
+		await ctx.db.patch(row._id, { scheduledUntil: Date.now() + CLAIM_TTL_MS });
+	} else {
+		await ctx.db.insert("eventDispatchState", {
+			scheduledUntil: Date.now() + CLAIM_TTL_MS,
+		});
+	}
 	await ctx.scheduler.runAfter(0, internal.eventBus.processEvents, {});
 }
 
@@ -467,16 +463,9 @@ export const processEvents = internalMutation({
 			}
 		}
 
-		// If there are more events, schedule another batch and keep the
-		// claim lease alive; otherwise release it. Execution is never gated
-		// on the claim — a stale duplicate invocation is harmless, it just
-		// re-does (idempotent) lease bookkeeping.
-		const remainingEvents = await ctx.db
-			.query("domainEvents")
-			.withIndex("by_status", (q) => q.eq("status", "pending"))
-			.first();
-
-		if (remainingEvents) {
+		// A short batch means the queue was empty at read time (selectFairBatch
+		// tops up to BATCH_SIZE); the 5-minute kick covers a dropped wake.
+		if (pendingEvents.length >= BATCH_SIZE) {
 			if (!process.env.VITEST) {
 				await extendClaimLease(ctx, CLAIM_TTL_MS);
 			}
@@ -501,27 +490,26 @@ async function extendClaimLease(
 	if (!row) {
 		await ctx.db.insert("eventDispatchState", {
 			scheduledUntil: Date.now() + extendByMs,
-			generation: 1,
 		});
 		return;
 	}
-	await ctx.db.patch(row._id, {
-		scheduledUntil: Date.now() + extendByMs,
-		generation: row.generation + 1,
-	});
+	// The singleton row conflicts with every concurrent emitter, so only pay the
+	// write when the lease is close enough to expiry to matter.
+	if (row.scheduledUntil > Date.now() + CLAIM_TTL_MS / 2) {
+		return;
+	}
+	await ctx.db.patch(row._id, { scheduledUntil: Date.now() + extendByMs });
 }
 
 /** Release the singleton claim doc so the next emit re-claims a fresh wake. */
 async function releaseClaimLease(ctx: MutationCtx): Promise<void> {
 	const row = await ctx.db.query("eventDispatchState").first();
 	if (!row) {
-		await ctx.db.insert("eventDispatchState", {
-			scheduledUntil: 0,
-			generation: 0,
-		});
+		await ctx.db.insert("eventDispatchState", { scheduledUntil: 0 });
 		return;
 	}
-	await ctx.db.patch(row._id, { scheduledUntil: 0 });
+	if (row.scheduledUntil === 0 && row.generation === undefined) return;
+	await ctx.db.patch(row._id, { scheduledUntil: 0, generation: undefined });
 }
 
 /**
@@ -736,9 +724,13 @@ export const kickEventProcessing = internalMutation({
 			.withIndex("by_status", (q) => q.eq("status", "pending"))
 			.first();
 		if (pending) {
-			// Bypass scheduleEventProcessing's live-lease short-circuit: this is
-			// the rescue path for a dropped wake, and a duplicate wake is a
-			// harmless idempotent no-op — schedule unconditionally.
+			// A dropped wake always leaves an expired lease, so a live lease means
+			// a chain is still running and the rescue isn't needed — skipping it
+			// keeps this cron off the singleton row that every emitter reads.
+			const row = await ctx.db.query("eventDispatchState").first();
+			if (row && row.scheduledUntil > Date.now()) {
+				return null;
+			}
 			await extendClaimLease(ctx, CLAIM_TTL_MS);
 			await ctx.scheduler.runAfter(0, internal.eventBus.processEvents, {});
 		}

@@ -264,37 +264,105 @@ describe("granular RBAC domain-function gating", () => {
 		expect(await asMember.query(api.homeStats.getHomeStats, {})).toBeDefined();
 	});
 
-	it("a scoped member is denied getPendingTasksCount (SEC-7)", async () => {
-		const { org, member, asMember } = await seedOrgWithMember(
-			"org_sec7_3",
-			"user_sec7_3"
-		);
-		// tasks:modify (assigned-only) is the DEFAULT member grant, so this is
-		// the shape a plain member actually has.
-		await grantMemberPermissions(org.orgId, member.userId, {
-			tasks: { level: "modify" },
-		});
-
-		let caught: unknown;
-		try {
-			await asMember.query(api.homeStats.getPendingTasksCount, {});
-		} catch (e) {
-			caught = e;
-		}
-		expect(caught).toBeInstanceOf(ConvexError);
-		expect(parseConvexErrorData(caught)).toMatchObject({
-			code: "FORBIDDEN",
-			object: "tasks",
-			scope: true,
-		});
-	});
-
 	it("an admin still gets dashboard stats (SEC-7 does not break admins)", async () => {
 		const { asAdmin } = await seedOrgWithMember("org_sec7_4", "user_sec7_4");
 		expect(await asAdmin.query(api.homeStats.getHomeStats, {})).toBeDefined();
-		expect(
-			await asAdmin.query(api.homeStats.getPendingTasksCount, {})
-		).toBeDefined();
+	});
+
+	// ── 1b. Point-read record scope on client sub-record writes ──────────
+
+	it("a scoped member can write contacts/properties/updates on an assigned client but not an unassigned one; a foreign org's client is rejected outright", async () => {
+		const { org, member, asAdmin, asMember } = await seedOrgWithMember(
+			"org_scope_sub",
+			"user_scope_sub"
+		);
+		await grantMemberPermissions(org.orgId, member.userId, {
+			clients: { level: "modify" },
+			projects: { level: "modify" },
+		});
+
+		const newClient = (companyName: string) =>
+			asAdmin.mutation(api.clients.create, {
+				portalAccessId: crypto.randomUUID(),
+				companyName,
+				status: "lead",
+			});
+		const assignedClient = await newClient("Assigned Co");
+		const unassignedClient = await newClient("Unassigned Co");
+		await asAdmin.mutation(api.projects.create, {
+			clientId: assignedClient,
+			title: "Mine",
+			status: "planned",
+			projectType: "one-off",
+			assignedUserIds: [member.userId],
+		});
+		await asAdmin.mutation(api.projects.create, {
+			clientId: unassignedClient,
+			title: "Theirs",
+			status: "planned",
+			projectType: "one-off",
+		});
+
+		const foreign = await t.run(async (ctx) =>
+			createTestOrg(ctx, {
+				clerkUserId: "user_scope_sub_foreign",
+				clerkOrgId: "org_scope_sub_foreign",
+			})
+		);
+		const foreignClient = await t
+			.withIdentity(createTestIdentity(foreign.clerkUserId, foreign.clerkOrgId))
+			.mutation(api.clients.create, {
+				portalAccessId: crypto.randomUUID(),
+				companyName: "Foreign Co",
+				status: "lead",
+			});
+
+		const writes = (clientId: Id<"clients">) => [
+			() =>
+				asMember.mutation(api.clientContacts.create, {
+					clientId,
+					firstName: "Pat",
+					lastName: "Member",
+					isPrimary: false,
+				}),
+			() =>
+				asMember.mutation(api.clientProperties.create, {
+					clientId,
+					streetAddress: "1 Main St",
+					city: "Boston",
+					state: "MA",
+					zipCode: "02101",
+					isPrimary: false,
+				}),
+			() =>
+				asMember.mutation(api.clients.update, {
+					id: clientId,
+					companyDescription: "touched by member",
+				}),
+		];
+
+		for (const write of writes(assignedClient)) {
+			await expect(write()).resolves.toBeDefined();
+		}
+
+		for (const write of writes(unassignedClient)) {
+			let caught: unknown;
+			try {
+				await write();
+			} catch (e) {
+				caught = e;
+			}
+			expect(caught).toBeInstanceOf(ConvexError);
+			expect(parseConvexErrorData(caught)).toMatchObject({
+				code: "FORBIDDEN",
+				object: "clients",
+				scope: true,
+			});
+		}
+
+		for (const write of writes(foreignClient)) {
+			await expect(write()).rejects.toThrow(/organization/);
+		}
 	});
 
 	// ── 2. Read grant + derived scope: clients.list ──────────────────────

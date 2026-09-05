@@ -135,11 +135,12 @@ export const list = optionalUserQuery({
 		if (!orgId) return emptyListResult();
 		await ctx.requireLevel("clients", "view");
 
-		const routes = await ctx.db
+		// by_org is keyed on orgId alone, so descending index order IS newest-first.
+		return await ctx.db
 			.query("routes")
 			.withIndex("by_org", (q) => q.eq("orgId", orgId))
+			.order("desc")
 			.collect();
-		return routes.sort((a, b) => b._creationTime - a._creationTime);
 	},
 });
 

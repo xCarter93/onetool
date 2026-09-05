@@ -24,7 +24,6 @@ app.use(aggregate, { name: "clientCounts" });
 app.use(aggregate, { name: "projectCounts" });
 app.use(aggregate, { name: "quoteCounts" });
 app.use(aggregate, { name: "invoiceRevenue" });
-app.use(aggregate, { name: "invoiceCounts" });
 
 // Resend email integration
 app.use(resend);

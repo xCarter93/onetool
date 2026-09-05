@@ -101,10 +101,11 @@ export const listByEmail = optionalUserQuery({
 			return [];
 		}
 
-		const orgId = await getOptionalOrgId(ctx);
+		const orgId = ctx.orgId;
 		if (!orgId) {
 			return [];
 		}
+		await ctx.requireLevel("inbox", "view");
 
 		// Verify the email belongs to the user's organization
 		const email = await ctx.db.get(args.emailMessageId);
@@ -117,7 +118,15 @@ export const listByEmail = optionalUserQuery({
 			.withIndex("by_email", (q) => q.eq("emailMessageId", args.emailMessageId))
 			.collect();
 
-		return attachments;
+		// URLs ship with the list so the renderer doesn't mount a query per row.
+		return await Promise.all(
+			attachments.map(async (attachment) => ({
+				...attachment,
+				downloadUrl: attachment.storageId
+					? await ctx.storage.getUrl(attachment.storageId)
+					: null,
+			}))
+		);
 	},
 });
 

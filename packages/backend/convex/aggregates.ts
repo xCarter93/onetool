@@ -66,17 +66,3 @@ export const invoiceRevenueAggregate = new TableAggregate<{
 	sortKey: (doc) => [doc.status, doc.paidAt || 0],
 	sumValue: (doc) => doc.total, // Sum invoice totals
 });
-
-/**
- * Invoice counts by status and payment time
- * Allows efficient counting of paid invoices in any time range
- */
-export const invoiceCountsAggregate = new TableAggregate<{
-	Namespace: string;
-	Key: [string, number]; // [status, paidAt || 0]
-	DataModel: DataModel;
-	TableName: "invoices";
-}>(components.invoiceCounts, {
-	namespace: (doc) => doc.orgId,
-	sortKey: (doc) => [doc.status, doc.paidAt || 0],
-});

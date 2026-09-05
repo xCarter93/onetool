@@ -499,7 +499,6 @@ describe("Users", () => {
 					image: "https://example.com/johndoe.jpg",
 					externalId: "clerk_user_new",
 				});
-				expect(user?.lastSignedInDate).toBeDefined();
 			});
 
 			it("should update an existing user from Clerk webhook data", async () => {
@@ -590,41 +589,6 @@ describe("Users", () => {
 				// This should not throw, just log a warning
 				await t.mutation(internal.users.deleteFromClerk, {
 					clerkUserId: "nonexistent_clerk_user",
-				});
-
-				// Test passes if no error is thrown
-			});
-		});
-
-		describe("updateLastSignedInDate", () => {
-			it("should update the last signed in date for a user", async () => {
-				const { userId, originalDate } = await t.run(async (ctx) => {
-					const originalDate = Date.now() - 100000;
-					const userId = await ctx.db.insert("users", {
-						name: "Sign In User",
-						email: "signin@example.com",
-						image: "https://example.com/signin.jpg",
-						externalId: "clerk_user_signin",
-						lastSignedInDate: originalDate,
-					});
-					return { userId, originalDate };
-				});
-
-				await t.mutation(internal.users.updateLastSignedInDate, {
-					clerkUserId: "clerk_user_signin",
-				});
-
-				const user = await t.run(async (ctx) => {
-					return await ctx.db.get(userId);
-				});
-
-				expect(user?.lastSignedInDate).toBeGreaterThan(originalDate);
-			});
-
-			it("should handle update for non-existent user gracefully", async () => {
-				// This should not throw, just log a warning
-				await t.mutation(internal.users.updateLastSignedInDate, {
-					clerkUserId: "nonexistent_signin_user",
 				});
 
 				// Test passes if no error is thrown

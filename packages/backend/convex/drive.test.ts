@@ -360,6 +360,144 @@ describe("drive", () => {
 			expect(tree!.clients.map((c) => c._id)).toEqual([clientA]);
 			expect(tree!.clients.map((c) => c._id)).not.toContain(clientB);
 		});
+
+		it("caps each bucket at the limit and reports hasMore", async () => {
+			const { orgId, clerkUserId, clerkOrgId } = await t.run((ctx) =>
+				createTestOrg(ctx)
+			);
+			const quoteIds = await t.run(async (ctx) => {
+				const clientId = await createTestClient(ctx, orgId);
+				return await Promise.all(
+					[1, 2, 3].map((n) =>
+						createTestQuote(ctx, orgId, clientId, {
+							quoteNumber: `Q-00000${n}`,
+						})
+					)
+				);
+			});
+
+			for (const [index, quoteId] of quoteIds.entries()) {
+				await insertGeneratedDoc({
+					orgId,
+					documentType: "quote",
+					documentId: quoteId,
+					version: index + 1,
+				});
+			}
+
+			const asUser = t.withIdentity(
+				createTestIdentity(clerkUserId, clerkOrgId)
+			);
+
+			const capped = await asUser.query(api.drive.listClientsTree, {
+				limit: 2,
+			});
+			// Newest generatedAt first, so the oldest quote falls off the page.
+			expect(capped!.generatedDocs.map((d) => d.name)).toEqual([
+				"Quote Q-000003.pdf",
+				"Quote Q-000002.pdf",
+			]);
+			expect(capped!.hasMore).toBe(true);
+
+			const full = await asUser.query(api.drive.listClientsTree, {});
+			expect(full!.generatedDocs).toHaveLength(3);
+			expect(full!.hasMore).toBe(false);
+		});
+
+		it("pages attachments by uploadedAt, not insertion order", async () => {
+			const { orgId, userId, clerkUserId, clerkOrgId } = await t.run((ctx) =>
+				createTestOrg(ctx)
+			);
+			const clientId = await t.run((ctx) => createTestClient(ctx, orgId));
+
+			// Inserted newest-first, so creation order is the reverse of uploadedAt.
+			await t.run(async (ctx) => {
+				for (const [name, uploadedAt] of [
+					["Newest.pdf", 30],
+					["Middle.pdf", 20],
+					["Oldest.pdf", 10],
+				] as const) {
+					await ctx.db.insert("clientDocuments", {
+						orgId,
+						clientId,
+						name,
+						fileName: name,
+						fileSize: 10,
+						mimeType: "application/pdf",
+						storageId: await ctx.storage.store(new Blob([name])),
+						uploadedAt,
+						uploadedBy: userId,
+					});
+				}
+			});
+
+			const asUser = t.withIdentity(
+				createTestIdentity(clerkUserId, clerkOrgId)
+			);
+			const tree = await asUser.query(api.drive.listClientsTree, { limit: 2 });
+
+			expect(tree!.clientDocs.map((d) => d.name)).toEqual([
+				"Newest.pdf",
+				"Middle.pdf",
+			]);
+			expect(tree!.hasMore).toBe(true);
+		});
+
+		it("never pages a scoped member past their own attachments", async () => {
+			const { orgId, userId, clerkOrgId } = await t.run((ctx) =>
+				createTestOrg(ctx, {
+					clerkUserId: "owner_page",
+					clerkOrgId: "org_page",
+				})
+			);
+			const member = await t.run((ctx) =>
+				addMemberToOrg(ctx, orgId, { clerkUserId: "member_page" })
+			);
+			await grantDocumentsView(orgId, member.userId);
+
+			const { clientA, clientB } = await t.run(async (ctx) => {
+				const clientA = await createTestClient(ctx, orgId, {
+					companyName: "In Scope Co",
+				});
+				const clientB = await createTestClient(ctx, orgId, {
+					companyName: "Out Of Scope Co",
+				});
+				const projectA = await createTestProject(ctx, orgId, clientA);
+				await ctx.db.patch(projectA, { assignedUserIds: [member.userId] });
+				return { clientA, clientB };
+			});
+
+			// The member's only file is the oldest row in the org: a bounded page
+			// of newer out-of-scope rows would hide it entirely.
+			await t.run(async (ctx) => {
+				const insert = async (clientId: typeof clientA, name: string) => {
+					await ctx.db.insert("clientDocuments", {
+						orgId,
+						clientId,
+						name,
+						fileName: name,
+						fileSize: 10,
+						mimeType: "application/pdf",
+						storageId: await ctx.storage.store(new Blob([name])),
+						uploadedAt: 1,
+						uploadedBy: userId,
+					});
+				};
+				await insert(clientA, "Mine.pdf");
+				await insert(clientB, "Newer1.pdf");
+				await insert(clientB, "Newer2.pdf");
+			});
+
+			const asMember = t.withIdentity(
+				createTestIdentity(member.clerkUserId, clerkOrgId)
+			);
+			const tree = await asMember.query(api.drive.listClientsTree, {
+				limit: 1,
+			});
+
+			expect(tree!.clientDocs.map((d) => d.name)).toEqual(["Mine.pdf"]);
+			expect(tree!.hasMore).toBe(false);
+		});
 	});
 
 	describe("rename", () => {

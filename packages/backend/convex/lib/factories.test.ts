@@ -8,6 +8,9 @@ import {
 	createTestIdentity,
 	createTestOrg,
 } from "../test.helpers";
+import { api } from "../_generated/api";
+import type { Id } from "../_generated/dataModel";
+import type { MutationCtx } from "../_generated/server";
 
 describe("org-scoped function factories", () => {
 	let t: ReturnType<typeof convexTest>;
@@ -309,5 +312,215 @@ describe("org-scoped function factories", () => {
 			"scalar-match",
 			"array-match",
 		]);
+	});
+});
+
+/**
+ * `isRecordInActorScope` replaces the org-wide `projects.by_org` scan for
+ * single-record gates, so every case below asserts it against the verdict that
+ * scan would have produced (`actorScope()` is left untouched and is the oracle).
+ */
+describe("record scope by point read", () => {
+	let t: ReturnType<typeof convexTest>;
+
+	beforeEach(() => {
+		t = setupConvexTest();
+	});
+
+	async function invokeRegisteredFunction<T>(
+		fn: unknown,
+		ctx: unknown,
+		args: Record<string, unknown> = {}
+	): Promise<T> {
+		return await (fn as { _handler: (ctx: unknown, args: unknown) => Promise<T> })
+			._handler(ctx, args);
+	}
+
+	async function seed() {
+		const owner = await t.run(async (ctx) =>
+			createTestOrg(ctx, {
+				clerkUserId: "user_scope_owner",
+				clerkOrgId: "org_scope",
+			})
+		);
+		const member = await t.run(async (ctx) =>
+			addMemberToOrg(ctx, owner.orgId, {
+				clerkUserId: "user_scope_member",
+				userEmail: "scope-member@example.com",
+			})
+		);
+		// Grants without allRecords — an admin/owner would skip the gate entirely.
+		await t.run(async (ctx: { db: MutationCtx["db"] }) => {
+			const membership = await ctx.db
+				.query("organizationMemberships")
+				.withIndex("by_org_user", (q) =>
+					q.eq("orgId", owner.orgId).eq("userId", member.userId)
+				)
+				.unique();
+			await ctx.db.patch(membership!._id, {
+				permissions: {
+					projects: { level: "modify" },
+					clients: { level: "modify" },
+				},
+			});
+		});
+
+		const asOwner = t.withIdentity(
+			createTestIdentity(owner.clerkUserId, owner.clerkOrgId)
+		);
+		const newClient = async (companyName: string) =>
+			await asOwner.mutation(api.clients.create, {
+				portalAccessId: crypto.randomUUID(),
+				companyName,
+				status: "lead",
+			});
+		const newProject = async (
+			clientId: Awaited<ReturnType<typeof newClient>>,
+			title: string,
+			assignedUserIds?: Id<"users">[]
+		) =>
+			await asOwner.mutation(api.projects.create, {
+				clientId,
+				title,
+				status: "planned",
+				projectType: "one-off",
+				assignedUserIds,
+			});
+
+		const assignedClientId = await newClient("Assigned Co");
+		const foreignClientId = await newClient("Foreign Co");
+		const assignedProjectId = await newProject(assignedClientId, "Mine", [
+			member.userId,
+		]);
+		const unassignedProjectId = await newProject(foreignClientId, "Theirs");
+
+		// Same client, both an assigned and an unassigned project: the client is
+		// in scope on the strength of the assigned one.
+		const mixedClientId = await newClient("Mixed Co");
+		await newProject(mixedClientId, "Mixed - theirs");
+		await newProject(mixedClientId, "Mixed - mine", [member.userId]);
+
+		return {
+			owner,
+			member,
+			assignedClientId,
+			foreignClientId,
+			mixedClientId,
+			assignedProjectId,
+			unassignedProjectId,
+		};
+	}
+
+	/** Runs both the org-wide-scan oracle and the point read for one ref. */
+	async function verdicts(
+		member: { clerkUserId: string },
+		clerkOrgId: string,
+		ref: { projectId?: Id<"projects">; clientId?: Id<"clients"> }
+	) {
+		return await t.run(async (ctx) => {
+			(ctx.auth as any).getUserIdentity = async () =>
+				createTestIdentity(member.clerkUserId, clerkOrgId);
+
+			const { userQuery, isRecordInActorScope } = await import("./factories");
+			const fn = userQuery({
+				args: {},
+				handler: async (factoryCtx) => {
+					const scope = await factoryCtx.actorScope();
+					const scanned = ref.projectId
+						? scope.projectIds.has(ref.projectId)
+						: scope.clientIds.has(ref.clientId!);
+					const pointRead = await isRecordInActorScope(
+						factoryCtx,
+						factoryCtx.user._id,
+						factoryCtx.orgId,
+						ref
+					);
+					const gate = await factoryCtx
+						.requireRecordScope("projects", ref)
+						.then(
+							() => "allowed",
+							() => "denied"
+						);
+					return { scanned, pointRead, gate };
+				},
+			});
+
+			return await invokeRegisteredFunction<{
+				scanned: boolean;
+				pointRead: boolean;
+				gate: string;
+			}>(fn, ctx);
+		});
+	}
+
+	it("matches the org-wide scan for assigned and unassigned projects", async () => {
+		const s = await seed();
+
+		const assigned = await verdicts(s.member, s.owner.clerkOrgId, {
+			projectId: s.assignedProjectId,
+		});
+		expect(assigned).toEqual({
+			scanned: true,
+			pointRead: true,
+			gate: "allowed",
+		});
+
+		const unassigned = await verdicts(s.member, s.owner.clerkOrgId, {
+			projectId: s.unassignedProjectId,
+		});
+		expect(unassigned).toEqual({
+			scanned: false,
+			pointRead: false,
+			gate: "denied",
+		});
+	});
+
+	it("matches the org-wide scan for clients derived from assignments", async () => {
+		const s = await seed();
+
+		for (const [clientId, expected] of [
+			[s.assignedClientId, true],
+			[s.mixedClientId, true],
+			[s.foreignClientId, false],
+		] as const) {
+			const result = await verdicts(s.member, s.owner.clerkOrgId, { clientId });
+			expect(result).toEqual({
+				scanned: expected,
+				pointRead: expected,
+				gate: expected ? "allowed" : "denied",
+			});
+		}
+	});
+
+	it("denies a project assigned to the member in another organization", async () => {
+		const s = await seed();
+		const other = await t.run(async (ctx) =>
+			createTestOrg(ctx, {
+				clerkUserId: "user_other_owner",
+				clerkOrgId: "org_other",
+			})
+		);
+		const otherClientId = await t.run(async (ctx) =>
+			createTestClient(ctx, other.orgId, { companyName: "Other Org Co" })
+		);
+		const otherProjectId = await t.run(async (ctx: { db: MutationCtx["db"] }) =>
+			ctx.db.insert("projects", {
+				orgId: other.orgId,
+				clientId: otherClientId,
+				title: "Cross-org",
+				status: "planned",
+				projectType: "one-off",
+				assignedUserIds: [s.member.userId],
+			})
+		);
+
+		expect(
+			await verdicts(s.member, s.owner.clerkOrgId, {
+				projectId: otherProjectId,
+			})
+		).toEqual({ scanned: false, pointRead: false, gate: "denied" });
+		expect(
+			await verdicts(s.member, s.owner.clerkOrgId, { clientId: otherClientId })
+		).toEqual({ scanned: false, pointRead: false, gate: "denied" });
 	});
 });

@@ -142,7 +142,6 @@ export function setupConvexTest() {
 		t.registerComponent("projectCounts", aggregateSchema, aggregateModules);
 		t.registerComponent("quoteCounts", aggregateSchema, aggregateModules);
 		t.registerComponent("invoiceRevenue", aggregateSchema, aggregateModules);
-		t.registerComponent("invoiceCounts", aggregateSchema, aggregateModules);
 	} else {
 		console.warn(
 			"Warning: Aggregate modules not found. Tests requiring aggregates may fail."

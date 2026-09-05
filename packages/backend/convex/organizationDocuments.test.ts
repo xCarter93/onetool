@@ -1,5 +1,5 @@
 import { convexTest } from "convex-test";
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { api } from "./_generated/api";
 import { setupConvexTest } from "./test.setup";
 import { Id } from "./_generated/dataModel";
@@ -512,6 +512,61 @@ describe("Organization document folders", () => {
 
 			const docs = await asUser.query(api.organizationDocuments.list, {});
 			expect(docs.map((d) => d._id).sort()).toEqual([survivor, rootDoc].sort());
+		});
+
+		it("sweeps a subtree larger than one batch in scheduled batches", async () => {
+			const { org, asUser } = await setup();
+			const parent = await asUser.mutation(
+				api.organizationDocumentFolders.create,
+				{ name: "Big" }
+			);
+			const child = await asUser.mutation(
+				api.organizationDocumentFolders.create,
+				{ name: "Child", parentId: parent }
+			);
+
+			// 150 documents, past the 100-per-transaction delete batch.
+			await t.run(async (ctx) => {
+				for (let i = 0; i < 150; i++) {
+					const storageId = await ctx.storage.store(new Blob([`doc-${i}`]));
+					await ctx.db.insert("organizationDocuments", {
+						orgId: org.orgId,
+						name: `Doc ${i}.pdf`,
+						storageId,
+						mimeType: "application/pdf",
+						fileSize: 5,
+						uploadedAt: Date.now(),
+						uploadedBy: org.userId,
+						folderId: i % 2 === 0 ? parent : child,
+					});
+				}
+			});
+
+			vi.useFakeTimers();
+			try {
+				const result = await asUser.mutation(
+					api.organizationDocumentFolders.remove,
+					{ id: parent }
+				);
+				expect(result).toEqual({ folderCount: 2, documentCount: 100 });
+
+				// The folder rows outlive the first batch on purpose: dropping them
+				// early would strand the remaining files at the drive root.
+				const midway = await asUser.query(
+					api.organizationDocumentFolders.list,
+					{}
+				);
+				expect(midway).toHaveLength(2);
+
+				await t.finishAllScheduledFunctions(vi.runAllTimers);
+			} finally {
+				vi.useRealTimers();
+			}
+
+			expect(
+				await asUser.query(api.organizationDocumentFolders.list, {})
+			).toEqual([]);
+			expect(await asUser.query(api.organizationDocuments.list, {})).toEqual([]);
 		});
 
 		it("rejects deleting a folder from another organization", async () => {
