@@ -711,6 +711,42 @@ describe("Clients", () => {
 		});
 	});
 
+	describe("cleanupOrgArchivedClients", () => {
+		it("queues archived clients older than the cutoff regardless of creation order", async () => {
+			const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
+			const orgId = await t.run(async (ctx) => {
+				const userId = await ctx.db.insert("users", {
+					name: "Test User",
+					email: "cleanup@example.com",
+					image: "https://example.com/image.jpg",
+					externalId: "user_cleanup",
+				});
+				const orgId = await ctx.db.insert("organizations", {
+					clerkOrganizationId: "org_cleanup",
+					name: "Cleanup Org",
+					ownerUserId: userId,
+				});
+				const insert = (
+					companyName: string,
+					status: "archived" | "active",
+					archivedAt?: number
+				) => ctx.db.insert("clients", { orgId, companyName, status, archivedAt });
+				// Recent rows come first so they would fill a creation-ordered prefix.
+				await insert("Recent", "archived", cutoff + 60_000);
+				await insert("Old", "archived", cutoff - 60_000);
+				await insert("Legacy", "archived");
+				await insert("Active", "active", cutoff - 60_000);
+				return orgId;
+			});
+
+			const result = await t.mutation(internal.clients.cleanupOrgArchivedClients, {
+				orgId,
+				cutoff,
+			});
+			expect(result).toEqual({ queued: 2 });
+		});
+	});
+
 	describe("getStats", () => {
 		// TODO: Re-enable after fixing async event emission transaction issue
 		it.skip("should return correct client statistics", async () => {

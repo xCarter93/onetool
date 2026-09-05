@@ -449,6 +449,10 @@ export const handleSubscriptionItemEvent = internalMutation({
 // Nightly reconcile (repairs orgs a missed webhook left stale)
 // ============================================================================
 
+// Page by the caller's limit: a post-filter slice would drop qualifying orgs
+// the cursor then skips past.
+const pageSize = (limit: number) => Math.max(1, Math.min(limit, 200));
+
 /**
  * Orgs whose billing mirror hasn't been written in `staleMs`. Bounded scan:
  * only orgs that ever had a subscription (clerkSubscriptionId set) qualify.
@@ -472,10 +476,9 @@ export const listStaleBillingOrgs = internalQuery({
 		const page = await ctx.db
 			.query("organizations")
 			.withIndex("by_billing_synced", (q) => q.lt("billingSyncedAt", cutoff))
-			.paginate({ numItems: 200, cursor: args.cursor });
+			.paginate({ numItems: pageSize(args.limit), cursor: args.cursor });
 		const stale = page.page
 			.filter((org) => org.clerkSubscriptionId !== undefined)
-			.slice(0, args.limit)
 			.map((org) => ({
 				orgId: org._id,
 				clerkOrganizationId: org.clerkOrganizationId,
@@ -515,7 +518,7 @@ export const listLapsedTrialOrgs = internalQuery({
 			.withIndex("by_billing_synced", (q) =>
 				q.lt("billingSyncedAt", staleCutoff)
 			)
-			.paginate({ numItems: 200, cursor: args.cursor });
+			.paginate({ numItems: pageSize(args.limit), cursor: args.cursor });
 		const lapsed = page.page
 			.filter(
 				(org) =>
@@ -524,7 +527,6 @@ export const listLapsedTrialOrgs = internalQuery({
 					org.trialEndsAt <= now &&
 					org.trialEndsAt > lapsedAfter
 			)
-			.slice(0, args.limit)
 			.map((org) => ({
 				orgId: org._id,
 				clerkOrganizationId: org.clerkOrganizationId,

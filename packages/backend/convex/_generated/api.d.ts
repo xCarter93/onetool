@@ -149,6 +149,7 @@ import type * as messageAttachments from "../messageAttachments.js";
 import type * as migrations_addReceivingAddresses from "../migrations/addReceivingAddresses.js";
 import type * as migrations_backfillCreatedByFromOrgOwner from "../migrations/backfillCreatedByFromOrgOwner.js";
 import type * as migrations_backfillEmailThreads from "../migrations/backfillEmailThreads.js";
+import type * as migrations_backfillEsignatureUsage from "../migrations/backfillEsignatureUsage.js";
 import type * as migrations_backfillInvoicePaymentRows from "../migrations/backfillInvoicePaymentRows.js";
 import type * as migrations_backfillMemberPermissions from "../migrations/backfillMemberPermissions.js";
 import type * as migrations_backfillPremiumOverrides from "../migrations/backfillPremiumOverrides.js";
@@ -364,6 +365,7 @@ declare const fullApi: ApiFromModules<{
   "migrations/addReceivingAddresses": typeof migrations_addReceivingAddresses;
   "migrations/backfillCreatedByFromOrgOwner": typeof migrations_backfillCreatedByFromOrgOwner;
   "migrations/backfillEmailThreads": typeof migrations_backfillEmailThreads;
+  "migrations/backfillEsignatureUsage": typeof migrations_backfillEsignatureUsage;
   "migrations/backfillInvoicePaymentRows": typeof migrations_backfillInvoicePaymentRows;
   "migrations/backfillMemberPermissions": typeof migrations_backfillMemberPermissions;
   "migrations/backfillPremiumOverrides": typeof migrations_backfillPremiumOverrides;

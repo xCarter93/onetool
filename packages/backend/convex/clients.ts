@@ -1666,32 +1666,31 @@ export const sweepArchivedClientOrgs = internalMutation({
 	},
 });
 
-// `by_status` carries no archivedAt component, so the age test runs in JS over a
-// bounded window: freshly archived rows can defer eligible ones to a later run.
 export const cleanupOrgArchivedClients = internalMutation({
 	args: { orgId: v.id("organizations"), cutoff: v.number() },
 	returns: v.object({ queued: v.number() }),
 	handler: async (ctx, args): Promise<{ queued: number }> => {
-		const archived = await ctx.db
+		// Unset archivedAt sorts before every number, so legacy archived rows
+		// without one stay eligible.
+		const eligible = await ctx.db
 			.query("clients")
-			.withIndex("by_status", (q) =>
-				q.eq("orgId", args.orgId).eq("status", "archived")
+			.withIndex("by_status_archived", (q) =>
+				q
+					.eq("orgId", args.orgId)
+					.eq("status", "archived")
+					.lt("archivedAt", args.cutoff)
 			)
 			.take(CLEANUP_ORG_CAP);
 
-		let queued = 0;
-		for (const client of archived) {
-			// A missing archivedAt counts as eligible — legacy archived rows have none.
-			if ((client.archivedAt ?? 0) >= args.cutoff) continue;
+		for (const client of eligible) {
 			await ctx.scheduler.runAfter(
 				0,
 				internal.clients.permanentlyDeleteArchivedClient,
 				{ id: client._id }
 			);
-			queued++;
 		}
 
-		return { queued };
+		return { queued: eligible.length };
 	},
 });
 

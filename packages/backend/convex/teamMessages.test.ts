@@ -7,6 +7,7 @@ import {
 	createTestOrg,
 	createTestClient,
 	createTestIdentity,
+	createTestProject,
 	addMemberToOrg,
 } from "./test.helpers";
 import { insertTeamMessage } from "./teamMessages";
@@ -158,12 +159,68 @@ describe("teamMessages.listByEntity", () => {
 				)
 				.unique();
 			await ctx.db.patch(membership!._id, {
-				permissions: { clients: { level: "view" } },
+				permissions: { clients: { level: "view", allRecords: true } },
 			});
 		});
 
 		const feed = await asMember.query(api.teamMessages.listByEntity, args);
 		expect(feed.map((m) => m.message)).toEqual(["owner note"]);
+	});
+
+	it("returns nothing to a scoped member for a client outside their assignments", async () => {
+		const setup = await t.run(async (ctx) => {
+			const org = await createTestOrg(ctx, {
+				clerkUserId: "user_tm_scope_owner",
+				clerkOrgId: "org_tm_scope",
+			});
+			const assignedClientId = await createTestClient(ctx, org.orgId);
+			const otherClientId = await createTestClient(ctx, org.orgId);
+			const member = await addMemberToOrg(ctx, org.orgId, {
+				clerkUserId: "user_tm_scope_member",
+			});
+			const projectId = await createTestProject(ctx, org.orgId, assignedClientId);
+			await ctx.db.patch(projectId, { assignedUserIds: [member.userId] });
+			for (const clientId of [assignedClientId, otherClientId]) {
+				await insertTeamMessage(ctx, {
+					orgId: org.orgId,
+					entityType: "client",
+					entityId: clientId,
+					message: `note for ${clientId}`,
+					authorType: "user",
+					authorUserId: org.userId,
+				});
+			}
+			return { org, member, assignedClientId, otherClientId };
+		});
+		await t.run(async (ctx: { db: MutationCtx["db"] }) => {
+			const membership = await ctx.db
+				.query("organizationMemberships")
+				.withIndex("by_org_user", (q) =>
+					q.eq("orgId", setup.org.orgId).eq("userId", setup.member.userId)
+				)
+				.unique();
+			// View without allRecords: only assigned records are in scope.
+			await ctx.db.patch(membership!._id, {
+				permissions: { clients: { level: "view" } },
+			});
+		});
+
+		const asMember = t.withIdentity(
+			createTestIdentity(setup.member.clerkUserId, setup.org.clerkOrgId)
+		);
+		const assigned = await asMember.query(api.teamMessages.listByEntity, {
+			entityType: "client",
+			entityId: setup.assignedClientId,
+		});
+		expect(assigned.map((m) => m.message)).toEqual([
+			`note for ${setup.assignedClientId}`,
+		]);
+		expect(
+			await asMember.query(api.teamMessages.listByEntity, {
+				entityType: "client",
+				entityId: setup.otherClientId,
+			})
+		).toEqual([]);
 	});
 
 	it("returns nothing for another org's entity", async () => {

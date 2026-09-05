@@ -221,18 +221,22 @@ export const list = optionalUserQuery({
 		// newest-first order the callers expect — no JS sort needed.
 		if (args.projectId) {
 			await validateProjectAccess(ctx, args.projectId, orgId);
-			quotes = await ctx.db
-				.query("quotes")
-				.withIndex("by_project", (q) => q.eq("projectId", args.projectId))
-				.order("desc")
-				.collect();
+			quotes = (
+				await ctx.db
+					.query("quotes")
+					.withIndex("by_project", (q) => q.eq("projectId", args.projectId))
+					.order("desc")
+					.collect()
+			).filter((quote) => quote.orgId === orgId);
 		} else if (args.clientId) {
 			await validateClientAccess(ctx, args.clientId, orgId);
-			quotes = await ctx.db
-				.query("quotes")
-				.withIndex("by_client", (q) => q.eq("clientId", args.clientId!))
-				.order("desc")
-				.collect();
+			quotes = (
+				await ctx.db
+					.query("quotes")
+					.withIndex("by_client", (q) => q.eq("clientId", args.clientId!))
+					.order("desc")
+					.collect()
+			).filter((quote) => quote.orgId === orgId);
 		} else if (args.status) {
 			quotes = await ctx.db
 				.query("quotes")

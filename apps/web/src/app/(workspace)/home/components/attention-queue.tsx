@@ -44,7 +44,7 @@ import {
 } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 import { formatCurrency } from "@/lib/money";
-import { useOrgToday } from "@/hooks/use-org-today";
+import { useOrgToday, useUtcToday } from "@/hooks/use-org-today";
 import type { Task } from "@/types/task";
 import {
 	invoiceUrgency,
@@ -261,11 +261,12 @@ function ColumnRows({
 	withCheckbox?: boolean;
 }) {
 	const orgToday = useOrgToday();
+	const utcToday = useUtcToday();
 	let rows: React.ReactNode;
 	if (column === "tasks") {
 		const tasks = limit ? queue.tasks.slice(0, limit) : queue.tasks;
 		rows = tasks.map((task) => {
-			const urgency = taskUrgency(task);
+			const urgency = taskUrgency(task, utcToday);
 			return (
 				<AttentionItem
 					key={task._id}
@@ -297,7 +298,7 @@ function ColumnRows({
 	} else {
 		const quotes = limit ? queue.quotes.slice(0, limit) : queue.quotes;
 		rows = quotes.map((quote) => {
-			const urgency = quoteUrgency(quote);
+			const urgency = quoteUrgency(quote, utcToday);
 			return (
 				<AttentionItem
 					key={quote._id}

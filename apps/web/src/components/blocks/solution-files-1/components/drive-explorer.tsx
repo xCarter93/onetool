@@ -13,10 +13,12 @@ import {
 	useRef,
 	useState,
 } from "react"
+import { useOrganization } from "@clerk/nextjs"
 import { useConvex, useMutation, useQuery } from "convex/react"
 import { api } from "@onetool/backend/convex/_generated/api"
 import type { Id } from "@onetool/backend/convex/_generated/dataModel"
 import { useFileUpload } from "@/hooks/use-file-upload"
+import { useIsOrgSwitching } from "@/hooks/use-is-org-switching"
 import { useToast } from "@/hooks/use-toast"
 import { usePermissions } from "@/hooks/use-permissions"
 import { logError, getUserFriendlyErrorMessage } from "@/lib/error-logger"
@@ -262,17 +264,32 @@ export function DriveExplorer() {
 	)
 	// Widening the page re-runs the query; keep the loaded tree on screen so the
 	// explorer does not flash back to its skeleton on every "Show older files".
-	const loadedClientsTree = useRef<ClientsTree | null | undefined>(undefined)
+	// This page can stay mounted across an org switch, and the previous org's
+	// tree must not fill the gap while the new one loads. Clerk's org id moves
+	// before Convex re-auths, so the switch window is gated as well as the key.
+	const { organization } = useOrganization()
+	const orgId = organization?.id
+	const isOrgSwitching = useIsOrgSwitching()
+	const loadedClientsTree = useRef<{
+		orgId: string | undefined
+		tree: ClientsTree | null
+	} | null>(null)
 	useEffect(() => {
-		if (clientsTree !== undefined) loadedClientsTree.current = clientsTree
-	}, [clientsTree])
+		if (clientsTree !== undefined && !isOrgSwitching) {
+			loadedClientsTree.current = { orgId, tree: clientsTree }
+		}
+	}, [clientsTree, orgId, isOrgSwitching])
 	// Gated on the grant so a revoked permission drops the tree instead of
 	// leaving the last loaded one on screen.
-	const shownClientsTree = !canViewClients
-		? undefined
-		: clientsTree !== undefined
-			? clientsTree
-			: loadedClientsTree.current
+	const retainedTree = loadedClientsTree.current
+	const shownClientsTree =
+		!canViewClients || isOrgSwitching
+			? undefined
+			: clientsTree !== undefined
+				? clientsTree
+				: retainedTree !== null && retainedTree.orgId === orgId
+					? retainedTree.tree
+					: undefined
 
 	const isLoading =
 		permissionsLoading ||

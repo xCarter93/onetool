@@ -299,6 +299,7 @@ export default defineSchema({
 	})
 		.index("by_org", ["orgId"])
 		.index("by_status", ["orgId", "status"])
+		.index("by_status_archived", ["orgId", "status", "archivedAt"])
 		.index("by_portal_access_id", ["portalAccessId"])
 		.searchIndex("search_text", {
 			searchField: "searchText",

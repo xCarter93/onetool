@@ -395,6 +395,7 @@ export const processEvents = internalMutation({
 
 		let processed = 0;
 		let failed = 0;
+		let retryScheduled = false;
 
 		for (const event of pendingEvents) {
 			// Mark as processing
@@ -459,6 +460,7 @@ export const processEvents = internalMutation({
 						internal.eventBus.processEvents,
 						{}
 					);
+					retryScheduled = true;
 				}
 			}
 		}
@@ -470,7 +472,9 @@ export const processEvents = internalMutation({
 				await extendClaimLease(ctx, CLAIM_TTL_MS);
 			}
 			await ctx.scheduler.runAfter(0, internal.eventBus.processEvents, {});
-		} else if (!process.env.VITEST) {
+		} else if (!retryScheduled && !process.env.VITEST) {
+			// Releasing under a pending retry would let the next emit re-run the
+			// failed event before RETRY_DELAY_MS and burn an attempt.
 			await releaseClaimLease(ctx);
 		}
 

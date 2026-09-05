@@ -325,6 +325,41 @@ describe("billing reconcile", () => {
 		expect(result.stale).toEqual([]);
 	});
 
+	it("pages by limit so qualifying orgs beyond it stay reachable", async () => {
+		const ids = await t.run(async (ctx) => {
+			await ctx.db.patch(orgId, { clerkSubscriptionId: "sub_0" });
+			const extra: Id<"organizations">[] = [];
+			for (let i = 1; i <= 3; i++) {
+				const org = await createTestOrg(ctx, {
+					clerkUserId: `user_page_${i}`,
+					clerkOrgId: `org_page_${i}`,
+				});
+				await ctx.db.patch(org.orgId, { clerkSubscriptionId: `sub_${i}` });
+				extra.push(org.orgId);
+			}
+			return [orgId, ...extra];
+		});
+
+		const found: Id<"organizations">[] = [];
+		let cursor: string | null = null;
+		for (let i = 0; i < 10; i++) {
+			const page: {
+				stale: Array<{ orgId: Id<"organizations"> }>;
+				continueCursor: string;
+				isDone: boolean;
+			} = await t.query(internal.billingWebhook.listStaleBillingOrgs, {
+				staleMs: 0,
+				limit: 2,
+				cursor,
+			});
+			expect(page.stale.length).toBeLessThanOrEqual(2);
+			found.push(...page.stale.map((o) => o.orgId));
+			if (page.isDone) break;
+			cursor = page.continueCursor;
+		}
+		expect(found.sort()).toEqual([...ids].sort());
+	});
+
 	it("the stale scan spans never-synced and long-stale orgs but not fresh ones", async () => {
 		const staleMs = 48 * 60 * 60 * 1000;
 		const now = Date.now();

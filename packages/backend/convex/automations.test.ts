@@ -1837,6 +1837,12 @@ describe("automations.getSampleRelatedFields — record scope", () => {
 					otherClientId,
 					{ projectId: unassignedProjectId, quoteNumber: "Q-200002" }
 				),
+				mixedQuoteId: await createTestQuote(
+					ctx,
+					org.orgId,
+					assignedClientId,
+					{ projectId: unassignedProjectId, quoteNumber: "Q-200003" }
+				),
 			};
 		});
 
@@ -1867,6 +1873,18 @@ describe("automations.getSampleRelatedFields — record scope", () => {
 			await asMember.query(api.automations.getSampleRelatedFields, {
 				entityType: "quote",
 				entityId: unassignedQuoteId,
+			})
+		).toEqual({});
+	});
+
+	// The project decides when a quote has one; an assigned client does not lift it.
+	it("returns nothing for a quote on an unassigned project of an assigned client", async () => {
+		const { asMember, mixedQuoteId } = await seed();
+
+		expect(
+			await asMember.query(api.automations.getSampleRelatedFields, {
+				entityType: "quote",
+				entityId: mixedQuoteId,
 			})
 		).toEqual({});
 	});

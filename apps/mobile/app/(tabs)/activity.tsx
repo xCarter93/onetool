@@ -192,7 +192,7 @@ export default function ActivityScreen({
 			</Text>
 		) : (
 			<Pressable
-				onPress={() => loadMore(PAGE_SIZE)}
+				onPress={() => loadMore(Math.min(PAGE_SIZE, MAX_ITEMS - activities.length))}
 				disabled={loadingMore}
 				accessibilityRole="button"
 				accessibilityLabel="Load older activity"

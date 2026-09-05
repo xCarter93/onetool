@@ -1,8 +1,12 @@
-import { MutationCtx } from "./_generated/server";
+import { MutationCtx, QueryCtx } from "./_generated/server";
 import { v } from "convex/values";
 import { Doc, Id } from "./_generated/dataModel";
 import { emptyListResult } from "./lib/queries";
-import { optionalUserQuery } from "./lib/factories";
+import {
+	isRecordInActorScope,
+	optionalUserQuery,
+	type RecordScopeRef,
+} from "./lib/factories";
 
 /**
  * Team Communication messages.
@@ -69,6 +73,29 @@ export async function insertTeamMessage(
 // Feed is capped to the newest N by createdAt (by_org_entity index's trailing field).
 const TEAM_MESSAGE_FEED_LIMIT = 200;
 
+/** The parent record's scope ref; null when it is missing or in another org. */
+async function entityScopeRef(
+	ctx: QueryCtx,
+	orgId: Id<"organizations">,
+	args: { entityType: TeamMessageEntityType; entityId: string }
+): Promise<RecordScopeRef | null> {
+	if (args.entityType === "client") {
+		const id = ctx.db.normalizeId("clients", args.entityId);
+		const client = id && (await ctx.db.get(id));
+		return client && client.orgId === orgId ? { clientId: client._id } : null;
+	}
+	if (args.entityType === "project") {
+		const id = ctx.db.normalizeId("projects", args.entityId);
+		const project = id && (await ctx.db.get(id));
+		return project && project.orgId === orgId ? { projectId: project._id } : null;
+	}
+	const id = ctx.db.normalizeId("quotes", args.entityId);
+	const quote = id && (await ctx.db.get(id));
+	return quote && quote.orgId === orgId
+		? { projectId: quote.projectId, clientId: quote.clientId }
+		: null;
+}
+
 /**
  * List the newest 200 Team Communication messages for a specific entity, with
  * author identity resolved for rendering.
@@ -91,6 +118,15 @@ export const listByEntity = optionalUserQuery({
 			{ client: "clients", project: "projects", quote: "quotes" } as const
 		)[args.entityType];
 		if (!(await ctx.gateRead(entityObject))) {
+			return emptyListResult<TeamMessageFeedItem>();
+		}
+		// Record scope too: a scoped member sees only assigned records' chat.
+		const scopeRef = await entityScopeRef(ctx, orgId, args);
+		if (!scopeRef) return emptyListResult<TeamMessageFeedItem>();
+		if (
+			!(await ctx.hasAllRecords(entityObject)) &&
+			!(await isRecordInActorScope(ctx, ctx.user._id, orgId, scopeRef))
+		) {
 			return emptyListResult<TeamMessageFeedItem>();
 		}
 
