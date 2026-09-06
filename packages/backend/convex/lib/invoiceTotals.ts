@@ -3,7 +3,8 @@
 // and the total payments must sum to can never diverge. Amounts are dollars;
 // math delegates to lib/money.ts.
 //
-// TWO PRICING MODES, decided per invoice by `resolvePricingMode`:
+// TWO PRICING MODES, decided per invoice by `resolveInvoicePricingMode`
+// (canonical in pdf/invoicePricing.ts, re-exported here):
 //   "legacy"  — none of discountEnabled/discountType/taxEnabled/taxRate is set.
 //               discountAmount/taxAmount are pre-computed dollars, subtracted
 //               and added flat. Behavior is byte-for-byte what it always was;
@@ -16,8 +17,13 @@ import type { QueryCtx, MutationCtx } from "../_generated/server";
 import type { Doc, Id } from "../_generated/dataModel";
 import { computeInvoiceTotals, computeQuoteTotals, roundCents } from "./money";
 import { maybeEnqueueQboSync } from "./quickbooksEnqueue";
+import {
+	resolveInvoicePricingMode,
+	type InvoicePricingMode,
+} from "../../pdf/invoicePricing";
 
-export type InvoicePricingMode = "legacy" | "quote";
+export { resolveInvoicePricingMode };
+export type { InvoicePricingMode };
 
 export interface InvoiceTotals {
 	subtotal: number;
@@ -28,21 +34,6 @@ export interface InvoiceTotals {
 	 */
 	taxAmount: number | undefined;
 	pricingMode: InvoicePricingMode;
-}
-
-/**
- * An invoice uses quote-style pricing as soon as any of the quote-style fields
- * is present. Legacy rows have none of them, so they keep the old flat math.
- */
-export function resolveInvoicePricingMode(
-	invoice: Doc<"invoices">
-): InvoicePricingMode {
-	return invoice.discountEnabled !== undefined ||
-		invoice.discountType !== undefined ||
-		invoice.taxEnabled !== undefined ||
-		invoice.taxRate !== undefined
-		? "quote"
-		: "legacy";
 }
 
 export async function calculateInvoiceTotals(
