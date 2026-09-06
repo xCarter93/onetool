@@ -17,7 +17,7 @@ const infoPlist = ios.infoPlist || {};
 const pm = ios.privacyManifests;
 
 // (a) marketing version is plain semver (bumped by hand for every store release)
-if (!/^\d+\.\d+\.\d+$/.test(expo.version ?? "")) fail(`expo.version must be x.y.z, got ${JSON.stringify(expo.version)}`);
+if (!/^(0|[1-9]\d*)(\.(0|[1-9]\d*)){2}$/.test(expo.version ?? "")) fail(`expo.version must be x.y.z, got ${JSON.stringify(expo.version)}`);
 
 // (b) ios.buildNumber must be absent (EAS remote autoIncrement owns CFBundleVersion)
 if (ios.buildNumber != null) fail("expo.ios.buildNumber must be absent (EAS autoIncrement owns it)");
