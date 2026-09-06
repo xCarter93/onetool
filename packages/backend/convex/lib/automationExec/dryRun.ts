@@ -13,7 +13,11 @@ import {
 	getFieldDefinition,
 	isCreatableObjectType,
 } from "../fieldRegistry";
-import { entitlementsFromDocs, isFeatureAllowed } from "../entitlements";
+import {
+	entitlementsFromDocs,
+	isFeatureAllowed,
+	requireMeter,
+} from "../entitlements";
 import { AUTOMATION_EMAIL_DAILY_CAP, rateLimiter } from "../../rateLimits";
 import { getMembership } from "../memberships";
 import {
@@ -44,6 +48,7 @@ import {
 	hydrateTriggerRelations,
 	withLazyRuleRelations,
 	sampleRecordLabel,
+	getObject,
 } from "./fetch";
 import {
 	NO_SCOPE_RECORD_ERROR,
@@ -265,6 +270,34 @@ async function dryUpdateFieldsAction(
 			}
 		}
 		writes.push({ field, value: coerced.value });
+	}
+
+	// Mirrors the live clientSends guard in applyStatusUpdate; a preview never consumes.
+	const statusWrite = writes.find((w) => w.field === "status");
+	if (statusWrite?.value === "sent" && targetInfo.type === "quote") {
+		const record = (await getObject(
+			ctx,
+			targetInfo.type,
+			targetInfo.id,
+			env.orgId
+		)) as Record<string, unknown> | null;
+		const alreadyDebited =
+			Boolean(record?.firstSentAt) || Boolean(record?.sentAt);
+		if (!alreadyDebited) {
+			const org = await ctx.db.get(env.orgId);
+			const { plan } = entitlementsFromDocs(org);
+			try {
+				await requireMeter(ctx, env.orgId, "clientSends", plan, {
+					now: Date.now(),
+				});
+			} catch {
+				return {
+					success: false,
+					error:
+						"Send limit reached for this month. The record was not moved to sent.",
+				};
+			}
+		}
 	}
 
 	return {
