@@ -26,6 +26,7 @@ import {
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useToast } from "@/hooks/use-toast";
+import { convexErrorMessage } from "@/lib/convex-error";
 import { useEntitlements } from "@/hooks/use-entitlements";
 import { usePublishScreenContext } from "@/components/assistant/use-screen-context";
 import { usePublishCurrentRecord } from "@/components/assistant/use-current-record";
@@ -333,7 +334,7 @@ function RoutingWorkspace() {
 		} catch (error) {
 			toast.error(
 				"Couldn't plan from the schedule",
-				error instanceof Error ? error.message : undefined
+				convexErrorMessage(error, "Please try again.")
 			);
 		} finally {
 			setSeeding(false);
@@ -354,7 +355,7 @@ function RoutingWorkspace() {
 		} catch (error) {
 			toast.error(
 				"Couldn't use this route today",
-				error instanceof Error ? error.message : undefined
+				convexErrorMessage(error, "Please try again.")
 			);
 		}
 	};
@@ -376,7 +377,7 @@ function RoutingWorkspace() {
 			} catch (error) {
 				toast.error(
 					"Gas station search failed",
-					error instanceof Error ? error.message : undefined
+					convexErrorMessage(error, "Please try again.")
 				);
 				setGasEnabled(false);
 			} finally {
@@ -437,7 +438,7 @@ function RoutingWorkspace() {
 		} catch (error) {
 			toast.error(
 				"Couldn't save the route",
-				error instanceof Error ? error.message : undefined
+				convexErrorMessage(error, "Please try again.")
 			);
 		} finally {
 			setSaving(false);
@@ -476,7 +477,7 @@ function RoutingWorkspace() {
 		} catch (error) {
 			toast.error(
 				"Couldn't update the stop",
-				error instanceof Error ? error.message : undefined
+				convexErrorMessage(error, "Please try again.")
 			);
 		}
 	};
@@ -521,7 +522,7 @@ function RoutingWorkspace() {
 			}
 			toast.error(
 				"Route computation failed",
-				error instanceof Error ? error.message : undefined
+				convexErrorMessage(error, "Please try again.")
 			);
 		} finally {
 			setComputing(false);
@@ -565,7 +566,7 @@ function RoutingWorkspace() {
 		} catch (error) {
 			toast.error(
 				"Could not delete route",
-				error instanceof Error ? error.message : undefined
+				convexErrorMessage(error, "Please try again.")
 			);
 		}
 	};

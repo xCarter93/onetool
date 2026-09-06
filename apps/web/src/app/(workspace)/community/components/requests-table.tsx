@@ -32,6 +32,7 @@ import { EmptyState } from "@/components/domain/empty-state";
 import { SegmentedControl } from "@/components/domain/segmented-control";
 import { useCreateRecord } from "@/components/domain/create-record-provider";
 import { useToast } from "@/hooks/use-toast";
+import { convexErrorMessage } from "@/lib/convex-error";
 import { formatRelativeTime } from "@/lib/notification-utils";
 
 type Lead = Doc<"communityLeads">;
@@ -82,7 +83,7 @@ export function RequestsTable({
 			} catch (error) {
 				toast.error(
 					"Could not update the request",
-					error instanceof Error ? error.message : "Please try again"
+					convexErrorMessage(error, "Please try again")
 				);
 			}
 		},
@@ -102,7 +103,7 @@ export function RequestsTable({
 			} catch (error) {
 				toast.error(
 					"Could not add the client",
-					error instanceof Error ? error.message : "Please try again"
+					convexErrorMessage(error, "Please try again")
 				);
 				return null;
 			} finally {

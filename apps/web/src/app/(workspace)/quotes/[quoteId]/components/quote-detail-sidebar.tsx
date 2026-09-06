@@ -197,9 +197,7 @@ export function QuoteDetailSidebar({
 			);
 			cancelEditing();
 		} catch (err) {
-			const message =
-				err instanceof Error ? err.message : "Failed to save";
-			toast.error("Error", message);
+			toast.error("Error", convexErrorMessage(err, "Failed to save"));
 		}
 	};
 

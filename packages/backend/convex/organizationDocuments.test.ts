@@ -205,6 +205,24 @@ describe("Organization documents", () => {
 		});
 	});
 
+	describe("getDocumentUrls", () => {
+		it("resolves at most 100 ids per call, dropping the tail", async () => {
+			const { asUser } = await setup();
+			const keptId = await createDoc(asUser, "Kept.pdf");
+			const droppedId = await createDoc(asUser, "Dropped.pdf");
+
+			const results = await asUser.query(
+				api.organizationDocuments.getDocumentUrls,
+				{ ids: [...Array<typeof keptId>(100).fill(keptId), droppedId] }
+			);
+
+			expect(results).toHaveLength(100);
+			expect(results.every((r) => r.id === keptId)).toBe(true);
+			expect(results.some((r) => r.id === droppedId)).toBe(false);
+			expect(results[0].url).toEqual(expect.any(String));
+		});
+	});
+
 	describe("bulkRemove", () => {
 		it("deletes rows and blobs", async () => {
 			const { asUser } = await setup();

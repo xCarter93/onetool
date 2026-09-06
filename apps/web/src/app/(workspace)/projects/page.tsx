@@ -62,6 +62,8 @@ import { useQuery } from "convex-helpers/react/cache/hooks";
 import { useActivitySparklines } from "@/hooks/use-activity-sparklines";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { useIsOrgSwitching } from "@/hooks/use-is-org-switching";
+import { useToast } from "@/hooks/use-toast";
+import { convexErrorMessage } from "@/lib/convex-error";
 import type { Doc, Id } from "@onetool/backend/convex/_generated/dataModel";
 import { useState } from "react";
 import DeleteConfirmationModal from "@/components/ui/delete-confirmation-modal";
@@ -301,6 +303,7 @@ function ProjectsPageContent() {
 	const updateProjectStatus = useMutation(api.projects.update);
 	const [kanbanData, setKanbanData] = useState<ProjectKanbanItem[]>([]);
 	const isOrgSwitching = useIsOrgSwitching();
+	const toast = useToast();
 	const { can } = usePermissions();
 	const canModifyProjects = can("projects", "modify");
 	const canDeleteProjects = can("projects", "delete");
@@ -508,21 +511,39 @@ function ProjectsPageContent() {
 		[]
 	);
 
+	// Latest drop per card; a failed older write must not undo a newer drop.
+	const moveTokens = React.useRef(new Map<string, number>());
+
 	const handleKanbanDragEnd = React.useCallback(
 		(event: DragEndEvent) => {
 			const item = kanbanData.find((i) => i.id === event.active.id);
 			if (!item) return;
 			const originalStatus = projectStatusMap.get(item.id);
 			if (originalStatus && originalStatus !== item.column) {
+				const token = (moveTokens.current.get(item.id) ?? 0) + 1;
+				moveTokens.current.set(item.id, token);
 				updateProjectStatus({
 					id: item.id as Id<"projects">,
 					status: item.column,
 				}).catch((error) => {
 					console.error("Failed to update project status:", error);
+					// A rejected write changes no server data, so the sync effect never re-fires.
+					if (moveTokens.current.get(item.id) !== token) return;
+					setKanbanData((prev) =>
+						prev.map((card) =>
+							card.id === item.id
+								? { ...card, column: originalStatus, status: originalStatus }
+								: card
+						)
+					);
+					toast.error(
+						"Update Failed",
+						convexErrorMessage(error, "Failed to update project status")
+					);
 				});
 			}
 		},
-		[kanbanData, projectStatusMap, updateProjectStatus]
+		[kanbanData, projectStatusMap, updateProjectStatus, toast]
 	);
 
 	return (

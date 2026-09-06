@@ -12,6 +12,7 @@ import { useMutation, useQuery } from "convex/react";
 import type { JSONContent } from "@tiptap/react";
 
 import { useToast } from "@/hooks/use-toast";
+import { convexErrorMessage } from "@/lib/convex-error";
 import { copyToClipboard } from "@/lib/clipboard";
 import { api } from "@onetool/backend/convex/_generated/api";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
@@ -1290,7 +1291,7 @@ export function useCommunityPageForm() {
 		} catch (error) {
 			toast.error(
 				"Save failed",
-				error instanceof Error ? error.message : "Please try again",
+				convexErrorMessage(error, "Please try again"),
 			);
 			return false;
 		} finally {
@@ -1401,7 +1402,7 @@ export function useCommunityPageForm() {
 		} catch (error) {
 			toast.error(
 				"Publish failed",
-				error instanceof Error ? error.message : "Please try again",
+				convexErrorMessage(error, "Please try again"),
 			);
 		} finally {
 			setIsPublishing(false);

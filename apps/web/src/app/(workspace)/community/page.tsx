@@ -43,6 +43,7 @@ import { Frame, FramePanel } from "@/components/reui/frame";
 import { DotField } from "@/components/ui/dot-field";
 import { Illustration } from "@/components/illustrations";
 import { useToast } from "@/hooks/use-toast";
+import { convexErrorMessage } from "@/lib/convex-error";
 import { useOrgToday } from "@/hooks/use-org-today";
 import { api } from "@onetool/backend/convex/_generated/api";
 import type { Doc } from "@onetool/backend/convex/_generated/dataModel";
@@ -393,7 +394,7 @@ function CommunityPageContent() {
 		} catch (error) {
 			toast.error(
 				"Creation failed",
-				error instanceof Error ? error.message : "Please try again",
+				convexErrorMessage(error, "Please try again"),
 			);
 		} finally {
 			setIsCreating(false);

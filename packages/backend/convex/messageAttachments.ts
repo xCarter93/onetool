@@ -6,7 +6,12 @@ import { getCurrentUserOrgId, getCurrentUser } from "./lib/auth";
 import { getOptionalOrgId } from "./lib/queries";
 import { StorageHelpers } from "./lib/storage";
 import { getMembership } from "./lib/memberships";
-import { optionalUserQuery, userMutation } from "./lib/factories";
+import {
+	entityScopeRef,
+	isRecordInActorScope,
+	optionalUserQuery,
+	userMutation,
+} from "./lib/factories";
 
 /**
  * Message Attachments operations
@@ -299,6 +304,16 @@ export const listByEntity = optionalUserQuery({
 		)[args.entityType];
 		if (!(await ctx.gateRead(entityObject))) {
 			return [];
+		}
+		// Scope gate runs only under !hasAllRecords so admins keep today's exact rows.
+		if (!(await ctx.hasAllRecords(entityObject))) {
+			const scopeRef = await entityScopeRef(ctx, userOrgId, args);
+			if (
+				!scopeRef ||
+				!(await isRecordInActorScope(ctx, ctx.user._id, userOrgId, scopeRef))
+			) {
+				return [];
+			}
 		}
 
 		const attachments = await ctx.db

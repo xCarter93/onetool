@@ -211,11 +211,7 @@ function InvoiceDetailPageContent() {
 				"Invoice marked as paid successfully"
 			);
 		} catch (err) {
-			const message =
-				err instanceof Error
-					? err.message
-					: "Failed to mark as paid";
-			toast.error("Error", message);
+			toast.error("Error", convexErrorMessage(err, "Failed to mark as paid"));
 		}
 	};
 
@@ -305,9 +301,10 @@ function InvoiceDetailPageContent() {
 				toast.removeToast(loadingId);
 			}
 			console.error(error);
-			const message =
-				error instanceof Error ? error.message : "Unknown error";
-			toast.error("PDF generation failed", message);
+			toast.error(
+				"PDF generation failed",
+				convexErrorMessage(error, "Unknown error")
+			);
 		}
 	};
 

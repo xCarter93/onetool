@@ -63,6 +63,7 @@ import {
 	FramePanel,
 } from "@/components/reui/frame";
 import { useToast } from "@/hooks/use-toast";
+import { convexErrorMessage } from "@/lib/convex-error";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { useOrgOwner } from "../_hooks/use-org-owner";
 import { useSaveValidation } from "../_hooks/use-save-validation";
@@ -228,11 +229,10 @@ export function BusinessInfoTab() {
 			});
 			toast.success("Email address updated", `Clients can now reach you at ${fullAddress}.`);
 		} catch (error) {
-			const message =
-				error instanceof Error
-					? error.message
-					: "Failed to update your email address.";
-			toast.error("Update failed", message);
+			toast.error(
+				"Update failed",
+				convexErrorMessage(error, "Failed to update your email address.")
+			);
 		} finally {
 			setSavingAddress(false);
 		}
@@ -368,11 +368,10 @@ export function BusinessInfoTab() {
 				"Organization details have been saved.",
 			);
 		} catch (error) {
-			const message =
-				error instanceof Error
-					? error.message
-					: "Failed to save business information.";
-			toast.error("Update failed", message);
+			toast.error(
+				"Update failed",
+				convexErrorMessage(error, "Failed to save business information.")
+			);
 		} finally {
 			setSavingBusiness(false);
 		}

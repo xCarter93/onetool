@@ -1,12 +1,10 @@
 /**
- * Client mirror of the invoice pricing-mode split in
- * `packages/backend/convex/lib/invoiceTotals.ts`. That module can't be imported
- * here (it pulls `_generated/server`), so the predicate and the display math
- * live once in this file and every invoice surface — record page, sidebar,
- * portal paper, PDF (rendered server-side through pdfActions.ts) — reads
- * discount/tax through it. The rounding itself comes from `convex/lib/money`,
- * which is pure math and safe to import anywhere, so displayed rows land on the
- * same cents the server stored.
+ * Canonical home of the invoice pricing-mode predicate and the display math.
+ * Deliberately pure (imports only `convex/lib/money`) so every invoice surface
+ * — record page, sidebar, portal paper, mobile, PDF (rendered server-side
+ * through pdfActions.ts), and the server roll-up in
+ * `convex/lib/invoiceTotals.ts` — reads discount/tax through the same code and
+ * lands on the same cents the server stored.
  *
  * LEGACY  — none of discountEnabled/discountType/taxEnabled/taxRate is set.
  *           discountAmount/taxAmount are pre-computed DOLLARS.
@@ -44,7 +42,7 @@ export interface InvoiceDisplayPricing {
 	taxLabel: string;
 }
 
-/** Mirrors resolveInvoicePricingMode. */
+/** Any quote-style field present means quote-style pricing; legacy rows have none. */
 export function resolveInvoicePricingMode(
 	invoice: Pick<
 		InvoicePricingFields,

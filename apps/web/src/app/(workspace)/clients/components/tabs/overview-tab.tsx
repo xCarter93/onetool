@@ -10,6 +10,7 @@ import { RelatedRecordsFrame } from "@/components/shared/related-records-frame";
 import { FolderOpen, DollarSign, TrendingUp, FileText, Receipt, Pencil, Check, X } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
+import { convexErrorMessage } from "@/lib/convex-error";
 import { formatCurrency } from "@/lib/money";
 
 interface OverviewTabProps {
@@ -78,8 +79,7 @@ export function OverviewTab({
 			setIsEditingNotes(false);
 			setEditNotesValue("");
 		} catch (err) {
-			const message = err instanceof Error ? err.message : "Failed to save notes";
-			toast.error("Error", message);
+			toast.error("Error", convexErrorMessage(err, "Failed to save notes"));
 		}
 	};
 

@@ -1,7 +1,203 @@
-import { describe, it, expect } from "vitest";
-import { chunkArray, buildCompositeResults } from "./import-batching";
+import { describe, it, expect, vi } from "vitest";
+import { ConvexError } from "convex/values";
+import {
+	chunkArray,
+	buildCompositeResults,
+	runImportBatches,
+	type BatchRowResult,
+} from "./import-batching";
 import type { ImportResultItem } from "@/types/csv-import";
 import type { ReviewRow } from "./review-types";
+
+describe("runImportBatches", () => {
+	const records = Array.from({ length: 25 }, (_, i) => ({ name: `c${i}` }));
+	const okBatch = (batch: { name: string }[]): BatchRowResult[] =>
+		batch.map((r) => ({ success: true, id: `id-${r.name}` }));
+
+	it("reports progress after each batch and composites results in order", async () => {
+		const send = vi.fn(async (batch: { name: string }[]) => okBatch(batch));
+		const onProgress = vi.fn();
+
+		const run = await runImportBatches({
+			records,
+			batchSize: 10,
+			send,
+			onProgress,
+		});
+
+		expect(send).toHaveBeenCalledTimes(3);
+		expect(send.mock.calls.map(([b]) => b.length)).toEqual([10, 10, 5]);
+		expect(onProgress.mock.calls.map(([p]) => p)).toEqual([
+			{ current: 10, total: 25, succeeded: 10, failed: 0 },
+			{ current: 20, total: 25, succeeded: 20, failed: 0 },
+			{ current: 25, total: 25, succeeded: 25, failed: 0 },
+		]);
+		expect(run.succeeded).toBe(25);
+		expect(run.failed).toBe(0);
+		expect(run.limitMessage).toBeNull();
+		expect(run.results).toHaveLength(25);
+		expect(run.results.map((r) => r.rowIndex)).toEqual(
+			records.map((_, i) => i)
+		);
+		expect(run.results[12]).toEqual({
+			success: true,
+			id: "id-c12",
+			error: undefined,
+			warnings: undefined,
+			rowIndex: 12,
+		});
+	});
+
+	it("counts per-row failures and stringifies ids across batches", async () => {
+		const send = vi.fn(async (batch: { name: string }[]) =>
+			batch.map((r, i) =>
+				i === 0
+					? { success: false, error: "Company name is required" }
+					: { success: true, id: { toString: () => `doc-${r.name}` } }
+			)
+		);
+
+		const run = await runImportBatches({
+			records,
+			batchSize: 10,
+			send,
+			onProgress: () => {},
+		});
+
+		expect(run.succeeded).toBe(22);
+		expect(run.failed).toBe(3);
+		expect(run.results[0].error).toBe("Company name is required");
+		expect(run.results[1].id).toBe("doc-c1");
+		expect(run.results[20].success).toBe(false);
+	});
+
+	it("marks only that batch failed when a batch throws a non-limit error, then continues", async () => {
+		const send = vi.fn(async (batch: { name: string }[]) => {
+			if (batch[0].name === "c10") throw new Error("network down");
+			return okBatch(batch);
+		});
+		const onProgress = vi.fn();
+
+		const run = await runImportBatches({
+			records,
+			batchSize: 10,
+			send,
+			onProgress,
+		});
+
+		expect(send).toHaveBeenCalledTimes(3);
+		expect(run.limitMessage).toBeNull();
+		expect(run.succeeded).toBe(15);
+		expect(run.failed).toBe(10);
+		for (let i = 10; i < 20; i++) {
+			expect(run.results[i]).toEqual({
+				success: false,
+				rowIndex: i,
+				error: "network down",
+			});
+		}
+		expect(run.results[9].success).toBe(true);
+		expect(run.results[20].success).toBe(true);
+		expect(onProgress).toHaveBeenLastCalledWith({
+			current: 25,
+			total: 25,
+			succeeded: 15,
+			failed: 10,
+		});
+	});
+
+	it("uses the ConvexError payload message for a non-limit batch failure", async () => {
+		const run = await runImportBatches({
+			records: records.slice(0, 3),
+			batchSize: 10,
+			send: async () => {
+				throw new ConvexError({ code: "FORBIDDEN", message: "No access" });
+			},
+			onProgress: () => {},
+		});
+
+		expect(run.limitMessage).toBeNull();
+		expect(run.results.map((r) => r.error)).toEqual([
+			"No access",
+			"No access",
+			"No access",
+		]);
+	});
+
+	it.each(["IMPORT_LIMIT", "PLAN_LIMIT_REACHED"])(
+		"stops calling the server on a %s refusal and fails every remaining row",
+		async (code) => {
+			const send = vi.fn(async (batch: { name: string }[]) => {
+				if (batch[0].name === "c10") {
+					throw new ConvexError({ code, message: "Row limit hit" });
+				}
+				return okBatch(batch);
+			});
+			const onProgress = vi.fn();
+
+			const run = await runImportBatches({
+				records,
+				batchSize: 10,
+				send,
+				onProgress,
+			});
+
+			expect(send).toHaveBeenCalledTimes(2);
+			expect(run.limitMessage).toBe("Row limit hit");
+			expect(run.succeeded).toBe(10);
+			expect(run.failed).toBe(15);
+			expect(run.results).toHaveLength(25);
+			for (let i = 10; i < 25; i++) {
+				expect(run.results[i]).toEqual({
+					success: false,
+					rowIndex: i,
+					error: "Row limit hit",
+				});
+			}
+			expect(onProgress).toHaveBeenCalledTimes(2);
+			expect(onProgress).toHaveBeenLastCalledWith({
+				current: 25,
+				total: 25,
+				succeeded: 10,
+				failed: 15,
+			});
+		}
+	);
+
+	it("falls back to generic copy when a limit refusal carries no message", async () => {
+		const run = await runImportBatches({
+			records: records.slice(0, 2),
+			batchSize: 10,
+			send: async () => {
+				throw new ConvexError({ code: "IMPORT_LIMIT" });
+			},
+			onProgress: () => {},
+		});
+
+		expect(run.limitMessage).toBe("This import hit a row limit.");
+	});
+
+	it("sends nothing and reports no progress for an empty record set", async () => {
+		const send = vi.fn();
+		const onProgress = vi.fn();
+
+		const run = await runImportBatches({
+			records: [],
+			batchSize: 10,
+			send,
+			onProgress,
+		});
+
+		expect(send).not.toHaveBeenCalled();
+		expect(onProgress).not.toHaveBeenCalled();
+		expect(run).toEqual({
+			results: [],
+			succeeded: 0,
+			failed: 0,
+			limitMessage: null,
+		});
+	});
+});
 
 describe("chunkArray", () => {
 	it("splits array into correctly sized chunks", () => {

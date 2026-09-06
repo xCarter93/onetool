@@ -498,6 +498,9 @@ function ClientsPageContent() {
 		[]
 	);
 
+	// Latest drop per card; a failed older write must not undo a newer drop.
+	const moveTokens = React.useRef(new Map<string, number>());
+
 	const handleKanbanDragEnd = React.useCallback(
 		(event: DragEndEvent) => {
 			if (!canModifyClients) return;
@@ -505,11 +508,20 @@ function ClientsPageContent() {
 			if (!item) return;
 			const originalStatus = clientStatusMap.get(item.id);
 			if (originalStatus && originalStatus !== item.column) {
+				const token = (moveTokens.current.get(item.id) ?? 0) + 1;
+				moveTokens.current.set(item.id, token);
 				updateClient({
 					id: item.id as Id<"clients">,
 					status: item.column,
 				}).catch((error) => {
 					console.error("Failed to update client status:", error);
+					// A rejected write changes no server data, so the sync effect never re-fires.
+					if (moveTokens.current.get(item.id) !== token) return;
+					setKanbanData((prev) =>
+						prev.map((card) =>
+							card.id === item.id ? { ...card, column: originalStatus } : card
+						)
+					);
 					toast.error(
 						"Update Failed",
 						"Failed to update client status. Please try again."

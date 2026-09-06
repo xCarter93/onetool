@@ -3,6 +3,7 @@ import { setupConvexTest } from "./test.setup";
 import { createTestOrg, createTestIdentity } from "./test.helpers";
 import { api, internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
+import { consumeMeter } from "./lib/entitlements";
 
 /**
  * Slice 4 coverage: dry-run test mode (precompute + streamed reveal), manual
@@ -494,6 +495,164 @@ describe("automation runs (test + manual)", () => {
 			});
 			expect(done?.status).toBe("completed");
 			expect(done?.nodesExecuted.map((n) => n.nodeId)).toEqual(["end-1"]);
+		});
+
+		// Mirrors the live clientSends guard in applyStatusUpdate; the preview must never debit it.
+		describe("clientSends meter on a quote status→sent preview", () => {
+			const SEND_LIMIT_ERROR =
+				"Send limit reached for this month. The record was not moved to sent.";
+			const quoteCreatedTrigger = {
+				type: "record_created" as const,
+				objectType: "quote" as const,
+			};
+
+			async function sendUsage(orgId: Id<"organizations">) {
+				return await t.run(async (ctx) => {
+					const rows = await ctx.db
+						.query("planUsage")
+						.withIndex("by_org_meter_period", (q) =>
+							q.eq("orgId", orgId).eq("meter", "clientSends")
+						)
+						.collect();
+					return rows[0]?.used ?? 0;
+				});
+			}
+
+			async function seedFreeOrgWithQuote(
+				node: ReturnType<typeof statusActionNode>,
+				opts: { used: number; alreadySent?: boolean }
+			) {
+				const { asUser, orgId } = await setupUser();
+				const clientId = await makeClient(asUser);
+				const quoteId = await asUser.mutation(api.quotes.create, {
+					clientId,
+					title: "Q1",
+					status: "draft",
+					subtotal: 100,
+					total: 100,
+				});
+				if (opts.alreadySent) {
+					await asUser.mutation(api.quotes.update, { id: quoteId, status: "sent" });
+				}
+				const automationId = await asUser.mutation(api.automations.create, {
+					name: "Preview send",
+					trigger: quoteCreatedTrigger,
+					nodes: [node],
+				});
+				// Downgrade after creation so the meter resolves the free plan.
+				await t.run(async (ctx) => {
+					await ctx.db.patch(orgId, { hasPremiumFeatureAccess: false });
+					await consumeMeter(ctx, orgId, "clientSends", { amount: opts.used });
+				});
+				return { asUser, orgId, quoteId, automationId };
+			}
+
+			async function runPreview(
+				asUser: ReturnType<typeof t.withIdentity>,
+				automationId: Id<"workflowAutomations">,
+				record: { entityType: "quote" | "client"; entityId: string }
+			) {
+				const executionId = await asUser.mutation(
+					api.automationExecutor.startTestRun,
+					{ automationId, record }
+				);
+				await drainScheduled();
+				return await asUser.query(api.automationExecutor.getExecution, {
+					executionId,
+				});
+			}
+
+			it("fails the node at the limit without consuming the meter", async () => {
+				const { asUser, orgId, quoteId, automationId } =
+					await seedFreeOrgWithQuote(statusActionNode("act-1", "sent"), {
+						used: 20,
+					});
+
+				const done = await runPreview(asUser, automationId, {
+					entityType: "quote",
+					entityId: quoteId,
+				});
+				expect(done?.status).toBe("failed");
+				expect(done?.nodesExecuted[0].result).toBe("failed");
+				expect(done?.nodesExecuted[0].error).toBe(SEND_LIMIT_ERROR);
+
+				expect(await sendUsage(orgId)).toBe(20);
+				const quote = await t.run(async (ctx) => ctx.db.get(quoteId));
+				expect(quote?.status).toBe("draft");
+				expect(quote?.firstSentAt).toBeUndefined();
+			});
+
+			it("succeeds under the limit and leaves the meter untouched", async () => {
+				const { asUser, orgId, quoteId, automationId } =
+					await seedFreeOrgWithQuote(statusActionNode("act-1", "sent"), {
+						used: 5,
+					});
+
+				const done = await runPreview(asUser, automationId, {
+					entityType: "quote",
+					entityId: quoteId,
+				});
+				expect(done?.status).toBe("completed");
+				expect(done?.nodesExecuted[0].result).toBe("success");
+
+				expect(await sendUsage(orgId)).toBe(5);
+				const quote = await t.run(async (ctx) => ctx.db.get(quoteId));
+				expect(quote?.status).toBe("draft");
+			});
+
+			it("skips the check when the quote was already sent", async () => {
+				const { asUser, orgId, quoteId, automationId } =
+					await seedFreeOrgWithQuote(statusActionNode("act-1", "sent"), {
+						used: 20,
+						alreadySent: true,
+					});
+				const before = await sendUsage(orgId);
+
+				const done = await runPreview(asUser, automationId, {
+					entityType: "quote",
+					entityId: quoteId,
+				});
+				expect(done?.status).toBe("completed");
+				expect(done?.nodesExecuted[0].result).toBe("success");
+				expect(await sendUsage(orgId)).toBe(before);
+			});
+
+			it("does not meter a quote status write other than sent", async () => {
+				const { asUser, orgId, quoteId, automationId } =
+					await seedFreeOrgWithQuote(statusActionNode("act-1", "approved"), {
+						used: 20,
+					});
+
+				const done = await runPreview(asUser, automationId, {
+					entityType: "quote",
+					entityId: quoteId,
+				});
+				expect(done?.status).toBe("completed");
+				expect(done?.nodesExecuted[0].result).toBe("success");
+				expect(await sendUsage(orgId)).toBe(20);
+			});
+
+			it("does not meter a non-quote status write", async () => {
+				const { asUser, orgId } = await setupUser();
+				const clientId = await makeClient(asUser);
+				const automationId = await asUser.mutation(api.automations.create, {
+					name: "Client status",
+					trigger: clientCreatedTrigger,
+					nodes: [statusActionNode("act-1", "inactive")],
+				});
+				await t.run(async (ctx) => {
+					await ctx.db.patch(orgId, { hasPremiumFeatureAccess: false });
+					await consumeMeter(ctx, orgId, "clientSends", { amount: 20 });
+				});
+
+				const done = await runPreview(asUser, automationId, {
+					entityType: "client",
+					entityId: clientId,
+				});
+				expect(done?.status).toBe("completed");
+				expect(done?.nodesExecuted[0].result).toBe("success");
+				expect(await sendUsage(orgId)).toBe(20);
+			});
 		});
 	});
 

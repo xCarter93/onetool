@@ -1,5 +1,9 @@
-import type { ImportResultItem } from "@/types/csv-import";
+import { ConvexError } from "convex/values";
+import type { CsvImportState, ImportResultItem } from "@/types/csv-import";
+import { convexErrorMessage } from "@/lib/convex-error";
 import type { ReviewRow } from "./review-types";
+
+type ImportProgress = NonNullable<CsvImportState["importProgress"]>;
 
 /**
  * Splits an array into chunks of the given size.
@@ -12,6 +16,97 @@ export function chunkArray<T>(arr: T[], size: number): T[][] {
 		chunks.push(arr.slice(i, i + size));
 	}
 	return chunks;
+}
+
+/** Row ceilings bulkCreate refuses on: ops caps (all plans) and the free-plan
+ *  lifetime budget. Both carry their own user-facing copy. */
+const ROW_LIMIT_CODES = new Set(["IMPORT_LIMIT", "PLAN_LIMIT_REACHED"]);
+
+/** The server's own message for a row-limit refusal, or null for any other error. */
+export function rowLimitMessage(err: unknown): string | null {
+	if (!(err instanceof ConvexError)) return null;
+	const data = err.data as { code?: unknown; message?: unknown } | undefined;
+	if (!data || typeof data !== "object") return null;
+	if (typeof data.code !== "string" || !ROW_LIMIT_CODES.has(data.code)) {
+		return null;
+	}
+	return typeof data.message === "string" && data.message.trim()
+		? data.message
+		: "This import hit a row limit.";
+}
+
+export interface BatchRowResult {
+	success: boolean;
+	id?: unknown;
+	error?: string;
+	warnings?: string[];
+}
+
+export interface BatchRunResult {
+	results: ImportResultItem[];
+	succeeded: number;
+	failed: number;
+	limitMessage: string | null;
+}
+
+/**
+ * Sends `records` to the server in batches, reporting progress after each.
+ * A thrown batch marks its rows failed; a row-limit refusal also marks every
+ * remaining row failed and stops, since later batches would hit the same wall.
+ */
+export async function runImportBatches<T>({
+	records,
+	batchSize,
+	send,
+	onProgress,
+}: {
+	records: T[];
+	batchSize: number;
+	send: (batch: T[]) => Promise<BatchRowResult[]>;
+	onProgress: (progress: ImportProgress) => void;
+}): Promise<BatchRunResult> {
+	const results: ImportResultItem[] = [];
+	let succeeded = 0;
+	let failed = 0;
+	let limitMessage: string | null = null;
+
+	for (const batch of chunkArray(records, batchSize)) {
+		try {
+			for (const r of await send(batch)) {
+				results.push({
+					success: r.success,
+					id: r.id ? String(r.id) : undefined,
+					error: r.error,
+					warnings: r.warnings,
+					rowIndex: results.length,
+				});
+				if (r.success) succeeded++;
+				else failed++;
+			}
+		} catch (err) {
+			limitMessage = rowLimitMessage(err);
+			const reason =
+				limitMessage ?? convexErrorMessage(err, "Batch import failed");
+			const upTo = limitMessage
+				? records.length
+				: results.length + batch.length;
+			while (results.length < upTo) {
+				results.push({ success: false, rowIndex: results.length, error: reason });
+				failed++;
+			}
+		}
+
+		onProgress({
+			current: results.length,
+			total: records.length,
+			succeeded,
+			failed,
+		});
+
+		if (limitMessage) break;
+	}
+
+	return { results, succeeded, failed, limitMessage };
 }
 
 /**

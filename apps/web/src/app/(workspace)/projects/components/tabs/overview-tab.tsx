@@ -9,6 +9,7 @@ import { Separator } from "@/components/ui/separator";
 import { HighlightMetricGrid } from "@/components/shared/highlight-metric-grid";
 import { RelatedRecordsFrame } from "@/components/shared/related-records-frame";
 import { useToast } from "@/hooks/use-toast";
+import { convexErrorMessage } from "@/lib/convex-error";
 import { ClipboardList, DollarSign, CheckCircle, FileText, Receipt, Pencil } from "lucide-react";
 import { formatCurrency } from "@/lib/money";
 import { ProjectScheduleCalendar } from "../project-schedule-calendar";
@@ -86,8 +87,7 @@ export function OverviewTab({
 			toast.success("Updated", "Description saved.");
 			cancelEditingDescription();
 		} catch (err) {
-			const message = err instanceof Error ? err.message : "Failed to save";
-			toast.error("Error", message);
+			toast.error("Error", convexErrorMessage(err, "Failed to save"));
 		}
 	};
 

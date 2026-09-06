@@ -58,6 +58,7 @@ import { EmptyState } from "@/components/domain/empty-state";
 import { SegmentedControl } from "@/components/domain/segmented-control";
 import { usePermissions } from "@/hooks/use-permissions";
 import { useToast } from "@/hooks/use-toast";
+import { convexErrorMessage } from "@/lib/convex-error";
 import { useConfirmDialog } from "@/hooks/use-confirm-dialog";
 
 const ADMIN_ROLE = "org:admin";
@@ -575,7 +576,7 @@ export default function MemberAccessPage() {
 		} catch (error) {
 			toast.error(
 				"Couldn't update access",
-				error instanceof Error ? error.message : "Please try again."
+				convexErrorMessage(error, "Please try again.")
 			);
 		} finally {
 			setSaving(false);

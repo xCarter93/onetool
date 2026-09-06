@@ -1,11 +1,12 @@
 import { convexTest } from "convex-test";
 import { describe, it, expect, beforeEach } from "vitest";
-import { internal } from "./_generated/api";
+import { api, internal } from "./_generated/api";
 import { setupConvexTest } from "./test.setup";
 import {
 	createTestOrg,
 	createTestClient,
 	createTestClientContact,
+	createTestIdentity,
 } from "./test.helpers";
 import { Id } from "./_generated/dataModel";
 import { plusTagAddress } from "./email/threads";
@@ -391,5 +392,51 @@ describe("resendReceiving.processInboundEmail", () => {
 			return await findByResendId(ctx, "re_in_reply");
 		});
 		expect(reply?.threadDocId).toBe(threadDocId);
+	});
+
+	it("matches a mixed-case sender to a contact stored with a lowercase email", async () => {
+		const { orgId, clerkUserId, clerkOrgId } = await t.run(async (ctx) => {
+			const org = await createTestOrg(ctx, {
+				clerkUserId: "user_inbound_case",
+				clerkOrgId: "org_inbound_case",
+			});
+			await ctx.db.patch(org.orgId, { receivingAddress: RECEIVING });
+			return org;
+		});
+		const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+		const clientId = await asUser.mutation(api.clients.create, {
+			companyName: "Case Co",
+			status: "active",
+			portalAccessId: crypto.randomUUID(),
+		});
+		await asUser.mutation(api.clientContacts.create, {
+			clientId,
+			firstName: "Jane",
+			lastName: "Client",
+			email: "jane@client.com",
+			isPrimary: true,
+		});
+
+		const result = await t.mutation(
+			internal.resendReceiving.processInboundEmail,
+			inboundArgs({
+				emailId: "re_in_case",
+				from: "Jane Client <Jane@Client.com>",
+				rfcMessageId: "<in-case@client.com>",
+			})
+		);
+		expect(result.success).toBe(true);
+
+		const { message, thread } = await t.run(async (ctx) => {
+			const message = await findByResendId(ctx, "re_in_case");
+			const thread = message?.threadDocId
+				? await ctx.db.get(message.threadDocId)
+				: null;
+			return { message, thread };
+		});
+		expect(message?.orgId).toBe(orgId);
+		expect(message?.clientId).toBe(clientId);
+		expect(thread?.clientId).toBe(clientId);
+		expect(message?.fromEmail).toBe("Jane@Client.com");
 	});
 });

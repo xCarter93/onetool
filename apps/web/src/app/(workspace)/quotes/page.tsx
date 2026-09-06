@@ -62,6 +62,7 @@ import { todayUtcMidnightMs } from "@/lib/dates";
 import { api } from "@onetool/backend/convex/_generated/api";
 import type { Doc, Id } from "@onetool/backend/convex/_generated/dataModel";
 import { useActivitySparklines } from "@/hooks/use-activity-sparklines";
+import { useIsOrgSwitching } from "@/hooks/use-is-org-switching";
 import { useState } from "react";
 import DeleteConfirmationModal from "@/components/ui/delete-confirmation-modal";
 import { MetricFrame } from "@/components/metric-frame";
@@ -305,6 +306,7 @@ function QuotesPageContent() {
 	const deleteQuote = useMutation(api.quotes.remove);
 	const updateQuoteStatus = useMutation(api.quotes.update);
 	const [kanbanData, setKanbanData] = useState<QuoteKanbanItem[]>([]);
+	const isOrgSwitching = useIsOrgSwitching();
 
 	// Fetch data from Convex. The clients/projects reads are gated — skip them
 	// without the grant so the page doesn't crash for quotes-only viewers.
@@ -420,7 +422,7 @@ function QuotesPageContent() {
 	// Loading state — gate only on the primary quotes query. The clients and
 	// projects reads are permission-skipped and stay undefined without the grant,
 	// which would otherwise pin the page on the skeleton forever.
-	const isLoading = quotes === undefined;
+	const isLoading = isOrgSwitching || quotes === undefined;
 
 	// Empty state
 	const isEmpty = !isLoading && data.length === 0;

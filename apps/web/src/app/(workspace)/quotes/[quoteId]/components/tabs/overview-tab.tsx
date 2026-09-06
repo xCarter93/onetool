@@ -200,8 +200,7 @@ export function OverviewTab({
 			toast.success("Updated", "Terms saved.");
 			cancelEditingTerms();
 		} catch (err) {
-			const message = err instanceof Error ? err.message : "Failed to save";
-			toast.error("Error", message);
+			toast.error("Error", convexErrorMessage(err, "Failed to save"));
 		}
 	};
 
@@ -233,8 +232,7 @@ export function OverviewTab({
 			toast.success("Updated", "Client message saved.");
 			cancelEditingMessage();
 		} catch (err) {
-			const message = err instanceof Error ? err.message : "Failed to save";
-			toast.error("Error", message);
+			toast.error("Error", convexErrorMessage(err, "Failed to save"));
 		}
 	};
 

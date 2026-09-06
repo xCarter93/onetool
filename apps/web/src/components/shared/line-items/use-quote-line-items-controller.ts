@@ -5,6 +5,7 @@ import { useMutation } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import type { Doc, Id } from "@onetool/backend/convex/_generated/dataModel";
 import { useToast } from "@/hooks/use-toast";
+import { convexErrorMessage } from "@/lib/convex-error";
 import type {
 	GridLineItem,
 	GridLineItemPatch,
@@ -129,9 +130,7 @@ export function useQuoteLineItemsController({
 			} catch (error) {
 				pendingRef.current = Math.max(0, pendingRef.current - 1);
 				setSaveState("error");
-				const message =
-					error instanceof Error ? error.message : "Please try again.";
-				toast.error(label, message);
+				toast.error(label, convexErrorMessage(error, "Please try again."));
 				return null;
 			}
 		},

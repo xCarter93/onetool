@@ -21,6 +21,7 @@ import {
 	AccordionContent,
 } from "@/components/ui/accordion";
 import { useToast } from "@/hooks/use-toast";
+import { convexErrorMessage } from "@/lib/convex-error";
 import { Button } from "@/components/ui/button";
 import DeleteConfirmationModal from "@/components/ui/delete-confirmation-modal";
 import { getSignatureDisplay } from "@/lib/signature-draft-display";
@@ -178,11 +179,7 @@ export function SignaturesTab({
 				);
 			} catch (error) {
 				setEnabled(true);
-				const message =
-					error instanceof Error
-						? error.message
-						: "Failed to update";
-				toast.error("Error", message);
+				toast.error("Error", convexErrorMessage(error, "Failed to update"));
 			} finally {
 				setIsSaving(false);
 			}
@@ -204,11 +201,7 @@ export function SignaturesTab({
 				toast.success("Updated", "Countersigner assigned");
 			} catch (error) {
 				setSelectedUserId(countersignerId);
-				const message =
-					error instanceof Error
-						? error.message
-						: "Failed to update";
-				toast.error("Error", message);
+				toast.error("Error", convexErrorMessage(error, "Failed to update"));
 			} finally {
 				setIsSaving(false);
 			}
@@ -233,11 +226,7 @@ export function SignaturesTab({
 				toast.success("Updated", "Signing order changed");
 			} catch (error) {
 				setOrder(signingOrder);
-				const message =
-					error instanceof Error
-						? error.message
-						: "Failed to update";
-				toast.error("Error", message);
+				toast.error("Error", convexErrorMessage(error, "Failed to update"));
 			} finally {
 				setIsSaving(false);
 			}

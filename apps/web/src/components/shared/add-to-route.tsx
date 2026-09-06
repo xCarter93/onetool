@@ -18,6 +18,7 @@ import { PropertyPicker } from "@/components/shared/property-picker";
 import { useEntitlements } from "@/hooks/use-entitlements";
 import { usePermissions } from "@/hooks/use-permissions";
 import { useToast } from "@/hooks/use-toast";
+import { convexErrorMessage } from "@/lib/convex-error";
 import { todayUtcMidnightMs } from "@/lib/dates";
 
 type ClientProperty = Doc<"clientProperties">;
@@ -77,7 +78,7 @@ export function useAddToRoute() {
 		} catch (error) {
 			toast.error(
 				"Couldn't add to route",
-				error instanceof Error ? error.message : undefined
+				convexErrorMessage(error, "Please try again.")
 			);
 			return false;
 		} finally {
