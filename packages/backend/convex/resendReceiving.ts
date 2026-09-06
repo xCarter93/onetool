@@ -236,10 +236,12 @@ export const processInboundEmail = internalMutation({
 
 		// Parse sender; match to a client contact if we know them (else unknown).
 		const { email: fromEmail, name: fromName } = parseEmailAddress(args.from);
+		// Contacts are stored via normalizeContactEmail (lowercase); senders aren't.
+		const contactEmail = fromEmail.trim().toLowerCase();
 		const clientContact = await ctx.db
 			.query("clientContacts")
 			.withIndex("by_org_email", (q) =>
-				q.eq("orgId", organization._id).eq("email", fromEmail)
+				q.eq("orgId", organization._id).eq("email", contactEmail)
 			)
 			.first();
 		let clientId: Id<"clients"> | null = clientContact?.clientId ?? null;
