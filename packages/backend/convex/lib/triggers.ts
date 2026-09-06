@@ -2,7 +2,7 @@ import {
 	mutation as rawMutation,
 	internalMutation as rawInternalMutation,
 } from "../_generated/server";
-import type { DataModel } from "../_generated/dataModel";
+import type { DataModel, Id } from "../_generated/dataModel";
 import { Triggers } from "convex-helpers/server/triggers";
 import {
 	customCtx,
@@ -137,6 +137,74 @@ triggers.register("quotes", async (ctx, change) => {
 	const searchText = quoteSearchText(change.newDoc);
 	if (change.newDoc.searchText === searchText) return;
 	await ctx.innerDb.patch(change.id, { searchText });
+});
+
+triggers.register("quotes", async (ctx, change) => {
+	const previous = change.oldDoc;
+	const current = change.newDoc;
+	const provenanceId = previous?.projectSeriesQuoteTemplateId ?? current?.projectSeriesQuoteTemplateId;
+	if (previous && provenanceId) {
+		const ledger = await ctx.innerDb.query("projectSeriesQuoteCopies")
+			.withIndex("by_quote", (q) => q.eq("quoteId", previous._id)).unique();
+		if (ledger?.state === "materialized") {
+			if (!current) {
+				await ctx.innerDb.patch(ledger._id, { state: "removed-by-user", quoteId: undefined, protected: true });
+			} else if (
+				current.status !== "draft" || current.projectId !== previous.projectId || current.clientId !== previous.clientId ||
+				current.projectSeriesQuoteTemplateId !== previous.projectSeriesQuoteTemplateId ||
+				current.recurringQuoteOverride === true
+			) {
+				await ctx.innerDb.patch(ledger._id, { protected: true });
+			}
+		}
+	}
+
+	const quoteId = previous?._id ?? current?._id;
+	if (!quoteId) return;
+	const appliedByCopy = Boolean(
+		current?.recurringQuoteAppliedVersion !== undefined &&
+		(!previous || current.recurringQuoteAppliedVersion !== previous.recurringQuoteAppliedVersion)
+	);
+	if (appliedByCopy) return;
+	const templates = await ctx.innerDb.query("projectSeriesQuoteTemplates")
+		.withIndex("by_source_quote", (q) => q.eq("sourceQuoteId", quoteId)).take(21);
+	if (templates.length > 20) throw new Error("Recurring quote template limit exceeded");
+	const seriesIds = new Set(templates.map((template) => template.seriesId));
+	if (provenanceId) {
+		const template = await ctx.innerDb.get(provenanceId);
+		if (template) seriesIds.add(template.seriesId);
+	}
+	for (const projectId of new Set([previous?.projectId, current?.projectId])) {
+		if (!projectId) continue;
+		const project = await ctx.innerDb.get(projectId);
+		if (project?.recurringSeriesId) seriesIds.add(project.recurringSeriesId);
+	}
+	for (const seriesId of seriesIds) {
+		const series = await ctx.innerDb.get(seriesId);
+		if (series) await ctx.innerDb.patch(seriesId, { revision: (series.revision ?? 0) + 1 });
+	}
+});
+
+triggers.register("invoices", async (ctx, change) => {
+	const seriesIds = new Set<Id<"projectSeries">>();
+	for (const quoteId of new Set([change.oldDoc?.quoteId, change.newDoc?.quoteId])) {
+		if (!quoteId) continue;
+		const ledger = await ctx.innerDb.query("projectSeriesQuoteCopies")
+			.withIndex("by_quote", (q) => q.eq("quoteId", quoteId)).unique();
+		if (ledger) {
+			seriesIds.add(ledger.seriesId);
+			if (!ledger.protected) await ctx.innerDb.patch(ledger._id, { protected: true });
+		}
+	}
+	for (const projectId of new Set([change.oldDoc?.projectId, change.newDoc?.projectId])) {
+		if (!projectId) continue;
+		const project = await ctx.innerDb.get(projectId);
+		if (project?.recurringSeriesId) seriesIds.add(project.recurringSeriesId);
+	}
+	for (const seriesId of seriesIds) {
+		const series = await ctx.innerDb.get(seriesId);
+		if (series) await ctx.innerDb.patch(seriesId, { revision: (series.revision ?? 0) + 1 });
+	}
 });
 
 triggers.register("invoices", async (ctx, change) => {

@@ -50,6 +50,20 @@ export const quotesArticles: HelpArticle[] = [
 				],
 			},
 			{
+				heading: "Copy a quote to recurring projects",
+				blocks: [
+					{ type: "steps", items: [
+						"Open a quote attached to a project in an active recurring series and save the content you want to reuse.",
+						"Choose **Copy to future projects** from the quote’s actions. Review the counts, then choose **Copy drafts**.",
+						"Open the project’s overview to manage **Future quote setup**. The saved version is used for later visits; source edits are published only when you copy again.",
+					] },
+					{ type: "paragraph", text: "Each copy has its own quote number and line items. The saved title, message, terms, discount, tax and PDF display settings are reused, and totals are recalculated. Copies start as drafts and stay hidden from the client portal until sent. Copying does not carry over approval, signatures, documents, signing settings or the original offer’s expiry date." },
+					{ type: "paragraph", text: "Copying again replaces the same source’s eligible draft copies, including ordinary edits to those drafts. Manually created quotes and quotes copied from another source remain separate. Copies that have been sent or approved, moved, explicitly removed or invoiced are preserved. Started, skipped and past visits are also excluded." },
+					{ type: "paragraph", text: "Choose **Stop copying** beside saved quote setup to prevent copies on newly created visits. Existing quotes and line items stay unchanged. Deleting the source quote alone does not stop its saved setup; the setup remains manageable from the project." },
+					{ type: "paragraph", text: "Copying and stopping require organization-wide access to projects and quotes, plus permission to modify both. These controls are available on Free and Business. Stop saved quote copying before changing the series client or property, then save setup for the new scope." },
+				],
+			},
+			{
 				heading: "Add line items",
 				blocks: [
 					{

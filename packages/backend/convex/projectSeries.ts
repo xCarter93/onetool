@@ -1,4 +1,4 @@
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 import { doc } from "convex-helpers/validators";
 import schema from "./schema";
 import { internal } from "./_generated/api";
@@ -7,6 +7,7 @@ import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { userMutation, userQuery, type UserQueryCtx } from "./lib/factories";
 import { internalMutation } from "./lib/triggers";
 import { getMembership } from "./lib/memberships";
+import { loadSeriesQuoteTemplates } from "./lib/projectSeriesQuotes";
 import {
 	emitRecordCreatedEvent,
 	emitRecordUpdatedEvent,
@@ -587,6 +588,12 @@ export const updateFuture = userMutation({
 			);
 		const clientId = args.updates.clientId ?? series.clientId;
 		const propertyId = args.updates.propertyId ?? series.propertyId;
+		if (
+			(clientId !== series.clientId || propertyId !== series.propertyId) &&
+			(await loadSeriesQuoteTemplates(ctx, series._id)).some((template) => template.active)
+		) {
+			throw new ConvexError("Stop saved quote copying before changing the series client or property, then save quote setup for the new scope.");
+		}
 		const client = await ctx.orgEntity("clients", clientId);
 		if (client.status === "archived")
 			throw new Error("Cannot move recurring work to an archived client");

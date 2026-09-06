@@ -11,6 +11,7 @@ import {
 	Send,
 	RotateCcw,
 	Receipt,
+	CopyPlus,
 } from "lucide-react";
 import {
 	ActionButtonGroup,
@@ -43,6 +44,9 @@ interface QuoteDetailHeaderProps {
 	onGeneratePdf: () => void;
 	onDelete: () => void;
 	onConvertToInvoice: () => void;
+	onCopyToFuture?: () => void;
+	copyToFutureDisabled?: boolean;
+	copyToFutureDisabledReason?: string;
 	/** True while a convert-to-invoice mutation is in flight — disables the action to prevent duplicate invoices. */
 	converting?: boolean;
 }
@@ -55,6 +59,9 @@ export function QuoteDetailHeader({
 	onGeneratePdf,
 	onDelete,
 	onConvertToInvoice,
+	onCopyToFuture,
+	copyToFutureDisabled = false,
+	copyToFutureDisabledReason,
 	converting = false,
 }: QuoteDetailHeaderProps) {
 	const { can } = usePermissions();
@@ -152,6 +159,20 @@ export function QuoteDetailHeader({
 
 	const actions: RecordAction[] = [
 		...statusActions,
+		...(onCopyToFuture
+			? [
+					{
+						key: "copy-to-future",
+						label: "Copy to future projects",
+						icon: <CopyPlus className="h-4 w-4" />,
+						slot: "secondary" as const,
+						variant: "outline" as const,
+						onClick: onCopyToFuture,
+						disabled: copyToFutureDisabled,
+						disabledReason: copyToFutureDisabledReason,
+					},
+				]
+			: []),
 		{
 			// Opens the send modal: portal template, custom email, or e-signature.
 			// Stays visible on approved quotes, where email is refused but the

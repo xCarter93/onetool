@@ -19,6 +19,7 @@ import DeleteConfirmationModal from "@/components/ui/delete-confirmation-modal";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ExclamationTriangleIcon } from "@heroicons/react/24/outline";
 import { QuoteDetailHeader } from "./components/quote-detail-header";
+import { RecurringQuoteCopyGate } from "./components/recurring-quote-copy-gate";
 import { QuoteDetailTabs } from "./components/quote-detail-tabs";
 import { localDateToUtcMidnightMs, todayUtcMidnightMs } from "@/lib/dates";
 import { convexErrorMessage } from "@/lib/convex-error";
@@ -456,21 +457,44 @@ function QuoteDetailPageContent() {
 	}
 
 	const currentStatus = getQuoteStatus(quote.status, quote.validUntil);
+	const quoteHeader = ({
+		onCopyToFuture,
+		copyToFutureDisabled,
+		copyToFutureDisabledReason,
+	}: {
+		onCopyToFuture?: () => void;
+		copyToFutureDisabled?: boolean;
+		copyToFutureDisabledReason?: string;
+	}) => (
+		<QuoteDetailHeader
+			quote={quote}
+			currentStatus={currentStatus}
+			onStatusChange={handleStatusChange}
+			onSendEmail={() => setIsEmailModalOpen(true)}
+			onGeneratePdf={() => setShowDocumentModal(true)}
+			onDelete={() => setIsDeleteModalOpen(true)}
+			onConvertToInvoice={handleConvertToInvoice}
+			onCopyToFuture={onCopyToFuture}
+			copyToFutureDisabled={copyToFutureDisabled}
+			copyToFutureDisabledReason={copyToFutureDisabledReason}
+			converting={isConverting}
+		/>
+	);
 
 	return (
 		<>
 			<div className="relative min-h-screen pl-6 pt-6">
 				{/* Header */}
-				<QuoteDetailHeader
-					quote={quote}
-					currentStatus={currentStatus}
-					onStatusChange={handleStatusChange}
-					onSendEmail={() => setIsEmailModalOpen(true)}
-					onGeneratePdf={() => setShowDocumentModal(true)}
-					onDelete={() => setIsDeleteModalOpen(true)}
-					onConvertToInvoice={handleConvertToInvoice}
-					converting={isConverting}
-				/>
+				<RecurringQuoteCopyGate
+					key={quoteId}
+					quoteId={quoteId}
+					quoteTitle={
+						quote.title || `Quote ${quote.quoteNumber || quote._id.slice(-6)}`
+					}
+					projectId={quote.projectId}
+				>
+					{quoteHeader}
+				</RecurringQuoteCopyGate>
 
 				{/* Tabs + Sidebar */}
 				<QuoteDetailTabs

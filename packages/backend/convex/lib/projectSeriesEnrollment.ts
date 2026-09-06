@@ -17,6 +17,12 @@ import {
 	loadSeriesTaskTemplates,
 	MAX_GENERATED_TASKS,
 } from "./projectSeriesTasks";
+import {
+	applyActiveQuoteTemplatesToProject,
+	loadSeriesQuoteTemplates,
+	MAX_GENERATED_QUOTE_LINE_WRITES,
+	MAX_GENERATED_QUOTES,
+} from "./projectSeriesQuotes";
 
 const WINDOW_DAYS = 90;
 const GENERATION_BATCH = 25;
@@ -101,9 +107,25 @@ export async function generateProjectSeriesOccurrences(
 	}
 	const taskTemplates = await loadSeriesTaskTemplates(ctx, series._id);
 	const activeTemplateCount = taskTemplates.filter((template) => template.active).length;
+	const quoteTemplates = await loadSeriesQuoteTemplates(ctx, series._id);
+	let quoteLinesPerProject = 0;
+	for (const template of quoteTemplates) {
+		if (!template.active) continue;
+		const version = await ctx.db.get(template.versionId);
+		if (!version) throw new Error("Recurring quote version is missing");
+		if (version.clientId !== series.clientId || version.propertyId !== series.propertyId)
+			throw new Error("Saved recurring quote scope no longer matches the series; stop quote copying before changing the client or property");
+		quoteLinesPerProject += version.lineItems.length;
+	}
+	if (quoteLinesPerProject > MAX_GENERATED_QUOTE_LINE_WRITES)
+		throw new Error(`Saved recurring quotes contain ${quoteLinesPerProject} line items; generation supports at most ${MAX_GENERATED_QUOTE_LINE_WRITES} per project batch`);
 	const projectBatch = Math.min(
 		GENERATION_BATCH,
-		activeTemplateCount ? Math.max(1, Math.floor(MAX_GENERATED_TASKS / activeTemplateCount)) : GENERATION_BATCH
+		activeTemplateCount ? Math.max(1, Math.floor(MAX_GENERATED_TASKS / activeTemplateCount)) : GENERATION_BATCH,
+		quoteLinesPerProject ? Math.max(1, Math.floor(MAX_GENERATED_QUOTE_LINE_WRITES / quoteLinesPerProject)) : GENERATION_BATCH,
+		quoteTemplates.filter((template) => template.active).length
+			? Math.max(1, Math.floor(MAX_GENERATED_QUOTES / quoteTemplates.filter((template) => template.active).length))
+			: GENERATION_BATCH
 	);
 	for (const nominalDate of missing.slice(0, projectBatch)) {
 		const projectId = await ctx.db.insert("projects", {
@@ -134,6 +156,7 @@ export async function generateProjectSeriesOccurrences(
 		const project = await ctx.db.get(projectId);
 		if (!project) throw new Error("Generated project not found");
 		await applyActiveTaskTemplatesToProject(ctx, series, project, taskTemplates);
+		await applyActiveQuoteTemplatesToProject(ctx, series, project, quoteTemplates);
 		await emitRecordCreatedEvent(
 			ctx,
 			series.orgId,

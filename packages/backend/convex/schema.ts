@@ -520,6 +520,71 @@ export default defineSchema({
 		.index("by_template_project", ["templateId", "projectId"])
 		.index("by_task", ["taskId"]),
 
+	projectSeriesQuoteVersions: defineTable({
+		orgId: v.id("organizations"),
+		seriesId: v.id("projectSeries"),
+		sourceQuoteId: v.id("quotes"),
+		capturedFromQuoteId: v.id("quotes"),
+		clientId: v.id("clients"),
+		propertyId: v.optional(v.id("clientProperties")),
+		createdByUserId: v.id("users"),
+		version: v.number(),
+		title: v.optional(v.string()),
+		clientMessage: v.optional(v.string()),
+		terms: v.optional(v.string()),
+		discountEnabled: v.optional(v.boolean()),
+		discountAmount: v.optional(v.number()),
+		discountType: v.optional(v.union(v.literal("percentage"), v.literal("fixed"))),
+		taxEnabled: v.optional(v.boolean()),
+		taxRate: v.optional(v.number()),
+		pdfSettings: v.optional(v.object({
+			showQuantities: v.boolean(),
+			showUnitPrices: v.boolean(),
+			showLineItemTotals: v.boolean(),
+			showTotals: v.boolean(),
+		})),
+		lineItems: v.array(v.object({
+			description: v.string(), quantity: v.number(), unit: v.string(),
+			rate: v.number(), amount: v.number(), cost: v.optional(v.number()),
+			skuId: v.optional(v.id("skus")), sortOrder: v.number(),
+		})),
+	})
+		.index("by_org", ["orgId"])
+		.index("by_series", ["seriesId"])
+		.index("by_source_quote", ["sourceQuoteId"])
+		.index("by_source_quote_version", ["sourceQuoteId", "version"]),
+
+	projectSeriesQuoteTemplates: defineTable({
+		orgId: v.id("organizations"),
+		seriesId: v.id("projectSeries"),
+		sourceQuoteId: v.id("quotes"),
+		sourceNominalDate: v.string(),
+		versionId: v.id("projectSeriesQuoteVersions"),
+		version: v.number(),
+		title: v.optional(v.string()),
+		active: v.boolean(),
+	})
+		.index("by_org", ["orgId"])
+		.index("by_series", ["seriesId"])
+		.index("by_source_quote", ["sourceQuoteId"])
+		.index("by_series_source", ["seriesId", "sourceQuoteId"]),
+
+	projectSeriesQuoteCopies: defineTable({
+		orgId: v.id("organizations"),
+		seriesId: v.id("projectSeries"),
+		templateId: v.id("projectSeriesQuoteTemplates"),
+		versionId: v.id("projectSeriesQuoteVersions"),
+		projectId: v.id("projects"),
+		quoteId: v.optional(v.id("quotes")),
+		state: v.union(v.literal("materialized"), v.literal("removed-by-user")),
+		protected: v.boolean(),
+		appliedVersion: v.number(),
+	})
+		.index("by_org", ["orgId"])
+		.index("by_template", ["templateId"])
+		.index("by_template_project", ["templateId", "projectId"])
+		.index("by_quote", ["quoteId"]),
+
 	// Projects
 	projects: defineTable({
 		orgId: v.id("organizations"),
@@ -712,6 +777,10 @@ export default defineSchema({
 
 		// Creator (optional — unset on historical + system-created rows)
 		createdByUserId: v.optional(v.id("users")),
+		projectSeriesQuoteTemplateId: v.optional(v.id("projectSeriesQuoteTemplates")),
+		projectSeriesQuoteVersionId: v.optional(v.id("projectSeriesQuoteVersions")),
+		recurringQuoteAppliedVersion: v.optional(v.number()),
+		recurringQuoteOverride: v.optional(v.boolean()),
 		// Search digest maintained by lib/triggers.ts (see lib/searchText.ts).
 		searchText: v.optional(v.string()),
 	})

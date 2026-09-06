@@ -12,6 +12,7 @@ import { ClipboardList, DollarSign, CheckCircle, FileText, Receipt, Pencil } fro
 import { formatCurrency } from "@/lib/money";
 import { ProjectScheduleCalendar } from "../project-schedule-calendar";
 import { useProjectEditScope } from "../recurrence/project-edit-scope";
+import { FutureQuoteSetup } from "./future-quote-setup";
 
 interface OverviewTabProps {
 	projectId: Id<"projects">;
@@ -239,6 +240,8 @@ export function OverviewTab({
 			</div>
 
 			<Separator className="my-6" />
+
+			<FutureQuoteSetup key={projectId} projectId={projectId} />
 
 			<RelatedRecordsFrame
 				sections={[

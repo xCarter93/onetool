@@ -57,6 +57,9 @@ export const ORG_SCOPED_CASCADE_TABLES = [
 	"clientContacts",
 	"clientProperties",
 	"tasks",
+	"projectSeriesQuoteCopies",
+	"projectSeriesQuoteTemplates",
+	"projectSeriesQuoteVersions",
 	"projectTaskCopies",
 	"projectTaskTemplates",
 	"projectOccurrences",
@@ -566,7 +569,10 @@ export async function cascadeDeleteOrgDataPage(
 		}
 	}
 
-	for (const table of ["projectTaskCopies", "projectTaskTemplates"] as const) {
+	for (const table of [
+		"projectSeriesQuoteCopies", "projectSeriesQuoteTemplates", "projectSeriesQuoteVersions",
+		"projectTaskCopies", "projectTaskTemplates",
+	] as const) {
 		if (remaining <= 0) return { done: false };
 		const rows = await ctx.db
 			.query(table)
