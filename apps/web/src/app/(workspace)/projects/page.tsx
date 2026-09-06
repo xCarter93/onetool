@@ -62,6 +62,8 @@ import { useQuery } from "convex-helpers/react/cache/hooks";
 import { useActivitySparklines } from "@/hooks/use-activity-sparklines";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { useIsOrgSwitching } from "@/hooks/use-is-org-switching";
+import { useToast } from "@/hooks/use-toast";
+import { convexErrorMessage } from "@/lib/convex-error";
 import type { Doc, Id } from "@onetool/backend/convex/_generated/dataModel";
 import { useState } from "react";
 import DeleteConfirmationModal from "@/components/ui/delete-confirmation-modal";
@@ -301,6 +303,7 @@ function ProjectsPageContent() {
 	const updateProjectStatus = useMutation(api.projects.update);
 	const [kanbanData, setKanbanData] = useState<ProjectKanbanItem[]>([]);
 	const isOrgSwitching = useIsOrgSwitching();
+	const toast = useToast();
 	const { can } = usePermissions();
 	const canModifyProjects = can("projects", "modify");
 	const canDeleteProjects = can("projects", "delete");
@@ -519,10 +522,22 @@ function ProjectsPageContent() {
 					status: item.column,
 				}).catch((error) => {
 					console.error("Failed to update project status:", error);
+					// A rejected write changes no server data, so the sync effect never re-fires.
+					setKanbanData((prev) =>
+						prev.map((card) =>
+							card.id === item.id
+								? { ...card, column: originalStatus, status: originalStatus }
+								: card
+						)
+					);
+					toast.error(
+						"Update Failed",
+						convexErrorMessage(error, "Failed to update project status")
+					);
 				});
 			}
 		},
-		[kanbanData, projectStatusMap, updateProjectStatus]
+		[kanbanData, projectStatusMap, updateProjectStatus, toast]
 	);
 
 	return (

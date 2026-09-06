@@ -5,6 +5,7 @@ import { api } from "@onetool/backend/convex/_generated/api";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
 import { useMemo, useRef, useState, useCallback } from "react";
 import { useToast } from "@/hooks/use-toast";
+import { convexErrorMessage } from "@/lib/convex-error";
 import { usePermissions } from "@/hooks/use-permissions";
 import {
 	FileIcon,
@@ -188,8 +189,7 @@ export function ProjectDocumentsSection({ projectId }: ProjectDocumentsSectionPr
 			toast.success("Uploaded", `${file.name} has been uploaded.`);
 		} catch (err) {
 			toast.removeToast(loadingToastId);
-			const message = err instanceof Error ? err.message : "Upload failed";
-			toast.error("Upload failed", message);
+			toast.error("Upload failed", convexErrorMessage(err, "Upload failed"));
 		} finally {
 			setIsUploading(false);
 		}

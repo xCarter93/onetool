@@ -7,6 +7,7 @@ import Modal from "@/components/ui/modal";
 import { Badge } from "@/components/ui/badge";
 import { useConfirmDialog } from "@/hooks/use-confirm-dialog";
 import { useToast } from "@/hooks/use-toast";
+import { convexErrorMessage } from "@/lib/convex-error";
 import {
 	FileIcon,
 	Download,
@@ -69,8 +70,7 @@ export function ClientDocumentsModal({
 			await removeDocument({ id: doc._id as Id<"clientDocuments"> });
 			toast.success("Deleted", `${doc.fileName} has been removed.`);
 		} catch (err) {
-			const message = err instanceof Error ? err.message : "Failed to delete";
-			toast.error("Delete failed", message);
+			toast.error("Delete failed", convexErrorMessage(err, "Failed to delete"));
 		}
 	};
 

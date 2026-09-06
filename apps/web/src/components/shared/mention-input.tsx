@@ -12,6 +12,7 @@ import {
 	PopoverTrigger,
 } from "@/components/ui/popover";
 import { useToast } from "@/hooks/use-toast";
+import { convexErrorMessage } from "@/lib/convex-error";
 import { Send, Paperclip, X, FileIcon, Loader2 } from "lucide-react";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
 
@@ -438,9 +439,7 @@ export function MentionInput({
 			// Notify parent
 			onMentionCreated?.();
 		} catch (error) {
-			const errorMessage =
-				error instanceof Error ? error.message : "Failed to send message";
-			toast.error("Error", errorMessage);
+			toast.error("Error", convexErrorMessage(error, "Failed to send message"));
 		}
 	};
 

@@ -27,6 +27,7 @@ import {
 	SheetFooter,
 } from "@/components/ui/sheet";
 import { useToast } from "@/hooks/use-toast";
+import { convexErrorMessage } from "@/lib/convex-error";
 import { usePermissions } from "@/hooks/use-permissions";
 import {
 	CalendarIcon,
@@ -298,10 +299,7 @@ export function TaskSheet({
 			}
 		} catch (err) {
 			console.error("Error saving task:", err);
-			error(
-				"Error",
-				err instanceof Error ? err.message : "Failed to save task"
-			);
+			error("Error", convexErrorMessage(err, "Failed to save task"));
 		} finally {
 			setIsSubmitting(false);
 		}

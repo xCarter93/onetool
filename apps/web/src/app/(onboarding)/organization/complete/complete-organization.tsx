@@ -32,6 +32,7 @@ import {
 	type ReceivingAddressState,
 } from "@/components/shared/receiving-address-field";
 import { useToast } from "@/hooks/use-toast";
+import { convexErrorMessage } from "@/lib/convex-error";
 import { useAutoTimezone } from "@/hooks/use-auto-timezone";
 import { Users, Building2, Globe, Upload, Check, Loader2 } from "lucide-react";
 import { api } from "@onetool/backend/convex/_generated/api";
@@ -483,9 +484,7 @@ export function CompleteOrganizationMetadata() {
 				} catch (err) {
 					toast.warning(
 						"Couldn't reserve that email address",
-						err instanceof Error
-							? err.message
-							: "You can pick one later in Settings.",
+						convexErrorMessage(err, "You can pick one later in Settings."),
 					);
 				}
 			} else if (addressChanged) {
@@ -502,9 +501,10 @@ export function CompleteOrganizationMetadata() {
 		} catch (err) {
 			console.error("Failed to complete organization metadata:", err);
 			setError(
-				err instanceof Error
-					? err.message
-					: "Failed to save organization settings. Please try again."
+				convexErrorMessage(
+					err,
+					"Failed to save organization settings. Please try again."
+				)
 			);
 			return false;
 		} finally {

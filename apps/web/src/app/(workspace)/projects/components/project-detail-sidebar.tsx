@@ -16,6 +16,7 @@ import { ProminentStatusBadge } from "@/components/shared/prominent-status-badge
 import { Separator } from "@/components/ui/separator";
 import { DatePicker } from "@/components/ui/date-picker";
 import { useToast } from "@/hooks/use-toast";
+import { convexErrorMessage } from "@/lib/convex-error";
 import { useState } from "react";
 import {
 	CircleDot,
@@ -183,8 +184,7 @@ export function ProjectDetailSidebar({
 			toast.success("Updated", `${label} saved.`);
 			cancelEditing();
 		} catch (err) {
-			const message = err instanceof Error ? err.message : "Failed to save";
-			toast.error("Error", message);
+			toast.error("Error", convexErrorMessage(err, "Failed to save"));
 		}
 	};
 

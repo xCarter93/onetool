@@ -1062,7 +1062,7 @@ export function useAutomationEditor(automationId: string | null) {
 				console.error("Failed to start test run:", error);
 				toast.error(
 					"Test Failed to Start",
-					error instanceof Error ? error.message : "Please try again."
+					convexErrorMessage(error, "Please try again.")
 				);
 			} finally {
 				setIsStartingTest(false);
@@ -1079,7 +1079,7 @@ export function useAutomationEditor(automationId: string | null) {
 			console.error("Failed to cancel test run:", error);
 			toast.error(
 				"Stop Failed",
-				error instanceof Error ? error.message : "Could not stop the test run."
+				convexErrorMessage(error, "Could not stop the test run.")
 			);
 		}
 	}, [activeExecutionId, cancelTestRun, toast]);
