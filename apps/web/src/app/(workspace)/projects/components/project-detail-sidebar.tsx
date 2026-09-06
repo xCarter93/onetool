@@ -52,6 +52,7 @@ import {
 	type ProjectUpdate,
 	useProjectEditScope,
 } from "./recurrence/project-edit-scope";
+import { RecurrenceProjectControl } from "./recurrence/project-control";
 
 function formatDate(timestamp?: number) {
 	if (!timestamp) return "\u2014";
@@ -353,6 +354,8 @@ export function ProjectDetailSidebar({
 						: renderPencil()
 					}
 				</div>
+
+				<RecurrenceProjectControl project={project} />
 
 				{/* Start Date */}
 				<div

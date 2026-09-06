@@ -19,7 +19,6 @@ import {
 	ProjectEditScopeControl,
 	ProjectEditScopeProvider,
 } from "@/app/(workspace)/projects/components/recurrence/project-edit-scope";
-import { RecurrenceProjectControl } from "@/app/(workspace)/projects/components/recurrence/project-control";
 
 function ProjectDetailPageContent() {
 	const params = useParams();
@@ -154,7 +153,6 @@ function ProjectDetailPageContent() {
 					onDelete={() => setIsDeleteModalOpen(true)}
 				/>
 				<div className="pr-6">
-					<RecurrenceProjectControl project={project} />
 					<ProjectEditScopeControl />
 				</div>
 

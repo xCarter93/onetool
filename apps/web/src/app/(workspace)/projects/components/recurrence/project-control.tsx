@@ -5,10 +5,11 @@ import Link from "next/link";
 import type { Route } from "next";
 import { useRouter } from "next/navigation";
 import { Repeat } from "lucide-react";
-import { useMutation } from "convex/react";
+import { useMutation, useQuery } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import type { Doc } from "@onetool/backend/convex/_generated/dataModel";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
 	Dialog,
 	DialogContent,
@@ -21,7 +22,7 @@ import { usePermissions } from "@/hooks/use-permissions";
 import { useToast } from "@/hooks/use-toast";
 import { convexErrorMessage } from "@/lib/convex-error";
 import { RecurrenceScheduleForm } from "./schedule-form";
-import type { RecurrenceRule } from "./rule";
+import { describeRecurrence, type RecurrenceRule } from "./rule";
 
 type RecurrenceProject = Pick<Doc<"projects">, "_id" | "title"> & {
 	startDate?: number | null;
@@ -42,31 +43,50 @@ export function RecurrenceProjectControl({
 	const enroll = useMutation(api.projectSeries.enroll);
 	const canViewSeries = can("projects") && hasAllRecords("projects");
 	const canManage = canViewSeries && can("projects", "modify");
+	const seriesDetails = useQuery(
+		api.projectSeries.get,
+		project.recurringSeriesId && canViewSeries
+			? { seriesId: project.recurringSeriesId }
+			: "skip"
+	);
 
 	if (project.recurringSeriesId) {
 		return (
-			<div className="flex flex-wrap items-center gap-2">
-				<StatusBadge role="neutral" appearance="outline">
-					<Repeat className="size-3.5" /> Recurring
-				</StatusBadge>
-				{project.recurringState && (
-					<StatusBadge role="neutral" appearance="outline">
-						{project.recurringState}
-					</StatusBadge>
-				)}
-				{canViewSeries && (
-					<Button
-						variant="outline"
-						size="sm"
-						render={
-							<Link
-								href={`/projects/series/${project.recurringSeriesId}` as Route}
-							/>
-						}
-					>
-						View series
-					</Button>
-				)}
+			<div className="flex items-start gap-3 py-2.5 -mx-2 px-2">
+				<Repeat className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+				<span className="w-28 shrink-0 text-sm text-muted-foreground">
+					Schedule
+				</span>
+				<div className="min-w-0 flex-1 space-y-1.5">
+					{seriesDetails === undefined && canViewSeries ? (
+						<Skeleton className="h-9 w-full" />
+					) : (
+						<>
+							<p className="text-sm text-foreground">
+								{seriesDetails
+									? describeRecurrence(seriesDetails.series.rule)
+									: "Recurring schedule"}
+							</p>
+							<div className="flex flex-wrap items-center gap-2">
+								<StatusBadge role="neutral" appearance="outline">
+									{seriesDetails?.series.state ??
+										project.recurringState ??
+										"recurring"}
+								</StatusBadge>
+								{canViewSeries && seriesDetails && (
+									<Link
+										href={
+											`/projects/series/${project.recurringSeriesId}?fromProjectId=${project._id}` as Route
+										}
+										className="inline-flex min-h-11 items-center text-sm font-medium text-primary outline-none hover:text-primary/80 focus-visible:ring-2 focus-visible:ring-ring"
+									>
+										View series
+									</Link>
+								)}
+							</div>
+						</>
+					)}
+				</div>
 			</div>
 		);
 	}
@@ -75,19 +95,27 @@ export function RecurrenceProjectControl({
 
 	return (
 		<>
-			<div>
-				<Button
-					variant="outline"
-					onClick={() => setOpen(true)}
-					disabled={!project.startDate}
-				>
-					<Repeat className="size-4" /> Set up recurrence
-				</Button>
-				{!project.startDate && (
-					<p className="mt-1 text-sm text-muted-foreground">
-						Add a start date to set up recurrence.
-					</p>
-				)}
+			<div className="flex items-start gap-3 py-2.5 -mx-2 px-2">
+				<Repeat className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+				<span className="w-28 shrink-0 text-sm text-muted-foreground">
+					Schedule
+				</span>
+				<div className="min-w-0 flex-1">
+					<Button
+						variant="outline"
+						size="sm"
+						className="min-h-11"
+						onClick={() => setOpen(true)}
+						disabled={!project.startDate}
+					>
+						<Repeat className="size-4" /> Set up recurrence
+					</Button>
+					{!project.startDate && (
+						<p className="mt-1 text-sm text-muted-foreground">
+							Add a start date to set up recurrence.
+						</p>
+					)}
+				</div>
 			</div>
 			{open && project.startDate && (
 				<Dialog open onOpenChange={setOpen}>
@@ -115,7 +143,9 @@ export function RecurrenceProjectControl({
 										"Future visits are now scheduled."
 									);
 									setOpen(false);
-									router.push(`/projects/series/${seriesId}` as Route);
+									router.push(
+										`/projects/series/${seriesId}?fromProjectId=${project._id}` as Route
+									);
 								} catch (error) {
 									toast.error(
 										"Setup failed",

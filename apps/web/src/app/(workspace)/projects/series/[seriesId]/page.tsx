@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
+import type { Route } from "next";
+import { useParams, useSearchParams } from "next/navigation";
 import {
 	CalendarDays,
 	ChevronLeft,
@@ -65,7 +66,8 @@ function formatDate(timestamp?: number): string {
 function SeriesPageContent() {
 	const { seriesId: rawSeriesId } = useParams<{ seriesId: string }>();
 	const seriesId = rawSeriesId as Id<"projectSeries">;
-	const router = useRouter();
+	const searchParams = useSearchParams();
+	const fromProjectId = searchParams.get("fromProjectId") ?? undefined;
 	const toast = useToast();
 	const [cursor, setCursor] = useState<string | undefined>();
 	const [previousCursors, setPreviousCursors] = useState<
@@ -82,7 +84,7 @@ function SeriesPageContent() {
 	const canAccess = can("projects") && hasAllRecords("projects");
 	const details = useQuery(
 		api.projectSeries.get,
-		canAccess ? { seriesId } : "skip"
+		canAccess ? { seriesId, fromProjectId } : "skip"
 	);
 	const occurrences = useQuery(
 		api.projectSeries.listOccurrences,
@@ -245,7 +247,7 @@ function SeriesPageContent() {
 		);
 	}
 
-	const { series, clientName, propertyName, nextVisit } = details;
+	const { series, clientName, propertyName, nextVisit, returnProject } = details;
 	const stateAction: LifecycleAction | null =
 		series.state === "active"
 			? "pause"
@@ -260,10 +262,21 @@ function SeriesPageContent() {
 					<Button
 						variant="ghost"
 						size="sm"
-						className="mb-2"
-						onClick={() => router.push("/projects")}
+						className="mb-2 min-h-11 max-w-full"
+						render={
+							<Link
+								href={
+									(returnProject
+										? `/projects/${returnProject._id}`
+										: "/projects") as Route
+								}
+							/>
+						}
 					>
-						<ChevronLeft className="size-4" /> Projects
+						<ChevronLeft className="size-4" />
+						<span className="truncate">
+							{returnProject ? `Back to ${returnProject.title}` : "Projects"}
+						</span>
 					</Button>
 					<div className="flex flex-wrap items-center gap-3">
 						<h1 className="text-2xl font-bold text-foreground text-balance">

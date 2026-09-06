@@ -94,6 +94,30 @@ describe("project series lifecycle", () => {
 			seriesId: setup.seriesId,
 		});
 		expect(detail?.nextVisit).not.toBeNull();
+		expect(detail?.returnProject).toEqual({
+			_id: setup.projectId,
+			title: "Weekly service",
+		});
+		const generated = (await occurrences(setup.seriesId)).find(
+			(project) => project._id !== setup.projectId
+		);
+		expect(generated).toBeDefined();
+		expect(
+			await setup.asUser.query(api.projectSeries.get, {
+				seriesId: setup.seriesId,
+				fromProjectId: generated!._id,
+			})
+		).toMatchObject({
+			returnProject: { _id: generated!._id, title: generated!.title },
+		});
+		expect(
+			await setup.asUser.query(api.projectSeries.get, {
+				seriesId: setup.seriesId,
+				fromProjectId: "not-a-project-id",
+			})
+		).toMatchObject({
+			returnProject: { _id: setup.projectId, title: "Weekly service" },
+		});
 
 		const member = await t.run(async (ctx) => addMemberToOrg(ctx, setup.orgId));
 		const scoped = t.withIdentity(

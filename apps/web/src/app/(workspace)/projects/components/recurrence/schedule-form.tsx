@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useId, useMemo, useState } from "react";
 import { useQuery } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
@@ -121,11 +121,6 @@ export function RecurrenceScheduleForm({
 	);
 	const preview = seriesId ? changePreview?.dates : setupPreview;
 
-	const update = (patch: Partial<RecurrenceFormValue>) =>
-		setValue((current) => ({ ...current, ...patch }));
-	const usesMonthlyPattern =
-		value.frequency === "monthly" || value.frequency === "yearly";
-
 	return (
 		<form
 			className="space-y-6"
@@ -134,6 +129,50 @@ export function RecurrenceScheduleForm({
 				if (!error) await onSubmit(rule, changePreview?.revision);
 			}}
 		>
+			<RecurrenceScheduleFields
+				value={value}
+				onChange={setValue}
+				error={error}
+				preview={preview}
+				affectedPreview={changePreview}
+				disabled={isSubmitting}
+			/>
+			<div className="flex justify-end border-t pt-4">
+				<Button
+					type="submit"
+					disabled={!!error || preview === undefined || isSubmitting}
+					className={cn(isSubmitting && "opacity-70")}
+				>
+					{isSubmitting ? "Updating..." : submitLabel}
+				</Button>
+			</div>
+		</form>
+	);
+}
+
+export function RecurrenceScheduleFields({
+	value,
+	onChange,
+	error,
+	preview,
+	affectedPreview,
+	disabled = false,
+}: {
+	value: RecurrenceFormValue;
+	onChange: (value: RecurrenceFormValue) => void;
+	error?: string | null;
+	preview?: string[];
+	affectedPreview?: { count: number; preserved: number };
+	disabled?: boolean;
+}) {
+	const fieldId = useId();
+	const update = (patch: Partial<RecurrenceFormValue>) =>
+		onChange({ ...value, ...patch });
+	const usesMonthlyPattern =
+		value.frequency === "monthly" || value.frequency === "yearly";
+
+	return (
+		<fieldset className="space-y-6" disabled={disabled}>
 			<fieldset className="space-y-3">
 				<legend className="text-sm font-semibold">Schedule</legend>
 				<div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
@@ -142,9 +181,8 @@ export function RecurrenceScheduleForm({
 							key={preset}
 							type="button"
 							variant={value.preset === preset ? "default" : "outline"}
-							onClick={() =>
-								setValue((current) => applyPreset(current, preset))
-							}
+							aria-pressed={value.preset === preset}
+							onClick={() => onChange(applyPreset(value, preset))}
 						>
 							{label}
 						</Button>
@@ -155,9 +193,9 @@ export function RecurrenceScheduleForm({
 			{value.preset === "custom" && (
 				<div className="grid gap-4 rounded-md bg-muted/40 p-4 sm:grid-cols-2">
 					<div className="space-y-2">
-						<Label htmlFor="recurrence-interval">Repeat every</Label>
+						<Label htmlFor={`${fieldId}-interval`}>Repeat every</Label>
 						<Input
-							id="recurrence-interval"
+							id={`${fieldId}-interval`}
 							type="number"
 							min={1}
 							max={1000}
@@ -170,12 +208,13 @@ export function RecurrenceScheduleForm({
 					<div className="space-y-2">
 						<Label>Frequency</Label>
 						<Select
+							disabled={disabled}
 							value={value.frequency}
 							onValueChange={(frequency) =>
 								update({ frequency: frequency as RecurrenceRule["frequency"] })
 							}
 						>
-							<SelectTrigger className="w-full">
+							<SelectTrigger className="w-full" aria-label="Frequency">
 								<SelectValue />
 							</SelectTrigger>
 							<SelectContent>
@@ -244,6 +283,7 @@ export function RecurrenceScheduleForm({
 											value.monthDays.includes(day) ? "default" : "outline"
 										}
 										aria-label={`Day ${day}`}
+										aria-pressed={value.monthDays.includes(day)}
 										onClick={() =>
 											update({ monthDays: toggle(value.monthDays, day) })
 										}
@@ -256,10 +296,11 @@ export function RecurrenceScheduleForm({
 					) : (
 						<div className="grid gap-3 sm:grid-cols-2">
 							<Select
+								disabled={disabled}
 								value={String(value.ordinal)}
 								onValueChange={(next) => update({ ordinal: Number(next) })}
 							>
-								<SelectTrigger className="w-full">
+								<SelectTrigger className="w-full" aria-label="Week of month">
 									<SelectValue />
 								</SelectTrigger>
 								<SelectContent>
@@ -278,12 +319,13 @@ export function RecurrenceScheduleForm({
 								</SelectContent>
 							</Select>
 							<Select
+								disabled={disabled}
 								value={String(value.ordinalWeekday)}
 								onValueChange={(next) =>
 									update({ ordinalWeekday: Number(next) })
 								}
 							>
-								<SelectTrigger className="w-full">
+								<SelectTrigger className="w-full" aria-label="Day of week">
 									<SelectValue />
 								</SelectTrigger>
 								<SelectContent>
@@ -327,12 +369,13 @@ export function RecurrenceScheduleForm({
 			<fieldset className="space-y-3">
 				<legend className="text-sm font-semibold">Ends</legend>
 				<Select
+					disabled={disabled}
 					value={value.endKind}
 					onValueChange={(endKind) =>
 						update({ endKind: endKind as RecurrenceFormValue["endKind"] })
 					}
 				>
-					<SelectTrigger className="w-full">
+					<SelectTrigger className="w-full" aria-label="Schedule end">
 						<SelectValue />
 					</SelectTrigger>
 					<SelectContent>
@@ -342,10 +385,15 @@ export function RecurrenceScheduleForm({
 					</SelectContent>
 				</Select>
 				{value.endKind === "until" && (
-					<DatePicker
-						value={dateFromKey(value.until)}
-						onChange={(date) => update({ until: date ? dateKey(date) : "" })}
-					/>
+					<div className="space-y-2">
+						<Label htmlFor={`${fieldId}-until`}>Until</Label>
+						<DatePicker
+							id={`${fieldId}-until`}
+							disabled={disabled}
+							value={dateFromKey(value.until)}
+							onChange={(date) => update({ until: date ? dateKey(date) : "" })}
+						/>
+					</div>
 				)}
 				{value.endKind === "count" && (
 					<Input
@@ -359,18 +407,18 @@ export function RecurrenceScheduleForm({
 				)}
 			</fieldset>
 
-			<section aria-labelledby="schedule-preview" className="border-t pt-5">
-				<h3 id="schedule-preview" className="text-sm font-semibold">
+			<section aria-labelledby={`${fieldId}-preview`} className="border-t pt-5">
+				<h3 id={`${fieldId}-preview`} className="text-sm font-semibold">
 					Upcoming visits
 				</h3>
 				<p className="mt-1 text-sm text-muted-foreground">
 					The current project counts as the first occurrence. New visits are
 					created in a rolling window.
 				</p>
-				{changePreview && (
+				{affectedPreview && (
 					<p className="mt-2 text-sm text-muted-foreground tabular-nums">
-						Planned visits affected: {changePreview.count}. Visits preserved:{" "}
-						{changePreview.preserved}.
+						Planned visits affected: {affectedPreview.count}. Visits preserved:{" "}
+						{affectedPreview.preserved}.
 					</p>
 				)}
 				{error ? (
@@ -405,16 +453,6 @@ export function RecurrenceScheduleForm({
 					</ol>
 				)}
 			</section>
-
-			<div className="flex justify-end border-t pt-4">
-				<Button
-					type="submit"
-					disabled={!!error || preview === undefined || isSubmitting}
-					className={cn(isSubmitting && "opacity-70")}
-				>
-					{isSubmitting ? "Updating..." : submitLabel}
-				</Button>
-			</div>
-		</form>
+		</fieldset>
 	);
 }

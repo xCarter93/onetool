@@ -28,9 +28,9 @@ export const projectsAndTasksArticles: HelpArticle[] = [
 							"Go to **Projects** in the sidebar and click **Create Project**.",
 							"Pick the **Client** the job is for. If the client has more than one property, choose the **Property** too; with a single property it is selected for you.",
 							"Enter a **Project title**, and a **Description** if the crew needs context.",
-							"Set the **Project type**: **One-off** for work that runs once, **Recurring** to label ongoing work. Selecting a type alone does not schedule future projects.",
-							"Pick a **Start date**, and an **End date** if you know it. The end date cannot be before the start date.",
-							"Use **Assign to** to pick the teammates doing the work, then click **Create project**.",
+							"Set the **Project type**: **One-off** for work that runs once, or **Recurring** to show the recurring schedule options.",
+							"Pick a **Start date**, and an **End date** if you know it. Recurring projects require a start date. These dates describe the first visit; use **Ends** in the recurring schedule to stop the whole series. The end date cannot be before the start date.",
+							"For recurring work, choose the schedule and its end condition, then review the upcoming visits. Use **Assign to** to pick the teammates doing the work, then click **Create project** to save the project and schedule together.",
 						],
 					},
 					{
@@ -89,12 +89,12 @@ export const projectsAndTasksArticles: HelpArticle[] = [
 				heading: "Set up recurring visits",
 				blocks: [
 					{ type: "steps", items: [
-						"Open a project with a start date and choose **Set up recurrence**. Its client and property define the series, and this project counts as the first occurrence.",
+						"For an existing project with a start date, choose **Set up recurrence** in the right sidebar beside its type and dates. Its client and property define the series, and this project counts as the first occurrence.",
 						"Choose a schedule preset or **Custom**. You can select weekdays, monthly dates or an ordinal weekday, and seasonal months.",
 						"Under **Ends**, choose **Never**, **On a date**, or **After a number of visits**. Review the preview, then save.",
 					] },
 					{ type: "paragraph", text: "OneTool creates separate planned projects for the next 90 days and includes the next visit for less frequent schedules. Each new visit repeats the project details and duration. Tasks, quotes and invoices remain separate records for each visit; setting up recurrence does not copy them." },
-					{ type: "paragraph", text: "Use **View series** on a recurring project to see its schedule, next visit and occurrence history. The Projects list also offers a **Series** filter. Viewing a whole series requires organization-wide project access; changing it also requires permission to modify projects." },
+					{ type: "paragraph", text: "The right sidebar shows the recurring schedule and series state. Use **View series** there to see the next visit and occurrence history; the series page links back to the project you came from. The Projects list also offers a **Series** filter. Viewing a whole series requires organization-wide project access; changing it also requires permission to modify projects." },
 					{ type: "tip", text: "A monthly date such as the 31st uses the month's last day when needed. A fifth weekday that does not exist is skipped. The original schedule stays anchored, including across daylight-saving changes." },
 				],
 			},
@@ -128,7 +128,7 @@ export const projectsAndTasksArticles: HelpArticle[] = [
 		faq: [
 			{
 				question: "When should I use a recurring project?",
-				answer: "Use recurring visits for ongoing work like weekly mowing or monthly cleaning. Open a dated project and choose Set up recurrence to define its schedule. Selecting the Recurring type alone only labels the work. One-off projects suit a repair or a spring cleanup.",
+				answer: "Use recurring visits for ongoing work like weekly mowing or monthly cleaning. Choose Recurring in the New project dialog to configure a schedule during creation, or use Set up recurrence in an existing dated project's sidebar. Changing the type on an existing project alone still only labels the work. One-off projects suit a repair or a spring cleanup.",
 			},
 			{
 				question: "Why is Generate Invoice not clickable?",

@@ -29,6 +29,8 @@ import {
 	assertProjectCapacityForTransition,
 } from "./lib/planCaps";
 import { calculateQuoteTotals } from "./lib/quoteTotals";
+import { projectRecurrenceRuleValidator } from "./lib/projectRecurrence";
+import { enrollProjectInSeries } from "./lib/projectSeriesEnrollment";
 
 /**
  * Project operations
@@ -562,9 +564,20 @@ export const create = userMutation({
 		startDate: v.optional(v.number()),
 		endDate: v.optional(v.number()),
 		assignedUserIds: v.optional(v.array(v.id("users"))),
+		recurrenceRule: v.optional(projectRecurrenceRuleValidator),
 	},
 	handler: async (ctx, args: any): Promise<ProjectId> => {
 		await ctx.requireLevel("projects", "modify");
+		if (args.recurrenceRule) {
+			if (args.projectType !== "recurring")
+				throw new Error("Recurrence requires a recurring project type");
+			if (args.startDate === undefined)
+				throw new Error("Set a project start date before configuring recurrence");
+			if (!(await ctx.hasAllRecords("projects")))
+				throw new Error(
+					"Organization-wide project access is required to manage recurrence"
+				);
+		}
 
 		// Validate title is not empty
 		if (!args.title.trim()) {
@@ -585,11 +598,17 @@ export const create = userMutation({
 			ctx,
 			args.assignedUserIds
 		);
+		const { recurrenceRule, ...projectArgs } = args;
 		const projectId = await createProjectWithOrg(ctx, {
-			...args,
+			...projectArgs,
 			assignedUserIds,
 			createdByUserId: ctx.user._id,
 		});
+		if (recurrenceRule) {
+			const project = await ctx.db.get(projectId);
+			if (!project) throw new Error("Project not found after creation");
+			await enrollProjectInSeries(ctx, project, recurrenceRule);
+		}
 
 		// Get the created project for activity logging and aggregates
 		const project = await ctx.db.get(projectId);

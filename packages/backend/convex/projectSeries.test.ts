@@ -185,6 +185,156 @@ describe("project series", () => {
 		expect((await asUser.query(api.projects.getStats, {})).total).toBe(3);
 	});
 
+	it("creates a project and its recurring series atomically", async () => {
+		const setup = await t.run(async (ctx) => {
+			const org = await createTestOrg(ctx, {
+				clerkUserId: "atomic_series_owner",
+				clerkOrgId: "atomic_series_org",
+			});
+			await ctx.db.patch(org.orgId, { timezone: "America/New_York" });
+			const clientId = await createTestClient(ctx, org.orgId);
+			return { ...org, clientId };
+		});
+		const asUser = t.withIdentity(
+			createTestIdentity(setup.clerkUserId, setup.clerkOrgId)
+		);
+		const projectId = await asUser.mutation(api.projects.create, {
+			clientId: setup.clientId,
+			title: "Atomic recurring project",
+			description: "Created with its schedule",
+			status: "planned",
+			projectType: "recurring",
+			startDate: Date.UTC(2026, 8, 6),
+			endDate: Date.UTC(2026, 8, 7),
+			recurrenceRule: daily(3),
+		});
+
+		const snapshot = await t.run(async (ctx) => {
+			const origin = await ctx.db.get(projectId);
+			const series = origin?.recurringSeriesId
+				? await ctx.db.get(origin.recurringSeriesId)
+				: null;
+			const projects = series
+				? await ctx.db
+						.query("projects")
+						.withIndex("by_series_date", (q) =>
+							q.eq("recurringSeriesId", series._id)
+						)
+						.collect()
+				: [];
+			const occurrences = series
+				? await ctx.db
+						.query("projectOccurrences")
+						.withIndex("by_series_date", (q) => q.eq("seriesId", series._id))
+						.collect()
+				: [];
+			return { origin, series, projects, occurrences };
+		});
+		expect(snapshot.origin).toMatchObject({
+			projectType: "recurring",
+			recurringNominalDate: "2026-09-06",
+		});
+		expect(snapshot.series).toMatchObject({
+			originatingProjectId: projectId,
+			anchorDateKey: "2026-09-06",
+			durationDays: 1,
+			timezone: "America/New_York",
+			rule: daily(3),
+			state: "active",
+		});
+		expect(snapshot.projects).toHaveLength(3);
+		expect(snapshot.occurrences).toHaveLength(3);
+		expect(snapshot.projects.map((project) => project.startDate).sort()).toEqual([
+			Date.UTC(2026, 8, 6),
+			Date.UTC(2026, 8, 7),
+			Date.UTC(2026, 8, 8),
+		]);
+	});
+
+	it("rolls back the project, events, and derived writes when its recurrence rule is invalid", async () => {
+		const setup = await t.run(async (ctx) => {
+			const org = await createTestOrg(ctx, {
+				clerkUserId: "rollback_series_owner",
+				clerkOrgId: "rollback_series_org",
+			});
+			const clientId = await createTestClient(ctx, org.orgId);
+			return { ...org, clientId };
+		});
+		const asUser = t.withIdentity(
+			createTestIdentity(setup.clerkUserId, setup.clerkOrgId)
+		);
+		const counts = () =>
+			t.run(async (ctx) => ({
+				projects: (await ctx.db.query("projects").collect()).length,
+				series: (await ctx.db.query("projectSeries").collect()).length,
+				occurrences: (await ctx.db.query("projectOccurrences").collect()).length,
+				activities: (await ctx.db.query("activities").collect()).length,
+				events: (await ctx.db.query("domainEvents").collect()).length,
+				counters: (await ctx.db.query("orgCounters").collect()).length,
+			}));
+		const before = await counts();
+		await expect(
+			asUser.mutation(api.projects.create, {
+				clientId: setup.clientId,
+				title: "Must roll back",
+				status: "planned",
+				projectType: "recurring",
+				startDate: Date.UTC(2026, 8, 6),
+				recurrenceRule: { frequency: "daily", interval: 0 },
+			})
+		).rejects.toThrow(/interval/i);
+		expect(await counts()).toEqual(before);
+	});
+
+	it("requires recurring type, a start date, and org-wide project scope", async () => {
+		const setup = await t.run(async (ctx) => {
+			const org = await createTestOrg(ctx, {
+				clerkUserId: "guard_series_owner",
+				clerkOrgId: "guard_series_org",
+			});
+			const clientId = await createTestClient(ctx, org.orgId);
+			const member = await addMemberToOrg(ctx, org.orgId, {
+				clerkUserId: "guard_series_member",
+			});
+			return { ...org, clientId, member };
+		});
+		const asOwner = t.withIdentity(
+			createTestIdentity(setup.clerkUserId, setup.clerkOrgId)
+		);
+		await expect(
+			asOwner.mutation(api.projects.create, {
+				clientId: setup.clientId,
+				title: "Wrong type",
+				status: "planned",
+				projectType: "one-off",
+				startDate: Date.UTC(2026, 8, 6),
+				recurrenceRule: daily(2),
+			})
+		).rejects.toThrow(/recurring project type/i);
+		await expect(
+			asOwner.mutation(api.projects.create, {
+				clientId: setup.clientId,
+				title: "Missing date",
+				status: "planned",
+				projectType: "recurring",
+				recurrenceRule: daily(2),
+			})
+		).rejects.toThrow(/start date/i);
+		const asMember = t.withIdentity(
+			createTestIdentity(setup.member.clerkUserId, setup.clerkOrgId)
+		);
+		await expect(
+			asMember.mutation(api.projects.create, {
+				clientId: setup.clientId,
+				title: "Scoped recurrence",
+				status: "planned",
+				projectType: "recurring",
+				startDate: Date.UTC(2026, 8, 6),
+				recurrenceRule: daily(2),
+			})
+		).rejects.toThrow(/organization-wide/i);
+	});
+
 	it("requires organization-wide project access and rejects another organization's project", async () => {
 		const setup = await setupOrigin();
 		const member = await t.run(async (ctx) => addMemberToOrg(ctx, setup.orgId));
