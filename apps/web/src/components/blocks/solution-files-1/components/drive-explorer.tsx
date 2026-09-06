@@ -565,15 +565,23 @@ export function DriveExplorer() {
 			// the node id, so one name lookup serves them.
 			const namesById = new Map(files.map((row) => [row.node.id, row.node.name]))
 			try {
-				// drive.getFileUrls caps each call at 100 ids and drops the rest.
+				// Both URL endpoints cap each call at 100 ids and drop the rest.
+				const idBatches: (typeof ids)[] = []
+				for (let i = 0; i < ids.length; i += 100) {
+					idBatches.push(ids.slice(i, i + 100))
+				}
 				const virtualBatches: (typeof virtualFiles)[] = []
 				for (let i = 0; i < virtualFiles.length; i += 100) {
 					virtualBatches.push(virtualFiles.slice(i, i + 100))
 				}
 				const urls = [
-					...(ids.length > 0
-						? await convex.query(api.organizationDocuments.getDocumentUrls, { ids })
-						: []),
+					...(
+						await Promise.all(
+							idBatches.map((ids) =>
+								convex.query(api.organizationDocuments.getDocumentUrls, { ids })
+							)
+						)
+					).flat(),
 					...(
 						await Promise.all(
 							virtualBatches.map((files) =>

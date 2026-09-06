@@ -307,10 +307,20 @@ function QuoteDetailPageContent() {
 			if (appendDocumentIds.length > 0) {
 				try {
 					const { PDFDocument } = await import("pdf-lib");
-					const documentUrls = await convex.query(
-						api.organizationDocuments.getDocumentUrls,
-						{ ids: appendDocumentIds }
-					);
+					// getDocumentUrls resolves at most 100 ids per call.
+					const idBatches: (typeof appendDocumentIds)[] = [];
+					for (let i = 0; i < appendDocumentIds.length; i += 100) {
+						idBatches.push(appendDocumentIds.slice(i, i + 100));
+					}
+					const documentUrls = (
+						await Promise.all(
+							idBatches.map((ids) =>
+								convex.query(api.organizationDocuments.getDocumentUrls, {
+									ids,
+								})
+							)
+						)
+					).flat();
 					const mergedPdf = await PDFDocument.create();
 					const quotePdfDoc = await PDFDocument.load(
 						await quoteBlob.arrayBuffer()

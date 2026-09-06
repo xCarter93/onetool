@@ -511,18 +511,24 @@ function ProjectsPageContent() {
 		[]
 	);
 
+	// Latest drop per card; a failed older write must not undo a newer drop.
+	const moveTokens = React.useRef(new Map<string, number>());
+
 	const handleKanbanDragEnd = React.useCallback(
 		(event: DragEndEvent) => {
 			const item = kanbanData.find((i) => i.id === event.active.id);
 			if (!item) return;
 			const originalStatus = projectStatusMap.get(item.id);
 			if (originalStatus && originalStatus !== item.column) {
+				const token = (moveTokens.current.get(item.id) ?? 0) + 1;
+				moveTokens.current.set(item.id, token);
 				updateProjectStatus({
 					id: item.id as Id<"projects">,
 					status: item.column,
 				}).catch((error) => {
 					console.error("Failed to update project status:", error);
 					// A rejected write changes no server data, so the sync effect never re-fires.
+					if (moveTokens.current.get(item.id) !== token) return;
 					setKanbanData((prev) =>
 						prev.map((card) =>
 							card.id === item.id

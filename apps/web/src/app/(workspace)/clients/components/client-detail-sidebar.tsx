@@ -195,8 +195,8 @@ export function ClientDetailSidebar({
 		updateClient({
 			id: clientId as Id<"clients">,
 			tags: newTags,
-		}).catch(() => {
-			toast.error("Error", "Failed to save tags");
+		}).catch((err) => {
+			toast.error("Error", convexErrorMessage(err, "Failed to save tags"));
 			setLocalTags(client.tags || []);
 		});
 	};
