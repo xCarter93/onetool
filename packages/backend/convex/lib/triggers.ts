@@ -85,6 +85,50 @@ triggers.register("projects", async (ctx, change) => {
 	await ctx.innerDb.patch(change.id, { searchText });
 });
 
+triggers.register("projects", async (ctx, change) => {
+	const previous = change.oldDoc;
+	if (!previous?.recurringSeriesId || !previous.recurringNominalDate) return;
+	if (!change.newDoc) {
+		const occurrence = await ctx.innerDb
+			.query("projectOccurrences")
+			.withIndex("by_series_date", (q) =>
+				q
+					.eq("seriesId", previous.recurringSeriesId!)
+					.eq("nominalDate", previous.recurringNominalDate!)
+			)
+			.unique();
+		if (occurrence) {
+			await ctx.innerDb.patch(occurrence._id, {
+				state: "deleted",
+				projectId: undefined,
+			});
+		}
+		return;
+	}
+	const reusableFields = [
+		"title",
+		"description",
+		"clientId",
+		"propertyId",
+		"assignedUserIds",
+		"startDate",
+		"endDate",
+	] as const;
+	const changed = reusableFields.filter(
+		(field) =>
+			JSON.stringify(previous[field]) !== JSON.stringify(change.newDoc![field])
+	);
+	if (!changed.length) return;
+	await ctx.innerDb.patch(change.id, {
+		recurringFieldOverrides: [
+			...new Set([
+				...(change.newDoc.recurringFieldOverrides ?? []),
+				...changed,
+			]),
+		],
+	});
+});
+
 triggers.register("quotes", async (ctx, change) => {
 	if (!change.newDoc) return;
 	const searchText = quoteSearchText(change.newDoc);

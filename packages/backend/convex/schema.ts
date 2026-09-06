@@ -1,5 +1,6 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
+import { projectRecurrenceRuleValidator } from "./lib/projectRecurrence";
 import {
 	automationStatusValidator,
 	executedNodeValidator,
@@ -442,6 +443,41 @@ export default defineSchema({
 		.index("by_org", ["orgId"])
 		.index("by_org_date", ["orgId", "date"]),
 
+	projectSeries: defineTable({
+		orgId: v.id("organizations"),
+		originatingProjectId: v.id("projects"),
+		clientId: v.id("clients"),
+		propertyId: v.optional(v.id("clientProperties")),
+		title: v.string(),
+		description: v.optional(v.string()),
+		assignedUserIds: v.optional(v.array(v.id("users"))),
+		createdByUserId: v.id("users"),
+		anchorDateKey: v.string(),
+		durationDays: v.optional(v.number()),
+		timezone: v.string(),
+		rule: projectRecurrenceRuleValidator,
+		state: v.union(
+			v.literal("active"),
+			v.literal("paused"),
+			v.literal("ended")
+		),
+		nextGenerationAt: v.optional(v.number()),
+	})
+		.index("by_org", ["orgId"])
+		.index("by_org_client", ["orgId", "clientId"])
+		.index("by_state_next_generation", ["state", "nextGenerationAt"]),
+
+	// This ledger survives project deletion and one-visit date changes.
+	projectOccurrences: defineTable({
+		orgId: v.id("organizations"),
+		seriesId: v.id("projectSeries"),
+		nominalDate: v.string(),
+		projectId: v.optional(v.id("projects")),
+		state: v.union(v.literal("materialized"), v.literal("deleted")),
+	})
+		.index("by_org", ["orgId"])
+		.index("by_series_date", ["seriesId", "nominalDate"]),
+
 	// Projects
 	projects: defineTable({
 		orgId: v.id("organizations"),
@@ -461,6 +497,9 @@ export default defineSchema({
 			v.literal("cancelled")
 		),
 		projectType: v.union(v.literal("one-off"), v.literal("recurring")),
+		recurringSeriesId: v.optional(v.id("projectSeries")),
+		recurringNominalDate: v.optional(v.string()),
+		recurringFieldOverrides: v.optional(v.array(v.string())),
 
 		// Dates
 		startDate: v.optional(v.number()),
@@ -478,6 +517,7 @@ export default defineSchema({
 		.index("by_org", ["orgId"])
 		.index("by_client", ["clientId"])
 		.index("by_status", ["orgId", "status"])
+		.index("by_series_date", ["recurringSeriesId", "recurringNominalDate"])
 		.searchIndex("search_text", {
 			searchField: "searchText",
 			filterFields: ["orgId"],

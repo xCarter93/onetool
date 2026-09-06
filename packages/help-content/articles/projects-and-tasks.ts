@@ -28,7 +28,7 @@ export const projectsAndTasksArticles: HelpArticle[] = [
 							"Go to **Projects** in the sidebar and click **Create Project**.",
 							"Pick the **Client** the job is for. If the client has more than one property, choose the **Property** too; with a single property it is selected for you.",
 							"Enter a **Project title**, and a **Description** if the crew needs context.",
-							"Set the **Project type**: **One-off** for work that runs once, **Recurring** for work that repeats on a schedule.",
+							"Set the **Project type**: **One-off** for work that runs once, **Recurring** to label ongoing work. Selecting a type alone does not schedule future projects.",
 							"Pick a **Start date**, and an **End date** if you know it. The end date cannot be before the start date.",
 							"Use **Assign to** to pick the teammates doing the work, then click **Create project**.",
 						],
@@ -93,6 +93,10 @@ export const projectsAndTasksArticles: HelpArticle[] = [
 						text: "Delete a project from the row actions on the Projects page or with **Delete** in the project header. A confirmation modal asks you to be sure, because deleting a project is permanent. Unlike clients, which are archived and can be restored, there is no way to bring a deleted project back.",
 					},
 					{
+						type: "paragraph",
+						text: "A project linked to a recurring series cannot be deleted if it has a quote or invoice. Set it to **Cancelled** to preserve that history. Deleting an eligible visit does not delete its series or cause that visit to be created again.",
+					},
+					{
 						type: "tip",
 						text: "If you just want a finished or abandoned job out of your active list, set its status to **Completed** or **Cancelled** instead of deleting it. You keep the history.",
 					},
@@ -102,7 +106,7 @@ export const projectsAndTasksArticles: HelpArticle[] = [
 		faq: [
 			{
 				question: "When should I use a recurring project?",
-				answer: "Recurring projects repeat on a schedule, so they suit ongoing contracts like weekly mowing or monthly cleaning. One-off projects run once, like a repair or a spring cleanup. You can filter the Projects page by type to see each group on its own.",
+				answer: "Use the Recurring type to organize ongoing work like weekly mowing or monthly cleaning. The type label alone does not create future visits. One-off projects suit a repair or a spring cleanup. You can filter the Projects page by type to see each group on its own.",
 			},
 			{
 				question: "Why is Generate Invoice not clickable?",

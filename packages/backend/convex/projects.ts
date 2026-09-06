@@ -757,6 +757,21 @@ export const remove = userMutation({
 			"projects",
 			() => project.assignedUserIds?.includes(ctx.user._id) ?? false
 		);
+		if (project.recurringSeriesId) {
+			const quote = await ctx.db
+				.query("quotes")
+				.withIndex("by_project", (q) => q.eq("projectId", project._id))
+				.first();
+			const invoice = await ctx.db
+				.query("invoices")
+				.withIndex("by_project", (q) => q.eq("projectId", project._id))
+				.first();
+			if (quote || invoice) {
+				throw new Error(
+					"Cancel this recurring project to preserve its financial history"
+				);
+			}
+		}
 
 		// 1. Delete all tasks associated with this project
 		const tasks = await ctx.db
