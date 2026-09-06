@@ -510,6 +510,12 @@ function ClientsPageContent() {
 					status: item.column,
 				}).catch((error) => {
 					console.error("Failed to update client status:", error);
+					// A rejected write changes no server data, so the sync effect never re-fires.
+					setKanbanData((prev) =>
+						prev.map((card) =>
+							card.id === item.id ? { ...card, column: originalStatus } : card
+						)
+					);
 					toast.error(
 						"Update Failed",
 						"Failed to update client status. Please try again."

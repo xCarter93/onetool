@@ -2,6 +2,7 @@
 
 import { PermissionGate } from "@/components/domain/permission-gate";
 import { usePermissions } from "@/hooks/use-permissions";
+import { useIsOrgSwitching } from "@/hooks/use-is-org-switching";
 import { useState, useMemo } from "react";
 import { useMutation } from "convex/react";
 import { useQuery } from "convex-helpers/react/cache/hooks";
@@ -379,6 +380,7 @@ function TasksPageContent() {
   const { can } = usePermissions();
   const canModifyTasks = can("tasks", "modify");
   const canDeleteTasks = can("tasks", "delete");
+  const isOrgSwitching = useIsOrgSwitching();
 
   // Queries
   const allTasks = useQuery(api.tasks.list, {});
@@ -392,7 +394,7 @@ function TasksPageContent() {
   const completeTaskMutation = useMutation(api.tasks.complete);
   const deleteTaskMutation = useMutation(api.tasks.remove);
 
-  const isLoading = allTasks === undefined;
+  const isLoading = isOrgSwitching || allTasks === undefined;
 
   // Get project name if filtering by project
   const filteredProject = projectIdFromUrl
