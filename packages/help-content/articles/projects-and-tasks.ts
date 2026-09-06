@@ -93,7 +93,7 @@ export const projectsAndTasksArticles: HelpArticle[] = [
 						"Choose a schedule preset or **Custom**. You can select weekdays, monthly dates or an ordinal weekday, and seasonal months.",
 						"Under **Ends**, choose **Never**, **On a date**, or **After a number of visits**. Review the preview, then save.",
 					] },
-					{ type: "paragraph", text: "OneTool creates separate planned projects for the next 90 days and includes the next visit for less frequent schedules. Each new visit repeats the project details and duration. Tasks, quotes and invoices remain separate records for each visit; setting up recurrence does not copy them." },
+					{ type: "paragraph", text: "OneTool creates separate planned projects for the next 90 days and includes the next visit for less frequent schedules. Each new visit repeats the project details and duration. Tasks, quotes and invoices remain separate records for each visit. Setting up recurrence does not copy them automatically; you can save selected tasks for future projects from the project’s Tasks tab." },
 					{ type: "paragraph", text: "The right sidebar shows the recurring schedule and series state. Use **View series** there to see the next visit and occurrence history; the series page links back to the project you came from. The Projects list also offers a **Series** filter. Viewing a whole series requires organization-wide project access; changing it also requires permission to modify projects." },
 					{ type: "tip", text: "A monthly date such as the 31st uses the month's last day when needed. A fifth weekday that does not exist is skipped. The original schedule stays anchored, including across daylight-saving changes." },
 				],
@@ -211,6 +211,20 @@ export const projectsAndTasksArticles: HelpArticle[] = [
 						type: "paragraph",
 						text: "For work that happens on a rhythm, change **Repeat** from **No repeat** to **Daily**, **Weekly**, **Monthly**, or **Yearly**. Once you choose a repeat, a **Repeat Until** date is required, so every series has a clear end.",
 					},
+				],
+			},
+			{
+				heading: "Copy tasks to recurring projects",
+				blocks: [
+					{ type: "steps", items: [
+						"Open the **Tasks** tab on a project that belongs to an active recurring series. Create and save the task you want to repeat.",
+						"Choose **Copy** on that task’s row to open **Copy to future projects?**. Review how many tasks will be created, updated or preserved, then choose **Copy task**.",
+						"The task appears in **Future task setup**. OneTool uses that saved version when it creates later visits. Editing the source task alone does not change the saved setup; copy it forward again to publish those changes.",
+					] },
+					{ type: "paragraph", text: "Copies receive fresh Pending status, the saved title, description, times and assignment, and a date shifted relative to each project’s start date. They do not create a second standalone task recurrence. Only eligible later planned visits are populated; started or invoiced work is preserved." },
+					{ type: "paragraph", text: "Copying again updates untouched pending copies without duplicating them. Manually created tasks and copies that were edited, started, completed or deleted are preserved. A deleted copy stays deleted." },
+					{ type: "paragraph", text: "Use **Remove** in **Future task setup**, review the preview, then choose **Remove task setup** to stop future generation and remove eligible untouched pending copies. This leaves the original task and protected copies in place. Deleting the original task alone does not remove its saved setup; you can still remove the setup from another project in the series." },
+					{ type: "paragraph", text: "Task copy-forward requires organization-wide access to projects and tasks, plus permission to modify both. Removing saved setup also requires permission to delete tasks. These built-in recurring-project controls are available on Free and Business." },
 				],
 			},
 			{

@@ -34,6 +34,7 @@ import {
 	FolderOpen,
 	Edit,
 	Trash2,
+	CopyPlus,
 } from "lucide-react";
 import { Task } from "@/types/task";
 import { isTerminalStatus } from "@/lib/tasks";
@@ -132,6 +133,9 @@ function createColumns(
 	onToggleComplete: (task: Task) => void,
 	onEdit: (task: Task) => void,
 	onDelete: (task: Task) => void,
+	onCopyToFuture: ((task: Task) => void) | undefined,
+	canCopyToFuture: boolean,
+	copyToFutureTitle: string,
 	updatingTasks: Set<Id<"tasks">>
 ): ColumnDef<DataGridFeatures, Task>[] {
 	const cols: ColumnDef<DataGridFeatures, Task>[] = [
@@ -293,12 +297,26 @@ function createColumns(
 	cols.push({
 		id: "actions",
 		header: "",
-		size: 80,
+		size: onCopyToFuture ? 160 : 80,
 		cell: ({ row }) => {
 			const task = row.original;
 			const isUpdating = updatingTasks.has(task._id);
 			return (
 				<div className="flex items-center gap-1">
+					{onCopyToFuture && (
+						<Button
+							variant="ghost"
+							size="sm"
+							onClick={() => onCopyToFuture(task)}
+							disabled={isUpdating || !canCopyToFuture}
+							className="min-h-11 text-muted-foreground hover:text-foreground"
+							title={copyToFutureTitle}
+							aria-label={`Copy ${task.title} to future projects`}
+						>
+							<CopyPlus className="h-3.5 w-3.5" />
+							Copy
+						</Button>
+					)}
 					<button
 						onClick={() => onEdit(task)}
 						disabled={isUpdating || !canModify}
@@ -374,12 +392,20 @@ interface RecordTasksTabProps {
 	tasks: Doc<"tasks">[] | undefined;
 	onAddTask: () => void;
 	entityType: "client" | "project";
+	onCopyToFuture?: (task: Task) => void;
+	canCopyToFuture?: boolean;
+	copyToFutureTitle?: string;
+	headerContent?: React.ReactNode;
 }
 
 export function RecordTasksTab({
 	tasks,
 	onAddTask,
 	entityType,
+	onCopyToFuture,
+	canCopyToFuture = false,
+	copyToFutureTitle = "Copy to future projects",
+	headerContent,
 }: RecordTasksTabProps) {
 	const [searchQuery, setSearchQuery] = useState("");
 	const [editingTask, setEditingTask] = useState<Task | null>(null);
@@ -492,10 +518,13 @@ export function RecordTasksTab({
 				handleToggleComplete,
 				handleEdit,
 				handleDeleteRequest,
+				onCopyToFuture,
+				canCopyToFuture,
+				copyToFutureTitle,
 				updatingTasks
 			),
 		// eslint-disable-next-line react-hooks/exhaustive-deps
-		[clients, projects, users, updatingTasks, entityType, canModifyTasks, canDeleteTasks]
+		[clients, projects, users, updatingTasks, entityType, canModifyTasks, canDeleteTasks, onCopyToFuture, canCopyToFuture, copyToFutureTitle]
 	);
 
 	const totalTasks = tasks?.length ?? 0;
@@ -513,6 +542,7 @@ export function RecordTasksTab({
 				</Button>
 			</div>
 			<Separator className="mb-4" />
+			{headerContent}
 
 			{/* Search */}
 			{totalTasks > 0 && (

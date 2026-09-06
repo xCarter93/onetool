@@ -12,6 +12,11 @@ import {
 	validateRecurrenceRule,
 } from "./projectRecurrence";
 import type { UserMutationCtx } from "./factories";
+import {
+	applyActiveTaskTemplatesToProject,
+	loadSeriesTaskTemplates,
+	MAX_GENERATED_TASKS,
+} from "./projectSeriesTasks";
 
 const WINDOW_DAYS = 90;
 const GENERATION_BATCH = 25;
@@ -94,7 +99,13 @@ export async function generateProjectSeriesOccurrences(
 	for (const userId of series.assignedUserIds ?? []) {
 		if (await getMembership(ctx, userId, series.orgId)) assignedUserIds.push(userId);
 	}
-	for (const nominalDate of missing.slice(0, GENERATION_BATCH)) {
+	const taskTemplates = await loadSeriesTaskTemplates(ctx, series._id);
+	const activeTemplateCount = taskTemplates.filter((template) => template.active).length;
+	const projectBatch = Math.min(
+		GENERATION_BATCH,
+		activeTemplateCount ? Math.max(1, Math.floor(MAX_GENERATED_TASKS / activeTemplateCount)) : GENERATION_BATCH
+	);
+	for (const nominalDate of missing.slice(0, projectBatch)) {
 		const projectId = await ctx.db.insert("projects", {
 			orgId: series.orgId,
 			clientId: series.clientId,
@@ -120,6 +131,9 @@ export async function generateProjectSeriesOccurrences(
 			projectId,
 			state: "materialized",
 		});
+		const project = await ctx.db.get(projectId);
+		if (!project) throw new Error("Generated project not found");
+		await applyActiveTaskTemplatesToProject(ctx, series, project, taskTemplates);
 		await emitRecordCreatedEvent(
 			ctx,
 			series.orgId,
@@ -128,7 +142,7 @@ export async function generateProjectSeriesOccurrences(
 			"projectSeries.generate"
 		);
 	}
-	const created = Math.min(missing.length, GENERATION_BATCH);
+	const created = Math.min(missing.length, projectBatch);
 	const remaining = missing.length - created;
 	await ctx.db.patch(series._id, {
 		revision: (series.revision ?? 0) + (created ? 1 : 0),

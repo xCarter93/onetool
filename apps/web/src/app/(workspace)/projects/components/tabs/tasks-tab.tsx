@@ -1,19 +1,21 @@
 "use client";
 
 import { Doc } from "@onetool/backend/convex/_generated/dataModel";
-import { RecordTasksTab } from "@/components/shared/record-tasks-tab";
+import { RecurringTaskSetup } from "./recurring-task-setup";
 
 interface TasksTabProps {
+	projectId: Doc<"projects">["_id"];
 	tasks: Doc<"tasks">[] | undefined;
 	onAddTask: () => void;
 }
 
-export function TasksTab({ tasks, onAddTask }: TasksTabProps) {
+export function TasksTab({ projectId, tasks, onAddTask }: TasksTabProps) {
 	return (
-		<RecordTasksTab
+		<RecurringTaskSetup
+			key={projectId}
+			projectId={projectId}
 			tasks={tasks}
 			onAddTask={onAddTask}
-			entityType="project"
 		/>
 	);
 }

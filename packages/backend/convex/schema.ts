@@ -480,6 +480,46 @@ export default defineSchema({
 		.index("by_org", ["orgId"])
 		.index("by_series_date", ["seriesId", "nominalDate"]),
 
+	projectTaskTemplates: defineTable({
+		orgId: v.id("organizations"),
+		seriesId: v.id("projectSeries"),
+		sourceTaskId: v.id("tasks"),
+		sourceNominalDate: v.string(),
+		title: v.string(),
+		description: v.optional(v.string()),
+		type: v.optional(v.union(v.literal("internal"), v.literal("external"))),
+		source: v.optional(v.literal("public_form")),
+		dateOffsetDays: v.number(),
+		startTime: v.optional(v.string()),
+		endTime: v.optional(v.string()),
+		assigneeUserId: v.optional(v.id("users")),
+		active: v.boolean(),
+		revision: v.number(),
+	})
+		.index("by_org", ["orgId"])
+		.index("by_series", ["seriesId"])
+		.index("by_source_task", ["sourceTaskId"])
+		.index("by_series_source", ["seriesId", "sourceTaskId"]),
+
+	projectTaskCopies: defineTable({
+		orgId: v.id("organizations"),
+		seriesId: v.id("projectSeries"),
+		templateId: v.id("projectTaskTemplates"),
+		projectId: v.id("projects"),
+		taskId: v.optional(v.id("tasks")),
+		state: v.union(
+			v.literal("materialized"),
+			v.literal("removed-by-user"),
+			v.literal("removed-from-setup")
+		),
+		protected: v.boolean(),
+		appliedRevision: v.number(),
+	})
+		.index("by_org", ["orgId"])
+		.index("by_template", ["templateId"])
+		.index("by_template_project", ["templateId", "projectId"])
+		.index("by_task", ["taskId"]),
+
 	// Projects
 	projects: defineTable({
 		orgId: v.id("organizations"),
@@ -574,6 +614,8 @@ export default defineSchema({
 		),
 		repeatUntil: v.optional(v.number()),
 		parentTaskId: v.optional(v.id("tasks")), // Links recurring task instances to parent
+		projectTaskTemplateId: v.optional(v.id("projectTaskTemplates")),
+		recurringTaskAppliedRevision: v.optional(v.number()),
 
 		// Creator (optional — unset on historical + system-created rows)
 		createdByUserId: v.optional(v.id("users")),

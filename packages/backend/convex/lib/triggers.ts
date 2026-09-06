@@ -153,6 +153,47 @@ triggers.register("tasks", async (ctx, change) => {
 	await ctx.innerDb.patch(change.id, { searchText });
 });
 
+triggers.register("tasks", async (ctx, change) => {
+	const previous = change.oldDoc;
+	const current = change.newDoc;
+	const provenanceId = previous?.projectTaskTemplateId ?? current?.projectTaskTemplateId;
+	if (provenanceId && previous) {
+		const ledger = await ctx.innerDb.query("projectTaskCopies")
+			.withIndex("by_task", (q) => q.eq("taskId", previous._id)).unique();
+		if (ledger?.state === "materialized") {
+			if (!current) {
+				await ctx.innerDb.patch(ledger._id, {
+					state: "removed-by-user",
+					taskId: undefined,
+					protected: true,
+				});
+			} else if (
+				current.recurringTaskAppliedRevision === previous.recurringTaskAppliedRevision
+			) {
+				await ctx.innerDb.patch(ledger._id, { protected: true });
+			}
+		}
+	}
+
+	const sourceId = previous?._id ?? current?._id;
+	if (!sourceId) return;
+	const templates = await ctx.innerDb.query("projectTaskTemplates")
+		.withIndex("by_source_task", (q) => q.eq("sourceTaskId", sourceId)).take(51);
+	if (templates.length > 50) throw new Error("Recurring task template limit exceeded");
+	const seriesIds = new Set(templates.map((template) => template.seriesId));
+	if (!previous || !current || current.recurringTaskAppliedRevision === previous.recurringTaskAppliedRevision) {
+		for (const projectId of new Set([previous?.projectId, current?.projectId])) {
+			if (!projectId) continue;
+			const project = await ctx.innerDb.get(projectId);
+			if (project?.recurringSeriesId) seriesIds.add(project.recurringSeriesId);
+		}
+	}
+	for (const seriesId of seriesIds) {
+		const series = await ctx.innerDb.get(seriesId);
+		if (series) await ctx.innerDb.patch(seriesId, { revision: (series.revision ?? 0) + 1 });
+	}
+});
+
 /**
  * Drop-in replacements for the _generated/server builders. All mutations —
  * including public portal ones and internal webhook/automation ones — must

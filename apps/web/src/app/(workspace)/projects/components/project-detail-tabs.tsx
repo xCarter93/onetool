@@ -73,7 +73,11 @@ export function ProjectDetailTabs({
 					</PillTabsContent>
 
 					<PillTabsContent value="tasks" className="mt-0 pt-5">
-						<TasksTab tasks={tasks} onAddTask={onAddTask} />
+						<TasksTab
+							projectId={projectId}
+							tasks={tasks}
+							onAddTask={onAddTask}
+						/>
 					</PillTabsContent>
 
 					<PillTabsContent value="activity" className="mt-0 pt-5">
