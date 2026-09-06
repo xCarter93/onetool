@@ -3,16 +3,15 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useMutation } from "convex/react";
-import { ConvexError } from "convex/values";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { useToast } from "@/hooks/use-toast";
+import { convexErrorMessage } from "@/lib/convex-error";
 import type {
 	CsvAnalysisResult,
 	CsvImportState,
 	FieldMapping,
 	ImportRecord,
 	ImportResult,
-	ImportResultItem,
 	RecordValidationError,
 } from "@/types/csv-import";
 import {
@@ -20,7 +19,10 @@ import {
 	buildImportRecords,
 	validateImportRecords,
 } from "../utils/transform-csv";
-import { chunkArray, buildCompositeResults } from "../utils/import-batching";
+import {
+	runImportBatches,
+	buildCompositeResults,
+} from "../utils/import-batching";
 import type { ReviewRow } from "../utils/review-types";
 import type { ImportStep } from "../components/import-step-nav";
 import { trackEvent } from "@/lib/analytics";
@@ -30,23 +32,6 @@ const STEP_ORDER: ImportStep[] = ["upload", "map", "review"];
 
 function isValidStep(s: string | null): s is ImportStep {
 	return s !== null && STEP_ORDER.includes(s as ImportStep);
-}
-
-/** Row ceilings bulkCreate refuses on: ops caps (all plans) and the free-plan
- *  lifetime budget. Both carry their own user-facing copy. */
-const ROW_LIMIT_CODES = new Set(["IMPORT_LIMIT", "PLAN_LIMIT_REACHED"]);
-
-/** The server's own message for a row-limit refusal, or null for any other error. */
-function rowLimitMessage(err: unknown): string | null {
-	if (!(err instanceof ConvexError)) return null;
-	const data = err.data as { code?: unknown; message?: unknown } | undefined;
-	if (!data || typeof data !== "object") return null;
-	if (typeof data.code !== "string" || !ROW_LIMIT_CODES.has(data.code)) {
-		return null;
-	}
-	return typeof data.message === "string" && data.message.trim()
-		? data.message
-		: "This import hit a row limit.";
 }
 
 export function useImportWizard(options?: { embedded?: boolean; source?: 'clients_page' | 'onboarding' }) {
@@ -326,7 +311,8 @@ export function useImportWizard(options?: { embedded?: boolean; source?: 'client
 	}, [state.mappings, state.fileContent, navigateTo]);
 
 	const handleImportData = useCallback(async (preBuiltRecords: ImportRecord[], reviewRows: ReviewRow[]) => {
-		const BATCH_SIZE = 10;
+		// Under the server's 500-row per-call cap; small enough for progress to move.
+		const BATCH_SIZE = 100;
 
 		// Track which reviewRow indices were sent to backend
 		const importedIndices: number[] = [];
@@ -345,63 +331,19 @@ export function useImportWizard(options?: { embedded?: boolean; source?: 'client
 		}));
 
 		try {
-			// Batch the records
-			const batches = chunkArray(preBuiltRecords, BATCH_SIZE);
-			const allBackendResults: ImportResultItem[] = [];
-			let succeeded = 0;
-			let failed = 0;
-			// Set once a row ceiling refuses a batch — every later batch would hit
-			// the same wall, so we stop and report the real cause instead.
-			let limitMessage: string | null = null;
-
-			for (const batch of batches) {
-				try {
-					// eslint-disable-next-line @typescript-eslint/no-explicit-any
-					const batchResults = await bulkCreateClients({ clients: batch as any });
-					for (const r of batchResults) {
-						allBackendResults.push({
-							success: r.success,
-							id: r.id ? String(r.id) : undefined,
-							error: r.error,
-							warnings: r.warnings,
-							rowIndex: allBackendResults.length,
-						});
-						if (r.success) succeeded++;
-						else failed++;
-					}
-				} catch (err) {
-					limitMessage = rowLimitMessage(err);
-					const reason =
-						limitMessage ??
-						(err instanceof Error ? err.message : "Batch import failed");
-					// Batch-level failure: mark all rows in this batch as failed, and
-					// on a limit refusal every remaining row too — they never shipped.
-					const upTo = limitMessage
-						? preBuiltRecords.length
-						: allBackendResults.length + batch.length;
-					while (allBackendResults.length < upTo) {
-						allBackendResults.push({
-							success: false,
-							rowIndex: allBackendResults.length,
-							error: reason,
-						});
-						failed++;
-					}
-				}
-
-				// Update progress after each batch
-				setState((prev) => ({
-					...prev,
-					importProgress: {
-						current: allBackendResults.length,
-						total: preBuiltRecords.length,
-						succeeded,
-						failed,
-					},
-				}));
-
-				if (limitMessage) break;
-			}
+			const {
+				results: allBackendResults,
+				succeeded,
+				failed,
+				limitMessage,
+			} = await runImportBatches({
+				records: preBuiltRecords,
+				batchSize: BATCH_SIZE,
+				// eslint-disable-next-line @typescript-eslint/no-explicit-any
+				send: (batch) => bulkCreateClients({ clients: batch as any }),
+				onProgress: (importProgress) =>
+					setState((prev) => ({ ...prev, importProgress })),
+			});
 
 			// Build composite results merging backend results with skipped/error rows
 			const compositeItems = buildCompositeResults({
@@ -481,7 +423,7 @@ export function useImportWizard(options?: { embedded?: boolean; source?: 'client
 
 			toast.error(
 				"Import Failed",
-				err instanceof Error ? err.message : "Failed to import data",
+				convexErrorMessage(err, "Failed to import data"),
 			);
 		}
 	}, [bulkCreateClients, toast]);
