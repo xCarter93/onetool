@@ -43,6 +43,14 @@ export const ROUTE_HELP: Array<{ pattern: RegExp; refs: string[] }> = [
 		],
 	},
 	{
+		pattern: /^\/projects\/series\/[^/]+$/,
+		refs: [
+			"projects-and-tasks/creating-and-managing-projects",
+			"projects-and-tasks/working-with-tasks",
+			"projects-and-tasks/assigning-work-to-your-team",
+		],
+	},
+	{
 		pattern: /^\/projects/,
 		refs: [
 			"projects-and-tasks/creating-and-managing-projects",

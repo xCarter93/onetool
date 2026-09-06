@@ -2,8 +2,6 @@
 
 import React, { useState, useRef, useEffect } from "react";
 import { Doc, Id } from "@onetool/backend/convex/_generated/dataModel";
-import { api } from "@onetool/backend/convex/_generated/api";
-import { useMutation } from "convex/react";
 import { MentionSection } from "@/components/shared/mention-section";
 import { Separator } from "@/components/ui/separator";
 import { HighlightMetricGrid } from "@/components/shared/highlight-metric-grid";
@@ -13,6 +11,7 @@ import { convexErrorMessage } from "@/lib/convex-error";
 import { ClipboardList, DollarSign, CheckCircle, FileText, Receipt, Pencil } from "lucide-react";
 import { formatCurrency } from "@/lib/money";
 import { ProjectScheduleCalendar } from "../project-schedule-calendar";
+import { useProjectEditScope } from "../recurrence/project-edit-scope";
 
 interface OverviewTabProps {
 	projectId: Id<"projects">;
@@ -56,7 +55,7 @@ export function OverviewTab({
 	invoices,
 }: OverviewTabProps) {
 	const toast = useToast();
-	const updateProject = useMutation(api.projects.update);
+	const { save: saveProjectUpdate, isSaving } = useProjectEditScope(projectId);
 	const [isEditingDescription, setIsEditingDescription] = useState(false);
 	const [descriptionValue, setDescriptionValue] = useState("");
 	const descriptionRef = useRef<HTMLTextAreaElement>(null);
@@ -80,10 +79,10 @@ export function OverviewTab({
 
 	const saveDescription = async () => {
 		try {
-			await updateProject({
-				id: projectId,
-				description: descriptionValue || undefined,
+			const result = await saveProjectUpdate("description", {
+				description: descriptionValue,
 			});
+			if (!result.saved) return;
 			toast.success("Updated", "Description saved.");
 			cancelEditingDescription();
 		} catch (err) {
@@ -175,12 +174,14 @@ export function OverviewTab({
 								<span className="text-xs text-muted-foreground">Enter to save, Shift+Enter for new line, Esc to cancel</span>
 								<div className="flex items-center gap-1">
 									<button
+										disabled={isSaving}
 										onClick={saveDescription}
 										className="text-xs font-medium text-primary hover:text-primary/80 transition-colors px-2 py-1 rounded-md hover:bg-primary/10"
 									>
 										Save
 									</button>
 									<button
+										disabled={isSaving}
 										onClick={cancelEditingDescription}
 										className="text-xs font-medium text-muted-foreground hover:text-foreground transition-colors px-2 py-1 rounded-md hover:bg-muted"
 									>

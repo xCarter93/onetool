@@ -86,6 +86,28 @@ export const projectsAndTasksArticles: HelpArticle[] = [
 				],
 			},
 			{
+				heading: "Set up recurring visits",
+				blocks: [
+					{ type: "steps", items: [
+						"Open a project with a start date and choose **Set up recurrence**. Its client and property define the series, and this project counts as the first occurrence.",
+						"Choose a schedule preset or **Custom**. You can select weekdays, monthly dates or an ordinal weekday, and seasonal months.",
+						"Under **Ends**, choose **Never**, **On a date**, or **After a number of visits**. Review the preview, then save.",
+					] },
+					{ type: "paragraph", text: "OneTool creates separate planned projects for the next 90 days and includes the next visit for less frequent schedules. Each new visit repeats the project details and duration. Tasks, quotes and invoices remain separate records for each visit; setting up recurrence does not copy them." },
+					{ type: "paragraph", text: "Use **View series** on a recurring project to see its schedule, next visit and occurrence history. The Projects list also offers a **Series** filter. Viewing a whole series requires organization-wide project access; changing it also requires permission to modify projects." },
+					{ type: "tip", text: "A monthly date such as the 31st uses the month's last day when needed. A fifth weekday that does not exist is skipped. The original schedule stays anchored, including across daylight-saving changes." },
+				],
+			},
+			{
+				heading: "Change or pause recurring work",
+				blocks: [
+					{ type: "paragraph", text: "With organization-wide project access and permission to modify projects, the first time you save a reusable detail on a recurring project, choose **This project** or **This and future projects**. The visible **Edit scope** control remembers your choice until you leave that project. It applies to details such as the title, description, property and assigned users. Dates and status changes always affect only the current visit." },
+					{ type: "paragraph", text: "Future edits preserve individually changed fields on other visits. **Edit** in the series Schedule section lets you preview a new cadence. Started, invoiced and individually changed visits are preserved; changing a schedule does not erase their history." },
+					{ type: "paragraph", text: "Use **Skip visit** for an unstarted, uninvoiced visit you do not need. It leaves the later schedule intact and can be restored while the series is active. Skipped visits and their tasks are hidden from active schedule views." },
+					{ type: "paragraph", text: "**Pause series** suspends upcoming unstarted visits. **Resume series** follows the original cadence without creating missed visits from the pause. **End series** permanently stops generation and cancels eligible upcoming visits. Review the affected visits before confirming; started, completed and invoiced work stays intact." },
+				],
+			},
+			{
 				heading: "Deleting a project",
 				blocks: [
 					{
@@ -106,7 +128,7 @@ export const projectsAndTasksArticles: HelpArticle[] = [
 		faq: [
 			{
 				question: "When should I use a recurring project?",
-				answer: "Use the Recurring type to organize ongoing work like weekly mowing or monthly cleaning. The type label alone does not create future visits. One-off projects suit a repair or a spring cleanup. You can filter the Projects page by type to see each group on its own.",
+				answer: "Use recurring visits for ongoing work like weekly mowing or monthly cleaning. Open a dated project and choose Set up recurrence to define its schedule. Selecting the Recurring type alone only labels the work. One-off projects suit a repair or a spring cleanup.",
 			},
 			{
 				question: "Why is Generate Invoice not clickable?",

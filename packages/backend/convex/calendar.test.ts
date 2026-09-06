@@ -23,7 +23,9 @@ describe("Calendar", () => {
 				return await createTestOrg(ctx);
 			});
 
-			const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+			const asUser = t.withIdentity(
+				createTestIdentity(clerkUserId, clerkOrgId)
+			);
 
 			const now = Date.now();
 			const result = await asUser.query(api.calendar.getCalendarEvents, {
@@ -79,7 +81,9 @@ describe("Calendar", () => {
 				return { ...org, clientId };
 			});
 
-			const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+			const asUser = t.withIdentity(
+				createTestIdentity(clerkUserId, clerkOrgId)
+			);
 
 			const now = Date.now();
 			const result = await asUser.query(api.calendar.getCalendarEvents, {
@@ -139,7 +143,9 @@ describe("Calendar", () => {
 				return org;
 			});
 
-			const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+			const asUser = t.withIdentity(
+				createTestIdentity(clerkUserId, clerkOrgId)
+			);
 
 			const now = Date.now();
 			const result = await asUser.query(api.calendar.getCalendarEvents, {
@@ -180,7 +186,9 @@ describe("Calendar", () => {
 				return org;
 			});
 
-			const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+			const asUser = t.withIdentity(
+				createTestIdentity(clerkUserId, clerkOrgId)
+			);
 
 			const now = Date.now();
 			const result = await asUser.query(api.calendar.getCalendarEvents, {
@@ -190,6 +198,31 @@ describe("Calendar", () => {
 
 			expect(result.tasks[0].clientName).toBe("Acme Corp");
 			expect(result.projects[0].clientName).toBe("Acme Corp");
+		});
+
+		it("shows active recurring occurrences without tasks", async () => {
+			const { clerkUserId, clerkOrgId } = await t.run(async (ctx) => {
+				const org = await createTestOrg(ctx);
+				const clientId = await createTestClient(ctx, org.orgId);
+				await createTestProject(ctx, org.orgId, clientId, {
+					title: "Recurring visit",
+					projectType: "recurring",
+					startDate: Date.UTC(2026, 8, 8),
+					endDate: Date.UTC(2026, 8, 8),
+				});
+				return org;
+			});
+			const asUser = t.withIdentity(
+				createTestIdentity(clerkUserId, clerkOrgId)
+			);
+			const result = await asUser.query(api.calendar.getCalendarEvents, {
+				startDate: Date.UTC(2026, 8, 8),
+				endDate: Date.UTC(2026, 8, 8, 23, 59, 59),
+			});
+			expect(result.projects.map((project) => project.title)).toEqual([
+				"Recurring visit",
+			]);
+			expect(result.tasks).toEqual([]);
 		});
 
 		it("should show 'Internal Task' for internal tasks without client", async () => {
@@ -206,7 +239,9 @@ describe("Calendar", () => {
 				return org;
 			});
 
-			const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+			const asUser = t.withIdentity(
+				createTestIdentity(clerkUserId, clerkOrgId)
+			);
 
 			const now = Date.now();
 			const result = await asUser.query(api.calendar.getCalendarEvents, {
@@ -220,8 +255,8 @@ describe("Calendar", () => {
 		});
 
 		it("should enforce organization isolation for calendar events", async () => {
-			const { clerkUserId: user1ClerkId, clerkOrgId: org1ClerkId } = await t.run(
-				async (ctx) => {
+			const { clerkUserId: user1ClerkId, clerkOrgId: org1ClerkId } =
+				await t.run(async (ctx) => {
 					// Create first organization
 					const org1 = await createTestOrg(ctx, {
 						clerkUserId: "user_org1",
@@ -264,10 +299,11 @@ describe("Calendar", () => {
 					});
 
 					return org1;
-				}
-			);
+				});
 
-			const asOrg1User = t.withIdentity(createTestIdentity(user1ClerkId, org1ClerkId));
+			const asOrg1User = t.withIdentity(
+				createTestIdentity(user1ClerkId, org1ClerkId)
+			);
 
 			const now = Date.now();
 			const result = await asOrg1User.query(api.calendar.getCalendarEvents, {
@@ -300,7 +336,9 @@ describe("Calendar", () => {
 				return org;
 			});
 
-			const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+			const asUser = t.withIdentity(
+				createTestIdentity(clerkUserId, clerkOrgId)
+			);
 
 			const now = Date.now();
 			const result = await asUser.query(api.calendar.getCalendarEvents, {

@@ -461,6 +461,8 @@ export default defineSchema({
 			v.literal("paused"),
 			v.literal("ended")
 		),
+		revision: v.optional(v.number()),
+		agreementQuoteId: v.optional(v.id("quotes")),
 		nextGenerationAt: v.optional(v.number()),
 	})
 		.index("by_org", ["orgId"])
@@ -500,6 +502,9 @@ export default defineSchema({
 		recurringSeriesId: v.optional(v.id("projectSeries")),
 		recurringNominalDate: v.optional(v.string()),
 		recurringFieldOverrides: v.optional(v.array(v.string())),
+		recurringAppliedRevision: v.optional(v.number()),
+		recurringState: v.optional(v.union(v.literal("paused"), v.literal("skipped"), v.literal("ended"))),
+		recurringSkipReason: v.optional(v.union(v.literal("manual"), v.literal("schedule-change"))),
 
 		// Dates
 		startDate: v.optional(v.number()),
@@ -518,6 +523,8 @@ export default defineSchema({
 		.index("by_client", ["clientId"])
 		.index("by_status", ["orgId", "status"])
 		.index("by_series_date", ["recurringSeriesId", "recurringNominalDate"])
+		.index("by_series_start", ["recurringSeriesId", "startDate"])
+		.index("by_series_state", ["recurringSeriesId", "recurringState"])
 		.searchIndex("search_text", {
 			searchField: "searchText",
 			filterFields: ["orgId"],
@@ -575,6 +582,7 @@ export default defineSchema({
 	})
 		.index("by_org", ["orgId"])
 		.index("by_project", ["projectId"])
+		.index("by_project_status", ["projectId", "status"])
 		.index("by_client", ["clientId"])
 		// Org-prefixed: a user can belong to several orgs, so a bare
 		// assigneeUserId lookup reads their tasks in every tenant.

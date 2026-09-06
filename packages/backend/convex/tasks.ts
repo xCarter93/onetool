@@ -23,6 +23,10 @@ import {
 	userMutation,
 	type UserMutationCtx,
 } from "./lib/factories";
+import {
+	filterActiveScheduledItems,
+	isSuppressedRecurringProject,
+} from "./lib/projectSchedule";
 
 /**
  * Task/Schedule operations
@@ -386,7 +390,11 @@ export const list = optionalUserQuery({
 			);
 		}
 
-		tasks = await ctx.scopedToActor("tasks", tasks, (task) => task.assigneeUserId);
+		tasks = await ctx.scopedToActor(
+			"tasks",
+			tasks,
+			(task) => task.assigneeUserId
+		);
 
 		// Sort by date
 		return tasks.sort((a, b) => a.date - b.date);
@@ -405,14 +413,20 @@ export const get = optionalUserQuery({
 		try {
 			task = await ctx.orgEntity("tasks", args.id);
 		} catch (error) {
-			if (error instanceof Error && error.message.startsWith("Entity not found in tasks:")) {
+			if (
+				error instanceof Error &&
+				error.message.startsWith("Entity not found in tasks:")
+			) {
 				return null;
 			}
 			throw error;
 		}
 
-
-		const visibleTasks = await ctx.scopedToActor("tasks", [task], (item) => item.assigneeUserId);
+		const visibleTasks = await ctx.scopedToActor(
+			"tasks",
+			[task],
+			(item) => item.assigneeUserId
+		);
 		if (visibleTasks.length === 0) return null;
 
 		return task;
@@ -459,7 +473,10 @@ export const create = userMutation({
 		await ctx.requireLevel("tasks", "modify");
 
 		let assigneeUserId = args.assigneeUserId;
-		if (!(await ctx.hasAllRecords("tasks")) && args.assigneeUserId === undefined) {
+		if (
+			!(await ctx.hasAllRecords("tasks")) &&
+			args.assigneeUserId === undefined
+		) {
 			// scoped users own what they create (PRD §3.2)
 			assigneeUserId = ctx.user._id;
 		}
@@ -643,10 +660,23 @@ export const update = userMutation({
 			() => currentTask.assigneeUserId === ctx.user._id
 		);
 		const oldStatus = currentTask.status;
+		if (
+			currentTask.projectId &&
+			filteredUpdates.status !== undefined &&
+			filteredUpdates.status !== "cancelled"
+		) {
+			const project = await ctx.db.get(currentTask.projectId);
+			if (project && isSuppressedRecurringProject(project)) {
+				throw new Error(
+					"Tasks on a suspended recurring project cannot be activated"
+				);
+			}
+		}
 
 		// Validate time logic with current or updated values
 		const startTime =
-			(filteredUpdates.startTime as string | undefined) ?? currentTask.startTime;
+			(filteredUpdates.startTime as string | undefined) ??
+			currentTask.startTime;
 		const endTime =
 			(filteredUpdates.endTime as string | undefined) ?? currentTask.endTime;
 
@@ -721,6 +751,14 @@ export const complete = userMutation({
 
 		if (task.status === "completed") {
 			throw new Error("Task is already completed");
+		}
+		if (task.projectId) {
+			const project = await ctx.db.get(task.projectId);
+			if (project && isSuppressedRecurringProject(project)) {
+				throw new Error(
+					"Tasks on a suspended recurring project cannot be completed"
+				);
+			}
 		}
 
 		const oldStatus = task.status;
@@ -799,7 +837,16 @@ export const getStats = optionalUserQuery({
 			.withIndex("by_org", (q) => q.eq("orgId", orgId))
 			.collect();
 
-		tasks = await ctx.scopedToActor("tasks", tasks, (task) => task.assigneeUserId);
+		tasks = await ctx.scopedToActor(
+			"tasks",
+			tasks,
+			(task) => task.assigneeUserId
+		);
+		const actionableTasks = tasks.filter(
+			(task) => task.status === "pending" || task.status === "in-progress"
+		);
+		const activeTasks = await filterActiveScheduledItems(ctx, actionableTasks);
+		const activeTaskIds = new Set(activeTasks.map((task) => task._id));
 
 		const stats: TaskStats = {
 			total: tasks.length,
@@ -833,6 +880,7 @@ export const getStats = optionalUserQuery({
 
 			// Count today's tasks (actionable only)
 			if (
+				activeTaskIds.has(task._id) &&
 				task.date >= today &&
 				task.date < tomorrow &&
 				(task.status === "pending" || task.status === "in-progress")
@@ -842,6 +890,7 @@ export const getStats = optionalUserQuery({
 
 			// Count this week's tasks
 			if (
+				activeTaskIds.has(task._id) &&
 				task.date >= today &&
 				task.date < nextWeek &&
 				(task.status === "pending" || task.status === "in-progress")
@@ -851,6 +900,7 @@ export const getStats = optionalUserQuery({
 
 			// Count overdue tasks
 			if (
+				activeTaskIds.has(task._id) &&
 				task.date < today &&
 				(task.status === "pending" || task.status === "in-progress")
 			) {
@@ -873,14 +923,21 @@ export const getStats = optionalUserQuery({
  */
 export const getSidebarCounts = optionalUserQuery({
 	args: { today: v.number() },
-	handler: async (ctx, args): Promise<{ todayTasks: number; overdue: number }> => {
+	handler: async (
+		ctx,
+		args
+	): Promise<{ todayTasks: number; overdue: number }> => {
 		const orgId = ctx.orgId;
 		if (!orgId) return { todayTasks: 0, overdue: 0 };
 		await ctx.requireLevel("tasks", "view");
 
 		const tomorrow = DateUtils.addDays(args.today, 1);
 		const actionable = ["pending", "in-progress"] as const;
-		const range = (status: (typeof actionable)[number], from: number | null, to: number) =>
+		const range = (
+			status: (typeof actionable)[number],
+			from: number | null,
+			to: number
+		) =>
 			ctx.db
 				.query("tasks")
 				.withIndex("by_org_status_date", (q) => {
@@ -895,9 +952,13 @@ export const getSidebarCounts = optionalUserQuery({
 			Promise.all(actionable.map((s) => range(s, null, args.today))),
 			Promise.all(actionable.map((s) => range(s, args.today, tomorrow))),
 		]);
-		const [overdue, todayTasks] = await Promise.all([
+		const [scopedOverdue, scopedTodayTasks] = await Promise.all([
 			ctx.scopedToActor("tasks", overdueRows.flat(), (t) => t.assigneeUserId),
 			ctx.scopedToActor("tasks", todayRows.flat(), (t) => t.assigneeUserId),
+		]);
+		const [overdue, todayTasks] = await Promise.all([
+			filterActiveScheduledItems(ctx, scopedOverdue),
+			filterActiveScheduledItems(ctx, scopedTodayTasks),
 		]);
 		return { todayTasks: todayTasks.length, overdue: overdue.length };
 	},
@@ -932,7 +993,12 @@ export const getToday = optionalUserQuery({
 			);
 		}
 
-		tasks = await ctx.scopedToActor("tasks", tasks, (task) => task.assigneeUserId);
+		tasks = await ctx.scopedToActor(
+			"tasks",
+			tasks,
+			(task) => task.assigneeUserId
+		);
+		tasks = await filterActiveScheduledItems(ctx, tasks);
 
 		return tasks.sort((a, b) => {
 			// Sort by start time if available, otherwise by creation time
@@ -984,7 +1050,12 @@ export const getOverdue = optionalUserQuery({
 			);
 		}
 
-		tasks = await ctx.scopedToActor("tasks", tasks, (task) => task.assigneeUserId);
+		tasks = await ctx.scopedToActor(
+			"tasks",
+			tasks,
+			(task) => task.assigneeUserId
+		);
+		tasks = await filterActiveScheduledItems(ctx, tasks);
 
 		// Most recent overdue first, creation order within a date — mobile pins it.
 		return tasks.sort(
@@ -1031,7 +1102,12 @@ export const getUpcoming = optionalUserQuery({
 			);
 		}
 
-		tasks = await ctx.scopedToActor("tasks", tasks, (task) => task.assigneeUserId);
+		tasks = await ctx.scopedToActor(
+			"tasks",
+			tasks,
+			(task) => task.assigneeUserId
+		);
+		tasks = await filterActiveScheduledItems(ctx, tasks);
 
 		// Sort by date, then by start time
 		return tasks.sort((a, b) => {
@@ -1083,7 +1159,11 @@ export const getByUser = optionalUserQuery({
 			.collect();
 
 		// Scoped members may only read their own assignments this way
-		tasks = await ctx.scopedToActor("tasks", tasks, (task) => task.assigneeUserId);
+		tasks = await ctx.scopedToActor(
+			"tasks",
+			tasks,
+			(task) => task.assigneeUserId
+		);
 
 		// Filter by status if specified
 		if (args.status) {

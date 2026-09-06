@@ -9,6 +9,10 @@ import { ActivityHelpers } from "./lib/activities";
 import { getMembership } from "./lib/memberships";
 import { requireFeature } from "./lib/entitlements";
 import { emptyListResult } from "./lib/queries";
+import {
+	filterActiveScheduledItems,
+	isSuppressedRecurringProject,
+} from "./lib/projectSchedule";
 
 /**
  * Planned multi-stop routes (Routing page).
@@ -441,18 +445,17 @@ export const seedFromSchedule = userMutation({
 				q.eq("orgId", ctx.orgId).eq("date", args.date)
 			)
 			.collect();
-		const candidateTasks = tasks
+		const activeTasks = await filterActiveScheduledItems(ctx, tasks);
+		const candidateTasks = activeTasks
 			.filter((t) => t.status !== "cancelled")
 			.filter(
-				(t) =>
-					!args.assigneeUserId || t.assigneeUserId === args.assigneeUserId
+				(t) => !args.assigneeUserId || t.assigneeUserId === args.assigneeUserId
 			)
 			.sort((a, b) =>
 				(a.startTime ?? "99:99").localeCompare(b.startTime ?? "99:99")
 			);
 
-		// Recurring projects participate via their tasks only; a same-day task
-		// supersedes its project's own stop (D9).
+		// A same-day task supersedes its project's own stop.
 		const taskProjectIds = new Set(
 			candidateTasks.flatMap((t) => (t.projectId ? [t.projectId] : []))
 		);
@@ -462,12 +465,13 @@ export const seedFromSchedule = userMutation({
 			.collect();
 		const candidateProjects = projects.filter(
 			(p) =>
-				p.projectType === "one-off" &&
+				(p.projectType === "one-off" || p.recurringSeriesId !== undefined) &&
+				!isSuppressedRecurringProject(p) &&
 				(p.status === "planned" || p.status === "in-progress") &&
 				p.startDate !== undefined &&
-				p.endDate !== undefined &&
+				(p.endDate !== undefined || p.recurringSeriesId !== undefined) &&
 				p.startDate <= args.date &&
-				args.date <= p.endDate &&
+				args.date <= (p.endDate ?? p.startDate) &&
 				!taskProjectIds.has(p._id) &&
 				(!args.assigneeUserId ||
 					(p.assignedUserIds ?? []).includes(args.assigneeUserId))
@@ -764,9 +768,7 @@ export const addPropertyStop = userMutation({
 			};
 		}
 
-		const duplicate = existing.stops.find(
-			(s) => s.propertyId === property._id
-		);
+		const duplicate = existing.stops.find((s) => s.propertyId === property._id);
 		if (duplicate) {
 			return {
 				routeId: existing._id,

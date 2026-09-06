@@ -57,6 +57,8 @@ import {
 	X,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
+import type { Route } from "next";
 import { useMutation } from "convex/react";
 import { useQuery } from "convex-helpers/react/cache/hooks";
 import { useActivitySparklines } from "@/hooks/use-activity-sparklines";
@@ -97,6 +99,9 @@ type ProjectKanbanItem = {
 	startDate?: number;
 	endDate?: number;
 	projectNumber?: string | null;
+	recurringSeriesId?: Id<"projectSeries">;
+	recurringState?: "paused" | "skipped" | "ended";
+	seriesTitle?: string;
 };
 
 type ProjectKanbanColumn = {
@@ -172,7 +177,9 @@ const createColumns = (
 	router: ReturnType<typeof useRouter>,
 	onDelete: (id: string, name: string) => void,
 	onPreview: (id: string) => void,
-	canDelete: boolean
+	canDelete: boolean,
+	canViewSeries: boolean,
+	seriesTitles: Map<string, string>
 ): ColumnDef<DataGridFeatures, ProjectWithClient>[] => [
 	{
 		accessorKey: "title",
@@ -210,6 +217,21 @@ const createColumns = (
 				{formatStatus(row.original.status)}
 			</StatusBadge>
 		),
+	},
+	{
+		id: "series",
+		header: "Series",
+		cell: ({ row }) => {
+			const seriesId = row.original.recurringSeriesId;
+			if (!seriesId) return <span className="text-muted-foreground">One-off</span>;
+			const badge = (
+				<StatusBadge role="neutral" appearance="outline">
+					<Repeat className="size-3.5" />
+					Recurring
+				</StatusBadge>
+			);
+			return <div className="flex flex-wrap gap-2">{canViewSeries ? <Link href={`/projects/series/${seriesId}` as Route} title={seriesTitles.get(seriesId)} onClick={(event) => event.stopPropagation()}>{badge}</Link> : badge}{row.original.recurringState && <StatusBadge role="neutral" appearance="outline">{row.original.recurringState}</StatusBadge>}</div>;
+		},
 	},
 	{
 		accessorKey: "startDate",
@@ -304,15 +326,17 @@ function ProjectsPageContent() {
 	const [kanbanData, setKanbanData] = useState<ProjectKanbanItem[]>([]);
 	const isOrgSwitching = useIsOrgSwitching();
 	const toast = useToast();
-	const { can } = usePermissions();
+	const { can, hasAllRecords } = usePermissions();
 	const canModifyProjects = can("projects", "modify");
 	const canDeleteProjects = can("projects", "delete");
+	const canViewSeries = can("projects") && hasAllRecords("projects");
 
 	// Fetch projects and clients from Convex
 	const projects = useQuery(api.projects.list, {});
 	// Skip without the clients grant — gated endpoint throws FORBIDDEN otherwise.
 	const clients = useQuery(api.clients.listNamesForOrg, can("clients") ? {} : "skip");
 	const projectStats = useQuery(api.projects.getStats, {});
+	const series = useQuery(api.projectSeries.listForOrg, canViewSeries ? {} : "skip");
 	// 30-day activity sparkline data, keyed by project id (presentational).
 	const sparklines = useActivitySparklines("project");
 
@@ -327,6 +351,10 @@ function ProjectsPageContent() {
 			activity: sparklines?.[project._id],
 		}));
 	}, [projects, clients, sparklines]);
+	const seriesTitles = React.useMemo(
+		() => new Map(series?.map((item) => [item._id, item.title]) ?? []),
+		[series]
+	);
 
 	// Advanced filters (status / type / client / start-date) applied to the set.
 	const filteredData = React.useMemo(() => {
@@ -352,6 +380,11 @@ function ProjectsPageContent() {
 				case "date":
 					result = result.filter((p) =>
 						matchesDateFilter(p.startDate, filter.operator, filter.values[0])
+					);
+					break;
+				case "series":
+					result = result.filter((p) =>
+						filter.values.includes(p.recurringSeriesId as unknown)
 					);
 					break;
 			}
@@ -390,9 +423,14 @@ function ProjectsPageContent() {
 				startDate: project.startDate,
 				endDate: project.endDate,
 				projectNumber: project.projectNumber ?? null,
+				recurringSeriesId: project.recurringSeriesId,
+				recurringState: project.recurringState,
+				seriesTitle: project.recurringSeriesId
+					? seriesTitles.get(project.recurringSeriesId)
+					: undefined,
 			}))
 		);
-	}, [searchedData]);
+	}, [searchedData, seriesTitles]);
 
 	// Loading state. `clients` may stay undefined forever without the grant,
 	// so it isn't part of the gate — only `projects` blocks the table.
@@ -420,8 +458,8 @@ function ProjectsPageContent() {
 	};
 
 	const columns = React.useMemo(
-		() => createColumns(router, handleDelete, openPreview, canDeleteProjects),
-		[router, handleDelete, openPreview, canDeleteProjects]
+		() => createColumns(router, handleDelete, openPreview, canDeleteProjects, canViewSeries, seriesTitles),
+		[router, handleDelete, openPreview, canDeleteProjects, canViewSeries, seriesTitles]
 	);
 
 	const table = useTable({
@@ -484,6 +522,16 @@ function ProjectsPageContent() {
 				options: clientOptions,
 				searchable: true,
 			},
+			...(canViewSeries && series?.length
+				? [{
+					key: "series",
+					label: "Series",
+					icon: <Repeat className="h-3 w-3" />,
+					type: "multiselect" as const,
+					options: series.map((item) => ({ value: item._id, label: item.title })),
+					searchable: true,
+				}]
+				: []),
 			{
 				key: "date",
 				label: "Start Date",
@@ -500,7 +548,7 @@ function ProjectsPageContent() {
 				),
 			},
 		];
-	}, [clients]);
+	}, [clients, canViewSeries, series]);
 
 	// onDataChange fires on every drag-over (column crossing), so keep it purely
 	// optimistic; the DB write happens once on drop via handleKanbanDragEnd.
@@ -790,6 +838,14 @@ function ProjectsPageContent() {
 																<p className="text-muted-foreground truncate text-xs">
 																	{item.clientName || "Unknown Client"}
 																</p>
+																	{item.recurringSeriesId && (
+																		<div className="flex flex-wrap gap-2">
+																			<StatusBadge role="neutral" appearance="outline" className="w-fit">
+																				<Repeat className="size-3.5" /> Recurring
+																			</StatusBadge>
+																			{item.recurringState && <StatusBadge role="neutral" appearance="outline" className="w-fit">{item.recurringState}</StatusBadge>}
+																		</div>
+																	)}
 																<div className="text-muted-foreground flex flex-wrap items-center gap-1.5 text-xs">
 																	<span>{formatProjectDate(item.startDate)}</span>
 																	<span aria-hidden>·</span>

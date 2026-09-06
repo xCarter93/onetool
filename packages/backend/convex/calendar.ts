@@ -3,6 +3,10 @@ import { v } from "convex/values";
 import { Doc, Id } from "./_generated/dataModel";
 import { getCurrentUserOrgId } from "./lib/auth";
 import { optionalUserQuery, userMutation } from "./lib/factories";
+import {
+	filterActiveScheduledItems,
+	isSuppressedRecurringProject,
+} from "./lib/projectSchedule";
 
 /**
  * Get all calendar events (projects and tasks) for a date range
@@ -45,11 +49,12 @@ export const getCalendarEvents = optionalUserQuery({
 			: [];
 
 		// Record scope: members without allRecords only see their assigned work
-		const allTasks = await ctx.applyReadScope(
+		const scopedTasks = await ctx.applyReadScope(
 			"tasks",
 			rawTasks,
 			(t) => t.assigneeUserId === ctx.user._id
 		);
+		const allTasks = await filterActiveScheduledItems(ctx, scopedTasks);
 
 		// Filter projects that overlap with the date range
 		const scopedProjects = await ctx.applyReadScope(
@@ -60,6 +65,7 @@ export const getCalendarEvents = optionalUserQuery({
 		const projects = scopedProjects.filter((project) => {
 			// Projects without dates are not shown on calendar
 			if (!project.startDate) return false;
+			if (isSuppressedRecurringProject(project)) return false;
 
 			const projectStart = project.startDate;
 			const projectEnd = project.endDate || project.startDate;

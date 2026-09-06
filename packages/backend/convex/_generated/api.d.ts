@@ -120,6 +120,7 @@ import type * as lib_polylineCodec from "../lib/polylineCodec.js";
 import type * as lib_portalAttestation from "../lib/portalAttestation.js";
 import type * as lib_posthog from "../lib/posthog.js";
 import type * as lib_projectRecurrence from "../lib/projectRecurrence.js";
+import type * as lib_projectSchedule from "../lib/projectSchedule.js";
 import type * as lib_queries from "../lib/queries.js";
 import type * as lib_quickbooks from "../lib/quickbooks.js";
 import type * as lib_quickbooksCrypto from "../lib/quickbooksCrypto.js";
@@ -338,6 +339,7 @@ declare const fullApi: ApiFromModules<{
   "lib/portalAttestation": typeof lib_portalAttestation;
   "lib/posthog": typeof lib_posthog;
   "lib/projectRecurrence": typeof lib_projectRecurrence;
+  "lib/projectSchedule": typeof lib_projectSchedule;
   "lib/queries": typeof lib_queries;
   "lib/quickbooks": typeof lib_quickbooks;
   "lib/quickbooksCrypto": typeof lib_quickbooksCrypto;

@@ -655,6 +655,9 @@ export const update = userMutation({
 			() => currentProject.assignedUserIds?.includes(ctx.user._id) ?? false
 		);
 		const oldStatus = currentProject.status;
+		if (currentProject.recurringState && filteredUpdates.status && filteredUpdates.status !== "cancelled") {
+			throw new Error("Resume the recurring series or restore the skipped visit before restarting this project");
+		}
 		const startDate = filteredUpdates.startDate ?? currentProject.startDate;
 		const endDate = filteredUpdates.endDate ?? currentProject.endDate;
 

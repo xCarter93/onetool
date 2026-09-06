@@ -2,7 +2,7 @@
 
 import { Doc, Id } from "@onetool/backend/convex/_generated/dataModel";
 import { api } from "@onetool/backend/convex/_generated/api";
-import { useMutation, useQuery } from "convex/react";
+import { useQuery } from "convex/react";
 import {
 	Select,
 	SelectTrigger,
@@ -48,6 +48,10 @@ import {
 	localDateToUtcMidnightMs,
 	utcMidnightMsToLocalDate,
 } from "@/lib/dates";
+import {
+	type ProjectUpdate,
+	useProjectEditScope,
+} from "./recurrence/project-edit-scope";
 
 function formatDate(timestamp?: number) {
 	if (!timestamp) return "\u2014";
@@ -117,7 +121,7 @@ export function ProjectDetailSidebar({
 	invoices,
 }: ProjectDetailSidebarProps) {
 	const toast = useToast();
-	const updateProject = useMutation(api.projects.update);
+	const { save: saveProjectUpdate, isSaving } = useProjectEditScope(projectId);
 	const users = useQuery(api.users.listByOrg);
 
 	const { can, isLoading: permissionsLoading } = usePermissions();
@@ -165,12 +169,13 @@ export function ProjectDetailSidebar({
 		setEditAssignedUsers([]);
 	};
 
-	const saveField = async (field: string, value: string | number | string[] | undefined) => {
+	const saveField = async (
+		field: keyof ProjectUpdate,
+		value: ProjectUpdate[keyof ProjectUpdate]
+	) => {
 		try {
-			await updateProject({
-				id: projectId,
-				[field]: value,
-			});
+			const result = await saveProjectUpdate(field, { [field]: value });
+			if (!result.saved) return;
 			const labels: Record<string, string> = {
 				title: "Title",
 				status: "Status",
@@ -209,6 +214,7 @@ export function ProjectDetailSidebar({
 	const renderActions = (onSave: () => void) => (
 		<div className="flex items-center gap-0.5 shrink-0 ml-auto">
 			<button
+				disabled={isSaving}
 				onClick={(e) => { e.stopPropagation(); onSave(); }}
 				className="p-1 rounded-md hover:bg-green-100 dark:hover:bg-green-900/30 text-green-600 dark:text-green-400 transition-colors"
 				aria-label="Save"
@@ -216,6 +222,7 @@ export function ProjectDetailSidebar({
 				<Check className="h-3.5 w-3.5" />
 			</button>
 			<button
+				disabled={isSaving}
 				onClick={(e) => { e.stopPropagation(); cancelEditing(); }}
 				className="p-1 rounded-md hover:bg-red-100 dark:hover:bg-red-900/30 text-red-600 dark:text-red-400 transition-colors"
 				aria-label="Cancel"
@@ -452,7 +459,7 @@ export function ProjectDetailSidebar({
 						? renderActions(() =>
 							saveField(
 								"assignedUserIds",
-								editAssignedUsers.length > 0 ? editAssignedUsers : undefined
+								editAssignedUsers as Id<"users">[]
 							)
 						)
 						: renderPencil()
@@ -655,4 +662,3 @@ function AssignedUserNames({
 	if (names.length === 0) return <span className="text-muted-foreground italic">Unassigned</span>;
 	return <>{names.join(", ")}</>;
 }
-

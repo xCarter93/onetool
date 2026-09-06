@@ -88,6 +88,9 @@ triggers.register("projects", async (ctx, change) => {
 triggers.register("projects", async (ctx, change) => {
 	const previous = change.oldDoc;
 	if (!previous?.recurringSeriesId || !previous.recurringNominalDate) return;
+	if (change.newDoc && change.newDoc.recurringAppliedRevision !== previous.recurringAppliedRevision) return;
+	const series = await ctx.innerDb.get(previous.recurringSeriesId);
+	if (series) await ctx.innerDb.patch(series._id, { revision: (series.revision ?? 0) + 1 });
 	if (!change.newDoc) {
 		const occurrence = await ctx.innerDb
 			.query("projectOccurrences")

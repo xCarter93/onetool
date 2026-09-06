@@ -131,7 +131,8 @@ export default withPostHogConfig(nextConfig, {
 	projectId: process.env.POSTHOG_PROJECT_ID,
 	host: process.env.NEXT_PUBLIC_POSTHOG_HOST,
 	sourcemaps: {
-		enabled: true,
+		// Local verification can compile without uploading private source maps.
+		enabled: process.env.DISABLE_POSTHOG_SOURCEMAPS !== "true",
 		deleteAfterUpload: true,
 	},
 });
