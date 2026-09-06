@@ -38,6 +38,4 @@ yarn-error.*
 # typescript
 *.tsbuildinfo
 
-# EAS
-eas.json
 

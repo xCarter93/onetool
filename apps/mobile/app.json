@@ -163,6 +163,12 @@
       "EXPO_PUBLIC_CLERK_GOOGLE_IOS_CLIENT_ID": "402187947909-p3nu4ndmpoiqrlgti2bhm9cnnoihntib.apps.googleusercontent.com",
       "EXPO_PUBLIC_CLERK_GOOGLE_IOS_URL_SCHEME": "com.googleusercontent.apps.402187947909-p3nu4ndmpoiqrlgti2bhm9cnnoihntib"
     },
-    "owner": "onetool"
+    "owner": "onetool",
+    "runtimeVersion": {
+      "policy": "fingerprint"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/6984c14f-84fc-4379-9c29-d55c1adb2801"
+    }
   }
 }
