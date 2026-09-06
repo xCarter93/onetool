@@ -360,6 +360,9 @@ export const getDocumentUrl = optionalUserQuery({
 	},
 });
 
+/** Per-call ceiling (same as drive.getFileUrls); extra ids are dropped, so callers chunk their batches. */
+const MAX_DOCUMENT_URLS = 100;
+
 /**
  * Get multiple document URLs from storage (for PDF merging)
  */
@@ -376,7 +379,7 @@ export const getDocumentUrls = optionalUserQuery({
 		await ctx.requireLevel("orgDocuments", "view");
 
 		const results = [];
-		for (const id of args.ids) {
+		for (const id of args.ids.slice(0, MAX_DOCUMENT_URLS)) {
 			try {
 				const document = await getDocumentWithOrgValidation(ctx, id);
 				if (document) {

@@ -106,6 +106,29 @@ export async function isRecordInActorScope(
 	return false;
 }
 
+/** Scope ref of a client/project/quote parent; null when missing or in another org. */
+export async function entityScopeRef(
+	ctx: QueryCtx | MutationCtx,
+	orgId: Id<"organizations">,
+	args: { entityType: "client" | "project" | "quote"; entityId: string }
+): Promise<RecordScopeRef | null> {
+	if (args.entityType === "client") {
+		const id = ctx.db.normalizeId("clients", args.entityId);
+		const client = id && (await ctx.db.get(id));
+		return client && client.orgId === orgId ? { clientId: client._id } : null;
+	}
+	if (args.entityType === "project") {
+		const id = ctx.db.normalizeId("projects", args.entityId);
+		const project = id && (await ctx.db.get(id));
+		return project && project.orgId === orgId ? { projectId: project._id } : null;
+	}
+	const id = ctx.db.normalizeId("quotes", args.entityId);
+	const quote = id && (await ctx.db.get(id));
+	return quote && quote.orgId === orgId
+		? { projectId: quote.projectId, clientId: quote.clientId }
+		: null;
+}
+
 export type UserFunctionExtras = {
 	user: Doc<"users">;
 	orgId: Id<"organizations">;

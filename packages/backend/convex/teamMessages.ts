@@ -3,9 +3,9 @@ import { v } from "convex/values";
 import { Doc, Id } from "./_generated/dataModel";
 import { emptyListResult } from "./lib/queries";
 import {
+	entityScopeRef,
 	isRecordInActorScope,
 	optionalUserQuery,
-	type RecordScopeRef,
 } from "./lib/factories";
 
 /**
@@ -72,29 +72,6 @@ export async function insertTeamMessage(
 
 // Feed is capped to the newest N by createdAt (by_org_entity index's trailing field).
 const TEAM_MESSAGE_FEED_LIMIT = 200;
-
-/** The parent record's scope ref; null when it is missing or in another org. */
-async function entityScopeRef(
-	ctx: QueryCtx,
-	orgId: Id<"organizations">,
-	args: { entityType: TeamMessageEntityType; entityId: string }
-): Promise<RecordScopeRef | null> {
-	if (args.entityType === "client") {
-		const id = ctx.db.normalizeId("clients", args.entityId);
-		const client = id && (await ctx.db.get(id));
-		return client && client.orgId === orgId ? { clientId: client._id } : null;
-	}
-	if (args.entityType === "project") {
-		const id = ctx.db.normalizeId("projects", args.entityId);
-		const project = id && (await ctx.db.get(id));
-		return project && project.orgId === orgId ? { projectId: project._id } : null;
-	}
-	const id = ctx.db.normalizeId("quotes", args.entityId);
-	const quote = id && (await ctx.db.get(id));
-	return quote && quote.orgId === orgId
-		? { projectId: quote.projectId, clientId: quote.clientId }
-		: null;
-}
 
 /**
  * List the newest 200 Team Communication messages for a specific entity, with
