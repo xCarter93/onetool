@@ -1,3 +1,4 @@
+import { recordQuoteDecision } from "./lib/quoteDecisionEvidence";
 import { calendarDayEpoch } from "./lib/formula";
 import { query, QueryCtx, MutationCtx } from "./_generated/server";
 import { mutation } from "./lib/triggers";
@@ -50,6 +51,7 @@ import { formatEmailFrom } from "./lib/emailFrom";
 import { nextQuoteNumber, reserveQuoteNumber } from "./lib/orgCounters";
 import { buildPortalQuoteUrl } from "./portal/quoteUrl";
 import { mintPortalAccessId } from "./clients";
+import { resolveQuoteApprovalDocument } from "./lib/quoteApprovalDocument";
 
 /**
  * Quote operations
@@ -1639,41 +1641,13 @@ export const approveInPerson = userMutation({
 		// Document pin: same OCC semantics as the portal commit — the audit row
 		// pins the exact PDF version the approval covers; pin latestDocumentId
 		// here iff nothing is pinned yet.
-		const doc = await ctx.db.get(args.expectedDocumentId);
-		if (
-			!doc ||
-			doc.orgId !== ctx.orgId ||
-			doc.documentType !== "quote" ||
-			doc.documentId !== args.id
-		) {
-			throw new ConvexError({
-				code: "QUOTE_VERSION_STALE",
-				latestDocumentId: quote.latestDocumentId ?? null,
-			});
-		}
-		if (quote.latestDocumentId == null) {
+		const { document: doc, shouldPin } = await resolveQuoteApprovalDocument(
+			ctx,
+			quote,
+			args.expectedDocumentId,
+		);
+		if (shouldPin) {
 			await ctx.db.patch(args.id, { latestDocumentId: args.expectedDocumentId });
-		} else if (quote.latestDocumentId !== args.expectedDocumentId) {
-			// The pin can predate a content edit (revert→edit→resend after a
-			// BoldSign pin): a CURRENT document supersedes a stale pin — without
-			// this, ensureQuotePdf renders fresh versions the OCC check here
-			// would reject forever. Anything else is a genuine version race.
-			const pinned = await ctx.db.get(quote.latestDocumentId);
-			const contentUpdatedAt = quote.contentUpdatedAt ?? 0;
-			if (
-				pinned &&
-				pinned.generatedAt < contentUpdatedAt &&
-				doc.generatedAt >= contentUpdatedAt
-			) {
-				await ctx.db.patch(args.id, {
-					latestDocumentId: args.expectedDocumentId,
-				});
-			} else {
-				throw new ConvexError({
-					code: "QUOTE_VERSION_STALE",
-					latestDocumentId: quote.latestDocumentId,
-				});
-			}
 		}
 
 		const client = await ctx.db.get(quote.clientId);
@@ -1727,6 +1701,9 @@ export const approveInPerson = userMutation({
 			capturedByUserId: ctx.user._id,
 			createdAt: now,
 		});
+
+		await recordQuoteDecision(ctx, { quote, document: doc, action: "approved",
+			channel: "in_person", decidedAt: now, quoteApprovalId: auditId });
 
 		// 2. Status patch second.
 		await ctx.db.patch(args.id, {

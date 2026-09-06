@@ -1,6 +1,7 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 import { projectRecurrenceRuleValidator } from "./lib/projectRecurrence";
+import { quoteContentSnapshotValidator } from "./lib/quoteContentSnapshot";
 import {
 	automationStatusValidator,
 	executedNodeValidator,
@@ -747,6 +748,7 @@ export default defineSchema({
 		// ever sent and never cleared (sentAt resets on revert-to-draft; this
 		// must not, or the meter re-debits).
 		firstSentAt: v.optional(v.number()),
+		approvalCycle: v.optional(v.number()),
 		approvedAt: v.optional(v.number()),
 		declinedAt: v.optional(v.number()),
 
@@ -842,9 +844,33 @@ export default defineSchema({
 		capturedByUserId: v.optional(v.id("users")),
 		createdAt: v.number(),
 	})
+		.index("by_document", ["documentId"])
 		.index("by_quote", ["quoteId", "createdAt"])
 		.index("by_org", ["orgId", "createdAt"])
 		.index("by_clientContact", ["clientContactId", "createdAt"]),
+
+	// Append-only decisions; vendor completion is separate from a captured signature.
+	quoteDecisionEvidence: defineTable({
+		orgId: v.id("organizations"),
+		quoteId: v.id("quotes"),
+		clientId: v.id("clients"),
+		documentId: v.id("documents"),
+		documentVersion: v.number(),
+		decisionKey: v.string(),
+		action: v.union(v.literal("approved"), v.literal("declined")),
+		channel: v.union(v.literal("portal"), v.literal("in_person"), v.literal("boldsign")),
+		quoteApprovalId: v.optional(v.id("quoteApprovals")),
+		boldsignDocumentId: v.optional(v.string()),
+		snapshotSource: v.optional(v.union(v.literal("server"), v.literal("workspace"))),
+		contentBinding: v.union(v.literal("rendered_document"), v.literal("decision_time"), v.literal("unavailable")),
+		contentSnapshot: v.optional(quoteContentSnapshotValidator),
+		decidedAt: v.number(),
+		recordedAt: v.number(),
+	})
+		.index("by_org", ["orgId"])
+		.index("by_quote", ["quoteId", "decidedAt"])
+		.index("by_document", ["documentId"])
+		.index("by_org_decision_key", ["orgId", "decisionKey"]),
 
 	// Quote Line Items
 	quoteLineItems: defineTable({
@@ -1071,6 +1097,11 @@ export default defineSchema({
 		generatedAt: v.number(),
 		version: v.number(), // Version number for tracking PDF versions (starts at 1)
 
+		quoteContentSnapshotId: v.optional(v.id("quoteDocumentContents")),
+		quoteSnapshotSource: v.optional(v.union(v.literal("server"), v.literal("workspace"))),
+		quoteContentSnapshot: v.optional(quoteContentSnapshotValidator),
+		quoteApprovalCycle: v.optional(v.number()),
+
 		// Top-level BoldSign document ID for efficient querying
 		boldsignDocumentId: v.optional(v.string()),
 
@@ -1139,6 +1170,14 @@ export default defineSchema({
 			"signedPdfDownload.notifiedAt",
 			"signedPdfDownload.failedAt",
 		]),
+
+	quoteDocumentContents: defineTable({
+		orgId: v.id("organizations"),
+		documentId: v.id("documents"),
+		snapshot: quoteContentSnapshotValidator,
+	})
+		.index("by_org", ["orgId"])
+		.index("by_document", ["documentId"]),
 
 	// Activities - for home route activity feed
 	activities: defineTable({

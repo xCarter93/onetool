@@ -245,6 +245,69 @@ describe("portal.quotes.getDownloadUrl (Plan 14.1-03)", () => {
 		expect(result).toBeNull();
 	});
 
+	it("returns the regenerated current blob instead of a stale pinned blob", async () => {
+		const s = await seedOrg(t, "portal-dl-current");
+		const jti = "dl-current";
+		await seedSession(t, s, jti);
+		const quoteId = await insertQuote(t, s);
+		const expectedUrl = await t.run(async (ctx) => {
+			const staleStorage = await ctx.storage.store(new Blob(["stale"]));
+			const stale = await ctx.db.insert("documents", {
+				orgId: s.orgId,
+				documentType: "quote",
+				documentId: quoteId,
+				storageId: staleStorage,
+				generatedAt: 1000,
+				version: 1,
+			});
+			const currentStorage = await ctx.storage.store(new Blob(["current"]));
+			await ctx.db.insert("documents", {
+				orgId: s.orgId,
+				documentType: "quote",
+				documentId: quoteId,
+				storageId: currentStorage,
+				generatedAt: 3000,
+				version: 2,
+			});
+			await ctx.db.patch(quoteId, {
+				latestDocumentId: stale,
+				contentUpdatedAt: 2000,
+			});
+			return await ctx.storage.getUrl(currentStorage);
+		});
+		const result = await t
+			.withIdentity(ident(s, jti))
+			.query(api.portal.quotes.getDownloadUrl, { quoteId });
+		expect(result?.url).toBe(expectedUrl);
+	});
+
+	it("returns null rather than a stale PDF while regeneration is pending", async () => {
+		const s = await seedOrg(t, "portal-dl-stale");
+		const jti = "dl-stale";
+		await seedSession(t, s, jti);
+		const quoteId = await insertQuote(t, s);
+		await t.run(async (ctx) => {
+			const storageId = await ctx.storage.store(new Blob(["stale"]));
+			const documentId = await ctx.db.insert("documents", {
+				orgId: s.orgId,
+				documentType: "quote",
+				documentId: quoteId,
+				storageId,
+				generatedAt: 1000,
+				version: 1,
+			});
+			await ctx.db.patch(quoteId, {
+				latestDocumentId: documentId,
+				contentUpdatedAt: 2000,
+			});
+		});
+		expect(
+			await t
+				.withIdentity(ident(s, jti))
+				.query(api.portal.quotes.getDownloadUrl, { quoteId }),
+		).toBeNull();
+	});
+
 	// ---- REVIEWS HIGH 2026-05-10: pinned-doc strict validation ----
 
 	it("Test E1 — rejects pinned doc with foreign orgId; falls back to documents-table", async () => {

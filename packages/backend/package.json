@@ -69,6 +69,10 @@
    "types": "./convex/lib/projectRecurrence.ts",
    "default": "./convex/lib/projectRecurrence.ts"
   },
+  "./convex/lib/quoteContentSnapshot": {
+   "types": "./convex/lib/quoteContentSnapshot.ts",
+   "default": "./convex/lib/quoteContentSnapshot.ts"
+  },
   "./convex/lib/invoiceLateness": {
    "types": "./convex/lib/invoiceLateness.ts",
    "default": "./convex/lib/invoiceLateness.ts"

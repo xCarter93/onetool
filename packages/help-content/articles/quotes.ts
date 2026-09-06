@@ -133,6 +133,10 @@ export const quotesArticles: HelpArticle[] = [
 						text: "**Generate PDF** is also in the quote header, and it is available in every status, so you can produce a copy while drafting or after approval. The [e-signature flow](/help/quotes/e-signatures) builds its signature request from the quote's PDF.",
 					},
 					{
+						type: "paragraph",
+						text: "If the quote changes while its PDF is being generated, OneTool asks you to generate it again. PDFs used for a signature request or approval are kept with that history; make a new version for further changes.",
+					},
+					{
 						type: "note",
 						text: "The **Generated PDF** preview in the right-hand panel keeps track of the saved copy. Its colored header shows the status at a glance: green means the PDF matches the quote, amber means the quote's content changed since it was generated, whether line items, pricing, or terms, and offers a **Regenerate** button. Regenerate before you send so the client gets the current numbers.",
 					},
@@ -399,7 +403,7 @@ export const quotesArticles: HelpArticle[] = [
 					},
 					{
 						type: "note",
-						text: "Sending needs a generated PDF. Until you click **Generate PDF** on the quote, choosing **Send for e-signature** tells you to generate one first and goes no further.",
+						text: "Sending needs a current PDF. Click **Generate PDF** after changing the quote or before starting another signature request. A PDF already used for a sent or completed request stays with that request; generate a new version for the next one.",
 					},
 					{
 						type: "note",
@@ -439,9 +443,9 @@ export const quotesArticles: HelpArticle[] = [
 					{
 						type: "list",
 						items: [
-							"When a request reaches Completed, the quote is approved automatically. There is nothing to mark by hand.",
+							"When the current request reaches Completed, all required signatures are finished and the quote is approved automatically. A single signer finishing does not approve a request that still needs a countersignature.",
 							"A request you saved but never sent shows **Resume editing** and **Discard**. Discarding removes only the unsent request; the quote and its PDF stay put.",
-							"If a request lapses before everyone signs, it shows Expired and the quote's status becomes Expired too. Click **Reopen** on the quote to pick it back up.",
+							"If the current request lapses before everyone signs, it shows Expired and the pending quote becomes Expired too. Click **Reopen** on the quote to pick it back up.",
 						],
 					},
 					{
@@ -449,6 +453,10 @@ export const quotesArticles: HelpArticle[] = [
 						media: "image",
 						caption: "The Signatures tab with a completed request",
 						asset: "quotes/e-signatures/signatures-tab-with-a-completed-request",
+					},
+					{
+						type: "paragraph",
+						text: "If you reopen or revise a quote, a response to an older signature request does not approve the newer offer. Completed older requests keep their signed documents and history. Repeated or delayed responses do not reverse an existing approval or repeat its approval notification.",
 					},
 					{
 						type: "note",

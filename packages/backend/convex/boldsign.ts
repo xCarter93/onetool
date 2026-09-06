@@ -20,6 +20,13 @@ import {
 import { isRecordInActorScope } from "./lib/factories";
 import { externalIoPool, EXTERNAL_FETCH_RETRY } from "./externalIoPool";
 import { resolveMemberUserIds } from "./lib/automationExec/actions";
+import { emitStatusChangeEvent } from "./eventBus";
+import {
+	loadCurrentQuoteContentSnapshot,
+	loadQuoteDocumentSnapshot,
+	quoteContentSnapshotsEqual,
+} from "./lib/quoteContentSnapshot";
+import { recordQuoteDecision } from "./lib/quoteDecisionEvidence";
 
 /**
  * Two ways a Completed event turns out to be a redelivery. A stored signed PDF
@@ -171,6 +178,50 @@ type BoldSignStatus =
 	| "Revoked"
 	| "Expired";
 
+const TERMINAL_BOLDSIGN_STATUSES = new Set<BoldSignStatus>([
+	"Completed",
+	"Declined",
+	"Revoked",
+	"Expired",
+]);
+
+const BOLDSIGN_STATUS_RANK: Record<"Draft" | BoldSignStatus, number> = {
+	Draft: 0,
+	Sent: 1,
+	Viewed: 2,
+	Signed: 3,
+	Completed: 4,
+	Declined: 4,
+	Revoked: 4,
+	Expired: 4,
+};
+
+function shouldApplyBoldSignStatus(
+	current: "Draft" | BoldSignStatus,
+	incoming: BoldSignStatus
+): boolean {
+	if (TERMINAL_BOLDSIGN_STATUSES.has(current as BoldSignStatus)) return false;
+	return BOLDSIGN_STATUS_RANK[incoming] >= BOLDSIGN_STATUS_RANK[current];
+}
+
+async function documentMatchesCurrentQuoteContent(
+	ctx: Pick<QueryCtx, "db">,
+	document: Doc<"documents">,
+	quote: Doc<"quotes">
+): Promise<boolean> {
+	if (document.generatedAt < (quote.contentUpdatedAt ?? 0)) return false;
+	const currentApprovalCycle = quote.approvalCycle ?? 0;
+	if (document.quoteApprovalCycle === undefined) {
+		if (document.boldsign && currentApprovalCycle > 0) return false;
+	} else if (document.quoteApprovalCycle !== currentApprovalCycle) return false;
+	const documentSnapshot = await loadQuoteDocumentSnapshot(ctx, document);
+	if (!documentSnapshot) return true;
+	const current = await loadCurrentQuoteContentSnapshot(ctx, quote._id);
+	return Boolean(
+		current && quoteContentSnapshotsEqual(documentSnapshot, current)
+	);
+}
+
 /**
  * Timestamp field names for BoldSign event types
  */
@@ -291,6 +342,12 @@ export const getEmbeddedRequestContext = internalQuery({
 		if (!latest) {
 			return { ok: false, reason: "no_pdf" };
 		}
+		if (!(await documentMatchesCurrentQuoteContent(ctx, latest, quote))) {
+			return { ok: false, reason: "no_pdf" };
+		}
+		if (latest.boldsign && latest.boldsign.status !== "Draft") {
+			return { ok: false, reason: "no_pdf" };
+		}
 
 		// Resume any embedded Draft (idempotent /sign visits). Deliberately not
 		// gated on sendUrlExpiresAt: the action mints a fresh edit URL for the
@@ -361,7 +418,7 @@ export const getEmbeddedRequestContext = internalQuery({
  * Persist a freshly created embedded request (BoldSign Draft) onto the document
  * and point the quote at it. The quote is NOT marked "sent" here — that happens
  * on the Sent webhook once the user actually sends from inside the editor.
- * Overwrites any prior boldsign state on this row (v1 re-prepare; see PRD §14.8).
+ * Each PDF version retains its own signing request.
  */
 export const updateDocumentWithEmbeddedRequest = internalMutation({
 	args: {
@@ -396,8 +453,18 @@ export const updateDocumentWithEmbeddedRequest = internalMutation({
 		) {
 			throw new Error("Document does not belong to this quote");
 		}
+		if (!(await documentMatchesCurrentQuoteContent(ctx, document, quote))) {
+			throw new Error("Quote PDF is stale; generate a new PDF before signing");
+		}
+		if (document.boldsign) {
+			if (document.boldsign.documentId === args.boldsignDocumentId) return;
+			throw new Error(
+				"This PDF already has a BoldSign request. Discard its draft or generate a new PDF version."
+			);
+		}
 
 		await ctx.db.patch(args.documentId, {
+			quoteApprovalCycle: quote.approvalCycle ?? 0,
 			boldsignDocumentId: args.boldsignDocumentId,
 			boldsign: {
 				documentId: args.boldsignDocumentId,
@@ -544,7 +611,7 @@ export const handleWebhook = internalMutation({
 			);
 		}
 
-		const timestamp = args.eventTimestamp || Date.now();
+		const timestamp = args.eventTimestamp ?? Date.now();
 
 		// Validate event type and get timestamp field
 		const validEventTypes: BoldSignStatus[] = [
@@ -564,40 +631,97 @@ export const handleWebhook = internalMutation({
 
 		const typedEventType = eventType as BoldSignStatus;
 		const timestampField = BOLDSIGN_TIMESTAMP_FIELDS[typedEventType];
+		const currentStatus = document.boldsign.status;
+		const applyStatus = shouldApplyBoldSignStatus(currentStatus, typedEventType);
+		const sameTerminalReplay =
+			currentStatus === typedEventType &&
+			TERMINAL_BOLDSIGN_STATUSES.has(typedEventType);
+		const lateSent =
+			typedEventType === "Sent" &&
+			document.boldsign.sentAt === undefined;
 
-		// Build the updated boldsign object
-		const updatedBoldsign = {
-			...document.boldsign,
-			status: typedEventType,
-			[timestampField]: timestamp,
-		};
-
-		// Count usage only on the genuine Draft→Sent transition. BoldSign
-		// publishes no redelivery policy, so this guards defensively: if a "Sent"
-		// is ever replayed it can't double-count and wrongly trip the cap.
-		if (typedEventType === "Sent" && document.boldsign.status === "Draft") {
+		// BoldSign retries and can manually resend events; sentAt is the debit key.
+		if (lateSent) {
 			await consumeMeter(ctx, document.orgId, "esignatures");
 		}
 
-		// Update the document
-		await ctx.db.patch(document._id, {
-			boldsign: updatedBoldsign,
-		});
+		if (applyStatus || lateSent) {
+			await ctx.db.patch(document._id, {
+				boldsign: {
+					...document.boldsign,
+					status: applyStatus ? typedEventType : currentStatus,
+					[timestampField]:
+						document.boldsign[
+							timestampField as keyof typeof document.boldsign
+						] ?? timestamp,
+				},
+			});
+		}
 
 		// Handle quote-specific updates if document is associated with a quote
-		if (document.documentType === "quote") {
+		if (
+			document.documentType === "quote" &&
+			(applyStatus || sameTerminalReplay || lateSent)
+		) {
 			await handleQuoteStatusUpdate(
 				ctx,
 				document,
 				typedEventType,
 				timestamp,
-				boldsignDocumentId
+				boldsignDocumentId,
+				applyStatus || lateSent
 			);
 		}
 
 		logWebhookSuccess(SERVICE, eventType, boldsignDocumentId);
 	},
 });
+
+async function isCarefullyEligibleLegacyDocument(
+	ctx: MutationCtx,
+	quote: Doc<"quotes">,
+	document: Doc<"documents">
+): Promise<boolean> {
+	if (document.quoteContentSnapshotId || document.quoteContentSnapshot) return false;
+	const newest = await ctx.db
+		.query("documents")
+		.withIndex("by_document_version", (q) =>
+			q.eq("documentType", "quote").eq("documentId", quote._id)
+		)
+		.order("desc")
+		.first();
+	return Boolean(newest && newest._id === document._id && newest.orgId === quote.orgId);
+}
+
+async function logBoldSignQuoteActivity(
+	ctx: MutationCtx,
+	quote: Doc<"quotes">,
+	clientName: string,
+	action: "sent" | "approved" | "declined"
+): Promise<void> {
+	const org = await ctx.db.get(quote.orgId);
+	if (!org) return;
+	await ctx.db.insert("activities", {
+		orgId: quote.orgId,
+		userId: org.ownerUserId,
+		activityType: `quote_${action}` as
+			| "quote_sent"
+			| "quote_approved"
+			| "quote_declined",
+		entityType: "quote",
+		entityId: quote._id,
+		entityName: quote.title || `Quote ${quote.quoteNumber || quote._id}`,
+		description:
+			action === "sent"
+				? `Sent quote to ${clientName}`
+				: action === "approved"
+					? `Quote approved by ${clientName}`
+					: `Quote declined by ${clientName}`,
+		metadata: { quoteNumber: quote.quoteNumber, total: quote.total },
+		timestamp: Date.now(),
+		isVisible: true,
+	});
+}
 
 /**
  * Handle quote status updates based on BoldSign events.
@@ -608,16 +732,45 @@ async function handleQuoteStatusUpdate(
 	document: Doc<"documents">,
 	eventType: BoldSignStatus,
 	timestamp: number,
-	boldsignDocumentId: string
+	boldsignDocumentId: string,
+	allowQuoteTransition: boolean
 ): Promise<void> {
-	const quote = await ctx.db.get(document.documentId as Id<"quotes">);
+	const quoteId = ctx.db.normalizeId("quotes", document.documentId);
+	const quote = quoteId ? await ctx.db.get(quoteId) : null;
 
-	if (!quote) {
+	if (!quote || quote.orgId !== document.orgId) {
 		console.warn(
 			`[BoldSign] Quote not found for document ${document._id} with documentId: ${document.documentId}`
 		);
 		return;
 	}
+
+	let decisionCreated = true;
+	if (eventType === "Completed" || eventType === "Declined") {
+		const result = await recordQuoteDecision(ctx, {
+			quote,
+			document,
+			action: eventType === "Completed" ? "approved" : "declined",
+			channel: "boldsign",
+			decidedAt:
+				eventType === "Completed"
+					? (document.boldsign?.completedAt ?? timestamp)
+					: (document.boldsign?.declinedAt ?? timestamp),
+			boldsignDocumentId,
+		});
+		decisionCreated = result.created;
+	}
+
+	const currentDocument = quote.latestDocumentId
+		? quote.latestDocumentId === document._id
+		: await isCarefullyEligibleLegacyDocument(ctx, quote, document);
+	const contentMatches = await documentMatchesCurrentQuoteContent(
+		ctx,
+		document,
+		quote
+	);
+	const canTransition =
+		allowQuoteTransition && decisionCreated && currentDocument && contentMatches;
 
 	const quoteUpdates: {
 		status?: "sent" | "approved" | "declined" | "expired";
@@ -631,11 +784,7 @@ async function handleQuoteStatusUpdate(
 			// Authoritative "quote sent" transition — the embedded flow only
 			// sends once the user clicks Send inside the BoldSign editor. Guard
 			// against a duplicate/out-of-order Sent regressing a terminal state.
-			if (
-				quote.status === "approved" ||
-				quote.status === "declined" ||
-				quote.status === "expired"
-			) {
+			if (!canTransition || quote.status !== "draft") {
 				return;
 			}
 			quoteUpdates.status = "sent";
@@ -643,9 +792,6 @@ async function handleQuoteStatusUpdate(
 			break;
 
 		case "Completed":
-			quoteUpdates.status = "approved";
-			quoteUpdates.approvedAt = timestamp;
-
 			// Pool-routed rather than a raw scheduler kick: a scheduled action is
 			// at-most-once, so a dropped container silently loses a signed legal
 			// document. The pool's job record survives and retries.
@@ -669,15 +815,26 @@ async function handleQuoteStatusUpdate(
 					signedPdfDownload: { workId },
 				});
 			}
+			if (
+				canTransition &&
+				(quote.status === "draft" || quote.status === "sent")
+			) {
+				quoteUpdates.status = "approved";
+				quoteUpdates.approvedAt = timestamp;
+			}
 			break;
 
 		case "Declined":
-			quoteUpdates.status = "declined";
-			quoteUpdates.declinedAt = timestamp;
+			if (canTransition && quote.status === "sent") {
+				quoteUpdates.status = "declined";
+				quoteUpdates.declinedAt = timestamp;
+			}
 			break;
 
 		case "Expired":
-			quoteUpdates.status = "expired";
+			if (canTransition && quote.status === "sent") {
+				quoteUpdates.status = "expired";
+			}
 			break;
 
 		default:
@@ -686,12 +843,29 @@ async function handleQuoteStatusUpdate(
 	}
 
 	if (Object.keys(quoteUpdates).length > 0) {
+		const oldStatus = quote.status;
 		await ctx.db.patch(quote._id, quoteUpdates);
-		if (quoteUpdates.status === "approved") {
-			const updatedQuote = await ctx.db.get(quote._id);
-			if (updatedQuote) {
+		const updatedQuote = await ctx.db.get(quote._id);
+		if (updatedQuote && quoteUpdates.status) {
+			const client = await ctx.db.get(updatedQuote.clientId);
+			const clientName = client?.companyName ?? "Unknown Client";
+			if (quoteUpdates.status === "sent") {
+				await logBoldSignQuoteActivity(ctx, updatedQuote, clientName, "sent");
+			} else if (quoteUpdates.status === "approved") {
+				await logBoldSignQuoteActivity(ctx, updatedQuote, clientName, "approved");
 				await celebrateQuoteApproved(ctx, updatedQuote);
+			} else if (quoteUpdates.status === "declined") {
+				await logBoldSignQuoteActivity(ctx, updatedQuote, clientName, "declined");
 			}
+			await emitStatusChangeEvent(
+				ctx,
+				updatedQuote.orgId,
+				"quote",
+				updatedQuote._id,
+				oldStatus,
+				quoteUpdates.status,
+				"boldsign.handleWebhook"
+			);
 		}
 	}
 }

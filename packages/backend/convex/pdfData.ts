@@ -14,6 +14,15 @@ import { ConvexError, v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
 import { getCurrentUserOrgId } from "./lib/auth";
 import { requireLevel } from "./lib/permissions";
+import {
+	attachQuoteDocumentSnapshot,
+	buildQuoteContentSnapshot,
+	loadCurrentQuoteContentSnapshot,
+	loadQuoteDocumentSnapshot,
+	MAX_QUOTE_SNAPSHOT_LINES,
+	quoteContentSnapshotValidator,
+	quoteContentSnapshotsEqual,
+} from "./lib/quoteContentSnapshot";
 
 async function primaryProperty(
 	ctx: { db: import("./_generated/server").QueryCtx["db"] },
@@ -44,7 +53,7 @@ export const _getQuoteRenderData = internalQuery({
 			await ctx.db
 				.query("quoteLineItems")
 				.withIndex("by_quote", (q) => q.eq("quoteId", args.quoteId))
-				.collect()
+				.take(MAX_QUOTE_SNAPSHOT_LINES + 1)
 		).sort((a, b) => a.sortOrder - b.sortOrder);
 		const client = await ctx.db.get(quote.clientId);
 		const organization = await ctx.db.get(args.orgId);
@@ -56,6 +65,7 @@ export const _getQuoteRenderData = internalQuery({
 		return {
 			quote,
 			lineItems,
+			quoteContentSnapshot: buildQuoteContentSnapshot(quote, lineItems),
 			client,
 			organization,
 			property,
@@ -113,15 +123,19 @@ export const _ensureQuotePdfAuth = internalQuery({
 		// (or a validUntil extension) leaves the stored render behind the
 		// document the client is agreeing to. Stale ⇒ render fresh.
 		const contentUpdatedAt = quote.contentUpdatedAt ?? 0;
+		const currentSnapshot = await loadCurrentQuoteContentSnapshot(ctx, quote._id);
+		if (!currentSnapshot) throw new ConvexError({ code: "NOT_FOUND" });
 		// Pinned version wins (BoldSign flow); else newest same-org row.
 		if (quote.latestDocumentId) {
 			const pinned = await ctx.db.get(quote.latestDocumentId);
+			const pinnedSnapshot = pinned ? await loadQuoteDocumentSnapshot(ctx, pinned) : null;
 			if (
 				pinned &&
 				pinned.orgId === orgId &&
 				pinned.documentType === "quote" &&
 				pinned.documentId === args.quoteId &&
-				pinned.generatedAt >= contentUpdatedAt
+				pinned.generatedAt >= contentUpdatedAt &&
+				(!pinnedSnapshot || quoteContentSnapshotsEqual(pinnedSnapshot, currentSnapshot))
 			) {
 				return { orgId, existingDocumentId: pinned._id };
 			}
@@ -133,12 +147,14 @@ export const _ensureQuotePdfAuth = internalQuery({
 			)
 			.order("desc")
 			.first();
+		const newestSnapshot = newest ? await loadQuoteDocumentSnapshot(ctx, newest) : null;
 		return {
 			orgId,
 			existingDocumentId:
 				newest &&
 				newest.orgId === orgId &&
-				newest.generatedAt >= contentUpdatedAt
+				newest.generatedAt >= contentUpdatedAt &&
+				(!newestSnapshot || quoteContentSnapshotsEqual(newestSnapshot, currentSnapshot))
 					? newest._id
 					: null,
 		};
@@ -157,8 +173,20 @@ export const _insertGeneratedDocument = internalMutation({
 		documentType: v.union(v.literal("quote"), v.literal("invoice")),
 		documentId: v.string(),
 		storageId: v.id("_storage"),
+		quoteContentSnapshot: v.optional(quoteContentSnapshotValidator),
 	},
 	handler: async (ctx, args) => {
+		let quoteContentSnapshot = args.quoteContentSnapshot;
+		if (quoteContentSnapshot) {
+			if (args.documentType !== "quote")
+				throw new ConvexError("Quote content snapshots can only be attached to quote documents");
+			const quote = await ctx.db.get(args.documentId as Id<"quotes">);
+			if (!quote || quote.orgId !== args.orgId) throw new ConvexError({ code: "NOT_FOUND" });
+			const current = await loadCurrentQuoteContentSnapshot(ctx, quote._id);
+			if (!current || !quoteContentSnapshotsEqual(quoteContentSnapshot, current))
+				throw new ConvexError("Quote changed while the PDF was generated; generate it again");
+			quoteContentSnapshot = current;
+		}
 		const existing = await ctx.db
 			.query("documents")
 			.withIndex("by_document", (q) =>
@@ -178,6 +206,11 @@ export const _insertGeneratedDocument = internalMutation({
 			generatedAt: Date.now(),
 			version: maxVersion + 1,
 		});
+		if (quoteContentSnapshot) {
+			const document = await ctx.db.get(id);
+			if (!document) throw new ConvexError("Generated quote document was not found");
+			await attachQuoteDocumentSnapshot(ctx, document, quoteContentSnapshot, "server");
+		}
 		return { documentId: id, version: maxVersion + 1 };
 	},
 });

@@ -133,6 +133,11 @@ triggers.register("projects", async (ctx, change) => {
 });
 
 triggers.register("quotes", async (ctx, change) => {
+	if (change.oldDoc && change.newDoc && change.oldDoc.status !== "draft" && change.newDoc.status === "draft")
+		await ctx.innerDb.patch(change.id, { approvalCycle: (change.oldDoc.approvalCycle ?? 0) + 1 });
+});
+
+triggers.register("quotes", async (ctx, change) => {
 	if (!change.newDoc) return;
 	const searchText = quoteSearchText(change.newDoc);
 	if (change.newDoc.searchText === searchText) return;

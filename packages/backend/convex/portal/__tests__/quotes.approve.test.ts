@@ -4,7 +4,7 @@
 // receipt return shape.
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { setupConvexTest } from "../../test.setup";
-import { api } from "../../_generated/api";
+import { api, internal } from "../../_generated/api";
 import type { Id } from "../../_generated/dataModel";
 
 const PORTAL_ISSUER = "https://portal.example.com";
@@ -197,6 +197,145 @@ describe("portal.quotes.approve", () => {
 
 	beforeEach(() => {
 		t = setupConvexTest();
+	});
+
+	it("replaces a stale PDF pin with the current requested document", async () => {
+		const s = await seedAll(t);
+		const jti = "approve-stale-pin";
+		await seedSession(t, s, jti);
+		const { quoteId, documentId } = await seedQuoteWithDoc(t, s, s.clientId);
+		const freshDocumentId = await t.run(async (ctx) => {
+			await ctx.db.patch(documentId, { generatedAt: 1000 });
+			await ctx.db.patch(quoteId, { contentUpdatedAt: 5000 });
+			const storageId = await ctx.storage.store(new Blob(["fresh"]));
+			return await ctx.db.insert("documents", {
+				orgId: s.orgId,
+				documentType: "quote",
+				documentId: quoteId,
+				storageId,
+				generatedAt: 6000,
+				version: 3,
+			});
+		});
+
+		await t.withIdentity(ident(s, jti)).action(api.portal.quotes.approve, {
+			attestation: TEST_ATTESTATION,
+			intentAffirmed: true,
+			quoteId,
+			expectedDocumentId: freshDocumentId,
+			signatureBase64: VALID_PNG_B64,
+			signatureMode: "typed",
+			signatureRawData: "Jane",
+			ipAddress: "1",
+			userAgent: "u",
+			termsAccepted: true,
+		});
+
+		const quote = await t.run(async (ctx) => ctx.db.get(quoteId));
+		expect(quote?.latestDocumentId).toBe(freshDocumentId);
+	});
+
+	it("rejects when quote content changes between approval preflight and commit", async () => {
+		const s = await seedAll(t);
+		const { quoteId, documentId } = await seedQuoteWithDoc(t, s, s.clientId);
+		const preflight = await t.query(internal.portal.quotes._preflightApproval, {
+			quoteId,
+			expectedDocumentId: documentId,
+			clientContactId: s.clientContactId,
+			orgId: s.orgId,
+		});
+		await t.run(async (ctx) => {
+			const document = await ctx.db.get(documentId);
+			await ctx.db.patch(quoteId, {
+				contentUpdatedAt: (document?.generatedAt ?? 0) + 1,
+			});
+		});
+
+		await expect(
+			t.mutation(internal.portal.quotes._commitApproval, {
+				quoteId,
+				expectedDocumentId: documentId,
+				clientContactId: s.clientContactId,
+				orgId: s.orgId,
+				action: "approved",
+				ipAddress: "1",
+				userAgent: "u",
+				documentVersion: preflight.documentVersion,
+				lineItemsSnapshot: preflight.lineItemsSnapshot,
+				subtotal: preflight.subtotal,
+				taxAmount: preflight.taxAmount,
+				total: preflight.total,
+				terms: preflight.terms,
+				clientCompanyName: preflight.clientCompanyName,
+				expectedContentSnapshot: preflight.contentSnapshot,
+			}),
+		).rejects.toThrow(/QUOTE_VERSION_STALE/);
+		expect(
+			await t.run(async (ctx) => ctx.db.query("quoteApprovals").collect()),
+		).toHaveLength(0);
+	});
+
+	it("rejects a requested document from another organization", async () => {
+		const s = await seedAll(t);
+		const { quoteId } = await seedQuoteWithDoc(t, s, s.clientId);
+		const foreignDocumentId = await t.run(async (ctx) => {
+			const foreignUser = await ctx.db.insert("users", {
+				name: "Foreign",
+				email: "foreign@example.com",
+				image: "https://example.com/f.png",
+				externalId: "foreign-user",
+			});
+			const foreignOrg = await ctx.db.insert("organizations", {
+				clerkOrganizationId: "foreign-org",
+				name: "Foreign Org",
+				ownerUserId: foreignUser,
+			});
+			const storageId = await ctx.storage.store(new Blob(["foreign"]));
+			return await ctx.db.insert("documents", {
+				orgId: foreignOrg,
+				documentType: "quote",
+				documentId: quoteId,
+				storageId,
+				generatedAt: Date.now(),
+				version: 99,
+			});
+		});
+
+		await expect(
+			t.query(internal.portal.quotes._preflightApproval, {
+				quoteId,
+				expectedDocumentId: foreignDocumentId,
+				clientContactId: s.clientContactId,
+				orgId: s.orgId,
+			}),
+		).rejects.toThrow(/QUOTE_VERSION_STALE/);
+	});
+
+	it("rejects a repeated approval without appending another audit", async () => {
+		const s = await seedAll(t);
+		const jti = "approve-repeat";
+		await seedSession(t, s, jti);
+		const { quoteId, documentId } = await seedQuoteWithDoc(t, s, s.clientId);
+		const args = {
+			attestation: TEST_ATTESTATION,
+			intentAffirmed: true,
+			quoteId,
+			expectedDocumentId: documentId,
+			signatureBase64: VALID_PNG_B64,
+			signatureMode: "typed" as const,
+			signatureRawData: "Jane",
+			ipAddress: "1",
+			userAgent: "u",
+			termsAccepted: true as const,
+		};
+		const asPortal = t.withIdentity(ident(s, jti));
+		await asPortal.action(api.portal.quotes.approve, args);
+		await expect(asPortal.action(api.portal.quotes.approve, args)).rejects.toThrow(
+			/QUOTE_NOT_PENDING/,
+		);
+		expect(
+			await t.run(async (ctx) => ctx.db.query("quoteApprovals").collect()),
+		).toHaveLength(1);
 	});
 
 	it("happy path typed: stores signature, inserts audit row, patches status='approved', emits status_changed, returns receipt", async () => {

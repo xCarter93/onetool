@@ -10,6 +10,11 @@ import { useEntitlements } from "@/hooks/use-entitlements";
 import { useClientSendMeter } from "@/hooks/use-client-send-meter";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
 import type { Id as StorageId } from "@onetool/backend/convex/_generated/dataModel";
+import {
+	buildQuoteContentSnapshot,
+	quoteContentSnapshotsEqual,
+	type QuoteContentSnapshot,
+} from "@onetool/backend/convex/lib/quoteContentSnapshot";
 import { useState, useMemo, useCallback, useRef } from "react";
 import { DocumentSelectionModal } from "@/app/(workspace)/quotes/components/document-selection-modal";
 import { DocumentPreviewModal } from "@/components/shared/document-preview-modal";
@@ -157,6 +162,7 @@ function QuoteDetailPageContent() {
 		contentUpdatedAt: number | undefined;
 		renderInputsFingerprint: string;
 		quoteId: Id<"quotes">;
+		quoteContentSnapshot: QuoteContentSnapshot;
 	} | null>(null);
 
 	// The PDF also renders client/org/property/countersigner data that
@@ -248,25 +254,37 @@ function QuoteDetailPageContent() {
 	// Renders the quote PDF exactly the way Generate does, so what the preview
 	// shows is what gets uploaded. The result is cached against the quote's
 	// contentUpdatedAt stamp and reused by Generate while it stays valid.
-	const renderQuotePdf = useCallback(async () => {
+	const renderQuotePdfArtifact = useCallback(async () => {
 		if (!quote || !lineItems) {
 			throw new Error("This quote is still loading. Try again in a moment.");
 		}
+		const renderLineItems = [...lineItems].sort((a, b) => a.sortOrder - b.sortOrder);
+		const quoteContentSnapshot = buildQuoteContentSnapshot(quote, renderLineItems);
 		const blob = await buildQuotePdfBlob({
-			quote,
-			lineItems,
+			quote: {
+				...quote,
+				subtotal: quoteContentSnapshot.subtotal,
+				taxAmount: quoteContentSnapshot.taxAmount,
+				total: quoteContentSnapshot.total,
+			},
+			lineItems: renderLineItems.map((line, index) => ({
+				...line,
+				amount: quoteContentSnapshot.lineItems[index]?.amount ?? line.amount,
+			})),
 			client,
 			organization,
 			primaryProperty,
 			countersigner,
 		});
-		previewBlobRef.current = {
+		const artifact = {
 			blob,
 			contentUpdatedAt: quote.contentUpdatedAt,
 			renderInputsFingerprint,
 			quoteId: quote._id,
+			quoteContentSnapshot,
 		};
-		return blob;
+		previewBlobRef.current = artifact;
+		return artifact;
 	}, [
 		quote,
 		lineItems,
@@ -276,8 +294,12 @@ function QuoteDetailPageContent() {
 		countersigner,
 		renderInputsFingerprint,
 	]);
+	const renderQuotePdf = useCallback(
+		async () => (await renderQuotePdfArtifact()).blob,
+		[renderQuotePdfArtifact]
+	);
 
-	const takeCachedPdfBlob = (): Blob | null => {
+	const takeCachedPdfBlob = (): typeof previewBlobRef.current => {
 		const cached = previewBlobRef.current;
 		if (!cached || !quote) return null;
 		if (cached.quoteId !== quote._id) return null;
@@ -285,7 +307,11 @@ function QuoteDetailPageContent() {
 		if (cached.contentUpdatedAt !== quote.contentUpdatedAt) return null;
 		if (cached.renderInputsFingerprint !== renderInputsFingerprint)
 			return null;
-		return cached.blob;
+		if (!lineItems || !quoteContentSnapshotsEqual(
+			cached.quoteContentSnapshot,
+			buildQuoteContentSnapshot(quote, lineItems)
+		)) return null;
+		return cached;
 	};
 
 	const handleGeneratePdf = async (
@@ -302,7 +328,12 @@ function QuoteDetailPageContent() {
 
 			// Reuse the preview's render when the quote content has not moved since;
 			// appending org documents never re-renders the quote pages.
-			const quoteBlob = takeCachedPdfBlob() ?? (await renderQuotePdf());
+			let rendered = takeCachedPdfBlob();
+			if (!rendered) {
+				rendered = await renderQuotePdfArtifact();
+			}
+			if (!rendered) throw new Error("Failed to capture quote PDF content");
+			const quoteBlob = rendered.blob;
 
 			let finalBlob = quoteBlob;
 			if (appendDocumentIds.length > 0) {
@@ -376,6 +407,7 @@ function QuoteDetailPageContent() {
 				documentType: "quote",
 				documentId: quote._id,
 				storageId: storageId as unknown as StorageId<"_storage">,
+				quoteContentSnapshot: rendered.quoteContentSnapshot,
 			});
 			toast.removeToast(loadingId);
 			toast.success(

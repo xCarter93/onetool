@@ -26,6 +26,8 @@ export const CASCADE_PAGE_SIZE = 100;
 // silently missed.
 export const ORG_SCOPED_CASCADE_TABLES = [
 	// Leaf / child tables first (children before parents).
+	"quoteDocumentContents",
+	"quoteDecisionEvidence",
 	"quoteApprovals",
 	"quoteLineItems",
 	"invoiceLineItems",
@@ -102,6 +104,28 @@ export async function cascadeDeleteOrgDataPage(
 	limit: number
 ): Promise<{ done: boolean }> {
 	let remaining = limit;
+
+	{
+		if (remaining <= 0) return { done: false };
+		const rows = await ctx.db.query("quoteDocumentContents")
+			.withIndex("by_org", (q) => q.eq("orgId", orgId)).take(Math.min(remaining, 10));
+		for (const row of rows) {
+			await ctx.db.delete(row._id);
+			remaining--;
+		}
+		if (rows.length === 10) return { done: false };
+	}
+
+	{
+		if (remaining <= 0) return { done: false };
+		const rows = await ctx.db.query("quoteDecisionEvidence")
+			.withIndex("by_org", (q) => q.eq("orgId", orgId)).take(Math.min(remaining, 10));
+		for (const row of rows) {
+			await ctx.db.delete(row._id);
+			remaining--;
+		}
+		if (rows.length === 10) return { done: false };
+	}
 
 	// quoteApprovals — by_org is [orgId, createdAt]; may hold signatureStorageId.
 	{
