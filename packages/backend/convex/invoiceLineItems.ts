@@ -22,6 +22,7 @@ import {
 	assertInvoiceContentEditable,
 	touchInvoiceContent,
 } from "./lib/editLocks";
+import { isInvoiceInActorScope } from "./lib/invoiceGroups";
 
 /**
  * Invoice Line Item operations
@@ -77,13 +78,9 @@ export const listByInvoice = optionalUserQuery({
 			.collect();
 
 		// All rows share one parent invoice — scope check runs once, not per row.
-		const scoped = await ctx.applyReadScope("invoices", lineItems, (_row, s) =>
-			parentInvoice.projectId
-				? s.projectIds.has(parentInvoice.projectId)
-				: s.clientIds.has(parentInvoice.clientId)
-		);
-
-		return sortLineItems(scoped);
+		return (await isInvoiceInActorScope(ctx, parentInvoice))
+			? sortLineItems(lineItems)
+			: emptyListResult();
 	},
 });
 
@@ -117,10 +114,7 @@ export const get = optionalUserQuery({
 		}
 
 		const parentInvoice = await validateInvoiceAccess(ctx, lineItem.invoiceId);
-		await ctx.requireRecordScope("invoices", {
-			projectId: parentInvoice.projectId,
-			clientId: parentInvoice.clientId,
-		});
+		await ctx.requireRecordScope("invoices", () => isInvoiceInActorScope(ctx, parentInvoice));
 
 		return lineItem;
 	},

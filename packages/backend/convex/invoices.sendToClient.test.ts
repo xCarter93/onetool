@@ -144,6 +144,49 @@ describe("invoices.sendToClient", () => {
 		await t.finishAllScheduledFunctions(vi.runAllTimers);
 	});
 
+	it("materializes recurring installments before replacing a pre-issue PDF", async () => {
+		const { asUser, invoiceId, orgId } = await seed({
+			portalAccess: true,
+			contactEmail: "client@example.com",
+		});
+		await t.run(async (ctx) => {
+			const storageId = await ctx.storage.store(new Blob(["%PDF-pre-issue"], { type: "application/pdf" }));
+			await ctx.db.insert("documents", {
+				orgId,
+				documentType: "invoice",
+				documentId: invoiceId,
+				storageId,
+				generatedAt: Date.now(),
+				version: 1,
+			});
+			await ctx.db.patch(invoiceId, {
+				contentUpdatedAt: Date.now() - 1000,
+				recurringPaymentRule: {
+					type: "percentage",
+					installments: [
+						{ percentage: 40, dayOffset: 0 },
+						{ percentage: 60, dayOffset: 30 },
+					],
+				},
+			});
+		});
+
+		await asUser.mutation(api.invoices.sendToClient, { id: invoiceId });
+
+		const { payments, pendingPdfRenders } = await t.run(async (ctx) => ({
+			payments: await ctx.db.query("payments").withIndex("by_invoice_sort", (q) => q.eq("invoiceId", invoiceId)).collect(),
+			pendingPdfRenders: (await ctx.db.system.query("_scheduled_functions").collect()).filter(
+				(row) => row.name.includes("generateInvoicePdf") && row.state.kind === "pending"
+			),
+		}));
+		expect(payments.map(({ paymentAmount, sortOrder }) => ({ paymentAmount, sortOrder }))).toEqual([
+			{ paymentAmount: 400, sortOrder: 0 },
+			{ paymentAmount: 600, sortOrder: 1 },
+		]);
+		expect(pendingPdfRenders).toHaveLength(1);
+		await t.finishAllScheduledFunctions(vi.runAllTimers);
+	});
+
 	it("schedules a fresh render when the newest PDF predates a content edit", async () => {
 		const { asUser, invoiceId, orgId } = await seed({
 			portalAccess: true,

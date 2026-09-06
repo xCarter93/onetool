@@ -6,12 +6,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getFunctionName } from "convex/server";
 
 const lifecycle = vi.fn(async () => null);
+const cancelPending = vi.fn(async () => null);
 let seriesState: "active" | "paused" | "ended" = "ended";
 let canManage = true;
 let search = new URLSearchParams("fromProjectId=project-2");
+let monthlyProposal: Record<string, unknown> | null = null;
 
 vi.mock("next/navigation", () => ({
 	useParams: () => ({ seriesId: "series-1" }),
+	useRouter: () => ({ push: vi.fn() }),
 	useSearchParams: () => search,
 }));
 
@@ -46,6 +49,7 @@ vi.mock("convex/react", () => ({
 				return {
 					series: {
 						_id: "series-1",
+						clientId: "client-1",
 						title: "Weekly cleaning",
 						state: seriesState,
 						rule: { frequency: "weekly", interval: 1 },
@@ -58,6 +62,10 @@ vi.mock("convex/react", () => ({
 					nextVisit: null,
 					returnProject: { _id: "project-2", title: "August cleaning" },
 				};
+			case "projectSeriesAgreements:getSeriesAgreement":
+				return { agreementQuoteId: "quote-1", active: { _id: "revision-1", revisionNumber: 1, status: "approved", quoteId: "quote-1", agreementReference: "Q-1001" }, pending: null };
+			case "recurringPaymentSchedules:getPending":
+				return monthlyProposal;
 			case "projectSeries:listOccurrences":
 				return {
 					page: [],
@@ -79,11 +87,11 @@ vi.mock("convex/react", () => ({
 				};
 		}
 	}),
-	useMutation: vi.fn((reference) =>
-		getFunctionName(reference) === "projectSeries:lifecycle"
-			? lifecycle
-			: vi.fn(async () => null)
-	),
+	useMutation: vi.fn((reference) => {
+		if (getFunctionName(reference) === "projectSeries:lifecycle") return lifecycle;
+		if (getFunctionName(reference) === "recurringPaymentSchedules:cancelPending") return cancelPending;
+		return vi.fn(async () => null);
+	}),
 }));
 
 vi.mock("@tanstack/react-table", () => ({ useTable: () => ({}) }));
@@ -112,7 +120,28 @@ beforeEach(() => {
 	canManage = true;
 	search = new URLSearchParams("fromProjectId=project-2");
 	lifecycle.mockClear();
+	cancelPending.mockClear();
+	monthlyProposal = null;
 	vi.spyOn(Date, "now").mockReturnValue(Date.UTC(2026, 8, 6, 16));
+});
+
+describe("monthly payment proposal", () => {
+	it("shows approvals still needed and safely cancels the proposal", async () => {
+		seriesState = "active";
+		monthlyProposal = { versionId: "monthly-2", status: "pending_approval", approvedCount: 1, requiredCount: 3, canCancel: true };
+		render(<SeriesPage />);
+		expect(screen.getByText(/Awaiting approval from other recurring agreements/)).toHaveTextContent("1 of 3 approved");
+		fireEvent.click(screen.getByRole("button", { name: "Cancel payment proposal" }));
+		await waitFor(() => expect(cancelPending).toHaveBeenCalledWith({ clientId: "client-1", expectedVersionId: "monthly-2" }));
+	});
+
+	it("shows the effective month after all agreements are approved", () => {
+		seriesState = "active";
+		monthlyProposal = { versionId: "monthly-2", status: "scheduled", effectiveMonth: "2026-10", approvedCount: 3, requiredCount: 3, canCancel: false, cancellationReason: "This proposal has started activating." };
+		render(<SeriesPage />);
+		expect(screen.getByText(/starts in October 2026/)).toHaveTextContent("Existing terms apply until then");
+		expect(screen.queryByRole("button", { name: "Cancel payment proposal" })).not.toBeInTheDocument();
+	});
 });
 
 afterEach(() => {
@@ -124,7 +153,7 @@ describe("series lifecycle recovery", () => {
 	it("previews and confirms resuming an ended series with its revision", async () => {
 		render(<SeriesPage />);
 
-		expect(screen.getByRole("link", { name: "Back to August cleaning" })).toHaveAttribute(
+		expect(screen.getByRole("button", { name: "Back to August cleaning" })).toHaveAttribute(
 			"href",
 			"/projects/project-2"
 		);

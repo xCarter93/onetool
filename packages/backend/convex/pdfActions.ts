@@ -119,6 +119,7 @@ async function renderInvoicePdfToDocument(
 			description: p.description,
 			sortOrder: p.sortOrder,
 		})),
+		invoiceGroups: data.invoiceGroups,
 		client: data.client
 			? {
 					companyName: data.client.companyName,

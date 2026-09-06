@@ -2,6 +2,8 @@ import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 import { projectRecurrenceRuleValidator } from "./lib/projectRecurrence";
 import { quoteContentSnapshotValidator } from "./lib/quoteContentSnapshot";
+import { recurringAgreementTermsValidator } from "./lib/recurringAgreementTerms";
+import { recurringPaymentRuleValidator } from "./lib/recurringPaymentRules";
 import {
 	automationStatusValidator,
 	executedNodeValidator,
@@ -464,6 +466,9 @@ export default defineSchema({
 		),
 		revision: v.optional(v.number()),
 		agreementQuoteId: v.optional(v.id("quotes")),
+		agreementReviewRequired: v.optional(v.boolean()),
+		activeAgreementRevisionId: v.optional(v.id("projectSeriesAgreementRevisions")),
+		pendingAgreementRevisionId: v.optional(v.id("projectSeriesAgreementRevisions")),
 		nextGenerationAt: v.optional(v.number()),
 	})
 		.index("by_org", ["orgId"])
@@ -583,8 +588,31 @@ export default defineSchema({
 	})
 		.index("by_org", ["orgId"])
 		.index("by_template", ["templateId"])
-		.index("by_template_project", ["templateId", "projectId"])
-		.index("by_quote", ["quoteId"]),
+		.index("by_series", ["seriesId"])
+		.index("by_quote", ["quoteId"])
+		.index("by_template_project", ["templateId", "projectId"]),
+
+	projectSeriesAgreementRevisions: defineTable({
+		orgId: v.id("organizations"),
+		seriesId: v.id("projectSeries"),
+		revisionNumber: v.number(),
+		sourceQuoteId: v.id("quotes"),
+		templateId: v.id("projectSeriesQuoteTemplates"),
+		quoteVersionId: v.id("projectSeriesQuoteVersions"),
+		terms: v.optional(recurringAgreementTermsValidator),
+		status: v.union(v.literal("draft"), v.literal("pending"), v.literal("approved"), v.literal("superseded")),
+		approvalCycle: v.number(),
+		monthlyPaymentScheduleVersionId: v.optional(v.id("clientMonthlyPaymentScheduleVersions")),
+		approvalDocumentId: v.optional(v.id("documents")),
+		decisionEvidenceId: v.optional(v.id("quoteDecisionEvidence")),
+		approvedAt: v.optional(v.number()),
+		createdByUserId: v.id("users"),
+		createdAt: v.number(),
+	})
+		.index("by_org", ["orgId"])
+		.index("by_series_revision", ["seriesId", "revisionNumber"])
+		.index("by_source_quote", ["sourceQuoteId"])
+		.index("by_decision_evidence", ["decisionEvidenceId"]),
 
 	// Projects
 	projects: defineTable({
@@ -629,6 +657,7 @@ export default defineSchema({
 		.index("by_client", ["clientId"])
 		.index("by_status", ["orgId", "status"])
 		.index("by_series_date", ["recurringSeriesId", "recurringNominalDate"])
+		.index("by_org_client_status", ["orgId", "clientId", "status"])
 		.index("by_series_start", ["recurringSeriesId", "startDate"])
 		.index("by_series_state", ["recurringSeriesId", "recurringState"])
 		.searchIndex("search_text", {
@@ -783,6 +812,13 @@ export default defineSchema({
 		projectSeriesQuoteVersionId: v.optional(v.id("projectSeriesQuoteVersions")),
 		recurringQuoteAppliedVersion: v.optional(v.number()),
 		recurringQuoteOverride: v.optional(v.boolean()),
+		recurringAgreementSourceQuoteId: v.optional(v.id("quotes")),
+		recurringAgreementTerms: v.optional(recurringAgreementTermsValidator),
+		recurringAgreementRevisionId: v.optional(v.id("projectSeriesAgreementRevisions")),
+		recurringAgreementEvidenceId: v.optional(v.id("quoteDecisionEvidence")),
+		recurringInheritedAt: v.optional(v.number()),
+		recurringBillableAdditionSelectedAt: v.optional(v.number()),
+		recurringBillableAdditionSelectedBy: v.optional(v.id("users")),
 		// Search digest maintained by lib/triggers.ts (see lib/searchText.ts).
 		searchText: v.optional(v.string()),
 	})
@@ -950,6 +986,12 @@ export default defineSchema({
 		// ever sent and never cleared (status can revert to draft; this must not,
 		// or the meter re-debits).
 		firstSentAt: v.optional(v.number()),
+		recurringPaymentRule: v.optional(recurringPaymentRuleValidator),
+		paymentRuleSourceRevisionId: v.optional(v.id("projectSeriesAgreementRevisions")),
+		paymentScheduleAnchorAt: v.optional(v.number()),
+		paymentScheduleIsCustom: v.optional(v.boolean()),
+		recurringBillingPeriod: v.optional(v.string()),
+		recurringBillingReview: v.optional(v.boolean()),
 
 		// Payment
 		stripeSessionId: v.optional(v.string()),
@@ -974,6 +1016,7 @@ export default defineSchema({
 		// Overdue sweep. dueDate trails status so the scan window holds only
 		// invoices that are actually flippable, never not-yet-due ones.
 		.index("by_status_due_date", ["orgId", "status", "dueDate"])
+		.index("by_org_client_recurring_period", ["orgId", "clientId", "recurringBillingPeriod"])
 		.index("by_public_token", ["publicToken"])
 		.searchIndex("search_text", {
 			searchField: "searchText",
@@ -984,6 +1027,8 @@ export default defineSchema({
 	invoiceLineItems: defineTable({
 		invoiceId: v.id("invoices"),
 		orgId: v.id("organizations"),
+		invoiceGroupId: v.optional(v.id("invoiceGroups")),
+		sourceQuoteLineItemId: v.optional(v.id("quoteLineItems")),
 
 		description: v.string(),
 		quantity: v.number(),
@@ -997,6 +1042,66 @@ export default defineSchema({
 	})
 		.index("by_invoice", ["invoiceId"])
 		.index("by_org", ["orgId"]),
+
+	invoiceGroups: defineTable({
+		orgId: v.id("organizations"),
+		invoiceId: v.id("invoices"),
+		sourceProjectId: v.id("projects"),
+		sourceQuoteId: v.id("quotes"),
+		sourceAgreementRevisionId: v.optional(v.id("projectSeriesAgreementRevisions")),
+		serviceDate: v.number(),
+		property: v.optional(v.object({ id: v.id("clientProperties"), name: v.optional(v.string()), address: v.string() })),
+		subtotal: v.number(),
+		discountAmount: v.number(),
+		taxAmount: v.number(),
+		total: v.number(),
+		sortOrder: v.number(),
+	})
+		.index("by_org", ["orgId"])
+		.index("by_invoice", ["invoiceId"])
+		.index("by_source_project", ["sourceProjectId"])
+		.index("by_source_quote", ["sourceQuoteId"]),
+
+	recurringBillingAllocations: defineTable({
+		orgId: v.id("organizations"), seriesId: v.id("projectSeries"), projectId: v.id("projects"), quoteId: v.id("quotes"),
+		invoiceId: v.optional(v.id("invoices")), previousInvoiceId: v.optional(v.id("invoices")),
+		state: v.union(v.literal("allocated"), v.literal("review"), v.literal("ready"), v.literal("deferred"), v.literal("nonbillable")),
+		reason: v.optional(v.string()), completedAt: v.number(), createdAt: v.number(),
+	})
+		.index("by_org", ["orgId"])
+		.index("by_project_quote", ["projectId", "quoteId"])
+		.index("by_invoice", ["invoiceId"])
+		.index("by_org_state", ["orgId", "state"])
+		.index("by_project", ["projectId"]),
+
+	clientMonthlyPaymentSchedules: defineTable({
+		orgId: v.id("organizations"), clientId: v.id("clients"),
+		activeVersionId: v.optional(v.id("clientMonthlyPaymentScheduleVersions")),
+		pendingVersionId: v.optional(v.id("clientMonthlyPaymentScheduleVersions")),
+	})
+		.index("by_org", ["orgId"])
+		.index("by_org_client", ["orgId", "clientId"]),
+
+	clientMonthlyPaymentScheduleVersions: defineTable({
+		orgId: v.id("organizations"), clientId: v.id("clients"), version: v.number(),
+		rule: recurringPaymentRuleValidator,
+		seriesIds: v.array(v.id("projectSeries")),
+		approvedSeriesIds: v.array(v.id("projectSeries")),
+		agreementRevisionIds: v.array(v.id("projectSeriesAgreementRevisions")),
+		status: v.union(v.literal("pending_approval"), v.literal("scheduled"), v.literal("active"), v.literal("superseded"), v.literal("cancelled")),
+		effectiveMonth: v.optional(v.string()),
+		createdAt: v.number(), createdByUserId: v.id("users"),
+	})
+		.index("by_org", ["orgId"])
+		.index("by_org_client_version", ["orgId", "clientId", "version"])
+		.index("by_status_month", ["status", "effectiveMonth"]),
+
+	recurringMonthlyBillingRuns: defineTable({
+		orgId: v.id("organizations"), clientId: v.id("clients"), period: v.string(), invoiceId: v.optional(v.id("invoices")), createdAt: v.number(),
+		scanCursor: v.optional(v.string()), candidateQuoteIds: v.optional(v.array(v.id("quotes"))), scanComplete: v.optional(v.boolean()),
+	})
+		.index("by_org", ["orgId"])
+		.index("by_org_client_period", ["orgId", "clientId", "period"]),
 
 	// Payments - individual payment installments for invoices
 	payments: defineTable({
@@ -1099,6 +1204,9 @@ export default defineSchema({
 
 		quoteContentSnapshotId: v.optional(v.id("quoteDocumentContents")),
 		quoteSnapshotSource: v.optional(v.union(v.literal("server"), v.literal("workspace"))),
+		recurringAgreementLocked: v.optional(v.boolean()),
+		recurringAgreementEditedAt: v.optional(v.number()),
+		recurringSignatureSendState: v.optional(v.union(v.literal("sending"), v.literal("sent"), v.literal("uncertain"))),
 		quoteContentSnapshot: v.optional(quoteContentSnapshotValidator),
 		quoteApprovalCycle: v.optional(v.number()),
 

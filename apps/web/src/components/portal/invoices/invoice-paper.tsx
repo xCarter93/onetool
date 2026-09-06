@@ -99,6 +99,20 @@ export interface InvoicePaperProps {
 	paymentSummary: InvoicePaperPaymentSummary;
 	/** Installment list + Stripe pay surface (desktop) — mounted unchanged. */
 	paySlot: ReactNode;
+	invoiceGroups?: Array<{
+		sourceProjectId: string;
+		projectTitle: string;
+		sourceQuoteId: string;
+		quoteNumber?: string;
+		agreementReference?: string;
+		serviceDate: number;
+		property?: { name?: string; address: string };
+		subtotal: number;
+		discountAmount: number;
+		taxAmount: number;
+		total: number;
+		sortOrder: number;
+	}>;
 }
 
 export function InvoicePaper({
@@ -111,6 +125,7 @@ export function InvoicePaper({
 	displayStatus,
 	paymentSummary,
 	paySlot,
+	invoiceGroups,
 }: InvoicePaperProps) {
 	// Mode-aware: a quote-style percentage discount stores the RATE, not dollars.
 	const displayPricing = deriveInvoiceDisplayPricing(invoice);
@@ -217,6 +232,29 @@ export function InvoicePaper({
 
 					{/* Main: line items + totals */}
 					<div className="flex min-w-0 flex-col gap-6">
+						{invoiceGroups && invoiceGroups.length > 0 ? (
+							<section className="space-y-3">
+								<h2 className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">Covered visits</h2>
+								<div className="divide-y divide-border border-y border-border">
+									{invoiceGroups.map((group) => (
+										<div key={group.sourceProjectId} className="space-y-2 py-4">
+											<div>
+												<p className="font-semibold text-foreground">{group.projectTitle}</p>
+												<p className="text-sm text-muted-foreground">Service date {formatDate(group.serviceDate)}</p>
+												{group.property && <p className="text-sm text-muted-foreground">{[group.property.name, group.property.address].filter(Boolean).join(", ")}</p>}
+												<p className="text-sm text-muted-foreground">Quote {group.quoteNumber ?? group.sourceQuoteId}{group.agreementReference ? `, agreement ${group.agreementReference}` : ""}</p>
+											</div>
+											<dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm tabular-nums sm:grid-cols-4">
+												<div><dt className="text-muted-foreground">Subtotal</dt><dd>{formatMoney(group.subtotal)}</dd></div>
+												<div><dt className="text-muted-foreground">Discount</dt><dd>-{formatMoney(group.discountAmount)}</dd></div>
+												<div><dt className="text-muted-foreground">Tax</dt><dd>{formatMoney(group.taxAmount)}</dd></div>
+												<div><dt className="text-muted-foreground">Visit total</dt><dd className="font-semibold">{formatMoney(group.total)}</dd></div>
+											</dl>
+										</div>
+									))}
+								</div>
+							</section>
+						) : null}
 						<div className="flex flex-col gap-4">
 							<div className="flex items-baseline justify-between gap-3">
 								<span className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">

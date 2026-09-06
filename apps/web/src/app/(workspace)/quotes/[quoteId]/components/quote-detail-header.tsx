@@ -12,6 +12,7 @@ import {
 	RotateCcw,
 	Receipt,
 	CopyPlus,
+	FileSignature,
 } from "lucide-react";
 import {
 	ActionButtonGroup,
@@ -47,6 +48,13 @@ interface QuoteDetailHeaderProps {
 	onCopyToFuture?: () => void;
 	copyToFutureDisabled?: boolean;
 	copyToFutureDisabledReason?: string;
+	onPrepareAgreement?: () => void;
+	prepareAgreementDisabled?: boolean;
+	prepareAgreementDisabledReason?: string;
+	onRestoreAgreementPricing?: () => void;
+	restoreAgreementPricingDisabled?: boolean;
+	restoreAgreementPricingDisabledReason?: string;
+	restoreAgreementPricingLabel?: string;
 	/** True while a convert-to-invoice mutation is in flight — disables the action to prevent duplicate invoices. */
 	converting?: boolean;
 }
@@ -62,6 +70,13 @@ export function QuoteDetailHeader({
 	onCopyToFuture,
 	copyToFutureDisabled = false,
 	copyToFutureDisabledReason,
+	onPrepareAgreement,
+	prepareAgreementDisabled = false,
+	prepareAgreementDisabledReason,
+	onRestoreAgreementPricing,
+	restoreAgreementPricingDisabled = false,
+	restoreAgreementPricingDisabledReason,
+	restoreAgreementPricingLabel = "Restore agreement pricing",
 	converting = false,
 }: QuoteDetailHeaderProps) {
 	const { can } = usePermissions();
@@ -173,6 +188,34 @@ export function QuoteDetailHeader({
 					},
 				]
 			: []),
+		...(onPrepareAgreement
+			? [
+					{
+						key: "prepare-agreement",
+						label: "Set up agreement",
+						icon: <FileSignature className="h-4 w-4" />,
+						slot: "secondary" as const,
+						variant: "outline" as const,
+						onClick: onPrepareAgreement,
+						disabled: prepareAgreementDisabled,
+						disabledReason: prepareAgreementDisabledReason,
+					},
+				]
+			: []),
+		...(onRestoreAgreementPricing
+			? [
+					{
+						key: "restore-agreement-pricing",
+						label: restoreAgreementPricingLabel,
+						icon: <RotateCcw className="h-4 w-4" />,
+						slot: "secondary" as const,
+						variant: "outline" as const,
+						onClick: onRestoreAgreementPricing,
+						disabled: restoreAgreementPricingDisabled,
+						disabledReason: restoreAgreementPricingDisabledReason,
+					},
+				]
+			: []),
 		{
 			// Opens the send modal: portal template, custom email, or e-signature.
 			// Stays visible on approved quotes, where email is refused but the
@@ -224,9 +267,16 @@ export function QuoteDetailHeader({
 							Quote {quote.quoteNumber || `#${quote._id.slice(-6)}`}
 						</h1>
 						{!isSticky && (
-							<p className="text-sm text-muted-foreground">
-								{quote.title || "Untitled Quote"}
-							</p>
+							<div className="text-sm text-muted-foreground">
+								<p>{quote.title || "Untitled Quote"}</p>
+								{quote.recurringAgreementTerms && (
+									<p className="mt-1">
+										{quote.recurringInheritedAt && !quote.recurringQuoteOverride
+											? `Approved under recurring agreement ${quote.recurringAgreementTerms.agreementReference}`
+											: `Recurring agreement ${quote.recurringAgreementTerms.agreementReference}, revision ${quote.recurringAgreementTerms.revisionNumber}`}
+									</p>
+								)}
+							</div>
 						)}
 					</div>
 					<AnimatePresence initial={false}>

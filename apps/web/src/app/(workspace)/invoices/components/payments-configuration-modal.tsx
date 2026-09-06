@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo, useCallback } from "react";
+import Link from "next/link";
 import { useMutation } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
@@ -16,6 +17,7 @@ import {
 	Lock,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Button } from "@/components/ui/button";
 import { DatePicker } from "@/components/ui/date-picker";
 import Modal from "@/components/ui/modal";
@@ -30,6 +32,11 @@ import {
 	localDateToUtcMidnightMs,
 	utcMidnightMsToLocalDate,
 } from "@/lib/dates";
+import {
+	RecurringPaymentRuleEditor,
+	recurringPaymentRuleError,
+	type RecurringPaymentRuleValue,
+} from "@/components/shared/recurring-payment-rule-editor";
 
 // ============================================================================
 // Types
@@ -66,6 +73,8 @@ interface PaymentsConfigurationModalProps {
 	/** The invoice's current deadline; new installments start here. */
 	invoiceDueDate: number;
 	existingPayments: ExistingPayment[];
+	recurringPaymentRule?: RecurringPaymentRuleValue;
+	paymentRuleSourceRevisionId?: Id<"projectSeriesAgreementRevisions">;
 }
 
 interface LocalPayment {
@@ -518,10 +527,12 @@ export function PaymentsConfigurationModal({
 	invoiceTotal,
 	invoiceDueDate,
 	existingPayments,
+	recurringPaymentRule,
+	paymentRuleSourceRevisionId,
 }: PaymentsConfigurationModalProps) {
 	const toast = useToast();
 	const orgToday = useOrgToday();
-	const configurePayments = useMutation(api.payments.configurePayments);
+	const configurePayments = useMutation(api.payments.configurePaymentsWithScope);
 
 	// Convert existing payments to local state
 	const [payments, setPayments] = useState<LocalPayment[]>(() =>
@@ -529,6 +540,12 @@ export function PaymentsConfigurationModal({
 	);
 
 	const [isSaving, setIsSaving] = useState(false);
+	const [showSaveScope, setShowSaveScope] = useState(false);
+	const [saveScope, setSaveScope] = useState<"invoice" | "future">("invoice");
+	const [futureRule, setFutureRule] = useState<RecurringPaymentRuleValue>(
+		recurringPaymentRule ?? { type: "percentage", installments: [{ percentage: 100, dayOffset: 30 }] }
+	);
+	const [futureQuoteIds, setFutureQuoteIds] = useState<Id<"quotes">[]>([]);
 	// null means "follow the prefill"; a string means the user typed over it.
 	const [shiftDaysInput, setShiftDaysInput] = useState<string | null>(null);
 
@@ -542,6 +559,10 @@ export function PaymentsConfigurationModal({
 		setPrevReset({ isOpen, existingPayments });
 		setPayments(mapExistingPayments(existingPayments));
 		setShiftDaysInput(null);
+		setShowSaveScope(false);
+		setSaveScope("invoice");
+		setFutureRule(recurringPaymentRule ?? { type: "percentage", installments: [{ percentage: 100, dayOffset: 30 }] });
+		setFutureQuoteIds([]);
 	} else if (prevReset.isOpen !== isOpen) {
 		// Keep tracker in sync when closing without resetting payments
 		setPrevReset({ isOpen, existingPayments });
@@ -634,12 +655,26 @@ export function PaymentsConfigurationModal({
 				return;
 			}
 		}
+		if (recurringPaymentRule && !showSaveScope) {
+			setShowSaveScope(true);
+			return;
+		}
+		if (saveScope === "future") {
+			const ruleError = recurringPaymentRuleError(futureRule);
+			if (ruleError) {
+				toast.error("Validation Error", ruleError);
+				return;
+			}
+		}
 
 		setIsSaving(true);
 
 		try {
-			await configurePayments({
+			const result = await configurePayments({
 				invoiceId,
+				scope: recurringPaymentRule ? saveScope : "invoice",
+				futureRule: recurringPaymentRule && saveScope === "future" ? futureRule : undefined,
+				expectedPaymentRuleSourceRevisionId: recurringPaymentRule && saveScope === "future" ? paymentRuleSourceRevisionId : undefined,
 				payments: editablePayments.map((p, index) => ({
 					// Patching in place keeps a row's in-flight Stripe checkout alive.
 					id: p.originalId,
@@ -657,7 +692,11 @@ export function PaymentsConfigurationModal({
 				"Schedule saved",
 				`This invoice is now due ${formatCalendarDate(deadline)}.`
 			);
-			onClose();
+			if (result.futureProposal?.quoteIds.length) {
+				setFutureQuoteIds(result.futureProposal.quoteIds);
+			} else {
+				onClose();
+			}
 		} catch (error) {
 			toast.error("Error", convexErrorMessage(error, "Failed to save payments"));
 		} finally {
@@ -769,19 +808,41 @@ export function PaymentsConfigurationModal({
 				<PaymentsSummary payments={payments} invoiceTotal={invoiceTotal} />
 			</div>
 
+			{showSaveScope && recurringPaymentRule && futureQuoteIds.length === 0 && (
+				<div className="mt-6 space-y-4 rounded-lg border border-border p-4">
+					<div>
+						<p className="font-medium text-foreground">Apply this change to</p>
+						<p className="text-sm text-muted-foreground">Future schedules are prepared as agreement revisions for customer approval.</p>
+					</div>
+					<RadioGroup value={saveScope} onValueChange={(value) => setSaveScope(value as "invoice" | "future")} className="space-y-3">
+						<label className="flex items-start gap-3"><RadioGroupItem value="invoice" className="mt-0.5" /><span><span className="block text-sm font-medium">This invoice</span><span className="block text-xs text-muted-foreground">Keep future invoices on their current schedule.</span></span></label>
+						<label className="flex items-start gap-3"><RadioGroupItem value="future" className="mt-0.5" /><span><span className="block text-sm font-medium">This and future invoices</span><span className="block text-xs text-muted-foreground">Prepare the new rule for customer approval.</span></span></label>
+					</RadioGroup>
+					{saveScope === "future" && <RecurringPaymentRuleEditor value={futureRule} onChange={setFutureRule} />}
+				</div>
+			)}
+
+			{futureQuoteIds.length > 0 && (
+				<div className="mt-6 rounded-lg border border-success/30 bg-success/10 p-4">
+					<p className="font-medium text-foreground">Invoice schedule saved</p>
+					<p className="mt-1 text-sm text-muted-foreground">The future schedule is awaiting approval.</p>
+					<Button nativeButton={false} className="mt-3" render={<Link href={`/quotes/${futureQuoteIds[0]}`} />}>Review agreement revision</Button>
+				</div>
+			)}
+
 			{/* Footer */}
 			<div className="mt-6 border-t border-border pt-4">
 				<div className="flex items-center justify-end gap-3">
 					<Button variant="outline" onClick={onClose} disabled={isSaving}>
-						Cancel
+						{futureQuoteIds.length > 0 ? "Close" : "Cancel"}
 					</Button>
-					<Button
+					{futureQuoteIds.length === 0 && <Button
 						onClick={handleSave}
 						disabled={!isValid || isSaving || editablePayments.length === 0}
 					>
 						{isSaving && <Loader2 className="h-4 w-4 animate-spin" />}
 						{isSaving ? "Saving..." : "Save schedule"}
-					</Button>
+					</Button>}
 				</div>
 
 				{!isValid && (

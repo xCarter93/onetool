@@ -51,6 +51,7 @@ export const clientPortalArticles: HelpArticle[] = [
 							"**Invoices** lists their invoices, where they can see what is due and pay open balances by card.",
 						],
 					},
+					{ type: "paragraph", text: "Recurring visits are grouped under their agreement in the Quotes list. A visit shows the agreement it inherited, while an override remains prominent. Quote and invoice details show the service property and date; grouped recurring invoices also show the subtotal, discount, tax and total for each covered visit." },
 				],
 			},
 			{

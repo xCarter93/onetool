@@ -1,6 +1,7 @@
 "use client";
 
 import { deriveInvoiceStatus } from "@onetool/backend/convex/lib/invoiceLateness";
+import { calculateRecurringPaymentSchedule } from "@onetool/backend/convex/lib/recurringPaymentRules";
 import {
 	isPayableRow,
 	refundedAmountOf,
@@ -11,6 +12,7 @@ import { usePermissions } from "@/hooks/use-permissions";
 import { useOrgToday } from "@/hooks/use-org-today";
 import { useClientSendMeter } from "@/hooks/use-client-send-meter";
 import { useParams } from "next/navigation";
+import Link from "next/link";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { useToast } from "@/hooks/use-toast";
@@ -62,7 +64,7 @@ function InvoiceDetailPageContent() {
 	const params = useParams();
 	const toast = useToast();
 	const invoiceId = params.invoiceId as Id<"invoices">;
-	const { can } = usePermissions();
+	const { can, hasAllRecords } = usePermissions();
 	const orgToday = useOrgToday();
 
 	// State
@@ -92,6 +94,10 @@ function InvoiceDetailPageContent() {
 	// null, so skip listByInvoice rather than let it throw an org-mismatch error.
 	const lineItems = useQuery(
 		api.invoiceLineItems.listByInvoice,
+		invoice ? { invoiceId } : "skip"
+	);
+	const invoiceGroups = useQuery(
+		api.invoices.getGroups,
 		invoice ? { invoiceId } : "skip"
 	);
 	const organization = useQuery(api.organizations.get, {});
@@ -125,6 +131,19 @@ function InvoiceDetailPageContent() {
 		useClientSendMeter();
 	const generateUploadUrl = useMutation(api.documents.generateUploadUrl);
 	const createDocument = useMutation(api.documents.create);
+	const keepExistingRecurringInvoice = useMutation(api.recurringBillingReview.keepExistingInvoice);
+	const [isKeepingInvoice, setIsKeepingInvoice] = useState(false);
+	const handleKeepExistingInvoice = async () => {
+		setIsKeepingInvoice(true);
+		try {
+			await keepExistingRecurringInvoice({ invoiceId });
+			toast.success("Review resolved", "This invoice and its payment history were kept.");
+		} catch (error) {
+			toast.error("Error", convexErrorMessage(error, "Failed to resolve invoice review"));
+		} finally {
+			setIsKeepingInvoice(false);
+		}
+	};
 
 	// Last render produced by the preview, kept so Generate can skip a second
 	// identical render. Invalidated by any client-visible content change.
@@ -142,11 +161,11 @@ function InvoiceDetailPageContent() {
 	const renderInputsFingerprint = useMemo(
 		() =>
 			JSON.stringify(
-				[client, organization, primaryProperty].map((doc) =>
+				[client, organization, primaryProperty, invoiceGroups].map((doc) =>
 					doc === undefined ? "loading" : doc
 				)
 			),
-		[client, organization, primaryProperty]
+		[client, organization, primaryProperty, invoiceGroups]
 	);
 
 	// The PDF prints the payment schedule, but payment writes do not stamp the
@@ -172,6 +191,11 @@ function InvoiceDetailPageContent() {
 			invoice?.contentUpdatedAt !== undefined &&
 			invoice.contentUpdatedAt > latestDocument.generatedAt
 	);
+	const recurringScheduleNeedsReview = useMemo(() => {
+		if (!invoice?.recurringPaymentRule || invoice.paymentScheduleIsCustom) return false;
+		return calculateRecurringPaymentSchedule(invoice.recurringPaymentRule, invoice.total, Date.now()).status === "review";
+	}, [invoice?.recurringPaymentRule, invoice?.paymentScheduleIsCustom, invoice?.total]);
+	const canResolveRecurringReview = can("projects", "modify") && can("quotes", "modify") && can("invoices", "modify") && hasAllRecords("projects") && hasAllRecords("quotes") && hasAllRecords("invoices");
 
 	// Derived state
 	const selectedDocument = useMemo(() => {
@@ -237,6 +261,7 @@ function InvoiceDetailPageContent() {
 			client,
 			organization,
 			primaryProperty,
+			invoiceGroups: invoiceGroups ?? undefined,
 		});
 		previewBlobRef.current = {
 			blob,
@@ -255,6 +280,7 @@ function InvoiceDetailPageContent() {
 		client,
 		organization,
 		primaryProperty,
+		invoiceGroups,
 	]);
 
 	const takeCachedPdfBlob = (): Blob | null => {
@@ -397,6 +423,25 @@ function InvoiceDetailPageContent() {
 					onGeneratePdf={handleGeneratePdf}
 					onCancel={() => setIsCancelModalOpen(true)}
 				/>
+
+				{invoice.recurringBillingReview === true && invoice.status !== "cancelled" && (
+					<Frame>
+						<FramePanel className="overflow-hidden p-0!">
+							<Alert variant="warning" className="border-0 bg-warning/5 shadow-none [&>svg]:text-warning-foreground">
+								<ExclamationTriangleIcon />
+								<AlertTitle>Review recurring invoice pricing</AlertTitle>
+								{canResolveRecurringReview && <AlertAction><Button size="xs" variant="outline" onClick={handleKeepExistingInvoice} disabled={isKeepingInvoice}>{isKeepingInvoice ? "Keeping..." : "Keep this invoice"}</Button></AlertAction>}
+								<AlertDescription>
+									A source visit changed after this invoice was drafted. Review the covered visit totals before sending. Keeping this invoice preserves its current content and payment history.
+									{invoiceGroups && invoiceGroups.length > 0 && <span className="mt-2 flex flex-wrap gap-x-3 gap-y-1">{invoiceGroups.map((group) => <Link key={group._id} href={`/projects/${group.sourceProjectId}`} className="font-medium text-foreground underline underline-offset-2">{group.projectTitle}</Link>)}</span>}
+								</AlertDescription>
+							</Alert>
+						</FramePanel>
+					</Frame>
+				)}
+				{recurringScheduleNeedsReview && (
+					<Frame><FramePanel className="overflow-hidden p-0!"><Alert variant="warning" className="border-0 bg-warning/5 shadow-none [&>svg]:text-warning-foreground"><ExclamationTriangleIcon /><AlertTitle>Review this payment schedule before sending</AlertTitle>{can("invoices", "modify") && <AlertAction><Button size="xs" variant="outline" onClick={() => setIsPaymentsModalOpen(true)}>Configure payments</Button></AlertAction>}<AlertDescription>The agreement&apos;s fixed installments exceed this invoice total. Set an invoice-specific schedule before sending.</AlertDescription></Alert></FramePanel></Frame>
+				)}
 
 				{/* Tabs + Sidebar */}
 				<InvoiceDetailTabs
@@ -559,6 +604,8 @@ function InvoiceDetailPageContent() {
 							refundedAmount: p.refundedAmount,
 						})) || []
 					}
+					recurringPaymentRule={invoice.recurringPaymentRule}
+					paymentRuleSourceRevisionId={invoice.paymentRuleSourceRevisionId}
 				/>
 			)}
 		</>

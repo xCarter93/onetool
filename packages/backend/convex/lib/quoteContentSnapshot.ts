@@ -1,6 +1,7 @@
 import { ConvexError, type Infer, v } from "convex/values";
 import type { Doc } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
+import { recurringAgreementTermsValidator } from "./recurringAgreementTerms";
 import { calculateLineItemAmount, computeQuoteTotals } from "./money";
 
 export const MAX_QUOTE_SNAPSHOT_LINES = 1_000;
@@ -39,6 +40,7 @@ export const quoteContentSnapshotValidator = v.object({
 	requiresCountersignature: v.optional(v.boolean()),
 	countersignerId: v.optional(v.id("users")),
 	signingOrder: v.optional(v.union(v.literal("client_first"), v.literal("org_first"))),
+	recurringAgreementTerms: v.optional(recurringAgreementTermsValidator),
 	approvalCycle: v.number(),
 	subtotal: v.number(),
 	taxAmount: v.number(),
@@ -96,6 +98,7 @@ export function buildQuoteContentSnapshot(
 		requiresCountersignature: quote.requiresCountersignature,
 		countersignerId: quote.countersignerId,
 		signingOrder: quote.signingOrder,
+		recurringAgreementTerms: quote.recurringAgreementTerms,
 		approvalCycle: quote.approvalCycle ?? 0,
 		...totals,
 		lineItems: lines,

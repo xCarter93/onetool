@@ -74,6 +74,16 @@ export async function assertInvoiceContentEditable(
 		});
 	}
 
+	const grouped = await ctx.db.query("invoiceGroups")
+		.withIndex("by_invoice", (q) => q.eq("invoiceId", invoice._id)).first();
+	if (grouped) {
+		throw new ConvexError({
+			code: "CONFLICT",
+			message:
+				"GROUPED_INVOICE_LOCKED: edit or remove the specific visit group so its approved pricing and attribution stay in sync.",
+		});
+	}
+
 	if (await hasSettledPayment(ctx, invoice._id)) {
 		throw new ConvexError({
 			code: "CONFLICT",

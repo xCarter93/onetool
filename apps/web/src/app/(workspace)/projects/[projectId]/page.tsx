@@ -132,7 +132,11 @@ function ProjectDetailPageContent() {
 
 	// Filter approved quotes for invoice generation
 	const approvedQuotes =
-		projectQuotes?.filter((quote) => quote.status === "approved") || [];
+		projectQuotes?.filter(
+			(quote) =>
+				quote.status === "approved" &&
+				!quote.recurringAgreementSourceQuoteId
+		) || [];
 
 	return (
 		<ProjectEditScopeProvider

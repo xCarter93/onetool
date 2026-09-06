@@ -6,6 +6,10 @@
  */
 
 import type { Doc } from "@onetool/backend/convex/_generated/dataModel";
+import {
+	formatRecurringPaymentRule,
+	formatRecurringSchedule,
+} from "@onetool/backend/pdf/recurringAgreementFormat";
 
 import { formatMoney } from "@/lib/portal/format";
 import { TotalsBreakdown } from "@/components/portal/totals-breakdown";
@@ -31,6 +35,9 @@ export interface QuotePaperProps {
 		| "discountEnabled"
 		| "discountAmount"
 		| "discountType"
+		| "recurringAgreementTerms"
+		| "recurringInheritedAt"
+		| "recurringQuoteOverride"
 	>;
 	lineItems: QuotePaperLineItem[];
 	businessName: string;
@@ -115,6 +122,55 @@ export function QuotePaper({ quote, lineItems, businessName }: QuotePaperProps) 
 				taxLabel="Estimated tax"
 				total={total}
 			/>
+
+			{quote.recurringAgreementTerms ? (
+				<section className="mt-10 border-t border-border pt-6">
+					<h2 className="text-base font-semibold text-foreground">
+						Recurring agreement
+					</h2>
+					{quote.recurringInheritedAt && !quote.recurringQuoteOverride ? (
+						<p className="mt-1 text-sm font-medium text-foreground">
+							Approved under recurring agreement {quote.recurringAgreementTerms.agreementReference}
+						</p>
+					) : null}
+					<dl className="mt-4 grid gap-x-6 gap-y-3 text-sm sm:grid-cols-[9rem_minmax(0,1fr)]">
+						<dt className="text-muted-foreground">Agreement</dt>
+						<dd className="font-medium text-foreground">
+							{quote.recurringAgreementTerms.agreementReference}, revision {quote.recurringAgreementTerms.revisionNumber}
+						</dd>
+						{quote.recurringAgreementTerms.property ? (
+							<>
+								<dt className="text-muted-foreground">Service property</dt>
+								<dd className="whitespace-pre-wrap text-foreground">
+									{[quote.recurringAgreementTerms.property.name, quote.recurringAgreementTerms.property.address].filter(Boolean).join("\n")}
+								</dd>
+							</>
+						) : null}
+						<dt className="text-muted-foreground">Service scope</dt>
+						<dd className="whitespace-pre-wrap text-foreground">
+							{[quote.recurringAgreementTerms.scope.title, quote.recurringAgreementTerms.scope.description].filter(Boolean).join("\n")}
+						</dd>
+						<dt className="text-muted-foreground">Schedule</dt>
+						<dd className="text-foreground">
+							{formatRecurringSchedule(quote.recurringAgreementTerms.schedule.rule)}. Starts {quote.recurringAgreementTerms.schedule.anchorDateKey}. Timezone: {quote.recurringAgreementTerms.schedule.timezone}.
+						</dd>
+						<dt className="text-muted-foreground">Billing</dt>
+						<dd className="text-foreground">
+							{quote.recurringAgreementTerms.billingMode === "monthly" ? "Monthly consolidated billing" : "Billed per completed visit"}
+						</dd>
+						{quote.recurringAgreementTerms.paymentChangeActivation === "next_full_month_after_all_approvals" ? (
+							<>
+								<dt className="text-muted-foreground">Payment change</dt>
+								<dd className="text-foreground">This payment arrangement starts with the next full calendar month after all affected recurring agreements are approved. Existing terms apply until then.</dd>
+							</>
+						) : null}
+						<dt className="text-muted-foreground">Payment</dt>
+						<dd className="text-foreground">
+							{formatRecurringPaymentRule(quote.recurringAgreementTerms.paymentRule)}
+						</dd>
+					</dl>
+				</section>
+			) : null}
 
 			{quote.terms ? (
 				<div className="mt-10 pt-6 border-t border-dashed border-border">

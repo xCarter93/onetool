@@ -5,9 +5,9 @@ import "@testing-library/jest-dom/vitest";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Doc } from "@onetool/backend/convex/_generated/dataModel";
 
-vi.mock("convex/react", () => ({ useQuery: () => [] }));
+vi.mock("convex/react", () => ({ useQuery: () => undefined, useMutation: () => vi.fn() }));
 vi.mock("@/hooks/use-permissions", () => ({
-	usePermissions: () => ({ can: () => true, isLoading: false }),
+	usePermissions: () => ({ can: () => true, hasAllRecords: () => true, isLoading: false }),
 }));
 vi.mock("@/hooks/use-toast", () => ({
 	useToast: () => ({ success: vi.fn(), error: vi.fn() }),

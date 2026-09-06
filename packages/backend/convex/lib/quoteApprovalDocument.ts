@@ -54,6 +54,7 @@ export async function selectPresentedQuoteDocument(
 			return false;
 		}
 		const documentContent = await loadQuoteDocumentSnapshot(ctx, document);
+		if (quote.recurringAgreementTerms && (document.quoteSnapshotSource !== "server" || !documentContent)) return false;
 		return (
 			!documentContent ||
 			quoteContentSnapshotsEqual(documentContent, currentContent)
@@ -90,6 +91,8 @@ export async function resolveQuoteApprovalDocument(
 		return stale(quote.latestDocumentId);
 	}
 	const documentContent = await loadQuoteDocumentSnapshot(ctx, document);
+	if (quote.recurringAgreementTerms && (document.quoteSnapshotSource !== "server" || !documentContent))
+		return stale(quote.latestDocumentId);
 	if (documentContent) {
 		currentContent = await loadCurrentQuoteContentSnapshot(ctx, quote._id);
 		if (

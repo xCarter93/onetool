@@ -31,6 +31,11 @@ export const ORG_SCOPED_CASCADE_TABLES = [
 	"quoteApprovals",
 	"quoteLineItems",
 	"invoiceLineItems",
+	"invoiceGroups",
+	"recurringBillingAllocations",
+	"recurringMonthlyBillingRuns",
+	"clientMonthlyPaymentSchedules",
+	"clientMonthlyPaymentScheduleVersions",
 	"payments",
 	"messageAttachments",
 	"teamMessages",
@@ -62,6 +67,7 @@ export const ORG_SCOPED_CASCADE_TABLES = [
 	"projectSeriesQuoteCopies",
 	"projectSeriesQuoteTemplates",
 	"projectSeriesQuoteVersions",
+	"projectSeriesAgreementRevisions",
 	"projectTaskCopies",
 	"projectTaskTemplates",
 	"projectOccurrences",
@@ -167,6 +173,37 @@ export async function cascadeDeleteOrgDataPage(
 			await ctx.db.delete(row._id);
 			remaining--;
 		}
+	}
+
+	{
+		if (remaining <= 0) return { done: false };
+		const rows = await ctx.db.query("invoiceGroups").withIndex("by_org", (q) => q.eq("orgId", orgId)).take(remaining);
+		for (const row of rows) {
+			await ctx.db.delete(row._id);
+			remaining--;
+		}
+	}
+	{
+		if (remaining <= 0) return { done: false };
+		const rows = await ctx.db.query("recurringBillingAllocations").withIndex("by_org", (q) => q.eq("orgId", orgId)).take(remaining);
+		for (const row of rows) {
+			await ctx.db.delete(row._id);
+			remaining--;
+		}
+	}
+	{
+		if (remaining <= 0) return { done: false };
+		const rows = await ctx.db.query("recurringMonthlyBillingRuns").withIndex("by_org", (q) => q.eq("orgId", orgId)).take(remaining);
+		for (const row of rows) {
+			await ctx.db.delete(row._id);
+			remaining--;
+		}
+	}
+
+	for (const table of ["clientMonthlyPaymentSchedules", "clientMonthlyPaymentScheduleVersions"] as const) {
+		if (remaining <= 0) return { done: false };
+		const rows = await ctx.db.query(table).withIndex("by_org", (q) => q.eq("orgId", orgId)).take(remaining);
+		for (const row of rows) { await ctx.db.delete(row._id); remaining--; }
 	}
 
 	// payments
@@ -594,7 +631,7 @@ export async function cascadeDeleteOrgDataPage(
 	}
 
 	for (const table of [
-		"projectSeriesQuoteCopies", "projectSeriesQuoteTemplates", "projectSeriesQuoteVersions",
+		"projectSeriesQuoteCopies", "projectSeriesQuoteTemplates", "projectSeriesQuoteVersions", "projectSeriesAgreementRevisions",
 		"projectTaskCopies", "projectTaskTemplates",
 	] as const) {
 		if (remaining <= 0) return { done: false };

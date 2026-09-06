@@ -378,6 +378,11 @@ export const create = userMutation({
 			isDocumentParentInScope(ctx, args.documentType, args.documentId)
 		);
 		await validateDocumentOwnership(ctx, args.documentType, args.documentId, ctx.orgId);
+		if (args.documentType === "quote") {
+			const quote = await ctx.db.get(args.documentId as Id<"quotes">);
+			if (quote?.recurringAgreementTerms)
+				throw new ConvexError("Generate recurring agreement PDFs with OneTool's server renderer");
+		}
 		let quoteContentSnapshot = args.quoteContentSnapshot;
 		if (quoteContentSnapshot) {
 			if (args.documentType !== "quote")

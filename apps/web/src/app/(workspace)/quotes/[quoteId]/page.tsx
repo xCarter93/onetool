@@ -319,6 +319,19 @@ function QuoteDetailPageContent() {
 	) => {
 		try {
 			if (!quote || !lineItems) return;
+			if (quote.recurringAgreementTerms) {
+				const loadingId = toast.loading(
+					"Generating agreement PDF",
+					"Rendering and saving the approval version."
+				);
+				await convex.action(api.pdfActions.ensureQuotePdf, { quoteId });
+				toast.removeToast(loadingId);
+				toast.success(
+					"Agreement PDF generated",
+					"The approval version is ready."
+				);
+				return;
+			}
 			const loadingId = toast.loading(
 				"Generating PDF",
 				appendDocumentIds.length > 0
@@ -425,6 +438,14 @@ function QuoteDetailPageContent() {
 		}
 	};
 
+	const openGenerateFlow = () => {
+		if (quote?.recurringAgreementTerms) {
+			void handleGeneratePdf();
+			return;
+		}
+		setShowDocumentModal(true);
+	};
+
 	const handleDownloadPdf = async () => {
 		if (!selectedDocumentUrl) return;
 		try {
@@ -493,22 +514,40 @@ function QuoteDetailPageContent() {
 		onCopyToFuture,
 		copyToFutureDisabled,
 		copyToFutureDisabledReason,
+		onPrepareAgreement,
+		prepareAgreementDisabled,
+		prepareAgreementDisabledReason,
+		onRestoreAgreementPricing,
+		restoreAgreementPricingDisabled,
+		restoreAgreementPricingDisabledReason,
 	}: {
 		onCopyToFuture?: () => void;
 		copyToFutureDisabled?: boolean;
 		copyToFutureDisabledReason?: string;
+		onPrepareAgreement?: () => void;
+		prepareAgreementDisabled?: boolean;
+		prepareAgreementDisabledReason?: string;
+		onRestoreAgreementPricing?: () => void;
+		restoreAgreementPricingDisabled?: boolean;
+		restoreAgreementPricingDisabledReason?: string;
 	}) => (
 		<QuoteDetailHeader
 			quote={quote}
 			currentStatus={currentStatus}
 			onStatusChange={handleStatusChange}
 			onSendEmail={() => setIsEmailModalOpen(true)}
-			onGeneratePdf={() => setShowDocumentModal(true)}
+			onGeneratePdf={openGenerateFlow}
 			onDelete={() => setIsDeleteModalOpen(true)}
 			onConvertToInvoice={handleConvertToInvoice}
 			onCopyToFuture={onCopyToFuture}
 			copyToFutureDisabled={copyToFutureDisabled}
 			copyToFutureDisabledReason={copyToFutureDisabledReason}
+			onPrepareAgreement={onPrepareAgreement}
+			prepareAgreementDisabled={prepareAgreementDisabled}
+			prepareAgreementDisabledReason={prepareAgreementDisabledReason}
+			onRestoreAgreementPricing={onRestoreAgreementPricing}
+			restoreAgreementPricingDisabled={restoreAgreementPricingDisabled}
+			restoreAgreementPricingDisabledReason={restoreAgreementPricingDisabledReason}
 			converting={isConverting}
 		/>
 	);
@@ -524,6 +563,7 @@ function QuoteDetailPageContent() {
 						quote.title || `Quote ${quote.quoteNumber || quote._id.slice(-6)}`
 					}
 					projectId={quote.projectId}
+					quoteStatus={quote.status}
 				>
 					{quoteHeader}
 				</RecurringQuoteCopyGate>
@@ -545,7 +585,7 @@ function QuoteDetailPageContent() {
 					allDocumentVersions={allDocumentVersions}
 					selectedDocument={selectedDocument}
 					selectedDocumentUrl={selectedDocumentUrl}
-					onGeneratePdf={() => setShowDocumentModal(true)}
+					onGeneratePdf={openGenerateFlow}
 					onPreviewPdf={() => setShowPreviewModal(true)}
 					previewDisabled={!lineItems || lineItems.length === 0}
 					isPdfStale={isPdfStale}
@@ -615,7 +655,7 @@ function QuoteDetailPageContent() {
 					disabled: !can("quotes", "modify"),
 					onAction: () => {
 						setShowPreviewModal(false);
-						setShowDocumentModal(true);
+						openGenerateFlow();
 					},
 				}}
 			/>

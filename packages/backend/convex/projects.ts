@@ -419,6 +419,24 @@ export const getPreview = optionalUserQuery({
 					.withIndex("by_project", (q: any) => q.eq("projectId", args.id))
 					.collect()
 			: [];
+		const directInvoiceIds = new Set(invoices.map((invoice) => invoice._id));
+		const groupedInvoiceAllocations = canViewInvoices
+			? await ctx.db.query("invoiceGroups")
+					.withIndex("by_source_project", (q: any) => q.eq("sourceProjectId", args.id))
+					.take(101)
+			: [];
+		if (groupedInvoiceAllocations.length > 100) {
+			throw new Error("Project invoice attribution exceeds the preview limit");
+		}
+		const groupedInvoiceTotals = await Promise.all(
+			groupedInvoiceAllocations
+				.filter((group) => group.orgId === orgId && !directInvoiceIds.has(group.invoiceId))
+				.map(async (group) => {
+					const invoice = await ctx.db.get(group.invoiceId);
+					if (!invoice || invoice.orgId !== orgId) return null;
+					return { total: group.total, status: invoice.status, invoiceId: invoice._id };
+				})
+		);
 		const tasks = canViewTasks
 			? await ctx.db
 					.query("tasks")
@@ -472,6 +490,14 @@ export const getPreview = optionalUserQuery({
 			} else if (status !== "cancelled") {
 				invoicesOutstanding += total;
 			}
+		}
+		const groupedInvoiceIds = new Set<string>();
+		for (const allocation of groupedInvoiceTotals) {
+			if (!allocation) continue;
+			groupedInvoiceIds.add(allocation.invoiceId);
+			invoicesTotal += allocation.total;
+			if (allocation.status === "paid") invoicesPaid++;
+			else if (allocation.status !== "cancelled") invoicesOutstanding += allocation.total;
 		}
 
 		const tasksOpen = tasks.filter(
@@ -532,7 +558,7 @@ export const getPreview = optionalUserQuery({
 			related: {
 				quotes: { count: quotes.length, total: quotesTotal },
 				invoices: {
-					count: invoices.length,
+					count: invoices.length + groupedInvoiceIds.size,
 					total: invoicesTotal,
 					outstanding: invoicesOutstanding,
 					paid: invoicesPaid,

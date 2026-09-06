@@ -548,4 +548,39 @@ describe("InvoiceDetailIsland", () => {
 			"/api/portal/invoices/inv_1/payment-intent",
 		);
 	});
+
+	it("shows recurring visit source and exact group totals", () => {
+		setMatchMedia(true);
+		render(
+			<InvoiceDetailIsland
+				data={buildData({
+					invoiceGroups: [{
+						sourceProjectId: "project_1",
+						projectTitle: "Weekly grounds care",
+						sourceQuoteId: "quote_1",
+						quoteNumber: "Q-1042-3",
+						agreementReference: "Q-1042",
+						serviceDate: Date.UTC(2026, 8, 4),
+						property: { name: "North shop", address: "14 Oak Street" },
+						subtotal: 200,
+						discountAmount: 20,
+						taxAmount: 10,
+						total: 190,
+						sortOrder: 0,
+					}],
+				})}
+				clientPortalId="cpid_1"
+				hasPdf={false}
+			/>,
+		);
+
+		expect(screen.getByText("Covered visits")).toBeInTheDocument();
+		expect(screen.getByText("Weekly grounds care")).toBeInTheDocument();
+		expect(screen.getByText("North shop, 14 Oak Street")).toBeInTheDocument();
+		expect(screen.getByText("Quote Q-1042-3, agreement Q-1042")).toBeInTheDocument();
+		expect(screen.getByText("-$20.00")).toBeInTheDocument();
+		const visits = screen.getByText("Covered visits").closest("section");
+		expect(visits).not.toBeNull();
+		expect(within(visits!).getByText("$190.00", { selector: "dd" })).toBeInTheDocument();
+	});
 });

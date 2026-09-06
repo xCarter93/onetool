@@ -6,6 +6,7 @@ import {
 	createTestClient,
 	createTestInvoice,
 	createTestIdentity,
+	addMemberToOrg,
 } from "./test.helpers";
 import type { Doc, Id } from "./_generated/dataModel";
 
@@ -446,6 +447,71 @@ describe("payments.configurePayments", () => {
 
 			expect((await invoiceOf(invoiceId))?.status).toBe("sent");
 			expect(await statusEvents(invoiceId)).toHaveLength(0);
+		});
+	});
+
+	describe("future scope", () => {
+		it("rolls back invoice schedule edits when a legacy invoice cannot create a proposal", async () => {
+			const { orgId, invoiceId, asUser } = await seed();
+			const rowId = await insertRow(orgId, invoiceId, {
+				paymentAmount: 1000,
+				dueDate: TODAY,
+			});
+
+			await expect(asUser.mutation(api.payments.configurePaymentsWithScope, {
+				invoiceId,
+				scope: "future",
+				futureRule: {
+					type: "percentage",
+					installments: [{ percentage: 100, dayOffset: 30 }],
+				},
+				payments: [{ id: rowId, paymentAmount: 1000, dueDate: TODAY + 30 * DAY, sortOrder: 0 }],
+			})).rejects.toThrow();
+
+			const rows = await rowsOf(invoiceId);
+			expect(rows).toHaveLength(1);
+			expect(rows[0]._id).toBe(rowId);
+			expect(rows[0].dueDate).toBe(TODAY);
+			expect((await invoiceOf(invoiceId))?.paymentScheduleIsCustom).toBeUndefined();
+		});
+
+		it("requires an explicit reusable rule for future scope", async () => {
+			const { invoiceId, asUser } = await seed();
+			await expect(asUser.mutation(api.payments.configurePaymentsWithScope, {
+				invoiceId,
+				scope: "future",
+				payments: [{ paymentAmount: 1000, dueDate: TODAY, sortOrder: 0 }],
+			})).rejects.toThrow("reusable payment rule");
+		});
+
+		it("denies scoped staff before changing the invoice schedule", async () => {
+			const { orgId, invoiceId, clerkOrgId } = await seed();
+			const rowId = await insertRow(orgId, invoiceId, {
+				paymentAmount: 1000,
+				dueDate: TODAY,
+			});
+			const member = await t.run(async (ctx) => {
+				const member = await addMemberToOrg(ctx, orgId);
+				const membership = await ctx.db.query("organizationMemberships")
+					.withIndex("by_org_user", (q) => q.eq("orgId", orgId).eq("userId", member.userId)).unique();
+				await ctx.db.patch(membership!._id, {
+					permissions: {
+						projects: { level: "modify", allRecords: false },
+						quotes: { level: "modify", allRecords: true },
+						invoices: { level: "modify", allRecords: true },
+					},
+				});
+				return member;
+			});
+
+			await expect(t.withIdentity(createTestIdentity(member.clerkUserId, clerkOrgId))
+				.mutation(api.payments.configurePaymentsWithScope, {
+					invoiceId,
+					scope: "future",
+					futureRule: { type: "percentage", installments: [{ percentage: 100, dayOffset: 30 }] },
+					payments: [{ id: rowId, paymentAmount: 1000, dueDate: TODAY + DAY, sortOrder: 0 }],
+				})).rejects.toThrow("Organization-wide");
+			expect((await rowsOf(invoiceId))[0].dueDate).toBe(TODAY);
 		});
 	});
 });

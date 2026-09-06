@@ -1,3 +1,5 @@
+import { portalAgreementContext } from "./recurringAgreement";
+import { activateAgreementApproval } from "../lib/projectSeriesAgreements";
 import { recordQuoteDecision } from "../lib/quoteDecisionEvidence";
 // Portal-facing quote backend.
 //
@@ -57,7 +59,7 @@ export const list = query({
 			.sort((a, b) => (b.sentAt ?? 0) - (a.sentAt ?? 0));
 		// Stored total: syncQuoteTotals keeps it current, and a recompute would read
 		// every line item per quote on a live subscription. `get` still recomputes.
-		return visible.map((q) => ({
+		return Promise.all(visible.map(async (q) => ({
 			_id: q._id,
 			quoteNumber: q.quoteNumber,
 			title: q.title,
@@ -68,7 +70,8 @@ export const list = query({
 			latestDocumentId: q.latestDocumentId,
 			approvedAt: q.approvedAt,
 			declinedAt: q.declinedAt,
-		}));
+			recurringAgreement: (await portalAgreementContext(ctx, q))?.metadata ?? null,
+		})));
 	},
 });
 
@@ -153,6 +156,7 @@ export const get = query({
 			};
 		}
 
+		const agreement = await portalAgreementContext(ctx, quote);
 		const calculatedTotals = await calculateQuoteTotals(ctx, quoteId, {
 			discountEnabled: quote.discountEnabled,
 			discountAmount: quote.discountAmount,
@@ -174,6 +178,8 @@ export const get = query({
 			clientName,
 			clientEmail,
 			latestApproval,
+			recurringAgreement: agreement?.metadata ?? null,
+			sourceAgreementDocument: agreement?.approvedDocument ? { _id: agreement.approvedDocument._id, version: agreement.approvedDocument.version } : null,
 		};
 	},
 });
@@ -219,6 +225,23 @@ export const getDownloadUrl = query({
 		if (!latestDocument) return null;
 
 		const url = await ctx.storage.getUrl(latestDocument.storageId);
+		return url ? { url } : null;
+	},
+});
+
+export const getAgreementDownloadUrl = query({
+	args: { quoteId: v.id("quotes") },
+	returns: v.union(v.null(), v.object({ url: v.string() })),
+	handler: async (ctx, { quoteId }) => {
+		const session = await getPortalSessionOrThrow(ctx);
+		const contact = await ctx.db.get(session.clientContactId);
+		const quote = await ctx.db.get(quoteId);
+		if (!quote || quote.status === "draft") throw new ConvexError({ code: "NOT_FOUND" });
+		if (!contact || contact.orgId !== session.orgId || quote.orgId !== session.orgId || quote.clientId !== contact.clientId)
+			throw new ConvexError({ code: "FORBIDDEN" });
+		const document = (await portalAgreementContext(ctx, quote))?.approvedDocument;
+		if (!document) return null;
+		const url = await ctx.storage.getUrl(document.signedStorageId ?? document.storageId);
 		return url ? { url } : null;
 	},
 });
@@ -475,7 +498,7 @@ export const _commitApproval = internalMutation({
 			createdAt: now,
 		});
 
-		await recordQuoteDecision(ctx, { quote, document, action: args.action,
+		const decision = await recordQuoteDecision(ctx, { quote, document, action: args.action,
 			channel: "portal", decidedAt: now, quoteApprovalId: auditId });
 
 		// 2. Patch quote status SECOND.
@@ -486,6 +509,7 @@ export const _commitApproval = internalMutation({
 				: { status: newStatus as "declined", declinedAt: now };
 		const oldStatus = quote.status;
 		await ctx.db.patch(args.quoteId, patch);
+		if (args.action === "approved") await activateAgreementApproval(ctx, args.quoteId, decision.evidenceId);
 
 		const updatedQuote = await ctx.db.get(args.quoteId);
 

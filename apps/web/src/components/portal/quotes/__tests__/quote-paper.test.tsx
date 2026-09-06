@@ -119,3 +119,40 @@ describe("rate column header (Finding 1)", () => {
 		expect(screen.getAllByText("$125.00").length).toBeGreaterThan(0);
 	});
 });
+
+describe("recurring agreement presentation", () => {
+	it("shows inherited approval and the customer-facing agreement terms", () => {
+		render(
+			<QuotePaper
+				businessName="Pine Street Grounds"
+				quote={{
+					quoteNumber: "Q-1043",
+					title: "September visit",
+					subtotal: 125,
+					taxAmount: 0,
+					total: 125,
+					recurringInheritedAt: 1,
+					recurringAgreementTerms: {
+						schemaVersion: 1,
+						revisionId: "revision-1" as never,
+						seriesId: "series-1" as never,
+						revisionNumber: 1,
+						agreementReference: "Q-1042",
+						client: { id: "client-1" as never, name: "North Shop" },
+						scope: { title: "Weekly grounds care" },
+						schedule: { rule: { frequency: "weekly", interval: 1, weekdays: [1] }, anchorDateKey: "2026-09-07", timezone: "America/New_York" },
+						billingMode: "per_visit",
+						paymentRule: { type: "percentage", installments: [{ percentage: 100, dayOffset: 30 }] },
+						paymentChangeActivation: "next_full_month_after_all_approvals",
+					},
+				}}
+				lineItems={[]}
+			/>
+		);
+
+		expect(screen.getByText("Approved under recurring agreement Q-1042")).toBeVisible();
+		expect(screen.getByText("Weekly grounds care")).toBeVisible();
+		expect(screen.getByText("100% due 30 days after issue")).toBeVisible();
+		expect(screen.getByText("This payment arrangement starts with the next full calendar month after all affected recurring agreements are approved. Existing terms apply until then.")).toBeVisible();
+	});
+});

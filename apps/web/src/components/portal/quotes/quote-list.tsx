@@ -32,6 +32,9 @@ import {
 	type DataGridFeatures,
 } from "@/components/reui/data-grid/data-grid";
 import { DataGridTable } from "@/components/reui/data-grid/data-grid-table";
+import { groupRecurringAgreementQuotes } from "./quote-list-grouping";
+
+export { groupRecurringAgreementQuotes } from "./quote-list-grouping";
 
 type QuoteStatus = "sent" | "approved" | "declined" | "expired";
 
@@ -47,6 +50,16 @@ export interface QuoteListRow {
 	total: number;
 	approvedAt?: number;
 	declinedAt?: number;
+	recurringAgreement?: {
+		revisionId: string;
+		reference: string;
+		sourceQuoteId: string;
+		seriesId: string;
+		inherited: boolean;
+		visitOverride: boolean;
+		serviceDate?: number;
+	} | null;
+	coveredVisits?: QuoteListRow[];
 }
 
 type Filter = "all" | QuoteStatus;
@@ -87,7 +100,9 @@ function createColumns(
 			header: "Quote",
 			cell: ({ row }) => (
 				<span className="font-semibold text-primary tabular-nums">
-					{row.original.quoteNumber ?? "—"}
+					{row.original.coveredVisits?.length
+						? row.original.recurringAgreement?.reference
+						: row.original.quoteNumber ?? "—"}
 				</span>
 			),
 		},
@@ -103,11 +118,26 @@ function createColumns(
 		{
 			accessorKey: "title",
 			header: "For",
-			cell: ({ row }) => (
-				<span className="font-medium text-foreground">
-					{row.original.title ?? "Quote"}
-				</span>
-			),
+			cell: ({ row }) => {
+				const visits = row.original.coveredVisits;
+				return (
+					<div>
+						<span className="font-medium text-foreground">
+							{visits?.length ? "Recurring agreement" : row.original.title ?? "Quote"}
+						</span>
+						{visits?.length ? (
+							<div className="mt-1 space-y-0.5 text-xs text-muted-foreground">
+								{visits.slice(0, 3).map((visit) => (
+									<p key={visit._id}>
+										{formatDate(visit.recurringAgreement?.serviceDate)}{visit.title ? `, ${visit.title}` : ""}
+									</p>
+								))}
+								{visits.length > 3 ? <p>And {visits.length - 3} more covered visits</p> : null}
+							</div>
+						) : null}
+					</div>
+				);
+			},
 		},
 		{
 			accessorKey: "status",
@@ -132,10 +162,10 @@ function createColumns(
 		{
 			accessorKey: "total",
 			header: () => <div className="text-right">Total</div>,
-			cell: ({ row }) => (
-				<div className="text-right font-semibold tabular-nums">
-					{formatMoney(row.original.total)}
-				</div>
+			cell: ({ row }) => row.original.coveredVisits?.length ? (
+				<div className="text-right text-sm text-muted-foreground">Per visit</div>
+			) : (
+				<div className="text-right font-semibold tabular-nums">{formatMoney(row.original.total)}</div>
 			),
 		},
 		{
@@ -184,19 +214,20 @@ export function QuoteList({ businessName, quotes }: QuoteListProps) {
 	const [search, setSearch] = useState("");
 	const [filter, setFilter] = useState<Filter>("all");
 
+	const groupedQuotes = useMemo(() => groupRecurringAgreementQuotes(quotes), [quotes]);
 	const filtered = useMemo(() => {
 		const q = search.trim().toLowerCase();
-		return quotes.filter((row) => {
+		return groupedQuotes.filter((row) => {
 			if (filter !== "all" && row.status !== filter) return false;
 			if (!q) return true;
-			const haystack = [row.title ?? "", row.quoteNumber ?? ""]
+			const haystack = [row.title ?? "", row.quoteNumber ?? "", row.recurringAgreement?.reference ?? "", ...(row.coveredVisits ?? []).map((visit) => visit.title ?? "")]
 				.join(" ")
 				.toLowerCase();
 			return haystack.includes(q);
 		});
-	}, [quotes, search, filter]);
+	}, [groupedQuotes, search, filter]);
 
-	const isEmpty = quotes.length === 0;
+	const isEmpty = groupedQuotes.length === 0;
 	const isFilterEmpty = !isEmpty && filtered.length === 0;
 
 	const columns = useMemo(

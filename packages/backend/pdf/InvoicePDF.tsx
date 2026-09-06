@@ -69,12 +69,28 @@ type Payment = {
 	sortOrder: number;
 };
 
+export type InvoiceGroup = {
+	sourceProjectId: Id<"projects">;
+	projectTitle: string;
+	sourceQuoteId: Id<"quotes">;
+	quoteNumber?: string;
+	agreementReference?: string;
+	serviceDate: number;
+	property?: { name?: string; address: string };
+	subtotal: number;
+	discountAmount: number;
+	taxAmount: number;
+	total: number;
+	sortOrder: number;
+};
+
 export interface InvoicePDFProps {
 	invoice: Invoice;
 	client?: Client | null;
 	items: InvoiceLineItem[];
 	organization?: Organization | null;
 	payments?: Payment[];
+	invoiceGroups?: InvoiceGroup[];
 }
 
 const styles = StyleSheet.create({
@@ -265,6 +281,15 @@ const styles = StyleSheet.create({
 		fontWeight: "bold",
 		color: "#FFFFFF",
 	},
+	group: {
+		borderBottomWidth: 0.5,
+		borderBottomColor: "#CCCCCC",
+		paddingVertical: 7,
+	},
+	groupHeading: { fontSize: 9, fontWeight: "bold", marginBottom: 3 },
+	groupMeta: { fontSize: 8, color: "#555555", lineHeight: 1.4 },
+	groupMoneyRow: { flexDirection: "row", justifyContent: "space-between", marginTop: 4 },
+	groupMoney: { fontSize: 8, color: "#333333" },
 	// Status notices
 	noticeSection: {
 		marginTop: 16,
@@ -374,6 +399,7 @@ export const InvoicePDF: React.FC<InvoicePDFProps> = ({
 	items,
 	organization,
 	payments,
+	invoiceGroups,
 }) => {
 	// Capture "now" once so the overdue check stays pure across renders
 	const [now] = React.useState(() => Date.now());
@@ -471,6 +497,28 @@ export const InvoicePDF: React.FC<InvoicePDFProps> = ({
 						</View>
 					</View>
 				</View>
+
+				{invoiceGroups && invoiceGroups.length > 0 && (
+					<View style={{ marginBottom: 16 }}>
+						<View style={styles.sectionBar}>
+							<Text style={styles.sectionBarText}>COVERED VISITS:</Text>
+						</View>
+						{invoiceGroups.map((group) => (
+							<View key={String(group.sourceProjectId)} style={styles.group} wrap={false}>
+								<Text style={styles.groupHeading}>{group.projectTitle}</Text>
+								<Text style={styles.groupMeta}>Service date: {formatDate(group.serviceDate)}</Text>
+								{group.property && <Text style={styles.groupMeta}>{[group.property.name, group.property.address].filter(Boolean).join(" | ")}</Text>}
+								<Text style={styles.groupMeta}>Quote: {group.quoteNumber ?? String(group.sourceQuoteId)}{group.agreementReference ? ` | Agreement: ${group.agreementReference}` : ""}</Text>
+								<View style={styles.groupMoneyRow}>
+									<Text style={styles.groupMoney}>Subtotal {formatCurrency(group.subtotal)}</Text>
+									<Text style={styles.groupMoney}>Discount -{formatCurrency(group.discountAmount)}</Text>
+									<Text style={styles.groupMoney}>Tax {formatCurrency(group.taxAmount)}</Text>
+									<Text style={styles.groupMoney}>Visit total {formatCurrency(group.total)}</Text>
+								</View>
+							</View>
+						))}
+					</View>
+				)}
 
 				{/* Items Table */}
 				<View style={styles.sectionBar}>

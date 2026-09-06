@@ -1,3 +1,4 @@
+import { activateAgreementApproval } from "./lib/projectSeriesAgreements";
 import { v } from "convex/values";
 import { internalQuery, MutationCtx, QueryCtx } from "./_generated/server";
 import { internalMutation, mutation } from "./lib/triggers";
@@ -258,6 +259,7 @@ type EmbeddedRequestReady = {
 	// An embedded Draft to resume instead of minting a new document. The edit
 	// URL is minted fresh per visit, so this is not gated on link expiry.
 	existing: { boldsignDocumentId: string } | null;
+	recurringAgreement: boolean;
 };
 
 /**
@@ -360,10 +362,16 @@ export const getEmbeddedRequestContext = internalQuery({
 
 		// Derive default signers (mirrors send-email-sheet.tsx recipient build).
 		const signers: DerivedSigner[] = [];
-		const countersigner =
+		const loadedCountersigner =
 			quote.requiresCountersignature && quote.countersignerId
 				? await ctx.db.get(quote.countersignerId)
 				: null;
+		const countersignerMembership = loadedCountersigner
+			? await ctx.db.query("organizationMemberships").withIndex("by_org_user", (q) => q.eq("orgId", orgId).eq("userId", loadedCountersigner._id)).first()
+			: null;
+		const countersigner = countersignerMembership ? loadedCountersigner : null;
+		if (quote.requiresCountersignature && !countersigner)
+			throw new Error("The configured countersigner is not a member of this organization");
 		const clientSignerOrder = quote.signingOrder === "org_first" ? 2 : 1;
 		const orgSignerOrder = quote.signingOrder === "org_first" ? 1 : 2;
 
@@ -373,14 +381,15 @@ export const getEmbeddedRequestContext = internalQuery({
 				q.eq("clientId", quote.clientId).eq("isPrimary", true)
 			)
 			.first();
-		if (primaryContact?.email) {
+		const validPrimaryContact = primaryContact?.orgId === orgId && primaryContact.clientId === quote.clientId && Boolean(primaryContact.email);
+		if (validPrimaryContact && primaryContact?.email) {
 			signers.push({
 				name: `${primaryContact.firstName} ${primaryContact.lastName}`.trim(),
 				email: primaryContact.email,
 				signerOrder: countersigner ? clientSignerOrder : 1,
 			});
 		}
-		if (countersigner?.email) {
+		if (countersigner?.email && (!quote.recurringAgreementTerms || validPrimaryContact)) {
 			signers.push({
 				name: countersigner.name || countersigner.email,
 				email: countersigner.email,
@@ -401,6 +410,7 @@ export const getEmbeddedRequestContext = internalQuery({
 		const quoteLabel = quote.quoteNumber || quote._id.slice(-6);
 		return {
 			ok: true,
+			recurringAgreement: Boolean(quote.recurringAgreementTerms),
 			quoteTitle: `Quote ${quoteLabel}`,
 			message: quote.clientMessage || "Please review and sign this quote.",
 			filename: `Quote-${quoteLabel}.pdf`,
@@ -425,6 +435,7 @@ export const updateDocumentWithEmbeddedRequest = internalMutation({
 		quoteId: v.id("quotes"),
 		documentId: v.id("documents"),
 		boldsignDocumentId: v.string(),
+		recurringAgreementLocked: v.optional(v.boolean()),
 		sendUrl: v.string(),
 		sendUrlExpiresAt: v.number(),
 		sentTo: v.array(
@@ -456,6 +467,10 @@ export const updateDocumentWithEmbeddedRequest = internalMutation({
 		if (!(await documentMatchesCurrentQuoteContent(ctx, document, quote))) {
 			throw new Error("Quote PDF is stale; generate a new PDF before signing");
 		}
+		if (quote.recurringAgreementTerms && !args.recurringAgreementLocked)
+			throw new Error("Use the recurring agreement signature flow for this quote");
+		if (args.recurringAgreementLocked && (document.quoteSnapshotSource !== "server" || document.recurringSignatureSendState !== "sending"))
+			throw new Error("Recurring signature request was not reserved");
 		if (document.boldsign) {
 			if (document.boldsign.documentId === args.boldsignDocumentId) return;
 			throw new Error(
@@ -464,6 +479,8 @@ export const updateDocumentWithEmbeddedRequest = internalMutation({
 		}
 
 		await ctx.db.patch(args.documentId, {
+			recurringAgreementLocked: args.recurringAgreementLocked,
+			recurringSignatureSendState: args.recurringAgreementLocked ? "sent" : undefined,
 			quoteApprovalCycle: quote.approvalCycle ?? 0,
 			boldsignDocumentId: args.boldsignDocumentId,
 			boldsign: {
@@ -612,6 +629,17 @@ export const handleWebhook = internalMutation({
 		}
 
 		const timestamp = args.eventTimestamp ?? Date.now();
+		if (eventType === "Edited") {
+			await ctx.db.patch(document._id, { recurringAgreementEditedAt: document.recurringAgreementEditedAt ?? timestamp });
+			const snapshot = await loadQuoteDocumentSnapshot(ctx, document);
+			const revisionId = snapshot?.recurringAgreementTerms?.revisionId;
+			const revision = revisionId ? await ctx.db.get(revisionId) : null;
+			if (revision?.orgId === document.orgId && revision.status === "approved") {
+				const series = await ctx.db.get(revision.seriesId);
+				if (series?.activeAgreementRevisionId === revision._id) await ctx.db.patch(series._id, { agreementReviewRequired: true });
+			}
+			return;
+		}
 
 		// Validate event type and get timestamp field
 		const validEventTypes: BoldSignStatus[] = [
@@ -746,6 +774,7 @@ async function handleQuoteStatusUpdate(
 	}
 
 	let decisionCreated = true;
+	let decisionEvidenceId: Id<"quoteDecisionEvidence"> | undefined;
 	if (eventType === "Completed" || eventType === "Declined") {
 		const result = await recordQuoteDecision(ctx, {
 			quote,
@@ -759,6 +788,7 @@ async function handleQuoteStatusUpdate(
 			boldsignDocumentId,
 		});
 		decisionCreated = result.created;
+		decisionEvidenceId = result.evidenceId;
 	}
 
 	const currentDocument = quote.latestDocumentId
@@ -770,7 +800,8 @@ async function handleQuoteStatusUpdate(
 		quote
 	);
 	const canTransition =
-		allowQuoteTransition && decisionCreated && currentDocument && contentMatches;
+		allowQuoteTransition && decisionCreated && currentDocument && contentMatches &&
+		(!quote.recurringAgreementTerms || (document.recurringAgreementLocked === true && document.recurringAgreementEditedAt === undefined));
 
 	const quoteUpdates: {
 		status?: "sent" | "approved" | "declined" | "expired";
@@ -845,6 +876,8 @@ async function handleQuoteStatusUpdate(
 	if (Object.keys(quoteUpdates).length > 0) {
 		const oldStatus = quote.status;
 		await ctx.db.patch(quote._id, quoteUpdates);
+		if (quoteUpdates.status === "approved" && decisionEvidenceId)
+			await activateAgreementApproval(ctx, quote._id, decisionEvidenceId);
 		const updatedQuote = await ctx.db.get(quote._id);
 		if (updatedQuote && quoteUpdates.status) {
 			const client = await ctx.db.get(updatedQuote.clientId);
@@ -898,5 +931,34 @@ export const updateDocumentWithSignedPdf = internalMutation({
 		console.log(
 			`[BoldSign] Document ${args.documentId} updated with signed storage ID: ${args.signedStorageId}`
 		);
+	},
+});
+
+export const reserveRecurringSignatureSend = internalMutation({
+	args: { quoteId: v.id("quotes"), documentId: v.id("documents") },
+	returns: v.null(),
+	handler: async (ctx, args) => {
+		const { quote, orgId } = await authorizeQuoteModify(ctx, args.quoteId);
+		const document = await ctx.db.get(args.documentId);
+		if (!quote.recurringAgreementTerms || quote.recurringInheritedAt || (quote.status !== "draft" && quote.status !== "sent"))
+			throw new Error("Only a recurring agreement awaiting approval can be sent");
+		if (!document || document.orgId !== orgId || document.documentType !== "quote" || document.documentId !== quote._id || document.quoteSnapshotSource !== "server" || !(await documentMatchesCurrentQuoteContent(ctx, document, quote)))
+			throw new Error("Generate a current agreement PDF before sending");
+		if (document.boldsign || document.recurringSignatureSendState)
+			throw new Error("This agreement signature request is already sent or being checked. Review its signature status before trying again.");
+		const usage = await getMeterUsage(ctx, orgId, "esignatures", (await entitlementsFromIdentity(ctx)).plan);
+		if (METERS.esignatures.enforce && usage.limit !== null && usage.used >= usage.limit)
+			throw new Error("Your signature allowance has been reached");
+		await ctx.db.patch(document._id, { recurringSignatureSendState: "sending" });
+		return null;
+	},
+});
+
+export const markRecurringSignatureUncertain = internalMutation({
+	args: { documentId: v.id("documents") }, returns: v.null(),
+	handler: async (ctx, args) => {
+		const doc = await ctx.db.get(args.documentId);
+		if (doc?.recurringSignatureSendState === "sending") await ctx.db.patch(doc._id, { recurringSignatureSendState: "uncertain" });
+		return null;
 	},
 });

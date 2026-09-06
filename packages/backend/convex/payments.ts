@@ -34,11 +34,15 @@ import {
 	sumMoney,
 } from "./lib/money";
 import { kickQboSyncWorker, maybeEnqueueQboSync } from "./lib/quickbooksEnqueue";
+import { isInvoiceInActorScope } from "./lib/invoiceGroups";
 import {
 	optionalUserQuery,
 	systemMutation,
 	userMutation,
+	type UserMutationCtx,
 } from "./lib/factories";
+import { recurringPaymentRuleValidator, type RecurringPaymentRule } from "./lib/recurringPaymentRules";
+import { proposeFuturePaymentRule } from "./lib/recurringPaymentChanges";
 
 /**
  * Payment operations - individual payment installments for invoices
@@ -162,11 +166,7 @@ export const listByInvoice = optionalUserQuery({
 			.collect();
 
 		// All rows share one parent invoice — scope check runs once, not per row.
-		const scoped = await ctx.applyReadScope("invoices", payments, (_row, s) =>
-			parentInvoice.projectId
-				? s.projectIds.has(parentInvoice.projectId)
-				: s.clientIds.has(parentInvoice.clientId)
-		);
+		const scoped = (await isInvoiceInActorScope(ctx, parentInvoice)) ? payments : [];
 
 		// Sort by sortOrder
 		return scoped.sort((a, b) => a.sortOrder - b.sortOrder);
@@ -193,10 +193,7 @@ export const get = optionalUserQuery({
 		}
 		// Payments belong to the invoices permission object — scope via the parent invoice.
 		const parentInvoice = await validateInvoiceAccess(ctx, payment.invoiceId, orgId);
-		await ctx.requireRecordScope("invoices", {
-			projectId: parentInvoice.projectId,
-			clientId: parentInvoice.clientId,
-		});
+		await ctx.requireRecordScope("invoices", () => isInvoiceInActorScope(ctx, parentInvoice));
 		return payment;
 	},
 });
@@ -227,11 +224,7 @@ export const getInvoiceSummary = optionalUserQuery({
 			.withIndex("by_invoice", (q) => q.eq("invoiceId", args.invoiceId))
 			.collect();
 		// All rows share one parent invoice — scope check runs once, not per row.
-		const payments = await ctx.applyReadScope("invoices", allPayments, (_row, s) =>
-			parentInvoice.projectId
-				? s.projectIds.has(parentInvoice.projectId)
-				: s.clientIds.has(parentInvoice.clientId)
-		);
+		const payments = (await isInvoiceInActorScope(ctx, parentInvoice)) ? allPayments : [];
 
 		const invoice = await ctx.db.get(args.invoiceId);
 
@@ -273,10 +266,7 @@ export const create = userMutation({
 		await ctx.requireLevel("invoices", "modify");
 		// Validate invoice access
 		const parentInvoice = await validateInvoiceAccess(ctx, args.invoiceId, ctx.orgId);
-		await ctx.requireRecordScope("invoices", {
-			projectId: parentInvoice.projectId,
-			clientId: parentInvoice.clientId,
-		});
+		await ctx.requireRecordScope("invoices", () => isInvoiceInActorScope(ctx, parentInvoice));
 
 		// Validate payment amount and sort order
 		validatePaymentAmount(args.paymentAmount);
@@ -295,6 +285,7 @@ export const create = userMutation({
 		// The payment schedule prints on the invoice PDF.
 		await touchInvoiceContent(ctx, args.invoiceId);
 		await syncInvoiceDueDate(ctx, args.invoiceId);
+		await ctx.db.patch(args.invoiceId, { paymentScheduleIsCustom: true });
 
 		return paymentId;
 	},
@@ -412,8 +403,7 @@ export const remove = userMutation({
  * Rescheduling an overdue invoice past today un-flips it back to sent. This is
  * the one sanctioned un-flip: someone deliberately granted more time.
  */
-export const configurePayments = userMutation({
-	args: {
+const configurePaymentsArgs = {
 		invoiceId: v.id("invoices"),
 		payments: v.array(
 			v.object({
@@ -425,8 +415,23 @@ export const configurePayments = userMutation({
 				sortOrder: v.number(),
 			})
 		),
-	},
-	handler: async (ctx, args): Promise<PaymentId[]> => {
+	};
+
+type ConfigurePaymentsArgs = {
+	invoiceId: InvoiceId;
+	payments: Array<{
+		id?: PaymentId;
+		paymentAmount: number;
+		dueDate: number;
+		description?: string;
+		sortOrder: number;
+	}>;
+};
+
+async function configurePaymentsHandler(
+	ctx: UserMutationCtx,
+	args: ConfigurePaymentsArgs
+): Promise<PaymentId[]> {
 		await ctx.requireLevel("invoices", "modify");
 		// Validate invoice access
 		const parentInvoice = await validateInvoiceAccess(ctx, args.invoiceId, ctx.orgId);
@@ -539,6 +544,7 @@ export const configurePayments = userMutation({
 
 		// invoice.dueDate is the schedule's final deadline, so it follows the rows.
 		await syncInvoiceDueDate(ctx, args.invoiceId);
+		await ctx.db.patch(args.invoiceId, { paymentScheduleIsCustom: true });
 
 		// The payment schedule prints on the invoice PDF.
 		await touchInvoiceContent(ctx, args.invoiceId);
@@ -547,6 +553,67 @@ export const configurePayments = userMutation({
 
 		// Settled rows first, then the live schedule in the order it was sent.
 		return [...settledPayments.map((p) => p._id), ...scheduleIds];
+	}
+
+export const configurePayments = userMutation({
+	args: configurePaymentsArgs,
+	handler: configurePaymentsHandler,
+});
+
+export const configurePaymentsWithScope = userMutation({
+	args: {
+		...configurePaymentsArgs,
+		scope: v.union(v.literal("invoice"), v.literal("future")),
+		futureRule: v.optional(recurringPaymentRuleValidator),
+		expectedPaymentRuleSourceRevisionId: v.optional(v.id("projectSeriesAgreementRevisions")),
+	},
+	returns: v.object({
+		paymentIds: v.array(v.id("payments")),
+		futureProposal: v.union(v.null(), v.object({
+			quoteIds: v.array(v.id("quotes")),
+			monthlyScheduleVersionId: v.optional(v.id("clientMonthlyPaymentScheduleVersions")),
+		})),
+	}),
+	handler: async (ctx, args): Promise<{
+		paymentIds: PaymentId[];
+		futureProposal: null | {
+			quoteIds: Id<"quotes">[];
+			monthlyScheduleVersionId?: Id<"clientMonthlyPaymentScheduleVersions">;
+		};
+	}> => {
+		if (args.scope === "future") {
+			await Promise.all([
+				ctx.requireLevel("invoices", "modify"),
+				ctx.requireLevel("projects", "modify"),
+				ctx.requireLevel("quotes", "modify"),
+			]);
+			if (
+				!(await ctx.hasAllRecords("invoices")) ||
+				!(await ctx.hasAllRecords("projects")) ||
+				!(await ctx.hasAllRecords("quotes"))
+			) {
+				throw new ConvexError({
+					code: "FORBIDDEN",
+					message: "Organization-wide invoice, project, and quote access is required to change future payment terms.",
+				});
+			}
+		}
+		if (args.scope === "future" && !args.futureRule) {
+			throw new ConvexError({ code: "BAD_REQUEST", message: "A reusable payment rule is required for future invoices." });
+		}
+		if (args.scope === "invoice" && args.futureRule) {
+			throw new ConvexError({ code: "BAD_REQUEST", message: "Future payment rules require This and future invoices." });
+		}
+		const paymentIds = await configurePaymentsHandler(ctx, args);
+		const futureProposal = args.scope === "future"
+			? await proposeFuturePaymentRule(ctx, {
+				invoiceId: args.invoiceId,
+				rule: args.futureRule as RecurringPaymentRule,
+				expectedRevisionId: args.expectedPaymentRuleSourceRevisionId,
+				createdByUserId: ctx.user._id,
+			})
+			: null;
+		return { paymentIds, futureProposal };
 	},
 });
 

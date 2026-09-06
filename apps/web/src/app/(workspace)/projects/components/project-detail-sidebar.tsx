@@ -48,6 +48,7 @@ import {
 	localDateToUtcMidnightMs,
 	utcMidnightMsToLocalDate,
 } from "@/lib/dates";
+import { RecurringVisitBilling } from "./recurring-visit-billing";
 import {
 	type ProjectUpdate,
 	useProjectEditScope,
@@ -494,6 +495,7 @@ export function ProjectDetailSidebar({
 					</div>
 				</div>
 			</div>
+			<RecurringVisitBilling projectId={projectId} recurring={Boolean(project.recurringSeriesId)} />
 
 			<Separator className="my-4" />
 

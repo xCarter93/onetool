@@ -1,4 +1,5 @@
 import { recordQuoteDecision } from "./lib/quoteDecisionEvidence";
+import { activateAgreementApproval } from "./lib/projectSeriesAgreements";
 import { calendarDayEpoch } from "./lib/formula";
 import { query, QueryCtx, MutationCtx } from "./_generated/server";
 import { mutation } from "./lib/triggers";
@@ -1702,7 +1703,7 @@ export const approveInPerson = userMutation({
 			createdAt: now,
 		});
 
-		await recordQuoteDecision(ctx, { quote, document: doc, action: "approved",
+		const decision = await recordQuoteDecision(ctx, { quote, document: doc, action: "approved",
 			channel: "in_person", decidedAt: now, quoteApprovalId: auditId });
 
 		// 2. Status patch second.
@@ -1710,6 +1711,7 @@ export const approveInPerson = userMutation({
 			status: "approved",
 			approvedAt: now,
 		});
+		await activateAgreementApproval(ctx, args.id, decision.evidenceId);
 		const updatedQuote = await ctx.db.get(args.id);
 
 		// 3. Activity, 4. status event, 5. celebration — portal commit ordering.

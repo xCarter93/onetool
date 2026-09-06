@@ -222,6 +222,9 @@ async function hasStartedOrBilled(
 	return !!(await ctx.db
 		.query("invoices")
 		.withIndex("by_project", (q) => q.eq("projectId", project._id))
+		.first()) || !!(await ctx.db
+		.query("invoiceGroups")
+		.withIndex("by_source_project", (q) => q.eq("sourceProjectId", project._id))
 		.first());
 }
 

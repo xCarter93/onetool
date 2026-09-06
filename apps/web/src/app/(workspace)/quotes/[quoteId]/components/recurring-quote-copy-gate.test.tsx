@@ -9,21 +9,26 @@ const mocks = vi.hoisted(() => ({
     | null
     | undefined
     | {
-        canCopy: boolean;
+      canCopy: boolean;
       },
+  agreementSetup: undefined as undefined | Record<string, unknown>,
   allRecords: true,
   modify: true,
   queryHook: vi.fn(),
 }));
 
 vi.mock("@onetool/backend/convex/_generated/api", () => ({
-  api: { projectSeriesQuotes: { getSetup: "getSetup" } },
+  api: {
+    projectSeriesQuotes: { getSetup: "getSetup" },
+    projectSeriesAgreements: { getSetup: "getAgreementSetup" },
+  },
 }));
 vi.mock("convex/react", () => ({
   useQuery: (fn: string, args: unknown) => {
     mocks.queryHook(fn, args);
-    return mocks.setup;
+    return fn === "getAgreementSetup" ? mocks.agreementSetup : mocks.setup;
   },
+  useMutation: () => vi.fn(),
 }));
 vi.mock("@/hooks/use-permissions", () => ({
   usePermissions: () => ({
@@ -32,12 +37,18 @@ vi.mock("@/hooks/use-permissions", () => ({
     hasAllRecords: () => mocks.allRecords,
   }),
 }));
+vi.mock("@/hooks/use-toast", () => ({
+  useToast: () => ({ success: vi.fn(), error: vi.fn() }),
+}));
 vi.mock("./recurring-quote-copy-dialog", () => ({
   RecurringQuoteCopyDialog: ({
     children,
   }: {
     children: (open: () => void) => React.ReactNode;
   }) => <>{children(() => {})}</>,
+}));
+vi.mock("./recurring-agreement-setup-dialog", () => ({
+  RecurringAgreementSetupDialog: ({ children }: { children: (open: () => void) => React.ReactNode }) => <>{children(() => {})}</>,
 }));
 
 import { RecurringQuoteCopyGate } from "./recurring-quote-copy-gate";
@@ -48,6 +59,7 @@ function renderGate() {
       quoteId={"quote-1" as never}
       quoteTitle="Seasonal service"
       projectId={"project-1" as never}
+      quoteStatus="draft"
     >
       {({ onCopyToFuture, copyToFutureDisabled }) =>
         onCopyToFuture ? (
@@ -68,6 +80,7 @@ beforeEach(() => {
   mocks.setup = { canCopy: true };
   mocks.allRecords = true;
   mocks.modify = true;
+  mocks.agreementSetup = undefined;
 });
 
 describe("recurring quote copy gate", () => {
@@ -90,4 +103,24 @@ describe("recurring quote copy gate", () => {
       screen.getByRole("button", { name: "Copy to future projects" }),
     ).toBeEnabled();
   });
+
+	it("offers prepare on a fresh revision draft whose stable root is another quote", () => {
+		mocks.agreementSetup = { agreementQuoteId: "quote-root", canPrepare: true, canRestoreAgreementPricing: false, recurringInheritedAt: undefined, recurringQuoteOverride: false, state: "active", revision: 2, seriesSetup: { title: "Service", rule: { frequency: "weekly", interval: 1 } } };
+		render(
+			<RecurringQuoteCopyGate quoteId={"quote-1" as never} quoteTitle="Revision" projectId={"project-1" as never} quoteStatus="draft">
+				{({ onPrepareAgreement }) => onPrepareAgreement ? <button>Prepare agreement</button> : <span>No agreement action</span>}
+			</RecurringQuoteCopyGate>,
+		);
+		expect(screen.getByRole("button", { name: "Prepare agreement" })).toBeVisible();
+	});
+
+	it("labels stale linked draft recovery as refresh", () => {
+		mocks.agreementSetup = { agreementQuoteId: "quote-root", canPrepare: false, canRestoreAgreementPricing: true, recurringInheritedAt: undefined, recurringQuoteOverride: false, state: "active", revision: 2, seriesSetup: { title: "Service", rule: { frequency: "weekly", interval: 1 } } };
+		render(
+			<RecurringQuoteCopyGate quoteId={"quote-1" as never} quoteTitle="Visit" projectId={"project-1" as never} quoteStatus="draft">
+				{({ onRestoreAgreementPricing, restoreAgreementPricingLabel }) => onRestoreAgreementPricing ? <button>{restoreAgreementPricingLabel}</button> : <span>No refresh action</span>}
+			</RecurringQuoteCopyGate>,
+		);
+		expect(screen.getByRole("button", { name: "Refresh agreement pricing" })).toBeVisible();
+	});
 });

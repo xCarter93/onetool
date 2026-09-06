@@ -1,10 +1,11 @@
 "use node";
 import { v } from "convex/values";
 import { action, internalAction } from "./_generated/server";
-import { internal } from "./_generated/api";
+import { api, internal } from "./_generated/api";
 import { NonRetryableError } from "@convex-dev/workpool";
 import {
 	DocumentApi,
+	SendForSign,
 	DocumentSigner,
 	EmbeddedDocumentEditJsonRequest,
 	EmbeddedDocumentRequest,
@@ -103,6 +104,8 @@ export const createEmbeddedSignatureRequest = action({
 		if (!context.ok) {
 			return { ok: false, reason: "no_pdf" };
 		}
+
+		if (context.recurringAgreement) throw new Error("Use Send agreement for signature to preserve the approved terms");
 
 		// Enforce the monthly cap before creating any BoldSign draft.
 		if (context.usage.overCap) {
@@ -374,6 +377,57 @@ export const downloadCompletedDocument = internalAction({
 				error: error instanceof Error ? error.message : String(error),
 			});
 			throw error;
+		}
+	},
+});
+
+export const sendRecurringAgreementForSignature = action({
+	args: { quoteId: v.id("quotes") },
+	returns: v.union(
+		v.object({ ok: v.literal(true) }),
+		v.object({ ok: v.literal(false), reason: v.literal("no_pdf") }),
+		v.object({ ok: v.literal(false), reason: v.literal("no_signer") }),
+		v.object({ ok: v.literal(false), reason: v.literal("limit"), used: v.number(), limit: v.number() })
+	),
+	handler: async (ctx, args): Promise<{ ok: true } | { ok: false; reason: "no_pdf" | "no_signer" } | { ok: false; reason: "limit"; used: number; limit: number }> => {
+		const apiClient = createDocumentApi();
+		await ctx.runAction(api.pdfActions.ensureQuotePdf, { quoteId: args.quoteId });
+		const context = await ctx.runQuery(internal.boldsign.getEmbeddedRequestContext, args);
+		if (!context.ok) return context;
+		if (!context.recurringAgreement) throw new Error("This quote is not a recurring agreement");
+		if (context.usage.overCap) return { ok: false, reason: "limit", used: context.usage.used, limit: context.usage.limit ?? 0 };
+		if (!context.signers.length) return { ok: false, reason: "no_signer" };
+		const blob = await ctx.storage.get(context.pdfStorageId);
+		if (!blob) return { ok: false, reason: "no_pdf" };
+		const request = new SendForSign();
+		request.title = context.quoteTitle;
+		request.message = context.message;
+		request.files = [{ value: Buffer.from(await blob.arrayBuffer()), options: { filename: context.filename, contentType: "application/pdf" } }];
+		request.signers = context.signers.map((s) => {
+			const signer = new DocumentSigner();
+			signer.name = s.name;
+			signer.emailAddress = s.email;
+			signer.signerOrder = s.signerOrder;
+			signer.signerType = DocumentSigner.SignerTypeEnum.Signer;
+			return signer;
+		});
+		request.useTextTags = true;
+		request.enableSigningOrder = context.enableSigningOrder;
+		request.disableEmails = false;
+		await ctx.runMutation(internal.boldsign.reserveRecurringSignatureSend, { quoteId: args.quoteId, documentId: context.documentId });
+		try {
+			const result = await apiClient.sendDocument(request);
+			if (!result.documentId) throw new Error("The signature provider did not return a request ID");
+			await ctx.runMutation(internal.boldsign.updateDocumentWithEmbeddedRequest, {
+				quoteId: args.quoteId, documentId: context.documentId, boldsignDocumentId: result.documentId,
+				sendUrl: "", sendUrlExpiresAt: Date.now(), recurringAgreementLocked: true,
+				sentTo: context.signers.map((s) => ({ ...s, signerType: "Signer" })),
+			});
+			await ctx.runMutation(internal.boldsign.handleWebhook, { boldsignDocumentId: result.documentId, eventType: "Sent", eventTimestamp: Date.now() });
+			return { ok: true };
+		} catch {
+			await ctx.runMutation(internal.boldsign.markRecurringSignatureUncertain, { documentId: context.documentId });
+			throw new Error("The signature send could not be confirmed. Check the signature request before retrying to avoid sending twice.");
 		}
 	},
 });

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import type { Route } from "next";
-import { useParams, useSearchParams } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import {
 	CalendarDays,
 	ChevronLeft,
@@ -13,6 +13,7 @@ import {
 	Repeat,
 	RotateCcw,
 	Square,
+	FileText,
 } from "lucide-react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
@@ -70,6 +71,7 @@ function SeriesPageContent() {
 	const searchParams = useSearchParams();
 	const fromProjectId = searchParams.get("fromProjectId") ?? undefined;
 	const toast = useToast();
+	const router = useRouter();
 	const [cursor, setCursor] = useState<string | undefined>();
 	const [previousCursors, setPreviousCursors] = useState<
 		Array<string | undefined>
@@ -86,6 +88,9 @@ function SeriesPageContent() {
 		isLoading: permissionsLoading,
 	} = usePermissions();
 	const canAccess = can("projects") && hasAllRecords("projects");
+	const canViewAgreements = canAccess && can("quotes") && hasAllRecords("quotes");
+	const canViewSchedules = canViewAgreements && can("invoices") && hasAllRecords("invoices");
+	const canModifySchedules = canViewSchedules && can("projects", "modify") && can("quotes", "modify") && can("invoices", "modify");
 	const details = useQuery(
 		api.projectSeries.get,
 		canAccess ? { seriesId, fromProjectId } : "skip"
@@ -102,6 +107,14 @@ function SeriesPageContent() {
 		api.projectSeries.listOccurrences,
 		canAccess && details ? { seriesId, cursor } : "skip"
 	);
+	const agreement = useQuery(
+		api.projectSeriesAgreements.getSeriesAgreement,
+		canViewAgreements && details ? { seriesId } : "skip"
+	);
+	const monthlyProposal = useQuery(
+		api.recurringPaymentSchedules.getPending,
+		canViewSchedules && details ? { clientId: details.series.clientId } : "skip"
+	);
 	const lifecyclePreview = useQuery(
 		api.projectSeries.previewLifecycle,
 		action && actionIsAvailable && canAccess && details?.canManage
@@ -112,6 +125,33 @@ function SeriesPageContent() {
 	const skip = useMutation(api.projectSeries.skip);
 	const restoreVisit = useMutation(api.projectSeries.restoreVisit);
 	const updateSchedule = useMutation(api.projectSeries.updateSchedule);
+	const createRevisionDraft = useMutation(api.projectSeriesAgreements.createRevisionDraft);
+	const cancelMonthlyProposal = useMutation(api.recurringPaymentSchedules.cancelPending);
+	const [isCreatingRevision, setIsCreatingRevision] = useState(false);
+	const [isCancellingProposal, setIsCancellingProposal] = useState(false);
+	const handleCreateRevision = async () => {
+		setIsCreatingRevision(true);
+		try {
+			const result = await createRevisionDraft({ seriesId });
+			router.push(`/quotes/${result.quoteId}`);
+		} catch (error) {
+			toast.error("Error", convexErrorMessage(error, "Failed to create agreement revision"));
+		} finally {
+			setIsCreatingRevision(false);
+		}
+	};
+	const handleCancelMonthlyProposal = async () => {
+		if (!details || !monthlyProposal?.canCancel) return;
+		setIsCancellingProposal(true);
+		try {
+			await cancelMonthlyProposal({ clientId: details.series.clientId, expectedVersionId: monthlyProposal.versionId });
+			toast.success("Proposal cancelled", "Current recurring payment terms remain in place.");
+		} catch (error) {
+			toast.error("Error", convexErrorMessage(error, "Failed to cancel payment proposal"));
+		} finally {
+			setIsCancellingProposal(false);
+		}
+	};
 
 	const occurrenceRows = occurrences?.page ?? [];
 	const canManage = details?.canManage ?? false;
@@ -238,7 +278,7 @@ function SeriesPageContent() {
 				title="Organization-wide access required"
 				description="Ask an administrator for access to all projects to view recurring series."
 				action={
-					<Button variant="outline" render={<Link href="/projects" />}>
+					<Button nativeButton={false} variant="outline" render={<Link href="/projects" />}>
 						Back to projects
 					</Button>
 				}
@@ -253,7 +293,7 @@ function SeriesPageContent() {
 				title="Series not found"
 				description="This recurring series is unavailable or you do not have access."
 				action={
-					<Button variant="outline" render={<Link href="/projects" />}>
+					<Button nativeButton={false} variant="outline" render={<Link href="/projects" />}>
 						Back to projects
 					</Button>
 				}
@@ -288,6 +328,7 @@ function SeriesPageContent() {
 			<header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
 				<div className="min-w-0">
 					<Button
+						nativeButton={false}
 						variant="ghost"
 						size="sm"
 						className="mb-2 min-h-11 max-w-full"
@@ -419,6 +460,86 @@ function SeriesPageContent() {
 					</FramePanel>
 				</Frame>
 			</div>
+
+			<Frame>
+				<FrameHeader className="flex-row items-start justify-between gap-4">
+					<div>
+						<FrameTitle>Recurring agreement</FrameTitle>
+						<FrameDescription>
+							The approved service, schedule, billing rhythm, and payment terms for this series.
+						</FrameDescription>
+					</div>
+					<div className="flex flex-wrap gap-2">
+						{agreement?.agreementQuoteId && (
+							<Button nativeButton={false} size="sm" variant="outline" render={<Link href={`/quotes/${agreement.agreementQuoteId}`} />}>
+								<FileText className="size-4" /> View agreement
+							</Button>
+						)}
+						{agreement?.active && canManage && !agreement.pending && (
+							<Button size="sm" onClick={handleCreateRevision} disabled={isCreatingRevision}>
+								<Pencil className="size-4" /> {isCreatingRevision ? "Creating..." : "Revise agreement"}
+							</Button>
+						)}
+					</div>
+				</FrameHeader>
+				<FramePanel>
+					{agreement === undefined ? (
+						<div className="space-y-2" aria-label="Loading recurring agreement">
+							<Skeleton className="h-5 w-52" />
+							<Skeleton className="h-5 w-64" />
+						</div>
+					) : agreement.active || agreement.pending ? (
+						<div className="space-y-5">
+						<div className="grid gap-5 sm:grid-cols-2">
+							{agreement.active && (
+								<div className="space-y-1">
+									<div className="flex items-center gap-2">
+										<p className="text-sm font-medium">Current agreement</p>
+										<StatusBadge status="approved" appearance="outline" />
+									</div>
+									<p className="text-sm text-muted-foreground">
+										{agreement.active.agreementReference ?? "Recurring agreement"}, revision {agreement.active.revisionNumber}
+									</p>
+									{agreement.active.approvedAt && <p className="text-sm text-muted-foreground">Approved {formatDate(agreement.active.approvedAt)}</p>}
+								</div>
+							)}
+							{agreement.pending && (
+								<div className="space-y-1">
+									<div className="flex items-center gap-2">
+										<p className="text-sm font-medium">Pending revision</p>
+										<StatusBadge status={agreement.pending.status} appearance="outline" />
+									</div>
+									<p className="text-sm text-muted-foreground">
+										{agreement.pending.agreementReference ?? "Recurring agreement"}, revision {agreement.pending.revisionNumber}
+									</p>
+									<p className="text-sm text-muted-foreground">Approval is required before this revision applies to future visits.</p>
+									<Button nativeButton={false} size="sm" variant="outline" render={<Link href={`/quotes/${agreement.pending.quoteId}`} />}>Review pending revision</Button>
+								</div>
+							)}
+						</div>
+						{monthlyProposal && (
+							<div className="rounded-md border border-border bg-muted/40 p-4">
+								<p className="text-sm font-medium text-foreground">Shared monthly payment change</p>
+								{monthlyProposal.status === "scheduled" && monthlyProposal.effectiveMonth ? (
+									<p className="mt-1 text-sm text-muted-foreground">All affected agreements are approved. The new payment arrangement starts in {new Date(`${monthlyProposal.effectiveMonth}-01T00:00:00Z`).toLocaleDateString("en-US", { month: "long", year: "numeric", timeZone: "UTC" })}. Existing terms apply until then.</p>
+								) : (
+									<p className="mt-1 text-sm text-muted-foreground">Awaiting approval from other recurring agreements. {monthlyProposal.approvedCount} of {monthlyProposal.requiredCount} approved. Existing terms remain active.</p>
+								)}
+								{monthlyProposal.canCancel && canModifySchedules ? (
+									<Button className="mt-3" size="sm" variant="outline" onClick={handleCancelMonthlyProposal} disabled={isCancellingProposal}>{isCancellingProposal ? "Cancelling..." : "Cancel payment proposal"}</Button>
+								) : monthlyProposal.cancellationReason ? (
+									<p className="mt-2 text-xs text-muted-foreground">{monthlyProposal.cancellationReason}</p>
+								) : null}
+							</div>
+						)}
+						</div>
+					) : (
+						<p className="text-sm text-muted-foreground">
+							No recurring agreement has been prepared. Open a draft quote on this series to set one up.
+						</p>
+					)}
+				</FramePanel>
+			</Frame>
 
 			<Frame>
 				<FrameHeader>
