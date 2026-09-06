@@ -375,9 +375,10 @@ function QuoteDetailPageContent() {
 			);
 		} catch (error) {
 			console.error(error);
-			const message =
-				error instanceof Error ? error.message : "Unknown error";
-			toast.error("PDF generation failed", message);
+			toast.error(
+				"PDF generation failed",
+				convexErrorMessage(error, "Unknown error")
+			);
 		}
 	};
 

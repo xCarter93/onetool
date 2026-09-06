@@ -15,6 +15,7 @@ import { TagsInput } from "@/components/shared/tags-input";
 import { ProminentStatusBadge } from "@/components/shared/prominent-status-badge";
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
+import { convexErrorMessage } from "@/lib/convex-error";
 import { useState, useRef, useEffect } from "react";
 import {
 	Building2,
@@ -182,8 +183,7 @@ export function ClientDetailSidebar({
 			setEditingField(null);
 			setEditValue("");
 		} catch (err) {
-			const message = err instanceof Error ? err.message : "Failed to save";
-			toast.error("Error", message);
+			toast.error("Error", convexErrorMessage(err, "Failed to save"));
 		}
 	};
 

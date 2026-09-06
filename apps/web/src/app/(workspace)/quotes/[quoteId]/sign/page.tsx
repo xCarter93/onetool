@@ -7,6 +7,7 @@ import { useAction, useMutation } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
 import { useToast } from "@/hooks/use-toast";
+import { convexErrorMessage } from "@/lib/convex-error";
 import { LearnMoreLink } from "@/components/help/learn-more";
 import { Button } from "@/components/ui/button";
 import {
@@ -165,10 +166,10 @@ function QuoteSignPageContent() {
 		} catch (err) {
 			setView({
 				kind: "error",
-				message:
-					err instanceof Error
-						? err.message
-						: "We couldn't prepare this document. Please try again.",
+				message: convexErrorMessage(
+					err,
+					"We couldn't prepare this document. Please try again."
+				),
 			});
 		}
 	}, [createRequest, quoteId]);

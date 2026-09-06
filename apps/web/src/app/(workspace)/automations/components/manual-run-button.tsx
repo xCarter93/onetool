@@ -19,6 +19,7 @@ import {
 	SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
+import { convexErrorMessage } from "@/lib/convex-error";
 
 type ObjectType = "client" | "project" | "quote" | "invoice" | "task";
 
@@ -76,7 +77,7 @@ export function ManualRunButton({
 		} catch (error) {
 			toast.error(
 				"Couldn't start run",
-				error instanceof Error ? error.message : "Please try again."
+				convexErrorMessage(error, "Please try again.")
 			);
 		} finally {
 			setIsRunning(false);

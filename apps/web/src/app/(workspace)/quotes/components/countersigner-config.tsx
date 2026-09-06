@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { MultiSelector } from "@/components/shared/multi-selector";
 import { ListProvider } from "@/components/shared/sortable-list";
 import { useToast } from "@/hooks/use-toast";
+import { convexErrorMessage } from "@/lib/convex-error";
 import { PenTool, Users, User, Mail } from "lucide-react";
 
 interface CountersignerConfigProps {
@@ -115,9 +116,7 @@ export function CountersignerConfig({
 				toast.success("Updated", "Countersignature requirement removed");
 			} catch (error) {
 				setEnabled(true); // Revert on error
-				const message =
-					error instanceof Error ? error.message : "Failed to update";
-				toast.error("Error", message);
+				toast.error("Error", convexErrorMessage(error, "Failed to update"));
 			} finally {
 				setIsSaving(false);
 			}
@@ -140,9 +139,7 @@ export function CountersignerConfig({
 				toast.success("Updated", "Countersigner assigned");
 			} catch (error) {
 				setSelectedUserId(countersignerId); // Revert on error
-				const message =
-					error instanceof Error ? error.message : "Failed to update";
-				toast.error("Error", message);
+				toast.error("Error", convexErrorMessage(error, "Failed to update"));
 			} finally {
 				setIsSaving(false);
 			}
@@ -171,9 +168,7 @@ export function CountersignerConfig({
 				toast.success("Updated", "Signing order changed");
 			} catch (error) {
 				setOrder(signingOrder); // Revert on error
-				const message =
-					error instanceof Error ? error.message : "Failed to update";
-				toast.error("Error", message);
+				toast.error("Error", convexErrorMessage(error, "Failed to update"));
 			} finally {
 				setIsSaving(false);
 			}

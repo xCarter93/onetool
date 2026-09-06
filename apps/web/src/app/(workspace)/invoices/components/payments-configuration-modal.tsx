@@ -22,6 +22,7 @@ import Modal from "@/components/ui/modal";
 import { StatusBadge } from "@/components/domain/status-badge";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
+import { convexErrorMessage } from "@/lib/convex-error";
 import { useOrgToday } from "@/hooks/use-org-today";
 import { formatCurrency, parseCurrencyInput, roundCents } from "@/lib/money";
 import {
@@ -658,9 +659,7 @@ export function PaymentsConfigurationModal({
 			);
 			onClose();
 		} catch (error) {
-			const message =
-				error instanceof Error ? error.message : "Failed to save payments";
-			toast.error("Error", message);
+			toast.error("Error", convexErrorMessage(error, "Failed to save payments"));
 		} finally {
 			setIsSaving(false);
 		}
