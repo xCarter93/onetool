@@ -360,7 +360,7 @@ export const getDocumentUrl = optionalUserQuery({
 	},
 });
 
-/** Per-call ceiling (same as drive.getFileUrls); extra ids are dropped, so callers chunk their batches. */
+/** Per-call ceiling, same as drive.getFileUrls; the web callers chunk to it. */
 const MAX_DOCUMENT_URLS = 100;
 
 /**

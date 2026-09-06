@@ -1,3 +1,4 @@
+import { ConvexError } from "convex/values";
 import { Id } from "../../_generated/dataModel";
 import { MutationCtx } from "../../_generated/server";
 import {
@@ -16,6 +17,7 @@ import {
 import {
 	entitlementsFromDocs,
 	isFeatureAllowed,
+	PLAN_LIMIT_ERROR_CODE,
 	requireMeter,
 } from "../entitlements";
 import { AUTOMATION_EMAIL_DAILY_CAP, rateLimiter } from "../../rateLimits";
@@ -290,7 +292,12 @@ async function dryUpdateFieldsAction(
 				await requireMeter(ctx, env.orgId, "clientSends", plan, {
 					now: Date.now(),
 				});
-			} catch {
+			} catch (err) {
+				const code =
+					err instanceof ConvexError
+						? (err.data as { code?: unknown }).code
+						: undefined;
+				if (code !== PLAN_LIMIT_ERROR_CODE) throw err;
 				return {
 					success: false,
 					error:
