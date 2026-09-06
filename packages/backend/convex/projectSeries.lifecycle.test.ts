@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { api, internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
+import type { ProjectRecurrenceRule } from "./lib/projectRecurrence";
 import { setupConvexTest } from "./test.setup";
 import {
 	addMemberToOrg,
@@ -13,6 +14,11 @@ const NOW = Date.UTC(2026, 8, 6, 16);
 const DAY = 86_400_000;
 const daily = (count: number) => ({
 	frequency: "daily" as const,
+	interval: 1,
+	end: { kind: "count" as const, count },
+});
+const weekly = (count: number) => ({
+	frequency: "weekly" as const,
 	interval: 1,
 	end: { kind: "count" as const, count },
 });
@@ -29,7 +35,10 @@ describe("project series lifecycle", () => {
 	});
 	afterEach(() => vi.useRealTimers());
 
-	async function series(count = 5) {
+	async function series(
+		count = 5,
+		rule: ProjectRecurrenceRule = daily(count)
+	) {
 		fixture++;
 		const setup = await t.run(async (ctx) => {
 			const org = await createTestOrg(ctx, {
@@ -54,7 +63,7 @@ describe("project series lifecycle", () => {
 		});
 		const seriesId = await asUser.mutation(api.projectSeries.enroll, {
 			projectId,
-			rule: daily(count),
+			rule,
 		});
 		return { ...setup, asUser, projectId, seriesId };
 	}
@@ -219,13 +228,28 @@ describe("project series lifecycle", () => {
 		expect(await t.run(async (ctx) => ctx.db.get(taskId))).not.toBeNull();
 	});
 
-	it("ends permanently while preserving begun work and history", async () => {
-		const setup = await series();
+	it("resumes an ended five-visit weekly series without duplicates or extending its rule", async () => {
+		const rule = weekly(5);
+		const setup = await series(5, rule);
 		const rows = await occurrences(setup.seriesId);
 		await setup.asUser.mutation(api.projects.update, {
 			id: rows[1]._id,
 			status: "in-progress",
 		});
+		await setup.asUser.mutation(api.projectSeries.skip, {
+			projectId: rows[2]._id,
+		});
+		await setup.asUser.mutation(api.invoices.create, {
+			clientId: setup.clientId,
+			projectId: rows[3]._id,
+			invoiceNumber: "INV-END-RESUME",
+			status: "draft",
+			subtotal: 100,
+			total: 100,
+			issuedDate: NOW,
+			dueDate: NOW + 30 * DAY,
+		});
+		const beforeSeries = await t.run(async (ctx) => ctx.db.get(setup.seriesId));
 		const preview = await setup.asUser.query(
 			api.projectSeries.previewLifecycle,
 			{
@@ -243,13 +267,150 @@ describe("project series lifecycle", () => {
 			"in-progress"
 		);
 		expect(ended.some((p) => p.recurringState === "ended")).toBe(true);
+		expect(ended.find((p) => p._id === rows[2]._id)).toMatchObject({
+			recurringState: "skipped",
+			recurringSkipReason: "manual",
+		});
+		expect(ended.find((p) => p._id === rows[3]._id)?.recurringState).toBeUndefined();
+
+		vi.setSystemTime(NOW + 15 * DAY);
+		const resume = await setup.asUser.query(
+			api.projectSeries.previewLifecycle,
+			{ seriesId: setup.seriesId, action: "resume" }
+		);
 		await expect(
 			setup.asUser.mutation(api.projectSeries.lifecycle, {
 				seriesId: setup.seriesId,
 				action: "resume",
-				expectedVersion: preview.revision + 1,
+				expectedVersion: resume.revision - 1,
 			})
-		).rejects.toThrow(/ended/i);
+		).rejects.toThrow(/changed/i);
+		await setup.asUser.mutation(api.projectSeries.lifecycle, {
+			seriesId: setup.seriesId,
+			action: "resume",
+			expectedVersion: resume.revision,
+		});
+		await t.mutation(internal.projectSeries.generate, {
+			orgId: setup.orgId,
+			seriesId: setup.seriesId,
+		});
+
+		const resumed = await occurrences(setup.seriesId);
+		expect(resumed).toHaveLength(5);
+		expect(new Set(resumed.map((visit) => visit.recurringNominalDate)).size).toBe(5);
+		expect(
+			resumed
+				.filter((visit) => visit.recurringState === "ended")
+			).toHaveLength(0);
+		expect(
+			resumed
+				.filter(
+					(visit) =>
+						visit.status === "cancelled" &&
+						visit.recurringSkipReason !== "manual" &&
+						(visit.startDate ?? 0) < Date.UTC(2026, 8, 21)
+				)
+				.every((visit) => visit.recurringState === "skipped")
+		).toBe(true);
+		expect(resumed.find((p) => p._id === rows[2]._id)).toMatchObject({
+			recurringState: "skipped",
+			recurringSkipReason: "manual",
+		});
+		expect(resumed.find((p) => p._id === rows[3]._id)?.recurringState).toBeUndefined();
+		expect(resumed.find((p) => p._id === rows[4]._id)).toMatchObject({
+			status: "planned",
+		});
+		expect(resumed.find((p) => p._id === rows[4]._id)?.recurringState).toBeUndefined();
+		expect(resumed.find((p) => p._id === rows[0]._id)).toMatchObject({
+			status: "cancelled",
+			recurringState: "skipped",
+		});
+		const afterSeries = await t.run(async (ctx) => ctx.db.get(setup.seriesId));
+		expect(afterSeries).toMatchObject({
+			state: "active",
+			anchorDateKey: beforeSeries!.anchorDateKey,
+			rule,
+		});
+	});
+
+	it("restores all five ended weekly visits on a same-day resume", async () => {
+		const setup = await series(5, weekly(5));
+		const before = await occurrences(setup.seriesId);
+		const beforeIds = before.map((visit) => visit._id);
+		const end = await setup.asUser.query(api.projectSeries.previewLifecycle, {
+			seriesId: setup.seriesId,
+			action: "end",
+		});
+		await setup.asUser.mutation(api.projectSeries.lifecycle, {
+			seriesId: setup.seriesId,
+			action: "end",
+			expectedVersion: end.revision,
+		});
+		const resume = await setup.asUser.query(api.projectSeries.previewLifecycle, {
+			seriesId: setup.seriesId,
+			action: "resume",
+		});
+		expect(resume.count).toBe(5);
+		await setup.asUser.mutation(api.projectSeries.lifecycle, {
+			seriesId: setup.seriesId,
+			action: "resume",
+			expectedVersion: resume.revision,
+		});
+		const restored = await occurrences(setup.seriesId);
+		expect(restored.map((visit) => visit._id)).toEqual(beforeIds);
+		expect(restored).toHaveLength(5);
+		expect(
+			restored.every(
+				(visit) => visit.status === "planned" && !visit.recurringState
+			)
+		).toBe(true);
+		const resumeEvents = await t.run(async (ctx) =>
+			(await ctx.db.query("domainEvents").collect()).filter(
+				(event) => event.eventSource === "projectSeries.resume"
+			)
+		);
+		expect(resumeEvents).toHaveLength(5);
+		expect(
+			resumeEvents.every(
+				(event) =>
+					event.payload.oldValue === "cancelled" &&
+					event.payload.newValue === "planned"
+			)
+		).toBe(true);
+
+		vi.setSystemTime(NOW + 365 * DAY);
+		await t.mutation(internal.projectSeries.generate, {
+			orgId: setup.orgId,
+			seriesId: setup.seriesId,
+		});
+		expect(await occurrences(setup.seriesId)).toHaveLength(5);
+	});
+
+	it("restores a leftover ended visit once its series is active", async () => {
+		const setup = await series(3);
+		const visit = (await occurrences(setup.seriesId))[1];
+		const preview = await setup.asUser.query(
+			api.projectSeries.previewLifecycle,
+			{ seriesId: setup.seriesId, action: "end" }
+		);
+		await setup.asUser.mutation(api.projectSeries.lifecycle, {
+			seriesId: setup.seriesId,
+			action: "end",
+			expectedVersion: preview.revision,
+		});
+		await t.run(async (ctx) =>
+			ctx.db.patch(setup.seriesId, { state: "active" })
+		);
+		const page = await setup.asUser.query(api.projectSeries.listOccurrences, {
+			seriesId: setup.seriesId,
+		});
+		expect(page.restorableIds).toContain(visit._id);
+		await setup.asUser.mutation(api.projectSeries.restoreVisit, {
+			projectId: visit._id,
+		});
+		expect(await t.run(async (ctx) => ctx.db.get(visit._id))).toMatchObject({
+			status: "planned",
+		});
 	});
 
 	it("manual skip and restore retain the occurrence ledger without regeneration", async () => {

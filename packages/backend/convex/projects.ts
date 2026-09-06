@@ -1,6 +1,6 @@
 import { query, QueryCtx, MutationCtx } from "./_generated/server";
 import { mutation } from "./lib/triggers";
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 import { Doc, Id } from "./_generated/dataModel";
 import { getCurrentUserOrgId } from "./lib/auth";
 import { ActivityHelpers } from "./lib/activities";
@@ -674,8 +674,17 @@ export const update = userMutation({
 			() => currentProject.assignedUserIds?.includes(ctx.user._id) ?? false
 		);
 		const oldStatus = currentProject.status;
-		if (currentProject.recurringState && filteredUpdates.status && filteredUpdates.status !== "cancelled") {
-			throw new Error("Resume the recurring series or restore the skipped visit before restarting this project");
+		if (
+			currentProject.recurringState &&
+			filteredUpdates.status &&
+			filteredUpdates.status !== "cancelled"
+		) {
+			throw new ConvexError({
+				code: "RECURRING_PROJECT_SUSPENDED",
+				recurringState: currentProject.recurringState,
+				message:
+					"Use Status recovery to resume the series or restore this visit before restarting it",
+			});
 		}
 		const startDate = filteredUpdates.startDate ?? currentProject.startDate;
 		const endDate = filteredUpdates.endDate ?? currentProject.endDate;

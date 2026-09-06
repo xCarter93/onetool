@@ -244,6 +244,7 @@ async function lifecycleVisits(
 	series: Doc<"projectSeries">,
 	action: "pause" | "resume" | "end"
 ) {
+	const resumeState = series.state === "ended" ? "ended" : "paused";
 	const rows =
 		action === "resume"
 			? boundedVisits(
@@ -252,7 +253,7 @@ async function lifecycleVisits(
 						.withIndex("by_series_state", (q) =>
 							q
 								.eq("recurringSeriesId", series._id)
-								.eq("recurringState", "paused")
+								.eq("recurringState", resumeState)
 						)
 						.take(MAX_AFFECTED + 1)
 				)
@@ -262,7 +263,7 @@ async function lifecycleVisits(
 	for (const project of rows) {
 		const eligible =
 			action === "resume"
-				? project.recurringState === "paused"
+				? project.recurringState === resumeState
 				: (project.status === "planned" && !project.recurringState) ||
 					(action === "end" && project.recurringState === "paused");
 		if (!eligible || (await hasStartedOrBilled(ctx, project))) {
@@ -379,7 +380,10 @@ export const listOccurrences = userQuery({
 			for (const project of page.page) {
 				const canSkip = project.status === "planned" && !project.recurringState;
 				const canRestore =
-					series.state === "active" && project.recurringState === "skipped";
+					series.state === "active" &&
+					(project.recurringState === "paused" ||
+						project.recurringState === "skipped" ||
+						project.recurringState === "ended");
 				if (
 					(canSkip || canRestore) &&
 					!(await hasStartedOrBilled(ctx, project))
@@ -425,10 +429,14 @@ export const lifecycle = userMutation({
 		await requireSeriesAccess(ctx, "modify");
 		const series = await ctx.orgEntity("projectSeries", args.seriesId);
 		checkRevision(series, args.expectedVersion);
-		if (series.state === "ended")
-			throw new Error("An ended series cannot be restarted");
-		if (args.action === "resume" && series.state !== "paused")
-			throw new Error("This series is not paused");
+		if (
+			args.action === "resume" &&
+			series.state !== "paused" &&
+			series.state !== "ended"
+		)
+			throw new Error("This series is already active");
+		if (series.state === "ended" && args.action !== "resume")
+			throw new Error("Resume this ended series before changing its lifecycle");
 		if (args.action === "pause" && series.state !== "active")
 			throw new Error("This series is already paused");
 		const { visits } = await lifecycleVisits(ctx, series, args.action);
@@ -449,6 +457,20 @@ export const lifecycle = userMutation({
 				recurringState,
 				recurringAppliedRevision: revision,
 			});
+			if (
+				resume &&
+				series.state === "ended" &&
+				project.status !== "planned"
+			)
+				await emitStatusChangeEvent(
+					ctx,
+					ctx.orgId,
+					"project",
+					project._id,
+					project.status,
+					"planned",
+					"projectSeries.resume"
+				);
 			if (args.action === "end" && project.status !== "cancelled")
 				await emitStatusChangeEvent(
 					ctx,
@@ -509,8 +531,13 @@ export const restoreVisit = userMutation({
 	handler: async (ctx, args) => {
 		await requireSeriesAccess(ctx, "modify");
 		const project = await ctx.orgEntity("projects", args.projectId);
-		if (!project.recurringSeriesId || project.recurringState !== "skipped")
-			throw new Error("This visit is not skipped");
+		if (
+			!project.recurringSeriesId ||
+			(project.recurringState !== "paused" &&
+				project.recurringState !== "skipped" &&
+				project.recurringState !== "ended")
+		)
+			throw new Error("This visit is not suspended");
 		const series = await ctx.orgEntity(
 			"projectSeries",
 			project.recurringSeriesId

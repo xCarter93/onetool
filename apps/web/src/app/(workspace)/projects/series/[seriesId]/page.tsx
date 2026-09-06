@@ -17,6 +17,7 @@ import {
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import type { Doc, Id } from "@onetool/backend/convex/_generated/dataModel";
+import { dateKeyFromTimestamp } from "@onetool/backend/convex/lib/projectRecurrence";
 import type { ColumnDef } from "@tanstack/react-table";
 import { useTable } from "@tanstack/react-table";
 import { Button } from "@/components/ui/button";
@@ -73,9 +74,12 @@ function SeriesPageContent() {
 	const [previousCursors, setPreviousCursors] = useState<
 		Array<string | undefined>
 	>([]);
-	const [action, setAction] = useState<LifecycleAction | null>(null);
+	const [action, setAction] = useState<LifecycleAction | null>(() =>
+		searchParams.get("action") === "resume" ? "resume" : null
+	);
 	const [isSaving, setIsSaving] = useState(false);
 	const [scheduleOpen, setScheduleOpen] = useState(false);
+	const [renderedAt] = useState(Date.now);
 	const {
 		can,
 		hasAllRecords,
@@ -86,13 +90,23 @@ function SeriesPageContent() {
 		api.projectSeries.get,
 		canAccess ? { seriesId, fromProjectId } : "skip"
 	);
+	const actionIsAvailable =
+		action === "resume"
+			? details?.series.state === "paused" || details?.series.state === "ended"
+			: action === "pause"
+				? details?.series.state === "active"
+				: action === "end"
+					? details?.series.state !== "ended"
+					: false;
 	const occurrences = useQuery(
 		api.projectSeries.listOccurrences,
 		canAccess && details ? { seriesId, cursor } : "skip"
 	);
 	const lifecyclePreview = useQuery(
 		api.projectSeries.previewLifecycle,
-		action && canAccess && details?.canManage ? { seriesId, action } : "skip"
+		action && actionIsAvailable && canAccess && details?.canManage
+			? { seriesId, action }
+			: "skip"
 	);
 	const lifecycle = useMutation(api.projectSeries.lifecycle);
 	const skip = useMutation(api.projectSeries.skip);
@@ -251,9 +265,23 @@ function SeriesPageContent() {
 	const stateAction: LifecycleAction | null =
 		series.state === "active"
 			? "pause"
-			: series.state === "paused"
+			: series.state === "paused" || series.state === "ended"
 				? "resume"
 				: null;
+	const seriesTodayKey = dateKeyFromTimestamp(renderedAt, series.timezone);
+	const seriesToday = Date.parse(`${seriesTodayKey}T00:00:00Z`);
+	const resumableFutureVisits =
+		action === "resume" && lifecyclePreview
+			? lifecyclePreview.visits.filter(
+					(visit) => (visit.startDate ?? 0) >= seriesToday
+				).length
+			: 0;
+	const pastCancelledVisits =
+		action === "resume" && lifecyclePreview
+			? lifecyclePreview.visits.filter(
+					(visit) => (visit.startDate ?? 0) < seriesToday
+				).length
+			: 0;
 
 	return (
 		<main className="space-y-6 px-6 py-8">
@@ -294,7 +322,7 @@ function SeriesPageContent() {
 						{propertyName ? `, ${propertyName}` : ""}
 					</p>
 				</div>
-				{canManage && series.state !== "ended" && (
+				{canManage && (
 					<div className="flex flex-wrap gap-2">
 						{stateAction && (
 							<Button variant="outline" onClick={() => setAction(stateAction)}>
@@ -306,9 +334,11 @@ function SeriesPageContent() {
 								{stateAction === "pause" ? "Pause series" : "Resume series"}
 							</Button>
 						)}
-						<Button variant="destructive" onClick={() => setAction("end")}>
-							<Square className="size-4" /> End series
-						</Button>
+						{series.state !== "ended" && (
+							<Button variant="destructive" onClick={() => setAction("end")}>
+								<Square className="size-4" /> End series
+							</Button>
+						)}
 					</div>
 				)}
 			</header>
@@ -336,6 +366,13 @@ function SeriesPageContent() {
 						)}
 					</FrameHeader>
 					<FramePanel className="space-y-3">
+						{series.state === "ended" && (
+							<p className="text-sm text-muted-foreground">
+								This series has ended. Resume it to restore eligible upcoming
+								visits on the original schedule. Past cancellations stay
+								cancelled.
+							</p>
+						)}
 						<div className="flex items-center gap-3">
 							<Repeat className="size-5 text-muted-foreground" />
 							<div>
@@ -443,7 +480,7 @@ function SeriesPageContent() {
 			</Frame>
 
 			<Dialog
-				open={action !== null}
+				open={action !== null && actionIsAvailable && canManage}
 				onOpenChange={(open) => !open && setAction(null)}
 			>
 				<DialogContent className="max-w-lg">
@@ -457,10 +494,10 @@ function SeriesPageContent() {
 						</DialogTitle>
 						<DialogDescription>
 							{action === "end"
-								? "Ending is permanent. Started and completed visits stay unchanged."
+								? "Upcoming unstarted visits will be cancelled. You can resume the series later from its original schedule."
 								: action === "pause"
 									? "Upcoming unstarted visits will be suspended. Resume follows the original schedule without backfilling."
-									: "Visits will resume on the original schedule without backfilling paused dates."}
+									: "Eligible upcoming visits will return to the planned state. The original schedule and end condition stay in place. Past cancelled visits stay cancelled."}
 						</DialogDescription>
 					</DialogHeader>
 					<div className="rounded-md bg-muted p-4">
@@ -468,12 +505,36 @@ function SeriesPageContent() {
 							<Skeleton className="h-12" />
 						) : (
 							<>
-								<p className="text-sm font-medium tabular-nums">
-									Affected visits: {lifecyclePreview.count}
-								</p>
-								<p className="text-sm text-muted-foreground tabular-nums">
-									Preserved visits: {lifecyclePreview.preserved}
-								</p>
+								{action === "resume" ? (
+									<>
+										<p className="text-sm font-medium tabular-nums">
+											Upcoming visits restored: {resumableFutureVisits}
+										</p>
+										{resumableFutureVisits === 0 && (
+											<p className="mt-1 text-sm text-muted-foreground">
+												No existing upcoming visits will be restored. If the saved
+												count or end date is exhausted, resuming adds no occurrences.
+												After resuming, restore a visit individually or edit the
+												schedule deliberately.
+											</p>
+										)}
+										<p className="text-sm text-muted-foreground tabular-nums">
+											Past cancellations retained: {pastCancelledVisits}
+										</p>
+										<p className="text-sm text-muted-foreground tabular-nums">
+											Protected visits unchanged: {lifecyclePreview.preserved}
+										</p>
+									</>
+								) : (
+									<>
+										<p className="text-sm font-medium tabular-nums">
+											Affected visits: {lifecyclePreview.count}
+										</p>
+										<p className="text-sm text-muted-foreground tabular-nums">
+											Preserved visits: {lifecyclePreview.preserved}
+										</p>
+									</>
+								)}
 								{lifecyclePreview.visits.slice(0, 4).map((visit) => (
 									<p
 										key={visit._id}
