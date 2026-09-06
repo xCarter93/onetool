@@ -1,3 +1,4 @@
+import { ConvexError } from "convex/values";
 import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";
@@ -46,6 +47,14 @@ export function ruleFingerprint(value: unknown): string {
 		}
 		return entry;
 	});
+}
+
+export function assertProjectSupportsRecurrence(project: Doc<"projects">): void {
+	if (project.projectType !== "recurring") {
+		throw new ConvexError(
+			"Change the project type to Recurring before setting up recurrence"
+		);
+	}
 }
 
 export async function generateProjectSeriesOccurrences(
@@ -187,6 +196,7 @@ export async function enrollProjectInSeries(
 	project: Doc<"projects">,
 	rule: ProjectRecurrenceRule
 ): Promise<Id<"projectSeries">> {
+	assertProjectSupportsRecurrence(project);
 	if (project.recurringSeriesId) {
 		const series = await ctx.orgEntity("projectSeries", project.recurringSeriesId);
 		if (

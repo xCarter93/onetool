@@ -24,7 +24,7 @@ import { convexErrorMessage } from "@/lib/convex-error";
 import { RecurrenceScheduleForm } from "./schedule-form";
 import { describeRecurrence, type RecurrenceRule } from "./rule";
 
-type RecurrenceProject = Pick<Doc<"projects">, "_id" | "title"> & {
+type RecurrenceProject = Pick<Doc<"projects">, "_id" | "title" | "projectType"> & {
 	startDate?: number | null;
 	recurringSeriesId?: Doc<"projects">["recurringSeriesId"] | null;
 	recurringState?: Doc<"projects">["recurringState"] | null;
@@ -35,6 +35,11 @@ export function RecurrenceProjectControl({
 }: {
 	project: RecurrenceProject;
 }) {
+	if (project.projectType !== "recurring") return null;
+	return <RecurringProjectSchedule key={project._id} project={project} />;
+}
+
+function RecurringProjectSchedule({ project }: { project: RecurrenceProject }) {
 	const [open, setOpen] = useState(false);
 	const [isSubmitting, setIsSubmitting] = useState(false);
 	const router = useRouter();

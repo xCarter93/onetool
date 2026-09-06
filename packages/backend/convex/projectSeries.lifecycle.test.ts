@@ -57,7 +57,7 @@ describe("project series lifecycle", () => {
 			title: "Weekly service",
 			description: "Original scope",
 			status: "planned",
-			projectType: "one-off",
+			projectType: "recurring",
 			startDate: Date.UTC(2026, 8, 6),
 			endDate: Date.UTC(2026, 8, 6),
 		});

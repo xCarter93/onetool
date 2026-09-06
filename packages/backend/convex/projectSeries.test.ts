@@ -60,7 +60,7 @@ describe("project series", () => {
 			title: "Monday cleaning",
 			description: "Kitchen and bathrooms",
 			status: overrides.status ?? "planned",
-			projectType: "one-off",
+			projectType: "recurring",
 			startDate: overrides.startDate ?? Date.UTC(2026, 8, 6),
 			endDate: overrides.endDate ?? Date.UTC(2026, 8, 8),
 		});
@@ -100,6 +100,58 @@ describe("project series", () => {
 				projects: (await ctx.db.query("projects").collect()).length,
 			}))
 		).toEqual(before);
+	});
+
+	it("rejects recurrence after switching back to one-off until type is recurring again", async () => {
+		const setup = await setupOrigin();
+		const asUser = t.withIdentity(
+			createTestIdentity(setup.clerkUserId, setup.clerkOrgId)
+		);
+		await asUser.mutation(api.projects.update, {
+			id: setup.projectId,
+			projectType: "one-off",
+		});
+		const before = await t.run(async (ctx) => ({
+			series: (await ctx.db.query("projectSeries").collect()).length,
+			projects: (await ctx.db.query("projects").collect()).length,
+		}));
+
+		await expect(
+			asUser.query(api.projectSeries.preview, {
+				projectId: setup.projectId,
+				rule: daily(3),
+			})
+		).rejects.toThrow(/project type.*recurring/i);
+		await expect(
+			asUser.mutation(api.projectSeries.enroll, {
+				projectId: setup.projectId,
+				rule: daily(3),
+			})
+		).rejects.toThrow(/project type.*recurring/i);
+		expect(
+			await t.run(async (ctx) => ({
+				series: (await ctx.db.query("projectSeries").collect()).length,
+				projects: (await ctx.db.query("projects").collect()).length,
+			}))
+		).toEqual(before);
+
+		await asUser.mutation(api.projects.update, {
+			id: setup.projectId,
+			projectType: "recurring",
+		});
+		expect(
+			await asUser.query(api.projectSeries.preview, {
+				projectId: setup.projectId,
+				rule: daily(3),
+			})
+		).toEqual(["2026-09-06", "2026-09-07", "2026-09-08"]);
+		const seriesId = await asUser.mutation(api.projectSeries.enroll, {
+			projectId: setup.projectId,
+			rule: daily(3),
+		});
+		expect(await t.run((ctx) => ctx.db.get(seriesId))).toMatchObject({
+			originatingProjectId: setup.projectId,
+		});
 	});
 
 	it("enrolls an existing project and copies only reusable project fields", async () => {

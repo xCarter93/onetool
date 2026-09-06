@@ -89,7 +89,7 @@ export const projectsAndTasksArticles: HelpArticle[] = [
 				heading: "Set up recurring visits",
 				blocks: [
 					{ type: "steps", items: [
-						"For an existing project with a start date, choose **Set up recurrence** in the right sidebar beside its type and dates. Its client and property define the series, and this project counts as the first occurrence.",
+						"For an existing project, set **Project Type** to **Recurring** and add a start date, then choose **Set up recurrence** in the right sidebar beside its type and dates. Its client and property define the series, and this project counts as the first occurrence. Before a series is created, switching back to One-off removes the schedule setup.",
 						"Choose a schedule preset or **Custom**. You can select weekdays, monthly dates or an ordinal weekday, and seasonal months.",
 						"Under **Ends**, choose **Never**, **On a date**, or **After a number of visits**. Review the preview, then save.",
 					] },
@@ -129,7 +129,7 @@ export const projectsAndTasksArticles: HelpArticle[] = [
 		faq: [
 			{
 				question: "When should I use a recurring project?",
-				answer: "Use recurring visits for ongoing work like weekly mowing or monthly cleaning. Choose Recurring in the New project dialog to configure a schedule during creation, or use Set up recurrence in an existing dated project's sidebar. Changing the type on an existing project alone still only labels the work. One-off projects suit a repair or a spring cleanup.",
+				answer: "Use recurring visits for ongoing work like weekly mowing or monthly cleaning. Choose Recurring in the New project dialog to configure a schedule during creation, or set an existing dated project to Recurring and use Set up recurrence in its sidebar. Changing the type on an existing project alone still only labels the work. One-off projects suit a repair or a spring cleanup.",
 			},
 			{
 				question: "Why is Generate Invoice not clickable?",

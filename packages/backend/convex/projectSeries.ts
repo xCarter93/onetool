@@ -21,6 +21,7 @@ import {
 	validateRecurrenceRule,
 } from "./lib/projectRecurrence";
 import {
+	assertProjectSupportsRecurrence,
 	enrollProjectInSeries,
 	generateProjectSeriesOccurrences,
 } from "./lib/projectSeriesEnrollment";
@@ -66,6 +67,7 @@ export const preview = userQuery({
 	handler: async (ctx, args) => {
 		await requireSeriesAccess(ctx, "view");
 		const project = await ctx.orgEntity("projects", args.projectId);
+		assertProjectSupportsRecurrence(project);
 		if (project.startDate === undefined)
 			throw new Error("Set a project start date before configuring recurrence");
 		const org = await ctx.db.get(ctx.orgId);
