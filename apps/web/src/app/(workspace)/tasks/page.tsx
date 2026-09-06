@@ -119,6 +119,7 @@ function formatRelativeDate(timestamp: number): string {
   if (diffDays === -1) return "Yesterday";
 
   return date.toLocaleDateString("en-US", {
+    timeZone: "UTC",
     weekday: "short",
     month: "short",
     day: "numeric",

@@ -9,6 +9,7 @@ import {
 	DocumentSigner,
 	EmbeddedDocumentEditJsonRequest,
 	EmbeddedDocumentRequest,
+	RevokeDocument,
 } from "boldsign";
 
 // ============================================================================
@@ -429,5 +430,42 @@ export const sendRecurringAgreementForSignature = action({
 			await ctx.runMutation(internal.boldsign.markRecurringSignatureUncertain, { documentId: context.documentId });
 			throw new Error("The signature send could not be confirmed. Check the signature request before retrying to avoid sending twice.");
 		}
+	},
+});
+
+export const withdrawRecurringAgreement = action({
+	args: { seriesId: v.id("projectSeries"), expectedRevisionId: v.id("projectSeriesAgreementRevisions") },
+	returns: v.object({ withdrawn: v.boolean() }),
+	handler: async (ctx, args): Promise<{ withdrawn: boolean }> => {
+		const pending = await ctx.runQuery(api.projectSeriesAgreements.getWithdrawalContext, args);
+		if (pending.providerRevocationRequired && pending.boldsignDocumentId && !pending.providerAlreadyTerminal) {
+			const documentApi = createDocumentApi();
+			const properties = await documentApi.getProperties(pending.boldsignDocumentId);
+			const providerStatus = String(properties.status ?? "");
+			if (providerStatus === "Completed") throw new Error("This agreement was completed before its withdrawal could be confirmed");
+			if (["Revoked", "Declined", "Expired"].includes(providerStatus)) {
+				const terminalEvent = providerStatus as "Revoked" | "Declined" | "Expired";
+				await ctx.runMutation(internal.boldsign.handleWebhook, {
+					boldsignDocumentId: pending.boldsignDocumentId,
+					eventType: terminalEvent,
+					eventTimestamp: Date.now(),
+				});
+			} else {
+				const request = new RevokeDocument();
+				request.message = "This recurring agreement revision was withdrawn by the sender.";
+				await documentApi.revokeDocument(pending.boldsignDocumentId, request);
+				await ctx.runMutation(internal.boldsign.handleWebhook, {
+					boldsignDocumentId: pending.boldsignDocumentId,
+					eventType: "Revoked",
+					eventTimestamp: Date.now(),
+				});
+			}
+		}
+		await ctx.runMutation(api.projectSeriesAgreements.completeWithdrawal, {
+			...args,
+			expectedDocumentId: pending.documentId,
+			expectedBoldsignDocumentId: pending.boldsignDocumentId,
+		});
+		return { withdrawn: true };
 	},
 });

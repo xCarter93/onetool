@@ -8,6 +8,7 @@ import { addCalendarDays, dateKeyFromTimestamp, listRecurrenceDates, validateRec
 import { validateRecurringPaymentRule } from "./recurringPaymentRules";
 import type { RecurringPaymentRule } from "./recurringPaymentRules";
 import { approveMonthlyPaymentRevision, assertMonthlyAgreementTerms } from "./recurringPaymentChanges";
+import { emitStatusChangeEvent } from "../eventBus";
 
 export { recurringAgreementTermsValidator, type RecurringAgreementTerms, type AgreementPaymentRule } from "./recurringAgreementTerms";
 import type { RecurringAgreementTerms } from "./recurringAgreementTerms";
@@ -195,4 +196,44 @@ export async function bindAgreementApprovalDocument(ctx: MutationCtx, quoteId: I
 
 export async function latestAgreementRevision(ctx: Pick<QueryCtx, "db">, seriesId: Id<"projectSeries">) {
 	return ctx.db.query("projectSeriesAgreementRevisions").withIndex("by_series_revision", (q) => q.eq("seriesId", seriesId)).order("desc").first();
+}
+
+export async function discardPendingAgreementRevision(
+	ctx: MutationCtx,
+	series: Doc<"projectSeries">,
+	revision: Doc<"projectSeriesAgreementRevisions">,
+	withdrawnByUserId: Id<"users">,
+	providerRevoked: boolean
+) {
+	if (series.pendingAgreementRevisionId !== revision._id || revision.seriesId !== series._id || (revision.status !== "draft" && revision.status !== "pending"))
+		throw new ConvexError("Recurring agreement revision is no longer pending");
+	if (revision.monthlyPaymentScheduleVersionId)
+		throw new ConvexError("Cancel the shared monthly payment proposal instead");
+	const quote = await ctx.db.get(revision.sourceQuoteId);
+	if (!quote || quote.orgId !== series.orgId || quote.recurringAgreementRevisionId !== revision._id)
+		throw new ConvexError("Pending recurring agreement quote is unavailable");
+	const document = revision.approvalDocumentId ? await ctx.db.get(revision.approvalDocumentId) : null;
+	const delivered = quote.status === "sent" || Boolean(document?.boldsign || document?.recurringSignatureSendState);
+	if (delivered && (!providerRevoked || (document?.boldsign && !["Revoked", "Declined", "Expired"].includes(document.boldsign.status))))
+		throw new ConvexError("Revoke the signature request before withdrawing this agreement");
+	const now = Date.now();
+	const resetDelivery = quote.status === "sent" || quote.status === "declined" || quote.status === "expired";
+	await ctx.db.patch(revision._id, { status: "superseded", withdrawnAt: now, withdrawnByUserId });
+	await ctx.db.patch(quote._id, {
+		recurringAgreementTerms: undefined,
+		recurringAgreementRevisionId: undefined,
+		status: resetDelivery ? "draft" : quote.status,
+		sentAt: resetDelivery ? undefined : quote.sentAt,
+		declinedAt: resetDelivery ? undefined : quote.declinedAt,
+		approvalCycle: (quote.approvalCycle ?? 0) + 1,
+		contentUpdatedAt: now,
+	});
+	if (resetDelivery) {
+		await emitStatusChangeEvent(ctx, quote.orgId, "quote", quote._id, quote.status, "draft", "projectSeriesAgreements.withdraw");
+	}
+	await ctx.db.patch(series._id, {
+		pendingAgreementRevisionId: undefined,
+		agreementQuoteId: series.activeAgreementRevisionId ? series.agreementQuoteId : undefined,
+		revision: (series.revision ?? 0) + 1,
+	});
 }

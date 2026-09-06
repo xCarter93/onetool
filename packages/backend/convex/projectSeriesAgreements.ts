@@ -1,8 +1,8 @@
 import { ConvexError, v } from "convex/values";
-import type { Id } from "./_generated/dataModel";
+import type { Doc, Id } from "./_generated/dataModel";
 import { userMutation, userQuery, type UserQueryCtx } from "./lib/factories";
 import { recurringPaymentRuleValidator } from "./lib/recurringPaymentRules";
-import { createAgreementRevisionDraft, latestAgreementRevision, recurringAgreementTermsValidator, validatePaymentRule } from "./lib/projectSeriesAgreements";
+import { createAgreementRevisionDraft, discardPendingAgreementRevision, latestAgreementRevision, recurringAgreementTermsValidator, validatePaymentRule } from "./lib/projectSeriesAgreements";
 import { recurringQuoteFields, snapshotQuoteVersion, writeRecurringQuoteLines } from "./lib/projectSeriesQuotes";
 import { projectRecurrenceRuleValidator } from "./lib/projectRecurrence";
 import { assertMonthlyAgreementTerms } from "./lib/recurringPaymentChanges";
@@ -22,12 +22,28 @@ async function context(ctx: UserQueryCtx, quoteId: Id<"quotes">) {
 
 const revisionSummary = v.object({
 	_id: v.id("projectSeriesAgreementRevisions"), revisionNumber: v.number(), status: v.union(v.literal("draft"), v.literal("pending"), v.literal("approved"), v.literal("superseded")),
-	quoteId: v.id("quotes"), agreementReference: v.optional(v.string()), approvedAt: v.optional(v.number()),
+	quoteId: v.id("quotes"), agreementReference: v.optional(v.string()), approvedAt: v.optional(v.number()), withdrawnAt: v.optional(v.number()),
+	deliveryState: v.union(v.literal("draft"), v.literal("ready_to_send"), v.literal("awaiting_approval"), v.literal("approved"), v.literal("withdrawn"), v.literal("declined"), v.literal("expired"), v.literal("revoked")),
+	canDiscard: v.boolean(), canWithdraw: v.boolean(),
 });
+
+async function summarizeRevision(ctx: UserQueryCtx, row: Doc<"projectSeriesAgreementRevisions">) {
+	const document = row.approvalDocumentId ? await ctx.orgEntity("documents", row.approvalDocumentId) : null;
+	const quote = await ctx.orgEntity("quotes", row.sourceQuoteId);
+	const providerStatus = document?.boldsign?.status;
+	const delivered = quote.status === "sent" || quote.status === "approved" || Boolean(document?.recurringSignatureSendState || (providerStatus && providerStatus !== "Draft"));
+	const withdrawn = row.status === "superseded" && row.withdrawnAt !== undefined;
+	return { _id: row._id, revisionNumber: row.revisionNumber, status: row.status, quoteId: row.sourceQuoteId, agreementReference: row.terms?.agreementReference, approvedAt: row.approvedAt, withdrawnAt: row.withdrawnAt,
+		deliveryState: row.approvedAt !== undefined ? "approved" as const : withdrawn ? "withdrawn" as const : providerStatus === "Declined" ? "declined" as const : providerStatus === "Expired" ? "expired" as const : providerStatus === "Revoked" ? "revoked" as const : delivered ? "awaiting_approval" as const : document ? "ready_to_send" as const : "draft" as const,
+		canDiscard: !row.monthlyPaymentScheduleVersionId && (row.status === "draft" || row.status === "pending") && !delivered,
+		canWithdraw: !row.monthlyPaymentScheduleVersionId && row.status === "pending" &&
+			(Boolean(providerStatus && ["Sent", "Viewed", "Signed", "Revoked", "Declined", "Expired"].includes(providerStatus)) || (quote.status === "sent" && !document?.boldsign && !document?.recurringSignatureSendState)),
+	};
+}
 
 export const getSeriesAgreement = userQuery({
 	args: { seriesId: v.id("projectSeries") },
-	returns: v.object({ agreementQuoteId: v.optional(v.id("quotes")), active: v.union(v.null(), revisionSummary), pending: v.union(v.null(), revisionSummary) }),
+	returns: v.object({ agreementQuoteId: v.optional(v.id("quotes")), active: v.union(v.null(), revisionSummary), pending: v.union(v.null(), revisionSummary), history: v.array(revisionSummary), historyHasMore: v.boolean() }),
 	handler: async (ctx, args) => {
 		await ctx.requireLevel("projects", "view");
 		await ctx.requireLevel("quotes", "view");
@@ -36,15 +52,16 @@ export const getSeriesAgreement = userQuery({
 		const summarize = async (id?: Id<"projectSeriesAgreementRevisions">) => {
 			if (!id) return null;
 			const row = await ctx.orgEntity("projectSeriesAgreementRevisions", id);
-			return { _id: row._id, revisionNumber: row.revisionNumber, status: row.status, quoteId: row.sourceQuoteId, agreementReference: row.terms?.agreementReference, approvedAt: row.approvedAt };
+			return summarizeRevision(ctx, row);
 		};
-		return { agreementQuoteId: series.agreementQuoteId, active: await summarize(series.activeAgreementRevisionId), pending: await summarize(series.pendingAgreementRevisionId) };
+		const revisions = await ctx.db.query("projectSeriesAgreementRevisions").withIndex("by_series_revision", (q) => q.eq("seriesId", series._id)).order("desc").take(51);
+		return { agreementQuoteId: series.agreementQuoteId, active: await summarize(series.activeAgreementRevisionId), pending: await summarize(series.pendingAgreementRevisionId), history: await Promise.all(revisions.slice(0, 50).map((row) => summarizeRevision(ctx, row))), historyHasMore: revisions.length > 50 };
 	},
 });
 
 export const getSetup = userQuery({
 	args: { quoteId: v.id("quotes") },
-	returns: v.object({ seriesId: v.id("projectSeries"), state: v.union(v.literal("active"), v.literal("paused"), v.literal("ended")), revision: v.number(), seriesSetup: v.object({ title: v.string(), description: v.optional(v.string()), rule: projectRecurrenceRuleValidator }), agreementQuoteId: v.optional(v.id("quotes")), active: v.union(v.null(), revisionSummary), pending: v.union(v.null(), revisionSummary), recurringAgreementRevisionId: v.optional(v.id("projectSeriesAgreementRevisions")), recurringInheritedAt: v.optional(v.number()), recurringQuoteOverride: v.boolean(), canPrepare: v.boolean(), canRestoreAgreementPricing: v.boolean() }),
+	returns: v.object({ seriesId: v.id("projectSeries"), state: v.union(v.literal("active"), v.literal("paused"), v.literal("ended")), revision: v.number(), seriesSetup: v.object({ title: v.string(), description: v.optional(v.string()), rule: projectRecurrenceRuleValidator }), agreementQuoteId: v.optional(v.id("quotes")), active: v.union(v.null(), revisionSummary), pending: v.union(v.null(), revisionSummary), savedTerms: v.optional(recurringAgreementTermsValidator), recurringAgreementRevisionId: v.optional(v.id("projectSeriesAgreementRevisions")), recurringInheritedAt: v.optional(v.number()), recurringQuoteOverride: v.boolean(), canPrepare: v.boolean(), canRestoreAgreementPricing: v.boolean() }),
 	handler: async (ctx, args) => {
 		const { quote, series } = await context(ctx, args.quoteId);
 		const rootSourceQuoteId = quote.recurringAgreementSourceQuoteId ?? quote._id;
@@ -58,9 +75,65 @@ export const getSetup = userQuery({
 		const summarize = async (id?: Id<"projectSeriesAgreementRevisions">) => {
 			if (!id) return null;
 			const row = await ctx.orgEntity("projectSeriesAgreementRevisions", id);
-			return { _id: row._id, revisionNumber: row.revisionNumber, status: row.status, quoteId: row.sourceQuoteId, agreementReference: row.terms?.agreementReference, approvedAt: row.approvedAt };
+			return summarizeRevision(ctx, row);
 		};
-		return { seriesId: series._id, state: series.state, revision: series.revision ?? 0, seriesSetup: { title: series.title, description: series.description, rule: series.rule }, agreementQuoteId: series.agreementQuoteId, active: await summarize(series.activeAgreementRevisionId), pending: await summarize(series.pendingAgreementRevisionId), recurringAgreementRevisionId: quote.recurringAgreementRevisionId, recurringInheritedAt: quote.recurringInheritedAt, recurringQuoteOverride: quote.recurringQuoteOverride === true, canPrepare, canRestoreAgreementPricing };
+		return { seriesId: series._id, state: series.state, revision: series.revision ?? 0, seriesSetup: { title: series.title, description: series.description, rule: series.rule }, agreementQuoteId: series.agreementQuoteId, active: await summarize(series.activeAgreementRevisionId), pending: await summarize(series.pendingAgreementRevisionId), savedTerms: existingRevision?.terms ?? quote.recurringAgreementTerms, recurringAgreementRevisionId: quote.recurringAgreementRevisionId, recurringInheritedAt: quote.recurringInheritedAt, recurringQuoteOverride: quote.recurringQuoteOverride === true, canPrepare, canRestoreAgreementPricing };
+	},
+});
+
+export const discardPending = userMutation({
+	args: { seriesId: v.id("projectSeries"), expectedRevisionId: v.id("projectSeriesAgreementRevisions") },
+	returns: v.null(),
+	handler: async (ctx, args) => {
+		await ctx.requireLevel("projects", "modify");
+		await ctx.requireLevel("quotes", "modify");
+		if (!(await ctx.hasAllRecords("projects")) || !(await ctx.hasAllRecords("quotes"))) throw new ConvexError("Organization-wide project and quote access is required");
+		const series = await ctx.orgEntity("projectSeries", args.seriesId);
+		const revision = await ctx.orgEntity("projectSeriesAgreementRevisions", args.expectedRevisionId);
+		await discardPendingAgreementRevision(ctx, series, revision, ctx.user._id, false);
+		return null;
+	},
+});
+
+export const getWithdrawalContext = userQuery({
+	args: { seriesId: v.id("projectSeries"), expectedRevisionId: v.id("projectSeriesAgreementRevisions") },
+	returns: v.object({ quoteId: v.id("quotes"), documentId: v.id("documents"), boldsignDocumentId: v.optional(v.string()), providerRevocationRequired: v.boolean(), providerAlreadyTerminal: v.boolean() }),
+	handler: async (ctx, args) => {
+		await ctx.requireLevel("projects", "modify");
+		await ctx.requireLevel("quotes", "modify");
+		if (!(await ctx.hasAllRecords("projects")) || !(await ctx.hasAllRecords("quotes"))) throw new ConvexError("Organization-wide project and quote access is required");
+		const series = await ctx.orgEntity("projectSeries", args.seriesId);
+		const revision = await ctx.orgEntity("projectSeriesAgreementRevisions", args.expectedRevisionId);
+		if (series.pendingAgreementRevisionId !== revision._id || revision.seriesId !== series._id || revision.status !== "pending")
+			throw new ConvexError("Recurring agreement revision is no longer pending");
+		if (revision.monthlyPaymentScheduleVersionId) throw new ConvexError("Cancel the shared monthly payment proposal instead");
+		if (!revision.approvalDocumentId) throw new ConvexError("This agreement has not been sent for approval");
+		const document = await ctx.orgEntity("documents", revision.approvalDocumentId);
+		const quote = await ctx.orgEntity("quotes", revision.sourceQuoteId);
+		if (!document.boldsign && document.recurringSignatureSendState)
+			throw new ConvexError("The signature send is still being confirmed. Resolve its provider status before withdrawing this agreement");
+		if (document.boldsign && !["Sent", "Viewed", "Signed", "Revoked", "Declined", "Expired"].includes(document.boldsign.status))
+			throw new ConvexError("This signature request can no longer be withdrawn");
+		if (!document.boldsign && quote.status !== "sent") throw new ConvexError("This agreement has not been delivered");
+		return { quoteId: revision.sourceQuoteId, documentId: document._id, boldsignDocumentId: document.boldsign?.documentId, providerRevocationRequired: Boolean(document.boldsign), providerAlreadyTerminal: Boolean(document.boldsign && ["Revoked", "Declined", "Expired"].includes(document.boldsign.status)) };
+	},
+});
+
+export const completeWithdrawal = userMutation({
+	args: { seriesId: v.id("projectSeries"), expectedRevisionId: v.id("projectSeriesAgreementRevisions"), expectedDocumentId: v.id("documents"), expectedBoldsignDocumentId: v.optional(v.string()) },
+	returns: v.null(),
+	handler: async (ctx, args) => {
+		await ctx.requireLevel("projects", "modify");
+		await ctx.requireLevel("quotes", "modify");
+		if (!(await ctx.hasAllRecords("projects")) || !(await ctx.hasAllRecords("quotes"))) throw new ConvexError("Organization-wide project and quote access is required");
+		const series = await ctx.orgEntity("projectSeries", args.seriesId);
+		const revision = await ctx.orgEntity("projectSeriesAgreementRevisions", args.expectedRevisionId);
+		const document = await ctx.orgEntity("documents", args.expectedDocumentId);
+		if (revision.approvalDocumentId !== document._id ||
+			(args.expectedBoldsignDocumentId ? document.boldsign?.documentId !== args.expectedBoldsignDocumentId || !["Revoked", "Declined", "Expired"].includes(document.boldsign.status) : Boolean(document.boldsign || document.recurringSignatureSendState)))
+			throw new ConvexError("The signature revocation has not been confirmed");
+		await discardPendingAgreementRevision(ctx, series, revision, ctx.user._id, true);
+		return null;
 	},
 });
 

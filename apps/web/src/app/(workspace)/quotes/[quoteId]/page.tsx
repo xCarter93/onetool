@@ -28,6 +28,7 @@ import { RecurringQuoteCopyGate } from "./components/recurring-quote-copy-gate";
 import { QuoteDetailTabs } from "./components/quote-detail-tabs";
 import { localDateToUtcMidnightMs, todayUtcMidnightMs } from "@/lib/dates";
 import { convexErrorMessage } from "@/lib/convex-error";
+import { runWithLoadingToast } from "@/lib/loading-toast";
 
 type QuoteStatus = "draft" | "sent" | "approved" | "declined" | "expired";
 
@@ -317,22 +318,23 @@ function QuoteDetailPageContent() {
 	const handleGeneratePdf = async (
 		appendDocumentIds: Id<"organizationDocuments">[] = []
 	) => {
+		let loadingId: string | undefined;
 		try {
 			if (!quote || !lineItems) return;
 			if (quote.recurringAgreementTerms) {
-				const loadingId = toast.loading(
+				await runWithLoadingToast(
+					toast,
 					"Generating agreement PDF",
-					"Rendering and saving the approval version."
+					"Rendering and saving the approval version.",
+					() => convex.action(api.pdfActions.ensureQuotePdf, { quoteId })
 				);
-				await convex.action(api.pdfActions.ensureQuotePdf, { quoteId });
-				toast.removeToast(loadingId);
 				toast.success(
 					"Agreement PDF generated",
 					"The approval version is ready."
 				);
 				return;
 			}
-			const loadingId = toast.loading(
+			loadingId = toast.loading(
 				"Generating PDF",
 				appendDocumentIds.length > 0
 					? `Merging with ${appendDocumentIds.length} document${appendDocumentIds.length !== 1 ? "s" : ""}…`
@@ -423,6 +425,7 @@ function QuoteDetailPageContent() {
 				quoteContentSnapshot: rendered.quoteContentSnapshot,
 			});
 			toast.removeToast(loadingId);
+			loadingId = undefined;
 			toast.success(
 				"PDF generated",
 				appendDocumentIds.length > 0
@@ -430,6 +433,7 @@ function QuoteDetailPageContent() {
 					: "Your quote PDF is ready."
 			);
 		} catch (error) {
+			if (loadingId) toast.removeToast(loadingId);
 			console.error(error);
 			toast.error(
 				"PDF generation failed",

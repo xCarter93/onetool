@@ -1389,6 +1389,7 @@ export const recalculateTotals = userMutation({
  */
 export const remove = userMutation({
 	args: { id: v.id("quotes") },
+	returns: v.id("quotes"),
 	handler: async (ctx, args): Promise<QuoteId> => {
 		await ctx.requireLevel("quotes", "delete");
 
@@ -1398,6 +1399,17 @@ export const remove = userMutation({
 			projectId: quote.projectId,
 			clientId: quote.clientId,
 		});
+
+		const agreementRevision = await ctx.db
+			.query("projectSeriesAgreementRevisions")
+			.withIndex("by_source_quote", (q) => q.eq("sourceQuoteId", quote._id))
+			.first();
+		if (agreementRevision || quote.recurringAgreementSourceQuoteId) {
+			throw new ConvexError({
+				code: "CONFLICT",
+				message: "This quote is retained as agreement history and cannot be deleted. Manage the agreement from its recurring series.",
+			});
+		}
 
 		// Check if quote has related invoices
 		const invoices = await ctx.db

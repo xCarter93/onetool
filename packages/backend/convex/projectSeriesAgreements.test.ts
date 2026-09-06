@@ -28,9 +28,36 @@ describe("recurring agreements", () => {
 		expect(revision!.terms).toEqual(prepared.terms);
 		expect(prepared.terms.scope).toEqual({ title: "Approved cleaning scope", description: "Kitchen and bath" });
 		expect(prepared.terms.schedule.rule).toEqual({ frequency: "weekly", interval: 2, end: { kind: "count", count: 8 } });
+		expect((await f.user.query(api.projectSeriesAgreements.getSetup, { quoteId: f.quoteId })).savedTerms).toEqual(prepared.terms);
 		expect(quote!.recurringAgreementTerms?.paymentRule).toEqual({ type: "percentage", installments: [{ percentage: 100, dayOffset: 30 }] });
 		const template = await t.run((ctx) => ctx.db.get(revision!.templateId));
 		expect(template!.active).toBe(false);
+	});
+
+	it("discards an unsent revision while preserving its history and source references", async () => {
+		const f = await fixture();
+		const setup = await f.user.query(api.projectSeriesAgreements.getSetup, { quoteId: f.quoteId });
+		const prepared = await f.user.mutation(api.projectSeriesAgreements.prepare, { quoteId: f.quoteId, billingMode: "per_visit", paymentRule: { type: "percentage", installments: [{ percentage: 100, dayOffset: 30 }] }, expectedSeriesRevision: setup.revision });
+		await f.user.mutation(api.projectSeriesAgreements.discardPending, { seriesId: f.seriesId, expectedRevisionId: prepared.revisionId });
+		const [series, revision, quote] = await t.run(async (ctx) => Promise.all([ctx.db.get(f.seriesId), ctx.db.get(prepared.revisionId), ctx.db.get(f.quoteId)]));
+		expect(series?.pendingAgreementRevisionId).toBeUndefined();
+		expect(series?.agreementQuoteId).toBeUndefined();
+		expect(revision).toMatchObject({ status: "superseded", sourceQuoteId: f.quoteId, quoteVersionId: expect.any(String), withdrawnAt: Date.now() });
+		expect(quote).toMatchObject({ status: "draft", approvalCycle: 1 });
+		expect(quote?.recurringAgreementRevisionId).toBeUndefined();
+		const agreement = await f.user.query(api.projectSeriesAgreements.getSeriesAgreement, { seriesId: f.seriesId });
+		expect(agreement.history[0]).toMatchObject({ _id: prepared.revisionId, deliveryState: "withdrawn", canDiscard: false, canWithdraw: false });
+	});
+
+	it("does not expose or discard another organization's agreement", async () => {
+		const f = await fixture();
+		const setup = await f.user.query(api.projectSeriesAgreements.getSetup, { quoteId: f.quoteId });
+		const prepared = await f.user.mutation(api.projectSeriesAgreements.prepare, { quoteId: f.quoteId, billingMode: "per_visit", paymentRule: { type: "percentage", installments: [{ percentage: 100, dayOffset: 30 }] }, expectedSeriesRevision: setup.revision });
+		const outsider = await t.run(async (ctx) => createTestOrg(ctx, { clerkOrgId: "org_outside", clerkUserId: "user_outside" }));
+		const otherUser = t.withIdentity(createTestIdentity(outsider.clerkUserId, outsider.clerkOrgId));
+		await expect(otherUser.query(api.projectSeriesAgreements.getSeriesAgreement, { seriesId: f.seriesId })).rejects.toThrow();
+		await expect(otherUser.mutation(api.projectSeriesAgreements.discardPending, { seriesId: f.seriesId, expectedRevisionId: prepared.revisionId })).rejects.toThrow();
+		expect((await t.run((ctx) => ctx.db.get(f.seriesId)))?.pendingAgreementRevisionId).toBe(prepared.revisionId);
 	});
 
 	it("marks a reopened inherited visit as an override and removes inherited approval provenance", async () => {

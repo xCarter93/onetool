@@ -14,8 +14,10 @@ import {
 	RotateCcw,
 	Square,
 	FileText,
+	Trash2,
+	Undo2,
 } from "lucide-react";
-import { useMutation, useQuery } from "convex/react";
+import { useAction, useMutation, useQuery } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import type { Doc, Id } from "@onetool/backend/convex/_generated/dataModel";
 import { dateKeyFromTimestamp } from "@onetool/backend/convex/lib/projectRecurrence";
@@ -54,6 +56,32 @@ import { describeRecurrence } from "../../components/recurrence/rule";
 import { RecurrenceScheduleForm } from "../../components/recurrence/schedule-form";
 
 type LifecycleAction = "pause" | "resume" | "end";
+type PendingAgreementAction = {
+	kind: "discard" | "withdraw";
+	expectedRevisionId: Id<"projectSeriesAgreementRevisions">;
+};
+
+const agreementStateLabel = {
+	draft: "Draft",
+	ready_to_send: "Ready to send",
+	awaiting_approval: "Awaiting approval",
+	approved: "Approved",
+	withdrawn: "Withdrawn",
+	declined: "Declined",
+	expired: "Expired",
+	revoked: "Revoked",
+} as const;
+
+const agreementBadgeStatus = {
+	draft: "draft",
+	ready_to_send: "draft",
+	awaiting_approval: "sent",
+	approved: "approved",
+	withdrawn: "revoked",
+	declined: "declined",
+	expired: "expired",
+	revoked: "revoked",
+} as const;
 
 function formatDate(timestamp?: number): string {
 	if (!timestamp) return "Not scheduled";
@@ -81,6 +109,8 @@ function SeriesPageContent() {
 	);
 	const [isSaving, setIsSaving] = useState(false);
 	const [scheduleOpen, setScheduleOpen] = useState(false);
+	const [pendingAgreementAction, setPendingAgreementAction] = useState<PendingAgreementAction | null>(null);
+	const [isUpdatingPendingAgreement, setIsUpdatingPendingAgreement] = useState(false);
 	const [renderedAt] = useState(Date.now);
 	const {
 		can,
@@ -126,9 +156,33 @@ function SeriesPageContent() {
 	const restoreVisit = useMutation(api.projectSeries.restoreVisit);
 	const updateSchedule = useMutation(api.projectSeries.updateSchedule);
 	const createRevisionDraft = useMutation(api.projectSeriesAgreements.createRevisionDraft);
+	const discardPendingAgreement = useMutation(api.projectSeriesAgreements.discardPending);
+	const withdrawPendingAgreement = useAction(api.boldsignActions.withdrawRecurringAgreement);
 	const cancelMonthlyProposal = useMutation(api.recurringPaymentSchedules.cancelPending);
 	const [isCreatingRevision, setIsCreatingRevision] = useState(false);
 	const [isCancellingProposal, setIsCancellingProposal] = useState(false);
+	const handlePendingAgreementAction = async () => {
+		if (!agreement?.pending || !pendingAgreementAction || agreement.pending._id !== pendingAgreementAction.expectedRevisionId) return;
+		setIsUpdatingPendingAgreement(true);
+		try {
+			if (pendingAgreementAction.kind === "withdraw") {
+				await withdrawPendingAgreement({ seriesId, expectedRevisionId: pendingAgreementAction.expectedRevisionId });
+			} else {
+				await discardPendingAgreement({ seriesId, expectedRevisionId: pendingAgreementAction.expectedRevisionId });
+			}
+			toast.success(
+				pendingAgreementAction.kind === "withdraw" ? "Agreement withdrawn" : "Draft discarded",
+				agreement.active
+					? "The approved agreement remains active for future visits."
+					: "The quote and scheduled projects remain. No recurring agreement is active."
+			);
+			setPendingAgreementAction(null);
+		} catch (error) {
+			toast.error("Update failed", convexErrorMessage(error, "Review the agreement and try again."));
+		} finally {
+			setIsUpdatingPendingAgreement(false);
+		}
+	};
 	const handleCreateRevision = async () => {
 		setIsCreatingRevision(true);
 		try {
@@ -182,7 +236,9 @@ function SeriesPageContent() {
 			accessorKey: "status",
 			header: "Status",
 			cell: ({ row }) => (
-				<StatusBadge status={row.original.status} appearance="outline" />
+				<StatusBadge status={row.original.status} appearance="outline">
+					{row.original.status}
+				</StatusBadge>
 			),
 		},
 		{
@@ -302,6 +358,12 @@ function SeriesPageContent() {
 	}
 
 	const { series, clientName, propertyName, nextVisit, returnProject } = details;
+	const agreementHistory = agreement?.history.filter(
+		(revision) => revision._id !== agreement.active?._id && revision._id !== agreement.pending?._id
+	) ?? [];
+	const pendingAgreementTargetMatches = Boolean(
+		pendingAgreementAction && agreement?.pending?._id === pendingAgreementAction.expectedRevisionId
+	);
 	const stateAction: LifecycleAction | null =
 		series.state === "active"
 			? "pause"
@@ -466,7 +528,7 @@ function SeriesPageContent() {
 					<div>
 						<FrameTitle>Recurring agreement</FrameTitle>
 						<FrameDescription>
-							The approved service, schedule, billing rhythm, and payment terms for this series.
+							Track the standing approval and any proposed replacement for this series.
 						</FrameDescription>
 					</div>
 					<div className="flex flex-wrap gap-2">
@@ -488,14 +550,19 @@ function SeriesPageContent() {
 							<Skeleton className="h-5 w-52" />
 							<Skeleton className="h-5 w-64" />
 						</div>
-					) : agreement.active || agreement.pending ? (
+					) : agreement.active || agreement.pending || agreementHistory.length > 0 ? (
 						<div className="space-y-5">
+						{!agreement.active && !agreement.pending && (
+							<p className="text-sm text-muted-foreground">
+								No active or proposed recurring agreement. Open a draft quote on this series to set one up.
+							</p>
+						)}
 						<div className="grid gap-5 sm:grid-cols-2">
 							{agreement.active && (
 								<div className="space-y-1">
 									<div className="flex items-center gap-2">
 										<p className="text-sm font-medium">Current agreement</p>
-										<StatusBadge status="approved" appearance="outline" />
+										<StatusBadge status="approved" appearance="outline">Approved</StatusBadge>
 									</div>
 									<p className="text-sm text-muted-foreground">
 										{agreement.active.agreementReference ?? "Recurring agreement"}, revision {agreement.active.revisionNumber}
@@ -504,19 +571,67 @@ function SeriesPageContent() {
 								</div>
 							)}
 							{agreement.pending && (
-								<div className="space-y-1">
+								<div className="space-y-3">
 									<div className="flex items-center gap-2">
-										<p className="text-sm font-medium">Pending revision</p>
-										<StatusBadge status={agreement.pending.status} appearance="outline" />
+										<p className="text-sm font-medium">Proposed revision</p>
+										<StatusBadge status={agreementBadgeStatus[agreement.pending.deliveryState]} appearance="outline">
+											{agreementStateLabel[agreement.pending.deliveryState]}
+										</StatusBadge>
 									</div>
 									<p className="text-sm text-muted-foreground">
 										{agreement.pending.agreementReference ?? "Recurring agreement"}, revision {agreement.pending.revisionNumber}
 									</p>
-									<p className="text-sm text-muted-foreground">Approval is required before this revision applies to future visits.</p>
-									<Button nativeButton={false} size="sm" variant="outline" render={<Link href={`/quotes/${agreement.pending.quoteId}`} />}>Review pending revision</Button>
+									<p className="text-sm text-muted-foreground">
+										{agreement.pending.deliveryState === "draft"
+											? agreement.active
+												? "The agreement PDF has not been generated. The current approved agreement still applies."
+												: "The agreement PDF has not been generated. Approval is required before this agreement covers future visits."
+											: agreement.pending.deliveryState === "ready_to_send"
+												? agreement.active
+													? "The agreement PDF is ready but has not been sent. The current approved agreement still applies."
+													: "The agreement PDF is ready but has not been sent. Approval is required before this agreement covers future visits."
+												: agreement.pending.deliveryState === "declined"
+													? "The client declined this proposal. Withdraw it when you are ready to close it."
+													: agreement.pending.deliveryState === "expired"
+														? "The approval request expired. Withdraw this proposal before preparing another."
+														: agreement.pending.deliveryState === "revoked"
+															? "The approval request was revoked. Withdraw this proposal to finish closing it."
+															: agreement.active
+													? "The client has been asked to approve this revision. The current approved agreement applies until they do."
+													: "The client has been asked to approve this agreement. It will cover future visits after approval."}
+									</p>
+									<div className="flex flex-wrap gap-2">
+										<Button nativeButton={false} size="sm" render={<Link href={`/quotes/${agreement.pending.quoteId}`} />}><FileText className="size-4" /> Review</Button>
+										{agreement.pending.canDiscard && canManage && (
+							<Button size="sm" variant="outline" onClick={() => setPendingAgreementAction({ kind: "discard", expectedRevisionId: agreement.pending!._id })}><Trash2 className="size-4" /> Discard draft</Button>
+										)}
+										{agreement.pending.canWithdraw && canManage && (
+							<Button size="sm" variant="outline" onClick={() => setPendingAgreementAction({ kind: "withdraw", expectedRevisionId: agreement.pending!._id })}><Undo2 className="size-4" /> Withdraw proposal</Button>
+										)}
+									</div>
 								</div>
 							)}
 						</div>
+						{agreementHistory.length > 0 && (
+							<div className="border-t border-border pt-4">
+								<p className="mb-3 text-sm font-medium">Agreement history</p>
+								<div className="space-y-3">
+									{agreementHistory.map((revision) => (
+										<div key={revision._id} className="flex flex-wrap items-center justify-between gap-3">
+											<div>
+												<p className="text-sm">{revision.agreementReference ?? "Recurring agreement"}, revision {revision.revisionNumber}</p>
+												{(revision.approvedAt || revision.withdrawnAt) && <p className="text-xs text-muted-foreground">{revision.withdrawnAt ? "Withdrawn" : "Approved"} {formatDate(revision.withdrawnAt ?? revision.approvedAt)}</p>}
+											</div>
+											<div className="flex items-center gap-2">
+												<StatusBadge status={agreementBadgeStatus[revision.deliveryState]} appearance="outline">{agreementStateLabel[revision.deliveryState]}</StatusBadge>
+												<Button nativeButton={false} size="sm" variant="ghost" render={<Link href={`/quotes/${revision.quoteId}`} />}>View</Button>
+											</div>
+										</div>
+									))}
+								</div>
+								{agreement.historyHasMore && <p className="mt-3 text-xs text-muted-foreground">Showing the 50 most recent agreement revisions.</p>}
+							</div>
+						)}
 						{monthlyProposal && (
 							<div className="rounded-md border border-border bg-muted/40 p-4">
 								<p className="text-sm font-medium text-foreground">Shared monthly payment change</p>
@@ -535,7 +650,7 @@ function SeriesPageContent() {
 						</div>
 					) : (
 						<p className="text-sm text-muted-foreground">
-							No recurring agreement has been prepared. Open a draft quote on this series to set one up.
+							No active or proposed recurring agreement. Open a draft quote on this series to set one up.
 						</p>
 					)}
 				</FramePanel>
@@ -599,6 +714,27 @@ function SeriesPageContent() {
 						)}
 				</FramePanel>
 			</Frame>
+
+			<Dialog
+				open={pendingAgreementAction !== null && pendingAgreementTargetMatches}
+				onOpenChange={(open) => !open && !isUpdatingPendingAgreement && setPendingAgreementAction(null)}
+			>
+				<DialogContent className="max-w-lg">
+					<DialogHeader>
+						<DialogTitle>{pendingAgreementAction?.kind === "withdraw" ? "Withdraw proposal?" : "Discard agreement draft?"}</DialogTitle>
+						<DialogDescription>
+							{pendingAgreementAction?.kind === "withdraw"
+								? `${agreement?.pending?.deliveryState === "awaiting_approval" ? "The client’s approval link will stop working. " : ""}This proposed revision will move to agreement history. ${agreement?.active ? "The current approved agreement remains active for future visits." : "The quote and scheduled projects remain. The schedule can be edited again, and no recurring agreement will be active."}`
+								: `This private proposed revision will move to agreement history. It has not been sent to the client. ${agreement?.active ? "The current approved agreement remains active for future visits." : "The quote and scheduled projects remain. The schedule can be edited again, and no recurring agreement will be active."}`}
+						</DialogDescription>
+					</DialogHeader>
+					<DialogFooter showCloseButton>
+						<Button variant="destructive" disabled={isUpdatingPendingAgreement || !pendingAgreementTargetMatches} onClick={() => void handlePendingAgreementAction()}>
+							{isUpdatingPendingAgreement ? "Updating..." : pendingAgreementAction?.kind === "withdraw" ? "Withdraw proposal" : "Discard draft"}
+						</Button>
+					</DialogFooter>
+				</DialogContent>
+			</Dialog>
 
 			<Dialog
 				open={action !== null && actionIsAvailable && canManage}

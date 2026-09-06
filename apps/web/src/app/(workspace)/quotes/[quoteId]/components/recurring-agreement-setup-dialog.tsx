@@ -30,18 +30,26 @@ import {
 } from "@/components/shared/recurring-payment-rule-editor";
 
 type BillingMode = "per_visit" | "monthly";
+type SavedAgreementTerms = {
+	scope: { title?: string; description?: string };
+	schedule: { rule: ProjectRecurrenceRule };
+	billingMode: BillingMode;
+	paymentRule: RecurringPaymentRuleValue;
+};
 
 export function RecurringAgreementSetupDialog({
 	quoteId,
 	quoteTitle,
 	seriesRevision,
 	seriesSetup,
+	savedTerms,
 	children,
 }: {
 	quoteId: Id<"quotes">;
 	quoteTitle: string;
 	seriesRevision: number;
 	seriesSetup: { title: string; description?: string; rule: ProjectRecurrenceRule };
+	savedTerms?: SavedAgreementTerms;
 	children: (openDialog: () => void) => ReactNode;
 }) {
 	const prepare = useMutation(api.projectSeriesAgreements.prepare);
@@ -88,9 +96,14 @@ export function RecurringAgreementSetupDialog({
 		<>
 			{children(() => {
 				setError(null);
-				setScopeTitle(seriesSetup.title);
-				setScopeDescription(seriesSetup.description ?? "");
-				setProposedRule(seriesSetup.rule);
+				setScopeTitle(savedTerms?.scope.title ?? seriesSetup.title);
+				setScopeDescription(savedTerms ? savedTerms.scope.description ?? "" : seriesSetup.description ?? "");
+				setProposedRule(savedTerms?.schedule.rule ?? seriesSetup.rule);
+				setBillingMode(savedTerms?.billingMode ?? "per_visit");
+				setPaymentRule(savedTerms?.paymentRule ?? {
+					type: "percentage",
+					installments: [{ percentage: 100, dayOffset: 30 }],
+				});
 				setOpen(true);
 			})}
 			<Dialog open={open} onOpenChange={(nextOpen) => !isSubmitting && setOpen(nextOpen)}>

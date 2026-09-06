@@ -89,6 +89,7 @@ export function RecurringQuoteCopyGate({
 				quoteTitle={quoteTitle}
 				seriesRevision={agreementSetup.revision}
 				seriesSetup={agreementSetup.seriesSetup}
+				savedTerms={agreementSetup.savedTerms}
 			>
 				{(openAgreementDialog) => children({
 					onCopyToFuture: openCopyDialog,

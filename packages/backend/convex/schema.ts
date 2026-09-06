@@ -606,6 +606,8 @@ export default defineSchema({
 		approvalDocumentId: v.optional(v.id("documents")),
 		decisionEvidenceId: v.optional(v.id("quoteDecisionEvidence")),
 		approvedAt: v.optional(v.number()),
+		withdrawnAt: v.optional(v.number()),
+		withdrawnByUserId: v.optional(v.id("users")),
 		createdByUserId: v.id("users"),
 		createdAt: v.number(),
 	})

@@ -65,6 +65,145 @@ describe("recurring agreement document boundaries", () => {
 		await expect(f.user.mutation(internal.boldsign.reserveRecurringSignatureSend, { quoteId: f.quoteId, documentId })).rejects.toThrow(/already sent or being checked/);
 	});
 
+	it("discards a generated but unsent agreement and invalidates its approval snapshot", async () => {
+		const f = await fixture();
+		const pending = await f.user.query(api.projectSeriesAgreements.getSeriesAgreement, { seriesId: f.seriesId });
+		const { documentId } = await t.mutation(internal.pdfData._insertGeneratedDocument, { documentType: "quote", documentId: f.quoteId, orgId: f.orgId, storageId: f.storageId, quoteContentSnapshot: f.data.quoteContentSnapshot });
+		expect((await f.user.query(api.projectSeriesAgreements.getSeriesAgreement, { seriesId: f.seriesId })).pending).toMatchObject({ deliveryState: "ready_to_send", canDiscard: true });
+		await f.user.mutation(api.projectSeriesAgreements.discardPending, { seriesId: f.seriesId, expectedRevisionId: pending.pending!._id });
+		const quote = await t.run((ctx) => ctx.db.get(f.quoteId));
+		expect(quote).toMatchObject({ status: "draft", approvalCycle: 1 });
+		await f.user.mutation(api.quotes.update, { id: f.quoteId, status: "sent" });
+		const signatureStorageId = await t.run((ctx) => ctx.storage.store(new Blob(["signature"])));
+		await expect(f.user.mutation(api.quotes.approveInPerson, { id: f.quoteId, clientContactId: f.contactId, expectedDocumentId: documentId, signatureStorageId, signatureRawData: JSON.stringify([{ d: "M0,0 L1,1" }]) })).rejects.toThrow(/current|changed|PDF|QUOTE_VERSION_STALE/i);
+	});
+
+	it("revokes a delivered agreement before withdrawal and ignores a late completion", async () => {
+		const f = await fixture();
+		const { documentId } = await t.mutation(internal.pdfData._insertGeneratedDocument, { documentType: "quote", documentId: f.quoteId, orgId: f.orgId, storageId: f.storageId, quoteContentSnapshot: f.data.quoteContentSnapshot });
+		await f.user.mutation(internal.boldsign.reserveRecurringSignatureSend, { quoteId: f.quoteId, documentId });
+		await t.mutation(internal.boldsign.updateDocumentWithEmbeddedRequest, { quoteId: f.quoteId, documentId, boldsignDocumentId: "withdraw-provider", recurringAgreementLocked: true, sendUrl: "", sendUrlExpiresAt: NOW, sentTo: [] });
+		await t.mutation(internal.boldsign.handleWebhook, { boldsignDocumentId: "withdraw-provider", eventType: "Sent", eventTimestamp: NOW });
+		const agreement = await f.user.query(api.projectSeriesAgreements.getSeriesAgreement, { seriesId: f.seriesId });
+		expect(agreement.pending).toMatchObject({ deliveryState: "awaiting_approval", canWithdraw: true });
+		vi.stubEnv("BOLDSIGN_API_KEY", "test-key");
+		const { DocumentApi } = await import("boldsign");
+		vi.spyOn(DocumentApi.prototype, "getProperties").mockResolvedValue({ status: "InProgress" as never });
+		const revoke = vi.spyOn(DocumentApi.prototype, "revokeDocument").mockResolvedValue(undefined as never);
+		expect(await f.user.action(api.boldsignActions.withdrawRecurringAgreement, { seriesId: f.seriesId, expectedRevisionId: agreement.pending!._id })).toEqual({ withdrawn: true });
+		expect(revoke).toHaveBeenCalledWith("withdraw-provider", expect.objectContaining({ message: expect.any(String) }));
+		await t.mutation(internal.boldsign.handleWebhook, { boldsignDocumentId: "withdraw-provider", eventType: "Completed", eventTimestamp: NOW + 1 });
+		const [series, revision, quote] = await t.run(async (ctx) => Promise.all([ctx.db.get(f.seriesId), ctx.db.get(agreement.pending!._id), ctx.db.get(f.quoteId)]));
+		expect(series?.activeAgreementRevisionId).toBeUndefined();
+		expect(series?.pendingAgreementRevisionId).toBeUndefined();
+		expect(revision).toMatchObject({ status: "superseded", withdrawnAt: NOW });
+		expect(quote).toMatchObject({ status: "draft" });
+		const resetEvents = await t.run(async (ctx) => (await ctx.db.query("domainEvents").collect()).filter((event) => event.eventType === "entity.status_changed" && event.payload.entityId === f.quoteId && event.payload.oldValue === "sent" && event.payload.newValue === "draft"));
+		expect(resetEvents).toHaveLength(1);
+	});
+
+	it("finishes a withdrawal retry after provider revocation already succeeded", async () => {
+		const f = await fixture();
+		const { documentId } = await t.mutation(internal.pdfData._insertGeneratedDocument, { documentType: "quote", documentId: f.quoteId, orgId: f.orgId, storageId: f.storageId, quoteContentSnapshot: f.data.quoteContentSnapshot });
+		await f.user.mutation(internal.boldsign.reserveRecurringSignatureSend, { quoteId: f.quoteId, documentId });
+		await t.mutation(internal.boldsign.updateDocumentWithEmbeddedRequest, { quoteId: f.quoteId, documentId, boldsignDocumentId: "already-revoked", recurringAgreementLocked: true, sendUrl: "", sendUrlExpiresAt: NOW, sentTo: [] });
+		await t.mutation(internal.boldsign.handleWebhook, { boldsignDocumentId: "already-revoked", eventType: "Sent", eventTimestamp: NOW });
+		await t.mutation(internal.boldsign.handleWebhook, { boldsignDocumentId: "already-revoked", eventType: "Revoked", eventTimestamp: NOW + 1 });
+		const pending = (await f.user.query(api.projectSeriesAgreements.getSeriesAgreement, { seriesId: f.seriesId })).pending!;
+		vi.stubEnv("BOLDSIGN_API_KEY", "test-key");
+		const { DocumentApi } = await import("boldsign");
+		const revoke = vi.spyOn(DocumentApi.prototype, "revokeDocument");
+		await f.user.action(api.boldsignActions.withdrawRecurringAgreement, { seriesId: f.seriesId, expectedRevisionId: pending._id });
+		expect(revoke).not.toHaveBeenCalled();
+		expect((await t.run((ctx) => ctx.db.get(f.seriesId)))?.pendingAgreementRevisionId).toBeUndefined();
+	});
+
+	it("keeps the pending revision when provider revocation fails", async () => {
+		const f = await fixture();
+		const { documentId } = await t.mutation(internal.pdfData._insertGeneratedDocument, { documentType: "quote", documentId: f.quoteId, orgId: f.orgId, storageId: f.storageId, quoteContentSnapshot: f.data.quoteContentSnapshot });
+		await f.user.mutation(internal.boldsign.reserveRecurringSignatureSend, { quoteId: f.quoteId, documentId });
+		await t.mutation(internal.boldsign.updateDocumentWithEmbeddedRequest, { quoteId: f.quoteId, documentId, boldsignDocumentId: "revoke-failure", recurringAgreementLocked: true, sendUrl: "", sendUrlExpiresAt: NOW, sentTo: [] });
+		await t.mutation(internal.boldsign.handleWebhook, { boldsignDocumentId: "revoke-failure", eventType: "Sent", eventTimestamp: NOW });
+		const pending = (await f.user.query(api.projectSeriesAgreements.getSeriesAgreement, { seriesId: f.seriesId })).pending!;
+		vi.stubEnv("BOLDSIGN_API_KEY", "test-key");
+		const { DocumentApi } = await import("boldsign");
+		vi.spyOn(DocumentApi.prototype, "getProperties").mockResolvedValue({ status: "InProgress" as never });
+		vi.spyOn(DocumentApi.prototype, "revokeDocument").mockRejectedValue(new Error("provider unavailable"));
+		await expect(f.user.action(api.boldsignActions.withdrawRecurringAgreement, { seriesId: f.seriesId, expectedRevisionId: pending._id })).rejects.toThrow(/provider unavailable/);
+		expect((await t.run((ctx) => ctx.db.get(f.seriesId)))?.pendingAgreementRevisionId).toBe(pending._id);
+		expect((await t.run((ctx) => ctx.db.get(pending._id)))?.status).toBe("pending");
+	});
+
+	it("reconciles an already-revoked provider request when local state is still sent", async () => {
+		const f = await fixture();
+		const { documentId } = await t.mutation(internal.pdfData._insertGeneratedDocument, { documentType: "quote", documentId: f.quoteId, orgId: f.orgId, storageId: f.storageId, quoteContentSnapshot: f.data.quoteContentSnapshot });
+		await f.user.mutation(internal.boldsign.reserveRecurringSignatureSend, { quoteId: f.quoteId, documentId });
+		await t.mutation(internal.boldsign.updateDocumentWithEmbeddedRequest, { quoteId: f.quoteId, documentId, boldsignDocumentId: "remote-revoked", recurringAgreementLocked: true, sendUrl: "", sendUrlExpiresAt: NOW, sentTo: [] });
+		await t.mutation(internal.boldsign.handleWebhook, { boldsignDocumentId: "remote-revoked", eventType: "Sent", eventTimestamp: NOW });
+		const pending = (await f.user.query(api.projectSeriesAgreements.getSeriesAgreement, { seriesId: f.seriesId })).pending!;
+		vi.stubEnv("BOLDSIGN_API_KEY", "test-key");
+		const { DocumentApi } = await import("boldsign");
+		vi.spyOn(DocumentApi.prototype, "getProperties").mockResolvedValue({ status: "Revoked" as never });
+		const revoke = vi.spyOn(DocumentApi.prototype, "revokeDocument");
+		await f.user.action(api.boldsignActions.withdrawRecurringAgreement, { seriesId: f.seriesId, expectedRevisionId: pending._id });
+		expect(revoke).not.toHaveBeenCalled();
+		expect((await t.run((ctx) => ctx.db.get(pending._id)))?.status).toBe("superseded");
+	});
+
+	it("withdraws a locally delivered agreement when no provider request exists", async () => {
+		const f = await fixture();
+		await t.mutation(internal.pdfData._insertGeneratedDocument, { documentType: "quote", documentId: f.quoteId, orgId: f.orgId, storageId: f.storageId, quoteContentSnapshot: f.data.quoteContentSnapshot });
+		await f.user.mutation(api.quotes.update, { id: f.quoteId, status: "sent" });
+		const pending = (await f.user.query(api.projectSeriesAgreements.getSeriesAgreement, { seriesId: f.seriesId })).pending!;
+		expect(pending).toMatchObject({ deliveryState: "awaiting_approval", canWithdraw: true });
+		await f.user.action(api.boldsignActions.withdrawRecurringAgreement, { seriesId: f.seriesId, expectedRevisionId: pending._id });
+		const quote = await t.run((ctx) => ctx.db.get(f.quoteId));
+		expect(quote).toMatchObject({ status: "draft" });
+		expect(quote?.recurringAgreementRevisionId).toBeUndefined();
+	});
+
+	it.each(["Declined", "Expired"] as const)("dismisses a %s agreement while retaining its provider audit", async (terminalStatus) => {
+		const f = await fixture();
+		const { documentId } = await t.mutation(internal.pdfData._insertGeneratedDocument, { documentType: "quote", documentId: f.quoteId, orgId: f.orgId, storageId: f.storageId, quoteContentSnapshot: f.data.quoteContentSnapshot });
+		await f.user.mutation(internal.boldsign.reserveRecurringSignatureSend, { quoteId: f.quoteId, documentId });
+		const providerId = `terminal-${terminalStatus}`;
+		await t.mutation(internal.boldsign.updateDocumentWithEmbeddedRequest, { quoteId: f.quoteId, documentId, boldsignDocumentId: providerId, recurringAgreementLocked: true, sendUrl: "", sendUrlExpiresAt: NOW, sentTo: [] });
+		await t.mutation(internal.boldsign.handleWebhook, { boldsignDocumentId: providerId, eventType: "Sent", eventTimestamp: NOW });
+		await t.mutation(internal.boldsign.handleWebhook, { boldsignDocumentId: providerId, eventType: terminalStatus, eventTimestamp: NOW + 1 });
+		const pending = (await f.user.query(api.projectSeriesAgreements.getSeriesAgreement, { seriesId: f.seriesId })).pending!;
+		expect(pending).toMatchObject({ deliveryState: terminalStatus.toLowerCase(), canWithdraw: true });
+		vi.stubEnv("BOLDSIGN_API_KEY", "test-key");
+		const { DocumentApi } = await import("boldsign");
+		const revoke = vi.spyOn(DocumentApi.prototype, "revokeDocument");
+		await f.user.action(api.boldsignActions.withdrawRecurringAgreement, { seriesId: f.seriesId, expectedRevisionId: pending._id });
+		expect(revoke).not.toHaveBeenCalled();
+		const document = await t.run((ctx) => ctx.db.get(documentId));
+		expect(document?.boldsign).toMatchObject({ documentId: providerId, status: terminalStatus });
+		expect((await t.run((ctx) => ctx.db.get(pending._id)))?.status).toBe("superseded");
+	});
+
+	it("refuses withdrawal after the agreement is approved", async () => {
+		const f = await fixture();
+		await approveControlled(f, "completed-cannot-withdraw");
+		const agreement = await f.user.query(api.projectSeriesAgreements.getSeriesAgreement, { seriesId: f.seriesId });
+		expect(agreement.active).toMatchObject({ status: "approved", canWithdraw: false });
+		await expect(f.user.action(api.boldsignActions.withdrawRecurringAgreement, { seriesId: f.seriesId, expectedRevisionId: agreement.active!._id })).rejects.toThrow(/no longer pending/i);
+	});
+
+	it("discards a revision without disturbing the active agreement", async () => {
+		const f = await fixture();
+		await approveControlled(f, "active-before-discard");
+		const activeId = (await t.run((ctx) => ctx.db.get(f.seriesId)))!.activeAgreementRevisionId!;
+		const { quoteId } = await f.user.mutation(api.projectSeriesAgreements.createRevisionDraft, { seriesId: f.seriesId });
+		const setup = await f.user.query(api.projectSeriesAgreements.getSetup, { quoteId });
+		const prepared = await f.user.mutation(api.projectSeriesAgreements.prepare, { quoteId, billingMode: "per_visit", paymentRule: { type: "percentage", installments: [{ percentage: 100, dayOffset: 30 }] }, expectedSeriesRevision: setup.revision });
+		await f.user.mutation(api.projectSeriesAgreements.discardPending, { seriesId: f.seriesId, expectedRevisionId: prepared.revisionId });
+		const [series, active, discarded] = await t.run(async (ctx) => Promise.all([ctx.db.get(f.seriesId), ctx.db.get(activeId), ctx.db.get(prepared.revisionId)]));
+		expect(series).toMatchObject({ activeAgreementRevisionId: activeId, agreementQuoteId: f.quoteId });
+		expect(active).toMatchObject({ status: "approved", decisionEvidenceId: expect.any(String) });
+		expect(discarded).toMatchObject({ status: "superseded", sourceQuoteId: quoteId });
+	});
+
 	it("sends the controlled PDF once through the direct provider API", async () => {
 		const f = await fixture();
 		await t.mutation(internal.pdfData._insertGeneratedDocument, { documentType: "quote", documentId: f.quoteId, orgId: f.orgId, storageId: f.storageId, quoteContentSnapshot: f.data.quoteContentSnapshot });
