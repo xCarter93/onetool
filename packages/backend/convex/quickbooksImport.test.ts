@@ -57,9 +57,9 @@ describe("QuickBooks customer import", () => {
 	}
 
 	async function connect(orgId: Id<"organizations">) {
-		await t.run(async (ctx) => {
+		return await t.run(async (ctx) => {
 			const organization = await ctx.db.get(orgId);
-			await ctx.db.insert("quickbooksConnections", {
+			return await ctx.db.insert("quickbooksConnections", {
 				orgId,
 				realmId: `realm_${orgId}`,
 				environment: "sandbox",
@@ -145,7 +145,7 @@ describe("QuickBooks customer import", () => {
 	/** Commit and drain the self-scheduling commit loop. */
 	async function commit(asOwner: ReturnType<typeof t.withIdentity>) {
 		await asOwner.mutation(api.quickbooksImport.commitImportRun, {});
-		await t.finishAllScheduledFunctions(vi.runAllTimers);
+		await t.finishAllScheduledFunctions(() => vi.advanceTimersByTime(0));
 	}
 
 	// ------------------------------------------------------------------
@@ -432,6 +432,36 @@ describe("QuickBooks customer import", () => {
 		expect(run?.completedAt).toBeGreaterThan(0);
 	});
 
+	it("fails the commit when QuickBooks is reset mid-import", async () => {
+		const { org, asOwner } = await setupOrg("reset");
+		const connectionId = await connect(org.orgId);
+
+		stubCustomerPages([[{ Id: "20", DisplayName: "Omega Roofing" }]]);
+
+		const { runId } = await asOwner.action(
+			api.quickbooksImportActions.startImport,
+			{}
+		);
+		expect(await t.run(async (ctx) => ctx.db.get(runId))).toMatchObject({
+			connectionId,
+		});
+
+		// Reset + reconnect: QBO id "20" now belongs to a different company.
+		await t.run(async (ctx) => await ctx.db.delete(connectionId));
+		await connect(org.orgId);
+
+		await commit(asOwner);
+
+		const run = await t.run(async (ctx) => ctx.db.get(runId));
+		expect(run).toMatchObject({
+			status: "failed",
+			lastError: "QuickBooks was reset during the import",
+		});
+		expect(run?.completedAt).toBeGreaterThan(0);
+		expect(await clientLinks(org.orgId)).toHaveLength(0);
+		expect(await orgClients(org.orgId)).toHaveLength(0);
+	});
+
 	it("honors reviewer overrides over the proposals", async () => {
 		const { org, asOwner } = await setupOrg("override");
 		await connect(org.orgId);
@@ -575,7 +605,7 @@ describe("QuickBooks customer import", () => {
 			await ctx.db.patch(runId, { status: "committing" });
 		});
 		await t.mutation(internal.quickbooksImport.commitPage, { runId });
-		await t.finishAllScheduledFunctions(vi.runAllTimers);
+		await t.finishAllScheduledFunctions(() => vi.advanceTimersByTime(0));
 
 		expect(await orgClients(org.orgId)).toHaveLength(2);
 		expect(await clientLinks(org.orgId)).toHaveLength(2);
@@ -707,7 +737,7 @@ describe("QuickBooks customer import", () => {
 		);
 
 		await asOwner.mutation(api.quickbooksImport.discardImportRun, {});
-		await t.finishAllScheduledFunctions(vi.runAllTimers);
+		await t.finishAllScheduledFunctions(() => vi.advanceTimersByTime(0));
 
 		expect(await rowsFor(runId)).toHaveLength(0);
 		expect(await orgClients(org.orgId)).toHaveLength(0);
@@ -733,7 +763,7 @@ describe("QuickBooks customer import", () => {
 			api.quickbooksImportActions.startImport,
 			{}
 		);
-		await t.finishAllScheduledFunctions(vi.runAllTimers);
+		await t.finishAllScheduledFunctions(() => vi.advanceTimersByTime(0));
 
 		expect(second.runId).not.toBe(first.runId);
 		expect(await rowsFor(first.runId)).toHaveLength(0);
@@ -759,7 +789,7 @@ describe("QuickBooks customer import", () => {
 		await expect(
 			asOwner.action(api.quickbooksImportActions.startImport, {})
 		).rejects.toThrow(/import_already_running/);
-		await t.finishAllScheduledFunctions(vi.runAllTimers);
+		await t.finishAllScheduledFunctions(() => vi.advanceTimersByTime(0));
 		expect(await orgClients(org.orgId)).toHaveLength(1);
 	});
 
@@ -781,7 +811,7 @@ describe("QuickBooks customer import", () => {
 			});
 		});
 		await t.mutation(internal.quickbooksImport.deleteRunRowsPage, { runId });
-		await t.finishAllScheduledFunctions(vi.runAllTimers);
+		await t.finishAllScheduledFunctions(() => vi.advanceTimersByTime(0));
 		expect(await rowsFor(runId)).toHaveLength(0);
 
 		// The zombie's remaining page must not resurrect rows...

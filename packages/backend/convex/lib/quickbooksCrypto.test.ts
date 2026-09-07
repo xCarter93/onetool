@@ -34,10 +34,39 @@ describe("quickbooksCrypto", () => {
 		expect(await decryptToken("")).toBe("");
 	});
 
-	it("stores plaintext when no key is configured", async () => {
+	it("stores plaintext when no key is configured under Vitest", async () => {
 		// Explicit empty value: don't depend on the ambient env being unset.
 		vi.stubEnv("QUICKBOOKS_TOKEN_ENC_KEY", "");
 		expect(await encryptToken("token_without_key")).toBe("token_without_key");
+	});
+
+	it("stores plaintext without a key in a sandbox deployment", async () => {
+		vi.stubEnv("QUICKBOOKS_TOKEN_ENC_KEY", "");
+		vi.stubEnv("VITEST", "");
+		vi.stubEnv("QUICKBOOKS_ENVIRONMENT", "sandbox");
+		expect(await encryptToken("sandbox_token")).toBe("sandbox_token");
+	});
+
+	it("fails closed without a key in a production deployment", async () => {
+		vi.stubEnv("QUICKBOOKS_TOKEN_ENC_KEY", "");
+		vi.stubEnv("VITEST", "");
+		vi.stubEnv("QUICKBOOKS_ENVIRONMENT", "production");
+		await expect(encryptToken("prod_token")).rejects.toThrow(
+			/QUICKBOOKS_TOKEN_ENC_KEY is not set/
+		);
+		// Legacy plaintext rows still read.
+		expect(await decryptToken("legacy_plaintext_token")).toBe(
+			"legacy_plaintext_token"
+		);
+	});
+
+	it("fails closed without a key when the environment is unset", async () => {
+		vi.stubEnv("QUICKBOOKS_TOKEN_ENC_KEY", "");
+		vi.stubEnv("VITEST", "");
+		vi.stubEnv("QUICKBOOKS_ENVIRONMENT", "");
+		await expect(encryptToken("token")).rejects.toThrow(
+			/QUICKBOOKS_TOKEN_ENC_KEY is not set/
+		);
 	});
 
 	it("throws when an encrypted value exists but the key is missing", async () => {

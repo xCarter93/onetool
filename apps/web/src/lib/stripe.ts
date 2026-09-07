@@ -1,7 +1,7 @@
 import Stripe from "stripe";
 import { env } from "@/env";
 
-const API_VERSION = "2026-04-22.dahlia" as const;
+const API_VERSION = "2026-08-26.dahlia" as const;
 
 // Do not set `payment_method_types`; Stripe Dashboard configuration controls methods.
 

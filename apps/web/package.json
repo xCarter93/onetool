@@ -101,7 +101,7 @@
 		"remotion": "^4.0.504",
 		"resend": "^6.5.2",
 		"sonner": "^2.0.7",
-		"stripe": "22.1.1",
+		"stripe": "22.6.1",
 		"svix": "^1.76.1",
 		"tailwind-merge": "^3.4.0",
 		"three": "^0.185.1",

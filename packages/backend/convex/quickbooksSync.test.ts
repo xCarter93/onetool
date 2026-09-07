@@ -15,10 +15,12 @@ import {
 	buildQboCustomer,
 	buildQboInvoice,
 	buildQboPayment,
+	buildQboRefundReceipt,
 	deriveInvoiceAmounts,
 	escapeQboQueryValue,
 	toQboDate,
 } from "./lib/quickbooksMappers";
+import { mintQboOperationId } from "./lib/quickbooksEnqueue";
 
 const HOUR = 60 * 60 * 1000;
 const DAY = 24 * HOUR;
@@ -218,6 +220,31 @@ describe("QuickBooks mappers", () => {
 		expect(withoutTax.TxnTaxDetail).toBeUndefined();
 	});
 
+	it("buildQboInvoice marks every line NON without tax and TAX with it (AST treats an omitted code as TAX)", () => {
+		const taxCodes = (payload: ReturnType<typeof buildQboInvoice>) =>
+			payload.Line.flatMap((line) =>
+				line.DetailType === "SalesItemLineDetail"
+					? [line.SalesItemLineDetail.TaxCodeRef.value]
+					: []
+			);
+
+		const withoutTax = buildQboInvoice({
+			invoice: invoiceDoc({ total: 150 }),
+			lineItems: [lineItem("Work", 1, 100, 100), lineItem("Parts", 1, 50, 50, 1)],
+			customerQboId: "7",
+			defaultServiceItemQboId: "9",
+		});
+		expect(taxCodes(withoutTax)).toEqual(["NON", "NON"]);
+
+		const withTax = buildQboInvoice({
+			invoice: invoiceDoc({ taxAmount: 8.25, total: 108.25 }),
+			lineItems: [lineItem("Work", 1, 100, 100)],
+			customerQboId: "7",
+			defaultServiceItemQboId: "9",
+		});
+		expect(taxCodes(withTax)).toEqual(["TAX"]);
+	});
+
 	it("buildQboInvoice sets ShipAddr from the job site, and omits it without one", () => {
 		const jobSite = {
 			_id: "prop1" as Id<"clientProperties">,
@@ -274,6 +301,41 @@ describe("QuickBooks mappers", () => {
 				{
 					Amount: 250.5,
 					LinkedTxn: [{ TxnId: "42", TxnType: "Invoice" }],
+				},
+			],
+		});
+	});
+
+	it("buildQboRefundReceipt posts one non-taxable service line for the refund", () => {
+		const payload = buildQboRefundReceipt({
+			refund: {
+				refundId: "re_abc",
+				amount: 40,
+				createdAt: Date.UTC(2026, 2, 4),
+			} as Doc<"stripeRefunds">,
+			customerQboId: "7",
+			depositAccountQboId: "88",
+			serviceItemQboId: "9",
+			invoiceNumber: "INV-12",
+		});
+		expect(payload).toEqual({
+			CustomerRef: { value: "7" },
+			DepositToAccountRef: { value: "88" },
+			TxnDate: "2026-03-04",
+			TotalAmt: 40,
+			PrivateNote: "Stripe refund re_abc of the payment on invoice INV-12",
+			Line: [
+				{
+					DetailType: "SalesItemLineDetail",
+					Amount: 40,
+					Description: "Refund on invoice INV-12",
+					LineNum: 1,
+					SalesItemLineDetail: {
+						ItemRef: { value: "9" },
+						Qty: 1,
+						UnitPrice: 40,
+						TaxCodeRef: { value: "NON" },
+					},
 				},
 			],
 		});
@@ -554,6 +616,64 @@ describe("QuickBooks sync engine", () => {
 			expect(
 				(await jobsFor(org.orgId)).filter((j) => j.entityType === "invoice")
 			).toHaveLength(0);
+		});
+
+		it("ignores a queued create when an unlinked invoice is cancelled", async () => {
+			const { org, asOwner } = await setupOrg("enq_cancel_queued");
+			await connect(org.orgId, { defaultServiceItemQboId: "9" });
+			const clientId = await asOwner.mutation(api.clients.create, {
+				companyName: "Acme Co",
+				status: "active",
+			});
+			const invoiceId = await createInvoice(asOwner, clientId, "sent");
+
+			await asOwner.mutation(api.invoices.update, {
+				id: invoiceId,
+				status: "cancelled",
+			});
+
+			const invoiceJobs = (await jobsFor(org.orgId)).filter(
+				(j) => j.entityType === "invoice"
+			);
+			expect(invoiceJobs).toHaveLength(1);
+			expect(invoiceJobs[0]).toMatchObject({
+				operation: "upsert",
+				status: "ignored",
+			});
+		});
+
+		it("queues a void behind an in-flight create when an unlinked invoice is cancelled", async () => {
+			const { org, asOwner } = await setupOrg("enq_cancel_inflight");
+			await connect(org.orgId, { defaultServiceItemQboId: "9" });
+			const clientId = await asOwner.mutation(api.clients.create, {
+				companyName: "Acme Co",
+				status: "active",
+			});
+			const invoiceId = await createInvoice(asOwner, clientId, "sent");
+			const [createJob] = (await jobsFor(org.orgId)).filter(
+				(j) => j.entityType === "invoice"
+			);
+			await t.run(async (ctx) => {
+				await ctx.db.patch(createJob._id, {
+					status: "processing",
+					claimedAt: Date.now(),
+				});
+			});
+
+			await asOwner.mutation(api.invoices.update, {
+				id: invoiceId,
+				status: "cancelled",
+			});
+
+			const invoiceJobs = (await jobsFor(org.orgId)).filter(
+				(j) => j.entityType === "invoice"
+			);
+			expect(invoiceJobs.map((j) => [j.operation, j.status])).toEqual(
+				expect.arrayContaining([
+					["upsert", "processing"],
+					["void", "pending"],
+				])
+			);
 		});
 
 		it("enqueues a client job on create, even with setup incomplete", async () => {
@@ -1165,13 +1285,14 @@ describe("QuickBooks sync engine", () => {
 					attempts: 0,
 					runAfter: Date.now(),
 					dedupeKey: `${entityType}:${localId}`,
+					operationId: mintQboOperationId(),
 				})
 			);
 		}
 
 		async function linkFor(
 			orgId: Id<"organizations">,
-			entityType: "client" | "invoice" | "payment" | "sku",
+			entityType: "client" | "invoice" | "payment" | "sku" | "refund",
 			localId: string
 		) {
 			return await t.run(async (ctx) =>
@@ -1665,8 +1786,11 @@ describe("QuickBooks sync engine", () => {
 
 			expect(result.processed).toBe(1);
 			expect(calls[0].url).toContain("/payment");
-			// Crash-retry idempotency: creates carry an Intuit requestid.
-			expect(calls[0].url).toContain(`requestid=${paymentId}-0`);
+			// Retry idempotency: creates carry the job's stable operation id.
+			const [paymentJob] = await jobsFor(org.orgId);
+			expect(calls[0].url).toContain(
+				`requestid=${paymentId}-${paymentJob.operationId}`
+			);
 			expect(calls[0].body).toMatchObject({
 				TotalAmt: 100,
 				DepositToAccountRef: { value: "88" },
@@ -1863,8 +1987,661 @@ describe("QuickBooks sync engine", () => {
 		});
 
 		// ------------------------------------------------------------------
+		// 2026-09-07 integrations audit remediation
+		// ------------------------------------------------------------------
+
+		describe("audit remediation", () => {
+			const duplicateNameFault = {
+				status: 400,
+				payload: {
+					Fault: {
+						type: "ValidationFault",
+						Error: [{ code: "6240", Message: "Duplicate Name Exists Error" }],
+					},
+				},
+			};
+
+			/** Worker runs scheduled for later than `after` (immediate kicks excluded). */
+			async function pendingWorkerWakeups(after: number) {
+				return await t.run(async (ctx) =>
+					(await ctx.db.system.query("_scheduled_functions").collect()).filter(
+						(row) =>
+							row.name.includes("processOrgJobs") &&
+							row.state.kind === "pending" &&
+							row.scheduledTime > after
+					)
+				);
+			}
+
+			it("reuses one requestid when a payment create committed but its response was lost", async () => {
+				const { org, paymentId } = await setupPaidPayment("w_op_id");
+				await connect(org.orgId, { depositAccountQboId: "88" });
+
+				// Simulated Intuit: one remote Payment per distinct requestid.
+				const remoteCreates = new Map<string, string>();
+				let dropResponse = true;
+				stubQbo((url) => {
+					const requestId = new URL(url).searchParams.get("requestid")!;
+					if (!remoteCreates.has(requestId)) {
+						remoteCreates.set(requestId, String(remoteCreates.size + 1));
+					}
+					if (dropResponse) {
+						dropResponse = false;
+						throw new Error("Simulated response timeout after remote commit");
+					}
+					return {
+						payload: {
+							Payment: { Id: remoteCreates.get(requestId), SyncToken: "0" },
+						},
+					};
+				});
+
+				await t.action(internal.quickbooksActions.processOrgJobs, {
+					orgId: org.orgId,
+				});
+				const [job] = await jobsFor(org.orgId);
+				expect(job).toMatchObject({ status: "pending", attempts: 1 });
+
+				await t.run(async (ctx) => {
+					await ctx.db.patch(job._id, { runAfter: Date.now() - 1 });
+				});
+				await t.action(internal.quickbooksActions.processOrgJobs, {
+					orgId: org.orgId,
+				});
+
+				expect(remoteCreates.size).toBe(1);
+				expect(await linkFor(org.orgId, "payment", paymentId)).toMatchObject({
+					qboId: "1",
+				});
+				expect((await jobsFor(org.orgId))[0].status).toBe("succeeded");
+			});
+
+			it("schedules a wakeup at the retry's backoff gate instead of waiting for the sweep", async () => {
+				const { org, paymentId } = await setupPaidPayment("w_wakeup");
+				await connect(org.orgId, { depositAccountQboId: "88" });
+				stubQbo(() => {
+					throw new Error("Simulated network failure");
+				});
+
+				const before = Date.now();
+				await t.action(internal.quickbooksActions.processOrgJobs, {
+					orgId: org.orgId,
+				});
+
+				const [job] = await jobsFor(org.orgId);
+				expect(job).toMatchObject({ status: "pending", localId: paymentId });
+				expect(job.runAfter).toBeGreaterThan(before);
+				const wakeups = await pendingWorkerWakeups(before);
+				expect(wakeups).toHaveLength(1);
+				expect(wakeups[0].scheduledTime).toBe(job.runAfter);
+			});
+
+			it("schedules a wakeup for a job held on incomplete setup", async () => {
+				const { org, asOwner } = await setupOrg("w_wakeup_hold");
+				await connect(org.orgId, { syncInvoicesOn: "created" });
+				const clientId = await asOwner.mutation(api.clients.create, {
+					companyName: "Acme Co",
+					status: "active",
+				});
+				await createInvoice(asOwner, clientId, "draft");
+				await clearJobsOfType(org.orgId, "client");
+				stubQbo(() => ({ payload: {} }));
+
+				const before = Date.now();
+				const result = await t.action(internal.quickbooksActions.processOrgJobs, {
+					orgId: org.orgId,
+				});
+				expect(result.held).toBe(1);
+
+				const [job] = await jobsFor(org.orgId);
+				const wakeups = await pendingWorkerWakeups(before);
+				expect(wakeups).toHaveLength(1);
+				expect(wakeups[0].scheduledTime).toBe(job.runAfter);
+			});
+
+			it("refuses to adopt a QBO Customer another client already owns", async () => {
+				const { org, asOwner } = await setupOrg("w_dup_owned");
+				await connect(org.orgId, { autoDisambiguateNames: false });
+				const firstId = await asOwner.mutation(api.clients.create, {
+					companyName: "Acme Co",
+					status: "active",
+				});
+				const secondId = await asOwner.mutation(api.clients.create, {
+					companyName: "Acme Co",
+					status: "active",
+				});
+				await clearJobsOfType(org.orgId, "all");
+				await t.mutation(internal.quickbooks.upsertEntityLink, {
+					orgId: org.orgId,
+					entityType: "client",
+					localId: firstId,
+					qboId: "555",
+					qboSyncToken: "2",
+				});
+				await seedJobFor(org.orgId, secondId, "client");
+
+				stubQbo((url) =>
+					url.includes("/query")
+						? {
+								payload: {
+									QueryResponse: {
+										Customer: [
+											{ Id: "555", SyncToken: "2", DisplayName: "Acme Co" },
+										],
+									},
+								},
+							}
+						: duplicateNameFault
+				);
+
+				await t.action(internal.quickbooksActions.processOrgJobs, {
+					orgId: org.orgId,
+				});
+
+				const [job] = await jobsFor(org.orgId);
+				expect(job.status).toBe("failed");
+				expect(job.lastError).toContain('"Acme Co"');
+				expect(job.lastError).toContain("linked to Acme Co in OneTool");
+				expect(await linkFor(org.orgId, "client", secondId)).toBeNull();
+				expect(await linkFor(org.orgId, "client", firstId)).toMatchObject({
+					qboId: "555",
+				});
+			});
+
+			it("disambiguates instead of adopting an owned Customer when the org allows it", async () => {
+				const { org, asOwner } = await setupOrg("w_dup_owned_auto");
+				await connect(org.orgId, { autoDisambiguateNames: true });
+				const firstId = await asOwner.mutation(api.clients.create, {
+					companyName: "Acme Co",
+					status: "active",
+				});
+				const secondId = await asOwner.mutation(api.clients.create, {
+					companyName: "Acme Co",
+					status: "active",
+				});
+				await clearJobsOfType(org.orgId, "all");
+				await t.mutation(internal.quickbooks.upsertEntityLink, {
+					orgId: org.orgId,
+					entityType: "client",
+					localId: firstId,
+					qboId: "555",
+					qboSyncToken: "2",
+				});
+				await seedJobFor(org.orgId, secondId, "client");
+
+				const calls = stubQbo((url, body) => {
+					if (url.includes("/query")) {
+						return {
+							payload: {
+								QueryResponse: {
+									Customer: [
+										{ Id: "555", SyncToken: "2", DisplayName: "Acme Co" },
+									],
+								},
+							},
+						};
+					}
+					const displayName = (body as { DisplayName: string }).DisplayName;
+					return displayName === "Acme Co - 2"
+						? { payload: { Customer: { Id: "556", SyncToken: "0" } } }
+						: duplicateNameFault;
+				});
+
+				await t.action(internal.quickbooksActions.processOrgJobs, {
+					orgId: org.orgId,
+				});
+
+				expect(await linkFor(org.orgId, "client", secondId)).toMatchObject({
+					qboId: "556",
+				});
+				expect(
+					calls.some((call) => call.url.includes(`requestid=${secondId}-2`))
+				).toBe(true);
+			});
+
+			it("fails the invoice job when QuickBooks returns a different total, and holds its payment back", async () => {
+				const { org, asOwner } = await setupOrg("w_total_drift");
+				await connect(org.orgId, {
+					defaultServiceItemQboId: "9",
+					depositAccountQboId: "88",
+				});
+				const clientId = await asOwner.mutation(api.clients.create, {
+					companyName: "Acme Co",
+					status: "active",
+				});
+				const now = Date.now();
+				const invoiceId = await asOwner.mutation(api.invoices.create, {
+					clientId,
+					invoiceNumber: "INV-DRIFT-1",
+					status: "sent",
+					subtotal: 100,
+					total: 100,
+					issuedDate: now,
+					dueDate: now + 30 * DAY,
+				});
+				await clearJobsOfType(org.orgId, "client");
+
+				const calls = stubQbo((url) => {
+					if (url.includes("/customer")) {
+						return { payload: { Customer: { Id: "101", SyncToken: "0" } } };
+					}
+					return {
+						payload: {
+							Invoice: {
+								Id: "202",
+								SyncToken: "0",
+								TotalAmt: 108.25,
+								TxnTaxDetail: { TotalTax: 8.25 },
+							},
+						},
+					};
+				});
+
+				const result = await t.action(
+					internal.quickbooksActions.processOrgJobs,
+					{ orgId: org.orgId }
+				);
+				expect(result).toMatchObject({ processed: 0, failed: 1 });
+
+				const invoiceJob = (await jobsFor(org.orgId)).find(
+					(job) => job.entityType === "invoice"
+				);
+				expect(invoiceJob).toMatchObject({
+					status: "failed",
+					lastErrorCode: "total_mismatch",
+				});
+				expect(invoiceJob?.lastError).toContain("$108.25");
+				expect(invoiceJob?.lastError).toContain("$100.00");
+				// The QBO invoice exists, so the link stays for the corrective retry.
+				const link = await linkFor(org.orgId, "invoice", invoiceId);
+				expect(link).toMatchObject({ qboId: "202" });
+				expect(link?.syncWarning).toContain("$108.25");
+
+				// A settled payment must not post against the disputed invoice.
+				const paymentId = await asOwner.mutation(api.payments.create, {
+					invoiceId,
+					paymentAmount: 100,
+					dueDate: now + DAY,
+					description: "Full Payment",
+					sortOrder: 0,
+				});
+				await t.run(async (ctx) => {
+					await ctx.db.patch(paymentId, { status: "paid", paidAt: now });
+				});
+				await clearJobsOfType(org.orgId, "payment");
+				await seedJobFor(org.orgId, paymentId, "payment");
+				const callsBefore = calls.length;
+
+				await t.action(internal.quickbooksActions.processOrgJobs, {
+					orgId: org.orgId,
+				});
+
+				expect(
+					calls.slice(callsBefore).some((call) => call.url.includes("/payment"))
+				).toBe(false);
+				const paymentJob = (await jobsFor(org.orgId)).find(
+					(job) => job.entityType === "payment"
+				);
+				expect(paymentJob).toMatchObject({ status: "failed" });
+				expect(paymentJob?.lastError).toContain("retry the invoice sync first");
+				expect(await linkFor(org.orgId, "payment", paymentId)).toBeNull();
+			});
+
+			describe("item adoption", () => {
+				function serviceItem(overrides: Record<string, unknown> = {}) {
+					return {
+						Id: "9",
+						Name: "OneTool Service",
+						SyncToken: "4",
+						Type: "Service",
+						IncomeAccountRef: { value: "1" },
+						...overrides,
+					};
+				}
+
+				function stubSetup(item: Record<string, unknown>) {
+					return stubQbo((url) => {
+						if (url.includes("/query")) {
+							return url.includes("FROM%20Item")
+								? { payload: { QueryResponse: { Item: [item] } } }
+								: { payload: { QueryResponse: {} } };
+						}
+						return { payload: { Item: { Id: "9", SyncToken: "5" } } };
+					});
+				}
+
+				async function connectionFor(orgId: Id<"organizations">) {
+					return await t.run(async (ctx) =>
+						ctx.db
+							.query("quickbooksConnections")
+							.withIndex("by_org", (q) => q.eq("orgId", orgId))
+							.first()
+					);
+				}
+
+				it("repoints an existing OneTool Service item to the selected income account", async () => {
+					const { org, asOwner } = await setupOrg("w_item_repoint");
+					await connect(org.orgId);
+					const calls = stubSetup(serviceItem());
+
+					await asOwner.action(api.quickbooksActions.completeSetup, {
+						incomeAccountQboId: "44",
+						incomeAccountName: "Services",
+					});
+
+					const update = calls.find(
+						(call) => call.url.includes("/item") && call.body !== undefined
+					);
+					expect(update?.body).toEqual({
+						Id: "9",
+						SyncToken: "4",
+						sparse: true,
+						IncomeAccountRef: { value: "44" },
+					});
+					expect(await connectionFor(org.orgId)).toMatchObject({
+						incomeAccountQboId: "44",
+						defaultServiceItemQboId: "9",
+					});
+				});
+
+				it("adopts an existing OneTool Service item as-is when it already posts to the selected account", async () => {
+					const { org, asOwner } = await setupOrg("w_item_match");
+					await connect(org.orgId);
+					const calls = stubSetup(serviceItem({ IncomeAccountRef: { value: "44" } }));
+
+					await asOwner.action(api.quickbooksActions.completeSetup, {
+						incomeAccountQboId: "44",
+						incomeAccountName: "Services",
+					});
+
+					expect(calls.some((call) => call.body !== undefined)).toBe(false);
+					expect(await connectionFor(org.orgId)).toMatchObject({
+						defaultServiceItemQboId: "9",
+					});
+				});
+
+				it("rejects setup when the OneTool Service name belongs to a non-Service item", async () => {
+					const { org, asOwner } = await setupOrg("w_item_type");
+					await connect(org.orgId);
+					stubSetup(serviceItem({ Type: "Inventory" }));
+
+					await expect(
+						asOwner.action(api.quickbooksActions.completeSetup, {
+							incomeAccountQboId: "44",
+							incomeAccountName: "Services",
+						})
+					).rejects.toThrow(/not a Service item/);
+					expect(
+						(await connectionFor(org.orgId))?.defaultServiceItemQboId
+					).toBeUndefined();
+				});
+
+				it("fails an invoice whose SKU name matches a non-Service QBO item", async () => {
+					const { org, asOwner } = await setupOrg("w_sku_type");
+					await connect(org.orgId, {
+						defaultServiceItemQboId: "9",
+						incomeAccountQboId: "44",
+					});
+					const clientId = await asOwner.mutation(api.clients.create, {
+						companyName: "Acme Co",
+						status: "active",
+					});
+					const skuId = await asOwner.mutation(api.skus.create, {
+						name: "Lawn Mowing",
+						unit: "visit",
+						rate: 100,
+					});
+					const invoiceId = await createInvoice(asOwner, clientId, "sent");
+					await asOwner.mutation(api.invoiceLineItems.create, {
+						invoiceId,
+						description: "Mowing visit",
+						quantity: 1,
+						unitPrice: 100,
+						sortOrder: 0,
+						skuId,
+					});
+					await clearJobsOfType(org.orgId, "client");
+
+					const calls = stubQbo((url) => {
+						if (url.includes("/query")) {
+							return {
+								payload: {
+									QueryResponse: {
+										Item: [
+											{
+												Id: "88",
+												Name: "Lawn Mowing",
+												SyncToken: "3",
+												Type: "Inventory",
+											},
+										],
+									},
+								},
+							};
+						}
+						if (url.includes("/customer")) {
+							return { payload: { Customer: { Id: "101", SyncToken: "0" } } };
+						}
+						return { payload: { Invoice: { Id: "202", SyncToken: "0" } } };
+					});
+
+					await t.action(internal.quickbooksActions.processOrgJobs, {
+						orgId: org.orgId,
+					});
+
+					const invoiceJob = (await jobsFor(org.orgId)).find(
+						(job) => job.entityType === "invoice"
+					);
+					expect(invoiceJob?.status).toBe("failed");
+					expect(invoiceJob?.lastError).toContain('"Lawn Mowing"');
+					expect(await linkFor(org.orgId, "sku", skuId)).toBeNull();
+					expect(calls.some((call) => call.url.includes("/invoice"))).toBe(false);
+				});
+			});
+		});
+
+		// ------------------------------------------------------------------
 		// Void on cancel
 		// ------------------------------------------------------------------
+
+		describe("refund receipts", () => {
+			const PI = "pi_refund_test";
+
+			/** Paid Stripe payment; `exported` links it (and its client/invoice) in QBO. */
+			async function paidStripePayment(suffix: string, exported: boolean) {
+				const { org, asOwner } = await setupOrg(suffix);
+				await connect(org.orgId, {
+					defaultServiceItemQboId: "9",
+					depositAccountQboId: "88",
+				});
+				const clientId = await asOwner.mutation(api.clients.create, {
+					companyName: "Acme Co",
+					status: "active",
+				});
+				const invoiceId = await createInvoice(asOwner, clientId, "sent");
+				const paymentId = await asOwner.mutation(api.payments.create, {
+					invoiceId,
+					paymentAmount: 100,
+					dueDate: Date.now() + DAY,
+					description: "Full Payment",
+					sortOrder: 0,
+				});
+				await t.run(async (ctx) => {
+					await ctx.db.patch(paymentId, {
+						status: "paid",
+						paidAt: Date.now(),
+						stripePaymentIntentId: PI,
+					});
+				});
+				await clearJobsOfType(org.orgId, "all");
+				const link = (entityType: "client" | "invoice" | "payment", localId: string, qboId: string) =>
+					t.mutation(internal.quickbooks.upsertEntityLink, {
+						orgId: org.orgId,
+						entityType,
+						localId,
+						qboId,
+						qboSyncToken: "0",
+					});
+				await link("client", clientId, "101");
+				await link("invoice", invoiceId, "202");
+				if (exported) await link("payment", paymentId, "303");
+				return { org, paymentId, invoiceId };
+			}
+
+			function refund(
+				orgId: Id<"organizations">,
+				refunds: { id: string; amountCents: number; status?: string }[]
+			) {
+				return t.mutation(internal.payments.markRefundedFromWebhookInternal, {
+					orgId,
+					paymentIntentId: PI,
+					refundedAt: Date.now(),
+					refunds: refunds.map((r) => ({ status: "succeeded", ...r })),
+				});
+			}
+
+			const refundJobs = async (orgId: Id<"organizations">) =>
+				(await jobsFor(orgId)).filter((j) => j.entityType === "refund");
+
+			it("posts a RefundReceipt for a settled refund of an exported payment", async () => {
+				const { org, paymentId } = await paidStripePayment("w_refund", true);
+				await refund(org.orgId, [{ id: "re_1", amountCents: 4000 }]);
+
+				const [job] = await refundJobs(org.orgId);
+				expect(job).toMatchObject({
+					localId: "re_1",
+					operation: "upsert",
+					status: "pending",
+					dedupeKey: "refund:re_1",
+				});
+				const calls = stubQbo(() => ({
+					payload: { RefundReceipt: { Id: "404", SyncToken: "0" } },
+				}));
+
+				const result = await t.action(internal.quickbooksActions.processOrgJobs, {
+					orgId: org.orgId,
+				});
+
+				expect(result).toMatchObject({ processed: 1, failed: 0 });
+				expect(calls).toHaveLength(1);
+				expect(calls[0].url).toContain(`/refundreceipt?requestid=re_1-${job.operationId}`);
+				expect(calls[0].body).toMatchObject({
+					TotalAmt: 40,
+					CustomerRef: { value: "101" },
+					DepositToAccountRef: { value: "88" },
+					Line: [
+						{
+							Amount: 40,
+							SalesItemLineDetail: {
+								ItemRef: { value: "9" },
+								TaxCodeRef: { value: "NON" },
+							},
+						},
+					],
+				});
+				expect((await linkFor(org.orgId, "refund", "re_1"))?.qboId).toBe("404");
+				// The historical Payment is never rewritten.
+				expect((await t.run((ctx) => ctx.db.get(paymentId)))?.paymentAmount).toBe(100);
+			});
+
+			it("a redelivered refund event never queues a second receipt", async () => {
+				const { org } = await paidStripePayment("w_refund_dup", true);
+				await refund(org.orgId, [{ id: "re_1", amountCents: 4000 }]);
+				await refund(org.orgId, [{ id: "re_1", amountCents: 4000 }]);
+				expect(await refundJobs(org.orgId)).toHaveLength(1);
+
+				const calls = stubQbo(() => ({
+					payload: { RefundReceipt: { Id: "404", SyncToken: "0" } },
+				}));
+				await t.action(internal.quickbooksActions.processOrgJobs, { orgId: org.orgId });
+				await refund(org.orgId, [{ id: "re_1", amountCents: 4000 }]);
+
+				expect(calls).toHaveLength(1);
+				const jobs = await refundJobs(org.orgId);
+				expect(jobs).toHaveLength(1);
+				expect(jobs[0].status).toBe("succeeded");
+			});
+
+			it("posts nothing for a payment refunded in full before it exported", async () => {
+				const { org, paymentId } = await paidStripePayment("w_refund_full", false);
+				await seedJobFor(org.orgId, paymentId, "payment");
+				await refund(org.orgId, [{ id: "re_full", amountCents: 10000 }]);
+				expect((await t.run((ctx) => ctx.db.get(paymentId)))?.status).toBe("refunded");
+				const calls = stubQbo(() => ({ payload: {} }));
+
+				const result = await t.action(internal.quickbooksActions.processOrgJobs, {
+					orgId: org.orgId,
+				});
+
+				expect(result).toMatchObject({ processed: 2, failed: 0 });
+				expect(calls).toHaveLength(0);
+				const byType = Object.fromEntries(
+					(await jobsFor(org.orgId)).map((j) => [j.entityType, j.status])
+				);
+				expect(byType).toMatchObject({ payment: "ignored", refund: "ignored" });
+				expect(await linkFor(org.orgId, "payment", paymentId)).toBeNull();
+			});
+
+			it("posts the payment and then the receipt for a partial refund", async () => {
+				const { org, paymentId } = await paidStripePayment("w_refund_partial", false);
+				await seedJobFor(org.orgId, paymentId, "payment");
+				await refund(org.orgId, [{ id: "re_part", amountCents: 2500 }]);
+				const calls = stubQbo((url) =>
+					url.includes("/refundreceipt")
+						? { payload: { RefundReceipt: { Id: "404", SyncToken: "0" } } }
+						: { payload: { Payment: { Id: "303", SyncToken: "0" } } }
+				);
+
+				const result = await t.action(internal.quickbooksActions.processOrgJobs, {
+					orgId: org.orgId,
+				});
+
+				expect(result).toMatchObject({ processed: 2, failed: 0 });
+				expect(calls.map((c) => c.url.includes("/refundreceipt"))).toEqual([false, true]);
+				expect(calls[0].body).toMatchObject({ TotalAmt: 100 });
+				expect(calls[1].body).toMatchObject({ TotalAmt: 25 });
+				expect((await linkFor(org.orgId, "payment", paymentId))?.qboId).toBe("303");
+				expect((await linkFor(org.orgId, "refund", "re_part"))?.qboId).toBe("404");
+			});
+
+			it("retracts a queued receipt when Stripe later fails the refund", async () => {
+				const { org } = await paidStripePayment("w_refund_fail", true);
+				await refund(org.orgId, [{ id: "re_fail", amountCents: 4000 }]);
+
+				await t.mutation(internal.payments.revertFailedRefundFromWebhookInternal, {
+					orgId: org.orgId,
+					paymentIntentId: PI,
+					refundId: "re_fail",
+					netRefundedAmountCents: 0,
+					failureReason: "declined",
+				});
+
+				const [job] = await refundJobs(org.orgId);
+				expect(job.status).toBe("ignored");
+				const ledger = await t.run((ctx) =>
+					ctx.db
+						.query("stripeRefunds")
+						.withIndex("by_org_refund", (q) =>
+							q.eq("orgId", org.orgId).eq("refundId", "re_fail")
+						)
+						.unique()
+				);
+				expect(ledger?.status).toBe("failed");
+			});
+
+			it("holds the receipt until the payment is in QuickBooks", async () => {
+				const { org } = await paidStripePayment("w_refund_hold", false);
+				await refund(org.orgId, [{ id: "re_hold", amountCents: 1000 }]);
+				const calls = stubQbo(() => ({ payload: {} }));
+
+				const result = await t.action(internal.quickbooksActions.processOrgJobs, {
+					orgId: org.orgId,
+				});
+
+				expect(result).toMatchObject({ processed: 0, held: 1 });
+				expect(calls).toHaveLength(0);
+			});
+		});
 
 		describe("void on cancel", () => {
 			/** Linked, cancelled invoice with only its void job pending. */
@@ -1907,6 +2684,126 @@ describe("QuickBooks sync engine", () => {
 					},
 				},
 			};
+
+			it("cancels instead of deleting a linked invoice and queues its void", async () => {
+				const { org, asOwner, invoiceId } =
+					await cancelledLinkedInvoice("w_void_remove");
+				const paymentId = await asOwner.mutation(api.payments.create, {
+					invoiceId,
+					paymentAmount: 100,
+					dueDate: Date.now() + DAY,
+					description: "Full Payment",
+					sortOrder: 0,
+				});
+				await t.run(async (ctx) => {
+					await ctx.db.patch(paymentId, { status: "paid", paidAt: Date.now() });
+				});
+				await clearJobsOfType(org.orgId, "all");
+
+				const result = await asOwner.mutation(api.invoices.remove, {
+					id: invoiceId,
+				});
+
+				expect(result).toEqual({ id: invoiceId, outcome: "cancelled" });
+				const { invoice, payment } = await t.run(async (ctx) => ({
+					invoice: await ctx.db.get(invoiceId),
+					payment: await ctx.db.get(paymentId),
+				}));
+				expect(invoice?.status).toBe("cancelled");
+				expect(payment).not.toBeNull();
+				const invoiceJobs = (await jobsFor(org.orgId)).filter(
+					(j) => j.entityType === "invoice"
+				);
+				expect(invoiceJobs).toHaveLength(1);
+				expect(invoiceJobs[0]).toMatchObject({
+					operation: "void",
+					status: "pending",
+				});
+			});
+
+			it("cancels a paid, linked invoice on remove and queues its void", async () => {
+				const { org, asOwner, invoiceId } =
+					await cancelledLinkedInvoice("w_void_remove_paid");
+				await asOwner.mutation(api.invoices.update, {
+					id: invoiceId,
+					status: "paid",
+				});
+				await clearJobsOfType(org.orgId, "all");
+
+				const result = await asOwner.mutation(api.invoices.remove, {
+					id: invoiceId,
+				});
+
+				expect(result).toEqual({ id: invoiceId, outcome: "cancelled" });
+				expect((await t.run((ctx) => ctx.db.get(invoiceId)))?.status).toBe(
+					"cancelled"
+				);
+				const invoiceJobs = (await jobsFor(org.orgId)).filter(
+					(j) => j.entityType === "invoice"
+				);
+				expect(invoiceJobs).toHaveLength(1);
+				expect(invoiceJobs[0]).toMatchObject({
+					operation: "void",
+					status: "pending",
+				});
+			});
+
+			it("ignores a claimed create once the invoice is cancelled", async () => {
+				const { org, asOwner } = await setupOrg("w_cancel_claimed");
+				await connect(org.orgId, { defaultServiceItemQboId: "9" });
+				const clientId = await asOwner.mutation(api.clients.create, {
+					companyName: "Acme Co",
+					status: "active",
+				});
+				const invoiceId = await createInvoice(asOwner, clientId, "sent");
+				await clearJobsOfType(org.orgId, "client");
+				// The cancel lands after the create job was queued, bypassing enqueue.
+				await t.run(async (ctx) => {
+					await ctx.db.patch(invoiceId, { status: "cancelled" });
+				});
+				const calls = stubQbo(() => ({ payload: {} }));
+
+				const result = await t.action(
+					internal.quickbooksActions.processOrgJobs,
+					{ orgId: org.orgId }
+				);
+
+				expect(result).toMatchObject({ processed: 1, failed: 0 });
+				expect(calls).toHaveLength(0);
+				expect((await jobsFor(org.orgId))[0]).toMatchObject({
+					operation: "upsert",
+					status: "ignored",
+				});
+				expect(await linkFor(org.orgId, "invoice", invoiceId)).toBeNull();
+			});
+
+			it("voids when a claimed create finds the invoice cancelled and linked", async () => {
+				const { org, asOwner, invoiceId } =
+					await cancelledLinkedInvoice("w_cancel_claimed_linked");
+				await clearJobsOfType(org.orgId, "all");
+				await seedJobFor(org.orgId, invoiceId, "invoice");
+				await t.run(async (ctx) => {
+					await ctx.db.patch(invoiceId, { status: "cancelled" });
+				});
+				const calls = stubQbo((url) =>
+					url.includes("operation=void")
+						? { payload: { Invoice: { Id: "202", SyncToken: "4" } } }
+						: { payload: { Invoice: { Id: "202", SyncToken: "3" } } }
+				);
+
+				const result = await t.action(
+					internal.quickbooksActions.processOrgJobs,
+					{ orgId: org.orgId }
+				);
+
+				expect(result).toMatchObject({ processed: 1, failed: 0 });
+				expect(calls.map((c) => c.url.split("?")[0].split("/v3/company/")[1])).toEqual([
+					expect.stringContaining("/invoice/202"),
+					expect.stringContaining("/invoice"),
+				]);
+				expect(calls[1].url).toContain("operation=void");
+				expect((await jobsFor(org.orgId))[0].status).toBe("succeeded");
+			});
 
 			it("re-GETs a fresh SyncToken and voids the invoice", async () => {
 				const { org, asOwner, invoiceId } =
@@ -2106,7 +3003,12 @@ describe("QuickBooks sync engine", () => {
 				expect(result.processed).toBe(1);
 
 				const itemPost = calls.find((call) => call.url.includes("/item?"));
-				expect(itemPost?.url).toContain(`requestid=${skuId}-0`);
+				const invoiceJob = (await jobsFor(org.orgId)).find(
+					(job) => job.entityType === "invoice"
+				);
+				expect(itemPost?.url).toContain(
+					`requestid=${skuId}-${invoiceJob?.operationId}`
+				);
 				expect(itemPost?.body).toMatchObject({
 					Name: "Lawn Mowing",
 					Type: "Service",
@@ -2142,7 +3044,12 @@ describe("QuickBooks sync engine", () => {
 							payload: {
 								QueryResponse: {
 									Item: [
-										{ Id: "88", Name: "Lawn Mowing", SyncToken: "3" },
+										{
+											Id: "88",
+											Name: "Lawn Mowing",
+											SyncToken: "3",
+											Type: "Service",
+										},
 									],
 								},
 							},

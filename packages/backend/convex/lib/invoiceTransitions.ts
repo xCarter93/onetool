@@ -20,7 +20,7 @@ import { maybeEnqueueQboSync } from "./quickbooksEnqueue";
 // transition's side effect, while the mark-paid cascade is one of this seam's
 // callers. Both sides are hoisted function declarations, so the cycle resolves
 // at call time.
-import { settleOutstandingPaymentsForInvoice } from "./payments";
+import { releasePendingPaymentIntent, settleOutstandingPaymentsForInvoice } from "./payments";
 import { materializeRecurringPaymentSchedule } from "./paymentSchedule";
 
 type InvoiceStatus = Doc<"invoices">["status"];
@@ -119,6 +119,17 @@ export async function transitionInvoice(
 		// Settle outstanding installments so the portal never offers a Pay
 		// button on an invoice that is already paid.
 		await settleOutstandingPaymentsForInvoice(ctx, updated._id);
+	}
+	if (newStatus === "cancelled") {
+		// A minted intent stays chargeable from an open portal tab otherwise.
+		const rows = await ctx.db
+			.query("payments")
+			.withIndex("by_invoice", (q) => q.eq("invoiceId", updated._id))
+			.collect();
+		for (const row of rows) {
+			if (row.status === "paid" || row.status === "refunded") continue;
+			await releasePendingPaymentIntent(ctx, row);
+		}
 	}
 
 	const activityActor =

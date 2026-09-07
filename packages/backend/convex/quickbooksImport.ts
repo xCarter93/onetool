@@ -173,7 +173,11 @@ async function mintPortalAccessId(ctx: MutationCtx): Promise<string> {
  * are re-checked here rather than trusting the action's pre-flight.
  */
 export const startRun = internalMutation({
-	args: { orgId: v.id("organizations"), realmId: v.string() },
+	args: {
+		orgId: v.id("organizations"),
+		realmId: v.string(),
+		connectionId: v.id("quickbooksConnections"),
+	},
 	handler: async (ctx, args): Promise<Id<"quickbooksImportRuns">> => {
 		const user = await getCurrentUserOrThrow(ctx);
 		const organization = await ctx.db.get(args.orgId);
@@ -242,6 +246,7 @@ export const startRun = internalMutation({
 		return await ctx.db.insert("quickbooksImportRuns", {
 			orgId: args.orgId,
 			realmId: args.realmId,
+			connectionId: args.connectionId,
 			status: "running",
 			startedByUserId: user._id,
 			startedAt: Date.now(),
@@ -689,6 +694,23 @@ export const commitPage = internalMutation({
 		const run = await ctx.db.get(args.runId);
 		if (!run || run.status !== "committing") return null;
 
+		// QBO ids are per-realm: a reset+reconnect mid-commit would link ids from
+		// the old company under the new one, so fail closed before any write.
+		if (run.connectionId) {
+			const connection = await ctx.db
+				.query("quickbooksConnections")
+				.withIndex("by_org", (q) => q.eq("orgId", run.orgId))
+				.first();
+			if (!connection || connection._id !== run.connectionId) {
+				await ctx.db.patch(args.runId, {
+					status: "failed",
+					completedAt: Date.now(),
+					lastError: "QuickBooks was reset during the import",
+				});
+				return null;
+			}
+		}
+
 		const pending: Doc<"quickbooksImportRows">[] = [];
 		for (const outcome of PROPOSAL_OUTCOMES) {
 			if (pending.length >= COMMIT_BATCH) break;
@@ -862,6 +884,7 @@ export const commitPage = internalMutation({
 						localId: clientId,
 						qboId: row.qboId,
 						qboSyncToken: "0",
+						connectionId: run.connectionId,
 					});
 				}
 				await ctx.db.patch(row._id, {
@@ -907,6 +930,7 @@ export const commitPage = internalMutation({
 				localId: newClientId,
 				qboId: row.qboId,
 				qboSyncToken: "0",
+				connectionId: run.connectionId,
 			});
 			await ctx.db.patch(row._id, {
 				outcome: "imported",
@@ -942,7 +966,10 @@ export const commitPage = internalMutation({
 async function loadAmbiguousRow(
 	ctx: UserMutationCtx,
 	rowId: Id<"quickbooksImportRows">
-): Promise<Doc<"quickbooksImportRows">> {
+): Promise<{
+	row: Doc<"quickbooksImportRows">;
+	run: Doc<"quickbooksImportRuns">;
+}> {
 	const row = await ctx.db.get(rowId);
 	if (!row || row.orgId !== ctx.orgId) {
 		throw new ConvexError("Import row not found");
@@ -956,7 +983,7 @@ async function loadAmbiguousRow(
 	if (!run || run.status !== "awaiting_review") {
 		throw new ConvexError("This import run is reviewed before it is applied");
 	}
-	return row;
+	return { row, run };
 }
 
 /** Flip the run to completed once the reviewer clears the last ambiguous row. */
@@ -986,7 +1013,7 @@ export const resolveImportRow = userMutation({
 		await requirePremium(ctx);
 		await requireOrgOwner(ctx);
 
-		const row = await loadAmbiguousRow(ctx, args.rowId);
+		const { row, run } = await loadAmbiguousRow(ctx, args.rowId);
 		if (!(row.candidateClientIds ?? []).includes(args.clientId)) {
 			throw new ConvexError("That client is not a candidate for this row");
 		}
@@ -1013,6 +1040,7 @@ export const resolveImportRow = userMutation({
 			localId: args.clientId,
 			qboId: row.qboId,
 			qboSyncToken: "0",
+			connectionId: run.connectionId,
 		});
 
 		await ctx.db.patch(row._id, {
@@ -1021,13 +1049,10 @@ export const resolveImportRow = userMutation({
 			candidateClientIds: undefined,
 		});
 
-		const run = await ctx.db.get(row.runId);
-		if (run) {
-			await ctx.db.patch(row.runId, {
-				ambiguous: Math.max(0, run.ambiguous - 1),
-				autoLinked: run.autoLinked + 1,
-			});
-		}
+		await ctx.db.patch(row.runId, {
+			ambiguous: Math.max(0, run.ambiguous - 1),
+			autoLinked: run.autoLinked + 1,
+		});
 		await completeRunIfReviewed(ctx, row.runId);
 		return null;
 	},
@@ -1039,20 +1064,17 @@ export const skipImportRow = userMutation({
 		await requirePremium(ctx);
 		await requireOrgOwner(ctx);
 
-		const row = await loadAmbiguousRow(ctx, args.rowId);
+		const { row, run } = await loadAmbiguousRow(ctx, args.rowId);
 		await ctx.db.patch(row._id, {
 			outcome: "skipped",
 			skipReason: "user_skipped",
 			candidateClientIds: undefined,
 		});
 
-		const run = await ctx.db.get(row.runId);
-		if (run) {
-			await ctx.db.patch(row.runId, {
-				ambiguous: Math.max(0, run.ambiguous - 1),
-				skipped: run.skipped + 1,
-			});
-		}
+		await ctx.db.patch(row.runId, {
+			ambiguous: Math.max(0, run.ambiguous - 1),
+			skipped: run.skipped + 1,
+		});
 		await completeRunIfReviewed(ctx, row.runId);
 		return null;
 	},

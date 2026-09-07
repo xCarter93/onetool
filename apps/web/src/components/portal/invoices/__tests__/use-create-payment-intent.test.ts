@@ -85,6 +85,53 @@ describe("useCreatePaymentIntent", () => {
 		expect(result.current.clientSecret).toBe("pi_test_x_secret_yyy");
 	});
 
+	it("exposes the server's intentStatus alongside a ready hook status", async () => {
+		fetchSpy.mockResolvedValueOnce(
+			okResponse({
+				status: "processing",
+				clientSecret: "pi_abc_secret_xyz",
+				publishableKey: "pk_test_123",
+				stripeAccountId: "acct_test_999",
+				paymentId: "pmt_1",
+				amount: 100,
+			}),
+		);
+		const { result } = renderHook(() =>
+			useCreatePaymentIntent({ invoiceId: "inv_1", enabled: true }),
+		);
+		await waitFor(() => expect(result.current.status).toBe("ready"));
+		expect(result.current.intentStatus).toBe("processing");
+		expect(result.current.amount).toBe(100);
+	});
+
+	it("defaults intentStatus to 'ready' when the server omits it", async () => {
+		fetchSpy.mockResolvedValueOnce(
+			okResponse({
+				clientSecret: "pi_abc_secret_xyz",
+				publishableKey: "pk_test_123",
+				stripeAccountId: "acct_test_999",
+				paymentId: "pmt_1",
+				amount: 100,
+			}),
+		);
+		const { result } = renderHook(() =>
+			useCreatePaymentIntent({ invoiceId: "inv_1", enabled: true }),
+		);
+		await waitFor(() => expect(result.current.status).toBe("ready"));
+		expect(result.current.intentStatus).toBe("ready");
+	});
+
+	it("sets status='error' with code='stripe_unavailable' when 503", async () => {
+		fetchSpy.mockResolvedValueOnce(
+			errResponse(503, { code: "stripe_unavailable", error: "Stripe is busy" }),
+		);
+		const { result } = renderHook(() =>
+			useCreatePaymentIntent({ invoiceId: "inv_1", enabled: true }),
+		);
+		await waitFor(() => expect(result.current.status).toBe("error"));
+		expect(result.current.error?.code).toBe("stripe_unavailable");
+	});
+
 	it("sets status='error' with code='rate_limited' + retryAfterSeconds when 429", async () => {
 		fetchSpy.mockResolvedValueOnce(
 			errResponse(429, {

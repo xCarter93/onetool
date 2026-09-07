@@ -6,6 +6,15 @@ import { internal } from "./_generated/api";
 import { centsToDollars } from "./lib/money";
 import { createStripeSdkClient } from "./lib/stripeSdk";
 
+const CAPABILITY_STATUSES = ["active", "inactive", "pending", "unrequested"] as const;
+type CapabilityStatus = (typeof CAPABILITY_STATUSES)[number];
+
+function knownCapabilityStatus(status: string): CapabilityStatus | null {
+	return (CAPABILITY_STATUSES as readonly string[]).includes(status)
+		? (status as CapabilityStatus)
+		: null;
+}
+
 type StripeClient = InstanceType<typeof StripeImport>;
 // Test seam: tests pass a mock via runHandleEvent; production resolves at call-time.
 function defaultStripeClientFactory(): StripeClient {
@@ -40,7 +49,7 @@ export const handleEvent = internalAction({
 	}),
 	handler: async (ctx, args) => {
 		// Atomically dedupe processed events and retry failed/stuck ones.
-		const { proceed, eventDocId } = await ctx.runMutation(
+		const { proceed, eventDocId, inProgress } = await ctx.runMutation(
 			internal.stripeWebhookEvents.startProcessingEvent,
 			{
 				stripeEventId: args.eventId,
@@ -49,7 +58,17 @@ export const handleEvent = internalAction({
 				receivedAt: Date.now(),
 			}
 		);
+		// A 200 here would end Stripe's retries while the first attempt may still
+		// fail; a 5xx makes Stripe come back after the lease has settled.
+		if (inProgress) {
+			throw new Error(
+				`Stripe event ${args.eventId} is already being processed`
+			);
+		}
 		if (!proceed) return { duplicate: true };
+
+		// Set when the event is parked for replay instead of being acked.
+		let parked = false;
 
 		try {
 			// Some account/capability events carry the account id in the object body.
@@ -99,6 +118,88 @@ export const handleEvent = internalAction({
 				);
 				return { duplicate: false, orgFound: false };
 			}
+
+			const recordChargeRefunds = async (
+				chargeId: string,
+				piId: string,
+				listed?: Stripe.Refund[]
+			) => {
+				// The charge's refund list is not expanded on current API versions,
+				// so fetch it when absent; totals are derived per refund id.
+				const refunds =
+					listed ??
+					(await getStripeClient()
+						.refunds.list(
+							{ charge: chargeId, limit: 100 },
+							{ stripeAccount: org!.stripeConnectAccountId },
+						)
+						.autoPagingToArray({ limit: 1000 }));
+				const snapshot = {
+					refundedAt: Date.now(),
+					refunds: refunds.map((r) => ({
+						id: r.id,
+						amountCents: r.amount,
+						status: r.status ?? "succeeded",
+					})),
+				};
+				const { unresolved } = await ctx.runMutation(
+					internal.payments.markRefundedFromWebhookInternal,
+					{ orgId: org!._id, paymentIntentId: piId, ...snapshot }
+				);
+				if (unresolved) {
+					// The intent has not succeeded here yet; the paid cascade
+					// replays this once it does.
+					await ctx.runMutation(
+						internal.stripeWebhookEvents.markEventUnresolved,
+						{
+							eventDocId: eventDocId!,
+							paymentIntentId: piId,
+							payload: snapshot,
+						}
+					);
+					parked = true;
+				}
+			};
+
+			const revertRefund = async (refund: Stripe.Refund, canceled: boolean) => {
+				const refundPiId =
+					typeof refund.payment_intent === "string"
+						? refund.payment_intent
+						: refund.payment_intent?.id;
+				const refundChargeId =
+					typeof refund.charge === "string" ? refund.charge : refund.charge?.id;
+				if (!refundPiId || !refundChargeId) {
+					console.warn(
+						`${args.eventType} missing payment_intent or charge for refund ${refund.id}`
+					);
+					return;
+				}
+				// Ask Stripe what is still refunded rather than subtracting this
+				// refund's amount: the failed one may never have been recorded here,
+				// and the subtraction would then come out of an unrelated refund.
+				// A throw here returns 5xx and Stripe retries, which beats guessing.
+				const stripe = getStripeClient();
+				const refunds = await stripe.refunds
+					.list(
+						{ charge: refundChargeId, limit: 100 },
+						{ stripeAccount: org!.stripeConnectAccountId },
+					)
+					.autoPagingToArray({ limit: 1000 });
+				const netRefundedAmountCents = refunds
+					.filter((r) => r.status !== "failed" && r.status !== "canceled")
+					.reduce((sum, r) => sum + r.amount, 0);
+				await ctx.runMutation(
+					internal.payments.revertFailedRefundFromWebhookInternal,
+					{
+						orgId: org!._id,
+						paymentIntentId: refundPiId,
+						refundId: refund.id,
+						netRefundedAmountCents,
+						failureReason: refund.failure_reason ?? undefined,
+						canceled,
+					}
+				);
+			};
 
 			switch (args.eventType) {
 				case "checkout.session.completed": {
@@ -223,22 +324,7 @@ export const handleEvent = internalAction({
 						);
 						break;
 					}
-					// amount_refunded is cumulative across every refund on the charge,
-					// and `refunded` is true only once the whole charge is back out.
-					const amountCaptured = charge.amount_captured || charge.amount;
-					await ctx.runMutation(
-						internal.payments.markRefundedFromWebhookInternal,
-						{
-							orgId: org!._id,
-							paymentIntentId: piId,
-							refundedAt: Date.now(),
-							refundedAmountCents: charge.amount_refunded,
-							fullyRefunded:
-								charge.refunded ||
-								(amountCaptured > 0 &&
-									charge.amount_refunded >= amountCaptured),
-						}
-					);
+					await recordChargeRefunds(charge.id, piId, charge.refunds?.data);
 					break;
 				}
 				case "charge.dispute.created": {
@@ -259,6 +345,10 @@ export const handleEvent = internalAction({
 							orgId: org!._id,
 							paymentIntentId: piId,
 							disputeId: dispute.id,
+							disputeStatus: dispute.status,
+							evidenceDueBy: dispute.evidence_details?.due_by
+								? dispute.evidence_details.due_by * 1000
+								: undefined,
 						}
 					);
 					break;
@@ -285,53 +375,39 @@ export const handleEvent = internalAction({
 							disputeStatus: dispute.status,
 							closed: args.eventType === "charge.dispute.closed",
 							resolvedAt: args.created * 1000,
+							evidenceDueBy: dispute.evidence_details?.due_by
+								? dispute.evidence_details.due_by * 1000
+								: undefined,
 						}
 					);
 					break;
 				}
+				// Only reversals need compensation; increases arrive via
+				// charge.refunded. charge.refund.updated is deprecated but still
+				// emitted for charge-backed refunds.
+				case "refund.updated":
 				case "charge.refund.updated": {
 					const refund = args.data.object as Stripe.Refund;
-					// Only the failed transition needs compensation; other refund
-					// states are covered by charge.refunded.
-					if (refund.status !== "failed") break;
-					const refundPiId =
-						typeof refund.payment_intent === "string"
-							? refund.payment_intent
-							: refund.payment_intent?.id;
-					const refundChargeId =
-						typeof refund.charge === "string"
-							? refund.charge
-							: refund.charge?.id;
-					if (!refundPiId || !refundChargeId) {
-						console.warn(
-							`charge.refund.updated missing payment_intent or charge for refund ${refund.id}`
-						);
+					if (refund.status === "succeeded") {
+						// A pending (bank) refund settling; charge.refunded already fired
+						// at creation, so this is the only signal it went through.
+						const piId =
+							typeof refund.payment_intent === "string"
+								? refund.payment_intent
+								: refund.payment_intent?.id;
+						const chargeId =
+							typeof refund.charge === "string" ? refund.charge : refund.charge?.id;
+						if (piId && chargeId) await recordChargeRefunds(chargeId, piId);
 						break;
 					}
-					// Ask Stripe what is still refunded rather than subtracting this
-					// refund's amount: the failed one may never have been recorded here,
-					// and the subtraction would then come out of an unrelated refund.
-					// A throw here returns 5xx and Stripe retries, which beats guessing.
-					const stripe = getStripeClient();
-					const refunds = await stripe.refunds
-						.list(
-							{ charge: refundChargeId, limit: 100 },
-							{ stripeAccount: org!.stripeConnectAccountId },
-						)
-						.autoPagingToArray({ limit: 1000 });
-					const netRefundedAmountCents = refunds
-						.filter((r) => r.status !== "failed" && r.status !== "canceled")
-						.reduce((sum, r) => sum + r.amount, 0);
-					await ctx.runMutation(
-						internal.payments.revertFailedRefundFromWebhookInternal,
-						{
-							orgId: org!._id,
-							paymentIntentId: refundPiId,
-							refundId: refund.id,
-							netRefundedAmountCents,
-							failureReason: refund.failure_reason ?? undefined,
-						}
-					);
+					if (refund.status !== "failed" && refund.status !== "canceled") {
+						break;
+					}
+					await revertRefund(refund, refund.status === "canceled");
+					break;
+				}
+				case "refund.failed": {
+					await revertRefund(args.data.object as Stripe.Refund, false);
 					break;
 				}
 				case "checkout.session.expired": {
@@ -409,12 +485,20 @@ export const handleEvent = internalAction({
 				}
 				case "capability.updated": {
 					const capability = args.data.object as Stripe.Capability;
+					const status = knownCapabilityStatus(capability.status);
+					if (!status) {
+						// Newer API versions can add statuses; account.updated still refreshes the cache.
+						console.warn(
+							`capability.updated ${capability.id}: unknown status ${capability.status}; skipped`
+						);
+						break;
+					}
 					await ctx.runMutation(
 						internal.organizations.updateStripeCapabilityInternal,
 						{
 							orgId: org!._id,
 							capabilityId: capability.id,
-							status: capability.status,
+							status,
 							requirementsCurrentlyDue:
 								capability.requirements?.currently_due ?? [],
 							requirementsDisabledReason:
@@ -460,9 +544,12 @@ export const handleEvent = internalAction({
 					);
 			}
 
-			await ctx.runMutation(internal.stripeWebhookEvents.markEventProcessed, {
-				eventDocId: eventDocId!,
-			});
+			if (!parked) {
+				await ctx.runMutation(
+					internal.stripeWebhookEvents.markEventProcessed,
+					{ eventDocId: eventDocId! }
+				);
+			}
 			return { duplicate: false, orgFound: true };
 		} catch (err) {
 			// Keep failure bookkeeping separate from Stripe's retry signal.

@@ -103,6 +103,96 @@ describe("stripeWebhookEvents lifecycle", () => {
 		expect(rows[0].failureReason).toBeUndefined();
 	});
 
+	it("concurrent redelivery inside the lease is skipped without reclaiming the active attempt", async () => {
+		const first = await t.mutation(
+			internal.stripeWebhookEvents.startProcessingEvent,
+			{
+				stripeEventId: "evt_lease_1",
+				eventType: "payout.paid",
+				receivedAt: Date.now(),
+			}
+		);
+		expect(first.proceed).toBe(true);
+
+		const second = await t.mutation(
+			internal.stripeWebhookEvents.startProcessingEvent,
+			{
+				stripeEventId: "evt_lease_1",
+				eventType: "payout.paid",
+				receivedAt: Date.now(),
+			}
+		);
+
+		expect(second.proceed).toBe(false);
+		expect(second.inProgress).toBe(true);
+		const rows = await t.run((ctx) =>
+			ctx.db.query("stripeWebhookEvents").collect()
+		);
+		expect(rows[0].status).toBe("processing");
+		expect(rows[0].attemptCount).toBe(1);
+	});
+
+	it("an attempt whose lease expired can be reclaimed", async () => {
+		vi.useFakeTimers();
+		try {
+			const start = Date.now();
+			await t.mutation(internal.stripeWebhookEvents.startProcessingEvent, {
+				stripeEventId: "evt_lease_expired",
+				eventType: "payout.paid",
+				receivedAt: start,
+			});
+			vi.setSystemTime(start + 10 * 60 * 1000);
+			const retry = await t.mutation(
+				internal.stripeWebhookEvents.startProcessingEvent,
+				{
+					stripeEventId: "evt_lease_expired",
+					eventType: "payout.paid",
+					receivedAt: Date.now(),
+				}
+			);
+			expect(retry.proceed).toBe(true);
+			const rows = await t.run((ctx) =>
+				ctx.db.query("stripeWebhookEvents").collect()
+			);
+			expect(rows[0].attemptCount).toBe(2);
+			expect(rows[0].claimedAt).toBe(start + 10 * 60 * 1000);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it("an unresolved event keeps its payload and can be claimed again", async () => {
+		const first = await t.mutation(
+			internal.stripeWebhookEvents.startProcessingEvent,
+			{
+				stripeEventId: "evt_unresolved",
+				eventType: "charge.refunded",
+				receivedAt: Date.now(),
+			}
+		);
+		await t.mutation(internal.stripeWebhookEvents.markEventUnresolved, {
+			eventDocId: first.eventDocId!,
+			paymentIntentId: "pi_pending",
+			payload: { refunds: [] },
+		});
+		const parked = await t.run((ctx) =>
+			ctx.db.query("stripeWebhookEvents").collect()
+		);
+		expect(parked[0].status).toBe("unresolved");
+		expect(parked[0].paymentIntentId).toBe("pi_pending");
+		expect(parked[0].payload).toEqual({ refunds: [] });
+
+		const retry = await t.mutation(
+			internal.stripeWebhookEvents.startProcessingEvent,
+			{
+				stripeEventId: "evt_unresolved",
+				eventType: "charge.refunded",
+				receivedAt: Date.now(),
+			}
+		);
+		expect(retry.proceed).toBe(true);
+	});
+
 	it("markEventProcessed: sets status=processed and processedAt", async () => {
 		const start = await t.mutation(
 			internal.stripeWebhookEvents.startProcessingEvent,

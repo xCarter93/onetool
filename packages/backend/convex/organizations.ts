@@ -1,6 +1,6 @@
 import { internalQuery } from "./_generated/server";
-import { mutation, internalMutation } from "./lib/triggers";
-import { v } from "convex/values";
+import { internalMutation } from "./lib/triggers";
+import { ConvexError, v } from "convex/values";
 import { internal } from "./_generated/api";
 import {
 	getCurrentUserOrThrow,
@@ -621,22 +621,27 @@ export const setReceivingAddress = userMutation({
 
 /**
  * Return the caller's Connect context using only session-derived identity.
+ * Error codes are ConvexErrors so they survive production error redaction
+ * on the way to the Next.js routes and stripeConnectActions.
  */
 export const getOrgForCallerInternal = optionalUserQuery({
 	args: {},
 	handler: async (ctx) => {
-		const user = await getCurrentUserOrThrow(ctx);
-		// Member-aware lookup keeps non-owner errors distinct from missing orgs.
-		const userOrgId = await getCurrentUserOrgId(ctx);
-		const organization = await ctx.db.get(userOrgId);
-		if (!organization) {
-			throw new Error("ORG_NOT_FOUND");
+		if (!ctx.user || !ctx.orgId) {
+			throw new ConvexError(
+				(await getCurrentUser(ctx)) ? "ORG_NOT_FOUND" : "UNAUTHORIZED"
+			);
 		}
-		if (organization.ownerUserId !== user._id) {
-			throw new Error("NOT_ORG_OWNER");
+		const organization = await ctx.db.get(ctx.orgId);
+		if (!organization) {
+			throw new ConvexError("ORG_NOT_FOUND");
+		}
+		if (organization.ownerUserId !== ctx.user._id) {
+			throw new ConvexError("NOT_ORG_OWNER");
 		}
 		return {
-			userId: user._id,
+			userId: ctx.user._id,
+			userEmail: ctx.user.email ?? null,
 			orgId: organization._id,
 			stripeConnectAccountId: organization.stripeConnectAccountId ?? null,
 			organization: {
@@ -652,21 +657,14 @@ export const getOrgForCallerInternal = optionalUserQuery({
 });
 
 /**
- * Persist a Connect account id on the caller's org with owner and duplicate guards.
+ * Bind a Stripe-created account to an org. Only stripeConnectActions calls
+ * this, after Stripe has returned the account, so a client can never assert
+ * a binding.
  */
-export const setStripeConnectAccountIdInternal = userMutation({
+export const bindStripeConnectAccountInternal = systemMutation({
 	args: { accountId: v.string() },
+	returns: v.null(),
 	handler: async (ctx, args) => {
-		const user = await getCurrentUserOrThrow(ctx);
-		const userOrgId = await getCurrentUserOrgId(ctx);
-		const organization = await ctx.db.get(userOrgId);
-		if (!organization) {
-			throw new Error("ORG_NOT_FOUND");
-		}
-		if (organization.ownerUserId !== user._id) {
-			throw new Error("NOT_ORG_OWNER");
-		}
-
 		// Prevent one Stripe account from being mapped to multiple orgs.
 		const existing = await ctx.db
 			.query("organizations")
@@ -674,15 +672,10 @@ export const setStripeConnectAccountIdInternal = userMutation({
 				q.eq("stripeConnectAccountId", args.accountId)
 			)
 			.first();
-		if (existing && existing._id !== userOrgId) {
-			throw new Error(
-				`DUPLICATE_CONNECT_ACCOUNT: account ${args.accountId} already mapped to org ${existing._id}`
-			);
+		if (existing && existing._id !== ctx.orgId) {
+			throw new ConvexError("DUPLICATE_CONNECT_ACCOUNT");
 		}
-
-		await ctx.db.patch(userOrgId, {
-			stripeConnectAccountId: args.accountId,
-		});
+		await ctx.db.patch(ctx.orgId, { stripeConnectAccountId: args.accountId });
 		return null;
 	},
 });
@@ -818,6 +811,7 @@ export const updateStripeConnectStatusInternal = systemMutation({
 			return null;
 		}
 		const wasChargesEnabled = org?.stripeChargesEnabled === true;
+		const wasPayoutsEnabled = org?.stripePayoutsEnabled === true;
 		await ctx.db.patch(ctx.orgId, {
 			stripeChargesEnabled: args.chargesEnabled,
 			stripePayoutsEnabled: args.payoutsEnabled,
@@ -829,6 +823,19 @@ export const updateStripeConnectStatusInternal = systemMutation({
 				? { stripeStatusEventCreated: args.eventCreatedSec }
 				: {}),
 		});
+		// payouts_enabled is the only payout readiness signal (no v1 capability
+		// maps to it), so its true->false edge is where the alert fires.
+		if (wasPayoutsEnabled && !args.payoutsEnabled) {
+			await ctx.runMutation(
+				internal.notifications.createWebhookNotificationInternal,
+				{
+					orgId: ctx.orgId,
+					type: "capability_degraded",
+					priority: "high",
+					message: `Stripe payouts have been disabled: ${args.requirementsDisabledReason ?? "reason unknown"}. Update onboarding to restore.`,
+				}
+			);
+		}
 		// Fire once on the false->true charges_enabled edge (actor-less webhook).
 		if (!wasChargesEnabled && args.chargesEnabled) {
 			await trackServerEvent(ctx, {
@@ -841,29 +848,17 @@ export const updateStripeConnectStatusInternal = systemMutation({
 	},
 });
 
-/**
- * Self-heal cached Connect status + bank fingerprint from a live Stripe read.
- *
- * The cached fields gate the client portal (stripeChargesEnabled) and the
- * Payments-tab bank row (stripeExternalAccountLast4), but they are only ever
- * written by webhooks. Accounts onboarded before those handlers shipped never
- * received the events, so the fields stay empty forever. The owner-authenticated
- * /api/stripe-connect/status route now write-throughs here on every refresh.
- *
- * The stripeRequirements* fields are deliberately NOT written here. The webhook
- * path (updateStripeConnectStatusInternal) writes them as v1 machine codes; the
- * v2 status read this path is fed from only exposes human-readable descriptions
- * and has no single disabled_reason. Persisting that would put two formats in
- * one field depending on which path last wrote. Requirements stay webhook-owned.
- */
-export const syncStripeConnectStatusFromLive = userMutation({
+// Live-read write-through from stripeConnectActions.refreshStatus. The
+// stripeRequirements* fields stay webhook-owned: the webhook writes v1 machine
+// codes, while the v2 read only exposes human-readable descriptions.
+export const syncStripeConnectStatusInternal = systemMutation({
 	args: {
+		actorUserId: v.id("users"),
 		chargesEnabled: v.boolean(),
 		payoutsEnabled: v.boolean(),
 		detailsSubmitted: v.boolean(),
 		bankLast4: v.optional(v.string()),
 		bankName: v.optional(v.union(v.string(), v.null())),
-		bankUpdatedAt: v.optional(v.number()),
 	},
 	returns: v.null(),
 	handler: async (ctx, args) => {
@@ -871,11 +866,6 @@ export const syncStripeConnectStatusFromLive = userMutation({
 		if (!organization) {
 			throw new Error("Organization not found");
 		}
-		// Owner-only: mirrors the route guard, defense in depth.
-		if (organization.ownerUserId !== ctx.user._id) {
-			throw new Error("Only the organization owner can sync Stripe status");
-		}
-
 		const wasChargesEnabled = organization.stripeChargesEnabled === true;
 
 		const patch: Record<string, unknown> = {
@@ -893,16 +883,15 @@ export const syncStripeConnectStatusFromLive = userMutation({
 		if (args.bankLast4) {
 			patch.stripeExternalAccountLast4 = args.bankLast4;
 			patch.stripeExternalAccountBankName = args.bankName ?? undefined;
-			patch.stripeExternalAccountUpdatedAt = args.bankUpdatedAt ?? Date.now();
+			patch.stripeExternalAccountUpdatedAt = Date.now();
 		}
 
 		await ctx.db.patch(ctx.orgId, patch);
-		// Fire once on the false->true charges_enabled edge (self-heal path).
 		if (!wasChargesEnabled && args.chargesEnabled) {
 			await trackServerEvent(ctx, {
 				event: SERVER_EVENTS.STRIPE_CONNECTED,
 				orgId: ctx.orgId,
-				actorUserId: ctx.user._id,
+				actorUserId: args.actorUserId,
 			});
 		}
 		return null;
@@ -984,7 +973,9 @@ export const listAllWithConnectAccountInternal = internalQuery({
 	},
 });
 
-// Re-cache Connect capabilities and notify only on active -> inactive degradation.
+// Re-cache the card_payments capability and notify only on active -> inactive.
+// `transfers` (recipient) is deliberately ignored: payout readiness is
+// account.updated's payouts_enabled, not the ability to receive transfers.
 export const updateStripeCapabilityInternal = systemMutation({
 	args: {
 		capabilityId: v.string(),
@@ -1011,29 +1002,21 @@ export const updateStripeCapabilityInternal = systemMutation({
 		) {
 			return null;
 		}
-
-		// Payout capability events still use the v1 "transfers" capability id.
-		const isCharges = args.capabilityId === "card_payments";
-		const isPayouts = args.capabilityId === "transfers";
-		if (!isCharges && !isPayouts) {
+		if (args.capabilityId !== "card_payments") {
 			console.log(
 				`capability.updated: unhandled capability ${args.capabilityId}`
 			);
 			return null;
 		}
 
-		const fieldName = isCharges
-			? ("stripeChargesEnabled" as const)
-			: ("stripePayoutsEnabled" as const);
-		const priorValue = org[fieldName];
 		const newValue = args.status === "active";
-		const isDegradation = priorValue === true && newValue === false;
+		const isDegradation = org.stripeChargesEnabled === true && !newValue;
 
 		// Only patch requirement fields on degradation to avoid clobbering account.updated.
 		// Advancing the watermark here is required: without it an older
 		// account.updated snapshot would still pass the guard and undo this event.
 		const patch: Record<string, unknown> = {
-			[fieldName]: newValue,
+			stripeChargesEnabled: newValue,
 			stripeStatusUpdatedAt: Date.now(),
 			...(args.eventCreatedSec !== undefined
 				? { stripeStatusEventCreated: args.eventCreatedSec }
@@ -1045,16 +1028,14 @@ export const updateStripeCapabilityInternal = systemMutation({
 		}
 		await ctx.db.patch(ctx.orgId, patch);
 
-		// Notify only on active -> not-active transitions.
 		if (isDegradation) {
-			const label = isCharges ? "charges" : "payouts";
 			await ctx.runMutation(
 				internal.notifications.createWebhookNotificationInternal,
 				{
 					orgId: ctx.orgId,
 					type: "capability_degraded",
 					priority: "high",
-					message: `Stripe ${label} have been disabled: ${args.requirementsDisabledReason ?? "reason unknown"}. Update onboarding to restore.`,
+					message: `Stripe charges have been disabled: ${args.requirementsDisabledReason ?? "reason unknown"}. Update onboarding to restore.`,
 				}
 			);
 		}
@@ -1122,28 +1103,13 @@ export const updateExternalAccountFingerprintInternal = systemMutation({
 	},
 });
 
-// Stays raw — preserves explicit UNAUTHORIZED/ORG_MISMATCH route contract.
-export const clearStripeConnectStateInternal = mutation({
-	args: { orgId: v.id("organizations") },
+// Recovery path: Stripe no longer has the bound account, so drop every cached
+// Connect field before stripeConnectActions recreates it.
+export const clearStripeConnectStateInternal = systemMutation({
+	args: {},
 	returns: v.null(),
-	handler: async (ctx, args) => {
-		const identity = await ctx.auth.getUserIdentity();
-		if (!identity) {
-			throw new Error("UNAUTHORIZED");
-		}
-		const user = await getCurrentUserOrThrow(ctx);
-		const userOrgId = await getCurrentUserOrgId(ctx);
-		if (userOrgId !== args.orgId) {
-			throw new Error("ORG_MISMATCH");
-		}
-		const organization = await ctx.db.get(userOrgId);
-		if (!organization) {
-			throw new Error("ORG_NOT_FOUND");
-		}
-		if (organization.ownerUserId !== user._id) {
-			throw new Error("NOT_ORG_OWNER");
-		}
-		await ctx.db.patch(args.orgId, {
+	handler: async (ctx) => {
+		await ctx.db.patch(ctx.orgId, {
 			stripeConnectAccountId: undefined,
 			stripeChargesEnabled: undefined,
 			stripePayoutsEnabled: undefined,

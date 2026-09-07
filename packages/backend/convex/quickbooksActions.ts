@@ -19,11 +19,12 @@ import {
 	buildQboCustomer,
 	buildQboInvoice,
 	buildQboPayment,
+	buildQboRefundReceipt,
 	deriveInvoiceAmounts,
 	escapeQboQueryValue,
 	type QboCustomerPayload,
 } from "./lib/quickbooksMappers";
-import { formatCurrency } from "./lib/money";
+import { formatCurrency, roundCents } from "./lib/money";
 
 /**
  * QuickBooks OAuth + token lifecycle actions (PRD §6.2).
@@ -89,6 +90,7 @@ export const completeConnection = action({
 			accessTokenExpiresAt: tokens.accessTokenExpiresAt,
 			refreshToken: await encryptToken(tokens.refreshToken),
 			refreshTokenExpiresAt: tokens.refreshTokenExpiresAt,
+			refreshTokenHardExpiresAt: tokens.refreshTokenHardExpiresAt,
 			companyName: companyName ?? undefined,
 		});
 
@@ -108,6 +110,8 @@ export async function ensureFreshAccessToken(
 	accessToken: string;
 	/** The stored (possibly encrypted) form, for compare-and-set guards. */
 	storedAccessToken: string;
+	/** Generation fence: the connection these tokens and realm belong to. */
+	connectionId: Id<"quickbooksConnections">;
 	realmId: string;
 	environment: "sandbox" | "production";
 } | null> {
@@ -123,6 +127,7 @@ export async function ensureFreshAccessToken(
 		return {
 			accessToken: await decryptToken(connection.accessToken),
 			storedAccessToken: connection.accessToken,
+			connectionId: connection._id,
 			realmId: connection.realmId,
 			environment: connection.environment,
 		};
@@ -135,6 +140,7 @@ export async function ensureFreshAccessToken(
 	return {
 		accessToken: refreshed.accessToken,
 		storedAccessToken: refreshed.storedAccessToken,
+		connectionId: connection._id,
 		realmId: connection.realmId,
 		environment: connection.environment,
 	};
@@ -152,14 +158,33 @@ async function refreshConnection(
 		// Rotation is also the lazy-migration point: legacy plaintext rows come
 		// back encrypted on their first refresh after the key is set.
 		const storedAccessToken = await encryptToken(tokens.accessToken);
-		await ctx.runMutation(internal.quickbooks.updateTokens, {
-			orgId: connection.orgId,
-			accessToken: storedAccessToken,
-			accessTokenExpiresAt: tokens.accessTokenExpiresAt,
-			refreshToken: await encryptToken(tokens.refreshToken),
-			refreshTokenExpiresAt: tokens.refreshTokenExpiresAt,
-		});
-		return { accessToken: tokens.accessToken, storedAccessToken };
+		const applied: boolean = await ctx.runMutation(
+			internal.quickbooks.updateTokens,
+			{
+				orgId: connection.orgId,
+				connectionId: connection._id,
+				previousRefreshToken: connection.refreshToken,
+				accessToken: storedAccessToken,
+				accessTokenExpiresAt: tokens.accessTokenExpiresAt,
+				refreshToken: await encryptToken(tokens.refreshToken),
+				refreshTokenExpiresAt: tokens.refreshTokenExpiresAt,
+				refreshTokenHardExpiresAt: tokens.refreshTokenHardExpiresAt,
+			}
+		);
+		if (applied) return { accessToken: tokens.accessToken, storedAccessToken };
+
+		// Lost the rotation race: use the stored tokens, unless a reconnect replaced the row.
+		const current: Doc<"quickbooksConnections"> | null = await ctx.runQuery(
+			internal.quickbooks.getConnection,
+			{ orgId: connection.orgId }
+		);
+		if (!current || current.status !== "connected" || current._id !== connection._id) {
+			return null;
+		}
+		return {
+			accessToken: await decryptToken(current.accessToken),
+			storedAccessToken: current.accessToken,
+		};
 	} catch (error) {
 		if (error instanceof QboInvalidGrantError) {
 			// Refresh race (worker vs cron): if another caller already rotated the
@@ -217,7 +242,13 @@ export const refreshStaleConnections = internalAction({
 const ONETOOL_SERVICE_ITEM_NAME = "OneTool Service";
 
 type QboAccount = { Id: string; Name: string };
-type QboItem = { Id: string; Name: string; SyncToken?: string };
+type QboItem = {
+	Id: string;
+	Name: string;
+	SyncToken?: string;
+	Type?: string;
+	IncomeAccountRef?: { value: string };
+};
 type QboQueryResponse<T> = {
 	QueryResponse?: {
 		Account?: T[];
@@ -302,12 +333,8 @@ async function resolveServiceItem(
 	tokens: QboRef,
 	incomeAccountQboId: string
 ): Promise<string> {
-	const existing = await qboQuery<QboItem>(
-		tokens,
-		`SELECT * FROM Item WHERE Name = '${escapeQboQueryValue(ONETOOL_SERVICE_ITEM_NAME)}'`
-	);
-	const found = existing.QueryResponse?.Item?.[0];
-	if (found) return found.Id;
+	const found = await findItemByName(tokens, ONETOOL_SERVICE_ITEM_NAME);
+	if (found) return await adoptServiceItem(tokens, found, incomeAccountQboId);
 
 	try {
 		const created = await qboFetch<{ Item: QboItem }>({
@@ -326,15 +353,35 @@ async function resolveServiceItem(
 	} catch (error) {
 		// 6240: something already owns the name; re-query and adopt it.
 		if (error instanceof QboRequestError && error.isDuplicateName) {
-			const retry = await qboQuery<QboItem>(
-				tokens,
-				`SELECT * FROM Item WHERE Name = '${escapeQboQueryValue(ONETOOL_SERVICE_ITEM_NAME)}'`
-			);
-			const adopted = retry.QueryResponse?.Item?.[0];
-			if (adopted) return adopted.Id;
+			const adopted = await findItemByName(tokens, ONETOOL_SERVICE_ITEM_NAME);
+			if (adopted) return await adoptServiceItem(tokens, adopted, incomeAccountQboId);
 		}
 		throw error;
 	}
+}
+
+/**
+ * "OneTool Service" is our own item, so a stale income account is repointed
+ * to the one the user just picked rather than reported as a conflict.
+ */
+async function adoptServiceItem(
+	tokens: QboRef,
+	item: QboItem,
+	incomeAccountQboId: string
+): Promise<string> {
+	if (item.Type !== "Service") {
+		throw new ConvexError(
+			`QuickBooks already has an item named "${ONETOOL_SERVICE_ITEM_NAME}" that is not a Service item. Rename it in QuickBooks, then finish setup again.`
+		);
+	}
+	if (item.IncomeAccountRef?.value === incomeAccountQboId) return item.Id;
+	const updated = await qboPost<{ Item: QboItem }>(tokens, "/item", {
+		Id: item.Id,
+		SyncToken: item.SyncToken ?? "0",
+		sparse: true,
+		IncomeAccountRef: { value: incomeAccountQboId },
+	});
+	return updated.Item.Id;
 }
 
 /**
@@ -394,7 +441,14 @@ type SyncJob = Doc<"quickbooksSyncJobs">;
 type Connection = Doc<"quickbooksConnections">;
 
 /** A job either completed, or could not be attempted yet and must be parked. */
-type SyncOutcome = { kind: "done" } | { kind: "hold"; delayMs: number };
+type SyncOutcome =
+	| { kind: "done" }
+	| { kind: "hold"; delayMs: number }
+	// Superseded by a state change since the job was queued; parks as ignored.
+	| { kind: "ignored"; reason: string };
+
+const CANCELLED_BEFORE_EXPORT =
+	"Superseded: the invoice was cancelled before it reached QuickBooks";
 
 class TerminalSyncError extends Error {
 	constructor(
@@ -408,8 +462,17 @@ class TerminalSyncError extends Error {
 
 type QboEntityResponse<K extends string> = Record<
 	K,
-	{ Id: string; SyncToken: string; TxnTaxDetail?: { TotalTax?: number } }
+	{
+		Id: string;
+		SyncToken: string;
+		TotalAmt?: number;
+		TxnTaxDetail?: { TotalTax?: number };
+	}
 >;
+
+function differsByACent(a: number, b: number): boolean {
+	return Math.round(Math.abs(a - b) * 100) >= 1;
+}
 
 async function qboPost<T>(
 	tokens: QboRef,
@@ -433,7 +496,7 @@ async function qboPost<T>(
 async function sparseUpdate<K extends string>(
 	ctx: ActionCtx,
 	tokens: QboRef,
-	orgId: Id<"organizations">,
+	connection: Connection,
 	entityType: "client" | "invoice" | "sku",
 	localId: string,
 	resource: K,
@@ -464,7 +527,8 @@ async function sparseUpdate<K extends string>(
 		});
 		const freshToken = fresh[resource].SyncToken;
 		await ctx.runMutation(internal.quickbooks.upsertEntityLink, {
-			orgId,
+			orgId: connection.orgId,
+			connectionId: connection._id,
 			entityType,
 			localId,
 			qboId,
@@ -517,7 +581,7 @@ async function syncClient(
 		const updated = await sparseUpdate(
 			ctx,
 			tokens,
-			connection.orgId,
+			connection,
 			"client",
 			clientId,
 			"Customer",
@@ -527,6 +591,7 @@ async function syncClient(
 		);
 		await ctx.runMutation(internal.quickbooks.upsertEntityLink, {
 			orgId: connection.orgId,
+			connectionId: connection._id,
 			entityType: "client",
 			localId: clientId,
 			qboId: updated.Id,
@@ -551,6 +616,7 @@ async function syncClient(
 			throw error;
 		}
 		created = await resolveDuplicateCustomer(
+			ctx,
 			tokens,
 			connection,
 			clientId,
@@ -563,6 +629,7 @@ async function syncClient(
 		internal.quickbooks.upsertEntityLink,
 		{
 			orgId: connection.orgId,
+			connectionId: connection._id,
 			entityType: "client",
 			localId: clientId,
 			qboId: created.Id,
@@ -582,10 +649,13 @@ async function syncClient(
 }
 
 /**
- * 6240 on create: adopt an existing Customer with the same DisplayName, else
- * disambiguate when the org allows it, else surface it in the error center.
+ * 6240 on create: adopt an existing Customer with the same DisplayName unless
+ * another local client already owns it (a shared name is not a shared
+ * accounting identity), else disambiguate when the org allows it, else
+ * surface it in the error center.
  */
 async function resolveDuplicateCustomer(
+	ctx: ActionCtx,
 	tokens: QboRef,
 	connection: Connection,
 	localId: Id<"clients">,
@@ -600,13 +670,22 @@ async function resolveDuplicateCustomer(
 	const existing = match.QueryResponse?.Customer?.find(
 		(candidate) => candidate.DisplayName === displayName
 	);
-	if (existing) {
+	const owner = existing
+		? await ctx.runQuery(internal.lib.quickbooksEnqueue.getEntityLinkByQboId, {
+				orgId: connection.orgId,
+				entityType: "client",
+				qboId: existing.Id,
+			})
+		: null;
+	if (existing && (!owner || owner.link.localId === localId)) {
 		return { Id: existing.Id, SyncToken: existing.SyncToken };
 	}
 
 	if (!connection.autoDisambiguateNames) {
 		throw new TerminalSyncError(
-			`QuickBooks already has a different record named "${displayName}". Rename the client in OneTool or the record in QuickBooks, then retry.`,
+			owner
+				? `QuickBooks already has a customer named "${displayName}", and it is linked to ${owner.label} in OneTool. Rename one of the clients, or link this one to the right QuickBooks customer, then retry.`
+				: `QuickBooks already has a different record named "${displayName}". Rename the client in OneTool or the record in QuickBooks, then retry.`,
 			original.faults[0]?.code ?? "6240"
 		);
 	}
@@ -647,7 +726,7 @@ async function ensureItemForSku(
 	connection: Connection,
 	tokens: QboRef,
 	sku: Doc<"skus">,
-	attempts: number
+	operationId: string
 ): Promise<string | null> {
 	const link = await ctx.runQuery(internal.quickbooks.getEntityLinkInternal, {
 		orgId: connection.orgId,
@@ -659,6 +738,7 @@ async function ensureItemForSku(
 	const linkItem = async (item: QboItem): Promise<string> => {
 		await ctx.runMutation(internal.quickbooks.upsertEntityLink, {
 			orgId: connection.orgId,
+			connectionId: connection._id,
 			entityType: "sku",
 			localId: sku._id,
 			qboId: item.Id,
@@ -667,16 +747,25 @@ async function ensureItemForSku(
 		return item.Id;
 	};
 
+	// Only Type is enforced: the income account of a user's own item is theirs.
+	const adoptItem = async (item: QboItem): Promise<string> => {
+		if (item.Type !== "Service") {
+			throw new TerminalSyncError(
+				`QuickBooks already has an item named "${sku.name}" that is not a Service item. Rename it in QuickBooks or rename the line item in OneTool, then retry.`
+			);
+		}
+		return await linkItem(item);
+	};
+
 	const existing = await findItemByName(tokens, sku.name);
-	if (existing) return await linkItem(existing);
+	if (existing) return await adoptItem(existing);
 
 	if (!connection.incomeAccountQboId) return null;
 
 	try {
 		const created = await qboPost<{ Item: QboItem }>(
 			tokens,
-			// requestid: same idempotency contract as the invoice/payment creates.
-			`/item?requestid=${sku._id}-${attempts}`,
+			`/item?requestid=${sku._id}-${operationId}`,
 			{
 				Name: sku.name,
 				Type: "Service",
@@ -687,7 +776,7 @@ async function ensureItemForSku(
 	} catch (error) {
 		if (error instanceof QboRequestError && error.isDuplicateName) {
 			const adopted = await findItemByName(tokens, sku.name);
-			if (adopted) return await linkItem(adopted);
+			if (adopted) return await adoptItem(adopted);
 		}
 		throw error;
 	}
@@ -699,7 +788,7 @@ async function syncInvoice(
 	tokens: QboRef,
 	invoiceId: Id<"invoices">,
 	requestId: string,
-	attempts: number
+	operationId: string
 ): Promise<SyncOutcome> {
 	if (!connection.defaultServiceItemQboId) {
 		return { kind: "hold", delayMs: SETUP_HOLD_MS };
@@ -714,6 +803,16 @@ async function syncInvoice(
 		throw new TerminalSyncError(
 			"This invoice no longer exists in OneTool, so it cannot be synced."
 		);
+	}
+	// Claimed before the cancel landed: the cancelled state must never be pushed.
+	if (payload.invoice.status === "cancelled") {
+		const link = await ctx.runQuery(internal.quickbooks.getEntityLinkInternal, {
+			orgId: connection.orgId,
+			entityType: "invoice",
+			localId: invoiceId,
+		});
+		if (link) return await voidInvoice(ctx, connection, tokens, invoiceId);
+		return { kind: "ignored", reason: CANCELLED_BEFORE_EXPORT };
 	}
 
 	// Dependency: the Customer must exist first.
@@ -733,7 +832,7 @@ async function syncInvoice(
 			connection,
 			tokens,
 			sku,
-			attempts
+			operationId
 		);
 		if (itemQboId) itemIdBySku.set(sku._id, itemQboId);
 	}
@@ -760,7 +859,7 @@ async function syncInvoice(
 		? await sparseUpdate(
 				ctx,
 				tokens,
-				connection.orgId,
+				connection,
 				"invoice",
 				invoiceId,
 				"Invoice",
@@ -780,18 +879,28 @@ async function syncInvoice(
 	// Automated Sales Tax may overrule the tax we sent. Never silent.
 	const returnedTax = result.TxnTaxDetail?.TotalTax;
 	let syncWarning: string | undefined;
-	if (returnedTax !== undefined && Math.abs(returnedTax - sentTax) >= 0.01) {
+	if (returnedTax !== undefined && differsByACent(returnedTax, sentTax)) {
 		syncWarning = `QuickBooks adjusted the tax from ${formatCurrency(sentTax)} to ${formatCurrency(returnedTax)}.`;
 	}
+	const localTotal = roundCents(payload.invoice.total);
+	const returnedTotal = result.TotalAmt;
+	const totalMismatch =
+		returnedTotal !== undefined && differsByACent(returnedTotal, localTotal);
+	if (totalMismatch) {
+		syncWarning = `QuickBooks totals this invoice at ${formatCurrency(returnedTotal)}, but OneTool billed ${formatCurrency(localTotal)}.${syncWarning ? ` ${syncWarning}` : ""} Align the tax settings on both sides, then retry.`;
+	}
 
+	// Linked even on a mismatch: the QBO invoice exists, so a retry must update it.
 	await ctx.runMutation(internal.quickbooks.upsertEntityLink, {
 		orgId: connection.orgId,
+		connectionId: connection._id,
 		entityType: "invoice",
 		localId: invoiceId,
 		qboId: result.Id,
 		qboSyncToken: result.SyncToken,
 		syncWarning,
 	});
+	if (totalMismatch) throw new TerminalSyncError(syncWarning!, "total_mismatch");
 	return { kind: "done" };
 }
 
@@ -886,6 +995,7 @@ async function voidInvoice(
 
 	await ctx.runMutation(internal.quickbooks.upsertEntityLink, {
 		orgId: connection.orgId,
+		connectionId: connection._id,
 		entityType: "invoice",
 		localId: invoiceId,
 		qboId: voided.Id,
@@ -893,6 +1003,127 @@ async function voidInvoice(
 		syncWarning: hasSyncedPayment
 			? "Voided in QuickBooks; a synced payment referenced this invoice — review it in QuickBooks"
 			: undefined,
+	});
+	return { kind: "done" };
+}
+
+/**
+ * Setup finished without an Undeposited Funds account: re-resolve instead of
+ * holding forever; if the company truly has none, fail actionably so it
+ * reaches the error center rather than hanging silently.
+ */
+async function resolveDepositAccount(
+	ctx: ActionCtx,
+	connection: Connection,
+	tokens: QboRef
+): Promise<string> {
+	if (connection.depositAccountQboId) return connection.depositAccountQboId;
+	const deposit = await findUndepositedFundsAccount(tokens);
+	if (!deposit) {
+		throw new TerminalSyncError(
+			"Your QuickBooks company has no Undeposited Funds account, so payments cannot be recorded. Create one in QuickBooks, then retry."
+		);
+	}
+	await ctx.runMutation(internal.quickbooks.saveDepositAccount, {
+		orgId: connection.orgId,
+		depositAccountQboId: deposit.Id,
+	});
+	return deposit.Id;
+}
+
+/**
+ * Stripe refund → QBO RefundReceipt against the customer, out of the account
+ * the Payment was deposited to. Posted only once the Payment itself is in
+ * QuickBooks: a payment refunded in full before it ever exported nets to
+ * nothing there and posts nothing.
+ */
+async function syncRefund(
+	ctx: ActionCtx,
+	connection: Connection,
+	tokens: QboRef,
+	refundId: string,
+	requestId: string
+): Promise<SyncOutcome> {
+	if (!connection.defaultServiceItemQboId) {
+		return { kind: "hold", delayMs: SETUP_HOLD_MS };
+	}
+	const existingLink = await ctx.runQuery(
+		internal.quickbooks.getEntityLinkInternal,
+		{ orgId: connection.orgId, entityType: "refund", localId: refundId }
+	);
+	if (existingLink) return { kind: "done" };
+
+	const payload = await ctx.runQuery(internal.quickbooks.getSyncJobPayload, {
+		orgId: connection.orgId,
+		entityType: "refund",
+		localId: refundId,
+	});
+	if (!payload || payload.kind !== "refund") {
+		throw new TerminalSyncError(
+			"This refund no longer exists in OneTool, so it cannot be synced."
+		);
+	}
+	if (payload.refund.status !== "succeeded") {
+		return {
+			kind: "ignored",
+			reason: "Superseded: Stripe no longer reports this refund as succeeded",
+		};
+	}
+
+	const paymentLink = await ctx.runQuery(
+		internal.quickbooks.getEntityLinkInternal,
+		{
+			orgId: connection.orgId,
+			entityType: "payment",
+			localId: payload.payment._id,
+		}
+	);
+	if (!paymentLink) {
+		if (payload.payment.status !== "paid") {
+			return {
+				kind: "ignored",
+				reason:
+					"The payment was refunded before it reached QuickBooks, so there is nothing to reverse",
+			};
+		}
+		const paymentFailed = await ctx.runQuery(internal.quickbooks.hasFailedSyncJob, {
+			orgId: connection.orgId,
+			entityType: "payment",
+			localId: payload.payment._id,
+		});
+		if (paymentFailed) {
+			throw new TerminalSyncError(
+				"The payment for this refund failed to sync to QuickBooks; retry the payment sync first."
+			);
+		}
+		return { kind: "hold", delayMs: DEPENDENCY_HOLD_MS };
+	}
+	const clientLink = await ctx.runQuery(
+		internal.quickbooks.getEntityLinkInternal,
+		{ orgId: connection.orgId, entityType: "client", localId: payload.clientId }
+	);
+	if (!clientLink) return { kind: "hold", delayMs: DEPENDENCY_HOLD_MS };
+
+	const depositAccountQboId = await resolveDepositAccount(ctx, connection, tokens);
+	const body = buildQboRefundReceipt({
+		refund: payload.refund,
+		customerQboId: clientLink.qboId,
+		depositAccountQboId,
+		serviceItemQboId: connection.defaultServiceItemQboId,
+		invoiceNumber: payload.invoice.invoiceNumber,
+	});
+	const created = await qboPost<QboEntityResponse<"RefundReceipt">>(
+		tokens,
+		`/refundreceipt?requestid=${requestId}`,
+		body
+	);
+	await ctx.runMutation(internal.quickbooks.upsertEntityLink, {
+		orgId: connection.orgId,
+		connectionId: connection._id,
+		entityType: "refund",
+		localId: refundId,
+		qboId: created.RefundReceipt.Id,
+		qboSyncToken: created.RefundReceipt.SyncToken,
 	});
 	return { kind: "done" };
 }
@@ -909,23 +1140,7 @@ async function syncPayment(
 		return { kind: "hold", delayMs: SETUP_HOLD_MS };
 	}
 
-	// Setup finished without an Undeposited Funds account. Re-resolve instead
-	// of holding forever; if the company truly has none, fail actionably so it
-	// reaches the error center rather than hanging silently.
-	let depositAccountQboId = connection.depositAccountQboId;
-	if (!depositAccountQboId) {
-		const deposit = await findUndepositedFundsAccount(tokens);
-		if (!deposit) {
-			throw new TerminalSyncError(
-				"Your QuickBooks company has no Undeposited Funds account, so payments cannot be recorded. Create one in QuickBooks, then retry."
-			);
-		}
-		depositAccountQboId = deposit.Id;
-		await ctx.runMutation(internal.quickbooks.saveDepositAccount, {
-			orgId: connection.orgId,
-			depositAccountQboId,
-		});
-	}
+	const depositAccountQboId = await resolveDepositAccount(ctx, connection, tokens);
 
 	// Payments are create-only in v1: a settled payment does not change.
 	const existingLink = await ctx.runQuery(
@@ -944,6 +1159,14 @@ async function syncPayment(
 			"This payment no longer exists in OneTool, so it cannot be synced."
 		);
 	}
+	// Refunded or cancelled since it was queued: the original amount must not
+	// post. A partial refund keeps the row paid; its RefundReceipt carries the rest.
+	if (payload.payment.status !== "paid") {
+		return {
+			kind: "ignored",
+			reason: "Superseded: the payment was refunded or cancelled before it reached QuickBooks",
+		};
+	}
 
 	const invoiceLink = await ctx.runQuery(
 		internal.quickbooks.getEntityLinkInternal,
@@ -961,18 +1184,19 @@ async function syncPayment(
 			localId: payload.clientId,
 		}
 	);
-	if (!invoiceLink || !clientLink) {
-		// A terminally failed invoice job is never requeued, so holding on it
-		// would repeat every DEPENDENCY_HOLD_MS forever.
-		const invoiceFailed = await ctx.runQuery(
-			internal.quickbooks.hasFailedInvoiceSyncJob,
-			{ orgId: connection.orgId, invoiceId: payload.invoiceId }
+	// Checked before the link: a linked invoice can still be in a failed state
+	// (total mismatch), and no payment should settle against it.
+	const invoiceFailed = await ctx.runQuery(internal.quickbooks.hasFailedSyncJob, {
+		orgId: connection.orgId,
+		entityType: "invoice",
+		localId: payload.invoiceId,
+	});
+	if (invoiceFailed) {
+		throw new TerminalSyncError(
+			"The invoice for this payment failed to sync to QuickBooks; retry the invoice sync first."
 		);
-		if (invoiceFailed) {
-			throw new TerminalSyncError(
-				"The invoice for this payment failed to sync to QuickBooks; retry the invoice sync first."
-			);
-		}
+	}
+	if (!invoiceLink || !clientLink) {
 		// The invoice may never have been queued at all (created before QuickBooks
 		// was connected and still only partially paid). Make sure a job exists so
 		// this hold can resolve — the invoice sync also creates the customer link.
@@ -999,6 +1223,7 @@ async function syncPayment(
 
 	await ctx.runMutation(internal.quickbooks.upsertEntityLink, {
 		orgId: connection.orgId,
+		connectionId: connection._id,
 		entityType: "payment",
 		localId: paymentId,
 		qboId: created.Payment.Id,
@@ -1045,7 +1270,7 @@ async function syncSku(
 		const updated = await sparseUpdate(
 			ctx,
 			tokens,
-			connection.orgId,
+			connection,
 			"sku",
 			skuId,
 			"Item",
@@ -1055,6 +1280,7 @@ async function syncSku(
 		);
 		await ctx.runMutation(internal.quickbooks.upsertEntityLink, {
 			orgId: connection.orgId,
+			connectionId: connection._id,
 			entityType: "sku",
 			localId: skuId,
 			qboId: updated.Id,
@@ -1080,9 +1306,9 @@ async function syncOne(
 	tokens: QboRef,
 	job: SyncJob
 ): Promise<SyncOutcome> {
-	// Stable within a claim (crash-retries reuse it, so QBO dedupes the create)
-	// but new on each user-visible retry, which increments attempts.
-	const requestId = `${job.localId}-${job.attempts}`;
+	// Pre-operationId rows keep their attempt-numbered id until they drain.
+	const operationId = job.operationId ?? String(job.attempts);
+	const requestId = `${job.localId}-${operationId}`;
 
 	if (job.entityType === "sku") {
 		return await syncSku(ctx, connection, tokens, job.localId as Id<"skus">);
@@ -1106,8 +1332,11 @@ async function syncOne(
 			tokens,
 			job.localId as Id<"invoices">,
 			requestId,
-			job.attempts
+			operationId
 		);
+	}
+	if (job.entityType === "refund") {
+		return await syncRefund(ctx, connection, tokens, job.localId, requestId);
 	}
 	return await syncPayment(
 		ctx,
@@ -1119,8 +1348,8 @@ async function syncOne(
 }
 
 /**
- * Classify a failure per PRD §6.4. Returns "pause" when the whole org's queue
- * must stop (dead grant), "continue" otherwise.
+ * Classify a failure per PRD §6.4. "pause" stops the org's queue (dead grant);
+ * `runAfter` is the backoff gate when the job was requeued.
  */
 async function handleJobFailure(
 	ctx: ActionCtx,
@@ -1128,7 +1357,7 @@ async function handleJobFailure(
 	job: SyncJob,
 	error: unknown,
 	storedAccessToken: string | null
-): Promise<"continue" | "pause"> {
+): Promise<{ disposition: "continue" | "pause"; runAfter?: number }> {
 	// Dead or rejected grant: park the job untouched and stop the batch.
 	if (
 		error instanceof QboInvalidGrantError ||
@@ -1142,7 +1371,7 @@ async function handleJobFailure(
 			ifAccessTokenMatches: storedAccessToken ?? undefined,
 		});
 		await ctx.runMutation(internal.quickbooks.releaseJob, { jobId: job._id });
-		return marked ? "pause" : "continue";
+		return { disposition: marked ? "pause" : "continue" };
 	}
 
 	const nextAttempt = job.attempts + 1;
@@ -1150,20 +1379,25 @@ async function handleJobFailure(
 	if (error instanceof QboRequestError && error.isRateLimited) {
 		const backoff = 2 ** nextAttempt * 30_000 + Math.floor(Math.random() * 5_000);
 		const terminal = nextAttempt >= MAX_JOB_ATTEMPTS;
+		const runAfter = Date.now() + backoff;
 		await ctx.runMutation(internal.quickbooks.markJobFailed, {
 			jobId: job._id,
 			terminal,
-			runAfter: Date.now() + backoff,
+			runAfter,
 			lastError: terminal
 				? "QuickBooks kept rate limiting this sync, so it stopped retrying. Retry it once QuickBooks settles down."
 				: "QuickBooks rate limit reached; the sync will retry shortly.",
 			lastErrorCode: "429",
 		});
-		return "continue";
+		return { disposition: "continue", runAfter: terminal ? undefined : runAfter };
 	}
 
+	// A reset mid-flight: the job is already being purged, so never retry it.
+	const staleConnection =
+		error instanceof ConvexError && error.data === "stale_connection";
 	// User-actionable QBO rejections never get better on retry.
 	const isValidationFault =
+		staleConnection ||
 		error instanceof TerminalSyncError ||
 		(error instanceof QboRequestError &&
 			error.faults.some((fault) => fault.type === "ValidationFault"));
@@ -1172,8 +1406,11 @@ async function handleJobFailure(
 		await ctx.runMutation(internal.quickbooks.markJobFailed, {
 			jobId: job._id,
 			terminal: true,
-			lastError:
-				error instanceof Error ? error.message : "QuickBooks rejected the record.",
+			lastError: staleConnection
+				? "QuickBooks was reconnected while this record was syncing."
+				: error instanceof Error
+					? error.message
+					: "QuickBooks rejected the record.",
 			lastErrorCode:
 				error instanceof TerminalSyncError
 					? error.code
@@ -1181,14 +1418,15 @@ async function handleJobFailure(
 						? error.faults[0]?.code
 						: undefined,
 		});
-		return "continue";
+		return { disposition: "continue" };
 	}
 
 	const terminal = nextAttempt >= MAX_JOB_ATTEMPTS;
+	const runAfter = Date.now() + 2 ** nextAttempt * 30_000;
 	await ctx.runMutation(internal.quickbooks.markJobFailed, {
 		jobId: job._id,
 		terminal,
-		runAfter: Date.now() + 2 ** nextAttempt * 30_000,
+		runAfter,
 		lastError:
 			error instanceof Error
 				? error.message
@@ -1196,7 +1434,7 @@ async function handleJobFailure(
 		lastErrorCode:
 			error instanceof QboRequestError ? error.faults[0]?.code : undefined,
 	});
-	return "continue";
+	return { disposition: "continue", runAfter: terminal ? undefined : runAfter };
 }
 
 /**
@@ -1229,13 +1467,18 @@ export const processOrgJobs = internalAction({
 		let processed = 0;
 		let held = 0;
 		let failed = 0;
+		// Backoff gates set this pass; the earliest gets a wakeup (cron is the backstop).
+		const wakeups: number[] = [];
 
 		for (let index = 0; index < jobs.length; index++) {
 			const job = jobs[index];
 
-			// Per-job fence: re-reads the connection doc, so a disconnect or dead
-			// grant that lands mid-batch stops the queue before the next QBO write.
-			const tokens = await ensureFreshAccessToken(ctx, args.orgId);
+			// Per-job fence: re-reads the connection doc, so a disconnect, dead
+			// grant, or reset-and-reconnect (new realm) that lands mid-batch stops
+			// the queue before the next QBO write.
+			const fresh = await ensureFreshAccessToken(ctx, args.orgId);
+			const tokens =
+				fresh && fresh.connectionId === connection._id ? fresh : null;
 			if (!tokens) {
 				// needs_reauth parks the remainder for the reconnect drain; a
 				// disconnect cancels it — these jobs were claimed before the
@@ -1264,11 +1507,19 @@ export const processOrgJobs = internalAction({
 			try {
 				const outcome = await syncOne(ctx, connection, tokens, job);
 				if (outcome.kind === "hold") {
+					const runAfter = Date.now() + outcome.delayMs;
 					await ctx.runMutation(internal.quickbooks.releaseJob, {
 						jobId: job._id,
-						runAfter: Date.now() + outcome.delayMs,
+						runAfter,
 					});
+					wakeups.push(runAfter);
 					held++;
+				} else if (outcome.kind === "ignored") {
+					await ctx.runMutation(internal.quickbooks.markJobIgnored, {
+						jobId: job._id,
+						lastError: outcome.reason,
+					});
+					processed++;
 				} else {
 					await ctx.runMutation(internal.quickbooks.markJobSucceeded, {
 						jobId: job._id,
@@ -1277,13 +1528,14 @@ export const processOrgJobs = internalAction({
 				}
 			} catch (error) {
 				failed++;
-				const disposition = await handleJobFailure(
+				const { disposition, runAfter } = await handleJobFailure(
 					ctx,
 					args.orgId,
 					job,
 					error,
 					tokens.storedAccessToken
 				);
+				if (runAfter !== undefined) wakeups.push(runAfter);
 				if (disposition === "pause") {
 					for (let rest = index + 1; rest < jobs.length; rest++) {
 						await ctx.runMutation(internal.quickbooks.releaseJob, {
@@ -1303,6 +1555,13 @@ export const processOrgJobs = internalAction({
 		if (processed > 0) {
 			await ctx.scheduler.runAfter(
 				0,
+				internal.quickbooksActions.processOrgJobs,
+				{ orgId: args.orgId }
+			);
+		}
+		if (wakeups.length > 0) {
+			await ctx.scheduler.runAt(
+				Math.min(...wakeups),
 				internal.quickbooksActions.processOrgJobs,
 				{ orgId: args.orgId }
 			);
@@ -1337,41 +1596,22 @@ export const sweepSyncJobs = internalAction({
 	},
 });
 
-/** Best-effort revoke, scheduled from the disconnect mutation. */
 /**
- * Revoke a refresh token at Intuit. Preferred form is `orgId`: the token is
- * read from the connection doc and scrubbed afterwards, so the secret never
- * rides in scheduler args. The explicit `refreshToken` form exists only for
- * the org-delete cascade, where the doc is gone before this action runs.
+ * Best-effort revoke of a snapshotted refresh token, scheduled from
+ * disconnect, reset, and the org-delete cascade. Never reads the live row: a
+ * reconnect that lands first must keep its fresh grant.
  */
 export const revokeConnection = internalAction({
-	args: {
-		orgId: v.optional(v.id("organizations")),
-		refreshToken: v.optional(v.string()),
-	},
-	handler: async (ctx, args): Promise<null> => {
-		let token = args.refreshToken ?? null;
-		if (!token && args.orgId) {
-			const connection: Doc<"quickbooksConnections"> | null =
-				await ctx.runQuery(internal.quickbooks.getConnection, {
-					orgId: args.orgId,
-				});
-			token = connection?.refreshToken || null;
-		}
-		if (!token) return null;
-
+	args: { refreshToken: v.string() },
+	handler: async (_ctx, args): Promise<null> => {
+		if (!args.refreshToken) return null;
 		try {
-			const revoked = await revokeToken(await decryptToken(token));
+			const revoked = await revokeToken(await decryptToken(args.refreshToken));
 			if (!revoked) {
 				console.warn("QuickBooks token revoke returned a non-OK status");
 			}
 		} catch (error) {
 			console.warn("QuickBooks token revoke failed", error);
-		}
-		if (args.orgId) {
-			await ctx.runMutation(internal.quickbooks.clearConnectionTokens, {
-				orgId: args.orgId,
-			});
 		}
 		return null;
 	},

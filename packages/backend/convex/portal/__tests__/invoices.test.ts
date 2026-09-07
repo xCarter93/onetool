@@ -139,6 +139,7 @@ type PaymentOverrides = {
 	cardLast4?: string;
 	cardBrand?: string;
 	stripeReceiptUrl?: string;
+	unappliedStripePaymentIntentIds?: string[];
 };
 
 async function insertPayment(
@@ -168,6 +169,7 @@ async function insertPayment(
 			cardLast4: overrides.cardLast4,
 			cardBrand: overrides.cardBrand,
 			stripeReceiptUrl: overrides.stripeReceiptUrl,
+			unappliedStripePaymentIntentIds: overrides.unappliedStripePaymentIntentIds,
 		});
 	});
 }
@@ -779,7 +781,7 @@ describe("portal.invoices", () => {
 			expect(secondKey).toBe(`acct-pi-${paymentId}-1`);
 		});
 
-		it("createPaymentIntent: reuses cached PI when status === requires_payment_method AND now < pendingExpiresAt - 60s buffer", async () => {
+		it("createPaymentIntent: reuses cached PI when status === requires_payment_method and its amount still matches the installment", async () => {
 			const s = await seedOrg(t, "p-cpi-reuse");
 			const jti = "cpi-reuse";
 			await seedSession(t, s, jti);
@@ -798,6 +800,8 @@ describe("portal.invoices", () => {
 			const retrieve = vi.fn().mockResolvedValue({
 				id: "pi_reuse_cached",
 				status: "requires_payment_method",
+				amount: 7500,
+				currency: "usd",
 				client_secret: "cached_secret_xyz",
 			});
 			const create = vi.fn();
@@ -823,49 +827,214 @@ describe("portal.invoices", () => {
 			expect(create).not.toHaveBeenCalled();
 		});
 
-		it("createPaymentIntent: mints fresh PI when cached pi.status !== requires_payment_method (covers processing/succeeded/canceled/requires_action — Pitfall 5)", async () => {
-			const s = await seedOrg(t, "p-cpi-fresh");
-			const jti = "cpi-fresh";
+		// Cached-intent state machine. One installment must never have two
+		// chargeable PaymentIntents, so only a canceled (or absent) cache mints.
+		async function seedCachedIntent(
+			portalId: string,
+			jti: string,
+			opts: { amount?: number; accountId?: string } = {},
+		) {
+			const s = await seedOrg(t, portalId);
 			await seedSession(t, s, jti);
-			await seedEnabledOrg(s);
-			const invId = await insertInvoice(t, s, { status: "sent", total: 40 });
+			await seedEnabledOrg(s, { accountId: opts.accountId ?? "acct_sm" });
+			const amount = opts.amount ?? 40;
+			const invId = await insertInvoice(t, s, { status: "sent", total: amount });
 			const paymentId = await insertPayment(t, s, invId, {
-				paymentAmount: 40,
+				paymentAmount: amount,
 				sortOrder: 0,
 				status: "sent",
-				publicToken: "ptok_fresh_1",
-				pendingPaymentIntentId: "pi_stale",
-				pendingPaymentIntentClientSecret: "stale_secret",
+				pendingPaymentIntentId: "pi_cached",
+				pendingPaymentIntentClientSecret: "cached_secret",
 				pendingPaymentIntentExpiresAt: Date.now() + 24 * 60 * 60 * 1000,
 				checkoutAttemptCounter: 2,
 			});
+			return { s, jti, invId, paymentId, amount };
+		}
 
-			const retrieve = vi
-				.fn()
-				.mockResolvedValue({ id: "pi_stale", status: "requires_action" });
-			const create = vi
-				.fn()
-				.mockResolvedValue({ id: "pi_fresh", client_secret: "fresh_secret" });
-			__setStripeFactoryForTests(
-				() =>
-					({
-						paymentIntents: { create, retrieve },
-					}) as never,
-			);
+		function mockStripe(overrides: {
+			retrieve?: ReturnType<typeof vi.fn>;
+			create?: ReturnType<typeof vi.fn>;
+			cancel?: ReturnType<typeof vi.fn>;
+		}) {
+			const paymentIntents = {
+				retrieve: overrides.retrieve ?? vi.fn(),
+				create: overrides.create ?? vi.fn(),
+				cancel: overrides.cancel ?? vi.fn(),
+			};
+			__setStripeFactoryForTests(() => ({ paymentIntents }) as never);
+			return paymentIntents;
+		}
 
-			const asPortal = t.withIdentity(ident(s, jti));
-			const result = await asPortal.action(
-				api.portal.invoicesActions.createPaymentIntent,
-				{ invoiceId: invId },
+		it("createPaymentIntent: resumes the cached PI while it is in requires_action (3DS refresh must not mint a second chargeable intent)", async () => {
+			const { s, jti, invId } = await seedCachedIntent("p-sm-action", "sm-action");
+			const stripe = mockStripe({
+				retrieve: vi.fn().mockResolvedValue({
+					id: "pi_cached",
+					status: "requires_action",
+					amount: 4000,
+					currency: "usd",
+					client_secret: "cached_secret",
+				}),
+			});
+
+			const result = await t
+				.withIdentity(ident(s, jti))
+				.action(api.portal.invoicesActions.createPaymentIntent, {
+					invoiceId: invId,
+				});
+
+			expect(result.status).toBe("ready");
+			expect(result.clientSecret).toBe("cached_secret");
+			expect(stripe.create).not.toHaveBeenCalled();
+			expect(stripe.cancel).not.toHaveBeenCalled();
+		});
+
+		it("createPaymentIntent: a processing PI is reported, never replaced", async () => {
+			const { s, jti, invId, paymentId } = await seedCachedIntent(
+				"p-sm-processing",
+				"sm-processing",
 			);
+			const stripe = mockStripe({
+				retrieve: vi.fn().mockResolvedValue({
+					id: "pi_cached",
+					status: "processing",
+					amount: 4000,
+					currency: "usd",
+				}),
+			});
+
+			const result = await t
+				.withIdentity(ident(s, jti))
+				.action(api.portal.invoicesActions.createPaymentIntent, {
+					invoiceId: invId,
+				});
+
+			expect(result.status).toBe("processing");
+			expect(result.paymentId).toBe(paymentId);
+			expect(stripe.create).not.toHaveBeenCalled();
+			expect(stripe.cancel).not.toHaveBeenCalled();
+			const payment = await t.run((ctx) => ctx.db.get(paymentId));
+			expect(payment?.pendingPaymentIntentId).toBe("pi_cached");
+			expect(payment?.checkoutAttemptCounter).toBe(2);
+		});
+
+		it("createPaymentIntent: a succeeded PI awaiting its webhook is reported, never replaced", async () => {
+			const { s, jti, invId } = await seedCachedIntent(
+				"p-sm-succeeded",
+				"sm-succeeded",
+			);
+			const stripe = mockStripe({
+				retrieve: vi.fn().mockResolvedValue({
+					id: "pi_cached",
+					status: "succeeded",
+					amount: 4000,
+					currency: "usd",
+				}),
+			});
+
+			const result = await t
+				.withIdentity(ident(s, jti))
+				.action(api.portal.invoicesActions.createPaymentIntent, {
+					invoiceId: invId,
+				});
+
+			expect(result.status).toBe("succeeded_pending_confirmation");
+			expect(stripe.create).not.toHaveBeenCalled();
+		});
+
+		it("createPaymentIntent: a failed retrieve surfaces an error instead of minting", async () => {
+			const { s, jti, invId } = await seedCachedIntent(
+				"p-sm-retrieve-fail",
+				"sm-retrieve-fail",
+			);
+			const stripe = mockStripe({
+				retrieve: vi.fn().mockRejectedValue(new Error("stripe timeout")),
+			});
+
+			await expect(
+				t
+					.withIdentity(ident(s, jti))
+					.action(api.portal.invoicesActions.createPaymentIntent, {
+						invoiceId: invId,
+					}),
+			).rejects.toThrow();
+			expect(stripe.create).not.toHaveBeenCalled();
+		});
+
+		it("createPaymentIntent: a cached PI whose amount no longer matches is canceled on Stripe before a replacement is minted", async () => {
+			const { s, jti, invId, paymentId } = await seedCachedIntent(
+				"p-sm-amount",
+				"sm-amount",
+				{ amount: 120, accountId: "acct_sm_amount" },
+			);
+			const stripe = mockStripe({
+				retrieve: vi.fn().mockResolvedValue({
+					id: "pi_cached",
+					status: "requires_payment_method",
+					amount: 10000,
+					currency: "usd",
+				}),
+				cancel: vi.fn().mockResolvedValue({ id: "pi_cached", status: "canceled" }),
+				create: vi
+					.fn()
+					.mockResolvedValue({ id: "pi_fresh", client_secret: "fresh_secret" }),
+			});
+
+			const result = await t
+				.withIdentity(ident(s, jti))
+				.action(api.portal.invoicesActions.createPaymentIntent, {
+					invoiceId: invId,
+				});
+
+			expect(stripe.cancel).toHaveBeenCalledWith(
+				"pi_cached",
+				expect.anything(),
+				{ stripeAccount: "acct_sm_amount" },
+			);
+			expect(stripe.create).toHaveBeenCalledTimes(1);
+			expect(stripe.create.mock.calls[0]![0].amount).toBe(12000);
+			expect(result.status).toBe("ready");
+			expect(result.clientSecret).toBe("fresh_secret");
+			const payment = await t.run((ctx) => ctx.db.get(paymentId));
+			expect(payment?.pendingPaymentIntentId).toBe("pi_fresh");
+			expect(payment?.checkoutAttemptCounter).toBe(3);
+		});
+
+		it("createPaymentIntent: mints a fresh PI only once the cached one is canceled", async () => {
+			const { s, jti, invId, paymentId } = await seedCachedIntent(
+				"p-sm-canceled",
+				"sm-canceled",
+			);
+			const stripe = mockStripe({
+				retrieve: vi
+					.fn()
+					.mockResolvedValue({ id: "pi_cached", status: "canceled" }),
+				create: vi
+					.fn()
+					.mockResolvedValue({ id: "pi_fresh", client_secret: "fresh_secret" }),
+			});
+
+			const result = await t
+				.withIdentity(ident(s, jti))
+				.action(api.portal.invoicesActions.createPaymentIntent, {
+					invoiceId: invId,
+				});
 
 			expect(result.clientSecret).toBe("fresh_secret");
-			expect(create).toHaveBeenCalledTimes(1);
-			const [, requestOpts] = create.mock.calls[0]!;
+			expect(stripe.cancel).not.toHaveBeenCalled();
+			expect(stripe.create).toHaveBeenCalledTimes(1);
+			const [, requestOpts] = stripe.create.mock.calls[0]!;
 			// counter was 2; attemptId = 3.
 			expect(requestOpts.idempotencyKey).toBe(`acct-pi-${paymentId}-3`);
 			const payment = await t.run((ctx) => ctx.db.get(paymentId));
 			expect(payment?.checkoutAttemptCounter).toBe(3);
+			// Every minted intent is kept on the attempt ledger.
+			const attempts = await t.run((ctx) =>
+				ctx.db.query("stripePaymentAttempts").collect(),
+			);
+			expect(attempts.map((a) => a.paymentIntentId)).toEqual(["pi_fresh"]);
+			expect(attempts[0]?.status).toBe("open");
+			expect(attempts[0]?.amount).toBe(40);
 		});
 
 		// Action errors are wrapped: err.data is a JSON-string of a JSON-string in
@@ -945,6 +1114,42 @@ describe("portal.invoices", () => {
 			} catch (err: unknown) {
 				expect(parseActionErrorCode(err)).toBe("LEGACY_INVOICE_NOT_PAYABLE");
 			}
+		});
+
+		it("createPaymentIntent: throws PAYMENT_NEEDS_REVIEW when the row holds unapplied Stripe money", async () => {
+			const s = await seedOrg(t, "p-cpi-unapplied");
+			const jti = "cpi-unapplied";
+			await seedSession(t, s, jti);
+			await seedEnabledOrg(s);
+			const invId = await insertInvoice(t, s, { status: "sent", total: 100 });
+			const paymentId = await insertPayment(t, s, invId, {
+				paymentAmount: 100,
+				sortOrder: 0,
+				status: "sent",
+				checkoutAttemptCounter: 2,
+				unappliedStripePaymentIntentIds: ["pi_unapplied_1"],
+			});
+
+			const create = vi.fn();
+			__setStripeFactoryForTests(
+				() =>
+					({
+						paymentIntents: { create, retrieve: vi.fn() },
+					}) as never,
+			);
+
+			const asPortal = t.withIdentity(ident(s, jti));
+			try {
+				await asPortal.action(api.portal.invoicesActions.createPaymentIntent, {
+					invoiceId: invId,
+				});
+				throw new Error("expected throw");
+			} catch (err: unknown) {
+				expect(parseActionErrorCode(err)).toBe("PAYMENT_NEEDS_REVIEW");
+			}
+			expect(create).not.toHaveBeenCalled();
+			const payment = await t.run((ctx) => ctx.db.get(paymentId));
+			expect(payment?.checkoutAttemptCounter).toBe(2);
 		});
 	});
 });

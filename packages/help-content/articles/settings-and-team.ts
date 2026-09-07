@@ -148,11 +148,11 @@ export const settingsAndTeamArticles: HelpArticle[] = [
 					},
 					{
 						type: "paragraph",
-						text: "If a record cannot reach QuickBooks, a **Sync issues** section appears below the cards listing each failed client, invoice, or payment with the reason QuickBooks gave, how many attempts were made, and when it last failed. **Retry** queues one record again, **Ignore** stops tracking that record, and **Retry all** queues every failed record at once. The section disappears when there is nothing left to fix.",
+						text: "If a record cannot reach QuickBooks, a **Sync issues** section appears below the cards listing each failed client, invoice, or payment with the reason QuickBooks gave, how many attempts were made, and when it last failed. You only see failures for records you have permission to view, so a member with a limited scope sees a shorter list than the owner. **Retry** queues one record again, **Ignore** stops tracking that record, and **Retry all** queues every failed record at once. The section disappears when there is nothing left to fix, and the QuickBooks card's status line switches back from a failure count to **No sync issues**.",
 					},
 					{
 						type: "paragraph",
-						text: "The **Stripe payments** card on the same tab is where online payments start. **Set up payments** sends the owner to Stripe's hosted onboarding, and the card shows whether setup is still incomplete or charges and payouts are enabled. Once setup has been started, a separate **Payments** tab appears in settings for payouts, disputes, and account details, and **Open Payments** on the card takes you there.",
+						text: "The **Stripe payments** card on the same tab is where online payments start. **Set up payments** sends the owner to Stripe's hosted onboarding, and the card shows whether setup is still incomplete or charges and payouts are enabled. Once setup has been started, a separate **Payments** tab appears in settings for payouts, disputes, tax documents, and account details, and **Open Payments** on the card takes you there.",
 					},
 					{
 						type: "note",
@@ -699,23 +699,33 @@ export const settingsAndTeamArticles: HelpArticle[] = [
 				],
 			},
 			{
-				heading: "Payouts, disputes, and account details",
+				heading: "Payouts, disputes, tax documents, and account details",
 				blocks: [
 					{
 						type: "paragraph",
-						text: "Once setup is complete, three panels on the Payments tab give you Stripe's own management tools without leaving OneTool:",
+						text: "Once Stripe has your business details, four panels on the Payments tab give you Stripe's own management tools without leaving OneTool:",
 					},
 					{
 						type: "list",
 						items: [
 							"**Payouts** shows your payout schedule and history.",
-							"**Disputes** is where you respond to chargebacks. Submit evidence, accept the dispute, or refund the payment to resolve it.",
+							"**Disputes** is where you respond to chargebacks. Submit evidence, accept the dispute, or refund the payment to resolve it. Stripe sets a deadline for evidence, and a dispute with no response is lost by default.",
+							"**Tax documents** holds the fee invoices and 1099 forms Stripe issues for your account. There is no separate Stripe dashboard for this account, so this panel is where those downloads live.",
 							"**Account details** updates the business and verification details Stripe has on file.",
 						],
 					},
 					{
 						type: "note",
-						text: "These panels appear only after onboarding is fully complete. While your account is still under review, finish onboarding first.",
+						text: "The panels stay available while your account shows Restricted, as long as you have already submitted your details. A restriction stops new payments; it does not pause a dispute deadline. If Stripe cannot load a panel for your account, that panel shows the reason and a Try again button instead of blocking the others.",
+					},
+				],
+			},
+			{
+				heading: "Fees",
+				blocks: [
+					{
+						type: "paragraph",
+						text: "The **Fees and responsibilities** panel lists what comes out of each payment. Stripe's processing fee is shown at its published US card rate, 2.9% plus 30 cents, which can differ for international cards, currency conversion, or a negotiated rate. The OneTool platform fee row shows the amount configured for your workspace, or **No OneTool platform fee** when there is none. Stripe's dispute fee is listed separately, along with the counter fee Stripe refunds if you win the dispute.",
 					},
 				],
 			},
@@ -750,7 +760,7 @@ export const settingsAndTeamArticles: HelpArticle[] = [
 		subtitle: "Know exactly which records reach QuickBooks so your books stay clean without double entry.",
 		kind: "howto",
 		availability: "business",
-		permission: "Connecting and settings are owner only; every admin can see sync status.",
+		permission: "Connecting and settings are owner only. Admins see sync status; sync failures are listed only for records you can view.",
 		keywords: [
 			"quickbooks",
 			"qbo",
@@ -809,11 +819,24 @@ export const settingsAndTeamArticles: HelpArticle[] = [
 				blocks: [
 					{
 						type: "paragraph",
-						text: "Synced invoices and clients show a **QuickBooks** row in the detail sidebar and in the quick-look drawer, with how long ago they last synced. A warning icon on that row means the record reached QuickBooks but came back different, most often because QuickBooks Automated Sales Tax adjusted the tax amount based on the addresses involved.",
+						text: "While QuickBooks is connected, invoices and clients show a **QuickBooks** row in the detail sidebar and in the quick-look drawer. A record that has reached QuickBooks reads **Synced** with how long ago that happened. One that has not gone across yet reads **Not synced yet**, and one whose latest change was rejected reads **Sync failed** with a pointer to Sync issues, even if an earlier version had synced. A warning icon on a synced row means the record reached QuickBooks but came back different, most often because QuickBooks Automated Sales Tax adjusted the tax amount based on the addresses involved.",
 					},
 					{
 						type: "paragraph",
 						text: "When a record cannot reach QuickBooks at all, it appears under **Sync issues** on the Integrations tab with the reason QuickBooks gave, and admins get an in-app notification the first time something fails. Fix the cause, then use **Retry**; the notification clears once the list is empty.",
+					},
+					{
+						type: "paragraph",
+						text: "The QuickBooks card on the Integrations tab summarizes the connection. Its status line reads **No sync issues** when nothing is failing, or gives the number of records that failed to sync, and the card picks up a **Needs attention** badge until those are cleared. When the connection itself has stopped working, the badge reads **Reconnect needed** instead.",
+					},
+				],
+			},
+			{
+				heading: "Reconnecting before the connection expires",
+				blocks: [
+					{
+						type: "paragraph",
+						text: "Intuit limits every QuickBooks connection to five years, after which OneTool can no longer refresh its access. In the last 30 days before that date the QuickBooks card shows the date and a **Reconnect** button. Reconnecting the same company keeps every sync link, so nothing re-syncs or duplicates; it only resets the clock. If the date passes without a reconnect, the card switches to **Reconnect needed** and syncing pauses until the owner reconnects.",
 					},
 				],
 			},

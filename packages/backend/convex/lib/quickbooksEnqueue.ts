@@ -8,18 +8,63 @@
  * cascade) run in a system mutation with no ctx.orgId.
  */
 
-import type { MutationCtx } from "../_generated/server";
-import type { Id } from "../_generated/dataModel";
+import { v } from "convex/values";
+import { internalQuery, type MutationCtx } from "../_generated/server";
+import type { Doc, Id } from "../_generated/dataModel";
 import { internal } from "../_generated/api";
 
-export type QboEntityType = "client" | "invoice" | "payment" | "sku";
+export type QboEntityType = "client" | "invoice" | "payment" | "sku" | "refund";
+
+/** Intuit caps requestid at 50 chars; a Convex id is 32, so the token stays short. */
+export function mintQboOperationId(): string {
+	return crypto.randomUUID().replace(/-/g, "").slice(0, 12);
+}
+
+/** Inverse link lookup: which local record already owns this QBO entity, if any. */
+export const getEntityLinkByQboId = internalQuery({
+	args: {
+		orgId: v.id("organizations"),
+		entityType: v.union(
+			v.literal("client"),
+			v.literal("invoice"),
+			v.literal("payment"),
+			v.literal("sku"),
+			v.literal("refund")
+		),
+		qboId: v.string(),
+	},
+	handler: async (
+		ctx,
+		args
+	): Promise<{ link: Doc<"quickbooksEntityLinks">; label: string } | null> => {
+		const link = await ctx.db
+			.query("quickbooksEntityLinks")
+			.withIndex("by_org_qbo", (q) =>
+				q
+					.eq("orgId", args.orgId)
+					.eq("entityType", args.entityType)
+					.eq("qboId", args.qboId)
+			)
+			.first();
+		if (!link) return null;
+		const clientId =
+			args.entityType === "client"
+				? ctx.db.normalizeId("clients", link.localId)
+				: null;
+		const client = clientId ? await ctx.db.get(clientId) : null;
+		const label =
+			client && client.orgId === args.orgId ? client.companyName : link.localId;
+		return { link, label };
+	},
+});
 export type QboOperation = "upsert" | "void";
 
 type Eligibility =
-	| { eligible: false }
+	| { eligible: false; supersedesQueuedCreate?: boolean }
 	| { eligible: true; operation: QboOperation };
 
 const UPSERT: Eligibility = { eligible: true, operation: "upsert" };
+const VOID: Eligibility = { eligible: true, operation: "void" };
 const INELIGIBLE: Eligibility = { eligible: false };
 
 /**
@@ -70,7 +115,19 @@ async function isEligible(
 		// Cancelling voids the QBO invoice; one that never reached QuickBooks
 		// has nothing to void, and its last state must never be re-pushed.
 		if (invoice.status === "cancelled") {
-			return link ? { eligible: true, operation: "void" } : INELIGIBLE;
+			if (link) return VOID;
+			// A create still in flight can link the invoice after this commits,
+			// so a void queues behind it (the worker no-ops if no link appears).
+			const inFlight = await ctx.db
+				.query("quickbooksSyncJobs")
+				.withIndex("by_org_dedupe", (q) =>
+					q
+						.eq("orgId", orgId)
+						.eq("dedupeKey", `invoice:${localId}`)
+						.eq("status", "processing")
+				)
+				.first();
+			return inFlight ? VOID : { eligible: false, supersedesQueuedCreate: true };
 		}
 		if (link) return UPSERT;
 		if (invoice.status === "draft" && connection.syncInvoicesOn === "sent") {
@@ -80,6 +137,15 @@ async function isEligible(
 	}
 
 	if (!connection.syncPayments) return INELIGIBLE;
+	if (entityType === "refund") {
+		const refund = await ctx.db
+			.query("stripeRefunds")
+			.withIndex("by_org_refund", (q) =>
+				q.eq("orgId", orgId).eq("refundId", localId)
+			)
+			.unique();
+		return refund?.status === "succeeded" ? UPSERT : INELIGIBLE;
+	}
 	const paymentId = ctx.db.normalizeId("payments", localId);
 	if (!paymentId) return INELIGIBLE;
 	const payment = await ctx.db.get(paymentId);
@@ -118,10 +184,15 @@ export async function maybeEnqueueQboSync(
 		entityType,
 		localId
 	);
-	if (!eligibility.eligible) return false;
+	const dedupeKey = `${entityType}:${localId}`;
+	if (!eligibility.eligible) {
+		if (eligibility.supersedesQueuedCreate) {
+			await ignoreQueuedCreate(ctx, orgId, dedupeKey);
+		}
+		return false;
+	}
 	const operation = eligibility.operation;
 
-	const dedupeKey = `${entityType}:${localId}`;
 	const existing = await ctx.db
 		.query("quickbooksSyncJobs")
 		.withIndex("by_org_dedupe", (q) =>
@@ -146,6 +217,7 @@ export async function maybeEnqueueQboSync(
 		attempts: 0,
 		runAfter: Date.now(),
 		dedupeKey,
+		operationId: mintQboOperationId(),
 	});
 
 	if (connection.status === "connected" && (opts?.kick ?? true)) {
@@ -154,6 +226,69 @@ export async function maybeEnqueueQboSync(
 		});
 	}
 	return true;
+}
+
+/** A queued first export of an invoice that was cancelled before it ran. */
+async function ignoreQueuedCreate(
+	ctx: MutationCtx,
+	orgId: Id<"organizations">,
+	dedupeKey: string
+): Promise<void> {
+	const pending = await ctx.db
+		.query("quickbooksSyncJobs")
+		.withIndex("by_org_dedupe", (q) =>
+			q.eq("orgId", orgId).eq("dedupeKey", dedupeKey).eq("status", "pending")
+		)
+		.collect();
+	for (const job of pending) {
+		if (job.operation !== "upsert") continue;
+		await ctx.db.patch(job._id, {
+			status: "ignored",
+			lastError: "Superseded: the invoice was cancelled before it reached QuickBooks",
+		});
+	}
+}
+
+/**
+ * A refund Stripe later failed or cancelled: drop its queued receipt. One
+ * already posted has no automatic reversal yet — the link is flagged so the
+ * error center can show it.
+ */
+export async function retractQboRefund(
+	ctx: MutationCtx,
+	orgId: Id<"organizations">,
+	refundId: string
+): Promise<void> {
+	const pending = await ctx.db
+		.query("quickbooksSyncJobs")
+		.withIndex("by_org_dedupe", (q) =>
+			q
+				.eq("orgId", orgId)
+				.eq("dedupeKey", `refund:${refundId}`)
+				.eq("status", "pending")
+		)
+		.collect();
+	for (const job of pending) {
+		await ctx.db.patch(job._id, {
+			status: "ignored",
+			lastError: "Superseded: Stripe reported the refund failed",
+		});
+	}
+	const link = await ctx.db
+		.query("quickbooksEntityLinks")
+		.withIndex("by_org_entity", (q) =>
+			q.eq("orgId", orgId).eq("entityType", "refund").eq("localId", refundId)
+		)
+		.first();
+	if (link) {
+		await ctx.db.patch(link._id, {
+			syncWarning:
+				"Stripe reported this refund failed after it was recorded in QuickBooks; delete the refund receipt there",
+		});
+		console.error(
+			`[QuickBooks] refund ${refundId} failed on Stripe after RefundReceipt ${link.qboId} was posted; manual reversal needed`
+		);
+	}
 }
 
 /** One worker kick for a batch of `kick: false` enqueues. No-op unless connected. */

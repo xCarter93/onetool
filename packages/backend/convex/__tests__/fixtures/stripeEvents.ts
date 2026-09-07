@@ -23,7 +23,7 @@ export function buildStripeEvent(overrides: StripeEventOverrides): Stripe.Event 
 	return {
 		id: overrides.id ?? `evt_test_${Math.random().toString(36).slice(2, 10)}`,
 		object: "event",
-		api_version: "2026-04-22.dahlia",
+		api_version: "2026-08-26.dahlia",
 		created: overrides.created ?? now,
 		livemode: false,
 		pending_webhooks: 0,

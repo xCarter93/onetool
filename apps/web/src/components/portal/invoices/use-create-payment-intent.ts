@@ -13,6 +13,8 @@ export type PaymentIntentErrorCode =
 	| "payments_not_enabled"
 	| "legacy_invoice"
 	| "not_found"
+	| "stripe_unavailable"
+	| "needs_review"
 	| "network"
 	| "internal";
 
@@ -24,8 +26,20 @@ export interface PaymentIntentError {
 
 export type PaymentIntentStatus = "idle" | "loading" | "ready" | "error";
 
+/**
+ * Stripe-side state of the minted intent. Only `ready` may be confirmed;
+ * `processing` is an async method still settling and
+ * `succeeded_pending_confirmation` means Stripe has the money but the webhook
+ * that marks the row paid has not landed yet.
+ */
+export type StripeIntentStatus =
+	| "ready"
+	| "processing"
+	| "succeeded_pending_confirmation";
+
 export interface UseCreatePaymentIntentResult {
 	status: PaymentIntentStatus;
+	intentStatus: StripeIntentStatus | null;
 	clientSecret: string | null;
 	publishableKey: string | null;
 	stripeAccountId: string | null;
@@ -37,6 +51,7 @@ export interface UseCreatePaymentIntentResult {
 }
 
 interface ApiOkBody {
+	status?: StripeIntentStatus;
 	clientSecret: string;
 	publishableKey: string;
 	stripeAccountId: string;
@@ -57,6 +72,8 @@ function mapErrorCode(status: number, body: ApiErrBody): PaymentIntentErrorCode 
 		return raw;
 	if (raw === "payments_not_enabled" || raw === "legacy_invoice") return raw;
 	if (raw === "not_found") return "not_found";
+	if (raw === "stripe_unavailable" || status === 503) return "stripe_unavailable";
+	if (raw === "needs_review") return "needs_review";
 	if (status === 401) return "unauthenticated";
 	if (status === 403) return "csrf";
 	if (status === 429) return "rate_limited";
@@ -72,6 +89,9 @@ export function useCreatePaymentIntent({
 	enabled: boolean;
 }): UseCreatePaymentIntentResult {
 	const [status, setStatus] = useState<PaymentIntentStatus>("idle");
+	const [intentStatus, setIntentStatus] = useState<StripeIntentStatus | null>(
+		null,
+	);
 	const [clientSecret, setClientSecret] = useState<string | null>(null);
 	const [publishableKey, setPublishableKey] = useState<string | null>(null);
 	const [stripeAccountId, setStripeAccountId] = useState<string | null>(null);
@@ -123,6 +143,7 @@ export function useCreatePaymentIntent({
 				// Stripe PI ids have shape `pi_<id>_secret_<random>`; prefix is the PI id.
 				const pid = cs.split("_secret_")[0] ?? "";
 				setClientSecret(cs);
+				setIntentStatus(body.status ?? "ready");
 				setPublishableKey(body.publishableKey);
 				setStripeAccountId(body.stripeAccountId);
 				setPaymentIntentId(pid);
@@ -157,6 +178,7 @@ export function useCreatePaymentIntent({
 
 	return {
 		status,
+		intentStatus,
 		clientSecret,
 		publishableKey,
 		stripeAccountId,

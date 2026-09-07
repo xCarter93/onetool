@@ -21,7 +21,8 @@ import {
 import { formatCurrency } from "@/lib/money";
 
 interface PaymentsFlowProps {
-	platformFeeDollars?: number;
+	/** Null while the configured fee is still loading or unavailable. */
+	platformFeeDollars: number | null;
 }
 
 const AMOUNT_PRESETS = [100, 500, 2500, 10000];
@@ -71,14 +72,15 @@ function LegendRow({
 	);
 }
 
-export function PaymentsFlow({ platformFeeDollars = 1 }: PaymentsFlowProps) {
+export function PaymentsFlow({ platformFeeDollars }: PaymentsFlowProps) {
 	const [amount, setAmount] = React.useState(100);
+	const platformFee = platformFeeDollars ?? 0;
 
 	// Derived during render — no effects (vercel-react-best-practices).
 	const stripeFee = amount * 0.029 + 0.3;
-	const balance = Math.max(0, amount - stripeFee - platformFeeDollars);
+	const balance = Math.max(0, amount - stripeFee - platformFee);
 	const stripePct = amount > 0 ? (stripeFee / amount) * 100 : 0;
-	const otPct = amount > 0 ? (platformFeeDollars / amount) * 100 : 0;
+	const otPct = amount > 0 ? (platformFee / amount) * 100 : 0;
 	const keepPct = amount > 0 ? (balance / amount) * 100 : 0;
 
 	// Donut geometry: three arcs that sum to exactly 100% of the circle.
@@ -109,15 +111,21 @@ export function PaymentsFlow({ platformFeeDollars = 1 }: PaymentsFlowProps) {
 			icon: Receipt,
 			label: "Stripe processing",
 			amount: `−${formatCurrency(stripeFee)}`,
-			sublabel: "2.9% + $0.30 per charge",
+			sublabel: "Estimated at Stripe's standard US rate, 2.9% + $0.30",
 			pct: stripePct,
 			tone: "primary",
 		},
 		{
 			icon: Sparkles,
 			label: "OneTool fee",
-			amount: `−${formatCurrency(platformFeeDollars)}`,
-			sublabel: `${formatCurrency(platformFeeDollars)} per charge`,
+			amount:
+				platformFeeDollars === null ? "—" : `−${formatCurrency(platformFee)}`,
+			sublabel:
+				platformFeeDollars === null
+					? "Loading the configured fee"
+					: platformFee === 0
+						? "No OneTool platform fee"
+						: `${formatCurrency(platformFee)} per charge`,
 			pct: otPct,
 			tone: "amber",
 		},
@@ -310,7 +318,11 @@ export function PaymentsFlow({ platformFeeDollars = 1 }: PaymentsFlowProps) {
 									<LegendRow
 										dotClass="bg-amber-500"
 										label="OneTool fee"
-										amount={`−${formatCurrency(platformFeeDollars)}`}
+										amount={
+											platformFeeDollars === null
+												? "—"
+												: `−${formatCurrency(platformFee)}`
+										}
 									/>
 								</div>
 							</div>
@@ -359,9 +371,15 @@ export function PaymentsFlow({ platformFeeDollars = 1 }: PaymentsFlowProps) {
 			</div>
 
 			<p className="text-xs leading-relaxed text-muted-foreground">
-				Example based on a {formatCurrency(amount)} invoice with a{" "}
-				{formatCurrency(platformFeeDollars)} platform fee. Actual Stripe fees vary by
-				card type and region — see Stripe pricing for current rates.
+				Example based on a {formatCurrency(amount)} invoice
+				{platformFeeDollars === null
+					? ""
+					: platformFee === 0
+						? " with no OneTool platform fee"
+						: ` with a ${formatCurrency(platformFee)} platform fee`}
+				. Stripe&apos;s share is estimated at its standard US card rate;
+				international cards, currency conversion, and negotiated rates
+				change it. See Stripe pricing for current rates.
 			</p>
 		</section>
 	);

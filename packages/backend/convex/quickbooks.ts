@@ -12,9 +12,15 @@ import {
 	requireFeature,
 } from "./lib/entitlements";
 import { formatCurrency } from "./lib/money";
-import { maybeEnqueueQboSync } from "./lib/quickbooksEnqueue";
+import {
+	maybeEnqueueQboSync,
+	mintQboOperationId,
+	type QboEntityType,
+} from "./lib/quickbooksEnqueue";
 import { createActivity } from "./lib/activities";
 import { resolveMemberUserIds } from "./lib/automationExec/actions";
+import { isInvoiceInActorScope } from "./lib/invoiceGroups";
+import type { PermissionObject } from "./lib/permissionKeys";
 import type { MutationCtx } from "./_generated/server";
 
 /**
@@ -137,14 +143,20 @@ export const disconnect = userMutation({
 			});
 		}
 
-		await ctx.db.patch(connection._id, { status: "disconnected" });
+		await ctx.db.patch(connection._id, {
+			status: "disconnected",
+			accessToken: "",
+			accessTokenExpiresAt: 0,
+			refreshToken: "",
+			refreshTokenExpiresAt: 0,
+		});
 
-		// Pass only the orgId: the action reads the token from the doc (and
-		// scrubs it afterwards), keeping the secret out of scheduler args.
+		// Snapshot form: the revoke must never read the live row, or a reconnect
+		// that lands before it runs would have its fresh grant revoked.
 		await ctx.scheduler.runAfter(
 			0,
 			internal.quickbooksActions.revokeConnection,
-			{ orgId: ctx.orgId }
+			{ refreshToken: connection.refreshToken }
 		);
 		return null;
 	},
@@ -178,6 +190,24 @@ export const resetConnection = userMutation({
 				internal.quickbooksActions.revokeConnection,
 				{ refreshToken: connection.refreshToken }
 			);
+		}
+		// Cancel live jobs now rather than waiting for the purge: a stale worker
+		// releasing a claimed job would make it claimable again, and a reconnect
+		// inside the purge window would drain it into the new company.
+		for (const status of ["pending", "processing"] as const) {
+			const jobs = await ctx.db
+				.query("quickbooksSyncJobs")
+				.withIndex("by_org_status", (q) =>
+					q.eq("orgId", ctx.orgId).eq("status", status)
+				)
+				.collect();
+			for (const job of jobs) {
+				await ctx.db.patch(job._id, {
+					status: "ignored",
+					lastError: "Cancelled because QuickBooks was reset",
+					claimedAt: undefined,
+				});
+			}
 		}
 		// Deleting the connection first makes the org read as disconnected in
 		// the same transaction (no new jobs enqueue); the sync data drains in
@@ -321,21 +351,24 @@ export const getConnection = internalQuery({
 });
 
 const HEALTH_CHECK_SCAN_LIMIT = 1000;
+// Mirrors quickbooksActions.HEALTH_CHECK_STALE_MS ("use node" modules can't be imported here).
+const HEALTH_CHECK_STALE_MS = 12 * 60 * 60 * 1000;
 
-/** Cron sweep input: every live connection. */
+/**
+ * Cron sweep input: live connections whose last health check is stale,
+ * oldest first. Refreshing bumps lastHealthCheckAt, so each sweep works
+ * through a different slice instead of re-reading the same index prefix.
+ */
 export const listConnectionsForHealthCheck = internalQuery({
-	args: {},
-	handler: async (ctx): Promise<Doc<"quickbooksConnections">[]> => {
-		const connected = await ctx.db
+	args: { staleBefore: v.optional(v.number()) },
+	handler: async (ctx, args): Promise<Doc<"quickbooksConnections">[]> => {
+		const staleBefore = args.staleBefore ?? Date.now() - HEALTH_CHECK_STALE_MS;
+		return await ctx.db
 			.query("quickbooksConnections")
-			.withIndex("by_status", (q) => q.eq("status", "connected"))
+			.withIndex("by_status_health", (q) =>
+				q.eq("status", "connected").lte("lastHealthCheckAt", staleBefore)
+			)
 			.take(HEALTH_CHECK_SCAN_LIMIT);
-		if (connected.length === HEALTH_CHECK_SCAN_LIMIT) {
-			console.warn(
-				"[QuickBooks] health check hit the scan limit — connections beyond it went unrefreshed"
-			);
-		}
-		return connected;
 	},
 });
 
@@ -352,6 +385,7 @@ export const storeConnection = internalMutation({
 		accessTokenExpiresAt: v.number(),
 		refreshToken: v.string(),
 		refreshTokenExpiresAt: v.number(),
+		refreshTokenHardExpiresAt: v.optional(v.number()),
 		companyName: v.optional(v.string()),
 	},
 	handler: async (ctx, args): Promise<{ orgId: Id<"organizations"> }> => {
@@ -394,6 +428,7 @@ export const storeConnection = internalMutation({
 				accessTokenExpiresAt: args.accessTokenExpiresAt,
 				refreshToken: args.refreshToken,
 				refreshTokenExpiresAt: args.refreshTokenExpiresAt,
+				refreshTokenHardExpiresAt: args.refreshTokenHardExpiresAt,
 				status: "connected",
 				connectedByUserId: user._id,
 				companyName: args.companyName,
@@ -424,6 +459,7 @@ export const storeConnection = internalMutation({
 			accessTokenExpiresAt: args.accessTokenExpiresAt,
 			refreshToken: args.refreshToken,
 			refreshTokenExpiresAt: args.refreshTokenExpiresAt,
+			refreshTokenHardExpiresAt: args.refreshTokenHardExpiresAt,
 			status: "connected",
 			connectedByUserId: user._id,
 			companyName: args.companyName,
@@ -436,7 +472,13 @@ export const storeConnection = internalMutation({
 	},
 });
 
-/** Persist a refreshed token pair. Intuit rotates the refresh token — store both. */
+/**
+ * Persist a refreshed token pair. Intuit rotates the refresh token — store both.
+ * Returns whether the write landed. `connectionId` fences a refresh started
+ * before a reset out of the replacement connection; `previousRefreshToken` is
+ * a compare-and-swap on the STORED string, so a stale rotation cannot
+ * overwrite a newer grant.
+ */
 export const updateTokens = internalMutation({
 	args: {
 		orgId: v.id("organizations"),
@@ -444,25 +486,41 @@ export const updateTokens = internalMutation({
 		accessTokenExpiresAt: v.number(),
 		refreshToken: v.string(),
 		refreshTokenExpiresAt: v.number(),
+		refreshTokenHardExpiresAt: v.optional(v.number()),
+		connectionId: v.optional(v.id("quickbooksConnections")),
+		previousRefreshToken: v.optional(v.string()),
 	},
-	handler: async (ctx, args): Promise<null> => {
+	handler: async (ctx, args): Promise<boolean> => {
 		const connection = await ctx.db
 			.query("quickbooksConnections")
 			.withIndex("by_org", (q) => q.eq("orgId", args.orgId))
 			.first();
 		// An in-flight refresh must not revive a connection disconnected meanwhile.
 		if (!connection || connection.status === "disconnected") {
-			return null;
+			return false;
+		}
+		if (args.connectionId !== undefined && connection._id !== args.connectionId) {
+			return false;
+		}
+		if (
+			args.previousRefreshToken !== undefined &&
+			connection.refreshToken !== args.previousRefreshToken
+		) {
+			return false;
 		}
 		await ctx.db.patch(connection._id, {
 			accessToken: args.accessToken,
 			accessTokenExpiresAt: args.accessTokenExpiresAt,
 			refreshToken: args.refreshToken,
 			refreshTokenExpiresAt: args.refreshTokenExpiresAt,
+			// Absent from a response means "unchanged", never "cleared".
+			...(args.refreshTokenHardExpiresAt !== undefined
+				? { refreshTokenHardExpiresAt: args.refreshTokenHardExpiresAt }
+				: {}),
 			status: "connected",
 			lastHealthCheckAt: Date.now(),
 		});
-		return null;
+		return true;
 	},
 });
 
@@ -501,27 +559,6 @@ export const markNeedsReauth = internalMutation({
 			lastHealthCheckAt: Date.now(),
 		});
 		return true;
-	},
-});
-
-/** Post-revoke scrub: a disconnected row keeps no live secrets at rest. */
-export const clearConnectionTokens = internalMutation({
-	args: { orgId: v.id("organizations") },
-	handler: async (ctx, args): Promise<null> => {
-		const connection = await ctx.db
-			.query("quickbooksConnections")
-			.withIndex("by_org", (q) => q.eq("orgId", args.orgId))
-			.first();
-		if (!connection || connection.status !== "disconnected") {
-			return null;
-		}
-		await ctx.db.patch(connection._id, {
-			accessToken: "",
-			accessTokenExpiresAt: 0,
-			refreshToken: "",
-			refreshTokenExpiresAt: 0,
-		});
-		return null;
 	},
 });
 
@@ -579,7 +616,8 @@ const QBO_ENTITY_TYPE = v.union(
 	v.literal("client"),
 	v.literal("invoice"),
 	v.literal("payment"),
-	v.literal("sku")
+	v.literal("sku"),
+	v.literal("refund")
 );
 
 /**
@@ -592,6 +630,7 @@ const JOB_TYPE_RANK: Record<string, number> = {
 	client: 1,
 	invoice: 2,
 	payment: 3,
+	refund: 4,
 };
 
 /**
@@ -800,15 +839,19 @@ export const ensureInvoiceSyncQueued = internalMutation({
  * ensureInvoiceSyncQueued deliberately leaves those alone, so a payment held
  * behind one would hold forever.
  */
-export const hasFailedInvoiceSyncJob = internalQuery({
-	args: { orgId: v.id("organizations"), invoiceId: v.id("invoices") },
+export const hasFailedSyncJob = internalQuery({
+	args: {
+		orgId: v.id("organizations"),
+		entityType: QBO_ENTITY_TYPE,
+		localId: v.string(),
+	},
 	handler: async (ctx, args): Promise<boolean> => {
 		const failed = await ctx.db
 			.query("quickbooksSyncJobs")
 			.withIndex("by_org_dedupe", (q) =>
 				q
 					.eq("orgId", args.orgId)
-					.eq("dedupeKey", `invoice:${args.invoiceId}`)
+					.eq("dedupeKey", `${args.entityType}:${args.localId}`)
 					.eq("status", "failed")
 			)
 			.first();
@@ -845,9 +888,22 @@ export const upsertEntityLink = internalMutation({
 		qboId: v.string(),
 		qboSyncToken: v.string(),
 		syncWarning: v.optional(v.string()),
+		/** Generation fence: the connection the QBO id was minted under. */
+		connectionId: v.optional(v.id("quickbooksConnections")),
 	},
 	/** `created` is true only on first link — the worker uses it to log activity once. */
 	handler: async (ctx, args): Promise<{ created: boolean }> => {
+		if (args.connectionId !== undefined) {
+			const connection = await ctx.db
+				.query("quickbooksConnections")
+				.withIndex("by_org", (q) => q.eq("orgId", args.orgId))
+				.first();
+			// QBO ids are per-realm: a result from a reset connection must not be
+			// linked under whatever company the org connected next.
+			if (!connection || connection._id !== args.connectionId) {
+				throw new ConvexError("stale_connection");
+			}
+		}
 		const existing = await ctx.db
 			.query("quickbooksEntityLinks")
 			.withIndex("by_org_entity", (q) =>
@@ -988,6 +1044,13 @@ export type QboSyncPayload =
 			payment: Doc<"payments">;
 			invoiceId: Id<"invoices">;
 			clientId: Id<"clients">;
+	  }
+	| {
+			kind: "refund";
+			refund: Doc<"stripeRefunds">;
+			payment: Doc<"payments">;
+			invoice: Doc<"invoices">;
+			clientId: Id<"clients">;
 	  };
 
 export const getSyncJobPayload = internalQuery({
@@ -1075,6 +1138,21 @@ export const getSyncJobPayload = internalQuery({
 			return { kind: "sku", sku };
 		}
 
+		if (args.entityType === "refund") {
+			const refund = await ctx.db
+				.query("stripeRefunds")
+				.withIndex("by_org_refund", (q) =>
+					q.eq("orgId", args.orgId).eq("refundId", args.localId)
+				)
+				.unique();
+			if (!refund) return null;
+			const payment = await ctx.db.get(refund.paymentId);
+			if (!payment || payment.orgId !== args.orgId) return null;
+			const invoice = await ctx.db.get(payment.invoiceId);
+			if (!invoice || invoice.orgId !== args.orgId) return null;
+			return { kind: "refund", refund, payment, invoice, clientId: invoice.clientId };
+		}
+
 		const paymentId = ctx.db.normalizeId("payments", args.localId);
 		if (!paymentId) return null;
 		const payment = await ctx.db.get(paymentId);
@@ -1090,14 +1168,21 @@ export const getSyncJobPayload = internalQuery({
 	},
 });
 
+const STUCK_JOB_SCAN_LIMIT = 500;
+const DUE_JOB_CONNECTION_SCAN_LIMIT = 2000;
+const DUE_JOB_CONNECTION_PAGE = 200;
+
 /** Sweep (a): jobs stranded in "processing" by a dropped action. */
 export const reclaimStuckJobs = internalMutation({
 	args: { staleBeforeMs: v.number() },
 	handler: async (ctx, args): Promise<{ reclaimed: number }> => {
+		// Age-bounded in the index, so fresh claims never fill the page.
 		const stuck = await ctx.db
 			.query("quickbooksSyncJobs")
-			.withIndex("by_status_due", (q) => q.eq("status", "processing"))
-			.take(200);
+			.withIndex("by_status_claimed", (q) =>
+				q.eq("status", "processing").lte("claimedAt", args.staleBeforeMs)
+			)
+			.take(STUCK_JOB_SCAN_LIMIT);
 		let reclaimed = 0;
 		for (const job of stuck) {
 			const claimedAt = job.claimedAt ?? job._creationTime;
@@ -1113,18 +1198,48 @@ export const reclaimStuckJobs = internalMutation({
 	},
 });
 
-/** Sweep (b): orgs with due pending work, so a lost kick still gets picked up. */
+/**
+ * Sweep (b): connected orgs with due pending work, so a lost kick still gets
+ * picked up. Walks connections rather than the due-job index: jobs parked
+ * behind a needs_reauth org would otherwise sit at the head of that index
+ * forever and starve every org behind them.
+ */
 export const listOrgsWithDueJobs = internalQuery({
 	args: {},
 	handler: async (ctx): Promise<Id<"organizations">[]> => {
 		const now = Date.now();
-		const due = await ctx.db
-			.query("quickbooksSyncJobs")
-			.withIndex("by_status_due", (q) =>
-				q.eq("status", "pending").lte("runAfter", now)
-			)
-			.take(500);
-		return Array.from(new Set(due.map((job) => job.orgId)));
+		const orgIds: Id<"organizations">[] = [];
+		let scanned = 0;
+		let after = 0;
+		while (scanned < DUE_JOB_CONNECTION_SCAN_LIMIT) {
+			const page = await ctx.db
+				.query("quickbooksConnections")
+				.withIndex("by_status", (q) =>
+					q.eq("status", "connected").gt("_creationTime", after)
+				)
+				.take(DUE_JOB_CONNECTION_PAGE);
+			for (const connection of page) {
+				const due = await ctx.db
+					.query("quickbooksSyncJobs")
+					.withIndex("by_org_status_due", (q) =>
+						q
+							.eq("orgId", connection.orgId)
+							.eq("status", "pending")
+							.lte("runAfter", now)
+					)
+					.first();
+				if (due) orgIds.push(connection.orgId);
+			}
+			scanned += page.length;
+			if (page.length < DUE_JOB_CONNECTION_PAGE) break;
+			after = page[page.length - 1]._creationTime;
+		}
+		if (scanned >= DUE_JOB_CONNECTION_SCAN_LIMIT) {
+			console.warn(
+				"[QuickBooks] due-job sweep hit the connection scan limit — orgs beyond it were not kicked"
+			);
+		}
+		return orgIds;
 	},
 });
 
@@ -1166,7 +1281,7 @@ export const getEntityLink = userQuery({
 
 export interface QboSyncErrorView {
 	_id: Id<"quickbooksSyncJobs">;
-	entityType: "client" | "invoice" | "payment" | "sku";
+	entityType: QboEntityType;
 	localId: string;
 	entityLabel: string;
 	lastError?: string;
@@ -1179,9 +1294,13 @@ export interface QboSyncErrorView {
 async function describeEntity(
 	ctx: UserQueryCtx,
 	orgId: Id<"organizations">,
-	entityType: "client" | "invoice" | "payment" | "sku",
+	entityType: QboEntityType,
 	localId: string
 ): Promise<string> {
+	if (entityType === "refund") {
+		const refund = await refundByStripeId(ctx, orgId, localId);
+		return refund ? `Refund ${formatCurrency(refund.amount)}` : "Deleted refund";
+	}
 	if (entityType === "sku") {
 		const id = ctx.db.normalizeId("skus", localId);
 		const sku = id ? await ctx.db.get(id) : null;
@@ -1206,7 +1325,81 @@ async function describeEntity(
 	return `${payment.description ?? "Payment"} ${formatCurrency(payment.paymentAmount)}`;
 }
 
-/** Error center feed: the org's failed sync jobs, newest first. */
+/** A sync job carries the permission object of the entity it exports. */
+function jobPermissionObject(entityType: QboEntityType): PermissionObject {
+	if (entityType === "client") return "clients";
+	if (entityType === "sku") return "skus";
+	return "invoices";
+}
+
+/**
+ * Record-scope half of the error-center gate, evaluated only when the caller
+ * lacks allRecords on the object: the job's entity must be in the actor's
+ * scope, and a deleted entity is out of scope by definition.
+ */
+async function isJobInActorScope(
+	ctx: UserQueryCtx | UserMutationCtx,
+	job: Doc<"quickbooksSyncJobs">
+): Promise<boolean> {
+	const scope = await ctx.actorScope();
+	if (job.entityType === "client") {
+		const id = ctx.db.normalizeId("clients", job.localId);
+		const client = id ? await ctx.db.get(id) : null;
+		return !!client && client.orgId === job.orgId && scope.clientIds.has(client._id);
+	}
+	if (job.entityType === "invoice") {
+		const id = ctx.db.normalizeId("invoices", job.localId);
+		const invoice = id ? await ctx.db.get(id) : null;
+		if (!invoice || invoice.orgId !== job.orgId) return false;
+		return await isInvoiceInActorScope(ctx, invoice, scope);
+	}
+	if (job.entityType === "payment") {
+		const id = ctx.db.normalizeId("payments", job.localId);
+		const payment = id ? await ctx.db.get(id) : null;
+		if (!payment || payment.orgId !== job.orgId) return false;
+		const invoice = await ctx.db.get(payment.invoiceId);
+		if (!invoice || invoice.orgId !== job.orgId) return false;
+		return await isInvoiceInActorScope(ctx, invoice, scope);
+	}
+	if (job.entityType === "refund") {
+		const refund = await refundByStripeId(ctx, job.orgId, job.localId);
+		const invoice = refund ? await ctx.db.get(refund.invoiceId) : null;
+		if (!invoice || invoice.orgId !== job.orgId) return false;
+		return await isInvoiceInActorScope(ctx, invoice, scope);
+	}
+	return false;
+}
+
+async function refundByStripeId(
+	ctx: UserQueryCtx | UserMutationCtx,
+	orgId: Id<"organizations">,
+	refundId: string
+): Promise<Doc<"stripeRefunds"> | null> {
+	return await ctx.db
+		.query("stripeRefunds")
+		.withIndex("by_org_refund", (q) =>
+			q.eq("orgId", orgId).eq("refundId", refundId)
+		)
+		.unique();
+}
+
+/** Same verdict as `requireLevel` + `requireRecordScope`, without throwing. */
+async function canActOnJob(
+	ctx: UserQueryCtx | UserMutationCtx,
+	job: Doc<"quickbooksSyncJobs">,
+	level: "view" | "modify"
+): Promise<boolean> {
+	const object = jobPermissionObject(job.entityType);
+	if (!(await ctx.can(object, level))) return false;
+	if (await ctx.hasAllRecords(object)) return true;
+	return await isJobInActorScope(ctx, job);
+}
+
+/**
+ * Error center feed: the org's failed sync jobs, newest first. Rows follow
+ * the permissions of the entity they sync — a member who cannot see an
+ * invoice must not see its number or amount here either.
+ */
 export const listSyncErrors = userQuery({
 	args: {},
 	handler: async (ctx): Promise<QboSyncErrorView[]> => {
@@ -1222,6 +1415,7 @@ export const listSyncErrors = userQuery({
 
 		const rows: QboSyncErrorView[] = [];
 		for (const job of failed) {
+			if (!(await canActOnJob(ctx, job, "view"))) continue;
 			rows.push({
 				_id: job._id,
 				entityType: job.entityType,
@@ -1244,26 +1438,39 @@ export const listSyncErrors = userQuery({
 	},
 });
 
-/** Error-center actions are member-accessible; only premium orgs have jobs. */
-async function requirePremiumMember(ctx: UserMutationCtx): Promise<void> {
+/**
+ * Error-center actions: premium org, then the same modify + record-scope gate
+ * the entity's own mutations apply (invoices.remove, payments.*).
+ */
+async function requireJobModify(
+	ctx: UserMutationCtx,
+	jobId: Id<"quickbooksSyncJobs">
+): Promise<Doc<"quickbooksSyncJobs">> {
 	await requireFeature(ctx, "quickbooks");
+	const job = await ctx.db.get(jobId);
+	if (!job || job.orgId !== ctx.orgId) {
+		throw new ConvexError("Sync job not found");
+	}
+	const object = jobPermissionObject(job.entityType);
+	await ctx.requireLevel(object, "modify");
+	await ctx.requireRecordScope(object, () => isJobInActorScope(ctx, job));
+	return job;
 }
 
 export const retryJob = userMutation({
 	args: { jobId: v.id("quickbooksSyncJobs") },
 	handler: async (ctx, args): Promise<null> => {
-		await requirePremiumMember(ctx);
-		const job = await ctx.db.get(args.jobId);
-		if (!job || job.orgId !== ctx.orgId) {
-			throw new ConvexError("Sync job not found");
-		}
+		const job = await requireJobModify(ctx, args.jobId);
 		if (job.status !== "failed") return null;
 
+		// A user retry is a new Intuit operation: the old requestid would replay
+		// the cached failed response.
 		await ctx.db.patch(job._id, {
 			status: "pending",
 			runAfter: Date.now(),
 			attempts: 0,
 			failedAt: undefined,
+			operationId: mintQboOperationId(),
 		});
 		await ctx.scheduler.runAfter(
 			0,
@@ -1277,21 +1484,18 @@ export const retryJob = userMutation({
 export const ignoreJob = userMutation({
 	args: { jobId: v.id("quickbooksSyncJobs") },
 	handler: async (ctx, args): Promise<null> => {
-		await requirePremiumMember(ctx);
-		const job = await ctx.db.get(args.jobId);
-		if (!job || job.orgId !== ctx.orgId) {
-			throw new ConvexError("Sync job not found");
-		}
+		const job = await requireJobModify(ctx, args.jobId);
 		if (job.status !== "failed") return null;
 		await ctx.db.patch(job._id, { status: "ignored" });
 		return null;
 	},
 });
 
+/** Retries only the failed jobs the caller could retry one by one. */
 export const retryAllFailed = userMutation({
 	args: {},
 	handler: async (ctx): Promise<{ retried: number }> => {
-		await requirePremiumMember(ctx);
+		await requireFeature(ctx, "quickbooks");
 		const failed = await ctx.db
 			.query("quickbooksSyncJobs")
 			.withIndex("by_org_status", (q) =>
@@ -1300,21 +1504,25 @@ export const retryAllFailed = userMutation({
 			.take(200);
 
 		const now = Date.now();
+		let retried = 0;
 		for (const job of failed) {
+			if (!(await canActOnJob(ctx, job, "modify"))) continue;
 			await ctx.db.patch(job._id, {
 				status: "pending",
 				runAfter: now,
 				attempts: 0,
 				failedAt: undefined,
+				operationId: mintQboOperationId(),
 			});
+			retried++;
 		}
-		if (failed.length > 0) {
+		if (retried > 0) {
 			await ctx.scheduler.runAfter(
 				0,
 				internal.quickbooksActions.processOrgJobs,
 				{ orgId: ctx.orgId }
 			);
 		}
-		return { retried: failed.length };
+		return { retried };
 	},
 });

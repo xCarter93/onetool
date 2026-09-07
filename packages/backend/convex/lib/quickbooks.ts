@@ -129,6 +129,8 @@ export interface QboTokenSet {
 	accessTokenExpiresAt: number;
 	refreshToken: string;
 	refreshTokenExpiresAt: number;
+	/** Intuit's absolute (five-year) limit; absent when Intuit omits the field. */
+	refreshTokenHardExpiresAt?: number;
 }
 
 interface IntuitTokenResponse {
@@ -136,6 +138,8 @@ interface IntuitTokenResponse {
 	refresh_token: string;
 	expires_in: number;
 	x_refresh_token_expires_in: number;
+	// Only returned when the request opts in via the header below.
+	x_refresh_token_hard_expires_in?: number;
 }
 
 /** Thrown when Intuit rejects the grant (expired/revoked refresh token) — caller flips to needs_reauth. */
@@ -153,6 +157,7 @@ async function postTokenRequest(body: URLSearchParams): Promise<QboTokenSet> {
 			Authorization: qboBasicAuthHeader(),
 			Accept: "application/json",
 			"Content-Type": "application/x-www-form-urlencoded",
+			"x-include-refresh-token-hard-expires-in": "true",
 		},
 		body: body.toString(),
 		signal: AbortSignal.timeout(QBO_FETCH_TIMEOUT_MS),
@@ -174,11 +179,15 @@ async function postTokenRequest(body: URLSearchParams): Promise<QboTokenSet> {
 
 	const payload = (await response.json()) as IntuitTokenResponse;
 	const now = Date.now();
+	const hardExpiresIn = payload.x_refresh_token_hard_expires_in;
 	return {
 		accessToken: payload.access_token,
 		accessTokenExpiresAt: now + payload.expires_in * 1000,
 		refreshToken: payload.refresh_token,
 		refreshTokenExpiresAt: now + payload.x_refresh_token_expires_in * 1000,
+		...(typeof hardExpiresIn === "number" && hardExpiresIn > 0
+			? { refreshTokenHardExpiresAt: now + hardExpiresIn * 1000 }
+			: {}),
 	};
 }
 

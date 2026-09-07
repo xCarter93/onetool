@@ -210,7 +210,7 @@ export const invoicesAndPaymentsArticles: HelpArticle[] = [
 				blocks: [
 					{
 						type: "paragraph",
-						text: "The **Payment Schedule** tab shows every installment as a card with a status pill: Pending, Sent, Paid, Overdue, or Cancelled. Your client sees the schedule on the invoice in their portal and pays the installments in order, and a partly paid invoice shows there as partial until the last installment settles.",
+						text: "The **Payment Schedule** tab shows every installment as a card with a status pill: Pending, Sent, Paid, Overdue, or Cancelled. A disputed installment also carries a note with Stripe's evidence deadline. Your client sees the schedule on the invoice in their portal and pays the installments in order, and a partly paid invoice shows there as partial until the last installment settles.",
 					},
 				],
 			},
@@ -326,7 +326,7 @@ export const invoicesAndPaymentsArticles: HelpArticle[] = [
 				blocks: [
 					{
 						type: "paragraph",
-						text: "When a card payment succeeds, OneTool records the card brand and last four digits on the installment, along with a link to the Stripe receipt. Your client also gets a receipt in the portal they can download or print.",
+						text: "When a card payment succeeds, OneTool records the card brand and last four digits on the installment, along with a link to the Stripe receipt. Your client also gets a receipt in the portal they can download or print. Some payment methods take a few business days to clear; while one is settling, the portal shows the client a processing notice with the amount and keeps the Pay button disabled, and the installment turns Paid once the funds arrive.",
 					},
 				],
 			},
@@ -427,7 +427,11 @@ export const invoicesAndPaymentsArticles: HelpArticle[] = [
 					},
 					{
 						type: "paragraph",
-						text: "The panel is Stripe's, so what you submit there goes straight to Stripe and the card networks. Only the organization owner sees it, and it appears once payment onboarding is fully complete.",
+						text: "The panel is Stripe's, so what you submit there goes straight to Stripe and the card networks. Only the organization owner sees it, and it appears as soon as Stripe has your business details, including while your account is restricted.",
+					},
+					{
+						type: "paragraph",
+						text: "When a dispute is opened, the owner gets a notification with the evidence deadline, and the invoice's **Payment Schedule** tab marks the installment as disputed with the same deadline and a **Respond in Payments** link that opens the Disputes panel. A dispute you lose stays marked on the installment, since the money has gone back to the client.",
 					},
 				],
 			},

@@ -12,6 +12,11 @@ import { Lock } from "lucide-react";
 
 import { formatMoney } from "@/lib/portal/format";
 
+import {
+	PaymentPendingNotice,
+	type PaymentPendingKind,
+} from "./payment-pending-notice";
+
 export interface PaymentSurfaceProps {
 	invoiceId: string;
 	clientPortalId: string;
@@ -31,7 +36,9 @@ export function PaymentSurface({
 	const elements = useElements();
 	const [submitting, setSubmitting] = useState(false);
 	const [error, setError] = useState<StripeError | null>(null);
-	const [processingHint, setProcessingHint] = useState(false);
+	// Set once Stripe accepts the payment; the server-driven paid state takes
+	// over from there, so the form never comes back for this intent.
+	const [pending, setPending] = useState<PaymentPendingKind | null>(null);
 
 	// return_url uses the Stripe PaymentIntent id (cross-ref key for post-3DS),
 	// never the Convex payment row id.
@@ -52,7 +59,9 @@ export function PaymentSurface({
 			return;
 		}
 		if (paymentIntent?.status === "succeeded") {
-			setProcessingHint(true);
+			setPending("succeeded");
+		} else if (paymentIntent?.status === "processing") {
+			setPending("processing");
 		}
 	}, [stripe, elements, returnUrl]);
 
@@ -97,21 +106,20 @@ export function PaymentSurface({
 
 	const amountFmt = formatMoney(paymentAmount);
 
+	if (pending) {
+		return <PaymentPendingNotice kind={pending} paymentAmount={paymentAmount} />;
+	}
+
 	return (
 		<form onSubmit={onSubmit} className="flex flex-col gap-4">
 			<ExpressCheckoutElement onConfirm={onExpressConfirm} />
 			<div className="text-center text-[12px] text-muted-foreground">
-				or pay with card
+				or choose another payment method
 			</div>
 			<PaymentElement options={{ layout: "tabs" }} />
 			{error ? (
 				<p role="alert" className="text-[13px] text-rose-700">
 					{error.message ?? "Payment couldn't be processed."}
-				</p>
-			) : null}
-			{processingHint ? (
-				<p className="text-[13px] text-muted-foreground">
-					Processing… confirming with your bank.
 				</p>
 			) : null}
 			<button

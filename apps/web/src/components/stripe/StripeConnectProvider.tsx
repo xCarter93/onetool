@@ -1,14 +1,22 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useCallback, useState, useEffect } from "react";
+import { useAuth } from "@clerk/nextjs";
 import { loadConnectAndInitialize } from "@stripe/connect-js";
 import type { StripeConnectInstance } from "@stripe/connect-js";
 import { useTheme } from "@/providers/ThemeProvider";
 import { env } from "@/env";
 
+export interface StripeConnectSession {
+	connectInstance: StripeConnectInstance | null;
+	/** Last Account Session request failure; components stay blank until retried. */
+	error: string | null;
+	retry: () => void;
+}
+
 interface StripeConnectProviderProps {
 	accountId: string;
-	children: (connectInstance: StripeConnectInstance | null) => React.ReactNode;
+	children: (session: StripeConnectSession) => React.ReactNode;
 }
 
 // Stripe's iframes can't reach fonts bundled by next/font, so they load
@@ -64,8 +72,9 @@ function appearanceVariables(isDark: boolean) {
 }
 
 /**
- * Provider component that initializes Stripe Connect and manages
- * the account session lifecycle for embedded components.
+ * Owns one Connect.js instance per connected account. Connect.js calls
+ * `fetchClientSecret` lazily and again whenever a session expires, so every
+ * call must mint a fresh Account Session — never cache the secret.
  */
 export function StripeConnectProvider({
 	accountId,
@@ -73,56 +82,78 @@ export function StripeConnectProvider({
 }: StripeConnectProviderProps) {
 	const [connectInstance, setConnectInstance] =
 		useState<StripeConnectInstance | null>(null);
+	const [error, setError] = useState<string | null>(null);
+	const [generation, setGeneration] = useState(0);
 	const { resolvedTheme } = useTheme();
+	const { isSignedIn } = useAuth();
+
+	const retry = useCallback(() => setGeneration((n) => n + 1), []);
 
 	useEffect(() => {
-		if (!accountId) return;
-
 		let cancelled = false;
-		const initializeConnect = async () => {
-			try {
-				// Fetch the account session client secret from our API. The route
-				// derives the account id from the caller's own org server-side, so
-				// no body is sent — never reintroduce a client-supplied accountId.
-				const response = await fetch("/api/stripe-connect/account-session", {
-					method: "POST",
-				});
-
-				const data = await response.json();
-
-				if (!response.ok) {
-					console.error("Account session creation failed:", data);
-					throw new Error(data.error || "Failed to create account session");
-				}
-
-				const { clientSecret } = data;
-				if (cancelled) return;
-
-				// Match the app theme at init to avoid a restyle flash; the effect
-				// below keeps it in sync with later theme switches.
-				const isDark = document.documentElement.classList.contains("dark");
-
-				const instance = loadConnectAndInitialize({
+		// Deferred so the effect doesn't set state synchronously.
+		queueMicrotask(() => {
+			if (cancelled) return;
+			setError(null);
+			if (!accountId) {
+				setConnectInstance(null);
+				return;
+			}
+			// Match the app theme at init to avoid a restyle flash; the effect
+			// below keeps it in sync with later theme switches.
+			const isDark = document.documentElement.classList.contains("dark");
+			setConnectInstance(
+				loadConnectAndInitialize({
 					publishableKey: env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY,
-					fetchClientSecret: async () => clientSecret,
+					fetchClientSecret: async () => {
+						// The route derives the account from the caller's own org
+						// server-side — never send a client-supplied accountId.
+						let message = "Couldn't connect to Stripe.";
+						try {
+							const response = await fetch(
+								"/api/stripe-connect/account-session",
+								{ method: "POST" },
+							);
+							const data = await response.json();
+							if (response.ok && typeof data.clientSecret === "string") {
+								if (!cancelled) setError(null);
+								return data.clientSecret;
+							}
+							// Bare codes (NOT_ORG_OWNER, UNAUTHORIZED) aren't user copy.
+							if (
+								typeof data?.error === "string" &&
+								!/^[A-Z_]+$/.test(data.error)
+							) {
+								message = data.error;
+							}
+						} catch {
+							// Network failure: keep the generic message.
+						}
+						if (!cancelled) setError(message);
+						throw new Error(message);
+					},
 					fonts: [{ cssSrc: OUTFIT_CSS_SRC }],
 					appearance: {
 						overlays: "drawer",
 						variables: appearanceVariables(isDark),
 					},
-				});
-
-				setConnectInstance(instance);
-			} catch (error) {
-				console.error("Failed to initialize Stripe Connect:", error);
-			}
-		};
-
-		void initializeConnect();
+				}),
+			);
+		});
+		// No logout here: Stripe reserves it for app sign-out, and the old
+		// instance is simply dropped when the account changes.
 		return () => {
 			cancelled = true;
 		};
-	}, [accountId]);
+	}, [accountId, generation]);
+
+	// Stripe: call logout when the user signs out of the app so the embedded
+	// components' session cookies are cleared with it.
+	useEffect(() => {
+		if (isSignedIn === false && connectInstance) {
+			void connectInstance.logout();
+		}
+	}, [isSignedIn, connectInstance]);
 
 	// Restyle live components when the app theme changes — the instance is
 	// created once, so init-time appearance alone goes stale after a toggle.
@@ -136,5 +167,5 @@ export function StripeConnectProvider({
 		});
 	}, [connectInstance, resolvedTheme]);
 
-	return <>{children(connectInstance)}</>;
+	return <>{children({ connectInstance, error, retry })}</>;
 }

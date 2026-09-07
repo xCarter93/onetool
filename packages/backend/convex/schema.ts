@@ -1153,6 +1153,8 @@ export default defineSchema({
 		// Latest Stripe dispute status (needs_response, under_review, won, lost, …).
 		disputeStatus: v.optional(v.string()),
 		disputeResolvedAt: v.optional(v.number()),
+		// Stripe's evidence_details.due_by (ms); the response window varies per dispute.
+		disputeEvidenceDueBy: v.optional(v.number()),
 		refundedAt: v.optional(v.number()),
 		// Cumulative dollars refunded on this row, mirroring Stripe's
 		// charge.amount_refunded. A partial refund keeps status "paid" and only
@@ -1177,6 +1179,10 @@ export default defineSchema({
 		cardLast4: v.optional(v.string()),
 		cardBrand: v.optional(v.string()),
 		stripeReceiptUrl: v.optional(v.string()),
+		// Stripe PaymentIntents that succeeded but could not settle this row (it
+		// was already paid, cancelled, or its amount had changed). Money moved;
+		// the owner has to refund or re-bill. Details live in stripePaymentAttempts.
+		unappliedStripePaymentIntentIds: v.optional(v.array(v.string())),
 	})
 		.index("by_org", ["orgId"])
 		.index("by_invoice", ["invoiceId"])
@@ -1192,6 +1198,46 @@ export default defineSchema({
 			"orgId",
 			"pendingCheckoutSessionId",
 		]),
+
+	// Every PaymentIntent minted for an installment, kept after the row's
+	// pending cache is cleared so a late webhook for a superseded intent can
+	// still be correlated instead of dropped.
+	stripePaymentAttempts: defineTable({
+		orgId: v.id("organizations"),
+		paymentId: v.id("payments"),
+		invoiceId: v.id("invoices"),
+		stripeAccountId: v.optional(v.string()),
+		paymentIntentId: v.string(),
+		amount: v.number(), // dollars
+		status: v.union(
+			v.literal("open"),
+			v.literal("canceled"),
+			v.literal("succeeded")
+		),
+		// "unapplied": Stripe collected money this row could not absorb.
+		outcome: v.optional(
+			v.union(v.literal("recorded"), v.literal("unapplied"))
+		),
+		amountReceived: v.optional(v.number()), // dollars
+		createdAt: v.number(),
+		resolvedAt: v.optional(v.number()),
+	})
+		.index("by_org_payment_intent", ["orgId", "paymentIntentId"])
+		.index("by_payment", ["paymentId"]),
+
+	// Stripe refunds by id. The cumulative refundedAmount cannot key the one
+	// QuickBooks RefundReceipt each refund must produce exactly once.
+	stripeRefunds: defineTable({
+		orgId: v.id("organizations"),
+		paymentId: v.id("payments"),
+		invoiceId: v.id("invoices"),
+		refundId: v.string(),
+		amount: v.number(), // dollars
+		status: v.string(), // Stripe refund status as last reported
+		createdAt: v.number(),
+	})
+		.index("by_org_refund", ["orgId", "refundId"])
+		.index("by_payment", ["paymentId"]),
 
 	// PDF Documents (for quotes and invoices)
 	documents: defineTable({
@@ -1385,7 +1431,10 @@ export default defineSchema({
 			// Signed PDF never arrived after the download exhausted its retries
 			// (admins, in-app only, one per document — the client has signed but
 			// the countersigned file isn't in the account).
-			v.literal("boldsign_download_failed")
+			v.literal("boldsign_download_failed"),
+			// Stripe collected money a settled/cancelled payment row could not
+			// absorb; the owner has to refund or re-bill (in-app only).
+			v.literal("payment_unapplied")
 		),
 		title: v.string(), // Notification title
 		message: v.string(), // Notification message content
@@ -2467,15 +2516,24 @@ export default defineSchema({
 			v.literal("received"),
 			v.literal("processing"),
 			v.literal("processed"),
-			v.literal("failed")
+			v.literal("failed"),
+			// Parked until the payment it belongs to settles (e.g. a refund that
+			// arrived before payment_intent.succeeded); the paid cascade replays it.
+			v.literal("unresolved")
 		),
 		receivedAt: v.number(),
+		// Lease start for the active attempt; a redelivery inside the lease is skipped.
+		claimedAt: v.optional(v.number()),
 		processedAt: v.optional(v.number()),
 		failedAt: v.optional(v.number()),
 		failureReason: v.optional(v.string()),
 		attemptCount: v.number(),
+		// Set only on unresolved rows: the resolved mutation args to replay.
+		paymentIntentId: v.optional(v.string()),
+		payload: v.optional(v.any()),
 	})
-		.index("by_stripe_event_id", ["stripeEventId"]),
+		.index("by_stripe_event_id", ["stripeEventId"])
+		.index("by_payment_intent_status", ["paymentIntentId", "status"]),
 
 	// App-side metadata for AI assistant threads. The @convex-dev/agent
 	// component owns the threads/messages themselves; this table lets us list
@@ -2519,6 +2577,9 @@ export default defineSchema({
 		accessTokenExpiresAt: v.number(),
 		refreshToken: v.string(),
 		refreshTokenExpiresAt: v.number(),
+		// Intuit's five-year absolute limit (x_refresh_token_hard_expires_in);
+		// a refresh cannot extend it, only a reconnect.
+		refreshTokenHardExpiresAt: v.optional(v.number()),
 
 		status: v.union(
 			v.literal("connected"),
@@ -2542,7 +2603,8 @@ export default defineSchema({
 	})
 		.index("by_org", ["orgId"])
 		.index("by_realm", ["realmId"])
-		.index("by_status", ["status"]),
+		.index("by_status", ["status"])
+		.index("by_status_health", ["status", "lastHealthCheckAt"]),
 
 	// OneTool entity ↔ QBO entity mapping (survives disconnect/reconnect)
 	quickbooksEntityLinks: defineTable({
@@ -2551,9 +2613,10 @@ export default defineSchema({
 			v.literal("client"),
 			v.literal("invoice"),
 			v.literal("payment"),
-			v.literal("sku")
+			v.literal("sku"),
+			v.literal("refund") // localId is the Stripe refund id
 		),
-		localId: v.string(), // Id<"clients"> | Id<"invoices"> | Id<"payments"> | Id<"skus">
+		localId: v.string(), // Id<"clients"> | Id<"invoices"> | Id<"payments"> | Id<"skus"> | Stripe refund id
 		qboId: v.string(),
 		qboSyncToken: v.string(), // optimistic-concurrency token, updated on every write
 		lastSyncedAt: v.number(),
@@ -2569,7 +2632,8 @@ export default defineSchema({
 			v.literal("client"),
 			v.literal("invoice"),
 			v.literal("payment"),
-			v.literal("sku")
+			v.literal("sku"),
+			v.literal("refund") // localId is the Stripe refund id
 		),
 		localId: v.string(),
 		operation: v.union(v.literal("upsert"), v.literal("void")),
@@ -2589,10 +2653,13 @@ export default defineSchema({
 		lastError: v.optional(v.string()), // human-readable, shown in error center
 		lastErrorCode: v.optional(v.string()), // QBO Fault code, e.g. "6240"
 		dedupeKey: v.string(), // `${entityType}:${localId}` — collapse duplicate pending jobs
+		// Intuit requestid token, stable across retries; re-minted only on a user retry.
+		operationId: v.optional(v.string()),
 	})
 		.index("by_org_status", ["orgId", "status"])
 		.index("by_org_status_due", ["orgId", "status", "runAfter"])
 		.index("by_status_due", ["status", "runAfter"])
+		.index("by_status_claimed", ["status", "claimedAt"])
 		.index("by_org_dedupe", ["orgId", "dedupeKey", "status"]),
 
 	// One-time QBO→OneTool customer import (wizard shown at connect). Kept
@@ -2601,6 +2668,8 @@ export default defineSchema({
 	quickbooksImportRuns: defineTable({
 		orgId: v.id("organizations"),
 		realmId: v.string(),
+		// The connection the realm belongs to; optional because pre-fence rows lack it.
+		connectionId: v.optional(v.id("quickbooksConnections")),
 		status: v.union(
 			v.literal("running"), // fetching + matching QBO customers
 			v.literal("reviewing"), // proposals written, waiting on the reviewer

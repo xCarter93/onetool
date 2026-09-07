@@ -514,10 +514,215 @@ describe("QuickBooks connection", () => {
 
 			const live = await t.query(
 				internal.quickbooks.listConnectionsForHealthCheck,
-				{}
+				{ staleBefore: Date.now() + HOUR }
 			);
 			expect(live).toHaveLength(1);
 			expect(live[0].realmId).toBe("realm_a");
+		});
+
+		it("listConnectionsForHealthCheck returns only stale connections, oldest first", async () => {
+			const { org: fresh, asOwner: ownerFresh } = await setupOwnerOrg("h1");
+			const { org: older, asOwner: ownerOlder } = await setupOwnerOrg("h2");
+			const { org: oldest, asOwner: ownerOldest } = await setupOwnerOrg("h3");
+			await ownerFresh.mutation(internal.quickbooks.storeConnection, tokenArgs());
+			await ownerOlder.mutation(
+				internal.quickbooks.storeConnection,
+				tokenArgs({ realmId: "realm_h2" })
+			);
+			await ownerOldest.mutation(
+				internal.quickbooks.storeConnection,
+				tokenArgs({ realmId: "realm_h3" })
+			);
+			await t.run(async (ctx) => {
+				for (const [orgId, at] of [
+					[older.orgId, Date.now() - 20 * HOUR],
+					[oldest.orgId, Date.now() - 40 * HOUR],
+				] as const) {
+					const connection = await ctx.db
+						.query("quickbooksConnections")
+						.withIndex("by_org", (q) => q.eq("orgId", orgId))
+						.first();
+					await ctx.db.patch(connection!._id, { lastHealthCheckAt: at });
+				}
+			});
+
+			const stale = await t.query(
+				internal.quickbooks.listConnectionsForHealthCheck,
+				{}
+			);
+			expect(stale.map((c) => c.orgId)).toEqual([oldest.orgId, older.orgId]);
+			expect(stale.map((c) => c.orgId)).not.toContain(fresh.orgId);
+		});
+
+		it("updateTokens rejects a write fenced to a previous connection generation", async () => {
+			useScheduledDrain();
+			const { org, asOwner } = await setupOwnerOrg("gen1");
+			await asOwner.mutation(internal.quickbooks.storeConnection, tokenArgs());
+			const stale = await t.run(async (ctx) =>
+				ctx.db
+					.query("quickbooksConnections")
+					.withIndex("by_org", (q) => q.eq("orgId", org.orgId))
+					.first()
+			);
+
+			await asOwner.mutation(api.quickbooks.resetConnection, {});
+			await t.finishAllScheduledFunctions(vi.runAllTimers);
+			await asOwner.mutation(
+				internal.quickbooks.storeConnection,
+				tokenArgs({ realmId: "realm_b", refreshToken: "refresh_b" })
+			);
+
+			const now = Date.now();
+			const applied = await t.mutation(internal.quickbooks.updateTokens, {
+				orgId: org.orgId as Id<"organizations">,
+				connectionId: stale!._id,
+				accessToken: "access_from_old_realm",
+				accessTokenExpiresAt: now + HOUR,
+				refreshToken: "refresh_from_old_realm",
+				refreshTokenExpiresAt: now + 90 * 24 * HOUR,
+			});
+			expect(applied).toBe(false);
+
+			const current = await t.run(async (ctx) =>
+				ctx.db
+					.query("quickbooksConnections")
+					.withIndex("by_org", (q) => q.eq("orgId", org.orgId))
+					.first()
+			);
+			expect(current?._id).not.toBe(stale!._id);
+			expect(current?.refreshToken).toBe("refresh_b");
+		});
+
+		it("updateTokens is a compare-and-swap on the previous refresh token", async () => {
+			const { org, asOwner } = await setupOwnerOrg("cas1");
+			await asOwner.mutation(internal.quickbooks.storeConnection, tokenArgs());
+			const orgId = org.orgId as Id<"organizations">;
+			const now = Date.now();
+			const rotation = (suffix: string) => ({
+				orgId,
+				accessToken: `access_${suffix}`,
+				accessTokenExpiresAt: now + HOUR,
+				refreshToken: `refresh_${suffix}`,
+				refreshTokenExpiresAt: now + 90 * 24 * HOUR,
+			});
+
+			expect(
+				await t.mutation(internal.quickbooks.updateTokens, {
+					...rotation("2"),
+					previousRefreshToken: "refresh_1",
+				})
+			).toBe(true);
+			// A second refresh that also started from refresh_1 is stale now.
+			expect(
+				await t.mutation(internal.quickbooks.updateTokens, {
+					...rotation("stale"),
+					previousRefreshToken: "refresh_1",
+				})
+			).toBe(false);
+
+			const connection = await t.run(async (ctx) =>
+				ctx.db
+					.query("quickbooksConnections")
+					.withIndex("by_org", (q) => q.eq("orgId", org.orgId))
+					.first()
+			);
+			expect(connection?.refreshToken).toBe("refresh_2");
+			expect(connection?.accessToken).toBe("access_2");
+		});
+
+		it("persists the hard refresh expiry and exposes it in the status query", async () => {
+			const { org, asOwner } = await setupOwnerOrg("hard1");
+			const hardExpiresAt = Date.now() + 5 * 365 * 24 * HOUR;
+			await asOwner.mutation(
+				internal.quickbooks.storeConnection,
+				tokenArgs({ refreshTokenHardExpiresAt: hardExpiresAt })
+			);
+			expect(
+				(await asOwner.query(api.quickbooks.getConnectionStatus, {}))
+					?.refreshTokenHardExpiresAt
+			).toBe(hardExpiresAt);
+
+			const now = Date.now();
+			// A refresh response without the field leaves the absolute limit alone.
+			await t.mutation(internal.quickbooks.updateTokens, {
+				orgId: org.orgId as Id<"organizations">,
+				accessToken: "access_2",
+				accessTokenExpiresAt: now + HOUR,
+				refreshToken: "refresh_2",
+				refreshTokenExpiresAt: now + 90 * 24 * HOUR,
+			});
+			expect(
+				(await asOwner.query(api.quickbooks.getConnectionStatus, {}))
+					?.refreshTokenHardExpiresAt
+			).toBe(hardExpiresAt);
+
+			await t.mutation(internal.quickbooks.updateTokens, {
+				orgId: org.orgId as Id<"organizations">,
+				accessToken: "access_3",
+				accessTokenExpiresAt: now + HOUR,
+				refreshToken: "refresh_3",
+				refreshTokenExpiresAt: now + 90 * 24 * HOUR,
+				refreshTokenHardExpiresAt: hardExpiresAt - HOUR,
+			});
+			expect(
+				(await asOwner.query(api.quickbooks.getConnectionStatus, {}))
+					?.refreshTokenHardExpiresAt
+			).toBe(hardExpiresAt - HOUR);
+		});
+
+		it("disconnect revokes a token snapshot, so a reconnect before the revoke keeps its grant", async () => {
+			vi.useFakeTimers();
+			vi.stubEnv("QUICKBOOKS_CLIENT_ID", "cid");
+			vi.stubEnv("QUICKBOOKS_CLIENT_SECRET", "secret");
+			const fetchMock = vi.fn(async (_input: unknown, _init?: RequestInit) => ({
+				ok: true,
+				status: 200,
+				headers: { get: () => null },
+				json: async () => ({}),
+				text: async () => "",
+			}));
+			vi.stubGlobal("fetch", fetchMock);
+			const { org, asOwner } = await setupOwnerOrg("snap1");
+			await asOwner.mutation(internal.quickbooks.storeConnection, tokenArgs());
+
+			await asOwner.mutation(api.quickbooks.disconnect, {});
+			// Scrubbed in the disconnect transaction, before the revoke runs.
+			let connection = await t.run(async (ctx) =>
+				ctx.db
+					.query("quickbooksConnections")
+					.withIndex("by_org", (q) => q.eq("orgId", org.orgId))
+					.first()
+			);
+			expect(connection).toMatchObject({
+				status: "disconnected",
+				refreshToken: "",
+				accessToken: "",
+			});
+
+			// Reconnect lands before the scheduled revoke executes.
+			await asOwner.mutation(
+				internal.quickbooks.storeConnection,
+				tokenArgs({ accessToken: "access_new", refreshToken: "refresh_new" })
+			);
+			await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+			const revokeCall = fetchMock.mock.calls.find(([url]) =>
+				String(url).includes("/revoke")
+			);
+			expect(JSON.parse(String(revokeCall?.[1]?.body))).toEqual({
+				token: "refresh_1",
+			});
+			connection = await t.run(async (ctx) =>
+				ctx.db
+					.query("quickbooksConnections")
+					.withIndex("by_org", (q) => q.eq("orgId", org.orgId))
+					.first()
+			);
+			expect(connection).toMatchObject({
+				status: "connected",
+				refreshToken: "refresh_new",
+				accessToken: "access_new",
+			});
 		});
 
 		it("markNeedsReauth honors the access-token guard", async () => {
@@ -682,6 +887,145 @@ describe("QuickBooks connection", () => {
 			expect(thirdClaim.map((job) => job._id)).toEqual([secondId]);
 		});
 
+		it("upsertEntityLink rejects a link fenced to a previous connection generation", async () => {
+			useScheduledDrain();
+			const { org, asOwner } = await setupOwnerOrg("link_gen");
+			const orgId = org.orgId as Id<"organizations">;
+			await asOwner.mutation(internal.quickbooks.storeConnection, tokenArgs());
+			const stale = await t.run(async (ctx) =>
+				ctx.db
+					.query("quickbooksConnections")
+					.withIndex("by_org", (q) => q.eq("orgId", orgId))
+					.first()
+			);
+
+			await asOwner.mutation(api.quickbooks.resetConnection, {});
+			await t.finishAllScheduledFunctions(vi.runAllTimers);
+			await asOwner.mutation(
+				internal.quickbooks.storeConnection,
+				tokenArgs({ realmId: "realm_b" })
+			);
+			const current = await t.run(async (ctx) =>
+				ctx.db
+					.query("quickbooksConnections")
+					.withIndex("by_org", (q) => q.eq("orgId", orgId))
+					.first()
+			);
+
+			const link = {
+				orgId,
+				entityType: "client" as const,
+				localId: "client_1",
+				qboId: "42",
+				qboSyncToken: "0",
+			};
+			await expect(
+				t.mutation(internal.quickbooks.upsertEntityLink, {
+					...link,
+					connectionId: stale!._id,
+				})
+			).rejects.toThrow(/stale_connection/);
+			expect(
+				await t.run(async (ctx) =>
+					ctx.db
+						.query("quickbooksEntityLinks")
+						.withIndex("by_org_entity", (q) => q.eq("orgId", orgId))
+						.collect()
+				)
+			).toHaveLength(0);
+
+			expect(
+				await t.mutation(internal.quickbooks.upsertEntityLink, {
+					...link,
+					connectionId: current!._id,
+				})
+			).toEqual({ created: true });
+		});
+
+		it("resetConnection cancels pending and claimed jobs before the purge runs", async () => {
+			vi.useFakeTimers();
+			const { org, asOwner } = await setupOwnerOrg("reset_jobs");
+			const orgId = org.orgId as Id<"organizations">;
+			await asOwner.mutation(internal.quickbooks.storeConnection, tokenArgs());
+			const pendingId = await insertJob(orgId);
+			const processingId = await insertJob(orgId, {
+				localId: "client_2",
+				dedupeKey: "client:client_2",
+				status: "processing",
+				claimedAt: Date.now(),
+			});
+
+			await asOwner.mutation(api.quickbooks.resetConnection, {});
+
+			// Before any scheduled purge page: a stale worker finishing now must
+			// find nothing to revive.
+			await t.mutation(internal.quickbooks.markJobSucceeded, {
+				jobId: processingId,
+			});
+			await t.mutation(internal.quickbooks.releaseJob, { jobId: processingId });
+			const jobs = await t.run(async (ctx) => ({
+				pending: await ctx.db.get(pendingId),
+				processing: await ctx.db.get(processingId),
+			}));
+			expect(jobs.pending?.status).toBe("ignored");
+			expect(jobs.processing?.status).toBe("ignored");
+			expect(jobs.processing?.claimedAt).toBeUndefined();
+		});
+
+		it("listOrgsWithDueJobs skips orgs whose connection is not live", async () => {
+			const { org: live, asOwner: liveOwner } = await setupOwnerOrg("due_live");
+			const { org: parked, asOwner: parkedOwner } = await setupOwnerOrg("due_parked");
+			const { org: idle, asOwner: idleOwner } = await setupOwnerOrg("due_idle");
+			await liveOwner.mutation(internal.quickbooks.storeConnection, tokenArgs());
+			await parkedOwner.mutation(
+				internal.quickbooks.storeConnection,
+				tokenArgs({ realmId: "realm_parked" })
+			);
+			await idleOwner.mutation(
+				internal.quickbooks.storeConnection,
+				tokenArgs({ realmId: "realm_idle" })
+			);
+			await t.mutation(internal.quickbooks.markNeedsReauth, {
+				orgId: parked.orgId as Id<"organizations">,
+			});
+			// The parked org's job is older, so it would head a job-ordered scan.
+			await insertJob(parked.orgId as Id<"organizations">);
+			await insertJob(live.orgId as Id<"organizations">);
+			await insertJob(idle.orgId as Id<"organizations">, {
+				runAfter: Date.now() + HOUR,
+			});
+
+			const orgIds = await t.query(internal.quickbooks.listOrgsWithDueJobs, {});
+			expect(orgIds).toEqual([live.orgId]);
+		});
+
+		it("reclaimStuckJobs only touches claims older than the cutoff", async () => {
+			const { org } = await setupOwnerOrg("stuck");
+			const orgId = org.orgId as Id<"organizations">;
+			const staleId = await insertJob(orgId, {
+				status: "processing",
+				claimedAt: Date.now() - 30 * 60_000,
+			});
+			const freshId = await insertJob(orgId, {
+				localId: "client_2",
+				dedupeKey: "client:client_2",
+				status: "processing",
+				claimedAt: Date.now(),
+			});
+
+			const { reclaimed } = await t.mutation(
+				internal.quickbooks.reclaimStuckJobs,
+				{ staleBeforeMs: Date.now() - 10 * 60_000 }
+			);
+			expect(reclaimed).toBe(1);
+			expect((await t.run(async (ctx) => ctx.db.get(staleId)))?.status).toBe(
+				"pending"
+			);
+			expect((await t.run(async (ctx) => ctx.db.get(freshId)))?.status).toBe(
+				"processing"
+			);
+		});
+
 		it("claimDueJobs claims one job per entity within a batch", async () => {
 			const { org } = await setupOwnerOrg("s3");
 			const orgId = org.orgId as Id<"organizations">;
@@ -700,6 +1044,129 @@ describe("QuickBooks connection", () => {
 			});
 			expect(claimed).toHaveLength(2);
 			expect(new Set(claimed.map((job) => job.dedupeKey)).size).toBe(2);
+		});
+	});
+
+	describe("error center permissions", () => {
+		async function seedFailedJobs(suffix: string) {
+			const { org, asOwner } = await setupOwnerOrg(suffix);
+			const orgId = org.orgId as Id<"organizations">;
+			await asOwner.mutation(internal.quickbooks.storeConnection, tokenArgs());
+			const clientId = await asOwner.mutation(api.clients.create, {
+				companyName: "Scoped Co",
+				status: "active",
+			});
+			const now = Date.now();
+			const invoiceId = await asOwner.mutation(api.invoices.create, {
+				clientId,
+				invoiceNumber: `INV-${suffix}`,
+				status: "sent",
+				subtotal: 100,
+				total: 100,
+				issuedDate: now,
+				dueDate: now + 30 * 24 * HOUR,
+			});
+			const failed = (
+				entityType: "client" | "invoice",
+				localId: string
+			) => ({
+				orgId,
+				entityType,
+				localId,
+				operation: "upsert" as const,
+				status: "failed" as const,
+				attempts: 5,
+				runAfter: now,
+				failedAt: now,
+				lastError: "boom",
+				dedupeKey: `${entityType}:${localId}`,
+			});
+			const { clientJobId, invoiceJobId } = await t.run(async (ctx) => ({
+				clientJobId: await ctx.db.insert(
+					"quickbooksSyncJobs",
+					failed("client", clientId)
+				),
+				invoiceJobId: await ctx.db.insert(
+					"quickbooksSyncJobs",
+					failed("invoice", invoiceId)
+				),
+			}));
+			const member = await t.run(async (ctx) =>
+				addMemberToOrg(ctx, orgId, { clerkUserId: `member_${suffix}` })
+			);
+			const asMember = t.withIdentity(
+				createPremiumTestIdentity(member.clerkUserId, org.clerkOrgId)
+			);
+			return { org, asOwner, member, asMember, clientJobId, invoiceJobId };
+		}
+
+		it("a user retry mints a new Intuit operation id", async () => {
+			const { asOwner, clientJobId, invoiceJobId } = await seedFailedJobs("remint");
+			await t.run(async (ctx) => {
+				await ctx.db.patch(clientJobId, { operationId: "op_client_old" });
+				await ctx.db.patch(invoiceJobId, { operationId: "op_invoice_old" });
+			});
+
+			await asOwner.mutation(api.quickbooks.retryJob, { jobId: clientJobId });
+			const clientJob = await t.run((ctx) => ctx.db.get(clientJobId));
+			expect(clientJob?.status).toBe("pending");
+			expect(clientJob?.operationId).toBeDefined();
+			expect(clientJob?.operationId).not.toBe("op_client_old");
+
+			await asOwner.mutation(api.quickbooks.retryAllFailed, {});
+			const invoiceJob = await t.run((ctx) => ctx.db.get(invoiceJobId));
+			expect(invoiceJob?.status).toBe("pending");
+			expect(invoiceJob?.operationId).toBeDefined();
+			expect(invoiceJob?.operationId).not.toBe("op_invoice_old");
+		});
+
+		it("hides and blocks jobs for entities a member cannot see", async () => {
+			const { asOwner, asMember, clientJobId, invoiceJobId } =
+				await seedFailedJobs("perm1");
+
+			// Default member grants cover projects/tasks only.
+			expect(await asMember.query(api.quickbooks.listSyncErrors, {})).toEqual([]);
+			await expect(
+				asMember.mutation(api.quickbooks.retryJob, { jobId: invoiceJobId })
+			).rejects.toThrow(/FORBIDDEN/);
+			await expect(
+				asMember.mutation(api.quickbooks.ignoreJob, { jobId: clientJobId })
+			).rejects.toThrow(/FORBIDDEN/);
+			expect(
+				await asMember.mutation(api.quickbooks.retryAllFailed, {})
+			).toEqual({ retried: 0 });
+
+			const jobs = await t.run(async (ctx) => ({
+				client: await ctx.db.get(clientJobId),
+				invoice: await ctx.db.get(invoiceJobId),
+			}));
+			expect(jobs.client?.status).toBe("failed");
+			expect(jobs.invoice?.status).toBe("failed");
+			expect(await asOwner.query(api.quickbooks.listSyncErrors, {})).toHaveLength(2);
+		});
+
+		it("follows the entity's grant: clients access unlocks client jobs only", async () => {
+			const { asOwner, member, asMember, clientJobId, invoiceJobId } =
+				await seedFailedJobs("perm2");
+			await asOwner.mutation(api.permissions.setMemberPermissions, {
+				userId: member.userId,
+				permissions: { clients: { level: "modify", allRecords: true } },
+			});
+
+			const visible = await asMember.query(api.quickbooks.listSyncErrors, {});
+			expect(visible.map((row) => row._id)).toEqual([clientJobId]);
+			await expect(
+				asMember.mutation(api.quickbooks.retryJob, { jobId: invoiceJobId })
+			).rejects.toThrow(/FORBIDDEN/);
+			expect(
+				await asMember.mutation(api.quickbooks.retryAllFailed, {})
+			).toEqual({ retried: 1 });
+			const jobs = await t.run(async (ctx) => ({
+				client: await ctx.db.get(clientJobId),
+				invoice: await ctx.db.get(invoiceJobId),
+			}));
+			expect(jobs.client?.status).toBe("pending");
+			expect(jobs.invoice?.status).toBe("failed");
 		});
 	});
 });

@@ -1,6 +1,7 @@
 "use node";
-// PaymentIntent minter for the portal. Cache reuse is gated on
-// requires_payment_method; any other PI status forces a fresh mint. The
+// PaymentIntent minter for the portal. An installment has at most one live
+// intent: a cached one is resumed, reported (processing / succeeded), or
+// canceled on Stripe before a replacement is minted. The
 // checkoutAttemptCounter advances ONLY after a successful Stripe call so a
 // transient failure does not burn the next idempotency key.
 import Stripe from "stripe";
@@ -9,8 +10,6 @@ import { internal } from "../_generated/api";
 import { ConvexError, v } from "convex/values";
 import { dollarsToCents } from "../lib/money";
 import { createStripeSdkClient } from "../lib/stripeSdk";
-
-const REUSE_BUFFER_MS = 60_000;
 
 // Test seam: vi.mock("stripe") wires this in tests so SDK calls never network out.
 let stripeFactoryOverride: (() => Stripe) | null = null;
@@ -22,7 +21,20 @@ function buildStripeClient(): Stripe {
 	return createStripeSdkClient();
 }
 
+/**
+ * `ready`: confirm with `clientSecret`. `processing`: an async method (e.g.
+ * ACH) is settling — show a waiting state, do not offer payment again.
+ * `succeeded_pending_confirmation`: Stripe has the money; the webhook that
+ * marks the row paid has not landed yet. `clientSecret` is always the cached
+ * secret so the client can poll the intent in the latter two states.
+ */
+type PaymentIntentStatus =
+	| "ready"
+	| "processing"
+	| "succeeded_pending_confirmation";
+
 type CreatePaymentIntentResult = {
+	status: PaymentIntentStatus;
 	clientSecret: string;
 	publishableKey: string;
 	stripeAccountId: string;
@@ -33,6 +45,11 @@ type CreatePaymentIntentResult = {
 export const createPaymentIntent = action({
 	args: { invoiceId: v.id("invoices") },
 	returns: v.object({
+		status: v.union(
+			v.literal("ready"),
+			v.literal("processing"),
+			v.literal("succeeded_pending_confirmation"),
+		),
 		clientSecret: v.string(),
 		publishableKey: v.string(),
 		stripeAccountId: v.string(),
@@ -57,6 +74,11 @@ export const createPaymentIntent = action({
 			},
 		);
 
+		// Money already moved on this row without landing; a second charge would double-bill.
+		if (resolved.payment.unappliedStripePaymentIntentIds.length > 0) {
+			throw new ConvexError({ code: "PAYMENT_NEEDS_REVIEW" });
+		}
+
 		if (resolved.org.stripeChargesEnabled !== true) {
 			throw new ConvexError({ code: "PAYMENTS_NOT_ENABLED" });
 		}
@@ -72,42 +94,71 @@ export const createPaymentIntent = action({
 
 		const stripe = buildStripeClient();
 		const now = Date.now();
-
-		// Cache reuse: only on requires_payment_method AND within the expiry buffer.
-		const cachedId = resolved.payment.pendingPaymentIntentId;
-		const cachedSecret = resolved.payment.pendingPaymentIntentClientSecret;
-		const cachedExp = resolved.payment.pendingPaymentIntentExpiresAt;
-		if (
-			cachedId &&
-			cachedSecret &&
-			cachedExp &&
-			now < cachedExp - REUSE_BUFFER_MS
-		) {
-			try {
-				const cachedPi = await stripe.paymentIntents.retrieve(
-					cachedId,
-					undefined,
-					{ stripeAccount: stripeAccountId },
-				);
-				if (cachedPi.status === "requires_payment_method") {
-					return {
-						clientSecret: cachedSecret,
-						publishableKey,
-						stripeAccountId,
-						paymentId: resolved.payment._id,
-						amount: resolved.payment.paymentAmount,
-					};
-				}
-			} catch {
-				// Fall through to fresh mint.
-			}
-		}
-
-		const attemptId = (resolved.payment.checkoutAttemptCounter ?? 0) + 1;
 		const amountCents = dollarsToCents(resolved.payment.paymentAmount);
 		if (amountCents <= 0) {
 			throw new ConvexError({ code: "INVALID_AMOUNT" });
 		}
+		const base = {
+			publishableKey,
+			stripeAccountId,
+			paymentId: resolved.payment._id,
+			amount: resolved.payment.paymentAmount,
+		};
+
+		const cachedId = resolved.payment.pendingPaymentIntentId;
+		if (cachedId) {
+			let cached: Stripe.PaymentIntent;
+			try {
+				cached = await stripe.paymentIntents.retrieve(cachedId, undefined, {
+					stripeAccount: stripeAccountId,
+				});
+			} catch (err) {
+				// Minting blind could leave two chargeable intents; make the client retry.
+				console.error(
+					`createPaymentIntent: retrieve ${cachedId} failed: ${err instanceof Error ? err.message : String(err)}`,
+				);
+				throw new ConvexError({ code: "STRIPE_UNAVAILABLE" });
+			}
+			const clientSecret =
+				cached.client_secret ??
+				resolved.payment.pendingPaymentIntentClientSecret ??
+				"";
+			switch (cached.status) {
+				case "processing":
+				case "requires_capture":
+					return { ...base, status: "processing", clientSecret };
+				case "succeeded":
+					return {
+						...base,
+						status: "succeeded_pending_confirmation",
+						clientSecret,
+					};
+				case "requires_payment_method":
+				case "requires_confirmation":
+				case "requires_action":
+					if (cached.amount === amountCents && cached.currency === "usd") {
+						return { ...base, status: "ready", clientSecret };
+					}
+					// The installment changed under the intent; retire it first.
+					try {
+						await stripe.paymentIntents.cancel(
+							cachedId,
+							{ cancellation_reason: "abandoned" },
+							{ stripeAccount: stripeAccountId },
+						);
+					} catch (err) {
+						console.error(
+							`createPaymentIntent: cancel ${cachedId} failed: ${err instanceof Error ? err.message : String(err)}`,
+						);
+						throw new ConvexError({ code: "STRIPE_UNAVAILABLE" });
+					}
+					break;
+				case "canceled":
+					break;
+			}
+		}
+
+		const attemptId = (resolved.payment.checkoutAttemptCounter ?? 0) + 1;
 
 		const applicationFeeCents = Number(
 			process.env.STRIPE_APPLICATION_FEE_CENTS ?? 0,
@@ -146,9 +197,11 @@ export const createPaymentIntent = action({
 			internal.payments.persistPendingPaymentIntentInternal,
 			{
 				paymentId: resolved.payment._id,
+				stripeAccountId,
 				pendingPaymentIntentId: pi.id,
 				pendingPaymentIntentClientSecret: pi.client_secret,
 				pendingPaymentIntentExpiresAt: now + 24 * 60 * 60 * 1000,
+				amount: resolved.payment.paymentAmount,
 			},
 		);
 		// Counter only advances after a successful Stripe mint.
@@ -157,12 +210,6 @@ export const createPaymentIntent = action({
 			{ paymentId: resolved.payment._id },
 		);
 
-		return {
-			clientSecret: pi.client_secret,
-			publishableKey,
-			stripeAccountId,
-			paymentId: resolved.payment._id,
-			amount: resolved.payment.paymentAmount,
-		};
+		return { ...base, status: "ready", clientSecret: pi.client_secret };
 	},
 });

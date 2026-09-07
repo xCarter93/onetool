@@ -411,9 +411,61 @@ describe("Invoices", () => {
 	});
 
 	describe("remove", () => {
-		// Skip - requires aggregates to be properly initialized via API create
-		it.skip("should delete an invoice", async () => {
-			// Needs invoice created via API to initialize aggregates
+		async function seedInvoice() {
+			const { clientId, clerkUserId, clerkOrgId } = await t.run(async (ctx) => {
+				const { orgId, clerkUserId, clerkOrgId } = await createTestOrg(ctx);
+				const clientId = await createTestClient(ctx, orgId);
+				return { clientId, clerkUserId, clerkOrgId };
+			});
+			const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+			const now = Date.now();
+			const invoiceId = await asUser.mutation(api.invoices.create, {
+				clientId,
+				invoiceNumber: "INV-RM",
+				subtotal: 100,
+				total: 100,
+				status: "sent",
+				issuedDate: now,
+				dueDate: now + 30 * 24 * 60 * 60 * 1000,
+			});
+			return { asUser, invoiceId };
+		}
+
+		it("hard-deletes an invoice with no external references", async () => {
+			const { asUser, invoiceId } = await seedInvoice();
+
+			const result = await asUser.mutation(api.invoices.remove, { id: invoiceId });
+
+			expect(result).toEqual({ id: invoiceId, outcome: "deleted" });
+			expect(await t.run((ctx) => ctx.db.get(invoiceId))).toBeNull();
+		});
+
+		it("cancels instead of deleting when a payment carries a Stripe reference", async () => {
+			const { asUser, invoiceId } = await seedInvoice();
+			const paymentId = await asUser.mutation(api.payments.create, {
+				invoiceId,
+				paymentAmount: 100,
+				dueDate: Date.now(),
+				description: "Full Payment",
+				sortOrder: 0,
+			});
+			await t.run(async (ctx) => {
+				await ctx.db.patch(paymentId, {
+					pendingPaymentIntentId: "pi_open",
+					pendingPaymentIntentClientSecret: "pi_open_secret",
+				});
+			});
+
+			const result = await asUser.mutation(api.invoices.remove, { id: invoiceId });
+
+			expect(result).toEqual({ id: invoiceId, outcome: "cancelled" });
+			const { invoice, payment } = await t.run(async (ctx) => ({
+				invoice: await ctx.db.get(invoiceId),
+				payment: await ctx.db.get(paymentId),
+			}));
+			expect(invoice?.status).toBe("cancelled");
+			// The cancel releases the open intent so it cannot be charged later.
+			expect(payment?.pendingPaymentIntentId).toBeUndefined();
 		});
 	});
 

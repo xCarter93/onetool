@@ -44,6 +44,7 @@ import { SegmentedControl } from "@/components/domain/segmented-control";
 import { useToast } from "@/hooks/use-toast";
 import { useConfirmDialog } from "@/hooks/use-confirm-dialog";
 import { logError, getUserFriendlyErrorMessage } from "@/lib/error-logger";
+import { formatRelativeTime } from "@/lib/notification-utils";
 import { useOrgOwner } from "../_hooks/use-org-owner";
 import { QuickBooksMark, StripeMark } from "./integration-brand-marks";
 import { useStripeOnboarding } from "../_hooks/use-stripe-onboarding";
@@ -65,6 +66,9 @@ import {
 
 const CONNECT_URL = "/api/quickbooks/connect";
 const PAYMENTS_TAB_URL = "/organization/profile?tab=payments";
+// Intuit's five-year hard expiry can only be reset by reconnecting; prompt
+// well before the refresh stops working.
+const RECONNECT_WARNING_MS = 30 * 24 * 60 * 60 * 1000;
 
 const ERROR_MESSAGES: Record<string, string> = {
 	denied: "Connection was cancelled in QuickBooks.",
@@ -262,6 +266,7 @@ export function IntegrationsTab() {
 	const qboPlanLocked = !planLoading && !allows("quickbooks");
 
 	const connection = useQuery(api.quickbooks.getConnectionStatus);
+	const syncErrors = useQuery(api.quickbooks.listSyncErrors);
 	const importRun = useQuery(api.quickbooksImport.getImportRun);
 	const updateSyncSettings = useMutation(api.quickbooks.updateSyncSettings);
 	const disconnect = useMutation(api.quickbooks.disconnect);
@@ -280,6 +285,9 @@ export function IntegrationsTab() {
 	const [importOpen, setImportOpen] = useState(false);
 	const [importDismissed, setImportDismissed] = useState(false);
 	const [resetOpen, setResetOpen] = useState(false);
+	// Read once per mount: render must stay pure, and a 30-day window doesn't
+	// need to tick.
+	const [now] = useState(() => Date.now());
 	// The realm-mismatch failure only arrives as a URL param, and the effect
 	// below strips it — capture it at mount so the tile can offer the way out.
 	const [realmMismatch] = useState(
@@ -432,6 +440,14 @@ export function IntegrationsTab() {
 	const isConnected =
 		qboEnabled && connection !== null && connection.status !== "disconnected";
 	const needsReauth = isConnected && connection.status === "needs_reauth";
+	// Permission-scoped and capped at 100, so this is "issues you can see", not a total.
+	const failedCount = syncErrors?.length ?? 0;
+	const expiresSoon =
+		isConnected &&
+		!needsReauth &&
+		typeof connection.refreshTokenHardExpiresAt === "number" &&
+		connection.refreshTokenHardExpiresAt - now < RECONNECT_WARNING_MS;
+	const needsAttention = needsReauth || needsSetup || failedCount > 0 || expiresSoon;
 	const controlsDisabled = !isOwner || saving;
 
 	// Stripe Connect state comes straight off the org doc, kept current by webhooks.
@@ -497,11 +513,7 @@ export function IntegrationsTab() {
 						status={
 							<IntegrationStatusIcon
 								tone={
-									!isConnected
-										? "off"
-										: needsReauth || needsSetup
-											? "attention"
-											: "connected"
+									!isConnected ? "off" : needsAttention ? "attention" : "connected"
 								}
 								label={
 									!qboEnabled
@@ -514,7 +526,11 @@ export function IntegrationsTab() {
 												? "QuickBooks needs to be reconnected"
 												: needsSetup
 													? "QuickBooks setup is not finished"
-													: "QuickBooks connected and syncing"
+													: failedCount > 0
+														? `QuickBooks connected, ${failedCount} sync ${failedCount === 1 ? "issue needs" : "issues need"} attention`
+														: expiresSoon
+															? "QuickBooks connected, reconnect soon"
+															: "QuickBooks connected"
 								}
 							/>
 						}
@@ -530,9 +546,13 @@ export function IntegrationsTab() {
 								<NotConnectedBadge />
 							) : (
 								<>
-									{(needsReauth || needsSetup) && (
+									{needsAttention && (
 										<Badge variant="warning-light" radius="full" size="sm">
-											{needsReauth ? "Reconnect needed" : "Setup incomplete"}
+											{needsReauth
+												? "Reconnect needed"
+												: needsSetup
+													? "Setup incomplete"
+													: "Needs attention"}
 										</Badge>
 									)}
 									{connection.environment === "sandbox" && (
@@ -561,6 +581,22 @@ export function IntegrationsTab() {
 									{connection.incomeAccountName && (
 										<p className="mt-0.5 text-xs text-muted-foreground">
 											Revenue account: {connection.incomeAccountName}
+										</p>
+									)}
+									{!needsReauth && !needsSetup && syncErrors !== undefined && (
+										<p
+											className={
+												failedCount > 0
+													? "mt-0.5 text-xs text-warning-foreground dark:text-warning"
+													: "mt-0.5 text-xs text-muted-foreground"
+											}
+										>
+											{failedCount > 0
+												? `${failedCount} ${failedCount === 1 ? "record" : "records"} failed to sync. See Sync issues below`
+												: "No sync issues"}
+											{typeof connection.lastHealthCheckAt === "number"
+												? ` · Connection checked ${formatRelativeTime(connection.lastHealthCheckAt)}`
+												: ""}
 										</p>
 									)}
 								</>
@@ -627,6 +663,39 @@ export function IntegrationsTab() {
 									/>
 									<p className="min-w-0 flex-1 text-xs text-muted-foreground">
 										The connection expired or was revoked from QuickBooks.
+									</p>
+									<Button
+										size="sm"
+										onClick={startConnect}
+										disabled={!isOwner || connecting}
+										className="shrink-0"
+									>
+										{connecting ? "Connecting…" : "Reconnect"}
+									</Button>
+								</div>
+							)}
+
+							{expiresSoon && (
+								<div className="mx-4 mb-3 flex items-start gap-2.5 rounded-md border border-warning/25 bg-warning/[0.05] px-3 py-2.5">
+									<ShieldAlert
+										className="mt-0.5 size-4 shrink-0 text-warning"
+										aria-hidden="true"
+									/>
+									<p className="min-w-0 flex-1 text-xs text-muted-foreground">
+										Intuit limits every QuickBooks connection to five years. This
+										one{" "}
+										{(connection.refreshTokenHardExpiresAt as number) < now
+											? "stopped"
+											: "stops"}{" "}
+										working on{" "}
+										{new Date(
+											connection.refreshTokenHardExpiresAt as number,
+										).toLocaleDateString("en-US", {
+											month: "long",
+											day: "numeric",
+											year: "numeric",
+										})}
+										. Reconnect now to keep syncing without a gap.
 									</p>
 									<Button
 										size="sm"

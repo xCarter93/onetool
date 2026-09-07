@@ -670,6 +670,8 @@ export const _getPaymentTargetInternal = internalQuery({
 				pendingPaymentIntentClientSecret:
 					active.pendingPaymentIntentClientSecret,
 				pendingPaymentIntentExpiresAt: active.pendingPaymentIntentExpiresAt,
+				unappliedStripePaymentIntentIds:
+					active.unappliedStripePaymentIntentIds ?? [],
 			},
 			contact: {
 				_id: contact._id,

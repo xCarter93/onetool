@@ -110,7 +110,7 @@ describe("stripeWebhookActions: payment_intent.succeeded", () => {
 		expect(payment?.stripePaymentIntentId).toBe("pi_gauntlet_happy");
 	});
 
-	it("payment_intent.succeeded: amount-tamper resistance — pi.amount_received !== Math.round(payment.paymentAmount * 100) is terminal (logs + acks) and does NOT mark paid", async () => {
+	it("payment_intent.succeeded: amount mismatch is terminal (acks, does NOT mark paid) and is kept as an unapplied attempt", async () => {
 		// Mismatch is deterministic for a given PI: throwing would burn ~70
 		// Stripe retries without changing the outcome. Match the Checkout
 		// Session path — log and return null so the event is acked.
@@ -119,6 +119,8 @@ describe("stripeWebhookActions: payment_intent.succeeded", () => {
 			orgId,
 			publicToken: "tok_tamper_1",
 			paymentAmount: 100,
+			pendingPaymentIntentId: "pi_tamper_1",
+			pendingPaymentIntentClientSecret: "pi_tamper_1_secret",
 		});
 
 		const res = await t.mutation(
@@ -135,6 +137,15 @@ describe("stripeWebhookActions: payment_intent.succeeded", () => {
 		const payment = await t.run((ctx) => ctx.db.get(paymentId));
 		expect(payment?.status).toBe("pending");
 		expect(payment?.paidAt).toBeUndefined();
+		// The money still moved, so it is kept as an unapplied attempt.
+		expect(payment?.unappliedStripePaymentIntentIds).toEqual(["pi_tamper_1"]);
+		expect(payment?.pendingPaymentIntentId).toBeUndefined();
+		const attempts = await t.run((ctx) =>
+			ctx.db.query("stripePaymentAttempts").collect(),
+		);
+		expect(attempts).toHaveLength(1);
+		expect(attempts[0]?.outcome).toBe("unapplied");
+		expect(attempts[0]?.amountReceived).toBe(99.99);
 	});
 
 	it("payment_intent.succeeded: publicToken-replay resistance — metadata.publicToken mismatch is terminal (logs + acks) and does NOT mark paid", async () => {
