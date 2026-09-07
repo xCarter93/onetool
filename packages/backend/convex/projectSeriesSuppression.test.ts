@@ -166,8 +166,7 @@ describe("suppressed recurring visits stay off every schedule surface", () => {
 		});
 		expect(page.billing).toBeDefined();
 		for (const visit of visits) {
-			const state = page.billing?.[visit._id]?.state;
-			if (state !== undefined) expect(typeof state).toBe("string");
+			expect(page.billing?.[visit._id]?.state).toBe("no_agreement");
 		}
 	});
 });

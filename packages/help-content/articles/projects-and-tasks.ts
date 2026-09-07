@@ -160,7 +160,7 @@ export const projectsAndTasksArticles: HelpArticle[] = [
 			{
 				heading: "The shape of a recurring job",
 				blocks: [
-					{ type: "paragraph", text: "A recurring job is a **series**. OneTool creates a separate project for each **visit**, so every visit has its own tasks, crew, history and invoice, and each one shows up in Today, Calendar and Routes like any other project. One quote becomes the **recurring agreement**: your client approves it once, every future visit inherits that approval, and completed visits draft their own invoices." },
+					{ type: "paragraph", text: "A recurring job is a **series**. OneTool creates a separate project for each **visit**, so every visit has its own tasks, crew, history and invoice, and each one shows up in Today, Calendar and Routes like any other project. One quote becomes the **recurring agreement**: your client approves it once, every future visit inherits that approval, and completed visits are billed under it, either one invoice per visit or one combined invoice drafted after the month closes." },
 					{ type: "paragraph", text: "The series page is where you see the whole thing. Its **Setup** card shows four steps, **Schedule**, **Quote**, **Agreement** and **Billing**. Collapsed, it is a progress strip that marks each step complete, next, or needing attention; expanded, each step shows what is done and a button for what to do next. Reach the series page from **View series** on any visit's project page, or from the same link wherever a recurring project appears in a quote, invoice, task or calendar panel and in the project drawer on the Projects list." },
 				],
 			},

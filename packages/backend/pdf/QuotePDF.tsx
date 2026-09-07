@@ -372,9 +372,11 @@ export const QuotePDF: React.FC<QuotePDFProps> = ({
 	const showAmount = quote.pdfSettings?.showLineItemTotals ?? true;
 	const showTotals = quote.pdfSettings?.showTotals ?? true;
 	const agreementTerms = quote.recurringAgreementTerms;
-	const commitment = agreementTerms
-		? describeRecurringCommitment(agreementTerms, quote.total)
-		: null;
+	// An override keeps the inherited terms but its total is for one visit only.
+	const commitment =
+		agreementTerms && !quote.recurringQuoteOverride
+			? describeRecurringCommitment(agreementTerms, quote.total)
+			: null;
 	const inheritedApproval = Boolean(
 		quote.recurringInheritedAt && !quote.recurringQuoteOverride
 	);

@@ -142,6 +142,17 @@ describe("projectSeries.getSetupChecklist", () => {
 		expect(checklist.billing).toBeNull();
 	});
 
+	it("ignores a visit quote that can no longer start an agreement", async () => {
+		const f = await fixture();
+		const quoteId = await addQuote(f);
+		await f.user.mutation(api.quotes.update, { id: quoteId, status: "sent" });
+		const checklist = await f.user.query(
+			api.projectSeries.getSetupChecklist,
+			{ seriesId: f.seriesId },
+		);
+		expect(checklist.quote).toBeNull();
+	});
+
 	it("keeps billing unset while the agreement is pending", async () => {
 		const f = await fixture();
 		const quoteId = await addQuote(f);

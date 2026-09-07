@@ -56,9 +56,11 @@ export function QuotePaper({ quote, lineItems, businessName }: QuotePaperProps) 
 		quote.discountEnabled && quote.discountType === "percentage"
 			? `Discount (${quote.discountAmount}%)`
 			: "Discount";
-	const commitment = quote.recurringAgreementTerms
-		? describeRecurringCommitment(quote.recurringAgreementTerms, total)
-		: null;
+	// An override keeps the inherited terms but its total is for one visit only.
+	const commitment =
+		quote.recurringAgreementTerms && !quote.recurringQuoteOverride
+			? describeRecurringCommitment(quote.recurringAgreementTerms, total)
+			: null;
 
 	return (
 		<div className="w-full rounded-2xl border border-border bg-card p-6 shadow-xs md:p-9">

@@ -149,8 +149,40 @@ describe("recurring agreement presentation", () => {
 		);
 
 		expect(screen.getByText("$125.10 per visit")).toBeVisible();
-		expect(screen.getByText("$1,501.20 for 12 visits")).toBeVisible();
+		expect(screen.getByText("For 12 visits")).toBeVisible();
 		expect(screen.getByText("Billed monthly for completed visits")).toBeVisible();
+	});
+
+	it("hides the agreement commitment on a visit override", () => {
+		render(
+			<QuotePaper
+				businessName="Pine Street Grounds"
+				quote={{
+					quoteNumber: "Q-1044",
+					title: "September visit",
+					subtotal: 180,
+					taxAmount: 0,
+					total: 180,
+					recurringQuoteOverride: true,
+					recurringAgreementTerms: {
+						schemaVersion: 1,
+						revisionId: "revision-1" as never,
+						seriesId: "series-1" as never,
+						revisionNumber: 1,
+						agreementReference: "Q-1042",
+						client: { id: "client-1" as never, name: "North Shop" },
+						scope: { title: "Weekly grounds care" },
+						schedule: { rule: { frequency: "weekly", interval: 1, end: { kind: "count", count: 12 } }, anchorDateKey: "2026-09-07", timezone: "America/New_York" },
+						billingMode: "per_visit",
+						paymentRule: { type: "percentage", installments: [{ percentage: 100, dayOffset: 30 }] },
+					},
+				}}
+				lineItems={[]}
+			/>
+		);
+
+		expect(screen.queryByText("$180.00 per visit")).not.toBeInTheDocument();
+		expect(screen.queryByText("For 12 visits")).not.toBeInTheDocument();
 	});
 
 	it("shows inherited approval and the customer-facing agreement terms", () => {

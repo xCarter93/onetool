@@ -457,9 +457,13 @@ export const prepare = userMutation({
 				throw new ConvexError(
 					"Cancel the shared monthly payment proposal before preparing another agreement revision",
 				);
+			const pendingQuote = await ctx.db.get(pending.sourceQuoteId);
+			if (pendingQuote && agreementApprovalNotActivated(pending, pendingQuote))
+				throw new ConvexError(
+					"Withdraw the agreement already sent to your client from the series page before setting up a new one",
+				);
 			if (pending.approvalDocumentId) {
 				const document = await ctx.db.get(pending.approvalDocumentId);
-				const pendingQuote = await ctx.db.get(pending.sourceQuoteId);
 				if (
 					pendingQuote?.status === "sent" ||
 					document?.boldsign ||

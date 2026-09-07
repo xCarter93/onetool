@@ -1,7 +1,6 @@
 import type { AgreementPaymentRule } from "../convex/lib/projectSeriesAgreements";
 import type { ProjectRecurrenceRule } from "../convex/lib/projectRecurrence";
 import type { RecurringAgreementTerms } from "../convex/lib/recurringAgreementTerms";
-import { roundCents } from "../convex/lib/money";
 import { formatCurrency } from "./format";
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -63,27 +62,22 @@ export function describeRecurringCommitment(
 	perVisitTotal: number,
 ): {
 	perVisit: string;
-	commitmentLabel: "Contract total" | "Duration";
+	commitmentLabel: "Duration";
 	commitment: string;
 	billing: string;
 } {
+	// A count limits the whole series from its anchor, so a revision signed part
+	// way through cannot multiply it into a contract total without overstating.
 	const end = terms.schedule.rule.end;
-	const commitment =
-		end?.kind === "count"
-			? {
-					commitmentLabel: "Contract total" as const,
-					commitment: `${formatCurrency(roundCents(perVisitTotal * end.count))} for ${end.count} visits`,
-				}
-			: {
-					commitmentLabel: "Duration" as const,
-					commitment:
-						end?.kind === "until"
-							? `Through ${end.date}`
-							: "Ongoing until cancelled",
-				};
 	return {
 		perVisit: `${formatCurrency(perVisitTotal)} per visit`,
-		...commitment,
+		commitmentLabel: "Duration",
+		commitment:
+			end?.kind === "count"
+				? `For ${end.count} visits`
+				: end?.kind === "until"
+					? `Through ${end.date}`
+					: "Ongoing until cancelled",
 		billing:
 			terms.billingMode === "monthly"
 				? "Billed monthly for completed visits"

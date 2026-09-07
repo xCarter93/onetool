@@ -346,15 +346,19 @@ export const get = userQuery({
 
 const SETUP_QUOTE_SCAN = 50;
 
+// Mirrors agreementSetupQuote: the designated quote in any status, else a draft
+// only, since agreement preparation refuses sent or approved quotes.
 async function findSeriesQuote(ctx: QueryCtx, series: Doc<"projectSeries">) {
 	const inOrg = (quote: Doc<"quotes"> | null) =>
 		quote && quote.orgId === series.orgId ? quote : null;
+	const draft = (quote: Doc<"quotes"> | null) =>
+		quote?.status === "draft" ? inOrg(quote) : null;
 	if (series.agreementQuoteId) {
 		const quote = inOrg(await ctx.db.get(series.agreementQuoteId));
 		if (quote) return quote;
 	}
 	for (const template of await loadSeriesQuoteTemplates(ctx, series._id)) {
-		const quote = inOrg(await ctx.db.get(template.sourceQuoteId));
+		const quote = draft(await ctx.db.get(template.sourceQuoteId));
 		if (quote) return quote;
 	}
 	const visits = await ctx.db
@@ -362,10 +366,11 @@ async function findSeriesQuote(ctx: QueryCtx, series: Doc<"projectSeries">) {
 		.withIndex("by_series_start", (q) => q.eq("recurringSeriesId", series._id))
 		.take(SETUP_QUOTE_SCAN);
 	for (const visit of visits) {
-		const quote = await ctx.db
+		const quotes = await ctx.db
 			.query("quotes")
 			.withIndex("by_project", (q) => q.eq("projectId", visit._id))
-			.first();
+			.take(SETUP_QUOTE_SCAN);
+		const quote = quotes.map(draft).find(Boolean);
 		if (quote) return quote;
 	}
 	return null;
@@ -504,21 +509,23 @@ async function canViewVisitBilling(ctx: UserQueryCtx) {
 async function visitBillingStates(ctx: QueryCtx, visits: Doc<"projects">[]) {
 	const states: Record<Id<"projects">, { state: string; reason?: string }> =
 		{};
-	for (const visit of visits) {
-		let context: Awaited<ReturnType<typeof visitBillingContext>>;
-		try {
-			context = await visitBillingContext(ctx, visit);
-		} catch (error) {
-			// One visit with unreviewable billing history must not blank the whole page.
-			if (error instanceof ConvexError) continue;
-			throw error;
-		}
-		if (context.state === "ineligible") continue;
+	const contexts = await Promise.all(
+		visits.map((visit) =>
+			visitBillingContext(ctx, visit).catch((error: unknown) => {
+				// One visit with unreviewable billing history must not blank the whole page.
+				if (error instanceof ConvexError) return null;
+				throw error;
+			})
+		)
+	);
+	visits.forEach((visit, index) => {
+		const context = contexts[index];
+		if (!context || context.state === "ineligible") return;
 		states[visit._id] = {
 			state: context.state,
 			reason: "reason" in context ? context.reason : undefined,
 		};
-	}
+	});
 	return states;
 }
 
