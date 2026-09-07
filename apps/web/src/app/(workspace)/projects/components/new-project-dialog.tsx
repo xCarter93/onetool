@@ -55,6 +55,7 @@ import {
 	MAX_DURATION_DAYS,
 	durationCountFromOffset,
 	durationOffsetFromCount,
+	reanchorRecurrenceForm,
 	serializeRecurrenceRule,
 	validateDurationCount,
 	validateRecurrenceForm,
@@ -267,6 +268,15 @@ export function NewProjectDialog({
 	const handleStartDateChange = (date: Date | undefined) => {
 		form.setFieldValue("startDate", date);
 		setDurationError(null);
+		if (date && recurrenceDraft) {
+			setRecurrenceDraft(
+				reanchorRecurrenceForm(
+					recurrenceDraft,
+					anchorKey,
+					new Date(localDateToUtcMidnightMs(date)).toISOString().slice(0, 10)
+				)
+			);
+		}
 		if (!date) {
 			setDurationInput("");
 			return;

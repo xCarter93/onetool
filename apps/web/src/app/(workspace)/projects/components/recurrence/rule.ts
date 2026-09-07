@@ -197,6 +197,27 @@ export function applyMonthlyChoice(
 	}
 }
 
+// Anchor-derived selections follow the start date; explicit customizations stay put.
+export function reanchorRecurrenceForm(
+	value: RecurrenceFormValue,
+	previousAnchorKey: string,
+	nextAnchorKey: string,
+): RecurrenceFormValue {
+	if (previousAnchorKey === nextAnchorKey) return value;
+	const previous = anchorParts(previousAnchorKey);
+	const next = anchorParts(nextAnchorKey);
+	let result = value;
+	if (
+		value.weekdays.length === 1 &&
+		value.weekdays[0] === previous.weekday
+	)
+		result = { ...result, weekdays: [next.weekday] };
+	const choice = monthlyChoice(value, previousAnchorKey);
+	if (choice !== "custom")
+		result = applyMonthlyChoice(result, choice, nextAnchorKey);
+	return result;
+}
+
 export function serializeRecurrenceRule(
 	value: RecurrenceFormValue,
 ): RecurrenceRule {

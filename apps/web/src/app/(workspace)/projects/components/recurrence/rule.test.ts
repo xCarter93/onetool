@@ -10,6 +10,7 @@ import {
 	inferPreset,
 	monthlyChoice,
 	monthlyChoiceOptions,
+	reanchorRecurrenceForm,
 	recurrenceRuleToForm,
 	serializeRecurrenceRule,
 	validateDurationCount,
@@ -136,6 +137,46 @@ describe("recurrence form", () => {
 		expect(monthlyChoice({ ...base, monthDays: [1, 15] }, anchor)).toBe(
 			"custom",
 		);
+	});
+
+	it("re-anchors derived selections when the start date moves", () => {
+		const monthly = {
+			...DEFAULT_RECURRENCE_FORM,
+			frequency: "monthly" as const,
+			monthDays: [15],
+		};
+		expect(
+			reanchorRecurrenceForm(monthly, "2026-09-15", "2026-09-20").monthDays
+		).toEqual([20]);
+		expect(
+			reanchorRecurrenceForm(
+				{ ...monthly, monthDays: [1, 15] },
+				"2026-09-15",
+				"2026-09-20"
+			).monthDays
+		).toEqual([1, 15]);
+		// 2026-09-15 is the third Tuesday; 2026-09-30 is the fifth Wednesday.
+		expect(
+			reanchorRecurrenceForm(
+				{ ...monthly, monthlyMode: "ordinal", ordinal: 3, ordinalWeekday: 2 },
+				"2026-09-15",
+				"2026-09-30"
+			)
+		).toMatchObject({ ordinal: 5, ordinalWeekday: 3 });
+		expect(
+			reanchorRecurrenceForm(
+				{ ...DEFAULT_RECURRENCE_FORM, weekdays: [2] },
+				"2026-09-15",
+				"2026-09-16"
+			).weekdays
+		).toEqual([3]);
+		expect(
+			reanchorRecurrenceForm(
+				{ ...DEFAULT_RECURRENCE_FORM, weekdays: [1, 2] },
+				"2026-09-15",
+				"2026-09-16"
+			).weekdays
+		).toEqual([1, 2]);
 	});
 
 	it("converts between the stored offset and the visible day count", () => {
