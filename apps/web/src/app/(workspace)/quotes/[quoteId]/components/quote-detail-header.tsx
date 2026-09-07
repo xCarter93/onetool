@@ -49,11 +49,7 @@ interface QuoteDetailHeaderProps {
 	copyToFutureDisabled?: boolean;
 	copyToFutureDisabledReason?: string;
 	onPrepareAgreement?: () => void;
-	prepareAgreementDisabled?: boolean;
-	prepareAgreementDisabledReason?: string;
 	onRestoreAgreementPricing?: () => void;
-	restoreAgreementPricingDisabled?: boolean;
-	restoreAgreementPricingDisabledReason?: string;
 	restoreAgreementPricingLabel?: string;
 	/** True while a convert-to-invoice mutation is in flight — disables the action to prevent duplicate invoices. */
 	converting?: boolean;
@@ -71,11 +67,7 @@ export function QuoteDetailHeader({
 	copyToFutureDisabled = false,
 	copyToFutureDisabledReason,
 	onPrepareAgreement,
-	prepareAgreementDisabled = false,
-	prepareAgreementDisabledReason,
 	onRestoreAgreementPricing,
-	restoreAgreementPricingDisabled = false,
-	restoreAgreementPricingDisabledReason,
 	restoreAgreementPricingLabel = "Restore agreement pricing",
 	converting = false,
 }: QuoteDetailHeaderProps) {
@@ -197,8 +189,6 @@ export function QuoteDetailHeader({
 						slot: "secondary" as const,
 						variant: "outline" as const,
 						onClick: onPrepareAgreement,
-						disabled: prepareAgreementDisabled,
-						disabledReason: prepareAgreementDisabledReason,
 					},
 				]
 			: []),
@@ -211,8 +201,6 @@ export function QuoteDetailHeader({
 						slot: "secondary" as const,
 						variant: "outline" as const,
 						onClick: onRestoreAgreementPricing,
-						disabled: restoreAgreementPricingDisabled,
-						disabledReason: restoreAgreementPricingDisabledReason,
 					},
 				]
 			: []),

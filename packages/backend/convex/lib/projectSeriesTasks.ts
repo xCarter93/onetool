@@ -3,10 +3,10 @@ import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { emitRecordCreatedEvent, emitRecordUpdatedEvent } from "../eventBus";
 import { getMembership } from "./memberships";
-import { addCalendarDays, calendarDayDifference, dateKeyFromTimestamp } from "./projectRecurrence";
+import { addCalendarDays, calendarDayDifference, dateKeyFromTimestamp, storedDate, storedDateKey } from "./projectRecurrence";
 
 export const MAX_TASK_TEMPLATES = 50;
-export const MAX_TASK_TARGETS = 200;
+export const MAX_SERIES_TARGETS = 200;
 export const MAX_GENERATED_TASKS = 200;
 
 type Counts = {
@@ -16,25 +16,15 @@ type Counts = {
 	preservedCount: number;
 };
 
-function dateKey(timestamp: number): string {
-	if (!Number.isFinite(timestamp)) throw new ConvexError("Invalid task date");
-	return new Date(timestamp).toISOString().slice(0, 10);
+export async function projectHasInvoice(ctx: QueryCtx, projectId: Id<"projects">, quoteId?: Id<"quotes">) {
+	if (await ctx.db.query("invoices").withIndex("by_project", (q) => q.eq("projectId", projectId)).first()) return true;
+	if (await ctx.db.query("invoiceGroups").withIndex("by_source_project", (q) => q.eq("sourceProjectId", projectId)).first()) return true;
+	if (!quoteId) return false;
+	if (await ctx.db.query("invoices").withIndex("by_quote", (q) => q.eq("quoteId", quoteId)).first()) return true;
+	return Boolean(await ctx.db.query("invoiceGroups").withIndex("by_source_quote", (q) => q.eq("sourceQuoteId", quoteId)).first());
 }
 
-function storedDate(key: string): number {
-	return Date.parse(`${key}T00:00:00.000Z`);
-}
-
-async function hasInvoice(ctx: QueryCtx, projectId: Id<"projects">) {
-	return Boolean(
-		await ctx.db
-			.query("invoices")
-			.withIndex("by_project", (q) => q.eq("projectId", projectId))
-			.first()
-	);
-}
-
-async function hasStartedTask(ctx: QueryCtx, projectId: Id<"projects">) {
+export async function hasBegunTask(ctx: QueryCtx, projectId: Id<"projects">) {
 	return Boolean(
 		(await ctx.db.query("tasks").withIndex("by_project_status", (q) =>
 			q.eq("projectId", projectId).eq("status", "in-progress")).first()) ||
@@ -43,21 +33,25 @@ async function hasStartedTask(ctx: QueryCtx, projectId: Id<"projects">) {
 	);
 }
 
+export async function upcomingSeriesProjects(ctx: QueryCtx, series: Doc<"projectSeries">, subject: "Task" | "Quote") {
+	const today = dateKeyFromTimestamp(Date.now(), series.timezone);
+	const rows = await ctx.db
+		.query("projects")
+		.withIndex("by_series_start", (q) =>
+			q.eq("recurringSeriesId", series._id).gte("startDate", storedDate(today)))
+		.take(MAX_SERIES_TARGETS + 1);
+	if (rows.length > MAX_SERIES_TARGETS)
+		throw new ConvexError(`${subject} setup can affect at most ${MAX_SERIES_TARGETS} projects at once`);
+	return { today, rows };
+}
+
 export async function eligibleTaskTargets(
 	ctx: QueryCtx,
 	series: Doc<"projectSeries">,
 	sourceProject: Doc<"projects">
 ): Promise<Doc<"projects">[]> {
 	if (!sourceProject.recurringNominalDate) return [];
-	const today = dateKeyFromTimestamp(Date.now(), series.timezone);
-	const todayTimestamp = storedDate(today);
-	const rows = await ctx.db
-		.query("projects")
-		.withIndex("by_series_start", (q) =>
-			q.eq("recurringSeriesId", series._id).gte("startDate", todayTimestamp))
-		.take(MAX_TASK_TARGETS + 1);
-	if (rows.length > MAX_TASK_TARGETS)
-		throw new ConvexError(`Task setup can affect at most ${MAX_TASK_TARGETS} projects at once`);
+	const { today, rows } = await upcomingSeriesProjects(ctx, series, "Task");
 	const eligible: Doc<"projects">[] = [];
 	for (const project of rows) {
 		if (
@@ -67,9 +61,9 @@ export async function eligibleTaskTargets(
 			project.completedAt !== undefined ||
 			project.recurringState !== undefined ||
 			project.startDate === undefined ||
-			dateKey(project.startDate) < today ||
-			(await hasInvoice(ctx, project._id)) ||
-			(await hasStartedTask(ctx, project._id))
+			storedDateKey(project.startDate) < today ||
+			(await projectHasInvoice(ctx, project._id)) ||
+			(await hasBegunTask(ctx, project._id))
 		) continue;
 		eligible.push(project);
 	}
@@ -114,7 +108,7 @@ function taskFields(
 		source: template.source,
 		title: template.title,
 		description: template.description,
-		date: storedDate(addCalendarDays(dateKey(project.startDate), template.dateOffsetDays)),
+		date: storedDate(addCalendarDays(storedDateKey(project.startDate), template.dateOffsetDays)),
 		startTime: template.startTime,
 		endTime: template.endTime,
 		assigneeUserId,
@@ -196,15 +190,45 @@ export async function applyTaskTemplate(
 	return counts;
 }
 
+export async function planTaskRemoval(
+	ctx: QueryCtx,
+	template: Doc<"projectTaskTemplates">,
+	series: Doc<"projectSeries">
+): Promise<{ ledgers: Doc<"projectTaskCopies">[]; counts: Counts }> {
+	const { today, rows } = await upcomingSeriesProjects(ctx, series, "Task");
+	const counts: Counts = { createCount: 0, updateCount: 0, removeCount: 0, preservedCount: 0 };
+	const ledgers: Doc<"projectTaskCopies">[] = [];
+	for (const project of rows) {
+		const ledger = await templateLedger(ctx, template._id, project._id);
+		if (!ledger) continue;
+		const task = ledger.state === "materialized" && !ledger.protected && ledger.taskId
+			? await ctx.db.get(ledger.taskId) : null;
+		// Removal still reaches paused/ended visits so the setup can be cleaned up before a resume.
+		const setupManaged = project.status === "planned" ||
+			project.recurringState === "paused" || project.recurringState === "ended";
+		if (
+			task?.status !== "pending" || !setupManaged ||
+			project.completedAt !== undefined || project.recurringSkipReason === "manual" ||
+			project.startDate === undefined || storedDateKey(project.startDate) < today ||
+			(await projectHasInvoice(ctx, project._id)) || (await hasBegunTask(ctx, project._id))
+		) {
+			counts.preservedCount++;
+			continue;
+		}
+		counts.removeCount++;
+		ledgers.push(ledger);
+	}
+	return { ledgers, counts };
+}
+
 export async function applyActiveTaskTemplatesToProject(
 	ctx: MutationCtx,
 	series: Doc<"projectSeries">,
 	project: Doc<"projects">,
-	templates?: Doc<"projectTaskTemplates">[]
+	templates: Doc<"projectTaskTemplates">[]
 ): Promise<number> {
-	const savedTemplates = templates ?? await loadSeriesTaskTemplates(ctx, series._id);
 	let created = 0;
-	for (const template of savedTemplates) {
+	for (const template of templates) {
 		if (
 			!template.active || !project.recurringNominalDate ||
 			project.recurringNominalDate <= template.sourceNominalDate
@@ -244,7 +268,7 @@ export function snapshotTemplateFields(source: Doc<"tasks">, sourceProject: Doc<
 		description: source.description,
 		type: source.type,
 		source: source.source,
-		dateOffsetDays: calendarDayDifference(dateKey(sourceProject.startDate), dateKey(source.date)),
+		dateOffsetDays: calendarDayDifference(storedDateKey(sourceProject.startDate), storedDateKey(source.date)),
 		startTime: source.startTime,
 		endTime: source.endTime,
 		assigneeUserId: source.assigneeUserId,

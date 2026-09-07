@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useConvex, useMutation } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
@@ -40,50 +40,48 @@ export function RecurringQuoteCopyDialog({
   const convex = useConvex();
   const copyQuote = useMutation(api.projectSeriesQuotes.copy);
   const toast = useToast();
-  const requestId = useRef(0);
   const [open, setOpen] = useState(false);
+  const [reviewCount, setReviewCount] = useState(0);
   const [preview, setPreview] = useState<Preview | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [isPreviewing, setIsPreviewing] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const isPreviewing = open && !preview && !error;
 
-  const loadPreview = async () => {
-    const request = ++requestId.current;
+  useEffect(() => {
+    if (!open) return;
+    let active = true;
+    convex.query(api.projectSeriesQuotes.previewCopy, { quoteId }).then(
+      (result) => {
+        if (active) setPreview(result);
+      },
+      (nextError: unknown) => {
+        if (active) {
+          setError(
+            convexErrorMessage(nextError, "Refresh the preview and try again."),
+          );
+        }
+      },
+    );
+    return () => {
+      active = false;
+    };
+  }, [convex, quoteId, open, reviewCount]);
+
+  const reviewAgain = () => {
     setPreview(null);
     setError(null);
-    setIsPreviewing(true);
-    try {
-      const result = await convex.query(api.projectSeriesQuotes.previewCopy, {
-        quoteId,
-      });
-      if (request === requestId.current) setPreview(result);
-    } catch (nextError) {
-      if (request === requestId.current) {
-        setError(
-          convexErrorMessage(nextError, "Refresh the preview and try again."),
-        );
-      }
-    } finally {
-      if (request === requestId.current) setIsPreviewing(false);
-    }
+    setReviewCount((count) => count + 1);
   };
 
   const handleOpenChange = (nextOpen: boolean) => {
     if (isSubmitting) return;
-    if (nextOpen) {
-      setOpen(true);
-      void loadPreview();
-      return;
-    }
-    requestId.current++;
     setPreview(null);
     setError(null);
-    setIsPreviewing(false);
-    setOpen(false);
+    setOpen(nextOpen);
   };
 
   const confirmCopy = async () => {
-    if (!preview || !canCopy || error || isPreviewing || isSubmitting) return;
+    if (!preview || !canCopy || error || isSubmitting) return;
     setIsSubmitting(true);
     setError(null);
     try {
@@ -92,10 +90,9 @@ export function RecurringQuoteCopyDialog({
         expectedRevision: preview.revision,
       });
       toast.success(
-        "Future quote setup saved",
+        "Drafts copied",
         `Created: ${result.createCount}. Updated: ${result.updateCount}. Preserved: ${result.preservedCount}.`,
       );
-      requestId.current++;
       setPreview(null);
       setOpen(false);
     } catch (nextError) {
@@ -155,14 +152,14 @@ export function RecurringQuoteCopyDialog({
           {error && (
             <div
               role="alert"
-              className="rounded-md border border-danger/30 bg-danger/10 p-3 text-sm text-danger"
+              className="rounded-md border border-danger/30 bg-danger/10 p-3 text-sm text-danger-foreground"
             >
               <p>{error}</p>
               <Button
                 variant="outline"
                 size="sm"
                 className="mt-3 min-h-11"
-                onClick={() => void loadPreview()}
+                onClick={reviewAgain}
               >
                 Review changes again
               </Button>

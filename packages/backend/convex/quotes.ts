@@ -1,5 +1,5 @@
 import { recordQuoteDecision } from "./lib/quoteDecisionEvidence";
-import { activateAgreementApproval } from "./lib/projectSeriesAgreements";
+import { activateAgreementApproval, vendorRequestLive } from "./lib/projectSeriesAgreements";
 import { calendarDayEpoch } from "./lib/formula";
 import { query, QueryCtx, MutationCtx } from "./_generated/server";
 import { mutation } from "./lib/triggers";
@@ -973,6 +973,21 @@ export const extendValidUntil = userMutation({
 				code: "CONFLICT",
 				message: `QUOTE_LOCKED: this quote is ${quote.status} and its valid-until date can no longer be changed.`,
 			});
+		}
+
+		// The re-render below would orphan a delivered agreement signature request.
+		if (quote.recurringAgreementRevisionId) {
+			const revision = await ctx.db.get(quote.recurringAgreementRevisionId);
+			const bound = revision?.approvalDocumentId
+				? await ctx.db.get(revision.approvalDocumentId)
+				: null;
+			if (bound && vendorRequestLive(bound)) {
+				throw new ConvexError({
+					code: "CONFLICT",
+					message:
+						"Withdraw the agreement signature request before changing the valid-until date.",
+				});
+			}
 		}
 
 		// Same calendar-day semantics as create/update.

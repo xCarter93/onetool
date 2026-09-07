@@ -1,6 +1,7 @@
 // `invoices.dueDate` is derived from the payment schedule the way
 // `syncInvoiceTotals` derives the stored totals from line items: it is the
 // final deadline, so it tracks the last installment.
+import { ConvexError } from "convex/values";
 import type { MutationCtx } from "../_generated/server";
 import type { Id } from "../_generated/dataModel";
 import { calculateRecurringPaymentSchedule } from "./recurringPaymentRules";
@@ -56,7 +57,7 @@ export async function materializeRecurringPaymentSchedule(
 		organization?.timezone ?? "UTC"
 	);
 	if (calculated.status === "review") {
-		throw new Error("Recurring fixed installments exceed this invoice total and need review");
+		throw new ConvexError({ code: "CONFLICT", message: "Recurring fixed installments exceed this invoice total. Configure this invoice's payments before sending it." });
 	}
 
 	const existing = await ctx.db.query("payments")

@@ -19,7 +19,6 @@ export type WriteRecurringInvoiceDraftArgs = {
 	issuedDate: number;
 	dueDate: number;
 	billingPeriod?: string;
-	paymentScheduleIsCustom?: boolean;
 };
 
 export async function writeRecurringInvoiceDraft(
@@ -90,7 +89,6 @@ export async function writeRecurringInvoiceDraft(
 		dueDate: args.dueDate,
 		recurringPaymentRule: firstTerms.paymentRule,
 		paymentRuleSourceRevisionId: firstTerms.revisionId,
-		paymentScheduleIsCustom: args.paymentScheduleIsCustom,
 		recurringBillingPeriod: args.billingPeriod,
 	});
 

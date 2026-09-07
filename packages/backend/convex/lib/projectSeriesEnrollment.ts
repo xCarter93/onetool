@@ -10,6 +10,8 @@ import {
 	dateKeyFromTimestamp,
 	listRecurrenceDates,
 	type ProjectRecurrenceRule,
+	storedDate,
+	storedDateKey,
 	validateRecurrenceRule,
 } from "./projectRecurrence";
 import type { UserMutationCtx } from "./factories";
@@ -25,41 +27,34 @@ import {
 	MAX_GENERATED_QUOTES,
 } from "./projectSeriesQuotes";
 
-const WINDOW_DAYS = 90;
+export const WINDOW_DAYS = 90;
+export const HOUR = 60 * 60 * 1000;
 const GENERATION_BATCH = 25;
-const HOUR = 60 * 60 * 1000;
-
-function storedDateKey(timestamp: number): string {
-	if (!Number.isFinite(timestamp)) throw new Error("Invalid project date");
-	return new Date(timestamp).toISOString().slice(0, 10);
-}
-
-function storedDate(date: string): number {
-	return Date.parse(`${date}T00:00:00.000Z`);
-}
 
 export function ruleFingerprint(value: unknown): string {
 	return JSON.stringify(value, (_key, entry) => {
 		if (entry && typeof entry === "object" && !Array.isArray(entry)) {
 			return Object.fromEntries(
-				Object.entries(entry).sort(([a], [b]) => a.localeCompare(b))
+				Object.entries(entry).sort(([a], [b]) => a.localeCompare(b)),
 			);
 		}
 		return entry;
 	});
 }
 
-export function assertProjectSupportsRecurrence(project: Doc<"projects">): void {
+export function assertProjectSupportsRecurrence(
+	project: Doc<"projects">,
+): void {
 	if (project.projectType !== "recurring") {
 		throw new ConvexError(
-			"Change the project type to Recurring before setting up recurrence"
+			"Change the project type to Recurring before setting up recurrence",
 		);
 	}
 }
 
 export async function generateProjectSeriesOccurrences(
 	ctx: MutationCtx,
-	series: Doc<"projectSeries">
+	series: Doc<"projectSeries">,
 ): Promise<{ created: number; remaining: number }> {
 	const empty = { created: 0, remaining: 0 };
 	if (series.state !== "active") return empty;
@@ -105,36 +100,50 @@ export async function generateProjectSeriesOccurrences(
 		const existing = await ctx.db
 			.query("projectOccurrences")
 			.withIndex("by_series_date", (q) =>
-				q.eq("seriesId", series._id).eq("nominalDate", nominalDate)
+				q.eq("seriesId", series._id).eq("nominalDate", nominalDate),
 			)
 			.unique();
 		if (!existing) missing.push(nominalDate);
 	}
 	const assignedUserIds: Id<"users">[] = [];
 	for (const userId of series.assignedUserIds ?? []) {
-		if (await getMembership(ctx, userId, series.orgId)) assignedUserIds.push(userId);
+		if (await getMembership(ctx, userId, series.orgId))
+			assignedUserIds.push(userId);
 	}
 	const taskTemplates = await loadSeriesTaskTemplates(ctx, series._id);
-	const activeTemplateCount = taskTemplates.filter((template) => template.active).length;
+	const activeTemplateCount = taskTemplates.filter(
+		(template) => template.active,
+	).length;
 	const quoteTemplates = await loadSeriesQuoteTemplates(ctx, series._id);
+	let activeQuoteCount = 0;
 	let quoteLinesPerProject = 0;
 	for (const template of quoteTemplates) {
 		if (!template.active) continue;
 		const version = await ctx.db.get(template.versionId);
 		if (!version) throw new Error("Recurring quote version is missing");
-		if (version.clientId !== series.clientId || version.propertyId !== series.propertyId)
-			throw new Error("Saved recurring quote scope no longer matches the series; stop quote copying before changing the client or property");
+		if (
+			version.clientId !== series.clientId ||
+			version.propertyId !== series.propertyId
+		)
+			throw new Error(
+				"Saved recurring quote scope no longer matches the series; stop quote copying before changing the client or property",
+			);
+		activeQuoteCount++;
 		quoteLinesPerProject += version.lineItems.length;
 	}
 	if (quoteLinesPerProject > MAX_GENERATED_QUOTE_LINE_WRITES)
-		throw new Error(`Saved recurring quotes contain ${quoteLinesPerProject} line items; generation supports at most ${MAX_GENERATED_QUOTE_LINE_WRITES} per project batch`);
+		throw new Error(
+			`Saved recurring quotes contain ${quoteLinesPerProject} line items; generation supports at most ${MAX_GENERATED_QUOTE_LINE_WRITES} per project batch`,
+		);
+	const projectsWithin = (writeCap: number, perProject: number) =>
+		perProject
+			? Math.max(1, Math.floor(writeCap / perProject))
+			: GENERATION_BATCH;
 	const projectBatch = Math.min(
 		GENERATION_BATCH,
-		activeTemplateCount ? Math.max(1, Math.floor(MAX_GENERATED_TASKS / activeTemplateCount)) : GENERATION_BATCH,
-		quoteLinesPerProject ? Math.max(1, Math.floor(MAX_GENERATED_QUOTE_LINE_WRITES / quoteLinesPerProject)) : GENERATION_BATCH,
-		quoteTemplates.filter((template) => template.active).length
-			? Math.max(1, Math.floor(MAX_GENERATED_QUOTES / quoteTemplates.filter((template) => template.active).length))
-			: GENERATION_BATCH
+		projectsWithin(MAX_GENERATED_TASKS, activeTemplateCount),
+		projectsWithin(MAX_GENERATED_QUOTE_LINE_WRITES, quoteLinesPerProject),
+		projectsWithin(MAX_GENERATED_QUOTES, activeQuoteCount),
 	);
 	for (const nominalDate of missing.slice(0, projectBatch)) {
 		const projectId = await ctx.db.insert("projects", {
@@ -164,14 +173,24 @@ export async function generateProjectSeriesOccurrences(
 		});
 		const project = await ctx.db.get(projectId);
 		if (!project) throw new Error("Generated project not found");
-		await applyActiveTaskTemplatesToProject(ctx, series, project, taskTemplates);
-		await applyActiveQuoteTemplatesToProject(ctx, series, project, quoteTemplates);
+		await applyActiveTaskTemplatesToProject(
+			ctx,
+			series,
+			project,
+			taskTemplates,
+		);
+		await applyActiveQuoteTemplatesToProject(
+			ctx,
+			series,
+			project,
+			quoteTemplates,
+		);
 		await emitRecordCreatedEvent(
 			ctx,
 			series.orgId,
 			"project",
 			projectId,
-			"projectSeries.generate"
+			"projectSeries.generate",
 		);
 	}
 	const created = Math.min(missing.length, projectBatch);
@@ -194,11 +213,14 @@ export async function generateProjectSeriesOccurrences(
 export async function enrollProjectInSeries(
 	ctx: UserMutationCtx,
 	project: Doc<"projects">,
-	rule: ProjectRecurrenceRule
+	rule: ProjectRecurrenceRule,
 ): Promise<Id<"projectSeries">> {
 	assertProjectSupportsRecurrence(project);
 	if (project.recurringSeriesId) {
-		const series = await ctx.orgEntity("projectSeries", project.recurringSeriesId);
+		const series = await ctx.orgEntity(
+			"projectSeries",
+			project.recurringSeriesId,
+		);
 		if (
 			series.originatingProjectId !== project._id ||
 			ruleFingerprint(series.rule) !== ruleFingerprint(rule)
@@ -221,12 +243,16 @@ export async function enrollProjectInSeries(
 	const org = await ctx.db.get(ctx.orgId);
 	if (!org) throw new Error("Organization not found");
 	const timezone = org.timezone ?? "UTC";
+	// Throws on an unknown IANA zone before it is captured on the series.
 	dateKeyFromTimestamp(Date.now(), timezone);
 	const client = await ctx.orgEntity("clients", project.clientId);
 	if (client.status === "archived")
 		throw new Error("Cannot configure recurrence for an archived client");
 	if (project.propertyId) {
-		const property = await ctx.orgEntity("clientProperties", project.propertyId);
+		const property = await ctx.orgEntity(
+			"clientProperties",
+			project.propertyId,
+		);
 		if (property.clientId !== client._id)
 			throw new Error("Property does not belong to the project client");
 	}
@@ -253,7 +279,6 @@ export async function enrollProjectInSeries(
 		nextGenerationAt: Date.now(),
 	});
 	await ctx.db.patch(project._id, {
-		projectType: "recurring",
 		recurringSeriesId: seriesId,
 		recurringNominalDate: anchorDateKey,
 	});

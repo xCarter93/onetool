@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import type { Route } from "next";
-import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import {
 	CalendarDays,
 	ChevronLeft,
@@ -11,24 +11,16 @@ import {
 	Pencil,
 	Play,
 	Repeat,
-	RotateCcw,
 	Square,
-	FileText,
-	Trash2,
-	Undo2,
 } from "lucide-react";
-import { useAction, useMutation, useQuery } from "convex/react";
+import { useMutation, useQuery } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
-import type { Doc, Id } from "@onetool/backend/convex/_generated/dataModel";
-import { dateKeyFromTimestamp } from "@onetool/backend/convex/lib/projectRecurrence";
-import type { ColumnDef } from "@tanstack/react-table";
-import { useTable } from "@tanstack/react-table";
+import type { Id } from "@onetool/backend/convex/_generated/dataModel";
 import { Button } from "@/components/ui/button";
 import {
 	Dialog,
 	DialogContent,
 	DialogDescription,
-	DialogFooter,
 	DialogHeader,
 	DialogTitle,
 } from "@/components/ui/dialog";
@@ -45,53 +37,15 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { convexErrorMessage } from "@/lib/convex-error";
 import { usePermissions } from "@/hooks/use-permissions";
-import {
-	DataGrid,
-	DataGridContainer,
-	dataGridFeatures,
-	type DataGridFeatures,
-} from "@/components/reui/data-grid/data-grid";
-import { DataGridTable } from "@/components/reui/data-grid/data-grid-table";
 import { describeRecurrence } from "../../components/recurrence/rule";
+import { formatVisitDate, stateLabel } from "../../components/recurrence/labels";
 import { RecurrenceScheduleForm } from "../../components/recurrence/schedule-form";
-
-type LifecycleAction = "pause" | "resume" | "end";
-type PendingAgreementAction = {
-	kind: "discard" | "withdraw";
-	expectedRevisionId: Id<"projectSeriesAgreementRevisions">;
-};
-
-const agreementStateLabel = {
-	draft: "Draft",
-	ready_to_send: "Ready to send",
-	awaiting_approval: "Awaiting approval",
-	approved: "Approved",
-	withdrawn: "Withdrawn",
-	declined: "Declined",
-	expired: "Expired",
-	revoked: "Revoked",
-} as const;
-
-const agreementBadgeStatus = {
-	draft: "draft",
-	ready_to_send: "draft",
-	awaiting_approval: "sent",
-	approved: "approved",
-	withdrawn: "revoked",
-	declined: "declined",
-	expired: "expired",
-	revoked: "revoked",
-} as const;
-
-function formatDate(timestamp?: number): string {
-	if (!timestamp) return "Not scheduled";
-	return new Date(timestamp).toLocaleDateString(undefined, {
-		month: "short",
-		day: "numeric",
-		year: "numeric",
-		timeZone: "UTC",
-	});
-}
+import { SeriesAgreementPanel } from "./series-agreement-panel";
+import {
+	SeriesLifecycleDialog,
+	type LifecycleAction,
+} from "./series-lifecycle-dialog";
+import { SeriesOccurrences } from "./series-occurrences";
 
 function SeriesPageContent() {
 	const { seriesId: rawSeriesId } = useParams<{ seriesId: string }>();
@@ -99,223 +53,31 @@ function SeriesPageContent() {
 	const searchParams = useSearchParams();
 	const fromProjectId = searchParams.get("fromProjectId") ?? undefined;
 	const toast = useToast();
-	const router = useRouter();
-	const [cursor, setCursor] = useState<string | undefined>();
-	const [previousCursors, setPreviousCursors] = useState<
-		Array<string | undefined>
-	>([]);
 	const [action, setAction] = useState<LifecycleAction | null>(() =>
 		searchParams.get("action") === "resume" ? "resume" : null
 	);
-	const [isSaving, setIsSaving] = useState(false);
 	const [scheduleOpen, setScheduleOpen] = useState(false);
-	const [pendingAgreementAction, setPendingAgreementAction] = useState<PendingAgreementAction | null>(null);
-	const [isUpdatingPendingAgreement, setIsUpdatingPendingAgreement] = useState(false);
-	const [renderedAt] = useState(Date.now);
+	const [isUpdatingSchedule, setIsUpdatingSchedule] = useState(false);
 	const {
 		can,
 		hasAllRecords,
 		isLoading: permissionsLoading,
 	} = usePermissions();
 	const canAccess = can("projects") && hasAllRecords("projects");
-	const canViewAgreements = canAccess && can("quotes") && hasAllRecords("quotes");
-	const canViewSchedules = canViewAgreements && can("invoices") && hasAllRecords("invoices");
-	const canModifySchedules = canViewSchedules && can("projects", "modify") && can("quotes", "modify") && can("invoices", "modify");
+	const canViewAgreements =
+		canAccess && can("quotes") && hasAllRecords("quotes");
+	const canViewSchedules =
+		canViewAgreements && can("invoices") && hasAllRecords("invoices");
+	const canModifySchedules =
+		canViewSchedules &&
+		can("projects", "modify") &&
+		can("quotes", "modify") &&
+		can("invoices", "modify");
 	const details = useQuery(
 		api.projectSeries.get,
 		canAccess ? { seriesId, fromProjectId } : "skip"
 	);
-	const actionIsAvailable =
-		action === "resume"
-			? details?.series.state === "paused" || details?.series.state === "ended"
-			: action === "pause"
-				? details?.series.state === "active"
-				: action === "end"
-					? details?.series.state !== "ended"
-					: false;
-	const occurrences = useQuery(
-		api.projectSeries.listOccurrences,
-		canAccess && details ? { seriesId, cursor } : "skip"
-	);
-	const agreement = useQuery(
-		api.projectSeriesAgreements.getSeriesAgreement,
-		canViewAgreements && details ? { seriesId } : "skip"
-	);
-	const monthlyProposal = useQuery(
-		api.recurringPaymentSchedules.getPending,
-		canViewSchedules && details ? { clientId: details.series.clientId } : "skip"
-	);
-	const lifecyclePreview = useQuery(
-		api.projectSeries.previewLifecycle,
-		action && actionIsAvailable && canAccess && details?.canManage
-			? { seriesId, action }
-			: "skip"
-	);
-	const lifecycle = useMutation(api.projectSeries.lifecycle);
-	const skip = useMutation(api.projectSeries.skip);
-	const restoreVisit = useMutation(api.projectSeries.restoreVisit);
 	const updateSchedule = useMutation(api.projectSeries.updateSchedule);
-	const createRevisionDraft = useMutation(api.projectSeriesAgreements.createRevisionDraft);
-	const discardPendingAgreement = useMutation(api.projectSeriesAgreements.discardPending);
-	const withdrawPendingAgreement = useAction(api.boldsignActions.withdrawRecurringAgreement);
-	const cancelMonthlyProposal = useMutation(api.recurringPaymentSchedules.cancelPending);
-	const [isCreatingRevision, setIsCreatingRevision] = useState(false);
-	const [isCancellingProposal, setIsCancellingProposal] = useState(false);
-	const handlePendingAgreementAction = async () => {
-		if (!agreement?.pending || !pendingAgreementAction || agreement.pending._id !== pendingAgreementAction.expectedRevisionId) return;
-		setIsUpdatingPendingAgreement(true);
-		try {
-			if (pendingAgreementAction.kind === "withdraw") {
-				await withdrawPendingAgreement({ seriesId, expectedRevisionId: pendingAgreementAction.expectedRevisionId });
-			} else {
-				await discardPendingAgreement({ seriesId, expectedRevisionId: pendingAgreementAction.expectedRevisionId });
-			}
-			toast.success(
-				pendingAgreementAction.kind === "withdraw" ? "Agreement withdrawn" : "Draft discarded",
-				agreement.active
-					? "The approved agreement remains active for future visits."
-					: "The quote and scheduled projects remain. No recurring agreement is active."
-			);
-			setPendingAgreementAction(null);
-		} catch (error) {
-			toast.error("Update failed", convexErrorMessage(error, "Review the agreement and try again."));
-		} finally {
-			setIsUpdatingPendingAgreement(false);
-		}
-	};
-	const handleCreateRevision = async () => {
-		setIsCreatingRevision(true);
-		try {
-			const result = await createRevisionDraft({ seriesId });
-			router.push(`/quotes/${result.quoteId}`);
-		} catch (error) {
-			toast.error("Error", convexErrorMessage(error, "Failed to create agreement revision"));
-		} finally {
-			setIsCreatingRevision(false);
-		}
-	};
-	const handleCancelMonthlyProposal = async () => {
-		if (!details || !monthlyProposal?.canCancel) return;
-		setIsCancellingProposal(true);
-		try {
-			await cancelMonthlyProposal({ clientId: details.series.clientId, expectedVersionId: monthlyProposal.versionId });
-			toast.success("Proposal cancelled", "Current recurring payment terms remain in place.");
-		} catch (error) {
-			toast.error("Error", convexErrorMessage(error, "Failed to cancel payment proposal"));
-		} finally {
-			setIsCancellingProposal(false);
-		}
-	};
-
-	const occurrenceRows = occurrences?.page ?? [];
-	const canManage = details?.canManage ?? false;
-	const seriesIsActive = details?.series.state === "active";
-	const columns: ColumnDef<DataGridFeatures, Doc<"projects">>[] = [
-		{
-			accessorKey: "title",
-			header: "Project",
-			cell: ({ row }) => (
-				<Link
-					href={`/projects/${row.original._id}`}
-					className="font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring"
-				>
-					{row.original.title}
-				</Link>
-			),
-		},
-		{
-			accessorKey: "startDate",
-			header: "Date",
-			cell: ({ row }) => (
-				<span className="tabular-nums">
-					{formatDate(row.original.startDate)}
-				</span>
-			),
-		},
-		{
-			accessorKey: "status",
-			header: "Status",
-			cell: ({ row }) => (
-				<StatusBadge status={row.original.status} appearance="outline">
-					{row.original.status}
-				</StatusBadge>
-			),
-		},
-		{
-			id: "seriesState",
-			header: "Recurrence",
-			cell: ({ row }) =>
-				row.original.recurringState ? (
-					<StatusBadge role="neutral" appearance="outline">
-						{row.original.recurringState}
-					</StatusBadge>
-				) : (
-					<StatusBadge role="neutral" appearance="outline">
-						Recurring
-					</StatusBadge>
-				),
-		},
-		{
-			id: "actions",
-			header: "",
-			cell: ({ row }) => (
-				<div className="flex justify-end gap-2">
-					{canManage &&
-						occurrences?.skippableIds.includes(row.original._id) && (
-							<Button
-								size="sm"
-								variant="outline"
-								onClick={async () => {
-									try {
-										await skip({ projectId: row.original._id });
-										toast.success(
-											"Visit skipped",
-											"Removed from the active schedule. Future dates are unchanged."
-										);
-									} catch (error) {
-										toast.error(
-											"Skip failed",
-											convexErrorMessage(error, "Try again.")
-										);
-									}
-								}}
-							>
-								Skip visit
-							</Button>
-						)}
-					{canManage &&
-						seriesIsActive &&
-						occurrences?.restorableIds.includes(row.original._id) && (
-							<Button
-								size="sm"
-								variant="outline"
-								onClick={async () => {
-									try {
-										await restoreVisit({ projectId: row.original._id });
-										toast.success(
-											"Visit restored",
-											"This visit is active again."
-										);
-									} catch (error) {
-										toast.error(
-											"Restore failed",
-											convexErrorMessage(error, "Try again.")
-										);
-									}
-								}}
-							>
-								<RotateCcw className="size-4" /> Restore
-							</Button>
-						)}
-				</div>
-			),
-		},
-	];
-	const occurrenceTable = useTable({
-		features: dataGridFeatures,
-		data: occurrenceRows,
-		columns,
-	});
 
 	if (permissionsLoading || (canAccess && details === undefined)) {
 		return (
@@ -326,30 +88,25 @@ function SeriesPageContent() {
 			</div>
 		);
 	}
-	if (!canAccess)
+	if (!canAccess || !details) {
 		return (
 			<EmptyState
 				size="md"
 				illustration="no-filter-match"
-				title="Organization-wide access required"
-				description="Ask an administrator for access to all projects to view recurring series."
-				action={
-					<Button nativeButton={false} variant="outline" render={<Link href="/projects" />}>
-						Back to projects
-					</Button>
+				title={
+					canAccess ? "Series not found" : "Organization-wide access required"
 				}
-			/>
-		);
-	if (details === undefined) return null;
-	if (details === null) {
-		return (
-			<EmptyState
-				size="md"
-				illustration="no-filter-match"
-				title="Series not found"
-				description="This recurring series is unavailable or you do not have access."
+				description={
+					canAccess
+						? "This recurring series is unavailable or you do not have access."
+						: "Ask an administrator for access to all projects to view recurring series."
+				}
 				action={
-					<Button nativeButton={false} variant="outline" render={<Link href="/projects" />}>
+					<Button
+						nativeButton={false}
+						variant="outline"
+						render={<Link href="/projects" />}
+					>
 						Back to projects
 					</Button>
 				}
@@ -357,33 +114,24 @@ function SeriesPageContent() {
 		);
 	}
 
-	const { series, clientName, propertyName, nextVisit, returnProject } = details;
-	const agreementHistory = agreement?.history.filter(
-		(revision) => revision._id !== agreement.active?._id && revision._id !== agreement.pending?._id
-	) ?? [];
-	const pendingAgreementTargetMatches = Boolean(
-		pendingAgreementAction && agreement?.pending?._id === pendingAgreementAction.expectedRevisionId
-	);
+	const { series, canManage, clientName, propertyName, nextVisit, returnProject } =
+		details;
 	const stateAction: LifecycleAction | null =
 		series.state === "active"
 			? "pause"
 			: series.state === "paused" || series.state === "ended"
 				? "resume"
 				: null;
-	const seriesTodayKey = dateKeyFromTimestamp(renderedAt, series.timezone);
-	const seriesToday = Date.parse(`${seriesTodayKey}T00:00:00Z`);
-	const resumableFutureVisits =
-		action === "resume" && lifecyclePreview
-			? lifecyclePreview.visits.filter(
-					(visit) => (visit.startDate ?? 0) >= seriesToday
-				).length
-			: 0;
-	const pastCancelledVisits =
-		action === "resume" && lifecyclePreview
-			? lifecyclePreview.visits.filter(
-					(visit) => (visit.startDate ?? 0) < seriesToday
-				).length
-			: 0;
+	const actionIsAvailable =
+		action === "resume"
+			? series.state === "paused" || series.state === "ended"
+			: action === "pause"
+				? series.state === "active"
+				: action === "end"
+					? series.state !== "ended"
+					: false;
+	const scheduleLocked =
+		series.state !== "active" || Boolean(series.agreementQuoteId);
 
 	return (
 		<main className="space-y-6 px-6 py-8">
@@ -413,11 +161,8 @@ function SeriesPageContent() {
 						<h1 className="text-2xl font-bold text-foreground text-balance">
 							{series.title}
 						</h1>
-						<StatusBadge
-							role={series.state === "active" ? "success" : "neutral"}
-							appearance="outline"
-						>
-							{series.state}
+						<StatusBadge status={series.state} appearance="outline">
+							{stateLabel(series.state)}
 						</StatusBadge>
 					</div>
 					<p className="mt-1 text-sm text-muted-foreground">
@@ -459,9 +204,7 @@ function SeriesPageContent() {
 							<Button
 								size="sm"
 								variant="outline"
-								disabled={
-									series.state !== "active" || !!series.agreementQuoteId
-								}
+								disabled={scheduleLocked}
 								onClick={() => setScheduleOpen(true)}
 							>
 								<Pencil className="size-4" /> Edit
@@ -474,6 +217,11 @@ function SeriesPageContent() {
 								This series has ended. Resume it to restore eligible upcoming
 								visits on the original schedule. Past cancellations stay
 								cancelled.
+							</p>
+						)}
+						{series.state === "paused" && canManage && (
+							<p className="text-sm text-muted-foreground">
+								This series is paused. Resume it before editing the schedule.
 							</p>
 						)}
 						<div className="flex items-center gap-3">
@@ -510,7 +258,7 @@ function SeriesPageContent() {
 								<div>
 									<p className="font-medium">{nextVisit.title}</p>
 									<p className="text-sm text-muted-foreground">
-										{formatDate(nextVisit.startDate)}
+										{formatVisitDate(nextVisit.startDate)}
 									</p>
 								</div>
 							</Link>
@@ -523,329 +271,30 @@ function SeriesPageContent() {
 				</Frame>
 			</div>
 
-			<Frame>
-				<FrameHeader className="flex-row items-start justify-between gap-4">
-					<div>
-						<FrameTitle>Recurring agreement</FrameTitle>
-						<FrameDescription>
-							Track the standing approval and any proposed replacement for this series.
-						</FrameDescription>
-					</div>
-					<div className="flex flex-wrap gap-2">
-						{agreement?.agreementQuoteId && (
-							<Button nativeButton={false} size="sm" variant="outline" render={<Link href={`/quotes/${agreement.agreementQuoteId}`} />}>
-								<FileText className="size-4" /> View agreement
-							</Button>
-						)}
-						{agreement?.active && canManage && !agreement.pending && (
-							<Button size="sm" onClick={handleCreateRevision} disabled={isCreatingRevision}>
-								<Pencil className="size-4" /> {isCreatingRevision ? "Creating..." : "Revise agreement"}
-							</Button>
-						)}
-					</div>
-				</FrameHeader>
-				<FramePanel>
-					{agreement === undefined ? (
-						<div className="space-y-2" aria-label="Loading recurring agreement">
-							<Skeleton className="h-5 w-52" />
-							<Skeleton className="h-5 w-64" />
-						</div>
-					) : agreement.active || agreement.pending || agreementHistory.length > 0 ? (
-						<div className="space-y-5">
-						{!agreement.active && !agreement.pending && (
-							<p className="text-sm text-muted-foreground">
-								No active or proposed recurring agreement. Open a draft quote on this series to set one up.
-							</p>
-						)}
-						<div className="grid gap-5 sm:grid-cols-2">
-							{agreement.active && (
-								<div className="space-y-1">
-									<div className="flex items-center gap-2">
-										<p className="text-sm font-medium">Current agreement</p>
-										<StatusBadge status="approved" appearance="outline">Approved</StatusBadge>
-									</div>
-									<p className="text-sm text-muted-foreground">
-										{agreement.active.agreementReference ?? "Recurring agreement"}, revision {agreement.active.revisionNumber}
-									</p>
-									{agreement.active.approvedAt && <p className="text-sm text-muted-foreground">Approved {formatDate(agreement.active.approvedAt)}</p>}
-								</div>
-							)}
-							{agreement.pending && (
-								<div className="space-y-3">
-									<div className="flex items-center gap-2">
-										<p className="text-sm font-medium">Proposed revision</p>
-										<StatusBadge status={agreementBadgeStatus[agreement.pending.deliveryState]} appearance="outline">
-											{agreementStateLabel[agreement.pending.deliveryState]}
-										</StatusBadge>
-									</div>
-									<p className="text-sm text-muted-foreground">
-										{agreement.pending.agreementReference ?? "Recurring agreement"}, revision {agreement.pending.revisionNumber}
-									</p>
-									<p className="text-sm text-muted-foreground">
-										{agreement.pending.deliveryState === "draft"
-											? agreement.active
-												? "The agreement PDF has not been generated. The current approved agreement still applies."
-												: "The agreement PDF has not been generated. Approval is required before this agreement covers future visits."
-											: agreement.pending.deliveryState === "ready_to_send"
-												? agreement.active
-													? "The agreement PDF is ready but has not been sent. The current approved agreement still applies."
-													: "The agreement PDF is ready but has not been sent. Approval is required before this agreement covers future visits."
-												: agreement.pending.deliveryState === "declined"
-													? "The client declined this proposal. Withdraw it when you are ready to close it."
-													: agreement.pending.deliveryState === "expired"
-														? "The approval request expired. Withdraw this proposal before preparing another."
-														: agreement.pending.deliveryState === "revoked"
-															? "The approval request was revoked. Withdraw this proposal to finish closing it."
-															: agreement.active
-													? "The client has been asked to approve this revision. The current approved agreement applies until they do."
-													: "The client has been asked to approve this agreement. It will cover future visits after approval."}
-									</p>
-									<div className="flex flex-wrap gap-2">
-										<Button nativeButton={false} size="sm" render={<Link href={`/quotes/${agreement.pending.quoteId}`} />}><FileText className="size-4" /> Review</Button>
-										{agreement.pending.canDiscard && canManage && (
-							<Button size="sm" variant="outline" onClick={() => setPendingAgreementAction({ kind: "discard", expectedRevisionId: agreement.pending!._id })}><Trash2 className="size-4" /> Discard draft</Button>
-										)}
-										{agreement.pending.canWithdraw && canManage && (
-							<Button size="sm" variant="outline" onClick={() => setPendingAgreementAction({ kind: "withdraw", expectedRevisionId: agreement.pending!._id })}><Undo2 className="size-4" /> Withdraw proposal</Button>
-										)}
-									</div>
-								</div>
-							)}
-						</div>
-						{agreementHistory.length > 0 && (
-							<div className="border-t border-border pt-4">
-								<p className="mb-3 text-sm font-medium">Agreement history</p>
-								<div className="space-y-3">
-									{agreementHistory.map((revision) => (
-										<div key={revision._id} className="flex flex-wrap items-center justify-between gap-3">
-											<div>
-												<p className="text-sm">{revision.agreementReference ?? "Recurring agreement"}, revision {revision.revisionNumber}</p>
-												{(revision.approvedAt || revision.withdrawnAt) && <p className="text-xs text-muted-foreground">{revision.withdrawnAt ? "Withdrawn" : "Approved"} {formatDate(revision.withdrawnAt ?? revision.approvedAt)}</p>}
-											</div>
-											<div className="flex items-center gap-2">
-												<StatusBadge status={agreementBadgeStatus[revision.deliveryState]} appearance="outline">{agreementStateLabel[revision.deliveryState]}</StatusBadge>
-												<Button nativeButton={false} size="sm" variant="ghost" render={<Link href={`/quotes/${revision.quoteId}`} />}>View</Button>
-											</div>
-										</div>
-									))}
-								</div>
-								{agreement.historyHasMore && <p className="mt-3 text-xs text-muted-foreground">Showing the 50 most recent agreement revisions.</p>}
-							</div>
-						)}
-						{monthlyProposal && (
-							<div className="rounded-md border border-border bg-muted/40 p-4">
-								<p className="text-sm font-medium text-foreground">Shared monthly payment change</p>
-								{monthlyProposal.status === "scheduled" && monthlyProposal.effectiveMonth ? (
-									<p className="mt-1 text-sm text-muted-foreground">All affected agreements are approved. The new payment arrangement starts in {new Date(`${monthlyProposal.effectiveMonth}-01T00:00:00Z`).toLocaleDateString("en-US", { month: "long", year: "numeric", timeZone: "UTC" })}. Existing terms apply until then.</p>
-								) : (
-									<p className="mt-1 text-sm text-muted-foreground">Awaiting approval from other recurring agreements. {monthlyProposal.approvedCount} of {monthlyProposal.requiredCount} approved. Existing terms remain active.</p>
-								)}
-								{monthlyProposal.canCancel && canModifySchedules ? (
-									<Button className="mt-3" size="sm" variant="outline" onClick={handleCancelMonthlyProposal} disabled={isCancellingProposal}>{isCancellingProposal ? "Cancelling..." : "Cancel payment proposal"}</Button>
-								) : monthlyProposal.cancellationReason ? (
-									<p className="mt-2 text-xs text-muted-foreground">{monthlyProposal.cancellationReason}</p>
-								) : null}
-							</div>
-						)}
-						</div>
-					) : (
-						<p className="text-sm text-muted-foreground">
-							No active or proposed recurring agreement. Open a draft quote on this series to set one up.
-						</p>
-					)}
-				</FramePanel>
-			</Frame>
+			{canViewAgreements && (
+				<SeriesAgreementPanel
+					seriesId={seriesId}
+					clientId={series.clientId}
+					canManage={canManage}
+					canViewSchedules={canViewSchedules}
+					canModifySchedules={canModifySchedules}
+				/>
+			)}
 
-			<Frame>
-				<FrameHeader>
-					<FrameTitle>Occurrences</FrameTitle>
-					<FrameDescription>
-						Each visit is a separate project with its own work history.
-					</FrameDescription>
-				</FrameHeader>
-				<FramePanel className="p-0">
-					{occurrences === undefined ? (
-						<div className="space-y-3 p-4">
-							{Array.from({ length: 5 }, (_, index) => (
-								<Skeleton key={index} className="h-12" />
-							))}
-						</div>
-					) : occurrenceRows.length === 0 ? (
-						<EmptyState
-							icon={<CalendarDays />}
-							title="No visits on this page"
-							description="Future visits appear here as they are scheduled."
-						/>
-					) : (
-						<DataGrid
-							table={occurrenceTable}
-							recordCount={occurrenceRows.length}
-							tableLayout={{ width: "auto", headerBackground: true }}
-						>
-							<DataGridContainer>
-								<DataGridTable />
-							</DataGridContainer>
-						</DataGrid>
-					)}
-					{occurrences &&
-						(previousCursors.length > 0 || !occurrences.isDone) && (
-							<div className="flex justify-between border-t p-4">
-								<Button
-									variant="outline"
-									disabled={previousCursors.length === 0}
-									onClick={() => {
-										setCursor(previousCursors.at(-1));
-										setPreviousCursors(previousCursors.slice(0, -1));
-									}}
-								>
-									Previous
-								</Button>
-								<Button
-									variant="outline"
-									disabled={occurrences.isDone}
-									onClick={() => {
-										setPreviousCursors((history) => [...history, cursor]);
-										setCursor(occurrences.continueCursor);
-									}}
-								>
-									Next
-								</Button>
-							</div>
-						)}
-				</FramePanel>
-			</Frame>
+			<SeriesOccurrences
+				seriesId={seriesId}
+				canManage={canManage}
+				seriesIsActive={series.state === "active"}
+			/>
 
-			<Dialog
-				open={pendingAgreementAction !== null && pendingAgreementTargetMatches}
-				onOpenChange={(open) => !open && !isUpdatingPendingAgreement && setPendingAgreementAction(null)}
-			>
-				<DialogContent className="max-w-lg">
-					<DialogHeader>
-						<DialogTitle>{pendingAgreementAction?.kind === "withdraw" ? "Withdraw proposal?" : "Discard agreement draft?"}</DialogTitle>
-						<DialogDescription>
-							{pendingAgreementAction?.kind === "withdraw"
-								? `${agreement?.pending?.deliveryState === "awaiting_approval" ? "The client’s approval link will stop working. " : ""}This proposed revision will move to agreement history. ${agreement?.active ? "The current approved agreement remains active for future visits." : "The quote and scheduled projects remain. The schedule can be edited again, and no recurring agreement will be active."}`
-								: `This private proposed revision will move to agreement history. It has not been sent to the client. ${agreement?.active ? "The current approved agreement remains active for future visits." : "The quote and scheduled projects remain. The schedule can be edited again, and no recurring agreement will be active."}`}
-						</DialogDescription>
-					</DialogHeader>
-					<DialogFooter showCloseButton>
-						<Button variant="destructive" disabled={isUpdatingPendingAgreement || !pendingAgreementTargetMatches} onClick={() => void handlePendingAgreementAction()}>
-							{isUpdatingPendingAgreement ? "Updating..." : pendingAgreementAction?.kind === "withdraw" ? "Withdraw proposal" : "Discard draft"}
-						</Button>
-					</DialogFooter>
-				</DialogContent>
-			</Dialog>
-
-			<Dialog
-				open={action !== null && actionIsAvailable && canManage}
-				onOpenChange={(open) => !open && setAction(null)}
-			>
-				<DialogContent className="max-w-lg">
-					<DialogHeader>
-						<DialogTitle>
-							{action === "end"
-								? "End recurring series?"
-								: action === "pause"
-									? "Pause recurring series?"
-									: "Resume recurring series?"}
-						</DialogTitle>
-						<DialogDescription>
-							{action === "end"
-								? "Upcoming unstarted visits will be cancelled. You can resume the series later from its original schedule."
-								: action === "pause"
-									? "Upcoming unstarted visits will be suspended. Resume follows the original schedule without backfilling."
-									: "Eligible upcoming visits will return to the planned state. The original schedule and end condition stay in place. Past cancelled visits stay cancelled."}
-						</DialogDescription>
-					</DialogHeader>
-					<div className="rounded-md bg-muted p-4">
-						{lifecyclePreview === undefined ? (
-							<Skeleton className="h-12" />
-						) : (
-							<>
-								{action === "resume" ? (
-									<>
-										<p className="text-sm font-medium tabular-nums">
-											Upcoming visits restored: {resumableFutureVisits}
-										</p>
-										{resumableFutureVisits === 0 && (
-											<p className="mt-1 text-sm text-muted-foreground">
-												No existing upcoming visits will be restored. If the saved
-												count or end date is exhausted, resuming adds no occurrences.
-												After resuming, restore a visit individually or edit the
-												schedule deliberately.
-											</p>
-										)}
-										<p className="text-sm text-muted-foreground tabular-nums">
-											Past cancellations retained: {pastCancelledVisits}
-										</p>
-										<p className="text-sm text-muted-foreground tabular-nums">
-											Protected visits unchanged: {lifecyclePreview.preserved}
-										</p>
-									</>
-								) : (
-									<>
-										<p className="text-sm font-medium tabular-nums">
-											Affected visits: {lifecyclePreview.count}
-										</p>
-										<p className="text-sm text-muted-foreground tabular-nums">
-											Preserved visits: {lifecyclePreview.preserved}
-										</p>
-									</>
-								)}
-								{lifecyclePreview.visits.slice(0, 4).map((visit) => (
-									<p
-										key={visit._id}
-										className="mt-1 truncate text-sm text-muted-foreground"
-									>
-										{visit.title}, {formatDate(visit.startDate)}
-									</p>
-								))}
-							</>
-						)}
-					</div>
-					<DialogFooter showCloseButton>
-						<Button
-							variant={action === "end" ? "destructive" : "default"}
-							disabled={isSaving || lifecyclePreview === undefined}
-							onClick={async () => {
-								if (!action || !lifecyclePreview) return;
-								setIsSaving(true);
-								try {
-									await lifecycle({
-										seriesId,
-										action,
-										expectedVersion: lifecyclePreview.revision,
-									});
-									toast.success(
-										action === "end"
-											? "Series ended"
-											: action === "pause"
-												? "Series paused"
-												: "Series resumed",
-										"The recurring schedule has been updated."
-									);
-									setAction(null);
-								} catch (error) {
-									toast.error(
-										"Update failed",
-										convexErrorMessage(error, "Refresh the page and try again.")
-									);
-								} finally {
-									setIsSaving(false);
-								}
-							}}
-						>
-							{isSaving
-								? "Updating..."
-								: action === "end"
-									? "End series"
-									: action === "pause"
-										? "Pause series"
-										: "Resume series"}
-						</Button>
-					</DialogFooter>
-				</DialogContent>
-			</Dialog>
+			{canManage && (
+				<SeriesLifecycleDialog
+					seriesId={seriesId}
+					timezone={series.timezone}
+					action={actionIsAvailable ? action : null}
+					onClose={() => setAction(null)}
+				/>
+			)}
 
 			{scheduleOpen && (
 				<Dialog open onOpenChange={setScheduleOpen}>
@@ -860,11 +309,11 @@ function SeriesPageContent() {
 							seriesId={seriesId}
 							startDate={Date.parse(`${series.anchorDateKey}T00:00:00Z`)}
 							initialRule={series.rule}
-							isSubmitting={isSaving}
+							isSubmitting={isUpdatingSchedule}
 							submitLabel="Update schedule"
 							onSubmit={async (rule, expectedVersion) => {
 								if (expectedVersion === undefined) return;
-								setIsSaving(true);
+								setIsUpdatingSchedule(true);
 								try {
 									await updateSchedule({ seriesId, rule, expectedVersion });
 									toast.success(
@@ -881,7 +330,7 @@ function SeriesPageContent() {
 										)
 									);
 								} finally {
-									setIsSaving(false);
+									setIsUpdatingSchedule(false);
 								}
 							}}
 						/>

@@ -441,6 +441,28 @@ describe("project series lifecycle", () => {
 		});
 	});
 
+	it("reports the first unsuppressed upcoming visit as next and keeps visits recurring", async () => {
+		const setup = await series();
+		const visits = await occurrences(setup.seriesId);
+		await setup.asUser.mutation(api.projects.update, {
+			id: setup.projectId,
+			status: "completed",
+		});
+		await setup.asUser.mutation(api.projectSeries.skip, {
+			projectId: visits[1]._id,
+		});
+		const detail = await setup.asUser.query(api.projectSeries.get, {
+			seriesId: setup.seriesId,
+		});
+		expect(detail?.nextVisit?._id).toBe(visits[2]._id);
+		await expect(
+			setup.asUser.mutation(api.projects.update, {
+				id: visits[2]._id,
+				projectType: "one-off",
+			})
+		).rejects.toThrow(/recurring/i);
+	});
+
 	it("propagates reusable fields while preserving a future occurrence override", async () => {
 		const setup = await series();
 		const rows = await occurrences(setup.seriesId);

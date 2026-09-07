@@ -10,6 +10,7 @@ import { MAX_GENERATED_TASKS } from "./lib/projectSeriesTasks";
 import { setupConvexTest } from "./test.setup";
 import {
 	createTestClient,
+	createTestClientContact,
 	createTestIdentity,
 	createTestOrg,
 } from "./test.helpers";
@@ -218,9 +219,9 @@ describe("recurring project quote copy-forward edges", () => {
 				.collect(),
 		);
 		expect(versions).toHaveLength(2);
-		expect(versions.find((version) => version._id === originalVersionId)).toEqual(
-			originalVersion,
-		);
+		expect(
+			versions.find((version) => version._id === originalVersionId),
+		).toEqual(originalVersion);
 		expect(versions.find((version) => version.version === 2)).toMatchObject({
 			sourceQuoteId: f.quoteId,
 			capturedFromQuoteId: laterSource._id,
@@ -254,10 +255,7 @@ describe("recurring project quote copy-forward edges", () => {
 			ctx.db
 				.query("projectSeriesQuoteCopies")
 				.withIndex("by_template", (q) =>
-					q.eq(
-						"templateId",
-						moved.projectSeriesQuoteTemplateId!,
-					),
+					q.eq("templateId", moved.projectSeriesQuoteTemplateId!),
 				)
 				.collect(),
 		);
@@ -269,7 +267,9 @@ describe("recurring project quote copy-forward edges", () => {
 			protected: true,
 		});
 		expect(deletedLedger?.quoteId).toBeUndefined();
-		expect(ledgers.find((row) => row.projectId === movedProject._id)).toMatchObject({
+		expect(
+			ledgers.find((row) => row.projectId === movedProject._id),
+		).toMatchObject({
 			state: "materialized",
 			protected: true,
 			quoteId: moved._id,
@@ -480,10 +480,9 @@ describe("recurring project quote copy-forward edges", () => {
 			date: START,
 			status: "pending",
 		});
-		const taskPreview = await f.user.query(
-			api.projectSeriesTasks.previewCopy,
-			{ taskId },
-		);
+		const taskPreview = await f.user.query(api.projectSeriesTasks.previewCopy, {
+			taskId,
+		});
 		await f.user.mutation(api.projectSeriesTasks.copy, {
 			taskId,
 			expectedRevision: taskPreview.revision,
@@ -502,7 +501,9 @@ describe("recurring project quote copy-forward edges", () => {
 		}
 
 		vi.setSystemTime(NOW + 120 * DAY);
-		const beforeGeneration = new Set((await visits(f)).map((project) => project._id));
+		const beforeGeneration = new Set(
+			(await visits(f)).map((project) => project._id),
+		);
 		const first = await t.mutation(internal.projectSeries.generate, {
 			orgId: f.orgId,
 			seriesId: f.seriesId,
@@ -520,7 +521,9 @@ describe("recurring project quote copy-forward edges", () => {
 					.withIndex("by_project", (q) => q.eq("projectId", project._id))
 					.collect(),
 			);
-			expect(tasks.filter((task) => task.title === "Generated checklist")).toHaveLength(1);
+			expect(
+				tasks.filter((task) => task.title === "Generated checklist"),
+			).toHaveLength(1);
 		}
 
 		let remaining = first.remaining;
@@ -541,4 +544,137 @@ describe("recurring project quote copy-forward edges", () => {
 		);
 		expect(new Set(occurrenceDates).size).toBe(occurrenceDates.length);
 	}, 30_000);
+
+	it("reprices copies inherited under an earlier agreement revision once the revision is approved", async () => {
+		const f = await fixture(3);
+		await t.run((ctx) =>
+			createTestClientContact(ctx, f.orgId, f.clientId, {
+				isPrimary: true,
+				email: "client@example.com",
+			}),
+		);
+		const quoteId = await f.user.mutation(api.quotes.create, {
+			clientId: f.clientId,
+			projectId: f.projectId,
+			status: "draft",
+			title: "Grounds care",
+			subtotal: 0,
+			total: 0,
+		});
+		await f.user.mutation(api.quoteLineItems.create, {
+			quoteId,
+			description: "Mow lawn",
+			quantity: 1,
+			unit: "visit",
+			rate: 75,
+			sortOrder: 0,
+		});
+		const paymentRule = {
+			type: "percentage" as const,
+			installments: [{ percentage: 100, dayOffset: 30 }],
+		};
+		const approve = async (sourceQuoteId: Id<"quotes">, providerId: string) => {
+			const setup = await f.user.query(api.projectSeriesAgreements.getSetup, {
+				quoteId: sourceQuoteId,
+			});
+			await f.user.mutation(api.projectSeriesAgreements.prepare, {
+				quoteId: sourceQuoteId,
+				billingMode: "per_visit",
+				paymentRule,
+				expectedSeriesRevision: setup.revision,
+			});
+			const data = await t.query(internal.pdfData._getQuoteRenderData, {
+				quoteId: sourceQuoteId,
+				orgId: f.orgId,
+			});
+			const storageId = await t.run((ctx) =>
+				ctx.storage.store(new Blob([providerId])),
+			);
+			const { documentId } = await t.mutation(
+				internal.pdfData._insertGeneratedDocument,
+				{
+					documentType: "quote",
+					documentId: sourceQuoteId,
+					orgId: f.orgId,
+					storageId,
+					quoteContentSnapshot: data.quoteContentSnapshot,
+				},
+			);
+			await f.user.mutation(internal.boldsign.reserveRecurringSignatureSend, {
+				quoteId: sourceQuoteId,
+				documentId,
+			});
+			await t.mutation(internal.boldsign.updateDocumentWithEmbeddedRequest, {
+				quoteId: sourceQuoteId,
+				documentId,
+				boldsignDocumentId: providerId,
+				recurringAgreementLocked: true,
+				sendUrl: "",
+				sendUrlExpiresAt: NOW,
+				sentTo: [],
+			});
+			await t.mutation(internal.boldsign.handleWebhook, {
+				boldsignDocumentId: providerId,
+				eventType: "Completed",
+			});
+		};
+		const copies = async () =>
+			t.run(async (ctx) =>
+				(
+					await ctx.db
+						.query("projectSeriesQuoteCopies")
+						.withIndex("by_series", (q) => q.eq("seriesId", f.seriesId))
+						.collect()
+				).map((ledger) => ledger.quoteId!),
+			);
+
+		await approve(quoteId, "agreement-v1");
+		const firstRevisionId = (await t.run((ctx) => ctx.db.get(f.seriesId)))!
+			.activeAgreementRevisionId!;
+		const original = await copies();
+		expect(original).toHaveLength(2);
+
+		const { quoteId: revisionQuoteId } = await f.user.mutation(
+			api.projectSeriesAgreements.createRevisionDraft,
+			{ seriesId: f.seriesId },
+		);
+		const revisionLine = await t.run((ctx) =>
+			ctx.db
+				.query("quoteLineItems")
+				.withIndex("by_quote", (q) => q.eq("quoteId", revisionQuoteId))
+				.first(),
+		);
+		await f.user.mutation(api.quoteLineItems.update, {
+			id: revisionLine!._id,
+			rate: 95,
+		});
+		await approve(revisionQuoteId, "agreement-v2");
+
+		const series = await t.run((ctx) => ctx.db.get(f.seriesId));
+		expect(series!.activeAgreementRevisionId).not.toBe(firstRevisionId);
+		expect(await copies()).toEqual(original);
+		for (const copyId of original) {
+			const [copy, lines] = await t.run(
+				async (ctx) =>
+					[
+						await ctx.db.get(copyId),
+						await ctx.db
+							.query("quoteLineItems")
+							.withIndex("by_quote", (q) => q.eq("quoteId", copyId))
+							.collect(),
+					] as const,
+			);
+			expect(copy).toMatchObject({
+				status: "approved",
+				total: 95,
+				recurringAgreementRevisionId: series!.activeAgreementRevisionId,
+			});
+			expect(copy!.latestDocumentId).toBeUndefined();
+			expect(lines.map((line) => line.rate)).toEqual([95]);
+		}
+		expect(await t.run((ctx) => ctx.db.get(quoteId))).toMatchObject({
+			status: "approved",
+			total: 75,
+		});
+	});
 });

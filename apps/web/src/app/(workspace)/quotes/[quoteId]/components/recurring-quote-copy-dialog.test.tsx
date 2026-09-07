@@ -10,11 +10,10 @@ import {
 import "@testing-library/jest-dom/vitest";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const mocks = vi.hoisted(() => ({
-  query: vi.fn(),
-  copy: vi.fn(),
-  success: vi.fn(),
-}));
+const mocks = vi.hoisted(() => {
+  const query = vi.fn();
+  return { query, client: { query }, copy: vi.fn(), success: vi.fn() };
+});
 
 vi.mock("@onetool/backend/convex/_generated/api", () => ({
   api: {
@@ -25,7 +24,7 @@ vi.mock("@onetool/backend/convex/_generated/api", () => ({
   },
 }));
 vi.mock("convex/react", () => ({
-  useConvex: () => ({ query: mocks.query }),
+  useConvex: () => mocks.client,
   useMutation: () => mocks.copy,
 }));
 vi.mock("@/hooks/use-toast", () => ({
@@ -89,7 +88,7 @@ describe("recurring quote copy dialog", () => {
       }),
     );
     expect(mocks.success).toHaveBeenCalledWith(
-      "Future quote setup saved",
+      "Drafts copied",
       "Created: 2. Updated: 1. Preserved: 3.",
     );
   });

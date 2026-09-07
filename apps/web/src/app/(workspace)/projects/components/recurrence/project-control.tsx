@@ -23,8 +23,12 @@ import { useToast } from "@/hooks/use-toast";
 import { convexErrorMessage } from "@/lib/convex-error";
 import { RecurrenceScheduleForm } from "./schedule-form";
 import { describeRecurrence, type RecurrenceRule } from "./rule";
+import { stateLabel } from "./labels";
 
-type RecurrenceProject = Pick<Doc<"projects">, "_id" | "title" | "projectType"> & {
+type RecurrenceProject = Pick<
+	Doc<"projects">,
+	"_id" | "title" | "projectType"
+> & {
 	startDate?: number | null;
 	recurringSeriesId?: Doc<"projects">["recurringSeriesId"] | null;
 	recurringState?: Doc<"projects">["recurringState"] | null;
@@ -52,7 +56,7 @@ function RecurringProjectSchedule({ project }: { project: RecurrenceProject }) {
 		api.projectSeries.get,
 		project.recurringSeriesId && canViewSeries
 			? { seriesId: project.recurringSeriesId }
-			: "skip"
+			: "skip",
 	);
 
 	if (project.recurringSeriesId) {
@@ -74,9 +78,11 @@ function RecurringProjectSchedule({ project }: { project: RecurrenceProject }) {
 							</p>
 							<div className="flex flex-wrap items-center gap-2">
 								<StatusBadge role="neutral" appearance="outline">
-									{seriesDetails?.series.state ??
-										project.recurringState ??
-										"recurring"}
+									{stateLabel(
+										seriesDetails?.series.state ??
+											project.recurringState ??
+											"Recurring",
+									)}
 								</StatusBadge>
 								{canViewSeries && seriesDetails && (
 									<Link
@@ -145,19 +151,19 @@ function RecurringProjectSchedule({ project }: { project: RecurrenceProject }) {
 									});
 									toast.success(
 										"Recurrence set up",
-										"Future visits are now scheduled."
+										"Future visits are now scheduled.",
 									);
 									setOpen(false);
 									router.push(
-										`/projects/series/${seriesId}?fromProjectId=${project._id}` as Route
+										`/projects/series/${seriesId}?fromProjectId=${project._id}` as Route,
 									);
 								} catch (error) {
 									toast.error(
 										"Setup failed",
 										convexErrorMessage(
 											error,
-											"Check the schedule and try again."
-										)
+											"Check the schedule and try again.",
+										),
 									);
 								} finally {
 									setIsSubmitting(false);

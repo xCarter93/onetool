@@ -10,6 +10,7 @@ import {
 import type { Id } from "../convex/_generated/dataModel";
 import { formatCurrency } from "./format";
 import { deriveInvoiceDisplayPricing } from "./invoicePricing";
+import { formatBillingPeriod } from "./recurringAgreementFormat";
 
 type InvoiceLineItem = {
 	_id: Id<"invoiceLineItems">;
@@ -36,6 +37,7 @@ type Invoice = {
 	taxAmount?: number;
 	total: number;
 	paidAt?: number;
+	recurringBillingPeriod?: string;
 	/** Column visibility chosen in the record page's pricing panel. */
 	pdfSettings?: {
 		showQuantities: boolean;
@@ -501,10 +503,14 @@ export const InvoicePDF: React.FC<InvoicePDFProps> = ({
 				{invoiceGroups && invoiceGroups.length > 0 && (
 					<View style={{ marginBottom: 16 }}>
 						<View style={styles.sectionBar}>
-							<Text style={styles.sectionBarText}>COVERED VISITS:</Text>
+							<Text style={styles.sectionBarText}>
+								{invoice.recurringBillingPeriod
+									? `COVERED VISITS (${formatBillingPeriod(invoice.recurringBillingPeriod).toUpperCase()}):`
+									: "COVERED VISITS:"}
+							</Text>
 						</View>
 						{invoiceGroups.map((group) => (
-							<View key={String(group.sourceProjectId)} style={styles.group} wrap={false}>
+							<View key={String(group.sourceQuoteId)} style={styles.group} wrap={false}>
 								<Text style={styles.groupHeading}>{group.projectTitle}</Text>
 								<Text style={styles.groupMeta}>Service date: {formatDate(group.serviceDate)}</Text>
 								{group.property && <Text style={styles.groupMeta}>{[group.property.name, group.property.address].filter(Boolean).join(" | ")}</Text>}

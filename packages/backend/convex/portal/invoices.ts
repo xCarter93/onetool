@@ -88,6 +88,8 @@ export type PortalInvoicePublic = {
 	taxRate: number | null;
 	total: number;
 	paidAt: number | null;
+	// "YYYY-MM" for monthly consolidated recurring invoices.
+	recurringBillingPeriod: string | null;
 };
 
 export type PortalInvoiceLineItemPublic = {
@@ -194,6 +196,7 @@ const portalInvoicePublicValidator = v.object({
 	taxRate: v.union(v.number(), v.null()),
 	total: v.number(),
 	paidAt: v.union(v.number(), v.null()),
+	recurringBillingPeriod: v.union(v.string(), v.null()),
 });
 
 const portalInvoiceLineItemValidator = v.object({
@@ -458,6 +461,7 @@ export const get = query({
 			taxRate: invoice.taxRate ?? null,
 			total: invoice.total,
 			paidAt: invoice.paidAt ?? null,
+			recurringBillingPeriod: invoice.recurringBillingPeriod ?? null,
 		};
 
 		const lineItemsPublic: PortalInvoiceLineItemPublic[] = lineItems.map(

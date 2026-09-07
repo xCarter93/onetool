@@ -6,6 +6,8 @@ import { useMutation } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
 import type { ProjectRecurrenceRule } from "@onetool/backend/convex/lib/projectRecurrence";
+import { DEFAULT_RECURRING_PAYMENT_RULE } from "@onetool/backend/convex/lib/recurringPaymentRules";
+import { formatRecurringSchedule } from "@onetool/backend/pdf/recurringAgreementFormat";
 import { FileSignature, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -16,10 +18,21 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from "@/components/ui/dialog";
-import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
+import {
+	Field,
+	FieldDescription,
+	FieldGroup,
+	FieldLabel,
+} from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from "@/components/ui/select";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { useToast } from "@/hooks/use-toast";
 import { convexErrorMessage } from "@/lib/convex-error";
@@ -30,12 +43,26 @@ import {
 } from "@/components/shared/recurring-payment-rule-editor";
 
 type BillingMode = "per_visit" | "monthly";
+type Frequency = ProjectRecurrenceRule["frequency"];
 type SavedAgreementTerms = {
 	scope: { title?: string; description?: string };
 	schedule: { rule: ProjectRecurrenceRule };
 	billingMode: BillingMode;
 	paymentRule: RecurringPaymentRuleValue;
 };
+
+// Approval copies this rule back onto the series, so keep every field the frequency does not own.
+function withFrequency(
+	rule: ProjectRecurrenceRule,
+	frequency: Frequency,
+): ProjectRecurrenceRule {
+	const { weekdays, monthDays, ordinalWeekday, ...rest } = rule;
+	if (frequency === "weekly")
+		return { ...rest, frequency, weekdays: weekdays?.length ? weekdays : [1] };
+	if (frequency === "daily") return { ...rest, frequency };
+	if (ordinalWeekday) return { ...rest, frequency, ordinalWeekday };
+	return { ...rest, frequency, monthDays: monthDays?.length ? monthDays : [1] };
+}
 
 export function RecurringAgreementSetupDialog({
 	quoteId,
@@ -48,7 +75,11 @@ export function RecurringAgreementSetupDialog({
 	quoteId: Id<"quotes">;
 	quoteTitle: string;
 	seriesRevision: number;
-	seriesSetup: { title: string; description?: string; rule: ProjectRecurrenceRule };
+	seriesSetup: {
+		title: string;
+		description?: string;
+		rule: ProjectRecurrenceRule;
+	};
 	savedTerms?: SavedAgreementTerms;
 	children: (openDialog: () => void) => ReactNode;
 }) {
@@ -56,19 +87,22 @@ export function RecurringAgreementSetupDialog({
 	const toast = useToast();
 	const [open, setOpen] = useState(false);
 	const [billingMode, setBillingMode] = useState<BillingMode>("per_visit");
-	const [paymentRule, setPaymentRule] = useState<RecurringPaymentRuleValue>({
-		type: "percentage",
-		installments: [{ percentage: 100, dayOffset: 30 }],
-	});
+	const [paymentRule, setPaymentRule] = useState<RecurringPaymentRuleValue>(
+		DEFAULT_RECURRING_PAYMENT_RULE,
+	);
 	const [scopeTitle, setScopeTitle] = useState(seriesSetup.title);
-	const [scopeDescription, setScopeDescription] = useState(seriesSetup.description ?? "");
+	const [scopeDescription, setScopeDescription] = useState(
+		seriesSetup.description ?? "",
+	);
 	const [proposedRule, setProposedRule] = useState(seriesSetup.rule);
 	const [error, setError] = useState<string | null>(null);
 	const [isSubmitting, setIsSubmitting] = useState(false);
 
+	const intervalValid =
+		Number.isSafeInteger(proposedRule.interval) && proposedRule.interval >= 1;
+
 	const submit = async () => {
-		if (isSubmitting || recurringPaymentRuleError(paymentRule))
-			return;
+		if (isSubmitting || recurringPaymentRuleError(paymentRule)) return;
 		setIsSubmitting(true);
 		setError(null);
 		try {
@@ -77,16 +111,21 @@ export function RecurringAgreementSetupDialog({
 				billingMode,
 				paymentRule,
 				expectedSeriesRevision: seriesRevision,
-				proposedScope: { title: scopeTitle.trim(), description: scopeDescription.trim() || null },
+				proposedScope: {
+					title: scopeTitle.trim(),
+					description: scopeDescription.trim() || null,
+				},
 				proposedRule,
 			});
 			setOpen(false);
 			toast.success(
-				"Agreement prepared",
-				"Generate the approval PDF, then send it to your client."
+				"Agreement set up",
+				"Generate the approval PDF from this quote, then send it to your client.",
 			);
 		} catch (nextError) {
-			setError(convexErrorMessage(nextError, "Review the series and try again."));
+			setError(
+				convexErrorMessage(nextError, "Review the series and try again."),
+			);
 		} finally {
 			setIsSubmitting(false);
 		}
@@ -97,38 +136,66 @@ export function RecurringAgreementSetupDialog({
 			{children(() => {
 				setError(null);
 				setScopeTitle(savedTerms?.scope.title ?? seriesSetup.title);
-				setScopeDescription(savedTerms ? savedTerms.scope.description ?? "" : seriesSetup.description ?? "");
+				setScopeDescription(
+					savedTerms
+						? (savedTerms.scope.description ?? "")
+						: (seriesSetup.description ?? ""),
+				);
 				setProposedRule(savedTerms?.schedule.rule ?? seriesSetup.rule);
 				setBillingMode(savedTerms?.billingMode ?? "per_visit");
-				setPaymentRule(savedTerms?.paymentRule ?? {
-					type: "percentage",
-					installments: [{ percentage: 100, dayOffset: 30 }],
-				});
+				setPaymentRule(
+					savedTerms?.paymentRule ?? DEFAULT_RECURRING_PAYMENT_RULE,
+				);
 				setOpen(true);
 			})}
-			<Dialog open={open} onOpenChange={(nextOpen) => !isSubmitting && setOpen(nextOpen)}>
+			<Dialog
+				open={open}
+				onOpenChange={(nextOpen) => !isSubmitting && setOpen(nextOpen)}
+			>
 				<DialogContent className="max-w-lg">
 					<DialogHeader>
 						<DialogTitle>Set up recurring agreement</DialogTitle>
 						<DialogDescription>
-							Use “{quoteTitle}” as the service and price for this series. Your client approves the agreement once.
+							Use “{quoteTitle}” as the service and price for this series. Your
+							client approves the agreement once.
 						</DialogDescription>
 					</DialogHeader>
 
 					<FieldGroup className="gap-6">
 						<FieldGroup className="grid gap-4 sm:grid-cols-2">
 							<Field className="sm:col-span-2">
-								<FieldLabel htmlFor="agreement-scope-title">Service scope</FieldLabel>
-								<Input id="agreement-scope-title" value={scopeTitle} onChange={(event) => setScopeTitle(event.target.value)} />
+								<FieldLabel htmlFor="agreement-scope-title">
+									Service scope
+								</FieldLabel>
+								<Input
+									id="agreement-scope-title"
+									value={scopeTitle}
+									onChange={(event) => setScopeTitle(event.target.value)}
+								/>
 							</Field>
 							<Field className="sm:col-span-2">
-								<FieldLabel htmlFor="agreement-scope-description">Scope details</FieldLabel>
-								<Textarea id="agreement-scope-description" value={scopeDescription} onChange={(event) => setScopeDescription(event.target.value)} />
+								<FieldLabel htmlFor="agreement-scope-description">
+									Scope details
+								</FieldLabel>
+								<Textarea
+									id="agreement-scope-description"
+									value={scopeDescription}
+									onChange={(event) => setScopeDescription(event.target.value)}
+								/>
 							</Field>
 							<Field>
 								<FieldLabel htmlFor="agreement-frequency">Frequency</FieldLabel>
-								<Select value={proposedRule.frequency} onValueChange={(frequency) => setProposedRule({ frequency: frequency as ProjectRecurrenceRule["frequency"], interval: proposedRule.interval, ...(frequency === "weekly" ? { weekdays: proposedRule.weekdays?.length ? proposedRule.weekdays : [1] } : {}), ...(frequency === "monthly" || frequency === "yearly" ? { monthDays: proposedRule.monthDays?.length ? proposedRule.monthDays : [1] } : {}) })}>
-									<SelectTrigger id="agreement-frequency"><SelectValue /></SelectTrigger>
+								<Select
+									value={proposedRule.frequency}
+									onValueChange={(frequency) =>
+										setProposedRule(
+											withFrequency(proposedRule, frequency as Frequency),
+										)
+									}
+								>
+									<SelectTrigger id="agreement-frequency">
+										<SelectValue />
+									</SelectTrigger>
 									<SelectContent>
 										<SelectItem value="daily">Daily</SelectItem>
 										<SelectItem value="weekly">Weekly</SelectItem>
@@ -139,8 +206,25 @@ export function RecurringAgreementSetupDialog({
 							</Field>
 							<Field>
 								<FieldLabel htmlFor="agreement-interval">Every</FieldLabel>
-								<Input id="agreement-interval" type="number" min={1} step={1} value={proposedRule.interval} onChange={(event) => setProposedRule({ ...proposedRule, interval: Number(event.target.value) })} />
+								<Input
+									id="agreement-interval"
+									type="number"
+									min={1}
+									step={1}
+									value={proposedRule.interval}
+									onChange={(event) =>
+										setProposedRule({
+											...proposedRule,
+											interval: Number(event.target.value),
+										})
+									}
+								/>
 							</Field>
+							<FieldDescription className="sm:col-span-2">
+								{intervalValid
+									? `Client approves: ${formatRecurringSchedule(proposedRule)}.`
+									: "Enter how often visits repeat."}
+							</FieldDescription>
 						</FieldGroup>
 						<Field>
 							<FieldLabel>Billing rhythm</FieldLabel>
@@ -153,24 +237,34 @@ export function RecurringAgreementSetupDialog({
 									<RadioGroupItem value="per_visit" />
 									<span>
 										<span className="block text-sm font-medium">Per visit</span>
-										<span className="block text-sm text-muted-foreground">Draft one invoice after each completed visit.</span>
+										<span className="block text-sm text-muted-foreground">
+											Draft one invoice after each completed visit.
+										</span>
 									</span>
 								</label>
 								<label className="flex min-h-11 cursor-pointer items-start gap-3 rounded-md border border-border p-3 has-data-checked:border-primary">
 									<RadioGroupItem value="monthly" />
 									<span>
 										<span className="block text-sm font-medium">Monthly</span>
-										<span className="block text-sm text-muted-foreground">Combine completed visits into a monthly draft.</span>
+										<span className="block text-sm text-muted-foreground">
+											Combine completed visits into a monthly draft.
+										</span>
 									</span>
 								</label>
 							</RadioGroup>
 						</Field>
 
-						<RecurringPaymentRuleEditor value={paymentRule} onChange={setPaymentRule} />
+						<RecurringPaymentRuleEditor
+							value={paymentRule}
+							onChange={setPaymentRule}
+						/>
 					</FieldGroup>
 
 					{error && (
-						<div role="alert" className="rounded-md border border-danger/30 bg-danger/10 p-3 text-sm text-danger-fg">
+						<div
+							role="alert"
+							className="rounded-md border border-danger/30 bg-danger/10 p-3 text-sm text-danger-foreground"
+						>
 							{error}
 						</div>
 					)}
@@ -178,10 +272,19 @@ export function RecurringAgreementSetupDialog({
 					<DialogFooter showCloseButton>
 						<Button
 							className="min-h-11"
-							disabled={isSubmitting || !scopeTitle.trim() || !Number.isSafeInteger(proposedRule.interval) || proposedRule.interval < 1 || Boolean(recurringPaymentRuleError(paymentRule))}
+							disabled={
+								isSubmitting ||
+								!scopeTitle.trim() ||
+								!intervalValid ||
+								Boolean(recurringPaymentRuleError(paymentRule))
+							}
 							onClick={() => void submit()}
 						>
-							{isSubmitting ? <Loader2 className="size-4 animate-spin motion-reduce:animate-none" /> : <FileSignature className="size-4" />}
+							{isSubmitting ? (
+								<Loader2 className="size-4 animate-spin motion-reduce:animate-none" />
+							) : (
+								<FileSignature className="size-4" />
+							)}
 							Set up agreement
 						</Button>
 					</DialogFooter>

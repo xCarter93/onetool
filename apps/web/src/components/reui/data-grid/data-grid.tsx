@@ -438,7 +438,8 @@ function DataGridProvider<TData extends object>({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [
       autoSize,
-      // Live data and column identities must republish for compiled consumers.
+      // Local patch (not upstream): data and column identities must republish
+      // for memoized/compiled consumers.
       table.options.data,
       table.options.columns,
       props.recordCount,

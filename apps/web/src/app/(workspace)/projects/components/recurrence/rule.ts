@@ -34,7 +34,7 @@ export const DEFAULT_RECURRENCE_FORM: RecurrenceFormValue = {
 
 export function applyPreset(
 	value: RecurrenceFormValue,
-	preset: RecurrenceFormValue["preset"]
+	preset: RecurrenceFormValue["preset"],
 ): RecurrenceFormValue {
 	if (preset === "custom") return { ...value, preset };
 	const frequency = preset === "biweekly" ? "weekly" : preset;
@@ -47,7 +47,7 @@ export function applyPreset(
 }
 
 export function serializeRecurrenceRule(
-	value: RecurrenceFormValue
+	value: RecurrenceFormValue,
 ): RecurrenceRule {
 	const rule: RecurrenceRule = {
 		frequency: value.frequency,
@@ -74,7 +74,7 @@ export function serializeRecurrenceRule(
 }
 
 export function recurrenceRuleToForm(
-	rule: RecurrenceRule
+	rule: RecurrenceRule,
 ): RecurrenceFormValue {
 	return {
 		...DEFAULT_RECURRENCE_FORM,
@@ -94,7 +94,7 @@ export function recurrenceRuleToForm(
 }
 
 export function validateRecurrenceForm(
-	value: RecurrenceFormValue
+	value: RecurrenceFormValue,
 ): string | null {
 	if (
 		!Number.isInteger(value.interval) ||

@@ -62,6 +62,7 @@ import type { Route } from "next";
 import { useMutation } from "convex/react";
 import { useQuery } from "convex-helpers/react/cache/hooks";
 import { useActivitySparklines } from "@/hooks/use-activity-sparklines";
+import { stateLabel } from "./components/recurrence/labels";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { useIsOrgSwitching } from "@/hooks/use-is-org-switching";
 import { useToast } from "@/hooks/use-toast";
@@ -101,7 +102,6 @@ type ProjectKanbanItem = {
 	projectNumber?: string | null;
 	recurringSeriesId?: Id<"projectSeries">;
 	recurringState?: "paused" | "skipped" | "ended";
-	seriesTitle?: string;
 };
 
 type ProjectKanbanColumn = {
@@ -223,14 +223,36 @@ const createColumns = (
 		header: "Series",
 		cell: ({ row }) => {
 			const seriesId = row.original.recurringSeriesId;
-			if (!seriesId) return <span className="text-muted-foreground">One-off</span>;
+			if (!seriesId) {
+				return <span className="text-muted-foreground">One-off</span>;
+			}
 			const badge = (
 				<StatusBadge role="neutral" appearance="outline">
 					<Repeat className="size-3.5" />
 					Recurring
 				</StatusBadge>
 			);
-			return <div className="flex flex-wrap gap-2">{canViewSeries ? <Link href={`/projects/series/${seriesId}` as Route} title={seriesTitles.get(seriesId)} onClick={(event) => event.stopPropagation()}>{badge}</Link> : badge}{row.original.recurringState && <StatusBadge role="neutral" appearance="outline">{row.original.recurringState}</StatusBadge>}</div>;
+			return (
+				<div className="flex flex-wrap gap-2">
+					{canViewSeries ? (
+						<Link
+							href={`/projects/series/${seriesId}` as Route}
+							title={seriesTitles.get(seriesId)}
+							className="rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring"
+							onClick={(event) => event.stopPropagation()}
+						>
+							{badge}
+						</Link>
+					) : (
+						badge
+					)}
+					{row.original.recurringState && (
+						<StatusBadge role="neutral" appearance="outline">
+							{stateLabel(row.original.recurringState)}
+						</StatusBadge>
+					)}
+				</div>
+			);
 		},
 	},
 	{
@@ -323,7 +345,12 @@ function ProjectsPageContent() {
 	const [previewOpen, setPreviewOpen] = useState(false);
 	const deleteProject = useMutation(api.projects.remove);
 	const updateProjectStatus = useMutation(api.projects.update);
-	const [kanbanData, setKanbanData] = useState<ProjectKanbanItem[]>([]);
+	type ProjectStatus = Doc<"projects">["status"];
+	// Optimistic drag moves; each applies only while the server still reports
+	// the status the card was dragged from.
+	const [columnMoves, setColumnMoves] = useState<
+		Record<string, { from: ProjectStatus; to: ProjectStatus }>
+	>({});
 	const isOrgSwitching = useIsOrgSwitching();
 	const toast = useToast();
 	const { can, hasAllRecords } = usePermissions();
@@ -411,26 +438,28 @@ function ProjectsPageContent() {
 		return statusMap;
 	}, [data]);
 
-	React.useEffect(() => {
-		setKanbanData(
-			searchedData.map((project) => ({
-				id: project._id,
-				name: project.title,
-				column: project.status,
-				status: project.status,
-				clientName: project.client?.companyName,
-				projectType: project.projectType,
-				startDate: project.startDate,
-				endDate: project.endDate,
-				projectNumber: project.projectNumber ?? null,
-				recurringSeriesId: project.recurringSeriesId,
-				recurringState: project.recurringState,
-				seriesTitle: project.recurringSeriesId
-					? seriesTitles.get(project.recurringSeriesId)
-					: undefined,
-			}))
-		);
-	}, [searchedData, seriesTitles]);
+	const kanbanData = React.useMemo<ProjectKanbanItem[]>(
+		() =>
+			searchedData.map((project) => {
+				const move = columnMoves[project._id];
+				const status =
+					move && move.from === project.status ? move.to : project.status;
+				return {
+					id: project._id,
+					name: project.title,
+					column: status,
+					status,
+					clientName: project.client?.companyName,
+					projectType: project.projectType,
+					startDate: project.startDate,
+					endDate: project.endDate,
+					projectNumber: project.projectNumber ?? null,
+					recurringSeriesId: project.recurringSeriesId,
+					recurringState: project.recurringState,
+				};
+			}),
+		[searchedData, columnMoves]
+	);
 
 	// Loading state. `clients` may stay undefined forever without the grant,
 	// so it isn't part of the gate — only `projects` blocks the table.
@@ -474,12 +503,14 @@ function ProjectsPageContent() {
 		onPaginationChange: setPagination,
 	});
 
-	// Reset to first page when the filtered/searched set changes
-	React.useEffect(() => {
-		setPagination((prev) =>
-			prev.pageIndex === 0 ? prev : { ...prev, pageIndex: 0 }
-		);
-	}, [query, filters, searchedData.length]);
+	// Back to page one whenever the result set changes (adjust-during-render).
+	const resultKey = `${query}\u0000${searchedData.length}\u0000${JSON.stringify(filters)}`;
+	const [prevResultKey, setPrevResultKey] = React.useState(resultKey);
+	if (resultKey !== prevResultKey) {
+		setPrevResultKey(resultKey);
+		if (pagination.pageIndex !== 0)
+			setPagination((prev) => ({ ...prev, pageIndex: 0 }));
+	}
 
 	// Filter field configuration for the advanced filter builder
 	const filterFields: FilterFieldConfig<unknown>[] = React.useMemo(() => {
@@ -554,9 +585,18 @@ function ProjectsPageContent() {
 	// optimistic; the DB write happens once on drop via handleKanbanDragEnd.
 	const handleKanbanDataChange = React.useCallback(
 		(nextData: ProjectKanbanItem[]) => {
-			setKanbanData(nextData);
+			setColumnMoves((prev) => {
+				const next = { ...prev };
+				for (const card of nextData) {
+					const from = projectStatusMap.get(card.id);
+					if (!from) continue;
+					if (card.column === from) delete next[card.id];
+					else next[card.id] = { from, to: card.column };
+				}
+				return next;
+			});
 		},
-		[]
+		[projectStatusMap]
 	);
 
 	// Latest drop per card; a failed older write must not undo a newer drop.
@@ -575,15 +615,12 @@ function ProjectsPageContent() {
 					status: item.column,
 				}).catch((error) => {
 					console.error("Failed to update project status:", error);
-					// A rejected write changes no server data, so the sync effect never re-fires.
 					if (moveTokens.current.get(item.id) !== token) return;
-					setKanbanData((prev) =>
-						prev.map((card) =>
-							card.id === item.id
-								? { ...card, column: originalStatus, status: originalStatus }
-								: card
-						)
-					);
+					setColumnMoves((prev) => {
+						const next = { ...prev };
+						delete next[item.id];
+						return next;
+					});
 					toast.error(
 						"Update Failed",
 						convexErrorMessage(error, "Failed to update project status")
@@ -843,7 +880,11 @@ function ProjectsPageContent() {
 																			<StatusBadge role="neutral" appearance="outline" className="w-fit">
 																				<Repeat className="size-3.5" /> Recurring
 																			</StatusBadge>
-																			{item.recurringState && <StatusBadge role="neutral" appearance="outline" className="w-fit">{item.recurringState}</StatusBadge>}
+																			{item.recurringState && (
+																				<StatusBadge role="neutral" appearance="outline" className="w-fit">
+																					{stateLabel(item.recurringState)}
+																				</StatusBadge>
+																			)}
 																		</div>
 																	)}
 																<div className="text-muted-foreground flex flex-wrap items-center gap-1.5 text-xs">

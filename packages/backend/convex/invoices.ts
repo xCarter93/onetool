@@ -44,7 +44,7 @@ import { formatEmailFrom } from "./lib/emailFrom";
 import { maybeEnqueueQboSync } from "./lib/quickbooksEnqueue";
 import { calculateInvoiceTotals, syncInvoiceTotals } from "./lib/invoiceTotals";
 import { writeRecurringInvoiceDraft } from "./lib/recurringInvoiceDraft";
-import { assertQuoteAvailableForBilling, recordQuoteBillingAllocation } from "./lib/recurringBilling";
+import { assertQuoteAvailableForBilling } from "./lib/recurringBilling";
 import { invoiceGroupProjectionValidator, isInvoiceInActorScope, projectInvoiceGroups } from "./lib/invoiceGroups";
 import { assertInvoiceContentEditable } from "./lib/editLocks";
 import { getOrgTimezoneById } from "./lib/organization";
@@ -589,7 +589,7 @@ export const update = userMutation({
 		const statusChanging = newStatus !== undefined && newStatus !== oldStatus;
 		const fieldUpdates: Partial<InvoiceDocument> = { ...filteredUpdates };
 		delete fieldUpdates.status;
-		if (updates.dueDate !== undefined && currentInvoice.recurringPaymentRule) {
+		if (updates.dueDate !== undefined && updates.dueDate !== currentInvoice.dueDate && currentInvoice.recurringPaymentRule) {
 			fieldUpdates.paymentScheduleIsCustom = true;
 			const paymentRows = await ctx.db.query("payments").withIndex("by_invoice_sort", (q) => q.eq("invoiceId", id)).collect();
 			const pending = paymentRows
@@ -997,6 +997,13 @@ export const remove = userMutation({
 		for (const lineItem of lineItems) {
 			await ctx.db.delete(lineItem._id);
 		}
+		const groups = await ctx.db
+			.query("invoiceGroups")
+			.withIndex("by_invoice", (q) => q.eq("invoiceId", args.id))
+			.collect();
+		for (const group of groups) {
+			await ctx.db.delete(group._id);
+		}
 
 		await ctx.db.delete(args.id);
 
@@ -1178,7 +1185,6 @@ export const createFromQuote = userMutation({
 				quotes: [quote],
 				issuedDate,
 				dueDate,
-				paymentScheduleIsCustom: args.dueDate !== undefined,
 			});
 			const invoice = await ctx.db.get(invoiceId);
 			if (invoice) {
@@ -1303,7 +1309,6 @@ export const createFromQuote = userMutation({
 			sortOrder: 0,
 			status: "pending",
 		});
-		await recordQuoteBillingAllocation(ctx, quote, invoiceId);
 
 		return invoiceId;
 	},

@@ -147,7 +147,7 @@ describe("future quote setup", () => {
       }),
     );
     expect(mocks.success).toHaveBeenCalledWith(
-      "Future quote setup stopped",
+      "Copying stopped",
       "Existing quote copies remain unchanged.",
     );
   });

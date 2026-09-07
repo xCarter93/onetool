@@ -148,6 +148,7 @@ export function ProjectDetailSidebar({
 	const [editAssignedUsers, setEditAssignedUsers] = useState<string[]>([]);
 	const startEditing = (field: EditingField, currentValue: string) => {
 		if (!canModify || (field === "status" && statusNeedsRecovery)) return;
+		if (field === "projectType" && project.recurringSeriesId) return;
 		setEditingField(field);
 		setEditValue(currentValue);
 	};
@@ -355,7 +356,7 @@ export function ProjectDetailSidebar({
 					</div>
 					{editingField === "projectType"
 						? renderActions(() => saveField("projectType", editValue))
-						: renderPencil()
+						: project.recurringSeriesId ? null : renderPencil()
 					}
 				</div>
 

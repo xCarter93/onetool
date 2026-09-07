@@ -430,17 +430,48 @@ function InvoiceDetailPageContent() {
 							<Alert variant="warning" className="border-0 bg-warning/5 shadow-none [&>svg]:text-warning-foreground">
 								<ExclamationTriangleIcon />
 								<AlertTitle>Review recurring invoice pricing</AlertTitle>
-								{canResolveRecurringReview && <AlertAction><Button size="xs" variant="outline" onClick={handleKeepExistingInvoice} disabled={isKeepingInvoice}>{isKeepingInvoice ? "Keeping..." : "Keep this invoice"}</Button></AlertAction>}
+								{canResolveRecurringReview && (
+									<AlertAction>
+										<Button size="xs" variant="outline" onClick={handleKeepExistingInvoice} disabled={isKeepingInvoice}>
+											{isKeepingInvoice ? "Keeping..." : "Keep this invoice"}
+										</Button>
+									</AlertAction>
+								)}
 								<AlertDescription>
 									A source visit changed after this invoice was drafted. Review the covered visit totals before sending. Keeping this invoice preserves its current content and payment history.
-									{invoiceGroups && invoiceGroups.length > 0 && <span className="mt-2 flex flex-wrap gap-x-3 gap-y-1">{invoiceGroups.map((group) => <Link key={group._id} href={`/projects/${group.sourceProjectId}`} className="font-medium text-foreground underline underline-offset-2">{group.projectTitle}</Link>)}</span>}
+									{invoiceGroups && invoiceGroups.length > 0 && (
+										<span className="mt-2 flex flex-wrap gap-x-3 gap-y-1">
+											{invoiceGroups.map((group) => (
+												<Link key={group._id} href={`/projects/${group.sourceProjectId}`} className="font-medium text-foreground underline underline-offset-2">
+													{group.projectTitle}
+												</Link>
+											))}
+										</span>
+									)}
 								</AlertDescription>
 							</Alert>
 						</FramePanel>
 					</Frame>
 				)}
 				{recurringScheduleNeedsReview && (
-					<Frame><FramePanel className="overflow-hidden p-0!"><Alert variant="warning" className="border-0 bg-warning/5 shadow-none [&>svg]:text-warning-foreground"><ExclamationTriangleIcon /><AlertTitle>Review this payment schedule before sending</AlertTitle>{can("invoices", "modify") && <AlertAction><Button size="xs" variant="outline" onClick={() => setIsPaymentsModalOpen(true)}>Configure payments</Button></AlertAction>}<AlertDescription>The agreement&apos;s fixed installments exceed this invoice total. Set an invoice-specific schedule before sending.</AlertDescription></Alert></FramePanel></Frame>
+					<Frame>
+						<FramePanel className="overflow-hidden p-0!">
+							<Alert variant="warning" className="border-0 bg-warning/5 shadow-none [&>svg]:text-warning-foreground">
+								<ExclamationTriangleIcon />
+								<AlertTitle>Review this payment schedule before sending</AlertTitle>
+								{can("invoices", "modify") && (
+									<AlertAction>
+										<Button size="xs" variant="outline" onClick={() => setIsPaymentsModalOpen(true)}>
+											Configure payments
+										</Button>
+									</AlertAction>
+								)}
+								<AlertDescription>
+									The agreement&apos;s fixed installments exceed this invoice total. Set an invoice-specific schedule before sending.
+								</AlertDescription>
+							</Alert>
+						</FramePanel>
+					</Frame>
 				)}
 
 				{/* Tabs + Sidebar */}

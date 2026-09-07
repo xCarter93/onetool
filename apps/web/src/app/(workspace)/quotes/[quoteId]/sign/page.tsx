@@ -575,7 +575,7 @@ function RecurringAgreementSignContent({
 					</dl>
 
 					{error && (
-						<p role="alert" className="rounded-md border border-danger/30 bg-danger/10 p-3 text-sm text-danger-fg">
+						<p role="alert" className="rounded-md border border-danger/30 bg-danger/10 p-3 text-sm text-danger-foreground">
 							{error}
 						</p>
 					)}
@@ -599,6 +599,7 @@ function RecurringAgreementSignContent({
 function QuoteSignPageContent() {
 	const params = useParams<{ quoteId: string }>();
 	const quoteId = params.quoteId as Id<"quotes">;
+	const router = useRouter();
 	const quote = useQuery(api.quotes.get, { id: quoteId });
 
 	if (quote === undefined) {
@@ -609,7 +610,16 @@ function QuoteSignPageContent() {
 			</div>
 		);
 	}
-	if (quote === null) return null;
+	if (quote === null) {
+		return (
+			<div className="space-y-4 px-6 py-8">
+				<p className="text-sm text-muted-foreground">This quote is not available.</p>
+				<Button variant="ghost" onClick={() => router.push("/quotes")}>
+					<ArrowLeft className="size-4" /> Back to quotes
+				</Button>
+			</div>
+		);
+	}
 	if (quote.recurringAgreementTerms)
 		return <RecurringAgreementSignContent quote={quote} />;
 	return <OneOffQuoteSignContent />;

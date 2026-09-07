@@ -317,10 +317,7 @@ export const update = userMutation({
 		// Get payment and validate access
 		const payment = await ctx.orgEntity("payments", id);
 		const parentInvoice = await validateInvoiceAccess(ctx, payment.invoiceId, ctx.orgId);
-		await ctx.requireRecordScope("invoices", {
-			projectId: parentInvoice.projectId,
-			clientId: parentInvoice.clientId,
-		});
+		await ctx.requireRecordScope("invoices", () => isInvoiceInActorScope(ctx, parentInvoice));
 
 		// Cannot update paid payments
 		if (payment.status === "paid") {
@@ -369,10 +366,7 @@ export const remove = userMutation({
 		await ctx.requireLevel("invoices", "delete");
 		const payment = await ctx.orgEntity("payments", args.id);
 		const parentInvoice = await validateInvoiceAccess(ctx, payment.invoiceId, ctx.orgId);
-		await ctx.requireRecordScope("invoices", {
-			projectId: parentInvoice.projectId,
-			clientId: parentInvoice.clientId,
-		});
+		await ctx.requireRecordScope("invoices", () => isInvoiceInActorScope(ctx, parentInvoice));
 
 		// Cannot delete paid payments
 		if (payment.status === "paid") {
@@ -435,10 +429,7 @@ async function configurePaymentsHandler(
 		await ctx.requireLevel("invoices", "modify");
 		// Validate invoice access
 		const parentInvoice = await validateInvoiceAccess(ctx, args.invoiceId, ctx.orgId);
-		await ctx.requireRecordScope("invoices", {
-			projectId: parentInvoice.projectId,
-			clientId: parentInvoice.clientId,
-		});
+		await ctx.requireRecordScope("invoices", () => isInvoiceInActorScope(ctx, parentInvoice));
 
 		// Get existing payments
 		const existingPayments = await ctx.db
@@ -654,10 +645,7 @@ export const createDefaultPayment = userMutation({
 		await ctx.requireLevel("invoices", "modify");
 		// Validate invoice access
 		const invoice = await validateInvoiceAccess(ctx, args.invoiceId, ctx.orgId);
-		await ctx.requireRecordScope("invoices", {
-			projectId: invoice.projectId,
-			clientId: invoice.clientId,
-		});
+		await ctx.requireRecordScope("invoices", () => isInvoiceInActorScope(ctx, invoice));
 
 		// Check if payments already exist
 		const existingPayments = await ctx.db
@@ -717,10 +705,7 @@ export const recordManualPayment = userMutation({
 	): Promise<{ invoicePaid: boolean; remaining: number }> => {
 		await ctx.requireLevel("invoices", "modify");
 		const invoice = await validateInvoiceAccess(ctx, args.invoiceId, ctx.orgId);
-		await ctx.requireRecordScope("invoices", {
-			projectId: invoice.projectId,
-			clientId: invoice.clientId,
-		});
+		await ctx.requireRecordScope("invoices", () => isInvoiceInActorScope(ctx, invoice));
 
 		if (invoice.status === "paid" || invoice.status === "cancelled") {
 			throw new ConvexError({
@@ -917,10 +902,7 @@ export const reorder = userMutation({
 	handler: async (ctx, args): Promise<void> => {
 		await ctx.requireLevel("invoices", "modify");
 		const parentInvoice = await validateInvoiceAccess(ctx, args.invoiceId);
-		await ctx.requireRecordScope("invoices", {
-			projectId: parentInvoice.projectId,
-			clientId: parentInvoice.clientId,
-		});
+		await ctx.requireRecordScope("invoices", () => isInvoiceInActorScope(ctx, parentInvoice));
 
 		// Validate that all payments belong to the invoice
 		for (const paymentId of args.paymentIds) {
@@ -951,10 +933,7 @@ export const markAsSent = userMutation({
 		await ctx.requireLevel("invoices", "modify");
 		const payment = await ctx.orgEntity("payments", args.id);
 		const parentInvoice = await validateInvoiceAccess(ctx, payment.invoiceId, ctx.orgId);
-		await ctx.requireRecordScope("invoices", {
-			projectId: parentInvoice.projectId,
-			clientId: parentInvoice.clientId,
-		});
+		await ctx.requireRecordScope("invoices", () => isInvoiceInActorScope(ctx, parentInvoice));
 
 		if (payment.status === "paid") {
 			throw new Error("Cannot send a paid payment");
@@ -1661,10 +1640,7 @@ export const cancel = userMutation({
 		await ctx.requireLevel("invoices", "delete");
 		const payment = await ctx.orgEntity("payments", args.id);
 		const parentInvoice = await validateInvoiceAccess(ctx, payment.invoiceId, ctx.orgId);
-		await ctx.requireRecordScope("invoices", {
-			projectId: parentInvoice.projectId,
-			clientId: parentInvoice.clientId,
-		});
+		await ctx.requireRecordScope("invoices", () => isInvoiceInActorScope(ctx, parentInvoice));
 
 		if (payment.status === "paid") {
 			throw new Error("Cannot cancel a paid payment");

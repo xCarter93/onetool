@@ -46,7 +46,7 @@ describe("RecordTasksTab", () => {
 		vi.useFakeTimers({ toFake: ["Date"] });
 		vi.setSystemTime(new Date("2026-09-06T12:00:00Z"));
 		const formatDate = Date.prototype.toLocaleDateString;
-		vi.spyOn(Date.prototype, "toLocaleDateString").mockImplementation(function (locales, options) {
+		vi.spyOn(Date.prototype, "toLocaleDateString").mockImplementation(function (this: Date, locales, options) {
 			return formatDate.call(this, locales, { timeZone: "America/New_York", ...options });
 		});
 		const task = {

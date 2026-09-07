@@ -700,6 +700,9 @@ export const update = userMutation({
 			() => currentProject.assignedUserIds?.includes(ctx.user._id) ?? false
 		);
 		const oldStatus = currentProject.status;
+		if (currentProject.recurringSeriesId && filteredUpdates.projectType === "one-off") {
+			throw new Error("A visit in a recurring series must stay a recurring project");
+		}
 		if (
 			currentProject.recurringState &&
 			filteredUpdates.status &&

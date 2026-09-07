@@ -100,9 +100,9 @@ function createColumns(
 			header: "Quote",
 			cell: ({ row }) => (
 				<span className="font-semibold text-primary tabular-nums">
-					{row.original.coveredVisits?.length
+					{(row.original.coveredVisits?.length
 						? row.original.recurringAgreement?.reference
-						: row.original.quoteNumber ?? "—"}
+						: undefined) ?? row.original.quoteNumber ?? "—"}
 				</span>
 			),
 		},
@@ -123,10 +123,11 @@ function createColumns(
 				return (
 					<div>
 						<span className="font-medium text-foreground">
-							{visits?.length ? "Recurring agreement" : row.original.title ?? "Quote"}
+							{row.original.title ?? (visits?.length ? "Recurring agreement" : "Quote")}
 						</span>
 						{visits?.length ? (
 							<div className="mt-1 space-y-0.5 text-xs text-muted-foreground">
+								<p>{visits.length} covered {visits.length === 1 ? "visit" : "visits"}</p>
 								{visits.slice(0, 3).map((visit) => (
 									<p key={visit._id}>
 										{formatDate(visit.recurringAgreement?.serviceDate)}{visit.title ? `, ${visit.title}` : ""}

@@ -465,11 +465,11 @@ export const seedFromSchedule = userMutation({
 			.collect();
 		const candidateProjects = projects.filter(
 			(p) =>
-				(p.projectType === "one-off" || p.recurringSeriesId !== undefined) &&
+				(p.recurringSeriesId !== undefined ||
+					(p.projectType === "one-off" && p.endDate !== undefined)) &&
 				!isSuppressedRecurringProject(p) &&
 				(p.status === "planned" || p.status === "in-progress") &&
 				p.startDate !== undefined &&
-				(p.endDate !== undefined || p.recurringSeriesId !== undefined) &&
 				p.startDate <= args.date &&
 				args.date <= (p.endDate ?? p.startDate) &&
 				!taskProjectIds.has(p._id) &&

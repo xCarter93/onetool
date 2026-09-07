@@ -24,11 +24,13 @@ import DeleteConfirmationModal from "@/components/ui/delete-confirmation-modal";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ExclamationTriangleIcon } from "@heroicons/react/24/outline";
 import { QuoteDetailHeader } from "./components/quote-detail-header";
-import { RecurringQuoteCopyGate } from "./components/recurring-quote-copy-gate";
+import {
+	RecurringQuoteCopyGate,
+	type RecurringQuoteActions,
+} from "./components/recurring-quote-copy-gate";
 import { QuoteDetailTabs } from "./components/quote-detail-tabs";
 import { localDateToUtcMidnightMs, todayUtcMidnightMs } from "@/lib/dates";
 import { convexErrorMessage } from "@/lib/convex-error";
-import { runWithLoadingToast } from "@/lib/loading-toast";
 
 type QuoteStatus = "draft" | "sent" | "approved" | "declined" | "expired";
 
@@ -322,12 +324,13 @@ function QuoteDetailPageContent() {
 		try {
 			if (!quote || !lineItems) return;
 			if (quote.recurringAgreementTerms) {
-				await runWithLoadingToast(
-					toast,
+				loadingId = toast.loading(
 					"Generating agreement PDF",
-					"Rendering and saving the approval version.",
-					() => convex.action(api.pdfActions.ensureQuotePdf, { quoteId })
+					"Rendering and saving the approval version."
 				);
+				await convex.action(api.pdfActions.ensureQuotePdf, { quoteId });
+				toast.removeToast(loadingId);
+				loadingId = undefined;
 				toast.success(
 					"Agreement PDF generated",
 					"The approval version is ready."
@@ -343,11 +346,7 @@ function QuoteDetailPageContent() {
 
 			// Reuse the preview's render when the quote content has not moved since;
 			// appending org documents never re-renders the quote pages.
-			let rendered = takeCachedPdfBlob();
-			if (!rendered) {
-				rendered = await renderQuotePdfArtifact();
-			}
-			if (!rendered) throw new Error("Failed to capture quote PDF content");
+			const rendered = takeCachedPdfBlob() ?? (await renderQuotePdfArtifact());
 			const quoteBlob = rendered.blob;
 
 			let finalBlob = quoteBlob;
@@ -514,27 +513,7 @@ function QuoteDetailPageContent() {
 	}
 
 	const currentStatus = getQuoteStatus(quote.status, quote.validUntil);
-	const quoteHeader = ({
-		onCopyToFuture,
-		copyToFutureDisabled,
-		copyToFutureDisabledReason,
-		onPrepareAgreement,
-		prepareAgreementDisabled,
-		prepareAgreementDisabledReason,
-		onRestoreAgreementPricing,
-		restoreAgreementPricingDisabled,
-		restoreAgreementPricingDisabledReason,
-	}: {
-		onCopyToFuture?: () => void;
-		copyToFutureDisabled?: boolean;
-		copyToFutureDisabledReason?: string;
-		onPrepareAgreement?: () => void;
-		prepareAgreementDisabled?: boolean;
-		prepareAgreementDisabledReason?: string;
-		onRestoreAgreementPricing?: () => void;
-		restoreAgreementPricingDisabled?: boolean;
-		restoreAgreementPricingDisabledReason?: string;
-	}) => (
+	const quoteHeader = (recurringActions: RecurringQuoteActions) => (
 		<QuoteDetailHeader
 			quote={quote}
 			currentStatus={currentStatus}
@@ -543,16 +522,8 @@ function QuoteDetailPageContent() {
 			onGeneratePdf={openGenerateFlow}
 			onDelete={() => setIsDeleteModalOpen(true)}
 			onConvertToInvoice={handleConvertToInvoice}
-			onCopyToFuture={onCopyToFuture}
-			copyToFutureDisabled={copyToFutureDisabled}
-			copyToFutureDisabledReason={copyToFutureDisabledReason}
-			onPrepareAgreement={onPrepareAgreement}
-			prepareAgreementDisabled={prepareAgreementDisabled}
-			prepareAgreementDisabledReason={prepareAgreementDisabledReason}
-			onRestoreAgreementPricing={onRestoreAgreementPricing}
-			restoreAgreementPricingDisabled={restoreAgreementPricingDisabled}
-			restoreAgreementPricingDisabledReason={restoreAgreementPricingDisabledReason}
 			converting={isConverting}
+			{...recurringActions}
 		/>
 	);
 
@@ -567,7 +538,6 @@ function QuoteDetailPageContent() {
 						quote.title || `Quote ${quote.quoteNumber || quote._id.slice(-6)}`
 					}
 					projectId={quote.projectId}
-					quoteStatus={quote.status}
 				>
 					{quoteHeader}
 				</RecurringQuoteCopyGate>

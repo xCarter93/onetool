@@ -4,7 +4,6 @@ import {
 	calendarDayDifference,
 	dateKeyFromTimestamp,
 	listRecurrenceDates,
-	timestampForDateKey,
 	validateRecurrenceRule,
 } from "./projectRecurrence";
 
@@ -12,12 +11,6 @@ describe("project recurrence calendar", () => {
 	it("keeps date arithmetic and timezone conversion stable across DST", () => {
 		expect(addCalendarDays("2026-03-07", 2)).toBe("2026-03-09");
 		expect(calendarDayDifference("2026-03-07", "2026-03-09")).toBe(2);
-		expect(timestampForDateKey("2026-03-08", "America/New_York")).toBe(
-			Date.UTC(2026, 2, 8, 5)
-		);
-		expect(timestampForDateKey("2026-03-09", "America/New_York")).toBe(
-			Date.UTC(2026, 2, 9, 4)
-		);
 		expect(
 			dateKeyFromTimestamp(Date.UTC(2026, 2, 9, 3, 59), "America/New_York")
 		).toBe("2026-03-08");

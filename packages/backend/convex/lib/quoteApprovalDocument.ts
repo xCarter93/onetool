@@ -33,6 +33,19 @@ function belongsToQuote(
 	);
 }
 
+// Recurring agreements only trust server renders that carry a bound snapshot.
+export async function quoteDocumentIsCurrent(
+	ctx: Pick<QueryCtx, "db">,
+	document: Doc<"documents">,
+	quote: Doc<"quotes">,
+	currentContent: QuoteContentSnapshot,
+): Promise<boolean> {
+	if (!belongsToQuote(document, quote) || document.generatedAt < (quote.contentUpdatedAt ?? 0)) return false;
+	const documentContent = await loadQuoteDocumentSnapshot(ctx, document);
+	if (quote.recurringAgreementTerms && (document.quoteSnapshotSource !== "server" || !documentContent)) return false;
+	return !documentContent || quoteContentSnapshotsEqual(documentContent, currentContent);
+}
+
 export async function selectPresentedQuoteDocument(
 	ctx: QueryCtx,
 	quote: Doc<"quotes">,
@@ -43,23 +56,10 @@ export async function selectPresentedQuoteDocument(
 	const validPinned = pinned && belongsToQuote(pinned, quote) ? pinned : null;
 	if (quote.status !== "sent" && validPinned) return validPinned;
 
-	const contentUpdatedAt = quote.contentUpdatedAt ?? 0;
 	const currentContent = await loadCurrentQuoteContentSnapshot(ctx, quote._id);
 	if (!currentContent) return null;
-	const isCurrent = async (document: Doc<"documents">) => {
-		if (
-			!belongsToQuote(document, quote) ||
-			document.generatedAt < contentUpdatedAt
-		) {
-			return false;
-		}
-		const documentContent = await loadQuoteDocumentSnapshot(ctx, document);
-		if (quote.recurringAgreementTerms && (document.quoteSnapshotSource !== "server" || !documentContent)) return false;
-		return (
-			!documentContent ||
-			quoteContentSnapshotsEqual(documentContent, currentContent)
-		);
-	};
+	const isCurrent = (document: Doc<"documents">) =>
+		quoteDocumentIsCurrent(ctx, document, quote, currentContent);
 	if (validPinned && (await isCurrent(validPinned))) return validPinned;
 
 	const candidates = await ctx.db
@@ -81,27 +81,9 @@ export async function resolveQuoteApprovalDocument(
 	expectedDocumentId: Doc<"documents">["_id"],
 ): Promise<QuoteApprovalDocumentResult> {
 	const document = await ctx.db.get(expectedDocumentId);
-	const contentUpdatedAt = quote.contentUpdatedAt ?? 0;
-	let currentContent: QuoteContentSnapshot | null = null;
-	if (
-		!document ||
-		!belongsToQuote(document, quote) ||
-		document.generatedAt < contentUpdatedAt
-	) {
+	const currentContent = await loadCurrentQuoteContentSnapshot(ctx, quote._id);
+	if (!document || !currentContent || !(await quoteDocumentIsCurrent(ctx, document, quote, currentContent)))
 		return stale(quote.latestDocumentId);
-	}
-	const documentContent = await loadQuoteDocumentSnapshot(ctx, document);
-	if (quote.recurringAgreementTerms && (document.quoteSnapshotSource !== "server" || !documentContent))
-		return stale(quote.latestDocumentId);
-	if (documentContent) {
-		currentContent = await loadCurrentQuoteContentSnapshot(ctx, quote._id);
-		if (
-			!currentContent ||
-			!quoteContentSnapshotsEqual(documentContent, currentContent)
-		) {
-			return stale(quote.latestDocumentId);
-		}
-	}
 
 	if (quote.latestDocumentId == null) {
 		return { document, shouldPin: true };
@@ -110,25 +92,9 @@ export async function resolveQuoteApprovalDocument(
 		return { document, shouldPin: false };
 	}
 
+	// A stale pin (revert→edit→resend) yields to the current requested document.
 	const pinned = await ctx.db.get(quote.latestDocumentId);
-	const pinnedContent = pinned
-		? await loadQuoteDocumentSnapshot(ctx, pinned)
-		: null;
-	if (pinnedContent && !currentContent) {
-		currentContent = await loadCurrentQuoteContentSnapshot(ctx, quote._id);
-	}
-	const pinnedSnapshotIsStale = Boolean(
-		pinnedContent &&
-			currentContent &&
-			!quoteContentSnapshotsEqual(pinnedContent, currentContent),
-	);
-	if (
-		!pinned ||
-		!belongsToQuote(pinned, quote) ||
-		(pinned.generatedAt >= contentUpdatedAt && !pinnedSnapshotIsStale)
-	) {
+	if (!pinned || !belongsToQuote(pinned, quote) || (await quoteDocumentIsCurrent(ctx, pinned, quote, currentContent)))
 		return stale(quote.latestDocumentId);
-	}
-
 	return { document, shouldPin: true };
 }

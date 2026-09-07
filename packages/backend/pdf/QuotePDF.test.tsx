@@ -7,7 +7,9 @@ vi.mock("@react-pdf/renderer", () => ({
 	Document: ({ children }: React.PropsWithChildren) => <div>{children}</div>,
 	Page: ({ children }: React.PropsWithChildren) => <main>{children}</main>,
 	Text: ({ children }: React.PropsWithChildren) => <span>{children}</span>,
-	View: ({ children }: React.PropsWithChildren) => <section>{children}</section>,
+	View: ({ children }: React.PropsWithChildren) => (
+		<section>{children}</section>
+	),
 	Image: () => <div />,
 	StyleSheet: { create: <T,>(styles: T) => styles },
 }));
@@ -34,28 +36,38 @@ const baseQuote = {
 		revisionNumber: 2,
 		agreementReference: "Q-1042",
 		client: { id: "client-1" as Id<"clients">, name: "Pine Street Market" },
-		property: { id: "property-1" as Id<"clientProperties">, name: "North shop", address: "14 Oak Street" },
-		scope: { title: "Weekly grounds care", description: "Mow and edge the front lot." },
+		property: {
+			id: "property-1" as Id<"clientProperties">,
+			name: "North shop",
+			address: "14 Oak Street",
+		},
+		scope: {
+			title: "Weekly grounds care",
+			description: "Mow and edge the front lot.",
+		},
 		schedule: {
 			rule: { frequency: "weekly" as const, interval: 1, weekdays: [1] },
 			anchorDateKey: "2026-09-07",
 			timezone: "America/New_York",
 		},
 		billingMode: "per_visit" as const,
-		paymentRule: { type: "percentage" as const, installments: [{ percentage: 100, dayOffset: 30 }] },
+		paymentRule: {
+			type: "percentage" as const,
+			installments: [{ percentage: 100, dayOffset: 30 }],
+		},
 	},
 };
 
 describe("QuotePDF recurring agreements", () => {
 	it("renders the agreement terms and keeps signature fields on the source", () => {
 		const html = renderToStaticMarkup(
-			<QuotePDF quote={baseQuote} items={[]} />
+			<QuotePDF quote={baseQuote} items={[]} />,
 		);
 
 		expect(html).toContain("RECURRING AGREEMENT");
 		expect(html).toContain("Q-1042 (revision 2)");
 		expect(html).toContain("Weekly grounds care");
-		expect(html).toContain("weekly on Mon");
+		expect(html).toContain("Weekly on Mon");
 		expect(html).toContain("100% due 30 days after issue");
 		expect(html).toContain("Client Signature:");
 	});
@@ -66,7 +78,7 @@ describe("QuotePDF recurring agreements", () => {
 				quote={{ ...baseQuote, recurringInheritedAt: Date.UTC(2026, 8, 7) }}
 				items={[]}
 				countersigner={{ name: "Morgan Lee", email: "morgan@example.com" }}
-			/>
+			/>,
 		);
 
 		expect(html).toContain("Approved under recurring agreement Q-1042");
@@ -83,7 +95,7 @@ describe("QuotePDF recurring agreements", () => {
 					{ percentage: 40, dayOffset: 0 },
 					{ percentage: 60, dayOffset: 30 },
 				],
-			})
+			}),
 		).toBe("40% due when issued; 60% due 30 days after issue");
 	});
 
@@ -94,12 +106,15 @@ describe("QuotePDF recurring agreements", () => {
 					...baseQuote,
 					recurringAgreementTerms: {
 						...baseQuote.recurringAgreementTerms,
-						paymentChangeActivation: "next_full_month_after_all_approvals" as const,
+						paymentChangeActivation:
+							"next_full_month_after_all_approvals" as const,
 					},
 				}}
 				items={[]}
 			/>,
 		);
-		expect(html).toContain("This payment arrangement starts with the next full calendar month after all affected recurring agreements are approved. Existing terms apply until then.");
+		expect(html).toContain(
+			"This payment arrangement starts with the next full calendar month after all affected recurring agreements are approved. Existing terms apply until then.",
+		);
 	});
 });

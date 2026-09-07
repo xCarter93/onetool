@@ -55,7 +55,7 @@ describe("RecurringTaskSetup with RecordTasksTab", () => {
 			clientId: "client-1",
 			projectId: "project-1",
 		} as never;
-		const props = { projectId: "project-1" as never, tasks: [task], onAddTask: vi.fn() };
+		const props = { projectId: "project-1" as never, recurring: true, tasks: [task], onAddTask: vi.fn() };
 		const { rerender } = render(<RecurringTaskSetup {...props} />);
 
 		expect(screen.queryByRole("button", { name: /Copy QA Inspect/ })).not.toBeInTheDocument();

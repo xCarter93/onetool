@@ -259,6 +259,7 @@ export function RecurrenceScheduleFields({
 							variant={
 								value.monthlyMode === "monthDays" ? "default" : "outline"
 							}
+							aria-pressed={value.monthlyMode === "monthDays"}
 							onClick={() => update({ monthlyMode: "monthDays" })}
 						>
 							Dates
@@ -266,6 +267,7 @@ export function RecurrenceScheduleFields({
 						<Button
 							type="button"
 							variant={value.monthlyMode === "ordinal" ? "default" : "outline"}
+							aria-pressed={value.monthlyMode === "ordinal"}
 							onClick={() => update({ monthlyMode: "ordinal" })}
 						>
 							Weekday

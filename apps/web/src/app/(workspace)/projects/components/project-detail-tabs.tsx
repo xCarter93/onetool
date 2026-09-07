@@ -10,7 +10,7 @@ import {
 } from "@/components/shared/pill-tabs";
 import { OverviewTab } from "./tabs/overview-tab";
 import { ActivityTab } from "./tabs/activity-tab";
-import { TasksTab } from "./tabs/tasks-tab";
+import { RecurringTaskSetup } from "./tabs/recurring-task-setup";
 import { ProjectDetailSidebar } from "./project-detail-sidebar";
 
 interface ProjectDetailTabsProps {
@@ -64,6 +64,7 @@ export function ProjectDetailTabs({
 							projectTitle={project.title}
 							projectDescription={project.description}
 							projectType={project.projectType}
+							recurringSeriesId={project.recurringSeriesId}
 							startDate={project.startDate}
 							endDate={project.endDate}
 							tasks={tasks}
@@ -73,8 +74,10 @@ export function ProjectDetailTabs({
 					</PillTabsContent>
 
 					<PillTabsContent value="tasks" className="mt-0 pt-5">
-						<TasksTab
+						<RecurringTaskSetup
+							key={projectId}
 							projectId={projectId}
+							recurring={Boolean(project.recurringSeriesId)}
 							tasks={tasks}
 							onAddTask={onAddTask}
 						/>

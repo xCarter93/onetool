@@ -19,6 +19,7 @@ interface OverviewTabProps {
 	projectTitle: string;
 	projectDescription?: string;
 	projectType: "one-off" | "recurring";
+	recurringSeriesId?: Id<"projectSeries">;
 	startDate?: number;
 	endDate?: number;
 	tasks: Doc<"tasks">[] | undefined;
@@ -49,6 +50,7 @@ export function OverviewTab({
 	projectTitle,
 	projectDescription,
 	projectType,
+	recurringSeriesId,
 	startDate,
 	endDate,
 	tasks,
@@ -241,7 +243,9 @@ export function OverviewTab({
 
 			<Separator className="my-6" />
 
-			<FutureQuoteSetup key={projectId} projectId={projectId} />
+			{recurringSeriesId && (
+				<FutureQuoteSetup key={projectId} projectId={projectId} />
+			)}
 
 			<RelatedRecordsFrame
 				sections={[

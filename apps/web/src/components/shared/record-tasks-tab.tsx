@@ -136,7 +136,6 @@ function createColumns(
 	onDelete: (task: Task) => void,
 	onCopyToFuture: ((task: Task) => void) | undefined,
 	canCopyToFuture: boolean,
-	copyToFutureTitle: string,
 	updatingTasks: Set<Id<"tasks">>
 ): ColumnDef<DataGridFeatures, Task>[] {
 	const cols: ColumnDef<DataGridFeatures, Task>[] = [
@@ -311,7 +310,6 @@ function createColumns(
 							onClick={() => onCopyToFuture(task)}
 							disabled={isUpdating || !canCopyToFuture}
 							className="min-h-11 text-muted-foreground hover:text-foreground"
-							title={copyToFutureTitle}
 							aria-label={`Copy ${task.title} to future projects`}
 						>
 							<CopyPlus className="h-3.5 w-3.5" />
@@ -395,7 +393,6 @@ interface RecordTasksTabProps {
 	entityType: "client" | "project";
 	onCopyToFuture?: (task: Task) => void;
 	canCopyToFuture?: boolean;
-	copyToFutureTitle?: string;
 	headerContent?: React.ReactNode;
 }
 
@@ -405,7 +402,6 @@ export function RecordTasksTab({
 	entityType,
 	onCopyToFuture,
 	canCopyToFuture = false,
-	copyToFutureTitle = "Copy to future projects",
 	headerContent,
 }: RecordTasksTabProps) {
 	const [searchQuery, setSearchQuery] = useState("");
@@ -521,11 +517,10 @@ export function RecordTasksTab({
 				handleDeleteRequest,
 				onCopyToFuture,
 				canCopyToFuture,
-				copyToFutureTitle,
 				updatingTasks
 			),
 		// eslint-disable-next-line react-hooks/exhaustive-deps
-		[clients, projects, users, updatingTasks, entityType, canModifyTasks, canDeleteTasks, onCopyToFuture, canCopyToFuture, copyToFutureTitle]
+		[clients, projects, users, updatingTasks, entityType, canModifyTasks, canDeleteTasks, onCopyToFuture, canCopyToFuture]
 	);
 
 	const totalTasks = tasks?.length ?? 0;

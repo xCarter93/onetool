@@ -1,6 +1,3 @@
-import { portalAgreementContext } from "./recurringAgreement";
-import { activateAgreementApproval } from "../lib/projectSeriesAgreements";
-import { recordQuoteDecision } from "../lib/quoteDecisionEvidence";
 // Portal-facing quote backend.
 //
 // Approve is an action because it stores the signature blob; DB validation and
@@ -25,6 +22,9 @@ import {
 	resolveQuoteApprovalDocument,
 	selectPresentedQuoteDocument,
 } from "../lib/quoteApprovalDocument";
+import { activateAgreementApproval } from "../lib/projectSeriesAgreements";
+import { recordQuoteDecision } from "../lib/quoteDecisionEvidence";
+import { portalAgreementContext, portalApprovedAgreementDocument } from "./recurringAgreement";
 import {
 	loadCurrentQuoteContentSnapshot,
 	quoteContentSnapshotsEqual,
@@ -157,6 +157,7 @@ export const get = query({
 		}
 
 		const agreement = await portalAgreementContext(ctx, quote);
+		const approvedDocument = agreement && (await portalApprovedAgreementDocument(ctx, quote, agreement));
 		const calculatedTotals = await calculateQuoteTotals(ctx, quoteId, {
 			discountEnabled: quote.discountEnabled,
 			discountAmount: quote.discountAmount,
@@ -179,7 +180,7 @@ export const get = query({
 			clientEmail,
 			latestApproval,
 			recurringAgreement: agreement?.metadata ?? null,
-			sourceAgreementDocument: agreement?.approvedDocument ? { _id: agreement.approvedDocument._id, version: agreement.approvedDocument.version } : null,
+			sourceAgreementDocument: approvedDocument ? { _id: approvedDocument._id, version: approvedDocument.version } : null,
 		};
 	},
 });
@@ -239,7 +240,8 @@ export const getAgreementDownloadUrl = query({
 		if (!quote || quote.status === "draft") throw new ConvexError({ code: "NOT_FOUND" });
 		if (!contact || contact.orgId !== session.orgId || quote.orgId !== session.orgId || quote.clientId !== contact.clientId)
 			throw new ConvexError({ code: "FORBIDDEN" });
-		const document = (await portalAgreementContext(ctx, quote))?.approvedDocument;
+		const agreement = await portalAgreementContext(ctx, quote);
+		const document = agreement && (await portalApprovedAgreementDocument(ctx, quote, agreement));
 		if (!document) return null;
 		const url = await ctx.storage.getUrl(document.signedStorageId ?? document.storageId);
 		return url ? { url } : null;

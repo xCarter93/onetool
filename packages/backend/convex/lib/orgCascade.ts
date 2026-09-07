@@ -175,35 +175,22 @@ export async function cascadeDeleteOrgDataPage(
 		}
 	}
 
-	{
+	for (const table of [
+		"invoiceGroups",
+		"recurringBillingAllocations",
+		"recurringMonthlyBillingRuns",
+		"clientMonthlyPaymentSchedules",
+		"clientMonthlyPaymentScheduleVersions",
+	] as const) {
 		if (remaining <= 0) return { done: false };
-		const rows = await ctx.db.query("invoiceGroups").withIndex("by_org", (q) => q.eq("orgId", orgId)).take(remaining);
+		const rows = await ctx.db
+			.query(table)
+			.withIndex("by_org", (q) => q.eq("orgId", orgId))
+			.take(remaining);
 		for (const row of rows) {
 			await ctx.db.delete(row._id);
 			remaining--;
 		}
-	}
-	{
-		if (remaining <= 0) return { done: false };
-		const rows = await ctx.db.query("recurringBillingAllocations").withIndex("by_org", (q) => q.eq("orgId", orgId)).take(remaining);
-		for (const row of rows) {
-			await ctx.db.delete(row._id);
-			remaining--;
-		}
-	}
-	{
-		if (remaining <= 0) return { done: false };
-		const rows = await ctx.db.query("recurringMonthlyBillingRuns").withIndex("by_org", (q) => q.eq("orgId", orgId)).take(remaining);
-		for (const row of rows) {
-			await ctx.db.delete(row._id);
-			remaining--;
-		}
-	}
-
-	for (const table of ["clientMonthlyPaymentSchedules", "clientMonthlyPaymentScheduleVersions"] as const) {
-		if (remaining <= 0) return { done: false };
-		const rows = await ctx.db.query(table).withIndex("by_org", (q) => q.eq("orgId", orgId)).take(remaining);
-		for (const row of rows) { await ctx.db.delete(row._id); remaining--; }
 	}
 
 	// payments
@@ -631,21 +618,15 @@ export async function cascadeDeleteOrgDataPage(
 	}
 
 	for (const table of [
-		"projectSeriesQuoteCopies", "projectSeriesQuoteTemplates", "projectSeriesQuoteVersions", "projectSeriesAgreementRevisions",
-		"projectTaskCopies", "projectTaskTemplates",
+		"projectSeriesQuoteCopies",
+		"projectSeriesQuoteTemplates",
+		"projectSeriesQuoteVersions",
+		"projectSeriesAgreementRevisions",
+		"projectTaskCopies",
+		"projectTaskTemplates",
+		"projectOccurrences",
+		"projectSeries",
 	] as const) {
-		if (remaining <= 0) return { done: false };
-		const rows = await ctx.db
-			.query(table)
-			.withIndex("by_org", (q) => q.eq("orgId", orgId))
-			.take(remaining);
-		for (const row of rows) {
-			await ctx.db.delete(row._id);
-			remaining--;
-		}
-	}
-
-	for (const table of ["projectOccurrences", "projectSeries"] as const) {
 		if (remaining <= 0) return { done: false };
 		const rows = await ctx.db
 			.query(table)

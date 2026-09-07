@@ -377,7 +377,11 @@ function ClientsPageContent() {
 	} | null>(null);
 	const [previewId, setPreviewId] = useState<Id<"clients"> | null>(null);
 	const [previewOpen, setPreviewOpen] = useState(false);
-	const [kanbanData, setKanbanData] = useState<ClientKanbanItem[]>([]);
+	// Optimistic drag moves; each applies only while the server still reports
+	// the status the card was dragged from.
+	const [columnMoves, setColumnMoves] = useState<
+		Record<string, { from: ClientKanbanStatus; to: ClientKanbanStatus }>
+	>({});
 	const isOrgSwitching = useIsOrgSwitching();
 
 	const { can } = usePermissions();
@@ -470,32 +474,48 @@ function ClientsPageContent() {
 	}, [allData]);
 
 	// Kanban reflects the (filtered + searched) non-archived clients.
-	React.useEffect(() => {
-		setKanbanData(
+	const kanbanData = React.useMemo<ClientKanbanItem[]>(
+		() =>
 			searchedData
 				.filter((client) => client.status !== "Archived")
-				.map((client) => ({
-					id: client.id,
-					name: client.name,
-					column: toKanbanStatus(client.status),
-					activeProjects: client.activeProjects,
-					primaryContact: client.primaryContact
-						? {
-								name: client.primaryContact.name,
-								email: client.primaryContact.email,
-							}
-						: null,
-				}))
-		);
-	}, [searchedData]);
+				.map((client) => {
+					const serverStatus = toKanbanStatus(client.status);
+					const move = columnMoves[client.id];
+					const column =
+						move && move.from === serverStatus ? move.to : serverStatus;
+					return {
+						id: client.id,
+						name: client.name,
+						column,
+						activeProjects: client.activeProjects,
+						primaryContact: client.primaryContact
+							? {
+									name: client.primaryContact.name,
+									email: client.primaryContact.email,
+								}
+							: null,
+					};
+				}),
+		[searchedData, columnMoves]
+	);
 
 	// onDataChange fires on every drag-over (column crossing), so keep it purely
 	// optimistic; the DB write happens once on drop via handleKanbanDragEnd.
 	const handleKanbanDataChange = React.useCallback(
 		(nextData: ClientKanbanItem[]) => {
-			setKanbanData(nextData);
+			if (!canModifyClients) return;
+			setColumnMoves((prev) => {
+				const next = { ...prev };
+				for (const card of nextData) {
+					const from = clientStatusMap.get(card.id);
+					if (!from) continue;
+					if (card.column === from) delete next[card.id];
+					else next[card.id] = { from, to: card.column };
+				}
+				return next;
+			});
 		},
-		[]
+		[clientStatusMap, canModifyClients]
 	);
 
 	// Latest drop per card; a failed older write must not undo a newer drop.
@@ -515,13 +535,12 @@ function ClientsPageContent() {
 					status: item.column,
 				}).catch((error) => {
 					console.error("Failed to update client status:", error);
-					// A rejected write changes no server data, so the sync effect never re-fires.
 					if (moveTokens.current.get(item.id) !== token) return;
-					setKanbanData((prev) =>
-						prev.map((card) =>
-							card.id === item.id ? { ...card, column: originalStatus } : card
-						)
-					);
+					setColumnMoves((prev) => {
+						const next = { ...prev };
+						delete next[item.id];
+						return next;
+					});
 					toast.error(
 						"Update Failed",
 						"Failed to update client status. Please try again."
@@ -566,12 +585,14 @@ function ClientsPageContent() {
 
 	// Reset to the first page whenever the visible set changes (incl. after a
 	// delete/refetch shrinks it, which could otherwise strand pageIndex past
-	// the last page).
-	React.useEffect(() => {
-		setPagination((prev) =>
-			prev.pageIndex === 0 ? prev : { ...prev, pageIndex: 0 }
-		);
-	}, [query, filters, searchedData.length]);
+	// the last page) — adjust-during-render.
+	const resultKey = `${query}\u0000${searchedData.length}\u0000${JSON.stringify(filters)}`;
+	const [prevResultKey, setPrevResultKey] = React.useState(resultKey);
+	if (resultKey !== prevResultKey) {
+		setPrevResultKey(resultKey);
+		if (pagination.pageIndex !== 0)
+			setPagination((prev) => ({ ...prev, pageIndex: 0 }));
+	}
 
 	// One status filter covering every status incl. Archived. New status chips
 	// default to "is"; the seeded default chip uses "is not Archived".

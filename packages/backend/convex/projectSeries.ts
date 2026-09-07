@@ -18,30 +18,23 @@ import {
 	dateKeyFromTimestamp,
 	listRecurrenceDates,
 	projectRecurrenceRuleValidator,
+	storedDate,
+	storedDateKey,
 	validateRecurrenceRule,
 } from "./lib/projectRecurrence";
 import {
 	assertProjectSupportsRecurrence,
 	enrollProjectInSeries,
 	generateProjectSeriesOccurrences,
+	HOUR,
+	WINDOW_DAYS,
 } from "./lib/projectSeriesEnrollment";
 
-const WINDOW_DAYS = 90;
 const SWEEP_BATCH = 50;
-const HOUR = 60 * 60 * 1000;
 const generationResult = v.object({
 	created: v.number(),
 	remaining: v.number(),
 });
-
-function storedDateKey(timestamp: number): string {
-	if (!Number.isFinite(timestamp)) throw new Error("Invalid project date");
-	return new Date(timestamp).toISOString().slice(0, 10);
-}
-
-function storedDate(date: string): number {
-	return Date.parse(`${date}T00:00:00.000Z`);
-}
 
 async function requireSeriesAccess(
 	ctx: UserQueryCtx,
@@ -310,7 +303,20 @@ export const get = userQuery({
 			showClient && series.propertyId
 				? await ctx.db.get(series.propertyId)
 				: null;
-		const visits = await upcoming(ctx, series);
+		let nextVisit: Doc<"projects"> | null = null;
+		for await (const project of ctx.db
+			.query("projects")
+			.withIndex("by_series_start", (q) =>
+				q.eq("recurringSeriesId", series._id).gte("startDate", todayFor(series))
+			)) {
+			if (
+				!project.recurringState &&
+				(project.status === "planned" || project.status === "in-progress")
+			) {
+				nextVisit = project;
+				break;
+			}
+		}
 		const candidateId = args.fromProjectId
 			? ctx.db.normalizeId("projects", args.fromProjectId)
 			: null;
@@ -329,12 +335,7 @@ export const get = userQuery({
 			clientName:
 				client?.companyName ?? (showClient ? "Deleted client" : "Client"),
 			propertyName: property?.streetAddress ?? null,
-			nextVisit:
-				visits.find(
-					(p) =>
-						!p.recurringState &&
-						(p.status === "planned" || p.status === "in-progress")
-				) ?? null,
+			nextVisit,
 			returnProject: returnProject
 				? { _id: returnProject._id, title: returnProject.title }
 				: null,
@@ -463,11 +464,7 @@ export const lifecycle = userMutation({
 				recurringState,
 				recurringAppliedRevision: revision,
 			});
-			if (
-				resume &&
-				series.state === "ended" &&
-				project.status !== "planned"
-			)
+			if (resume && series.state === "ended")
 				await emitStatusChangeEvent(
 					ctx,
 					ctx.orgId,
@@ -698,7 +695,7 @@ async function scheduleChanges(
 		rule,
 		anchor: series.anchorDateKey,
 		from: today,
-		through: addCalendarDays(today, 90),
+		through: addCalendarDays(today, WINDOW_DAYS),
 		limit: 100,
 		includeNext: true,
 	});

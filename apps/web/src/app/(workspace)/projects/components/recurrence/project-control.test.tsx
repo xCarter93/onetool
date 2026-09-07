@@ -68,7 +68,7 @@ describe("RecurrenceProjectControl", () => {
 		);
 
 		expect(screen.getByText("weekly on Mon, Fri")).toBeVisible();
-		expect(screen.getByText("active")).toBeVisible();
+		expect(screen.getByText("Active")).toBeVisible();
 		expect(screen.getByRole("link", { name: "View series" })).toHaveAttribute(
 			"href",
 			`/projects/series/${seriesId}?fromProjectId=${projectId}`

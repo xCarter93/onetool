@@ -1,4 +1,3 @@
-import { activateAgreementApproval } from "./lib/projectSeriesAgreements";
 import { v } from "convex/values";
 import { internalQuery, MutationCtx, QueryCtx } from "./_generated/server";
 import { internalMutation, mutation } from "./lib/triggers";
@@ -22,11 +21,9 @@ import { isRecordInActorScope } from "./lib/factories";
 import { externalIoPool, EXTERNAL_FETCH_RETRY } from "./externalIoPool";
 import { resolveMemberUserIds } from "./lib/automationExec/actions";
 import { emitStatusChangeEvent } from "./eventBus";
-import {
-	loadCurrentQuoteContentSnapshot,
-	loadQuoteDocumentSnapshot,
-	quoteContentSnapshotsEqual,
-} from "./lib/quoteContentSnapshot";
+import { activateAgreementApproval } from "./lib/projectSeriesAgreements";
+import { quoteDocumentIsCurrent } from "./lib/quoteApprovalDocument";
+import { loadCurrentQuoteContentSnapshot, loadQuoteDocumentSnapshot } from "./lib/quoteContentSnapshot";
 import { recordQuoteDecision } from "./lib/quoteDecisionEvidence";
 
 /**
@@ -210,17 +207,13 @@ async function documentMatchesCurrentQuoteContent(
 	document: Doc<"documents">,
 	quote: Doc<"quotes">
 ): Promise<boolean> {
-	if (document.generatedAt < (quote.contentUpdatedAt ?? 0)) return false;
+	// Legacy requests carry no snapshot; their cycle stamp is the only reopen guard.
 	const currentApprovalCycle = quote.approvalCycle ?? 0;
 	if (document.quoteApprovalCycle === undefined) {
 		if (document.boldsign && currentApprovalCycle > 0) return false;
 	} else if (document.quoteApprovalCycle !== currentApprovalCycle) return false;
-	const documentSnapshot = await loadQuoteDocumentSnapshot(ctx, document);
-	if (!documentSnapshot) return true;
 	const current = await loadCurrentQuoteContentSnapshot(ctx, quote._id);
-	return Boolean(
-		current && quoteContentSnapshotsEqual(documentSnapshot, current)
-	);
+	return current !== null && (await quoteDocumentIsCurrent(ctx, document, quote, current));
 }
 
 /**
@@ -705,7 +698,7 @@ export const handleWebhook = internalMutation({
 	},
 });
 
-async function isCarefullyEligibleLegacyDocument(
+async function isNewestUnboundDocument(
 	ctx: MutationCtx,
 	quote: Doc<"quotes">,
 	document: Doc<"documents">
@@ -793,7 +786,7 @@ async function handleQuoteStatusUpdate(
 
 	const currentDocument = quote.latestDocumentId
 		? quote.latestDocumentId === document._id
-		: await isCarefullyEligibleLegacyDocument(ctx, quote, document);
+		: await isNewestUnboundDocument(ctx, quote, document);
 	const contentMatches = await documentMatchesCurrentQuoteContent(
 		ctx,
 		document,
@@ -946,6 +939,9 @@ export const reserveRecurringSignatureSend = internalMutation({
 			throw new Error("Generate a current agreement PDF before sending");
 		if (document.boldsign || document.recurringSignatureSendState)
 			throw new Error("This agreement signature request is already sent or being checked. Review its signature status before trying again.");
+		const revision = quote.recurringAgreementRevisionId ? await ctx.db.get(quote.recurringAgreementRevisionId) : null;
+		if (revision?.approvalDocumentId !== document._id)
+			throw new Error("Generate a current agreement PDF before sending");
 		const usage = await getMeterUsage(ctx, orgId, "esignatures", (await entitlementsFromIdentity(ctx)).plan);
 		if (METERS.esignatures.enforce && usage.limit !== null && usage.used >= usage.limit)
 			throw new Error("Your signature allowance has been reached");

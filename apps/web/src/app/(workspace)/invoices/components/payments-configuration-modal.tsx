@@ -32,6 +32,7 @@ import {
 	localDateToUtcMidnightMs,
 	utcMidnightMsToLocalDate,
 } from "@/lib/dates";
+import { DEFAULT_RECURRING_PAYMENT_RULE } from "@onetool/backend/convex/lib/recurringPaymentRules";
 import {
 	RecurringPaymentRuleEditor,
 	recurringPaymentRuleError,
@@ -543,7 +544,7 @@ export function PaymentsConfigurationModal({
 	const [showSaveScope, setShowSaveScope] = useState(false);
 	const [saveScope, setSaveScope] = useState<"invoice" | "future">("invoice");
 	const [futureRule, setFutureRule] = useState<RecurringPaymentRuleValue>(
-		recurringPaymentRule ?? { type: "percentage", installments: [{ percentage: 100, dayOffset: 30 }] }
+		recurringPaymentRule ?? DEFAULT_RECURRING_PAYMENT_RULE
 	);
 	const [futureQuoteIds, setFutureQuoteIds] = useState<Id<"quotes">[]>([]);
 	// null means "follow the prefill"; a string means the user typed over it.
@@ -561,7 +562,7 @@ export function PaymentsConfigurationModal({
 		setShiftDaysInput(null);
 		setShowSaveScope(false);
 		setSaveScope("invoice");
-		setFutureRule(recurringPaymentRule ?? { type: "percentage", installments: [{ percentage: 100, dayOffset: 30 }] });
+		setFutureRule(recurringPaymentRule ?? DEFAULT_RECURRING_PAYMENT_RULE);
 		setFutureQuoteIds([]);
 	} else if (prevReset.isOpen !== isOpen) {
 		// Keep tracker in sync when closing without resetting payments

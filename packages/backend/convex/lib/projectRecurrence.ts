@@ -94,6 +94,16 @@ export function addCalendarDays(date: string, days: number): string {
 	return result;
 }
 
+// Persisted project dates are UTC-midnight encodings of a calendar day.
+export function storedDateKey(timestamp: number): string {
+	if (!Number.isFinite(timestamp)) throw new Error("Invalid project date");
+	return new Date(timestamp).toISOString().slice(0, 10);
+}
+
+export function storedDate(date: string): number {
+	return Date.parse(`${date}T00:00:00.000Z`);
+}
+
 export function calendarDayDifference(start: string, end: string): number {
 	return (utcDay(parseDateKey(end)) - utcDay(parseDateKey(start))) / DAY_MS;
 }
@@ -116,22 +126,6 @@ export function dateKeyFromTimestamp(
 		month: get("month"),
 		day: get("day"),
 	});
-}
-
-export function timestampForDateKey(date: string, timeZone: string): number {
-	const nominal = utcDay(parseDateKey(date));
-	// Find the first instant belonging to the local date, including zones whose DST shift is at midnight.
-	let low = nominal - 36 * 60 * 60 * 1_000;
-	let high = nominal + 36 * 60 * 60 * 1_000;
-	while (low < high) {
-		const middle = Math.floor((low + high) / 2);
-		if (dateKeyFromTimestamp(middle, timeZone) < date) low = middle + 1;
-		else high = middle;
-	}
-	if (dateKeyFromTimestamp(low, timeZone) !== date) {
-		throw new Error(`Calendar date "${date}" does not exist in ${timeZone}`);
-	}
-	return low;
 }
 
 function integerInRange(value: number, min: number, max: number): boolean {
@@ -279,9 +273,7 @@ function* candidates(
 	if (rule.frequency === "weekly") {
 		const weekStart = mondayOf(anchor);
 		const weekdays = uniqueSorted(
-			uniqueSorted(rule.weekdays ?? [weekday(anchorDate)]).map(
-				(day) => (day + 6) % 7
-			)
+			(rule.weekdays ?? [weekday(anchorDate)]).map((day) => (day + 6) % 7)
 		);
 		let period = Math.max(
 			0,
@@ -375,8 +367,7 @@ export function listRecurrenceDates(args: {
 	let occurrence =
 		finiteCount === undefined ? 1 : countBefore(rule, anchor, from);
 	if (anchor >= from && anchor <= through) result.push(anchor);
-	if (includeNext && result.length === 0 && anchor >= from && anchor > through)
-		return [anchor];
+	if (includeNext && anchor > through) return [anchor];
 	if (finiteCount === 1 || result.length >= args.limit) return result;
 
 	const start = from > anchor ? from : anchor;

@@ -6,6 +6,8 @@ import {
 	createTestClient,
 	createTestInvoice,
 	createTestIdentity,
+	createTestProject,
+	createTestQuote,
 	addMemberToOrg,
 } from "./test.helpers";
 import type { Doc, Id } from "./_generated/dataModel";
@@ -448,6 +450,37 @@ describe("payments.configurePayments", () => {
 			expect((await invoiceOf(invoiceId))?.status).toBe("sent");
 			expect(await statusEvents(invoiceId)).toHaveLength(0);
 		});
+	});
+
+	it("denies a client-scoped member on a consolidated invoice they cannot read", async () => {
+		const { orgId, invoiceId, clerkOrgId } = await seed();
+		const rowId = await insertRow(orgId, invoiceId, { paymentAmount: 1000, dueDate: TODAY });
+		const member = await t.run(async (ctx) => {
+			const invoice = (await ctx.db.get(invoiceId))!;
+			const member = await addMemberToOrg(ctx, orgId);
+			const membership = await ctx.db.query("organizationMemberships")
+				.withIndex("by_org_user", (q) => q.eq("orgId", orgId).eq("userId", member.userId)).unique();
+			await ctx.db.patch(membership!._id, {
+				permissions: { invoices: { level: "modify", allRecords: false } },
+			});
+			for (const title of ["Visit A", "Visit B"]) {
+				const projectId = await createTestProject(ctx, orgId, invoice.clientId, { title });
+				await ctx.db.patch(projectId, { assignedUserIds: [member.userId] });
+				const quoteId = await createTestQuote(ctx, orgId, invoice.clientId, { projectId });
+				await ctx.db.insert("invoiceGroups", {
+					orgId, invoiceId, sourceProjectId: projectId, sourceQuoteId: quoteId,
+					serviceDate: TODAY, subtotal: 500, discountAmount: 0, taxAmount: 0, total: 500, sortOrder: 0,
+				});
+			}
+			return member;
+		});
+
+		await expect(t.withIdentity(createTestIdentity(member.clerkUserId, clerkOrgId))
+			.mutation(api.payments.configurePayments, {
+				invoiceId,
+				payments: [{ id: rowId, paymentAmount: 1000, dueDate: TODAY + DAY, sortOrder: 0 }],
+			})).rejects.toThrow(/FORBIDDEN/);
+		expect((await rowsOf(invoiceId))[0].dueDate).toBe(TODAY);
 	});
 
 	describe("future scope", () => {

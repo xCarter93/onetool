@@ -1,4 +1,3 @@
-import { bindAgreementApprovalDocument } from "./lib/projectSeriesAgreements";
 /**
  * DB half of the server-side PDF service (Slice 3, mobile 3.0). The render
  * itself runs in pdfActions.ts ("use node" — @react-pdf/renderer); this module
@@ -13,6 +12,8 @@ import { internalQuery } from "./_generated/server";
 import { internalMutation } from "./lib/triggers";
 import { ConvexError, v } from "convex/values";
 import { projectInvoiceGroups } from "./lib/invoiceGroups";
+import { bindAgreementApprovalDocument } from "./lib/projectSeriesAgreements";
+import { quoteDocumentIsCurrent } from "./lib/quoteApprovalDocument";
 import type { Doc, Id } from "./_generated/dataModel";
 import { getCurrentUserOrgId } from "./lib/auth";
 import { requireLevel } from "./lib/permissions";
@@ -20,7 +21,6 @@ import {
 	attachQuoteDocumentSnapshot,
 	buildQuoteContentSnapshot,
 	loadCurrentQuoteContentSnapshot,
-	loadQuoteDocumentSnapshot,
 	MAX_QUOTE_SNAPSHOT_LINES,
 	quoteContentSnapshotValidator,
 	quoteContentSnapshotsEqual,
@@ -137,25 +137,13 @@ export const _ensureQuotePdfAuth = internalQuery({
 		// flow pins this id into the audit row, and a revert→edit→resend cycle
 		// (or a validUntil extension) leaves the stored render behind the
 		// document the client is agreeing to. Stale ⇒ render fresh.
-		const contentUpdatedAt = quote.contentUpdatedAt ?? 0;
 		const currentSnapshot = await loadCurrentQuoteContentSnapshot(ctx, quote._id);
 		if (!currentSnapshot) throw new ConvexError({ code: "NOT_FOUND" });
-		// Pinned version wins (BoldSign flow); else newest same-org row.
-		if (quote.latestDocumentId) {
-			const pinned = await ctx.db.get(quote.latestDocumentId);
-			const pinnedSnapshot = pinned ? await loadQuoteDocumentSnapshot(ctx, pinned) : null;
-			if (
-				pinned &&
-				pinned.orgId === orgId &&
-				pinned.documentType === "quote" &&
-				pinned.documentId === args.quoteId &&
-				pinned.generatedAt >= contentUpdatedAt &&
-				(!quote.recurringAgreementTerms || (pinned.quoteSnapshotSource === "server" && Boolean(pinnedSnapshot))) &&
-				(!pinnedSnapshot || quoteContentSnapshotsEqual(pinnedSnapshot, currentSnapshot))
-			) {
-				return { orgId, existingDocumentId: pinned._id };
-			}
-		}
+		const isCurrent = async (document: Doc<"documents"> | null) =>
+			document !== null && (await quoteDocumentIsCurrent(ctx, document, quote, currentSnapshot));
+		// Pinned version wins (BoldSign flow); else newest row.
+		const pinned = quote.latestDocumentId ? await ctx.db.get(quote.latestDocumentId) : null;
+		if (await isCurrent(pinned)) return { orgId, existingDocumentId: pinned!._id };
 		const newest = await ctx.db
 			.query("documents")
 			.withIndex("by_document_version", (q) =>
@@ -163,18 +151,7 @@ export const _ensureQuotePdfAuth = internalQuery({
 			)
 			.order("desc")
 			.first();
-		const newestSnapshot = newest ? await loadQuoteDocumentSnapshot(ctx, newest) : null;
-		return {
-			orgId,
-			existingDocumentId:
-				newest &&
-				newest.orgId === orgId &&
-				newest.generatedAt >= contentUpdatedAt &&
-				(!quote.recurringAgreementTerms || (newest.quoteSnapshotSource === "server" && Boolean(newestSnapshot))) &&
-				(!newestSnapshot || quoteContentSnapshotsEqual(newestSnapshot, currentSnapshot))
-					? newest._id
-					: null,
-		};
+		return { orgId, existingDocumentId: (await isCurrent(newest)) ? newest!._id : null };
 	},
 });
 

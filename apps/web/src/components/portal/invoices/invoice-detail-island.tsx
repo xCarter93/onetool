@@ -43,6 +43,7 @@ export interface PortalInvoiceGetData {
 		taxEnabled?: boolean | null;
 		taxRate?: number | null;
 		total: number;
+		recurringBillingPeriod?: string | null;
 		paidAt: number | null;
 	};
 	lineItems: Array<{

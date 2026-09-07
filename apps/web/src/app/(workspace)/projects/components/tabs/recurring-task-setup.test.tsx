@@ -141,6 +141,7 @@ describe("recurring task setup", () => {
     render(
       <RecurringTaskSetup
         projectId={"project-1" as never}
+        recurring
         tasks={[task]}
         onAddTask={() => {}}
       />,
@@ -151,11 +152,27 @@ describe("recurring task setup", () => {
     expect(screen.queryByText("Future task setup")).not.toBeInTheDocument();
   });
 
+  it("skips the setup query on a one-off project", () => {
+    render(
+      <RecurringTaskSetup
+        projectId={"project-1" as never}
+        recurring={false}
+        tasks={[task]}
+        onAddTask={() => {}}
+      />,
+    );
+    expect(mocks.queryHook).toHaveBeenCalledWith("getSetup", "skip");
+    expect(
+      screen.queryByRole("button", { name: /Copy Clean lobby/ }),
+    ).not.toBeInTheDocument();
+  });
+
   it("skips setup access and hides controls without organization-wide access", () => {
     mocks.allRecords = false;
     render(
       <RecurringTaskSetup
         projectId={"project-1" as never}
+        recurring
         tasks={[task]}
         onAddTask={() => {}}
       />,
@@ -170,6 +187,7 @@ describe("recurring task setup", () => {
     render(
       <RecurringTaskSetup
         projectId={"project-1" as never}
+        recurring
         tasks={[task]}
         onAddTask={() => {}}
       />,
@@ -186,8 +204,8 @@ describe("recurring task setup", () => {
       }),
     );
     expect(mocks.success).toHaveBeenCalledWith(
-      "Task setup saved",
-      "The task was copied to eligible future projects.",
+      "Task copied",
+      "The task was saved for future projects and added to eligible planned ones.",
     );
   });
 
@@ -196,6 +214,7 @@ describe("recurring task setup", () => {
     render(
       <RecurringTaskSetup
         projectId={"project-1" as never}
+        recurring
         tasks={[task]}
         onAddTask={() => {}}
       />,
@@ -207,7 +226,7 @@ describe("recurring task setup", () => {
       "Preview is stale",
     );
     expect(
-      screen.getByRole("button", { name: "Review changes again" }),
+      screen.getByRole("button", { name: "Review latest changes" }),
     ).toBeEnabled();
     expect(mocks.success).not.toHaveBeenCalled();
   });
@@ -216,7 +235,7 @@ describe("recurring task setup", () => {
     let finishCopy!: (value: object) => void;
     mocks.copy.mockReturnValueOnce(new Promise((resolve) => { finishCopy = resolve; }));
     render(
-      <RecurringTaskSetup projectId={"project-1" as never} tasks={[task]} onAddTask={() => {}} />,
+      <RecurringTaskSetup projectId={"project-1" as never} recurring tasks={[task]} onAddTask={() => {}} />,
     );
     fireEvent.click(screen.getByRole("button", { name: "Copy Clean lobby" }));
     await screen.findByText("Tasks created: 2");
@@ -232,7 +251,7 @@ describe("recurring task setup", () => {
   });
 
   it("disables confirmation if the series is paused after its preview loads", async () => {
-    const props = { projectId: "project-1" as never, tasks: [task], onAddTask: () => {} };
+    const props = { projectId: "project-1" as never, recurring: true, tasks: [task], onAddTask: () => {} };
     const { rerender } = render(<RecurringTaskSetup {...props} />);
     fireEvent.click(screen.getByRole("button", { name: "Copy Clean lobby" }));
     await screen.findByText("Tasks created: 2");
@@ -248,6 +267,7 @@ describe("recurring task setup", () => {
     render(
       <RecurringTaskSetup
         projectId={"project-1" as never}
+        recurring
         tasks={[task]}
         onAddTask={() => {}}
       />,
@@ -258,7 +278,7 @@ describe("recurring task setup", () => {
     );
     expect(screen.getByRole("button", { name: "Copy task" })).toBeDisabled();
     fireEvent.click(
-      screen.getByRole("button", { name: "Review changes again" }),
+      screen.getByRole("button", { name: "Review latest changes" }),
     );
     expect(await screen.findByText("Tasks created: 2")).toBeVisible();
     expect(screen.getByRole("button", { name: "Copy task" })).toBeEnabled();
@@ -287,6 +307,7 @@ describe("recurring task setup", () => {
     render(
       <RecurringTaskSetup
         projectId={"project-1" as never}
+        recurring
         tasks={[]}
         onAddTask={() => {}}
       />,

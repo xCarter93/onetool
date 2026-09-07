@@ -12,6 +12,7 @@ import { formatDate, formatMoney } from "@/lib/portal/format";
 
 import { TotalsBreakdown } from "../totals-breakdown";
 import { deriveInvoiceDisplayPricing } from "@onetool/backend/pdf/invoicePricing";
+import { formatBillingPeriod } from "@onetool/backend/pdf/recurringAgreementFormat";
 
 export type InvoiceDisplayStatus =
 	| "awaiting"
@@ -80,6 +81,7 @@ export interface InvoicePaperInvoice {
 	taxRate?: number | null;
 	total: number;
 	paidAt: number | null;
+	recurringBillingPeriod?: string | null;
 }
 
 export interface InvoicePaperPaymentSummary {
@@ -234,7 +236,10 @@ export function InvoicePaper({
 					<div className="flex min-w-0 flex-col gap-6">
 						{invoiceGroups && invoiceGroups.length > 0 ? (
 							<section className="space-y-3">
-								<h2 className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">Covered visits</h2>
+								<h2 className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+									Covered visits
+									{invoice.recurringBillingPeriod ? ` for ${formatBillingPeriod(invoice.recurringBillingPeriod)}` : ""}
+								</h2>
 								<div className="divide-y divide-border border-y border-border">
 									{invoiceGroups.map((group) => (
 										<div key={group.sourceProjectId} className="space-y-2 py-4">
