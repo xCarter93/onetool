@@ -15,7 +15,6 @@ type FeeRow = {
 
 function platformFeeDescription(fee: PlatformFee): string {
 	if (fee.status === "loading") return "Loading the current fee…";
-	if (fee.status === "error") return "Couldn't load the current fee. Refresh to try again.";
 	if (fee.dollars === 0) return "No OneTool platform fee";
 	return `${formatCurrency(fee.dollars)} per charge`;
 }

@@ -995,8 +995,8 @@ describe("QuickBooks connection", () => {
 				runAfter: Date.now() + HOUR,
 			});
 
-			const orgIds = await t.query(internal.quickbooks.listOrgsWithDueJobs, {});
-			expect(orgIds).toEqual([live.orgId]);
+			const page = await t.query(internal.quickbooks.listOrgsWithDueJobs, {});
+			expect(page).toEqual({ orgIds: [live.orgId], nextAfter: null });
 		});
 
 		it("reclaimStuckJobs only touches claims older than the cutoff", async () => {
@@ -1097,10 +1097,19 @@ describe("QuickBooks connection", () => {
 			const asMember = t.withIdentity(
 				createPremiumTestIdentity(member.clerkUserId, org.clerkOrgId)
 			);
-			return { org, asOwner, member, asMember, clientJobId, invoiceJobId };
+			return {
+				org,
+				asOwner,
+				member,
+				asMember,
+				clientId,
+				invoiceId,
+				clientJobId,
+				invoiceJobId,
+			};
 		}
 
-		it("a user retry mints a new Intuit operation id", async () => {
+		it("a user retry keeps the stored Intuit operation id", async () => {
 			const { asOwner, clientJobId, invoiceJobId } = await seedFailedJobs("remint");
 			await t.run(async (ctx) => {
 				await ctx.db.patch(clientJobId, { operationId: "op_client_old" });
@@ -1110,14 +1119,30 @@ describe("QuickBooks connection", () => {
 			await asOwner.mutation(api.quickbooks.retryJob, { jobId: clientJobId });
 			const clientJob = await t.run((ctx) => ctx.db.get(clientJobId));
 			expect(clientJob?.status).toBe("pending");
-			expect(clientJob?.operationId).toBeDefined();
-			expect(clientJob?.operationId).not.toBe("op_client_old");
+			expect(clientJob?.operationId).toBe("op_client_old");
 
 			await asOwner.mutation(api.quickbooks.retryAllFailed, {});
 			const invoiceJob = await t.run((ctx) => ctx.db.get(invoiceJobId));
 			expect(invoiceJob?.status).toBe("pending");
-			expect(invoiceJob?.operationId).toBeDefined();
-			expect(invoiceJob?.operationId).not.toBe("op_invoice_old");
+			expect(invoiceJob?.operationId).toBe("op_invoice_old");
+		});
+
+		it("getSyncStatus follows the entity's grant", async () => {
+			const { asOwner, asMember, invoiceId } = await seedFailedJobs("status");
+
+			expect(
+				await asOwner.query(api.quickbooks.getSyncStatus, {
+					entityType: "invoice",
+					localId: invoiceId,
+				})
+			).toEqual({ link: null, failed: { lastError: "boom" } });
+			// Default member grants cover projects/tasks only.
+			expect(
+				await asMember.query(api.quickbooks.getSyncStatus, {
+					entityType: "invoice",
+					localId: invoiceId,
+				})
+			).toEqual({ link: null, failed: null });
 		});
 
 		it("hides and blocks jobs for entities a member cannot see", async () => {

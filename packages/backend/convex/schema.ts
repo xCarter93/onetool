@@ -2653,7 +2653,8 @@ export default defineSchema({
 		lastError: v.optional(v.string()), // human-readable, shown in error center
 		lastErrorCode: v.optional(v.string()), // QBO Fault code, e.g. "6240"
 		dedupeKey: v.string(), // `${entityType}:${localId}` — collapse duplicate pending jobs
-		// Intuit requestid token, stable across retries; re-minted only on a user retry.
+		// Intuit requestid token, stable across retries; re-minted only when QBO
+		// rejected the request (a replayed rejection would never clear).
 		operationId: v.optional(v.string()),
 	})
 		.index("by_org_status", ["orgId", "status"])

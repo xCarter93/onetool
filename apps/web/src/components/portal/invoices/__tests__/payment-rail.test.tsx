@@ -332,6 +332,24 @@ describe("PaymentRail", () => {
 		expect(screen.getByRole("button", { name: /Try again/i })).toBeInTheDocument();
 	});
 
+	it("does not offer a retry when the invoice needs a review", async () => {
+		fetchSpy.mockResolvedValueOnce(
+			new Response(
+				JSON.stringify({ code: "needs_review", error: "Needs review" }),
+				{ status: 409, headers: { "content-type": "application/json" } },
+			),
+		);
+		renderRail();
+		fireEvent.click(
+			await screen.findByRole("button", { name: /Pay \$190\.00/ }),
+		);
+		const alert = await screen.findByRole("alert");
+		expect(alert).toHaveTextContent(/reviewing it/i);
+		expect(
+			screen.queryByRole("button", { name: /Try again/i }),
+		).not.toBeInTheDocument();
+	});
+
 	it("Test 8: Appearance options contain NO var(--*) and NO oklch() strings", async () => {
 		mockMintOk();
 		renderRail();

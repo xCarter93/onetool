@@ -107,7 +107,9 @@ export function PaymentErrorBanner({
 		>
 			<p className="font-medium">{titleFor(error.code)}</p>
 			<p className="mt-0.5">{body}</p>
-			{onRetry && error.code !== "rate_limited" ? (
+			{onRetry &&
+			error.code !== "rate_limited" &&
+			error.code !== "needs_review" ? (
 				<button
 					type="button"
 					onClick={onRetry}

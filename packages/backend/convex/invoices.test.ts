@@ -412,11 +412,13 @@ describe("Invoices", () => {
 
 	describe("remove", () => {
 		async function seedInvoice() {
-			const { clientId, clerkUserId, clerkOrgId } = await t.run(async (ctx) => {
-				const { orgId, clerkUserId, clerkOrgId } = await createTestOrg(ctx);
-				const clientId = await createTestClient(ctx, orgId);
-				return { clientId, clerkUserId, clerkOrgId };
-			});
+			const { orgId, clientId, clerkUserId, clerkOrgId } = await t.run(
+				async (ctx) => {
+					const { orgId, clerkUserId, clerkOrgId } = await createTestOrg(ctx);
+					const clientId = await createTestClient(ctx, orgId);
+					return { orgId, clientId, clerkUserId, clerkOrgId };
+				}
+			);
 			const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
 			const now = Date.now();
 			const invoiceId = await asUser.mutation(api.invoices.create, {
@@ -428,7 +430,7 @@ describe("Invoices", () => {
 				issuedDate: now,
 				dueDate: now + 30 * 24 * 60 * 60 * 1000,
 			});
-			return { asUser, invoiceId };
+			return { asUser, orgId, invoiceId };
 		}
 
 		it("hard-deletes an invoice with no external references", async () => {
@@ -438,6 +440,50 @@ describe("Invoices", () => {
 
 			expect(result).toEqual({ id: invoiceId, outcome: "deleted" });
 			expect(await t.run((ctx) => ctx.db.get(invoiceId))).toBeNull();
+		});
+
+		it("deletes the payment schedule alongside an unreferenced invoice", async () => {
+			const { asUser, invoiceId } = await seedInvoice();
+			const paymentId = await asUser.mutation(api.payments.create, {
+				invoiceId,
+				paymentAmount: 100,
+				dueDate: Date.now(),
+				description: "Full Payment",
+				sortOrder: 0,
+			});
+
+			const result = await asUser.mutation(api.invoices.remove, { id: invoiceId });
+
+			expect(result).toEqual({ id: invoiceId, outcome: "deleted" });
+			const { invoice, payment } = await t.run(async (ctx) => ({
+				invoice: await ctx.db.get(invoiceId),
+				payment: await ctx.db.get(paymentId),
+			}));
+			expect(invoice).toBeNull();
+			expect(payment).toBeNull();
+		});
+
+		it("cancels instead of deleting when a QuickBooks export is still queued", async () => {
+			const { asUser, orgId, invoiceId } = await seedInvoice();
+			await t.run(async (ctx) => {
+				await ctx.db.insert("quickbooksSyncJobs", {
+					orgId,
+					entityType: "invoice",
+					localId: invoiceId,
+					operation: "upsert",
+					status: "pending",
+					attempts: 0,
+					runAfter: Date.now(),
+					dedupeKey: `invoice:${invoiceId}`,
+				});
+			});
+
+			const result = await asUser.mutation(api.invoices.remove, { id: invoiceId });
+
+			expect(result).toEqual({ id: invoiceId, outcome: "cancelled" });
+			expect((await t.run((ctx) => ctx.db.get(invoiceId)))?.status).toBe(
+				"cancelled"
+			);
 		});
 
 		it("cancels instead of deleting when a payment carries a Stripe reference", async () => {

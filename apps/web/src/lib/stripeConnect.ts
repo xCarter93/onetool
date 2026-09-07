@@ -59,16 +59,23 @@ export async function getOrgConnectAccountForCaller(): Promise<ConnectContext> {
 // logged server-side and collapsed to the fallback so raw exception text
 // (Stripe request ids, internal identifiers) never reaches the browser.
 const CODE_RESPONSES: Record<string, { status: number; error: string }> = {
-	UNAUTHORIZED: { status: 401, error: "UNAUTHORIZED" },
-	ORG_NOT_FOUND: { status: 401, error: "ORG_NOT_FOUND" },
-	NOT_ORG_OWNER: { status: 403, error: "NOT_ORG_OWNER" },
+	UNAUTHORIZED: { status: 401, error: "Sign in to manage payments." },
+	ORG_NOT_FOUND: { status: 401, error: "We couldn't find your organization." },
+	NOT_ORG_OWNER: {
+		status: 403,
+		error: "Only the organization owner can manage Stripe payments.",
+	},
 	NOT_ONBOARDED: { status: 400, error: "Stripe account not yet onboarded" },
 	US_ONLY: {
 		status: 400,
 		error:
 			"OneTool Connect is currently US-only - contact support for other countries.",
 	},
-	ORG_HAS_NO_EMAIL: { status: 400, error: "ORG_HAS_NO_EMAIL" },
+	ORG_HAS_NO_EMAIL: {
+		status: 400,
+		error:
+			"Add an email address to your organization profile before connecting Stripe.",
+	},
 	DUPLICATE_CONNECT_ACCOUNT: {
 		status: 409,
 		error: "This Stripe account is already connected to another organization.",

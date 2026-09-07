@@ -324,7 +324,15 @@ export const handleEvent = internalAction({
 						);
 						break;
 					}
-					await recordChargeRefunds(charge.id, piId, charge.refunds?.data);
+					// A truncated embedded list would under-report; fall through to the
+					// paged fetch instead.
+					await recordChargeRefunds(
+						charge.id,
+						piId,
+						charge.refunds && !charge.refunds.has_more
+							? charge.refunds.data
+							: undefined
+					);
 					break;
 				}
 				case "charge.dispute.created": {

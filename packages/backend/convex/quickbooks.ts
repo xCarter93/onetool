@@ -701,6 +701,10 @@ export const markJobSucceeded = internalMutation({
 /**
  * Record an attempt that failed. `terminal` parks the job in the error center;
  * otherwise it goes back to pending behind the supplied backoff gate.
+ *
+ * `rejected` re-mints the requestid, because Intuit replays a cached rejection
+ * for a reused one; exhausted retries keep theirs so a lost-response create
+ * replays instead of posting a duplicate.
  */
 export const markJobFailed = internalMutation({
 	args: {
@@ -709,6 +713,7 @@ export const markJobFailed = internalMutation({
 		runAfter: v.optional(v.number()),
 		lastError: v.string(),
 		lastErrorCode: v.optional(v.string()),
+		rejected: v.optional(v.boolean()),
 	},
 	handler: async (ctx, args): Promise<null> => {
 		const job = await ctx.db.get(args.jobId);
@@ -734,6 +739,7 @@ export const markJobFailed = internalMutation({
 			lastError: args.lastError,
 			lastErrorCode: args.lastErrorCode,
 			claimedAt: undefined,
+			...(args.rejected ? { operationId: mintQboOperationId() } : {}),
 		});
 		if (firstFailure) {
 			await notifySyncFailure(ctx, job.orgId);
@@ -1203,14 +1209,20 @@ export const reclaimStuckJobs = internalMutation({
  * picked up. Walks connections rather than the due-job index: jobs parked
  * behind a needs_reauth org would otherwise sit at the head of that index
  * forever and starve every org behind them.
+ *
+ * One call scans a bounded slice; `nextAfter` resumes it so a large install
+ * still reaches every connection.
  */
 export const listOrgsWithDueJobs = internalQuery({
-	args: {},
-	handler: async (ctx): Promise<Id<"organizations">[]> => {
+	args: { after: v.optional(v.number()) },
+	handler: async (
+		ctx,
+		args
+	): Promise<{ orgIds: Id<"organizations">[]; nextAfter: number | null }> => {
 		const now = Date.now();
 		const orgIds: Id<"organizations">[] = [];
 		let scanned = 0;
-		let after = 0;
+		let after = args.after ?? 0;
 		while (scanned < DUE_JOB_CONNECTION_SCAN_LIMIT) {
 			const page = await ctx.db
 				.query("quickbooksConnections")
@@ -1231,15 +1243,10 @@ export const listOrgsWithDueJobs = internalQuery({
 				if (due) orgIds.push(connection.orgId);
 			}
 			scanned += page.length;
-			if (page.length < DUE_JOB_CONNECTION_PAGE) break;
+			if (page.length < DUE_JOB_CONNECTION_PAGE) return { orgIds, nextAfter: null };
 			after = page[page.length - 1]._creationTime;
 		}
-		if (scanned >= DUE_JOB_CONNECTION_SCAN_LIMIT) {
-			console.warn(
-				"[QuickBooks] due-job sweep hit the connection scan limit — orgs beyond it were not kicked"
-			);
-		}
-		return orgIds;
+		return { orgIds, nextAfter: after };
 	},
 });
 
@@ -1253,15 +1260,28 @@ export interface QboEntityLinkView {
 	syncWarning?: string;
 }
 
-/** Sync badge on a client/invoice/payment record page. */
-export const getEntityLink = userQuery({
-	args: { entityType: QBO_ENTITY_TYPE, localId: v.string() },
-	handler: async (ctx, args): Promise<QboEntityLinkView | null> => {
-		if (!isFeatureAllowed((await entitlementsFromIdentity(ctx)).plan, "quickbooks")) return null;
-		const connection = await connectionForOrg(ctx, ctx.orgId);
-		if (!connection || connection.status === "disconnected") return null;
+export interface QboSyncStatusView {
+	link: QboEntityLinkView | null;
+	failed: { lastError?: string } | null;
+}
 
-		const link = await ctx.db
+const NO_SYNC_STATUS: QboSyncStatusView = { link: null, failed: null };
+
+/**
+ * Sync badge on a client/invoice/payment record page: the entity's link plus
+ * its newest terminally failed job, so a record whose latest change failed
+ * never reads "Synced". The failure follows the entity's own permissions.
+ */
+export const getSyncStatus = userQuery({
+	args: { entityType: QBO_ENTITY_TYPE, localId: v.string() },
+	handler: async (ctx, args): Promise<QboSyncStatusView> => {
+		if (!isFeatureAllowed((await entitlementsFromIdentity(ctx)).plan, "quickbooks")) {
+			return NO_SYNC_STATUS;
+		}
+		const connection = await connectionForOrg(ctx, ctx.orgId);
+		if (!connection || connection.status === "disconnected") return NO_SYNC_STATUS;
+
+		const linkRow = await ctx.db
 			.query("quickbooksEntityLinks")
 			.withIndex("by_org_entity", (q) =>
 				q
@@ -1270,11 +1290,28 @@ export const getEntityLink = userQuery({
 					.eq("localId", args.localId)
 			)
 			.first();
-		if (!link) return null;
+		const link: QboEntityLinkView | null = linkRow
+			? {
+					qboId: linkRow.qboId,
+					lastSyncedAt: linkRow.lastSyncedAt,
+					...(linkRow.syncWarning ? { syncWarning: linkRow.syncWarning } : {}),
+				}
+			: null;
+
+		const job = await ctx.db
+			.query("quickbooksSyncJobs")
+			.withIndex("by_org_dedupe", (q) =>
+				q
+					.eq("orgId", ctx.orgId)
+					.eq("dedupeKey", `${args.entityType}:${args.localId}`)
+					.eq("status", "failed")
+			)
+			.order("desc")
+			.first();
+		const visible = job !== null && (await canActOnJob(ctx, job, "view"));
 		return {
-			qboId: link.qboId,
-			lastSyncedAt: link.lastSyncedAt,
-			...(link.syncWarning ? { syncWarning: link.syncWarning } : {}),
+			link,
+			failed: visible ? { lastError: job.lastError } : null,
 		};
 	},
 });
@@ -1463,14 +1500,13 @@ export const retryJob = userMutation({
 		const job = await requireJobModify(ctx, args.jobId);
 		if (job.status !== "failed") return null;
 
-		// A user retry is a new Intuit operation: the old requestid would replay
-		// the cached failed response.
+		// The stored requestid carries over: a rejected job was already re-minted
+		// when it failed, and an exhausted one must replay rather than duplicate.
 		await ctx.db.patch(job._id, {
 			status: "pending",
 			runAfter: Date.now(),
 			attempts: 0,
 			failedAt: undefined,
-			operationId: mintQboOperationId(),
 		});
 		await ctx.scheduler.runAfter(
 			0,
@@ -1512,7 +1548,6 @@ export const retryAllFailed = userMutation({
 				runAfter: now,
 				attempts: 0,
 				failedAt: undefined,
-				operationId: mintQboOperationId(),
 			});
 			retried++;
 		}

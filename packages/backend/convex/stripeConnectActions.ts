@@ -1,6 +1,5 @@
 "use node";
 
-import { randomUUID } from "node:crypto";
 import Stripe from "stripe";
 import { ConvexError } from "convex/values";
 import { action, type ActionCtx } from "./_generated/server";
@@ -128,8 +127,8 @@ async function createAndBind(
 			},
 		},
 	};
-	// Suffix rotates the key on the recovery path so Stripe doesn't replay the
-	// cached stale account from the prior (now-invalid) create call.
+	// The recovery path keys off the stale account id so every retry replays the
+	// same fresh account instead of minting one per attempt.
 	const idempotencyKey = idempotencyKeySuffix
 		? `acct-create-v2-${context.orgId}-${idempotencyKeySuffix}`
 		: `acct-create-v2-${context.orgId}`;
@@ -165,7 +164,12 @@ export const ensureAccount = action({
 				internal.organizations.clearStripeConnectStateInternal,
 				{ orgId: context.orgId }
 			);
-			return await createAndBind(ctx, stripe, context, randomUUID());
+			return await createAndBind(
+				ctx,
+				stripe,
+				context,
+				context.stripeConnectAccountId
+			);
 		}
 	},
 });

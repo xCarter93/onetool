@@ -1414,13 +1414,19 @@ export const markRefundedFromWebhookInternal = systemMutation({
 
 const DISPUTE_SETTINGS_PATH = "/organization/profile?tab=payments";
 
+// Stated in UTC so this matches the deadline Stripe enforces; the workspace UI
+// shows the same instant in the reader's zone.
 function formatDeadline(ms: number): string {
-	return new Date(ms).toLocaleDateString("en-US", {
-		month: "long",
-		day: "numeric",
-		year: "numeric",
-		timeZone: "UTC",
-	});
+	return (
+		new Date(ms).toLocaleString("en-US", {
+			month: "long",
+			day: "numeric",
+			year: "numeric",
+			hour: "numeric",
+			minute: "2-digit",
+			timeZone: "UTC",
+		}) + " UTC"
+	);
 }
 
 /**

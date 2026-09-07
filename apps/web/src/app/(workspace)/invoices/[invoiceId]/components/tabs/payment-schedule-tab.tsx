@@ -60,10 +60,13 @@ const paymentStatusConfig: Record<
 
 /** Stripe's evidence deadline is a real instant, not a stored calendar day. */
 function formatDeadline(ms: number): string {
-	return new Date(ms).toLocaleDateString("en-US", {
+	return new Date(ms).toLocaleString("en-US", {
 		month: "short",
 		day: "numeric",
 		year: "numeric",
+		hour: "numeric",
+		minute: "2-digit",
+		timeZoneName: "short",
 	});
 }
 

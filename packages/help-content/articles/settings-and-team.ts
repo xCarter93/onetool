@@ -148,7 +148,7 @@ export const settingsAndTeamArticles: HelpArticle[] = [
 					},
 					{
 						type: "paragraph",
-						text: "If a record cannot reach QuickBooks, a **Sync issues** section appears below the cards listing each failed client, invoice, or payment with the reason QuickBooks gave, how many attempts were made, and when it last failed. You only see failures for records you have permission to view, so a member with a limited scope sees a shorter list than the owner. **Retry** queues one record again, **Ignore** stops tracking that record, and **Retry all** queues every failed record at once. The section disappears when there is nothing left to fix, and the QuickBooks card's status line switches back from a failure count to **No sync issues**.",
+						text: "If a record cannot reach QuickBooks, a **Sync issues** section appears below the cards listing each failed client, invoice, payment, or refund with the reason QuickBooks gave, how many attempts were made, and when it last failed. You only see failures for records you have permission to view, so a member with a limited scope sees a shorter list than the owner. **Retry** queues one record again, **Ignore** stops tracking that record, and **Retry all** queues every failed record at once. The section disappears when there is nothing left to fix, and the QuickBooks card's status line switches back from a failure count to **No sync issues**.",
 					},
 					{
 						type: "paragraph",
@@ -794,6 +794,7 @@ export const settingsAndTeamArticles: HelpArticle[] = [
 							"**Clients** become QuickBooks customers. They sync when created and again whenever their details change.",
 							"**Invoices** sync when you send them (or when created, if the owner changes the timing on the Integrations tab), and edits to an already synced invoice sync again. Cancelling a synced invoice voids it in QuickBooks.",
 							"**Payments** are recorded against the matching QuickBooks invoice when they are paid, if payment sync is turned on.",
+							"**Refunds** post as a QuickBooks refund receipt against the customer once Stripe reports the refund as succeeded, if payment sync is turned on.",
 							"**SKUs** become QuickBooks items the first time they are invoiced, posting to the income account chosen during setup. Lines without a SKU use the fallback **OneTool Service** item.",
 						],
 					},
@@ -806,8 +807,8 @@ export const settingsAndTeamArticles: HelpArticle[] = [
 						type: "list",
 						items: [
 							"**Quotes and estimates.** Only invoices and their payments reach QuickBooks.",
-							"**Deletes.** Deleting a record in OneTool never deletes it in QuickBooks; the record simply stops updating.",
-							"**Refunds and disputes.** Record those in QuickBooks directly.",
+							"**Deletes.** Nothing you delete in OneTool is deleted in QuickBooks. An invoice that has synced, has an export queued or running, or has Stripe payment history is cancelled instead of deleted, and the cancel voids it in QuickBooks. Other records simply stop updating.",
+							"**Disputes.** A chargeback is never exported. Record it in QuickBooks directly.",
 							"**Card processing fees and payouts.** Stripe fees and payout deposits are not broken out in QuickBooks.",
 							"**History from before you connected.** Older invoices and payments are not backfilled. Editing an older invoice after connecting does sync it.",
 						],

@@ -203,7 +203,7 @@ describe("stripeConnectActions", () => {
 			expect(accountsCreate).not.toHaveBeenCalled();
 		});
 
-		it("recreates with a rotated idempotency key when Stripe no longer has the account", async () => {
+		it("recreates under an idempotency key pinned to the stale account id", async () => {
 			const { org, owner } = await seedOwnerOrg(t, {
 				stripeConnectAccountId: "acct_gone",
 			});
@@ -222,12 +222,47 @@ describe("stripeConnectActions", () => {
 			);
 			const result = await owner.action(api.stripeConnectActions.ensureAccount, {});
 			expect(result.accountId).toBe("acct_fresh");
-			const key = accountsCreate.mock.calls[0]?.[1].idempotencyKey as string;
-			expect(key.startsWith(`acct-create-v2-${org.orgId}-`)).toBe(true);
-			expect(key).not.toBe(`acct-create-v2-${org.orgId}`);
+			expect(accountsCreate.mock.calls[0]?.[1].idempotencyKey).toBe(
+				`acct-create-v2-${org.orgId}-acct_gone`
+			);
 			const saved = await t.run((ctx) => ctx.db.get(org.orgId));
 			expect(saved?.stripeConnectAccountId).toBe("acct_fresh");
 			expect(saved?.stripeChargesEnabled).toBeUndefined();
+		});
+
+		it("keeps the stale account id when the recreate's bind fails, so the retry replays the same key", async () => {
+			const { org, owner } = await seedOwnerOrg(t, {
+				stripeConnectAccountId: "acct_gone",
+			});
+			await t.run(async (ctx) => {
+				const other = await createTestOrg(ctx, {
+					clerkUserId: "user_bind_other",
+					clerkOrgId: "org_bind_other",
+				});
+				await ctx.db.patch(other.orgId, {
+					stripeConnectAccountId: "acct_fresh",
+				});
+			});
+			accountsRetrieve.mockRejectedValue(
+				new Stripe.errors.StripeInvalidRequestError({
+					message: "No such account",
+					statusCode: 404,
+					code: "resource_missing",
+				} as never)
+			);
+			accountsCreate.mockResolvedValue(
+				stripeAccount({ id: "acct_fresh", orgId: org.orgId })
+			);
+
+			await expect(
+				owner.action(api.stripeConnectActions.ensureAccount, {})
+			).rejects.toThrowError(/DUPLICATE_CONNECT_ACCOUNT/);
+
+			expect(accountsCreate.mock.calls[0]?.[1].idempotencyKey).toBe(
+				`acct-create-v2-${org.orgId}-acct_gone`
+			);
+			const saved = await t.run((ctx) => ctx.db.get(org.orgId));
+			expect(saved?.stripeConnectAccountId).toBe("acct_gone");
 		});
 
 		it("refuses to bind an account that already belongs to another org", async () => {

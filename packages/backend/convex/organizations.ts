@@ -1103,14 +1103,13 @@ export const updateExternalAccountFingerprintInternal = systemMutation({
 	},
 });
 
-// Recovery path: Stripe no longer has the bound account, so drop every cached
-// Connect field before stripeConnectActions recreates it.
+// Keeps stripeConnectAccountId: the recreate's idempotency key hangs off it, so
+// retries replay one fresh account instead of minting one each cycle.
 export const clearStripeConnectStateInternal = systemMutation({
 	args: {},
 	returns: v.null(),
 	handler: async (ctx) => {
 		await ctx.db.patch(ctx.orgId, {
-			stripeConnectAccountId: undefined,
 			stripeChargesEnabled: undefined,
 			stripePayoutsEnabled: undefined,
 			stripeDetailsSubmitted: undefined,

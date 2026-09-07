@@ -21,7 +21,7 @@ import {
 import { formatCurrency } from "@/lib/money";
 
 interface PaymentsFlowProps {
-	/** Null while the configured fee is still loading or unavailable. */
+	/** Null while the configured fee is still loading. */
 	platformFeeDollars: number | null;
 }
 
@@ -74,6 +74,7 @@ function LegendRow({
 
 export function PaymentsFlow({ platformFeeDollars }: PaymentsFlowProps) {
 	const [amount, setAmount] = React.useState(100);
+	const feePending = platformFeeDollars === null;
 	const platformFee = platformFeeDollars ?? 0;
 
 	// Derived during render — no effects (vercel-react-best-practices).
@@ -118,21 +119,19 @@ export function PaymentsFlow({ platformFeeDollars }: PaymentsFlowProps) {
 		{
 			icon: Sparkles,
 			label: "OneTool fee",
-			amount:
-				platformFeeDollars === null ? "—" : `−${formatCurrency(platformFee)}`,
-			sublabel:
-				platformFeeDollars === null
-					? "Loading the configured fee"
-					: platformFee === 0
-						? "No OneTool platform fee"
-						: `${formatCurrency(platformFee)} per charge`,
+			amount: feePending ? "—" : `−${formatCurrency(platformFee)}`,
+			sublabel: feePending
+				? "Loading the configured fee"
+				: platformFee === 0
+					? "No OneTool platform fee"
+					: `${formatCurrency(platformFee)} per charge`,
 			pct: otPct,
 			tone: "amber",
 		},
 		{
 			icon: Wallet,
 			label: "Your balance",
-			amount: formatCurrency(balance),
+			amount: feePending ? "—" : formatCurrency(balance),
 			sublabel: "Available in your OneTool balance right away",
 			pct: keepPct,
 			tone: "emerald",
@@ -141,7 +140,7 @@ export function PaymentsFlow({ platformFeeDollars }: PaymentsFlowProps) {
 		{
 			icon: Landmark,
 			label: "Bank payout",
-			amount: formatCurrency(balance),
+			amount: feePending ? "—" : formatCurrency(balance),
 			sublabel: "+2 business days (US)",
 			pct: keepPct,
 			tone: "emerald",
@@ -297,7 +296,7 @@ export function PaymentsFlow({ platformFeeDollars }: PaymentsFlowProps) {
 									</svg>
 									<div className="absolute inset-0 flex flex-col items-center justify-center">
 										<span className="text-xl font-bold tabular-nums text-foreground">
-											{keepPct.toFixed(0)}%
+											{feePending ? "—" : `${keepPct.toFixed(0)}%`}
 										</span>
 										<span className="text-[11px] text-muted-foreground">
 											you keep
@@ -308,7 +307,7 @@ export function PaymentsFlow({ platformFeeDollars }: PaymentsFlowProps) {
 									<LegendRow
 										dotClass="bg-emerald-500"
 										label="Your payout"
-										amount={formatCurrency(balance)}
+										amount={feePending ? "—" : formatCurrency(balance)}
 									/>
 									<LegendRow
 										dotClass="bg-primary"
@@ -319,9 +318,7 @@ export function PaymentsFlow({ platformFeeDollars }: PaymentsFlowProps) {
 										dotClass="bg-amber-500"
 										label="OneTool fee"
 										amount={
-											platformFeeDollars === null
-												? "—"
-												: `−${formatCurrency(platformFee)}`
+											feePending ? "—" : `−${formatCurrency(platformFee)}`
 										}
 									/>
 								</div>
@@ -372,7 +369,7 @@ export function PaymentsFlow({ platformFeeDollars }: PaymentsFlowProps) {
 
 			<p className="text-xs leading-relaxed text-muted-foreground">
 				Example based on a {formatCurrency(amount)} invoice
-				{platformFeeDollars === null
+				{feePending
 					? ""
 					: platformFee === 0
 						? " with no OneTool platform fee"

@@ -21,6 +21,9 @@ const { ownerState, sessionState } = vi.hoisted(() => ({
 vi.mock("next/navigation", () => ({
 	useSearchParams: () => new URLSearchParams(""),
 }));
+vi.mock("convex/react", () => ({
+	useQuery: () => ({ platformFeeDollars: 0 }),
+}));
 vi.mock("../../_hooks/use-org-owner", () => ({
 	useOrgOwner: () => ({
 		organization: ownerState.organization,
@@ -78,9 +81,6 @@ function json(body: Record<string, unknown>, status = 200) {
 function mockRoutes(status: Record<string, unknown>) {
 	fetchSpy.mockImplementation(async (input) => {
 		const url = String(input);
-		if (url.endsWith("/api/stripe-connect/platform-fee")) {
-			return json({ platformFeeDollars: 0 });
-		}
 		if (url.endsWith("/api/stripe-connect/status")) return json(status);
 		throw new Error(`unexpected fetch ${url}`);
 	});

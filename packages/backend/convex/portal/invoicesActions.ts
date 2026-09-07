@@ -10,6 +10,7 @@ import { internal } from "../_generated/api";
 import { ConvexError, v } from "convex/values";
 import { dollarsToCents } from "../lib/money";
 import { createStripeSdkClient } from "../lib/stripeSdk";
+import { platformFeeCents } from "../lib/platformFee";
 
 // Test seam: vi.mock("stripe") wires this in tests so SDK calls never network out.
 let stripeFactoryOverride: (() => Stripe) | null = null;
@@ -160,9 +161,7 @@ export const createPaymentIntent = action({
 
 		const attemptId = (resolved.payment.checkoutAttemptCounter ?? 0) + 1;
 
-		const applicationFeeCents = Number(
-			process.env.STRIPE_APPLICATION_FEE_CENTS ?? 0,
-		);
+		const applicationFeeCents = platformFeeCents();
 
 		const pi = await stripe.paymentIntents.create(
 			{

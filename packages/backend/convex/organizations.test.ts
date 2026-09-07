@@ -904,7 +904,7 @@ describe("Organizations", () => {
 	});
 
 	describe("clearStripeConnectStateInternal", () => {
-		it("clears every cached Connect field for the org", async () => {
+		it("clears cached readiness but keeps the account id", async () => {
 			const org = await t.run((ctx) => createTestOrg(ctx));
 			await t.run((ctx) =>
 				ctx.db.patch(org.orgId, {
@@ -918,7 +918,7 @@ describe("Organizations", () => {
 				orgId: org.orgId,
 			});
 			const saved = await t.run((ctx) => ctx.db.get(org.orgId));
-			expect(saved?.stripeConnectAccountId).toBeUndefined();
+			expect(saved?.stripeConnectAccountId).toBe("acct_clear");
 			expect(saved?.stripeChargesEnabled).toBeUndefined();
 			expect(saved?.stripePayoutsEnabled).toBeUndefined();
 			expect(saved?.stripeExternalAccountLast4).toBeUndefined();

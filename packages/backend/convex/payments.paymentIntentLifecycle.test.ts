@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import Stripe from "stripe";
 import { api, internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import { setupConvexTest } from "./test.setup";
@@ -279,5 +280,63 @@ describe("payments: PaymentIntent lifecycle", () => {
 		);
 		expect((await t.run((ctx) => ctx.db.get(paymentId)))?.unappliedStripePaymentIntentIds).toBeUndefined();
 		expect(await attemptFor("pi_settled", orgId)).toBeNull();
+	});
+	describe("cancelPaymentIntent retries", () => {
+		function mockFailingCancel(err: unknown) {
+			const cancel = vi.fn().mockRejectedValue(err);
+			__setStripeFactoryForTests(() => ({ paymentIntents: { cancel } }) as never);
+			return cancel;
+		}
+
+		async function pendingCancels() {
+			const rows = await t.run((ctx) =>
+				ctx.db.system.query("_scheduled_functions").collect()
+			);
+			return rows.filter(
+				(job) => job.name === "stripePaymentIntentActions:cancelPaymentIntent"
+			);
+		}
+
+		it("reschedules the cancel when Stripe is unreachable", async () => {
+			mockFailingCancel(
+				new Stripe.errors.StripeConnectionError({ message: "socket" } as never)
+			);
+			await t.action(internal.stripePaymentIntentActions.cancelPaymentIntent, {
+				stripeAccountId: ACCOUNT,
+				paymentIntentId: "pi_transient",
+			});
+			const scheduled = await pendingCancels();
+			expect(scheduled).toHaveLength(1);
+			expect(scheduled[0]!.args[0]).toMatchObject({
+				paymentIntentId: "pi_transient",
+				attempt: 2,
+			});
+		});
+
+		it("gives up on an intent Stripe refuses to cancel", async () => {
+			mockFailingCancel(
+				new Stripe.errors.StripeInvalidRequestError({
+					message: "already succeeded",
+					code: "payment_intent_unexpected_state",
+				} as never)
+			);
+			await t.action(internal.stripePaymentIntentActions.cancelPaymentIntent, {
+				stripeAccountId: ACCOUNT,
+				paymentIntentId: "pi_bad_state",
+			});
+			expect(await pendingCancels()).toHaveLength(0);
+		});
+
+		it("stops retrying at the attempt bound", async () => {
+			mockFailingCancel(
+				new Stripe.errors.StripeConnectionError({ message: "socket" } as never)
+			);
+			await t.action(internal.stripePaymentIntentActions.cancelPaymentIntent, {
+				stripeAccountId: ACCOUNT,
+				paymentIntentId: "pi_exhausted",
+				attempt: 5,
+			});
+			expect(await pendingCancels()).toHaveLength(0);
+		});
 	});
 });

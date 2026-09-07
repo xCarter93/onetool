@@ -911,6 +911,41 @@ describe("QuickBooks sync engine", () => {
 			expect(job?.failedAt).toBeGreaterThan(0);
 		});
 
+		it("markJobFailed re-mints the requestid only when QBO rejected the record", async () => {
+			const { org } = await setupOrg("requestid");
+			const rejectedId = await seedJob(org.orgId, {
+				status: "processing",
+				operationId: "op_rejected",
+			});
+			const exhaustedId = await seedJob(org.orgId, {
+				status: "processing",
+				localId: "local_2",
+				dedupeKey: "client:local_2",
+				operationId: "op_exhausted",
+			});
+
+			await t.mutation(internal.quickbooks.markJobFailed, {
+				jobId: rejectedId,
+				terminal: true,
+				rejected: true,
+				lastError: "QuickBooks rejected the record.",
+			});
+			// A lost response must replay the original requestid, not duplicate.
+			await t.mutation(internal.quickbooks.markJobFailed, {
+				jobId: exhaustedId,
+				terminal: true,
+				lastError: "Network error",
+			});
+
+			const jobs = await t.run(async (ctx) => ({
+				rejected: await ctx.db.get(rejectedId),
+				exhausted: await ctx.db.get(exhaustedId),
+			}));
+			expect(jobs.rejected?.operationId).toBeDefined();
+			expect(jobs.rejected?.operationId).not.toBe("op_rejected");
+			expect(jobs.exhausted?.operationId).toBe("op_exhausted");
+		});
+
 		it("terminal failures alert admins once per streak", async () => {
 			const { org } = await setupOrg("notify");
 			const jobA = await seedJob(org.orgId, { status: "processing" });
@@ -1068,7 +1103,7 @@ describe("QuickBooks sync engine", () => {
 	// ------------------------------------------------------------------
 
 	describe("public surface", () => {
-		it("getEntityLink returns the link with its warning, null when unconnected", async () => {
+		it("getSyncStatus returns the link with its warning, empty when unconnected", async () => {
 			const { org, asOwner } = await setupOrg("get_link");
 			const clientId = await asOwner.mutation(api.clients.create, {
 				companyName: "Acme Co",
@@ -1085,22 +1120,68 @@ describe("QuickBooks sync engine", () => {
 
 			// No connection yet.
 			expect(
-				await asOwner.query(api.quickbooks.getEntityLink, {
+				await asOwner.query(api.quickbooks.getSyncStatus, {
 					entityType: "client",
 					localId: clientId,
 				})
-			).toBeNull();
+			).toEqual({ link: null, failed: null });
 
 			await connect(org.orgId);
-			const link = await asOwner.query(api.quickbooks.getEntityLink, {
+			const status = await asOwner.query(api.quickbooks.getSyncStatus, {
 				entityType: "client",
 				localId: clientId,
 			});
-			expect(link).toMatchObject({
+			expect(status.failed).toBeNull();
+			expect(status.link).toMatchObject({
 				qboId: "42",
 				syncWarning: "QuickBooks adjusted the tax.",
 			});
-			expect(link?.lastSyncedAt).toBeGreaterThan(0);
+			expect(status.link?.lastSyncedAt).toBeGreaterThan(0);
+		});
+
+		it("getSyncStatus surfaces the record's own failed job", async () => {
+			const { org, asOwner } = await setupOrg("get_status_failed");
+			await connect(org.orgId);
+			const clientId = await asOwner.mutation(api.clients.create, {
+				companyName: "Acme Co",
+				status: "active",
+			});
+			await t.run(async (ctx) => {
+				await ctx.db.insert("quickbooksSyncJobs", {
+					orgId: org.orgId,
+					entityType: "client",
+					localId: clientId,
+					operation: "upsert",
+					status: "failed",
+					attempts: 5,
+					runAfter: Date.now(),
+					failedAt: Date.now(),
+					lastError: "QuickBooks rejected the record.",
+					dedupeKey: `client:${clientId}`,
+				});
+				// Another record's failure must not leak onto this one.
+				await ctx.db.insert("quickbooksSyncJobs", {
+					orgId: org.orgId,
+					entityType: "invoice",
+					localId: "other",
+					operation: "upsert",
+					status: "failed",
+					attempts: 5,
+					runAfter: Date.now(),
+					failedAt: Date.now(),
+					lastError: "not mine",
+					dedupeKey: "invoice:other",
+				});
+			});
+
+			const status = await asOwner.query(api.quickbooks.getSyncStatus, {
+				entityType: "client",
+				localId: clientId,
+			});
+			expect(status).toEqual({
+				link: null,
+				failed: { lastError: "QuickBooks rejected the record." },
+			});
 		});
 
 		it("listSyncErrors labels rows and tolerates deleted entities", async () => {
@@ -1229,11 +1310,11 @@ describe("QuickBooks sync engine", () => {
 			});
 			expect(await asFree.query(api.quickbooks.listSyncErrors, {})).toEqual([]);
 			expect(
-				await asFree.query(api.quickbooks.getEntityLink, {
+				await asFree.query(api.quickbooks.getSyncStatus, {
 					entityType: "client",
 					localId: "local_1",
 				})
-			).toBeNull();
+			).toEqual({ link: null, failed: null });
 		});
 	});
 

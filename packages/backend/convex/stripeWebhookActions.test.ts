@@ -669,6 +669,51 @@ describe("stripeWebhookActions.handleEvent integration", () => {
 		expect(payment?.refundedAmount).toBe(30);
 	});
 
+	it("charge.refunded fetches the full refund list when the event's is truncated", async () => {
+		const { orgId } = await seedConnectedOrg(t);
+		const { paymentId } = await seedPayment(t, {
+			orgId,
+			publicToken: "tok_refund_more",
+			paymentAmount: 80,
+			paymentIntentId: "pi_refund_more",
+		});
+		await t.run((ctx) =>
+			ctx.db.patch(paymentId, { status: "paid", paidAt: Date.now() })
+		);
+		mockRefundList([
+			{ id: "re_more_1", amount: 1000, status: "succeeded" },
+			{ id: "re_more_2", amount: 2000, status: "succeeded" },
+		]);
+		await t.action(
+			internal.stripeWebhookActions.handleEvent,
+			buildHandleEventArgs(
+				buildStripeEvent({
+					id: "evt_refund_more",
+					type: "charge.refunded",
+					account: "acct_test_webhook",
+					data: {
+						object: {
+							id: "ch_refund_more",
+							payment_intent: "pi_refund_more",
+							amount: 8000,
+							amount_captured: 8000,
+							amount_refunded: 3000,
+							refunded: false,
+							refunds: {
+								has_more: true,
+								data: [
+									{ id: "re_more_1", amount: 1000, status: "succeeded" },
+								],
+							},
+						} as never,
+					},
+				})
+			)
+		);
+		const payment = await t.run((ctx) => ctx.db.get(paymentId));
+		expect(payment?.refundedAmount).toBe(30);
+	});
+
 	it("refund.updated (succeeded) records a bank refund that settled after creation", async () => {
 		const { orgId } = await seedConnectedOrg(t);
 		const { paymentId } = await seedPayment(t, {
@@ -929,12 +974,14 @@ describe("stripeWebhookActions.handleEvent integration", () => {
 		expect(notifications).toHaveLength(1);
 		const message = notifications[0]!.message;
 		expect(message).toContain(
-			new Date(dueBySec * 1000).toLocaleDateString("en-US", {
+			new Date(dueBySec * 1000).toLocaleString("en-US", {
 				month: "long",
 				day: "numeric",
 				year: "numeric",
+				hour: "numeric",
+				minute: "2-digit",
 				timeZone: "UTC",
-			})
+			}) + " UTC"
 		);
 		expect(message).toContain("Payments");
 		expect(message).not.toContain("7 days");

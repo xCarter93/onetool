@@ -142,7 +142,7 @@ export async function ensureFreshAccessToken(
 		storedAccessToken: refreshed.storedAccessToken,
 		connectionId: connection._id,
 		realmId: connection.realmId,
-		environment: connection.environment,
+		environment: refreshed.environment,
 	};
 }
 
@@ -150,7 +150,11 @@ export async function ensureFreshAccessToken(
 async function refreshConnection(
 	ctx: ActionCtx,
 	connection: Doc<"quickbooksConnections">
-): Promise<{ accessToken: string; storedAccessToken: string } | null> {
+): Promise<{
+	accessToken: string;
+	storedAccessToken: string;
+	environment: "sandbox" | "production";
+} | null> {
 	try {
 		const tokens = await refreshTokens(
 			await decryptToken(connection.refreshToken)
@@ -171,7 +175,13 @@ async function refreshConnection(
 				refreshTokenHardExpiresAt: tokens.refreshTokenHardExpiresAt,
 			}
 		);
-		if (applied) return { accessToken: tokens.accessToken, storedAccessToken };
+		if (applied) {
+			return {
+				accessToken: tokens.accessToken,
+				storedAccessToken,
+				environment: connection.environment,
+			};
+		}
 
 		// Lost the rotation race: use the stored tokens, unless a reconnect replaced the row.
 		const current: Doc<"quickbooksConnections"> | null = await ctx.runQuery(
@@ -181,9 +191,11 @@ async function refreshConnection(
 		if (!current || current.status !== "connected" || current._id !== connection._id) {
 			return null;
 		}
+		// A reconnect can flip environment in place, so read it off the live row.
 		return {
 			accessToken: await decryptToken(current.accessToken),
 			storedAccessToken: current.accessToken,
+			environment: current.environment,
 		};
 	} catch (error) {
 		if (error instanceof QboInvalidGrantError) {
@@ -1406,6 +1418,7 @@ async function handleJobFailure(
 		await ctx.runMutation(internal.quickbooks.markJobFailed, {
 			jobId: job._id,
 			terminal: true,
+			rejected: true,
 			lastError: staleConnection
 				? "QuickBooks was reconnected while this record was syncing."
 				: error instanceof Error
@@ -1580,19 +1593,25 @@ export const sweepSyncJobs = internalAction({
 			{ staleBeforeMs: Date.now() - 10 * 60 * 1000 }
 		);
 
-		const orgIds: Id<"organizations">[] = await ctx.runQuery(
-			internal.quickbooks.listOrgsWithDueJobs,
-			{}
-		);
-		for (const orgId of orgIds) {
-			await ctx.scheduler.runAfter(
-				0,
-				internal.quickbooksActions.processOrgJobs,
-				{ orgId }
-			);
-		}
+		let kicked = 0;
+		let after: number | undefined = undefined;
+		do {
+			const page: {
+				orgIds: Id<"organizations">[];
+				nextAfter: number | null;
+			} = await ctx.runQuery(internal.quickbooks.listOrgsWithDueJobs, { after });
+			for (const orgId of page.orgIds) {
+				await ctx.scheduler.runAfter(
+					0,
+					internal.quickbooksActions.processOrgJobs,
+					{ orgId }
+				);
+			}
+			kicked += page.orgIds.length;
+			after = page.nextAfter ?? undefined;
+		} while (after !== undefined);
 
-		return { reclaimed, kicked: orgIds.length };
+		return { reclaimed, kicked };
 	},
 });
 

@@ -17,31 +17,27 @@ type SyncState =
 	| { kind: "synced"; lastSyncedAt: number; syncWarning?: string };
 
 /**
- * Per-record sync state from the queries the workspace already exposes. A
- * failed job wins over a stale link, so a record whose latest change failed
- * never reads "Synced". Queued jobs have no public query yet, so an unlinked
- * record reads "Not synced yet" rather than "Queued".
+ * Per-record sync state, scoped to this record rather than the whole error
+ * feed. A failed job wins over a stale link, so a record whose latest change
+ * failed never reads "Synced". Queued jobs have no public query yet, so an
+ * unlinked record reads "Not synced yet" rather than "Queued".
  */
 function useSyncState(entityType: QboEntityType, localId: string): SyncState {
 	const connection = useQuery(api.quickbooks.getConnectionStatus);
-	const link = useQuery(api.quickbooks.getEntityLink, { entityType, localId });
-	const errors = useQuery(api.quickbooks.listSyncErrors);
+	const status = useQuery(api.quickbooks.getSyncStatus, { entityType, localId });
 
-	if (connection === undefined || link === undefined || errors === undefined) {
+	if (connection === undefined || status === undefined) {
 		return { kind: "loading" };
 	}
 	if (!connection || connection.status === "disconnected") {
 		return { kind: "hidden" };
 	}
-	const failed = errors.find(
-		(row) => row.entityType === entityType && row.localId === localId,
-	);
-	if (failed) return { kind: "failed", lastError: failed.lastError };
-	if (!link) return { kind: "not_synced" };
+	if (status.failed) return { kind: "failed", lastError: status.failed.lastError };
+	if (!status.link) return { kind: "not_synced" };
 	return {
 		kind: "synced",
-		lastSyncedAt: link.lastSyncedAt,
-		syncWarning: link.syncWarning,
+		lastSyncedAt: status.link.lastSyncedAt,
+		syncWarning: status.link.syncWarning,
 	};
 }
 

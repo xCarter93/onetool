@@ -154,6 +154,19 @@ describe("mapConnectError", () => {
 		expect(usOnly.error).toMatch(/US-only/);
 	});
 
+	it("returns readable sentences instead of bare codes", async () => {
+		for (const code of [
+			"UNAUTHORIZED",
+			"ORG_NOT_FOUND",
+			"NOT_ORG_OWNER",
+			"ORG_HAS_NO_EMAIL",
+		]) {
+			const body = await mapConnectError(new ConvexError(code), "fallback").json();
+			expect(body.error, code).not.toBe(code);
+			expect(body.error, code).toMatch(/\s/);
+		}
+	});
+
 	it("maps route-local plain errors by message", () => {
 		expect(mapConnectError(new Error("UNAUTHORIZED"), "fallback").status).toBe(
 			401
