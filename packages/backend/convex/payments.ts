@@ -1546,6 +1546,9 @@ export const syncDisputeFromWebhookInternal = systemMutation({
 
 		const won = args.disputeStatus === "won";
 		const lost = args.disputeStatus === "lost";
+		// A new dispute's first event may be an update (delivery order is not
+		// guaranteed); it must not inherit the previous dispute's resolution.
+		const reopened = !args.closed && payment.disputeId !== args.disputeId;
 
 		await ctx.db.patch(payment._id, {
 			disputeId: args.disputeId,
@@ -1558,7 +1561,9 @@ export const syncDisputeFromWebhookInternal = systemMutation({
 						disputed: lost,
 						disputeResolvedAt: args.resolvedAt ?? Date.now(),
 					}
-				: {}),
+				: reopened
+					? { disputed: true, disputeResolvedAt: undefined }
+					: {}),
 		});
 
 		if (!args.closed) return null;

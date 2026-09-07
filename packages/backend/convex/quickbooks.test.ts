@@ -995,8 +995,10 @@ describe("QuickBooks connection", () => {
 				runAfter: Date.now() + HOUR,
 			});
 
-			const page = await t.query(internal.quickbooks.listOrgsWithDueJobs, {});
-			expect(page).toEqual({ orgIds: [live.orgId], nextAfter: null });
+			const page = await t.query(internal.quickbooks.listOrgsWithDueJobs, {
+				cursor: null,
+			});
+			expect(page).toEqual({ orgIds: [live.orgId], cursor: null });
 		});
 
 		it("reclaimStuckJobs only touches claims older than the cutoff", async () => {
@@ -1128,7 +1130,7 @@ describe("QuickBooks connection", () => {
 		});
 
 		it("getSyncStatus follows the entity's grant", async () => {
-			const { asOwner, asMember, invoiceId } = await seedFailedJobs("status");
+			const { org, asOwner, asMember, invoiceId } = await seedFailedJobs("status");
 
 			expect(
 				await asOwner.query(api.quickbooks.getSyncStatus, {
@@ -1136,13 +1138,29 @@ describe("QuickBooks connection", () => {
 					localId: invoiceId,
 				})
 			).toEqual({ link: null, failed: { lastError: "boom" } });
-			// Default member grants cover projects/tasks only.
+			await t.mutation(internal.quickbooks.upsertEntityLink, {
+				orgId: org.orgId,
+				entityType: "invoice",
+				localId: invoiceId,
+				qboId: "77",
+				qboSyncToken: "0",
+			});
+			// Default member grants cover projects/tasks only: neither the link
+			// nor the failure may leak.
 			expect(
 				await asMember.query(api.quickbooks.getSyncStatus, {
 					entityType: "invoice",
 					localId: invoiceId,
 				})
 			).toEqual({ link: null, failed: null });
+			expect(
+				(
+					await asOwner.query(api.quickbooks.getSyncStatus, {
+						entityType: "invoice",
+						localId: invoiceId,
+					})
+				).link
+			).toMatchObject({ qboId: "77" });
 		});
 
 		it("hides and blocks jobs for entities a member cannot see", async () => {

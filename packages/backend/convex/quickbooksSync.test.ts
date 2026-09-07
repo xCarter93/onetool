@@ -2229,6 +2229,52 @@ describe("QuickBooks sync engine", () => {
 				});
 			});
 
+			it("a rejected Customer create retries under a fresh requestid", async () => {
+				const { org, asOwner } = await setupOrg("w_customer_reject");
+				await connect(org.orgId);
+				const clientId = await asOwner.mutation(api.clients.create, {
+					companyName: "Rejected Co",
+					status: "active",
+				});
+				await clearJobsOfType(org.orgId, "all");
+				const jobId = await seedJobFor(org.orgId, clientId, "client");
+				const firstOperationId = (await t.run((ctx) => ctx.db.get(jobId)))
+					?.operationId;
+
+				const rejected = stubQbo(() => ({
+					status: 400,
+					payload: {
+						Fault: {
+							type: "ValidationFault",
+							Error: [{ code: "2050", Message: "Invalid email" }],
+						},
+					},
+				}));
+				await t.action(internal.quickbooksActions.processOrgJobs, {
+					orgId: org.orgId,
+				});
+				expect(rejected[0].url).toContain(
+					`/customer?requestid=${clientId}-${firstOperationId}`
+				);
+				const failed = await t.run((ctx) => ctx.db.get(jobId));
+				expect(failed?.status).toBe("failed");
+				expect(failed?.operationId).not.toBe(firstOperationId);
+
+				await asOwner.mutation(api.quickbooks.retryJob, { jobId });
+				const retried = stubQbo(() => ({
+					payload: { Customer: { Id: "900", SyncToken: "0" } },
+				}));
+				await t.action(internal.quickbooksActions.processOrgJobs, {
+					orgId: org.orgId,
+				});
+				expect(retried[0].url).toContain(
+					`/customer?requestid=${clientId}-${failed?.operationId}`
+				);
+				expect(await linkFor(org.orgId, "client", clientId)).toMatchObject({
+					qboId: "900",
+				});
+			});
+
 			it("disambiguates instead of adopting an owned Customer when the org allows it", async () => {
 				const { org, asOwner } = await setupOrg("w_dup_owned_auto");
 				await connect(org.orgId, { autoDisambiguateNames: true });
@@ -2248,7 +2294,8 @@ describe("QuickBooks sync engine", () => {
 					qboId: "555",
 					qboSyncToken: "2",
 				});
-				await seedJobFor(org.orgId, secondId, "client");
+				const jobId = await seedJobFor(org.orgId, secondId, "client");
+				const operationId = (await t.run((ctx) => ctx.db.get(jobId)))?.operationId;
 
 				const calls = stubQbo((url, body) => {
 					if (url.includes("/query")) {
@@ -2276,7 +2323,9 @@ describe("QuickBooks sync engine", () => {
 					qboId: "556",
 				});
 				expect(
-					calls.some((call) => call.url.includes(`requestid=${secondId}-2`))
+					calls.some((call) =>
+						call.url.includes(`requestid=${secondId}-${operationId}-2`)
+					)
 				).toBe(true);
 			});
 

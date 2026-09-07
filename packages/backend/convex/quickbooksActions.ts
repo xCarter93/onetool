@@ -564,7 +564,8 @@ async function syncClient(
 	ctx: ActionCtx,
 	connection: Connection,
 	tokens: QboRef,
-	clientId: Id<"clients">
+	clientId: Id<"clients">,
+	operationId: string
 ): Promise<string> {
 	const payload = await ctx.runQuery(internal.quickbooks.getSyncJobPayload, {
 		orgId: connection.orgId,
@@ -615,11 +616,11 @@ async function syncClient(
 	let created: { Id: string; SyncToken: string };
 	try {
 		// requestid: same idempotency contract as the item/invoice/payment
-		// creates — concurrent or crash-retried creates for the same client
-		// collapse to one QBO Customer instead of duplicating.
+		// creates — crash-retried creates replay, and a rejected one gets a
+		// fresh id through the job's re-minted operationId.
 		const response = await qboPost<QboEntityResponse<"Customer">>(
 			tokens,
-			`/customer?requestid=${clientId}`,
+			`/customer?requestid=${clientId}-${operationId}`,
 			customer
 		);
 		created = response.Customer;
@@ -632,6 +633,7 @@ async function syncClient(
 			tokens,
 			connection,
 			clientId,
+			operationId,
 			customer,
 			error
 		);
@@ -671,6 +673,7 @@ async function resolveDuplicateCustomer(
 	tokens: QboRef,
 	connection: Connection,
 	localId: Id<"clients">,
+	operationId: string,
 	payload: QboCustomerPayload,
 	original: QboRequestError
 ): Promise<{ Id: string; SyncToken: string }> {
@@ -706,7 +709,7 @@ async function resolveDuplicateCustomer(
 	// original create attempt's cached response.
 	const retryResponse = await qboPost<QboEntityResponse<"Customer">>(
 		tokens,
-		`/customer?requestid=${localId}-2`,
+		`/customer?requestid=${localId}-${operationId}-2`,
 		{ ...payload, DisplayName: `${displayName} - 2` }
 	);
 	return retryResponse.Customer;
@@ -832,7 +835,8 @@ async function syncInvoice(
 		ctx,
 		connection,
 		tokens,
-		payload.clientId
+		payload.clientId,
+		operationId
 	);
 
 	// Per-SKU Items, resolved once per distinct SKU. A line whose SKU was
@@ -1152,8 +1156,6 @@ async function syncPayment(
 		return { kind: "hold", delayMs: SETUP_HOLD_MS };
 	}
 
-	const depositAccountQboId = await resolveDepositAccount(ctx, connection, tokens);
-
 	// Payments are create-only in v1: a settled payment does not change.
 	const existingLink = await ctx.runQuery(
 		internal.quickbooks.getEntityLinkInternal,
@@ -1219,6 +1221,7 @@ async function syncPayment(
 		return { kind: "hold", delayMs: DEPENDENCY_HOLD_MS };
 	}
 
+	const depositAccountQboId = await resolveDepositAccount(ctx, connection, tokens);
 	const body = buildQboPayment({
 		payment: payload.payment,
 		customerQboId: clientLink.qboId,
@@ -1326,7 +1329,13 @@ async function syncOne(
 		return await syncSku(ctx, connection, tokens, job.localId as Id<"skus">);
 	}
 	if (job.entityType === "client") {
-		await syncClient(ctx, connection, tokens, job.localId as Id<"clients">);
+		await syncClient(
+			ctx,
+			connection,
+			tokens,
+			job.localId as Id<"clients">,
+			operationId
+		);
 		return { kind: "done" };
 	}
 	if (job.entityType === "invoice") {
@@ -1594,12 +1603,12 @@ export const sweepSyncJobs = internalAction({
 		);
 
 		let kicked = 0;
-		let after: number | undefined = undefined;
+		let cursor: string | null = null;
 		do {
 			const page: {
 				orgIds: Id<"organizations">[];
-				nextAfter: number | null;
-			} = await ctx.runQuery(internal.quickbooks.listOrgsWithDueJobs, { after });
+				cursor: string | null;
+			} = await ctx.runQuery(internal.quickbooks.listOrgsWithDueJobs, { cursor });
 			for (const orgId of page.orgIds) {
 				await ctx.scheduler.runAfter(
 					0,
@@ -1608,8 +1617,8 @@ export const sweepSyncJobs = internalAction({
 				);
 			}
 			kicked += page.orgIds.length;
-			after = page.nextAfter ?? undefined;
-		} while (after !== undefined);
+			cursor = page.cursor;
+		} while (cursor !== null);
 
 		return { reclaimed, kicked };
 	},

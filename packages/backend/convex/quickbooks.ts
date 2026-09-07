@@ -1175,8 +1175,7 @@ export const getSyncJobPayload = internalQuery({
 });
 
 const STUCK_JOB_SCAN_LIMIT = 500;
-const DUE_JOB_CONNECTION_SCAN_LIMIT = 2000;
-const DUE_JOB_CONNECTION_PAGE = 200;
+const DUE_JOB_CONNECTION_PAGE = 2000;
 
 /** Sweep (a): jobs stranded in "processing" by a dropped action. */
 export const reclaimStuckJobs = internalMutation({
@@ -1210,43 +1209,34 @@ export const reclaimStuckJobs = internalMutation({
  * behind a needs_reauth org would otherwise sit at the head of that index
  * forever and starve every org behind them.
  *
- * One call scans a bounded slice; `nextAfter` resumes it so a large install
+ * One call scans one page; the opaque cursor resumes it so a large install
  * still reaches every connection.
  */
 export const listOrgsWithDueJobs = internalQuery({
-	args: { after: v.optional(v.number()) },
+	args: { cursor: v.union(v.string(), v.null()) },
 	handler: async (
 		ctx,
 		args
-	): Promise<{ orgIds: Id<"organizations">[]; nextAfter: number | null }> => {
+	): Promise<{ orgIds: Id<"organizations">[]; cursor: string | null }> => {
 		const now = Date.now();
 		const orgIds: Id<"organizations">[] = [];
-		let scanned = 0;
-		let after = args.after ?? 0;
-		while (scanned < DUE_JOB_CONNECTION_SCAN_LIMIT) {
-			const page = await ctx.db
-				.query("quickbooksConnections")
-				.withIndex("by_status", (q) =>
-					q.eq("status", "connected").gt("_creationTime", after)
+		const page = await ctx.db
+			.query("quickbooksConnections")
+			.withIndex("by_status", (q) => q.eq("status", "connected"))
+			.paginate({ numItems: DUE_JOB_CONNECTION_PAGE, cursor: args.cursor });
+		for (const connection of page.page) {
+			const due = await ctx.db
+				.query("quickbooksSyncJobs")
+				.withIndex("by_org_status_due", (q) =>
+					q
+						.eq("orgId", connection.orgId)
+						.eq("status", "pending")
+						.lte("runAfter", now)
 				)
-				.take(DUE_JOB_CONNECTION_PAGE);
-			for (const connection of page) {
-				const due = await ctx.db
-					.query("quickbooksSyncJobs")
-					.withIndex("by_org_status_due", (q) =>
-						q
-							.eq("orgId", connection.orgId)
-							.eq("status", "pending")
-							.lte("runAfter", now)
-					)
-					.first();
-				if (due) orgIds.push(connection.orgId);
-			}
-			scanned += page.length;
-			if (page.length < DUE_JOB_CONNECTION_PAGE) return { orgIds, nextAfter: null };
-			after = page[page.length - 1]._creationTime;
+				.first();
+			if (due) orgIds.push(connection.orgId);
 		}
-		return { orgIds, nextAfter: after };
+		return { orgIds, cursor: page.isDone ? null : page.continueCursor };
 	},
 });
 
@@ -1280,6 +1270,9 @@ export const getSyncStatus = userQuery({
 		}
 		const connection = await connectionForOrg(ctx, ctx.orgId);
 		if (!connection || connection.status === "disconnected") return NO_SYNC_STATUS;
+		if (!(await canViewEntity(ctx, args.entityType, args.localId))) {
+			return NO_SYNC_STATUS;
+		}
 
 		const linkRow = await ctx.db
 			.query("quickbooksEntityLinks")
@@ -1308,10 +1301,9 @@ export const getSyncStatus = userQuery({
 			)
 			.order("desc")
 			.first();
-		const visible = job !== null && (await canActOnJob(ctx, job, "view"));
 		return {
 			link,
-			failed: visible ? { lastError: job.lastError } : null,
+			failed: job ? { lastError: job.lastError } : null,
 		};
 	},
 });
@@ -1370,38 +1362,40 @@ function jobPermissionObject(entityType: QboEntityType): PermissionObject {
 }
 
 /**
- * Record-scope half of the error-center gate, evaluated only when the caller
- * lacks allRecords on the object: the job's entity must be in the actor's
- * scope, and a deleted entity is out of scope by definition.
+ * Record-scope half of the sync gates, evaluated only when the caller lacks
+ * allRecords on the object: the entity must be in the actor's scope, and a
+ * deleted entity is out of scope by definition.
  */
-async function isJobInActorScope(
+async function isEntityInActorScope(
 	ctx: UserQueryCtx | UserMutationCtx,
-	job: Doc<"quickbooksSyncJobs">
+	orgId: Id<"organizations">,
+	entityType: QboEntityType,
+	localId: string
 ): Promise<boolean> {
 	const scope = await ctx.actorScope();
-	if (job.entityType === "client") {
-		const id = ctx.db.normalizeId("clients", job.localId);
+	if (entityType === "client") {
+		const id = ctx.db.normalizeId("clients", localId);
 		const client = id ? await ctx.db.get(id) : null;
-		return !!client && client.orgId === job.orgId && scope.clientIds.has(client._id);
+		return !!client && client.orgId === orgId && scope.clientIds.has(client._id);
 	}
-	if (job.entityType === "invoice") {
-		const id = ctx.db.normalizeId("invoices", job.localId);
+	if (entityType === "invoice") {
+		const id = ctx.db.normalizeId("invoices", localId);
 		const invoice = id ? await ctx.db.get(id) : null;
-		if (!invoice || invoice.orgId !== job.orgId) return false;
+		if (!invoice || invoice.orgId !== orgId) return false;
 		return await isInvoiceInActorScope(ctx, invoice, scope);
 	}
-	if (job.entityType === "payment") {
-		const id = ctx.db.normalizeId("payments", job.localId);
+	if (entityType === "payment") {
+		const id = ctx.db.normalizeId("payments", localId);
 		const payment = id ? await ctx.db.get(id) : null;
-		if (!payment || payment.orgId !== job.orgId) return false;
+		if (!payment || payment.orgId !== orgId) return false;
 		const invoice = await ctx.db.get(payment.invoiceId);
-		if (!invoice || invoice.orgId !== job.orgId) return false;
+		if (!invoice || invoice.orgId !== orgId) return false;
 		return await isInvoiceInActorScope(ctx, invoice, scope);
 	}
-	if (job.entityType === "refund") {
-		const refund = await refundByStripeId(ctx, job.orgId, job.localId);
+	if (entityType === "refund") {
+		const refund = await refundByStripeId(ctx, orgId, localId);
 		const invoice = refund ? await ctx.db.get(refund.invoiceId) : null;
-		if (!invoice || invoice.orgId !== job.orgId) return false;
+		if (!invoice || invoice.orgId !== orgId) return false;
 		return await isInvoiceInActorScope(ctx, invoice, scope);
 	}
 	return false;
@@ -1429,7 +1423,19 @@ async function canActOnJob(
 	const object = jobPermissionObject(job.entityType);
 	if (!(await ctx.can(object, level))) return false;
 	if (await ctx.hasAllRecords(object)) return true;
-	return await isJobInActorScope(ctx, job);
+	return await isEntityInActorScope(ctx, job.orgId, job.entityType, job.localId);
+}
+
+/** Sync metadata follows the entity's own view grant. */
+async function canViewEntity(
+	ctx: UserQueryCtx,
+	entityType: QboEntityType,
+	localId: string
+): Promise<boolean> {
+	const object = jobPermissionObject(entityType);
+	if (!(await ctx.can(object, "view"))) return false;
+	if (await ctx.hasAllRecords(object)) return true;
+	return await isEntityInActorScope(ctx, ctx.orgId, entityType, localId);
 }
 
 /**
@@ -1490,7 +1496,9 @@ async function requireJobModify(
 	}
 	const object = jobPermissionObject(job.entityType);
 	await ctx.requireLevel(object, "modify");
-	await ctx.requireRecordScope(object, () => isJobInActorScope(ctx, job));
+	await ctx.requireRecordScope(object, () =>
+		isEntityInActorScope(ctx, job.orgId, job.entityType, job.localId)
+	);
 	return job;
 }
 

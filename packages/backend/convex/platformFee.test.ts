@@ -26,4 +26,11 @@ describe("platformFee.get", () => {
 		vi.stubEnv("STRIPE_APPLICATION_FEE_CENTS", "abc");
 		expect(await readFee()).toEqual({ platformFeeDollars: 0 });
 	});
+
+	it("rejects fractional or unsafe cent values Stripe would refuse", async () => {
+		vi.stubEnv("STRIPE_APPLICATION_FEE_CENTS", "150.5");
+		expect(await readFee()).toEqual({ platformFeeDollars: 0 });
+		vi.stubEnv("STRIPE_APPLICATION_FEE_CENTS", "1e21");
+		expect(await readFee()).toEqual({ platformFeeDollars: 0 });
+	});
 });

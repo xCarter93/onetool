@@ -536,6 +536,56 @@ describe("stripeWebhookActions.handleEvent integration", () => {
 		expect(payment?.disputeResolvedAt).toBeTypeOf("number");
 	});
 
+	it("an update for a new dispute id reopens a payment whose earlier dispute closed", async () => {
+		const { orgId } = await seedConnectedOrg(t);
+		const { paymentId } = await seedPayment(t, {
+			orgId,
+			publicToken: "tok_disp_second",
+			paymentAmount: 90,
+			paymentIntentId: "pi_disp_second",
+		});
+		await t.action(
+			internal.stripeWebhookActions.handleEvent,
+			buildHandleEventArgs(
+				buildStripeEvent({
+					id: "evt_disp_second_closed",
+					type: "charge.dispute.closed",
+					account: "acct_test_webhook",
+					data: {
+						object: {
+							id: "dp_second_1",
+							payment_intent: "pi_disp_second",
+							status: "won",
+						} as never,
+					},
+				})
+			)
+		);
+		// The second dispute's created event is late; its update lands first.
+		await t.action(
+			internal.stripeWebhookActions.handleEvent,
+			buildHandleEventArgs(
+				buildStripeEvent({
+					id: "evt_disp_second_update",
+					type: "charge.dispute.updated",
+					account: "acct_test_webhook",
+					data: {
+						object: {
+							id: "dp_second_2",
+							payment_intent: "pi_disp_second",
+							status: "needs_response",
+						} as never,
+					},
+				})
+			)
+		);
+		const payment = await t.run((ctx) => ctx.db.get(paymentId));
+		expect(payment?.disputeId).toBe("dp_second_2");
+		expect(payment?.disputeStatus).toBe("needs_response");
+		expect(payment?.disputed).toBe(true);
+		expect(payment?.disputeResolvedAt).toBeUndefined();
+	});
+
 	it("checkout.session.expired clears the cached pending session fields", async () => {
 		const { orgId } = await seedConnectedOrg(t);
 		const { paymentId } = await seedPayment(t, {
