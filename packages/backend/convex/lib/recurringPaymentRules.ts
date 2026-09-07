@@ -102,7 +102,7 @@ export type CalculatedRecurringPaymentSchedule =
 	  }
 	| {
 			status: "review";
-			reason: "fixed_amounts_exceed_invoice_total";
+			reason: "fixed_amounts_leave_no_balance";
 			invoiceTotal: number;
 			fixedTotal: number;
 	  };
@@ -303,10 +303,11 @@ export function calculateRecurringPaymentSchedule(
 		}
 		return next;
 	}, 0);
-	if (fixedTotalCents > invoiceCents) {
+	// Equal totals would leave a zero balance row; the invoice needs its own schedule.
+	if (fixedTotalCents >= invoiceCents) {
 		return {
 			status: "review",
-			reason: "fixed_amounts_exceed_invoice_total",
+			reason: "fixed_amounts_leave_no_balance",
 			invoiceTotal: canonicalTotal,
 			fixedTotal: centsToDollars(fixedTotalCents),
 		};

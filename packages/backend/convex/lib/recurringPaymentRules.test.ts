@@ -81,8 +81,8 @@ describe("recurring payment rules", () => {
     ).toBe(100);
   });
 
-  it("rejects a zero final balance rather than dropping its due date", () => {
-    expect(() =>
+  it("flags a zero final balance for review rather than dropping its due date", () => {
+    expect(
       calculateRecurringPaymentSchedule(
         {
           type: "fixed_plus_balance",
@@ -92,7 +92,7 @@ describe("recurring payment rules", () => {
         25,
         ISSUE_DATE,
       ),
-    ).toThrowError(expect.objectContaining({ code: "zero_installment" }));
+    ).toMatchObject({ status: "review", fixedTotal: 25, invoiceTotal: 25 });
   });
 
   it("adds offsets as calendar days in the selected timezone", () => {
@@ -121,7 +121,7 @@ describe("recurring payment rules", () => {
       ),
     ).toEqual({
       status: "review",
-      reason: "fixed_amounts_exceed_invoice_total",
+      reason: "fixed_amounts_leave_no_balance",
       invoiceTotal: 50,
       fixedTotal: 60,
     });

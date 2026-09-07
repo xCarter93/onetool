@@ -193,7 +193,12 @@ function InvoiceDetailPageContent() {
 	);
 	const recurringScheduleNeedsReview = useMemo(() => {
 		if (!invoice?.recurringPaymentRule || invoice.paymentScheduleIsCustom) return false;
-		return calculateRecurringPaymentSchedule(invoice.recurringPaymentRule, invoice.total, Date.now()).status === "review";
+		// The calculator throws on totals it cannot split (for example a $0 draft); that also needs a manual schedule.
+		try {
+			return calculateRecurringPaymentSchedule(invoice.recurringPaymentRule, invoice.total, Date.now()).status === "review";
+		} catch {
+			return true;
+		}
 	}, [invoice?.recurringPaymentRule, invoice?.paymentScheduleIsCustom, invoice?.total]);
 	const canResolveRecurringReview = can("projects", "modify") && can("quotes", "modify") && can("invoices", "modify") && hasAllRecords("projects") && hasAllRecords("quotes") && hasAllRecords("invoices");
 
@@ -467,7 +472,7 @@ function InvoiceDetailPageContent() {
 									</AlertAction>
 								)}
 								<AlertDescription>
-									The agreement&apos;s fixed installments exceed this invoice total. Set an invoice-specific schedule before sending.
+									The agreement&apos;s fixed installments leave no balance for this invoice total. Set an invoice-specific schedule before sending.
 								</AlertDescription>
 							</Alert>
 						</FramePanel>

@@ -57,7 +57,7 @@ export async function materializeRecurringPaymentSchedule(
 		organization?.timezone ?? "UTC"
 	);
 	if (calculated.status === "review") {
-		throw new ConvexError({ code: "CONFLICT", message: "Recurring fixed installments exceed this invoice total. Configure this invoice's payments before sending it." });
+		throw new ConvexError({ code: "CONFLICT", message: "Recurring fixed installments leave no balance for this invoice total. Configure this invoice's payments before sending it." });
 	}
 
 	const existing = await ctx.db.query("payments")
