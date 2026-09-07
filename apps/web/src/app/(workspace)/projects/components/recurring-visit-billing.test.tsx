@@ -26,11 +26,18 @@ vi.mock("@onetool/backend/convex/_generated/api", () => ({
 			listBillableAdditions: "listBillableAdditions",
 			setBillableAddition: "setBillableAddition",
 		},
+		projectSeriesQuotes: { getSetup: "getSeriesSetup" },
 	},
 }));
 vi.mock("convex/react", () => ({
-	useQuery: (name: string) =>
-		name === "listBillableAdditions" ? mocks.additions : mocks.billing,
+	useQuery: (name: string, args: unknown) =>
+		name === "listBillableAdditions"
+			? mocks.additions
+			: name === "getSeriesSetup"
+				? args === "skip"
+					? undefined
+					: { seriesId: "series-1" }
+				: mocks.billing,
 	useMutation: (name: string) =>
 		name === "draftVisit"
 			? mocks.draft
@@ -69,6 +76,69 @@ describe("RecurringVisitBilling", () => {
 		await waitFor(() =>
 			expect(mocks.draft).toHaveBeenCalledWith({ projectId: "project-1" }),
 		);
+	});
+
+	it("points an open visit without an agreement at its draft quote", () => {
+		mocks.billing = { state: "no_agreement", quoteId: "quote-1" };
+		render(
+			<RecurringVisitBilling projectId={"project-1" as never} recurring />,
+		);
+		expect(screen.getByText(/No recurring agreement yet/)).toBeVisible();
+		expect(
+			screen.getByRole("button", { name: "Set up agreement" }),
+		).toHaveAttribute("href", "/quotes/quote-1");
+		expect(
+			screen.queryByRole("button", { name: "View quote" }),
+		).not.toBeInTheDocument();
+	});
+
+	it("falls back to the series page when no draft quote exists", () => {
+		mocks.billing = { state: "no_agreement" };
+		render(
+			<RecurringVisitBilling projectId={"project-1" as never} recurring />,
+		);
+		expect(
+			screen.getByRole("button", { name: "Set up agreement" }),
+		).toHaveAttribute("href", "/projects/series/series-1");
+	});
+
+	it("shows a pending agreement with a link to open it", () => {
+		mocks.billing = {
+			state: "agreement_pending",
+			reason: "Your client has been asked to approve the recurring agreement.",
+			quoteId: "quote-1",
+			notActivated: false,
+		};
+		render(
+			<RecurringVisitBilling projectId={"project-1" as never} recurring />,
+		);
+		expect(screen.getByText("Awaiting approval")).toBeVisible();
+		expect(
+			screen.getByText(/asked to approve the recurring agreement/),
+		).toBeVisible();
+		expect(
+			screen.getByRole("button", { name: "Open agreement" }),
+		).toHaveAttribute("href", "/quotes/quote-1");
+		expect(
+			screen.queryByRole("button", { name: "Set up agreement" }),
+		).not.toBeInTheDocument();
+		expect(
+			screen.queryByRole("button", { name: "Draft invoice" }),
+		).not.toBeInTheDocument();
+	});
+
+	it("flags a hand-approved agreement that never activated", () => {
+		mocks.billing = {
+			state: "agreement_pending",
+			reason: "The agreement quote was marked approved by hand and is not active.",
+			quoteId: "quote-1",
+			notActivated: true,
+		};
+		render(
+			<RecurringVisitBilling projectId={"project-1" as never} recurring />,
+		);
+		expect(screen.getByText("Not activated")).toBeVisible();
+		expect(screen.getByText(/marked approved by hand/)).toBeVisible();
 	});
 
 	it("shows held pricing with a link to the quote", () => {

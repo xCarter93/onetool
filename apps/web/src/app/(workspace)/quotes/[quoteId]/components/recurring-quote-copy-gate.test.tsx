@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import * as React from "react";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import "@testing-library/jest-dom/vitest";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
 		| undefined
 		| {
 				canCopy: boolean;
+				state?: "active" | "paused" | "ended";
 		  },
 	agreementSetup: undefined as undefined | Record<string, unknown>,
 	allRecords: true,
@@ -53,6 +54,10 @@ vi.mock("./recurring-agreement-setup-dialog", () => ({
 	}: {
 		children: (open: () => void) => React.ReactNode;
 	}) => <>{children(() => {})}</>,
+}));
+vi.mock("./recurring-series-chooser-dialog", () => ({
+	RecurringSeriesChooserDialog: ({ open }: { open: boolean }) =>
+		open ? <div role="dialog">Chooser</div> : null,
 }));
 
 import { RecurringQuoteCopyGate } from "./recurring-quote-copy-gate";
@@ -141,7 +146,84 @@ describe("recurring quote copy gate", () => {
 		).toBeVisible();
 	});
 
-	it("labels stale linked draft recovery as refresh", () => {
+	it("offers one chooser entry point while the series has no agreement", () => {
+		mocks.agreementSetup = {
+			agreementQuoteId: undefined,
+			active: null,
+			pending: null,
+			canPrepare: true,
+			canRestoreAgreementPricing: false,
+			recurringInheritedAt: undefined,
+			recurringQuoteOverride: false,
+			state: "active",
+			revision: 1,
+			seriesSetup: {
+				title: "Service",
+				rule: { frequency: "weekly", interval: 1 },
+			},
+		};
+		render(
+			<RecurringQuoteCopyGate
+				quoteId={"quote-1" as never}
+				quoteTitle="Visit"
+				projectId={"project-1" as never}
+			>
+				{({ onUseForSeries, onPrepareAgreement }) => (
+					<>
+						{onUseForSeries && (
+							<button onClick={onUseForSeries}>Use for this series</button>
+						)}
+						{onPrepareAgreement && <button>Set up agreement</button>}
+					</>
+				)}
+			</RecurringQuoteCopyGate>,
+		);
+		expect(
+			screen.queryByRole("button", { name: "Set up agreement" }),
+		).not.toBeInTheDocument();
+		fireEvent.click(screen.getByRole("button", { name: "Use for this series" }));
+		expect(screen.getByRole("dialog")).toHaveTextContent("Chooser");
+	});
+
+	it("reports the delivery state only for the agreement's own quote", () => {
+		mocks.agreementSetup = {
+			agreementQuoteId: "quote-1",
+			active: null,
+			pending: { quoteId: "quote-1", deliveryState: "ready_to_send" },
+			canPrepare: true,
+			canRestoreAgreementPricing: false,
+			recurringInheritedAt: undefined,
+			recurringQuoteOverride: false,
+			state: "active",
+			revision: 1,
+			seriesSetup: {
+				title: "Service",
+				rule: { frequency: "weekly", interval: 1 },
+			},
+		};
+		mocks.setup = { canCopy: false, state: "active" };
+		render(
+			<RecurringQuoteCopyGate
+				quoteId={"quote-1" as never}
+				quoteTitle="Visit"
+				projectId={"project-1" as never}
+			>
+				{({ agreementDeliveryState, prepareAgreementLabel, copyToFutureDisabledReason }) => (
+					<span>
+						{agreementDeliveryState} / {prepareAgreementLabel} /{" "}
+						{copyToFutureDisabledReason}
+					</span>
+				)}
+			</RecurringQuoteCopyGate>,
+		);
+		expect(
+			screen.getByText(
+				/ready_to_send \/ Edit agreement terms \/ Revise the agreement from the series page/,
+			),
+		).toBeVisible();
+	});
+
+	it("uses one label for agreement pricing recovery", () => {
 		mocks.agreementSetup = {
 			agreementQuoteId: "quote-root",
 			canPrepare: false,
@@ -161,9 +243,9 @@ describe("recurring quote copy gate", () => {
 				quoteTitle="Visit"
 				projectId={"project-1" as never}
 			>
-				{({ onRestoreAgreementPricing, restoreAgreementPricingLabel }) =>
+				{({ onRestoreAgreementPricing }) =>
 					onRestoreAgreementPricing ? (
-						<button>{restoreAgreementPricingLabel}</button>
+						<button>Use agreement pricing</button>
 					) : (
 						<span>No refresh action</span>
 					)
@@ -171,7 +253,7 @@ describe("recurring quote copy gate", () => {
 			</RecurringQuoteCopyGate>,
 		);
 		expect(
-			screen.getByRole("button", { name: "Refresh agreement pricing" }),
+			screen.getByRole("button", { name: "Use agreement pricing" }),
 		).toBeVisible();
 	});
 });

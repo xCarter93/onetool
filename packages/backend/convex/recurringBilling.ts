@@ -392,6 +392,7 @@ export const getVisit = userQuery({
 		quoteId: v.optional(v.id("quotes")),
 		invoiceId: v.optional(v.id("invoices")),
 		allocationId: v.optional(v.id("recurringBillingAllocations")),
+		notActivated: v.optional(v.boolean()),
 	}),
 	handler: async (ctx, args) => {
 		await requireBillingAccess(ctx);
@@ -418,6 +419,8 @@ export const getVisit = userQuery({
 				"allocation" in context ? context.allocation?.invoiceId : undefined,
 			allocationId:
 				"allocation" in context ? context.allocation?._id : undefined,
+			notActivated:
+				"notActivated" in context ? context.notActivated : undefined,
 		};
 	},
 });

@@ -25,6 +25,11 @@ import {
 	DialogTitle,
 } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+	Tooltip,
+	TooltipContent,
+	TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { EmptyState } from "@/components/domain/empty-state";
 import { StatusBadge } from "@/components/domain/status-badge";
 import {
@@ -46,6 +51,10 @@ import {
 	type LifecycleAction,
 } from "./series-lifecycle-dialog";
 import { SeriesOccurrences } from "./series-occurrences";
+import {
+	AGREEMENT_PANEL_ID,
+	SeriesSetupChecklist,
+} from "./series-setup-checklist";
 
 function SeriesPageContent() {
 	const { seriesId: rawSeriesId } = useParams<{ seriesId: string }>();
@@ -130,8 +139,28 @@ function SeriesPageContent() {
 				: action === "end"
 					? series.state !== "ended"
 					: false;
-	const scheduleLocked =
-		series.state !== "active" || Boolean(series.agreementQuoteId);
+	const scheduleLockReason =
+		series.state !== "active"
+			? "Resume this series to edit the schedule"
+			: series.activeAgreementRevisionId
+				? "Approve a revised recurring agreement before changing this schedule"
+				: series.pendingAgreementRevisionId
+					? "Withdraw the proposed agreement before changing this schedule"
+					: null;
+	const setupLink =
+		series.state === "active" && canManage
+			? nextVisit
+				? {
+						href: `/projects/${nextVisit._id}` as Route,
+						label: "Open next visit",
+					}
+				: returnProject
+					? {
+							href: `/projects/${returnProject._id}` as Route,
+							label: "Open visit",
+						}
+					: undefined
+			: undefined;
 
 	return (
 		<main className="space-y-6 px-6 py-8">
@@ -191,6 +220,19 @@ function SeriesPageContent() {
 				)}
 			</header>
 
+			{canViewAgreements && (
+				<SeriesSetupChecklist
+					seriesId={seriesId}
+					rule={series.rule}
+					nextVisitId={
+						series.state === "active" && canManage ? nextVisit?._id : undefined
+					}
+					canManage={canManage}
+					scheduleLockReason={scheduleLockReason}
+					onEditSchedule={() => setScheduleOpen(true)}
+				/>
+			)}
+
 			<div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(18rem,0.6fr)]">
 				<Frame>
 					<FrameHeader className="flex-row items-start justify-between gap-4">
@@ -200,16 +242,38 @@ function SeriesPageContent() {
 								{describeRecurrence(series.rule)}
 							</FrameDescription>
 						</div>
-						{canManage && (
+						{canManage && scheduleLockReason ? (
+							<Tooltip>
+								<TooltipTrigger
+									render={
+										<span
+											tabIndex={0}
+											className="inline-flex rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring"
+										/>
+									}
+								>
+									<Button
+										size="sm"
+										variant="outline"
+										disabled
+										className="pointer-events-none"
+									>
+										<Pencil className="size-4" /> Edit
+									</Button>
+								</TooltipTrigger>
+								<TooltipContent className="px-2 py-1 text-xs">
+									{scheduleLockReason}
+								</TooltipContent>
+							</Tooltip>
+						) : canManage ? (
 							<Button
 								size="sm"
 								variant="outline"
-								disabled={scheduleLocked}
 								onClick={() => setScheduleOpen(true)}
 							>
 								<Pencil className="size-4" /> Edit
 							</Button>
-						)}
+						) : null}
 					</FrameHeader>
 					<FramePanel className="space-y-3">
 						{series.state === "ended" && (
@@ -235,12 +299,17 @@ function SeriesPageContent() {
 								</p>
 							</div>
 						</div>
-						{series.agreementQuoteId && (
+						{series.activeAgreementRevisionId ? (
 							<p className="text-sm text-muted-foreground">
 								Approve a revised recurring agreement before changing this
 								schedule.
 							</p>
-						)}
+						) : series.pendingAgreementRevisionId ? (
+							<p className="text-sm text-muted-foreground">
+								A proposed agreement is awaiting approval. Withdraw it to
+								change this schedule.
+							</p>
+						) : null}
 					</FramePanel>
 				</Frame>
 				<Frame>
@@ -272,13 +341,17 @@ function SeriesPageContent() {
 			</div>
 
 			{canViewAgreements && (
-				<SeriesAgreementPanel
-					seriesId={seriesId}
-					clientId={series.clientId}
-					canManage={canManage}
-					canViewSchedules={canViewSchedules}
-					canModifySchedules={canModifySchedules}
-				/>
+				<section id={AGREEMENT_PANEL_ID} className="scroll-mt-6">
+					<SeriesAgreementPanel
+						seriesId={seriesId}
+						clientId={series.clientId}
+						canManage={canManage}
+						canViewSchedules={canViewSchedules}
+						canModifySchedules={canModifySchedules}
+						setupLink={setupLink}
+						seriesRule={series.rule}
+					/>
+				</section>
 			)}
 
 			<SeriesOccurrences

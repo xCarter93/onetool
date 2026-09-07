@@ -1075,6 +1075,49 @@ describe("recurring agreement document boundaries", () => {
 		expect(quote).toMatchObject({ status: "approved", approvalCycle: 1 });
 	});
 
+	it("replaces a generated but unsent agreement only after the owner confirms", async () => {
+		const f = await fixture();
+		const previous = (await t.run((ctx) => ctx.db.get(f.quoteId)))!
+			.recurringAgreementRevisionId!;
+		await t.mutation(internal.pdfData._insertGeneratedDocument, {
+			documentType: "quote",
+			documentId: f.quoteId,
+			orgId: f.orgId,
+			storageId: f.storageId,
+			quoteContentSnapshot: f.data.quoteContentSnapshot,
+		});
+		const setup = await f.user.query(api.projectSeriesAgreements.getSetup, {
+			quoteId: f.quoteId,
+		});
+		const args = {
+			quoteId: f.quoteId,
+			billingMode: "per_visit" as const,
+			paymentRule: {
+				type: "percentage" as const,
+				installments: [{ percentage: 100, dayOffset: 15 }],
+			},
+			expectedSeriesRevision: setup.revision,
+		};
+		await expect(
+			f.user.mutation(api.projectSeriesAgreements.prepare, args),
+		).rejects.toThrow(/PENDING_REVISION_REPLACE/);
+		expect(await t.run((ctx) => ctx.db.get(f.seriesId))).toMatchObject({
+			pendingAgreementRevisionId: previous,
+			revision: setup.revision,
+		});
+		const prepared = await f.user.mutation(
+			api.projectSeriesAgreements.prepare,
+			{ ...args, discardPendingRevision: true },
+		);
+		expect(prepared.revisionId).not.toBe(previous);
+		expect(await t.run((ctx) => ctx.db.get(previous))).toMatchObject({
+			status: "superseded",
+		});
+		expect(await t.run((ctx) => ctx.db.get(f.seriesId))).toMatchObject({
+			pendingAgreementRevisionId: prepared.revisionId,
+		});
+	});
+
 	it("refuses a new PDF binding while the delivered signature request is live", async () => {
 		const f = await fixture();
 		const { documentId } = await t.mutation(
@@ -1262,5 +1305,180 @@ describe("recurring agreement document boundaries", () => {
 			ctx.db.get(series!.activeAgreementRevisionId!),
 		);
 		expect(active!.sourceQuoteId).toBe(revisionQuoteId);
+	});
+
+	async function insertControlledDocument(
+		f: Awaited<ReturnType<typeof fixture>>,
+	) {
+		const data = await t.query(internal.pdfData._getQuoteRenderData, {
+			quoteId: f.quoteId,
+			orgId: f.orgId,
+		});
+		const { documentId } = await t.mutation(
+			internal.pdfData._insertGeneratedDocument,
+			{
+				documentType: "quote",
+				documentId: f.quoteId,
+				orgId: f.orgId,
+				storageId: f.storageId,
+				quoteContentSnapshot: data.quoteContentSnapshot,
+			},
+		);
+		return documentId;
+	}
+
+	it("activates a real approval after a revert to draft and a regenerated PDF", async () => {
+		const f = await fixture();
+		await insertControlledDocument(f);
+		await f.user.mutation(api.quotes.update, { id: f.quoteId, status: "sent" });
+		await f.user.mutation(api.quotes.update, { id: f.quoteId, status: "draft" });
+		const revisionId = (await t.run((ctx) => ctx.db.get(f.quoteId)))!
+			.recurringAgreementRevisionId!;
+		const documentId = await insertControlledDocument(f);
+		expect(await t.run((ctx) => ctx.db.get(revisionId))).toMatchObject({
+			status: "pending",
+			approvalCycle: 1,
+			approvalDocumentId: documentId,
+		});
+		await f.user.mutation(api.quotes.update, { id: f.quoteId, status: "sent" });
+		const signatureStorageId = await t.run((ctx) =>
+			ctx.storage.store(new Blob(["signature"])),
+		);
+		await f.user.mutation(api.quotes.approveInPerson, {
+			id: f.quoteId,
+			clientContactId: f.contactId,
+			expectedDocumentId: documentId,
+			signatureStorageId,
+		});
+		const [series, revision, quote] = await t.run(async (ctx) =>
+			Promise.all([
+				ctx.db.get(f.seriesId),
+				ctx.db.get(revisionId),
+				ctx.db.get(f.quoteId),
+			]),
+		);
+		expect(revision).toMatchObject({
+			status: "approved",
+			decisionEvidenceId: expect.any(String),
+		});
+		expect(series?.activeAgreementRevisionId).toBe(revisionId);
+		expect(series?.pendingAgreementRevisionId).toBeUndefined();
+		expect(quote).toMatchObject({
+			status: "approved",
+			approvalCycle: 1,
+			recurringAgreementEvidenceId: expect.any(String),
+		});
+		const copies = await t.run(async (ctx) =>
+			(
+				await ctx.db
+					.query("quotes")
+					.withIndex("by_client", (q) => q.eq("clientId", f.clientId))
+					.collect()
+			).filter((row) => row._id !== f.quoteId),
+		);
+		expect(copies).toHaveLength(2);
+		for (const copy of copies)
+			expect(copy).toMatchObject({
+				status: "approved",
+				recurringAgreementRevisionId: revisionId,
+				recurringInheritedAt: expect.any(Number),
+			});
+	});
+
+	it("refuses to mark an agreement quote approved without client evidence", async () => {
+		const f = await fixture();
+		await f.user.mutation(api.quotes.update, { id: f.quoteId, status: "sent" });
+		await expect(
+			f.user.mutation(api.quotes.update, { id: f.quoteId, status: "approved" }),
+		).rejects.toThrow(/client's approval/);
+		await f.user.mutation(api.quotes.update, { id: f.quoteId, status: "draft" });
+		await insertControlledDocument(f);
+		await f.user.mutation(api.quotes.update, { id: f.quoteId, status: "sent" });
+		await expect(
+			f.user.mutation(api.quotes.update, { id: f.quoteId, status: "approved" }),
+		).rejects.toThrow(/client's approval/);
+		expect(
+			await f.user.query(api.recurringBilling.getVisit, {
+				projectId: f.projectId,
+			}),
+		).toMatchObject({
+			state: "agreement_pending",
+			quoteId: f.quoteId,
+			notActivated: false,
+		});
+		expect(
+			(await t.run((ctx) => ctx.db.get(f.quoteId)))?.status,
+		).toBe("sent");
+	});
+
+	it("surfaces and withdraws a hand-approved agreement that never activated", async () => {
+		const f = await fixture();
+		await insertControlledDocument(f);
+		await f.user.mutation(api.quotes.update, { id: f.quoteId, status: "sent" });
+		await t.run((ctx) =>
+			ctx.db.patch(f.quoteId, { status: "approved", approvedAt: NOW }),
+		);
+		const before = await f.user.query(
+			api.projectSeriesAgreements.getSeriesAgreement,
+			{ seriesId: f.seriesId },
+		);
+		expect(before.active).toBeNull();
+		expect(before.pending).toMatchObject({
+			deliveryState: "not_activated",
+			canWithdraw: true,
+			canDiscard: false,
+			scheduleRule: { frequency: "weekly", interval: 1 },
+		});
+		expect(
+			await f.user.query(api.recurringBilling.getVisit, {
+				projectId: f.projectId,
+			}),
+		).toMatchObject({
+			state: "agreement_pending",
+			quoteId: f.quoteId,
+			notActivated: true,
+		});
+		await f.user.action(api.boldsignActions.withdrawRecurringAgreement, {
+			seriesId: f.seriesId,
+			expectedRevisionId: before.pending!._id,
+		});
+		const [quote, revision, series] = await t.run(async (ctx) =>
+			Promise.all([
+				ctx.db.get(f.quoteId),
+				ctx.db.get(before.pending!._id),
+				ctx.db.get(f.seriesId),
+			]),
+		);
+		expect(quote).toMatchObject({ status: "draft", approvalCycle: 1 });
+		expect(quote?.approvedAt).toBeUndefined();
+		expect(quote?.recurringAgreementRevisionId).toBeUndefined();
+		expect(revision).toMatchObject({
+			status: "superseded",
+			withdrawnAt: expect.any(Number),
+		});
+		expect(series?.pendingAgreementRevisionId).toBeUndefined();
+		expect(
+			await f.user.query(api.recurringBilling.getVisit, {
+				projectId: f.projectId,
+			}),
+		).toMatchObject({ state: "no_agreement" });
+	});
+
+	it("labels a superseded revision that was never withdrawn as replaced", async () => {
+		const f = await fixture();
+		await insertControlledDocument(f);
+		await f.user.mutation(api.quotes.update, { id: f.quoteId, status: "sent" });
+		const revisionId = (await t.run((ctx) => ctx.db.get(f.quoteId)))!
+			.recurringAgreementRevisionId!;
+		await t.run((ctx) => ctx.db.patch(revisionId, { status: "superseded" }));
+		const agreement = await f.user.query(
+			api.projectSeriesAgreements.getSeriesAgreement,
+			{ seriesId: f.seriesId },
+		);
+		expect(agreement.history[0]).toMatchObject({
+			_id: revisionId,
+			deliveryState: "replaced",
+			canWithdraw: false,
+		});
 	});
 });

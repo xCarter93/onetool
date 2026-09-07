@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
 import type { Route } from "next";
 import { useRouter } from "next/navigation";
 import { Repeat } from "lucide-react";
@@ -18,6 +17,7 @@ import {
 	DialogTitle,
 } from "@/components/ui/dialog";
 import { StatusBadge } from "@/components/domain/status-badge";
+import { ProjectSeriesLink } from "@/components/domain/project-series-link";
 import { usePermissions } from "@/hooks/use-permissions";
 import { useToast } from "@/hooks/use-toast";
 import { convexErrorMessage } from "@/lib/convex-error";
@@ -85,14 +85,7 @@ function RecurringProjectSchedule({ project }: { project: RecurrenceProject }) {
 									)}
 								</StatusBadge>
 								{canViewSeries && seriesDetails && (
-									<Link
-										href={
-											`/projects/series/${project.recurringSeriesId}?fromProjectId=${project._id}` as Route
-										}
-										className="inline-flex min-h-11 items-center text-sm font-medium text-primary outline-none hover:text-primary/80 focus-visible:ring-2 focus-visible:ring-ring"
-									>
-										View series
-									</Link>
+									<ProjectSeriesLink project={project} className="min-h-11" showIcon={false} />
 								)}
 							</div>
 						</>

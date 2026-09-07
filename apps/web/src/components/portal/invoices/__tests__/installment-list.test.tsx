@@ -37,6 +37,24 @@ function row(overrides: Partial<InstallmentRow> = {}): InstallmentRow {
 }
 
 describe("InstallmentList", () => {
+	it("tells the customer installments are paid in order only when more than one is open", () => {
+		const { container, rerender } = render(
+			<InstallmentList
+				installments={[row({ sortOrder: 0 }), row({ sortOrder: 1 })]}
+				activeIndex={0}
+				orgToday={TODAY}
+			/>,
+		);
+		expect(container.querySelector("[data-installment-order-note]")).toHaveTextContent(
+			"Pay installments in order.",
+		);
+
+		rerender(
+			<InstallmentList installments={[row()]} activeIndex={0} orgToday={TODAY} />,
+		);
+		expect(container.querySelector("[data-installment-order-note]")).toBeNull();
+	});
+
 	it("renders one row per payment sorted by sortOrder ASC", () => {
 		const installments: InstallmentRow[] = [
 			row({ _id: "a", sortOrder: 0, description: "Deposit" }),

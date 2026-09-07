@@ -73,8 +73,14 @@ export function InstallmentList({
 		);
 	}
 
+	const paidInOrder = installments.length > 1 && activeIndex !== null;
 	return (
 		<ol className="flex flex-col gap-3" data-installment-list>
+			{paidInOrder ? (
+				<li className="text-[13px] text-muted-foreground" data-installment-order-note>
+					Pay installments in order. The highlighted one is next, and later ones open once it is paid.
+				</li>
+			) : null}
 			{installments.map((row, idx) => {
 				const isActive = activeIndex !== null && idx === activeIndex;
 				const isUpcoming =

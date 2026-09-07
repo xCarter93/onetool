@@ -2,10 +2,11 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import type { Route } from "next";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
-import { AlertTriangle, FileText, Loader2 } from "lucide-react";
+import { AlertTriangle, FileSignature, FileText, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -15,6 +16,8 @@ import { useToast } from "@/hooks/use-toast";
 import { convexErrorMessage } from "@/lib/convex-error";
 
 const BILLING_STATE: Record<string, { label: string; role: StatusRole }> = {
+	no_agreement: { label: "No agreement", role: "neutral" },
+	agreement_pending: { label: "Awaiting approval", role: "warning" },
 	needs_setup: { label: "Needs setup", role: "neutral" },
 	ready: { label: "Ready to bill", role: "info" },
 	allocated: { label: "Invoice created", role: "success" },
@@ -48,6 +51,13 @@ export function RecurringVisitBilling({
 	const additions = useQuery(
 		api.recurringBilling.listBillableAdditions,
 		canView ? { projectId } : "skip"
+	);
+	const noAgreement = billing?.state === "no_agreement";
+	const agreementPending = billing?.state === "agreement_pending";
+	// Only needed for the series-page fallback link when no draft quote exists yet.
+	const seriesSetup = useQuery(
+		api.projectSeriesQuotes.getSetup,
+		canView && noAgreement && !billing.quoteId ? { projectId } : "skip"
 	);
 	const draftVisit = useMutation(api.recurringBilling.draftVisit);
 	const resolve = useMutation(api.recurringBilling.resolve);
@@ -128,11 +138,21 @@ export function RecurringVisitBilling({
 		}
 	};
 
-	const state = BILLING_STATE[billing.state] ?? {
-		label: billing.state,
-		role: "neutral" as const,
-	};
+	const state =
+		agreementPending && billing.notActivated
+			? { label: "Not activated", role: "warning" as const }
+			: (BILLING_STATE[billing.state] ?? {
+					label: billing.state,
+					role: "neutral" as const,
+				});
 	const busy = pending !== null;
+	const setupHref = noAgreement
+		? billing.quoteId
+			? (`/quotes/${billing.quoteId}` as Route)
+			: seriesSetup
+				? (`/projects/series/${seriesSetup.seriesId}` as Route)
+				: undefined
+		: undefined;
 
 	return (
 		<div className="space-y-3 rounded-md border border-border p-3">
@@ -144,6 +164,12 @@ export function RecurringVisitBilling({
 					{state.label}
 				</StatusBadge>
 			</div>
+			{noAgreement && (
+				<p className="text-sm text-muted-foreground">
+					No recurring agreement yet. Invoices for this series will not draft
+					automatically.
+				</p>
+			)}
 			{billing.reason && (
 				<p className="flex gap-2 text-sm text-muted-foreground">
 					<AlertTriangle className="mt-0.5 size-4 shrink-0" />
@@ -151,14 +177,32 @@ export function RecurringVisitBilling({
 				</p>
 			)}
 			<div className="flex flex-wrap gap-2">
-				{billing.quoteId && (
+				{setupHref && (
+					<Button
+						nativeButton={false}
+						size="sm"
+						variant="outline"
+						render={<Link href={setupHref} />}
+					>
+						<FileSignature className="size-4" /> Set up agreement
+					</Button>
+				)}
+				{billing.quoteId && !noAgreement && (
 					<Button
 						nativeButton={false}
 						size="sm"
 						variant="outline"
 						render={<Link href={`/quotes/${billing.quoteId}`} />}
 					>
-						<FileText className="size-4" /> View quote
+						{agreementPending ? (
+							<>
+								<FileSignature className="size-4" /> Open agreement
+							</>
+						) : (
+							<>
+								<FileText className="size-4" /> View quote
+							</>
+						)}
 					</Button>
 				)}
 				{billing.invoiceId && (

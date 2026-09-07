@@ -45,6 +45,7 @@ export const ROUTE_HELP: Array<{ pattern: RegExp; refs: string[] }> = [
 	{
 		pattern: /^\/projects\/series\/[^/]+$/,
 		refs: [
+			"projects-and-tasks/recurring-work-start-to-finish",
 			"projects-and-tasks/creating-and-managing-projects",
 			"projects-and-tasks/working-with-tasks",
 			"projects-and-tasks/assigning-work-to-your-team",
@@ -54,6 +55,7 @@ export const ROUTE_HELP: Array<{ pattern: RegExp; refs: string[] }> = [
 		pattern: /^\/projects/,
 		refs: [
 			"projects-and-tasks/creating-and-managing-projects",
+			"projects-and-tasks/recurring-work-start-to-finish",
 			"projects-and-tasks/working-with-tasks",
 			"projects-and-tasks/assigning-work-to-your-team",
 		],
@@ -75,6 +77,7 @@ export const ROUTE_HELP: Array<{ pattern: RegExp; refs: string[] }> = [
 			"quotes/creating-a-quote",
 			"quotes/sending-quotes-and-approvals",
 			"quotes/e-signatures",
+			"projects-and-tasks/recurring-work-start-to-finish",
 			"settings-and-team/limits-and-fair-use",
 		],
 	},

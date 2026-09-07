@@ -51,7 +51,7 @@ export const clientPortalArticles: HelpArticle[] = [
 							"**Invoices** lists their invoices, where they can see what is due and pay open balances by card.",
 						],
 					},
-					{ type: "paragraph", text: "Recurring visits are grouped under their agreement in the Quotes list. A visit shows the agreement it inherited, while an override remains prominent. Quote and invoice details show the service property and date; grouped recurring invoices also show the subtotal, discount, tax and total for each covered visit." },
+					{ type: "paragraph", text: "Recurring visits are grouped under their agreement in the Quotes list, which shows the per-visit price and, when the schedule has an end, the contract total; open-ended agreements read **Ongoing until cancelled**. The agreement itself shows the price, contract total or duration, and billing rhythm before your client signs. A covered visit links to the agreement it inherited. A change to one visit or a revised agreement is labelled as such, shows the standing price beside the new one, and appears in a notice at the top of the list until your client decides. Quote and invoice details show the service property and date; the Invoices list shows the visit and date for a per-visit invoice or the month and visit count for a monthly one, and grouped recurring invoices show the subtotal, discount, tax and total for each covered visit." },
 				],
 			},
 			{
@@ -283,7 +283,7 @@ export const clientPortalArticles: HelpArticle[] = [
 			},
 			{
 				question: "Can my client pay in installments?",
-				answer: "Yes. If you set up a [payment schedule](/help/invoices-and-payments/payment-schedules), the portal presents each installment, and the invoice shows as Partial until the full total is collected.",
+				answer: "Yes. If you set up a [payment schedule](/help/invoices-and-payments/payment-schedules), the portal presents each installment, and the invoice shows as Partial until the full total is collected. Installments are paid in order: the next one is highlighted and later ones open once it is paid.",
 			},
 		],
 		related: [

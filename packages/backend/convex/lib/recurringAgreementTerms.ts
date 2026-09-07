@@ -1,4 +1,5 @@
 import { type Infer, v } from "convex/values";
+import type { Doc } from "../_generated/dataModel";
 import { projectRecurrenceRuleValidator } from "./projectRecurrence";
 import { recurringPaymentRuleValidator, type RecurringPaymentRule } from "./recurringPaymentRules";
 
@@ -20,3 +21,15 @@ export const recurringAgreementTermsValidator = v.object({
 
 export type RecurringAgreementTerms = Infer<typeof recurringAgreementTermsValidator>;
 export type AgreementPaymentRule = RecurringPaymentRule;
+
+// Activation stamps recurringAgreementEvidenceId first; approved without it means marked by hand.
+export function agreementApprovalNotActivated(
+	revision: Pick<Doc<"projectSeriesAgreementRevisions">, "status">,
+	quote: Pick<Doc<"quotes">, "status" | "recurringAgreementEvidenceId">,
+) {
+	return (
+		revision.status === "pending" &&
+		quote.status === "approved" &&
+		quote.recurringAgreementEvidenceId === undefined
+	);
+}

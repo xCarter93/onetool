@@ -2,6 +2,7 @@
 
 import { PermissionGate } from "@/components/domain/permission-gate";
 import { useCallback, useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
@@ -569,7 +570,14 @@ function RecurringAgreementSignContent({
 						<div className="grid grid-cols-[8rem_minmax(0,1fr)] gap-3 py-3">
 							<dt className="text-muted-foreground">Recipient</dt>
 							<dd className="min-w-0 font-medium text-foreground">
-								{primaryContact === undefined ? <Skeleton className="h-5 w-48" /> : primaryContact?.email ? `${primaryContact.firstName} ${primaryContact.lastName} (${primaryContact.email})` : "No primary contact with email"}
+								{primaryContact === undefined ? <Skeleton className="h-5 w-48" /> : primaryContact?.email ? `${primaryContact.firstName} ${primaryContact.lastName} (${primaryContact.email})` : (
+									<span className="font-normal text-muted-foreground">
+										No primary contact with an email.{" "}
+										<Link href={`/clients/${quote.clientId}`} className="font-medium text-foreground underline underline-offset-4">
+											Add one on the client
+										</Link>
+									</span>
+								)}
 							</dd>
 						</div>
 					</dl>

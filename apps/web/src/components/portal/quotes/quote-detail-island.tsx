@@ -11,6 +11,7 @@
  */
 
 import { useState } from "react";
+import type { Route } from "next";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { ArrowLeft, Download, FileText } from "lucide-react";
@@ -25,6 +26,7 @@ import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { formatMoney } from "@/lib/portal/format";
 
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/reui/badge";
 import {
 	Timeline,
@@ -40,6 +42,7 @@ import { QuotePaper } from "./quote-paper";
 import { ApprovalRail } from "./approval-rail";
 import { ApprovalBottomSheet } from "./approval-bottom-sheet";
 import { StaleVersionBanner } from "./stale-version-banner";
+import { describeRecurringChange } from "./recurring-change";
 
 export type QuoteDetailData = NonNullable<
 	FunctionReturnType<typeof api.portal.quotes.get>
@@ -260,6 +263,11 @@ export function QuoteDetailIsland({
 		api.portal.quotes.getAgreementDownloadUrl,
 		recurringAgreement && sourceAgreementDocument ? { quoteId } : "skip",
 	);
+	const recurringChange = describeRecurringChange(recurringAgreement);
+	const agreementHref =
+		recurringAgreement && !recurringAgreement.isAgreement && recurringAgreement.sourceVisible
+			? (`/portal/c/${clientPortalId}/quotes/${recurringAgreement.sourceQuoteId}` as Route)
+			: null;
 
 	async function handleDownloadPdf() {
 		try {
@@ -442,7 +450,17 @@ export function QuoteDetailIsland({
 									</p>
 									{recurringAgreement?.inherited && (
 										<p className="text-sm font-medium text-foreground">
-											Approved under recurring agreement {recurringAgreement.reference}
+											Approved under recurring agreement{" "}
+											{agreementHref ? (
+												<Link
+													href={agreementHref}
+													className="rounded-sm text-primary underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+												>
+													{recurringAgreement.reference}
+												</Link>
+											) : (
+												recurringAgreement.reference
+											)}
 										</p>
 									)}
 								</div>
@@ -468,6 +486,26 @@ export function QuoteDetailIsland({
 							</div>
 						</CardContent>
 					</Card>
+
+					{recurringChange && (
+						<Alert role="note" className="mb-6 md:mb-8">
+							<AlertTitle>{recurringChange.label}</AlertTitle>
+							<AlertDescription>
+								<p>
+									{recurringChange.detail}.{" "}
+									{recurringAgreement?.visitOverride
+										? `This quote is ${formatMoney(quote.total)} for this visit only.`
+										: `This revision is ${formatMoney(quote.total)} per visit.`}
+									{agreementHref ? (
+										<>
+											{" "}
+											<Link href={agreementHref}>View the standing agreement</Link>
+										</>
+									) : null}
+								</p>
+							</AlertDescription>
+						</Alert>
+					)}
 
 					{/* Two-pane: Quote Journey (sticky) + Quote Details */}
 					<div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,28rem)_minmax(0,1fr)] lg:gap-8">

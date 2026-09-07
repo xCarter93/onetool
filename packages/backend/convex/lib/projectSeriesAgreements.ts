@@ -24,11 +24,15 @@ import {
 import { emitStatusChangeEvent } from "../eventBus";
 
 export {
+	agreementApprovalNotActivated,
 	recurringAgreementTermsValidator,
 	type RecurringAgreementTerms,
 	type AgreementPaymentRule,
 } from "./recurringAgreementTerms";
-import type { RecurringAgreementTerms } from "./recurringAgreementTerms";
+import {
+	agreementApprovalNotActivated,
+	type RecurringAgreementTerms,
+} from "./recurringAgreementTerms";
 export const validatePaymentRule = validateRecurringPaymentRule;
 
 async function activeAgreementSetup(
@@ -583,6 +587,7 @@ export async function bindAgreementApprovalDocument(
 		);
 	await ctx.db.patch(revision._id, {
 		approvalDocumentId: documentId,
+		approvalCycle: quote.approvalCycle ?? 0,
 		status: "pending",
 	});
 }
@@ -639,7 +644,8 @@ export async function discardPendingAgreementRevision(
 	const resetDelivery =
 		quote.status === "sent" ||
 		quote.status === "declined" ||
-		quote.status === "expired";
+		quote.status === "expired" ||
+		agreementApprovalNotActivated(revision, quote);
 	await ctx.db.patch(revision._id, {
 		status: "superseded",
 		withdrawnAt: now,
@@ -650,6 +656,7 @@ export async function discardPendingAgreementRevision(
 		recurringAgreementRevisionId: undefined,
 		status: resetDelivery ? "draft" : quote.status,
 		sentAt: resetDelivery ? undefined : quote.sentAt,
+		approvedAt: resetDelivery ? undefined : quote.approvedAt,
 		declinedAt: resetDelivery ? undefined : quote.declinedAt,
 		approvalCycle: (quote.approvalCycle ?? 0) + 1,
 		contentUpdatedAt: now,

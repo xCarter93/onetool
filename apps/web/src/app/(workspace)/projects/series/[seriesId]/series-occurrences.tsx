@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import { CalendarDays, RotateCcw } from "lucide-react";
 import { useMutation, useQuery } from "convex/react";
@@ -11,7 +11,7 @@ import { useTable } from "@tanstack/react-table";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/domain/empty-state";
-import { StatusBadge } from "@/components/domain/status-badge";
+import { StatusBadge, type StatusRole } from "@/components/domain/status-badge";
 import {
 	Frame,
 	FrameDescription,
@@ -29,6 +29,21 @@ import { DataGridTable } from "@/components/reui/data-grid/data-grid-table";
 import { useToast } from "@/hooks/use-toast";
 import { convexErrorMessage } from "@/lib/convex-error";
 import { formatVisitDate, stateLabel } from "../../components/recurrence/labels";
+import {
+	AssigneeStack,
+	type OrgUser,
+} from "../../../home/components/calendar/assignee-stack";
+
+// Same vocabulary as the visit page's billing panel; unknown states render no badge.
+const BILLING_STATE: Record<string, { label: string; role: StatusRole }> = {
+	needs_setup: { label: "Needs setup", role: "neutral" },
+	ready: { label: "Ready to bill", role: "info" },
+	allocated: { label: "Invoice created", role: "success" },
+	held: { label: "Awaiting approval", role: "warning" },
+	review: { label: "Needs decision", role: "warning" },
+	deferred: { label: "Deferred", role: "neutral" },
+	nonbillable: { label: "Not billed", role: "neutral" },
+};
 
 export function SeriesOccurrences({
 	seriesId,
@@ -51,6 +66,11 @@ export function SeriesOccurrences({
 		seriesId,
 		cursor,
 	});
+	const orgUsers = useQuery(api.users.listByOrg, {});
+	const usersById = useMemo(
+		() => new Map<Id<"users">, OrgUser>(orgUsers?.map((u) => [u._id, u])),
+		[orgUsers]
+	);
 	const skip = useMutation(api.projectSeries.skip);
 	const restoreVisit = useMutation(api.projectSeries.restoreVisit);
 
@@ -82,6 +102,7 @@ export function SeriesOccurrences({
 	};
 
 	const rows = occurrences?.page ?? [];
+	const billing = occurrences?.billing;
 	const columns: ColumnDef<DataGridFeatures, Doc<"projects">>[] = [
 		{
 			accessorKey: "title",
@@ -105,6 +126,28 @@ export function SeriesOccurrences({
 			),
 		},
 		{
+			id: "crew",
+			header: "Crew",
+			cell: ({ row }) => {
+				const ids = row.original.assignedUserIds ?? [];
+				if (ids.length > 0 && orgUsers === undefined)
+					return <Skeleton className="h-6 w-28" />;
+				const names = ids
+					.map((id) => usersById.get(id)?.name)
+					.filter((name): name is string => Boolean(name));
+				if (names.length === 0)
+					return <span className="text-muted-foreground">Unassigned</span>;
+				return (
+					<div className="flex items-center gap-2">
+						<AssigneeStack ids={ids} usersById={usersById} size="size-6" />
+						<span className="text-muted-foreground min-w-0 truncate">
+							{names.length === 1 ? names[0] : `${names.length} assigned`}
+						</span>
+					</div>
+				);
+			},
+		},
+		{
 			accessorKey: "status",
 			header: "Status",
 			cell: ({ row }) => (
@@ -124,6 +167,28 @@ export function SeriesOccurrences({
 				</StatusBadge>
 			),
 		},
+		...(billing
+			? [
+					{
+						id: "billing",
+						header: "Billing",
+						cell: ({ row }) => {
+							const state = billing[row.original._id];
+							const badge = state && BILLING_STATE[state.state];
+							if (!badge) return null;
+							return (
+								<StatusBadge
+									role={badge.role}
+									appearance="outline"
+									title={state.reason}
+								>
+									{badge.label}
+								</StatusBadge>
+							);
+						},
+					} satisfies ColumnDef<DataGridFeatures, Doc<"projects">>,
+				]
+			: []),
 		{
 			id: "actions",
 			header: "",

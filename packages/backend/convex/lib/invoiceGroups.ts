@@ -1,4 +1,4 @@
-import { v, type Infer } from "convex/values";
+import { ConvexError, v, type Infer } from "convex/values";
 import type { Doc } from "../_generated/dataModel";
 import type { QueryCtx } from "../_generated/server";
 import type { ActorScope, UserQueryCtx } from "./factories";
@@ -41,7 +41,7 @@ export async function projectInvoiceGroups(
 			!project || project.orgId !== invoice.orgId ||
 			!quote || quote.orgId !== invoice.orgId || quote.clientId !== invoice.clientId ||
 			(revision && revision.orgId !== invoice.orgId)
-		) throw new Error("Invoice group source does not match its invoice organization");
+		) throw new ConvexError("Invoice group source does not match its invoice organization");
 		return {
 			_id: group._id,
 			sourceProjectId: group.sourceProjectId,

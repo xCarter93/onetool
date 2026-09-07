@@ -121,6 +121,38 @@ describe("rate column header (Finding 1)", () => {
 });
 
 describe("recurring agreement presentation", () => {
+	it("prints the contract total when the schedule ends after a visit count", () => {
+		render(
+			<QuotePaper
+				businessName="Pine Street Grounds"
+				quote={{
+					quoteNumber: "Q-1042",
+					title: "Weekly grounds care",
+					subtotal: 125.1,
+					taxAmount: 0,
+					total: 125.1,
+					recurringAgreementTerms: {
+						schemaVersion: 1,
+						revisionId: "revision-1" as never,
+						seriesId: "series-1" as never,
+						revisionNumber: 1,
+						agreementReference: "Q-1042",
+						client: { id: "client-1" as never, name: "North Shop" },
+						scope: { title: "Weekly grounds care" },
+						schedule: { rule: { frequency: "weekly", interval: 1, end: { kind: "count", count: 12 } }, anchorDateKey: "2026-09-07", timezone: "America/New_York" },
+						billingMode: "monthly",
+						paymentRule: { type: "percentage", installments: [{ percentage: 100, dayOffset: 30 }] },
+					},
+				}}
+				lineItems={[]}
+			/>
+		);
+
+		expect(screen.getByText("$125.10 per visit")).toBeVisible();
+		expect(screen.getByText("$1,501.20 for 12 visits")).toBeVisible();
+		expect(screen.getByText("Billed monthly for completed visits")).toBeVisible();
+	});
+
 	it("shows inherited approval and the customer-facing agreement terms", () => {
 		render(
 			<QuotePaper
@@ -152,7 +184,10 @@ describe("recurring agreement presentation", () => {
 
 		expect(screen.getByText("Approved under recurring agreement Q-1042")).toBeVisible();
 		expect(screen.getByText("Weekly grounds care")).toBeVisible();
+		expect(screen.getByText("$125.00 per visit")).toBeVisible();
+		expect(screen.getByText("Ongoing until cancelled")).toBeVisible();
+		expect(screen.getByText("Per-visit total")).toBeVisible();
 		expect(screen.getByText("100% due 30 days after issue")).toBeVisible();
-		expect(screen.getByText("This payment arrangement starts with the next full calendar month after all affected recurring agreements are approved. Existing terms apply until then.")).toBeVisible();
+		expect(screen.getByText("This payment change starts on the first full calendar month after you approve this agreement and any other recurring agreements it affects. Your current payment terms apply until then.")).toBeVisible();
 	});
 });

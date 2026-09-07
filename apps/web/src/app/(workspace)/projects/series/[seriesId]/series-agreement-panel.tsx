@@ -2,11 +2,14 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import type { Route } from "next";
 import { useRouter } from "next/navigation";
-import { FileText, Pencil, Trash2, Undo2 } from "lucide-react";
+import { CalendarDays, FileText, Pencil, Trash2, Undo2 } from "lucide-react";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
+import type { ProjectRecurrenceRule } from "@onetool/backend/convex/lib/projectRecurrence";
+import { formatRecurringSchedule } from "@onetool/backend/pdf/recurringAgreementFormat";
 import { Button } from "@/components/ui/button";
 import {
 	Dialog,
@@ -43,9 +46,16 @@ const DELIVERY_STATE = {
 	declined: { label: "Declined", status: "declined" },
 	expired: { label: "Expired", status: "expired" },
 	revoked: { label: "Revoked", status: "revoked" },
+	not_activated: { label: "Not activated", status: "pending" },
+	replaced: { label: "Replaced", status: "draft" },
 } as const;
 
 type DeliveryState = keyof typeof DELIVERY_STATE;
+
+// Backend deploys and browser bundles are not atomic; an unknown state must not crash the page.
+function deliveryStateInfo(state: string): { label: string; status: (typeof DELIVERY_STATE)[DeliveryState]["status"] } {
+	return DELIVERY_STATE[state as DeliveryState] ?? { label: state.replace(/_/g, " "), status: "draft" };
+}
 
 function pendingDescription(state: DeliveryState, hasActive: boolean): string {
 	const activeNote = hasActive
@@ -62,6 +72,8 @@ function pendingDescription(state: DeliveryState, hasActive: boolean): string {
 			return "The approval request expired. Withdraw this proposal before preparing another.";
 		case "revoked":
 			return "The approval request was revoked. Withdraw this proposal to finish closing it.";
+		case "not_activated":
+			return "This quote was marked approved by hand, so your client has not approved the agreement. Withdraw the proposal, then send it to your client or sign it in person.";
 		default:
 			return hasActive
 				? "The client has been asked to approve this revision. The current approved agreement applies until they do."
@@ -69,8 +81,35 @@ function pendingDescription(state: DeliveryState, hasActive: boolean): string {
 	}
 }
 
-const NO_AGREEMENT =
-	"No active or proposed recurring agreement. Open a draft quote on this series to set one up.";
+function NoAgreementCallout({
+	setupLink,
+}: {
+	setupLink?: { href: Route; label: string };
+}) {
+	return (
+		<div className="rounded-md border border-border bg-muted/40 p-4">
+			<p className="text-sm font-medium text-foreground">
+				No recurring agreement yet
+			</p>
+			<p className="mt-1 text-sm text-muted-foreground">
+				Invoices for this series will not draft automatically. Set one up from
+				a draft quote on a visit. Your client approves once, future visits
+				inherit the approval, and completed visits draft invoices on their
+				own.
+			</p>
+			{setupLink && (
+				<Button
+					nativeButton={false}
+					size="sm"
+					className="mt-3"
+					render={<Link href={setupLink.href} />}
+				>
+					<CalendarDays className="size-4" /> {setupLink.label}
+				</Button>
+			)}
+		</div>
+	);
+}
 
 export function SeriesAgreementPanel({
 	seriesId,
@@ -78,12 +117,17 @@ export function SeriesAgreementPanel({
 	canManage,
 	canViewSchedules,
 	canModifySchedules,
+	setupLink,
+	seriesRule,
 }: {
 	seriesId: Id<"projectSeries">;
 	clientId: Id<"clients">;
 	canManage: boolean;
 	canViewSchedules: boolean;
 	canModifySchedules: boolean;
+	/** Where to start an agreement when none exists; omitted when the series cannot take one. */
+	setupLink?: { href: Route; label: string };
+	seriesRule?: ProjectRecurrenceRule;
 }) {
 	const toast = useToast();
 	const router = useRouter();
@@ -111,6 +155,14 @@ export function SeriesAgreementPanel({
 
 	const pending = agreement?.pending;
 	const active = agreement?.active;
+	const currentSchedule = seriesRule ? formatRecurringSchedule(seriesRule) : null;
+	const proposedSchedule = pending?.scheduleRule
+		? formatRecurringSchedule(pending.scheduleRule)
+		: null;
+	const scheduleChange =
+		currentSchedule && proposedSchedule && currentSchedule !== proposedSchedule
+			? `Changes the schedule from ${currentSchedule} to ${proposedSchedule}.`
+			: null;
 	const pendingTargetMatches = Boolean(
 		pendingAction && pending?._id === pendingAction.expectedRevisionId
 	);
@@ -230,11 +282,11 @@ export function SeriesAgreementPanel({
 						<Skeleton className="h-5 w-64" />
 					</div>
 				) : !active && !pending && history.length === 0 ? (
-					<p className="text-sm text-muted-foreground">{NO_AGREEMENT}</p>
+					<NoAgreementCallout setupLink={setupLink} />
 				) : (
 					<div className="space-y-5">
 						{!active && !pending && (
-							<p className="text-sm text-muted-foreground">{NO_AGREEMENT}</p>
+							<NoAgreementCallout setupLink={setupLink} />
 						)}
 						<div className="grid gap-5 sm:grid-cols-2">
 							{active && (
@@ -261,10 +313,10 @@ export function SeriesAgreementPanel({
 									<div className="flex items-center gap-2">
 										<p className="text-sm font-medium">Proposed revision</p>
 										<StatusBadge
-											status={DELIVERY_STATE[pending.deliveryState].status}
+											status={deliveryStateInfo(pending.deliveryState).status}
 											appearance="outline"
 										>
-											{DELIVERY_STATE[pending.deliveryState].label}
+											{deliveryStateInfo(pending.deliveryState).label}
 										</StatusBadge>
 									</div>
 									<p className="text-sm text-muted-foreground">
@@ -274,6 +326,11 @@ export function SeriesAgreementPanel({
 									<p className="text-sm text-muted-foreground">
 										{pendingDescription(pending.deliveryState, Boolean(active))}
 									</p>
+									{scheduleChange && (
+										<p className="text-sm text-muted-foreground">
+											{scheduleChange}
+										</p>
+									)}
 									<div className="flex flex-wrap gap-2">
 										<Button
 											nativeButton={false}
@@ -339,10 +396,10 @@ export function SeriesAgreementPanel({
 											</div>
 											<div className="flex items-center gap-2">
 												<StatusBadge
-													status={DELIVERY_STATE[revision.deliveryState].status}
+													status={deliveryStateInfo(revision.deliveryState).status}
 													appearance="outline"
 												>
-													{DELIVERY_STATE[revision.deliveryState].label}
+													{deliveryStateInfo(revision.deliveryState).label}
 												</StatusBadge>
 												<Button
 													nativeButton={false}

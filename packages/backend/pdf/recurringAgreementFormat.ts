@@ -1,5 +1,7 @@
 import type { AgreementPaymentRule } from "../convex/lib/projectSeriesAgreements";
 import type { ProjectRecurrenceRule } from "../convex/lib/projectRecurrence";
+import type { RecurringAgreementTerms } from "../convex/lib/recurringAgreementTerms";
+import { roundCents } from "../convex/lib/money";
 import { formatCurrency } from "./format";
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -50,8 +52,43 @@ export function formatRecurringSchedule(rule: ProjectRecurrenceRule): string {
 			? `, through ${rule.end.date}`
 			: rule.end?.kind === "count"
 				? `, for ${rule.end.count} visits`
-				: "";
+				: ", ongoing until cancelled";
 	return `${cadence}${selectors}${season}${ending}`;
+}
+
+// Money the customer commits to, derived only from the immutable terms and the
+// quote total so the portal page, web preview and server PDF print the same figures.
+export function describeRecurringCommitment(
+	terms: Pick<RecurringAgreementTerms, "schedule" | "billingMode">,
+	perVisitTotal: number,
+): {
+	perVisit: string;
+	commitmentLabel: "Contract total" | "Duration";
+	commitment: string;
+	billing: string;
+} {
+	const end = terms.schedule.rule.end;
+	const commitment =
+		end?.kind === "count"
+			? {
+					commitmentLabel: "Contract total" as const,
+					commitment: `${formatCurrency(roundCents(perVisitTotal * end.count))} for ${end.count} visits`,
+				}
+			: {
+					commitmentLabel: "Duration" as const,
+					commitment:
+						end?.kind === "until"
+							? `Through ${end.date}`
+							: "Ongoing until cancelled",
+				};
+	return {
+		perVisit: `${formatCurrency(perVisitTotal)} per visit`,
+		...commitment,
+		billing:
+			terms.billingMode === "monthly"
+				? "Billed monthly for completed visits"
+				: "Billed per completed visit",
+	};
 }
 
 const describeDueOffset = (days: number) =>

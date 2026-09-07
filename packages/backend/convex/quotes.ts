@@ -826,6 +826,23 @@ export const update = userMutation({
 			});
 		}
 
+		if (
+			filteredUpdates.status === "approved" &&
+			currentQuote.status !== "approved" &&
+			currentQuote.recurringAgreementRevisionId
+		) {
+			const revision = await ctx.db.get(
+				currentQuote.recurringAgreementRevisionId
+			);
+			if (revision?.status === "draft" || revision?.status === "pending") {
+				throw new ConvexError({
+					code: "AGREEMENT_NEEDS_CLIENT_APPROVAL",
+					message:
+						"Recurring agreements need your client's approval. Send the quote to your client, sign it in person, or request an e-signature.",
+				});
+			}
+		}
+
 		const oldStatus = currentQuote.status;
 
 		// Compute field-level changes before applying the update

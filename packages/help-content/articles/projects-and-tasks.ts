@@ -93,8 +93,8 @@ export const projectsAndTasksArticles: HelpArticle[] = [
 						"Choose a schedule preset or **Custom**. You can select weekdays, monthly dates or an ordinal weekday, and seasonal months.",
 						"Under **Ends**, choose **Never**, **On a date**, or **After a number of visits**. Review the preview, then save.",
 					] },
-					{ type: "paragraph", text: "OneTool creates separate planned projects for the next 90 days and includes the next visit for less frequent schedules. Each new visit repeats the project details and duration. Tasks, quotes and invoices remain separate records for each visit. Setting up recurrence does not copy them automatically; save selected tasks from the project’s Tasks tab or use Copy to future projects on a quote to save draft quote setup." },
-					{ type: "paragraph", text: "The right sidebar shows the recurring schedule and series state. Use **View series** there to see the next visit and occurrence history; the series page links back to the project you came from. The Projects list also offers a **Series** filter. Viewing a whole series requires organization-wide project access; changing it also requires permission to modify projects." },
+					{ type: "paragraph", text: "OneTool creates separate planned projects for the next 90 days and includes the next visit for less frequent schedules. Each new visit repeats the project details and duration. Tasks, quotes and invoices remain separate records for each visit. Setting up recurrence does not copy them automatically; save selected tasks from the project’s Tasks tab or choose **Use for this series** on a quote to set up a recurring agreement or save draft quote setup. Until an agreement is approved, each planned visit shows **No agreement** in its billing section, or **Awaiting approval** once a proposal has gone to the client, and invoices for the series do not draft automatically." },
+					{ type: "paragraph", text: "The right sidebar shows the recurring schedule and series state. Use **View series** there to see the next visit and occurrence history; the series page lists each visit with its crew and billing status and links back to the project you came from. The Projects list also offers a **Series** filter. Viewing a whole series requires organization-wide project access; changing it also requires permission to modify projects." },
 					{ type: "paragraph", text: "The series page keeps the standing recurring approval visible beside a proposed agreement or replacement and its history. **Draft** means its PDF has not been generated, **Ready to send** means the PDF exists but has not gone to the client, and **Awaiting approval** means the client received the request. Declined, expired and revoked requests show their final delivery state. Use **Review** to continue, **Discard draft** for an unsent proposal, or **Withdraw proposal** to close a client-visible request. If an agreement is already approved, it and already billed visits stay unchanged. Once no proposal is open, use **Revise agreement** to prepare its replacement." },
 					{ type: "paragraph", text: "A shared monthly payment change shows how many affected agreements are approved. After all approvals, it shows the calendar month when the arrangement starts. **Cancel payment proposal** safely removes a proposal while the page says it can still be cancelled; current terms remain active." },
 					{ type: "tip", text: "A monthly date such as the 31st uses the month's last day when needed. A fifth weekday that does not exist is skipped. The original schedule stays anchored, including across daylight-saving changes." },
@@ -104,7 +104,7 @@ export const projectsAndTasksArticles: HelpArticle[] = [
 				heading: "Change or pause recurring work",
 				blocks: [
 					{ type: "paragraph", text: "With organization-wide project access and permission to modify projects, the first time you save a reusable detail on a recurring project, choose **This project** or **This and future projects**. The visible **Edit scope** control remembers your choice until you leave that project. It applies to details such as the title, description, property and assigned users. Dates and status changes always affect only the current visit." },
-					{ type: "paragraph", text: "Future edits preserve individually changed fields on other visits. **Edit** in the series Schedule section lets you preview a new cadence. Started, invoiced and individually changed visits are preserved; changing a schedule does not erase their history." },
+					{ type: "paragraph", text: "Future edits preserve individually changed fields on other visits. **Edit** in the series Schedule section lets you preview a new cadence. Once an agreement exists, **Edit** is unavailable until a revised agreement is approved; while a proposal is awaiting approval, withdraw it first; while the series is paused, resume it first. The tooltip says which applies. Started, invoiced and individually changed visits are preserved; changing a schedule does not erase their history." },
 					{ type: "paragraph", text: "Use **Skip visit** for an unstarted, uninvoiced visit you do not need. It leaves the later schedule intact and can be restored while the series is active. Skipped visits and their tasks are hidden from active schedule views." },
 					{ type: "paragraph", text: "For a visit cancelled by the series, the Status area offers **Resume series** instead of the normal status editor. Once the series is active, choose **Restore visit** to return an eligible cancelled visit to Planned, including a past visit. Visits you skipped or cancelled individually are not automatically restored when the series resumes. If the original count or Until date has been reached, resume does not extend it; restore an existing visit or deliberately edit the schedule." },
 					{ type: "paragraph", text: "**Pause series** suspends upcoming unstarted visits. **End series** stops future work by ending generation and cancelling eligible upcoming visits; it does not discard an agreement or erase completed work and agreement history. You can use **Resume series** from either state: review the preview to return eligible visits dated today or later to Planned. The original cadence, occurrence limit and Until date stay in place; resuming does not add replacement visits for missed dates. Started, completed and invoiced work stays intact." },
@@ -146,6 +146,118 @@ export const projectsAndTasksArticles: HelpArticle[] = [
 			"projects-and-tasks/working-with-tasks",
 			"projects-and-tasks/assigning-work-to-your-team",
 			"getting-started/create-your-first-project",
+		],
+	},
+	{
+		slug: "recurring-work-start-to-finish",
+		title: "Recurring work, start to finish",
+		subtitle: "Set up a repeating job once, get it approved once, and let each visit bill itself.",
+		kind: "howto",
+		availability: "all",
+		permission: "Admins, and members with organization-wide access to projects, quotes and invoices.",
+		keywords: ["recurring", "series", "agreement", "weekly", "monthly", "repeat visits", "maintenance", "route", "auto invoice", "checklist"],
+		sections: [
+			{
+				heading: "The shape of a recurring job",
+				blocks: [
+					{ type: "paragraph", text: "A recurring job is a **series**. OneTool creates a separate project for each **visit**, so every visit has its own tasks, crew, history and invoice, and each one shows up in Today, Calendar and Routes like any other project. One quote becomes the **recurring agreement**: your client approves it once, every future visit inherits that approval, and completed visits draft their own invoices." },
+					{ type: "paragraph", text: "The series page is where you see the whole thing. Its **Setup** card shows four steps, **Schedule**, **Quote**, **Agreement** and **Billing**. Collapsed, it is a progress strip that marks each step complete, next, or needing attention; expanded, each step shows what is done and a button for what to do next. Reach the series page from **View series** on any visit's project page, or from the same link wherever a recurring project appears in a quote, invoice, task or calendar panel and in the project drawer on the Projects list." },
+				],
+			},
+			{
+				heading: "1. Create the series",
+				blocks: [
+					{ type: "steps", items: [
+						"Choose **Create**, then **Project**. Set **Project Type** to **Recurring**, pick the client and property, and give the first visit a start date.",
+						"Fill in **Recurring schedule**: a preset or **Custom**, then **Ends** as **Never**, **On a date** or **After a number of visits**. Check the preview of upcoming dates and save.",
+						"For a project that already exists, set its type to Recurring and choose **Set up recurrence** in the right sidebar.",
+					] },
+					{ type: "paragraph", text: "OneTool creates the next 90 days of visits straight away and keeps adding them as time passes. The **Schedule** row on the series page is complete at this point." },
+				],
+			},
+			{
+				heading: "2. Add the work that repeats",
+				blocks: [
+					{ type: "steps", items: [
+						"Open the first visit. On its **Tasks** tab, add the tasks a crew does each time, then choose **Copy** on a task row to add it to future visits.",
+						"Choose **Add Quote** and price one visit: the line items, discount and tax for a single occurrence.",
+					] },
+					{ type: "paragraph", text: "The **Quote** row on the series page is complete once a quote exists on any visit. Tasks are optional; visits without tasks still reach Today, Calendar and Routes." },
+				],
+			},
+			{
+				heading: "3. Turn the quote into the agreement",
+				blocks: [
+					{ type: "steps", items: [
+						"On the draft quote, choose **Use for this series**, then **Set up a recurring agreement**.",
+						"Confirm the service scope, choose **Per visit** or **Monthly** billing, and set the payment schedule. The default is the full amount 30 days after each invoice is issued.",
+						"Leave **Change schedule** closed unless this agreement should change how often visits happen. If you open it, the series page shows the change before your client sees it.",
+						"Choose **Set up agreement**.",
+					] },
+					{ type: "paragraph", text: "The other option, **Copy drafts only**, gives every future visit its own draft quote to send and approve separately. Use it only when each visit really needs a fresh decision; it never drafts invoices on its own." },
+				],
+			},
+			{
+				heading: "4. Send it and get it approved",
+				blocks: [
+					{ type: "steps", items: [
+						"Choose **Generate PDF**. The agreement PDF records the scope, schedule, price per visit, billing rhythm and payment terms.",
+						"Choose **Send to Client**. **Portal template** or **Custom email** sends the portal link, where your client reviews the agreement and approves it with a signature. **Send for e-signature** sends the locked agreement PDF for an emailed signature instead.",
+						"Watch the steps in the quote header: **Set up**, **PDF**, **Sent**, **Approved**. The series page shows the same state under **Agreement**.",
+					] },
+					{ type: "note", text: "**Mark Approved** is not offered on an agreement quote, because that one approval covers every future visit and starts automatic invoicing. The approval has to come from your client: in the portal, by e-signature, or as an in-person signature captured on the mobile app." },
+					{ type: "paragraph", text: "When the client approves, the agreement becomes active. Every unchanged future visit shows **Approved under recurring agreement** and asks the client for nothing more. The **Agreement** and **Billing** rows on the series page are now complete." },
+				],
+			},
+			{
+				heading: "5. Do the visits",
+				blocks: [
+					{ type: "paragraph", text: "Crew see each visit in Today and on their route, complete its tasks, and mark the project **Completed** from web or mobile. Nothing about the series needs attention here. Use **Skip visit** on the series page for a visit you do not need, and **Pause series** or **End series** for longer breaks; see [Change or pause recurring work](/help/projects-and-tasks/creating-and-managing-projects)." },
+				],
+			},
+			{
+				heading: "6. Let the visits bill themselves",
+				blocks: [
+					{ type: "paragraph", text: "With **Per visit** billing, completing a visit drafts one invoice for it. With **Monthly** billing, OneTool waits for the month to close in your business timezone, then drafts one invoice per client that combines every completed visit from that client's monthly series, listing each property, project and service date." },
+					{ type: "paragraph", text: "Each visit's sidebar shows a **Recurring visit billing** card. **Ready to bill** means the draft is due and you can create it now with **Draft invoice** instead of waiting for the hourly run. **Invoice created** links to the draft. Drafts stay out of the client portal until you review and send them, and nothing is charged automatically." },
+					{ type: "paragraph", text: "Two states need you. **Needs decision** appears when a drafted invoice was cancelled or a visit was removed from one; choose **Rebill** or **Defer**, or mark the visit not billable. **Awaiting approval** appears when a visit has its own price change that the client has not approved yet." },
+				],
+			},
+			{
+				heading: "7. Change the deal later",
+				blocks: [
+					{ type: "list", items: [
+						"**A new price or schedule for every future visit.** On the series page choose **Revise agreement**. OneTool opens a new revision of the quote; edit it, then repeat steps 3 and 4. The current agreement keeps applying until the client approves the revision, and visits already billed are untouched.",
+						"**A change to one visit only.** Open that visit's quote, choose **Reopen**, make the change and send it. The visit waits for its own approval and is held from billing until then. **Use agreement pricing** puts it back on the standing terms.",
+						"**A different payment split.** Open an invoice's **Configure Payments** and choose **This and future invoices**. Monthly clients share one payment arrangement, so the change takes effect the month after every affected agreement approves it.",
+					] },
+				],
+			},
+		],
+		faq: [
+			{
+				question: "The visit sidebar says No agreement. What do I do?",
+				answer: "Open the quote on any visit and choose Use for this series, then Set up a recurring agreement. If it says Awaiting approval instead, the agreement has been sent and your client has not approved it yet.",
+			},
+			{
+				question: "Do I have to set up an agreement at all?",
+				answer: "No. You can copy draft quotes forward and convert each approved quote to an invoice by hand, exactly as with one-off work. The agreement is what removes the per-visit approval and drafts invoices for you.",
+			},
+			{
+				question: "Why can I not edit the schedule on the series page?",
+				answer: "Once an agreement is approved, the schedule is part of what the client agreed to, so it changes through Revise agreement. While a proposal is awaiting approval, withdraw it first. While the series is paused, resume it first.",
+			},
+			{
+				question: "Does any of this send or charge the client automatically?",
+				answer: "No. OneTool drafts invoices; you review and send them, and the client pays in the portal. Saved-card autopay is planned separately.",
+			},
+		],
+		related: [
+			"projects-and-tasks/creating-and-managing-projects",
+			"quotes/creating-a-quote",
+			"quotes/sending-quotes-and-approvals",
+			"invoices-and-payments/payment-schedules",
+			"client-portal/what-your-clients-see",
 		],
 	},
 	{

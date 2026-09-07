@@ -469,6 +469,70 @@ describe("recurring draft billing", () => {
 		);
 	});
 
+	it("flags an open visit on a series that has no approved agreement", async () => {
+		const org = await t.run(async (ctx) => {
+			const setup = await createTestOrg(ctx);
+			return { ...setup, clientId: await createTestClient(ctx, setup.orgId) };
+		});
+		const user = t.withIdentity(
+			createTestIdentity(org.clerkUserId, org.clerkOrgId),
+		);
+		const projectId = await user.mutation(api.projects.create, {
+			clientId: org.clientId,
+			title: "Weekly care",
+			status: "planned",
+			projectType: "recurring",
+			startDate: NOW,
+			recurrenceRule: { frequency: "weekly", interval: 1 },
+		});
+		const before = await user.query(api.recurringBilling.getVisit, { projectId });
+		expect(before.state).toBe("no_agreement");
+		expect(before.quoteId).toBeUndefined();
+		const quoteId = await user.mutation(api.quotes.create, {
+			clientId: org.clientId,
+			projectId,
+			status: "draft",
+			title: "Grounds care",
+			subtotal: 0,
+			total: 0,
+		});
+		await user.mutation(api.quoteLineItems.create, {
+			quoteId,
+			description: "Mow lawn",
+			quantity: 1,
+			unit: "visit",
+			rate: 75,
+			sortOrder: 0,
+		});
+		expect(
+			await user.query(api.recurringBilling.getVisit, { projectId }),
+		).toMatchObject({ state: "no_agreement", quoteId });
+		expect(
+			await user.mutation(api.recurringBilling.draftVisit, { projectId }),
+		).toBeNull();
+		const setup = await user.query(api.projectSeriesAgreements.getSetup, {
+			quoteId,
+		});
+		await user.mutation(api.projectSeriesAgreements.prepare, {
+			quoteId,
+			billingMode: "per_visit",
+			paymentRule: SPLIT_RULE,
+			expectedSeriesRevision: setup.revision,
+		});
+		expect(
+			await user.query(api.recurringBilling.getVisit, { projectId }),
+		).toMatchObject({
+			state: "agreement_pending",
+			quoteId,
+			notActivated: false,
+			reason: "The recurring agreement has not been sent to your client yet.",
+		});
+		await signAgreement(user, org.orgId, quoteId);
+		expect(
+			(await user.query(api.recurringBilling.getVisit, { projectId })).state,
+		).toBe("ineligible");
+	});
+
 	it("does not bill a cancelled recurring visit", async () => {
 		const f = await fixture();
 		await f.user.mutation(api.projects.update, {

@@ -210,7 +210,7 @@ export const invoicesAndPaymentsArticles: HelpArticle[] = [
 				blocks: [
 					{
 						type: "paragraph",
-						text: "The **Payment Schedule** tab shows every installment as a card with a status pill: Pending, Sent, Paid, Overdue, or Cancelled. Your client sees the schedule on the invoice in their portal, and a partly paid invoice shows there as partial until the last installment settles.",
+						text: "The **Payment Schedule** tab shows every installment as a card with a status pill: Pending, Sent, Paid, Overdue, or Cancelled. Your client sees the schedule on the invoice in their portal and pays the installments in order, and a partly paid invoice shows there as partial until the last installment settles.",
 					},
 				],
 			},
