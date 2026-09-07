@@ -306,7 +306,7 @@ export function MoveDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="flex flex-col gap-0 overflow-hidden p-0 sm:max-w-lg">
+      <DialogContent className="flex flex-col gap-0 overflow-hidden p-0">
         <DialogHeader className="shrink-0 gap-3 p-4 pb-3">
           <DialogTitle className="truncate">Move {targetName}</DialogTitle>
           <div className="flex min-w-0 items-center gap-2">

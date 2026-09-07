@@ -371,7 +371,7 @@ function SeriesPageContent() {
 
 			{scheduleOpen && (
 				<Dialog open onOpenChange={setScheduleOpen}>
-					<DialogContent className="max-h-[90vh] w-[min(94vw,48rem)] overflow-y-auto">
+					<DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
 						<DialogHeader>
 							<DialogTitle>Edit schedule</DialogTitle>
 							<DialogDescription>

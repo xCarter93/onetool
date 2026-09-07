@@ -123,7 +123,7 @@ function RecurringProjectSchedule({ project }: { project: RecurrenceProject }) {
 			</div>
 			{open && project.startDate && (
 				<Dialog open onOpenChange={setOpen}>
-					<DialogContent className="max-h-[90vh] w-[min(94vw,48rem)] overflow-y-auto">
+					<DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
 						<DialogHeader>
 							<DialogTitle>Set up recurrence</DialogTitle>
 							<DialogDescription>

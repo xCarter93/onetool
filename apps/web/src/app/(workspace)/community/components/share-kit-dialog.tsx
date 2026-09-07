@@ -137,7 +137,7 @@ export function ShareKitDialog({
 
 	return (
 		<Dialog open={open} onOpenChange={onOpenChange}>
-			<DialogContent className="max-w-lg">
+			<DialogContent>
 				<DialogHeader>
 					<DialogTitle>Share your page</DialogTitle>
 					<DialogDescription>

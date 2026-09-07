@@ -184,7 +184,7 @@ export function RecurringAgreementSetupDialog({
 				open={open}
 				onOpenChange={(nextOpen) => !isSubmitting && setOpen(nextOpen)}
 			>
-				<DialogContent className="max-w-lg">
+				<DialogContent>
 					<DialogHeader>
 						<DialogTitle>Set up recurring agreement</DialogTitle>
 						<DialogDescription>
