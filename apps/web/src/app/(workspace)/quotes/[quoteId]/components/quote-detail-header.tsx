@@ -11,6 +11,8 @@ import {
 	Send,
 	RotateCcw,
 	Receipt,
+	CopyPlus,
+	FileSignature,
 } from "lucide-react";
 import {
 	ActionButtonGroup,
@@ -43,6 +45,12 @@ interface QuoteDetailHeaderProps {
 	onGeneratePdf: () => void;
 	onDelete: () => void;
 	onConvertToInvoice: () => void;
+	onCopyToFuture?: () => void;
+	copyToFutureDisabled?: boolean;
+	copyToFutureDisabledReason?: string;
+	onPrepareAgreement?: () => void;
+	onRestoreAgreementPricing?: () => void;
+	restoreAgreementPricingLabel?: string;
 	/** True while a convert-to-invoice mutation is in flight — disables the action to prevent duplicate invoices. */
 	converting?: boolean;
 }
@@ -55,6 +63,12 @@ export function QuoteDetailHeader({
 	onGeneratePdf,
 	onDelete,
 	onConvertToInvoice,
+	onCopyToFuture,
+	copyToFutureDisabled = false,
+	copyToFutureDisabledReason,
+	onPrepareAgreement,
+	onRestoreAgreementPricing,
+	restoreAgreementPricingLabel = "Restore agreement pricing",
 	converting = false,
 }: QuoteDetailHeaderProps) {
 	const { can } = usePermissions();
@@ -152,6 +166,44 @@ export function QuoteDetailHeader({
 
 	const actions: RecordAction[] = [
 		...statusActions,
+		...(onCopyToFuture
+			? [
+					{
+						key: "copy-to-future",
+						label: "Copy to future projects",
+						icon: <CopyPlus className="h-4 w-4" />,
+						slot: "secondary" as const,
+						variant: "outline" as const,
+						onClick: onCopyToFuture,
+						disabled: copyToFutureDisabled,
+						disabledReason: copyToFutureDisabledReason,
+					},
+				]
+			: []),
+		...(onPrepareAgreement
+			? [
+					{
+						key: "prepare-agreement",
+						label: "Set up agreement",
+						icon: <FileSignature className="h-4 w-4" />,
+						slot: "secondary" as const,
+						variant: "outline" as const,
+						onClick: onPrepareAgreement,
+					},
+				]
+			: []),
+		...(onRestoreAgreementPricing
+			? [
+					{
+						key: "restore-agreement-pricing",
+						label: restoreAgreementPricingLabel,
+						icon: <RotateCcw className="h-4 w-4" />,
+						slot: "secondary" as const,
+						variant: "outline" as const,
+						onClick: onRestoreAgreementPricing,
+					},
+				]
+			: []),
 		{
 			// Opens the send modal: portal template, custom email, or e-signature.
 			// Stays visible on approved quotes, where email is refused but the
@@ -203,9 +255,16 @@ export function QuoteDetailHeader({
 							Quote {quote.quoteNumber || `#${quote._id.slice(-6)}`}
 						</h1>
 						{!isSticky && (
-							<p className="text-sm text-muted-foreground">
-								{quote.title || "Untitled Quote"}
-							</p>
+							<div className="text-sm text-muted-foreground">
+								<p>{quote.title || "Untitled Quote"}</p>
+								{quote.recurringAgreementTerms && (
+									<p className="mt-1">
+										{quote.recurringInheritedAt && !quote.recurringQuoteOverride
+											? `Approved under recurring agreement ${quote.recurringAgreementTerms.agreementReference}`
+											: `Recurring agreement ${quote.recurringAgreementTerms.agreementReference}, revision ${quote.recurringAgreementTerms.revisionNumber}`}
+									</p>
+								)}
+							</div>
 						)}
 					</div>
 					<AnimatePresence initial={false}>

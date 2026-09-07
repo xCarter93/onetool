@@ -342,9 +342,10 @@ describe("BoldSign embedded sending", () => {
 								sentAt: Date.now(),
 								sentTo: [],
 							});
-							await consumeMeter(ctx, org.orgId, "esignatures");
-						}
-						return { ...org, quoteId };
+								await consumeMeter(ctx, org.orgId, "esignatures");
+							}
+							await seedDocument(ctx, org.orgId, quoteId, 6);
+							return { ...org, quoteId };
 					}
 				);
 
@@ -376,9 +377,10 @@ describe("BoldSign embedded sending", () => {
 								sentAt: Date.now(),
 								sentTo: [],
 							});
-							await consumeMeter(ctx, org.orgId, "esignatures");
-						}
-						return { ...org, quoteId };
+								await consumeMeter(ctx, org.orgId, "esignatures");
+							}
+							await seedDocument(ctx, org.orgId, quoteId, 5);
+							return { ...org, quoteId };
 					}
 				);
 
@@ -487,13 +489,12 @@ describe("BoldSign embedded sending", () => {
 					createTestIdentity(clerkUserId, clerkOrgId)
 				);
 
-				const result = expectReady(
-					await asUser.query(internal.boldsign.getEmbeddedRequestContext, {
-						quoteId,
-					})
+				const result = await asUser.query(
+					internal.boldsign.getEmbeddedRequestContext,
+					{ quoteId }
 				);
 
-				expect(result.existing).toBeNull();
+				expect(result).toEqual({ ok: false, reason: "no_pdf" });
 			});
 		});
 	});

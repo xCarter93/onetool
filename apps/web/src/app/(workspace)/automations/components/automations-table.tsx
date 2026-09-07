@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import type { Id, Doc } from "@onetool/backend/convex/_generated/dataModel";
@@ -315,10 +315,13 @@ export function AutomationsTable() {
 		);
 	}, [automations, search]);
 
-	// Reset to the first page whenever the search narrows the result set.
-	useEffect(() => {
-		setPagination((p) => (p.pageIndex === 0 ? p : { ...p, pageIndex: 0 }));
-	}, [search]);
+	// Back to page one whenever the search narrows the result set (adjust-during-render).
+	const [prevSearch, setPrevSearch] = useState(search);
+	if (search !== prevSearch) {
+		setPrevSearch(search);
+		if (pagination.pageIndex !== 0)
+			setPagination((p) => ({ ...p, pageIndex: 0 }));
+	}
 
 	const table = useTable({
 		features: dataGridFeatures,

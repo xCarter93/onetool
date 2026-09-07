@@ -12,15 +12,23 @@ import { convexTest } from "convex-test";
 import { setupConvexTest } from "../../test.setup";
 import { api } from "../../_generated/api";
 import type { Id } from "../../_generated/dataModel";
+import { buildQuoteContentSnapshot } from "../../lib/quoteContentSnapshot";
+import { createTestIdentity } from "../../test.helpers";
 
 const PORTAL_ISSUER = "https://portal.example.com";
+const TEST_ATTESTATION = "test-portal-attestation-0123456789";
+const PNG =
+	"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=";
 
 beforeAll(() => {
 	process.env.PORTAL_JWT_ISSUER = PORTAL_ISSUER;
+	process.env.PORTAL_ATTESTATION_SECRET = TEST_ATTESTATION;
 });
 
 type Seed = {
 	orgId: Id<"organizations">;
+	clerkUserId: string;
+	clerkOrgId: string;
 	clientId: Id<"clients">;
 	otherClientId: Id<"clients">;
 	clientContactId: Id<"clientContacts">;
@@ -29,14 +37,16 @@ type Seed = {
 
 async function seed(t: ReturnType<typeof convexTest>): Promise<Seed> {
 	return await t.run(async (ctx) => {
+		const clerkUserId = `user_${Math.random()}`;
+		const clerkOrgId = `org_${Math.random()}`;
 		const userId = await ctx.db.insert("users", {
 			name: "Owner",
 			email: `owner_${Math.random()}@example.com`,
 			image: "https://example.com/u.png",
-			externalId: `user_${Math.random()}`,
+			externalId: clerkUserId,
 		});
 		const orgId = await ctx.db.insert("organizations", {
-			clerkOrganizationId: `org_${Math.random()}`,
+			clerkOrganizationId: clerkOrgId,
 			name: "Acme Co",
 			ownerUserId: userId,
 		});
@@ -62,6 +72,8 @@ async function seed(t: ReturnType<typeof convexTest>): Promise<Seed> {
 		});
 		return {
 			orgId,
+			clerkUserId,
+			clerkOrgId,
 			clientId,
 			otherClientId,
 			clientContactId,
@@ -180,6 +192,108 @@ describe("portal.quotes.get", () => {
 		expect(result.clientName).toBe("Owning Client Inc");
 		expect(result.clientEmail).toBe("jane@example.com");
 		expect(result.latestApproval).toBeNull();
+	});
+
+	it("presents a regenerated current PDF that can be approved over a stale pin", async () => {
+		const s = await seed(t);
+		const jti = "get-current-approval";
+		await seedSession(t, s, jti);
+		const { quoteId, documentId, lineItems } = await insertQuoteWithDoc(
+			t,
+			s,
+			s.clientId,
+		);
+		const generated = await t.run(async (ctx) => {
+			const originalQuote = (await ctx.db.get(quoteId))!;
+			const originalLines = (await Promise.all(lineItems.map((id) => ctx.db.get(id)))).filter(
+				(line): line is NonNullable<typeof line> => line !== null,
+			);
+			await ctx.db.patch(documentId, {
+				generatedAt: 20_000,
+				quoteContentSnapshot: buildQuoteContentSnapshot(originalQuote, originalLines),
+			});
+			await ctx.db.patch(lineItems[0]!, {
+				description: "Current scope",
+			});
+			await ctx.db.patch(quoteId, { contentUpdatedAt: 20_000 });
+			const currentQuote = (await ctx.db.get(quoteId))!;
+			const currentLines = (await Promise.all(lineItems.map((id) => ctx.db.get(id)))).filter(
+				(line): line is NonNullable<typeof line> => line !== null,
+			);
+			const storageId = await ctx.storage.store(new Blob(["current-pdf"]));
+			return {
+				storageId,
+				snapshot: buildQuoteContentSnapshot(currentQuote, currentLines),
+			};
+		});
+		const asUser = t.withIdentity(
+			createTestIdentity(s.clerkUserId, s.clerkOrgId),
+		);
+		const currentDocumentId = await asUser.mutation(api.documents.create, {
+			documentType: "quote",
+			documentId: quoteId,
+			storageId: generated.storageId,
+			version: 3,
+			quoteContentSnapshot: generated.snapshot,
+		});
+		const modernDocument = await t.run(async (ctx) =>
+			ctx.db.get(currentDocumentId),
+		);
+		expect(modernDocument?.quoteContentSnapshotId).toBeTruthy();
+		expect(modernDocument?.quoteContentSnapshot).toBeUndefined();
+
+		const asPortal = t.withIdentity(ident(s, jti));
+		const detail = await asPortal.query(api.portal.quotes.get, { quoteId });
+		expect(detail.latestDocument?._id).toBe(currentDocumentId);
+		await expect(
+			asPortal.action(api.portal.quotes.approve, {
+				attestation: TEST_ATTESTATION,
+				intentAffirmed: true,
+				quoteId,
+				expectedDocumentId: detail.latestDocument!._id,
+				signatureBase64: PNG,
+				signatureMode: "typed",
+				signatureRawData: "Jane",
+				ipAddress: "1",
+				userAgent: "test",
+				termsAccepted: true,
+			}),
+		).resolves.toMatchObject({ action: "approved" });
+	});
+
+	it("returns no pending PDF when every document is stale", async () => {
+		const s = await seed(t);
+		const jti = "get-no-current";
+		await seedSession(t, s, jti);
+		const { quoteId, documentId } = await insertQuoteWithDoc(t, s, s.clientId);
+		await t.run(async (ctx) => {
+			await ctx.db.patch(documentId, { generatedAt: 10_000 });
+			await ctx.db.patch(quoteId, { contentUpdatedAt: 10_001 });
+		});
+		const result = await t
+			.withIdentity(ident(s, jti))
+			.query(api.portal.quotes.get, { quoteId });
+		expect(result.latestDocument).toBeNull();
+	});
+
+	it("keeps an approved quote pinned to its historical PDF", async () => {
+		const s = await seed(t);
+		const jti = "get-historical-pin";
+		await seedSession(t, s, jti);
+		const { quoteId, documentId } = await insertQuoteWithDoc(
+			t,
+			s,
+			s.clientId,
+			"approved",
+		);
+		await t.run(async (ctx) => {
+			await ctx.db.patch(documentId, { generatedAt: 10_000 });
+			await ctx.db.patch(quoteId, { contentUpdatedAt: 20_000 });
+		});
+		const result = await t
+			.withIdentity(ident(s, jti))
+			.query(api.portal.quotes.get, { quoteId });
+		expect(result.latestDocument?._id).toBe(documentId);
 	});
 
 	it("returns latestApproval projection from the most recent quoteApprovals row", async () => {

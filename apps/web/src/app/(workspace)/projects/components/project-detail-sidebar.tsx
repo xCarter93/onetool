@@ -2,7 +2,7 @@
 
 import { Doc, Id } from "@onetool/backend/convex/_generated/dataModel";
 import { api } from "@onetool/backend/convex/_generated/api";
-import { useMutation, useQuery } from "convex/react";
+import { useQuery } from "convex/react";
 import {
 	Select,
 	SelectTrigger,
@@ -48,6 +48,13 @@ import {
 	localDateToUtcMidnightMs,
 	utcMidnightMsToLocalDate,
 } from "@/lib/dates";
+import { RecurringVisitBilling } from "./recurring-visit-billing";
+import {
+	type ProjectUpdate,
+	useProjectEditScope,
+} from "./recurrence/project-edit-scope";
+import { RecurrenceProjectControl } from "./recurrence/project-control";
+import { RecurrenceStatusRecovery } from "./recurrence/status-recovery";
 
 function formatDate(timestamp?: number) {
 	if (!timestamp) return "\u2014";
@@ -117,12 +124,13 @@ export function ProjectDetailSidebar({
 	invoices,
 }: ProjectDetailSidebarProps) {
 	const toast = useToast();
-	const updateProject = useMutation(api.projects.update);
+	const { save: saveProjectUpdate, isSaving } = useProjectEditScope(projectId);
 	const users = useQuery(api.users.listByOrg);
 
 	const { can, isLoading: permissionsLoading } = usePermissions();
 	const canModify = can("projects", "modify");
 	const showReadOnly = !permissionsLoading && !canModify;
+	const statusNeedsRecovery = !!project.recurringState;
 	// Editable rows get the interactive affordance; read-only rows sit flat.
 	const rowClass = `flex items-start gap-3 py-2.5 -mx-2 px-2 rounded-md transition-colors${
 		canModify ? " group hover:bg-muted/50 cursor-pointer" : ""
@@ -139,7 +147,8 @@ export function ProjectDetailSidebar({
 	const [editDateValue, setEditDateValue] = useState<Date | undefined>(undefined);
 	const [editAssignedUsers, setEditAssignedUsers] = useState<string[]>([]);
 	const startEditing = (field: EditingField, currentValue: string) => {
-		if (!canModify) return;
+		if (!canModify || (field === "status" && statusNeedsRecovery)) return;
+		if (field === "projectType" && project.recurringSeriesId) return;
 		setEditingField(field);
 		setEditValue(currentValue);
 	};
@@ -165,12 +174,13 @@ export function ProjectDetailSidebar({
 		setEditAssignedUsers([]);
 	};
 
-	const saveField = async (field: string, value: string | number | string[] | undefined) => {
+	const saveField = async (
+		field: keyof ProjectUpdate,
+		value: ProjectUpdate[keyof ProjectUpdate]
+	) => {
 		try {
-			await updateProject({
-				id: projectId,
-				[field]: value,
-			});
+			const result = await saveProjectUpdate(field, { [field]: value });
+			if (!result.saved) return;
 			const labels: Record<string, string> = {
 				title: "Title",
 				status: "Status",
@@ -209,6 +219,7 @@ export function ProjectDetailSidebar({
 	const renderActions = (onSave: () => void) => (
 		<div className="flex items-center gap-0.5 shrink-0 ml-auto">
 			<button
+				disabled={isSaving}
 				onClick={(e) => { e.stopPropagation(); onSave(); }}
 				className="p-1 rounded-md hover:bg-green-100 dark:hover:bg-green-900/30 text-green-600 dark:text-green-400 transition-colors"
 				aria-label="Save"
@@ -216,6 +227,7 @@ export function ProjectDetailSidebar({
 				<Check className="h-3.5 w-3.5" />
 			</button>
 			<button
+				disabled={isSaving}
 				onClick={(e) => { e.stopPropagation(); cancelEditing(); }}
 				className="p-1 rounded-md hover:bg-red-100 dark:hover:bg-red-900/30 text-red-600 dark:text-red-400 transition-colors"
 				aria-label="Cancel"
@@ -280,13 +292,13 @@ export function ProjectDetailSidebar({
 
 				{/* Status */}
 				<div
-					className={rowClass}
+					className={statusNeedsRecovery ? "flex items-start gap-3 py-2.5 -mx-2 px-2" : rowClass}
 					onClick={() => editingField !== "status" && startEditing("status", project.status)}
 				>
 					<CircleDot className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
 					<span className="text-sm text-muted-foreground w-28 shrink-0">Status</span>
 					<div className="flex-1 min-w-0" onClick={(e) => editingField === "status" && e.stopPropagation()}>
-						{editingField === "status" ? (
+						{editingField === "status" && !statusNeedsRecovery ? (
 							<Select value={editValue} onValueChange={(value) => setEditValue(value as string)}>
 								<SelectTrigger className="h-8">
 									<SelectValue />
@@ -307,10 +319,11 @@ export function ProjectDetailSidebar({
 								entityType="project"
 							/>
 						)}
+						{statusNeedsRecovery && <RecurrenceStatusRecovery key={project._id} project={project} />}
 					</div>
-					{editingField === "status"
+					{!statusNeedsRecovery && (editingField === "status"
 						? renderActions(() => saveField("status", editValue))
-						: renderPencil()
+						: renderPencil())
 					}
 				</div>
 
@@ -343,9 +356,11 @@ export function ProjectDetailSidebar({
 					</div>
 					{editingField === "projectType"
 						? renderActions(() => saveField("projectType", editValue))
-						: renderPencil()
+						: project.recurringSeriesId ? null : renderPencil()
 					}
 				</div>
+
+				<RecurrenceProjectControl project={project} />
 
 				{/* Start Date */}
 				<div
@@ -452,7 +467,7 @@ export function ProjectDetailSidebar({
 						? renderActions(() =>
 							saveField(
 								"assignedUserIds",
-								editAssignedUsers.length > 0 ? editAssignedUsers : undefined
+								editAssignedUsers as Id<"users">[]
 							)
 						)
 						: renderPencil()
@@ -481,6 +496,7 @@ export function ProjectDetailSidebar({
 					</div>
 				</div>
 			</div>
+			<RecurringVisitBilling projectId={projectId} recurring={Boolean(project.recurringSeriesId)} />
 
 			<Separator className="my-4" />
 
@@ -655,4 +671,3 @@ function AssignedUserNames({
 	if (names.length === 0) return <span className="text-muted-foreground italic">Unassigned</span>;
 	return <>{names.join(", ")}</>;
 }
-

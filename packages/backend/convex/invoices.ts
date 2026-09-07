@@ -43,6 +43,9 @@ import { getOrCreateOutboundThread, plusTagAddress } from "./email/threads";
 import { formatEmailFrom } from "./lib/emailFrom";
 import { maybeEnqueueQboSync } from "./lib/quickbooksEnqueue";
 import { calculateInvoiceTotals, syncInvoiceTotals } from "./lib/invoiceTotals";
+import { writeRecurringInvoiceDraft } from "./lib/recurringInvoiceDraft";
+import { assertQuoteAvailableForBilling } from "./lib/recurringBilling";
+import { invoiceGroupProjectionValidator, isInvoiceInActorScope, projectInvoiceGroups } from "./lib/invoiceGroups";
 import { assertInvoiceContentEditable } from "./lib/editLocks";
 import { getOrgTimezoneById } from "./lib/organization";
 import { localTodayUtcMidnight } from "./lib/schedule";
@@ -201,11 +204,12 @@ export const list = optionalUserQuery({
 		// org's entire invoiceLineItems table on each list call — and it did the
 		// arithmetic in raw floats, so the list could disagree with `get` by a
 		// fraction of a cent.
-		return await ctx.applyReadScope("invoices", invoices, (invoice, scope) =>
-			invoice.projectId
-				? scope.projectIds.has(invoice.projectId)
-				: scope.clientIds.has(invoice.clientId)
-		);
+		if (await ctx.hasAllRecords("invoices")) return invoices;
+		const scope = await ctx.actorScope();
+		const visible = await Promise.all(invoices.map(async (invoice) =>
+			(await isInvoiceInActorScope(ctx, invoice, scope)) ? invoice : null
+		));
+		return visible.filter((invoice): invoice is InvoiceDocument => invoice !== null);
 	},
 });
 
@@ -232,10 +236,7 @@ export const get = optionalUserQuery({
 		// Cross-org invoice (stale bookmark, shared link, or org switch): degrade
 		// to an empty state instead of throwing an uncaught org-mismatch error.
 		if (!invoice) return null;
-		await ctx.requireRecordScope("invoices", {
-			projectId: invoice.projectId,
-			clientId: invoice.clientId,
-		});
+		await ctx.requireRecordScope("invoices", () => isInvoiceInActorScope(ctx, invoice));
 
 		// Calculate totals from line items. "stored" so an invoice that never had
 		// line items shows the amount payment validation enforces (payments.ts)
@@ -249,6 +250,19 @@ export const get = optionalUserQuery({
 			subtotal,
 			total,
 		};
+	},
+});
+
+export const getGroups = optionalUserQuery({
+	args: { invoiceId: v.id("invoices") },
+	returns: v.union(v.array(invoiceGroupProjectionValidator), v.null()),
+	handler: async (ctx, args) => {
+		if (!ctx.orgId) return null;
+		await ctx.requireLevel("invoices", "view");
+		const invoice = await ctx.orgEntity("invoices", args.invoiceId, { onMismatch: "skip" });
+		if (!invoice) return null;
+		await ctx.requireRecordScope("invoices", () => isInvoiceInActorScope(ctx, invoice));
+		return await projectInvoiceGroups(ctx, invoice);
 	},
 });
 
@@ -523,10 +537,7 @@ export const update = userMutation({
 		// Get current invoice to check for status changes
 		const currentInvoice = await ctx.orgEntity("invoices", id);
 		const oldStatus = currentInvoice.status;
-		await ctx.requireRecordScope("invoices", {
-			projectId: currentInvoice.projectId,
-			clientId: currentInvoice.clientId,
-		});
+		await ctx.requireRecordScope("invoices", () => isInvoiceInActorScope(ctx, currentInvoice));
 
 		// Paired discount fields are validated on the merged result, so patching
 		// one half can't bypass a rule or trip one the merged invoice satisfies.
@@ -578,6 +589,17 @@ export const update = userMutation({
 		const statusChanging = newStatus !== undefined && newStatus !== oldStatus;
 		const fieldUpdates: Partial<InvoiceDocument> = { ...filteredUpdates };
 		delete fieldUpdates.status;
+		if (updates.dueDate !== undefined && updates.dueDate !== currentInvoice.dueDate && currentInvoice.recurringPaymentRule) {
+			fieldUpdates.paymentScheduleIsCustom = true;
+			const paymentRows = await ctx.db.query("payments").withIndex("by_invoice_sort", (q) => q.eq("invoiceId", id)).collect();
+			const pending = paymentRows
+				.filter((payment) => payment.status === "pending").sort((a, b) => b.sortOrder - a.sortOrder);
+			if (pending[0]) await ctx.db.patch(pending[0]._id, { dueDate: updates.dueDate });
+			else if (paymentRows.length === 0 && currentInvoice.total > 0) await ctx.db.insert("payments", {
+				orgId: currentInvoice.orgId, invoiceId: id, paymentAmount: currentInvoice.total,
+				dueDate: updates.dueDate, description: "Full Payment", sortOrder: 0, status: "pending",
+			});
+		}
 
 		if (Object.keys(fieldUpdates).length > 0) {
 			await ctx.db.patch(id, fieldUpdates);
@@ -641,10 +663,7 @@ export const sendToClient = userMutation({
 	handler: async (ctx, args): Promise<InvoiceId> => {
 		await ctx.requireLevel("invoices", "modify");
 		const invoice = await ctx.orgEntity("invoices", args.id);
-		await ctx.requireRecordScope("invoices", {
-			projectId: invoice.projectId,
-			clientId: invoice.clientId,
-		});
+		await ctx.requireRecordScope("invoices", () => isInvoiceInActorScope(ctx, invoice));
 
 		if (invoice.status === "paid" || invoice.status === "cancelled") {
 			throw new ConvexError({
@@ -720,8 +739,9 @@ export const sendToClient = userMutation({
 		// invoices can be re-sent without a status change. The seam owns the
 		// first-send meter debit, the activity and the event.
 		const sending = invoice.status === "draft";
+		let firstIssuance = false;
 		if (sending) {
-			await transitionInvoice(ctx, invoice, "sent", {
+			const stamps = await transitionInvoice(ctx, invoice, "sent", {
 				actor: { userId: ctx.user._id },
 				source: "invoices.sendToClient",
 				changes: computeFieldChanges(
@@ -730,6 +750,7 @@ export const sendToClient = userMutation({
 					{ status: "sent" }
 				),
 			});
+			firstIssuance = stamps.firstSentAt !== undefined;
 		}
 
 		// Belt and braces: creation seeds the row, but invoices that predate that
@@ -753,6 +774,7 @@ export const sendToClient = userMutation({
 			.order("desc")
 			.first();
 		if (
+			firstIssuance && invoice.recurringPaymentRule !== undefined ||
 			!newestPdf ||
 			newestPdf.generatedAt < (invoice.contentUpdatedAt ?? 0)
 		) {
@@ -900,10 +922,7 @@ export const getPortalLink = userQuery({
 	handler: async (ctx, args): Promise<string | null> => {
 		await ctx.requireLevel("invoices", "view");
 		const invoice = await ctx.orgEntity("invoices", args.id);
-		await ctx.requireRecordScope("invoices", {
-			projectId: invoice.projectId,
-			clientId: invoice.clientId,
-		});
+		await ctx.requireRecordScope("invoices", () => isInvoiceInActorScope(ctx, invoice));
 		const client = await ctx.db.get(invoice.clientId);
 		if (!client || client.orgId !== invoice.orgId || !client.portalAccessId) {
 			return null;
@@ -932,10 +951,7 @@ export const markPaid = userMutation({
 	handler: async (ctx, args): Promise<InvoiceId> => {
 		await ctx.requireLevel("invoices", "modify");
 		const invoice = await ctx.orgEntity("invoices", args.id);
-		await ctx.requireRecordScope("invoices", {
-			projectId: invoice.projectId,
-			clientId: invoice.clientId,
-		});
+		await ctx.requireRecordScope("invoices", () => isInvoiceInActorScope(ctx, invoice));
 
 		if (invoice.status === "paid") {
 			throw new ConvexError({
@@ -970,10 +986,7 @@ export const remove = userMutation({
 		await ctx.requireLevel("invoices", "delete");
 		// Validate access + scope before any deletes (checks-before-writes).
 		const invoice = await ctx.orgEntity("invoices", args.id);
-		await ctx.requireRecordScope("invoices", {
-			projectId: invoice.projectId,
-			clientId: invoice.clientId,
-		});
+		await ctx.requireRecordScope("invoices", () => isInvoiceInActorScope(ctx, invoice));
 
 		// Delete line items first
 		const lineItems = await ctx.db
@@ -983,6 +996,13 @@ export const remove = userMutation({
 
 		for (const lineItem of lineItems) {
 			await ctx.db.delete(lineItem._id);
+		}
+		const groups = await ctx.db
+			.query("invoiceGroups")
+			.withIndex("by_invoice", (q) => q.eq("invoiceId", args.id))
+			.collect();
+		for (const group of groups) {
+			await ctx.db.delete(group._id);
 		}
 
 		await ctx.db.delete(args.id);
@@ -1075,11 +1095,12 @@ export const getOverdue = optionalUserQuery({
 			}
 		}
 
-		return await ctx.applyReadScope("invoices", results, (invoice, scope) =>
-			invoice.projectId
-				? scope.projectIds.has(invoice.projectId)
-				: scope.clientIds.has(invoice.clientId)
-		);
+		if (await ctx.hasAllRecords("invoices")) return results;
+		const scope = await ctx.actorScope();
+		const visible = await Promise.all(results.map(async (invoice) =>
+			(await isInvoiceInActorScope(ctx, invoice, scope)) ? invoice : null
+		));
+		return visible.filter((invoice): invoice is NonNullable<typeof invoice> => invoice !== null);
 	},
 });
 
@@ -1093,10 +1114,7 @@ export const recalculateTotals = userMutation({
 		await ctx.requireLevel("invoices", "modify");
 		// Validate access
 		const invoice = await ctx.orgEntity("invoices", args.id);
-		await ctx.requireRecordScope("invoices", {
-			projectId: invoice.projectId,
-			clientId: invoice.clientId,
-		});
+		await ctx.requireRecordScope("invoices", () => isInvoiceInActorScope(ctx, invoice));
 
 		// Recompute + persist totals and keep aggregates in step
 		await syncInvoiceTotals(ctx, args.id);
@@ -1138,6 +1156,7 @@ export const createFromQuote = userMutation({
 		await ctx.requireLevel("invoices", "modify");
 		// Get and validate quote
 		const quote = await ctx.orgEntity("quotes", args.quoteId);
+		await assertQuoteAvailableForBilling(ctx, quote);
 
 		if (quote.status !== "approved") {
 			throw new ConvexError({
@@ -1148,17 +1167,6 @@ export const createFromQuote = userMutation({
 
 		// One invoice per quote — guard against duplicates from double-clicks or
 		// stale UI on any surface (drawer/header both treat conversion as terminal).
-		const existingInvoice = await ctx.db
-			.query("invoices")
-			.withIndex("by_quote", (q) => q.eq("quoteId", args.quoteId))
-			.first();
-		if (existingInvoice) {
-			throw new ConvexError({
-				code: "CONFLICT",
-				message: "An invoice has already been created from this quote",
-			});
-		}
-
 		const invoiceNumber = await nextInvoiceNumber(ctx, ctx.orgId);
 
 		// Default dates are calendar dates (UTC-midnight epochs), not instants —
@@ -1169,6 +1177,24 @@ export const createFromQuote = userMutation({
 		);
 		const issuedDate = args.issuedDate || todayUtcMidnight;
 		const dueDate = args.dueDate || todayUtcMidnight + 30 * 24 * 60 * 60 * 1000;
+		if (quote.recurringAgreementTerms) {
+			const invoiceId = await writeRecurringInvoiceDraft(ctx, {
+				orgId: ctx.orgId,
+				clientId: quote.clientId,
+				createdByUserId: ctx.user._id,
+				quotes: [quote],
+				issuedDate,
+				dueDate,
+			});
+			const invoice = await ctx.db.get(invoiceId);
+			if (invoice) {
+				const client = await ctx.db.get(invoice.clientId);
+				await ActivityHelpers.invoiceCreated(ctx, invoice, client?.companyName || "Unknown Client");
+				await emitRecordCreatedEvent(ctx, invoice.orgId, "invoice", invoice._id, "invoices.createFromQuote");
+				await maybeEnqueueQboSync(ctx, invoice.orgId, "invoice", invoice._id);
+			}
+			return invoiceId;
+		}
 
 		const quoteLineItems = await ctx.db
 			.query("quoteLineItems")
@@ -1310,10 +1336,7 @@ export const getWithPayments = optionalUserQuery({
 		// Cross-org invoice (stale bookmark, shared link, or org switch): degrade
 		// to an empty state instead of throwing an uncaught org-mismatch error.
 		if (!invoice) return null;
-		await ctx.requireRecordScope("invoices", {
-			projectId: invoice.projectId,
-			clientId: invoice.clientId,
-		});
+		await ctx.requireRecordScope("invoices", () => isInvoiceInActorScope(ctx, invoice));
 
 		// Calculate totals from line items ("stored" fallback — see invoices.get).
 		const { subtotal, total } = await calculateInvoiceTotals(ctx, args.id, {
@@ -1440,10 +1463,7 @@ export const getPreview = optionalUserQuery({
 		}
 		// Cross-org invoice: degrade to an empty state instead of throwing.
 		if (!invoice) return null;
-		await ctx.requireRecordScope("invoices", {
-			projectId: invoice.projectId,
-			clientId: invoice.clientId,
-		});
+		await ctx.requireRecordScope("invoices", () => isInvoiceInActorScope(ctx, invoice));
 
 		// Recompute total from line items (source of truth; stored total can be
 		// stale). Reuse the shared helper so discount/tax logic can't diverge.

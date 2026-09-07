@@ -29,6 +29,10 @@ export const routingArticles: HelpArticle[] = [
 						type: "tip",
 						text: "On the **Today** tab, **Plan from schedule** builds the stop list for you from the day's scheduled tasks and projects. Running it again replaces the stops already on the list.",
 					},
+					{
+						type: "paragraph",
+						text: "Active recurring visits can add a stop even when they have no tasks. Paused, skipped and ended visits, and their linked tasks, are excluded. Multiple jobs at the same property still share one stop. Skipping a route stop does not skip its recurring project.",
+					},
 				],
 			},
 			{

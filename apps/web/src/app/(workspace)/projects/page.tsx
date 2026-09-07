@@ -57,9 +57,12 @@ import {
 	X,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
+import type { Route } from "next";
 import { useMutation } from "convex/react";
 import { useQuery } from "convex-helpers/react/cache/hooks";
 import { useActivitySparklines } from "@/hooks/use-activity-sparklines";
+import { stateLabel } from "./components/recurrence/labels";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { useIsOrgSwitching } from "@/hooks/use-is-org-switching";
 import { useToast } from "@/hooks/use-toast";
@@ -97,6 +100,8 @@ type ProjectKanbanItem = {
 	startDate?: number;
 	endDate?: number;
 	projectNumber?: string | null;
+	recurringSeriesId?: Id<"projectSeries">;
+	recurringState?: "paused" | "skipped" | "ended";
 };
 
 type ProjectKanbanColumn = {
@@ -172,7 +177,9 @@ const createColumns = (
 	router: ReturnType<typeof useRouter>,
 	onDelete: (id: string, name: string) => void,
 	onPreview: (id: string) => void,
-	canDelete: boolean
+	canDelete: boolean,
+	canViewSeries: boolean,
+	seriesTitles: Map<string, string>
 ): ColumnDef<DataGridFeatures, ProjectWithClient>[] => [
 	{
 		accessorKey: "title",
@@ -210,6 +217,43 @@ const createColumns = (
 				{formatStatus(row.original.status)}
 			</StatusBadge>
 		),
+	},
+	{
+		id: "series",
+		header: "Series",
+		cell: ({ row }) => {
+			const seriesId = row.original.recurringSeriesId;
+			if (!seriesId) {
+				return <span className="text-muted-foreground">One-off</span>;
+			}
+			const badge = (
+				<StatusBadge role="neutral" appearance="outline">
+					<Repeat className="size-3.5" />
+					Recurring
+				</StatusBadge>
+			);
+			return (
+				<div className="flex flex-wrap gap-2">
+					{canViewSeries ? (
+						<Link
+							href={`/projects/series/${seriesId}` as Route}
+							title={seriesTitles.get(seriesId)}
+							className="rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring"
+							onClick={(event) => event.stopPropagation()}
+						>
+							{badge}
+						</Link>
+					) : (
+						badge
+					)}
+					{row.original.recurringState && (
+						<StatusBadge role="neutral" appearance="outline">
+							{stateLabel(row.original.recurringState)}
+						</StatusBadge>
+					)}
+				</div>
+			);
+		},
 	},
 	{
 		accessorKey: "startDate",
@@ -301,18 +345,25 @@ function ProjectsPageContent() {
 	const [previewOpen, setPreviewOpen] = useState(false);
 	const deleteProject = useMutation(api.projects.remove);
 	const updateProjectStatus = useMutation(api.projects.update);
-	const [kanbanData, setKanbanData] = useState<ProjectKanbanItem[]>([]);
+	type ProjectStatus = Doc<"projects">["status"];
+	// Optimistic drag moves; each applies only while the server still reports
+	// the status the card was dragged from.
+	const [columnMoves, setColumnMoves] = useState<
+		Record<string, { from: ProjectStatus; to: ProjectStatus }>
+	>({});
 	const isOrgSwitching = useIsOrgSwitching();
 	const toast = useToast();
-	const { can } = usePermissions();
+	const { can, hasAllRecords } = usePermissions();
 	const canModifyProjects = can("projects", "modify");
 	const canDeleteProjects = can("projects", "delete");
+	const canViewSeries = can("projects") && hasAllRecords("projects");
 
 	// Fetch projects and clients from Convex
 	const projects = useQuery(api.projects.list, {});
 	// Skip without the clients grant — gated endpoint throws FORBIDDEN otherwise.
 	const clients = useQuery(api.clients.listNamesForOrg, can("clients") ? {} : "skip");
 	const projectStats = useQuery(api.projects.getStats, {});
+	const series = useQuery(api.projectSeries.listForOrg, canViewSeries ? {} : "skip");
 	// 30-day activity sparkline data, keyed by project id (presentational).
 	const sparklines = useActivitySparklines("project");
 
@@ -327,6 +378,10 @@ function ProjectsPageContent() {
 			activity: sparklines?.[project._id],
 		}));
 	}, [projects, clients, sparklines]);
+	const seriesTitles = React.useMemo(
+		() => new Map(series?.map((item) => [item._id, item.title]) ?? []),
+		[series]
+	);
 
 	// Advanced filters (status / type / client / start-date) applied to the set.
 	const filteredData = React.useMemo(() => {
@@ -354,6 +409,11 @@ function ProjectsPageContent() {
 						matchesDateFilter(p.startDate, filter.operator, filter.values[0])
 					);
 					break;
+				case "series":
+					result = result.filter((p) =>
+						filter.values.includes(p.recurringSeriesId as unknown)
+					);
+					break;
 			}
 		});
 		return result;
@@ -378,21 +438,28 @@ function ProjectsPageContent() {
 		return statusMap;
 	}, [data]);
 
-	React.useEffect(() => {
-		setKanbanData(
-			searchedData.map((project) => ({
-				id: project._id,
-				name: project.title,
-				column: project.status,
-				status: project.status,
-				clientName: project.client?.companyName,
-				projectType: project.projectType,
-				startDate: project.startDate,
-				endDate: project.endDate,
-				projectNumber: project.projectNumber ?? null,
-			}))
-		);
-	}, [searchedData]);
+	const kanbanData = React.useMemo<ProjectKanbanItem[]>(
+		() =>
+			searchedData.map((project) => {
+				const move = columnMoves[project._id];
+				const status =
+					move && move.from === project.status ? move.to : project.status;
+				return {
+					id: project._id,
+					name: project.title,
+					column: status,
+					status,
+					clientName: project.client?.companyName,
+					projectType: project.projectType,
+					startDate: project.startDate,
+					endDate: project.endDate,
+					projectNumber: project.projectNumber ?? null,
+					recurringSeriesId: project.recurringSeriesId,
+					recurringState: project.recurringState,
+				};
+			}),
+		[searchedData, columnMoves]
+	);
 
 	// Loading state. `clients` may stay undefined forever without the grant,
 	// so it isn't part of the gate — only `projects` blocks the table.
@@ -420,8 +487,8 @@ function ProjectsPageContent() {
 	};
 
 	const columns = React.useMemo(
-		() => createColumns(router, handleDelete, openPreview, canDeleteProjects),
-		[router, handleDelete, openPreview, canDeleteProjects]
+		() => createColumns(router, handleDelete, openPreview, canDeleteProjects, canViewSeries, seriesTitles),
+		[router, handleDelete, openPreview, canDeleteProjects, canViewSeries, seriesTitles]
 	);
 
 	const table = useTable({
@@ -436,12 +503,14 @@ function ProjectsPageContent() {
 		onPaginationChange: setPagination,
 	});
 
-	// Reset to first page when the filtered/searched set changes
-	React.useEffect(() => {
-		setPagination((prev) =>
-			prev.pageIndex === 0 ? prev : { ...prev, pageIndex: 0 }
-		);
-	}, [query, filters, searchedData.length]);
+	// Back to page one whenever the result set changes (adjust-during-render).
+	const resultKey = `${query}\u0000${searchedData.length}\u0000${JSON.stringify(filters)}`;
+	const [prevResultKey, setPrevResultKey] = React.useState(resultKey);
+	if (resultKey !== prevResultKey) {
+		setPrevResultKey(resultKey);
+		if (pagination.pageIndex !== 0)
+			setPagination((prev) => ({ ...prev, pageIndex: 0 }));
+	}
 
 	// Filter field configuration for the advanced filter builder
 	const filterFields: FilterFieldConfig<unknown>[] = React.useMemo(() => {
@@ -484,6 +553,16 @@ function ProjectsPageContent() {
 				options: clientOptions,
 				searchable: true,
 			},
+			...(canViewSeries && series?.length
+				? [{
+					key: "series",
+					label: "Series",
+					icon: <Repeat className="h-3 w-3" />,
+					type: "multiselect" as const,
+					options: series.map((item) => ({ value: item._id, label: item.title })),
+					searchable: true,
+				}]
+				: []),
 			{
 				key: "date",
 				label: "Start Date",
@@ -500,15 +579,24 @@ function ProjectsPageContent() {
 				),
 			},
 		];
-	}, [clients]);
+	}, [clients, canViewSeries, series]);
 
 	// onDataChange fires on every drag-over (column crossing), so keep it purely
 	// optimistic; the DB write happens once on drop via handleKanbanDragEnd.
 	const handleKanbanDataChange = React.useCallback(
 		(nextData: ProjectKanbanItem[]) => {
-			setKanbanData(nextData);
+			setColumnMoves((prev) => {
+				const next = { ...prev };
+				for (const card of nextData) {
+					const from = projectStatusMap.get(card.id);
+					if (!from) continue;
+					if (card.column === from) delete next[card.id];
+					else next[card.id] = { from, to: card.column };
+				}
+				return next;
+			});
 		},
-		[]
+		[projectStatusMap]
 	);
 
 	// Latest drop per card; a failed older write must not undo a newer drop.
@@ -527,15 +615,12 @@ function ProjectsPageContent() {
 					status: item.column,
 				}).catch((error) => {
 					console.error("Failed to update project status:", error);
-					// A rejected write changes no server data, so the sync effect never re-fires.
 					if (moveTokens.current.get(item.id) !== token) return;
-					setKanbanData((prev) =>
-						prev.map((card) =>
-							card.id === item.id
-								? { ...card, column: originalStatus, status: originalStatus }
-								: card
-						)
-					);
+					setColumnMoves((prev) => {
+						const next = { ...prev };
+						delete next[item.id];
+						return next;
+					});
 					toast.error(
 						"Update Failed",
 						convexErrorMessage(error, "Failed to update project status")
@@ -790,6 +875,18 @@ function ProjectsPageContent() {
 																<p className="text-muted-foreground truncate text-xs">
 																	{item.clientName || "Unknown Client"}
 																</p>
+																	{item.recurringSeriesId && (
+																		<div className="flex flex-wrap gap-2">
+																			<StatusBadge role="neutral" appearance="outline" className="w-fit">
+																				<Repeat className="size-3.5" /> Recurring
+																			</StatusBadge>
+																			{item.recurringState && (
+																				<StatusBadge role="neutral" appearance="outline" className="w-fit">
+																					{stateLabel(item.recurringState)}
+																				</StatusBadge>
+																			)}
+																		</div>
+																	)}
 																<div className="text-muted-foreground flex flex-wrap items-center gap-1.5 text-xs">
 																	<span>{formatProjectDate(item.startDate)}</span>
 																	<span aria-hidden>·</span>

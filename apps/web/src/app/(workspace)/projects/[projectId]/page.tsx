@@ -15,6 +15,10 @@ import { useState } from "react";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ExclamationTriangleIcon } from "@heroicons/react/24/outline";
+import {
+	ProjectEditScopeControl,
+	ProjectEditScopeProvider,
+} from "@/app/(workspace)/projects/components/recurrence/project-edit-scope";
 
 function ProjectDetailPageContent() {
 	const params = useParams();
@@ -25,7 +29,7 @@ function ProjectDetailPageContent() {
 	const [isDeleting, setIsDeleting] = useState(false);
 	const [isInvoiceModalOpen, setIsInvoiceModalOpen] = useState(false);
 	const [activeTab, setActiveTab] = useState("overview");
-	const { can } = usePermissions();
+	const { can, hasAllRecords } = usePermissions();
 
 	const projectId = params.projectId as Id<"projects">;
 
@@ -128,10 +132,19 @@ function ProjectDetailPageContent() {
 
 	// Filter approved quotes for invoice generation
 	const approvedQuotes =
-		projectQuotes?.filter((quote) => quote.status === "approved") || [];
+		projectQuotes?.filter(
+			(quote) =>
+				quote.status === "approved" &&
+				!quote.recurringAgreementSourceQuoteId
+		) || [];
 
 	return (
-		<>
+		<ProjectEditScopeProvider
+			key={projectId}
+			projectId={projectId}
+			recurringSeriesId={project.recurringSeriesId}
+			canEditFuture={can("projects", "modify") && hasAllRecords("projects")}
+		>
 			<div className="relative min-h-screen pl-6 pt-6">
 				{/* Header */}
 				<ProjectDetailHeader
@@ -143,6 +156,9 @@ function ProjectDetailPageContent() {
 					onGenerateInvoice={() => setIsInvoiceModalOpen(true)}
 					onDelete={() => setIsDeleteModalOpen(true)}
 				/>
+				<div className="pr-6">
+					<ProjectEditScopeControl />
+				</div>
 
 				{/* Tabs + Sidebar */}
 				<ProjectDetailTabs
@@ -185,7 +201,7 @@ function ProjectDetailPageContent() {
 				onClose={() => setIsInvoiceModalOpen(false)}
 				approvedQuotes={approvedQuotes}
 			/>
-		</>
+		</ProjectEditScopeProvider>
 	);
 }
 

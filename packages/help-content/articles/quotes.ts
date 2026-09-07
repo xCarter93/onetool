@@ -50,6 +50,23 @@ export const quotesArticles: HelpArticle[] = [
 				],
 			},
 			{
+				heading: "Copy a quote to recurring projects",
+				blocks: [
+					{ type: "steps", items: [
+						"Open a quote attached to a project in an active recurring series and save the content you want to reuse.",
+						"Choose **Copy to future projects** from the quote’s actions. Review the counts, then choose **Copy drafts**.",
+						"Open the project’s overview to manage **Future quote setup**. The saved version is used for later visits; source edits are published only when you copy again.",
+					] },
+					{ type: "paragraph", text: "Each copy has its own quote number and line items. The saved title, message, terms, discount, tax and PDF display settings are reused, and totals are recalculated. Copies start as drafts and stay hidden from the client portal until sent. Copying does not carry over approval, signatures, documents, signing settings or the original offer’s expiry date." },
+					{ type: "paragraph", text: "A recurring agreement is different from an ordinary copied quote. Its PDF records the service scope, cadence, billing method and reusable payment terms. Approved future visits identify the agreement they inherit and do not ask the client to sign each visit again. A visit-specific price change is shown as an override." },
+					{ type: "paragraph", text: "To close an unapproved agreement, open its series and choose **Discard draft** or **Withdraw proposal**. The quote and agreement history remain. Quotes retained as agreement history cannot be deleted, even after a proposal is discarded. Use **Revise agreement** to replace approved terms or **End series** to stop future work while keeping the approval history." },
+					{ type: "paragraph", text: "Choose **Set up agreement** on a draft quote in an active series to save the proposed service scope, cadence, billing rhythm and payment schedule. Reopening setup restores those saved terms so you can continue the same proposal. Then click **Generate PDF** on the quote to create the approval version; the series page tells you separately when that PDF is ready to send and when the client is awaiting approval." },
+					{ type: "paragraph", text: "Copying again replaces the same source’s eligible draft copies, including ordinary edits to those drafts. Manually created quotes and quotes copied from another source remain separate. Copies that have been sent or approved, moved, explicitly removed or invoiced are preserved. Started, skipped and past visits are also excluded." },
+					{ type: "paragraph", text: "Choose **Stop copying** beside saved quote setup to prevent copies on newly created visits. Existing quotes and line items stay unchanged. Deleting the source quote alone does not stop its saved setup; the setup remains manageable from the project." },
+					{ type: "paragraph", text: "Copying and stopping require organization-wide access to projects and quotes, plus permission to modify both. These controls are available on Free and Business. Stop saved quote copying before changing the series client or property, then save setup for the new scope." },
+				],
+			},
+			{
 				heading: "Add line items",
 				blocks: [
 					{
@@ -117,6 +134,10 @@ export const quotesArticles: HelpArticle[] = [
 					{
 						type: "paragraph",
 						text: "**Generate PDF** is also in the quote header, and it is available in every status, so you can produce a copy while drafting or after approval. The [e-signature flow](/help/quotes/e-signatures) builds its signature request from the quote's PDF.",
+					},
+					{
+						type: "paragraph",
+						text: "If the quote changes while its PDF is being generated, OneTool asks you to generate it again. PDFs used for a signature request or approval are kept with that history; make a new version for further changes.",
 					},
 					{
 						type: "note",
@@ -385,7 +406,7 @@ export const quotesArticles: HelpArticle[] = [
 					},
 					{
 						type: "note",
-						text: "Sending needs a generated PDF. Until you click **Generate PDF** on the quote, choosing **Send for e-signature** tells you to generate one first and goes no further.",
+						text: "Sending needs a current PDF. Click **Generate PDF** after changing the quote or before starting another signature request. A PDF already used for a sent or completed request stays with that request; generate a new version for the next one.",
 					},
 					{
 						type: "note",
@@ -425,9 +446,9 @@ export const quotesArticles: HelpArticle[] = [
 					{
 						type: "list",
 						items: [
-							"When a request reaches Completed, the quote is approved automatically. There is nothing to mark by hand.",
+							"When the current request reaches Completed, all required signatures are finished and the quote is approved automatically. A single signer finishing does not approve a request that still needs a countersignature.",
 							"A request you saved but never sent shows **Resume editing** and **Discard**. Discarding removes only the unsent request; the quote and its PDF stay put.",
-							"If a request lapses before everyone signs, it shows Expired and the quote's status becomes Expired too. Click **Reopen** on the quote to pick it back up.",
+							"If the current request lapses before everyone signs, it shows Expired and the pending quote becomes Expired too. Click **Reopen** on the quote to pick it back up.",
 						],
 					},
 					{
@@ -435,6 +456,10 @@ export const quotesArticles: HelpArticle[] = [
 						media: "image",
 						caption: "The Signatures tab with a completed request",
 						asset: "quotes/e-signatures/signatures-tab-with-a-completed-request",
+					},
+					{
+						type: "paragraph",
+						text: "If you reopen or revise a quote, a response to an older signature request does not approve the newer offer. Completed older requests keep their signed documents and history. Repeated or delayed responses do not reverse an existing approval or repeat its approval notification.",
 					},
 					{
 						type: "note",

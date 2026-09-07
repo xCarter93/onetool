@@ -312,7 +312,11 @@ function InvoicesPageContent() {
 	const [rescheduleId, setRescheduleId] = useState<Id<"invoices"> | null>(null);
 	const deleteInvoice = useMutation(api.invoices.remove);
 	const updateInvoiceStatus = useMutation(api.invoices.update);
-	const [kanbanData, setKanbanData] = useState<InvoiceKanbanItem[]>([]);
+	// Optimistic drag moves; each applies only while the server still reports
+	// the status the card was dragged from.
+	const [columnMoves, setColumnMoves] = useState<
+		Record<string, { from: InvoiceStatus; to: InvoiceStatus }>
+	>({});
 	const isOrgSwitching = useIsOrgSwitching();
 	const toast = useToast();
 	const { can } = usePermissions();
@@ -422,15 +426,17 @@ function InvoicesPageContent() {
 		return statusMap;
 	}, [data, orgToday]);
 
-	React.useEffect(() => {
-		setKanbanData(
+	const kanbanData = React.useMemo<InvoiceKanbanItem[]>(
+		() =>
 			searchedData.map((invoice) => {
 				const effective = deriveInvoiceStatus(invoice, orgToday);
+				const move = columnMoves[invoice._id];
+				const status = move && move.from === effective ? move.to : effective;
 				return {
 					id: invoice._id,
 					name: invoice.invoiceNumber,
-					column: effective,
-					status: effective,
+					column: status,
+					status,
 					clientName: invoice.clientName,
 					projectName: invoice.projectName,
 					total: invoice.total,
@@ -438,9 +444,9 @@ function InvoicesPageContent() {
 					dueDate: invoice.dueDate,
 					issuedDate: invoice.issuedDate,
 				};
-			})
-		);
-	}, [searchedData, orgToday]);
+			}),
+		[searchedData, orgToday, columnMoves]
+	);
 
 	// Loading state — gate only on the primary invoices query. The clients and
 	// projects reads are permission-skipped and stay undefined without the grant,
@@ -492,12 +498,14 @@ function InvoicesPageContent() {
 		onPaginationChange: setPagination,
 	});
 
-	// Reset to first page when the filtered/searched set changes
-	React.useEffect(() => {
-		setPagination((prev) =>
-			prev.pageIndex === 0 ? prev : { ...prev, pageIndex: 0 }
-		);
-	}, [query, filters, searchedData.length]);
+	// Back to page one when the filtered/searched set changes (adjust-during-render).
+	const resultKey = `${query}\u0000${searchedData.length}\u0000${JSON.stringify(filters)}`;
+	const [prevResultKey, setPrevResultKey] = React.useState(resultKey);
+	if (resultKey !== prevResultKey) {
+		setPrevResultKey(resultKey);
+		if (pagination.pageIndex !== 0)
+			setPagination((prev) => ({ ...prev, pageIndex: 0 }));
+	}
 
 	// Filter field configuration for the advanced filter builder
 	const filterFields: FilterFieldConfig<unknown>[] = React.useMemo(() => {
@@ -572,12 +580,18 @@ function InvoicesPageContent() {
 	// optimistic; the DB write happens once on drop via handleKanbanDragEnd.
 	const handleKanbanDataChange = React.useCallback(
 		(nextData: InvoiceKanbanItem[]) => {
-			// Overdue is a stored status since the sweep persists it, so a card
-			// stays in the lane it was dragged to; re-deriving here yanked it back
-			// out mid-drag. The drop handler decides what actually gets written.
-			setKanbanData(nextData.map((item) => ({ ...item, status: item.column })));
+			setColumnMoves((prev) => {
+				const next = { ...prev };
+				for (const card of nextData) {
+					const from = invoiceStatusMap.get(card.id);
+					if (!from) continue;
+					if (card.column === from) delete next[card.id];
+					else next[card.id] = { from, to: card.column };
+				}
+				return next;
+			});
 		},
-		[]
+		[invoiceStatusMap]
 	);
 
 	const handleKanbanDragEnd = React.useCallback(
@@ -588,13 +602,11 @@ function InvoicesPageContent() {
 			if (!originalStatus || originalStatus === item.column) return;
 
 			const restoreCard = () =>
-				setKanbanData((prev) =>
-					prev.map((card) =>
-						card.id === item.id
-							? { ...card, column: originalStatus, status: originalStatus }
-							: card
-					)
-				);
+				setColumnMoves((prev) => {
+					const next = { ...prev };
+					delete next[item.id];
+					return next;
+				});
 
 			// Writing "sent" on a still-past-due invoice just gets reversed by the
 			// overnight sweep. Moving the deadline is what actually un-flips it.
@@ -611,8 +623,6 @@ function InvoicesPageContent() {
 				status: nextStatus,
 			}).catch((error) => {
 				console.error("Failed to update invoice status:", error);
-				// A rejected write leaves the server data untouched, so the sync
-				// effect never re-fires — put the card back in its lane by hand.
 				restoreCard();
 				toast.error(
 					"Update Failed",

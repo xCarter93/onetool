@@ -8,7 +8,7 @@ export default defineConfig({
 		environment: "edge-runtime",
 		server: { deps: { inline: ["convex-test", "@convex-dev/aggregate"] } },
 		// Include tests from packages/backend/convex relative to monorepo root
-		include: ["packages/backend/convex/**/*.test.ts"],
+		include: ["packages/backend/convex/**/*.test.ts", "packages/backend/pdf/**/*.test.tsx"],
 		exclude: ["**/node_modules/**", "**/dist/**"],
 		coverage: {
 			provider: "v8",

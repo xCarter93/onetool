@@ -3,13 +3,14 @@
 import { PermissionGate } from "@/components/domain/permission-gate";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { useAction, useMutation } from "convex/react";
+import { useAction, useMutation, useQuery } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
-import type { Id } from "@onetool/backend/convex/_generated/dataModel";
+import type { Doc, Id } from "@onetool/backend/convex/_generated/dataModel";
 import { useToast } from "@/hooks/use-toast";
 import { convexErrorMessage } from "@/lib/convex-error";
 import { LearnMoreLink } from "@/components/help/learn-more";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
 	AlertDialog,
 	AlertDialogContent,
@@ -49,7 +50,7 @@ type ViewState =
  * fields, edits recipients, and sends themselves. The Sent webhook remains the
  * source of truth for the quote's status regardless of what this page observes.
  */
-function QuoteSignPageContent() {
+function OneOffQuoteSignContent() {
 	const params = useParams<{ quoteId: string }>();
 	const quoteId = params.quoteId as Id<"quotes">;
 	const router = useRouter();
@@ -491,6 +492,137 @@ function QuoteSignPageContent() {
 			</div>
 		</div>
 	);
+}
+
+function RecurringAgreementSignContent({
+	quote,
+}: {
+	quote: Doc<"quotes">;
+}) {
+	const router = useRouter();
+	const toast = useToast();
+	const sendAgreement = useAction(
+		api.boldsignActions.sendRecurringAgreementForSignature
+	);
+	const primaryContact = useQuery(api.clientContacts.getPrimaryContact, {
+		clientId: quote.clientId,
+	});
+	const [isSending, setIsSending] = useState(false);
+	const [error, setError] = useState<string | null>(null);
+	const terms = quote.recurringAgreementTerms!;
+
+	const send = async () => {
+		if (isSending) return;
+		setIsSending(true);
+		setError(null);
+		try {
+			const result = await sendAgreement({ quoteId: quote._id });
+			if (!result.ok) {
+				setError(
+					result.reason === "limit"
+						? `This organization has used ${result.used} of ${result.limit} e-signatures this month.`
+						: result.reason === "no_signer"
+							? "Add a primary client contact with an email address, then try again."
+							: "The agreement PDF could not be prepared. Generate it again, then retry."
+				);
+				return;
+			}
+			toast.success(
+				"Agreement sent for signature",
+				"Your client will receive an email with the recurring agreement."
+			);
+			router.push(`/quotes/${quote._id}`);
+		} catch (nextError) {
+			setError(convexErrorMessage(nextError, "Try sending the agreement again."));
+		} finally {
+			setIsSending(false);
+		}
+	};
+
+	return (
+		<div className="flex min-h-[70vh] flex-1 flex-col px-4 md:px-6">
+			<div className="py-3">
+				<Button variant="ghost" onClick={() => router.push(`/quotes/${quote._id}`)}>
+					<ArrowLeft className="size-4" /> Back to quote
+				</Button>
+			</div>
+			<div className="flex flex-1 items-center justify-center">
+				<div className="w-full max-w-lg space-y-6 rounded-lg border border-border bg-card p-6">
+					<div>
+						<h1 className="text-xl font-semibold text-foreground text-balance">
+							Send recurring agreement
+						</h1>
+						<p className="mt-2 text-base text-muted-foreground text-pretty">
+							OneTool will use the saved agreement PDF. Its terms and signature fields cannot be changed in the sending step.
+						</p>
+					</div>
+
+					<dl className="divide-y divide-border border-y border-border text-sm">
+						<div className="grid grid-cols-[8rem_minmax(0,1fr)] gap-3 py-3">
+							<dt className="text-muted-foreground">Agreement</dt>
+							<dd className="font-medium text-foreground">{terms.agreementReference}, revision {terms.revisionNumber}</dd>
+						</div>
+						<div className="grid grid-cols-[8rem_minmax(0,1fr)] gap-3 py-3">
+							<dt className="text-muted-foreground">Client</dt>
+							<dd className="font-medium text-foreground">{terms.client.name}</dd>
+						</div>
+						<div className="grid grid-cols-[8rem_minmax(0,1fr)] gap-3 py-3">
+							<dt className="text-muted-foreground">Recipient</dt>
+							<dd className="min-w-0 font-medium text-foreground">
+								{primaryContact === undefined ? <Skeleton className="h-5 w-48" /> : primaryContact?.email ? `${primaryContact.firstName} ${primaryContact.lastName} (${primaryContact.email})` : "No primary contact with email"}
+							</dd>
+						</div>
+					</dl>
+
+					{error && (
+						<p role="alert" className="rounded-md border border-danger/30 bg-danger/10 p-3 text-sm text-danger-foreground">
+							{error}
+						</p>
+					)}
+
+					<div className="flex justify-end">
+						<Button
+							className="min-h-11"
+							disabled={isSending || !primaryContact?.email}
+							onClick={() => void send()}
+						>
+							{isSending && <Loader2 className="size-4 animate-spin motion-reduce:animate-none" />}
+							Send agreement for signature
+						</Button>
+					</div>
+				</div>
+			</div>
+		</div>
+	);
+}
+
+function QuoteSignPageContent() {
+	const params = useParams<{ quoteId: string }>();
+	const quoteId = params.quoteId as Id<"quotes">;
+	const router = useRouter();
+	const quote = useQuery(api.quotes.get, { id: quoteId });
+
+	if (quote === undefined) {
+		return (
+			<div className="space-y-4 px-6 py-8">
+				<Skeleton className="h-10 w-40" />
+				<Skeleton className="mx-auto h-80 w-full max-w-lg" />
+			</div>
+		);
+	}
+	if (quote === null) {
+		return (
+			<div className="space-y-4 px-6 py-8">
+				<p className="text-sm text-muted-foreground">This quote is not available.</p>
+				<Button variant="ghost" onClick={() => router.push("/quotes")}>
+					<ArrowLeft className="size-4" /> Back to quotes
+				</Button>
+			</div>
+		);
+	}
+	if (quote.recurringAgreementTerms)
+		return <RecurringAgreementSignContent quote={quote} />;
+	return <OneOffQuoteSignContent />;
 }
 
 export default function QuoteSignPage() {

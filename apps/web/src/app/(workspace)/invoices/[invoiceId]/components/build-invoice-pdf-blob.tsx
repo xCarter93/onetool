@@ -8,6 +8,7 @@ export interface BuildInvoicePdfArgs {
 	invoice: InvoicePDFProps["invoice"];
 	lineItems: InvoicePDFProps["items"];
 	payments?: InvoicePDFProps["payments"];
+	invoiceGroups?: InvoicePDFProps["invoiceGroups"];
 	client?: Doc<"clients"> | null;
 	organization?: Doc<"organizations"> | null;
 	primaryProperty?: Doc<"clientProperties"> | null;
@@ -23,6 +24,7 @@ export async function buildInvoicePdfBlob({
 	invoice,
 	lineItems,
 	payments,
+	invoiceGroups,
 	client,
 	organization,
 	primaryProperty,
@@ -55,6 +57,7 @@ export async function buildInvoicePdfBlob({
 					: undefined
 			}
 			payments={payments}
+			invoiceGroups={invoiceGroups}
 		/>
 	);
 

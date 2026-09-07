@@ -33,6 +33,10 @@
    "types": "./pdf/invoicePricing.ts",
    "default": "./pdf/invoicePricing.ts"
   },
+  "./pdf/recurringAgreementFormat": {
+   "types": "./pdf/recurringAgreementFormat.ts",
+   "default": "./pdf/recurringAgreementFormat.ts"
+  },
   "./convex/communityAnalytics": {
    "types": "./convex/communityAnalytics.ts",
    "default": "./convex/communityAnalytics.ts"
@@ -64,6 +68,18 @@
   "./convex/lib/schedule": {
    "types": "./convex/lib/schedule.ts",
    "default": "./convex/lib/schedule.ts"
+  },
+  "./convex/lib/projectRecurrence": {
+   "types": "./convex/lib/projectRecurrence.ts",
+   "default": "./convex/lib/projectRecurrence.ts"
+  },
+  "./convex/lib/recurringPaymentRules": {
+   "types": "./convex/lib/recurringPaymentRules.ts",
+   "default": "./convex/lib/recurringPaymentRules.ts"
+  },
+  "./convex/lib/quoteContentSnapshot": {
+   "types": "./convex/lib/quoteContentSnapshot.ts",
+   "default": "./convex/lib/quoteContentSnapshot.ts"
   },
   "./convex/lib/invoiceLateness": {
    "types": "./convex/lib/invoiceLateness.ts",

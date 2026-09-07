@@ -188,6 +188,7 @@ export const invoicesAndPaymentsArticles: HelpArticle[] = [
 							"Click **Configure**.",
 							"Add an installment for each payment you expect. Give each one an amount, a due date, and a description if it helps.",
 							"Adjust the amounts until the installments add up exactly to the invoice total, not a cent over or under.",
+							"Click **Save schedule**. For an invoice governed by recurring terms, choose **This invoice** or **This and future invoices**. A future change opens a reusable percentage or fixed amount rule and prepares agreement revisions for customer approval.",
 						],
 					},
 					{
@@ -200,6 +201,8 @@ export const invoicesAndPaymentsArticles: HelpArticle[] = [
 						type: "note",
 						text: "Paid, refunded, and voided installments are locked, so you rework the unpaid ones around them. Each locked installment counts for what you kept from it, which means a refunded or voided amount counts for nothing and the unpaid installments have to cover it. The installment amounts then add up to more than the invoice total, which is expected: the panel counts what you kept, not what you charged.",
 					},
+					{ type: "note", text: "For coordinated monthly changes, the new arrangement starts with the next full calendar month after every affected recurring agreement is approved. Existing terms apply until then." },
+					{ type: "note", text: "If a source visit changes after a recurring invoice is drafted, the invoice shows a pricing review with links to its covered visits. Review their totals before sending. **Keep this invoice** preserves the invoice content and payment history while resolving that review." },
 				],
 			},
 			{

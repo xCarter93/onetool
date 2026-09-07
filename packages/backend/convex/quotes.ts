@@ -1,3 +1,5 @@
+import { recordQuoteDecision } from "./lib/quoteDecisionEvidence";
+import { activateAgreementApproval, vendorRequestLive } from "./lib/projectSeriesAgreements";
 import { calendarDayEpoch } from "./lib/formula";
 import { query, QueryCtx, MutationCtx } from "./_generated/server";
 import { mutation } from "./lib/triggers";
@@ -50,6 +52,7 @@ import { formatEmailFrom } from "./lib/emailFrom";
 import { nextQuoteNumber, reserveQuoteNumber } from "./lib/orgCounters";
 import { buildPortalQuoteUrl } from "./portal/quoteUrl";
 import { mintPortalAccessId } from "./clients";
+import { resolveQuoteApprovalDocument } from "./lib/quoteApprovalDocument";
 
 /**
  * Quote operations
@@ -972,6 +975,21 @@ export const extendValidUntil = userMutation({
 			});
 		}
 
+		// The re-render below would orphan a delivered agreement signature request.
+		if (quote.recurringAgreementRevisionId) {
+			const revision = await ctx.db.get(quote.recurringAgreementRevisionId);
+			const bound = revision?.approvalDocumentId
+				? await ctx.db.get(revision.approvalDocumentId)
+				: null;
+			if (bound && vendorRequestLive(bound)) {
+				throw new ConvexError({
+					code: "CONFLICT",
+					message:
+						"Withdraw the agreement signature request before changing the valid-until date.",
+				});
+			}
+		}
+
 		// Same calendar-day semantics as create/update.
 		const tz = (await ctx.db.get(ctx.orgId))?.timezone ?? "UTC";
 		if (args.validUntil < calendarDayEpoch(Date.now(), tz)) {
@@ -1386,6 +1404,7 @@ export const recalculateTotals = userMutation({
  */
 export const remove = userMutation({
 	args: { id: v.id("quotes") },
+	returns: v.id("quotes"),
 	handler: async (ctx, args): Promise<QuoteId> => {
 		await ctx.requireLevel("quotes", "delete");
 
@@ -1395,6 +1414,17 @@ export const remove = userMutation({
 			projectId: quote.projectId,
 			clientId: quote.clientId,
 		});
+
+		const agreementRevision = await ctx.db
+			.query("projectSeriesAgreementRevisions")
+			.withIndex("by_source_quote", (q) => q.eq("sourceQuoteId", quote._id))
+			.first();
+		if (agreementRevision || quote.recurringAgreementSourceQuoteId) {
+			throw new ConvexError({
+				code: "CONFLICT",
+				message: "This quote is retained as agreement history and cannot be deleted. Manage the agreement from its recurring series.",
+			});
+		}
 
 		// Check if quote has related invoices
 		const invoices = await ctx.db
@@ -1639,41 +1669,13 @@ export const approveInPerson = userMutation({
 		// Document pin: same OCC semantics as the portal commit — the audit row
 		// pins the exact PDF version the approval covers; pin latestDocumentId
 		// here iff nothing is pinned yet.
-		const doc = await ctx.db.get(args.expectedDocumentId);
-		if (
-			!doc ||
-			doc.orgId !== ctx.orgId ||
-			doc.documentType !== "quote" ||
-			doc.documentId !== args.id
-		) {
-			throw new ConvexError({
-				code: "QUOTE_VERSION_STALE",
-				latestDocumentId: quote.latestDocumentId ?? null,
-			});
-		}
-		if (quote.latestDocumentId == null) {
+		const { document: doc, shouldPin } = await resolveQuoteApprovalDocument(
+			ctx,
+			quote,
+			args.expectedDocumentId,
+		);
+		if (shouldPin) {
 			await ctx.db.patch(args.id, { latestDocumentId: args.expectedDocumentId });
-		} else if (quote.latestDocumentId !== args.expectedDocumentId) {
-			// The pin can predate a content edit (revert→edit→resend after a
-			// BoldSign pin): a CURRENT document supersedes a stale pin — without
-			// this, ensureQuotePdf renders fresh versions the OCC check here
-			// would reject forever. Anything else is a genuine version race.
-			const pinned = await ctx.db.get(quote.latestDocumentId);
-			const contentUpdatedAt = quote.contentUpdatedAt ?? 0;
-			if (
-				pinned &&
-				pinned.generatedAt < contentUpdatedAt &&
-				doc.generatedAt >= contentUpdatedAt
-			) {
-				await ctx.db.patch(args.id, {
-					latestDocumentId: args.expectedDocumentId,
-				});
-			} else {
-				throw new ConvexError({
-					code: "QUOTE_VERSION_STALE",
-					latestDocumentId: quote.latestDocumentId,
-				});
-			}
 		}
 
 		const client = await ctx.db.get(quote.clientId);
@@ -1728,11 +1730,15 @@ export const approveInPerson = userMutation({
 			createdAt: now,
 		});
 
+		const decision = await recordQuoteDecision(ctx, { quote, document: doc, action: "approved",
+			channel: "in_person", decidedAt: now, quoteApprovalId: auditId });
+
 		// 2. Status patch second.
 		await ctx.db.patch(args.id, {
 			status: "approved",
 			approvedAt: now,
 		});
+		await activateAgreementApproval(ctx, args.id, decision.evidenceId);
 		const updatedQuote = await ctx.db.get(args.id);
 
 		// 3. Activity, 4. status event, 5. celebration — portal commit ordering.

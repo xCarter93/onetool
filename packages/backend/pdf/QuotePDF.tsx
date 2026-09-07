@@ -8,7 +8,16 @@ import {
 	Image,
 } from "@react-pdf/renderer";
 import type { Id } from "../convex/_generated/dataModel";
+import type {
+	RecurringAgreementTerms,
+} from "../convex/lib/projectSeriesAgreements";
 import { formatCurrency } from "./format";
+import {
+	formatRecurringPaymentRule,
+	formatRecurringSchedule,
+} from "./recurringAgreementFormat";
+
+export { formatRecurringPaymentRule, formatRecurringSchedule } from "./recurringAgreementFormat";
 
 type QuoteLineItem = {
 	_id: Id<"quoteLineItems">;
@@ -34,6 +43,9 @@ type Quote = {
 	total: number;
 	terms?: string;
 	clientMessage?: string;
+	recurringInheritedAt?: number;
+	recurringQuoteOverride?: boolean;
+	recurringAgreementTerms?: RecurringAgreementTerms;
 	pdfSettings?: {
 		showQuantities: boolean;
 		showUnitPrices: boolean;
@@ -282,6 +294,22 @@ const styles = StyleSheet.create({
 		color: "#555555",
 		lineHeight: 1.4,
 	},
+	agreementRow: {
+		flexDirection: "row",
+		marginBottom: 4,
+	},
+	agreementRowLabel: {
+		fontSize: 8,
+		fontWeight: "bold",
+		color: "#333333",
+		width: 86,
+	},
+	agreementRowValue: {
+		fontSize: 8,
+		color: "#555555",
+		lineHeight: 1.4,
+		flex: 1,
+	},
 	// Signature section
 	signatureSection: {
 		marginTop: 24,
@@ -342,6 +370,10 @@ export const QuotePDF: React.FC<QuotePDFProps> = ({
 	const showRate = quote.pdfSettings?.showUnitPrices ?? true;
 	const showAmount = quote.pdfSettings?.showLineItemTotals ?? true;
 	const showTotals = quote.pdfSettings?.showTotals ?? true;
+	const agreementTerms = quote.recurringAgreementTerms;
+	const inheritedApproval = Boolean(
+		quote.recurringInheritedAt && !quote.recurringQuoteOverride
+	);
 
 	// Format client address
 	const clientAddress = client
@@ -415,14 +447,14 @@ export const QuotePDF: React.FC<QuotePDFProps> = ({
 						<View style={styles.billToRow}>
 							<Text style={styles.billToLabel}>Client</Text>
 							<Text style={styles.billToValue}>
-								{client?.companyName || "—"}
+								{client?.companyName || "Not provided"}
 							</Text>
 						</View>
 					</View>
 					<View style={styles.billToColumn}>
 						<View style={styles.billToRow}>
 							<Text style={styles.billToLabel}>Address</Text>
-							<Text style={styles.billToValue}>{clientAddress || "—"}</Text>
+							<Text style={styles.billToValue}>{clientAddress || "Not provided"}</Text>
 						</View>
 					</View>
 				</View>
@@ -507,6 +539,72 @@ export const QuotePDF: React.FC<QuotePDFProps> = ({
 				)}
 
 				{/* Terms & Conditions */}
+				{agreementTerms && (
+					<View style={styles.termsSection}>
+						<View style={styles.sectionBar}>
+							<Text style={styles.sectionBarText}>RECURRING AGREEMENT</Text>
+						</View>
+						<View style={styles.termsBox}>
+							<View style={styles.agreementRow}>
+								<Text style={styles.agreementRowLabel}>Agreement</Text>
+								<Text style={styles.agreementRowValue}>
+									{agreementTerms.agreementReference} (revision {agreementTerms.revisionNumber})
+								</Text>
+							</View>
+							{inheritedApproval && (
+								<View style={styles.agreementRow}>
+									<Text style={styles.agreementRowLabel}>Approval</Text>
+									<Text style={styles.agreementRowValue}>
+										Approved under recurring agreement {agreementTerms.agreementReference}
+									</Text>
+								</View>
+							)}
+							{agreementTerms.property && (
+								<View style={styles.agreementRow}>
+									<Text style={styles.agreementRowLabel}>Service property</Text>
+									<Text style={styles.agreementRowValue}>
+										{[agreementTerms.property.name, agreementTerms.property.address].filter(Boolean).join("\n")}
+									</Text>
+								</View>
+							)}
+							{(agreementTerms.scope.title || agreementTerms.scope.description) && (
+								<View style={styles.agreementRow}>
+									<Text style={styles.agreementRowLabel}>Service scope</Text>
+									<Text style={styles.agreementRowValue}>
+										{[agreementTerms.scope.title, agreementTerms.scope.description].filter(Boolean).join("\n")}
+									</Text>
+								</View>
+							)}
+							<View style={styles.agreementRow}>
+								<Text style={styles.agreementRowLabel}>Schedule</Text>
+								<Text style={styles.agreementRowValue}>
+									{formatRecurringSchedule(agreementTerms.schedule.rule)}. Starts {agreementTerms.schedule.anchorDateKey}. Timezone: {agreementTerms.schedule.timezone}.
+								</Text>
+							</View>
+							<View style={styles.agreementRow}>
+								<Text style={styles.agreementRowLabel}>Billing</Text>
+								<Text style={styles.agreementRowValue}>
+									{agreementTerms.billingMode === "monthly" ? "Monthly consolidated billing" : "Billed per completed visit"}
+								</Text>
+							</View>
+							{agreementTerms.paymentChangeActivation === "next_full_month_after_all_approvals" && (
+								<View style={styles.agreementRow}>
+									<Text style={styles.agreementRowLabel}>Payment change</Text>
+									<Text style={styles.agreementRowValue}>
+										This payment arrangement starts with the next full calendar month after all affected recurring agreements are approved. Existing terms apply until then.
+									</Text>
+								</View>
+							)}
+							<View style={styles.agreementRow}>
+								<Text style={styles.agreementRowLabel}>Payment</Text>
+								<Text style={styles.agreementRowValue}>
+									{formatRecurringPaymentRule(agreementTerms.paymentRule)}
+								</Text>
+							</View>
+						</View>
+					</View>
+				)}
+
 				{quote.terms && (
 					<View style={styles.termsSection}>
 						<View style={styles.termsBox}>
@@ -527,7 +625,7 @@ export const QuotePDF: React.FC<QuotePDFProps> = ({
 				)}
 
 				{/* Client Signature Section with BoldSign text tags */}
-				<View style={styles.signatureSection} wrap={false}>
+				{!inheritedApproval && <View style={styles.signatureSection} wrap={false}>
 					<View style={styles.signatureBox}>
 						<Text style={styles.signatureLabel}>Client Signature:</Text>
 						{/* BoldSign text tag - signer number based on signing order */}
@@ -544,10 +642,10 @@ export const QuotePDF: React.FC<QuotePDFProps> = ({
 						</Text>
 						<View style={styles.signatureLine} />
 					</View>
-				</View>
+				</View>}
 
 				{/* Organization Countersignature Section (only when countersigner is provided) */}
-				{countersigner && (
+				{countersigner && !inheritedApproval && (
 					<View style={styles.signatureSection} wrap={false}>
 						<View style={styles.signatureBox}>
 							<Text style={styles.signatureLabel}>

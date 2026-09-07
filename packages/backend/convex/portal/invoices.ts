@@ -21,6 +21,7 @@ import { isPastDue } from "../lib/invoiceLateness";
 import { getOrgTimezoneById } from "../lib/organization";
 import { localTodayUtcMidnight } from "../lib/schedule";
 import { rateLimiter } from "../rateLimits";
+import { invoiceGroupProjectionValidator, projectInvoiceGroups, type InvoiceGroupProjection } from "../lib/invoiceGroups";
 
 // ---------------------------------------------------------------------------
 // Public DTO types (browser-safe)
@@ -87,6 +88,8 @@ export type PortalInvoicePublic = {
 	taxRate: number | null;
 	total: number;
 	paidAt: number | null;
+	// "YYYY-MM" for monthly consolidated recurring invoices.
+	recurringBillingPeriod: string | null;
 };
 
 export type PortalInvoiceLineItemPublic = {
@@ -101,6 +104,7 @@ export type PortalInvoiceLineItemPublic = {
 export type PortalInvoiceGetResponse = {
 	invoice: PortalInvoicePublic;
 	lineItems: PortalInvoiceLineItemPublic[];
+	invoiceGroups: InvoiceGroupProjection[];
 	payments: PortalPaymentPublic[];
 	paymentSummary: PortalPaymentSummary;
 	activePaymentPublic: PortalPaymentPublic | null;
@@ -192,6 +196,7 @@ const portalInvoicePublicValidator = v.object({
 	taxRate: v.union(v.number(), v.null()),
 	total: v.number(),
 	paidAt: v.union(v.number(), v.null()),
+	recurringBillingPeriod: v.union(v.string(), v.null()),
 });
 
 const portalInvoiceLineItemValidator = v.object({
@@ -206,6 +211,7 @@ const portalInvoiceLineItemValidator = v.object({
 const portalInvoiceGetValidator = v.object({
 	invoice: portalInvoicePublicValidator,
 	lineItems: v.array(portalInvoiceLineItemValidator),
+	invoiceGroups: v.array(invoiceGroupProjectionValidator),
 	payments: v.array(portalPaymentPublicValidator),
 	paymentSummary: portalPaymentSummaryValidator,
 	activePaymentPublic: v.union(portalPaymentPublicValidator, v.null()),
@@ -404,6 +410,7 @@ export const get = query({
 				.withIndex("by_invoice", (q) => q.eq("invoiceId", invoiceId))
 				.collect()
 		).sort((a, b) => a.sortOrder - b.sortOrder);
+		const invoiceGroups = await projectInvoiceGroups(ctx, invoice);
 
 		const paymentRows = await ctx.db
 			.query("payments")
@@ -454,6 +461,7 @@ export const get = query({
 			taxRate: invoice.taxRate ?? null,
 			total: invoice.total,
 			paidAt: invoice.paidAt ?? null,
+			recurringBillingPeriod: invoice.recurringBillingPeriod ?? null,
 		};
 
 		const lineItemsPublic: PortalInvoiceLineItemPublic[] = lineItems.map(
@@ -470,6 +478,7 @@ export const get = query({
 		return {
 			invoice: invoicePublic,
 			lineItems: lineItemsPublic,
+			invoiceGroups,
 			payments: paymentsPublic,
 			paymentSummary: summary,
 			activePaymentPublic,

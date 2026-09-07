@@ -3,6 +3,17 @@ import { internal } from "./_generated/api";
 
 const crons = cronJobs();
 
+crons.hourly("activate monthly payment arrangements", { minuteUTC: 15 }, internal.recurringPaymentSchedules.sweep, {});
+
+crons.hourly("draft recurring invoices", { minuteUTC: 35 }, internal.recurringBilling.sweep, {});
+
+crons.hourly(
+	"generate recurring projects",
+	{ minuteUTC: 20 },
+	internal.projectSeries.sweep,
+	{}
+);
+
 // Daily cleanup of archived clients that have been archived for 7+ days
 crons.daily(
 	"cleanup archived clients",

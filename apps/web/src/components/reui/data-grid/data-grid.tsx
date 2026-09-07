@@ -438,11 +438,10 @@ function DataGridProvider<TData extends object>({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [
       autoSize,
-      // Local patch (not upstream): data identity. A live-data row edit that
-      // keeps the count and all table state unchanged (e.g. toggling a status
-      // field) must still republish the context, or memoized/compiled
-      // consumers keep rendering the old rows.
+      // Local patch (not upstream): data and column identities must republish
+      // for memoized/compiled consumers.
       table.options.data,
+      table.options.columns,
       props.recordCount,
       props.isLoading,
       props.loadingMode,

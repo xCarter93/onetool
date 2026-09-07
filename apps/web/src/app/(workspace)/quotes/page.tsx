@@ -305,7 +305,11 @@ function QuotesPageContent() {
 	const [previewOpen, setPreviewOpen] = useState(false);
 	const deleteQuote = useMutation(api.quotes.remove);
 	const updateQuoteStatus = useMutation(api.quotes.update);
-	const [kanbanData, setKanbanData] = useState<QuoteKanbanItem[]>([]);
+	// Optimistic drag moves; each applies only while the server still reports
+	// the status the card was dragged from.
+	const [columnMoves, setColumnMoves] = useState<
+		Record<string, { from: Doc<"quotes">["status"]; to: Doc<"quotes">["status"] }>
+	>({});
 	const isOrgSwitching = useIsOrgSwitching();
 
 	// Fetch data from Convex. The clients/projects reads are gated — skip them
@@ -404,20 +408,25 @@ function QuotesPageContent() {
 		return statusMap;
 	}, [data]);
 
-	React.useEffect(() => {
-		setKanbanData(
-			searchedData.map((quote) => ({
-				id: quote._id,
-				name: quote.title || quote.projectName || "Untitled Quote",
-				column: quote.status,
-				status: quote.status,
-				clientName: quote.clientName,
-				total: quote.total,
-				quoteNumber: quote.quoteNumber || `#${quote._id.slice(-6)}`,
-				validUntil: quote.validUntil,
-			}))
-		);
-	}, [searchedData]);
+	const kanbanData = React.useMemo<QuoteKanbanItem[]>(
+		() =>
+			searchedData.map((quote) => {
+				const move = columnMoves[quote._id];
+				const status =
+					move && move.from === quote.status ? move.to : quote.status;
+				return {
+					id: quote._id,
+					name: quote.title || quote.projectName || "Untitled Quote",
+					column: status,
+					status,
+					clientName: quote.clientName,
+					total: quote.total,
+					quoteNumber: quote.quoteNumber || `#${quote._id.slice(-6)}`,
+					validUntil: quote.validUntil,
+				};
+			}),
+		[searchedData, columnMoves]
+	);
 
 	// Loading state — gate only on the primary quotes query. The clients and
 	// projects reads are permission-skipped and stay undefined without the grant,
@@ -462,12 +471,14 @@ function QuotesPageContent() {
 		onPaginationChange: setPagination,
 	});
 
-	// Reset to first page when the filtered/searched set changes
-	React.useEffect(() => {
-		setPagination((prev) =>
-			prev.pageIndex === 0 ? prev : { ...prev, pageIndex: 0 }
-		);
-	}, [query, filters, searchedData.length]);
+	// Back to page one when the filtered/searched set changes (adjust-during-render).
+	const resultKey = `${query}\u0000${searchedData.length}\u0000${JSON.stringify(filters)}`;
+	const [prevResultKey, setPrevResultKey] = React.useState(resultKey);
+	if (resultKey !== prevResultKey) {
+		setPrevResultKey(resultKey);
+		if (pagination.pageIndex !== 0)
+			setPagination((prev) => ({ ...prev, pageIndex: 0 }));
+	}
 
 	// Filter field configuration for the advanced filter builder
 	const filterFields: FilterFieldConfig<unknown>[] = React.useMemo(() => {
@@ -542,9 +553,19 @@ function QuotesPageContent() {
 	// optimistic; the DB write happens once on drop via handleKanbanDragEnd.
 	const handleKanbanDataChange = React.useCallback(
 		(nextData: QuoteKanbanItem[]) => {
-			setKanbanData(nextData);
+			if (!canModifyQuotes) return;
+			setColumnMoves((prev) => {
+				const next = { ...prev };
+				for (const card of nextData) {
+					const from = quoteStatusMap.get(card.id);
+					if (!from) continue;
+					if (card.column === from) delete next[card.id];
+					else next[card.id] = { from, to: card.column };
+				}
+				return next;
+			});
 		},
-		[]
+		[quoteStatusMap, canModifyQuotes]
 	);
 
 	const handleKanbanDragEnd = React.useCallback(
@@ -559,15 +580,11 @@ function QuotesPageContent() {
 					status: item.column,
 				}).catch((error) => {
 					console.error("Failed to update quote status:", error);
-					// A rejected write leaves the server data untouched, so the sync
-					// effect never re-fires — put the card back in its lane by hand.
-					setKanbanData((prev) =>
-						prev.map((card) =>
-							card.id === item.id
-								? { ...card, column: originalStatus, status: originalStatus }
-								: card
-						)
-					);
+					setColumnMoves((prev) => {
+						const next = { ...prev };
+						delete next[item.id];
+						return next;
+					});
 					toast.error(
 						"Update Failed",
 						convexErrorMessage(

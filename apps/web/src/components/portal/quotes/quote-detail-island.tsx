@@ -13,7 +13,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { ArrowLeft, Download } from "lucide-react";
+import { ArrowLeft, Download, FileText } from "lucide-react";
 import { useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
 
@@ -132,7 +132,22 @@ function buildJourneySteps(
 	},
 	latestApproval: { action: "approved" | "declined" } | null | undefined,
 	clientName: string,
+	recurringAgreement?: { inherited: boolean; reference: string } | null,
 ): JourneyStep[] {
+	if (recurringAgreement?.inherited) {
+		return [
+			{
+				id: "agreement",
+				title: `Covered by recurring agreement ${recurringAgreement.reference}`,
+				status: "complete",
+			},
+			{
+				id: "resolution",
+				title: "Approved under recurring agreement",
+				status: "complete",
+			},
+		];
+	}
 	const steps: JourneyStep[] = [
 		{
 			id: "sent",
@@ -238,7 +253,13 @@ export function QuoteDetailIsland({
 		clientName,
 		clientEmail,
 		latestApproval,
+		recurringAgreement,
+		sourceAgreementDocument,
 	} = data;
+	const agreementDownload = useQuery(
+		api.portal.quotes.getAgreementDownloadUrl,
+		recurringAgreement && sourceAgreementDocument ? { quoteId } : "skip",
+	);
 
 	async function handleDownloadPdf() {
 		try {
@@ -314,6 +335,7 @@ export function QuoteDetailIsland({
 		quote,
 		effectiveInitialReceipt,
 		clientName,
+		recurringAgreement,
 	);
 	const currentStepIndex = journeySteps.findIndex(
 		(step) => step.status === "current",
@@ -358,6 +380,18 @@ export function QuoteDetailIsland({
 					<ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" />
 					Back
 				</Link>
+				<div className="flex items-center gap-2">
+				{agreementDownload?.url && (
+					<a
+						href={agreementDownload.url}
+						target="_blank"
+						rel="noreferrer"
+						className="inline-flex min-h-11 items-center gap-1.5 rounded-md border border-border bg-card px-3 text-[13px] font-medium hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+					>
+						<FileText className="h-3.5 w-3.5" aria-hidden="true" />
+						View agreement
+					</a>
+				)}
 				{latestDocument && (
 					<button
 						type="button"
@@ -368,6 +402,7 @@ export function QuoteDetailIsland({
 						Download PDF
 					</button>
 				)}
+				</div>
 			</header>
 
 			{documentDrifted && (
@@ -405,6 +440,11 @@ export function QuoteDetailIsland({
 									<p className="text-muted-foreground text-sm leading-snug">
 										{businessName}
 									</p>
+									{recurringAgreement?.inherited && (
+										<p className="text-sm font-medium text-foreground">
+											Approved under recurring agreement {recurringAgreement.reference}
+										</p>
+									)}
 								</div>
 
 								<Separator
@@ -492,7 +532,7 @@ export function QuoteDetailIsland({
 								    uses the docked ApprovalBottomSheet instead). ApprovalRail
 								    already branches internally between the signing form, the
 								    receipt, the resolved-status panel, and error banners. */}
-								{isDesktop && (
+								{isDesktop && !recurringAgreement?.inherited && (
 									<div className="flex flex-col gap-4 border-t border-border pt-4">
 										<span className="text-muted-foreground text-xs font-medium tracking-[0.16em] uppercase">
 											{quote.status === "sent" ? "Next Step" : "Outcome"}
@@ -515,7 +555,7 @@ export function QuoteDetailIsland({
 				</div>
 			</div>
 
-			{isDesktop === false && (
+			{isDesktop === false && !recurringAgreement?.inherited && (
 				<ApprovalBottomSheet key={approvalKey} {...approvalRailProps} />
 			)}
 		</div>

@@ -15,6 +15,7 @@ import {
 } from "./aggregates";
 import { requireOrgWideView } from "./lib/orgWideView";
 import { sumMoney } from "./lib/money";
+import { filterActiveScheduledItems } from "./lib/projectSchedule";
 
 /**
  * Home dashboard statistics queries
@@ -284,7 +285,9 @@ export const getHomeStats = optionalUserQuery({
 		// `||` (not `??`): an explicit target of 0 falls back to the default, as it
 		// always has — which also keeps the divisions below non-zero.
 		const monthlyTarget = organization?.monthlyRevenueTarget || 50000;
-		const currentPercentage = Math.round((currentRevenue / monthlyTarget) * 100);
+		const currentPercentage = Math.round(
+			(currentRevenue / monthlyTarget) * 100
+		);
 		const lastMonthPercentage = Math.round(
 			(lastMonthRevenue / monthlyTarget) * 100
 		);
@@ -293,7 +296,11 @@ export const getHomeStats = optionalUserQuery({
 		const pendingTasks = allTasks.filter(
 			(task) => task.status === "pending" || task.status === "in-progress"
 		);
-		const tasksThisWeek = pendingTasks.filter(
+		const activeScheduledTasks = await filterActiveScheduledItems(
+			ctx,
+			pendingTasks
+		);
+		const tasksThisWeek = activeScheduledTasks.filter(
 			(task) => task.date >= weekRange.start && task.date < weekRange.end
 		).length;
 
@@ -335,7 +342,7 @@ export const getHomeStats = optionalUserQuery({
 				changeType: getChangeType(revenuePercentageChange),
 			},
 			pendingTasks: {
-				total: pendingTasks.length,
+				total: activeScheduledTasks.length,
 				dueThisWeek: tasksThisWeek,
 			},
 		};

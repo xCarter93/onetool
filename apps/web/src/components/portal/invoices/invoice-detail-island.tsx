@@ -10,7 +10,7 @@ import { useMediaQuery } from "@/hooks/use-media-query";
 import { formatMoney } from "@/lib/portal/format";
 
 import { DownloadPdfButton } from "./download-pdf-button";
-import { InvoicePaper, type PortalPaymentSummary } from "./invoice-paper";
+import { InvoicePaper, type InvoicePaperProps, type PortalPaymentSummary } from "./invoice-paper";
 import {
 	InstallmentList,
 	type InstallmentRow,
@@ -43,6 +43,7 @@ export interface PortalInvoiceGetData {
 		taxEnabled?: boolean | null;
 		taxRate?: number | null;
 		total: number;
+		recurringBillingPeriod?: string | null;
 		paidAt: number | null;
 	};
 	lineItems: Array<{
@@ -62,6 +63,7 @@ export interface PortalInvoiceGetData {
 	stripeChargesEnabled: boolean;
 	clientName: string;
 	clientEmail: string;
+	invoiceGroups?: InvoicePaperProps["invoiceGroups"];
 }
 
 export interface InvoiceDetailIslandProps {
@@ -244,6 +246,7 @@ export function InvoiceDetailIsland({
 					displayStatus={data.paymentSummary.displayStatus}
 					paymentSummary={data.paymentSummary}
 					paySlot={rightRail}
+					invoiceGroups={data.invoiceGroups}
 				/>
 				<div className="mx-auto mt-6 flex w-full flex-wrap items-center justify-center gap-2">
 					<DownloadPdfButton invoiceId={data.invoice._id} hasPdf={hasPdf} />

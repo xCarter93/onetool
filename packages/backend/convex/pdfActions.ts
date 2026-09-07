@@ -43,8 +43,16 @@ async function renderQuotePdfToDocument(
 	});
 	// Prop mapping mirrors web's build-quote-pdf-blob exactly.
 	const element = React.createElement(QuotePDF, {
-		quote: data.quote,
-		items: data.lineItems,
+		quote: {
+			...data.quote,
+			subtotal: data.quoteContentSnapshot.subtotal,
+			taxAmount: data.quoteContentSnapshot.taxAmount,
+			total: data.quoteContentSnapshot.total,
+		},
+		items: data.lineItems.map((line, index) => ({
+			...line,
+			amount: data.quoteContentSnapshot.lineItems[index]?.amount ?? line.amount,
+		})),
 		client: data.client
 			? {
 					companyName: data.client.companyName,
@@ -74,16 +82,22 @@ async function renderQuotePdfToDocument(
 		signingOrder: data.quote.signingOrder,
 	});
 	const storageId = await renderElementToStorage(ctx, element);
-	const inserted = await ctx.runMutation(
-		internal.pdfData._insertGeneratedDocument,
-		{
-			orgId,
-			documentType: "quote",
-			documentId: quoteId,
-			storageId,
-		}
-	);
-	return inserted.documentId;
+	try {
+		const inserted = await ctx.runMutation(
+			internal.pdfData._insertGeneratedDocument,
+			{
+				orgId,
+				documentType: "quote",
+				documentId: quoteId,
+				storageId,
+				quoteContentSnapshot: data.quoteContentSnapshot,
+			}
+		);
+		return inserted.documentId;
+	} catch (error) {
+		await ctx.storage.delete(storageId).catch(() => undefined);
+		throw error;
+	}
 }
 
 async function renderInvoicePdfToDocument(
@@ -105,6 +119,7 @@ async function renderInvoicePdfToDocument(
 			description: p.description,
 			sortOrder: p.sortOrder,
 		})),
+		invoiceGroups: data.invoiceGroups,
 		client: data.client
 			? {
 					companyName: data.client.companyName,

@@ -11,9 +11,20 @@
 import { internalQuery } from "./_generated/server";
 import { internalMutation } from "./lib/triggers";
 import { ConvexError, v } from "convex/values";
+import { projectInvoiceGroups } from "./lib/invoiceGroups";
+import { bindAgreementApprovalDocument } from "./lib/projectSeriesAgreements";
+import { quoteDocumentIsCurrent } from "./lib/quoteApprovalDocument";
 import type { Doc, Id } from "./_generated/dataModel";
 import { getCurrentUserOrgId } from "./lib/auth";
 import { requireLevel } from "./lib/permissions";
+import {
+	attachQuoteDocumentSnapshot,
+	buildQuoteContentSnapshot,
+	loadCurrentQuoteContentSnapshot,
+	MAX_QUOTE_SNAPSHOT_LINES,
+	quoteContentSnapshotValidator,
+	quoteContentSnapshotsEqual,
+} from "./lib/quoteContentSnapshot";
 
 async function primaryProperty(
 	ctx: { db: import("./_generated/server").QueryCtx["db"] },
@@ -44,18 +55,31 @@ export const _getQuoteRenderData = internalQuery({
 			await ctx.db
 				.query("quoteLineItems")
 				.withIndex("by_quote", (q) => q.eq("quoteId", args.quoteId))
-				.collect()
+				.take(MAX_QUOTE_SNAPSHOT_LINES + 1)
 		).sort((a, b) => a.sortOrder - b.sortOrder);
-		const client = await ctx.db.get(quote.clientId);
+		const loadedClient = await ctx.db.get(quote.clientId);
+		const client = loadedClient?.orgId === args.orgId ? loadedClient : null;
+		if (!client) throw new ConvexError({ code: "NOT_FOUND" });
 		const organization = await ctx.db.get(args.orgId);
-		const property = client ? await primaryProperty(ctx, client._id) : null;
-		const countersigner =
+		const project = quote.projectId ? await ctx.db.get(quote.projectId) : null;
+		const projectProperty = project?.orgId === args.orgId && project.clientId === quote.clientId && project.propertyId
+			? await ctx.db.get(project.propertyId) : null;
+		const property = projectProperty?.orgId === args.orgId && projectProperty.clientId === quote.clientId
+			? projectProperty : client ? await primaryProperty(ctx, client._id) : null;
+		const loadedCountersigner =
 			quote.requiresCountersignature && quote.countersignerId
 				? await ctx.db.get(quote.countersignerId)
 				: null;
+		const countersignerMembership = loadedCountersigner
+			? await ctx.db.query("organizationMemberships").withIndex("by_org_user", (q) => q.eq("orgId", args.orgId).eq("userId", loadedCountersigner._id)).first()
+			: null;
+		const countersigner = countersignerMembership ? loadedCountersigner : null;
+		if (quote.requiresCountersignature && !countersigner)
+			throw new ConvexError("The configured countersigner is not a member of this organization");
 		return {
 			quote,
 			lineItems,
+			quoteContentSnapshot: buildQuoteContentSnapshot(quote, lineItems),
 			client,
 			organization,
 			property,
@@ -89,7 +113,8 @@ export const _getInvoiceRenderData = internalQuery({
 		const client = await ctx.db.get(invoice.clientId);
 		const organization = await ctx.db.get(args.orgId);
 		const property = client ? await primaryProperty(ctx, client._id) : null;
-		return { invoice, lineItems, payments, client, organization, property };
+		const invoiceGroups = await projectInvoiceGroups(ctx, invoice);
+		return { invoice, lineItems, payments, client, organization, property, invoiceGroups };
 	},
 });
 
@@ -112,20 +137,13 @@ export const _ensureQuotePdfAuth = internalQuery({
 		// flow pins this id into the audit row, and a revert→edit→resend cycle
 		// (or a validUntil extension) leaves the stored render behind the
 		// document the client is agreeing to. Stale ⇒ render fresh.
-		const contentUpdatedAt = quote.contentUpdatedAt ?? 0;
-		// Pinned version wins (BoldSign flow); else newest same-org row.
-		if (quote.latestDocumentId) {
-			const pinned = await ctx.db.get(quote.latestDocumentId);
-			if (
-				pinned &&
-				pinned.orgId === orgId &&
-				pinned.documentType === "quote" &&
-				pinned.documentId === args.quoteId &&
-				pinned.generatedAt >= contentUpdatedAt
-			) {
-				return { orgId, existingDocumentId: pinned._id };
-			}
-		}
+		const currentSnapshot = await loadCurrentQuoteContentSnapshot(ctx, quote._id);
+		if (!currentSnapshot) throw new ConvexError({ code: "NOT_FOUND" });
+		const isCurrent = async (document: Doc<"documents"> | null) =>
+			document !== null && (await quoteDocumentIsCurrent(ctx, document, quote, currentSnapshot));
+		// Pinned version wins (BoldSign flow); else newest row.
+		const pinned = quote.latestDocumentId ? await ctx.db.get(quote.latestDocumentId) : null;
+		if (await isCurrent(pinned)) return { orgId, existingDocumentId: pinned!._id };
 		const newest = await ctx.db
 			.query("documents")
 			.withIndex("by_document_version", (q) =>
@@ -133,15 +151,7 @@ export const _ensureQuotePdfAuth = internalQuery({
 			)
 			.order("desc")
 			.first();
-		return {
-			orgId,
-			existingDocumentId:
-				newest &&
-				newest.orgId === orgId &&
-				newest.generatedAt >= contentUpdatedAt
-					? newest._id
-					: null,
-		};
+		return { orgId, existingDocumentId: (await isCurrent(newest)) ? newest!._id : null };
 	},
 });
 
@@ -157,19 +167,31 @@ export const _insertGeneratedDocument = internalMutation({
 		documentType: v.union(v.literal("quote"), v.literal("invoice")),
 		documentId: v.string(),
 		storageId: v.id("_storage"),
+		quoteContentSnapshot: v.optional(quoteContentSnapshotValidator),
 	},
 	handler: async (ctx, args) => {
-		const existing = await ctx.db
+		let quoteContentSnapshot = args.quoteContentSnapshot;
+		if (quoteContentSnapshot) {
+			if (args.documentType !== "quote")
+				throw new ConvexError("Quote content snapshots can only be attached to quote documents");
+			const quote = await ctx.db.get(args.documentId as Id<"quotes">);
+			if (!quote || quote.orgId !== args.orgId) throw new ConvexError({ code: "NOT_FOUND" });
+			const current = await loadCurrentQuoteContentSnapshot(ctx, quote._id);
+			if (!current || !quoteContentSnapshotsEqual(quoteContentSnapshot, current))
+				throw new ConvexError("Quote changed while the PDF was generated; generate it again");
+			quoteContentSnapshot = current;
+		}
+		const newest = await ctx.db
 			.query("documents")
-			.withIndex("by_document", (q) =>
+			.withIndex("by_document_version", (q) =>
 				q
 					.eq("documentType", args.documentType)
 					.eq("documentId", args.documentId)
 			)
-			.collect();
-		const maxVersion = existing
-			.filter((d) => d.orgId === args.orgId)
-			.reduce((max, d) => (d.version > max ? d.version : max), 0);
+			.order("desc")
+			.first();
+		if (newest && newest.orgId !== args.orgId) throw new ConvexError({ code: "NOT_FOUND" });
+		const maxVersion = newest?.version ?? 0;
 		const id = await ctx.db.insert("documents", {
 			orgId: args.orgId,
 			documentType: args.documentType,
@@ -178,6 +200,12 @@ export const _insertGeneratedDocument = internalMutation({
 			generatedAt: Date.now(),
 			version: maxVersion + 1,
 		});
+		if (quoteContentSnapshot) {
+			const document = await ctx.db.get(id);
+			if (!document) throw new ConvexError("Generated quote document was not found");
+			await attachQuoteDocumentSnapshot(ctx, document, quoteContentSnapshot, "server");
+			await bindAgreementApprovalDocument(ctx, args.documentId as Id<"quotes">, id);
+		}
 		return { documentId: id, version: maxVersion + 1 };
 	},
 });

@@ -444,11 +444,7 @@ describe("Routes", () => {
 			);
 			const { clientId, propertyId } = await t.run(async (ctx) => {
 				const clientId = await createTestClient(ctx, orgId);
-				const propertyId = await createTestClientProperty(
-					ctx,
-					orgId,
-					clientId
-				); // no lat/lng
+				const propertyId = await createTestClientProperty(ctx, orgId, clientId); // no lat/lng
 				return { clientId, propertyId };
 			});
 			await insertTask(orgId, { clientId, propertyId });
@@ -476,7 +472,11 @@ describe("Routes", () => {
 				});
 				return { clientId, propA, propB };
 			});
-			await insertTask(orgId, { clientId, propertyId: propA, assigneeUserId: userId });
+			await insertTask(orgId, {
+				clientId,
+				propertyId: propA,
+				assigneeUserId: userId,
+			});
 			await insertTask(orgId, { clientId, propertyId: propB });
 
 			const result = await asUser.mutation(api.routes.seedFromSchedule, {
@@ -518,8 +518,21 @@ describe("Routes", () => {
 			expect(route!.stops[0].taskId).toBeUndefined();
 		});
 
-		it("excludes a recurring project even if in date range", async () => {
+		it("does not turn a recurring type label into a scheduled series stop", async () => {
 			const { clerkUserId, clerkOrgId, orgId } = await setupOrgWithAddress();
+			const asUser = t.withIdentity(createPremiumTestIdentity(clerkUserId, clerkOrgId));
+			const { clientId, propertyId } = await t.run(async (ctx) => {
+				const clientId = await createTestClient(ctx, orgId);
+				const propertyId = await createTestClientProperty(ctx, orgId, clientId, { latitude: 40.71, longitude: -74.01 });
+				return { clientId, propertyId };
+			});
+			await asUser.mutation(api.projects.create, { clientId, propertyId, title: "Legacy recurring label", status: "planned", projectType: "recurring", startDate: DATE, endDate: DATE });
+			await expect(asUser.mutation(api.routes.seedFromSchedule, { date: DATE })).rejects.toThrow("No scheduled work with mapped addresses on that day");
+		});
+
+		it("includes a generated start-only recurring occurrence without tasks", async () => {
+			const { clerkUserId, clerkOrgId, orgId, userId } =
+				await setupOrgWithAddress();
 			const asUser = t.withIdentity(
 				createPremiumTestIdentity(clerkUserId, clerkOrgId)
 			);
@@ -533,16 +546,38 @@ describe("Routes", () => {
 				);
 				return { clientId, propertyId };
 			});
-			await insertProject(orgId, clientId, {
+			const projectId = await insertProject(orgId, clientId, {
 				propertyId,
 				projectType: "recurring",
-				startDate: DATE - 86400000,
-				endDate: DATE + 86400000,
+				startDate: DATE,
+			});
+			await t.run(async (ctx) => {
+				const seriesId = await ctx.db.insert("projectSeries", {
+					orgId,
+					originatingProjectId: projectId,
+					clientId,
+					propertyId,
+					title: "Recurring route",
+					createdByUserId: userId,
+					anchorDateKey: "2026-07-20",
+					timezone: "UTC",
+					rule: { frequency: "daily", interval: 1 },
+					state: "active",
+				});
+				await ctx.db.patch(projectId, {
+					recurringSeriesId: seriesId,
+					recurringNominalDate: "2026-07-20",
+				});
 			});
 
-			await expect(
-				asUser.mutation(api.routes.seedFromSchedule, { date: DATE })
-			).rejects.toThrow(/No scheduled work/);
+			const result = await asUser.mutation(api.routes.seedFromSchedule, {
+				date: DATE,
+			});
+			const route = await asUser.query(api.routes.get, {
+				routeId: result.routeId,
+			});
+			expect(route!.stops).toHaveLength(1);
+			expect(route!.stops[0]).toMatchObject({ projectId, propertyId });
 		});
 
 		it("excludes a one-off project outside its date range", async () => {
@@ -830,12 +865,10 @@ describe("Routes", () => {
 					clientId,
 					{ latitude: 40.71, longitude: -74.01 }
 				);
-				const propNew = await createTestClientProperty(
-					ctx,
-					orgId,
-					clientId,
-					{ latitude: 40.72, longitude: -74.02 }
-				);
+				const propNew = await createTestClientProperty(ctx, orgId, clientId, {
+					latitude: 40.72,
+					longitude: -74.02,
+				});
 				return { propShared, propNew };
 			});
 
@@ -903,9 +936,8 @@ describe("Routes", () => {
 				createPremiumTestIdentity(clerkUserId, clerkOrgId)
 			);
 
-			const existingStops = Array.from(
-				{ length: MAX_STOPS - 3 },
-				(_, i) => stop(i)
+			const existingStops = Array.from({ length: MAX_STOPS - 3 }, (_, i) =>
+				stop(i)
 			);
 			await asUser.mutation(api.routes.create, {
 				name: "Full daily",
@@ -1680,7 +1712,9 @@ describe("Routes", () => {
 				roundTrip: false,
 				stops: [stop(0)],
 			});
-			const asFree = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+			const asFree = t.withIdentity(
+				createTestIdentity(clerkUserId, clerkOrgId)
+			);
 			return { asFree, asPremium, routeId, propertyId };
 		}
 
@@ -1705,7 +1739,10 @@ describe("Routes", () => {
 						name: "Renamed",
 					}),
 			],
-			["routes.remove", (f) => f.asFree.mutation(api.routes.remove, { routeId: f.routeId })],
+			[
+				"routes.remove",
+				(f) => f.asFree.mutation(api.routes.remove, { routeId: f.routeId }),
+			],
 			[
 				"routes.setStopStatus",
 				(f) =>

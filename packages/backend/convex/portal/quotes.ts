@@ -18,6 +18,18 @@ import {
 	boundIpAddress,
 	requirePortalAttestation,
 } from "../lib/portalAttestation";
+import {
+	resolveQuoteApprovalDocument,
+	selectPresentedQuoteDocument,
+} from "../lib/quoteApprovalDocument";
+import { activateAgreementApproval } from "../lib/projectSeriesAgreements";
+import { recordQuoteDecision } from "../lib/quoteDecisionEvidence";
+import { portalAgreementContext, portalApprovedAgreementDocument } from "./recurringAgreement";
+import {
+	loadCurrentQuoteContentSnapshot,
+	quoteContentSnapshotsEqual,
+	quoteContentSnapshotValidator,
+} from "../lib/quoteContentSnapshot";
 
 // ---------------------------------------------------------------------------
 // Public queries
@@ -47,7 +59,7 @@ export const list = query({
 			.sort((a, b) => (b.sentAt ?? 0) - (a.sentAt ?? 0));
 		// Stored total: syncQuoteTotals keeps it current, and a recompute would read
 		// every line item per quote on a live subscription. `get` still recomputes.
-		return visible.map((q) => ({
+		return Promise.all(visible.map(async (q) => ({
 			_id: q._id,
 			quoteNumber: q.quoteNumber,
 			title: q.title,
@@ -58,7 +70,8 @@ export const list = query({
 			latestDocumentId: q.latestDocumentId,
 			approvedAt: q.approvedAt,
 			declinedAt: q.declinedAt,
-		}));
+			recurringAgreement: (await portalAgreementContext(ctx, q))?.metadata ?? null,
+		})));
 	},
 });
 
@@ -96,51 +109,15 @@ export const get = query({
 				.collect()
 		).sort((a, b) => a.sortOrder - b.sortOrder);
 
-		let latestDocument: {
-			_id: Id<"documents">;
-			version: number;
-			storageId: Id<"_storage">;
-			signedStorageId?: Id<"_storage">;
-		} | null = null;
-
-		// Prefer the pinned latest document, but fall back to the latest same-org
-		// quote document so non-BoldSign generated PDFs still work.
-		// Pinned-document strict validation (mirrors getDownloadUrl): the pinned
-		// pointer must be same-org, documentType="quote", and documentId===quoteId
-		// — otherwise a corrupted pointer could leak a foreign blob.
-		if (quote.latestDocumentId) {
-			const doc = await ctx.db.get(quote.latestDocumentId);
-			if (
-				doc &&
-				doc.orgId === session.orgId &&
-				doc.documentType === "quote" &&
-				doc.documentId === quoteId
-			) {
-				latestDocument = {
-					_id: doc._id,
-					version: doc.version,
-					storageId: doc.storageId,
-					signedStorageId: doc.signedStorageId,
-				};
-			}
-		}
-		if (latestDocument === null) {
-			const fallbackDoc = await ctx.db
-				.query("documents")
-				.withIndex("by_document_version", (q) =>
-					q.eq("documentType", "quote").eq("documentId", quoteId),
-				)
-				.order("desc")
-				.first();
-			if (fallbackDoc && fallbackDoc.orgId === session.orgId) {
-				latestDocument = {
-					_id: fallbackDoc._id,
-					version: fallbackDoc.version,
-					storageId: fallbackDoc.storageId,
-					signedStorageId: fallbackDoc.signedStorageId,
-				};
-			}
-		}
+		const presentedDocument = await selectPresentedQuoteDocument(ctx, quote);
+		const latestDocument = presentedDocument
+			? {
+					_id: presentedDocument._id,
+					version: presentedDocument.version,
+					storageId: presentedDocument.storageId,
+					signedStorageId: presentedDocument.signedStorageId,
+				}
+			: null;
 
 		const org = await ctx.db.get(quote.orgId);
 		const businessName = org?.name ?? "";
@@ -179,6 +156,8 @@ export const get = query({
 			};
 		}
 
+		const agreement = await portalAgreementContext(ctx, quote);
+		const approvedDocument = agreement && (await portalApprovedAgreementDocument(ctx, quote, agreement));
 		const calculatedTotals = await calculateQuoteTotals(ctx, quoteId, {
 			discountEnabled: quote.discountEnabled,
 			discountAmount: quote.discountAmount,
@@ -200,6 +179,8 @@ export const get = query({
 			clientName,
 			clientEmail,
 			latestApproval,
+			recurringAgreement: agreement?.metadata ?? null,
+			sourceAgreementDocument: approvedDocument ? { _id: approvedDocument._id, version: approvedDocument.version } : null,
 		};
 	},
 });
@@ -241,47 +222,28 @@ export const getDownloadUrl = query({
 			throw new ConvexError({ code: "NOT_FOUND" });
 		}
 
-		// Phase 14-13 documents-table fallback with strict pinned-doc validation.
-		let latestDocument: { storageId: Id<"_storage"> } | null = null;
-
-		if (quote.latestDocumentId) {
-			const pinnedDoc = await ctx.db.get(quote.latestDocumentId);
-			// REVIEWS HIGH 2026-05-10: all three checks must pass.
-			// Mismatch falls through to documents-table fallback.
-			if (
-				pinnedDoc &&
-				pinnedDoc.orgId === session.orgId &&
-				pinnedDoc.documentType === "quote" &&
-				pinnedDoc.documentId === quoteId
-			) {
-				latestDocument = { storageId: pinnedDoc.storageId };
-			}
-		}
-
-		if (latestDocument === null) {
-			// Iterate desc to pick the highest-version SAME-ORG row. A bare
-			// `.first()` would surface a higher-version cross-org row (which the
-			// orgId check would then reject, returning null) — defeating the
-			// fallback's purpose when a pinned cross-org doc is also present
-			// (REVIEWS HIGH E1 case).
-			const candidates = await ctx.db
-				.query("documents")
-				.withIndex("by_document_version", (q) =>
-					q.eq("documentType", "quote").eq("documentId", quoteId),
-				)
-				.order("desc")
-				.collect();
-			const fallbackDoc = candidates.find(
-				(d) => d.orgId === session.orgId,
-			);
-			if (fallbackDoc) {
-				latestDocument = { storageId: fallbackDoc.storageId };
-			}
-		}
-
+		const latestDocument = await selectPresentedQuoteDocument(ctx, quote);
 		if (!latestDocument) return null;
 
 		const url = await ctx.storage.getUrl(latestDocument.storageId);
+		return url ? { url } : null;
+	},
+});
+
+export const getAgreementDownloadUrl = query({
+	args: { quoteId: v.id("quotes") },
+	returns: v.union(v.null(), v.object({ url: v.string() })),
+	handler: async (ctx, { quoteId }) => {
+		const session = await getPortalSessionOrThrow(ctx);
+		const contact = await ctx.db.get(session.clientContactId);
+		const quote = await ctx.db.get(quoteId);
+		if (!quote || quote.status === "draft") throw new ConvexError({ code: "NOT_FOUND" });
+		if (!contact || contact.orgId !== session.orgId || quote.orgId !== session.orgId || quote.clientId !== contact.clientId)
+			throw new ConvexError({ code: "FORBIDDEN" });
+		const agreement = await portalAgreementContext(ctx, quote);
+		const document = agreement && (await portalApprovedAgreementDocument(ctx, quote, agreement));
+		if (!document) return null;
+		const url = await ctx.storage.getUrl(document.signedStorageId ?? document.storageId);
 		return url ? { url } : null;
 	},
 });
@@ -353,64 +315,25 @@ export const _preflightApproval = internalQuery({
 		) {
 			throw new ConvexError({ code: "FORBIDDEN" });
 		}
-		// If no document is pinned yet, accept any same-org quote document and
-		// let the commit step pin it atomically.
-		if (quote.latestDocumentId == null) {
-			const fallbackDoc = await ctx.db.get(args.expectedDocumentId);
-			if (
-				!fallbackDoc ||
-				fallbackDoc.orgId !== args.orgId ||
-				fallbackDoc.documentType !== "quote" ||
-				fallbackDoc.documentId !== args.quoteId
-			) {
-				throw new ConvexError({
-					code: "QUOTE_VERSION_STALE",
-					latestDocumentId: quote.latestDocumentId,
-				});
-			}
-		} else if (quote.latestDocumentId !== args.expectedDocumentId) {
-			throw new ConvexError({
-				code: "QUOTE_VERSION_STALE",
-				latestDocumentId: quote.latestDocumentId,
-			});
-		}
+		const { document } = await resolveQuoteApprovalDocument(
+			ctx,
+			quote,
+			args.expectedDocumentId,
+		);
 		if (quote.status !== "sent") {
 			throw new ConvexError({ code: "QUOTE_NOT_PENDING" });
 		}
-		const document = await ctx.db.get(args.expectedDocumentId);
-		if (!document) throw new ConvexError({ code: "NOT_FOUND" });
-
-		const lineItems = await ctx.db
-			.query("quoteLineItems")
-			.withIndex("by_quote", (q) => q.eq("quoteId", args.quoteId))
-			.collect();
-		const lineItemsSnapshot = lineItems
-			.slice()
-			.sort((a, b) => a.sortOrder - b.sortOrder)
-			.map((li) => ({
-				description: li.description,
-				quantity: li.quantity,
-				unit: li.unit,
-				rate: li.rate,
-				amount: li.amount,
-				sortOrder: li.sortOrder,
-			}));
-
-		const recomputedTotals = await calculateQuoteTotals(ctx, args.quoteId, {
-			discountEnabled: quote.discountEnabled,
-			discountAmount: quote.discountAmount,
-			discountType: quote.discountType,
-			taxEnabled: quote.taxEnabled,
-			taxRate: quote.taxRate,
-		});
+		const contentSnapshot = await loadCurrentQuoteContentSnapshot(ctx, args.quoteId);
+		if (!contentSnapshot) throw new ConvexError({ code: "NOT_FOUND" });
 		return {
 			documentVersion: document.version,
-			lineItemsSnapshot,
-			subtotal: recomputedTotals.subtotal,
-			taxAmount: recomputedTotals.taxAmount,
-			total: recomputedTotals.total,
-			terms: quote.terms,
+			lineItemsSnapshot: contentSnapshot.lineItems,
+			subtotal: contentSnapshot.subtotal,
+			taxAmount: contentSnapshot.taxAmount,
+			total: contentSnapshot.total,
+			terms: contentSnapshot.terms,
 			clientCompanyName: client.companyName ?? "Unknown",
+			contentSnapshot,
 		};
 	},
 });
@@ -484,6 +407,7 @@ export const _commitApproval = internalMutation({
 		total: v.number(),
 		terms: v.optional(v.string()),
 		clientCompanyName: v.string(),
+		expectedContentSnapshot: v.optional(quoteContentSnapshotValidator),
 	},
 	handler: async (ctx, args) => {
 		const quote = await ctx.db.get(args.quoteId);
@@ -499,30 +423,44 @@ export const _commitApproval = internalMutation({
 		) {
 			throw new ConvexError({ code: "FORBIDDEN" });
 		}
-		if (quote.latestDocumentId == null) {
-			const fallbackDoc = await ctx.db.get(args.expectedDocumentId);
-			if (
-				!fallbackDoc ||
-				fallbackDoc.orgId !== args.orgId ||
-				fallbackDoc.documentType !== "quote" ||
-				fallbackDoc.documentId !== args.quoteId
-			) {
-				throw new ConvexError({
-					code: "QUOTE_VERSION_STALE",
-					latestDocumentId: quote.latestDocumentId,
-				});
-			}
+		const { document, shouldPin } = await resolveQuoteApprovalDocument(
+			ctx,
+			quote,
+			args.expectedDocumentId,
+		);
+		if (shouldPin) {
 			await ctx.db.patch(args.quoteId, {
 				latestDocumentId: args.expectedDocumentId,
-			});
-		} else if (quote.latestDocumentId !== args.expectedDocumentId) {
-			throw new ConvexError({
-				code: "QUOTE_VERSION_STALE",
-				latestDocumentId: quote.latestDocumentId,
 			});
 		}
 		if (quote.status !== "sent") {
 			throw new ConvexError({ code: "QUOTE_NOT_PENDING" });
+		}
+		const currentContent = await loadCurrentQuoteContentSnapshot(ctx, args.quoteId);
+		if (!currentContent) {
+			throw new ConvexError({
+				code: "QUOTE_VERSION_STALE",
+				latestDocumentId: quote.latestDocumentId ?? null,
+			});
+		}
+		const suppliedContent = {
+			...currentContent,
+			lineItems: args.lineItemsSnapshot,
+			subtotal: args.subtotal,
+			taxAmount: args.taxAmount,
+			total: args.total,
+			terms: args.terms,
+		};
+		if (
+			document.version !== args.documentVersion ||
+			!quoteContentSnapshotsEqual(currentContent, suppliedContent) ||
+			(args.expectedContentSnapshot &&
+				!quoteContentSnapshotsEqual(currentContent, args.expectedContentSnapshot))
+		) {
+			throw new ConvexError({
+				code: "QUOTE_VERSION_STALE",
+				latestDocumentId: quote.latestDocumentId ?? null,
+			});
 		}
 
 		const now = Date.now();
@@ -562,6 +500,9 @@ export const _commitApproval = internalMutation({
 			createdAt: now,
 		});
 
+		const decision = await recordQuoteDecision(ctx, { quote, document, action: args.action,
+			channel: "portal", decidedAt: now, quoteApprovalId: auditId });
+
 		// 2. Patch quote status SECOND.
 		const newStatus = args.action === "approved" ? "approved" : "declined";
 		const patch =
@@ -570,6 +511,7 @@ export const _commitApproval = internalMutation({
 				: { status: newStatus as "declined", declinedAt: now };
 		const oldStatus = quote.status;
 		await ctx.db.patch(args.quoteId, patch);
+		if (args.action === "approved") await activateAgreementApproval(ctx, args.quoteId, decision.evidenceId);
 
 		const updatedQuote = await ctx.db.get(args.quoteId);
 
@@ -701,6 +643,7 @@ export const approve = action({
 					total: preflight.total,
 					terms: preflight.terms,
 					clientCompanyName: preflight.clientCompanyName,
+					expectedContentSnapshot: preflight.contentSnapshot,
 				},
 			);
 			const signatureUrl = await ctx.storage.getUrl(signatureStorageId);
@@ -780,30 +723,19 @@ export const decline = mutation({
 		) {
 			throw new ConvexError({ code: "FORBIDDEN" });
 		}
-		if (quote.latestDocumentId == null) {
-			const fallbackDoc = await ctx.db.get(args.expectedDocumentId);
-			if (
-				!fallbackDoc ||
-				fallbackDoc.orgId !== session.orgId ||
-				fallbackDoc.documentType !== "quote" ||
-				fallbackDoc.documentId !== args.quoteId
-			) {
-				throw new ConvexError({
-					code: "QUOTE_VERSION_STALE",
-					latestDocumentId: quote.latestDocumentId,
-				});
-			}
-		} else if (quote.latestDocumentId !== args.expectedDocumentId) {
-			throw new ConvexError({
-				code: "QUOTE_VERSION_STALE",
-				latestDocumentId: quote.latestDocumentId,
+		const { document, shouldPin } = await resolveQuoteApprovalDocument(
+			ctx,
+			quote,
+			args.expectedDocumentId,
+		);
+		if (shouldPin) {
+			await ctx.db.patch(args.quoteId, {
+				latestDocumentId: args.expectedDocumentId,
 			});
 		}
 		if (quote.status !== "sent") {
 			throw new ConvexError({ code: "QUOTE_NOT_PENDING" });
 		}
-		const document = await ctx.db.get(args.expectedDocumentId);
-		if (!document) throw new ConvexError({ code: "NOT_FOUND" });
 
 		const lineItems = await ctx.db
 			.query("quoteLineItems")
@@ -851,6 +783,14 @@ export const decline = mutation({
 			totalSnapshot: recomputedTotals.total,
 			termsSnapshot: quote.terms,
 			createdAt: now,
+		});
+		await recordQuoteDecision(ctx, {
+			quote,
+			document,
+			action: "declined",
+			channel: "portal",
+			decidedAt: now,
+			quoteApprovalId: auditId,
 		});
 
 		await ctx.db.patch(args.quoteId, {

@@ -1,6 +1,6 @@
 import { query, QueryCtx, MutationCtx } from "./_generated/server";
 import { mutation } from "./lib/triggers";
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 import { Doc, Id } from "./_generated/dataModel";
 import { getCurrentUserOrgId } from "./lib/auth";
 import { ActivityHelpers } from "./lib/activities";
@@ -29,6 +29,8 @@ import {
 	assertProjectCapacityForTransition,
 } from "./lib/planCaps";
 import { calculateQuoteTotals } from "./lib/quoteTotals";
+import { projectRecurrenceRuleValidator } from "./lib/projectRecurrence";
+import { enrollProjectInSeries } from "./lib/projectSeriesEnrollment";
 
 /**
  * Project operations
@@ -417,6 +419,24 @@ export const getPreview = optionalUserQuery({
 					.withIndex("by_project", (q: any) => q.eq("projectId", args.id))
 					.collect()
 			: [];
+		const directInvoiceIds = new Set(invoices.map((invoice) => invoice._id));
+		const groupedInvoiceAllocations = canViewInvoices
+			? await ctx.db.query("invoiceGroups")
+					.withIndex("by_source_project", (q: any) => q.eq("sourceProjectId", args.id))
+					.take(101)
+			: [];
+		if (groupedInvoiceAllocations.length > 100) {
+			throw new Error("Project invoice attribution exceeds the preview limit");
+		}
+		const groupedInvoiceTotals = await Promise.all(
+			groupedInvoiceAllocations
+				.filter((group) => group.orgId === orgId && !directInvoiceIds.has(group.invoiceId))
+				.map(async (group) => {
+					const invoice = await ctx.db.get(group.invoiceId);
+					if (!invoice || invoice.orgId !== orgId) return null;
+					return { total: group.total, status: invoice.status, invoiceId: invoice._id };
+				})
+		);
 		const tasks = canViewTasks
 			? await ctx.db
 					.query("tasks")
@@ -470,6 +490,14 @@ export const getPreview = optionalUserQuery({
 			} else if (status !== "cancelled") {
 				invoicesOutstanding += total;
 			}
+		}
+		const groupedInvoiceIds = new Set<string>();
+		for (const allocation of groupedInvoiceTotals) {
+			if (!allocation) continue;
+			groupedInvoiceIds.add(allocation.invoiceId);
+			invoicesTotal += allocation.total;
+			if (allocation.status === "paid") invoicesPaid++;
+			else if (allocation.status !== "cancelled") invoicesOutstanding += allocation.total;
 		}
 
 		const tasksOpen = tasks.filter(
@@ -530,7 +558,7 @@ export const getPreview = optionalUserQuery({
 			related: {
 				quotes: { count: quotes.length, total: quotesTotal },
 				invoices: {
-					count: invoices.length,
+					count: invoices.length + groupedInvoiceIds.size,
 					total: invoicesTotal,
 					outstanding: invoicesOutstanding,
 					paid: invoicesPaid,
@@ -562,9 +590,20 @@ export const create = userMutation({
 		startDate: v.optional(v.number()),
 		endDate: v.optional(v.number()),
 		assignedUserIds: v.optional(v.array(v.id("users"))),
+		recurrenceRule: v.optional(projectRecurrenceRuleValidator),
 	},
 	handler: async (ctx, args: any): Promise<ProjectId> => {
 		await ctx.requireLevel("projects", "modify");
+		if (args.recurrenceRule) {
+			if (args.projectType !== "recurring")
+				throw new Error("Recurrence requires a recurring project type");
+			if (args.startDate === undefined)
+				throw new Error("Set a project start date before configuring recurrence");
+			if (!(await ctx.hasAllRecords("projects")))
+				throw new Error(
+					"Organization-wide project access is required to manage recurrence"
+				);
+		}
 
 		// Validate title is not empty
 		if (!args.title.trim()) {
@@ -585,11 +624,17 @@ export const create = userMutation({
 			ctx,
 			args.assignedUserIds
 		);
+		const { recurrenceRule, ...projectArgs } = args;
 		const projectId = await createProjectWithOrg(ctx, {
-			...args,
+			...projectArgs,
 			assignedUserIds,
 			createdByUserId: ctx.user._id,
 		});
+		if (recurrenceRule) {
+			const project = await ctx.db.get(projectId);
+			if (!project) throw new Error("Project not found after creation");
+			await enrollProjectInSeries(ctx, project, recurrenceRule);
+		}
 
 		// Get the created project for activity logging and aggregates
 		const project = await ctx.db.get(projectId);
@@ -655,6 +700,21 @@ export const update = userMutation({
 			() => currentProject.assignedUserIds?.includes(ctx.user._id) ?? false
 		);
 		const oldStatus = currentProject.status;
+		if (currentProject.recurringSeriesId && filteredUpdates.projectType === "one-off") {
+			throw new Error("A visit in a recurring series must stay a recurring project");
+		}
+		if (
+			currentProject.recurringState &&
+			filteredUpdates.status &&
+			filteredUpdates.status !== "cancelled"
+		) {
+			throw new ConvexError({
+				code: "RECURRING_PROJECT_SUSPENDED",
+				recurringState: currentProject.recurringState,
+				message:
+					"Use Status recovery to resume the series or restore this visit before restarting it",
+			});
+		}
 		const startDate = filteredUpdates.startDate ?? currentProject.startDate;
 		const endDate = filteredUpdates.endDate ?? currentProject.endDate;
 
@@ -757,6 +817,21 @@ export const remove = userMutation({
 			"projects",
 			() => project.assignedUserIds?.includes(ctx.user._id) ?? false
 		);
+		if (project.recurringSeriesId) {
+			const quote = await ctx.db
+				.query("quotes")
+				.withIndex("by_project", (q) => q.eq("projectId", project._id))
+				.first();
+			const invoice = await ctx.db
+				.query("invoices")
+				.withIndex("by_project", (q) => q.eq("projectId", project._id))
+				.first();
+			if (quote || invoice) {
+				throw new Error(
+					"Cancel this recurring project to preserve its financial history"
+				);
+			}
+		}
 
 		// 1. Delete all tasks associated with this project
 		const tasks = await ctx.db

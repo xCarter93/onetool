@@ -26,9 +26,16 @@ export const CASCADE_PAGE_SIZE = 100;
 // silently missed.
 export const ORG_SCOPED_CASCADE_TABLES = [
 	// Leaf / child tables first (children before parents).
+	"quoteDocumentContents",
+	"quoteDecisionEvidence",
 	"quoteApprovals",
 	"quoteLineItems",
 	"invoiceLineItems",
+	"invoiceGroups",
+	"recurringBillingAllocations",
+	"recurringMonthlyBillingRuns",
+	"clientMonthlyPaymentSchedules",
+	"clientMonthlyPaymentScheduleVersions",
 	"payments",
 	"messageAttachments",
 	"teamMessages",
@@ -57,6 +64,14 @@ export const ORG_SCOPED_CASCADE_TABLES = [
 	"clientContacts",
 	"clientProperties",
 	"tasks",
+	"projectSeriesQuoteCopies",
+	"projectSeriesQuoteTemplates",
+	"projectSeriesQuoteVersions",
+	"projectSeriesAgreementRevisions",
+	"projectTaskCopies",
+	"projectTaskTemplates",
+	"projectOccurrences",
+	"projectSeries",
 	// Aggregate-tracked parents.
 	"quotes",
 	"invoices",
@@ -96,6 +111,28 @@ export async function cascadeDeleteOrgDataPage(
 ): Promise<{ done: boolean }> {
 	let remaining = limit;
 
+	{
+		if (remaining <= 0) return { done: false };
+		const rows = await ctx.db.query("quoteDocumentContents")
+			.withIndex("by_org", (q) => q.eq("orgId", orgId)).take(Math.min(remaining, 10));
+		for (const row of rows) {
+			await ctx.db.delete(row._id);
+			remaining--;
+		}
+		if (rows.length === 10) return { done: false };
+	}
+
+	{
+		if (remaining <= 0) return { done: false };
+		const rows = await ctx.db.query("quoteDecisionEvidence")
+			.withIndex("by_org", (q) => q.eq("orgId", orgId)).take(Math.min(remaining, 10));
+		for (const row of rows) {
+			await ctx.db.delete(row._id);
+			remaining--;
+		}
+		if (rows.length === 10) return { done: false };
+	}
+
 	// quoteApprovals — by_org is [orgId, createdAt]; may hold signatureStorageId.
 	{
 		if (remaining <= 0) return { done: false };
@@ -130,6 +167,24 @@ export async function cascadeDeleteOrgDataPage(
 		if (remaining <= 0) return { done: false };
 		const rows = await ctx.db
 			.query("invoiceLineItems")
+			.withIndex("by_org", (q) => q.eq("orgId", orgId))
+			.take(remaining);
+		for (const row of rows) {
+			await ctx.db.delete(row._id);
+			remaining--;
+		}
+	}
+
+	for (const table of [
+		"invoiceGroups",
+		"recurringBillingAllocations",
+		"recurringMonthlyBillingRuns",
+		"clientMonthlyPaymentSchedules",
+		"clientMonthlyPaymentScheduleVersions",
+	] as const) {
+		if (remaining <= 0) return { done: false };
+		const rows = await ctx.db
+			.query(table)
 			.withIndex("by_org", (q) => q.eq("orgId", orgId))
 			.take(remaining);
 		for (const row of rows) {
@@ -554,6 +609,27 @@ export async function cascadeDeleteOrgDataPage(
 		if (remaining <= 0) return { done: false };
 		const rows = await ctx.db
 			.query("tasks")
+			.withIndex("by_org", (q) => q.eq("orgId", orgId))
+			.take(remaining);
+		for (const row of rows) {
+			await ctx.db.delete(row._id);
+			remaining--;
+		}
+	}
+
+	for (const table of [
+		"projectSeriesQuoteCopies",
+		"projectSeriesQuoteTemplates",
+		"projectSeriesQuoteVersions",
+		"projectSeriesAgreementRevisions",
+		"projectTaskCopies",
+		"projectTaskTemplates",
+		"projectOccurrences",
+		"projectSeries",
+	] as const) {
+		if (remaining <= 0) return { done: false };
+		const rows = await ctx.db
+			.query(table)
 			.withIndex("by_org", (q) => q.eq("orgId", orgId))
 			.take(remaining);
 		for (const row of rows) {

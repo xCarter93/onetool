@@ -1,6 +1,6 @@
 import { query, QueryCtx, MutationCtx } from "./_generated/server";
 import { mutation } from "./lib/triggers";
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 import { Doc, Id } from "./_generated/dataModel";
 import { getCurrentUserOrgId } from "./lib/auth";
 import { ActivityHelpers } from "./lib/activities";
@@ -9,6 +9,13 @@ import {
 	optionalUserQuery,
 	userMutation,
 } from "./lib/factories";
+import {
+	attachQuoteDocumentSnapshot,
+	loadCurrentQuoteContentSnapshot,
+	quoteContentSnapshotValidator,
+	quoteContentSnapshotsEqual,
+} from "./lib/quoteContentSnapshot";
+import { assertQuoteDocumentMutable } from "./lib/quoteDecisionEvidence";
 
 /**
  * Document operations with embedded CRUD helpers
@@ -363,12 +370,28 @@ export const create = userMutation({
 		documentId: v.string(),
 		storageId: v.id("_storage"),
 		version: v.optional(v.number()),
+		quoteContentSnapshot: v.optional(quoteContentSnapshotValidator),
 	},
 	handler: async (ctx, args): Promise<DocumentId> => {
 		await ctx.requireLevel("documents", "modify");
 		await ctx.requireRecordScope("documents", () =>
 			isDocumentParentInScope(ctx, args.documentType, args.documentId)
 		);
+		await validateDocumentOwnership(ctx, args.documentType, args.documentId, ctx.orgId);
+		if (args.documentType === "quote") {
+			const quote = await ctx.db.get(args.documentId as Id<"quotes">);
+			if (quote?.recurringAgreementTerms)
+				throw new ConvexError("Generate recurring agreement PDFs with OneTool's server renderer");
+		}
+		let quoteContentSnapshot = args.quoteContentSnapshot;
+		if (quoteContentSnapshot) {
+			if (args.documentType !== "quote")
+				throw new ConvexError("Quote content snapshots can only be attached to quote documents");
+			const current = await loadCurrentQuoteContentSnapshot(ctx, args.documentId as Id<"quotes">);
+			if (!current || !quoteContentSnapshotsEqual(quoteContentSnapshot, current))
+				throw new ConvexError("Quote changed while the PDF was generated; generate it again");
+			quoteContentSnapshot = current;
+		}
 		// If no version specified, auto-increment from existing documents
 		let version = args.version;
 		if (!version) {
@@ -398,6 +421,11 @@ export const create = userMutation({
 			generatedAt: Date.now(),
 			version,
 		});
+		if (quoteContentSnapshot) {
+			const document = await ctx.db.get(documentId);
+			if (!document) throw new ConvexError("Generated quote document was not found");
+			await attachQuoteDocumentSnapshot(ctx, document, quoteContentSnapshot, "workspace");
+		}
 
 		// Log activity for quote PDFs
 		if (args.documentType === "quote") {
@@ -444,6 +472,7 @@ export const update = userMutation({
 		await ctx.requireRecordScope("documents", () =>
 			isDocumentParentInScope(ctx, document.documentType, document.documentId)
 		);
+		await assertQuoteDocumentMutable(ctx, document, "update");
 
 		await updateDocumentWithValidation(ctx, id, filteredUpdates);
 
@@ -463,6 +492,7 @@ export const remove = userMutation({
 		await ctx.requireRecordScope("documents", () =>
 			isDocumentParentInScope(ctx, document.documentType, document.documentId)
 		);
+		await assertQuoteDocumentMutable(ctx, document, "remove");
 
 		// Delete the file from storage
 		try {
@@ -474,6 +504,8 @@ export const remove = userMutation({
 
 		// Delete the document record
 		await ctx.db.delete(args.id);
+		if (document.quoteContentSnapshotId)
+			await ctx.db.delete(document.quoteContentSnapshotId);
 
 		return args.id;
 	},

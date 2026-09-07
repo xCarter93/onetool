@@ -21,6 +21,7 @@ import { maybeEnqueueQboSync } from "./quickbooksEnqueue";
 // callers. Both sides are hoisted function declarations, so the cycle resolves
 // at call time.
 import { settleOutstandingPaymentsForInvoice } from "./payments";
+import { materializeRecurringPaymentSchedule } from "./paymentSchedule";
 
 type InvoiceStatus = Doc<"invoices">["status"];
 
@@ -96,6 +97,9 @@ export async function transitionInvoice(
 		await requireMeter(ctx, invoice.orgId, "clientSends", plan, { now });
 		await consumeMeter(ctx, invoice.orgId, "clientSends", { now });
 		stamps.firstSentAt = now;
+	}
+	if (stamps.firstSentAt !== undefined) {
+		await materializeRecurringPaymentSchedule(ctx, invoice._id, stamps.firstSentAt);
 	}
 
 	if (newStatus === "paid") {

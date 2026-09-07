@@ -1,8 +1,10 @@
+import { recordQuoteBillingAllocation } from "./recurringBilling";
 import {
 	mutation as rawMutation,
 	internalMutation as rawInternalMutation,
 } from "../_generated/server";
-import type { DataModel } from "../_generated/dataModel";
+import type { DataModel, Id } from "../_generated/dataModel";
+import { internal } from "../_generated/api";
 import { Triggers } from "convex-helpers/server/triggers";
 import {
 	customCtx,
@@ -85,11 +87,151 @@ triggers.register("projects", async (ctx, change) => {
 	await ctx.innerDb.patch(change.id, { searchText });
 });
 
+triggers.register("projects", async (ctx, change) => {
+	if (change.newDoc?.recurringSeriesId && change.newDoc.status === "completed" && change.oldDoc?.status !== "completed")
+		await ctx.scheduler.runAfter(0, internal.recurringBilling.reconcileProject, { projectId: change.newDoc._id });
+});
+
+triggers.register("projects", async (ctx, change) => {
+	const previous = change.oldDoc;
+	if (!previous?.recurringSeriesId || !previous.recurringNominalDate) return;
+	if (change.newDoc && change.newDoc.recurringAppliedRevision !== previous.recurringAppliedRevision) return;
+	const series = await ctx.innerDb.get(previous.recurringSeriesId);
+	if (series) await ctx.innerDb.patch(series._id, { revision: (series.revision ?? 0) + 1 });
+	if (!change.newDoc) {
+		const occurrence = await ctx.innerDb
+			.query("projectOccurrences")
+			.withIndex("by_series_date", (q) =>
+				q
+					.eq("seriesId", previous.recurringSeriesId!)
+					.eq("nominalDate", previous.recurringNominalDate!)
+			)
+			.unique();
+		if (occurrence) {
+			await ctx.innerDb.patch(occurrence._id, {
+				state: "deleted",
+				projectId: undefined,
+			});
+		}
+		return;
+	}
+	const reusableFields = [
+		"title",
+		"description",
+		"clientId",
+		"propertyId",
+		"assignedUserIds",
+		"startDate",
+		"endDate",
+	] as const;
+	const changed = reusableFields.filter(
+		(field) =>
+			JSON.stringify(previous[field]) !== JSON.stringify(change.newDoc![field])
+	);
+	if (!changed.length) return;
+	await ctx.innerDb.patch(change.id, {
+		recurringFieldOverrides: [
+			...new Set([
+				...(change.newDoc.recurringFieldOverrides ?? []),
+				...changed,
+			]),
+		],
+	});
+});
+
+triggers.register("quotes", async (ctx, change) => {
+	if (change.oldDoc && change.newDoc && change.oldDoc.status !== "draft" && change.newDoc.status === "draft") {
+		await ctx.innerDb.patch(change.id, { approvalCycle: (change.oldDoc.approvalCycle ?? 0) + 1 });
+		if (change.oldDoc.recurringInheritedAt !== undefined) {
+			await ctx.innerDb.patch(change.id, {
+				recurringQuoteOverride: true,
+				recurringInheritedAt: undefined,
+				recurringAgreementEvidenceId: undefined,
+			});
+		}
+	}
+});
+
+triggers.register("quotes", async (ctx, change) => {
+	if (change.newDoc?.status !== "approved" || change.oldDoc?.status === "approved" || !change.newDoc.projectId) return;
+	const project = await ctx.innerDb.get(change.newDoc.projectId);
+	if (project?.recurringSeriesId && project.status === "completed")
+		await ctx.scheduler.runAfter(0, internal.recurringBilling.reconcileProject, { projectId: project._id });
+});
+
 triggers.register("quotes", async (ctx, change) => {
 	if (!change.newDoc) return;
 	const searchText = quoteSearchText(change.newDoc);
 	if (change.newDoc.searchText === searchText) return;
 	await ctx.innerDb.patch(change.id, { searchText });
+});
+
+triggers.register("quotes", async (ctx, change) => {
+	const previous = change.oldDoc;
+	const current = change.newDoc;
+	const provenanceId = previous?.projectSeriesQuoteTemplateId ?? current?.projectSeriesQuoteTemplateId;
+	if (previous && provenanceId) {
+		const ledger = await ctx.innerDb.query("projectSeriesQuoteCopies")
+			.withIndex("by_quote", (q) => q.eq("quoteId", previous._id)).unique();
+		if (ledger?.state === "materialized") {
+			if (!current) {
+				await ctx.innerDb.patch(ledger._id, { state: "removed-by-user", quoteId: undefined, protected: true });
+			} else if (
+				current.status !== "draft" || current.projectId !== previous.projectId || current.clientId !== previous.clientId ||
+				current.projectSeriesQuoteTemplateId !== previous.projectSeriesQuoteTemplateId ||
+				current.recurringQuoteOverride === true
+			) {
+				await ctx.innerDb.patch(ledger._id, { protected: true });
+			}
+		}
+	}
+
+	const quoteId = previous?._id ?? current?._id;
+	if (!quoteId) return;
+	const appliedByCopy = Boolean(
+		current?.recurringQuoteAppliedVersion !== undefined &&
+		(!previous || current.recurringQuoteAppliedVersion !== previous.recurringQuoteAppliedVersion)
+	);
+	if (appliedByCopy) return;
+	const templates = await ctx.innerDb.query("projectSeriesQuoteTemplates")
+		.withIndex("by_source_quote", (q) => q.eq("sourceQuoteId", quoteId)).take(21);
+	if (templates.length > 20) throw new Error("Recurring quote template limit exceeded");
+	const seriesIds = new Set(templates.map((template) => template.seriesId));
+	if (provenanceId) {
+		const template = await ctx.innerDb.get(provenanceId);
+		if (template) seriesIds.add(template.seriesId);
+	}
+	for (const projectId of new Set([previous?.projectId, current?.projectId])) {
+		if (!projectId) continue;
+		const project = await ctx.innerDb.get(projectId);
+		if (project?.recurringSeriesId) seriesIds.add(project.recurringSeriesId);
+	}
+	for (const seriesId of seriesIds) {
+		const series = await ctx.innerDb.get(seriesId);
+		if (series) await ctx.innerDb.patch(seriesId, { revision: (series.revision ?? 0) + 1 });
+	}
+});
+
+triggers.register("invoices", async (ctx, change) => {
+	const seriesIds = new Set<Id<"projectSeries">>();
+	for (const quoteId of new Set([change.oldDoc?.quoteId, change.newDoc?.quoteId])) {
+		if (!quoteId) continue;
+		const ledger = await ctx.innerDb.query("projectSeriesQuoteCopies")
+			.withIndex("by_quote", (q) => q.eq("quoteId", quoteId)).unique();
+		if (ledger) {
+			seriesIds.add(ledger.seriesId);
+			if (!ledger.protected) await ctx.innerDb.patch(ledger._id, { protected: true });
+		}
+	}
+	for (const projectId of new Set([change.oldDoc?.projectId, change.newDoc?.projectId])) {
+		if (!projectId) continue;
+		const project = await ctx.innerDb.get(projectId);
+		if (project?.recurringSeriesId) seriesIds.add(project.recurringSeriesId);
+	}
+	for (const seriesId of seriesIds) {
+		const series = await ctx.innerDb.get(seriesId);
+		if (series) await ctx.innerDb.patch(seriesId, { revision: (series.revision ?? 0) + 1 });
+	}
 });
 
 triggers.register("invoices", async (ctx, change) => {
@@ -106,6 +248,47 @@ triggers.register("tasks", async (ctx, change) => {
 	await ctx.innerDb.patch(change.id, { searchText });
 });
 
+triggers.register("tasks", async (ctx, change) => {
+	const previous = change.oldDoc;
+	const current = change.newDoc;
+	const provenanceId = previous?.projectTaskTemplateId ?? current?.projectTaskTemplateId;
+	if (provenanceId && previous) {
+		const ledger = await ctx.innerDb.query("projectTaskCopies")
+			.withIndex("by_task", (q) => q.eq("taskId", previous._id)).unique();
+		if (ledger?.state === "materialized") {
+			if (!current) {
+				await ctx.innerDb.patch(ledger._id, {
+					state: "removed-by-user",
+					taskId: undefined,
+					protected: true,
+				});
+			} else if (
+				current.recurringTaskAppliedRevision === previous.recurringTaskAppliedRevision
+			) {
+				await ctx.innerDb.patch(ledger._id, { protected: true });
+			}
+		}
+	}
+
+	const sourceId = previous?._id ?? current?._id;
+	if (!sourceId) return;
+	const templates = await ctx.innerDb.query("projectTaskTemplates")
+		.withIndex("by_source_task", (q) => q.eq("sourceTaskId", sourceId)).take(51);
+	if (templates.length > 50) throw new Error("Recurring task template limit exceeded");
+	const seriesIds = new Set(templates.map((template) => template.seriesId));
+	if (!previous || !current || current.recurringTaskAppliedRevision === previous.recurringTaskAppliedRevision) {
+		for (const projectId of new Set([previous?.projectId, current?.projectId])) {
+			if (!projectId) continue;
+			const project = await ctx.innerDb.get(projectId);
+			if (project?.recurringSeriesId) seriesIds.add(project.recurringSeriesId);
+		}
+	}
+	for (const seriesId of seriesIds) {
+		const series = await ctx.innerDb.get(seriesId);
+		if (series) await ctx.innerDb.patch(seriesId, { revision: (series.revision ?? 0) + 1 });
+	}
+});
+
 /**
  * Drop-in replacements for the _generated/server builders. All mutations —
  * including public portal ones and internal webhook/automation ones — must
@@ -118,3 +301,40 @@ export const internalMutation = customMutation(
 	rawInternalMutation,
 	customCtx(triggers.wrapDB)
 );
+
+triggers.register("invoices", async (ctx, change) => {
+	if (!change.oldDoc && change.newDoc?.quoteId) {
+		const quote = await ctx.innerDb.get(change.newDoc.quoteId);
+		if (quote?.orgId === change.newDoc.orgId) await recordQuoteBillingAllocation({ ...ctx, db: ctx.innerDb }, quote, change.id);
+	}
+	if (!change.oldDoc || (change.newDoc && change.newDoc.status !== "cancelled")) return;
+	const allocations = await ctx.innerDb.query("recurringBillingAllocations").withIndex("by_invoice", (q) => q.eq("invoiceId", change.id)).take(201);
+	if (allocations.length > 200) throw new Error("Invoice has too many billing allocations to change at once");
+	for (const allocation of allocations) await ctx.innerDb.patch(allocation._id, { state: "review", reason: "Invoice was cancelled or removed" });
+});
+
+triggers.register("quotes", async (ctx, change) => {
+	const prior = change.oldDoc;
+	if (!prior?.projectId) return;
+	if (change.newDoc && change.newDoc.contentUpdatedAt === prior.contentUpdatedAt && change.newDoc.projectId === prior.projectId && change.newDoc.clientId === prior.clientId && (change.newDoc.status === prior.status || change.newDoc.status === "approved")) return;
+	const allocation = await ctx.innerDb.query("recurringBillingAllocations").withIndex("by_project_quote", (q) => q.eq("projectId", prior.projectId!).eq("quoteId", prior._id)).unique();
+	if (!allocation?.invoiceId) return;
+	await ctx.innerDb.patch(allocation._id, { state: "review", reason: "Invoiced visit pricing changed" });
+	const invoice = await ctx.innerDb.get(allocation.invoiceId);
+	if (invoice) await ctx.innerDb.patch(invoice._id, { recurringBillingReview: true });
+});
+
+triggers.register("projects", async (ctx, change) => {
+	const prior = change.oldDoc;
+	if (!prior?.recurringSeriesId) return;
+	const current = change.newDoc;
+	if (current && current.startDate === prior.startDate && current.clientId === prior.clientId && current.propertyId === prior.propertyId && current.description === prior.description && current.status !== "cancelled" && !(prior.status === "completed" && current.status !== "completed")) return;
+	const allocations = await ctx.innerDb.query("recurringBillingAllocations").withIndex("by_project", (q) => q.eq("projectId", prior._id)).take(101);
+	if (allocations.length > 100) throw new Error("Visit billing history needs review");
+	for (const allocation of allocations) {
+		if (!allocation.invoiceId) continue;
+		await ctx.innerDb.patch(allocation._id, { state: "review", reason: "Invoiced visit changed" });
+		const invoice = await ctx.innerDb.get(allocation.invoiceId);
+		if (invoice) await ctx.innerDb.patch(invoice._id, { recurringBillingReview: true });
+	}
+});
