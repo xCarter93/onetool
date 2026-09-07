@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { api, internal } from "./_generated/api";
+import type { Id } from "./_generated/dataModel";
 import { setupConvexTest } from "./test.setup";
 import {
 	addMemberToOrg,
@@ -62,7 +63,7 @@ describe("project series", () => {
 			status: overrides.status ?? "planned",
 			projectType: "recurring",
 			startDate: overrides.startDate ?? Date.UTC(2026, 8, 6),
-			endDate: overrides.endDate ?? Date.UTC(2026, 8, 8),
+			endDate: "endDate" in overrides ? overrides.endDate : Date.UTC(2026, 8, 8),
 		});
 		return { ...setup, projectId };
 	}
@@ -859,5 +860,156 @@ describe("project series", () => {
 			).length,
 		}));
 		expect(remaining).toEqual({ series: 0, occurrences: 0 });
+	});
+	async function seriesWithDuration(durationDays: number, count = 4) {
+		const setup = await setupOrigin({ endDate: undefined });
+		const asUser = t.withIdentity(
+			createTestIdentity(setup.clerkUserId, setup.clerkOrgId)
+		);
+		const seriesId = await asUser.mutation(api.projectSeries.enroll, {
+			projectId: setup.projectId,
+			rule: daily(count),
+			durationDays,
+		});
+		return { ...setup, asUser, seriesId };
+	}
+
+	async function visitsOf(seriesId: Id<"projectSeries">) {
+		return await t.run(async (ctx) =>
+			ctx.db
+				.query("projects")
+				.withIndex("by_series_start", (q) =>
+					q.eq("recurringSeriesId", seriesId)
+				)
+				.collect()
+		);
+	}
+
+	it("enrolls with an explicit visit duration and stretches every generated visit", async () => {
+		const setup = await seriesWithDuration(2, 3);
+		const snapshot = await t.run(async (ctx) => ({
+			series: await ctx.db.get(setup.seriesId),
+			origin: await ctx.db.get(setup.projectId),
+		}));
+
+		expect(snapshot.origin?.endDate).toBe(Date.UTC(2026, 8, 8));
+		expect(snapshot.series?.durationDays).toBe(2);
+		expect(
+			(await visitsOf(setup.seriesId)).map((visit) => [
+				visit.startDate,
+				visit.endDate,
+			])
+		).toEqual([
+			[Date.UTC(2026, 8, 6), Date.UTC(2026, 8, 8)],
+			[Date.UTC(2026, 8, 7), Date.UTC(2026, 8, 9)],
+			[Date.UTC(2026, 8, 8), Date.UTC(2026, 8, 10)],
+		]);
+	});
+
+	it("enrolls a single-day series by clearing the project end date", async () => {
+		const setup = await setupOrigin();
+		const asUser = t.withIdentity(
+			createTestIdentity(setup.clerkUserId, setup.clerkOrgId)
+		);
+		const seriesId = await asUser.mutation(api.projectSeries.enroll, {
+			projectId: setup.projectId,
+			rule: daily(3),
+			durationDays: 0,
+		});
+		const snapshot = await t.run(async (ctx) => ({
+			series: await ctx.db.get(seriesId),
+			origin: await ctx.db.get(setup.projectId),
+		}));
+
+		expect(snapshot.origin?.endDate).toBeUndefined();
+		expect(snapshot.series?.durationDays).toBeUndefined();
+		expect(
+			(await visitsOf(seriesId)).every((visit) => visit.endDate === undefined)
+		).toBe(true);
+	});
+
+	it("rejects a visit duration that is not a whole number of days in range", async () => {
+		const setup = await setupOrigin();
+		const asUser = t.withIdentity(
+			createTestIdentity(setup.clerkUserId, setup.clerkOrgId)
+		);
+		for (const durationDays of [-1, 400, 1.5]) {
+			await expect(
+				asUser.mutation(api.projectSeries.enroll, {
+					projectId: setup.projectId,
+					rule: daily(3),
+					durationDays,
+				})
+			).rejects.toThrow(/duration/i);
+		}
+		expect(
+			await t.run(async (ctx) =>
+				(await ctx.db.query("projectSeries").collect()).length
+			)
+		).toBe(0);
+	});
+
+	it("counts re-dated visits in a duration-only schedule preview and preserves the origin", async () => {
+		const setup = await seriesWithDuration(2);
+		const visits = await visitsOf(setup.seriesId);
+		const preview = await setup.asUser.query(
+			api.projectSeries.previewScheduleChange,
+			{ seriesId: setup.seriesId, rule: daily(4), durationDays: 4 }
+		);
+
+		expect(preview.count).toBe(visits.length - 1);
+		expect(preview.visits.map((visit) => visit._id)).not.toContain(
+			setup.projectId
+		);
+		expect(preview.preserved).toBe(1);
+		expect(
+			await setup.asUser.query(api.projectSeries.previewScheduleChange, {
+				seriesId: setup.seriesId,
+				rule: daily(4),
+			})
+		).toMatchObject({ count: 0, preserved: 0 });
+	});
+
+	it("re-dates future visits when only the duration changes, and clears it at zero", async () => {
+		const setup = await seriesWithDuration(2);
+		const preview = await setup.asUser.query(
+			api.projectSeries.previewScheduleChange,
+			{ seriesId: setup.seriesId, rule: daily(4), durationDays: 4 }
+		);
+		await setup.asUser.mutation(api.projectSeries.updateSchedule, {
+			seriesId: setup.seriesId,
+			rule: daily(4),
+			expectedVersion: preview.revision,
+			durationDays: 4,
+		});
+
+		const stretched = await t.run(async (ctx) => ctx.db.get(setup.seriesId));
+		expect(stretched?.durationDays).toBe(4);
+		expect(stretched?.revision).toBeGreaterThan(preview.revision);
+		for (const visit of await visitsOf(setup.seriesId)) {
+			expect(visit.endDate).toBe(
+				visit._id === setup.projectId
+					? Date.UTC(2026, 8, 8)
+					: visit.startDate! + 4 * DAY
+			);
+		}
+
+		const cleared = await setup.asUser.query(
+			api.projectSeries.previewScheduleChange,
+			{ seriesId: setup.seriesId, rule: daily(4), durationDays: 0 }
+		);
+		await setup.asUser.mutation(api.projectSeries.updateSchedule, {
+			seriesId: setup.seriesId,
+			rule: daily(4),
+			expectedVersion: cleared.revision,
+			durationDays: 0,
+		});
+		const single = await t.run(async (ctx) => ctx.db.get(setup.seriesId));
+		expect(single?.durationDays).toBeUndefined();
+		expect(
+			(await visitsOf(setup.seriesId)).filter(
+				(visit) => visit.endDate !== undefined
+			)
+		).toEqual([expect.objectContaining({ _id: setup.projectId })]);
 	});
 });

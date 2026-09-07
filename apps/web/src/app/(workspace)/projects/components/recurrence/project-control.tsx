@@ -21,8 +21,17 @@ import { ProjectSeriesLink } from "@/components/domain/project-series-link";
 import { usePermissions } from "@/hooks/use-permissions";
 import { useToast } from "@/hooks/use-toast";
 import { convexErrorMessage } from "@/lib/convex-error";
+import {
+	calendarDayDifference,
+	storedDateKey,
+} from "@onetool/backend/convex/lib/projectRecurrence";
 import { RecurrenceScheduleForm } from "./schedule-form";
-import { describeRecurrence, type RecurrenceRule } from "./rule";
+import {
+	describeRecurrence,
+	durationCountFromOffset,
+	durationOffsetFromCount,
+	type RecurrenceRule,
+} from "./rule";
 import { stateLabel } from "./labels";
 
 type RecurrenceProject = Pick<
@@ -30,6 +39,7 @@ type RecurrenceProject = Pick<
 	"_id" | "title" | "projectType"
 > & {
 	startDate?: number | null;
+	endDate?: number | null;
 	recurringSeriesId?: Doc<"projects">["recurringSeriesId"] | null;
 	recurringState?: Doc<"projects">["recurringState"] | null;
 };
@@ -41,6 +51,16 @@ export function RecurrenceProjectControl({
 }) {
 	if (project.projectType !== "recurring") return null;
 	return <RecurringProjectSchedule key={project._id} project={project} />;
+}
+
+function initialDurationOffset(
+	startDate: number,
+	endDate?: number | null,
+): number | undefined {
+	if (endDate === undefined || endDate === null) return undefined;
+	return durationOffsetFromCount(
+		calendarDayDifference(storedDateKey(startDate), storedDateKey(endDate)) + 1,
+	);
 }
 
 function RecurringProjectSchedule({ project }: { project: RecurrenceProject }) {
@@ -73,7 +93,11 @@ function RecurringProjectSchedule({ project }: { project: RecurrenceProject }) {
 						<>
 							<p className="text-sm text-foreground">
 								{seriesDetails
-									? describeRecurrence(seriesDetails.series.rule)
+									? describeRecurrence(seriesDetails.series.rule, {
+											durationCount: durationCountFromOffset(
+												seriesDetails.series.durationDays,
+											),
+										})
 									: "Recurring schedule"}
 							</p>
 							<div className="flex flex-wrap items-center gap-2">
@@ -134,13 +158,18 @@ function RecurringProjectSchedule({ project }: { project: RecurrenceProject }) {
 						<RecurrenceScheduleForm
 							projectId={project._id}
 							startDate={project.startDate}
+							initialDurationOffset={initialDurationOffset(
+								project.startDate,
+								project.endDate,
+							)}
 							isSubmitting={isSubmitting}
-							onSubmit={async (rule: RecurrenceRule) => {
+							onSubmit={async (rule: RecurrenceRule, durationOffset) => {
 								setIsSubmitting(true);
 								try {
 									const seriesId = await enroll({
 										projectId: project._id,
 										rule,
+										durationDays: durationOffset,
 									});
 									toast.success(
 										"Recurrence set up",

@@ -42,7 +42,10 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { convexErrorMessage } from "@/lib/convex-error";
 import { usePermissions } from "@/hooks/use-permissions";
-import { describeRecurrence } from "../../components/recurrence/rule";
+import {
+	describeRecurrence,
+	durationCountFromOffset,
+} from "../../components/recurrence/rule";
 import { formatVisitDate, stateLabel } from "../../components/recurrence/labels";
 import { RecurrenceScheduleForm } from "../../components/recurrence/schedule-form";
 import { SeriesAgreementPanel } from "./series-agreement-panel";
@@ -224,6 +227,7 @@ function SeriesPageContent() {
 				<SeriesSetupChecklist
 					seriesId={seriesId}
 					rule={series.rule}
+					durationDays={series.durationDays}
 					nextVisitId={
 						series.state === "active" && canManage ? nextVisit?._id : undefined
 					}
@@ -239,7 +243,9 @@ function SeriesPageContent() {
 						<div>
 							<FrameTitle>Schedule</FrameTitle>
 							<FrameDescription>
-								{describeRecurrence(series.rule)}
+								{describeRecurrence(series.rule, {
+									durationCount: durationCountFromOffset(series.durationDays),
+								})}
 							</FrameDescription>
 						</div>
 						{canManage && scheduleLockReason ? (
@@ -382,13 +388,19 @@ function SeriesPageContent() {
 							seriesId={seriesId}
 							startDate={Date.parse(`${series.anchorDateKey}T00:00:00Z`)}
 							initialRule={series.rule}
+							initialDurationOffset={series.durationDays}
 							isSubmitting={isUpdatingSchedule}
 							submitLabel="Update schedule"
-							onSubmit={async (rule, expectedVersion) => {
+							onSubmit={async (rule, durationOffset, expectedVersion) => {
 								if (expectedVersion === undefined) return;
 								setIsUpdatingSchedule(true);
 								try {
-									await updateSchedule({ seriesId, rule, expectedVersion });
+									await updateSchedule({
+										seriesId,
+										rule,
+										durationDays: durationOffset,
+										expectedVersion,
+									});
 									toast.success(
 										"Schedule updated",
 										"Future planned visits now follow the new schedule."

@@ -80,7 +80,7 @@ describe("SeriesSetupChecklist", () => {
 		const onEditSchedule = vi.fn();
 		renderChecklist({ onEditSchedule });
 
-		expect(screen.getByText("weekly")).toBeVisible();
+		expect(screen.getByText("Every week. Never ends.")).toBeVisible();
 		expect(screen.getByText("Add a quote to a visit")).toBeVisible();
 		expect(screen.getByRole("button", { name: "Add quote" })).toHaveAttribute(
 			"href",

@@ -4,6 +4,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useForm, useStore } from "@tanstack/react-form";
+import { addDays, differenceInCalendarDays } from "date-fns";
 import * as z from "zod/v3";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
@@ -20,6 +21,12 @@ import {
 	FieldLabel,
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import {
+	InputGroup,
+	InputGroupAddon,
+	InputGroupInput,
+	InputGroupText,
+} from "@/components/ui/input-group";
 import { Textarea } from "@/components/ui/textarea";
 import { DatePicker } from "@/components/ui/date-picker";
 import {
@@ -45,7 +52,11 @@ import {
 	initialRecurrenceForm,
 } from "./recurrence/schedule-form";
 import {
+	MAX_DURATION_DAYS,
+	durationCountFromOffset,
+	durationOffsetFromCount,
 	serializeRecurrenceRule,
+	validateDurationCount,
 	validateRecurrenceForm,
 	type RecurrenceFormValue,
 } from "./recurrence/rule";
@@ -115,12 +126,16 @@ export function NewProjectDialog({
 	const [recurrenceDraft, setRecurrenceDraft] =
 		useState<RecurrenceFormValue | null>(null);
 	const [submitError, setSubmitError] = useState<string | null>(null);
+	const [durationInput, setDurationInput] = useState("");
+	const [durationError, setDurationError] = useState<string | null>(null);
 	const [previousOpen, setPreviousOpen] = useState(open);
 	if (previousOpen !== open) {
 		setPreviousOpen(open);
 		if (open) {
 			setRecurrenceDraft(null);
 			setSubmitError(null);
+			setDurationInput("");
+			setDurationError(null);
 		}
 	}
 
@@ -186,6 +201,8 @@ export function NewProjectDialog({
 				onOpenChange(false);
 				form.reset();
 				setRecurrenceDraft(null);
+				setDurationInput("");
+				setDurationError(null);
 				// Stay put: the dialog exists to preserve the list context. Navigation
 				// is offered as a toast action instead (a route change would also
 				// dismiss this toast).
@@ -216,7 +233,74 @@ export function NewProjectDialog({
 	const clientId = useStore(form.store, (state) => state.values.clientId);
 	const projectType = useStore(form.store, (state) => state.values.projectType);
 	const startDate = useStore(form.store, (state) => state.values.startDate);
+	const endDate = useStore(form.store, (state) => state.values.endDate);
 	const anchor = startDate ? localDateToUtcMidnightMs(startDate) : undefined;
+	const anchorKey = new Date(anchor ?? today).toISOString().slice(0, 10);
+	const durationCount =
+		startDate && endDate
+			? Math.max(
+					1,
+					durationCountFromOffset(differenceInCalendarDays(endDate, startDate))
+				)
+			: 1;
+
+	const handleDurationInput = (raw: string) => {
+		setDurationInput(raw);
+		const trimmed = raw.trim();
+		if (trimmed === "") {
+			setDurationError(null);
+			form.setFieldValue("endDate", undefined);
+			return;
+		}
+		const count = Number(trimmed);
+		const error = validateDurationCount(count);
+		setDurationError(error);
+		if (error || !startDate) return;
+		form.setFieldValue(
+			"endDate",
+			count === 1
+				? undefined
+				: addDays(startDate, durationOffsetFromCount(count))
+		);
+	};
+
+	const handleStartDateChange = (date: Date | undefined) => {
+		form.setFieldValue("startDate", date);
+		setDurationError(null);
+		if (!date) {
+			setDurationInput("");
+			return;
+		}
+		if (!endDate) {
+			setDurationInput("");
+			return;
+		}
+		if (!startDate) {
+			const count = durationCountFromOffset(
+				differenceInCalendarDays(endDate, date)
+			);
+			setDurationInput(count >= 1 ? String(count) : "");
+			return;
+		}
+		form.setFieldValue(
+			"endDate",
+			addDays(date, durationOffsetFromCount(durationCount))
+		);
+		setDurationInput(String(durationCount));
+	};
+
+	const handleEndDateChange = (date: Date | undefined) => {
+		form.setFieldValue("endDate", date);
+		setDurationError(null);
+		setDurationInput(
+			date && startDate
+				? String(
+						durationCountFromOffset(differenceInCalendarDays(date, startDate))
+					)
+				: ""
+		);
+	};
+
 	const recurrenceValue = useMemo(
 		() => recurrenceDraft ?? initialRecurrenceForm(anchor ?? today),
 		[recurrenceDraft, anchor, today]
@@ -230,15 +314,11 @@ export function NewProjectDialog({
 		: anchor === undefined
 			? "Choose a start date for the recurring schedule."
 			: (validateRecurrenceForm(recurrenceValue) ??
-				validateRecurrenceRule(
-					recurrenceRule,
-					new Date(anchor).toISOString().slice(0, 10)
-				));
+				validateRecurrenceRule(recurrenceRule, anchorKey));
 	const recurrencePreview = useMemo(() => {
 		if (projectType !== "recurring" || recurrenceError || anchor === undefined)
 			return { dates: [], error: null };
 		try {
-			const anchorKey = new Date(anchor).toISOString().slice(0, 10);
 			const todayKey = new Date(today).toISOString().slice(0, 10);
 			const afterOrigin = addCalendarDays(anchorKey, 1);
 			const from = todayKey > afterOrigin ? todayKey : afterOrigin;
@@ -266,7 +346,7 @@ export function NewProjectDialog({
 						: "Choose another schedule to preview visits.",
 			};
 		}
-	}, [projectType, recurrenceError, anchor, today, recurrenceRule]);
+	}, [projectType, recurrenceError, anchor, anchorKey, today, recurrenceRule]);
 
 	// Skip without the clients grant, dialog closed, or no client picked yet.
 	const properties = useQuery(
@@ -324,6 +404,7 @@ export function NewProjectDialog({
 			// grant the query is skipped and `clients` stays undefined forever.
 			canSubmit={
 				!permissionsLoading &&
+				!durationError &&
 				(!canReadClients || clients !== undefined) &&
 				(projectType !== "recurring" ||
 					(!recurrenceError && !recurrencePreview.error))
@@ -454,61 +535,94 @@ export function NewProjectDialog({
 					)}
 				/>
 
-				<form.Field
-					name="startDate"
-					children={(field) => (
-						<Field>
-							<FieldLabel htmlFor={field.name}>Start date</FieldLabel>
-							<DatePicker
-								id={field.name}
-								value={field.state.value}
-								onChange={field.handleChange}
-								placeholder="Select start date"
-								disabled={isSubmitting}
-							/>
-						</Field>
-					)}
-				/>
+				{projectType === "recurring" && (
+					<h3 className="text-sm font-semibold sm:col-span-2">First visit</h3>
+				)}
 
-				<form.Subscribe selector={(state) => state.values.startDate}>
-					{(startDate) => (
-						<form.Field
-							name="endDate"
-							children={(field) => {
-								const isInvalid = field.state.meta.errors.length > 0;
-								return (
-									<Field data-invalid={isInvalid}>
-										<FieldLabel htmlFor={field.name}>End date</FieldLabel>
-										<DatePicker
-											id={field.name}
-											value={field.state.value}
-											onChange={field.handleChange}
-											placeholder="Select end date"
-											disabled={isSubmitting}
-											disabledDates={
-												startDate ? { before: startDate as Date } : undefined
-											}
-										/>
-										{isInvalid && (
-											<FieldError errors={field.state.meta.errors} />
-										)}
-									</Field>
-								);
-							}}
-						/>
-					)}
-				</form.Subscribe>
+				<div className="sm:col-span-2 grid gap-x-6 gap-y-5 sm:grid-cols-3">
+					<form.Field
+						name="startDate"
+						children={(field) => (
+							<Field>
+								<FieldLabel htmlFor={field.name}>Start date</FieldLabel>
+								<DatePicker
+									id={field.name}
+									value={field.state.value}
+									onChange={handleStartDateChange}
+									placeholder="Select start date"
+									disabled={isSubmitting}
+								/>
+							</Field>
+						)}
+					/>
+
+					<form.Field
+						name="endDate"
+						children={(field) => {
+							const isInvalid = field.state.meta.errors.length > 0;
+							return (
+								<Field data-invalid={isInvalid}>
+									<FieldLabel htmlFor={field.name}>End date</FieldLabel>
+									<DatePicker
+										id={field.name}
+										value={field.state.value}
+										onChange={handleEndDateChange}
+										placeholder="Select end date"
+										disabled={isSubmitting}
+										disabledDates={
+											startDate
+												? {
+														before: startDate,
+														after: addDays(startDate, MAX_DURATION_DAYS - 1),
+													}
+												: undefined
+										}
+									/>
+									{isInvalid && <FieldError errors={field.state.meta.errors} />}
+								</Field>
+							);
+						}}
+					/>
+
+					<Field data-invalid={Boolean(durationError)}>
+						<FieldLabel htmlFor="durationDays">Duration</FieldLabel>
+						<InputGroup>
+							<InputGroupInput
+								id="durationDays"
+								name="durationDays"
+								type="number"
+								inputMode="numeric"
+								min={1}
+								max={MAX_DURATION_DAYS}
+								step={1}
+								value={durationInput}
+								onChange={(e) => handleDurationInput(e.target.value)}
+								placeholder="1"
+								aria-invalid={Boolean(durationError)}
+								disabled={isSubmitting || !startDate}
+							/>
+							<InputGroupAddon align="inline-end">
+								<InputGroupText>days</InputGroupText>
+							</InputGroupAddon>
+						</InputGroup>
+						{!startDate && (
+							<FieldDescription>Pick a start date first.</FieldDescription>
+						)}
+						{durationError && <FieldError>{durationError}</FieldError>}
+					</Field>
+				</div>
 
 				{projectType === "recurring" && (
 					<div className="space-y-3 border-t border-border pt-5 sm:col-span-2">
 						<h3 className="text-sm font-semibold">Recurring schedule</h3>
 						<p className="text-sm text-muted-foreground">
-							Start and end dates describe the first visit. Choose when the
-							series repeats and ends below.
+							Choose how often visits repeat and when the series ends.
 						</p>
 						<RecurrenceScheduleFields
 							value={recurrenceValue}
 							onChange={setRecurrenceDraft}
+							anchorDateKey={anchorKey}
+							durationCount={durationCount}
 							error={recurrenceError ?? recurrencePreview.error}
 							preview={recurrencePreview.dates}
 							disabled={isSubmitting || !canCreateSeries}
