@@ -8,6 +8,7 @@ import { userMutation, userQuery, type UserQueryCtx } from "./lib/factories";
 import { internalMutation } from "./lib/triggers";
 import { getMembership } from "./lib/memberships";
 import { loadSeriesQuoteTemplates } from "./lib/projectSeriesQuotes";
+import { visitBillingContext } from "./lib/recurringBilling";
 import {
 	emitRecordCreatedEvent,
 	emitRecordUpdatedEvent,
@@ -343,6 +344,81 @@ export const get = userQuery({
 	},
 });
 
+const SETUP_QUOTE_SCAN = 50;
+
+// Mirrors agreementSetupQuote: the designated quote in any status, else a draft
+// only, since agreement preparation refuses sent or approved quotes.
+async function findSeriesQuote(ctx: QueryCtx, series: Doc<"projectSeries">) {
+	const inOrg = (quote: Doc<"quotes"> | null) =>
+		quote && quote.orgId === series.orgId ? quote : null;
+	const draft = (quote: Doc<"quotes"> | null) =>
+		quote?.status === "draft" ? inOrg(quote) : null;
+	if (series.agreementQuoteId) {
+		const quote = inOrg(await ctx.db.get(series.agreementQuoteId));
+		if (quote) return quote;
+	}
+	for (const template of await loadSeriesQuoteTemplates(ctx, series._id)) {
+		const quote = draft(await ctx.db.get(template.sourceQuoteId));
+		if (quote) return quote;
+	}
+	const visits = await ctx.db
+		.query("projects")
+		.withIndex("by_series_start", (q) => q.eq("recurringSeriesId", series._id))
+		.take(SETUP_QUOTE_SCAN);
+	for (const visit of visits) {
+		const quotes = await ctx.db
+			.query("quotes")
+			.withIndex("by_project", (q) => q.eq("projectId", visit._id))
+			.take(SETUP_QUOTE_SCAN);
+		const quote = quotes.map(draft).find(Boolean);
+		if (quote) return quote;
+	}
+	return null;
+}
+
+export const getSetupChecklist = userQuery({
+	args: { seriesId: v.id("projectSeries") },
+	returns: v.object({
+		quote: v.union(
+			v.null(),
+			v.object({
+				_id: v.id("quotes"),
+				quoteNumber: v.optional(v.string()),
+				total: v.optional(v.number()),
+			})
+		),
+		billing: v.union(
+			v.null(),
+			v.object({
+				mode: v.union(v.literal("per_visit"), v.literal("monthly")),
+			})
+		),
+	}),
+	handler: async (ctx, args) => {
+		await requireSeriesAccess(ctx, "view");
+		const series = await ctx.orgEntity("projectSeries", args.seriesId);
+		const canViewQuotes =
+			(await ctx.can("quotes", "view")) &&
+			(await ctx.hasAllRecords("quotes"));
+		const canViewBilling = canViewQuotes && (await canViewVisitBilling(ctx));
+		const quote = canViewQuotes ? await findSeriesQuote(ctx, series) : null;
+		const activeRevision = series.activeAgreementRevisionId
+			? await ctx.db.get(series.activeAgreementRevisionId)
+			: null;
+		const mode = activeRevision?.terms?.billingMode;
+		return {
+			quote: quote
+				? {
+						_id: quote._id,
+						quoteNumber: quote.quoteNumber,
+						total: canViewBilling ? quote.total : undefined,
+					}
+				: null,
+			billing: canViewBilling && mode ? { mode } : null,
+		};
+	},
+});
+
 export const listForOrg = userQuery({
 	args: {},
 	returns: v.array(
@@ -371,6 +447,12 @@ export const listOccurrences = userQuery({
 		isDone: v.boolean(),
 		skippableIds: v.array(v.id("projects")),
 		restorableIds: v.array(v.id("projects")),
+		billing: v.optional(
+			v.record(
+				v.id("projects"),
+				v.object({ state: v.string(), reason: v.optional(v.string()) })
+			)
+		),
 	}),
 	handler: async (ctx, args) => {
 		await requireSeriesAccess(ctx, "view");
@@ -381,6 +463,9 @@ export const listOccurrences = userQuery({
 				q.eq("recurringSeriesId", args.seriesId)
 			)
 			.paginate({ cursor: args.cursor ?? null, numItems: 50 });
+		const billing = (await canViewVisitBilling(ctx))
+			? await visitBillingStates(ctx, page.page)
+			: undefined;
 		const skippableIds: Id<"projects">[] = [];
 		const restorableIds: Id<"projects">[] = [];
 		if (await ctx.can("projects", "modify")) {
@@ -403,12 +488,46 @@ export const listOccurrences = userQuery({
 		return {
 			skippableIds,
 			restorableIds,
+			billing,
 			page: page.page,
 			continueCursor: page.continueCursor,
 			isDone: page.isDone,
 		};
 	},
 });
+
+// Mirrors recurringBilling.requireBillingAccess as a boolean; project-only viewers still get the list.
+async function canViewVisitBilling(ctx: UserQueryCtx) {
+	return (
+		(await ctx.can("invoices", "view")) &&
+		(await ctx.can("quotes", "view")) &&
+		(await ctx.hasAllRecords("invoices")) &&
+		(await ctx.hasAllRecords("quotes"))
+	);
+}
+
+async function visitBillingStates(ctx: QueryCtx, visits: Doc<"projects">[]) {
+	const states: Record<Id<"projects">, { state: string; reason?: string }> =
+		{};
+	const contexts = await Promise.all(
+		visits.map((visit) =>
+			visitBillingContext(ctx, visit).catch((error: unknown) => {
+				// One visit with unreviewable billing history must not blank the whole page.
+				if (error instanceof ConvexError) return null;
+				throw error;
+			})
+		)
+	);
+	visits.forEach((visit, index) => {
+		const context = contexts[index];
+		if (!context || context.state === "ineligible") return;
+		states[visit._id] = {
+			state: context.state,
+			reason: "reason" in context ? context.reason : undefined,
+		};
+	});
+	return states;
+}
 
 export const previewLifecycle = userQuery({
 	args: { seriesId: v.id("projectSeries"), action: lifecycleAction },

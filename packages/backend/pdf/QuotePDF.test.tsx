@@ -65,9 +65,11 @@ describe("QuotePDF recurring agreements", () => {
 		);
 
 		expect(html).toContain("RECURRING AGREEMENT");
-		expect(html).toContain("Q-1042 (revision 2)");
+		expect(html).toContain("Q-1042, revision 2");
 		expect(html).toContain("Weekly grounds care");
-		expect(html).toContain("Weekly on Mon");
+		expect(html).toContain("Weekly on Mon, ongoing until cancelled");
+		expect(html).toContain("$125.00 per visit");
+		expect(html).toContain("Ongoing until cancelled");
 		expect(html).toContain("100% due 30 days after issue");
 		expect(html).toContain("Client Signature:");
 	});
@@ -114,7 +116,7 @@ describe("QuotePDF recurring agreements", () => {
 			/>,
 		);
 		expect(html).toContain(
-			"This payment arrangement starts with the next full calendar month after all affected recurring agreements are approved. Existing terms apply until then.",
+			"This payment change starts on the first full calendar month after you approve this agreement and any other recurring agreements it affects. Your current payment terms apply until then.",
 		);
 	});
 });

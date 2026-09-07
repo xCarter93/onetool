@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 
 import { StatusBadge } from "@/components/domain/status-badge";
+import { ProjectSeriesLink } from "@/components/domain/project-series-link";
 import {
 	ActionButtonGroup,
 	type RecordAction,
@@ -292,7 +293,10 @@ export function ProjectDetailDrawer({
 								{data.client?.address ?? "—"}
 							</DrawerField>
 							<DrawerField label="Type">
-								{project.projectType === "recurring" ? "Recurring" : "One-off"}
+								<span className="flex items-center justify-between gap-2">
+									{project.projectType === "recurring" ? "Recurring" : "One-off"}
+									<ProjectSeriesLink project={project} className="shrink-0" />
+								</span>
 							</DrawerField>
 							<DrawerField label="Project #">
 								{project.projectNumber ?? "—"}

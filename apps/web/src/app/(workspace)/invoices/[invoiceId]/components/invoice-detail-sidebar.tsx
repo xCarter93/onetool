@@ -11,6 +11,7 @@ import {
 	SelectItem,
 } from "@/components/ui/select";
 import { ProminentStatusBadge } from "@/components/shared/prominent-status-badge";
+import { ProjectSeriesLink } from "@/components/domain/project-series-link";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -459,12 +460,15 @@ export function InvoiceDetailSidebar({
 								Project
 							</span>
 							<div className="flex-1 min-w-0">
-								<Link
-									href={`/projects/${project._id}`}
-									className="text-sm font-medium text-primary hover:text-primary/80 transition-colors"
-								>
-									{project.title}
-								</Link>
+								<div className="flex items-center justify-between gap-2">
+									<Link
+										href={`/projects/${project._id}`}
+										className="truncate text-sm font-medium text-primary hover:text-primary/80 transition-colors"
+									>
+										{project.title}
+									</Link>
+									<ProjectSeriesLink project={project} className="shrink-0" />
+								</div>
 								<div className="mt-1">
 									<ProminentStatusBadge
 										status={project.status}

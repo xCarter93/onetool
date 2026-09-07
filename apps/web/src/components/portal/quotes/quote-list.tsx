@@ -15,7 +15,9 @@ import { type ColumnDef, useTable } from "@tanstack/react-table";
 import { ArrowRight, Search } from "lucide-react";
 
 import { formatDate, formatMoney } from "@/lib/portal/format";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/reui/badge";
 import { EmptyState } from "@/components/domain/empty-state";
 import { StatusBadge } from "@/components/domain/status-badge";
 import {
@@ -32,7 +34,12 @@ import {
 	type DataGridFeatures,
 } from "@/components/reui/data-grid/data-grid";
 import { DataGridTable } from "@/components/reui/data-grid/data-grid-table";
-import { groupRecurringAgreementQuotes } from "./quote-list-grouping";
+import {
+	type GroupedQuoteRow,
+	groupRecurringAgreementQuotes,
+	rowMatchesStatus,
+} from "./quote-list-grouping";
+import { describeRecurringChange, type PortalRecurringAgreement } from "./recurring-change";
 
 export { groupRecurringAgreementQuotes } from "./quote-list-grouping";
 
@@ -50,17 +57,13 @@ export interface QuoteListRow {
 	total: number;
 	approvedAt?: number;
 	declinedAt?: number;
-	recurringAgreement?: {
-		revisionId: string;
-		reference: string;
-		sourceQuoteId: string;
-		seriesId: string;
-		inherited: boolean;
-		visitOverride: boolean;
-		serviceDate?: number;
-	} | null;
-	coveredVisits?: QuoteListRow[];
+	recurringAgreement?: PortalRecurringAgreement | null;
 }
+
+type QuoteRow = GroupedQuoteRow<QuoteListRow>;
+
+const isAgreementRow = (row: QuoteRow) =>
+	Boolean(row.coveredVisits?.length || row.recurringAgreement?.isAgreement);
 
 type Filter = "all" | QuoteStatus;
 
@@ -93,7 +96,9 @@ function expiryLineFor(q: QuoteListRow): string {
 
 function createColumns(
 	clientPortalId: string,
-): ColumnDef<DataGridFeatures, QuoteListRow>[] {
+): ColumnDef<DataGridFeatures, QuoteRow>[] {
+	const quoteHref = (quoteId: string) =>
+		`/portal/c/${clientPortalId}/quotes/${quoteId}` as Route;
 	return [
 		{
 			accessorKey: "quoteNumber",
@@ -120,17 +125,38 @@ function createColumns(
 			header: "For",
 			cell: ({ row }) => {
 				const visits = row.original.coveredVisits;
+				const change = describeRecurringChange(row.original.recurringAgreement);
 				return (
 					<div>
 						<span className="font-medium text-foreground">
 							{row.original.title ?? (visits?.length ? "Recurring agreement" : "Quote")}
 						</span>
+						{change ? (
+							<div className="mt-1 space-y-1">
+								<Badge variant="warning-light" className="w-fit">
+									{change.label}
+								</Badge>
+								<p className="text-xs text-muted-foreground">{change.detail}</p>
+							</div>
+						) : null}
 						{visits?.length ? (
 							<div className="mt-1 space-y-0.5 text-xs text-muted-foreground">
 								<p>{visits.length} covered {visits.length === 1 ? "visit" : "visits"}</p>
 								{visits.slice(0, 3).map((visit) => (
-									<p key={visit._id}>
-										{formatDate(visit.recurringAgreement?.serviceDate)}{visit.title ? `, ${visit.title}` : ""}
+									<p key={visit._id} className="flex flex-wrap items-center gap-1.5">
+										<Link
+											href={quoteHref(visit._id)}
+											onClick={(e) => e.stopPropagation()}
+											onKeyDown={(e) => e.stopPropagation()}
+											className="rounded-sm underline-offset-2 hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+										>
+											{formatDate(visit.recurringAgreement?.serviceDate)}{visit.title ? `, ${visit.title}` : ""}
+										</Link>
+										{visit.status !== "approved" ? (
+											<StatusBadge status={visit.status} appearance="soft" size="sm">
+												{STATUS_LABEL[visit.status]}
+											</StatusBadge>
+										) : null}
 									</p>
 								))}
 								{visits.length > 3 ? <p>And {visits.length - 3} more covered visits</p> : null}
@@ -163,10 +189,13 @@ function createColumns(
 		{
 			accessorKey: "total",
 			header: () => <div className="text-right">Total</div>,
-			cell: ({ row }) => row.original.coveredVisits?.length ? (
-				<div className="text-right text-sm text-muted-foreground">Per visit</div>
-			) : (
-				<div className="text-right font-semibold tabular-nums">{formatMoney(row.original.total)}</div>
+			cell: ({ row }) => (
+				<div className="text-right">
+					<div className="font-semibold tabular-nums">{formatMoney(row.original.total)}</div>
+					{isAgreementRow(row.original) ? (
+						<div className="text-[11px] text-muted-foreground">per visit</div>
+					) : null}
+				</div>
 			),
 		},
 		{
@@ -174,7 +203,8 @@ function createColumns(
 			header: "",
 			cell: ({ row }) => {
 				const q = row.original;
-				const href = `/portal/c/${clientPortalId}/quotes/${q._id}` as Route;
+				if (q.synthetic) return null;
+				const href = quoteHref(q._id);
 				const isPending = q.status === "sent";
 				return (
 					<div
@@ -219,7 +249,7 @@ export function QuoteList({ businessName, quotes }: QuoteListProps) {
 	const filtered = useMemo(() => {
 		const q = search.trim().toLowerCase();
 		return groupedQuotes.filter((row) => {
-			if (filter !== "all" && row.status !== filter) return false;
+			if (filter !== "all" && !rowMatchesStatus(row, filter)) return false;
 			if (!q) return true;
 			const haystack = [row.title ?? "", row.quoteNumber ?? "", row.recurringAgreement?.reference ?? "", ...(row.coveredVisits ?? []).map((visit) => visit.title ?? "")]
 				.join(" ")
@@ -230,6 +260,14 @@ export function QuoteList({ businessName, quotes }: QuoteListProps) {
 
 	const isEmpty = groupedQuotes.length === 0;
 	const isFilterEmpty = !isEmpty && filtered.length === 0;
+	const pendingChanges = useMemo(
+		() =>
+			groupedQuotes.flatMap((row) => {
+				const change = row.status === "sent" && !row.synthetic ? describeRecurringChange(row.recurringAgreement) : null;
+				return change ? [{ row, change }] : [];
+			}),
+		[groupedQuotes],
+	);
 
 	const columns = useMemo(
 		() => createColumns(clientPortalId),
@@ -257,6 +295,27 @@ export function QuoteList({ businessName, quotes }: QuoteListProps) {
 					Estimates from {businessName} — review, accept, or decline.
 				</p>
 			</header>
+
+			{pendingChanges.length > 0 ? (
+				<Alert role="note" className="mt-6">
+					<AlertTitle>
+						{pendingChanges.length === 1
+							? "A change to your recurring service needs your decision"
+							: `${pendingChanges.length} changes to your recurring service need your decision`}
+					</AlertTitle>
+					<AlertDescription>
+						<ul className="space-y-1">
+							{pendingChanges.map(({ row, change }) => (
+								<li key={row._id}>
+									<Link href={`/portal/c/${clientPortalId}/quotes/${row._id}` as Route}>
+										{row.quoteNumber ?? "Quote"}: {change.label}
+									</Link>
+								</li>
+							))}
+						</ul>
+					</AlertDescription>
+				</Alert>
+			) : null}
 
 			<Frame className="mt-6">
 				<FrameHeader className="flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
@@ -308,9 +367,10 @@ export function QuoteList({ businessName, quotes }: QuoteListProps) {
 					table={table}
 					recordCount={filtered.length}
 					isLoading={false}
-					onRowClick={(row) =>
-						router.push(`/portal/c/${clientPortalId}/quotes/${row._id}`)
-					}
+					onRowClick={(row) => {
+						if (row.synthetic) return;
+						router.push(`/portal/c/${clientPortalId}/quotes/${row._id}`);
+					}}
 					emptyMessage="No quotes match your filters."
 					tableLayout={{ width: "auto", headerBackground: true }}
 				>

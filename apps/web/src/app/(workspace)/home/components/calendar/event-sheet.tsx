@@ -12,6 +12,7 @@ import {
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
 import type { EventCalendarOccurrence } from "@/components/reui/event-calendar/event-calendar-types";
 import { StatusBadge } from "@/components/domain/status-badge";
+import { ProjectSeriesLink } from "@/components/domain/project-series-link";
 import { Badge } from "@/components/reui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -186,6 +187,12 @@ export function CalendarEventSheet({
 												<span className="text-foreground truncate">
 													{data.kind === "project" ? "Project" : "Task"}
 												</span>
+												{data.kind === "project" && (
+													<ProjectSeriesLink
+														projectId={occurrence.eventId as Id<"projects">}
+														className="ms-auto shrink-0"
+													/>
+												)}
 											</div>
 										</DetailRow>
 									)}

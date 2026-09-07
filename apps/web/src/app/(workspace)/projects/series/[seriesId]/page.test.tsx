@@ -22,6 +22,7 @@ let monthlyProposal: Record<string, unknown> | null = null;
 let pendingAgreement: Record<string, unknown> | null = null;
 let agreementHistory: Array<Record<string, unknown>> = [];
 let hasActiveAgreement = true;
+let seriesAgreementIds: Record<string, string> = {};
 
 vi.mock("next/navigation", () => ({
 	useParams: () => ({ seriesId: "series-1" }),
@@ -68,6 +69,7 @@ vi.mock("convex/react", () => ({
 						rule: { frequency: "weekly", interval: 1 },
 						anchorDateKey: "2026-08-01",
 						timezone: "America/New_York",
+						...seriesAgreementIds,
 					},
 					canManage,
 					clientName: "Carter House",
@@ -109,6 +111,11 @@ vi.mock("convex/react", () => ({
 						...agreementHistory,
 					],
 					historyHasMore: false,
+				};
+			case "projectSeries:getSetupChecklist":
+				return {
+					quote: { _id: "quote-1", quoteNumber: "Q-1001", total: 125 },
+					billing: hasActiveAgreement ? { mode: "per_visit" } : null,
 				};
 			case "recurringPaymentSchedules:getPending":
 				return monthlyProposal;
@@ -201,6 +208,7 @@ beforeEach(() => {
 	pendingAgreement = null;
 	agreementHistory = [];
 	hasActiveAgreement = true;
+	seriesAgreementIds = {};
 	vi.spyOn(Date, "now").mockReturnValue(Date.UTC(2026, 8, 6, 16));
 });
 
@@ -396,9 +404,7 @@ describe("agreement lifecycle", () => {
 		render(<SeriesPage />);
 
 		expect(screen.getByText("Agreement history")).toBeVisible();
-		expect(
-			screen.getByText(/No active or proposed recurring agreement/),
-		).toBeVisible();
+		expect(screen.getByText("No recurring agreement yet")).toBeVisible();
 		expect(screen.getByText("Q-0999, revision 2")).toBeVisible();
 		expect(screen.getAllByText(/Withdrawn/).length).toBeGreaterThan(0);
 	});
@@ -432,6 +438,68 @@ describe("agreement lifecycle", () => {
 		expect(screen.getByRole("dialog")).toHaveTextContent(
 			"no recurring agreement will be active",
 		);
+	});
+
+	it("explains a hand-approved proposal, its schedule change, and lets it be withdrawn", async () => {
+		seriesState = "active";
+		hasActiveAgreement = false;
+		seriesAgreementIds = { pendingAgreementRevisionId: "revision-1" };
+		pendingAgreement = {
+			_id: "revision-1",
+			revisionNumber: 1,
+			status: "pending",
+			quoteId: "quote-1",
+			agreementReference: "Q-1001",
+			deliveryState: "not_activated",
+			scheduleRule: { frequency: "monthly", interval: 1, monthDays: [1] },
+			canDiscard: false,
+			canWithdraw: true,
+		};
+		render(<SeriesPage />);
+
+		expect(screen.getByText("Not activated")).toBeVisible();
+		expect(
+			screen.getByText(/marked approved by hand, so your client has not approved/),
+		).toBeVisible();
+		expect(
+			screen.getByText(
+				"Changes the schedule from Weekly, ongoing until cancelled to Monthly on day 1, ongoing until cancelled.",
+			),
+		).toBeVisible();
+		expect(
+			screen.getByText(/A proposed agreement is awaiting approval\. Withdraw it/),
+		).toBeVisible();
+		expect(
+			screen.queryByText(/Approve a revised recurring agreement/),
+		).not.toBeInTheDocument();
+		fireEvent.click(screen.getByRole("button", { name: "Withdraw proposal" }));
+		fireEvent.click(
+			screen.getAllByRole("button", { name: "Withdraw proposal" }).at(-1)!,
+		);
+		await waitFor(() =>
+			expect(withdrawPending).toHaveBeenCalledWith({
+				seriesId: "series-1",
+				expectedRevisionId: "revision-1",
+			}),
+		);
+	});
+
+	it("labels replaced history rows without borrowing the live quote status", () => {
+		agreementHistory = [
+			{
+				_id: "revision-old",
+				revisionNumber: 2,
+				status: "superseded",
+				quoteId: "quote-old",
+				agreementReference: "Q-0999",
+				deliveryState: "replaced",
+				canDiscard: false,
+				canWithdraw: false,
+			},
+		];
+		render(<SeriesPage />);
+		expect(screen.getByText("Replaced")).toBeVisible();
+		expect(screen.queryByText("Awaiting approval")).not.toBeInTheDocument();
 	});
 });
 

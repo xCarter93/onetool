@@ -13,6 +13,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { type ColumnDef, useTable } from "@tanstack/react-table";
 
+import { formatBillingPeriod } from "@onetool/backend/pdf/recurringAgreementFormat";
+
 import { formatDate, formatMoney } from "@/lib/portal/format";
 import { Input } from "@/components/ui/input";
 import { Search } from "lucide-react";
@@ -51,6 +53,16 @@ export interface PortalInvoiceListItem {
 	total: number;
 	clientName: string;
 	paymentSummary: PortalPaymentSummary;
+	recurringBillingPeriod?: string;
+	visitCount?: number;
+	serviceDate?: number;
+}
+
+function visitsLineFor(inv: PortalInvoiceListItem): string | null {
+	if (!inv.visitCount) return null;
+	if (inv.visitCount === 1) return `1 visit, ${formatDate(inv.serviceDate)}`;
+	const period = inv.recurringBillingPeriod ? `${formatBillingPeriod(inv.recurringBillingPeriod)}, ` : "";
+	return `${period}${inv.visitCount} visits`;
 }
 
 type Filter = "all" | "outstanding" | "paid";
@@ -87,11 +99,19 @@ function createColumns(
 		{
 			accessorKey: "clientName",
 			header: "For",
-			cell: ({ row }) => (
-				<span className="font-medium text-foreground">
-					{row.original.clientName}
-				</span>
-			),
+			cell: ({ row }) => {
+				const visitsLine = visitsLineFor(row.original);
+				return (
+					<div>
+						<span className="font-medium text-foreground">
+							{row.original.clientName}
+						</span>
+						{visitsLine ? (
+							<div className="mt-1 text-xs text-muted-foreground">{visitsLine}</div>
+						) : null}
+					</div>
+				);
+			},
 		},
 		{
 			accessorKey: "dueDate",

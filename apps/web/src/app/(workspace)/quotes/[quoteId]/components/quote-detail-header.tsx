@@ -13,7 +13,9 @@ import {
 	Receipt,
 	CopyPlus,
 	FileSignature,
+	Repeat,
 } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import {
 	ActionButtonGroup,
 	type RecordAction,
@@ -33,8 +35,52 @@ import {
 import { usePermissions } from "@/hooks/use-permissions";
 import { todayUtcMidnightMs } from "@/lib/dates";
 import { cn } from "@/lib/utils";
+import type { AgreementDeliveryState } from "./recurring-quote-copy-gate";
 
 type QuoteStatus = "draft" | "sent" | "approved" | "declined" | "expired";
+
+const QUOTE_STEPS = [
+	{ id: "draft", name: "Draft", order: 1 },
+	{ id: "sent", name: "Sent", order: 2 },
+	{ id: "approved", name: "Approved", order: 3 },
+];
+const AGREEMENT_STEPS = [
+	{ id: "setup", name: "Set up", order: 1 },
+	{ id: "pdf", name: "PDF", order: 2 },
+	{ id: "sent", name: "Sent", order: 3 },
+	{ id: "approved", name: "Approved", order: 4 },
+];
+const AGREEMENT_STEP_BY_STATE: Record<AgreementDeliveryState, string> = {
+	draft: "setup",
+	ready_to_send: "pdf",
+	awaiting_approval: "sent",
+	approved: "approved",
+	withdrawn: "withdrawn",
+	declined: "declined",
+	expired: "expired",
+	revoked: "revoked",
+	not_activated: "not_activated",
+	replaced: "replaced",
+};
+// Terminal states take over the final step so the stepper names them properly.
+const AGREEMENT_FINAL_STEP: Partial<Record<AgreementDeliveryState, string>> = {
+	withdrawn: "Withdrawn",
+	declined: "Declined",
+	expired: "Expired",
+	revoked: "Revoked",
+	replaced: "Replaced",
+	not_activated: "Not activated",
+};
+
+function agreementSteps(state: AgreementDeliveryState) {
+	const finalStep = AGREEMENT_FINAL_STEP[state];
+	return finalStep
+		? [
+				...AGREEMENT_STEPS.slice(0, -1),
+				{ id: state, name: finalStep, order: AGREEMENT_STEPS.length },
+			]
+		: AGREEMENT_STEPS;
+}
 
 interface QuoteDetailHeaderProps {
 	quote: Doc<"quotes">;
@@ -49,8 +95,10 @@ interface QuoteDetailHeaderProps {
 	copyToFutureDisabled?: boolean;
 	copyToFutureDisabledReason?: string;
 	onPrepareAgreement?: () => void;
+	prepareAgreementLabel?: string;
+	onUseForSeries?: () => void;
 	onRestoreAgreementPricing?: () => void;
-	restoreAgreementPricingLabel?: string;
+	agreementDeliveryState?: AgreementDeliveryState;
 	/** True while a convert-to-invoice mutation is in flight — disables the action to prevent duplicate invoices. */
 	converting?: boolean;
 }
@@ -67,8 +115,10 @@ export function QuoteDetailHeader({
 	copyToFutureDisabled = false,
 	copyToFutureDisabledReason,
 	onPrepareAgreement,
+	prepareAgreementLabel = "Set up agreement",
+	onUseForSeries,
 	onRestoreAgreementPricing,
-	restoreAgreementPricingLabel = "Restore agreement pricing",
+	agreementDeliveryState,
 	converting = false,
 }: QuoteDetailHeaderProps) {
 	const { can } = usePermissions();
@@ -104,16 +154,20 @@ export function QuoteDetailHeader({
 				];
 			case "sent":
 				return [
-					{
-						// TODO(reui-rebuild): success button intent mapped to default
-						key: "mark-approved",
-						label: "Mark Approved",
-						icon: <Check className="h-4 w-4" />,
-						slot: "start",
-						variant: "default",
-						onClick: () => onStatusChange("approved"),
-						disabled: !canModifyQuote,
-					},
+					// Agreements activate only from client evidence; Send to Client is the one path there.
+					...(agreementDeliveryState && agreementDeliveryState !== "approved"
+						? []
+						: [
+								{
+									key: "mark-approved",
+									label: "Mark Approved",
+									icon: <Check className="h-4 w-4" />,
+									slot: "start" as const,
+									variant: "default" as const,
+									onClick: () => onStatusChange("approved"),
+									disabled: !canModifyQuote,
+								},
+							]),
 					{
 						key: "revert-to-draft",
 						label: "Revert to draft",
@@ -166,7 +220,23 @@ export function QuoteDetailHeader({
 
 	const actions: RecordAction[] = [
 		...statusActions,
-		...(onCopyToFuture
+		// A node action stays inline beside the primary instead of folding into the menu.
+		...(onUseForSeries
+			? [
+					{
+						key: "use-for-series",
+						label: "Use for this series",
+						slot: "secondary" as const,
+						node: (
+							<Button variant="outline" size="sm" onClick={onUseForSeries}>
+								<Repeat className="h-4 w-4" />
+								Use for this series
+							</Button>
+						),
+					},
+				]
+			: []),
+		...(onCopyToFuture && !onUseForSeries
 			? [
 					{
 						key: "copy-to-future",
@@ -184,7 +254,7 @@ export function QuoteDetailHeader({
 			? [
 					{
 						key: "prepare-agreement",
-						label: "Set up agreement",
+						label: prepareAgreementLabel,
 						icon: <FileSignature className="h-4 w-4" />,
 						slot: "secondary" as const,
 						variant: "outline" as const,
@@ -196,7 +266,7 @@ export function QuoteDetailHeader({
 			? [
 					{
 						key: "restore-agreement-pricing",
-						label: restoreAgreementPricingLabel,
+						label: "Use agreement pricing",
 						icon: <RotateCcw className="h-4 w-4" />,
 						slot: "secondary" as const,
 						variant: "outline" as const,
@@ -278,12 +348,16 @@ export function QuoteDetailHeader({
 								style={{ originY: 0 }}
 							>
 								<StatusProgressBar
-									status={currentStatus}
-									steps={[
-										{ id: "draft", name: "Draft", order: 1 },
-										{ id: "sent", name: "Sent", order: 2 },
-										{ id: "approved", name: "Approved", order: 3 },
-									]}
+									status={
+										agreementDeliveryState
+											? (AGREEMENT_STEP_BY_STATE[agreementDeliveryState] ?? "setup")
+											: currentStatus
+									}
+									steps={
+										agreementDeliveryState
+											? agreementSteps(agreementDeliveryState)
+											: QUOTE_STEPS
+									}
 									events={[
 										...(quote._creationTime
 											? [{ type: "draft", timestamp: quote._creationTime }]
@@ -298,8 +372,13 @@ export function QuoteDetailHeader({
 											? [{ type: "declined", timestamp: quote.declinedAt }]
 											: []),
 									]}
-									failureStatuses={["declined", "expired"]}
+									failureStatuses={["declined", "expired", "revoked", "withdrawn"]}
 									successStatuses={["approved"]}
+									variantOverride={
+										agreementDeliveryState === "not_activated"
+											? "warning"
+											: undefined
+									}
 								/>
 							</motion.div>
 						)}

@@ -1,6 +1,7 @@
 import { ConvexError } from "convex/values";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
+import { agreementApprovalNotActivated } from "./recurringAgreementTerms";
 
 export async function quoteBillingAllocation(
 	ctx: Pick<QueryCtx, "db">,
@@ -188,6 +189,68 @@ export async function recordQuoteBillingAllocation(
 	}
 }
 
+async function approvedAgreementRevision(
+	ctx: Pick<QueryCtx, "db">,
+	series: Doc<"projectSeries">,
+) {
+	const revision = series.activeAgreementRevisionId
+		? await ctx.db.get(series.activeAgreementRevisionId)
+		: null;
+	return revision?.terms && revision.status === "approved" ? revision : null;
+}
+
+async function pendingAgreementProposal(
+	ctx: Pick<QueryCtx, "db">,
+	series: Doc<"projectSeries">,
+) {
+	const revision = series.pendingAgreementRevisionId
+		? await ctx.db.get(series.pendingAgreementRevisionId)
+		: null;
+	const quote = revision ? await ctx.db.get(revision.sourceQuoteId) : null;
+	if (!revision || !quote || quote.orgId !== series.orgId) return null;
+	const notActivated = agreementApprovalNotActivated(revision, quote);
+	const document = revision.approvalDocumentId
+		? await ctx.db.get(revision.approvalDocumentId)
+		: null;
+	const delivered =
+		quote.status === "sent" ||
+		Boolean(
+			document?.recurringSignatureSendState ||
+			(document?.boldsign && document.boldsign.status !== "Draft"),
+		);
+	return {
+		state: "agreement_pending" as const,
+		quote,
+		notActivated,
+		reason: notActivated
+			? "The agreement quote was marked approved by hand and is not active. Withdraw it from the series page, then get your client's approval."
+			: delivered
+				? "Your client has been asked to approve the recurring agreement."
+				: "The recurring agreement has not been sent to your client yet.",
+	};
+}
+
+// Best place to start an agreement: the designated quote, else this visit's draft.
+async function agreementSetupQuote(
+	ctx: Pick<QueryCtx, "db">,
+	series: Doc<"projectSeries">,
+	project: Doc<"projects">,
+) {
+	const designated = series.agreementQuoteId
+		? await ctx.db.get(series.agreementQuoteId)
+		: null;
+	if (designated && designated.orgId === project.orgId) return designated;
+	const quotes = await ctx.db
+		.query("quotes")
+		.withIndex("by_project", (q) => q.eq("projectId", project._id))
+		.take(50);
+	return (
+		quotes.find(
+			(quote) => quote.status === "draft" && quote.orgId === project.orgId,
+		) ?? null
+	);
+}
+
 export async function visitBillingContext(
 	ctx: Pick<QueryCtx, "db">,
 	project: Doc<"projects">,
@@ -210,6 +273,29 @@ export async function visitBillingContext(
 			reason: review.reason,
 			allocation: review,
 		};
+	if (
+		project.recurringSeriesId &&
+		!project.recurringState &&
+		project.status !== "completed" &&
+		project.status !== "cancelled"
+	) {
+		const openSeries = await ctx.db.get(project.recurringSeriesId);
+		if (
+			openSeries &&
+			openSeries.orgId === project.orgId &&
+			openSeries.state === "active" &&
+			project.clientId === openSeries.clientId &&
+			project.propertyId === openSeries.propertyId &&
+			!(await approvedAgreementRevision(ctx, openSeries))
+		) {
+			const proposal = await pendingAgreementProposal(ctx, openSeries);
+			if (proposal) return proposal;
+			return {
+				state: "no_agreement" as const,
+				quote: await agreementSetupQuote(ctx, openSeries, project),
+			};
+		}
+	}
 	if (
 		!project.recurringSeriesId ||
 		project.recurringState ||

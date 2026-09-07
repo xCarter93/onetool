@@ -31,8 +31,8 @@ describe("route help map", () => {
 		);
 	});
 
-	it("recurring series overview maps to project setup help", () => {
-		expect(getRouteHelpRefs("/projects/series/series123")[0]).toBe("projects-and-tasks/creating-and-managing-projects");
+	it("recurring series overview maps to the recurring guide first", () => {
+		expect(getRouteHelpRefs("/projects/series/series123")[0]).toBe("projects-and-tasks/recurring-work-start-to-finish");
 	});
 
 	it("community routes map to the community articles", () => {

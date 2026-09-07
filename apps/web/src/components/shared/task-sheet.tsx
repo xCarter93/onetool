@@ -41,6 +41,7 @@ import {
 } from "lucide-react";
 import { Task } from "@/types/task";
 import { PropertyPicker } from "@/components/shared/property-picker";
+import { ProjectSeriesLink } from "@/components/domain/project-series-link";
 import {
 	localDateToUtcMidnightMs,
 	utcMidnightMsToLocalDate,
@@ -423,13 +424,19 @@ export function TaskSheet({
 						{/* Project Selection - Only for External Tasks */}
 						{formData.type === "external" && (
 							<div className="space-y-2.5">
-								<label className="text-sm font-semibold text-foreground flex items-center gap-2">
-									<FolderOpen className="h-4 w-4 text-primary" />
-									Project{" "}
-									<span className="text-muted-foreground text-xs">
-										(Optional)
-									</span>
-								</label>
+								<div className="flex items-center justify-between gap-2">
+									<label className="text-sm font-semibold text-foreground flex items-center gap-2">
+										<FolderOpen className="h-4 w-4 text-primary" />
+										Project{" "}
+										<span className="text-muted-foreground text-xs">
+											(Optional)
+										</span>
+									</label>
+									<ProjectSeriesLink
+										project={projects?.find((p) => p._id === formData.projectId)}
+										className="shrink-0"
+									/>
+								</div>
 								<Select<Id<"projects"> | "">
 									value={formData.projectId}
 									onValueChange={(value) =>

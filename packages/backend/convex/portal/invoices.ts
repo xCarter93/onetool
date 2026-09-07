@@ -68,6 +68,10 @@ export type PortalInvoiceListItemPublic = {
 	total: number;
 	clientName: string;
 	paymentSummary: PortalPaymentSummary;
+	// Recurring billing context; absent on one-off invoices.
+	recurringBillingPeriod?: string;
+	visitCount?: number;
+	serviceDate?: number;
 };
 
 export type PortalInvoicePublic = {
@@ -175,6 +179,9 @@ const portalInvoiceListItemValidator = v.object({
 	total: v.number(),
 	clientName: v.string(),
 	paymentSummary: portalPaymentSummaryValidator,
+	recurringBillingPeriod: v.optional(v.string()),
+	visitCount: v.optional(v.number()),
+	serviceDate: v.optional(v.number()),
 });
 
 const portalInvoicePublicValidator = v.object({
@@ -365,6 +372,13 @@ export const list = query({
 					.collect();
 				const summary = deriveSummary(inv, payments, today);
 				const clientName = await getClientName(inv.clientId);
+				// Only recurring drafting writes groups, and it always sets the payment rule.
+				const visits = inv.recurringPaymentRule
+					? await ctx.db
+							.query("invoiceGroups")
+							.withIndex("by_invoice", (q) => q.eq("invoiceId", inv._id))
+							.collect()
+					: [];
 				return {
 					_id: inv._id,
 					invoiceNumber: inv.invoiceNumber,
@@ -374,6 +388,9 @@ export const list = query({
 					total: inv.total,
 					clientName,
 					paymentSummary: summary,
+					recurringBillingPeriod: inv.recurringBillingPeriod,
+					visitCount: visits.length || undefined,
+					serviceDate: visits.length === 1 ? visits[0].serviceDate : undefined,
 				};
 			}),
 		);
@@ -410,7 +427,14 @@ export const get = query({
 				.withIndex("by_invoice", (q) => q.eq("invoiceId", invoiceId))
 				.collect()
 		).sort((a, b) => a.sortOrder - b.sortOrder);
-		const invoiceGroups = await projectInvoiceGroups(ctx, invoice);
+		// A mismatched group is an org data fault; the invoice itself still renders and pays.
+		const invoiceGroups = await projectInvoiceGroups(ctx, invoice).catch(
+			(error: unknown) => {
+				if (!(error instanceof ConvexError)) throw error;
+				console.warn("Portal invoice groups hidden", invoiceId, error.data);
+				return [];
+			},
+		);
 
 		const paymentRows = await ctx.db
 			.query("payments")

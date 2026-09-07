@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, Clock, XCircle } from "lucide-react";
+import { AlertTriangle, Check, Clock, XCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
 	Select,
@@ -14,7 +14,11 @@ export type StatusEvent = {
 	timestamp?: number;
 };
 
-export type ProgressBarVariant = "success" | "destructive" | "in-progress";
+export type ProgressBarVariant =
+	| "success"
+	| "destructive"
+	| "warning"
+	| "in-progress";
 
 export interface StatusStep {
 	id: string;
@@ -159,6 +163,16 @@ export function StatusProgressBar({
 					iconColor: "text-rose-600 dark:text-rose-400",
 				};
 			}
+			if (variant === "warning") {
+				return {
+					bg: "bg-amber-500/10 dark:bg-amber-500/20",
+					text: "text-amber-700 dark:text-amber-300",
+					label: "text-amber-600/70 dark:text-amber-400/70",
+					iconBg: "bg-amber-500/15 dark:bg-amber-500/25",
+					iconRing: "ring-amber-500/30 dark:ring-amber-400/40",
+					iconColor: "text-amber-600 dark:text-amber-400",
+				};
+			}
 			// In-progress
 			return {
 				bg: "bg-primary/10 dark:bg-primary/20",
@@ -191,6 +205,9 @@ export function StatusProgressBar({
 			}
 			if (variant === "destructive") {
 				return <XCircle aria-hidden="true" className={cn("size-3", classes.iconColor)} />;
+			}
+			if (variant === "warning") {
+				return <AlertTriangle aria-hidden="true" className={cn("size-3", classes.iconColor)} />;
 			}
 			return <Clock aria-hidden="true" className={cn("size-3", classes.iconColor)} />;
 		}

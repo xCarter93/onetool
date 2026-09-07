@@ -3,6 +3,7 @@ import type { Doc, Id } from "./_generated/dataModel";
 import { userMutation, userQuery, type UserQueryCtx } from "./lib/factories";
 import { recurringPaymentRuleValidator } from "./lib/recurringPaymentRules";
 import {
+	agreementApprovalNotActivated,
 	createAgreementRevisionQuote,
 	discardPendingAgreementRevision,
 	latestAgreementRevision,
@@ -81,7 +82,10 @@ const revisionSummary = v.object({
 		v.literal("declined"),
 		v.literal("expired"),
 		v.literal("revoked"),
+		v.literal("not_activated"),
+		v.literal("replaced"),
 	),
+	scheduleRule: v.optional(projectRecurrenceRuleValidator),
 	canDiscard: v.boolean(),
 	canWithdraw: v.boolean(),
 });
@@ -104,6 +108,11 @@ async function summarizeRevision(
 		);
 	const withdrawn =
 		row.status === "superseded" && row.withdrawnAt !== undefined;
+	const replaced = row.status === "superseded" && row.withdrawnAt === undefined;
+	const notActivated = agreementApprovalNotActivated(row, quote);
+	const vendorRequest = Boolean(
+		document?.boldsign || document?.recurringSignatureSendState,
+	);
 	return {
 		_id: row._id,
 		revisionNumber: row.revisionNumber,
@@ -117,17 +126,22 @@ async function summarizeRevision(
 				? ("approved" as const)
 				: withdrawn
 					? ("withdrawn" as const)
-					: providerStatus === "Declined"
-						? ("declined" as const)
-						: providerStatus === "Expired"
-							? ("expired" as const)
-							: providerStatus === "Revoked"
-								? ("revoked" as const)
-								: delivered
-									? ("awaiting_approval" as const)
-									: document
-										? ("ready_to_send" as const)
-										: ("draft" as const),
+					: replaced
+						? ("replaced" as const)
+						: notActivated
+							? ("not_activated" as const)
+							: providerStatus === "Declined"
+								? ("declined" as const)
+								: providerStatus === "Expired"
+									? ("expired" as const)
+									: providerStatus === "Revoked"
+										? ("revoked" as const)
+										: delivered
+											? ("awaiting_approval" as const)
+											: document
+												? ("ready_to_send" as const)
+												: ("draft" as const),
+		scheduleRule: row.terms?.schedule.rule,
 		canDiscard:
 			!row.monthlyPaymentScheduleVersionId &&
 			(row.status === "draft" || row.status === "pending") &&
@@ -141,9 +155,7 @@ async function summarizeRevision(
 					providerStatus,
 				),
 			) ||
-				(quote.status === "sent" &&
-					!document?.boldsign &&
-					!document?.recurringSignatureSendState)),
+				(!vendorRequest && (quote.status === "sent" || notActivated))),
 	};
 }
 
@@ -328,7 +340,11 @@ export const getWithdrawalContext = userQuery({
 			throw new ConvexError(
 				"This signature request can no longer be withdrawn",
 			);
-		if (!document.boldsign && quote.status !== "sent")
+		if (
+			!document.boldsign &&
+			quote.status !== "sent" &&
+			!agreementApprovalNotActivated(revision, quote)
+		)
 			throw new ConvexError("This agreement has not been delivered");
 		return {
 			quoteId: revision.sourceQuoteId,
@@ -391,6 +407,7 @@ export const prepare = userMutation({
 		),
 		proposedRule: v.optional(projectRecurrenceRuleValidator),
 		expectedSeriesRevision: v.number(),
+		discardPendingRevision: v.optional(v.boolean()),
 	},
 	returns: v.object({
 		revisionId: v.id("projectSeriesAgreementRevisions"),
@@ -440,7 +457,29 @@ export const prepare = userMutation({
 				throw new ConvexError(
 					"Cancel the shared monthly payment proposal before preparing another agreement revision",
 				);
-			// Refuses a delivered revision; also detaches its quote and bumps its approval cycle.
+			const pendingQuote = await ctx.db.get(pending.sourceQuoteId);
+			if (pendingQuote && agreementApprovalNotActivated(pending, pendingQuote))
+				throw new ConvexError(
+					"Withdraw the agreement already sent to your client from the series page before setting up a new one",
+				);
+			if (pending.approvalDocumentId) {
+				const document = await ctx.db.get(pending.approvalDocumentId);
+				if (
+					pendingQuote?.status === "sent" ||
+					document?.boldsign ||
+					document?.recurringSignatureSendState
+				)
+					throw new ConvexError(
+						"Withdraw the agreement already sent to your client from the series page before setting up a new one",
+					);
+				if (!args.discardPendingRevision)
+					throw new ConvexError({
+						code: "PENDING_REVISION_REPLACE",
+						message:
+							"This series already has an agreement PDF that has not been sent. Replacing it discards that PDF.",
+					});
+			}
+			// Also detaches the pending quote and bumps its approval cycle.
 			await discardPendingAgreementRevision(
 				ctx,
 				seriesAtStart,

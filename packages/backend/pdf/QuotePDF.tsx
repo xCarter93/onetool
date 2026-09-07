@@ -13,6 +13,7 @@ import type {
 } from "../convex/lib/projectSeriesAgreements";
 import { formatCurrency } from "./format";
 import {
+	describeRecurringCommitment,
 	formatRecurringPaymentRule,
 	formatRecurringSchedule,
 } from "./recurringAgreementFormat";
@@ -371,6 +372,11 @@ export const QuotePDF: React.FC<QuotePDFProps> = ({
 	const showAmount = quote.pdfSettings?.showLineItemTotals ?? true;
 	const showTotals = quote.pdfSettings?.showTotals ?? true;
 	const agreementTerms = quote.recurringAgreementTerms;
+	// An override keeps the inherited terms but its total is for one visit only.
+	const commitment =
+		agreementTerms && !quote.recurringQuoteOverride
+			? describeRecurringCommitment(agreementTerms, quote.total)
+			: null;
 	const inheritedApproval = Boolean(
 		quote.recurringInheritedAt && !quote.recurringQuoteOverride
 	);
@@ -539,7 +545,7 @@ export const QuotePDF: React.FC<QuotePDFProps> = ({
 				)}
 
 				{/* Terms & Conditions */}
-				{agreementTerms && (
+				{agreementTerms && commitment && (
 					<View style={styles.termsSection}>
 						<View style={styles.sectionBar}>
 							<Text style={styles.sectionBarText}>RECURRING AGREEMENT</Text>
@@ -548,7 +554,7 @@ export const QuotePDF: React.FC<QuotePDFProps> = ({
 							<View style={styles.agreementRow}>
 								<Text style={styles.agreementRowLabel}>Agreement</Text>
 								<Text style={styles.agreementRowValue}>
-									{agreementTerms.agreementReference} (revision {agreementTerms.revisionNumber})
+									{agreementTerms.agreementReference}, revision {agreementTerms.revisionNumber}
 								</Text>
 							</View>
 							{inheritedApproval && (
@@ -582,16 +588,22 @@ export const QuotePDF: React.FC<QuotePDFProps> = ({
 								</Text>
 							</View>
 							<View style={styles.agreementRow}>
+								<Text style={styles.agreementRowLabel}>Price</Text>
+								<Text style={styles.agreementRowValue}>{commitment.perVisit}</Text>
+							</View>
+							<View style={styles.agreementRow}>
+								<Text style={styles.agreementRowLabel}>{commitment.commitmentLabel}</Text>
+								<Text style={styles.agreementRowValue}>{commitment.commitment}</Text>
+							</View>
+							<View style={styles.agreementRow}>
 								<Text style={styles.agreementRowLabel}>Billing</Text>
-								<Text style={styles.agreementRowValue}>
-									{agreementTerms.billingMode === "monthly" ? "Monthly consolidated billing" : "Billed per completed visit"}
-								</Text>
+								<Text style={styles.agreementRowValue}>{commitment.billing}</Text>
 							</View>
 							{agreementTerms.paymentChangeActivation === "next_full_month_after_all_approvals" && (
 								<View style={styles.agreementRow}>
 									<Text style={styles.agreementRowLabel}>Payment change</Text>
 									<Text style={styles.agreementRowValue}>
-										This payment arrangement starts with the next full calendar month after all affected recurring agreements are approved. Existing terms apply until then.
+										This payment change starts on the first full calendar month after you approve this agreement and any other recurring agreements it affects. Your current payment terms apply until then.
 									</Text>
 								</View>
 							)}

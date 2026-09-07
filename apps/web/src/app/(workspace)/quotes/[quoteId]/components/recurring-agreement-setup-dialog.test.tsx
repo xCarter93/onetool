@@ -9,8 +9,9 @@ import {
 } from "@testing-library/react";
 import "@testing-library/jest-dom/vitest";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { ConvexError } from "convex/values";
 
-const prepare = vi.fn(async () => null);
+const prepare = vi.fn(async (_args?: unknown) => null);
 
 vi.mock("convex/react", () => ({ useMutation: () => prepare }));
 vi.mock("@/hooks/use-toast", () => ({
@@ -185,6 +186,46 @@ describe("recurring agreement setup", () => {
 		expect(
 			screen.getByRole("button", { name: "Payment: fixed_plus_balance" }),
 		).toBeVisible();
+	});
+
+	it("confirms before replacing an unsent agreement PDF, then retries with the flag", async () => {
+		prepare.mockRejectedValueOnce(
+			new ConvexError({
+				code: "PENDING_REVISION_REPLACE",
+				message: "This series already has an agreement PDF that has not been sent.",
+			}),
+		);
+		render(<Setup />);
+		fireEvent.click(screen.getByRole("button", { name: "Open setup" }));
+		fireEvent.click(screen.getByRole("button", { name: "Set up agreement" }));
+
+		const confirm = await screen.findByRole("alertdialog");
+		expect(confirm).toHaveTextContent("Replace the unsent agreement PDF?");
+		expect(prepare).toHaveBeenCalledTimes(1);
+		expect(prepare.mock.calls[0][0]).not.toHaveProperty(
+			"discardPendingRevision",
+		);
+		fireEvent.click(screen.getByRole("button", { name: "Replace it" }));
+
+		await waitFor(() => expect(prepare).toHaveBeenCalledTimes(2));
+		expect(prepare.mock.calls[1][0]).toMatchObject({
+			discardPendingRevision: true,
+		});
+	});
+
+	it("shows the current schedule and hides the fields until the schedule is changed", () => {
+		const unchangedSchedule = {
+			...savedTerms,
+			schedule: { ...savedTerms.schedule, rule: seriesSetup.rule },
+		} as unknown as typeof savedTerms;
+		render(<Setup terms={unchangedSchedule} />);
+		fireEvent.click(screen.getByRole("button", { name: "Open setup" }));
+
+		expect(screen.getByText("Weekly, ongoing until cancelled")).toBeVisible();
+		expect(screen.queryByLabelText("Cadence")).not.toBeInTheDocument();
+		fireEvent.click(screen.getByRole("button", { name: "Change schedule" }));
+		expect(screen.getByLabelText("Cadence")).toHaveValue("weekly");
+		expect(screen.getByLabelText("Every")).toHaveValue(1);
 	});
 
 	it("keeps in-progress edits when saved terms refresh", () => {

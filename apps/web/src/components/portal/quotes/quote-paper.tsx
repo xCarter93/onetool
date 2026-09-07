@@ -7,6 +7,7 @@
 
 import type { Doc } from "@onetool/backend/convex/_generated/dataModel";
 import {
+	describeRecurringCommitment,
 	formatRecurringPaymentRule,
 	formatRecurringSchedule,
 } from "@onetool/backend/pdf/recurringAgreementFormat";
@@ -55,6 +56,11 @@ export function QuotePaper({ quote, lineItems, businessName }: QuotePaperProps) 
 		quote.discountEnabled && quote.discountType === "percentage"
 			? `Discount (${quote.discountAmount}%)`
 			: "Discount";
+	// An override keeps the inherited terms but its total is for one visit only.
+	const commitment =
+		quote.recurringAgreementTerms && !quote.recurringQuoteOverride
+			? describeRecurringCommitment(quote.recurringAgreementTerms, total)
+			: null;
 
 	return (
 		<div className="w-full rounded-2xl border border-border bg-card p-6 shadow-xs md:p-9">
@@ -121,9 +127,10 @@ export function QuotePaper({ quote, lineItems, businessName }: QuotePaperProps) 
 				tax={tax}
 				taxLabel="Estimated tax"
 				total={total}
+				totalLabel={commitment ? "Per-visit total" : "Total"}
 			/>
 
-			{quote.recurringAgreementTerms ? (
+			{quote.recurringAgreementTerms && commitment ? (
 				<section className="mt-10 border-t border-border pt-6">
 					<h2 className="text-base font-semibold text-foreground">
 						Recurring agreement
@@ -154,14 +161,16 @@ export function QuotePaper({ quote, lineItems, businessName }: QuotePaperProps) 
 						<dd className="text-foreground">
 							{formatRecurringSchedule(quote.recurringAgreementTerms.schedule.rule)}. Starts {quote.recurringAgreementTerms.schedule.anchorDateKey}. Timezone: {quote.recurringAgreementTerms.schedule.timezone}.
 						</dd>
+						<dt className="text-muted-foreground">Price</dt>
+						<dd className="font-medium tabular-nums text-foreground">{commitment.perVisit}</dd>
+						<dt className="text-muted-foreground">{commitment.commitmentLabel}</dt>
+						<dd className="tabular-nums text-foreground">{commitment.commitment}</dd>
 						<dt className="text-muted-foreground">Billing</dt>
-						<dd className="text-foreground">
-							{quote.recurringAgreementTerms.billingMode === "monthly" ? "Monthly consolidated billing" : "Billed per completed visit"}
-						</dd>
+						<dd className="text-foreground">{commitment.billing}</dd>
 						{quote.recurringAgreementTerms.paymentChangeActivation === "next_full_month_after_all_approvals" ? (
 							<>
 								<dt className="text-muted-foreground">Payment change</dt>
-								<dd className="text-foreground">This payment arrangement starts with the next full calendar month after all affected recurring agreements are approved. Existing terms apply until then.</dd>
+								<dd className="text-foreground">This payment change starts on the first full calendar month after you approve this agreement and any other recurring agreements it affects. Your current payment terms apply until then.</dd>
 							</>
 						) : null}
 						<dt className="text-muted-foreground">Payment</dt>
