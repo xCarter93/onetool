@@ -188,9 +188,16 @@ export function TaskSheet({
 	const handleInputChange = (field: string, value: string) => {
 		setFormData((prev) => ({ ...prev, [field]: value }));
 
-		// Clear project and property when client changes
 		if (field === "clientId") {
 			setFormData((prev) => ({ ...prev, projectId: "", propertyId: "" }));
+		}
+		if (field === "type" && value === "internal") {
+			setFormData((prev) => ({
+				...prev,
+				clientId: "",
+				projectId: "",
+				propertyId: "",
+			}));
 		}
 	};
 

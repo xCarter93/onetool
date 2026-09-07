@@ -28,6 +28,7 @@ import {
 	enrollProjectInSeries,
 	generateProjectSeriesOccurrences,
 	HOUR,
+	normalizeDurationDays,
 	WINDOW_DAYS,
 } from "./lib/projectSeriesEnrollment";
 
@@ -36,6 +37,16 @@ const generationResult = v.object({
 	created: v.number(),
 	remaining: v.number(),
 });
+
+const MAX_DURATION_DAYS = 364;
+
+function assertDurationDays(days: number | undefined) {
+	if (days === undefined) return;
+	if (!Number.isInteger(days) || days < 0 || days > MAX_DURATION_DAYS)
+		throw new Error(
+			`Visit duration must be a whole number of days between 0 and ${MAX_DURATION_DAYS}`
+		);
+}
 
 async function requireSeriesAccess(
 	ctx: UserQueryCtx,
@@ -91,11 +102,34 @@ export const preview = userQuery({
 });
 
 export const enroll = userMutation({
-	args: { projectId: v.id("projects"), rule: projectRecurrenceRuleValidator },
+	args: {
+		projectId: v.id("projects"),
+		rule: projectRecurrenceRuleValidator,
+		// Calendar days from the visit start; 0 is a single-day visit, omitted keeps the project's end date.
+		durationDays: v.optional(v.number()),
+	},
 	returns: v.id("projectSeries"),
 	handler: async (ctx, args): Promise<Id<"projectSeries">> => {
 		await requireSeriesAccess(ctx, "modify");
-		const project = await ctx.orgEntity("projects", args.projectId);
+		assertDurationDays(args.durationDays);
+		let project = await ctx.orgEntity("projects", args.projectId);
+		if (args.durationDays !== undefined && !project.recurringSeriesId) {
+			if (project.startDate === undefined)
+				throw new Error(
+					"Set a project start date before configuring recurrence"
+				);
+			await ctx.db.patch(project._id, {
+				endDate: args.durationDays
+					? storedDate(
+							addCalendarDays(
+								storedDateKey(project.startDate),
+								args.durationDays
+							)
+						)
+					: undefined,
+			});
+			project = await ctx.orgEntity("projects", args.projectId);
+		}
 		return enrollProjectInSeries(ctx, project, args.rule);
 	},
 });
@@ -805,7 +839,8 @@ export const updateFuture = userMutation({
 async function scheduleChanges(
 	ctx: QueryCtx,
 	series: Doc<"projectSeries">,
-	rule: Doc<"projectSeries">["rule"]
+	rule: Doc<"projectSeries">["rule"],
+	durationDays?: number
 ) {
 	const error = validateRecurrenceRule(rule, series.anchorDateKey);
 	if (error) throw new Error(error);
@@ -819,6 +854,10 @@ async function scheduleChanges(
 		includeNext: true,
 	});
 	const selected = new Set(dates);
+	const nextDuration = normalizeDurationDays(durationDays);
+	const durationChanged =
+		durationDays !== undefined &&
+		(nextDuration ?? 0) !== (series.durationDays ?? 0);
 	const visits: Doc<"projects">[] = [];
 	let preserved = 0;
 	for (const visit of await upcoming(ctx, series)) {
@@ -829,7 +868,12 @@ async function scheduleChanges(
 			visit.status === "planned" &&
 			!visit.recurringState &&
 			!selected.has(visit.recurringNominalDate ?? "");
-		if (!restoring && !removing) continue;
+		const redating =
+			durationChanged &&
+			visit.status === "planned" &&
+			!visit.recurringState &&
+			selected.has(visit.recurringNominalDate ?? "");
+		if (!restoring && !removing && !redating) continue;
 		const quote = await ctx.db
 			.query("quotes")
 			.withIndex("by_project", (q) => q.eq("projectId", visit._id))
@@ -845,19 +889,26 @@ async function scheduleChanges(
 		}
 		visits.push(visit);
 	}
-	return { visits, preserved, dates };
+	return { visits, preserved, dates, durationChanged, nextDuration };
 }
 
 export const previewScheduleChange = userQuery({
 	args: {
 		seriesId: v.id("projectSeries"),
 		rule: projectRecurrenceRuleValidator,
+		durationDays: v.optional(v.number()),
 	},
 	returns: v.object({ ...affectedPreview, dates: v.array(v.string()) }),
 	handler: async (ctx, args) => {
 		await requireSeriesAccess(ctx, "modify");
+		assertDurationDays(args.durationDays);
 		const series = await ctx.orgEntity("projectSeries", args.seriesId);
-		const result = await scheduleChanges(ctx, series, args.rule);
+		const result = await scheduleChanges(
+			ctx,
+			series,
+			args.rule,
+			args.durationDays
+		);
 		return {
 			...summary(result.visits, result.preserved, series),
 			dates: result.dates,
@@ -870,10 +921,12 @@ export const updateSchedule = userMutation({
 		seriesId: v.id("projectSeries"),
 		rule: projectRecurrenceRuleValidator,
 		expectedVersion: v.number(),
+		durationDays: v.optional(v.number()),
 	},
 	returns: v.null(),
 	handler: async (ctx, args) => {
 		await requireSeriesAccess(ctx, "modify");
+		assertDurationDays(args.durationDays);
 		const series = await ctx.orgEntity("projectSeries", args.seriesId);
 		checkRevision(series, args.expectedVersion);
 		if (series.state !== "active")
@@ -882,7 +935,12 @@ export const updateSchedule = userMutation({
 			throw new Error(
 				"Approve a revised recurring agreement before changing the schedule"
 			);
-		const result = await scheduleChanges(ctx, series, args.rule);
+		const result = await scheduleChanges(
+			ctx,
+			series,
+			args.rule,
+			args.durationDays
+		);
 		const selected = new Set(result.dates);
 		const revision = (series.revision ?? 0) + 1;
 		for (const visit of result.visits) {
@@ -892,10 +950,26 @@ export const updateSchedule = userMutation({
 				recurringState: restore ? undefined : "skipped",
 				recurringSkipReason: restore ? undefined : "schedule-change",
 				recurringAppliedRevision: revision,
+				...(result.durationChanged && restore && visit.startDate !== undefined
+					? {
+							endDate:
+								result.nextDuration === undefined
+									? undefined
+									: storedDate(
+											addCalendarDays(
+												storedDateKey(visit.startDate),
+												result.nextDuration
+											)
+										),
+						}
+					: {}),
 			});
 		}
 		await ctx.db.patch(series._id, {
 			rule: args.rule,
+			...(result.durationChanged
+				? { durationDays: result.nextDuration }
+				: {}),
 			revision,
 			nextGenerationAt: Date.now(),
 		});

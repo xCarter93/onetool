@@ -7,7 +7,7 @@ export const projectsAndTasksArticles: HelpArticle[] = [
 		subtitle: "Set up a job for a client and track it from planned to completed.",
 		kind: "howto",
 		availability: "all",
-		permission: "Admins, and members with access to projects.",
+		permission: "Admins, and members with access to projects. Creating a recurring series needs organization-wide project access.",
 		keywords: ["job", "work order", "kanban", "one-off", "recurring", "generate invoice", "delete"],
 		sections: [
 			{
@@ -26,17 +26,17 @@ export const projectsAndTasksArticles: HelpArticle[] = [
 						type: "steps",
 						items: [
 							"Go to **Projects** in the sidebar and click **Create Project**.",
-							"Pick the **Client** the job is for. If the client has more than one property, choose the **Property** too; with a single property it is selected for you.",
+							"Pick the **Client** the job is for. If the client has more than one property, choose the **Property** too. The primary property is selected for you, or the only property when none is marked primary.",
 							"Enter a **Project title**, and a **Description** if the crew needs context.",
 							"Set the **Project type**: **One-off** for work that runs once, or **Recurring** to show the recurring schedule options.",
-							"Pick a **Start date**, and an **End date** if you know it. Recurring projects require a start date. These dates describe the first visit; use **Ends** in the recurring schedule to stop the whole series. The end date cannot be before the start date.",
+							"Pick a **Start date**. Set how long the job runs with **End date** or **Duration** in days. The two stay in sync, and leaving both blank means a one-day job. Recurring projects require a start date, and these fields describe the first visit. Use **Ends** in the recurring schedule to stop the whole series.",
 							"For recurring work, choose the schedule and its end condition, then review the upcoming visits. Use **Assign to** to pick the teammates doing the work, then click **Create project** to save the project and schedule together.",
 						],
 					},
 					{
 						type: "media",
 						media: "image",
-						caption: "The Create Project dialog",
+						caption: "The New project dialog",
 						asset: "projects-and-tasks/creating-and-managing-projects/create-project-dialog",
 					},
 					{
@@ -58,7 +58,7 @@ export const projectsAndTasksArticles: HelpArticle[] = [
 					},
 					{
 						type: "paragraph",
-						text: "To narrow the list, filter by **Status**, **Type**, **Client**, or **Start date**, or use the search box. Search matches the project title, type, status, and client name.",
+						text: "To narrow the list, filter by **Status**, **Type**, **Client**, or **Start Date**, or use the search box. Search matches the project title, type, status, and client name.",
 					},
 				],
 			},
@@ -67,7 +67,7 @@ export const projectsAndTasksArticles: HelpArticle[] = [
 				blocks: [
 					{
 						type: "paragraph",
-						text: "Open a project to see its whole story. The header gives you quick actions: **Add Task**, **Add Quote**, **Generate Invoice**, and **Delete**. Below it, three tabs organize the detail: **Overview**, **Tasks** (with a count badge), and **Activity**. A sidebar stays in view with the client, the primary contact, properties, and the project's quotes and invoices.",
+						text: "Open a project to see its whole story. The header gives you quick actions: **Add Task**, **Add Quote**, **Generate Invoice**, **Add to Route**, and **Delete**. Below it, three tabs organize the detail: **Overview**, **Tasks** (with a count badge), and **Activity**. A sidebar stays in view with the client, the primary contact, properties, and a billing summary of invoiced and outstanding totals.",
 					},
 					{
 						type: "paragraph",
@@ -90,11 +90,11 @@ export const projectsAndTasksArticles: HelpArticle[] = [
 				blocks: [
 					{ type: "steps", items: [
 						"For an existing project, set **Project Type** to **Recurring** and add a start date, then choose **Set up recurrence** in the right sidebar beside its type and dates. Its client and property define the series, and this project counts as the first occurrence. Before a series is created, switching back to One-off removes the schedule setup. Once the series exists, each visit stays Recurring.",
-						"Choose a schedule preset or **Custom**. You can select weekdays, monthly dates or an ordinal weekday, and seasonal months.",
+						"Under **Repeats**, choose how often visits happen. Weekly schedules take the days of the week. Monthly and yearly schedules offer the start date's day of the month, its weekday in the month, or the last weekday. Set **Each visit lasts** to the number of days per visit. Open **More options** for a custom interval, several dates a month, or seasonal months.",
 						"Under **Ends**, choose **Never**, **On a date**, or **After a number of visits**. Review the preview, then save.",
 					] },
 					{ type: "paragraph", text: "OneTool creates separate planned projects for the next 90 days and includes the next visit for less frequent schedules. Each new visit repeats the project details and duration. Tasks, quotes and invoices remain separate records for each visit. Setting up recurrence does not copy them automatically; save selected tasks from the project’s Tasks tab or choose **Use for this series** on a quote to set up a recurring agreement or save draft quote setup. Until an agreement is approved, each planned visit shows **No agreement** in its billing section, or **Awaiting approval** once a proposal has gone to the client, and invoices for the series do not draft automatically." },
-					{ type: "paragraph", text: "The right sidebar shows the recurring schedule and series state. Use **View series** there to see the next visit and occurrence history; the series page lists each visit with its crew and billing status and links back to the project you came from. The Projects list also offers a **Series** filter. Viewing a whole series requires organization-wide project access; changing it also requires permission to modify projects." },
+					{ type: "paragraph", text: "The right sidebar shows the recurring schedule and series state. Use **View series** there to see the next visit and occurrence history; the series page lists each visit with its crew and billing status and links back to the project you came from. Once a series exists, the Projects list also offers a **Series** filter to users with organization-wide project access. Viewing a whole series requires that same access; changing it also requires permission to modify projects." },
 					{ type: "paragraph", text: "The series page keeps the standing recurring approval visible beside a proposed agreement or replacement and its history. **Draft** means its PDF has not been generated, **Ready to send** means the PDF exists but has not gone to the client, and **Awaiting approval** means the client received the request. Declined, expired and revoked requests show their final delivery state. Use **Review** to continue, **Discard draft** for an unsent proposal, or **Withdraw proposal** to close a client-visible request. If an agreement is already approved, it and already billed visits stay unchanged. Once no proposal is open, use **Revise agreement** to prepare its replacement." },
 					{ type: "paragraph", text: "A shared monthly payment change shows how many affected agreements are approved. After all approvals, it shows the calendar month when the arrangement starts. **Cancel payment proposal** safely removes a proposal while the page says it can still be cancelled; current terms remain active." },
 					{ type: "tip", text: "A monthly date such as the 31st uses the month's last day when needed. A fifth weekday that does not exist is skipped. The original schedule stays anchored, including across daylight-saving changes." },
@@ -104,7 +104,7 @@ export const projectsAndTasksArticles: HelpArticle[] = [
 				heading: "Change or pause recurring work",
 				blocks: [
 					{ type: "paragraph", text: "With organization-wide project access and permission to modify projects, the first time you save a reusable detail on a recurring project, choose **This project** or **This and future projects**. The visible **Edit scope** control remembers your choice until you leave that project. It applies to details such as the title, description, property and assigned users. Dates and status changes always affect only the current visit." },
-					{ type: "paragraph", text: "Future edits preserve individually changed fields on other visits. **Edit** in the series Schedule section lets you preview a new cadence. Once an agreement exists, **Edit** is unavailable until a revised agreement is approved; while a proposal is awaiting approval, withdraw it first; while the series is paused, resume it first. The tooltip says which applies. Started, invoiced and individually changed visits are preserved; changing a schedule does not erase their history." },
+					{ type: "paragraph", text: "Future edits preserve individually changed fields on other visits. **Edit** in the series Schedule section lets you preview a new cadence or visit length. A new length re-dates the future planned visits. Once an agreement exists, **Edit** is unavailable until a revised agreement is approved; while a proposal is awaiting approval, withdraw it first; while the series is paused or ended, resume it first. The tooltip says which applies. Started, invoiced and individually changed visits are preserved; changing a schedule does not erase their history." },
 					{ type: "paragraph", text: "Use **Skip visit** for an unstarted, uninvoiced visit you do not need. It leaves the later schedule intact and can be restored while the series is active. Skipped visits and their tasks are hidden from active schedule views." },
 					{ type: "paragraph", text: "For a visit cancelled by the series, the Status area offers **Resume series** instead of the normal status editor. Once the series is active, choose **Restore visit** to return an eligible cancelled visit to Planned, including a past visit. Visits you skipped or cancelled individually are not automatically restored when the series resumes. If the original count or Until date has been reached, resume does not extend it; restore an existing visit or deliberately edit the schedule." },
 					{ type: "paragraph", text: "**Pause series** suspends upcoming unstarted visits. **End series** stops future work by ending generation and cancelling eligible upcoming visits; it does not discard an agreement or erase completed work and agreement history. You can use **Resume series** from either state: review the preview to return eligible visits dated today or later to Planned. The original cadence, occurrence limit and Until date stay in place; resuming does not add replacement visits for missed dates. Started, completed and invoiced work stays intact." },
@@ -135,7 +135,7 @@ export const projectsAndTasksArticles: HelpArticle[] = [
 			},
 			{
 				question: "Why is Generate Invoice not clickable?",
-				answer: "The project has no approved quote yet. Generate Invoice creates the invoice from the project's approved quotes, so create a quote, send it, and record the client's approval first.",
+				answer: "The project has no approved quote yet. Generate Invoice creates the invoice from the project's approved quotes, so create a quote, send it, and record the client's approval first. On a recurring visit covered by an agreement, Generate Invoice stays off; those visits bill through the Recurring visit billing card instead.",
 			},
 			{
 				question: "Can I get a deleted project back?",
@@ -154,7 +154,7 @@ export const projectsAndTasksArticles: HelpArticle[] = [
 		subtitle: "Set up a repeating job once, get it approved once, and let each visit bill itself.",
 		kind: "howto",
 		availability: "all",
-		permission: "Admins, and members with organization-wide access to projects, quotes and invoices.",
+		permission: "Admins, and members with organization-wide access to projects. The Setup card and schedule editing also need organization-wide access to quotes and invoices.",
 		keywords: ["recurring", "series", "agreement", "weekly", "monthly", "repeat visits", "maintenance", "route", "auto invoice", "checklist"],
 		sections: [
 			{
@@ -168,8 +168,8 @@ export const projectsAndTasksArticles: HelpArticle[] = [
 				heading: "1. Create the series",
 				blocks: [
 					{ type: "steps", items: [
-						"Choose **Create**, then **Project**. Set **Project Type** to **Recurring**, pick the client and property, and give the first visit a start date.",
-						"Fill in **Recurring schedule**: a preset or **Custom**, then **Ends** as **Never**, **On a date** or **After a number of visits**. Check the preview of upcoming dates and save.",
+						"Choose **Create**, then **New Project**. Set **Project Type** to **Recurring**, pick the client and property, and give the first visit a start date.",
+						"Fill in **Recurring schedule**: choose how often it **Repeats**, then set **Ends** to **Never**, **On a date** or **After a number of visits**. Check the preview of upcoming dates and save.",
 						"For a project that already exists, set its type to Recurring and choose **Set up recurrence** in the right sidebar.",
 					] },
 					{ type: "paragraph", text: "OneTool creates the next 90 days of visits straight away and keeps adding them as time passes. The **Schedule** row on the series page is complete at this point." },
@@ -190,7 +190,7 @@ export const projectsAndTasksArticles: HelpArticle[] = [
 				blocks: [
 					{ type: "steps", items: [
 						"On the draft quote, choose **Use for this series**, then **Set up a recurring agreement**.",
-						"Confirm the service scope, choose **Per visit** or **Monthly** billing, and set the payment schedule. The default is the full amount 30 days after each invoice is issued.",
+						"Confirm the service scope, choose **Per visit** or **Monthly** billing, and set the payment schedule. The default is the full amount 30 days after each invoice is issued. A client's later monthly agreements share the payment arrangement of the first.",
 						"Leave **Change schedule** closed unless this agreement should change how often visits happen. If you open it, the series page shows the change before your client sees it.",
 						"Choose **Set up agreement**.",
 					] },
@@ -220,7 +220,7 @@ export const projectsAndTasksArticles: HelpArticle[] = [
 				blocks: [
 					{ type: "paragraph", text: "With **Per visit** billing, completing a visit drafts one invoice for it. With **Monthly** billing, OneTool waits for the month to close in your business timezone, then drafts one invoice per client that combines every completed visit from that client's monthly series, listing each property, project and service date." },
 					{ type: "paragraph", text: "Each visit's sidebar shows a **Recurring visit billing** card. **Ready to bill** means the draft is due and you can create it now with **Draft invoice** instead of waiting for the hourly run. **Invoice created** links to the draft. Drafts stay out of the client portal until you review and send them, and nothing is charged automatically." },
-					{ type: "paragraph", text: "Two states need you. **Needs decision** appears when a drafted invoice was cancelled or a visit was removed from one; choose **Rebill** or **Defer**, or mark the visit not billable. **Awaiting approval** appears when a visit has its own price change that the client has not approved yet." },
+					{ type: "paragraph", text: "Two states need you. **Needs decision** appears when a drafted invoice was cancelled, or when a billed visit or its pricing changed after invoicing; choose **Rebill** or **Defer**, or choose **Do not bill**. **Awaiting approval** appears when a visit has its own price change that the client has not approved yet." },
 				],
 			},
 			{
@@ -229,7 +229,7 @@ export const projectsAndTasksArticles: HelpArticle[] = [
 					{ type: "list", items: [
 						"**A new price or schedule for every future visit.** On the series page choose **Revise agreement**. OneTool opens a new revision of the quote; edit it, then repeat steps 3 and 4. The current agreement keeps applying until the client approves the revision, and visits already billed are untouched.",
 						"**A change to one visit only.** Open that visit's quote, choose **Reopen**, make the change and send it. The visit waits for its own approval and is held from billing until then. **Use agreement pricing** puts it back on the standing terms.",
-						"**A different payment split.** Open an invoice's **Configure Payments** and choose **This and future invoices**. Monthly clients share one payment arrangement, so the change takes effect the month after every affected agreement approves it.",
+						"**A different payment split.** Open an invoice's **Configure payments** and choose **This and future invoices**. Monthly clients share one payment arrangement, so the change takes effect the month after every affected agreement approves it.",
 					] },
 				],
 			},
@@ -289,7 +289,7 @@ export const projectsAndTasksArticles: HelpArticle[] = [
 					},
 					{
 						type: "note",
-						text: "Switching a task's type from External to Internal clears the selected project and property, since both belong to the client side. Changing the client clears them too.",
+						text: "Switching a task's type from External to Internal clears the selected client, project, and property, since all three belong to the client side. Changing the client clears the project and property too.",
 					},
 				],
 			},
@@ -445,7 +445,7 @@ export const projectsAndTasksArticles: HelpArticle[] = [
 					},
 					{
 						type: "note",
-						text: "Some actions cross areas. Creating a project starts with picking a client, so the **Client** field in the Create Project dialog is disabled for members without access to clients.",
+						text: "Some actions cross areas. Creating a project starts with picking a client, so the **Client** field in the New project dialog is replaced with a message asking an admin for client access.",
 					},
 				],
 			},

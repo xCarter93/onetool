@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import type { ReactNode } from "react";
+import { Children, isValidElement, type ReactNode } from "react";
 import {
 	cleanup,
 	fireEvent,
@@ -90,23 +90,36 @@ vi.mock("@/components/ui/date-picker", () => ({
 			id={id}
 			onClick={() => onChange(new Date(2026, 8, 7))}
 		>
-			{value ? "Sep 7, 2026" : placeholder}
+			{value ? value.toDateString() : placeholder}
 		</button>
 	),
 }));
+// The real Select carries its accessible name on the trigger child.
+function selectLabel(children: ReactNode) {
+	let label = "select";
+	Children.forEach(children, (child) => {
+		if (isValidElement<{ "aria-label"?: string }>(child))
+			label = child.props["aria-label"] ?? label;
+	});
+	return label;
+}
+
 vi.mock("@/components/ui/select", () => ({
 	Select: ({
 		value,
 		onValueChange,
 		children,
+		disabled,
 	}: {
 		value?: string;
 		onValueChange: (value: string) => void;
 		children: ReactNode;
+		disabled?: boolean;
 	}) => (
 		<select
-			aria-label="select"
+			aria-label={selectLabel(children)}
 			value={value}
+			disabled={disabled}
 			onChange={(event) => onValueChange(event.target.value)}
 		>
 			{children}
@@ -149,6 +162,12 @@ function chooseProjectType(label: "One-off" | "Recurring") {
 	fireEvent.click(screen.getByRole("button", { name: label }));
 }
 
+function chooseCadence(preset: string) {
+	fireEvent.change(screen.getByLabelText("Repeats"), {
+		target: { value: preset },
+	});
+}
+
 afterEach(cleanup);
 
 beforeEach(() => {
@@ -162,7 +181,7 @@ beforeEach(() => {
 describe("NewProjectDialog recurrence", () => {
 	it("keeps recurrence controls hidden for a one-off project and omits recurrenceRule", async () => {
 		renderDialog();
-		expect(screen.queryByText("Schedule")).not.toBeInTheDocument();
+		expect(screen.queryByText("Recurring schedule")).not.toBeInTheDocument();
 
 		fillRequiredFields();
 		fireEvent.click(screen.getByRole("button", { name: "Create project" }));
@@ -176,7 +195,8 @@ describe("NewProjectDialog recurrence", () => {
 		fillRequiredFields();
 		chooseProjectType("Recurring");
 
-		expect(screen.getByText("Schedule")).toBeInTheDocument();
+		expect(screen.getByText("Recurring schedule")).toBeInTheDocument();
+		expect(screen.getByLabelText("Repeats")).toHaveValue("weekly");
 		expect(screen.getByText("Ends")).toBeInTheDocument();
 		expect(screen.getByRole("option", { name: "Never" })).toBeInTheDocument();
 		expect(screen.getByRole("option", { name: "On a date" })).toBeInTheDocument();
@@ -208,7 +228,7 @@ describe("NewProjectDialog recurrence", () => {
 		expect(
 			screen.getByRole("button", { name: "Create project" })
 		).toBeDisabled();
-		expect(screen.getByRole("group", { name: "Schedule" })).toBeDisabled();
+		expect(screen.getByLabelText("Repeats")).toBeDisabled();
 	});
 
 	it("submits the anchored weekly recurrence rule with the project", async () => {
@@ -235,7 +255,7 @@ describe("NewProjectDialog recurrence", () => {
 		fillRequiredFields();
 		chooseProjectType("Recurring");
 		fireEvent.click(screen.getByRole("button", { name: "Start date" }));
-		fireEvent.click(screen.getByRole("button", { name: "Daily" }));
+		chooseCadence("daily");
 		chooseProjectType("One-off");
 		fireEvent.click(screen.getByRole("button", { name: "Create project" }));
 
@@ -251,7 +271,7 @@ describe("NewProjectDialog recurrence", () => {
 		fillRequiredFields();
 		chooseProjectType("Recurring");
 		fireEvent.click(screen.getByRole("button", { name: "Start date" }));
-		fireEvent.click(screen.getByRole("button", { name: "Daily" }));
+		chooseCadence("daily");
 		fireEvent.click(screen.getByRole("button", { name: "Create project" }));
 
 		await waitFor(() => expect(toastError).toHaveBeenCalledOnce());
@@ -266,7 +286,7 @@ describe("NewProjectDialog recurrence", () => {
 	it("resets the schedule after the dialog closes and reopens", () => {
 		const view = renderDialog();
 		chooseProjectType("Recurring");
-		fireEvent.click(screen.getByRole("button", { name: "Daily" }));
+		chooseCadence("daily");
 
 		view.rerender(
 			<NewProjectDialog open={false} onOpenChange={view.onOpenChange} />
@@ -277,6 +297,21 @@ describe("NewProjectDialog recurrence", () => {
 			"aria-pressed",
 			"true"
 		);
-		expect(screen.queryByText("Schedule")).not.toBeInTheDocument();
+		expect(screen.queryByText("Recurring schedule")).not.toBeInTheDocument();
+	});
+
+	it("derives the end date from the visit duration once a start date is set", () => {
+		renderDialog();
+		expect(screen.getByLabelText("Duration")).toBeDisabled();
+		expect(screen.getByText("Pick a start date first.")).toBeInTheDocument();
+
+		fireEvent.click(screen.getByRole("button", { name: "Start date" }));
+		fireEvent.change(screen.getByLabelText("Duration"), {
+			target: { value: "3" },
+		});
+
+		expect(screen.getByRole("button", { name: "End date" })).toHaveTextContent(
+			new Date(2026, 8, 9).toDateString()
+		);
 	});
 });

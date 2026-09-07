@@ -42,6 +42,13 @@ export function ruleFingerprint(value: unknown): string {
 	});
 }
 
+// A visit duration is a calendar-day offset from its start; a single-day visit stores undefined.
+export function normalizeDurationDays(
+	days: number | undefined,
+): number | undefined {
+	return days === 0 ? undefined : days;
+}
+
 export function assertProjectSupportsRecurrence(
 	project: Doc<"projects">,
 ): void {
@@ -234,12 +241,13 @@ export async function enrollProjectInSeries(
 	const anchorDateKey = storedDateKey(project.startDate);
 	const ruleError = validateRecurrenceRule(rule, anchorDateKey);
 	if (ruleError) throw new Error(ruleError);
-	const durationDays =
+	const derivedDuration =
 		project.endDate === undefined
 			? undefined
 			: calendarDayDifference(anchorDateKey, storedDateKey(project.endDate));
-	if (durationDays !== undefined && durationDays < 0)
+	if (derivedDuration !== undefined && derivedDuration < 0)
 		throw new Error("Start date cannot be after end date");
+	const durationDays = normalizeDurationDays(derivedDuration);
 	const org = await ctx.db.get(ctx.orgId);
 	if (!org) throw new Error("Organization not found");
 	const timezone = org.timezone ?? "UTC";

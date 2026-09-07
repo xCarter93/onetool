@@ -43,7 +43,10 @@ import {
 import { formatCalendarDate } from "@/lib/dates";
 import { formatCurrency } from "@/lib/money";
 import { cn } from "@/lib/utils";
-import { describeRecurrence } from "../../components/recurrence/rule";
+import {
+	describeRecurrence,
+	durationCountFromOffset,
+} from "../../components/recurrence/rule";
 
 export const AGREEMENT_PANEL_ID = "recurring-agreement";
 
@@ -119,6 +122,7 @@ function LinkAction({
 export function SeriesSetupChecklist({
 	seriesId,
 	rule,
+	durationDays,
 	nextVisitId,
 	canManage,
 	scheduleLockReason,
@@ -126,6 +130,7 @@ export function SeriesSetupChecklist({
 }: {
 	seriesId: Id<"projectSeries">;
 	rule: ProjectRecurrenceRule;
+	durationDays?: number;
 	nextVisitId?: Id<"projects">;
 	canManage: boolean;
 	scheduleLockReason: string | null;
@@ -257,7 +262,9 @@ export function SeriesSetupChecklist({
 	const rows: Row[] = [
 		{
 			label: "Schedule",
-			detail: describeRecurrence(rule),
+			detail: describeRecurrence(rule, {
+				durationCount: durationCountFromOffset(durationDays),
+			}),
 			status: "complete",
 			action: scheduleAction ? () => scheduleAction : undefined,
 		},

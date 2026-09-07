@@ -525,7 +525,7 @@ describe("project series lifecycle", () => {
 		await setup.asUser.mutation(api.projects.update, {
 			id: visit._id,
 			startDate: visit.startDate! + DAY,
-			endDate: visit.endDate! + DAY,
+			endDate: visit.startDate! + DAY,
 		});
 		await expect(
 			setup.asUser.mutation(api.projectSeries.lifecycle, {

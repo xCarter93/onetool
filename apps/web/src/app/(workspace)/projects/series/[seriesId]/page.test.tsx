@@ -187,7 +187,10 @@ vi.mock("@/components/domain/status-badge", () => ({
 		<span>{children}</span>
 	),
 }));
-vi.mock("../../components/recurrence/rule", () => ({
+vi.mock("../../components/recurrence/rule", async (importOriginal) => ({
+	...(await importOriginal<
+		typeof import("../../components/recurrence/rule")
+	>()),
 	describeRecurrence: () => "Every week",
 }));
 vi.mock("../../components/recurrence/schedule-form", () => ({
