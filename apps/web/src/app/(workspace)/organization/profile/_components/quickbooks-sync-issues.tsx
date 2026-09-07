@@ -12,11 +12,15 @@ import { getUserFriendlyErrorMessage, logError } from "@/lib/error-logger";
 import { formatRelativeTime } from "@/lib/notification-utils";
 import { SectionHeading, SettingsCard } from "./settings-card";
 
-const ENTITY_LABEL: Record<"client" | "invoice" | "payment" | "sku", string> = {
+const ENTITY_LABEL: Record<
+	"client" | "invoice" | "payment" | "sku" | "refund",
+	string
+> = {
 	client: "Client",
 	invoice: "Invoice",
 	payment: "Payment",
 	sku: "Line item",
+	refund: "Refund",
 };
 
 /**

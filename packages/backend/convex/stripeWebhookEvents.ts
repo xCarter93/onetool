@@ -5,10 +5,13 @@ import { internalMutation } from "./lib/triggers";
 /** Well past Stripe's 3-day webhook replay window, so a retry still dedupes. */
 const RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 const DELETE_BATCH = 200;
+/** Longer than any handler runs; a stuck attempt past this is reclaimable. */
+const LEASE_MS = 5 * 60 * 1000;
 
 /**
- * Start or retry webhook event processing.
- * Already-processed events are treated as duplicates.
+ * Claim a webhook event for processing. Processed events are duplicates; an
+ * attempt still inside its lease is skipped (`inProgress`) rather than
+ * reclaimed; failed, unresolved, and expired attempts are retried.
  */
 export const startProcessingEvent = internalMutation({
 	args: {
@@ -20,8 +23,10 @@ export const startProcessingEvent = internalMutation({
 	returns: v.object({
 		proceed: v.boolean(),
 		eventDocId: v.optional(v.id("stripeWebhookEvents")),
+		inProgress: v.optional(v.boolean()),
 	}),
 	handler: async (ctx, args) => {
+		const now = Date.now();
 		const existing = await ctx.db
 			.query("stripeWebhookEvents")
 			.withIndex("by_stripe_event_id", (q) =>
@@ -36,6 +41,7 @@ export const startProcessingEvent = internalMutation({
 				accountId: args.accountId,
 				status: "processing",
 				receivedAt: args.receivedAt,
+				claimedAt: now,
 				attemptCount: 1,
 			});
 			return { proceed: true, eventDocId };
@@ -44,10 +50,17 @@ export const startProcessingEvent = internalMutation({
 		if (existing.status === "processed") {
 			return { proceed: false };
 		}
+		if (
+			existing.status === "processing" &&
+			existing.claimedAt !== undefined &&
+			now - existing.claimedAt < LEASE_MS
+		) {
+			return { proceed: false, inProgress: true };
+		}
 
-		// Failed or stuck events can be retried by Stripe replay.
 		await ctx.db.patch(existing._id, {
 			status: "processing",
+			claimedAt: now,
 			attemptCount: existing.attemptCount + 1,
 			failedAt: undefined,
 			failureReason: undefined,
@@ -63,6 +76,29 @@ export const markEventProcessed = internalMutation({
 		await ctx.db.patch(args.eventDocId, {
 			status: "processed",
 			processedAt: Date.now(),
+			paymentIntentId: undefined,
+			payload: undefined,
+		});
+		return null;
+	},
+});
+
+/**
+ * Park an event whose payment has not settled yet. `payload` is the resolved
+ * mutation input, so the paid cascade can replay it without calling Stripe.
+ */
+export const markEventUnresolved = internalMutation({
+	args: {
+		eventDocId: v.id("stripeWebhookEvents"),
+		paymentIntentId: v.string(),
+		payload: v.any(),
+	},
+	returns: v.null(),
+	handler: async (ctx, args) => {
+		await ctx.db.patch(args.eventDocId, {
+			status: "unresolved",
+			paymentIntentId: args.paymentIntentId,
+			payload: args.payload,
 		});
 		return null;
 	},

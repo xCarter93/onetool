@@ -187,7 +187,11 @@ export const startImport = action({
 
 		const runId: Id<"quickbooksImportRuns"> = await ctx.runMutation(
 			internal.quickbooksImport.startRun,
-			{ orgId, realmId: tokens.realmId }
+			{
+				orgId,
+				realmId: tokens.realmId,
+				connectionId: tokens.connectionId,
+			}
 		);
 
 		try {

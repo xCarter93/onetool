@@ -214,14 +214,14 @@ describe("PaymentRail", () => {
 		expect(args.confirmParams.return_url).not.toContain("payment_convex_yyy");
 	});
 
-	it("Test 5: ExpressCheckoutElement renders above PaymentElement with 'or pay with card' divider between", async () => {
+	it("Test 5: ExpressCheckoutElement renders above PaymentElement with the payment-method divider between", async () => {
 		mockMintOk();
 		renderRail();
 		fireEvent.click(
 			await screen.findByRole("button", { name: /Pay \$190\.00/ }),
 		);
 		const ec = await screen.findByTestId("express-checkout");
-		const divider = await screen.findByText(/or pay with card/i);
+		const divider = await screen.findByText(/or choose another payment method/i);
 		const pe = await screen.findByTestId("payment-element");
 		// EC before divider before PE in document order.
 		const pos1 = ec.compareDocumentPosition(divider);
@@ -265,6 +265,89 @@ describe("PaymentRail", () => {
 		);
 		// Exactly one fetch (the mint). No client-side mark-paid call.
 		expect(fetchSpy).toHaveBeenCalledTimes(1);
+	});
+
+	it("Test 9: a processing intent shows a durable pending state instead of a confirmable Payment Element", async () => {
+		mockMintOk({ status: "processing" });
+		renderRail();
+		fireEvent.click(
+			await screen.findByRole("button", { name: /Pay \$190\.00/ }),
+		);
+		const status = await screen.findByRole("status");
+		expect(status).toHaveTextContent(/\$190\.00/);
+		expect(status).toHaveTextContent(/processing/i);
+		expect(screen.queryByTestId("payment-element")).not.toBeInTheDocument();
+		expect(screen.queryByTestId("elements-provider")).not.toBeInTheDocument();
+		expect(screen.getByRole("button", { name: /Pay \$190\.00/ })).toBeDisabled();
+	});
+
+	it("Test 10: an intent Stripe already succeeded shows awaiting-confirmation, not a Pay form", async () => {
+		mockMintOk({ status: "succeeded_pending_confirmation" });
+		renderRail();
+		fireEvent.click(
+			await screen.findByRole("button", { name: /Pay \$190\.00/ }),
+		);
+		const status = await screen.findByRole("status");
+		expect(status).toHaveTextContent(/received/i);
+		expect(screen.queryByTestId("payment-element")).not.toBeInTheDocument();
+		expect(screen.getByRole("button", { name: /Pay \$190\.00/ })).toBeDisabled();
+	});
+
+	it("Test 11: confirmPayment returning 'processing' swaps the form for the pending state and disables Pay", async () => {
+		mockMintOk();
+		confirmPaymentSpy.mockResolvedValue({
+			error: null,
+			paymentIntent: { status: "processing" },
+		});
+		renderRail();
+		fireEvent.click(
+			await screen.findByRole("button", { name: /Pay \$190\.00/ }),
+		);
+		const submit = await screen.findByRole("button", {
+			name: /Pay \$190\.00/,
+		});
+		await act(async () => {
+			fireEvent.click(submit);
+		});
+		const status = await screen.findByRole("status");
+		expect(status).toHaveTextContent(/processing/i);
+		expect(screen.queryByTestId("payment-element")).not.toBeInTheDocument();
+		expect(screen.getByRole("button", { name: /Pay \$190\.00/ })).toBeDisabled();
+		expect(fetchSpy).toHaveBeenCalledTimes(1);
+	});
+
+	it("Test 12: a Stripe outage maps to a retryable banner", async () => {
+		fetchSpy.mockResolvedValueOnce(
+			new Response(
+				JSON.stringify({ code: "stripe_unavailable", error: "Stripe is busy" }),
+				{ status: 503, headers: { "content-type": "application/json" } },
+			),
+		);
+		renderRail();
+		fireEvent.click(
+			await screen.findByRole("button", { name: /Pay \$190\.00/ }),
+		);
+		const alert = await screen.findByRole("alert");
+		expect(alert).toHaveTextContent(/temporarily unavailable/i);
+		expect(screen.getByRole("button", { name: /Try again/i })).toBeInTheDocument();
+	});
+
+	it("does not offer a retry when the invoice needs a review", async () => {
+		fetchSpy.mockResolvedValueOnce(
+			new Response(
+				JSON.stringify({ code: "needs_review", error: "Needs review" }),
+				{ status: 409, headers: { "content-type": "application/json" } },
+			),
+		);
+		renderRail();
+		fireEvent.click(
+			await screen.findByRole("button", { name: /Pay \$190\.00/ }),
+		);
+		const alert = await screen.findByRole("alert");
+		expect(alert).toHaveTextContent(/reviewing it/i);
+		expect(
+			screen.queryByRole("button", { name: /Try again/i }),
+		).not.toBeInTheDocument();
 	});
 
 	it("Test 8: Appearance options contain NO var(--*) and NO oklch() strings", async () => {

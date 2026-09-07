@@ -3,7 +3,7 @@
  * Uses plain fetch (no Stripe SDK) to verify Checkout Sessions.
  */
 
-const STRIPE_API_VERSION = "2026-04-22.dahlia";
+const STRIPE_API_VERSION = "2026-08-26.dahlia";
 
 export interface StripeSessionVerification {
 	paid: boolean;

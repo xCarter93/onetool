@@ -2,6 +2,7 @@ import { convexTest } from "convex-test";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { api, internal } from "./_generated/api";
 import { setupConvexTest } from "./test.setup";
+import { createTestIdentity, createTestOrg } from "./test.helpers";
 
 /** Clerk backend stub: records the seat-cap writes syncSeatCap performs, so
  * the scheduled action is observable without the network. */
@@ -814,267 +815,167 @@ describe("Organizations", () => {
 		});
 	});
 
-	describe("setStripeConnectAccountIdInternal (Plan 14.2-02)", () => {
-		it("patches stripeConnectAccountId for the owner caller", async () => {
-			const { orgId } = await t.run(async (ctx) => {
-				const userId = await ctx.db.insert("users", {
-					name: "Owner",
-					email: "owner@example.com",
-					image: "https://example.com/owner.jpg",
-					externalId: "user_set_owner",
-				});
-
-				const orgId = await ctx.db.insert("organizations", {
-					clerkOrganizationId: "org_set",
-					name: "Set Org",
-					ownerUserId: userId,
-				});
-
-				await ctx.db.insert("organizationMemberships", {
-					orgId,
-					userId,
-					role: "admin",
-				});
-
-				return { orgId };
-			});
-
-			const asUser = t.withIdentity({
-				subject: "user_set_owner",
-				activeOrgId: "org_set",
-			});
-
-			await asUser.mutation(
-				api.organizations.setStripeConnectAccountIdInternal,
-				{ accountId: "acct_new" }
+	// Stripe Connect bindings and readiness are provider results committed by
+	// stripeConnectActions; nothing here may be callable from a browser client.
+	describe("Stripe Connect writers are server-only", () => {
+		it("no public mutation lets an owner bind an account or assert readiness (audit repro)", async () => {
+			const org = await t.run((ctx) => createTestOrg(ctx));
+			const owner = t.withIdentity(
+				createTestIdentity(org.clerkUserId, org.clerkOrgId)
 			);
-
-			const org = await t.run((ctx) => ctx.db.get(orgId));
-			expect(org?.stripeConnectAccountId).toBe("acct_new");
+			await expect(
+				owner.mutation(
+					// @ts-expect-error — removed public export
+					api.organizations.setStripeConnectAccountIdInternal,
+					{ accountId: "acct_not_verified_with_stripe" }
+				)
+			).rejects.toThrow();
+			await expect(
+				owner.mutation(
+					// @ts-expect-error — removed public export
+					api.organizations.syncStripeConnectStatusFromLive,
+					{ chargesEnabled: true, payoutsEnabled: true, detailsSubmitted: true }
+				)
+			).rejects.toThrow();
+			const saved = await t.run((ctx) => ctx.db.get(org.orgId));
+			expect(saved?.stripeConnectAccountId).toBeUndefined();
+			expect(saved?.stripeChargesEnabled).toBeUndefined();
 		});
 
-		it("throws DUPLICATE_CONNECT_ACCOUNT when accountId already maps to a different org (FINDINGS M-2)", async () => {
-			await t.run(async (ctx) => {
-				// Org A — caller
-				const userAId = await ctx.db.insert("users", {
-					name: "Owner A",
-					email: "owner-a@example.com",
-					image: "https://example.com/a.jpg",
-					externalId: "user_a",
-				});
-				const orgAId = await ctx.db.insert("organizations", {
-					clerkOrganizationId: "org_a",
-					name: "Org A",
-					ownerUserId: userAId,
-				});
-				await ctx.db.insert("organizationMemberships", {
-					orgId: orgAId,
-					userId: userAId,
-					role: "admin",
-				});
+		it("every Stripe Connect writer is registered as an internal function", async () => {
+			const mod = await import("./organizations");
+			for (const name of [
+				"bindStripeConnectAccountInternal",
+				"syncStripeConnectStatusInternal",
+				"clearStripeConnectStateInternal",
+				"updateStripeConnectStatusInternal",
+				"updateStripeCapabilityInternal",
+			] as const) {
+				expect((mod[name] as { isInternal?: boolean }).isInternal, name).toBe(
+					true
+				);
+			}
+		});
+	});
 
-				// Org B — pre-occupant of acct_X
-				const userBId = await ctx.db.insert("users", {
-					name: "Owner B",
-					email: "owner-b@example.com",
-					image: "https://example.com/b.jpg",
-					externalId: "user_b",
-				});
-				await ctx.db.insert("organizations", {
-					clerkOrganizationId: "org_b",
-					name: "Org B",
-					ownerUserId: userBId,
-					stripeConnectAccountId: "acct_X",
-				});
+	describe("bindStripeConnectAccountInternal", () => {
+		it("binds the account to the given org", async () => {
+			const org = await t.run((ctx) => createTestOrg(ctx));
+			await t.mutation(internal.organizations.bindStripeConnectAccountInternal, {
+				orgId: org.orgId,
+				accountId: "acct_new",
 			});
+			const saved = await t.run((ctx) => ctx.db.get(org.orgId));
+			expect(saved?.stripeConnectAccountId).toBe("acct_new");
+		});
 
-			const asUserA = t.withIdentity({
-				subject: "user_a",
-				activeOrgId: "org_a",
-			});
-
+		it("throws DUPLICATE_CONNECT_ACCOUNT when the account already maps to another org", async () => {
+			const orgA = await t.run((ctx) =>
+				createTestOrg(ctx, { clerkUserId: "user_a", clerkOrgId: "org_a" })
+			);
+			const orgB = await t.run((ctx) =>
+				createTestOrg(ctx, { clerkUserId: "user_b", clerkOrgId: "org_b" })
+			);
+			await t.run((ctx) =>
+				ctx.db.patch(orgB.orgId, { stripeConnectAccountId: "acct_X" })
+			);
 			await expect(
-				asUserA.mutation(
-					api.organizations.setStripeConnectAccountIdInternal,
-					{ accountId: "acct_X" }
-				)
+				t.mutation(internal.organizations.bindStripeConnectAccountInternal, {
+					orgId: orgA.orgId,
+					accountId: "acct_X",
+				})
 			).rejects.toThrowError(/DUPLICATE_CONNECT_ACCOUNT/);
+			const saved = await t.run((ctx) => ctx.db.get(orgA.orgId));
+			expect(saved?.stripeConnectAccountId).toBeUndefined();
 		});
 
-		it("allows re-setting the same accountId on the SAME org (idempotent)", async () => {
-			const { orgId } = await t.run(async (ctx) => {
-				const userId = await ctx.db.insert("users", {
-					name: "Owner",
-					email: "owner@example.com",
-					image: "https://example.com/o.jpg",
-					externalId: "user_idemp",
-				});
-				const orgId = await ctx.db.insert("organizations", {
-					clerkOrganizationId: "org_idemp",
-					name: "Idempotent Org",
-					ownerUserId: userId,
-					stripeConnectAccountId: "acct_self",
-				});
-				await ctx.db.insert("organizationMemberships", {
-					orgId,
-					userId,
-					role: "admin",
-				});
-				return { orgId };
-			});
-
-			const asUser = t.withIdentity({
-				subject: "user_idemp",
-				activeOrgId: "org_idemp",
-			});
-
-			await asUser.mutation(
-				api.organizations.setStripeConnectAccountIdInternal,
-				{ accountId: "acct_self" }
+		it("re-binding the same account to the same org is idempotent", async () => {
+			const org = await t.run((ctx) => createTestOrg(ctx));
+			await t.run((ctx) =>
+				ctx.db.patch(org.orgId, { stripeConnectAccountId: "acct_self" })
 			);
+			await t.mutation(internal.organizations.bindStripeConnectAccountInternal, {
+				orgId: org.orgId,
+				accountId: "acct_self",
+			});
+			const saved = await t.run((ctx) => ctx.db.get(org.orgId));
+			expect(saved?.stripeConnectAccountId).toBe("acct_self");
+		});
+	});
 
-			const org = await t.run((ctx) => ctx.db.get(orgId));
-			expect(org?.stripeConnectAccountId).toBe("acct_self");
+	describe("clearStripeConnectStateInternal", () => {
+		it("clears cached readiness but keeps the account id", async () => {
+			const org = await t.run((ctx) => createTestOrg(ctx));
+			await t.run((ctx) =>
+				ctx.db.patch(org.orgId, {
+					stripeConnectAccountId: "acct_clear",
+					stripeChargesEnabled: true,
+					stripePayoutsEnabled: true,
+					stripeExternalAccountLast4: "4242",
+				})
+			);
+			await t.mutation(internal.organizations.clearStripeConnectStateInternal, {
+				orgId: org.orgId,
+			});
+			const saved = await t.run((ctx) => ctx.db.get(org.orgId));
+			expect(saved?.stripeConnectAccountId).toBe("acct_clear");
+			expect(saved?.stripeChargesEnabled).toBeUndefined();
+			expect(saved?.stripePayoutsEnabled).toBeUndefined();
+			expect(saved?.stripeExternalAccountLast4).toBeUndefined();
+		});
+	});
+
+	describe("payout readiness comes from payouts, not transfers", () => {
+		it("a v1 `transfers` capability event does not touch stripePayoutsEnabled", async () => {
+			const org = await t.run((ctx) => createTestOrg(ctx));
+			await t.run((ctx) =>
+				ctx.db.patch(org.orgId, {
+					stripeConnectAccountId: "acct_cap",
+					stripePayoutsEnabled: true,
+				})
+			);
+			await t.mutation(internal.organizations.updateStripeCapabilityInternal, {
+				orgId: org.orgId,
+				capabilityId: "transfers",
+				status: "inactive",
+				requirementsCurrentlyDue: ["external_account"],
+				requirementsDisabledReason: "requirements.past_due",
+			});
+			const saved = await t.run((ctx) => ctx.db.get(org.orgId));
+			expect(saved?.stripePayoutsEnabled).toBe(true);
+			const notifications = await t.run((ctx) =>
+				ctx.db.query("notifications").collect()
+			);
+			expect(notifications).toHaveLength(0);
 		});
 
-		it("throws when non-owner member tries to set the Stripe account", async () => {
-			await t.run(async (ctx) => {
-				const ownerId = await ctx.db.insert("users", {
-					name: "Owner",
-					email: "owner-non@example.com",
-					image: "https://example.com/o.jpg",
-					externalId: "user_owner_set",
-				});
-				const memberId = await ctx.db.insert("users", {
-					name: "Member",
-					email: "member-non@example.com",
-					image: "https://example.com/m.jpg",
-					externalId: "user_member_set",
-				});
-				const orgId = await ctx.db.insert("organizations", {
-					clerkOrganizationId: "org_non_owner",
-					name: "Non-Owner Org",
-					ownerUserId: ownerId,
-				});
-				await ctx.db.insert("organizationMemberships", {
-					orgId,
-					userId: memberId,
-					role: "member",
-				});
+		it("account.updated payouts_enabled true -> false notifies capability_degraded", async () => {
+			const org = await t.run((ctx) => createTestOrg(ctx));
+			await t.run((ctx) =>
+				ctx.db.patch(org.orgId, {
+					stripeConnectAccountId: "acct_pay",
+					stripeChargesEnabled: true,
+					stripePayoutsEnabled: true,
+				})
+			);
+			await t.mutation(internal.organizations.updateStripeConnectStatusInternal, {
+				orgId: org.orgId,
+				chargesEnabled: true,
+				payoutsEnabled: false,
+				detailsSubmitted: true,
+				requirementsCurrentlyDue: ["external_account"],
+				requirementsDisabledReason: "requirements.past_due",
 			});
-
-			const asMember = t.withIdentity({
-				subject: "user_member_set",
-				activeOrgId: "org_non_owner",
-			});
-
-			await expect(
-				asMember.mutation(
-					api.organizations.setStripeConnectAccountIdInternal,
-					{ accountId: "acct_hacked" }
-				)
-			).rejects.toThrowError("NOT_ORG_OWNER");
-			});
+			const saved = await t.run((ctx) => ctx.db.get(org.orgId));
+			expect(saved?.stripePayoutsEnabled).toBe(false);
+			const notifications = await t.run((ctx) =>
+				ctx.db.query("notifications").collect()
+			);
+			expect(notifications).toHaveLength(1);
+			expect(notifications[0]?.notificationType).toBe("capability_degraded");
+			expect(notifications[0]?.message).toMatch(/payouts/i);
 		});
-
-		describe("clearStripeConnectStateInternal", () => {
-			it("rejects unauthenticated callers and leaves Connect state intact", async () => {
-				const { orgId } = await t.run(async (ctx) => {
-					const userId = await ctx.db.insert("users", {
-						name: "Owner",
-						email: "owner-clear@example.com",
-						image: "https://example.com/clear.jpg",
-						externalId: "user_clear_owner",
-					});
-					const orgId = await ctx.db.insert("organizations", {
-						clerkOrganizationId: "org_clear",
-						name: "Clear Org",
-						ownerUserId: userId,
-						stripeConnectAccountId: "acct_clear",
-						stripeChargesEnabled: true,
-					});
-					await ctx.db.insert("organizationMemberships", {
-						orgId,
-						userId,
-						role: "admin",
-					});
-					return { orgId };
-				});
-
-				await expect(
-					t.mutation(api.organizations.clearStripeConnectStateInternal, {
-						orgId,
-					})
-				).rejects.toThrowError("UNAUTHORIZED");
-
-				const org = await t.run((ctx) => ctx.db.get(orgId));
-				expect(org?.stripeConnectAccountId).toBe("acct_clear");
-				expect(org?.stripeChargesEnabled).toBe(true);
-			});
-
-			it("clears Connect state for the authenticated owner org", async () => {
-				const { orgId } = await t.run(async (ctx) => {
-					const userId = await ctx.db.insert("users", {
-						name: "Owner",
-						email: "owner-clear-ok@example.com",
-						image: "https://example.com/clear-ok.jpg",
-						externalId: "user_clear_ok",
-					});
-					const orgId = await ctx.db.insert("organizations", {
-						clerkOrganizationId: "org_clear_ok",
-						name: "Clear Ok Org",
-						ownerUserId: userId,
-						stripeConnectAccountId: "acct_clear_ok",
-						stripeChargesEnabled: true,
-						stripePayoutsEnabled: true,
-					});
-					await ctx.db.insert("organizationMemberships", {
-						orgId,
-						userId,
-						role: "admin",
-					});
-					return { orgId };
-				});
-
-				const asOwner = t.withIdentity({
-					subject: "user_clear_ok",
-					activeOrgId: "org_clear_ok",
-				});
-
-				await asOwner.mutation(
-					api.organizations.clearStripeConnectStateInternal,
-					{ orgId }
-				);
-
-				const org = await t.run((ctx) => ctx.db.get(orgId));
-				expect(org?.stripeConnectAccountId).toBeUndefined();
-				expect(org?.stripeChargesEnabled).toBeUndefined();
-				expect(org?.stripePayoutsEnabled).toBeUndefined();
-			});
-		});
-
-		describe("setStripeConnectAccountId (public, REMOVED in Plan 14.2-02)", () => {
-			it("public mutation is no longer callable — convex-test rejects the path", async () => {
-				// Source-of-truth proof lives in the file itself; the grep gate in
-				// Plan 14.2-02 acceptance ensures `^export const setStripeConnectAccountId =`
-				// returns zero matches. At runtime we verify convex-test refuses to
-				// route to the missing export (api.organizations is a Proxy whose
-				// property-access cannot reliably be asserted with toBeUndefined()
-				// because pretty-format reentry hits the Proxy traps).
-				const asUser = t.withIdentity({
-					subject: "user_check",
-					activeOrgId: "org_check",
-				});
-				await expect(
-					// @ts-expect-error — deliberately invoking a removed export
-					asUser.mutation(api.organizations.setStripeConnectAccountId, {
-						accountId: "acct_anything",
-					})
-				).rejects.toThrowError(
-					/setStripeConnectAccountId|no such export|not.*function/i
-				);
-			});
-		});
+	});
 
 	describe("deleteOrganization", () => {
 		it("should delete organization when owner provides correct confirmation", async () => {

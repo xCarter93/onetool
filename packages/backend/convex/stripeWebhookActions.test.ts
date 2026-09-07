@@ -378,6 +378,34 @@ describe("stripeWebhookActions.handleEvent integration", () => {
 		expect(org?.stripePayoutsEnabled).toBe(true);
 	});
 
+	it("capability.updated with a status this build does not know leaves the cache and watermark alone", async () => {
+		const { orgId } = await seedConnectedOrg(t);
+		await t.run((ctx) => ctx.db.patch(orgId, { stripeChargesEnabled: true }));
+		const before = await t.run((ctx) => ctx.db.get(orgId));
+		const event = buildStripeEvent({
+			id: "evt_cap_unknown_status",
+			type: "capability.updated",
+			account: "acct_test_webhook",
+			created: Math.floor(Date.now() / 1000),
+			data: {
+				object: {
+					id: "card_payments",
+					object: "capability",
+					account: "acct_test_webhook",
+					status: "some_future_status",
+					requirements: { currently_due: [], disabled_reason: null },
+				} as never,
+			},
+		});
+		await t.action(
+			internal.stripeWebhookActions.handleEvent,
+			buildHandleEventArgs(event)
+		);
+		const after = await t.run((ctx) => ctx.db.get(orgId));
+		expect(after?.stripeChargesEnabled).toBe(true);
+		expect(after?.stripeStatusEventCreated).toBe(before?.stripeStatusEventCreated);
+	});
+
 	it("capability.updated advances the watermark so an older account.updated cannot undo it", async () => {
 		const { orgId } = await seedConnectedOrg(t);
 		const nowSec = Math.floor(Date.now() / 1000);
@@ -508,6 +536,56 @@ describe("stripeWebhookActions.handleEvent integration", () => {
 		expect(payment?.disputeResolvedAt).toBeTypeOf("number");
 	});
 
+	it("an update for a new dispute id reopens a payment whose earlier dispute closed", async () => {
+		const { orgId } = await seedConnectedOrg(t);
+		const { paymentId } = await seedPayment(t, {
+			orgId,
+			publicToken: "tok_disp_second",
+			paymentAmount: 90,
+			paymentIntentId: "pi_disp_second",
+		});
+		await t.action(
+			internal.stripeWebhookActions.handleEvent,
+			buildHandleEventArgs(
+				buildStripeEvent({
+					id: "evt_disp_second_closed",
+					type: "charge.dispute.closed",
+					account: "acct_test_webhook",
+					data: {
+						object: {
+							id: "dp_second_1",
+							payment_intent: "pi_disp_second",
+							status: "won",
+						} as never,
+					},
+				})
+			)
+		);
+		// The second dispute's created event is late; its update lands first.
+		await t.action(
+			internal.stripeWebhookActions.handleEvent,
+			buildHandleEventArgs(
+				buildStripeEvent({
+					id: "evt_disp_second_update",
+					type: "charge.dispute.updated",
+					account: "acct_test_webhook",
+					data: {
+						object: {
+							id: "dp_second_2",
+							payment_intent: "pi_disp_second",
+							status: "needs_response",
+						} as never,
+					},
+				})
+			)
+		);
+		const payment = await t.run((ctx) => ctx.db.get(paymentId));
+		expect(payment?.disputeId).toBe("dp_second_2");
+		expect(payment?.disputeStatus).toBe("needs_response");
+		expect(payment?.disputed).toBe(true);
+		expect(payment?.disputeResolvedAt).toBeUndefined();
+	});
+
 	it("checkout.session.expired clears the cached pending session fields", async () => {
 		const { orgId } = await seedConnectedOrg(t);
 		const { paymentId } = await seedPayment(t, {
@@ -574,6 +652,8 @@ describe("stripeWebhookActions.handleEvent integration", () => {
 		paymentIntentId: string;
 		amountCents: number;
 		amountRefundedCents: number;
+		/** Defaults to one succeeded refund for the whole refunded amount. */
+		refunds?: { id: string; amount: number; status: string }[];
 	}) {
 		return buildHandleEventArgs(
 			buildStripeEvent({
@@ -588,11 +668,415 @@ describe("stripeWebhookActions.handleEvent integration", () => {
 						amount_captured: args.amountCents,
 						amount_refunded: args.amountRefundedCents,
 						refunded: args.amountRefundedCents >= args.amountCents,
+						refunds: {
+							data: args.refunds ?? [
+								{
+									id: `re_${args.chargeId}`,
+									amount: args.amountRefundedCents,
+									status: "succeeded",
+								},
+							],
+						},
 					} as never,
 				},
 			})
 		);
 	}
+
+	it("charge.refunded lists the charge's refunds when the event omits them", async () => {
+		const { orgId } = await seedConnectedOrg(t);
+		const { paymentId } = await seedPayment(t, {
+			orgId,
+			publicToken: "tok_refund_list",
+			paymentAmount: 80,
+			paymentIntentId: "pi_refund_list",
+		});
+		await t.run((ctx) =>
+			ctx.db.patch(paymentId, { status: "paid", paidAt: Date.now() })
+		);
+		mockRefundList([{ id: "re_listed", amount: 3000, status: "succeeded" }]);
+		await t.action(
+			internal.stripeWebhookActions.handleEvent,
+			buildHandleEventArgs(
+				buildStripeEvent({
+					id: "evt_refund_list",
+					type: "charge.refunded",
+					account: "acct_test_webhook",
+					data: {
+						object: {
+							id: "ch_refund_list",
+							payment_intent: "pi_refund_list",
+							amount: 8000,
+							amount_captured: 8000,
+							amount_refunded: 3000,
+							refunded: false,
+						} as never,
+					},
+				})
+			)
+		);
+		const payment = await t.run((ctx) => ctx.db.get(paymentId));
+		expect(payment?.refundedAmount).toBe(30);
+	});
+
+	it("charge.refunded fetches the full refund list when the event's is truncated", async () => {
+		const { orgId } = await seedConnectedOrg(t);
+		const { paymentId } = await seedPayment(t, {
+			orgId,
+			publicToken: "tok_refund_more",
+			paymentAmount: 80,
+			paymentIntentId: "pi_refund_more",
+		});
+		await t.run((ctx) =>
+			ctx.db.patch(paymentId, { status: "paid", paidAt: Date.now() })
+		);
+		mockRefundList([
+			{ id: "re_more_1", amount: 1000, status: "succeeded" },
+			{ id: "re_more_2", amount: 2000, status: "succeeded" },
+		]);
+		await t.action(
+			internal.stripeWebhookActions.handleEvent,
+			buildHandleEventArgs(
+				buildStripeEvent({
+					id: "evt_refund_more",
+					type: "charge.refunded",
+					account: "acct_test_webhook",
+					data: {
+						object: {
+							id: "ch_refund_more",
+							payment_intent: "pi_refund_more",
+							amount: 8000,
+							amount_captured: 8000,
+							amount_refunded: 3000,
+							refunded: false,
+							refunds: {
+								has_more: true,
+								data: [
+									{ id: "re_more_1", amount: 1000, status: "succeeded" },
+								],
+							},
+						} as never,
+					},
+				})
+			)
+		);
+		const payment = await t.run((ctx) => ctx.db.get(paymentId));
+		expect(payment?.refundedAmount).toBe(30);
+	});
+
+	it("refund.updated (succeeded) records a bank refund that settled after creation", async () => {
+		const { orgId } = await seedConnectedOrg(t);
+		const { paymentId } = await seedPayment(t, {
+			orgId,
+			publicToken: "tok_refund_settled",
+			paymentAmount: 80,
+			paymentIntentId: "pi_refund_settled",
+		});
+		await t.run((ctx) =>
+			ctx.db.patch(paymentId, { status: "paid", paidAt: Date.now() })
+		);
+		mockRefundList([{ id: "re_settled", amount: 2000, status: "succeeded" }]);
+		await t.action(
+			internal.stripeWebhookActions.handleEvent,
+			buildHandleEventArgs(
+				buildStripeEvent({
+					id: "evt_refund_settled",
+					type: "refund.updated",
+					account: "acct_test_webhook",
+					data: {
+						object: {
+							id: "re_settled",
+							payment_intent: "pi_refund_settled",
+							charge: "ch_refund_settled",
+							amount: 2000,
+							status: "succeeded",
+						} as never,
+					},
+				})
+			)
+		);
+		const { payment, ledger } = await t.run(async (ctx) => ({
+			payment: await ctx.db.get(paymentId),
+			ledger: (await ctx.db.query("stripeRefunds").collect()).find(
+				(r) => r.refundId === "re_settled"
+			),
+		}));
+		expect(payment?.refundedAmount).toBe(20);
+		expect(ledger?.status).toBe("succeeded");
+	});
+
+	it("charge.refunded that lands before payment_intent.succeeded is parked, then replayed once the payment settles", async () => {
+		const accountId = "acct_test_webhook";
+		const { orgId } = await seedConnectedOrg(t);
+		const { invoiceId, paymentId } = await seedPayment(t, {
+			orgId,
+			publicToken: "tok_refund_early",
+			paymentAmount: 200,
+		});
+		await t.run((ctx) =>
+			ctx.db.patch(paymentId, { pendingPaymentIntentId: "pi_refund_early" })
+		);
+
+		const early = await t.action(
+			internal.stripeWebhookActions.handleEvent,
+			refundedChargeEvent({
+				eventId: "evt_refund_early",
+				chargeId: "ch_refund_early",
+				paymentIntentId: "pi_refund_early",
+				amountCents: 20000,
+				amountRefundedCents: 6000,
+			})
+		);
+		expect(early.orgFound).toBe(true);
+		const parked = await t.run(async (ctx) =>
+			(await ctx.db.query("stripeWebhookEvents").collect()).find(
+				(r) => r.stripeEventId === "evt_refund_early"
+			)
+		);
+		expect(parked?.status).toBe("unresolved");
+		expect(parked?.paymentIntentId).toBe("pi_refund_early");
+		expect((await t.run((ctx) => ctx.db.get(paymentId)))?.refundedAmount).toBeUndefined();
+
+		__setStripeClientForTests({
+			charges: { retrieve: vi.fn().mockResolvedValue({}) },
+		} as unknown as Parameters<typeof __setStripeClientForTests>[0]);
+		await t.action(
+			internal.stripeWebhookActions.handleEvent,
+			buildHandleEventArgs(
+				buildStripeEvent({
+					id: "evt_pi_succeeded_late",
+					type: "payment_intent.succeeded",
+					account: accountId,
+					data: {
+						object: {
+							id: "pi_refund_early",
+							amount_received: 20000,
+							latest_charge: "ch_refund_early",
+							metadata: { paymentId },
+						} as never,
+					},
+				})
+			)
+		);
+
+		const payment = await t.run((ctx) => ctx.db.get(paymentId));
+		expect(payment?.status).toBe("paid");
+		expect(payment?.stripePaymentIntentId).toBe("pi_refund_early");
+		expect(payment?.refundedAmount).toBe(60);
+		// $60 is owed again, so the invoice is not paid.
+		expect((await t.run((ctx) => ctx.db.get(invoiceId)))?.status).toBe("sent");
+		const replayed = await t.run((ctx) => ctx.db.get(parked!._id));
+		expect(replayed?.status).toBe("processed");
+	});
+
+	it("a stale charge.refunded cannot re-add a refund that already failed", async () => {
+		const { orgId } = await seedConnectedOrg(t);
+		const { paymentId } = await seedPayment(t, {
+			orgId,
+			publicToken: "tok_refund_stale",
+			paymentAmount: 120,
+			paymentIntentId: "pi_refund_stale",
+		});
+		await t.run((ctx) =>
+			ctx.db.patch(paymentId, {
+				status: "refunded",
+				refundedAt: Date.now(),
+				refundedAmount: 120,
+			})
+		);
+		mockRefundList([
+			{ id: "re_stale_ok", amount: 5000, status: "succeeded" },
+			{ id: "re_stale_fail", amount: 7000, status: "failed" },
+		]);
+		await t.action(
+			internal.stripeWebhookActions.handleEvent,
+			buildHandleEventArgs(
+				buildStripeEvent({
+					id: "evt_refund_stale_fail",
+					type: "refund.failed",
+					account: "acct_test_webhook",
+					data: {
+						object: {
+							id: "re_stale_fail",
+							payment_intent: "pi_refund_stale",
+							charge: "ch_refund_stale",
+							amount: 7000,
+							status: "failed",
+							failure_reason: "declined",
+						} as never,
+					},
+				})
+			)
+		);
+		expect((await t.run((ctx) => ctx.db.get(paymentId)))?.refundedAmount).toBe(50);
+
+		// An older snapshot in which the $70 refund was still pending.
+		await t.action(
+			internal.stripeWebhookActions.handleEvent,
+			refundedChargeEvent({
+				eventId: "evt_refund_stale_snapshot",
+				chargeId: "ch_refund_stale",
+				paymentIntentId: "pi_refund_stale",
+				amountCents: 12000,
+				amountRefundedCents: 12000,
+				refunds: [
+					{ id: "re_stale_ok", amount: 5000, status: "succeeded" },
+					{ id: "re_stale_fail", amount: 7000, status: "pending" },
+				],
+			})
+		);
+		const payment = await t.run((ctx) => ctx.db.get(paymentId));
+		expect(payment?.refundedAmount).toBe(50);
+		expect(payment?.status).toBe("paid");
+	});
+
+	it("refund.updated with status canceled reverses the refund; other statuses are ignored", async () => {
+		const { orgId } = await seedConnectedOrg(t);
+		const { paymentId } = await seedPayment(t, {
+			orgId,
+			publicToken: "tok_refund_cancel",
+			paymentAmount: 90,
+			paymentIntentId: "pi_refund_cancel",
+		});
+		await t.run((ctx) =>
+			ctx.db.patch(paymentId, {
+				status: "refunded",
+				refundedAt: Date.now(),
+				refundedAmount: 90,
+			})
+		);
+		const refundUpdated = (id: string, status: string) =>
+			buildHandleEventArgs(
+				buildStripeEvent({
+					id,
+					type: "refund.updated",
+					account: "acct_test_webhook",
+					data: {
+						object: {
+							id: "re_cancel_1",
+							payment_intent: "pi_refund_cancel",
+							charge: "ch_refund_cancel",
+							amount: 9000,
+							status,
+						} as never,
+					},
+				})
+			);
+
+		await t.action(
+			internal.stripeWebhookActions.handleEvent,
+			refundUpdated("evt_refund_upd_pending", "pending")
+		);
+		expect((await t.run((ctx) => ctx.db.get(paymentId)))?.status).toBe("refunded");
+
+		mockRefundList([{ id: "re_cancel_1", amount: 9000, status: "canceled" }]);
+		await t.action(
+			internal.stripeWebhookActions.handleEvent,
+			refundUpdated("evt_refund_upd_canceled", "canceled")
+		);
+		const payment = await t.run((ctx) => ctx.db.get(paymentId));
+		expect(payment?.status).toBe("paid");
+		expect(payment?.refundedAmount).toBeUndefined();
+		expect(payment?.revertedRefundIds).toEqual(["re_cancel_1"]);
+		const refundNotifications = await t.run(async (ctx) =>
+			(await ctx.db.query("notifications").collect()).filter(
+				(n) => n.notificationType === "refund_failed"
+			)
+		);
+		expect(refundNotifications).toHaveLength(1);
+		expect(refundNotifications[0]?.message).toContain("was canceled");
+	});
+
+	it("charge.dispute.created persists Stripe's evidence deadline and points at Payments settings", async () => {
+		const { orgId } = await seedConnectedOrg(t);
+		const { paymentId } = await seedPayment(t, {
+			orgId,
+			publicToken: "tok_disp_due",
+			paymentAmount: 75,
+			paymentIntentId: "pi_disp_due",
+		});
+		const dueBySec = Math.floor(Date.now() / 1000) + 14 * 24 * 60 * 60;
+		await t.action(
+			internal.stripeWebhookActions.handleEvent,
+			buildHandleEventArgs(
+				buildStripeEvent({
+					id: "evt_disp_due",
+					type: "charge.dispute.created",
+					account: "acct_test_webhook",
+					data: {
+						object: {
+							id: "dp_due_1",
+							payment_intent: "pi_disp_due",
+							status: "needs_response",
+							evidence_details: { due_by: dueBySec },
+						} as never,
+					},
+				})
+			)
+		);
+		const payment = await t.run((ctx) => ctx.db.get(paymentId));
+		expect(payment?.disputed).toBe(true);
+		expect(payment?.disputeStatus).toBe("needs_response");
+		expect(payment?.disputeEvidenceDueBy).toBe(dueBySec * 1000);
+		const notifications = await t.run((ctx) =>
+			ctx.db.query("notifications").collect()
+		);
+		expect(notifications).toHaveLength(1);
+		const message = notifications[0]!.message;
+		expect(message).toContain(
+			new Date(dueBySec * 1000).toLocaleString("en-US", {
+				month: "long",
+				day: "numeric",
+				year: "numeric",
+				hour: "numeric",
+				minute: "2-digit",
+				timeZone: "UTC",
+			}) + " UTC"
+		);
+		expect(message).toContain("Payments");
+		expect(message).not.toContain("7 days");
+		expect(message).not.toContain("Stripe Dashboard");
+	});
+
+	it("charge.dispute.created for an already-resolved dispute id does not reopen it", async () => {
+		const { orgId } = await seedConnectedOrg(t);
+		const { paymentId } = await seedPayment(t, {
+			orgId,
+			publicToken: "tok_disp_reopen",
+			paymentAmount: 75,
+			paymentIntentId: "pi_disp_reopen",
+		});
+		await t.run((ctx) =>
+			ctx.db.patch(paymentId, {
+				disputed: false,
+				disputeId: "dp_reopen_1",
+				disputeStatus: "won",
+				disputeResolvedAt: Date.now(),
+			})
+		);
+		await t.action(
+			internal.stripeWebhookActions.handleEvent,
+			buildHandleEventArgs(
+				buildStripeEvent({
+					id: "evt_disp_reopen",
+					type: "charge.dispute.created",
+					account: "acct_test_webhook",
+					data: {
+						object: {
+							id: "dp_reopen_1",
+							payment_intent: "pi_disp_reopen",
+							status: "needs_response",
+							evidence_details: { due_by: null },
+						} as never,
+					},
+				})
+			)
+		);
+		const payment = await t.run((ctx) => ctx.db.get(paymentId));
+		expect(payment?.disputed).toBe(false);
+		expect(payment?.disputeStatus).toBe("won");
+		expect(await t.run((ctx) => ctx.db.query("notifications").collect())).toHaveLength(0);
+	});
 
 	it("charge.refunded transitions a fully refunded payment to refunded", async () => {
 		const { orgId } = await seedConnectedOrg(t);
@@ -697,6 +1181,10 @@ describe("stripeWebhookActions.handleEvent integration", () => {
 				paymentIntentId: "pi_refund_replay",
 				amountCents: 20000,
 				amountRefundedCents: 20000,
+				refunds: [
+					{ id: "re_ch_refund_replay", amount: 5000, status: "succeeded" },
+					{ id: "re_replay_second", amount: 15000, status: "succeeded" },
+				],
 			})
 		);
 		const after = await t.run((ctx) => ctx.db.get(paymentId));
@@ -1096,7 +1584,7 @@ describe("stripeWebhookActions.handleEvent integration", () => {
 		expect(bankNotifs).toHaveLength(0);
 	});
 
-	it("T-14.2.1-09: capability.updated transfers active->inactive patches stripePayoutsEnabled=false + emits capability_degraded for payouts", async () => {
+	it("capability.updated transfers inactive leaves stripePayoutsEnabled untouched", async () => {
 		const accountId = "acct_test_t09";
 		const { orgId } = await seedConnectedOrg(t, { accountId });
 		await t.run((ctx) =>
@@ -1119,9 +1607,10 @@ describe("stripeWebhookActions.handleEvent integration", () => {
 			buildHandleEventArgs(event)
 		);
 
+		// Payout readiness follows account.updated's payouts_enabled, not the
+		// transfers capability; a transfers event must not flip either cache.
 		const org = await t.run((ctx) => ctx.db.get(orgId));
-		expect(org?.stripePayoutsEnabled).toBe(false);
-		// Charges cache must NOT be flipped by a transfers-capability event.
+		expect(org?.stripePayoutsEnabled).toBe(true);
 		expect(org?.stripeChargesEnabled).toBe(true);
 
 		const notifications = await t.run(async (ctx) =>
@@ -1130,13 +1619,9 @@ describe("stripeWebhookActions.handleEvent integration", () => {
 				.filter((q) => q.eq(q.field("orgId"), orgId))
 				.collect()
 		);
-		const degraded = notifications.filter(
-			(n) => n.notificationType === "capability_degraded"
-		);
-		expect(degraded).toHaveLength(1);
-		expect(degraded[0].priority).toBe("high");
-		expect(degraded[0].message).toMatch(/Stripe payouts have been disabled/);
-		expect(degraded[0].message).not.toMatch(/charges/);
+		expect(
+			notifications.filter((n) => n.notificationType === "capability_degraded")
+		).toHaveLength(0);
 	});
 
 	it("T-14.2.1-10: capability.updated with null event.account resolves org via data.object.account fallback (L-3 extension)", async () => {

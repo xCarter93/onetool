@@ -56,6 +56,9 @@ export async function POST() {
 							capture_payments: true,
 						},
 					},
+					// Required by Stripe when it collects fees directly from a
+					// dashboard-less account: tax invoices and 1099s live here.
+					documents: { enabled: true },
 				},
 			},
 			{ idempotencyKey: crypto.randomUUID() }

@@ -15,8 +15,14 @@ import { entitlementsFromIdentity, isFeatureAllowed } from "./lib/entitlements";
 import { getCurrentUserOrgIdOrNull } from "./lib/auth";
 import { emitStatusChangeEvent } from "./eventBus";
 import {
+	applyChargeRefund,
 	applyMarkPaidCascade,
 	ensureFullPaymentRow,
+	findPaymentAttempt,
+	hasStripeReference,
+	recordStripeRefunds,
+	recordUnappliedPaymentIntent,
+	releasePendingPaymentIntent,
 	reconcileInvoiceSettlement,
 } from "./lib/payments";
 import { collectedAmount, refundedAmountOf } from "./lib/paymentInsights";
@@ -333,6 +339,15 @@ export const update = userMutation({
 		const filteredUpdates = filterUndefined(updates);
 		requireUpdates(filteredUpdates);
 
+		// A live PaymentIntent is only good for the amount it was minted at.
+		if (
+			(filteredUpdates.paymentAmount !== undefined &&
+				filteredUpdates.paymentAmount !== payment.paymentAmount) ||
+			filteredUpdates.status === "cancelled"
+		) {
+			await releasePendingPaymentIntent(ctx, payment);
+		}
+
 		await ctx.db.patch(id, filteredUpdates);
 
 		// Schedule-shape changes print on the invoice PDF; status flips don't.
@@ -373,7 +388,13 @@ export const remove = userMutation({
 			throw new Error("Cannot delete a paid payment");
 		}
 
-		await ctx.db.delete(args.id);
+		// A row Stripe may still report on is tombstoned so the report can land.
+		if (await hasStripeReference(ctx, payment)) {
+			await releasePendingPaymentIntent(ctx, payment);
+			await ctx.db.patch(args.id, { status: "cancelled" });
+		} else {
+			await ctx.db.delete(args.id);
+		}
 
 		// The payment schedule prints on the invoice PDF.
 		await touchInvoiceContent(ctx, payment.invoiceId);
@@ -505,8 +526,11 @@ async function configurePaymentsHandler(
 				}
 				keptIds.add(existing._id);
 				scheduleIds.push(existing._id);
-				// Deliberately narrow: the pending Stripe caches stay, which is the
-				// whole reason a reschedule patches instead of recreating.
+				// The pending Stripe cache survives a reschedule (the point of
+				// patching instead of recreating) unless the amount moved.
+				if (paymentData.paymentAmount !== existing.paymentAmount) {
+					await releasePendingPaymentIntent(ctx, existing);
+				}
 				await ctx.db.patch(existing._id, {
 					paymentAmount: paymentData.paymentAmount,
 					dueDate: paymentData.dueDate,
@@ -530,7 +554,13 @@ async function configurePaymentsHandler(
 		}
 
 		for (const dropped of editablePayments) {
-			if (!keptIds.has(dropped._id)) await ctx.db.delete(dropped._id);
+			if (keptIds.has(dropped._id)) continue;
+			if (await hasStripeReference(ctx, dropped)) {
+				await releasePendingPaymentIntent(ctx, dropped);
+				await ctx.db.patch(dropped._id, { status: "cancelled" });
+			} else {
+				await ctx.db.delete(dropped._id);
+			}
 		}
 
 		// invoice.dueDate is the schedule's final deadline, so it follows the rows.
@@ -757,11 +787,6 @@ export const recordManualPayment = userMutation({
 			recordedOutsidePortal: true,
 			manualMethod: args.method,
 			manualNote: args.note?.trim() || undefined,
-			// Drop any stale in-flight Stripe cache so the portal can't resume a
-			// mint against a now-settled row (mirrors settleOutstandingPayments).
-			pendingPaymentIntentId: undefined,
-			pendingPaymentIntentClientSecret: undefined,
-			pendingPaymentIntentExpiresAt: undefined,
 			pendingCheckoutSessionId: undefined,
 			pendingCheckoutSessionUrl: undefined,
 			pendingCheckoutSessionExpiresAt: undefined,
@@ -781,6 +806,8 @@ export const recordManualPayment = userMutation({
 		};
 		for (const row of outstanding) {
 			if (left <= 0) break;
+			// Settling by hand retires any card/ACH intent still open on the row.
+			await releasePendingPaymentIntent(ctx, row);
 			const rowAmount = roundCents(row.paymentAmount);
 			if (left >= rowAmount) {
 				await ctx.db.patch(row._id, settle);
@@ -1044,6 +1071,31 @@ export const checkLlmAccess = mutation({
  * Lookup a payment by Stripe PaymentIntent within an org.
  */
 // Raw internalQuery — no factory variant exists; if exposing user-scoped data, prefer userQuery.
+/**
+ * Resolve a PaymentIntent to its installment: the settling intent lives on the
+ * row itself, every other intent ever minted for the row is on the ledger.
+ */
+async function findPaymentByPaymentIntent(
+	ctx: QueryCtx,
+	orgId: Id<"organizations">,
+	paymentIntentId: string
+): Promise<PaymentDocument | null> {
+	const settled = await ctx.db
+		.query("payments")
+		.withIndex("by_org_payment_intent", (q) =>
+			q.eq("orgId", orgId).eq("stripePaymentIntentId", paymentIntentId)
+		)
+		.first();
+	if (settled) return settled;
+	const attempt = await ctx.db
+		.query("stripePaymentAttempts")
+		.withIndex("by_org_payment_intent", (q) =>
+			q.eq("orgId", orgId).eq("paymentIntentId", paymentIntentId)
+		)
+		.unique();
+	return attempt ? await ctx.db.get(attempt.paymentId) : null;
+}
+
 export const getByPaymentIntentIdInternal = internalQuery({
 	args: {
 		orgId: v.id("organizations"),
@@ -1051,14 +1103,11 @@ export const getByPaymentIntentIdInternal = internalQuery({
 	},
 	returns: v.union(v.null(), v.object({ _id: v.id("payments") })),
 	handler: async (ctx, args) => {
-		const payment = await ctx.db
-			.query("payments")
-			.withIndex("by_org_payment_intent", (q) =>
-				q
-					.eq("orgId", args.orgId)
-					.eq("stripePaymentIntentId", args.paymentIntentId)
-			)
-			.first();
+		const payment = await findPaymentByPaymentIntent(
+			ctx,
+			args.orgId,
+			args.paymentIntentId
+		);
 		return payment ? { _id: payment._id } : null;
 	},
 });
@@ -1174,9 +1223,11 @@ export const markPaidFromWebhookInternal = systemMutation({
 export const persistPendingPaymentIntentInternal = internalMutation({
 	args: {
 		paymentId: v.id("payments"),
+		stripeAccountId: v.string(),
 		pendingPaymentIntentId: v.string(),
 		pendingPaymentIntentClientSecret: v.string(),
 		pendingPaymentIntentExpiresAt: v.number(),
+		amount: v.number(),
 	},
 	returns: v.null(),
 	handler: async (ctx, args): Promise<null> => {
@@ -1184,11 +1235,35 @@ export const persistPendingPaymentIntentInternal = internalMutation({
 		if (!payment) {
 			throw new ConvexError({ code: "PAYMENT_NOT_FOUND" });
 		}
+		const now = Date.now();
+		// The portal cancels the prior intent on Stripe before minting; only one
+		// attempt per row is ever open.
+		const openAttempts = await ctx.db
+			.query("stripePaymentAttempts")
+			.withIndex("by_payment", (q) => q.eq("paymentId", payment._id))
+			.collect();
+		for (const attempt of openAttempts) {
+			if (attempt.status === "open" && attempt.paymentIntentId !== args.pendingPaymentIntentId) {
+				await ctx.db.patch(attempt._id, { status: "canceled", resolvedAt: now });
+			}
+		}
 		await ctx.db.patch(payment._id, {
 			pendingPaymentIntentId: args.pendingPaymentIntentId,
 			pendingPaymentIntentClientSecret: args.pendingPaymentIntentClientSecret,
 			pendingPaymentIntentExpiresAt: args.pendingPaymentIntentExpiresAt,
 		});
+		if (!(await findPaymentAttempt(ctx, payment.orgId, args.pendingPaymentIntentId))) {
+			await ctx.db.insert("stripePaymentAttempts", {
+				orgId: payment.orgId,
+				paymentId: payment._id,
+				invoiceId: payment.invoiceId,
+				stripeAccountId: args.stripeAccountId,
+				paymentIntentId: args.pendingPaymentIntentId,
+				amount: args.amount,
+				status: "open",
+				createdAt: now,
+			});
+		}
 		return null;
 	},
 });
@@ -1262,18 +1337,25 @@ export const markPaidFromPaymentIntentWebhookInternal = systemMutation({
 			);
 			return null;
 		}
-		if (payment.status === "paid") {
-			return null;
-		}
+		const amountReceived = roundCents(centsToDollars(args.amountReceived));
 		const expectedCents = dollarsToCents(payment.paymentAmount);
-		if (args.amountReceived !== expectedCents) {
-			// Deterministic for a given PI: throwing would loop ~70 Stripe
-			// retries over days without changing the outcome. Match the
-			// Checkout Session handler — log loudly and ack the event.
+		if (
+			args.amountReceived !== expectedCents &&
+			payment.stripePaymentIntentId !== args.paymentIntentId
+		) {
+			// The intent was minted for an amount this row no longer carries.
+			// Deterministic for a given PI, so ack rather than retry — but the
+			// money moved, so keep it as an unapplied attempt.
 			console.error(
 				`markPaidFromPaymentIntentInternal: amount mismatch on PI ${args.paymentIntentId} — ` +
 					`expected ${expectedCents} cents, got ${args.amountReceived} cents. ` +
-					`Payment left in status=${payment.status}; investigate manually.`
+					`Payment left in status=${payment.status}.`
+			);
+			await recordUnappliedPaymentIntent(
+				ctx,
+				payment,
+				args.paymentIntentId,
+				amountReceived
 			);
 			return null;
 		}
@@ -1281,6 +1363,7 @@ export const markPaidFromPaymentIntentWebhookInternal = systemMutation({
 			paymentId: payment._id,
 			stripePaymentIntentId: args.paymentIntentId,
 			source: "webhook-pi",
+			amountReceived,
 			receiptMetadata: {
 				cardBrand: args.cardBrand,
 				cardLast4: args.cardLast4,
@@ -1292,77 +1375,59 @@ export const markPaidFromPaymentIntentWebhookInternal = systemMutation({
 });
 
 /**
- * Mark a payment refunded from a Stripe webhook.
+ * Record a charge's refunds on its payment. Stripe does not order events, so
+ * a refund can arrive before the intent's success: the caller parks it
+ * (`unresolved`) and the paid cascade replays it once the row settles.
  */
 export const markRefundedFromWebhookInternal = systemMutation({
 	args: {
 		paymentIntentId: v.string(),
 		refundedAt: v.number(),
-		/** charge.amount_refunded, cumulative across every refund on the charge. */
-		refundedAmountCents: v.number(),
-		/** charge.refunded, or amount_refunded covering the captured amount. */
-		fullyRefunded: v.boolean(),
+		refunds: v.array(
+			v.object({ id: v.string(), amountCents: v.number(), status: v.string() })
+		),
 	},
-	returns: v.null(),
-	handler: async (ctx, args): Promise<null> => {
-		const payment = await ctx.db
-			.query("payments")
-			.withIndex("by_org_payment_intent", (q) =>
-				q
-					.eq("orgId", ctx.orgId)
-					.eq("stripePaymentIntentId", args.paymentIntentId)
-			)
-			.first();
-		if (!payment) {
-			console.warn(
-				`markRefundedFromWebhookInternal: no payment for PI ${args.paymentIntentId}`
-			);
-			return null;
-		}
-
-		const alreadyRefunded = refundedAmountOf(payment);
-		const refundedAmount = roundCents(centsToDollars(args.refundedAmountCents));
-		// The cumulative value makes the write itself idempotent; bailing when it
-		// hasn't grown is what keeps a replay from re-notifying.
-		if (refundedAmount <= alreadyRefunded) return null;
-
-		const fully =
-			args.fullyRefunded || refundedAmount >= roundCents(payment.paymentAmount);
-		await ctx.db.patch(payment._id, {
-			refundedAmount,
-			refundedAt: args.refundedAt,
-			...(fully ? { status: "refunded" as const } : {}),
-		});
-
-		// An invoice is paid iff its balance is zero, so a refund that reopens a
-		// balance sends it back to sent — and emits, so dunning can pick it up.
-		await reconcileInvoiceSettlement(
+	returns: v.object({ unresolved: v.boolean() }),
+	handler: async (ctx, args): Promise<{ unresolved: boolean }> => {
+		const payment = await findPaymentByPaymentIntent(
 			ctx,
-			payment.invoiceId,
-			"stripeWebhookActions.charge.refunded"
+			ctx.orgId,
+			args.paymentIntentId
 		);
-
-		const invoice = await ctx.db.get(payment.invoiceId);
-		const thisRefund = roundCents(refundedAmount - alreadyRefunded);
-		const stillCollected = roundCents(payment.paymentAmount - refundedAmount);
-		await ctx.runMutation(
-			internal.notifications.createWebhookNotificationInternal,
-			{
-				orgId: ctx.orgId,
-				type: "charge_refunded",
-				paymentId: payment._id,
-				priority: "normal",
-				message:
-					`${formatCurrency(thisRefund)} was refunded on invoice ` +
-					`${invoice?.invoiceNumber ?? "(unknown)"}. ` +
-					(fully
-						? "That payment no longer counts as collected."
-						: `${formatCurrency(stillCollected)} of that payment still counts as collected.`),
-			}
-		);
-		return null;
+		if (payment?.unappliedStripePaymentIntentIds?.includes(args.paymentIntentId)) {
+			// That money was never counted here, so there is nothing to reverse.
+			console.warn(
+				`markRefundedFromWebhookInternal: refund on unapplied PI ${args.paymentIntentId}`
+			);
+			return { unresolved: false };
+		}
+		if (!payment || payment.stripePaymentIntentId !== args.paymentIntentId) {
+			return { unresolved: true };
+		}
+		await applyChargeRefund(ctx, payment._id, {
+			refundedAt: args.refundedAt,
+			refunds: args.refunds,
+		});
+		return { unresolved: false };
 	},
 });
+
+const DISPUTE_SETTINGS_PATH = "/organization/profile?tab=payments";
+
+// Stated in UTC so this matches the deadline Stripe enforces; the workspace UI
+// shows the same instant in the reader's zone.
+function formatDeadline(ms: number): string {
+	return (
+		new Date(ms).toLocaleString("en-US", {
+			month: "long",
+			day: "numeric",
+			year: "numeric",
+			hour: "numeric",
+			minute: "2-digit",
+			timeZone: "UTC",
+		}) + " UTC"
+	);
+}
 
 /**
  * Mark a payment disputed and notify the org owner.
@@ -1371,33 +1436,39 @@ export const flagDisputedFromWebhookInternal = systemMutation({
 	args: {
 		paymentIntentId: v.string(),
 		disputeId: v.string(),
+		disputeStatus: v.optional(v.string()),
+		/** Stripe's evidence_details.due_by, in ms. */
+		evidenceDueBy: v.optional(v.number()),
 	},
 	returns: v.null(),
 	handler: async (ctx, args): Promise<null> => {
-		const payment = await ctx.db
-			.query("payments")
-			.withIndex("by_org_payment_intent", (q) =>
-				q
-					.eq("orgId", ctx.orgId)
-					.eq("stripePaymentIntentId", args.paymentIntentId)
-			)
-			.first();
+		const payment = await findPaymentByPaymentIntent(
+			ctx,
+			ctx.orgId,
+			args.paymentIntentId
+		);
 		if (!payment) {
 			console.warn(
 				`flagDisputedFromWebhookInternal: no payment for PI ${args.paymentIntentId}`
 			);
 			return null;
 		}
+		// A replayed created event must not reopen a dispute that already closed.
+		if (
+			payment.disputeId === args.disputeId &&
+			payment.disputeResolvedAt !== undefined
+		) {
+			return null;
+		}
 
 		await ctx.db.patch(payment._id, {
 			disputed: true,
 			disputeId: args.disputeId,
+			disputeStatus: args.disputeStatus,
+			disputeEvidenceDueBy: args.evidenceDueBy,
 			// A new dispute id restarts the lifecycle; stale resolution fields from
 			// a prior dispute would trip syncDisputeFromWebhookInternal's guard.
-			...(payment.disputeId !== undefined &&
-			payment.disputeId !== args.disputeId
-				? { disputeStatus: undefined, disputeResolvedAt: undefined }
-				: {}),
+			disputeResolvedAt: undefined,
 		});
 
 		// Workflow automations get notified; status itself doesn't change.
@@ -1411,6 +1482,7 @@ export const flagDisputedFromWebhookInternal = systemMutation({
 			"stripeWebhookActions.charge.dispute.created"
 		);
 
+		const invoice = await ctx.db.get(payment.invoiceId);
 		await ctx.runMutation(
 			internal.notifications.createWebhookNotificationInternal,
 			{
@@ -1419,9 +1491,13 @@ export const flagDisputedFromWebhookInternal = systemMutation({
 				paymentId: payment._id,
 				priority: "high",
 				message:
-					`A dispute (${args.disputeId}) was filed on a payment. ` +
-					`You have 7 days from the dispute date to respond via the Stripe Dashboard ` +
-					`or the dispute defaults to lost. Review immediately.`,
+					`A dispute (${args.disputeId}) was filed on a payment for invoice ` +
+					`${invoice?.invoiceNumber ?? "(unknown)"}. ` +
+					(args.evidenceDueBy !== undefined
+						? `Submit evidence by ${formatDeadline(args.evidenceDueBy)} `
+						: `Submit evidence before Stripe's deadline `) +
+					`or the dispute defaults to lost. Respond under Settings > Payments > Disputes ` +
+					`(${DISPUTE_SETTINGS_PATH}).`,
 			}
 		);
 		return null;
@@ -1441,17 +1517,15 @@ export const syncDisputeFromWebhookInternal = systemMutation({
 		disputeStatus: v.string(),
 		closed: v.boolean(),
 		resolvedAt: v.optional(v.number()),
+		evidenceDueBy: v.optional(v.number()),
 	},
 	returns: v.null(),
 	handler: async (ctx, args): Promise<null> => {
-		const payment = await ctx.db
-			.query("payments")
-			.withIndex("by_org_payment_intent", (q) =>
-				q
-					.eq("orgId", ctx.orgId)
-					.eq("stripePaymentIntentId", args.paymentIntentId)
-			)
-			.first();
+		const payment = await findPaymentByPaymentIntent(
+			ctx,
+			ctx.orgId,
+			args.paymentIntentId
+		);
 		if (!payment) {
 			console.warn(
 				`syncDisputeFromWebhookInternal: no payment for PI ${args.paymentIntentId}`
@@ -1472,16 +1546,24 @@ export const syncDisputeFromWebhookInternal = systemMutation({
 
 		const won = args.disputeStatus === "won";
 		const lost = args.disputeStatus === "lost";
+		// A new dispute's first event may be an update (delivery order is not
+		// guaranteed); it must not inherit the previous dispute's resolution.
+		const reopened = !args.closed && payment.disputeId !== args.disputeId;
 
 		await ctx.db.patch(payment._id, {
 			disputeId: args.disputeId,
 			disputeStatus: args.disputeStatus,
+			...(args.evidenceDueBy !== undefined
+				? { disputeEvidenceDueBy: args.evidenceDueBy }
+				: {}),
 			...(args.closed
 				? {
 						disputed: lost,
 						disputeResolvedAt: args.resolvedAt ?? Date.now(),
 					}
-				: {}),
+				: reopened
+					? { disputed: true, disputeResolvedAt: undefined }
+					: {}),
 		});
 
 		if (!args.closed) return null;
@@ -1519,10 +1601,11 @@ export const syncDisputeFromWebhookInternal = systemMutation({
 });
 
 /**
- * Revert a payment when an initiated refund later fails (charge.refund.updated
- * with refund.status === "failed", e.g. bank-transfer-backed refunds). The caller
- * supplies what Stripe still counts as refunded on the charge; this only ever
- * lowers `refundedAmount` toward it, since charge.refunded owns every increase.
+ * Revert a payment when an initiated refund later fails or is canceled
+ * (refund.failed / refund.updated, plus the deprecated charge.refund.updated).
+ * The caller supplies what Stripe still counts as refunded on the charge; this
+ * only ever lowers `refundedAmount` toward it, since charge.refunded owns every
+ * increase.
  */
 export const revertFailedRefundFromWebhookInternal = systemMutation({
 	args: {
@@ -1531,23 +1614,28 @@ export const revertFailedRefundFromWebhookInternal = systemMutation({
 		/** Sum of every refund on the charge Stripe still counts as standing. */
 		netRefundedAmountCents: v.number(),
 		failureReason: v.optional(v.string()),
+		canceled: v.optional(v.boolean()),
 	},
 	returns: v.null(),
 	handler: async (ctx, args): Promise<null> => {
-		const payment = await ctx.db
-			.query("payments")
-			.withIndex("by_org_payment_intent", (q) =>
-				q
-					.eq("orgId", ctx.orgId)
-					.eq("stripePaymentIntentId", args.paymentIntentId)
-			)
-			.first();
+		const payment = await findPaymentByPaymentIntent(
+			ctx,
+			ctx.orgId,
+			args.paymentIntentId
+		);
 		if (!payment) {
 			console.warn(
 				`revertFailedRefundFromWebhookInternal: no payment for PI ${args.paymentIntentId}`
 			);
 			return null;
 		}
+		await recordStripeRefunds(ctx, payment, [
+			{
+				id: args.refundId,
+				amountCents: 0,
+				status: args.canceled ? "canceled" : "failed",
+			},
+		]);
 		// Webhooks are at-least-once; the id is what stops a redelivery re-notifying.
 		const reverted = payment.revertedRefundIds ?? [];
 		if (reverted.includes(args.refundId)) return null;
@@ -1590,7 +1678,7 @@ export const revertFailedRefundFromWebhookInternal = systemMutation({
 				paymentId: payment._id,
 				priority: "high",
 				message:
-					`Refund ${args.refundId} failed` +
+					`Refund ${args.refundId} ${args.canceled ? "was canceled" : "failed"}` +
 					(args.failureReason ? ` (${args.failureReason})` : "") +
 					` and the money was not returned to your client. ` +
 					(gaveMoneyBack
@@ -1646,6 +1734,7 @@ export const cancel = userMutation({
 			throw new Error("Cannot cancel a paid payment");
 		}
 
+		await releasePendingPaymentIntent(ctx, payment);
 		await ctx.db.patch(args.id, {
 			status: "cancelled",
 		});

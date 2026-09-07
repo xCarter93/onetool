@@ -20,15 +20,18 @@ import {
 	Settings2,
 	ListChecks,
 	Landmark,
+	FileText,
+	CircleAlert,
 } from "lucide-react";
 import {
 	ConnectPayouts,
 	ConnectDisputesList,
+	ConnectDocuments,
 	ConnectAccountManagement,
 	ConnectNotificationBanner,
 	ConnectComponentsProvider,
 } from "@stripe/react-connect-js";
-import type { StripeConnectInstance } from "@stripe/connect-js";
+import type { LoadError } from "@stripe/connect-js";
 
 import { cn } from "@/lib/utils";
 import { StatusBadge } from "@/components/domain/status-badge";
@@ -38,7 +41,10 @@ import { LearnMoreLink } from "@/components/help/learn-more";
 import { useToast } from "@/hooks/use-toast";
 import { logError, getUserFriendlyErrorMessage } from "@/lib/error-logger";
 import { formatRelativeTime } from "@/lib/notification-utils";
-import { StripeConnectProvider } from "@/components/stripe/StripeConnectProvider";
+import {
+	StripeConnectProvider,
+	type StripeConnectSession,
+} from "@/components/stripe/StripeConnectProvider";
 import {
 	Frame,
 	FrameHeader,
@@ -53,6 +59,7 @@ import {
 	RequirementsSummary,
 	FeeDisclosureTable,
 	StripeDocLinks,
+	usePlatformFee,
 } from "@/components/stripe/payments-tab";
 import { useOrgOwner } from "../_hooks/use-org-owner";
 import {
@@ -68,17 +75,26 @@ export function PaymentsTab() {
 
 	const [statusLoading, setStatusLoading] = useState(false);
 	const [payoutsOpen, setPayoutsOpen] = useState(false);
-	const [disputesOpen, setDisputesOpen] = useState(false);
+	// Dispute notifications deep-link here with ?section=disputes.
+	const [disputesOpen, setDisputesOpen] = useState(
+		() => searchParams.get("section") === "disputes",
+	);
+	const [documentsOpen, setDocumentsOpen] = useState(false);
 	const [accountMgmtOpen, setAccountMgmtOpen] = useState(false);
 	const [bannerNoticeCount, setBannerNoticeCount] = useState(0);
 	const [stripeStatus, setStripeStatus] = useState<StripeAccountStatus | null>(
 		null,
 	);
+	const platformFee = usePlatformFee();
 	const onboardingComplete = Boolean(
 		stripeStatus?.detailsSubmitted &&
 			stripeStatus?.chargesEnabled &&
 			stripeStatus?.payoutsEnabled,
 	);
+	// Stripe's management surfaces belong to any account that has been through
+	// onboarding, even one restricted later — a dispute deadline doesn't wait
+	// for re-verification. Only taking new payments depends on charges.
+	const hasSubmittedAccount = Boolean(stripeStatus?.detailsSubmitted);
 
 	// Clear cached Stripe status if the active organization changes underneath us.
 	const lastOrganizationId = useRef<string | null>(null);
@@ -200,7 +216,7 @@ export function PaymentsTab() {
 
 	const connectAccountId = organization?.stripeConnectAccountId;
 
-	const renderTab = (connectInstance: StripeConnectInstance | null) => (
+	const renderTab = (session: StripeConnectSession) => (
 		// pb-4 reserves room for the floating collapse toggle on the last frame.
 		<div className="space-y-6 pb-4">
 			<SectionHeading
@@ -221,8 +237,9 @@ export function PaymentsTab() {
 						<p className="text-sm leading-relaxed text-foreground">
 							Start by creating a connected account. You&apos;ll be redirected
 							to Stripe&apos;s hosted onboarding to provide verification
-							details. Fees are paid by the connected account; disputes are
-							handled by Stripe.
+							details. Processing fees come out of each payment, and if a
+							client disputes a charge you submit evidence in the Disputes
+							section here before Stripe&apos;s deadline.
 						</p>
 						<Button
 							onClick={handleStartStripeOnboarding}
@@ -318,21 +335,29 @@ export function PaymentsTab() {
 					{/* Stripe-maintained requirement/risk alerts. Renders nothing unless
 					    Stripe has an open task, so the wrapper only pads once notices
 					    exist — never hide it, or the count callback would starve. */}
-					{connectInstance && (
-						<div
-							className={cn(
-								"px-(--frame-panel-header-px)",
-								bannerNoticeCount > 0 && "pb-2",
-							)}
-						>
-							<ConnectComponentsProvider connectInstance={connectInstance}>
-								<ConnectNotificationBanner
-									onNotificationsChange={({ total }) =>
-										setBannerNoticeCount(total)
-									}
-								/>
-							</ConnectComponentsProvider>
+					{session.error ? (
+						<div className="px-(--frame-panel-header-px) pb-3">
+							<SessionErrorNotice session={session} />
 						</div>
+					) : (
+						session.connectInstance && (
+							<div
+								className={cn(
+									"px-(--frame-panel-header-px)",
+									bannerNoticeCount > 0 && "pb-2",
+								)}
+							>
+								<ConnectComponentsProvider
+									connectInstance={session.connectInstance}
+								>
+									<ConnectNotificationBanner
+										onNotificationsChange={({ total }) =>
+											setBannerNoticeCount(total)
+										}
+									/>
+								</ConnectComponentsProvider>
+							</div>
+						)
 					)}
 
 					{stripeStatus && (
@@ -396,7 +421,7 @@ export function PaymentsTab() {
 									</p>
 								)}
 							</div>
-							{onboardingComplete && isOwner && (
+							{hasSubmittedAccount && isOwner && (
 								<button
 									type="button"
 									onClick={() => {
@@ -420,11 +445,10 @@ export function PaymentsTab() {
 						</FrameFooter>
 					)}
 
-					{/* Stripe-hosted management surfaces live inside this container as
-					    collapsible rows. Hidden until onboarding completes — Stripe
-					    rejects sessions for these components on restricted accounts.
+					{/* Stripe-hosted management surfaces as collapsible rows. Each loads
+					    on its own so one failing component never hides the others.
 					    Payouts keeps the change-bank scroll target id. */}
-					{onboardingComplete && isOwner && connectAccountId && (
+					{hasSubmittedAccount && isOwner && connectAccountId && (
 						<>
 							<ConnectSection
 								id="payouts"
@@ -433,22 +457,36 @@ export function PaymentsTab() {
 								description="Payout schedule, history, and instant or manual payouts."
 								open={payoutsOpen}
 								onToggle={() => setPayoutsOpen((v) => !v)}
-								connectInstance={connectInstance}
+								session={session}
 								loadingLabel="Loading payouts..."
 							>
-								<ConnectPayouts />
+								{(onLoadError) => <ConnectPayouts onLoadError={onLoadError} />}
 							</ConnectSection>
 							<ConnectSection
 								id="disputes"
 								icon={<ShieldAlert className="size-4" aria-hidden="true" />}
 								title="Disputes"
-								description="Respond to chargebacks — submit evidence, accept, or refund to resolve."
+								description="Respond to chargebacks before the evidence deadline — submit evidence, accept, or refund to resolve."
 								open={disputesOpen}
 								onToggle={() => setDisputesOpen((v) => !v)}
-								connectInstance={connectInstance}
+								session={session}
 								loadingLabel="Loading disputes..."
 							>
-								<ConnectDisputesList />
+								{(onLoadError) => (
+									<ConnectDisputesList onLoadError={onLoadError} />
+								)}
+							</ConnectSection>
+							<ConnectSection
+								id="documents"
+								icon={<FileText className="size-4" aria-hidden="true" />}
+								title="Tax documents"
+								description="Download Stripe's fee invoices and 1099 tax forms for this account."
+								open={documentsOpen}
+								onToggle={() => setDocumentsOpen((v) => !v)}
+								session={session}
+								loadingLabel="Loading documents..."
+							>
+								{(onLoadError) => <ConnectDocuments onLoadError={onLoadError} />}
 							</ConnectSection>
 							<ConnectSection
 								id="account-management"
@@ -457,10 +495,12 @@ export function PaymentsTab() {
 								description="Update the business and verification details Stripe has on file."
 								open={accountMgmtOpen}
 								onToggle={() => setAccountMgmtOpen((v) => !v)}
-								connectInstance={connectInstance}
+								session={session}
 								loadingLabel="Loading account details..."
 							>
-								<ConnectAccountManagement />
+								{(onLoadError) => (
+									<ConnectAccountManagement onLoadError={onLoadError} />
+								)}
 							</ConnectSection>
 						</>
 					)}
@@ -469,7 +509,7 @@ export function PaymentsTab() {
 
 			{/* How payments work — a self-contained interactive visual; intentionally
 			    left as its own frame so it doesn't read as a card-within-a-card. */}
-			<PaymentsFlow />
+			<PaymentsFlow platformFeeDollars={platformFee.dollars} />
 
 			{/* Fees & reference — collapsed by default; badges surface what needs
 			    attention without opening. */}
@@ -479,7 +519,7 @@ export function PaymentsTab() {
 					description="Who is charged, how much, and who sets it."
 					className={hasAccount ? undefined : "lg:col-span-2"}
 				>
-					<FeeDisclosureTable />
+					<FeeDisclosureTable platformFee={platformFee} />
 				</CollapsibleFrame>
 				{hasAccount && (
 					<CollapsibleFrame
@@ -523,11 +563,45 @@ export function PaymentsTab() {
 	if (hasAccount && isOwner && connectAccountId) {
 		return (
 			<StripeConnectProvider accountId={connectAccountId}>
-				{(connectInstance) => renderTab(connectInstance)}
+				{renderTab}
 			</StripeConnectProvider>
 		);
 	}
-	return renderTab(null);
+	return renderTab(NO_SESSION);
+}
+
+const NO_SESSION: StripeConnectSession = {
+	connectInstance: null,
+	error: null,
+	retry: () => {},
+};
+
+function SessionErrorNotice({ session }: { session: StripeConnectSession }) {
+	return (
+		<div
+			role="alert"
+			className="flex items-start gap-2.5 rounded-lg border border-destructive/25 bg-destructive/[0.05] px-3.5 py-3"
+		>
+			<CircleAlert
+				className="mt-0.5 size-4 shrink-0 text-destructive"
+				aria-hidden="true"
+			/>
+			<div className="min-w-0 flex-1 text-sm">
+				<p className="font-medium text-foreground">
+					Couldn&apos;t load Stripe&apos;s embedded tools
+				</p>
+				<p className="text-muted-foreground">{session.error}</p>
+			</div>
+			<Button
+				variant="outline"
+				size="sm"
+				onClick={session.retry}
+				className="shrink-0"
+			>
+				Try again
+			</Button>
+		</div>
+	);
 }
 
 /** Collapsible panel row inside the main status frame, hosting one Stripe
@@ -539,7 +613,7 @@ function ConnectSection({
 	description,
 	open,
 	onToggle,
-	connectInstance,
+	session,
 	loadingLabel,
 	children,
 }: {
@@ -549,10 +623,75 @@ function ConnectSection({
 	description: string;
 	open: boolean;
 	onToggle: () => void;
-	connectInstance: StripeConnectInstance | null;
+	session: StripeConnectSession;
 	loadingLabel: string;
-	children: ReactNode;
+	children: (onLoadError: (event: LoadError) => void) => ReactNode;
 }) {
+	const [loadError, setLoadError] = useState<string | null>(null);
+	// Remounting the provider subtree is how a failed component gets retried.
+	const [attempt, setAttempt] = useState(0);
+	const { connectInstance } = session;
+
+	const onLoadError = ({ error }: LoadError) => {
+		setLoadError(
+			error.message ?? "Stripe couldn't load this section for your account.",
+		);
+	};
+
+	let body: ReactNode;
+	if (session.error) {
+		// The full notice with its retry sits above in the status frame.
+		body = (
+			<p className="py-2 text-sm text-muted-foreground">
+				Stripe&apos;s tools couldn&apos;t load. Use Try again above.
+			</p>
+		);
+	} else if (loadError) {
+		body = (
+			<div
+				role="alert"
+				className="flex items-start gap-2.5 rounded-lg border border-destructive/25 bg-destructive/[0.05] px-3.5 py-3"
+			>
+				<CircleAlert
+					className="mt-0.5 size-4 shrink-0 text-destructive"
+					aria-hidden="true"
+				/>
+				<div className="min-w-0 flex-1 text-sm">
+					<p className="font-medium text-foreground">
+						{title} didn&apos;t load
+					</p>
+					<p className="text-muted-foreground">{loadError}</p>
+				</div>
+				<Button
+					variant="outline"
+					size="sm"
+					onClick={() => {
+						setLoadError(null);
+						setAttempt((n) => n + 1);
+					}}
+					className="shrink-0"
+				>
+					Try again
+				</Button>
+			</div>
+		);
+	} else if (!connectInstance) {
+		body = (
+			<div className="flex items-center justify-center py-8">
+				<Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+				<span className="ml-2 text-sm text-muted-foreground">
+					{loadingLabel}
+				</span>
+			</div>
+		);
+	} else {
+		body = (
+			<ConnectComponentsProvider key={attempt} connectInstance={connectInstance}>
+				{children(onLoadError)}
+			</ConnectComponentsProvider>
+		);
+	}
+
 	return (
 		<FramePanel className="p-0" fit>
 			<h3 id={`${id}-accordion-header`} className="sr-only">
@@ -598,18 +737,7 @@ function ConnectSection({
 			>
 				{open && (
 					<div className="border-t border-border/60 px-(--frame-panel-px) py-(--frame-panel-py)">
-						{!connectInstance ? (
-							<div className="flex items-center justify-center py-8">
-								<Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-								<span className="ml-2 text-sm text-muted-foreground">
-									{loadingLabel}
-								</span>
-							</div>
-						) : (
-							<ConnectComponentsProvider connectInstance={connectInstance}>
-								{children}
-							</ConnectComponentsProvider>
-						)}
+						{body}
 					</div>
 				)}
 			</div>

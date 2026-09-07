@@ -1,7 +1,7 @@
 import Stripe from "stripe";
 
 // Single source of truth for the backend's pinned Stripe API version.
-export const STRIPE_API_VERSION = "2026-04-22.dahlia" as const;
+export const STRIPE_API_VERSION = "2026-08-26.dahlia" as const;
 
 /**
  * Shared Stripe SDK client for the backend.

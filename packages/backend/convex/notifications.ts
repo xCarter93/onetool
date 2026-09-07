@@ -590,7 +590,8 @@ export const createWebhookNotificationInternal = systemMutation({
 			v.literal("payout_failed"),
 			v.literal("capability_degraded"),
 			v.literal("bank_account_changed"),
-			v.literal("stripe_disconnected")
+			v.literal("stripe_disconnected"),
+			v.literal("payment_unapplied")
 		),
 		paymentId: v.optional(v.id("payments")),
 		priority: v.union(v.literal("normal"), v.literal("high")),
@@ -617,6 +618,7 @@ export const createWebhookNotificationInternal = systemMutation({
 			capability_degraded: "Stripe capability disabled",
 			bank_account_changed: "Bank account updated",
 			stripe_disconnected: "Stripe account disconnected",
+			payment_unapplied: "Payment needs review",
 		};
 		const title = TITLE_BY_TYPE[args.type];
 
@@ -629,7 +631,8 @@ export const createWebhookNotificationInternal = systemMutation({
 			args.type === "dispute_created" ||
 			args.type === "dispute_resolved" ||
 			args.type === "refund_failed" ||
-			args.type === "charge_refunded";
+			args.type === "charge_refunded" ||
+			args.type === "payment_unapplied";
 		let invoiceEntityId: Id<"invoices"> | undefined;
 		if (isInvoiceEntity && args.paymentId) {
 			const payment = await ctx.db.get(args.paymentId);

@@ -8,9 +8,9 @@
  *
  * Values without the prefix are treated as legacy plaintext and pass through
  * decryptToken unchanged; they get encrypted on the next token rotation, so a
- * pre-existing connection migrates lazily within one refresh cycle. When the
- * key is unset (tests, fresh dev setups) tokens are stored as-is — production
- * compliance requires the key to be set.
+ * pre-existing connection migrates lazily within one refresh cycle. Without a
+ * key, encryptToken fails closed except under Vitest or a sandbox
+ * QUICKBOOKS_ENVIRONMENT, where tokens are stored as-is with a warning.
  *
  * Web Crypto on purpose: runs in the Convex Node runtime, the default
  * runtime, and edge-runtime tests alike. Only actions should encrypt/decrypt;
@@ -50,10 +50,22 @@ async function loadKey(): Promise<CryptoKey | null> {
 	]);
 }
 
+function plaintextFallbackAllowed(): boolean {
+	return (
+		Boolean(process.env.VITEST) ||
+		process.env.QUICKBOOKS_ENVIRONMENT === "sandbox"
+	);
+}
+
 export async function encryptToken(plaintext: string): Promise<string> {
 	if (plaintext === "") return plaintext;
 	const key = await loadKey();
 	if (!key) {
+		if (!plaintextFallbackAllowed()) {
+			throw new Error(
+				"QUICKBOOKS_TOKEN_ENC_KEY is not set; refusing to store QuickBooks tokens unencrypted outside sandbox/test"
+			);
+		}
 		if (!warnedMissingKey) {
 			warnedMissingKey = true;
 			console.warn(

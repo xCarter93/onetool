@@ -9,6 +9,7 @@ import { formatMoney } from "@/lib/portal/format";
 import { buildPortalAppearance } from "@/lib/portal/invoices/build-appearance";
 
 import { PaymentErrorBanner } from "./payment-error-banner";
+import { PaymentPendingNotice } from "./payment-pending-notice";
 import { PaymentSurface } from "./payment-surface";
 import {
 	useCreatePaymentIntent,
@@ -48,10 +49,15 @@ export function PaymentBottomSheet({
 	});
 
 	const stripePromise = useMemo<Promise<Stripe | null> | null>(() => {
-		if (pi.status !== "ready" || !pi.publishableKey || !pi.stripeAccountId)
+		if (
+			pi.status !== "ready" ||
+			pi.intentStatus !== "ready" ||
+			!pi.publishableKey ||
+			!pi.stripeAccountId
+		)
 			return null;
 		return loadStripe(pi.publishableKey, { stripeAccount: pi.stripeAccountId });
-	}, [pi.status, pi.publishableKey, pi.stripeAccountId]);
+	}, [pi.status, pi.intentStatus, pi.publishableKey, pi.stripeAccountId]);
 
 	const appearance = useMemo(() => buildPortalAppearance(), []);
 
@@ -129,6 +135,14 @@ export function PaymentBottomSheet({
 				<p className="text-[13px] text-muted-foreground">
 					Loading payment surface…
 				</p>
+			);
+		}
+		if (pi.status === "ready" && pi.intentStatus && pi.intentStatus !== "ready") {
+			return (
+				<PaymentPendingNotice
+					kind={pi.intentStatus === "processing" ? "processing" : "succeeded"}
+					paymentAmount={activePayment.paymentAmount}
+				/>
 			);
 		}
 		if (pi.status === "error" || !stripePromise || !pi.clientSecret) {

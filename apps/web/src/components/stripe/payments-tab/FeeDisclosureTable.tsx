@@ -3,6 +3,8 @@
 import React from "react";
 import { CreditCard, Sparkles, RotateCcw, AlertTriangle, Info } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { formatCurrency } from "@/lib/money";
+import type { PlatformFee } from "./use-platform-fee";
 
 type FeeRow = {
 	icon: typeof CreditCard;
@@ -11,32 +13,40 @@ type FeeRow = {
 	setBy: "Stripe" | "OneTool";
 };
 
-const FEE_ROWS: FeeRow[] = [
-	{
-		icon: CreditCard,
-		name: "Card processing",
-		desc: "2.9% + $0.30 per charge",
-		setBy: "Stripe",
-	},
-	{
-		icon: Sparkles,
-		name: "OneTool platform fee",
-		desc: "$1.00 per charge (configurable)",
-		setBy: "OneTool",
-	},
-	{
-		icon: RotateCcw,
-		name: "Refund processing",
-		desc: "Card processing fee is NOT returned",
-		setBy: "Stripe",
-	},
-	{
-		icon: AlertTriangle,
-		name: "Chargeback",
-		desc: "$15 fee + disputed amount",
-		setBy: "Stripe",
-	},
-];
+function platformFeeDescription(fee: PlatformFee): string {
+	if (fee.status === "loading") return "Loading the current fee…";
+	if (fee.dollars === 0) return "No OneTool platform fee";
+	return `${formatCurrency(fee.dollars)} per charge`;
+}
+
+function feeRows(platformFee: PlatformFee): FeeRow[] {
+	return [
+		{
+			icon: CreditCard,
+			name: "Card processing",
+			desc: "Stripe's standard US card rate is 2.9% + $0.30 per charge. International cards, currency conversion, and negotiated rates change this.",
+			setBy: "Stripe",
+		},
+		{
+			icon: Sparkles,
+			name: "OneTool platform fee",
+			desc: platformFeeDescription(platformFee),
+			setBy: "OneTool",
+		},
+		{
+			icon: RotateCcw,
+			name: "Refund processing",
+			desc: "Card processing fee is NOT returned",
+			setBy: "Stripe",
+		},
+		{
+			icon: AlertTriangle,
+			name: "Dispute (chargeback)",
+			desc: "Stripe's standard US dispute fee is $15 per dispute, on top of the disputed amount. Countering a dispute carries a separate $15 fee that Stripe refunds if you win.",
+			setBy: "Stripe",
+		},
+	];
+}
 
 function SetByTag({ setBy }: { setBy: FeeRow["setBy"] }) {
 	const isPlatform = setBy === "OneTool";
@@ -54,11 +64,11 @@ function SetByTag({ setBy }: { setBy: FeeRow["setBy"] }) {
 	);
 }
 
-export function FeeDisclosureTable() {
+export function FeeDisclosureTable({ platformFee }: { platformFee: PlatformFee }) {
 	return (
 		<section className="space-y-4" aria-label="Stripe Connect fee disclosure">
 			<div className="divide-y divide-border/60">
-				{FEE_ROWS.map((row) => (
+				{feeRows(platformFee).map((row) => (
 					<div
 						key={row.name}
 						className="flex items-start gap-3.5 py-3.5 first:pt-0 last:pb-0"
@@ -83,12 +93,11 @@ export function FeeDisclosureTable() {
 					aria-hidden="true"
 				/>
 				<p className="text-xs leading-relaxed text-muted-foreground">
-					Your connected account is liable for processing fees and
-					chargebacks. Every charge above is paid by{" "}
-					<strong className="font-semibold text-foreground">
-						your business
-					</strong>
-					; OneTool collects the platform fee as platform revenue.
+					Your connected account pays every charge above, and Stripe&apos;s
+					figures are its published US pricing, which may differ for your
+					account. If a client disputes a payment, you must submit evidence
+					in the Disputes section before Stripe&apos;s deadline or the
+					dispute is lost by default.
 				</p>
 			</div>
 		</section>

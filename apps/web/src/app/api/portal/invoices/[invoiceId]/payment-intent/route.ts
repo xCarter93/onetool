@@ -1,6 +1,7 @@
 import "server-only";
 import { type NextRequest, NextResponse } from "next/server";
 import { fetchAction } from "convex/nextjs";
+import { ConvexError } from "convex/values";
 import { api } from "@onetool/backend/convex/_generated/api";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
 import { readSessionCookie } from "@/lib/portal/cookie";
@@ -42,6 +43,33 @@ export async function POST(
 		);
 		return NextResponse.json(result);
 	} catch (err) {
+		// Transient Stripe failure: nothing was charged, so invite a retry.
+		if (
+			err instanceof ConvexError &&
+			(err.data as { code?: string })?.code === "STRIPE_UNAVAILABLE"
+		) {
+			return NextResponse.json(
+				{
+					error:
+						"Stripe is temporarily unavailable. Nothing was charged, so please try again in a moment.",
+					code: "stripe_unavailable",
+				},
+				{ status: 503 },
+			);
+		}
+		if (
+			err instanceof ConvexError &&
+			(err.data as { code?: string })?.code === "PAYMENT_NEEDS_REVIEW"
+		) {
+			return NextResponse.json(
+				{
+					error:
+						"A payment for this invoice is already being reviewed. Please contact the business before paying again.",
+					code: "needs_review",
+				},
+				{ status: 409 },
+			);
+		}
 		return mapConvexError(err);
 	}
 }

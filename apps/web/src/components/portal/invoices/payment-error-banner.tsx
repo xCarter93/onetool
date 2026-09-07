@@ -27,6 +27,10 @@ function titleFor(code: PaymentIntentErrorCode): string {
 			return "Pay via your invoice email link";
 		case "not_found":
 			return "Invoice not found";
+		case "stripe_unavailable":
+			return "Payments are temporarily unavailable";
+		case "needs_review":
+			return "This invoice needs a review first";
 		case "network":
 			return "Something went wrong";
 		case "internal":
@@ -51,6 +55,10 @@ function bodyFor(
 				return `For your security, please wait ${countdownSeconds} second${countdownSeconds === 1 ? "" : "s"} and try again.`;
 			}
 			return "For your security, please wait a moment and try again.";
+		case "stripe_unavailable":
+			return "Stripe didn't respond. Nothing was charged, so please try again in a moment.";
+		case "needs_review":
+			return `A payment for this invoice already arrived and ${businessName ?? "the business"} is reviewing it. Please contact them before paying again.`;
 		case "network":
 			return "We couldn't reach our payment processor. Please try again in a moment.";
 		case "unauthenticated":
@@ -99,7 +107,9 @@ export function PaymentErrorBanner({
 		>
 			<p className="font-medium">{titleFor(error.code)}</p>
 			<p className="mt-0.5">{body}</p>
-			{onRetry && error.code !== "rate_limited" ? (
+			{onRetry &&
+			error.code !== "rate_limited" &&
+			error.code !== "needs_review" ? (
 				<button
 					type="button"
 					onClick={onRetry}

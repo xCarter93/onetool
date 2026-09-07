@@ -470,8 +470,11 @@ function InvoicesPageContent() {
 		if (!invoiceToDelete) return;
 		// Success/error toasts + closing are owned by DeleteConfirmationModal;
 		// let errors propagate so the modal shows a single error toast.
-		await deleteInvoice({ id: invoiceToDelete.id as Id<"invoices"> });
+		const result = await deleteInvoice({
+			id: invoiceToDelete.id as Id<"invoices">,
+		});
 		setInvoiceToDelete(null);
+		return result.outcome === "cancelled" ? "cancelled" : undefined;
 	};
 
 	const columns = React.useMemo(

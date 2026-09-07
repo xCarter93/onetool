@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { Doc, Id } from "@onetool/backend/convex/_generated/dataModel";
 import { EmptyState } from "@/components/domain/empty-state";
 import { StatusBadge } from "@/components/domain/status-badge";
@@ -12,6 +13,7 @@ import {
 	Mail,
 	CheckCircle,
 	AlertCircle,
+	AlertTriangle,
 	Ban,
 } from "lucide-react";
 import { formatCalendarDate } from "@/lib/dates";
@@ -55,6 +57,49 @@ const paymentStatusConfig: Record<
 		className: "line-through opacity-60",
 	},
 };
+
+/** Stripe's evidence deadline is a real instant, not a stored calendar day. */
+function formatDeadline(ms: number): string {
+	return new Date(ms).toLocaleString("en-US", {
+		month: "short",
+		day: "numeric",
+		year: "numeric",
+		hour: "numeric",
+		minute: "2-digit",
+		timeZoneName: "short",
+	});
+}
+
+function DisputeNote({ payment }: { payment: Doc<"payments"> }) {
+	const lost = payment.disputeStatus === "lost";
+	return (
+		<p className="flex items-start gap-1.5 text-xs text-warning-foreground dark:text-warning">
+			<AlertTriangle
+				className="mt-0.5 h-3.5 w-3.5 shrink-0"
+				aria-hidden="true"
+			/>
+			<span>
+				{lost ? (
+					"Dispute lost. The funds were returned to the client."
+				) : (
+					<>
+						Disputed
+						{payment.disputeEvidenceDueBy
+							? ` · submit evidence by ${formatDeadline(payment.disputeEvidenceDueBy)}`
+							: ""}
+						.{" "}
+						<Link
+							href="/organization/profile?tab=payments&section=disputes"
+							className="font-medium underline underline-offset-2 hover:no-underline"
+						>
+							Respond in Payments
+						</Link>
+					</>
+				)}
+			</span>
+		</p>
+	);
+}
 
 interface PaymentScheduleTabProps {
 	invoiceWithPayments: {
@@ -214,6 +259,10 @@ export function PaymentScheduleTab({
 													)}
 												</span>
 											</div>
+
+											{payment.disputed && (
+												<DisputeNote payment={payment} />
+											)}
 										</div>
 									);
 								}

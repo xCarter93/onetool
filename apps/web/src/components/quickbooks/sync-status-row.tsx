@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "convex/react";
-import { AlertTriangle, CheckCircle2, Landmark } from "lucide-react";
+import { AlertTriangle, CheckCircle2, CircleDashed, Landmark } from "lucide-react";
 
 import { api } from "@onetool/backend/convex/_generated/api";
 import { DrawerField } from "@/components/shared/detail-drawer";
@@ -9,14 +9,63 @@ import { formatRelativeTime } from "@/lib/notification-utils";
 
 type QboEntityType = "client" | "invoice" | "payment";
 
+type SyncState =
+	| { kind: "hidden" }
+	| { kind: "loading" }
+	| { kind: "failed"; lastError?: string }
+	| { kind: "not_synced" }
+	| { kind: "synced"; lastSyncedAt: number; syncWarning?: string };
+
+/**
+ * Per-record sync state, scoped to this record rather than the whole error
+ * feed. A failed job wins over a stale link, so a record whose latest change
+ * failed never reads "Synced". Queued jobs have no public query yet, so an
+ * unlinked record reads "Not synced yet" rather than "Queued".
+ */
+function useSyncState(entityType: QboEntityType, localId: string): SyncState {
+	const connection = useQuery(api.quickbooks.getConnectionStatus);
+	const status = useQuery(api.quickbooks.getSyncStatus, { entityType, localId });
+
+	if (connection === undefined || status === undefined) {
+		return { kind: "loading" };
+	}
+	if (!connection || connection.status === "disconnected") {
+		return { kind: "hidden" };
+	}
+	if (status.failed) return { kind: "failed", lastError: status.failed.lastError };
+	if (!status.link) return { kind: "not_synced" };
+	return {
+		kind: "synced",
+		lastSyncedAt: status.link.lastSyncedAt,
+		syncWarning: status.link.syncWarning,
+	};
+}
+
 /** Icon + text pair shared by the sidebar row and the drawer field. */
-function SyncStatusValue({
-	lastSyncedAt,
-	syncWarning,
-}: {
-	lastSyncedAt: number;
-	syncWarning?: string;
-}) {
+function SyncStatusValue({ state }: { state: SyncState }) {
+	if (state.kind === "failed") {
+		return (
+			<span
+				className="inline-flex items-center gap-1.5 text-sm text-destructive"
+				title={state.lastError}
+			>
+				<AlertTriangle className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+				<span className="min-w-0 truncate">
+					Sync failed. See Sync issues in Integrations
+				</span>
+			</span>
+		);
+	}
+	if (state.kind === "not_synced") {
+		return (
+			<span className="inline-flex items-center gap-1.5 text-sm text-muted-foreground">
+				<CircleDashed className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+				<span className="min-w-0 truncate">Not synced yet</span>
+			</span>
+		);
+	}
+	if (state.kind !== "synced") return null;
+	const { lastSyncedAt, syncWarning } = state;
 	if (syncWarning) {
 		return (
 			<span
@@ -46,8 +95,7 @@ function SyncStatusValue({
 /**
  * Metadata row for the invoice/client detail sidebars. Matches the sidebar's
  * icon + fixed-width label + value grammar. Renders nothing while loading and
- * nothing when the org is not premium, not connected, or the record has never
- * synced (`getEntityLink` returns null in all three cases).
+ * nothing when the org is not premium or QuickBooks is not connected.
  */
 export function QuickBooksSyncRow({
 	entityType,
@@ -56,8 +104,8 @@ export function QuickBooksSyncRow({
 	entityType: QboEntityType;
 	localId: string;
 }) {
-	const link = useQuery(api.quickbooks.getEntityLink, { entityType, localId });
-	if (!link) return null;
+	const state = useSyncState(entityType, localId);
+	if (state.kind === "hidden" || state.kind === "loading") return null;
 
 	return (
 		<div className="flex items-start gap-3 py-2.5 -mx-2 px-2">
@@ -66,18 +114,15 @@ export function QuickBooksSyncRow({
 				QuickBooks
 			</span>
 			<div className="flex-1 min-w-0">
-				<SyncStatusValue
-					lastSyncedAt={link.lastSyncedAt}
-					syncWarning={link.syncWarning}
-				/>
+				<SyncStatusValue state={state} />
 			</div>
 		</div>
 	);
 }
 
 /**
- * Drawer variant: a `DrawerField` for the Details grid, or nothing when the
- * record has no QuickBooks link. Render inside a `DrawerFieldGrid`.
+ * Drawer variant: a `DrawerField` for the Details grid, or nothing when
+ * QuickBooks is not connected. Render inside a `DrawerFieldGrid`.
  */
 export function QuickBooksSyncField({
 	entityType,
@@ -86,15 +131,12 @@ export function QuickBooksSyncField({
 	entityType: QboEntityType;
 	localId: string;
 }) {
-	const link = useQuery(api.quickbooks.getEntityLink, { entityType, localId });
-	if (!link) return null;
+	const state = useSyncState(entityType, localId);
+	if (state.kind === "hidden" || state.kind === "loading") return null;
 
 	return (
 		<DrawerField label="QuickBooks">
-			<SyncStatusValue
-				lastSyncedAt={link.lastSyncedAt}
-				syncWarning={link.syncWarning}
-			/>
+			<SyncStatusValue state={state} />
 		</DrawerField>
 	);
 }

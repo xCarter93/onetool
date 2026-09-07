@@ -39,6 +39,7 @@ function ctxWithAccount(accountId: string | null): ConnectContext {
 	const orgId = "org_test" as ConnectContext["orgId"];
 	return {
 		userId,
+		userEmail: "owner@acme.test",
 		orgId,
 		stripeConnectAccountId: accountId,
 		organization: {

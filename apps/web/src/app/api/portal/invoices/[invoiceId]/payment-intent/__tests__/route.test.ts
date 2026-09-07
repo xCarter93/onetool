@@ -72,8 +72,9 @@ describe("POST /api/portal/invoices/[invoiceId]/payment-intent", () => {
 		expect(fetchActionMock).not.toHaveBeenCalled();
 	});
 
-	it("happy path: returns 200 with clientSecret + publishableKey + stripeAccountId + paymentId + amount", async () => {
+	it("happy path: returns 200 with status + clientSecret + publishableKey + stripeAccountId + paymentId + amount", async () => {
 		const payload = {
+			status: "ready",
 			clientSecret: "pi_route_secret_xyz",
 			publishableKey: "pk_test_xyz",
 			stripeAccountId: "acct_route_1",
@@ -90,6 +91,34 @@ describe("POST /api/portal/invoices/[invoiceId]/payment-intent", () => {
 		expect(fetchActionMock.mock.calls[0]![2]).toEqual({
 			token: "test-cookie-jwt",
 		});
+	});
+
+	it("passes a processing intent status through untouched", async () => {
+		const payload = {
+			status: "processing",
+			clientSecret: "pi_route_secret_xyz",
+			publishableKey: "pk_test_xyz",
+			stripeAccountId: "acct_route_1",
+			paymentId: "pay_route_1",
+			amount: 125,
+		};
+		fetchActionMock.mockResolvedValue(payload);
+		const { POST } = await import("../route");
+		const res = await POST(makeReq({}), { params });
+		expect(res.status).toBe(200);
+		expect(((await res.json()) as { status: string }).status).toBe("processing");
+	});
+
+	it("converts ConvexError code=STRIPE_UNAVAILABLE to HTTP 503 with code=stripe_unavailable", async () => {
+		fetchActionMock.mockRejectedValue(
+			new ConvexError({ code: "STRIPE_UNAVAILABLE" }),
+		);
+		const { POST } = await import("../route");
+		const res = await POST(makeReq({}), { params });
+		expect(res.status).toBe(503);
+		const json = (await res.json()) as { code: string; error: string };
+		expect(json.code).toBe("stripe_unavailable");
+		expect(json.error).toMatch(/try again/i);
 	});
 
 	it("converts ConvexError code=RATE_LIMITED to HTTP 429 with retryAfterSeconds", async () => {

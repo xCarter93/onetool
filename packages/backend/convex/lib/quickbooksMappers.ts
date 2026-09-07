@@ -102,6 +102,8 @@ export interface QboSalesItemLine {
 		ItemRef: { value: string };
 		Qty?: number;
 		UnitPrice?: number;
+		/** US AST treats an omitted TaxCodeRef as TAX; NON is the explicit no-tax signal. */
+		TaxCodeRef: { value: "TAX" | "NON" };
 	};
 }
 
@@ -200,6 +202,9 @@ export function buildQboInvoice(args: {
 }): QboInvoicePayload {
 	const { invoice, lineItems, customerQboId, defaultServiceItemQboId } = args;
 
+	const derived = deriveInvoiceAmounts(invoice, lineItems);
+	const taxCode = derived.tax > 0 ? "TAX" : "NON";
+
 	const salesLines: QboSalesItemLine[] = lineItems.map((item, index) => ({
 		DetailType: "SalesItemLineDetail",
 		Amount: roundCents(item.total),
@@ -209,10 +214,9 @@ export function buildQboInvoice(args: {
 			ItemRef: { value: item.itemQboId ?? defaultServiceItemQboId },
 			Qty: item.quantity,
 			UnitPrice: roundCents(item.unitPrice),
+			TaxCodeRef: { value: taxCode },
 		},
 	}));
-
-	const derived = deriveInvoiceAmounts(invoice, lineItems);
 
 	// Reconcile against the stored total (the number the client is billed and
 	// payments must sum to). Stored totals only diverge from `derived` for
@@ -301,6 +305,51 @@ export function buildQboPayment(args: {
 			{
 				Amount: amount,
 				LinkedTxn: [{ TxnId: args.invoiceQboId, TxnType: "Invoice" }],
+			},
+		],
+	};
+}
+
+export interface QboRefundReceiptPayload {
+	CustomerRef: { value: string };
+	DepositToAccountRef: { value: string };
+	TxnDate: string;
+	TotalAmt: number;
+	PrivateNote: string;
+	Line: QboSalesItemLine[];
+}
+
+/**
+ * Stripe refund → QBO RefundReceipt: one non-taxable service line for the
+ * refunded amount, paid out of the account the Payment was deposited to. The
+ * Stripe id lives in PrivateNote; PaymentRefNum is capped at 21 characters.
+ */
+export function buildQboRefundReceipt(args: {
+	refund: Doc<"stripeRefunds">;
+	customerQboId: string;
+	depositAccountQboId: string;
+	serviceItemQboId: string;
+	invoiceNumber: string;
+}): QboRefundReceiptPayload {
+	const amount = roundCents(args.refund.amount);
+	return {
+		CustomerRef: { value: args.customerQboId },
+		DepositToAccountRef: { value: args.depositAccountQboId },
+		TxnDate: toQboDate(args.refund.createdAt),
+		TotalAmt: amount,
+		PrivateNote: `Stripe refund ${args.refund.refundId} of the payment on invoice ${args.invoiceNumber}`,
+		Line: [
+			{
+				DetailType: "SalesItemLineDetail",
+				Amount: amount,
+				Description: `Refund on invoice ${args.invoiceNumber}`,
+				LineNum: 1,
+				SalesItemLineDetail: {
+					ItemRef: { value: args.serviceItemQboId },
+					Qty: 1,
+					UnitPrice: amount,
+					TaxCodeRef: { value: "NON" },
+				},
 			},
 		],
 	};

@@ -36,6 +36,8 @@ export const ORG_SCOPED_CASCADE_TABLES = [
 	"recurringMonthlyBillingRuns",
 	"clientMonthlyPaymentSchedules",
 	"clientMonthlyPaymentScheduleVersions",
+	"stripePaymentAttempts", // reference payments — drain before them
+	"stripeRefunds",
 	"payments",
 	"messageAttachments",
 	"teamMessages",
@@ -186,6 +188,32 @@ export async function cascadeDeleteOrgDataPage(
 		const rows = await ctx.db
 			.query(table)
 			.withIndex("by_org", (q) => q.eq("orgId", orgId))
+			.take(remaining);
+		for (const row of rows) {
+			await ctx.db.delete(row._id);
+			remaining--;
+		}
+	}
+
+	// stripePaymentAttempts
+	{
+		if (remaining <= 0) return { done: false };
+		const rows = await ctx.db
+			.query("stripePaymentAttempts")
+			.withIndex("by_org_payment_intent", (q) => q.eq("orgId", orgId))
+			.take(remaining);
+		for (const row of rows) {
+			await ctx.db.delete(row._id);
+			remaining--;
+		}
+	}
+
+	// stripeRefunds
+	{
+		if (remaining <= 0) return { done: false };
+		const rows = await ctx.db
+			.query("stripeRefunds")
+			.withIndex("by_org_refund", (q) => q.eq("orgId", orgId))
 			.take(remaining);
 		for (const row of rows) {
 			await ctx.db.delete(row._id);

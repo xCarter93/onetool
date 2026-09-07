@@ -7,7 +7,7 @@ import { Doc, Id } from "./_generated/dataModel";
 import { ActivityHelpers } from "./lib/activities";
 import { remainingBalanceLookup } from "./lib/paymentInsights";
 import { nextInvoiceNumber, reserveInvoiceNumber } from "./lib/orgCounters";
-import { ensureFullPaymentRow } from "./lib/payments";
+import { ensureFullPaymentRow, hasStripeReference } from "./lib/payments";
 import { transitionInvoice } from "./lib/invoiceTransitions";
 import {
 	validateParentAccess,
@@ -982,11 +982,26 @@ export const markPaid = userMutation({
 // TODO: Candidate for deletion if confirmed unused.
 export const remove = userMutation({
 	args: { id: v.id("invoices") },
-	handler: async (ctx, args): Promise<InvoiceId> => {
+	handler: async (
+		ctx,
+		args
+	): Promise<{ id: InvoiceId; outcome: "deleted" | "cancelled" }> => {
 		await ctx.requireLevel("invoices", "delete");
 		// Validate access + scope before any deletes (checks-before-writes).
 		const invoice = await ctx.orgEntity("invoices", args.id);
 		await ctx.requireRecordScope("invoices", () => isInvoiceInActorScope(ctx, invoice));
+
+		// A QuickBooks receivable or Stripe money trail must not be orphaned by
+		// a hard delete: cancelling runs the QBO void and intent release instead.
+		if (await isExternallyReferenced(ctx, invoice)) {
+			if (invoice.status !== "cancelled") {
+				await transitionInvoice(ctx, invoice, "cancelled", {
+					actor: { userId: ctx.user._id },
+					source: "invoices.remove",
+				});
+			}
+			return { id: args.id, outcome: "cancelled" };
+		}
 
 		// Delete line items first
 		const lineItems = await ctx.db
@@ -1004,12 +1019,58 @@ export const remove = userMutation({
 		for (const group of groups) {
 			await ctx.db.delete(group._id);
 		}
+		// Unreferenced by now (checked above), so the schedule goes with the invoice.
+		const payments = await ctx.db
+			.query("payments")
+			.withIndex("by_invoice", (q) => q.eq("invoiceId", args.id))
+			.collect();
+		for (const payment of payments) {
+			await ctx.db.delete(payment._id);
+		}
 
 		await ctx.db.delete(args.id);
 
-		return args.id;
+		return { id: args.id, outcome: "deleted" };
 	},
 });
+
+async function isExternallyReferenced(
+	ctx: MutationCtx,
+	invoice: Doc<"invoices">
+): Promise<boolean> {
+	const qboLink = await ctx.db
+		.query("quickbooksEntityLinks")
+		.withIndex("by_org_entity", (q) =>
+			q
+				.eq("orgId", invoice.orgId)
+				.eq("entityType", "invoice")
+				.eq("localId", invoice._id)
+		)
+		.first();
+	if (qboLink) return true;
+	// An export already reading this invoice can create it in QBO after the
+	// delete lands; cancelling instead lets the queue void or supersede it.
+	for (const status of ["pending", "processing"] as const) {
+		const job = await ctx.db
+			.query("quickbooksSyncJobs")
+			.withIndex("by_org_dedupe", (q) =>
+				q
+					.eq("orgId", invoice.orgId)
+					.eq("dedupeKey", `invoice:${invoice._id}`)
+					.eq("status", status)
+			)
+			.first();
+		if (job) return true;
+	}
+	const payments = await ctx.db
+		.query("payments")
+		.withIndex("by_invoice", (q) => q.eq("invoiceId", invoice._id))
+		.collect();
+	for (const payment of payments) {
+		if (await hasStripeReference(ctx, payment)) return true;
+	}
+	return false;
+}
 
 /**
  * Get overdue or soon-due invoices for the Needs Attention widget.

@@ -18,7 +18,8 @@ type ConfirmMode = "delete" | "archive" | "cancel" | "discard";
 interface DeleteConfirmationModalProps {
 	isOpen: boolean;
 	onClose: () => void;
-	onConfirm: () => void | Promise<void>;
+	/** Resolve to "cancelled" when the record was kept and cancelled instead of deleted. */
+	onConfirm: () => void | "cancelled" | Promise<void | "cancelled">;
 	title: string;
 	itemName: string;
 	itemType: string;
@@ -47,9 +48,14 @@ const DeleteConfirmationModal: React.FC<DeleteConfirmationModalProps> = ({
 
 	const handleConfirm = async () => {
 		try {
-			await onConfirm();
+			const outcome = await onConfirm();
 
-			if (mode === "archive") {
+			if (outcome === "cancelled") {
+				toast.success(
+					`${itemType} Cancelled`,
+					`"${itemName}" is linked to QuickBooks or a Stripe payment, so it was cancelled instead of deleted.`
+				);
+			} else if (mode === "archive") {
 				toast.success(
 					`${itemType} Archived`,
 					`"${itemName}" has been archived successfully. You can restore it within 7 days.`
