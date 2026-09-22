@@ -1,6 +1,7 @@
 import { register as registerAgentComponent } from "@convex-dev/agent/test";
 import { register as registerWorkpoolComponent } from "@convex-dev/workpool/test";
 import { register as registerResendComponent } from "@convex-dev/resend/test";
+import { register as registerPosthogComponent } from "@posthog/convex/test";
 import { convexTest } from "convex-test";
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
@@ -178,6 +179,8 @@ export function setupConvexTest() {
 		);
 	}
 	registerWorkpoolComponent(t, "resend/emailWorkpool");
+
+	registerPosthogComponent(t);
 
 	return t;
 }

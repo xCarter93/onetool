@@ -23,9 +23,11 @@ import {
 
 type ApplyHandler = (config: BuilderReportConfig) => void;
 
+type Applier = (config: BuilderReportConfig) => boolean;
+
 interface ReportConfigApplyValue {
 	register: (holder: RefObject<ApplyHandler>) => () => void;
-	holder: RefObject<RefObject<ApplyHandler> | null>;
+	apply: Applier;
 	/** Reactive: a report builder is mounted (drives the panel's context UI). */
 	builderMounted: boolean;
 }
@@ -51,9 +53,15 @@ export function ReportConfigApplyProvider({
 			}
 		};
 	}, []);
+	const apply = useCallback((config: BuilderReportConfig) => {
+		const handler = holder.current?.current;
+		if (!handler) return false;
+		handler(config);
+		return true;
+	}, []);
 	const value = useMemo(
-		() => ({ register, holder, builderMounted }),
-		[register, builderMounted]
+		() => ({ register, apply, builderMounted }),
+		[register, apply, builderMounted]
 	);
 	return (
 		<ReportConfigApplyContext.Provider value={value}>
@@ -83,17 +91,8 @@ export function useRegisterReportConfigApply(handler: ApplyHandler) {
 /** Returns an applier that forwards to the mounted builder; false if none.
  * Stable identity — the panel's consuming effect lists it as a dependency,
  * so a per-render closure would re-scan the whole thread on every render. */
-export function useApplyReportConfig(): (
-	config: BuilderReportConfig
-) => boolean {
-	const ctx = useContext(ReportConfigApplyContext);
-	return useCallback(
-		(config: BuilderReportConfig) => {
-			const handler = ctx?.holder.current?.current;
-			if (!handler) return false;
-			handler(config);
-			return true;
-		},
-		[ctx]
-	);
+export function useApplyReportConfig(): Applier {
+	return useContext(ReportConfigApplyContext)?.apply ?? applyNothing;
 }
+
+const applyNothing: Applier = () => false;
