@@ -507,8 +507,8 @@ export function AssistantPanel() {
 	);
 	const [stopping, setStopping] = useState(false);
 	const stopRequestedRef = useRef(false);
-	// `threadId:order` turns the user stopped, labeled apart from real failures.
-	const [stoppedTurns, setStoppedTurns] = useState<ReadonlySet<string>>(
+	// Prompt message ids whose reply the user stopped, labeled apart from real failures.
+	const [stoppedPrompts, setStoppedPrompts] = useState<ReadonlySet<string>>(
 		() => new Set()
 	);
 	const [quote, setQuote] = useState<string | null>(null);
@@ -617,6 +617,13 @@ export function AssistantPanel() {
 			(p) => p.type === "text" && (p as { text: string }).text.length > 0
 		);
 	const viewingResponse = threadId !== null && threadId === respondingThreadId;
+	// A reply shares its prompt's order.
+	const stoppedOrders = new Set(
+		results
+			.filter((m) => m.role === "user" && stoppedPrompts.has(m.id))
+			.map((m) => m.order)
+	);
+	const draftPrompt = input.trim() ? withQuote(quote, input.trim()) : "";
 	const showThinking = viewingResponse && !runningToolPart && !isStreamingText;
 
 	useEffect(() => {
@@ -697,9 +704,7 @@ export function AssistantPanel() {
 	}, [messages.results, messages.status, router, applyReportConfig]);
 
 	const handleSend = async (promptOverride?: string) => {
-		const typed = input.trim();
-		const draft = typed ? withQuote(quote, typed) : "";
-		const prompt = promptOverride ?? draft;
+		const prompt = promptOverride ?? draftPrompt;
 		if (!prompt || isResponding) return;
 		if (prompt.length > PROMPT_MAX_LENGTH) {
 			setSendError({
@@ -710,12 +715,13 @@ export function AssistantPanel() {
 			});
 			return;
 		}
-		if (prompt === draft) {
+		if (prompt === draftPrompt) {
 			setInput("");
 			setQuote(null);
 		}
 		setSendError(null);
 		setIsResponding(true);
+		let messageId: string | undefined;
 		try {
 			let tid = threadId;
 			if (!tid) {
@@ -725,15 +731,16 @@ export function AssistantPanel() {
 				// New thread has no history — client tool calls run right away.
 				seenClientToolCallsRef.current = new Set();
 			}
+			if (stopRequestedRef.current) return;
 			setRespondingThreadId(tid);
 			const pending = pendingRetryRef.current;
-			let messageId: string;
 			if (pending && pending.threadId === tid && pending.prompt === prompt) {
 				messageId = pending.messageId;
 			} else {
 				({ messageId } = await sendMessage({ threadId: tid, prompt }));
 				pendingRetryRef.current = { threadId: tid, prompt, messageId };
 			}
+			if (stopRequestedRef.current) return;
 			await streamResponse({
 				threadId: tid,
 				promptMessageId: messageId,
@@ -764,6 +771,10 @@ export function AssistantPanel() {
 				);
 			}
 		} finally {
+			const stoppedId = stopRequestedRef.current ? messageId : undefined;
+			if (stoppedId) {
+				setStoppedPrompts((prev) => new Set(prev).add(stoppedId));
+			}
 			stopRequestedRef.current = false;
 			setStopping(false);
 			setIsResponding(false);
@@ -774,10 +785,6 @@ export function AssistantPanel() {
 	const handleStop = () => {
 		if (!isResponding || stopping) return;
 		stopRequestedRef.current = true;
-		const order = messages.results?.at(-1)?.order;
-		if (viewingResponse && order !== undefined) {
-			setStoppedTurns((prev) => new Set(prev).add(`${threadId}:${order}`));
-		}
 		setStopping(true);
 	};
 
@@ -943,13 +950,19 @@ export function AssistantPanel() {
 													>
 														<MessageItem
 															message={message}
-															stopped={stoppedTurns.has(`${threadId}:${message.order}`)}
+															stopped={
+																message.role === "assistant" &&
+																stoppedOrders.has(message.order)
+															}
 															onQuote={handleQuote}
 														/>
 													</MessageScrollerItem>
 												))}
 												{(showThinking || (stopping && viewingResponse)) && (
-													<MessageScrollerItem className="[content-visibility:visible]">
+													<MessageScrollerItem
+														aria-hidden
+														className="[content-visibility:visible]"
+													>
 														<div className="flex items-center gap-2 text-sm text-muted-foreground">
 															<Loader2 className="size-3.5 animate-spin" />
 															{stopping ? "Stopping…" : "Thinking…"}
@@ -960,6 +973,14 @@ export function AssistantPanel() {
 										</MessageScrollerViewport>
 										<MessageScrollerButton />
 									</MessageScroller>
+									{/* Outside the aria-busy log, which holds announcements until the reply ends. */}
+									<p role="status" className="sr-only">
+										{stopping && viewingResponse
+											? "Stopping…"
+											: showThinking
+												? "Thinking…"
+												: ""}
+									</p>
 									<QuoteReplyPill host={transcriptRef} onQuote={handleQuote} />
 								</div>
 							</MessageScrollerProvider>
@@ -984,11 +1005,11 @@ export function AssistantPanel() {
 										<p className="font-medium text-foreground">{sendError.title}</p>
 										<p className="text-muted-foreground">{sendError.detail}</p>
 									</div>
-									{sendError.retryable ? (
+									{sendError.retryable && draftPrompt === sendError.prompt ? (
 										<Button
 											variant="outline"
 											size="xs"
-											onClick={() => void handleSend(sendError.prompt)}
+											onClick={() => void handleSend()}
 										>
 											Try again
 										</Button>
