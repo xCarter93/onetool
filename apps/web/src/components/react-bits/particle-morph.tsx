@@ -5,6 +5,7 @@ import React, {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
 } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import * as THREE from "three";
@@ -642,6 +643,67 @@ function disposeTargets(target: TargetSet) {
   target.pos.dispose();
   target.color.dispose();
 }
+// R3F creates the renderer in an unawaited async configure(), so a failed
+// context never reaches an error boundary; probe the same needs up front.
+function probeRenderer(): boolean {
+  const context = document.createElement("canvas").getContext("webgl2");
+  if (!context) return false;
+  try {
+    const float = context.getExtension("EXT_color_buffer_float") !== null;
+    const half = context.getExtension("EXT_color_buffer_half_float") !== null;
+    if (!float && !half) return false;
+    const texture = context.createTexture();
+    const framebuffer = context.createFramebuffer();
+    context.bindTexture(context.TEXTURE_2D, texture);
+    context.texStorage2D(
+      context.TEXTURE_2D,
+      1,
+      float ? context.RGBA32F : context.RGBA16F,
+      4,
+      4,
+    );
+    context.bindFramebuffer(context.FRAMEBUFFER, framebuffer);
+    context.framebufferTexture2D(
+      context.FRAMEBUFFER,
+      context.COLOR_ATTACHMENT0,
+      context.TEXTURE_2D,
+      texture,
+      0,
+    );
+    const complete =
+      context.checkFramebufferStatus(context.FRAMEBUFFER) ===
+      context.FRAMEBUFFER_COMPLETE;
+    context.deleteFramebuffer(framebuffer);
+    context.deleteTexture(texture);
+    return complete;
+  } finally {
+    context.getExtension("WEBGL_lose_context")?.loseContext();
+  }
+}
+let rendererSupport: boolean | undefined;
+function getRendererSupport(): boolean {
+  rendererSupport ??= probeRenderer();
+  return rendererSupport;
+}
+const subscribeNever = () => () => {};
+function useRendererSupport(): boolean {
+  return useSyncExternalStore(subscribeNever, getRendererSupport, () => true);
+}
+class RendererBoundary extends React.Component<
+  { onError: () => void; children: React.ReactNode },
+  { failed: boolean }
+> {
+  state = { failed: false };
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+  componentDidCatch() {
+    this.props.onError();
+  }
+  render() {
+    return this.state.failed ? null : this.props.children;
+  }
+}
 function useReducedMotion(): boolean {
   const [reduced, setReduced] = useState(false);
   useEffect(() => {
@@ -791,24 +853,37 @@ function MorphField({
   const { gl, invalidate } = useThree();
   const activity = useRef<Activity>("full");
   const turbulenceUntil = useRef(0);
+  const wake = useRef(() => {});
   useEffect(() => {
+    if (!inView) return;
     let frame = 0;
     let last = 0;
+    let running = false;
     const tick = (now: number) => {
-      frame = requestAnimationFrame(tick);
-      if (!inView) return;
       const mode = activity.current;
-      if (mode === "rest") return;
+      if (mode === "rest") {
+        running = false;
+        return;
+      }
+      frame = requestAnimationFrame(tick);
       if (mode === "idle" && now - last < 1000 / IDLE_FPS - 1) return;
       last = now;
       invalidate();
     };
-    frame = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(frame);
+    wake.current = () => {
+      if (running) return;
+      running = true;
+      frame = requestAnimationFrame(tick);
+    };
+    wake.current();
+    return () => {
+      cancelAnimationFrame(frame);
+      wake.current = () => {};
+    };
   }, [inView, invalidate]);
   useEffect(() => {
     activity.current = "full";
-    invalidate();
+    wake.current();
   });
   const cache = useRef<{
     grid: number;
@@ -861,9 +936,13 @@ function MorphField({
       }
       tracker.x = point.x;
       tracker.y = point.y;
+      activity.current = "full";
+      wake.current();
     };
     const leave = () => {
       tracker.engaged = false;
+      activity.current = "full";
+      wake.current();
     };
     element.addEventListener("pointermove", move);
     element.addEventListener("pointerdown", move);
@@ -1374,6 +1453,9 @@ const ParticleMorph: React.FC<ParticleMorphProps> = ({
   const inView = useInView(root);
   const size = useElementSize(root);
   const reducedMotion = useReducedMotion();
+  const rendererSupported = useRendererSupport();
+  const [rendererFailed, setRendererFailed] = useState(false);
+  const staticOnly = !rendererSupported || rendererFailed;
   const slots = useImageSamples(images, luminanceThreshold);
   const [index, setIndex] = useControlledIndex(
     activeIndex,
@@ -1412,44 +1494,48 @@ const ParticleMorph: React.FC<ParticleMorphProps> = ({
       className={cn("relative overflow-hidden", className)}
       style={{ width, height, backgroundColor }}
     >
-      <Canvas
-        className="absolute inset-0"
-        dpr={[1, Math.min(Math.max(dpr, 1), 2)]}
-        frameloop="demand"
-        gl={{
-          antialias: false,
-          alpha: true,
-          depth: false,
-          powerPreference: "high-performance",
-        }}
-      >
-        {size.width > 0 && (
-          <MorphField
-            slots={slots}
-            grid={grid}
-            index={index}
-            activeFailed={activeFailed}
-            transitionDuration={transitionDuration}
-            particleSize={particleSize}
-            particleOpacity={particleOpacity}
-            dispersion={dispersion}
-            chaos={chaos}
-            idleDrift={idleDrift}
-            idleSpeed={idleSpeed}
-            pointerStrength={pointerStrength}
-            pointerRadius={pointerRadius}
-            glow={glow}
-            aberration={aberration}
-            color={color}
-            reducedMotion={reducedMotion}
-            inView={inView}
-            root={root}
-          />
-        )}
-      </Canvas>
+      {!staticOnly && (
+        <RendererBoundary onError={() => setRendererFailed(true)}>
+          <Canvas
+            className="absolute inset-0"
+            dpr={[1, Math.min(Math.max(dpr, 1), 2)]}
+            frameloop="demand"
+            gl={{
+              antialias: false,
+              alpha: true,
+              depth: false,
+              powerPreference: "high-performance",
+            }}
+          >
+            {size.width > 0 && (
+              <MorphField
+                slots={slots}
+                grid={grid}
+                index={index}
+                activeFailed={activeFailed}
+                transitionDuration={transitionDuration}
+                particleSize={particleSize}
+                particleOpacity={particleOpacity}
+                dispersion={dispersion}
+                chaos={chaos}
+                idleDrift={idleDrift}
+                idleSpeed={idleSpeed}
+                pointerStrength={pointerStrength}
+                pointerRadius={pointerRadius}
+                glow={glow}
+                aberration={aberration}
+                color={color}
+                reducedMotion={reducedMotion}
+                inView={inView}
+                root={root}
+              />
+            )}
+          </Canvas>
+        </RendererBoundary>
+      )}
 
       {images.map((src, i) =>
-        slots[i]?.status === "failed" ? (
+        staticOnly || slots[i]?.status === "failed" ? (
           <img
             key={`${i}-${src}`}
             src={src}

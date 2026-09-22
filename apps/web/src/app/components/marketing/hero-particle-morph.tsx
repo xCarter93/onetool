@@ -52,6 +52,9 @@ export function HeroParticleMorph({ className }: { className?: string }) {
 				autoplay={false}
 				transitionDuration={TRANSITION_MS}
 				backgroundColor="transparent"
+				// Idle drift keeps a 30fps loop alive on every hold; without it the
+				// renderer parks once a frame settles.
+				idleDrift={0}
 				// Additive glow and RGB fringing are tuned for a black stage; both wash
 				// out the brand hexes on the light paper.
 				glow={0.25}
