@@ -40,7 +40,8 @@ export function PostHogProvider({ children }: { children: React.ReactNode }) {
 				// are never uploaded, so localhost frames can never symbolicate.
 				capture_exceptions: process.env.NODE_ENV === "production",
 				// Dev replays of HMR churn and uncommitted UI were filing inbox reports.
-				disable_session_recording: process.env.NODE_ENV !== "production",
+				disable_session_recording:
+					process.env.NEXT_PUBLIC_VERCEL_ENV !== "production",
 				// Noise that isn't ours: layout churn from charts/data-grid, plus the
 				// JS bridges Facebook/Instagram/Firefox-iOS inject into the page.
 				// Matched on message text — some variants minify away our frames.
