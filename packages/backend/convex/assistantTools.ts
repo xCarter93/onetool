@@ -472,6 +472,9 @@ function noPermissionResult(data: Record<string, unknown>): {
 function writeError(e: unknown): { ok: false; error: string } {
 	const forbidden = forbiddenErrorData(e);
 	if (forbidden) return { ok: false, error: noPermissionResult(forbidden).message };
+	if (e instanceof ConvexError && typeof e.data === "string") {
+		return { ok: false, error: e.data };
+	}
 	return { ok: false, error: e instanceof Error ? e.message : String(e) };
 }
 
