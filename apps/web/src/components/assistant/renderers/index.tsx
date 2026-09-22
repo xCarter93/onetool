@@ -2,10 +2,20 @@
 
 import { Component, type ComponentType, type ReactNode } from "react";
 import { AlertCircle, Loader2, Sparkles } from "lucide-react";
+import { BusinessStatsRenderer } from "./business-stats-renderer";
 import { EmailsRenderer } from "./emails-renderer";
 import { NavigateRenderer } from "./navigate-renderer";
+import {
+	ClientsRenderer,
+	InvoicesRenderer,
+	ProjectsRenderer,
+	QuotesRenderer,
+	SkusRenderer,
+	TeamMembersRenderer,
+} from "./record-list-renderer";
 import { ReportRenderer } from "./report-renderer";
 import { ScheduleRenderer } from "./schedule-renderer";
+import { SearchHelpRenderer } from "./search-help-renderer";
 
 /**
  * Generative-UI registry: tool results that have a first-party renderer show
@@ -31,6 +41,14 @@ const TOOL_RENDERERS: Record<string, ComponentType<ToolRendererProps>> = {
 	getSchedule: ScheduleRenderer,
 	searchClientEmails: EmailsRenderer,
 	navigate: NavigateRenderer,
+	getBusinessStats: BusinessStatsRenderer,
+	searchHelp: SearchHelpRenderer,
+	listClients: ClientsRenderer,
+	listProjects: ProjectsRenderer,
+	listQuotes: QuotesRenderer,
+	listInvoices: InvoicesRenderer,
+	listSkus: SkusRenderer,
+	getTeamMembers: TeamMembersRenderer,
 };
 
 // One entry per tool holds both label forms so the two can never drift:
@@ -72,6 +90,24 @@ export const TOOL_LABELS: Record<string, { done: string; active: string }> = {
 	updateRoute: { done: "Updated the route", active: "Updating the route…" },
 	optimizeRoute: { done: "Optimized the route", active: "Optimizing the route…" },
 	navigate: { done: "Opened a page", active: "Opening a page…" },
+	describeSchema: { done: "Looked up field definitions", active: "Looking up field definitions…" },
+	searchHelp: { done: "Searched the help center", active: "Searching the help center…" },
+	getTeamMembers: { done: "Looked up team members", active: "Looking up team members…" },
+	getAutomations: { done: "Looked up automations", active: "Looking up automations…" },
+	getAutomationRuns: {
+		done: "Checked automation runs",
+		active: "Checking automation runs…",
+	},
+	listSavedReports: { done: "Looked up saved reports", active: "Looking up saved reports…" },
+	getSavedReport: {
+		done: "Fetched saved report settings",
+		active: "Fetching saved report settings…",
+	},
+	listSkus: { done: "Looked up services", active: "Looking up services…" },
+	createTask: { done: "Created a task", active: "Creating a task…" },
+	updateTask: { done: "Updated a task", active: "Updating a task…" },
+	updateClient: { done: "Updated a client", active: "Updating a client…" },
+	updateProject: { done: "Updated a project", active: "Updating a project…" },
 };
 
 function ToolChip({ name, state }: { name: string; state?: string }) {

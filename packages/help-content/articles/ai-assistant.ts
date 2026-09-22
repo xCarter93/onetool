@@ -42,6 +42,10 @@ export const aiAssistantArticles: HelpArticle[] = [
 						type: "paragraph",
 						text: "Type your message and press Enter to send it. Shift and Enter adds a new line.",
 					},
+					{
+						type: "paragraph",
+						text: "While the assistant works, the send button becomes a stop button. Stopping ends the reply, but any change the assistant already made stays made. Hover over a finished reply to copy it or reply to it. To ask about one line, select it and click **Reply**. If a reply fails, click **Try again** to resend the same message. A retry does not use another message from your daily limit.",
+					},
 				],
 			},
 			{

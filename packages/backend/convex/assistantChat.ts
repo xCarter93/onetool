@@ -1,4 +1,6 @@
 import {
+	abortStream,
+	listStreams,
 	listUIMessages,
 	saveMessage,
 	syncStreams,
@@ -126,6 +128,11 @@ export const authorizeThread = internalQuery({
 	},
 });
 
+// A user Stop (abortResponse) is not a failure — don't report or rethrow it.
+function isAbortError(error: unknown): boolean {
+	return error instanceof Error && error.name === "AbortError";
+}
+
 export const streamResponse = action({
 	args: {
 		threadId: v.string(),
@@ -180,6 +187,7 @@ export const streamResponse = action({
 					onError: async ({ error }) => {
 						const cause =
 							error instanceof Error && error.cause ? error.cause : error;
+						if (isAbortError(cause)) return;
 						streamFailure =
 							cause instanceof Error ? cause.message : String(cause);
 						await trackServerException(ctx, {
@@ -193,6 +201,7 @@ export const streamResponse = action({
 				{ saveStreamDeltas: true }
 			);
 		} catch (error) {
+			if (isAbortError(error)) return;
 			throw new ConvexError(
 				`Assistant response failed: ${streamFailure ?? (error instanceof Error ? error.message : String(error))}`
 			);
@@ -202,6 +211,38 @@ export const streamResponse = action({
 		if (streamFailure !== undefined) {
 			throw new ConvexError(`Assistant response failed: ${streamFailure}`);
 		}
+	},
+});
+
+/** Stop button: aborting the stream row makes streamResponse's next delta
+ *  write fail, which cancels the model call. Returns 0 before the first delta
+ *  has created a stream — the client retries until one exists. */
+export const abortResponse = userMutation({
+	args: { threadId: v.string() },
+	handler: async (ctx, args) => {
+		const meta = await ctx.db
+			.query("agentThreadMeta")
+			.withIndex("by_thread", (q) => q.eq("threadId", args.threadId))
+			.unique();
+		if (!meta || meta.orgId !== ctx.orgId || meta.userId !== ctx.user._id) {
+			throw new Error("Thread not found");
+		}
+		const streams = await listStreams(ctx, components.agent, {
+			threadId: args.threadId,
+			includeStatuses: ["streaming"],
+		});
+		let aborted = 0;
+		for (const stream of streams) {
+			if (
+				await abortStream(ctx, components.agent, {
+					streamId: stream.streamId,
+					reason: "Stopped by user",
+				})
+			) {
+				aborted++;
+			}
+		}
+		return { aborted };
 	},
 });
 
