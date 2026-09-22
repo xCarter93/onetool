@@ -17,8 +17,8 @@ interface HelpHit {
 	title: string;
 }
 
-// Mirrors searchHelp's three output branches in convex/assistantTools.ts:
-// a search hit list, a single fetched article, or an error.
+// Mirrors searchHelp's output in convex/assistantTools.ts. The category listing
+// and no-match `note` are model guidance, so they render nothing.
 interface SearchHelpOutput {
 	results?: { ref: string; title: string }[];
 	ref?: string;

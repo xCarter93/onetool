@@ -46,6 +46,14 @@ export function QuoteReplyPill({
 			};
 		}
 
+		function answerBody(node: Node | null) {
+			const element =
+				node?.nodeType === Node.ELEMENT_NODE
+					? (node as Element)
+					: node?.parentElement;
+			return element?.closest("[data-answer-body]") ?? null;
+		}
+
 		function clear() {
 			rangeRef.current = null;
 			setAnchor(null);
@@ -54,14 +62,14 @@ export function QuoteReplyPill({
 		function onSelectionChange() {
 			const selection = document.getSelection();
 			if (!box || !selection || selection.isCollapsed) return clear();
-			const node = selection.anchorNode;
-			const element =
-				node?.nodeType === Node.ELEMENT_NODE
-					? (node as Element)
-					: node?.parentElement;
-			const body = element?.closest("[data-answer-body]");
+			const body = answerBody(selection.anchorNode);
 			const text = selection.toString().trim();
-			if (!body || !box.contains(body) || text.length < MIN_QUOTE) {
+			if (
+				!body ||
+				body !== answerBody(selection.focusNode) ||
+				!box.contains(body) ||
+				text.length < MIN_QUOTE
+			) {
 				return clear();
 			}
 			const range = selection.getRangeAt(0);

@@ -73,6 +73,7 @@ import {
 	useReportBuilderMounted,
 } from "./report-config-apply-context";
 import type { BuilderReportConfig } from "@onetool/backend/convex/reportConfigGeneration";
+import { PROMPT_MAX_LENGTH } from "@onetool/backend/convex/lib/assistantShared";
 
 const SUGGESTIONS = [
 	"What's on the schedule this week?",
@@ -500,6 +501,10 @@ export function AssistantPanel() {
 	const [showHistory, setShowHistory] = useState(false);
 	const [input, setInput] = useState("");
 	const [isResponding, setIsResponding] = useState(false);
+	// The thread streamResponse is running in; the user may be viewing another.
+	const [respondingThreadId, setRespondingThreadId] = useState<string | null>(
+		null
+	);
 	const [stopping, setStopping] = useState(false);
 	const stopRequestedRef = useRef(false);
 	// `threadId:order` turns the user stopped, labeled apart from real failures.
@@ -570,11 +575,12 @@ export function AssistantPanel() {
 	// The stream row only exists once the first delta is written, so a Stop
 	// pressed before then keeps retrying until there is something to abort.
 	useEffect(() => {
-		if (!stopping || !isResponding || !threadId) return;
+		if (!stopping || !respondingThreadId) return;
+		const target = respondingThreadId;
 		let cancelled = false;
 		let timer: ReturnType<typeof setTimeout> | undefined;
 		const attempt = async () => {
-			const { aborted } = await abortResponse({ threadId }).catch(() => ({
+			const { aborted } = await abortResponse({ threadId: target }).catch(() => ({
 				aborted: 0,
 			}));
 			if (!cancelled && aborted === 0) timer = setTimeout(attempt, 750);
@@ -584,7 +590,7 @@ export function AssistantPanel() {
 			cancelled = true;
 			clearTimeout(timer);
 		};
-	}, [stopping, isResponding, threadId, abortResponse]);
+	}, [stopping, respondingThreadId, abortResponse]);
 
 	// The assistant runs multi-step (reason → call tools → answer) and
 	// streamResponse stays open for the whole run, so isResponding is true
@@ -610,7 +616,8 @@ export function AssistantPanel() {
 		lastMessage.parts.some(
 			(p) => p.type === "text" && (p as { text: string }).text.length > 0
 		);
-	const showThinking = isResponding && !runningToolPart && !isStreamingText;
+	const viewingResponse = threadId !== null && threadId === respondingThreadId;
+	const showThinking = viewingResponse && !runningToolPart && !isStreamingText;
 
 	useEffect(() => {
 		if (!open) return;
@@ -690,10 +697,20 @@ export function AssistantPanel() {
 	}, [messages.results, messages.status, router, applyReportConfig]);
 
 	const handleSend = async (promptOverride?: string) => {
-		const typed = (promptOverride ?? input).trim();
-		if (!typed || isResponding) return;
-		const prompt = promptOverride === undefined ? withQuote(quote, typed) : typed;
-		if (promptOverride === undefined) {
+		const typed = input.trim();
+		const draft = typed ? withQuote(quote, typed) : "";
+		const prompt = promptOverride ?? draft;
+		if (!prompt || isResponding) return;
+		if (prompt.length > PROMPT_MAX_LENGTH) {
+			setSendError({
+				prompt,
+				title: "Message is too long",
+				detail: `Keep your message and quote under ${PROMPT_MAX_LENGTH.toLocaleString()} characters.`,
+				retryable: false,
+			});
+			return;
+		}
+		if (prompt === draft) {
 			setInput("");
 			setQuote(null);
 		}
@@ -708,6 +725,7 @@ export function AssistantPanel() {
 				// New thread has no history — client tool calls run right away.
 				seenClientToolCallsRef.current = new Set();
 			}
+			setRespondingThreadId(tid);
 			const pending = pendingRetryRef.current;
 			let messageId: string;
 			if (pending && pending.threadId === tid && pending.prompt === prompt) {
@@ -724,13 +742,11 @@ export function AssistantPanel() {
 			pendingRetryRef.current = null;
 		} catch (err) {
 			if (!stopRequestedRef.current) {
+				// Resending the restored draft unchanged reuses the saved message.
+				const restored = splitQuote(prompt);
+				setInput((current) => (current.trim() ? current : restored.body));
+				setQuote((current) => current ?? restored.quote);
 				const limitMessage = planLimitMessage(err);
-				if (limitMessage) {
-					// Can't retry past the limit — hand the draft back instead.
-					const restored = splitQuote(prompt);
-					setInput((current) => (current.trim() ? current : restored.body));
-					setQuote((current) => current ?? restored.quote);
-				}
 				setSendError(
 					limitMessage
 						? {
@@ -751,6 +767,7 @@ export function AssistantPanel() {
 			stopRequestedRef.current = false;
 			setStopping(false);
 			setIsResponding(false);
+			setRespondingThreadId(null);
 		}
 	};
 
@@ -758,7 +775,7 @@ export function AssistantPanel() {
 		if (!isResponding || stopping) return;
 		stopRequestedRef.current = true;
 		const order = messages.results?.at(-1)?.order;
-		if (threadId && order !== undefined) {
+		if (viewingResponse && order !== undefined) {
 			setStoppedTurns((prev) => new Set(prev).add(`${threadId}:${order}`));
 		}
 		setStopping(true);
@@ -915,7 +932,7 @@ export function AssistantPanel() {
 									<MessageScroller className="min-h-0 flex-1">
 										<MessageScrollerViewport>
 											<MessageScrollerContent
-												aria-busy={isResponding}
+												aria-busy={viewingResponse}
 												className="gap-4 px-4 py-4"
 											>
 												{messages.results.map((message) => (
@@ -931,7 +948,7 @@ export function AssistantPanel() {
 														/>
 													</MessageScrollerItem>
 												))}
-												{(showThinking || stopping) && (
+												{(showThinking || (stopping && viewingResponse)) && (
 													<MessageScrollerItem className="[content-visibility:visible]">
 														<div className="flex items-center gap-2 text-sm text-muted-foreground">
 															<Loader2 className="size-3.5 animate-spin" />
@@ -1028,7 +1045,7 @@ export function AssistantPanel() {
 										}}
 										placeholder="Ask about your business…"
 										rows={1}
-										maxLength={4000}
+										maxLength={PROMPT_MAX_LENGTH}
 										autoFocus
 										className="max-h-32 min-h-9 flex-1 resize-none border-0 bg-transparent p-1.5 text-sm shadow-none focus-visible:ring-0"
 									/>

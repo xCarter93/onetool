@@ -44,7 +44,7 @@ export const aiAssistantArticles: HelpArticle[] = [
 					},
 					{
 						type: "paragraph",
-						text: "While the assistant works, the send button becomes a stop button. Stopping ends the reply, but any change the assistant already made stays made. Hover over a finished reply to copy it or reply to it. To ask about one line, select it and click **Reply**. If a reply fails, click **Try again** to resend the same message. A retry does not use another message from your daily limit.",
+						text: "While the assistant works, the send button becomes a stop button. Stopping ends the reply, but any change the assistant already made stays made. Hover over a finished reply to copy it or reply to it. To ask about one line, select it and click **Reply**. If a reply fails, your message goes back in the box. Click **Try again** to resend it as is, which does not use another message from your daily limit, or edit it and send it as a new message.",
 					},
 				],
 			},
