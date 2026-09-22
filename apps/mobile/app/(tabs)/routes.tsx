@@ -5,6 +5,7 @@ import { useKeepAwake } from "expo-keep-awake";
 import * as Location from "expo-location";
 import { router, type Href } from "expo-router";
 import { useAction, useMutation, useQuery } from "convex/react";
+import { ConvexError } from "convex/values";
 import { api } from "@onetool/backend/convex/_generated/api";
 import type { Doc, Id } from "@onetool/backend/convex/_generated/dataModel";
 import { ChevronLeft, Fuel, Map, Search } from "lucide-react-native";
@@ -179,7 +180,13 @@ function RoutesBody({ headerMode }: { headerMode: "root" | "pane" }) {
 		try {
 			await fn();
 		} catch (e) {
-			setError(e instanceof Error ? e.message : "Something went wrong");
+			setError(
+				e instanceof ConvexError && typeof e.data === "string"
+					? e.data
+					: e instanceof Error
+						? e.message
+						: "Something went wrong"
+			);
 		} finally {
 			setBusy(false);
 		}

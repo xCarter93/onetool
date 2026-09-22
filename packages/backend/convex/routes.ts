@@ -1,4 +1,4 @@
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 import { Doc, Id } from "./_generated/dataModel";
 import {
 	optionalUserQuery,
@@ -532,7 +532,7 @@ export const seedFromSchedule = userMutation({
 		}
 
 		if (stops.length === 0) {
-			throw new Error(
+			throw new ConvexError(
 				skippedNoAddress > 0
 					? "Scheduled work found, but none of its properties have a mapped address yet"
 					: "No scheduled work with mapped addresses on that day"

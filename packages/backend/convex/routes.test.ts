@@ -1,5 +1,6 @@
 import { convexTest } from "convex-test";
 import { describe, it, expect, beforeEach } from "vitest";
+import { ConvexError } from "convex/values";
 import { api, internal } from "./_generated/api";
 import { setupConvexTest } from "./test.setup";
 import {
@@ -452,6 +453,21 @@ describe("Routes", () => {
 			await expect(
 				asUser.mutation(api.routes.seedFromSchedule, { date: DATE })
 			).rejects.toThrow(/none of its properties have a mapped address/);
+		});
+
+		// Production redacts plain Error messages to "Server Error"; only ConvexError reaches the toast.
+		it("throws empty-day outcomes as ConvexError so the message survives production", async () => {
+			const { clerkUserId, clerkOrgId } = await setupOrgWithAddress();
+			const asUser = t.withIdentity(
+				createPremiumTestIdentity(clerkUserId, clerkOrgId)
+			);
+			const error = await asUser
+				.mutation(api.routes.seedFromSchedule, { date: DATE })
+				.catch((e: unknown) => e);
+			expect(error).toBeInstanceOf(ConvexError);
+			expect((error as Error).message).toContain(
+				"No scheduled work with mapped addresses on that day"
+			);
 		});
 
 		it("filters tasks by assigneeUserId", async () => {
