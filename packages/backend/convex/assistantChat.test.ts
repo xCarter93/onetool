@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { api, internal } from "./_generated/api";
+import { listStreams } from "@convex-dev/agent";
+import { api, components, internal } from "./_generated/api";
 import {
 	addMemberToOrg,
 	createPremiumTestIdentity,
@@ -100,6 +101,86 @@ describe("assistantChat", () => {
 			{}
 		);
 		expect(memberThreads).toHaveLength(0);
+	});
+
+	describe("abortResponse", () => {
+		async function openStream(threadId: string) {
+			return await t.run(async (ctx) => {
+				const streamId = await ctx.runMutation(components.agent.streams.create, {
+					threadId: threadId as never,
+					order: 1,
+					stepOrder: 0,
+				});
+				return streamId;
+			});
+		}
+
+		async function streamStatuses(threadId: string) {
+			return await t.run(async (ctx) =>
+				(
+					await listStreams(ctx, components.agent, {
+						threadId,
+						includeStatuses: ["streaming", "finished", "aborted"],
+					})
+				).map((s) => s.status)
+			);
+		}
+
+		it("aborts the owner's in-flight stream", async () => {
+			const { orgA } = await seedTwoOrgs();
+			const asA = t.withIdentity(
+				createTestIdentity(orgA.clerkUserId, orgA.clerkOrgId)
+			);
+			const { threadId } = await asA.mutation(
+				api.assistantChat.createThread,
+				{}
+			);
+			await openStream(threadId);
+
+			const result = await asA.mutation(api.assistantChat.abortResponse, {
+				threadId,
+			});
+
+			expect(result).toEqual({ aborted: 1 });
+			expect(await streamStatuses(threadId)).toEqual(["aborted"]);
+		});
+
+		it("reports nothing aborted when no stream is open yet", async () => {
+			const { orgA } = await seedTwoOrgs();
+			const asA = t.withIdentity(
+				createTestIdentity(orgA.clerkUserId, orgA.clerkOrgId)
+			);
+			const { threadId } = await asA.mutation(
+				api.assistantChat.createThread,
+				{}
+			);
+
+			const result = await asA.mutation(api.assistantChat.abortResponse, {
+				threadId,
+			});
+
+			expect(result).toEqual({ aborted: 0 });
+		});
+
+		it("refuses to abort another org's stream", async () => {
+			const { orgA, orgB } = await seedTwoOrgs();
+			const asA = t.withIdentity(
+				createTestIdentity(orgA.clerkUserId, orgA.clerkOrgId)
+			);
+			const asB = t.withIdentity(
+				createTestIdentity(orgB.clerkUserId, orgB.clerkOrgId)
+			);
+			const { threadId } = await asA.mutation(
+				api.assistantChat.createThread,
+				{}
+			);
+			await openStream(threadId);
+
+			await expect(
+				asB.mutation(api.assistantChat.abortResponse, { threadId })
+			).rejects.toThrow("Thread not found");
+			expect(await streamStatuses(threadId)).toEqual(["streaming"]);
+		});
 	});
 
 	it("saves a message, sets the thread title, and lists messages for the owner only", async () => {

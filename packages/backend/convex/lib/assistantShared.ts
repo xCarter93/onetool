@@ -5,3 +5,6 @@
 
 // Cost guard: the server drops (not truncates) screen context longer than this.
 export const SCREEN_CONTEXT_MAX_LENGTH = 4000;
+
+// Cost guard: bound what a single message can send to the model.
+export const PROMPT_MAX_LENGTH = 4000;

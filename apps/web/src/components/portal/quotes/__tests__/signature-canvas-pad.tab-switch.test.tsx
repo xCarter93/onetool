@@ -29,7 +29,14 @@
 //   does not close UAT Gap A, a follow-up plan opens to investigate (e).
 
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { act, render, fireEvent, screen, cleanup } from "@testing-library/react";
+import {
+	act,
+	render,
+	fireEvent,
+	screen,
+	cleanup,
+	waitFor,
+} from "@testing-library/react";
 import { useState } from "react";
 import * as React from "react";
 import { SignatureCard } from "../signature-card";
@@ -261,10 +268,13 @@ describe("Plan 14-12 / Gap A — tab-switch ResizeObserver re-scale", () => {
 		clickDrawTab();
 		await screen.findByRole("img", { name: /Draw your signature/i });
 
-		const dprScaleCalls = getRecorded().scaleCalls.filter(
-			([sx, sy]) => sx === 2 && sy === 2,
-		);
-		expect(dprScaleCalls.length).toBeGreaterThanOrEqual(1);
+		// The dynamic mock resolves outside act(), so mount effects can lag findByRole.
+		await waitFor(() => {
+			const dprScaleCalls = getRecorded().scaleCalls.filter(
+				([sx, sy]) => sx === 2 && sy === 2,
+			);
+			expect(dprScaleCalls.length).toBeGreaterThanOrEqual(1);
+		});
 	});
 
 	it("Case 2 (rect/style consistency at mount): backing-store == css * dpr", async () => {
@@ -307,8 +317,11 @@ describe("Plan 14-12 / Gap A — tab-switch ResizeObserver re-scale", () => {
 			clickDrawTab();
 			await screen.findByRole("img", { name: /Draw your signature/i });
 
+			// Same mount-effect race as Case 1.
+			await waitFor(() =>
+				expect(getRecorded().scaleCalls.length).toBeGreaterThanOrEqual(1),
+			);
 			const beforeCount = getRecorded().scaleCalls.length;
-			expect(beforeCount).toBeGreaterThanOrEqual(1); // baseline: mount applied scale
 
 			// Simulate layout change (e.g., container narrows from 600 → 400).
 			expect(resizeObserverCallbacks.length).toBeGreaterThanOrEqual(1);

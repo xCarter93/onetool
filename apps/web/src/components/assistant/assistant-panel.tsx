@@ -13,13 +13,18 @@ import { useAction, useMutation, useQuery } from "convex/react";
 import { ConvexError } from "convex/values";
 import {
 	ArrowUp,
+	Check,
+	CircleAlert,
+	Copy,
 	Eye,
 	History,
 	Loader2,
 	MessageSquarePlus,
+	MessageSquareQuote,
 	Pin,
 	PinOff,
 	Sparkles,
+	Square,
 	X,
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
@@ -28,6 +33,23 @@ import { usePathname, useRouter } from "next/navigation";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Textarea } from "@/components/ui/textarea";
+import { Button } from "@/components/ui/button";
+import {
+	Attachment,
+	AttachmentAction,
+	AttachmentActions,
+	AttachmentContent,
+	AttachmentTitle,
+} from "@/components/ui/attachment";
+import {
+	MessageScroller,
+	MessageScrollerButton,
+	MessageScrollerContent,
+	MessageScrollerItem,
+	MessageScrollerProvider,
+	MessageScrollerViewport,
+} from "@/components/ui/message-scroller";
+import { EmptyState } from "@/components/domain/empty-state";
 import {
 	Sheet,
 	SheetContent,
@@ -37,7 +59,6 @@ import {
 import { HelpArticleDrawer, LearnMoreLink } from "@/components/help/learn-more";
 import { resolveHelpRef } from "@/lib/help";
 import { useEntitlements } from "@/hooks/use-entitlements";
-import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import {
 	ToolPartRenderer,
@@ -46,11 +67,13 @@ import {
 import { useCurrentRecord, type CurrentRecord } from "./use-current-record";
 import { useScreenContext } from "./use-screen-context";
 import { useAssistantSurface } from "./assistant-surface-context";
+import { QuoteReplyPill } from "./quote-reply-pill";
 import {
 	useApplyReportConfig,
 	useReportBuilderMounted,
 } from "./report-config-apply-context";
 import type { BuilderReportConfig } from "@onetool/backend/convex/reportConfigGeneration";
+import { PROMPT_MAX_LENGTH } from "@onetool/backend/convex/lib/assistantShared";
 
 const SUGGESTIONS = [
 	"What's on the schedule this week?",
@@ -182,7 +205,7 @@ function MarkdownLink({
 /**
  * The daily-message ceiling refuses with its own user-facing copy
  * (`ConvexError({ code: "PLAN_LIMIT_REACHED", message })`) — surface that
- * instead of the generic snag toast. Returns null for every other failure.
+ * instead of the generic snag error. Returns null for every other failure.
  */
 function planLimitMessage(err: unknown): string | null {
 	if (!(err instanceof ConvexError)) return null;
@@ -213,31 +236,110 @@ function TextPart({ text, streaming }: { text: string; streaming: boolean }) {
 	);
 }
 
-function MessageItem({ message }: { message: UIMessage }) {
+function messageText(message: UIMessage): string {
+	return message.parts
+		.filter((p) => p.type === "text")
+		.map((p) => (p as { text: string }).text)
+		.join("\n\n")
+		.trim();
+}
+
+const QUOTE_PREFIX = "> ";
+
+/** A quote-reply is sent as `> quoted line\n\nquestion`; split it back out so
+ *  the bubble shows the quote apart from what the user typed. */
+function splitQuote(text: string): { quote: string | null; body: string } {
+	if (!text.startsWith(QUOTE_PREFIX)) return { quote: null, body: text };
+	const end = text.indexOf("\n\n");
+	if (end === -1) return { quote: null, body: text };
+	return {
+		quote: text.slice(QUOTE_PREFIX.length, end).trim(),
+		body: text.slice(end + 2),
+	};
+}
+
+function withQuote(quote: string | null, text: string): string {
+	if (!quote) return text;
+	return `${QUOTE_PREFIX}${quote.replace(/\s+/g, " ")}\n\n${text}`;
+}
+
+// Revealed on hover/focus; always visible where there is no hover.
+const ANSWER_ACTION_CLASS =
+	"text-muted-foreground opacity-0 transition-opacity motion-reduce:transition-none group-hover/answer:opacity-100 focus-visible:opacity-100 [@media(hover:none)]:opacity-100";
+
+function CopyMessageButton({ text }: { text: string }) {
+	const [copied, setCopied] = useState(false);
+	useEffect(() => {
+		if (!copied) return;
+		const timer = setTimeout(() => setCopied(false), 1500);
+		return () => clearTimeout(timer);
+	}, [copied]);
+	return (
+		<Button
+			variant="ghost"
+			size="icon-xs"
+			aria-label={copied ? "Copied" : "Copy reply"}
+			onClick={() => {
+				void navigator.clipboard
+					.writeText(text)
+					.then(() => setCopied(true))
+					.catch(() => {});
+			}}
+			className={ANSWER_ACTION_CLASS}
+		>
+			{copied ? <Check /> : <Copy />}
+		</Button>
+	);
+}
+
+function firstSentence(text: string): string {
+	const trimmed = text.trim();
+	const end = trimmed.search(/[.?!]\s/);
+	const sentence = end === -1 ? trimmed : trimmed.slice(0, end + 1);
+	return sentence.length > 140 ? `${sentence.slice(0, 137)}...` : sentence;
+}
+
+function MessageItem({
+	message,
+	stopped,
+	onQuote,
+}: {
+	message: UIMessage;
+	stopped: boolean;
+	onQuote: (quote: string) => void;
+}) {
 	const isUser = message.role === "user";
 	if (isUser) {
+		const { quote, body } = splitQuote(messageText(message));
 		return (
-			<div className="flex justify-end">
+			<div className="flex flex-col items-end gap-1">
+				{quote && (
+					<p className="line-clamp-2 max-w-[85%] border-l-2 border-border pl-2 text-xs text-muted-foreground italic">
+						{quote}
+					</p>
+				)}
 				<div className="max-w-[85%] rounded-2xl rounded-br-md bg-primary/10 px-3.5 py-2 text-sm whitespace-pre-wrap break-words">
-					{message.parts
-						.filter((p) => p.type === "text")
-						.map((p, i) => (
-							<span key={i}>{(p as { text: string }).text}</span>
-						))}
+					{body}
 				</div>
 			</div>
 		);
 	}
+	const text = messageText(message);
+	const settled = message.status === "success" || message.status === "failed";
+	const failedNote = stopped
+		? "You stopped this response."
+		: "This response didn't finish.";
 	return (
-		<div className="flex flex-col gap-1.5 text-sm">
+		<div className="group/answer flex flex-col gap-1.5 text-sm">
 			{message.parts.map((part, i) => {
 				if (part.type === "text") {
 					return (
-						<TextPart
-							key={i}
-							text={(part as { text: string }).text}
-							streaming={message.status === "streaming"}
-						/>
+						<div key={i} data-answer-body>
+							<TextPart
+								text={(part as { text: string }).text}
+								streaming={message.status === "streaming"}
+							/>
+						</div>
 					);
 				}
 				if (part.type.startsWith("tool-")) {
@@ -250,6 +352,24 @@ function MessageItem({ message }: { message: UIMessage }) {
 				}
 				return null;
 			})}
+			{message.status === "failed" && (
+				<p className="text-xs text-muted-foreground">{failedNote}</p>
+			)}
+			{settled && text && (
+				<div className="-ml-1 flex gap-0.5">
+					<CopyMessageButton text={text} />
+					{/* Touch has no selection toolbar for the pill; this is the fallback. */}
+					<Button
+						variant="ghost"
+						size="icon-xs"
+						aria-label="Reply to this answer"
+						onClick={() => onQuote(firstSentence(text))}
+						className={ANSWER_ACTION_CLASS}
+					>
+						<MessageSquareQuote />
+					</Button>
+				</div>
+			)}
 		</div>
 	);
 }
@@ -381,6 +501,23 @@ export function AssistantPanel() {
 	const [showHistory, setShowHistory] = useState(false);
 	const [input, setInput] = useState("");
 	const [isResponding, setIsResponding] = useState(false);
+	// The thread streamResponse is running in; the user may be viewing another.
+	const [respondingThreadId, setRespondingThreadId] = useState<string | null>(
+		null
+	);
+	const [stopping, setStopping] = useState(false);
+	const stopRequestedRef = useRef(false);
+	// Prompt message ids whose reply the user stopped, labeled apart from real failures.
+	const [stoppedPrompts, setStoppedPrompts] = useState<ReadonlySet<string>>(
+		() => new Set()
+	);
+	const [quote, setQuote] = useState<string | null>(null);
+	const [sendError, setSendError] = useState<{
+		prompt: string;
+		title: string;
+		detail: string;
+		retryable: boolean;
+	} | null>(null);
 	// User message already saved but streamResponse failed — retry must reuse
 	// this messageId instead of re-saving a duplicate user message.
 	const pendingRetryRef = useRef<{
@@ -388,8 +525,7 @@ export function AssistantPanel() {
 		prompt: string;
 		messageId: string;
 	} | null>(null);
-	const bottomRef = useRef<HTMLDivElement>(null);
-	const toast = useToast();
+	const transcriptRef = useRef<HTMLDivElement>(null);
 	const router = useRouter();
 	const pathname = usePathname();
 	const getScreenContext = useScreenContext();
@@ -432,11 +568,29 @@ export function AssistantPanel() {
 		});
 	});
 	const streamResponse = useAction(api.assistantChat.streamResponse);
+	const abortResponse = useMutation(api.assistantChat.abortResponse);
 
 	const messageCount = messages.results?.length ?? 0;
+
+	// The stream row only exists once the first delta is written, so a Stop
+	// pressed before then keeps retrying until there is something to abort.
 	useEffect(() => {
-		bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-	}, [messageCount, isResponding]);
+		if (!stopping || !respondingThreadId) return;
+		const target = respondingThreadId;
+		let cancelled = false;
+		let timer: ReturnType<typeof setTimeout> | undefined;
+		const attempt = async () => {
+			const { aborted } = await abortResponse({ threadId: target }).catch(() => ({
+				aborted: 0,
+			}));
+			if (!cancelled && aborted === 0) timer = setTimeout(attempt, 750);
+		};
+		void attempt();
+		return () => {
+			cancelled = true;
+			clearTimeout(timer);
+		};
+	}, [stopping, respondingThreadId, abortResponse]);
 
 	// The assistant runs multi-step (reason → call tools → answer) and
 	// streamResponse stays open for the whole run, so isResponding is true
@@ -462,7 +616,15 @@ export function AssistantPanel() {
 		lastMessage.parts.some(
 			(p) => p.type === "text" && (p as { text: string }).text.length > 0
 		);
-	const showThinking = isResponding && !runningToolPart && !isStreamingText;
+	const viewingResponse = threadId !== null && threadId === respondingThreadId;
+	// A reply shares its prompt's order.
+	const stoppedOrders = new Set(
+		results
+			.filter((m) => m.role === "user" && stoppedPrompts.has(m.id))
+			.map((m) => m.order)
+	);
+	const draftPrompt = input.trim() ? withQuote(quote, input.trim()) : "";
+	const showThinking = viewingResponse && !runningToolPart && !isStreamingText;
 
 	useEffect(() => {
 		if (!open) return;
@@ -542,10 +704,24 @@ export function AssistantPanel() {
 	}, [messages.results, messages.status, router, applyReportConfig]);
 
 	const handleSend = async (promptOverride?: string) => {
-		const prompt = (promptOverride ?? input).trim();
+		const prompt = promptOverride ?? draftPrompt;
 		if (!prompt || isResponding) return;
-		setInput("");
+		if (prompt.length > PROMPT_MAX_LENGTH) {
+			setSendError({
+				prompt,
+				title: "Message is too long",
+				detail: `Keep your message and quote under ${PROMPT_MAX_LENGTH.toLocaleString()} characters.`,
+				retryable: false,
+			});
+			return;
+		}
+		if (prompt === draftPrompt) {
+			setInput("");
+			setQuote(null);
+		}
+		setSendError(null);
 		setIsResponding(true);
+		let messageId: string | undefined;
 		try {
 			let tid = threadId;
 			if (!tid) {
@@ -555,14 +731,16 @@ export function AssistantPanel() {
 				// New thread has no history — client tool calls run right away.
 				seenClientToolCallsRef.current = new Set();
 			}
+			if (stopRequestedRef.current) return;
+			setRespondingThreadId(tid);
 			const pending = pendingRetryRef.current;
-			let messageId: string;
 			if (pending && pending.threadId === tid && pending.prompt === prompt) {
 				messageId = pending.messageId;
 			} else {
 				({ messageId } = await sendMessage({ threadId: tid, prompt }));
 				pendingRetryRef.current = { threadId: tid, prompt, messageId };
 			}
+			if (stopRequestedRef.current) return;
 			await streamResponse({
 				threadId: tid,
 				promptMessageId: messageId,
@@ -570,22 +748,56 @@ export function AssistantPanel() {
 			});
 			pendingRetryRef.current = null;
 		} catch (err) {
-			// Restore the failed prompt, but never clobber a newer draft.
-			setInput((current) => (current.trim() ? current : prompt));
-			const limitMessage = planLimitMessage(err);
-			if (limitMessage) {
-				toast.error("Daily limit reached", limitMessage);
-			} else {
-				toast.error("The assistant hit a snag", "Please try that again.");
+			if (!stopRequestedRef.current) {
+				// Resending the restored draft unchanged reuses the saved message.
+				const restored = splitQuote(prompt);
+				setInput((current) => (current.trim() ? current : restored.body));
+				setQuote((current) => current ?? restored.quote);
+				const limitMessage = planLimitMessage(err);
+				setSendError(
+					limitMessage
+						? {
+								prompt,
+								title: "Daily limit reached",
+								detail: limitMessage,
+								retryable: false,
+							}
+						: {
+								prompt,
+								title: "The assistant hit a snag",
+								detail: "Your message wasn't answered.",
+								retryable: true,
+							}
+				);
 			}
 		} finally {
+			const stoppedId = stopRequestedRef.current ? messageId : undefined;
+			if (stoppedId) {
+				setStoppedPrompts((prev) => new Set(prev).add(stoppedId));
+			}
+			stopRequestedRef.current = false;
+			setStopping(false);
 			setIsResponding(false);
+			setRespondingThreadId(null);
 		}
+	};
+
+	const handleStop = () => {
+		if (!isResponding || stopping) return;
+		stopRequestedRef.current = true;
+		setStopping(true);
+	};
+
+	const handleQuote = (text: string) => {
+		setQuote(text);
+		inputRef.current?.focus();
 	};
 
 	const startNewChat = () => {
 		setThreadId(null);
 		setShowHistory(false);
+		setQuote(null);
+		setSendError(null);
 		seenClientToolCallsRef.current = null;
 	};
 
@@ -692,54 +904,87 @@ export function AssistantPanel() {
 							)}
 						</div>
 					) : (
-						<div className="flex-1 overflow-y-auto px-4 py-4">
-							{!threadId || messageCount === 0 ? (
-								<div className="flex h-full flex-col items-center justify-center gap-4">
-									<div className="flex size-12 items-center justify-center rounded-2xl bg-primary/10">
-										<Sparkles className="size-6 text-primary" />
-									</div>
-									<p className="max-w-xs text-center text-sm text-muted-foreground">
-										Ask anything about your business — I can look at live data
-										across your whole workspace.
-									</p>
-									<div className="flex w-full max-w-sm flex-col gap-2">
-										{suggestionsFor(builderMounted, currentRecord, pathname).map((s) => (
-											<button
-												key={s}
-												type="button"
-												onClick={() => void handleSend(s)}
-												disabled={isResponding}
-												className="cursor-pointer rounded-xl border border-border px-3.5 py-2.5 text-left text-sm text-foreground/80 transition-colors hover:border-primary/40 hover:bg-primary/[0.04] disabled:cursor-not-allowed disabled:opacity-50"
-											>
-												{s}
-											</button>
-										))}
-									</div>
-									<LearnMoreLink
-										article="ai-assistant/what-you-can-ask"
-										label="What can I ask?"
-										className="text-xs"
-									/>
-								</div>
-							) : (
-								<div className="flex flex-col gap-4">
-									{messages.results.map((message) => (
-										<MessageItem key={message.key} message={message} />
-									))}
-									{showThinking && (
-										<div className="flex items-center gap-2 text-sm text-muted-foreground">
-											<Loader2 className="size-3.5 animate-spin" />
-											Thinking…
+						!threadId || messageCount === 0 ? (
+							<div className="flex flex-1 flex-col items-center justify-center overflow-y-auto px-4 py-4">
+								<EmptyState
+									size="md"
+									icon={<Sparkles />}
+									title="Ask about your business"
+									description="I can look at live data across your whole workspace."
+									action={
+										<div className="flex w-full max-w-sm flex-col items-center gap-2">
+											{suggestionsFor(builderMounted, currentRecord, pathname).map((s) => (
+												<Button
+													key={s}
+													variant="outline"
+													onClick={() => void handleSend(s)}
+													disabled={isResponding}
+													className="h-auto w-full justify-start px-3.5 py-2.5 text-start text-sm font-normal whitespace-normal"
+												>
+													{s}
+												</Button>
+											))}
+											<LearnMoreLink
+												article="ai-assistant/what-you-can-ask"
+												label="What can I ask?"
+												className="mt-2 text-xs"
+											/>
 										</div>
-									)}
-									<div
-										ref={(el) => {
-											if (el) bottomRef.current = el;
-										}}
-									/>
+									}
+								/>
+							</div>
+						) : (
+							<MessageScrollerProvider autoScroll defaultScrollPosition="end">
+								<div ref={transcriptRef} className="relative flex min-h-0 flex-1 flex-col">
+									<MessageScroller className="min-h-0 flex-1">
+										<MessageScrollerViewport>
+											<MessageScrollerContent
+												aria-busy={viewingResponse}
+												className="gap-4 px-4 py-4"
+											>
+												{messages.results.map((message) => (
+													<MessageScrollerItem
+														key={message.key}
+														messageId={message.key}
+														className="[content-visibility:visible]"
+													>
+														<MessageItem
+															message={message}
+															stopped={
+																message.role === "assistant" &&
+																stoppedOrders.has(message.order)
+															}
+															onQuote={handleQuote}
+														/>
+													</MessageScrollerItem>
+												))}
+												{(showThinking || (stopping && viewingResponse)) && (
+													<MessageScrollerItem
+														aria-hidden
+														className="[content-visibility:visible]"
+													>
+														<div className="flex items-center gap-2 text-sm text-muted-foreground">
+															<Loader2 className="size-3.5 animate-spin" />
+															{stopping ? "Stopping…" : "Thinking…"}
+														</div>
+													</MessageScrollerItem>
+												)}
+											</MessageScrollerContent>
+										</MessageScrollerViewport>
+										<MessageScrollerButton />
+									</MessageScroller>
+									{/* Outside the aria-busy log, which holds announcements until the reply ends. */}
+									<p role="status" className="sr-only">
+										{stopping && viewingResponse
+											? "Stopping…"
+											: showThinking
+												? "Thinking…"
+												: ""}
+									</p>
+									<QuoteReplyPill host={transcriptRef} onQuote={handleQuote} />
 								</div>
-							)}
-						</div>
+							</MessageScrollerProvider>
+						)
 					))}
 
 					{!locked && !showHistory && (
@@ -750,41 +995,103 @@ export function AssistantPanel() {
 									today
 								</p>
 							)}
-							<div className="flex items-end gap-2 rounded-xl border border-border bg-muted/30 p-2 focus-within:border-primary/40">
-								<Textarea
-									// During the pin handoff the exiting overlay copy unmounts
-									// after the docked copy mounts — ignore its null assignment
-									// so the ref keeps pointing at the live composer.
-									ref={(el) => {
-										if (el) inputRef.current = el;
-									}}
-									value={input}
-									onChange={(e) => setInput(e.target.value)}
-									onKeyDown={(e) => {
-										if (
-											e.key === "Enter" &&
-											!e.shiftKey &&
-											!e.nativeEvent.isComposing
-										) {
-											e.preventDefault();
-											void handleSend();
-										}
-									}}
-									placeholder="Ask about your business…"
-									rows={1}
-									maxLength={4000}
-									autoFocus
-									className="max-h-32 min-h-9 flex-1 resize-none border-0 bg-transparent p-1.5 text-sm shadow-none focus-visible:ring-0"
-								/>
-								<button
-									type="button"
-									onClick={() => void handleSend()}
-									disabled={!input.trim() || isResponding}
-									className="inline-flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-lg bg-primary text-primary-foreground transition-opacity disabled:opacity-40"
-									aria-label="Send message"
+							{sendError && (
+								<div
+									role="alert"
+									className="mb-2 flex items-start gap-2 rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-xs"
 								>
-									<ArrowUp className="size-4" />
-								</button>
+									<CircleAlert className="mt-0.5 size-3.5 shrink-0 text-danger-fg" />
+									<div className="min-w-0 flex-1">
+										<p className="font-medium text-foreground">{sendError.title}</p>
+										<p className="text-muted-foreground">{sendError.detail}</p>
+									</div>
+									{sendError.retryable && draftPrompt === sendError.prompt ? (
+										<Button
+											variant="outline"
+											size="xs"
+											onClick={() => void handleSend()}
+										>
+											Try again
+										</Button>
+									) : (
+										<Button
+											variant="ghost"
+											size="icon-xs"
+											aria-label="Dismiss"
+											onClick={() => setSendError(null)}
+										>
+											<X />
+										</Button>
+									)}
+								</div>
+							)}
+							<div className="flex flex-col gap-2 rounded-xl border border-border bg-muted/30 p-2 focus-within:border-primary/40">
+								{quote && (
+									<Attachment size="xs" className="w-full gap-2">
+										<MessageSquareQuote className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
+										<AttachmentContent>
+											<AttachmentTitle className="text-muted-foreground italic">
+												{quote}
+											</AttachmentTitle>
+										</AttachmentContent>
+										<AttachmentActions>
+											<AttachmentAction
+												aria-label="Remove quote"
+												onClick={() => setQuote(null)}
+											>
+												<X />
+											</AttachmentAction>
+										</AttachmentActions>
+									</Attachment>
+								)}
+								<div className="flex items-end gap-2">
+									<Textarea
+										// During the pin handoff the exiting overlay copy unmounts
+										// after the docked copy mounts — ignore its null assignment
+										// so the ref keeps pointing at the live composer.
+										ref={(el) => {
+											if (el) inputRef.current = el;
+										}}
+										value={input}
+										onChange={(e) => setInput(e.target.value)}
+										onKeyDown={(e) => {
+											if (
+												e.key === "Enter" &&
+												!e.shiftKey &&
+												!e.nativeEvent.isComposing
+											) {
+												e.preventDefault();
+												void handleSend();
+											}
+										}}
+										placeholder="Ask about your business…"
+										rows={1}
+										maxLength={PROMPT_MAX_LENGTH}
+										autoFocus
+										className="max-h-32 min-h-9 flex-1 resize-none border-0 bg-transparent p-1.5 text-sm shadow-none focus-visible:ring-0"
+									/>
+									{isResponding ? (
+										<button
+											type="button"
+											onClick={handleStop}
+											disabled={stopping}
+											className="inline-flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-lg bg-foreground text-background transition-opacity disabled:opacity-40"
+											aria-label={stopping ? "Stopping response" : "Stop response"}
+										>
+											<Square className="size-3 fill-current" />
+										</button>
+									) : (
+										<button
+											type="button"
+											onClick={() => void handleSend()}
+											disabled={!input.trim()}
+											className="inline-flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-lg bg-primary text-primary-foreground transition-opacity disabled:opacity-40"
+											aria-label="Send message"
+										>
+											<ArrowUp className="size-4" />
+										</button>
+									)}
+								</div>
 							</div>
 							<p className="mt-1.5 text-center text-[11px] text-muted-foreground">
 								The assistant can make changes you ask for — double-check

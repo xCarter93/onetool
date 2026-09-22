@@ -32,7 +32,12 @@ describe("QuickBooks connection", () => {
 		t = setupConvexTest();
 	});
 
-	afterEach(() => {
+	afterEach(async () => {
+		// Drain leftover scheduled work (revoke, purge pages) so it can't land
+		// in the next test's database after this one is torn down.
+		if (vi.isFakeTimers()) {
+			await t.finishAllScheduledFunctions(vi.runAllTimers);
+		}
 		vi.useRealTimers();
 		vi.unstubAllGlobals();
 		vi.unstubAllEnvs();
@@ -1050,6 +1055,11 @@ describe("QuickBooks connection", () => {
 	});
 
 	describe("error center permissions", () => {
+		// Creating records schedules follow-up work; fake timers let afterEach drain it.
+		beforeEach(() => {
+			useScheduledDrain();
+		});
+
 		async function seedFailedJobs(suffix: string) {
 			const { org, asOwner } = await setupOwnerOrg(suffix);
 			const orgId = org.orgId as Id<"organizations">;
