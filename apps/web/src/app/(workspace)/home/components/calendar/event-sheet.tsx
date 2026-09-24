@@ -137,7 +137,7 @@ export function CalendarEventSheet({
 			<SheetContent
 				side="right"
 				showCloseButton={false}
-				className="inset-y-4 right-4 left-auto flex h-[calc(100svh-2rem)] w-[min(26rem,calc(100vw-2rem))] max-w-none flex-col gap-0 overflow-hidden rounded-xl p-0 outline-none"
+				className="inset-y-4 right-4 left-auto flex h-[calc(100svh-2rem)] w-[min(26rem,calc(100vw-2rem))] max-w-none flex-col gap-0 overflow-hidden rounded-lg p-0 outline-none"
 			>
 				{occurrence && data && (
 					<>

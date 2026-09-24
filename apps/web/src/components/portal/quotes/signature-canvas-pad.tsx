@@ -275,7 +275,7 @@ export function SignatureCanvasPad({
 			<div
 				ref={wrapperRef}
 				className={cn(
-					"rounded-xl border border-border bg-background overflow-hidden",
+					"rounded-[8px] border border-border bg-background overflow-hidden",
 					disabled && "opacity-60",
 				)}
 				style={

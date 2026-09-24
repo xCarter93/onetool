@@ -209,10 +209,10 @@ export function CountersignerConfig({
 	);
 
 	return (
-		<div className="bg-card dark:bg-card backdrop-blur-md border border-border dark:border-border rounded-xl shadow-lg dark:shadow-black/50 ring-1 ring-border/30 dark:ring-border/50">
+		<div className="rounded-lg border border-border bg-card">
 			<Card className="bg-transparent border-none shadow-none ring-0">
 				<CardHeader>
-					<CardTitle className="flex items-center gap-2 text-xl">
+					<CardTitle className="flex items-center gap-2 text-sm font-semibold">
 						<PenTool className="h-5 w-5" />
 						Countersignature Settings
 					</CardTitle>

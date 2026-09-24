@@ -34,7 +34,6 @@ import {
 	ItemTitle,
 } from "@/components/ui/item";
 import { Badge } from "@/components/reui/badge";
-import { DotField } from "@/components/ui/dot-field";
 import {
 	Tooltip,
 	TooltipContent,
@@ -89,9 +88,6 @@ const ERROR_MESSAGES: Record<string, string> = {
 	unknown: "Something went wrong connecting QuickBooks. Try again.",
 };
 
-const CONNECTOR_TILE =
-	"flex items-center justify-center rounded-lg border-2 border-background bg-background shadow-sm dark:border-muted/80 dark:bg-muted/80";
-
 type StatusTone = "connected" | "attention" | "off";
 
 /**
@@ -141,12 +137,6 @@ function IntegrationStatusIcon({
 	);
 }
 
-/**
- * Connector diagram in the card-5 grammar: data-type icons flank the brand
- * mark on a dashed line over a masked dot field. The diagram is decorative (the
- * integration is named in the header below) but the status icon pinned to its
- * top-right corner is not, so only the diagram is hidden from assistive tech.
- */
 function IntegrationConnectorBand({
 	brand,
 	leftIcon: LeftIcon,
@@ -158,39 +148,19 @@ function IntegrationConnectorBand({
 	leftIcon: ComponentType<{ className?: string }>;
 	rightIcon: ComponentType<{ className?: string }>;
 	status: ReactNode;
-	/** Plan-gated: dims the diagram and locks the brand mark. The plan badge and
-	    description in the header carry the meaning; this overlay is decorative. */
 	locked?: boolean;
 }) {
 	return (
-		<div className="relative isolate overflow-hidden border-b border-border bg-muted/40 px-6 py-6">
-			<div aria-hidden="true" className={locked ? "opacity-55" : undefined}>
-				<DotField className="text-muted-foreground [mask-image:radial-gradient(86%_76%_at_50%_46%,black,transparent)]" />
-				<div className="relative z-10 flex items-center justify-center">
-					<div className={`size-10 ${CONNECTOR_TILE}`}>
-						<LeftIcon className="size-4 text-muted-foreground" />
-					</div>
-					<div className="mx-1 w-8 border-t border-dashed border-foreground/20" />
-					<div className={`size-13 rounded-xl ${CONNECTOR_TILE}`}>{brand}</div>
-					<div className="mx-1 w-8 border-t border-dashed border-foreground/20" />
-					<div className={`size-10 ${CONNECTOR_TILE}`}>
-						<RightIcon className="size-4 text-muted-foreground" />
-					</div>
-				</div>
-			</div>
-			{locked && (
-				// Centered on the band = centered on the brand tile (the diagram is
-				// symmetric), so the scrim sits exactly over the brand mark.
-				<span
-					aria-hidden="true"
-					className="absolute inset-0 z-20 flex items-center justify-center"
-				>
-					<span className="flex size-13 items-center justify-center rounded-xl bg-background/60 backdrop-blur-[1px]">
-						<Lock className="size-5 text-foreground" />
-					</span>
+		<div className="flex items-center justify-between border-b border-border px-6 py-4">
+			<div className="flex items-center gap-3" aria-hidden="true">
+				<span className="flex size-10 items-center justify-center rounded-md border border-border bg-background">
+					{brand}
 				</span>
-			)}
-			<div className="absolute right-3 top-3 z-10">{status}</div>
+				<LeftIcon className="size-4 text-muted-foreground" />
+				<RightIcon className="size-4 text-muted-foreground" />
+				{locked && <Lock className="size-4 text-muted-foreground" />}
+			</div>
+			{status}
 		</div>
 	);
 }

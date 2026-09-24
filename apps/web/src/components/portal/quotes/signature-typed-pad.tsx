@@ -91,7 +91,7 @@ export function SignatureTypedPad({
 	return (
 		<div className="space-y-4">
 			<div className="space-y-2">
-				<Label htmlFor="typed-signature-input" className="text-xs">
+				<Label htmlFor="typed-signature-input" className="text-sm">
 					Type your full legal name as your electronic signature
 				</Label>
 				<Input
@@ -106,10 +106,11 @@ export function SignatureTypedPad({
 					autoCorrect="off"
 					spellCheck={false}
 					aria-label="Typed signature"
+					style={{ height: 44, fontSize: 16 }}
 				/>
 				{isPending && (
 					<p
-						className="mt-1 text-[11px] text-muted-foreground"
+						className="mt-1 text-xs text-muted-foreground"
 						aria-live="polite"
 					>
 						Preparing signature…
@@ -118,7 +119,7 @@ export function SignatureTypedPad({
 			</div>
 			<div
 				aria-label="Typed signature preview"
-				className="flex h-24 items-center rounded-xl border border-border bg-background px-4"
+				className="flex h-24 items-center rounded-[8px] border border-border bg-background px-4"
 				style={{
 					fontFamily: '"Caveat", cursive',
 					fontSize: 36,

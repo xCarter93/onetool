@@ -13,10 +13,8 @@ import {
 	FrameFooter,
 	FrameHeader,
 	FramePanel,
-	FrameTitle,
 } from "@/components/reui/frame";
 import { Button } from "@/components/ui/button";
-import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { useConfirmDialog } from "@/hooks/use-confirm-dialog";
@@ -73,7 +71,7 @@ export function QboImportReview({ run }: { run: ImportRun }) {
 	const { results, status, loadMore } = usePaginatedQuery(
 		api.quickbooksImport.listImportRows,
 		isFetching ? "skip" : { runId: run._id },
-		{ initialNumItems: PAGE_SIZE }
+		{ initialNumItems: PAGE_SIZE },
 	);
 	const clients = useQuery(api.clients.listNamesForOrg, {});
 
@@ -103,7 +101,7 @@ export function QboImportReview({ run }: { run: ImportRun }) {
 			activeTab === "all"
 				? results
 				: results.filter((row) => tabForRow(row) === activeTab),
-		[activeTab, results]
+		[activeTab, results],
 	);
 
 	const handleDecide = useCallback(
@@ -115,7 +113,7 @@ export function QboImportReview({ run }: { run: ImportRun }) {
 				logError(error, { action: "quickbooks_import_set_row_decision" });
 				toast.error(
 					"Couldn't update this customer",
-					getUserFriendlyErrorMessage(error) ?? "Try again in a moment."
+					getUserFriendlyErrorMessage(error) ?? "Try again in a moment.",
 				);
 			} finally {
 				setPendingRowIds((current) => {
@@ -125,7 +123,7 @@ export function QboImportReview({ run }: { run: ImportRun }) {
 				});
 			}
 		},
-		[setRowDecision, toast]
+		[setRowDecision, toast],
 	);
 
 	const handleCommit = useCallback(async () => {
@@ -140,7 +138,7 @@ export function QboImportReview({ run }: { run: ImportRun }) {
 				logError(error, { action: "quickbooks_import_commit" });
 				toast.error(
 					"Couldn't start the import",
-					getUserFriendlyErrorMessage(error) ?? "Try again in a moment."
+					getUserFriendlyErrorMessage(error) ?? "Try again in a moment.",
 				);
 			}
 		} finally {
@@ -167,7 +165,7 @@ export function QboImportReview({ run }: { run: ImportRun }) {
 			logError(error, { action: "quickbooks_import_discard" });
 			toast.error(
 				"Couldn't discard the import",
-				getUserFriendlyErrorMessage(error) ?? "Try again in a moment."
+				getUserFriendlyErrorMessage(error) ?? "Try again in a moment.",
 			);
 		} finally {
 			setDiscarding(false);
@@ -211,7 +209,10 @@ export function QboImportReview({ run }: { run: ImportRun }) {
 		// surfaces that with a toast plus a jump to Needs review.
 		const label = `Import ${importableCount} ${importNoun}${importableCount !== 1 ? "s" : ""}`;
 		return (
-			<Button onClick={() => void handleCommit()} disabled={importableCount === 0}>
+			<Button
+				onClick={() => void handleCommit()}
+				disabled={importableCount === 0}
+			>
 				{label}
 			</Button>
 		);
@@ -334,12 +335,17 @@ export function QboImportReview({ run }: { run: ImportRun }) {
 	})();
 
 	return (
-		<div className="h-[calc(100dvh-7rem)] px-4 py-4 sm:px-6 sm:py-6">
-			<div className="mx-auto h-full w-full max-w-7xl">
-				<Frame variant="default" className="h-full w-full">
-					<FrameHeader className="shrink-0 flex-row items-start justify-between gap-3">
+		<div className="workspace-page h-[calc(100dvh-7rem)]">
+			<div className="h-full w-full">
+				<Frame
+					variant="ghost"
+					className="h-full w-full gap-0 bg-transparent p-0"
+				>
+					<FrameHeader className="workspace-page-header shrink-0 flex-row items-start justify-between gap-3 px-0">
 						<div className="flex min-w-0 flex-col gap-px">
-							<FrameTitle>Import from QuickBooks</FrameTitle>
+							<h1 className="text-2xl font-semibold text-foreground">
+								Import from QuickBooks
+							</h1>
 							<FrameDescription className="truncate text-xs">
 								Review what will happen before anything is created.
 							</FrameDescription>
@@ -351,17 +357,14 @@ export function QboImportReview({ run }: { run: ImportRun }) {
 						</div>
 					</FrameHeader>
 
-					<FramePanel className="flex min-h-0 flex-col p-0 shadow-none!">
-						<div className="shrink-0 px-5 py-5 sm:px-6">
+					<FramePanel className="flex min-h-0 flex-col rounded-none border-0 bg-transparent p-0 shadow-none before:hidden">
+						<div className="shrink-0 border-b px-0 py-5">
 							<QboStepNav currentStep={stepForStatus(run.status)} />
 						</div>
-						<Separator />
-						<div className="flex-1 min-h-0 overflow-y-auto px-5 py-6 sm:px-6">
-							{body}
-						</div>
+						<div className="min-h-0 flex-1 overflow-y-auto py-6">{body}</div>
 					</FramePanel>
 
-					<FrameFooter className="shrink-0 flex-row items-center justify-between gap-3">
+					<FrameFooter className="shrink-0 flex-row items-center justify-between gap-3 border-t px-0 py-4">
 						<div className="flex min-w-0 items-center gap-2 text-sm text-muted-foreground">
 							<Flag className="size-4 shrink-0" />
 							<span className="truncate">{footerHint}</span>

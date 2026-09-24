@@ -83,19 +83,10 @@ export function WelcomeContent({
 	return (
 		<div className="-mx-6 -my-6 md:-mx-9 md:-my-6">
 			{/* Greeting strip */}
-			<div className="relative overflow-hidden border-b border-border bg-card px-6 pt-8 pb-6 md:px-9 md:pt-10 md:pb-7">
-				<div
-					aria-hidden="true"
-					className="pointer-events-none absolute inset-0 opacity-[0.35]"
-					style={{
-						backgroundImage:
-							"radial-gradient(circle at 1px 1px, color-mix(in oklab, var(--primary) 25%, transparent) 1px, transparent 0)",
-						backgroundSize: "14px 14px",
-					}}
-				/>
+			<div className="border-b border-border bg-card px-6 pt-8 pb-6 md:px-9 md:pt-10 md:pb-7">
 				<div className="relative flex flex-wrap items-end justify-between gap-4">
 					<div>
-						<p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+						<p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
 							{greetingDate}
 						</p>
 						<h1 className="mt-1 text-[32px] font-semibold leading-[1.1] tracking-[-0.02em] md:text-[34px]">
@@ -103,7 +94,7 @@ export function WelcomeContent({
 						</h1>
 						<p className="mt-2 text-[15px] text-muted-foreground">
 							Here&apos;s what&apos;s happening with your{" "}
-							<span className="inline-block rounded-md border border-dashed border-primary/60 bg-primary/10 px-1.5 py-0.5 text-foreground">
+							<span className="font-medium text-foreground">
 								{businessName}
 							</span>{" "}
 							service.
@@ -128,11 +119,11 @@ export function WelcomeContent({
 
 				<div className="grid grid-cols-1 gap-5 md:grid-cols-[minmax(0,1.7fr)_minmax(0,1fr)] md:items-start">
 					{/* Recent activity */}
-					<section className="rounded-2xl border border-border bg-card overflow-hidden">
+					<section className="rounded-[8px] border border-border bg-card overflow-hidden">
 						<header className="flex items-center justify-between border-b border-border px-5 py-4">
 							<div>
 								<h2 className="text-[15px] font-semibold">Recent activity</h2>
-								<p className="text-[12px] text-muted-foreground mt-0.5">
+								<p className="text-[13px] text-muted-foreground mt-0.5">
 									Latest from {businessName}
 								</p>
 							</div>
@@ -158,7 +149,7 @@ export function WelcomeContent({
 										className="flex items-center gap-4 px-5 py-4"
 									>
 										<span
-											className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] ${a.tintBg} ${a.tintFg}`}
+											className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-[8px] ${a.tintBg} ${a.tintFg}`}
 										>
 											<a.icon className="h-[18px] w-[18px]" aria-hidden="true" />
 										</span>
@@ -166,19 +157,19 @@ export function WelcomeContent({
 											<div className="text-[14px] font-medium truncate">
 												{a.title}
 											</div>
-											<div className="text-[12px] text-muted-foreground truncate mt-0.5">
+											<div className="text-[13px] text-muted-foreground truncate mt-0.5">
 												{a.meta}
 											</div>
 										</div>
 										{a.pillLabel && (
 											<span
-												className={`hidden sm:inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[11px] font-medium ${a.pillClass}`}
+												className={`hidden sm:inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-0.5 text-xs font-medium ${a.pillClass}`}
 											>
 												<span className="h-1.5 w-1.5 rounded-full bg-current" />
 												{a.pillLabel}
 											</span>
 										)}
-										<div className="text-[12px] text-muted-foreground tabular-nums whitespace-nowrap">
+										<div className="text-[13px] text-muted-foreground tabular-nums whitespace-nowrap">
 											{a.time}
 										</div>
 									</li>
@@ -188,7 +179,7 @@ export function WelcomeContent({
 					</section>
 
 					{/* Right rail */}
-					<aside className="rounded-2xl border border-border bg-card p-5">
+					<aside className="rounded-[8px] border border-border bg-card p-5">
 						<PortalContactPanel
 							logoUrl={logoUrl}
 							businessName={businessName}
@@ -260,9 +251,9 @@ function AttentionCard({
 	})();
 
 	return (
-		<div className="rounded-2xl border border-amber-200 bg-amber-50 p-5 dark:border-amber-900 dark:bg-amber-950/40">
+		<div className="rounded-[8px] border border-amber-200 bg-amber-50 p-5 dark:border-amber-900 dark:bg-amber-950/40">
 			<div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
-				<div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-amber-500 dark:bg-amber-600">
+				<div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[8px] bg-amber-500 dark:bg-amber-600">
 					<CircleAlert
 						className="h-[22px] w-[22px] text-white"
 						aria-hidden="true"
@@ -282,7 +273,7 @@ function AttentionCard({
 					{awaitingQuotesCount > 0 && (
 						<Link
 							href={quoteHref}
-							className="inline-flex cursor-pointer items-center justify-center gap-1.5 rounded-lg border border-border bg-card px-3 py-1.5 text-[13px] font-medium text-foreground shadow-xs outline-none transition-colors hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card"
+							className="inline-flex cursor-pointer items-center justify-center gap-1.5 rounded-lg border border-border bg-card px-3 py-1.5 text-[13px] font-medium text-foreground outline-none transition-colors hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card"
 						>
 							{awaitingQuotesCount === 1 ? "Review quote" : "Review quotes"}
 						</Link>
@@ -290,7 +281,7 @@ function AttentionCard({
 					{outstandingCount > 0 && (
 						<Link
 							href={invoiceHref}
-							className="inline-flex cursor-pointer items-center justify-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-[13px] font-medium text-primary-foreground shadow-sm outline-none transition-colors hover:bg-primary/90 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card"
+							className="inline-flex cursor-pointer items-center justify-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-[13px] font-medium text-primary-foreground outline-none transition-colors hover:bg-primary/90 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card"
 						>
 							Pay {formatMoney(outstandingTotal)}
 							<ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />

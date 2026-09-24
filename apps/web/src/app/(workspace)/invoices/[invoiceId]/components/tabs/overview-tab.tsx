@@ -195,26 +195,28 @@ export function OverviewTab({
 
 	return (
 		<div className="space-y-8">
-			{/* Summary Cards */}
-			<HighlightMetricGrid
-				metrics={[
-					{
-						icon: DollarSign,
-						label: "Total Amount",
-						value: formatCurrency(invoice.total),
-						description: "Invoice grand total",
-					},
-					{
-						icon: CreditCard,
-						label: "Payments",
-						value: paymentSummary?.totalPayments ?? 0,
-						description:
-							paymentSummary && paymentSummary.totalPayments > 0
-								? `${paymentSummary.paidCount} paid`
-								: "No payments yet",
-					},
-				]}
-			/>
+			<div>
+				<h3 className="workspace-section-heading">Highlights</h3>
+				<HighlightMetricGrid
+					metrics={[
+						{
+							icon: DollarSign,
+							label: "Total Amount",
+							value: formatCurrency(invoice.total),
+							description: "Invoice grand total",
+						},
+						{
+							icon: CreditCard,
+							label: "Payments",
+							value: paymentSummary?.totalPayments ?? 0,
+							description:
+								paymentSummary && paymentSummary.totalPayments > 0
+									? `${paymentSummary.paidCount} paid`
+									: "No payments yet",
+						},
+					]}
+				/>
+			</div>
 
 			{/* Line Items */}
 			<div className="space-y-3">

@@ -18,7 +18,7 @@ export function ArticleFeedback({ article }: { article: string }) {
 	const [answer, setAnswer] = React.useState<"yes" | "no" | null>(null);
 
 	return (
-		<div className="mt-14 rounded-xl border border-border bg-muted/30 p-6">
+		<div className="mt-14 rounded-[8px] border border-border bg-card p-6">
 			{answer === null ? (
 				<div className="flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
 					<p className="text-sm font-medium text-foreground">
@@ -27,7 +27,8 @@ export function ArticleFeedback({ article }: { article: string }) {
 					<div className="flex gap-2">
 						<Button
 							variant="outline"
-							size="sm"
+							size="lg"
+							style={{ height: 40, fontSize: 14 }}
 							onClick={() => {
 								captureFeedback(article, true);
 								setAnswer("yes");
@@ -37,7 +38,8 @@ export function ArticleFeedback({ article }: { article: string }) {
 						</Button>
 						<Button
 							variant="outline"
-							size="sm"
+							size="lg"
+							style={{ height: 40, fontSize: 14 }}
 							onClick={() => {
 								captureFeedback(article, false);
 								setAnswer("no");

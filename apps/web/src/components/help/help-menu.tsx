@@ -156,7 +156,7 @@ export function HelpMenu() {
 					)}
 				</PopoverTrigger>
 				<PopoverContent
-					className="w-80 rounded-xl border-border p-0 shadow-xl"
+					className="w-80 rounded-lg border-border p-0 shadow-floating"
 					align="end"
 					sideOffset={12}
 				>
@@ -187,7 +187,7 @@ export function HelpMenu() {
 												onSelect={() => openArticle(ref)}
 												className="cursor-pointer"
 											>
-												<span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
+												<span className="flex size-7 shrink-0 items-center justify-center rounded-[4px] bg-accent text-accent-foreground">
 													<Icon className="size-4" aria-hidden="true" />
 												</span>
 												<span className="min-w-0">
@@ -222,7 +222,7 @@ export function HelpMenu() {
 											}}
 											className="cursor-pointer"
 										>
-											<span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
+											<span className="flex size-7 shrink-0 items-center justify-center rounded-[4px] bg-accent text-accent-foreground">
 												<row.icon className="size-4" aria-hidden="true" />
 											</span>
 											<span className="min-w-0">
@@ -245,7 +245,7 @@ export function HelpMenu() {
 											}}
 											className="cursor-pointer"
 										>
-											<span className="relative flex size-7 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
+											<span className="relative flex size-7 shrink-0 items-center justify-center rounded-[4px] bg-accent text-accent-foreground">
 												<MessagesSquare className="size-4" aria-hidden="true" />
 												{unreadCount > 0 && (
 													<span
@@ -276,7 +276,7 @@ export function HelpMenu() {
 											}}
 											className="cursor-pointer"
 										>
-											<span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
+											<span className="flex size-7 shrink-0 items-center justify-center rounded-[4px] bg-accent text-accent-foreground">
 												<Route className="size-4" aria-hidden="true" />
 											</span>
 											<span className="min-w-0">

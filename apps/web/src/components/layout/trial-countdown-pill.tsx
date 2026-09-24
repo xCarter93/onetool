@@ -27,7 +27,7 @@ export function TrialCountdownPill() {
 	const label = `Trial · ${daysLeft} ${daysLeft === 1 ? "day" : "days"} left`;
 
 	const pillClass = cn(
-		"inline-flex items-center whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-medium transition-colors duration-200",
+		"inline-flex items-center whitespace-nowrap rounded-[4px] px-2 py-1 text-xs font-medium transition-colors duration-150",
 		urgent
 			? "bg-warning/10 text-warning-foreground"
 			: "bg-muted/60 text-muted-foreground"

@@ -17,7 +17,7 @@ export function RateLimitBanner({
 		<div
 			role="status"
 			aria-live="polite"
-			className="rounded-xl border border-amber-300 bg-amber-50 p-4"
+			className="rounded-[8px] border border-amber-300 bg-amber-50 p-4"
 		>
 			<div className="flex items-start gap-3">
 				<Clock
@@ -33,7 +33,7 @@ export function RateLimitBanner({
 						seconds and try again.
 					</p>
 					{showCountdown && (
-						<p className="mt-2 text-[12px] text-muted-foreground">
+						<p className="mt-2 text-[13px] text-muted-foreground">
 							Try again in {retryAfterSeconds}s.
 						</p>
 					)}

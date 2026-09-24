@@ -13,7 +13,7 @@ function Callout({
 }) {
 	const Icon = variant === "note" ? Info : Lightbulb;
 	return (
-		<aside className="flex gap-3 rounded-xl border border-border bg-muted/40 p-4">
+		<aside className="flex gap-3 rounded-[8px] border border-border bg-card p-4">
 			<Icon
 				className={
 					variant === "note"

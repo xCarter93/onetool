@@ -259,7 +259,7 @@ export function ProjectScheduleCalendar({
 	const hasMilestones = milestonesByDay.size > 0;
 
 	return (
-		<div className="rounded-xl border border-border bg-card">
+		<div className="rounded-lg border border-border bg-card">
 			<EventCalendar
 				events={events}
 				defaultDate={initialDate}

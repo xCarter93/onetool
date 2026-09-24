@@ -3,7 +3,6 @@
 import { useState } from "react";
 import type { ActivityWithUser } from "@/app/(workspace)/home/components/activity-item";
 import ActivityItem from "@/app/(workspace)/home/components/activity-item";
-import { Separator } from "@/components/ui/separator";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { EmptyState } from "@/components/domain/empty-state";
 
@@ -24,12 +23,11 @@ export function ActivityTab({ activities }: ActivityTabProps) {
 
 	return (
 		<div>
-			<div className="flex items-center justify-between mb-1 min-h-8">
+			<div className="flex items-center justify-between mb-4 min-h-8">
 				<h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
 					Activity
 				</h3>
 			</div>
-			<Separator className="mb-4" />
 
 			{activities && activities.length > 0 ? (
 				<>

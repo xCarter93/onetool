@@ -36,7 +36,7 @@ export function PlanBadge() {
 	const router = useRouter();
 
 	if (isLoading || !isLoaded) {
-		return <Skeleton className="h-8 w-24 rounded-lg" />;
+		return <Skeleton className="h-8 w-24 rounded-[4px]" />;
 	}
 
 	const planName = isBusiness ? "Business" : "Free";
@@ -51,7 +51,7 @@ export function PlanBadge() {
 			<PopoverTrigger
 				render={
 					<button
-						className={`group inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-lg px-2.5 text-xs font-semibold shadow-sm ring-1 transition-colors duration-200 ${
+						className={`group inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-[4px] px-2.5 text-xs font-semibold ring-1 transition-colors duration-150 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring ${
 							isBusiness
 								? "bg-warning/15 hover:bg-warning/20 ring-warning/30 hover:ring-warning/50 text-warning-foreground"
 								: "text-primary hover:text-primary/90 bg-primary/10 hover:bg-primary/15 ring-primary/30 hover:ring-primary/40"
@@ -72,10 +72,10 @@ export function PlanBadge() {
 				)}
 			</PopoverTrigger>
 			<PopoverContent
-				className="w-80 p-0 bg-background! backdrop-blur-xl border-border shadow-xl"
+				className="w-80 rounded-lg border-border bg-popover p-0 shadow-floating"
 				align="end"
 			>
-				<div className="p-4 border-b border-border bg-background">
+				<div className="border-b border-border px-3 py-2">
 					<div className="flex items-center justify-between mb-2">
 						<div className="flex items-center gap-2">
 							{isBusiness ? (
@@ -97,7 +97,7 @@ export function PlanBadge() {
 
 				{/* No Organization CTA */}
 				{!hasOrganization && (
-					<div className="p-4 space-y-3 bg-background">
+					<div className="space-y-3 p-3">
 						<p className="text-sm text-muted-foreground">
 							Create an organization to unlock OneTool features and start
 							managing your clients and projects.
@@ -117,7 +117,7 @@ export function PlanBadge() {
 
 				{/* Business plan benefits */}
 				{isBusiness && hasOrganization && (
-					<div className="p-4 space-y-3 bg-background">
+					<div className="space-y-3 p-3">
 						<div className="space-y-2 text-sm">
 							{BUSINESS_BENEFITS.map((benefit) => (
 								<div
@@ -134,7 +134,7 @@ export function PlanBadge() {
 
 				{/* Manage Subscription Button - Admin only */}
 				{hasOrganization && isAdmin && (
-					<div className="p-4 border-t border-border bg-background">
+					<div className="border-t border-border p-3">
 						<Button
 							onClick={handleManageSubscription}
 							variant={isBusiness ? "outline" : "default"}

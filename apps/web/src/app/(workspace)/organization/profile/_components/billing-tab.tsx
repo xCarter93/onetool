@@ -319,7 +319,7 @@ export function BillingTab() {
 
 			{/* Current plan */}
 			<SettingsCard>
-				<SettingsCardHeader gradient texture>
+				<SettingsCardHeader gradient>
 					<div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
 						<div className="flex items-center gap-3">
 							<div

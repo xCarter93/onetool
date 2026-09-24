@@ -37,9 +37,7 @@ export function EditorTopBar({
 	onSave,
 }: EditorTopBarProps) {
 	return (
-		// md: extra top padding clears the workspace notches, which hang ~20px
-		// below the card's top edge (see .header-notch in globals.css).
-		<div className="flex h-16 items-center gap-3 border-b border-border bg-background px-6 md:h-[84px] md:pt-5">
+		<div className="flex h-16 items-center gap-3 border-b border-border bg-background px-6">
 			<Button
 				variant="outline"
 				size="icon"

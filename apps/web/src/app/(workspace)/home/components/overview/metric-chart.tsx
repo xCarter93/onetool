@@ -49,7 +49,7 @@ function ChartTooltipCard({
 	if (!active || !payload?.length) return null;
 	const point = payload[0];
 	return (
-		<div className="rounded-lg border bg-popover p-2.5 shadow-lg">
+		<div className="rounded-lg border bg-popover p-2.5">
 			<div className="text-[11px] font-medium text-muted-foreground">
 				{formatDayLabel(point.payload?.date ?? "")}
 			</div>
@@ -111,7 +111,6 @@ export function MetricChartBody({
 
 	const patternPrefix = useId();
 	const AREA_STRIPE_ID = stripeId(patternPrefix, 0);
-	const dotGridId = `overview-dots-${metric.key}`;
 
 	return (
 		<FramePanel className="flex flex-col gap-5">
@@ -122,12 +121,12 @@ export function MetricChartBody({
 						<span className="flex size-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
 							<Icon className="size-4" aria-hidden />
 						</span>
-						<span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+						<span className="text-[13px] font-medium text-muted-foreground">
 							{metric.label}
 						</span>
 					</div>
 					<div className="mt-3 flex flex-wrap items-baseline gap-x-3 gap-y-1">
-						<span className="text-3xl font-bold leading-none tabular-nums text-foreground sm:text-4xl">
+						<span className="text-2xl font-semibold leading-none tabular-nums text-foreground">
 							{metric.isLoading ? (
 								"—"
 							) : (
@@ -147,7 +146,7 @@ export function MetricChartBody({
 				</div>
 
 				{/* High / Low / Change strip */}
-				<div className="flex flex-wrap items-center gap-x-5 gap-y-1 text-sm text-muted-foreground">
+				<div className="flex flex-wrap items-center gap-x-5 gap-y-1 text-[13px] text-muted-foreground">
 					<span>
 						High{" "}
 						<span className="font-medium text-foreground tabular-nums">
@@ -186,28 +185,6 @@ export function MetricChartBody({
 			>
 				<ComposedChart data={data} margin={{ top: 12, right: 12, left: 4, bottom: 8 }}>
 					<ChartStripeDefs idPrefix={patternPrefix} colors={[color]} />
-					<defs>
-						<pattern
-							id={dotGridId}
-							x="0"
-							y="0"
-							width="20"
-							height="20"
-							patternUnits="userSpaceOnUse"
-						>
-							<circle cx="10" cy="10" r="1" fill="var(--input)" fillOpacity="0.6" />
-						</pattern>
-					</defs>
-
-					<rect
-						x="0"
-						y="0"
-						width="100%"
-						height="100%"
-						fill={`url(#${dotGridId})`}
-						style={{ pointerEvents: "none" }}
-					/>
-
 					<CartesianGrid
 						strokeDasharray="4 8"
 						stroke="var(--border)"

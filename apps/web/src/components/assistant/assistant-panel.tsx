@@ -318,7 +318,7 @@ function MessageItem({
 						{quote}
 					</p>
 				)}
-				<div className="max-w-[85%] rounded-2xl rounded-br-md bg-primary/10 px-3.5 py-2 text-sm whitespace-pre-wrap break-words">
+			<div className="max-w-[85%] rounded-lg rounded-br-sm border border-primary/15 bg-primary/10 px-3.5 py-2 text-[13px] whitespace-pre-wrap break-words">
 					{body}
 				</div>
 			</div>
@@ -330,7 +330,7 @@ function MessageItem({
 		? "You stopped this response."
 		: "This response didn't finish.";
 	return (
-		<div className="group/answer flex flex-col gap-1.5 text-sm">
+		<div className="group/answer flex flex-col gap-1.5 text-[13px]">
 			{message.parts.map((part, i) => {
 				if (part.type === "text") {
 					return (
@@ -1025,7 +1025,7 @@ export function AssistantPanel() {
 									)}
 								</div>
 							)}
-							<div className="flex flex-col gap-2 rounded-xl border border-border bg-muted/30 p-2 focus-within:border-primary/40">
+							<div className="flex flex-col gap-2 rounded-lg border border-border bg-card p-2 focus-within:border-primary/40">
 								{quote && (
 									<Attachment size="xs" className="w-full gap-2">
 										<MessageSquareQuote className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
@@ -1068,14 +1068,14 @@ export function AssistantPanel() {
 										rows={1}
 										maxLength={PROMPT_MAX_LENGTH}
 										autoFocus
-										className="max-h-32 min-h-9 flex-1 resize-none border-0 bg-transparent p-1.5 text-sm shadow-none focus-visible:ring-0"
+										className="max-h-32 min-h-9 flex-1 resize-none border-0 bg-transparent p-1.5 text-[13px] shadow-none focus-visible:ring-0"
 									/>
 									{isResponding ? (
 										<button
 											type="button"
 											onClick={handleStop}
 											disabled={stopping}
-											className="inline-flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-lg bg-foreground text-background transition-opacity disabled:opacity-40"
+											className="inline-flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-sm bg-foreground text-background transition-opacity disabled:opacity-40"
 											aria-label={stopping ? "Stopping response" : "Stop response"}
 										>
 											<Square className="size-3 fill-current" />
@@ -1085,7 +1085,7 @@ export function AssistantPanel() {
 											type="button"
 											onClick={() => void handleSend()}
 											disabled={!input.trim()}
-											className="inline-flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-lg bg-primary text-primary-foreground transition-opacity disabled:opacity-40"
+											className="inline-flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-sm bg-primary text-primary-foreground transition-opacity disabled:opacity-40"
 											aria-label="Send message"
 										>
 											<ArrowUp className="size-4" />

@@ -30,13 +30,7 @@ interface CreateRecordDialogProps {
 	className?: string;
 }
 
-/**
- * Shell for the record-creation dialogs: header, scrolling body, pinned footer.
- *
- * The body scrolls rather than the page, so the footer's actions stay reachable
- * on a long form. Dismissal is blocked mid-submit so a stray Esc or backdrop
- * click can't orphan an in-flight create.
- */
+// Keep form actions reachable while the fields scroll.
 export function CreateRecordDialog({
 	open,
 	onOpenChange,
@@ -63,11 +57,11 @@ export function CreateRecordDialog({
 		>
 			<DialogContent
 				className={cn(
-					"flex max-h-[min(85dvh,38rem)] w-[calc(100vw-2rem)] max-w-4xl flex-col gap-0 overflow-hidden p-0",
+					"workspace-record-form flex max-h-[min(90dvh,48rem)] w-[calc(100vw-2rem)] max-w-3xl flex-col gap-0 overflow-hidden p-0",
 					className
 				)}
 			>
-				<DialogHeader className="gap-1 border-b border-border px-6 py-4">
+				<DialogHeader className="gap-1 border-b border-border bg-muted px-6 py-4">
 					<DialogTitle>{title}</DialogTitle>
 					{description ? (
 						<DialogDescription>{description}</DialogDescription>
@@ -82,14 +76,12 @@ export function CreateRecordDialog({
 					}}
 					className="flex min-h-0 flex-1 flex-col"
 				>
-					{/* Section headings (FieldLegend) ship at text-base/mb-1.5, which reads
-					    as a field label rather than a divider between groups of them. */}
+
 					<div className="min-h-0 flex-1 space-y-8 overflow-y-auto px-6 py-5 [&_[data-slot=field-legend]]:mb-4 [&_[data-slot=field-legend]]:text-lg [&_[data-slot=field-legend]]:font-semibold [&_[data-slot=field-legend]]:tracking-tight">
 						{children}
 					</div>
 
-					{/* cn-dialog-footer carries -mx-4 -mb-4 to bleed past the dialog's default
-					    p-4; this shell is p-0, so those pull the footer outside the box. */}
+					{/* Cancel the default footer bleed because this dialog has no padding. */}
 					<DialogFooter className="m-0 rounded-none border-t border-border px-6 py-4">
 						<Button
 							type="button"

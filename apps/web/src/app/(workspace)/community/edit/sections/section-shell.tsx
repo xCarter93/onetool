@@ -34,18 +34,21 @@ export function SectionShell({
 			id={id}
 			ref={sectionRef}
 			className={cn(
-				"scroll-mt-44",
-				!first && "border-t border-border/40 pt-12",
+				"scroll-mt-(--community-scroll-offset)",
+				!first && "border-t border-border pt-8",
 			)}
 		>
 			<div className="mb-6 flex items-start justify-between gap-4">
 				<div className="flex items-start gap-3">
-					<div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/10">
-						<Icon className="size-4.5 text-primary" />
-					</div>
+					<Icon
+						className="mt-0.5 size-4 shrink-0 text-primary"
+						aria-hidden="true"
+					/>
 					<div>
 						<h2 className="text-lg font-semibold text-foreground">{title}</h2>
-						<p className="mt-0.5 text-sm text-muted-foreground">{description}</p>
+						<p className="mt-0.5 text-sm text-muted-foreground">
+							{description}
+						</p>
 					</div>
 				</div>
 				{headerAccessory}

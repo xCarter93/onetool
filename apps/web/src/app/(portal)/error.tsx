@@ -50,13 +50,13 @@ export default function PortalError({
 					<button
 						type="button"
 						onClick={() => reset()}
-						className="inline-flex h-11 items-center justify-center rounded-lg bg-primary px-6 text-sm font-semibold text-primary-foreground shadow-sm transition-all hover:bg-primary/90 active:scale-[0.99]"
+						className="inline-flex h-11 items-center justify-center rounded-lg bg-primary px-6 text-sm font-semibold text-primary-foreground transition-all hover:bg-primary/90 active:scale-[0.99]"
 					>
 						Try again
 					</button>
 
 					{error.digest ? (
-						<p className="font-mono text-[11px] text-muted-foreground">
+						<p className="font-mono text-xs text-muted-foreground">
 							Reference: {error.digest}
 						</p>
 					) : null}

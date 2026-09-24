@@ -15,7 +15,6 @@ import { EmailsTab } from "./tabs/emails-tab";
 import { TasksTab } from "./tabs/tasks-tab";
 import { PropertyTable } from "./property-table";
 import { ContactTable } from "./contact-table";
-import { Separator } from "@/components/ui/separator";
 import { ClientDetailSidebar } from "./client-detail-sidebar";
 
 interface ClientDetailTabsProps {
@@ -61,10 +60,8 @@ export function ClientDetailTabs({
 }: ClientDetailTabsProps) {
 	return (
 		<PillTabs value={activeTab} onValueChange={onTabChange}>
-			{/* Two-column layout: tabs + content on left, sidebar on right */}
-			<div className="flex gap-0">
-				{/* Left: Tabs list + tab content */}
-				<div className="flex-1 min-w-0 pr-6 pt-6 pb-20">
+			<div className="grid min-w-0 gap-6 xl:grid-cols-[minmax(0,1fr)_var(--workspace-detail-rail-width)]">
+				<div className="min-w-0 pb-20">
 					<PillTabsList className="overflow-x-auto">
 						<PillTabsTrigger value="overview">Overview</PillTabsTrigger>
 						<PillTabsTrigger value="activity">Activity</PillTabsTrigger>
@@ -108,12 +105,11 @@ export function ClientDetailTabs({
 					</PillTabsContent>
 
 					<PillTabsContent value="properties" className="mt-0 pt-5">
-						<div className="flex items-center justify-between mb-1 min-h-8">
+						<div className="flex items-center justify-between mb-4 min-h-8">
 							<h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
 								Properties & Contacts
 							</h3>
 						</div>
-						<Separator className="mb-4" />
 						<div className="space-y-6">
 							<PropertyTable
 								clientId={clientId as Id<"clients">}
@@ -129,9 +125,8 @@ export function ClientDetailTabs({
 					</PillTabsContent>
 				</div>
 
-				{/* Right: Persistent sidebar (desktop) — border extends from top */}
-				<div className="hidden xl:block w-[480px] shrink-0 border-l border-border/80 min-h-screen bg-muted/40 dark:bg-muted/50">
-					<div className="sticky top-24">
+				<div className="hidden min-w-0 xl:block xl:pt-6">
+					<div className="workspace-panel workspace-detail-rail">
 						<ClientDetailSidebar
 							client={client}
 							clientId={clientId}
@@ -143,8 +138,7 @@ export function ClientDetailTabs({
 				</div>
 			</div>
 
-			{/* Sidebar for mobile (below content) */}
-			<div className="xl:hidden mt-6 border-t-2 border-border/80 pt-6 bg-muted/40 dark:bg-muted/50 rounded-lg">
+			<div className="workspace-panel mt-6 overflow-hidden xl:hidden">
 				<ClientDetailSidebar
 					client={client}
 					clientId={clientId}

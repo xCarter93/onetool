@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import {
 	ArrowLeft,
 	Save,
@@ -63,9 +63,6 @@ const EDITOR_SECTION_FOR: Record<CommunitySectionId, SectionId> = {
 	faq: "faq",
 	team: "team",
 };
-
-/** Sticky chrome is ~150px tall; scrollspy targets land just below it. */
-const SCROLLSPY_OFFSET = 160;
 
 const SECTION_ICONS: Record<
 	SectionId,
@@ -148,39 +145,20 @@ export default function CommunityEditContent() {
 	// Holds tab-close and in-app navigation while there are unsaved edits.
 	const guard = useLeaveGuard(actions.hasUnsavedChanges);
 
-	// The /community checklist links to /community/edit#<sectionId>, but the
-	// sections render after the Convex doc loads — long after the browser's own
-	// hash scroll has already fired against nothing. Land it manually once.
-	useEffect(() => {
-		if (!isPageLoaded) return;
-		const hash = window.location.hash.slice(1);
-		if (!hash || !SECTION_LIST.some((section) => section.id === hash)) return;
-		requestAnimationFrame(() => {
-			document
-				.getElementById(hash)
-				?.scrollIntoView({ behavior: "auto", block: "start" });
-		});
-	}, [isPageLoaded]);
-
-	// Point Scrollspy at whichever scroll context is live (workspace card on
-	// desktop, window on mobile).
 	const scrollTargetRef = useWorkspaceScrollTarget();
-
-	// Sentinel-based sticky header detection
-	const sentinelRef = useRef<HTMLDivElement>(null);
-	const [isSticky, setIsSticky] = useState(false);
+	const isDesktop = useMediaQuery("(min-width: 48rem)");
+	const headerRef = useRef<HTMLDivElement>(null);
+	const [headerHeight, setHeaderHeight] = useState(0);
+	const stickyOffset = headerHeight + 16;
+	const scrollOffset = stickyOffset + (isDesktop ? 0 : 48);
 
 	useEffect(() => {
-		if (!isPageLoaded) return;
-		const sentinel = sentinelRef.current;
-		if (!sentinel) return;
-		const observer = new IntersectionObserver(
-			([entry]) => {
-				setIsSticky(!entry.isIntersecting);
-			},
-			{ threshold: 0, rootMargin: "-72px 0px 0px 0px" },
-		);
-		observer.observe(sentinel);
+		if (!isPageLoaded || !headerRef.current) return;
+		const header = headerRef.current;
+		const observer = new ResizeObserver(() => {
+			setHeaderHeight(header.getBoundingClientRect().height);
+		});
+		observer.observe(header);
 		return () => observer.disconnect();
 	}, [isPageLoaded]);
 
@@ -206,9 +184,19 @@ export default function CommunityEditContent() {
 		const prefersReducedMotion = window.matchMedia(
 			"(prefers-reduced-motion: reduce)",
 		).matches;
-		document.getElementById(EDITOR_SECTION_FOR[sectionId])?.scrollIntoView({
+		const section = document.getElementById(EDITOR_SECTION_FOR[sectionId]);
+		if (!section) return;
+		const target = scrollTargetRef.current;
+		const scroller = target instanceof HTMLElement ? target : window;
+		const top =
+			target instanceof HTMLElement
+				? section.getBoundingClientRect().top -
+					target.getBoundingClientRect().top +
+					target.scrollTop
+				: section.getBoundingClientRect().top + window.scrollY;
+		scroller.scrollTo({
+			top: top - scrollOffset,
 			behavior: prefersReducedMotion ? "auto" : "smooth",
-			block: "start",
 		});
 	};
 
@@ -260,22 +248,18 @@ export default function CommunityEditContent() {
 	};
 
 	return (
-		// No background here — the workspace canvas dot texture stays visible
-		// across the whole page; content sits on opaque panels.
-		// shrink-0 (and no min-h override) keeps this flex item at full content
-		// height inside the fixed-height canvas; a shrunken root would end the
-		// sticky header's containing block after ~one viewport.
-		<div className="shrink-0">
-			{/* Sentinel for sticky detection */}
-			<div ref={sentinelRef} className="h-0 w-full" />
-
-			{/* Sticky header bar — sticks to top-0, sits behind main nav (z-20 < z-30).
-			    pt-12 pushes visible content below main nav's notched items on desktop. */}
+		<div
+			className="workspace-detail relative isolate shrink-0"
+			style={
+				{
+					"--community-sticky-offset": `${stickyOffset}px`,
+					"--community-scroll-offset": `${scrollOffset}px`,
+				} as CSSProperties
+			}
+		>
 			<div
-				className={cn(
-					"sticky top-0 z-20 bg-background transition-shadow duration-200 pt-10 md:pt-12 border-b border-border/60",
-					isSticky && "shadow-[0_4px_6px_-1px_rgba(0,0,0,0.1)]",
-				)}
+				ref={headerRef}
+				className="sticky top-12 z-20 border-b border-border bg-background md:top-0"
 			>
 				<div className="mx-auto px-4 sm:px-6 lg:px-8 py-4">
 					<div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -411,7 +395,7 @@ export default function CommunityEditContent() {
 			</div>
 
 			{/* Content area — scrollspy rail + stacked sections */}
-			<Scrollspy targetRef={scrollTargetRef} offset={SCROLLSPY_OFFSET}>
+			<Scrollspy targetRef={scrollTargetRef} offset={scrollOffset}>
 				<div className="mx-auto px-4 sm:px-6 lg:px-8 pt-6 pb-8">
 					{/* Mobile section chips */}
 					<div className="lg:hidden -mx-4 px-4 mb-6 overflow-x-auto">
@@ -432,16 +416,10 @@ export default function CommunityEditContent() {
 						</div>
 					</div>
 
-					{/* One surface, hairline-divided. Rail and preview stick inside it, so
-					    neither column ever bottoms out onto bare canvas. */}
-					<div className="rounded-xl border border-border/60 bg-card shadow-xs">
-						<div className="grid lg:grid-cols-[220px_minmax(0,1fr)] 2xl:grid-cols-[220px_minmax(0,1fr)_minmax(400px,32%)]">
+					<div className="grid items-start gap-4 lg:grid-cols-[220px_minmax(0,1fr)] 2xl:grid-cols-[220px_minmax(0,1fr)_minmax(22rem,32%)]">
 						{/* Desktop rail */}
-						<aside className="hidden lg:block lg:border-r lg:border-border/60">
-							<nav
-								aria-label="Page sections"
-								className="sticky top-40 space-y-0.5 p-3"
-							>
+						<aside className="sticky top-(--community-sticky-offset) hidden max-h-[calc(100svh-var(--community-sticky-offset)-4.5rem)] overflow-y-auto rounded-lg border border-border bg-card lg:block">
+							<nav aria-label="Page sections" className="space-y-0.5 p-3">
 								<p className="flex items-baseline justify-between px-3 pb-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
 									Essentials
 									<span className="font-normal tabular-nums normal-case tracking-normal">
@@ -465,7 +443,7 @@ export default function CommunityEditContent() {
 						{/* Sections */}
 						{/* Essentials first, then the optional sections — this order must
 						    match SECTION_LIST or the rail and scrollspy disagree. */}
-						<div className="min-w-0 space-y-12 px-5 pt-8 pb-[40vh] sm:px-8">
+						<div className="min-w-0 space-y-12 rounded-lg border border-border bg-card px-5 pt-8 pb-[40vh] sm:px-8">
 							<MainSettingsSection
 								{...mainSettings}
 								sectionRef={sectionRefSetters.mainSettings}
@@ -503,7 +481,7 @@ export default function CommunityEditContent() {
 						    the full page. The pane is gated on the query and not just
 						    hidden, so its iframe and head observers never start on the
 						    viewports that would not show it. */}
-						<aside className="hidden 2xl:block 2xl:border-l 2xl:border-border/60">
+						<aside className="sticky top-(--community-sticky-offset) hidden 2xl:block">
 							{canDockPreview && (
 								<LivePreviewPane
 									data={previewData}
@@ -513,7 +491,6 @@ export default function CommunityEditContent() {
 								/>
 							)}
 						</aside>
-						</div>
 					</div>
 				</div>
 			</Scrollspy>

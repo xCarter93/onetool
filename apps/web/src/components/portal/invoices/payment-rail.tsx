@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { Elements } from "@stripe/react-stripe-js";
 import { loadStripe, type Stripe } from "@stripe/stripe-js";
 import { Lock } from "lucide-react";
+import { useTheme } from "next-themes";
 
 import { formatMoney } from "@/lib/portal/format";
 import { buildPortalAppearance } from "@/lib/portal/invoices/build-appearance";
@@ -37,6 +38,7 @@ export function PaymentRail({
 	// All hooks run UNCONDITIONALLY in stable order. The `enabled` flag below is
 	// what gates the PI fetch — never an early return placed above a hook.
 	const [paymentSurfaceOpen, setPaymentSurfaceOpen] = useState(false);
+	const { resolvedTheme } = useTheme();
 
 	const pi = useCreatePaymentIntent({
 		invoiceId,
@@ -58,7 +60,10 @@ export function PaymentRail({
 		return loadStripe(pi.publishableKey, { stripeAccount: pi.stripeAccountId });
 	}, [pi.status, pi.intentStatus, pi.publishableKey, pi.stripeAccountId]);
 
-	const appearance = useMemo(() => buildPortalAppearance(), []);
+	const appearance = useMemo(
+		() => buildPortalAppearance(resolvedTheme === "dark"),
+		[resolvedTheme],
+	);
 
 	// Render-time branches (all hooks have already run above).
 	if (!stripeChargesEnabled) {
@@ -102,7 +107,7 @@ export function PaymentRail({
 					Pay {amountFmt}
 					<Lock className="h-3.5 w-3.5" aria-hidden="true" />
 				</button>
-				<p className="text-center text-[12px] text-muted-foreground">
+				<p className="text-center text-[13px] text-muted-foreground">
 					Secure payment powered by Stripe.
 				</p>
 			</div>

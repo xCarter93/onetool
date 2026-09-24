@@ -66,7 +66,7 @@ export function HelpSearchProvider({
 				description="Search help articles"
 			>
 				<Command>
-					<CommandInput placeholder="Search help articles..." />
+					<CommandInput placeholder="Search help articles..." style={{ fontSize: 16 }} />
 					<CommandList>
 						<CommandEmpty>No matching articles.</CommandEmpty>
 						{HELP_CATEGORIES.filter(
@@ -114,7 +114,7 @@ export function HelpSearchButton() {
 		<button
 			type="button"
 			onClick={openSearch}
-			className="flex h-9 cursor-pointer items-center gap-2 rounded-lg border border-border bg-muted/40 px-3 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground sm:w-52 sm:justify-between"
+			className="flex h-10 cursor-pointer items-center gap-2 rounded-lg border border-border bg-card px-3 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground sm:w-52 sm:justify-between"
 		>
 			<span className="flex items-center gap-2">
 				<SearchIcon className="size-4" aria-hidden="true" />
@@ -134,11 +134,11 @@ export function HelpSearchHero({ className }: { className?: string }) {
 			type="button"
 			onClick={openSearch}
 			className={cn(
-				"flex h-12 w-full max-w-xl cursor-pointer items-center justify-between rounded-xl border border-border bg-background px-4 text-muted-foreground shadow-xs transition-colors hover:border-foreground/25 hover:text-foreground",
+				"flex h-12 w-full max-w-xl cursor-pointer items-center justify-between rounded-[8px] border border-border bg-background px-4 text-muted-foreground transition-colors hover:border-foreground/25 hover:text-foreground",
 				className
 			)}
 		>
-			<span className="flex items-center gap-2.5 text-[15px]">
+			<span className="flex items-center gap-2.5 text-base">
 				<SearchIcon className="size-4" aria-hidden="true" />
 				Search help...
 			</span>

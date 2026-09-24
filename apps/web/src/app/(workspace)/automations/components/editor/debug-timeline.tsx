@@ -60,12 +60,12 @@ function resolveLabel(nodeId: string, rfNodes: Node[]): string {
 
 const RESULT_ICON: Record<ExecutedNode["result"], ReactNode> = {
 	success: (
-		<CheckCircle2 className="size-3.5 text-emerald-600 dark:text-emerald-400" />
+		<CheckCircle2 className="size-3.5 text-success-foreground" />
 	),
-	failed: <XCircle className="size-3.5 text-red-600 dark:text-red-400" />,
+	failed: <XCircle className="size-3.5 text-danger-foreground" />,
 	skipped: <CircleSlash className="size-3.5 text-muted-foreground" />,
 	running: (
-		<Loader2 className="size-3.5 animate-spin text-blue-600 dark:text-blue-400" />
+		<Loader2 className="size-3.5 animate-spin text-primary" />
 	),
 };
 
@@ -160,15 +160,15 @@ function JsonBlock({ label, value }: { label: string; value: unknown }) {
 	}
 	return (
 		<div className="space-y-1">
-			<div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+			<div className="flex items-center gap-1.5 text-2xs font-semibold uppercase tracking-wider text-muted-foreground">
 				<span>{label}</span>
 				{truncated && (
-					<span className="rounded bg-amber-100 px-1 py-px text-[9px] font-medium normal-case tracking-normal text-amber-700 dark:bg-amber-950/40 dark:text-amber-300">
+					<span className="rounded bg-warning-soft px-1 py-px text-2xs font-medium normal-case tracking-normal text-warning-foreground">
 						truncated
 					</span>
 				)}
 			</div>
-			<pre className="max-h-40 overflow-auto whitespace-pre-wrap break-words rounded-md bg-muted/60 p-2 font-mono text-[11px] leading-relaxed text-foreground">
+			<pre className="max-h-40 overflow-auto whitespace-pre-wrap break-words rounded-md bg-muted/60 p-2 font-mono text-xs leading-relaxed text-foreground">
 				{text}
 				{truncated && "…"}
 			</pre>
@@ -245,7 +245,7 @@ export function DebugTimeline({
 										render={
 											<Badge
 												variant="warning"
-												className="shrink-0 gap-1 px-1.5 py-0 text-[10px]"
+												className="shrink-0 gap-1 px-1.5 py-0 text-2xs"
 											/>
 										}
 									>
@@ -260,7 +260,7 @@ export function DebugTimeline({
 								</Tooltip>
 							)}
 							{duration && (
-								<span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">
+								<span className="shrink-0 text-xs tabular-nums text-muted-foreground">
 									{duration}
 								</span>
 							)}
@@ -279,12 +279,12 @@ export function DebugTimeline({
 					{isOpen && (
 						<div className="space-y-2 pb-2 pl-7 pr-2">
 							{entry.error != null && (
-								<div className="rounded-md bg-red-50 px-2 py-1.5 text-[11px] text-red-700 dark:bg-red-950/30 dark:text-red-300">
+								<div className="rounded-md bg-danger-soft px-2 py-1.5 text-xs text-danger-foreground">
 									{entry.error}
 								</div>
 							)}
 							{entry.recordsProcessed != null && (
-								<div className="text-[11px] text-muted-foreground">
+								<div className="text-xs text-muted-foreground">
 									{entry.recordsProcessed} record
 									{entry.recordsProcessed === 1 ? "" : "s"} processed
 								</div>
@@ -296,7 +296,7 @@ export function DebugTimeline({
 								<JsonBlock label="Output" value={entry.output} />
 							)}
 							{!hasDetail && (
-								<div className="text-[11px] text-muted-foreground">
+								<div className="text-xs text-muted-foreground">
 									No data captured for this step.
 								</div>
 							)}
@@ -338,7 +338,7 @@ export function DebugTimeline({
 							<span className="min-w-0 flex-1 truncate text-sm font-medium">
 								{row.label}
 							</span>
-							<span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">
+							<span className="shrink-0 text-xs tabular-nums text-muted-foreground">
 								{row.indexes.length} step{row.indexes.length === 1 ? "" : "s"}
 							</span>
 						</button>

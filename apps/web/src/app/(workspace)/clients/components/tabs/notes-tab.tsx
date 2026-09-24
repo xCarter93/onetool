@@ -1,6 +1,5 @@
 "use client";
 
-import { Separator } from "@/components/ui/separator";
 
 interface NotesTabProps {
 	isEditing: boolean;
@@ -14,10 +13,9 @@ export function NotesTab({ isEditing, notes, onNotesChange }: NotesTabProps) {
 			<h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-0.5">
 				Internal Notes
 			</h3>
-			<p className="text-xs text-muted-foreground mb-1">
+			<p className="text-xs text-muted-foreground mb-4">
 				Visible only to your team
 			</p>
-			<Separator className="mb-4" />
 
 			{isEditing ? (
 				<textarea

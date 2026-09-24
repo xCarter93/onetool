@@ -63,7 +63,7 @@ export function InstallmentList({
 	if (installments.length === 0) {
 		return (
 			<div
-				className="rounded-xl border border-dashed border-border bg-muted/20 px-4 py-6 text-center"
+				className="rounded-[8px] border border-dashed border-border bg-muted/20 px-4 py-6 text-center"
 				data-installment-empty
 			>
 				<p className="text-[13px] text-muted-foreground">
@@ -91,7 +91,7 @@ export function InstallmentList({
 						key={row._id}
 						data-installment-row
 						data-active={isActive ? "true" : undefined}
-						className={`rounded-xl border bg-card p-4 transition-colors ${
+						className={`rounded-[8px] border bg-card p-4 transition-colors ${
 							isActive
 								? "border-primary border-l-[3px] border-l-primary"
 								: "border-border"
@@ -99,7 +99,7 @@ export function InstallmentList({
 					>
 						<div className="flex items-start justify-between gap-3">
 							<div className="min-w-0">
-								<p className="text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
+								<p className="text-xs font-semibold uppercase tracking-[0.06em] text-muted-foreground">
 									Due {formatDate(row.dueDate)}
 								</p>
 								<p className="mt-1 text-[14px] font-medium text-foreground">

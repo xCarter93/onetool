@@ -34,7 +34,7 @@ function createReportColumns(
 	duplicatingId: string | null,
 	onDuplicate: (id: string) => void,
 	onDelete: (id: string, name: string) => void,
-	duplicateDisabledReason: string | undefined
+	duplicateDisabledReason: string | undefined,
 ): ColumnDef<DataGridFeatures, Doc<"reports">>[] {
 	return [
 		{
@@ -46,9 +46,9 @@ function createReportColumns(
 				const config = report.config;
 				const groupBy = config.groupBy;
 				const groupByLabel =
-					groupByOptions[config.entityType]?.find(
-						(o) => o.value === groupBy
-					)?.label ?? (groupBy ? pathLabel(config.entityType, groupBy) : groupBy);
+					groupByOptions[config.entityType]?.find((o) => o.value === groupBy)
+						?.label ??
+					(groupBy ? pathLabel(config.entityType, groupBy) : groupBy);
 				const source = entityLabels[config.entityType] ?? config.entityType;
 				return (
 					<div className="flex items-center gap-3">
@@ -121,7 +121,7 @@ function createReportColumns(
 							variant="ghost"
 							size="icon-sm"
 							aria-label="Delete report"
-							className="text-red-600 hover:bg-red-50 hover:text-red-700 dark:hover:bg-red-950"
+							className="text-destructive hover:bg-danger-soft"
 							onClick={() => onDelete(report._id, report.name)}
 						>
 							<Trash2 className="h-4 w-4" />
@@ -181,14 +181,14 @@ function ReportsPageContent() {
 				console.error("Failed to duplicate report:", error);
 				toast.error(
 					"Couldn't duplicate report",
-					convexErrorMessage(error, "Please try again.")
+					convexErrorMessage(error, "Please try again."),
 				);
 			} finally {
 				duplicatingRef.current = false;
 				setDuplicatingId(null);
 			}
 		},
-		[duplicateReport, router, toast]
+		[duplicateReport, router, toast],
 	);
 
 	const handleDeleteClick = useCallback((id: string, name: string) => {
@@ -202,9 +202,9 @@ function ReportsPageContent() {
 				duplicatingId,
 				handleDuplicate,
 				handleDeleteClick,
-				savedCapReason
+				savedCapReason,
 			),
-		[duplicatingId, handleDuplicate, handleDeleteClick, savedCapReason]
+		[duplicatingId, handleDuplicate, handleDeleteClick, savedCapReason],
 	);
 
 	const table = useTable({
@@ -218,75 +218,74 @@ function ReportsPageContent() {
 	const isLoading = reports === undefined;
 
 	return (
-		<div className="space-y-8 p-6">
-			{/* Header */}
-			<div className="flex items-center gap-3">
-				<div className="h-6 w-1.5 rounded-full bg-linear-to-b from-primary to-primary/60" />
+		<div className="workspace-page">
+			<div className="workspace-page-header">
 				<div>
-					<h1 className="text-2xl font-bold text-foreground">Reports</h1>
+					<h1 className="text-xl font-semibold text-foreground">Reports</h1>
 					<p className="text-sm text-muted-foreground">
 						Build and view analytics for your organization
 					</p>
 				</div>
 			</div>
 
-			{/* Create hero — persistent; doubles as the empty state. */}
-			<ReportCreatePanel onBrowsePresets={() => setPresetDialogOpen(true)} />
-
-			{/* Saved reports */}
-			<section className="space-y-3">
-				<div className="flex items-center gap-2">
-					<h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-						Your reports
-					</h2>
-					{!isLoading && reports && reports.length > 0 && (
-						<span className="rounded-full bg-muted px-1.5 text-xs font-medium text-muted-foreground">
-							{savedMeter && savedMeter.limit !== null
-								? `${reports.length} of ${savedMeter.limit}`
-								: reports.length}
-						</span>
-					)}
-					{savedCapReached && (
-						<span className="text-xs text-muted-foreground">
-							Limit reached. Delete a report to free a slot, or upgrade for
-							unlimited.
-						</span>
-					)}
-				</div>
-
-				{isLoading ? (
-					<div className="space-y-2">
-						{Array.from({ length: 4 }).map((_, i) => (
-							<div
-								key={i}
-								className="flex items-center gap-3 rounded-lg px-2 py-3"
-							>
-								<div className="h-9 w-9 animate-pulse rounded-lg bg-muted" />
-								<div className="space-y-2">
-									<div className="h-4 w-40 animate-pulse rounded bg-muted" />
-									<div className="h-3 w-24 animate-pulse rounded bg-muted" />
-								</div>
-							</div>
-						))}
+			<div className="workspace-explorer">
+				<aside className="workspace-explorer-rail">
+					<ReportCreatePanel
+						onBrowsePresets={() => setPresetDialogOpen(true)}
+					/>
+				</aside>
+				<section className="workspace-results space-y-3">
+					<div className="workspace-section-heading flex-wrap">
+						<h2>Your reports</h2>
+						{!isLoading && reports && reports.length > 0 && (
+							<span className="rounded-full bg-muted px-1.5 text-xs font-medium text-muted-foreground">
+								{savedMeter && savedMeter.limit !== null
+									? `${reports.length} of ${savedMeter.limit}`
+									: reports.length}
+							</span>
+						)}
+						{savedCapReached && (
+							<span className="text-xs text-muted-foreground">
+								Limit reached. Delete a report to free a slot, or upgrade for
+								unlimited.
+							</span>
+						)}
 					</div>
-				) : !reports || reports.length === 0 ? (
-					<p className="rounded-xl border border-dashed border-border/60 px-4 py-6 text-center text-sm text-muted-foreground">
-						Reports you save will show up here.
-					</p>
-				) : (
-					<DataGrid
-						table={table}
-						recordCount={reports.length}
-						onRowClick={(report) => router.push(`/reports/${report._id}`)}
-						rowClassName={() => "group"}
-						tableLayout={{ width: "auto", headerBackground: true }}
-					>
-						<DataGridContainer className="rounded-lg border">
-							<DataGridTable />
-						</DataGridContainer>
-					</DataGrid>
-				)}
-			</section>
+
+					{isLoading ? (
+						<div className="space-y-2">
+							{Array.from({ length: 4 }).map((_, i) => (
+								<div
+									key={i}
+									className="flex items-center gap-3 rounded-lg px-2 py-3"
+								>
+									<div className="h-9 w-9 animate-pulse rounded-lg bg-muted" />
+									<div className="space-y-2">
+										<div className="h-4 w-40 animate-pulse rounded bg-muted" />
+										<div className="h-3 w-24 animate-pulse rounded bg-muted" />
+									</div>
+								</div>
+							))}
+						</div>
+					) : !reports || reports.length === 0 ? (
+						<p className="workspace-panel px-4 py-10 text-center text-sm text-muted-foreground">
+							Reports you save will show up here.
+						</p>
+					) : (
+						<DataGrid
+							table={table}
+							recordCount={reports.length}
+							onRowClick={(report) => router.push(`/reports/${report._id}`)}
+							rowClassName={() => "group"}
+							tableLayout={{ width: "auto", headerBackground: true }}
+						>
+							<DataGridContainer className="workspace-panel overflow-hidden">
+								<DataGridTable />
+							</DataGridContainer>
+						</DataGrid>
+					)}
+				</section>
+			</div>
 
 			{reportToDelete && (
 				<DeleteConfirmationModal
@@ -302,7 +301,10 @@ function ReportsPageContent() {
 				/>
 			)}
 
-			<PresetLibraryDialog open={presetDialogOpen} onOpenChange={setPresetDialogOpen} />
+			<PresetLibraryDialog
+				open={presetDialogOpen}
+				onOpenChange={setPresetDialogOpen}
+			/>
 		</div>
 	);
 }

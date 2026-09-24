@@ -28,7 +28,10 @@ import {
 import { DataGridTable } from "@/components/reui/data-grid/data-grid-table";
 import { useToast } from "@/hooks/use-toast";
 import { convexErrorMessage } from "@/lib/convex-error";
-import { formatVisitDate, stateLabel } from "../../components/recurrence/labels";
+import {
+	formatVisitDate,
+	stateLabel,
+} from "../../components/recurrence/labels";
 import {
 	AssigneeStack,
 	type OrgUser,
@@ -60,7 +63,7 @@ export function SeriesOccurrences({
 		Array<string | undefined>
 	>([]);
 	const [pendingVisitId, setPendingVisitId] = useState<Id<"projects"> | null>(
-		null
+		null,
 	);
 	const occurrences = useQuery(api.projectSeries.listOccurrences, {
 		seriesId,
@@ -69,14 +72,14 @@ export function SeriesOccurrences({
 	const orgUsers = useQuery(api.users.listByOrg, {});
 	const usersById = useMemo(
 		() => new Map<Id<"users">, OrgUser>(orgUsers?.map((u) => [u._id, u])),
-		[orgUsers]
+		[orgUsers],
 	);
 	const skip = useMutation(api.projectSeries.skip);
 	const restoreVisit = useMutation(api.projectSeries.restoreVisit);
 
 	const runVisitAction = async (
 		projectId: Id<"projects">,
-		action: "skip" | "restore"
+		action: "skip" | "restore",
 	) => {
 		if (pendingVisitId) return;
 		setPendingVisitId(projectId);
@@ -85,7 +88,7 @@ export function SeriesOccurrences({
 				await skip({ projectId });
 				toast.success(
 					"Visit skipped",
-					"Removed from the active schedule. Future dates are unchanged."
+					"Removed from the active schedule. Future dates are unchanged.",
 				);
 			} else {
 				await restoreVisit({ projectId });
@@ -94,7 +97,7 @@ export function SeriesOccurrences({
 		} catch (error) {
 			toast.error(
 				action === "skip" ? "Skip failed" : "Restore failed",
-				convexErrorMessage(error, "Try again.")
+				convexErrorMessage(error, "Try again."),
 			);
 		} finally {
 			setPendingVisitId(null);
@@ -227,14 +230,14 @@ export function SeriesOccurrences({
 	const table = useTable({ features: dataGridFeatures, data: rows, columns });
 
 	return (
-		<Frame>
-			<FrameHeader>
+		<Frame variant="ghost" className="mt-8 gap-0 bg-transparent p-0">
+			<FrameHeader className="workspace-section-heading px-0">
 				<FrameTitle>Occurrences</FrameTitle>
 				<FrameDescription>
 					Each visit is a separate project with its own work history.
 				</FrameDescription>
 			</FrameHeader>
-			<FramePanel className="p-0">
+			<FramePanel className="rounded-none border-0 bg-transparent p-0 shadow-none before:hidden">
 				{occurrences === undefined ? (
 					<div className="space-y-3 p-4">
 						{Array.from({ length: 5 }, (_, index) => (

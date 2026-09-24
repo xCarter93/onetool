@@ -588,17 +588,14 @@ function RoutingWorkspace() {
 			: undefined;
 
 	return (
-		<div className="flex h-full flex-col gap-4 p-6">
+		<div className="workspace-page flex h-full min-h-0 flex-col gap-4">
 			{/* Header */}
-			<div className="flex flex-wrap items-center justify-between gap-3">
-				<div className="flex items-center gap-3">
-					<div className="h-6 w-1.5 rounded-full bg-linear-to-b from-primary to-primary/60" />
-					<div>
+			<div className="workspace-page-header flex flex-wrap items-start justify-between gap-3">
+				<div>
 						<h1 className="text-2xl font-bold text-foreground">Routing</h1>
 						<p className="text-sm text-muted-foreground">
 							Plan the most efficient route between your stops
 						</p>
-					</div>
 				</div>
 				<div className="flex flex-wrap items-center gap-2">
 					<SegmentedControl<RoutingView>
@@ -779,7 +776,7 @@ function RoutingWorkspace() {
 				</div>
 			) : (
 			<div className="flex min-h-0 flex-1 flex-col gap-4 lg:flex-row">
-				<div className="w-full shrink-0 rounded-xl border border-border bg-background lg:w-[26rem] lg:overflow-hidden">
+				<div className="workspace-panel w-full min-w-0 shrink-0 overflow-hidden lg:w-[26rem]">
 					<StopListPanel
 						name={displayName}
 						onNameChange={(name) => {
@@ -847,7 +844,7 @@ function RoutingWorkspace() {
 						previewOnly={previewOnly}
 					/>
 				</div>
-				<div className="min-h-[420px] flex-1">
+				<div className="workspace-panel min-h-[420px] min-w-0 flex-1 overflow-hidden">
 					<RoutingMap
 						start={displayStart}
 						stops={displayStops}

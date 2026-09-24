@@ -36,7 +36,7 @@ export function BrandHeader({
 			)}
 			<div className="min-w-0">
 				{showEyebrow ? (
-					<div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+					<div className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
 						Customer portal
 					</div>
 				) : null}

@@ -178,7 +178,7 @@ function createColumns(
 							{STATUS_LABEL[q.status]}
 						</StatusBadge>
 						{expiryLine && (
-							<div className="mt-1 text-[11px] text-muted-foreground">
+							<div className="mt-1 text-xs text-muted-foreground">
 								{expiryLine}
 							</div>
 						)}
@@ -193,7 +193,7 @@ function createColumns(
 				<div className="text-right">
 					<div className="font-semibold tabular-nums">{formatMoney(row.original.total)}</div>
 					{isAgreementRow(row.original) ? (
-						<div className="text-[11px] text-muted-foreground">per visit</div>
+						<div className="text-xs text-muted-foreground">per visit</div>
 					) : null}
 				</div>
 			),
@@ -285,7 +285,7 @@ export function QuoteList({ businessName, quotes }: QuoteListProps) {
 	return (
 		<div>
 			<header className="flex flex-col gap-1">
-				<p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-primary">
+				<p className="text-xs font-semibold uppercase tracking-[0.14em] text-primary">
 					{businessName}
 				</p>
 				<h1 className="text-[30px] font-semibold leading-[1.15] tracking-[-0.02em]">
@@ -338,6 +338,7 @@ export function QuoteList({ businessName, quotes }: QuoteListProps) {
 								placeholder="Search quotes…"
 								aria-label="Search quotes"
 								className="pl-9"
+								style={{ height: 44, fontSize: 16 }}
 							/>
 						</div>
 						<div className="flex flex-wrap gap-1.5">

@@ -4,7 +4,6 @@ import { Doc, Id } from "@onetool/backend/convex/_generated/dataModel";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useMutation } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
-import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
 import { MentionSection } from "@/components/shared/mention-section";
 import { useToast } from "@/hooks/use-toast";
@@ -63,7 +62,7 @@ export function OverviewTab({
 	// on mount so stripping the param below can't un-flip the grid's prop, and
 	// so a refresh of the clean URL never re-triggers the focus.
 	const [autoFocusLineItems] = useState(
-		() => searchParams.get("focus") === "line-items"
+		() => searchParams.get("focus") === "line-items",
 	);
 	const focusParamClearedRef = useRef(false);
 
@@ -93,9 +92,9 @@ export function OverviewTab({
 	const selection = useMemo(
 		() =>
 			selectedLineIds.filter((id) =>
-				controller.items.some((item) => item.id === id)
+				controller.items.some((item) => item.id === id),
 			),
-		[selectedLineIds, controller.items]
+		[selectedLineIds, controller.items],
 	);
 
 	const pricing: LineItemsPricingSettings = useMemo(
@@ -117,20 +116,24 @@ export function OverviewTab({
 			quote.taxEnabled,
 			quote.taxRate,
 			quote.pdfSettings,
-		]
+		],
 	);
 
 	const subtotal = useMemo(
-		() => controller.items.reduce((sum, item) => sum + item.quantity * item.rate, 0),
-		[controller.items]
+		() =>
+			controller.items.reduce(
+				(sum, item) => sum + item.quantity * item.rate,
+				0,
+			),
+		[controller.items],
 	);
 	const totalCost = useMemo(
 		() =>
 			controller.items.reduce(
 				(sum, item) => sum + item.quantity * (item.cost ?? 0),
-				0
+				0,
 			),
-		[controller.items]
+		[controller.items],
 	);
 	const totals = computeDisplayTotals(subtotal, pricing);
 
@@ -149,11 +152,11 @@ export function OverviewTab({
 			} catch (err) {
 				toast.error(
 					"Couldn't save pricing",
-					convexErrorMessage(err, "Failed to save")
+					convexErrorMessage(err, "Failed to save"),
 				);
 			}
 		},
-		[quoteId, toast, updateQuote]
+		[quoteId, toast, updateQuote],
 	);
 
 	// Inline editing for terms
@@ -236,7 +239,9 @@ export function OverviewTab({
 		}
 	};
 
-	const handleMessageKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+	const handleMessageKeyDown = (
+		e: React.KeyboardEvent<HTMLTextAreaElement>,
+	) => {
 		if (e.key === "Enter" && !e.shiftKey) {
 			e.preventDefault();
 			saveMessage();
@@ -309,8 +314,8 @@ export function OverviewTab({
 						<LineItemGrid
 							bare
 							showHints={false}
-						selectedIds={selection}
-						onSelectionChange={setSelectedLineIds}
+							selectedIds={selection}
+							onSelectionChange={setSelectedLineIds}
 							controller={controller}
 							isLoading={lineItems === undefined}
 							autoFocusFirstRow={autoFocusLineItems}
@@ -339,12 +344,11 @@ export function OverviewTab({
 
 			{/* Terms & Client Message Section */}
 			<div>
-				<div className="flex items-center justify-between mb-1 min-h-8">
+				<div className="flex items-center justify-between mb-4 min-h-8">
 					<h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
 						Terms & Client Message
 					</h3>
 				</div>
-				<Separator className="mb-4" />
 
 				{/* Terms — click to edit */}
 				<div
@@ -364,7 +368,9 @@ export function OverviewTab({
 								placeholder="Add terms & conditions..."
 							/>
 							<div className="flex items-center justify-between mt-1.5">
-								<span className="text-xs text-muted-foreground">Enter to save, Shift+Enter for new line, Esc to cancel</span>
+								<span className="text-xs text-muted-foreground">
+									Enter to save, Shift+Enter for new line, Esc to cancel
+								</span>
 								<div className="flex items-center gap-1">
 									<button
 										onClick={saveTerms}
@@ -385,9 +391,13 @@ export function OverviewTab({
 						<div className="flex items-start gap-2 mt-1">
 							<div className="flex-1 min-w-0">
 								{quote.terms ? (
-									<p className="text-foreground font-medium whitespace-pre-wrap">{quote.terms}</p>
+									<p className="text-foreground font-medium whitespace-pre-wrap">
+										{quote.terms}
+									</p>
 								) : (
-									<p className="text-muted-foreground italic">Add terms & conditions...</p>
+									<p className="text-muted-foreground italic">
+										Add terms & conditions...
+									</p>
 								)}
 							</div>
 							<Pencil className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity shrink-0 mt-0.5" />
@@ -413,7 +423,9 @@ export function OverviewTab({
 								placeholder="Add a message to the client..."
 							/>
 							<div className="flex items-center justify-between mt-1.5">
-								<span className="text-xs text-muted-foreground">Enter to save, Shift+Enter for new line, Esc to cancel</span>
+								<span className="text-xs text-muted-foreground">
+									Enter to save, Shift+Enter for new line, Esc to cancel
+								</span>
 								<div className="flex items-center gap-1">
 									<button
 										onClick={saveMessage}
@@ -434,9 +446,13 @@ export function OverviewTab({
 						<div className="flex items-start gap-2 mt-1">
 							<div className="flex-1 min-w-0">
 								{quote.clientMessage ? (
-									<p className="text-foreground font-medium whitespace-pre-wrap">{quote.clientMessage}</p>
+									<p className="text-foreground font-medium whitespace-pre-wrap">
+										{quote.clientMessage}
+									</p>
 								) : (
-									<p className="text-muted-foreground italic">Add a message to the client...</p>
+									<p className="text-muted-foreground italic">
+										Add a message to the client...
+									</p>
 								)}
 							</div>
 							<Pencil className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity shrink-0 mt-0.5" />
@@ -445,25 +461,14 @@ export function OverviewTab({
 				</div>
 			</div>
 
-			{/* Team Communication Section */}
-			<div>
-				<div className="flex items-center justify-between mb-1 min-h-8">
-					<h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-						Team Communication
-					</h3>
-				</div>
-				<Separator className="mb-4" />
-
-				<MentionSection
-					entityType="quote"
-					entityId={quoteId}
-					entityName={
-						quote?.title ||
-						`Quote #${quote?.quoteNumber || quoteId.slice(-6)}`
-					}
-					hideCardWrapper
-				/>
-			</div>
+			<MentionSection
+				entityType="quote"
+				entityId={quoteId}
+				entityName={
+					quote?.title || `Quote #${quote?.quoteNumber || quoteId.slice(-6)}`
+				}
+				hideCardWrapper
+			/>
 		</div>
 	);
 }

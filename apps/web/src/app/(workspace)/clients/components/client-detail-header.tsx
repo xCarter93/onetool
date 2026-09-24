@@ -162,49 +162,42 @@ export function ClientDetailHeader({
 				isAdding={isAdding}
 			/>
 			<StickyDetailHeader>
-				{(isSticky) => (
-					<div className="flex items-center justify-between gap-4">
-						<div className="flex items-center gap-3 min-w-0 flex-1">
-							<h1
+				<div className="flex items-center justify-between gap-4">
+					<div className="flex items-center gap-3 min-w-0 flex-1">
+						<h1 className="font-bold text-foreground truncate">
+							{client.companyName}
+						</h1>
+						<ProminentStatusBadge
+							status={client.status}
+							size="default"
+							showIcon={true}
+							entityType="client"
+						/>
+						<button
+							onClick={handleToggleFavorite}
+							className={cn(
+								"p-1.5 rounded-md transition-colors shrink-0",
+								"hover:bg-muted",
+								"focus:outline-none focus:ring-2 focus:ring-rose-500/50"
+							)}
+							aria-label={
+								isFavorited ? "Remove from favorites" : "Add to favorites"
+							}
+						>
+							<Heart
 								className={cn(
-									"font-bold text-foreground truncate transition-all duration-300",
-									isSticky ? "text-lg" : "text-2xl"
+									"h-5 w-5 transition-colors",
+									isFavorited
+										? "fill-rose-500 text-rose-500"
+										: "text-muted-foreground hover:text-rose-400"
 								)}
-							>
-								{client.companyName}
-							</h1>
-							<ProminentStatusBadge
-								status={client.status}
-								size={isSticky ? "default" : "large"}
-								showIcon={true}
-								entityType="client"
 							/>
-							<button
-								onClick={handleToggleFavorite}
-								className={cn(
-									"p-1.5 rounded-md transition-colors shrink-0",
-									"hover:bg-muted",
-									"focus:outline-none focus:ring-2 focus:ring-rose-500/50"
-								)}
-								aria-label={
-									isFavorited ? "Remove from favorites" : "Add to favorites"
-								}
-							>
-								<Heart
-									className={cn(
-										"h-5 w-5 transition-colors",
-										isFavorited
-											? "fill-rose-500 text-rose-500"
-											: "text-muted-foreground hover:text-rose-400"
-									)}
-								/>
-							</button>
-						</div>
-
-						{/* Right side - Quick action buttons */}
-						<ActionButtonGroup actions={actions} className="shrink-0" />
+						</button>
 					</div>
-				)}
+
+					{/* Right side - Quick action buttons */}
+					<ActionButtonGroup actions={actions} className="shrink-0" />
+				</div>
 			</StickyDetailHeader>
 		</>
 	);

@@ -38,7 +38,7 @@ export const AdjustTimeNodeRF = memo(({ data }: NodeProps) => {
 			className={cn(
 				"w-[280px]",
 				isConfigured
-					? "border-l-4 border-l-cyan-500 dark:border-l-cyan-400"
+					? "border-border"
 					: "border-dashed border-muted-foreground/30",
 			)}
 			aria-label={`Adjust time: ${title} - ${description}`}
@@ -46,7 +46,7 @@ export const AdjustTimeNodeRF = memo(({ data }: NodeProps) => {
 			<BaseHandle type="target" position={Position.Top} />
 			<BaseNodeContent className="p-3">
 				<div className="flex items-center gap-3">
-					<div className="w-8 h-8 rounded-lg bg-cyan-100 text-cyan-700 dark:bg-cyan-400/15 dark:text-cyan-300 flex items-center justify-center shrink-0">
+					<div className="w-8 h-8 rounded-lg bg-info-soft text-info-foreground flex items-center justify-center shrink-0">
 						<Clock3 className="h-4 w-4" />
 					</div>
 					<div className="min-w-0 flex-1">

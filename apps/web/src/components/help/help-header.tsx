@@ -2,12 +2,12 @@ import type { Route } from "next";
 import Image from "next/image";
 import Link from "next/link";
 import { ThemeSwitcher } from "@/components/layout/theme-switcher";
-import { CtaButton } from "@/app/components/landing/cta-button";
+import { Button } from "@/components/ui/button";
 import { HelpSearchButton } from "./help-search";
 
 export function HelpHeader() {
 	return (
-		<header className="sticky top-0 z-40 w-full border-b border-border/60 bg-background/90 backdrop-blur supports-backdrop-filter:bg-background/75">
+		<header className="sticky top-0 z-40 w-full border-b border-border bg-background">
 			<div className="mx-auto flex h-14 max-w-7xl items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
 				<div className="flex min-w-0 items-center gap-3">
 					<Link
@@ -42,9 +42,9 @@ export function HelpHeader() {
 						Sign in
 					</Link>
 					<span className="hidden md:block">
-						<CtaButton href="/sign-up" size="sm" showArrow={false}>
+						<Button nativeButton={false} render={<Link href={"/sign-up" as Route} />} size="lg" style={{ height: 40, fontSize: 14 }}>
 							Get started
-						</CtaButton>
+						</Button>
 					</span>
 				</div>
 			</div>

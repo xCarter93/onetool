@@ -49,7 +49,7 @@ function ThroughputTooltip({
 	if (!active || !payload?.length) return null;
 	const point = payload[0].payload;
 	return (
-		<div className="bg-popover min-w-[150px] rounded-lg border p-3 shadow-lg">
+		<div className="min-w-[150px] rounded-lg border border-border bg-popover p-3">
 			<div className="text-popover-foreground border-border/50 mb-2 border-b pb-1.5 text-sm font-semibold">
 				{dayLabel(point.day)}
 			</div>

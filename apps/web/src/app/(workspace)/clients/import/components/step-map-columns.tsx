@@ -21,12 +21,12 @@ function MappingSummaryBanner({ mappings }: { mappings: FieldMapping[] }) {
 	const skipped = mappings.filter((m) => m.schemaField === "__skip__").length;
 	const mapped = total - skipped;
 	const highConf = mappings.filter(
-		(m) => m.schemaField !== "__skip__" && m.confidence >= 0.7
+		(m) => m.schemaField !== "__skip__" && m.confidence >= 0.7,
 	).length;
 	const lowConf = mapped - highConf;
 
 	return (
-		<div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 px-4 py-3 bg-muted/30 border border-border rounded-lg text-sm text-muted-foreground">
+		<div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 border-b border-border py-3 text-sm text-muted-foreground">
 			<span>
 				<span className="font-medium text-foreground">{mapped}</span> of{" "}
 				<span className="font-medium text-foreground">{total}</span> columns
@@ -81,13 +81,13 @@ export function StepMapColumns({
 	}, [analysisResult.detectedFields]);
 
 	return (
-		<div className="flex gap-6">
+		<div className="grid min-w-0 gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(16rem,20rem)]">
 			{/* Left panel - column mapping list */}
-			<div className="flex-1 min-w-0 space-y-4">
+			<div className="min-w-0 space-y-4">
 				{/* Summary banner */}
 				<MappingSummaryBanner mappings={mappings} />
 
-					{/* Header row */}
+				{/* Header row */}
 				<div className="flex items-center gap-3 px-4 py-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
 					<div className="flex-1">File column</div>
 					<div className="w-4" />
@@ -116,7 +116,7 @@ export function StepMapColumns({
 			</div>
 
 			{/* Right panel - data preview (offset to align with first mapping row) */}
-			<div className="w-72 lg:w-80 shrink-0 border border-border rounded-lg bg-muted/10 sticky top-0 self-start mt-[5.5rem] max-h-[calc(100vh-16rem)] overflow-y-auto">
+			<div className="min-w-0 border-t border-border pt-4 xl:sticky xl:top-0 xl:max-h-[calc(100vh-16rem)] xl:self-start xl:overflow-y-auto xl:border-l xl:border-t-0 xl:pl-6 xl:pt-0">
 				<DataPreviewPanel
 					selectedColumn={selectedColumn}
 					mappings={mappings}

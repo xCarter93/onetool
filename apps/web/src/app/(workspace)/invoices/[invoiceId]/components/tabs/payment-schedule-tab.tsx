@@ -1,12 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { Doc, Id } from "@onetool/backend/convex/_generated/dataModel";
+import { Doc } from "@onetool/backend/convex/_generated/dataModel";
 import { EmptyState } from "@/components/domain/empty-state";
 import { StatusBadge } from "@/components/domain/status-badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
-import { Separator } from "@/components/ui/separator";
 import {
 	Settings,
 	Clock,
@@ -126,7 +125,7 @@ export function PaymentScheduleTab({
 	return (
 		<div className="space-y-8">
 			<div>
-				<div className="flex items-center justify-between mb-1 min-h-8">
+				<div className="flex items-center justify-between mb-4 min-h-8">
 					<h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
 						Payment Schedule
 					</h3>
@@ -135,14 +134,13 @@ export function PaymentScheduleTab({
 						Configure
 					</Button>
 				</div>
-				<Separator className="mb-4" />
 
 				{/* Stripe notice - shown as warning banner, doesn't block payment view */}
 				{!organization?.stripeConnectAccountId && (
-					<div className="rounded-lg border border-amber-200 bg-amber-50/50 dark:border-amber-800/50 dark:bg-amber-950/20 p-3 mb-4">
-						<p className="text-sm text-amber-800 dark:text-amber-200">
-							Connect Stripe in organization settings to
-							enable payment collection for this invoice.
+					<div className="rounded-lg border border-warning/40 bg-warning-soft p-3 mb-4">
+						<p className="text-sm text-warning-foreground">
+							Connect Stripe in organization settings to enable payment
+							collection for this invoice.
 						</p>
 					</div>
 				)}
@@ -154,44 +152,28 @@ export function PaymentScheduleTab({
 						<div className="space-y-2 mb-6">
 							<div className="flex items-center justify-between text-sm">
 								<span className="text-muted-foreground">
-									{
-										invoiceWithPayments.paymentSummary
-											.paidCount
-									}{" "}
-									of{" "}
-									{
-										invoiceWithPayments.paymentSummary
-											.totalPayments
-									}{" "}
-									payments complete
+									{invoiceWithPayments.paymentSummary.paidCount} of{" "}
+									{invoiceWithPayments.paymentSummary.totalPayments} payments
+									complete
 								</span>
 								<span className="font-medium">
-									{
-										invoiceWithPayments.paymentSummary
-											.percentPaid
-									}
-									%
+									{invoiceWithPayments.paymentSummary.percentPaid}%
 								</span>
 							</div>
 							<Progress
-								value={
-									invoiceWithPayments.paymentSummary
-										.percentPaid
-								}
+								value={invoiceWithPayments.paymentSummary.percentPaid}
 								className="h-2"
 							/>
 							<div className="flex justify-between text-xs text-muted-foreground">
 								<span>
 									{formatCurrency(
-										invoiceWithPayments.paymentSummary
-											.paidAmount
+										invoiceWithPayments.paymentSummary.paidAmount,
 									)}{" "}
 									paid
 								</span>
 								<span>
 									{formatCurrency(
-										invoiceWithPayments.paymentSummary
-											.remainingAmount
+										invoiceWithPayments.paymentSummary.remainingAmount,
 									)}{" "}
 									remaining
 								</span>
@@ -200,73 +182,57 @@ export function PaymentScheduleTab({
 
 						{/* Payment Cards Grid */}
 						<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-							{invoiceWithPayments.payments.map(
-								(payment, index) => {
-									const statusConfig =
-										paymentStatusConfig[
-											payment.status as PaymentStatus
-										];
+							{invoiceWithPayments.payments.map((payment, index) => {
+								const statusConfig =
+									paymentStatusConfig[payment.status as PaymentStatus];
 
-									return (
-										<div
-											key={payment._id}
-											className={`rounded-lg border p-4 ${
-												payment.status === "paid"
-													? "border-green-200 bg-green-50/50 dark:border-green-800/50 dark:bg-green-950/20"
-													: payment.status ===
-														  "overdue"
-														? "border-red-200 bg-red-50/50 dark:border-red-800/50 dark:bg-red-950/20"
-														: "border-border"
-											}`}
-										>
-											{/* Payment Header */}
-											<div className="flex items-start justify-between mb-3">
-												<div className="flex items-center gap-2">
-													<span className="flex h-7 w-7 items-center justify-center rounded-full bg-muted text-sm font-semibold">
-														{index + 1}
-													</span>
-													<div>
-														<p className="text-sm font-medium">
-															{payment.description ||
-																`Payment ${index + 1}`}
-														</p>
-														<p className="text-xs text-muted-foreground">
-															Due:{" "}
-															{formatCalendarDate(
-																payment.dueDate
-															)}
-														</p>
-													</div>
-												</div>
-												<StatusBadge
-													status={payment.status}
-													appearance={
-														statusConfig?.appearance ?? "soft"
-													}
-													className={`gap-1 ${statusConfig?.className || ""}`}
-												>
-													{statusConfig?.icon}
-													{statusConfig?.label ||
-														payment.status}
-												</StatusBadge>
-											</div>
-
-											{/* Payment Amount */}
-											<div className="mb-3">
-												<span className="text-xl font-bold">
-													{formatCurrency(
-														payment.paymentAmount
-													)}
+								return (
+									<div
+										key={payment._id}
+										className={`rounded-lg border p-4 ${
+											payment.status === "paid"
+												? "border-success/40 bg-success-soft"
+												: payment.status === "overdue"
+													? "border-danger/40 bg-danger-soft"
+													: "border-border"
+										}`}
+									>
+										{/* Payment Header */}
+										<div className="flex items-start justify-between mb-3">
+											<div className="flex items-center gap-2">
+												<span className="flex h-7 w-7 items-center justify-center rounded-full bg-muted text-sm font-semibold">
+													{index + 1}
 												</span>
+												<div>
+													<p className="text-sm font-medium">
+														{payment.description || `Payment ${index + 1}`}
+													</p>
+													<p className="text-xs text-muted-foreground">
+														Due: {formatCalendarDate(payment.dueDate)}
+													</p>
+												</div>
 											</div>
-
-											{payment.disputed && (
-												<DisputeNote payment={payment} />
-											)}
+											<StatusBadge
+												status={payment.status}
+												appearance={statusConfig?.appearance ?? "soft"}
+												className={`gap-1 ${statusConfig?.className || ""}`}
+											>
+												{statusConfig?.icon}
+												{statusConfig?.label || payment.status}
+											</StatusBadge>
 										</div>
-									);
-								}
-							)}
+
+										{/* Payment Amount */}
+										<div className="mb-3">
+											<span className="text-xl font-bold">
+												{formatCurrency(payment.paymentAmount)}
+											</span>
+										</div>
+
+										{payment.disputed && <DisputeNote payment={payment} />}
+									</div>
+								);
+							})}
 						</div>
 					</>
 				) : (

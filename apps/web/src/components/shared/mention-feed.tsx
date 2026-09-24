@@ -102,7 +102,7 @@ function AttachmentDownloadLink({
 					alt={attachment.fileName}
 					width={80}
 					height={80}
-					className="h-20 w-20 object-cover rounded-lg border-2 border-gray-200 dark:border-gray-700 hover:border-blue-400 dark:hover:border-blue-500 transition-colors"
+					className="h-20 w-20 object-cover rounded-lg border border-border hover:border-primary transition-colors"
 				/>
 				<div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 rounded-lg transition-colors flex items-center justify-center">
 					<Download className="h-4 w-4 text-white opacity-0 group-hover:opacity-100 transition-opacity drop-shadow-lg" />
@@ -118,18 +118,18 @@ function AttachmentDownloadLink({
 			target="_blank"
 			rel="noopener noreferrer"
 			download={attachment.fileName}
-			className="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-md border border-gray-200 dark:border-gray-700 transition-colors group max-w-[200px]"
+			className="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-muted hover:bg-accent rounded border border-border transition-colors group max-w-[200px]"
 			title={`${attachment.fileName} (${formatFileSize(attachment.fileSize)})`}
 		>
 			{isPdf ? (
 				<FileIcon className="h-3.5 w-3.5 text-red-500 shrink-0" />
 			) : (
-				<FileIcon className="h-3.5 w-3.5 text-gray-500 shrink-0" />
+				<FileIcon className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
 			)}
-			<span className="text-xs font-medium text-gray-700 dark:text-gray-300 truncate">
+			<span className="text-xs font-medium text-foreground truncate">
 				{attachment.fileName}
 			</span>
-			<Download className="h-3 w-3 text-gray-400 group-hover:text-gray-600 dark:group-hover:text-gray-300 shrink-0 ml-auto" />
+			<Download className="h-3 w-3 text-muted-foreground group-hover:text-foreground shrink-0 ml-auto" />
 		</a>
 	);
 }
@@ -156,10 +156,10 @@ export function MentionFeed({ entityType, entityId, pageSize }: MentionFeedProps
 			<div className="space-y-4 animate-pulse">
 				{[1, 2, 3].map((i) => (
 					<div key={i} className="flex gap-3">
-						<div className="h-10 w-10 rounded-full bg-gray-200 dark:bg-gray-700" />
+						<div className="h-10 w-10 rounded-full bg-muted" />
 						<div className="flex-1 space-y-2">
-							<div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-1/4" />
-							<div className="h-16 bg-gray-200 dark:bg-gray-700 rounded" />
+							<div className="h-4 bg-muted rounded w-1/4" />
+							<div className="h-16 bg-muted rounded" />
 						</div>
 					</div>
 				))}
@@ -214,7 +214,7 @@ export function MentionFeed({ entityType, entityId, pageSize }: MentionFeedProps
 						{/* Message content */}
 						<div className="flex-1 min-w-0">
 							<div className="flex items-center gap-2 mb-1">
-								<span className="text-sm font-semibold text-gray-900 dark:text-white">
+								<span className="text-sm font-semibold text-foreground">
 									{message.authorName}
 								</span>
 								{isAutomation && (
@@ -225,20 +225,20 @@ export function MentionFeed({ entityType, entityId, pageSize }: MentionFeedProps
 										Automation
 									</Badge>
 								)}
-								<span className="text-xs text-gray-500 dark:text-gray-400">
+								<span className="text-xs text-muted-foreground">
 									{formatRelativeTime(message.createdAt)}
 								</span>
 							</div>
 
 							{/* Message text with styled mentions */}
-							<div className="bg-gray-50 dark:bg-gray-800/50 rounded-lg px-4 py-3 border border-gray-200 dark:border-gray-700">
-								<div className="text-sm text-gray-900 dark:text-white whitespace-pre-wrap break-words">
+							<div className="bg-muted/50 rounded-lg px-4 py-3 border border-border">
+								<div className="text-[13px] text-foreground whitespace-pre-wrap break-words">
 									{parseMessageParts(message.message).map((part, index) =>
 										part.isMention ? (
 											<Badge
 												key={index}
 												variant="secondary"
-												className="inline-flex mx-0.5 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 hover:bg-blue-200 dark:hover:bg-blue-900/50 font-medium"
+												className="inline-flex mx-0.5 bg-primary/10 text-primary hover:bg-primary/15 font-medium"
 											>
 												{part.text}
 											</Badge>

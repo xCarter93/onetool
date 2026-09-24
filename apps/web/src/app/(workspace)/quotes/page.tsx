@@ -18,11 +18,9 @@ import {
 } from "@/components/filters/date-filter";
 import {
 	Frame,
-	FrameDescription,
 	FrameFooter,
 	FrameHeader,
 	FramePanel,
-	FrameTitle,
 } from "@/components/reui/frame";
 import {
 	DataGrid,
@@ -32,11 +30,7 @@ import {
 } from "@/components/reui/data-grid/data-grid";
 import { DataGridTable } from "@/components/reui/data-grid/data-grid-table";
 import { DataGridPagination } from "@/components/reui/data-grid/data-grid-pagination";
-import {
-	ColumnDef,
-	SortingState,
-	useTable,
-} from "@tanstack/react-table";
+import { ColumnDef, SortingState, useTable } from "@tanstack/react-table";
 import {
 	Building2,
 	Calendar,
@@ -112,15 +106,6 @@ const quoteStatusAppearance = (status: Doc<"quotes">["status"]) => {
 	return "soft" as const;
 };
 
-// Per-lane accent dot (kanban-board-4 style); status → colored dot only.
-const statusDot: Record<Doc<"quotes">["status"], string> = {
-	draft: "bg-muted-foreground/50",
-	sent: "bg-amber-500",
-	approved: "bg-emerald-500",
-	declined: "bg-rose-500",
-	expired: "bg-muted-foreground/40",
-};
-
 const kanbanColumns: QuoteKanbanColumn[] = [
 	{ id: "draft", name: "Draft", description: "Being prepared" },
 	{ id: "sent", name: "Sent", description: "Awaiting response" },
@@ -156,7 +141,7 @@ const createColumns = (
 	router: ReturnType<typeof useRouter>,
 	onDelete: (id: string, name: string) => void,
 	onPreview: (id: string) => void,
-	canDelete: boolean
+	canDelete: boolean,
 ): ColumnDef<DataGridFeatures, QuoteWithClient>[] => [
 	{
 		accessorKey: "quoteNumber",
@@ -212,7 +197,9 @@ const createColumns = (
 			// the viewer's validUntil day.
 			const isExpired = row.original.validUntil < todayUtcMidnightMs();
 			return (
-				<span className={cn("text-foreground", isExpired && "text-destructive")}>
+				<span
+					className={cn("text-foreground", isExpired && "text-destructive")}
+				>
 					{formatQuoteDate(row.original.validUntil)}
 				</span>
 			);
@@ -269,7 +256,7 @@ const createColumns = (
 							variant="outline"
 							size="icon-sm"
 							onClick={() => onDelete(row.original._id, label)}
-							className="text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950"
+							className="text-destructive hover:bg-danger-soft"
 							aria-label={`Delete quote ${label}`}
 						>
 							<Trash2 className="size-4" />
@@ -308,7 +295,10 @@ function QuotesPageContent() {
 	// Optimistic drag moves; each applies only while the server still reports
 	// the status the card was dragged from.
 	const [columnMoves, setColumnMoves] = useState<
-		Record<string, { from: Doc<"quotes">["status"]; to: Doc<"quotes">["status"] }>
+		Record<
+			string,
+			{ from: Doc<"quotes">["status"]; to: Doc<"quotes">["status"] }
+		>
 	>({});
 	const isOrgSwitching = useIsOrgSwitching();
 
@@ -317,7 +307,10 @@ function QuotesPageContent() {
 	const quotes = useQuery(api.quotes.list, {});
 	// 30-day activity sparkline data, keyed by quote id (presentational).
 	const sparklines = useActivitySparklines("quote");
-	const clients = useQuery(api.clients.listNamesForOrg, can("clients") ? {} : "skip");
+	const clients = useQuery(
+		api.clients.listNamesForOrg,
+		can("clients") ? {} : "skip",
+	);
 	const projects = useQuery(api.projects.list, can("projects") ? {} : "skip");
 
 	// Combine quotes with client and project data
@@ -353,19 +346,19 @@ function QuotesPageContent() {
 				}
 				case "client":
 					result = result.filter((q) =>
-						filter.values.includes(q.clientId as unknown)
+						filter.values.includes(q.clientId as unknown),
 					);
 					break;
 				case "project":
 					result = result.filter(
 						(q) =>
 							q.projectId != null &&
-							filter.values.includes(q.projectId as unknown)
+							filter.values.includes(q.projectId as unknown),
 					);
 					break;
 				case "validUntil":
 					result = result.filter((q) =>
-						matchesDateFilter(q.validUntil, filter.operator, filter.values[0])
+						matchesDateFilter(q.validUntil, filter.operator, filter.values[0]),
 					);
 					break;
 				case "amount":
@@ -398,7 +391,7 @@ function QuotesPageContent() {
 				quote.title?.toLowerCase().includes(q) ||
 				quote.projectName?.toLowerCase().includes(q) ||
 				quote.clientName?.toLowerCase().includes(q) ||
-				quote.status?.toLowerCase().includes(q)
+				quote.status?.toLowerCase().includes(q),
 		);
 	}, [filteredData, query]);
 
@@ -425,7 +418,7 @@ function QuotesPageContent() {
 					validUntil: quote.validUntil,
 				};
 			}),
-		[searchedData, columnMoves]
+		[searchedData, columnMoves],
 	);
 
 	// Loading state — gate only on the primary quotes query. The clients and
@@ -456,7 +449,7 @@ function QuotesPageContent() {
 
 	const columns = React.useMemo(
 		() => createColumns(router, handleDelete, openPreview, canDeleteQuotes),
-		[router, handleDelete, openPreview, canDeleteQuotes]
+		[router, handleDelete, openPreview, canDeleteQuotes],
 	);
 
 	const table = useTable({
@@ -565,7 +558,7 @@ function QuotesPageContent() {
 				return next;
 			});
 		},
-		[quoteStatusMap, canModifyQuotes]
+		[quoteStatusMap, canModifyQuotes],
 	);
 
 	const handleKanbanDragEnd = React.useCallback(
@@ -589,18 +582,18 @@ function QuotesPageContent() {
 						"Update Failed",
 						convexErrorMessage(
 							error,
-							"Failed to update quote status. Please try again."
-						)
+							"Failed to update quote status. Please try again.",
+						),
 					);
 				});
 			}
 		},
-		[canModifyQuotes, kanbanData, quoteStatusMap, updateQuoteStatus, toast]
+		[canModifyQuotes, kanbanData, quoteStatusMap, updateQuoteStatus, toast],
 	);
 
 	const totalPending = React.useMemo(
 		() => data.filter((q) => q.status === "sent").length,
-		[data]
+		[data],
 	);
 
 	const totalValue = React.useMemo(
@@ -608,20 +601,17 @@ function QuotesPageContent() {
 			data
 				.filter((q) => q.status === "approved")
 				.reduce((sum, q) => sum + q.total, 0),
-		[data]
+		[data],
 	);
 
 	return (
-		<div className="relative px-6 pt-8 pb-6 space-y-6">
-			<div className="flex items-center justify-between">
-				<div className="flex items-center gap-3">
-					<div className="w-1.5 h-6 bg-linear-to-b from-primary to-primary/60 rounded-full" />
-					<div>
-						<h1 className="text-2xl font-bold text-foreground">Quotes</h1>
-						<p className="text-muted-foreground text-sm">
-							Overview of your quotes and proposals
-						</p>
-					</div>
+		<div className="workspace-page">
+			<div className="workspace-page-header">
+				<div>
+					<h1 className="text-xl font-semibold text-foreground">Quotes</h1>
+					<p className="text-muted-foreground text-sm">
+						Overview of your quotes and proposals
+					</p>
 				</div>
 				{canModifyQuotes && (
 					<Button onClick={() => openCreate({ type: "quote" })}>
@@ -631,277 +621,273 @@ function QuotesPageContent() {
 				)}
 			</div>
 
-			<MetricFrame
-				loading={isLoading}
-				metrics={[
-					{
-						label: "Total Quotes",
-						value: data.length,
-						hint: "All quotes in your workspace",
-						icon: <FileText />,
-						accent: "var(--color-blue-500)",
-					},
-					{
-						label: "Pending Approval",
-						value: totalPending,
-						hint: "Quotes awaiting client response",
-						icon: <Clock />,
-						accent: "var(--color-amber-500)",
-					},
-					{
-						label: "Approved Value",
-						value: formatCurrency(totalValue),
-						hint: "Total value of approved quotes",
-						icon: <DollarSign />,
-						accent: "var(--color-emerald-500)",
-					},
-				]}
-				summary={
-					isLoading
-						? undefined
-						: `${data.filter((q) => q.status === "draft").length} in draft · ${data.filter((q) => q.status === "approved").length} approved · ${formatCurrency(data.reduce((sum, q) => sum + q.total, 0))} total value`
-				}
-			/>
-
-			<Frame>
-				<FrameHeader className="flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
-					<div className="flex flex-col gap-0.5">
-						<FrameTitle className="text-base">Quotes</FrameTitle>
-						<FrameDescription>
-							Search, filter, and browse your quotes
-						</FrameDescription>
-					</div>
-					<div className="flex w-full items-center gap-2 sm:w-auto">
-						<div className="relative flex-1 sm:w-64 sm:flex-none">
-							<Search className="text-muted-foreground absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2" />
-							<Input
-								placeholder="Search quotes..."
-								value={query}
-								onChange={(e) => setQuery(e.target.value)}
-								className="pl-9"
-							/>
-						</div>
-						<SegmentedControl
-							className="shrink-0"
-							value={viewMode}
-							onValueChange={(v) => setViewMode(v as "table" | "kanban")}
-							options={[
-								{
-									value: "table",
-									label: "Table",
-									icon: <TableProperties className="size-4" />,
-									ariaLabel: "Table view",
-									hideLabelOnMobile: true,
-								},
-								{
-									value: "kanban",
-									label: "Kanban",
-									icon: <LayoutGrid className="size-4" />,
-									ariaLabel: "Kanban view",
-									hideLabelOnMobile: true,
-								},
-							]}
-						/>
-					</div>
-				</FrameHeader>
-
-				<DataGrid
-					table={table}
-					recordCount={searchedData.length}
-					onRowClick={(row) => openPreview(row._id)}
-					emptyMessage={
-						<EmptyState
-							illustration="no-filter-match"
-							title="No quotes match your filters"
-							description="Try a different search term or clear a filter."
-						/>
-					}
-					tableLayout={{
-						width: "auto",
-						headerBackground: true,
-					}}
-				>
-					<FramePanel className="p-0">
-						{!isLoading && !isEmpty && (
-							<div className="border-b px-4 py-3">
-								<FiltersWithClear
-									filters={filters}
-									fields={filterFields}
-									onChange={setFilters}
-									addButtonText="Filter"
-									addButtonIcon={<FilterIcon className="h-4 w-4" />}
-									size="md"
-									variant="outline"
-									radius="full"
-									showClearButton={true}
-									clearButtonText="Clear"
-									clearButtonIcon={<X className="h-4 w-4" />}
+			<div className="workspace-explorer">
+				<aside className="workspace-explorer-rail">
+					<MetricFrame
+						loading={isLoading}
+						metrics={[
+							{
+								label: "Total Quotes",
+								value: data.length,
+								hint: "All quotes in your workspace",
+								icon: <FileText />,
+								accent: "var(--color-primary)",
+							},
+							{
+								label: "Pending Approval",
+								value: totalPending,
+								hint: "Quotes awaiting client response",
+								icon: <Clock />,
+								accent: "var(--color-warning)",
+							},
+							{
+								label: "Approved Value",
+								value: formatCurrency(totalValue),
+								hint: "Total value of approved quotes",
+								icon: <DollarSign />,
+								accent: "var(--color-success)",
+							},
+						]}
+						summary={
+							isLoading
+								? undefined
+								: `${data.filter((q) => q.status === "draft").length} in draft · ${data.filter((q) => q.status === "approved").length} approved · ${formatCurrency(data.reduce((sum, q) => sum + q.total, 0))} total value`
+						}
+					/>
+				</aside>
+				<div className="workspace-results">
+					<Frame className="workspace-panel overflow-hidden">
+						<FrameHeader className="workspace-toolbar flex-row flex-wrap items-center gap-2">
+							<div className="relative min-w-0 flex-1">
+								<Search className="text-muted-foreground absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2" />
+								<Input
+									placeholder="Search quotes..."
+									value={query}
+									onChange={(e) => setQuery(e.target.value)}
+									className="pl-9"
 								/>
 							</div>
-						)}
-
-						{isLoading ? (
-							<div className="p-4">
-								<div className="space-y-4">
-									{[...Array(5)].map((_, i) => (
-										<div key={i} className="flex items-center space-x-4 p-4">
-											<div className="flex-1 space-y-2">
-												<div className="h-4 bg-muted rounded animate-pulse w-2/3" />
-												<div className="h-3 bg-muted rounded animate-pulse w-1/2" />
-											</div>
-											<div className="h-4 bg-muted rounded animate-pulse w-16" />
-											<div className="h-4 bg-muted rounded animate-pulse w-20" />
-											<div className="h-8 w-8 bg-muted rounded animate-pulse" />
-										</div>
-									))}
-								</div>
-							</div>
-						) : isEmpty ? (
-							<EmptyState
-								size="md"
-								illustration="quotes-none"
-								title="No quotes yet"
-								description="Create your first quote to get started and track proposals in one place."
-								action={
-									<div className="flex flex-col items-center gap-2">
-										{canModifyQuotes ? (
-											<Button onClick={() => openCreate({ type: "quote" })}>
-												<Plus className="h-4 w-4" />
-												Create Your First Quote
-											</Button>
-										) : undefined}
-										<LearnMoreLink article="quotes/creating-a-quote" />
-									</div>
-								}
+							<SegmentedControl
+								className="shrink-0"
+								value={viewMode}
+								onValueChange={(v) => setViewMode(v as "table" | "kanban")}
+								options={[
+									{
+										value: "table",
+										label: "Table",
+										icon: <TableProperties className="size-4" />,
+										ariaLabel: "Table view",
+										hideLabelOnMobile: true,
+									},
+									{
+										value: "kanban",
+										label: "Kanban",
+										icon: <LayoutGrid className="size-4" />,
+										ariaLabel: "Kanban view",
+										hideLabelOnMobile: true,
+									},
+								]}
 							/>
-						) : viewMode === "table" ? (
-							<div className="overflow-x-auto">
-								<DataGridContainer className="rounded-lg border">
-									<DataGridTable />
-								</DataGridContainer>
-							</div>
-						) : (
-							<div className="px-2 py-4 h-[calc(100vh-30rem)] min-h-[24rem]">
-								<KanbanProvider
-									columns={kanbanColumns}
-									data={kanbanData}
-									onDataChange={handleKanbanDataChange}
-									onDragEnd={handleKanbanDragEnd}
-								>
-									{(column) => {
-										const columnItems = kanbanData.filter(
-											(item) => item.column === column.id
-										);
+						</FrameHeader>
 
-										return (
-											<KanbanBoard
-												key={column.id}
-												id={column.id}
-												className="bg-card/60 flex flex-col"
-											>
-												<KanbanHeader className="border-b bg-muted/30 flex shrink-0 items-center justify-between gap-2 px-3 py-2.5">
-													<div className="flex min-w-0 items-center gap-2">
-														<span
-															className={cn(
-																"size-2.5 shrink-0 rounded-full",
-																statusDot[column.id]
-															)}
-														/>
-														<div className="min-w-0">
-															<p className="text-foreground truncate text-sm font-semibold">
-																{column.name}
-															</p>
-															<p className="text-muted-foreground truncate text-xs">
-																{column.description}
-															</p>
-														</div>
+						<DataGrid
+							table={table}
+							recordCount={searchedData.length}
+							onRowClick={(row) => openPreview(row._id)}
+							emptyMessage={
+								<EmptyState
+									illustration="no-filter-match"
+									title="No quotes match your filters"
+									description="Try a different search term or clear a filter."
+								/>
+							}
+							tableLayout={{
+								width: "auto",
+								headerBackground: true,
+							}}
+						>
+							<FramePanel className="p-0">
+								{!isLoading && !isEmpty && (
+									<div className="border-b px-4 py-3">
+										<FiltersWithClear
+											filters={filters}
+											fields={filterFields}
+											onChange={setFilters}
+											addButtonText="Filter"
+											addButtonIcon={<FilterIcon className="h-4 w-4" />}
+											size="md"
+											variant="outline"
+											radius="md"
+											showClearButton={true}
+											clearButtonText="Clear"
+											clearButtonIcon={<X className="h-4 w-4" />}
+										/>
+									</div>
+								)}
+
+								{isLoading ? (
+									<div className="p-4">
+										<div className="space-y-4">
+											{[...Array(5)].map((_, i) => (
+												<div
+													key={i}
+													className="flex items-center space-x-4 p-4"
+												>
+													<div className="flex-1 space-y-2">
+														<div className="h-4 bg-muted rounded animate-pulse w-2/3" />
+														<div className="h-3 bg-muted rounded animate-pulse w-1/2" />
 													</div>
-													<Badge variant="outline">
-														{columnItems.length}
-													</Badge>
-												</KanbanHeader>
-												<KanbanCards id={column.id}>
-													{(item: QuoteKanbanItem) => (
-														<KanbanCard
-															key={item.id}
-															id={item.id}
-															name={item.name}
-															column={item.column}
-															dragDisabled={!canModifyQuotes}
-														>
-															<div
-																role="button"
-																tabIndex={0}
-																onClick={() => openPreview(item.id)}
-																onKeyDown={(e) => {
-																	if (e.key === "Enter" || e.key === " ") {
-																		e.preventDefault();
-																		openPreview(item.id);
-																	}
-																}}
-																className="flex cursor-pointer flex-col gap-2 outline-none"
-															>
-																<div className="flex items-start justify-between gap-2">
-																	<p className="text-foreground text-sm font-semibold">
-																		{item.quoteNumber}
+													<div className="h-4 bg-muted rounded animate-pulse w-16" />
+													<div className="h-4 bg-muted rounded animate-pulse w-20" />
+													<div className="h-8 w-8 bg-muted rounded animate-pulse" />
+												</div>
+											))}
+										</div>
+									</div>
+								) : isEmpty ? (
+									<EmptyState
+										size="md"
+										illustration="quotes-none"
+										title="No quotes yet"
+										description="Create your first quote to get started and track proposals in one place."
+										action={
+											<div className="flex flex-col items-center gap-2">
+												{canModifyQuotes ? (
+													<Button onClick={() => openCreate({ type: "quote" })}>
+														<Plus className="h-4 w-4" />
+														Create Your First Quote
+													</Button>
+												) : undefined}
+												<LearnMoreLink article="quotes/creating-a-quote" />
+											</div>
+										}
+									/>
+								) : viewMode === "table" ? (
+									<div className="overflow-x-auto">
+										<DataGridContainer className="border-0">
+											<DataGridTable />
+										</DataGridContainer>
+									</div>
+								) : (
+									<div className="px-2 py-4 h-[calc(100vh-30rem)] min-h-[24rem]">
+										<KanbanProvider
+											columns={kanbanColumns}
+											data={kanbanData}
+											onDataChange={handleKanbanDataChange}
+											onDragEnd={handleKanbanDragEnd}
+										>
+											{(column) => {
+												const columnItems = kanbanData.filter(
+													(item) => item.column === column.id,
+												);
+
+												return (
+													<KanbanBoard
+														key={column.id}
+														id={column.id}
+														className="bg-muted dark:bg-card/60 flex flex-col"
+													>
+														<KanbanHeader className="border-b bg-secondary dark:bg-muted/30 flex shrink-0 items-center justify-between gap-2 px-3 py-2.5">
+															<div className="flex min-w-0 items-center gap-2">
+																<div className="min-w-0">
+																	<p className="text-foreground truncate text-sm font-semibold">
+																		{column.name}
 																	</p>
-																	<StatusBadge
-																		status={item.status}
-																		appearance={quoteStatusAppearance(item.status)}
-																		className="shrink-0"
-																	>
-																		{formatStatus(item.status)}
-																	</StatusBadge>
-																</div>
-																<p className="text-muted-foreground truncate text-xs">
-																	{item.name}
-																</p>
-																<p className="text-muted-foreground truncate text-xs">
-																	{item.clientName}
-																</p>
-																<div className="flex items-center justify-between gap-2 border-t border-border/50 pt-2">
-																	<span className="text-foreground text-base font-semibold tabular-nums">
-																		{formatCurrency(item.total)}
-																	</span>
-																	<span className="text-muted-foreground text-xs">
-																		{formatQuoteDate(item.validUntil)}
-																	</span>
-																</div>
-																<div className="flex items-center justify-end pt-1">
-																	<button
-																		type="button"
-																		onClick={(e) => {
-																			e.stopPropagation();
-																			router.push(`/quotes/${item.id}`);
-																		}}
-																		onKeyDown={(e) => e.stopPropagation()}
-																		className="text-primary hover:text-primary/80 inline-flex items-center gap-1 text-xs font-medium"
-																	>
-																		Open <ExternalLink className="size-3" />
-																	</button>
+																	<p className="text-muted-foreground truncate text-xs">
+																		{column.description}
+																	</p>
 																</div>
 															</div>
-														</KanbanCard>
-													)}
-												</KanbanCards>
-											</KanbanBoard>
-										);
-									}}
-								</KanbanProvider>
-							</div>
-						)}
-					</FramePanel>
+															<Badge variant="outline">
+																{columnItems.length}
+															</Badge>
+														</KanbanHeader>
+														<KanbanCards id={column.id}>
+															{(item: QuoteKanbanItem) => (
+																<KanbanCard
+																	key={item.id}
+																	id={item.id}
+																	name={item.name}
+																	column={item.column}
+																	dragDisabled={!canModifyQuotes}
+																>
+																	<div
+																		role="button"
+																		tabIndex={0}
+																		onClick={() => openPreview(item.id)}
+																		onKeyDown={(e) => {
+																			if (e.key === "Enter" || e.key === " ") {
+																				e.preventDefault();
+																				openPreview(item.id);
+																			}
+																		}}
+																		className="flex cursor-pointer flex-col gap-2 outline-none"
+																	>
+																		<div className="flex items-start justify-between gap-2">
+																			<p className="text-foreground text-sm font-semibold">
+																				{item.quoteNumber}
+																			</p>
+																			<StatusBadge
+																				status={item.status}
+																				appearance={quoteStatusAppearance(
+																					item.status,
+																				)}
+																				className="shrink-0"
+																			>
+																				{formatStatus(item.status)}
+																			</StatusBadge>
+																		</div>
+																		<p className="text-muted-foreground truncate text-xs">
+																			{item.name}
+																		</p>
+																		<p className="text-muted-foreground truncate text-xs">
+																			{item.clientName}
+																		</p>
+																		<div className="flex items-center justify-between gap-2 border-t border-border/50 pt-2">
+																			<span className="text-foreground text-base font-semibold tabular-nums">
+																				{formatCurrency(item.total)}
+																			</span>
+																			<span className="text-muted-foreground text-xs">
+																				{formatQuoteDate(item.validUntil)}
+																			</span>
+																		</div>
+																		<div className="flex items-center justify-end pt-1">
+																			<button
+																				type="button"
+																				onClick={(e) => {
+																					e.stopPropagation();
+																					router.push(`/quotes/${item.id}`);
+																				}}
+																				onKeyDown={(e) => e.stopPropagation()}
+																				className="text-primary hover:text-primary/80 inline-flex items-center gap-1 text-xs font-medium"
+																			>
+																				Open <ExternalLink className="size-3" />
+																			</button>
+																		</div>
+																	</div>
+																</KanbanCard>
+															)}
+														</KanbanCards>
+													</KanbanBoard>
+												);
+											}}
+										</KanbanProvider>
+									</div>
+								)}
+							</FramePanel>
 
-					{!isLoading && !isEmpty && (
-						<FrameFooter className="flex-row items-center justify-between">
-							<div className="text-muted-foreground text-sm">
-								{searchedData.length} of {data.length} quotes
-							</div>
-							{viewMode === "table" ? <DataGridPagination /> : null}
-						</FrameFooter>
-					)}
-				</DataGrid>
-			</Frame>
+							{!isLoading && !isEmpty && (
+								<FrameFooter className="flex-row items-center justify-between">
+									<div className="text-muted-foreground text-sm">
+										{searchedData.length} of {data.length} quotes
+									</div>
+									{viewMode === "table" ? <DataGridPagination /> : null}
+								</FrameFooter>
+							)}
+						</DataGrid>
+					</Frame>
+				</div>
+			</div>
 
 			{/* Detail preview drawer */}
 			<QuoteDetailDrawer

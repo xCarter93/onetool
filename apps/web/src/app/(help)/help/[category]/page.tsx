@@ -55,14 +55,14 @@ export default async function HelpCategoryPage({
 			</Breadcrumb>
 
 			<div className="mt-8 flex items-start gap-4">
-				<span className="flex size-11 shrink-0 items-center justify-center rounded-xl border border-border bg-muted/50">
+				<span className="flex size-11 shrink-0 items-center justify-center rounded-[8px] border border-border bg-muted/50">
 					<category.icon
 						className="size-5 text-foreground/70"
 						aria-hidden="true"
 					/>
 				</span>
 				<div>
-					<h1 className="text-3xl font-bold tracking-tight text-foreground">
+					<h1 className="text-[32px] font-semibold leading-tight tracking-tight text-foreground">
 						{category.name}
 					</h1>
 					<p className="mt-2 leading-7 text-muted-foreground">
@@ -77,7 +77,7 @@ export default async function HelpCategoryPage({
 						<li key={article.slug}>
 							<Link
 								href={`/help/${category.slug}/${article.slug}`}
-								className="group -mx-4 flex items-start gap-4 rounded-xl p-4 transition-colors hover:bg-muted/50"
+								className="group -mx-4 flex items-start gap-4 rounded-[8px] p-4 transition-colors hover:bg-muted/50"
 							>
 								{category.ordered ? (
 									<span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full border border-border bg-background text-xs font-semibold text-foreground">
@@ -97,7 +97,7 @@ export default async function HelpCategoryPage({
 											{article.title}
 										</span>
 										{article.availability === "business" && (
-											<Badge variant="secondary" className="text-[11px]">
+											<Badge variant="secondary" className="text-xs">
 												Business plan
 											</Badge>
 										)}

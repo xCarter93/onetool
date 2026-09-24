@@ -12,7 +12,6 @@ import {
 } from "@/components/ui/select";
 import { ProminentStatusBadge } from "@/components/shared/prominent-status-badge";
 import { ProjectSeriesLink } from "@/components/domain/project-series-link";
-import { Separator } from "@/components/ui/separator";
 import { DatePicker } from "@/components/ui/date-picker";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -24,6 +23,7 @@ import {
 	Calendar as CalendarIcon,
 	CalendarCheck,
 	Hash,
+	Repeat,
 	Building2,
 	User,
 	Mail,
@@ -155,7 +155,7 @@ export function QuoteDetailSidebar({
 	const [editingField, setEditingField] = useState<EditingField>(null);
 	const [editValue, setEditValue] = useState("");
 	const [editDateValue, setEditDateValue] = useState<Date | undefined>(
-		undefined
+		undefined,
 	);
 
 	const startEditing = (field: EditingField, currentValue: string) => {
@@ -164,14 +164,11 @@ export function QuoteDetailSidebar({
 		setEditValue(currentValue);
 	};
 
-	const startEditingDate = (
-		field: "validUntil",
-		currentTimestamp?: number
-	) => {
+	const startEditingDate = (field: "validUntil", currentTimestamp?: number) => {
 		if (!canModify) return;
 		setEditingField(field);
 		setEditDateValue(
-			currentTimestamp ? utcMidnightMsToLocalDate(currentTimestamp) : undefined
+			currentTimestamp ? utcMidnightMsToLocalDate(currentTimestamp) : undefined,
 		);
 	};
 
@@ -194,7 +191,7 @@ export function QuoteDetailSidebar({
 				"Updated",
 				wasExpired
 					? "Valid until saved. The quote is available to your client again."
-					: "Valid until saved."
+					: "Valid until saved.",
 			);
 			cancelEditing();
 		} catch (err) {
@@ -204,7 +201,7 @@ export function QuoteDetailSidebar({
 
 	const saveField = async (
 		field: string,
-		value: string | number | undefined
+		value: string | number | undefined,
 	) => {
 		try {
 			await updateQuote({
@@ -242,7 +239,7 @@ export function QuoteDetailSidebar({
 					e.stopPropagation();
 					onSave();
 				}}
-				className="p-1 rounded-md hover:bg-green-100 dark:hover:bg-green-900/30 text-green-600 dark:text-green-400 transition-colors"
+				className="p-1 rounded-md hover:bg-success-soft text-success-foreground transition-colors"
 				aria-label="Save"
 			>
 				<Check className="h-3.5 w-3.5" />
@@ -252,7 +249,7 @@ export function QuoteDetailSidebar({
 					e.stopPropagation();
 					cancelEditing();
 				}}
-				className="p-1 rounded-md hover:bg-red-100 dark:hover:bg-red-900/30 text-red-600 dark:text-red-400 transition-colors"
+				className="p-1 rounded-md hover:bg-danger-soft text-danger-foreground transition-colors"
 				aria-label="Cancel"
 			>
 				<X className="h-3.5 w-3.5" />
@@ -286,22 +283,19 @@ export function QuoteDetailSidebar({
 					onClick={() => {
 						if (editingField === "title") return;
 						if (titleLocked) {
-							if (canModify)
-								toast.info("Quote locked", titleLockedReason);
+							if (canModify) toast.info("Quote locked", titleLockedReason);
 							return;
 						}
 						startEditing("title", quote.title || "");
 					}}
 				>
 					<Type className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
-					<span className="text-sm text-muted-foreground w-28 shrink-0">
+					<span className="text-sm text-muted-foreground w-24 shrink-0">
 						Title
 					</span>
 					<div
 						className="flex-1 min-w-0"
-						onClick={(e) =>
-							editingField === "title" && e.stopPropagation()
-						}
+						onClick={(e) => editingField === "title" && e.stopPropagation()}
 					>
 						{editingField === "title" ? (
 							<input
@@ -321,8 +315,7 @@ export function QuoteDetailSidebar({
 					</div>
 					{editingField === "title"
 						? renderActions(() => {
-								if (editValue.trim())
-									saveField("title", editValue.trim());
+								if (editValue.trim()) saveField("title", editValue.trim());
 							})
 						: titleLocked
 							? null
@@ -333,19 +326,16 @@ export function QuoteDetailSidebar({
 				<div
 					className={rowClass}
 					onClick={() =>
-						editingField !== "status" &&
-						startEditing("status", quote.status)
+						editingField !== "status" && startEditing("status", quote.status)
 					}
 				>
 					<CircleDot className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
-					<span className="text-sm text-muted-foreground w-28 shrink-0">
+					<span className="text-sm text-muted-foreground w-24 shrink-0">
 						Status
 					</span>
 					<div
 						className="flex-1 min-w-0"
-						onClick={(e) =>
-							editingField === "status" && e.stopPropagation()
-						}
+						onClick={(e) => editingField === "status" && e.stopPropagation()}
 					>
 						{editingField === "status" ? (
 							<Select
@@ -357,10 +347,7 @@ export function QuoteDetailSidebar({
 								</SelectTrigger>
 								<SelectContent>
 									{STATUS_OPTIONS.map((opt) => (
-										<SelectItem
-											key={opt.value}
-											value={opt.value}
-										>
+										<SelectItem key={opt.value} value={opt.value}>
 											{opt.label}
 										</SelectItem>
 									))}
@@ -376,9 +363,7 @@ export function QuoteDetailSidebar({
 						)}
 					</div>
 					{editingField === "status"
-						? renderActions(() =>
-								saveField("status", editValue as QuoteStatus)
-							)
+						? renderActions(() => saveField("status", editValue as QuoteStatus))
 						: renderPencil()}
 				</div>
 
@@ -393,7 +378,7 @@ export function QuoteDetailSidebar({
 									"Quote locked",
 									quote.status === "approved"
 										? "Approved quotes keep the valid-until date the client saw."
-										: "Declined quotes keep the valid-until date the client saw."
+										: "Declined quotes keep the valid-until date the client saw.",
 								);
 							return;
 						}
@@ -401,14 +386,13 @@ export function QuoteDetailSidebar({
 					}}
 				>
 					<CalendarCheck className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
-					<span className="text-sm text-muted-foreground w-28 shrink-0">
+					<span className="text-sm text-muted-foreground w-24 shrink-0">
 						Valid Until
 					</span>
 					<div
 						className="flex-1 min-w-0"
 						onClick={(e) =>
-							editingField === "validUntil" &&
-							e.stopPropagation()
+							editingField === "validUntil" && e.stopPropagation()
 						}
 					>
 						{editingField === "validUntil" ? (
@@ -420,9 +404,7 @@ export function QuoteDetailSidebar({
 								value={editDateValue}
 								onChange={(date) => {
 									if (date) {
-										saveValidUntil(
-											localDateToUtcMidnightMs(date)
-										);
+										saveValidUntil(localDateToUtcMidnightMs(date));
 									}
 								}}
 								formatDate={(date) => formatDate(date.getTime())}
@@ -434,22 +416,18 @@ export function QuoteDetailSidebar({
 								{quote.validUntil ? (
 									formatCalendarDate(quote.validUntil)
 								) : (
-									<span className="text-muted-foreground italic">
-										Not set
-									</span>
+									<span className="text-muted-foreground italic">Not set</span>
 								)}
 							</span>
 						)}
 					</div>
-					{editingField !== "validUntil" &&
-						!validUntilLocked &&
-						renderPencil()}
+					{editingField !== "validUntil" && !validUntilLocked && renderPencil()}
 				</div>
 
 				{/* Quote Number - Read only */}
 				<div className="flex items-start gap-3 py-2.5 -mx-2 px-2">
 					<Hash className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
-					<span className="text-sm text-muted-foreground w-28 shrink-0">
+					<span className="text-sm text-muted-foreground w-24 shrink-0">
 						Quote No.
 					</span>
 					<div className="flex-1 min-w-0">
@@ -459,10 +437,26 @@ export function QuoteDetailSidebar({
 					</div>
 				</div>
 
+				{quote.recurringAgreementTerms && (
+					<div className="flex items-start gap-3 py-2.5 -mx-2 px-2">
+						<Repeat className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
+						<span className="text-sm text-muted-foreground w-24 shrink-0">
+							Agreement
+						</span>
+						<div className="flex-1 min-w-0">
+							<span className="text-sm text-foreground">
+								{quote.recurringInheritedAt && !quote.recurringQuoteOverride
+									? `Approved under recurring agreement ${quote.recurringAgreementTerms.agreementReference}`
+									: `Recurring agreement ${quote.recurringAgreementTerms.agreementReference}, revision ${quote.recurringAgreementTerms.revisionNumber}`}
+							</span>
+						</div>
+					</div>
+				)}
+
 				{/* Created - Read only */}
 				<div className="flex items-start gap-3 py-2.5 -mx-2 px-2">
 					<CalendarIcon className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
-					<span className="text-sm text-muted-foreground w-28 shrink-0">
+					<span className="text-sm text-muted-foreground w-24 shrink-0">
 						Created
 					</span>
 					<div className="flex-1 min-w-0">
@@ -476,7 +470,7 @@ export function QuoteDetailSidebar({
 				{quote.sentAt && (
 					<div className="flex items-start gap-3 py-2.5 -mx-2 px-2">
 						<CalendarIcon className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
-						<span className="text-sm text-muted-foreground w-28 shrink-0">
+						<span className="text-sm text-muted-foreground w-24 shrink-0">
 							Sent
 						</span>
 						<div className="flex-1 min-w-0">
@@ -491,7 +485,7 @@ export function QuoteDetailSidebar({
 				{quote.approvedAt && (
 					<div className="flex items-start gap-3 py-2.5 -mx-2 px-2">
 						<CalendarIcon className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
-						<span className="text-sm text-muted-foreground w-28 shrink-0">
+						<span className="text-sm text-muted-foreground w-24 shrink-0">
 							Approved
 						</span>
 						<div className="flex-1 min-w-0">
@@ -503,17 +497,15 @@ export function QuoteDetailSidebar({
 				)}
 			</div>
 
-			<Separator className="my-4" />
-
 			{/* Client & Project Information Section */}
-			<h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-3">
+			<h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground mt-6 mb-3">
 				Client & Project
 			</h3>
 			{client ? (
 				<div className="space-y-0">
 					<div className="flex items-start gap-3 py-2.5 -mx-2 px-2">
 						<Building2 className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
-						<span className="text-sm text-muted-foreground w-28 shrink-0">
+						<span className="text-sm text-muted-foreground w-24 shrink-0">
 							Client
 						</span>
 						<div className="flex-1 min-w-0">
@@ -530,20 +522,19 @@ export function QuoteDetailSidebar({
 						<>
 							<div className="flex items-start gap-3 py-2.5 -mx-2 px-2">
 								<User className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
-								<span className="text-sm text-muted-foreground w-28 shrink-0">
+								<span className="text-sm text-muted-foreground w-24 shrink-0">
 									Contact
 								</span>
 								<div className="flex-1 min-w-0">
 									<span className="text-sm text-foreground">
-										{primaryContact.firstName}{" "}
-										{primaryContact.lastName}
+										{primaryContact.firstName} {primaryContact.lastName}
 									</span>
 								</div>
 							</div>
 							{primaryContact.email && (
 								<div className="flex items-start gap-3 py-2.5 -mx-2 px-2">
 									<Mail className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
-									<span className="text-sm text-muted-foreground w-28 shrink-0">
+									<span className="text-sm text-muted-foreground w-24 shrink-0">
 										Email
 									</span>
 									<div className="flex-1 min-w-0">
@@ -559,7 +550,7 @@ export function QuoteDetailSidebar({
 							{primaryContact.phone && (
 								<div className="flex items-start gap-3 py-2.5 -mx-2 px-2">
 									<Phone className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
-									<span className="text-sm text-muted-foreground w-28 shrink-0">
+									<span className="text-sm text-muted-foreground w-24 shrink-0">
 										Phone
 									</span>
 									<div className="flex-1 min-w-0">
@@ -575,7 +566,7 @@ export function QuoteDetailSidebar({
 					{project && (
 						<div className="flex items-start gap-3 py-2.5 -mx-2 px-2">
 							<FolderOpen className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
-							<span className="text-sm text-muted-foreground w-28 shrink-0">
+							<span className="text-sm text-muted-foreground w-24 shrink-0">
 								Project
 							</span>
 							<div className="flex-1 min-w-0 flex items-center justify-between gap-2">
@@ -593,7 +584,7 @@ export function QuoteDetailSidebar({
 					{primaryProperty && (
 						<div className="flex items-start gap-3 py-2.5 -mx-2 px-2">
 							<MapPin className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
-							<span className="text-sm text-muted-foreground w-28 shrink-0">
+							<span className="text-sm text-muted-foreground w-24 shrink-0">
 								Address
 							</span>
 							<div className="flex-1 min-w-0">
@@ -601,10 +592,7 @@ export function QuoteDetailSidebar({
 									{[
 										primaryProperty.streetAddress,
 										primaryProperty.city,
-										[
-											primaryProperty.state,
-											primaryProperty.zipCode,
-										]
+										[primaryProperty.state, primaryProperty.zipCode]
 											.filter(Boolean)
 											.join(" "),
 									]
@@ -622,20 +610,16 @@ export function QuoteDetailSidebar({
 					)}
 				</div>
 			) : (
-				<p className="text-sm text-muted-foreground py-2">
-					No client linked
-				</p>
+				<p className="text-sm text-muted-foreground py-2">No client linked</p>
 			)}
 
-			<Separator className="my-4" />
-
 			{/* Generated PDF Section */}
-			<h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-3">
+			<h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground mt-6 mb-3">
 				Generated PDF
 			</h3>
 			<div className="py-2">
 				{latestDocument === null ? (
-					<div className="rounded-lg border border-border bg-background/60 p-4">
+					<div className="rounded-lg border border-border bg-card p-4 shadow-sm">
 						<div className="flex items-start gap-3">
 							<FileText
 								className="h-5 w-5 text-muted-foreground shrink-0 mt-0.5"
@@ -662,7 +646,7 @@ export function QuoteDetailSidebar({
 						</div>
 					</div>
 				) : latestDocument === undefined ? (
-					<div className="rounded-lg border border-border bg-background/60 p-4">
+					<div className="rounded-lg border border-border bg-card p-4 shadow-sm">
 						<p className="text-sm text-muted-foreground">
 							{permissionsLoading || canViewDocuments
 								? "Checking for a generated PDF…"
@@ -715,7 +699,7 @@ export function QuoteDetailSidebar({
 										};
 							return (
 								<div
-									className={`overflow-hidden rounded-lg border ${frame.border} bg-background/60`}
+									className={`overflow-hidden rounded-lg border ${frame.border} bg-card shadow-sm`}
 								>
 									<div
 										className={`flex items-center gap-2 border-b ${frame.border} ${frame.strip} px-3 py-2`}
@@ -745,10 +729,7 @@ export function QuoteDetailSidebar({
 													onClick={onGeneratePdf}
 													disabled={!canModify}
 												>
-													<RefreshCw
-														className="h-3 w-3"
-														aria-hidden="true"
-													/>
+													<RefreshCw className="h-3 w-3" aria-hidden="true" />
 													Regenerate
 												</Button>
 											) : null}
@@ -781,18 +762,12 @@ export function QuoteDetailSidebar({
 													/>
 												}
 											>
-												<Eye
-													className="h-4 w-4"
-													aria-hidden="true"
-												/>
+												<Eye className="h-4 w-4" aria-hidden="true" />
 												Open in new tab
 											</Button>
 										) : (
 											<Button variant="ghost" size="sm" disabled>
-												<Eye
-													className="h-4 w-4"
-													aria-hidden="true"
-												/>
+												<Eye className="h-4 w-4" aria-hidden="true" />
 												Open in new tab
 											</Button>
 										)}
@@ -802,10 +777,7 @@ export function QuoteDetailSidebar({
 											onClick={onDownloadPdf}
 											disabled={!selectedDocumentUrl}
 										>
-											<Download
-												className="h-4 w-4"
-												aria-hidden="true"
-											/>
+											<Download className="h-4 w-4" aria-hidden="true" />
 											Download
 										</Button>
 										{!viewingOlder && !isPdfStale && (
@@ -816,10 +788,7 @@ export function QuoteDetailSidebar({
 												onClick={onGeneratePdf}
 												disabled={!canModify}
 											>
-												<RefreshCw
-													className="h-4 w-4"
-													aria-hidden="true"
-												/>
+												<RefreshCw className="h-4 w-4" aria-hidden="true" />
 												Regenerate
 											</Button>
 										)}
@@ -855,7 +824,7 @@ export function QuoteDetailSidebar({
 														onSelectVersion(
 															version._id === latestDocument._id
 																? null
-																: version._id
+																: version._id,
 														);
 													}}
 													aria-pressed={isActive}
@@ -875,10 +844,7 @@ export function QuoteDetailSidebar({
 																Version {version.version}
 															</span>
 															{version._id === latestDocument._id && (
-																<Badge
-																	variant="default"
-																	className="text-xs"
-																>
+																<Badge variant="default" className="text-xs">
 																	Latest
 																</Badge>
 															)}

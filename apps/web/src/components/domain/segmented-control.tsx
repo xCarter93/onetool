@@ -9,7 +9,7 @@ import {
 import { cn } from "@/lib/utils";
 
 const SEGMENT_BASE =
-	"inline-flex cursor-pointer items-center gap-2 font-medium transition-all duration-200 text-xs px-3 py-1.5 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2";
+	"inline-flex cursor-pointer items-center gap-2 rounded-sm px-3 py-1.5 text-xs font-medium transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2";
 
 export interface SegmentedControlOption<T extends string> {
 	value: T;
@@ -29,12 +29,6 @@ export interface SegmentedControlProps<T extends string> {
 	disabled?: boolean;
 }
 
-/**
- * Canonical segmented selector (view toggles, time-range filters).
- * One selected segment at a time, rendered in the shared PillTabs shell so
- * every tab-like control matches; use plain ButtonGroup + Button for
- * action rows like prev/today/next.
- */
 export function SegmentedControl<T extends string>({
 	value,
 	onValueChange,
@@ -43,7 +37,7 @@ export function SegmentedControl<T extends string>({
 	disabled = false,
 }: SegmentedControlProps<T>) {
 	return (
-		<div role="group" className={cn(PILL_TAB_CONTAINER, className)}>
+		<div role="group" className={cn(PILL_TAB_CONTAINER, "workspace-segments", className)}>
 			{options.map((option) => (
 				<button
 					key={option.value}

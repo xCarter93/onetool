@@ -20,11 +20,9 @@ import {
 } from "@/components/filters/date-filter";
 import {
 	Frame,
-	FrameDescription,
 	FrameFooter,
 	FrameHeader,
 	FramePanel,
-	FrameTitle,
 } from "@/components/reui/frame";
 import {
 	DataGrid,
@@ -34,11 +32,7 @@ import {
 } from "@/components/reui/data-grid/data-grid";
 import { DataGridTable } from "@/components/reui/data-grid/data-grid-table";
 import { DataGridPagination } from "@/components/reui/data-grid/data-grid-pagination";
-import {
-	ColumnDef,
-	SortingState,
-	useTable,
-} from "@tanstack/react-table";
+import { ColumnDef, SortingState, useTable } from "@tanstack/react-table";
 import {
 	Building2,
 	Calendar,
@@ -122,15 +116,6 @@ const statusAppearance = (status: InvoiceStatus) => {
 	return "soft" as const;
 };
 
-// Per-lane accent dot (kanban-board-4 style); status → colored dot only.
-const statusDot: Record<InvoiceStatus, string> = {
-	draft: "bg-muted-foreground/50",
-	sent: "bg-amber-500",
-	paid: "bg-emerald-500",
-	overdue: "bg-rose-500",
-	cancelled: "bg-muted-foreground/40",
-};
-
 const kanbanColumns: InvoiceKanbanColumn[] = [
 	{ id: "draft", name: "Draft", description: "Being prepared" },
 	{ id: "sent", name: "Sent", description: "Awaiting payment" },
@@ -167,7 +152,7 @@ const createColumns = (
 	onDelete: (id: string, name: string) => void,
 	onPreview: (id: string) => void,
 	canDelete: boolean,
-	orgToday: number
+	orgToday: number,
 ): ColumnDef<DataGridFeatures, InvoiceWithClient>[] => [
 	{
 		accessorKey: "invoiceNumber",
@@ -205,7 +190,10 @@ const createColumns = (
 		cell: ({ row }) => {
 			const effective = deriveInvoiceStatus(row.original, orgToday);
 			return (
-				<StatusBadge status={effective} appearance={statusAppearance(effective)}>
+				<StatusBadge
+					status={effective}
+					appearance={statusAppearance(effective)}
+				>
 					{formatStatus(effective)}
 				</StatusBadge>
 			);
@@ -231,7 +219,7 @@ const createColumns = (
 				<span
 					className={cn(
 						"text-foreground",
-						isOverdue && "text-destructive font-medium"
+						isOverdue && "text-destructive font-medium",
 					)}
 				>
 					{formatInvoiceDate(row.original.dueDate)}
@@ -279,7 +267,7 @@ const createColumns = (
 					size="icon-sm"
 					onClick={() => onDelete(row.original._id, row.original.invoiceNumber)}
 					disabled={!canDelete}
-					className="text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950"
+					className="text-destructive hover:bg-danger-soft"
 					aria-label={`Delete invoice ${row.original.invoiceNumber}`}
 				>
 					<Trash2 className="size-4" />
@@ -327,11 +315,14 @@ function InvoicesPageContent() {
 	const invoices = useQuery(api.invoices.list, {});
 	// 30-day activity sparkline data, keyed by invoice id (presentational).
 	const sparklines = useActivitySparklines("invoice");
-	const clients = useQuery(api.clients.listNamesForOrg, can("clients") ? {} : "skip");
+	const clients = useQuery(
+		api.clients.listNamesForOrg,
+		can("clients") ? {} : "skip",
+	);
 	const projects = useQuery(api.projects.list, can("projects") ? {} : "skip");
 	const rescheduleTarget = useQuery(
 		api.invoices.getWithPayments,
-		rescheduleId ? { id: rescheduleId } : "skip"
+		rescheduleId ? { id: rescheduleId } : "skip",
 	);
 
 	// Combine invoices with resolved client and project names
@@ -359,25 +350,25 @@ function InvoicesPageContent() {
 				case "status":
 					result = result.filter((inv) =>
 						filter.values.includes(
-							deriveInvoiceStatus(inv, orgToday) as unknown
-						)
+							deriveInvoiceStatus(inv, orgToday) as unknown,
+						),
 					);
 					break;
 				case "client":
 					result = result.filter((inv) =>
-						filter.values.includes(inv.clientId as unknown)
+						filter.values.includes(inv.clientId as unknown),
 					);
 					break;
 				case "project":
 					result = result.filter(
 						(inv) =>
 							inv.projectId != null &&
-							filter.values.includes(inv.projectId as unknown)
+							filter.values.includes(inv.projectId as unknown),
 					);
 					break;
 				case "dueDate":
 					result = result.filter((inv) =>
-						matchesDateFilter(inv.dueDate, filter.operator, filter.values[0])
+						matchesDateFilter(inv.dueDate, filter.operator, filter.values[0]),
 					);
 					break;
 				case "amount":
@@ -421,7 +412,7 @@ function InvoicesPageContent() {
 	const invoiceStatusMap = React.useMemo(() => {
 		const statusMap = new Map<string, InvoiceStatus>();
 		data.forEach((invoice) =>
-			statusMap.set(invoice._id, deriveInvoiceStatus(invoice, orgToday))
+			statusMap.set(invoice._id, deriveInvoiceStatus(invoice, orgToday)),
 		);
 		return statusMap;
 	}, [data, orgToday]);
@@ -445,7 +436,7 @@ function InvoicesPageContent() {
 					issuedDate: invoice.issuedDate,
 				};
 			}),
-		[searchedData, orgToday, columnMoves]
+		[searchedData, orgToday, columnMoves],
 	);
 
 	// Loading state — gate only on the primary invoices query. The clients and
@@ -484,9 +475,9 @@ function InvoicesPageContent() {
 				handleDelete,
 				openPreview,
 				canDeleteInvoices,
-				orgToday
+				orgToday,
 			),
-		[router, handleDelete, openPreview, canDeleteInvoices, orgToday]
+		[router, handleDelete, openPreview, canDeleteInvoices, orgToday],
 	);
 
 	const table = useTable({
@@ -594,7 +585,7 @@ function InvoicesPageContent() {
 				return next;
 			});
 		},
-		[invoiceStatusMap]
+		[invoiceStatusMap],
 	);
 
 	const handleKanbanDragEnd = React.useCallback(
@@ -631,314 +622,307 @@ function InvoicesPageContent() {
 					"Update Failed",
 					convexErrorMessage(
 						error,
-						"Failed to update invoice status. Please try again."
-					)
+						"Failed to update invoice status. Please try again.",
+					),
 				);
 			});
 		},
-		[kanbanData, invoiceStatusMap, updateInvoiceStatus, toast]
+		[kanbanData, invoiceStatusMap, updateInvoiceStatus, toast],
 	);
 
 	return (
-		<div className="relative px-6 pt-8 pb-6 space-y-6">
-			<div className="flex items-center justify-between">
-				<div className="flex items-center gap-3">
-					<div className="w-1.5 h-6 bg-linear-to-b from-primary to-primary/60 rounded-full" />
-					<div>
-						<h1 className="text-2xl font-bold text-foreground">Invoices</h1>
-						<p className="text-muted-foreground text-sm">
-							Manage your invoices and track payments
-						</p>
-					</div>
+		<div className="workspace-page">
+			<div className="workspace-page-header">
+				<div>
+					<h1 className="text-xl font-semibold text-foreground">Invoices</h1>
+					<p className="text-muted-foreground text-sm">
+						Manage your invoices and track payments
+					</p>
 				</div>
 			</div>
 
-			<MetricFrame
-				loading={isLoading}
-				metrics={[
-					{
-						label: "Total Invoices",
-						value: data.length,
-						hint: "All invoices in your workspace",
-						icon: <Receipt />,
-						accent: "var(--color-blue-500)",
-					},
-					{
-						label: "Open Invoices",
-						value: data.filter(
-							(inv) => inv.status === "draft" || inv.status === "sent"
-						).length,
-						hint: "Unpaid and draft invoices",
-						icon: <Clock />,
-						accent: "var(--color-amber-500)",
-					},
-					{
-						label: "Paid Value",
-						value: formatCurrency(
-							data
-								.filter((inv) => inv.status === "paid")
-								.reduce((sum, inv) => sum + inv.total, 0)
-						),
-						hint: "Total value of paid invoices",
-						icon: <CheckCircle2 />,
-						accent: "var(--color-emerald-500)",
-					},
-				]}
-				summary={
-					isLoading
-						? undefined
-						: `${
-								data.filter(
-									(inv) =>
-										deriveInvoiceStatus(inv, orgToday) === "overdue"
-								).length
-							} overdue · ${formatCurrency(
-								data
-									.filter(
-										(inv) => inv.status === "draft" || inv.status === "sent"
-									)
-									.reduce((sum, inv) => sum + inv.total, 0)
-							)} outstanding`
-				}
-			/>
-
-			<Frame>
-				<FrameHeader className="flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
-					<div className="flex flex-col gap-0.5">
-						<FrameTitle className="text-base">Invoices</FrameTitle>
-						<FrameDescription>
-							Search, filter, and browse your invoices
-						</FrameDescription>
-					</div>
-					<div className="flex w-full items-center gap-2 sm:w-auto">
-						<div className="relative flex-1 sm:w-64 sm:flex-none">
-							<Search className="text-muted-foreground absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2" />
-							<Input
-								placeholder="Search invoices..."
-								value={query}
-								onChange={(e) => setQuery(e.target.value)}
-								className="pl-9"
-							/>
-						</div>
-						<SegmentedControl
-							className="shrink-0"
-							value={viewMode}
-							onValueChange={(v) => setViewMode(v as "table" | "kanban")}
-							options={[
-								{
-									value: "table",
-									label: "Table",
-									icon: <TableProperties className="size-4" />,
-									ariaLabel: "Table view",
-									hideLabelOnMobile: true,
-								},
-								{
-									value: "kanban",
-									label: "Kanban",
-									icon: <LayoutGrid className="size-4" />,
-									ariaLabel: "Kanban view",
-									hideLabelOnMobile: true,
-								},
-							]}
-						/>
-					</div>
-				</FrameHeader>
-
-				<DataGrid
-					table={table}
-					recordCount={searchedData.length}
-					onRowClick={(row) => openPreview(row._id)}
-					emptyMessage={
-						<EmptyState
-							illustration="no-filter-match"
-							title="No invoices match your filters"
-							description="Try a different search term or clear a filter."
-						/>
-					}
-					tableLayout={{
-						width: "auto",
-						headerBackground: true,
-					}}
-				>
-					<FramePanel className="p-0">
-						{!isLoading && !isEmpty && (
-							<div className="border-b px-4 py-3">
-								<FiltersWithClear
-									filters={filters}
-									fields={filterFields}
-									onChange={setFilters}
-									addButtonText="Filter"
-									addButtonIcon={<FilterIcon className="h-4 w-4" />}
-									size="md"
-									variant="outline"
-									radius="full"
-									showClearButton={true}
-									clearButtonText="Clear"
-									clearButtonIcon={<X className="h-4 w-4" />}
+			<div className="workspace-explorer">
+				<aside className="workspace-explorer-rail">
+					<MetricFrame
+						loading={isLoading}
+						metrics={[
+							{
+								label: "Total Invoices",
+								value: data.length,
+								hint: "All invoices in your workspace",
+								icon: <Receipt />,
+								accent: "var(--color-primary)",
+							},
+							{
+								label: "Open Invoices",
+								value: data.filter(
+									(inv) => inv.status === "draft" || inv.status === "sent",
+								).length,
+								hint: "Unpaid and draft invoices",
+								icon: <Clock />,
+								accent: "var(--color-warning)",
+							},
+							{
+								label: "Paid Value",
+								value: formatCurrency(
+									data
+										.filter((inv) => inv.status === "paid")
+										.reduce((sum, inv) => sum + inv.total, 0),
+								),
+								hint: "Total value of paid invoices",
+								icon: <CheckCircle2 />,
+								accent: "var(--color-success)",
+							},
+						]}
+						summary={
+							isLoading
+								? undefined
+								: `${
+										data.filter(
+											(inv) => deriveInvoiceStatus(inv, orgToday) === "overdue",
+										).length
+									} overdue · ${formatCurrency(
+										data
+											.filter(
+												(inv) =>
+													inv.status === "draft" || inv.status === "sent",
+											)
+											.reduce((sum, inv) => sum + inv.total, 0),
+									)} outstanding`
+						}
+					/>
+				</aside>
+				<div className="workspace-results">
+					<Frame className="workspace-panel overflow-hidden">
+						<FrameHeader className="workspace-toolbar flex-row flex-wrap items-center gap-2">
+							<div className="relative min-w-0 flex-1">
+								<Search className="text-muted-foreground absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2" />
+								<Input
+									placeholder="Search invoices..."
+									value={query}
+									onChange={(e) => setQuery(e.target.value)}
+									className="pl-9"
 								/>
 							</div>
-						)}
-
-						{isLoading ? (
-							<div className="p-4">
-								<div className="space-y-4">
-									{[...Array(5)].map((_, i) => (
-										<div key={i} className="flex items-center space-x-4 p-4">
-											<div className="flex-1 space-y-2">
-												<div className="h-4 bg-muted rounded animate-pulse w-2/3" />
-												<div className="h-3 bg-muted rounded animate-pulse w-1/2" />
-											</div>
-											<div className="h-4 bg-muted rounded animate-pulse w-16" />
-											<div className="h-4 bg-muted rounded animate-pulse w-20" />
-											<div className="h-8 w-8 bg-muted rounded animate-pulse" />
-										</div>
-									))}
-								</div>
-							</div>
-						) : isEmpty ? (
-							<EmptyState
-								size="md"
-								illustration="invoices-none"
-								title="No invoices yet"
-								description="Create invoices from approved quotes on the Projects page to get started tracking payments and revenue."
-								action={
-									<LearnMoreLink article="invoices-and-payments/creating-an-invoice" />
-								}
+							<SegmentedControl
+								className="shrink-0"
+								value={viewMode}
+								onValueChange={(v) => setViewMode(v as "table" | "kanban")}
+								options={[
+									{
+										value: "table",
+										label: "Table",
+										icon: <TableProperties className="size-4" />,
+										ariaLabel: "Table view",
+										hideLabelOnMobile: true,
+									},
+									{
+										value: "kanban",
+										label: "Kanban",
+										icon: <LayoutGrid className="size-4" />,
+										ariaLabel: "Kanban view",
+										hideLabelOnMobile: true,
+									},
+								]}
 							/>
-						) : viewMode === "table" ? (
-							<div className="overflow-x-auto">
-								<DataGridContainer className="rounded-lg border">
-									<DataGridTable />
-								</DataGridContainer>
-							</div>
-						) : (
-							<div className="px-2 py-4 h-[calc(100vh-30rem)] min-h-[24rem]">
-								<KanbanProvider
-									columns={kanbanColumns}
-									data={kanbanData}
-									onDataChange={handleKanbanDataChange}
-									onDragEnd={handleKanbanDragEnd}
-								>
-									{(column) => {
-										const columnItems = kanbanData.filter(
-											(item) => item.column === column.id
-										);
+						</FrameHeader>
 
-										return (
-											<KanbanBoard
-												key={column.id}
-												id={column.id}
-												className="bg-card/60 flex flex-col"
-											>
-												<KanbanHeader className="border-b bg-muted/30 flex shrink-0 items-center justify-between gap-2 px-3 py-2.5">
-													<div className="flex min-w-0 items-center gap-2">
-														<span
-															className={cn(
-																"size-2.5 shrink-0 rounded-full",
-																statusDot[column.id]
-															)}
-														/>
-														<div className="min-w-0">
-															<p className="text-foreground truncate text-sm font-semibold">
-																{column.name}
-															</p>
-															<p className="text-muted-foreground truncate text-xs">
-																{column.description}
-															</p>
-														</div>
+						<DataGrid
+							table={table}
+							recordCount={searchedData.length}
+							onRowClick={(row) => openPreview(row._id)}
+							emptyMessage={
+								<EmptyState
+									illustration="no-filter-match"
+									title="No invoices match your filters"
+									description="Try a different search term or clear a filter."
+								/>
+							}
+							tableLayout={{
+								width: "auto",
+								headerBackground: true,
+							}}
+						>
+							<FramePanel className="p-0">
+								{!isLoading && !isEmpty && (
+									<div className="border-b px-4 py-3">
+										<FiltersWithClear
+											filters={filters}
+											fields={filterFields}
+											onChange={setFilters}
+											addButtonText="Filter"
+											addButtonIcon={<FilterIcon className="h-4 w-4" />}
+											size="md"
+											variant="outline"
+											radius="md"
+											showClearButton={true}
+											clearButtonText="Clear"
+											clearButtonIcon={<X className="h-4 w-4" />}
+										/>
+									</div>
+								)}
+
+								{isLoading ? (
+									<div className="p-4">
+										<div className="space-y-4">
+											{[...Array(5)].map((_, i) => (
+												<div
+													key={i}
+													className="flex items-center space-x-4 p-4"
+												>
+													<div className="flex-1 space-y-2">
+														<div className="h-4 bg-muted rounded animate-pulse w-2/3" />
+														<div className="h-3 bg-muted rounded animate-pulse w-1/2" />
 													</div>
-													<Badge variant="outline">
-														{columnItems.length}
-													</Badge>
-												</KanbanHeader>
-												<KanbanCards id={column.id}>
-													{(item: InvoiceKanbanItem) => (
-														<KanbanCard
-															key={item.id}
-															id={item.id}
-															name={item.name}
-															column={item.column}
-														>
-															<div
-																role="button"
-																tabIndex={0}
-																onClick={() => openPreview(item.id)}
-																onKeyDown={(e) => {
-																	if (e.currentTarget !== e.target) return;
-																	if (e.key === "Enter" || e.key === " ") {
-																		e.preventDefault();
-																		openPreview(item.id);
-																	}
-																}}
-																className="flex cursor-pointer flex-col gap-2 outline-none"
-															>
-																<div className="flex items-start justify-between gap-2">
-																	<p className="text-foreground line-clamp-2 text-sm font-medium">
-																		{item.invoiceNumber}
+													<div className="h-4 bg-muted rounded animate-pulse w-16" />
+													<div className="h-4 bg-muted rounded animate-pulse w-20" />
+													<div className="h-8 w-8 bg-muted rounded animate-pulse" />
+												</div>
+											))}
+										</div>
+									</div>
+								) : isEmpty ? (
+									<EmptyState
+										size="md"
+										illustration="invoices-none"
+										title="No invoices yet"
+										description="Create invoices from approved quotes on the Projects page to get started tracking payments and revenue."
+										action={
+											<LearnMoreLink article="invoices-and-payments/creating-an-invoice" />
+										}
+									/>
+								) : viewMode === "table" ? (
+									<div className="overflow-x-auto">
+										<DataGridContainer className="border-0">
+											<DataGridTable />
+										</DataGridContainer>
+									</div>
+								) : (
+									<div className="px-2 py-4 h-[calc(100vh-30rem)] min-h-[24rem]">
+										<KanbanProvider
+											columns={kanbanColumns}
+											data={kanbanData}
+											onDataChange={handleKanbanDataChange}
+											onDragEnd={handleKanbanDragEnd}
+										>
+											{(column) => {
+												const columnItems = kanbanData.filter(
+													(item) => item.column === column.id,
+												);
+
+												return (
+													<KanbanBoard
+														key={column.id}
+														id={column.id}
+														className="bg-muted dark:bg-card/60 flex flex-col"
+													>
+														<KanbanHeader className="border-b bg-secondary dark:bg-muted/30 flex shrink-0 items-center justify-between gap-2 px-3 py-2.5">
+															<div className="flex min-w-0 items-center gap-2">
+																<div className="min-w-0">
+																	<p className="text-foreground truncate text-sm font-semibold">
+																		{column.name}
 																	</p>
-																	<StatusBadge
-																		status={item.status}
-																		appearance={statusAppearance(item.status)}
-																		className="shrink-0"
-																	>
-																		{formatStatus(item.status)}
-																	</StatusBadge>
-																</div>
-																<p className="text-muted-foreground truncate text-xs">
-																	{item.clientName}
-																</p>
-																<div className="text-muted-foreground flex flex-wrap items-center gap-1.5 text-xs">
-																	<span>
-																		{formatInvoiceDate(item.issuedDate)}
-																	</span>
-																	<span aria-hidden>·</span>
-																	<span
-																		className={cn(
-																			isPastDue(item.dueDate, orgToday) &&
-																				item.status !== "paid" &&
-																				"text-destructive font-medium"
-																		)}
-																	>
-																		Due {formatInvoiceDate(item.dueDate)}
-																	</span>
-																</div>
-																<div className="flex items-center justify-between pt-1">
-																	<span className="text-foreground text-sm font-semibold tabular-nums">
-																		{formatCurrency(item.total)}
-																	</span>
-																	<button
-																		type="button"
-																		onClick={(e) => {
-																			e.stopPropagation();
-																			router.push(`/invoices/${item.id}`);
-																		}}
-																		className="text-primary hover:text-primary/80 inline-flex items-center gap-1 text-xs font-medium"
-																	>
-																		Open <ExternalLink className="size-3" />
-																	</button>
+																	<p className="text-muted-foreground truncate text-xs">
+																		{column.description}
+																	</p>
 																</div>
 															</div>
-														</KanbanCard>
-													)}
-												</KanbanCards>
-											</KanbanBoard>
-										);
-									}}
-								</KanbanProvider>
-							</div>
-						)}
-					</FramePanel>
+															<Badge variant="outline">
+																{columnItems.length}
+															</Badge>
+														</KanbanHeader>
+														<KanbanCards id={column.id}>
+															{(item: InvoiceKanbanItem) => (
+																<KanbanCard
+																	key={item.id}
+																	id={item.id}
+																	name={item.name}
+																	column={item.column}
+																>
+																	<div
+																		role="button"
+																		tabIndex={0}
+																		onClick={() => openPreview(item.id)}
+																		onKeyDown={(e) => {
+																			if (e.currentTarget !== e.target) return;
+																			if (e.key === "Enter" || e.key === " ") {
+																				e.preventDefault();
+																				openPreview(item.id);
+																			}
+																		}}
+																		className="flex cursor-pointer flex-col gap-2 outline-none"
+																	>
+																		<div className="flex items-start justify-between gap-2">
+																			<p className="text-foreground line-clamp-2 text-sm font-medium">
+																				{item.invoiceNumber}
+																			</p>
+																			<StatusBadge
+																				status={item.status}
+																				appearance={statusAppearance(
+																					item.status,
+																				)}
+																				className="shrink-0"
+																			>
+																				{formatStatus(item.status)}
+																			</StatusBadge>
+																		</div>
+																		<p className="text-muted-foreground truncate text-xs">
+																			{item.clientName}
+																		</p>
+																		<div className="text-muted-foreground flex flex-wrap items-center gap-1.5 text-xs">
+																			<span>
+																				{formatInvoiceDate(item.issuedDate)}
+																			</span>
+																			<span aria-hidden>·</span>
+																			<span
+																				className={cn(
+																					isPastDue(item.dueDate, orgToday) &&
+																						item.status !== "paid" &&
+																						"text-destructive font-medium",
+																				)}
+																			>
+																				Due {formatInvoiceDate(item.dueDate)}
+																			</span>
+																		</div>
+																		<div className="flex items-center justify-between pt-1">
+																			<span className="text-foreground text-sm font-semibold tabular-nums">
+																				{formatCurrency(item.total)}
+																			</span>
+																			<button
+																				type="button"
+																				onClick={(e) => {
+																					e.stopPropagation();
+																					router.push(`/invoices/${item.id}`);
+																				}}
+																				className="text-primary hover:text-primary/80 inline-flex items-center gap-1 text-xs font-medium"
+																			>
+																				Open <ExternalLink className="size-3" />
+																			</button>
+																		</div>
+																	</div>
+																</KanbanCard>
+															)}
+														</KanbanCards>
+													</KanbanBoard>
+												);
+											}}
+										</KanbanProvider>
+									</div>
+								)}
+							</FramePanel>
 
-					{!isLoading && !isEmpty && (
-						<FrameFooter className="flex-row items-center justify-between">
-							<div className="text-muted-foreground text-sm">
-								{searchedData.length} of {data.length} invoices
-							</div>
-							{viewMode === "table" ? <DataGridPagination /> : null}
-						</FrameFooter>
-					)}
-				</DataGrid>
-			</Frame>
+							{!isLoading && !isEmpty && (
+								<FrameFooter className="flex-row items-center justify-between">
+									<div className="text-muted-foreground text-sm">
+										{searchedData.length} of {data.length} invoices
+									</div>
+									{viewMode === "table" ? <DataGridPagination /> : null}
+								</FrameFooter>
+							)}
+						</DataGrid>
+					</Frame>
+				</div>
+			</div>
 
 			{/* Detail preview drawer */}
 			<InvoiceDetailDrawer

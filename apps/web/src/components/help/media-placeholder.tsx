@@ -20,13 +20,9 @@ export function MediaPlaceholder({
 	const Icon = media === "video" ? PlayIcon : ImageIcon;
 	return (
 		<figure className={cn("my-8", className)}>
-			<div className="relative flex aspect-video items-center justify-center overflow-hidden rounded-xl border border-border bg-muted/30">
-				<div
-					aria-hidden="true"
-					className="absolute inset-0 opacity-50 [background-image:radial-gradient(var(--color-border)_1px,transparent_1px)] [background-size:18px_18px]"
-				/>
-				<div className="relative flex flex-col items-center gap-2.5">
-					<span className="flex size-11 items-center justify-center rounded-xl border border-border bg-background shadow-xs">
+			<div className="flex aspect-video items-center justify-center overflow-hidden rounded-[8px] border border-border bg-muted">
+				<div className="flex flex-col items-center gap-2.5">
+					<span className="flex size-11 items-center justify-center rounded-[8px] border border-border bg-background">
 						<Icon
 							className="size-5 text-muted-foreground"
 							aria-hidden="true"

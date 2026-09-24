@@ -233,7 +233,7 @@ export function InvoiceList({
 	return (
 		<div>
 			<header className="flex flex-col gap-1">
-				<p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-primary">
+				<p className="text-xs font-semibold uppercase tracking-[0.14em] text-primary">
 					{businessName}
 				</p>
 				<h1 className="text-[30px] font-semibold leading-[1.15] tracking-[-0.02em]">
@@ -265,6 +265,7 @@ export function InvoiceList({
 								placeholder="Search invoices…"
 								aria-label="Search invoices"
 								className="pl-9"
+								style={{ height: 44, fontSize: 16 }}
 							/>
 						</div>
 						<div className="flex flex-wrap gap-1.5">

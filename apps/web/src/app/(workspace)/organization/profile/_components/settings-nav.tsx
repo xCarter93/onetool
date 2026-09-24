@@ -28,7 +28,7 @@ interface SettingsNavProps {
 /** Vertical nav rail shown on desktop inside the settings shell. */
 export function SettingsNavRail({ items, activeValue, onSelect }: SettingsNavProps) {
 	return (
-		<nav className="hidden flex-col gap-1 rounded-l-2xl border-r border-border bg-linear-to-b from-primary/[0.03] to-transparent p-3.5 lg:flex">
+		<nav className="hidden flex-col gap-1 rounded-lg border border-border bg-card p-3 lg:flex">
 			<p className="px-3 pb-2.5 pt-0.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
 				Organization
 			</p>
@@ -43,7 +43,7 @@ export function SettingsNavRail({ items, activeValue, onSelect }: SettingsNavPro
 						aria-current={active ? "page" : undefined}
 						aria-disabled={item.locked || undefined}
 						className={cn(
-							"relative flex w-full cursor-pointer items-center gap-3 rounded-[10px] px-3 py-2.5 text-left transition-colors",
+							"relative flex w-full cursor-pointer items-center gap-3 rounded-md px-3 py-2.5 text-left transition-colors",
 							active
 								? "bg-primary/10 ring-1 ring-inset ring-primary/25"
 								: "hover:bg-muted",
@@ -53,7 +53,7 @@ export function SettingsNavRail({ items, activeValue, onSelect }: SettingsNavPro
 						{active && (
 							<span
 								aria-hidden
-								className="absolute left-0 top-2.5 bottom-2.5 w-[3px] rounded-r bg-primary"
+								className="absolute inset-y-2 left-0 w-0.5 rounded-r bg-primary"
 							/>
 						)}
 						<Icon
@@ -79,8 +79,8 @@ export function SettingsNavRail({ items, activeValue, onSelect }: SettingsNavPro
 					</button>
 				);
 			})}
-			<div className="mt-auto p-2 pt-3.5">
-				<div className="flex items-center gap-2.5 rounded-[10px] border border-border bg-primary/[0.04] px-3 py-2.5">
+			<div className="mt-auto border-t border-border px-2 pt-4">
+				<div className="flex items-center gap-2.5 px-2 py-1">
 					<ShieldCheck className="size-4 shrink-0 text-muted-foreground" />
 					<span className="text-xs leading-snug text-muted-foreground">
 						Changes sync across your workspace.

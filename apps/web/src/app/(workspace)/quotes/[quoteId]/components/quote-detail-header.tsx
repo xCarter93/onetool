@@ -20,7 +20,6 @@ import {
 	ActionButtonGroup,
 	type RecordAction,
 } from "@/components/domain/action-button-group";
-import { AnimatePresence, motion } from "motion/react";
 import { useState } from "react";
 import {
 	AlertDialog,
@@ -34,7 +33,6 @@ import {
 } from "@/components/ui/alert-dialog";
 import { usePermissions } from "@/hooks/use-permissions";
 import { todayUtcMidnightMs } from "@/lib/dates";
-import { cn } from "@/lib/utils";
 import type { AgreementDeliveryState } from "./recurring-quote-copy-gate";
 
 type QuoteStatus = "draft" | "sent" | "approved" | "declined" | "expired";
@@ -313,108 +311,81 @@ export function QuoteDetailHeader({
 
 	return (
 		<StickyDetailHeader>
-			{(isSticky) => (
-				<div className="flex items-center justify-between gap-4">
-					<div className="shrink-0">
-						<h1
-							className={cn(
-								"font-bold text-foreground truncate transition-all duration-300",
-								isSticky ? "text-lg" : "text-2xl"
-							)}
-						>
-							Quote {quote.quoteNumber || `#${quote._id.slice(-6)}`}
-						</h1>
-						{!isSticky && (
-							<div className="text-sm text-muted-foreground">
-								<p>{quote.title || "Untitled Quote"}</p>
-								{quote.recurringAgreementTerms && (
-									<p className="mt-1">
-										{quote.recurringInheritedAt && !quote.recurringQuoteOverride
-											? `Approved under recurring agreement ${quote.recurringAgreementTerms.agreementReference}`
-											: `Recurring agreement ${quote.recurringAgreementTerms.agreementReference}, revision ${quote.recurringAgreementTerms.revisionNumber}`}
-									</p>
-								)}
-							</div>
-						)}
-					</div>
-					<AnimatePresence initial={false}>
-						{!isSticky && (
-							<motion.div
-								className="flex-1 min-w-0 max-w-3xl"
-								initial={{ opacity: 0, height: 0, scaleY: 0 }}
-								animate={{ opacity: 1, height: "auto", scaleY: 1 }}
-								exit={{ opacity: 0, height: 0, scaleY: 0 }}
-								transition={{ duration: 0.25, ease: "easeOut" }}
-								style={{ originY: 0 }}
-							>
-								<StatusProgressBar
-									status={
-										agreementDeliveryState
-											? (AGREEMENT_STEP_BY_STATE[agreementDeliveryState] ?? "setup")
-											: currentStatus
-									}
-									steps={
-										agreementDeliveryState
-											? agreementSteps(agreementDeliveryState)
-											: QUOTE_STEPS
-									}
-									events={[
-										...(quote._creationTime
-											? [{ type: "draft", timestamp: quote._creationTime }]
-											: []),
-										...(quote.sentAt
-											? [{ type: "sent", timestamp: quote.sentAt }]
-											: []),
-										...(quote.approvedAt
-											? [{ type: "approved", timestamp: quote.approvedAt }]
-											: []),
-										...(quote.declinedAt
-											? [{ type: "declined", timestamp: quote.declinedAt }]
-											: []),
-									]}
-									failureStatuses={["declined", "expired", "revoked", "withdrawn"]}
-									successStatuses={["approved"]}
-									variantOverride={
-										agreementDeliveryState === "not_activated"
-											? "warning"
-											: undefined
-									}
-								/>
-							</motion.div>
-						)}
-					</AnimatePresence>
-					<ActionButtonGroup actions={actions} className="shrink-0" />
-
-					{/* Portals out — no effect on the header layout. */}
-					<AlertDialog
-						open={showRevertConfirm}
-						onOpenChange={setShowRevertConfirm}
-					>
-						<AlertDialogContent size="sm">
-							<AlertDialogHeader>
-								<AlertDialogTitle>
-									Revert this quote to draft?
-								</AlertDialogTitle>
-								<AlertDialogDescription>
-									The client&apos;s link will stop working until you
-									resend.
-								</AlertDialogDescription>
-							</AlertDialogHeader>
-							<AlertDialogFooter>
-								<AlertDialogCancel>Keep it sent</AlertDialogCancel>
-								<AlertDialogAction
-									onClick={() => {
-										setShowRevertConfirm(false);
-										onStatusChange("draft");
-									}}
-								>
-									Revert to draft
-								</AlertDialogAction>
-							</AlertDialogFooter>
-						</AlertDialogContent>
-					</AlertDialog>
+			<div className="flex items-center justify-between gap-4">
+				<div className="flex min-w-0 max-w-lg items-baseline gap-2">
+					<h1 className="font-bold text-foreground truncate">
+						Quote {quote.quoteNumber || `#${quote._id.slice(-6)}`}
+					</h1>
+					<span className="truncate text-sm text-muted-foreground">
+						{quote.title || "Untitled Quote"}
+					</span>
 				</div>
-			)}
+				<div className="flex-1 min-w-0 max-w-3xl">
+					<StatusProgressBar
+						status={
+							agreementDeliveryState
+								? (AGREEMENT_STEP_BY_STATE[agreementDeliveryState] ?? "setup")
+								: currentStatus
+						}
+						steps={
+							agreementDeliveryState
+								? agreementSteps(agreementDeliveryState)
+								: QUOTE_STEPS
+						}
+						events={[
+							...(quote._creationTime
+								? [{ type: "draft", timestamp: quote._creationTime }]
+								: []),
+							...(quote.sentAt
+								? [{ type: "sent", timestamp: quote.sentAt }]
+								: []),
+							...(quote.approvedAt
+								? [{ type: "approved", timestamp: quote.approvedAt }]
+								: []),
+							...(quote.declinedAt
+								? [{ type: "declined", timestamp: quote.declinedAt }]
+								: []),
+						]}
+						failureStatuses={["declined", "expired", "revoked", "withdrawn"]}
+						successStatuses={["approved"]}
+						variantOverride={
+							agreementDeliveryState === "not_activated"
+								? "warning"
+								: undefined
+						}
+					/>
+				</div>
+				<ActionButtonGroup actions={actions} className="shrink-0" />
+
+				{/* Portals out — no effect on the header layout. */}
+				<AlertDialog
+					open={showRevertConfirm}
+					onOpenChange={setShowRevertConfirm}
+				>
+					<AlertDialogContent size="sm">
+						<AlertDialogHeader>
+							<AlertDialogTitle>
+								Revert this quote to draft?
+							</AlertDialogTitle>
+							<AlertDialogDescription>
+								The client&apos;s link will stop working until you
+								resend.
+							</AlertDialogDescription>
+						</AlertDialogHeader>
+						<AlertDialogFooter>
+							<AlertDialogCancel>Keep it sent</AlertDialogCancel>
+							<AlertDialogAction
+								onClick={() => {
+									setShowRevertConfirm(false);
+									onStatusChange("draft");
+								}}
+							>
+								Revert to draft
+							</AlertDialogAction>
+						</AlertDialogFooter>
+					</AlertDialogContent>
+				</AlertDialog>
+			</div>
 		</StickyDetailHeader>
 	);
 }

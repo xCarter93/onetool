@@ -8,7 +8,6 @@ import { usePermissions } from "@/hooks/use-permissions";
 import { Doc, Id } from "@onetool/backend/convex/_generated/dataModel";
 import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
-import { Separator } from "@/components/ui/separator";
 import { TaskSheet } from "@/components/shared/task-sheet";
 import DeleteConfirmationModal from "@/components/ui/delete-confirmation-modal";
 import { Badge } from "@/components/ui/badge";
@@ -528,7 +527,7 @@ export function RecordTasksTab({
 	return (
 		<div>
 			{/* Header */}
-			<div className="flex items-center justify-between mb-1 min-h-8">
+			<div className="flex items-center justify-between mb-4 min-h-8">
 				<h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
 					Tasks ({totalTasks})
 				</h3>
@@ -537,7 +536,6 @@ export function RecordTasksTab({
 					Add Task
 				</Button>
 			</div>
-			<Separator className="mb-4" />
 			{headerContent}
 
 			{/* Search */}

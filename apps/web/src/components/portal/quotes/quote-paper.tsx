@@ -63,10 +63,10 @@ export function QuotePaper({ quote, lineItems, businessName }: QuotePaperProps) 
 			: null;
 
 	return (
-		<div className="w-full rounded-2xl border border-border bg-card p-6 shadow-xs md:p-9">
+		<div className="w-full rounded-[8px] border border-border bg-card p-6 md:p-9">
 			<div className="flex items-start justify-between gap-6">
 				<div>
-					<p className="text-[12px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
+					<p className="text-[13px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
 						Quote {quote.quoteNumber ?? ""}
 					</p>
 					<h1 className="mt-1.5 text-[28px] font-semibold leading-[1.15] tracking-[-0.02em]">
@@ -82,16 +82,16 @@ export function QuotePaper({ quote, lineItems, businessName }: QuotePaperProps) 
 				<table className="w-full border-collapse">
 					<thead>
 						<tr className="border-b-2 border-foreground">
-							<th className="text-left text-[12px] font-semibold uppercase tracking-[0.06em] text-muted-foreground py-2.5">
+							<th className="text-left text-[13px] font-semibold uppercase tracking-[0.06em] text-muted-foreground py-2.5">
 								Item
 							</th>
-							<th className="text-right text-[12px] font-semibold uppercase tracking-[0.06em] text-muted-foreground py-2.5 w-[60px]">
+							<th className="text-right text-[13px] font-semibold uppercase tracking-[0.06em] text-muted-foreground py-2.5 w-[60px]">
 								Qty
 							</th>
-							<th className="text-right text-[12px] font-semibold uppercase tracking-[0.06em] text-muted-foreground py-2.5 w-[110px]">
+							<th className="text-right text-[13px] font-semibold uppercase tracking-[0.06em] text-muted-foreground py-2.5 w-[110px]">
 								Rate
 							</th>
-							<th className="text-right text-[12px] font-semibold uppercase tracking-[0.06em] text-muted-foreground py-2.5 w-[110px]">
+							<th className="text-right text-[13px] font-semibold uppercase tracking-[0.06em] text-muted-foreground py-2.5 w-[110px]">
 								Total
 							</th>
 						</tr>
@@ -183,7 +183,7 @@ export function QuotePaper({ quote, lineItems, businessName }: QuotePaperProps) 
 
 			{quote.terms ? (
 				<div className="mt-10 pt-6 border-t border-dashed border-border">
-					<p className="text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
+					<p className="text-xs font-semibold uppercase tracking-[0.06em] text-muted-foreground">
 						Terms
 					</p>
 					<p className="mt-2 text-[13px] leading-relaxed text-muted-foreground whitespace-pre-wrap">

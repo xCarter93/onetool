@@ -113,7 +113,7 @@ export function PaymentSurface({
 	return (
 		<form onSubmit={onSubmit} className="flex flex-col gap-4">
 			<ExpressCheckoutElement onConfirm={onExpressConfirm} />
-			<div className="text-center text-[12px] text-muted-foreground">
+			<div className="text-center text-[13px] text-muted-foreground">
 				or choose another payment method
 			</div>
 			<PaymentElement options={{ layout: "tabs" }} />

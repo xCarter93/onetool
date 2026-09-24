@@ -51,7 +51,7 @@ export function PortalThemeSwitcher({ className }: { className?: string }) {
 						className={cn(
 							"flex h-7 flex-1 items-center justify-center rounded-md transition-colors",
 							isActive
-								? "bg-muted text-foreground shadow-sm"
+								? "bg-accent text-accent-foreground"
 								: "text-muted-foreground hover:text-foreground",
 						)}
 					>

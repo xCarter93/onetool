@@ -8,13 +8,11 @@ import {
 	ActionButtonGroup,
 	type RecordAction,
 } from "@/components/domain/action-button-group";
-import { AnimatePresence, motion } from "motion/react";
 import {
 	isRoutableProperty,
 	useAddToRoute,
 } from "@/components/shared/add-to-route";
 import { usePermissions } from "@/hooks/use-permissions";
-import { cn } from "@/lib/utils";
 
 interface ProjectDetailHeaderProps {
 	project: Doc<"projects">;
@@ -124,42 +122,24 @@ export function ProjectDetailHeader({
 
 	return (
 		<StickyDetailHeader>
-			{(isSticky) => (
-				<div className="flex items-center justify-between gap-4">
-					<h1
-						className={cn(
-							"font-bold text-foreground truncate shrink-0 transition-all duration-300",
-							isSticky ? "text-lg" : "text-2xl"
-						)}
-					>
-						{project.title}
-					</h1>
-					<AnimatePresence initial={false}>
-						{!isSticky && (
-							<motion.div
-								className="flex-1 min-w-0 max-w-3xl"
-								initial={{ opacity: 0, height: 0, scaleY: 0 }}
-								animate={{ opacity: 1, height: "auto", scaleY: 1 }}
-								exit={{ opacity: 0, height: 0, scaleY: 0 }}
-								transition={{ duration: 0.25, ease: "easeOut" }}
-								style={{ originY: 0 }}
-							>
-								<StatusProgressBar
-									status={project.status}
-									steps={[
-										{ id: "planned", name: "Planned", order: 1 },
-										{ id: "in-progress", name: "In Progress", order: 2 },
-										{ id: "completed", name: "Completed", order: 3 },
-									]}
-									failureStatuses={["cancelled"]}
-									successStatuses={["completed"]}
-								/>
-							</motion.div>
-						)}
-					</AnimatePresence>
-					<ActionButtonGroup actions={actions} className="shrink-0" />
+			<div className="flex items-center justify-between gap-4">
+				<h1 className="font-bold text-foreground truncate shrink-0">
+					{project.title}
+				</h1>
+				<div className="flex-1 min-w-0 max-w-3xl">
+					<StatusProgressBar
+						status={project.status}
+						steps={[
+							{ id: "planned", name: "Planned", order: 1 },
+							{ id: "in-progress", name: "In Progress", order: 2 },
+							{ id: "completed", name: "Completed", order: 3 },
+						]}
+						failureStatuses={["cancelled"]}
+						successStatuses={["completed"]}
+					/>
 				</div>
-			)}
+				<ActionButtonGroup actions={actions} className="shrink-0" />
+			</div>
 		</StickyDetailHeader>
 	);
 }

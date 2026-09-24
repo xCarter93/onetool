@@ -475,7 +475,7 @@ export function MentionInput({
 				<PopoverContent
 					align="start"
 					side="bottom"
-					className="w-80 p-2 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700"
+					className="w-80 border border-border bg-popover p-2"
 					initialFocus={false}
 				>
 					<div className="max-h-64 overflow-y-auto">
@@ -485,7 +485,7 @@ export function MentionInput({
 								onClick={() =>
 									handleUserSelect(user.id, user.name, user.convexUserId)
 								}
-								className="w-full flex items-center gap-3 px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-800 rounded-md transition-colors text-left"
+								className="w-full flex items-center gap-3 px-3 py-2 hover:bg-accent rounded-md transition-colors text-left"
 							>
 								<Avatar className="h-8 w-8">
 									<AvatarImage src={user.image} alt={user.name} />
@@ -494,10 +494,10 @@ export function MentionInput({
 									</AvatarFallback>
 								</Avatar>
 								<div className="flex-1 min-w-0">
-									<p className="text-sm font-medium text-gray-900 dark:text-white truncate">
+									<p className="text-sm font-medium text-popover-foreground truncate">
 										{user.name}
 									</p>
-									<p className="text-xs text-gray-500 dark:text-gray-400 truncate">
+									<p className="text-xs text-muted-foreground truncate">
 										{user.email}
 									</p>
 								</div>
@@ -522,9 +522,9 @@ export function MentionInput({
 								{isImage ? (
 									// Image preview thumbnail
 									<div className="relative">
-										<div className="h-20 w-20 bg-gray-100 dark:bg-gray-800 rounded-lg border-2 border-gray-200 dark:border-gray-700 overflow-hidden flex items-center justify-center">
+										<div className="h-20 w-20 rounded-lg border-2 border-border bg-muted overflow-hidden flex items-center justify-center">
 											{attachment.uploading ? (
-												<Loader2 className="h-6 w-6 text-gray-400 animate-spin" />
+												<Loader2 className="h-6 w-6 text-muted-foreground animate-spin" />
 											) : (
 												// eslint-disable-next-line @next/next/no-img-element
 												<img
@@ -539,7 +539,7 @@ export function MentionInput({
 												onClick={() =>
 													handleRemoveAttachment(attachment.tempId)
 												}
-												className="absolute -top-2 -right-2 p-1 bg-red-500 hover:bg-red-600 text-white rounded-full shadow-lg transition-colors"
+												className="absolute -top-2 -right-2 p-1 rounded-full bg-danger text-background hover:bg-danger/85 transition-colors"
 												type="button"
 												title="Remove"
 											>
@@ -547,8 +547,8 @@ export function MentionInput({
 											</button>
 										)}
 										{attachment.error && (
-											<div className="absolute inset-0 bg-red-500/90 rounded-lg flex items-center justify-center">
-												<span className="text-xs text-white font-medium px-2 text-center">
+											<div className="absolute inset-0 bg-danger/90 rounded-lg flex items-center justify-center">
+												<span className="text-xs text-background font-medium px-2 text-center">
 													Error
 												</span>
 											</div>
@@ -556,35 +556,35 @@ export function MentionInput({
 									</div>
 								) : (
 									// Document badge
-									<div className="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-gray-100 dark:bg-gray-800 rounded-md border border-gray-200 dark:border-gray-700 transition-colors max-w-[200px]">
+									<div className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md border border-border bg-muted transition-colors max-w-[200px]">
 										<FileIcon
 											className={`h-3.5 w-3.5 shrink-0 ${
-												isPdf ? "text-red-500" : "text-gray-500"
+												isPdf ? "text-danger-foreground" : "text-muted-foreground"
 											}`}
 										/>
 										<div className="flex-1 min-w-0">
-											<span className="text-xs font-medium text-gray-700 dark:text-gray-300 truncate block">
+											<span className="text-xs font-medium text-foreground truncate block">
 												{attachment.file.name}
 											</span>
-											<span className="text-xs text-gray-500 dark:text-gray-400">
+											<span className="text-xs text-muted-foreground">
 												{formatFileSize(attachment.file.size)}
 												{attachment.uploading && " • Uploading..."}
 											</span>
 										</div>
 										{attachment.uploading ? (
-											<Loader2 className="h-3 w-3 text-gray-400 animate-spin shrink-0" />
+											<Loader2 className="h-3 w-3 text-muted-foreground animate-spin shrink-0" />
 										) : attachment.error ? (
-											<span className="text-xs text-red-500 shrink-0">✕</span>
+											<span className="text-xs text-danger-foreground shrink-0">✕</span>
 										) : (
 											<button
 												onClick={() =>
 													handleRemoveAttachment(attachment.tempId)
 												}
-												className="p-0.5 hover:bg-gray-200 dark:hover:bg-gray-700 rounded transition-colors shrink-0"
+												className="p-0.5 hover:bg-accent rounded transition-colors shrink-0"
 												type="button"
 												title="Remove"
 											>
-												<X className="h-3 w-3 text-gray-500" />
+												<X className="h-3 w-3 text-muted-foreground" />
 											</button>
 										)}
 									</div>
@@ -596,7 +596,7 @@ export function MentionInput({
 			)}
 
 			<div className="flex items-center justify-between">
-				<div className="text-xs text-gray-500 dark:text-gray-400">
+				<div className="text-xs text-muted-foreground">
 					{mentionedUsers.length > 0 ? (
 						<span>
 							Mentioning:{" "}

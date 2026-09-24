@@ -23,6 +23,8 @@ import { ClearWorkflowDialog } from "./clear-workflow-dialog";
 import { runEdgeFlowClass, runStatusRingClass } from "../../lib/run-status";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/domain/empty-state";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useEntitlements } from "@/hooks/use-entitlements";
 
 type NodeConfigType =
@@ -196,32 +198,43 @@ export function AutomationEditorScreen({ automationId }: { automationId: string 
 
 	if (editor.isLoading) {
 		return (
-			<div className="flex min-h-screen items-center justify-center">
-				<div className="h-8 w-8 animate-spin rounded-full border-b-2 border-primary" />
-			</div>
+			<main className="workspace-detail workspace-page">
+				<div className="workspace-page-header">
+					<Skeleton className="h-8 w-64" />
+				</div>
+				<div className="workspace-panel min-h-[24rem] p-6">
+					<Skeleton className="h-6 w-48" />
+					<Skeleton className="mt-6 h-48 w-full" />
+				</div>
+			</main>
 		);
 	}
 
 	if (editor.isNotFound) {
 		return (
-			<div className="p-6 text-center">
-				<h1 className="text-xl font-semibold">Automation Not Found</h1>
-				<p className="mt-2 text-sm text-muted-foreground">
-					This automation may have been deleted or you don&apos;t have access to it.
-				</p>
-				<Button
-					variant="default"
-					className="mt-6"
-					onClick={() => router.push("/automations")}
-				>
-					Back to Automations
-				</Button>
-			</div>
+			<main className="workspace-detail workspace-page">
+				<header className="workspace-page-header">
+					<h1>Automations</h1>
+				</header>
+				<section className="workspace-panel max-w-3xl">
+					<EmptyState
+						size="md"
+						illustration="no-filter-match"
+						title="Automation Not Found"
+						description="This automation may have been deleted or you don't have access to it."
+						action={
+							<Button onClick={() => router.push("/automations")}>
+								Back to Automations
+							</Button>
+						}
+					/>
+				</section>
+			</main>
 		);
 	}
 
 	return (
-		<div className="flex h-svh flex-col md:h-auto md:min-h-0 md:flex-1">
+		<div className="workspace-detail flex h-[100dvh] min-h-0 flex-col md:h-full md:flex-1">
 			<EditorTopBar
 				name={editor.name}
 				description={editor.description}
@@ -232,8 +245,8 @@ export function AutomationEditorScreen({ automationId }: { automationId: string 
 				onDescriptionChange={editor.setDescription}
 				onSave={editor.handleSave}
 			/>
-			<div className="flex flex-1 overflow-hidden bg-muted/40">
-				<div className="relative flex-1 bg-background">
+			<div className="flex min-h-0 flex-1 overflow-hidden bg-muted/40">
+				<div className="relative min-h-0 min-w-0 flex-1 bg-background">
 					<AutomationFlow
 						nodes={flowNodes}
 						edges={flowEdges}

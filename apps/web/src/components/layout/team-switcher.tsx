@@ -76,7 +76,7 @@ export function TeamSwitcher() {
 	useMarkOrgSwitchingOnClerkClick();
 	const shouldInvert = organization?.logoInvertInDarkMode ?? true;
 	const avatarImageClass = cn(
-		"w-8 h-8 rounded-lg object-cover",
+		"w-8 h-8 rounded-[4px] object-cover",
 		shouldInvert && "dark:invert dark:brightness-0"
 	);
 	// Clerk re-diffs its theme whenever `appearance` changes identity, so only
@@ -86,25 +86,24 @@ export function TeamSwitcher() {
 			elements: {
 				rootBox: isCollapsed ? "w-10 h-10" : "w-full",
 				organizationSwitcherTrigger: isCollapsed
-					? "mx-auto w-10 h-10 justify-center p-0 border-0 bg-transparent hover:bg-sidebar-accent rounded-md text-foreground transition-colors duration-200 overflow-hidden [&>*:not(:first-child)]:hidden"
-					: "w-full justify-start gap-2 p-2 border-0 bg-transparent hover:bg-sidebar-accent hover:text-sidebar-accent-foreground data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground rounded-md text-foreground transition-colors duration-200 [&_svg:last-child]:w-3 [&_svg:last-child]:h-3 [&_svg:last-child]:text-muted-foreground",
+					? "mx-auto w-10 h-10 justify-center p-0 border-0 bg-transparent hover:bg-sidebar-accent rounded-[4px] text-foreground transition-colors duration-150 overflow-hidden [&>*:not(:first-child)]:hidden"
+					: "w-full justify-start gap-2 p-2 border-0 bg-transparent hover:bg-sidebar-accent hover:text-sidebar-accent-foreground data-[state=open]:bg-accent data-[state=open]:text-accent-foreground rounded-[4px] text-foreground transition-colors duration-150 [&_svg:last-child]:w-3 [&_svg:last-child]:h-3 [&_svg:last-child]:text-muted-foreground",
 				organizationSwitcherTriggerIcon:
-					"bg-sidebar-primary text-sidebar-primary-foreground size-8 rounded-lg",
+					"bg-sidebar-primary text-sidebar-primary-foreground size-8 rounded-[4px]",
 				organizationPreview: isCollapsed ? "flex-1 text-left pl-1.5" : "flex-1 text-left",
 				organizationPreviewMainIdentifier:
 					"text-sm font-semibold truncate text-foreground",
 				organizationPreviewSecondaryIdentifier:
 					"text-xs text-muted-foreground truncate",
 				organizationPreviewAvatarBox:
-					"size-8 rounded-lg bg-muted flex items-center justify-center",
+					"size-8 rounded-[4px] bg-muted flex items-center justify-center",
 				organizationPreviewAvatarImage: avatarImageClass,
-				// Popover card — matches the header popovers (rounded-xl, theme tokens)
 				organizationSwitcherPopoverCard: cn(clerkPopoverCardClass, "p-2"),
 				organizationSwitcherPopoverMain: "bg-popover",
 				organizationSwitcherPreviewButton:
-					"w-full p-2 rounded-lg bg-transparent hover:bg-muted/60 transition-colors text-left text-foreground",
+					"w-full p-2 rounded-[4px] bg-transparent hover:bg-(--app-accent) hover:text-(--accent-fg) transition-colors text-left text-foreground",
 				organizationSwitcherPopoverActionButton:
-					"rounded-lg hover:bg-muted/60 transition-colors",
+					"rounded-[4px] hover:bg-(--app-accent) hover:text-(--accent-fg) transition-colors",
 				organizationSwitcherPopoverActionButtonIcon: "text-muted-foreground",
 				organizationSwitcherPopoverActionButtonText:
 					"text-sm font-medium text-foreground",

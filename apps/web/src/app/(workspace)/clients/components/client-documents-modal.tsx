@@ -78,13 +78,13 @@ export function ClientDocumentsModal({
 		<Modal isOpen={isOpen} onClose={onClose} title="Client Documents" size="lg">
 			{documents.length === 0 ? (
 				<div className="flex flex-col items-center justify-center py-12 text-center">
-					<div className="w-16 h-16 bg-gray-100 dark:bg-gray-800 rounded-full flex items-center justify-center mb-4">
-						<FolderOpen className="h-8 w-8 text-gray-400 dark:text-gray-600" />
+					<div className="w-16 h-16 bg-muted rounded-lg flex items-center justify-center mb-4">
+						<FolderOpen className="h-8 w-8 text-muted-foreground" />
 					</div>
-					<h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">
+					<h3 className="text-sm font-semibold text-foreground mb-2">
 						No documents yet
 					</h3>
-					<p className="text-sm text-gray-600 dark:text-gray-400 max-w-sm">
+					<p className="text-sm text-muted-foreground max-w-sm">
 						Upload documents from the sidebar or attach files in team communications.
 					</p>
 				</div>
@@ -93,18 +93,18 @@ export function ClientDocumentsModal({
 					{documents.map((doc) => (
 						<div
 							key={doc._id}
-							className="flex items-center gap-3 p-3 bg-gray-50 dark:bg-gray-800/50 rounded-lg border border-gray-200 dark:border-gray-700"
+							className="flex items-center gap-3 p-3 bg-muted/50 rounded-lg border border-border"
 						>
 							{/* File icon */}
 							<div className="shrink-0">
 								{isImage(doc.mimeType) ? (
-									<div className="h-12 w-12 bg-gray-100 dark:bg-gray-800 rounded-lg flex items-center justify-center">
+									<div className="h-12 w-12 bg-muted rounded-lg flex items-center justify-center">
 										<ImageIcon className="h-5 w-5 text-blue-500" />
 									</div>
 								) : (
-									<div className="h-12 w-12 bg-gray-100 dark:bg-gray-800 rounded-lg flex items-center justify-center">
+									<div className="h-12 w-12 bg-muted rounded-lg flex items-center justify-center">
 										<FileIcon
-											className={`h-5 w-5 ${isPdf(doc.mimeType) ? "text-red-500" : "text-gray-500"}`}
+											className={`h-5 w-5 ${isPdf(doc.mimeType) ? "text-red-500" : "text-muted-foreground"}`}
 										/>
 									</div>
 								)}
@@ -113,7 +113,7 @@ export function ClientDocumentsModal({
 							{/* File details */}
 							<div className="flex-1 min-w-0">
 								<div className="flex items-center gap-2 mb-0.5">
-									<p className="text-sm font-medium text-gray-900 dark:text-white truncate">
+									<p className="text-sm font-medium text-foreground truncate">
 										{doc.fileName}
 									</p>
 									<Badge
@@ -128,11 +128,11 @@ export function ClientDocumentsModal({
 									</Badge>
 								</div>
 								<div className="flex items-center gap-2">
-									<p className="text-xs text-gray-500 dark:text-gray-400">
+									<p className="text-xs text-muted-foreground">
 										{formatFileSize(doc.fileSize)}
 									</p>
-									<span className="text-xs text-gray-400">&middot;</span>
-									<p className="text-xs text-gray-500 dark:text-gray-400">
+									<span className="text-xs text-muted-foreground">&middot;</span>
+									<p className="text-xs text-muted-foreground">
 										{formatDate(doc.uploadedAt)}
 									</p>
 								</div>
@@ -145,7 +145,7 @@ export function ClientDocumentsModal({
 										href={doc.downloadUrl}
 										target="_blank"
 										rel="noopener noreferrer"
-										className="p-1.5 rounded-md hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 transition-colors"
+										className="p-1.5 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
 										aria-label={`Download ${doc.fileName}`}
 									>
 										<Download className="h-4 w-4" />
@@ -154,7 +154,7 @@ export function ClientDocumentsModal({
 								{doc.source === "uploaded" && (
 									<button
 										onClick={() => handleDelete(doc)}
-										className="p-1.5 rounded-md hover:bg-red-100 dark:hover:bg-red-900/30 text-gray-500 hover:text-red-600 dark:hover:text-red-400 transition-colors"
+										className="p-1.5 rounded-md hover:bg-red-100 dark:hover:bg-red-900/30 text-muted-foreground hover:text-red-600 dark:hover:text-red-400 transition-colors"
 										aria-label={`Delete ${doc.fileName}`}
 									>
 										<Trash2 className="h-4 w-4" />

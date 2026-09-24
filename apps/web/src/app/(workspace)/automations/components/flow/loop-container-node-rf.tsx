@@ -17,12 +17,12 @@ export const LoopContainerNodeRF = memo(({ data }: NodeProps) => {
 	return (
 		<div
 			aria-hidden
-			className="pointer-events-none relative rounded-2xl border-[1.5px] border-dashed border-orange-300/70 bg-orange-50/30 dark:border-orange-400/30 dark:bg-orange-400/[0.04]"
+			className="pointer-events-none relative rounded-lg border border-dashed border-warning/70 bg-warning-soft"
 			style={{ width, height }}
 		>
-			<div className="absolute -top-2.5 left-4 flex items-center gap-1 rounded-full border border-orange-200/80 bg-background px-2 py-0.5 dark:border-orange-400/25">
-				<Repeat className="h-3 w-3 text-orange-500 dark:text-orange-400" />
-				<span className="text-[10px] font-semibold tracking-wide text-orange-600 dark:text-orange-300">
+			<div className="absolute -top-2.5 left-4 flex items-center gap-1 rounded-full border border-warning/70 bg-card px-2 py-0.5">
+				<Repeat className="h-3 w-3 text-warning-foreground" />
+				<span className="text-[10px] font-semibold tracking-wide text-warning-foreground">
 					Loop
 				</span>
 			</div>

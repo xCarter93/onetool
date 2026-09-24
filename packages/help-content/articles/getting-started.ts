@@ -271,7 +271,7 @@ export const gettingStartedArticles: HelpArticle[] = [
 				blocks: [
 					{
 						type: "paragraph",
-						text: "Press **⌘K** on a Mac or **Ctrl+K** on Windows from anywhere in the workspace, or click the **Search** box at the top of the sidebar. Press Escape to close it.",
+						text: "Press **⌘K** on a Mac or **Ctrl+K** on Windows from anywhere in the workspace, or click the **Search** box in the header. Press Escape to close it.",
 					},
 				],
 			},

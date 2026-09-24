@@ -56,10 +56,7 @@ import {
 import { ReportFieldPicker } from "./report-field-picker";
 import { ReportFilterRows } from "./report-filter-rows";
 import { ReportMetricControls } from "./report-metric-controls";
-import {
-	countFilterRules,
-	sanitizeReportFilters,
-} from "./report-filter-model";
+import { countFilterRules, sanitizeReportFilters } from "./report-filter-model";
 import { pathLabel } from "../report-path-options";
 import {
 	builderStateToSaved,
@@ -132,39 +129,47 @@ export function ReportBuilder({
 	const [init] = useState(() =>
 		initial.config
 			? savedToBuilderState(initial.config, initial.visualization)
-			: null
+			: null,
 	);
 	const [name, setName] = useState(initial.name);
 	const [description, setDescription] = useState(initial.description);
 	const [entityType, setEntityType] = useState<EntityType | null>(
-		init?.entityType ?? null
+		init?.entityType ?? null,
 	);
 	const [groupBy, setGroupBy] = useState<string | undefined>(init?.groupBy);
 	const [vizType, setVizType] = useState<VizType>(
-		init?.vizType ?? initial.visualization.type
+		init?.vizType ?? initial.visualization.type,
 	);
 	const [dateRangePreset, setDateRangePreset] = useState(
-		init?.dateRangePreset ?? "all_time"
+		init?.dateRangePreset ?? "all_time",
 	);
 	const [customDateRange, setCustomDateRange] = useState<DateRange | undefined>(
-		init?.customDateRange
+		init?.customDateRange,
 	);
 	const [compareMode, setCompareMode] = useState<CompareMode>(
-		init?.compareMode ?? "none"
+		init?.compareMode ?? "none",
 	);
-	const [compareDateRange, setCompareDateRange] = useState<DateRange | undefined>(
-		init?.compareDateRange
+	const [compareDateRange, setCompareDateRange] = useState<
+		DateRange | undefined
+	>(init?.compareDateRange);
+	const [dateField, setDateField] = useState<string | undefined>(
+		init?.dateField,
 	);
-	const [dateField, setDateField] = useState<string | undefined>(init?.dateField);
-	const [segmentBy, setSegmentBy] = useState<string | undefined>(init?.segmentBy);
-	const [includeEmptyValues, setIncludeEmptyValues] = useState<boolean | undefined>(
-		init?.includeEmptyValues
+	const [segmentBy, setSegmentBy] = useState<string | undefined>(
+		init?.segmentBy,
 	);
-	const [vizOptions, setVizOptions] = useState<VisualizationOptions | undefined>(
-		init?.vizOptions
+	const [includeEmptyValues, setIncludeEmptyValues] = useState<
+		boolean | undefined
+	>(init?.includeEmptyValues);
+	const [vizOptions, setVizOptions] = useState<
+		VisualizationOptions | undefined
+	>(init?.vizOptions);
+	const [filters, setFilters] = useState<ReportFilters | undefined>(
+		init?.filters,
 	);
-	const [filters, setFilters] = useState<ReportFilters | undefined>(init?.filters);
-	const [metric, setMetric] = useState<ReportMetric>(init?.metric ?? { op: "count" });
+	const [metric, setMetric] = useState<ReportMetric>(
+		init?.metric ?? { op: "count" },
+	);
 	const [columns, setColumns] = useState<string[]>(init?.columns ?? []);
 	const [pendingEntity, setPendingEntity] = useState<EntityType | null>(null);
 	const [groupByPickerOpen, setGroupByPickerOpen] = useState(false);
@@ -178,7 +183,10 @@ export function ReportBuilder({
 
 	const isChart = isChartVizType(vizType);
 
-	const sanitizedFilters = useMemo(() => sanitizeReportFilters(filters), [filters]);
+	const sanitizedFilters = useMemo(
+		() => sanitizeReportFilters(filters),
+		[filters],
+	);
 	const activeFilterCount = useMemo(() => countFilterRules(filters), [filters]);
 
 	// One construction feeds save, preview, the utility bar, and the published
@@ -203,7 +211,7 @@ export function ReportBuilder({
 		: null;
 
 	const [initialSnapshot] = useState(() =>
-		init ? JSON.stringify(builderStateToSaved(init)) : null
+		init ? JSON.stringify(builderStateToSaved(init)) : null,
 	);
 	const isDirty =
 		name !== initial.name ||
@@ -222,7 +230,7 @@ export function ReportBuilder({
 						name: name || null,
 					},
 				}
-			: {}
+			: {},
 	);
 
 	// Client-executed configureReport: the panel forwards the validated
@@ -329,7 +337,9 @@ export function ReportBuilder({
 
 	// A ratio metric buckets itself — no column choice makes its table raw rows.
 	const metricBucketsItself = metric.op === "ratio";
-	const rawRowsActive = saved ? isDetailModeActive(saved.config, vizType) : false;
+	const rawRowsActive = saved
+		? isDetailModeActive(saved.config, vizType)
+		: false;
 	const columnsHelper = metricBucketsItself
 		? "Showing this metric instead of raw rows. Set the metric to Count of records to pick columns."
 		: rawRowsActive
@@ -349,14 +359,18 @@ export function ReportBuilder({
 	// base field, with the day/week/month granularity chosen inline.
 	const timeGroupMatch = groupBy?.match(TIME_SUFFIX) ?? null;
 	const groupByBase = timeGroupMatch ? timeGroupMatch[1] : groupBy;
-	const groupOptions = entityType ? (genericGroupByOptions[entityType] ?? []) : [];
-	const nonTimeGroupOptions = groupOptions.filter((o) => !TIME_SUFFIX.test(o.value));
+	const groupOptions = entityType
+		? (genericGroupByOptions[entityType] ?? [])
+		: [];
+	const nonTimeGroupOptions = groupOptions.filter(
+		(o) => !TIME_SUFFIX.test(o.value),
+	);
 	const timeBaseOptions = entityType
 		? [
 				...new Set(
 					groupOptions
 						.map((o) => o.value.match(TIME_SUFFIX)?.[1])
-						.filter((base): base is string => base !== undefined)
+						.filter((base): base is string => base !== undefined),
 				),
 			].map((base) => ({
 				value: base,
@@ -393,13 +407,13 @@ export function ReportBuilder({
 		metric.op !== "ratio";
 	const segmentOptions = entityType
 		? nonTimeGroupOptions.filter(
-				(o) => o.value !== groupBy && !getRelationEdge(entityType, o.value)
+				(o) => o.value !== groupBy && !getRelationEdge(entityType, o.value),
 			)
 		: [];
 
 	const setVizOption = <K extends keyof VisualizationOptions>(
 		key: K,
-		value: VisualizationOptions[K] | undefined
+		value: VisualizationOptions[K] | undefined,
 	) => {
 		setVizOptions((prev) => {
 			const next = { ...prev };
@@ -423,8 +437,8 @@ export function ReportBuilder({
 		// order fields were picked in.
 		setColumns(
 			Object.keys(REPORT_FIELDS[entityType].fields).filter((f) =>
-				vals.includes(f)
-			)
+				vals.includes(f),
+			),
 		);
 		// Columns override the grouping in the backend's table render.
 		if (vals.length > 0) clearGroupBy();
@@ -444,7 +458,8 @@ export function ReportBuilder({
 		} catch {
 			terminal = undefined;
 		}
-		const isTime = terminal?.kind === "field" && terminal.def.type === "timestamp";
+		const isTime =
+			terminal?.kind === "field" && terminal.def.type === "timestamp";
 		const next =
 			isTime && !TIME_SUFFIX.test(value)
 				? `${value}_${timeGroupMatch?.[2] ?? "month"}`
@@ -456,7 +471,10 @@ export function ReportBuilder({
 		if (!(terminal?.kind === "field" && terminal.def.options)) {
 			setIncludeEmptyValues(undefined);
 		}
-		if (isTime || (terminal?.kind === "fk" && vizOptions?.sort === "label_asc")) {
+		if (
+			isTime ||
+			(terminal?.kind === "fk" && vizOptions?.sort === "label_asc")
+		) {
 			setVizOption("sort", undefined);
 		}
 	};
@@ -465,7 +483,9 @@ export function ReportBuilder({
 		vizType === "bar" || vizType === "column" || vizType === "line";
 	const chartOptionsVisible = isChart && (!!groupBy || supportsAxisChrome);
 
-	const defaultDateField = entityType ? getReportDateField(entityType) : undefined;
+	const defaultDateField = entityType
+		? getReportDateField(entityType)
+		: undefined;
 	const dateFieldOptions = entityType ? dateFieldOptionsFor(entityType) : [];
 
 	const groupByLabel =
@@ -477,10 +497,13 @@ export function ReportBuilder({
 		if (!entityType) return undefined;
 		const field = dateField ?? getReportDateField(entityType);
 		if (field === "_creationTime") return "record creation date";
-		return REPORT_FIELDS[entityType].fields[field]?.label.toLowerCase() ?? field;
+		return (
+			REPORT_FIELDS[entityType].fields[field]?.label.toLowerCase() ?? field
+		);
 	})();
 	const rangeLabel =
-		dateRangeOptions.find((o) => o.value === dateRangePreset)?.label ?? "All Time";
+		dateRangeOptions.find((o) => o.value === dateRangePreset)?.label ??
+		"All Time";
 
 	const openBucket = (bucketKey: string, bucketLabel: string) =>
 		setContributingScope({ bucketKey, bucketLabel });
@@ -496,9 +519,9 @@ export function ReportBuilder({
 	};
 
 	return (
-		<div className="flex flex-col lg:h-[calc(100svh-1.75rem)] lg:overflow-hidden">
+		<div className="workspace-detail flex flex-col lg:h-[calc(100svh-1.75rem)] lg:overflow-hidden">
 			{/* Top strip — spans canvas + rail; pt clears the header notch (~48px) */}
-			<div className="flex flex-wrap items-center gap-3 border-b border-border/60 px-4 pb-3 pt-3 lg:pt-7">
+			<div className="workspace-page-header mx-4 mb-0! flex-wrap py-4 lg:mx-6">
 				<Button
 					variant="ghost"
 					size="icon-sm"
@@ -549,8 +572,8 @@ export function ReportBuilder({
 				{/* lg+ pins the utility bar to the card bottom, where the assistant
 				    dock overlays it; below lg the config rail follows it instead. */}
 				<main className="flex min-w-0 flex-1 flex-col lg:h-full lg:overflow-hidden lg:pb-24">
-					<div className="flex-1 overflow-auto bg-muted/20 p-4 sm:p-8">
-						<div className="flex min-h-full w-full flex-col rounded-2xl border border-border/60 bg-background p-5 shadow-sm sm:p-7">
+					<div className="flex-1 overflow-auto p-4 sm:p-6">
+						<div className="workspace-panel flex min-h-full w-full flex-col p-5 sm:p-7">
 							{saved ? (
 								<ReportPreview
 									config={saved.config}
@@ -581,7 +604,7 @@ export function ReportBuilder({
 				</main>
 
 				{/* Config rail */}
-				<aside className="flex shrink-0 flex-col border-t border-border/60 bg-background/50 px-6 py-4 lg:h-full lg:w-[440px] lg:overflow-y-auto lg:border-l lg:border-t-0">
+				<aside className="flex shrink-0 flex-col border-t border-border bg-card px-4 py-4 lg:h-full lg:w-(--workspace-detail-rail-width) lg:overflow-y-auto lg:border-l lg:border-t-0">
 					<PanelSection title="Visualization">
 						<Select
 							value={vizType}
@@ -777,7 +800,9 @@ export function ReportBuilder({
 															type="button"
 															className="flex min-w-0 flex-1 items-center justify-between gap-2 rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
 														>
-															<span className="truncate">{groupByLabelText}</span>
+															<span className="truncate">
+																{groupByLabelText}
+															</span>
 															<ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
 														</button>
 													}
@@ -840,7 +865,7 @@ export function ReportBuilder({
 									<PanelField label="Columns" helper={columnsHelper}>
 										<MultiSelector
 											options={Object.entries(
-												REPORT_FIELDS[entityType].fields
+												REPORT_FIELDS[entityType].fields,
 											).map(([field, def]) => ({
 												label: def.label,
 												value: field,
@@ -902,7 +927,7 @@ export function ReportBuilder({
 														"seriesLimit",
 														e.target.value === ""
 															? undefined
-															: Math.max(1, Math.floor(Number(e.target.value)))
+															: Math.max(1, Math.floor(Number(e.target.value))),
 													)
 												}
 												placeholder="All groups"
@@ -921,7 +946,7 @@ export function ReportBuilder({
 															? undefined
 															: (v as NonNullable<
 																	VisualizationOptions["sort"]
-																>)
+																>),
 													);
 												}}
 											>
@@ -935,7 +960,9 @@ export function ReportBuilder({
 													<SelectItem value="value_desc">
 														Highest first
 													</SelectItem>
-													<SelectItem value="value_asc">Lowest first</SelectItem>
+													<SelectItem value="value_asc">
+														Lowest first
+													</SelectItem>
 													{/* FK labels resolve after the series slice, so A-to-Z can't apply to record groupings. */}
 													{!isFkGroupBy && (
 														<SelectItem value="label_asc">A to Z</SelectItem>
@@ -968,7 +995,7 @@ export function ReportBuilder({
 														"targetLine",
 														e.target.value === ""
 															? undefined
-															: Number(e.target.value)
+															: Number(e.target.value),
 													)
 												}
 												placeholder="None"
@@ -977,7 +1004,6 @@ export function ReportBuilder({
 									)}
 								</PanelSection>
 							)}
-
 						</>
 					)}
 				</aside>

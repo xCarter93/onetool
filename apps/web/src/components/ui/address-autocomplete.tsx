@@ -3,7 +3,6 @@
 import * as React from "react";
 import dynamic from "next/dynamic";
 import type { AddressAutofill as AddressAutofillType } from "@mapbox/search-js-react";
-import { useTheme } from "next-themes";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { env } from "@/env";
@@ -165,7 +164,6 @@ export const AddressAutocomplete = React.forwardRef<
 	},
 	ref
 ) {
-	const { resolvedTheme } = useTheme();
 	const inputRef = React.useRef<HTMLInputElement>(null);
 
 	// Forward ref to input
@@ -244,34 +242,21 @@ export const AddressAutocomplete = React.forwardRef<
 		[onAddressSelect]
 	);
 
-	// Theme configuration for Mapbox suggestions popover
-	// Uses CSS custom properties to match the design system
 	const theme = React.useMemo(
 		() => ({
 			variables: {
 				fontFamily: "inherit",
 				unit: "14px",
 				padding: "0.5em 0.75em",
-				borderRadius: "0.5rem",
-				boxShadow:
-					"0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1)",
-				// Colors based on theme - matching design system
-				colorBackground:
-					resolvedTheme === "dark"
-						? "hsl(240 10% 3.9%)" // dark background
-						: "hsl(0 0% 100%)", // light background
-				colorBackgroundHover:
-					resolvedTheme === "dark"
-						? "hsl(240 3.7% 15.9%)" // dark muted
-						: "hsl(240 4.8% 95.9%)", // light muted
-				colorText:
-					resolvedTheme === "dark"
-						? "hsl(0 0% 98%)" // dark foreground
-						: "hsl(240 10% 3.9%)", // light foreground
-				colorPrimary: "hsl(221.2 83.2% 53.3%)", // primary blue
+				borderRadius: "var(--radius-md)",
+				boxShadow: "none",
+				colorBackground: "var(--popover)",
+				colorBackgroundHover: "var(--accent)",
+				colorText: "var(--popover-foreground)",
+				colorPrimary: "var(--primary)",
 			},
 		}),
-		[resolvedTheme]
+		[]
 	);
 
 	// Fallback to regular input if Mapbox not available

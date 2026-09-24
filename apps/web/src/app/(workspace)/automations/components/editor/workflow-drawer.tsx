@@ -294,7 +294,7 @@ export function WorkflowDrawer({
 
 	if (!open) {
 		return (
-			<div className="absolute left-3 top-3 z-10 flex w-10 flex-col items-center rounded-xl border border-border bg-card py-1.5 shadow-sm">
+			<div className="absolute left-3 top-3 z-10 flex w-10 flex-col items-center rounded-lg border border-border bg-card py-1.5 shadow-floating">
 				<Button
 					variant="ghost"
 					size="icon-sm"
@@ -328,7 +328,7 @@ export function WorkflowDrawer({
 	};
 
 	return (
-		<div className="absolute bottom-3 left-3 top-3 z-10 flex w-[320px] flex-col overflow-hidden rounded-xl border border-border bg-card shadow-sm">
+		<div className="absolute bottom-3 left-3 top-3 z-10 flex w-[320px] flex-col overflow-hidden rounded-lg border border-border bg-card shadow-floating">
 			<div className="flex items-center justify-between border-b border-border px-3 py-2.5">
 				<span className="text-sm font-semibold">Workflow</span>
 				<Button

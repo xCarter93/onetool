@@ -249,12 +249,10 @@ export function ApprovalRail({
 								</div>
 							)}
 
-						{/* Signing surface — single glass-card exception per redesign spec */}
 						{_testInitialSignature ? null : (
-							<div className="group relative overflow-hidden rounded-2xl bg-primary/5 ring-1 ring-primary/20 backdrop-blur-md dark:bg-primary/10 dark:ring-primary/30">
-								<div className="pointer-events-none absolute inset-0 rounded-2xl bg-gradient-to-br from-white/10 via-white/5 to-transparent dark:from-white/5 dark:via-white/[0.02] dark:to-transparent" />
-								<div className="relative z-10 p-5">
-									<p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-primary">
+							<div className="rounded-[8px] border border-border bg-card p-5">
+								<div>
+									<p className="text-xs font-semibold uppercase tracking-[0.14em] text-primary">
 										Sign to accept
 									</p>
 									<div className="mt-3">
@@ -281,7 +279,7 @@ export function ApprovalRail({
 						</label>
 
 						{signaturePayload.mode === "typed" && (
-							<label className="flex items-start gap-2 text-[12px] cursor-pointer text-muted-foreground leading-relaxed">
+							<label className="flex items-start gap-2 text-[13px] cursor-pointer text-muted-foreground leading-relaxed">
 								<input
 									type="checkbox"
 									aria-label="By typing my name and clicking Approve, I am signing this quote electronically. I agree that my electronic signature is the legal equivalent of my manual signature on this quote."
@@ -305,7 +303,7 @@ export function ApprovalRail({
 								disabled={!canApprove}
 								aria-busy={submitting}
 								aria-label="Approve quote"
-								className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-primary px-5 py-3 text-[14px] font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
+								className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-primary px-5 py-3 text-[14px] font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
 							>
 								{submitting ? (
 									<Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />

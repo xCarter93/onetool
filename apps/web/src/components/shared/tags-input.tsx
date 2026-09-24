@@ -96,8 +96,8 @@ export const TagsInput: React.FC<TagsInputProps> = ({
 		<div
 			className={cn(
 				"flex flex-wrap w-full items-center border transition-colors",
-				"bg-white dark:bg-gray-900/50",
-				"border-gray-200 dark:border-white/10",
+				"bg-card",
+				"border-input",
 				!disabled && "focus-within:border-primary focus-within:ring-1 focus-within:ring-primary/20",
 				isCompact ? "gap-1.5 p-2 rounded-md" : "gap-2 p-3 rounded-lg",
 				className
@@ -115,8 +115,8 @@ export const TagsInput: React.FC<TagsInputProps> = ({
 							onBlur={handleBlur}
 							className={cn(
 								"rounded-md border outline-none transition-colors",
-								"bg-gray-50 dark:bg-gray-800",
-								"border-gray-300 dark:border-gray-600",
+								"bg-background",
+								"border-input",
 								"focus:border-primary focus:ring-1 focus:ring-primary/20",
 								isCompact ? "px-2 py-0.5 text-xs" : "px-3 py-1.5 text-sm"
 							)}
@@ -130,11 +130,11 @@ export const TagsInput: React.FC<TagsInputProps> = ({
 							onClick={() => !disabled && handleEditTag(index)}
 							className={cn(
 								"flex items-center font-medium rounded-md transition-all",
-								"bg-primary/10 text-primary dark:bg-primary/20 dark:text-primary-foreground",
-								"border border-primary/20 dark:border-primary/30",
+								"bg-primary/10 text-primary",
+								"border border-primary/20",
 								isCompact ? "gap-1 px-2 py-0.5 text-xs" : "gap-1.5 px-3 py-1.5 text-sm",
 								!disabled
-									? "cursor-pointer hover:bg-primary/20 dark:hover:bg-primary/30 hover:border-primary/30"
+									? "cursor-pointer hover:bg-primary/20 hover:border-primary/30"
 									: "cursor-default"
 							)}
 						>
@@ -146,7 +146,7 @@ export const TagsInput: React.FC<TagsInputProps> = ({
 										handleRemoveTag(tag);
 									}}
 									className={cn(
-										"text-primary/70 hover:text-primary dark:text-primary-foreground/70 dark:hover:text-primary-foreground",
+										"text-primary/70 hover:text-primary",
 										"focus:outline-none transition-colors leading-none hover:scale-110",
 										isCompact ? "ml-0 -mr-0.5 text-sm" : "ml-0.5 -mr-1 text-lg"
 									)}
@@ -168,7 +168,7 @@ export const TagsInput: React.FC<TagsInputProps> = ({
 					className={cn(
 						"flex-grow border-none outline-none",
 						"bg-transparent",
-						"placeholder:text-gray-500 dark:placeholder:text-gray-400",
+						"placeholder:text-muted-foreground",
 						isCompact ? "min-w-[80px] px-1 py-0.5 text-xs" : "min-w-[120px] px-2 py-1 text-sm",
 						editingIndex !== null ? "opacity-0" : "opacity-100"
 					)}

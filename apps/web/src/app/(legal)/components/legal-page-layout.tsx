@@ -26,8 +26,8 @@ export function LegalPageLayout({
 	return (
 		<div className="min-h-screen bg-background">
 			{/* Header */}
-			<header className="sticky top-0 z-50 w-full border-b border-border/40 bg-background/95 backdrop-blur supports-backdrop-filter:bg-background/60">
-				<div className="mx-auto max-w-6xl">
+			<header className="sticky top-0 z-50 w-full border-b border-border bg-background">
+				<div className="mx-auto max-w-6xl px-6 lg:px-8">
 					<div className="flex h-16 items-center justify-between">
 						{/* Logo */}
 						<Link
@@ -96,7 +96,7 @@ export function LegalPageLayout({
 			<main className="mx-auto max-w-6xl px-6 py-12 sm:py-16 lg:px-8">
 				{/* Page Header */}
 				<div className="mb-10 sm:mb-12">
-					<h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl lg:text-5xl">
+					<h1 className="text-[32px] font-semibold leading-tight tracking-tight text-foreground">
 						{title}
 					</h1>
 					<p className="mt-3 text-sm text-muted-foreground">
@@ -105,14 +105,14 @@ export function LegalPageLayout({
 				</div>
 
 				{/* Content */}
-				<div className="prose prose-gray dark:prose-invert max-w-none">
+				<div className="prose prose-gray dark:prose-invert max-w-3xl text-base leading-7">
 					{children}
 				</div>
 			</main>
 
 			{/* Footer */}
-			<footer className="border-t border-border/40 bg-muted/30">
-				<div className="mx-auto max-w-6xl px-6 py-2 lg:px-2">
+			<footer className="border-t border-border bg-background">
+				<div className="mx-auto max-w-6xl px-6 py-4 lg:px-8">
 					<div className="flex flex-col sm:flex-row items-center justify-between gap-4">
 						<div className="flex items-center gap-2">
 							<Image

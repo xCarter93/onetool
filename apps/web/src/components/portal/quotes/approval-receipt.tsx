@@ -76,8 +76,8 @@ export function ApprovalReceipt({
 	const { date, time } = formatDateTime(receipt.createdAt);
 
 	const containerClasses = isApproved
-		? "rounded-2xl border border-emerald-200 bg-emerald-50/40 p-6"
-		: "rounded-2xl border border-border bg-muted/40 p-6";
+		? "rounded-[8px] border border-emerald-200 bg-emerald-50/40 p-6"
+		: "rounded-[8px] border border-border bg-muted/40 p-6";
 
 	const eyebrowText = isApproved ? "Approved" : "Declined";
 	const headingText = isApproved ? "Quote approved" : "Quote declined";
@@ -92,7 +92,7 @@ export function ApprovalReceipt({
 					/>
 				)}
 				<div className="flex-1">
-					<p className="text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
+					<p className="text-xs font-semibold uppercase tracking-[0.06em] text-muted-foreground">
 						{eyebrowText}
 					</p>
 					<h3 className="mt-1 text-[20px] font-semibold leading-[1.25]">
@@ -138,7 +138,7 @@ export function ApprovalReceipt({
 
 			{expanded && (
 				<dl
-					className="mt-4 grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1.5 text-[12px]"
+					className="mt-4 grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1.5 text-[13px]"
 					style={reduceMotion ? { transition: "none" } : undefined}
 				>
 					<dt className="text-muted-foreground">

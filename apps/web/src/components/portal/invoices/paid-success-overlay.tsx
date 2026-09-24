@@ -28,7 +28,7 @@ export function PaidSuccessOverlay({
 				duration: reduce ? 0.12 : 0.25,
 				ease: EASE_OUT_QUART,
 			}}
-			className="flex flex-col items-center justify-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-6 py-10 text-center text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950/60 dark:text-emerald-100"
+			className="flex flex-col items-center justify-center gap-3 rounded-[8px] border border-emerald-200 bg-emerald-50 px-6 py-10 text-center text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950/60 dark:text-emerald-100"
 		>
 			<motion.svg
 				viewBox="0 0 52 52"

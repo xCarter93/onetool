@@ -104,7 +104,7 @@ export function HelpMedia({ media, caption, asset, className }: HelpMediaProps) 
 	if (media === "video") {
 		return (
 			<figure className={cn("my-8", className)}>
-				<div className="overflow-hidden rounded-xl border border-border bg-muted/30">
+				<div className="overflow-hidden rounded-[8px] border border-border bg-muted/30">
 					<video
 						className="aspect-video w-full"
 						src={helpVideoUrl(asset)}
@@ -132,14 +132,14 @@ export function HelpMedia({ media, caption, asset, className }: HelpMediaProps) 
 				onPointerEnter={preload}
 				onFocus={preload}
 				aria-label={`Expand screenshot: ${caption}`}
-				className="group relative block w-full cursor-zoom-in rounded-xl focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+				className="group relative block w-full cursor-zoom-in rounded-[8px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
 			>
 				{/* The layout id lives on this wrapper rather than the image: its box is
 				    CSS-determined, so motion measures the same thing on both sides even
 				    while an image is still in flight. */}
 				<motion.div
 					layoutId={reduceMotion ? undefined : `help-media-${asset}`}
-					className="overflow-hidden rounded-xl border border-border bg-muted/30"
+					className="overflow-hidden rounded-[8px] border border-border bg-muted/30"
 				>
 					{/* eslint-disable-next-line @next/next/no-img-element -- Cloudinary already serves f_auto/q_auto; next/image would double-optimize. */}
 					<img
@@ -157,7 +157,7 @@ export function HelpMedia({ media, caption, asset, className }: HelpMediaProps) 
 				<span
 					aria-hidden="true"
 					className={cn(
-						"pointer-events-none absolute right-3 top-3 flex size-8 items-center justify-center rounded-lg border border-border bg-background/90 shadow-xs backdrop-blur-sm transition-opacity",
+						"pointer-events-none absolute right-3 top-3 flex size-8 items-center justify-center rounded-lg border border-border bg-background transition-opacity",
 						pending
 							? "opacity-100"
 							: "opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100"
@@ -245,7 +245,7 @@ function HelpMediaLightbox({
 					aria-label={caption}
 				>
 					<motion.div
-						className="absolute inset-0 bg-background/80 backdrop-blur-sm"
+						className="absolute inset-0 bg-background/90"
 						initial={{ opacity: 0 }}
 						animate={{ opacity: 1 }}
 						exit={{ opacity: 0 }}
@@ -259,7 +259,7 @@ function HelpMediaLightbox({
 						<motion.div
 							layoutId={reduceMotion ? undefined : `help-media-${asset}`}
 							style={{ aspectRatio: expansion.aspect }}
-							className="pointer-events-auto relative h-[82vh] w-auto max-w-full overflow-hidden rounded-xl border border-border bg-muted/30 shadow-2xl"
+							className="pointer-events-auto relative h-[82vh] w-auto max-w-full overflow-hidden rounded-[8px] border border-border bg-muted/30 shadow-2xl"
 							initial={reduceMotion ? { opacity: 0 } : undefined}
 							animate={reduceMotion ? { opacity: 1 } : undefined}
 							exit={reduceMotion ? { opacity: 0 } : undefined}
@@ -295,7 +295,7 @@ function HelpMediaLightbox({
 						type="button"
 						onClick={onClose}
 						aria-label="Close"
-						className="absolute right-4 top-4 flex size-9 items-center justify-center rounded-lg border border-border bg-background/90 shadow-xs backdrop-blur-sm transition-colors hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+						className="absolute right-4 top-4 flex size-9 items-center justify-center rounded-lg border border-border bg-background transition-colors hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
 					>
 						<X className="size-4 text-muted-foreground" />
 					</button>

@@ -66,7 +66,7 @@ export function FiltersWithClear<T = unknown>({
 	onChange,
 	variant = "outline",
 	size = "sm",
-	radius = "full",
+	radius = "md",
 	showClearButton = true,
 	clearButtonText = "Clear",
 	clearButtonIcon = <FunnelX />,

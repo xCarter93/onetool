@@ -41,8 +41,8 @@ export function ResolvedStatusPanel({
 			role="status"
 			className={
 				isApproved
-					? "rounded-xl border border-green-200 bg-green-50 p-5"
-					: "rounded-xl border border-border bg-muted/40 p-5"
+					? "rounded-[8px] border border-green-200 bg-green-50 p-5"
+					: "rounded-[8px] border border-border bg-muted/40 p-5"
 			}
 		>
 			<div className="flex items-center gap-2">
@@ -79,7 +79,7 @@ export function ResolvedStatusPanel({
 					<dd className="font-medium tabular-nums">{formatMoney(total)}</dd>
 				</div>
 			</dl>
-			<p className="mt-4 text-[12px] text-muted-foreground">
+			<p className="mt-4 text-[13px] text-muted-foreground">
 				No portal-side signature audit on file — this quote was{" "}
 				{isApproved ? "approved" : "declined"} via another channel.
 			</p>

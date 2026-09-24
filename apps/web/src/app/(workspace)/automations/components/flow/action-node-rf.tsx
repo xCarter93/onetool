@@ -138,7 +138,7 @@ export const ActionNodeRF = memo(({ data }: NodeProps) => {
 			className={cn(
 				"w-[280px]",
 				isConfigured
-					? meta && `border-l-4 ${meta.accent}`
+					? "border-border"
 					: "border-dashed border-muted-foreground/30",
 			)}
 			aria-label={`Action: ${title} - ${description}`}
@@ -149,8 +149,8 @@ export const ActionNodeRF = memo(({ data }: NodeProps) => {
 					<div
 						className={cn(
 							"w-8 h-8 rounded-lg flex items-center justify-center shrink-0",
-							meta?.bg ?? "bg-green-100 dark:bg-green-400/15",
-							meta?.fg ?? "text-green-700 dark:text-green-300",
+							meta?.bg ?? "bg-success-soft",
+							meta?.fg ?? "text-success-foreground",
 						)}
 					>
 						<Icon className="h-4 w-4" />

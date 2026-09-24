@@ -96,29 +96,29 @@ function StatusLine({ execution }: { execution: ExecutionDoc }) {
 	const map: Record<RunStatus, { icon: ReactNode; text: string; cls: string }> = {
 		running: {
 			icon: (
-				<Loader2 className="size-4 animate-spin text-blue-600 dark:text-blue-400" />
+				<Loader2 className="size-4 animate-spin text-primary" />
 			),
 			text: `Running… ${count} step${count === 1 ? "" : "s"} done`,
-			cls: "text-blue-700 dark:text-blue-300",
+			cls: "text-primary",
 		},
 		completed: {
 			icon: (
-				<CheckCircle2 className="size-4 text-emerald-600 dark:text-emerald-400" />
+				<CheckCircle2 className="size-4 text-success-foreground" />
 			),
 			text: "Test completed",
-			cls: "text-emerald-700 dark:text-emerald-300",
+			cls: "text-success-foreground",
 		},
 		completed_with_errors: {
 			icon: (
-				<AlertTriangle className="size-4 text-amber-600 dark:text-amber-400" />
+				<AlertTriangle className="size-4 text-warning-foreground" />
 			),
 			text: withErrorsText,
-			cls: "text-amber-700 dark:text-amber-300",
+			cls: "text-warning-foreground",
 		},
 		failed: {
-			icon: <XCircle className="size-4 text-red-600 dark:text-red-400" />,
+			icon: <XCircle className="size-4 text-danger-foreground" />,
 			text: failedText,
-			cls: "text-red-700 dark:text-red-300",
+			cls: "text-danger-foreground",
 		},
 		skipped: {
 			icon: <CircleSlash className="size-4 text-muted-foreground" />,
@@ -176,10 +176,10 @@ function PartialProgressBanner({ execution }: { execution: ExecutionDoc }) {
 				return (
 					<div
 						key={summary.nodeId}
-						className="space-y-1.5 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 dark:border-amber-900/50 dark:bg-amber-950/20"
+						className="space-y-1.5 rounded-md border border-warning/40 bg-warning-soft px-3 py-2 "
 					>
 						<div className="flex items-start justify-between gap-2">
-							<span className="text-xs font-medium text-amber-900 dark:text-amber-200">
+							<span className="text-xs font-medium text-warning-foreground">
 								{dry
 									? `${summary.succeeded} of ${summary.total} previewed item${
 											summary.total === 1 ? "" : "s"
@@ -200,12 +200,12 @@ function PartialProgressBanner({ execution }: { execution: ExecutionDoc }) {
 								{shown.map((err) => (
 									<li
 										key={err.index}
-										className="text-[11px] leading-relaxed text-amber-900/90 dark:text-amber-200/90"
+										className="text-xs leading-relaxed text-warning-foreground"
 									>
 										<span className="font-medium">
 											{err.label ?? `Item ${err.index + 1}`}:
 										</span>{" "}
-										<span className="text-amber-800/80 dark:text-amber-300/70">
+										<span className="text-warning-foreground">
 											{err.error}
 										</span>
 									</li>
@@ -213,12 +213,12 @@ function PartialProgressBanner({ execution }: { execution: ExecutionDoc }) {
 							</ul>
 						)}
 						{hiddenCount > 0 && (
-							<p className="text-[11px] text-amber-800/70 dark:text-amber-300/60">
+							<p className="text-xs text-warning-foreground">
 								+{hiddenCount} more
 							</p>
 						)}
 						{anyPartial && !dry && (
-							<p className="text-[11px] text-amber-800/80 dark:text-amber-300/70">
+							<p className="text-xs text-warning-foreground">
 								Some failed items may have been partially updated — check the
 								timeline for which steps ran.
 							</p>
@@ -363,7 +363,7 @@ export function DebugPanel({
 			)}
 
 			{hasActiveRun && execution?.triggerRecord && (
-				<div className="text-[11px] text-muted-foreground">
+				<div className="text-xs text-muted-foreground">
 					Trigger record:{" "}
 					<span className="font-medium text-foreground">
 						{execution.triggerRecord.label ??

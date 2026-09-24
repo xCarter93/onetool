@@ -12,7 +12,7 @@ export function PortalContactPanel({
 }) {
 	return (
 		<aside aria-label="Your provider" className="flex flex-col gap-4">
-			<p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+			<p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
 				Your provider
 			</p>
 			<BrandHeader
@@ -30,7 +30,7 @@ export function PortalContactPanel({
 					reach {businessName} directly.
 				</p>
 			</div>
-			<p className="text-[12px] leading-relaxed text-muted-foreground/80">
+			<p className="text-[13px] leading-relaxed text-muted-foreground/80">
 				This portal is in addition to — not a replacement for — talking to your
 				provider.
 			</p>

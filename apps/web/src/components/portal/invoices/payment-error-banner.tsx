@@ -113,7 +113,7 @@ export function PaymentErrorBanner({
 				<button
 					type="button"
 					onClick={onRetry}
-					className="mt-1.5 inline-flex items-center text-[12px] font-medium underline hover:no-underline"
+					className="mt-1.5 inline-flex items-center text-[13px] font-medium underline hover:no-underline"
 				>
 					Try again
 				</button>

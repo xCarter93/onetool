@@ -281,24 +281,22 @@ export default function OrganizationProfilePage() {
 			{/* Fills the fixed-height card interior on desktop; the content pane
 			    scrolls internally while the rail + footer stay pinned. Extra bottom
 			    padding clears the floating assistant tab. */}
-			<div className="relative flex flex-col p-4 sm:p-6 lg:h-full lg:min-h-0 lg:p-8 lg:pb-10">
+			<div className="workspace-page relative flex flex-col lg:h-full lg:min-h-0 lg:pb-10">
 				{/* Page header */}
-				<div className="mb-6 shrink-0">
-					<p className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-						Settings
-					</p>
-					<h1 className="text-3xl font-bold tracking-tight">
-						Organization Settings
-					</h1>
-					<p className="mt-2 max-w-2xl leading-relaxed text-muted-foreground">
-						Manage the active organization&apos;s profile, team, and
-						operational preferences from one cohesive workspace.
-					</p>
+				<div className="workspace-page-header mb-6 shrink-0">
+					<div>
+						<h1 className="text-2xl font-semibold tracking-tight">
+							Organization Settings
+						</h1>
+						<p className="mt-2 max-w-2xl leading-relaxed text-muted-foreground">
+							Manage your organization&apos;s profile, team, and operational preferences.
+						</p>
+					</div>
 				</div>
 
 				{/* Unified settings container: nav rail + scrolling content + footer */}
-				<div className="relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
-					<div className="grid min-h-0 flex-1 lg:grid-cols-[262px_1fr] lg:overflow-hidden">
+			<div className="relative flex min-h-0 flex-1 flex-col">
+					<div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-[240px_minmax(0,1fr)] lg:overflow-hidden">
 						<SettingsNavRail
 							items={navItems}
 							activeValue={renderTab}
@@ -347,7 +345,7 @@ export default function OrganizationProfilePage() {
 					</div>
 
 					{/* Unified save footer spanning the whole container */}
-					<div className="shrink-0 border-t border-border bg-muted/40 px-5 py-3 sm:px-6">
+					<div className="shrink-0 border-t border-border px-5 py-3 sm:px-6 lg:ml-[256px]">
 						<SettingsSaveFooter />
 					</div>
 				</div>

@@ -308,10 +308,10 @@ export function StopListPanel({
 							: `Mark ${item.label} visited`
 					}
 					className={cn(
-						"group/check flex size-6 shrink-0 items-center justify-center rounded-full text-[10px] font-bold text-white transition-colors",
+						"group/check flex size-6 shrink-0 items-center justify-center rounded-full text-2xs font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
 						item.status === "visited"
-							? "bg-emerald-600 hover:bg-emerald-700"
-							: "bg-sky-600 hover:bg-emerald-600"
+							? "bg-success-soft text-success-foreground hover:bg-success/20"
+							: "bg-info-soft text-info-foreground hover:bg-success-soft"
 					)}
 					onClick={() =>
 						onStopStatusChange(
@@ -337,10 +337,10 @@ export function StopListPanel({
 			) : (
 				<span
 					className={cn(
-						"flex size-6 shrink-0 items-center justify-center rounded-full text-[10px] font-bold text-white",
+						"flex size-6 shrink-0 items-center justify-center rounded-full text-2xs font-bold",
 						unreachableIndices.has(index)
-							? "bg-destructive"
-							: "bg-sky-600"
+							? "bg-danger-soft text-danger-foreground"
+							: "bg-info-soft text-info-foreground"
 					)}
 				>
 					{index + 1}
@@ -426,7 +426,7 @@ export function StopListPanel({
 				<Label className="text-xs">Start location</Label>
 				<div className="flex items-center gap-2">
 					<div className="flex min-w-0 flex-1 items-center gap-2 rounded-lg border border-border bg-muted/30 px-3 py-2">
-						<span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-[9px] font-bold text-white">
+						<span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-success-soft text-2xs font-bold text-success-foreground">
 							S
 						</span>
 						<span className="truncate text-sm">
@@ -570,11 +570,11 @@ export function StopListPanel({
 					</div>
 				) : (
 					previewOnly ? (
-						<div className="flex flex-col gap-2">
+						<div className="flex flex-col">
 							{sortableItems.map((item, index) => (
 								<div
 									key={item.id}
-									className="flex items-center gap-3 rounded-lg border bg-background p-2 shadow-sm ring-1 ring-border/30"
+									className="flex items-center gap-3 border-b border-border p-2"
 								>
 									<div className="min-w-0 flex-1">{renderStopRow(item, index)}</div>
 								</div>
@@ -593,7 +593,7 @@ export function StopListPanel({
 
 			{/* Save bar: edits persist only on Save (or on compute below) */}
 			{dirty && !previewOnly && (
-				<div className="flex items-center justify-between gap-2 rounded-xl border border-warning/30 bg-warning/10 px-3 py-2">
+				<div className="flex items-center justify-between gap-2 border-y border-warning/30 bg-warning-soft px-3 py-2">
 					<span className="text-xs font-medium text-foreground">
 						Unsaved changes
 					</span>
@@ -646,7 +646,7 @@ export function StopListPanel({
 
 			{/* Summary — locked preview on the free plan (no compute ever ran) */}
 			{previewOnly ? (
-				<div className="relative overflow-hidden rounded-xl border border-border bg-muted/30 p-3">
+				<div className="relative overflow-hidden border-t border-border px-1 py-4">
 					<div
 						aria-hidden
 						className="pointer-events-none select-none space-y-2 blur-[3px]"
@@ -681,7 +681,7 @@ export function StopListPanel({
 			) : null}
 
 			{hasComputedResult && route && (
-				<div className="space-y-2 rounded-xl border border-border bg-muted/30 p-3">
+				<div className="space-y-2 border-t border-border px-1 py-4">
 					<div className="flex items-center gap-2">
 						<Badge variant="primary-light" size="sm">
 							{route.optimized
@@ -713,7 +713,7 @@ export function StopListPanel({
 								htmlFor="gas-toggle"
 								className="flex items-center gap-1.5 text-xs font-normal"
 							>
-								<Fuel className="size-3.5 text-amber-500" aria-hidden />
+								<Fuel className="size-3.5 text-warning-foreground" aria-hidden />
 								Gas stations along route
 								{gasLoading && (
 									<Loader2

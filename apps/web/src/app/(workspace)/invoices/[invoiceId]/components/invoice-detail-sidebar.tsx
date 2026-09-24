@@ -12,7 +12,6 @@ import {
 } from "@/components/ui/select";
 import { ProminentStatusBadge } from "@/components/shared/prominent-status-badge";
 import { ProjectSeriesLink } from "@/components/domain/project-series-link";
-import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
@@ -146,7 +145,7 @@ export function InvoiceDetailSidebar({
 
 	const saveField = async (
 		field: string,
-		value: string | number | undefined
+		value: string | number | undefined,
 	) => {
 		try {
 			await updateInvoice({
@@ -169,7 +168,7 @@ export function InvoiceDetailSidebar({
 					e.stopPropagation();
 					onSave();
 				}}
-				className="p-1 rounded-md hover:bg-green-100 dark:hover:bg-green-900/30 text-green-600 dark:text-green-400 transition-colors"
+				className="p-1 rounded-md hover:bg-success-soft text-success-foreground transition-colors"
 				aria-label="Save"
 			>
 				<Check className="h-3.5 w-3.5" />
@@ -179,7 +178,7 @@ export function InvoiceDetailSidebar({
 					e.stopPropagation();
 					cancelEditing();
 				}}
-				className="p-1 rounded-md hover:bg-red-100 dark:hover:bg-red-900/30 text-red-600 dark:text-red-400 transition-colors"
+				className="p-1 rounded-md hover:bg-danger-soft text-danger-foreground transition-colors"
 				aria-label="Cancel"
 			>
 				<X className="h-3.5 w-3.5" />
@@ -212,19 +211,16 @@ export function InvoiceDetailSidebar({
 				<div
 					className={rowClass}
 					onClick={() =>
-						editingField !== "status" &&
-						startEditing("status", invoice.status)
+						editingField !== "status" && startEditing("status", invoice.status)
 					}
 				>
 					<CircleDot className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
-					<span className="text-sm text-muted-foreground w-28 shrink-0">
+					<span className="text-sm text-muted-foreground w-24 shrink-0">
 						Status
 					</span>
 					<div
 						className="flex-1 min-w-0"
-						onClick={(e) =>
-							editingField === "status" && e.stopPropagation()
-						}
+						onClick={(e) => editingField === "status" && e.stopPropagation()}
 					>
 						{editingField === "status" ? (
 							<Select
@@ -236,10 +232,7 @@ export function InvoiceDetailSidebar({
 								</SelectTrigger>
 								<SelectContent>
 									{STATUS_OPTIONS.map((opt) => (
-										<SelectItem
-											key={opt.value}
-											value={opt.value}
-										>
+										<SelectItem key={opt.value} value={opt.value}>
 											{opt.label}
 										</SelectItem>
 									))}
@@ -256,10 +249,7 @@ export function InvoiceDetailSidebar({
 					</div>
 					{editingField === "status"
 						? renderActions(() =>
-								saveField(
-									"status",
-									editValue as InvoiceStatus
-								)
+								saveField("status", editValue as InvoiceStatus),
 							)
 						: renderPencil()}
 				</div>
@@ -269,7 +259,9 @@ export function InvoiceDetailSidebar({
 					className={`${rowClass} focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring`}
 					role={canModify ? "button" : undefined}
 					tabIndex={canModify ? 0 : undefined}
-					aria-label={canModify ? "Edit due date in the payment schedule" : undefined}
+					aria-label={
+						canModify ? "Edit due date in the payment schedule" : undefined
+					}
 					onClick={() => canModify && onConfigurePayments()}
 					onKeyDown={(e) => {
 						if (canModify && (e.key === "Enter" || e.key === " ")) {
@@ -279,7 +271,7 @@ export function InvoiceDetailSidebar({
 					}}
 				>
 					<CalendarCheck className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
-					<span className="text-sm text-muted-foreground w-28 shrink-0">
+					<span className="text-sm text-muted-foreground w-24 shrink-0">
 						Due Date
 					</span>
 					<div className="flex-1 min-w-0">
@@ -293,9 +285,7 @@ export function InvoiceDetailSidebar({
 							{invoice.dueDate ? (
 								formatCalendarDate(invoice.dueDate)
 							) : (
-								<span className="text-muted-foreground italic">
-									Not set
-								</span>
+								<span className="text-muted-foreground italic">Not set</span>
 							)}
 						</span>
 					</div>
@@ -305,7 +295,7 @@ export function InvoiceDetailSidebar({
 				{/* Invoice No. (read-only) */}
 				<div className="flex items-start gap-3 py-2.5 -mx-2 px-2">
 					<Hash className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
-					<span className="text-sm text-muted-foreground w-28 shrink-0">
+					<span className="text-sm text-muted-foreground w-24 shrink-0">
 						Invoice No.
 					</span>
 					<div className="flex-1 min-w-0">
@@ -318,7 +308,7 @@ export function InvoiceDetailSidebar({
 				{/* Issued Date (read-only) */}
 				<div className="flex items-start gap-3 py-2.5 -mx-2 px-2">
 					<CalendarCheck className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
-					<span className="text-sm text-muted-foreground w-28 shrink-0">
+					<span className="text-sm text-muted-foreground w-24 shrink-0">
 						Issued Date
 					</span>
 					<div className="flex-1 min-w-0">
@@ -331,7 +321,7 @@ export function InvoiceDetailSidebar({
 				{/* Created (read-only) */}
 				<div className="flex items-start gap-3 py-2.5 -mx-2 px-2">
 					<CalendarIcon className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
-					<span className="text-sm text-muted-foreground w-28 shrink-0">
+					<span className="text-sm text-muted-foreground w-24 shrink-0">
 						Created
 					</span>
 					<div className="flex-1 min-w-0">
@@ -345,11 +335,11 @@ export function InvoiceDetailSidebar({
 				{invoice.paidAt && (
 					<div className="flex items-start gap-3 py-2.5 -mx-2 px-2">
 						<CalendarIcon className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
-						<span className="text-sm text-muted-foreground w-28 shrink-0">
+						<span className="text-sm text-muted-foreground w-24 shrink-0">
 							Paid
 						</span>
 						<div className="flex-1 min-w-0">
-							<span className="text-sm text-green-600 dark:text-green-400 font-medium">
+							<span className="text-sm text-success-foreground font-medium">
 								{formatDate(invoice.paidAt)}
 							</span>
 						</div>
@@ -359,17 +349,15 @@ export function InvoiceDetailSidebar({
 				<QuickBooksSyncRow entityType="invoice" localId={invoiceId} />
 			</div>
 
-			<Separator className="my-4" />
-
 			{/* Client & Project Section */}
-			<h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-3">
+			<h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground mt-6 mb-3">
 				Client & Project
 			</h3>
 			{client ? (
 				<div className="space-y-0">
 					<div className="flex items-start gap-3 py-2.5 -mx-2 px-2">
 						<Building2 className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
-						<span className="text-sm text-muted-foreground w-28 shrink-0">
+						<span className="text-sm text-muted-foreground w-24 shrink-0">
 							Client
 						</span>
 						<div className="flex-1 min-w-0">
@@ -386,20 +374,19 @@ export function InvoiceDetailSidebar({
 						<>
 							<div className="flex items-start gap-3 py-2.5 -mx-2 px-2">
 								<User className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
-								<span className="text-sm text-muted-foreground w-28 shrink-0">
+								<span className="text-sm text-muted-foreground w-24 shrink-0">
 									Contact
 								</span>
 								<div className="flex-1 min-w-0">
 									<span className="text-sm text-foreground">
-										{primaryContact.firstName}{" "}
-										{primaryContact.lastName}
+										{primaryContact.firstName} {primaryContact.lastName}
 									</span>
 								</div>
 							</div>
 							{primaryContact.email && (
 								<div className="flex items-start gap-3 py-2.5 -mx-2 px-2">
 									<Mail className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
-									<span className="text-sm text-muted-foreground w-28 shrink-0">
+									<span className="text-sm text-muted-foreground w-24 shrink-0">
 										Email
 									</span>
 									<div className="flex-1 min-w-0">
@@ -415,7 +402,7 @@ export function InvoiceDetailSidebar({
 							{primaryContact.phone && (
 								<div className="flex items-start gap-3 py-2.5 -mx-2 px-2">
 									<Phone className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
-									<span className="text-sm text-muted-foreground w-28 shrink-0">
+									<span className="text-sm text-muted-foreground w-24 shrink-0">
 										Phone
 									</span>
 									<div className="flex-1 min-w-0">
@@ -431,7 +418,7 @@ export function InvoiceDetailSidebar({
 					{primaryProperty && (
 						<div className="flex items-start gap-3 py-2.5 -mx-2 px-2">
 							<MapPin className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
-							<span className="text-sm text-muted-foreground w-28 shrink-0">
+							<span className="text-sm text-muted-foreground w-24 shrink-0">
 								Address
 							</span>
 							<div className="flex-1 min-w-0">
@@ -439,10 +426,7 @@ export function InvoiceDetailSidebar({
 									{[
 										primaryProperty.streetAddress,
 										primaryProperty.city,
-										[
-											primaryProperty.state,
-											primaryProperty.zipCode,
-										]
+										[primaryProperty.state, primaryProperty.zipCode]
 											.filter(Boolean)
 											.join(" "),
 									]
@@ -456,7 +440,7 @@ export function InvoiceDetailSidebar({
 					{project && (
 						<div className="flex items-start gap-3 py-2.5 -mx-2 px-2">
 							<FolderOpen className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
-							<span className="text-sm text-muted-foreground w-28 shrink-0">
+							<span className="text-sm text-muted-foreground w-24 shrink-0">
 								Project
 							</span>
 							<div className="flex-1 min-w-0">
@@ -488,20 +472,16 @@ export function InvoiceDetailSidebar({
 					)}
 				</div>
 			) : (
-				<p className="text-sm text-muted-foreground py-2">
-					No client linked
-				</p>
+				<p className="text-sm text-muted-foreground py-2">No client linked</p>
 			)}
 
-			<Separator className="my-4" />
-
 			{/* Generated PDF Section */}
-			<h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-3">
+			<h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground mt-6 mb-3">
 				Generated PDF
 			</h3>
 			<div className="py-2">
 				{latestDocument === null ? (
-					<div className="rounded-lg border border-border bg-background/60 p-4">
+					<div className="rounded-lg border border-border bg-card p-4 shadow-sm">
 						<div className="flex items-start gap-3">
 							<FileText
 								className="h-5 w-5 text-muted-foreground shrink-0 mt-0.5"
@@ -528,7 +508,7 @@ export function InvoiceDetailSidebar({
 						</div>
 					</div>
 				) : latestDocument === undefined ? (
-					<div className="rounded-lg border border-border bg-background/60 p-4">
+					<div className="rounded-lg border border-border bg-card p-4 shadow-sm">
 						<p className="text-sm text-muted-foreground">
 							{permissionsLoading || canViewDocuments
 								? "Checking for a generated PDF…"
@@ -581,7 +561,7 @@ export function InvoiceDetailSidebar({
 										};
 							return (
 								<div
-									className={`overflow-hidden rounded-lg border ${frame.border} bg-background/60`}
+									className={`overflow-hidden rounded-lg border ${frame.border} bg-card shadow-sm`}
 								>
 									<div
 										className={`flex items-center gap-2 border-b ${frame.border} ${frame.strip} px-3 py-2`}
@@ -611,10 +591,7 @@ export function InvoiceDetailSidebar({
 													onClick={onGeneratePdf}
 													disabled={!canModify}
 												>
-													<RefreshCw
-														className="h-3 w-3"
-														aria-hidden="true"
-													/>
+													<RefreshCw className="h-3 w-3" aria-hidden="true" />
 													Regenerate
 												</Button>
 											) : null}
@@ -647,18 +624,12 @@ export function InvoiceDetailSidebar({
 													/>
 												}
 											>
-												<Eye
-													className="h-4 w-4"
-													aria-hidden="true"
-												/>
+												<Eye className="h-4 w-4" aria-hidden="true" />
 												Open in new tab
 											</Button>
 										) : (
 											<Button variant="ghost" size="sm" disabled>
-												<Eye
-													className="h-4 w-4"
-													aria-hidden="true"
-												/>
+												<Eye className="h-4 w-4" aria-hidden="true" />
 												Open in new tab
 											</Button>
 										)}
@@ -668,10 +639,7 @@ export function InvoiceDetailSidebar({
 											onClick={onDownloadPdf}
 											disabled={!selectedDocumentUrl}
 										>
-											<Download
-												className="h-4 w-4"
-												aria-hidden="true"
-											/>
+											<Download className="h-4 w-4" aria-hidden="true" />
 											Download
 										</Button>
 										{!viewingOlder && !isPdfStale && (
@@ -682,10 +650,7 @@ export function InvoiceDetailSidebar({
 												onClick={onGeneratePdf}
 												disabled={!canModify}
 											>
-												<RefreshCw
-													className="h-4 w-4"
-													aria-hidden="true"
-												/>
+												<RefreshCw className="h-4 w-4" aria-hidden="true" />
 												Regenerate
 											</Button>
 										)}
@@ -721,7 +686,7 @@ export function InvoiceDetailSidebar({
 														onSelectVersion(
 															version._id === latestDocument._id
 																? null
-																: version._id
+																: version._id,
 														);
 													}}
 													aria-pressed={isActive}
@@ -741,10 +706,7 @@ export function InvoiceDetailSidebar({
 																Version {version.version}
 															</span>
 															{version._id === latestDocument._id && (
-																<Badge
-																	variant="default"
-																	className="text-xs"
-																>
+																<Badge variant="default" className="text-xs">
 																	Latest
 																</Badge>
 															)}

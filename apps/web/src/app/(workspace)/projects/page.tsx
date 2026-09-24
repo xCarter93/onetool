@@ -19,11 +19,9 @@ import {
 } from "@/components/filters/date-filter";
 import {
 	Frame,
-	FrameDescription,
 	FrameFooter,
 	FrameHeader,
 	FramePanel,
-	FrameTitle,
 } from "@/components/reui/frame";
 import {
 	DataGrid,
@@ -33,11 +31,7 @@ import {
 } from "@/components/reui/data-grid/data-grid";
 import { DataGridTable } from "@/components/reui/data-grid/data-grid-table";
 import { DataGridPagination } from "@/components/reui/data-grid/data-grid-pagination";
-import {
-	ColumnDef,
-	SortingState,
-	useTable,
-} from "@tanstack/react-table";
+import { ColumnDef, SortingState, useTable } from "@tanstack/react-table";
 import {
 	Building2,
 	Calendar,
@@ -179,7 +173,7 @@ const createColumns = (
 	onPreview: (id: string) => void,
 	canDelete: boolean,
 	canViewSeries: boolean,
-	seriesTitles: Map<string, string>
+	seriesTitles: Map<string, string>,
 ): ColumnDef<DataGridFeatures, ProjectWithClient>[] => [
 	{
 		accessorKey: "title",
@@ -361,9 +355,15 @@ function ProjectsPageContent() {
 	// Fetch projects and clients from Convex
 	const projects = useQuery(api.projects.list, {});
 	// Skip without the clients grant — gated endpoint throws FORBIDDEN otherwise.
-	const clients = useQuery(api.clients.listNamesForOrg, can("clients") ? {} : "skip");
+	const clients = useQuery(
+		api.clients.listNamesForOrg,
+		can("clients") ? {} : "skip",
+	);
 	const projectStats = useQuery(api.projects.getStats, {});
-	const series = useQuery(api.projectSeries.listForOrg, canViewSeries ? {} : "skip");
+	const series = useQuery(
+		api.projectSeries.listForOrg,
+		canViewSeries ? {} : "skip",
+	);
 	// 30-day activity sparkline data, keyed by project id (presentational).
 	const sparklines = useActivitySparklines("project");
 
@@ -380,7 +380,7 @@ function ProjectsPageContent() {
 	}, [projects, clients, sparklines]);
 	const seriesTitles = React.useMemo(
 		() => new Map(series?.map((item) => [item._id, item.title]) ?? []),
-		[series]
+		[series],
 	);
 
 	// Advanced filters (status / type / client / start-date) applied to the set.
@@ -391,27 +391,27 @@ function ProjectsPageContent() {
 			switch (filter.field) {
 				case "status":
 					result = result.filter((p) =>
-						filter.values.includes(p.status as unknown)
+						filter.values.includes(p.status as unknown),
 					);
 					break;
 				case "type":
 					result = result.filter((p) =>
-						filter.values.includes(p.projectType as unknown)
+						filter.values.includes(p.projectType as unknown),
 					);
 					break;
 				case "client":
 					result = result.filter((p) =>
-						filter.values.includes(p.clientId as unknown)
+						filter.values.includes(p.clientId as unknown),
 					);
 					break;
 				case "date":
 					result = result.filter((p) =>
-						matchesDateFilter(p.startDate, filter.operator, filter.values[0])
+						matchesDateFilter(p.startDate, filter.operator, filter.values[0]),
 					);
 					break;
 				case "series":
 					result = result.filter((p) =>
-						filter.values.includes(p.recurringSeriesId as unknown)
+						filter.values.includes(p.recurringSeriesId as unknown),
 					);
 					break;
 			}
@@ -428,7 +428,7 @@ function ProjectsPageContent() {
 				p.title?.toLowerCase().includes(q) ||
 				p.projectType?.toLowerCase().includes(q) ||
 				p.status?.toLowerCase().includes(q) ||
-				p.client?.companyName?.toLowerCase().includes(q)
+				p.client?.companyName?.toLowerCase().includes(q),
 		);
 	}, [filteredData, query]);
 
@@ -458,7 +458,7 @@ function ProjectsPageContent() {
 					recurringState: project.recurringState,
 				};
 			}),
-		[searchedData, columnMoves]
+		[searchedData, columnMoves],
 	);
 
 	// Loading state. `clients` may stay undefined forever without the grant,
@@ -487,8 +487,23 @@ function ProjectsPageContent() {
 	};
 
 	const columns = React.useMemo(
-		() => createColumns(router, handleDelete, openPreview, canDeleteProjects, canViewSeries, seriesTitles),
-		[router, handleDelete, openPreview, canDeleteProjects, canViewSeries, seriesTitles]
+		() =>
+			createColumns(
+				router,
+				handleDelete,
+				openPreview,
+				canDeleteProjects,
+				canViewSeries,
+				seriesTitles,
+			),
+		[
+			router,
+			handleDelete,
+			openPreview,
+			canDeleteProjects,
+			canViewSeries,
+			seriesTitles,
+		],
 	);
 
 	const table = useTable({
@@ -554,14 +569,19 @@ function ProjectsPageContent() {
 				searchable: true,
 			},
 			...(canViewSeries && series?.length
-				? [{
-					key: "series",
-					label: "Series",
-					icon: <Repeat className="h-3 w-3" />,
-					type: "multiselect" as const,
-					options: series.map((item) => ({ value: item._id, label: item.title })),
-					searchable: true,
-				}]
+				? [
+						{
+							key: "series",
+							label: "Series",
+							icon: <Repeat className="h-3 w-3" />,
+							type: "multiselect" as const,
+							options: series.map((item) => ({
+								value: item._id,
+								label: item.title,
+							})),
+							searchable: true,
+						},
+					]
 				: []),
 			{
 				key: "date",
@@ -596,7 +616,7 @@ function ProjectsPageContent() {
 				return next;
 			});
 		},
-		[projectStatusMap]
+		[projectStatusMap],
 	);
 
 	// Latest drop per card; a failed older write must not undo a newer drop.
@@ -623,322 +643,342 @@ function ProjectsPageContent() {
 					});
 					toast.error(
 						"Update Failed",
-						convexErrorMessage(error, "Failed to update project status")
+						convexErrorMessage(error, "Failed to update project status"),
 					);
 				});
 			}
 		},
-		[kanbanData, projectStatusMap, updateProjectStatus, toast]
+		[kanbanData, projectStatusMap, updateProjectStatus, toast],
 	);
 
 	return (
-		<div className="relative px-6 pt-8 pb-6 space-y-6">
-			<div className="flex items-center justify-between">
+		<div className="workspace-page space-y-6">
+			<div className="workspace-page-header flex flex-wrap items-center justify-between gap-4">
 				<div className="flex items-center gap-3">
-					<div className="w-1.5 h-6 bg-linear-to-b from-primary to-primary/60 rounded-full" />
 					<div>
-						<h1 className="text-2xl font-bold text-foreground">Projects</h1>
+						<h1 className="text-2xl font-semibold text-foreground">Projects</h1>
 						<p className="text-muted-foreground text-sm">
 							Overview of your projects
 						</p>
 					</div>
 				</div>
-				<Button onClick={() => openCreate({ type: "project" })} disabled={!canModifyProjects}>
+				<Button
+					onClick={() => openCreate({ type: "project" })}
+					disabled={!canModifyProjects}
+				>
 					<Plus className="h-4 w-4" />
 					Create Project
 				</Button>
 			</div>
 
-			<MetricFrame
-				loading={isLoading}
-				metrics={[
-					{
-						label: "Total Projects",
-						value: projectStats?.total ?? data.length,
-						hint: "All projects in your workspace",
-						icon: <FolderKanban />,
-						accent: "var(--color-blue-500)",
-					},
-					{
-						label: "In Progress",
-						value:
-							projectStats?.byStatus["in-progress"] ??
-							data.filter((p) => p.status === "in-progress").length,
-						hint: "Currently active projects",
-						icon: <CircleDashed />,
-						accent: "var(--color-amber-500)",
-					},
-					{
-						label: "Completed",
-						value:
-							projectStats?.byStatus.completed ??
-							data.filter((p) => p.status === "completed").length,
-						hint: "Finished projects",
-						icon: <CircleCheck />,
-						accent: "var(--color-emerald-500)",
-					},
-				]}
-				summary={
-					projectStats
-						? `${projectStats.byStatus.planned} planned · ${projectStats.upcomingDeadlines} due this week · ${projectStats.overdue} overdue`
-						: undefined
-				}
-			/>
-
-			<Frame>
-				<FrameHeader className="flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
-					<div className="flex flex-col gap-0.5">
-						<FrameTitle className="text-base">Projects</FrameTitle>
-						<FrameDescription>
-							Search, filter, and browse your projects
-						</FrameDescription>
-					</div>
-					<div className="flex w-full items-center gap-2 sm:w-auto">
-						<div className="relative flex-1 sm:w-64 sm:flex-none">
-							<Search className="text-muted-foreground absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2" />
-							<Input
-								placeholder="Search projects..."
-								value={query}
-								onChange={(e) => setQuery(e.target.value)}
-								className="pl-9"
-							/>
-						</div>
-						<SegmentedControl
-							className="shrink-0"
-							value={viewMode}
-							onValueChange={(v) => setViewMode(v as "table" | "kanban")}
-							options={[
-								{
-									value: "table",
-									label: "Table",
-									icon: <TableProperties className="size-4" />,
-									ariaLabel: "Table view",
-									hideLabelOnMobile: true,
-								},
-								{
-									value: "kanban",
-									label: "Kanban",
-									icon: <LayoutGrid className="size-4" />,
-									ariaLabel: "Kanban view",
-									hideLabelOnMobile: true,
-								},
-							]}
-						/>
-					</div>
-				</FrameHeader>
-
-				<DataGrid
-					table={table}
-					recordCount={searchedData.length}
-					onRowClick={(row) => openPreview(row._id)}
-					emptyMessage={
-						<EmptyState
-							illustration="no-filter-match"
-							title="No projects match your filters"
-							description="Try a different search term or clear a filter."
-						/>
-					}
-					tableLayout={{
-						width: "auto",
-						headerBackground: true,
-					}}
-				>
-					<FramePanel className="p-0">
-						{!isLoading && !isEmpty && (
-							<div className="border-b px-4 py-3">
-								<FiltersWithClear
-									filters={filters}
-									fields={filterFields}
-									onChange={setFilters}
-									addButtonText="Filter"
-									addButtonIcon={<FilterIcon className="h-4 w-4" />}
-									size="md"
-									variant="outline"
-									radius="full"
-									showClearButton={true}
-									clearButtonText="Clear"
-									clearButtonIcon={<X className="h-4 w-4" />}
+			<div className="workspace-explorer">
+				<aside className="workspace-explorer-rail">
+					<MetricFrame
+						loading={isLoading}
+						metrics={[
+							{
+								label: "Total Projects",
+								value: projectStats?.total ?? data.length,
+								hint: "All projects in your workspace",
+								icon: <FolderKanban />,
+								accent: "var(--color-blue-500)",
+							},
+							{
+								label: "In Progress",
+								value:
+									projectStats?.byStatus["in-progress"] ??
+									data.filter((p) => p.status === "in-progress").length,
+								hint: "Currently active projects",
+								icon: <CircleDashed />,
+								accent: "var(--color-amber-500)",
+							},
+							{
+								label: "Completed",
+								value:
+									projectStats?.byStatus.completed ??
+									data.filter((p) => p.status === "completed").length,
+								hint: "Finished projects",
+								icon: <CircleCheck />,
+								accent: "var(--color-emerald-500)",
+							},
+						]}
+						summary={
+							projectStats
+								? `${projectStats.byStatus.planned} planned · ${projectStats.upcomingDeadlines} due this week · ${projectStats.overdue} overdue`
+								: undefined
+						}
+					/>
+				</aside>
+				<section className="workspace-results">
+					<Frame className="workspace-panel overflow-hidden">
+						<FrameHeader className="workspace-toolbar flex-row flex-wrap items-center gap-2">
+							<div className="relative min-w-0 flex-1">
+								<Search className="text-muted-foreground absolute left-3 top-1/2 size-4 -translate-y-1/2" />
+								<Input
+									placeholder="Search projects..."
+									value={query}
+									onChange={(e) => setQuery(e.target.value)}
+									className="pl-9"
 								/>
 							</div>
-						)}
-
-						{isLoading ? (
-							<div className="p-4">
-								<div className="space-y-4">
-									{[...Array(5)].map((_, i) => (
-										<div key={i} className="flex items-center space-x-4 p-4">
-											<div className="flex-1 space-y-2">
-												<div className="h-4 bg-muted rounded animate-pulse w-2/3" />
-												<div className="h-3 bg-muted rounded animate-pulse w-1/2" />
-											</div>
-											<div className="h-4 bg-muted rounded animate-pulse w-16" />
-											<div className="h-4 bg-muted rounded animate-pulse w-20" />
-											<div className="h-8 w-8 bg-muted rounded animate-pulse" />
-										</div>
-									))}
-								</div>
-							</div>
-						) : isEmpty ? (
-							<EmptyState
-								size="md"
-								illustration="projects-none"
-								title="No projects yet"
-								description="Get started by creating your first project. Projects help you organize work and track progress."
-								action={
-									<div className="flex flex-col items-center gap-2">
-										<Button onClick={() => openCreate({ type: "project" })} disabled={!canModifyProjects}>
-											<Plus className="h-4 w-4" />
-											Create Your First Project
-										</Button>
-										<LearnMoreLink article="projects-and-tasks/creating-and-managing-projects" />
-									</div>
-								}
+							<SegmentedControl
+								className="shrink-0"
+								value={viewMode}
+								onValueChange={(v) => setViewMode(v as "table" | "kanban")}
+								options={[
+									{
+										value: "table",
+										label: "Table",
+										icon: <TableProperties className="size-4" />,
+										ariaLabel: "Table view",
+										hideLabelOnMobile: true,
+									},
+									{
+										value: "kanban",
+										label: "Kanban",
+										icon: <LayoutGrid className="size-4" />,
+										ariaLabel: "Kanban view",
+										hideLabelOnMobile: true,
+									},
+								]}
 							/>
-						) : viewMode === "table" ? (
-							<div className="overflow-x-auto">
-								<DataGridContainer className="rounded-lg border">
-									<DataGridTable />
-								</DataGridContainer>
-							</div>
-						) : (
-							<div className="px-2 py-4 h-[calc(100vh-30rem)] min-h-[24rem]">
-								<KanbanProvider
-									columns={kanbanColumns}
-									data={kanbanData}
-									onDataChange={handleKanbanDataChange}
-									onDragEnd={handleKanbanDragEnd}
-								>
-									{(column) => {
-										const columnItems = kanbanData.filter(
-											(item) => item.column === column.id
-										);
+						</FrameHeader>
 
-										return (
-											<KanbanBoard
-												key={column.id}
-												id={column.id}
-												className="bg-card/60 flex flex-col"
-											>
-												<KanbanHeader className="border-b bg-muted/30 flex shrink-0 items-center justify-between gap-2 px-3 py-2.5">
-													<div className="flex min-w-0 items-center gap-2">
-														<span
-															className={cn(
-																"size-2.5 shrink-0 rounded-full",
-																statusDot[column.id]
-															)}
-														/>
-														<div className="min-w-0">
-															<p className="text-foreground truncate text-sm font-semibold">
-																{column.name}
-															</p>
-															<p className="text-muted-foreground truncate text-xs">
-																{column.description}
-															</p>
-														</div>
+						<DataGrid
+							table={table}
+							recordCount={searchedData.length}
+							onRowClick={(row) => openPreview(row._id)}
+							emptyMessage={
+								<EmptyState
+									illustration="no-filter-match"
+									title="No projects match your filters"
+									description="Try a different search term or clear a filter."
+								/>
+							}
+							tableLayout={{
+								width: "auto",
+								headerBackground: true,
+							}}
+						>
+							<FramePanel className="p-0">
+								{!isLoading && !isEmpty && (
+									<div className="border-b px-4 py-3">
+										<FiltersWithClear
+											filters={filters}
+											fields={filterFields}
+											onChange={setFilters}
+											addButtonText="Filter"
+											addButtonIcon={<FilterIcon className="h-4 w-4" />}
+											size="md"
+											variant="outline"
+											radius="md"
+											showClearButton={true}
+											clearButtonText="Clear"
+											clearButtonIcon={<X className="h-4 w-4" />}
+										/>
+									</div>
+								)}
+
+								{isLoading ? (
+									<div className="p-4">
+										<div className="space-y-4">
+											{[...Array(5)].map((_, i) => (
+												<div
+													key={i}
+													className="flex items-center space-x-4 p-4"
+												>
+													<div className="flex-1 space-y-2">
+														<div className="h-4 bg-muted rounded animate-pulse w-2/3" />
+														<div className="h-3 bg-muted rounded animate-pulse w-1/2" />
 													</div>
-													<Badge variant="outline">
-														{columnItems.length}
-													</Badge>
-												</KanbanHeader>
-												<KanbanCards id={column.id}>
-													{(item: ProjectKanbanItem) => (
-														<KanbanCard
-															key={item.id}
-															id={item.id}
-															name={item.name}
-															column={item.column}
-														>
-															<div
-																role="button"
-																tabIndex={0}
-																onClick={() => openPreview(item.id)}
-																onKeyDown={(e) => {
-																	if (e.key === "Enter" || e.key === " ") {
-																		e.preventDefault();
-																		openPreview(item.id);
-																	}
-																}}
-																className="flex cursor-pointer flex-col gap-2 outline-none"
-															>
-																<div className="flex items-start justify-between gap-2">
-																	<p className="text-foreground line-clamp-2 text-sm font-medium">
-																		{item.name}
-																	</p>
-																	<StatusBadge
-																		status={item.column}
-																		appearance={statusAppearance(item.column)}
-																		className="shrink-0"
-																	>
-																		{formatStatus(item.column)}
-																	</StatusBadge>
-																</div>
-																<p className="text-muted-foreground truncate text-xs">
-																	{item.clientName || "Unknown Client"}
-																</p>
-																	{item.recurringSeriesId && (
-																		<div className="flex flex-wrap gap-2">
-																			<StatusBadge role="neutral" appearance="outline" className="w-fit">
-																				<Repeat className="size-3.5" /> Recurring
-																			</StatusBadge>
-																			{item.recurringState && (
-																				<StatusBadge role="neutral" appearance="outline" className="w-fit">
-																					{stateLabel(item.recurringState)}
-																				</StatusBadge>
-																			)}
-																		</div>
+													<div className="h-4 bg-muted rounded animate-pulse w-16" />
+													<div className="h-4 bg-muted rounded animate-pulse w-20" />
+													<div className="h-8 w-8 bg-muted rounded animate-pulse" />
+												</div>
+											))}
+										</div>
+									</div>
+								) : isEmpty ? (
+									<EmptyState
+										size="md"
+										illustration="projects-none"
+										title="No projects yet"
+										description="Get started by creating your first project. Projects help you organize work and track progress."
+										action={
+											<div className="flex flex-col items-center gap-2">
+												<Button
+													onClick={() => openCreate({ type: "project" })}
+													disabled={!canModifyProjects}
+												>
+													<Plus className="h-4 w-4" />
+													Create Your First Project
+												</Button>
+												<LearnMoreLink article="projects-and-tasks/creating-and-managing-projects" />
+											</div>
+										}
+									/>
+								) : viewMode === "table" ? (
+									<div className="overflow-x-auto">
+										<DataGridContainer className="border-0">
+											<DataGridTable />
+										</DataGridContainer>
+									</div>
+								) : (
+									<div className="px-2 py-4 h-[calc(100vh-30rem)] min-h-[24rem]">
+										<KanbanProvider
+											columns={kanbanColumns}
+											data={kanbanData}
+											onDataChange={handleKanbanDataChange}
+											onDragEnd={handleKanbanDragEnd}
+										>
+											{(column) => {
+												const columnItems = kanbanData.filter(
+													(item) => item.column === column.id,
+												);
+
+												return (
+													<KanbanBoard
+														key={column.id}
+														id={column.id}
+														className="bg-muted dark:bg-card/60 flex flex-col"
+													>
+														<KanbanHeader className="border-b bg-secondary dark:bg-muted/30 flex shrink-0 items-center justify-between gap-2 px-3 py-2.5">
+															<div className="flex min-w-0 items-center gap-2">
+																<span
+																	className={cn(
+																		"size-2.5 shrink-0 rounded-full",
+																		statusDot[column.id],
 																	)}
-																<div className="text-muted-foreground flex flex-wrap items-center gap-1.5 text-xs">
-																	<span>{formatProjectDate(item.startDate)}</span>
-																	<span aria-hidden>·</span>
-																	<span>{formatProjectDate(item.endDate)}</span>
-																	{item.projectNumber ? (
-																		<>
-																			<span aria-hidden>·</span>
-																			<span>#{item.projectNumber}</span>
-																		</>
-																	) : null}
-																</div>
-																<div className="flex items-center justify-between pt-1">
-																	<Badge
-																		variant="outline"
-																		className="capitalize"
-																	>
-																		{item.projectType}
-																	</Badge>
-																	<button
-																		type="button"
-																		onClick={(e) => {
-																			e.stopPropagation();
-																			router.push(`/projects/${item.id}`);
-																		}}
-																		onKeyDown={(e) => e.stopPropagation()}
-																		className="text-primary hover:text-primary/80 inline-flex items-center gap-1 text-xs font-medium"
-																	>
-																		Open <ExternalLink className="size-3" />
-																	</button>
+																/>
+																<div className="min-w-0">
+																	<p className="text-foreground truncate text-sm font-semibold">
+																		{column.name}
+																	</p>
+																	<p className="text-muted-foreground truncate text-xs">
+																		{column.description}
+																	</p>
 																</div>
 															</div>
-														</KanbanCard>
-													)}
-												</KanbanCards>
-											</KanbanBoard>
-										);
-									}}
-								</KanbanProvider>
-							</div>
-						)}
-					</FramePanel>
+															<Badge variant="outline">
+																{columnItems.length}
+															</Badge>
+														</KanbanHeader>
+														<KanbanCards id={column.id}>
+															{(item: ProjectKanbanItem) => (
+																<KanbanCard
+																	key={item.id}
+																	id={item.id}
+																	name={item.name}
+																	column={item.column}
+																>
+																	<div
+																		role="button"
+																		tabIndex={0}
+																		onClick={() => openPreview(item.id)}
+																		onKeyDown={(e) => {
+																			if (e.key === "Enter" || e.key === " ") {
+																				e.preventDefault();
+																				openPreview(item.id);
+																			}
+																		}}
+																		className="flex cursor-pointer flex-col gap-2 outline-none"
+																	>
+																		<div className="flex items-start justify-between gap-2">
+																			<p className="text-foreground line-clamp-2 text-sm font-medium">
+																				{item.name}
+																			</p>
+																			<StatusBadge
+																				status={item.column}
+																				appearance={statusAppearance(
+																					item.column,
+																				)}
+																				className="shrink-0"
+																			>
+																				{formatStatus(item.column)}
+																			</StatusBadge>
+																		</div>
+																		<p className="text-muted-foreground truncate text-xs">
+																			{item.clientName || "Unknown Client"}
+																		</p>
+																		{item.recurringSeriesId && (
+																			<div className="flex flex-wrap gap-2">
+																				<StatusBadge
+																					role="neutral"
+																					appearance="outline"
+																					className="w-fit"
+																				>
+																					<Repeat className="size-3.5" />{" "}
+																					Recurring
+																				</StatusBadge>
+																				{item.recurringState && (
+																					<StatusBadge
+																						role="neutral"
+																						appearance="outline"
+																						className="w-fit"
+																					>
+																						{stateLabel(item.recurringState)}
+																					</StatusBadge>
+																				)}
+																			</div>
+																		)}
+																		<div className="text-muted-foreground flex flex-wrap items-center gap-1.5 text-xs">
+																			<span>
+																				{formatProjectDate(item.startDate)}
+																			</span>
+																			<span aria-hidden>·</span>
+																			<span>
+																				{formatProjectDate(item.endDate)}
+																			</span>
+																			{item.projectNumber ? (
+																				<>
+																					<span aria-hidden>·</span>
+																					<span>#{item.projectNumber}</span>
+																				</>
+																			) : null}
+																		</div>
+																		<div className="flex items-center justify-between pt-1">
+																			<Badge
+																				variant="outline"
+																				className="capitalize"
+																			>
+																				{item.projectType}
+																			</Badge>
+																			<button
+																				type="button"
+																				onClick={(e) => {
+																					e.stopPropagation();
+																					router.push(`/projects/${item.id}`);
+																				}}
+																				onKeyDown={(e) => e.stopPropagation()}
+																				className="text-primary hover:text-primary/80 inline-flex items-center gap-1 text-xs font-medium"
+																			>
+																				Open <ExternalLink className="size-3" />
+																			</button>
+																		</div>
+																	</div>
+																</KanbanCard>
+															)}
+														</KanbanCards>
+													</KanbanBoard>
+												);
+											}}
+										</KanbanProvider>
+									</div>
+								)}
+							</FramePanel>
 
-					{!isLoading && !isEmpty && (
-						<FrameFooter className="flex-row items-center justify-between">
-							<div className="text-muted-foreground text-sm">
-								{searchedData.length} of {data.length} projects
-							</div>
-							{viewMode === "table" ? <DataGridPagination /> : null}
-						</FrameFooter>
-					)}
-				</DataGrid>
-			</Frame>
+							{!isLoading && !isEmpty && (
+								<FrameFooter className="flex-row items-center justify-between">
+									<div className="text-muted-foreground text-sm">
+										{searchedData.length} of {data.length} projects
+									</div>
+									{viewMode === "table" ? <DataGridPagination /> : null}
+								</FrameFooter>
+							)}
+						</DataGrid>
+					</Frame>
+				</section>
+			</div>
 
 			{/* Detail preview drawer */}
 			<ProjectDetailDrawer

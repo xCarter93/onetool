@@ -619,7 +619,7 @@ export default function MemberAccessPage() {
 		: MEMBER_ROLE;
 
 	return (
-		<div className="relative space-y-6 px-6 pt-8 pb-6">
+		<div className="workspace-detail workspace-page space-y-6">
 			<div>
 				<Button
 					variant="ghost"
@@ -632,9 +632,7 @@ export default function MemberAccessPage() {
 				</Button>
 			</div>
 
-			<Frame>
-				<FramePanel>
-					<div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+			<div className="workspace-page-header flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
 						<div className="flex items-center gap-3">
 							<Avatar className="size-11">
 								{target.image ? (
@@ -643,7 +641,7 @@ export default function MemberAccessPage() {
 								<AvatarFallback>{initials}</AvatarFallback>
 							</Avatar>
 							<div className="min-w-0">
-								<h1 className="truncate text-base font-semibold">
+								<h1 className="truncate text-2xl font-semibold">
 									{displayName}
 								</h1>
 								{target.email ? (
@@ -676,20 +674,13 @@ export default function MemberAccessPage() {
 								/>
 							</div>
 						)}
-					</div>
-				</FramePanel>
-			</Frame>
+			</div>
 
 			{target.isAdmin ? (
 				<Frame>
 					<FramePanel>
 						<div className="flex items-start gap-3">
-							<div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary/10">
-								<ShieldCheck
-									className="size-4.5 text-primary"
-									aria-hidden="true"
-								/>
-							</div>
+							<ShieldCheck className="mt-0.5 size-4 shrink-0 text-primary" aria-hidden="true" />
 							<div>
 								<h2 className="text-sm font-medium">
 									{target.isOwner ? "Owners" : "Admins"} have full access

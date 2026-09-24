@@ -99,12 +99,12 @@ export const MultiSelector = React.forwardRef<
 				placeholder={placeholder}
 				maxCount={maxCount}
 				className={cn(
-					"transition-all duration-200 border-gray-200/60 dark:border-white/10 hover:border-primary/30 dark:hover:border-primary/30",
+					"border-border transition-colors duration-150 hover:border-primary/40",
 					disabled && "cursor-not-allowed disabled:opacity-100", // Override base button opacity
 					className
 				)}
 				popoverClass={cn(
-					"backdrop-blur-md bg-background/95 dark:bg-background/95",
+					"bg-popover",
 					popoverClass
 				)}
 				showall={showall}

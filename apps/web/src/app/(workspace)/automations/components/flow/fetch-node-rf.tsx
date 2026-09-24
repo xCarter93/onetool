@@ -36,7 +36,7 @@ export const FetchNodeRF = memo(({ data }: NodeProps) => {
 			className={cn(
 				"w-[280px]",
 				isConfigured
-					? "border-l-4 border-l-blue-500 dark:border-l-blue-400"
+					? "border-border"
 					: "border-dashed border-muted-foreground/30",
 			)}
 			aria-label={`Fetch: ${title} - ${description}`}
@@ -44,7 +44,7 @@ export const FetchNodeRF = memo(({ data }: NodeProps) => {
 			<BaseHandle type="target" position={Position.Top} />
 			<BaseNodeContent className="p-3">
 				<div className="flex items-center gap-3">
-					<div className="w-8 h-8 rounded-lg bg-blue-100 text-blue-700 dark:bg-blue-400/15 dark:text-blue-300 flex items-center justify-center shrink-0">
+					<div className="w-8 h-8 rounded-lg bg-info-soft text-info-foreground flex items-center justify-center shrink-0">
 						<Database className="h-4 w-4" />
 					</div>
 					<div className="min-w-0 flex-1">

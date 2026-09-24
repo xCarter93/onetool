@@ -188,7 +188,7 @@ export function RoutingMap({
 	return (
 		<div
 			className={cn(
-				"relative h-full w-full overflow-hidden rounded-xl border border-border",
+				"relative h-full w-full overflow-hidden",
 				className
 			)}
 		>
@@ -224,7 +224,7 @@ export function RoutingMap({
 					>
 						<MarkerContent>
 							<div
-								className="flex size-7 items-center justify-center rounded-full border-2 border-white bg-emerald-600 text-[10px] font-bold text-white shadow-md"
+								className="flex size-7 items-center justify-center rounded-full border-2 border-success bg-card text-2xs font-bold text-success-foreground shadow-floating"
 								title={start.label}
 							>
 								S
@@ -242,10 +242,10 @@ export function RoutingMap({
 						<MarkerContent>
 							<div
 								className={cn(
-									"flex size-7 items-center justify-center rounded-full border-2 border-white text-[11px] font-bold text-white shadow-md",
+									"flex size-7 items-center justify-center rounded-full border-2 text-xs font-bold shadow-floating",
 									unreachableIndices?.has(index)
-										? "bg-destructive"
-										: "bg-sky-600"
+										? "border-danger bg-card text-danger-foreground"
+										: "border-card bg-primary text-primary-foreground"
 								)}
 								title={
 									unreachableIndices?.has(index)
@@ -267,7 +267,7 @@ export function RoutingMap({
 					>
 						<MarkerContent>
 							<div
-								className="flex size-6 items-center justify-center rounded-full border border-white bg-amber-500 text-white shadow"
+								className="flex size-6 items-center justify-center rounded-full border-2 border-warning bg-card text-warning-foreground shadow-floating"
 								title={`${station.name}${station.address ? ` — ${station.address}` : ""}`}
 							>
 								<Fuel className="size-3.5" aria-hidden />

@@ -120,7 +120,7 @@ export function DeclineModal({
 		>
 			<div
 				ref={dialogRef}
-				className="w-full max-w-md rounded-2xl bg-card border border-border shadow-lg p-6"
+				className="w-full max-w-md rounded-[8px] bg-card border border-border shadow-lg p-6"
 			>
 				<div className="flex items-start justify-between gap-4">
 					<h2
@@ -134,7 +134,7 @@ export function DeclineModal({
 						aria-label="Close"
 						disabled={submitting}
 						onClick={() => onOpenChange(false)}
-						className="text-muted-foreground hover:text-foreground"
+						className="flex size-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
 					>
 						<X className="h-4 w-4" aria-hidden="true" />
 					</button>
@@ -153,7 +153,8 @@ export function DeclineModal({
 								key={chip}
 								type="button"
 								onClick={() => handleChipClick(chip)}
-								className={`rounded-full border px-3 py-1.5 text-[13px] font-medium transition-colors ${
+								aria-pressed={active}
+								className={`rounded-lg border px-3 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
 									active
 										? "bg-primary text-primary-foreground border-primary"
 										: "bg-card text-muted-foreground border-border hover:bg-muted"
@@ -168,7 +169,7 @@ export function DeclineModal({
 				<div className="mt-4">
 					<label
 						htmlFor="decline-reason"
-						className="block text-[13px] font-medium text-foreground"
+						className="block text-sm font-medium text-foreground"
 					>
 						Add a note (optional)
 					</label>
@@ -178,7 +179,7 @@ export function DeclineModal({
 						onChange={(e) => setReason(e.target.value)}
 						placeholder="Anything else you'd like to share?"
 						rows={3}
-						className="mt-1.5 w-full rounded-md border border-border bg-background px-3 py-2 text-[14px] focus:outline-none focus:ring-2 focus:ring-primary/30"
+						className="mt-1.5 w-full rounded-md border border-input bg-background px-3 py-2.5 text-base focus:outline-none focus:ring-2 focus:ring-ring"
 					/>
 				</div>
 

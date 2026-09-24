@@ -113,15 +113,13 @@ export function InboxScreen({ initialThreadId = null }: InboxScreenProps) {
 
 	return (
 		<div
-			// Inset the panes so they clear the floating chrome: the top notch rail
-			// (status badge + notifications/settings) and the bottom Assistant notch
-			// (fixed, h-10 / 40px, bottom-right). pb-12 keeps the composer above it.
-			className="flex h-full min-h-0 gap-3 overflow-hidden px-3 pb-12 pt-3 md:pt-10"
+			// Keep the composer above the assistant dock.
+			className="flex h-full min-h-0 gap-0 overflow-hidden px-3 pb-12 pt-3 md:px-6"
 			onKeyDown={handleKeyDown}
 		>
 			<aside
 				className={cn(
-					"w-full flex-col overflow-hidden rounded-xl border border-border bg-card shadow-sm md:flex md:w-[340px] md:shrink-0",
+					"w-full flex-col overflow-hidden border border-border bg-card md:flex md:w-[340px] md:border-r-0 md:shrink-0",
 					"min-h-0",
 					hasSelection ? "hidden md:flex" : "flex"
 				)}
@@ -141,7 +139,7 @@ export function InboxScreen({ initialThreadId = null }: InboxScreenProps) {
 
 			<section
 				className={cn(
-					"min-w-0 flex-1 flex-col overflow-hidden rounded-xl border border-border bg-card shadow-sm md:flex",
+					"min-w-0 flex-1 flex-col overflow-hidden border border-border bg-card md:flex",
 					"min-h-0",
 					hasSelection ? "flex" : "hidden md:flex"
 				)}

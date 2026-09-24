@@ -11,7 +11,7 @@ export const EndNodeRF = memo(() => {
 	return (
 		<BaseNode
 			className={cn(
-				"w-[280px] border-l-4 border-l-muted-foreground/40",
+				"w-[280px] border-border",
 			)}
 			aria-label="End: Workflow stops here"
 		>

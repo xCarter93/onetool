@@ -29,9 +29,9 @@ export default function ProgressBarItem({
 		<li className="relative overflow-hidden lg:flex-1">
 			<div
 				className={classNames(
-					stepIdx === 0 ? "rounded-t-xl border-b-0" : "",
-					stepIdx === totalSteps - 1 ? "rounded-b-xl border-t-0" : "",
-					"overflow-hidden border border-border/40 dark:border-border/30 lg:border-0 bg-linear-to-b from-background/50 to-background/30"
+					stepIdx === 0 ? "rounded-t-lg border-b-0" : "",
+					stepIdx === totalSteps - 1 ? "rounded-b-lg border-t-0" : "",
+					"overflow-hidden border border-border bg-card lg:border-0"
 				)}
 			>
 				{step.status === "complete" ? (
@@ -47,7 +47,7 @@ export default function ProgressBarItem({
 							)}
 						>
 							<span className="shrink-0">
-								<span className="flex size-10 items-center justify-center rounded-full bg-linear-to-br from-primary to-primary/80 shadow-md ring-2 ring-primary/20">
+								<span className="flex size-10 items-center justify-center rounded bg-primary">
 									<CheckIcon
 										aria-hidden="true"
 										className="size-5 text-primary-foreground"
@@ -68,7 +68,7 @@ export default function ProgressBarItem({
 					<Link href={step.href || "#"} aria-current="step">
 						<span
 							aria-hidden="true"
-							className="absolute top-0 left-0 h-full w-1.5 bg-linear-to-b from-primary to-primary/80 lg:top-auto lg:bottom-0 lg:h-1.5 lg:w-full shadow-sm"
+							className="absolute top-0 left-0 h-full w-1.5 bg-primary lg:top-auto lg:bottom-0 lg:h-1.5 lg:w-full"
 						/>
 						<span
 							className={classNames(
@@ -77,7 +77,7 @@ export default function ProgressBarItem({
 							)}
 						>
 							<span className="shrink-0">
-								<span className="flex size-10 items-center justify-center rounded-full border-2 border-primary bg-primary/10 shadow-md ring-2 ring-primary/20">
+								<span className="flex size-10 items-center justify-center rounded border border-primary bg-primary/10">
 									<span className="text-sm font-bold text-primary">
 										{step.id}
 									</span>
@@ -106,7 +106,7 @@ export default function ProgressBarItem({
 							)}
 						>
 							<span className="shrink-0">
-								<span className="flex size-10 items-center justify-center rounded-full border-2 border-border/60 bg-muted/30 shadow-sm group-hover:border-border transition-colors duration-200">
+								<span className="flex size-10 items-center justify-center rounded border border-border bg-muted/30 group-hover:border-primary/40 transition-colors duration-200">
 									<span className="text-sm font-medium text-muted-foreground group-hover:text-foreground transition-colors duration-200">
 										{step.id}
 									</span>

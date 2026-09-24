@@ -205,7 +205,7 @@ export default function OtpForm({
 				<div className="flex flex-col gap-1.5">
 					<Label
 						htmlFor="portal-otp-email"
-						className="text-xs font-medium text-foreground"
+						className="text-sm font-medium text-foreground"
 					>
 						Email address
 					</Label>
@@ -218,7 +218,7 @@ export default function OtpForm({
 						onChange={(e) => setEmail(e.target.value)}
 						required
 						disabled={loading}
-						className="h-11"
+						style={{ height: 44, fontSize: 16 }}
 					/>
 				</div>
 
@@ -235,7 +235,7 @@ export default function OtpForm({
 				<button
 					type="submit"
 					disabled={loading}
-					className="inline-flex h-11 cursor-pointer items-center justify-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground shadow-sm outline-none transition-all hover:bg-primary/90 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60"
+					className="inline-flex h-11 cursor-pointer items-center justify-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground outline-none transition-all hover:bg-primary/90 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60"
 				>
 					{loading ? "Sending..." : "Send code"}
 					{!loading ? (
@@ -243,7 +243,7 @@ export default function OtpForm({
 					) : null}
 				</button>
 
-				<div className="mt-2 flex items-center gap-2 text-[11px] text-muted-foreground">
+				<div className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
 					<ShieldCheck
 						className="h-3.5 w-3.5 text-emerald-600"
 						aria-hidden="true"
@@ -318,7 +318,7 @@ export default function OtpForm({
 						? loading
 						: cellsDisabled || code.length !== 6
 				}
-				className="inline-flex h-11 cursor-pointer items-center justify-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground shadow-sm outline-none transition-all hover:bg-primary/90 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60"
+				className="inline-flex h-11 cursor-pointer items-center justify-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground outline-none transition-all hover:bg-primary/90 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60"
 			>
 				{attemptsRemaining === 0
 					? "Send a new code"
@@ -348,7 +348,7 @@ export default function OtpForm({
 				</button>
 			</div>
 
-			<div className="mt-2 flex items-center gap-2 text-[11px] text-muted-foreground">
+			<div className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
 				<ShieldCheck
 					className="h-3.5 w-3.5 text-emerald-600"
 					aria-hidden="true"
