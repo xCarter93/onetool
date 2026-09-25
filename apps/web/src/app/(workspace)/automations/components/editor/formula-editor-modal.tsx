@@ -155,6 +155,8 @@ export function FormulaEditorModal({
 	const [returnType, setReturnType] = useState<FormulaReturnType>("text");
 	const [expression, setExpression] = useState("");
 	const [parseError, setParseError] = useState<string | null>(null);
+	// Errors show only after the user has typed or tried to save (never on open).
+	const [touched, setTouched] = useState(false);
 	const [preview, setPreview] = useState<
 		{ ok: true; text: string } | { ok: false; message: string } | null
 	>(null);
@@ -172,6 +174,7 @@ export function FormulaEditorModal({
 			setName(formula?.name ?? "");
 			setReturnType(formula?.returnType ?? "text");
 			setExpression(formula?.expression ?? "");
+			setTouched(false);
 			setSampleId(undefined);
 		}
 	}
@@ -341,6 +344,7 @@ export function FormulaEditorModal({
 		try {
 			parseFormula(expression);
 		} catch (err) {
+			setTouched(true);
 			setParseError(err instanceof FormulaError ? err.message : "Invalid formula");
 			return;
 		}
@@ -364,11 +368,11 @@ export function FormulaEditorModal({
 			isOpen={open}
 			onClose={() => onOpenChange(false)}
 			title={formula ? "Edit formula" : "New formula"}
-			size="2xl"
+			size="xl"
 		>
 			<div className="space-y-4">
-				<div className="flex items-end gap-3">
-					<div className="flex-1 space-y-1.5">
+				<div className="grid grid-cols-[1fr_10rem] gap-3">
+					<div className="space-y-1.5">
 						<Label htmlFor="formula-name">Name</Label>
 						<Input
 							id="formula-name"
@@ -378,13 +382,13 @@ export function FormulaEditorModal({
 							autoFocus
 						/>
 					</div>
-					<div className="w-40 space-y-1.5">
+					<div className="space-y-1.5">
 						<Label htmlFor="formula-return-type">Returns</Label>
 						<Select
 							value={returnType}
 							onValueChange={(v) => setReturnType(v as FormulaReturnType)}
 						>
-							<SelectTrigger id="formula-return-type">
+							<SelectTrigger id="formula-return-type" className="w-full">
 								<SelectValue />
 							</SelectTrigger>
 							<SelectContent>
@@ -406,23 +410,22 @@ export function FormulaEditorModal({
 							id="formula-expression"
 							ref={textareaRef}
 							value={expression}
-							onChange={(e) => setExpression(e.target.value)}
+							onChange={(e) => {
+								setTouched(true);
+								setExpression(e.target.value);
+							}}
 							rows={8}
 							spellCheck={false}
 							placeholder="ROUND(trigger.record.total * 0.1, 2)"
 							className="font-mono text-sm"
 						/>
-						<p
-							aria-live="polite"
-							className={cn(
-								"text-xs",
-								parseError ? "text-destructive" : "text-muted-foreground"
-							)}
-						>
-							{parseError ?? "Looks valid"}
-						</p>
+						{touched && parseError && (
+							<p aria-live="polite" className="text-xs text-destructive">
+								{parseError}
+							</p>
+						)}
 
-						<div className="space-y-1.5 rounded-md border border-border bg-muted/30 p-3">
+						<div className="space-y-1.5 border-t border-border pt-3">
 							<div className="flex items-center justify-between gap-2">
 								<span className="text-xs font-medium text-muted-foreground">
 									Preview{" "}
@@ -466,9 +469,9 @@ export function FormulaEditorModal({
 					</div>
 
 					{/* Reference */}
-					<div className="max-h-[420px] space-y-4 overflow-y-auto rounded-md border border-border p-3">
+					<div className="max-h-[420px] space-y-4 overflow-y-auto border-l border-border pl-4">
 						<div>
-							<div className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+							<div className="mb-1.5 text-2xs font-semibold uppercase tracking-wide text-muted-foreground">
 								Variables
 							</div>
 							{variableGroups.length === 0 ? (
@@ -479,7 +482,7 @@ export function FormulaEditorModal({
 								<div className="space-y-3">
 									{variableGroups.map(([group, options]) => (
 										<div key={group}>
-											<div className="mb-1 text-[11px] font-medium text-muted-foreground">
+											<div className="mb-1 text-2xs font-medium text-muted-foreground">
 												{group}
 											</div>
 											<div className="space-y-0.5">
@@ -502,13 +505,13 @@ export function FormulaEditorModal({
 						</div>
 
 						<div>
-							<div className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+							<div className="mb-1.5 text-2xs font-semibold uppercase tracking-wide text-muted-foreground">
 								Functions
 							</div>
 							<div className="space-y-3">
 								{functionGroups.map(([category, fns]) => (
 									<div key={category}>
-										<div className="mb-1 text-[11px] font-medium text-muted-foreground">
+										<div className="mb-1 text-2xs font-medium text-muted-foreground">
 											{FUNCTION_CATEGORY_LABELS[category as FormulaFnDoc["category"]]}
 										</div>
 										<div className="space-y-0.5">
@@ -534,24 +537,18 @@ export function FormulaEditorModal({
 				<div className="flex items-center justify-between border-t border-border pt-4">
 					<div>
 						{formula && onDelete && (
-							<Button
-								variant="outline"
-								size="sm"
-								onClick={handleDelete}
-								className="text-destructive"
-							>
-								<Trash2 className="h-3.5 w-3.5" />
+							<Button variant="outline" onClick={handleDelete} className="text-destructive">
+								<Trash2 />
 								Delete
 							</Button>
 						)}
 					</div>
 					<div className="flex items-center gap-2">
-						<Button variant="outline" size="sm" onClick={() => onOpenChange(false)}>
+						<Button variant="outline" onClick={() => onOpenChange(false)}>
 							Cancel
 						</Button>
 						<Button
 							variant="default"
-							size="sm"
 							onClick={handleSave}
 							// parseError is debounced (250ms) and only drives the inline
 							// message; handleSave re-parses synchronously and blocks an

@@ -15,7 +15,7 @@ export function NextItemMarker({ x, y }: { x: number; y: number }) {
 				transform: `translate(-50%, 0) translate(${x}px, ${y}px)`,
 			}}
 		>
-			<span className="flex items-center gap-1 whitespace-nowrap rounded-full border border-warning/40 bg-background/90 px-1.5 py-0.5 text-[10px] font-medium text-warning-foreground select-none  ">
+			<span className="flex items-center gap-1 whitespace-nowrap rounded-sm border border-warning/40 bg-background/90 px-1.5 py-0.5 text-2xs font-medium text-warning-foreground select-none">
 				<CornerDownLeft className="h-3 w-3" />
 				Next item
 			</span>

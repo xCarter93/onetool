@@ -8,13 +8,13 @@ import { BaseNode, BaseNodeContent } from "@/components/base-node";
 export const TriggerPlaceholderNodeRF = memo(() => {
 	return (
 		<div className="relative mt-4">
-			<span className="absolute -top-2.5 left-3 bg-background px-2 text-[10px] font-semibold uppercase tracking-wider text-warning-foreground z-10">
+			<span className="absolute -top-2.5 left-3 bg-background px-2 text-2xs font-semibold uppercase tracking-wider text-warning-foreground z-10">
 				Trigger
 			</span>
 			<BaseNode
 				className={cn(
-					"w-[280px] border-dashed border-amber-300/50 dark:border-amber-400/30",
-					"cursor-pointer hover:border-amber-400 transition-colors",
+					"w-[300px] border-dashed border-warning/50",
+					"cursor-pointer hover:border-warning transition-colors",
 				)}
 				aria-label="Trigger placeholder — click to configure"
 			>

@@ -1,8 +1,9 @@
 "use client";
 
 import { Trash2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
-/** Destructive footer action every config panel ends with. */
+/** Panel footer with the one destructive action, right-aligned like a dialog footer. */
 export function DeleteStepButton({
 	label = "Delete step",
 	onDelete,
@@ -11,15 +12,11 @@ export function DeleteStepButton({
 	onDelete: () => void;
 }) {
 	return (
-		<div className="pt-4 border-t border-border mt-2">
-			<button
-				type="button"
-				className="text-destructive hover:bg-destructive/10 focus-visible:ring-ring/50 focus-visible:ring-[3px] outline-none flex items-center gap-2 px-3 py-2 rounded-md transition-colors w-full cursor-pointer"
-				onClick={onDelete}
-			>
-				<Trash2 className="h-4 w-4" />
-				<span className="text-sm font-medium">{label}</span>
-			</button>
+		<div className="flex shrink-0 justify-end border-t border-border px-4 py-3">
+			<Button variant="outline" size="sm" className="text-destructive" onClick={onDelete}>
+				<Trash2 />
+				{label}
+			</Button>
 		</div>
 	);
 }

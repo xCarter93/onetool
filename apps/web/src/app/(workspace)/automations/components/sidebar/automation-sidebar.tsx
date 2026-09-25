@@ -3,9 +3,16 @@
 import React, { useEffect, useRef } from "react";
 import { X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import type { FormulaResource, TriggerConfig, WorkflowNode } from "../../lib/node-types";
+import { cn } from "@/lib/utils";
+import type {
+	ActionNodeConfig,
+	FormulaResource,
+	TriggerConfig,
+	WorkflowNode,
+} from "../../lib/node-types";
 import type { EditorNode } from "../../lib/flow-adapter";
 import { getScopeObjectType } from "../../lib/variables";
+import { STEP_FAMILY_STYLE, stepIdentity, type StepIdentity } from "../../lib/step-family";
 import { TriggerPicker } from "./trigger-picker";
 import { StepPicker } from "./step-picker";
 import { TriggerConfigPanel } from "./panels/trigger-config";
@@ -16,10 +23,7 @@ import { LoopConfigPanel } from "./panels/loop-config";
 import { AggregateConfigPanel } from "./panels/aggregate-config";
 import { AdjustTimeConfigPanel } from "./panels/adjust-time-config";
 import { DelayConfig, DelayUntilConfig } from "./panels/delay-config";
-
-// ---------------------------------------------------------------------------
-// SidebarMode discriminated union
-// ---------------------------------------------------------------------------
+import { DeleteStepButton } from "./panels/delete-step-button";
 
 export type SidebarMode =
 	| { mode: "trigger-picker" }
@@ -36,10 +40,6 @@ export type SidebarMode =
 	| { mode: "node-config"; nodeType: "end"; nodeId: string }
 	| { mode: "node-config"; nodeType: "next_item"; nodeId: string };
 
-// ---------------------------------------------------------------------------
-// Standardized config panel props
-// ---------------------------------------------------------------------------
-
 export interface ConfigPanelProps {
 	nodeId?: string;
 	trigger: TriggerConfig | null;
@@ -54,10 +54,6 @@ export interface ConfigPanelProps {
 	rfEdges?: import("@xyflow/react").Edge[];
 }
 
-// ---------------------------------------------------------------------------
-// CONFIG_PANELS registry -- panels registered in Task 2
-// ---------------------------------------------------------------------------
-
 const CONFIG_PANELS: Record<string, React.ComponentType<ConfigPanelProps>> = {
 	trigger: TriggerConfigPanel,
 	condition: ConditionConfigPanel,
@@ -70,45 +66,26 @@ const CONFIG_PANELS: Record<string, React.ComponentType<ConfigPanelProps>> = {
 	delay_until: DelayUntilConfig,
 };
 
-// ---------------------------------------------------------------------------
-// Title lookup
-// ---------------------------------------------------------------------------
+const FLOW_MARKER_COPY: Record<"end" | "next_item", string> = {
+	end: "This step ends the automation flow.",
+	next_item: "Skips to the loop's next record.",
+};
 
-function getSidebarTitle(mode: SidebarMode): string {
-	if (mode.mode === "trigger-picker") return "Set a trigger";
-	if (mode.mode === "step-picker") return "Next step";
-	// node-config
-	switch (mode.nodeType) {
-		case "trigger":
-			return "Configure Trigger";
-		case "condition":
-			return "Configure Condition";
-		case "action":
-			return "Configure Action";
-		case "fetch_records":
-			return "Configure Fetch";
-		case "loop":
-			return "Configure Loop";
-		case "aggregate":
-			return "Aggregate";
-		case "adjust_time":
-			return "Adjust time";
-		case "delay":
-			return "Configure Delay";
-		case "delay_until":
-			return "Configure Delay Until";
-		case "end":
-			return "End";
-		case "next_item":
-			return "Next item";
-		default:
-			return "Configure";
-	}
+/** The step the panel is editing; the header band repeats its canvas identity. */
+function panelIdentity(mode: SidebarMode, nodes: EditorNode[]): StepIdentity | null {
+	if (mode.mode !== "node-config") return null;
+	if (mode.nodeType === "trigger") return stepIdentity("trigger");
+	if (mode.nodeType !== "action") return stepIdentity(mode.nodeType);
+	const node = nodes.find((n) => n.id === mode.nodeId);
+	const config = node && node.type === "action" ? (node.config as ActionNodeConfig | undefined) : undefined;
+	return stepIdentity("action", config?.action.type);
 }
 
-// ---------------------------------------------------------------------------
-// AutomationSidebar
-// ---------------------------------------------------------------------------
+function panelTitle(mode: SidebarMode, identity: StepIdentity | null, hasTrigger: boolean): string {
+	if (mode.mode === "trigger-picker") return hasTrigger ? "Change trigger" : "Choose a trigger";
+	if (mode.mode === "step-picker") return "Add a step";
+	return identity?.name ?? "Configure";
+}
 
 interface AutomationSidebarProps {
 	isOpen: boolean;
@@ -151,7 +128,6 @@ export function AutomationSidebar({
 }: AutomationSidebarProps) {
 	const contentRef = useRef<HTMLDivElement>(null);
 
-	// Focus first interactive element when sidebar opens or mode changes
 	useEffect(() => {
 		if (isOpen && contentRef.current) {
 			const timer = setTimeout(() => {
@@ -164,28 +140,25 @@ export function AutomationSidebar({
 		}
 	}, [isOpen, mode]);
 
-	// Escape key closes sidebar
 	useEffect(() => {
 		if (!isOpen) return;
-
 		const handleKeyDown = (e: KeyboardEvent) => {
 			if (e.key === "Escape") {
 				e.preventDefault();
 				onClose();
 			}
 		};
-
 		document.addEventListener("keydown", handleKeyDown);
 		return () => document.removeEventListener("keydown", handleKeyDown);
 	}, [isOpen, onClose]);
 
-	if (!isOpen || !mode) {
-		return null;
-	}
+	if (!isOpen || !mode) return null;
 
-	const title = getSidebarTitle(mode);
+	const identity = panelIdentity(mode, nodes);
+	const title = panelTitle(mode, identity, trigger !== null);
+	const family = identity ? STEP_FAMILY_STYLE[identity.family] : null;
+	const Icon = identity?.icon;
 
-	// Build config panel props
 	const configProps: ConfigPanelProps = {
 		trigger,
 		nodes,
@@ -201,22 +174,16 @@ export function AutomationSidebar({
 
 	function renderContent() {
 		if (!mode) return null;
-
 		switch (mode.mode) {
 			case "trigger-picker":
 				return <TriggerPicker onSelect={onTriggerTypeSelect} />;
-
 			case "step-picker": {
 				// "Next item" is only valid inside a loop body — scope it the same
 				// way validation.ts/panels do (see getScopeObjectType).
 				const workflowNodes = nodes.filter(
 					(n): n is WorkflowNode => n.type !== "placeholder"
 				);
-				const inLoop = getScopeObjectType(
-					workflowNodes,
-					mode.placeholderNodeId,
-					null
-				).inLoop;
+				const inLoop = getScopeObjectType(workflowNodes, mode.placeholderNodeId, null).inLoop;
 				return (
 					<StepPicker
 						inLoop={inLoop}
@@ -227,81 +194,86 @@ export function AutomationSidebar({
 					/>
 				);
 			}
-
 			case "node-config": {
 				if (mode.nodeType === "end" || mode.nodeType === "next_item") {
 					return (
-						<div className="space-y-6">
-							<div className="text-sm text-muted-foreground">
-								{mode.nodeType === "end"
-									? "This step ends the automation flow."
-									: "Skips to the loop's next record."}
-							</div>
-							{onDeleteNode && "nodeId" in mode && (
-								<div className="pt-6 border-t border-border">
-									<Button
-										variant="destructive"
-										className="w-full"
-										onClick={() => onDeleteNode(mode.nodeId)}
-									>
-										Delete Node
-									</Button>
-								</div>
-							)}
-						</div>
+						<p className="py-2 text-sm text-muted-foreground">
+							{FLOW_MARKER_COPY[mode.nodeType]}
+						</p>
 					);
 				}
-
 				const Panel = CONFIG_PANELS[mode.nodeType];
 				if (!Panel) {
 					return (
-						<div className="text-sm text-muted-foreground">
-							Configuration for this node type will be available in a
-							future update.
-						</div>
+						<p className="py-2 text-sm text-muted-foreground">
+							Configuration for this node type will be available in a future update.
+						</p>
 					);
 				}
-				return (
-					<Panel
-						nodeId={"nodeId" in mode ? mode.nodeId : undefined}
-						{...configProps}
-					/>
-				);
+				return <Panel nodeId={"nodeId" in mode ? mode.nodeId : undefined} {...configProps} />;
 			}
-
 			default:
 				return null;
 		}
 	}
 
+	function renderFooter() {
+		if (!mode) return null;
+		if (mode.mode === "step-picker" && onDeleteNode) {
+			return (
+				<DeleteStepButton
+					label="Remove empty step"
+					onDelete={() => onDeleteNode(mode.placeholderNodeId)}
+				/>
+			);
+		}
+		if (mode.mode !== "node-config") return null;
+		if (mode.nodeType === "trigger") {
+			return onDeleteTrigger ? (
+				<DeleteStepButton label="Delete trigger" onDelete={onDeleteTrigger} />
+			) : null;
+		}
+		return onDeleteNode ? (
+			<DeleteStepButton onDelete={() => onDeleteNode(mode.nodeId)} />
+		) : null;
+	}
+
 	return (
 		<div
-			// Insets via inline style (not Tailwind arbitrary classes) so top+bottom
-			// reliably bound the height — a bounded root is what lets the content
-			// below scroll. bottom clears the assistant notch via the shared var.
-			style={{ top: "0.75rem", right: "0.75rem", bottom: "var(--assistant-notch-clearance)" }}
-			className="absolute z-10 flex w-[440px] flex-col overflow-hidden rounded-xl border border-border bg-card shadow-sm motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-right-4"
+			className="absolute bottom-3 right-3 top-3 z-10 flex w-[440px] flex-col overflow-hidden rounded-lg border border-border bg-card shadow-floating motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-right-4"
 		>
-			{/* Header -- only shown for node-config modes; pickers have their own headers */}
-			{mode.mode === "node-config" && (
-				<div className="flex items-center justify-between px-6 py-5 border-b border-border">
-					<span className="text-lg font-semibold">{title}</span>
-					<Button
-						variant="ghost"
-						size="icon-sm"
-						onClick={onClose}
-						aria-label="Close sidebar"
-					>
-						<X className="h-4 w-4" />
-					</Button>
+			<div
+				className={cn(
+					"flex shrink-0 items-center gap-2.5 py-2.5 pl-4 pr-2",
+					family ? family.band : "border-b border-border"
+				)}
+			>
+				{Icon && <Icon className="h-4 w-4 shrink-0" aria-hidden />}
+				<div className="min-w-0 flex-1">
+					<h2 className="truncate text-base font-semibold leading-5">{title}</h2>
+					{family && (
+						<div className="text-2xs font-semibold uppercase tracking-wide opacity-80">
+							{family.label}
+						</div>
+					)}
 				</div>
-			)}
+				<Button
+					variant="ghost"
+					size="icon-sm"
+					className={cn(family && "text-inherit hover:bg-primary-foreground/15 hover:text-inherit")}
+					onClick={onClose}
+					aria-label="Close panel"
+				>
+					<X className="h-4 w-4" />
+				</Button>
+			</div>
 
-			{/* Content — min-h-0 lets this flex child shrink below its content so
-			    overflow-auto actually scrolls inside the bounded floating panel. */}
-			<div ref={contentRef} className="flex-1 min-h-0 overflow-auto px-6 py-5 motion-safe:transition-opacity motion-safe:duration-150">
+			{/* min-h-0 lets this flex child shrink below its content so overflow-auto scrolls. */}
+			<div ref={contentRef} className="min-h-0 flex-1 overflow-auto px-4 py-2">
 				{renderContent()}
 			</div>
+
+			{renderFooter()}
 		</div>
 	);
 }

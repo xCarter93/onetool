@@ -40,7 +40,7 @@ export function edgeStroke({
 				: "var(--flow-edge)";
 	return {
 		stroke,
-		strokeWidth: hovered || selected ? 2 : 1.5,
+		strokeWidth: hovered || selected ? 2.5 : 2,
 		strokeDasharray: dashed ? "5 4" : undefined,
 		transition: "stroke 120ms ease, stroke-width 120ms ease",
 	};

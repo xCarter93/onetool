@@ -160,7 +160,7 @@ function JsonBlock({ label, value }: { label: string; value: unknown }) {
 	}
 	return (
 		<div className="space-y-1">
-			<div className="flex items-center gap-1.5 text-2xs font-semibold uppercase tracking-wider text-muted-foreground">
+			<div className="flex items-center gap-1.5 text-2xs font-semibold uppercase tracking-wide text-muted-foreground">
 				<span>{label}</span>
 				{truncated && (
 					<span className="rounded bg-warning-soft px-1 py-px text-2xs font-medium normal-case tracking-normal text-warning-foreground">

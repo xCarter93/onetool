@@ -68,9 +68,9 @@ describe("computeNodeStatuses", () => {
 
 describe("runStatusRingClass", () => {
 	it("returns a class for each active status and empty for idle/undefined", () => {
-		expect(runStatusRingClass("running")).toContain("ring-blue");
-		expect(runStatusRingClass("success")).toContain("ring-emerald");
-		expect(runStatusRingClass("failed")).toContain("ring-red");
+		expect(runStatusRingClass("running")).toContain("ring-info");
+		expect(runStatusRingClass("success")).toContain("ring-success");
+		expect(runStatusRingClass("failed")).toContain("ring-danger");
 		expect(runStatusRingClass("skipped")).toContain("ring-muted-foreground");
 		expect(runStatusRingClass("idle")).toBe("");
 		expect(runStatusRingClass(undefined)).toBe("");

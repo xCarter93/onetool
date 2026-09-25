@@ -9,16 +9,14 @@ import {
 	useNodesState,
 	useEdgesState,
 	useReactFlow,
-	ReactFlowProvider,
 	type Node,
 	type Edge,
 	type NodeMouseHandler,
 } from "@xyflow/react";
-import { Trash2 } from "lucide-react";
 import { useTheme } from "next-themes";
 import { cn } from "@/lib/utils";
 import { HoveredEdgeContext } from "./edge-hover-context";
-import { ZoomSlider } from "@/components/zoom-slider";
+import { NodeActionsContext, type NodeActions } from "./node-actions-context";
 import {
 	applyDerivedLayout,
 	isContainerId,
@@ -108,17 +106,9 @@ interface AutomationFlowProps {
 	onNodeClick?: (nodeId: string) => void;
 	onPaneClick?: () => void;
 	onDeleteNode?: (nodeId: string) => void;
+	onDuplicateNode?: (nodeId: string) => void;
 	/** Callback ref that receives a navigate function once React Flow is ready */
 	onNavigateReady?: (navigateFn: (nodeId: string) => void) => void;
-	/** When the floating config panel is open it covers the bottom-right corner,
-	    so the zoom slider shifts left to stay visible. */
-	configPanelOpen?: boolean;
-}
-
-interface ContextMenuState {
-	nodeId: string;
-	x: number;
-	y: number;
 }
 
 function AutomationFlowInner({
@@ -127,8 +117,8 @@ function AutomationFlowInner({
 	onNodeClick,
 	onPaneClick,
 	onDeleteNode,
+	onDuplicateNode,
 	onNavigateReady,
-	configPanelOpen,
 }: AutomationFlowProps) {
 	const { fitView, setCenter } = useReactFlow();
 	// React Flow defaults to colorMode="light", stamping `.light` on its
@@ -137,7 +127,6 @@ function AutomationFlowInner({
 	const { resolvedTheme } = useTheme();
 	const [nodes, setNodes, onNodesChange] = useNodesState(incomingNodes);
 	const [edges, setEdges, onEdgesChange] = useEdgesState(incomingEdges);
-	const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
 	const [hoveredEdgeId, setHoveredEdgeId] = useState<string | null>(null);
 
 	const nodesRef = useRef(nodes);
@@ -330,7 +319,7 @@ function AutomationFlowInner({
 		(nodeId: string) => {
 			const targetNode = nodesRef.current.find((n) => n.id === nodeId);
 			if (!targetNode) return;
-			const width = targetNode.measured?.width ?? 280;
+			const width = targetNode.measured?.width ?? 300;
 			const height = targetNode.measured?.height ?? 60;
 			setCenter(
 				targetNode.position.x + width / 2,
@@ -368,50 +357,19 @@ function AutomationFlowInner({
 	);
 	const handleEdgeMouseLeave = useCallback(() => setHoveredEdgeId(null), []);
 
-	// Close context menu on any click outside or scroll
-	useEffect(() => {
-		if (!contextMenu) return;
-		const close = () => setContextMenu(null);
-		window.addEventListener("click", close);
-		window.addEventListener("scroll", close, true);
-		return () => {
-			window.removeEventListener("click", close);
-			window.removeEventListener("scroll", close, true);
-		};
-	}, [contextMenu]);
-
-	// Right-click context menu
-	const handleNodeContextMenu = useCallback(
-		(event: React.MouseEvent, node: Node) => {
-			event.preventDefault();
-			// Don't show context menu for synthetic nodes (stubs, frames, merges, ghosts)
-			if (
-				isTerminalId(node.id) ||
-				isContainerId(node.id) ||
-				isMergeId(node.id) ||
-				isGhostId(node.id)
-			)
-				return;
-			setContextMenu({ nodeId: node.id, x: event.clientX, y: event.clientY });
-		},
-		[]
+	const nodeActions = useMemo<NodeActions>(
+		() => ({ onDuplicate: onDuplicateNode, onDelete: onDeleteNode }),
+		[onDuplicateNode, onDeleteNode]
 	);
 
-	const handleContextMenuDelete = useCallback(() => {
-		if (contextMenu) {
-			onDeleteNode?.(contextMenu.nodeId);
-			setContextMenu(null);
-		}
-	}, [contextMenu, onDeleteNode]);
-
 	const handlePaneClickInternal = useCallback(() => {
-		setContextMenu(null);
 		setHoveredEdgeId(null);
 		onPaneClick?.();
 	}, [onPaneClick]);
 
 	return (
 		<HoveredEdgeContext.Provider value={validHoveredEdgeId}>
+			<NodeActionsContext.Provider value={nodeActions}>
 			<ReactFlow
 				colorMode={resolvedTheme === "dark" ? "dark" : "light"}
 				nodes={nodes}
@@ -420,7 +378,6 @@ function AutomationFlowInner({
 				onEdgesChange={onEdgesChange}
 				onNodeClick={handleNodeClick}
 				onPaneClick={handlePaneClickInternal}
-				onNodeContextMenu={handleNodeContextMenu}
 				onEdgeMouseEnter={handleEdgeMouseEnter}
 				onEdgeMouseLeave={handleEdgeMouseLeave}
 				nodeTypes={nodeTypes}
@@ -453,45 +410,19 @@ function AutomationFlowInner({
 					variant={BackgroundVariant.Dots}
 					gap={20}
 					size={1}
-					className="text-muted-foreground/15! dark:text-muted-foreground/10!"
-				/>
-				{/* bottom-right: the workflow drawer overlays the bottom-left corner.
-				    Shift left when the floating config panel is open so it stays visible. */}
-				<ZoomSlider
-					position="bottom-right"
-					orientation="vertical"
-					fitViewOptions={FIT_VIEW_OPTIONS}
-					style={{
-						transform: configPanelOpen ? "translateX(-28.75rem)" : undefined,
-						transition: "transform 200ms ease-out",
-					}}
+					className="text-muted-foreground/20! dark:text-muted-foreground/25!"
 				/>
 			</ReactFlow>
-			{contextMenu && (
-				<div
-					className="fixed z-50 min-w-[160px] rounded-md border border-border bg-popover p-1 shadow-md animate-in fade-in-0 zoom-in-95"
-					style={{ top: contextMenu.y, left: contextMenu.x }}
-				>
-					<button
-						type="button"
-						className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm text-destructive hover:bg-destructive/10 cursor-pointer"
-						onClick={handleContextMenuDelete}
-					>
-						<Trash2 className="h-4 w-4" />
-						Delete node
-					</button>
-				</div>
-			)}
+			</NodeActionsContext.Provider>
 		</HoveredEdgeContext.Provider>
 	);
 }
 
+/** Expects a ReactFlowProvider above (the editor screen owns it so the top bar can host zoom controls). */
 export function AutomationFlow(props: AutomationFlowProps) {
 	return (
-		<ReactFlowProvider>
-			<div className="w-full h-full">
-				<AutomationFlowInner {...props} />
-			</div>
-		</ReactFlowProvider>
+		<div className="w-full h-full">
+			<AutomationFlowInner {...props} />
+		</div>
 	);
 }

@@ -2,17 +2,17 @@
 
 import { memo } from "react";
 import { Position, type NodeProps } from "@xyflow/react";
-import { CalendarClock } from "lucide-react";
-import { cn } from "@/lib/utils";
-import { BaseNode, BaseNodeContent } from "@/components/base-node";
 import { BaseHandle } from "@/components/base-handle";
+import { stepIdentity } from "../../lib/step-family";
 import type { DelayUntilNodeConfig } from "../../lib/node-types";
+import { FlowNodeCard } from "./flow-node-card";
+import { SummarySlot } from "./summary-slot";
 
 /** Humanizes a stored static "until" value; falls back to the raw value if it doesn't parse as a date. */
 function formatUntilValue(value: string | number | boolean | null): string {
 	const date = new Date(value as never);
 	if (isNaN(date.getTime())) {
-		return `Resumes at ${value}`;
+		return String(value);
 	}
 	// Numeric values are UTC-midnight epoch ms (see value-input's
 	// localDateToUtcMidnightMs) and YYYY-MM-DD strings parse as UTC midnight —
@@ -30,64 +30,45 @@ function formatUntilValue(value: string | number | boolean | null): string {
 	// Only string values (e.g. ISO datetimes) can carry a time component here.
 	const hasTimeComponent = typeof value === "string" && value.includes("T");
 	if (!hasTimeComponent) {
-		return `Resumes at ${dateLabel}`;
+		return dateLabel;
 	}
 	const timeLabel = date.toLocaleTimeString(undefined, {
 		hour: "numeric",
 		minute: "2-digit",
 	});
-	return `Resumes at ${dateLabel}, ${timeLabel}`;
+	return `${dateLabel}, ${timeLabel}`;
 }
 
-function getSummary(config: DelayUntilNodeConfig | undefined): {
-	title: string;
-	description: string;
-	isConfigured: boolean;
-} {
+function untilText(config: DelayUntilNodeConfig | undefined): string | null {
 	const until = config?.until;
 	if (!until || (until.kind === "static" && (until.value === null || until.value === ""))) {
-		return { title: "Wait until a date", description: "Choose a date...", isConfigured: false };
+		return null;
 	}
-	const description =
-		until.kind === "var"
-			? "Resumes at a date from earlier steps"
-			: formatUntilValue(until.value);
-	return { title: "Wait until a date", description, isConfigured: true };
+	return until.kind === "var" ? "a date from earlier steps" : formatUntilValue(until.value);
 }
 
-export const DelayUntilNodeRF = memo(({ data }: NodeProps) => {
+export const DelayUntilNodeRF = memo(({ id, data }: NodeProps) => {
 	const config = (data as Record<string, unknown>)?.config as DelayUntilNodeConfig | undefined;
-	const { title, description, isConfigured } = getSummary(config);
+	const warning = (data as Record<string, unknown>)?.warning as string | undefined;
+	const identity = stepIdentity("delay_until");
 
 	return (
-		<BaseNode
-			className={cn(
-				"w-[280px]",
-				isConfigured
-					? "border-border"
-					: "border-dashed border-muted-foreground/30",
-			)}
-			aria-label={`Delay until: ${title} - ${description}`}
+		<FlowNodeCard
+			nodeId={id}
+			family={identity.family}
+			icon={identity.icon}
+			title={identity.name}
+			warning={warning}
+			ariaLabel={`Delay until: ${identity.name}`}
+			handles={
+				<>
+					<BaseHandle type="target" position={Position.Top} />
+					<BaseHandle type="source" position={Position.Bottom} />
+				</>
+			}
 		>
-			<BaseHandle type="target" position={Position.Top} />
-			<BaseNodeContent className="p-3">
-				<div className="flex items-center gap-3">
-					<div className="w-8 h-8 rounded-lg bg-info-soft text-info-foreground flex items-center justify-center shrink-0">
-						<CalendarClock className="h-4 w-4" />
-					</div>
-					<div className="min-w-0 flex-1">
-						<div className="text-sm font-semibold truncate">{title}</div>
-						<div className="text-xs text-muted-foreground truncate">
-							{description}
-						</div>
-					</div>
-					<span className="text-[10px] font-medium text-muted-foreground bg-muted px-1.5 py-0.5 rounded-full shrink-0">
-						Utilities
-					</span>
-				</div>
-			</BaseNodeContent>
-			<BaseHandle type="source" position={Position.Bottom} />
-		</BaseNode>
+			Wait until <SummarySlot value={untilText(config)} />
+		</FlowNodeCard>
 	);
 });
 DelayUntilNodeRF.displayName = "DelayUntilNodeRF";

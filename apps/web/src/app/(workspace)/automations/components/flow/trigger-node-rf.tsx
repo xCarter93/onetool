@@ -1,11 +1,9 @@
 "use client";
 
-import { memo } from "react";
+import { memo, type ReactNode } from "react";
 import { Position, type NodeProps } from "@xyflow/react";
-import { Zap } from "lucide-react";
-import { cn } from "@/lib/utils";
-import { BaseNode, BaseNodeContent } from "@/components/base-node";
 import { BaseHandle } from "@/components/base-handle";
+import { stepIdentity } from "../../lib/step-family";
 import {
 	OBJECT_TYPE_LABELS,
 	describeSchedule,
@@ -15,6 +13,8 @@ import {
 	type TriggerConfig,
 } from "../../lib/node-types";
 import { conditionSentence } from "../../lib/condition-sentence";
+import { FlowNodeCard } from "./flow-node-card";
+import { SummarySlot } from "./summary-slot";
 
 /** " · when <sentence>" suffix for triggers with entry criteria (A5-2). */
 function entryCriteriaSuffix(trigger: TriggerConfig): string {
@@ -27,89 +27,116 @@ function entryCriteriaSuffix(trigger: TriggerConfig): string {
 	return sentence ? ` · when ${sentence}` : "";
 }
 
+function article(label: string | null): string {
+	return label && /^[aeiou]/i.test(label) ? "an" : "a";
+}
+
 function getSummary(trigger: TriggerConfig | undefined): {
 	title: string;
-	description: string;
+	sentence: ReactNode;
 } {
-	if (!trigger) return { title: "Configure trigger", description: "Select a trigger type..." };
+	if (!trigger) return { title: "Trigger", sentence: "Choose a trigger type" };
 
 	const scopeObjectType = triggerScopeObjectType(trigger);
-	const objectLabel = scopeObjectType ? OBJECT_TYPE_LABELS[scopeObjectType] : "";
+	const objectLabel = scopeObjectType ? OBJECT_TYPE_LABELS[scopeObjectType] : null;
+	const subject = (
+		<>
+			When {article(objectLabel)} <SummarySlot value={objectLabel} />
+		</>
+	);
 	const triggerType = trigger.type || "status_changed";
 	const whenSuffix = entryCriteriaSuffix(trigger);
 
 	switch (triggerType) {
 		case "status_changed": {
-			const title = "Status Changed";
 			const statusOptions = scopeObjectType ? getStatusOptions(scopeObjectType) : [];
-			const toLabel =
-				statusOptions.find((s) => s.value === trigger.toStatus)?.label || trigger.toStatus;
-			if (trigger.fromStatus && toLabel) {
-				const fromLabel =
-					statusOptions.find((s) => s.value === trigger.fromStatus)?.label || trigger.fromStatus;
-				return { title, description: `${objectLabel} ${fromLabel} → ${toLabel}${whenSuffix}` };
-			}
-			if (toLabel) return { title, description: `${objectLabel} → ${toLabel}${whenSuffix}` };
-			return { title, description: objectLabel || "Configure trigger..." };
+			const labelFor = (status: string | undefined) =>
+				statusOptions.find((s) => s.value === status)?.label || status || null;
+			return {
+				title: "Status Changed",
+				sentence: (
+					<>
+						{subject} changes
+						{trigger.fromStatus ? (
+							<>
+								{" "}
+								from <SummarySlot value={labelFor(trigger.fromStatus)} />
+							</>
+						) : null}{" "}
+						to <SummarySlot value={labelFor(trigger.toStatus)} />
+						{whenSuffix}
+					</>
+				),
+			};
 		}
 		case "record_created":
-			return { title: "Record Created", description: `${objectLabel} created${whenSuffix}` };
+			return {
+				title: "Record Created",
+				sentence: (
+					<>
+						{subject} is created{whenSuffix}
+					</>
+				),
+			};
 		case "record_updated":
 			return {
 				title: "Record Updated",
-				description:
-					(trigger.fields && trigger.fields.length > 0
-						? `${objectLabel}.${trigger.fields.join(", ")} changes`
-						: `${objectLabel} updated`) + whenSuffix,
+				sentence:
+					trigger.fields && trigger.fields.length > 0 ? (
+						<>
+							When <SummarySlot value={trigger.fields.join(", ")} /> changes on{" "}
+							{article(objectLabel)} <SummarySlot value={objectLabel} />
+							{whenSuffix}
+						</>
+					) : (
+						<>
+							{subject} is updated{whenSuffix}
+						</>
+					),
 			};
 		case "scheduled": {
 			const schedule = trigger.schedule;
 			// describeSchedule throws on malformed drafts; only summarize valid ones.
-			if (schedule && validateSchedule(schedule) === null) {
-				return {
-					title: "Scheduled",
-					description: describeSchedule(schedule, Date.now()),
-				};
-			}
-			return { title: "Scheduled", description: "Configure the schedule..." };
+			const description =
+				schedule && validateSchedule(schedule) === null
+					? describeSchedule(schedule, Date.now())
+					: null;
+			return {
+				title: "Scheduled",
+				sentence: (
+					<>
+						Runs{" "}
+						<SummarySlot
+							value={description && description[0].toLowerCase() + description.slice(1)}
+						/>
+					</>
+				),
+			};
 		}
 		default:
-			return { title: "Unsupported trigger", description: "Choose a different trigger" };
+			return { title: "Unsupported trigger", sentence: "Choose a different trigger" };
 	}
 }
 
-export const TriggerNodeRF = memo(({ data }: NodeProps) => {
+export const TriggerNodeRF = memo(({ id, data }: NodeProps) => {
 	const trigger = (data as Record<string, unknown>)?.trigger as TriggerConfig | undefined;
-	const { title, description } = getSummary(trigger);
+	const warning = (data as Record<string, unknown>)?.warning as string | undefined;
+	const identity = stepIdentity("trigger");
+	const { title, sentence } = getSummary(trigger);
 
 	return (
-		<div className="relative mt-4">
-			<span className="absolute -top-2.5 left-3 bg-background px-2 text-[10px] font-semibold uppercase tracking-wider text-warning-foreground z-10">
-				Trigger
-			</span>
-			<BaseNode
-				className={cn(
-					"w-[280px] border-border",
-				)}
-				aria-label={`Trigger: ${title} - ${description}`}
-			>
-				<BaseNodeContent className="p-3">
-					<div className="flex items-center gap-3">
-						<div className="w-8 h-8 rounded-lg bg-warning-soft text-warning-foreground flex items-center justify-center shrink-0">
-							<Zap className="h-4 w-4" />
-						</div>
-						<div className="min-w-0 flex-1">
-							<div className="text-sm font-semibold truncate">{title}</div>
-							<div className="text-xs text-muted-foreground truncate">{description}</div>
-						</div>
-						<span className="text-[10px] font-medium text-muted-foreground bg-muted px-1.5 py-0.5 rounded-full shrink-0">
-							Triggers
-						</span>
-					</div>
-				</BaseNodeContent>
-				<BaseHandle type="source" position={Position.Bottom} />
-			</BaseNode>
-		</div>
+		<FlowNodeCard
+			nodeId={id}
+			family={identity.family}
+			icon={identity.icon}
+			title={title}
+			warning={warning}
+			menu={false}
+			ariaLabel={`Trigger: ${title}`}
+			handles={<BaseHandle type="source" position={Position.Bottom} />}
+		>
+			{sentence}
+		</FlowNodeCard>
 	);
 });
 TriggerNodeRF.displayName = "TriggerNodeRF";

@@ -2,11 +2,11 @@
 
 import { memo } from "react";
 import { Position, type NodeProps } from "@xyflow/react";
-import { Sigma } from "lucide-react";
-import { cn } from "@/lib/utils";
-import { BaseNode, BaseNodeContent } from "@/components/base-node";
 import { BaseHandle } from "@/components/base-handle";
+import { stepIdentity } from "../../lib/step-family";
 import type { AggregateNodeConfig, AggregateOperation } from "../../lib/node-types";
+import { FlowNodeCard } from "./flow-node-card";
+import { SummarySlot } from "./summary-slot";
 
 const OP_LABELS: Record<AggregateOperation, string> = {
 	sum: "Sum",
@@ -15,54 +15,29 @@ const OP_LABELS: Record<AggregateOperation, string> = {
 	max: "Maximum",
 };
 
-function getSummary(config: AggregateNodeConfig | undefined): {
-	title: string;
-	description: string;
-	isConfigured: boolean;
-} {
-	if (!config || !config.sourceNodeId || !config.field || !OP_LABELS[config.op]) {
-		return { title: "Aggregate", description: "Choose records to aggregate...", isConfigured: false };
-	}
-	return {
-		title: "Aggregate",
-		description: `${OP_LABELS[config.op]} of ${config.field} across found records`,
-		isConfigured: true,
-	};
-}
-
-export const AggregateNodeRF = memo(({ data }: NodeProps) => {
+export const AggregateNodeRF = memo(({ id, data }: NodeProps) => {
 	const config = (data as Record<string, unknown>)?.config as AggregateNodeConfig | undefined;
-	const { title, description, isConfigured } = getSummary(config);
+	const warning = (data as Record<string, unknown>)?.warning as string | undefined;
+	const identity = stepIdentity("aggregate");
 
 	return (
-		<BaseNode
-			className={cn(
-				"w-[280px]",
-				isConfigured
-					? "border-border"
-					: "border-dashed border-muted-foreground/30",
-			)}
-			aria-label={`Aggregate: ${title} - ${description}`}
+		<FlowNodeCard
+			nodeId={id}
+			family={identity.family}
+			icon={identity.icon}
+			title={identity.name}
+			warning={warning}
+			ariaLabel={`Aggregate: ${identity.name}`}
+			handles={
+				<>
+					<BaseHandle type="target" position={Position.Top} />
+					<BaseHandle type="source" position={Position.Bottom} />
+				</>
+			}
 		>
-			<BaseHandle type="target" position={Position.Top} />
-			<BaseNodeContent className="p-3">
-				<div className="flex items-center gap-3">
-					<div className="w-8 h-8 rounded-lg bg-warning-soft text-warning-foreground flex items-center justify-center shrink-0">
-						<Sigma className="h-4 w-4" />
-					</div>
-					<div className="min-w-0 flex-1">
-						<div className="text-sm font-semibold truncate">{title}</div>
-						<div className="text-xs text-muted-foreground truncate">
-							{description}
-						</div>
-					</div>
-					<span className="text-[10px] font-medium text-muted-foreground bg-muted px-1.5 py-0.5 rounded-full shrink-0">
-						Utilities
-					</span>
-				</div>
-			</BaseNodeContent>
-			<BaseHandle type="source" position={Position.Bottom} />
-		</BaseNode>
+			<SummarySlot value={config ? OP_LABELS[config.op] : null} /> of{" "}
+			<SummarySlot value={config?.field || null} /> across found records
+		</FlowNodeCard>
 	);
 });
 AggregateNodeRF.displayName = "AggregateNodeRF";

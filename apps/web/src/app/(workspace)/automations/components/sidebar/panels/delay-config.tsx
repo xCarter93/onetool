@@ -1,7 +1,6 @@
 "use client";
 
 import React from "react";
-import { Timer, CalendarClock } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import {
 	Select,
@@ -18,9 +17,7 @@ import {
 	type WorkflowNode,
 } from "../../../lib/node-types";
 import type { ConfigPanelProps } from "../automation-sidebar";
-import { ConfigPanelHeader } from "./config-panel-header";
 import { PanelField, PanelSection } from "@/components/shared/panel-primitives";
-import { DeleteStepButton } from "./delete-step-button";
 import { ValueInput } from "./value-input";
 
 const DELAY_UNIT_OPTIONS: { value: DelayNodeConfig["unit"]; label: string }[] = [
@@ -37,7 +34,6 @@ export function DelayConfig({
 	nodeId,
 	nodes,
 	onNodeChange,
-	onDeleteNode,
 }: ConfigPanelProps) {
 	const node = nodeId ? nodes.find((item) => item.id === nodeId) : undefined;
 
@@ -58,13 +54,6 @@ export function DelayConfig({
 
 	return (
 		<div className="flex flex-col h-full">
-			<ConfigPanelHeader
-				icon={Timer}
-				iconBgColor="bg-cyan-50 dark:bg-cyan-950/40"
-				iconFgColor="text-cyan-600 dark:text-cyan-400"
-				categoryBadge="Utilities"
-				nodeTypeName="Delay"
-			/>
 
 			<div className="flex-1">
 				<PanelSection title="Inputs">
@@ -102,9 +91,6 @@ export function DelayConfig({
 				</PanelSection>
 			</div>
 
-			{onDeleteNode && (
-				<DeleteStepButton onDelete={() => onDeleteNode(nodeId)} />
-			)}
 		</div>
 	);
 }
@@ -119,7 +105,6 @@ export function DelayUntilConfig({
 	nodes,
 	formulas,
 	onNodeChange,
-	onDeleteNode,
 }: ConfigPanelProps) {
 	const node = nodeId ? nodes.find((item) => item.id === nodeId) : undefined;
 
@@ -141,13 +126,6 @@ export function DelayUntilConfig({
 
 	return (
 		<div className="flex flex-col h-full">
-			<ConfigPanelHeader
-				icon={CalendarClock}
-				iconBgColor="bg-cyan-50 dark:bg-cyan-950/40"
-				iconFgColor="text-cyan-600 dark:text-cyan-400"
-				categoryBadge="Utilities"
-				nodeTypeName="Delay until"
-			/>
 
 			<div className="flex-1">
 				<PanelSection title="Inputs">
@@ -168,9 +146,6 @@ export function DelayUntilConfig({
 				</PanelSection>
 			</div>
 
-			{onDeleteNode && (
-				<DeleteStepButton onDelete={() => onDeleteNode(nodeId)} />
-			)}
 		</div>
 	);
 }

@@ -141,6 +141,8 @@ export const automationsArticles: HelpArticle[] = [
 							"Click the plus on the connection where the new step should go.",
 							"Pick a step from the picker. Steps are grouped by what they do: logic, records, communication, utilities, and flow.",
 							"Configure the step in the panel that opens. Each step type has its own options, like which record to update or what an email should say.",
+							"Each step card summarizes its settings in a sentence. A dashed **empty** chip marks a value you still need to fill in, and a warning line on the card names anything that would block saving.",
+							"Use the **⋯** menu on a step card, or right-click the card, to **Duplicate** or **Delete** the step. Conditions and loops can be deleted but not duplicated.",
 							"Repeat until the flow does everything you want. See [Triggers and actions](/help/automations/triggers-and-actions) for the full catalog.",
 						],
 					},

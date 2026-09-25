@@ -15,6 +15,7 @@ import type { Doc } from "@onetool/backend/convex/_generated/dataModel";
 import { FETCH_SCAN_CEILING } from "@onetool/backend/convex/lib/workflowTypes";
 import { Badge } from "@/components/reui/badge";
 import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
 	Select,
@@ -280,12 +281,9 @@ export function DebugPanel({
 
 			{needsRecord && (
 				<div className="space-y-1.5">
-					<label
-						htmlFor="debug-run-record"
-						className="text-xs font-medium text-muted-foreground"
-					>
+					<Label htmlFor="debug-run-record" className="text-xs font-semibold">
 						Sample {OBJECT_LABEL[objectType!] ?? "record"}
-					</label>
+					</Label>
 					{sampleRecords.length > 0 ? (
 						<Select
 							value={effectiveRecordId}
@@ -374,7 +372,7 @@ export function DebugPanel({
 
 			{entries.length > 0 ? (
 				<div className="space-y-1.5">
-					<div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+					<div className="text-2xs font-semibold uppercase tracking-wide text-muted-foreground">
 						Execution timeline
 					</div>
 					<DebugTimeline

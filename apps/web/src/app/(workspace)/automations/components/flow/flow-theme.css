@@ -12,10 +12,10 @@
 .react-flow,
 .react-flow.light,
 .react-flow.dark {
-	/* Canvas paint. In light this matches the workspace paper; nodes lift via
-	   their own lighter card + border. The --xy var also covers the <Background>
-	   svg, which paints its own background-color over the container (dark-mode
-	   default #141414) and would otherwise mask this. */
+	/* Canvas paint = the workspace paper in both themes, so floating panels and
+	   node cards sit on it the way cards sit on every other workspace page. The
+	   --xy var also covers the <Background> svg, which paints its own
+	   background-color over the container and would otherwise mask this. */
 	background-color: var(--workspace-ground, var(--background));
 	--xy-background-color: var(--workspace-ground, var(--background));
 
@@ -96,8 +96,4 @@
 
 .dark .react-flow {
 	--flow-edge-loop-strong: var(--color-orange-300);
-	/* Dark workspace cards are darker than the paper, which sinks nodes into the canvas.
-	   Paint the canvas with the rail tone so node cards sit above it instead. */
-	background-color: var(--workspace-rail, var(--background));
-	--xy-background-color: var(--workspace-rail, var(--background));
 }

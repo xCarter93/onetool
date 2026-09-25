@@ -2,7 +2,9 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { AutomationFlow } from "../flow/automation-flow";
+import { ReactFlowProvider } from "@xyflow/react";
+import { AutomationFlow, FIT_VIEW_OPTIONS } from "../flow/automation-flow";
+import { FlowZoomControls } from "../flow/flow-zoom-controls";
 import { AutomationSidebar } from "../sidebar/automation-sidebar";
 import { WorkflowDrawer } from "./workflow-drawer";
 import { useAutomationEditor } from "../../hooks/use-automation-editor";
@@ -21,6 +23,7 @@ import { UndoBanner } from "./undo-banner";
 import { UnpublishedBanner } from "./unpublished-banner";
 import { ClearWorkflowDialog } from "./clear-workflow-dialog";
 import { runEdgeFlowClass, runStatusRingClass } from "../../lib/run-status";
+import { validateWorkflowForSave } from "../../lib/validation";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/domain/empty-state";
@@ -113,18 +116,54 @@ export function AutomationEditorScreen({ automationId }: { automationId: string 
 	// Paint each node's live run status onto its React Flow wrapper (ring/pulse);
 	// ghost "Choose a step" cards get the insert callback (they insert via
 	// their incoming branch edge, same flow as the "+" buttons).
+	// First save-blocking problem per node, shown on the card itself. Placeholder
+	// errors are skipped (the placeholder card is the fix); trigger errors carry
+	// no nodeId and land on the trigger card.
+	const nodeWarnings = useMemo(() => {
+		const out = new Map<string, string>();
+		if (!editor.trigger) return out;
+		const { errors } = validateWorkflowForSave(editor.trigger, editor.nodes, editor.formulas);
+		for (const error of errors) {
+			if (error.type === "placeholder_present") continue;
+			const id = error.nodeId ?? TRIGGER_NODE_ID;
+			if (!out.has(id)) out.set(id, error.message);
+		}
+		return out;
+	}, [editor.trigger, editor.nodes, editor.formulas]);
+
 	const flowNodes = useMemo(
 		() =>
 			editor.layoutedNodes.map((node) => {
-				const withInsert = isGhostId(node.id)
-					? { ...node, data: { ...node.data, onInsertNode: handleEdgeInsert } }
-					: node;
+				const warning = nodeWarnings.get(node.id);
+				const withInsert =
+					isGhostId(node.id) || warning
+						? {
+								...node,
+								data: {
+									...node.data,
+									...(isGhostId(node.id) ? { onInsertNode: handleEdgeInsert } : {}),
+									...(warning ? { warning } : {}),
+								},
+							}
+						: node;
 				const ring = runStatusRingClass(editor.runStatuses[node.id]);
 				return ring
 					? { ...withInsert, className: cn(withInsert.className, ring) }
 					: withInsert;
 			}),
-		[editor.layoutedNodes, editor.runStatuses, handleEdgeInsert]
+		[editor.layoutedNodes, editor.runStatuses, handleEdgeInsert, nodeWarnings]
+	);
+
+	const handleDuplicateNode = useCallback(
+		(nodeId: string) => {
+			const newId = editor.handleDuplicateNode(nodeId);
+			if (!newId) return;
+			const source = editor.nodes.find((n) => n.id === nodeId);
+			if (source && source.type !== "placeholder") {
+				sidebar.openNodeConfig(toSidebarType(source.type), newId);
+			}
+		},
+		[editor, sidebar]
 	);
 
 	const handleNodeClick = useCallback(
@@ -234,6 +273,7 @@ export function AutomationEditorScreen({ automationId }: { automationId: string 
 	}
 
 	return (
+		<ReactFlowProvider>
 		<div className="workspace-detail flex h-[100dvh] min-h-0 flex-col md:h-full md:flex-1">
 			<EditorTopBar
 				name={editor.name}
@@ -244,9 +284,10 @@ export function AutomationEditorScreen({ automationId }: { automationId: string 
 				onNameChange={editor.setName}
 				onDescriptionChange={editor.setDescription}
 				onSave={editor.handleSave}
+				controls={<FlowZoomControls fitViewOptions={FIT_VIEW_OPTIONS} />}
 			/>
-			<div className="flex min-h-0 flex-1 overflow-hidden bg-muted/40">
-				<div className="relative min-h-0 min-w-0 flex-1 bg-background">
+			<div className="flex min-h-0 flex-1 overflow-hidden">
+				<div className="relative min-h-0 min-w-0 flex-1 bg-(--workspace-ground)">
 					<AutomationFlow
 						nodes={flowNodes}
 						edges={flowEdges}
@@ -254,20 +295,14 @@ export function AutomationEditorScreen({ automationId }: { automationId: string 
 						onPaneClick={handlePaneClick}
 							onNavigateReady={handleNavigateReady}
 						onDeleteNode={handleDeleteNode}
-						configPanelOpen={sidebar.isOpen}
+						onDuplicateNode={handleDuplicateNode}
 					/>
 					{/* Floats over the canvas so the dotted background runs behind it. */}
 					<WorkflowDrawer
 						trigger={editor.trigger}
 						nodes={editor.nodes}
 						rfNodes={editor.layoutedNodes}
-						rfEdges={editor.layoutedEdges}
 						onNavigateToNode={handleNavigateToNode}
-						selectedNodeId={
-							selectedNode && "id" in selectedNode && selectedNode.type !== "placeholder"
-								? selectedNode.id
-								: undefined
-						}
 						open={drawerOpen}
 						onToggle={() => setDrawerOpen((o) => !o)}
 						formulas={editor.formulas}
@@ -314,5 +349,6 @@ export function AutomationEditorScreen({ automationId }: { automationId: string 
 			</div>
 			<ClearWorkflowDialog open={editor.showClearConfirm} onCancel={editor.handleCancelClear} onConfirm={editor.handleConfirmClear} />
 		</div>
+		</ReactFlowProvider>
 	);
 }

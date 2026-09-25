@@ -8,7 +8,6 @@ import {
 	Repeat,
 	CircleStop,
 	Search,
-	X,
 	ListTodo,
 	FilePlus,
 	Bell,
@@ -22,7 +21,15 @@ import {
 	type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { STEP_FAMILY_STYLE, type StepFamily } from "../../lib/step-family";
+
+const STEP_COLOR = Object.fromEntries(
+	(Object.keys(STEP_FAMILY_STYLE) as StepFamily[]).map((family) => [
+		family,
+		STEP_FAMILY_STYLE[family].band,
+	])
+) as Record<StepFamily, string>;
 
 export type StepGroupItem = {
 	type: string;
@@ -49,7 +56,7 @@ export const STEP_GROUPS: StepGroup[] = [
 				type: "condition",
 				label: "Condition",
 				icon: GitBranch,
-				color: "bg-violet-100 text-violet-700 dark:bg-violet-400/15 dark:text-violet-300",
+				color: STEP_COLOR.logic,
 			},
 		],
 	},
@@ -61,27 +68,27 @@ export const STEP_GROUPS: StepGroup[] = [
 				actionType: "update_fields",
 				label: "Update Record",
 				icon: Play,
-				color: "bg-green-100 text-green-700 dark:bg-green-400/15 dark:text-green-300",
+				color: STEP_COLOR.action,
 			},
 			{
 				type: "action",
 				actionType: "create_task",
 				label: "Create Task",
 				icon: ListTodo,
-				color: "bg-green-100 text-green-700 dark:bg-green-400/15 dark:text-green-300",
+				color: STEP_COLOR.action,
 			},
 			{
 				type: "action",
 				actionType: "create_record",
 				label: "Create Record",
 				icon: FilePlus,
-				color: "bg-green-100 text-green-700 dark:bg-green-400/15 dark:text-green-300",
+				color: STEP_COLOR.action,
 			},
 			{
 				type: "fetch_records",
 				label: "Find Records",
 				icon: Database,
-				color: "bg-blue-100 text-blue-700 dark:bg-blue-400/15 dark:text-blue-300",
+				color: STEP_COLOR.action,
 			},
 		],
 	},
@@ -93,21 +100,21 @@ export const STEP_GROUPS: StepGroup[] = [
 				actionType: "send_notification",
 				label: "Send Notification",
 				icon: Bell,
-				color: "bg-pink-100 text-pink-700 dark:bg-pink-400/15 dark:text-pink-300",
+				color: STEP_COLOR.action,
 			},
 			{
 				type: "action",
 				actionType: "send_team_message",
 				label: "Send Team Message",
 				icon: MessagesSquare,
-				color: "bg-pink-100 text-pink-700 dark:bg-pink-400/15 dark:text-pink-300",
+				color: STEP_COLOR.action,
 			},
 			{
 				type: "action",
 				actionType: "send_email",
 				label: "Send Email",
 				icon: Mail,
-				color: "bg-sky-100 text-sky-700 dark:bg-sky-400/15 dark:text-sky-300",
+				color: STEP_COLOR.action,
 			},
 		],
 	},
@@ -118,31 +125,31 @@ export const STEP_GROUPS: StepGroup[] = [
 				type: "loop",
 				label: "Loop",
 				icon: Repeat,
-				color: "bg-orange-100 text-orange-700 dark:bg-orange-400/15 dark:text-orange-300",
+				color: STEP_COLOR.logic,
 			},
 			{
 				type: "aggregate",
 				label: "Aggregate",
 				icon: Sigma,
-				color: "bg-orange-100 text-orange-700 dark:bg-orange-400/15 dark:text-orange-300",
+				color: STEP_COLOR.logic,
 			},
 			{
 				type: "adjust_time",
 				label: "Adjust time",
 				icon: Clock3,
-				color: "bg-cyan-100 text-cyan-700 dark:bg-cyan-400/15 dark:text-cyan-300",
+				color: STEP_COLOR.logic,
 			},
 			{
 				type: "delay",
 				label: "Delay",
 				icon: Timer,
-				color: "bg-cyan-100 text-cyan-700 dark:bg-cyan-400/15 dark:text-cyan-300",
+				color: STEP_COLOR.logic,
 			},
 			{
 				type: "delay_until",
 				label: "Delay until",
 				icon: CalendarClock,
-				color: "bg-cyan-100 text-cyan-700 dark:bg-cyan-400/15 dark:text-cyan-300",
+				color: STEP_COLOR.logic,
 			},
 		],
 	},
@@ -153,13 +160,13 @@ export const STEP_GROUPS: StepGroup[] = [
 				type: "end",
 				label: "End",
 				icon: CircleStop,
-				color: "bg-muted text-muted-foreground",
+				color: STEP_COLOR.flow,
 			},
 			{
 				type: "next_item",
 				label: "Next item",
 				icon: SkipForward,
-				color: "bg-muted text-muted-foreground",
+				color: STEP_COLOR.flow,
 			},
 		],
 	},
@@ -167,7 +174,6 @@ export const STEP_GROUPS: StepGroup[] = [
 
 interface StepPickerProps {
 	onSelect: (stepType: string, actionType?: string) => void;
-	onClose?: () => void;
 	/** True when inserting inside a loop body — offers "Next item" and hides "End" (invalid there). */
 	inLoop?: boolean;
 	/** The trigger's type. A scheduled run has no record, which rules some steps out. */
@@ -176,7 +182,6 @@ interface StepPickerProps {
 
 export function StepPicker({
 	onSelect,
-	onClose,
 	inLoop = false,
 	triggerType,
 }: StepPickerProps) {
@@ -211,34 +216,16 @@ export function StepPicker({
 
 	return (
 		<div className="space-y-4">
-			{/* Header */}
-			<div className="relative">
-				<h2 className="text-base font-semibold">Add a step</h2>
-				<p className="text-sm text-muted-foreground mt-0.5">
-					Choose what happens next
-				</p>
-				{onClose && (
-					<Button
-						variant="ghost"
-						size="icon-xs"
-						onClick={onClose}
-						className="absolute top-0 right-0"
-						aria-label="Close sidebar"
-					>
-						<X className="h-4 w-4" />
-					</Button>
-				)}
-			</div>
-
 			{/* Search */}
-			<div className="relative mt-4">
-				<Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-				<input
-					type="text"
+			<div className="relative">
+				<Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+				<Input
+					type="search"
 					placeholder="Search steps..."
+					aria-label="Search steps"
 					value={search}
 					onChange={(e) => setSearch(e.target.value)}
-					className="w-full pl-9 pr-3 py-2 text-sm rounded-md border border-border bg-background placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+					className="pl-8"
 				/>
 			</div>
 
@@ -246,7 +233,7 @@ export function StepPicker({
 			<div className="space-y-6">
 				{filteredGroups.map((group) => (
 					<div key={group.label}>
-						<div className="text-xs font-semibold uppercase text-muted-foreground tracking-wider mb-2">
+						<div className="mb-2 text-2xs font-semibold uppercase tracking-wide text-muted-foreground">
 							{group.label}
 						</div>
 						<div className="space-y-0.5">
@@ -285,7 +272,7 @@ export function StepPicker({
 											)}
 										</span>
 										{item.comingSoon && (
-											<span className="text-[10px] font-medium text-muted-foreground bg-muted px-1.5 py-0.5 rounded-full shrink-0">
+											<span className="shrink-0 rounded-sm bg-muted px-1.5 py-0.5 text-2xs font-medium text-muted-foreground">
 												Soon
 											</span>
 										)}

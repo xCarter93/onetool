@@ -1,173 +1,136 @@
 "use client";
 
-import { memo } from "react";
+import { memo, type ReactNode } from "react";
 import { Position, type NodeProps } from "@xyflow/react";
-import { Play } from "lucide-react";
-import { cn } from "@/lib/utils";
-import { BaseNode, BaseNodeContent } from "@/components/base-node";
 import { BaseHandle } from "@/components/base-handle";
-import { ACTION_META } from "../../lib/action-meta";
-import { OBJECT_TYPE_LABELS, type ActionNodeConfig } from "../../lib/node-types";
-import {
-	AUTOMATION_EMAIL_RECIPIENT_CAP,
-	EMAIL_ADDRESS_PATTERN,
-} from "@onetool/backend/convex/lib/workflowTypes";
+import { stepIdentity } from "../../lib/step-family";
+import { OBJECT_TYPE_LABELS, type ActionNodeConfig, type ValueRef } from "../../lib/node-types";
+import { FlowNodeCard } from "./flow-node-card";
+import { SummarySlot } from "./summary-slot";
 
-function getSummary(config: ActionNodeConfig | undefined): {
-	title: string;
-	description: string;
-	isConfigured: boolean;
-} {
-	if (!config) {
-		return { title: "Configure action", description: "Select an action type...", isConfigured: false };
-	}
+type Action = ActionNodeConfig["action"];
 
-	const action = config.action;
-	const targetLabel =
-		action.type === "update_field" || action.type === "update_fields"
-			? action.target === "self"
-				? "this record"
-				: OBJECT_TYPE_LABELS[action.target.related]
-			: undefined;
+function valueText(value: ValueRef | undefined): string | null {
+	if (!value) return null;
+	if (value.kind === "var") return `{{${value.path}}}`;
+	const v = value.value;
+	return v === null || v === undefined || v === "" ? null : String(v);
+}
 
+function targetLabel(action: Extract<Action, { target: unknown }>): string {
+	return action.target === "self"
+		? "this record"
+		: OBJECT_TYPE_LABELS[(action.target as { related: keyof typeof OBJECT_TYPE_LABELS }).related];
+}
+
+function sentence(action: Action): ReactNode {
 	switch (action.type) {
-		case "update_field": {
-			if (!action.field) {
-				return { title: "Update Record", description: "Choose a field...", isConfigured: false };
-			}
-			const value = action.value.kind === "static" ? action.value.value : "...";
-			return {
-				title: `Update ${action.field}`,
-				description: `on ${targetLabel} → ${value ?? "..."}`,
-				isConfigured: true,
-			};
-		}
+		case "update_field":
+			return (
+				<>
+					Set <SummarySlot value={action.field || null} /> to{" "}
+					<SummarySlot value={valueText(action.value)} /> on {targetLabel(action)}
+				</>
+			);
 		case "update_fields": {
 			const rows = action.fields.filter((row) => row.field);
-			if (rows.length === 0) {
-				return { title: "Update Record", description: "Choose a field...", isConfigured: false };
+			if (rows.length <= 1) {
+				const row = rows[0];
+				return (
+					<>
+						Set <SummarySlot value={row?.field || null} /> to{" "}
+						<SummarySlot value={row ? valueText(row.value) : null} /> on {targetLabel(action)}
+					</>
+				);
 			}
-			// Configured only when every row has a field and a non-empty value —
-			// mirrors save validation so the node's solid border matches what passes.
-			const isComplete = action.fields.every(
-				(row) =>
-					!!row.field &&
-					(row.value.kind !== "static" ||
-						(row.value.value !== null && row.value.value !== "")),
+			return (
+				<>
+					Set <SummarySlot value={rows.map((r) => r.field).join(", ")} /> on{" "}
+					{targetLabel(action)}
+				</>
 			);
-			if (rows.length === 1) {
-				const value = rows[0].value.kind === "static" ? rows[0].value.value : "...";
-				return {
-					title: `Update ${rows[0].field}`,
-					description: `on ${targetLabel} → ${value ?? "..."}`,
-					isConfigured: isComplete,
-				};
-			}
-			return {
-				title: `Update ${rows.length} fields`,
-				description: `on ${targetLabel} → ${rows.map((r) => r.field).join(", ")}`,
-				isConfigured: isComplete,
-			};
 		}
-		case "create_task": {
-			const title = action.title.kind === "static" ? action.title.value : undefined;
-			return {
-				title: "Create Task",
-				description: title ? String(title) : "Choose a task title...",
-				isConfigured: action.title.kind === "var" || !!title,
-			};
-		}
+		case "create_task":
+			return (
+				<>
+					Create a task titled <SummarySlot value={valueText(action.title)} />
+				</>
+			);
 		case "create_record": {
 			const label = OBJECT_TYPE_LABELS[action.objectType];
 			const rows = action.fields.filter((row) => row.field);
-			const linked = action.linkToScope ? " · linked to record in scope" : "";
-			if (rows.length === 0 && !action.linkToScope) {
-				return {
-					title: `Create ${label}`,
-					description: "Choose fields to set...",
-					isConfigured: false,
-				};
-			}
-			return {
-				title: `Create ${label}`,
-				description: `${rows.map((r) => r.field).join(", ")}${linked}`.trim(),
-				isConfigured: true,
-			};
+			return (
+				<>
+					Create a {label} with{" "}
+					<SummarySlot value={rows.length ? rows.map((r) => r.field).join(", ") : null} />
+					{action.linkToScope ? ", linked to the record in scope" : null}
+				</>
+			);
 		}
 		case "send_notification":
-			return {
-				title: "Send Notification",
-				description: action.message || "Write a message...",
-				isConfigured: !!action.message,
-			};
+			return (
+				<>
+					Notify {recipientLabel(action.recipient)} with{" "}
+					<SummarySlot value={action.message || null} />
+				</>
+			);
 		case "send_team_message":
-			return {
-				title: "Send Team Message",
-				description: action.title || action.message || "Write a message...",
-				isConfigured: !!(action.title && action.message),
-			};
+			return (
+				<>
+					Post <SummarySlot value={action.title || null} /> to the team feed with message{" "}
+					<SummarySlot value={action.message || null} />
+				</>
+			);
 		case "send_email":
-			return {
-				title: "Send Email",
-				description: action.subject || "Write a subject...",
-				isConfigured: !!(
-					action.subject.trim() &&
-					action.body.trim() &&
-					(action.recipient.kind !== "custom" ||
-						(action.recipient.addresses.length > 0 &&
-							action.recipient.addresses.length <=
-								AUTOMATION_EMAIL_RECIPIENT_CAP &&
-							action.recipient.addresses.every((address) =>
-								EMAIL_ADDRESS_PATTERN.test(address.trim())
-							)))
-				),
-			};
+			return (
+				<>
+					Send email to{" "}
+					<SummarySlot
+						value={
+							action.recipient.kind === "primary_contact"
+								? "the primary contact"
+								: action.recipient.addresses.length
+									? action.recipient.addresses.join(", ")
+									: null
+						}
+					/>{" "}
+					with subject <SummarySlot value={action.subject || null} />
+				</>
+			);
 		default:
-			return { title: "Configure action", description: "Select an action type...", isConfigured: false };
+			return "Choose an action";
 	}
 }
 
-export const ActionNodeRF = memo(({ data }: NodeProps) => {
+function recipientLabel(recipient: Extract<Action, { type: "send_notification" }>["recipient"]): string {
+	if (recipient === "all_members") return "all members";
+	if (recipient === "org_admins") return "org admins";
+	if ("userId" in recipient) return "a member";
+	return `the ${recipient.recordField.field} on the record`;
+}
+
+export const ActionNodeRF = memo(({ id, data }: NodeProps) => {
 	const config = (data as Record<string, unknown>)?.config as ActionNodeConfig | undefined;
-	const { title, description, isConfigured } = getSummary(config);
-	const meta = config ? ACTION_META[config.action.type] : undefined;
-	const Icon = meta?.icon ?? Play;
+	const warning = (data as Record<string, unknown>)?.warning as string | undefined;
+	const identity = stepIdentity("action", config?.action.type);
 
 	return (
-		<BaseNode
-			className={cn(
-				"w-[280px]",
-				isConfigured
-					? "border-border"
-					: "border-dashed border-muted-foreground/30",
-			)}
-			aria-label={`Action: ${title} - ${description}`}
+		<FlowNodeCard
+			nodeId={id}
+			family={identity.family}
+			icon={identity.icon}
+			title={identity.name}
+			warning={warning}
+			ariaLabel={`Action: ${identity.name}`}
+			handles={
+				<>
+					<BaseHandle type="target" position={Position.Top} />
+					<BaseHandle type="source" position={Position.Bottom} />
+				</>
+			}
 		>
-			<BaseHandle type="target" position={Position.Top} />
-			<BaseNodeContent className="p-3">
-				<div className="flex items-center gap-3">
-					<div
-						className={cn(
-							"w-8 h-8 rounded-lg flex items-center justify-center shrink-0",
-							meta?.bg ?? "bg-success-soft",
-							meta?.fg ?? "text-success-foreground",
-						)}
-					>
-						<Icon className="h-4 w-4" />
-					</div>
-					<div className="min-w-0 flex-1">
-						<div className="text-sm font-semibold truncate">{title}</div>
-						<div className="text-xs text-muted-foreground truncate">
-							{description}
-						</div>
-					</div>
-					<span className="text-[10px] font-medium text-muted-foreground bg-muted px-1.5 py-0.5 rounded-full shrink-0">
-						{meta?.badge ?? "Actions"}
-					</span>
-				</div>
-			</BaseNodeContent>
-			<BaseHandle type="source" position={Position.Bottom} />
-		</BaseNode>
+			{config ? sentence(config.action) : "Choose an action"}
+		</FlowNodeCard>
 	);
 });
 ActionNodeRF.displayName = "ActionNodeRF";

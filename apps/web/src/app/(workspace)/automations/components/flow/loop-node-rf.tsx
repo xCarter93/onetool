@@ -2,75 +2,41 @@
 
 import { memo } from "react";
 import { Position, type NodeProps } from "@xyflow/react";
-import { Repeat } from "lucide-react";
-import { cn } from "@/lib/utils";
-import { BaseNode, BaseNodeContent } from "@/components/base-node";
 import { BaseHandle } from "@/components/base-handle";
+import { stepIdentity } from "../../lib/step-family";
 import type { LoopNodeConfig } from "../../lib/node-types";
+import { FlowNodeCard } from "./flow-node-card";
+import { SummarySlot } from "./summary-slot";
 
-function getSummary(
-	config: LoopNodeConfig | undefined,
-	sourceStepLabel: string | undefined
-): {
-	title: string;
-	description: string;
-	isConfigured: boolean;
-} {
-	if (!config || !config.sourceNodeId) {
-		return {
-			title: "Loop",
-			description: "Choose records to loop over...",
-			isConfigured: false,
-		};
-	}
-	return {
-		title: "Loop",
-		description: `For each record from ${sourceStepLabel ?? "the previous step"}`,
-		isConfigured: true,
-	};
-}
-
-export const LoopNodeRF = memo(({ data }: NodeProps) => {
+export const LoopNodeRF = memo(({ id, data }: NodeProps) => {
 	const config = (data as Record<string, unknown>)?.config as LoopNodeConfig | undefined;
 	const sourceStepLabel = (data as Record<string, unknown>)?.sourceStepLabel as
 		| string
 		| undefined;
-	const { title, description, isConfigured } = getSummary(config, sourceStepLabel);
+	const warning = (data as Record<string, unknown>)?.warning as string | undefined;
+	const identity = stepIdentity("loop");
+	const source = config?.sourceNodeId ? (sourceStepLabel ?? "the previous step") : null;
 
 	return (
-		<BaseNode
-			className={cn(
-				"w-[280px]",
-				isConfigured
-					? "border-border"
-					: "border-dashed border-muted-foreground/30",
-			)}
-			aria-label={`Loop: ${title} - ${description}`}
+		<FlowNodeCard
+			nodeId={id}
+			family={identity.family}
+			icon={identity.icon}
+			title={identity.name}
+			warning={warning}
+			duplicable={false}
+			ariaLabel={`Loop: ${identity.name}`}
+			handles={
+				<>
+					<BaseHandle type="target" position={Position.Top} />
+					<BaseHandle type="target" position={Position.Left} id="loopReturn" />
+					<BaseHandle type="source" position={Position.Bottom} id="each" />
+					<BaseHandle type="source" position={Position.Right} id="after" />
+				</>
+			}
 		>
-			<BaseHandle type="target" position={Position.Top} />
-			<BaseNodeContent className="p-3">
-				<div className="flex items-center gap-3">
-					<div className="w-8 h-8 rounded-lg bg-warning-soft text-warning-foreground flex items-center justify-center shrink-0">
-						<Repeat className="h-4 w-4" />
-					</div>
-					<div className="min-w-0 flex-1">
-						<div className="text-sm font-semibold truncate">{title}</div>
-						<div className="text-xs text-muted-foreground truncate">
-							{description}
-						</div>
-					</div>
-					<span className="text-[10px] font-medium text-muted-foreground bg-muted px-1.5 py-0.5 rounded-full shrink-0">
-						Utilities
-					</span>
-				</div>
-			</BaseNodeContent>
-			{/* Loop-back target handle (left side) for iteration edge */}
-			<BaseHandle type="target" position={Position.Left} id="loopReturn" />
-			{/* "For Each" source handle (bottom) */}
-			<BaseHandle type="source" position={Position.Bottom} id="each" />
-			{/* "After Last" source handle (right side) */}
-			<BaseHandle type="source" position={Position.Right} id="after" />
-		</BaseNode>
+			For each record from <SummarySlot value={source} />
+		</FlowNodeCard>
 	);
 });
 LoopNodeRF.displayName = "LoopNodeRF";

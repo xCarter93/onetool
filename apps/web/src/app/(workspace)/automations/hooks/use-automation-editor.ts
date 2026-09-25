@@ -851,6 +851,41 @@ export function useAutomationEditor(automationId: string | null) {
 		[nodes, pushHistory, showUndoToast]
 	);
 
+	/**
+	 * Clone a step in place, right after the original. Branching steps
+	 * (condition, loop) own subtrees, and end/next_item have no continuation,
+	 * so only linear steps qualify. Returns the new id, or null.
+	 */
+	const handleDuplicateNode = useCallback(
+		(nodeId: string): string | null => {
+			const source = nodes.find((node) => node.id === nodeId);
+			if (
+				!source ||
+				source.type === "placeholder" ||
+				source.type === "condition" ||
+				source.type === "loop" ||
+				source.type === "end" ||
+				source.type === "next_item"
+			) {
+				return null;
+			}
+			setActiveExecutionId(null);
+			pushHistory();
+			const copy: EditorNode = {
+				...structuredClone(source),
+				id: generateId(),
+				nextNodeId: source.nextNodeId,
+			};
+			setNodes((prev) =>
+				prev.flatMap((node) =>
+					node.id === nodeId ? [{ ...node, nextNodeId: copy.id }, copy] : [node]
+				)
+			);
+			return copy.id;
+		},
+		[nodes, pushHistory]
+	);
+
 	const handleDeleteTrigger = useCallback(() => {
 		// Deleting changes the graph; drop any stale run overlay. Note: NOT
 		// clearUndoState() — that would wipe the banner set below.
@@ -1133,6 +1168,7 @@ export function useAutomationEditor(automationId: string | null) {
 		handleTriggerChange,
 		handleTriggerTypeSelect,
 		handleDeleteNode,
+		handleDuplicateNode,
 		handleDeleteTrigger,
 		handleUndo,
 		handleRedo,

@@ -58,26 +58,26 @@ export interface NodeSize {
 
 /** Fallback sizes per RF node type, used before real DOM measurement lands. */
 const DEFAULT_SIZES: Record<string, NodeSize> = {
-	triggerNode: { width: 280, height: 88 },
-	triggerPlaceholderNode: { width: 280, height: 72 },
-	conditionNode: { width: 280, height: 62 },
-	actionNode: { width: 280, height: 62 },
-	fetchNode: { width: 280, height: 62 },
-	loopNode: { width: 280, height: 62 },
-	aggregateNode: { width: 280, height: 62 },
-	adjustTimeNode: { width: 280, height: 62 },
-	delayNode: { width: 280, height: 62 },
-	delayUntilNode: { width: 280, height: 62 },
-	endNode: { width: 280, height: 46 },
-	nextItemNode: { width: 280, height: 46 },
-	placeholderNode: { width: 280, height: 56 },
+	triggerNode: { width: 300, height: 92 },
+	triggerPlaceholderNode: { width: 300, height: 56 },
+	conditionNode: { width: 300, height: 84 },
+	actionNode: { width: 300, height: 84 },
+	fetchNode: { width: 300, height: 84 },
+	loopNode: { width: 300, height: 84 },
+	aggregateNode: { width: 300, height: 84 },
+	adjustTimeNode: { width: 300, height: 84 },
+	delayNode: { width: 300, height: 84 },
+	delayUntilNode: { width: 300, height: 84 },
+	endNode: { width: 300, height: 76 },
+	nextItemNode: { width: 300, height: 76 },
+	placeholderNode: { width: 300, height: 56 },
 	terminalNode: { width: 1, height: 1 },
 	mergeNode: { width: 1, height: 1 },
-	branchGhostNode: { width: 280, height: 56 },
+	branchGhostNode: { width: 300, height: 56 },
 };
 
 export function getDefaultNodeSize(rfType: string | undefined): NodeSize {
-	return (rfType && DEFAULT_SIZES[rfType]) || { width: 280, height: 62 };
+	return (rfType && DEFAULT_SIZES[rfType]) || { width: 300, height: 84 };
 }
 
 export type SizeLookup = (id: string, rfType: string | undefined) => NodeSize;

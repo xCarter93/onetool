@@ -1,7 +1,6 @@
 "use client";
 
 import React from "react";
-import { Sigma } from "lucide-react";
 import {
 	Select,
 	SelectContent,
@@ -19,9 +18,7 @@ import {
 } from "../../../lib/node-types";
 import { getUpstreamFetchNodes } from "../../../lib/variables";
 import type { ConfigPanelProps } from "../automation-sidebar";
-import { ConfigPanelHeader } from "./config-panel-header";
 import { PanelField, PanelSection } from "@/components/shared/panel-primitives";
-import { DeleteStepButton } from "./delete-step-button";
 import { PickerChip } from "@/components/shared/picker-chip";
 
 const OPERATION_LABELS: Record<AggregateOperation, string> = {
@@ -35,7 +32,6 @@ export function AggregateConfigPanel({
 	nodeId,
 	nodes,
 	onNodeChange,
-	onDeleteNode,
 }: ConfigPanelProps) {
 	const node = nodeId ? nodes.find((item) => item.id === nodeId) : undefined;
 
@@ -72,13 +68,6 @@ export function AggregateConfigPanel({
 
 	return (
 		<div className="flex flex-col h-full">
-			<ConfigPanelHeader
-				icon={Sigma}
-				iconBgColor="bg-orange-50 dark:bg-orange-950/40"
-				iconFgColor="text-orange-600 dark:text-orange-400"
-				categoryBadge="Utilities"
-				nodeTypeName="Aggregate"
-			/>
 
 			<div className="flex-1">
 				<PanelSection title="Inputs">
@@ -170,9 +159,6 @@ export function AggregateConfigPanel({
 				</PanelSection>
 			</div>
 
-			{onDeleteNode && (
-				<DeleteStepButton onDelete={() => onDeleteNode(nodeId)} />
-			)}
 		</div>
 	);
 }

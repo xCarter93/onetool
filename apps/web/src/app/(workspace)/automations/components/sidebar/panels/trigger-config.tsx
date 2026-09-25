@@ -1,7 +1,6 @@
 "use client";
 
 import React from "react";
-import { Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { browserTimezone } from "@/lib/timezones";
 import { TRIGGER_NODE_ID } from "../../../lib/flow-adapter";
@@ -30,9 +29,7 @@ import {
 } from "../../../lib/node-types";
 import type { ConfigPanelProps } from "../automation-sidebar";
 import type { WorkflowNode } from "../../../lib/node-types";
-import { ConfigPanelHeader } from "./config-panel-header";
 import { PanelField, PanelSection } from "@/components/shared/panel-primitives";
-import { DeleteStepButton } from "./delete-step-button";
 import { FilterGroupsEditor } from "./filter-groups-editor";
 import { ConditionSentenceSummary } from "./condition-sentence-summary";
 
@@ -71,7 +68,6 @@ export function TriggerConfigPanel({
 	nodes,
 	formulas,
 	onTriggerChange,
-	onDeleteTrigger,
 }: ConfigPanelProps) {
 	// Captured once per mount: describeSchedule only needs a reference instant
 	// for the timezone label, and render-time Date.now() violates purity rules.
@@ -161,13 +157,6 @@ export function TriggerConfigPanel({
 
 	return (
 		<div className="flex flex-col h-full">
-			<ConfigPanelHeader
-				icon={Zap}
-				iconBgColor="bg-amber-50 dark:bg-amber-950/40"
-				iconFgColor="text-amber-600 dark:text-amber-400"
-				categoryBadge="Triggers"
-				nodeTypeName="Trigger"
-			/>
 
 			<div className="flex-1">
 				<PanelSection title="Inputs">
@@ -458,9 +447,6 @@ export function TriggerConfigPanel({
 				</div>
 			</div>
 
-			{onDeleteTrigger && (
-				<DeleteStepButton label="Delete trigger" onDelete={onDeleteTrigger} />
-			)}
 		</div>
 	);
 }
