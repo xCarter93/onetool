@@ -50,6 +50,11 @@ body.style-nova:not(:has(.dc-landing)) {
 	--info-fg: #075985;
 	--invert: #292d38;
 	--invert-fg: #fff;
+	--toast-bg: var(--invert);
+	--toast-fg: var(--invert-fg);
+	--toast-fg-muted: #c5c9d3;
+	--toast-border: transparent;
+	--toast-accent-fg: #fff;
 	--chart-1: #0073ad;
 	--chart-2: #0ea5e9;
 	--chart-3: #38bdf8;
@@ -95,6 +100,11 @@ body.style-nova:not(:has(.dc-landing)) {
 	--info-fg: #7dd3fc;
 	--invert: #ededed;
 	--invert-fg: #262626;
+	--toast-bg: #3a3a3a;
+	--toast-fg: var(--fg);
+	--toast-fg-muted: var(--muted-fg);
+	--toast-border: var(--border);
+	--toast-accent-fg: #3a3a3a;
 	--chart-1: #38bdf8;
 	--chart-2: #7dd3fc;
 	--chart-3: #0284c7;
@@ -261,17 +271,66 @@ body.style-nova:not(:has(.dc-landing)) {
 	.cn-menu-translucent::before { backdrop-filter: none; }
 	.cn-tooltip-content { border: 0; border-radius: 4px; font-size: 12px; box-shadow: var(--popover-shadow); }
 	.cn-tooltip-arrow { border: 0; }
-	[data-sonner-toast] { border-radius: 8px; box-shadow: var(--popover-shadow); font-size: 13px; }
-
-	.cn-toast-action {
-		border-radius: 4px;
-		background: var(--primary);
-		color: var(--primary-fg);
-		box-shadow: none;
-		backdrop-filter: none;
-		font: inherit;
+	/* Toasts: dark surface in both themes; status is the full-height icon block. Scoped
+	   under .toaster so these outrank the rules sonner injects at runtime. */
+	.toaster[data-sonner-toaster] {
+		[data-sonner-toast][data-styled="true"] {
+			--toast-accent: color-mix(in srgb, var(--toast-fg) 14%, transparent);
+			align-items: stretch;
+			gap: 12px;
+			overflow: hidden;
+			padding: 12px 32px 12px 16px;
+			border-radius: 4px;
+			border: 1px solid var(--toast-border);
+			box-shadow: var(--popover-shadow);
+			font-size: 13px;
+		}
+		[data-sonner-toast][data-type="success"] { --toast-accent: var(--success); }
+		[data-sonner-toast][data-type="warning"] { --toast-accent: var(--warning); }
+		[data-sonner-toast][data-type="error"] { --toast-accent: var(--danger); }
+		[data-sonner-toast][data-type="info"] { --toast-accent: var(--info); }
+		[data-sonner-toast][data-styled="true"] [data-icon] {
+			width: 32px;
+			height: auto;
+			margin: -12px 0 -12px -16px;
+			justify-content: center;
+			background: var(--toast-accent);
+			color: var(--toast-accent-fg);
+		}
+		[data-sonner-toast][data-type="loading"] [data-icon] { color: var(--toast-fg-muted); }
+		[data-sonner-toast][data-styled="true"] [data-content] { align-self: center; }
+		[data-sonner-toast][data-styled="true"] [data-title] { font-weight: 600; }
+		[data-sonner-toast][data-styled="true"] [data-description] { color: var(--toast-fg-muted); }
+		[data-sonner-toast][data-styled="true"] [data-close-button] {
+			left: auto;
+			right: 6px;
+			top: 6px;
+			transform: none;
+			height: 20px;
+			width: 20px;
+			border: 0;
+			border-radius: 4px;
+			background: transparent;
+			color: var(--toast-fg-muted);
+		}
+		[data-sonner-toast][data-styled="true"] [data-close-button]:is(:hover, :focus-visible) {
+			background: color-mix(in srgb, var(--toast-fg) 15%, transparent);
+			color: var(--toast-fg);
+		}
+		.cn-toast-action {
+			align-self: center;
+			height: 24px;
+			border-radius: 4px;
+			background: color-mix(in srgb, var(--toast-fg) 14%, transparent);
+			color: var(--toast-fg);
+			font: inherit;
+			font-size: 12px;
+			font-weight: 600;
+			box-shadow: none;
+			backdrop-filter: none;
+		}
+		.cn-toast-action:hover { background: color-mix(in srgb, var(--toast-fg) 24%, transparent); }
 	}
-	.cn-toast-action:hover { background: color-mix(in srgb, var(--primary) 90%, var(--foreground)); }
 	.cn-accordion-trigger { border-radius: 4px; font-size: 13px; font-weight: 600; }
 	.cn-accordion-content { font-size: 13px; line-height: 1.5; }
 	.cn-menubar { min-height: 28px; border-radius: 4px; box-shadow: none; }

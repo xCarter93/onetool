@@ -32,21 +32,21 @@ export function CelebrationToast({
 	return (
 		<div
 			role="status"
-			className="pointer-events-auto flex w-full items-start gap-3 rounded-lg border border-border bg-popover p-4 shadow-lg sm:w-[356px]"
+			className="pointer-events-auto flex w-full items-start gap-3 rounded-sm border border-toast-border bg-toast p-4 text-toast-foreground shadow-floating sm:w-[356px]"
 		>
-			<div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-success/15 text-success">
+			<div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-success text-toast-accent-foreground">
 				<PartyPopper className="h-4 w-4" aria-hidden />
 			</div>
 			<div className="min-w-0 flex-1">
-				<p className="text-sm font-semibold text-foreground">{title}</p>
+				<p className="text-sm font-semibold">{title}</p>
 				{message ? (
-					<p className="mt-0.5 text-sm text-muted-foreground">{message}</p>
+					<p className="mt-0.5 text-sm text-toast-muted">{message}</p>
 				) : null}
 				{flair ? (
-					<p className="mt-2 text-xs font-medium text-success">{flair}</p>
+					<p className="mt-2 text-xs font-medium">{flair}</p>
 				) : null}
 				{extraCount > 0 ? (
-					<p className="mt-1 text-xs text-muted-foreground">
+					<p className="mt-1 text-xs text-toast-muted">
 						+{extraCount} more {extraCount === 1 ? "win" : "wins"} in your
 						notifications
 					</p>
@@ -55,7 +55,7 @@ export function CelebrationToast({
 					<Link
 						href={actionUrl as Route}
 						onClick={onDismiss}
-						className="mt-2 inline-block text-xs font-medium text-primary hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+						className="mt-2 inline-block text-xs font-medium underline underline-offset-2 hover:text-toast-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
 					>
 						{actionLabel ?? "View details"}
 					</Link>
@@ -65,7 +65,7 @@ export function CelebrationToast({
 				type="button"
 				onClick={onDismiss}
 				aria-label="Dismiss"
-				className="shrink-0 rounded-sm p-1 text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+				className="shrink-0 rounded-sm p-1 text-toast-muted transition-colors hover:text-toast-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
 			>
 				<X className="h-4 w-4" aria-hidden />
 			</button>

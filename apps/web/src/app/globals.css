@@ -42,6 +42,11 @@
 	--color-info-foreground: var(--info-fg);
 	--color-invert: var(--invert);
 	--color-invert-foreground: var(--invert-fg);
+	--color-toast: var(--toast-bg);
+	--color-toast-foreground: var(--toast-fg);
+	--color-toast-muted: var(--toast-fg-muted);
+	--color-toast-border: var(--toast-border);
+	--color-toast-accent-foreground: var(--toast-accent-fg);
 	--color-destructive-foreground: var(--danger-fg);
 	/* ReUI "focus" accent role — aliased to primary for OneTool */
 	--color-focus: var(--primary);
