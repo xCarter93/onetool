@@ -89,6 +89,7 @@ function Badge({
 }: BadgeProps) {
   const defaultProps = {
     "data-slot": "badge",
+    "data-size": size ?? "default",
     className: cn(badgeVariants({ variant, size, radius, className })),
   }
 

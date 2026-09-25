@@ -149,13 +149,10 @@ function PageHeader({
 	children?: React.ReactNode;
 }) {
 	return (
-		<div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-			<div className="flex items-center gap-3">
-				<div className="h-6 w-1.5 rounded-full bg-linear-to-b from-primary to-primary/60" />
-				<div>
-					<h1 className="text-2xl font-bold text-foreground">Community</h1>
+		<div className="workspace-page-header flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+			<div>
+					<h1 className="text-xl font-semibold text-foreground">Community</h1>
 					<p className="text-sm text-muted-foreground">{subtitle}</p>
-				</div>
 			</div>
 			{children}
 		</div>
@@ -180,7 +177,7 @@ function GhostPreview({
 	const initial = displayTitle.charAt(0).toUpperCase() || "B";
 	return (
 		<div className="relative w-full max-w-lg" aria-hidden="true">
-			<div className="overflow-hidden rounded-xl border border-border/80 bg-background shadow-lg shadow-black/[0.06]">
+			<div className="overflow-hidden rounded-lg border border-border bg-card">
 				{/* Browser chrome */}
 				<div className="flex items-center gap-2 border-b border-border/60 bg-muted/40 px-3 py-2.5">
 					<div className="flex gap-1.5" aria-hidden>
@@ -242,7 +239,7 @@ function GhostPreview({
 
 function HeroSkeleton() {
 	return (
-		<div className="space-y-8 p-6">
+		<div className="workspace-page space-y-8">
 			<div className="flex items-center gap-3">
 				<div className="h-6 w-1.5 rounded-full bg-muted" />
 				<div className="space-y-2">
@@ -437,7 +434,7 @@ function CommunityPageContent() {
 				: null;
 
 		return (
-			<div className="space-y-8 p-6">
+			<div className="workspace-page space-y-8">
 				<PageHeader subtitle="Claim a free public page for your business" />
 
 				{/* Claim hero */}
@@ -576,18 +573,17 @@ function CommunityPageContent() {
 					</FramePanel>
 				</Frame>
 
-				{/* Proof points */}
-				<Frame className="grid gap-1 sm:grid-cols-3">
+				<div className="grid gap-6 border-t border-border pt-6 sm:grid-cols-3">
 					{CREATE_PROOF_POINTS.map(({ icon: Icon, title, description }) => (
-						<FramePanel key={title} className="p-5">
-							<div className="mb-3 flex size-9 items-center justify-center rounded-lg bg-primary/10">
-								<Icon className="size-4.5 text-primary" />
+						<div key={title} className="flex items-start gap-3">
+							<Icon className="mt-0.5 size-4 shrink-0 text-primary" aria-hidden />
+							<div>
+								<h3 className="text-sm font-semibold text-foreground">{title}</h3>
+								<p className="mt-1 text-sm text-muted-foreground">{description}</p>
 							</div>
-							<h3 className="text-sm font-semibold text-foreground">{title}</h3>
-							<p className="mt-1 text-sm text-muted-foreground">{description}</p>
-						</FramePanel>
+						</div>
 					))}
-				</Frame>
+				</div>
 			</div>
 		);
 	}
@@ -619,7 +615,7 @@ function CommunityPageContent() {
 		: `onetool.biz${pagePath} · draft, not published yet`;
 
 	return (
-		<div className="space-y-6 p-6">
+		<div className="workspace-page space-y-6">
 			<PageHeader subtitle={headline}>
 				<div className="flex flex-wrap items-center gap-2.5">
 					<Button
@@ -674,7 +670,7 @@ function CommunityPageContent() {
 				</div>
 			</PageHeader>
 
-			<div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_400px]">
+			<div className="grid gap-4 xl:grid-cols-[minmax(0,7fr)_minmax(18rem,5fr)]">
 				<PerformancePanel
 					stats={stats}
 					days={rangeDays}

@@ -19,25 +19,16 @@ import { Badge } from "@/components/reui/badge";
 import {
 	Frame,
 	FrameDescription,
-	FrameFooter,
 	FrameHeader,
 	FramePanel,
 	FrameTitle,
 } from "@/components/reui/frame";
 import { ChartContainer, ChartTooltip } from "@/components/ui/chart";
-import { DotField } from "@/components/ui/dot-field";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useIsOrgSwitching } from "@/hooks/use-is-org-switching";
-import {
-	HOME_TOUR_CONTENT,
-	HomeTour,
-	HomeTourContext,
-	TourElement,
-} from "@/components/tours";
 import { cn } from "@/lib/utils";
 import { formatCurrency } from "@/lib/money";
-import { AttentionQueue } from "./attention-queue";
 import {
 	bucketDatesForRange,
 	DASHBOARD_PERIODS,
@@ -88,8 +79,8 @@ function SparkTooltip({
 	const point = payload?.[0]?.payload;
 	if (!active || !point || point.value === null) return null;
 	return (
-		<div className="min-w-28 rounded-lg border bg-popover p-2.5 shadow-sm">
-			<div className="mb-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+		<div className="min-w-28 rounded-lg border bg-popover p-2.5">
+			<div className="mb-1 text-xs font-medium text-muted-foreground">
 				{metricLabel} · {point.label}
 			</div>
 			<div className="text-sm font-semibold tabular-nums text-popover-foreground">
@@ -476,27 +467,14 @@ export function BusinessOverviewPanel({
 				</Tabs>
 			</FrameHeader>
 
-			<FramePanel className="isolate overflow-visible [&::before]:z-0">
-				<DotField className="rounded-[calc(var(--frame-radius)-1px)] text-muted-foreground [mask-image:linear-gradient(to_bottom,black,transparent_70%)]" />
-
-				<div className="relative z-10 grid grid-cols-1 items-stretch sm:grid-cols-3 lg:grid-cols-6">
+			<FramePanel className="overflow-visible">
+				<div className="grid grid-cols-1 items-stretch sm:grid-cols-3 lg:grid-cols-6">
 					{tiles.map((tile) => (
 						<MetricTile key={tile.id} tile={tile} />
 					))}
 				</div>
 			</FramePanel>
 
-			<FrameFooter className="px-4 py-4">
-				<TourElement<HomeTour>
-					TourContext={HomeTourContext}
-					stepId={HomeTour.TASKS}
-					title={HOME_TOUR_CONTENT[HomeTour.TASKS].title}
-					description={HOME_TOUR_CONTENT[HomeTour.TASKS].description}
-					tooltipPosition={HOME_TOUR_CONTENT[HomeTour.TASKS].tooltipPosition}
-				>
-					<AttentionQueue />
-				</TourElement>
-			</FrameFooter>
 		</Frame>
 	);
 }

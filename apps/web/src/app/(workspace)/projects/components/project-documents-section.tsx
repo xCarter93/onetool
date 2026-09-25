@@ -205,7 +205,7 @@ export function ProjectDocumentsSection({ projectId }: ProjectDocumentsSectionPr
 	// Loading state
 	if (allDocuments === undefined) {
 		return (
-			<div>
+			<div className="mt-6">
 				<h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-3">
 					Documents
 				</h3>
@@ -218,7 +218,7 @@ export function ProjectDocumentsSection({ projectId }: ProjectDocumentsSectionPr
 	}
 
 	return (
-		<div>
+		<div className="mt-6">
 			<div className="flex items-center justify-between mb-3">
 				<h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
 					Documents

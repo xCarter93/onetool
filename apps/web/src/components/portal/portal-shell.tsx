@@ -78,7 +78,7 @@ export function PortalShell({
 	}
 
 	return (
-		<div className="min-h-screen flex flex-col md:flex-row">
+		<div className="min-h-screen flex flex-col bg-background md:flex-row">
 			<a
 				href="#portal-main"
 				className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-50 focus:bg-card focus:px-3 focus:py-2 focus:rounded-md"
@@ -89,7 +89,7 @@ export function PortalShell({
 			{/* Desktop sidebar (>=768px) */}
 			<aside
 				data-portal-sidebar
-				className="hidden md:flex md:w-[280px] md:flex-col bg-sidebar border-r border-border"
+				className="hidden md:flex md:w-[280px] md:flex-col border-r border-border bg-card"
 				aria-label="Portal navigation"
 			>
 				<div className="px-3 pt-4 pb-3 border-b border-border">
@@ -116,7 +116,7 @@ export function PortalShell({
 								href={href}
 								className={`relative flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors ${
 									active
-										? "bg-primary/10 text-primary font-semibold"
+										? "bg-accent text-accent-foreground font-semibold"
 										: "text-muted-foreground font-medium hover:bg-muted hover:text-foreground"
 								}`}
 								aria-current={active ? "page" : undefined}

@@ -1,13 +1,16 @@
-import { BRAND } from "@/lib/brand";
-
-/** Shared Clerk theme variables for the sidebar widgets (user button, org switcher). */
 export const clerkBrandVariables = {
-	colorPrimary: BRAND.primary,
-	colorTextOnPrimaryBackground: BRAND.onPrimary,
+	colorPrimary: "var(--primary)",
+	colorPrimaryForeground: "var(--primary-fg)",
+	colorForeground: "var(--foreground)",
+	colorMutedForeground: "var(--muted-foreground)",
+	colorBackground: "var(--popover)",
+	colorInput: "var(--background)",
+	colorInputForeground: "var(--foreground)",
+	colorBorder: "var(--border)",
+	colorRing: "var(--primary)",
 	fontFamily: "inherit",
-	borderRadius: "0.5rem",
+	borderRadius: "4px",
 };
 
-/** Clerk popover card treatment matching the header popovers (rounded-xl, theme tokens). */
 export const clerkPopoverCardClass =
-	"bg-popover text-popover-foreground border border-border rounded-xl shadow-xl";
+	"bg-popover text-popover-foreground border border-border rounded-lg shadow-sm";

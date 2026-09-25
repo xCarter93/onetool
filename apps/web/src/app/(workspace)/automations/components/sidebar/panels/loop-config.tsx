@@ -1,7 +1,6 @@
 "use client";
 
 import React from "react";
-import { Repeat } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import {
 	Select,
@@ -18,15 +17,12 @@ import {
 } from "../../../lib/node-types";
 import { getUpstreamFetchNodes } from "../../../lib/variables";
 import type { ConfigPanelProps } from "../automation-sidebar";
-import { ConfigPanelHeader } from "./config-panel-header";
 import { PanelField, PanelSection } from "@/components/shared/panel-primitives";
-import { DeleteStepButton } from "./delete-step-button";
 
 export function LoopConfigPanel({
 	nodeId,
 	nodes,
 	onNodeChange,
-	onDeleteNode,
 }: ConfigPanelProps) {
 	const node = nodeId ? nodes.find((item) => item.id === nodeId) : undefined;
 
@@ -51,13 +47,6 @@ export function LoopConfigPanel({
 
 	return (
 		<div className="flex flex-col h-full">
-			<ConfigPanelHeader
-				icon={Repeat}
-				iconBgColor="bg-orange-50 dark:bg-orange-950/40"
-				iconFgColor="text-orange-600 dark:text-orange-400"
-				categoryBadge="Utilities"
-				nodeTypeName="Loop"
-			/>
 
 			<div className="flex-1">
 				<PanelSection title="Inputs">
@@ -154,9 +143,6 @@ export function LoopConfigPanel({
 				</PanelSection>
 			</div>
 
-			{onDeleteNode && (
-				<DeleteStepButton onDelete={() => onDeleteNode(nodeId)} />
-			)}
 		</div>
 	);
 }

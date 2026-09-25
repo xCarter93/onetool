@@ -16,7 +16,7 @@ import type { BranchGhostRFNode } from "../../lib/node-types";
 export const BranchGhostNodeRF = memo(({ data }: NodeProps<BranchGhostRFNode>) => {
 	return (
 		<BaseNode
-			className="w-[280px] cursor-pointer border-dashed border-muted-foreground/30 hover:border-primary/50"
+			className="w-[300px] cursor-pointer border-dashed border-muted-foreground/30 hover:border-primary/50"
 			role="button"
 			aria-label="Empty branch: add a step"
 			onClick={(e) => {

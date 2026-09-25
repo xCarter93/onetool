@@ -27,14 +27,11 @@ function AdminGate({ children }: { children: React.ReactNode }) {
 
 	if (roleLoading) {
 		return (
-			<div className="relative p-6 space-y-6">
-				<div className="flex items-center gap-3">
-					<div className="w-1.5 h-6 bg-linear-to-b from-primary to-primary/60 rounded-full" />
-					<div>
+			<div className="workspace-page space-y-6">
+				<div className="workspace-page-header">
 						<h1 className="text-2xl font-bold text-foreground">Automations</h1>
 						<p className="text-muted-foreground text-sm">Loading…</p>
-					</div>
-				</div>
+			</div>
 				<Card>
 					<CardContent className="py-12">
 						<div className="flex items-center justify-center">
@@ -48,15 +45,12 @@ function AdminGate({ children }: { children: React.ReactNode }) {
 
 	if (!isAdmin) {
 		return (
-			<div className="relative p-6 space-y-6">
-				<div className="flex items-center gap-3">
-					<div className="w-1.5 h-6 bg-linear-to-b from-primary to-primary/60 rounded-full" />
-					<div>
+			<div className="workspace-page space-y-6">
+				<div>
 						<h1 className="text-2xl font-bold text-foreground">Automations</h1>
 						<p className="text-muted-foreground text-sm">
 							Automate your workflows
 						</p>
-					</div>
 				</div>
 				<Card className="group relative overflow-hidden ring-1 ring-border/20 dark:ring-border/40">
 					<CardContent className="relative z-10 py-16">
@@ -89,16 +83,13 @@ function AutomationsContent() {
 	const router = useRouter();
 
 	return (
-		<div className="relative p-6 space-y-6">
-			<div className="flex items-center justify-between gap-4">
-				<div className="flex items-center gap-3">
-					<div className="w-1.5 h-6 bg-linear-to-b from-primary to-primary/60 rounded-full" />
-					<div>
+		<div className="workspace-page space-y-6">
+			<div className="workspace-page-header flex flex-wrap items-start justify-between gap-4">
+				<div>
 						<h1 className="text-2xl font-bold text-foreground">Automations</h1>
 						<p className="text-muted-foreground text-sm">
 							Monitor runs, latency, and failures across your workflows
 						</p>
-					</div>
 				</div>
 				<Button onClick={() => router.push("/automations/editor")}>
 					<Plus className="h-4 w-4" />
@@ -108,9 +99,9 @@ function AutomationsContent() {
 
 			<RunMetricsTiles />
 
-			<div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-				<RunThroughputChart className="h-full lg:col-span-2" />
-				<RecentFailuresTimeline className="h-full lg:col-span-1" />
+			<div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
+				<RunThroughputChart className="h-full lg:col-span-8" />
+				<RecentFailuresTimeline className="h-full lg:col-span-4" />
 			</div>
 
 			<PillTabs defaultValue="automations" className="w-full">

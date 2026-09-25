@@ -1,7 +1,6 @@
 "use client";
 
 import React from "react";
-import { Database } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import {
 	Select,
@@ -20,9 +19,7 @@ import {
 	type WorkflowNode,
 } from "../../../lib/node-types";
 import type { ConfigPanelProps } from "../automation-sidebar";
-import { ConfigPanelHeader } from "./config-panel-header";
 import { PanelField, PanelSection } from "@/components/shared/panel-primitives";
-import { DeleteStepButton } from "./delete-step-button";
 import { FilterGroupsEditor } from "./filter-groups-editor";
 
 export function FetchConfigPanel({
@@ -31,7 +28,6 @@ export function FetchConfigPanel({
 	nodes,
 	formulas,
 	onNodeChange,
-	onDeleteNode,
 }: ConfigPanelProps) {
 	const node = nodeId ? nodes.find((item) => item.id === nodeId) : undefined;
 
@@ -56,13 +52,6 @@ export function FetchConfigPanel({
 
 	return (
 		<div className="flex flex-col h-full">
-			<ConfigPanelHeader
-				icon={Database}
-				iconBgColor="bg-blue-50 dark:bg-blue-950/40"
-				iconFgColor="text-blue-600 dark:text-blue-400"
-				categoryBadge="Records"
-				nodeTypeName="Find Records"
-			/>
 
 			<div className="flex-1">
 				<PanelSection title="Inputs">
@@ -123,9 +112,6 @@ export function FetchConfigPanel({
 				</PanelSection>
 			</div>
 
-			{onDeleteNode && (
-				<DeleteStepButton onDelete={() => onDeleteNode(nodeId)} />
-			)}
 		</div>
 	);
 }

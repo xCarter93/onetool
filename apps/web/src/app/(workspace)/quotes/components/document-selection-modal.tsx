@@ -81,17 +81,17 @@ export function DocumentSelectionModal({
 				{documents === undefined ? (
 					<div className="text-center py-8">
 						<div className="animate-pulse space-y-4">
-							<div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-3/4 mx-auto"></div>
-							<div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-1/2 mx-auto"></div>
+							<div className="h-4 bg-muted rounded w-3/4 mx-auto"></div>
+							<div className="h-4 bg-muted rounded w-1/2 mx-auto"></div>
 						</div>
 					</div>
 				) : documents.length === 0 ? (
-					<div className="text-center py-8 px-4 border-2 border-dashed border-gray-300 dark:border-gray-700 rounded-lg">
-						<FileText className="h-12 w-12 text-gray-400 mx-auto mb-3" />
+					<div className="text-center py-8 px-4 border border-dashed border-border rounded-lg">
+						<FileText className="h-12 w-12 text-muted-foreground mx-auto mb-3" />
 						<p className="text-muted-foreground mb-2 font-medium">
 							No PDF documents available
 						</p>
-						<p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+						<p className="text-[13px] text-muted-foreground mb-4">
 							Upload documents on the Documents page to use them in quotes
 						</p>
 						<a
@@ -110,17 +110,17 @@ export function DocumentSelectionModal({
 						{documents.map((doc) => (
 							<label
 								key={doc._id}
-								className="flex items-center gap-3 p-3 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-muted/50 cursor-pointer transition-colors"
+								className="flex items-center gap-3 p-3 border border-border rounded-lg hover:bg-muted/50 cursor-pointer transition-colors"
 							>
 								<Checkbox
 									checked={selectedIds.includes(doc._id)}
 									onCheckedChange={() => handleToggle(doc._id)}
 								/>
-								<div className="flex items-center justify-center w-8 h-8 rounded bg-blue-100 dark:bg-blue-900/30 shrink-0">
-									<FileText className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+								<div className="flex items-center justify-center w-8 h-8 rounded bg-primary/10 shrink-0">
+									<FileText className="h-5 w-5 text-primary" />
 								</div>
 								<div className="flex-1 min-w-0">
-									<p className="font-medium text-gray-900 dark:text-white truncate">
+									<p className="font-medium text-foreground truncate">
 										{doc.name}
 									</p>
 									<div className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -133,7 +133,7 @@ export function DocumentSelectionModal({
 										)}
 									</div>
 									{doc.description && (
-										<p className="text-xs text-gray-600 dark:text-gray-400 mt-1 line-clamp-1">
+										<p className="text-xs text-muted-foreground mt-1 line-clamp-1">
 											{doc.description}
 										</p>
 									)}
@@ -143,7 +143,7 @@ export function DocumentSelectionModal({
 					</div>
 				)}
 
-				<div className="flex justify-between items-center pt-4 border-t border-gray-200 dark:border-gray-700">
+				<div className="flex justify-between items-center pt-4 border-t border-border">
 					<div className="text-sm text-muted-foreground">
 						{selectedIds.length > 0 ? (
 							<span>
@@ -151,7 +151,7 @@ export function DocumentSelectionModal({
 								selected
 							</span>
 						) : (
-							<span className="text-gray-500 dark:text-gray-400 italic">
+						<span className="text-muted-foreground italic">
 								No documents selected
 							</span>
 						)}

@@ -10,7 +10,6 @@ import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { StatusBadge } from "@/components/domain/status-badge";
-import { Separator } from "@/components/ui/separator";
 import { MultiSelector } from "@/components/shared/multi-selector";
 import { ListProvider } from "@/components/shared/sortable-list";
 import { SignatureProgressBar } from "@/app/(workspace)/quotes/components/signature-progress-bar";
@@ -96,7 +95,7 @@ export function SignaturesTab({
 	const users = useQuery(api.users.listByOrg);
 	const updateQuote = useMutation(api.quotes.update);
 	const discardRequest = useAction(
-		api.boldsignActions.discardEmbeddedSignatureRequest
+		api.boldsignActions.discardEmbeddedSignatureRequest,
 	);
 
 	// Confirmation for discarding an unsent draft from this tab. Discard always
@@ -105,16 +104,17 @@ export function SignaturesTab({
 	const [discardOpen, setDiscardOpen] = useState(false);
 	const draftVersionLabel = String(
 		documentsWithSignatures?.find((d) => d.boldsign.status === "Draft")
-			?.version ?? ""
+			?.version ?? "",
 	);
 
 	// Countersigner state
 	const [enabled, setEnabled] = useState(requiresCountersignature);
 	const [selectedUserId, setSelectedUserId] = useState<string | undefined>(
-		countersignerId
+		countersignerId,
 	);
-	const [order, setOrder] =
-		useState<"client_first" | "org_first">(signingOrder);
+	const [order, setOrder] = useState<"client_first" | "org_first">(
+		signingOrder,
+	);
 	const [isSaving, setIsSaving] = useState(false);
 
 	// Resync local state when props change
@@ -173,10 +173,7 @@ export function SignaturesTab({
 					signingOrder: undefined,
 				});
 				setSelectedUserId(undefined);
-				toast.success(
-					"Updated",
-					"Countersignature requirement removed"
-				);
+				toast.success("Updated", "Countersignature requirement removed");
 			} catch (error) {
 				setEnabled(true);
 				toast.error("Error", convexErrorMessage(error, "Failed to update"));
@@ -273,12 +270,11 @@ export function SignaturesTab({
 		<div className="space-y-8">
 			{/* Countersignature Settings Section */}
 			<div>
-				<div className="flex items-center justify-between mb-1 min-h-8">
+				<div className="flex items-center justify-between mb-4 min-h-8">
 					<h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
 						Countersignature Settings
 					</h3>
 				</div>
-				<Separator className="mb-4" />
 
 				<div className="space-y-6">
 					{/* Toggle */}
@@ -291,8 +287,7 @@ export function SignaturesTab({
 								Requires organization countersignature
 							</Label>
 							<p className="text-sm text-muted-foreground">
-								A team member must sign after the client
-								approves
+								A team member must sign after the client approves
 							</p>
 						</div>
 						<Switch
@@ -314,11 +309,7 @@ export function SignaturesTab({
 								</Label>
 								<MultiSelector
 									options={userOptions}
-									value={
-										selectedUserId
-											? [selectedUserId]
-											: []
-									}
+									value={selectedUserId ? [selectedUserId] : []}
 									onValueChange={handleUserChange}
 									placeholder="Select team member to countersign"
 									maxCount={1}
@@ -326,9 +317,8 @@ export function SignaturesTab({
 									className="w-full"
 								/>
 								{!selectedUserId && enabled && (
-									<p className="text-xs text-amber-600 dark:text-amber-400">
-										Please select a team member to
-										countersign
+									<p className="text-xs text-warning-foreground">
+										Please select a team member to countersign
 									</p>
 								)}
 							</div>
@@ -337,32 +327,25 @@ export function SignaturesTab({
 							{selectedUserId && (
 								<div className="space-y-3">
 									<Label className="flex items-center gap-2 text-sm font-medium">
-										<span className="text-primary">
-											#
-										</span>
+										<span className="text-primary">#</span>
 										Signing Order
 									</Label>
-									{primaryContact &&
-									signers.length > 0 ? (
+									{primaryContact && signers.length > 0 ? (
 										<>
 											<p className="text-xs text-muted-foreground">
-												Drag to reorder who signs
-												first
+												Drag to reorder who signs first
 											</p>
 											<ListProvider
 												items={signers}
 												onReorder={handleReorder}
-												renderItem={
-													renderSignerItem
-												}
+												renderItem={renderSignerItem}
 											/>
 										</>
 									) : (
-										<div className="flex items-center gap-2 px-3 py-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/50 rounded-lg">
-											<User className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0" />
-											<p className="text-sm text-amber-700 dark:text-amber-400">
-												Add a primary contact to
-												the client to define the
+										<div className="flex items-center gap-2 px-3 py-3 bg-warning-soft border border-warning/40 rounded-lg">
+											<User className="h-4 w-4 text-warning-foreground shrink-0" />
+											<p className="text-sm text-warning-foreground">
+												Add a primary contact to the client to define the
 												signing order
 											</p>
 										</div>
@@ -376,12 +359,11 @@ export function SignaturesTab({
 
 			{/* Signature Status Section */}
 			<div>
-				<div className="flex items-center justify-between mb-1 min-h-8">
+				<div className="flex items-center justify-between mb-4 min-h-8">
 					<h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
 						Signature Status
 					</h3>
 				</div>
-				<Separator className="mb-4" />
 
 				{hasSignatures ? (
 					<Accordion>
@@ -402,10 +384,7 @@ export function SignaturesTab({
 									<AccordionContent>
 										<div className="space-y-4">
 											<div className="flex items-center gap-3 pb-3 border-b border-border">
-												<Badge
-													variant="outline"
-													className="text-xs"
-												>
+												<Badge variant="outline" className="text-xs">
 													v{doc.version}
 												</Badge>
 												{doc.boldsign.status === "Completed" ? (
@@ -432,9 +411,9 @@ export function SignaturesTab({
 											{isDraft && (
 												<div className="flex flex-col gap-3 rounded-lg border border-border bg-muted/40 p-3 sm:flex-row sm:items-center sm:justify-between">
 													<p className="text-sm text-muted-foreground">
-														This draft hasn&apos;t been sent — nobody
-														has been emailed yet. Pick up where you
-														left off, or discard it.
+														This draft hasn&apos;t been sent — nobody has been
+														emailed yet. Pick up where you left off, or discard
+														it.
 													</p>
 													<div className="flex shrink-0 gap-2">
 														<Button
@@ -463,30 +442,23 @@ export function SignaturesTab({
 												events={[
 													{
 														type: "Sent",
-														timestamp:
-															doc.boldsign.sentAt,
+														timestamp: doc.boldsign.sentAt,
 													},
 													{
 														type: "Viewed",
-														timestamp:
-															doc.boldsign.viewedAt,
+														timestamp: doc.boldsign.viewedAt,
 													},
 													{
 														type: "Signed",
-														timestamp:
-															doc.boldsign.signedAt,
+														timestamp: doc.boldsign.signedAt,
 													},
 													{
 														type: doc.boldsign.status,
 														timestamp:
-															doc.boldsign
-																.completedAt ||
-															doc.boldsign
-																.declinedAt ||
-															doc.boldsign
-																.revokedAt ||
-															doc.boldsign
-																.expiredAt,
+															doc.boldsign.completedAt ||
+															doc.boldsign.declinedAt ||
+															doc.boldsign.revokedAt ||
+															doc.boldsign.expiredAt,
 													},
 												]}
 											/>
@@ -496,35 +468,22 @@ export function SignaturesTab({
 													{recipientLabel}
 												</p>
 												<ul className="space-y-2">
-													{doc.boldsign.sentTo.map(
-														(recipient, i) => (
-															<li
-																key={i}
-																className="flex items-center justify-between text-sm"
-															>
-																<span className="text-muted-foreground">
-																	<span className="font-medium text-foreground">
-																		{
-																			recipient.name
-																		}
-																	</span>{" "}
-																	(
-																	{
-																		recipient.email
-																	}
-																	)
-																</span>
-																<Badge
-																	variant="outline"
-																	className="text-xs"
-																>
-																	{
-																		recipient.signerType
-																	}
-																</Badge>
-															</li>
-														)
-													)}
+													{doc.boldsign.sentTo.map((recipient, i) => (
+														<li
+															key={i}
+															className="flex items-center justify-between text-sm"
+														>
+															<span className="text-muted-foreground">
+																<span className="font-medium text-foreground">
+																	{recipient.name}
+																</span>{" "}
+																({recipient.email})
+															</span>
+															<Badge variant="outline" className="text-xs">
+																{recipient.signerType}
+															</Badge>
+														</li>
+													))}
 												</ul>
 											</div>
 										</div>
@@ -542,8 +501,7 @@ export function SignaturesTab({
 							No signature requests sent
 						</p>
 						<p className="text-sm text-muted-foreground">
-							Generate a PDF and send it to the client for
-							signature
+							Generate a PDF and send it to the client for signature
 						</p>
 					</div>
 				)}
@@ -556,7 +514,7 @@ export function SignaturesTab({
 					const result = await discardRequest({ quoteId });
 					if (!result.discarded) {
 						throw new Error(
-							"The draft could not be removed from BoldSign. Please try again."
+							"The draft could not be removed from BoldSign. Please try again.",
 						);
 					}
 				}}

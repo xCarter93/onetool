@@ -3,12 +3,18 @@
 import React, { useState, useRef, useEffect } from "react";
 import { Doc, Id } from "@onetool/backend/convex/_generated/dataModel";
 import { MentionSection } from "@/components/shared/mention-section";
-import { Separator } from "@/components/ui/separator";
 import { HighlightMetricGrid } from "@/components/shared/highlight-metric-grid";
 import { RelatedRecordsFrame } from "@/components/shared/related-records-frame";
 import { useToast } from "@/hooks/use-toast";
 import { convexErrorMessage } from "@/lib/convex-error";
-import { ClipboardList, DollarSign, CheckCircle, FileText, Receipt, Pencil } from "lucide-react";
+import {
+	ClipboardList,
+	DollarSign,
+	CheckCircle,
+	FileText,
+	Receipt,
+	Pencil,
+} from "lucide-react";
 import { formatCurrency } from "@/lib/money";
 import { ProjectScheduleCalendar } from "../project-schedule-calendar";
 import { useProjectEditScope } from "../recurrence/project-edit-scope";
@@ -39,7 +45,7 @@ function formatDate(timestamp?: number) {
 }
 
 function sortedByNewest<T extends { _creationTime: number }>(
-	items: T[] | undefined
+	items: T[] | undefined,
 ): T[] {
 	if (!items) return [];
 	return [...items].sort((a, b) => b._creationTime - a._creationTime);
@@ -66,7 +72,8 @@ export function OverviewTab({
 	useEffect(() => {
 		if (isEditingDescription && descriptionRef.current) {
 			descriptionRef.current.focus();
-			descriptionRef.current.selectionStart = descriptionRef.current.value.length;
+			descriptionRef.current.selectionStart =
+				descriptionRef.current.value.length;
 		}
 	}, [isEditingDescription]);
 
@@ -93,7 +100,9 @@ export function OverviewTab({
 		}
 	};
 
-	const handleDescriptionKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+	const handleDescriptionKeyDown = (
+		e: React.KeyboardEvent<HTMLTextAreaElement>,
+	) => {
 		if (e.key === "Enter" && !e.shiftKey) {
 			e.preventDefault();
 			saveDescription();
@@ -104,24 +113,17 @@ export function OverviewTab({
 	};
 
 	const activeTasks =
-		tasks?.filter((t) => t.status === "pending" || t.status === "in-progress").length ?? 0;
-	const totalQuoted =
-		quotes?.reduce((sum, q) => sum + (q.total || 0), 0) ?? 0;
+		tasks?.filter((t) => t.status === "pending" || t.status === "in-progress")
+			.length ?? 0;
+	const totalQuoted = quotes?.reduce((sum, q) => sum + (q.total || 0), 0) ?? 0;
 	const approvedQuotes =
 		quotes?.filter((q) => q.status === "approved").length ?? 0;
 
 	return (
-		<div>
-			<div className="flex items-center justify-between mb-1 min-h-8">
-				<h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-					Overview
-				</h3>
-			</div>
-			<Separator className="mb-4" />
-
+		<div className="space-y-8">
 			{/* Highlights */}
 			<div>
-				<h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-3">
+				<h3 className="workspace-section-heading">
 					Highlights
 				</h3>
 				<HighlightMetricGrid
@@ -148,11 +150,9 @@ export function OverviewTab({
 				/>
 			</div>
 
-			<Separator className="my-6" />
-
 			{/* Schedule */}
 			<div>
-				<h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-3">
+				<h3 className="workspace-section-heading">
 					Schedule
 				</h3>
 
@@ -174,7 +174,9 @@ export function OverviewTab({
 								placeholder="Add a description..."
 							/>
 							<div className="flex items-center justify-between mt-1.5">
-								<span className="text-xs text-muted-foreground">Enter to save, Shift+Enter for new line, Esc to cancel</span>
+								<span className="text-xs text-muted-foreground">
+									Enter to save, Shift+Enter for new line, Esc to cancel
+								</span>
 								<div className="flex items-center gap-1">
 									<button
 										disabled={isSaving}
@@ -197,9 +199,13 @@ export function OverviewTab({
 						<div className="flex items-start gap-2 mt-1">
 							<div className="flex-1 min-w-0">
 								{projectDescription ? (
-									<p className="text-foreground font-medium whitespace-pre-wrap">{projectDescription}</p>
+									<p className="text-foreground font-medium whitespace-pre-wrap">
+										{projectDescription}
+									</p>
 								) : (
-									<p className="text-muted-foreground italic">Add a description...</p>
+									<p className="text-muted-foreground italic">
+										Add a description...
+									</p>
 								)}
 							</div>
 							<Pencil className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity shrink-0 mt-0.5" />
@@ -241,8 +247,6 @@ export function OverviewTab({
 				/>
 			</div>
 
-			<Separator className="my-6" />
-
 			{recurringSeriesId && (
 				<FutureQuoteSetup key={projectId} projectId={projectId} />
 			)}
@@ -273,8 +277,6 @@ export function OverviewTab({
 					},
 				]}
 			/>
-
-			<Separator className="my-6" />
 
 			{/* Team Communication */}
 			<div>

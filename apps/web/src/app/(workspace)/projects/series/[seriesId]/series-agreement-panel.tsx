@@ -53,8 +53,16 @@ const DELIVERY_STATE = {
 type DeliveryState = keyof typeof DELIVERY_STATE;
 
 // Backend deploys and browser bundles are not atomic; an unknown state must not crash the page.
-function deliveryStateInfo(state: string): { label: string; status: (typeof DELIVERY_STATE)[DeliveryState]["status"] } {
-	return DELIVERY_STATE[state as DeliveryState] ?? { label: state.replace(/_/g, " "), status: "draft" };
+function deliveryStateInfo(state: string): {
+	label: string;
+	status: (typeof DELIVERY_STATE)[DeliveryState]["status"];
+} {
+	return (
+		DELIVERY_STATE[state as DeliveryState] ?? {
+			label: state.replace(/_/g, " "),
+			status: "draft",
+		}
+	);
 }
 
 function pendingDescription(state: DeliveryState, hasActive: boolean): string {
@@ -92,10 +100,9 @@ function NoAgreementCallout({
 				No recurring agreement yet
 			</p>
 			<p className="mt-1 text-sm text-muted-foreground">
-				Invoices for this series will not draft automatically. Set one up from
-				a draft quote on a visit. Your client approves once, future visits
-				inherit the approval, and completed visits draft invoices on their
-				own.
+				Invoices for this series will not draft automatically. Set one up from a
+				draft quote on a visit. Your client approves once, future visits inherit
+				the approval, and completed visits draft invoices on their own.
 			</p>
 			{setupLink && (
 				<Button
@@ -136,26 +143,32 @@ export function SeriesAgreementPanel({
 	});
 	const monthlyProposal = useQuery(
 		api.recurringPaymentSchedules.getPending,
-		canViewSchedules ? { clientId } : "skip"
+		canViewSchedules ? { clientId } : "skip",
 	);
 	const createRevisionDraft = useMutation(
-		api.projectSeriesAgreements.createRevisionDraft
+		api.projectSeriesAgreements.createRevisionDraft,
 	);
-	const discardPending = useMutation(api.projectSeriesAgreements.discardPending);
+	const discardPending = useMutation(
+		api.projectSeriesAgreements.discardPending,
+	);
 	const withdrawPending = useAction(
-		api.boldsignActions.withdrawRecurringAgreement
+		api.boldsignActions.withdrawRecurringAgreement,
 	);
 	const cancelMonthlyProposal = useMutation(
-		api.recurringPaymentSchedules.cancelPending
+		api.recurringPaymentSchedules.cancelPending,
 	);
-	const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
-	const [busy, setBusy] = useState<
-		"pending" | "revision" | "proposal" | null
-	>(null);
+	const [pendingAction, setPendingAction] = useState<PendingAction | null>(
+		null,
+	);
+	const [busy, setBusy] = useState<"pending" | "revision" | "proposal" | null>(
+		null,
+	);
 
 	const pending = agreement?.pending;
 	const active = agreement?.active;
-	const currentSchedule = seriesRule ? formatRecurringSchedule(seriesRule) : null;
+	const currentSchedule = seriesRule
+		? formatRecurringSchedule(seriesRule)
+		: null;
 	const proposedSchedule = pending?.scheduleRule
 		? formatRecurringSchedule(pending.scheduleRule)
 		: null;
@@ -164,12 +177,12 @@ export function SeriesAgreementPanel({
 			? `Changes the schedule from ${currentSchedule} to ${proposedSchedule}.`
 			: null;
 	const pendingTargetMatches = Boolean(
-		pendingAction && pending?._id === pendingAction.expectedRevisionId
+		pendingAction && pending?._id === pendingAction.expectedRevisionId,
 	);
 	const history =
 		agreement?.history.filter(
 			(revision) =>
-				revision._id !== active?._id && revision._id !== pending?._id
+				revision._id !== active?._id && revision._id !== pending?._id,
 		) ?? [];
 
 	const runPendingAction = async () => {
@@ -188,13 +201,13 @@ export function SeriesAgreementPanel({
 					: "Draft discarded",
 				active
 					? "The approved agreement remains active for future visits."
-					: "The quote and scheduled projects remain. No recurring agreement is active."
+					: "The quote and scheduled projects remain. No recurring agreement is active.",
 			);
 			setPendingAction(null);
 		} catch (error) {
 			toast.error(
 				"Update failed",
-				convexErrorMessage(error, "Review the agreement and try again.")
+				convexErrorMessage(error, "Review the agreement and try again."),
 			);
 		} finally {
 			setBusy(null);
@@ -209,7 +222,7 @@ export function SeriesAgreementPanel({
 		} catch (error) {
 			toast.error(
 				"Error",
-				convexErrorMessage(error, "Failed to create agreement revision")
+				convexErrorMessage(error, "Failed to create agreement revision"),
 			);
 		} finally {
 			setBusy(null);
@@ -226,12 +239,12 @@ export function SeriesAgreementPanel({
 			});
 			toast.success(
 				"Proposal cancelled",
-				"Current recurring payment terms remain in place."
+				"Current recurring payment terms remain in place.",
 			);
 		} catch (error) {
 			toast.error(
 				"Error",
-				convexErrorMessage(error, "Failed to cancel payment proposal")
+				convexErrorMessage(error, "Failed to cancel payment proposal"),
 			);
 		} finally {
 			setBusy(null);
@@ -243,8 +256,8 @@ export function SeriesAgreementPanel({
 		: "The quote and scheduled projects remain. The schedule can be edited again, and no recurring agreement will be active.";
 
 	return (
-		<Frame>
-			<FrameHeader className="flex-row items-start justify-between gap-4">
+		<Frame variant="ghost" className="mt-8 gap-0 bg-transparent p-0">
+			<FrameHeader className="workspace-section-heading flex-row items-start justify-between gap-4 px-0">
 				<div>
 					<FrameTitle>Recurring agreement</FrameTitle>
 					<FrameDescription>
@@ -275,7 +288,7 @@ export function SeriesAgreementPanel({
 					)}
 				</div>
 			</FrameHeader>
-			<FramePanel>
+			<FramePanel className="rounded-none border-0 bg-transparent px-0 shadow-none before:hidden">
 				{agreement === undefined ? (
 					<div className="space-y-2" aria-label="Loading recurring agreement">
 						<Skeleton className="h-5 w-52" />
@@ -382,21 +395,23 @@ export function SeriesAgreementPanel({
 										>
 											<div>
 												<p className="text-sm">
-													{revision.agreementReference ?? "Recurring agreement"},
-													revision {revision.revisionNumber}
+													{revision.agreementReference ?? "Recurring agreement"}
+													, revision {revision.revisionNumber}
 												</p>
 												{(revision.approvedAt || revision.withdrawnAt) && (
 													<p className="text-xs text-muted-foreground">
 														{revision.withdrawnAt ? "Withdrawn" : "Approved"}{" "}
 														{formatCalendarDate(
-															revision.withdrawnAt ?? revision.approvedAt
+															revision.withdrawnAt ?? revision.approvedAt,
 														)}
 													</p>
 												)}
 											</div>
 											<div className="flex items-center gap-2">
 												<StatusBadge
-													status={deliveryStateInfo(revision.deliveryState).status}
+													status={
+														deliveryStateInfo(revision.deliveryState).status
+													}
 													appearance="outline"
 												>
 													{deliveryStateInfo(revision.deliveryState).label}
@@ -431,7 +446,7 @@ export function SeriesAgreementPanel({
 										All affected agreements are approved. The new payment
 										arrangement starts in{" "}
 										{new Date(
-											`${monthlyProposal.effectiveMonth}-01T00:00:00Z`
+											`${monthlyProposal.effectiveMonth}-01T00:00:00Z`,
 										).toLocaleDateString("en-US", {
 											month: "long",
 											year: "numeric",

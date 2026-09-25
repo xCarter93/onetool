@@ -15,9 +15,7 @@ import {
 	ActionButtonGroup,
 	type RecordAction,
 } from "@/components/domain/action-button-group";
-import { AnimatePresence, motion } from "motion/react";
 import { usePermissions } from "@/hooks/use-permissions";
-import { cn } from "@/lib/utils";
 
 type InvoiceStatus = "draft" | "sent" | "paid" | "overdue" | "cancelled";
 
@@ -166,76 +164,53 @@ export function InvoiceDetailHeader({
 
 	return (
 		<StickyDetailHeader>
-			{(isSticky) => (
-				<div className="flex items-center justify-between gap-4">
-					<div className="shrink-0">
-						<h1
-							className={cn(
-								"font-bold text-foreground truncate transition-all duration-300",
-								isSticky ? "text-lg" : "text-2xl"
-							)}
-						>
-							{invoice.invoiceNumber ||
-								`Invoice #${invoice._id.slice(-6)}`}
-						</h1>
-						{!isSticky && (
-							<p className="text-sm text-muted-foreground">Invoice</p>
-						)}
-					</div>
-					<AnimatePresence initial={false}>
-						{!isSticky && (
-							<motion.div
-								className="flex-1 min-w-0 max-w-3xl"
-								initial={{ opacity: 0, height: 0, scaleY: 0 }}
-								animate={{ opacity: 1, height: "auto", scaleY: 1 }}
-								exit={{ opacity: 0, height: 0, scaleY: 0 }}
-								transition={{ duration: 0.25, ease: "easeOut" }}
-								style={{ originY: 0 }}
-							>
-								<StatusProgressBar
-									status={currentStatus}
-									steps={[
-										{ id: "draft", name: "Draft", order: 1 },
-										{ id: "sent", name: "Sent", order: 2 },
-										{ id: "paid", name: "Paid", order: 3 },
-									]}
-									events={[
-										...(invoice._creationTime
-											? [
-													{
-														type: "draft",
-														timestamp: invoice._creationTime,
-													},
-												]
-											: []),
-										// firstSentAt is the real send instant; issuedDate is a
-										// user-entered UTC-midnight day stamp, not a send time.
-										...(invoice.firstSentAt
-											? [
-													{
-														type: "sent",
-														timestamp: invoice.firstSentAt,
-													},
-												]
-											: []),
-										...(invoice.paidAt
-											? [
-													{
-														type: "paid",
-														timestamp: invoice.paidAt,
-													},
-												]
-											: []),
-									]}
-									failureStatuses={["overdue", "cancelled"]}
-									successStatuses={["paid"]}
-								/>
-							</motion.div>
-						)}
-					</AnimatePresence>
-					<ActionButtonGroup actions={actions} className="shrink-0" />
+			<div className="flex items-center justify-between gap-4">
+				<h1 className="font-bold text-foreground truncate shrink-0">
+					{invoice.invoiceNumber ||
+						`Invoice #${invoice._id.slice(-6)}`}
+				</h1>
+				<div className="flex-1 min-w-0 max-w-3xl">
+					<StatusProgressBar
+						status={currentStatus}
+						steps={[
+							{ id: "draft", name: "Draft", order: 1 },
+							{ id: "sent", name: "Sent", order: 2 },
+							{ id: "paid", name: "Paid", order: 3 },
+						]}
+						events={[
+							...(invoice._creationTime
+								? [
+										{
+											type: "draft",
+											timestamp: invoice._creationTime,
+										},
+									]
+								: []),
+							// firstSentAt is the real send instant; issuedDate is a
+							// user-entered UTC-midnight day stamp, not a send time.
+							...(invoice.firstSentAt
+								? [
+										{
+											type: "sent",
+											timestamp: invoice.firstSentAt,
+										},
+									]
+								: []),
+							...(invoice.paidAt
+								? [
+										{
+											type: "paid",
+											timestamp: invoice.paidAt,
+										},
+									]
+								: []),
+						]}
+						failureStatuses={["overdue", "cancelled"]}
+						successStatuses={["paid"]}
+					/>
 				</div>
-			)}
+				<ActionButtonGroup actions={actions} className="shrink-0" />
+			</div>
 		</StickyDetailHeader>
 	);
 }

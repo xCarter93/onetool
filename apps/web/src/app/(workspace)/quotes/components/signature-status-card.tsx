@@ -56,10 +56,10 @@ export function SignatureStatusCard({
 		documentsWithSignatures && documentsWithSignatures.length > 0;
 
 	return (
-		<div className="bg-card dark:bg-card backdrop-blur-md border border-border dark:border-border rounded-xl shadow-lg dark:shadow-black/50 ring-1 ring-border/30 dark:ring-border/50">
+		<div className="rounded-lg border border-border bg-card">
 			<Card className="bg-transparent border-none shadow-none ring-0">
 				<CardHeader>
-					<CardTitle className="flex items-center gap-2 text-xl">
+					<CardTitle className="flex items-center gap-2 text-sm font-semibold">
 						<FileText className="h-5 w-5" />
 						Signature Status
 					</CardTitle>
@@ -83,7 +83,7 @@ export function SignatureStatusCard({
 										<AccordionContent>
 											<div className="space-y-4">
 												{/* Status badges at top of content */}
-												<div className="flex items-center gap-3 pb-3 border-b border-gray-200 dark:border-gray-700">
+								<div className="flex items-center gap-3 pb-3 border-b border-border">
 													<Badge variant="outline" className="text-xs">
 														v{doc.version}
 													</Badge>
@@ -103,7 +103,7 @@ export function SignatureStatusCard({
 															{statusLabel}
 														</StatusBadge>
 													)}
-													<span className="text-xs text-gray-500 dark:text-gray-400 ml-auto">
+									<span className="text-xs text-muted-foreground ml-auto">
 														{timestampLabel}: {formattedDate}
 													</span>
 												</div>
@@ -135,8 +135,8 @@ export function SignatureStatusCard({
 												/>
 
 												{/* Recipients info */}
-												<div className="pt-4 border-t border-gray-200 dark:border-gray-700">
-													<p className="font-medium mb-3 text-sm text-gray-900 dark:text-white">
+								<div className="pt-4 border-t border-border">
+									<p className="font-semibold mb-3 text-sm text-foreground">
 														{recipientLabel}
 													</p>
 													<ul className="space-y-2">
@@ -145,11 +145,11 @@ export function SignatureStatusCard({
 																key={i}
 																className="flex items-center justify-between text-sm"
 															>
-																<span className="text-gray-700 dark:text-gray-300">
+													<span className="text-foreground">
 																	<span className="font-medium">
 																		{recipient.name}
 																	</span>{" "}
-																	<span className="text-gray-500 dark:text-gray-400">
+													<span className="text-muted-foreground">
 																		({recipient.email})
 																	</span>
 																</span>
@@ -167,12 +167,12 @@ export function SignatureStatusCard({
 							})}
 						</Accordion>
 					) : (
-						<div className="p-8 border-2 border-dashed border-gray-300 dark:border-white/20 rounded-lg text-center">
-							<FileSignature className="h-12 w-12 text-gray-400 mx-auto mb-3" />
-							<h3 className="text-base font-medium text-gray-900 dark:text-white mb-2">
+						<div className="p-8 border border-dashed border-border rounded-lg text-center">
+							<FileSignature className="h-12 w-12 text-muted-foreground mx-auto mb-3" />
+							<h3 className="text-sm font-semibold text-foreground mb-2">
 								No signature requests sent
 							</h3>
-							<p className="text-sm text-gray-500 dark:text-gray-400">
+							<p className="text-[13px] text-muted-foreground">
 								Generate a PDF and send it to the client for signature
 							</p>
 						</div>

@@ -191,11 +191,9 @@ function AttentionItem({
 	icon?: typeof ClipboardList;
 	checkbox?: React.ReactNode;
 }) {
-	// Elevated card matching FramePanel's language; overdue reads as a whole-card
-	// soft destructive treatment (side-stripes are banned by anti-slop).
 	const itemClass = urgency.overdue
-		? "border-destructive/30 bg-destructive/5 shadow-xs dark:bg-destructive/10"
-		: "bg-card shadow-xs";
+		? "border-destructive/30 bg-destructive/5 dark:bg-destructive/10"
+		: "bg-card";
 
 	const body = (
 		<>

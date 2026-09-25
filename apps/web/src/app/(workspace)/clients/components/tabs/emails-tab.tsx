@@ -4,7 +4,6 @@ import { useState } from "react";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
 import type { EmailThreadSummary } from "@onetool/backend/convex/emailMessages";
 import { Button } from "@/components/ui/button";
-import { Separator } from "@/components/ui/separator";
 import {
 	Plus,
 	ChevronLeft,
@@ -39,7 +38,7 @@ export function EmailsTab({
 
 	return (
 		<div>
-			<div className="flex items-center justify-between mb-1 min-h-8">
+			<div className="flex items-center justify-between mb-4 min-h-8">
 				<h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
 					Email Threads ({totalThreads})
 				</h3>
@@ -48,7 +47,6 @@ export function EmailsTab({
 					Compose
 				</Button>
 			</div>
-			<Separator className="mb-4" />
 
 			{totalThreads === 0 ? (
 				<EmptyState

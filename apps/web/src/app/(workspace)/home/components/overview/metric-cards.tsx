@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, type CSSProperties } from "react";
+import { type CSSProperties } from "react";
 import { Line, LineChart, XAxis, YAxis } from "recharts";
 import { ArrowDown, ArrowRight, ArrowUp } from "lucide-react";
 
@@ -10,52 +10,6 @@ import { FramePanel } from "@/components/reui/frame";
 import { AnimatedNumber } from "@/components/animated-number";
 import type { MetricDatum, MetricDefinition } from "@/app/(workspace)/home/components/overview/metric-types";
 import { ACCENT_COLOR, metricVisual } from "./metric-visuals";
-
-/** Faint dotted bed anchored to the bottom of a card, behind the sparkline. */
-function DottedChartBackground() {
-	const raw = useId().replace(/:/g, "");
-	const patternId = `${raw}-dots`;
-	const maskId = `${raw}-fade`;
-
-	return (
-		<svg
-			aria-hidden="true"
-			className="pointer-events-none absolute inset-x-0 bottom-0 h-20 w-full text-foreground/15"
-			fill="none"
-			preserveAspectRatio="none"
-			viewBox="0 0 320 96"
-			xmlns="http://www.w3.org/2000/svg"
-		>
-			<defs>
-				<pattern
-					id={patternId}
-					height="1"
-					patternTransform="matrix(4.5 0 0 4.5 0 0)"
-					patternUnits="userSpaceOnUse"
-					preserveAspectRatio="none"
-					viewBox="0 0 9 9"
-					width="1"
-				>
-					<rect fill="currentColor" height="2" rx="1" width="2" x="2" y="2" />
-				</pattern>
-				<linearGradient id={maskId} x1="0" x2="0" y1="0" y2="1">
-					<stop offset="0" stopColor="white" stopOpacity="0" />
-					<stop offset="0.28" stopColor="white" stopOpacity="0.45" />
-					<stop offset="1" stopColor="white" />
-				</linearGradient>
-				<mask id={`${maskId}-mask`}>
-					<rect fill={`url(#${maskId})`} height="96" width="320" />
-				</mask>
-			</defs>
-			<rect
-				fill={`url(#${patternId})`}
-				height="96"
-				mask={`url(#${maskId}-mask)`}
-				width="320"
-			/>
-		</svg>
-	);
-}
 
 function MetricSparkline({
 	data,
@@ -134,23 +88,21 @@ function MetricCard({
 				} as CSSProperties
 			}
 			className={cn(
-				"group min-h-[148px] cursor-pointer p-0! ring-2 ring-inset transition-[transform,box-shadow] outline-none",
-				"hover:-translate-y-0.5 motion-reduce:hover:translate-y-0",
+				"group min-h-[148px] cursor-pointer rounded-lg p-0! ring-2 ring-inset transition-colors outline-none",
 				"focus-visible:ring-2 focus-visible:ring-primary",
 				isSelected ? "bg-primary/[0.04]" : "hover:bg-muted/20"
 			)}
 		>
 			<div className="relative h-full min-h-[148px]">
-				<DottedChartBackground />
 				<div className="relative z-10 flex items-start gap-2.5 p-4">
 					<span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
 						<Icon className="size-[18px]" aria-hidden />
 					</span>
 					<div className="min-w-0">
-						<h3 className="truncate text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+						<h3 className="truncate text-[13px] font-medium text-muted-foreground">
 							{metric.label}
 						</h3>
-						<div className="mt-1 text-xl font-bold leading-none tabular-nums text-foreground">
+						<div className="mt-1 text-xl font-semibold leading-none tabular-nums text-foreground">
 							{metric.isLoading ? (
 								"—"
 							) : (

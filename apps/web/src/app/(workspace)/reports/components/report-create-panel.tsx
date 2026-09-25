@@ -1,19 +1,9 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { BarChart3, ChevronRight, Plus } from "lucide-react";
+import { ChevronRight, Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import {
-	Empty,
-	EmptyContent,
-	EmptyDescription,
-	EmptyHeader,
-	EmptyMedia,
-	EmptyTitle,
-} from "@/components/ui/empty";
-import { Illustration } from "@/components/illustrations";
 import { entityLabels } from "../report-config";
 import {
 	FEATURED_PRESETS,
@@ -23,133 +13,89 @@ import {
 } from "../report-presets";
 
 const TONE_BY_CATEGORY = Object.fromEntries(
-	PRESET_CATEGORIES.map((c) => [c.id, PRESET_TONE_BOX[c.tone]])
+	PRESET_CATEGORIES.map((c) => [c.id, PRESET_TONE_BOX[c.tone]]),
 ) as Record<PresetCategoryId, string>;
 
 interface ReportCreatePanelProps {
 	onBrowsePresets: () => void;
 }
 
-/**
- * Persistent create hero on the reports index (adapted from the ReUI
- * empty-state-4 block) — always rendered, so it doubles as the empty state
- * when no reports exist yet. Left: copy + CTAs; right: popular preset
- * shortcuts that seed the builder directly.
- */
 export function ReportCreatePanel({ onBrowsePresets }: ReportCreatePanelProps) {
 	const router = useRouter();
 
 	return (
-		<Card className="relative w-full overflow-hidden p-0 shadow-xs">
-			<CardContent className="overflow-hidden p-0">
-				<div className="grid grid-cols-1 items-stretch lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]">
-					<div className="flex min-w-0 items-center justify-between gap-6 px-7 py-8 sm:px-9 lg:pr-6">
-						<Empty className="items-start justify-center gap-6 text-left">
-							<EmptyHeader className="max-w-md items-start gap-4 text-left">
-								<EmptyMedia
-									variant="icon"
-									className="mb-0 items-center justify-center self-start"
-								>
-									<BarChart3 aria-hidden="true" />
-								</EmptyMedia>
-
-								<div className="flex flex-col gap-2">
-									<EmptyTitle className="text-xl font-semibold tracking-tight sm:text-2xl">
-										Create a report
-									</EmptyTitle>
-									<EmptyDescription className="text-sm/relaxed">
-										<span className="block">
-											Start from a ready-made preset, or build the
-										</span>
-										<span className="block">
-											exact view your team needs from scratch.
-										</span>
-									</EmptyDescription>
-								</div>
-							</EmptyHeader>
-
-							<EmptyContent className="max-w-none items-start gap-0 text-left">
-								<div className="flex w-full items-center gap-2 max-[420px]:flex-wrap">
-									<Button
-										onClick={onBrowsePresets}
-										className="shrink-0 whitespace-nowrap"
-									>
-										<Plus className="h-4 w-4" aria-hidden="true" />
-										Browse presets
-									</Button>
-
-									<Button
-										variant="outline"
-										onClick={() => router.push("/reports/new")}
-										className="shrink-0 whitespace-nowrap"
-									>
-										Start blank
-									</Button>
-								</div>
-							</EmptyContent>
-						</Empty>
-
-						{/* Illustration fills the left column's spare width on wide screens.
-						    Visibility lives on the wrapper: .ot-illo sets an unlayered
-						    `display: block`, which would beat a `hidden` utility. */}
-						<div className="hidden shrink-0 md:block lg:hidden xl:block">
-							<Illustration name="report-chart-no-data" size="md" />
-						</div>
-					</div>
-
-					{/* Popular presets — each row seeds the builder directly. */}
-					<div className="min-w-0 border-t border-border/60 bg-muted/10 px-6 py-6 sm:px-7 lg:border-l lg:border-t-0">
-						<div className="flex h-full flex-col justify-center gap-2">
-							<p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-								Popular presets
-							</p>
-
-							{FEATURED_PRESETS.map((preset) => {
-								const Icon = preset.icon;
-								return (
-									<button
-										key={preset.id}
-										type="button"
-										onClick={() => router.push(`/reports/new?preset=${preset.id}`)}
-										className="group flex w-full cursor-pointer items-center gap-3 rounded-lg border border-border/60 bg-background p-2.5 text-left transition-colors duration-150 hover:border-border hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
-									>
-										<span
-											className={cn(
-												"flex size-8 shrink-0 items-center justify-center rounded-lg",
-												TONE_BY_CATEGORY[preset.categoryId]
-											)}
-										>
-											<Icon className="h-4 w-4" aria-hidden="true" />
-										</span>
-										<span className="min-w-0 flex-1">
-											<span className="block truncate text-sm font-medium text-foreground">
-												{preset.name}
-											</span>
-											<span className="block truncate text-xs text-muted-foreground">
-												{entityLabels[preset.config.entityType] ?? preset.config.entityType} ·{" "}
-												{preset.description}
-											</span>
-										</span>
-										<ChevronRight
-											className="h-4 w-4 shrink-0 text-muted-foreground/50 transition-colors duration-150 group-hover:text-foreground"
-											aria-hidden="true"
-										/>
-									</button>
-								);
-							})}
-
-							<button
-								type="button"
-								onClick={onBrowsePresets}
-								className="mt-1 inline-flex w-fit cursor-pointer items-center gap-1 rounded text-sm font-medium text-primary transition-colors duration-150 hover:text-primary/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
-							>
-								Browse all presets
-								<ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />
-							</button>
-						</div>
-					</div>
+		<section
+			className="workspace-panel overflow-hidden"
+			aria-labelledby="report-create-heading"
+		>
+			<div className="border-b border-border px-4 py-4">
+				<h2
+					id="report-create-heading"
+					className="text-base font-semibold text-foreground"
+				>
+					Create a report
+				</h2>
+				<p className="mt-1 text-sm text-muted-foreground">
+					Start from a ready-made preset, or build the exact view your team
+					needs from scratch.
+				</p>
+				<div className="mt-4 flex flex-wrap gap-2">
+					<Button onClick={onBrowsePresets}>
+						<Plus className="size-4" aria-hidden="true" />
+						Browse presets
+					</Button>
+					<Button variant="outline" onClick={() => router.push("/reports/new")}>
+						Start blank
+					</Button>
 				</div>
-			</CardContent>
-		</Card>
+			</div>
+			<div className="px-2 py-2">
+				<h3 className="px-2 py-2 text-sm font-medium text-muted-foreground">
+					Popular presets
+				</h3>
+				{FEATURED_PRESETS.map((preset) => {
+					const Icon = preset.icon;
+					return (
+						<button
+							key={preset.id}
+							type="button"
+							onClick={() => router.push(`/reports/new?preset=${preset.id}`)}
+							className="group flex w-full items-start gap-3 rounded-sm px-2 py-3 text-left hover:bg-muted/50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+						>
+							<span
+								className={cn(
+									"flex size-8 shrink-0 items-center justify-center rounded-sm",
+									TONE_BY_CATEGORY[preset.categoryId],
+								)}
+							>
+								<Icon className="size-4" aria-hidden="true" />
+							</span>
+							<span className="min-w-0 flex-1">
+								<span className="block text-sm font-medium text-foreground">
+									{preset.name}
+								</span>
+								<span className="mt-1 block text-xs text-muted-foreground">
+									{entityLabels[preset.config.entityType] ??
+										preset.config.entityType}{" "}
+									· {preset.description}
+								</span>
+							</span>
+							<ChevronRight
+								className="mt-1 size-4 shrink-0 text-muted-foreground"
+								aria-hidden="true"
+							/>
+						</button>
+					);
+				})}
+				<button
+					type="button"
+					onClick={onBrowsePresets}
+					className="mx-2 my-2 inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+				>
+					Browse all presets{" "}
+					<ChevronRight className="size-4" aria-hidden="true" />
+				</button>
+			</div>
+		</section>
 	);
 }

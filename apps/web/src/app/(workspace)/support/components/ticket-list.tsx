@@ -53,7 +53,7 @@ export function TicketList({
 }: TicketListProps) {
 	return (
 		<>
-			<div className="sticky top-0 z-10 shrink-0 space-y-3 border-b border-border bg-card px-4 pb-3 pt-4">
+			<div className="sticky top-0 z-10 shrink-0 space-y-3 border-b border-border bg-muted dark:bg-card px-4 pb-3 pt-4">
 				<div className="flex items-center justify-between gap-2">
 					<h1 className="text-lg font-semibold tracking-tight">Support</h1>
 					<div className="flex items-center gap-1.5">
@@ -135,7 +135,7 @@ export function TicketList({
 						/>
 					</div>
 				) : (
-					<ul className="divide-y divide-border/60 py-0.5">
+					<ul className="divide-y divide-border dark:divide-border/60 py-0.5">
 						{tickets.map((ticket) => (
 							<li key={ticket.id}>
 								<TicketRow
@@ -175,11 +175,11 @@ function TicketRow({
 			onClick={() => onSelect(ticket.id)}
 			aria-current={selected ? "true" : undefined}
 			className={cn(
-				"flex w-full cursor-pointer items-start gap-2.5 border-l-2 py-2.5 pl-3 pr-3 text-left transition-colors duration-150",
+				"flex w-full cursor-pointer items-start gap-2.5 py-2.5 pl-3 pr-3 text-left transition-colors duration-150",
 				"focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
 				selected
-					? "border-l-primary bg-accent"
-					: "border-l-transparent hover:bg-accent/60"
+					? "bg-primary/10"
+					: "hover:bg-muted/60"
 			)}
 		>
 			<span className="relative mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
@@ -207,7 +207,7 @@ function TicketRow({
 							{badge.label}
 						</StatusBadge>
 					</span>
-					<span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">
+					<span className="shrink-0 text-xs tabular-nums text-muted-foreground">
 						{formatDistanceToNowStrict(new Date(timestamp), {
 							addSuffix: true,
 						})}

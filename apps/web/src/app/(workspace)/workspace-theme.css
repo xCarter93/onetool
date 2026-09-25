@@ -1,87 +1,262 @@
-/*
- * Workspace-scoped theme overrides for visual zone separation.
- * Increases contrast between sidebar/header "chrome", main content "canvas",
- * and right sidebar "panel".
- *
- * Does NOT affect the landing page or any route outside (workspace).
- */
-
-/* ── Light mode ─────────────────────────────────────────────── */
-html:not(.dark) .workspace-zone {
-	/* Sidebar + header: cool-toned gray — the "chrome" shell */
-	--sidebar: oklch(0.94 0.005 265);
-	--sidebar-accent: oklch(0.895 0.008 265);
-	--sidebar-border: oklch(0.88 0.008 265);
-
-	/* Main content area: near-white — the "paper" canvas */
-	--background: oklch(0.995 0 0);
-
-	/* Slightly stronger border for clearer panel edges */
-	--border: oklch(0.89 0.006 265);
+body.style-nova:not(:has(.dc-landing)):has(.workspace-zone) {
+	--workspace-ground: #f3f6f9;
+	--workspace-rail: #242424;
+	--workspace-rail-hover: #363636;
+	--workspace-rail-text: #ededed;
+	--workspace-rail-muted: #b8b8b8;
+	--workspace-rule: #dce5ec;
+	--workspace-detail-rail-width: 360px;
+	--sidebar: var(--workspace-rail);
+	--sidebar-foreground: var(--workspace-rail-text);
+	--sidebar-accent: var(--workspace-rail-hover);
+	--sidebar-accent-foreground: var(--workspace-rail-text);
+	--sidebar-border: #484848;
 }
 
-/* ── Dark mode ──────────────────────────────────────────────── */
-html.dark .workspace-zone {
-	/* Content area: slightly deeper void for crisper sidebar contrast */
-	--background: oklch(0.15 0.018 264);
+html:not(.dark) body.style-nova:not(:has(.dc-landing)):has(.workspace-zone) {
+	--workspace-ground: #eef1f5;
+	--workspace-rule: var(--border);
+	--muted: #eef1f5;
+	--secondary: #e6eaf0;
+	--muted-fg: #586573;
+	--border: #cbd3de;
+	--input: #8592a3;
 
-	/* Sidebar + header: subtle warm shift adds a temperature axis to the depth */
-	--sidebar: oklch(0.215 0.01 275);
-	--sidebar-accent: oklch(0.265 0.008 275);
-	--sidebar-border: oklch(0.28 0.01 275);
-
-	/* Borders: a touch brighter for cleaner panel delineation */
-	--border: oklch(0.29 0.012 270);
-
-	/* Muted: raised slightly so right-sidebar tint is more legible */
-	--muted: oklch(0.23 0.008 270);
+	.workspace-toolbar { background: var(--muted); }
+	.cn-button-variant-outline { border-color: var(--input); }
+	[data-slot="data-grid-table"] th { color: var(--foreground); }
 }
 
-/* ── Sidebar nav: section labels ────────────────────────────── */
-/* Quieter, smaller, tracked-out uppercase eyebrows so the nav items
-   themselves carry the weight. */
-.workspace-zone [data-sidebar="group-label"] {
-	font-size: 0.65rem;
+html.dark body.style-nova:not(:has(.dc-landing)):has(.workspace-zone) {
+	--bg: #282828;
+	--card: #202020;
+	--popover: #202020;
+	--muted: #242424;
+	--secondary: #242424;
+	--border: #3e3e3e;
+	--workspace-ground: var(--bg);
+	--workspace-rail: #151515;
+	--workspace-rail-hover: #303030;
+	--workspace-rule: var(--border);
+	--sidebar-border: #404040;
+}
+
+.workspace-zone [data-slot="sidebar-wrapper"] { --sidebar-width: 232px !important; }
+body.style-nova .workspace-zone .workspace-canvas { background: var(--workspace-ground); gap: 0; }
+.workspace-zone .cn-sidebar-inset { background: var(--workspace-rail); }
+.workspace-zone .workspace-header { background: var(--workspace-rail); }
+body.style-nova .workspace-zone .workspace-canvas { border-radius: 16px 16px 0 0; }
+.workspace-global-search { background: var(--workspace-rail-hover); }
+
+body.style-nova:not(:has(.dc-landing)):has(.workspace-zone) [data-slot="sidebar"],
+.workspace-zone .header-notch,
+.workspace-zone .workspace-chrome {
+	--background: var(--workspace-rail);
+	--card: var(--workspace-rail);
+	--foreground: var(--workspace-rail-text);
+	--muted-foreground: var(--workspace-rail-muted);
+	--primary: #65caff;
+	--primary-fg: #171717;
+	--accent: var(--workspace-rail-hover);
+	--accent-foreground: var(--workspace-rail-text);
+	--border: var(--sidebar-border);
+	--input: var(--sidebar-border);
+	--secondary: var(--workspace-rail-hover);
+	color: var(--workspace-rail-text);
+}
+
+body.style-nova:not(:has(.dc-landing)):has(.workspace-zone) [data-slot="sidebar"] { background: var(--workspace-rail); }
+
+body.style-nova:not(:has(.dc-landing)):has(.workspace-zone) [data-slot="sidebar"] img[alt="OneTool"] {
+	filter: brightness(0) invert(1);
+}
+body.style-nova:not(:has(.dc-landing)):has(.workspace-zone) [data-sidebar="header"] { gap: 16px; padding: 16px 8px; }
+body.style-nova:not(:has(.dc-landing)):has(.workspace-zone) [data-sidebar="group"] { padding: 8px; }
+body.style-nova:not(:has(.dc-landing)):has(.workspace-zone) [data-sidebar="group-label"] {
+	font-size: 10px;
 	font-weight: 600;
-	letter-spacing: 0.09em;
+	letter-spacing: 0.08em;
 	text-transform: uppercase;
-	color: color-mix(in oklch, var(--sidebar-foreground) 52%, transparent);
+	color: var(--workspace-rail-muted);
+	height: 24px;
 }
-
-/* ── Sidebar nav: active item (slim left-accent bar) ────────── */
-/* A primary-colored bar pinned to the left edge plus a soft primary tint,
-   replacing the default full-fill accent. More specific than the shadcn
-   data-[active] / hover utilities so it wins cleanly. */
-.workspace-zone [data-sidebar="menu-button"][data-active]:not([data-active="false"]) {
-	position: relative;
+body.style-nova:not(:has(.dc-landing)):has(.workspace-zone) [data-sidebar="menu-button"],
+body.style-nova:not(:has(.dc-landing)):has(.workspace-zone) [data-sidebar="menu-sub-button"] {
+	min-height: 32px;
+	border-radius: 4px;
+	font-size: 13px;
+	color: var(--workspace-rail-text);
+}
+body.style-nova:not(:has(.dc-landing)):has(.workspace-zone) [data-sidebar="menu-button"] > svg { color: var(--workspace-rail-muted); }
+body.style-nova:not(:has(.dc-landing)):has(.workspace-zone) [data-sidebar="menu-button"]:hover,
+body.style-nova:not(:has(.dc-landing)):has(.workspace-zone) [data-sidebar="menu-sub-button"]:hover { background: var(--workspace-rail-hover); }
+body.style-nova:not(:has(.dc-landing)):has(.workspace-zone) [data-sidebar="menu-button"][data-active]:not([data-active="false"]),
+body.style-nova:not(:has(.dc-landing)):has(.workspace-zone) [data-sidebar="menu-sub-button"][data-active]:not([data-active="false"]) {
+	background: var(--workspace-rail-hover);
+	color: var(--workspace-rail-text);
 	font-weight: 600;
-	background-color: color-mix(in oklch, var(--primary) 11%, transparent);
+	box-shadow: inset 2px 0 var(--primary);
 }
+body.style-nova:not(:has(.dc-landing)):has(.workspace-zone) [data-sidebar="menu-button"][data-active]:not([data-active="false"]) > svg { color: var(--primary); }
+body.style-nova:not(:has(.dc-landing)):has(.workspace-zone) [data-sidebar="footer"] { border-top: 1px solid var(--sidebar-border); padding: 12px 8px; }
+body.style-nova:not(:has(.dc-landing)):has(.workspace-zone) [data-sidebar="trigger"],
+body.style-nova:not(:has(.dc-landing)):has(.workspace-zone) [data-sidebar="menu-action"] { border-radius: 4px; }
+body.style-nova:not(:has(.dc-landing)):has(.workspace-zone) [data-sidebar]:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
 
-.workspace-zone [data-sidebar="menu-button"][data-active]:not([data-active="false"]):hover {
-	background-color: color-mix(in oklch, var(--primary) 16%, transparent);
+body.style-nova:not(:has(.dc-landing)):has(.workspace-zone) .workspace-page {
+	width: 100%;
+	min-width: 0;
+	padding: 24px 24px 80px;
 }
+body.style-nova:not(:has(.dc-landing)):has(.workspace-zone) .workspace-page-header {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: space-between;
+	gap: 16px;
+	margin-bottom: 24px;
+	padding-bottom: 16px;
+	border-bottom: 1px solid var(--workspace-rule);
+}
+body.style-nova:not(:has(.dc-landing)):has(.workspace-zone) .workspace-canvas h1 {
+	font-size: 24px;
+	line-height: 1.3;
+	font-weight: 600;
+	letter-spacing: -0.025em;
+}
+.workspace-page-header > :first-child { min-width: 0; }
+.workspace-page-header p { max-width: 65ch; }
+.workspace-toolbar {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 8px;
+	padding: 12px 16px;
+	border-bottom: 1px solid var(--border);
+	background: var(--card);
+}
+.workspace-explorer { display: grid; grid-template-columns: minmax(0, 1fr); gap: 24px; align-items: start; }
+.workspace-explorer-rail { min-width: 0; display: flex; flex-direction: column; gap: 16px; }
+.workspace-results { min-width: 0; }
+.workspace-panel { min-width: 0; border: 1px solid var(--border); border-radius: 8px; background: var(--card); }
+.workspace-section-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding-bottom: 12px; font-size: 13px; font-weight: 600; }
+.workspace-detail { min-width: 0; background: var(--card); }
+/* 88px = the 64px stuck record header + 24px; 160px adds the 48px shell header and the 24px bottom gutter. */
+.workspace-detail-rail { position: sticky; top: 88px; max-height: calc(100dvh - 160px); overflow-y: auto; }
+html.dark body.style-nova .workspace-detail { background: var(--workspace-ground); }
 
-/* Icon picks up the accent; the label keeps its readable foreground color. */
-.workspace-zone [data-sidebar="menu-button"][data-active]:not([data-active="false"]) > svg {
+body.style-nova:not(:has(.dc-landing)):has(.workspace-zone) [data-slot="frame"] {
+	--frame-gap: 0;
+	--frame-px: 0;
+	--frame-py: 0;
+	--frame-panel-radius: 8px;
+	--frame-panel-header-px: 16px;
+	--frame-panel-header-py: 12px;
+	border-radius: 8px;
+	background: var(--card);
+	box-shadow: none;
+}
+body.style-nova:not(:has(.dc-landing)):has(.workspace-zone) [data-slot="frame-panel"] { border-radius: 0; }
+body.style-nova:not(:has(.dc-landing)):has(.workspace-zone) [data-slot="frame-panel"]:not([class*="border-destructive"]) { border-width: 0; }
+body.style-nova:not(:has(.dc-landing)):has(.workspace-zone) [data-slot="frame-panel"] + [data-slot="frame-panel"] { border-top: 1px solid var(--border); }
+body.style-nova:not(:has(.dc-landing)):has(.workspace-zone) [data-slot="frame-panel"]::before { display: none; }
+body.style-nova:not(:has(.dc-landing)):has(.workspace-zone) [data-slot="frame-panel-footer"] { border-top: 1px solid var(--border); background: var(--muted); padding: 12px 16px; }
+
+.workspace-metrics { border: 1px solid var(--border); border-radius: 8px; background: var(--card); overflow: hidden; }
+.workspace-metrics-grid { display: grid; grid-template-columns: repeat(var(--metric-columns), minmax(0,1fr)); }
+.workspace-metric { min-width: 0; padding: 16px; border-inline-end: 1px solid var(--border); }
+.workspace-metric:last-child { border-inline-end: 0; }
+.workspace-metric-label { display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 500; color: var(--muted-foreground); }
+.workspace-metric-label svg { width: 16px; height: 16px; }
+.workspace-metric-value { margin-top: 8px; font-size: 28px; line-height: 1.25; font-weight: 600; letter-spacing: -0.025em; font-variant-numeric: tabular-nums; }
+.workspace-metric-hint { margin-top: 4px; font-size: 12px; color: var(--muted-foreground); }
+.workspace-metric-summary { padding: 10px 16px; border-top: 1px solid var(--border); font-size: 12px; color: var(--muted-foreground); background: var(--muted); }
+
+body.style-nova:not(:has(.dc-landing)):has(.workspace-zone) .workspace-record-tabs {
+	width: 100%;
+	max-width: 100%;
+	justify-content: flex-start;
+	gap: 16px;
+	padding: 0;
+	border: 0;
+	border-bottom: 1px solid var(--border);
+	border-radius: 0;
+	background: transparent;
+	overflow-x: auto;
+}
+body.style-nova:not(:has(.dc-landing)):has(.workspace-zone) .workspace-record-tabs .cn-tabs-trigger {
+	flex: 0 0 auto;
+	min-height: 40px;
+	padding: 8px 0;
+	border: 0;
+	border-radius: 0;
+	background: transparent;
+	font-size: 13px;
+	color: var(--muted-foreground);
+	box-shadow: none;
+}
+body.style-nova:not(:has(.dc-landing)):has(.workspace-zone) .workspace-record-tabs .cn-tabs-trigger[data-active] {
 	color: var(--primary);
+	box-shadow: inset 0 -2px var(--primary);
+}
+.workspace-record-tabs .cn-tabs-trigger::after { display: none; }
+
+body.style-nova:not(:has(.dc-landing)):has(.workspace-zone) :is(.cn-button, .cn-input, .cn-select-trigger) { font-size: 13px; }
+body.style-nova:not(:has(.dc-landing)):has(.workspace-zone) .cn-button-size-default:not(.h-auto) { height: 30px; }
+body.style-nova:not(:has(.dc-landing)):has(.workspace-zone) .cn-button-variant-outline { border-color: var(--border); }
+body.style-nova:not(:has(.dc-landing)):has(.workspace-zone) .cn-button-variant-outline:hover { border-color: var(--input); }
+body.style-nova:not(:has(.dc-landing)):has(.workspace-zone) :is(.cn-dialog-header, .cn-sheet-header) { border-bottom: 1px solid var(--border); }
+body.style-nova:not(:has(.dc-landing)):has(.workspace-zone) .cn-dialog-title { font-size: 18px; }
+body.style-nova:not(:has(.dc-landing)):has(.workspace-zone) [data-slot="data-grid"] { background: var(--card); }
+
+@media (min-width: 64rem) {
+	.workspace-explorer { grid-template-columns: 240px minmax(0,1fr); }
+	.workspace-explorer-rail .workspace-metrics-grid { grid-template-columns: minmax(0,1fr); }
+	.workspace-explorer-rail .workspace-metric { border-inline-end: 0; border-bottom: 1px solid var(--border); }
+	.workspace-explorer-rail .workspace-metric:last-child { border-bottom: 0; }
+	.workspace-explorer-rail .workspace-metric-value { font-size: 26px; }
+}
+@media (min-width: 48rem) {
+	.workspace-zone .cn-sidebar-inset { margin-top: 0; border-radius: 12px; }
+	.workspace-zone { --text-sm: 0.8125rem; --text-xs: 0.75rem; --text-base: 0.9375rem; }
+}
+@media (max-width: 47.999rem) {
+	body.style-nova:not(:has(.dc-landing)):has(.workspace-zone) :is([data-sidebar="menu-button"], [data-sidebar="menu-sub-button"]) { min-height: 40px; }
+	body.style-nova:not(:has(.dc-landing)):has(.workspace-zone) .workspace-page { padding: 16px 16px 88px; }
+	.workspace-metrics-grid { grid-template-columns: minmax(0,1fr); }
+	.workspace-metric { border-inline-end: 0; border-bottom: 1px solid var(--border); }
+	.workspace-metric:last-child { border-bottom: 0; }
+	body.style-nova:not(:has(.dc-landing)):has(.workspace-zone) :is(.cn-input, .cn-select-trigger, .cn-textarea) { font-size: 16px; min-height: 40px; }
+	body.style-nova:not(:has(.dc-landing)):has(.workspace-zone) .cn-button-size-default:not(.h-auto) { height: 40px; }
 }
 
-.workspace-zone [data-sidebar="menu-button"][data-active]:not([data-active="false"])::before {
-	content: "";
-	position: absolute;
-	left: 0.125rem;
-	top: 50%;
-	height: 1.1rem;
-	width: 3px;
-	transform: translateY(-50%);
-	border-radius: 9999px;
-	background-color: var(--primary);
-}
-
-/* Active submenu item (Settings → tabs): subtle primary tint, no bar
-   (the sub-list already sits on its own left rail). */
-.workspace-zone [data-sidebar="menu-sub-button"][data-active]:not([data-active="false"]) {
+body.style-nova:not(:has(.dc-landing)):has(.workspace-zone) [data-slot="data-grid-table"] { font-size: 13px; }
+body.style-nova:not(:has(.dc-landing)):has(.workspace-zone) [data-slot="data-grid-table"] th {
+	background: var(--muted);
+	color: var(--muted-foreground);
+	font-size: 11px;
 	font-weight: 600;
-	background-color: color-mix(in oklch, var(--primary) 10%, transparent);
+	letter-spacing: 0.035em;
+	text-transform: uppercase;
+	border-color: var(--border);
+}
+body.style-nova:not(:has(.dc-landing)):has(.workspace-zone) [data-slot="data-grid-table"] td { border-color: var(--border); }
+body.style-nova:not(:has(.dc-landing)):has(.workspace-zone) [data-slot="data-grid-table"] tbody tr:hover { background: var(--muted); }
+body.style-nova:not(:has(.dc-landing)):has(.workspace-zone) [data-slot="data-grid-table"] tbody tr[data-state="selected"] { background: var(--accent); }
+body.style-nova:not(:has(.dc-landing)):has(.workspace-zone) [data-slot="data-grid-pagination"] { font-size: 12px; }
+body.style-nova:not(:has(.dc-landing)):has(.workspace-zone) [data-slot="event-calendar-toolbar"] { padding: 12px 16px; border-bottom: 1px solid var(--border); background: var(--card); }
+body.style-nova:not(:has(.dc-landing)):has(.workspace-zone) [data-slot="event-calendar-title"] { font-size: 16px; font-weight: 600; }
+body.style-nova:not(:has(.dc-landing)):has(.workspace-zone) [data-slot="stepper-indicator"] { width: 24px; height: 24px; border-radius: 4px; font-size: 12px; box-shadow: none; }
+body.style-nova:not(:has(.dc-landing)):has(.workspace-zone) [data-slot="stepper-title"] { font-size: 13px; font-weight: 600; }
+body.style-nova:not(:has(.dc-landing)):has(.workspace-zone) [data-slot="stepper-description"] { font-size: 12px; }
+body.style-nova:not(:has(.dc-landing)):has(.workspace-zone) [data-slot="alert"] { border-radius: 4px; box-shadow: none; }
+body.style-nova:not(:has(.dc-landing)):has(.workspace-zone) .workspace-record-form [data-slot="field-legend"] { margin-bottom: 16px; padding-bottom: 8px; border-bottom: 1px solid var(--border); font-size: 13px; letter-spacing: 0; }
+body.style-nova:not(:has(.dc-landing)):has(.workspace-zone) .workspace-record-form [data-slot="field-description"] { font-size: 12px; }
+body.style-nova:not(:has(.dc-landing)):has(.workspace-zone) .workspace-highlight-metrics [data-slot="frame-panel"] { border-radius: 8px; }
+body.style-nova:not(:has(.dc-landing)):has(.workspace-zone) .workspace-segments { padding: 0; gap: 0; background: var(--card); border-radius: 4px; overflow: hidden; }
+body.style-nova:not(:has(.dc-landing)):has(.workspace-zone) .workspace-segments > button { border: 0; border-inline-end: 1px solid var(--border); border-radius: 0; min-height: 28px; background: transparent; }
+body.style-nova:not(:has(.dc-landing)):has(.workspace-zone) .workspace-segments > button:last-child { border-inline-end: 0; }
+body.style-nova:not(:has(.dc-landing)):has(.workspace-zone) .workspace-segments > button[aria-pressed="true"] { background: var(--accent); color: var(--accent-foreground); box-shadow: inset 0 -2px var(--primary); }
+@media (max-width: 47.999rem) {
+	body.style-nova:not(:has(.dc-landing)):has(.workspace-zone) .workspace-segments > button { min-height: 40px; }
 }

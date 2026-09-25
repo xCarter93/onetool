@@ -99,7 +99,7 @@ export function HelpMobileNav() {
 	return (
 		<details
 			key={pathname}
-			className="group mt-6 rounded-xl border border-border lg:hidden"
+			className="group mt-6 rounded-[8px] border border-border lg:hidden"
 		>
 			<summary className="flex cursor-pointer list-none items-center justify-between px-4 py-3 text-sm font-medium text-foreground [&::-webkit-details-marker]:hidden">
 				Browse help topics

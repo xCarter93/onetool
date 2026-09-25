@@ -28,7 +28,7 @@ const SignatureCanvasPad = dynamic(
 	{
 		ssr: false,
 		loading: () => (
-			<div className="h-40 animate-pulse rounded-xl bg-muted" />
+			<div className="h-40 animate-pulse rounded-[8px] bg-muted" />
 		),
 	},
 );

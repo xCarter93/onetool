@@ -1277,9 +1277,9 @@ export function DriveExplorer() {
 					{/* Header */}
 					<div className="flex shrink-0 items-center justify-between gap-3 border-b px-4 py-3">
 						<div className="flex min-w-0 flex-col gap-0.5">
-							<h2 className="text-foreground text-base leading-none font-semibold">
+							<h1 className="text-foreground text-2xl font-semibold">
 								Documents
-							</h2>
+							</h1>
 							<p className="text-muted-foreground truncate text-xs max-sm:hidden">
 								{canViewClients
 									? "Your team's shared file library. Client and project files appear under Clients automatically."
@@ -1319,7 +1319,7 @@ export function DriveExplorer() {
 						{/* Browse panel */}
 						<div className="flex min-h-0 min-w-0 flex-1 flex-col">
 							{/* Toolbar */}
-							<div className="flex min-w-0 shrink-0 flex-col gap-2 px-4 py-2.5 lg:flex-row lg:items-center">
+							<div className="workspace-toolbar flex min-w-0 shrink-0 flex-col gap-2 border-b border-border px-4 py-2.5 lg:flex-row lg:items-center">
 								{/* Path */}
 								<div className="flex min-w-0 items-center gap-2 lg:me-auto">
 									<Sheet open={railOpen} onOpenChange={setRailOpen}>

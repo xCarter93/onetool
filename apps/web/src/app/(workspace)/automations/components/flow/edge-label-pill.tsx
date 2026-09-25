@@ -27,11 +27,11 @@ export function EdgeLabelPill({
 		>
 			<span
 				className={cn(
-					"rounded-full border px-2 py-0.5 text-xs font-semibold whitespace-nowrap select-none",
+					"rounded-sm border px-1.5 py-0.5 text-xs font-semibold whitespace-nowrap select-none",
 					// Opaque backgrounds: pills sit on top of edge strokes and the
 					// loop container border, and must mask them in both themes.
 					loop
-						? "border-orange-200/70 bg-orange-50 text-orange-700 dark:border-orange-400/25 dark:bg-[color-mix(in_oklch,var(--color-orange-400)_12%,var(--background))] dark:text-orange-300"
+						? "border-warning/40 bg-warning-soft text-warning-foreground   "
 						: "border-border/60 bg-muted text-muted-foreground"
 				)}
 			>

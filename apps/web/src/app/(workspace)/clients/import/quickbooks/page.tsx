@@ -17,29 +17,36 @@ const INTEGRATIONS_URL = "/organization/profile?tab=integrations";
 
 function ImportSkeleton() {
 	return (
-		<div className="h-[calc(100dvh-7rem)] px-4 py-4 sm:px-6 sm:py-6">
-			<div className="mx-auto h-full w-full max-w-7xl space-y-4 rounded-xl border border-border bg-card p-5 sm:p-6">
-				<Skeleton className="h-5 w-56" />
-				<Skeleton className="h-10 w-full max-w-md" />
-				<div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+		<main className="workspace-page">
+			<div className="workspace-page-header">
+				<div className="space-y-2">
+					<Skeleton className="h-8 w-64" />
+					<Skeleton className="h-4 w-80 max-w-full" />
+				</div>
+			</div>
+			<div className="space-y-6">
+				<div className="grid grid-cols-2 gap-3 border-b pb-6 sm:grid-cols-5">
 					{[0, 1, 2, 3, 4].map((index) => (
-						<Skeleton key={index} className="h-12" />
+						<Skeleton key={index} className="h-8" />
 					))}
 				</div>
 				<div className="space-y-3">
 					{[0, 1, 2, 3, 4].map((index) => (
-						<Skeleton key={index} className="h-12" />
+						<Skeleton key={index} className="h-11" />
 					))}
 				</div>
 			</div>
-		</div>
+		</main>
 	);
 }
 
 function NoRunState({ onBack }: { onBack: () => void }) {
 	return (
-		<div className="px-4 py-10 sm:px-6">
-			<div className="mx-auto w-full max-w-2xl rounded-xl border border-border bg-card">
+		<main className="workspace-page">
+			<header className="workspace-page-header">
+				<h1>Import from QuickBooks</h1>
+			</header>
+			<section className="workspace-panel max-w-3xl">
 				<EmptyState
 					size="md"
 					title="No import to review"
@@ -50,15 +57,18 @@ function NoRunState({ onBack }: { onBack: () => void }) {
 						</Button>
 					}
 				/>
-			</div>
-		</div>
+			</section>
+		</main>
 	);
 }
 
 function UnavailableState({ onBack }: { onBack: () => void }) {
 	return (
-		<div className="px-4 py-10 sm:px-6">
-			<div className="mx-auto w-full max-w-2xl rounded-xl border border-border bg-card">
+		<main className="workspace-page">
+			<header className="workspace-page-header">
+				<h1>Import from QuickBooks</h1>
+			</header>
+			<section className="workspace-panel max-w-3xl">
 				<EmptyState
 					size="md"
 					title="QuickBooks import is coming soon"
@@ -69,8 +79,8 @@ function UnavailableState({ onBack }: { onBack: () => void }) {
 						</Button>
 					}
 				/>
-			</div>
-		</div>
+			</section>
+		</main>
 	);
 }
 

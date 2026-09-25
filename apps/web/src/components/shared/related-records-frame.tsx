@@ -6,12 +6,6 @@ import Link from "next/link";
 import type { LucideIcon } from "lucide-react";
 
 import {
-	Frame,
-	FrameHeader,
-	FramePanel,
-	FrameTitle,
-} from "@/components/reui/frame";
-import {
 	Item,
 	ItemActions,
 	ItemContent,
@@ -57,10 +51,6 @@ function formatStatusLabel(status: string) {
 		.join(" ");
 }
 
-/**
- * "RELATED" frame — one card per related object type. Each card renders a list
- * of c-item-6-style rows, or a ReUI empty state when the type has no records.
- */
 export function RelatedRecordsFrame({
 	sections,
 	columns,
@@ -73,18 +63,18 @@ export function RelatedRecordsFrame({
 	const cols = columns ?? Math.min(Math.max(sections.length, 1), 3);
 
 	return (
-		<Frame className={className}>
-			<FrameHeader>
-				<FrameTitle className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+		<section className={cn("workspace-related-records", className)}>
+			<div className="workspace-section-heading">
+				<h3 className="text-sm font-semibold">
 					Related
-				</FrameTitle>
-			</FrameHeader>
+				</h3>
+			</div>
 
-			<div className={cn("grid grid-cols-1 gap-3", COLS[cols])}>
+			<div className={cn("grid grid-cols-1 gap-6", COLS[cols])}>
 				{sections.map((section) => {
 					const SectionIcon = section.icon;
 					return (
-						<FramePanel key={section.title} className="flex flex-col gap-3">
+						<div key={section.title} className="min-w-0 flex flex-col gap-2">
 							<div className="flex items-center justify-between">
 								<div className="flex items-center gap-2">
 									<SectionIcon className="size-4 text-muted-foreground" />
@@ -116,6 +106,7 @@ export function RelatedRecordsFrame({
 											<Item
 												key={item.id}
 												variant="outline"
+												className="bg-card px-3 py-2.5 shadow-sm hover:bg-muted"
 												size="xs"
 												render={
 													item.href ? (
@@ -146,10 +137,10 @@ export function RelatedRecordsFrame({
 									})}
 								</div>
 							)}
-						</FramePanel>
+						</div>
 					);
 				})}
 			</div>
-		</Frame>
+		</section>
 	);
 }

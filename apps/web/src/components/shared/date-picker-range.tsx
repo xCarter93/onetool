@@ -256,7 +256,7 @@ export default function DatePickerRange({
 				</div>
 			</PopoverTrigger>
 			<PopoverContent
-				className="w-auto max-w-[780px] rounded-lg border border-border bg-background p-0 text-foreground shadow-lg"
+				className="w-auto max-w-[780px] rounded-lg border border-border bg-popover p-0 text-foreground"
 				style={{ backgroundColor: "var(--background)" }}
 				align={align}
 				side="bottom"

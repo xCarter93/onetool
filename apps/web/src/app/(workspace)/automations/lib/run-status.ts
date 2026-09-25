@@ -134,13 +134,13 @@ export function runEdgeFlowClass(
 export function runStatusRingClass(status: NodeRunStatus | undefined): string {
 	switch (status) {
 		case "running":
-			return "rounded-[12px] ring-2 ring-blue-500/70 ring-offset-2 ring-offset-background motion-safe:animate-pulse";
+			return "rounded-lg ring-2 ring-info ring-offset-2 ring-offset-background motion-safe:animate-pulse";
 		case "success":
-			return "rounded-[12px] ring-2 ring-emerald-500/70 ring-offset-2 ring-offset-background";
+			return "rounded-lg ring-2 ring-success ring-offset-2 ring-offset-background";
 		case "failed":
-			return "rounded-[12px] ring-2 ring-red-500/70 ring-offset-2 ring-offset-background";
+			return "rounded-lg ring-2 ring-danger ring-offset-2 ring-offset-background";
 		case "skipped":
-			return "rounded-[12px] ring-2 ring-muted-foreground/40 ring-offset-2 ring-offset-background";
+			return "rounded-lg ring-2 ring-muted-foreground/40 ring-offset-2 ring-offset-background";
 		default:
 			return "";
 	}

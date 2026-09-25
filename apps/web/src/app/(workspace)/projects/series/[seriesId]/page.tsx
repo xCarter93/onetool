@@ -46,7 +46,10 @@ import {
 	describeRecurrence,
 	durationCountFromOffset,
 } from "../../components/recurrence/rule";
-import { formatVisitDate, stateLabel } from "../../components/recurrence/labels";
+import {
+	formatVisitDate,
+	stateLabel,
+} from "../../components/recurrence/labels";
 import { RecurrenceScheduleForm } from "../../components/recurrence/schedule-form";
 import { SeriesAgreementPanel } from "./series-agreement-panel";
 import {
@@ -66,7 +69,7 @@ function SeriesPageContent() {
 	const fromProjectId = searchParams.get("fromProjectId") ?? undefined;
 	const toast = useToast();
 	const [action, setAction] = useState<LifecycleAction | null>(() =>
-		searchParams.get("action") === "resume" ? "resume" : null
+		searchParams.get("action") === "resume" ? "resume" : null,
 	);
 	const [scheduleOpen, setScheduleOpen] = useState(false);
 	const [isUpdatingSchedule, setIsUpdatingSchedule] = useState(false);
@@ -87,7 +90,7 @@ function SeriesPageContent() {
 		can("invoices", "modify");
 	const details = useQuery(
 		api.projectSeries.get,
-		canAccess ? { seriesId, fromProjectId } : "skip"
+		canAccess ? { seriesId, fromProjectId } : "skip",
 	);
 	const updateSchedule = useMutation(api.projectSeries.updateSchedule);
 
@@ -126,8 +129,14 @@ function SeriesPageContent() {
 		);
 	}
 
-	const { series, canManage, clientName, propertyName, nextVisit, returnProject } =
-		details;
+	const {
+		series,
+		canManage,
+		clientName,
+		propertyName,
+		nextVisit,
+		returnProject,
+	} = details;
 	const stateAction: LifecycleAction | null =
 		series.state === "active"
 			? "pause"
@@ -166,8 +175,8 @@ function SeriesPageContent() {
 			: undefined;
 
 	return (
-		<main className="space-y-6 px-6 py-8">
-			<header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+		<main className="workspace-page space-y-8">
+			<header className="workspace-page-header flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
 				<div className="min-w-0">
 					<Button
 						nativeButton={false}
@@ -237,9 +246,9 @@ function SeriesPageContent() {
 				/>
 			)}
 
-			<div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(18rem,0.6fr)]">
-				<Frame>
-					<FrameHeader className="flex-row items-start justify-between gap-4">
+			<div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(16rem,0.5fr)]">
+				<Frame variant="ghost" className="gap-0 bg-transparent p-0">
+					<FrameHeader className="workspace-section-heading flex-row items-start justify-between gap-4 px-0">
 						<div>
 							<FrameTitle>Schedule</FrameTitle>
 							<FrameDescription>
@@ -281,7 +290,7 @@ function SeriesPageContent() {
 							</Button>
 						) : null}
 					</FrameHeader>
-					<FramePanel className="space-y-3">
+					<FramePanel className="space-y-3 rounded-none border-0 bg-transparent px-0 shadow-none before:hidden">
 						{series.state === "ended" && (
 							<p className="text-sm text-muted-foreground">
 								This series has ended. Resume it to restore eligible upcoming
@@ -312,18 +321,18 @@ function SeriesPageContent() {
 							</p>
 						) : series.pendingAgreementRevisionId ? (
 							<p className="text-sm text-muted-foreground">
-								A proposed agreement is awaiting approval. Withdraw it to
-								change this schedule.
+								A proposed agreement is awaiting approval. Withdraw it to change
+								this schedule.
 							</p>
 						) : null}
 					</FramePanel>
 				</Frame>
-				<Frame>
-					<FrameHeader>
+				<Frame variant="ghost" className="gap-0 bg-transparent p-0">
+					<FrameHeader className="workspace-section-heading px-0">
 						<FrameTitle>Next visit</FrameTitle>
 						<FrameDescription>The next scheduled occurrence</FrameDescription>
 					</FrameHeader>
-					<FramePanel>
+					<FramePanel className="rounded-none border-0 bg-transparent px-0 shadow-none before:hidden">
 						{nextVisit ? (
 							<Link
 								href={`/projects/${nextVisit._id}`}
@@ -403,7 +412,7 @@ function SeriesPageContent() {
 									});
 									toast.success(
 										"Schedule updated",
-										"Future planned visits now follow the new schedule."
+										"Future planned visits now follow the new schedule.",
 									);
 									setScheduleOpen(false);
 								} catch (error) {
@@ -411,8 +420,8 @@ function SeriesPageContent() {
 										"Update failed",
 										convexErrorMessage(
 											error,
-											"Review the schedule and try again."
-										)
+											"Review the schedule and try again.",
+										),
 									);
 								} finally {
 									setIsUpdatingSchedule(false);

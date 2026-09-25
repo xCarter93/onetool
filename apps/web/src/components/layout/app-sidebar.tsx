@@ -23,11 +23,9 @@ import {
 	SidebarFooter,
 	SidebarHeader,
 	SidebarRail,
-	SidebarTrigger,
 	useSidebar,
 } from "@/components/ui/sidebar";
 import { Separator } from "@/components/ui/separator";
-import { CommandPaletteTrigger } from "@/components/layout/command-palette";
 import { PlanUsageCard } from "@/components/layout/plan-usage-card";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { useQuery } from "convex/react";
@@ -88,9 +86,8 @@ function SidebarBrandHeader() {
 
 	return (
 		<div className="flex flex-col gap-2">
-			{/* Collapsed: icon mark sits first, above the toggle */}
-			{isCollapsed && (
-				<div className="flex justify-center">
+			<div className={`flex h-8 items-center ${isCollapsed ? "justify-center" : "px-2"}`}>
+				{isCollapsed ? (
 					<Image
 						src="/OneTool-mark.png"
 						alt="OneTool"
@@ -100,12 +97,7 @@ function SidebarBrandHeader() {
 						className="size-8 dark:invert dark:brightness-0"
 						priority
 					/>
-				</div>
-			)}
-			{/* Toggle + Logo row */}
-			<div className={`flex items-center ${isCollapsed ? "justify-center" : "gap-4"}`}>
-				<SidebarTrigger className="size-8 shrink-0" />
-				{!isCollapsed && (
+				) : (
 					<Image
 						src="/OneTool-wordmark.png"
 						alt="OneTool"
@@ -248,15 +240,6 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 					tooltipPosition={HOME_TOUR_CONTENT[HomeTour.TEAM_SWITCHER].tooltipPosition}
 				>
 					<TeamSwitcher />
-				</TourElement>
-				<TourElement<HomeTour>
-					TourContext={HomeTourContext}
-					stepId={HomeTour.GLOBAL_SEARCH}
-					title={HOME_TOUR_CONTENT[HomeTour.GLOBAL_SEARCH].title}
-					description={HOME_TOUR_CONTENT[HomeTour.GLOBAL_SEARCH].description}
-					tooltipPosition={HOME_TOUR_CONTENT[HomeTour.GLOBAL_SEARCH].tooltipPosition}
-				>
-					<CommandPaletteTrigger />
 				</TourElement>
 			</SidebarHeader>
 			<SidebarContent>

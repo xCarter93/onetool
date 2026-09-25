@@ -6,7 +6,6 @@ import { MentionFeed } from "./mention-feed";
 import {
 	GlassCard,
 	GlassCardHeader,
-	GlassCardTitle,
 	GlassCardContent,
 } from "@/components/shared/glass-card";
 import { MessageSquare } from "lucide-react";
@@ -29,15 +28,14 @@ export function MentionSection({
 	const [refreshKey, setRefreshKey] = useState(0);
 
 	const handleMentionCreated = () => {
-		// Trigger a refresh by updating the key
 		setRefreshKey((prev) => prev + 1);
 	};
 
 	const headerContent = (
 		<>
 			<div className="flex items-center gap-2">
-				<MessageSquare className="h-5 w-5 text-primary" />
-				<h3 className="text-lg font-semibold text-foreground">
+				<MessageSquare className="h-4 w-4 text-muted-foreground" />
+				<h3 className="text-sm font-semibold text-foreground">
 					Team Communication
 				</h3>
 			</div>
@@ -49,8 +47,7 @@ export function MentionSection({
 
 	const bodyContent = (
 		<div className="space-y-6">
-			{/* Message Input */}
-			<div className="pb-6 border-b border-border">
+			<div>
 				<MentionInput
 					entityType={entityType}
 					entityId={entityId}
@@ -59,7 +56,6 @@ export function MentionSection({
 				/>
 			</div>
 
-			{/* Message Feed */}
 			<div key={refreshKey}>
 				<MentionFeed entityType={entityType} entityId={entityId} pageSize={pageSize} />
 			</div>

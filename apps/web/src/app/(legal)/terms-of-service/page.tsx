@@ -779,7 +779,7 @@ export default function TermsOfServicePage() {
 						If you have questions, concerns, or disputes regarding these Terms
 						of Service, please contact us at:
 					</p>
-					<div className="bg-card border border-border rounded-lg p-4 mt-4 text-muted-foreground">
+					<div className="bg-card border border-border rounded-[8px] p-4 mt-4 text-muted-foreground">
 						<p className="font-semibold text-foreground mb-2">
 							OneTool Legal Support
 						</p>

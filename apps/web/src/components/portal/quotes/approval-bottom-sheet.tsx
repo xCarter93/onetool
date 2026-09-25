@@ -249,7 +249,7 @@ export function ApprovalBottomSheet({
 			>
 				<div className="px-4 py-3 flex flex-col gap-2">
 					<div className="flex items-center justify-between">
-						<p className="text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
+						<p className="text-xs font-semibold uppercase tracking-[0.06em] text-muted-foreground">
 							Quote total
 						</p>
 						<p className="text-[20px] font-semibold tabular-nums">
@@ -282,7 +282,7 @@ export function ApprovalBottomSheet({
 					}}
 				>
 					<div
-						className="w-full bg-card rounded-t-2xl max-h-[85vh] overflow-y-auto"
+						className="max-h-[85vh] w-full overflow-y-auto rounded-t-[8px] border-t border-border bg-card"
 						style={{
 							paddingBottom: "calc(env(safe-area-inset-bottom) + 1rem)",
 						}}
@@ -298,7 +298,7 @@ export function ApprovalBottomSheet({
 								aria-label="Close"
 								onClick={() => setExpanded(false)}
 								disabled={!canDismissSheet}
-								className="text-muted-foreground hover:text-foreground disabled:opacity-40"
+								className="flex size-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-40"
 							>
 								<X className="h-4 w-4" aria-hidden="true" />
 							</button>
@@ -340,7 +340,7 @@ export function ApprovalBottomSheet({
 										)}
 
 									<div>
-										<p className="text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground mb-2">
+										<p className="text-xs font-semibold uppercase tracking-[0.06em] text-muted-foreground mb-2">
 											Sign to accept
 										</p>
 										<SignatureCard
@@ -362,7 +362,7 @@ export function ApprovalBottomSheet({
 									</label>
 
 									{signaturePayload.mode === "typed" && (
-										<label className="flex items-start gap-2 text-[12px] cursor-pointer text-muted-foreground">
+										<label className="flex items-start gap-2 text-[13px] cursor-pointer text-muted-foreground">
 											<input
 												type="checkbox"
 												checked={intentAffirmed}

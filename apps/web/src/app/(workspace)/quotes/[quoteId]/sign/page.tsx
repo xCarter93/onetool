@@ -57,10 +57,10 @@ function OneOffQuoteSignContent() {
 	const router = useRouter();
 	const toast = useToast();
 	const createRequest = useAction(
-		api.boldsignActions.createEmbeddedSignatureRequest
+		api.boldsignActions.createEmbeddedSignatureRequest,
 	);
 	const discardRequest = useAction(
-		api.boldsignActions.discardEmbeddedSignatureRequest
+		api.boldsignActions.discardEmbeddedSignatureRequest,
 	);
 	const markDraftSaved = useMutation(api.boldsign.markEmbeddedDraftSaved);
 
@@ -81,7 +81,7 @@ function OneOffQuoteSignContent() {
 	// Pending Save & Close teardown, cancellable by onPageNavigation (see
 	// DRAFT_CLOSE_GRACE_MS).
 	const pendingDraftCloseRef = useRef<ReturnType<typeof setTimeout> | null>(
-		null
+		null,
 	);
 	const lastNavAtRef = useRef(0);
 
@@ -132,7 +132,7 @@ function OneOffQuoteSignContent() {
 		void markDraftSaved({ quoteId }).catch(() => undefined);
 		toast.success(
 			"Draft kept",
-			"Resume anytime from the Signatures tab on this quote."
+			"Resume anytime from the Signatures tab on this quote.",
 		);
 		router.push(`/quotes/${quoteId}`);
 	}, [markDraftSaved, quoteId, router, toast]);
@@ -170,7 +170,7 @@ function OneOffQuoteSignContent() {
 				kind: "error",
 				message: convexErrorMessage(
 					err,
-					"We couldn't prepare this document. Please try again."
+					"We couldn't prepare this document. Please try again.",
 				),
 			});
 		}
@@ -209,7 +209,7 @@ function OneOffQuoteSignContent() {
 					keepDocumentRef.current = true;
 					toast.success(
 						"Sent for signature",
-						"Your client will receive an email to sign."
+						"Your client will receive an email to sign.",
 					);
 					void backToQuote();
 					break;
@@ -232,7 +232,7 @@ function OneOffQuoteSignContent() {
 						void markDraftSaved({ quoteId }).catch(() => undefined);
 						toast.success(
 							"Draft saved",
-							"Resume anytime from the Signatures tab on this quote."
+							"Resume anytime from the Signatures tab on this quote.",
 						);
 						void backToQuote();
 					}, DRAFT_CLOSE_GRACE_MS);
@@ -241,7 +241,7 @@ function OneOffQuoteSignContent() {
 					setIframeLoading(false);
 					toast.error(
 						"Couldn't send",
-						"Something went wrong in the editor. Please try again."
+						"Something went wrong in the editor. Please try again.",
 					);
 					break;
 				default:
@@ -285,7 +285,7 @@ function OneOffQuoteSignContent() {
 					</p>
 				</div>
 
-				<div className="relative min-h-[600px] flex-1 overflow-hidden rounded-xl border border-border bg-muted/30">
+				<div className="workspace-panel relative min-h-[600px] flex-1 overflow-hidden">
 					{iframeLoading && (
 						<div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-background/70 backdrop-blur-sm">
 							<Loader2
@@ -313,16 +313,13 @@ function OneOffQuoteSignContent() {
 				>
 					<AlertDialogContent className="max-w-md">
 						<AlertDialogHeader>
-							<AlertDialogTitle>
-								Leave without sending?
-							</AlertDialogTitle>
+							<AlertDialogTitle>Leave without sending?</AlertDialogTitle>
 						</AlertDialogHeader>
 						<div className="space-y-4">
 							<p className="text-sm text-muted-foreground">
-								This quote hasn&apos;t been sent — nobody has been
-								emailed. Keep the draft to pick up your field
-								placement later from the Signatures tab, or discard it
-								to start fresh next time.
+								This quote hasn&apos;t been sent — nobody has been emailed. Keep
+								the draft to pick up your field placement later from the
+								Signatures tab, or discard it to start fresh next time.
 							</p>
 							<div className="flex justify-end gap-3">
 								<Button
@@ -348,8 +345,8 @@ function OneOffQuoteSignContent() {
 
 	// ---- All non-ready states share a centered layout ----------------------
 	return (
-		<div className="flex min-h-[70vh] flex-1 flex-col px-4 md:px-6">
-			<div className="py-3">
+		<div className="workspace-detail workspace-page flex min-h-[70vh] flex-1 flex-col">
+			<div className="workspace-page-header py-3">
 				<button
 					type="button"
 					onClick={() => void backToQuote()}
@@ -398,10 +395,16 @@ function OneOffQuoteSignContent() {
 							</p>
 						</div>
 						<div className="mt-1 flex items-center gap-3">
-							<Button onClick={() => router.push("/organization/profile?tab=billing")}>
+							<Button
+								onClick={() => router.push("/organization/profile?tab=billing")}
+							>
 								View plans
 							</Button>
-							<Button variant="ghost" onClick={() => void backToQuote()} disabled={discarding}>
+							<Button
+								variant="ghost"
+								onClick={() => void backToQuote()}
+								disabled={discarding}
+							>
 								Back to quote
 							</Button>
 						</div>
@@ -414,9 +417,9 @@ function OneOffQuoteSignContent() {
 
 				{view.kind === "no_signer" && (
 					<div className="flex max-w-md flex-col items-center gap-4 text-center">
-						<div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-amber-100 dark:bg-amber-900/30">
+						<div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-warning-soft">
 							<UserPlus
-								className="h-7 w-7 text-amber-600 dark:text-amber-400"
+								className="h-7 w-7 text-warning-foreground"
 								aria-hidden="true"
 							/>
 						</div>
@@ -429,7 +432,11 @@ function OneOffQuoteSignContent() {
 								address before you can send it for signature.
 							</p>
 						</div>
-						<Button variant="outline" onClick={() => void backToQuote()} disabled={discarding}>
+						<Button
+							variant="outline"
+							onClick={() => void backToQuote()}
+							disabled={discarding}
+						>
 							Back to quote
 						</Button>
 					</div>
@@ -437,9 +444,9 @@ function OneOffQuoteSignContent() {
 
 				{view.kind === "no_pdf" && (
 					<div className="flex max-w-md flex-col items-center gap-4 text-center">
-						<div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-amber-100 dark:bg-amber-900/30">
+						<div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-warning-soft">
 							<FileText
-								className="h-7 w-7 text-amber-600 dark:text-amber-400"
+								className="h-7 w-7 text-warning-foreground"
 								aria-hidden="true"
 							/>
 						</div>
@@ -453,7 +460,11 @@ function OneOffQuoteSignContent() {
 								it for signature.
 							</p>
 						</div>
-						<Button variant="outline" onClick={() => void backToQuote()} disabled={discarding}>
+						<Button
+							variant="outline"
+							onClick={() => void backToQuote()}
+							disabled={discarding}
+						>
 							Back to quote
 						</Button>
 						<LearnMoreLink
@@ -465,9 +476,9 @@ function OneOffQuoteSignContent() {
 
 				{view.kind === "error" && (
 					<div className="flex max-w-md flex-col items-center gap-4 text-center">
-						<div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-red-100 dark:bg-red-900/30">
+						<div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-danger-soft">
 							<AlertTriangle
-								className="h-7 w-7 text-red-600 dark:text-red-400"
+								className="h-7 w-7 text-danger-foreground"
 								aria-hidden="true"
 							/>
 						</div>
@@ -484,7 +495,11 @@ function OneOffQuoteSignContent() {
 								<RefreshCw className="h-4 w-4" />
 								Try again
 							</Button>
-							<Button variant="ghost" onClick={() => void backToQuote()} disabled={discarding}>
+							<Button
+								variant="ghost"
+								onClick={() => void backToQuote()}
+								disabled={discarding}
+							>
 								Back to quote
 							</Button>
 						</div>
@@ -495,15 +510,11 @@ function OneOffQuoteSignContent() {
 	);
 }
 
-function RecurringAgreementSignContent({
-	quote,
-}: {
-	quote: Doc<"quotes">;
-}) {
+function RecurringAgreementSignContent({ quote }: { quote: Doc<"quotes"> }) {
 	const router = useRouter();
 	const toast = useToast();
 	const sendAgreement = useAction(
-		api.boldsignActions.sendRecurringAgreementForSignature
+		api.boldsignActions.sendRecurringAgreementForSignature,
 	);
 	const primaryContact = useQuery(api.clientContacts.getPrimaryContact, {
 		clientId: quote.clientId,
@@ -524,26 +535,31 @@ function RecurringAgreementSignContent({
 						? `This organization has used ${result.used} of ${result.limit} e-signatures this month.`
 						: result.reason === "no_signer"
 							? "Add a primary client contact with an email address, then try again."
-							: "The agreement PDF could not be prepared. Generate it again, then retry."
+							: "The agreement PDF could not be prepared. Generate it again, then retry.",
 				);
 				return;
 			}
 			toast.success(
 				"Agreement sent for signature",
-				"Your client will receive an email with the recurring agreement."
+				"Your client will receive an email with the recurring agreement.",
 			);
 			router.push(`/quotes/${quote._id}`);
 		} catch (nextError) {
-			setError(convexErrorMessage(nextError, "Try sending the agreement again."));
+			setError(
+				convexErrorMessage(nextError, "Try sending the agreement again."),
+			);
 		} finally {
 			setIsSending(false);
 		}
 	};
 
 	return (
-		<div className="flex min-h-[70vh] flex-1 flex-col px-4 md:px-6">
-			<div className="py-3">
-				<Button variant="ghost" onClick={() => router.push(`/quotes/${quote._id}`)}>
+		<div className="workspace-detail workspace-page flex min-h-[70vh] flex-1 flex-col">
+			<div className="workspace-page-header py-3">
+				<Button
+					variant="ghost"
+					onClick={() => router.push(`/quotes/${quote._id}`)}
+				>
 					<ArrowLeft className="size-4" /> Back to quote
 				</Button>
 			</div>
@@ -554,26 +570,38 @@ function RecurringAgreementSignContent({
 							Send recurring agreement
 						</h1>
 						<p className="mt-2 text-base text-muted-foreground text-pretty">
-							OneTool will use the saved agreement PDF. Its terms and signature fields cannot be changed in the sending step.
+							OneTool will use the saved agreement PDF. Its terms and signature
+							fields cannot be changed in the sending step.
 						</p>
 					</div>
 
 					<dl className="divide-y divide-border border-y border-border text-sm">
 						<div className="grid grid-cols-[8rem_minmax(0,1fr)] gap-3 py-3">
 							<dt className="text-muted-foreground">Agreement</dt>
-							<dd className="font-medium text-foreground">{terms.agreementReference}, revision {terms.revisionNumber}</dd>
+							<dd className="font-medium text-foreground">
+								{terms.agreementReference}, revision {terms.revisionNumber}
+							</dd>
 						</div>
 						<div className="grid grid-cols-[8rem_minmax(0,1fr)] gap-3 py-3">
 							<dt className="text-muted-foreground">Client</dt>
-							<dd className="font-medium text-foreground">{terms.client.name}</dd>
+							<dd className="font-medium text-foreground">
+								{terms.client.name}
+							</dd>
 						</div>
 						<div className="grid grid-cols-[8rem_minmax(0,1fr)] gap-3 py-3">
 							<dt className="text-muted-foreground">Recipient</dt>
 							<dd className="min-w-0 font-medium text-foreground">
-								{primaryContact === undefined ? <Skeleton className="h-5 w-48" /> : primaryContact?.email ? `${primaryContact.firstName} ${primaryContact.lastName} (${primaryContact.email})` : (
+								{primaryContact === undefined ? (
+									<Skeleton className="h-5 w-48" />
+								) : primaryContact?.email ? (
+									`${primaryContact.firstName} ${primaryContact.lastName} (${primaryContact.email})`
+								) : (
 									<span className="font-normal text-muted-foreground">
 										No primary contact with an email.{" "}
-										<Link href={`/clients/${quote.clientId}`} className="font-medium text-foreground underline underline-offset-4">
+										<Link
+											href={`/clients/${quote.clientId}`}
+											className="font-medium text-foreground underline underline-offset-4"
+										>
 											Add one on the client
 										</Link>
 									</span>
@@ -583,7 +611,10 @@ function RecurringAgreementSignContent({
 					</dl>
 
 					{error && (
-						<p role="alert" className="rounded-md border border-danger/30 bg-danger/10 p-3 text-sm text-danger-foreground">
+						<p
+							role="alert"
+							className="rounded-md border border-danger/30 bg-danger/10 p-3 text-sm text-danger-foreground"
+						>
 							{error}
 						</p>
 					)}
@@ -594,7 +625,9 @@ function RecurringAgreementSignContent({
 							disabled={isSending || !primaryContact?.email}
 							onClick={() => void send()}
 						>
-							{isSending && <Loader2 className="size-4 animate-spin motion-reduce:animate-none" />}
+							{isSending && (
+								<Loader2 className="size-4 animate-spin motion-reduce:animate-none" />
+							)}
 							Send agreement for signature
 						</Button>
 					</div>
@@ -612,7 +645,7 @@ function QuoteSignPageContent() {
 
 	if (quote === undefined) {
 		return (
-			<div className="space-y-4 px-6 py-8">
+			<div className="workspace-page space-y-4">
 				<Skeleton className="h-10 w-40" />
 				<Skeleton className="mx-auto h-80 w-full max-w-lg" />
 			</div>
@@ -620,8 +653,10 @@ function QuoteSignPageContent() {
 	}
 	if (quote === null) {
 		return (
-			<div className="space-y-4 px-6 py-8">
-				<p className="text-sm text-muted-foreground">This quote is not available.</p>
+			<div className="workspace-page space-y-4">
+				<p className="text-sm text-muted-foreground">
+					This quote is not available.
+				</p>
 				<Button variant="ghost" onClick={() => router.push("/quotes")}>
 					<ArrowLeft className="size-4" /> Back to quotes
 				</Button>

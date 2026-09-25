@@ -1,18 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import {
-	PanelLeft,
-	PanelLeftClose,
-	Zap,
-	Copy,
-	Braces,
-	Check,
-	Plus,
-	AlertTriangle,
-	FlaskConical,
-} from "lucide-react";
-import type { Node, Edge } from "@xyflow/react";
+import { PanelLeft, PanelLeftClose, Plus, AlertTriangle, FlaskConical } from "lucide-react";
+import type { Node } from "@xyflow/react";
 import type { Doc } from "@onetool/backend/convex/_generated/dataModel";
 import { Button } from "@/components/ui/button";
 import Modal from "@/components/ui/modal";
@@ -22,9 +12,7 @@ import {
 	PillTabsList,
 	PillTabsTrigger,
 } from "@/components/shared/pill-tabs";
-import { NextStepTree } from "../sidebar/next-step-tree";
-import { TRIGGER_NODE_ID, type EditorNode } from "../../lib/flow-adapter";
-import { getAvailableVariables, type VariableOption } from "../../lib/variables";
+import type { EditorNode } from "../../lib/flow-adapter";
 import {
 	MAX_FORMULAS,
 	triggerScopeObjectType,
@@ -41,14 +29,13 @@ interface WorkflowDrawerProps {
 	trigger: TriggerConfig | null | undefined;
 	nodes: EditorNode[];
 	rfNodes: Node[];
-	rfEdges: Edge[];
 	onNavigateToNode: (nodeId: string) => void;
-	/** The node whose scope drives the variable reference; base catalog when absent. */
-	selectedNodeId?: string;
 	open: boolean;
 	onToggle: () => void;
 	formulas: FormulaResource[];
 	onFormulasChange: (next: FormulaResource[]) => void;
+	/** Save-blocking problems keyed by formula id, from validateWorkflowForSave. */
+	formulaWarnings?: Map<string, string>;
 	sampleRecords: SampleRecord[];
 	// Debug tab — dry-run lifecycle (owns what the top bar used to).
 	execution: Doc<"workflowExecutions"> | null | undefined;
@@ -73,27 +60,6 @@ const RETURN_TYPE_BADGE_LABELS: Record<FormulaResource["returnType"], string> = 
  */
 export function formatVariableToken(path: string, format: "text" | "formula"): string {
 	return format === "formula" ? `{${path}}` : `{{${path}}}`;
-}
-
-/**
- * Rows sit under their group heading ("Trigger · Client"), so drop the chained
- * prefix and show only the final segment ("Company Name"). Full labels stay in
- * the pickers, where rows can appear without group context (flat search).
- */
-function shortLabel(label: string): string {
-	const idx = label.lastIndexOf(" → ");
-	return idx === -1 ? label : label.slice(idx + 3);
-}
-
-/** Order-preserving group of variable options by their `group` label. */
-function groupVariables(vars: VariableOption[]): [string, VariableOption[]][] {
-	const groups: [string, VariableOption[]][] = [];
-	for (const v of vars) {
-		const existing = groups.find(([g]) => g === v.group);
-		if (existing) existing[1].push(v);
-		else groups.push([v.group, [v]]);
-	}
-	return groups;
 }
 
 const NODE_TYPE_LABELS: Record<WorkflowNodeType, string> = {
@@ -136,13 +102,12 @@ export function WorkflowDrawer({
 	trigger,
 	nodes,
 	rfNodes,
-	rfEdges,
 	onNavigateToNode,
-	selectedNodeId,
 	open,
 	onToggle,
 	formulas,
 	onFormulasChange,
+	formulaWarnings,
 	sampleRecords,
 	execution,
 	isRunning,
@@ -152,9 +117,6 @@ export function WorkflowDrawer({
 	onCancelTest,
 }: WorkflowDrawerProps) {
 	// Which variable + syntax was last copied — drives the row's check-mark.
-	const [copiedPath, setCopiedPath] = useState<
-		{ path: string; format: "text" | "formula" } | null
-	>(null);
 	// null = closed; { formula: null } = create; { formula: F } = edit F.
 	const [formulaModal, setFormulaModal] = useState<{ formula: FormulaResource | null } | null>(
 		null
@@ -170,12 +132,6 @@ export function WorkflowDrawer({
 		[nodes]
 	);
 
-	const variableGroups = useMemo(() => {
-		if (!trigger) return [];
-		return groupVariables(
-			getAvailableVariables(workflowNodes, trigger, selectedNodeId ?? "", formulas)
-		);
-	}, [trigger, workflowNodes, selectedNodeId, formulas]);
 
 	const handleSaveFormula = (next: FormulaResource) => {
 		const exists = formulas.some((f) => f.id === next.id);
@@ -294,7 +250,7 @@ export function WorkflowDrawer({
 
 	if (!open) {
 		return (
-			<div className="absolute left-3 top-3 z-10 flex w-10 flex-col items-center rounded-xl border border-border bg-card py-1.5 shadow-sm">
+			<div className="absolute left-3 top-3 z-10 flex w-10 flex-col items-center rounded-lg border border-border bg-card py-1.5 shadow-floating">
 				<Button
 					variant="ghost"
 					size="icon-sm"
@@ -309,28 +265,11 @@ export function WorkflowDrawer({
 		);
 	}
 
-	// Two syntaxes (see formatVariableToken), so two copy affordances per
-	// variable rather than guessing which context the user will paste into.
-	const copyPath = async (path: string, format: "text" | "formula") => {
-		const clipboard = navigator.clipboard;
-		if (!clipboard) return; // no clipboard API (insecure context) — nothing copied
-		const token = formatVariableToken(path, format);
-		try {
-			await clipboard.writeText(token);
-		} catch {
-			return; // write rejected — don't show the copied state
-		}
-		setCopiedPath({ path, format });
-		window.setTimeout(
-			() => setCopiedPath((p) => (p?.path === path && p.format === format ? null : p)),
-			1200
-		);
-	};
 
 	return (
-		<div className="absolute bottom-3 left-3 top-3 z-10 flex w-[320px] flex-col overflow-hidden rounded-xl border border-border bg-card shadow-sm">
-			<div className="flex items-center justify-between border-b border-border px-3 py-2.5">
-				<span className="text-sm font-semibold">Workflow</span>
+		<div className="absolute bottom-3 left-3 top-3 z-10 flex w-[320px] flex-col overflow-hidden rounded-lg border border-border bg-card shadow-floating">
+			<div className="flex h-11 shrink-0 items-center justify-between border-b border-border pl-4 pr-2">
+				<span className="text-base font-semibold">Workflow</span>
 				<Button
 					variant="ghost"
 					size="icon-sm"
@@ -347,7 +286,7 @@ export function WorkflowDrawer({
 			>
 				<div className="border-b border-border px-3 py-2">
 					<PillTabsList className="overflow-x-auto">
-						<PillTabsTrigger value="resources">Resources</PillTabsTrigger>
+						<PillTabsTrigger value="resources">Formulas</PillTabsTrigger>
 						<PillTabsTrigger value="debug">
 							<FlaskConical className="size-3.5" />
 							Debug
@@ -359,103 +298,10 @@ export function WorkflowDrawer({
 					value="resources"
 					className="mt-0 min-h-0 flex-1 overflow-y-auto"
 				>
-					{/* Outline */}
-					<div className="border-b border-border p-3">
-						<div className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-							Outline
-						</div>
-						<div className="space-y-0.5">
-							<button
-								type="button"
-								onClick={() => onNavigateToNode(TRIGGER_NODE_ID)}
-								className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-							>
-								<div className="flex h-5 w-5 shrink-0 items-center justify-center rounded bg-amber-50 text-amber-600 dark:bg-amber-950/40 dark:text-amber-400">
-									<Zap className="h-3 w-3" />
-								</div>
-								<span className="truncate text-sm">Trigger</span>
-							</button>
-							<NextStepTree
-								currentNodeId={TRIGGER_NODE_ID}
-								nodes={rfNodes}
-								edges={rfEdges}
-								onNavigateToNode={onNavigateToNode}
-								hideHeader
-							/>
-						</div>
-					</div>
-
-					{/* Variable reference */}
 					<div className="p-3">
-						<div className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-							Variables
-						</div>
-						{!trigger ? (
-							<p className="text-sm text-muted-foreground">
-								Choose a trigger to see available variables.
-							</p>
-						) : variableGroups.length === 0 ? (
-							<p className="text-sm text-muted-foreground">
-								No variables available yet.
-							</p>
-						) : (
-							<div className="space-y-3">
-								{variableGroups.map(([group, vars]) => (
-									<div key={group}>
-										<div className="mb-1 text-[11px] font-medium text-muted-foreground">
-											{group}
-										</div>
-										<div className="space-y-0.5">
-											{vars.map((v) => (
-												<div
-													key={v.path}
-													className="group flex w-full items-center gap-0.5 rounded-md py-0.5 pl-2 pr-0.5"
-												>
-													<button
-														type="button"
-														onClick={() => void copyPath(v.path, "text")}
-														title={`Copy {{${v.path}}} — for text fields`}
-														className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-0 py-0.5 text-left transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-													>
-														<span className="flex-1 truncate text-sm">{shortLabel(v.label)}</span>
-														{v.fieldType && (
-															<span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
-																{v.fieldType}
-															</span>
-														)}
-														{copiedPath?.path === v.path && copiedPath.format === "text" ? (
-															<Check className="h-3.5 w-3.5 shrink-0 text-green-600 dark:text-green-400" />
-														) : (
-															<Copy className="h-3.5 w-3.5 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
-														)}
-													</button>
-													<button
-														type="button"
-														onClick={() => void copyPath(v.path, "formula")}
-														title={`Copy {${v.path}} — for formulas`}
-														aria-label={`Copy ${v.label} for formulas`}
-														className="shrink-0 rounded-md p-1 text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring group-hover:opacity-100"
-													>
-														{copiedPath?.path === v.path && copiedPath.format === "formula" ? (
-															<Check className="h-3.5 w-3.5 text-green-600 dark:text-green-400" />
-														) : (
-															<Braces className="h-3.5 w-3.5" />
-														)}
-													</button>
-												</div>
-											))}
-										</div>
-									</div>
-								))}
-							</div>
-						)}
-					</div>
-
-					{/* Formula resources */}
-					<div className="border-t border-border p-3">
 						<div className="mb-2 flex items-center justify-between">
-							<span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-								Resources
+							<span className="text-2xs font-semibold uppercase tracking-wide text-muted-foreground">
+								Formulas
 							</span>
 							<Button
 								variant="ghost"
@@ -479,11 +325,17 @@ export function WorkflowDrawer({
 										key={f.id}
 										type="button"
 										onClick={() => setFormulaModal({ formula: f })}
-										title={`Edit "${f.name}"`}
+										title={formulaWarnings?.get(f.id) ?? `Edit "${f.name}"`}
 										className="flex w-full items-center gap-2 rounded-md px-2 py-1 text-left transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
 									>
 										<span className="flex-1 truncate text-sm">{f.name}</span>
-										<span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
+										{formulaWarnings?.has(f.id) && (
+											<AlertTriangle
+												className="size-3.5 shrink-0 text-warning-foreground"
+												aria-label={formulaWarnings.get(f.id)}
+											/>
+										)}
+										<span className="shrink-0 rounded-sm bg-muted px-1.5 py-0.5 text-2xs uppercase tracking-wide text-muted-foreground">
 											{RETURN_TYPE_BADGE_LABELS[f.returnType]}
 										</span>
 									</button>

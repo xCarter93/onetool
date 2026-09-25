@@ -14,11 +14,9 @@ import { LearnMoreLink } from "@/components/help/learn-more";
 import type { Filter, FilterFieldConfig } from "@/components/ui/filters";
 import {
 	Frame,
-	FrameDescription,
 	FrameFooter,
 	FrameHeader,
 	FramePanel,
-	FrameTitle,
 } from "@/components/reui/frame";
 import {
 	DataGrid,
@@ -28,11 +26,7 @@ import {
 } from "@/components/reui/data-grid/data-grid";
 import { DataGridTable } from "@/components/reui/data-grid/data-grid-table";
 import { DataGridPagination } from "@/components/reui/data-grid/data-grid-pagination";
-import {
-	ColumnDef,
-	SortingState,
-	useTable,
-} from "@tanstack/react-table";
+import { ColumnDef, SortingState, useTable } from "@tanstack/react-table";
 import {
 	CheckCircle2,
 	ExternalLink,
@@ -146,7 +140,7 @@ const toKanbanStatus = (status: Client["status"]): ClientKanbanStatus => {
 // removable to reveal them.
 const applyClientFilters = (
 	rows: Client[],
-	filters: Filter<unknown>[]
+	filters: Filter<unknown>[],
 ): Client[] => {
 	let result = rows;
 	filters.forEach((filter) => {
@@ -185,7 +179,7 @@ const createColumns = (
 	onDelete: (id: string, name: string) => void,
 	onRestore: (id: string, name: string) => void,
 	canModify: boolean,
-	canDelete: boolean
+	canDelete: boolean,
 ): ColumnDef<DataGridFeatures, Client>[] => [
 	{
 		accessorKey: "name",
@@ -408,17 +402,17 @@ function ClientsPageContent() {
 				...client,
 				activity: sparklines?.[client.id],
 			})),
-		[convexClients, sparklines]
+		[convexClients, sparklines],
 	);
 
 	// Advanced filters + free-text search over the full set.
 	const filteredData = React.useMemo(
 		() => applyClientFilters(allData, filters),
-		[allData, filters]
+		[allData, filters],
 	);
 	const searchedData = React.useMemo(
 		() => searchClients(filteredData, query),
-		[filteredData, query]
+		[filteredData, query],
 	);
 
 	const isEmpty = allData.length === 0;
@@ -445,17 +439,17 @@ function ClientsPageContent() {
 				await restoreClient({ id: id as Id<"clients"> });
 				toast.success(
 					"Client Restored",
-					`${name} has been restored and is now active.`
+					`${name} has been restored and is now active.`,
 				);
 			} catch (error) {
 				console.error("Failed to restore client:", error);
 				toast.error(
 					"Restore Failed",
-					"Failed to restore the client. Please try again."
+					"Failed to restore the client. Please try again.",
 				);
 			}
 		},
-		[restoreClient, toast]
+		[restoreClient, toast],
 	);
 
 	const confirmDelete = async () => {
@@ -469,7 +463,9 @@ function ClientsPageContent() {
 	// Stable status map (from the full set) for drag-to-update detection.
 	const clientStatusMap = React.useMemo(() => {
 		const map = new Map<string, ClientKanbanStatus>();
-		allData.forEach((client) => map.set(client.id, toKanbanStatus(client.status)));
+		allData.forEach((client) =>
+			map.set(client.id, toKanbanStatus(client.status)),
+		);
 		return map;
 	}, [allData]);
 
@@ -496,7 +492,7 @@ function ClientsPageContent() {
 							: null,
 					};
 				}),
-		[searchedData, columnMoves]
+		[searchedData, columnMoves],
 	);
 
 	// onDataChange fires on every drag-over (column crossing), so keep it purely
@@ -515,7 +511,7 @@ function ClientsPageContent() {
 				return next;
 			});
 		},
-		[clientStatusMap, canModifyClients]
+		[clientStatusMap, canModifyClients],
 	);
 
 	// Latest drop per card; a failed older write must not undo a newer drop.
@@ -543,12 +539,12 @@ function ClientsPageContent() {
 					});
 					toast.error(
 						"Update Failed",
-						"Failed to update client status. Please try again."
+						"Failed to update client status. Please try again.",
 					);
 				});
 			}
 		},
-		[canModifyClients, kanbanData, clientStatusMap, updateClient, toast]
+		[canModifyClients, kanbanData, clientStatusMap, updateClient, toast],
 	);
 
 	const columns = React.useMemo(
@@ -559,7 +555,7 @@ function ClientsPageContent() {
 				handleDelete,
 				handleRestore,
 				canModifyClients,
-				canDeleteClients
+				canDeleteClients,
 			),
 		[
 			router,
@@ -568,7 +564,7 @@ function ClientsPageContent() {
 			handleRestore,
 			canModifyClients,
 			canDeleteClients,
-		]
+		],
 	);
 
 	const table = useTable({
@@ -612,7 +608,7 @@ function ClientsPageContent() {
 				],
 			},
 		],
-		[]
+		[],
 	);
 
 	const footerShown =
@@ -630,7 +626,7 @@ function ClientsPageContent() {
 				addButtonIcon={<FilterIcon className="h-4 w-4" />}
 				size="md"
 				variant="outline"
-				radius="full"
+				radius="md"
 				showClearButton={true}
 				clearButtonText="Clear"
 				clearButtonIcon={<X className="h-4 w-4" />}
@@ -648,21 +644,21 @@ function ClientsPageContent() {
 			>
 				{(column) => {
 					const columnItems = kanbanData.filter(
-						(item) => item.column === column.id
+						(item) => item.column === column.id,
 					);
 
 					return (
 						<KanbanBoard
 							key={column.id}
 							id={column.id}
-							className="bg-card/60 flex flex-col"
+							className="bg-muted dark:bg-card/60 flex flex-col"
 						>
-							<KanbanHeader className="border-b bg-muted/30 flex shrink-0 items-center justify-between gap-2 px-3 py-2.5">
+							<KanbanHeader className="border-b bg-secondary dark:bg-muted/30 flex shrink-0 items-center justify-between gap-2 px-3 py-2.5">
 								<div className="flex min-w-0 items-center gap-2">
 									<span
 										className={cn(
 											"size-2.5 shrink-0 rounded-full",
-											statusDot[column.id]
+											statusDot[column.id],
 										)}
 									/>
 									<div className="min-w-0">
@@ -727,7 +723,9 @@ function ClientsPageContent() {
 													<p className="text-foreground font-medium">
 														{item.primaryContact.name}
 													</p>
-													<p className="truncate">{item.primaryContact.email}</p>
+													<p className="truncate">
+														{item.primaryContact.email}
+													</p>
 												</div>
 											) : null}
 											<div className="flex items-center justify-end pt-1">
@@ -756,19 +754,18 @@ function ClientsPageContent() {
 
 	const clientsTable = (
 		<div className="overflow-x-auto">
-			<DataGridContainer className="rounded-lg border">
+			<DataGridContainer className="border-0">
 				<DataGridTable />
 			</DataGridContainer>
 		</div>
 	);
 
 	return (
-		<div className="relative px-6 pt-8 pb-6 space-y-6">
-			<div className="flex items-center justify-between">
+		<div className="workspace-page space-y-6">
+			<div className="workspace-page-header flex flex-wrap items-center justify-between gap-4">
 				<div className="flex items-center gap-3">
-					<div className="w-1.5 h-6 bg-linear-to-b from-primary to-primary/60 rounded-full" />
 					<div>
-						<h1 className="text-2xl font-bold text-foreground">Clients</h1>
+						<h1 className="text-2xl font-semibold text-foreground">Clients</h1>
 						<p className="text-muted-foreground text-sm">
 							Overview of your clients
 						</p>
@@ -792,141 +789,141 @@ function ClientsPageContent() {
 				)}
 			</div>
 
-			<MetricFrame
-				loading={clientsStats === undefined}
-				metrics={[
-					{
-						label: "Prospective Clients",
-						value: clientsStats?.groupedByStatus?.prospective ?? 0,
-						hint: "Clients currently marked as prospects",
-						icon: <Users />,
-						accent: "var(--color-blue-500)",
-					},
-					{
-						label: "Active Clients",
-						value: clientsStats?.groupedByStatus?.active ?? 0,
-						hint: "Clients engaged in work right now",
-						icon: <UserCheck />,
-						accent: "var(--color-emerald-500)",
-					},
-					{
-						label: "Inactive Clients",
-						value: clientsStats?.groupedByStatus?.inactive ?? 0,
-						hint: "Clients marked inactive or archived",
-						icon: <UserX />,
-						accent: "var(--color-zinc-400)",
-					},
-				]}
-				summary={
-					clientsStats
-						? `${clientsStats.total} total clients · ${clientsStats.recentlyCreated} added in the last 30 days`
-						: undefined
-				}
-			/>
-
-			<Frame>
-				<FrameHeader className="flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
-					<div className="flex flex-col gap-0.5">
-						<FrameTitle className="text-base">Clients</FrameTitle>
-						<FrameDescription>
-							Search, filter, and browse your client list
-						</FrameDescription>
-					</div>
-					<div className="flex w-full items-center gap-2 sm:w-auto">
-						<div className="relative flex-1 sm:w-64 sm:flex-none">
-							<Search className="text-muted-foreground absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2" />
-							<Input
-								placeholder="Search clients or contacts..."
-								value={query}
-								onChange={(e) => setQuery(e.target.value)}
-								className="pl-9"
+			<div className="workspace-explorer">
+				<aside className="workspace-explorer-rail">
+					<MetricFrame
+						loading={clientsStats === undefined}
+						metrics={[
+							{
+								label: "Prospective Clients",
+								value: clientsStats?.groupedByStatus?.prospective ?? 0,
+								hint: "Clients currently marked as prospects",
+								icon: <Users />,
+								accent: "var(--color-blue-500)",
+							},
+							{
+								label: "Active Clients",
+								value: clientsStats?.groupedByStatus?.active ?? 0,
+								hint: "Clients engaged in work right now",
+								icon: <UserCheck />,
+								accent: "var(--color-emerald-500)",
+							},
+							{
+								label: "Inactive Clients",
+								value: clientsStats?.groupedByStatus?.inactive ?? 0,
+								hint: "Clients marked inactive or archived",
+								icon: <UserX />,
+								accent: "var(--color-zinc-400)",
+							},
+						]}
+						summary={
+							clientsStats
+								? `${clientsStats.total} total clients · ${clientsStats.recentlyCreated} added in the last 30 days`
+								: undefined
+						}
+					/>
+				</aside>
+				<section className="workspace-results">
+					<Frame className="workspace-panel overflow-hidden">
+						<FrameHeader className="workspace-toolbar flex-row flex-wrap items-center gap-2">
+							<div className="relative min-w-0 flex-1">
+								<Search className="text-muted-foreground absolute left-3 top-1/2 size-4 -translate-y-1/2" />
+								<Input
+									placeholder="Search clients or contacts..."
+									value={query}
+									onChange={(e) => setQuery(e.target.value)}
+									className="pl-9"
+								/>
+							</div>
+							<SegmentedControl
+								className="shrink-0"
+								value={viewMode}
+								onValueChange={(v) => setViewMode(v as "table" | "kanban")}
+								options={[
+									{
+										value: "table",
+										label: "Table",
+										icon: <TableProperties className="size-4" />,
+										ariaLabel: "Table view",
+										hideLabelOnMobile: true,
+									},
+									{
+										value: "kanban",
+										label: "Kanban",
+										icon: <LayoutGrid className="size-4" />,
+										ariaLabel: "Kanban view",
+										hideLabelOnMobile: true,
+									},
+								]}
 							/>
-						</div>
-						<SegmentedControl
-							className="shrink-0"
-							value={viewMode}
-							onValueChange={(v) => setViewMode(v as "table" | "kanban")}
-							options={[
-								{
-									value: "table",
-									label: "Table",
-									icon: <TableProperties className="size-4" />,
-									ariaLabel: "Table view",
-									hideLabelOnMobile: true,
-								},
-								{
-									value: "kanban",
-									label: "Kanban",
-									icon: <LayoutGrid className="size-4" />,
-									ariaLabel: "Kanban view",
-									hideLabelOnMobile: true,
-								},
-							]}
-						/>
-					</div>
-				</FrameHeader>
+						</FrameHeader>
 
-				<DataGrid
-					table={table}
-					recordCount={searchedData.length}
-					onRowClick={(row) => openPreview(row.id)}
-					emptyMessage={
-						<EmptyState
-							illustration="no-filter-match"
-							title="No clients match your filters"
-							description="Try a different search term or clear a filter."
-						/>
-					}
-					tableLayout={{
-						width: "auto",
-						headerBackground: true,
-					}}
-				>
-					<FramePanel className="p-0">
-						{isLoading ? (
-							<div className="p-4">
-								<div className="space-y-4">
-									{[...Array(5)].map((_, i) => (
-										<div key={i} className="flex items-center space-x-4 p-4">
-											<div className="flex-1 space-y-2">
-												<div className="h-4 bg-muted rounded animate-pulse w-2/3" />
-												<div className="h-3 bg-muted rounded animate-pulse w-1/2" />
-											</div>
-											<div className="h-4 bg-muted rounded animate-pulse w-16" />
-											<div className="h-4 bg-muted rounded animate-pulse w-20" />
-											<div className="h-8 w-8 bg-muted rounded animate-pulse" />
+						<DataGrid
+							table={table}
+							recordCount={searchedData.length}
+							onRowClick={(row) => openPreview(row.id)}
+							emptyMessage={
+								<EmptyState
+									illustration="no-filter-match"
+									title="No clients match your filters"
+									description="Try a different search term or clear a filter."
+								/>
+							}
+							tableLayout={{
+								width: "auto",
+								headerBackground: true,
+							}}
+						>
+							<FramePanel className="p-0">
+								{isLoading ? (
+									<div className="p-4">
+										<div className="space-y-4">
+											{[...Array(5)].map((_, i) => (
+												<div
+													key={i}
+													className="flex items-center space-x-4 p-4"
+												>
+													<div className="flex-1 space-y-2">
+														<div className="h-4 bg-muted rounded animate-pulse w-2/3" />
+														<div className="h-3 bg-muted rounded animate-pulse w-1/2" />
+													</div>
+													<div className="h-4 bg-muted rounded animate-pulse w-16" />
+													<div className="h-4 bg-muted rounded animate-pulse w-20" />
+													<div className="h-8 w-8 bg-muted rounded animate-pulse" />
+												</div>
+											))}
 										</div>
-									))}
-								</div>
-							</div>
-						) : isEmpty ? (
-							<ActiveEmptyState
-								onAdd={handleAddClient}
-								canModify={canModifyClients}
-							/>
-						) : viewMode === "kanban" ? (
-							<>
-								{filtersBar}
-								{kanbanBoard}
-							</>
-						) : (
-							<>
-								{filtersBar}
-								{clientsTable}
-							</>
-						)}
-					</FramePanel>
+									</div>
+								) : isEmpty ? (
+									<ActiveEmptyState
+										onAdd={handleAddClient}
+										canModify={canModifyClients}
+									/>
+								) : viewMode === "kanban" ? (
+									<>
+										{filtersBar}
+										{kanbanBoard}
+									</>
+								) : (
+									<>
+										{filtersBar}
+										{clientsTable}
+									</>
+								)}
+							</FramePanel>
 
-					{showFooter && (
-						<FrameFooter className="flex-row items-center justify-between">
-							<div className="text-muted-foreground text-sm">
-								{footerShown} of {footerTotal} clients
-							</div>
-							{viewMode === "table" ? <DataGridPagination /> : null}
-						</FrameFooter>
-					)}
-				</DataGrid>
-			</Frame>
+							{showFooter && (
+								<FrameFooter className="flex-row items-center justify-between">
+									<div className="text-muted-foreground text-sm">
+										{footerShown} of {footerTotal} clients
+									</div>
+									{viewMode === "table" ? <DataGridPagination /> : null}
+								</FrameFooter>
+							)}
+						</DataGrid>
+					</Frame>
+				</section>
+			</div>
 
 			{/* Detail preview drawer */}
 			<ClientDetailDrawer

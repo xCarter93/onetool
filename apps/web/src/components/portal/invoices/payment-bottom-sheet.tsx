@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { Elements } from "@stripe/react-stripe-js";
 import { loadStripe, type Stripe } from "@stripe/stripe-js";
 import { Lock, X } from "lucide-react";
+import { useTheme } from "next-themes";
 
 import { formatMoney } from "@/lib/portal/format";
 import { buildPortalAppearance } from "@/lib/portal/invoices/build-appearance";
@@ -39,6 +40,7 @@ export function PaymentBottomSheet({
 }: PaymentBottomSheetProps) {
 	// All hooks run UNCONDITIONALLY. `enabled` is what gates the PI mint.
 	const [paymentSurfaceOpen, setPaymentSurfaceOpen] = useState(false);
+	const { resolvedTheme } = useTheme();
 
 	const pi = useCreatePaymentIntent({
 		invoiceId,
@@ -59,7 +61,10 @@ export function PaymentBottomSheet({
 		return loadStripe(pi.publishableKey, { stripeAccount: pi.stripeAccountId });
 	}, [pi.status, pi.intentStatus, pi.publishableKey, pi.stripeAccountId]);
 
-	const appearance = useMemo(() => buildPortalAppearance(), []);
+	const appearance = useMemo(
+		() => buildPortalAppearance(resolvedTheme === "dark"),
+		[resolvedTheme],
+	);
 
 	// Render-time branches.
 	if (!stripeChargesEnabled) {
@@ -108,7 +113,7 @@ export function PaymentBottomSheet({
 			>
 				<div className="flex flex-col gap-2 px-4 py-3">
 					<div className="flex items-center justify-between">
-						<p className="text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
+						<p className="text-xs font-semibold uppercase tracking-[0.06em] text-muted-foreground">
 							Total due
 						</p>
 						<p className="text-[20px] font-semibold tabular-nums">
@@ -188,7 +193,7 @@ export function PaymentBottomSheet({
 			>
 				<div
 					data-sheet-docked
-					className="z-40 max-h-[85vh] w-full overflow-y-auto rounded-t-2xl bg-card"
+					className="z-40 max-h-[85vh] w-full overflow-y-auto rounded-t-[8px] border-t border-border bg-card"
 					style={{
 						paddingBottom: "calc(env(safe-area-inset-bottom) + 1rem)",
 					}}
@@ -202,7 +207,7 @@ export function PaymentBottomSheet({
 							type="button"
 							aria-label="Close"
 							onClick={() => setPaymentSurfaceOpen(false)}
-							className="text-muted-foreground hover:text-foreground"
+							className="flex size-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
 						>
 							<X className="h-4 w-4" aria-hidden="true" />
 						</button>

@@ -53,7 +53,6 @@ import {
 	FramePanel,
 	FrameFooter,
 } from "@/components/reui/frame";
-import { DotField } from "@/components/ui/dot-field";
 import {
 	PaymentsFlow,
 	RequirementsSummary,
@@ -362,7 +361,6 @@ export function PaymentsTab() {
 
 					{stripeStatus && (
 						<FramePanel className="isolate overflow-hidden [&::before]:z-0">
-							<DotField className="text-primary opacity-[0.35] [mask-image:radial-gradient(120%_140%_at_100%_0%,black,transparent_75%)]" />
 							<div className="relative z-10 flex flex-col md:flex-row">
 								<HeroColumn
 									label="Account"
@@ -903,8 +901,8 @@ function BooleanValue({ done }: { done: boolean }) {
 			className={cn(
 				"text-sm font-semibold",
 				done
-					? "text-emerald-600 dark:text-emerald-400"
-					: "text-amber-600 dark:text-amber-400",
+					? "text-success-foreground"
+					: "text-warning-foreground",
 			)}
 		>
 			{done ? "Yes" : "Pending"}

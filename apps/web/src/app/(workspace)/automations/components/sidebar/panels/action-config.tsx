@@ -9,7 +9,6 @@ import {
 	AUTOMATION_EMAIL_RECIPIENT_CAP,
 	EMAIL_ADDRESS_PATTERN,
 } from "@onetool/backend/convex/lib/workflowTypes";
-import { ACTION_META } from "../../../lib/action-meta";
 import { normalizeNodeConfig } from "../../../lib/legacy-load";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -51,9 +50,7 @@ import {
 } from "../../../lib/node-types";
 import { getScopeObjectType } from "../../../lib/variables";
 import type { ConfigPanelProps } from "../automation-sidebar";
-import { ConfigPanelHeader } from "./config-panel-header";
 import { PanelField, PanelSection } from "@/components/shared/panel-primitives";
-import { DeleteStepButton } from "./delete-step-button";
 import { ValueInput, VariableInsertButton } from "./value-input";
 import { PickerChip } from "@/components/shared/picker-chip";
 
@@ -1446,7 +1443,6 @@ export function ActionConfigPanel({
 	nodes,
 	formulas,
 	onNodeChange,
-	onDeleteNode,
 }: ConfigPanelProps) {
 	const node = nodeId ? nodes.find((item) => item.id === nodeId) : undefined;
 
@@ -1472,7 +1468,6 @@ export function ActionConfigPanel({
 	const config =
 		(normalizeNodeConfig(node.config) as ActionNodeConfig | undefined) ??
 		defaultConfig(seedObjectType);
-	const meta = ACTION_META[config.action.type];
 
 	const commit = (next: ActionNodeConfig) => {
 		onNodeChange(nodeId, { config: next } as Partial<WorkflowNode>);
@@ -1480,14 +1475,6 @@ export function ActionConfigPanel({
 
 	return (
 		<div className="flex flex-col h-full">
-			<ConfigPanelHeader
-				icon={meta.icon}
-				iconBgColor={meta.bg}
-				iconFgColor={meta.fg}
-				categoryBadge={meta.badge}
-				nodeTypeName={meta.name}
-				description={meta.description}
-			/>
 
 			<div className="flex-1">
 				{config.action.type === "update_fields" && (
@@ -1563,9 +1550,6 @@ export function ActionConfigPanel({
 				)}
 			</div>
 
-			{onDeleteNode && (
-				<DeleteStepButton onDelete={() => onDeleteNode(nodeId)} />
-			)}
 		</div>
 	);
 }

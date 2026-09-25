@@ -10,10 +10,8 @@ import {
 	FrameFooter,
 	FrameHeader,
 	FramePanel,
-	FrameTitle,
 } from "@/components/reui/frame";
 import { Badge } from "@/components/reui/badge";
-import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
 import {
 	Tooltip,
@@ -34,9 +32,14 @@ interface ImportWizardProps {
 	onComplete?: (result: { successCount: number }) => void;
 }
 
-export function ImportWizard({ embedded = false, onComplete }: ImportWizardProps = {}) {
+export function ImportWizard({
+	embedded = false,
+	onComplete,
+}: ImportWizardProps = {}) {
 	const router = useRouter();
-	const [reviewAction, setReviewAction] = useState<ReviewActionState | null>(null);
+	const [reviewAction, setReviewAction] = useState<ReviewActionState | null>(
+		null,
+	);
 	const {
 		state,
 		currentStep,
@@ -58,7 +61,7 @@ export function ImportWizard({ embedded = false, onComplete }: ImportWizardProps
 		initReviewSkippedRows,
 	} = useImportWizard({
 		embedded,
-		source: embedded ? 'onboarding' : 'clients_page',
+		source: embedded ? "onboarding" : "clients_page",
 	});
 
 	// --- Step guard: redirect to upload if state is missing (standalone only) ---
@@ -81,7 +84,7 @@ export function ImportWizard({ embedded = false, onComplete }: ImportWizardProps
 			.filter(([, info]) => info.required)
 			.map(([name]) => name);
 		const activeMappings = (state.mappings || []).filter(
-			(m) => m.schemaField !== "__skip__"
+			(m) => m.schemaField !== "__skip__",
 		);
 		const mappedFields = new Set(activeMappings.map((m) => m.schemaField));
 		return new Set(requiredFields.filter((f) => !mappedFields.has(f)));
@@ -94,7 +97,7 @@ export function ImportWizard({ embedded = false, onComplete }: ImportWizardProps
 				return !!state.analysisResult && !state.isAnalyzing;
 			case "map": {
 				const activeMappings = (state.mappings || []).filter(
-					(m) => m.schemaField !== "__skip__"
+					(m) => m.schemaField !== "__skip__",
 				);
 				const mappedFields = new Set(activeMappings.map((m) => m.schemaField));
 				const allRequiredMapped = unmappedRequiredFields.size === 0;
@@ -217,11 +220,7 @@ export function ImportWizard({ embedded = false, onComplete }: ImportWizardProps
 
 		// Review step: import / results button (state lifted from StepReviewValues).
 		if (!reviewAction) {
-			return (
-				<Button disabled>
-					Import clients
-				</Button>
-			);
+			return <Button disabled>Import clients</Button>;
 		}
 		if (reviewAction.isResultsMode) {
 			// Embedded onboarding swaps the wizard out via onComplete — no button needed.
@@ -249,8 +248,8 @@ export function ImportWizard({ embedded = false, onComplete }: ImportWizardProps
 					</TooltipTrigger>
 					<TooltipContent>
 						{reviewAction.validationErrorCount} validation error
-						{reviewAction.validationErrorCount !== 1 ? "s" : ""} found. Fix errors
-						before importing.
+						{reviewAction.validationErrorCount !== 1 ? "s" : ""} found. Fix
+						errors before importing.
 					</TooltipContent>
 				</Tooltip>
 			);
@@ -279,16 +278,20 @@ export function ImportWizard({ embedded = false, onComplete }: ImportWizardProps
 	const rightAction = renderRightAction();
 
 	// Header description: the file once uploaded, otherwise a short hint.
-	const headerDescription = state.file?.name ?? "Bulk-import your clients from a CSV file";
+	const headerDescription =
+		state.file?.name ?? "Bulk-import your clients from a CSV file";
 	// Step number for tab/panel ARIA wiring (matches the stepper trigger ids).
 	const activeStepNumber = { upload: 1, map: 2, review: 3 }[currentStep];
 
 	const wizard = (
-		<Frame variant="default" className={cn("w-full", !embedded && "h-full")}>
+		<Frame
+			variant="ghost"
+			className={cn("w-full gap-0 bg-transparent p-0", !embedded && "h-full")}
+		>
 			{/* Header sits on the frame (chrome), like the /automations pattern */}
-			<FrameHeader className="shrink-0 flex-row items-start justify-between gap-3">
+			<FrameHeader className="workspace-page-header shrink-0 flex-row items-start justify-between gap-3 px-0">
 				<div className="flex min-w-0 flex-col gap-px">
-					<FrameTitle>Import clients</FrameTitle>
+					<h1 className="text-2xl font-semibold text-foreground">Import clients</h1>
 					<FrameDescription className="truncate text-xs">
 						{headerDescription}
 					</FrameDescription>
@@ -314,30 +317,31 @@ export function ImportWizard({ embedded = false, onComplete }: ImportWizardProps
 			</FrameHeader>
 
 			{/* White content panel: step timeline (fixed) + scrollable step body */}
-			<FramePanel className={cn("flex flex-col p-0 shadow-none!", !embedded && "min-h-0")}>
-				<div className="shrink-0 px-5 py-5 sm:px-6">
+			<FramePanel
+				className={cn(
+					"flex flex-col rounded-none border-0 bg-transparent p-0 shadow-none before:hidden",
+					!embedded && "min-h-0",
+				)}
+			>
+				<div className="shrink-0 border-b px-0 py-5">
 					<ImportStepNav
 						currentStep={currentStep}
 						onStepClick={navigateTo}
 						disabled={state.isImporting}
 					/>
 				</div>
-				<Separator />
 				<div
 					id={`stepper-panel-${activeStepNumber}`}
 					role="tabpanel"
 					aria-labelledby={`stepper-tab-${activeStepNumber}`}
-					className={cn(
-						"px-5 py-6 sm:px-6",
-						!embedded && "flex-1 min-h-0 overflow-y-auto"
-					)}
+					className={cn("py-6", !embedded && "flex-1 min-h-0 overflow-y-auto")}
 				>
 					{renderStep()}
 				</div>
 			</FramePanel>
 
 			{/* Footer sits on the frame: hint on the left, actions on the right */}
-			<FrameFooter className="shrink-0 flex-row items-center justify-between gap-3">
+			<FrameFooter className="shrink-0 flex-row items-center justify-between gap-3 border-t px-0 py-4">
 				<div className="flex min-w-0 items-center gap-2 text-sm text-muted-foreground">
 					<Flag className="size-4 shrink-0" />
 					<span className="truncate">{footerHint}</span>
@@ -365,8 +369,8 @@ export function ImportWizard({ embedded = false, onComplete }: ImportWizardProps
 	}
 
 	return (
-		<div className="h-[calc(100dvh-7rem)] px-4 py-4 sm:px-6 sm:py-6">
-			<div className="mx-auto h-full w-full max-w-7xl">{wizard}</div>
+		<div className="workspace-page h-[calc(100dvh-7rem)]">
+			<div className="h-full w-full">{wizard}</div>
 		</div>
 	);
 }

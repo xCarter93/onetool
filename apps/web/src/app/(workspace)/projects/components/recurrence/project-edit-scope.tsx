@@ -227,7 +227,7 @@ export function ProjectEditScopeControl() {
 	if (!context?.canEditFuture || !context.scope) return null;
 
 	return (
-		<div className="flex flex-wrap items-center justify-between gap-2 border-b border-border/80 py-3">
+		<div className="flex flex-wrap items-center justify-between gap-2 py-3">
 			<div>
 				<p className="text-sm font-medium text-foreground">Edit scope</p>
 				<p className="text-xs text-muted-foreground">

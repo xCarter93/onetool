@@ -572,7 +572,7 @@ export default function PrivacyPolicyPage() {
 						If you have questions or requests regarding this Privacy Policy or
 						our data practices, contact us:
 					</p>
-					<div className="bg-card border border-border rounded-lg p-4 text-muted-foreground">
+					<div className="bg-card border border-border rounded-[8px] p-4 text-muted-foreground">
 						<p className="font-semibold text-foreground mb-2">OneTool</p>
 						<p>Email: support@onetool.biz</p>
 						<p className="text-xs text-muted-foreground mt-4">

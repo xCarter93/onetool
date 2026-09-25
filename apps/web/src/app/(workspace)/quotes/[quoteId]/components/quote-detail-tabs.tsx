@@ -122,23 +122,15 @@ export function QuoteDetailTabs({
 
 	return (
 		<PillTabs value={activeTab} onValueChange={onTabChange}>
-			{/* Two-column layout: tabs + content on left, sidebar on right */}
-			<div className="flex gap-0">
-				{/* Left: Tabs list + tab content */}
-				<div className="flex-1 min-w-0 pr-6 pt-6 pb-20">
+			<div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_var(--workspace-detail-rail-width)]">
+				<div className="min-w-0 pb-20">
 					<PillTabsList className="overflow-x-auto">
-						<PillTabsTrigger value="overview">
-							Overview
-						</PillTabsTrigger>
-						<PillTabsTrigger value="signatures">
-							Signatures
-						</PillTabsTrigger>
+						<PillTabsTrigger value="overview">Overview</PillTabsTrigger>
+						<PillTabsTrigger value="signatures">Signatures</PillTabsTrigger>
 						<PillTabsTrigger value="approval-audit">
 							Approval Audit
 						</PillTabsTrigger>
-						<PillTabsTrigger value="activity">
-							Activity
-						</PillTabsTrigger>
+						<PillTabsTrigger value="activity">Activity</PillTabsTrigger>
 					</PillTabsList>
 
 					<PillTabsContent value="overview" className="mt-0 pt-5">
@@ -151,15 +143,10 @@ export function QuoteDetailTabs({
 						/>
 					</PillTabsContent>
 
-					<PillTabsContent
-						value="signatures"
-						className="mt-0 pt-5"
-					>
+					<PillTabsContent value="signatures" className="mt-0 pt-5">
 						<SignaturesTab
 							quoteId={quoteId}
-							requiresCountersignature={
-								quote?.requiresCountersignature
-							}
+							requiresCountersignature={quote?.requiresCountersignature}
 							countersignerId={quote?.countersignerId}
 							signingOrder={quote?.signingOrder}
 							primaryContact={primaryContact}
@@ -167,10 +154,7 @@ export function QuoteDetailTabs({
 						/>
 					</PillTabsContent>
 
-					<PillTabsContent
-						value="approval-audit"
-						className="mt-0 pt-5"
-					>
+					<PillTabsContent value="approval-audit" className="mt-0 pt-5">
 						<ApprovalAuditTab
 							quoteId={quoteId}
 							documentsWithSignatures={documentsWithSignatures}
@@ -182,16 +166,14 @@ export function QuoteDetailTabs({
 					</PillTabsContent>
 				</div>
 
-				{/* Right: Persistent sidebar (desktop) */}
-				<div className="hidden xl:block w-[480px] shrink-0 border-l border-border/80 min-h-screen bg-muted/40 dark:bg-muted/50">
-					<div className="sticky top-24">
+				<div className="hidden min-w-0 xl:block xl:pt-6">
+					<div className="workspace-panel workspace-detail-rail">
 						<QuoteDetailSidebar {...sidebarProps} />
 					</div>
 				</div>
 			</div>
 
-			{/* Sidebar for mobile (below content) */}
-			<div className="xl:hidden mt-6 pt-6 bg-muted/40 dark:bg-muted/50 rounded-lg">
+			<div className="workspace-panel mt-6 overflow-hidden xl:hidden">
 				<QuoteDetailSidebar {...sidebarProps} />
 			</div>
 		</PillTabs>

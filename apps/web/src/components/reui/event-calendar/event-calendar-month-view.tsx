@@ -939,7 +939,7 @@ function EventCalendarMonthCell({
             aria-label={settings.i18n.labels.addEvent}
             // a different icon/markup is a renderMonthCell job
             className={cn(
-              "bg-primary text-primary-foreground flex size-5 cursor-pointer items-center justify-center rounded-sm opacity-0 transition-opacity group-hover/ec-cell:opacity-100 focus-visible:opacity-100",
+              "bg-primary text-primary-foreground flex size-5 cursor-pointer items-center justify-center rounded opacity-0 transition-opacity group-hover/ec-cell:opacity-100 focus-visible:opacity-100",
               viewConfig.classNames?.dayAddButton
             )}
             onClick={(e) => {
@@ -956,13 +956,8 @@ function EventCalendarMonthCell({
         <span
           data-slot="event-calendar-month-day-number"
           className={cn(
-            "flex size-5 items-center justify-center rounded-full",
+            "flex size-5 items-center justify-center rounded",
             isOutside && "text-muted-foreground",
-            // the filled circle already marks today; keep the number the same
-            // weight/size as the other days so it does not read as larger
-            // Same font-size as every other day; a lighter weight cancels the
-            // way white digits on the filled circle read bolder/larger than the
-            // dark-on-light numbers around them.
             isToday && "bg-primary text-primary-foreground font-light",
             viewConfig.classNames?.monthDayNumber
           )}
@@ -1015,7 +1010,7 @@ function EventCalendarMonthCell({
         isOff && offClassName,
         isToday &&
           cn(
-            "bg-primary/3 border-b-primary/40 relative border-b-2",
+            "bg-primary/5 border-b-primary/40 relative border-b-2",
             viewConfig.todayClassName
           ),
         viewConfig.dayClassName?.(day),

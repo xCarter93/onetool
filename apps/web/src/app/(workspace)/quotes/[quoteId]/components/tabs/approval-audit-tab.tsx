@@ -26,7 +26,6 @@ import { useQuery } from "convex/react";
 import { Download } from "lucide-react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
-import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { Badge as ReuiBadge } from "@/components/reui/badge";
 import { EmptyState } from "@/components/domain/empty-state";
@@ -275,12 +274,11 @@ export function ApprovalAuditTab({
 
 	return (
 		<div>
-			<div className="flex items-center justify-between mb-1 min-h-8">
+			<div className="flex items-center justify-between mb-4 min-h-8">
 				<h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
 					Approval Audit
 				</h3>
 			</div>
-			<Separator className="mb-4" />
 
 			<AuditRowCard row={latest} />
 

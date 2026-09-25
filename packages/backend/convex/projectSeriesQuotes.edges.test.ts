@@ -471,7 +471,9 @@ describe("recurring project quote copy-forward edges", () => {
 		expect(MAX_GENERATED_QUOTES).toBe(100);
 		expect(MAX_GENERATED_QUOTE_LINE_WRITES).toBe(500);
 		expect(MAX_GENERATED_TASKS).toBe(200);
-		const f = await fixture(200, 1, "daily");
+		// Weekly keeps the pre-materialized window at 13 visits; daily fanned every
+		// copy across ~90 and pushed the test past its timeout on CI.
+		const f = await fixture(30);
 		const taskId = await f.user.mutation(api.tasks.create, {
 			clientId: f.clientId,
 			projectId: f.projectId,

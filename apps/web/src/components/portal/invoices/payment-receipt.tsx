@@ -47,7 +47,7 @@ export function PaymentReceipt({ payment }: PaymentReceiptProps) {
 					{label} · {formatMoney(payment.paymentAmount)} · Paid{" "}
 					{payment.paidAt ? formatDate(payment.paidAt) : "—"}
 				</span>
-				<span className="inline-flex shrink-0 items-center gap-1 text-[12px] text-muted-foreground">
+				<span className="inline-flex shrink-0 items-center gap-1 text-[13px] text-muted-foreground">
 					{expanded ? "Hide receipt" : "View receipt"}
 					{expanded ? (
 						<ChevronUp className="h-3.5 w-3.5" aria-hidden="true" />

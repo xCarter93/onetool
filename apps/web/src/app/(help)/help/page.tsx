@@ -22,7 +22,7 @@ export default function HelpHomePage() {
 				<p className="text-xs font-semibold tracking-widest text-primary uppercase">
 					OneTool help
 				</p>
-				<h1 className="mt-3 text-4xl font-bold tracking-tight text-foreground sm:text-5xl">
+				<h1 className="mt-3 text-[32px] font-semibold leading-tight tracking-tight text-foreground">
 					How can we help?
 				</h1>
 				<p className="mt-4 text-lg leading-7 text-muted-foreground">
@@ -35,7 +35,7 @@ export default function HelpHomePage() {
 						<Link
 							key={link.href}
 							href={link.href}
-							className="rounded-full border border-border px-3 py-1 text-[13px] font-medium text-muted-foreground transition-colors hover:border-foreground/25 hover:text-foreground"
+							className="rounded-lg border border-border bg-card px-3 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:border-primary hover:text-primary"
 						>
 							{link.label}
 						</Link>
@@ -47,9 +47,8 @@ export default function HelpHomePage() {
 			{gettingStarted && gettingStarted.articles.length > 0 && (
 				<section className="mt-20 grid gap-10 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:gap-16">
 					<div>
-						<h2 className="text-3xl font-bold tracking-tight text-foreground">
-							Get started{" "}
-							<span className="text-muted-foreground">with OneTool.</span>
+						<h2 className="text-2xl font-semibold tracking-tight text-foreground">
+							Get started with OneTool.
 						</h2>
 						<p className="mt-4 leading-7 text-muted-foreground">
 							{gettingStarted.description} Follow these short guides in order
@@ -61,9 +60,9 @@ export default function HelpHomePage() {
 							<li key={article.slug}>
 								<Link
 									href={`/help/getting-started/${article.slug}`}
-									className="group flex items-start gap-4 rounded-xl p-3 transition-colors hover:bg-muted/60"
+									className="group flex items-start gap-4 rounded-[8px] p-3 transition-colors hover:bg-muted/60"
 								>
-									<span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full border border-border bg-background text-xs font-semibold text-foreground">
+									<span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-lg border border-border bg-background text-xs font-semibold text-foreground">
 										{index + 1}
 									</span>
 									<span className="min-w-0">
@@ -83,7 +82,7 @@ export default function HelpHomePage() {
 
 			{/* Browse by feature */}
 			<section className="mt-20">
-				<h2 className="text-2xl font-bold tracking-tight text-foreground">
+				<h2 className="text-2xl font-semibold tracking-tight text-foreground">
 					Browse by feature
 				</h2>
 				<div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
@@ -91,7 +90,7 @@ export default function HelpHomePage() {
 						<Link
 							key={category.slug}
 							href={`/help/${category.slug}`}
-							className="group rounded-2xl border border-border p-5 transition-colors hover:border-foreground/20 hover:bg-muted/40"
+							className="group rounded-[8px] border border-border p-5 transition-colors hover:border-foreground/20 hover:bg-muted/40"
 						>
 							<span className="flex size-9 items-center justify-center rounded-lg border border-border bg-muted/50">
 								<category.icon
@@ -111,7 +110,7 @@ export default function HelpHomePage() {
 			</section>
 
 			{/* Contact escalation */}
-			<section className="mt-20 rounded-2xl border border-border bg-muted/30 p-8 text-center">
+			<section className="mt-20 rounded-[8px] border border-border bg-card p-8 text-center">
 				<h2 className="text-xl font-semibold text-foreground">
 					Can&apos;t find what you need?
 				</h2>
@@ -120,7 +119,7 @@ export default function HelpHomePage() {
 				</p>
 				<a
 					href="mailto:support@onetool.biz"
-					className="mt-4 inline-block rounded-lg border border-border bg-background px-4 py-2 text-sm font-medium text-foreground shadow-xs transition-colors hover:bg-muted"
+					className="mt-4 inline-block rounded-lg border border-border bg-background px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted"
 				>
 					Contact support
 				</a>

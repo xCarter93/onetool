@@ -32,7 +32,7 @@ import { Spinner } from "@/components/ui/spinner"
 // Static spacing lookups; called once per cell, so they stay plain string
 // picks instead of runtime variant machinery.
 const headerCellSpacingVariants = ({ size }: { size?: "dense" | "default" }) =>
-  size === "dense" ? "px-2 h-8" : "px-3"
+  size === "dense" ? "h-8 px-2" : "h-9 px-3"
 
 const bodyCellSpacingVariants = ({ size }: { size?: "dense" | "default" }) =>
   size === "dense" ? "px-2 py-1.5" : "px-3 py-2"
@@ -607,7 +607,7 @@ function DataGridTableBase({ children }: { children: ReactNode }) {
     <table
       data-slot="data-grid-table"
       className={cn(
-        "text-foreground caption-bottom text-left align-middle text-sm font-normal rtl:text-right",
+        "text-foreground caption-bottom text-left align-middle text-[13px] font-normal rtl:text-right",
         props.tableLayout?.columnsResizable ? "min-w-0" : "w-full min-w-full",
         props.tableLayout?.width === "auto" ? "table-auto" : "table-fixed",
         !props.tableLayout?.columnsResizable && "",
@@ -861,7 +861,7 @@ function DataGridTableHeadRowCell<TData extends object>({
         isLastStartPinned ? "start" : isFirstEndPinned ? "end" : undefined
       }
       className={cn(
-        "text-foreground relative h-10 text-left align-middle font-medium rtl:text-right [&:has([role=checkbox])]:pe-0",
+        "text-muted-foreground relative text-left align-middle text-[11px] font-semibold uppercase tracking-[0.04em] rtl:text-right [&:has([role=checkbox])]:pe-0",
         headerCellSpacing,
         props.tableLayout?.headerBackground && "bg-muted",
         props.tableLayout?.cellBorder && "border-e",

@@ -62,6 +62,7 @@ function PhoneInput({
       value={{ variant: phoneInputSize, popupClassName, scrollAreaClassName }}
     >
       <BasePhoneInput.default
+        containerComponentProps={{ "data-slot": "phone-input", "data-size": phoneInputSize }}
         className={cn(
           "flex",
           props["aria-invalid"] &&

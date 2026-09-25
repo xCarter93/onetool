@@ -47,7 +47,7 @@ export function EmailThreadListPopover({
 			<Popover open={popoverOpen} onOpenChange={setPopoverOpen}>
 				<PopoverTrigger render={children as React.ReactElement} />
 				<PopoverContent
-					className="w-96 p-0 bg-background! backdrop-blur-xl border-border shadow-xl"
+					className="w-96 rounded-lg border border-border bg-popover p-0"
 					align="end"
 				>
 					<div className="flex flex-col max-h-[500px]">

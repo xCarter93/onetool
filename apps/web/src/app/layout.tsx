@@ -4,6 +4,7 @@ import { ThemeProvider } from "@/providers/ThemeProvider";
 import { PostHogProvider } from "@/providers/PostHogProvider";
 import { ToastProvider } from "@/hooks/use-toast";
 import "./globals.css";
+import "./app-theme.css";
 // Portal-only font assets (Caveat for typed-signature canvas rendering).
 // Next.js 16 requires global CSS imports at the root layout. See Plan 14-03.
 import "@/styles/portal-fonts.css";

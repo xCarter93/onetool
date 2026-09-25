@@ -134,43 +134,43 @@ export function StatusProgressBar({
 	const getStepClasses = (stepStatus: StepStatus): StepClasses => {
 		if (stepStatus === "complete") {
 			return {
-				bg: "bg-emerald-500/10 dark:bg-emerald-500/20",
-				text: "text-emerald-700 dark:text-emerald-300",
-				label: "text-emerald-600/70 dark:text-emerald-400/70",
-				iconBg: "bg-emerald-500/15 dark:bg-emerald-500/25",
-				iconRing: "ring-emerald-500/30 dark:ring-emerald-400/40",
-				iconColor: "text-emerald-600 dark:text-emerald-400",
+				bg: "bg-success/10",
+				text: "text-success-foreground",
+				label: "text-success-foreground/80",
+				iconBg: "bg-success/15",
+				iconRing: "ring-success/30",
+				iconColor: "text-success-foreground",
 			};
 		}
 		if (stepStatus === "current") {
 			if (variant === "success") {
 				return {
-					bg: "bg-emerald-500/10 dark:bg-emerald-500/20",
-					text: "text-emerald-700 dark:text-emerald-300",
-					label: "text-emerald-600/70 dark:text-emerald-400/70",
-					iconBg: "bg-emerald-500/15 dark:bg-emerald-500/25",
-					iconRing: "ring-emerald-500/30 dark:ring-emerald-400/40",
-					iconColor: "text-emerald-600 dark:text-emerald-400",
+					bg: "bg-success/10",
+					text: "text-success-foreground",
+					label: "text-success-foreground/80",
+					iconBg: "bg-success/15",
+					iconRing: "ring-success/30",
+					iconColor: "text-success-foreground",
 				};
 			}
 			if (variant === "destructive") {
 				return {
-					bg: "bg-rose-500/10 dark:bg-rose-500/20",
-					text: "text-rose-700 dark:text-rose-300",
-					label: "text-rose-600/70 dark:text-rose-400/70",
-					iconBg: "bg-rose-500/15 dark:bg-rose-500/25",
-					iconRing: "ring-rose-500/30 dark:ring-rose-400/40",
-					iconColor: "text-rose-600 dark:text-rose-400",
+					bg: "bg-danger/10",
+					text: "text-danger-foreground",
+					label: "text-danger-foreground/80",
+					iconBg: "bg-danger/15",
+					iconRing: "ring-danger/30",
+					iconColor: "text-danger-foreground",
 				};
 			}
 			if (variant === "warning") {
 				return {
-					bg: "bg-amber-500/10 dark:bg-amber-500/20",
-					text: "text-amber-700 dark:text-amber-300",
-					label: "text-amber-600/70 dark:text-amber-400/70",
-					iconBg: "bg-amber-500/15 dark:bg-amber-500/25",
-					iconRing: "ring-amber-500/30 dark:ring-amber-400/40",
-					iconColor: "text-amber-600 dark:text-amber-400",
+					bg: "bg-warning/10",
+					text: "text-warning-foreground",
+					label: "text-warning-foreground/80",
+					iconBg: "bg-warning/15",
+					iconRing: "ring-warning/30",
+					iconColor: "text-warning-foreground",
 				};
 			}
 			// In-progress
@@ -218,10 +218,7 @@ export function StatusProgressBar({
 		<nav aria-label="Progress" className="w-full">
 			<div
 				className={cn(
-					"flex items-stretch rounded-xl overflow-hidden",
-					"backdrop-blur-sm bg-white/80 dark:bg-white/5",
-					"ring-1 ring-border/30 dark:ring-border/50",
-					"shadow-sm"
+					"flex items-stretch overflow-hidden rounded-lg border border-border bg-card"
 				)}
 			>
 				<ol role="list" className="flex items-stretch flex-1">

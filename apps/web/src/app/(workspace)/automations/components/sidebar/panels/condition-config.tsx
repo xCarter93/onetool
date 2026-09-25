@@ -1,7 +1,6 @@
 "use client";
 
 import React from "react";
-import { GitBranch } from "lucide-react";
 import type {
 	ConditionNodeConfig,
 	WorkflowNode,
@@ -9,9 +8,7 @@ import type {
 import { triggerScopeObjectType } from "../../../lib/node-types";
 import { getAvailableVariables, getScopeObjectType } from "../../../lib/variables";
 import type { ConfigPanelProps } from "../automation-sidebar";
-import { ConfigPanelHeader } from "./config-panel-header";
 import { PanelSection } from "@/components/shared/panel-primitives";
-import { DeleteStepButton } from "./delete-step-button";
 import { FilterGroupsEditor } from "./filter-groups-editor";
 import { ConditionSentenceSummary } from "./condition-sentence-summary";
 
@@ -25,7 +22,6 @@ export function ConditionConfigPanel({
 	nodes,
 	formulas,
 	onNodeChange,
-	onDeleteNode,
 }: ConfigPanelProps) {
 	const node = nodeId ? nodes.find((item) => item.id === nodeId) : undefined;
 
@@ -66,13 +62,6 @@ export function ConditionConfigPanel({
 
 	return (
 		<div className="flex flex-col h-full">
-			<ConfigPanelHeader
-				icon={GitBranch}
-				iconBgColor="bg-purple-50 dark:bg-purple-950/40"
-				iconFgColor="text-purple-600 dark:text-purple-400"
-				categoryBadge="Conditions"
-				nodeTypeName="Condition"
-			/>
 
 			<div className="flex-1">
 				<PanelSection title="Conditions">
@@ -107,9 +96,6 @@ export function ConditionConfigPanel({
 				</PanelSection>
 			</div>
 
-			{onDeleteNode && (
-				<DeleteStepButton onDelete={() => onDeleteNode(nodeId)} />
-			)}
 		</div>
 	);
 }

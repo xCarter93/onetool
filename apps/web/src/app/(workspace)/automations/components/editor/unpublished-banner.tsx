@@ -40,10 +40,10 @@ export function UnpublishedBanner({
 		<div className="pointer-events-none absolute inset-x-0 top-4 z-20 flex justify-center px-4">
 			<Frame
 				variant="ghost"
-				className="pointer-events-auto w-full max-w-md shadow-lg"
+				className="pointer-events-auto w-full max-w-md rounded-lg border border-info/40 bg-popover shadow-floating"
 			>
 				<FramePanel className="overflow-hidden p-0!">
-					<Alert variant="info" className="border-0 shadow-none">
+					<Alert variant="info" className="border-0 bg-info-soft shadow-none">
 						<Rocket />
 						<AlertTitle>
 							{isPublished ? "Unpublished changes" : "Draft automation"}
@@ -68,7 +68,6 @@ export function UnpublishedBanner({
 							<div className="mt-1.5 flex items-center gap-2">
 								<Button
 									size="xs"
-									className="[--btn-bg:var(--color-violet-600)] [--btn-fg:white] [--btn-overlay:var(--color-violet-700)]"
 									onClick={onPublish}
 									disabled={isPublishing || !canPublish}
 								>

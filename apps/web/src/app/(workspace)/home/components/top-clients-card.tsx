@@ -75,7 +75,7 @@ function StackTooltip({
 	if (!active || !payload?.length) return null;
 	const rows = payload.filter((row) => row.value > 0).reverse();
 	return (
-		<div className="rounded-lg border bg-popover p-2.5 shadow-lg">
+		<div className="rounded-lg border bg-popover p-2.5">
 			<div className="text-[11px] font-medium text-muted-foreground">
 				{label ? bucketLabel(label, period) : ""}
 			</div>

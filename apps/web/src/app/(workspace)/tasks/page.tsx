@@ -638,13 +638,11 @@ function TasksPageContent() {
   );
 
   return (
-    <div className="p-4 sm:p-6 lg:p-8 space-y-6">
+    <div className="workspace-page space-y-6">
       {/* Header */}
-      <div className="flex items-start justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <div className="w-1.5 h-6 bg-linear-to-b from-primary to-primary/60 rounded-full" />
-          <div>
-            <h1 className="text-2xl font-bold text-foreground">
+      <div className="workspace-page-header flex flex-wrap items-start justify-between gap-4">
+        <div>
+            <h1 className="text-xl font-semibold text-foreground">
               Tasks
               {filteredProject && (
                 <span className="text-lg font-normal text-muted-foreground ml-2">
@@ -657,7 +655,6 @@ function TasksPageContent() {
                 ? "Loading tasks..."
                 : `${totalTasks} total \u2022 ${completedTasks} completed \u2022 ${overdueTasks} overdue`}
             </p>
-          </div>
         </div>
         <TaskSheet
           mode="create"
@@ -671,22 +668,8 @@ function TasksPageContent() {
       </div>
 
       {/* Filters and Search */}
-      <div className="flex flex-col sm:flex-row gap-4 items-start">
-        <FiltersWithClear
-          filters={filters}
-          fields={filterFields}
-          onChange={setFilters}
-          addButtonText="Filter"
-          addButtonIcon={<FilterIcon className="h-4 w-4" />}
-          size="md"
-          variant="outline"
-          radius="full"
-          showClearButton={true}
-          clearButtonText="Clear"
-          clearButtonIcon={<X className="h-4 w-4" />}
-        />
-
-        <div className="relative flex-1">
+      <div className="workspace-toolbar flex flex-col gap-3 sm:flex-row sm:items-center">
+        <div className="relative min-w-0 flex-1">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
             placeholder="Search tasks..."
@@ -695,6 +678,20 @@ function TasksPageContent() {
             className="pl-10"
           />
         </div>
+
+        <FiltersWithClear
+          filters={filters}
+          fields={filterFields}
+          onChange={setFilters}
+          addButtonText="Filter"
+          addButtonIcon={<FilterIcon className="h-4 w-4" />}
+          size="md"
+          variant="outline"
+          radius="md"
+          showClearButton={true}
+          clearButtonText="Clear"
+          clearButtonIcon={<X className="h-4 w-4" />}
+        />
 
         {searchQuery.trim() !== "" && filters.length === 0 && (
           <Button variant="outline" onClick={() => setSearchQuery("")}>
@@ -720,7 +717,7 @@ function TasksPageContent() {
           </div>
         </div>
       ) : groups.length > 0 ? (
-        <div className="space-y-2">
+        <div className="workspace-results space-y-2">
           {groups.map((group) => (
             <GroupTable key={group.label} group={group} columns={columns} />
           ))}

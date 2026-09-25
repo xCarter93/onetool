@@ -13,7 +13,6 @@ import {
 import { MultiSelector } from "@/components/shared/multi-selector";
 import { PropertyPicker } from "@/components/shared/property-picker";
 import { ProminentStatusBadge } from "@/components/shared/prominent-status-badge";
-import { Separator } from "@/components/ui/separator";
 import { DatePicker } from "@/components/ui/date-picker";
 import { useToast } from "@/hooks/use-toast";
 import { convexErrorMessage } from "@/lib/convex-error";
@@ -120,7 +119,6 @@ export function ProjectDetailSidebar({
 	client,
 	primaryContact,
 	properties,
-	quotes,
 	invoices,
 }: ProjectDetailSidebarProps) {
 	const toast = useToast();
@@ -144,7 +142,9 @@ export function ProjectDetailSidebar({
 
 	const [editingField, setEditingField] = useState<EditingField>(null);
 	const [editValue, setEditValue] = useState("");
-	const [editDateValue, setEditDateValue] = useState<Date | undefined>(undefined);
+	const [editDateValue, setEditDateValue] = useState<Date | undefined>(
+		undefined,
+	);
 	const [editAssignedUsers, setEditAssignedUsers] = useState<string[]>([]);
 	const startEditing = (field: EditingField, currentValue: string) => {
 		if (!canModify || (field === "status" && statusNeedsRecovery)) return;
@@ -153,11 +153,14 @@ export function ProjectDetailSidebar({
 		setEditValue(currentValue);
 	};
 
-	const startEditingDate = (field: "startDate" | "endDate", currentTimestamp?: number) => {
+	const startEditingDate = (
+		field: "startDate" | "endDate",
+		currentTimestamp?: number,
+	) => {
 		if (!canModify) return;
 		setEditingField(field);
 		setEditDateValue(
-			currentTimestamp ? utcMidnightMsToLocalDate(currentTimestamp) : undefined
+			currentTimestamp ? utcMidnightMsToLocalDate(currentTimestamp) : undefined,
 		);
 	};
 
@@ -176,7 +179,7 @@ export function ProjectDetailSidebar({
 
 	const saveField = async (
 		field: keyof ProjectUpdate,
-		value: ProjectUpdate[keyof ProjectUpdate]
+		value: ProjectUpdate[keyof ProjectUpdate],
 	) => {
 		try {
 			const result = await saveProjectUpdate(field, { [field]: value });
@@ -212,15 +215,22 @@ export function ProjectDetailSidebar({
 
 	// Compute billing summary
 	const totalInvoices = invoices?.length ?? 0;
-	const totalBilled = invoices?.reduce((sum, inv) => sum + (inv.total || 0), 0) ?? 0;
-	const outstanding = invoices?.filter((inv) => inv.status !== "paid").reduce((sum, inv) => sum + (inv.total || 0), 0) ?? 0;
+	const totalBilled =
+		invoices?.reduce((sum, inv) => sum + (inv.total || 0), 0) ?? 0;
+	const outstanding =
+		invoices
+			?.filter((inv) => inv.status !== "paid")
+			.reduce((sum, inv) => sum + (inv.total || 0), 0) ?? 0;
 
 	// Shared save/cancel button pair
 	const renderActions = (onSave: () => void) => (
 		<div className="flex items-center gap-0.5 shrink-0 ml-auto">
 			<button
 				disabled={isSaving}
-				onClick={(e) => { e.stopPropagation(); onSave(); }}
+				onClick={(e) => {
+					e.stopPropagation();
+					onSave();
+				}}
 				className="p-1 rounded-md hover:bg-green-100 dark:hover:bg-green-900/30 text-green-600 dark:text-green-400 transition-colors"
 				aria-label="Save"
 			>
@@ -228,7 +238,10 @@ export function ProjectDetailSidebar({
 			</button>
 			<button
 				disabled={isSaving}
-				onClick={(e) => { e.stopPropagation(); cancelEditing(); }}
+				onClick={(e) => {
+					e.stopPropagation();
+					cancelEditing();
+				}}
 				className="p-1 rounded-md hover:bg-red-100 dark:hover:bg-red-900/30 text-red-600 dark:text-red-400 transition-colors"
 				aria-label="Cancel"
 			>
@@ -261,11 +274,18 @@ export function ProjectDetailSidebar({
 				{/* Title */}
 				<div
 					className={rowClass}
-					onClick={() => editingField !== "title" && startEditing("title", project.title)}
+					onClick={() =>
+						editingField !== "title" && startEditing("title", project.title)
+					}
 				>
 					<Type className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
-					<span className="text-sm text-muted-foreground w-28 shrink-0">Title</span>
-					<div className="flex-1 min-w-0" onClick={(e) => editingField === "title" && e.stopPropagation()}>
+					<span className="text-sm text-muted-foreground w-28 shrink-0">
+						Title
+					</span>
+					<div
+						className="flex-1 min-w-0"
+						onClick={(e) => editingField === "title" && e.stopPropagation()}
+					>
 						{editingField === "title" ? (
 							<input
 								type="text"
@@ -284,22 +304,35 @@ export function ProjectDetailSidebar({
 					</div>
 					{editingField === "title"
 						? renderActions(() => {
-							if (editValue.trim()) saveField("title", editValue.trim());
-						})
-						: renderPencil()
-					}
+								if (editValue.trim()) saveField("title", editValue.trim());
+							})
+						: renderPencil()}
 				</div>
 
 				{/* Status */}
 				<div
-					className={statusNeedsRecovery ? "flex items-start gap-3 py-2.5 -mx-2 px-2" : rowClass}
-					onClick={() => editingField !== "status" && startEditing("status", project.status)}
+					className={
+						statusNeedsRecovery
+							? "flex items-start gap-3 py-2.5 -mx-2 px-2"
+							: rowClass
+					}
+					onClick={() =>
+						editingField !== "status" && startEditing("status", project.status)
+					}
 				>
 					<CircleDot className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
-					<span className="text-sm text-muted-foreground w-28 shrink-0">Status</span>
-					<div className="flex-1 min-w-0" onClick={(e) => editingField === "status" && e.stopPropagation()}>
+					<span className="text-sm text-muted-foreground w-28 shrink-0">
+						Status
+					</span>
+					<div
+						className="flex-1 min-w-0"
+						onClick={(e) => editingField === "status" && e.stopPropagation()}
+					>
 						{editingField === "status" && !statusNeedsRecovery ? (
-							<Select value={editValue} onValueChange={(value) => setEditValue(value as string)}>
+							<Select
+								value={editValue}
+								onValueChange={(value) => setEditValue(value as string)}
+							>
 								<SelectTrigger className="h-8">
 									<SelectValue />
 								</SelectTrigger>
@@ -319,24 +352,39 @@ export function ProjectDetailSidebar({
 								entityType="project"
 							/>
 						)}
-						{statusNeedsRecovery && <RecurrenceStatusRecovery key={project._id} project={project} />}
+						{statusNeedsRecovery && (
+							<RecurrenceStatusRecovery key={project._id} project={project} />
+						)}
 					</div>
-					{!statusNeedsRecovery && (editingField === "status"
-						? renderActions(() => saveField("status", editValue))
-						: renderPencil())
-					}
+					{!statusNeedsRecovery &&
+						(editingField === "status"
+							? renderActions(() => saveField("status", editValue))
+							: renderPencil())}
 				</div>
 
 				{/* Project Type */}
 				<div
 					className={rowClass}
-					onClick={() => editingField !== "projectType" && startEditing("projectType", project.projectType)}
+					onClick={() =>
+						editingField !== "projectType" &&
+						startEditing("projectType", project.projectType)
+					}
 				>
 					<Layers className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
-					<span className="text-sm text-muted-foreground w-28 shrink-0">Project Type</span>
-					<div className="flex-1 min-w-0" onClick={(e) => editingField === "projectType" && e.stopPropagation()}>
+					<span className="text-sm text-muted-foreground w-28 shrink-0">
+						Project Type
+					</span>
+					<div
+						className="flex-1 min-w-0"
+						onClick={(e) =>
+							editingField === "projectType" && e.stopPropagation()
+						}
+					>
 						{editingField === "projectType" ? (
-							<Select value={editValue} onValueChange={(value) => setEditValue(value as string)}>
+							<Select
+								value={editValue}
+								onValueChange={(value) => setEditValue(value as string)}
+							>
 								<SelectTrigger className="h-8">
 									<SelectValue />
 								</SelectTrigger>
@@ -356,8 +404,9 @@ export function ProjectDetailSidebar({
 					</div>
 					{editingField === "projectType"
 						? renderActions(() => saveField("projectType", editValue))
-						: project.recurringSeriesId ? null : renderPencil()
-					}
+						: project.recurringSeriesId
+							? null
+							: renderPencil()}
 				</div>
 
 				<RecurrenceProjectControl project={project} />
@@ -365,15 +414,25 @@ export function ProjectDetailSidebar({
 				{/* Start Date */}
 				<div
 					className={rowClass}
-					onClick={() => editingField !== "startDate" && startEditingDate("startDate", project.startDate)}
+					onClick={() =>
+						editingField !== "startDate" &&
+						startEditingDate("startDate", project.startDate)
+					}
 				>
 					<CalendarIcon className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
-					<span className="text-sm text-muted-foreground w-28 shrink-0">Start Date</span>
-					<div className="flex-1 min-w-0" onClick={(e) => editingField === "startDate" && e.stopPropagation()}>
+					<span className="text-sm text-muted-foreground w-28 shrink-0">
+						Start Date
+					</span>
+					<div
+						className="flex-1 min-w-0"
+						onClick={(e) => editingField === "startDate" && e.stopPropagation()}
+					>
 						{editingField === "startDate" ? (
 							<DatePicker
 								open={true}
-								onOpenChange={(open) => { if (!open) cancelEditing(); }}
+								onOpenChange={(open) => {
+									if (!open) cancelEditing();
+								}}
 								value={editDateValue}
 								onChange={(date) => {
 									if (date) {
@@ -386,7 +445,11 @@ export function ProjectDetailSidebar({
 							/>
 						) : (
 							<span className="text-sm text-foreground">
-								{project.startDate ? formatCalendarDate(project.startDate) : <span className="text-muted-foreground italic">Not set</span>}
+								{project.startDate ? (
+									formatCalendarDate(project.startDate)
+								) : (
+									<span className="text-muted-foreground italic">Not set</span>
+								)}
 							</span>
 						)}
 					</div>
@@ -396,15 +459,25 @@ export function ProjectDetailSidebar({
 				{/* End Date */}
 				<div
 					className={rowClass}
-					onClick={() => editingField !== "endDate" && startEditingDate("endDate", project.endDate)}
+					onClick={() =>
+						editingField !== "endDate" &&
+						startEditingDate("endDate", project.endDate)
+					}
 				>
 					<CalendarCheck className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
-					<span className="text-sm text-muted-foreground w-28 shrink-0">End Date</span>
-					<div className="flex-1 min-w-0" onClick={(e) => editingField === "endDate" && e.stopPropagation()}>
+					<span className="text-sm text-muted-foreground w-28 shrink-0">
+						End Date
+					</span>
+					<div
+						className="flex-1 min-w-0"
+						onClick={(e) => editingField === "endDate" && e.stopPropagation()}
+					>
 						{editingField === "endDate" ? (
 							<DatePicker
 								open={true}
-								onOpenChange={(open) => { if (!open) cancelEditing(); }}
+								onOpenChange={(open) => {
+									if (!open) cancelEditing();
+								}}
 								value={editDateValue}
 								onChange={(date) => {
 									if (date) {
@@ -424,7 +497,11 @@ export function ProjectDetailSidebar({
 							/>
 						) : (
 							<span className="text-sm text-foreground">
-								{project.endDate ? formatCalendarDate(project.endDate) : <span className="text-muted-foreground italic">Not set</span>}
+								{project.endDate ? (
+									formatCalendarDate(project.endDate)
+								) : (
+									<span className="text-muted-foreground italic">Not set</span>
+								)}
 							</span>
 						)}
 					</div>
@@ -434,11 +511,20 @@ export function ProjectDetailSidebar({
 				{/* Assigned Users */}
 				<div
 					className={rowClass}
-					onClick={() => editingField !== "assignedUserIds" && startEditingAssignedUsers()}
+					onClick={() =>
+						editingField !== "assignedUserIds" && startEditingAssignedUsers()
+					}
 				>
 					<Users className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
-					<span className="text-sm text-muted-foreground w-28 shrink-0">Assigned To</span>
-					<div className="flex-1 min-w-0" onClick={(e) => editingField === "assignedUserIds" && e.stopPropagation()}>
+					<span className="text-sm text-muted-foreground w-28 shrink-0">
+						Assigned To
+					</span>
+					<div
+						className="flex-1 min-w-0"
+						onClick={(e) =>
+							editingField === "assignedUserIds" && e.stopPropagation()
+						}
+					>
 						{editingField === "assignedUserIds" ? (
 							<MultiSelector
 								options={
@@ -455,29 +541,36 @@ export function ProjectDetailSidebar({
 							/>
 						) : (
 							<span className="text-sm text-foreground">
-								{project.assignedUserIds && project.assignedUserIds.length > 0 ? (
-									<AssignedUserNames userIds={project.assignedUserIds as string[]} users={users} />
+								{project.assignedUserIds &&
+								project.assignedUserIds.length > 0 ? (
+									<AssignedUserNames
+										userIds={project.assignedUserIds as string[]}
+										users={users}
+									/>
 								) : (
-									<span className="text-muted-foreground italic">Unassigned</span>
+									<span className="text-muted-foreground italic">
+										Unassigned
+									</span>
 								)}
 							</span>
 						)}
 					</div>
 					{editingField === "assignedUserIds"
 						? renderActions(() =>
-							saveField(
-								"assignedUserIds",
-								editAssignedUsers as Id<"users">[]
+								saveField(
+									"assignedUserIds",
+									editAssignedUsers as Id<"users">[],
+								),
 							)
-						)
-						: renderPencil()
-					}
+						: renderPencil()}
 				</div>
 
 				{/* Project Number - Read only */}
 				<div className="flex items-start gap-3 py-2.5 -mx-2 px-2">
 					<Hash className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
-					<span className="text-sm text-muted-foreground w-28 shrink-0">Project No.</span>
+					<span className="text-sm text-muted-foreground w-28 shrink-0">
+						Project No.
+					</span>
 					<div className="flex-1 min-w-0">
 						<span className="text-sm text-foreground font-mono">
 							{project.projectNumber || projectId.slice(-6)}
@@ -488,7 +581,9 @@ export function ProjectDetailSidebar({
 				{/* Created - Read only */}
 				<div className="flex items-start gap-3 py-2.5 -mx-2 px-2">
 					<CalendarIcon className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
-					<span className="text-sm text-muted-foreground w-28 shrink-0">Created</span>
+					<span className="text-sm text-muted-foreground w-28 shrink-0">
+						Created
+					</span>
 					<div className="flex-1 min-w-0">
 						<span className="text-sm text-foreground">
 							{formatDate(project._creationTime)}
@@ -496,19 +591,22 @@ export function ProjectDetailSidebar({
 					</div>
 				</div>
 			</div>
-			<RecurringVisitBilling projectId={projectId} recurring={Boolean(project.recurringSeriesId)} />
-
-			<Separator className="my-4" />
+			<RecurringVisitBilling
+				projectId={projectId}
+				recurring={Boolean(project.recurringSeriesId)}
+			/>
 
 			{/* Client Information Section */}
-			<h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-3">
+			<h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground mt-6 mb-3">
 				Client Information
 			</h3>
 			{client ? (
 				<div className="space-y-0">
 					<div className="flex items-start gap-3 py-2.5 -mx-2 px-2">
 						<Building2 className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
-						<span className="text-sm text-muted-foreground w-28 shrink-0">Client</span>
+						<span className="text-sm text-muted-foreground w-28 shrink-0">
+							Client
+						</span>
 						<div className="flex-1 min-w-0">
 							<Link
 								href={`/clients/${client._id}`}
@@ -523,7 +621,9 @@ export function ProjectDetailSidebar({
 						<>
 							<div className="flex items-start gap-3 py-2.5 -mx-2 px-2">
 								<User className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
-								<span className="text-sm text-muted-foreground w-28 shrink-0">Contact</span>
+								<span className="text-sm text-muted-foreground w-28 shrink-0">
+									Contact
+								</span>
 								<div className="flex-1 min-w-0">
 									<span className="text-sm text-foreground">
 										{primaryContact.firstName} {primaryContact.lastName}
@@ -533,7 +633,9 @@ export function ProjectDetailSidebar({
 							{primaryContact.email && (
 								<div className="flex items-start gap-3 py-2.5 -mx-2 px-2">
 									<Mail className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
-									<span className="text-sm text-muted-foreground w-28 shrink-0">Email</span>
+									<span className="text-sm text-muted-foreground w-28 shrink-0">
+										Email
+									</span>
 									<div className="flex-1 min-w-0">
 										<a
 											href={`mailto:${primaryContact.email}`}
@@ -547,7 +649,9 @@ export function ProjectDetailSidebar({
 							{primaryContact.phone && (
 								<div className="flex items-start gap-3 py-2.5 -mx-2 px-2">
 									<Phone className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
-									<span className="text-sm text-muted-foreground w-28 shrink-0">Phone</span>
+									<span className="text-sm text-muted-foreground w-28 shrink-0">
+										Phone
+									</span>
 									<div className="flex-1 min-w-0">
 										<span className="text-sm text-foreground">
 											{primaryContact.phone}
@@ -567,10 +671,14 @@ export function ProjectDetailSidebar({
 							}
 						>
 							<MapPin className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
-							<span className="text-sm text-muted-foreground w-28 shrink-0">Address</span>
+							<span className="text-sm text-muted-foreground w-28 shrink-0">
+								Address
+							</span>
 							<div
 								className="flex-1 min-w-0"
-								onClick={(e) => editingField === "propertyId" && e.stopPropagation()}
+								onClick={(e) =>
+									editingField === "propertyId" && e.stopPropagation()
+								}
 							>
 								{editingField === "propertyId" ? (
 									<PropertyPicker
@@ -593,8 +701,7 @@ export function ProjectDetailSidebar({
 										if (editValue) saveField("propertyId", editValue);
 										else cancelEditing();
 									})
-								: renderPencil()
-							}
+								: renderPencil()}
 						</div>
 					)}
 
@@ -605,28 +712,28 @@ export function ProjectDetailSidebar({
 					)}
 				</div>
 			) : (
-				<p className="text-sm text-muted-foreground py-2">
-					No client linked
-				</p>
+				<p className="text-sm text-muted-foreground py-2">No client linked</p>
 			)}
 
-			<Separator className="my-4" />
-
 			{/* Billing Summary Section */}
-			<h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-3">
+			<h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground mt-6 mb-3">
 				Billing Summary
 			</h3>
 			<div className="space-y-0">
 				<div className="flex items-start gap-3 py-2.5 -mx-2 px-2">
 					<Receipt className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
-					<span className="text-sm text-muted-foreground w-28 shrink-0">Total Invoices</span>
+					<span className="text-sm text-muted-foreground w-28 shrink-0">
+						Total Invoices
+					</span>
 					<div className="flex-1 min-w-0">
 						<span className="text-sm text-foreground">{totalInvoices}</span>
 					</div>
 				</div>
 				<div className="flex items-start gap-3 py-2.5 -mx-2 px-2">
 					<DollarSign className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
-					<span className="text-sm text-muted-foreground w-28 shrink-0">Total Billed</span>
+					<span className="text-sm text-muted-foreground w-28 shrink-0">
+						Total Billed
+					</span>
 					<div className="flex-1 min-w-0">
 						<span className="text-sm font-medium text-foreground">
 							{formatCurrency(totalBilled)}
@@ -635,7 +742,9 @@ export function ProjectDetailSidebar({
 				</div>
 				<div className="flex items-start gap-3 py-2.5 -mx-2 px-2">
 					<AlertCircle className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
-					<span className="text-sm text-muted-foreground w-28 shrink-0">Outstanding</span>
+					<span className="text-sm text-muted-foreground w-28 shrink-0">
+						Outstanding
+					</span>
 					<div className="flex-1 min-w-0">
 						<span className="text-sm font-medium text-foreground">
 							{formatCurrency(outstanding)}
@@ -643,8 +752,6 @@ export function ProjectDetailSidebar({
 					</div>
 				</div>
 			</div>
-
-			<Separator className="my-4" />
 
 			{/* Documents Section */}
 			<ProjectDocumentsSection projectId={projectId} />
@@ -664,10 +771,11 @@ function AssignedUserNames({
 	const names = userIds
 		.map((id) => {
 			const user = users.find((u) => u._id === id);
-			return user ? (user.name || user.email) : null;
+			return user ? user.name || user.email : null;
 		})
 		.filter(Boolean);
 
-	if (names.length === 0) return <span className="text-muted-foreground italic">Unassigned</span>;
+	if (names.length === 0)
+		return <span className="text-muted-foreground italic">Unassigned</span>;
 	return <>{names.join(", ")}</>;
 }

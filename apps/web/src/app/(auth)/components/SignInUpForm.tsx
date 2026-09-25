@@ -18,21 +18,18 @@ const getSharedElements = (isDark: boolean) => ({
 		...(isDark && { filter: "brightness(0) invert(1)" }),
 	},
 	formButtonPrimary:
-		"bg-primary/10 hover:bg-primary/15 text-primary hover:text-primary/80 ring-1 ring-primary/30 hover:ring-primary/40 shadow-sm hover:shadow-md backdrop-blur-sm transition-all duration-200",
-	// Flat, card-free form: the page is the surface.
-	// overflow stays hidden on cardBox — it clips Clerk's card chrome (border/
-	// shadow painted on an inner element); px-3 keeps inputs clear of that clip.
+		"h-7 rounded bg-primary text-primary-foreground hover:bg-primary/90 shadow-none",
+	// Clerk paints card chrome inside cardBox, so it must clip the inner layer.
 	cardBox: "w-full max-w-none shadow-none rounded-none bg-transparent",
 	card: "w-full shadow-none rounded-none border-none bg-transparent px-3",
 	footer: { background: "transparent" },
 	footerAction: "bg-transparent border-none shadow-none",
 	headerTitle: "text-foreground",
 	headerSubtitle: "text-muted-foreground",
-	// No socialButtonsBlockButton override: Core 3's Clerk UI resolves
-	// bg-accent/text-accent-foreground against its own tokens, inverting hover.
+	// Clerk UI owns social button hover colors.
 	formFieldLabel: "text-foreground",
 	formFieldInput:
-		"bg-background border-border focus:border-primary focus:ring-primary",
+		"h-7 rounded bg-background border-border focus:border-primary focus:ring-primary",
 	footerActionLink: "text-primary hover:text-primary/90",
 });
 
@@ -51,7 +48,6 @@ export function SignInUpForm({ mode }: SignInUpFormProps) {
 
 	return (
 		<div className="bg-background w-full lg:grid lg:min-h-svh lg:grid-cols-[3fr_2fr]">
-			{/* Form */}
 			<section className="flex min-h-svh min-w-0 items-center justify-center px-6 py-10 sm:px-8 lg:px-12">
 				<div className="w-full max-w-lg">
 					<AnimatePresence mode="wait">
@@ -81,9 +77,7 @@ export function SignInUpForm({ mode }: SignInUpFormProps) {
 							)}
 						</motion.div>
 					</AnimatePresence>
-					{/* Sign-in-wrap assent: Clerk's express-consent checkbox is off
-					    (native mobile sign-ups can't render it), so this notice
-					    carries agreement on web too. */}
+					{/* Mobile cannot render Clerk's consent checkbox, so web carries the notice. */}
 					<p className="text-muted-foreground mt-6 text-center text-xs">
 						By continuing, you agree to our{" "}
 						<Link
@@ -104,13 +98,12 @@ export function SignInUpForm({ mode }: SignInUpFormProps) {
 				</div>
 			</section>
 
-			{/* Sidebar — primary-blue animated grid + framed photo, no logos or copy */}
 			<aside className="bg-primary/[0.03] border-border/70 relative hidden overflow-hidden px-8 py-12 lg:flex lg:min-h-svh lg:border-l">
 				<AuthGridBackground />
 
 				<div className="relative z-10 flex min-h-full w-full items-center justify-center">
 					<div className="mx-auto flex w-full max-w-160 flex-col items-start">
-						<div className="bg-background/90 border-border/60 relative w-full overflow-hidden rounded-xl border backdrop-blur-sm">
+						<div className="bg-card border-border relative w-full overflow-hidden rounded-xl border">
 							<Image
 								src="https://images.unsplash.com/photo-1690378820474-b468b8ee64d3?q=80&w=1470&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D"
 								alt=""

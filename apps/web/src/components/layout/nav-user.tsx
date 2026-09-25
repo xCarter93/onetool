@@ -14,14 +14,13 @@ import {
 const USER_BUTTON_APPEARANCE = {
 	elements: {
 		userButtonTrigger:
-			"rounded-lg focus-visible:ring-2 focus-visible:ring-primary/40",
-		avatarBox: "h-8 w-8 rounded-lg",
-		userButtonAvatarBox: "h-8 w-8 rounded-lg",
-		// Popover card — matches the header popovers
+			"rounded-[4px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
+		avatarBox: "h-8 w-8 rounded-[4px]",
+		userButtonAvatarBox: "h-8 w-8 rounded-[4px]",
 		userButtonPopoverCard: clerkPopoverCardClass,
 		userButtonPopoverMain: "bg-popover",
 		userButtonPopoverActionButton:
-			"rounded-lg hover:bg-muted/60 transition-colors text-foreground",
+			"rounded-[4px] hover:bg-(--app-accent) hover:text-(--accent-fg) transition-colors text-foreground",
 		userButtonPopoverActionButtonIcon: "text-muted-foreground",
 		userButtonPopoverActionButtonText: "text-sm text-foreground",
 		userButtonPopoverFooter: "border-t border-border",

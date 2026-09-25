@@ -626,7 +626,7 @@ export function HomeCalendar() {
 
 	return (
 		<div
-			className="bg-background flex h-full w-full min-w-0 flex-row"
+			className="bg-card flex h-full w-full min-w-0 flex-row"
 			onKeyDown={handleShortcuts}
 		>
 			<CalendarRail

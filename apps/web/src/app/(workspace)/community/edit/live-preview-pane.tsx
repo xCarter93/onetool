@@ -9,10 +9,7 @@ import {
 	CommunityPageView,
 	type CommunityPageViewData,
 } from "@/app/communities/[slug]/community-page-view";
-import {
-	PAGE_LAYOUT_LABELS,
-	resolvePageLayout,
-} from "@/lib/community-layouts";
+import { PAGE_LAYOUT_LABELS, resolvePageLayout } from "@/lib/community-layouts";
 import { PreviewFrame } from "./preview-frame";
 
 type DeviceMode = "desktop" | "mobile";
@@ -80,7 +77,7 @@ export function LivePreviewPane({
 	);
 
 	return (
-		<div className="sticky top-40 flex h-[calc(100vh-13rem)] min-h-[460px] flex-col gap-3 p-4">
+		<div className="flex h-[calc(100svh-var(--community-sticky-offset)-4.5rem)] min-h-0 flex-col gap-3 p-4">
 			<div className="flex shrink-0 items-center justify-between gap-3">
 				<p className="flex min-w-0 items-center gap-2 text-xs font-medium text-muted-foreground">
 					<span
@@ -89,7 +86,10 @@ export function LivePreviewPane({
 					/>
 					<span className="truncate">
 						Live preview
-						<span className="text-muted-foreground"> · {PAGE_LAYOUT_LABELS[layout]}</span>
+						<span className="text-muted-foreground">
+							{" "}
+							· {PAGE_LAYOUT_LABELS[layout]}
+						</span>
 					</span>
 				</p>
 				<SegmentedControl

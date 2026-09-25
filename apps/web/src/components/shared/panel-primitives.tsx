@@ -22,7 +22,7 @@ export function PanelSection({
 	return (
 		<section className={cn("py-4", className)}>
 			{title && (
-				<h4 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-3">
+				<h4 className="mb-3 text-2xs font-semibold uppercase tracking-wide text-muted-foreground">
 					{title}
 				</h4>
 			)}
@@ -45,7 +45,7 @@ export function PanelField({
 }) {
 	return (
 		<div>
-			<Label className="text-sm font-medium">{label}</Label>
+			<Label className="text-xs font-semibold">{label}</Label>
 			<div className="mt-1.5">{children}</div>
 			{error ? (
 				<p className="text-xs text-destructive mt-1.5">{error}</p>

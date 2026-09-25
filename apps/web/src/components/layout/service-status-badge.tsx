@@ -122,9 +122,9 @@ export function ServiceStatusBadge() {
 			<PopoverContent
 				align="end"
 				sideOffset={10}
-				className="w-80 rounded-xl border-border p-0 shadow-xl"
+				className="w-80 rounded-lg border-border p-0 shadow-floating"
 			>
-				<div className="flex items-center gap-3 border-b border-border px-4 py-3">
+				<div className="flex items-center gap-3 border-b border-border px-3 py-2">
 					<span
 						className={cn(
 							"flex size-9 items-center justify-center rounded-full",
@@ -156,7 +156,7 @@ function ServiceStatusItem({ service }: { service: Doc<"serviceStatus"> }) {
 	const m = statusMeta(service.status);
 
 	return (
-		<div className="flex items-center justify-between gap-3 rounded-lg px-2 py-2 transition-colors hover:bg-muted/60">
+		<div className="flex items-center justify-between gap-3 rounded-[4px] px-2 py-1.5">
 			<div className="flex min-w-0 items-center gap-2.5">
 				<span className={cn("size-2 shrink-0 rounded-full", m.dot)} />
 				<span className="truncate text-sm font-medium text-foreground">

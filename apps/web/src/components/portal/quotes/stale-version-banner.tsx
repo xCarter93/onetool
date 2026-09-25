@@ -16,7 +16,7 @@ export function StaleVersionBanner({ onReload }: StaleVersionBannerProps) {
 		<div
 			role="status"
 			aria-live="polite"
-			className="rounded-xl border border-amber-300 bg-amber-50 p-4"
+			className="rounded-[8px] border border-amber-300 bg-amber-50 p-4"
 		>
 			<div className="flex items-start gap-3">
 				<RefreshCw

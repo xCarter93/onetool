@@ -92,8 +92,7 @@ const DeleteConfirmationModal: React.FC<DeleteConfirmationModalProps> = ({
 		}
 	};
 
-	// Red destructive framing only for permanent deletes; archive/cancel are amber.
-	const iconColor = mode === "delete" ? "text-red-500" : "text-yellow-500";
+	const iconColor = mode === "delete" ? "text-danger-foreground" : "text-warning-foreground";
 
 	return (
 		<AlertDialog
@@ -124,10 +123,10 @@ const DeleteConfirmationModal: React.FC<DeleteConfirmationModalProps> = ({
 							</svg>
 						</div>
 						<div>
-							<h3 className="text-lg font-medium text-gray-900 dark:text-gray-100">
+							<h3 className="text-lg font-medium text-foreground">
 								Are you sure?
 							</h3>
-							<p className="text-sm text-gray-600 dark:text-gray-400">
+							<p className="text-sm text-muted-foreground">
 								{mode === "archive" ? (
 									<>
 										This will archive the <strong>{itemType}</strong> &quot;
@@ -159,11 +158,11 @@ const DeleteConfirmationModal: React.FC<DeleteConfirmationModalProps> = ({
 					</div>
 
 					{mode === "delete" && (
-						<div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-md p-3">
+						<div className="rounded-md border border-danger/30 bg-danger/10 p-3">
 							<div className="flex">
 								<div className="shrink-0">
 									<svg
-										className="h-5 w-5 text-red-400"
+										className="h-5 w-5 text-danger-foreground"
 										viewBox="0 0 20 20"
 										fill="currentColor"
 									>
@@ -175,7 +174,7 @@ const DeleteConfirmationModal: React.FC<DeleteConfirmationModalProps> = ({
 									</svg>
 								</div>
 								<div className="ml-3">
-									<p className="text-sm text-red-700 dark:text-red-300">
+									<p className="text-sm text-danger-foreground">
 										<strong>Warning:</strong> This is a destructive action that
 										cannot be reversed.
 									</p>
@@ -185,11 +184,11 @@ const DeleteConfirmationModal: React.FC<DeleteConfirmationModalProps> = ({
 					)}
 
 					{mode === "archive" && (
-						<div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-md p-3">
+						<div className="rounded-md border border-warning/30 bg-warning/10 p-3">
 							<div className="flex">
 								<div className="shrink-0">
 									<svg
-										className="h-5 w-5 text-yellow-400"
+										className="h-5 w-5 text-warning-foreground"
 										viewBox="0 0 20 20"
 										fill="currentColor"
 									>
@@ -201,7 +200,7 @@ const DeleteConfirmationModal: React.FC<DeleteConfirmationModalProps> = ({
 									</svg>
 								</div>
 								<div className="ml-3">
-									<p className="text-sm text-yellow-700 dark:text-yellow-300">
+									<p className="text-sm text-warning-foreground">
 										<strong>Archive Notice:</strong> Archived items can be
 										restored within 7 days. After 7 days, they will be permanently
 										deleted.
@@ -212,11 +211,11 @@ const DeleteConfirmationModal: React.FC<DeleteConfirmationModalProps> = ({
 					)}
 
 					{mode === "cancel" && (
-						<div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-md p-3">
+						<div className="rounded-md border border-warning/30 bg-warning/10 p-3">
 							<div className="flex">
 								<div className="shrink-0">
 									<svg
-										className="h-5 w-5 text-yellow-400"
+										className="h-5 w-5 text-warning-foreground"
 										viewBox="0 0 20 20"
 										fill="currentColor"
 									>
@@ -228,7 +227,7 @@ const DeleteConfirmationModal: React.FC<DeleteConfirmationModalProps> = ({
 									</svg>
 								</div>
 								<div className="ml-3">
-									<p className="text-sm text-yellow-700 dark:text-yellow-300">
+									<p className="text-sm text-warning-foreground">
 										<strong>Note:</strong> The {lowerType} won&apos;t be deleted —
 										it will be marked cancelled and kept for your records.
 									</p>
@@ -238,8 +237,8 @@ const DeleteConfirmationModal: React.FC<DeleteConfirmationModalProps> = ({
 					)}
 
 					{mode === "discard" && note && (
-						<div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-md p-3">
-							<p className="text-sm text-yellow-700 dark:text-yellow-300">
+						<div className="rounded-md border border-warning/30 bg-warning/10 p-3">
+							<p className="text-sm text-warning-foreground">
 								<strong>Note:</strong> {note}
 							</p>
 						</div>

@@ -110,10 +110,10 @@ export function NotificationBell() {
 			<PopoverContent
 				align="end"
 				sideOffset={10}
-				className="w-96 rounded-xl border-border p-0 shadow-xl"
+				className="w-96 rounded-lg border-border p-0 shadow-floating"
 			>
 				{/* Header */}
-				<div className="flex items-center justify-between border-b border-border px-4 py-3">
+				<div className="flex items-center justify-between border-b border-border px-3 py-2">
 					<div className="flex items-center gap-2">
 						<Bell className="size-4 text-muted-foreground" />
 						<h3 className="text-sm font-semibold text-foreground">
@@ -122,14 +122,14 @@ export function NotificationBell() {
 					</div>
 					{unreadCount > 0 && (
 						<div className="flex items-center gap-1.5">
-							<span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-semibold text-primary">
+							<span className="rounded-[4px] bg-accent px-2 py-0.5 text-xs font-semibold text-accent-foreground">
 								{unreadCount} new
 							</span>
 							<button
 								type="button"
 								onClick={handleMarkAllRead}
 								disabled={markingAll}
-								className="cursor-pointer rounded-md px-1.5 py-0.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:pointer-events-none disabled:opacity-50"
+								className="cursor-pointer rounded-[4px] px-1.5 py-0.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:pointer-events-none disabled:opacity-50"
 							>
 								Mark all read
 							</button>
@@ -180,7 +180,7 @@ export function NotificationBell() {
 											)
 										}
 										className={cn(
-											"flex w-full cursor-pointer items-start gap-3 rounded-lg px-3 py-2.5 text-left transition-colors hover:bg-muted/60",
+											"flex w-full cursor-pointer items-start gap-3 rounded-[4px] px-2.5 py-2 text-left transition-colors hover:bg-accent",
 											!notification.isRead && "bg-primary/5"
 										)}
 									>

@@ -1,30 +1,35 @@
 import type { Appearance } from "@stripe/stripe-js";
 
-// Stripe iframe cannot resolve CSS variables or OKLCH strings — these must be
-// concrete hex/rgb. Values mirror the OKLCH tokens from 15-UI-SPEC §Color.
-export function buildPortalAppearance(): Appearance {
+// Stripe Elements cannot resolve the page's CSS custom properties inside its iframe.
+export function buildPortalAppearance(isDark: boolean): Appearance {
+	const primary = isDark ? "#38bdf8" : "#0073ad";
+	const background = isDark ? "#2d2d2d" : "#ffffff";
+	const foreground = isDark ? "#ededed" : "#202e37";
+	const secondary = isDark ? "#b8b8b8" : "#65717b";
+	const inputBorder = isDark ? "#787878" : "#c2c8dd";
+
 	return {
 		theme: "stripe",
 		variables: {
-			colorPrimary: "#157a3a",
-			colorBackground: "#ffffff",
-			colorText: "#0a0a0c",
-			colorTextSecondary: "#737380",
-			colorDanger: "#d4163a",
-			colorSuccess: "#147a4d",
+			colorPrimary: primary,
+			colorBackground: background,
+			colorText: foreground,
+			colorTextSecondary: secondary,
+			colorDanger: isDark ? "#fa7e8d" : "#cf263c",
+			colorSuccess: isDark ? "#64ca80" : "#24813e",
 			fontFamily:
 				'"Outfit", system-ui, -apple-system, "Segoe UI", sans-serif',
-			fontSizeBase: "14px",
+			fontSizeBase: "16px",
 			spacingUnit: "4px",
-			borderRadius: "8px",
+			borderRadius: "4px",
 		},
 		rules: {
-			".Input": { border: "1px solid #d8d8df" },
-			".Input:focus": { boxShadow: "0 0 0 3px rgba(21, 122, 58, 0.25)" },
-			".Label": { fontSize: "12px", fontWeight: "600", color: "#0a0a0c" },
+			".Input": { border: `1px solid ${inputBorder}` },
+			".Input:focus": { boxShadow: `0 0 0 2px ${primary}` },
+			".Label": { fontSize: "14px", fontWeight: "600", color: foreground },
 			".Tab--selected": {
-				borderColor: "#157a3a",
-				boxShadow: "0 0 0 1px #157a3a",
+				borderColor: primary,
+				boxShadow: `0 0 0 1px ${primary}`,
 			},
 		},
 	};

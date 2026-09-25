@@ -107,7 +107,7 @@ export default async function HelpArticlePage({
 				}
 			>
 				<article className="max-w-3xl min-w-0">
-					<h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
+					<h1 className="text-[32px] font-semibold leading-tight tracking-tight text-foreground">
 						{article.title}
 					</h1>
 					<p className="mt-3 text-lg leading-7 text-muted-foreground">
@@ -203,7 +203,7 @@ export default async function HelpArticlePage({
 							{previous ? (
 								<Link
 									href={`/help/${category.slug}/${previous.slug}`}
-									className="group rounded-xl border border-border p-4 transition-colors hover:bg-muted/50"
+									className="group rounded-[8px] border border-border p-4 transition-colors hover:bg-muted/50"
 								>
 									<span className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
 										<ArrowLeft className="size-3.5" aria-hidden="true" />
@@ -219,7 +219,7 @@ export default async function HelpArticlePage({
 							{next && (
 								<Link
 									href={`/help/${category.slug}/${next.slug}`}
-									className="group rounded-xl border border-border p-4 text-right transition-colors hover:bg-muted/50 sm:col-start-2"
+									className="group rounded-[8px] border border-border p-4 text-right transition-colors hover:bg-muted/50 sm:col-start-2"
 								>
 									<span className="flex items-center justify-end gap-1.5 text-xs font-medium text-muted-foreground">
 										Up next

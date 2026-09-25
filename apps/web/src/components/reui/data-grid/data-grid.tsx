@@ -490,7 +490,7 @@ function DataGrid<TFeatures extends TableFeatures, TData extends object>({
       rowRounded: false,
       stripped: false,
       headerSticky: false,
-      headerBackground: false,
+      headerBackground: true,
       footerBackground: false,
       headerBorder: true,
       width: "fixed",
@@ -511,7 +511,7 @@ function DataGrid<TFeatures extends TableFeatures, TData extends object>({
       // z-40 keeps the sticky header above pinned body cells (zIndex 30 in
       // getPinningStyles), which would otherwise paint over it while
       // scrolling vertically with columnsPinnable enabled.
-      headerSticky: "sticky top-0 z-40 bg-background/90 backdrop-blur-xs",
+      headerSticky: "sticky top-0 z-40 bg-muted",
       body: "",
       bodyRow: "",
       footer: "",
@@ -563,7 +563,7 @@ function DataGridContainer({
   return (
     <div
       data-slot="data-grid"
-      className={cn("w-full overflow-hidden", className)}
+      className={cn("w-full overflow-hidden rounded-lg border border-border bg-card", className)}
     >
       {children}
     </div>

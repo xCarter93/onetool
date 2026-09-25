@@ -78,7 +78,7 @@ function PaceTooltip({
 	if (!active || !payload?.length) return null;
 	const point = payload[0].payload;
 	return (
-		<div className="rounded-lg border bg-popover p-2.5 shadow-lg">
+		<div className="rounded-lg border bg-popover p-2.5">
 			<div className="text-[11px] font-medium text-muted-foreground">
 				{formatBucket(point.date)}
 			</div>
@@ -219,7 +219,6 @@ export function CollectionPaceCard({
 	const isOrgSwitching = useIsOrgSwitching();
 	const range = usePeriodRange(period);
 	const patternPrefix = useId();
-	const dotGridId = `${patternPrefix}-pace-dots`.replace(/:/g, "");
 
 	const pace = useQuery(api.dashboardStats.getCollectionPace, {
 		startDate: range.startDate,
@@ -343,33 +342,6 @@ export function CollectionPaceCard({
 								idPrefix={patternPrefix}
 								colors={[INVOICED_COLOR, COLLECTED_COLOR]}
 							/>
-							<defs>
-								<pattern
-									id={dotGridId}
-									x="0"
-									y="0"
-									width="20"
-									height="20"
-									patternUnits="userSpaceOnUse"
-								>
-									<circle
-										cx="10"
-										cy="10"
-										r="1"
-										fill="var(--input)"
-										fillOpacity="0.6"
-									/>
-								</pattern>
-							</defs>
-							<rect
-								x="0"
-								y="0"
-								width="100%"
-								height="100%"
-								fill={`url(#${dotGridId})`}
-								style={{ pointerEvents: "none" }}
-							/>
-
 							<CartesianGrid
 								strokeDasharray="4 8"
 								stroke="var(--border)"

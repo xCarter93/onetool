@@ -155,7 +155,7 @@ export function RecurringVisitBilling({
 		: undefined;
 
 	return (
-		<div className="space-y-3 rounded-md border border-border p-3">
+		<div className="space-y-3 rounded-lg border border-border bg-card p-3 shadow-sm">
 			<div className="flex items-center justify-between gap-3">
 				<p className="text-sm font-medium text-foreground">
 					Recurring visit billing

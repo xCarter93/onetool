@@ -13,7 +13,6 @@ import {
 import { QuickBooksSyncRow } from "@/components/quickbooks/sync-status-row";
 import { TagsInput } from "@/components/shared/tags-input";
 import { ProminentStatusBadge } from "@/components/shared/prominent-status-badge";
-import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
 import { convexErrorMessage } from "@/lib/convex-error";
 import { useState, useRef, useEffect } from "react";
@@ -98,7 +97,13 @@ const COMM_PREF_OPTIONS = [
 	{ value: "both", label: "Email & Phone" },
 ];
 
-type EditingField = "companyName" | "status" | "leadSource" | "description" | "communicationPreference" | null;
+type EditingField =
+	| "companyName"
+	| "status"
+	| "leadSource"
+	| "description"
+	| "communicationPreference"
+	| null;
 
 interface ClientDetailSidebarProps {
 	client: Doc<"clients">;
@@ -178,7 +183,8 @@ export function ClientDetailSidebar({
 				communicationPreference: "Communication preference",
 				leadSource: "Lead source",
 			};
-			const label = labels[field] || field.charAt(0).toUpperCase() + field.slice(1);
+			const label =
+				labels[field] || field.charAt(0).toUpperCase() + field.slice(1);
 			toast.success("Updated", `${label} saved.`);
 			setEditingField(null);
 			setEditValue("");
@@ -187,7 +193,9 @@ export function ClientDetailSidebar({
 		}
 	};
 
-	const handleTagsChange: React.Dispatch<React.SetStateAction<string[]>> = (action) => {
+	const handleTagsChange: React.Dispatch<React.SetStateAction<string[]>> = (
+		action,
+	) => {
 		if (!canModify) return;
 		const newTags = typeof action === "function" ? action(localTags) : action;
 		setLocalTags(newTags);
@@ -213,7 +221,9 @@ export function ClientDetailSidebar({
 		}
 	};
 
-	const handleDescriptionKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+	const handleDescriptionKeyDown = (
+		e: React.KeyboardEvent<HTMLTextAreaElement>,
+	) => {
 		if (e.key === "Enter" && !e.shiftKey) {
 			e.preventDefault();
 			saveField("companyDescription", editValue || undefined);
@@ -233,14 +243,20 @@ export function ClientDetailSidebar({
 	const renderActions = (onSave: () => void) => (
 		<div className="flex items-center gap-0.5 shrink-0 ml-auto">
 			<button
-				onClick={(e) => { e.stopPropagation(); onSave(); }}
+				onClick={(e) => {
+					e.stopPropagation();
+					onSave();
+				}}
 				className="p-1 rounded-md hover:bg-green-100 dark:hover:bg-green-900/30 text-green-600 dark:text-green-400 transition-colors"
 				aria-label="Save"
 			>
 				<Check className="h-3.5 w-3.5" />
 			</button>
 			<button
-				onClick={(e) => { e.stopPropagation(); cancelEditing(); }}
+				onClick={(e) => {
+					e.stopPropagation();
+					cancelEditing();
+				}}
 				className="p-1 rounded-md hover:bg-red-100 dark:hover:bg-red-900/30 text-red-600 dark:text-red-400 transition-colors"
 				aria-label="Cancel"
 			>
@@ -273,11 +289,21 @@ export function ClientDetailSidebar({
 				{/* Client Name */}
 				<div
 					className={rowClass}
-					onClick={() => editingField !== "companyName" && startEditing("companyName", client.companyName)}
+					onClick={() =>
+						editingField !== "companyName" &&
+						startEditing("companyName", client.companyName)
+					}
 				>
 					<Building2 className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
-					<span className="text-sm text-muted-foreground w-28 shrink-0">Name</span>
-					<div className="flex-1 min-w-0" onClick={(e) => editingField === "companyName" && e.stopPropagation()}>
+					<span className="text-sm text-muted-foreground w-28 shrink-0">
+						Name
+					</span>
+					<div
+						className="flex-1 min-w-0"
+						onClick={(e) =>
+							editingField === "companyName" && e.stopPropagation()
+						}
+					>
 						{editingField === "companyName" ? (
 							<input
 								ref={nameInputRef}
@@ -295,23 +321,34 @@ export function ClientDetailSidebar({
 						)}
 					</div>
 					{editingField === "companyName"
-						? renderActions(() => { if (editValue.trim()) saveField("companyName", editValue.trim()); })
-						: renderPencil()
-					}
+						? renderActions(() => {
+								if (editValue.trim())
+									saveField("companyName", editValue.trim());
+							})
+						: renderPencil()}
 				</div>
 
 				{/* Status */}
 				<div
 					className={rowClass}
-					onClick={() => editingField !== "status" && startEditing("status", client.status)}
+					onClick={() =>
+						editingField !== "status" && startEditing("status", client.status)
+					}
 				>
 					<CircleDot className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
-					<span className="text-sm text-muted-foreground w-28 shrink-0">Status</span>
-					<div className="flex-1 min-w-0" onClick={(e) => editingField === "status" && e.stopPropagation()}>
+					<span className="text-sm text-muted-foreground w-28 shrink-0">
+						Status
+					</span>
+					<div
+						className="flex-1 min-w-0"
+						onClick={(e) => editingField === "status" && e.stopPropagation()}
+					>
 						{editingField === "status" ? (
 							<Select
 								value={editValue}
-								onValueChange={(value) => setEditValue(typeof value === "string" ? value : "")}
+								onValueChange={(value) =>
+									setEditValue(typeof value === "string" ? value : "")
+								}
 							>
 								<SelectTrigger className="h-8">
 									<SelectValue />
@@ -335,22 +372,33 @@ export function ClientDetailSidebar({
 					</div>
 					{editingField === "status"
 						? renderActions(() => saveField("status", editValue))
-						: renderPencil()
-					}
+						: renderPencil()}
 				</div>
 
 				{/* Lead Source */}
 				<div
 					className={rowClass}
-					onClick={() => editingField !== "leadSource" && startEditing("leadSource", client.leadSource || "")}
+					onClick={() =>
+						editingField !== "leadSource" &&
+						startEditing("leadSource", client.leadSource || "")
+					}
 				>
 					<Target className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
-					<span className="text-sm text-muted-foreground w-28 shrink-0">Lead Source</span>
-					<div className="flex-1 min-w-0" onClick={(e) => editingField === "leadSource" && e.stopPropagation()}>
+					<span className="text-sm text-muted-foreground w-28 shrink-0">
+						Lead Source
+					</span>
+					<div
+						className="flex-1 min-w-0"
+						onClick={(e) =>
+							editingField === "leadSource" && e.stopPropagation()
+						}
+					>
 						{editingField === "leadSource" ? (
 							<Select
 								value={editValue}
-								onValueChange={(value) => setEditValue(typeof value === "string" ? value : "")}
+								onValueChange={(value) =>
+									setEditValue(typeof value === "string" ? value : "")
+								}
 							>
 								<SelectTrigger className="h-8">
 									<SelectValue placeholder="Select source" />
@@ -370,19 +418,30 @@ export function ClientDetailSidebar({
 						)}
 					</div>
 					{editingField === "leadSource"
-						? renderActions(() => saveField("leadSource", editValue || undefined))
-						: renderPencil()
-					}
+						? renderActions(() =>
+								saveField("leadSource", editValue || undefined),
+							)
+						: renderPencil()}
 				</div>
 
 				{/* Description */}
 				<div
 					className={rowClass}
-					onClick={() => editingField !== "description" && startEditing("description", client.companyDescription || "")}
+					onClick={() =>
+						editingField !== "description" &&
+						startEditing("description", client.companyDescription || "")
+					}
 				>
 					<FileText className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
-					<span className="text-sm text-muted-foreground w-28 shrink-0">Description</span>
-					<div className="flex-1 min-w-0" onClick={(e) => editingField === "description" && e.stopPropagation()}>
+					<span className="text-sm text-muted-foreground w-28 shrink-0">
+						Description
+					</span>
+					<div
+						className="flex-1 min-w-0"
+						onClick={(e) =>
+							editingField === "description" && e.stopPropagation()
+						}
+					>
 						{editingField === "description" ? (
 							<div className="space-y-1.5">
 								<textarea
@@ -394,38 +453,60 @@ export function ClientDetailSidebar({
 									className="w-full text-sm rounded-md border border-border bg-background px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary resize-none"
 									placeholder="Add a description..."
 								/>
-								<span className="text-xs text-muted-foreground">Enter to save, Esc to cancel</span>
+								<span className="text-xs text-muted-foreground">
+									Enter to save, Esc to cancel
+								</span>
 							</div>
 						) : (
 							<span className="text-sm text-foreground">
 								{client.companyDescription ? (
-									client.companyDescription.length > 120
-										? client.companyDescription.slice(0, 120) + "..."
-										: client.companyDescription
+									client.companyDescription.length > 120 ? (
+										client.companyDescription.slice(0, 120) + "..."
+									) : (
+										client.companyDescription
+									)
 								) : (
-									<span className="text-muted-foreground italic">Add description...</span>
+									<span className="text-muted-foreground italic">
+										Add description...
+									</span>
 								)}
 							</span>
 						)}
 					</div>
 					{editingField === "description"
-						? renderActions(() => saveField("companyDescription", editValue || undefined))
-						: renderPencil()
-					}
+						? renderActions(() =>
+								saveField("companyDescription", editValue || undefined),
+							)
+						: renderPencil()}
 				</div>
 
 				{/* Communication Preference */}
 				<div
 					className={rowClass}
-					onClick={() => editingField !== "communicationPreference" && startEditing("communicationPreference", client.communicationPreference || "")}
+					onClick={() =>
+						editingField !== "communicationPreference" &&
+						startEditing(
+							"communicationPreference",
+							client.communicationPreference || "",
+						)
+					}
 				>
 					<MessageSquare className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
-					<span className="text-sm text-muted-foreground w-28 shrink-0">Comm. Pref.</span>
-					<div className="flex-1 min-w-0" onClick={(e) => editingField === "communicationPreference" && e.stopPropagation()}>
+					<span className="text-sm text-muted-foreground w-28 shrink-0">
+						Comm. Pref.
+					</span>
+					<div
+						className="flex-1 min-w-0"
+						onClick={(e) =>
+							editingField === "communicationPreference" && e.stopPropagation()
+						}
+					>
 						{editingField === "communicationPreference" ? (
 							<Select
 								value={editValue}
-								onValueChange={(value) => setEditValue(typeof value === "string" ? value : "")}
+								onValueChange={(value) =>
+									setEditValue(typeof value === "string" ? value : "")
+								}
 							>
 								<SelectTrigger className="h-8">
 									<SelectValue placeholder="Select" />
@@ -445,15 +526,18 @@ export function ClientDetailSidebar({
 						)}
 					</div>
 					{editingField === "communicationPreference"
-						? renderActions(() => saveField("communicationPreference", editValue || undefined))
-						: renderPencil()
-					}
+						? renderActions(() =>
+								saveField("communicationPreference", editValue || undefined),
+							)
+						: renderPencil()}
 				</div>
 
 				{/* Tags */}
 				<div className="flex items-start gap-3 py-2.5 -mx-2 px-2">
 					<Tag className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
-					<span className="text-sm text-muted-foreground w-28 shrink-0">Tags</span>
+					<span className="text-sm text-muted-foreground w-28 shrink-0">
+						Tags
+					</span>
 					<div className="flex-1 min-w-0">
 						<TagsInput
 							tags={localTags}
@@ -468,7 +552,9 @@ export function ClientDetailSidebar({
 				{/* Created */}
 				<div className="flex items-start gap-3 py-2.5 -mx-2 px-2">
 					<Calendar className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
-					<span className="text-sm text-muted-foreground w-28 shrink-0">Created</span>
+					<span className="text-sm text-muted-foreground w-28 shrink-0">
+						Created
+					</span>
 					<div className="flex-1 min-w-0">
 						<span className="text-sm text-foreground">
 							{formatDate(client._creationTime)}
@@ -479,17 +565,17 @@ export function ClientDetailSidebar({
 				<QuickBooksSyncRow entityType="client" localId={clientId} />
 			</div>
 
-			<Separator className="my-4" />
-
 			{/* Primary Contact & Address Section */}
-			<h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-3">
+			<h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground mt-6 mb-3">
 				Primary Contact & Address
 			</h3>
 			{primaryContact ? (
 				<div className="space-y-0">
 					<div className="flex items-start gap-3 py-2.5 -mx-2 px-2">
 						<User className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
-						<span className="text-sm text-muted-foreground w-28 shrink-0">Name</span>
+						<span className="text-sm text-muted-foreground w-28 shrink-0">
+							Name
+						</span>
 						<div className="flex-1 min-w-0">
 							<span className="text-sm text-foreground">
 								{primaryContact.firstName} {primaryContact.lastName}
@@ -499,7 +585,9 @@ export function ClientDetailSidebar({
 					{primaryContact.jobTitle && (
 						<div className="flex items-start gap-3 py-2.5 -mx-2 px-2">
 							<Briefcase className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
-							<span className="text-sm text-muted-foreground w-28 shrink-0">Job Title</span>
+							<span className="text-sm text-muted-foreground w-28 shrink-0">
+								Job Title
+							</span>
 							<div className="flex-1 min-w-0">
 								<span className="text-sm text-foreground">
 									{primaryContact.jobTitle}
@@ -510,7 +598,9 @@ export function ClientDetailSidebar({
 					{primaryContact.email && (
 						<div className="flex items-start gap-3 py-2.5 -mx-2 px-2">
 							<Mail className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
-							<span className="text-sm text-muted-foreground w-28 shrink-0">Email</span>
+							<span className="text-sm text-muted-foreground w-28 shrink-0">
+								Email
+							</span>
 							<div className="flex-1 min-w-0">
 								<a
 									href={`mailto:${primaryContact.email}`}
@@ -524,7 +614,9 @@ export function ClientDetailSidebar({
 					{primaryContact.phone && (
 						<div className="flex items-start gap-3 py-2.5 -mx-2 px-2">
 							<Phone className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
-							<span className="text-sm text-muted-foreground w-28 shrink-0">Phone</span>
+							<span className="text-sm text-muted-foreground w-28 shrink-0">
+								Phone
+							</span>
 							<div className="flex-1 min-w-0">
 								<span className="text-sm text-foreground">
 									{primaryContact.phone}
@@ -544,7 +636,9 @@ export function ClientDetailSidebar({
 				<div className="space-y-0 mt-1">
 					<div className="flex items-start gap-3 py-2.5 -mx-2 px-2">
 						<MapPin className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
-						<span className="text-sm text-muted-foreground w-28 shrink-0">Address</span>
+						<span className="text-sm text-muted-foreground w-28 shrink-0">
+							Address
+						</span>
 						<div className="flex-1 min-w-0">
 							<span className="text-sm text-foreground">
 								{[
@@ -568,16 +662,16 @@ export function ClientDetailSidebar({
 				)
 			)}
 
-			<Separator className="my-4" />
-
 			{/* Billing Summary Section */}
-			<h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-3">
+			<h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground mt-6 mb-3">
 				Billing Summary
 			</h3>
 			<div className="space-y-0">
 				<div className="flex items-start gap-3 py-2.5 -mx-2 px-2">
 					<Receipt className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
-					<span className="text-sm text-muted-foreground w-28 shrink-0">Total Invoices</span>
+					<span className="text-sm text-muted-foreground w-28 shrink-0">
+						Total Invoices
+					</span>
 					<div className="flex-1 min-w-0">
 						<span className="text-sm text-foreground">
 							{invoices?.length ?? 0}
@@ -586,7 +680,9 @@ export function ClientDetailSidebar({
 				</div>
 				<div className="flex items-start gap-3 py-2.5 -mx-2 px-2">
 					<DollarSign className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
-					<span className="text-sm text-muted-foreground w-28 shrink-0">Total Billed</span>
+					<span className="text-sm text-muted-foreground w-28 shrink-0">
+						Total Billed
+					</span>
 					<div className="flex-1 min-w-0">
 						<span className="text-sm font-medium text-foreground">
 							{formatCurrency(totalBilled)}
@@ -595,7 +691,9 @@ export function ClientDetailSidebar({
 				</div>
 				<div className="flex items-start gap-3 py-2.5 -mx-2 px-2">
 					<AlertCircle className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
-					<span className="text-sm text-muted-foreground w-28 shrink-0">Outstanding</span>
+					<span className="text-sm text-muted-foreground w-28 shrink-0">
+						Outstanding
+					</span>
 					<div className="flex-1 min-w-0">
 						<span className="text-sm font-medium text-foreground">
 							{formatCurrency(outstanding)}
@@ -603,8 +701,6 @@ export function ClientDetailSidebar({
 					</div>
 				</div>
 			</div>
-
-			<Separator className="my-4" />
 			<ClientDocumentsSection clientId={clientId as Id<"clients">} />
 		</div>
 	);

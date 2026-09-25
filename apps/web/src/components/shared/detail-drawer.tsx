@@ -30,11 +30,6 @@ export interface DetailDrawerProps {
 	children: React.ReactNode;
 }
 
-/**
- * Right-side detail drawer: an inset floating Sheet used for record previews
- * on the workspace list pages. The header (eyebrow + title + badge + actions)
- * stays fixed while the body scrolls. Compose the body with DrawerSection.
- */
 export function DetailDrawer({
 	open,
 	onOpenChange,
@@ -50,9 +45,9 @@ export function DetailDrawer({
 		<Sheet open={open} onOpenChange={onOpenChange}>
 			<SheetContent
 				side="right"
-				className="bg-popover inset-y-4 right-4 left-auto flex h-[calc(100svh-2rem)] w-[min(40rem,calc(100vw-2rem))] max-w-none sm:max-w-none flex-col gap-0 overflow-hidden rounded-xl border p-0"
+				className="workspace-detail-drawer bg-popover inset-y-0 right-0 left-auto flex h-svh w-full max-w-none sm:w-[560px] sm:max-w-[calc(100vw-2rem)] flex-col gap-0 overflow-hidden rounded-none border-l p-0"
 			>
-				<SheetHeader className="shrink-0 gap-0 border-b p-0">
+				<SheetHeader className="shrink-0 gap-0 border-b bg-muted p-0">
 					{eyebrow ? (
 						<div className="text-muted-foreground px-5 pt-4 text-xs font-medium">
 							{eyebrow}

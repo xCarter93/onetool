@@ -56,8 +56,9 @@ export function EmptyState({
 	return (
 		<Empty
 			className={cn(
-				"border-0",
-				compact ? "gap-0 p-4 md:p-4 min-h-32" : "gap-2 p-6 md:p-8",
+				compact
+					? "min-h-32 gap-0 border-0 bg-transparent p-4 md:p-4"
+					: "gap-2 rounded-lg border border-border bg-card p-6 md:p-8",
 				className
 			)}
 		>

@@ -1,9 +1,11 @@
 "use client";
 
 import React, { useState } from "react";
-import { RefreshCw, Plus, Edit, Clock, Search, Check, X, type LucideIcon } from "lucide-react";
+import { RefreshCw, Plus, Edit, Clock, Search, Check, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Input } from "@/components/ui/input";
 import { TRIGGER_TYPE_OPTIONS, type TriggerType } from "../../lib/node-types";
+import { STEP_FAMILY_STYLE } from "../../lib/step-family";
 
 const TRIGGER_ICONS: Record<TriggerType, LucideIcon> = {
 	status_changed: RefreshCw,
@@ -13,18 +15,16 @@ const TRIGGER_ICONS: Record<TriggerType, LucideIcon> = {
 };
 
 const TRIGGER_COLOR =
-	"bg-amber-50 text-amber-600 dark:bg-amber-950/40 dark:text-amber-400";
+	STEP_FAMILY_STYLE.trigger.band;
 
 interface TriggerPickerProps {
 	onSelect: (triggerType: string) => void;
 	currentTriggerType?: string;
-	onClose?: () => void;
 }
 
 export function TriggerPicker({
 	onSelect,
 	currentTriggerType,
-	onClose,
 }: TriggerPickerProps) {
 	const [search, setSearch] = useState("");
 	const lowerSearch = search.toLowerCase();
@@ -35,33 +35,16 @@ export function TriggerPicker({
 
 	return (
 		<div className="space-y-4">
-			{/* Header */}
-			<div className="relative">
-				<h2 className="text-base font-semibold">Change trigger</h2>
-				<p className="text-sm text-muted-foreground mt-0.5">
-					Pick an event to start this workflow
-				</p>
-				{onClose && (
-					<button
-						type="button"
-						onClick={onClose}
-						className="absolute top-0 right-0 p-1 rounded-md text-muted-foreground hover:text-foreground transition-colors"
-						aria-label="Close sidebar"
-					>
-						<X className="h-4 w-4" />
-					</button>
-				)}
-			</div>
-
 			{/* Search */}
-			<div className="relative mt-4">
-				<Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-				<input
-					type="text"
+			<div className="relative">
+				<Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+				<Input
+					type="search"
 					placeholder="Search triggers..."
+					aria-label="Search triggers"
 					value={search}
 					onChange={(e) => setSearch(e.target.value)}
-					className="w-full pl-9 pr-3 py-2 text-sm rounded-md border border-border bg-background placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+					className="pl-8"
 				/>
 			</div>
 
@@ -97,7 +80,7 @@ export function TriggerPicker({
 								</div>
 							</div>
 							{option.comingSoon ? (
-								<span className="text-[10px] font-medium text-muted-foreground bg-muted px-1.5 py-0.5 rounded-full shrink-0">
+								<span className="shrink-0 rounded-sm bg-muted px-1.5 py-0.5 text-2xs font-medium text-muted-foreground">
 									Soon
 								</span>
 							) : (

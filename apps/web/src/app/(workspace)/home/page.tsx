@@ -5,6 +5,7 @@ import dynamic from "next/dynamic";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ActivityCard } from "@/app/(workspace)/home/components/activity-card";
 import { BusinessOverviewPanel } from "@/app/(workspace)/home/components/business-overview-panel";
+import { AttentionQueue } from "@/app/(workspace)/home/components/attention-queue";
 import { CollectionPaceCard } from "@/app/(workspace)/home/components/collection-pace-card";
 import { TopClientsCard } from "@/app/(workspace)/home/components/top-clients-card";
 import { SchedulePanel } from "@/app/(workspace)/home/components/schedule/schedule-panel";
@@ -13,7 +14,6 @@ import type { DashboardPeriod } from "@/app/(workspace)/home/components/dashboar
 import { Skeleton } from "@/components/ui/skeleton";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
-import { motion } from "motion/react";
 import { useAutoTimezone } from "@/hooks/use-auto-timezone";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { usePublishScreenContext } from "@/components/assistant/use-screen-context";
@@ -198,14 +198,14 @@ export default function Page() {
 			</Suspense>
 
 			<div
-				className={`relative p-4 sm:p-6 lg:px-8 lg:pb-8 lg:pt-12 flex flex-col ${
-					viewMode === "calendar" ? "h-[calc(100vh-5rem)]" : ""
+				className={`workspace-page relative flex flex-col ${
+					viewMode === "calendar" ? "h-full min-h-0" : ""
 				}`}
 			>
 				{/* Header */}
-				<div className="mb-6 sm:mb-8 flex items-start justify-between">
+				<div className="workspace-page-header mb-6 flex flex-wrap items-start justify-between gap-4">
 					<div>
-						<h1 className="text-3xl sm:text-4xl font-bold text-foreground leading-tight tracking-tight">
+						<h1 className="text-xl font-semibold text-foreground leading-tight tracking-tight">
 							{getGreeting()}
 						</h1>
 						<p className="text-sm text-muted-foreground mt-1.5">
@@ -246,15 +246,9 @@ export default function Page() {
 					</TourElement>
 				</div>
 
-				{/* Conditional View Rendering */}
 				{viewMode === "dashboard" ? (
-					<>
-						{/* Animation Group 1: Business overview + Needs Attention queue */}
-						<motion.div
-							initial={{ opacity: 0, y: 10 }}
-							animate={{ opacity: 1, y: 0 }}
-							transition={{ duration: 0.3, ease: "easeOut" }}
-						>
+					<div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
+						<div className="min-w-0 lg:col-span-12">
 							<TourElement<HomeTour>
 								TourContext={HomeTourContext}
 								stepId={HomeTour.HOME_STATS}
@@ -271,64 +265,57 @@ export default function Page() {
 									onPeriodChange={setPeriod}
 								/>
 							</TourElement>
-						</motion.div>
+						</div>
+						<div className="workspace-panel min-w-0 p-4 lg:col-span-12">
+							<TourElement<HomeTour>
+								TourContext={HomeTourContext}
+								stepId={HomeTour.TASKS}
+								title={HOME_TOUR_CONTENT[HomeTour.TASKS].title}
+								description={HOME_TOUR_CONTENT[HomeTour.TASKS].description}
+								tooltipPosition={HOME_TOUR_CONTENT[HomeTour.TASKS].tooltipPosition}
+							>
+								<AttentionQueue />
+							</TourElement>
+						</div>
+						<CollectionPaceCard
+							period={period}
+							className="lg:col-span-7"
+						/>
+						<TopClientsCard period={period} className="lg:col-span-5" />
 
-						{/* Animation Group 2: money + schedule, then clients + activity */}
-						<motion.div
-							className="mt-4"
-							initial={{ opacity: 0, y: 10 }}
-							animate={{ opacity: 1, y: 0 }}
-							transition={{ duration: 0.3, ease: "easeOut", delay: 0.05 }}
-						>
-							<div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
-								<CollectionPaceCard
-									period={period}
-									className="lg:col-span-7"
+						<div className="lg:col-span-7">
+							<TourElement<HomeTour>
+								TourContext={HomeTourContext}
+								stepId={HomeTour.WEEKLY_CALENDAR}
+								title={HOME_TOUR_CONTENT[HomeTour.WEEKLY_CALENDAR].title}
+								description={HOME_TOUR_CONTENT[HomeTour.WEEKLY_CALENDAR].description}
+								tooltipPosition={HOME_TOUR_CONTENT[HomeTour.WEEKLY_CALENDAR].tooltipPosition}
+							>
+								<SchedulePanel
+									onEventClick={() => {
+										handleViewChange("calendar");
+									}}
 								/>
-								<TopClientsCard period={period} className="lg:col-span-5" />
+							</TourElement>
+						</div>
+						<div className="lg:col-span-5 [&>.tour-element-wrapper]:h-full">
+							<TourElement<HomeTour>
+								TourContext={HomeTourContext}
+								stepId={HomeTour.ACTIVITY_FEED}
+								title={HOME_TOUR_CONTENT[HomeTour.ACTIVITY_FEED].title}
+								description={HOME_TOUR_CONTENT[HomeTour.ACTIVITY_FEED].description}
+								tooltipPosition={HOME_TOUR_CONTENT[HomeTour.ACTIVITY_FEED].tooltipPosition}
+							>
+								<ActivityCard className="h-full" />
+							</TourElement>
+						</div>
 
-								<div className="lg:col-span-7">
-									<TourElement<HomeTour>
-										TourContext={HomeTourContext}
-										stepId={HomeTour.WEEKLY_CALENDAR}
-										title={HOME_TOUR_CONTENT[HomeTour.WEEKLY_CALENDAR].title}
-										description={HOME_TOUR_CONTENT[HomeTour.WEEKLY_CALENDAR].description}
-										tooltipPosition={HOME_TOUR_CONTENT[HomeTour.WEEKLY_CALENDAR].tooltipPosition}
-									>
-										<SchedulePanel
-											onEventClick={() => {
-												handleViewChange("calendar");
-											}}
-										/>
-									</TourElement>
-								</div>
-								<div className="lg:col-span-5 [&>.tour-element-wrapper]:h-full">
-									<TourElement<HomeTour>
-										TourContext={HomeTourContext}
-										stepId={HomeTour.ACTIVITY_FEED}
-										title={HOME_TOUR_CONTENT[HomeTour.ACTIVITY_FEED].title}
-										description={HOME_TOUR_CONTENT[HomeTour.ACTIVITY_FEED].description}
-										tooltipPosition={HOME_TOUR_CONTENT[HomeTour.ACTIVITY_FEED].tooltipPosition}
-									>
-										<ActivityCard className="h-full" />
-									</TourElement>
-								</div>
-
-								{/* Recent emails — full-width strip; single-line rows want the
-								    width (Frame owned by component) */}
-								<RecentEmails className="w-full lg:col-span-12" />
-							</div>
-						</motion.div>
-					</>
+						<RecentEmails className="w-full lg:col-span-12" />
+						</div>
 				) : (
-					<motion.div
-						initial={{ opacity: 0, scale: 0.95 }}
-						animate={{ opacity: 1, scale: 1 }}
-						transition={{ duration: 0.3 }}
-						className="flex-1 min-h-0 bg-background rounded-lg border border-border shadow-sm overflow-hidden"
-					>
+					<div className="workspace-panel min-h-0 flex-1 overflow-hidden">
 						<HomeCalendar />
-					</motion.div>
+					</div>
 				)}
 			</div>
 		</>

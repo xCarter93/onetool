@@ -13,6 +13,7 @@ import {
 const DAY = 86_400_000;
 const START = Date.UTC(2026, 8, 6);
 const NOW = START + 16 * 3_600_000;
+const TEMPLATE_COUNT = 40;
 
 describe("recurring project task copy-forward edges", () => {
   let t: ReturnType<typeof setupConvexTest>;
@@ -344,8 +345,11 @@ describe("recurring project task copy-forward edges", () => {
   });
 
   it("caps one generator mutation at 200 task materializations and finishes without duplicates", async () => {
-    const f = await fixture(30);
-    for (let index = 0; index < 50; index++) {
+    // 40 templates x 5 visits fills the 200 cap exactly. Biweekly keeps the setup
+    // fan-out at 7 visits, and the 90-day window after the jump holds 6 more, so
+    // one is left for a second batch.
+    const f = await fixture(15, 2);
+    for (let index = 0; index < TEMPLATE_COUNT; index++) {
       const taskId = await f.user.mutation(api.tasks.create, {
         clientId: f.clientId,
         projectId: f.projectId,
@@ -370,14 +374,14 @@ describe("recurring project task copy-forward edges", () => {
         (ledger) => ledger.seriesId === f.seriesId,
       ).length,
     }));
-    expect(before.projects).toBe(13);
+    expect(before.projects).toBe(7);
 
     vi.setSystemTime(NOW + 100 * DAY);
     const first = await t.mutation(internal.projectSeries.generate, {
       orgId: f.orgId,
       seriesId: f.seriesId,
     });
-    expect(first.created).toBe(4);
+    expect(first.created).toBe(5);
     expect(first.remaining).toBeGreaterThan(0);
     expect(
       await t.run(
@@ -423,9 +427,9 @@ describe("recurring project task copy-forward edges", () => {
       };
     });
     expect(result.projects).toHaveLength(before.projects + created);
-    expect(result.templates).toHaveLength(50);
-    expect(result.ledgers).toHaveLength(before.ledgers + created * 50);
-    expect(result.tasks).toHaveLength(before.tasks + created * 50);
+    expect(result.templates).toHaveLength(TEMPLATE_COUNT);
+    expect(result.ledgers).toHaveLength(before.ledgers + created * TEMPLATE_COUNT);
+    expect(result.tasks).toHaveLength(before.tasks + created * TEMPLATE_COUNT);
     expect(
       result.tasks.filter((task) => task.projectTaskTemplateId !== undefined),
     ).toHaveLength(result.ledgers.length);

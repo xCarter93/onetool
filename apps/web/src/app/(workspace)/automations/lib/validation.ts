@@ -67,6 +67,8 @@ export type ValidationResult = {
 			| "next_item_outside_loop";
 		message: string;
 		nodeId?: string;
+		/** Set instead of nodeId when the fix lives in a formula, not a step. */
+		formulaId?: string;
 	}>;
 	/** Non-blocking — doesn't affect `valid` or gate save/publish. */
 	warnings: Array<{
@@ -1158,6 +1160,7 @@ export function validateWorkflowForSave(
 				errors.push({
 					type: "no_trigger_record",
 					message: `Formula "${formula.name}" reads "${dead}", which is always empty — a scheduled automation has no triggering record.`,
+					formulaId: formula.id,
 				});
 			}
 		}

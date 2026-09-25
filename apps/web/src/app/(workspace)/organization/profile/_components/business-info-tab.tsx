@@ -826,7 +826,7 @@ export function BusinessInfoTab() {
 								</Item>
 
 								<div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-									<div className="flex flex-col items-center gap-3 rounded-xl border border-border bg-card p-4">
+									<div className="flex flex-col items-center gap-3 border-t border-border p-4">
 										<span className="text-xs uppercase tracking-wide text-muted-foreground">
 											Light mode preview
 										</span>
@@ -846,8 +846,8 @@ export function BusinessInfoTab() {
 											)}
 										</div>
 									</div>
-									<div className="flex flex-col items-center gap-3 rounded-xl border border-border/40 bg-zinc-900 p-4">
-										<span className="text-xs uppercase tracking-wide text-zinc-400">
+									<div className="flex flex-col items-center gap-3 border-t border-border p-4">
+										<span className="text-xs uppercase tracking-wide text-muted-foreground">
 											Dark mode preview
 										</span>
 										<div className="flex h-16 w-16 items-center justify-center rounded-lg border border-white/10 bg-zinc-900">
@@ -864,7 +864,7 @@ export function BusinessInfoTab() {
 													)}
 												/>
 											) : (
-												<span className="text-xs text-zinc-500">No logo</span>
+												<span className="text-xs text-zinc-400">No logo</span>
 											)}
 										</div>
 									</div>

@@ -12,12 +12,12 @@
 .react-flow,
 .react-flow.light,
 .react-flow.dark {
-	/* Canvas paint. In light this matches the workspace paper; nodes lift via
-	   their own lighter card + border. The --xy var also covers the <Background>
-	   svg, which paints its own background-color over the container (dark-mode
-	   default #141414) and would otherwise mask this. */
-	background-color: var(--background);
-	--xy-background-color: var(--background);
+	/* Canvas paint = the workspace paper in both themes, so floating panels and
+	   node cards sit on it the way cards sit on every other workspace page. The
+	   --xy var also covers the <Background> svg, which paints its own
+	   background-color over the container and would otherwise mask this. */
+	background-color: var(--workspace-ground, var(--background));
+	--xy-background-color: var(--workspace-ground, var(--background));
 
 	/* Connector palette — the single source every edge stroke, arrowhead, and
 	   label pill reads from (see edge-style.ts). */
@@ -94,19 +94,6 @@
 	}
 }
 
-/* Light: a slightly darker hairline than the workspace default so cards read
-   cleanly against the near-white paper. */
-html:not(.dark) .react-flow {
-	--border: oklch(0.85 0.007 265);
-}
-
-/* Dark: the canvas stays on the app's --background so the editor matches the
-   rest of the workspace; the default card is near-identical in lightness to
-   it, so raise the card to a clearly lighter "raised surface" with a crisper
-   border, scoped to the flow. `bg-card` / `border-border` on the node cards
-   resolve these overrides (Tailwind v4 `@theme inline`). */
 .dark .react-flow {
-	--card: oklch(0.205 0.009 264);
-	--border: oklch(0.32 0.012 270);
 	--flow-edge-loop-strong: var(--color-orange-300);
 }

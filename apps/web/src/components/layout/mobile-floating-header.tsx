@@ -20,7 +20,7 @@ export function MobileFloatingHeader() {
 			</div>
 
 			{/* Right pill — help, notifications, settings */}
-			<div className="pointer-events-auto flex items-center bg-sidebar/90 backdrop-blur-sm rounded-lg border border-border/40 px-1.5 py-1 [&_button]:p-1.5 [&_button]:rounded-md [&_svg]:size-3.5">
+			<div className="pointer-events-auto flex items-center bg-sidebar/90 backdrop-blur-sm rounded-lg border border-border/40 px-1.5 py-1 [&_button]:p-1.5 [&_button]:rounded-[4px] [&_svg]:size-3.5">
 				<HelpMenu />
 				<NotificationBell />
 				<SettingsPopover />

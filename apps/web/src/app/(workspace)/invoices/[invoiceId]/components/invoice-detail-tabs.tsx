@@ -109,25 +109,16 @@ export function InvoiceDetailTabs({
 
 	return (
 		<PillTabs value={activeTab} onValueChange={onTabChange}>
-			{/* Two-column layout: tabs + content on left, sidebar on right */}
-			<div className="flex gap-0">
-				{/* Left: Tabs list + tab content */}
-				<div className="flex-1 min-w-0 pr-6 pt-6 pb-20">
+			<div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_var(--workspace-detail-rail-width)]">
+				<div className="min-w-0 pb-20">
 					{banner && <div className="mb-5">{banner}</div>}
 
 					<PillTabsList className="overflow-x-auto">
-						<PillTabsTrigger value="overview">
-							Overview
-						</PillTabsTrigger>
-						<PillTabsTrigger value="payments">
-							Payment Schedule
-						</PillTabsTrigger>
+						<PillTabsTrigger value="overview">Overview</PillTabsTrigger>
+						<PillTabsTrigger value="payments">Payment Schedule</PillTabsTrigger>
 					</PillTabsList>
 
-					<PillTabsContent
-						value="overview"
-						className="mt-0 pt-5"
-					>
+					<PillTabsContent value="overview" className="mt-0 pt-5">
 						<OverviewTab
 							invoice={invoice}
 							invoiceId={invoiceId}
@@ -139,10 +130,7 @@ export function InvoiceDetailTabs({
 						/>
 					</PillTabsContent>
 
-					<PillTabsContent
-						value="payments"
-						className="mt-0 pt-5"
-					>
+					<PillTabsContent value="payments" className="mt-0 pt-5">
 						{invoiceWithPayments && (
 							<PaymentScheduleTab
 								invoiceWithPayments={invoiceWithPayments}
@@ -153,16 +141,14 @@ export function InvoiceDetailTabs({
 					</PillTabsContent>
 				</div>
 
-				{/* Right: Persistent sidebar (desktop) */}
-				<div className="hidden xl:block w-[480px] shrink-0 border-l border-border/80 min-h-screen bg-muted/40 dark:bg-muted/50">
-					<div className="sticky top-24">
+				<div className="hidden min-w-0 xl:block xl:pt-6">
+					<div className="workspace-panel workspace-detail-rail">
 						<InvoiceDetailSidebar {...sidebarProps} />
 					</div>
 				</div>
 			</div>
 
-			{/* Sidebar for mobile (below content) */}
-			<div className="xl:hidden mt-6 pt-6 bg-muted/40 dark:bg-muted/50 rounded-lg">
+			<div className="workspace-panel mt-6 overflow-hidden xl:hidden">
 				<InvoiceDetailSidebar {...sidebarProps} />
 			</div>
 		</PillTabs>

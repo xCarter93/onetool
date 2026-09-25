@@ -25,7 +25,7 @@ export default function ProgressBar({ steps, className }: ProgressBarProps) {
 			>
 				<ol
 					role="list"
-					className="overflow-hidden rounded-xl lg:flex lg:rounded-2xl lg:border-r lg:border-l lg:border-border/60 dark:lg:border-border/40 bg-card/50 backdrop-blur-sm shadow-sm ring-1 ring-border/10"
+					className="overflow-hidden rounded-lg border border-border bg-card lg:flex"
 				>
 					{steps.map((step, stepIdx) => (
 						<ProgressBarItem

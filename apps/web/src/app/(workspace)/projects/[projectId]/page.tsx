@@ -39,41 +39,39 @@ function ProjectDetailPageContent() {
 	// Skip related queries if project is null or deletion is in progress
 	const projectTasks = useQuery(
 		api.tasks.list,
-		project === null || isDeleting || !can("tasks") ? "skip" : { projectId }
+		project === null || isDeleting || !can("tasks") ? "skip" : { projectId },
 	);
 	const projectQuotes = useQuery(
 		api.quotes.list,
-		project === null || isDeleting || !can("quotes") ? "skip" : { projectId }
+		project === null || isDeleting || !can("quotes") ? "skip" : { projectId },
 	);
 	const projectInvoices = useQuery(
 		api.invoices.list,
-		project === null || isDeleting || !can("invoices")
-			? "skip"
-			: { projectId }
+		project === null || isDeleting || !can("invoices") ? "skip" : { projectId },
 	);
 	const activities = useQuery(
 		api.activities.getByEntity,
 		project === null || isDeleting
 			? "skip"
-			: { entityType: "project" as const, entityId: projectId as string }
+			: { entityType: "project" as const, entityId: projectId as string },
 	);
 
 	// Fetch client and related data
 	const client = useQuery(
 		api.clients.get,
-		project?.clientId && can("clients") ? { id: project.clientId } : "skip"
+		project?.clientId && can("clients") ? { id: project.clientId } : "skip",
 	);
 	const primaryContact = useQuery(
 		api.clientContacts.getPrimaryContact,
 		project?.clientId && can("clients")
 			? { clientId: project.clientId }
-			: "skip"
+			: "skip",
 	);
 	const properties = useQuery(
 		api.clientProperties.listByClient,
 		project?.clientId && can("clients")
 			? { clientId: project.clientId }
-			: "skip"
+			: "skip",
 	);
 
 	// Mutations
@@ -95,7 +93,7 @@ function ProjectDetailPageContent() {
 	// Loading state
 	if (project === undefined) {
 		return (
-			<div className="relative pl-6 pt-8 pb-20">
+			<div className="workspace-detail workspace-page">
 				<div className="mx-auto">
 					<div className="space-y-6">
 						<Skeleton className="h-12 w-64" />
@@ -111,11 +109,11 @@ function ProjectDetailPageContent() {
 	// Project not found
 	if (project === null) {
 		return (
-			<div className="relative pl-6 pt-8 pb-20">
+			<div className="workspace-detail workspace-page">
 				<div className="mx-auto">
 					<div className="flex flex-col items-center justify-center py-12 text-center">
-						<div className="w-16 h-16 bg-red-100 dark:bg-red-900/30 rounded-lg flex items-center justify-center mb-4">
-							<ExclamationTriangleIcon className="h-8 w-8 text-red-600 dark:text-red-400" />
+						<div className="mb-4 flex size-16 items-center justify-center rounded-lg bg-danger-soft">
+							<ExclamationTriangleIcon className="size-8 text-danger-foreground" />
 						</div>
 						<h3 className="text-lg font-medium text-foreground mb-2">
 							Project not found
@@ -134,8 +132,7 @@ function ProjectDetailPageContent() {
 	const approvedQuotes =
 		projectQuotes?.filter(
 			(quote) =>
-				quote.status === "approved" &&
-				!quote.recurringAgreementSourceQuoteId
+				quote.status === "approved" && !quote.recurringAgreementSourceQuoteId,
 		) || [];
 
 	return (
@@ -145,7 +142,7 @@ function ProjectDetailPageContent() {
 			recurringSeriesId={project.recurringSeriesId}
 			canEditFuture={can("projects", "modify") && hasAllRecords("projects")}
 		>
-			<div className="relative min-h-screen pl-6 pt-6">
+			<div className="workspace-detail workspace-page">
 				{/* Header */}
 				<ProjectDetailHeader
 					project={project}
@@ -156,9 +153,7 @@ function ProjectDetailPageContent() {
 					onGenerateInvoice={() => setIsInvoiceModalOpen(true)}
 					onDelete={() => setIsDeleteModalOpen(true)}
 				/>
-				<div className="pr-6">
-					<ProjectEditScopeControl />
-				</div>
+				<ProjectEditScopeControl />
 
 				{/* Tabs + Sidebar */}
 				<ProjectDetailTabs

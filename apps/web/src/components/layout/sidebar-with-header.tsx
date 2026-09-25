@@ -26,32 +26,6 @@ interface SidebarWithHeaderProps {
 	children: ReactNode;
 }
 
-/*
- * Shell stacking ladder (fixed/sticky layers, bottom to top):
- *   z-10 sidebar container (ui/sidebar) → z-20 sidebar rail →
- *   z-30 sticky WorkspaceHeader (its notch rail is z-10 within it) →
- *   z-40 MobileFloatingHeader + the assistant dock overlay →
- *   z-50 floating assistant panel and portaled overlays (sheet, popovers) →
- *   z-[9999] ui/modal portals above everything.
- * The dock and floating panel live in bottom-center overlays INSIDE
- * SidebarInset so they center on the workspace card, not the viewport.
- * The docked assistant column is in-flow and carries no z-index on purpose.
- *
- * Two scroll contexts: on md+ the card interior ([data-workspace-scroller])
- * scrolls and the frame/notches stay put; below md the document scrolls.
- * Page code resolves the live one via lib/workspace-scroller.ts.
- */
-
-/**
- * The assistant dock and the floating panel's portal anchor, both centered
- * along the card's bottom edge. Always visible — free-plan users get an
- * upgrade prompt inside the panel (and the backend enforces the plan gate
- * regardless).
- *
- * Below md the card isn't viewport-height (the document scrolls), so the dock
- * overlay goes `fixed`; on md+ `absolute` pins it to the card. The tour
- * wrapper carries the width so its highlight ring (a ::after) hugs the dock.
- */
 function AssistantDockHost() {
 	const { open, pinned, setOpen, setDockAnchor } = useAssistantSurface();
 	return (
@@ -99,11 +73,8 @@ export function SidebarWithHeader({ children }: SidebarWithHeaderProps) {
 							{/* Inside SidebarProvider so the sidebar trigger can consume it;
 							    the dialog itself portals to the body. */}
 							<CommandPaletteProvider>
-								{/* variant="inset" picture-frames the content: the wrapper turns
-							    sidebar-colored and SidebarInset becomes a rounded card floating
-							    inside it, so the assistant notch below has a frame to rise from. */}
 								<AppSidebar variant="inset" />
-								<SidebarInset className="min-w-0 md:h-[calc(100svh-1rem)] md:overflow-hidden">
+								<SidebarInset className="min-w-0 md:h-[calc(100svh-0.5rem)] md:overflow-clip">
 									<WorkspaceHeader />
 
 									{/* Card interior scrolls; the frame and notch stay put.
@@ -111,7 +82,7 @@ export function SidebarWithHeader({ children }: SidebarWithHeaderProps) {
 								    (lib/workspace-scroller.ts); .workspace-canvas stays for CSS. */}
 									<div
 										data-workspace-scroller
-										className="workspace-canvas flex flex-1 flex-col gap-4 pt-12 md:pt-0 min-w-0 md:min-h-0 md:overflow-y-auto"
+										className="workspace-canvas flex flex-1 flex-col gap-4 min-w-0 md:min-h-0 md:overflow-y-auto"
 									>
 										{children}
 									</div>

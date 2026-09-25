@@ -1,7 +1,6 @@
 "use client";
 
 import React from "react";
-import { Clock3 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import {
 	Select,
@@ -17,9 +16,7 @@ import {
 	type WorkflowNode,
 } from "../../../lib/node-types";
 import type { ConfigPanelProps } from "../automation-sidebar";
-import { ConfigPanelHeader } from "./config-panel-header";
 import { PanelField, PanelSection } from "@/components/shared/panel-primitives";
-import { DeleteStepButton } from "./delete-step-button";
 import { ValueInput } from "./value-input";
 
 const UNIT_LABELS: Record<AdjustTimeUnit, string> = {
@@ -53,7 +50,6 @@ export function AdjustTimeConfigPanel({
 	nodes,
 	formulas,
 	onNodeChange,
-	onDeleteNode,
 }: ConfigPanelProps) {
 	const node = nodeId ? nodes.find((item) => item.id === nodeId) : undefined;
 
@@ -75,13 +71,6 @@ export function AdjustTimeConfigPanel({
 
 	return (
 		<div className="flex flex-col h-full">
-			<ConfigPanelHeader
-				icon={Clock3}
-				iconBgColor="bg-cyan-50 dark:bg-cyan-950/40"
-				iconFgColor="text-cyan-600 dark:text-cyan-400"
-				categoryBadge="Utilities"
-				nodeTypeName="Adjust time"
-			/>
 
 			<div className="flex-1">
 				<PanelSection title="Inputs">
@@ -163,9 +152,6 @@ export function AdjustTimeConfigPanel({
 				</PanelSection>
 			</div>
 
-			{onDeleteNode && (
-				<DeleteStepButton onDelete={() => onDeleteNode(nodeId)} />
-			)}
 		</div>
 	);
 }

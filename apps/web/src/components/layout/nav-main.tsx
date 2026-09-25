@@ -66,11 +66,8 @@ type NavGroup = {
 	items: NavItem[];
 };
 
-// Shared row styling for every "Create new" quick action so hover and keyboard
-// focus highlight identically. `focus:bg-muted/60` on the wrapping menu item
-// matches the hover color for the item the menu focuses on pointer-over.
 const quickActionRowClass =
-	"group/qa-item flex w-full items-center gap-3 rounded-lg p-2 text-left transition-colors hover:bg-muted/60";
+	"group/qa-item flex w-full items-center gap-2.5 rounded-[4px] px-2 py-1.5 text-left transition-colors hover:bg-accent";
 
 function QuickActionContent({
 	glyph,
@@ -83,16 +80,14 @@ function QuickActionContent({
 }) {
 	return (
 		<>
-			{/* One accent across all rows: the previous per-item blue/violet/
-			    emerald/rose read as the loudest thing in the sidebar. */}
-			<span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary dark:bg-primary/15">
+			<span className="flex size-8 shrink-0 items-center justify-center rounded-[4px] bg-accent text-accent-foreground">
 				<ActionGlyph name={glyph} />
 			</span>
 			<span className="min-w-0">
-				<span className="block text-sm font-medium text-foreground">
+				<span className="block text-[13px] font-medium text-foreground">
 					{title}
 				</span>
-				<span className="block text-xs text-muted-foreground">
+				<span className="block text-[11px] text-muted-foreground">
 					{description}
 				</span>
 			</span>
@@ -246,14 +241,14 @@ export function NavMain({
 									sideOffset={isMobile ? 6 : 8}
 									onMouseEnter={handleMouseEnterContent}
 									onMouseLeave={handleMouseLeaveContent}
-									className="group/qa relative w-[calc(100vw-2rem)] max-w-[90vw] overflow-visible! rounded-xl border border-border bg-popover p-2 text-popover-foreground shadow-xl md:w-72 md:max-w-none"
+									className="group/qa relative w-[calc(100vw-2rem)] max-w-[90vw] overflow-visible! rounded-lg border border-border bg-popover p-1.5 text-popover-foreground shadow-floating md:w-72 md:max-w-none"
 								>
 									{/* Left nubbin pointing back at the Create item */}
 									<span
 										aria-hidden
 										className="absolute -left-[7px] top-5 hidden size-3.5 rotate-45 rounded-[2px] border-b border-l border-border bg-popover shadow-[-2px_2px_3px_-2px_rgba(0,0,0,0.12)] md:block"
 									/>
-									<p className="px-2 pb-1.5 pt-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+									<p className="px-2 pb-1 pt-1 text-[11px] font-semibold uppercase tracking-[0.025em] text-muted-foreground">
 										Create new
 									</p>
 									<div className="flex flex-col gap-0.5">
@@ -262,7 +257,7 @@ export function NavMain({
 												render={
 													<div className={cn(quickActionRowClass, "cursor-pointer")} />
 												}
-												className="p-0 focus:bg-muted/60"
+												className="p-0 focus:bg-accent"
 												onClick={handleNewClientClick}
 											>
 												<QuickActionContent
@@ -277,7 +272,7 @@ export function NavMain({
 												render={
 													<div className={cn(quickActionRowClass, "cursor-pointer")} />
 												}
-												className="p-0 focus:bg-muted/60"
+												className="p-0 focus:bg-accent"
 												onClick={() => {
 													setOpenQuickActions(false);
 													openCreate({ type: "project" });
@@ -295,7 +290,7 @@ export function NavMain({
 												render={
 													<div className={cn(quickActionRowClass, "cursor-pointer")} />
 												}
-												className="p-0 focus:bg-muted/60"
+												className="p-0 focus:bg-accent"
 												onClick={() => {
 													setOpenQuickActions(false);
 													openCreate({ type: "quote" });
@@ -313,7 +308,7 @@ export function NavMain({
 												render={
 													<div className={cn(quickActionRowClass, "cursor-pointer")} />
 												}
-												className="p-0 focus:bg-muted/60"
+												className="p-0 focus:bg-accent"
 												onClick={(e) => {
 													e.preventDefault();
 													setTaskSheetOpen(true);

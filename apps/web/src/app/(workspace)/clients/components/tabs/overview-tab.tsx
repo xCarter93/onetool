@@ -4,10 +4,18 @@ import { Doc, Id } from "@onetool/backend/convex/_generated/dataModel";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { useMutation } from "convex/react";
 import { MentionSection } from "@/components/shared/mention-section";
-import { Separator } from "@/components/ui/separator";
 import { HighlightMetricGrid } from "@/components/shared/highlight-metric-grid";
 import { RelatedRecordsFrame } from "@/components/shared/related-records-frame";
-import { FolderOpen, DollarSign, TrendingUp, FileText, Receipt, Pencil, Check, X } from "lucide-react";
+import {
+	FolderOpen,
+	DollarSign,
+	TrendingUp,
+	FileText,
+	Receipt,
+	Pencil,
+	Check,
+	X,
+} from "lucide-react";
 import { useState, useRef, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { convexErrorMessage } from "@/lib/convex-error";
@@ -32,7 +40,7 @@ function formatDate(timestamp?: number) {
 }
 
 function sortedByNewest<T extends { _creationTime: number }>(
-	items: T[] | undefined
+	items: T[] | undefined,
 ): T[] {
 	if (!items) return [];
 	return [...items].sort((a, b) => b._creationTime - a._creationTime);
@@ -95,27 +103,19 @@ export function OverviewTab({
 
 	const activeProjects =
 		projects?.filter(
-			(p) => p.status === "in-progress" || p.status === "planned"
+			(p) => p.status === "in-progress" || p.status === "planned",
 		).length ?? 0;
 	const outstanding =
 		invoices
 			?.filter((inv) => inv.status !== "paid")
 			.reduce((sum, inv) => sum + inv.total, 0) ?? 0;
-	const totalRevenue =
-		invoices?.reduce((sum, inv) => sum + inv.total, 0) ?? 0;
+	const totalRevenue = invoices?.reduce((sum, inv) => sum + inv.total, 0) ?? 0;
 
 	return (
-		<div>
-			<div className="flex items-center justify-between mb-1 min-h-8">
-				<h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-					Overview
-				</h3>
-			</div>
-			<Separator className="mb-4" />
-
+		<div className="space-y-8">
 			{/* Highlights */}
 			<div>
-				<h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-3 pb-2 border-b border-border/40">
+				<h3 className="workspace-section-heading">
 					Highlights
 				</h3>
 				<HighlightMetricGrid
@@ -142,11 +142,9 @@ export function OverviewTab({
 				/>
 			</div>
 
-			<Separator className="my-6" />
-
-		{/* Notes - inline editable */}
+			{/* Notes - inline editable */}
 			<div>
-				<h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-3 pb-2 border-b border-border/40">
+				<h3 className="workspace-section-heading">
 					Notes
 				</h3>
 				{isEditingNotes ? (
@@ -163,25 +161,27 @@ export function OverviewTab({
 						<div className="flex items-center gap-1.5">
 							<button
 								onClick={saveNotes}
-								className="p-1 rounded-md hover:bg-green-100 dark:hover:bg-green-900/30 text-green-600 dark:text-green-400 transition-colors"
+								className="rounded-md p-1 text-success-foreground transition-colors hover:bg-success-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
 								aria-label="Save notes"
 							>
 								<Check className="h-4 w-4" />
 							</button>
 							<button
 								onClick={cancelEditingNotes}
-								className="p-1 rounded-md hover:bg-red-100 dark:hover:bg-red-900/30 text-red-600 dark:text-red-400 transition-colors"
+								className="rounded-md p-1 text-danger-foreground transition-colors hover:bg-danger-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
 								aria-label="Cancel"
 							>
 								<X className="h-4 w-4" />
 							</button>
-							<span className="text-xs text-muted-foreground ml-1">Cmd+Enter to save, Esc to cancel</span>
+							<span className="text-xs text-muted-foreground ml-1">
+								Cmd+Enter to save, Esc to cancel
+							</span>
 						</div>
 					</div>
 				) : notes ? (
 					<button
 						onClick={startEditingNotes}
-						className="w-full text-left bg-muted/30 rounded-lg p-4 group/notes cursor-pointer hover:bg-muted/50 transition-colors"
+						className="group/notes w-full cursor-pointer py-3 text-left transition-colors hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
 					>
 						<div className="flex items-start gap-2">
 							<p className="text-sm text-foreground line-clamp-3 flex-1">
@@ -202,8 +202,6 @@ export function OverviewTab({
 					</button>
 				)}
 			</div>
-
-			<Separator className="my-6" />
 
 			<RelatedRecordsFrame
 				sections={[
@@ -242,8 +240,6 @@ export function OverviewTab({
 					},
 				]}
 			/>
-
-			<Separator className="my-6" />
 
 			{/* Team Communication */}
 			<div>

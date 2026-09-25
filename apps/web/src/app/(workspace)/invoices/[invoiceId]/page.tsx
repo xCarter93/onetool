@@ -84,21 +84,21 @@ function InvoiceDetailPageContent() {
 	const invoice = invoiceWithPayments;
 	const client = useQuery(
 		api.clients.get,
-		invoice?.clientId ? { id: invoice.clientId } : "skip"
+		invoice?.clientId ? { id: invoice.clientId } : "skip",
 	);
 	const project = useQuery(
 		api.projects.get,
-		invoice?.projectId ? { id: invoice.projectId } : "skip"
+		invoice?.projectId ? { id: invoice.projectId } : "skip",
 	);
 	// Gate on the invoice resolving: a cross-org id makes getWithPayments return
 	// null, so skip listByInvoice rather than let it throw an org-mismatch error.
 	const lineItems = useQuery(
 		api.invoiceLineItems.listByInvoice,
-		invoice ? { invoiceId } : "skip"
+		invoice ? { invoiceId } : "skip",
 	);
 	const invoiceGroups = useQuery(
 		api.invoices.getGroups,
-		invoice ? { invoiceId } : "skip"
+		invoice ? { invoiceId } : "skip",
 	);
 	const organization = useQuery(api.organizations.get, {});
 	// Skip document queries without the documents grant — they call
@@ -107,21 +107,21 @@ function InvoiceDetailPageContent() {
 		api.documents.getLatest,
 		invoice && can("documents")
 			? { documentType: "invoice", documentId: invoice._id }
-			: "skip"
+			: "skip",
 	);
 	const allDocumentVersions = useQuery(
 		api.documents.getAllVersions,
 		invoice && can("documents")
 			? { documentType: "invoice", documentId: invoice._id }
-			: "skip"
+			: "skip",
 	);
 	const primaryContact = useQuery(
 		api.clientContacts.getPrimaryContact,
-		invoice?.clientId ? { clientId: invoice.clientId } : "skip"
+		invoice?.clientId ? { clientId: invoice.clientId } : "skip",
 	);
 	const primaryProperty = useQuery(
 		api.clientProperties.getPrimaryProperty,
-		invoice?.clientId ? { clientId: invoice.clientId } : "skip"
+		invoice?.clientId ? { clientId: invoice.clientId } : "skip",
 	);
 
 	// Mutations
@@ -131,15 +131,23 @@ function InvoiceDetailPageContent() {
 		useClientSendMeter();
 	const generateUploadUrl = useMutation(api.documents.generateUploadUrl);
 	const createDocument = useMutation(api.documents.create);
-	const keepExistingRecurringInvoice = useMutation(api.recurringBillingReview.keepExistingInvoice);
+	const keepExistingRecurringInvoice = useMutation(
+		api.recurringBillingReview.keepExistingInvoice,
+	);
 	const [isKeepingInvoice, setIsKeepingInvoice] = useState(false);
 	const handleKeepExistingInvoice = async () => {
 		setIsKeepingInvoice(true);
 		try {
 			await keepExistingRecurringInvoice({ invoiceId });
-			toast.success("Review resolved", "This invoice and its payment history were kept.");
+			toast.success(
+				"Review resolved",
+				"This invoice and its payment history were kept.",
+			);
 		} catch (error) {
-			toast.error("Error", convexErrorMessage(error, "Failed to resolve invoice review"));
+			toast.error(
+				"Error",
+				convexErrorMessage(error, "Failed to resolve invoice review"),
+			);
 		} finally {
 			setIsKeepingInvoice(false);
 		}
@@ -162,10 +170,10 @@ function InvoiceDetailPageContent() {
 		() =>
 			JSON.stringify(
 				[client, organization, primaryProperty, invoiceGroups].map((doc) =>
-					doc === undefined ? "loading" : doc
-				)
+					doc === undefined ? "loading" : doc,
+				),
 			),
-		[client, organization, primaryProperty, invoiceGroups]
+		[client, organization, primaryProperty, invoiceGroups],
 	);
 
 	// The PDF prints the payment schedule, but payment writes do not stamp the
@@ -179,35 +187,50 @@ function InvoiceDetailPageContent() {
 					p.dueDate,
 					p.description,
 					p.sortOrder,
-				])
+				]),
 			),
-		[invoiceWithPayments?.payments]
+		[invoiceWithPayments?.payments],
 	);
 
 	// The generated PDF is stale once the invoice's client-visible content moved
 	// after the newest document was stored. No stamp means nothing to compare.
 	const isPdfStale = Boolean(
 		latestDocument &&
-			invoice?.contentUpdatedAt !== undefined &&
-			invoice.contentUpdatedAt > latestDocument.generatedAt
+		invoice?.contentUpdatedAt !== undefined &&
+		invoice.contentUpdatedAt > latestDocument.generatedAt,
 	);
 	const recurringScheduleNeedsReview = useMemo(() => {
-		if (!invoice?.recurringPaymentRule || invoice.paymentScheduleIsCustom) return false;
+		if (!invoice?.recurringPaymentRule || invoice.paymentScheduleIsCustom)
+			return false;
 		// The calculator throws on totals it cannot split (for example a $0 draft); that also needs a manual schedule.
 		try {
-			return calculateRecurringPaymentSchedule(invoice.recurringPaymentRule, invoice.total, Date.now()).status === "review";
+			return (
+				calculateRecurringPaymentSchedule(
+					invoice.recurringPaymentRule,
+					invoice.total,
+					Date.now(),
+				).status === "review"
+			);
 		} catch {
 			return true;
 		}
-	}, [invoice?.recurringPaymentRule, invoice?.paymentScheduleIsCustom, invoice?.total]);
-	const canResolveRecurringReview = can("projects", "modify") && can("quotes", "modify") && can("invoices", "modify") && hasAllRecords("projects") && hasAllRecords("quotes") && hasAllRecords("invoices");
+	}, [
+		invoice?.recurringPaymentRule,
+		invoice?.paymentScheduleIsCustom,
+		invoice?.total,
+	]);
+	const canResolveRecurringReview =
+		can("projects", "modify") &&
+		can("quotes", "modify") &&
+		can("invoices", "modify") &&
+		hasAllRecords("projects") &&
+		hasAllRecords("quotes") &&
+		hasAllRecords("invoices");
 
 	// Derived state
 	const selectedDocument = useMemo(() => {
 		if (selectedVersionId && allDocumentVersions) {
-			return allDocumentVersions.find(
-				(v) => v._id === selectedVersionId
-			);
+			return allDocumentVersions.find((v) => v._id === selectedVersionId);
 		}
 		return latestDocument;
 	}, [selectedVersionId, allDocumentVersions, latestDocument]);
@@ -216,7 +239,7 @@ function InvoiceDetailPageContent() {
 		api.documents.getDocumentUrl,
 		selectedDocument && can("documents")
 			? { id: selectedDocument._id }
-			: "skip"
+			: "skip",
 	);
 
 	// Handlers
@@ -225,7 +248,7 @@ function InvoiceDetailPageContent() {
 			await updateInvoice({ id: invoiceId, status });
 			toast.success(
 				"Invoice Updated",
-				`Status changed to ${formatStatus(status)}`
+				`Status changed to ${formatStatus(status)}`,
 			);
 		} catch (err) {
 			toast.error("Error", convexErrorMessage(err, "Failed to update status"));
@@ -235,10 +258,7 @@ function InvoiceDetailPageContent() {
 	const handleMarkPaid = async () => {
 		try {
 			await updateInvoice({ id: invoiceId, status: "paid" });
-			toast.success(
-				"Invoice Paid",
-				"Invoice marked as paid successfully"
-			);
+			toast.success("Invoice Paid", "Invoice marked as paid successfully");
 		} catch (err) {
 			toast.error("Error", convexErrorMessage(err, "Failed to mark as paid"));
 		}
@@ -255,9 +275,7 @@ function InvoiceDetailPageContent() {
 	// contentUpdatedAt stamp and reused by Generate while it stays valid.
 	const renderInvoicePdf = useCallback(async () => {
 		if (!invoice || !lineItems) {
-			throw new Error(
-				"This invoice is still loading. Try again in a moment."
-			);
+			throw new Error("This invoice is still loading. Try again in a moment.");
 		}
 		const blob = await buildInvoicePdfBlob({
 			invoice,
@@ -295,8 +313,7 @@ function InvoiceDetailPageContent() {
 		// Any client-visible edit since the preview invalidates it.
 		if (cached.contentUpdatedAt !== invoice.contentUpdatedAt) return null;
 		if (cached.paymentsFingerprint !== paymentsFingerprint) return null;
-		if (cached.renderInputsFingerprint !== renderInputsFingerprint)
-			return null;
+		if (cached.renderInputsFingerprint !== renderInputsFingerprint) return null;
 		return cached.blob;
 	};
 
@@ -304,10 +321,7 @@ function InvoiceDetailPageContent() {
 		let loadingId;
 		try {
 			if (!invoice || !lineItems) return;
-			loadingId = toast.loading(
-				"Generating PDF",
-				"Rendering and uploading..."
-			);
+			loadingId = toast.loading("Generating PDF", "Rendering and uploading...");
 
 			// Reuse the preview's render when the invoice content has not moved since.
 			const invoiceBlob = takeCachedPdfBlob() ?? (await renderInvoicePdf());
@@ -334,7 +348,7 @@ function InvoiceDetailPageContent() {
 			console.error(error);
 			toast.error(
 				"PDF generation failed",
-				convexErrorMessage(error, "Unknown error")
+				convexErrorMessage(error, "Unknown error"),
 			);
 		}
 	};
@@ -358,8 +372,7 @@ function InvoiceDetailPageContent() {
 			URL.revokeObjectURL(blobUrl);
 		} catch (error) {
 			console.error(error);
-			const message =
-				error instanceof Error ? error.message : "Unknown error";
+			const message = error instanceof Error ? error.message : "Unknown error";
 			toast.error("Download failed", message);
 		}
 	};
@@ -367,7 +380,7 @@ function InvoiceDetailPageContent() {
 	// Loading state
 	if (invoice === undefined) {
 		return (
-			<div className="relative pl-6 pt-8 pb-20">
+			<div className="workspace-detail workspace-page pb-20">
 				<div className="mx-auto">
 					<div className="space-y-6">
 						<Skeleton className="h-12 w-64" />
@@ -383,19 +396,18 @@ function InvoiceDetailPageContent() {
 	// Invoice not found
 	if (invoice === null) {
 		return (
-			<div className="relative pl-6 pt-8 pb-20">
+			<div className="workspace-detail workspace-page pb-20">
 				<div className="mx-auto">
 					<div className="flex flex-col items-center justify-center py-12 text-center">
-						<div className="w-16 h-16 bg-red-100 dark:bg-red-900/30 rounded-lg flex items-center justify-center mb-4">
-							<ExclamationTriangleIcon className="h-8 w-8 text-red-600 dark:text-red-400" />
+						<div className="mb-4 flex size-16 items-center justify-center rounded-lg bg-danger-soft">
+							<ExclamationTriangleIcon className="size-8 text-danger-foreground" />
 						</div>
 						<h3 className="text-lg font-medium text-foreground mb-2">
 							Invoice not found
 						</h3>
 						<p className="text-muted-foreground">
-							The invoice you&apos;re looking for doesn&apos;t
-							exist or you don&apos;t have permission to view
-							it.
+							The invoice you&apos;re looking for doesn&apos;t exist or you
+							don&apos;t have permission to view it.
 						</p>
 					</div>
 				</div>
@@ -415,7 +427,7 @@ function InvoiceDetailPageContent() {
 
 	return (
 		<>
-			<div className="relative min-h-screen pl-6 pt-6">
+			<div className="workspace-detail workspace-page min-h-screen">
 				{/* Header */}
 				<InvoiceDetailHeader
 					invoice={invoice}
@@ -429,50 +441,76 @@ function InvoiceDetailPageContent() {
 					onCancel={() => setIsCancelModalOpen(true)}
 				/>
 
-				{invoice.recurringBillingReview === true && invoice.status !== "cancelled" && (
-					<Frame>
-						<FramePanel className="overflow-hidden p-0!">
-							<Alert variant="warning" className="border-0 bg-warning/5 shadow-none [&>svg]:text-warning-foreground">
-								<ExclamationTriangleIcon />
-								<AlertTitle>Review recurring invoice pricing</AlertTitle>
-								{canResolveRecurringReview && (
-									<AlertAction>
-										<Button size="xs" variant="outline" onClick={handleKeepExistingInvoice} disabled={isKeepingInvoice}>
-											{isKeepingInvoice ? "Keeping..." : "Keep this invoice"}
-										</Button>
-									</AlertAction>
-								)}
-								<AlertDescription>
-									A source visit changed after this invoice was drafted. Review the covered visit totals before sending. Keeping this invoice preserves its current content and payment history.
-									{invoiceGroups && invoiceGroups.length > 0 && (
-										<span className="mt-2 flex flex-wrap gap-x-3 gap-y-1">
-											{invoiceGroups.map((group) => (
-												<Link key={group._id} href={`/projects/${group.sourceProjectId}`} className="font-medium text-foreground underline underline-offset-2">
-													{group.projectTitle}
-												</Link>
-											))}
-										</span>
+				{invoice.recurringBillingReview === true &&
+					invoice.status !== "cancelled" && (
+						<Frame>
+							<FramePanel className="overflow-hidden p-0!">
+								<Alert
+									variant="warning"
+									className="border-0 bg-warning/5 shadow-none [&>svg]:text-warning-foreground"
+								>
+									<ExclamationTriangleIcon />
+									<AlertTitle>Review recurring invoice pricing</AlertTitle>
+									{canResolveRecurringReview && (
+										<AlertAction>
+											<Button
+												size="xs"
+												variant="outline"
+												onClick={handleKeepExistingInvoice}
+												disabled={isKeepingInvoice}
+											>
+												{isKeepingInvoice ? "Keeping..." : "Keep this invoice"}
+											</Button>
+										</AlertAction>
 									)}
-								</AlertDescription>
-							</Alert>
-						</FramePanel>
-					</Frame>
-				)}
+									<AlertDescription>
+										A source visit changed after this invoice was drafted.
+										Review the covered visit totals before sending. Keeping this
+										invoice preserves its current content and payment history.
+										{invoiceGroups && invoiceGroups.length > 0 && (
+											<span className="mt-2 flex flex-wrap gap-x-3 gap-y-1">
+												{invoiceGroups.map((group) => (
+													<Link
+														key={group._id}
+														href={`/projects/${group.sourceProjectId}`}
+														className="font-medium text-foreground underline underline-offset-2"
+													>
+														{group.projectTitle}
+													</Link>
+												))}
+											</span>
+										)}
+									</AlertDescription>
+								</Alert>
+							</FramePanel>
+						</Frame>
+					)}
 				{recurringScheduleNeedsReview && (
 					<Frame>
 						<FramePanel className="overflow-hidden p-0!">
-							<Alert variant="warning" className="border-0 bg-warning/5 shadow-none [&>svg]:text-warning-foreground">
+							<Alert
+								variant="warning"
+								className="border-0 bg-warning/5 shadow-none [&>svg]:text-warning-foreground"
+							>
 								<ExclamationTriangleIcon />
-								<AlertTitle>Review this payment schedule before sending</AlertTitle>
+								<AlertTitle>
+									Review this payment schedule before sending
+								</AlertTitle>
 								{can("invoices", "modify") && (
 									<AlertAction>
-										<Button size="xs" variant="outline" onClick={() => setIsPaymentsModalOpen(true)}>
+										<Button
+											size="xs"
+											variant="outline"
+											onClick={() => setIsPaymentsModalOpen(true)}
+										>
 											Configure payments
 										</Button>
 									</AlertAction>
 								)}
 								<AlertDescription>
-									The agreement&apos;s fixed installments leave no balance for this invoice total. Set an invoice-specific schedule before sending.
+									The agreement&apos;s fixed installments leave no balance for
+									this invoice total. Set an invoice-specific schedule before
+									sending.
 								</AlertDescription>
 							</Alert>
 						</FramePanel>
@@ -509,7 +547,7 @@ function InvoiceDetailPageContent() {
 										<AlertDescription>
 											A refund reopened{" "}
 											{formatCurrency(
-												remainingBalance(invoice.total, payments)
+												remainingBalance(invoice.total, payments),
 											)}{" "}
 											of the balance, and no installment covers it. Add one to
 											the schedule and the Pay button comes back.
@@ -597,10 +635,7 @@ function InvoiceDetailPageContent() {
 				onClose={() => setIsCancelModalOpen(false)}
 				onConfirm={confirmCancelInvoice}
 				title="Cancel Invoice"
-				itemName={
-					invoice.invoiceNumber ||
-					`Invoice #${invoice._id.slice(-6)}`
-				}
+				itemName={invoice.invoiceNumber || `Invoice #${invoice._id.slice(-6)}`}
 				itemType="Invoice"
 				mode="cancel"
 			/>

@@ -110,7 +110,7 @@ export function StatusBadge({
 	status,
 	role,
 	appearance = "soft",
-	radius = "full",
+	radius = "default",
 	className,
 	...props
 }: StatusBadgeProps) {
@@ -119,7 +119,7 @@ export function StatusBadge({
 		<Badge
 			variant={ROLE_VARIANT[resolved][appearance]}
 			radius={radius}
-			className={cn("transition-all duration-200", className)}
+			className={cn("[.dc-landing_&]:rounded-full", className)}
 			{...props}
 		/>
 	);

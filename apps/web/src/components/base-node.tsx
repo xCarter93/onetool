@@ -6,7 +6,7 @@ export function BaseNode({ className, ...props }: ComponentProps<"div">) {
   return (
     <div
       className={cn(
-        "bg-card text-card-foreground relative rounded-md border border-border",
+        "bg-card text-card-foreground relative rounded-lg border border-border",
         // Resting elevation so cards lift off the canvas in both themes.
         "shadow-sm transition-[border-color,box-shadow] duration-150",
         // Tint top/right/bottom only — the full `border-color` shorthand would
@@ -16,7 +16,7 @@ export function BaseNode({ className, ...props }: ComponentProps<"div">) {
         // class `selected` to it when selected, so `in-[.selected]` targets the
         // selected state from inside. This is the single selection treatment —
         // a brand-colored ring — so individual node cards must not add their own.
-        "in-[.selected]:ring-2 in-[.selected]:ring-primary/60 in-[.selected]:shadow-md",
+        "in-[.selected]:border-primary in-[.selected]:ring-4 in-[.selected]:ring-primary/20 in-[.selected]:shadow-md",
         className,
       )}
       tabIndex={0}

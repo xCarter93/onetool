@@ -4,6 +4,7 @@ import type { Id } from "@onetool/backend/convex/_generated/dataModel";
 import { formatDistanceToNowStrict } from "date-fns";
 import { PenSquare, Search, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { EmptyState } from "@/components/domain/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { SegmentedControl } from "@/components/domain/segmented-control";
@@ -58,7 +59,7 @@ export function ThreadList({
 
 	return (
 		<>
-			<div className="sticky top-0 z-10 shrink-0 space-y-3 border-b border-border bg-card px-4 pb-3 pt-4">
+			<div className="sticky top-0 z-10 shrink-0 space-y-3 border-b border-border bg-muted dark:bg-card px-4 pb-3 pt-4">
 				<div className="flex items-center justify-between gap-2">
 					<h1 className="text-lg font-semibold tracking-tight">Inbox</h1>
 					<Button size="sm" variant="outline" onClick={onCompose}>
@@ -72,13 +73,13 @@ export function ThreadList({
 						aria-hidden="true"
 						className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground"
 					/>
-					<input
+					<Input
 						type="text"
 						value={searchQuery}
 						onChange={(e) => onSearchChange(e.target.value)}
 						placeholder="Search client or subject…"
 						aria-label="Search inbox"
-						className="h-8 w-full rounded-md border border-border bg-background pl-8 pr-8 text-sm text-foreground outline-none transition-colors duration-150 placeholder:text-muted-foreground focus-visible:border-primary/50 focus-visible:ring-1 focus-visible:ring-primary/20"
+						className="pl-8 pr-8"
 					/>
 					{searching && (
 						<button
@@ -116,7 +117,7 @@ export function ThreadList({
 						/>
 					</div>
 				) : (
-					<ul className="divide-y divide-border/60 py-0.5">
+					<ul className="divide-y divide-border dark:divide-border/60 py-0.5">
 						{threads.map((thread) => (
 							<li key={thread.threadDocId}>
 								<ThreadRow
@@ -151,15 +152,14 @@ function ThreadRow({
 			onClick={() => onSelect(thread.threadDocId)}
 			aria-current={selected ? "true" : undefined}
 			className={cn(
-				"flex w-full cursor-pointer items-start gap-2 border-l-2 py-2 pl-3 pr-3 text-left transition-colors duration-150",
+				"flex w-full cursor-pointer items-start gap-2 py-2 pl-3 pr-3 text-left transition-colors duration-150",
 				"focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
 				selected
-					? "border-l-primary bg-accent"
-					: "border-l-transparent hover:bg-accent/60"
+					? "bg-primary/10"
+					: "hover:bg-muted/60"
 			)}
 		>
-			{/* Fixed gutter keeps the type rhythm flat: a dot marks unread instead
-			    of bolding the whole row. */}
+			{/* Reserve the unread-dot gutter to keep row text aligned. */}
 			<span
 				aria-hidden="true"
 				className={cn(
@@ -184,7 +184,7 @@ function ThreadRow({
 							</span>
 						)}
 					</span>
-					<span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">
+					<span className="shrink-0 text-xs tabular-nums text-muted-foreground">
 						{formatDistanceToNowStrict(new Date(thread.lastMessageAt), {
 							addSuffix: true,
 						})}

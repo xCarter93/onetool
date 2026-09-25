@@ -3,7 +3,7 @@
 import { PermissionGate } from "@/components/domain/permission-gate";
 import { useCreateRecord } from "@/components/domain/create-record-provider";
 import { usePermissions } from "@/hooks/use-permissions";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
 import { useQuery } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { Id } from "@onetool/backend/convex/_generated/dataModel";
@@ -18,7 +18,6 @@ import { useState } from "react";
 
 function ClientDetailPageContent() {
 	const params = useParams();
-	const router = useRouter();
 	const openCreate = useCreateRecord();
 	const clientId = params.clientId as string;
 	const { can } = usePermissions();
@@ -49,26 +48,26 @@ function ClientDetailPageContent() {
 	// without the object's view grant, so skip it when the user can't see it.
 	const quotes = useQuery(
 		api.quotes.list,
-		can("quotes") ? { clientId: clientId as Id<"clients"> } : "skip"
+		can("quotes") ? { clientId: clientId as Id<"clients"> } : "skip",
 	);
 	const projects = useQuery(
 		api.projects.list,
-		can("projects") ? { clientId: clientId as Id<"clients"> } : "skip"
+		can("projects") ? { clientId: clientId as Id<"clients"> } : "skip",
 	);
 	const invoices = useQuery(
 		api.invoices.list,
-		can("invoices") ? { clientId: clientId as Id<"clients"> } : "skip"
+		can("invoices") ? { clientId: clientId as Id<"clients"> } : "skip",
 	);
 	const clientTasks = useQuery(
 		api.tasks.list,
-		can("tasks") ? { clientId: clientId as Id<"clients"> } : "skip"
+		can("tasks") ? { clientId: clientId as Id<"clients"> } : "skip",
 	);
 
 	// Fetch email threads (grouped conversations) for this client. Gated on
 	// the inbox grant — skip without it to avoid a FORBIDDEN crash.
 	const clientThreads = useQuery(
 		api.emailMessages.listThreadsByClient,
-		can("inbox") ? { clientId: clientId as Id<"clients"> } : "skip"
+		can("inbox") ? { clientId: clientId as Id<"clients"> } : "skip",
 	) as EmailThreadSummary[] | undefined;
 
 	// Fetch activities for this client
@@ -95,7 +94,7 @@ function ClientDetailPageContent() {
 		(can("inbox") && clientThreads === undefined)
 	) {
 		return (
-			<div className="relative pl-6 pt-8 pb-20">
+			<div className="workspace-detail workspace-page">
 				<div className="mx-auto">
 					<div className="space-y-6">
 						<Skeleton className="h-12 w-64" />
@@ -111,11 +110,11 @@ function ClientDetailPageContent() {
 	// Error state
 	if (!client) {
 		return (
-			<div className="relative pl-6 pt-8 pb-20">
+			<div className="workspace-detail workspace-page">
 				<div className="mx-auto">
 					<div className="flex flex-col items-center justify-center py-12 text-center">
-						<div className="w-16 h-16 bg-red-100 dark:bg-red-900/30 rounded-lg flex items-center justify-center mb-4">
-							<ExclamationTriangleIcon className="h-8 w-8 text-red-600 dark:text-red-400" />
+						<div className="mb-4 flex size-16 items-center justify-center rounded-lg bg-danger-soft">
+							<ExclamationTriangleIcon className="size-8 text-danger-foreground" />
 						</div>
 						<h3 className="text-lg font-medium text-foreground mb-2">
 							Client not found
@@ -132,7 +131,7 @@ function ClientDetailPageContent() {
 
 	return (
 		<>
-			<div className="relative min-h-screen pl-6 pt-6">
+			<div className="workspace-detail workspace-page">
 				{/* Header */}
 				<ClientDetailHeader
 					client={client}

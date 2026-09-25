@@ -27,7 +27,7 @@ export default function PortalNotFound() {
 
 			<main className="flex flex-1 items-center justify-center px-6 py-10">
 				<div className="flex w-full max-w-md flex-col items-center gap-6 text-center">
-					<div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-muted">
+					<div className="flex h-16 w-16 items-center justify-center rounded-[8px] bg-muted">
 						<SearchX
 							className="h-7 w-7 text-muted-foreground"
 							aria-hidden="true"

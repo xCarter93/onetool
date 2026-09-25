@@ -23,7 +23,7 @@ export default function DataSecurityPage() {
 					</p>
 				</section>
 
-				<section className="bg-card border border-border rounded-lg p-6">
+				<section className="bg-card border border-border rounded-[8px] p-6">
 					<div className="flex items-start gap-4">
 						<div className="p-3 rounded-lg bg-primary/10">
 							<Shield className="w-6 h-6 text-primary" />
@@ -66,7 +66,7 @@ export default function DataSecurityPage() {
 					</div>
 				</section>
 
-				<section className="bg-card border border-border rounded-lg p-6">
+				<section className="bg-card border border-border rounded-[8px] p-6">
 					<div className="flex items-start gap-4">
 						<div className="p-3 rounded-lg bg-primary/10">
 							<Lock className="w-6 h-6 text-primary" />
@@ -101,7 +101,7 @@ export default function DataSecurityPage() {
 					</div>
 				</section>
 
-				<section className="bg-card border border-border rounded-lg p-6">
+				<section className="bg-card border border-border rounded-[8px] p-6">
 					<div className="flex items-start gap-4">
 						<div className="p-3 rounded-lg bg-primary/10">
 							<Users className="w-6 h-6 text-primary" />
@@ -144,7 +144,7 @@ export default function DataSecurityPage() {
 					</div>
 				</section>
 
-				<section className="bg-card border border-border rounded-lg p-6">
+				<section className="bg-card border border-border rounded-[8px] p-6">
 					<div className="flex items-start gap-4">
 						<div className="p-3 rounded-lg bg-primary/10">
 							<Database className="w-6 h-6 text-primary" />
@@ -183,7 +183,7 @@ export default function DataSecurityPage() {
 					</div>
 				</section>
 
-				<section className="bg-card border border-border rounded-lg p-6">
+				<section className="bg-card border border-border rounded-[8px] p-6">
 					<div className="flex items-start gap-4">
 						<div className="p-3 rounded-lg bg-primary/10">
 							<Eye className="w-6 h-6 text-primary" />
@@ -216,7 +216,7 @@ export default function DataSecurityPage() {
 					</div>
 				</section>
 
-				<section className="bg-card border border-border rounded-lg p-6">
+				<section className="bg-card border border-border rounded-[8px] p-6">
 					<div className="flex items-start gap-4">
 						<div className="p-3 rounded-lg bg-primary/10">
 							<FileCheck className="w-6 h-6 text-primary" />
@@ -252,7 +252,7 @@ export default function DataSecurityPage() {
 					</div>
 				</section>
 
-				<section className="bg-card border border-border rounded-lg p-6">
+				<section className="bg-card border border-border rounded-[8px] p-6">
 					<div className="flex items-start gap-4">
 						<div className="p-3 rounded-lg bg-primary/10">
 							<AlertCircle className="w-6 h-6 text-primary" />
@@ -346,7 +346,7 @@ export default function DataSecurityPage() {
 						If you have questions about our security practices or want to
 						report a security concern:
 					</p>
-					<div className="bg-card border border-border rounded-lg p-4 text-muted-foreground">
+					<div className="bg-card border border-border rounded-[8px] p-4 text-muted-foreground">
 						<p className="font-semibold text-foreground mb-2">OneTool</p>
 						<p>Email: support@onetool.biz</p>
 					</div>

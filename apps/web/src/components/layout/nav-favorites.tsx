@@ -101,7 +101,7 @@ export function NavFavorites() {
 								side="right"
 								align="start"
 								sideOffset={8}
-								className="w-72 p-0"
+								className="w-72 rounded-lg border-border p-0 shadow-floating"
 							>
 								<div className="px-3 py-2 border-b">
 									<p className="text-sm font-medium">All Favorites</p>
@@ -114,7 +114,7 @@ export function NavFavorites() {
 										{favorites.map((favorite) => (
 											<div
 												key={favorite._id}
-												className="group flex items-center gap-2 rounded-md px-2 py-1.5 hover:bg-accent"
+												className="group flex items-center gap-2 rounded-[4px] px-2 py-1.5 hover:bg-accent"
 											>
 												<Heart className="size-4 shrink-0 fill-rose-500 text-rose-500" />
 												<Link

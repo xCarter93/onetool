@@ -90,43 +90,43 @@ export function SKUSelector({
 				</PopoverTrigger>
 			)}
 			<PopoverContent
-				className="w-[400px] p-0 bg-white dark:bg-gray-900 border border-border shadow-xl opacity-100 duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] data-[starting-style]:opacity-0 data-[starting-style]:scale-[0.97] transition-[opacity,transform] motion-reduce:transition-none"
+				className="w-[400px] rounded-lg border border-border bg-popover p-0 opacity-100 duration-150 data-[starting-style]:opacity-0 data-[starting-style]:scale-[0.97] transition-[opacity,transform] motion-reduce:transition-none"
 				align={align}
-				style={{ backgroundColor: "var(--background)", opacity: 1 }}
+				style={{ opacity: 1 }}
 			>
-				<div className="flex flex-col bg-white dark:bg-gray-900">
+				<div className="flex flex-col bg-popover">
 					{/* Search Input */}
-					<div className="p-3 border-b border-border bg-white dark:bg-gray-900">
+					<div className="p-3 border-b border-border bg-popover">
 						<div className="relative">
 							<Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
 							<Input
 								placeholder="Search SKUs..."
 								value={searchQuery}
 								onChange={(e) => setSearchQuery(e.target.value)}
-								className="pl-9 bg-background dark:bg-background"
+								className="pl-9 bg-background"
 							/>
 						</div>
 					</div>
 
 					{/* SKU List */}
-					<div className="max-h-[300px] overflow-y-auto bg-white dark:bg-gray-900">
+					<div className="max-h-[300px] overflow-y-auto bg-popover">
 						{can("skus") && skus === undefined ? (
-							<div className="p-4 text-center text-sm text-muted-foreground bg-white dark:bg-gray-900">
+						<div className="p-4 text-center text-[13px] text-muted-foreground bg-popover">
 								Loading SKUs...
 							</div>
 						) : filteredSKUs.length === 0 ? (
-							<div className="p-4 text-center text-sm text-muted-foreground bg-white dark:bg-gray-900">
+						<div className="p-4 text-center text-[13px] text-muted-foreground bg-popover">
 								{searchQuery
 									? "No SKUs found matching your search"
 									: "No SKUs available"}
 							</div>
 						) : (
-							<div className="divide-y divide-border bg-white dark:bg-gray-900">
+						<div className="divide-y divide-border bg-popover">
 								{filteredSKUs.map((sku) => (
 									<button
 										key={sku._id}
 										onClick={() => handleSelectSKU(sku)}
-										className="w-full px-4 py-3 text-left bg-white dark:bg-gray-900 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors focus:outline-none focus:bg-gray-100 dark:focus:bg-gray-800"
+										className="w-full bg-popover px-4 py-3 text-left transition-colors hover:bg-muted focus:outline-none focus:bg-muted"
 									>
 										<div className="flex items-start justify-between gap-3">
 											<div className="flex-1 min-w-0">

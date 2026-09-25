@@ -24,7 +24,7 @@ export function PaidStatusPanel({ data, hasPdf }: PaidStatusPanelProps) {
 	const paidPayments = data.payments.filter((p) => p.status === "paid");
 
 	return (
-		<div className="rounded-xl border border-emerald-200 bg-emerald-50/60 p-5 text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-100">
+		<div className="rounded-[8px] border border-emerald-200 bg-emerald-50/60 p-5 text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-100">
 			<div className="flex items-start gap-2">
 				<CheckCircle2
 					className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600 dark:text-emerald-400"

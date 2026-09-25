@@ -108,7 +108,7 @@ export function PresetLibraryDialog({ open, onOpenChange }: PresetLibraryDialogP
 				aria-modal="true"
 				aria-labelledby="preset-library-title"
 				onClick={(e) => e.stopPropagation()}
-				className="flex h-[min(86vh,48rem)] w-full max-w-[calc(100vw-1.5rem)] flex-col overflow-hidden rounded-xl border border-border bg-background shadow-xl sm:max-w-3xl lg:max-w-4xl"
+			className="flex h-[min(86vh,48rem)] w-full max-w-[calc(100vw-1.5rem)] flex-col overflow-hidden rounded-lg border border-border bg-card sm:max-w-3xl lg:max-w-4xl"
 			>
 				{/* Header */}
 				<div className="flex shrink-0 items-start justify-between gap-3 px-5 pb-3 pt-4">

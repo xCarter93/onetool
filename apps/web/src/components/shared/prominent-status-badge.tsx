@@ -62,26 +62,26 @@ const getStatusColor = (status: string) => {
 		case "completed":
 		case "paid":
 		case "approved":
-			return "bg-green-100 text-green-800 border-green-300 dark:bg-green-900/30 dark:text-green-300 dark:border-green-700";
+			return "border-success/30 bg-success/10 text-success-foreground";
 		case "in-progress":
 		case "sent":
-			return "bg-yellow-100 text-yellow-800 border-yellow-300 dark:bg-yellow-900/30 dark:text-yellow-300 dark:border-yellow-700";
+			return "border-warning/30 bg-warning/10 text-warning-foreground";
 		case "pending":
 		case "draft":
 		case "planned":
-			return "bg-blue-100 text-blue-800 border-blue-300 dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-700";
+			return "border-info/30 bg-info/10 text-info-foreground";
 		case "lead":
-			return "bg-purple-100 text-purple-800 border-purple-300 dark:bg-purple-900/30 dark:text-purple-300 dark:border-purple-700";
+			return "border-primary/30 bg-primary/10 text-primary";
 		case "cancelled":
 		case "declined":
 		case "archived":
 		case "inactive":
-			return "bg-gray-100 text-gray-800 border-gray-300 dark:bg-gray-900/30 dark:text-gray-300 dark:border-gray-700";
+			return "border-border bg-muted text-muted-foreground";
 		case "overdue":
 		case "expired":
-			return "bg-red-100 text-red-800 border-red-300 dark:bg-red-900/30 dark:text-red-300 dark:border-red-700";
+			return "border-danger/30 bg-danger/10 text-danger-foreground";
 		default:
-			return "bg-gray-100 text-gray-800 border-gray-300 dark:bg-gray-900/30 dark:text-gray-300 dark:border-gray-700";
+			return "border-border bg-muted text-muted-foreground";
 	}
 };
 
@@ -89,13 +89,13 @@ const getSizeClasses = (size: StatusSize, showIcon: boolean) => {
 	switch (size) {
 		case "xl":
 			return {
-				container: "px-6 py-3 text-lg font-bold border-2 rounded-xl shadow-lg",
+				container: "px-6 py-3 text-lg font-bold border-2 rounded-xl",
 				icon: showIcon ? "w-7 h-7 mr-3" : "",
 			};
 		case "large":
 			return {
 				container:
-					"px-4 py-2 text-base font-semibold border-2 rounded-lg shadow-md",
+					"px-4 py-2 text-base font-semibold border-2 rounded-lg",
 				icon: showIcon ? "w-5 h-5 mr-2" : "",
 			};
 		case "default":

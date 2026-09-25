@@ -36,7 +36,7 @@ type QuoteStatus = "draft" | "sent" | "approved" | "declined" | "expired";
 
 const getQuoteStatus = (
 	status: QuoteStatus,
-	validUntilDate?: number
+	validUntilDate?: number,
 ): QuoteStatus => {
 	if (status === "expired") return "expired";
 	if (validUntilDate && validUntilDate < todayUtcMidnightMs()) return "expired";
@@ -84,17 +84,17 @@ function QuoteDetailPageContent() {
 	const quote = useQuery(api.quotes.get, { id: quoteId });
 	const client = useQuery(
 		api.clients.get,
-		quote?.clientId ? { id: quote.clientId } : "skip"
+		quote?.clientId ? { id: quote.clientId } : "skip",
 	);
 	const project = useQuery(
 		api.projects.get,
-		quote?.projectId ? { id: quote.projectId } : "skip"
+		quote?.projectId ? { id: quote.projectId } : "skip",
 	);
 	// Gate on the quote resolving: a cross-org id makes quotes.get return null,
 	// so skip listByQuote rather than let it throw an org-mismatch error.
 	const lineItems = useQuery(
 		api.quoteLineItems.listByQuote,
-		quote ? { quoteId } : "skip"
+		quote ? { quoteId } : "skip",
 	);
 	const organization = useQuery(api.organizations.get, {});
 	// Skip document queries without the documents grant — they call
@@ -103,37 +103,37 @@ function QuoteDetailPageContent() {
 		api.documents.getLatest,
 		quote && can("documents")
 			? { documentType: "quote", documentId: quote._id }
-			: "skip"
+			: "skip",
 	);
 	const allDocumentVersions = useQuery(
 		api.documents.getAllVersions,
 		quote && can("documents")
 			? { documentType: "quote", documentId: quote._id }
-			: "skip"
+			: "skip",
 	);
 	const primaryContact = useQuery(
 		api.clientContacts.getPrimaryContact,
-		quote?.clientId ? { clientId: quote.clientId } : "skip"
+		quote?.clientId ? { clientId: quote.clientId } : "skip",
 	);
 	const primaryProperty = useQuery(
 		api.clientProperties.getPrimaryProperty,
-		quote?.clientId ? { clientId: quote.clientId } : "skip"
+		quote?.clientId ? { clientId: quote.clientId } : "skip",
 	);
 	const documentsWithSignatures = useQuery(
 		api.documents.getAllDocumentsWithSignatures,
 		quote && can("documents")
 			? { documentType: "quote", documentId: quote._id }
-			: "skip"
+			: "skip",
 	);
 	const countersigner = useQuery(
 		api.users.get,
-		quote?.countersignerId ? { id: quote.countersignerId } : "skip"
+		quote?.countersignerId ? { id: quote.countersignerId } : "skip",
 	);
 	const activities = useQuery(
 		api.activities.getByEntity,
 		quote === null || isDeleting
 			? "skip"
-			: { entityType: "quote" as const, entityId: quoteId as string }
+			: { entityType: "quote" as const, entityId: quoteId as string },
 	);
 
 	// Mutations
@@ -175,18 +175,18 @@ function QuoteDetailPageContent() {
 		() =>
 			JSON.stringify(
 				[client, organization, primaryProperty, countersigner].map((doc) =>
-					doc === undefined ? "loading" : doc
-				)
+					doc === undefined ? "loading" : doc,
+				),
 			),
-		[client, organization, primaryProperty, countersigner]
+		[client, organization, primaryProperty, countersigner],
 	);
 
 	// The generated PDF is stale once the quote's client-visible content moved
 	// after the newest document was stored. No stamp means nothing to compare.
 	const isPdfStale = Boolean(
 		latestDocument &&
-			quote?.contentUpdatedAt !== undefined &&
-			quote.contentUpdatedAt > latestDocument.generatedAt
+		quote?.contentUpdatedAt !== undefined &&
+		quote.contentUpdatedAt > latestDocument.generatedAt,
 	);
 
 	// Derived state
@@ -201,7 +201,7 @@ function QuoteDetailPageContent() {
 		api.documents.getDocumentUrl,
 		selectedDocument && can("documents")
 			? { id: selectedDocument._id }
-			: "skip"
+			: "skip",
 	);
 
 	// Handlers
@@ -210,7 +210,7 @@ function QuoteDetailPageContent() {
 			await updateQuote({ id: quoteId, status });
 			toast.success(
 				"Quote Updated",
-				`Status changed to ${formatStatus(status)}`
+				`Status changed to ${formatStatus(status)}`,
 			);
 		} catch (err) {
 			toast.error("Error", convexErrorMessage(err, "Failed to update status"));
@@ -230,7 +230,7 @@ function QuoteDetailPageContent() {
 			});
 			toast.success(
 				"Invoice Created",
-				"Quote converted to invoice successfully"
+				"Quote converted to invoice successfully",
 			);
 			router.push(`/invoices/${invoiceId}`);
 			// Leave the action disabled through navigation; the page unmounts.
@@ -261,8 +261,13 @@ function QuoteDetailPageContent() {
 		if (!quote || !lineItems) {
 			throw new Error("This quote is still loading. Try again in a moment.");
 		}
-		const renderLineItems = [...lineItems].sort((a, b) => a.sortOrder - b.sortOrder);
-		const quoteContentSnapshot = buildQuoteContentSnapshot(quote, renderLineItems);
+		const renderLineItems = [...lineItems].sort(
+			(a, b) => a.sortOrder - b.sortOrder,
+		);
+		const quoteContentSnapshot = buildQuoteContentSnapshot(
+			quote,
+			renderLineItems,
+		);
 		const blob = await buildQuotePdfBlob({
 			quote: {
 				...quote,
@@ -299,7 +304,7 @@ function QuoteDetailPageContent() {
 	]);
 	const renderQuotePdf = useCallback(
 		async () => (await renderQuotePdfArtifact()).blob,
-		[renderQuotePdfArtifact]
+		[renderQuotePdfArtifact],
 	);
 
 	const takeCachedPdfBlob = (): typeof previewBlobRef.current => {
@@ -308,17 +313,20 @@ function QuoteDetailPageContent() {
 		if (cached.quoteId !== quote._id) return null;
 		// Any client-visible edit since the preview invalidates it.
 		if (cached.contentUpdatedAt !== quote.contentUpdatedAt) return null;
-		if (cached.renderInputsFingerprint !== renderInputsFingerprint)
+		if (cached.renderInputsFingerprint !== renderInputsFingerprint) return null;
+		if (
+			!lineItems ||
+			!quoteContentSnapshotsEqual(
+				cached.quoteContentSnapshot,
+				buildQuoteContentSnapshot(quote, lineItems),
+			)
+		)
 			return null;
-		if (!lineItems || !quoteContentSnapshotsEqual(
-			cached.quoteContentSnapshot,
-			buildQuoteContentSnapshot(quote, lineItems)
-		)) return null;
 		return cached;
 	};
 
 	const handleGeneratePdf = async (
-		appendDocumentIds: Id<"organizationDocuments">[] = []
+		appendDocumentIds: Id<"organizationDocuments">[] = [],
 	) => {
 		let loadingId: string | undefined;
 		try {
@@ -326,14 +334,14 @@ function QuoteDetailPageContent() {
 			if (quote.recurringAgreementTerms) {
 				loadingId = toast.loading(
 					"Generating agreement PDF",
-					"Rendering and saving the approval version."
+					"Rendering and saving the approval version.",
 				);
 				await convex.action(api.pdfActions.ensureQuotePdf, { quoteId });
 				toast.removeToast(loadingId);
 				loadingId = undefined;
 				toast.success(
 					"Agreement PDF generated",
-					"The approval version is ready."
+					"The approval version is ready.",
 				);
 				return;
 			}
@@ -341,7 +349,7 @@ function QuoteDetailPageContent() {
 				"Generating PDF",
 				appendDocumentIds.length > 0
 					? `Merging with ${appendDocumentIds.length} document${appendDocumentIds.length !== 1 ? "s" : ""}…`
-					: "Rendering and uploading…"
+					: "Rendering and uploading…",
 			);
 
 			// Reuse the preview's render when the quote content has not moved since;
@@ -363,17 +371,17 @@ function QuoteDetailPageContent() {
 							idBatches.map((ids) =>
 								convex.query(api.organizationDocuments.getDocumentUrls, {
 									ids,
-								})
-							)
+								}),
+							),
 						)
 					).flat();
 					const mergedPdf = await PDFDocument.create();
 					const quotePdfDoc = await PDFDocument.load(
-						await quoteBlob.arrayBuffer()
+						await quoteBlob.arrayBuffer(),
 					);
 					const quotePages = await mergedPdf.copyPages(
 						quotePdfDoc,
-						quotePdfDoc.getPageIndices()
+						quotePdfDoc.getPageIndices(),
 					);
 					quotePages.forEach((page) => mergedPdf.addPage(page));
 
@@ -386,11 +394,9 @@ function QuoteDetailPageContent() {
 							const docPdf = await PDFDocument.load(docBytes);
 							const docPages = await mergedPdf.copyPages(
 								docPdf,
-								docPdf.getPageIndices()
+								docPdf.getPageIndices(),
 							);
-							docPages.forEach((page) =>
-								mergedPdf.addPage(page)
-							);
+							docPages.forEach((page) => mergedPdf.addPage(page));
 						} catch {
 							continue;
 						}
@@ -403,7 +409,7 @@ function QuoteDetailPageContent() {
 				} catch {
 					toast.error(
 						"Merge failed",
-						"Failed to merge documents. Using quote only."
+						"Failed to merge documents. Using quote only.",
 					);
 					finalBlob = quoteBlob;
 				}
@@ -429,14 +435,14 @@ function QuoteDetailPageContent() {
 				"PDF generated",
 				appendDocumentIds.length > 0
 					? `Quote PDF with ${appendDocumentIds.length} appended document${appendDocumentIds.length !== 1 ? "s" : ""} is ready.`
-					: "Your quote PDF is ready."
+					: "Your quote PDF is ready.",
 			);
 		} catch (error) {
 			if (loadingId) toast.removeToast(loadingId);
 			console.error(error);
 			toast.error(
 				"PDF generation failed",
-				convexErrorMessage(error, "Unknown error")
+				convexErrorMessage(error, "Unknown error"),
 			);
 		}
 	};
@@ -468,8 +474,7 @@ function QuoteDetailPageContent() {
 			URL.revokeObjectURL(blobUrl);
 		} catch (error) {
 			console.error(error);
-			const message =
-				error instanceof Error ? error.message : "Unknown error";
+			const message = error instanceof Error ? error.message : "Unknown error";
 			toast.error("Download failed", message);
 		}
 	};
@@ -477,7 +482,7 @@ function QuoteDetailPageContent() {
 	// Loading state
 	if (quote === undefined) {
 		return (
-			<div className="relative pl-6 pt-8 pb-20">
+			<div className="workspace-detail workspace-page pb-20">
 				<div className="mx-auto">
 					<div className="space-y-6">
 						<Skeleton className="h-12 w-64" />
@@ -493,18 +498,18 @@ function QuoteDetailPageContent() {
 	// Quote not found
 	if (quote === null) {
 		return (
-			<div className="relative pl-6 pt-8 pb-20">
+			<div className="workspace-detail workspace-page pb-20">
 				<div className="mx-auto">
 					<div className="flex flex-col items-center justify-center py-12 text-center">
-						<div className="w-16 h-16 bg-red-100 dark:bg-red-900/30 rounded-lg flex items-center justify-center mb-4">
-							<ExclamationTriangleIcon className="h-8 w-8 text-red-600 dark:text-red-400" />
+						<div className="mb-4 flex size-16 items-center justify-center rounded-lg bg-danger-soft">
+							<ExclamationTriangleIcon className="size-8 text-danger-foreground" />
 						</div>
 						<h3 className="text-lg font-medium text-foreground mb-2">
 							Quote not found
 						</h3>
 						<p className="text-muted-foreground">
-							The quote you&apos;re looking for doesn&apos;t
-							exist or you don&apos;t have permission to view it.
+							The quote you&apos;re looking for doesn&apos;t exist or you
+							don&apos;t have permission to view it.
 						</p>
 					</div>
 				</div>
@@ -529,7 +534,7 @@ function QuoteDetailPageContent() {
 
 	return (
 		<>
-			<div className="relative min-h-screen pl-6 pt-6">
+			<div className="workspace-detail workspace-page min-h-screen">
 				{/* Header */}
 				<RecurringQuoteCopyGate
 					key={quoteId}

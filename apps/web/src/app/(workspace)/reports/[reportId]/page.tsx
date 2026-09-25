@@ -49,7 +49,7 @@ function ReportViewPageContent() {
 			: {
 					title: "Report assistant",
 					description: "Ask me about this report.",
-				}
+				},
 	);
 
 	if (report === undefined) {
@@ -69,9 +69,7 @@ function ReportViewPageContent() {
 				<p className="mb-4 text-muted-foreground">
 					This report may have been deleted or you don&apos;t have access to it.
 				</p>
-				<Button onClick={() => router.push("/reports")}>
-					Back to Reports
-				</Button>
+				<Button onClick={() => router.push("/reports")}>Back to Reports</Button>
 			</div>
 		);
 	}
@@ -128,7 +126,7 @@ function ReportViewPageContent() {
 	const VizIcon = visualizationIcons[report.visualization.type];
 	const groupByLabel =
 		groupByOptions[viewConfig.entityType]?.find(
-			(o) => o.value === viewConfig.groupBy
+			(o) => o.value === viewConfig.groupBy,
 		)?.label ??
 		(viewConfig.groupBy
 			? pathLabel(viewConfig.entityType, viewConfig.groupBy)
@@ -147,7 +145,8 @@ function ReportViewPageContent() {
 			?.label ?? report.visualization.type;
 
 	const isChartVisualization =
-		report.visualization.type !== "table" && report.visualization.type !== "number";
+		report.visualization.type !== "table" &&
+		report.visualization.type !== "number";
 	const metaChips = [
 		entityLabels[viewConfig.entityType] ?? viewConfig.entityType,
 		groupByLabel ? `by ${groupByLabel}` : null,
@@ -157,9 +156,9 @@ function ReportViewPageContent() {
 
 	// pb clears the assistant dock so the utility bar can scroll past it.
 	return (
-		<div className="space-y-6 p-6 pb-24">
+		<div className="workspace-detail workspace-page pb-24">
 			{/* Header */}
-			<div className="flex flex-wrap items-start justify-between gap-3">
+			<div className="workspace-page-header">
 				<div className="flex min-w-0 items-center gap-3">
 					<Button
 						variant="ghost"
@@ -169,7 +168,7 @@ function ReportViewPageContent() {
 					>
 						<ArrowLeft className="h-4 w-4" />
 					</Button>
-					<div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+					<div className="flex size-9 shrink-0 items-center justify-center rounded-sm bg-primary-soft text-primary">
 						<VizIcon className="h-5 w-5" />
 					</div>
 					<div className="min-w-0">
@@ -195,36 +194,40 @@ function ReportViewPageContent() {
 				</div>
 			</div>
 
-			{/* Meta chips */}
-			<div className="flex flex-wrap items-center gap-2">
-				{metaChips.map((chip) => (
-					<span
-						key={chip}
-						className="rounded-full border border-border/60 bg-muted/40 px-2.5 py-1 text-xs font-medium text-muted-foreground"
-					>
-						{chip}
-					</span>
-				))}
-			</div>
-
-			{/* Report */}
-			<div className="flex flex-col rounded-2xl border border-border/60 bg-background shadow-sm">
-				<div className="p-5 sm:p-7">
-					<ReportPreview
-						config={viewConfig}
-						visualization={report.visualization}
+			<div className="workspace-explorer">
+				<aside className="workspace-explorer-rail workspace-panel px-4 py-4">
+					<h2 className="mb-3 text-sm font-semibold text-foreground">
+						Report settings
+					</h2>
+					<div className="flex flex-wrap gap-2">
+						{metaChips.map((chip) => (
+							<span
+								key={chip}
+								className="rounded-sm border border-border bg-muted/40 px-2 py-1 text-xs font-medium text-muted-foreground"
+							>
+								{chip}
+							</span>
+						))}
+					</div>
+				</aside>
+				<div className="workspace-results workspace-panel flex flex-col overflow-hidden">
+					<div className="p-5 sm:p-7">
+						<ReportPreview
+							config={viewConfig}
+							visualization={report.visualization}
+							onBucketClick={openBucket}
+						/>
+					</div>
+					<ReportUtilityBar
+						saved={{ config: viewConfig, visualization: report.visualization }}
+						reportName={report.name}
+						groupByLabel={groupByLabel}
+						rangeLabel={rangeLabel}
+						showCsvDownload
+						onViewContributingData={() => setContributingScope({})}
 						onBucketClick={openBucket}
 					/>
 				</div>
-				<ReportUtilityBar
-					saved={{ config: viewConfig, visualization: report.visualization }}
-					reportName={report.name}
-					groupByLabel={groupByLabel}
-					rangeLabel={rangeLabel}
-					showCsvDownload
-					onViewContributingData={() => setContributingScope({})}
-					onBucketClick={openBucket}
-				/>
 			</div>
 
 			<ReportContributingSheet

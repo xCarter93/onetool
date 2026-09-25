@@ -13,7 +13,7 @@ export const metadata: Metadata = {
 // clears the fixed assistant notch.
 export default function DocumentsPage() {
 	return (
-		<div className="h-[max(28rem,calc(100dvh-10rem))] px-3 pb-12 pt-3 md:h-full md:min-h-0 md:pt-10">
+		<div className="workspace-page h-[max(28rem,calc(100dvh-10rem))] pb-12 md:h-full md:min-h-0">
 			<DriveExplorer />
 		</div>
 	);
