@@ -32,7 +32,7 @@ export default function RootLayout({
 				    layouts since identify() needs auth context. */}
 				<PostHogProvider>
 					<ThemeProvider>
-						<ToastProvider position="top-right" maxToasts={5}>
+						<ToastProvider position="top-right" maxToasts={3}>
 							{children}
 						</ToastProvider>
 					</ThemeProvider>

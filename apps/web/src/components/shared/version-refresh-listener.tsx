@@ -20,16 +20,16 @@ function VersionToast({ onDismiss }: { onDismiss: () => void }) {
 	return (
 		<div
 			role="status"
-			className="pointer-events-auto flex w-full items-start gap-3 rounded-lg border border-border bg-popover p-4 shadow-lg sm:w-[356px]"
+			className="pointer-events-auto flex w-full items-start gap-3 rounded-sm border border-toast-border bg-toast p-4 text-toast-foreground shadow-floating sm:w-[356px]"
 		>
-			<div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+			<div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground">
 				<RefreshCw className="h-4 w-4" aria-hidden />
 			</div>
 			<div className="min-w-0 flex-1">
-				<p className="text-sm font-semibold text-foreground">
+				<p className="text-sm font-semibold">
 					OneTool has been updated
 				</p>
-				<p className="mt-0.5 text-sm text-muted-foreground">
+				<p className="mt-0.5 text-sm text-toast-muted">
 					Refresh to load the latest version.
 				</p>
 				<Button
@@ -44,7 +44,7 @@ function VersionToast({ onDismiss }: { onDismiss: () => void }) {
 				type="button"
 				onClick={onDismiss}
 				aria-label="Dismiss"
-				className="shrink-0 rounded-sm p-1 text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+				className="shrink-0 rounded-sm p-1 text-toast-muted transition-colors hover:text-toast-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
 			>
 				<X className="h-4 w-4" aria-hidden />
 			</button>
