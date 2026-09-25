@@ -50,20 +50,20 @@ export function EditorTopBar({
 			>
 				<ArrowLeft className="h-4 w-4" />
 			</Button>
-			<div className="flex min-w-0 flex-col justify-center">
+			<div className="flex min-w-0 max-w-64 flex-1 flex-col justify-center">
 				<input
 					value={name}
 					onChange={(event) => onNameChange(event.target.value)}
 					placeholder="Automation name"
 					aria-label="Automation name"
-					className="w-64 border-none bg-transparent text-lg font-semibold outline-none focus-visible:ring-0"
+					className="w-full border-none bg-transparent text-lg font-semibold outline-none focus-visible:ring-0"
 				/>
 				<input
 					value={description}
 					onChange={(event) => onDescriptionChange(event.target.value)}
 					placeholder="Add a description..."
 					aria-label="Automation description"
-					className="w-64 border-none bg-transparent text-xs text-muted-foreground outline-none focus-visible:ring-0"
+					className="w-full border-none bg-transparent text-xs text-muted-foreground outline-none focus-visible:ring-0"
 				/>
 			</div>
 			<StatusBadge

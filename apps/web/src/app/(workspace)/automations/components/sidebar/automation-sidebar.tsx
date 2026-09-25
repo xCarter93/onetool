@@ -240,7 +240,7 @@ export function AutomationSidebar({
 
 	return (
 		<div
-			className="absolute bottom-3 right-3 top-3 z-10 flex w-[440px] flex-col overflow-hidden rounded-lg border border-border bg-card shadow-floating motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-right-4"
+			className="absolute bottom-3 right-3 top-3 z-10 flex w-[440px] max-w-[calc(100%-1.5rem)] flex-col overflow-hidden rounded-lg border border-border bg-card shadow-floating motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-right-4"
 		>
 			<div
 				className={cn(

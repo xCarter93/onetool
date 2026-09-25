@@ -118,17 +118,22 @@ export function AutomationEditorScreen({ automationId }: { automationId: string 
 	// their incoming branch edge, same flow as the "+" buttons).
 	// First save-blocking problem per node, shown on the card itself. Placeholder
 	// errors are skipped (the placeholder card is the fix); trigger errors carry
-	// no nodeId and land on the trigger card.
-	const nodeWarnings = useMemo(() => {
-		const out = new Map<string, string>();
-		if (!editor.trigger) return out;
+	// no nodeId and land on the trigger card; formula errors go to the Formulas tab.
+	const { nodeWarnings, formulaWarnings } = useMemo(() => {
+		const nodeWarnings = new Map<string, string>();
+		const formulaWarnings = new Map<string, string>();
+		if (!editor.trigger) return { nodeWarnings, formulaWarnings };
 		const { errors } = validateWorkflowForSave(editor.trigger, editor.nodes, editor.formulas);
 		for (const error of errors) {
 			if (error.type === "placeholder_present") continue;
+			if (error.formulaId) {
+				if (!formulaWarnings.has(error.formulaId)) formulaWarnings.set(error.formulaId, error.message);
+				continue;
+			}
 			const id = error.nodeId ?? TRIGGER_NODE_ID;
-			if (!out.has(id)) out.set(id, error.message);
+			if (!nodeWarnings.has(id)) nodeWarnings.set(id, error.message);
 		}
-		return out;
+		return { nodeWarnings, formulaWarnings };
 	}, [editor.trigger, editor.nodes, editor.formulas]);
 
 	const flowNodes = useMemo(
@@ -284,7 +289,7 @@ export function AutomationEditorScreen({ automationId }: { automationId: string 
 				onNameChange={editor.setName}
 				onDescriptionChange={editor.setDescription}
 				onSave={editor.handleSave}
-				controls={<FlowZoomControls fitViewOptions={FIT_VIEW_OPTIONS} />}
+				controls={<FlowZoomControls fitViewOptions={FIT_VIEW_OPTIONS} className="hidden md:flex" />}
 			/>
 			<div className="flex min-h-0 flex-1 overflow-hidden">
 				<div className="relative min-h-0 min-w-0 flex-1 bg-(--workspace-ground)">
@@ -307,6 +312,7 @@ export function AutomationEditorScreen({ automationId }: { automationId: string 
 						onToggle={() => setDrawerOpen((o) => !o)}
 						formulas={editor.formulas}
 						onFormulasChange={editor.onFormulasChange}
+						formulaWarnings={formulaWarnings}
 						sampleRecords={editor.sampleRecords}
 						execution={editor.execution}
 						isRunning={editor.isRunning}

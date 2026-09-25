@@ -34,6 +34,8 @@ interface WorkflowDrawerProps {
 	onToggle: () => void;
 	formulas: FormulaResource[];
 	onFormulasChange: (next: FormulaResource[]) => void;
+	/** Save-blocking problems keyed by formula id, from validateWorkflowForSave. */
+	formulaWarnings?: Map<string, string>;
 	sampleRecords: SampleRecord[];
 	// Debug tab — dry-run lifecycle (owns what the top bar used to).
 	execution: Doc<"workflowExecutions"> | null | undefined;
@@ -105,6 +107,7 @@ export function WorkflowDrawer({
 	onToggle,
 	formulas,
 	onFormulasChange,
+	formulaWarnings,
 	sampleRecords,
 	execution,
 	isRunning,
@@ -322,10 +325,16 @@ export function WorkflowDrawer({
 										key={f.id}
 										type="button"
 										onClick={() => setFormulaModal({ formula: f })}
-										title={`Edit "${f.name}"`}
+										title={formulaWarnings?.get(f.id) ?? `Edit "${f.name}"`}
 										className="flex w-full items-center gap-2 rounded-md px-2 py-1 text-left transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
 									>
 										<span className="flex-1 truncate text-sm">{f.name}</span>
+										{formulaWarnings?.has(f.id) && (
+											<AlertTriangle
+												className="size-3.5 shrink-0 text-warning-foreground"
+												aria-label={formulaWarnings.get(f.id)}
+											/>
+										)}
 										<span className="shrink-0 rounded-sm bg-muted px-1.5 py-0.5 text-2xs uppercase tracking-wide text-muted-foreground">
 											{RETURN_TYPE_BADGE_LABELS[f.returnType]}
 										</span>
