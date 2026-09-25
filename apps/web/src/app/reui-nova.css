@@ -1315,7 +1315,7 @@
 
   /* MARK: Sonner */
   .cn-toast {
-    @apply rounded-2xl;
+    @apply rounded-sm;
   }
 
   /* MARK: Switch */
