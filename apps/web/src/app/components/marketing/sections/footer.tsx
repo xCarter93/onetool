@@ -8,11 +8,6 @@ import { useEffect, useState } from "react";
 import { useTheme } from "next-themes";
 import { usePrefersReducedMotion } from "../use-reduced-motion";
 
-/* FOOTER — comp lines 641–668. Not a <Section>: the final CTA above already
- * draws the closing hairline. Link columns, tagline and social set are held at
- * parity with the production footer (app/components/footer.tsx); only the
- * inking is the landing's own. */
-
 const ParticleText = dynamic(
 	() => import("@/components/react-bits/particle-text"),
 	{ ssr: false }
@@ -85,18 +80,11 @@ const SOCIAL: {
 const FOOTER_LINK =
 	"rounded-sm text-sm text-(--ink-2) transition-colors hover:text-(--ink) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--accent-ink)";
 
-/* Quiet zinc with one sky fleck — the comp's wordmarkColors, both themes. */
 const LIGHT_COLORS = ["#d4d4d8", "#d4d4d8", "#a1a1aa", "#0284c7"];
 const DARK_COLORS = ["#3f3f46", "#3f3f46", "#52525b", "#00a6f4"];
-/** Module-level: an inline literal is an effect dep — it would re-init every particle each render. */
+// Keep this stable so ParticleText does not reinitialize on every render.
 const MOUSE_CONTROLS = { enabled: true, radius: 130, strength: 4 };
 
-/**
- * The sheet-bottom OneTool wordmark as settling graphite. Artwork, not text:
- * aria-hidden, and a plain static word under reduced motion or before the
- * hashed next/font family has actually loaded (the canvas would otherwise
- * rasterize the fallback face).
- */
 function ParticleWordmark() {
 	const { resolvedTheme } = useTheme();
 	const reduced = usePrefersReducedMotion();
@@ -140,7 +128,6 @@ function ParticleWordmark() {
 }
 
 function FooterItem({ item }: { item: FooterLink }) {
-	// mailto: stays a plain <a>; real routes get the router.
 	if (!item.href.startsWith("/")) {
 		return (
 			<a href={item.href} className={FOOTER_LINK}>
@@ -180,10 +167,8 @@ export function MarketingFooter() {
 							/>
 						</Link>
 						<p className="text-[14.5px] leading-[1.65] text-(--ink-2)">
-							Streamlining business operations for companies that serve their
-							communities. Built by entrepreneurs, for entrepreneurs.
+							Clients, jobs, quotes, and payments together for the people doing the work.
 						</p>
-						{/* landing.css owns smooth scroll (and its reduced-motion downgrade). */}
 						<a href="#top" className={`${FOOTER_LINK} justify-self-start`}>
 							Back to top <span aria-hidden="true">↑</span>
 						</a>
@@ -214,8 +199,7 @@ export function MarketingFooter() {
 					<p className="text-[13.5px] text-(--ink-3)">
 						© {new Date().getFullYear()} OneTool. All rights reserved.
 					</p>
-					{/* Negative margin cancels the padding that grows each icon to a 44px
-					    target, so the glyphs keep their visual gap against the rule. */}
+					{/* Offset the icon targets so the glyphs align with the rule. */}
 					<div className="-mx-2.5 flex gap-x-1">
 						{SOCIAL.map((item) => (
 							<a

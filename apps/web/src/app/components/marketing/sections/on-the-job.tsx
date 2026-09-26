@@ -2,20 +2,9 @@ import Image from "next/image";
 import PerspectiveGrid from "@/components/react-bits/perspective-grid";
 import { Iphone } from "@/components/ui/iphone";
 import { AmbientLayer } from "../ambient";
-import { CheckItem, Eyebrow, Lede, Section, SectionHeading } from "../primitives";
+import { CheckItem, Lede, Section, SectionHeading } from "../primitives";
 
-/* On the job — the "it's already in your pocket" story. A truck-cab photo with
- * the shipping iOS app standing in front of it, in the shared Iphone frame the
- * rest of the app uses. The screen is a real capture, not a rebuilt mock.
- *
- * This section used to sell offline ("even with no signal at all"). It is not
- * built: apps/mobile has no offline code, only a PRD. Everything claimed below
- * is live in the shipped App Store build, and offline is named as roadmap in
- * one line rather than promised in the heading. Do not put it back until the
- * outbox actually ships. */
-
-const APP_STORE_URL =
-	"https://apps.apple.com/us/app/onetool-small-business-crm/id6757319255";
+import { AppStoreBadge } from "../story/app-store-badge";
 
 export function OnTheJob() {
 	return (
@@ -25,10 +14,7 @@ export function OnTheJob() {
 			className="overflow-hidden"
 			containerClassName="grid grid-cols-[repeat(auto-fit,minmax(min(100%,340px),1fr))] items-center gap-[clamp(28px,4vw,64px)]"
 		>
-			{/* The road ahead — an ink grid receding to the horizon, kept to a
-			    whisper and masked away from the top so it never crowds the phone.
-			    bottomFade="" is load-bearing: its default paints an opaque black DOM
-			    gradient that would black out the paper. */}
+			{/* Disable the grid's opaque black fade on the paper background. */}
 			<AmbientLayer
 				opacity={0.08}
 				fullBleed
@@ -49,8 +35,7 @@ export function OnTheJob() {
 			</AmbientLayer>
 
 			<div className="relative">
-				<Eyebrow>On the job</Eyebrow>
-				<SectionHeading size="md">
+				<SectionHeading size="md" className="mt-0">
 					Your whole day&rsquo;s work, in your pocket.
 				</SectionHeading>
 				<Lede className="max-w-[32rem]">
@@ -63,19 +48,10 @@ export function OnTheJob() {
 					<CheckItem>The day&rsquo;s visits, addresses and notes on your phone</CheckItem>
 					<CheckItem>Switch between organisations on the go</CheckItem>
 				</ul>
-				{/* Named, not buried: the compare table says "coming soon" in the
-				    offline row, and this section has to agree with it. */}
 				<p className="mt-4 max-w-[30rem] text-[13px] leading-[1.6] text-(--ink-3)">
-					Working with no signal at all is coming — for now the app needs a connection.
+					The app needs an internet connection.
 				</p>
-				<a
-					href={APP_STORE_URL}
-					target="_blank"
-					rel="noopener noreferrer"
-					className="mt-7 inline-flex items-center gap-2 text-[16px] font-semibold text-(--accent-ink)"
-				>
-					Get it on the App Store <span aria-hidden="true">→</span>
-				</a>
+				<AppStoreBadge className="mt-7 h-11" />
 			</div>
 
 			<div className="relative min-h-[clamp(400px,44vw,600px)] overflow-hidden rounded-[18px]">
@@ -88,7 +64,6 @@ export function OnTheJob() {
 					style={{ filter: "saturate(.62) contrast(.96)" }}
 				/>
 
-				{/* paper gradient — settles the photo back into the page */}
 				<div
 					aria-hidden="true"
 					className="pointer-events-none absolute inset-0"
@@ -98,9 +73,7 @@ export function OnTheJob() {
 					}}
 				/>
 
-				{/* Height-driven: the wrapper carries the frame ratio so the whole
-				    device fits the photo no matter how the section reflows. Sizing the
-				    Iphone on both axes would drop its ratio and letterbox the screen. */}
+				{/* Height controls the phone size without changing its aspect ratio. */}
 				<div className="absolute left-1/2 top-1/2 aspect-[433/882] h-[86%] -translate-x-1/2 -translate-y-1/2 drop-shadow-[0_26px_54px_rgba(16,24,40,0.38)]">
 					<Iphone
 						src="/landing/app-today.webp"

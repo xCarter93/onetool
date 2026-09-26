@@ -3,62 +3,58 @@
 import { useId, useState } from "react";
 import { cn } from "@/lib/utils";
 import { LAUNCH_PROMO, useLaunchPromoActive } from "@/lib/promo";
+import { Lede, Section, SectionHeading } from "../primitives";
 import { AmbientLayer } from "../ambient";
-import { Eyebrow, Lede, Section, SectionHeading } from "../primitives";
 import { FaqHalftoneScene } from "../section-halftone-scenes";
-
-/* FAQ — the live production question set. The panel animates on
- * grid-template-rows 0fr→1fr so nothing has to be measured; landing.css already
- * disables the transition under prefers-reduced-motion. */
 
 const FAQS: ReadonlyArray<readonly [string, string]> = [
 	[
 		"What is OneTool and who is it for?",
-		"OneTool is a comprehensive business management platform designed for small business owners, contractors, landscapers, HVAC technicians, electricians, and other service professionals. It streamlines client management, project tracking, quoting, invoicing, and task scheduling in one unified platform.",
+		"OneTool helps field-service businesses keep clients, jobs, quotes, invoices, and schedules together. It is built for small teams doing work at customers' homes and businesses.",
 	],
 	[
 		"How does OneTool help me manage my clients?",
-		"OneTool provides a centralized database for all your client information, including contact details, service history, property information, and communication logs. You can easily search, filter, and organize clients, set up automated reminders, and track every interaction to deliver exceptional service.",
+		"Keep each client's contact details, properties, work history, and messages together. Search or filter the list when you need to find someone quickly.",
 	],
 	[
 		"Can I create and send professional quotes and invoices?",
-		"Yes! OneTool includes a powerful quoting and invoicing system. Create customized quotes with line items, taxes, and your company branding. Send them directly via email with e-signature capabilities for quick approvals. Convert approved quotes to invoices with one click and track payment status.",
+		"Yes. Add line items and tax, then email the quote for your client to review and sign. Once approved, convert it to an invoice and track its payment.",
 	],
 	[
 		"Can I receive payments directly to my bank account?",
-		"Yes, on every plan, including Free. Connect a bank account through our Stripe integration and clients pay their invoices by card from your client portal, with the money landing in your own Stripe account.",
+		"Yes, on every plan, including Free. Connect Stripe, then let clients pay invoices by card through their portal. Stripe handles payouts to your connected bank account.",
 	],
 	[
 		"Can I email clients directly from OneTool?",
-		"Yes, we offer the ability to draft professional emails to clients from directly within OneTool. We also support email threads so you can keep track of responses and replies without having to leave OneTool.",
+		"Yes. Write to clients from OneTool and follow their replies in the shared inbox.",
 	],
 	[
 		"Is OneTool accessible on mobile devices?",
-		"Absolutely. OneTool is built as a responsive web application that works seamlessly on smartphones, tablets, and desktop computers. We also have a native iOS app available now on the App Store that lets you view and manage your projects, tasks, and clients for each organization you're part of - all on the go. Access your data and stay productive from anywhere with an internet connection.",
+		"Yes. The web app works on phones and tablets, and the native app is available on iPhone and iPad. Use it to check your schedule, look up clients, send quotes, and record work in the field. An internet connection is required.",
 	],
 	[
 		"How does task scheduling work?",
-		"OneTool's task scheduling system lets you create tasks, assign them to team members, set due dates and priorities, and track completion status. You can view tasks in list or calendar format, set reminders, and get notifications when tasks are completed or overdue.",
+		"Create tasks, assign them to teammates, and set due dates and priorities. The schedule shows what is coming up and what is overdue.",
 	],
 	[
 		"Can multiple team members use OneTool?",
-		"Yes! OneTool supports team collaboration with organization-based access. Add team members to your organization, assign roles and permissions, and work together in real-time. Everyone stays synchronized with instant updates across all devices. The free plan includes 5 team members and the Business plan includes 20.",
+		"Yes. Invite teammates, set their roles and permissions, and work from the same records. Free includes 5 seats; Business includes 20.",
 	],
 	[
 		"What kind of support do you offer?",
-		"We provide detailed documentation, video tutorials, and email support. Free accounts get best-effort replies; Business accounts get priority support with a 24-hour response SLA.",
+		"The help center covers the core workflows, and you can email our support team. Free support is best effort. Business includes a 24-hour response commitment.",
 	],
 	[
 		"How secure is my data?",
-		"Security is our top priority. OneTool uses industry-standard encryption for data transmission and storage. Your data is hosted on secure servers with regular backups, and we comply with data protection regulations. You maintain full ownership of your data and can export it at any time.",
+		"OneTool uses Clerk for sign-in and scopes business records to your organization. Read our Data security page for details on how we protect and handle your information.",
 	],
 	[
 		"Can I import my existing client data?",
-		"Yes! OneTool supports CSV imports on every plan, making it easy to migrate your existing client data. Simply export your data from your current system, map the fields, and import it into OneTool. The free plan includes 2,000 imported rows in total, and the Business plan has no import limit.",
+		"Yes. Upload a CSV and map its columns to client fields. Free includes 2,000 imported rows in total; Business has no import row limit.",
 	],
 	[
 		"How does the free trial work?",
-		"Every new organization starts with a 14-day trial of the Business plan, applied automatically when it is created. There is no credit card and nothing to cancel: when the trial ends, you simply continue on the free plan with all of your data intact. Upgrade from the Billing tab whenever it makes sense.",
+		"Every new organization gets Business for 14 days without entering a card. After the trial, it moves to Free with its data intact. Upgrade from Billing whenever you need to.",
 	],
 	[
 		"What are the free plan's limits?",
@@ -75,8 +71,6 @@ const DISCOUNT_FAQ: readonly [string, string] = [
 	`Yes. Through ${LAUNCH_PROMO.endsLabel} we are running a launch offer: ${LAUNCH_PROMO.annual.label.toLowerCase()} of Business on the annual plan, or ${LAUNCH_PROMO.monthly.label.toLowerCase()} on monthly. Your promo codes are shown when you create your organization and on the Billing tab, and you enter one at checkout under "Add promo code".`,
 ];
 
-// The discount entry rides directly after the trial question and disappears
-// with the promo window.
 const DISCOUNT_FAQ_INDEX =
 	FAQS.findIndex(([question]) => question === "How does the free trial work?") +
 	1;
@@ -100,16 +94,15 @@ export function Faq() {
 			className="overflow-hidden"
 			containerClassName="grid grid-cols-[repeat(auto-fit,minmax(min(100%,280px),1fr))] gap-[clamp(28px,4vw,72px)]"
 		>
-			{/* Halftone scene: the place you walk up to and ask — a polytunnel and
-			    its planters on the left, the lit office with a bench and a lamp
-			    post outside it on the right. */}
-			<AmbientLayer opacity={0.7} fullBleed>
+			<AmbientLayer fullBleed opacity={0.7}>
 				<FaqHalftoneScene />
 			</AmbientLayer>
 
+
 			<div className="relative">
-				<Eyebrow>FAQ</Eyebrow>
-				<SectionHeading size="md">Straight answers</SectionHeading>
+				<SectionHeading size="md" className="mt-0">
+					Straight answers
+				</SectionHeading>
 				<Lede className="max-w-[24rem]">
 					Anything else, email{" "}
 					<a
@@ -163,7 +156,7 @@ export function Faq() {
 								role="region"
 								aria-labelledby={triggerId}
 								className={cn(
-									"grid transition-[grid-template-rows,opacity] duration-[450ms] ease-[cubic-bezier(.23,1,.32,1)]",
+									"grid transition-[grid-template-rows,opacity] duration-[240ms] ease-[cubic-bezier(.23,1,.32,1)] motion-reduce:transition-none",
 									open ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"
 								)}
 							>
