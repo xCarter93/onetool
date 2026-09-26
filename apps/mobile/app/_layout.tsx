@@ -1,10 +1,8 @@
 import {
 	ClerkProvider,
 	ClerkLoaded,
-	useAuth,
 	useOrganization,
 } from "@clerk/expo";
-import { ConvexProviderWithClerk } from "convex/react-clerk";
 import {
 	ConvexReactClient,
 	useConvexAuth,
@@ -22,6 +20,10 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { useEffect, useState, type PropsWithChildren } from "react";
 import { tokenCache } from "@clerk/expo/token-cache";
+import { resourceCache } from "@clerk/expo/resource-cache";
+import { ConvexClerkOfflineProvider } from "@/lib/offline/convex-auth";
+import { OfflineProvider } from "@/lib/offline/OfflineProvider";
+import { ConnectToSignInGate } from "@/components/offline/connect-to-sign-in";
 import { useDevice } from "@/lib/use-device";
 import { useNotificationData } from "@/lib/use-notification-data";
 import { useFonts } from "expo-font";
@@ -66,13 +68,9 @@ function ConvexClerkProvider({ children }: PropsWithChildren) {
 	// Keying on the active org id remounts the provider on org change, so we get
 	// a fresh auth token with the new organization context.
 	return (
-		<ConvexProviderWithClerk
-			key={organization?.id ?? "no-org"}
-			client={convex}
-			useAuth={useAuth}
-		>
-			{children as any}
-		</ConvexProviderWithClerk>
+		<ConvexClerkOfflineProvider key={organization?.id ?? "no-org"} client={convex}>
+			<OfflineProvider>{children}</OfflineProvider>
+		</ConvexClerkOfflineProvider>
 	);
 }
 
@@ -210,13 +208,18 @@ export default function RootLayout() {
 		    frame hand-off below is timing-sensitive and the assistant is never
 		    the first interaction. */}
 		<KeyboardProvider enabled={Platform.OS === "ios"} preload={false}>
-		<ClerkProvider publishableKey={publishableKey} tokenCache={tokenCache}>
+		<ClerkProvider
+			publishableKey={publishableKey}
+			tokenCache={tokenCache}
+			__experimental_resourceCache={resourceCache}
+		>
 			<LaunchHost fontsLoaded={fontsLoaded} fontError={fontError}>
 				{/* PushRegistrationHost mirrors LaunchHost: foreground handler + tap
 				    listeners + cross-org setActive live ABOVE the Convex remount
 				    boundary so an org switch never tears them down. The token-write /
 				    markRead / badge child (PushConvexChild) sits UNDER Convex. */}
 				<PushRegistrationHost>
+					<ConnectToSignInGate>
 					<ClerkLoaded>
 						<ConvexClerkProvider>
 							<PushConvexChild />
@@ -325,6 +328,7 @@ export default function RootLayout() {
 							</View>
 						</ConvexClerkProvider>
 					</ClerkLoaded>
+					</ConnectToSignInGate>
 				</PushRegistrationHost>
 			</LaunchHost>
 		</ClerkProvider>

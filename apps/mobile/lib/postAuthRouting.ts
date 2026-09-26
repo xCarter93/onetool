@@ -6,10 +6,13 @@
 export type AuthRoutingState = {
 	// Clerk auth resolved (useAuth().isLoaded). Gates EVERY decision.
 	authLoaded: boolean;
-	// Org context resolved (useOrganization + useOrganizationList). Only
-	// meaningful for a signed-in user — the org hooks never reach isLoaded:true
-	// without an active session, so the signed-out path must NOT wait on it.
+	// useOrganization() resolved. Only meaningful for a signed-in user — the org
+	// hooks never reach isLoaded:true without an active session, so the
+	// signed-out path must NOT wait on it.
 	orgLoaded: boolean;
+	// useOrganizationList() resolved. Only the no-active-org branch needs it, so
+	// an offline cold start with a cached active org never waits on the list.
+	membershipsLoaded: boolean;
 	isSignedIn: boolean;
 	hasActiveOrg: boolean;
 	membershipCount: number;
@@ -45,6 +48,7 @@ export function resolveAuthDestination(state: AuthRoutingState): string {
 	// Business details editor instead. `needsMetadata` stays on the state for
 	// callers but is intentionally NOT a routing gate anymore.
 	if (state.hasActiveOrg) return TABS;
+	if (!state.membershipsLoaded) return LOADING;
 
 	// Signed in, no active org: existing members and brand-new accounts both go
 	// to the setup screen. It activates the first existing membership when there
