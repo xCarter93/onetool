@@ -175,6 +175,7 @@ body.style-nova:not(:has(.dc-landing)):has(.workspace-zone) [data-slot="frame-pa
 body.style-nova:not(:has(.dc-landing)):has(.workspace-zone) .workspace-record-tabs {
 	width: 100%;
 	max-width: 100%;
+	height: auto;
 	justify-content: flex-start;
 	gap: 16px;
 	padding: 0;
@@ -183,6 +184,8 @@ body.style-nova:not(:has(.dc-landing)):has(.workspace-zone) .workspace-record-ta
 	border-radius: 0;
 	background: transparent;
 	overflow-x: auto;
+	overflow-y: hidden;
+	scrollbar-width: none;
 }
 body.style-nova:not(:has(.dc-landing)):has(.workspace-zone) .workspace-record-tabs .cn-tabs-trigger {
 	flex: 0 0 auto;
