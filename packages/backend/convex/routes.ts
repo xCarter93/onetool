@@ -1,4 +1,4 @@
-import { ConvexError, v } from "convex/values";
+import { ConvexError, v, type Infer } from "convex/values";
 import { Doc, Id } from "./_generated/dataModel";
 import {
 	optionalUserQuery,
@@ -9,6 +9,7 @@ import { ActivityHelpers } from "./lib/activities";
 import { getMembership } from "./lib/memberships";
 import { requireFeature } from "./lib/entitlements";
 import { emptyListResult } from "./lib/queries";
+import { withReceipt } from "./lib/mutationReceipts";
 import {
 	filterActiveScheduledItems,
 	isSuppressedRecurringProject,
@@ -38,6 +39,17 @@ const stopStatusValidator = v.union(
 	v.literal("visited"),
 	v.literal("skipped")
 );
+
+// Stable stop identity for a queued offline replay after a reorder shifts
+// `order` (PRD-mobile-offline §3.5) — content match, not the ordinal index.
+const stopRefValidator = v.object({
+	propertyId: v.optional(v.id("clientProperties")),
+	taskId: v.optional(v.id("tasks")),
+	projectId: v.optional(v.id("projects")),
+	label: v.string(),
+	latitude: v.number(),
+	longitude: v.number(),
+});
 
 export const stopValidator = v.object({
 	propertyId: v.optional(v.id("clientProperties")),
@@ -268,64 +280,117 @@ export const remove = userMutation({
 	},
 });
 
+function stopRefMatches(stop: RouteStop, ref: Infer<typeof stopRefValidator>): boolean {
+	return (
+		(stop.propertyId ?? null) === (ref.propertyId ?? null) &&
+		(stop.taskId ?? null) === (ref.taskId ?? null) &&
+		(stop.projectId ?? null) === (ref.projectId ?? null) &&
+		stop.label === ref.label &&
+		stop.latitude === ref.latitude &&
+		stop.longitude === ref.longitude
+	);
+}
+
+function stopNotFound(): never {
+	throw new ConvexError({
+		code: "CONFLICT",
+		reason: "STOP_NOT_FOUND",
+		message: "This stop is no longer on the route.",
+	});
+}
+
 /** Mark a single stop's completion status on a daily route (not input data — computed fields are untouched). */
 export const setStopStatus = userMutation({
 	args: {
 		routeId: v.id("routes"),
 		order: v.number(),
 		status: stopStatusValidator,
+		idempotencyKey: v.optional(v.string()),
+		// Content-match identity: survives a reorder that shifts `order` (§3.5).
+		stopRef: v.optional(stopRefValidator),
 	},
 	handler: async (ctx, args): Promise<void> => {
 		await requirePremium(ctx);
 		await ctx.requireLevel("clients", "view");
 
-		const route = await ctx.orgEntity("routes", args.routeId);
-		if (route.kind !== "daily") {
-			throw new Error("Only daily routes track stop completion");
-		}
-		if (!route.stops.some((s) => s.order === args.order)) {
-			throw new Error("Stop not found");
-		}
+		return withReceipt(ctx, args.idempotencyKey, "routes.setStopStatus", args, async () => {
+			const route = await ctx.orgEntity("routes", args.routeId);
+			if (route.kind !== "daily") {
+				throw new Error("Only daily routes track stop completion");
+			}
 
-		const stops = route.stops.map((s) =>
-			s.order === args.order
-				? {
-						...s,
-						status: args.status,
-						visitedAt: args.status === "visited" ? Date.now() : undefined,
-					}
-				: s
-		);
+			// Legacy plain-Error path stays for callers that send neither field (Routes screen renders e.message).
+			const usesOfflineContract =
+				args.idempotencyKey !== undefined || args.stopRef !== undefined;
 
-		await ctx.db.patch(route._id, { stops });
+			let targetOrder = args.order;
+			if (args.stopRef !== undefined) {
+				const matches = route.stops.filter((s) => stopRefMatches(s, args.stopRef!));
+				const target =
+					matches.length === 1
+						? matches[0]
+						: matches.find((s) => s.order === args.order);
+				if (!target) return stopNotFound();
+				targetOrder = target.order;
+			} else if (!route.stops.some((s) => s.order === args.order)) {
+				if (usesOfflineContract) return stopNotFound();
+				throw new Error("Stop not found");
+			}
+
+			const stops = route.stops.map((s) =>
+				s.order === targetOrder
+					? {
+							...s,
+							status: args.status,
+							visitedAt: args.status === "visited" ? Date.now() : undefined,
+						}
+					: s
+			);
+
+			await ctx.db.patch(route._id, { stops });
+		});
 	},
 });
 
 /**
  * Mark a daily route as started. Idempotent while in progress; calling on a
- * previously completed route restarts it (clears completedAt, resets startedAt).
+ * previously completed route restarts it (clears completedAt, resets startedAt)
+ * unless `ifNotCompleted` is set, in which case a completed route is a conflict.
  */
 export const startRoute = userMutation({
-	args: { routeId: v.id("routes") },
+	args: {
+		routeId: v.id("routes"),
+		idempotencyKey: v.optional(v.string()),
+		ifNotCompleted: v.optional(v.boolean()),
+	},
 	handler: async (ctx, args): Promise<void> => {
 		await requirePremium(ctx);
 		await ctx.requireLevel("clients", "view");
 
-		const route = await ctx.orgEntity("routes", args.routeId);
-		if (route.kind !== "daily") {
-			throw new Error("Only daily routes track completion");
-		}
+		return withReceipt(ctx, args.idempotencyKey, "routes.startRoute", args, async () => {
+			const route = await ctx.orgEntity("routes", args.routeId);
+			if (route.kind !== "daily") {
+				throw new Error("Only daily routes track completion");
+			}
 
-		if (route.completedAt !== undefined) {
-			// Restart: clear completion and begin a fresh run.
-			await ctx.db.patch(route._id, {
-				startedAt: Date.now(),
-				completedAt: undefined,
-			});
-			return;
-		}
-		if (route.startedAt !== undefined) return; // already started
-		await ctx.db.patch(route._id, { startedAt: Date.now() });
+			if (route.completedAt !== undefined) {
+				if (args.ifNotCompleted) {
+					throw new ConvexError({
+						code: "CONFLICT",
+						reason: "ROUTE_ALREADY_COMPLETED",
+						message: "This route was already completed.",
+					});
+				}
+				// Restart: clear completion and begin a fresh run.
+				await ctx.db.patch(route._id, {
+					startedAt: Date.now(),
+					completedAt: undefined,
+				});
+				return;
+			}
+			if (route.startedAt !== undefined) return; // already started
+			await ctx.db.patch(route._id, { startedAt: Date.now() });
+		});
 	},
 });
 
@@ -334,24 +399,29 @@ export const startRoute = userMutation({
  * completed records a route_completed activity feed entry.
  */
 export const completeRoute = userMutation({
-	args: { routeId: v.id("routes") },
+	args: {
+		routeId: v.id("routes"),
+		idempotencyKey: v.optional(v.string()),
+	},
 	handler: async (ctx, args): Promise<void> => {
 		await requirePremium(ctx);
 		await ctx.requireLevel("clients", "view");
 
-		const route = await ctx.orgEntity("routes", args.routeId);
-		if (route.kind !== "daily") {
-			throw new Error("Only daily routes track completion");
-		}
-		if (route.completedAt !== undefined) return; // already completed
+		return withReceipt(ctx, args.idempotencyKey, "routes.completeRoute", args, async () => {
+			const route = await ctx.orgEntity("routes", args.routeId);
+			if (route.kind !== "daily") {
+				throw new Error("Only daily routes track completion");
+			}
+			if (route.completedAt !== undefined) return; // already completed
 
-		const now = Date.now();
-		await ctx.db.patch(route._id, {
-			completedAt: now,
-			// Defensive: a route completed without an explicit start still gets one.
-			startedAt: route.startedAt ?? now,
+			const now = Date.now();
+			await ctx.db.patch(route._id, {
+				completedAt: now,
+				// Defensive: a route completed without an explicit start still gets one.
+				startedAt: route.startedAt ?? now,
+			});
+			await ActivityHelpers.routeCompleted(ctx, route);
 		});
-		await ActivityHelpers.routeCompleted(ctx, route);
 	},
 });
 

@@ -1,11 +1,12 @@
 import { query, QueryCtx, MutationCtx } from "./_generated/server";
 import { mutation } from "./lib/triggers";
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 import { Doc, Id } from "./_generated/dataModel";
 import { getCurrentUserOrgId } from "./lib/auth";
 import { ActivityHelpers } from "./lib/activities";
 import { DateUtils } from "./lib/shared";
 import { requireMembership } from "./lib/memberships";
+import { assertExpectedValues, withReceipt } from "./lib/mutationReceipts";
 import {
 	validateParentAccess,
 	validatePropertyClientAccess,
@@ -623,115 +624,124 @@ export const update = userMutation({
 			)
 		),
 		repeatUntil: v.optional(v.number()),
+		// Offline sync (PRD-mobile-offline §4.6, §3.5) — both additive/optional.
+		idempotencyKey: v.optional(v.string()),
+		expectedValues: v.optional(v.record(v.string(), v.any())),
 	},
 	handler: async (ctx, args): Promise<TaskId> => {
 		await ctx.requireLevel("tasks", "modify");
 
-		const { id, ...updates } = args;
+		const { id, idempotencyKey, expectedValues, ...updates } = args;
 
-		// Validate title is not empty if being updated
-		if (updates.title !== undefined && !updates.title.trim()) {
-			throw new Error("Task title cannot be empty");
-		}
-
-		// Validate time format if provided
-		if (
-			updates.startTime &&
-			!/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/.test(updates.startTime)
-		) {
-			throw new Error("Invalid start time format. Use HH:MM format");
-		}
-
-		if (
-			updates.endTime &&
-			!/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/.test(updates.endTime)
-		) {
-			throw new Error("Invalid end time format. Use HH:MM format");
-		}
-
-		// Filter and validate updates
-		const filteredUpdates = filterUndefined(updates);
-		requireUpdates(filteredUpdates);
-
-		// Get current task for validation
-		const currentTask = await ctx.orgEntity("tasks", id);
-		await ctx.requireRecordScope(
-			"tasks",
-			() => currentTask.assigneeUserId === ctx.user._id
-		);
-		const oldStatus = currentTask.status;
-		if (
-			currentTask.projectId &&
-			filteredUpdates.status !== undefined &&
-			filteredUpdates.status !== "cancelled"
-		) {
-			const project = await ctx.db.get(currentTask.projectId);
-			if (project && isSuppressedRecurringProject(project)) {
-				throw new Error(
-					"Tasks on a suspended recurring project cannot be activated"
-				);
+		return withReceipt(ctx, idempotencyKey, "tasks.update", args, async () => {
+			// Validate title is not empty if being updated
+			if (updates.title !== undefined && !updates.title.trim()) {
+				throw new Error("Task title cannot be empty");
 			}
-		}
 
-		// Validate time logic with current or updated values
-		const startTime =
-			(filteredUpdates.startTime as string | undefined) ??
-			currentTask.startTime;
-		const endTime =
-			(filteredUpdates.endTime as string | undefined) ?? currentTask.endTime;
+			// Validate time format if provided
+			if (
+				updates.startTime &&
+				!/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/.test(updates.startTime)
+			) {
+				throw new Error("Invalid start time format. Use HH:MM format");
+			}
 
-		if (startTime && endTime && startTime >= endTime) {
-			throw new Error("End time must be after start time");
-		}
+			if (
+				updates.endTime &&
+				!/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/.test(updates.endTime)
+			) {
+				throw new Error("Invalid end time format. Use HH:MM format");
+			}
 
-		// Check if task is being completed
-		const wasCompleted = currentTask.status === "completed";
-		const isBeingCompleted =
-			filteredUpdates.status === "completed" && !wasCompleted;
+			// Filter and validate updates
+			const filteredUpdates = filterUndefined(updates);
+			requireUpdates(filteredUpdates);
 
-		// If being completed, set completion time
-		if (isBeingCompleted) {
-			(filteredUpdates as Partial<TaskDocument>).completedAt = Date.now();
-		}
+			// Get current task for validation
+			const currentTask = await ctx.orgEntity("tasks", id);
+			await ctx.requireRecordScope(
+				"tasks",
+				() => currentTask.assigneeUserId === ctx.user._id
+			);
+			assertExpectedValues(
+				currentTask as unknown as Record<string, unknown>,
+				expectedValues
+			);
+			const oldStatus = currentTask.status;
+			if (
+				currentTask.projectId &&
+				filteredUpdates.status !== undefined &&
+				filteredUpdates.status !== "cancelled"
+			) {
+				const project = await ctx.db.get(currentTask.projectId);
+				if (project && isSuppressedRecurringProject(project)) {
+					throw new Error(
+						"Tasks on a suspended recurring project cannot be activated"
+					);
+				}
+			}
 
-		await updateTaskWithValidation(
-			ctx,
-			id,
-			filteredUpdates as Partial<TaskDocument>
-		);
+			// Validate time logic with current or updated values
+			const startTime =
+				(filteredUpdates.startTime as string | undefined) ??
+				currentTask.startTime;
+			const endTime =
+				(filteredUpdates.endTime as string | undefined) ?? currentTask.endTime;
 
-		// Get updated task for activity logging
-		const task = await ctx.db.get(id);
-		if (task) {
+			if (startTime && endTime && startTime >= endTime) {
+				throw new Error("End time must be after start time");
+			}
+
+			// Check if task is being completed
+			const wasCompleted = currentTask.status === "completed";
+			const isBeingCompleted =
+				filteredUpdates.status === "completed" && !wasCompleted;
+
+			// If being completed, set completion time
 			if (isBeingCompleted) {
-				await ActivityHelpers.taskCompleted(ctx, task as TaskDocument);
-				await markTaskStopsVisited(ctx, task.orgId, task as TaskDocument);
+				(filteredUpdates as Partial<TaskDocument>).completedAt = Date.now();
 			}
 
-			// Emit status change event if status changed
-			if (args.status && args.status !== oldStatus) {
-				await emitStatusChangeEvent(
+			await updateTaskWithValidation(
+				ctx,
+				id,
+				filteredUpdates as Partial<TaskDocument>
+			);
+
+			// Get updated task for activity logging
+			const task = await ctx.db.get(id);
+			if (task) {
+				if (isBeingCompleted) {
+					await ActivityHelpers.taskCompleted(ctx, task as TaskDocument);
+					await markTaskStopsVisited(ctx, task.orgId, task as TaskDocument);
+				}
+
+				// Emit status change event if status changed
+				if (args.status && args.status !== oldStatus) {
+					await emitStatusChangeEvent(
+						ctx,
+						task.orgId,
+						"task",
+						task._id,
+						oldStatus,
+						args.status,
+						"tasks.update"
+					);
+				}
+
+				await emitRecordUpdatedEvent(
 					ctx,
 					task.orgId,
 					"task",
 					task._id,
-					oldStatus,
-					args.status,
+					Object.keys(filteredUpdates).filter((key) => key !== "updatedAt"),
 					"tasks.update"
 				);
 			}
 
-			await emitRecordUpdatedEvent(
-				ctx,
-				task.orgId,
-				"task",
-				task._id,
-				Object.keys(filteredUpdates).filter((key) => key !== "updatedAt"),
-				"tasks.update"
-			);
-		}
-
-		return id;
+			return id;
+		});
 	},
 });
 
@@ -739,67 +749,78 @@ export const update = userMutation({
  * Mark a task as completed
  */
 export const complete = userMutation({
-	args: { id: v.id("tasks") },
+	args: {
+		id: v.id("tasks"),
+		idempotencyKey: v.optional(v.string()),
+	},
 	handler: async (ctx, args): Promise<TaskId> => {
 		await ctx.requireLevel("tasks", "modify");
 
-		const task = await ctx.orgEntity("tasks", args.id);
-		await ctx.requireRecordScope(
-			"tasks",
-			() => task.assigneeUserId === ctx.user._id
-		);
+		return withReceipt(ctx, args.idempotencyKey, "tasks.complete", args, async () => {
+			const task = await ctx.orgEntity("tasks", args.id);
+			await ctx.requireRecordScope(
+				"tasks",
+				() => task.assigneeUserId === ctx.user._id
+			);
 
-		if (task.status === "completed") {
-			throw new Error("Task is already completed");
-		}
-		if (task.projectId) {
-			const project = await ctx.db.get(task.projectId);
-			if (project && isSuppressedRecurringProject(project)) {
-				throw new Error(
-					"Tasks on a suspended recurring project cannot be completed"
+			if (task.status === "completed") {
+				throw new ConvexError({
+					code: "CONFLICT",
+					reason: "TASK_ALREADY_COMPLETED",
+					message: "Task is already completed",
+				});
+			}
+			if (task.projectId) {
+				const project = await ctx.db.get(task.projectId);
+				if (project && isSuppressedRecurringProject(project)) {
+					throw new ConvexError({
+						code: "RECURRING_PROJECT_SUSPENDED",
+						message:
+							"Tasks on a suspended recurring project cannot be completed",
+					});
+				}
+			}
+
+			const oldStatus = task.status;
+
+			await ctx.db.patch(args.id, {
+				status: "completed",
+				completedAt: Date.now(),
+			});
+
+			// Log activity and emit events (mirror tasks.update so completion via
+			// the quick-complete checkbox also triggers automations)
+			const updatedTask = await ctx.db.get(args.id);
+			if (updatedTask) {
+				await ActivityHelpers.taskCompleted(ctx, updatedTask as TaskDocument);
+				await markTaskStopsVisited(
+					ctx,
+					updatedTask.orgId,
+					updatedTask as TaskDocument
+				);
+
+				await emitStatusChangeEvent(
+					ctx,
+					updatedTask.orgId,
+					"task",
+					updatedTask._id,
+					oldStatus,
+					"completed",
+					"tasks.complete"
+				);
+
+				await emitRecordUpdatedEvent(
+					ctx,
+					updatedTask.orgId,
+					"task",
+					updatedTask._id,
+					["status", "completedAt"],
+					"tasks.complete"
 				);
 			}
-		}
 
-		const oldStatus = task.status;
-
-		await ctx.db.patch(args.id, {
-			status: "completed",
-			completedAt: Date.now(),
+			return args.id;
 		});
-
-		// Log activity and emit events (mirror tasks.update so completion via
-		// the quick-complete checkbox also triggers automations)
-		const updatedTask = await ctx.db.get(args.id);
-		if (updatedTask) {
-			await ActivityHelpers.taskCompleted(ctx, updatedTask as TaskDocument);
-			await markTaskStopsVisited(
-				ctx,
-				updatedTask.orgId,
-				updatedTask as TaskDocument
-			);
-
-			await emitStatusChangeEvent(
-				ctx,
-				updatedTask.orgId,
-				"task",
-				updatedTask._id,
-				oldStatus,
-				"completed",
-				"tasks.complete"
-			);
-
-			await emitRecordUpdatedEvent(
-				ctx,
-				updatedTask.orgId,
-				"task",
-				updatedTask._id,
-				["status", "completedAt"],
-				"tasks.complete"
-			);
-		}
-
-		return args.id;
 	},
 });
 

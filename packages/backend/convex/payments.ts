@@ -10,6 +10,7 @@ import {
 	requireUpdates,
 } from "./lib/crud";
 import { emptyListResult } from "./lib/queries";
+import { withReceipt } from "./lib/mutationReceipts";
 import { rateLimiter } from "./rateLimits";
 import { entitlementsFromIdentity, isFeatureAllowed } from "./lib/entitlements";
 import { getCurrentUserOrgIdOrNull } from "./lib/auth";
@@ -727,6 +728,7 @@ export const recordManualPayment = userMutation({
 			v.literal("other")
 		),
 		note: v.optional(v.string()),
+		idempotencyKey: v.optional(v.string()),
 	},
 	returns: v.object({ invoicePaid: v.boolean(), remaining: v.number() }),
 	handler: async (
@@ -734,6 +736,8 @@ export const recordManualPayment = userMutation({
 		args
 	): Promise<{ invoicePaid: boolean; remaining: number }> => {
 		await ctx.requireLevel("invoices", "modify");
+
+		return withReceipt(ctx, args.idempotencyKey, "payments.recordManualPayment", args, async () => {
 		const invoice = await validateInvoiceAccess(ctx, args.invoiceId, ctx.orgId);
 		await ctx.requireRecordScope("invoices", () => isInvoiceInActorScope(ctx, invoice));
 
@@ -859,6 +863,7 @@ export const recordManualPayment = userMutation({
 		await touchInvoiceContent(ctx, invoice._id);
 
 		return { invoicePaid: fullySettled, remaining };
+		});
 	},
 });
 

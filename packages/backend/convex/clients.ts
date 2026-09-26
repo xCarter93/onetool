@@ -19,6 +19,7 @@ import {
 } from "./eventBus";
 import { trackServerEvent, SERVER_EVENTS } from "./lib/posthog";
 import { computeFieldChanges } from "./lib/changeTracking";
+import { assertExpectedValues, withReceipt } from "./lib/mutationReceipts";
 import {
 	maybeEnqueueQboSync,
 	kickQboSyncWorker,
@@ -907,70 +908,78 @@ export const update = userMutation({
 		),
 		tags: v.optional(v.array(v.string())),
 		notes: v.optional(v.string()),
+		idempotencyKey: v.optional(v.string()),
+		expectedValues: v.optional(v.record(v.string(), v.any())),
 	},
 	handler: async (ctx, args): Promise<ClientId> => {
 		await ctx.requireLevel("clients", "modify");
-		const { id, ...updates } = args;
+		const { id, idempotencyKey, expectedValues, ...updates } = args;
 
-		// Filter and validate updates
-		const filteredUpdates = filterUndefined(updates);
-		requireUpdates(filteredUpdates);
+		return withReceipt(ctx, idempotencyKey, "clients.update", args, async () => {
+			// Filter and validate updates
+			const filteredUpdates = filterUndefined(updates);
+			requireUpdates(filteredUpdates);
 
-		// Get existing client to track status changes
-		const existingClient = await ctx.orgEntity("clients", id);
-		await ctx.requireRecordScope("clients", { clientId: id });
-		const oldStatus = existingClient.status;
-
-		// Un-archiving through a status edit re-occupies a slot, so it faces the
-		// same ceiling as clients.create.
-		if (args.status) {
-			await assertClientCapacityForTransition(
-				ctx,
-				ctx.orgId,
-				oldStatus,
-				args.status
+			// Get existing client to track status changes
+			const existingClient = await ctx.orgEntity("clients", id);
+			await ctx.requireRecordScope("clients", { clientId: id });
+			assertExpectedValues(
+				existingClient as unknown as Record<string, unknown>,
+				expectedValues
 			);
-		}
+			const oldStatus = existingClient.status;
 
-		// Compute field-level changes before applying the update
-		const changes = computeFieldChanges(
-			"client",
-			existingClient as unknown as Record<string, unknown>,
-			filteredUpdates as Record<string, unknown>
-		);
+			// Un-archiving through a status edit re-occupies a slot, so it faces the
+			// same ceiling as clients.create.
+			if (args.status) {
+				await assertClientCapacityForTransition(
+					ctx,
+					ctx.orgId,
+					oldStatus,
+					args.status
+				);
+			}
 
-		await updateClientWithValidation(ctx, id, filteredUpdates);
+			// Compute field-level changes before applying the update
+			const changes = computeFieldChanges(
+				"client",
+				existingClient as unknown as Record<string, unknown>,
+				filteredUpdates as Record<string, unknown>
+			);
 
-		// Get the updated client for activity logging
-		const client = await ctx.db.get(id);
-		if (client) {
-			await ActivityHelpers.clientUpdated(ctx, client as ClientDocument, changes);
+			await updateClientWithValidation(ctx, id, filteredUpdates);
 
-			// Emit status change event if status changed
-			if (args.status && args.status !== oldStatus) {
-				await emitStatusChangeEvent(
+			// Get the updated client for activity logging
+			const client = await ctx.db.get(id);
+			if (client) {
+				await ActivityHelpers.clientUpdated(ctx, client as ClientDocument, changes);
+
+				// Emit status change event if status changed
+				if (args.status && args.status !== oldStatus) {
+					await emitStatusChangeEvent(
+						ctx,
+						client.orgId,
+						"client",
+						client._id,
+						oldStatus,
+						args.status,
+						"clients.update"
+					);
+				}
+
+				await emitRecordUpdatedEvent(
 					ctx,
 					client.orgId,
 					"client",
 					client._id,
-					oldStatus,
-					args.status,
+					Object.keys(filteredUpdates).filter((key) => key !== "updatedAt"),
 					"clients.update"
 				);
+				await maybeEnqueueQboSync(ctx, client.orgId, "client", client._id);
 			}
 
-			await emitRecordUpdatedEvent(
-				ctx,
-				client.orgId,
-				"client",
-				client._id,
-				Object.keys(filteredUpdates).filter((key) => key !== "updatedAt"),
-				"clients.update"
-			);
-			await maybeEnqueueQboSync(ctx, client.orgId, "client", client._id);
-		}
-
-		return id;
+			return id;
+		});
 	},
 });
 

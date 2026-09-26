@@ -880,6 +880,9 @@ export default defineSchema({
 		// carries the "in-person" sentinel on these rows (mutations see no IP).
 		channel: v.optional(v.literal("in_person")),
 		capturedByUserId: v.optional(v.id("users")),
+		// Client-reported capture time (offline signing, PRD-mobile-offline §3
+		// Tier 4). Informational only — the server never orders on it.
+		capturedAt: v.optional(v.number()),
 		createdAt: v.number(),
 	})
 		.index("by_document", ["documentId"])
@@ -2758,4 +2761,18 @@ export default defineSchema({
 		.index("by_run_outcome", ["runId", "outcome"])
 		.index("by_run_qbo", ["runId", "qboId"])
 		.index("by_org", ["orgId"]),
+
+	// Mobile offline durability (PRD-mobile-offline §4.6). One row per replayed
+	// idempotency key; withReceipt (lib/mutationReceipts.ts) reads/writes it.
+	mutationReceipts: defineTable({
+		orgId: v.id("organizations"),
+		userId: v.id("users"),
+		key: v.string(),
+		operation: v.string(),
+		argsHash: v.string(),
+		result: v.optional(v.any()),
+		createdAt: v.number(),
+	})
+		.index("by_org_user_key", ["orgId", "userId", "key"])
+		.index("by_created", ["createdAt"]),
 });
