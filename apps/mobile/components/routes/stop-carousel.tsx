@@ -324,7 +324,7 @@ function StopCard(
 							<>
 								<Button
 									title="Arrived"
-									variant="primary"
+									variant="secondary"
 									size="sm"
 									onPress={() =>
 										props.onSetStatus(stop.order, "visited")

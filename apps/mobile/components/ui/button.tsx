@@ -6,19 +6,18 @@ import {
 	View,
 	type ViewStyle,
 } from "react-native";
-import { fontFamily, radii, shadow, touch, type, useTokens } from "@/lib/theme";
+import { fontFamily, radii, touch, type, useTokens } from "@/lib/theme";
 
-type ButtonVariant = "primary" | "solid" | "secondary" | "ghost";
+type ButtonVariant = "primary" | "solid" | "secondary" | "ghost" | "destructive";
 type ButtonSize = "sm" | "md";
 
 interface ButtonProps {
 	title: string;
 	onPress?: () => void;
 	/**
-	 * `primary` is the frosted-blue treatment shared with web (pre-composited
-	 * sky tint + soft blue ring). `solid` is the opaque blue fill — reserve it for the
-	 * one element per screen that must out-shout everything, or for buttons on a
-	 * dark/photographic ground where a tint would vanish.
+	 * `primary` (default) and `solid` are the same opaque-blue fill — web parity
+	 * moved the default button to solid, so this is the main CTA per screen.
+	 * `secondary` is the outline treatment, `ghost`/`destructive` are borderless.
 	 */
 	variant?: ButtonVariant;
 	/** `sm` is for inline row actions; it gets hitSlop to stay tappable. */
@@ -42,18 +41,10 @@ export function Button({
 	const fill = (pressed: boolean): ViewStyle => {
 		switch (variant) {
 			case "primary":
-				// The tint step alone is a 1.05:1 delta — imperceptible. The border
-				// does the perceptible work on press. Frosted is ALWAYS the opaque
-				// pre-composited tint: alpha fills over scrolling content ghost
-				// through on device (the old `blurred` glass path).
-				return {
-					backgroundColor: pressed ? t.frostedBgPressed : t.frostedBg,
-					borderWidth: 1,
-					borderColor: pressed ? t.primaryInk : t.frostedBorder,
-					boxShadow: shadow.xs,
-				};
 			case "solid":
-				return { backgroundColor: t.primarySolid };
+				return {
+					backgroundColor: pressed ? t.primarySolidPressed : t.primarySolid,
+				};
 			case "secondary":
 				return {
 					backgroundColor: t.card,
@@ -66,11 +57,13 @@ export function Button({
 	};
 
 	const textColor =
-		variant === "solid"
+		variant === "primary" || variant === "solid"
 			? "#ffffff"
 			: variant === "secondary"
 				? t.ink
-				: t.frostedInk;
+				: variant === "destructive"
+					? t.destructive
+					: t.frostedInk;
 
 	return (
 		<Pressable

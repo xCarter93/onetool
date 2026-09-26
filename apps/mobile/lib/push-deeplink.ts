@@ -3,10 +3,15 @@
 // celebration) but those mobile routes are singular ("/quote/[id]",
 // "/invoice/[id]"). Rewrite only that leading segment; /clients and /projects
 // are already plural and pass through unchanged.
+//
+// automationActionUrl (backend lib/automationExec/actions.ts) also emits
+// "/tasks/<id>", but task detail on mobile is a query param on the shared
+// form modal, not a [taskId] route — rewrite to that route.
 
 const REWRITES: readonly (readonly [string, string])[] = [
 	["/quotes/", "/quote/"],
 	["/invoices/", "/invoice/"],
+	["/tasks/", "/tasks/form?taskId="],
 ];
 
 export function normalizeActionUrl(url: string): string {

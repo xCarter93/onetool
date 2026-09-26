@@ -38,7 +38,7 @@ export function MoneyAmount({
 						styles.cents,
 						{
 							fontSize: Math.round(size * 0.56),
-							color: centsColor ?? t.faintDecor,
+							color: centsColor ?? t.faint,
 						},
 					]}
 				>

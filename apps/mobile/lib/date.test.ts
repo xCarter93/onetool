@@ -1,6 +1,8 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
+	dateIdFromLocalDate,
 	dateIdFromUtcMs,
+	localDateFromDateId,
 	localDayStartMs,
 	todayDateId,
 	utcDayStartMs,
@@ -94,5 +96,16 @@ describe("instant → date-id in a second timezone", () => {
 		const evening = new Date(2026, 6, 25, 21, 0).getTime();
 		expect(iso(localDayStartMs(evening))).toBe("2026-07-25");
 		expect(iso(utcDayStartMs(evening))).toBe("2026-07-26");
+	});
+});
+
+describe("local picker boundary", () => {
+	it("shows the date id's calendar day in local time", () => {
+		const d = localDateFromDateId("2026-07-25");
+		expect([d.getFullYear(), d.getMonth(), d.getDate()]).toEqual([2026, 6, 25]);
+	});
+
+	it("maps a late-evening local pick to the same calendar day", () => {
+		expect(dateIdFromLocalDate(new Date(2026, 6, 25, 23, 30))).toBe("2026-07-25");
 	});
 });

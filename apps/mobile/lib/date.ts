@@ -49,3 +49,13 @@ export function utcDayStartMs(ms: number): number {
 	const dt = new Date(ms);
 	return Date.UTC(dt.getUTCFullYear(), dt.getUTCMonth(), dt.getUTCDate());
 }
+
+/** Native pickers work in local calendar days; date ids are UTC days. */
+export function localDateFromDateId(dateId: string): Date {
+	const [year, month, day] = dateId.split("-").map(Number);
+	return new Date(year, month - 1, day);
+}
+
+export function dateIdFromLocalDate(date: Date): string {
+	return dateIdFromUtcMs(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+}

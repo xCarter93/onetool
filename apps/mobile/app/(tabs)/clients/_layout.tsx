@@ -1,4 +1,4 @@
-import { Stack } from "expo-router";
+import { Stack } from "expo-router/stack";
 
 // Shared AppHeader is rendered inside each screen now — the stack shows no header.
 export default function ClientsLayout() {

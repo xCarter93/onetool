@@ -100,7 +100,7 @@ export function CollectedChart({ months }: { months: MonthBucket[] }) {
 							style={[
 								styles.barLabel,
 								{
-									color: last ? t.frostedInk : t.faintDecor,
+									color: last ? t.frostedInk : t.faint,
 									fontFamily: last
 										? fontFamily.semibold
 										: fontFamily.medium,

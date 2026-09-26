@@ -15,9 +15,9 @@ import { useMutation, useQuery } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
 import { CalendarDays, X } from "lucide-react-native";
+import { DateTimePicker } from "@expo/ui/community/datetime-picker";
 import { fontFamily, radii, type, useTokens } from "@/lib/theme";
 import { Button, Eyebrow } from "@/components/ui";
-import { AppCalendar } from "@/components/AppCalendar";
 import { useOverlayTransition } from "@/components/useOverlayTransition";
 import { CenteredModal } from "@/components/ipad/centered-modal";
 import { ClientPicker } from "@/components/create/client-picker";
@@ -25,7 +25,7 @@ import { useDevice } from "@/lib/use-device";
 import { usePermissions } from "@/lib/use-permissions";
 import { hapticSuccess } from "@/lib/haptics";
 import { describeMutationError } from "@/lib/mutation-error";
-import { utcMsFromDateId } from "@/lib/date";
+import { dateIdFromLocalDate, localDateFromDateId, utcMsFromDateId } from "@/lib/date";
 
 // Fast-capture project create (Slice 5 speed-dial). Deliberately minimal —
 // client, title, optional start date. Status and type mirror web's minimal
@@ -317,7 +317,13 @@ function CalendarOverlay({
 					</View>
 				</View>
 				<View style={styles.calendarWrap}>
-					<AppCalendar selectedDate={selectedDate} onDateSelect={onSelect} />
+					<DateTimePicker
+						mode="date"
+						display="inline"
+						presentation="inline"
+						value={selectedDate ? localDateFromDateId(selectedDate) : new Date()}
+						onValueChange={(_event, date) => onSelect(dateIdFromLocalDate(date))}
+					/>
 				</View>
 			</Animated.View>
 		</View>

@@ -42,11 +42,15 @@ export const fontFamily = {
 // Palette — the single token source. Literal hex, mockup `--app-*` variables.
 // ----------------------------------------------------------------------------
 export const tokens = {
-	// Brand / accent — actions and active states ONLY, never chrome decoration.
+	// `brand` is the logo blue — marketing/mark only, never an action color (it's
+	// 2.7:1 with white, same AA-fail reason web keeps `--brand` separate from
+	// `--primary`). `accent`/`primary`/`primaryInk`/`ring` are the readable action
+	// blue, re-pointed to web's `--primary` #0073ad (5.18:1 with white, vs. the
+	// old #00a6f4/#0084d1 shared value which was 2.7:1/4.02:1 as text).
 	brand: "#00a6f4",
-	accent: "#00a6f4",
-	primary: "#00a6f4",
-	primaryInk: "#0084d1", // active-tab label, pressed states
+	accent: "#0073ad",
+	primary: "#0073ad",
+	primaryInk: "#0073ad", // active-tab label, pressed states
 	primaryTint: "#e6f5fd", // soft blue fill behind primary glyphs
 	/** @deprecated Decoration-era aliases. New code should reach for `frosted*`,
 	 * `primarySolid` or `primaryInk` — a bare `accent*` tint is how sky blue got
@@ -55,11 +59,11 @@ export const tokens = {
 	accentSoft: "#00a6f41A", // 10% blue
 	accentMid: "#00a6f433", // 20% blue
 
-	// "Frosted blue" primary actions — parity with web's `.cn-button-variant-default`
-	// (`bg-primary/10 text-primary border-primary/30 shadow-sm backdrop-blur-sm`).
-	// The label is a DEEPER blue than web's `text-primary`: #00a6f4 on the 10% tint
-	// is only 2.4:1, which fails AA and is unreadable in sunlight. #0369a1 keeps the
-	// same blue family at 5.35:1.
+	// "Frosted blue" tinted actions. Web's `.cn-button-variant-default` moved to a
+	// SOLID fill (app-theme.css `--primary` #0073ad / `--primary-fg` #fff) — this
+	// tint is now the TINTED/secondary treatment only, kept for call sites that
+	// still reference it directly (list-row selection, section-header links).
+	// #0369a1 keeps the same blue family at 5.35:1 on the tint.
 	// OPAQUE since Slice 8: the old alpha values (#00a6f4 @ 10/15/30%) let the dot
 	// grid and anything underneath ghost through every frosted button. These are
 	// those same tints pre-composited over `bg` #f6f7f8 — identical hue, no
@@ -69,19 +73,27 @@ export const tokens = {
 	frostedBgPressed: "#d1ebf7", // primary @ 15% over bg (web's hover)
 	frostedBorder: "#acdff7", // primary @ 30% over bg
 	frostedInk: "#0369a1",
-	/** Solid blue fills that carry WHITE content. #00a6f4 + white is 2.7:1 (under
-	 * even the 3:1 non-text floor) and #0084d1 is 4.0:1 — fine for a glyph but
-	 * short of the 4.5:1 a solid button's label needs. #0072b5 is 5.15:1, so one
-	 * token covers both the FAB and text-bearing solids. */
-	primarySolid: "#0072b5",
+	/** Solid blue fill for the primary action — exact web `--primary` parity
+	 * (#0073ad, 5.18:1 with white text). Covers the FAB and every solid button. */
+	primarySolid: "#0073ad",
+	/** Pressed-state darken of `primarySolid` (6.94:1 with white). */
+	primarySolidPressed: "#005f8e",
 
-	// Semantic
-	success: "#0a9d6c",
+	// Semantic — aligned with web's status pairs (app-theme.css) where the web
+	// value itself clears 4.5:1 as text; kept mobile's own value where the web
+	// one doesn't (mobile's text uses are broader than web's, e.g. money amounts).
+	// #0a9d6c was 3.47:1 as text on `card` — fails AA. Web's `success` #24813e is
+	// 4.90:1 on card / 4.57:1 on bg — adopted directly.
+	success: "#24813e",
+	// Web's `warning` #b86a00 is 3.84:1 on bg — fails AA as text, so kept
+	// mobile's own darker #b45309 (5.02:1 on card / 4.72:1 on bg).
 	warning: "#b45309",
 	warningBg: "#fef7ec",
 	warningLine: "#f3e3c8",
-	danger: "#dc2626",
-	destructive: "#dc2626",
+	// Web's `danger` #cf263c clears AA with more margin (5.26:1 card / 4.90:1 bg)
+	// than mobile's old #dc2626 (4.83:1) — adopted directly.
+	danger: "#cf263c",
+	destructive: "#cf263c",
 	info: "#075985",
 
 	// Ink / text — the whole ramp is AA-verified against BOTH `card` (#fff) and
@@ -115,7 +127,7 @@ export const tokens = {
 	lineSoft: "#edeff1", // in-card row dividers (hairlines)
 	border: "#e4e6e8",
 	input: "#e4e6e8",
-	ring: "#0084d1",
+	ring: "#0073ad", // web `--ring` parity
 	// Control boundaries and information-carrying dots need 3:1. The mockup's
 	// #c8cdd2 is 1.6:1 — an effectively invisible checkbox.
 	checkbox: "#8b9096", // 3.22 / 3.00
@@ -201,7 +213,7 @@ export const dock = {
 	orbRise: 16,
 	orbRadius: 18,
 	orbRing: "#ffffff",
-	orbGradient: ["#00a6f4", "#0072b5"] as [string, string],
+	orbGradient: ["#00a6f4", "#0073ad"] as [string, string],
 } as const;
 
 /**
@@ -392,7 +404,7 @@ export const shadow = {
 	/** @deprecated Cards are flat now (border only) — `ui/card.tsx` no longer uses
 	 * this. Six pre-P1 screens still do; they lose it as P2 rewrites them. */
 	card: "0 1px 2px rgba(23,24,26,0.04)",
-	fab: "0 8px 20px -6px rgba(0,132,209,0.55)",
+	fab: "0 8px 20px -6px rgba(0,115,173,0.55)", // primarySolid glow
 	sheet: "0 -8px 32px rgba(15,30,40,0.16)",
 	floatChip: "0 2px 10px rgba(0,0,0,0.08)",
 	segmented: "0 1px 2px rgba(0,0,0,0.06)",
@@ -434,24 +446,6 @@ export const styles = StyleSheet.create({
 		padding: 14,
 		borderWidth: 1,
 		borderColor: tokens.line,
-	},
-
-	// Frosted-blue primary — parity with web's default button variant.
-	primaryButton: {
-		backgroundColor: tokens.frostedBg,
-		borderWidth: 1,
-		borderColor: tokens.frostedBorder,
-		borderRadius: radii.ctrl,
-		minHeight: 44,
-		paddingVertical: 12,
-		paddingHorizontal: spacing.md,
-		alignItems: "center" as const,
-		justifyContent: "center" as const,
-	},
-	primaryButtonText: {
-		color: tokens.frostedInk,
-		fontSize: type.body,
-		fontFamily: fontFamily.semibold,
 	},
 
 	input: {

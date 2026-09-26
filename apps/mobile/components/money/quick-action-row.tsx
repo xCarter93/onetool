@@ -90,7 +90,7 @@ export function QuickActionRow({
 			{secondary ? (
 				<Button
 					title={secondary.label}
-					variant="primary"
+					variant="secondary"
 					onPress={() => fire(secondary)}
 					style={StyleSheet.flatten([
 						styles.grow,

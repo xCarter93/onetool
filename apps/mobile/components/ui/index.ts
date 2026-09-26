@@ -6,7 +6,6 @@ export { Eyebrow } from "./eyebrow";
 export { SectionHeader } from "./section-header";
 export { Avatar } from "./avatar";
 export { ListRow } from "./list-row";
-export { Ring } from "./ring";
 export { HalftoneBg } from "./halftone-bg";
 export { DotGrid } from "./dot-grid";
 export { SegmentedToggle, type Segment } from "./segmented-toggle";

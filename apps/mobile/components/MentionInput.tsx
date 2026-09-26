@@ -23,6 +23,10 @@ interface MentionInputProps {
 	entityId: string;
 	entityName: string;
 	onMentionCreated?: () => void;
+	initialMessage?: string;
+	onMessageChange?: (text: string) => void;
+	initialMentionedUsers?: { id: Id<"users">; name: string }[];
+	onMentionedUsersChange?: (users: { id: Id<"users">; name: string }[]) => void;
 }
 
 interface AttachmentFile {
@@ -41,13 +45,28 @@ export function MentionInput({
 	entityId,
 	entityName,
 	onMentionCreated,
+	initialMessage = "",
+	onMessageChange,
+	initialMentionedUsers = [],
+	onMentionedUsersChange,
 }: MentionInputProps) {
-	const [message, setMessage] = useState("");
+	const [message, setMessage] = useState(initialMessage);
 	const [showUserList, setShowUserList] = useState(false);
 	const [searchQuery, setSearchQuery] = useState("");
-	const [mentionedUsers, setMentionedUsers] = useState<
-		Array<{ id: Id<"users">; name: string }>
-	>([]);
+	const [mentionedUsers, setMentionedUsersState] = useState<
+		{ id: Id<"users">; name: string }[]
+	>(initialMentionedUsers);
+	const setMentionedUsers = (
+		updater:
+			| { id: Id<"users">; name: string }[]
+			| ((
+					prev: { id: Id<"users">; name: string }[]
+			  ) => { id: Id<"users">; name: string }[])
+	) => {
+		const next = typeof updater === "function" ? updater(mentionedUsers) : updater;
+		setMentionedUsersState(next);
+		onMentionedUsersChange?.(next);
+	};
 	const [attachments, setAttachments] = useState<AttachmentFile[]>([]);
 	const [cursorPosition, setCursorPosition] = useState(0);
 	const inputRef = useRef<TextInput>(null);
@@ -101,6 +120,7 @@ export function MentionInput({
 	// Handle text input change
 	const handleTextChange = (text: string) => {
 		setMessage(text);
+		onMessageChange?.(text);
 
 		// Check for @ mentions
 		const textBeforeCursor = text.slice(0, cursorPosition);
@@ -148,6 +168,7 @@ export function MentionInput({
 			]);
 
 			setMessage(newMessage);
+			onMessageChange?.(newMessage);
 			setShowUserList(false);
 			setCursorPosition(lastAtIndex + userName.length + 4); // +4 for @[] and space
 
@@ -327,6 +348,7 @@ export function MentionInput({
 
 			// Clear form
 			setMessage("");
+			onMessageChange?.("");
 			setMentionedUsers([]);
 			setAttachments([]);
 
