@@ -2292,8 +2292,10 @@ const CHIP_REMOVE_CLASS =
 const CONTENT_SURFACE_CLASS =
   "bg-popover text-popover-foreground data-open:animate-in data-closed:animate-out data-closed:fade-out-0 data-open:fade-in-0 data-closed:zoom-out-95 data-open:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 overflow-hidden ring-1 duration-100 ring-foreground/10 shadow-md rounded-lg data-[side=inline-start]:slide-in-from-right-2 data-[side=inline-end]:slide-in-from-left-2"
 
+/** Gated on the LIST's `data-empty`, not the popup's: an inline cascader has
+ * no popup, so a popup-only gate left `FieldCascader`'s empty text hidden. */
 const EMPTY_CLASS =
-  "text-muted-foreground hidden w-full justify-center py-2 text-center group-data-empty/combobox-content:flex text-sm"
+  "text-muted-foreground hidden w-full justify-center py-2 text-center group-data-empty/cascader-list:flex text-sm"
 
 /* -------------------------------------------------------------------------- */
 /*                                    Chips                                   */
@@ -2560,7 +2562,7 @@ export interface CascaderContentProps
 
 /** Portal + Positioner + floating panel. Unlike shadcn's `ComboboxContent` it
  * does NOT clamp the popup to the anchor width (a cascader panel is routinely
- * wider), but it keeps `group/combobox-content`, which `CascaderEmpty` needs. */
+ * wider). */
 function CascaderContent({
   className,
   side = "bottom",
@@ -2779,6 +2781,7 @@ function CascaderList({
             {...(mode === "tree" ? { role: "tree" as const } : null)}
             {...(virtualized ? { "data-virtualized": true } : null)}
             className={cn(
+              "group/cascader-list",
               CASCADER_ROWS_CLASS,
               /* A windowed row is absolutely positioned, so the ROWS' box is
                  the containing block, not the scrollport: it carries the
