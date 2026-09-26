@@ -26,6 +26,7 @@ import { usePermissions } from "@/lib/use-permissions";
 import { hapticSuccess } from "@/lib/haptics";
 import { describeMutationError } from "@/lib/mutation-error";
 import { dateIdFromLocalDate, localDateFromDateId, utcMsFromDateId } from "@/lib/date";
+import { useOnlineAction } from "@/lib/offline/hooks";
 
 // Fast-capture project create (Slice 5 speed-dial). Deliberately minimal —
 // client, title, optional start date. Status and type mirror web's minimal
@@ -51,6 +52,7 @@ export default function NewProjectSheet() {
 	const insets = useSafeAreaInsets();
 	const { device } = useDevice();
 	const { can, isLoading: permsLoading } = usePermissions();
+	const onlineAction = useOnlineAction();
 	const params = useLocalSearchParams<{ clientId?: string }>();
 
 	// Preselect the client when pushed from a client detail screen
@@ -204,7 +206,7 @@ export default function NewProjectSheet() {
 
 				<Button
 					title="Create project"
-					onPress={() => void submit()}
+					onPress={() => onlineAction("Creating a project", submit)}
 					disabled={!valid || submitting}
 					icon={
 						submitting ? (

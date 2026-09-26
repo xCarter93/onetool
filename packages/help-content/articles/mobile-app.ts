@@ -12,7 +12,7 @@ export const mobileAppArticles: HelpArticle[] = [
 			caption: "The Today tab on iPhone",
 			asset: "mobile-app/onetool-on-iphone-and-ipad/hero",
 		},
-		keywords: ["ios", "mobile", "phone", "tablet", "apple", "companion", "tab bar"],
+		keywords: ["ios", "mobile", "phone", "tablet", "apple", "companion", "tab bar", "offline", "no signal", "sync"],
 		sections: [
 			{
 				heading: "A companion for the field",
@@ -87,6 +87,38 @@ export const mobileAppArticles: HelpArticle[] = [
 							"**Line items** are editable right on the record: tap a row to change its description, quantity, unit, or rate, or tap **Add line item** below the list, and the total updates as you type. Draft quotes edit directly; a sent quote asks to move back to draft first (its portal link pauses until you resend), while invoices stay editable until a payment is recorded.",
 							"**Extend valid until** (under the ••• menu on a sent or expired quote) picks a new date without emailing the client, and extending an expired quote makes it available in the portal again.",
 						],
+					},
+				],
+			},
+			{
+				heading: "Working without signal",
+				blocks: [
+					{
+						type: "paragraph",
+						text: "The app keeps your day on the phone. Once you've signed in with a connection, you can open the app in a basement or a dead zone and still see **Today**, **Routes**, and the records you've opened, each marked with how old it is. After seven days without a connection, the app hides that saved data until it can check your access again.",
+					},
+					{
+						type: "list",
+						items: [
+							"Complete or reopen a task, and edit a task's details.",
+							"Start a route, mark stops visited or skipped, and finish the route.",
+							"Change a project's status or details, or a client's details.",
+							"Post in team chat. Attachments need a connection.",
+							"Record a cash or check payment.",
+							"Get a signature on a sent quote, as long as the phone has its current document. Open the quote once with signal to prepare it.",
+						],
+					},
+					{
+						type: "paragraph",
+						text: "Anything you change offline is saved on the phone the moment you tap. A line above the tabs shows how many changes are waiting, and they sync by themselves when you're back in range, even if you closed the app in between. Creating records, sending quotes and invoices, editing line items, uploading files, and planning routes need a connection; the app tells you when you try.",
+					},
+					{
+						type: "paragraph",
+						text: "If the same record changed while you were offline, the app doesn't overwrite it. For example, the invoice was paid online or the quote was edited on the web. Your change moves to **Needs attention** with what happened, and you choose what to do. A cash payment that couldn't be recorded stays on the phone until you mark it handled.",
+					},
+					{
+						type: "note",
+						text: "Signing out with changes that haven't synced asks first, because signing out would discard them.",
 					},
 				],
 			},

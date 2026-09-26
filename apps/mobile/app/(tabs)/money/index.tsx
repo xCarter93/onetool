@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
-import { useQuery } from "convex/react";
 import { useRouter, type Href } from "expo-router";
 import { Search } from "lucide-react-native";
 import { api } from "@onetool/backend/convex/_generated/api";
@@ -29,6 +28,7 @@ import { CollectedChart } from "@/components/money/collected-chart";
 import { PipelineStrip } from "@/components/money/pipeline-strip";
 import { NeedsAttention } from "@/components/money/needs-attention";
 import { RecentPayments } from "@/components/money/recent-payments";
+import { useCachedQuery } from "@/lib/offline/useCachedQuery";
 
 const WORK_TAB: Href = "/(tabs)/work" as Href;
 
@@ -70,7 +70,7 @@ export default function MoneyScreen({
 	// Seed "now" once (lazy) — react-hooks/purity forbids Date.now() during render.
 	const [now] = useState(() => Date.now());
 
-	const health = useQuery(api.businessHealth.get, {});
+	const health = useCachedQuery(api.businessHealth.get, {});
 	const loading = health === undefined;
 
 	const outstanding = health?.outstanding;

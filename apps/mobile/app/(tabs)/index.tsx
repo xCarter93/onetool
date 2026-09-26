@@ -2,9 +2,11 @@ import { useEffect, useMemo, useState } from "react";
 import { ScrollView, StyleSheet, View } from "react-native";
 import { router, type Href } from "expo-router";
 import { useUser } from "@clerk/expo";
-import { useQuery, useMutation } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
+import { useCachedQuery } from "@/lib/offline/useCachedQuery";
+import { saveOffline, useOpenOps } from "@/lib/offline/hooks";
+import { overlayTaskOps } from "@/lib/offline/field-patch";
 import { DOCK_CLEARANCE, useTokens } from "@/lib/theme";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { formatCurrency } from "@/lib/format";
@@ -28,6 +30,7 @@ import {
 	isDoneStatus,
 	projectsForDay,
 	scopeCalendarEvents,
+	taskDoneOverlay,
 	taskInScope,
 	tomorrowPeek,
 	weekDaysFor,
@@ -126,27 +129,25 @@ export default function TodayScreen({
 
 	// The one schedule subscription: the anchored week plus enough overflow for
 	// the List view's rolling window.
-	const events = useQuery(api.calendar.getCalendarEvents, {
+	const events = useCachedQuery(api.calendar.getCalendarEvents, {
 		startDate: days[0],
 		endDate: windowEndMs,
 	});
 	// Spillover predates any window, so it needs its own query.
-	const overdue = useQuery(api.tasks.getOverdue, {});
+	const overdue = useCachedQuery(api.tasks.getOverdue, {});
 	// Only used to name the overdue rows — getOverdue returns raw task docs, with
 	// no client name of their own. Names-only keeps this off Work's clients.list.
-	const clients = useQuery(api.clients.listNamesForOrg, {});
-	const sentQuotes = useQuery(api.quotes.list, { status: "sent" });
-	const overdueInvoices = useQuery(api.invoices.getOverdue, {});
+	const clients = useCachedQuery(api.clients.listNamesForOrg, {});
+	const sentQuotes = useCachedQuery(api.quotes.list, { status: "sent" });
+	const overdueInvoices = useCachedQuery(api.invoices.getOverdue, {});
 	// Scope plumbing: me = current user's Convex id; org members drive both the
 	// toggle's visibility (solo orgs never see it) and Team-mode assignee chips.
-	const me = useQuery(api.users.current, {});
-	const orgUsers = useQuery(api.users.listByOrg, {});
-	const completeTask = useMutation(api.tasks.complete);
-	const updateTask = useMutation(api.tasks.update);
+	const me = useCachedQuery(api.users.current, {});
+	const orgUsers = useCachedQuery(api.users.listByOrg, {});
 
-	// id -> optimistic done value. A Set can only express "became done", but the
-	// checkbox is a real toggle, so un-completing needs a false to store.
-	const [overrides, setOverrides] = useState<Map<string, boolean>>(new Map());
+	// Every open queued op across every task's chain — overlays derive their
+	// task's slice from `chainKey`, so one subscription covers the whole day plan.
+	const taskOps = useOpenOps();
 	const [updatingIds, setUpdatingIds] = useState<Set<string>>(new Set());
 
 	const clientNames = useMemo(() => {
@@ -222,16 +223,19 @@ export default function TodayScreen({
 		[schedule.tasks, todayMs],
 	);
 
-	// Effective done state = optimistic override, else server status. Derived
-	// (not an override log) so it collapses back to the server value on its own.
+	// Effective done state = queued-op overlay, else server status. Derived from
+	// the outbox (not a local override log) so it collapses back to the server
+	// value on its own once the op syncs and drops off `taskOps`.
 	const doneIds = useMemo(
 		() =>
 			new Set(
 				dayTasks
-					.filter((task) => overrides.get(task._id) ?? isDoneStatus(task.status))
+					.filter(
+						(task) => taskDoneOverlay(taskOps, task._id) ?? isDoneStatus(task.status),
+					)
 					.map((task) => task._id),
 			),
-		[dayTasks, overrides],
+		[dayTasks, taskOps],
 	);
 
 	// Team mode labels rows with who owns them; in Me mode a chip would repeat
@@ -293,27 +297,39 @@ export default function TodayScreen({
 		router.push(`/(tabs)/work?kind=${only.kind}` as Href);
 	};
 
-	// Optimistic toggle: flip locally, then call; drop the override on throw.
-	// `tasks.complete` throws on an already-completed task, so the un-complete
-	// direction has to go through `update` — a checkbox that only ever completes
-	// would make its own "Mark not done" label a lie.
+	// Queues the toggle; the overlay above reflects it immediately. `tasks.complete`
+	// rejects an already-completed task, so the un-complete direction has to go
+	// through `update` — a checkbox that only ever completes would make its own
+	// "Mark not done" label a lie. Ops are FIFO per task chain, so a double tap
+	// while one is still open just queues a second, consistent op.
 	const handleToggle = async (id: string) => {
-		if (updatingIds.has(id)) return;
+		const task = dayTasks.find((t) => t._id === id);
 		const next = !doneIds.has(id);
-		setOverrides((prev) => new Map(prev).set(id, next));
+		const title = task?.title ? `: ${task.title}` : "";
 		setUpdatingIds((prev) => new Set(prev).add(id));
 		try {
 			if (next) {
-				await completeTask({ id: id as Id<"tasks"> });
+				await saveOffline(
+					"tasks.complete",
+					{ id: id as Id<"tasks"> },
+					{ display: { title: `Complete${title}` } },
+				);
 			} else {
-				await updateTask({ id: id as Id<"tasks">, status: "pending" });
+				await saveOffline(
+					"tasks.update",
+					{
+						id: id as Id<"tasks">,
+						status: "pending",
+						expectedValues: {
+							status: overlayTaskOps(
+								{ status: task?.status },
+								taskOps.filter((op) => op.chainKey === `task:${id}`),
+							).status,
+						},
+					},
+					{ display: { title: `Mark not done${title}` } },
+				);
 			}
-		} catch {
-			setOverrides((prev) => {
-				const m = new Map(prev);
-				m.delete(id);
-				return m;
-			});
 		} finally {
 			setUpdatingIds((prev) => {
 				const next = new Set(prev);

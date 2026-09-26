@@ -1,9 +1,8 @@
+import { useOfflinePartition } from "@/lib/offline/partition-context";
 import { View, ScrollView, RefreshControl, StyleSheet } from "react-native";
-import { useQuery, useMutation } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { useLocalSearchParams, useRouter, type Href } from "expo-router";
-import { useState, useCallback, useEffect, useRef } from "react";
-import { useOrganization } from "@clerk/expo";
+import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import {
 	SafeAreaView,
 	useSafeAreaInsets,
@@ -34,6 +33,9 @@ import {
 import { openExternal } from "@/lib/open-external";
 import { recordRecentView } from "@/lib/recents";
 import { usePermissions } from "@/lib/use-permissions";
+import { useCachedQuery } from "@/lib/offline/useCachedQuery";
+import { saveOffline, useOpenOps } from "@/lib/offline/hooks";
+import { overlayFields } from "@/lib/offline/field-patch";
 import { DotGrid, ListRow } from "@/components/ui";
 import { RecordDocuments } from "@/components/RecordDocuments";
 import {
@@ -115,43 +117,49 @@ export function ClientDetailBody({
 	const scrollBottom = isPane ? 16 : DOCK_CLEARANCE + insets.bottom;
 	const [refreshing, setRefreshing] = useState(false);
 	const [mentionModalVisible, setMentionModalVisible] = useState(false);
-	const [optimisticStatus, setOptimisticStatus] = useState<string | null>(null);
 	const { can, isLoading: permsLoading } = usePermissions();
 
-	const client = useQuery(
+	const client = useCachedQuery(
 		api.clients.get,
 		clientId ? { id: clientId as Id<"clients"> } : "skip"
 	);
 	const contacts =
-		useQuery(
+		useCachedQuery(
 			api.clientContacts.listByClient,
 			clientId ? { clientId: clientId as Id<"clients"> } : "skip"
 		) ?? [];
 	const properties =
-		useQuery(
+		useCachedQuery(
 			api.clientProperties.listByClient,
 			clientId ? { clientId: clientId as Id<"clients"> } : "skip"
 		) ?? [];
 	const projects =
-		useQuery(
+		useCachedQuery(
 			api.projects.list,
 			clientId ? { clientId: clientId as Id<"clients"> } : "skip"
 		) ?? [];
 	const quotes =
-		useQuery(
+		useCachedQuery(
 			api.quotes.list,
 			clientId ? { clientId: clientId as Id<"clients"> } : "skip"
 		) ?? [];
 	const invoices =
-		useQuery(
+		useCachedQuery(
 			api.invoices.list,
 			clientId ? { clientId: clientId as Id<"clients"> } : "skip"
 		) ?? [];
 
+	// Queued field patches for this client, overlaid on the loaded doc so the
+	// screen shows the edited value while the write is still in the outbox.
+	const openOps = useOpenOps(clientId ? `client:${clientId}` : undefined);
+	const displayClient = useMemo(
+		() => (client ? overlayFields(client, openOps) : null),
+		[client, openOps]
+	);
+
 	// On-device "Recently viewed" trail for the Work tab (Slice 6). Fire-and-
 	// forget, and only once the doc has loaded so the snapshot is a real title.
-	const { organization } = useOrganization();
-	const orgId = organization?.id;
+	const recentsScope = useOfflinePartition() ?? undefined;
 	const recentId = client?._id;
 	const recentTitle = client?.companyName;
 	const recentSub = client?.companyDescription?.trim() || properties[0]?.city;
@@ -159,50 +167,58 @@ export function ClientDetailBody({
 	// late with the properties query and would otherwise re-record the visit.
 	const recordedRef = useRef<string | null>(null);
 	useEffect(() => {
-		if (!recentId || !recentTitle || !orgId) return;
+		if (!recentId || !recentTitle || !recentsScope) return;
 		if (recordedRef.current === recentId) return;
 		recordedRef.current = recentId;
-		recordRecentView(orgId, {
+		recordRecentView(recentsScope, {
 			kind: "client",
 			id: recentId,
 			title: recentTitle,
 			sub: recentSub,
 		});
 		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [orgId, recentId, recentTitle]);
-
-	const updateClient = useMutation(api.clients.update);
+	}, [recentsScope, recentId, recentTitle]);
 
 	const onRefresh = useCallback(() => {
 		setRefreshing(true);
 		setTimeout(() => setRefreshing(false), 800);
 	}, []);
 
-	// Send ONLY the edited field; skip unchanged values (clients.update throws
-	// "No updates" on an empty patch — Pitfall 3).
+	// Send ONLY the edited field, queued with `expectedValues` from the value
+	// on screen (which may itself be an earlier still-pending edit).
 	const handleSaveField = async (
 		field: "companyName" | "notes",
 		value: string
 	) => {
-		if (!clientId || !client) return;
-		if ((client[field] ?? "") === value) return;
-		await updateClient({ id: clientId as Id<"clients">, [field]: value });
+		if (!clientId || !displayClient) return;
+		if ((displayClient[field] ?? "") === value) return;
+		const saved = await saveOffline(
+			"clients.update",
+			{
+				id: clientId as Id<"clients">,
+				[field]: value,
+				expectedValues: { [field]: displayClient[field] },
+			},
+			{ display: { title: `Update: ${displayClient.companyName}` } }
+		);
+		// saveOffline already explained the refusal; throwing keeps the editor open.
+		if (!saved) throw new Error("Change not saved");
 	};
 
 	const handleSelectStatus = async (next: string) => {
-		if (!clientId || !client || next === client.status) return;
-		setOptimisticStatus(next);
-		try {
-			await updateClient({
+		if (!clientId || !displayClient || next === displayClient.status) return;
+		await saveOffline(
+			"clients.update",
+			{
 				id: clientId as Id<"clients">,
 				status: next as ClientStatus,
-			});
-		} catch {
-			setOptimisticStatus(null);
-		}
+				expectedValues: { status: displayClient.status },
+			},
+			{ display: { title: `Status: ${displayClient.companyName}` } }
+		);
 	};
 
-	if (!client) {
+	if (!client || !displayClient) {
 		return (
 			<SafeAreaView
 				style={[styles.flex, { backgroundColor: t.bg }]}
@@ -228,7 +244,7 @@ export function ClientDetailBody({
 		);
 	}
 
-	const status = optimisticStatus ?? client.status;
+	const status = displayClient.status;
 
 	const primaryProperty = properties.find((p) => p.isPrimary) ?? properties[0];
 	const primaryContact = contacts.find((c) => c.isPrimary) ?? contacts[0];
@@ -278,7 +294,7 @@ export function ClientDetailBody({
 				<PaneHeader onBack={onBack} />
 			) : (
 				<InkTabHeader
-					title={client.companyName}
+					title={displayClient.companyName}
 					onBack={() => router.back()}
 				/>
 			)}
@@ -295,7 +311,7 @@ export function ClientDetailBody({
 				    place a client status can change keeps working. */}
 				<IdentityBlock
 					statusKey={status}
-					name={client.companyName}
+					name={displayClient.companyName}
 					meta={identitySub ? <IdentityMeta>{identitySub}</IdentityMeta> : null}
 					renderStatus={(statusText) => (
 						<FieldMenu
@@ -338,7 +354,7 @@ export function ClientDetailBody({
 					<View style={detailStyles.stack}>
 						<EditableField
 							label="Company name"
-							value={client.companyName}
+							value={displayClient.companyName}
 							onSave={(value) => handleSaveField("companyName", value)}
 							placeholder="Company name"
 						/>
@@ -362,7 +378,7 @@ export function ClientDetailBody({
 						) : null}
 						<EditableField
 							label="Notes"
-							value={client.notes}
+							value={displayClient.notes}
 							onSave={(value) => handleSaveField("notes", value)}
 							placeholder="Add notes about this client..."
 							multiline
@@ -626,7 +642,7 @@ export function ClientDetailBody({
 				onClose={() => setMentionModalVisible(false)}
 				entityType="client"
 				entityId={clientId as Id<"clients">}
-				entityName={client.companyName}
+				entityName={displayClient.companyName}
 			/>
 		</SafeAreaView>
 	);

@@ -79,6 +79,30 @@ export function isDoneStatus(status?: string): boolean {
 	return DONE.has(status ?? "");
 }
 
+/** Shape of a queued op this module needs — matches lib/offline/queue.ts's OutboxOp. */
+export type OverlayOp = { id: number; chainKey: string; operation: string; args: unknown };
+
+/**
+ * Optimistic "done" state for one task from its open outbox ops, or undefined
+ * when nothing is queued (server status should be used as-is). Ops apply in id
+ * order, so the last one on the chain wins — a queued complete-then-uncomplete
+ * (or vice versa) resolves to whichever happened last.
+ */
+export function taskDoneOverlay(ops: OverlayOp[], taskId: string): boolean | undefined {
+	const chainKey = `task:${taskId}`;
+	let done: boolean | undefined;
+	for (const op of [...ops].sort((a, b) => a.id - b.id)) {
+		if (op.chainKey !== chainKey) continue;
+		if (op.operation === "tasks.complete") {
+			done = true;
+		} else if (op.operation === "tasks.update") {
+			const status = (op.args as { status?: string }).status;
+			if (status !== undefined) done = isDoneStatus(status);
+		}
+	}
+	return done;
+}
+
 export type AgendaProject = {
 	_id: string;
 	title: string;

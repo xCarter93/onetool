@@ -1,3 +1,4 @@
+import { OfflineBlockedError } from "@/lib/offline/hooks";
 import { useState } from "react";
 import {
 	Alert,
@@ -96,8 +97,10 @@ export function LineItemSheet({
 				rate,
 			});
 			onClose();
-		} catch {
-			Alert.alert("Couldn't save that line item", "Please try again.");
+		} catch (err) {
+			if (!(err instanceof OfflineBlockedError)) {
+				Alert.alert("Couldn't save that line item", "Please try again.");
+			}
 			setSaving(false);
 		}
 	};
@@ -117,8 +120,10 @@ export function LineItemSheet({
 						try {
 							await onDelete();
 							onClose();
-						} catch {
-							Alert.alert("Couldn't delete that line item", "Please try again.");
+						} catch (err) {
+							if (!(err instanceof OfflineBlockedError)) {
+								Alert.alert("Couldn't delete that line item", "Please try again.");
+							}
 							setSaving(false);
 						}
 					},

@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { useAuth } from "@clerk/expo";
+import { WifiOff } from "lucide-react-native";
 import { fontFamily, type, useTokens } from "@/lib/theme";
 import { useIsOnline } from "@/lib/offline/network";
 
@@ -24,6 +25,7 @@ export function ConnectToSignInGate({ children }: { children: ReactNode }) {
 
 	return (
 		<View style={[styles.root, { backgroundColor: t.bg }]} accessibilityRole="summary">
+			<WifiOff size={28} color={t.faint} strokeWidth={1.75} />
 			<Text style={[styles.title, { color: t.ink }]}>Connect to sign in</Text>
 			<Text style={[styles.body, { color: t.sub }]}>
 				OneTool needs a connection the first time you sign in on this phone. After that, your day
@@ -34,7 +36,7 @@ export function ConnectToSignInGate({ children }: { children: ReactNode }) {
 }
 
 const styles = StyleSheet.create({
-	root: { flex: 1, justifyContent: "center", paddingHorizontal: 32, gap: 8 },
-	title: { fontFamily: fontFamily.semibold, fontSize: type.h1 },
+	root: { flex: 1, justifyContent: "center", paddingHorizontal: 32, gap: 10 },
+	title: { fontFamily: fontFamily.semibold, fontSize: type.h1, marginTop: 6 },
 	body: { fontFamily: fontFamily.regular, fontSize: type.body, lineHeight: 20 },
 });

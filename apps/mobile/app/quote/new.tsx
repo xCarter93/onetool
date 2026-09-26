@@ -23,6 +23,7 @@ import { useDevice } from "@/lib/use-device";
 import { usePermissions } from "@/lib/use-permissions";
 import { hapticSuccess } from "@/lib/haptics";
 import { describeMutationError } from "@/lib/mutation-error";
+import { useOnlineAction } from "@/lib/offline/hooks";
 
 // FieldMenu action id for "no project" — an empty-string id is not a shape the
 // native MenuView is known to round-trip.
@@ -75,6 +76,7 @@ export default function NewQuoteSheet() {
 
 	const canCreate = can("quotes", "modify");
 	const valid = !!clientId;
+	const onlineAction = useOnlineAction();
 
 	const submit = async () => {
 		if (!valid || submitting) return;
@@ -195,7 +197,7 @@ export default function NewQuoteSheet() {
 
 				<Button
 					title="Create quote"
-					onPress={() => void submit()}
+					onPress={() => onlineAction("Creating a quote", () => void submit())}
 					disabled={!valid || submitting}
 					icon={
 						submitting ? (

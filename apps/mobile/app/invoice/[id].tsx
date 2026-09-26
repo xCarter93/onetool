@@ -1,3 +1,4 @@
+import { useOfflinePartition } from "@/lib/offline/partition-context";
 import { useEffect, useMemo, useState } from "react";
 import {
 	Pressable,
@@ -8,7 +9,7 @@ import {
 	View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useMutation, useQuery } from "convex/react";
+import { useMutation } from "convex/react";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import {
 	CalendarX2,
@@ -58,7 +59,10 @@ import { usePermissions } from "@/lib/use-permissions";
 import { deriveInvoiceDisplayPricing } from "@onetool/backend/pdf/invoicePricing";
 import { formatCurrency, formatDocumentDate } from "@/lib/format";
 import { recordRecentView } from "@/lib/recents";
-import { useOrganization } from "@clerk/expo";
+import { useUser } from "@clerk/expo";
+import { useCachedQuery } from "@/lib/offline/useCachedQuery";
+import { useOnlineAction, useRequireOnline, useOpenOps, saveOffline } from "@/lib/offline/hooks";
+import { pendingPaymentsForInvoice, remainingAfterPending } from "@/lib/offline/pending-payments";
 
 const METHOD_LABEL: Record<string, string> = {
 	cash: "Cash",
@@ -107,25 +111,25 @@ export function InvoiceDetailBody({
 		item: LineItemInitial | null;
 	} | null>(null);
 
-	const invoice = useQuery(
+	const invoice = useCachedQuery(
 		api.invoices.get,
 		id ? { id: id as Id<"invoices"> } : "skip"
 	);
-	const items = useQuery(
+	const items = useCachedQuery(
 		api.invoiceLineItems.listByInvoice,
 		id ? { invoiceId: id as Id<"invoices"> } : "skip"
 	);
 	// optionalUserQuery (same as invoices.get) — returns null, never throws.
 	// undefined = Payment section loading; null = LOADED invoice-derived fallback.
 	// NOT a screen-state driver — invoices.get owns the undefined/null branches.
-	const withPayments = useQuery(
+	const withPayments = useCachedQuery(
 		api.invoices.getWithPayments,
 		id ? { id: id as Id<"invoices"> } : "skip"
 	);
-	const clients = useQuery(api.clients.list, {});
+	const clients = useCachedQuery(api.clients.list, {});
 	// Backend-served portal URL (one source of truth with the invite email).
 	// Null when the client has no portal access; the resolver disables Share.
-	const portalLink = useQuery(
+	const portalLink = useCachedQuery(
 		api.invoices.getPortalLink,
 		invoice ? { id: invoice._id } : "skip"
 	);
@@ -133,15 +137,19 @@ export function InvoiceDetailBody({
 	const { can } = usePermissions();
 	// Web-parity staleness hint: the saved PDF is older than the content.
 	// Gated useQuery throws on missing permission, so gate with can().
-	const latestDoc = useQuery(
+	const latestDoc = useCachedQuery(
 		api.documents.getLatest,
 		invoice && can("documents", "view")
 			? { documentType: "invoice" as const, documentId: id }
 			: "skip"
 	);
+	const onlineAction = useOnlineAction();
+	const requireOnline = useRequireOnline();
+	// Payments queued on the outbox but not yet synced — chainKey is invoice:<id>
+	// and only ever holds recordManualPayment ops.
+	const pendingPayments = pendingPaymentsForInvoice(useOpenOps(`invoice:${id}`), id ?? "");
 
 	const sendToClient = useMutation(api.invoices.sendToClient);
-	const recordManualPayment = useMutation(api.payments.recordManualPayment);
 	const createLineItem = useMutation(api.invoiceLineItems.create);
 	const updateLineItem = useMutation(api.invoiceLineItems.update);
 	const removeLineItem = useMutation(api.invoiceLineItems.remove);
@@ -154,20 +162,21 @@ export function InvoiceDetailBody({
 
 	// On-device "Recently viewed" trail for the Work tab (Slice 6). Fire-and-
 	// forget, and only once the doc has loaded so the snapshot is a real title.
-	const { organization } = useOrganization();
-	const orgId = organization?.id;
+	const { user } = useUser();
+	const collectorName = user?.fullName?.trim() || "you";
+	const recentsScope = useOfflinePartition() ?? undefined;
 	const recentId = invoice?._id;
 	const recentTitle = invoice?.invoiceNumber;
 	const recentSub = invoice ? clientName.get(invoice.clientId) : undefined;
 	useEffect(() => {
 		if (!recentId || !recentTitle) return;
-		recordRecentView(orgId, {
+		recordRecentView(recentsScope, {
 			kind: "invoice",
 			id: recentId,
 			title: recentTitle,
 			sub: recentSub,
 		});
-	}, [orgId, recentId, recentTitle, recentSub]);
+	}, [recentsScope, recentId, recentTitle, recentSub]);
 
 	// PARENT STATE — loading: skeleton document, keep the detail header.
 	if (invoice === undefined) {
@@ -248,11 +257,13 @@ export function InvoiceDetailBody({
 	const hasRows = payments.length > 0;
 	const isPaid = invoice.status === "paid" || invoice.paidAt != null;
 	const summaryTotal = withPayments?.total ?? invoice.total;
-	const remaining = hasRows
+	const serverRemaining = hasRows
 		? (summary?.remainingAmount ?? 0)
 		: isPaid
 			? 0
 			: summaryTotal;
+	// Queued payments already took this cash; the sheet must prefill and cap against what's left.
+	const remaining = remainingAfterPending(serverRemaining, pendingPayments);
 	const pct = hasRows
 		? Math.min(Math.max(Math.round(summary?.percentPaid ?? 0), 0), 100)
 		: isPaid
@@ -301,6 +312,7 @@ export function InvoiceDetailBody({
 	});
 
 	const saveItem = async (draft: LineItemDraft) => {
+		requireOnline("Editing line items");
 		// Invoice rows name the fields differently (unitPrice/total, optional
 		// unit) — map at this seam, same as the web controller's adapter.
 		const unit = draft.unit.trim() ? draft.unit.trim() : undefined;
@@ -329,8 +341,15 @@ export function InvoiceDetailBody({
 	};
 
 	const deleteItem = async () => {
+		requireOnline("Editing line items");
 		if (!itemSheet?.item) return;
 		await removeLineItem({ id: itemSheet.item.id as Id<"invoiceLineItems"> });
+	};
+
+	// Line-item editing stays online-only (repricing risk) — gate the sheet's
+	// open, not its save, so offline taps never reach the mutation.
+	const openItem = (item: LineItemInitial | null) => {
+		onlineAction("Editing line items", () => setItemSheet({ item }));
 	};
 
 	const sharePayLink = async () => {
@@ -345,12 +364,12 @@ export function InvoiceDetailBody({
 		switch (key) {
 			case "send_invoice":
 			case "resend_invoice":
-				setSendOpen(true);
+				onlineAction("Sending this invoice", () => setSendOpen(true));
 				break;
 			case "record_payment":
 				// The sheet prefills the remaining balance, which is only knowable
 				// once the payment rows arrive — opening early would seed the full
-				// total and validate against it.
+				// total and validate against it. Recording itself queues offline.
 				if (withPayments === undefined) break;
 				setRecordOpen(true);
 				break;
@@ -360,17 +379,24 @@ export function InvoiceDetailBody({
 		}
 	};
 
+	// Tier 4 (PRD-mobile-offline): always queues through the outbox, online or
+	// offline, and resolves once it's saved on device — never on the server's
+	// reply, since a lost acknowledgement must never look like nothing happened.
 	const submitPayment = async (
 		amount: number,
 		method: ManualMethod,
 		note?: string
 	) => {
-		return await recordManualPayment({
-			invoiceId: invoice._id,
-			amount,
-			method,
-			note,
-		});
+		return await saveOffline(
+			"payments.recordManualPayment",
+			{ invoiceId: invoice._id, amount, method, note },
+			{
+				display: {
+					title: `Payment ${formatCurrency(amount, { exact: true })} on ${invoice.invoiceNumber}`,
+					detail: `${METHOD_LABEL[method]} · collected by ${collectorName}`,
+				},
+			}
+		);
 	};
 
 	return (
@@ -482,7 +508,8 @@ export function InvoiceDetailBody({
 						{withPayments !== undefined && hasRows
 							? payments.map((payment, i) => {
 									const paid = payment.status === "paid";
-									const last = i === payments.length - 1;
+									const last =
+										i === payments.length - 1 && pendingPayments.length === 0;
 									return (
 										<View key={payment._id} style={styles.timelineRow}>
 											<View style={styles.timelineRail}>
@@ -545,6 +572,63 @@ export function InvoiceDetailBody({
 									);
 								})
 							: null}
+
+						{/* Queued on the device, not yet synced — distinct from a settled
+						    row: a faint hollow node (never the green check) and a status
+						    caption instead of a paid date. */}
+						{pendingPayments.map((pending, i) => {
+							const last = i === pendingPayments.length - 1;
+							const captionColor =
+								pending.status === "conflict" || pending.status === "failed"
+									? t.danger
+									: pending.status === "auth_paused"
+										? t.danger
+										: t.sub;
+							const captionText =
+								pending.status === "conflict" || pending.status === "failed"
+									? "Couldn't sync — needs review"
+									: pending.status === "auth_paused"
+										? "Sign in to sync"
+										: "Not yet synced";
+							return (
+								<View key={pending.opId} style={styles.timelineRow}>
+									<View style={styles.timelineRail}>
+										<View
+											style={[
+												styles.timelineNode,
+												{
+													backgroundColor: t.card,
+													borderWidth: 2,
+													borderColor: captionColor,
+													borderStyle: "dashed",
+												},
+											]}
+										/>
+										{!last ? (
+											<View
+												style={[styles.timelineLine, { backgroundColor: t.line }]}
+											/>
+										) : null}
+									</View>
+									<View style={[styles.timelineBody, !last && styles.timelineGap]}>
+										<View style={styles.timelineTop}>
+											<Text
+												style={[styles.payLabel, { color: t.sub }]}
+												numberOfLines={1}
+											>
+												{METHOD_LABEL[pending.method]} payment
+											</Text>
+											<Text style={[styles.payAmount, { color: t.sub }]}>
+												{formatCurrency(pending.amount, { exact: true })}
+											</Text>
+										</View>
+										<Text style={[styles.paySub, { color: captionColor }]}>
+											{captionText}
+										</Text>
+									</View>
+								</View>
+							);
+						})}
 					</Card>
 				</View>
 
@@ -617,7 +701,7 @@ export function InvoiceDetailBody({
 									accessibilityRole={contentEditable ? "button" : undefined}
 									onPress={
 										contentEditable
-											? () => setItemSheet({ item: toInitial(item) })
+											? () => openItem(toInitial(item))
 											: undefined
 									}
 									style={({ pressed }) => [
@@ -650,7 +734,7 @@ export function InvoiceDetailBody({
 						{items !== undefined && contentEditable ? (
 							<Pressable
 								accessibilityRole="button"
-								onPress={() => setItemSheet({ item: null })}
+								onPress={() => openItem(null)}
 								style={({ pressed }) => [
 									styles.addRow,
 									{ borderTopColor: t.line },

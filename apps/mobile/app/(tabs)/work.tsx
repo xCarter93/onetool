@@ -1,15 +1,14 @@
+import { useOfflinePartition } from "@/lib/offline/partition-context";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { StyleSheet, Text, View, type TextInput } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { FlashList } from "@shopify/flash-list";
-import { useQuery } from "convex/react";
 import {
 	useFocusEffect,
 	useLocalSearchParams,
 	useRouter,
 	type Href,
 } from "expo-router";
-import { useOrganization } from "@clerk/expo";
 import { api } from "@onetool/backend/convex/_generated/api";
 import type { icons } from "lucide-react-native";
 import { InkTabHeader } from "@/components/ink-tab-header";
@@ -22,6 +21,7 @@ import { getRecents, type RecentRecord } from "@/lib/recents";
 import { consumeSearchFocus } from "@/lib/search-focus";
 import { useOrgToday } from "@/lib/use-org-today";
 import { sameRef, type RecordRef } from "@/lib/selection-context";
+import { useCachedQuery } from "@/lib/offline/useCachedQuery";
 import {
 	DOCK_CLEARANCE,
 	fontFamily,
@@ -184,7 +184,7 @@ export default function WorkScreen({
 	// ── Data ────────────────────────────────────────────────────────────────
 	// Search is the primary path. Browse lists are LAZY — only the active chip's
 	// list subscribes, which is what let the four always-on subscriptions go.
-	const results = useQuery(
+	const results = useCachedQuery(
 		api.search.globalSearch,
 		searching ? { query: q } : "skip",
 	);
@@ -206,35 +206,34 @@ export default function WorkScreen({
 		browseKind !== null && browseKind !== "task"
 			? { includeArchived: true }
 			: "skip";
-	const clients = useQuery(api.clients.list, wantsClients);
-	const projects = useQuery(
+	const clients = useCachedQuery(api.clients.list, wantsClients);
+	const projects = useCachedQuery(
 		api.projects.list,
 		browseKind === "project" ? {} : "skip",
 	);
-	const quotes = useQuery(api.quotes.list, browseKind === "quote" ? {} : "skip");
-	const invoices = useQuery(
+	const quotes = useCachedQuery(api.quotes.list, browseKind === "quote" ? {} : "skip");
+	const invoices = useCachedQuery(
 		api.invoices.list,
 		browseKind === "invoice" ? {} : "skip",
 	);
-	const tasks = useQuery(api.tasks.list, browseKind === "task" ? {} : "skip");
+	const tasks = useCachedQuery(api.tasks.list, browseKind === "task" ? {} : "skip");
 
 	// ── Recently viewed (on-device, per org) ────────────────────────────────
-	const { organization } = useOrganization();
-	const orgId = organization?.id;
+	const recentsScope = useOfflinePartition() ?? undefined;
 	// null = not read yet. Refreshed on focus so a record opened and dismissed
 	// this session is already at the top when the tab comes back.
 	const [recents, setRecents] = useState<RecentRecord[] | null>(null);
 	useFocusEffect(
 		useCallback(() => {
-			if (!orgId) return;
+			if (!recentsScope) return;
 			let alive = true;
-			getRecents(orgId).then((list) => {
+			getRecents(recentsScope).then((list) => {
 				if (alive) setRecents(list);
 			});
 			return () => {
 				alive = false;
 			};
-		}, [orgId]),
+		}, [recentsScope]),
 	);
 
 	const resting = !searching && kind === null;
@@ -253,7 +252,7 @@ export default function WorkScreen({
 		: browseKind !== null
 			? browseList[browseKind] === undefined ||
 				(browseKind !== "task" && clients === undefined)
-			: !!orgId && recents === null;
+			: !!recentsScope && recents === null;
 
 	const clientNames = useMemo(() => buildClientNameMap(clients), [clients]);
 

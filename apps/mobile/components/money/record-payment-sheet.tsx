@@ -28,6 +28,11 @@ const METHODS = [
 // amount defaults to the remaining balance and edits DOWN only, the confirm
 // button carries the exact amount it will commit, and success is its own
 // step inside the sheet — no ambiguity about what was just recorded.
+//
+// Recording always queues through the offline outbox (PRD-mobile-offline §4.6:
+// every write goes through it, online or offline) — onSubmit resolves once the
+// change is saved on the device, not once the server confirms it, so the
+// success step can no longer promise a definite invoicePaid/remaining outcome.
 export function RecordPaymentSheet({
 	visible,
 	onClose,
@@ -39,22 +44,19 @@ export function RecordPaymentSheet({
 	onClose: () => void;
 	invoiceNumber: string;
 	remaining: number;
+	/** Resolves to whether the payment was saved on the device (queued to sync). */
 	onSubmit: (
 		amount: number,
 		method: ManualMethod,
 		note?: string
-	) => Promise<{ invoicePaid: boolean; remaining: number }>;
+	) => Promise<boolean>;
 }) {
 	const t = useTokens();
 	const [amountText, setAmountText] = useState("");
 	const [method, setMethod] = useState<ManualMethod>("cash");
 	const [note, setNote] = useState("");
 	const [saving, setSaving] = useState(false);
-	const [done, setDone] = useState<{
-		amount: number;
-		invoicePaid: boolean;
-		remaining: number;
-	} | null>(null);
+	const [done, setDone] = useState<{ amount: number } | null>(null);
 
 	// Re-seed the form each time the sheet opens (remaining can change between
 	// opens as payments land). Guarded render-time derivation — the house
@@ -79,8 +81,8 @@ export function RecordPaymentSheet({
 		if (!amountValid || saving) return;
 		setSaving(true);
 		try {
-			const result = await onSubmit(amount, method, note.trim() || undefined);
-			setDone({ amount, ...result });
+			const saved = await onSubmit(amount, method, note.trim() || undefined);
+			if (saved) setDone({ amount });
 		} catch {
 			Alert.alert("Couldn't record that payment", "Please try again.");
 		} finally {
@@ -123,14 +125,11 @@ export function RecordPaymentSheet({
 							<Check size={30} color={t.success} strokeWidth={3} />
 						</View>
 						<Text style={[styles.successTitle, { color: t.ink }]}>
-							Payment recorded
+							Payment saved
 						</Text>
 						<Text style={[styles.successBody, { color: t.sub }]}>
 							{formatCurrency(done.amount, { exact: true })} recorded against{" "}
-							{invoiceNumber}.
-							{done.invoicePaid
-								? " This invoice is now paid in full."
-								: ` ${formatCurrency(done.remaining, { exact: true })} remaining.`}
+							{invoiceNumber}. It will sync automatically.
 						</Text>
 						<Button title="Done" variant="solid" onPress={onClose} style={styles.successBtn} />
 					</View>

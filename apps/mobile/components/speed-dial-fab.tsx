@@ -33,6 +33,7 @@ import {
 } from "@/lib/theme";
 import { usePermissions } from "@/lib/use-permissions";
 import { hapticImpact, hapticSelect } from "@/lib/haptics";
+import { useOnlineAction } from "@/lib/offline/hooks";
 
 // Speed-dial capture fan (3.0 slice 5, Jobber-pattern: labeled satellites over
 // a washed backdrop, most-used action nearest the thumb). The dock's center orb
@@ -105,6 +106,7 @@ export function SpeedDialFab() {
 	const insets = useSafeAreaInsets();
 	const reducedMotion = useReducedMotion();
 	const { can, isLoading } = usePermissions();
+	const onlineAction = useOnlineAction();
 	const [open, setOpen] = useState(false);
 	const rotation = useSharedValue(0);
 
@@ -135,10 +137,14 @@ export function SpeedDialFab() {
 		setRotation(0);
 	};
 
-	const onSatellite = (href: string) => {
-		hapticSelect();
-		close();
-		router.push(href as never);
+	// Creates need a round trip (server-assigned ids) — gate before navigating,
+	// never let the form open only to hang on submit.
+	const onSatellite = (label: string, href: string) => {
+		onlineAction(label, () => {
+			hapticSelect();
+			close();
+			router.push(href as never);
+		});
 	};
 
 	// Tab ROOTS only — clients/projects/activity/profile and the create/detail
@@ -200,7 +206,7 @@ export function SpeedDialFab() {
 									style={styles.satRow}
 								>
 									<Pressable
-										onPress={() => onSatellite(s.href)}
+										onPress={() => onSatellite(s.label, s.href)}
 										accessibilityRole="button"
 										accessibilityLabel={s.label}
 										style={({ pressed }) => [

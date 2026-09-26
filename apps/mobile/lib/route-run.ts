@@ -231,3 +231,73 @@ export function googleMapsRouteUrl(
 export function googleMapsUrl(lat: number, lng: number): string {
 	return `comgooglemaps://?daddr=${lat},${lng}&directionsmode=driving`;
 }
+
+/** Shape of a queued op this module needs — matches lib/offline/queue.ts's OutboxOp. */
+export type RouteOverlayOp = { id: number; chainKey: string; operation: string; args: unknown };
+
+export type RouteOverlay = {
+	/** Undefined = no queued start/finish for this route; defer to the server state. */
+	started: boolean | undefined;
+	completed: boolean | undefined;
+	/** order -> queued status, for stops with a pending setStopStatus op. */
+	stopStatuses: Map<number, RouteStopStatus>;
+};
+
+/**
+ * Optimistic route/stop state from open outbox ops on one route's chain. Ops
+ * apply in id order — a re-start after a queued finish (or vice versa) resolves
+ * to whichever happened last, same as a stop status flipped twice offline.
+ */
+export function routeOverlay(ops: RouteOverlayOp[], routeId: string): RouteOverlay {
+	const chainKey = `route:${routeId}`;
+	let started: boolean | undefined;
+	let completed: boolean | undefined;
+	const stopStatuses = new Map<number, RouteStopStatus>();
+	for (const op of [...ops].sort((a, b) => a.id - b.id)) {
+		if (op.chainKey !== chainKey) continue;
+		if (op.operation === "routes.startRoute") {
+			started = true;
+			completed = false;
+		} else if (op.operation === "routes.completeRoute") {
+			completed = true;
+		} else if (op.operation === "routes.setStopStatus") {
+			const args = op.args as { order: number; status: RouteStopStatus };
+			stopStatuses.set(args.order, args.status);
+		}
+	}
+	return { started, completed, stopStatuses };
+}
+
+/** Applies a route overlay's stop statuses over a route's stored stops. */
+export function applyStopOverlay<T extends RouteStop>(
+	stops: T[],
+	overlay: RouteOverlay,
+): T[] {
+	return stops.map((s) => {
+		const status = overlay.stopStatuses.get(s.order);
+		return status === undefined ? s : { ...s, status };
+	});
+}
+
+/** Applies a route overlay's stops + started/completed state over a whole route doc. */
+export function applyRouteOverlay<
+	S extends RouteStop,
+	T extends { stops: S[]; startedAt?: number; completedAt?: number },
+>(route: T, overlay: RouteOverlay): T {
+	return {
+		...route,
+		stops: applyStopOverlay(route.stops, overlay),
+		startedAt:
+			overlay.started === undefined
+				? route.startedAt
+				: overlay.started
+					? route.startedAt ?? Date.now()
+					: undefined,
+		completedAt:
+			overlay.completed === undefined
+				? route.completedAt
+				: overlay.completed
+					? route.completedAt ?? Date.now()
+					: undefined,
+	};
+}

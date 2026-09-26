@@ -36,6 +36,7 @@ import {
 	type AddressValue,
 } from "@/components/AddressAutocomplete.native";
 import { FieldMenu } from "@/components/FieldMenu";
+import { useOnlineAction } from "@/lib/offline/hooks";
 
 type ClientStatus = "lead" | "active" | "inactive" | "archived";
 
@@ -71,6 +72,7 @@ export function ClientCreateBody({
 	const t = useTokens();
 	const router = useRouter();
 	const { device } = useDevice();
+	const onlineAction = useOnlineAction();
 	// No explicit headerMode (iPhone route) → self-detect; the shell passes "pane".
 	const isPane = headerMode ? headerMode === "pane" : device === "ipad";
 	const insets = useSafeAreaInsets();
@@ -367,7 +369,7 @@ export function ClientCreateBody({
 
 					<Button
 						title={submitting ? "Creating..." : "Create client"}
-						onPress={handleSubmit}
+						onPress={() => onlineAction("Creating a client", handleSubmit)}
 						disabled={submitting}
 						icon={
 							submitting ? (

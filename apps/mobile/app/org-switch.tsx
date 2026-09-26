@@ -17,6 +17,8 @@ import { fontFamily, radii, spacing, touch, type, useTokens } from "@/lib/theme"
 import { Avatar } from "@/components/ui";
 import { CenteredModal } from "@/components/ipad/centered-modal";
 import { useDevice } from "@/lib/use-device";
+import { useOffline } from "@/lib/offline/OfflineProvider";
+import { orgSwitchPendingMessage, summarizePendingOps } from "@/lib/offline/sync-copy";
 
 const MEMBERSHIP_PAGE_SIZE = 25;
 
@@ -26,14 +28,13 @@ function formatRole(role: string): string {
 }
 
 // Org switcher form-sheet body. Sheet chrome (detents/grabber) comes from the
-// Stack.Screen options in _layout.tsx — this file is the content only.
-// Clerk setActive path is ported verbatim from components/OrganizationSwitcher.tsx
-// (the proven switch path); the ConvexProvider key-reinit in _layout.tsx re-scopes
-// every query on org change.
+// Stack.Screen options in _layout.tsx — this file is the content only. The
+// ConvexProvider key-reinit in _layout.tsx re-scopes every query on org change.
 export default function OrgSwitchSheet() {
 	const t = useTokens();
 	const insets = useSafeAreaInsets();
 	const { device } = useDevice();
+	const { ops } = useOffline();
 	const { userMemberships, setActive, isLoaded } = useOrganizationList({
 		userMemberships: {
 			infinite: true,
@@ -62,7 +63,7 @@ export default function OrgSwitchSheet() {
 		userMemberships.fetchNext,
 	]);
 
-	const handleOrgSwitch = async (orgId: string) => {
+	const runOrgSwitch = async (orgId: string) => {
 		try {
 			setSwitching(true);
 
@@ -85,6 +86,19 @@ export default function OrgSwitchSheet() {
 		} finally {
 			setSwitching(false);
 		}
+	};
+
+	// Switching never blocks on pending work — the outbox drains this org's
+	// queue whenever it's next active and online (§4.5). Just say so.
+	const handleOrgSwitch = (orgId: string) => {
+		const pendingNotice = orgSwitchPendingMessage(summarizePendingOps(ops));
+		if (!pendingNotice) {
+			void runOrgSwitch(orgId);
+			return;
+		}
+		Alert.alert("Unsynced changes here", pendingNotice, [
+			{ text: "Switch organization", onPress: () => void runOrgSwitch(orgId) },
+		]);
 	};
 
 	const content = (

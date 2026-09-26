@@ -7,7 +7,6 @@ import {
 	StyleSheet,
 } from "react-native";
 import { FlashList } from "@shopify/flash-list";
-import { useQuery } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import type { Doc, Id } from "@onetool/backend/convex/_generated/dataModel";
 import { useRouter } from "expo-router";
@@ -26,6 +25,7 @@ import {
 } from "@/lib/theme";
 import { Badge, DotGrid, Eyebrow, SCROLL_TOP_INSET } from "@/components/ui";
 import { InkTabHeader } from "@/components/ink-tab-header";
+import { useCachedQuery } from "@/lib/offline/useCachedQuery";
 
 type Project = Doc<"projects">;
 type FilterValue = "all" | "active" | "in-progress" | "completed";
@@ -69,8 +69,8 @@ export default function ProjectsScreen({
 	const [searchQuery, setSearchQuery] = useState("");
 	const [filter, setFilter] = useState<FilterValue>("all");
 
-	const projects = useQuery(api.projects.list, {});
-	const clients = useQuery(api.clients.list, {});
+	const projects = useCachedQuery(api.projects.list, {});
+	const clients = useCachedQuery(api.clients.list, {});
 
 	const loading = projects === undefined || clients === undefined;
 

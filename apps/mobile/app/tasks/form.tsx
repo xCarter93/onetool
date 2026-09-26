@@ -1,3 +1,4 @@
+import { useOfflinePartition } from "@/lib/offline/partition-context";
 import {
 	View,
 	Text,
@@ -9,11 +10,10 @@ import {
 	StyleSheet,
 	Animated,
 } from "react-native";
-import { useEffect, useState } from "react";
-import { useOrganization } from "@clerk/expo";
+import { useEffect, useMemo, useState } from "react";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router, useLocalSearchParams } from "expo-router";
-import { useMutation, useQuery } from "convex/react";
+import { useMutation } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
 import { X, ChevronDown } from "lucide-react-native";
@@ -34,6 +34,9 @@ import { CenteredModal } from "@/components/ipad/centered-modal";
 import { useDevice } from "@/lib/use-device";
 import { recordRecentView } from "@/lib/recents";
 import { formatTaskDate } from "@/lib/work-search";
+import { useCachedQuery } from "@/lib/offline/useCachedQuery";
+import { saveOffline, useOnlineAction, useOpenOps } from "@/lib/offline/hooks";
+import { overlayTaskOps, planTaskUpdate } from "@/lib/offline/field-patch";
 
 const TYPE_OPTIONS = [
 	{ value: "external", label: "External" },
@@ -94,9 +97,15 @@ export default function TaskFormSheet() {
 	}>();
 	const isEdit = !!params.taskId;
 
-	const task = useQuery(
+	const serverTask = useCachedQuery(
 		api.tasks.get,
 		params.taskId ? { id: params.taskId as Id<"tasks"> } : "skip"
+	);
+	// Queued edits are the base for the next edit, or a second offline save conflicts on replay.
+	const pendingOps = useOpenOps(params.taskId ? `task:${params.taskId}` : "none");
+	const task = useMemo(
+		() => (serverTask ? overlayTaskOps(serverTask, pendingOps) : serverTask),
+		[serverTask, pendingOps],
 	);
 	const taskLoading = isEdit && task === undefined;
 	const taskMissing = isEdit && task === null;
@@ -155,33 +164,33 @@ export default function TaskFormSheet() {
 
 	// On-device "Recently viewed" trail for the Work tab (Slice 6). Edit only —
 	// a task being created has nothing to remember yet.
-	const { organization } = useOrganization();
-	const orgId = organization?.id;
+	const recentsScope = useOfflinePartition() ?? undefined;
 	const recentId = isEdit ? task?._id : undefined;
 	const recentTitle = task?.title;
 	const recentSub = task ? formatTaskDate(task.date) : undefined;
 	useEffect(() => {
 		if (!recentId || !recentTitle) return;
-		recordRecentView(orgId, {
+		recordRecentView(recentsScope, {
 			kind: "task",
 			id: recentId,
 			title: recentTitle,
 			sub: recentSub,
 		});
-	}, [orgId, recentId, recentTitle, recentSub]);
+	}, [recentsScope, recentId, recentTitle, recentSub]);
 
 	// Queries
-	const clients = useQuery(api.clients.list, {});
-	const projects = useQuery(
+	const clients = useCachedQuery(api.clients.list, {});
+	const projects = useCachedQuery(
 		api.projects.list,
 		clientId ? { clientId: clientId as Id<"clients"> } : "skip"
 	);
-	const users = useQuery(api.users.listByOrg);
+	const users = useCachedQuery(api.users.listByOrg, {});
 
-	// Mutations
+	// Mutations — create/delete are out of offline scope (Tier 2 covers only
+	// edits to an already-existing task), so they stay online-gated.
 	const createTask = useMutation(api.tasks.create);
-	const updateTask = useMutation(api.tasks.update);
 	const removeTask = useMutation(api.tasks.remove);
+	const onlineAction = useOnlineAction();
 
 	const clientOptions = (clients ?? []).map((c) => ({
 		value: c._id,
@@ -205,49 +214,89 @@ export default function TaskFormSheet() {
 		taskLoading ||
 		taskMissing;
 
-	const handleSave = async () => {
-		if (submitting) return;
-		if (saveDisabled) return;
+	const buildEdited = () => ({
+		title: title.trim(),
+		description: description.trim() || undefined,
+		type,
+		clientId:
+			type === "external" && clientId ? (clientId as Id<"clients">) : undefined,
+		projectId:
+			type === "external" && projectId ? (projectId as Id<"projects">) : undefined,
+		date: utcMsFromDateId(dateId),
+		assigneeUserId: assigneeUserId ? (assigneeUserId as Id<"users">) : undefined,
+		status,
+		repeat,
+		repeatUntil:
+			repeat !== "none" && repeatUntilId
+				? utcMsFromDateId(repeatUntilId)
+				: undefined,
+	});
+
+	// Edit mode: no direct mutation. A completing status change queues as
+	// `tasks.complete`; any other changed fields queue as a `tasks.update`
+	// patch with `expectedValues` from the task as loaded.
+	const saveEdit = async () => {
+		if (!params.taskId || !task) return;
 		setSubmitting(true);
 		try {
-			const date = utcMsFromDateId(dateId);
-			const payload = {
-				title: title.trim(),
-				description: description.trim() || undefined,
-				type,
-				clientId:
-					type === "external" && clientId
-						? (clientId as Id<"clients">)
-						: undefined,
-				projectId:
-					type === "external" && projectId
-						? (projectId as Id<"projects">)
-						: undefined,
-				date,
-				assigneeUserId: assigneeUserId
-					? (assigneeUserId as Id<"users">)
-					: undefined,
-				status,
-				repeat,
-				repeatUntil:
-					repeat !== "none" && repeatUntilId
-						? utcMsFromDateId(repeatUntilId)
-						: undefined,
+			const id = params.taskId as Id<"tasks">;
+			const edited = buildEdited();
+			const loaded = {
+				title: task.title,
+				description: task.description,
+				type: task.type,
+				clientId: task.clientId,
+				projectId: task.projectId,
+				date: task.date,
+				assigneeUserId: task.assigneeUserId,
+				status: task.status,
+				repeat: task.repeat,
+				repeatUntil: task.repeatUntil,
 			};
-			if (isEdit && params.taskId) {
-				await updateTask({ id: params.taskId as Id<"tasks">, ...payload });
-			} else {
-				await createTask(payload);
+			const plan = planTaskUpdate(loaded, edited);
+			let ok = true;
+			if (plan.completeOp) {
+				ok = await saveOffline(
+					"tasks.complete",
+					{ id },
+					{ display: { title: `Complete: ${edited.title}` } }
+				);
 			}
-			router.back();
-		} catch {
-			Alert.alert(
-				"Couldn't save your task",
-				"Check your connection and try again."
-			);
+			if (ok && Object.keys(plan.patch).length > 0) {
+				ok = await saveOffline(
+					"tasks.update",
+					{ id, ...plan.patch, expectedValues: plan.expectedValues },
+					{ display: { title: `Update: ${edited.title}` } }
+				);
+			}
+			if (ok) router.back();
 		} finally {
 			setSubmitting(false);
 		}
+	};
+
+	// Create mode: out of offline scope — needs a connection.
+	const saveCreate = () =>
+		onlineAction("Creating a task", async () => {
+			setSubmitting(true);
+			try {
+				await createTask(buildEdited());
+				router.back();
+			} catch {
+				Alert.alert(
+					"Couldn't save your task",
+					"Check your connection and try again."
+				);
+			} finally {
+				setSubmitting(false);
+			}
+		});
+
+	const handleSave = () => {
+		if (submitting) return;
+		if (saveDisabled) return;
+		if (isEdit) void saveEdit();
+		else saveCreate();
 	};
 
 	const handleDelete = () => {
@@ -256,18 +305,20 @@ export default function TaskFormSheet() {
 			{
 				text: "Delete task",
 				style: "destructive",
-				onPress: async () => {
-					if (deleting) return;
-					setDeleting(true);
-					try {
-						await removeTask({ id: params.taskId as Id<"tasks"> });
-						router.back();
-					} catch {
-						Alert.alert("Couldn't delete that task", "Try again.");
-					} finally {
-						setDeleting(false);
-					}
-				},
+				// Deletes are out of offline scope — needs a connection.
+				onPress: () =>
+					onlineAction("Deleting this task", async () => {
+						if (deleting) return;
+						setDeleting(true);
+						try {
+							await removeTask({ id: params.taskId as Id<"tasks"> });
+							router.back();
+						} catch {
+							Alert.alert("Couldn't delete that task", "Try again.");
+						} finally {
+							setDeleting(false);
+						}
+					}),
 			},
 		]);
 	};

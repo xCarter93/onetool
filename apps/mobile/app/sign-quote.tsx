@@ -12,8 +12,7 @@ import {
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useAction, useMutation, useQuery } from "convex/react";
-import { ConvexError } from "convex/values";
+import { useAction } from "convex/react";
 import * as Device from "expo-device";
 import { Check, X } from "lucide-react-native";
 import { api } from "@onetool/backend/convex/_generated/api";
@@ -28,10 +27,12 @@ import {
 	type SignatureStroke,
 } from "@/components/signature/signature-pad";
 import { formatCurrency } from "@/lib/format";
-
-// Long enough for a slow driveway uplink, short enough that a dead one fails
-// while the client is still standing there.
-const UPLOAD_TIMEOUT_MS = 30_000;
+import { useCachedQuery } from "@/lib/offline/useCachedQuery";
+import { useOffline } from "@/lib/offline/OfflineProvider";
+import { saveOffline } from "@/lib/offline/hooks";
+import { writeDurableText } from "@/lib/offline/files";
+import { canSignOffline } from "@/lib/offline/quote-signing";
+import { usePermissions } from "@/lib/use-permissions";
 
 // In-person signature flow (Slice 3, frame-1h follow-through): pick the
 // signer, then capture the signature. Phone keeps the app portrait and
@@ -45,20 +46,27 @@ export default function SignQuoteScreen() {
 	const router = useRouter();
 	const insets = useSafeAreaInsets();
 	const { device } = useDevice();
+	const { online } = useOffline();
+	const { can } = usePermissions();
 
-	const quote = useQuery(
+	const quote = useCachedQuery(
 		api.quotes.get,
 		id ? { id: id as Id<"quotes"> } : "skip"
 	);
-	const contacts = useQuery(
+	const contacts = useCachedQuery(
 		api.clientContacts.listByClient,
 		quote ? { clientId: quote.clientId } : "skip"
 	);
+	// Offline eligibility (PRD §3 Tier 4 item 2): a current, server-snapshotted
+	// cached document stands in for the online ensureQuotePdf step.
+	const latestDoc = useCachedQuery(
+		api.documents.getLatest,
+		quote && can("documents", "view")
+			? { documentType: "quote" as const, documentId: id }
+			: "skip"
+	);
 
 	const ensureQuotePdf = useAction(api.pdfActions.ensureQuotePdf);
-	// Quotes-gated upload target — works for members without documents-modify.
-	const generateUploadUrl = useMutation(api.quotes.generateSignatureUploadUrl);
-	const approveInPerson = useMutation(api.quotes.approveInPerson);
 
 	const [step, setStep] = useState<"signer" | "canvas">("signer");
 	const [contactId, setContactId] = useState<Id<"clientContacts"> | null>(
@@ -71,8 +79,8 @@ export default function SignQuoteScreen() {
 	);
 
 	// The audit row pins a PDF; render one in the background while the signer
-	// is being picked so Confirm doesn't wait on it. Confirm re-awaits (and
-	// retries once) — a failed early render must not strand the flow.
+	// is being picked so Confirm doesn't wait on it. Online only — offline uses
+	// the cached document instead (below), and an action never resolves offline.
 	const pdfPromise = useRef<Promise<Id<"documents">> | null>(null);
 	const ensurePdf = useCallback((): Promise<Id<"documents">> => {
 		if (!pdfPromise.current) {
@@ -85,6 +93,9 @@ export default function SignQuoteScreen() {
 		}
 		return pdfPromise.current;
 	}, [ensureQuotePdf, id]);
+	const kickPdf = useCallback(() => {
+		if (online) void ensurePdf().catch(() => {});
+	}, [online, ensurePdf]);
 
 	const sortedContacts = useMemo(() => {
 		if (!contacts) return undefined;
@@ -105,72 +116,55 @@ export default function SignQuoteScreen() {
 		if (!quote || !selectedId || strokes.length === 0 || !padSize) return;
 		setSubmitting(true);
 		try {
-			// Kick (or re-kick) before the upload round-trips. The rejection is
-			// handled here so a failed early render is a no-op rather than an
-			// unhandled promise; the awaited call below re-runs and surfaces it.
-			void ensurePdf().catch(() => {});
-			const svg = buildSignatureSvg(strokes, padSize.w, padSize.h);
-			const uploadUrl = await generateUploadUrl();
-			// Field connectivity is the norm here and RN's fetch never times out on
-			// its own — without this the sheet can spin forever on a dead uplink.
-			// (AbortSignal.timeout isn't in RN 0.85's fetch polyfill.)
-			const uploadAbort = new AbortController();
-			const uploadTimer = setTimeout(() => uploadAbort.abort(), UPLOAD_TIMEOUT_MS);
-			let res: Response;
-			try {
-				res = await fetch(uploadUrl, {
-					method: "POST",
-					headers: { "Content-Type": "image/svg+xml" },
-					body: svg,
-					signal: uploadAbort.signal,
-				});
-			} finally {
-				clearTimeout(uploadTimer);
-			}
-			if (!res.ok) throw new Error("Signature upload failed");
-			const { storageId } = (await res.json()) as {
-				storageId: Id<"_storage">;
-			};
-			const expectedDocumentId = await ensurePdf();
-			await approveInPerson({
-				id: quote._id,
-				clientContactId: selectedId,
-				expectedDocumentId,
-				signatureStorageId: storageId,
-				signatureRawData: JSON.stringify({ ...padSize, strokes }),
-				deviceDescription: `${Device.modelName ?? Platform.OS} · OneTool mobile`,
-			});
-			// The quote screen underneath re-renders to Approved reactively —
-			// landing back on it IS the success state.
-			router.back();
-		} catch (err) {
-			// The field race is real: the client can approve via the portal while
-			// the phone is on the canvas. Name that state instead of blaming the
-			// network — retrying can't fix an already-decided quote.
-			const code =
-				err instanceof ConvexError &&
-				typeof err.data === "object" &&
-				err.data !== null
-					? (err.data as { code?: string }).code
-					: undefined;
-			if (code === "QUOTE_NOT_PENDING") {
-				Alert.alert(
-					"This quote is no longer awaiting approval",
-					"It was already approved or declined — check its status.",
-					[{ text: "OK", onPress: () => router.back() }]
-				);
-			} else if (code === "QUOTE_VERSION_STALE") {
-				pdfPromise.current = null; // re-resolve the pinned version on retry
-				Alert.alert(
-					"The quote changed",
-					"Its document was updated — try confirming again."
-				);
+			let expectedDocumentId: Id<"documents">;
+			if (online) {
+				// Kick (or re-kick) then await — a failed early render must not
+				// strand the flow, so Confirm re-runs it.
+				kickPdf();
+				expectedDocumentId = await ensurePdf();
+			} else if (canSignOffline(quote, latestDoc ?? null)) {
+				expectedDocumentId = latestDoc!._id;
 			} else {
 				Alert.alert(
-					"Couldn't record the signature",
-					"Nothing was saved. Check your connection and try again."
+					"Connect to prepare this quote for signing",
+					"This quote needs an online refresh before a signature can be captured offline."
 				);
+				return;
 			}
+
+			// Durable BEFORE telling the user it's saved (PRD §4.6) — nothing here
+			// survives only in memory.
+			const svg = buildSignatureSvg(strokes, padSize.w, padSize.h);
+			const file = await writeDurableText(svg, "image/svg+xml", "svg");
+
+			const saved = await saveOffline(
+				"quotes.approveInPerson",
+				{
+					id: quote._id,
+					clientContactId: selectedId,
+					expectedDocumentId,
+					signatureRawData: JSON.stringify({ ...padSize, strokes }),
+					deviceDescription: `${Device.modelName ?? Platform.OS} · OneTool mobile`,
+					capturedAt: Date.now(),
+				},
+				{
+					display: {
+						title: `Signature for ${quote.quoteNumber ?? "quote"}`,
+						detail: signerName,
+					},
+					files: [{ argName: "signatureStorageId", file }],
+				}
+			);
+			// The quote screen underneath shows "saved on device" (or, once synced,
+			// re-renders to Approved) reactively — landing back on it IS the
+			// success state. QUOTE_NOT_PENDING/QUOTE_VERSION_STALE replay conflicts
+			// surface later, on the sync issues screen, not here.
+			if (saved) router.back();
+		} catch {
+			Alert.alert(
+				"Couldn't record the signature",
+				"Nothing was saved. Check your connection and try again."
+			);
 		} finally {
 			setSubmitting(false);
 		}
@@ -266,7 +260,7 @@ export default function SignQuoteScreen() {
 							// Background render: failures surface on Confirm, which
 							// re-runs ensurePdf. Swallow here so the kick can't raise an
 							// unhandled rejection.
-							void ensurePdf().catch(() => {});
+							kickPdf();
 							setStep("canvas");
 						}}
 					/>

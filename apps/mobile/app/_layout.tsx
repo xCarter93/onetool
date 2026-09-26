@@ -263,6 +263,15 @@ export default function RootLayout() {
 								})}
 							/>
 							<Stack.Screen
+								name="sync-issues"
+								options={overlayOptions(device, {
+									sheetAllowedDetents: [0.52, 0.9],
+									sheetInitialDetentIndex: 1,
+									sheetGrabberVisible: false,
+									sheetCornerRadius: 30,
+								})}
+							/>
+							<Stack.Screen
 								name="notifications"
 								options={overlayOptions(device, {
 									sheetAllowedDetents: [0.52, 0.9],

@@ -1,3 +1,4 @@
+import { useOfflinePartition } from "@/lib/offline/partition-context";
 import {
 	View,
 	Text,
@@ -8,7 +9,6 @@ import {
 	TouchableOpacity,
 	Animated,
 } from "react-native";
-import { useQuery, useMutation } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { useLocalSearchParams, useRouter, type Href } from "expo-router";
 import { useState, useCallback, useMemo, useEffect, useRef } from "react";
@@ -16,7 +16,6 @@ import {
 	SafeAreaView,
 	useSafeAreaInsets,
 } from "react-native-safe-area-context";
-import { useOrganization } from "@clerk/expo";
 import { Id } from "@onetool/backend/convex/_generated/dataModel";
 import {
 	colors,
@@ -55,6 +54,9 @@ import { FieldMenu } from "@/components/FieldMenu";
 import { useOverlayTransition } from "@/components/useOverlayTransition";
 import { MentionModal } from "@/components/MentionModal";
 import { RecordDocuments } from "@/components/RecordDocuments";
+import { useCachedQuery } from "@/lib/offline/useCachedQuery";
+import { saveOffline, useOpenOps } from "@/lib/offline/hooks";
+import { overlayFields } from "@/lib/offline/field-patch";
 import { AppCalendar, toDateId, fromDateId } from "@/components/AppCalendar";
 import {
 	CalendarDays,
@@ -162,8 +164,6 @@ export function ProjectDetailBody({
 	const [refreshing, setRefreshing] = useState(false);
 	const [dateField, setDateField] = useState<DateField | null>(null);
 	const [mentionVisible, setMentionVisible] = useState(false);
-	const [optimisticStatus, setOptimisticStatus] = useState<string | null>(null);
-	const { organization } = useOrganization();
 	const { can, isLoading: permsLoading } = usePermissions();
 
 	// Animated date overlay. `shownField` is set when opening (not cleared on
@@ -176,37 +176,39 @@ export function ProjectDetailBody({
 		setDateField(field);
 	}, []);
 
-	const updateProject = useMutation(api.projects.update);
-
-	const project = useQuery(
+	const project = useCachedQuery(
 		api.projects.get,
 		projectId ? { id: projectId as Id<"projects"> } : "skip"
 	);
-	const clients = useQuery(api.clients.list, {});
-	const quotes = useQuery(
+	const clients = useCachedQuery(api.clients.list, {});
+	const quotes = useCachedQuery(
 		api.quotes.list,
 		projectId ? { projectId: projectId as Id<"projects"> } : "skip"
 	);
-	const invoices = useQuery(
+	const invoices = useCachedQuery(
 		api.invoices.list,
 		projectId ? { projectId: projectId as Id<"projects"> } : "skip"
 	);
-	const tasks = useQuery(
+	const tasks = useCachedQuery(
 		api.tasks.list,
 		projectId ? { projectId: projectId as Id<"projects"> } : "skip"
 	);
 	// Quick-action data hangs off the project's client — same resolution the
 	// client detail screen uses (primary contact / primary property).
 	const contacts =
-		useQuery(
+		useCachedQuery(
 			api.clientContacts.listByClient,
 			project ? { clientId: project.clientId } : "skip"
 		) ?? [];
 	const properties =
-		useQuery(
+		useCachedQuery(
 			api.clientProperties.listByClient,
 			project ? { clientId: project.clientId } : "skip"
 		) ?? [];
+
+	// Queued field patches for this project, overlaid on the loaded doc so the
+	// screen shows the edited value while the write is still in the outbox.
+	const openOps = useOpenOps(projectId ? `project:${projectId}` : undefined);
 
 	// Single org-scoped clients query → name lookup. No per-row clients.get (N+1).
 	const clientNameById = useMemo(
@@ -231,15 +233,15 @@ export function ProjectDetailBody({
 	// Recents trail — once per visit, after the real title exists. A ref (not
 	// state) keeps this out of the render cycle.
 	const recordedRef = useRef<string | null>(null);
-	const orgId = organization?.id;
+	const recentsScope = useOfflinePartition() ?? undefined;
 	const projectTitle = project?.title;
 	useEffect(() => {
-		// orgId gates too: recordRecentView no-ops without it, and the ref below
+		// The scope gates too: recordRecentView no-ops without it, and the ref below
 		// would burn the one-shot before Clerk resolves the active org.
-		if (!projectId || !projectTitle || !orgId) return;
+		if (!projectId || !projectTitle || !recentsScope) return;
 		if (recordedRef.current === projectId) return;
 		recordedRef.current = projectId;
-		recordRecentView(orgId, {
+		recordRecentView(recentsScope, {
 			kind: "project",
 			id: projectId,
 			title: projectTitle,
@@ -248,61 +250,78 @@ export function ProjectDetailBody({
 		// clientName is a late-arriving snapshot detail — re-running on it would
 		// double-record the same visit.
 		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [projectId, projectTitle, orgId]);
+	}, [projectId, projectTitle, recentsScope]);
 
 	const onRefresh = useCallback(() => {
 		setRefreshing(true);
 		setTimeout(() => setRefreshing(false), 1000);
 	}, []);
 
+	// Overlays queued field patches on the loaded doc — expectedValues for the
+	// NEXT edit must key off what's on screen (which may include an earlier
+	// still-pending edit), not the last server snapshot, or a second offline
+	// edit in the same chain would replay against a base the server never saw.
+	const displayProject = useMemo(
+		() => (project ? overlayFields(project, openOps) : null),
+		[project, openOps]
+	);
+
 	// Send ONLY the edited field — projects.update throws on zero updates (Pitfall 3).
 	const saveField = useCallback(
 		async (field: "title" | "description", value: string) => {
-			if (!projectId) return;
-			await updateProject({ id: projectId as Id<"projects">, [field]: value });
+			if (!projectId || !displayProject) return;
+			if (value === (displayProject[field] ?? "")) return;
+			const saved = await saveOffline(
+				"projects.update",
+				{
+					id: projectId as Id<"projects">,
+					[field]: value,
+					expectedValues: { [field]: displayProject[field] },
+				},
+				{ display: { title: `Update: ${displayProject.title}` } }
+			);
+			// saveOffline already explained the refusal; throwing keeps the editor open.
+			if (!saved) throw new Error("Change not saved");
 		},
-		[projectId, updateProject]
+		[projectId, displayProject]
 	);
 
 	const handleStatusSelect = useCallback(
 		async (next: string) => {
-			if (!projectId) return;
-			setOptimisticStatus(next);
-			try {
-				await updateProject({
+			if (!projectId || !displayProject || next === displayProject.status) return;
+			await saveOffline(
+				"projects.update",
+				{
 					id: projectId as Id<"projects">,
 					status: next as ProjectStatus,
-				});
-				// The query has the write by the time this resolves, so hand the
-				// display back to project.status instead of pinning it here.
-				setOptimisticStatus(null);
-			} catch (error) {
-				setOptimisticStatus(null);
-				console.error("Failed to update status:", error);
-			}
+					expectedValues: { status: displayProject.status },
+				},
+				{ display: { title: `Status: ${displayProject.title}` } }
+			);
 		},
-		[projectId, updateProject]
+		[projectId, displayProject]
 	);
 
 	const handleDateSelect = useCallback(
 		async (dateId: string) => {
-			if (!projectId || !dateField) return;
+			if (!projectId || !dateField || !displayProject) return;
 			const ms = fromDateId(dateId).getTime();
 			const field = dateField;
-			setDateField(null);
-			try {
-				await updateProject({
+			const saved = await saveOffline(
+				"projects.update",
+				{
 					id: projectId as Id<"projects">,
 					[field]: ms,
-				});
-			} catch (error) {
-				console.error("Failed to update date:", error);
-			}
+					expectedValues: { [field]: displayProject[field] },
+				},
+				{ display: { title: `${field === "startDate" ? "Start" : "Due"} date: ${displayProject.title}` } }
+			);
+			if (saved) setDateField(null);
 		},
-		[projectId, dateField, updateProject]
+		[projectId, dateField, displayProject]
 	);
 
-	if (!project) {
+	if (!project || !displayProject) {
 		return (
 			<SafeAreaView style={[styles.flex, { backgroundColor: t.bg }]} edges={[]}>
 				<DotGrid style={StyleSheet.absoluteFill} />
@@ -325,7 +344,7 @@ export function ProjectDetailBody({
 		);
 	}
 
-	const status = optimisticStatus ?? project.status;
+	const status = displayProject.status;
 
 	const primaryContact = contacts.find((c) => c.isPrimary) ?? contacts[0];
 	// The project's own property wins; otherwise fall back to the client's primary.
@@ -410,7 +429,7 @@ export function ProjectDetailBody({
 				// header printed it twice.
 				<PaneHeader onBack={onBack} />
 			) : (
-				<InkTabHeader title={project.title} onBack={() => router.back()} />
+				<InkTabHeader title={displayProject.title} onBack={() => router.back()} />
 			)}
 			<ScrollView
 				contentContainerStyle={[styles.scroll, { paddingBottom: scrollBottom }]}
@@ -422,7 +441,7 @@ export function ProjectDetailBody({
 				    place a project status can change keeps working. */}
 				<IdentityBlock
 					statusKey={status}
-					name={project.title}
+					name={displayProject.title}
 					// The old standalone Building2 client-link row folds in here.
 					meta={
 						<Pressable
@@ -528,12 +547,12 @@ export function ProjectDetailBody({
 					<View style={styles.datePair}>
 						<DateWell
 							label="Start"
-							value={formatDate(project.startDate)}
+							value={formatDate(displayProject.startDate)}
 							onPress={() => openDatePicker("startDate")}
 						/>
 						<DateWell
 							label="Due"
-							value={formatDate(project.endDate)}
+							value={formatDate(displayProject.endDate)}
 							onPress={() => openDatePicker("endDate")}
 						/>
 					</View>
@@ -554,13 +573,13 @@ export function ProjectDetailBody({
 					<View style={detailStyles.stack}>
 						<EditableField
 							label="Title"
-							value={project.title}
+							value={displayProject.title}
 							onSave={(v) => saveField("title", v)}
 							placeholder="Project title"
 						/>
 						<EditableField
 							label="Description"
-							value={project.description}
+							value={displayProject.description}
 							onSave={(v) => saveField("description", v)}
 							placeholder="Add a description…"
 							multiline
@@ -687,11 +706,11 @@ export function ProjectDetailBody({
 							<AppCalendar
 								selectedDate={
 									shownField === "endDate"
-										? project.endDate
-											? toDateId(new Date(project.endDate))
+										? displayProject.endDate
+											? toDateId(new Date(displayProject.endDate))
 											: undefined
-										: project.startDate
-											? toDateId(new Date(project.startDate))
+										: displayProject.startDate
+											? toDateId(new Date(displayProject.startDate))
 											: undefined
 								}
 								onDateSelect={handleDateSelect}
@@ -707,7 +726,7 @@ export function ProjectDetailBody({
 				onClose={() => setMentionVisible(false)}
 				entityType="project"
 				entityId={projectId as Id<"projects">}
-				entityName={project.title}
+				entityName={displayProject.title}
 			/>
 		</SafeAreaView>
 	);

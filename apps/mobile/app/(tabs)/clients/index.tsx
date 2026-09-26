@@ -7,7 +7,6 @@ import {
 	StyleSheet,
 } from "react-native";
 import { FlashList } from "@shopify/flash-list";
-import { useQuery } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { useRouter } from "expo-router";
 import { useState, useMemo } from "react";
@@ -27,6 +26,7 @@ import {
 import { Avatar, Badge, DotGrid, SCROLL_TOP_INSET } from "@/components/ui";
 import { InkTabHeader } from "@/components/ink-tab-header";
 import { useShellNav } from "@/lib/shell-nav";
+import { useCachedQuery } from "@/lib/offline/useCachedQuery";
 
 // listWithProjectCounts returns a reshaped DTO (id/name/status display string),
 // NOT Doc<"clients">. Field names used verbatim below.
@@ -85,7 +85,7 @@ export default function ClientsScreen({
 	const [searchQuery, setSearchQuery] = useState("");
 	const [filter, setFilter] = useState<FilterValue>("all");
 
-	const clients = useQuery(api.clients.listWithProjectCounts, {}) as
+	const clients = useCachedQuery(api.clients.listWithProjectCounts, {}) as
 		| ClientRow[]
 		| undefined;
 

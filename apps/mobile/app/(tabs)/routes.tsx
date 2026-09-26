@@ -4,7 +4,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useKeepAwake } from "expo-keep-awake";
 import * as Location from "expo-location";
 import { router, type Href } from "expo-router";
-import { useAction, useMutation, useQuery } from "convex/react";
+import { useAction, useMutation } from "convex/react";
 import { ConvexError } from "convex/values";
 import { api } from "@onetool/backend/convex/_generated/api";
 import type { Doc, Id } from "@onetool/backend/convex/_generated/dataModel";
@@ -22,14 +22,18 @@ import { InkTabHeader, type InkHeaderAction } from "@/components/ink-tab-header"
 import { requestSearchFocus } from "@/lib/search-focus";
 import { DotGrid } from "@/components/ui";
 import { MapboxModule } from "@/lib/mapbox";
+import { useCachedQuery } from "@/lib/offline/useCachedQuery";
+import { saveOffline, useOnlineAction, useOpenOps } from "@/lib/offline/hooks";
 import { RouteMap, type GasStation } from "@/components/routes/route-map";
 import { RouteSheet } from "@/components/routes/route-sheet";
 import { StopCarousel } from "@/components/routes/stop-carousel";
 import {
 	appleMapsUrl,
+	applyRouteOverlay,
 	googleMapsRouteUrl,
 	googleMapsUrl,
 	nextPendingStop,
+	routeOverlay,
 	stopsInOrder,
 	type LngLat,
 	type RouteStop,
@@ -84,23 +88,32 @@ function initialFocus(route: Doc<"routes"> | null | undefined): number {
 	return stopsInOrder(route.stops).findIndex((s) => s.order === next.order) + 1;
 }
 
+/** Sync-issues-screen display label for a queued stop status change. */
+function stopStatusLabel(status: "visited" | "skipped" | "pending"): string {
+	return status === "visited" ? "Arrived" : status === "skipped" ? "Skip" : "Undo";
+}
+
 function RoutesBody({ headerMode }: { headerMode: "root" | "pane" }) {
 	const t = useTokens();
 	const insets = useSafeAreaInsets();
 	const isPane = headerMode === "pane";
 
-	const routes = useQuery(api.routes.list);
-	const me = useQuery(api.users.current);
-	const orgUsers = useQuery(api.users.listByOrg);
-	const premium = useQuery(api.permissions.hasPremiumAccess);
+	const routes = useCachedQuery(api.routes.list, {});
+	const me = useCachedQuery(api.users.current, {});
+	const orgUsers = useCachedQuery(api.users.listByOrg, {});
+	const premium = useCachedQuery(api.permissions.hasPremiumAccess, {});
 
-	const startRoute = useMutation(api.routes.startRoute);
-	const completeRoute = useMutation(api.routes.completeRoute);
-	const setStopStatus = useMutation(api.routes.setStopStatus);
+	// Route builder saves and compute/search actions are out of offline scope
+	// (PRD §3 "out of scope") — gate them online-only rather than let them hang.
 	const copyToDaily = useMutation(api.routes.copyToDaily);
 	const seedFromSchedule = useMutation(api.routes.seedFromSchedule);
 	const computeRoute = useAction(api.routingActions.computeRoute);
 	const searchGas = useAction(api.routingActions.searchGasAlongRoute);
+	const onlineAction = useOnlineAction();
+
+	// Every open queued op for this partition; overlays below pull one route's
+	// slice by chainKey (`route:<id>`).
+	const routeOps = useOpenOps();
 
 	const [selectedId, setSelectedId] = useState<Id<"routes"> | null>(null);
 	const [focusIndex, setFocusIndex] = useState(0);
@@ -117,12 +130,18 @@ function RoutesBody({ headerMode }: { headerMode: "root" | "pane" }) {
 	// One-shot resume: reopen an in-progress run when the screen mounts.
 	const [resumed, setResumed] = useState(false);
 	if (!resumed && routes !== undefined) {
-		const running = routes.find(
-			(r) =>
-				r.kind === "daily" &&
-				r.startedAt !== undefined &&
-				r.completedAt === undefined
-		);
+		// Overlaid so a run started offline resumes after a cold start too.
+		const running = routes
+			.map((r) => {
+				const overlay = routeOverlay(routeOps, r._id);
+				return overlay ? applyRouteOverlay(r, overlay) : r;
+			})
+			.find(
+				(r) =>
+					r.kind === "daily" &&
+					r.startedAt !== undefined &&
+					r.completedAt === undefined
+			);
 		if (running) {
 			setSelectedId(running._id);
 			setFocusIndex(initialFocus(running));
@@ -153,7 +172,12 @@ function RoutesBody({ headerMode }: { headerMode: "root" | "pane" }) {
 		.sort((a, b) => assigneeRank(a) - assigneeRank(b));
 	const saved = all.filter((r) => r.kind !== "daily");
 
-	const selected = all.find((r) => r._id === selectedId) ?? null;
+	const rawSelected = all.find((r) => r._id === selectedId) ?? null;
+	// Queued stop statuses and start/finish reflect immediately, before the op
+	// syncs — everything below reads `selected`, never `rawSelected`.
+	const selectedOverlay = rawSelected ? routeOverlay(routeOps, rawSelected._id) : null;
+	const selected =
+		rawSelected && selectedOverlay ? applyRouteOverlay(rawSelected, selectedOverlay) : rawSelected;
 	const running =
 		selected !== null &&
 		selected.kind === "daily" &&
@@ -174,6 +198,8 @@ function RoutesBody({ headerMode }: { headerMode: "root" | "pane" }) {
 		setFocusIndex(initialFocus(all.find((r) => r._id === id)));
 	};
 
+	// Only for actions that still call Convex directly (route-build mutations,
+	// compute/search actions) — queued ops below never throw here.
 	const run = async (fn: () => Promise<unknown>) => {
 		setBusy(true);
 		setError(null);
@@ -192,76 +218,144 @@ function RoutesBody({ headerMode }: { headerMode: "root" | "pane" }) {
 		}
 	};
 
-	const onSetStatus = (
+	const onSetStatus = async (
 		order: number,
 		status: "visited" | "skipped" | "pending"
-	) =>
-		run(async () => {
-			if (!selected) return;
-			await setStopStatus({ routeId: selected._id, order, status });
-			if (running && status !== "pending") {
-				// Auto-advance: focus the next pending card, or the overview
-				// (which offers Finish) when the day is done.
-				const stops = orderedStops.map((s) =>
-					s.order === order ? { ...s, status } : s
-				);
-				const next = nextPendingStop(stops);
-				setFocusIndex(
-					next
-						? stops.findIndex((s) => s.order === next.order) + 1
-						: 0
-				);
-			}
-		});
+	) => {
+		if (!selected) return;
+		const stop = orderedStops.find((s) => s.order === order);
+		await saveOffline(
+			"routes.setStopStatus",
+			{
+				routeId: selected._id,
+				order,
+				status,
+				stopRef: stop
+					? {
+							propertyId: stop.propertyId,
+							taskId: stop.taskId,
+							projectId: stop.projectId,
+							label: stop.label,
+							latitude: stop.latitude,
+							longitude: stop.longitude,
+						}
+					: undefined,
+			},
+			{
+				display: {
+					title: `${stopStatusLabel(status)}: ${stop?.label ?? "stop"}`,
+				},
+			},
+		);
+		if (running && status !== "pending") {
+			// Auto-advance: focus the next pending card, or the overview
+			// (which offers Finish) when the day is done.
+			const stops = orderedStops.map((s) =>
+				s.order === order ? { ...s, status } : s
+			);
+			const next = nextPendingStop(stops);
+			setFocusIndex(
+				next
+					? stops.findIndex((s) => s.order === next.order) + 1
+					: 0
+			);
+		}
+	};
+
+	const onStart = async () => {
+		if (!selected) return;
+		// A route already completed (locally or on the server) is an explicit
+		// restart — send it without `ifNotCompleted` so a replay can't be
+		// mistaken for a double-start on a route that finished elsewhere.
+		const restarting = selected.completedAt !== undefined;
+		await saveOffline(
+			"routes.startRoute",
+			restarting
+				? { routeId: selected._id }
+				: { routeId: selected._id, ifNotCompleted: true },
+			{ display: { title: `${restarting ? "Restart" : "Start"} route: ${selected.name}` } },
+		);
+		// Running is now guaranteed, so focus the next pending stop directly —
+		// avoids faking a `startedAt` timestamp just to satisfy `initialFocus`.
+		const next = nextPendingStop(selected.stops);
+		setFocusIndex(
+			next ? stopsInOrder(selected.stops).findIndex((s) => s.order === next.order) + 1 : 0,
+		);
+	};
+
+	const onFinish = async () => {
+		if (!selected) return;
+		await saveOffline(
+			"routes.completeRoute",
+			{ routeId: selected._id },
+			{ display: { title: `Finish route: ${selected.name}` } },
+		);
+		setFocusIndex(0);
+	};
 
 	const onSeedSchedule = () =>
-		run(async () => {
-			// Daily-singleton assignee rule shared with web: me when the org
-			// has >1 member, org-wide otherwise. Divergence targets a
-			// different route doc than the one this screen lists.
-			const multiMember = (orgUsers?.length ?? 0) > 1;
-			const seeded = await seedFromSchedule({
-				date: todayMs,
-				assigneeUserId: multiMember ? me?._id : undefined,
-			});
-			setSelectedId(seeded.routeId);
-			setFocusIndex(0);
-			setGas(null);
-			await computeRoute({ routeId: seeded.routeId, optimize: false });
-		});
+		onlineAction("Building today's route", () =>
+			run(async () => {
+				// Daily-singleton assignee rule shared with web: me when the org
+				// has >1 member, org-wide otherwise. Divergence targets a
+				// different route doc than the one this screen lists.
+				const multiMember = (orgUsers?.length ?? 0) > 1;
+				const seeded = await seedFromSchedule({
+					date: todayMs,
+					assigneeUserId: multiMember ? me?._id : undefined,
+				});
+				setSelectedId(seeded.routeId);
+				setFocusIndex(0);
+				setGas(null);
+				await computeRoute({ routeId: seeded.routeId, optimize: false });
+			}),
+		);
 
 	const onUseToday = () =>
-		run(async () => {
-			if (!selected) return;
-			const dailyId = await copyToDaily({
-				routeId: selected._id,
-				date: todayMs,
-				assigneeUserId: me?._id,
-			});
-			setSelectedId(dailyId);
-			setFocusIndex(0);
-			// Fresh copies have no directions yet — compute in stop order.
-			await computeRoute({ routeId: dailyId, optimize: false });
-		});
+		onlineAction("Using this route today", () =>
+			run(async () => {
+				if (!selected) return;
+				const dailyId = await copyToDaily({
+					routeId: selected._id,
+					date: todayMs,
+					assigneeUserId: me?._id,
+				});
+				setSelectedId(dailyId);
+				setFocusIndex(0);
+				// Fresh copies have no directions yet — compute in stop order.
+				await computeRoute({ routeId: dailyId, optimize: false });
+			}),
+		);
 
 	const onToggleGas = () =>
-		run(async () => {
-			if (!selected?.geometry) return;
-			if (gas) {
-				setGas(null);
-				return;
-			}
-			setGasLoading(true);
-			try {
-				const stations = await searchGas({
-					routeId: selected._id,
-					timeDeviationMinutes: 10,
-				});
-				setGas({ stations, geometry: selected.geometry });
-			} finally {
-				setGasLoading(false);
-			}
-		});
+		onlineAction("Searching for gas stations", () =>
+			run(async () => {
+				if (!selected?.geometry) return;
+				if (gas) {
+					setGas(null);
+					return;
+				}
+				setGasLoading(true);
+				try {
+					const stations = await searchGas({
+						routeId: selected._id,
+						timeDeviationMinutes: 10,
+					});
+					setGas({ stations, geometry: selected.geometry });
+				} finally {
+					setGasLoading(false);
+				}
+			}),
+		);
+
+	const onCompute = () =>
+		onlineAction("Getting directions", () =>
+			run(async () => {
+				if (selected) {
+					await computeRoute({ routeId: selected._id, optimize: false });
+				}
+			}),
+		);
 
 	const onNavigate = (stop: RouteStop, app: "apple" | "google") => {
 		const url =
@@ -360,33 +454,10 @@ function RoutesBody({ headerMode }: { headerMode: "root" | "pane" }) {
 					focusIndex={focusIndex}
 					bottomInset={dockInset}
 					onFocusChange={setFocusIndex}
-					onStart={() =>
-						run(async () => {
-							if (selected) {
-								await startRoute({ routeId: selected._id });
-								setFocusIndex(initialFocus({ ...selected, startedAt: Date.now(), completedAt: undefined }));
-							}
-						})
-					}
-					onFinish={() =>
-						run(async () => {
-							if (selected) {
-								await completeRoute({ routeId: selected._id });
-								setFocusIndex(0);
-							}
-						})
-					}
+					onStart={onStart}
+					onFinish={onFinish}
 					onUseToday={onUseToday}
-					onCompute={() =>
-						run(async () => {
-							if (selected) {
-								await computeRoute({
-									routeId: selected._id,
-									optimize: false,
-								});
-							}
-						})
-					}
+					onCompute={onCompute}
 					onEdit={() => selected && openBuilder(selected._id)}
 					onSetStatus={onSetStatus}
 					onNavigate={onNavigate}

@@ -1,3 +1,4 @@
+import { useOfflinePartition } from "@/lib/offline/partition-context";
 import { useEffect, useMemo, useState } from "react";
 import {
 	Alert,
@@ -9,7 +10,7 @@ import {
 	View,
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
-import { useMutation, useQuery } from "convex/react";
+import { useMutation } from "convex/react";
 import { useLocalSearchParams, useRouter, type Href } from "expo-router";
 import { CheckCircle2, MessageSquare, Plus, XCircle } from "lucide-react-native";
 import { SvgUri } from "react-native-svg";
@@ -42,7 +43,10 @@ import { useQuoteCapabilities } from "@/lib/use-record-capabilities";
 import { usePermissions } from "@/lib/use-permissions";
 import { formatCurrency, formatDocumentDate } from "@/lib/format";
 import { recordRecentView } from "@/lib/recents";
-import { useOrganization } from "@clerk/expo";
+import { useCachedQuery } from "@/lib/offline/useCachedQuery";
+import { useOffline } from "@/lib/offline/OfflineProvider";
+import { useOnlineAction, useRequireOnline, useOpenOps } from "@/lib/offline/hooks";
+import { canSignOffline } from "@/lib/offline/quote-signing";
 
 // Lifecycle track states per status (frame 1h). Declined/expired terminate
 // the track at the third node instead of pretending the path continues.
@@ -141,19 +145,19 @@ export function QuoteDetailBody({
 	const [extendOpen, setExtendOpen] = useState(false);
 	const [mentionVisible, setMentionVisible] = useState(false);
 
-	const quote = useQuery(
+	const quote = useCachedQuery(
 		api.quotes.get,
 		id ? { id: id as Id<"quotes"> } : "skip"
 	);
-	const items = useQuery(
+	const items = useCachedQuery(
 		api.quoteLineItems.listByQuote,
 		id ? { quoteId: id as Id<"quotes"> } : "skip"
 	);
-	const clients = useQuery(api.clients.list, {});
+	const clients = useCachedQuery(api.clients.list, {});
 	// getApprovalAudit is a userQuery that THROWS on missing/forbidden — the "skip"
 	// guard is the only gate; the app-level error boundary handles the throw path.
 	// audit drives ONLY the Approval block; quotes.get stays the sole screen driver.
-	const audit = useQuery(
+	const audit = useCachedQuery(
 		api.quotes.getApprovalAudit,
 		id ? { quoteId: id as Id<"quotes"> } : "skip"
 	);
@@ -161,11 +165,17 @@ export function QuoteDetailBody({
 	const { can } = usePermissions();
 	// Web-parity staleness hint: the saved PDF is older than the content.
 	// Gated useQuery throws on missing permission, so gate with can().
-	const latestDoc = useQuery(
+	const latestDoc = useCachedQuery(
 		api.documents.getLatest,
 		quote && can("documents", "view")
 			? { documentType: "quote" as const, documentId: id }
 			: "skip"
+	);
+	const { online } = useOffline();
+	const onlineAction = useOnlineAction();
+	const requireOnline = useRequireOnline();
+	const pendingSignatureOp = useOpenOps(`quote:${id}`).find(
+		(op) => op.operation === "quotes.approveInPerson",
 	);
 
 	const sendToClient = useMutation(api.quotes.sendToClient);
@@ -184,21 +194,20 @@ export function QuoteDetailBody({
 
 	// On-device "Recently viewed" trail for the Work tab (Slice 6). Fire-and-
 	// forget, and only once the doc has loaded so the snapshot is a real title.
-	const { organization } = useOrganization();
-	const orgId = organization?.id;
+	const recentsScope = useOfflinePartition() ?? undefined;
 	const recentId = quote?._id;
 	const recentTitle =
 		quote?.title?.trim() || quote?.quoteNumber?.trim() || "Quote";
 	const recentSub = quote ? clientName.get(quote.clientId) : undefined;
 	useEffect(() => {
 		if (!recentId) return;
-		recordRecentView(orgId, {
+		recordRecentView(recentsScope, {
 			kind: "quote",
 			id: recentId,
 			title: recentTitle,
 			sub: recentSub,
 		});
-	}, [orgId, recentId, recentTitle, recentSub]);
+	}, [recentsScope, recentId, recentTitle, recentSub]);
 
 	// quote === undefined → loading skeleton.
 	if (quote === undefined) {
@@ -343,34 +352,39 @@ export function QuoteDetailBody({
 		rate: item.rate,
 	});
 
+	// Line-item editing stays online-only (repricing risk) — gate the open,
+	// not the save, so offline taps never reach a mutation.
 	const openItem = (item: LineItemInitial | null) => {
-		if (contentEditable) {
-			setItemSheet({ item });
-			return;
-		}
-		if (canFunnelEdit) {
-			Alert.alert(
-				"Move to draft to edit?",
-				"The client's link will stop working until you resend.",
-				[
-					{ text: "Cancel", style: "cancel" },
-					{
-						text: "Move to draft",
-						onPress: async () => {
-							try {
-								await updateQuote({ id: quote._id, status: "draft" });
-								setItemSheet({ item });
-							} catch {
-								Alert.alert("Couldn't update this quote", "Please try again.");
-							}
+		onlineAction("Editing line items", () => {
+			if (contentEditable) {
+				setItemSheet({ item });
+				return;
+			}
+			if (canFunnelEdit) {
+				Alert.alert(
+					"Move to draft to edit?",
+					"The client's link will stop working until you resend.",
+					[
+						{ text: "Cancel", style: "cancel" },
+						{
+							text: "Move to draft",
+							onPress: async () => {
+								try {
+									await updateQuote({ id: quote._id, status: "draft" });
+									setItemSheet({ item });
+								} catch {
+									Alert.alert("Couldn't update this quote", "Please try again.");
+								}
+							},
 						},
-					},
-				]
-			);
-		}
+					]
+				);
+			}
+		});
 	};
 
 	const saveItem = async (draft: LineItemDraft) => {
+		requireOnline("Editing line items");
 		if (itemSheet?.item) {
 			await updateLineItem({
 				id: itemSheet.item.id as Id<"quoteLineItems">,
@@ -396,6 +410,7 @@ export function QuoteDetailBody({
 	};
 
 	const deleteItem = async () => {
+		requireOnline("Editing line items");
 		if (!itemSheet?.item) return;
 		await removeLineItem({ id: itemSheet.item.id as Id<"quoteLineItems"> });
 	};
@@ -424,61 +439,79 @@ export function QuoteDetailBody({
 		switch (key) {
 			case "send_quote":
 			case "resend_quote":
-				setSendOpen(true);
+				onlineAction("Sending this quote", () => setSendOpen(true));
 				break;
 			case "mark_sent":
-				Alert.alert(
-					"Mark this quote as sent?",
-					"Use this when the client already has it — no email goes out.",
-					[
-						{ text: "Cancel", style: "cancel" },
-						{ text: "Mark as sent", onPress: () => void setStatus("sent") },
-					]
+				onlineAction("Marking this quote as sent", () =>
+					Alert.alert(
+						"Mark this quote as sent?",
+						"Use this when the client already has it — no email goes out.",
+						[
+							{ text: "Cancel", style: "cancel" },
+							{ text: "Mark as sent", onPress: () => void setStatus("sent") },
+						]
+					)
 				);
 				break;
 			case "mark_approved":
-				Alert.alert(
-					"Mark this quote approved?",
-					"Use this when the client said yes outside the portal.",
-					[
-						{ text: "Cancel", style: "cancel" },
-						{ text: "Mark approved", onPress: () => void setStatus("approved") },
-					]
+				onlineAction("Marking this quote approved", () =>
+					Alert.alert(
+						"Mark this quote approved?",
+						"Use this when the client said yes outside the portal.",
+						[
+							{ text: "Cancel", style: "cancel" },
+							{ text: "Mark approved", onPress: () => void setStatus("approved") },
+						]
+					)
 				);
 				break;
 			case "mark_declined":
-				Alert.alert("Mark this quote declined?", undefined, [
-					{ text: "Cancel", style: "cancel" },
-					{
-						text: "Mark declined",
-						style: "destructive",
-						onPress: () => void setStatus("declined"),
-					},
-				]);
+				onlineAction("Marking this quote declined", () =>
+					Alert.alert("Mark this quote declined?", undefined, [
+						{ text: "Cancel", style: "cancel" },
+						{
+							text: "Mark declined",
+							style: "destructive",
+							onPress: () => void setStatus("declined"),
+						},
+					])
+				);
 				break;
 			case "get_signature":
+				// Otherwise online-only: preparing a quote for signing (ensureQuotePdf)
+				// is an online step (PRD §3 Tier 4 item 3) unless a current, server-
+				// snapshotted document is already cached.
+				if (!online && !canSignOffline(quote, latestDoc ?? null)) {
+					Alert.alert(
+						"Connect to prepare this quote for signing",
+						"This quote needs an online refresh before a signature can be captured offline."
+					);
+					break;
+				}
 				router.push({
 					pathname: "/sign-quote",
 					params: { id: quote._id },
 				} as unknown as Href);
 				break;
 			case "convert_to_invoice":
-				void convert();
+				onlineAction("Converting this quote to an invoice", () => void convert());
 				break;
 			case "extend_valid_until":
-				setExtendOpen(true);
+				onlineAction("Extending the valid-until date", () => setExtendOpen(true));
 				break;
 			case "revert_to_draft":
-				Alert.alert(
-					"Revert to draft?",
-					"The client's link will stop working until you resend.",
-					[
-						{ text: "Cancel", style: "cancel" },
-						{
-							text: "Revert to draft",
-							onPress: () => void setStatus("draft"),
-						},
-					]
+				onlineAction("Reverting to draft", () =>
+					Alert.alert(
+						"Revert to draft?",
+						"The client's link will stop working until you resend.",
+						[
+							{ text: "Cancel", style: "cancel" },
+							{
+								text: "Revert to draft",
+								onPress: () => void setStatus("draft"),
+							},
+						]
+					)
 				);
 				break;
 			case "view_invoice":
@@ -653,7 +686,32 @@ export function QuoteDetailBody({
 					<View style={styles.section}>
 						<Eyebrow>Approval</Eyebrow>
 						<Card style={styles.approvalCard}>
-							{audit === undefined ? (
+							{pendingSignatureOp ? (
+								// Captured offline: the server hasn't seen it yet, so the
+								// quote's own status stays "sent" until the drainer syncs it.
+								<View style={styles.approvalRow}>
+									<Text
+										style={[
+											styles.approvalLabel,
+											{
+												color:
+													pendingSignatureOp.status === "conflict" ||
+													pendingSignatureOp.status === "failed" ||
+													pendingSignatureOp.status === "auth_paused"
+														? t.danger
+														: t.sub,
+											},
+										]}
+									>
+										{pendingSignatureOp.status === "conflict" ||
+										pendingSignatureOp.status === "failed"
+											? "Signature couldn't sync — needs review"
+											: pendingSignatureOp.status === "auth_paused"
+												? "Sign in to sync this signature"
+												: "Signature saved, waiting to sync"}
+									</Text>
+								</View>
+							) : audit === undefined ? (
 								// Loading (only reachable for a sent quote — drafts are hidden).
 								<View
 									style={[styles.approvalSkeleton, { backgroundColor: t.muted }]}

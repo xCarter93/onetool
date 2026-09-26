@@ -30,7 +30,8 @@ export const COMMANDS = {
 	"clients.update": command(api.clients.update, (a) => `client:${a.id}`),
 	"notifications.createMention": command(
 		api.notifications.createMention,
-		(a) => `${a.entityType}:${a.entityId}`,
+		// Own chain: a failed message must never block edits or approvals on the record.
+		(a) => `mention:${a.entityType}:${a.entityId}`,
 	),
 	"payments.recordManualPayment": command(
 		api.payments.recordManualPayment,

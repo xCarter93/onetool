@@ -13,11 +13,13 @@ import {
 	scopeCalendarEvents,
 	selectNextUp,
 	selectNextUpProject,
+	taskDoneOverlay,
 	taskInScope,
 	tomorrowPeek,
 	weekDaysFor,
 	workloadBar,
 	type AgendaProject,
+	type OverlayOp,
 	type AgendaTask,
 	type CalendarEvents,
 	type ScopedSchedule,
@@ -752,5 +754,55 @@ describe("selectNextUpProject", () => {
 	it("returns null when every visit is finished or the day has none", () => {
 		expect(selectNextUpProject([proj("done", "completed")])).toBeNull();
 		expect(selectNextUpProject([])).toBeNull();
+	});
+});
+
+describe("taskDoneOverlay", () => {
+	const op = (
+		id: number,
+		taskId: string,
+		operation: string,
+		args: unknown,
+	): OverlayOp => ({ id, chainKey: `task:${taskId}`, operation, args });
+
+	it("returns undefined when nothing is queued for the task", () => {
+		expect(taskDoneOverlay([], "t1")).toBeUndefined();
+		expect(taskDoneOverlay([op(1, "other", "tasks.complete", { id: "other" })], "t1")).toBeUndefined();
+	});
+
+	it("tasks.complete overlays done", () => {
+		expect(taskDoneOverlay([op(1, "t1", "tasks.complete", { id: "t1" })], "t1")).toBe(true);
+	});
+
+	it("tasks.update with a done status overlays done", () => {
+		expect(
+			taskDoneOverlay([op(1, "t1", "tasks.update", { id: "t1", status: "completed" })], "t1"),
+		).toBe(true);
+	});
+
+	it("tasks.update with a not-done status overlays not done", () => {
+		expect(
+			taskDoneOverlay([op(1, "t1", "tasks.update", { id: "t1", status: "pending" })], "t1"),
+		).toBe(false);
+	});
+
+	it("tasks.update with no status field leaves the overlay unchanged", () => {
+		expect(
+			taskDoneOverlay(
+				[
+					op(1, "t1", "tasks.complete", { id: "t1" }),
+					op(2, "t1", "tasks.update", { id: "t1", title: "renamed" }),
+				],
+				"t1",
+			),
+		).toBe(true);
+	});
+
+	it("the last op on the chain wins, regardless of array order", () => {
+		const ops = [
+			op(2, "t1", "tasks.update", { id: "t1", status: "pending" }),
+			op(1, "t1", "tasks.complete", { id: "t1" }),
+		];
+		expect(taskDoneOverlay(ops, "t1")).toBe(false);
 	});
 });

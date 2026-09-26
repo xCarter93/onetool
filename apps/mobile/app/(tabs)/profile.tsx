@@ -21,6 +21,9 @@ import { Mail, Building, LogOut, Shield, Trash2, SquarePen, ChevronRight, Bell, 
 import { InkTabHeader } from "@/components/ink-tab-header";
 import { usePermissions } from "@/lib/use-permissions";
 import { openExternal } from "@/lib/open-external";
+import { useOffline } from "@/lib/offline/OfflineProvider";
+import { clearPartition } from "@/lib/offline/store";
+import { discardPaymentWarning, signOutGuardMessage, summarizePendingOps } from "@/lib/offline/sync-copy";
 
 const SUPPORT_EMAIL = "support@onetool.biz";
 
@@ -49,6 +52,7 @@ export default function ProfileScreen({
 	const { signOut } = useAuth();
 	const router = useRouter();
 	const { organization, membership } = useOrganization();
+	const { partition, ops } = useOffline();
 	const t = useTokens();
 	const insets = useSafeAreaInsets();
 	const isPane = headerMode === "pane";
@@ -84,20 +88,47 @@ export default function ProfileScreen({
 		a.provider?.toLowerCase().includes("apple"),
 	);
 
+	// Deletes cached reads always; only wipes the outbox when the caller confirmed
+	// discarding pending work (§4.5 partition contract).
+	const finishSignOut = async (discardOutbox: boolean) => {
+		if (partition) await clearPartition(partition, discardOutbox);
+		await signOut();
+	};
+
 	const handleSignOut = () => {
-		Alert.alert("Sign Out", "Are you sure you want to sign out?", [
-			{ text: "Cancel", style: "cancel" },
+		const pending = summarizePendingOps(ops);
+		if (pending.count === 0) {
+			Alert.alert("Sign Out", "Are you sure you want to sign out?", [
+				{ text: "Cancel", style: "cancel" },
+				{ text: "Sign Out", style: "destructive", onPress: () => void finishSignOut(false) },
+			]);
+			return;
+		}
+		Alert.alert("Unsynced changes on this phone", signOutGuardMessage(pending), [
+			{ text: "Stay signed in", style: "cancel" },
 			{
-				text: "Sign Out",
+				text: "Discard and sign out",
 				style: "destructive",
-				onPress: () => signOut(),
+				onPress: () => {
+					if (pending.paymentCount === 0) {
+						void finishSignOut(true);
+						return;
+					}
+					Alert.alert(
+						"This will discard recorded payments",
+						discardPaymentWarning(pending.paymentCount),
+						[
+							{ text: "Cancel", style: "cancel" },
+							{ text: "Discard anyway", style: "destructive", onPress: () => void finishSignOut(true) },
+						],
+					);
+				},
 			},
 		]);
 	};
 
-	const handleDeleteAccount = () => {
-		if (isDeleting || !ownershipResolved) return;
-
+	// The actual delete flow, run once any pending-work guard below has cleared.
+	const proceedWithDeleteAccount = (discardOutbox: boolean) => {
 		// Three-way confirm copy chosen by path BEFORE the Alert.
 		let message: string;
 		if (isOwner && otherMembers === 0) {
@@ -126,6 +157,8 @@ export default function ProfileScreen({
 				onPress: async () => {
 					if (isDeleting) return;
 					setIsDeleting(true);
+					// Only after the final confirm: cancelling must leave local work intact.
+					if (partition) await clearPartition(partition, discardOutbox);
 
 					// Owner path: destroy the org FIRST (fires organization.deleted →
 					// the 28-04 backend cascade erases all org data; child rows drain
@@ -167,6 +200,37 @@ export default function ProfileScreen({
 						);
 						setIsDeleting(false);
 					}
+				},
+			},
+		]);
+	};
+
+	const handleDeleteAccount = () => {
+		if (isDeleting || !ownershipResolved) return;
+		const pending = summarizePendingOps(ops);
+		if (pending.count === 0) {
+			proceedWithDeleteAccount(false);
+			return;
+		}
+		Alert.alert("Unsynced changes on this phone", signOutGuardMessage(pending), [
+			{ text: "Cancel", style: "cancel" },
+			{
+				text: "Discard and continue",
+				style: "destructive",
+				onPress: () => {
+					const discard = () => proceedWithDeleteAccount(true);
+					if (pending.paymentCount === 0) {
+						discard();
+						return;
+					}
+					Alert.alert(
+						"This will discard recorded payments",
+						discardPaymentWarning(pending.paymentCount),
+						[
+							{ text: "Cancel", style: "cancel" },
+							{ text: "Discard anyway", style: "destructive", onPress: discard },
+						],
+					);
 				},
 			},
 		]);

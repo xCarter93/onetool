@@ -12,10 +12,12 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useAction, useMutation, useQuery } from "convex/react";
+import { useAction, useMutation } from "convex/react";
 import { ConvexError } from "convex/values";
 import { api } from "@onetool/backend/convex/_generated/api";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
+import { useCachedQuery } from "@/lib/offline/useCachedQuery";
+import { useOnlineAction } from "@/lib/offline/hooks";
 import {
 	Bookmark,
 	CalendarDays,
@@ -80,15 +82,18 @@ export default function RouteEditScreen() {
 		: params.routeId;
 	const routeId = routeIdParam as Id<"routes"> | undefined;
 
-	const routes = useQuery(api.routes.list);
-	const org = useQuery(api.organizations.get);
-	const propertiesData = useQuery(api.clientProperties.listGeocodedWithClients, {});
-	const currentUser = useQuery(api.users.current);
-	const members = useQuery(api.users.listByOrg);
+	const routes = useCachedQuery(api.routes.list, {});
+	const org = useCachedQuery(api.organizations.get, {});
+	const propertiesData = useCachedQuery(api.clientProperties.listGeocodedWithClients, {});
+	const currentUser = useCachedQuery(api.users.current, {});
+	const members = useCachedQuery(api.users.listByOrg, {});
 
+	// The whole builder (save, compute) is out of offline scope (PRD §3) —
+	// building or editing a route needs a connection.
 	const createRoute = useMutation(api.routes.create);
 	const updateRoute = useMutation(api.routes.update);
 	const computeRoute = useAction(api.routingActions.computeRoute);
+	const onlineAction = useOnlineAction();
 
 	const existingRoute = routeId
 		? (routes?.find((r) => r._id === routeId) ?? null)
@@ -229,47 +234,53 @@ export default function RouteEditScreen() {
 		}
 	}
 
-	const onSave = async () => {
-		setBusy(true);
-		setError(null);
-		const id = await persist();
-		setBusy(false);
-		if (id) router.back();
-	};
+	const onSave = () =>
+		onlineAction("Saving this route", () => {
+			void (async () => {
+				setBusy(true);
+				setError(null);
+				const id = await persist();
+				setBusy(false);
+				if (id) router.back();
+			})();
+		});
 
-	const onCompute = async (optimize: boolean) => {
-		setBusy(true);
-		setError(null);
-		setComputeNote(null);
-		setUnreachable(new Set());
-		const id = await persist();
-		if (!id) {
-			setBusy(false);
-			return;
-		}
-		try {
-			const result = await computeRoute({ routeId: id, optimize });
-			setBusy(false);
-			if (!result.applied) {
-				setComputeNote("Route changed while computing — try again.");
-				return;
-			}
-			router.back();
-		} catch (e) {
-			setBusy(false);
-			if (e instanceof ConvexError) {
-				const data = e.data as { code?: string; stopIndices?: number[] };
-				if (data?.code === "unreachable_stops" && data.stopIndices) {
-					setUnreachable(new Set(data.stopIndices));
-					setError(
-						"Some stops can't be reached by road from the start location."
-					);
+	const onCompute = (optimize: boolean) =>
+		onlineAction("Computing directions", () => {
+			void (async () => {
+				setBusy(true);
+				setError(null);
+				setComputeNote(null);
+				setUnreachable(new Set());
+				const id = await persist();
+				if (!id) {
+					setBusy(false);
 					return;
 				}
-			}
-			setError(e instanceof Error ? e.message : "Route computation failed");
-		}
-	};
+				try {
+					const result = await computeRoute({ routeId: id, optimize });
+					setBusy(false);
+					if (!result.applied) {
+						setComputeNote("Route changed while computing — try again.");
+						return;
+					}
+					router.back();
+				} catch (e) {
+					setBusy(false);
+					if (e instanceof ConvexError) {
+						const data = e.data as { code?: string; stopIndices?: number[] };
+						if (data?.code === "unreachable_stops" && data.stopIndices) {
+							setUnreachable(new Set(data.stopIndices));
+							setError(
+								"Some stops can't be reached by road from the start location."
+							);
+							return;
+						}
+					}
+					setError(e instanceof Error ? e.message : "Route computation failed");
+				}
+			})();
+		});
 
 	const addProperty = (property: GeocodedProperty) => {
 		setDraft(addPropertyStop(draft, property));
@@ -517,7 +528,7 @@ export default function RouteEditScreen() {
 							<Button
 								title="Add a stop"
 								variant="secondary"
-								onPress={() => setStopPicker("list")}
+								onPress={() => onlineAction("Adding a stop", () => setStopPicker("list"))}
 								disabled={atStopLimit}
 								style={styles.addStopButton}
 							/>
