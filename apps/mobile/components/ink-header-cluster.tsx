@@ -1,5 +1,6 @@
-import React from "react";
-import { Image, Pressable, StyleSheet, Text, View } from "react-native";
+import React, { useState } from "react";
+import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter, type Href } from "expo-router";
 import { useOrganization, useUser } from "@clerk/expo";
@@ -133,6 +134,13 @@ export function InkOrgChip() {
 	const { organization } = useOrganization();
 	const orgName = organization?.name ?? "Personal";
 	const orgInitials = initialsFrom(orgName);
+	const [logoFailed, setLogoFailed] = useState(false);
+	// Reset during render (not an effect) when the logo URL changes.
+	const [prevOrgLogo, setPrevOrgLogo] = useState(organization?.imageUrl);
+	if (organization?.imageUrl !== prevOrgLogo) {
+		setPrevOrgLogo(organization?.imageUrl);
+		setLogoFailed(false);
+	}
 
 	return (
 		<Pressable
@@ -141,10 +149,14 @@ export function InkOrgChip() {
 			accessibilityLabel="Switch organization"
 			style={inkClusterStyles.orgChip}
 		>
-			{organization?.imageUrl ? (
+			{organization?.imageUrl && !logoFailed ? (
 				<Image
 					source={{ uri: organization.imageUrl }}
 					style={inkClusterStyles.orgTile}
+					contentFit="cover"
+					cachePolicy="disk"
+					transition={150}
+					onError={() => setLogoFailed(true)}
 				/>
 			) : (
 				<LinearGradient
@@ -176,7 +188,14 @@ const inkClusterStyles = StyleSheet.create({
 		height: 26,
 		borderRadius: 7,
 	},
+	// Initials fallback: minWidth/minHeight override orgTile's fixed size so the
+	// tile grows at large Dynamic Type sizes instead of clipping the initials text.
 	orgTileFill: {
+		width: undefined,
+		height: undefined,
+		minWidth: 26,
+		minHeight: 26,
+		paddingHorizontal: 3,
 		alignItems: "center",
 		justifyContent: "center",
 	},

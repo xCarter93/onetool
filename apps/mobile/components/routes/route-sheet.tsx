@@ -54,7 +54,9 @@ export function RouteSheet(props: RouteSheetProps) {
 				borderRadius: radii.sheet,
 				boxShadow: shadow.sheet,
 			}}
-			handleIndicatorStyle={{ backgroundColor: t.faintDecor }}
+			// t.sub, not faintDecor — the drag handle is an interactive affordance,
+			// not decoration, and faintDecor (2.46:1) fails even the 3:1 control floor.
+			handleIndicatorStyle={{ backgroundColor: t.sub }}
 		>
 			<BottomSheetScrollView
 				contentContainerStyle={[

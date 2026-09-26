@@ -1,10 +1,7 @@
 import { OfflineBlockedError } from "@/lib/offline/hooks";
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import {
 	Alert,
-	KeyboardAvoidingView,
-	Modal,
-	Platform,
 	Pressable,
 	ScrollView,
 	StyleSheet,
@@ -16,6 +13,7 @@ import { X } from "lucide-react-native";
 import { fontFamily, radii, type, useTokens } from "@/lib/theme";
 import { Button, Eyebrow } from "@/components/ui";
 import { formatCurrency } from "@/lib/format";
+import { FormSheet } from "@/components/sheets/form-sheet";
 
 export interface LineItemDraft {
 	description: string;
@@ -52,10 +50,14 @@ export function LineItemSheet({
 	onDelete?: () => Promise<void>;
 }) {
 	const t = useTokens();
-	const [description, setDescription] = useState("");
-	const [quantityText, setQuantityText] = useState("1");
-	const [unit, setUnit] = useState("");
-	const [rateText, setRateText] = useState("");
+	const seedDescription = initial?.description ?? "";
+	const seedQuantityText = initial ? String(initial.quantity) : "1";
+	const seedUnit = initial?.unit ?? "";
+	const seedRateText = initial ? String(initial.rate) : "";
+	const [description, setDescription] = useState(seedDescription);
+	const [quantityText, setQuantityText] = useState(seedQuantityText);
+	const [unit, setUnit] = useState(seedUnit);
+	const [rateText, setRateText] = useState(seedRateText);
 	const [saving, setSaving] = useState(false);
 
 	// Re-seed per open (house guarded render-time derivation — setState in an
@@ -64,13 +66,19 @@ export function LineItemSheet({
 	if (visible !== prevVisible) {
 		setPrevVisible(visible);
 		if (visible) {
-			setDescription(initial?.description ?? "");
-			setQuantityText(initial ? String(initial.quantity) : "1");
-			setUnit(initial?.unit ?? "");
-			setRateText(initial ? String(initial.rate) : "");
+			setDescription(seedDescription);
+			setQuantityText(seedQuantityText);
+			setUnit(seedUnit);
+			setRateText(seedRateText);
 			setSaving(false);
 		}
 	}
+
+	const dirty =
+		description !== seedDescription ||
+		quantityText !== seedQuantityText ||
+		unit !== seedUnit ||
+		rateText !== seedRateText;
 
 	const quantity = Number.parseFloat(quantityText.replace(/[^0-9.]/g, ""));
 	const rate = Number.parseFloat(rateText.replace(/[^0-9.]/g, ""));
@@ -105,6 +113,22 @@ export function LineItemSheet({
 		}
 	};
 
+	const attemptClose = useCallback(() => {
+		if (saving) return;
+		if (!dirty) {
+			onClose();
+			return;
+		}
+		Alert.alert(
+			"Discard this line item?",
+			"Your changes haven't been saved.",
+			[
+				{ text: "Keep editing", style: "cancel" },
+				{ text: "Discard", style: "destructive", onPress: onClose },
+			]
+		);
+	}, [saving, dirty, onClose]);
+
 	const confirmDelete = () => {
 		if (saving || !onDelete) return;
 		Alert.alert(
@@ -133,16 +157,8 @@ export function LineItemSheet({
 	};
 
 	return (
-		<Modal
-			visible={visible}
-			animationType="slide"
-			presentationStyle="pageSheet"
-			onRequestClose={onClose}
-		>
-			<KeyboardAvoidingView
-				style={[styles.root, { backgroundColor: t.bg }]}
-				behavior={Platform.OS === "ios" ? "padding" : undefined}
-			>
+		<FormSheet visible={visible} onDismiss={attemptClose} dirty={dirty} snapPoint="78%">
+			<View style={[styles.root, { backgroundColor: t.bg }]}>
 				<View style={styles.topBar}>
 					<Text style={[styles.topTitle, { color: t.ink }]}>
 						{initial ? "Edit line item" : "Add line item"}
@@ -150,7 +166,7 @@ export function LineItemSheet({
 					<Pressable
 						accessibilityRole="button"
 						accessibilityLabel="Close"
-						onPress={onClose}
+						onPress={attemptClose}
 						hitSlop={8}
 						style={[styles.close, { backgroundColor: t.secondary }]}
 					>
@@ -169,7 +185,7 @@ export function LineItemSheet({
 							value={description}
 							onChangeText={setDescription}
 							placeholder="Spring cleanup, service call, materials…"
-							placeholderTextColor={t.faintDecor}
+							placeholderTextColor={t.faint}
 							multiline
 							style={[
 								styles.descriptionInput,
@@ -191,7 +207,7 @@ export function LineItemSheet({
 								onChangeText={setQuantityText}
 								keyboardType="decimal-pad"
 								placeholder="1"
-								placeholderTextColor={t.faintDecor}
+								placeholderTextColor={t.faint}
 								style={[
 									styles.numberInput,
 									{
@@ -209,7 +225,7 @@ export function LineItemSheet({
 								value={unit}
 								onChangeText={setUnit}
 								placeholder="hour, sq ft, unit"
-								placeholderTextColor={t.faintDecor}
+								placeholderTextColor={t.faint}
 								autoCapitalize="none"
 								style={[
 									styles.numberInput,
@@ -232,13 +248,13 @@ export function LineItemSheet({
 								{ backgroundColor: t.card, borderColor: t.line },
 							]}
 						>
-							<Text style={[styles.dollarSign, { color: t.faintDecor }]}>$</Text>
+							<Text style={[styles.dollarSign, { color: t.faint }]}>$</Text>
 							<TextInput
 								value={rateText}
 								onChangeText={setRateText}
 								keyboardType="decimal-pad"
 								placeholder="0.00"
-								placeholderTextColor={t.faintDecor}
+								placeholderTextColor={t.faint}
 								style={[styles.rateInput, { color: t.ink }]}
 								accessibilityLabel="Rate per unit in dollars"
 							/>
@@ -297,8 +313,8 @@ export function LineItemSheet({
 						onPress={submit}
 					/>
 				</View>
-			</KeyboardAvoidingView>
-		</Modal>
+			</View>
+		</FormSheet>
 	);
 }
 

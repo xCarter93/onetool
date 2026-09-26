@@ -141,7 +141,11 @@ export function NextUpCard({
 						accessibilityElementsHidden
 						importantForAccessibility="no-hide-descendants"
 					>
-						<Text style={[styles.assigneeText, { color: t.frostedInk }]}>
+						{/* Capped, not resized — see agenda-row.tsx's identical fix. */}
+						<Text
+							style={[styles.assigneeText, { color: t.frostedInk }]}
+							maxFontSizeMultiplier={1.2}
+						>
 							{assignee.initials}
 						</Text>
 					</View>

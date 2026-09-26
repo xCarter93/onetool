@@ -92,7 +92,13 @@ export function SignaturePad({
 			>
 				{/* Baseline: the sign-here rule with the customary ✕. */}
 				<View style={[styles.baseline, { borderColor: t.faintDecor }]} />
-				<Text style={[styles.baselineMark, { color: t.faintDecor }]}>✕</Text>
+				<Text
+					style={[styles.baselineMark, { color: t.faintDecor }]}
+					accessibilityElementsHidden
+					importantForAccessibility="no-hide-descendants"
+				>
+					✕
+				</Text>
 				{empty ? (
 					<Text style={[styles.hint, { color: t.faint }]}>Sign here</Text>
 				) : null}

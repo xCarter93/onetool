@@ -1,12 +1,5 @@
-import { useState } from "react";
-import {
-	Alert,
-	Modal,
-	Pressable,
-	StyleSheet,
-	Text,
-	View,
-} from "react-native";
+import { useCallback, useState } from "react";
+import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
 import { X } from "lucide-react-native";
 import { fontFamily, type, useTokens } from "@/lib/theme";
 import { describeMutationError } from "@/lib/mutation-error";
@@ -17,6 +10,7 @@ import {
 	todayDateId,
 	utcMsFromDateId,
 } from "@/lib/date";
+import { FormSheet } from "@/components/sheets/form-sheet";
 
 // Extend a quote's valid-until date. Silent toward the client (no email) —
 // but extending an EXPIRED quote revives it to sent on the backend, so the
@@ -38,7 +32,16 @@ export function ExtendValidUntilSheet({
 	onSubmit: (validUntil: number) => Promise<void>;
 }) {
 	const t = useTokens();
-	const [selectedId, setSelectedId] = useState<string | undefined>(undefined);
+	// An expired quote's stored date is in the past — never preselect a date
+	// the server would reject.
+	const seedId = (() => {
+		const currentId =
+			currentValidUntil !== null
+				? dateIdFromUtcMs(currentValidUntil)
+				: undefined;
+		return currentId && currentId >= todayDateId() ? currentId : undefined;
+	})();
+	const [selectedId, setSelectedId] = useState<string | undefined>(seedId);
 	const [saving, setSaving] = useState(false);
 
 	// Re-seed per open (house guarded render-time derivation).
@@ -46,18 +49,28 @@ export function ExtendValidUntilSheet({
 	if (visible !== prevVisible) {
 		setPrevVisible(visible);
 		if (visible) {
-			// An expired quote's stored date is in the past — never preselect a
-			// date the server would reject.
-			const currentId =
-				currentValidUntil !== null
-					? dateIdFromUtcMs(currentValidUntil)
-					: undefined;
-			setSelectedId(
-				currentId && currentId >= todayDateId() ? currentId : undefined
-			);
+			setSelectedId(seedId);
 			setSaving(false);
 		}
 	}
+
+	const dirty = selectedId !== seedId;
+
+	const attemptClose = useCallback(() => {
+		if (saving) return;
+		if (!dirty) {
+			onClose();
+			return;
+		}
+		Alert.alert(
+			"Discard this date?",
+			"You picked a date but haven't extended to it yet.",
+			[
+				{ text: "Keep editing", style: "cancel" },
+				{ text: "Discard", style: "destructive", onPress: onClose },
+			]
+		);
+	}, [saving, dirty, onClose]);
 
 	const selectedLabel = selectedId
 		? new Date(utcMsFromDateId(selectedId)).toLocaleDateString(undefined, {
@@ -86,12 +99,7 @@ export function ExtendValidUntilSheet({
 	};
 
 	return (
-		<Modal
-			visible={visible}
-			animationType="slide"
-			presentationStyle="pageSheet"
-			onRequestClose={onClose}
-		>
+		<FormSheet visible={visible} onDismiss={attemptClose} dirty={dirty} snapPoint="85%">
 			<View style={[styles.root, { backgroundColor: t.bg }]}>
 				<View style={styles.topBar}>
 					<Text style={[styles.topTitle, { color: t.ink }]}>
@@ -100,7 +108,7 @@ export function ExtendValidUntilSheet({
 					<Pressable
 						accessibilityRole="button"
 						accessibilityLabel="Close"
-						onPress={onClose}
+						onPress={attemptClose}
 						hitSlop={8}
 						style={[styles.close, { backgroundColor: t.secondary }]}
 					>
@@ -144,7 +152,7 @@ export function ExtendValidUntilSheet({
 					/>
 				</View>
 			</View>
-		</Modal>
+		</FormSheet>
 	);
 }
 

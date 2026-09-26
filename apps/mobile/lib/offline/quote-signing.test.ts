@@ -33,7 +33,18 @@ describe("canSignOffline", () => {
 		).toBe(false);
 	});
 
-	it("is false without a server content snapshot", () => {
+	it("is false without a content snapshot", () => {
+		expect(
+			canSignOffline(quote, {
+				documentType: "quote",
+				documentId: "q1",
+				generatedAt: 2000,
+				quoteSnapshotSource: "server",
+			}),
+		).toBe(false);
+	});
+
+	it("accepts a workspace-rendered document with a verified snapshot", () => {
 		expect(
 			canSignOffline(quote, {
 				documentType: "quote",
@@ -42,14 +53,21 @@ describe("canSignOffline", () => {
 				quoteSnapshotSource: "workspace",
 				quoteContentSnapshotId: "snap1",
 			}),
-		).toBe(false);
+		).toBe(true);
+	});
+
+	it("requires a server render for recurring agreements", () => {
 		expect(
-			canSignOffline(quote, {
-				documentType: "quote",
-				documentId: "q1",
-				generatedAt: 2000,
-				quoteSnapshotSource: "server",
-			}),
+			canSignOffline(
+				{ ...quote, recurringAgreementTerms: { cadence: "weekly" } },
+				{
+					documentType: "quote",
+					documentId: "q1",
+					generatedAt: 2000,
+					quoteSnapshotSource: "workspace",
+					quoteContentSnapshotId: "snap1",
+				},
+			),
 		).toBe(false);
 	});
 

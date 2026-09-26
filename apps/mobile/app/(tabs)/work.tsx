@@ -1,8 +1,31 @@
+import { queueTaskToggle } from "@/lib/offline/task-toggle";
 import { useOfflinePartition } from "@/lib/offline/partition-context";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { StyleSheet, Text, View, type TextInput } from "react-native";
+import {
+	useCallback,
+	useEffect,
+	useMemo,
+	useRef,
+	useState,
+	type ComponentProps,
+} from "react";
+import {
+	ActionSheetIOS,
+	Alert,
+	findNodeHandle,
+	Platform,
+	Pressable,
+	StyleSheet,
+	Text,
+	View,
+	type AccessibilityActionInfo,
+	type TextInput,
+} from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { FlashList } from "@shopify/flash-list";
+import { Gesture, GestureDetector } from "react-native-gesture-handler";
+import Swipeable, {
+	type SwipeableMethods,
+} from "react-native-gesture-handler/ReanimatedSwipeable";
 import {
 	useFocusEffect,
 	useLocalSearchParams,
@@ -22,6 +45,10 @@ import { consumeSearchFocus } from "@/lib/search-focus";
 import { useOrgToday } from "@/lib/use-org-today";
 import { sameRef, type RecordRef } from "@/lib/selection-context";
 import { useCachedQuery } from "@/lib/offline/useCachedQuery";
+import { useOpenOps } from "@/lib/offline/hooks";
+import { isDoneStatus, taskDoneOverlay } from "@/lib/agenda";
+import { useExclusiveSwipe } from "@/lib/swipe-registry";
+import { buildRecordMenuActions, type RecordMenuAction } from "@/lib/record-menu";
 import {
 	DOCK_CLEARANCE,
 	fontFamily,
@@ -106,6 +133,136 @@ function sectionsToRows(sections: Section[]): Row[] {
 		});
 	}
 	return out;
+}
+
+// `SwipeableProps` doesn't declare these, but ReanimatedSwipeable.tsx spreads
+// `...remainingProps` onto its root Animated.View, so they still reach it.
+type SwipeableA11yProps = ComponentProps<typeof Swipeable> & {
+	accessibilityActions?: AccessibilityActionInfo[];
+	onAccessibilityAction?: (event: { nativeEvent: { actionName: string } }) => void;
+};
+
+// A real component (not a bare render function) — the long-press gesture and
+// swipe-to-toggle both need per-row refs.
+function WorkRow({
+	record,
+	iconColor,
+	iconBg,
+	sub,
+	first,
+	last,
+	selected,
+	done,
+	toggling,
+	onOpen,
+	onToggleTask,
+	onLongPressMenu,
+}: {
+	record: WorkRecord;
+	iconColor: string;
+	iconBg: string;
+	sub: string;
+	first: boolean;
+	last: boolean;
+	selected: boolean;
+	done: boolean;
+	toggling: boolean;
+	onOpen: () => void;
+	onToggleTask?: () => void;
+	onLongPressMenu: (anchor: number | null) => void;
+}) {
+	const t = useTokens();
+	const swipeableRef = useRef<SwipeableMethods>(null);
+	const exclusiveSwipe = useExclusiveSwipe(swipeableRef);
+	const anchorRef = useRef<View>(null);
+	// RNGH #3481: swipe (and long-press) release can fire a spurious onPress.
+	const suppressPressUntil = useRef(0);
+	const suppressPress = () => {
+		// eslint-disable-next-line react-hooks/purity -- runs on gesture/swipe activation, never during render
+		suppressPressUntil.current = Date.now() + 500;
+	};
+	const guardedOpen = () => {
+		if (Date.now() < suppressPressUntil.current) return;
+		onOpen();
+	};
+
+	const longPress = Gesture.LongPress()
+		.minDuration(500)
+		.maxDistance(24)
+		.runOnJS(true)
+		// eslint-disable-next-line react-hooks/refs -- .onStart's callback fires on activation, not render
+		.onStart(() => {
+			suppressPress();
+			onLongPressMenu(findNodeHandle(anchorRef.current));
+		});
+
+	const row = (
+		<View ref={anchorRef} collapsable={false}>
+			<GestureDetector gesture={longPress}>
+				<ListRow
+					icon={KIND_ICON[record.kind]}
+					iconColor={iconColor}
+					iconBg={iconBg}
+					title={record.title}
+					sub={sub || undefined}
+					status={record.status}
+					onPress={guardedOpen}
+					selected={selected}
+					containerStyle={[
+						styles.rowCard,
+						{ backgroundColor: t.card, borderColor: t.line },
+						first && styles.rowFirst,
+						last ? [styles.rowLast, { borderBottomColor: t.line }] : null,
+					]}
+				/>
+			</GestureDetector>
+		</View>
+	);
+
+	if (!onToggleTask) return row;
+
+	const renderRightActions = () => (
+		<Pressable
+			onPress={() => {
+				swipeableRef.current?.close();
+				onToggleTask();
+			}}
+			style={[
+				styles.swipeAction,
+				{ backgroundColor: done ? t.checkbox : t.success },
+			]}
+			accessibilityRole="button"
+			accessibilityLabel={done ? `Mark ${record.title} not done` : `Mark ${record.title} done`}
+		>
+			<Text style={styles.swipeActionText}>{done ? "Not done" : "Done"}</Text>
+		</Pressable>
+	);
+
+	const swipeableProps: SwipeableA11yProps = {
+		ref: swipeableRef,
+		friction: 2,
+		rightThreshold: 40,
+		overshootRight: false,
+		enabled: !toggling,
+		renderRightActions,
+		onSwipeableWillOpen: () => {
+			suppressPress();
+			exclusiveSwipe.onOpen();
+		},
+		onSwipeableWillClose: suppressPress,
+		onSwipeableClose: exclusiveSwipe.onClose,
+		onSwipeableOpenStartDrag: suppressPress,
+		onSwipeableCloseStartDrag: suppressPress,
+		// The checkbox's VoiceOver equivalent, same as agenda-row.tsx.
+		accessibilityActions: [
+			{ name: "toggleDone", label: done ? "Mark not done" : "Mark done" },
+		],
+		onAccessibilityAction: (event) => {
+			if (event.nativeEvent.actionName === "toggleDone") onToggleTask();
+		},
+	};
+
+	return <Swipeable {...swipeableProps}>{row}</Swipeable>;
 }
 
 // headerMode/onSelect/selected/kind default off → the iPhone path (router.push,
@@ -236,6 +393,11 @@ export default function WorkScreen({
 		}, [recentsScope]),
 	);
 
+	// Every open queued op, so a task row reflects a pending toggle immediately —
+	// same overlay-over-server pattern as Today.
+	const taskOps = useOpenOps();
+	const [togglingIds, setTogglingIds] = useState<Set<string>>(new Set());
+
 	const resting = !searching && kind === null;
 
 	// Each mode waits on exactly its own subscriptions. Browse kinds other than
@@ -353,6 +515,79 @@ export default function WorkScreen({
 		onSelect({ kind: record.kind, id: record.id });
 	};
 
+	// Overlay-aware done state — mirrors Today's `doneIds` derivation so a task
+	// completed from Work and a task completed from Today never disagree.
+	// Undefined (not false) when neither the overlay nor `record.status` says —
+	// the recents list carries no status, and a false there would show "Done" on
+	// an already-done task and no-op the swipe/menu toggle silently.
+	const isTaskDone = (record: WorkRecord & { kind: "task" }): boolean | undefined => {
+		const overlay = taskDoneOverlay(taskOps, record.id);
+		if (overlay !== undefined) return overlay;
+		return record.status === undefined ? undefined : isDoneStatus(record.status);
+	};
+
+	// Same two ops Today's checkbox queues — the swipe action and the long-press
+	// "Mark done" menu item both call this, never a mutation of their own.
+	const handleToggleTask = async (record: WorkRecord & { kind: "task" }) => {
+		const id = record.id;
+		setTogglingIds((prev) => new Set(prev).add(id));
+		try {
+			await queueTaskToggle(
+				{ id, title: record.title, status: record.status },
+				!isTaskDone(record),
+				taskOps,
+			);
+		} finally {
+			setTogglingIds((prev) => {
+				const next = new Set(prev);
+				next.delete(id);
+				return next;
+			});
+		}
+	};
+
+	const runMenuAction = (action: RecordMenuAction, record: WorkRecord) => {
+		switch (action.type) {
+			case "open":
+				open(record);
+				return;
+			case "toggle-done":
+				if (record.kind === "task") handleToggleTask(record);
+				return;
+		}
+	};
+
+	const openRecordMenu = (record: WorkRecord, anchor: number | null) => {
+		const actions = buildRecordMenuActions({
+			kind: record.kind,
+			done: record.kind === "task" ? isTaskDone(record) : undefined,
+		});
+		const labels = actions.map((a) => a.label);
+		if (Platform.OS === "ios") {
+			ActionSheetIOS.showActionSheetWithOptions(
+				{
+					options: [...labels, "Cancel"],
+					cancelButtonIndex: labels.length,
+					// Unanchored, iOS pops the sheet from the screen centre with no dim
+					// (same fix as pad-sidebar.tsx's create menu).
+					anchor: anchor ?? undefined,
+				},
+				(index) => {
+					const action = actions[index];
+					if (action) runMenuAction(action, record);
+				},
+			);
+		} else {
+			Alert.alert(record.title, undefined, [
+				...actions.map((a) => ({
+					text: a.label,
+					onPress: () => runMenuAction(a, record),
+				})),
+				{ text: "Cancel", style: "cancel" as const },
+			]);
+		}
+	};
+
 	const renderRow = ({ item }: { item: Row }) => {
 		if (item.type === "header") {
 			return (
@@ -375,26 +610,32 @@ export default function WorkScreen({
 					? `${record.meta} · ${formatCurrency(amount, { exact: true })}`
 					: formatCurrency(amount, { exact: true });
 
+		// Undefined here (recents carry no task status) means no swipe/toggle at
+		// all, not a guessed "not done" — see `isTaskDone`.
+		const done = record.kind === "task" ? isTaskDone(record) : undefined;
+
 		return (
-			<ListRow
-				icon={KIND_ICON[record.kind]}
+			<WorkRow
+				record={record}
 				iconColor={tint.fg}
 				iconBg={tint.bg}
-				title={record.title}
-				sub={sub || undefined}
-				status={record.status}
-				onPress={() => open(record)}
+				sub={sub}
+				first={first}
+				last={last}
+				done={done ?? false}
+				toggling={togglingIds.has(record.id)}
 				selected={
 					isPane &&
 					record.kind !== "task" &&
 					sameRef(selected, { kind: record.kind, id: record.id })
 				}
-				containerStyle={[
-					styles.rowCard,
-					{ backgroundColor: t.card, borderColor: t.line },
-					first && styles.rowFirst,
-					last ? [styles.rowLast, { borderBottomColor: t.line }] : null,
-				]}
+				onOpen={() => open(record)}
+				onToggleTask={
+					record.kind === "task" && done !== undefined
+						? () => handleToggleTask(record)
+						: undefined
+				}
+				onLongPressMenu={(anchor) => openRecordMenu(record, anchor)}
 			/>
 		);
 	};
@@ -547,6 +788,16 @@ export default function WorkScreen({
 }
 
 const styles = StyleSheet.create({
+	swipeAction: {
+		width: 96,
+		alignItems: "center",
+		justifyContent: "center",
+	},
+	swipeActionText: {
+		fontFamily: fontFamily.semibold,
+		fontSize: type.sm,
+		color: "#fff",
+	},
 	controls: {
 		paddingHorizontal: spacing.gutter,
 		paddingTop: 12,

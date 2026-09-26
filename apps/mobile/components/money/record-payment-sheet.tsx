@@ -1,9 +1,6 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import {
 	Alert,
-	KeyboardAvoidingView,
-	Modal,
-	Platform,
 	Pressable,
 	ScrollView,
 	StyleSheet,
@@ -15,6 +12,7 @@ import { Banknote, Check, Landmark, Wallet, X } from "lucide-react-native";
 import { badgeTone, fontFamily, radii, type, useTokens } from "@/lib/theme";
 import { Button, Eyebrow, SegmentedToggle } from "@/components/ui";
 import { formatCurrency } from "@/lib/format";
+import { FormSheet } from "@/components/sheets/form-sheet";
 
 export type ManualMethod = "cash" | "check" | "other";
 
@@ -52,7 +50,8 @@ export function RecordPaymentSheet({
 	) => Promise<boolean>;
 }) {
 	const t = useTokens();
-	const [amountText, setAmountText] = useState("");
+	const seedAmountText = remaining > 0 ? remaining.toFixed(2) : "";
+	const [amountText, setAmountText] = useState(seedAmountText);
 	const [method, setMethod] = useState<ManualMethod>("cash");
 	const [note, setNote] = useState("");
 	const [saving, setSaving] = useState(false);
@@ -65,13 +64,34 @@ export function RecordPaymentSheet({
 	if (visible !== prevVisible) {
 		setPrevVisible(visible);
 		if (visible) {
-			setAmountText(remaining > 0 ? remaining.toFixed(2) : "");
+			setAmountText(seedAmountText);
 			setMethod("cash");
 			setNote("");
 			setDone(null);
 			setSaving(false);
 		}
 	}
+
+	// Success screen is never dirty (nothing left to lose) — let it swipe away freely.
+	const dirty =
+		!done &&
+		(amountText !== seedAmountText || method !== "cash" || note !== "");
+
+	const attemptClose = useCallback(() => {
+		if (saving) return;
+		if (!dirty) {
+			onClose();
+			return;
+		}
+		Alert.alert(
+			"Discard this payment?",
+			"Your changes haven't been saved.",
+			[
+				{ text: "Keep editing", style: "cancel" },
+				{ text: "Discard", style: "destructive", onPress: onClose },
+			]
+		);
+	}, [saving, dirty, onClose]);
 
 	const amount = Number.parseFloat(amountText.replace(/[^0-9.]/g, ""));
 	const amountValid =
@@ -91,16 +111,8 @@ export function RecordPaymentSheet({
 	};
 
 	return (
-		<Modal
-			visible={visible}
-			animationType="slide"
-			presentationStyle="pageSheet"
-			onRequestClose={onClose}
-		>
-			<KeyboardAvoidingView
-				style={[styles.root, { backgroundColor: t.bg }]}
-				behavior={Platform.OS === "ios" ? "padding" : undefined}
-			>
+		<FormSheet visible={visible} onDismiss={attemptClose} dirty={dirty} snapPoint="75%">
+			<View style={[styles.root, { backgroundColor: t.bg }]}>
 				<View style={styles.topBar}>
 					<Text style={[styles.topTitle, { color: t.ink }]}>
 						Record payment
@@ -108,7 +120,7 @@ export function RecordPaymentSheet({
 					<Pressable
 						accessibilityRole="button"
 						accessibilityLabel="Close"
-						onPress={onClose}
+						onPress={attemptClose}
 						hitSlop={8}
 						style={[styles.close, { backgroundColor: t.secondary }]}
 					>
@@ -148,13 +160,13 @@ export function RecordPaymentSheet({
 										{ backgroundColor: t.card, borderColor: t.line },
 									]}
 								>
-									<Text style={[styles.dollarSign, { color: t.faintDecor }]}>$</Text>
+									<Text style={[styles.dollarSign, { color: t.faint }]}>$</Text>
 									<TextInput
 										value={amountText}
 										onChangeText={setAmountText}
 										keyboardType="decimal-pad"
 										placeholder="0.00"
-										placeholderTextColor={t.faintDecor}
+										placeholderTextColor={t.faint}
 										style={[styles.amountInput, { color: t.ink }]}
 										accessibilityLabel="Payment amount in dollars"
 									/>
@@ -189,7 +201,7 @@ export function RecordPaymentSheet({
 									value={note}
 									onChangeText={setNote}
 									placeholder="Check #, who paid, anything worth remembering"
-									placeholderTextColor={t.faintDecor}
+									placeholderTextColor={t.faint}
 									multiline
 									style={[
 										styles.noteInput,
@@ -224,8 +236,8 @@ export function RecordPaymentSheet({
 						</View>
 					</>
 				)}
-			</KeyboardAvoidingView>
-		</Modal>
+			</View>
+		</FormSheet>
 	);
 }
 

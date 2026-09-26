@@ -4,10 +4,10 @@ import {
 	Pressable,
 	ActivityIndicator,
 	Alert,
-	Image,
 	StyleSheet,
 	ScrollView,
 } from "react-native";
+import { Image } from "expo-image";
 import { useEffect, useState } from "react";
 import { useOrganizationList, useOrganization } from "@clerk/expo";
 import { router } from "expo-router";
@@ -43,6 +43,8 @@ export default function OrgSwitchSheet() {
 		},
 	});
 	const { organization: activeOrg } = useOrganization();
+	// Per-org fallback to initials on a failed logo load, not just missing imageUrl.
+	const [failedOrgLogos, setFailedOrgLogos] = useState<Set<string>>(new Set());
 	const [switching, setSwitching] = useState(false);
 
 	const organizationList = userMemberships.data ?? [];
@@ -183,10 +185,16 @@ export default function OrgSwitchSheet() {
 									]}
 								>
 									<View style={styles.rowLeft}>
-										{org.imageUrl ? (
+										{org.imageUrl && !failedOrgLogos.has(org.id) ? (
 											<Image
 												source={{ uri: org.imageUrl }}
 												style={styles.orgImage}
+												contentFit="cover"
+												cachePolicy="disk"
+												transition={150}
+												onError={() =>
+													setFailedOrgLogos((prev) => new Set(prev).add(org.id))
+												}
 											/>
 										) : (
 											<Avatar text={(org.name || "O").slice(0, 2)} size={40} />

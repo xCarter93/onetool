@@ -2,7 +2,6 @@ import { useOfflinePartition } from "@/lib/offline/partition-context";
 import { useEffect, useMemo, useState } from "react";
 import {
 	Alert,
-	Image,
 	Pressable,
 	ScrollView,
 	StyleSheet,
@@ -10,6 +9,7 @@ import {
 	View,
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import { Image } from "expo-image";
 import { useMutation } from "convex/react";
 import { useLocalSearchParams, useRouter, type Href } from "expo-router";
 import { CheckCircle2, MessageSquare, Plus, XCircle } from "lucide-react-native";
@@ -760,7 +760,8 @@ export function QuoteDetailBody({
 												source={{ uri: latest.signatureUrl }}
 												accessibilityLabel="Client signature"
 												accessibilityRole="image"
-												resizeMode="contain"
+												contentFit="contain"
+												cachePolicy="disk"
 												onError={() => setSigErrorUrl(latest.signatureUrl)}
 												style={[
 													styles.signature,

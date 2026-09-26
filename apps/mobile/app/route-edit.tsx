@@ -855,8 +855,11 @@ const styles = StyleSheet.create({
 		paddingVertical: 8,
 	},
 	stopIndex: {
-		width: 24,
-		height: 24,
+		// minWidth/minHeight, not width/height — the pill grows at large Dynamic
+		// Type sizes instead of clipping double-digit stop numbers.
+		minWidth: 24,
+		minHeight: 24,
+		paddingHorizontal: 2,
 		borderRadius: radii.pill,
 		alignItems: "center",
 		justifyContent: "center",

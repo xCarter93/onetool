@@ -1,10 +1,11 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, type ReactNode } from "react";
 import { AppState } from "react-native";
 import { useOrganization, useUser } from "@clerk/expo";
+import { ConvexError } from "convex/values";
 import { useConvex, useConvexAuth, useConvexConnectionState, type ConvexReactClient } from "convex/react";
 import { COMMANDS, FILE_ARGS_KEY, type FileArgMap, type OperationName } from "./commands";
 import { classifyError, OfflineTimeoutError } from "./errors";
-import { deleteDurable, uploadDurable } from "./files";
+import { deleteDurable, durableExists, uploadDurable } from "./files";
 import { loadFiles, setFileStorageId, type StoredOp } from "./db";
 import { partitionKey } from "./partition";
 import { PartitionContext } from "./partition-context";
@@ -62,10 +63,15 @@ async function prepareArgs(client: ConvexReactClient, op: StoredOp): Promise<Rec
 	const files = loadFiles(op.id);
 	for (const [argName, fileId] of Object.entries(fileArgs)) {
 		const file = files.find((f) => f.id === fileId);
-		if (!file) throw new Error(`Queued file ${fileId} is missing`);
+		// Permanent: retrying can't bring a deleted file back, so it must reach Needs attention.
+		if (!file || !(await durableExists(file.path))) {
+			throw new ConvexError({ code: "FILE_MISSING", message: "The saved file for this change is missing on this phone." });
+		}
 		let storageId = file.storageId;
 		if (!storageId) {
-			if (!command.uploadUrlRef) throw new Error(`${op.operation} has no upload URL mutation`);
+			if (!command.uploadUrlRef) {
+				throw new ConvexError({ code: "BAD_REQUEST", message: `${op.operation} can't upload files.` });
+			}
 			const url = await withTimeout(client.mutation(command.uploadUrlRef, {}), MUTATION_TIMEOUT_MS);
 			storageId = await uploadDurable(url, file.path, file.mime);
 			// Persisted so a crash after upload doesn't upload the file again.

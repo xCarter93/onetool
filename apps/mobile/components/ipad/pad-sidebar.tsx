@@ -1,4 +1,4 @@
-import React, { useRef } from "react";
+import React, { useRef, useState } from "react";
 import {
 	ActionSheetIOS,
 	Alert,
@@ -10,6 +10,7 @@ import {
 	Text,
 	View,
 } from "react-native";
+import { Image as ExpoImage } from "expo-image";
 import { useRouter, type Href } from "expo-router";
 import { useOrganization, useUser } from "@clerk/expo";
 import {
@@ -91,6 +92,7 @@ export function PadSidebar({
 	// The sheet must be anchored to the ＋ or iOS pops it from the screen centre
 	// instead of beside the rail.
 	const createAnchor = useRef<View>(null);
+	const [orgLogoFailed, setOrgLogoFailed] = useState(false);
 
 	const openCreateMenu = () => {
 		if (createItems.length === 0) return;
@@ -115,6 +117,12 @@ export function PadSidebar({
 
 	const orgName = organization?.name ?? "Personal";
 	const orgInitials = initialsFrom(orgName);
+	// Reset during render (not an effect) when the logo URL changes.
+	const [prevOrgLogo, setPrevOrgLogo] = useState(organization?.imageUrl);
+	if (organization?.imageUrl !== prevOrgLogo) {
+		setPrevOrgLogo(organization?.imageUrl);
+		setOrgLogoFailed(false);
+	}
 	const userName = user?.fullName ?? user?.firstName ?? "You";
 	const userInitials = initialsFrom(userName);
 	const role = roleLabel(membership?.role);
@@ -141,10 +149,23 @@ export function PadSidebar({
 				accessibilityRole="button"
 				accessibilityLabel="Switch organization"
 			>
-				{organization?.imageUrl ? (
-					<Image source={{ uri: organization.imageUrl }} style={styles.orgTile} />
+				{organization?.imageUrl && !orgLogoFailed ? (
+					<ExpoImage
+						source={{ uri: organization.imageUrl }}
+						style={styles.orgTile}
+						contentFit="cover"
+						cachePolicy="disk"
+						transition={150}
+						onError={() => setOrgLogoFailed(true)}
+					/>
 				) : (
-					<View style={[styles.orgTile, { backgroundColor: t.primarySolid }]}>
+					<View
+						style={[
+							styles.orgTile,
+							styles.orgTileInitials,
+							{ backgroundColor: t.primarySolid },
+						]}
+					>
 						<Text style={[styles.orgTileText, { color: tokens.card }]}>
 							{orgInitials}
 						</Text>
@@ -306,6 +327,15 @@ const styles = StyleSheet.create({
 		alignItems: "center",
 		justifyContent: "center",
 		flexShrink: 0,
+	},
+	// Initials fallback: minWidth/minHeight instead of width/height so the tile
+	// grows at large Dynamic Type sizes instead of clipping the initials text.
+	orgTileInitials: {
+		width: undefined,
+		height: undefined,
+		minWidth: 30,
+		minHeight: 30,
+		paddingHorizontal: 3,
 	},
 	orgTileText: {
 		fontFamily: fontFamily.bold,

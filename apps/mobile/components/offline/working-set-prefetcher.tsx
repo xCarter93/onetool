@@ -8,7 +8,7 @@ import { getRecents } from "@/lib/recents";
 import { localDayStartMs } from "@/lib/date";
 import { useOffline } from "@/lib/offline/OfflineProvider";
 import { prefetchQuery } from "@/lib/offline/useCachedQuery";
-import { canSignOffline } from "@/lib/offline/quote-signing";
+import { isDocumentFresh } from "@/lib/offline/quote-signing";
 import { selectWorkingSet, type RecordRef } from "@/lib/offline/working-set";
 
 const MIN_INTERVAL_MS = 15 * 60 * 1000;
@@ -56,6 +56,7 @@ async function prefetchRecord(fetch: Fetch, client: ConvexReactClient, ref: Reco
 				status: string;
 				clientId: Id<"clients">;
 				contentUpdatedAt?: number;
+				recurringAgreementTerms?: unknown;
 			} | null;
 			await fetch(api.quoteLineItems.listByQuote, { quoteId });
 			await fetch(api.quotes.getApprovalAudit, { quoteId });
@@ -63,8 +64,9 @@ async function prefetchRecord(fetch: Fetch, client: ConvexReactClient, ref: Reco
 			if (!quote) return;
 			await fetch(api.clientContacts.listByClient, { clientId: quote.clientId });
 			const docArgs = { documentType: "quote" as const, documentId: ref.id };
-			const doc = (await fetch(api.documents.getLatest, docArgs)) as Parameters<typeof canSignOffline>[1];
-			if (quote.status === "sent" && !canSignOffline(quote, doc) && pdfBudget.left > 0) {
+			const doc = (await fetch(api.documents.getLatest, docArgs)) as Parameters<typeof isDocumentFresh>[1];
+			// Only a missing or stale document gets a fresh render; a fresh legacy one can't be improved.
+			if (quote.status === "sent" && !isDocumentFresh(quote, doc) && pdfBudget.left > 0) {
 				pdfBudget.left--;
 				await client.action(api.pdfActions.ensureQuotePdf, { quoteId });
 				await fetch(api.documents.getLatest, docArgs);

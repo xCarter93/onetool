@@ -1,4 +1,8 @@
-export type QuoteForSigning = { _id: string; contentUpdatedAt?: number };
+export type QuoteForSigning = {
+	_id: string;
+	contentUpdatedAt?: number;
+	recurringAgreementTerms?: unknown;
+};
 
 export type CachedQuoteDocument = {
 	documentType: "quote" | "invoice";
@@ -9,19 +13,30 @@ export type CachedQuoteDocument = {
 	quoteContentSnapshot?: unknown;
 };
 
+/** The document was rendered after the quote's last content change. */
+export function isDocumentFresh(
+	quote: QuoteForSigning,
+	document: CachedQuoteDocument | null | undefined,
+): document is CachedQuoteDocument {
+	return (
+		!!document &&
+		document.documentType === "quote" &&
+		document.documentId === quote._id &&
+		document.generatedAt >= (quote.contentUpdatedAt ?? 0)
+	);
+}
+
 /**
- * Offline signing needs a cached document proven current against the quote's
- * content (mirrors the backend's `quoteDocumentIsCurrent` belongs+freshness
- * check), AND bound to a server content snapshot — a legacy or workspace-
- * rendered PDF can't stand in for the live totals with no connection to refresh it.
+ * Offline signing needs a fresh cached document bound to a content snapshot,
+ * mirroring the backend's `quoteDocumentIsCurrent`. Both server and workspace
+ * snapshots are server-verified; recurring agreements accept only server renders.
  */
 export function canSignOffline(
 	quote: QuoteForSigning,
 	document: CachedQuoteDocument | null | undefined,
 ): boolean {
-	if (!document) return false;
-	if (document.documentType !== "quote" || document.documentId !== quote._id) return false;
-	const hasSnapshot = Boolean(document.quoteContentSnapshotId || document.quoteContentSnapshot);
-	if (document.quoteSnapshotSource !== "server" || !hasSnapshot) return false;
-	return document.generatedAt >= (quote.contentUpdatedAt ?? 0);
+	if (!isDocumentFresh(quote, document)) return false;
+	if (!document.quoteContentSnapshotId && !document.quoteContentSnapshot) return false;
+	if (quote.recurringAgreementTerms && document.quoteSnapshotSource !== "server") return false;
+	return true;
 }

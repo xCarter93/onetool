@@ -1,12 +1,11 @@
+import { queueTaskToggle } from "@/lib/offline/task-toggle";
 import { useEffect, useMemo, useState } from "react";
 import { ScrollView, StyleSheet, View } from "react-native";
 import { router, type Href } from "expo-router";
 import { useUser } from "@clerk/expo";
 import { api } from "@onetool/backend/convex/_generated/api";
-import type { Id } from "@onetool/backend/convex/_generated/dataModel";
 import { useCachedQuery } from "@/lib/offline/useCachedQuery";
-import { saveOffline, useOpenOps } from "@/lib/offline/hooks";
-import { overlayTaskOps } from "@/lib/offline/field-patch";
+import { useOpenOps } from "@/lib/offline/hooks";
 import { DOCK_CLEARANCE, useTokens } from "@/lib/theme";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { formatCurrency } from "@/lib/format";
@@ -304,32 +303,13 @@ export default function TodayScreen({
 	// while one is still open just queues a second, consistent op.
 	const handleToggle = async (id: string) => {
 		const task = dayTasks.find((t) => t._id === id);
-		const next = !doneIds.has(id);
-		const title = task?.title ? `: ${task.title}` : "";
 		setUpdatingIds((prev) => new Set(prev).add(id));
 		try {
-			if (next) {
-				await saveOffline(
-					"tasks.complete",
-					{ id: id as Id<"tasks"> },
-					{ display: { title: `Complete${title}` } },
-				);
-			} else {
-				await saveOffline(
-					"tasks.update",
-					{
-						id: id as Id<"tasks">,
-						status: "pending",
-						expectedValues: {
-							status: overlayTaskOps(
-								{ status: task?.status },
-								taskOps.filter((op) => op.chainKey === `task:${id}`),
-							).status,
-						},
-					},
-					{ display: { title: `Mark not done${title}` } },
-				);
-			}
+			await queueTaskToggle(
+				{ id, title: task?.title, status: task?.status },
+				!doneIds.has(id),
+				taskOps,
+			);
 		} finally {
 			setUpdatingIds((prev) => {
 				const next = new Set(prev);

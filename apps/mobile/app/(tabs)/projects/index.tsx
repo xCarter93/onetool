@@ -191,7 +191,12 @@ export default function ProjectsScreen({
 					style={[styles.searchInput, { color: t.ink }]}
 				/>
 				{searchQuery.length > 0 && (
-					<Pressable onPress={() => setSearchQuery("")} hitSlop={8}>
+					<Pressable
+						onPress={() => setSearchQuery("")}
+						hitSlop={8}
+						accessibilityRole="button"
+						accessibilityLabel="Clear search"
+					>
 						<X size={16} color={t.faint} />
 					</Pressable>
 				)}

@@ -80,7 +80,7 @@ export function StatusTrack({ steps }: { steps: TrackStep[] }) {
 													? t.danger
 													: step.state === "done"
 														? t.sub
-														: t.faintDecor,
+														: t.faint,
 										fontFamily:
 											active || step.state === "failed"
 												? fontFamily.semibold

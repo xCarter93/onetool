@@ -1,6 +1,5 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import {
-	Modal,
 	Pressable,
 	ScrollView,
 	StyleSheet,
@@ -13,6 +12,7 @@ import { describeMutationError } from "@/lib/mutation-error";
 import { useEntitlements } from "@/lib/use-entitlements";
 import { Button, Eyebrow, TotalsBlock } from "@/components/ui";
 import { MoneyAmount } from "./money-amount";
+import { FormSheet } from "@/components/sheets/form-sheet";
 
 export interface PreviewLineItem {
 	key: string;
@@ -79,6 +79,14 @@ export function SendPreviewSheet({
 		onClose();
 	};
 
+	// Nothing here is discardable input — the only thing worth protecting is
+	// an in-flight send, so this blocks rather than asks.
+	const attemptClose = useCallback(() => {
+		if (sending) return;
+		setError(null);
+		onClose();
+	}, [sending, onClose]);
+
 	const send = async () => {
 		setSending(true);
 		setError(null);
@@ -100,12 +108,7 @@ export function SendPreviewSheet({
 	const noun = kind === "quote" ? "Quote" : "Invoice";
 
 	return (
-		<Modal
-			visible={visible}
-			animationType="slide"
-			presentationStyle="pageSheet"
-			onRequestClose={close}
-		>
+		<FormSheet visible={visible} onDismiss={attemptClose} dirty={sending} snapPoint="90%">
 			<View style={[styles.root, { backgroundColor: t.bg }]}>
 				<View style={styles.topBar}>
 					<Text style={[styles.topTitle, { color: t.ink }]}>
@@ -114,7 +117,7 @@ export function SendPreviewSheet({
 					<Pressable
 						accessibilityRole="button"
 						accessibilityLabel="Close"
-						onPress={close}
+						onPress={attemptClose}
 						hitSlop={8}
 						style={[styles.close, { backgroundColor: t.secondary }]}
 					>
@@ -229,7 +232,7 @@ export function SendPreviewSheet({
 					/>
 				</View>
 			</View>
-		</Modal>
+		</FormSheet>
 	);
 }
 
