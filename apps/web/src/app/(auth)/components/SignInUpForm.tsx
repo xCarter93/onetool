@@ -3,33 +3,33 @@
 import { SignIn, SignUp } from "@clerk/nextjs";
 import { dark } from "@clerk/ui/themes";
 import { useTheme } from "next-themes";
-import { AnimatePresence, motion, type Transition } from "framer-motion";
 import Image from "next/image";
 import Link from "next/link";
-import { AuthGridBackground } from "@/components/blocks/auth-6/components/auth-grid-background";
-
-const BASE_TRANSITION: Transition = { ease: "anticipate", duration: 0.5 };
 
 const getSharedElements = (isDark: boolean) => ({
 	rootBox: "w-full flex justify-center",
+	logoBox: "justify-center",
 	logoImage: {
-		width: "200px",
+		width: "160px",
 		height: "auto",
 		...(isDark && { filter: "brightness(0) invert(1)" }),
 	},
 	formButtonPrimary:
-		"h-7 rounded bg-primary text-primary-foreground hover:bg-primary/90 shadow-none",
-	// Clerk paints card chrome inside cardBox, so it must clip the inner layer.
+		"min-h-12 rounded bg-primary text-primary-foreground text-base hover:bg-primary/90 shadow-none",
 	cardBox: "w-full max-w-none shadow-none rounded-none bg-transparent",
-	card: "w-full shadow-none rounded-none border-none bg-transparent px-3",
+	card: "w-full shadow-none rounded-none border-none bg-transparent p-4",
 	footer: { background: "transparent" },
 	footerAction: "bg-transparent border-none shadow-none",
-	headerTitle: "text-foreground",
-	headerSubtitle: "text-muted-foreground",
-	// Clerk UI owns social button hover colors.
+	header: "items-center gap-3 text-center",
+	headerTitle: "text-foreground text-3xl font-semibold tracking-tight",
+	headerSubtitle: "text-muted-foreground text-base leading-relaxed",
+	socialButtonsBlockButton:
+		"min-h-12 rounded border border-input bg-background shadow-none",
+	socialButtonsBlockButtonText: "text-base font-medium",
 	formFieldLabel: "text-foreground",
 	formFieldInput:
-		"h-7 rounded bg-background border-border focus:border-primary focus:ring-primary",
+		"min-h-12 rounded border border-input bg-background focus:border-primary focus:ring-primary",
+	formFieldInputShowPasswordButton: "min-h-12 min-w-12",
 	footerActionLink: "text-primary hover:text-primary/90",
 });
 
@@ -43,42 +43,33 @@ export function SignInUpForm({ mode }: SignInUpFormProps) {
 
 	const clerkAppearance = {
 		theme: isDark ? dark : undefined,
+		variables: { fontSize: "1rem" },
 		elements: getSharedElements(isDark),
 	};
 
 	return (
-		<div className="bg-background w-full lg:grid lg:min-h-svh lg:grid-cols-[3fr_2fr]">
-			<section className="flex min-h-svh min-w-0 items-center justify-center px-6 py-10 sm:px-8 lg:px-12">
+		<div className="bg-background relative isolate min-h-svh w-full overflow-x-clip lg:grid lg:grid-cols-2">
+			<section className="relative z-10 flex min-h-svh min-w-0 items-center justify-center px-6 py-12 sm:px-12 xl:px-16">
 				<div className="w-full max-w-lg">
-					<AnimatePresence mode="wait">
-						<motion.div
-							key={mode}
-							initial={{ opacity: 0, y: 20 }}
-							animate={{ opacity: 1, y: 0 }}
-							exit={{ opacity: 0, y: -20 }}
-							transition={BASE_TRANSITION}
-						>
-							{mode === "sign-in" ? (
-								<SignIn
-									appearance={clerkAppearance}
-									routing="path"
-									path="/sign-in"
-									signUpUrl="/sign-up"
-									fallbackRedirectUrl="/home"
-								/>
-							) : (
-								<SignUp
-									appearance={clerkAppearance}
-									routing="path"
-									path="/sign-up"
-									signInUrl="/sign-in"
-									fallbackRedirectUrl="/home"
-								/>
-							)}
-						</motion.div>
-					</AnimatePresence>
+					{mode === "sign-in" ? (
+						<SignIn
+							appearance={clerkAppearance}
+							routing="path"
+							path="/sign-in"
+							signUpUrl="/sign-up"
+							fallbackRedirectUrl="/home"
+						/>
+					) : (
+						<SignUp
+							appearance={clerkAppearance}
+							routing="path"
+							path="/sign-up"
+							signInUrl="/sign-in"
+							fallbackRedirectUrl="/home"
+						/>
+					)}
 					{/* Mobile cannot render Clerk's consent checkbox, so web carries the notice. */}
-					<p className="text-muted-foreground mt-6 text-center text-xs">
+					<p className="text-muted-foreground mt-6 px-4 text-center text-xs leading-relaxed">
 						By continuing, you agree to our{" "}
 						<Link
 							href="/terms-of-service"
@@ -98,23 +89,25 @@ export function SignInUpForm({ mode }: SignInUpFormProps) {
 				</div>
 			</section>
 
-			<aside className="bg-primary/[0.03] border-border/70 relative hidden overflow-hidden px-8 py-12 lg:flex lg:min-h-svh lg:border-l">
-				<AuthGridBackground />
-
-				<div className="relative z-10 flex min-h-full w-full items-center justify-center">
-					<div className="mx-auto flex w-full max-w-160 flex-col items-start">
-						<div className="bg-card border-border relative w-full overflow-hidden rounded-xl border">
-							<Image
-								src="https://images.unsplash.com/photo-1690378820474-b468b8ee64d3?q=80&w=1470&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D"
-								alt=""
-								width={1470}
-								height={980}
-								sizes="(min-width: 1024px) 50vw, 100vw"
-								className="h-auto w-full object-cover"
-								priority
-							/>
-						</div>
-					</div>
+			<aside className="pointer-events-none relative hidden min-w-0 flex-col justify-center py-12 lg:flex">
+				<div className="px-12 xl:px-16">
+					<h2 className="text-foreground text-3xl leading-tight font-semibold tracking-tight xl:text-4xl">
+						Your workday, organized.
+					</h2>
+					<p className="text-muted-foreground mt-4 max-w-xs text-base leading-relaxed">
+						Clients, quotes, and jobs. All in OneTool.
+					</p>
+				</div>
+				<div className="relative mt-8 -ml-20 w-[calc(100%+5rem)] xl:-ml-32 xl:w-[calc(100%+8rem)]">
+					<Image
+						src="/auth/onetool-workday-cutout.png"
+						alt=""
+						width={2048}
+						height={1360}
+						sizes="(min-width: 1280px) calc(50vw + 128px), (min-width: 1024px) calc(50vw + 80px), 1px"
+						className="h-auto w-full"
+						priority
+					/>
 				</div>
 			</aside>
 		</div>
