@@ -2,6 +2,7 @@ import type { CSSProperties } from "react";
 import { CaptionBody } from "./captions";
 import { SCENE_COUNT } from "./chapters";
 import { FRAME_H, FRAME_W } from "./frame/frame-size";
+import { OldWayCards } from "./frame/old-way-cards";
 import { SCENE_CONTENTS } from "./frame/scene-contents";
 import { WorkspaceFrame } from "./frame/workspace-frame";
 import { HeroCopy } from "./hero-copy";
@@ -45,6 +46,11 @@ export function StackedStory() {
 										<WorkspaceFrame scene={scene}>
 											<Content />
 										</WorkspaceFrame>
+										{scene === 1 && (
+											<div style={{ position: "absolute", inset: 0, scale: 0.95, "--a1": "0" } as CSSProperties}>
+												<OldWayCards />
+											</div>
+										)}
 									</div>
 								</ScaledFrame>
 							</div>

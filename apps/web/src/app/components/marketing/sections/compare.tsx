@@ -40,7 +40,6 @@ const VALUE_FADE: CSSProperties = {
 const people = (crew: number) => (crew === 1 ? "person" : "people");
 
 const DISCLOSURE_ROW_LABELS = new Set(["Card processing fee", "Phone support"]);
-const TABLE_ROWS = FEATURE_ROWS.filter((r) => !DISCLOSURE_ROW_LABELS.has(r.label));
 const DISCLOSURE_ROWS = FEATURE_ROWS.filter((r) => DISCLOSURE_ROW_LABELS.has(r.label));
 
 function cellText(cell: FeatureCell): string {
@@ -266,7 +265,7 @@ function LedgerTable({ crew }: { crew: CrewSize }) {
 					))}
 				</tr>
 
-				{TABLE_ROWS.map((row) => (
+				{FEATURE_ROWS.map((row) => (
 					<tr key={row.label}>
 						<th scope="row" className={ROW_LABEL}>
 							{row.label}

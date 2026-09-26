@@ -19,16 +19,15 @@ const clamp = (value: number) => Math.min(1, Math.max(0, value));
 const mix = (from: number, to: number, progress: number) => from + (to - from) * progress;
 
 export function DayStory() {
+	const mode = useStoryMode();
 	return (
 		<div id="day">
-			<PinnedStory />
-			<div className="lp-story-stacked"><StackedStory /></div>
+			{mode === "pinned" ? <PinnedStory /> : <StackedStory />}
 		</div>
 	);
 }
 
 function PinnedStory() {
-	const mode = useStoryMode();
 	const storyRef = useRef<HTMLElement>(null);
 	const stageRef = useRef<HTMLDivElement>(null);
 	const heroRef = useRef<HTMLDivElement>(null);
@@ -44,7 +43,6 @@ function PinnedStory() {
 	const [scene, setScene] = useState(0);
 
 	useLayoutEffect(() => {
-		if (mode !== "pinned") return;
 		const content = contentRefs.current[scene];
 		const paintEntrance = (progress: number) => {
 			content?.style.setProperty(`--a${scene}`, String(progress));
@@ -60,7 +58,7 @@ function PinnedStory() {
 			onUpdate: paintEntrance,
 		});
 		return () => entrance.stop();
-	}, [scene, mode]);
+	}, [scene]);
 
 	useEffect(() => {
 		const section = storyRef.current;
@@ -70,7 +68,7 @@ function PinnedStory() {
 		const caption = captionRef.current;
 		const backdrop = backdropRef.current;
 		const rail = railRef.current;
-		if (mode !== "pinned" || !section || !stage || !hero || !frame || !caption || !backdrop || !rail) return;
+		if (!section || !stage || !hero || !frame || !caption || !backdrop || !rail) return;
 
 		let progress = 0;
 		let layout = { x0: 0, y0: 0, s0: 1, x1: 0, y1: 0, s1: 1 };
@@ -147,7 +145,7 @@ function PinnedStory() {
 		measure();
 		const stop = scroll(paint, { target: section, offset: ["start 64px", "end end"] });
 		return () => { stop(); observer.disconnect(); };
-	}, [mode]);
+	}, []);
 
 	const jumpToScene = (index: number, instant = false) => {
 		const section = storyRef.current;

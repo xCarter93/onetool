@@ -345,7 +345,7 @@ export function Scene11Content() {
 						reminders queued for tonight
 					</div>
 				</div>
-				<div style={{ padding: "14px 0 0 0 20px" }}>
+				<div style={{ padding: "14px 0 0 20px" }}>
 					<div
 						style={{
 							fontSize: "24px",
