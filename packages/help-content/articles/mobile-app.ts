@@ -76,7 +76,7 @@ export const mobileAppArticles: HelpArticle[] = [
 				blocks: [
 					{
 						type: "paragraph",
-						text: "You reach a record from the **Money** dashboard rows, or from the **Invoices** and **Quotes** chips on **Work**; tap any row to open the full record. From a detail screen, the buttons follow the record's status: a draft offers **Send** (with **Mark as sent** under the \u2022\u2022\u2022 menu when you delivered the quote yourself, so no email goes out), a sent quote offers **Get signature** (the client picks who's signing, signs on your screen, and the quote is approved with the signature saved to its approval history; turn the phone sideways, and iPad signs full-width) plus **Resend** and a manual **Mark approved**, an approved quote converts to an invoice in one tap, and a sent or overdue invoice offers **Record payment** and **Share pay link**.",
+						text: "You reach a record from the **Money** dashboard rows, or from the **Invoices** and **Quotes** chips on **Work**; tap any row to open the full record. From a detail screen, the buttons follow the record's status: a draft offers **Send** (with **Mark as sent** under the \u2022\u2022\u2022 menu when you delivered the quote yourself, so no email goes out), a sent quote offers **Get signature** (the client picks who's signing, signs on your screen, and the quote is approved with the signature saved to its approval history; on iPhone the signing area turns sideways on its own, so you keep holding the phone upright, and iPad signs full-width) plus **Resend** and a manual **Mark approved**, an approved quote converts to an invoice in one tap, and a sent or overdue invoice offers **Record payment** and **Share pay link**.",
 					},
 					{
 						type: "list",
@@ -105,7 +105,7 @@ export const mobileAppArticles: HelpArticle[] = [
 							"Change a project's status or details, or a client's details.",
 							"Post in team chat. Attachments need a connection.",
 							"Record a cash or check payment.",
-							"Get a signature on a sent quote, as long as the phone has its current document. Open the quote once with signal to prepare it.",
+							"Get a signature on a sent quote, as long as the phone has the quote's current document. When the app opens with signal, it prepares the documents for your sent quotes automatically.",
 						],
 					},
 					{
@@ -114,7 +114,7 @@ export const mobileAppArticles: HelpArticle[] = [
 					},
 					{
 						type: "paragraph",
-						text: "If the same record changed while you were offline, the app doesn't overwrite it. For example, the invoice was paid online or the quote was edited on the web. Your change moves to **Needs attention** with what happened, and you choose what to do. A cash payment that couldn't be recorded stays on the phone until you mark it handled.",
+						text: "If the same record changed while you were offline, the app doesn't overwrite it. For example, the invoice was paid online or the quote was edited on the web. The line above the tabs says how many changes need attention; tap it to open **Sync issues**, which shows what happened and lets you retry a change or mark it handled. A cash payment that couldn't be recorded stays on the phone until you mark it handled.",
 					},
 					{
 						type: "note",
