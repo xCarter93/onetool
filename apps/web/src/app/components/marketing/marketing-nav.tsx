@@ -6,97 +6,24 @@ import Image from "next/image";
 import Link from "next/link";
 import { SignInButton, Show } from "@clerk/nextjs";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import {
-	BarChart3,
-	BookOpen,
-	CalendarDays,
-	FileSignature,
-	LifeBuoy,
-	Map,
-	Receipt,
-	Rocket,
-	Sparkles,
-	Users,
-	Zap,
-	type LucideIcon,
-} from "lucide-react";
+import { BookOpen, CircleHelp, LifeBuoy, Rocket } from "lucide-react";
 import { ThemeSwitcher } from "@/components/layout/theme-switcher";
 import { cn } from "@/lib/utils";
+import { FEATURES } from "./features";
 import { openReelLightbox } from "./reel-cta";
 
 const LINKS = [
-	{ href: "#one-place", label: "Why change" },
-	{ href: "#loop", label: "How it works" },
-	{ href: "#work", label: "What's inside" },
+	{ href: "#day", label: "The day" },
+	{ href: "#phone", label: "Mobile" },
+	{ href: "#try", label: "Try it" },
 	{ href: "#compare", label: "Compare" },
 	{ href: "#pricing", label: "Pricing" },
 ];
 
-/** Desktop drops "What's inside" — the Features trigger owns #work there. */
-const DESKTOP_LINKS = LINKS.filter((link) => link.href !== "#work");
-
 const LINK_CLASS =
 	"rounded-lg px-3 py-2 text-sm font-medium text-(--ink-2) transition-colors hover:bg-(--rule) hover:text-(--ink) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--accent-ink)";
 
-type FlyoutItem = {
-	icon: LucideIcon;
-	label: string;
-	description: string;
-	href: string;
-};
-
-/* Every row lands on a section that actually exists on this page — no invented
- * anchors. Several capabilities share a section; that's honest, not a bug. */
-const FEATURE_ITEMS: FlyoutItem[] = [
-	{
-		icon: Users,
-		label: "Clients & CRM",
-		description: "Every client, contact, and property in one place",
-		href: "#work",
-	},
-	{
-		icon: FileSignature,
-		label: "Quotes & e-sign",
-		description: "Send quotes clients sign from their phone",
-		href: "#try-it",
-	},
-	{
-		icon: Receipt,
-		label: "Invoices & payments",
-		description: "Flip the quote to an invoice, get paid online",
-		href: "#money-time",
-	},
-	{
-		icon: CalendarDays,
-		label: "Scheduling & tasks",
-		description: "A day plan your crew actually runs",
-		href: "#work",
-	},
-	{
-		icon: Map,
-		label: "Route planning",
-		description: "Stops become an optimized route",
-		href: "#phone",
-	},
-	{
-		icon: Zap,
-		label: "Automations",
-		description: "Rules that run while you sleep",
-		href: "#loop",
-	},
-	{
-		icon: Sparkles,
-		label: "AI assistant",
-		description: "Ask in plain English, it does the work",
-		href: "#work",
-	},
-	{
-		icon: BarChart3,
-		label: "Reports",
-		description: "Live numbers without the spreadsheet",
-		href: "#numbers",
-	},
-];
+const FEATURE_COLUMNS = [FEATURES.slice(0, 5), FEATURES.slice(5, 9), FEATURES.slice(9)];
 
 const RESOURCE_ITEMS = [
 	{
@@ -112,6 +39,12 @@ const RESOURCE_ITEMS = [
 		href: "/help/getting-started",
 	},
 	{
+		icon: CircleHelp,
+		label: "FAQ",
+		description: "Quick answers before you sign up",
+		href: "#faq",
+	},
+	{
 		icon: LifeBuoy,
 		label: "Contact support",
 		description: "Email our team for a hand",
@@ -125,24 +58,22 @@ const LEGAL_ITEMS = [
 	{ label: "Data Security", href: "/data-security" },
 ] as const;
 
-/** `--ease-out-quint`, the landing's canonical deceleration. */
 const EASE_OUT_QUINT = [0.23, 1, 0.32, 1] as const;
 
-/** Underline is inset to the label, not the pill padding. */
 const NAV_UNDERLINE =
 	"pointer-events-none absolute inset-x-3 bottom-1 h-[2px] origin-left rounded-full bg-(--accent) transition-transform duration-300 ease-out";
 
-/** Flyouts float above the sheet, so the one elevation token belongs here. */
 const PANEL_CLASS =
-	"rounded-[14px] border border-(--rule-2) bg-(--sheet) shadow-(--lp-shadow)";
+	"rounded-lg border border-(--rule-2) bg-(--sheet) shadow-(--lp-shadow)";
 const EYEBROW_CLASS =
 	"font-mono text-[10.5px] font-medium uppercase tracking-[0.12em] text-(--ink-3)";
 const ROW_CLASS =
-	"flex items-start gap-3 rounded-[9px] p-3 text-left transition-colors hover:bg-(--paper) focus-visible:bg-(--paper) focus-visible:outline-none";
+	"flex items-start gap-3 rounded-md p-3 text-left transition-colors hover:bg-(--paper) focus-visible:bg-(--paper) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--accent-ink)";
+const FEATURE_ROW_CLASS =
+	"block rounded-md px-3 py-2.5 transition-colors hover:bg-(--paper) focus-visible:bg-(--paper) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--accent-ink)";
 const TILE_CLASS =
-	"mt-px flex h-9 w-9 shrink-0 items-center justify-center rounded-[9px] border border-(--rule) bg-(--accent-wash) text-(--accent-ink)";
+	"mt-px flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-(--rule) bg-(--accent-wash) text-(--accent-ink)";
 
-/** Shared open/close contract: hover, focus, Escape-to-refocus, blur-out. */
 function useFlyout<T extends HTMLElement>() {
 	const [open, setOpen] = useState(false);
 	const triggerRef = useRef<T>(null);
@@ -170,8 +101,6 @@ function useFlyout<T extends HTMLElement>() {
 	return { open, setOpen, triggerRef, panelId, boundaryProps };
 }
 
-/* Side-anchored, not centered: at the 1024px `lg` breakpoint a centered 38rem
- * panel runs off the viewport and the page root's overflow-x-clip eats it. */
 function FlyoutPanel({
 	open,
 	align,
@@ -211,7 +140,7 @@ function FeaturesFlyout() {
 		<div {...boundaryProps}>
 			<a
 				ref={triggerRef}
-				href="#work"
+				href="#inside"
 				onClick={() => setOpen(false)}
 				onFocus={() => setOpen(true)}
 				aria-expanded={open}
@@ -228,29 +157,28 @@ function FeaturesFlyout() {
 			<FlyoutPanel open={open} align="left">
 				<div
 					id={panelId}
-					className={cn(PANEL_CLASS, "w-[min(38rem,calc(100vw-2.5rem))]")}
+					className={cn(PANEL_CLASS, "w-[min(47.5rem,calc(100vw-2.5rem))]")}
 				>
 					<p className={cn(EYEBROW_CLASS, "px-3 pb-1 pt-3")}>Everything inside</p>
-					<div className="grid grid-cols-2 gap-1 px-2 pb-2">
-						{FEATURE_ITEMS.map((item) => (
-							<a
-								key={item.label}
-								href={item.href}
-								onClick={() => setOpen(false)}
-								className={ROW_CLASS}
-							>
-								<span className={TILE_CLASS}>
-									<item.icon size={16} aria-hidden="true" />
-								</span>
-								<span className="min-w-0">
-									<span className="block text-[14px] font-medium leading-5 text-(--ink)">
-										{item.label}
-									</span>
-									<span className="mt-0.5 block text-[12.5px] leading-[1.45] text-(--ink-2)">
-										{item.description}
-									</span>
-								</span>
-							</a>
+					<div className="grid grid-cols-3 gap-1 px-2 pb-2">
+						{FEATURE_COLUMNS.map((column, i) => (
+							<div key={i}>
+								{column.map((item) => (
+									<Link
+										key={item.key}
+										href={item.href as Route}
+										onClick={() => setOpen(false)}
+										className={FEATURE_ROW_CLASS}
+									>
+										<span className="block text-[14px] font-medium leading-5 text-(--ink)">
+											{item.label}
+										</span>
+										<span className="mt-0.5 block text-[12.5px] leading-[1.45] text-(--ink-2)">
+											{item.description}
+										</span>
+									</Link>
+								))}
+							</div>
 						))}
 					</div>
 					<button
@@ -259,7 +187,7 @@ function FeaturesFlyout() {
 							setOpen(false);
 							openReelLightbox();
 						}}
-						className="flex w-full items-center justify-between rounded-b-[13px] border-t border-(--rule) px-5 py-3.5 text-left text-[14px] font-medium text-(--ink-2) transition-colors hover:bg-(--paper) hover:text-(--ink) focus-visible:outline-none focus-visible:bg-(--paper)"
+						className="flex w-full items-center justify-between rounded-b-lg border-t border-(--rule) px-5 py-3.5 text-left text-[14px] font-medium text-(--ink-2) transition-colors hover:bg-(--paper) hover:text-(--ink) focus-visible:outline-none focus-visible:bg-(--paper)"
 					>
 						Watch a job run through it
 						<span aria-hidden="true" className="text-(--accent-ink)">
@@ -348,7 +276,7 @@ function ResourcesFlyout() {
 								key={item.label}
 								href={item.href}
 								onClick={() => setOpen(false)}
-								className="block rounded-[9px] py-2 pr-2 text-[14px] text-(--ink-2) transition-colors hover:text-(--ink) focus-visible:outline-none focus-visible:text-(--ink)"
+								className="block rounded-md py-2 pr-2 text-[14px] text-(--ink-2) transition-colors hover:text-(--ink) focus-visible:outline-none focus-visible:text-(--ink)"
 							>
 								{item.label}
 							</Link>
@@ -360,51 +288,35 @@ function ResourcesFlyout() {
 	);
 }
 
-/* Button ladder. Primary is the workspace's frosted-blue treatment (nova's
- * `.cn-button-variant-default`, and the same look production's CtaButton uses),
- * not a solid ink slab — landing and app primaries have to read as one button.
- *
- * The fill is composited OPAQUE (color-mix against --paper, not an alpha tint):
- * these buttons sit over the grid backdrop and the halftone scenes, and a
- * translucent fill lets the artwork print straight through them.
- *
- * Label is --accent-ink, not --accent: the brand sky is ~2.7:1 on its own 10%
- * tint and fails AA. --accent-ink is the darker sky in light mode and the
- * lighter one in dark, so it clears contrast on both. */
 export const LP_PRIMARY =
-	"inline-flex cursor-pointer items-center gap-[9px] rounded-[11px] border font-semibold tracking-[-0.01em] " +
+	"inline-flex cursor-pointer items-center justify-center gap-[9px] rounded-md border font-semibold tracking-[-0.01em] " +
 	"border-[color-mix(in_srgb,var(--accent)_32%,transparent)] " +
-	"bg-[color-mix(in_srgb,var(--accent)_10%,var(--paper))] text-(--accent-ink) shadow-sm " +
+	"bg-[color-mix(in_srgb,var(--accent)_10%,var(--paper))] text-(--accent-ink) " +
 	"transition-[background-color,border-color,box-shadow] duration-200 motion-reduce:transition-none " +
 	"hover:border-[color-mix(in_srgb,var(--accent)_45%,transparent)] " +
-	"hover:bg-[color-mix(in_srgb,var(--accent)_16%,var(--paper))] hover:shadow-md " +
+	"hover:bg-[color-mix(in_srgb,var(--accent)_16%,var(--paper))] " +
 	"active:bg-[color-mix(in_srgb,var(--accent)_22%,var(--paper))] " +
 	"focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--accent-ink) focus-visible:ring-offset-2 focus-visible:ring-offset-(--paper) " +
 	"disabled:pointer-events-none disabled:opacity-60";
 
-/* Secondary: hairline plate, the workspace `outline` variant in landing ink.
- * Hover moves the border and the label to accent rather than shifting the fill —
- * these sit on --paper and on --sheet, so any fill shift reads backwards on one
- * of the two. */
 export const LP_SECONDARY =
-	"inline-flex cursor-pointer items-center rounded-[11px] border border-(--rule-2) bg-(--sheet) font-medium text-(--ink) " +
+	"inline-flex cursor-pointer items-center justify-center gap-[9px] rounded-md border border-(--rule-2) bg-(--sheet) font-semibold text-(--ink) " +
 	"transition-[color,border-color] duration-200 motion-reduce:transition-none " +
 	"hover:border-[color-mix(in_srgb,var(--accent)_45%,transparent)] hover:text-(--accent-ink) " +
 	"focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--accent-ink) focus-visible:ring-offset-2 focus-visible:ring-offset-(--paper)";
 
-const SIZE = {
-	sm: "h-[38px] rounded-[9px] px-4 text-sm",
+export const LP_BUTTON_SIZE = {
+	sm: "h-[38px] rounded-md px-4 text-sm",
 	md: "h-[52px] px-[26px] text-[17px]",
 } as const;
 
 type ButtonProps = {
 	href: string;
-	size?: keyof typeof SIZE;
+	size?: keyof typeof LP_BUTTON_SIZE;
 	className?: string;
 	children: React.ReactNode;
 };
 
-/** Primary CTA. */
 export function PrimaryButton({
 	href,
 	size = "md",
@@ -413,13 +325,12 @@ export function PrimaryButton({
 }: ButtonProps) {
 	return (
 		// optional catch-all route; bare path isn't in the typed union
-		<Link href={href as Route} className={cn(LP_PRIMARY, SIZE[size], className)}>
+		<Link href={href as Route} className={cn(LP_PRIMARY, LP_BUTTON_SIZE[size], className)}>
 			{children}
 		</Link>
 	);
 }
 
-/** Secondary CTA. Plain <a>: several call sites are in-page hash anchors. */
 export function SecondaryButton({
 	href,
 	size = "md",
@@ -429,7 +340,7 @@ export function SecondaryButton({
 	return (
 		<a
 			href={href}
-			className={cn(LP_SECONDARY, SIZE[size], size === "md" && "px-[22px]", className)}
+			className={cn(LP_SECONDARY, LP_BUTTON_SIZE[size], className)}
 		>
 			{children}
 		</a>
@@ -438,20 +349,29 @@ export function SecondaryButton({
 
 export function MarketingNav() {
 	const [menuOpen, setMenuOpen] = useState(false);
+	const menuTriggerRef = useRef<HTMLButtonElement>(null);
 
-	// Body scroll locks while the mobile panel is open.
 	useEffect(() => {
 		if (!menuOpen) return;
 		const previous = document.body.style.overflow;
+		const desktop = window.matchMedia("(min-width: 1280px)");
+		const closeOnDesktop = () => { if (desktop.matches) setMenuOpen(false); };
 		document.body.style.overflow = "hidden";
+		desktop.addEventListener("change", closeOnDesktop);
 		return () => {
 			document.body.style.overflow = previous;
+			desktop.removeEventListener("change", closeOnDesktop);
 		};
 	}, [menuOpen]);
 
 	return (
-		<header className="sticky top-0 z-[60] border-b border-(--rule) bg-[color-mix(in_srgb,var(--paper)_86%,transparent)] backdrop-blur-[14px] backdrop-saturate-[1.4]">
-			<div className="mx-auto flex min-h-16 max-w-[1560px] flex-wrap items-center justify-between gap-x-6 gap-y-2 px-[clamp(20px,4vw,40px)] py-2">
+		<header onKeyDown={(event) => {
+			if (event.key === "Escape" && menuOpen) {
+				setMenuOpen(false);
+				menuTriggerRef.current?.focus();
+			}
+		}} className="sticky top-0 z-[60] border-b border-(--rule) bg-[color-mix(in_srgb,var(--paper)_86%,transparent)] backdrop-blur-[14px] backdrop-saturate-[1.4]">
+			<div className="mx-auto flex h-16 max-w-[1560px] items-center justify-between gap-x-6 gap-y-2 px-[clamp(20px,4vw,40px)] py-2">
 				<Link
 					href="/"
 					aria-label="OneTool home"
@@ -467,9 +387,9 @@ export function MarketingNav() {
 					/>
 				</Link>
 
-				<nav aria-label="Primary" className="hidden items-center gap-0.5 lg:flex">
+				<nav aria-label="Primary" className="hidden items-center gap-0.5 xl:flex">
 					<FeaturesFlyout />
-					{DESKTOP_LINKS.map((link) => (
+					{LINKS.map((link) => (
 						<a key={link.href} href={link.href} className={LINK_CLASS}>
 							{link.label}
 						</a>
@@ -493,14 +413,15 @@ export function MarketingNav() {
 						</PrimaryButton>
 					</Show>
 
-					{/* Mobile menu toggle */}
+
 					<button
+						ref={menuTriggerRef}
 						type="button"
 						onClick={() => setMenuOpen((v) => !v)}
 						aria-expanded={menuOpen}
 						aria-controls="marketing-nav-panel"
 						aria-label={menuOpen ? "Close navigation menu" : "Open navigation menu"}
-						className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg text-(--ink-2) transition-colors hover:bg-(--rule) hover:text-(--ink) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--accent-ink) lg:hidden"
+						className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg text-(--ink-2) transition-colors hover:bg-(--rule) hover:text-(--ink) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--accent-ink) xl:hidden"
 					>
 						<svg
 							width="16"
@@ -522,15 +443,12 @@ export function MarketingNav() {
 				</div>
 			</div>
 
-			{/* Mobile panel — grid-rows 0fr→1fr so height animates without JS
-			    measurement. Collapsed to 0fr the links are invisible but still
-			    focusable, so `inert` takes the closed panel out of the tab order
-			    and the a11y tree. */}
+
 			<div
 				id="marketing-nav-panel"
 				inert={!menuOpen}
 				className={cn(
-					"grid overflow-hidden border-(--rule) transition-[grid-template-rows,opacity] duration-300 ease-[cubic-bezier(.23,1,.32,1)] lg:hidden",
+					"grid overflow-hidden border-(--rule) transition-[grid-template-rows,opacity] duration-300 ease-(--lp-ease) xl:hidden",
 					menuOpen ? "grid-rows-[1fr] border-t opacity-100" : "grid-rows-[0fr] opacity-0"
 				)}
 			>
@@ -548,15 +466,15 @@ export function MarketingNav() {
 						))}
 						<div className="mt-2 border-t border-(--rule) pt-3">
 							<p className={cn(EYEBROW_CLASS, "px-3 pb-1")}>Features</p>
-							{FEATURE_ITEMS.map((item) => (
-								<a
-									key={item.label}
-									href={item.href}
+							{FEATURES.map((item) => (
+								<Link
+									key={item.key}
+									href={item.href as Route}
 									onClick={() => setMenuOpen(false)}
 									className="block rounded-lg px-3 py-2.5 text-sm font-medium text-(--ink-2) transition-colors hover:bg-(--rule) hover:text-(--ink)"
 								>
 									{item.label}
-								</a>
+								</Link>
 							))}
 						</div>
 						<div className="mt-2 border-t border-(--rule) pt-3">

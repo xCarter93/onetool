@@ -1,70 +1,50 @@
-/* ============================================================================
- * LANDING PAPER-AND-INK LANGUAGE — marketing surface only.
- *
- * Token values come verbatim from the approved Claude Design comp
- * (.planning/landing-redesign-2026-08/design-import/OneTool Landing.dc.html).
- * Scoped to `.dc-landing` so nothing leaks into the workspace; the dark block
- * keys off next-themes' `.dark` on <html>.
- *
- * Contrast contract: --accent (brand sky) is decorative-only — fills, marks,
- * rails. Text in the accent hue must use --accent-ink (AA on paper in both
- * themes). --ink-3 is timestamps/annotations only, never body copy.
- *
- * All three ink steps clear WCAG AA (4.5:1) against --paper AND --sheet in
- * their own block — --ink-3 carries 11-13px type, so the large-text 3:1 bar
- * never applies. Do not lighten --ink-3 back toward the comp's value: at
- * oklch(0.62) it measured 3.4:1 and axe failed 17 nodes. Never stack opacity
- * on --ink-3 text either; composite alpha eats the margin.
- * ========================================================================== */
-
 .dc-landing {
-	--paper: oklch(0.975 0.002 286);
-	--ink: oklch(0.16 0.008 285.8);
-	--ink-2: oklch(0.47 0.016 285.9);
-	--ink-3: oklch(0.55 0.014 285.9); /* 4.53:1 on paper, 4.87:1 on sheet */
+	--paper: #f4f5f8;
+	--ink: #202e37;
+	--ink-2: #586573;
+	--ink-3: #586573;
 	--sheet: oklch(1 0 0);
 	--rule: color-mix(in oklch, var(--ink) 11%, transparent);
 	--rule-2: color-mix(in oklch, var(--ink) 20%, transparent);
 	--rule-3: color-mix(in oklch, var(--ink) 38%, transparent);
 	--accent: rgb(0, 166, 244);
-	--accent-ink: oklch(0.5 0.134 242.749);
+	--accent-ink: #006394;
+	--primary: var(--accent-ink);
 	--accent-wash: color-mix(in srgb, rgb(0, 166, 244) 9%, var(--paper));
-	--paid: oklch(0.52 0.13 163.2);
+	--paid: #08734f;
 	--paid-wash: color-mix(in oklch, oklch(0.596 0.145 163.225) 12%, var(--paper));
 	--struck: oklch(0.55 0.19 27.3);
 	--lp-shadow: 0 1px 2px rgba(16, 24, 40, 0.04), 0 8px 24px -12px rgba(16, 24, 40, 0.12);
-	--lp-ease: cubic-bezier(0.23, 1, 0.32, 1);
+	--lp-ease: var(--ease-out-quint);
 
 	background: var(--paper);
 	color: var(--ink);
 }
 
 .dark .dc-landing {
-	--paper: oklch(0.168 0.019 264.665);
-	--ink: oklch(0.985 0 0);
-	--ink-2: oklch(0.705 0.015 286.067);
-	--ink-3: oklch(0.62 0.015 286); /* 5.25:1 on paper, 4.87:1 on sheet */
-	--sheet: oklch(0.208 0.014 265);
+	--paper: #262626;
+	--ink: #ededed;
+	--ink-2: #b8b8b8;
+	--ink-3: #b8b8b8;
+	--sheet: #202020;
 	--rule: color-mix(in oklch, var(--ink) 12%, transparent);
 	--rule-2: color-mix(in oklch, var(--ink) 20%, transparent);
 	--rule-3: color-mix(in oklch, var(--ink) 42%, transparent);
 	--accent: oklch(0.685 0.169 237.323);
-	--accent-ink: oklch(0.746 0.16 232.661);
+	--accent-ink: #38bdf8;
 	--accent-wash: color-mix(in srgb, oklch(0.685 0.169 237.323) 14%, var(--paper));
 	--paid: oklch(0.696 0.17 162.48);
+	--success: var(--paid);
 	--paid-wash: color-mix(in oklch, oklch(0.596 0.145 163.225) 18%, var(--paper));
 	--struck: oklch(0.71 0.17 27.3);
 	--lp-shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 10px 30px -14px rgba(0, 0, 0, 0.6);
 }
 
-/* The "one place" band re-inks itself dark in BOTH themes (comp section #one-place).
-   Applied via className="lp-scheme-dark" on the section. */
 .dc-landing .lp-scheme-dark {
 	--paper: oklch(0.19 0.014 265);
 	--ink: oklch(0.975 0 0);
 	--ink-2: oklch(0.765 0.012 286);
-	--ink-3: oklch(0.64 0.014 286); /* 5.48:1 on band paper, 4.94:1 on sheet */
-	--sheet: oklch(0.235 0.015 265);
+	--ink-3: oklch(0.64 0.014 286); --sheet: oklch(0.235 0.015 265);
 	--rule: color-mix(in oklch, #fff 12%, transparent);
 	--rule-2: color-mix(in oklch, #fff 22%, transparent);
 	--rule-3: color-mix(in oklch, #fff 40%, transparent);
@@ -74,11 +54,6 @@
 	color: var(--ink);
 }
 
-/* Workspace form primitives (Input, Label, Textarea, Button) reach for workspace
-   tokens, which this scope never redefines. Wrapping a form in `lp-form` remaps
-   just the ones those primitives read, so a real app form renders in paper-and-ink
-   without a landing-only copy of it. Status hues (danger/success) stay workspace
-   semantics on purpose. */
 .dc-landing .lp-form {
 	--background: var(--sheet);
 	--foreground: var(--ink);
@@ -86,27 +61,18 @@
 	--border: var(--rule-2);
 	--input: var(--rule-2);
 	--ring: var(--accent);
-	/* --accent-ink, not --accent: nova's primary is a 10% tint of --primary with
-	   --primary as the label, and the brand sky fails AA against its own tint.
-	   Mapping --primary to --ink (the old value) made the submit button black. */
 	--primary: var(--accent-ink);
 	--primary-fg: var(--paper);
+	--danger: var(--struck);
 }
 
-/* Same trick for the ReUI <Frame> (components/reui/frame.tsx): it reads --card,
-   --border and --muted through Tailwind's --color-* mapping, none of which this
-   scope defines. Remapping them lets the landing use the real frame component —
-   gutter on paper, panels on sheet — instead of a landing-only lookalike. */
-.dc-landing .lp-frame {
-	--background: var(--sheet);
-	--foreground: var(--ink);
-	--muted: var(--paper);
-	--muted-foreground: var(--ink-3);
-	--card: var(--sheet);
-	--border: var(--rule-2);
+.dc-landing .lp-form button:disabled {
+	opacity: 1;
+	color: var(--ink-2);
+	background: var(--paper);
+	border-color: var(--rule-2);
 }
 
-/* Anchored sections sit under the sticky 64px nav. */
 .dc-landing [id] {
 	scroll-margin-top: 72px;
 }
@@ -114,10 +80,6 @@
 html:has(.dc-landing) {
 	scroll-behavior: smooth;
 }
-
-/* ---------------------------------------------------------------- motion ---- */
-/* One entrance (rise), one ambient set. All names lp-prefixed: keyframes are
-   document-global. Every class lands on its terminal state under reduced motion. */
 
 @keyframes lp-rise {
 	from {
@@ -175,8 +137,6 @@ html:has(.dc-landing) {
 	animation: lp-fade 1s var(--lp-ease) var(--lp-delay, 0s) both;
 }
 
-/* Old-way stack: plates hover, leaders stream toward the record. Frame 0 is the
-   rest pose, so the reduced-motion rule below needs no companion here. */
 @keyframes lp-bob {
 	to {
 		translate: 0 -3px;
@@ -190,24 +150,18 @@ html:has(.dc-landing) {
 	animation: lp-dashflow 1.1s linear infinite;
 }
 
-/* Cards rest flat (hairline + surface only); shadow is a hover reward.
-   Reduced motion zeroes the transition but the hover state still applies. */
 .lp-lift {
 	transition:
 		box-shadow 0.3s var(--lp-ease),
 		translate 0.3s var(--lp-ease);
 }
+@media (hover: hover) and (pointer: fine) {
 .lp-lift:hover {
 	box-shadow: var(--lp-shadow);
 	translate: 0 -2px;
 }
+}
 
-/* Try-it simulation: the visitor's pointer IS the collaborator cursor, so the
-   OS one has to go everywhere inside the surface. UserCursor only puts
-   `cursor: none` on the wrapper, and the controls carry their own
-   `cursor-pointer`, which would win by inheritance. Gated to fine pointers;
-   under reduced motion the component never mounts the ghost, so the class is
-   never applied and the OS cursor comes back on its own. */
 @media (hover: hover) and (pointer: fine) {
 	.dc-landing .lp-sim-cursor,
 	.dc-landing .lp-sim-cursor * {
@@ -215,9 +169,6 @@ html:has(.dc-landing) {
 	}
 }
 
-/* Simulation toasts. Transition + @starting-style rather than a keyframe:
-   these stack, and keyframes restart from zero when a second one lands
-   mid-entrance. Exit is ~75% of the entrance. */
 .lp-toast {
 	opacity: 1;
 	translate: 0 0;
@@ -252,4 +203,166 @@ html:has(.dc-landing) {
 	html:has(.dc-landing) {
 		scroll-behavior: auto;
 	}
+}
+
+.dc-landing {
+	--amber: oklch(0.52 0.12 65);
+	--loop: oklch(0.52 0.14 55.93);
+	--lp-shadow-lg: 0 1px 2px rgba(16, 24, 40, 0.05), 0 24px 60px -24px rgba(16, 24, 40, 0.28);
+	--lp-casing: rgba(255, 255, 255, 0.9);
+	--lp-mapfilter: saturate(0.88);
+	--on-light: block;
+	--on-dark: none;
+}
+
+.dark .dc-landing {
+	--amber: oklch(0.78 0.13 70);
+	--loop: oklch(0.837 0.128 66.29);
+	--lp-shadow-lg: 0 1px 2px rgba(0, 0, 0, 0.4), 0 30px 70px -24px rgba(0, 0, 0, 0.75);
+	--lp-casing: rgba(10, 14, 20, 0.85);
+	--lp-mapfilter: invert(1) hue-rotate(180deg) saturate(0.55) brightness(0.9) contrast(0.95);
+	--on-light: none;
+	--on-dark: block;
+}
+
+.dc-landing {
+	--lp-paper: var(--paper);
+	--lp-ink: var(--ink);
+	--lp-ink-2: var(--ink-2);
+	--lp-ink-3: var(--ink-3);
+	--lp-sheet: var(--sheet);
+	--lp-rule: var(--rule);
+	--lp-rule-2: var(--rule-2);
+	--lp-rule-3: var(--rule-3);
+	--lp-accent: var(--accent);
+	--lp-accent-ink: var(--accent-ink);
+	--lp-accent-wash: var(--accent-wash);
+	--lp-paid: var(--paid);
+	--lp-paid-wash: var(--paid-wash);
+	--lp-struck: var(--struck);
+	--lp-amber: var(--amber);
+	--lp-loop: var(--loop);
+	--lp-on-light: var(--on-light);
+	--lp-on-dark: var(--on-dark);
+}
+
+@keyframes lp-pulse {
+	0% {
+		box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 55%, transparent);
+	}
+	100% {
+		box-shadow: 0 0 0 10px transparent;
+	}
+}
+@keyframes lp-drop {
+	0% {
+		transform: scaleY(0);
+		transform-origin: top;
+	}
+	50% {
+		transform: scaleY(1);
+		transform-origin: top;
+	}
+	51% {
+		transform: scaleY(1);
+		transform-origin: bottom;
+	}
+	100% {
+		transform: scaleY(0);
+		transform-origin: bottom;
+	}
+}
+@keyframes lp-blink {
+	0%,
+	100% {
+		opacity: 0;
+	}
+	50% {
+		opacity: 1;
+	}
+}
+
+.dc-landing {
+	--lp-rail: #242424;
+	--lp-rail-ink: #ededed;
+	--lp-rail-muted: #b8b8b8;
+	--lp-rail-hover: #363636;
+	--lp-rail-accent: #65caff;
+}
+.dark .dc-landing { --lp-rail: #151515; --lp-rail-hover: #303030; }
+
+.lp-story-pinned { position: relative; height: calc(var(--story-distance) + 100svh - 64px); }
+.lp-story-stage { position: sticky; top: 64px; height: calc(100svh - 64px); overflow: hidden; isolation: isolate; }
+.lp-story-hero { position: absolute; top: clamp(28px, 4vh, 64px); left: 24px; right: 24px; z-index: 2; }
+.lp-story-frame { position: absolute; top: 0; left: 0; width: 1920px; height: 1200px; transform-origin: 50% 0; transform: translate(calc(50vw - 960px), 460px) scale(.5); pointer-events: none; }
+/* Paint at 2× so the perspective transform downsamples instead of enlarging text. */
+.lp-story-render { position: relative; width: 960px; height: 600px; zoom: 2; }
+.lp-story-caption { position: absolute; display: flex; flex-direction: column; justify-content: center; gap: clamp(24px, 4vh, 56px); opacity: 0; }
+.lp-story-clock { color: var(--ink); }
+.lp-story-clock-label { display: block; margin-bottom: 8px; font-size: 12px; font-weight: 500; color: var(--ink-2); }
+.lp-story-clock > div { display: flex; align-items: baseline; gap: 10px; }
+.lp-story-clock > div > span:first-child { font-size: clamp(40px, 4vw, 64px); font-weight: 500; letter-spacing: -.05em; font-variant-numeric: tabular-nums; line-height: 1; }
+.lp-story-ampm { font-size: 12px; color: var(--ink-3); }
+.lp-story-caption-slides { display: grid; }
+.lp-story-caption-slide { grid-area: 1 / 1; opacity: 0; transform: translate3d(0, 12px, 0); transition: opacity 240ms var(--lp-ease), transform 350ms var(--lp-ease); pointer-events: none; }
+.lp-story-caption-slide[data-active] { opacity: 1; transform: none; }
+.lp-story-scene { position: absolute; inset: 0; }
+.lp-story-scene > div { transition: opacity 240ms var(--lp-ease), translate 350ms var(--lp-ease); }
+
+.lp-story-atmosphere { position: absolute; inset: 0; z-index: -1; pointer-events: none; background: var(--paper); }
+.lp-story-photos { position: absolute; inset: 0; opacity: .32; mask-image: linear-gradient(180deg, transparent 25%, #000 100%); }
+.lp-story-photos::after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, var(--paper) 0%, transparent 70%); }
+.lp-story-halftone { position: absolute; inset: 0; background-image: radial-gradient(var(--ink-3) .65px, transparent .85px); background-size: 5px 5px; opacity: .2; mask-image: linear-gradient(180deg, transparent 38%, #000); }
+.lp-story-grid { position: absolute; inset: 0; background-image: linear-gradient(var(--rule) 1px, transparent 1px), linear-gradient(90deg, var(--rule) 1px, transparent 1px); background-size: 64px 64px; mask-image: linear-gradient(90deg, #000, transparent 25%, transparent 75%, #000); opacity: .45; }
+.dark .lp-story-photos { opacity: .16; }
+
+.lp-story-rail { position: absolute; bottom: 0; left: 0; right: 0; background: var(--paper); border-top: 1px solid var(--rule-2); opacity: 0; }
+.lp-story-rail-inner { max-width: 1560px; margin: 0 auto; padding: 12px clamp(20px, 4vw, 40px) 16px; }
+.lp-story-rail-meta { display: flex; align-items: center; justify-content: space-between; gap: 24px; margin-bottom: 12px; font-size: 12px; color: var(--ink-2); }
+.lp-story-rail-meta p { display: flex; gap: 16px; font-variant-numeric: tabular-nums; }
+.lp-story-rail-meta p span { padding-left: 16px; border-left: 1px solid var(--rule-2); color: var(--ink-3); }
+.lp-story-rail-meta a { display: inline-flex; align-items: center; gap: 6px; text-underline-offset: 4px; }
+.lp-story-rail-meta a:hover { text-decoration: underline; }
+.lp-story-chapters { display: grid; grid-template-columns: repeat(10, minmax(0, 1fr)); gap: 12px; }
+.lp-story-chapters button { position: relative; min-height: 48px; text-align: left; color: var(--ink-3); border-radius: 4px; cursor: pointer; transition: color 160ms ease; }
+.lp-story-chapters button:hover, .lp-story-chapters button[aria-current] { color: var(--accent-ink); }
+.lp-story-chapters button:focus-visible, .lp-story-rail-meta a:focus-visible { outline: 2px solid var(--accent-ink); outline-offset: 4px; }
+.lp-story-chapter-track { position: absolute; top: 0; left: 0; right: 0; height: 2px; background: var(--rule-2); overflow: hidden; }
+.lp-story-chapter-track > span { display: block; height: 100%; background: var(--accent-ink); transform: scaleX(0); transform-origin: left; }
+.lp-story-chapters button[data-complete] .lp-story-chapter-track > span { transform: scaleX(1); }
+.lp-story-chapters button[aria-current] .lp-story-chapter-track > span { transform: scaleX(var(--chapter-progress, 0)); }
+.lp-story-chapter-time { display: block; margin-top: 8px; font-size: 10px; font-variant-numeric: tabular-nums; }
+.lp-story-chapter-label { display: flex; align-items: center; justify-content: space-between; margin-top: 2px; font-size: 12px; font-weight: 500; }
+.lp-story-chapter-label svg { opacity: 0; }
+.lp-story-chapters button:is(:hover, :focus-visible) svg { opacity: 1; }
+
+.lp-workspace { position: absolute; inset: 0; display: grid; grid-template-columns: 184px minmax(0, 1fr); overflow: hidden; border: 1px solid var(--rule-2); border-radius: 12px; background: var(--lp-rail); box-shadow: var(--lp-shadow-lg); }
+.lp-workspace-sidebar { display: flex; flex-direction: column; color: var(--lp-rail-ink); font-size: 13px; }
+.lp-workspace-brand { height: 48px; display: flex; align-items: center; padding: 0 16px; }
+.lp-workspace-brand img { width: 104px; height: auto; filter: brightness(0) invert(1); }
+.lp-workspace-org { display: flex; align-items: center; gap: 8px; margin: 16px 12px 20px; font-size: 12px; font-weight: 500; }
+.lp-workspace-org > span { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 4px; background: var(--accent-ink); color: var(--sheet); font-size: 10px; }
+.lp-workspace-group { margin: 0 16px 8px; color: var(--lp-rail-muted); text-transform: uppercase; letter-spacing: .08em; font-size: 9px; font-weight: 500; }
+.lp-workspace-nav { padding: 0 8px; }
+.lp-workspace-nav > div { display: flex; align-items: center; gap: 10px; height: 32px; padding: 0 10px; border-radius: 4px; color: var(--lp-rail-muted); transition: background-color 180ms ease, color 180ms ease; }
+.lp-workspace-nav > div[data-active] { background: var(--lp-rail-hover); color: var(--lp-rail-accent); box-shadow: inset 2px 0 var(--lp-rail-accent); }
+.lp-workspace-user { display: flex; align-items: center; gap: 8px; margin-top: auto; padding: 16px 12px; font-size: 11px; }
+.lp-workspace-user > span { display: grid; place-items: center; width: 28px; height: 28px; background: var(--lp-rail-hover); border-radius: 50%; color: var(--lp-rail-accent); font-size: 10px; }
+.lp-workspace-user small { display: block; margin-top: 2px; color: var(--lp-rail-muted); font-size: 10px; }
+.lp-workspace-user > svg { margin-left: auto; color: var(--lp-rail-muted); }
+.lp-workspace-main { display: grid; grid-template-rows: 48px 1fr; min-width: 0; }
+.lp-workspace-toolbar { display: flex; align-items: center; justify-content: flex-end; gap: 16px; padding: 0 20px; color: var(--lp-rail-muted); }
+.lp-workspace-search { display: flex; align-items: center; gap: 8px; height: 28px; width: 260px; margin-left: auto; padding: 0 10px; border: 1px solid var(--lp-rail-hover); border-radius: 4px; font-size: 11px; background: var(--lp-rail-hover); }
+.lp-workspace-search > span { margin-left: auto; }
+.lp-workspace-canvas { position: relative; display: grid; grid-template-rows: 1fr; margin-right: 6px; background: var(--sheet); border-radius: 12px 12px 0 0; overflow: hidden; }
+.lp-workspace-breadcrumb { max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
+.lp-workspace-content { position: relative; min-height: 0; overflow: hidden; }
+.lp-workspace-assistant { position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 8px; border: 1px solid var(--rule-2); border-radius: 8px; background: var(--sheet); padding: 8px 12px; font-size: 11px; white-space: nowrap; color: var(--accent-ink); box-shadow: var(--lp-shadow); }
+.lp-workspace-assistant > span:last-child { color: var(--ink-3); padding-left: 8px; border-left: 1px solid var(--rule-2); }
+.lp-workspace [data-slot="badge"] { border-radius: 4px; }
+.lp-workspace [data-slot="button"] { border-radius: 4px; box-shadow: none; }
+
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+	.dc-landing > header { background: var(--paper); backdrop-filter: none; }
+	.lp-story-photos { opacity: .08; }
 }

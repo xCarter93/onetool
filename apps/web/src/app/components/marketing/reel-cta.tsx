@@ -2,12 +2,8 @@
 
 import dynamic from "next/dynamic";
 import { useEffect, useState } from "react";
-import { cn } from "@/lib/utils";
-import { LP_SECONDARY } from "./marketing-nav";
 
-/* The lightbox (and with it @remotion/player) loads only on first open. It
- * then stays mounted with open={false} rather than unmounting, so reopening
- * doesn't pay for the chunk or the Player again. */
+// Keep the player mounted after its first open to avoid loading it again.
 const ReelLightbox = dynamic(
 	() => import("./reel-lightbox").then((m) => m.ReelLightbox),
 	{ ssr: false }
@@ -20,13 +16,8 @@ export function openReelLightbox() {
 	window.dispatchEvent(new CustomEvent(OPEN_REEL_EVENT));
 }
 
-/**
- * The hero's secondary CTA. A tiny client island so `sections/hero.tsx` stays a
- * server component: the button carries `SecondaryButton`'s exact styling (that
- * primitive only renders an anchor, and this opens an overlay rather than
- * navigating). Also the page's single listener for OPEN_REEL_EVENT.
- */
-export function HeroReelCta() {
+/** Mounted once per page: owns the lightbox and is the single listener for OPEN_REEL_EVENT. */
+export function ReelHost() {
 	const [open, setOpen] = useState(false);
 	const [everOpened, setEverOpened] = useState(false);
 
@@ -39,19 +30,5 @@ export function HeroReelCta() {
 		return () => window.removeEventListener(OPEN_REEL_EVENT, onOpen);
 	}, []);
 
-	return (
-		<>
-			<button
-				type="button"
-				onClick={() => {
-					setOpen(true);
-					setEverOpened(true);
-				}}
-				className={cn(LP_SECONDARY, "h-[52px] px-[22px] text-[17px]")}
-			>
-				See a job run through it
-			</button>
-			{everOpened ? <ReelLightbox open={open} onOpenChange={setOpen} /> : null}
-		</>
-	);
+	return everOpened ? <ReelLightbox open={open} onOpenChange={setOpen} /> : null;
 }
