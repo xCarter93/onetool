@@ -38,6 +38,23 @@ export function weekDaysFor(anchorMs: number): number[] {
 	return Array.from({ length: 7 }, (_, i) => sunday + i * DAY_MS);
 }
 
+/**
+ * Days of calendar events fetched past the anchored week's Sunday. The List
+ * view runs `UPCOMING_DAYS` from the anchor, and the anchor can be the week's
+ * Saturday — 6 + 13 = 19, so 20 is a safe superset.
+ *
+ * The window is quantised to the WEEK, never the anchor: query args that change
+ * on every strip tap would drop `useQuery` back to `undefined` and flash the
+ * skeleton on every day you touch.
+ */
+const SCHEDULE_WINDOW_DAYS = 20;
+
+/** Today's calendar query args; the offline prefetcher reuses them so both share one cache key. */
+export function scheduleWindow(anchorMs: number): { startDate: number; endDate: number } {
+	const sunday = weekDaysFor(anchorMs)[0];
+	return { startDate: sunday, endDate: sunday + SCHEDULE_WINDOW_DAYS * DAY_MS };
+}
+
 /** Minutes since midnight for an "HH:MM" string; null when unparseable. */
 export function minutesFromHHMM(time?: string): number | null {
 	if (!time) return null;

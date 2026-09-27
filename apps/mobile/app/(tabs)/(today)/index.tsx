@@ -31,6 +31,7 @@ import {
 	taskInScope,
 	dayLabel,
 	nextDayPeek,
+	scheduleWindow,
 	weekDaysFor,
 	UPCOMING_DAYS,
 	type AgendaTask,
@@ -47,17 +48,6 @@ const WORK: Href = "/work" as Href;
 
 /** iPad pane: Today reads better as a column than a 900pt-wide agenda row. */
 const TODAY_MAX_WIDTH = 760;
-
-/**
- * Days of calendar events fetched past the anchored week's Sunday. The List
- * view runs `UPCOMING_DAYS` from the anchor, and the anchor can be the week's
- * Saturday — 6 + 13 = 19, so 20 is a safe superset.
- *
- * The window is quantised to the WEEK, never the anchor: query args that change
- * on every strip tap would drop `useQuery` back to `undefined` and flash the
- * skeleton on every day you touch.
- */
-const WINDOW_DAYS = 20;
 
 function greetingFor(hour: number): string {
 	if (hour < 12) return "Good morning";
@@ -125,14 +115,11 @@ export default function TodayScreen({
 	// The strip is DERIVED from the selection, so jumping to a day in another
 	// week rolls the whole strip there.
 	const days = useMemo(() => weekDaysFor(selectedDayMs), [selectedDayMs]);
-	const windowEndMs = days[0] + WINDOW_DAYS * DAY_MS;
+	const scheduleArgs = useMemo(() => scheduleWindow(selectedDayMs), [selectedDayMs]);
 
 	// The one schedule subscription: the anchored week plus enough overflow for
 	// the List view's rolling window.
-	const events = useCachedQuery(api.calendar.getCalendarEvents, {
-		startDate: days[0],
-		endDate: windowEndMs,
-	});
+	const events = useCachedQuery(api.calendar.getCalendarEvents, scheduleArgs);
 	// These queries throw for a role without view access.
 	const canView = useCachedCan();
 	// Spillover predates any window, so it needs its own query.
@@ -224,7 +211,7 @@ export default function TodayScreen({
 		[schedule, days],
 	);
 
-	// The window runs WINDOW_DAYS past the week start, so the day after any strip day is always loaded.
+	// The schedule window runs 20 days past the week start, so the day after any strip day is always loaded.
 	const nextDayMs = anchorMs + DAY_MS;
 	const peek = useMemo(
 		() => nextDayPeek(schedule.tasks, schedule.projects, anchorMs),

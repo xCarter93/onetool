@@ -30,7 +30,7 @@ import { useOffline } from "@/lib/offline/OfflineProvider";
 import { saveOffline } from "@/lib/offline/hooks";
 import { writeDurableText } from "@/lib/offline/files";
 import { canSignOffline } from "@/lib/offline/quote-signing";
-import { usePermissions } from "@/lib/use-permissions";
+import { useCachedCan } from "@/lib/use-permissions";
 import { useDevice } from "@/lib/use-device";
 
 // In-person signature flow: pick the signer, then capture the signature. A
@@ -47,7 +47,7 @@ export default function SignQuoteScreen() {
 	const insets = useSafeAreaInsets();
 	const { device } = useDevice();
 	const { online } = useOffline();
-	const { can } = usePermissions();
+	const can = useCachedCan();
 
 	const quote = useCachedQuery(
 		api.quotes.get,

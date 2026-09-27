@@ -356,7 +356,7 @@ describe("routeOverlay", () => {
 		const overlay = routeOverlay([], "r1");
 		expect(overlay.started).toBeUndefined();
 		expect(overlay.completed).toBeUndefined();
-		expect(overlay.stopStatuses.size).toBe(0);
+		expect(overlay.stopStatuses).toEqual([]);
 	});
 
 	it("ignores ops on other chains", () => {
@@ -392,8 +392,10 @@ describe("routeOverlay", () => {
 			],
 			"r1",
 		);
-		expect(overlay.stopStatuses.get(0)).toBe("visited");
-		expect(overlay.stopStatuses.get(1)).toBe("skipped");
+		expect(overlay.stopStatuses.map((q) => [q.order, q.status])).toEqual([
+			[0, "visited"],
+			[1, "skipped"],
+		]);
 	});
 
 	it("applies ops in id order regardless of array order", () => {
@@ -401,7 +403,8 @@ describe("routeOverlay", () => {
 			op(2, "r1", "routes.setStopStatus", { routeId: "r1", order: 0, status: "pending" }),
 			op(1, "r1", "routes.setStopStatus", { routeId: "r1", order: 0, status: "visited" }),
 		];
-		expect(routeOverlay(ops, "r1").stopStatuses.get(0)).toBe("pending");
+		const stops = [stop({ order: 0, status: "pending" })];
+		expect(applyStopOverlay(stops, routeOverlay(ops, "r1"))[0].status).toBe("pending");
 	});
 
 	it("a queued restart after a queued finish resolves to started", () => {
@@ -427,6 +430,33 @@ describe("applyStopOverlay", () => {
 		const result = applyStopOverlay(stops, overlay);
 		expect(result[0].status).toBe("visited");
 		expect(result[1].status).toBe("pending");
+	});
+
+	it("follows the queued stop through a reorder", () => {
+		const cedar = { label: "Cedar", latitude: 1, longitude: 1 };
+		const oak = { label: "Oak", latitude: 2, longitude: 2 };
+		const stops = [
+			stop({ ...oak, order: 0, status: "pending" }),
+			stop({ ...cedar, order: 1, status: "pending" }),
+		];
+		const overlay = routeOverlay(
+			[{ id: 1, chainKey: "route:r1", operation: "routes.setStopStatus", args: { order: 0, status: "visited", stopRef: cedar } }],
+			"r1",
+		);
+		const result = applyStopOverlay(stops, overlay);
+		expect(result.map((s) => [s.label, s.status])).toEqual([
+			["Oak", "pending"],
+			["Cedar", "visited"],
+		]);
+	});
+
+	it("drops a queued status whose stop left the route", () => {
+		const stops = [stop({ label: "Oak", latitude: 2, longitude: 2, order: 0, status: "pending" })];
+		const overlay = routeOverlay(
+			[{ id: 1, chainKey: "route:r1", operation: "routes.setStopStatus", args: { order: 0, status: "visited", stopRef: { label: "Cedar", latitude: 1, longitude: 1 } } }],
+			"r1",
+		);
+		expect(applyStopOverlay(stops, overlay)[0].status).toBe("pending");
 	});
 });
 

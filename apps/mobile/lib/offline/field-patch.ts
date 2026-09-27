@@ -26,7 +26,8 @@ export function buildFieldPatch<T extends Record<string, unknown>>(
 		if (edited[key] === undefined) continue;
 		if (!equal(edited[key], loaded[key])) {
 			patch[key] = edited[key];
-			expectedValues[key] = loaded[key];
+			// null survives the queue's JSON round-trip; undefined would drop the key and skip the check.
+			expectedValues[key] = normalize(loaded[key]) as T[keyof T];
 		}
 	}
 	return { patch, expectedValues };

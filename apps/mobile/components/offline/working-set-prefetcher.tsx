@@ -1,11 +1,12 @@
 import { useEffect, useRef } from "react";
 import { AppState } from "react-native";
 import { useConvex, type ConvexReactClient } from "convex/react";
-import type { FunctionArgs, FunctionReference } from "convex/server";
+import type { FunctionArgs, FunctionReference, FunctionReturnType } from "convex/server";
 import { api } from "@onetool/backend/convex/_generated/api";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
 import { getRecents } from "@/lib/recents";
-import { localDayStartMs } from "@/lib/date";
+import { localDayStartMs, utcDayStartMs } from "@/lib/date";
+import { scheduleWindow } from "@/lib/agenda";
 import { useOffline } from "@/lib/offline/OfflineProvider";
 import { prefetchQuery } from "@/lib/offline/useCachedQuery";
 import { isDocumentFresh } from "@/lib/offline/quote-signing";
@@ -94,12 +95,21 @@ async function prefetchWorkingSet(client: ConvexReactClient, partition: string) 
 	await fetch(api.routes.list, {});
 
 	const start = localDayStartMs(Date.now());
-	const [calendar, sentQuotes, overdueInvoices, recents] = await Promise.all([
-		client.query(api.calendar.getCalendarEvents, { startDate: start, endDate: start + 2 * DAY_MS }).catch(() => null),
+	const [schedule, sentQuotes, overdueInvoices, recents] = await Promise.all([
+		fetch(api.calendar.getCalendarEvents, scheduleWindow(start)) as Promise<FunctionReturnType<
+			typeof api.calendar.getCalendarEvents
+		> | null>,
 		client.query(api.quotes.list, { status: "sent" }).catch(() => []),
 		client.query(api.invoices.getOverdue, {}).catch(() => []),
 		getRecents(partition),
 	]);
+	// Task dates are UTC midnights; keep today and tomorrow.
+	const day = utcDayStartMs(start);
+	const end = day + 2 * DAY_MS;
+	const calendar = schedule && {
+		tasks: schedule.tasks.filter((task) => task.startDate >= day && task.startDate < end),
+		projects: schedule.projects.filter((project) => (project.endDate ?? project.startDate) >= day && project.startDate < end),
+	};
 	const refs = selectWorkingSet({ calendar, sentQuotes, overdueInvoices, recents });
 	const pdfBudget = { left: MAX_PDF_PREPARES };
 	for (const ref of refs) {

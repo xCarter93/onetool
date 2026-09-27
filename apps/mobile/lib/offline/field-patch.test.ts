@@ -11,6 +11,12 @@ describe("buildFieldPatch", () => {
 		expect(expectedValues).toEqual({ description: "front yard" });
 	});
 
+	it("expects null for a field that was unset, so the check survives JSON", () => {
+		const loaded: { title: string; description?: string } = { title: "Mow lawn" };
+		const { expectedValues } = buildFieldPatch(loaded, { description: "back yard" });
+		expect(JSON.parse(JSON.stringify(expectedValues))).toEqual({ description: null });
+	});
+
 	it("treats undefined and null as equal, so clearing a field is not a false negative", () => {
 		const loaded = { description: null as string | null };
 		const edited = { description: undefined };
