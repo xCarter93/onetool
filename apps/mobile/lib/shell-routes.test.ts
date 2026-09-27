@@ -93,9 +93,10 @@ describe("refFromPathname", () => {
 });
 
 describe("isStackRoute", () => {
-	it("claims the full-screen create route and the route builder", () => {
+	it("claims the route builder and business details", () => {
 		expect(isStackRoute("/route-edit")).toBe(true);
-		expect(isStackRoute("/route-edit")).toBe(true);
+		expect(isStackRoute("/business-details")).toBe(true);
+		expect(isStackRoute("/clients/new")).toBe(false);
 		expect(isStackRoute("/clients/c1")).toBe(false);
 		expect(isStackRoute("/work")).toBe(false);
 	});

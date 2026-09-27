@@ -100,6 +100,7 @@ export default function OrgSwitchSheet() {
 			return;
 		}
 		Alert.alert("Unsynced changes here", pendingNotice, [
+			{ text: "Stay here", style: "cancel" },
 			{ text: "Switch organization", onPress: () => void runOrgSwitch(orgId) },
 		]);
 	};

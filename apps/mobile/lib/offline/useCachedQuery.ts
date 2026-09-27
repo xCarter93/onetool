@@ -93,7 +93,8 @@ export function useCachedQuery<Query extends FunctionReference<"query">>(
 	}, [servingCache, cached, token]);
 
 	if (live !== undefined) return live;
-	return (cached?.value as FunctionReturnType<Query> | undefined) ?? undefined;
+	// A cached null is a real answer (not found), not loading.
+	return cached ? (cached.value as FunctionReturnType<Query>) : undefined;
 }
 
 /** Fetches once and stores under the same key `useCachedQuery` reads. */

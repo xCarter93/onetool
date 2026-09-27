@@ -57,8 +57,6 @@ SplashScreen.setOptions({
 	fade: true,
 });
 
-const convex = new ConvexReactClient(process.env.EXPO_PUBLIC_CONVEX_URL!);
-
 // Root error boundary (expo-router convention): catches any render throw in the
 // app — including Convex useQuery errors, which throw during render — and shows
 // a recoverable error screen instead of hard-crashing the app.
@@ -68,9 +66,16 @@ function ConvexClerkProvider({ children }: PropsWithChildren) {
 	const { organization } = useOrganization();
 
 	// Keying on the active org id remounts the provider on org change, so we get
-	// a fresh auth token with the new organization context.
+	// a fresh client and a fresh auth token with the new organization context.
+	return <OrgConvexProvider key={organization?.id ?? "no-org"}>{children}</OrgConvexProvider>;
+}
+
+// One client per org: a timed-out mutation still queued in the old client must never send under the new org's token.
+function OrgConvexProvider({ children }: PropsWithChildren) {
+	const [convex] = useState(() => new ConvexReactClient(process.env.EXPO_PUBLIC_CONVEX_URL!));
+	useEffect(() => () => void convex.close(), [convex]);
 	return (
-		<ConvexClerkOfflineProvider key={organization?.id ?? "no-org"} client={convex}>
+		<ConvexClerkOfflineProvider client={convex}>
 			<OfflineProvider>{children}</OfflineProvider>
 		</ConvexClerkOfflineProvider>
 	);

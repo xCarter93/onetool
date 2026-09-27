@@ -58,17 +58,25 @@ export function planTaskUpdate<T extends { status?: unknown }>(
 
 const OVERLAY_SKIP_KEYS = new Set(["id", "expectedValues", "idempotencyKey"]);
 
+type OverlayOp = Pick<StoredOp, "args"> & Partial<Pick<StoredOp, "status">>;
+
+// The server rejected these; showing their values would read as saved.
+function rejected(op: OverlayOp): boolean {
+	return op.status === "failed" || op.status === "conflict";
+}
+
 /**
  * Merges pending field-patch ops onto a loaded record so the detail screen
  * shows the edited value while the write is still in the outbox. Ops apply
- * oldest-first, and may set optional fields the loaded record doesn't have yet.
+ * oldest-first, skip ones the server rejected, and may set optional fields the loaded record doesn't have yet.
  */
 export function overlayFields<T extends Record<string, unknown>>(
 	base: T,
-	ops: Pick<StoredOp, "args">[],
+	ops: OverlayOp[],
 ): T {
 	let result = base;
 	for (const op of ops) {
+		if (rejected(op)) continue;
 		const args = op.args as Record<string, unknown> | null | undefined;
 		if (!args || typeof args !== "object") continue;
 		for (const key of Object.keys(args)) {
@@ -84,10 +92,11 @@ export function overlayFields<T extends Record<string, unknown>>(
 /** Task view with queued ops applied: `tasks.complete` sets status, updates overlay their fields. */
 export function overlayTaskOps<T extends Record<string, unknown>>(
 	base: T,
-	ops: Pick<StoredOp, "args" | "operation">[],
+	ops: (OverlayOp & Pick<StoredOp, "operation">)[],
 ): T {
 	let result = base;
 	for (const op of ops) {
+		if (rejected(op)) continue;
 		result =
 			op.operation === "tasks.complete"
 				? { ...result, status: "completed" }

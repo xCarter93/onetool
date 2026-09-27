@@ -3,24 +3,28 @@ import { useAuth } from "@clerk/expo";
 import { ConvexProviderWithAuth, type ConvexReactClient } from "convex/react";
 import NetInfo from "@react-native-community/netinfo";
 
-const MAX_ONLINE_FAILURES = 5;
-
 async function isReachable(): Promise<boolean> {
 	const state = await NetInfo.fetch();
 	return (state.isInternetReachable ?? state.isConnected) !== false;
 }
 
+// NetInfo calls a new listener synchronously with its latest state, before addEventListener returns.
 function waitForReachableOrTimeout(ms: number): Promise<void> {
 	return new Promise((resolve) => {
+		let finished = false;
+		let unsubscribe: (() => void) | undefined;
+		const done = () => {
+			if (finished) return;
+			finished = true;
+			clearTimeout(timer);
+			unsubscribe?.();
+			resolve();
+		};
 		const timer = setTimeout(done, ms);
-		const unsubscribe = NetInfo.addEventListener((state) => {
+		unsubscribe = NetInfo.addEventListener((state) => {
 			if ((state.isInternetReachable ?? state.isConnected) !== false) done();
 		});
-		function done() {
-			clearTimeout(timer);
-			unsubscribe();
-			resolve();
-		}
+		if (finished) unsubscribe();
 	});
 }
 
@@ -39,8 +43,8 @@ function useAuthFromClerkOffline() {
 
 	const fetchAccessToken = useCallback(
 		async ({ forceRefreshToken }: { forceRefreshToken: boolean }) => {
-			let onlineFailures = 0;
 			for (let attempt = 0; ; attempt++) {
+				const backoffMs = Math.min(2000 * 2 ** attempt, 30_000);
 				if (await isReachable()) {
 					try {
 						return await getTokenRef.current(
@@ -49,11 +53,12 @@ function useAuthFromClerkOffline() {
 								: { template: "convex", skipCache: forceRefreshToken },
 						);
 					} catch {
-						onlineFailures++;
-						if (onlineFailures >= MAX_ONLINE_FAILURES) return null;
+						// Keep retrying: giving up with null would leave Convex unauthenticated until restart.
+						await new Promise((resolve) => setTimeout(resolve, backoffMs));
+						continue;
 					}
 				}
-				await waitForReachableOrTimeout(Math.min(2000 * 2 ** attempt, 30_000));
+				await waitForReachableOrTimeout(backoffMs);
 			}
 		},
 		// A new function identity makes Convex re-run setAuth, as in the upstream hook.

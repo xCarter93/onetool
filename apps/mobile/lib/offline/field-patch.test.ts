@@ -83,6 +83,13 @@ describe("overlayFields", () => {
 		expect(result).toEqual({ title: "A", description: "gate code 4412" });
 	});
 
+	it("skips ops the server rejected", () => {
+		const base = { title: "A" };
+		expect(overlayFields(base, [{ args: { title: "B" }, status: "conflict" }])).toEqual({ title: "A" });
+		expect(overlayFields(base, [{ args: { title: "B" }, status: "failed" }])).toEqual({ title: "A" });
+		expect(overlayFields(base, [{ args: { title: "B" }, status: "pending" }])).toEqual({ title: "B" });
+	});
+
 	it("skips id/expectedValues/idempotencyKey", () => {
 		const base = { id: "orig", title: "A" };
 		const result = overlayFields(base, [

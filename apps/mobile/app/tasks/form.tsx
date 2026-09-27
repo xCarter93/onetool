@@ -8,7 +8,7 @@ import {
 	Pressable,
 	StyleSheet,
 } from "react-native";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router, useLocalSearchParams } from "expo-router";
 import { showToast } from "@/lib/toast";
@@ -117,6 +117,8 @@ export default function TaskFormSheet() {
 
 	// In-flight flags
 	const [submitting, setSubmitting] = useState(false);
+	// State lags a same-frame second tap; a ref doesn't, so one save queues once.
+	const savingRef = useRef(false);
 	const [deleting, setDeleting] = useState(false);
 
 	// Calendar overlay open flags (date fields keep the sheet calendar)
@@ -228,7 +230,8 @@ export default function TaskFormSheet() {
 	// `tasks.complete`; any other changed fields queue as a `tasks.update`
 	// patch with `expectedValues` from the task as loaded.
 	const saveEdit = async () => {
-		if (!params.taskId || !task) return;
+		if (!params.taskId || !task || savingRef.current) return;
+		savingRef.current = true;
 		setSubmitting(true);
 		try {
 			const id = params.taskId as Id<"tasks">;
@@ -263,6 +266,7 @@ export default function TaskFormSheet() {
 			}
 			if (ok) router.back();
 		} finally {
+			savingRef.current = false;
 			setSubmitting(false);
 		}
 	};
