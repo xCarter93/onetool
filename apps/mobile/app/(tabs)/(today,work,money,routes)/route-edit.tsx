@@ -362,6 +362,8 @@ export default function RouteEditScreen() {
 			>
 				<CanvasScroll
 					keyboardShouldPersistTaps="handled"
+					// The wrapping KeyboardAvoidingView already pads for the keyboard.
+					automaticallyAdjustKeyboardInsets={false}
 					contentContainerStyle={isPane ? styles.paneScroll : undefined}
 				>
 					{/* On iPad, Screen's PaneHeader already carries the title. */}

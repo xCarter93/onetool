@@ -49,6 +49,7 @@ export const CanvasScroll = React.forwardRef<ScrollView, ScrollViewProps>(
 			<ScrollView
 				ref={ref}
 				keyboardShouldPersistTaps="handled"
+				automaticallyAdjustKeyboardInsets
 				contentContainerStyle={[styles.scroll, contentContainerStyle]}
 				{...rest}
 			/>
