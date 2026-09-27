@@ -298,7 +298,10 @@ function IpadShellInner() {
 			</View>
 			{portrait && !selected ? null : (
 				<View style={portrait ? styles.contentPane : styles.detailPane}>
-					<ScreenBoundary key={selected ? `${pane}:${selected.kind}:${selected.id}` : pane}>
+					{/* Keyed by orientation too: kept mounted through a rotation, native views held their old frames. */}
+					<ScreenBoundary
+						key={`${orientation}:${selected ? `${pane}:${selected.kind}:${selected.id}` : pane}`}
+					>
 						<PaneDetailHost
 							context={pane}
 							record={selected}
