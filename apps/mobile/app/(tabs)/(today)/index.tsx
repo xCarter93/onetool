@@ -217,8 +217,8 @@ export default function TodayScreen({
 	const tomorrowMs = todayMs + DAY_MS;
 	const peekInRange = tomorrowMs >= days[0] && tomorrowMs <= windowEndMs;
 	const peek = useMemo(
-		() => tomorrowPeek(schedule.tasks, todayMs),
-		[schedule.tasks, todayMs],
+		() => tomorrowPeek(schedule.tasks, schedule.projects, todayMs),
+		[schedule, todayMs],
 	);
 
 	// Effective done state = queued-op overlay, else server status. Derived from

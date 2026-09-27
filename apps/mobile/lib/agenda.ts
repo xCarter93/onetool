@@ -503,6 +503,7 @@ export function isWeekend(dayMs: number): boolean {
 /** One-line Tomorrow peek: "3 tasks · first stop 8:30 AM" style summary parts. */
 export function tomorrowPeek(
 	tasks: AgendaTask[],
+	projects: readonly AgendaProject[],
 	todayMs: number,
 ): { count: number; firstStart?: string } {
 	const tomorrow = utcDayStartMs(todayMs) + DAY_MS;
@@ -518,7 +519,7 @@ export function tomorrowPeek(
 		.sort((a, b) => a - b);
 	const first = timed[0];
 	return {
-		count: onDay.length,
+		count: onDay.length + projectsForDay(projects, tomorrow).length,
 		firstStart:
 			first === undefined
 				? undefined

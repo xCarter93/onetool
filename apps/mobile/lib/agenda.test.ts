@@ -264,13 +264,24 @@ describe("tomorrowPeek", () => {
 				task({ _id: "done", date: WED + DAY, status: "completed" }),
 				task({ _id: "today", date: WED, startTime: "07:00" }),
 			],
+			[],
 			WED,
 		);
 		expect(peek).toEqual({ count: 3, firstStart: "08:30" });
 	});
 
+	it("counts projects on tomorrow, like the List and week strip do", () => {
+		const projects: AgendaProject[] = [
+			{ _id: "spans", title: "Spans", status: "planned", startDate: WED, endDate: WED + 3 * DAY },
+			{ _id: "starts", title: "Starts", status: "planned", startDate: WED + DAY },
+			{ _id: "done", title: "Done", status: "completed", startDate: WED + DAY },
+			{ _id: "later", title: "Later", status: "planned", startDate: WED + 2 * DAY },
+		];
+		expect(tomorrowPeek([], projects, WED)).toEqual({ count: 2, firstStart: undefined });
+	});
+
 	it("reports an empty tomorrow without a start time", () => {
-		expect(tomorrowPeek([task({ _id: "today", date: WED })], WED)).toEqual({
+		expect(tomorrowPeek([task({ _id: "today", date: WED })], [], WED)).toEqual({
 			count: 0,
 			firstStart: undefined,
 		});
