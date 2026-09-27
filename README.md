@@ -171,7 +171,7 @@ Anything tagged <kbd>Business</kbd> needs the Business plan, which the 14-day tr
       <p><a href="https://apps.apple.com/us/app/onetool-small-business-crm/id6757319255">Download on the App Store →</a></p>
     </td>
     <td width="40%" align="center">
-      <img src="./apps/web/public/landing/app-today.webp" width="260" alt="The OneTool iOS app's Today screen" />
+      <img src="./docs/readme/mobile-today.webp" width="260" alt="The OneTool iOS app's Today screen, with a change saved while offline" />
     </td>
   </tr>
 </table>

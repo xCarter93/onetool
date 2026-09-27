@@ -78,7 +78,7 @@ export function OnTheJob() {
 					<Iphone
 						src="/landing/app-today.webp"
 						role="img"
-						aria-label="The OneTool iOS app open on the day's schedule, with visits, overdue total and quotes waiting"
+						aria-label="The OneTool iOS app open on the day's schedule, with visits, the overdue total and a change saved offline"
 					/>
 				</div>
 			</div>
