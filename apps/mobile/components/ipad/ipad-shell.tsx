@@ -23,7 +23,6 @@ import {
 	type ShellTab,
 } from "@/lib/shell-routes";
 import { DotGrid } from "@/components/ui";
-import { SyncStatusLine } from "@/components/offline/sync-status-line";
 import { PaneDetailHost } from "@/components/ipad/pane-detail-host";
 import { PaneHeader } from "@/components/ipad/pane-header";
 import { ShellNavProvider, type ShellNav } from "@/lib/shell-nav";
@@ -247,10 +246,7 @@ function IpadShellInner() {
 				    inter-pane gaps; panes with opaque roots paint their own grid over it. */}
 				<DotGrid style={StyleSheet.absoluteFill} />
 				{sidebar}
-				{/* Status line spans the content column only (not the rail), mounted
-				    once here rather than per pane. */}
 				<View style={styles.mainColumn}>
-					<SyncStatusLine>
 					<View style={styles.mainRow}>
 						{children}
 						{assistantOpen && orientation === "landscape" ? (
@@ -260,7 +256,6 @@ function IpadShellInner() {
 							/>
 						) : null}
 					</View>
-					</SyncStatusLine>
 				</View>
 			</View>
 		</ShellNavProvider>

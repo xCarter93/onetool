@@ -2,7 +2,6 @@ import { Tabs, Redirect } from "expo-router";
 import type { Href } from "expo-router";
 import { View } from "react-native";
 import { SpeedDialFab } from "@/components/speed-dial-fab";
-import { SyncStatusLine } from "@/components/offline/sync-status-line";
 import { WorkingSetPrefetcher } from "@/components/offline/working-set-prefetcher";
 import { useAuth, useOrganization, useOrganizationList } from "@clerk/expo";
 import { useQuery } from "convex/react";
@@ -68,7 +67,6 @@ export default function TabLayout() {
   return (
     <View style={{ flex: 1 }}>
     <WorkingSetPrefetcher />
-    <SyncStatusLine>
     <Tabs
       screenOptions={{ headerShown: false }}
       tabBar={(props) => <GlassDock {...props} />}
@@ -88,7 +86,6 @@ export default function TabLayout() {
       {/* Profile reached via the header avatar (per CONTEXT) */}
       <Tabs.Screen name="profile" options={{ href: null }} />
     </Tabs>
-    </SyncStatusLine>
     {/* Speed-dial capture fan — sibling of Tabs so its open-state backdrop
         paints over screens AND the dock (slice 5). */}
     <SpeedDialFab />

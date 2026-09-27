@@ -184,6 +184,9 @@ export const hero = {
 	barSoft: "rgba(255,255,255,.22)",
 	/** Notification dot (bordered with `ink` so it reads on the frosted tile). */
 	alertDot: "#ff5d5d",
+	/** Status dots on ink (decor, 3:1+ non-text contrast). */
+	statusSuccess: "#4ade80",
+	statusWarning: "#fbbf24",
 	/** Bottom corner radius of the band. */
 	radius: 28,
 	/** Sign-in glass card fill — lighter ink so the glass lifts off the scrim. */

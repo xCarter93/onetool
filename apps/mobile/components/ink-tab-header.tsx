@@ -6,6 +6,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useIsFocused } from "expo-router";
 import { ArrowLeft, type LucideIcon } from "lucide-react-native";
 import { DotGrid } from "@/components/ui";
+import { SyncStatusRow } from "@/components/offline/sync-status-row";
 import {
 	InkHeaderCluster,
 	InkIconButton,
@@ -151,6 +152,7 @@ export function InkTabHeader({
 					hideAvatar={hideAvatar}
 				/>
 			</View>
+			<SyncStatusRow style={[styles.syncRow, onBack ? styles.syncRowIndented : null]} />
 
 			{children ? <View style={styles.slot}>{children}</View> : null}
 		</View>
@@ -200,6 +202,13 @@ const styles = StyleSheet.create({
 	},
 	spacer: {
 		flex: 1,
+	},
+	syncRow: {
+		marginTop: 6,
+	},
+	// Lines the row up with the title, past the 36pt back circle + 8pt gap.
+	syncRowIndented: {
+		marginLeft: 44,
 	},
 	slot: {
 		marginTop: 16,
