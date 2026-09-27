@@ -62,32 +62,26 @@ export function ContactChipRow({
 				</Pressable>
 			))}
 			{overflow.length > 0 ? (
-				// The SwiftUI menu host under-measures its RN child, so the visible
-				// square owns the layout and the host is absolutely overlaid on top
-				// (FieldMenu's pattern) — its measurement can't squeeze the siblings.
-				<View collapsable={false} style={styles.chipMoreWrap}>
-					<View
-						style={[
-							styles.chipMore,
-							{ borderColor: t.input, backgroundColor: t.card },
-						]}
+				// The SwiftUI host sizes itself to its child, so the child must have a fixed size.
+				<View style={styles.chipMoreWrap}>
+					<MenuView
+						onPressAction={({ nativeEvent }) =>
+							overflow.find((o) => o.key === nativeEvent.event)?.onPress()
+						}
+						actions={overflow.map((o) => ({ id: o.key, title: o.label }))}
 					>
-						<MoreHorizontal size={18} color={t.ink} strokeWidth={2} />
-					</View>
-					<View style={StyleSheet.absoluteFill}>
-						<MenuView
-							onPressAction={({ nativeEvent }) =>
-								overflow.find((o) => o.key === nativeEvent.event)?.onPress()
-							}
-							actions={overflow.map((o) => ({ id: o.key, title: o.label }))}
+						<View
+							style={[
+								styles.chipMore,
+								{ borderColor: t.input, backgroundColor: t.card },
+							]}
+							accessible
+							accessibilityRole="button"
+							accessibilityLabel="More actions"
 						>
-							<View
-								style={StyleSheet.absoluteFill}
-								accessibilityRole="button"
-								accessibilityLabel="More actions"
-							/>
-						</MenuView>
-					</View>
+							<MoreHorizontal size={18} color={t.ink} strokeWidth={2} />
+						</View>
+					</MenuView>
 				</View>
 			) : null}
 		</View>
@@ -265,7 +259,7 @@ const styles = StyleSheet.create({
 		paddingHorizontal: 8,
 	},
 	chipLabel: { fontFamily: fontFamily.medium, fontSize: type.sm },
-	chipMoreWrap: { width: touch.min },
+	chipMoreWrap: { width: touch.min, height: touch.min },
 	chipMore: {
 		width: touch.min,
 		height: touch.min,

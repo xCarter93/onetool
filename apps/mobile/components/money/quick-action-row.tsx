@@ -15,10 +15,8 @@ function fireAction(action: ResolvedAction, onAction: (key: ResolvedAction["key"
 	onAction(action.key);
 }
 
-// Native overflow menu for a resolver action list. Mirrors FieldMenu's
-// absolute-overlay trick: the SwiftUI menu host under-measures its RN child,
-// so a plain icon paints the visuals while the transparent host on top owns
-// the tap + the menu.
+// Native overflow menu for a resolver action list. The SwiftUI host sizes
+// itself to its child, so the child must have a fixed size.
 export function OverflowMenuButton({
 	actions,
 	onAction,
@@ -31,29 +29,24 @@ export function OverflowMenuButton({
 	const t = useTokens();
 	if (actions.length === 0) return null;
 	return (
-		<View collapsable={false} style={styles.more}>
-			<View
-				style={[styles.moreFace, { backgroundColor: t.card, borderColor: t.line }]}
+		<View style={styles.more}>
+			<MenuView
+				title={title}
+				onPressAction={({ nativeEvent }) => {
+					const action = actions.find((a) => a.key === nativeEvent.event);
+					if (action) fireAction(action, onAction);
+				}}
+				actions={actions.map((a) => ({ id: a.key, title: a.label }))}
 			>
-				<MoreHorizontal size={18} color={t.ink} />
-			</View>
-			<View style={StyleSheet.absoluteFill}>
-				<MenuView
-					title={title}
-					onPressAction={({ nativeEvent }) => {
-						const action = actions.find((a) => a.key === nativeEvent.event);
-						if (action) fireAction(action, onAction);
-					}}
-					actions={actions.map((a) => ({ id: a.key, title: a.label }))}
+				<View
+					style={[styles.moreFace, { backgroundColor: t.card, borderColor: t.line }]}
+					accessible
+					accessibilityRole="button"
+					accessibilityLabel={title ?? "More actions"}
 				>
-					<View
-						style={styles.anchor}
-						accessible
-						accessibilityRole="button"
-						accessibilityLabel={title ?? "More actions"}
-					/>
-				</MenuView>
-			</View>
+					<MoreHorizontal size={18} color={t.ink} />
+				</View>
+			</MenuView>
 		</View>
 	);
 }
@@ -115,16 +108,15 @@ const styles = StyleSheet.create({
 	},
 	more: {
 		width: touch.min,
-		minHeight: touch.min,
+		height: touch.min,
+		alignSelf: "center",
 	},
 	moreFace: {
-		flex: 1,
+		width: touch.min,
+		height: touch.min,
 		borderRadius: radii.ctrl,
 		borderWidth: 1,
 		alignItems: "center",
 		justifyContent: "center",
-	},
-	anchor: {
-		flex: 1,
 	},
 });
