@@ -74,7 +74,7 @@ async function prepareArgs(client: ConvexReactClient, op: StoredOp): Promise<Rec
 				throw new ConvexError({ code: "BAD_REQUEST", message: `${op.operation} can't upload files.` });
 			}
 			const url = await withTimeout(client.mutation(command.uploadUrlRef, {}), MUTATION_TIMEOUT_MS);
-			storageId = await withTimeout(uploadDurable(url, file.path, file.mime), UPLOAD_TIMEOUT_MS);
+			storageId = await uploadDurable(url, file.path, file.mime, UPLOAD_TIMEOUT_MS);
 			// Persisted so a crash after upload doesn't upload the file again.
 			await setFileStorageId(file.id, storageId);
 		}
