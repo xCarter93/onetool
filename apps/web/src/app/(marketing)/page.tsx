@@ -8,6 +8,7 @@ import { MarketingFooter } from "@/app/components/marketing/sections/footer";
 import { HomeStrip } from "@/app/components/marketing/sections/home-strip";
 import { OnTheJob } from "@/app/components/marketing/sections/on-the-job";
 import { Pricing } from "@/app/components/marketing/sections/pricing";
+import { Switching } from "@/app/components/marketing/sections/switching";
 import { TryIt } from "@/app/components/marketing/sections/try-it";
 import { DayStory } from "@/app/components/marketing/story/day-story";
 
@@ -28,6 +29,7 @@ export default function Home() {
 				<FeatureGrid />
 				<TryIt />
 				<Compare />
+				<Switching />
 				<Pricing />
 				<Faq />
 				<FinalCta />
