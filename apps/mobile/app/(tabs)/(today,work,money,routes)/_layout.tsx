@@ -1,5 +1,6 @@
 import { Stack } from "expo-router";
 import { frame } from "@/lib/theme";
+import { AccessBoundary } from "@/components/access-boundary";
 
 // Cold links (push, deep link) land in the first group alphabetically; the
 // anchor gives each tab's stack its root screen underneath.
@@ -17,6 +18,9 @@ export default function TabStack() {
 				headerShown: false,
 				contentStyle: { backgroundColor: frame.canvas },
 			}}
+			screenLayout={({ route, children }) => (
+				<AccessBoundary key={route.key}>{children}</AccessBoundary>
+			)}
 		/>
 	);
 }

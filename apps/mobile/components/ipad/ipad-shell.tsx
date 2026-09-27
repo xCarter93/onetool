@@ -24,6 +24,7 @@ import {
 	type ShellTab,
 } from "@/lib/shell-routes";
 import { PaneDetailHost } from "@/components/ipad/pane-detail-host";
+import { AccessBoundary } from "@/components/access-boundary";
 import { PaneHeader } from "@/components/ipad/pane-header";
 import { ShellNavProvider, type ShellNav } from "@/lib/shell-nav";
 import type { WorkChipKind } from "@/lib/work-search";
@@ -228,7 +229,9 @@ function IpadShellInner() {
 	if (!isMasterDetailTab(activeTab)) {
 		return frame(
 			<View style={styles.contentPane}>
-				<SinglePane tab={activeTab} />
+				<AccessBoundary key={activeTab}>
+					<SinglePane tab={activeTab} />
+				</AccessBoundary>
 			</View>,
 		);
 	}
@@ -238,38 +241,40 @@ function IpadShellInner() {
 	const selected = state[pane];
 
 	const listPane = (
-		<View style={styles.fill}>
-			{/* No contextual ＋ — the rail's create menu is the single capture entry
-			    point on iPad. */}
-			<PaneHeader title={PANE_TITLE[pane]} />
-			{pane === "work" ? (
-				<WorkScreen
-					headerMode="pane"
-					onSelect={(ref) => select("work", ref)}
-					selected={selected}
-					kind={workKind}
-					onKindChange={setWorkKind}
-				/>
-			) : pane === "money" ? (
-				<MoneyScreen
-					headerMode="pane"
-					onSelect={(sel) => select("money", sel)}
-					// Money only ever selects a quote or an invoice; the other kinds
-					// can't reach this slot, so they read as no selection.
-					selected={
-						selected && (selected.kind === "quote" || selected.kind === "invoice")
-							? { kind: selected.kind, id: selected.id }
-							: null
-					}
-				/>
-			) : (
-				<ActivityScreen
-					headerMode="pane"
-					onSelect={(ref) => select("activity", ref)}
-					selected={selected}
-				/>
-			)}
-		</View>
+		<AccessBoundary key={pane}>
+			<View style={styles.fill}>
+				{/* No contextual ＋ — the rail's create menu is the single capture entry
+				    point on iPad. */}
+				<PaneHeader title={PANE_TITLE[pane]} />
+				{pane === "work" ? (
+					<WorkScreen
+						headerMode="pane"
+						onSelect={(ref) => select("work", ref)}
+						selected={selected}
+						kind={workKind}
+						onKindChange={setWorkKind}
+					/>
+				) : pane === "money" ? (
+					<MoneyScreen
+						headerMode="pane"
+						onSelect={(sel) => select("money", sel)}
+						// Money only ever selects a quote or an invoice; the other kinds
+						// can't reach this slot, so they read as no selection.
+						selected={
+							selected && (selected.kind === "quote" || selected.kind === "invoice")
+								? { kind: selected.kind, id: selected.id }
+								: null
+						}
+					/>
+				) : (
+					<ActivityScreen
+						headerMode="pane"
+						onSelect={(ref) => select("activity", ref)}
+						selected={selected}
+					/>
+				)}
+			</View>
+		</AccessBoundary>
 	);
 
 	// Portrait: one pane. The list fills it until something is selected, then the
@@ -278,11 +283,13 @@ function IpadShellInner() {
 		return frame(
 			<View style={styles.contentPane}>
 				{selected ? (
-					<PaneDetailHost
-						context={pane}
-						record={selected}
-						onBack={() => clear(pane)}
-					/>
+					<AccessBoundary key={`${pane}:${selected.kind}:${selected.id}`}>
+						<PaneDetailHost
+							context={pane}
+							record={selected}
+							onBack={() => clear(pane)}
+						/>
+					</AccessBoundary>
 				) : (
 					listPane
 				)}
@@ -298,7 +305,9 @@ function IpadShellInner() {
 				{listPane}
 			</View>
 			<View style={styles.detailPane}>
-				<PaneDetailHost context={pane} record={selected} />
+				<AccessBoundary key={selected ? `${pane}:${selected.kind}:${selected.id}` : pane}>
+					<PaneDetailHost context={pane} record={selected} />
+				</AccessBoundary>
 			</View>
 		</>,
 	);
