@@ -37,7 +37,7 @@ import { recordRecentView } from "@/lib/recents";
 import { usePermissions } from "@/lib/use-permissions";
 import { useCachedQuery } from "@/lib/offline/useCachedQuery";
 import { saveOffline, useOpenOps } from "@/lib/offline/hooks";
-import { overlayFields } from "@/lib/offline/field-patch";
+import { expectedValue, overlayFields } from "@/lib/offline/field-patch";
 import { RecordDocuments } from "@/components/RecordDocuments";
 import { useScreenChrome } from "@/lib/shell-chrome";
 import {
@@ -199,7 +199,7 @@ export function ClientDetailBody({
 			{
 				id: clientId as Id<"clients">,
 				[field]: value,
-				expectedValues: { [field]: displayClient[field] },
+				expectedValues: { [field]: expectedValue(displayClient[field]) },
 			},
 			{ display: { title: `Update: ${displayClient.companyName}` } }
 		);

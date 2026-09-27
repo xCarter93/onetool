@@ -1,12 +1,12 @@
 import type { StoredOp } from "./db";
 
-// Backend's assertExpectedValues compares undefined and null as equal.
-function normalize(value: unknown): unknown {
+// Backend's assertExpectedValues compares undefined and null as equal, and null survives the queue's JSON round-trip.
+export function expectedValue(value: unknown): unknown {
 	return value === undefined ? null : value;
 }
 
 function equal(a: unknown, b: unknown): boolean {
-	return JSON.stringify(normalize(a)) === JSON.stringify(normalize(b));
+	return JSON.stringify(expectedValue(a)) === JSON.stringify(expectedValue(b));
 }
 
 export type FieldPatch<T extends Record<string, unknown>> = {
@@ -26,8 +26,7 @@ export function buildFieldPatch<T extends Record<string, unknown>>(
 		if (edited[key] === undefined) continue;
 		if (!equal(edited[key], loaded[key])) {
 			patch[key] = edited[key];
-			// null survives the queue's JSON round-trip; undefined would drop the key and skip the check.
-			expectedValues[key] = normalize(loaded[key]) as T[keyof T];
+			expectedValues[key] = expectedValue(loaded[key]) as T[keyof T];
 		}
 	}
 	return { patch, expectedValues };

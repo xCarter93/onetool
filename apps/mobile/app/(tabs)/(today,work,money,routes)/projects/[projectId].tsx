@@ -52,7 +52,7 @@ import { MentionModal } from "@/components/MentionModal";
 import { RecordDocuments } from "@/components/RecordDocuments";
 import { useCachedQuery } from "@/lib/offline/useCachedQuery";
 import { saveOffline, useOpenOps } from "@/lib/offline/hooks";
-import { overlayFields } from "@/lib/offline/field-patch";
+import { expectedValue, overlayFields } from "@/lib/offline/field-patch";
 import { AppCalendar, toDateId, fromDateId } from "@/components/AppCalendar";
 import { useScreenChrome } from "@/lib/shell-chrome";
 import {
@@ -275,7 +275,7 @@ export function ProjectDetailBody({
 				{
 					id: projectId as Id<"projects">,
 					[field]: value,
-					expectedValues: { [field]: displayProject[field] },
+					expectedValues: { [field]: expectedValue(displayProject[field]) },
 				},
 				{ display: { title: `Update: ${displayProject.title}` } }
 			);
@@ -311,7 +311,7 @@ export function ProjectDetailBody({
 				{
 					id: projectId as Id<"projects">,
 					[field]: ms,
-					expectedValues: { [field]: displayProject[field] },
+					expectedValues: { [field]: expectedValue(displayProject[field]) },
 				},
 				{ display: { title: `${field === "startDate" ? "Start" : "Due"} date: ${displayProject.title}` } }
 			);
