@@ -1,14 +1,8 @@
 import React from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { ChevronRight } from "lucide-react-native";
-import {
-	fontFamily,
-	radii,
-	touch,
-	tracking,
-	type,
-	useTokens,
-} from "@/lib/theme";
+import { fontFamily, touch, tracking, type, useTokens } from "@/lib/theme";
+import { Panel } from "@/components/canvas";
 import { formatClockLabel } from "@/lib/agenda";
 
 interface TomorrowPeekProps {
@@ -38,20 +32,22 @@ export function TomorrowPeek({
 					.join(" · ");
 
 	return (
-		<Pressable
-			onPress={onPress}
-			style={[styles.row, { backgroundColor: t.card, borderColor: t.line }]}
-			accessibilityRole="button"
-			accessibilityLabel={`Tomorrow: ${summary}`}
-		>
-			<View style={styles.text}>
-				<Text style={[styles.eyebrow, { color: t.faint }]}>TOMORROW</Text>
-				<Text style={[styles.summary, { color: t.ink }]} numberOfLines={1}>
-					{summary}
-				</Text>
-			</View>
-			<ChevronRight size={17} color={t.faintDecor} />
-		</Pressable>
+		<Panel>
+			<Pressable
+				onPress={onPress}
+				style={styles.row}
+				accessibilityRole="button"
+				accessibilityLabel={`Tomorrow: ${summary}`}
+			>
+				<View style={styles.text}>
+					<Text style={[styles.eyebrow, { color: t.sub }]}>TOMORROW</Text>
+					<Text style={[styles.summary, { color: t.ink }]} numberOfLines={1}>
+						{summary}
+					</Text>
+				</View>
+				<ChevronRight size={17} color={t.faintDecor} />
+			</Pressable>
+		</Panel>
 	);
 }
 
@@ -61,8 +57,6 @@ const styles = StyleSheet.create({
 		alignItems: "center",
 		gap: 10,
 		minHeight: touch.min,
-		borderWidth: 1,
-		borderRadius: radii.card,
 		paddingVertical: 11,
 		paddingHorizontal: 14,
 	},

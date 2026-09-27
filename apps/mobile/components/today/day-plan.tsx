@@ -1,13 +1,14 @@
 import React from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { fontFamily, recordTint, type, useTokens } from "@/lib/theme";
+import { Panel } from "@/components/canvas";
 import { ListRow } from "@/components/ui";
 import { AgendaRow, SpinedRow } from "@/components/today/agenda-row";
 import {
 	NextUpCard,
 	NextUpProjectCard,
 } from "@/components/today/next-up-card";
-import { PlanSection } from "@/components/today/plan-section";
+import { GroupLabel } from "@/components/today/plan-section";
 import {
 	ScheduleEmpty,
 	type ScheduleEmptyVariant,
@@ -33,6 +34,8 @@ interface DayPlanViewProps {
 	projects: AgendaProject[];
 	/** "10:24 AM" — rendered on the now separator. */
 	nowLabel: string;
+	/** Local minutes-since-midnight, for the next-up card's countdown chip. */
+	nowMinutes: number;
 	/** True when the whole rolling window is empty, not just this day. */
 	windowEmpty: boolean;
 	completedIds: Set<string>;
@@ -71,6 +74,7 @@ export function DayPlanView({
 	isToday,
 	projects,
 	nowLabel,
+	nowMinutes,
 	windowEmpty,
 	completedIds,
 	updatingIds,
@@ -115,13 +119,16 @@ export function DayPlanView({
 		</View>
 	);
 
-	const taskRow = (task: AgendaTask, last: boolean) => (
+	// Every row's own bottom border is suppressed (last=true) — the shared
+	// `Panel` below draws the dividers between ALL of them, group labels
+	// included, so the day reads as one bordered timeline, not three boxes.
+	const taskRow = (task: AgendaTask) => (
 		<AgendaRow
 			key={task._id}
 			task={task}
 			completed={completedIds.has(task._id)}
 			updating={updatingIds.has(task._id)}
-			last={last}
+			last
 			onToggle={() => onToggleTask(task._id)}
 			onOpen={() => onOpenTask(task._id)}
 			assignee={assigneeFor?.(task)}
@@ -134,6 +141,7 @@ export function DayPlanView({
 				<NextUpCard
 					task={next}
 					updating={updatingIds.has(next._id)}
+					nowMinutes={nowMinutes}
 					onToggle={() => onToggleTask(next._id)}
 					onOpen={() => onOpenTask(next._id)}
 					assignee={assigneeFor?.(next)}
@@ -145,55 +153,51 @@ export function DayPlanView({
 				/>
 			) : null}
 
-			{allDayCount > 0 ? (
-				<PlanSection
-					label="All day"
-					meta={`${allDayCount} ${allDayCount === 1 ? "item" : "items"}`}
-				>
-					{bandProjects.map((p, i) => (
-						<SpinedRow key={p._id} color={recordTint.project.fg}>
-							<ListRow
-								icon="Folder"
-								iconColor={recordTint.project.fg}
-								iconBg={recordTint.project.bg}
-								title={p.title}
-								sub={p.context}
-								status={p.status}
-								onPress={() => onOpenProject(p._id)}
-								last={i === allDayCount - 1}
-							/>
-						</SpinedRow>
-					))}
-					{anytime.map((task, i) =>
-						taskRow(task, bandProjects.length + i === allDayCount - 1),
-					)}
-				</PlanSection>
-			) : null}
+			<Panel>
+				{allDayCount > 0 ? (
+					<GroupLabel
+						label="All day"
+						meta={`${allDayCount} ${allDayCount === 1 ? "item" : "items"}`}
+						inset
+					/>
+				) : null}
+				{bandProjects.map((p) => (
+					<SpinedRow key={p._id} color={recordTint.project.fg}>
+						<ListRow
+							icon="Folder"
+							iconColor={recordTint.project.fg}
+							iconBg={recordTint.project.bg}
+							title={p.title}
+							sub={p.context}
+							status={p.status}
+							onPress={() => onOpenProject(p._id)}
+							last
+						/>
+					</SpinedRow>
+				))}
+				{anytime.map((task) => taskRow(task))}
 
-			{timed.length > 0 ? (
-				<PlanSection
-					label="Schedule"
-					meta={sectionMeta(timed, completedIds)}
-				>
-					{timed.flatMap((task, i) => [
-						...(i === nowIndex
-							? [<React.Fragment key="now">{nowSeparator}</React.Fragment>]
-							: []),
-						taskRow(task, i === timed.length - 1),
-					])}
-					{/* A finished schedule still shows where "now" stands. */}
-					{nowIndex === timed.length ? nowSeparator : null}
-				</PlanSection>
-			) : null}
+				{timed.length > 0 ? (
+					<GroupLabel label="Schedule" meta={sectionMeta(timed, completedIds)} inset />
+				) : null}
+				{timed.flatMap((task, i) => [
+					...(i === nowIndex
+						? [<React.Fragment key="now">{nowSeparator}</React.Fragment>]
+						: []),
+					taskRow(task),
+				])}
+				{/* A finished schedule still shows where "now" stands. */}
+				{nowIndex === timed.length ? nowSeparator : null}
 
-			{overdue.length > 0 ? (
-				<PlanSection
-					label="Overdue"
-					meta={`${overdue.length} ${overdue.length === 1 ? "job" : "jobs"}`}
-				>
-					{overdue.map((task, i) => taskRow(task, i === overdue.length - 1))}
-				</PlanSection>
-			) : null}
+				{overdue.length > 0 ? (
+					<GroupLabel
+						label="Overdue"
+						meta={`${overdue.length} ${overdue.length === 1 ? "job" : "jobs"}`}
+						inset
+					/>
+				) : null}
+				{overdue.map((task) => taskRow(task))}
+			</Panel>
 		</>
 	);
 }

@@ -1,22 +1,20 @@
 import { queueTaskToggle } from "@/lib/offline/task-toggle";
 import { useEffect, useMemo, useState } from "react";
-import { ScrollView, StyleSheet, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 import { router, type Href } from "expo-router";
 import { useUser } from "@clerk/expo";
+import { AlertCircle, CalendarDays, FileText } from "lucide-react-native";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { useCachedQuery } from "@/lib/offline/useCachedQuery";
 import { useOpenOps } from "@/lib/offline/hooks";
-import { DOCK_CLEARANCE, useTokens } from "@/lib/theme";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { fontFamily, tracking, type, useTokens } from "@/lib/theme";
 import { formatCurrency } from "@/lib/format";
-import { CommandHero, type HeroStat } from "@/components/today/command-hero";
-import { DotGrid, ScrollFade, SCROLL_TOP_INSET } from "@/components/ui";
+import { CanvasScroll, MetricStrip, PageHeader, SectionLabel } from "@/components/canvas";
+import { SegmentedToggle } from "@/components/ui";
+import { useScreenChrome } from "@/lib/shell-chrome";
 import { useShellNav } from "@/lib/shell-nav";
 import { WeekStrip } from "@/components/today/week-strip";
-import {
-	AttentionLine,
-	attentionItems,
-} from "@/components/today/attention-line";
+import { attentionItems } from "@/components/today/attention-line";
 import { TomorrowPeek } from "@/components/today/tomorrow-peek";
 import { DayPlanView, type Assignee } from "@/components/today/day-plan";
 import { UpcomingList } from "@/components/today/upcoming-list";
@@ -41,7 +39,6 @@ import { localDayStartMs, utcDayStartMs } from "@/lib/date";
 import { DAY_MS } from "@/components/calendar/dateUtils";
 import { useDayScope } from "@/lib/useDayScope";
 import { useScheduleView } from "@/lib/useScheduleView";
-import { ScheduleControls } from "@/components/today/schedule-controls";
 
 const TASK_FORM: Href = "/tasks/form" as Href;
 const WORK: Href = "/work" as Href;
@@ -78,9 +75,9 @@ function initialsFor(name: string, email: string): string {
 
 /**
  * Today — run the day. The week strip is the DATE anchor, Day | List picks the
- * representation and Me | Team the scope; everything below the hero is one
- * scroll. Day and List read ONE calendar-events subscription, and so do the
- * strip's workload bars, so the strip can never disagree with the schedule.
+ * representation and Me | Team the scope; everything is one scroll inside the
+ * canvas. Day and List read ONE calendar-events subscription, and so do the
+ * strip's load marks, so the strip can never disagree with the schedule.
  *
  * Task/project dates are UTC-midnight date-ids, so they are COMPARED in UTC —
  * but "today" is derived from the instant via the LOCAL calendar (lib/date.ts).
@@ -89,19 +86,21 @@ function initialsFor(name: string, email: string): string {
 export default function TodayScreen({
 	headerMode = "root",
 }: {
-	/** "pane" = the iPad shell's Today pane: a light title row, no bell/avatar/org
-	 * (the rail owns those). Today keeps its OWN header either way because the
-	 * greeting and selected date are its identity. */
+	/** "pane" = the iPad shell's Today pane. Today's own `PageHeader` is its
+	 * title either way — the shell mounts no separate pane header for it. */
 	headerMode?: "root" | "pane";
 } = {}) {
 	const t = useTokens();
 	const { user } = useUser();
-	const insets = useSafeAreaInsets();
 	const pane = headerMode === "pane";
 	// iPad only — null on iPhone, where navigation falls back to the router.
 	const shellNav = useShellNav();
 	const { scope, setScope, hydrated: scopeHydrated } = useDayScope();
 	const { view, setView, hydrated: viewHydrated } = useScheduleView();
+
+	// Today is a tab root — the frame gives it the composer automatically, with
+	// no search binding or tray of its own (those belong to records and Work).
+	useScreenChrome(null);
 
 	// Ticks once a minute so the greeting and the now separator stay honest
 	// across a long session. Async setState — not the synchronous-in-effect
@@ -161,8 +160,8 @@ export default function TodayScreen({
 	// the data as team-wide so a stale persisted "me" can't hide anything.
 	const effectiveScope: DayScope = multiMember ? scope : "team";
 
-	// Adapt + scope once. Every feed below (day plan, upcoming list, strip bars,
-	// tomorrow peek) reads this, so they cannot disagree.
+	// Adapt + scope once. Every feed below (day plan, upcoming list, strip
+	// counts, tomorrow peek) reads this, so they cannot disagree.
 	const schedule = useMemo(
 		() => scopeCalendarEvents(events, meId, effectiveScope),
 		[events, meId, effectiveScope],
@@ -322,7 +321,7 @@ export default function TodayScreen({
 	const greeting = greetingFor(nowDate.getHours());
 	const firstName = user?.firstName ?? null;
 
-	// Hero stats — honest to what this screen already subscribes to. "Overdue"
+	// Metric strip — honest to what this screen already subscribes to. "Overdue"
 	// (not the canvas's "due this week"): due-dated aggregation isn't available
 	// client-side, and a wrong money number is worse than a narrower true one.
 	// Only rendered when the anchor IS today, which is exactly when the window
@@ -331,16 +330,26 @@ export default function TodayScreen({
 		() => projectsForDay(schedule.projects, todayMs).length,
 		[schedule.projects, todayMs],
 	);
+	const todayTaskCount = useMemo(
+		() =>
+			schedule.tasks.filter(
+				(task) =>
+					task.date !== undefined &&
+					utcDayStartMs(task.date) === todayMs &&
+					!isDoneStatus(task.status),
+			).length,
+		[schedule.tasks, todayMs],
+	);
 	const overdueTotal = useMemo(
 		() =>
 			(overdueInvoices ?? []).reduce((sum, inv) => sum + (inv.total ?? 0), 0),
 		[overdueInvoices],
 	);
-	const heroStats: HeroStat[] = [
-		{ value: String(todayVisits), caption: "Visits today" },
-		{ value: formatCurrency(overdueTotal), caption: "Overdue", accent: true },
-		{ value: String(sentQuotes?.length ?? 0), caption: "Quotes waiting" },
-	];
+	const todayJobs = todayVisits + todayTaskCount;
+	const summary =
+		todayJobs === 0
+			? "Nothing scheduled today"
+			: `${todayJobs} ${todayJobs === 1 ? "job" : "jobs"} today`;
 	const nowLabel =
 		formatClockLabel(
 			`${String(nowDate.getHours()).padStart(2, "0")}:${String(
@@ -371,69 +380,108 @@ export default function TodayScreen({
 	const newTask = () => router.push(TASK_FORM);
 
 	return (
-		<View style={[styles.screen, !pane && { backgroundColor: t.bg }]}>
-			{/* Page canvas, matching web's .workspace-canvas. First child so every
-			    surface paints over it. The iPad pane inherits the shell's canvas so
-			    the grid runs full-bleed behind the capped content column. */}
-			{pane ? null : <DotGrid style={StyleSheet.absoluteFill} />}
-			{/* 3.0 ink command hero (canvas 1a): org bar, greeting, day stats and
-			    the ink-tone week strip live in the band; the body scrolls beneath.
-			    Anchoring off today compresses it so the schedule gets the room. */}
-			<CommandHero
-				eyebrow={dateLabel}
-				greeting={firstName ? `${greeting}, ${firstName}` : greeting}
-				stats={heroStats}
-				compact={anchoredElsewhere}
-				hideChrome={pane}
-			>
-				<WeekStrip
-					tone="ink"
-					days={days}
-					selectedDayMs={selectedDayMs}
+		<CanvasScroll contentContainerStyle={pane ? styles.column : undefined}>
+			<PageHeader
+				title={firstName ? `${greeting}, ${firstName}` : greeting}
+				subtitle={summary}
+				eyebrow={<Text style={[styles.eyebrow, { color: t.sub }]}>{dateLabel}</Text>}
+				right={
+					multiMember ? (
+						<SegmentedToggle
+							compact
+							segments={[
+								{ value: "me", label: "Me" },
+								{ value: "team", label: "Team" },
+							]}
+							value={scope}
+							onChange={setScope}
+						/>
+					) : undefined
+				}
+			/>
+
+			{!anchoredElsewhere ? (
+				<MetricStrip
+					cells={[
+						{ icon: CalendarDays, label: "Visits", value: String(todayVisits) },
+						{
+							icon: AlertCircle,
+							label: "Overdue",
+							value: formatCurrency(overdueTotal),
+							tone: overdueTotal > 0 ? "danger" : "default",
+						},
+						{
+							icon: FileText,
+							label: "Awaiting",
+							value: String(sentQuotes?.length ?? 0),
+						},
+					]}
+					footer={
+						attention.length > 0 ? (
+							<View style={styles.attentionFooter}>
+								<AlertCircle size={14} color={t.warning} />
+								<Text
+									style={[styles.attentionText, { color: t.warning }]}
+									numberOfLines={2}
+								>
+									{attention.map((item) => item.label).join(" · ")}
+								</Text>
+							</View>
+						) : undefined
+					}
+					onFooterPress={attention.length > 0 ? openAttention : undefined}
+				/>
+			) : null}
+
+			<WeekStrip
+				days={days}
+				selectedDayMs={selectedDayMs}
+				todayMs={todayMs}
+				counts={counts}
+				onSelectDay={setSelectedDayMs}
+				onPageWeek={(dir) => setSelectedDayMs((ms) => ms + dir * 7 * DAY_MS)}
+			/>
+
+			<SectionLabel
+				title="Schedule"
+				right={
+					<SegmentedToggle
+						compact
+						segments={[
+							{ value: "day", label: "Day" },
+							{ value: "list", label: "List" },
+						]}
+						value={view}
+						onChange={setView}
+					/>
+				}
+			/>
+
+			{!hydrated || loading ? (
+				<ScheduleSkeleton />
+			) : view === "list" ? (
+				<UpcomingList
+					days={upcoming}
+					anchorDayMs={anchorMs}
 					todayMs={todayMs}
-					counts={counts}
-					onSelectDay={setSelectedDayMs}
-					onPageWeek={(dir) => setSelectedDayMs((ms) => ms + dir * 7 * DAY_MS)}
+					completedIds={doneIds}
+					updatingIds={updatingIds}
+					onToggleTask={handleToggle}
+					onOpenTask={openTask}
+					onOpenProject={openProject}
+					onNewTask={newTask}
+					assigneeFor={assigneeFor}
 				/>
-			</CommandHero>
-
-			{/* Pinned controls. ONE eyebrow-level row: the two stacked full-width
-			    toggles this replaced read as chrome and pushed the schedule (the
-			    reason for the tab) below the fold. Pinned, not folded into a section
-			    header — Day | List swaps the whole body, and this block anchors the
-			    ScrollFade at the chrome/scroll boundary. */}
-			<View style={[styles.controls, pane && styles.column]}>
-				<ScheduleControls
-					view={view}
-					onChangeView={setView}
-					scope={scope}
-					onChangeScope={setScope}
-					showScope={multiMember}
-				/>
-				{/* At the real chrome/scroll boundary. In AppHeader it painted over
-				    the week strip, which has no inset to absorb it. */}
-				<ScrollFade edge="top" />
-			</View>
-
-			<ScrollView
-				style={styles.scroll}
-				contentContainerStyle={[
-					styles.scrollBody,
-					pane && styles.column,
-					// Content runs under the floating glass dock (phone only — the
-					// iPad pane has no dock).
-					!pane && { paddingBottom: DOCK_CLEARANCE + insets.bottom },
-				]}
-				showsVerticalScrollIndicator={false}
-			>
-				<AttentionLine items={attention} onPress={openAttention} />
-				{!hydrated || loading ? (
-					<ScheduleSkeleton />
-				) : view === "list" ? (
-					<UpcomingList
-						days={upcoming}
-						anchorDayMs={anchorMs}
-						todayMs={todayMs}
+			) : (
+				<>
+					<DayPlanView
+						plan={plan}
+						dayMs={anchorMs}
+						isToday={!anchoredElsewhere}
+						projects={dayProjects}
+						nowLabel={nowLabel}
+						nowMinutes={nowMinutes}
+						windowEmpty={windowEmpty}
 						completedIds={doneIds}
 						updatingIds={updatingIds}
 						onToggleTask={handleToggle}
@@ -442,60 +490,42 @@ export default function TodayScreen({
 						onNewTask={newTask}
 						assigneeFor={assigneeFor}
 					/>
-				) : (
-					<>
-						<DayPlanView
-							plan={plan}
-							dayMs={anchorMs}
-							isToday={!anchoredElsewhere}
-							projects={dayProjects}
-							nowLabel={nowLabel}
-							windowEmpty={windowEmpty}
-							completedIds={doneIds}
-							updatingIds={updatingIds}
-							onToggleTask={handleToggle}
-							onOpenTask={openTask}
-							onOpenProject={openProject}
-							onNewTask={newTask}
-							assigneeFor={assigneeFor}
+					{/* Day view only — in List, tomorrow is literally the next group. */}
+					{peekInRange ? (
+						<TomorrowPeek
+							count={peek.count}
+							firstStart={peek.firstStart}
+							onPress={() => setSelectedDayMs(tomorrowMs)}
 						/>
-						{/* Day view only — in List, tomorrow is literally the next group. */}
-						{peekInRange ? (
-							<TomorrowPeek
-								count={peek.count}
-								firstStart={peek.firstStart}
-								onPress={() => setSelectedDayMs(tomorrowMs)}
-							/>
-						) : null}
-					</>
-				)}
-			</ScrollView>
-		</View>
+					) : null}
+				</>
+			)}
+		</CanvasScroll>
 	);
 }
 
 const styles = StyleSheet.create({
-	screen: {
+	eyebrow: {
+		fontFamily: fontFamily.semibold,
+		fontSize: type.eyebrow,
+		letterSpacing: tracking.eyebrow,
+		textTransform: "uppercase",
+	},
+	attentionFooter: {
+		flexDirection: "row",
+		alignItems: "center",
 		flex: 1,
+		gap: 6,
+		minWidth: 0,
 	},
-	controls: {
-		paddingHorizontal: 18,
-		gap: 10,
-		paddingTop: 10,
-		paddingBottom: 12,
-		// Anchors the ScrollFade to this block's bottom edge.
-		position: "relative",
-	},
-	scroll: {
+	attentionText: {
 		flex: 1,
+		minWidth: 0,
+		fontFamily: fontFamily.medium,
+		fontSize: type.sm,
+		lineHeight: 17,
 	},
-	scrollBody: {
-		paddingHorizontal: 18,
-		paddingTop: 2,
-		paddingBottom: SCROLL_TOP_INSET + 40,
-		gap: 18,
-	},
-	// iPad pane only: the hero spans the full pane, but an agenda row stretched
+	// iPad pane only: the header spans the full pane, but an agenda row stretched
 	// across ~900pt strands its metadata at the far edge, so the content below
 	// stays a centred column.
 	column: {

@@ -1,8 +1,8 @@
 import type { ReactNode } from "react";
 import { View, Text, StyleSheet } from "react-native";
 import { MenuView } from "@expo/ui/community/menu";
-import { ChevronDown } from "lucide-react-native";
-import { fontFamily, type, radii, useTokens } from "@/lib/theme";
+import { ChevronsUpDown } from "lucide-react-native";
+import { fontFamily, radii, useTokens } from "@/lib/theme";
 
 export interface FieldMenuOption {
 	value: string;
@@ -49,19 +49,19 @@ export function FieldMenu({
 			style={[
 				styles.select,
 				{
-					borderColor: t.border,
+					borderColor: t.input,
 					backgroundColor: t.card,
 					opacity: inert ? 0.5 : 1,
 				},
 			]}
 		>
 			<Text
-				style={[styles.selectText, { color: placeholder ? t.faint : t.ink }]}
+				style={[styles.selectText, { color: placeholder ? t.sub : t.ink }]}
 				numberOfLines={1}
 			>
 				{label}
 			</Text>
-			<ChevronDown size={18} color={t.sub} />
+			<ChevronsUpDown size={16} color={t.sub} />
 		</View>
 	);
 
@@ -98,13 +98,13 @@ const styles = StyleSheet.create({
 		alignItems: "center",
 		justifyContent: "space-between",
 		borderWidth: 1,
-		borderRadius: radii.lg,
-		paddingHorizontal: 14,
-		paddingVertical: 14,
+		borderRadius: radii.ctrl,
+		paddingHorizontal: 12,
+		minHeight: 44,
 	},
 	selectText: {
 		flex: 1,
-		fontSize: type.h4,
+		fontSize: 16,
 		fontFamily: fontFamily.regular,
 		marginRight: 8,
 	},

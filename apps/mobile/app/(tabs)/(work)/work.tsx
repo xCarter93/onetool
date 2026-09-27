@@ -20,7 +20,6 @@ import {
 	type AccessibilityActionInfo,
 	type TextInput,
 } from "react-native";
-import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { FlashList } from "@shopify/flash-list";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Swipeable, {
@@ -33,15 +32,20 @@ import {
 	type Href,
 } from "expo-router";
 import { api } from "@onetool/backend/convex/_generated/api";
-import type { icons } from "lucide-react-native";
-import { InkTabHeader } from "@/components/ink-tab-header";
+import { Building2, CircleCheck, FileText, Folder, History, Receipt, SearchX } from "lucide-react-native";
+import {
+	EmptyPanel,
+	GUTTER,
+	NOTCH_CLEARANCE,
+	RecordRow,
+	SectionLabel,
+	UnderlineTabs,
+} from "@/components/canvas";
 import { SearchField } from "@/components/work/search-field";
-import { TypeChips } from "@/components/work/type-chips";
-import { DotGrid, ListRow, SCROLL_TOP_INSET } from "@/components/ui";
-import { Illustration, type IllustrationName } from "@/components/illustrations";
 import { formatCurrency } from "@/lib/format";
 import { getRecents, type RecentRecord } from "@/lib/recents";
 import { consumeSearchFocus } from "@/lib/search-focus";
+import { focusComposer, useScreenChrome } from "@/lib/shell-chrome";
 import { useOrgToday } from "@/lib/use-org-today";
 import { sameRef, type RecordRef } from "@/lib/selection-context";
 import { useCachedQuery } from "@/lib/offline/useCachedQuery";
@@ -49,16 +53,7 @@ import { useOpenOps } from "@/lib/offline/hooks";
 import { isDoneStatus, taskDoneOverlay } from "@/lib/agenda";
 import { useExclusiveSwipe } from "@/lib/swipe-registry";
 import { buildRecordMenuActions, type RecordMenuAction } from "@/lib/record-menu";
-import {
-	DOCK_CLEARANCE,
-	fontFamily,
-	radii,
-	recordTint,
-	spacing,
-	tracking,
-	type,
-	useTokens,
-} from "@/lib/theme";
+import { fontFamily, radii, type, useTokens } from "@/lib/theme";
 import {
 	buildClientNameMap,
 	CHIP_ORDER,
@@ -85,23 +80,13 @@ const MIN_QUERY_LENGTH = 2;
 const isChipKind = (v: unknown): v is WorkChipKind =>
 	typeof v === "string" && v in KIND_LABEL;
 
-// Leading tile glyph per record kind (tints come from theme's recordTint).
-const KIND_ICON: Record<WorkChipKind, keyof typeof icons> = {
-	client: "Building2",
-	project: "Folder",
-	quote: "FileText",
-	invoice: "Receipt",
-	task: "CircleCheck",
-};
-
-// Per-kind fragment art previews the records about to land in an empty browse
-// list. Module scope: it never varies per render.
-const KIND_ILLO: Record<WorkChipKind, IllustrationName> = {
-	client: "clients-none",
-	project: "projects-none",
-	quote: "quotes-none",
-	invoice: "invoices-none",
-	task: "all-caught-up",
+// Empty-state glyph per record kind, plus the two non-kind resting states.
+const KIND_EMPTY_ICON: Record<WorkChipKind, typeof Building2> = {
+	client: Building2,
+	project: Folder,
+	quote: FileText,
+	invoice: Receipt,
+	task: CircleCheck,
 };
 
 type Section = { key: string; label: string; records: WorkRecord[] };
@@ -111,6 +96,7 @@ type Row =
 	| {
 			type: "record";
 			key: string;
+			sectionKey: string;
 			record: WorkRecord;
 			first: boolean;
 			last: boolean;
@@ -126,6 +112,7 @@ function sectionsToRows(sections: Section[]): Row[] {
 				// Bucket-scoped index, NOT `kind:id`: two contact hits on the same
 				// client both resolve to that client's id and would collide.
 				key: `${section.key}:${i}:${record.id}`,
+				sectionKey: section.key,
 				record,
 				first: i === 0,
 				last: i === section.records.length - 1,
@@ -142,12 +129,23 @@ type SwipeableA11yProps = ComponentProps<typeof Swipeable> & {
 	onAccessibilityAction?: (event: { nativeEvent: { actionName: string } }) => void;
 };
 
+/** Panel-style borders on a flat FlashList row, so a virtualized section still
+ * reads as one bordered group (a real `Panel` would defeat virtualization). */
+function usePanelWrap(first: boolean, last: boolean) {
+	const t = useTokens();
+	return [
+		styles.rowWrap,
+		{ backgroundColor: t.card, borderColor: t.line },
+		first && styles.rowFirst,
+		!first && { borderTopWidth: 1, borderTopColor: t.lineSoft },
+		last && [styles.rowLast, { borderBottomWidth: 1, borderBottomColor: t.line }],
+	];
+}
+
 // A real component (not a bare render function) — the long-press gesture and
 // swipe-to-toggle both need per-row refs.
 function WorkRow({
 	record,
-	iconColor,
-	iconBg,
 	sub,
 	first,
 	last,
@@ -159,8 +157,6 @@ function WorkRow({
 	onLongPressMenu,
 }: {
 	record: WorkRecord;
-	iconColor: string;
-	iconBg: string;
 	sub: string;
 	first: boolean;
 	last: boolean;
@@ -172,6 +168,7 @@ function WorkRow({
 	onLongPressMenu: (anchor: number | null) => void;
 }) {
 	const t = useTokens();
+	const wrap = usePanelWrap(first, last);
 	const swipeableRef = useRef<SwipeableMethods>(null);
 	const exclusiveSwipe = useExclusiveSwipe(swipeableRef);
 	const anchorRef = useRef<View>(null);
@@ -199,22 +196,16 @@ function WorkRow({
 	const row = (
 		<View ref={anchorRef} collapsable={false}>
 			<GestureDetector gesture={longPress}>
-				<ListRow
-					icon={KIND_ICON[record.kind]}
-					iconColor={iconColor}
-					iconBg={iconBg}
-					title={record.title}
-					sub={sub || undefined}
-					status={record.status}
-					onPress={guardedOpen}
-					selected={selected}
-					containerStyle={[
-						styles.rowCard,
-						{ backgroundColor: t.card, borderColor: t.line },
-						first && styles.rowFirst,
-						last ? [styles.rowLast, { borderBottomColor: t.line }] : null,
-					]}
-				/>
+				<View style={wrap}>
+					<RecordRow
+						kind={record.kind}
+						title={record.title}
+						subtitle={sub || undefined}
+						status={record.status}
+						onPress={guardedOpen}
+						selected={selected}
+					/>
+				</View>
 			</GestureDetector>
 		</View>
 	);
@@ -265,14 +256,35 @@ function WorkRow({
 	return <Swipeable {...swipeableProps}>{row}</Swipeable>;
 }
 
+/** Read-only favorite row: links to the record, no swipe or long-press menu. */
+function FavoriteRow({
+	title,
+	status,
+	first,
+	last,
+	onOpen,
+}: {
+	title: string;
+	status: string;
+	first: boolean;
+	last: boolean;
+	onOpen: () => void;
+}) {
+	const wrap = usePanelWrap(first, last);
+	return (
+		<View style={wrap}>
+			<RecordRow kind="client" title={title} status={status} onPress={onOpen} />
+		</View>
+	);
+}
+
 // headerMode/onSelect/selected/kind default off → the iPhone path (router.push,
-// the InkTabHeader band, no selected highlight, uncontrolled chip). The iPad
-// shell renders this as a list pane: headerMode="pane" suppresses the
-// self-mounted band and keeps the light controls strip (shell mounts PaneHeader
-// above it — its layout is unchanged from before the band), onSelect
-// drives the detail pane via the shell selection instead of a route push,
-// selected marks the row, and kind/onKindChange let the shell drive the chip
-// (e.g. "View all projects").
+// the composer field owns search, no selected highlight, uncontrolled tabs). The
+// iPad shell renders this as a list pane: headerMode="pane" suppresses the
+// composer binding and keeps an in-pane search field (the shell mounts
+// PaneHeader above it), onSelect drives the detail pane via the shell selection
+// instead of a route push, selected marks the row, and kind/onKindChange let the
+// shell drive the tabs (e.g. "View all projects").
 export default function WorkScreen({
 	headerMode = "root",
 	onSelect,
@@ -288,14 +300,11 @@ export default function WorkScreen({
 } = {}) {
 	const t = useTokens();
 	const router = useRouter();
-	const insets = useSafeAreaInsets();
 	const isPane = headerMode === "pane";
-	// The floating dock takes no layout height — scroll content clears it itself.
-	// iPad panes have no dock (the shell replaces Tabs).
-	const listBottom = isPane ? 24 : DOCK_CLEARANCE + insets.bottom;
 	// Pane keeps the fade inset (the shell's light chrome dissolves into content).
-	// On iPhone the ink band is a hard edge — no fade, so no fade clearance.
-	const listTop = isPane ? SCROLL_TOP_INSET : 12;
+	// On iPhone the canvas notch needs its own clearance instead.
+	const listTop = 16;
+	const listBottom = isPane ? 24 : 32;
 
 	// Raw input drives the field; `q` (debounced 250ms) drives the backend query.
 	const [raw, setRaw] = useState("");
@@ -315,7 +324,7 @@ export default function WorkScreen({
 		isChipKind(rawParam) ? rawParam : null,
 	);
 	// Re-seed at render time (set-state-in-effect is error-level here) and only
-	// when the param VALUE changes, so a later chip tap still wins.
+	// when the param VALUE changes, so a later tab tap still wins.
 	if (rawParam !== appliedParam) {
 		setAppliedParam(rawParam);
 		if (isChipKind(rawParam)) setLocalKind(rawParam);
@@ -325,21 +334,39 @@ export default function WorkScreen({
 		onKindChange ? onKindChange(next) : setLocalKind(next);
 	const orgToday = useOrgToday();
 
-	// ── Search field focus ──────────────────────────────────────────────────
-	// One-shot latch set by the header magnifier on the other tab roots. Never in
-	// a pane: on iPad the magnifier does not exist and Work is always mounted.
-	const inputRef = useRef<TextInput | null>(null);
+	// ── Search field ────────────────────────────────────────────────────────
+	// On iPhone the frame's bottom composer IS the search input; publish the
+	// binding up to it. Never in a pane: iPad has no composer and Work is always
+	// mounted there, so a search binding would just sit unused.
+	useScreenChrome(
+		isPane
+			? null
+			: {
+					search: {
+						value: raw,
+						onChangeText: setRaw,
+						placeholder: "Search clients, quotes, invoices…",
+					},
+				},
+	);
+	// One-shot latch set by the header magnifier on the other tab roots. Focuses
+	// the composer field instead of a local input — Work no longer owns one.
+	const paneInputRef = useRef<TextInput | null>(null);
 	useFocusEffect(
 		useCallback(() => {
-			if (isPane || !consumeSearchFocus()) return;
+			if (!consumeSearchFocus()) return;
+			if (isPane) {
+				const frame = requestAnimationFrame(() => paneInputRef.current?.focus());
+				return () => cancelAnimationFrame(frame);
+			}
 			// One frame of slack — focusing mid-transition drops the keyboard.
-			const frame = requestAnimationFrame(() => inputRef.current?.focus());
+			const frame = requestAnimationFrame(() => focusComposer());
 			return () => cancelAnimationFrame(frame);
 		}, [isPane]),
 	);
 
 	// ── Data ────────────────────────────────────────────────────────────────
-	// Search is the primary path. Browse lists are LAZY — only the active chip's
+	// Search is the primary path. Browse lists are LAZY — only the active tab's
 	// list subscribes, which is what let the four always-on subscriptions go.
 	const results = useCachedQuery(
 		api.search.globalSearch,
@@ -357,6 +384,7 @@ export default function WorkScreen({
 	const shownResults = searching ? (results ?? lastResults) : undefined;
 
 	const browseKind = searching ? null : kind;
+	const resting = !searching && kind === null;
 	// Clients are also the meta line ("Acme · PRJ-7") for the other three kinds,
 	// so one subscription serves both the client browse list and their names.
 	const wantsClients =
@@ -374,6 +402,9 @@ export default function WorkScreen({
 		browseKind === "invoice" ? {} : "skip",
 	);
 	const tasks = useCachedQuery(api.tasks.list, browseKind === "task" ? {} : "skip");
+
+	// Read-only favorites (web's sidebar query) — only needed at rest.
+	const favorites = useCachedQuery(api.favorites.list, resting ? {} : "skip");
 
 	// ── Recently viewed (on-device, per org) ────────────────────────────────
 	const recentsScope = useOfflinePartition() ?? undefined;
@@ -398,8 +429,6 @@ export default function WorkScreen({
 	const taskOps = useOpenOps();
 	const [togglingIds, setTogglingIds] = useState<Set<string>>(new Set());
 
-	const resting = !searching && kind === null;
-
 	// Each mode waits on exactly its own subscriptions. Browse kinds other than
 	// tasks also wait on `clients`, which supplies their meta line.
 	const browseList = {
@@ -414,7 +443,7 @@ export default function WorkScreen({
 		: browseKind !== null
 			? browseList[browseKind] === undefined ||
 				(browseKind !== "task" && clients === undefined)
-			: !!recentsScope && recents === null;
+			: !!recentsScope && (recents === null || favorites === undefined);
 
 	const clientNames = useMemo(() => buildClientNameMap(clients), [clients]);
 
@@ -471,6 +500,28 @@ export default function WorkScreen({
 		orgToday,
 	]);
 
+	// Favorites section: read-only, links to the client. Web's userFavorites
+	// query, so this is exactly the sidebar's favorite list, not a new feature.
+	const favoriteSections = useMemo<Section[]>(() => {
+		const list = resting ? (favorites ?? []) : [];
+		if (!list.length) return [];
+		return [
+			{
+				key: "favorites",
+				label: "Favorites",
+				records: list.map(
+					(f): WorkRecord => ({
+						kind: "client",
+						id: f.clientId,
+						title: f.companyName,
+						meta: "",
+						status: f.status,
+					}),
+				),
+			},
+		];
+	}, [resting, favorites]);
+
 	const recentSections = useMemo<Section[]>(() => {
 		const list = resting ? (recents ?? []) : [];
 		if (!list.length) return [];
@@ -498,9 +549,9 @@ export default function WorkScreen({
 					? searchSections
 					: browseKind !== null
 						? browseSections
-						: recentSections,
+						: [...favoriteSections, ...recentSections],
 			),
-		[searching, browseKind, searchSections, browseSections, recentSections],
+		[searching, browseKind, searchSections, browseSections, favoriteSections, recentSections],
 	);
 
 	// On iPad pane: row tap drives the shell selection (no route push — a push
@@ -591,14 +642,13 @@ export default function WorkScreen({
 	const renderRow = ({ item }: { item: Row }) => {
 		if (item.type === "header") {
 			return (
-				<Text style={[styles.sectionLabel, { color: t.faint }]}>
-					{item.label.toUpperCase()}
-				</Text>
+				<View style={styles.sectionLabelWrap}>
+					<SectionLabel title={item.label} />
+				</View>
 			);
 		}
 
-		const { record, first, last } = item;
-		const tint = recordTint[record.kind];
+		const { record, first, last, sectionKey } = item;
 		const amount =
 			record.kind === "quote" || record.kind === "invoice"
 				? record.amount
@@ -610,6 +660,18 @@ export default function WorkScreen({
 					? `${record.meta} · ${formatCurrency(amount, { exact: true })}`
 					: formatCurrency(amount, { exact: true });
 
+		if (sectionKey === "favorites") {
+			return (
+				<FavoriteRow
+					title={record.title}
+					status={record.status ?? ""}
+					first={first}
+					last={last}
+					onOpen={() => open(record)}
+				/>
+			);
+		}
+
 		// Undefined here (recents carry no task status) means no swipe/toggle at
 		// all, not a guessed "not done" — see `isTaskDone`.
 		const done = record.kind === "task" ? isTaskDone(record) : undefined;
@@ -617,8 +679,6 @@ export default function WorkScreen({
 		return (
 			<WorkRow
 				record={record}
-				iconColor={tint.fg}
-				iconBg={tint.bg}
 				sub={sub}
 				first={first}
 				last={last}
@@ -643,20 +703,20 @@ export default function WorkScreen({
 	const emptyCopy = (): {
 		title: string;
 		body: string;
-		illo: IllustrationName;
+		icon: typeof Building2;
 	} => {
 		if (searching) {
 			return {
 				title: "No matches",
 				body: "Search matches the start of words — try a name, number or fewer letters.",
-				illo: "no-filter-match",
+				icon: SearchX,
 			};
 		}
 		if (kind) {
 			return {
 				title: `No ${KIND_LABEL[kind].toLowerCase()} yet`,
 				body: "Records you create show up here.",
-				illo: KIND_ILLO[kind],
+				icon: KIND_EMPTY_ICON[kind],
 			};
 		}
 		// First run is the COMMON state on this screen, not an edge case: the trail
@@ -664,38 +724,41 @@ export default function WorkScreen({
 		return {
 			title: "Nothing viewed yet",
 			body: "Records you open appear here. Search finds everything else.",
-			illo: "activity-none",
+			icon: History,
 		};
 	};
 
 	const empty = emptyCopy();
 
+	const tabs = useMemo(
+		() => [
+			{ value: "all" as const, label: "All" },
+			...CHIP_ORDER.map((k) => ({ value: k, label: KIND_LABEL[k] })),
+		],
+		[],
+	);
+
 	return (
-		<SafeAreaView style={{ flex: 1, backgroundColor: t.surface }} edges={[]}>
-			{/* Page canvas, matching web's .workspace-canvas. */}
-			<DotGrid style={StyleSheet.absoluteFill} />
+		<View style={styles.screen}>
 			{/* Controls stay pinned either way — a search-first surface must not
-			    scroll its own search field away. On iPhone they ride INSIDE the ink
-			    band (Spotlight-style); the iPad pane keeps the light strip below the
-			    shell's PaneHeader (one header per pane — locked convention). */}
-			{isPane ? (
-				<View style={styles.controls}>
-					<SearchField value={raw} onChangeText={setRaw} inputRef={inputRef} />
-					<TypeChips value={kind} onChange={setKind} />
-				</View>
-			) : (
-				// No ＋ here: the speed-dial FAB is the single capture entry point on
-				// iPhone (3.0 slice 5).
-				<InkTabHeader orgChip>
+			    scroll its own controls away. The pane keeps its own search field
+			    (iPad has no phone composer); the phone tab row is search-less, the
+			    composer owns that job instead. */}
+			<View style={[styles.controls, { paddingTop: isPane ? 10 : NOTCH_CLEARANCE }]}>
+				{isPane ? (
 					<SearchField
 						value={raw}
 						onChangeText={setRaw}
-						inputRef={inputRef}
-						onInk
+						inputRef={paneInputRef}
+						placeholder="Search clients, quotes, invoices…"
 					/>
-					<TypeChips value={kind} onChange={setKind} onInk />
-				</InkTabHeader>
-			)}
+				) : null}
+				<UnderlineTabs
+					tabs={tabs}
+					value={kind ?? "all"}
+					onChange={(v) => setKind(v === "all" ? null : v)}
+				/>
+			</View>
 
 			{loading ? (
 				<View style={[styles.listContent, { paddingTop: listTop }]}>
@@ -758,36 +821,29 @@ export default function WorkScreen({
 					keyboardShouldPersistTaps="handled"
 					keyboardDismissMode="on-drag"
 					ListEmptyComponent={
-						<View style={styles.emptyState}>
-							<Illustration
-								name={empty.illo}
-								knockout={t.bg}
-								style={styles.emptyArt}
-							/>
-							<Text style={[styles.emptyTitle, { color: t.ink }]}>
-								{empty.title}
-							</Text>
-							<Text style={[styles.emptyText, { color: t.sub }]}>
-								{empty.body}
-							</Text>
+						<View style={styles.emptyWrap}>
+							<EmptyPanel icon={empty.icon} title={empty.title} body={empty.body} />
 						</View>
 					}
 					ListFooterComponent={
 						// Buckets cap at five hits server-side. Saying so beats letting a
 						// user believe a truncated list is the whole answer.
 						searching && rows.length > 0 ? (
-							<Text style={[styles.footnote, { color: t.faint }]}>
+							<Text style={[styles.footnote, { color: t.sub }]}>
 								Top matches per type. Keep typing to narrow them.
 							</Text>
 						) : null
 					}
 				/>
 			)}
-		</SafeAreaView>
+		</View>
 	);
 }
 
 const styles = StyleSheet.create({
+	screen: {
+		flex: 1,
+	},
 	swipeAction: {
 		width: 96,
 		alignItems: "center",
@@ -799,23 +855,19 @@ const styles = StyleSheet.create({
 		color: "#fff",
 	},
 	controls: {
-		paddingHorizontal: spacing.gutter,
-		paddingTop: 12,
-		paddingBottom: 12,
+		paddingHorizontal: GUTTER,
+		paddingBottom: 8,
 		gap: 10,
 	},
 	listContent: {
-		paddingHorizontal: spacing.gutter,
+		paddingHorizontal: GUTTER,
 		paddingBottom: 24,
 	},
-	sectionLabel: {
-		fontFamily: fontFamily.semibold,
-		fontSize: type.eyebrow,
-		letterSpacing: tracking.groupLabel,
+	sectionLabelWrap: {
 		paddingTop: 18,
-		paddingBottom: 7,
+		paddingBottom: 9,
 	},
-	rowCard: {
+	rowWrap: {
 		borderLeftWidth: 1,
 		borderRightWidth: 1,
 	},
@@ -856,23 +908,8 @@ const styles = StyleSheet.create({
 		marginTop: 18,
 		marginBottom: 11,
 	},
-	emptyState: {
-		alignItems: "center",
-		paddingVertical: 64,
-		paddingHorizontal: 24,
-	},
-	emptyArt: {
-		marginBottom: 16,
-	},
-	emptyTitle: {
-		fontFamily: fontFamily.semibold,
-		fontSize: type.h3,
-		marginBottom: 8,
-	},
-	emptyText: {
-		fontFamily: fontFamily.regular,
-		fontSize: type.body,
-		textAlign: "center",
+	emptyWrap: {
+		paddingTop: 8,
 	},
 	footnote: {
 		fontFamily: fontFamily.regular,

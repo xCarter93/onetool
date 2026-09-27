@@ -28,6 +28,9 @@ import { fontFamily, frame, recordTint, type RecordKind, useTokens } from "@/lib
 // (workspace-theme.css: page header, panel, metrics, record tabs, stepper).
 
 export const GUTTER = 16;
+
+/** Wrapper for a fixed header above a list: clears the notch, list starts 12 below. */
+export const CANVAS_HEADER = { paddingTop: NOTCH_CLEARANCE, paddingHorizontal: GUTTER } as const;
 export { NOTCH_CLEARANCE };
 
 export const KIND_ICON: Record<RecordKind, LucideIcon> = {
@@ -93,7 +96,7 @@ export function PageHeader({
 	);
 }
 
-/** 11px uppercase group label with an optional right-hand link or count. */
+/** 11px uppercase group label; its -8 foot assumes a 16px-gap parent, pulling it onto its panel. */
 export function SectionLabel({
 	title,
 	right,
@@ -320,7 +323,7 @@ export function MetricStrip({
 						{ borderTopColor: t.line, backgroundColor: pressed ? t.secondary : t.muted },
 					]}
 				>
-					<View style={styles.flexShrink}>{footer}</View>
+					<View style={styles.flexFill}>{footer}</View>
 					{onFooterPress ? <ChevronRight size={15} color={t.sub} strokeWidth={2} /> : null}
 				</Pressable>
 			) : null}
@@ -545,6 +548,10 @@ const styles = StyleSheet.create({
 	},
 	flexShrink: {
 		flexShrink: 1,
+		minWidth: 0,
+	},
+	flexFill: {
+		flex: 1,
 		minWidth: 0,
 	},
 	pageHeader: {

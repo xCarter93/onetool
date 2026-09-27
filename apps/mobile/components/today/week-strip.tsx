@@ -12,7 +12,6 @@ import {
 import { ChevronLeft, ChevronRight } from "lucide-react-native";
 import {
 	fontFamily,
-	hero,
 	radii,
 	touch,
 	tracking,
@@ -44,17 +43,13 @@ interface WeekStripProps {
 	 * an adjacent week rolls the whole strip there with no way back.
 	 */
 	onPageWeek?: (direction: -1 | 1) => void;
-	/**
-	 * "light" = the classic strip on the page canvas (selected cell fills solid
-	 * blue). "ink" = inside the 3.0 command hero: white-on-ink text tiers and the
-	 * selected cell inverts to a white fill with a blue load bar (canvas 1a).
-	 */
-	tone?: "light" | "ink";
 }
 
 /**
- * The persistent week strip under Today's greeting. It is the agenda's date
- * lens and a passive weekly-workload read via the per-day bars.
+ * The persistent week strip: a joined 7-cell segment (web's joined-segment
+ * grammar), the selected day picked out with a `secondary` fill and a 2px
+ * `brand` underline. It is the agenda's date lens and a passive weekly-workload
+ * read via the per-day load marks.
  *
  * Paging is a real 3-page horizontal pager (prev | current | next) so a swipe
  * tracks the finger. After a page settles, `onPageWeek` moves the selection and
@@ -68,40 +63,13 @@ export function WeekStrip({
 	counts,
 	onSelectDay,
 	onPageWeek,
-	tone = "light",
 }: WeekStripProps) {
 	const t = useTokens();
-	// Selected-cell contrast holds in both tones: light = white on #0072b5
-	// (5.15:1); ink = #17181a/#6b7075 on white (17.8/5.0:1), bar is decor.
-	const pal =
-		tone === "ink"
-			? {
-					arrow: hero.textSub,
-					dow: hero.textFaint,
-					num: hero.textMid,
-					selectedBg: t.card,
-					selectedDow: t.faint,
-					selectedNum: t.ink,
-					bar: hero.barStrong,
-					selectedBar: t.primarySolid,
-				}
-			: {
-					arrow: t.sub,
-					dow: t.faint,
-					num: t.ink,
-					selectedBg: t.primarySolid,
-					// Full white, not 85% — 0.85 alpha composites to ~#d9eaf4 on
-					// primarySolid, which is 4.18:1 and fails AA at 10px.
-					selectedDow: "#ffffff",
-					selectedNum: "#ffffff",
-					bar: t.dot,
-					selectedBar: "#ffffff",
-				};
 	const scrollRef = useRef<ScrollView>(null);
 	const [pageWidth, setPageWidth] = useState(0);
 	const selected = utcDayStartMs(selectedDayMs);
 	const today = utcDayStartMs(todayMs);
-	// Busiest day IN VIEW sets the scale, so the bars are a shape for the week.
+	// Busiest day IN VIEW sets the scale, so the marks are a shape for the week.
 	const maxCount = useMemo(
 		() => days.reduce((m, d) => Math.max(m, counts.get(d) ?? 0), 0),
 		[days, counts],
@@ -141,21 +109,21 @@ export function WeekStrip({
 			accessibilityLabel={direction === -1 ? "Previous week" : "Next week"}
 		>
 			{direction === -1 ? (
-				<ChevronLeft size={18} color={pal.arrow} />
+				<ChevronLeft size={18} color={t.sub} />
 			) : (
-				<ChevronRight size={18} color={pal.arrow} />
+				<ChevronRight size={18} color={t.sub} />
 			)}
 		</Pressable>
 	);
 
 	const renderWeek = (weekDays: number[], isCenter: boolean) => (
 		<View
-			style={[styles.week, { width: pageWidth }]}
+			style={[styles.week, { width: pageWidth, borderColor: t.line }]}
 			// tablist wraps only the interactive center page — the flanking pages
 			// are a visual preview until they settle.
 			accessibilityRole={isCenter ? "tablist" : undefined}
 		>
-			{weekDays.map((dayMs) => {
+			{weekDays.map((dayMs, i) => {
 				const isSelected = isCenter && dayMs === selected;
 				const isToday = dayMs === today;
 				const d = new Date(dayMs);
@@ -170,20 +138,24 @@ export function WeekStrip({
 						accessibilityState={{ selected: isSelected }}
 						accessibilityLabel={[
 							isToday ? `Today, ${label}` : label,
-							// The bar encodes workload but is invisible to a screen reader.
+							// The mark encodes workload but is invisible to a screen reader.
 							count > 0 ? `${count} ${count === 1 ? "job" : "jobs"}` : "nothing scheduled",
 						].join(", ")}
 						accessibilityHint="Shows this day's work"
 						onPress={() => onSelectDay(dayMs)}
 						style={[
 							styles.cell,
-							isSelected && { backgroundColor: pal.selectedBg },
+							i > 0 && { borderLeftWidth: 1, borderLeftColor: t.line },
+							isSelected && {
+								backgroundColor: t.secondary,
+								boxShadow: `inset 0 -2px 0 ${t.brand}`,
+							},
 						]}
 					>
 						<Text
 							style={[
 								styles.dow,
-								{ color: isSelected ? pal.selectedDow : pal.dow },
+								{ color: isSelected ? t.ink : t.sub },
 							]}
 						>
 							{DOW[d.getUTCDay()].toUpperCase()}
@@ -192,7 +164,7 @@ export function WeekStrip({
 							style={[
 								styles.num,
 								{
-									color: isSelected ? pal.selectedNum : pal.num,
+									color: t.ink,
 									fontFamily:
 										isToday && !isSelected
 											? fontFamily.bold
@@ -202,7 +174,7 @@ export function WeekStrip({
 						>
 							{d.getUTCDate()}
 						</Text>
-						{/* Slot height is reserved whether or not a bar draws, so cells
+						{/* Slot height is reserved whether or not a mark draws, so cells
 						    never shift. */}
 						<View style={styles.barTrack}>
 							{bar > 0 ? (
@@ -211,9 +183,7 @@ export function WeekStrip({
 										styles.bar,
 										{
 											width: `${bar * 100}%`,
-											backgroundColor: isSelected
-												? pal.selectedBar
-												: pal.bar,
+											backgroundColor: isSelected ? t.primarySolid : t.dot,
 										},
 									]}
 								/>
@@ -225,7 +195,7 @@ export function WeekStrip({
 		</View>
 	);
 
-	// Adjacent weeks are derived from the current one; their workload bars fill
+	// Adjacent weeks are derived from the current one; their workload marks fill
 	// in once the task subscription follows the settled selection.
 	const pages: { key: string; days: number[]; center: boolean }[] = [
 		{ key: "prev", days: weekDaysFor(days[0] - 7 * DAY_MS), center: false },
@@ -270,18 +240,19 @@ const styles = StyleSheet.create({
 	strip: {
 		flexDirection: "row",
 		alignItems: "center",
-		paddingTop: 4,
-		paddingBottom: 14,
+		gap: 4,
 	},
 	days: {
 		flex: 1,
 		// Reserve the strip's height before the pager mounts (it waits on layout),
-		// so the controls block doesn't jump on first paint.
+		// so the layout doesn't jump on first paint.
 		minHeight: touch.min,
 	},
 	week: {
 		flexDirection: "row",
-		gap: 4,
+		borderWidth: 1,
+		borderRadius: radii.ctrl,
+		overflow: "hidden",
 	},
 	// Narrow on purpose: the 7 day cells own the width. Painted height carries
 	// the 44pt target (RN will not hit-test slop outside the parent).
@@ -294,7 +265,6 @@ const styles = StyleSheet.create({
 	cell: {
 		flex: 1,
 		alignItems: "center",
-		borderRadius: radii.xl,
 		// 7 cells across a 375pt screen are ~47pt wide; height keeps the 44pt
 		// minimum without needing hitSlop.
 		minHeight: touch.min,

@@ -83,8 +83,10 @@ const styles = StyleSheet.create({
 		borderWidth: 1,
 		overflow: "hidden",
 	},
+	// Grow from content width so the control also sizes itself in auto-width slots.
 	segment: {
-		flex: 1,
+		flexGrow: 1,
+		flexBasis: "auto",
 		flexDirection: "row",
 		alignItems: "center",
 		justifyContent: "center",

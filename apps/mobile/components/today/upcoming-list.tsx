@@ -65,8 +65,7 @@ export function UpcomingList({
 				</Text>
 			) : null}
 			{days.map((day) => {
-				const allDayCount = day.projects.length + day.anytime.length;
-				const total = allDayCount + day.timed.length;
+				const total = day.projects.length + day.anytime.length + day.timed.length;
 				return (
 					<PlanSection
 						key={day.dayMs}
@@ -74,7 +73,7 @@ export function UpcomingList({
 						label={dayLabel(day.dayMs, todayMs)}
 						meta={`${total} ${total === 1 ? "job" : "jobs"}`}
 					>
-						{day.projects.map((p, i) => (
+						{day.projects.map((p) => (
 							<SpinedRow key={p._id} color={recordTint.project.fg}>
 								<ListRow
 									icon="Folder"
@@ -84,29 +83,17 @@ export function UpcomingList({
 									sub={p.context}
 									status={p.status}
 									onPress={() => onOpenProject(p._id)}
-									last={i === total - 1}
+									last
 								/>
 							</SpinedRow>
 						))}
-						{day.anytime.map((task, i) => (
+						{[...day.anytime, ...day.timed].map((task) => (
 							<AgendaRow
 								key={task._id}
 								task={task}
 								completed={completedIds.has(task._id)}
 								updating={updatingIds.has(task._id)}
-								last={day.projects.length + i === total - 1}
-								onToggle={() => onToggleTask(task._id)}
-								onOpen={() => onOpenTask(task._id)}
-								assignee={assigneeFor?.(task)}
-							/>
-						))}
-						{day.timed.map((task, i) => (
-							<AgendaRow
-								key={task._id}
-								task={task}
-								completed={completedIds.has(task._id)}
-								updating={updatingIds.has(task._id)}
-								last={allDayCount + i === total - 1}
+								last
 								onToggle={() => onToggleTask(task._id)}
 								onOpen={() => onOpenTask(task._id)}
 								assignee={assigneeFor?.(task)}

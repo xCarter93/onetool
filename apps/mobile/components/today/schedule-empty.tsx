@@ -1,8 +1,7 @@
 import React from "react";
-import { StyleSheet, Text, View } from "react-native";
-import { fontFamily, radii, type, useTokens } from "@/lib/theme";
+import { CalendarCheck } from "lucide-react-native";
+import { EmptyPanel } from "@/components/canvas";
 import { Button } from "@/components/ui";
-import { Illustration } from "@/components/illustrations";
 import { UPCOMING_DAYS } from "@/lib/agenda";
 
 export type ScheduleEmptyVariant =
@@ -27,47 +26,15 @@ interface ScheduleEmptyProps {
 	onNewTask: () => void;
 }
 
-/** The schedule's composed empty state — same frame in both views. */
+/** The schedule's composed empty state — the same bordered panel in both views. */
 export function ScheduleEmpty({ variant, onNewTask }: ScheduleEmptyProps) {
-	const t = useTokens();
 	const copy = COPY[variant];
 	return (
-		<View style={[styles.empty, { borderColor: t.line }]}>
-			<Illustration
-				name="all-caught-up"
-				knockout={t.bg}
-				style={styles.emptyArt}
-			/>
-			<Text style={[styles.emptyTitle, { color: t.ink }]}>{copy.title}</Text>
-			<Text style={[styles.emptyCopy, { color: t.sub }]}>{copy.body}</Text>
-			<Button title="New task" onPress={onNewTask} style={styles.emptyAction} />
-		</View>
+		<EmptyPanel
+			icon={CalendarCheck}
+			title={copy.title}
+			body={copy.body}
+			action={<Button title="New task" onPress={onNewTask} />}
+		/>
 	);
 }
-
-const styles = StyleSheet.create({
-	empty: {
-		alignItems: "center",
-		gap: 4,
-		borderWidth: 1,
-		borderStyle: "dashed",
-		borderRadius: radii.card,
-		paddingVertical: 30,
-		paddingHorizontal: 24,
-	},
-	emptyArt: {
-		marginBottom: 6,
-	},
-	emptyTitle: {
-		fontFamily: fontFamily.semibold,
-		fontSize: type.h3,
-	},
-	emptyCopy: {
-		fontFamily: fontFamily.regular,
-		fontSize: type.body,
-	},
-	emptyAction: {
-		marginTop: 12,
-		alignSelf: "stretch",
-	},
-});
