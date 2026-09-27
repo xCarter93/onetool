@@ -207,7 +207,7 @@ export function AssistantCell() {
 							</span>
 							<button
 								type="button"
-								aria-label={sent ? "Message sent" : "Send"}
+								aria-label={sent ? "Preview only" : "Send"}
 								onClick={send}
 								disabled={!value.trim() || sent || fillTarget !== null}
 								className={`flex h-7 w-7 cursor-pointer items-center justify-center rounded-md transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--accent-ink) disabled:cursor-default ${
@@ -257,6 +257,9 @@ export function AssistantCell() {
 					</div>
 				</div>
 
+				<p role="status" className="h-4 text-[10px] text-(--ink-3)">
+					{sent ? "Preview only. In OneTool, the assistant answers from your live data." : ""}
+				</p>
 				<div className="flex w-full max-w-[400px] flex-wrap justify-center gap-1.5">
 					{chips.map((chip, i) => (
 						<motion.button

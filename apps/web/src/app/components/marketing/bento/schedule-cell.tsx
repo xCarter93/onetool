@@ -73,7 +73,7 @@ export function ScheduleCell() {
 				whileInView={{ opacity: 1, y: 0 }}
 				viewport={{ once: true, amount: 0.3 }}
 				transition={{ duration: 0.7, ease }}
-				className="absolute inset-x-3 top-3 flex min-h-[calc(100%-0.75rem)] flex-col overflow-hidden rounded-xl border border-(--rule-2) bg-(--sheet) shadow-(--lp-shadow)"
+				className="relative m-3 mb-0 flex flex-col overflow-hidden rounded-xl border border-(--rule-2) bg-(--sheet) shadow-(--lp-shadow)"
 			>
 				<div className="flex items-center justify-between gap-3 border-b border-(--rule) px-3.5 py-2.5">
 					<div className="flex shrink-0 items-center gap-2">
@@ -272,11 +272,6 @@ export function ScheduleCell() {
 					</div>
 				</div>
 			</motion.div>
-
-			<div
-				aria-hidden="true"
-				className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-linear-to-t from-(--sheet) to-transparent"
-			/>
 		</BentoCard>
 	);
 }

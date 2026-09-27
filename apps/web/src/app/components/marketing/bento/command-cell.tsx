@@ -319,7 +319,7 @@ export function CommandCell() {
 						<span
 							className={`inline-flex items-center gap-1 transition-colors duration-200 ${phase === "ran" ? "text-(--ink)" : ""}`}
 						>
-							{phase === "ran" ? "Done" : "Open"}
+							{phase === "ran" ? "Preview only" : "Open"}
 							{phase === "ran" ? (
 								<Check className="h-3 w-3" />
 							) : (

@@ -1,7 +1,8 @@
 "use client";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import {
 	motion,
+	useInView,
 	useMotionValue,
 	useReducedMotion,
 	useSpring,
@@ -37,6 +38,8 @@ const ease = [0.22, 1, 0.36, 1] as const;
 
 export function InboxCell() {
 	const reduce = !!useReducedMotion();
+	const stageRef = useRef<HTMLDivElement>(null);
+	const inView = useInView(stageRef, { margin: "25% 0px" });
 	const [open, setOpen] = useState(false);
 	const px = useMotionValue(0);
 	const py = useMotionValue(0);
@@ -69,6 +72,7 @@ export function InboxCell() {
 			/>
 
 			<motion.div
+				ref={stageRef}
 				initial={{ opacity: 0, y: reduce ? 0 : 12 }}
 				whileInView={{ opacity: 1, y: 0 }}
 				viewport={{ once: true, amount: 0.3 }}
@@ -181,7 +185,7 @@ export function InboxCell() {
 						return (
 							<motion.span
 								key={badge.label}
-								animate={reduce ? undefined : { y: [0, -5, 0] }}
+								animate={reduce || !inView ? undefined : { y: [0, -5, 0] }}
 								transition={{
 									duration: 4.2,
 									repeat: Infinity,

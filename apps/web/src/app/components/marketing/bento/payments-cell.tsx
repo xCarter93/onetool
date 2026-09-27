@@ -203,7 +203,7 @@ export function PaymentsCell() {
 						return (
 							<motion.span
 								key={badge.label}
-								animate={reduce ? undefined : { y: [0, -5, 0] }}
+								animate={reduce || !inView ? undefined : { y: [0, -5, 0] }}
 								transition={{
 									duration: 4.2,
 									repeat: Infinity,

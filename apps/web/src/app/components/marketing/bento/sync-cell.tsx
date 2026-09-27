@@ -1,6 +1,6 @@
 "use client";
-import { useState } from "react";
-import { motion, useReducedMotion } from "motion/react";
+import { useRef, useState } from "react";
+import { motion, useInView, useReducedMotion } from "motion/react";
 import type { LucideIcon } from "lucide-react";
 import { BookOpen, CreditCard, ReceiptText, Undo2, Users } from "lucide-react";
 import { BentoCard } from "./bento-card";
@@ -26,6 +26,9 @@ const ease = [0.22, 1, 0.36, 1] as const;
 
 export function SyncCell() {
 	const reduce = useReducedMotion();
+	const stageRef = useRef<HTMLDivElement>(null);
+	const inView = useInView(stageRef, { margin: "25% 0px" });
+	const live = !reduce && inView;
 	const [hovered, setHovered] = useState<number | null>(null);
 	const active = hovered === null ? null : sources[hovered];
 	return (
@@ -36,6 +39,7 @@ export function SyncCell() {
 			/>
 
 			<motion.div
+				ref={stageRef}
 				initial={{ opacity: 0, y: reduce ? 0 : 12 }}
 				whileInView={{ opacity: 1, y: 0 }}
 				viewport={{ once: true, amount: 0.3 }}
@@ -103,7 +107,7 @@ export function SyncCell() {
 												: "text-(--rule)"
 									}`}
 								/>
-								{!reduce && hovered === null && (
+								{live && hovered === null && (
 									<motion.path
 										d={d}
 										fill="none"
@@ -160,7 +164,7 @@ export function SyncCell() {
 						vectorEffect="non-scaling-stroke"
 						className="text-(--rule-2)"
 					/>
-					{!reduce && (
+					{live && (
 						<motion.line
 							x1={1}
 							y1={0}
@@ -201,7 +205,7 @@ export function SyncCell() {
 						<motion.div
 							initial={{ scaleX: reduce ? 0.72 : 0.08 }}
 							animate={
-								reduce
+								!live
 									? undefined
 									: active
 										? { scaleX: 1 }
