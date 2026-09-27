@@ -68,7 +68,9 @@ export function useCreateItems(): CreateMenuItem[] {
 		const open = (label: string, href: string) => () =>
 			onlineAction(label, () => router.push(href as Href));
 		const items: CreateMenuItem[] = [];
-		if (can("quotes", "modify")) {
+		// Quotes and projects need a client picked, which needs client access.
+		const canPickClient = can("clients", "view");
+		if (can("quotes", "modify") && canPickClient) {
 			items.push({ key: "quote", label: "New quote", symbol: "doc.text", run: open("New quote", "/quote/new") });
 		}
 		if (can("clients", "modify")) {
@@ -77,7 +79,7 @@ export function useCreateItems(): CreateMenuItem[] {
 		if (can("tasks", "modify")) {
 			items.push({ key: "task", label: "New task", symbol: "checklist", run: open("New task", "/tasks/form") });
 		}
-		if (can("projects", "modify")) {
+		if (can("projects", "modify") && canPickClient) {
 			items.push({ key: "project", label: "New project", symbol: "folder", run: open("New project", "/project/new") });
 		}
 		return items;

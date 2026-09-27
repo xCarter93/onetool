@@ -25,6 +25,7 @@ import { utcMsFromDateId, todayDateId, dateIdFromUtcMs } from "@/lib/date";
 import { recordRecentView } from "@/lib/recents";
 import { formatTaskDate } from "@/lib/work-search";
 import { useCachedQuery } from "@/lib/offline/useCachedQuery";
+import { canWith } from "@/lib/use-permissions";
 import { saveOffline, useOnlineAction, useOpenOps } from "@/lib/offline/hooks";
 import { overlayTaskOps, planTaskUpdate } from "@/lib/offline/field-patch";
 import { CreateSheet, SheetActions, SheetField, SheetInput } from "@/components/sheets/create-sheet";
@@ -165,7 +166,12 @@ export default function TaskFormSheet() {
 	}, [recentsScope, recentId, recentTitle, recentSub]);
 
 	// Queries
-	const clients = useCachedQuery(api.clients.list, {});
+	const perms = useCachedQuery(api.permissions.myPermissions, {});
+	// A role without client access can only file internal tasks; clients.list would throw.
+	const viewClients = canWith(perms, "clients");
+	const clientsLocked = perms !== undefined && !viewClients;
+	if (clientsLocked && !isEdit && type === "external") setType("internal");
+	const clients = useCachedQuery(api.clients.list, viewClients ? {} : "skip");
 	const projects = useCachedQuery(
 		api.projects.list,
 		clientId ? { clientId: clientId as Id<"clients"> } : "skip"
@@ -394,22 +400,24 @@ export default function TaskFormSheet() {
 				</View>
 			) : (
 				<>
-					<SheetField label="Type">
-						<FieldMenu
-							title="Task type"
-							value={type}
-							options={TYPE_OPTIONS}
-							label={labelFor(TYPE_OPTIONS, type, "External")}
-							onSelect={(next) => {
-								const nextType = next as TaskType;
-								setType(nextType);
-								if (nextType === "internal") {
-									setClientId("");
-									setProjectId("");
-								}
-							}}
-						/>
-					</SheetField>
+					{clientsLocked ? null : (
+						<SheetField label="Type">
+							<FieldMenu
+								title="Task type"
+								value={type}
+								options={TYPE_OPTIONS}
+								label={labelFor(TYPE_OPTIONS, type, "External")}
+								onSelect={(next) => {
+									const nextType = next as TaskType;
+									setType(nextType);
+									if (nextType === "internal") {
+										setClientId("");
+										setProjectId("");
+									}
+								}}
+							/>
+						</SheetField>
+					)}
 
 					<SheetField label="Title" error={titleTouched && !title.trim() ? "Title is required." : null}>
 						<SheetInput

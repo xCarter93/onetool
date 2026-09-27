@@ -1,7 +1,9 @@
 import React from "react";
 import { StyleSheet, View } from "react-native";
 import { ConvexError } from "convex/values";
+import { router } from "expo-router";
 import { ShieldOff } from "lucide-react-native";
+import { Button } from "@/components/ui/button";
 import { EmptyPanel, GUTTER } from "@/components/canvas";
 
 export function isForbidden(error: unknown): boolean {
@@ -18,6 +20,7 @@ function NoAccess() {
 				icon={ShieldOff}
 				title="No access"
 				body="Your role doesn't include this. Ask an admin to update your access."
+				action={<Button title="Go to Today" onPress={() => router.dismissTo("/")} />}
 			/>
 		</View>
 	);

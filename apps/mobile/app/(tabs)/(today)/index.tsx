@@ -39,8 +39,7 @@ import {
 import { localDayStartMs, utcDayStartMs } from "@/lib/date";
 import { DAY_MS } from "@/components/calendar/dateUtils";
 import { useDayScope } from "@/lib/useDayScope";
-import { canWith } from "@/lib/use-permissions";
-import type { PermissionObject } from "@onetool/backend/convex/lib/permissionKeys";
+import { useCachedCan } from "@/lib/use-permissions";
 import { useScheduleView } from "@/lib/useScheduleView";
 
 const TASK_FORM: Href = "/tasks/form" as Href;
@@ -134,9 +133,8 @@ export default function TodayScreen({
 		startDate: days[0],
 		endDate: windowEndMs,
 	});
-	// These queries throw for a role without view access; cached so the gate holds offline.
-	const perms = useCachedQuery(api.permissions.myPermissions, {});
-	const canView = (object: PermissionObject) => canWith(perms, object);
+	// These queries throw for a role without view access.
+	const canView = useCachedCan();
 	// Spillover predates any window, so it needs its own query.
 	const overdue = useCachedQuery(api.tasks.getOverdue, canView("tasks") ? {} : "skip");
 	// Only used to name the overdue rows — getOverdue returns raw task docs, with

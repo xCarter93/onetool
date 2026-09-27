@@ -33,7 +33,7 @@ import {
 } from "expo-router";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { Building2, CircleCheck, FileText, Folder, History, Receipt, SearchX, ShieldOff } from "lucide-react-native";
-import { canWith } from "@/lib/use-permissions";
+import { useCachedCan } from "@/lib/use-permissions";
 import type { PermissionObject } from "@onetool/backend/convex/lib/permissionKeys";
 import {
 	EmptyPanel,
@@ -397,9 +397,9 @@ export default function WorkScreen({
 	const resting = !searching && kind === null;
 	// Clients are also the meta line ("Acme · PRJ-7") for the other three kinds,
 	// so one subscription serves both the client browse list and their names.
-	// Browse lists throw for a role without view access; cached so the gate holds offline.
-	const perms = useCachedQuery(api.permissions.myPermissions, {});
-	const canBrowse = (k: WorkChipKind) => canWith(perms, KIND_PERMISSION[k]);
+	// Browse lists throw for a role without view access.
+	const can = useCachedCan();
+	const canBrowse = (k: WorkChipKind) => can(KIND_PERMISSION[k]);
 	const browsable = browseKind !== null && canBrowse(browseKind);
 	const wantsClients =
 		browsable && browseKind !== "task" && canBrowse("client")

@@ -1,7 +1,8 @@
 import { api } from "@onetool/backend/convex/_generated/api";
 import { useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
-import { useMemo } from "react";
+import { useCallback, useMemo } from "react";
+import { useCachedQuery } from "@/lib/offline/useCachedQuery";
 import {
 	levelAtLeast,
 	type AccessLevel,
@@ -37,4 +38,16 @@ export function usePermissions() {
 			isLoading: data === undefined,
 		};
 	}, [data]);
+}
+
+/**
+ * `can` from the offline cache, for gating queries that throw FORBIDDEN. The
+ * live hook reads false while offline, which would blank cached screens.
+ */
+export function useCachedCan() {
+	const data = useCachedQuery(api.permissions.myPermissions, {});
+	return useCallback(
+		(object: PermissionObject, level: RequiredLevel = "view") => canWith(data, object, level),
+		[data]
+	);
 }

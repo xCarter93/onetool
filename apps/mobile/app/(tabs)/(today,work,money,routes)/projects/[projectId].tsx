@@ -23,7 +23,7 @@ import { formatCurrency } from "@/lib/format";
 import { appleMapsAddressUrl, appleMapsUrl } from "@/lib/route-run";
 import { openExternal } from "@/lib/open-external";
 import { recordRecentView } from "@/lib/recents";
-import { usePermissions } from "@/lib/use-permissions";
+import { useCachedCan, usePermissions } from "@/lib/use-permissions";
 import { PaneHeader } from "@/components/ipad/pane-header";
 import { useShellNav } from "@/lib/shell-nav";
 import { IdentityBlock, IdentityMeta } from "@/components/identity-block";
@@ -173,14 +173,19 @@ export function ProjectDetailBody({
 		api.projects.get,
 		projectId ? { id: projectId as Id<"projects"> } : "skip"
 	);
-	const clients = useCachedQuery(api.clients.list, {});
+	// A member can hold a project without client or money access; those queries throw.
+	const canView = useCachedCan();
+	const viewClients = canView("clients");
+	const viewQuotes = canView("quotes");
+	const viewInvoices = canView("invoices");
+	const clients = useCachedQuery(api.clients.list, viewClients ? {} : "skip");
 	const quotes = useCachedQuery(
 		api.quotes.list,
-		projectId ? { projectId: projectId as Id<"projects"> } : "skip"
+		projectId && viewQuotes ? { projectId: projectId as Id<"projects"> } : "skip"
 	);
 	const invoices = useCachedQuery(
 		api.invoices.list,
-		projectId ? { projectId: projectId as Id<"projects"> } : "skip"
+		projectId && viewInvoices ? { projectId: projectId as Id<"projects"> } : "skip"
 	);
 	const tasks = useCachedQuery(
 		api.tasks.list,
@@ -191,12 +196,12 @@ export function ProjectDetailBody({
 	const contacts =
 		useCachedQuery(
 			api.clientContacts.listByClient,
-			project ? { clientId: project.clientId } : "skip"
+			project && viewClients ? { clientId: project.clientId } : "skip"
 		) ?? [];
 	const properties =
 		useCachedQuery(
 			api.clientProperties.listByClient,
-			project ? { clientId: project.clientId } : "skip"
+			project && viewClients ? { clientId: project.clientId } : "skip"
 		) ?? [];
 
 	// Queued field patches for this project, overlaid on the loaded doc so the
@@ -431,8 +436,12 @@ export function ProjectDetailBody({
 
 	const tabs: UnderlineTab<ProjectTab>[] = [
 		{ value: "overview", label: "Overview" },
-		{ value: "quotes", label: "Quotes", count: quotes?.length ?? 0 },
-		{ value: "invoices", label: "Invoices", count: invoices?.length ?? 0 },
+		...(viewQuotes
+			? [{ value: "quotes" as const, label: "Quotes", count: quotes?.length ?? 0 }]
+			: []),
+		...(viewInvoices
+			? [{ value: "invoices" as const, label: "Invoices", count: invoices?.length ?? 0 }]
+			: []),
 	];
 
 	return (
@@ -453,18 +462,20 @@ export function ProjectDetailBody({
 					statusKey={status}
 					name={displayProject.title}
 					meta={
-						<Pressable
-							onPress={() =>
-								shellNav
-									? shellNav.open({ kind: "client", id: project.clientId })
-									: router.push(`/clients/${project.clientId}`)
-							}
-							hitSlop={8}
-							accessibilityRole="button"
-							accessibilityLabel={`View client ${clientName ?? ""}`.trim()}
-						>
-							<IdentityMeta>{clientName ?? "View client"}</IdentityMeta>
-						</Pressable>
+						viewClients ? (
+							<Pressable
+								onPress={() =>
+									shellNav
+										? shellNav.open({ kind: "client", id: project.clientId })
+										: router.push(`/clients/${project.clientId}`)
+								}
+								hitSlop={8}
+								accessibilityRole="button"
+								accessibilityLabel={`View client ${clientName ?? ""}`.trim()}
+							>
+								<IdentityMeta>{clientName ?? "View client"}</IdentityMeta>
+							</Pressable>
+						) : undefined
 					}
 					renderStatus={(badge) => (
 						<FieldMenu
@@ -490,14 +501,14 @@ export function ProjectDetailBody({
 						{
 							icon: FileText,
 							label: "Quotes",
-							value: String(quotes?.length ?? 0),
-							onPress: () => setActiveTab("quotes"),
+							value: viewQuotes ? String(quotes?.length ?? 0) : "—",
+							onPress: viewQuotes ? () => setActiveTab("quotes") : undefined,
 						},
 						{
 							icon: Receipt,
 							label: "Invoices",
-							value: String(invoices?.length ?? 0),
-							onPress: () => setActiveTab("invoices"),
+							value: viewInvoices ? String(invoices?.length ?? 0) : "—",
+							onPress: viewInvoices ? () => setActiveTab("invoices") : undefined,
 						},
 					]}
 				/>

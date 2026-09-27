@@ -9,6 +9,7 @@ import { GUTTER, EmptyPanel, PageHeader, RecordRow, CANVAS_HEADER as canvasHeade
 import { SegmentedToggle } from "@/components/ui";
 import { fontFamily, radii, useTokens } from "@/lib/theme";
 import { useCachedQuery } from "@/lib/offline/useCachedQuery";
+import { useCachedCan } from "@/lib/use-permissions";
 
 type Project = Doc<"projects">;
 type FilterValue = "all" | "active" | "in-progress" | "completed";
@@ -52,9 +53,12 @@ export default function ProjectsScreen({
 	const [filter, setFilter] = useState<FilterValue>("all");
 
 	const projects = useCachedQuery(api.projects.list, {});
-	const clients = useCachedQuery(api.clients.list, {});
+	const canView = useCachedCan();
+	// Names only; a role without client access still lists its projects.
+	const viewClients = canView("clients");
+	const clients = useCachedQuery(api.clients.list, viewClients ? {} : "skip");
 
-	const loading = projects === undefined || clients === undefined;
+	const loading = projects === undefined || (viewClients && clients === undefined);
 
 	// Single org-scoped clients query → name map. No per-row clients.get (N+1).
 	const clientNameById = useMemo(

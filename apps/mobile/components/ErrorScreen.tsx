@@ -1,5 +1,5 @@
 import { StyleSheet, Text, View } from "react-native";
-import type { ErrorBoundaryProps } from "expo-router";
+import { router, type ErrorBoundaryProps } from "expo-router";
 import { ConvexError } from "convex/values";
 import { ShieldOff, TriangleAlert } from "lucide-react-native";
 import { Button } from "@/components/ui/button";
@@ -28,7 +28,18 @@ export function ErrorScreen({ error, retry }: ErrorBoundaryProps) {
 				</View>
 				<Text style={[styles.title, { color: tokens.ink }]}>{title}</Text>
 				<Text style={[styles.message, { color: tokens.sub }]}>{message}</Text>
-				<Button title="Try again" onPress={() => void retry()} style={styles.button} />
+				{forbidden ? null : (
+					<Button title="Try again" onPress={() => void retry()} style={styles.button} />
+				)}
+				<Button
+					title="Go to Today"
+					variant={forbidden ? "primary" : "secondary"}
+					onPress={() => {
+						router.dismissTo("/");
+						void retry();
+					}}
+					style={forbidden ? styles.button : styles.buttonNext}
+				/>
 			</View>
 		</View>
 	);
@@ -71,6 +82,9 @@ const styles = StyleSheet.create({
 	},
 	button: {
 		marginTop: 10,
+		alignSelf: "stretch",
+	},
+	buttonNext: {
 		alignSelf: "stretch",
 	},
 });
