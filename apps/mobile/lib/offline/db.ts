@@ -29,6 +29,17 @@ export function getDb(): SQLite.SQLiteDatabase {
 	return db;
 }
 
+type WriteTask = Parameters<SQLite.SQLiteDatabase["withExclusiveTransactionAsync"]>[0];
+
+let writeQueue: Promise<void> = Promise.resolve();
+
+// Each exclusive transaction opens its own connection, so overlapping ones fail with SQLITE_BUSY.
+function writeTransaction(task: WriteTask): Promise<void> {
+	const run = writeQueue.then(() => getDb().withExclusiveTransactionAsync(task));
+	writeQueue = run.catch(() => {});
+	return run;
+}
+
 function migrate(conn: SQLite.SQLiteDatabase) {
 	conn.execSync("PRAGMA journal_mode = WAL");
 	const row = conn.getFirstSync<{ user_version: number }>("PRAGMA user_version");
@@ -144,7 +155,7 @@ export type NewFile = Omit<OutboxFile, "opId">;
 
 export async function insertOp(op: NewOp, files: NewFile[]): Promise<StoredOp> {
 	let id = 0;
-	await getDb().withExclusiveTransactionAsync(async (txn) => {
+	await writeTransaction(async (txn) => {
 		const res = await txn.runAsync(
 			`INSERT INTO outbox (partition, chain_key, operation, args, idempotency_key, captured_at, status,
 				attempts, next_attempt_at, file_bytes, replay_confirmed, display)
@@ -177,7 +188,7 @@ export async function insertOp(op: NewOp, files: NewFile[]): Promise<StoredOp> {
 }
 
 export async function saveOp(op: StoredOp): Promise<void> {
-	await getDb().withExclusiveTransactionAsync(async (txn) => {
+	await writeTransaction(async (txn) => {
 		await txn.runAsync(
 			`UPDATE outbox SET status = ?, attempts = ?, next_attempt_at = ?, replay_confirmed = ?,
 				last_error = ?, result = ?, resolved_at = ?, synced_at = ?
@@ -220,26 +231,26 @@ export function loadFiles(opId: number): OutboxFile[] {
 }
 
 export async function setFileStorageId(fileId: string, storageId: string): Promise<void> {
-	await getDb().withExclusiveTransactionAsync(async (txn) => {
+	await writeTransaction(async (txn) => {
 		await txn.runAsync("UPDATE outbox_files SET storage_id = ? WHERE id = ?", [storageId, fileId]);
 	});
 }
 
 /** Deletes finished ops (and returns their file paths so the caller can remove them). */
 export async function pruneOps(partition: string, syncedBefore: number, resolvedBefore: number): Promise<string[]> {
-	const conn = getDb();
-	const stale = conn.getAllSync<{ id: number }>(
-		`SELECT id FROM outbox WHERE partition = ? AND
-			((status = 'synced' AND synced_at < ?) OR (resolved_at IS NOT NULL AND resolved_at < ?))`,
-		[partition, syncedBefore, resolvedBefore],
-	);
-	if (stale.length === 0) return [];
-	const ids = stale.map((r) => r.id);
-	const marks = ids.map(() => "?").join(",");
-	const paths = conn
-		.getAllSync<{ path: string }>(`SELECT path FROM outbox_files WHERE op_id IN (${marks})`, ids)
-		.map((r) => r.path);
-	await conn.withExclusiveTransactionAsync(async (txn) => {
+	let paths: string[] = [];
+	await writeTransaction(async (txn) => {
+		const stale = await txn.getAllAsync<{ id: number }>(
+			`SELECT id FROM outbox WHERE partition = ? AND
+				((status = 'synced' AND synced_at < ?) OR (resolved_at IS NOT NULL AND resolved_at < ?))`,
+			[partition, syncedBefore, resolvedBefore],
+		);
+		if (stale.length === 0) return;
+		const ids = stale.map((r) => r.id);
+		const marks = ids.map(() => "?").join(",");
+		paths = (await txn.getAllAsync<{ path: string }>(`SELECT path FROM outbox_files WHERE op_id IN (${marks})`, ids)).map(
+			(r) => r.path,
+		);
 		await txn.runAsync(`DELETE FROM outbox_files WHERE op_id IN (${marks})`, ids);
 		await txn.runAsync(`DELETE FROM outbox WHERE id IN (${marks})`, ids);
 	});
@@ -257,7 +268,7 @@ export function readCache(partition: string, key: string): CacheEntry | null {
 }
 
 export async function writeCache(partition: string, key: string, value: unknown, fetchedAt: number): Promise<void> {
-	await getDb().withExclusiveTransactionAsync(async (txn) => {
+	await writeTransaction(async (txn) => {
 		await txn.runAsync(
 			`INSERT INTO query_cache (partition, key, value, fetched_at) VALUES (?, ?, ?, ?)
 			ON CONFLICT (partition, key) DO UPDATE SET value = excluded.value, fetched_at = excluded.fetched_at`,
@@ -280,14 +291,14 @@ export function lastOnlineAt(partition: string): number | null {
 }
 
 export async function pruneCache(olderThan: number): Promise<void> {
-	await getDb().withExclusiveTransactionAsync(async (txn) => {
+	await writeTransaction(async (txn) => {
 		await txn.runAsync("DELETE FROM query_cache WHERE fetched_at < ?", [olderThan]);
 	});
 }
 
 /** Removes every cached read and finished op for the partition; open ops are kept. */
 export async function purgePartitionCache(partition: string): Promise<void> {
-	await getDb().withExclusiveTransactionAsync(async (txn) => {
+	await writeTransaction(async (txn) => {
 		await txn.runAsync("DELETE FROM query_cache WHERE partition = ?", [partition]);
 		await txn.runAsync("DELETE FROM partition_meta WHERE partition = ?", [partition]);
 	});
@@ -295,11 +306,11 @@ export async function purgePartitionCache(partition: string): Promise<void> {
 
 /** Deletes a partition's outbox entirely (explicit user discard on sign-out). */
 export async function deletePartitionOutbox(partition: string): Promise<string[]> {
-	const conn = getDb();
-	const paths = conn
-		.getAllSync<{ path: string }>("SELECT path FROM outbox_files WHERE partition = ?", [partition])
-		.map((r) => r.path);
-	await conn.withExclusiveTransactionAsync(async (txn) => {
+	let paths: string[] = [];
+	await writeTransaction(async (txn) => {
+		paths = (
+			await txn.getAllAsync<{ path: string }>("SELECT path FROM outbox_files WHERE partition = ?", [partition])
+		).map((r) => r.path);
 		await txn.runAsync("DELETE FROM outbox_files WHERE partition = ?", [partition]);
 		await txn.runAsync("DELETE FROM outbox WHERE partition = ?", [partition]);
 	});
