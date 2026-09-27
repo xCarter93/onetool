@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { StatusBar } from "expo-status-bar";
-import { usePathname, useRouter, type Href } from "expo-router";
+import { usePathname, useRootNavigationState, useRouter, type Href } from "expo-router";
 import {
 	StackActions,
 	type NavigationHelpers,
@@ -84,6 +84,18 @@ export function useCreateItems(): CreateMenuItem[] {
 	}, [can, isLoading, onlineAction, router]);
 }
 
+type AnyState = { routes: readonly { key: string; state?: unknown }[] };
+
+// The tab state handed to `layout` omits the tab stacks' nested state; the root tree has it.
+function nestedStateFor(root: AnyState | undefined, routeKey: string): NavigationState | undefined {
+	for (const route of root?.routes ?? []) {
+		if (route.key === routeKey) return route.state as NavigationState | undefined;
+		const found = nestedStateFor(route.state as AnyState | undefined, routeKey);
+		if (found) return found;
+	}
+	return undefined;
+}
+
 function formatNotchDate(orgDayUtcMs: number): string {
 	return new Date(orgDayUtcMs).toLocaleDateString("en-US", {
 		weekday: "short",
@@ -109,11 +121,12 @@ export function PhoneFrame({ state, navigation, children }: FrameProps) {
 	const keyboardUp = useKeyboardState((k) => k.isVisible);
 	const typing = composerFocused && keyboardUp;
 
+	const rootState = useRootNavigationState() as AnyState | undefined;
 	const tabRoute = state.routes[state.index];
 	const tabName = tabRoute.name as TabRoute;
-	const stack = tabRoute.state as NavigationState | undefined;
-	const depth = stack?.routes.length ?? 1;
-	const leafKey = stack ? stack.routes[stack.index ?? stack.routes.length - 1]?.key : undefined;
+	const stack = nestedStateFor(rootState, tabRoute.key);
+	const depth = stack ? stack.index + 1 : 1;
+	const leafKey = stack?.routes[stack.index]?.key;
 	const focusedChrome = useChromeFor(leafKey);
 	const chrome = focusedChrome?.chrome;
 	const chromeKey = focusedChrome?.key;
@@ -146,7 +159,7 @@ export function PhoneFrame({ state, navigation, children }: FrameProps) {
 	const openSearch = () => {
 		requestSearchFocus();
 		const work = state.routes.find((r) => r.name === "(work)");
-		const workStack = work?.state as NavigationState | undefined;
+		const workStack = work ? nestedStateFor(rootState, work.key) : undefined;
 		if (workStack && workStack.routes.length > 1) {
 			navigation.dispatch({ ...StackActions.popToTop(), target: workStack.key });
 		}
