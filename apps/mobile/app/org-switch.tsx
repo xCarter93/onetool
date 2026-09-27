@@ -79,8 +79,8 @@ export default function OrgSwitchSheet() {
 			// Settle so Clerk finishes updating before the ConvexProvider key-reinit fires
 			await new Promise((resolve) => setTimeout(resolve, 500));
 
-			// Dismiss the sheet — ConvexProvider re-scopes queries via its key prop
-			router.back();
+			// Land on Today: every role can see it, unlike whatever screen was open.
+			router.dismissTo("/");
 		} catch (error) {
 			console.error("Failed to switch organization:", error);
 			Alert.alert("Error", "Failed to switch organization. Please try again.", [

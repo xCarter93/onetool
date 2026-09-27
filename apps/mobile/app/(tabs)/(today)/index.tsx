@@ -39,6 +39,8 @@ import {
 import { localDayStartMs, utcDayStartMs } from "@/lib/date";
 import { DAY_MS } from "@/components/calendar/dateUtils";
 import { useDayScope } from "@/lib/useDayScope";
+import { canWith } from "@/lib/use-permissions";
+import type { PermissionObject } from "@onetool/backend/convex/lib/permissionKeys";
 import { useScheduleView } from "@/lib/useScheduleView";
 
 const TASK_FORM: Href = "/tasks/form" as Href;
@@ -132,13 +134,25 @@ export default function TodayScreen({
 		startDate: days[0],
 		endDate: windowEndMs,
 	});
+	// These queries throw for a role without view access; cached so the gate holds offline.
+	const perms = useCachedQuery(api.permissions.myPermissions, {});
+	const canView = (object: PermissionObject) => canWith(perms, object);
 	// Spillover predates any window, so it needs its own query.
-	const overdue = useCachedQuery(api.tasks.getOverdue, {});
+	const overdue = useCachedQuery(api.tasks.getOverdue, canView("tasks") ? {} : "skip");
 	// Only used to name the overdue rows — getOverdue returns raw task docs, with
 	// no client name of their own. Names-only keeps this off Work's clients.list.
-	const clients = useCachedQuery(api.clients.listNamesForOrg, {});
-	const sentQuotes = useCachedQuery(api.quotes.list, { status: "sent" });
-	const overdueInvoices = useCachedQuery(api.invoices.getOverdue, {});
+	const clients = useCachedQuery(
+		api.clients.listNamesForOrg,
+		canView("clients") ? {} : "skip",
+	);
+	const sentQuotes = useCachedQuery(
+		api.quotes.list,
+		canView("quotes") ? { status: "sent" } : "skip",
+	);
+	const overdueInvoices = useCachedQuery(
+		api.invoices.getOverdue,
+		canView("invoices") ? {} : "skip",
+	);
 	// Scope plumbing: me = current user's Convex id; org members drive both the
 	// toggle's visibility (solo orgs never see it) and Team-mode assignee chips.
 	const me = useCachedQuery(api.users.current, {});
@@ -403,13 +417,13 @@ export default function TodayScreen({
 					{
 						icon: AlertCircle,
 						label: "Overdue",
-						value: formatCurrency(overdueTotal),
+						value: canView("invoices") ? formatCurrency(overdueTotal) : "—",
 						tone: overdueTotal > 0 ? "danger" : "default",
 					},
 					{
 						icon: FileText,
 						label: "Awaiting",
-						value: String(sentQuotes?.length ?? 0),
+						value: canView("quotes") ? String(sentQuotes?.length ?? 0) : "—",
 					},
 				]}
 				footer={
