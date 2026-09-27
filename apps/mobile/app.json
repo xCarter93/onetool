@@ -156,7 +156,8 @@
                 "name": "RecaptchaInterop",
                 "modular_headers": true
               }
-            ]
+            ],
+            "deploymentTarget": "26.0"
           }
         }
       ],

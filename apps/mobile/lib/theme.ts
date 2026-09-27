@@ -103,30 +103,33 @@ export const tokens = {
 	fg: "#17181a",
 	foreground: "#17181a",
 	ink: "#17181a", // 17.8:1 — primary
-	sub: "#5f646b", // 5.96 / 5.56 — secondary, metadata
-	muted2: "#5f646b",
-	faint: "#6b7075", // 5.00 / 4.66 — tertiary: eyebrows, group labels
-	mutedForeground: "#5f646b",
+	// Web workspace muted-fg: 5.96 on card, 5.26 on canvas, 4.94 on secondary.
+	sub: "#586573",
+	muted2: "#586573",
+	// #6b7075 drops to 4.41 on the #eef1f5 canvas, so tertiary text shares `sub`.
+	faint: "#586573",
+	mutedForeground: "#586573",
 	warningFg: "#b45309",
 	/** NON-TEXT decoration only (chevrons redundant with a labelled row). Never
 	 * put text in this color — it is 2.6:1. */
 	faintDecor: "#9aa0a6",
 
 	// Surfaces
-	bg: "#f6f7f8",
-	background: "#f6f7f8",
+	// Web workspace canvas (`--workspace-ground`) and its panel/segment fills.
+	bg: "#eef1f5",
+	background: "#eef1f5",
 	card: "#ffffff",
 	popover: "#ffffff",
-	muted: "#f6f7f8",
-	secondary: "#eceef0", // segmented track
+	muted: "#eef1f5",
+	secondary: "#e6eaf0", // selected segment, count chips, table heads
 	sidebar: "#ffffff",
-	surface: "#f6f7f8",
+	surface: "#eef1f5",
 
-	// Lines
-	line: "#e4e6e8", // card / control borders
-	lineSoft: "#edeff1", // in-card row dividers (hairlines)
-	border: "#e4e6e8",
-	input: "#e4e6e8",
+	// Lines (web workspace `--border` / `--workspace-rule` / `--input`)
+	line: "#cbd3de", // panel / control borders
+	lineSoft: "#dce5ec", // in-panel row dividers (hairlines)
+	border: "#cbd3de",
+	input: "#8592a3", // control outlines (3.16:1 on card)
 	ring: "#0073ad", // web `--ring` parity
 	// Control boundaries and information-carrying dots need 3:1. The mockup's
 	// #c8cdd2 is 1.6:1 — an effectively invisible checkbox.
@@ -149,6 +152,46 @@ export const tokens = {
 export function useTokens() {
 	return tokens;
 }
+
+// ----------------------------------------------------------------------------
+// Picture frame — web's graphite rail around a rounded canvas card
+// (workspace-theme.css). The rail owns the status bar, header, sync line,
+// context tier and tab row; screens render inside the canvas. Dark-mode values
+// live beside the light ones so the swap is a lookup, not a hunt.
+// Rail text tiers on `rail`: text 13.3:1, muted 7.8:1, accent 8.5:1.
+// ----------------------------------------------------------------------------
+export const frame = {
+	rail: "#242424",
+	railDark: "#151515",
+	railRaised: "#363636", // hover/active fill, composer field, secondary tray buttons
+	railBorder: "#484848",
+	railText: "#ededed",
+	railMuted: "#b8b8b8",
+	/** Rail-scoped primary (web `.workspace-chrome --primary`): active tab glyph,
+	 *  sparkle, filled tray action. Pairs with `railAccentInk` text (9.8:1). */
+	railAccent: "#65caff",
+	railAccentInk: "#171717",
+	/** Notification dot, ringed with `rail` so it reads on the button. */
+	railAlert: "#fb2c36",
+	/** Status dots on the rail (non-text, 3:1+). */
+	railSuccess: "#4ade80",
+	railWarning: "#fbbf24",
+	railDanger: "#f87171",
+	canvas: tokens.bg,
+	canvasRadius: 16,
+	/** Canvas inset from the screen edge, so the rail shows down both sides. */
+	canvasInset: 8,
+	/** Top notch: two 26×31 ogee curves around a rail-colored label. */
+	notchHeight: 31,
+	notchCurve: 26,
+	headerHeight: 44,
+	headerButton: 36,
+	/** Compact tab row and the tier above it. */
+	tabRowHeight: 36,
+	tierHeight: 46,
+	/** 2px active indicator under a selected segment or tab (decor only). */
+	indicator: tokens.brand,
+} as const;
 
 // ----------------------------------------------------------------------------
 // 3.0 premium chrome — ink command hero + floating glass dock. Values are the
@@ -332,30 +375,30 @@ export const spacing = {
 } as const;
 
 // ----------------------------------------------------------------------------
-// Radii — the visual-tightening core. Cards 12, controls 8; nothing above 20
+// Radii — web workspace parity: panels 8, controls 4; nothing above 20
 // except pills. The old soft 20/24/28 values are re-pointed, not deleted, so
 // existing callers tighten without edits.
 // ----------------------------------------------------------------------------
 export const radii = {
 	xs: 4,
-	sm: 6,
-	md: 8,
+	sm: 4,
+	md: 4,
 	lg: 8,
-	xl: 10,
-	"2xl": 12,
-	"3xl": 12,
-	"4xl": 14,
-	// semantic aliases — prefer these in new code
-	card: 12,
-	ctrl: 8,
+	xl: 8,
+	"2xl": 8,
+	"3xl": 8,
+	"4xl": 8,
+	// semantic aliases — prefer these in new code. Web: controls 4, panels 8.
+	card: 8,
+	ctrl: 4,
 	chip: 999,
 	pill: 999,
 	sheet: 20, // bottom-sheet top corners
 	fab: 18,
 	// legacy names (were 20 / 14 / 28)
-	r: 12,
-	rSm: 10,
-	rLg: 12,
+	r: 8,
+	rSm: 4,
+	rLg: 8,
 } as const;
 
 // Legacy `radius` export — now a pure alias of `radii` so the two maps can
