@@ -5,17 +5,10 @@ import {
 	Text,
 	View,
 	type DimensionValue,
-	type StyleProp,
-	type ViewStyle,
 } from "react-native";
-import type { LucideIcon } from "lucide-react-native";
-import { MessageSquare } from "lucide-react-native";
-import { fontFamily, radii, touch, tracking, type, useTokens } from "@/lib/theme";
-import { Card } from "@/components/ui";
-import {
-	Illustration,
-	type IllustrationName,
-} from "@/components/illustrations";
+import { MenuView } from "@expo/ui/community/menu";
+import { MoreHorizontal, type LucideIcon } from "lucide-react-native";
+import { fontFamily, radii, touch, type, useTokens } from "@/lib/theme";
 
 // Shared chassis for the client + project detail screens. Both used to carry
 // verbatim copies of everything in here.
@@ -25,242 +18,195 @@ export function countSuffix(n: number) {
 }
 
 // ----------------------------------------------------------------------------
-// Section label — uppercase eyebrow with an optional right slot ("View all",
-// "+ New"). Deliberately NOT ui/SectionHeader: that one is the app-wide
-// title-case h3 and belongs to every other screen.
+// Contact chip row — equal outline buttons (Call, Email, Map/Navigate, …)
+// under the identity row, plus a "…" native menu for anything that doesn't
+// fit. Only actions the data already supports are passed in.
 // ----------------------------------------------------------------------------
 
-export function SectionLabel({
-	title,
-	right,
-}: {
-	title: string;
-	right?: React.ReactNode;
-}) {
-	const t = useTokens();
-	return (
-		<View style={styles.sectionLabelRow}>
-			<Text
-				style={[styles.sectionLabelText, { color: t.sub }]}
-				numberOfLines={1}
-			>
-				{title.toUpperCase()}
-			</Text>
-			{right ? <View style={styles.sectionLabelRight}>{right}</View> : null}
-		</View>
-	);
-}
-
-/** Right-slot text link for SectionLabel. Painted 44pt — RN can't hit-test
- * outside the row's own bounds, and the header row is short. */
-export function SectionLink({
-	label,
-	onPress,
-	accessibilityLabel,
-	Icon,
-}: {
-	label: string;
-	onPress: () => void;
-	accessibilityLabel?: string;
-	Icon?: LucideIcon;
-}) {
-	const t = useTokens();
-	return (
-		<Pressable
-			onPress={onPress}
-			accessibilityRole="button"
-			accessibilityLabel={accessibilityLabel ?? label}
-			style={({ pressed }) => [styles.sectionLink, pressed && styles.pressed]}
-		>
-			{Icon ? <Icon size={14} color={t.primarySolid} /> : null}
-			<Text
-				style={[styles.sectionLinkText, { color: t.primarySolid }]}
-				numberOfLines={1}
-			>
-				{label}
-			</Text>
-		</Pressable>
-	);
-}
-
-export function EmptyRow({
-	text,
-	illo,
-}: {
-	text: string;
-	illo: IllustrationName;
-}) {
-	const t = useTokens();
-	return (
-		<View style={styles.empty}>
-			{/* Knockout = the page canvas, so cut-out shapes don't show card-white. */}
-			<Illustration name={illo} size="sm" knockout={t.bg} />
-			<Text style={[styles.emptyText, { color: t.sub }]}>{text}</Text>
-		</View>
-	);
-}
-
-// ----------------------------------------------------------------------------
-// Fact block — the utility card under the project hero. Rows with no data are
-// HIDDEN, never dimmed: the block only exists to be actioned.
-// ----------------------------------------------------------------------------
-
-export interface FactAction {
+export interface ChipAction {
 	key: string;
 	label: string;
 	Icon: LucideIcon;
 	onPress: () => void;
 }
 
-export function FactCard({
-	children,
-	style,
+export function ContactChipRow({
+	chips,
+	overflow = [],
 }: {
-	children: React.ReactNode;
-	style?: StyleProp<ViewStyle>;
+	chips: ChipAction[];
+	overflow?: ChipAction[];
 }) {
-	const rows = React.Children.toArray(children).filter(Boolean);
-	if (rows.length === 0) return null;
+	const t = useTokens();
+	if (chips.length === 0 && overflow.length === 0) return null;
 	return (
-		// Card takes a bare ViewStyle, so the pair is flattened.
-		<Card flush style={StyleSheet.flatten([styles.factCard, style])}>
-			{rows}
-		</Card>
+		<View style={styles.chipRow}>
+			{chips.map((c) => (
+				<Pressable
+					key={c.key}
+					onPress={c.onPress}
+					accessibilityRole="button"
+					accessibilityLabel={c.label}
+					style={({ pressed }) => [
+						styles.chip,
+						{
+							borderColor: t.input,
+							backgroundColor: pressed ? t.secondary : t.card,
+						},
+					]}
+				>
+					<c.Icon size={15} color={t.ink} strokeWidth={2} />
+					<Text style={[styles.chipLabel, { color: t.ink }]} numberOfLines={1}>
+						{c.label}
+					</Text>
+				</Pressable>
+			))}
+			{overflow.length > 0 ? (
+				// The SwiftUI menu host under-measures its RN child, so the visible
+				// square owns the layout and the host is absolutely overlaid on top
+				// (FieldMenu's pattern) — its measurement can't squeeze the siblings.
+				<View collapsable={false} style={styles.chipMoreWrap}>
+					<View
+						style={[
+							styles.chipMore,
+							{ borderColor: t.input, backgroundColor: t.card },
+						]}
+					>
+						<MoreHorizontal size={18} color={t.ink} strokeWidth={2} />
+					</View>
+					<View style={StyleSheet.absoluteFill}>
+						<MenuView
+							onPressAction={({ nativeEvent }) =>
+								overflow.find((o) => o.key === nativeEvent.event)?.onPress()
+							}
+							actions={overflow.map((o) => ({ id: o.key, title: o.label }))}
+						>
+							<View
+								style={StyleSheet.absoluteFill}
+								accessibilityRole="button"
+								accessibilityLabel="More actions"
+							/>
+						</MenuView>
+					</View>
+				</View>
+			) : null}
+		</View>
 	);
 }
 
-export function FactRow({
-	Icon,
-	title,
+// ----------------------------------------------------------------------------
+// Panel rows for a contact or a property — every one gets its own row with
+// its own actions (small 32px outline icon buttons), not just the primary.
+// ----------------------------------------------------------------------------
+
+export function PersonRow({
+	name,
 	sub,
-	actions = [],
+	primary,
+	actions,
 	last,
 }: {
-	Icon: LucideIcon;
-	title: string;
+	name: string;
 	sub?: string;
-	actions?: FactAction[];
+	primary?: boolean;
+	actions: ChipAction[];
 	last?: boolean;
 }) {
 	const t = useTokens();
 	return (
 		<View
 			style={[
-				styles.factRow,
+				styles.personRow,
 				{ borderBottomColor: t.lineSoft, borderBottomWidth: last ? 0 : 1 },
 			]}
 		>
-			<View style={[styles.factGlyph, { backgroundColor: t.secondary }]}>
-				<Icon size={16} color={t.sub} />
-			</View>
-			<View style={styles.factBody}>
-				<Text style={[styles.factTitle, { color: t.ink }]} numberOfLines={1}>
-					{title}
+			<View style={styles.personBody}>
+				<Text style={[styles.personName, { color: t.ink }]} numberOfLines={1}>
+					{primary ? `${name}  ·  Primary` : name}
 				</Text>
 				{sub ? (
-					<Text style={[styles.factSub, { color: t.sub }]} numberOfLines={2}>
+					<Text style={[styles.personSub, { color: t.sub }]} numberOfLines={1}>
 						{sub}
 					</Text>
 				) : null}
 			</View>
-			{actions.map(({ key, label, Icon: ActionIcon, onPress }) => (
+			{actions.map((a) => (
 				<Pressable
-					key={key}
-					onPress={onPress}
+					key={a.key}
+					onPress={a.onPress}
 					accessibilityRole="button"
-					accessibilityLabel={label}
+					accessibilityLabel={a.label}
 					style={({ pressed }) => [
-						styles.factAction,
+						styles.personBtn,
 						{
-							backgroundColor: pressed ? t.frostedBgPressed : t.frostedBg,
-							borderColor: t.frostedBorder,
+							borderColor: t.input,
+							backgroundColor: pressed ? t.secondary : t.card,
 						},
 					]}
 				>
-					<ActionIcon size={17} color={t.frostedInk} />
+					<a.Icon size={15} color={t.ink} strokeWidth={2} />
 				</Pressable>
 			))}
 		</View>
 	);
 }
 
-// ----------------------------------------------------------------------------
-// Progress — a thin linear bar. (The 72pt Ring read as a dashboard ornament on
-// a screen whose job is facts.)
-// ----------------------------------------------------------------------------
-
-export function ProgressBar({
-	done,
-	total,
-	color,
+export function LineRow({
+	title,
+	sub,
+	primary,
+	action,
+	last,
 }: {
-	done: number;
-	total: number;
-	color: string;
+	title: string;
+	sub?: string;
+	primary?: boolean;
+	action?: ChipAction;
+	last?: boolean;
 }) {
 	const t = useTokens();
-	const pct = total > 0 ? Math.round((done / total) * 100) : 0;
 	return (
-		<View style={styles.progress}>
-			<View style={styles.progressLabels}>
-				<Text style={[styles.progressLabel, { color: t.sub }]}>
-					{done} of {total} tasks
+		<View
+			style={[
+				styles.personRow,
+				{ borderBottomColor: t.lineSoft, borderBottomWidth: last ? 0 : 1 },
+			]}
+		>
+			<View style={styles.personBody}>
+				<Text style={[styles.personName, { color: t.ink }]} numberOfLines={1}>
+					{primary ? `${title}  ·  Primary` : title}
 				</Text>
-				<Text style={[styles.progressPct, { color: t.ink }]}>{pct}%</Text>
+				{sub ? (
+					<Text style={[styles.personSub, { color: t.sub }]} numberOfLines={2}>
+						{sub}
+					</Text>
+				) : null}
 			</View>
-			<View
-				style={[styles.progressTrack, { backgroundColor: t.secondary }]}
-				accessibilityRole="progressbar"
-				accessibilityValue={{ now: pct, min: 0, max: 100 }}
-			>
-				<View
-					style={[
-						styles.progressFill,
-						{ width: `${pct}%`, backgroundColor: color },
+			{action ? (
+				<Pressable
+					onPress={action.onPress}
+					accessibilityRole="button"
+					accessibilityLabel={action.label}
+					style={({ pressed }) => [
+						styles.personBtn,
+						{
+							borderColor: t.input,
+							backgroundColor: pressed ? t.secondary : t.card,
+						},
 					]}
-				/>
-			</View>
+				>
+					<action.Icon size={15} color={t.ink} strokeWidth={2} />
+				</Pressable>
+			) : null}
 		</View>
 	);
 }
 
 // ----------------------------------------------------------------------------
-// Team chat — relocated from the old floating FAB; identical on both screens.
+// Loading skeleton — shaped like the new identity/chips/metrics/tabs layout.
 // ----------------------------------------------------------------------------
 
-export function TeamChatButton({
-	onPress,
-	style,
-}: {
-	onPress: () => void;
-	style?: StyleProp<ViewStyle>;
-}) {
-	const t = useTokens();
-	return (
-		<Pressable
-			onPress={onPress}
-			accessibilityRole="button"
-			accessibilityLabel="Open team chat"
-			style={({ pressed }) => [
-				styles.teamChat,
-				{ backgroundColor: t.frostedBg, borderColor: t.frostedBorder },
-				pressed && styles.pressed,
-				style,
-			]}
-		>
-			<MessageSquare size={18} color={t.frostedInk} />
-			<Text style={[styles.teamChatText, { color: t.frostedInk }]}>
-				Team chat
-			</Text>
-		</Pressable>
-	);
-}
-
-// ----------------------------------------------------------------------------
-// Loading skeletons — shaped like each screen's real layout, so they diverge.
-// ----------------------------------------------------------------------------
-
-export function DetailSkeleton({ variant }: { variant: "client" | "project" }) {
+export function DetailSkeleton() {
 	const t = useTokens();
 	const bar = (width: DimensionValue, height: number, marginTop = 0) => (
 		<View
@@ -273,200 +219,87 @@ export function DetailSkeleton({ variant }: { variant: "client" | "project" }) {
 
 	return (
 		<>
-			{/* Editorial hero: name with inline status on the right, meta below. */}
-			<View style={styles.skeletonIdentity}>
-				<View style={styles.skeletonTitleRow}>
-					{bar("55%", 22)}
-					{bar("18%", 11)}
+			<View style={styles.skeletonIdentityRow}>
+				<View style={[styles.skeletonTile, { backgroundColor: t.lineSoft }]} />
+				<View style={styles.skeletonIdentityBody}>
+					{bar("70%", 20)}
+					{bar("45%", 13, 8)}
 				</View>
-				{bar("35%", 11, 8)}
 			</View>
-
-			{variant === "project" ? (
-				<>
-					{/* Fact card + pill pair + progress bar */}
+			<View style={styles.skeletonChips}>
+				{[0, 1, 2].map((i) => (
 					<View
-						style={[
-							styles.skeletonFactCard,
-							{ borderColor: t.line, backgroundColor: t.card },
-						]}
+						key={i}
+						style={[styles.skeletonChip, { backgroundColor: t.lineSoft }]}
 					/>
-					<View style={styles.skeletonPills}>
-						{[0, 1].map((i) => (
-							<View
-								key={i}
-								style={[styles.skeletonPill, { backgroundColor: t.lineSoft }]}
-							/>
-						))}
-					</View>
-					<View
-						style={[styles.skeletonProgress, { backgroundColor: t.lineSoft }]}
-					/>
-				</>
-			) : (
-				// Client: one quiet team-chat pill, then section rows.
-				<View
-					style={[styles.skeletonChatPill, { backgroundColor: t.lineSoft }]}
-				/>
-			)}
-
-			{[0, 1, 2].map((i) => (
-				<View key={i} style={styles.skeletonRow}>
-					<View
-						style={[styles.skeletonRowTile, { backgroundColor: t.lineSoft }]}
-					/>
-					<View style={styles.skeletonIdentityBody}>
-						{bar("55%", 13)}
-						{bar("35%", 11, 6)}
-					</View>
-				</View>
-			))}
+				))}
+			</View>
+			<View
+				style={[
+					styles.skeletonPanel,
+					{ height: 64, borderColor: t.line, backgroundColor: t.card },
+				]}
+			/>
+			<View
+				style={[
+					styles.skeletonPanel,
+					{ height: 180, borderColor: t.line, backgroundColor: t.card },
+				]}
+			/>
 		</>
 	);
 }
 
-// Style entries both screens share verbatim.
-export const detailStyles = StyleSheet.create({
-	// alignSelf sizes the native menu host to its content — a stretched
-	// MenuView trigger clips its label to "..".
-	statusTrigger: {
-		alignSelf: "flex-start",
-		paddingBottom: 4,
-		borderBottomWidth: 1,
-	},
-	section: { marginTop: 20, gap: 10 },
-	stack: { gap: 8 },
-	// FactCard inside a section: the section's own gap spaces it — the card's
-	// default hero marginTop would double up.
-	sectionCard: { marginTop: 0 },
-});
-
 const styles = StyleSheet.create({
-	pressed: { opacity: 0.7 },
-
-	sectionLabelRow: {
+	chipRow: { flexDirection: "row", gap: 8 },
+	chip: {
+		flex: 1,
+		minWidth: 0,
 		flexDirection: "row",
-		alignItems: "center",
-		justifyContent: "space-between",
-		gap: 12,
-	},
-	sectionLabelText: {
-		fontFamily: fontFamily.semibold,
-		fontSize: type.eyebrow,
-		letterSpacing: tracking.groupLabel,
-		flexShrink: 1,
-	},
-	sectionLabelRight: { flexShrink: 0 },
-	sectionLink: {
-		flexDirection: "row",
-		alignItems: "center",
-		gap: 4,
-		minHeight: touch.min,
-		flexShrink: 0,
-	},
-	sectionLinkText: { fontFamily: fontFamily.semibold, fontSize: type.sm },
-
-	empty: {
-		paddingVertical: 18,
-		alignItems: "center",
-		gap: 8,
-	},
-	emptyText: { fontFamily: fontFamily.regular, fontSize: type.meta },
-
-	factCard: { marginTop: 14 },
-	factRow: {
-		flexDirection: "row",
-		alignItems: "center",
-		gap: 11,
-		paddingVertical: 10,
-		paddingHorizontal: 12,
-	},
-	factGlyph: {
-		width: 32,
-		height: 32,
-		borderRadius: 9,
 		alignItems: "center",
 		justifyContent: "center",
-		flexShrink: 0,
+		gap: 6,
+		minHeight: touch.min,
+		borderWidth: 1,
+		borderRadius: radii.ctrl,
+		paddingHorizontal: 8,
 	},
-	factBody: { flex: 1, minWidth: 0 },
-	factTitle: { fontFamily: fontFamily.semibold, fontSize: type.rowTitle },
-	factSub: {
-		fontFamily: fontFamily.regular,
-		fontSize: type.meta,
-		marginTop: 2,
-	},
-	// Painted 44pt — RN can't hit-test outside the row's own bounds.
-	factAction: {
+	chipLabel: { fontFamily: fontFamily.medium, fontSize: type.sm },
+	chipMoreWrap: { width: touch.min },
+	chipMore: {
 		width: touch.min,
 		height: touch.min,
-		borderRadius: radii.ctrl,
 		borderWidth: 1,
+		borderRadius: radii.ctrl,
+		alignItems: "center",
+		justifyContent: "center",
+	},
+
+	personRow: {
+		flexDirection: "row",
+		alignItems: "center",
+		gap: 8,
+		paddingHorizontal: 14,
+		paddingVertical: 10,
+	},
+	personBody: { flex: 1, minWidth: 0 },
+	personName: { fontFamily: fontFamily.semibold, fontSize: type.rowTitle },
+	personSub: { fontFamily: fontFamily.regular, fontSize: type.meta, marginTop: 2 },
+	personBtn: {
+		width: 32,
+		height: 32,
+		borderWidth: 1,
+		borderRadius: radii.ctrl,
 		alignItems: "center",
 		justifyContent: "center",
 		flexShrink: 0,
 	},
 
-	progress: { gap: 8 },
-	progressLabels: {
-		flexDirection: "row",
-		alignItems: "baseline",
-		justifyContent: "space-between",
-	},
-	progressLabel: { fontFamily: fontFamily.regular, fontSize: type.meta },
-	progressPct: { fontFamily: fontFamily.semibold, fontSize: type.rowTitle },
-	progressTrack: {
-		height: 6,
-		borderRadius: radii.pill,
-		overflow: "hidden",
-	},
-	progressFill: { height: 6, borderRadius: radii.pill },
-
-	teamChat: {
-		flexDirection: "row",
-		alignItems: "center",
-		justifyContent: "center",
-		gap: 8,
-		height: touch.min,
-		borderRadius: radii.ctrl,
-		borderWidth: 1,
-	},
-	teamChatText: { fontFamily: fontFamily.semibold, fontSize: type.rowTitle },
-
-	skeletonIdentity: { minWidth: 0 },
-	skeletonTitleRow: {
-		flexDirection: "row",
-		alignItems: "center",
-		justifyContent: "space-between",
-	},
-	skeletonIdentityBody: { flex: 1, minWidth: 0 },
+	skeletonIdentityRow: { flexDirection: "row", gap: 12 },
+	skeletonTile: { width: 40, height: 40, borderRadius: 10 },
+	skeletonIdentityBody: { flex: 1, minWidth: 0, justifyContent: "center" },
 	skeletonBar: { borderRadius: radii.xs },
-	skeletonChatPill: {
-		height: touch.min,
-		width: "42%",
-		borderRadius: radii.ctrl,
-		marginTop: 18,
-	},
-	skeletonFactCard: {
-		height: 128,
-		borderRadius: radii.card,
-		borderWidth: 1,
-		marginTop: 14,
-	},
-	skeletonPills: { flexDirection: "row", gap: 8, marginTop: 14 },
-	skeletonPill: { flex: 1, height: touch.min, borderRadius: radii.ctrl },
-	skeletonProgress: {
-		height: 6,
-		borderRadius: radii.pill,
-		marginTop: 24,
-	},
-	skeletonRow: {
-		flexDirection: "row",
-		alignItems: "center",
-		gap: 11,
-		paddingVertical: 12,
-		paddingHorizontal: 12,
-		marginTop: 6,
-	},
-	skeletonRowTile: { width: 32, height: 32, borderRadius: 9 },
+	skeletonChips: { flexDirection: "row", gap: 8, marginTop: 16 },
+	skeletonChip: { flex: 1, height: touch.min, borderRadius: radii.ctrl },
+	skeletonPanel: { borderRadius: radii.card, borderWidth: 1, marginTop: 16 },
 });

@@ -187,7 +187,7 @@ export function EditableField({
 				accessibilityValue={{ text: value || placeholder }}
 				style={({ pressed }) => [
 					styles.well,
-					{ backgroundColor: t.card, borderColor: t.lineSoft },
+					{ backgroundColor: t.card, borderColor: t.input },
 					pressed && styles.actionPressed,
 				]}
 			>
@@ -244,7 +244,7 @@ const styles = StyleSheet.create({
 		fontSize: type.eyebrow,
 	},
 	value: {
-		fontSize: type.rowTitle,
+		fontSize: 16,
 		fontFamily: fontFamily.regular,
 	},
 	placeholder: {
@@ -262,7 +262,7 @@ const styles = StyleSheet.create({
 		paddingHorizontal: 12,
 		paddingVertical: 10,
 		minHeight: touch.min,
-		fontSize: type.rowTitle,
+		fontSize: 16,
 		fontFamily: fontFamily.regular,
 		letterSpacing: 0, // RN#42589: pin kern so iOS placeholder can't randomly letter-space
 	},

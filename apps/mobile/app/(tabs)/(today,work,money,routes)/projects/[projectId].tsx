@@ -2,7 +2,6 @@ import { useOfflinePartition } from "@/lib/offline/partition-context";
 import {
 	View,
 	Text,
-	ScrollView,
 	RefreshControl,
 	Pressable,
 	StyleSheet,
@@ -12,17 +11,10 @@ import {
 import { api } from "@onetool/backend/convex/_generated/api";
 import { useLocalSearchParams, useRouter, type Href } from "expo-router";
 import { useState, useCallback, useMemo, useEffect, useRef } from "react";
-import {
-	SafeAreaView,
-	useSafeAreaInsets,
-} from "react-native-safe-area-context";
 import { Id } from "@onetool/backend/convex/_generated/dataModel";
 import {
-	colors,
-	DOCK_CLEARANCE,
 	fontFamily,
 	radii,
-	STATUS,
 	touch,
 	type,
 	useTokens,
@@ -32,23 +24,26 @@ import { appleMapsAddressUrl, appleMapsUrl } from "@/lib/route-run";
 import { openExternal } from "@/lib/open-external";
 import { recordRecentView } from "@/lib/recents";
 import { usePermissions } from "@/lib/use-permissions";
-import { InkTabHeader } from "@/components/ink-tab-header";
 import { PaneHeader } from "@/components/ipad/pane-header";
 import { useShellNav } from "@/lib/shell-nav";
-import { Button, DotGrid, ListRow } from "@/components/ui";
-import { IdentityBlock } from "@/components/identity-block";
+import { IdentityBlock, IdentityMeta } from "@/components/identity-block";
 import {
+	ContactChipRow,
 	countSuffix,
-	detailStyles,
 	DetailSkeleton,
-	EmptyRow,
-	FactCard,
-	FactRow,
-	ProgressBar,
-	SectionLabel,
-	TeamChatButton,
-	type FactAction,
+	type ChipAction,
 } from "@/components/record-detail";
+import {
+	CanvasScroll,
+	EmptyPanel,
+	AttributeRow,
+	MetricStrip,
+	Panel,
+	PanelHeader,
+	RecordRow,
+	UnderlineTabs,
+	type UnderlineTab,
+} from "@/components/canvas";
 import { EditableField } from "@/components/EditableField";
 import { FieldMenu } from "@/components/FieldMenu";
 import { useOverlayTransition } from "@/components/useOverlayTransition";
@@ -58,14 +53,17 @@ import { useCachedQuery } from "@/lib/offline/useCachedQuery";
 import { saveOffline, useOpenOps } from "@/lib/offline/hooks";
 import { overlayFields } from "@/lib/offline/field-patch";
 import { AppCalendar, toDateId, fromDateId } from "@/components/AppCalendar";
+import { useScreenChrome } from "@/lib/shell-chrome";
 import {
 	CalendarDays,
+	ClipboardCheck,
+	FileText,
 	MapPin,
 	MessageCircle,
+	MessageSquare,
 	Navigation,
 	Phone,
-	Plus,
-	User,
+	Receipt,
 	X,
 } from "lucide-react-native";
 
@@ -78,6 +76,7 @@ const STATUS_OPTIONS = [
 
 type ProjectStatus = "planned" | "in-progress" | "completed" | "cancelled";
 type DateField = "startDate" | "endDate";
+type ProjectTab = "overview" | "quotes" | "invoices";
 
 function formatDate(timestamp: number | undefined): string | null {
 	if (!timestamp) return null;
@@ -91,8 +90,8 @@ function formatDate(timestamp: number | undefined): string | null {
 	});
 }
 
-// Date "well" — same grammar as EditableField's display state (filled card,
-// hairline, trailing glyph) so every editable on the screen speaks one language.
+// Date "well" — a bordered field matching EditableField's read state so the
+// Schedule panel speaks the same grammar as the rest of the screen.
 function DateWell({
 	label,
 	value,
@@ -110,7 +109,7 @@ function DateWell({
 			// each left a 16pt band that could open the wrong date picker.
 			style={({ pressed }) => [
 				styles.dateWell,
-				{ backgroundColor: t.card, borderColor: t.lineSoft },
+				{ backgroundColor: t.card, borderColor: t.input },
 				pressed && styles.pressed,
 			]}
 			accessibilityRole="button"
@@ -153,17 +152,11 @@ export function ProjectDetailBody({
 	// iPad: cross-links navigate via the shell selection (no router.push to a
 	// (tabs) sibling, which slides the whole shell). iPhone: null → router.push.
 	const shellNav = useShellNav();
-	// In an iPad pane the header is a PaneHeader (onBack clears the shell
-	// selection; router.back would pop out of the shell). onBack is undefined in
-	// landscape (list always visible → no back button).
 	const isPane = headerMode === "pane";
-	const insets = useSafeAreaInsets();
-	// The floating dock takes no layout height — scroll content clears it
-	// itself. iPad panes have no dock (the shell replaces Tabs).
-	const scrollBottom = isPane ? 16 : DOCK_CLEARANCE + insets.bottom;
 	const [refreshing, setRefreshing] = useState(false);
 	const [dateField, setDateField] = useState<DateField | null>(null);
 	const [mentionVisible, setMentionVisible] = useState(false);
+	const [activeTab, setActiveTab] = useState<ProjectTab>("overview");
 	const { can, isLoading: permsLoading } = usePermissions();
 
 	// Animated date overlay. `shownField` is set when opening (not cleared on
@@ -222,12 +215,12 @@ export function ProjectDetailBody({
 		? clientNameById.get(project.clientId)
 		: undefined;
 
-	// Optional task progress — only render when tasks.list cleanly supplies it.
+	// Task progress — only render when tasks.list cleanly supplies it.
 	const taskProgress = useMemo(() => {
-		if (!tasks || tasks.length === 0) return null;
+		if (!tasks) return null;
 		const total = tasks.length;
 		const done = tasks.filter((tk) => tk.status === "completed").length;
-		return { done, total, pct: Math.round((done / total) * 100) };
+		return { done, total };
 	}, [tasks]);
 
 	// Recents trail — once per visit, after the real title exists. A ref (not
@@ -321,26 +314,44 @@ export function ProjectDetailBody({
 		[projectId, dateField, displayProject]
 	);
 
+	const canCreateQuote = permsLoading || can("quotes", "modify");
+
+	const openAddTask = useCallback(() => {
+		if (!project) return;
+		router.push({
+			pathname: "/tasks/form",
+			params: { clientId: project.clientId, projectId },
+		} as unknown as Href);
+	}, [router, project, projectId]);
+	const openNewQuote = useCallback(() => {
+		if (!project) return;
+		// Cast: /quote/new isn't in the generated route map yet.
+		router.push({
+			pathname: "/quote/new",
+			params: { clientId: project.clientId, projectId },
+		} as unknown as Href);
+	}, [router, project, projectId]);
+
+	// Tray, phone only — pane mode passes null so no chrome is published.
+	useScreenChrome(
+		isPane || !project
+			? null
+			: {
+					tray: [
+						{ key: "add-task", label: "Add task", icon: ClipboardCheck, onPress: openAddTask },
+						{ key: "new-quote", label: "New quote", icon: FileText, onPress: openNewQuote },
+					],
+				}
+	);
+
 	if (!project || !displayProject) {
 		return (
-			<SafeAreaView style={[styles.flex, { backgroundColor: t.bg }]} edges={[]}>
-				<DotGrid style={StyleSheet.absoluteFill} />
-				{isPane ? (
-					<PaneHeader onBack={onBack} />
-				) : (
-					<InkTabHeader title="Project" onBack={() => router.back()} />
-				)}
-				{/* Skeleton mirrors the real layout: hero, fact card, pill pair,
-				    progress bar, then list rows. */}
-				<ScrollView
-					contentContainerStyle={[
-						styles.scroll,
-						{ paddingBottom: scrollBottom },
-					]}
-				>
-					<DetailSkeleton variant="project" />
-				</ScrollView>
-			</SafeAreaView>
+			<View style={[styles.flex, { backgroundColor: t.bg }]}>
+				{isPane ? <PaneHeader onBack={onBack} /> : null}
+				<CanvasScroll>
+					<DetailSkeleton />
+				</CanvasScroll>
+			</View>
 		);
 	}
 
@@ -376,73 +387,67 @@ export function ProjectDetailBody({
 				? appleMapsAddressUrl(propertyAddress)
 				: undefined;
 
-	// Fact-block actions. Unlike the client screen's peer tile row, a glyph with
-	// nothing behind it is dropped — its row only exists when the data does.
 	const contactName = primaryContact
 		? `${primaryContact.firstName} ${primaryContact.lastName}`.trim() ||
 			"Unnamed contact"
 		: undefined;
-	const contactSub =
-		[primaryContact?.jobTitle, primaryContact?.email]
-			.filter(Boolean)
-			.join("  ·  ") || undefined;
-	const contactActions: FactAction[] = phone
-		? [
-				{
-					key: "call",
-					label: `Call ${contactName ?? "contact"}`,
-					Icon: Phone,
-					onPress: () => openExternal(`tel:${phone}`, "Phone"),
-				},
-				{
-					key: "message",
-					label: `Message ${contactName ?? "contact"}`,
-					Icon: MessageCircle,
-					onPress: () => openExternal(`sms:${phone}`, "Messages"),
-				},
-			]
-		: [];
-	const addressActions: FactAction[] = directionsUrl
-		? [
-				{
-					key: "directions",
-					label: "Directions to job site",
-					Icon: Navigation,
-					onPress: () => openExternal(directionsUrl, "Maps"),
-				},
-			]
-		: [];
 
-	// Creation is permission-gated, and the FAB's convention is to hide (not
-	// dim) what the user may not do — but stay visible-and-inert while the grant
-	// is still loading, so the row doesn't reflow under a tap.
-	const canCreateQuote = permsLoading || can("quotes", "modify");
+	const chips: ChipAction[] = [];
+	if (phone) {
+		chips.push({
+			key: "call",
+			label: "Call",
+			Icon: Phone,
+			onPress: () => openExternal(`tel:${phone}`, "Phone"),
+		});
+	}
+	if (directionsUrl) {
+		chips.push({
+			key: "map",
+			label: "Map",
+			Icon: Navigation,
+			onPress: () => openExternal(directionsUrl, "Maps"),
+		});
+	}
+	const overflow: ChipAction[] = [];
+	if (phone) {
+		overflow.push({
+			key: "message",
+			label: "Message",
+			Icon: MessageCircle,
+			onPress: () => openExternal(`sms:${phone}`, "Messages"),
+		});
+	}
+	overflow.push({
+		key: "team-chat",
+		label: "Team chat",
+		Icon: MessageSquare,
+		onPress: () => setMentionVisible(true),
+	});
 
-	const recentQuotes = quotes?.slice(0, 3) ?? [];
-	const recentInvoices = invoices?.slice(0, 3) ?? [];
+	const tabs: UnderlineTab<ProjectTab>[] = [
+		{ value: "overview", label: "Overview" },
+		{ value: "quotes", label: "Quotes", count: quotes?.length ?? 0 },
+		{ value: "invoices", label: "Invoices", count: invoices?.length ?? 0 },
+	];
 
 	return (
-		<SafeAreaView style={[styles.flex, { backgroundColor: t.bg }]} edges={[]}>
-			<DotGrid style={StyleSheet.absoluteFill} />
+		<View style={[styles.flex, { backgroundColor: t.bg }]}>
 			{isPane ? (
-				// No title — the hero right below carries the name; a titled pane
-				// header printed it twice.
+				// No title — the identity row right below carries the name.
 				<PaneHeader onBack={onBack} />
-			) : (
-				<InkTabHeader title={displayProject.title} onBack={() => router.back()} />
-			)}
-			<ScrollView
-				contentContainerStyle={[styles.scroll, { paddingBottom: scrollBottom }]}
+			) : null}
+			<CanvasScroll
 				refreshControl={
 					<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
 				}
 			>
-				{/* Identity — status is TEXT; the FieldMenu hangs off it so the one
-				    place a project status can change keeps working. */}
+				{/* Identity — status is a Badge; the FieldMenu hangs off it so the
+				    one place a project status can change keeps working. */}
 				<IdentityBlock
+					kind="project"
 					statusKey={status}
 					name={displayProject.title}
-					// The old standalone Building2 client-link row folds in here.
 					meta={
 						<Pressable
 							onPress={() =>
@@ -451,218 +456,194 @@ export function ProjectDetailBody({
 									: router.push(`/clients/${project.clientId}`)
 							}
 							hitSlop={8}
-							style={({ pressed }) => [
-								styles.clientLink,
-								pressed && styles.pressed,
-							]}
 							accessibilityRole="button"
 							accessibilityLabel={`View client ${clientName ?? ""}`.trim()}
 						>
-							<Text style={[styles.clientLinkText, { color: t.frostedInk }]}>
-								{clientName ?? "View client"}
-							</Text>
+							<IdentityMeta>{clientName ?? "View client"}</IdentityMeta>
 						</Pressable>
 					}
-					renderStatus={(statusText) => (
+					renderStatus={(badge) => (
 						<FieldMenu
 							title="Project status"
 							value={status}
 							options={STATUS_OPTIONS}
 							onSelect={handleStatusSelect}
 						>
-							{/* A single bare child is the whole trigger — a row sibling
-							    gets squeezed by the native menu host and clips the label. */}
-							<View
-								accessibilityRole="button"
-								// Status-as-text removed the badge, so the label must still
-								// speak the CURRENT value.
-								accessibilityLabel={`Status: ${
-									STATUS[status as keyof typeof STATUS]?.label ?? status
-								}. Tap to change`}
-								style={[
-									detailStyles.statusTrigger,
-									{ borderBottomColor: t.faint },
-								]}
-							>
-								{statusText}
-							</View>
+							{badge}
 						</FieldMenu>
 					)}
 				/>
 
-				{/* Facts — who to reach and where to go. Rows with no data are
-				    hidden outright; the card disappears when both are. */}
-				<FactCard>
-					{contactName ? (
-						<FactRow
-							key="contact"
-							Icon={User}
-							title={contactName}
-							sub={contactSub}
-							actions={contactActions}
-							last={!propertyAddress}
-						/>
-					) : null}
-					{propertyAddress ? (
-						<FactRow
-							key="address"
-							Icon={MapPin}
-							title={propertyAddress}
-							actions={addressActions}
-							last
-						/>
-					) : null}
-				</FactCard>
+				<ContactChipRow chips={chips} overflow={overflow} />
 
-				{/* Actions — call/message/directions now live in the fact card, so
-				    only the two screen-level verbs remain. */}
-				<View style={styles.pillRow}>
-					{canCreateQuote ? (
-						<Button
-							title="New quote"
-							variant="solid"
-							disabled={permsLoading}
-							icon={<Plus size={16} color={colors.primaryForeground} />}
-							onPress={() =>
-								// Cast: /quote/new isn't in the generated route map yet.
-								router.push({
-									pathname: "/quote/new",
-									params: { clientId: project.clientId, projectId },
-								} as unknown as Href)
-							}
-							style={styles.pill}
-						/>
-					) : null}
-					<TeamChatButton
-						onPress={() => setMentionVisible(true)}
-						style={styles.pill}
-					/>
-				</View>
+				<MetricStrip
+					cells={[
+						{
+							icon: ClipboardCheck,
+							label: "Tasks",
+							value: taskProgress ? `${taskProgress.done}/${taskProgress.total}` : "0",
+						},
+						{
+							icon: FileText,
+							label: "Quotes",
+							value: String(quotes?.length ?? 0),
+							onPress: () => setActiveTab("quotes"),
+						},
+						{
+							icon: Receipt,
+							label: "Invoices",
+							value: String(invoices?.length ?? 0),
+							onPress: () => setActiveTab("invoices"),
+						},
+					]}
+				/>
 
-				{/* Schedule — the Start/Due pair plus the linear progress bar (the
-				    72pt ring read as dashboard ornament on a screen whose job is
-				    facts). */}
-				<View style={detailStyles.section}>
-					<SectionLabel title="Schedule" />
-					<View style={styles.datePair}>
-						<DateWell
-							label="Start"
-							value={formatDate(displayProject.startDate)}
-							onPress={() => openDatePicker("startDate")}
-						/>
-						<DateWell
-							label="Due"
-							value={formatDate(displayProject.endDate)}
-							onPress={() => openDatePicker("endDate")}
-						/>
-					</View>
-					{taskProgress ? (
-						<ProgressBar
-							done={taskProgress.done}
-							total={taskProgress.total}
-							// Completed projects keep the green they had on the ring.
-							color={status === "completed" ? t.success : t.primarySolid}
-						/>
-					) : null}
-				</View>
+				<UnderlineTabs tabs={tabs} value={activeTab} onChange={setActiveTab} />
 
-				{/* Details — the hero displays the name, so EDITING it lives here
-				    (same idiom as the client screen's Company section). */}
-				<View style={detailStyles.section}>
-					<SectionLabel title="Details" />
-					<View style={detailStyles.stack}>
-						<EditableField
-							label="Title"
-							value={displayProject.title}
-							onSave={(v) => saveField("title", v)}
-							placeholder="Project title"
-						/>
-						<EditableField
-							label="Description"
-							value={displayProject.description}
-							onSave={(v) => saveField("description", v)}
-							placeholder="Add a description…"
-							multiline
-							numberOfLines={4}
-						/>
-					</View>
-				</View>
+				{activeTab === "overview" ? (
+					<>
+						{contactName ? (
+							<Panel header={<PanelHeader title="Primary contact" />}>
+								<AttributeRow label="Name" value={contactName} />
+								{primaryContact?.jobTitle ? (
+									<AttributeRow label="Role" value={primaryContact.jobTitle} />
+								) : null}
+								{phone ? (
+									<AttributeRow
+										label="Phone"
+										value={phone}
+										onPress={() => openExternal(`tel:${phone}`, "Phone")}
+									/>
+								) : null}
+							</Panel>
+						) : (
+							<EmptyPanel icon={Phone} title="No contact on file" />
+						)}
 
-				{/* Quotes */}
-				<View style={detailStyles.section}>
-					<SectionLabel title={`Quotes${countSuffix(quotes?.length ?? 0)}`} />
-					{recentQuotes.length > 0 ? (
-						<FactCard style={detailStyles.sectionCard}>
-							{recentQuotes.map((quote, i) => (
-								<ListRow
-									key={quote._id}
-									title={quote.title || `Quote #${quote.quoteNumber}`}
-									sub={formatCurrency(quote.total, { exact: true })}
-									status={quote.status}
-									showChevron={false}
-									onPress={() =>
-										shellNav
-											? shellNav.open({ kind: "quote", id: quote._id })
-											: // Cast: dynamic detail route isn't in the generated route map.
-												router.push({
-													pathname: "/quote/[id]",
-													params: { id: quote._id },
-												} as unknown as Href)
+						{propertyAddress ? (
+							<Panel header={<PanelHeader title="Property" />}>
+								<AttributeRow
+									icon={MapPin}
+									label="Address"
+									value={propertyAddress}
+									onPress={
+										directionsUrl
+											? () => openExternal(directionsUrl, "Maps")
+											: undefined
 									}
-									last={i === recentQuotes.length - 1}
 								/>
-							))}
-						</FactCard>
-					) : (
-						<EmptyRow text="No quotes yet" illo="quotes-none" />
-					)}
-				</View>
+							</Panel>
+						) : (
+							<EmptyPanel icon={MapPin} title="No property on file" />
+						)}
 
-				{/* Invoices */}
-				<View style={detailStyles.section}>
-					<SectionLabel
-						title={`Invoices${countSuffix(invoices?.length ?? 0)}`}
-					/>
-					{recentInvoices.length > 0 ? (
-						<FactCard style={detailStyles.sectionCard}>
-							{recentInvoices.map((invoice, i) => (
-								<ListRow
-									key={invoice._id}
-									title={`Invoice #${invoice.invoiceNumber}`}
-									sub={formatCurrency(invoice.total, { exact: true })}
-									status={invoice.status}
-									showChevron={false}
-									onPress={() =>
-										shellNav
-											? shellNav.open({ kind: "invoice", id: invoice._id })
-											: // Cast: dynamic detail route isn't in the generated route map.
-												router.push({
-													pathname: "/invoice/[id]",
-													params: { id: invoice._id },
-												} as unknown as Href)
-									}
-									last={i === recentInvoices.length - 1}
+						<Panel header={<PanelHeader title="Schedule" />}>
+							<View style={styles.datePair}>
+								<DateWell
+									label="Start"
+									value={formatDate(displayProject.startDate)}
+									onPress={() => openDatePicker("startDate")}
 								/>
-							))}
-						</FactCard>
-					) : (
-						<EmptyRow text="No invoices yet" illo="invoices-none" />
-					)}
-				</View>
+								<DateWell
+									label="Due"
+									value={formatDate(displayProject.endDate)}
+									onPress={() => openDatePicker("endDate")}
+								/>
+							</View>
+						</Panel>
 
-				{/* Documents — rewired component (Plan 02). Hidden without the view
-				    grant (the list query throws on denial); visible while loading. */}
-				{projectId && (permsLoading || can("documents", "view")) ? (
-					<View style={detailStyles.section}>
-						<SectionLabel title="Documents" />
-						<RecordDocuments
-							target={{ kind: "project", id: projectId as Id<"projects"> }}
-						/>
-					</View>
+						<Panel header={<PanelHeader title="Details" />}>
+							<View style={styles.editableRow}>
+								<EditableField
+									label="Title"
+									value={displayProject.title}
+									onSave={(v) => saveField("title", v)}
+									placeholder="Project title"
+								/>
+							</View>
+							<View style={styles.editableRow}>
+								<EditableField
+									label="Description"
+									value={displayProject.description}
+									onSave={(v) => saveField("description", v)}
+									placeholder="Add a description…"
+									multiline
+									numberOfLines={4}
+								/>
+							</View>
+						</Panel>
+
+						{projectId && (permsLoading || can("documents", "view")) ? (
+							<Panel header={<PanelHeader title="Documents" />}>
+								<RecordDocuments
+									target={{ kind: "project", id: projectId as Id<"projects"> }}
+									style={styles.flushCard}
+								/>
+							</Panel>
+						) : null}
+					</>
 				) : null}
 
-				<View style={{ height: 32 }} />
-			</ScrollView>
+				{activeTab === "quotes" ? (
+					<Panel
+						header={
+							<PanelHeader
+								title={`Quotes${countSuffix(quotes?.length ?? 0)}`}
+								// The tray's secondary action already creates a quote on the
+								// phone — this link would duplicate it. Pane mode has no tray.
+								action={isPane && canCreateQuote ? "New" : undefined}
+								onAction={openNewQuote}
+							/>
+						}
+					>
+						{(quotes ?? []).map((quote) => (
+							<RecordRow
+								key={quote._id}
+								kind="quote"
+								title={quote.title || `Quote #${quote.quoteNumber}`}
+								subtitle={formatCurrency(quote.total, { exact: true })}
+								status={quote.status}
+								onPress={() =>
+									shellNav
+										? shellNav.open({ kind: "quote", id: quote._id })
+										: router.push({
+												pathname: "/quote/[id]",
+												params: { id: quote._id },
+											} as unknown as Href)
+								}
+							/>
+						))}
+						{(quotes ?? []).length === 0 ? (
+							<AttributeRow label="Quotes" value="No quotes yet" />
+						) : null}
+					</Panel>
+				) : null}
+
+				{activeTab === "invoices" ? (
+					<Panel header={<PanelHeader title={`Invoices${countSuffix(invoices?.length ?? 0)}`} />}>
+						{(invoices ?? []).map((invoice) => (
+							<RecordRow
+								key={invoice._id}
+								kind="invoice"
+								title={`Invoice #${invoice.invoiceNumber}`}
+								subtitle={formatCurrency(invoice.total, { exact: true })}
+								status={invoice.status}
+								onPress={() =>
+									shellNav
+										? shellNav.open({ kind: "invoice", id: invoice._id })
+										: router.push({
+												pathname: "/invoice/[id]",
+												params: { id: invoice._id },
+											} as unknown as Href)
+								}
+							/>
+						))}
+						{(invoices ?? []).length === 0 ? (
+							<AttributeRow label="Invoices" value="No invoices yet" />
+						) : null}
+					</Panel>
+				) : null}
+			</CanvasScroll>
 
 			{/* Date picker — in-screen overlay (not a RN Modal): a Modal opened
 			    after a SwiftUI menu (FieldMenu) interaction deadlocks touch
@@ -728,7 +709,7 @@ export function ProjectDetailBody({
 				entityId={projectId as Id<"projects">}
 				entityName={displayProject.title}
 			/>
-		</SafeAreaView>
+		</View>
 	);
 }
 
@@ -740,28 +721,14 @@ export default function ProjectDetailScreen() {
 
 const styles = StyleSheet.create({
 	flex: { flex: 1 },
-	scroll: {
-		padding: 16,
-		gap: 0,
-	},
 	pressed: {
 		opacity: 0.6,
 	},
 
-	clientLink: {
-		alignSelf: "flex-start",
-		justifyContent: "center",
-		minHeight: touch.min - 12,
-	},
-	clientLinkText: {
-		fontFamily: fontFamily.semibold,
-		fontSize: type.meta,
-	},
+	editableRow: { paddingHorizontal: 14, paddingVertical: 10 },
+	flushCard: { borderWidth: 0, borderRadius: 0, padding: 12 },
 
-	pillRow: { flexDirection: "row", gap: 8, marginTop: 14 },
-	pill: { flex: 1, minWidth: 0 },
-
-	datePair: { flexDirection: "row", gap: 8 },
+	datePair: { flexDirection: "row", gap: 8, padding: 12 },
 	dateWell: {
 		flex: 1,
 		minWidth: 0,

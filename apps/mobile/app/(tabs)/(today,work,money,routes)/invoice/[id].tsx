@@ -1,22 +1,16 @@
 import { useOfflinePartition } from "@/lib/offline/partition-context";
 import { useEffect, useMemo, useState } from "react";
-import {
-	Pressable,
-	ScrollView,
-	Share,
-	StyleSheet,
-	Text,
-	View,
-} from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { Pressable, Share, StyleSheet, Text, View } from "react-native";
 import { useMutation } from "convex/react";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter, type Href } from "expo-router";
 import {
 	CalendarX2,
 	Check,
 	Link2,
 	Plus,
+	Send,
 	Share as ShareIcon,
+	Wallet,
 } from "lucide-react-native";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { Id } from "@onetool/backend/convex/_generated/dataModel";
@@ -25,20 +19,12 @@ import {
 	deriveInvoiceStatus,
 } from "@onetool/backend/convex/lib/invoiceLateness";
 import { useOrgToday } from "@/lib/use-org-today";
-import {
-	badgeTone,
-	fontFamily,
-	radii,
-	recordTint,
-	type,
-	useTokens,
-} from "@/lib/theme";
-import { AppHeader } from "@/components/app-header";
-import { InkTabHeader } from "@/components/ink-tab-header";
+import { badgeTone, fontFamily, radii, type, useTokens } from "@/lib/theme";
 import { PaneHeader } from "@/components/ipad/pane-header";
-import { Card, DotGrid, Eyebrow, TotalsBlock } from "@/components/ui";
+import { CanvasScroll, Panel, SectionLabel, Stepper, type StepperStep } from "@/components/canvas";
+import { TotalsBlock } from "@/components/ui";
 import { DocumentHeaderCard } from "@/components/money/document-header-card";
-import { QuickActionRow } from "@/components/money/quick-action-row";
+import { QuickActionRow, OverflowMenuButton } from "@/components/money/quick-action-row";
 import { SendPreviewSheet } from "@/components/money/send-preview-sheet";
 import {
 	RecordPaymentSheet,
@@ -54,6 +40,7 @@ import {
 	type InvoiceStatus,
 	type RecordActionKey,
 } from "@/lib/record-actions";
+import { useShellNav } from "@/lib/shell-nav";
 import { useInvoiceCapabilities } from "@/lib/use-record-capabilities";
 import { usePermissions } from "@/lib/use-permissions";
 import { deriveInvoiceDisplayPricing } from "@onetool/backend/pdf/invoicePricing";
@@ -61,8 +48,10 @@ import { formatCurrency, formatDocumentDate } from "@/lib/format";
 import { recordRecentView } from "@/lib/recents";
 import { useUser } from "@clerk/expo";
 import { useCachedQuery } from "@/lib/offline/useCachedQuery";
+import { useOffline } from "@/lib/offline/OfflineProvider";
 import { useOnlineAction, useRequireOnline, useOpenOps, saveOffline } from "@/lib/offline/hooks";
 import { pendingPaymentsForInvoice, remainingAfterPending } from "@/lib/offline/pending-payments";
+import { useScreenChrome } from "@/lib/shell-chrome";
 
 const METHOD_LABEL: Record<string, string> = {
 	cash: "Cash",
@@ -70,10 +59,50 @@ const METHOD_LABEL: Record<string, string> = {
 	other: "Other",
 };
 
-// Invoice detail, restyled to frame 1i (Mobile 3.0 slice 2): document header
-// card with the money numeral, the resolver-driven CTA pair IN the card, the
-// pay-link row, and the payment section as a timeline. The screen went from
-// read-only viewer to the field collection surface.
+// Invoice lifecycle stepper — captions come straight off the record; the
+// shared Stepper prints "—" for an absent one. No "cancelled" node exists
+// (done/current/todo only) — the status Badge carries that read instead.
+function invoiceStepperSteps(
+	invoice: { issuedDate: number; firstSentAt?: number; paidAt?: number },
+	status: InvoiceStatus
+): StepperStep[] {
+	const issued = formatDocumentDate(invoice.issuedDate);
+	const sent = invoice.firstSentAt ? formatDocumentDate(invoice.firstSentAt) : undefined;
+	const paid = invoice.paidAt ? formatDocumentDate(invoice.paidAt) : undefined;
+
+	switch (status) {
+		case "draft":
+			return [
+				{ label: "Draft", caption: issued, state: "current" },
+				{ label: "Sent", state: "todo" },
+				{ label: "Paid", state: "todo" },
+			];
+		case "sent":
+		case "overdue":
+			return [
+				{ label: "Draft", caption: issued, state: "done" },
+				{ label: "Sent", caption: sent, state: "current" },
+				{ label: "Paid", state: "todo" },
+			];
+		case "paid":
+			return [
+				{ label: "Draft", caption: issued, state: "done" },
+				{ label: "Sent", caption: sent, state: "done" },
+				{ label: "Paid", caption: paid, state: "done" },
+			];
+		case "cancelled":
+			return [
+				{ label: "Draft", caption: issued, state: "done" },
+				{ label: "Sent", caption: sent, state: sent ? "done" : "todo" },
+				{ label: "Paid", state: "todo" },
+			];
+	}
+}
+
+// Invoice detail, restyled to frame 1d's structure (stepper, line-item
+// table, payments panel) with 2d's large total. Send goes through the
+// portal (invoices.sendToClient); recording a payment always queues through
+// the offline outbox.
 export function InvoiceDetailBody({
 	id,
 	headerMode = "root",
@@ -88,21 +117,7 @@ export function InvoiceDetailBody({
 }) {
 	const t = useTokens();
 	const router = useRouter();
-	// iPhone gets the 3.0 ink band (back circle + constant cluster). The iPad
-	// pane paths are untouched: PaneHeader when the shell owns back, the light
-	// pane header otherwise.
-	const renderHeader = (title = "Invoice") =>
-		headerMode === "pane" ? (
-			onBack ? (
-				// No title in either pane header — the document card carries the
-				// number; a titled header printed it twice.
-				<PaneHeader onBack={onBack} />
-			) : (
-				<AppHeader mode="pane" />
-			)
-		) : (
-			<InkTabHeader title={title} onBack={() => router.back()} />
-		);
+	const shellNav = useShellNav();
 	const orgToday = useOrgToday();
 	const [sendOpen, setSendOpen] = useState(false);
 	const [recordOpen, setRecordOpen] = useState(false);
@@ -120,7 +135,7 @@ export function InvoiceDetailBody({
 		id ? { invoiceId: id as Id<"invoices"> } : "skip"
 	);
 	// optionalUserQuery (same as invoices.get) — returns null, never throws.
-	// undefined = Payment section loading; null = LOADED invoice-derived fallback.
+	// undefined = Payments section loading; null = LOADED invoice-derived fallback.
 	// NOT a screen-state driver — invoices.get owns the undefined/null branches.
 	const withPayments = useCachedQuery(
 		api.invoices.getWithPayments,
@@ -143,6 +158,7 @@ export function InvoiceDetailBody({
 			? { documentType: "invoice" as const, documentId: id }
 			: "skip"
 	);
+	const { online } = useOffline();
 	const onlineAction = useOnlineAction();
 	const requireOnline = useRequireOnline();
 	// Payments queued on the outbox but not yet synced — chainKey is invoice:<id>
@@ -160,8 +176,8 @@ export function InvoiceDetailBody({
 		return map;
 	}, [clients]);
 
-	// On-device "Recently viewed" trail for the Work tab (Slice 6). Fire-and-
-	// forget, and only once the doc has loaded so the snapshot is a real title.
+	// On-device "Recently viewed" trail for the Work tab. Fire-and-forget, and
+	// only once the doc has loaded so the snapshot is a real title.
 	const { user } = useUser();
 	const collectorName = user?.fullName?.trim() || "you";
 	const recentsScope = useOfflinePartition() ?? undefined;
@@ -178,13 +194,65 @@ export function InvoiceDetailBody({
 		});
 	}, [recentsScope, recentId, recentTitle, recentSub]);
 
+	const displayStatus = invoice
+		? (deriveInvoiceStatus(invoice, orgToday) as InvoiceStatus)
+		: undefined;
+	const actions =
+		capsData && displayStatus ? resolveInvoiceActions(displayStatus, capsData.caps) : [];
+
+	// Tray (phone only): Record payment primary, Resend secondary. Everything
+	// else lives behind the "…" menu. Hooks must run every render, so this is
+	// built before the loading/not-found guards below — it's plain data, not
+	// another hook.
+	const tray =
+		headerMode === "root"
+			? (() => {
+					const built: {
+						key: RecordActionKey;
+						label: string;
+						icon: typeof Send;
+						onPress: () => void;
+						disabledReason?: string;
+					}[] = [];
+					const recordAction = actions.find((a) => a.key === "record_payment");
+					if (recordAction) {
+						built.push({
+							key: "record_payment",
+							label: "Record payment",
+							icon: Wallet,
+							// Recording always queues through the offline outbox — never
+							// connectivity-gated (Tier 4, PRD-mobile-offline §4.6).
+							onPress: () => setRecordOpen(true),
+							disabledReason: recordAction.disabledReason,
+						});
+					}
+					const resendAction = actions.find(
+						(a) => a.key === "send_invoice" || a.key === "resend_invoice"
+					);
+					if (resendAction) {
+						built.push({
+							key: resendAction.key,
+							label: resendAction.label,
+							icon: Send,
+							onPress: () => setSendOpen(true),
+							disabledReason:
+								resendAction.disabledReason ?? (!online ? "Needs a connection" : undefined),
+						});
+					}
+					return built;
+				})()
+			: undefined;
+
+	useScreenChrome(headerMode === "root" ? { tray: tray ?? [] } : null);
+
 	// PARENT STATE — loading: skeleton document, keep the detail header.
 	if (invoice === undefined) {
 		return (
-			<SafeAreaView style={[styles.flex, { backgroundColor: t.bg }]} edges={[]}>
-				<DotGrid style={StyleSheet.absoluteFill} />
-				{renderHeader()}
-				<ScrollView contentContainerStyle={styles.scroll}>
+			<View style={[styles.flex, { backgroundColor: t.bg }]}>
+				{headerMode === "pane" ? (
+					onBack ? <PaneHeader onBack={onBack} /> : null
+				) : null}
+				<CanvasScroll>
 					<View
 						style={[
 							styles.skeletonCard,
@@ -197,32 +265,29 @@ export function InvoiceDetailBody({
 					<View
 						style={[styles.skeletonRow, { backgroundColor: t.muted, marginTop: 10 }]}
 					/>
-				</ScrollView>
-			</SafeAreaView>
+				</CanvasScroll>
+			</View>
 		);
 	}
 
 	// PARENT STATE — not found: clean state, no auto-bounce (no router.back()).
 	if (invoice === null) {
 		return (
-			<SafeAreaView style={[styles.flex, { backgroundColor: t.bg }]} edges={[]}>
-				<DotGrid style={StyleSheet.absoluteFill} />
-				{renderHeader()}
+			<View style={[styles.flex, { backgroundColor: t.bg }]}>
+				{headerMode === "pane" ? (
+					onBack ? <PaneHeader onBack={onBack} /> : null
+				) : null}
 				<View style={styles.notFound}>
 					<Text style={[styles.notFoundTitle, { color: t.ink }]}>Not found</Text>
 					<Text style={[styles.notFoundBody, { color: t.sub }]}>
 						This invoice may have been removed or belongs to another organization.
 					</Text>
 				</View>
-			</SafeAreaView>
+			</View>
 		);
 	}
 
-	const displayStatus = deriveInvoiceStatus(
-		invoice,
-		orgToday
-	) as InvoiceStatus;
-
+	const status = displayStatus as InvoiceStatus;
 	const client = clientName.get(invoice.clientId) ?? "Client";
 	const lateDays = daysLate(invoice.dueDate, orgToday);
 
@@ -270,11 +335,10 @@ export function InvoiceDetailBody({
 			? 100
 			: 0;
 
-	// Status→CTA resolver output (undefined caps = still composing facts; the
-	// action row simply doesn't render yet — never a flash of wrong buttons).
-	const actions = capsData
-		? resolveInvoiceActions(displayStatus, capsData.caps)
-		: [];
+	// Overflow menu — every resolver action minus whatever the tray already
+	// carries (record payment, send/resend).
+	const trayKeys = new Set((tray ?? []).map((a) => a.key));
+	const overflowActions = actions.filter((a) => !trayKeys.has(a.key));
 
 	// Slice 4: invoice line items stay editable until money settles — mirrors
 	// assertInvoiceContentEditable (paid/cancelled, or any settled/disputed
@@ -399,20 +463,32 @@ export function InvoiceDetailBody({
 		);
 	};
 
+	const openClient = () => {
+		if (shellNav) {
+			shellNav.open({ kind: "client", id: invoice.clientId });
+		} else {
+			router.push({
+				pathname: "/clients/[clientId]",
+				params: { clientId: invoice.clientId },
+			} as unknown as Href);
+		}
+	};
+
 	return (
-		<SafeAreaView style={[styles.flex, { backgroundColor: t.bg }]} edges={[]}>
-			<DotGrid style={StyleSheet.absoluteFill} />
-			{renderHeader(invoice.invoiceNumber)}
-			<ScrollView contentContainerStyle={styles.scroll}>
-				{/* Document header — identity, money numeral, CTA pair, pay link. */}
+		<View style={[styles.flex, { backgroundColor: t.bg }]}>
+			{headerMode === "pane" ? (
+				onBack ? <PaneHeader onBack={onBack} /> : null
+			) : null}
+			<CanvasScroll>
+				{/* Header block — number/badge, the large total, title, client link. */}
 				<DocumentHeaderCard
 					eyebrow={invoice.invoiceNumber}
-					eyebrowColor={recordTint.invoice.fg}
+					status={status}
 					clientName={client}
-					status={displayStatus}
+					onClientPress={openClient}
 					amount={invoice.total}
 					subline={
-						displayStatus === "overdue" ? (
+						status === "overdue" ? (
 							<View style={styles.dueRow}>
 								<CalendarX2 size={13} color={badgeTone.late.fg} />
 								<Text style={[styles.dueLate, { color: badgeTone.late.fg }]}>
@@ -431,13 +507,19 @@ export function InvoiceDetailBody({
 						)
 					}
 				>
-					{actions.length > 0 ? (
+					{headerMode === "root" ? (
+						overflowActions.length > 0 ? (
+							<View style={styles.headerMenuRow}>
+								<OverflowMenuButton actions={overflowActions} onAction={onAction} />
+							</View>
+						) : null
+					) : actions.length > 0 ? (
 						<View style={styles.actionsWrap}>
 							<QuickActionRow actions={actions} onAction={onAction} />
 						</View>
 					) : null}
 					{portalLink &&
-					(displayStatus === "sent" || displayStatus === "overdue") ? (
+					(status === "sent" || status === "overdue") ? (
 						<Pressable
 							accessibilityRole="button"
 							accessibilityLabel="Share the portal payment link"
@@ -462,49 +544,58 @@ export function InvoiceDetailBody({
 					) : null}
 				</DocumentHeaderCard>
 
-				{/* Payment — progress + timeline of installment rows. */}
+				{/* Lifecycle stepper (frame 1d). */}
+				<Panel>
+					<View style={styles.stepperWrap}>
+						<Stepper steps={invoiceStepperSteps(invoice, status)} />
+					</View>
+				</Panel>
+
+				{/* Payments — progress + a Panel list of installment rows. */}
 				<View style={styles.section}>
-					<Eyebrow>Payment</Eyebrow>
-					<Card>
-						<View
-							accessibilityRole="progressbar"
-							accessibilityValue={{ now: pct, min: 0, max: 100 }}
-							accessibilityLabel={`Payment progress, ${pct} percent paid`}
-							style={[styles.barTrack, { backgroundColor: t.line }]}
-						>
+					<SectionLabel title="Payments" />
+					<Panel>
+						<View style={styles.paymentHead}>
 							<View
-								style={[
-									styles.barFill,
-									{ backgroundColor: t.primarySolid, width: `${pct}%` },
-								]}
-							/>
+								accessibilityRole="progressbar"
+								accessibilityValue={{ now: pct, min: 0, max: 100 }}
+								accessibilityLabel={`Payment progress, ${pct} percent paid`}
+								style={[styles.barTrack, { backgroundColor: t.line }]}
+							>
+								<View
+									style={[
+										styles.barFill,
+										{ backgroundColor: t.primarySolid, width: `${pct}%` },
+									]}
+								/>
+							</View>
+
+							{withPayments === undefined ? (
+								<View style={[styles.barSkeleton, { backgroundColor: t.muted }]} />
+							) : hasRows && summary ? (
+								<Text style={[styles.summaryLine, { color: t.ink }]}>
+									Paid {formatCurrency(summary.paidAmount, { exact: true })} of{" "}
+									{formatCurrency(summaryTotal, { exact: true })}
+									{summary.remainingAmount > 0
+										? ` · ${formatCurrency(summary.remainingAmount, { exact: true })} outstanding`
+										: ""}
+								</Text>
+							) : isPaid ? (
+								<Text style={[styles.summaryLine, { color: t.ink }]}>
+									Paid in full {formatCurrency(summaryTotal, { exact: true })}
+									{invoice.paidAt
+										? ` · ${formatDocumentDate(invoice.paidAt)}`
+										: ""}
+								</Text>
+							) : (
+								<Text style={[styles.summaryLine, { color: t.ink }]}>
+									{formatCurrency(summaryTotal, { exact: true })} outstanding
+								</Text>
+							)}
 						</View>
 
-						{withPayments === undefined ? (
-							<View style={[styles.barSkeleton, { backgroundColor: t.muted }]} />
-						) : hasRows && summary ? (
-							<Text style={[styles.summaryLine, { color: t.ink }]}>
-								Paid {formatCurrency(summary.paidAmount, { exact: true })} of{" "}
-								{formatCurrency(summaryTotal, { exact: true })}
-								{summary.remainingAmount > 0
-									? ` · ${formatCurrency(summary.remainingAmount, { exact: true })} outstanding`
-									: ""}
-							</Text>
-						) : isPaid ? (
-							<Text style={[styles.summaryLine, { color: t.ink }]}>
-								Paid in full {formatCurrency(summaryTotal, { exact: true })}
-								{invoice.paidAt
-									? ` · ${formatDocumentDate(invoice.paidAt)}`
-									: ""}
-							</Text>
-						) : (
-							<Text style={[styles.summaryLine, { color: t.ink }]}>
-								{formatCurrency(summaryTotal, { exact: true })} outstanding
-							</Text>
-						)}
-
-						{/* Installment timeline (frame 1i): green check = settled (with
-						    method when recorded in the field), dashed hollow = still owed. */}
+						{/* Installment timeline: green check = settled (with method when
+						    recorded in the field), dashed hollow = still owed. */}
 						{withPayments !== undefined && hasRows
 							? payments.map((payment, i) => {
 									const paid = payment.status === "paid";
@@ -629,73 +720,46 @@ export function InvoiceDetailBody({
 								</View>
 							);
 						})}
-					</Card>
+					</Panel>
 				</View>
 
-				{/* Line items — THREE STATES: undefined → skeleton, [] → empty, else map */}
+				{/* Line items — web table in a Panel: ITEM / QTY / AMOUNT head,
+				    description sub-lines, right-aligned tabular amounts, totals foot. */}
 				<View style={styles.section}>
-					<View style={styles.sectionHeader}>
-						<Eyebrow>
-							{items && items.length > 0
-								? `Line items · ${items.length}`
-								: "Line items"}
-						</Eyebrow>
-						{latestDoc &&
-						invoice.contentUpdatedAt &&
-						invoice.contentUpdatedAt > latestDoc.generatedAt ? (
-							<Text style={[styles.staleHint, { color: t.faint }]}>
-								PDF outdated
-							</Text>
-						) : null}
-					</View>
-					<Card style={styles.itemsCard}>
+					<SectionLabel
+						title={items && items.length > 0 ? `Line items · ${items.length}` : "Line items"}
+						right={
+							latestDoc &&
+							invoice.contentUpdatedAt &&
+							invoice.contentUpdatedAt > latestDoc.generatedAt ? (
+								<Text style={[styles.staleHint, { color: t.faint }]}>PDF outdated</Text>
+							) : undefined
+						}
+					/>
+					<Panel
+						header={
+							<View style={[styles.tableHead, { backgroundColor: t.secondary }]}>
+								<Text style={[styles.thItem, { color: t.sub }]}>ITEM</Text>
+								<Text style={[styles.thQty, { color: t.sub }]}>QTY</Text>
+								<Text style={[styles.thAmt, { color: t.sub }]}>AMOUNT</Text>
+							</View>
+						}
+					>
 						{items === undefined ? (
-							<>
+							<View style={styles.lineSkeletonBlock}>
 								{[0, 1, 2].map((i) => (
 									<View
 										key={i}
-										style={[
-											styles.itemRow,
-											{
-												borderBottomColor: t.line,
-												borderBottomWidth: i === 2 ? 0 : 1,
-											},
-										]}
-									>
-										<View style={styles.itemBody}>
-											<View
-												style={[
-													styles.skeleton,
-													{ width: "60%", height: 14, backgroundColor: t.muted },
-												]}
-											/>
-											<View
-												style={[
-													styles.skeleton,
-													{
-														width: "35%",
-														height: 12,
-														marginTop: 6,
-														backgroundColor: t.muted,
-													},
-												]}
-											/>
-										</View>
-										<View
-											style={[
-												styles.skeleton,
-												{ width: 56, height: 14, backgroundColor: t.muted },
-											]}
-										/>
-									</View>
+										style={[styles.lineSkeleton, { backgroundColor: t.muted }]}
+									/>
 								))}
-							</>
+							</View>
 						) : items.length === 0 ? (
 							<Text style={[styles.emptyLine, { color: t.sub }]}>
 								No itemized lines
 							</Text>
 						) : (
-							items.map((item, i) => (
+							items.map((item) => (
 								<Pressable
 									key={item._id}
 									accessibilityRole={contentEditable ? "button" : undefined}
@@ -705,27 +769,26 @@ export function InvoiceDetailBody({
 											: undefined
 									}
 									style={({ pressed }) => [
-										styles.itemRow,
-										{
-											borderBottomColor: t.line,
-											borderBottomWidth: i === items.length - 1 ? 0 : 1,
-										},
-										pressed && contentEditable && styles.itemPressed,
+										styles.lineRow,
+										pressed && contentEditable && styles.linePressed,
 									]}
 								>
-									<View style={styles.itemBody}>
+									<View style={styles.lineItemCol}>
 										<Text
-											style={[styles.itemName, { color: t.ink }]}
+											style={[styles.lineDesc, { color: t.ink }]}
 											numberOfLines={2}
 										>
 											{item.description}
 										</Text>
-										<Text style={[styles.itemSub, { color: t.sub }]}>
-											{item.quantity} ×{" "}
+										<Text style={[styles.lineSub, { color: t.sub }]}>
+											{item.unit ? `${item.unit} · ` : ""}
 											{formatCurrency(item.unitPrice, { exact: true })}
 										</Text>
 									</View>
-									<Text style={[styles.itemAmount, { color: t.ink }]}>
+									<Text style={[styles.lineQty, { color: t.sub }]}>
+										{item.quantity}
+									</Text>
+									<Text style={[styles.lineAmount, { color: t.ink }]}>
 										{formatCurrency(item.total, { exact: true })}
 									</Text>
 								</Pressable>
@@ -737,8 +800,7 @@ export function InvoiceDetailBody({
 								onPress={() => openItem(null)}
 								style={({ pressed }) => [
 									styles.addRow,
-									{ borderTopColor: t.line },
-									pressed && styles.itemPressed,
+									pressed && styles.linePressed,
 								]}
 							>
 								<Plus size={16} color={t.primarySolid} strokeWidth={2.5} />
@@ -747,7 +809,17 @@ export function InvoiceDetailBody({
 								</Text>
 							</Pressable>
 						) : null}
-					</Card>
+						{/* Totals footer, on `muted`. */}
+						<View style={[styles.totalsFooter, { backgroundColor: t.muted }]}>
+							<TotalsBlock
+								rows={totalsRows}
+								total={{
+									label: "Total",
+									value: formatCurrency(invoice.total, { exact: true }),
+								}}
+							/>
+						</View>
+					</Panel>
 					{showSettledLockNote ? (
 						<Text style={[styles.lockNote, { color: t.faint }]}>
 							Line items locked — a payment has been recorded.
@@ -755,38 +827,19 @@ export function InvoiceDetailBody({
 					) : null}
 				</View>
 
-				{/* Totals — shared TotalsBlock, values from invoice.* (server-calculated) */}
-				<View style={styles.section}>
-					<Card>
-						<TotalsBlock
-							rows={totalsRows}
-							total={{
-								label: "Total",
-								value: formatCurrency(invoice.total, { exact: true }),
-							}}
-						/>
-					</Card>
-				</View>
-
 				{/* Metadata KV — Invoice # / Issued / Due / Paid (Paid only when present) */}
 				<View style={styles.section}>
-					<Eyebrow>Details</Eyebrow>
-					<Card style={styles.metaCard}>
+					<SectionLabel title="Details" />
+					<Panel>
 						<MetaRow label="Invoice #" value={invoice.invoiceNumber} />
 						<MetaRow label="Issued" value={formatDocumentDate(invoice.issuedDate)} />
 						<MetaRow label="Due" value={formatDocumentDate(invoice.dueDate)} />
 						{invoice.paidAt ? (
-							<MetaRow
-								label="Paid"
-								value={formatDocumentDate(invoice.paidAt)}
-								last
-							/>
+							<MetaRow label="Paid" value={formatDocumentDate(invoice.paidAt)} />
 						) : null}
-					</Card>
+					</Panel>
 				</View>
-
-				<View style={{ height: 32 }} />
-			</ScrollView>
+			</CanvasScroll>
 
 			<SendPreviewSheet
 				visible={sendOpen}
@@ -804,7 +857,7 @@ export function InvoiceDetailBody({
 				}))}
 				totalsRows={totalsRows}
 				totalValue={formatCurrency(invoice.total, { exact: true })}
-				resend={displayStatus !== "draft"}
+				resend={status !== "draft"}
 				firstSend={invoice.status === "draft" && !invoice.firstSentAt}
 				onSend={async () => {
 					await sendToClient({ id: invoice._id });
@@ -826,7 +879,7 @@ export function InvoiceDetailBody({
 				onSubmit={saveItem}
 				onDelete={deleteItem}
 			/>
-		</SafeAreaView>
+		</View>
 	);
 }
 
@@ -837,23 +890,10 @@ export default function InvoiceDetailScreen() {
 	return <InvoiceDetailBody id={id} />;
 }
 
-function MetaRow({
-	label,
-	value,
-	last,
-}: {
-	label: string;
-	value: string;
-	last?: boolean;
-}) {
+function MetaRow({ label, value }: { label: string; value: string }) {
 	const t = useTokens();
 	return (
-		<View
-			style={[
-				styles.metaRow,
-				{ borderBottomColor: t.line, borderBottomWidth: last ? 0 : 1 },
-			]}
-		>
+		<View style={styles.metaRow}>
 			<Text style={[styles.metaLabel, { color: t.sub }]}>{label}</Text>
 			<Text style={[styles.metaValue, { color: t.ink }]}>{value}</Text>
 		</View>
@@ -862,14 +902,15 @@ function MetaRow({
 
 const styles = StyleSheet.create({
 	flex: { flex: 1 },
-	scroll: { padding: 16, gap: 0 },
 
-	itemPressed: { opacity: 0.7 },
-	sectionHeader: {
-		flexDirection: "row",
-		alignItems: "baseline",
-		justifyContent: "space-between",
+	actionsWrap: { marginTop: 14 },
+	headerMenuRow: {
+		position: "absolute",
+		top: 18,
+		right: 18,
 	},
+
+	section: { gap: 10 },
 	staleHint: {
 		fontFamily: fontFamily.regular,
 		fontSize: type.sm,
@@ -880,7 +921,6 @@ const styles = StyleSheet.create({
 		justifyContent: "center",
 		gap: 6,
 		paddingVertical: 13,
-		borderTopWidth: 1,
 	},
 	addLabel: {
 		fontFamily: fontFamily.semibold,
@@ -901,9 +941,6 @@ const styles = StyleSheet.create({
 	skeletonRow: {
 		height: 60,
 		borderRadius: radii.r,
-	},
-	skeleton: {
-		borderRadius: radii.sm,
 	},
 
 	notFound: {
@@ -938,9 +975,6 @@ const styles = StyleSheet.create({
 		fontSize: type.sm,
 		marginTop: 5,
 	},
-	actionsWrap: {
-		marginTop: 14,
-	},
 	linkRow: {
 		flexDirection: "row",
 		alignItems: "center",
@@ -957,27 +991,63 @@ const styles = StyleSheet.create({
 		fontSize: type.meta,
 	},
 
-	section: { marginTop: 22, gap: 10 },
+	stepperWrap: { padding: 16 },
 
-	itemsCard: { paddingVertical: 6 },
-	itemRow: {
+	tableHead: {
 		flexDirection: "row",
 		alignItems: "center",
-		justifyContent: "space-between",
-		gap: 12,
-		paddingVertical: 12,
-		paddingHorizontal: 4,
+		paddingVertical: 8,
+		paddingHorizontal: 14,
 	},
-	itemBody: { flex: 1, minWidth: 0, gap: 3 },
-	itemName: {
-		fontFamily: fontFamily.regular,
+	thItem: {
+		flex: 1,
+		fontFamily: fontFamily.semibold,
+		fontSize: 11,
+		letterSpacing: 0.6,
+		textTransform: "uppercase",
+	},
+	thQty: {
+		width: 44,
+		textAlign: "right",
+		fontFamily: fontFamily.semibold,
+		fontSize: 11,
+		letterSpacing: 0.6,
+		textTransform: "uppercase",
+	},
+	thAmt: {
+		width: 84,
+		textAlign: "right",
+		fontFamily: fontFamily.semibold,
+		fontSize: 11,
+		letterSpacing: 0.6,
+		textTransform: "uppercase",
+	},
+	lineRow: {
+		flexDirection: "row",
+		alignItems: "flex-start",
+		gap: 8,
+		paddingVertical: 12,
+		paddingHorizontal: 14,
+	},
+	lineItemCol: { flex: 1, minWidth: 0, gap: 2 },
+	lineDesc: {
+		fontFamily: fontFamily.semibold,
 		fontSize: type.h4,
 	},
-	itemSub: {
+	lineSub: {
 		fontFamily: fontFamily.regular,
 		fontSize: type.sm,
 	},
-	itemAmount: {
+	lineQty: {
+		width: 44,
+		textAlign: "right",
+		fontFamily: fontFamily.medium,
+		fontSize: type.h4,
+		fontVariant: ["tabular-nums"],
+	},
+	lineAmount: {
+		width: 84,
+		textAlign: "right",
 		fontFamily: fontFamily.bold,
 		fontSize: type.h4,
 		fontVariant: ["tabular-nums"],
@@ -985,10 +1055,15 @@ const styles = StyleSheet.create({
 	emptyLine: {
 		fontFamily: fontFamily.regular,
 		fontSize: type.h4,
-		paddingVertical: 14,
-		paddingHorizontal: 4,
+		paddingVertical: 18,
+		paddingHorizontal: 14,
 	},
+	linePressed: { opacity: 0.7 },
+	totalsFooter: { paddingHorizontal: 14, paddingVertical: 12 },
+	lineSkeletonBlock: { paddingHorizontal: 14, paddingVertical: 12, gap: 10 },
+	lineSkeleton: { height: 40, borderRadius: radii.sm },
 
+	paymentHead: { padding: 14, paddingBottom: 4, gap: 2 },
 	barTrack: {
 		height: 6,
 		borderRadius: radii.pill,
@@ -1017,6 +1092,7 @@ const styles = StyleSheet.create({
 		flexDirection: "row",
 		gap: 10,
 		marginTop: 8,
+		paddingHorizontal: 14,
 	},
 	timelineRail: {
 		alignItems: "center",
@@ -1057,14 +1133,13 @@ const styles = StyleSheet.create({
 		fontVariant: ["tabular-nums"],
 	},
 
-	metaCard: { paddingVertical: 6 },
 	metaRow: {
 		flexDirection: "row",
 		alignItems: "center",
 		justifyContent: "space-between",
 		gap: 12,
 		paddingVertical: 12,
-		paddingHorizontal: 4,
+		paddingHorizontal: 14,
 	},
 	metaLabel: {
 		fontFamily: fontFamily.regular,

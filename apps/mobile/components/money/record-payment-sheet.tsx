@@ -10,9 +10,10 @@ import {
 } from "react-native";
 import { Banknote, Check, Landmark, Wallet, X } from "lucide-react-native";
 import { badgeTone, fontFamily, radii, type, useTokens } from "@/lib/theme";
-import { Button, Eyebrow, SegmentedToggle } from "@/components/ui";
+import { Button, SegmentedToggle } from "@/components/ui";
 import { formatCurrency } from "@/lib/format";
 import { FormSheet } from "@/components/sheets/form-sheet";
+import { SheetField, SheetInput } from "@/components/sheets/create-sheet";
 
 export type ManualMethod = "cash" | "check" | "other";
 
@@ -152,12 +153,23 @@ export function RecordPaymentSheet({
 							contentContainerStyle={styles.scroll}
 							keyboardShouldPersistTaps="handled"
 						>
-							<View style={styles.field}>
-								<Eyebrow>Amount</Eyebrow>
+							<SheetField
+								label="Amount"
+								hint={
+									amountText && !amountValid
+										? undefined
+										: `${formatCurrency(remaining, { exact: true })} outstanding on ${invoiceNumber}`
+								}
+								error={
+									amountText && !amountValid
+										? `Enter an amount up to ${formatCurrency(remaining, { exact: true })}`
+										: null
+								}
+							>
 								<View
 									style={[
 										styles.amountBox,
-										{ backgroundColor: t.card, borderColor: t.line },
+										{ backgroundColor: t.card, borderColor: t.input },
 									]}
 								>
 									<Text style={[styles.dollarSign, { color: t.faint }]}>$</Text>
@@ -171,49 +183,25 @@ export function RecordPaymentSheet({
 										accessibilityLabel="Payment amount in dollars"
 									/>
 								</View>
-								<Text
-									style={[
-										styles.helper,
-										{
-											color:
-												amountText && !amountValid ? t.danger : t.sub,
-										},
-									]}
-								>
-									{amountText && !amountValid
-										? `Enter an amount up to ${formatCurrency(remaining, { exact: true })}`
-										: `${formatCurrency(remaining, { exact: true })} outstanding on ${invoiceNumber}`}
-								</Text>
-							</View>
+							</SheetField>
 
-							<View style={styles.field}>
-								<Eyebrow>Method</Eyebrow>
+							<SheetField label="Method">
 								<SegmentedToggle
 									segments={METHODS}
 									value={method}
 									onChange={setMethod}
 								/>
-							</View>
+							</SheetField>
 
-							<View style={styles.field}>
-								<Eyebrow>Note</Eyebrow>
-								<TextInput
+							<SheetField label="Note">
+								<SheetInput
 									value={note}
 									onChangeText={setNote}
 									placeholder="Check #, who paid, anything worth remembering"
-									placeholderTextColor={t.faint}
 									multiline
-									style={[
-										styles.noteInput,
-										{
-											backgroundColor: t.card,
-											borderColor: t.line,
-											color: t.ink,
-										},
-									]}
 									accessibilityLabel="Payment note"
 								/>
-							</View>
+							</SheetField>
 						</ScrollView>
 						<View
 							style={[
@@ -261,11 +249,10 @@ const styles = StyleSheet.create({
 		justifyContent: "center",
 	},
 	scroll: { padding: 18, paddingTop: 10, gap: 20 },
-	field: { gap: 8 },
 	amountBox: {
 		flexDirection: "row",
 		alignItems: "center",
-		borderRadius: radii.rLg,
+		borderRadius: radii.ctrl,
 		borderWidth: 1,
 		paddingHorizontal: 16,
 		paddingVertical: 12,
@@ -282,21 +269,6 @@ const styles = StyleSheet.create({
 		letterSpacing: -0.6,
 		fontVariant: ["tabular-nums"],
 		paddingVertical: 0,
-	},
-	helper: {
-		fontFamily: fontFamily.regular,
-		fontSize: type.sm,
-	},
-	noteInput: {
-		borderRadius: radii.r,
-		borderWidth: 1,
-		paddingHorizontal: 14,
-		paddingVertical: 12,
-		minHeight: 76,
-		fontFamily: fontFamily.regular,
-		fontSize: type.body,
-		letterSpacing: 0, // RN#42589: pin kern so iOS placeholder can't randomly letter-space
-		textAlignVertical: "top",
 	},
 	footer: {
 		borderTopWidth: 1,

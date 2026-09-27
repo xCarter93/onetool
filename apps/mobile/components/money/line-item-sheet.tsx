@@ -11,9 +11,10 @@ import {
 } from "react-native";
 import { X } from "lucide-react-native";
 import { fontFamily, radii, type, useTokens } from "@/lib/theme";
-import { Button, Eyebrow } from "@/components/ui";
+import { Button } from "@/components/ui";
 import { formatCurrency } from "@/lib/format";
 import { FormSheet } from "@/components/sheets/form-sheet";
+import { SheetField, SheetInput } from "@/components/sheets/create-sheet";
 
 export interface LineItemDraft {
 	description: string;
@@ -179,73 +180,45 @@ export function LineItemSheet({
 					contentContainerStyle={styles.scroll}
 					keyboardShouldPersistTaps="handled"
 				>
-					<View style={styles.field}>
-						<Eyebrow>Description</Eyebrow>
-						<TextInput
+					<SheetField label="Description">
+						<SheetInput
 							value={description}
 							onChangeText={setDescription}
 							placeholder="Spring cleanup, service call, materials…"
-							placeholderTextColor={t.faint}
 							multiline
-							style={[
-								styles.descriptionInput,
-								{
-									backgroundColor: t.card,
-									borderColor: t.line,
-									color: t.ink,
-								},
-							]}
 							accessibilityLabel="Line item description"
 						/>
-					</View>
+					</SheetField>
 
 					<View style={styles.pair}>
-						<View style={[styles.field, styles.pairItem]}>
-							<Eyebrow>Quantity</Eyebrow>
-							<TextInput
+						<SheetField label="Quantity" style={styles.pairItem}>
+							<SheetInput
 								value={quantityText}
 								onChangeText={setQuantityText}
 								keyboardType="decimal-pad"
 								placeholder="1"
-								placeholderTextColor={t.faint}
-								style={[
-									styles.numberInput,
-									{
-										backgroundColor: t.card,
-										borderColor: t.line,
-										color: t.ink,
-									},
-								]}
 								accessibilityLabel="Quantity"
 							/>
-						</View>
-						<View style={[styles.field, styles.pairItem]}>
-							<Eyebrow>{unitRequired ? "Unit" : "Unit (optional)"}</Eyebrow>
-							<TextInput
+						</SheetField>
+						<SheetField
+							label={unitRequired ? "Unit" : "Unit (optional)"}
+							style={styles.pairItem}
+						>
+							<SheetInput
 								value={unit}
 								onChangeText={setUnit}
 								placeholder="hour, sq ft, unit"
-								placeholderTextColor={t.faint}
 								autoCapitalize="none"
-								style={[
-									styles.numberInput,
-									{
-										backgroundColor: t.card,
-										borderColor: t.line,
-										color: t.ink,
-									},
-								]}
 								accessibilityLabel="Unit of measure"
 							/>
-						</View>
+						</SheetField>
 					</View>
 
-					<View style={styles.field}>
-						<Eyebrow>Rate</Eyebrow>
+					<SheetField label="Rate">
 						<View
 							style={[
 								styles.rateBox,
-								{ backgroundColor: t.card, borderColor: t.line },
+								{ backgroundColor: t.card, borderColor: t.input },
 							]}
 						>
 							<Text style={[styles.dollarSign, { color: t.faint }]}>$</Text>
@@ -259,7 +232,7 @@ export function LineItemSheet({
 								accessibilityLabel="Rate per unit in dollars"
 							/>
 						</View>
-					</View>
+					</SheetField>
 
 					<View
 						style={[
@@ -338,34 +311,12 @@ const styles = StyleSheet.create({
 		justifyContent: "center",
 	},
 	scroll: { padding: 18, paddingTop: 10, gap: 20 },
-	field: { gap: 8 },
 	pair: { flexDirection: "row", gap: 12 },
 	pairItem: { flex: 1 },
-	descriptionInput: {
-		borderRadius: radii.r,
-		borderWidth: 1,
-		paddingHorizontal: 14,
-		paddingVertical: 12,
-		minHeight: 68,
-		fontFamily: fontFamily.regular,
-		fontSize: type.body,
-		letterSpacing: 0, // RN#42589: pin kern so iOS placeholder can't randomly letter-space
-		textAlignVertical: "top",
-	},
-	numberInput: {
-		borderRadius: radii.r,
-		borderWidth: 1,
-		paddingHorizontal: 14,
-		paddingVertical: 12,
-		fontFamily: fontFamily.semibold,
-		fontSize: type.body,
-		letterSpacing: 0,
-		fontVariant: ["tabular-nums"],
-	},
 	rateBox: {
 		flexDirection: "row",
 		alignItems: "center",
-		borderRadius: radii.rLg,
+		borderRadius: radii.ctrl,
 		borderWidth: 1,
 		paddingHorizontal: 16,
 		paddingVertical: 12,
@@ -387,7 +338,7 @@ const styles = StyleSheet.create({
 		flexDirection: "row",
 		alignItems: "center",
 		justifyContent: "space-between",
-		borderRadius: radii.rLg,
+		borderRadius: radii.ctrl,
 		borderWidth: 1,
 		paddingHorizontal: 16,
 		paddingVertical: 14,

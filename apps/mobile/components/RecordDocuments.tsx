@@ -61,17 +61,30 @@ const formatDate = (timestamp: number): string =>
 		day: "numeric",
 	});
 
-export function RecordDocuments({ target }: { target: DocumentTarget }) {
+export function RecordDocuments({
+	target,
+	style,
+}: {
+	target: DocumentTarget;
+	/** Flattens the card chrome (e.g. inside a canvas Panel row). */
+	style?: ViewStyle;
+}) {
 	// Branch into per-table variants so each keeps a static set of hooks and
 	// exact create-arg types (projectId vs clientId).
 	return target.kind === "project" ? (
-		<ProjectVariant projectId={target.id} />
+		<ProjectVariant projectId={target.id} style={style} />
 	) : (
-		<ClientVariant clientId={target.id} />
+		<ClientVariant clientId={target.id} style={style} />
 	);
 }
 
-function ProjectVariant({ projectId }: { projectId: Id<"projects"> }) {
+function ProjectVariant({
+	projectId,
+	style,
+}: {
+	projectId: Id<"projects">;
+	style?: ViewStyle;
+}) {
 	const { can, isLoading: permsLoading } = usePermissions();
 	// The list queries call requireLevel("documents", "view") and THROW on denial —
 	// an unguarded useQuery would drop the screen into the root ErrorBoundary.
@@ -85,16 +98,23 @@ function ProjectVariant({ projectId }: { projectId: Id<"projects"> }) {
 	return (
 		<DocumentsCard
 			docs={docsResult}
-			// The project screen renders its own SectionHeader above this card.
+			// The caller renders its own PanelHeader above this card.
 			title={() => null}
 			generateUploadUrl={generateUploadUrl}
 			createDoc={(args) => createDoc({ projectId, ...args })}
 			canUpload={permsLoading || can("documents", "modify")}
+			style={style}
 		/>
 	);
 }
 
-function ClientVariant({ clientId }: { clientId: Id<"clients"> }) {
+function ClientVariant({
+	clientId,
+	style,
+}: {
+	clientId: Id<"clients">;
+	style?: ViewStyle;
+}) {
 	const { can, isLoading: permsLoading } = usePermissions();
 	const docsResult = useQuery(
 		api.clientDocuments.listByClient,
@@ -106,11 +126,12 @@ function ClientVariant({ clientId }: { clientId: Id<"clients"> }) {
 	return (
 		<DocumentsCard
 			docs={docsResult}
-			// The client screen renders its own SectionHeader above this card.
+			// The caller renders its own PanelHeader above this card.
 			title={() => null}
 			generateUploadUrl={generateUploadUrl}
 			createDoc={(args) => createDoc({ clientId, ...args })}
 			canUpload={permsLoading || can("documents", "modify")}
+			style={style}
 		/>
 	);
 }

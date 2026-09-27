@@ -1,54 +1,59 @@
 import { useOfflinePartition } from "@/lib/offline/partition-context";
-import { View, ScrollView, RefreshControl, StyleSheet } from "react-native";
+import { View, RefreshControl, StyleSheet } from "react-native";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { useLocalSearchParams, useRouter, type Href } from "expo-router";
 import { useState, useCallback, useEffect, useMemo, useRef } from "react";
-import {
-	SafeAreaView,
-	useSafeAreaInsets,
-} from "react-native-safe-area-context";
 import { Doc, Id } from "@onetool/backend/convex/_generated/dataModel";
-import { DOCK_CLEARANCE, STATUS, useTokens } from "@/lib/theme";
+import { useTokens } from "@/lib/theme";
 import { formatCurrency } from "@/lib/format";
 import { appleMapsAddressUrl, appleMapsUrl } from "@/lib/route-run";
-import { InkTabHeader } from "@/components/ink-tab-header";
 import { PaneHeader } from "@/components/ipad/pane-header";
 import { useShellNav } from "@/lib/shell-nav";
 import { EditableField } from "@/components/EditableField";
 import { FieldMenu } from "@/components/FieldMenu";
 import { MentionModal } from "@/components/MentionModal";
-import { IdentityBlock, IdentityMeta } from "@/components/identity-block";
+import { IdentityBlock } from "@/components/identity-block";
 import {
+	ContactChipRow,
 	countSuffix,
-	detailStyles,
 	DetailSkeleton,
-	EmptyRow,
-	FactCard,
-	FactRow,
-	SectionLabel,
-	SectionLink,
-	TeamChatButton,
-	type FactAction,
+	LineRow,
+	PersonRow,
+	type ChipAction,
 } from "@/components/record-detail";
+import {
+	CanvasScroll,
+	EmptyPanel,
+	AttributeRow,
+	MetricStrip,
+	Panel,
+	PanelHeader,
+	RecordRow,
+	UnderlineTabs,
+	type UnderlineTab,
+} from "@/components/canvas";
 import { openExternal } from "@/lib/open-external";
 import { recordRecentView } from "@/lib/recents";
 import { usePermissions } from "@/lib/use-permissions";
 import { useCachedQuery } from "@/lib/offline/useCachedQuery";
 import { saveOffline, useOpenOps } from "@/lib/offline/hooks";
 import { overlayFields } from "@/lib/offline/field-patch";
-import { DotGrid, ListRow } from "@/components/ui";
 import { RecordDocuments } from "@/components/RecordDocuments";
+import { useScreenChrome } from "@/lib/shell-chrome";
 import {
-	Phone,
+	CalendarClock,
+	FileText,
+	Folder,
 	Mail,
 	MapPin,
 	MessageSquare,
 	Navigation,
-	Plus,
-	User,
+	Phone,
+	Wallet,
 } from "lucide-react-native";
 
 type ClientStatus = "lead" | "active" | "inactive" | "archived";
+type ClientTab = "overview" | "projects" | "quotes" | "invoices";
 
 const STATUS_OPTIONS = [
 	{ value: "lead", label: "Lead" },
@@ -72,8 +77,8 @@ const LEAD_SOURCE_LABEL: Record<string, string> = {
 	other: "Other",
 };
 
-// One address string per property — the Properties row and its directions link
-// must resolve the same thing.
+// One address string per property — the chip row and the Property panel must
+// resolve the same thing.
 const addressOf = (
 	property: Pick<
 		Doc<"clientProperties">,
@@ -84,6 +89,9 @@ const addressOf = (
 	[property.streetAddress, property.city, property.state, property.zipCode]
 		.filter(Boolean)
 		.join(", ");
+
+const sinceLabel = (creationTime: number) =>
+	`since ${new Date(creationTime).toLocaleDateString("en-US", { month: "short", year: "numeric" })}`;
 
 // Body extracted (P26 Option B) so the iPad pane can render this without the
 // route shell. headerMode DEFAULTS to "root" → the iPhone route wrapper below is
@@ -107,16 +115,10 @@ export function ClientDetailBody({
 	// shell selection (no router.push to a (tabs) sibling, which slides the whole
 	// shell). On iPhone there's no provider → null → router.push (route nav).
 	const shellNav = useShellNav();
-	// In an iPad pane the header is a PaneHeader (the shell's selection drives
-	// nav, so onBack clears it; router.back would pop out of the shell). onBack
-	// is undefined in landscape (list always visible → no back button shown).
 	const isPane = headerMode === "pane";
-	const insets = useSafeAreaInsets();
-	// The floating dock takes no layout height — scroll content clears it
-	// itself. iPad panes have no dock (the shell replaces Tabs).
-	const scrollBottom = isPane ? 16 : DOCK_CLEARANCE + insets.bottom;
 	const [refreshing, setRefreshing] = useState(false);
 	const [mentionModalVisible, setMentionModalVisible] = useState(false);
+	const [activeTab, setActiveTab] = useState<ClientTab>("overview");
 	const { can, isLoading: permsLoading } = usePermissions();
 
 	const client = useCachedQuery(
@@ -218,29 +220,43 @@ export function ClientDetailBody({
 		);
 	};
 
+	const canCreateProject = permsLoading || can("projects", "modify");
+	const canCreateQuote = permsLoading || can("quotes", "modify");
+
+	const openNewQuote = useCallback(() => {
+		// Cast: /quote/new isn't in the generated route map yet.
+		router.push({
+			pathname: "/quote/new",
+			params: { clientId },
+		} as unknown as Href);
+	}, [router, clientId]);
+	const openSchedule = useCallback(() => {
+		router.push({
+			pathname: "/tasks/form",
+			params: { clientId },
+		} as unknown as Href);
+	}, [router, clientId]);
+
+	// Tray, phone only — pane mode passes null so no chrome is published.
+	useScreenChrome(
+		isPane
+			? null
+			: {
+					tray: [
+						{ key: "new-quote", label: "New quote", icon: FileText, onPress: openNewQuote },
+						{ key: "schedule", label: "Schedule", icon: CalendarClock, onPress: openSchedule },
+					],
+				}
+	);
+
 	if (!client || !displayClient) {
 		return (
-			<SafeAreaView
-				style={[styles.flex, { backgroundColor: t.bg }]}
-				edges={[]}
-			>
-				<DotGrid style={StyleSheet.absoluteFill} />
-				{isPane ? (
-					<PaneHeader onBack={onBack} />
-				) : (
-					<InkTabHeader title="Client" onBack={() => router.back()} />
-				)}
-				{/* Skeleton mirrors the real layout: hero, team-chat pill, then
-				    list rows. */}
-				<ScrollView
-					contentContainerStyle={[
-						styles.scroll,
-						{ paddingBottom: scrollBottom },
-					]}
-				>
-					<DetailSkeleton variant="client" />
-				</ScrollView>
-			</SafeAreaView>
+			<View style={[styles.flex, { backgroundColor: t.bg }]}>
+				{isPane ? <PaneHeader onBack={onBack} /> : null}
+				<CanvasScroll>
+					<DetailSkeleton />
+				</CanvasScroll>
+			</View>
 		);
 	}
 
@@ -249,19 +265,22 @@ export function ClientDetailBody({
 	const primaryProperty = properties.find((p) => p.isPrimary) ?? properties[0];
 	const primaryContact = contacts.find((c) => c.isPrimary) ?? contacts[0];
 
-	// Identity meta line: where this client is. Lead source only stands in when
-	// there is no location to show.
+	// Identity meta line: where this client is (or its lead source), plus when
+	// it was created — the mock's "Healthcare · since Mar 2024" pattern.
 	const identityLocation =
 		[primaryProperty?.city, primaryProperty?.state].filter(Boolean).join(", ") ||
 		undefined;
-	const identitySub =
+	const identityOrigin =
 		identityLocation ??
 		(client.leadSource
 			? (LEAD_SOURCE_LABEL[client.leadSource] ?? client.leadSource)
 			: undefined);
+	const identitySub = [identityOrigin, sinceLabel(client._creationTime)]
+		.filter(Boolean)
+		.join("  ·  ");
 
-	// Directions for one property — the project's own resolution, per row:
-	// coordinates win, else the formatted address, else no action at all.
+	// Directions for one property — coordinates win, else the formatted
+	// address, else no action at all.
 	const directionsFor = (property: (typeof properties)[number]) => {
 		const address = addressOf(property);
 		if (property.latitude !== undefined && property.longitude !== undefined) {
@@ -270,372 +289,398 @@ export function ClientDetailBody({
 		return address ? appleMapsAddressUrl(address) : undefined;
 	};
 
-	// Creation links are permission-gated, and the convention is to HIDE (not
-	// dim) what the user may not do — but stay visible while the grant is still
-	// loading, so the header doesn't reflow under a tap.
-	const canCreateProject = permsLoading || can("projects", "modify");
-	const canCreateQuote = permsLoading || can("quotes", "modify");
+	const propertyMapUrl = primaryProperty ? directionsFor(primaryProperty) : undefined;
 
-	const recentProjects = projects.slice(0, 3);
-	const recentQuotes = quotes.slice(0, 3);
-	const recentInvoices = invoices.slice(0, 3);
+	// Web parity (client-detail-sidebar.tsx): unpaid invoice total.
+	const outstanding = invoices
+		.filter((inv) => inv.status !== "paid")
+		.reduce((sum, inv) => sum + inv.total, 0);
+
+	const chips: ChipAction[] = [];
+	if (primaryContact?.phone) {
+		chips.push({
+			key: "call",
+			label: "Call",
+			Icon: Phone,
+			onPress: () => openExternal(`tel:${primaryContact.phone}`, "Phone"),
+		});
+	}
+	if (primaryContact?.email) {
+		chips.push({
+			key: "email",
+			label: "Email",
+			Icon: Mail,
+			onPress: () => openExternal(`mailto:${primaryContact.email}`, "Mail"),
+		});
+	}
+	if (propertyMapUrl) {
+		chips.push({
+			key: "map",
+			label: "Map",
+			Icon: Navigation,
+			onPress: () => openExternal(propertyMapUrl, "Maps"),
+		});
+	}
+	const overflow: ChipAction[] = [];
+	if (primaryContact?.phone) {
+		overflow.push({
+			key: "message",
+			label: "Message",
+			Icon: MessageSquare,
+			onPress: () => openExternal(`sms:${primaryContact.phone}`, "Messages"),
+		});
+	}
+	overflow.push({
+		key: "team-chat",
+		label: "Team chat",
+		Icon: MessageSquare,
+		onPress: () => setMentionModalVisible(true),
+	});
+
+	const tabs: UnderlineTab<ClientTab>[] = [
+		{ value: "overview", label: "Overview" },
+		{ value: "projects", label: "Projects", count: projects.length },
+		{ value: "quotes", label: "Quotes", count: quotes.length },
+		{ value: "invoices", label: "Invoices", count: invoices.length },
+	];
 
 	const tags = client.tags?.filter(Boolean) ?? [];
 
 	return (
-		<SafeAreaView
-			style={[styles.flex, { backgroundColor: t.bg }]}
-			edges={[]}
-		>
-			<DotGrid style={StyleSheet.absoluteFill} />
+		<View style={[styles.flex, { backgroundColor: t.bg }]}>
 			{isPane ? (
-				// No title — the hero right below carries the name; a titled pane
-				// header printed it twice.
+				// No title — the identity row right below carries the name.
 				<PaneHeader onBack={onBack} />
-			) : (
-				<InkTabHeader
-					title={displayClient.companyName}
-					onBack={() => router.back()}
-				/>
-			)}
-			<ScrollView
-				contentContainerStyle={[
-					styles.scroll,
-					{ paddingBottom: scrollBottom },
-				]}
+			) : null}
+			<CanvasScroll
 				refreshControl={
 					<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
 				}
 			>
-				{/* Identity — status is TEXT; the FieldMenu hangs off it so the one
-				    place a client status can change keeps working. */}
+				{/* Identity — status is a Badge; the FieldMenu hangs off it so the
+				    one place a client status can change keeps working. */}
 				<IdentityBlock
+					kind="client"
 					statusKey={status}
 					name={displayClient.companyName}
-					meta={identitySub ? <IdentityMeta>{identitySub}</IdentityMeta> : null}
-					renderStatus={(statusText) => (
+					meta={identitySub || undefined}
+					renderStatus={(badge) => (
 						<FieldMenu
 							title="Client status"
 							value={status}
 							options={STATUS_OPTIONS}
 							onSelect={handleSelectStatus}
 						>
-							{/* A single bare child is the whole trigger — a row sibling
-							    gets squeezed by the native menu host and clips the label. */}
-							<View
-								accessibilityRole="button"
-								// Status-as-text removed the badge, so the label must still
-								// speak the CURRENT value — the trigger's label overrides the
-								// child Text for VoiceOver.
-								accessibilityLabel={`Status: ${
-									STATUS[status as keyof typeof STATUS]?.label ?? status
-								}. Tap to change`}
-								style={[
-									detailStyles.statusTrigger,
-									{ borderBottomColor: t.faint },
-								]}
-							>
-								{statusText}
-							</View>
+							{badge}
 						</FieldMenu>
 					)}
 				/>
 
-				{/* One quiet verb near the hero. Call/message/email/directions now
-				    live on the rows that own the data. */}
-				<TeamChatButton
-					onPress={() => setMentionModalVisible(true)}
-					style={styles.teamChat}
+				<ContactChipRow chips={chips} overflow={overflow} />
+
+				<MetricStrip
+					cells={[
+						{
+							icon: FileText,
+							label: "Quotes",
+							value: String(quotes.length),
+							onPress: () => setActiveTab("quotes"),
+						},
+						{
+							icon: Wallet,
+							label: "Outstanding",
+							value: formatCurrency(outstanding),
+							tone: outstanding > 0 ? "danger" : "default",
+							onPress: () => setActiveTab("invoices"),
+						},
+						{
+							icon: Folder,
+							label: "Projects",
+							value: String(projects.length),
+							onPress: () => setActiveTab("projects"),
+						},
+					]}
 				/>
 
-				{/* Company — editable fields read as wells; read-only twins stay flat */}
-				<View style={detailStyles.section}>
-					<SectionLabel title="Company" />
-					<View style={detailStyles.stack}>
-						<EditableField
-							label="Company name"
-							value={displayClient.companyName}
-							onSave={(value) => handleSaveField("companyName", value)}
-							placeholder="Company name"
-						/>
-						{/* Read-only twins: no well, no pencil — the affordance only
-						    means something where it is absent from static text. */}
-						{client.companyDescription ? (
-							<EditableField
-								label="Description"
-								value={client.companyDescription}
-								onSave={async () => {}}
-								editable={false}
-							/>
-						) : null}
-						{tags.length > 0 ? (
-							<EditableField
-								label="Tags"
-								value={tags.join("  ·  ")}
-								onSave={async () => {}}
-								editable={false}
-							/>
-						) : null}
-						<EditableField
-							label="Notes"
-							value={displayClient.notes}
-							onSave={(value) => handleSaveField("notes", value)}
-							placeholder="Add notes about this client..."
-							multiline
-							numberOfLines={4}
-						/>
-					</View>
-				</View>
+				<UnderlineTabs tabs={tabs} value={activeTab} onChange={setActiveTab} />
 
-				{/* Contacts — every row carries only the actions its data supports:
-				    no phone, no call/message button. */}
-				<View style={detailStyles.section}>
-					<SectionLabel title={`Contacts${countSuffix(contacts.length)}`} />
-					{contacts.length > 0 ? (
-						<FactCard>
-							{contacts.map((contact, i) => {
-								const name =
-									`${contact.firstName} ${contact.lastName}`.trim() ||
-									"Unnamed contact";
-								const isPrimary = contact._id === primaryContact?._id;
-								const sub =
-									[contact.jobTitle, contact.email, contact.phone]
-										.filter(Boolean)
-										.join("  ·  ") || undefined;
-								const actions: FactAction[] = [];
-								if (contact.phone) {
-									actions.push(
-										{
-											key: "call",
-											label: `Call ${name}`,
-											Icon: Phone,
-											onPress: () =>
-												openExternal(`tel:${contact.phone}`, "Phone"),
-										},
-										{
-											key: "message",
-											label: `Message ${name}`,
-											Icon: MessageSquare,
-											onPress: () =>
-												openExternal(`sms:${contact.phone}`, "Messages"),
-										}
-									);
-								}
-								if (contact.email) {
-									actions.push({
-										key: "email",
-										label: `Email ${name}`,
-										Icon: Mail,
-										onPress: () =>
-											openExternal(`mailto:${contact.email}`, "Mail"),
-									});
-								}
-								return (
-									<FactRow
-										key={contact._id}
-										Icon={User}
-										title={isPrimary ? `${name}  ·  Primary` : name}
-										sub={sub}
-										actions={actions}
-										last={i === contacts.length - 1}
+				{activeTab === "overview" ? (
+					<>
+						{contacts.length > 0 ? (
+							<Panel
+								header={
+									<PanelHeader
+										title={contacts.length > 1 ? "Contacts" : "Primary contact"}
 									/>
-								);
-							})}
-						</FactCard>
-					) : (
-						// Web aliases client-contacts-none onto the clients art — same here.
-						<EmptyRow text="No contacts yet" illo="clients-none" />
-					)}
-				</View>
+								}
+							>
+								{contacts.map((contact, i) => {
+									const cName =
+										`${contact.firstName} ${contact.lastName}`.trim() ||
+										"Unnamed contact";
+									const cSub =
+										[contact.jobTitle, contact.email, contact.phone]
+											.filter(Boolean)
+											.join("  ·  ") || undefined;
+									const cActions: ChipAction[] = [];
+									if (contact.phone) {
+										cActions.push(
+											{
+												key: "call",
+												label: `Call ${cName}`,
+												Icon: Phone,
+												onPress: () => openExternal(`tel:${contact.phone}`, "Phone"),
+											},
+											{
+												key: "message",
+												label: `Message ${cName}`,
+												Icon: MessageSquare,
+												onPress: () => openExternal(`sms:${contact.phone}`, "Messages"),
+											}
+										);
+									}
+									if (contact.email) {
+										cActions.push({
+											key: "email",
+											label: `Email ${cName}`,
+											Icon: Mail,
+											onPress: () => openExternal(`mailto:${contact.email}`, "Mail"),
+										});
+									}
+									return (
+										<PersonRow
+											key={contact._id}
+											name={cName}
+											sub={cSub}
+											primary={contact._id === primaryContact?._id}
+											actions={cActions}
+											last={i === contacts.length - 1}
+										/>
+									);
+								})}
+							</Panel>
+						) : (
+							<EmptyPanel icon={Phone} title="No contacts yet" />
+						)}
 
-				{/* Properties — directions resolve per row (coords, else address);
-				    a property with neither carries no button. */}
-				<View style={detailStyles.section}>
-					<SectionLabel title={`Properties${countSuffix(properties.length)}`} />
-					{properties.length > 0 ? (
-						<FactCard>
-							{properties.map((property, i) => {
-								const title =
-									property.propertyName || property.streetAddress || "Property";
-								const address = addressOf(property);
-								const isPrimary = property._id === primaryProperty?._id;
-								const url = directionsFor(property);
-								return (
-									<FactRow
-										key={property._id}
-										Icon={MapPin}
-										title={isPrimary ? `${title}  ·  Primary` : title}
-										sub={address || undefined}
-										actions={
-											url
-												? [
-														{
+						{properties.length > 0 ? (
+							<Panel
+								header={
+									<PanelHeader
+										title={properties.length > 1 ? "Properties" : "Property"}
+									/>
+								}
+							>
+								{properties.map((property, i) => {
+									const title =
+										property.propertyName || property.streetAddress || "Property";
+									const address = addressOf(property);
+									const url = directionsFor(property);
+									return (
+										<LineRow
+											key={property._id}
+											title={title}
+											sub={address || undefined}
+											primary={property._id === primaryProperty?._id}
+											action={
+												url
+													? {
 															key: "directions",
 															label: `Directions to ${title}`,
 															Icon: Navigation,
 															onPress: () => openExternal(url, "Maps"),
-														},
-													]
-												: []
-										}
-										last={i === properties.length - 1}
-									/>
-								);
-							})}
-						</FactCard>
-					) : (
-						<EmptyRow text="No properties yet" illo="client-properties-none" />
-					)}
-				</View>
+														}
+													: undefined
+											}
+											last={i === properties.length - 1}
+										/>
+									);
+								})}
+							</Panel>
+						) : (
+							<EmptyPanel icon={MapPin} title="No properties yet" />
+						)}
 
-				{/* Projects */}
-				<View style={detailStyles.section}>
-					<SectionLabel
-						title={`Projects${countSuffix(projects.length)}`}
-						right={
-							<View style={styles.headerLinks}>
-								{projects.length > 0 ? (
-									<SectionLink
-										label="View all"
-										accessibilityLabel="View all projects"
-										onPress={() =>
-											// iPad: scope Work's chip to Projects. iPhone keeps the route.
-											shellNav
-												? shellNav.browse("project")
-												: router.push("/projects")
-										}
-									/>
-								) : null}
-								{canCreateProject ? (
-									<SectionLink
-										label="New"
-										Icon={Plus}
-										accessibilityLabel="New project for this client"
-										onPress={() =>
-											// Cast: /project/new isn't in the generated route map yet.
-											router.push({
-												pathname: "/project/new",
-												params: { clientId },
-											} as unknown as Href)
-										}
-									/>
-								) : null}
-							</View>
-						}
-					/>
-					{recentProjects.length > 0 ? (
-						<FactCard style={detailStyles.sectionCard}>
-							{recentProjects.map((project, i) => (
-								<ListRow
+						<Panel
+							header={
+								<PanelHeader
+									title="Active projects"
+									action={canCreateProject ? "New" : undefined}
+									onAction={() =>
+										router.push({
+											pathname: "/project/new",
+											params: { clientId },
+										} as unknown as Href)
+									}
+								/>
+							}
+						>
+							{projects.slice(0, 3).map((project) => (
+								<RecordRow
 									key={project._id}
+									kind="project"
 									title={project.title}
 									status={project.status}
-									showChevron={false}
 									onPress={() =>
 										shellNav
 											? shellNav.open({ kind: "project", id: project._id })
 											: router.push(`/projects/${project._id}`)
 									}
-									last={i === recentProjects.length - 1}
 								/>
 							))}
-						</FactCard>
-					) : (
-						<EmptyRow text="No projects yet" illo="projects-none" />
-					)}
-				</View>
+							{projects.length === 0 ? (
+								<AttributeRow label="Projects" value="No projects yet" />
+							) : null}
+						</Panel>
 
-				{/* Quotes */}
-				<View style={detailStyles.section}>
-					<SectionLabel
-						title={`Quotes${countSuffix(quotes.length)}`}
-						right={
-							canCreateQuote ? (
-								<SectionLink
-									label="New"
-									Icon={Plus}
-									accessibilityLabel="New quote for this client"
-									onPress={() =>
-										// Cast: /quote/new isn't in the generated route map yet.
-										router.push({
-											pathname: "/quote/new",
-											params: { clientId },
-										} as unknown as Href)
-									}
+						<Panel header={<PanelHeader title="Notes" />}>
+							<View style={styles.editableRow}>
+								<EditableField
+									label="Company name"
+									value={displayClient.companyName}
+									onSave={(value) => handleSaveField("companyName", value)}
+									placeholder="Company name"
 								/>
-							) : undefined
-						}
-					/>
-					{recentQuotes.length > 0 ? (
-						<FactCard style={detailStyles.sectionCard}>
-							{recentQuotes.map((quote, i) => (
-								<ListRow
-									key={quote._id}
-									title={quote.title || `Quote #${quote.quoteNumber}`}
-									sub={formatCurrency(quote.total, { exact: true })}
-									status={quote.status}
-									showChevron={false}
-									onPress={() =>
-										shellNav
-											? shellNav.open({ kind: "quote", id: quote._id })
-											: // Cast: dynamic detail route isn't in the generated route map.
-												router.push({
-													pathname: "/quote/[id]",
-													params: { id: quote._id },
-												} as unknown as Href)
-									}
-									last={i === recentQuotes.length - 1}
+							</View>
+							{client.companyDescription ? (
+								<View style={styles.editableRow}>
+									<EditableField
+										label="Description"
+										value={client.companyDescription}
+										onSave={async () => {}}
+										editable={false}
+									/>
+								</View>
+							) : null}
+							{tags.length > 0 ? (
+								<View style={styles.editableRow}>
+									<EditableField
+										label="Tags"
+										value={tags.join("  ·  ")}
+										onSave={async () => {}}
+										editable={false}
+									/>
+								</View>
+							) : null}
+							<View style={styles.editableRow}>
+								<EditableField
+									label="Notes"
+									value={displayClient.notes}
+									onSave={(value) => handleSaveField("notes", value)}
+									placeholder="Add notes about this client..."
+									multiline
+									numberOfLines={4}
 								/>
-							))}
-						</FactCard>
-					) : (
-						<EmptyRow text="No quotes yet" illo="quotes-none" />
-					)}
-				</View>
+							</View>
+						</Panel>
 
-				{/* Invoices */}
-				<View style={detailStyles.section}>
-					<SectionLabel title={`Invoices${countSuffix(invoices.length)}`} />
-					{recentInvoices.length > 0 ? (
-						<FactCard style={detailStyles.sectionCard}>
-							{recentInvoices.map((invoice, i) => (
-								<ListRow
-									key={invoice._id}
-									title={`Invoice #${invoice.invoiceNumber}`}
-									sub={formatCurrency(invoice.total, { exact: true })}
-									status={invoice.status}
-									showChevron={false}
-									onPress={() =>
-										shellNav
-											? shellNav.open({ kind: "invoice", id: invoice._id })
-											: // Cast: dynamic detail route isn't in the generated route map.
-												router.push({
-													pathname: "/invoice/[id]",
-													params: { id: invoice._id },
-												} as unknown as Href)
-									}
-									last={i === recentInvoices.length - 1}
+						{/* Hidden without the view grant (the list query throws on
+						    denial); visible while the grant is still loading. */}
+						{permsLoading || can("documents", "view") ? (
+							<Panel header={<PanelHeader title="Documents" />}>
+								<RecordDocuments
+									target={{ kind: "client", id: clientId as Id<"clients"> }}
+									style={styles.flushCard}
 								/>
-							))}
-						</FactCard>
-					) : (
-						<EmptyRow text="No invoices yet" illo="invoices-none" />
-					)}
-				</View>
-
-				{/* Documents — hidden without the view grant (the list query throws
-				    on denial); visible while the grant is still loading. */}
-				{permsLoading || can("documents", "view") ? (
-					<View style={detailStyles.section}>
-						<SectionLabel title="Documents" />
-						<RecordDocuments
-							target={{ kind: "client", id: clientId as Id<"clients"> }}
-						/>
-					</View>
+							</Panel>
+						) : null}
+					</>
 				) : null}
 
-				<View style={{ height: 32 }} />
-			</ScrollView>
+				{activeTab === "projects" ? (
+					<Panel
+						header={
+							<PanelHeader
+								title={`Projects${countSuffix(projects.length)}`}
+								action={canCreateProject ? "New" : undefined}
+								onAction={() =>
+									router.push({
+										pathname: "/project/new",
+										params: { clientId },
+									} as unknown as Href)
+								}
+							/>
+						}
+					>
+						{projects.map((project) => (
+							<RecordRow
+								key={project._id}
+								kind="project"
+								title={project.title}
+								status={project.status}
+								onPress={() =>
+									shellNav
+										? shellNav.open({ kind: "project", id: project._id })
+										: router.push(`/projects/${project._id}`)
+								}
+							/>
+						))}
+						{projects.length === 0 ? (
+							<AttributeRow label="Projects" value="No projects yet" />
+						) : null}
+					</Panel>
+				) : null}
+
+				{activeTab === "quotes" ? (
+					<Panel
+						header={
+							<PanelHeader
+								title={`Quotes${countSuffix(quotes.length)}`}
+								// The tray's primary action already creates a quote on the
+								// phone — this link would duplicate it. Pane mode has no tray.
+								action={isPane && canCreateQuote ? "New" : undefined}
+								onAction={openNewQuote}
+							/>
+						}
+					>
+						{quotes.map((quote) => (
+							<RecordRow
+								key={quote._id}
+								kind="quote"
+								title={quote.title || `Quote #${quote.quoteNumber}`}
+								subtitle={formatCurrency(quote.total, { exact: true })}
+								status={quote.status}
+								onPress={() =>
+									shellNav
+										? shellNav.open({ kind: "quote", id: quote._id })
+										: router.push({
+												pathname: "/quote/[id]",
+												params: { id: quote._id },
+											} as unknown as Href)
+								}
+							/>
+						))}
+						{quotes.length === 0 ? (
+							<AttributeRow label="Quotes" value="No quotes yet" />
+						) : null}
+					</Panel>
+				) : null}
+
+				{activeTab === "invoices" ? (
+					<Panel header={<PanelHeader title={`Invoices${countSuffix(invoices.length)}`} />}>
+						{invoices.map((invoice) => (
+							<RecordRow
+								key={invoice._id}
+								kind="invoice"
+								title={`Invoice #${invoice.invoiceNumber}`}
+								subtitle={formatCurrency(invoice.total, { exact: true })}
+								status={invoice.status}
+								onPress={() =>
+									shellNav
+										? shellNav.open({ kind: "invoice", id: invoice._id })
+										: router.push({
+												pathname: "/invoice/[id]",
+												params: { id: invoice._id },
+											} as unknown as Href)
+								}
+							/>
+						))}
+						{invoices.length === 0 ? (
+							<AttributeRow label="Invoices" value="No invoices yet" />
+						) : null}
+					</Panel>
+				) : null}
+			</CanvasScroll>
 
 			<MentionModal
 				visible={mentionModalVisible}
@@ -644,7 +689,7 @@ export function ClientDetailBody({
 				entityId={clientId as Id<"clients">}
 				entityName={displayClient.companyName}
 			/>
-		</SafeAreaView>
+		</View>
 	);
 }
 
@@ -657,11 +702,6 @@ export default function ClientDetailScreen() {
 
 const styles = StyleSheet.create({
 	flex: { flex: 1 },
-	scroll: { padding: 16, gap: 0 },
-
-	// A single quiet pill sits alone under the hero — it no longer follows a
-	// tile row, so it carries the whole gap itself.
-	teamChat: { marginTop: 16, alignSelf: "flex-start", paddingHorizontal: 14 },
-
-	headerLinks: { flexDirection: "row", alignItems: "center", gap: 16 },
+	editableRow: { paddingHorizontal: 14, paddingVertical: 10 },
+	flushCard: { borderWidth: 0, borderRadius: 0, padding: 12 },
 });
