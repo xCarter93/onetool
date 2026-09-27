@@ -9,7 +9,6 @@ import {
 import {
 	fontFamily,
 	radii,
-	recordTint,
 	STATUS,
 	touch,
 	tracking,
@@ -86,7 +85,6 @@ export function NextUpCard({
 				{
 					backgroundColor: t.card,
 					borderColor: t.line,
-					borderLeftColor: recordTint.task.fg,
 				},
 			]}
 		>
@@ -221,7 +219,6 @@ export function NextUpProjectCard({
 				{
 					backgroundColor: t.card,
 					borderColor: t.line,
-					borderLeftColor: recordTint.project.fg,
 				},
 			]}
 		>
@@ -260,7 +257,6 @@ const styles = StyleSheet.create({
 	card: {
 		flexDirection: "row",
 		borderWidth: 1,
-		borderLeftWidth: 3,
 		borderRadius: radii.card,
 		overflow: "hidden",
 	},

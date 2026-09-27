@@ -2,7 +2,7 @@ import React from "react";
 import { StyleSheet, Text } from "react-native";
 import { fontFamily, recordTint, type, useTokens } from "@/lib/theme";
 import { ListRow } from "@/components/ui";
-import { AgendaRow, SpinedRow } from "@/components/today/agenda-row";
+import { AgendaRow } from "@/components/today/agenda-row";
 import { PlanSection } from "@/components/today/plan-section";
 import { ScheduleEmpty } from "@/components/today/schedule-empty";
 import { dayLabel, type AgendaTask, type UpcomingDay } from "@/lib/agenda";
@@ -74,18 +74,17 @@ export function UpcomingList({
 						meta={`${total} ${total === 1 ? "job" : "jobs"}`}
 					>
 						{day.projects.map((p) => (
-							<SpinedRow key={p._id} color={recordTint.project.fg}>
-								<ListRow
-									icon="Folder"
-									iconColor={recordTint.project.fg}
-									iconBg={recordTint.project.bg}
-									title={p.title}
-									sub={p.context}
-									status={p.status}
-									onPress={() => onOpenProject(p._id)}
-									last
-								/>
-							</SpinedRow>
+							<ListRow
+								key={p._id}
+								icon="Folder"
+								iconColor={recordTint.project.fg}
+								iconBg={recordTint.project.bg}
+								title={p.title}
+								sub={p.context}
+								status={p.status}
+								onPress={() => onOpenProject(p._id)}
+								last
+							/>
 						))}
 						{[...day.anytime, ...day.timed].map((task) => (
 							<AgendaRow

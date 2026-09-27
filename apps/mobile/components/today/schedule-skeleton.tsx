@@ -1,11 +1,10 @@
 import React from "react";
 import { StyleSheet, View } from "react-native";
 import { radii, touch, useTokens } from "@/lib/theme";
-import { SPINE } from "@/components/today/agenda-row";
 
 /**
  * Shaped like the real body: the "Next up" lead card, then ONE bordered panel —
- * a group-label bar, a few timeline rows (spine, time rail, two text lines),
+ * a group-label bar, a few timeline rows (time rail, two text lines),
  * another group-label bar, a couple more rows — matching the merged panel
  * `DayPlanView` renders. Static — a pulse at this frequency (every Today open)
  * is noise, not feedback.
@@ -27,7 +26,6 @@ export function ScheduleSkeleton() {
 		<View
 			style={[
 				styles.row,
-				{ borderLeftColor: t.lineSoft },
 				!last && { borderBottomWidth: 1, borderBottomColor: t.lineSoft },
 			]}
 		>
@@ -52,7 +50,6 @@ export function ScheduleSkeleton() {
 					{
 						backgroundColor: t.card,
 						borderColor: t.line,
-						borderLeftColor: t.lineSoft,
 					},
 				]}
 			>
@@ -81,7 +78,6 @@ const styles = StyleSheet.create({
 	lead: {
 		gap: 7,
 		borderWidth: 1,
-		borderLeftWidth: SPINE,
 		borderRadius: radii.card,
 		paddingVertical: 15,
 		paddingHorizontal: 14,
@@ -99,8 +95,7 @@ const styles = StyleSheet.create({
 		flexDirection: "row",
 		alignItems: "center",
 		minHeight: touch.min,
-		borderLeftWidth: SPINE,
-		paddingLeft: 11,
+		paddingLeft: 14,
 		paddingRight: 14,
 		gap: 10,
 	},
