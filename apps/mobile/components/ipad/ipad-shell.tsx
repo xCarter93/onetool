@@ -160,6 +160,14 @@ function IpadShellInner() {
 		[select],
 	);
 
+	// Bordered views drawn during the rotation animation keep stale frames on
+	// iOS (react-native#42604); remount the detail once the rotation settles.
+	const [settledOrientation, setSettledOrientation] = useState(orientation);
+	useEffect(() => {
+		const id = setTimeout(() => setSettledOrientation(orientation), 500);
+		return () => clearTimeout(id);
+	}, [orientation]);
+
 	const createItems = useCreateItems();
 
 	const openAssistant = () => {
@@ -229,7 +237,7 @@ function IpadShellInner() {
 	if (!isMasterDetailTab(activeTab)) {
 		return frame(
 			<View style={styles.contentPane}>
-				<ScreenBoundary key={activeTab}>
+				<ScreenBoundary key={`${settledOrientation}:${activeTab}`}>
 					<SinglePane tab={activeTab} />
 				</ScreenBoundary>
 			</View>,
@@ -298,9 +306,8 @@ function IpadShellInner() {
 			</View>
 			{portrait && !selected ? null : (
 				<View style={portrait ? styles.contentPane : styles.detailPane}>
-					{/* Keyed by orientation too: kept mounted through a rotation, native views held their old frames. */}
 					<ScreenBoundary
-						key={`${orientation}:${selected ? `${pane}:${selected.kind}:${selected.id}` : pane}`}
+						key={`${settledOrientation}:${selected ? `${pane}:${selected.kind}:${selected.id}` : pane}`}
 					>
 						<PaneDetailHost
 							context={pane}
