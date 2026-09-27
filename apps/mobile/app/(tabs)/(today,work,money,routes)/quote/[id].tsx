@@ -392,8 +392,8 @@ export function QuoteDetailBody({
 			!quote.sentAt &&
 			(audit === undefined || (auditEmpty && !resolvedStatus))
 		);
-	const awaitingSignature =
-		status === "sent" && !latest && !(auditEmpty && resolvedStatus);
+	// A re-sent quote keeps its old approval/decline row, so status alone decides.
+	const awaitingSignature = status === "sent";
 	// Most recent document that actually carries a BoldSign envelope — viewedAt
 	// only means something for the still-outstanding one.
 	const latestSignatureDoc = (signatureDocs ?? [])
