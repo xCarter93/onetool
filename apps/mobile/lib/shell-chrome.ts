@@ -1,7 +1,7 @@
 import { useEffect, useSyncExternalStore } from "react";
 import type { TextInput } from "react-native";
 import type { LucideIcon } from "lucide-react-native";
-import { useRoute } from "expo-router";
+import { useIsFocused, useRoute } from "expo-router";
 
 // Screens inside the phone frame publish what the persistent rail shows for
 // them: record actions for the tray, or the search binding for the composer.
@@ -32,6 +32,9 @@ export interface ScreenChrome {
 const entries = new Map<string, ScreenChrome>();
 const listeners = new Set<() => void>();
 let version = 0;
+// A tab's nested stack state stays undefined until something navigates inside
+// it, so the frame can't always name the leaf; focused screens name themselves.
+let focusedKey: string | undefined;
 
 function emit() {
 	version++;
@@ -57,6 +60,17 @@ function visibleShape(chrome: ScreenChrome | undefined): string {
 
 export function useScreenChrome(chrome: ScreenChrome | null) {
 	const { key } = useRoute();
+	const focused = useIsFocused();
+	useEffect(() => {
+		if (!focused) return;
+		focusedKey = key;
+		emit();
+		return () => {
+			if (focusedKey !== key) return;
+			focusedKey = undefined;
+			emit();
+		};
+	}, [focused, key]);
 	useEffect(() => {
 		const prev = entries.get(key);
 		if (!chrome) {
@@ -79,9 +93,14 @@ export function useScreenChrome(chrome: ScreenChrome | null) {
 	);
 }
 
-export function useChromeFor(routeKey: string | undefined): ScreenChrome | undefined {
+/** `leafKey` from the tab's stack state when it has one, else the focused screen. */
+export function useChromeFor(
+	leafKey: string | undefined,
+): { key: string; chrome: ScreenChrome } | undefined {
 	useSyncExternalStore(subscribe, () => version);
-	return routeKey ? entries.get(routeKey) : undefined;
+	const key = leafKey ?? focusedKey;
+	const chrome = key ? entries.get(key) : undefined;
+	return key && chrome ? { key, chrome } : undefined;
 }
 
 /** Runs the action's latest closure; the frame's render may hold a stale one. */

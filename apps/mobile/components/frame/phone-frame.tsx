@@ -114,7 +114,9 @@ export function PhoneFrame({ state, navigation, children }: FrameProps) {
 	const stack = tabRoute.state as NavigationState | undefined;
 	const depth = stack?.routes.length ?? 1;
 	const leafKey = stack ? stack.routes[stack.index ?? stack.routes.length - 1]?.key : undefined;
-	const chrome = useChromeFor(leafKey);
+	const focusedChrome = useChromeFor(leafKey);
+	const chrome = focusedChrome?.chrome;
+	const chromeKey = focusedChrome?.key;
 
 	const pageTitle = depth > 1 ? pageTitleFromPathname(pathname) : null;
 	const notch: NotchContent = pageTitle
@@ -154,16 +156,16 @@ export function PhoneFrame({ state, navigation, children }: FrameProps) {
 	const tier = chrome?.tray?.length ? (
 		<ActionTray
 			actions={chrome.tray}
-			onRun={(key) => leafKey && runTrayAction(leafKey, key)}
+			onRun={(key) => chromeKey && runTrayAction(chromeKey, key)}
 			onAssistant={openAssistant}
 		/>
 	) : (
 		<Composer
 			search={
-				chrome?.search && leafKey
+				chrome?.search && chromeKey
 					? {
 							...chrome.search,
-							onChangeText: (text) => composerSearchFor(leafKey)?.onChangeText(text),
+							onChangeText: (text) => composerSearchFor(chromeKey)?.onChangeText(text),
 						}
 					: undefined
 			}
