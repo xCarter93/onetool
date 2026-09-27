@@ -375,6 +375,7 @@ const styles = StyleSheet.create({
 		justifyContent: "center",
 		gap: spacing.sm,
 		marginHorizontal: 20,
+		marginTop: spacing.md,
 		marginBottom: 14,
 		paddingVertical: 12,
 		minHeight: touch.min,
