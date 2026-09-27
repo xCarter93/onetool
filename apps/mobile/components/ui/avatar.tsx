@@ -1,5 +1,6 @@
-import React from "react";
-import { Image, StyleSheet, Text, View } from "react-native";
+import React, { useState } from "react";
+import { StyleSheet, Text, View } from "react-native";
+import { Image } from "expo-image";
 import { fontFamily, useTokens } from "@/lib/theme";
 
 interface AvatarProps {
@@ -14,11 +15,24 @@ export function Avatar({ text, size = 44, tone, imageUrl }: AvatarProps) {
 	const t = useTokens();
 	const color = tone || t.sub;
 	const radius = size * 0.32;
+	// Falls back to initials on a failed load (offline, first load, bad URL) rather than a blank tile.
+	const [failed, setFailed] = useState(false);
+	// Reset during render (not an effect) when the URL changes, per React's
+	// "adjusting state when a prop changes" pattern.
+	const [prevUrl, setPrevUrl] = useState(imageUrl);
+	if (imageUrl !== prevUrl) {
+		setPrevUrl(imageUrl);
+		setFailed(false);
+	}
 
-	if (imageUrl) {
+	if (imageUrl && !failed) {
 		return (
 			<Image
 				source={{ uri: imageUrl }}
+				contentFit="cover"
+				cachePolicy="disk"
+				transition={150}
+				onError={() => setFailed(true)}
 				style={[
 					styles.base,
 					{

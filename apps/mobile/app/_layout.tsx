@@ -1,10 +1,8 @@
 import {
 	ClerkProvider,
 	ClerkLoaded,
-	useAuth,
 	useOrganization,
 } from "@clerk/expo";
-import { ConvexProviderWithClerk } from "convex/react-clerk";
 import {
 	ConvexReactClient,
 	useConvexAuth,
@@ -22,6 +20,10 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { useEffect, useState, type PropsWithChildren } from "react";
 import { tokenCache } from "@clerk/expo/token-cache";
+import { resourceCache } from "@clerk/expo/resource-cache";
+import { ConvexClerkOfflineProvider } from "@/lib/offline/convex-auth";
+import { OfflineProvider } from "@/lib/offline/OfflineProvider";
+import { ConnectToSignInGate } from "@/components/offline/connect-to-sign-in";
 import { useDevice } from "@/lib/use-device";
 import { useNotificationData } from "@/lib/use-notification-data";
 import { useFonts } from "expo-font";
@@ -33,11 +35,13 @@ import {
 } from "@expo-google-fonts/outfit";
 import * as SplashScreen from "expo-splash-screen";
 import { LaunchOverlay } from "@/components/launch/LaunchOverlay";
+import { ToastHost } from "@/components/toast-host";
 import { useLaunchReadiness } from "@/lib/use-launch-readiness";
 import {
 	PushRegistrationHost,
 	usePushBridge,
 } from "@/components/push/PushRegistrationHost";
+import { ScreenBoundary } from "@/components/screen-boundary";
 
 // Module-level cold-start replay guard. Survives the ConvexClerkProvider
 // key={convexKey} remount on org switch because RootLayout itself never remounts —
@@ -53,8 +57,6 @@ SplashScreen.setOptions({
 	fade: true,
 });
 
-const convex = new ConvexReactClient(process.env.EXPO_PUBLIC_CONVEX_URL!);
-
 // Root error boundary (expo-router convention): catches any render throw in the
 // app — including Convex useQuery errors, which throw during render — and shows
 // a recoverable error screen instead of hard-crashing the app.
@@ -64,15 +66,18 @@ function ConvexClerkProvider({ children }: PropsWithChildren) {
 	const { organization } = useOrganization();
 
 	// Keying on the active org id remounts the provider on org change, so we get
-	// a fresh auth token with the new organization context.
+	// a fresh client and a fresh auth token with the new organization context.
+	return <OrgConvexProvider key={organization?.id ?? "no-org"}>{children}</OrgConvexProvider>;
+}
+
+// One client per org: a timed-out mutation still queued in the old client must never send under the new org's token.
+function OrgConvexProvider({ children }: PropsWithChildren) {
+	const [convex] = useState(() => new ConvexReactClient(process.env.EXPO_PUBLIC_CONVEX_URL!));
+	useEffect(() => () => void convex.close(), [convex]);
 	return (
-		<ConvexProviderWithClerk
-			key={organization?.id ?? "no-org"}
-			client={convex}
-			useAuth={useAuth}
-		>
-			{children as any}
-		</ConvexProviderWithClerk>
+		<ConvexClerkOfflineProvider client={convex}>
+			<OfflineProvider>{children}</OfflineProvider>
+		</ConvexClerkOfflineProvider>
 	);
 }
 
@@ -210,34 +215,38 @@ export default function RootLayout() {
 		    frame hand-off below is timing-sensitive and the assistant is never
 		    the first interaction. */}
 		<KeyboardProvider enabled={Platform.OS === "ios"} preload={false}>
-		<ClerkProvider publishableKey={publishableKey} tokenCache={tokenCache}>
+		<ClerkProvider
+			publishableKey={publishableKey}
+			tokenCache={tokenCache}
+			__experimental_resourceCache={resourceCache}
+		>
 			<LaunchHost fontsLoaded={fontsLoaded} fontError={fontError}>
 				{/* PushRegistrationHost mirrors LaunchHost: foreground handler + tap
 				    listeners + cross-org setActive live ABOVE the Convex remount
 				    boundary so an org switch never tears them down. The token-write /
 				    markRead / badge child (PushConvexChild) sits UNDER Convex. */}
 				<PushRegistrationHost>
+					<ConnectToSignInGate>
 					<ClerkLoaded>
 						<ConvexClerkProvider>
 							<PushConvexChild />
 							<View style={{ flex: 1 }}>
 							<StatusBar style="auto" />
-						<Stack screenOptions={{ headerShown: false }}>
+						<Stack
+							screenOptions={{ headerShown: false }}
+							screenLayout={({ route, children }) => (
+								<ScreenBoundary key={route.key}>{children}</ScreenBoundary>
+							)}
+						>
 							<Stack.Screen name="(tabs)" />
 							<Stack.Screen name="(auth)" />
 							<Stack.Screen name="(onboarding)" />
 							<Stack.Screen name="index" />
-							{/* Shared document details — root-level so back returns to the
-							    origin tab (client/project/money), not the Money stack. */}
-							<Stack.Screen name="quote/[id]" />
-							<Stack.Screen name="invoice/[id]" />
-							{/* Owner-only business-profile editor (reached from Home
-							    prompt + Profile). Root-level so back returns to origin. */}
-							<Stack.Screen name="business-details" />
-							{/* Manual route builder — create/edit, pushed from Routes tab. */}
-							<Stack.Screen name="route-edit" />
-							{/* In-person quote signature capture (Slice 3). */}
-							<Stack.Screen name="sign-quote" />
+							{/* In-person signing is full screen, outside the frame. */}
+							<Stack.Screen
+								name="sign-quote"
+								options={{ presentation: "fullScreenModal", headerShown: false }}
+							/>
 							{/* Community-page QR panel. NOT the formSheet idiom the other
 							    root modals use — the screen goes full-bleed ink and drives
 							    the screen to full brightness so a customer can scan it, so
@@ -255,6 +264,15 @@ export default function RootLayout() {
 								options={overlayOptions(device, {
 									sheetAllowedDetents: [0.52, 0.9],
 									sheetInitialDetentIndex: 0,
+									sheetGrabberVisible: false,
+									sheetCornerRadius: 30,
+								})}
+							/>
+							<Stack.Screen
+								name="sync-issues"
+								options={overlayOptions(device, {
+									sheetAllowedDetents: [0.52, 0.9],
+									sheetInitialDetentIndex: 1,
 									sheetGrabberVisible: false,
 									sheetCornerRadius: 30,
 								})}
@@ -292,6 +310,15 @@ export default function RootLayout() {
 							    idiom as tasks/form. Static segments, so they take
 							    precedence over the sibling [id] routes. */}
 							<Stack.Screen
+								name="client/new"
+								options={overlayOptions(device, {
+									sheetAllowedDetents: [0.9, 1.0],
+									sheetInitialDetentIndex: 0,
+									sheetGrabberVisible: false,
+									sheetCornerRadius: 30,
+								})}
+							/>
+							<Stack.Screen
 								name="project/new"
 								options={overlayOptions(device, {
 									sheetAllowedDetents: [0.9, 1.0],
@@ -322,9 +349,11 @@ export default function RootLayout() {
 								})}
 							/>
 							</Stack>
+							<ToastHost />
 							</View>
 						</ConvexClerkProvider>
 					</ClerkLoaded>
+					</ConnectToSignInGate>
 				</PushRegistrationHost>
 			</LaunchHost>
 		</ClerkProvider>

@@ -57,7 +57,7 @@ export function refFromPathname(pathname: string): RecordRef | null {
  * transparentModal, so the shell must stay mounted underneath it.
  */
 export function isStackRoute(pathname: string): boolean {
-	return /^\/(clients\/new|route-edit)(\/|$)/.test(pathname);
+	return /^\/(route-edit|business-details)(\/|$)/.test(pathname);
 }
 
 /**
@@ -70,12 +70,30 @@ export function isStackRoute(pathname: string): boolean {
  * crashing with "Maximum update depth exceeded".
  */
 export function isOverlayRoute(pathname: string): boolean {
-	if (/^\/(notifications|assistant|org-switch|community-qr)(\/|$)/.test(pathname)) {
+	if (/^\/(notifications|notification-preferences|sync-issues|sign-quote|assistant|org-switch|community-qr)(\/|$)/.test(pathname)) {
 		return true;
 	}
 	// Create sheets present as transparentModal like tasks/form; without this,
 	// tab sync fires underneath the sheet ("/project/new" misses the plural
 	// `projects` alternation → Today, "/quote/new" → Work).
-	if (/^\/(project|quote)\/new(\/|$)/.test(pathname)) return true;
+	if (/^\/(client|project|quote)\/new(\/|$)/.test(pathname)) return true;
 	return /^\/tasks\/(form|new)(\/|$)/.test(pathname);
+}
+
+const PAGE_TITLES: [RegExp, string][] = [
+	[/^\/clients\/[^/]+$/, "Client"],
+	[/^\/clients$/, "Clients"],
+	[/^\/projects\/[^/]+$/, "Project"],
+	[/^\/projects$/, "Projects"],
+	[/^\/quote\/[^/]+$/, "Quote"],
+	[/^\/invoice\/[^/]+$/, "Invoice"],
+	[/^\/activity$/, "Activity"],
+	[/^\/profile$/, "Profile"],
+	[/^\/business-details$/, "Business details"],
+	[/^\/route-edit$/, "Route"],
+];
+
+/** Breadcrumb title for a pushed screen inside the phone frame; null for tab roots. */
+export function pageTitleFromPathname(pathname: string): string | null {
+	return PAGE_TITLES.find(([re]) => re.test(pathname))?.[1] ?? null;
 }

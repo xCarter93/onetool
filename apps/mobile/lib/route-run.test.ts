@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
 	appleMapsUrl,
+	applyRouteOverlay,
+	applyStopOverlay,
 	legForStop,
 	boundsFor,
 	decodePolyline,
@@ -11,8 +13,10 @@ import {
 	nextPendingStop,
 	remainingFromLegs,
 	routeLineFeature,
+	routeOverlay,
 	runProgress,
 	stopsInOrder,
+	type RouteOverlayOp,
 	type RouteRun,
 	type RouteStop,
 } from "./route-run";
@@ -337,5 +341,165 @@ describe("googleMapsRouteUrl", () => {
 		const oneWay = googleMapsRouteUrl(start, many, false);
 		expect(oneWay!.included).toBe(10);
 		expect(oneWay!.dropped).toBe(2);
+	});
+});
+
+describe("routeOverlay", () => {
+	const op = (
+		id: number,
+		routeId: string,
+		operation: string,
+		args: unknown,
+	): RouteOverlayOp => ({ id, chainKey: `route:${routeId}`, operation, args });
+
+	it("returns no overlay when nothing is queued for the route", () => {
+		const overlay = routeOverlay([], "r1");
+		expect(overlay.started).toBeUndefined();
+		expect(overlay.completed).toBeUndefined();
+		expect(overlay.stopStatuses).toEqual([]);
+	});
+
+	it("ignores ops on other chains", () => {
+		const overlay = routeOverlay(
+			[op(1, "other", "routes.startRoute", { routeId: "other" })],
+			"r1",
+		);
+		expect(overlay.started).toBeUndefined();
+	});
+
+	it("startRoute overlays started and clears completed", () => {
+		const overlay = routeOverlay(
+			[op(1, "r1", "routes.startRoute", { routeId: "r1" })],
+			"r1",
+		);
+		expect(overlay.started).toBe(true);
+		expect(overlay.completed).toBe(false);
+	});
+
+	it("completeRoute overlays completed", () => {
+		const overlay = routeOverlay(
+			[op(1, "r1", "routes.completeRoute", { routeId: "r1" })],
+			"r1",
+		);
+		expect(overlay.completed).toBe(true);
+	});
+
+	it("setStopStatus records the queued status per stop order", () => {
+		const overlay = routeOverlay(
+			[
+				op(1, "r1", "routes.setStopStatus", { routeId: "r1", order: 0, status: "visited" }),
+				op(2, "r1", "routes.setStopStatus", { routeId: "r1", order: 1, status: "skipped" }),
+			],
+			"r1",
+		);
+		expect(overlay.stopStatuses.map((q) => [q.order, q.status])).toEqual([
+			[0, "visited"],
+			[1, "skipped"],
+		]);
+	});
+
+	it("applies ops in id order regardless of array order", () => {
+		const ops = [
+			op(2, "r1", "routes.setStopStatus", { routeId: "r1", order: 0, status: "pending" }),
+			op(1, "r1", "routes.setStopStatus", { routeId: "r1", order: 0, status: "visited" }),
+		];
+		const stops = [stop({ order: 0, status: "pending" })];
+		expect(applyStopOverlay(stops, routeOverlay(ops, "r1"))[0].status).toBe("pending");
+	});
+
+	it("a queued restart after a queued finish resolves to started", () => {
+		const overlay = routeOverlay(
+			[
+				op(1, "r1", "routes.completeRoute", { routeId: "r1" }),
+				op(2, "r1", "routes.startRoute", { routeId: "r1" }),
+			],
+			"r1",
+		);
+		expect(overlay.started).toBe(true);
+		expect(overlay.completed).toBe(false);
+	});
+});
+
+describe("applyStopOverlay", () => {
+	it("overrides matching stops and leaves others untouched", () => {
+		const stops = [stop({ order: 0, status: "pending" }), stop({ order: 1, status: "pending" })];
+		const overlay = routeOverlay(
+			[{ id: 1, chainKey: "route:r1", operation: "routes.setStopStatus", args: { order: 0, status: "visited" } }],
+			"r1",
+		);
+		const result = applyStopOverlay(stops, overlay);
+		expect(result[0].status).toBe("visited");
+		expect(result[1].status).toBe("pending");
+	});
+
+	it("follows the queued stop through a reorder", () => {
+		const cedar = { label: "Cedar", latitude: 1, longitude: 1 };
+		const oak = { label: "Oak", latitude: 2, longitude: 2 };
+		const stops = [
+			stop({ ...oak, order: 0, status: "pending" }),
+			stop({ ...cedar, order: 1, status: "pending" }),
+		];
+		const overlay = routeOverlay(
+			[{ id: 1, chainKey: "route:r1", operation: "routes.setStopStatus", args: { order: 0, status: "visited", stopRef: cedar } }],
+			"r1",
+		);
+		const result = applyStopOverlay(stops, overlay);
+		expect(result.map((s) => [s.label, s.status])).toEqual([
+			["Oak", "pending"],
+			["Cedar", "visited"],
+		]);
+	});
+
+	it("drops a queued status whose stop left the route", () => {
+		const stops = [stop({ label: "Oak", latitude: 2, longitude: 2, order: 0, status: "pending" })];
+		const overlay = routeOverlay(
+			[{ id: 1, chainKey: "route:r1", operation: "routes.setStopStatus", args: { order: 0, status: "visited", stopRef: { label: "Cedar", latitude: 1, longitude: 1 } } }],
+			"r1",
+		);
+		expect(applyStopOverlay(stops, overlay)[0].status).toBe("pending");
+	});
+});
+
+describe("applyRouteOverlay", () => {
+	const route = {
+		startedAt: undefined as number | undefined,
+		completedAt: undefined as number | undefined,
+		stops: [stop({ order: 0, status: "pending" })],
+	};
+
+	it("leaves the route untouched when nothing is queued", () => {
+		const overlay = routeOverlay([], "r1");
+		const result = applyRouteOverlay(route, overlay);
+		expect(result.startedAt).toBeUndefined();
+		expect(result.completedAt).toBeUndefined();
+		expect(result.stops[0].status).toBe("pending");
+	});
+
+	it("a queued start marks the route started and clears completedAt", () => {
+		const started = { ...route, completedAt: 100 };
+		const overlay = routeOverlay(
+			[{ id: 1, chainKey: "route:r1", operation: "routes.startRoute", args: {} }],
+			"r1",
+		);
+		const result = applyRouteOverlay(started, overlay);
+		expect(result.startedAt).toBeTypeOf("number");
+		expect(result.completedAt).toBeUndefined();
+	});
+
+	it("a queued finish marks the route completed", () => {
+		const overlay = routeOverlay(
+			[{ id: 1, chainKey: "route:r1", operation: "routes.completeRoute", args: {} }],
+			"r1",
+		);
+		const result = applyRouteOverlay(route, overlay);
+		expect(result.completedAt).toBeTypeOf("number");
+	});
+
+	it("carries queued stop statuses through", () => {
+		const overlay = routeOverlay(
+			[{ id: 1, chainKey: "route:r1", operation: "routes.setStopStatus", args: { order: 0, status: "visited" } }],
+			"r1",
+		);
+		expect(applyRouteOverlay(route, overlay).stops[0].status).toBe("visited");
 	});
 });

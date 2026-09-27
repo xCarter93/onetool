@@ -21,17 +21,14 @@ import * as Brightness from "expo-brightness";
 import * as MediaLibrary from "expo-media-library";
 import * as Sharing from "expo-sharing";
 import { useKeepAwake } from "expo-keep-awake";
-import { DotGrid } from "@/components/ui";
-import { InkIconButton } from "@/components/ink-header-cluster";
 import { usePermissions } from "@/lib/use-permissions";
 import {
-	dock,
 	fontFamily,
-	hero,
+	frame,
 	radii,
-	tokens,
 	tracking,
 	type,
+	useTokens,
 } from "@/lib/theme";
 
 // Hardcoded on purpose — matches the web community route exactly. `?src=qr`
@@ -48,12 +45,13 @@ function initialsFrom(name: string): string {
 }
 
 /**
- * Full-screen ink sheet whose one job is putting the org's community-page QR in
+ * Full-screen graphite sheet whose one job is putting the org's community-page QR in
  * front of a customer's camera: screen goes to full brightness, stays awake, and
  * the white card can be shared or saved as a PNG. There is deliberately NO "open
  * the page" action — this screen sells scanning and sharing, never browsing.
  */
 export default function CommunityQrScreen() {
+	const t = useTokens();
 	const insets = useSafeAreaInsets();
 	const { organization } = useOrganization();
 	const { can, isLoading: permsLoading } = usePermissions();
@@ -163,30 +161,48 @@ export default function CommunityQrScreen() {
 	};
 
 	return (
-		<View style={[styles.screen, { paddingTop: insets.top + 6 }]}>
+		<View
+			style={[
+				styles.screen,
+				{ backgroundColor: frame.rail, paddingTop: insets.top + 6 },
+			]}
+		>
 			<StatusBar style="light" />
-			<DotGrid style={StyleSheet.absoluteFill} color={hero.dotGrid} />
 
 			<View style={styles.topRow}>
-				<InkIconButton label="Close" onPress={() => router.back()}>
-					<X size={18} color={hero.text} strokeWidth={2} />
-				</InkIconButton>
-				<Text style={styles.eyebrow}>COMMUNITY PAGE</Text>
-				{/* Balances the close circle so the eyebrow sits centered. */}
+				<Pressable
+					accessibilityRole="button"
+					accessibilityLabel="Close"
+					onPress={() => router.back()}
+					hitSlop={8}
+					style={({ pressed }) => [
+						styles.railSquare,
+						{
+							backgroundColor: pressed ? frame.railBorder : frame.railRaised,
+							borderColor: frame.railBorder,
+						},
+					]}
+				>
+					<X size={18} color={frame.railText} strokeWidth={2} />
+				</Pressable>
+				<Text style={[styles.eyebrow, { color: frame.railMuted }]}>
+					COMMUNITY PAGE
+				</Text>
+				{/* Balances the close square so the eyebrow sits centered. */}
 				<View style={styles.topRowSpacer} />
 			</View>
 
 			{loading ? (
 				<View style={styles.center}>
-					<ActivityIndicator size="small" color={hero.textMid} />
+					<ActivityIndicator size="small" color={frame.railMuted} />
 				</View>
 			) : !isLive ? (
 				<View style={styles.center}>
 					<View style={styles.emptyBox}>
-						<Text style={styles.emptyTitle}>
+						<Text style={[styles.emptyTitle, { color: frame.railText }]}>
 							Your community page isn&apos;t live yet
 						</Text>
-						<Text style={styles.emptyBody}>
+						<Text style={[styles.emptyBody, { color: frame.railMuted }]}>
 							Set it up on the web at onetool.biz, then come back here to share
 							it.
 						</Text>
@@ -195,7 +211,11 @@ export default function CommunityQrScreen() {
 			) : (
 				<>
 					<View style={styles.center}>
-						<View ref={cardRef} collapsable={false} style={styles.card}>
+						<View
+							ref={cardRef}
+							collapsable={false}
+							style={[styles.card, { backgroundColor: t.card, borderColor: t.line }]}
+						>
 							<View style={styles.identity}>
 								{organization?.imageUrl ? (
 									<Image
@@ -204,7 +224,7 @@ export default function CommunityQrScreen() {
 									/>
 								) : (
 									<LinearGradient
-										colors={[tokens.brand, tokens.primarySolid]}
+										colors={[t.brand, t.primarySolid]}
 										start={{ x: 0, y: 0 }}
 										end={{ x: 1, y: 1 }}
 										style={[styles.orgTile, styles.orgTileFill]}
@@ -214,14 +234,14 @@ export default function CommunityQrScreen() {
 										</Text>
 									</LinearGradient>
 								)}
-								<Text numberOfLines={1} style={styles.orgName}>
+								<Text numberOfLines={1} style={[styles.orgName, { color: t.ink }]}>
 									{orgName}
 								</Text>
 							</View>
 
 							<View style={styles.qrWell}>
 								{qrFailed || !shareUrl ? (
-									<Text style={styles.qrFallback}>
+									<Text style={[styles.qrFallback, { color: t.sub }]}>
 										Couldn&apos;t draw this code. Close and reopen this screen.
 									</Text>
 								) : (
@@ -237,71 +257,79 @@ export default function CommunityQrScreen() {
 								)}
 							</View>
 
-							<Text numberOfLines={1} style={styles.caption}>
+							<Text numberOfLines={1} style={[styles.caption, { color: t.sub }]}>
 								{`${COMMUNITY_HOST}/communities/${slug}`}
 							</Text>
 						</View>
 
-						<Text style={styles.helper}>
+						<Text style={[styles.helper, { color: frame.railMuted }]}>
 							Customers scan this code to open your community page.
 						</Text>
 					</View>
 
-					<View
-						style={[styles.actions, { paddingBottom: insets.bottom + 16 }]}
-					>
+					<View style={[styles.actions, { paddingBottom: insets.bottom + 16 }]}>
 						{actionError ? (
-							<Text style={styles.actionError}>{actionError}</Text>
+							<Text style={[styles.actionError, { color: frame.railDanger }]}>
+								{actionError}
+							</Text>
 						) : saved ? (
-							<Text style={styles.actionOk}>Saved to Photos</Text>
+							<Text style={[styles.actionOk, { color: frame.railSuccess }]}>
+								Saved to Photos
+							</Text>
 						) : null}
 
-						<Pressable
-							onPress={() => void handleShare()}
-							disabled={busy !== null || qrFailed}
-							accessibilityRole="button"
-							accessibilityLabel="Share QR code"
-							style={({ pressed }) => [
-								styles.primaryWrap,
-								(pressed || busy !== null || qrFailed) && styles.dimmed,
-							]}
-						>
-							<LinearGradient
-								colors={dock.orbGradient}
-								start={{ x: 0, y: 0 }}
-								end={{ x: 1, y: 1 }}
-								style={styles.primary}
-							>
-								{busy === "share" ? (
-									<ActivityIndicator color={hero.text} />
-								) : (
-									<>
-										<Share2 size={18} color={hero.text} strokeWidth={2} />
-										<Text style={styles.primaryLabel}>Share QR code</Text>
-									</>
-								)}
-							</LinearGradient>
-						</Pressable>
-
-						<Pressable
-							onPress={() => void handleSave()}
-							disabled={busy !== null || qrFailed}
-							accessibilityRole="button"
-							accessibilityLabel="Save to Photos"
-							style={({ pressed }) => [
-								styles.secondary,
-								(pressed || busy !== null || qrFailed) && styles.dimmed,
-							]}
-						>
-							{busy === "save" ? (
-								<ActivityIndicator color={hero.textStrong} />
-							) : (
-								<>
-									<Download size={18} color={hero.textStrong} strokeWidth={2} />
-									<Text style={styles.secondaryLabel}>Save to Photos</Text>
-								</>
-							)}
-						</Pressable>
+						<View style={styles.actionRow}>
+							<View style={styles.actionCol}>
+								<Pressable
+									onPress={() => void handleShare()}
+									disabled={busy !== null || qrFailed}
+									accessibilityRole="button"
+									accessibilityLabel="Share QR code"
+									style={({ pressed }) => [
+										styles.railSquareLg,
+										{
+											backgroundColor: pressed ? frame.railBorder : frame.railRaised,
+											borderColor: frame.railBorder,
+										},
+										(busy !== null || qrFailed) && styles.dimmed,
+									]}
+								>
+									{busy === "share" ? (
+										<ActivityIndicator color={frame.railText} />
+									) : (
+										<Share2 size={20} color={frame.railText} strokeWidth={2} />
+									)}
+								</Pressable>
+								<Text style={[styles.actionLabel, { color: frame.railMuted }]}>
+									Share
+								</Text>
+							</View>
+							<View style={styles.actionCol}>
+								<Pressable
+									onPress={() => void handleSave()}
+									disabled={busy !== null || qrFailed}
+									accessibilityRole="button"
+									accessibilityLabel="Save to Photos"
+									style={({ pressed }) => [
+										styles.railSquareLg,
+										{
+											backgroundColor: pressed ? frame.railBorder : frame.railRaised,
+											borderColor: frame.railBorder,
+										},
+										(busy !== null || qrFailed) && styles.dimmed,
+									]}
+								>
+									{busy === "save" ? (
+										<ActivityIndicator color={frame.railText} />
+									) : (
+										<Download size={20} color={frame.railText} strokeWidth={2} />
+									)}
+								</Pressable>
+								<Text style={[styles.actionLabel, { color: frame.railMuted }]}>
+									Save
+								</Text>
+							</View>
+						</View>
 					</View>
 				</>
 			)}
@@ -312,13 +340,20 @@ export default function CommunityQrScreen() {
 const styles = StyleSheet.create({
 	screen: {
 		flex: 1,
-		backgroundColor: hero.ink,
 		paddingHorizontal: 20,
 	},
 	topRow: {
 		flexDirection: "row",
 		alignItems: "center",
 		gap: 8,
+	},
+	railSquare: {
+		width: 36,
+		height: 36,
+		borderRadius: radii.ctrl,
+		borderWidth: 1,
+		alignItems: "center",
+		justifyContent: "center",
 	},
 	topRowSpacer: {
 		width: 36,
@@ -329,7 +364,6 @@ const styles = StyleSheet.create({
 		fontFamily: fontFamily.semibold,
 		fontSize: type.eyebrow,
 		letterSpacing: tracking.eyebrow,
-		color: hero.textDim,
 	},
 	center: {
 		flex: 1,
@@ -338,8 +372,8 @@ const styles = StyleSheet.create({
 		gap: 18,
 	},
 	card: {
-		backgroundColor: tokens.card,
 		borderRadius: radii.card,
+		borderWidth: 1,
 		paddingHorizontal: 24,
 		paddingTop: 20,
 		paddingBottom: 18,
@@ -364,13 +398,12 @@ const styles = StyleSheet.create({
 	orgTileText: {
 		fontFamily: fontFamily.bold,
 		fontSize: 13,
-		color: hero.text,
+		color: "#ffffff",
 	},
 	orgName: {
 		flexShrink: 1,
 		fontFamily: fontFamily.semibold,
 		fontSize: type.h3,
-		color: tokens.ink,
 	},
 	qrWell: {
 		width: QR_SIZE,
@@ -382,21 +415,18 @@ const styles = StyleSheet.create({
 	qrFallback: {
 		fontFamily: fontFamily.regular,
 		fontSize: type.sm,
-		color: tokens.sub,
 		textAlign: "center",
 	},
 	caption: {
 		maxWidth: QR_SIZE,
 		fontFamily: fontFamily.medium,
 		fontSize: type.meta,
-		color: tokens.sub,
 	},
 	helper: {
 		maxWidth: 300,
 		textAlign: "center",
 		fontFamily: fontFamily.regular,
 		fontSize: type.body,
-		color: hero.textMid,
 	},
 	emptyBox: {
 		maxWidth: 320,
@@ -407,13 +437,11 @@ const styles = StyleSheet.create({
 		textAlign: "center",
 		fontFamily: fontFamily.semibold,
 		fontSize: type.h2,
-		color: hero.textStrong,
 	},
 	emptyBody: {
 		textAlign: "center",
 		fontFamily: fontFamily.regular,
 		fontSize: type.body,
-		color: hero.textMid,
 	},
 	actions: {
 		gap: 10,
@@ -422,45 +450,32 @@ const styles = StyleSheet.create({
 		textAlign: "center",
 		fontFamily: fontFamily.medium,
 		fontSize: type.sm,
-		color: hero.alertDot,
 	},
 	actionOk: {
 		textAlign: "center",
 		fontFamily: fontFamily.medium,
 		fontSize: type.sm,
-		color: hero.statAccent,
 	},
-	primaryWrap: {
-		borderRadius: radii["4xl"],
-		overflow: "hidden",
-	},
-	primary: {
-		height: 50,
+	actionRow: {
 		flexDirection: "row",
-		alignItems: "center",
 		justifyContent: "center",
-		gap: 8,
+		gap: 28,
 	},
-	primaryLabel: {
-		fontFamily: fontFamily.semibold,
-		fontSize: 15.5,
-		color: hero.text,
+	actionCol: {
+		alignItems: "center",
+		gap: 6,
 	},
-	secondary: {
-		height: 48,
-		borderRadius: radii["4xl"],
+	railSquareLg: {
+		width: 52,
+		height: 52,
+		borderRadius: radii.ctrl,
 		borderWidth: 1,
-		borderColor: hero.buttonBorder,
-		backgroundColor: hero.buttonBg,
-		flexDirection: "row",
 		alignItems: "center",
 		justifyContent: "center",
-		gap: 8,
 	},
-	secondaryLabel: {
+	actionLabel: {
 		fontFamily: fontFamily.medium,
-		fontSize: 14.5,
-		color: hero.textStrong,
+		fontSize: type.xs,
 	},
 	dimmed: {
 		opacity: 0.6,

@@ -143,4 +143,12 @@ crons.daily(
 	{}
 );
 
+// Retention sweep for offline-sync idempotency receipts (PRD-mobile-offline §4.6).
+crons.daily(
+	"cleanup expired mutation receipts",
+	{ hourUTC: 4, minuteUTC: 15 },
+	internal.mutationReceipts.cleanupExpired,
+	{}
+);
+
 export default crons;

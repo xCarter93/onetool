@@ -71,7 +71,7 @@ export function ListRow({
 					backgroundColor: t.frostedBg,
 					borderWidth: 1,
 					borderColor: t.primarySolid,
-					borderRadius: radii.xl,
+					borderRadius: radii.card,
 					borderBottomWidth: 1,
 					// Explicit longhand: the base style's borderBottomColor (lineSoft
 					// separator) beats the borderColor shorthand in RN's resolution
@@ -121,7 +121,7 @@ const styles = StyleSheet.create({
 	tile: {
 		width: 32,
 		height: 32,
-		borderRadius: 9,
+		borderRadius: 8,
 		alignItems: "center",
 		justifyContent: "center",
 		flexShrink: 0,

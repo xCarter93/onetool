@@ -11,6 +11,7 @@ import {
 import { getOptionalOrgId, emptyListResult } from "./lib/queries";
 import { insertTeamMessage } from "./teamMessages";
 import { enqueuePush } from "./push";
+import { withReceipt } from "./lib/mutationReceipts";
 import {
 	optionalUserQuery,
 	systemMutation,
@@ -686,8 +687,32 @@ export const createMention = userMutation({
 				})
 			)
 		),
+		idempotencyKey: v.optional(v.string()),
 	},
 	handler: async (ctx, args): Promise<Id<"teamMessages">> => {
+		return withReceipt(ctx, args.idempotencyKey, "notifications.createMention", args, () =>
+			createMentionHandler(ctx, args)
+		);
+	},
+});
+
+async function createMentionHandler(
+	ctx: UserMutationCtx,
+	args: {
+		mentionedUserIds?: Id<"users">[];
+		taggedUserId?: Id<"users">;
+		message: string;
+		entityType: "client" | "project" | "quote";
+		entityId: string;
+		entityName: string;
+		attachments?: {
+			storageId: Id<"_storage">;
+			fileName: string;
+			fileSize: number;
+			mimeType: string;
+		}[];
+	}
+): Promise<Id<"teamMessages">> {
 		// Get current user
 		const currentUser = await ctx.auth.getUserIdentity();
 		if (!currentUser) {
@@ -890,5 +915,4 @@ export const createMention = userMutation({
 		}
 
 		return teamMessageId;
-	},
-});
+}

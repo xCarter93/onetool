@@ -1,4 +1,4 @@
-import { Stack } from "expo-router";
+import { Stack } from "expo-router/stack";
 
 // Onboarding route group. No redirect logic here — routing INTO this group
 // (post-auth, no active org) is owned by plan 25-05's post-auth boundary.

@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useRef } from "react";
 import {
 	ActivityIndicator,
 	Pressable,
@@ -6,22 +6,23 @@ import {
 	Text,
 	View,
 } from "react-native";
+import Swipeable, {
+	type SwipeableMethods,
+} from "react-native-gesture-handler/ReanimatedSwipeable";
 import { Check } from "lucide-react-native";
 import {
 	fontFamily,
 	radii,
-	recordTint,
 	touch,
 	type,
 	useTokens,
 } from "@/lib/theme";
 import { formatClockLabel, type AgendaTask } from "@/lib/agenda";
+import { useExclusiveSwipe } from "@/lib/swipe-registry";
 
 const BOX = 22;
 /** Left time rail. Fixed so every title starts on the same column, timed or not. */
 const RAIL = 58;
-/** Record-tint spine width — a hairline bar, never a color block. */
-export const SPINE = 3;
 
 interface AgendaRowProps {
 	task: AgendaTask;
@@ -35,23 +36,7 @@ interface AgendaRowProps {
 }
 
 /**
- * Wraps a non-task row (project `ListRow`s) in the same tinted spine, so the
- * ALL DAY band and the timeline speak one language. Lives here rather than in
- * `ui/list-row.tsx`, which the Today tab does not own.
- */
-export function SpinedRow({
-	color,
-	children,
-}: {
-	color: string;
-	children: React.ReactNode;
-}) {
-	return <View style={[styles.spined, { borderLeftColor: color }]}>{children}</View>;
-}
-
-/**
- * One line of Today's timeline: a record-tint spine and a left time rail
- * (Timepage), then the title block, then the checkbox.
+ * One line of Today's timeline: a left time rail (Timepage), then the title block, then the checkbox.
  *
  * The checkbox and the row body are SEPARATE tap targets — checking off a job
  * and opening it are different intents, and a single row-wide handler makes the
@@ -73,16 +58,45 @@ export function AgendaRow({
 	const endLabel = formatClockLabel(task.endTime);
 	const muted = done || cancelled;
 
-	return (
+	const swipeableRef = useRef<SwipeableMethods>(null);
+	const exclusiveSwipe = useExclusiveSwipe(swipeableRef);
+	// RNGH #3481: releasing a swipe can fire a spurious onPress on the child.
+	const suppressPressUntil = useRef(0);
+	const guardedOpen = () => {
+		if (Date.now() < suppressPressUntil.current) return;
+		onOpen();
+	};
+	const suppressPress = () => {
+		suppressPressUntil.current = Date.now() + 500;
+	};
+	const swipeToggle = () => {
+		swipeableRef.current?.close();
+		onToggle();
+	};
+
+	const renderRightActions = () => (
+		<Pressable
+			onPress={swipeToggle}
+			style={[
+				styles.swipeAction,
+				{ backgroundColor: done ? t.checkbox : t.success },
+			]}
+			accessibilityRole="button"
+			accessibilityLabel={done ? `Mark ${task.title} not done` : `Mark ${task.title} done`}
+		>
+			<Text style={styles.swipeActionText}>{done ? "Not done" : "Done"}</Text>
+		</Pressable>
+	);
+
+	const row = (
 		<View
 			style={[
 				styles.row,
-				{ borderLeftColor: muted ? t.line : recordTint.task.fg },
 				!last && { borderBottomWidth: 1, borderBottomColor: t.lineSoft },
 			]}
 		>
 			<Pressable
-				onPress={onOpen}
+				onPress={guardedOpen}
 				style={styles.body}
 				accessibilityRole="button"
 				accessibilityLabel={[
@@ -95,6 +109,16 @@ export function AgendaRow({
 				]
 					.filter(Boolean)
 					.join(", ")}
+				// Swipe's visible alternative is the checkbox below; this mirrors the
+				// same action for VoiceOver users, who can't perform the swipe gesture.
+				accessibilityActions={
+					cancelled
+						? undefined
+						: [{ name: "toggleDone", label: done ? "Mark not done" : "Mark done" }]
+				}
+				onAccessibilityAction={(event) => {
+					if (event.nativeEvent.actionName === "toggleDone") onToggle();
+				}}
 			>
 				<View style={styles.rail}>
 					{timeLabel ? (
@@ -144,7 +168,11 @@ export function AgendaRow({
 					accessibilityElementsHidden
 					importantForAccessibility="no-hide-descendants"
 				>
-					<Text style={[styles.assigneeText, { color: t.frostedInk }]}>
+					{/* Capped, not resized — a grown circle would collide with the checkbox. */}
+					<Text
+						style={[styles.assigneeText, { color: t.frostedInk }]}
+						maxFontSizeMultiplier={1.2}
+					>
 						{assignee.initials}
 					</Text>
 				</View>
@@ -182,6 +210,30 @@ export function AgendaRow({
 			</Pressable>
 		</View>
 	);
+
+	// Cancelled tasks have no toggle, so a reveal that does nothing would confuse.
+	if (cancelled) return row;
+
+	return (
+		<Swipeable
+			ref={swipeableRef}
+			friction={2}
+			rightThreshold={40}
+			overshootRight={false}
+			enabled={!updating}
+			renderRightActions={renderRightActions}
+			onSwipeableWillOpen={() => {
+				suppressPress();
+				exclusiveSwipe.onOpen();
+			}}
+			onSwipeableWillClose={suppressPress}
+			onSwipeableClose={exclusiveSwipe.onClose}
+			onSwipeableOpenStartDrag={suppressPress}
+			onSwipeableCloseStartDrag={suppressPress}
+		>
+			{row}
+		</Swipeable>
+	);
 }
 
 const styles = StyleSheet.create({
@@ -189,10 +241,6 @@ const styles = StyleSheet.create({
 		flexDirection: "row",
 		alignItems: "center",
 		minHeight: touch.min,
-		borderLeftWidth: SPINE,
-	},
-	spined: {
-		borderLeftWidth: SPINE,
 	},
 	body: {
 		flex: 1,
@@ -200,7 +248,7 @@ const styles = StyleSheet.create({
 		flexDirection: "row",
 		alignItems: "center",
 		gap: 10,
-		paddingLeft: 11,
+		paddingLeft: 14,
 		paddingVertical: 9,
 	},
 	rail: {
@@ -253,5 +301,15 @@ const styles = StyleSheet.create({
 	assigneeText: {
 		fontFamily: fontFamily.semibold,
 		fontSize: 10,
+	},
+	swipeAction: {
+		width: 96,
+		alignItems: "center",
+		justifyContent: "center",
+	},
+	swipeActionText: {
+		fontFamily: fontFamily.semibold,
+		fontSize: type.sm,
+		color: "#fff",
 	},
 });

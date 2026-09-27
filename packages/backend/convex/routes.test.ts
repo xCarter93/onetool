@@ -1097,6 +1097,127 @@ describe("Routes", () => {
 				})
 			).rejects.toThrow(/organization/i);
 		});
+
+		it("stopRef finds the right stop after a reorder shifts `order`", async () => {
+			const { clerkUserId, clerkOrgId } = await setupOrg();
+			const asUser = t.withIdentity(
+				createPremiumTestIdentity(clerkUserId, clerkOrgId)
+			);
+			const routeId = await asUser.mutation(api.routes.create, {
+				name: "Daily",
+				kind: "daily",
+				date: DATE,
+				start: START,
+				roundTrip: false,
+				stops: [stop(0), stop(1)],
+			});
+			const stopRef = {
+				label: "Stop 1",
+				latitude: stop(1).latitude,
+				longitude: stop(1).longitude,
+			};
+
+			// Reorder: what was order 1 is now order 0.
+			await asUser.mutation(api.routes.update, {
+				routeId,
+				stops: [stop(1, { order: 0 }), stop(0, { order: 1 })],
+			});
+
+			await asUser.mutation(api.routes.setStopStatus, {
+				routeId,
+				order: 0, // stale ordinal from before the reorder
+				status: "visited",
+				stopRef,
+			});
+
+			const route = await asUser.query(api.routes.get, { routeId });
+			const target = route!.stops.find((s) => s.label === "Stop 1");
+			expect(target?.status).toBe("visited");
+			const other = route!.stops.find((s) => s.label === "Stop 0");
+			expect(other?.status).toBeUndefined();
+		});
+
+		it("stopRef with no match throws CONFLICT/STOP_NOT_FOUND", async () => {
+			const { clerkUserId, clerkOrgId } = await setupOrg();
+			const asUser = t.withIdentity(
+				createPremiumTestIdentity(clerkUserId, clerkOrgId)
+			);
+			const routeId = await asUser.mutation(api.routes.create, {
+				name: "Daily",
+				kind: "daily",
+				date: DATE,
+				start: START,
+				roundTrip: false,
+				stops: [stop(0)],
+			});
+
+			await expect(
+				asUser.mutation(api.routes.setStopStatus, {
+					routeId,
+					order: 0,
+					status: "visited",
+					stopRef: {
+						label: "Nonexistent",
+						latitude: 0,
+						longitude: 0,
+					},
+				})
+			).rejects.toThrow(/STOP_NOT_FOUND/);
+		});
+
+		it("an ambiguous stopRef (duplicate stops) breaks the tie on order", async () => {
+			const { clerkUserId, clerkOrgId } = await setupOrg();
+			const asUser = t.withIdentity(
+				createPremiumTestIdentity(clerkUserId, clerkOrgId)
+			);
+			const dup = { label: "Same", latitude: 1, longitude: 1 };
+			const routeId = await asUser.mutation(api.routes.create, {
+				name: "Daily",
+				kind: "daily",
+				date: DATE,
+				start: START,
+				roundTrip: false,
+				stops: [
+					{ ...dup, order: 0 },
+					{ ...dup, order: 1 },
+				],
+			});
+
+			await asUser.mutation(api.routes.setStopStatus, {
+				routeId,
+				order: 1,
+				status: "visited",
+				stopRef: dup,
+			});
+
+			const route = await asUser.query(api.routes.get, { routeId });
+			expect(route!.stops.find((s) => s.order === 1)?.status).toBe("visited");
+			expect(route!.stops.find((s) => s.order === 0)?.status).toBeUndefined();
+		});
+
+		it("idempotencyKey on a legacy order-only call surfaces a typed conflict", async () => {
+			const { clerkUserId, clerkOrgId } = await setupOrg();
+			const asUser = t.withIdentity(
+				createPremiumTestIdentity(clerkUserId, clerkOrgId)
+			);
+			const routeId = await asUser.mutation(api.routes.create, {
+				name: "Daily",
+				kind: "daily",
+				date: DATE,
+				start: START,
+				roundTrip: false,
+				stops: [stop(0)],
+			});
+
+			await expect(
+				asUser.mutation(api.routes.setStopStatus, {
+					routeId,
+					order: 5,
+					status: "visited",
+					idempotencyKey: "stop-1",
+				})
+			).rejects.toThrow(/STOP_NOT_FOUND/);
+		});
 	});
 
 	describe("task completion marks stop visited", () => {
@@ -1674,6 +1795,33 @@ describe("Routes", () => {
 			await expect(
 				asB.mutation(api.routes.completeRoute, { routeId })
 			).rejects.toThrow(/organization/i);
+		});
+
+		it("ifNotCompleted on a completed route throws CONFLICT/ROUTE_ALREADY_COMPLETED", async () => {
+			const { asUser, routeId } = await setupDailyRoute();
+
+			await asUser.mutation(api.routes.startRoute, { routeId });
+			await asUser.mutation(api.routes.completeRoute, { routeId });
+
+			await expect(
+				asUser.mutation(api.routes.startRoute, {
+					routeId,
+					ifNotCompleted: true,
+				})
+			).rejects.toThrow(/ROUTE_ALREADY_COMPLETED/);
+			const route = await asUser.query(api.routes.get, { routeId });
+			expect(route!.completedAt).toBeTypeOf("number"); // never restarted
+		});
+
+		it("ifNotCompleted on a not-yet-completed route starts it normally", async () => {
+			const { asUser, routeId } = await setupDailyRoute();
+
+			await asUser.mutation(api.routes.startRoute, {
+				routeId,
+				ifNotCompleted: true,
+			});
+			const route = await asUser.query(api.routes.get, { routeId });
+			expect(route!.startedAt).toBeTypeOf("number");
 		});
 	});
 

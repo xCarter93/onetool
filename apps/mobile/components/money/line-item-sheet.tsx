@@ -1,9 +1,7 @@
-import { useState } from "react";
+import { OfflineBlockedError } from "@/lib/offline/hooks";
+import { useCallback, useState } from "react";
 import {
 	Alert,
-	KeyboardAvoidingView,
-	Modal,
-	Platform,
 	Pressable,
 	ScrollView,
 	StyleSheet,
@@ -13,8 +11,10 @@ import {
 } from "react-native";
 import { X } from "lucide-react-native";
 import { fontFamily, radii, type, useTokens } from "@/lib/theme";
-import { Button, Eyebrow } from "@/components/ui";
+import { Button } from "@/components/ui";
 import { formatCurrency } from "@/lib/format";
+import { FormSheet } from "@/components/sheets/form-sheet";
+import { SheetField, SheetInput } from "@/components/sheets/create-sheet";
 
 export interface LineItemDraft {
 	description: string;
@@ -51,10 +51,14 @@ export function LineItemSheet({
 	onDelete?: () => Promise<void>;
 }) {
 	const t = useTokens();
-	const [description, setDescription] = useState("");
-	const [quantityText, setQuantityText] = useState("1");
-	const [unit, setUnit] = useState("");
-	const [rateText, setRateText] = useState("");
+	const seedDescription = initial?.description ?? "";
+	const seedQuantityText = initial ? String(initial.quantity) : "1";
+	const seedUnit = initial?.unit ?? "";
+	const seedRateText = initial ? String(initial.rate) : "";
+	const [description, setDescription] = useState(seedDescription);
+	const [quantityText, setQuantityText] = useState(seedQuantityText);
+	const [unit, setUnit] = useState(seedUnit);
+	const [rateText, setRateText] = useState(seedRateText);
 	const [saving, setSaving] = useState(false);
 
 	// Re-seed per open (house guarded render-time derivation — setState in an
@@ -63,13 +67,19 @@ export function LineItemSheet({
 	if (visible !== prevVisible) {
 		setPrevVisible(visible);
 		if (visible) {
-			setDescription(initial?.description ?? "");
-			setQuantityText(initial ? String(initial.quantity) : "1");
-			setUnit(initial?.unit ?? "");
-			setRateText(initial ? String(initial.rate) : "");
+			setDescription(seedDescription);
+			setQuantityText(seedQuantityText);
+			setUnit(seedUnit);
+			setRateText(seedRateText);
 			setSaving(false);
 		}
 	}
+
+	const dirty =
+		description !== seedDescription ||
+		quantityText !== seedQuantityText ||
+		unit !== seedUnit ||
+		rateText !== seedRateText;
 
 	const quantity = Number.parseFloat(quantityText.replace(/[^0-9.]/g, ""));
 	const rate = Number.parseFloat(rateText.replace(/[^0-9.]/g, ""));
@@ -96,11 +106,29 @@ export function LineItemSheet({
 				rate,
 			});
 			onClose();
-		} catch {
-			Alert.alert("Couldn't save that line item", "Please try again.");
+		} catch (err) {
+			if (!(err instanceof OfflineBlockedError)) {
+				Alert.alert("Couldn't save that line item", "Please try again.");
+			}
 			setSaving(false);
 		}
 	};
+
+	const attemptClose = useCallback(() => {
+		if (saving) return;
+		if (!dirty) {
+			onClose();
+			return;
+		}
+		Alert.alert(
+			"Discard this line item?",
+			"Your changes haven't been saved.",
+			[
+				{ text: "Keep editing", style: "cancel" },
+				{ text: "Discard", style: "destructive", onPress: onClose },
+			]
+		);
+	}, [saving, dirty, onClose]);
 
 	const confirmDelete = () => {
 		if (saving || !onDelete) return;
@@ -117,8 +145,10 @@ export function LineItemSheet({
 						try {
 							await onDelete();
 							onClose();
-						} catch {
-							Alert.alert("Couldn't delete that line item", "Please try again.");
+						} catch (err) {
+							if (!(err instanceof OfflineBlockedError)) {
+								Alert.alert("Couldn't delete that line item", "Please try again.");
+							}
 							setSaving(false);
 						}
 					},
@@ -128,16 +158,8 @@ export function LineItemSheet({
 	};
 
 	return (
-		<Modal
-			visible={visible}
-			animationType="slide"
-			presentationStyle="pageSheet"
-			onRequestClose={onClose}
-		>
-			<KeyboardAvoidingView
-				style={[styles.root, { backgroundColor: t.bg }]}
-				behavior={Platform.OS === "ios" ? "padding" : undefined}
-			>
+		<FormSheet visible={visible} onDismiss={attemptClose} dirty={dirty} snapPoint="78%">
+			<View style={[styles.root, { backgroundColor: t.bg }]}>
 				<View style={styles.topBar}>
 					<Text style={[styles.topTitle, { color: t.ink }]}>
 						{initial ? "Edit line item" : "Add line item"}
@@ -145,7 +167,7 @@ export function LineItemSheet({
 					<Pressable
 						accessibilityRole="button"
 						accessibilityLabel="Close"
-						onPress={onClose}
+						onPress={attemptClose}
 						hitSlop={8}
 						style={[styles.close, { backgroundColor: t.secondary }]}
 					>
@@ -158,87 +180,59 @@ export function LineItemSheet({
 					contentContainerStyle={styles.scroll}
 					keyboardShouldPersistTaps="handled"
 				>
-					<View style={styles.field}>
-						<Eyebrow>Description</Eyebrow>
-						<TextInput
+					<SheetField label="Description">
+						<SheetInput
 							value={description}
 							onChangeText={setDescription}
 							placeholder="Spring cleanup, service call, materials…"
-							placeholderTextColor={t.faintDecor}
 							multiline
-							style={[
-								styles.descriptionInput,
-								{
-									backgroundColor: t.card,
-									borderColor: t.line,
-									color: t.ink,
-								},
-							]}
 							accessibilityLabel="Line item description"
 						/>
-					</View>
+					</SheetField>
 
 					<View style={styles.pair}>
-						<View style={[styles.field, styles.pairItem]}>
-							<Eyebrow>Quantity</Eyebrow>
-							<TextInput
+						<SheetField label="Quantity" style={styles.pairItem}>
+							<SheetInput
 								value={quantityText}
 								onChangeText={setQuantityText}
 								keyboardType="decimal-pad"
 								placeholder="1"
-								placeholderTextColor={t.faintDecor}
-								style={[
-									styles.numberInput,
-									{
-										backgroundColor: t.card,
-										borderColor: t.line,
-										color: t.ink,
-									},
-								]}
 								accessibilityLabel="Quantity"
 							/>
-						</View>
-						<View style={[styles.field, styles.pairItem]}>
-							<Eyebrow>{unitRequired ? "Unit" : "Unit (optional)"}</Eyebrow>
-							<TextInput
+						</SheetField>
+						<SheetField
+							label={unitRequired ? "Unit" : "Unit (optional)"}
+							style={styles.pairItem}
+						>
+							<SheetInput
 								value={unit}
 								onChangeText={setUnit}
 								placeholder="hour, sq ft, unit"
-								placeholderTextColor={t.faintDecor}
 								autoCapitalize="none"
-								style={[
-									styles.numberInput,
-									{
-										backgroundColor: t.card,
-										borderColor: t.line,
-										color: t.ink,
-									},
-								]}
 								accessibilityLabel="Unit of measure"
 							/>
-						</View>
+						</SheetField>
 					</View>
 
-					<View style={styles.field}>
-						<Eyebrow>Rate</Eyebrow>
+					<SheetField label="Rate">
 						<View
 							style={[
 								styles.rateBox,
-								{ backgroundColor: t.card, borderColor: t.line },
+								{ backgroundColor: t.card, borderColor: t.input },
 							]}
 						>
-							<Text style={[styles.dollarSign, { color: t.faintDecor }]}>$</Text>
+							<Text style={[styles.dollarSign, { color: t.faint }]}>$</Text>
 							<TextInput
 								value={rateText}
 								onChangeText={setRateText}
 								keyboardType="decimal-pad"
 								placeholder="0.00"
-								placeholderTextColor={t.faintDecor}
+								placeholderTextColor={t.faint}
 								style={[styles.rateInput, { color: t.ink }]}
 								accessibilityLabel="Rate per unit in dollars"
 							/>
 						</View>
-					</View>
+					</SheetField>
 
 					<View
 						style={[
@@ -292,8 +286,8 @@ export function LineItemSheet({
 						onPress={submit}
 					/>
 				</View>
-			</KeyboardAvoidingView>
-		</Modal>
+			</View>
+		</FormSheet>
 	);
 }
 
@@ -317,34 +311,12 @@ const styles = StyleSheet.create({
 		justifyContent: "center",
 	},
 	scroll: { padding: 18, paddingTop: 10, gap: 20 },
-	field: { gap: 8 },
 	pair: { flexDirection: "row", gap: 12 },
 	pairItem: { flex: 1 },
-	descriptionInput: {
-		borderRadius: radii.r,
-		borderWidth: 1,
-		paddingHorizontal: 14,
-		paddingVertical: 12,
-		minHeight: 68,
-		fontFamily: fontFamily.regular,
-		fontSize: type.body,
-		letterSpacing: 0, // RN#42589: pin kern so iOS placeholder can't randomly letter-space
-		textAlignVertical: "top",
-	},
-	numberInput: {
-		borderRadius: radii.r,
-		borderWidth: 1,
-		paddingHorizontal: 14,
-		paddingVertical: 12,
-		fontFamily: fontFamily.semibold,
-		fontSize: type.body,
-		letterSpacing: 0,
-		fontVariant: ["tabular-nums"],
-	},
 	rateBox: {
 		flexDirection: "row",
 		alignItems: "center",
-		borderRadius: radii.rLg,
+		borderRadius: radii.ctrl,
 		borderWidth: 1,
 		paddingHorizontal: 16,
 		paddingVertical: 12,
@@ -366,7 +338,7 @@ const styles = StyleSheet.create({
 		flexDirection: "row",
 		alignItems: "center",
 		justifyContent: "space-between",
-		borderRadius: radii.rLg,
+		borderRadius: radii.ctrl,
 		borderWidth: 1,
 		paddingHorizontal: 16,
 		paddingVertical: 14,

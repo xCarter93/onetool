@@ -8,17 +8,17 @@
 const EXACT_ROUTES: Record<string, string> = {
 	"/": "/(tabs)",
 	"/home": "/(tabs)",
-	"/projects": "/(tabs)/work",
-	"/clients": "/(tabs)/work",
-	"/quotes": "/(tabs)/work",
-	"/invoices": "/(tabs)/work",
-	"/routing": "/(tabs)/routes",
+	"/projects": "/work",
+	"/clients": "/work",
+	"/quotes": "/work",
+	"/invoices": "/work",
+	"/routing": "/routes",
 };
 
 const ID_ROUTES: [RegExp, (id: string) => string][] = [
 	// /clients/import is the CSV-import wizard, not a client id — no mobile analog.
-	[/^\/clients\/(?!import$)([A-Za-z0-9_-]+)$/, (id) => `/(tabs)/clients/${id}`],
-	[/^\/projects\/([A-Za-z0-9_-]+)$/, (id) => `/(tabs)/projects/${id}`],
+	[/^\/clients\/(?!import$)([A-Za-z0-9_-]+)$/, (id) => `/clients/${id}`],
+	[/^\/projects\/([A-Za-z0-9_-]+)$/, (id) => `/projects/${id}`],
 	[/^\/quotes\/([A-Za-z0-9_-]+)$/, (id) => `/quote/${id}`],
 	[/^\/invoices\/([A-Za-z0-9_-]+)$/, (id) => `/invoice/${id}`],
 ];

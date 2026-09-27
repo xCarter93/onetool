@@ -1,0 +1,2 @@
+# pnpm hoisting nests a duplicate copy locally but not on EAS, so the path differs and runtime versions mismatch.
+../../node_modules/bplist-parser/**/*

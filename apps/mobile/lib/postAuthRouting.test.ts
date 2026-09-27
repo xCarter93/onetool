@@ -8,6 +8,7 @@ import {
 const base: AuthRoutingState = {
 	authLoaded: true,
 	orgLoaded: true,
+	membershipsLoaded: true,
 	isSignedIn: true,
 	hasActiveOrg: true,
 	membershipCount: 1,
@@ -53,6 +54,7 @@ describe("resolveAuthDestination", () => {
 			resolveAuthDestination({
 				authLoaded: true,
 				orgLoaded: true,
+				membershipsLoaded: true,
 				isSignedIn: true,
 				hasActiveOrg: true,
 				membershipCount: 1,
@@ -78,6 +80,7 @@ describe("resolveAuthDestination", () => {
 			resolveAuthDestination({
 				authLoaded: true,
 				orgLoaded: true,
+				membershipsLoaded: true,
 				isSignedIn: true,
 				hasActiveOrg: false,
 				membershipCount: 2,
@@ -91,11 +94,30 @@ describe("resolveAuthDestination", () => {
 			resolveAuthDestination({
 				authLoaded: true,
 				orgLoaded: true,
+				membershipsLoaded: true,
 				isSignedIn: true,
 				hasActiveOrg: false,
 				membershipCount: 0,
 				needsMetadata: undefined,
 			})
 		).toBe(SETUP_ROUTE);
+	});
+
+	// Offline cold start: the cached active org must reach tabs even when the
+	// membership list can't load.
+	it("routes an active-org user to tabs before the membership list loads", () => {
+		expect(
+			resolveAuthDestination({ ...base, membershipsLoaded: false })
+		).toBe("/(tabs)");
+	});
+
+	it("waits on the membership list before sending a no-org user to setup", () => {
+		expect(
+			resolveAuthDestination({
+				...base,
+				hasActiveOrg: false,
+				membershipsLoaded: false,
+			})
+		).toBe("loading");
 	});
 });

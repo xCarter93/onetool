@@ -105,6 +105,7 @@ import type * as lib_invoiceTransitions from "../lib/invoiceTransitions.js";
 import type * as lib_lineItems from "../lib/lineItems.js";
 import type * as lib_memberships from "../lib/memberships.js";
 import type * as lib_money from "../lib/money.js";
+import type * as lib_mutationReceipts from "../lib/mutationReceipts.js";
 import type * as lib_orgCascade from "../lib/orgCascade.js";
 import type * as lib_orgCounters from "../lib/orgCounters.js";
 import type * as lib_orgScan from "../lib/orgScan.js";
@@ -180,6 +181,7 @@ import type * as migrations_pausePublishedAutomationsOnFreeOrgs from "../migrati
 import type * as migrations_rebuildAggregates from "../migrations/rebuildAggregates.js";
 import type * as migrations_revalidateStripeConnectAccounts from "../migrations/revalidateStripeConnectAccounts.js";
 import type * as migrations_seedServiceStatus from "../migrations/seedServiceStatus.js";
+import type * as mutationReceipts from "../mutationReceipts.js";
 import type * as notificationPreferences from "../notificationPreferences.js";
 import type * as notifications from "../notifications.js";
 import type * as orgCascade from "../orgCascade.js";
@@ -350,6 +352,7 @@ declare const fullApi: ApiFromModules<{
   "lib/lineItems": typeof lib_lineItems;
   "lib/memberships": typeof lib_memberships;
   "lib/money": typeof lib_money;
+  "lib/mutationReceipts": typeof lib_mutationReceipts;
   "lib/orgCascade": typeof lib_orgCascade;
   "lib/orgCounters": typeof lib_orgCounters;
   "lib/orgScan": typeof lib_orgScan;
@@ -425,6 +428,7 @@ declare const fullApi: ApiFromModules<{
   "migrations/rebuildAggregates": typeof migrations_rebuildAggregates;
   "migrations/revalidateStripeConnectAccounts": typeof migrations_revalidateStripeConnectAccounts;
   "migrations/seedServiceStatus": typeof migrations_seedServiceStatus;
+  mutationReceipts: typeof mutationReceipts;
   notificationPreferences: typeof notificationPreferences;
   notifications: typeof notifications;
   orgCascade: typeof orgCascade;

@@ -1,20 +1,21 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { SafeAreaInsetsContext, useSafeAreaInsets } from "react-native-safe-area-context";
+import { StatusBar } from "expo-status-bar";
 import { X } from "lucide-react-native";
 import { Slot, usePathname, useRouter, type Href } from "expo-router";
 import { useDevice } from "@/lib/use-device";
-import { useTokens } from "@/lib/theme";
+import { frame, useTokens } from "@/lib/theme";
 import {
 	SelectionProvider,
 	useSelection,
+	type RecordRef,
 	type SelectionTab,
 } from "@/lib/selection-context";
-import {
-	PadSidebar,
-	type CreateItem,
-	type SidebarTab,
-} from "@/components/ipad/pad-sidebar";
+import { PadSidebar, type SidebarTab } from "@/components/ipad/pad-sidebar";
+import { IpadDock } from "@/components/ipad/ipad-dock";
+import { Notch, type NotchContent } from "@/components/frame/notch";
+import { useCreateItems } from "@/components/frame/phone-frame";
 import {
 	isOverlayRoute,
 	isStackRoute,
@@ -22,18 +23,20 @@ import {
 	tabFromPathname,
 	type ShellTab,
 } from "@/lib/shell-routes";
-import { DotGrid } from "@/components/ui";
 import { PaneDetailHost } from "@/components/ipad/pane-detail-host";
+import { ScreenBoundary } from "@/components/screen-boundary";
 import { PaneHeader } from "@/components/ipad/pane-header";
 import { ShellNavProvider, type ShellNav } from "@/lib/shell-nav";
 import type { WorkChipKind } from "@/lib/work-search";
-import TodayScreen from "@/app/(tabs)/index";
-import WorkScreen from "@/app/(tabs)/work";
-import MoneyScreen from "@/app/(tabs)/money/index";
-import RoutesScreen from "@/app/(tabs)/routes";
-import ActivityScreen from "@/app/(tabs)/activity";
-import ProfileScreen from "@/app/(tabs)/profile";
-import { ClientCreateBody } from "@/app/(tabs)/clients/new";
+import TodayScreen from "@/app/(tabs)/(today)/index";
+import WorkScreen from "@/app/(tabs)/(work)/work";
+import MoneyScreen from "@/app/(tabs)/(money)/money";
+import RoutesScreen from "@/app/(tabs)/(routes)/routes";
+import ActivityScreen from "@/app/(tabs)/(today,work,money,routes)/activity";
+import ProfileScreen from "@/app/(tabs)/(today,work,money,routes)/profile";
+import BusinessDetailsScreen from "@/app/(tabs)/(today,work,money,routes)/business-details";
+import RouteEditScreen from "@/app/(tabs)/(today,work,money,routes)/route-edit";
+import type { Id } from "@onetool/backend/convex/_generated/dataModel";
 import { AssistantHost } from "@/components/assistant/assistant-host";
 import {
 	AssistantInkHeader,
@@ -42,40 +45,34 @@ import {
 import { buildScreenContext } from "@/lib/screen-context";
 import { usePermissions } from "@/lib/use-permissions";
 
-// ============================================================================
-// IpadShell — top-level iPad layout (gated on device === "ipad" in (tabs)/
-// _layout.tsx, AFTER the auth redirects). Mounts SelectionProvider BELOW the
-// Convex key={convexKey} boundary (only rendered from the iPad branch) so an
-// org switch remounts it and resets selection (T-26-04).
-//
-// IA (§6): the rail mirrors the iPhone dock — Today · Work · Money · Routes —
-// plus Activity, which the rail has room for and the dock does not. The
-// assistant is pinned at the rail bottom instead of a FAB. Clients/projects/
-// quotes/invoices are no longer rail tabs; they are record KINDS inside Work,
-// which is why selection carries {kind,id} (selection-context).
-//
-// Three panes own a detail view (Work, Money, Activity) and get the
-// master-detail treatment. Today and Routes are single panes in both
-// orientations.
-//
-// ROUTER-INTEGRATION LAYER:
-//   A usePathname() effect reconciles expo-router route state → the shell's local
-//   activeTab + SelectionProvider on every pathname change, so route-driven entry
-//   (notification deep link, push payload, detail cross-link) lands inside the
-//   shell rather than on a stale tab:
-//     /clients|projects|quote|invoice/[id]  → tab "work" + select that record
-//     list routes (/, /work, /routes, /activity, /profile) → set the tab, leave
-//       selection untouched (each pane's last selection persists — issue #11)
-//
-// STACK-ROUTE SLOT: for a full-screen stack route that is NOT a detail route
-// (e.g. /clients/new reached by a raw link), the shell renders expo-router's
-// <Slot /> full-width beside the rail so the pushed screen owns its own header.
-// ============================================================================
+// iPad frame: web's graphite sidebar, a rounded canvas with a notch, list and
+// detail panes side by side, and the assistant dock at the canvas foot. Mounted
+// below the Convex org boundary so an org switch resets selection. A pathname
+// effect reconciles route-driven entry (deep links, pushes) to the local tab
+// and selection; non-record stack routes render through <Slot /> in the canvas.
 
 const LIST_PANE_WIDTH = 330;
 
 // Panes with a list + detail split. Today and Routes have no detail view.
 const MASTER_DETAIL: readonly ShellTab[] = ["work", "money", "activity"];
+
+const NO_INSETS = { top: 0, right: 0, bottom: 0, left: 0 };
+
+const TAB_LABEL: Record<ShellTab, string> = {
+	today: "Today",
+	work: "Work",
+	money: "Money",
+	routes: "Routes",
+	activity: "Activity",
+	profile: "Profile",
+};
+
+const KIND_LABEL: Record<RecordRef["kind"], string> = {
+	client: "Client",
+	project: "Project",
+	quote: "Quote",
+	invoice: "Invoice",
+};
 
 const PANE_TITLE: Record<SelectionTab, string> = {
 	work: "Work",
@@ -93,7 +90,8 @@ function IpadShellInner() {
 	const { orientation } = useDevice();
 	const { state, select, clear } = useSelection();
 	const pathname = usePathname();
-	const { can, isLoading: permissionsLoading } = usePermissions();
+	const { isLoading: permissionsLoading } = usePermissions();
+	const insets = useSafeAreaInsets();
 
 	// activeTab is held in LOCAL STATE so a rail tap swaps only the content pane —
 	// the rail is a persistent frame, not a navigation push. A router.push() for
@@ -117,9 +115,6 @@ function IpadShellInner() {
 		setActiveTab(derivedTab);
 	}
 
-	// In-pane create surface. Clients is the only record type mobile can create,
-	// so this is a boolean rather than a per-tab enum.
-	const [creating, setCreating] = useState(false);
 	// §4: landscape gets the assistant as a companion right panel; portrait
 	// falls back to the pushed sheet route the iPhone FAB uses.
 	const [assistantOpen, setAssistantOpen] = useState(false);
@@ -143,9 +138,13 @@ function IpadShellInner() {
 
 	// Rail nav swaps the content pane in place (local state → no router push, so
 	// the rail never re-mounts or slides). Also abandons any open create surface.
+	const [businessOpen, setBusinessOpen] = useState(false);
+	// null = the Routes list; { routeId: undefined } = a new route.
+	const [routeEditor, setRouteEditor] = useState<{ routeId?: Id<"routes"> } | null>(null);
 	const onNavigate = (tab: SidebarTab) => {
 		setActiveTab(tab);
-		setCreating(false);
+		setBusinessOpen(false);
+		setRouteEditor(null);
 	};
 
 	// In-pane navigation for detail bodies / list screens rendered INSIDE the
@@ -156,78 +155,45 @@ function IpadShellInner() {
 		() => ({
 			open: (ref) => {
 				setActiveTab("work");
-				setCreating(false);
-				select("work", ref);
+						select("work", ref);
 			},
 			browse: (kind) => {
 				setActiveTab("work");
-				setCreating(false);
-				setWorkKind(kind);
-			},
-			startCreate: () => {
-				setActiveTab("work");
-				setCreating(true);
+						setWorkKind(kind);
 			},
 			openProfile: () => {
 				setActiveTab("profile");
-				setCreating(false);
+				setBusinessOpen(false);
+			},
+			openBusinessDetails: () => {
+				setActiveTab("profile");
+				setBusinessOpen(true);
+			},
+			editRoute: (routeId) => {
+				setActiveTab("routes");
+				setRouteEditor({ routeId });
 			},
 		}),
 		[select],
 	);
 
-	// Rail create menu — the iPad counterpart of the iPhone speed-dial FAB. Same
-	// four record types, same "modify" gate; New client uses the shell-native
-	// in-pane surface rather than a route push, the rest push their stack route.
-	const createItems = useMemo<CreateItem[]>(() => {
-		const items: CreateItem[] = [];
-		if (can("projects", "modify")) {
-			items.push({
-				key: "project",
-				label: "New project",
-				run: () => router.push("/project/new" as Href),
-			});
-		}
-		if (can("tasks", "modify")) {
-			items.push({
-				key: "task",
-				label: "New task",
-				run: () => router.push("/tasks/form" as Href),
-			});
-		}
-		if (can("clients", "modify")) {
-			items.push({
-				key: "client",
-				label: "New client",
-				run: () => shellNav.startCreate(),
-			});
-		}
-		if (can("quotes", "modify")) {
-			items.push({
-				key: "quote",
-				label: "New quote",
-				run: () => router.push("/quote/new" as Href),
-			});
-		}
-		return items;
-	}, [can, router, shellNav]);
+	// Bordered views drawn during the rotation animation keep stale frames on
+	// iOS (react-native#42604); remount the detail once the rotation settles.
+	const [settledOrientation, setSettledOrientation] = useState(orientation);
+	useEffect(() => {
+		const id = setTimeout(() => setSettledOrientation(orientation), 500);
+		return () => clearTimeout(id);
+	}, [orientation]);
 
-	const sidebar = (
-		<PadSidebar
-			activeTab={activeTab}
-			onNavigate={onNavigate}
-			createItems={permissionsLoading ? [] : createItems}
-			onAssistant={() => {
-				if (orientation === "landscape") {
-					setAssistantOpen((open) => !open);
-				} else {
-					router.push("/assistant" as Href);
-				}
-			}}
-			onProfile={() => setActiveTab("profile")}
-			onNotifications={() => router.push("/notifications" as Href)}
-		/>
-	);
+	const createItems = useCreateItems();
+
+	const openAssistant = () => {
+		if (orientation === "landscape") {
+			setAssistantOpen((open) => !open);
+		} else {
+			router.push("/assistant" as Href);
+		}
+	};
 
 	// Assistant context: the active mode plus the pane's current selection —
 	// ids only, never data values (same rule as web's use-screen-context).
@@ -239,25 +205,43 @@ function IpadShellInner() {
 			: undefined
 	);
 
+	const tabLabel = TAB_LABEL[activeTab];
+	const notch: NotchContent = selectionRef
+		? { kind: "crumb", parent: tabLabel, title: KIND_LABEL[selectionRef.kind] }
+		: { kind: "label", text: tabLabel };
+
 	const frame = (children: React.ReactNode) => (
 		<ShellNavProvider value={shellNav}>
-			<View style={[styles.root, { backgroundColor: t.surface }]}>
-				{/* Shell canvas, matching web's .workspace-canvas — covers the rail and
-				    inter-pane gaps; panes with opaque roots paint their own grid over it. */}
-				<DotGrid style={StyleSheet.absoluteFill} />
-				{sidebar}
-				{children}
-				{assistantOpen && orientation === "landscape" ? (
-					<AssistantPanel
-						screenContext={assistantContext}
-						onClose={() => setAssistantOpen(false)}
-					/>
-				) : null}
+			<View style={[styles.root, { paddingTop: insets.top }]}>
+				<StatusBar style="light" />
+				<PadSidebar
+					activeTab={activeTab}
+					onNavigate={onNavigate}
+					onProfile={() => shellNav.openProfile()}
+					onNotifications={() => router.push("/notifications" as Href)}
+				/>
+				<View style={[styles.canvas, { marginBottom: Math.max(insets.bottom, 8) }]}>
+					<SafeAreaInsetsContext.Provider value={NO_INSETS}>
+						<View style={styles.mainRow}>
+							{children}
+							{assistantOpen && orientation === "landscape" ? (
+								<AssistantPanel
+									screenContext={assistantContext}
+									onClose={() => setAssistantOpen(false)}
+								/>
+							) : null}
+						</View>
+						{assistantOpen && orientation === "landscape" ? null : (
+							<IpadDock onAssistant={openAssistant} createItems={permissionsLoading ? [] : createItems} />
+						)}
+					</SafeAreaInsetsContext.Provider>
+					<Notch content={notch} />
+				</View>
 			</View>
 		</ShellNavProvider>
 	);
 
-	// A full-screen stack route (e.g. /clients/new) → rail + full-width Slot.
+	// A full-screen stack route (e.g. /route-edit) → rail + full-width Slot.
 	if (isStackRoute(pathname)) {
 		return frame(
 			<View style={styles.contentPane}>
@@ -266,27 +250,19 @@ function IpadShellInner() {
 		);
 	}
 
-	// Create takes over the whole content area (rail + full-width body). The body
-	// owns its ONE PaneHeader; on success the new client opens in the detail pane.
-	if (creating) {
-		return frame(
-			<View style={styles.contentPane}>
-				<ClientCreateBody
-					headerMode="pane"
-					onDone={(newId) => {
-						setCreating(false);
-						if (newId) shellNav.open({ kind: "client", id: newId });
-					}}
-				/>
-			</View>,
-		);
-	}
-
 	// ── Single panes (Today / Routes / Profile) ───────────────────────────────
 	if (!isMasterDetailTab(activeTab)) {
 		return frame(
 			<View style={styles.contentPane}>
-				<SinglePane tab={activeTab} />
+				<ScreenBoundary key={`${settledOrientation}:${activeTab}`}>
+					<SinglePane
+						tab={activeTab}
+						businessOpen={businessOpen}
+						onCloseBusiness={() => setBusinessOpen(false)}
+						routeEditor={routeEditor}
+						onCloseRouteEditor={() => setRouteEditor(null)}
+					/>
+				</ScreenBoundary>
 			</View>,
 		);
 	}
@@ -296,85 +272,109 @@ function IpadShellInner() {
 	const selected = state[pane];
 
 	const listPane = (
-		<View style={styles.fill}>
-			{/* No contextual ＋ — the rail's create menu is the single capture entry
-			    point on iPad. */}
-			<PaneHeader title={PANE_TITLE[pane]} />
-			{pane === "work" ? (
-				<WorkScreen
-					headerMode="pane"
-					onSelect={(ref) => select("work", ref)}
-					selected={selected}
-					kind={workKind}
-					onKindChange={setWorkKind}
-				/>
-			) : pane === "money" ? (
-				<MoneyScreen
-					headerMode="pane"
-					onSelect={(sel) => select("money", sel)}
-					// Money only ever selects a quote or an invoice; the other kinds
-					// can't reach this slot, so they read as no selection.
-					selected={
-						selected && (selected.kind === "quote" || selected.kind === "invoice")
-							? { kind: selected.kind, id: selected.id }
-							: null
-					}
-				/>
-			) : (
-				<ActivityScreen
-					headerMode="pane"
-					onSelect={(ref) => select("activity", ref)}
-					selected={selected}
-				/>
-			)}
-		</View>
+		<ScreenBoundary key={pane}>
+			<View style={styles.fill}>
+				{/* No contextual ＋ — the rail's create menu is the single capture entry
+				    point on iPad. */}
+				<PaneHeader title={PANE_TITLE[pane]} />
+				{pane === "work" ? (
+					<WorkScreen
+						headerMode="pane"
+						onSelect={(ref) => select("work", ref)}
+						selected={selected}
+						kind={workKind}
+						onKindChange={setWorkKind}
+					/>
+				) : pane === "money" ? (
+					<MoneyScreen
+						headerMode="pane"
+						onSelect={(sel) => select("money", sel)}
+						// Money only ever selects a quote or an invoice; the other kinds
+						// can't reach this slot, so they read as no selection.
+						selected={
+							selected && (selected.kind === "quote" || selected.kind === "invoice")
+								? { kind: selected.kind, id: selected.id }
+								: null
+						}
+					/>
+				) : (
+					<ActivityScreen
+						headerMode="pane"
+						onSelect={(ref) => select("activity", ref)}
+						selected={selected}
+					/>
+				)}
+			</View>
+		</ScreenBoundary>
 	);
 
 	// Portrait: one pane. The list fills it until something is selected, then the
 	// detail takes over full-width with a back affordance that clears selection.
-	if (orientation === "portrait") {
-		return frame(
-			<View style={styles.contentPane}>
-				{selected ? (
-					<PaneDetailHost
-						context={pane}
-						record={selected}
-						onBack={() => clear(pane)}
-					/>
-				) : (
-					listPane
-				)}
-			</View>,
-		);
-	}
-
-	// Landscape: fixed list pane + flex detail. No back affordance — the list is
-	// always visible, so there is nothing to go back to.
+	// Landscape: fixed list pane + flex detail, no back. Both orientations keep
+	// the same tree so rotating restyles the panes instead of rebuilding them,
+	// which kept the list's search and scroll and cost seconds.
+	const portrait = orientation === "portrait";
 	return frame(
 		<>
-			<View style={[styles.listPane, { borderRightColor: t.line }]}>
+			<View
+				style={
+					portrait
+						? selected
+							? styles.hidden
+							: styles.contentPane
+						: [styles.listPane, { borderRightColor: t.line }]
+				}
+			>
 				{listPane}
 			</View>
-			<View style={styles.detailPane}>
-				<PaneDetailHost context={pane} record={selected} />
-			</View>
+			{portrait && !selected ? null : (
+				<View style={portrait ? styles.contentPane : styles.detailPane}>
+					<ScreenBoundary
+						key={`${settledOrientation}:${selected ? `${pane}:${selected.kind}:${selected.id}` : pane}`}
+					>
+						<PaneDetailHost
+							context={pane}
+							record={selected}
+							onBack={portrait ? () => clear(pane) : undefined}
+						/>
+					</ScreenBoundary>
+				</View>
+			)}
 		</>,
 	);
 }
 
 // Single content pane (Today / Routes / Profile) — no list+detail split in either
 // orientation. Each body renders headerMode="pane" so the shell owns the one
-// header; Today is the exception, its ink hero IS its header.
-function SinglePane({ tab }: { tab: Exclude<ShellTab, SelectionTab> }) {
+// header; Today renders its own page header.
+function SinglePane({
+	tab,
+	businessOpen,
+	onCloseBusiness,
+	routeEditor,
+	onCloseRouteEditor,
+}: {
+	tab: Exclude<ShellTab, SelectionTab>;
+	businessOpen: boolean;
+	onCloseBusiness: () => void;
+	routeEditor: { routeId?: Id<"routes"> } | null;
+	onCloseRouteEditor: () => void;
+}) {
 	const t = useTokens();
 
 	if (tab === "today") {
-		// Full-bleed canvas: the ink hero spans the pane edge to edge, so the grid
-		// is painted here and TodayScreen's pane mode caps only its own column.
 		return (
 			<View style={[styles.slot, { backgroundColor: t.bg }]}>
-				<DotGrid style={StyleSheet.absoluteFill} />
 				<TodayScreen headerMode="pane" />
+			</View>
+		);
+	}
+
+	if (tab === "routes" && routeEditor) {
+		// The editor renders its own pane header with a back arrow.
+		return (
+			<View style={[styles.slot, { backgroundColor: t.surface }]}>
+				<RouteEditScreen routeId={routeEditor.routeId} onDone={onCloseRouteEditor} />
 			</View>
 		);
 	}
@@ -385,6 +385,15 @@ function SinglePane({ tab }: { tab: Exclude<ShellTab, SelectionTab> }) {
 			<View style={[styles.slot, { backgroundColor: t.surface }]}>
 				<PaneHeader title="Routes" />
 				<RoutesScreen headerMode="pane" />
+			</View>
+		);
+	}
+
+	if (businessOpen) {
+		return (
+			<View style={[styles.slot, { backgroundColor: t.surface }]}>
+				<PaneHeader onBack={onCloseBusiness} />
+				<BusinessDetailsScreen onDone={onCloseBusiness} />
 			</View>
 		);
 	}
@@ -458,6 +467,18 @@ const styles = StyleSheet.create({
 	root: {
 		flex: 1,
 		flexDirection: "row",
+		backgroundColor: frame.rail,
+	},
+	canvas: {
+		flex: 1,
+		marginRight: frame.canvasInset,
+		borderRadius: frame.canvasRadius,
+		backgroundColor: frame.canvas,
+		overflow: "hidden",
+	},
+	mainRow: {
+		flex: 1,
+		flexDirection: "row",
 	},
 	contentPane: {
 		flex: 1,
@@ -469,6 +490,9 @@ const styles = StyleSheet.create({
 		flexShrink: 0,
 		borderRightWidth: 1,
 		overflow: "hidden",
+	},
+	hidden: {
+		display: "none",
 	},
 	detailPane: {
 		flex: 1,

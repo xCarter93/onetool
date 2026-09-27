@@ -1,20 +1,15 @@
-import {
-	Pressable,
-	StyleSheet,
-	Text,
-	useColorScheme,
-	View,
-} from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 import type { ErrorBoundaryProps } from "expo-router";
 import { ConvexError } from "convex/values";
-import { fontFamily } from "@/lib/theme";
-import { Illustration } from "@/components/illustrations";
+import { ShieldOff, TriangleAlert } from "lucide-react-native";
+import { Button } from "@/components/ui/button";
+import { fontFamily, radii, tokens, type } from "@/lib/theme";
 
 // Route-level error screen (expo-router ErrorBoundary convention). Deliberately
 // self-contained — the root boundary can render while app providers are down,
-// so no useTokens/context, just static styling with a color-scheme check.
+// so it binds `tokens` directly (no useTokens/context) and avoids the canvas
+// module (frame/notch + Badge) so a crash never depends on more of the tree.
 export function ErrorScreen({ error, retry }: ErrorBoundaryProps) {
-	const dark = useColorScheme() === "dark";
 	const forbidden =
 		error instanceof ConvexError &&
 		(error.data as { code?: string } | undefined)?.code === "FORBIDDEN";
@@ -22,35 +17,19 @@ export function ErrorScreen({ error, retry }: ErrorBoundaryProps) {
 	const title = forbidden ? "No access" : "Something went wrong";
 	const message = forbidden
 		? "Your account doesn't have permission to view this. Ask an admin to update your access."
-		: "An unexpected error occurred. Your data is safe — try again.";
+		: "An unexpected error occurred. Your data is safe, try again.";
+	const Icon = forbidden ? ShieldOff : TriangleAlert;
 
 	return (
-		<View
-			style={[styles.container, { backgroundColor: dark ? "#0b1220" : "#f6f8fa" }]}
-		>
-			{/* Light-only art (app is locked light; the dark branch here is a
-			    defensive fallback, so the illustration simply sits out of it). */}
-			{!dark ? (
-				<Illustration
-					name={forbidden ? "access-restricted" : "app-error"}
-					knockout="#f6f8fa"
-					style={styles.art}
-				/>
-			) : null}
-			<Text style={[styles.title, { color: dark ? "#f1f5f9" : "#0f172a" }]}>
-				{title}
-			</Text>
-			<Text style={[styles.message, { color: dark ? "#94a3b8" : "#475569" }]}>
-				{message}
-			</Text>
-			<Pressable
-				onPress={() => void retry()}
-				accessibilityRole="button"
-				accessibilityLabel="Try again"
-				style={({ pressed }) => [styles.button, pressed && styles.pressed]}
-			>
-				<Text style={styles.buttonLabel}>Try again</Text>
-			</Pressable>
+		<View style={[styles.container, { backgroundColor: tokens.bg }]}>
+			<View style={[styles.card, { backgroundColor: tokens.card, borderColor: tokens.line }]}>
+				<View style={[styles.icon, { backgroundColor: tokens.secondary }]}>
+					<Icon size={20} color={tokens.sub} strokeWidth={2} />
+				</View>
+				<Text style={[styles.title, { color: tokens.ink }]}>{title}</Text>
+				<Text style={[styles.message, { color: tokens.sub }]}>{message}</Text>
+				<Button title="Try again" onPress={() => void retry()} style={styles.button} />
+			</View>
 		</View>
 	);
 }
@@ -61,35 +40,37 @@ const styles = StyleSheet.create({
 		alignItems: "center",
 		justifyContent: "center",
 		paddingHorizontal: 32,
-		gap: 10,
 	},
-	art: {
-		marginBottom: 8,
+	card: {
+		width: "100%",
+		maxWidth: 340,
+		borderRadius: radii.card,
+		borderWidth: 1,
+		padding: 20,
+		alignItems: "center",
+		gap: 6,
+	},
+	icon: {
+		width: 40,
+		height: 40,
+		borderRadius: radii.card,
+		alignItems: "center",
+		justifyContent: "center",
+		marginBottom: 4,
 	},
 	title: {
-		fontSize: 20,
-		fontFamily: fontFamily.bold,
+		fontSize: type.h2,
+		fontFamily: fontFamily.semibold,
 		textAlign: "center",
 	},
 	message: {
-		fontSize: 14,
+		fontSize: type.body,
 		fontFamily: fontFamily.regular,
 		textAlign: "center",
-		lineHeight: 21,
+		lineHeight: 20,
 	},
 	button: {
-		marginTop: 14,
-		paddingHorizontal: 22,
-		paddingVertical: 12,
-		borderRadius: 999,
-		backgroundColor: "#1d4ed8",
-	},
-	pressed: {
-		opacity: 0.85,
-	},
-	buttonLabel: {
-		color: "#ffffff",
-		fontSize: 14,
-		fontFamily: fontFamily.semibold,
+		marginTop: 10,
+		alignSelf: "stretch",
 	},
 });

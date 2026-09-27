@@ -10,6 +10,9 @@
 export type RouteStopStatus = "pending" | "visited" | "skipped";
 
 export type RouteStop = {
+	propertyId?: string;
+	taskId?: string;
+	projectId?: string;
 	label: string;
 	latitude: number;
 	longitude: number;
@@ -230,4 +233,101 @@ export function googleMapsRouteUrl(
 
 export function googleMapsUrl(lat: number, lng: number): string {
 	return `comgooglemaps://?daddr=${lat},${lng}&directionsmode=driving`;
+}
+
+/** Shape of a queued op this module needs — matches lib/offline/queue.ts's OutboxOp. */
+export type RouteOverlayOp = { id: number; chainKey: string; operation: string; args: unknown };
+
+export type RouteOverlay = {
+	/** Undefined = no queued start/finish for this route; defer to the server state. */
+	started: boolean | undefined;
+	completed: boolean | undefined;
+	/** Pending setStopStatus ops, oldest first. */
+	stopStatuses: QueuedStopStatus[];
+};
+
+export type StopRef = Pick<RouteStop, "propertyId" | "taskId" | "projectId" | "label" | "latitude" | "longitude">;
+type QueuedStopStatus = { order: number; stopRef?: StopRef; status: RouteStopStatus };
+
+/**
+ * Optimistic route/stop state from open outbox ops on one route's chain. Ops
+ * apply in id order — a re-start after a queued finish (or vice versa) resolves
+ * to whichever happened last, same as a stop status flipped twice offline.
+ */
+export function routeOverlay(ops: RouteOverlayOp[], routeId: string): RouteOverlay {
+	const chainKey = `route:${routeId}`;
+	let started: boolean | undefined;
+	let completed: boolean | undefined;
+	const stopStatuses: QueuedStopStatus[] = [];
+	for (const op of [...ops].sort((a, b) => a.id - b.id)) {
+		if (op.chainKey !== chainKey) continue;
+		if (op.operation === "routes.startRoute") {
+			started = true;
+			completed = false;
+		} else if (op.operation === "routes.completeRoute") {
+			completed = true;
+		} else if (op.operation === "routes.setStopStatus") {
+			const { order, stopRef, status } = op.args as QueuedStopStatus;
+			stopStatuses.push({ order, stopRef, status });
+		}
+	}
+	return { started, completed, stopStatuses };
+}
+
+function stopRefMatches(stop: RouteStop, ref: StopRef): boolean {
+	return (
+		(stop.propertyId ?? null) === (ref.propertyId ?? null) &&
+		(stop.taskId ?? null) === (ref.taskId ?? null) &&
+		(stop.projectId ?? null) === (ref.projectId ?? null) &&
+		stop.label === ref.label &&
+		stop.latitude === ref.latitude &&
+		stop.longitude === ref.longitude
+	);
+}
+
+// Mirrors routes.setStopStatus: the stopRef follows a stop through a reorder; order breaks ties and covers ops without one.
+function queuedTargetOrder(stops: RouteStop[], queued: QueuedStopStatus): number | undefined {
+	if (!queued.stopRef) return stops.some((s) => s.order === queued.order) ? queued.order : undefined;
+	const matches = stops.filter((s) => stopRefMatches(s, queued.stopRef!));
+	const target = matches.length === 1 ? matches[0] : matches.find((s) => s.order === queued.order);
+	return target?.order;
+}
+
+/** Applies a route overlay's stop statuses over a route's stored stops. */
+export function applyStopOverlay<T extends RouteStop>(
+	stops: T[],
+	overlay: RouteOverlay,
+): T[] {
+	const statuses = new Map<number, RouteStopStatus>();
+	for (const queued of overlay.stopStatuses) {
+		const order = queuedTargetOrder(stops, queued);
+		if (order !== undefined) statuses.set(order, queued.status);
+	}
+	return stops.map((s) => {
+		const status = statuses.get(s.order);
+		return status === undefined ? s : { ...s, status };
+	});
+}
+
+/** Applies a route overlay's stops + started/completed state over a whole route doc. */
+export function applyRouteOverlay<
+	S extends RouteStop,
+	T extends { stops: S[]; startedAt?: number; completedAt?: number },
+>(route: T, overlay: RouteOverlay): T {
+	return {
+		...route,
+		stops: applyStopOverlay(route.stops, overlay),
+		startedAt:
+			overlay.started === undefined
+				? route.startedAt
+				: overlay.started
+					? route.startedAt ?? Date.now()
+					: undefined,
+		completedAt:
+			overlay.completed === undefined
+				? route.completedAt
+				: overlay.completed
+					? route.completedAt ?? Date.now()
+					: undefined,
+	};
 }

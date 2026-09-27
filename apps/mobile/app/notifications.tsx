@@ -6,16 +6,16 @@ import {
 	ActivityIndicator,
 	StyleSheet,
 } from "react-native";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { router, type Href } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useMutation } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
-import { BellRing, Settings, X } from "lucide-react-native";
+import { Bell, BellRing, Settings, X } from "lucide-react-native";
 import { Illustration } from "@/components/illustrations";
+import { SectionLabel } from "@/components/canvas";
 import {
-	colors,
 	fontFamily,
 	radii,
 	spacing,
@@ -35,6 +35,19 @@ import { usePushRegistration } from "@/lib/use-push-registration";
 import { useNotificationData } from "@/lib/use-notification-data";
 import { PushPrePrompt } from "@/components/push/PushPrePrompt";
 
+/** Day-bucket label for the group header above a run of same-day notifications. */
+function dateGroupLabel(creationTime: number, now: number): string {
+	const startOfDay = (ms: number) => {
+		const d = new Date(ms);
+		return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+	};
+	const diffDays = Math.round((startOfDay(now) - startOfDay(creationTime)) / 86_400_000);
+	if (diffDays <= 0) return "Today";
+	if (diffDays === 1) return "Yesterday";
+	if (diffDays < 7) return "This week";
+	return "Earlier";
+}
+
 // Notifications form-sheet route — same native sheet type + chrome as /org-switch
 // and /day-sheet (sheet options in _layout.tsx). Owns the list query + markRead.
 export default function NotificationsSheet() {
@@ -51,9 +64,30 @@ export default function NotificationsSheet() {
 	const [pushGranted, setPushGranted] = useState(true);
 	const [showEnable, setShowEnable] = useState(false);
 
-	const notifications = notificationData?.notifications ?? [];
+	const notifications = useMemo(
+		() => notificationData?.notifications ?? [],
+		[notificationData],
+	);
 	const unreadCount = notificationData?.unreadCount ?? 0;
 	const loading = notificationData === undefined;
+	// Seeded once (lazy) — react-hooks/purity forbids Date.now() during render.
+	const [now] = useState(() => Date.now());
+
+	// Group rows by day bucket for the list's date labels, assuming the query
+	// already orders notifications newest first.
+	const rows = useMemo(() => {
+		const out: ({ label: string } | { notification: (typeof notifications)[number] })[] = [];
+		let lastGroup: string | null = null;
+		for (const n of notifications) {
+			const group = dateGroupLabel(n._creationTime, now);
+			if (group !== lastGroup) {
+				out.push({ label: group });
+				lastGroup = group;
+			}
+			out.push({ notification: n });
+		}
+		return out;
+	}, [notifications, now]);
 
 	useEffect(() => {
 		let active = true;
@@ -99,18 +133,21 @@ export default function NotificationsSheet() {
 	};
 
 	const header = (
-		<View style={styles.header}>
-			<View style={styles.titleWrap}>
-				<Text style={[styles.title, { color: t.ink }]}>Notifications</Text>
+		<View style={[styles.header, { borderBottomColor: t.line }]}>
+			<View style={[styles.tile, { backgroundColor: t.secondary }]}>
+				<Bell size={18} color={t.frostedInk} strokeWidth={2} />
+			</View>
+			<View style={styles.headerText}>
+				<Text style={[styles.title, { color: t.ink }]} accessibilityRole="header">
+					Notifications
+				</Text>
 				{unreadCount > 0 ? (
-					<View style={[styles.badge, { backgroundColor: t.danger }]}>
-						<Text style={styles.badgeText}>
-							{unreadCount > 9 ? "9+" : unreadCount}
-						</Text>
-					</View>
+					<Text style={[styles.subtitle, { color: t.sub }]}>
+						{unreadCount} unread
+					</Text>
 				) : null}
 			</View>
-			<View style={styles.headerAction}>
+			<View style={styles.headerActions}>
 				<Pressable
 					onPress={() =>
 						// Cast until the generated route types pick up the new file
@@ -120,18 +157,18 @@ export default function NotificationsSheet() {
 					hitSlop={8}
 					accessibilityRole="button"
 					accessibilityLabel="Notification settings"
-					style={styles.closeBtn}
+					style={({ pressed }) => [styles.headerBtn, pressed && { backgroundColor: t.secondary }]}
 				>
-					<Settings size={22} color={t.sub} />
+					<Settings size={20} color={t.sub} strokeWidth={2} />
 				</Pressable>
 				<Pressable
 					onPress={() => router.back()}
 					hitSlop={8}
 					accessibilityRole="button"
 					accessibilityLabel="Close"
-					style={styles.closeBtn}
+					style={({ pressed }) => [styles.headerBtn, pressed && { backgroundColor: t.secondary }]}
 				>
-					<X size={22} color={t.sub} />
+					<X size={20} color={t.sub} strokeWidth={2} />
 				</Pressable>
 			</View>
 		</View>
@@ -177,42 +214,53 @@ export default function NotificationsSheet() {
 					style={styles.list}
 					contentContainerStyle={{ paddingBottom: 24 }}
 				>
-					{notifications.map((n, i) => (
-						<Pressable
-							key={n._id}
-							onPress={() => handlePress(n._id, n.actionUrl, n.isRead)}
-							style={({ pressed }) => [
-								styles.row,
-								{ borderBottomColor: t.line },
-								i === notifications.length - 1 && styles.rowLast,
-								!n.isRead && { backgroundColor: t.secondary },
-								pressed && { backgroundColor: t.surface },
-							]}
-						>
-							<View style={styles.dotCol}>
-								{!n.isRead ? (
-									<View style={[styles.dot, { backgroundColor: t.dot }]} />
-								) : null}
-							</View>
-							<View style={styles.rowBody}>
-								<Text
-									style={[styles.rowTitle, { color: t.ink }]}
-									numberOfLines={1}
-								>
-									{n.title}
-								</Text>
-								<Text
-									style={[styles.rowMessage, { color: t.sub }]}
-									numberOfLines={2}
-								>
-									{truncateText(stripAuthorIdFromMessage(n.message), 100)}
-								</Text>
-								<Text style={[styles.rowTime, { color: t.faint }]}>
-									{formatRelativeTime(n._creationTime)}
-								</Text>
-							</View>
-						</Pressable>
-					))}
+					{rows.map((row, i) => {
+						if ("label" in row) {
+							return (
+								<View key={`label-${row.label}-${i}`} style={styles.groupLabel}>
+									<SectionLabel title={row.label} />
+								</View>
+							);
+						}
+						const n = row.notification;
+						const isLastRow = i === rows.length - 1;
+						return (
+							<Pressable
+								key={n._id}
+								onPress={() => handlePress(n._id, n.actionUrl, n.isRead)}
+								style={({ pressed }) => [
+									styles.row,
+									{ borderBottomColor: t.lineSoft },
+									isLastRow && styles.rowLast,
+									!n.isRead && { backgroundColor: t.secondary },
+									pressed && { backgroundColor: t.surface },
+								]}
+							>
+								<View style={styles.dotCol}>
+									{!n.isRead ? (
+										<View style={[styles.dot, { backgroundColor: t.dot }]} />
+									) : null}
+								</View>
+								<View style={styles.rowBody}>
+									<Text
+										style={[styles.rowTitle, { color: t.ink }]}
+										numberOfLines={1}
+									>
+										{n.title}
+									</Text>
+									<Text
+										style={[styles.rowMessage, { color: t.sub }]}
+										numberOfLines={2}
+									>
+										{truncateText(stripAuthorIdFromMessage(n.message), 100)}
+									</Text>
+									<Text style={[styles.rowTime, { color: t.faint }]}>
+										{formatRelativeTime(n._creationTime)}
+									</Text>
+								</View>
+							</Pressable>
+						);
+					})}
 				</ScrollView>
 			)}
 		</>
@@ -279,45 +327,47 @@ const styles = StyleSheet.create({
 	header: {
 		flexDirection: "row",
 		alignItems: "center",
-		paddingHorizontal: 20,
-		paddingBottom: spacing.gutter,
+		gap: 12,
+		paddingHorizontal: spacing.md,
+		paddingBottom: 14,
+		borderBottomWidth: 1,
 	},
-	titleWrap: {
-		flex: 2,
-		flexDirection: "row",
+	tile: {
+		width: 36,
+		height: 36,
+		borderRadius: radii.ctrl,
 		alignItems: "center",
 		justifyContent: "center",
-		gap: spacing.sm,
+	},
+	headerText: {
+		flex: 1,
+		minWidth: 0,
 	},
 	title: {
-		fontSize: type.h2,
-		lineHeight: 30,
-		fontFamily: fontFamily.bold,
-	},
-	badge: {
-		borderRadius: radii.pill,
-		minWidth: 22,
-		paddingHorizontal: 6,
-		paddingVertical: 2,
-		alignItems: "center",
-	},
-	badgeText: {
-		color: colors.primaryForeground,
-		fontSize: type.micro,
+		fontSize: type.h3,
 		fontFamily: fontFamily.semibold,
 	},
-	headerAction: {
-		flex: 1,
+	subtitle: {
+		fontSize: type.sm,
+		fontFamily: fontFamily.regular,
+		marginTop: 1,
+	},
+	headerActions: {
 		flexDirection: "row",
 		alignItems: "center",
-		justifyContent: "flex-end",
+		gap: 8,
 	},
-	closeBtn: {
-		width: touch.min,
-		height: touch.min,
-		borderRadius: radii.pill,
+	headerBtn: {
+		width: 36,
+		height: 36,
+		borderRadius: radii.ctrl,
 		alignItems: "center",
 		justifyContent: "center",
+	},
+	groupLabel: {
+		paddingHorizontal: 20,
+		paddingTop: 14,
+		paddingBottom: 8,
 	},
 	enableRow: {
 		flexDirection: "row",
@@ -325,6 +375,7 @@ const styles = StyleSheet.create({
 		justifyContent: "center",
 		gap: spacing.sm,
 		marginHorizontal: 20,
+		marginTop: spacing.md,
 		marginBottom: 14,
 		paddingVertical: 12,
 		minHeight: touch.min,

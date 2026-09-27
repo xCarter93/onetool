@@ -180,32 +180,22 @@ function MapboxAddressSearch({ value, onChange }: AddressAutocompleteProps) {
 
 	return (
 		<View style={styles.group}>
-			<View
-				style={[
-					styles.searchRow,
-					{ borderColor: t.border, backgroundColor: t.card },
-				]}
-			>
-				<Search size={18} color={t.faint} />
+			<View style={[styles.searchRow, { borderColor: t.input, backgroundColor: t.card }]}>
+				<Search size={18} color={t.sub} strokeWidth={2} />
 				<TextInput
 					value={query}
 					onChangeText={handleChangeText}
-					placeholder="Start typing an address..."
-					placeholderTextColor={t.faint}
+					placeholder="Start typing an address"
+					placeholderTextColor={t.sub}
 					style={[styles.searchInput, { color: t.ink }]}
 					autoCorrect={false}
 					autoCapitalize="words"
 				/>
-				{loading ? <ActivityIndicator size="small" color={t.accent} /> : null}
+				{loading ? <ActivityIndicator size="small" color={t.primary} /> : null}
 			</View>
 
 			{suggestions.length > 0 ? (
-				<View
-					style={[
-						styles.suggestions,
-						{ borderColor: t.line, backgroundColor: t.card },
-					]}
-				>
+				<View style={[styles.suggestions, { borderColor: t.line, backgroundColor: t.card }]}>
 					{suggestions.map((feature, idx) => (
 						<Pressable
 							key={feature.properties?.full_address ?? String(idx)}
@@ -213,17 +203,14 @@ function MapboxAddressSearch({ value, onChange }: AddressAutocompleteProps) {
 							style={({ pressed }) => [
 								styles.suggestionRow,
 								{
-									borderBottomColor: t.line,
-									borderBottomWidth: idx === suggestions.length - 1 ? 0 : 1,
-									backgroundColor: pressed ? t.surface : "transparent",
+									borderTopColor: t.lineSoft,
+									borderTopWidth: idx === 0 ? 0 : 1,
+									backgroundColor: pressed ? t.muted : "transparent",
 								},
 							]}
 						>
-							<MapPin size={16} color={t.accent} />
-							<Text
-								style={[styles.suggestionText, { color: t.ink }]}
-								numberOfLines={2}
-							>
+							<MapPin size={16} color={t.primary} strokeWidth={2} />
+							<Text style={[styles.suggestionText, { color: t.ink }]} numberOfLines={2}>
 								{suggestionLabel(feature)}
 							</Text>
 						</Pressable>
@@ -232,14 +219,10 @@ function MapboxAddressSearch({ value, onChange }: AddressAutocompleteProps) {
 			) : null}
 
 			{selected && value.streetAddress ? (
-				<View style={[styles.selectedCard, { backgroundColor: t.surface }]}>
-					<Text style={[styles.selectedLine, { color: t.ink }]}>
-						{value.streetAddress}
-					</Text>
+				<View style={[styles.selectedCard, { backgroundColor: t.muted }]}>
+					<Text style={[styles.selectedLine, { color: t.ink }]}>{value.streetAddress}</Text>
 					<Text style={[styles.selectedSub, { color: t.sub }]}>
-						{[value.city, value.state, value.zipCode]
-							.filter(Boolean)
-							.join(", ")}
+						{[value.city, value.state, value.zipCode].filter(Boolean).join(", ")}
 					</Text>
 				</View>
 			) : null}
@@ -261,11 +244,8 @@ function ManualAddressFields({
 			value={(value[key] as string | undefined) ?? ""}
 			onChangeText={(text) => onChange({ ...value, [key]: text })}
 			placeholder={placeholder}
-			placeholderTextColor={t.faint}
-			style={[
-				styles.manualInput,
-				{ borderColor: t.border, backgroundColor: t.card, color: t.ink },
-			]}
+			placeholderTextColor={t.sub}
+			style={[styles.manualInput, { borderColor: t.input, backgroundColor: t.card, color: t.ink }]}
 			autoCapitalize="words"
 		/>
 	);
@@ -292,20 +272,20 @@ const styles = StyleSheet.create({
 		alignItems: "center",
 		gap: 8,
 		borderWidth: 1,
-		borderRadius: radii.lg,
+		borderRadius: radii.ctrl,
 		paddingHorizontal: 12,
-		minHeight: 48,
+		minHeight: 44,
 	},
 	searchInput: {
 		flex: 1,
 		fontFamily: fontFamily.regular,
-		fontSize: 13,
+		fontSize: 16,
 		letterSpacing: 0, // RN#42589: pin kern so iOS placeholder can't randomly letter-space
 		paddingVertical: 10,
 	},
 	suggestions: {
 		borderWidth: 1,
-		borderRadius: radii.lg,
+		borderRadius: radii.card,
 		overflow: "hidden",
 	},
 	suggestionRow: {
@@ -313,36 +293,35 @@ const styles = StyleSheet.create({
 		alignItems: "center",
 		gap: 10,
 		paddingHorizontal: 12,
-		paddingVertical: 12,
 		minHeight: 44,
 	},
 	suggestionText: {
 		flex: 1,
 		fontFamily: fontFamily.regular,
-		fontSize: 13,
+		fontSize: 13.5,
 	},
 	selectedCard: {
-		borderRadius: radii.lg,
+		borderRadius: radii.card,
 		padding: 12,
 	},
 	selectedLine: {
 		fontFamily: fontFamily.semibold,
-		fontSize: 13,
+		fontSize: 13.5,
 	},
 	selectedSub: {
 		fontFamily: fontFamily.regular,
-		fontSize: 12,
+		fontSize: 12.5,
 		marginTop: 2,
 	},
 	manualInput: {
 		borderWidth: 1,
-		borderRadius: radii.lg,
+		borderRadius: radii.ctrl,
 		paddingHorizontal: 12,
 		paddingVertical: 12,
 		fontFamily: fontFamily.regular,
-		fontSize: 13,
+		fontSize: 16,
 		letterSpacing: 0,
-		minHeight: 48,
+		minHeight: 44,
 	},
 	manualRow: {
 		flexDirection: "row",

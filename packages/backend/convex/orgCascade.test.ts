@@ -252,6 +252,16 @@ describe("orgCascade", () => {
 					createdAt: Date.now(),
 				});
 
+				// mutationReceipts (PRD-mobile-offline §4.6) — no by_org index, drained via by_org_user_key.
+				await ctx.db.insert("mutationReceipts", {
+					orgId,
+					userId,
+					key: "cascade-test-key",
+					operation: "tasks.complete",
+					argsHash: "abc123",
+					createdAt: Date.now(),
+				});
+
 				return { orgId, docStorageId, bannerStorageId, galleryStorageId };
 			});
 
@@ -285,6 +295,7 @@ describe("orgCascade", () => {
 					"portalSessions",
 					"portalOtpCodes",
 					"userFavorites",
+					"mutationReceipts",
 				] as const;
 				const result: Record<string, number> = {};
 				for (const table of tables) {

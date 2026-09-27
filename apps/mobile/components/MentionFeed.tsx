@@ -7,11 +7,15 @@ import {
 	Linking,
 } from "react-native";
 import { useQuery } from "convex/react";
+import { useUser } from "@clerk/expo";
 import { api } from "@onetool/backend/convex/_generated/api";
-import { colors, fontFamily, spacing, radius } from "@/lib/theme";
+import { colors, fontFamily, spacing, radius, useTokens } from "@/lib/theme";
 import { MessageSquare, Download, FileText, Sparkles } from "lucide-react-native";
 import { formatRelativeTime } from "@/lib/notification-utils";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
+import { useCachedQuery } from "@/lib/offline/useCachedQuery";
+import { useOpenOps } from "@/lib/offline/hooks";
+import { pendingMentions } from "@/lib/offline/pending-mentions";
 
 interface MentionFeedProps {
 	entityType: "client" | "project" | "quote";
@@ -130,10 +134,18 @@ function AttachmentItem({
 }
 
 export function MentionFeed({ entityType, entityId }: MentionFeedProps) {
-	const messages = useQuery(api.teamMessages.listByEntity, {
+	const t = useTokens();
+	const synced = useCachedQuery(api.teamMessages.listByEntity, {
 		entityType,
 		entityId,
 	});
+	// Queued mentions on this chain, shown as not-yet-sent rows until synced —
+	// only attachment-free mentions ever queue, so these never carry attachments.
+	const openOps = useOpenOps(`mention:${entityType}:${entityId}`);
+	const { user } = useUser();
+	const authorName = user?.fullName || user?.username || "You";
+	const pending = pendingMentions(openOps, authorName);
+	const messages = synced === undefined ? undefined : [...pending, ...synced];
 
 	// Get initials for avatar fallback
 	const getInitials = (name: string) => {
@@ -173,9 +185,10 @@ export function MentionFeed({ entityType, entityId }: MentionFeedProps) {
 	return (
 		<View style={styles.feedContainer}>
 			{messages.map((message) => {
+				const isPending = "pending" in message && message.pending;
 				const isAutomation = message.authorType === "automation";
 				return (
-					<View key={message._id} style={styles.mentionItem}>
+					<View key={message._id} style={[styles.mentionItem, isPending && styles.pendingItem]}>
 						{/* Avatar */}
 						<View style={styles.avatar}>
 							{isAutomation ? (
@@ -199,8 +212,10 @@ export function MentionFeed({ entityType, entityId }: MentionFeedProps) {
 										<Text style={styles.automationBadgeText}>Automation</Text>
 									</View>
 								)}
-								<Text style={styles.timestamp}>
-									{formatRelativeTime(message.createdAt)}
+								{/* Pending is TEXT, not a badge — same "status as text" grammar
+								    the sync status line uses (offline design spec). */}
+								<Text style={[styles.timestamp, isPending && { color: t.sub }]}>
+									{isPending ? "Not sent yet" : formatRelativeTime(message.createdAt)}
 								</Text>
 							</View>
 
@@ -219,9 +234,10 @@ export function MentionFeed({ entityType, entityId }: MentionFeedProps) {
 								</Text>
 							</View>
 
-							{/* Attachments */}
+							{/* Attachments — pending rows never carry any (queued mentions
+							    are always attachment-free). */}
 							{message.hasAttachments && (
-								<AttachmentItem teamMessageId={message._id} />
+								<AttachmentItem teamMessageId={message._id as Id<"teamMessages">} />
 							)}
 						</View>
 					</View>
@@ -277,6 +293,10 @@ const styles = StyleSheet.create({
 	mentionItem: {
 		flexDirection: "row",
 		gap: spacing.sm,
+	},
+	// Low-motion "not yet sent" cue — dimmed, no spinner, no badge.
+	pendingItem: {
+		opacity: 0.6,
 	},
 	avatar: {
 		width: 36,

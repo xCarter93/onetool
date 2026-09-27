@@ -45,8 +45,7 @@ const styles = StyleSheet.create({
 	},
 	title: {
 		fontFamily: fontFamily.semibold,
-		fontSize: type.h3,
-		letterSpacing: -0.2,
+		fontSize: 14,
 		flexShrink: 1,
 	},
 	action: {
@@ -56,7 +55,7 @@ const styles = StyleSheet.create({
 		flexShrink: 0,
 	},
 	actionText: {
-		fontFamily: fontFamily.semibold,
+		fontFamily: fontFamily.medium,
 		fontSize: type.sm,
 	},
 	pressed: {

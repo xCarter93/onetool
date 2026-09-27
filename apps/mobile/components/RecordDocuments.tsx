@@ -61,17 +61,30 @@ const formatDate = (timestamp: number): string =>
 		day: "numeric",
 	});
 
-export function RecordDocuments({ target }: { target: DocumentTarget }) {
+export function RecordDocuments({
+	target,
+	style,
+}: {
+	target: DocumentTarget;
+	/** Flattens the card chrome (e.g. inside a canvas Panel row). */
+	style?: ViewStyle;
+}) {
 	// Branch into per-table variants so each keeps a static set of hooks and
 	// exact create-arg types (projectId vs clientId).
 	return target.kind === "project" ? (
-		<ProjectVariant projectId={target.id} />
+		<ProjectVariant projectId={target.id} style={style} />
 	) : (
-		<ClientVariant clientId={target.id} />
+		<ClientVariant clientId={target.id} style={style} />
 	);
 }
 
-function ProjectVariant({ projectId }: { projectId: Id<"projects"> }) {
+function ProjectVariant({
+	projectId,
+	style,
+}: {
+	projectId: Id<"projects">;
+	style?: ViewStyle;
+}) {
 	const { can, isLoading: permsLoading } = usePermissions();
 	// The list queries call requireLevel("documents", "view") and THROW on denial —
 	// an unguarded useQuery would drop the screen into the root ErrorBoundary.
@@ -85,16 +98,23 @@ function ProjectVariant({ projectId }: { projectId: Id<"projects"> }) {
 	return (
 		<DocumentsCard
 			docs={docsResult}
-			// The project screen renders its own SectionHeader above this card.
+			// The caller renders its own PanelHeader above this card.
 			title={() => null}
 			generateUploadUrl={generateUploadUrl}
 			createDoc={(args) => createDoc({ projectId, ...args })}
 			canUpload={permsLoading || can("documents", "modify")}
+			style={style}
 		/>
 	);
 }
 
-function ClientVariant({ clientId }: { clientId: Id<"clients"> }) {
+function ClientVariant({
+	clientId,
+	style,
+}: {
+	clientId: Id<"clients">;
+	style?: ViewStyle;
+}) {
 	const { can, isLoading: permsLoading } = usePermissions();
 	const docsResult = useQuery(
 		api.clientDocuments.listByClient,
@@ -106,11 +126,12 @@ function ClientVariant({ clientId }: { clientId: Id<"clients"> }) {
 	return (
 		<DocumentsCard
 			docs={docsResult}
-			// The client screen renders its own SectionHeader above this card.
+			// The caller renders its own PanelHeader above this card.
 			title={() => null}
 			generateUploadUrl={generateUploadUrl}
 			createDoc={(args) => createDoc({ clientId, ...args })}
 			canUpload={permsLoading || can("documents", "modify")}
+			style={style}
 		/>
 	);
 }
@@ -247,8 +268,8 @@ function DocumentsCard({
 			<Card style={style}>
 				{heading(0)}
 				<View style={styles.emptyContainer}>
-					<View style={[styles.emptyIcon, { backgroundColor: t.muted }]}>
-						<FileText size={28} color={t.mutedForeground} />
+					<View style={[styles.emptyIcon, { backgroundColor: t.secondary }]}>
+						<FileText size={20} color={t.sub} strokeWidth={2} />
 					</View>
 					<Text style={[styles.emptyTitle, { color: t.ink }]}>
 						No documents yet
@@ -358,22 +379,26 @@ const styles = StyleSheet.create({
 		fontSize: 12,
 		fontFamily: fontFamily.regular,
 	},
+	// Matches the canvas EmptyPanel so stacked empty panels read as one set.
 	emptyContainer: {
 		alignItems: "center",
 		paddingVertical: 28,
+		paddingHorizontal: 20,
+		gap: 6,
 	},
 	emptyIcon: {
-		width: 56,
-		height: 56,
-		borderRadius: 28,
+		width: 40,
+		height: 40,
+		borderRadius: radii.card,
 		alignItems: "center",
 		justifyContent: "center",
-		marginBottom: 12,
+		marginBottom: 4,
 	},
 	emptyTitle: {
-		fontSize: 13,
+		fontSize: 15,
 		fontFamily: fontFamily.semibold,
-		marginBottom: 12,
+		textAlign: "center",
+		marginBottom: 2,
 	},
 	documentsList: {
 		gap: 8,

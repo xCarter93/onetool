@@ -44,4 +44,47 @@ describe("normalizeActionUrl", () => {
 	it("rewrites the quotes segment even with a trailing slash and no id", () => {
 		expect(normalizeActionUrl("/quotes/")).toBe("/quote/");
 	});
+
+	// automationActionUrl (backend lib/automationExec/actions.ts) emits
+	// "/tasks/<id>", but mobile task detail is the form modal with a taskId
+	// query param, not a [taskId] route.
+	it("rewrites /tasks/<id> to the form modal with a taskId query param", () => {
+		expect(normalizeActionUrl("/tasks/t123")).toBe(
+			"/tasks/form?taskId=t123"
+		);
+	});
+
+	// Every actionUrl the backend can emit (grepped from packages/backend/convex
+	// for `actionUrl:`), and the mobile route it should resolve to after
+	// normalizeActionUrl. Sources: notifications.ts createMention
+	// (client/project/quote), boldsign.ts, invoiceOverdue.ts,
+	// lib/celebrations.ts, lib/automationExec/actions.ts (automationActionUrl +
+	// the automation-failure notification), quickbooks.ts.
+	//
+	// Some backend actionUrls have no mobile equivalent by design — automations
+	// building and QuickBooks settings are business-only, web-only surfaces —
+	// so they intentionally resolve to +not-found rather than a real screen.
+	const knownActionUrls: readonly (readonly [string, string])[] = [
+		["/clients/c1", "/clients/c1"],
+		["/projects/p1", "/projects/p1"],
+		["/quotes/q1", "/quote/q1"],
+		["/invoices/i1", "/invoice/i1"],
+		["/tasks/t1", "/tasks/form?taskId=t1"],
+		["/notifications", "/notifications"],
+		// automationActionUrl's no-scope-record fallback and the automation
+		// builder link: no mobile Home or automations UI, falls to not-found.
+		["/home", "/home"],
+		["/automations", "/automations"],
+		[
+			"/organization/profile?tab=integrations",
+			"/organization/profile?tab=integrations",
+		],
+	];
+
+	it.each(knownActionUrls)(
+		"normalizes every known backend actionUrl (%s)",
+		(actionUrl, expected) => {
+			expect(normalizeActionUrl(actionUrl)).toBe(expected);
+		}
+	);
 });

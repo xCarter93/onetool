@@ -1,0 +1,555 @@
+import { useEffect, useState } from "react";
+import { Linking, Pressable, StyleSheet, Text, View } from "react-native";
+import { useKeepAwake } from "expo-keep-awake";
+import * as Location from "expo-location";
+import { router } from "expo-router";
+import { useShellNav } from "@/lib/shell-nav";
+import { useAction, useMutation } from "convex/react";
+import { ConvexError } from "convex/values";
+import { api } from "@onetool/backend/convex/_generated/api";
+import type { Doc, Id } from "@onetool/backend/convex/_generated/dataModel";
+import { ChevronLeft, Fuel, Map } from "lucide-react-native";
+import { CanvasScroll, EmptyPanel } from "@/components/canvas";
+import { colors, fontFamily, radii, shadow, type, useTokens } from "@/lib/theme";
+import { MapboxModule } from "@/lib/mapbox";
+import { useCachedQuery } from "@/lib/offline/useCachedQuery";
+import { saveOffline, useOnlineAction, useOpenOps } from "@/lib/offline/hooks";
+import { RouteMap, type GasStation } from "@/components/routes/route-map";
+import { RouteSheet } from "@/components/routes/route-sheet";
+import { StopCarousel } from "@/components/routes/stop-carousel";
+import {
+	appleMapsUrl,
+	applyRouteOverlay,
+	googleMapsRouteUrl,
+	googleMapsUrl,
+	nextPendingStop,
+	routeOverlay,
+	stopsInOrder,
+	type LngLat,
+	type RouteStop,
+} from "@/lib/route-run";
+import { todayDateId, utcMsFromDateId } from "@/lib/date";
+
+// Routes tab root. Full-bleed native map fills the canvas edge to edge; the
+// bottom sheet only PICKS a route — a selected/running route swaps it for a
+// stop-card carousel (swipe stop-to-stop; the camera centers the focused
+// card's stop; the overview card fits the whole route, or follows the driver
+// while running). Both sit grounded at the canvas bottom, under the frame's
+// composer/tray rather than floating over it.
+//
+// headerMode "pane" = the iPad shell provides its own PaneHeader.
+
+/** Bottom clearance for the sheet/carousel now that nothing floats over them. */
+const BOTTOM_INSET = 16;
+
+export default function RoutesScreen({
+	headerMode = "root",
+}: {
+	headerMode?: "root" | "pane";
+} = {}) {
+	// The native module ships with the P4 build — older dev clients fall back.
+	if (!MapboxModule) return <RoutesUnavailable />;
+	return <RoutesBody headerMode={headerMode} />;
+}
+
+/** Carousel index for a route: next pending stop while running, else overview. */
+function initialFocus(route: Doc<"routes"> | null | undefined): number {
+	if (!route) return 0;
+	const running =
+		route.kind === "daily" &&
+		route.startedAt !== undefined &&
+		route.completedAt === undefined;
+	if (!running) return 0;
+	const next = nextPendingStop(route.stops);
+	if (!next) return 0;
+	return stopsInOrder(route.stops).findIndex((s) => s.order === next.order) + 1;
+}
+
+/** Sync-issues-screen display label for a queued stop status change. */
+function stopStatusLabel(status: "visited" | "skipped" | "pending"): string {
+	return status === "visited" ? "Arrived" : status === "skipped" ? "Skip" : "Undo";
+}
+
+function RoutesBody({ headerMode: _headerMode }: { headerMode: "root" | "pane" }) {
+	const shellNav = useShellNav();
+	const t = useTokens();
+
+	const routes = useCachedQuery(api.routes.list, {});
+	const me = useCachedQuery(api.users.current, {});
+	const orgUsers = useCachedQuery(api.users.listByOrg, {});
+	const premium = useCachedQuery(api.permissions.hasPremiumAccess, {});
+
+	// Route builder saves and compute/search actions are out of offline scope
+	// (PRD §3 "out of scope") — gate them online-only rather than let them hang.
+	const copyToDaily = useMutation(api.routes.copyToDaily);
+	const seedFromSchedule = useMutation(api.routes.seedFromSchedule);
+	const computeRoute = useAction(api.routingActions.computeRoute);
+	const searchGas = useAction(api.routingActions.searchGasAlongRoute);
+	const onlineAction = useOnlineAction();
+
+	// Every open queued op for this partition; overlays below pull one route's
+	// slice by chainKey (`route:<id>`).
+	const routeOps = useOpenOps();
+
+	const [selectedId, setSelectedId] = useState<Id<"routes"> | null>(null);
+	const [focusIndex, setFocusIndex] = useState(0);
+	const [busy, setBusy] = useState(false);
+	const [error, setError] = useState<string | null>(null);
+	const [googleMaps, setGoogleMaps] = useState(false);
+	// Gas pins are only valid for the geometry they were searched against.
+	const [gas, setGas] = useState<{
+		stations: GasStation[];
+		geometry: string;
+	} | null>(null);
+	const [gasLoading, setGasLoading] = useState(false);
+
+	// One-shot resume: reopen an in-progress run when the screen mounts.
+	const [resumed, setResumed] = useState(false);
+	if (!resumed && routes !== undefined) {
+		// Overlaid so a run started offline resumes after a cold start too.
+		const running = routes
+			.map((r) => {
+				const overlay = routeOverlay(routeOps, r._id);
+				return overlay ? applyRouteOverlay(r, overlay) : r;
+			})
+			.find(
+				(r) =>
+					r.kind === "daily" &&
+					r.startedAt !== undefined &&
+					r.completedAt === undefined
+			);
+		if (running) {
+			setSelectedId(running._id);
+			setFocusIndex(initialFocus(running));
+		}
+		setResumed(true);
+	}
+
+	useEffect(() => {
+		// Foreground-only by design (§11): never request background permission.
+		Location.requestForegroundPermissionsAsync().catch(() => {});
+		let active = true;
+		Linking.canOpenURL("comgooglemaps://")
+			.then((ok) => {
+				if (active) setGoogleMaps(ok);
+			})
+			.catch(() => {});
+		return () => {
+			active = false;
+		};
+	}, []);
+
+	const todayMs = utcMsFromDateId(todayDateId());
+	const all = routes ?? [];
+	const assigneeRank = (r: Doc<"routes">): number =>
+		r.assigneeUserId === me?._id ? 0 : r.assigneeUserId === undefined ? 1 : 2;
+	const daily = all
+		.filter((r) => r.kind === "daily" && r.date === todayMs)
+		.sort((a, b) => assigneeRank(a) - assigneeRank(b));
+	const saved = all.filter((r) => r.kind !== "daily");
+
+	const rawSelected = all.find((r) => r._id === selectedId) ?? null;
+	// Queued stop statuses and start/finish reflect immediately, before the op
+	// syncs — everything below reads `selected`, never `rawSelected`.
+	const selectedOverlay = rawSelected ? routeOverlay(routeOps, rawSelected._id) : null;
+	const selected =
+		rawSelected && selectedOverlay ? applyRouteOverlay(rawSelected, selectedOverlay) : rawSelected;
+	const running =
+		selected !== null &&
+		selected.kind === "daily" &&
+		selected.startedAt !== undefined &&
+		selected.completedAt === undefined;
+
+	const orderedStops = selected ? stopsInOrder(selected.stops) : [];
+	const focusedStop =
+		focusIndex > 0 ? (orderedStops[focusIndex - 1] ?? null) : null;
+	const focus: LngLat | null = focusedStop
+		? [focusedStop.longitude, focusedStop.latitude]
+		: null;
+
+	const selectRoute = (id: Id<"routes"> | null) => {
+		setError(null);
+		setGas(null);
+		setSelectedId(id);
+		setFocusIndex(initialFocus(all.find((r) => r._id === id)));
+	};
+
+	// Only for actions that still call Convex directly (route-build mutations,
+	// compute/search actions) — queued ops below never throw here.
+	const run = async (fn: () => Promise<unknown>) => {
+		setBusy(true);
+		setError(null);
+		try {
+			await fn();
+		} catch (e) {
+			setError(
+				e instanceof ConvexError && typeof e.data === "string"
+					? e.data
+					: e instanceof Error
+						? e.message
+						: "Something went wrong"
+			);
+		} finally {
+			setBusy(false);
+		}
+	};
+
+	const onSetStatus = async (
+		order: number,
+		status: "visited" | "skipped" | "pending"
+	) => {
+		if (!selected) return;
+		const stop = orderedStops.find((s) => s.order === order);
+		await saveOffline(
+			"routes.setStopStatus",
+			{
+				routeId: selected._id,
+				order,
+				status,
+				stopRef: stop
+					? {
+							propertyId: stop.propertyId,
+							taskId: stop.taskId,
+							projectId: stop.projectId,
+							label: stop.label,
+							latitude: stop.latitude,
+							longitude: stop.longitude,
+						}
+					: undefined,
+			},
+			{
+				display: {
+					title: `${stopStatusLabel(status)}: ${stop?.label ?? "stop"}`,
+				},
+			},
+		);
+		if (running && status !== "pending") {
+			// Auto-advance: focus the next pending card, or the overview
+			// (which offers Finish) when the day is done.
+			const stops = orderedStops.map((s) =>
+				s.order === order ? { ...s, status } : s
+			);
+			const next = nextPendingStop(stops);
+			setFocusIndex(
+				next
+					? stops.findIndex((s) => s.order === next.order) + 1
+					: 0
+			);
+		}
+	};
+
+	const onStart = async () => {
+		if (!selected) return;
+		// A route already completed (locally or on the server) is an explicit
+		// restart — send it without `ifNotCompleted` so a replay can't be
+		// mistaken for a double-start on a route that finished elsewhere.
+		const restarting = selected.completedAt !== undefined;
+		await saveOffline(
+			"routes.startRoute",
+			restarting
+				? { routeId: selected._id }
+				: { routeId: selected._id, ifNotCompleted: true },
+			{ display: { title: `${restarting ? "Restart" : "Start"} route: ${selected.name}` } },
+		);
+		// Running is now guaranteed, so focus the next pending stop directly —
+		// avoids faking a `startedAt` timestamp just to satisfy `initialFocus`.
+		const next = nextPendingStop(selected.stops);
+		setFocusIndex(
+			next ? stopsInOrder(selected.stops).findIndex((s) => s.order === next.order) + 1 : 0,
+		);
+	};
+
+	const onFinish = async () => {
+		if (!selected) return;
+		await saveOffline(
+			"routes.completeRoute",
+			{ routeId: selected._id },
+			{ display: { title: `Finish route: ${selected.name}` } },
+		);
+		setFocusIndex(0);
+	};
+
+	const onSeedSchedule = () =>
+		onlineAction("Building today's route", () =>
+			run(async () => {
+				// Daily-singleton assignee rule shared with web: me when the org
+				// has >1 member, org-wide otherwise. Divergence targets a
+				// different route doc than the one this screen lists.
+				const multiMember = (orgUsers?.length ?? 0) > 1;
+				const seeded = await seedFromSchedule({
+					date: todayMs,
+					assigneeUserId: multiMember ? me?._id : undefined,
+				});
+				setSelectedId(seeded.routeId);
+				setFocusIndex(0);
+				setGas(null);
+				await computeRoute({ routeId: seeded.routeId, optimize: false });
+			}),
+		);
+
+	const onUseToday = () =>
+		onlineAction("Using this route today", () =>
+			run(async () => {
+				if (!selected) return;
+				const dailyId = await copyToDaily({
+					routeId: selected._id,
+					date: todayMs,
+					assigneeUserId: me?._id,
+				});
+				setSelectedId(dailyId);
+				setFocusIndex(0);
+				// Fresh copies have no directions yet — compute in stop order.
+				await computeRoute({ routeId: dailyId, optimize: false });
+			}),
+		);
+
+	const onToggleGas = () =>
+		onlineAction("Searching for gas stations", () =>
+			run(async () => {
+				if (!selected?.geometry) return;
+				if (gas) {
+					setGas(null);
+					return;
+				}
+				setGasLoading(true);
+				try {
+					const stations = await searchGas({
+						routeId: selected._id,
+						timeDeviationMinutes: 10,
+					});
+					setGas({ stations, geometry: selected.geometry });
+				} finally {
+					setGasLoading(false);
+				}
+			}),
+		);
+
+	const onCompute = () =>
+		onlineAction("Getting directions", () =>
+			run(async () => {
+				if (selected) {
+					await computeRoute({ routeId: selected._id, optimize: false });
+				}
+			}),
+		);
+
+	const onNavigate = (stop: RouteStop, app: "apple" | "google") => {
+		const url =
+			app === "google"
+				? googleMapsUrl(stop.latitude, stop.longitude)
+				: appleMapsUrl(stop.latitude, stop.longitude);
+		Linking.openURL(url).catch(() => {});
+	};
+
+	const openBuilder = (routeId?: Id<"routes">) =>
+		shellNav
+			? shellNav.editRoute(routeId)
+			: router.push({
+					pathname: "/route-edit" as never,
+					params: routeId ? { routeId } : {},
+				});
+
+	const gasStations =
+		gas && selected?.geometry === gas.geometry ? gas.stations : undefined;
+	// Whole-route handoff (Google only — Apple Maps has no waypoint URL).
+	const googleHandoff =
+		googleMaps && selected
+			? googleMapsRouteUrl(selected.start, selected.stops, selected.roundTrip)
+			: null;
+	// The notch (iPhone) and the pane header (iPad) are both in normal flow and
+	// already clear the top, so the chips only need a gutter off the map's own
+	// top edge — but that edge belongs to Mapbox: the logo sits at top 8 / left 8
+	// and the attribution "i" at top 8 / right 8 (route-map.tsx), and this row
+	// spans both with space-between. Clear the ornaments (~26pt tall) rather than
+	// covering them; Mapbox terms require both to stay visible.
+	const controlsTop = 44;
+
+	return (
+		<View style={styles.screen}>
+			{running ? <KeepAwakeWhileRunning /> : null}
+			<View style={styles.mapArea}>
+				<RouteMap
+					route={selected}
+					following={running && focusIndex === 0}
+					focus={focus}
+					gasStations={gasStations}
+				/>
+				{selected ? (
+					<View
+						style={[styles.controls, { top: controlsTop }]}
+						pointerEvents="box-none"
+					>
+						<FloatChip
+							onPress={() => selectRoute(null)}
+							label="All routes"
+							icon={
+								<ChevronLeft
+									size={14}
+									color={t.ink}
+									strokeWidth={2.25}
+								/>
+							}
+						/>
+						{selected.geometry !== undefined && premium !== false ? (
+							<FloatChip
+								onPress={onToggleGas}
+								label={
+									gasLoading
+										? "Gas…"
+										: gasStations
+											? `Gas (${gasStations.length})`
+											: "Gas"
+								}
+								active={gasStations !== undefined}
+								icon={
+									<Fuel
+										size={13}
+										color={gasStations ? colors.primaryForeground : t.ink}
+										strokeWidth={2.25}
+									/>
+								}
+							/>
+						) : null}
+					</View>
+				) : null}
+			</View>
+			{/* Sheet + carousel stay at the SCREEN root: their bottom math is measured
+			    against the full screen, not the map area. */}
+			{selected ? (
+				<StopCarousel
+					route={selected}
+					running={running}
+					premium={premium}
+					busy={busy}
+					error={error}
+					googleMaps={googleMaps}
+					focusIndex={focusIndex}
+					bottomInset={BOTTOM_INSET}
+					onFocusChange={setFocusIndex}
+					onStart={onStart}
+					onFinish={onFinish}
+					onUseToday={onUseToday}
+					onCompute={onCompute}
+					onEdit={() => selected && openBuilder(selected._id)}
+					onSetStatus={onSetStatus}
+					onNavigate={onNavigate}
+					onSendGoogle={
+						googleHandoff
+							? () => {
+									Linking.openURL(googleHandoff.url).catch(
+										() => {}
+									);
+								}
+							: undefined
+					}
+					sendGoogleNote={
+						googleHandoff && googleHandoff.dropped > 0
+							? `Google Maps fits the next ${googleHandoff.included} stops — ${googleHandoff.dropped} left off.`
+							: null
+					}
+				/>
+			) : (
+				<RouteSheet
+					daily={daily}
+					saved={saved}
+					premium={premium}
+					busy={busy}
+					error={error}
+					onSelect={selectRoute}
+					onCreate={() => openBuilder()}
+					onSeedSchedule={onSeedSchedule}
+					bottomInset={BOTTOM_INSET}
+				/>
+			)}
+		</View>
+	);
+}
+
+function FloatChip({
+	label,
+	icon,
+	onPress,
+	active,
+}: {
+	label: string;
+	icon: React.ReactNode;
+	onPress: () => void;
+	active?: boolean;
+}) {
+	const t = useTokens();
+	return (
+		<Pressable
+			onPress={onPress}
+			accessibilityRole="button"
+			accessibilityLabel={label}
+			style={({ pressed }) => [
+				styles.chip,
+				{
+					backgroundColor: active ? t.primarySolid : t.card,
+					borderColor: active ? t.primarySolid : t.line,
+					opacity: pressed ? 0.8 : 1,
+				},
+			]}
+		>
+			{icon}
+			<Text
+				style={[styles.chipLabel, { color: active ? colors.primaryForeground : t.ink }]}
+			>
+				{label}
+			</Text>
+		</Pressable>
+	);
+}
+
+/** Hook holder: keep-awake must only be active while a run is live. */
+function KeepAwakeWhileRunning() {
+	useKeepAwake();
+	return null;
+}
+
+/** Pre-P4-build fallback — the old placeholder, with honest copy. */
+function RoutesUnavailable() {
+	return (
+		<CanvasScroll contentContainerStyle={styles.fallbackScroll}>
+			<EmptyPanel
+				icon={Map}
+				title="The map needs an app update"
+				body="Update OneTool to the latest version to see your routes on the map."
+			/>
+		</CanvasScroll>
+	);
+}
+
+const styles = StyleSheet.create({
+	screen: {
+		flex: 1,
+	},
+	mapArea: {
+		flex: 1,
+	},
+	controls: {
+		position: "absolute",
+		left: 16,
+		right: 16,
+		flexDirection: "row",
+		justifyContent: "space-between",
+	},
+	chip: {
+		flexDirection: "row",
+		alignItems: "center",
+		gap: 5,
+		paddingHorizontal: 12,
+		height: 34,
+		borderRadius: radii.card,
+		borderWidth: 1,
+		boxShadow: shadow.floatChip,
+	},
+	chipLabel: {
+		fontFamily: fontFamily.medium,
+		fontSize: type.sm,
+	},
+	fallbackScroll: {
+		flexGrow: 1,
+		justifyContent: "center",
+	},
+});

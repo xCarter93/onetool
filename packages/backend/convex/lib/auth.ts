@@ -1,3 +1,4 @@
+import { ConvexError } from "convex/values";
 import { QueryCtx, MutationCtx } from "../_generated/server";
 import { Id } from "../_generated/dataModel";
 
@@ -17,7 +18,9 @@ interface ClerkIdentityWithActiveOrg {
  */
 export async function getCurrentUserOrThrow(ctx: QueryCtx | MutationCtx) {
 	const userRecord = await getCurrentUser(ctx);
-	if (!userRecord) throw new Error("User not authenticated");
+	if (!userRecord) {
+		throw new ConvexError({ code: "UNAUTHENTICATED", message: "User not authenticated" });
+	}
 	return userRecord;
 }
 

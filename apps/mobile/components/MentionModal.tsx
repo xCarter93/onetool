@@ -32,9 +32,13 @@ export function MentionModal({
 	entityName,
 }: MentionModalProps) {
 	const [refreshKey, setRefreshKey] = useState(0);
+	// Lifted so a swipe-dismiss (which unmounts Modal children) keeps the draft.
+	const [draft, setDraft] = useState("");
+	const [draftMentions, setDraftMentions] = useState<
+		{ id: Id<"users">; name: string }[]
+	>([]);
 
 	const handleMentionCreated = () => {
-		// Trigger a refresh by updating the key
 		setRefreshKey((prev) => prev + 1);
 	};
 
@@ -44,6 +48,8 @@ export function MentionModal({
 			animationType="slide"
 			presentationStyle="pageSheet"
 			onRequestClose={onClose}
+			// iOS swipe-dismiss bypasses onRequestClose; re-sync the caller's visible flag.
+			onDismiss={onClose}
 		>
 			<SafeAreaView style={styles.container} edges={["top", "bottom"]}>
 				<KeyboardAvoidingView
@@ -64,7 +70,13 @@ export function MentionModal({
 								</Text>
 							</View>
 						</View>
-						<Pressable onPress={onClose} style={styles.closeButton}>
+						<Pressable
+							onPress={onClose}
+							style={styles.closeButton}
+							hitSlop={8}
+							accessibilityRole="button"
+							accessibilityLabel="Close"
+						>
 							<X size={24} color={colors.foreground} />
 						</Pressable>
 					</View>
@@ -91,6 +103,10 @@ export function MentionModal({
 							entityId={entityId.toString()}
 							entityName={entityName}
 							onMentionCreated={handleMentionCreated}
+							initialMessage={draft}
+							onMessageChange={setDraft}
+							initialMentionedUsers={draftMentions}
+							onMentionedUsersChange={setDraftMentions}
 						/>
 					</View>
 				</KeyboardAvoidingView>

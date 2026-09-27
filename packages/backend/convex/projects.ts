@@ -19,6 +19,7 @@ import {
 	emitRecordUpdatedEvent,
 } from "./eventBus";
 import { computeFieldChanges } from "./lib/changeTracking";
+import { assertExpectedValues, withReceipt } from "./lib/mutationReceipts";
 import {
 	optionalUserQuery,
 	userMutation,
@@ -678,12 +679,27 @@ export const update = userMutation({
 		startDate: v.optional(v.number()),
 		endDate: v.optional(v.number()),
 		assignedUserIds: v.optional(v.array(v.id("users"))),
+		idempotencyKey: v.optional(v.string()),
+		expectedValues: v.optional(v.record(v.string(), v.any())),
 	},
 	handler: async (ctx, args: any): Promise<ProjectId> => {
 		await ctx.requireLevel("projects", "modify");
 
-		const { id, ...updates } = args;
+		const { id, idempotencyKey, expectedValues, ...updates } = args;
 
+		return withReceipt(ctx, idempotencyKey, "projects.update", args, () =>
+			updateProjectAfterReceipt(ctx, id, args, updates, expectedValues)
+		);
+	},
+});
+
+async function updateProjectAfterReceipt(
+	ctx: UserMutationCtx,
+	id: Id<"projects">,
+	args: any,
+	updates: any,
+	expectedValues: Record<string, unknown> | undefined
+): Promise<ProjectId> {
 		// Validate title is not empty if being updated
 		if (updates.title !== undefined && !updates.title.trim()) {
 			throw new Error("Project title cannot be empty");
@@ -698,6 +714,10 @@ export const update = userMutation({
 		await ctx.requireRecordScope(
 			"projects",
 			() => currentProject.assignedUserIds?.includes(ctx.user._id) ?? false
+		);
+		assertExpectedValues(
+			currentProject as unknown as Record<string, unknown>,
+			expectedValues
 		);
 		const oldStatus = currentProject.status;
 		if (currentProject.recurringSeriesId && filteredUpdates.projectType === "one-off") {
@@ -801,8 +821,7 @@ export const update = userMutation({
 		}
 
 		return id;
-	},
-});
+}
 
 /**
  * Delete a project with cascading deletion of related entities

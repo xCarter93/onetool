@@ -26,6 +26,7 @@ export const CASCADE_PAGE_SIZE = 100;
 // silently missed.
 export const ORG_SCOPED_CASCADE_TABLES = [
 	// Leaf / child tables first (children before parents).
+	"mutationReceipts",
 	"quoteDocumentContents",
 	"quoteDecisionEvidence",
 	"quoteApprovals",
@@ -112,6 +113,18 @@ export async function cascadeDeleteOrgDataPage(
 	limit: number
 ): Promise<{ done: boolean }> {
 	let remaining = limit;
+
+	{
+		if (remaining <= 0) return { done: false };
+		// No plain by_org index — by_org_user_key's prefix eq(orgId) covers it.
+		const rows = await ctx.db.query("mutationReceipts")
+			.withIndex("by_org_user_key", (q) => q.eq("orgId", orgId)).take(Math.min(remaining, 10));
+		for (const row of rows) {
+			await ctx.db.delete(row._id);
+			remaining--;
+		}
+		if (rows.length === 10) return { done: false };
+	}
 
 	{
 		if (remaining <= 0) return { done: false };

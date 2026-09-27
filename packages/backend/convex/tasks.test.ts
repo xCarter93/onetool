@@ -868,6 +868,64 @@ describe("Tasks", () => {
 				})
 			).rejects.toThrowError();
 		});
+
+		it("expectedValues mismatch throws CONFLICT/FIELD_CHANGED and applies no patch", async () => {
+			const { orgId, clerkUserId, clerkOrgId } = await t.run(createTestOrg);
+			const taskId = await t.run((ctx) =>
+				createTestTask(ctx, orgId, { title: "Original", status: "pending" })
+			);
+			const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+
+			// Someone else already renamed it — base value is stale.
+			await asUser.mutation(api.tasks.update, { id: taskId, title: "Renamed" });
+
+			await expect(
+				asUser.mutation(api.tasks.update, {
+					id: taskId,
+					title: "Offline edit",
+					expectedValues: { title: "Original" },
+				})
+			).rejects.toThrow(/FIELD_CHANGED/);
+
+			const task = await asUser.query(api.tasks.get, { id: taskId });
+			expect(task?.title).toBe("Renamed");
+		});
+
+		it("expectedValues match applies the patch", async () => {
+			const { orgId, clerkUserId, clerkOrgId } = await t.run(createTestOrg);
+			const taskId = await t.run((ctx) =>
+				createTestTask(ctx, orgId, { title: "Original", status: "pending" })
+			);
+			const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+
+			await asUser.mutation(api.tasks.update, {
+				id: taskId,
+				title: "Offline edit",
+				expectedValues: { title: "Original" },
+			});
+
+			const task = await asUser.query(api.tasks.get, { id: taskId });
+			expect(task?.title).toBe("Offline edit");
+		});
+
+		it("idempotencyKey/expectedValues never land on the stored document", async () => {
+			const { orgId, clerkUserId, clerkOrgId } = await t.run(createTestOrg);
+			const taskId = await t.run((ctx) =>
+				createTestTask(ctx, orgId, { title: "Original", status: "pending" })
+			);
+			const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+
+			await asUser.mutation(api.tasks.update, {
+				id: taskId,
+				title: "Offline edit",
+				idempotencyKey: "task-update-1",
+				expectedValues: { title: "Original" },
+			});
+
+			const task = await t.run((ctx) => ctx.db.get(taskId));
+			expect(task).not.toHaveProperty("idempotencyKey");
+			expect(task).not.toHaveProperty("expectedValues");
+		});
 	});
 
 	describe("update — phase 22 mobile edit-sheet paths", () => {
@@ -1465,6 +1523,70 @@ describe("Tasks", () => {
 			await expect(
 				asUser.mutation(api.tasks.complete, { id: taskId })
 			).rejects.toThrowError("Task is already completed");
+		});
+
+		it("throws a typed CONFLICT/TASK_ALREADY_COMPLETED", async () => {
+			const { orgId, clerkUserId, clerkOrgId } = await t.run(createTestOrg);
+			const taskId = await t.run((ctx) =>
+				createTestTask(ctx, orgId, { status: "completed" })
+			);
+			const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+
+			await expect(
+				asUser.mutation(api.tasks.complete, { id: taskId })
+			).rejects.toThrow(/TASK_ALREADY_COMPLETED/);
+		});
+
+		it("idempotencyKey: replays return the original result without re-running effects", async () => {
+			const { orgId, clerkUserId, clerkOrgId } = await t.run(createTestOrg);
+			const taskId = await t.run((ctx) =>
+				createTestTask(ctx, orgId, { status: "pending" })
+			);
+			const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+
+			const first = await asUser.mutation(api.tasks.complete, {
+				id: taskId,
+				idempotencyKey: "complete-1",
+			});
+			const second = await asUser.mutation(api.tasks.complete, {
+				id: taskId,
+				idempotencyKey: "complete-1",
+			});
+			expect(second).toEqual(first);
+
+			const events = await t.run((ctx) =>
+				ctx.db.query("domainEvents").collect()
+			);
+			// One status-change event, not two — the replay never re-ran the handler.
+			expect(
+				events.filter(
+					(e) =>
+						e.eventType === "entity.status_changed" &&
+						e.eventSource === "tasks.complete"
+				)
+			).toHaveLength(1);
+		});
+
+		it("idempotencyKey reused with different args throws IDEMPOTENCY_KEY_REUSED", async () => {
+			const { orgId, clerkUserId, clerkOrgId } = await t.run(createTestOrg);
+			const taskA = await t.run((ctx) =>
+				createTestTask(ctx, orgId, { status: "pending" })
+			);
+			const taskB = await t.run((ctx) =>
+				createTestTask(ctx, orgId, { status: "pending" })
+			);
+			const asUser = t.withIdentity(createTestIdentity(clerkUserId, clerkOrgId));
+
+			await asUser.mutation(api.tasks.complete, {
+				id: taskA,
+				idempotencyKey: "reused-key",
+			});
+			await expect(
+				asUser.mutation(api.tasks.complete, {
+					id: taskB,
+					idempotencyKey: "reused-key",
+				})
+			).rejects.toThrow(/IDEMPOTENCY_KEY_REUSED/);
 		});
 	});
 

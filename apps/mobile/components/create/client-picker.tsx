@@ -11,19 +11,20 @@ import {
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
-import { Check, Search, X } from "lucide-react-native";
+import { Check, ChevronsUpDown, Plus, Search, X } from "lucide-react-native";
 import { fontFamily, radii, type, useTokens } from "@/lib/theme";
-import { Button, ListRow } from "@/components/ui";
+import { Button } from "@/components/ui";
+import { RecordRow, TypeTile } from "@/components/canvas";
 import { hapticSelect } from "@/lib/haptics";
 import { describeMutationError } from "@/lib/mutation-error";
 
 // Above this many clients the list stops being scannable — a filter appears.
 const FILTER_THRESHOLD = 8;
 
-// A ListRow measures 12 + 12 padding + 32 icon tile + 1 hairline separator.
+// A RecordRow measures 11+11 padding + 56 min height + 1 hairline separator.
 // Five of them is the tallest the list can get before it pushes the rest of the
 // create sheet off-screen (visual pass: 15+ clients rendered full-height).
-const ROW_HEIGHT = 57;
+const ROW_HEIGHT = 58;
 const MAX_VISIBLE_ROWS = 5;
 const LIST_MAX_HEIGHT = ROW_HEIGHT * MAX_VISIBLE_ROWS;
 
@@ -34,16 +35,17 @@ function isValidPhone(phone: string): boolean {
 
 /**
  * Bare-row client picker shared by the fast-capture create sheets (Slice 5).
- * Selection idiom is sign-quote's signer list: no Card wrapper (it clips the
- * selected row's capsule), a Check on the chosen row, `last` on the final row.
+ * Closed state reads as a web select trigger (white, `input` border, 4px, 44
+ * tall) with the chosen client's type tile. Open state lists candidates as
+ * hairline record rows.
  *
  * `allowQuickAdd` adds a "+ New client" row that expands INLINE into name +
  * phone. Confirming creates the client and its primary contact, then selects
  * it — the capture flow never navigates away.
  *
  * `locked` is the "pushed from client detail with ?clientId=" case: the client
- * is already known, so the picker collapses to a read-only row and the form
- * opens straight on its own fields.
+ * is already known, so the picker collapses to a read-only trigger and the
+ * form opens straight on its own fields.
  */
 export function ClientPicker({
 	value,
@@ -63,7 +65,7 @@ export function ClientPicker({
 
 	const [filter, setFilter] = useState("");
 	// Collapse-on-select: once a client is chosen the list folds into a single
-	// row. "Change" flips this back open. Derived at render — never an effect.
+	// trigger row. "Change" flips this back open. Derived at render — never an effect.
 	const [reopened, setReopened] = useState(false);
 	const [quickOpen, setQuickOpen] = useState(false);
 	const [quickName, setQuickName] = useState("");
@@ -142,43 +144,41 @@ export function ClientPicker({
 
 	const selected = value ? clients.find((c) => c._id === value) : undefined;
 
-	// Preselected client (?clientId=): read-only, no search / list / quick-add.
+	// Preselected client (?clientId=): read-only trigger, no search / list / quick-add.
 	// The name is resolved off the list we already have — no extra query.
 	if (locked) {
 		return (
-			<ListRow
-				icon="Building2"
-				title={selected?.companyName ?? "Selected client"}
-				showChevron={false}
-				last
-			/>
+			<View style={[styles.trigger, { borderColor: t.input, backgroundColor: t.card }]}>
+				<TypeTile kind="client" size={24} />
+				<Text style={[styles.triggerText, { color: t.ink }]} numberOfLines={1}>
+					{selected?.companyName ?? "Selected client"}
+				</Text>
+			</View>
 		);
 	}
 
-	// Chosen: fold to one row so the fields below get the vertical space back.
+	// Chosen: fold to a select trigger so the fields below get the vertical space back.
 	if (selected && !reopened) {
 		return (
-			<ListRow
-				icon="Building2"
-				title={selected.companyName}
-				selected
-				showChevron={false}
-				last
+			<Pressable
 				onPress={() => setReopened(true)}
-				right={
-					<View style={styles.collapsedRight}>
-						<Text style={[styles.change, { color: t.primarySolid }]}>
-							Change
-						</Text>
-						<Check size={17} color={t.primarySolid} strokeWidth={2.5} />
-					</View>
-				}
-			/>
+				accessibilityRole="button"
+				accessibilityLabel={`Client: ${selected.companyName}. Change`}
+				style={({ pressed }) => [
+					styles.trigger,
+					{ borderColor: t.input, backgroundColor: pressed ? t.secondary : t.card },
+				]}
+			>
+				<TypeTile kind="client" size={24} />
+				<Text style={[styles.triggerText, { color: t.ink }]} numberOfLines={1}>
+					{selected.companyName}
+				</Text>
+				<ChevronsUpDown size={16} color={t.sub} />
+			</Pressable>
 		);
 	}
 
 	const showFilter = clients.length > FILTER_THRESHOLD;
-	const lastRowIndex = rows.length - 1;
 
 	return (
 		<View>
@@ -186,15 +186,15 @@ export function ClientPicker({
 				<View
 					style={[
 						styles.searchBar,
-						{ backgroundColor: t.card, borderColor: t.line },
+						{ backgroundColor: t.card, borderColor: t.input },
 					]}
 				>
-					<Search size={18} color={t.faint} />
+					<Search size={18} color={t.sub} />
 					<TextInput
 						value={filter}
 						onChangeText={setFilter}
 						placeholder="Search clients…"
-						placeholderTextColor={t.faint}
+						placeholderTextColor={t.sub}
 						autoCorrect={false}
 						style={[styles.searchInput, { color: t.ink }]}
 						accessibilityLabel="Search clients"
@@ -206,60 +206,68 @@ export function ClientPicker({
 							accessibilityRole="button"
 							accessibilityLabel="Clear search"
 						>
-							<X size={16} color={t.faint} />
+							<X size={16} color={t.sub} />
 						</Pressable>
 					) : null}
 				</View>
 			) : null}
 
-			{/* Pinned above the scroll area: a trailing quick-add row would be
-			    scrolled out of reach the moment the list overflows. */}
-			{allowQuickAdd && !quickOpen ? (
-				<ListRow
-					icon="Plus"
-					iconColor={t.primarySolid}
-					title="New client"
-					showChevron={false}
-					onPress={() => {
-						setQuickError(null);
-						setQuickHint(null);
-						setQuickOpen(true);
-					}}
-				/>
-			) : null}
+			<View style={[styles.list, { borderColor: t.line, backgroundColor: t.card }]}>
+				{/* Pinned above the scroll area: a trailing quick-add row would be
+				    scrolled out of reach the moment the list overflows. */}
+				{allowQuickAdd && !quickOpen ? (
+					<RecordRow
+						leading={
+							<View style={[styles.addTile, { backgroundColor: t.frostedBg }]}>
+								<Plus size={16} color={t.primary} strokeWidth={2} />
+							</View>
+						}
+						title="New client"
+						chevron={false}
+						onPress={() => {
+							setQuickError(null);
+							setQuickHint(null);
+							setQuickOpen(true);
+						}}
+					/>
+				) : null}
 
-			{/* The inline quick-add form takes over this space while it's open. */}
-			{quickOpen ? null : rows.length === 0 ? (
-				<Text style={[styles.empty, { color: t.sub }]}>
-					{clients.length === 0
-						? "No clients yet."
-						: "No clients match that search."}
-				</Text>
-			) : (
-				<ScrollView
-					style={{ maxHeight: LIST_MAX_HEIGHT }}
-					nestedScrollEnabled
-					keyboardShouldPersistTaps="handled"
-					showsVerticalScrollIndicator={rows.length > MAX_VISIBLE_ROWS}
-				>
-					{rows.map((c, i) => (
-						<ListRow
-							key={c._id}
-							icon="Building2"
-							title={c.companyName}
-							selected={c._id === value}
-							showChevron={false}
-							right={
-								c._id === value ? (
-									<Check size={17} color={t.primarySolid} strokeWidth={2.5} />
-								) : undefined
-							}
-							last={i === lastRowIndex}
-							onPress={() => select(c._id)}
-						/>
-					))}
-				</ScrollView>
-			)}
+				{/* The inline quick-add form takes over this space while it's open. */}
+				{quickOpen ? null : rows.length === 0 ? (
+					<Text style={[styles.empty, { color: t.sub }]}>
+						{clients.length === 0
+							? "No clients yet."
+							: "No clients match that search."}
+					</Text>
+				) : (
+					<ScrollView
+						style={{ maxHeight: LIST_MAX_HEIGHT }}
+						nestedScrollEnabled
+						keyboardShouldPersistTaps="handled"
+						showsVerticalScrollIndicator={rows.length > MAX_VISIBLE_ROWS}
+					>
+						{rows.map((c, i) => (
+							<View
+								key={c._id}
+								style={i > 0 || allowQuickAdd ? { borderTopWidth: 1, borderTopColor: t.lineSoft } : undefined}
+							>
+								<RecordRow
+									kind="client"
+									title={c.companyName}
+									selected={c._id === value}
+									chevron={false}
+									right={
+										c._id === value ? (
+											<Check size={17} color={t.primary} strokeWidth={2.5} />
+										) : undefined
+									}
+									onPress={() => select(c._id)}
+								/>
+							</View>
+						))}
+					</ScrollView>
+				)}
+			</View>
 
 			{allowQuickAdd && quickOpen ? (
 				<View
@@ -289,11 +297,11 @@ export function ClientPicker({
 						value={quickName}
 						onChangeText={setQuickName}
 						placeholder="Client or company name"
-						placeholderTextColor={t.faint}
+						placeholderTextColor={t.sub}
 						autoCapitalize="words"
 						style={[
 							styles.input,
-							{ borderColor: t.line, backgroundColor: t.bg, color: t.ink },
+							{ borderColor: t.input, backgroundColor: t.card, color: t.ink },
 						]}
 						accessibilityLabel="Client name"
 					/>
@@ -301,21 +309,21 @@ export function ClientPicker({
 						value={quickPhone}
 						onChangeText={setQuickPhone}
 						placeholder="Phone number"
-						placeholderTextColor={t.faint}
+						placeholderTextColor={t.sub}
 						keyboardType="phone-pad"
 						style={[
 							styles.input,
-							{ borderColor: t.line, backgroundColor: t.bg, color: t.ink },
+							{ borderColor: t.input, backgroundColor: t.card, color: t.ink },
 						]}
 						accessibilityLabel="Client phone number"
 					/>
 					{quickPhone.trim().length > 0 && !isValidPhone(quickPhone.trim()) ? (
-						<Text style={[styles.hint, { color: t.faint }]}>
+						<Text style={[styles.hint, { color: t.sub }]}>
 							Enter a phone number with at least 10 digits.
 						</Text>
 					) : null}
 					{quickError ? (
-						<Text style={[styles.error, { color: t.destructive }]}>
+						<Text style={[styles.error, { color: t.danger }]}>
 							{quickError}
 						</Text>
 					) : null}
@@ -338,10 +346,19 @@ export function ClientPicker({
 
 const styles = StyleSheet.create({
 	loading: { paddingVertical: 24, alignItems: "center" },
-	collapsedRight: { flexDirection: "row", alignItems: "center", gap: 8 },
-	change: {
-		fontFamily: fontFamily.semibold,
-		fontSize: type.meta,
+	trigger: {
+		flexDirection: "row",
+		alignItems: "center",
+		gap: 10,
+		minHeight: 44,
+		borderWidth: 1,
+		borderRadius: radii.ctrl,
+		paddingHorizontal: 10,
+	},
+	triggerText: {
+		flex: 1,
+		fontFamily: fontFamily.medium,
+		fontSize: 16,
 	},
 	searchBar: {
 		flexDirection: "row",
@@ -359,10 +376,23 @@ const styles = StyleSheet.create({
 		fontSize: type.body,
 		letterSpacing: 0, // RN#42589: pin kern so iOS placeholder can't randomly letter-space
 	},
+	list: {
+		borderWidth: 1,
+		borderRadius: radii.card,
+		overflow: "hidden",
+	},
+	addTile: {
+		width: 32,
+		height: 32,
+		borderRadius: 8,
+		alignItems: "center",
+		justifyContent: "center",
+	},
 	empty: {
 		fontFamily: fontFamily.medium,
 		fontSize: type.meta,
 		paddingVertical: 14,
+		paddingHorizontal: 12,
 	},
 	quick: {
 		borderWidth: 1,

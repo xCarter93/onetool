@@ -8,6 +8,7 @@ import {
 	createTestClientContact,
 	createTestIdentity,
 } from "./test.helpers";
+import { buildQuoteContentSnapshot } from "./lib/quoteContentSnapshot";
 
 // quotes.approveInPerson writes a FULL quoteApprovals audit row (channel
 // "in_person") and applies portal-parity status effects. These tests assert
@@ -288,5 +289,67 @@ describe("quotes.approveInPerson", () => {
 		expect(audit[0]!.channel).toBe("in_person");
 		expect(typeof audit[0]!.capturedByName).toBe("string");
 		expect(audit[0]!.signatureUrl).toBeTruthy();
+	});
+
+	it("idempotencyKey: a replay after success returns the original result, not QUOTE_NOT_PENDING", async () => {
+		const s = await seed();
+		const first = await s.asUser.mutation(api.quotes.approveInPerson, {
+			...approveArgs(s),
+			idempotencyKey: "sign-1",
+		});
+		// The quote is now "approved" — without the receipt guard this would
+		// fail QUOTE_NOT_PENDING instead of returning the original result.
+		const second = await s.asUser.mutation(api.quotes.approveInPerson, {
+			...approveArgs(s),
+			idempotencyKey: "sign-1",
+		});
+		expect(second).toEqual(first);
+
+		const audits = await t.run((ctx) => ctx.db.query("quoteApprovals").collect());
+		expect(audits).toHaveLength(1);
+	});
+
+	it("stores capturedAt without using it for server ordering", async () => {
+		const s = await seed();
+		const capturedAt = Date.now() - 5000;
+		await s.asUser.mutation(api.quotes.approveInPerson, {
+			...approveArgs(s),
+			capturedAt,
+		});
+		const row = await t.run(async (ctx) =>
+			(await ctx.db.query("quoteApprovals").collect())[0]
+		);
+		expect(row?.capturedAt).toBe(capturedAt);
+		expect(row?.createdAt).not.toBe(capturedAt);
+	});
+
+	it("takes the audit row's line items and totals from the document's content snapshot", async () => {
+		const s = await seed();
+		const { snapshot } = await t.run(async (ctx) => {
+			const quote = (await ctx.db.get(s.quoteId))!;
+			const lineItems = await ctx.db
+				.query("quoteLineItems")
+				.withIndex("by_quote", (q) => q.eq("quoteId", s.quoteId))
+				.collect();
+			// Recomputes amount from quantity*rate — the discriminator vs. the live (stored-amount) path.
+			const snapshot = buildQuoteContentSnapshot(quote, lineItems);
+			await ctx.db.patch(lineItems[0]!._id, { amount: 999 });
+			await ctx.db.patch(s.documentId, {
+				quoteContentSnapshot: snapshot,
+				quoteSnapshotSource: "server",
+				generatedAt: Date.now() + 60_000,
+			});
+			return { snapshot };
+		});
+
+		const receipt = await s.asUser.mutation(
+			api.quotes.approveInPerson,
+			approveArgs(s)
+		);
+		const row = await t.run(async (ctx) => ctx.db.get(receipt.auditId));
+		expect(row?.lineItemsSnapshot[0]?.amount).toBe(150); // recomputed, not the corrupted 999
+		expect(row?.subtotalSnapshot).toBe(snapshot.subtotal);
+		expect(row?.taxSnapshot).toBe(snapshot.taxAmount);
+		expect(row?.totalSnapshot).toBe(snapshot.total);
 	});
 });
