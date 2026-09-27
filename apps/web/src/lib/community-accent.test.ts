@@ -84,10 +84,10 @@ describe("COMMUNITY_PAGE_BACKGROUND", () => {
 		};
 		const bgIn = (block: string) => block.match(/--bg:\s*([^;]+);/)?.[1].trim();
 
-		expect(bgIn(blockFor(":root,\n.light {"))).toBe(
+		expect(bgIn(blockFor(":root,\n.light:not(.react-flow) {"))).toBe(
 			COMMUNITY_PAGE_BACKGROUND.light,
 		);
-		expect(bgIn(blockFor(".dark {"))).toBe(COMMUNITY_PAGE_BACKGROUND.dark);
+		expect(bgIn(blockFor(".dark:not(.react-flow) {"))).toBe(COMMUNITY_PAGE_BACKGROUND.dark);
 	});
 });
 
