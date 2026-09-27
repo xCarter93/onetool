@@ -268,8 +268,8 @@ function DocumentsCard({
 			<Card style={style}>
 				{heading(0)}
 				<View style={styles.emptyContainer}>
-					<View style={[styles.emptyIcon, { backgroundColor: t.muted }]}>
-						<FileText size={28} color={t.mutedForeground} />
+					<View style={[styles.emptyIcon, { backgroundColor: t.secondary }]}>
+						<FileText size={20} color={t.sub} strokeWidth={2} />
 					</View>
 					<Text style={[styles.emptyTitle, { color: t.ink }]}>
 						No documents yet
@@ -379,22 +379,26 @@ const styles = StyleSheet.create({
 		fontSize: 12,
 		fontFamily: fontFamily.regular,
 	},
+	// Matches the canvas EmptyPanel so stacked empty panels read as one set.
 	emptyContainer: {
 		alignItems: "center",
 		paddingVertical: 28,
+		paddingHorizontal: 20,
+		gap: 6,
 	},
 	emptyIcon: {
-		width: 56,
-		height: 56,
-		borderRadius: 28,
+		width: 40,
+		height: 40,
+		borderRadius: radii.card,
 		alignItems: "center",
 		justifyContent: "center",
-		marginBottom: 12,
+		marginBottom: 4,
 	},
 	emptyTitle: {
-		fontSize: 13,
+		fontSize: 15,
 		fontFamily: fontFamily.semibold,
-		marginBottom: 12,
+		textAlign: "center",
+		marginBottom: 2,
 	},
 	documentsList: {
 		gap: 8,

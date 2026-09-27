@@ -537,7 +537,7 @@ export function ClientDetailBody({
 							) : null}
 						</Panel>
 
-						<Panel header={<PanelHeader title="Notes" />}>
+						<Panel header={<PanelHeader title="Details" />}>
 							<View style={styles.editableRow}>
 								<EditableField
 									label="Company name"
