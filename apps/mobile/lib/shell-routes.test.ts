@@ -94,7 +94,7 @@ describe("refFromPathname", () => {
 
 describe("isStackRoute", () => {
 	it("claims the full-screen create route and the route builder", () => {
-		expect(isStackRoute("/clients/new")).toBe(true);
+		expect(isStackRoute("/route-edit")).toBe(true);
 		expect(isStackRoute("/route-edit")).toBe(true);
 		expect(isStackRoute("/clients/c1")).toBe(false);
 		expect(isStackRoute("/work")).toBe(false);
@@ -152,7 +152,6 @@ describe("isOverlayRoute", () => {
 describe("pageTitleFromPathname", () => {
 	it("names record and pushed pages", () => {
 		expect(pageTitleFromPathname("/clients/abc")).toBe("Client");
-		expect(pageTitleFromPathname("/clients/new")).toBe("New client");
 		expect(pageTitleFromPathname("/quote/q1")).toBe("Quote");
 		expect(pageTitleFromPathname("/invoice/i1")).toBe("Invoice");
 		expect(pageTitleFromPathname("/projects/p1")).toBe("Project");

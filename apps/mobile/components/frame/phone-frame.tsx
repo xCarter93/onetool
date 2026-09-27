@@ -72,7 +72,7 @@ function useCreateItems(): CreateMenuItem[] {
 			items.push({ key: "quote", label: "New quote", symbol: "doc.text", run: open("New quote", "/quote/new") });
 		}
 		if (can("clients", "modify")) {
-			items.push({ key: "client", label: "New client", symbol: "building.2", run: open("New client", "/clients/new") });
+			items.push({ key: "client", label: "New client", symbol: "building.2", run: open("New client", "/client/new") });
 		}
 		if (can("tasks", "modify")) {
 			items.push({ key: "task", label: "New task", symbol: "checklist", run: open("New task", "/tasks/form") });

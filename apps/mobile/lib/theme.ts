@@ -262,13 +262,8 @@ export const dock = {
 	orbGradient: ["#00a6f4", "#0073ad"] as [string, string],
 } as const;
 
-/**
- * Scroll clearance for content that runs under the floating dock:
- * bottomInset + height + orb rise + slack. Screens inside (tabs) add this to
- * their scroll padding instead of hardcoding.
- */
-export const DOCK_CLEARANCE =
-	dock.bottomInset + dock.height + dock.orbRise + 12;
+/** @deprecated Nothing floats over the canvas now; scroll feet use CanvasScroll's 32. */
+export const DOCK_CLEARANCE = 24;
 
 // ----------------------------------------------------------------------------
 // Badge tones — soft-tint pairs, quieter than the old saturated pills.

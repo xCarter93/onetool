@@ -35,6 +35,7 @@ import {
 } from "@expo-google-fonts/outfit";
 import * as SplashScreen from "expo-splash-screen";
 import { LaunchOverlay } from "@/components/launch/LaunchOverlay";
+import { ToastHost } from "@/components/toast-host";
 import { useLaunchReadiness } from "@/lib/use-launch-readiness";
 import {
 	PushRegistrationHost,
@@ -298,6 +299,15 @@ export default function RootLayout() {
 							    idiom as tasks/form. Static segments, so they take
 							    precedence over the sibling [id] routes. */}
 							<Stack.Screen
+								name="client/new"
+								options={overlayOptions(device, {
+									sheetAllowedDetents: [0.9, 1.0],
+									sheetInitialDetentIndex: 0,
+									sheetGrabberVisible: false,
+									sheetCornerRadius: 30,
+								})}
+							/>
+							<Stack.Screen
 								name="project/new"
 								options={overlayOptions(device, {
 									sheetAllowedDetents: [0.9, 1.0],
@@ -328,6 +338,7 @@ export default function RootLayout() {
 								})}
 							/>
 							</Stack>
+							<ToastHost />
 							</View>
 						</ConvexClerkProvider>
 					</ClerkLoaded>

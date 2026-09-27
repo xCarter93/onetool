@@ -70,7 +70,7 @@ type StopPicker = "list" | "address" | null;
 // Full-screen manual route builder — create when no `routeId` param, edit when
 // one is present. Pushed from the Routes tab (app/(tabs)/routes.tsx
 // `openBuilder`). isStackRoute("/route-edit") renders it full-width beside the
-// iPad rail, so headerMode self-detects like clients/new.tsx.
+// iPad rail, so headerMode self-detects.
 export default function RouteEditScreen() {
 	const t = useTokens();
 	const router = useRouter();

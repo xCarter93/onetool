@@ -57,7 +57,7 @@ export function refFromPathname(pathname: string): RecordRef | null {
  * transparentModal, so the shell must stay mounted underneath it.
  */
 export function isStackRoute(pathname: string): boolean {
-	return /^\/(clients\/new|route-edit)(\/|$)/.test(pathname);
+	return /^\/route-edit(\/|$)/.test(pathname);
 }
 
 /**
@@ -76,12 +76,11 @@ export function isOverlayRoute(pathname: string): boolean {
 	// Create sheets present as transparentModal like tasks/form; without this,
 	// tab sync fires underneath the sheet ("/project/new" misses the plural
 	// `projects` alternation → Today, "/quote/new" → Work).
-	if (/^\/(project|quote)\/new(\/|$)/.test(pathname)) return true;
+	if (/^\/(client|project|quote)\/new(\/|$)/.test(pathname)) return true;
 	return /^\/tasks\/(form|new)(\/|$)/.test(pathname);
 }
 
 const PAGE_TITLES: [RegExp, string][] = [
-	[/^\/clients\/new$/, "New client"],
 	[/^\/clients\/[^/]+$/, "Client"],
 	[/^\/clients$/, "Clients"],
 	[/^\/projects\/[^/]+$/, "Project"],

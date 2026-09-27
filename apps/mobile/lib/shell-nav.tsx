@@ -22,8 +22,6 @@ export interface ShellNav {
 	open: (ref: RecordRef) => void;
 	/** Switch to Work scoped to one record type's chip, selecting nothing. */
 	browse: (kind: WorkKind) => void;
-	/** Open Work's in-pane create surface. Clients is the only mobile create body. */
-	startCreate: () => void;
 	/** Switch to the Profile pane in place. Profile has no nav row, so it needs its
 	 * own entry point — a raw router.push("/profile") re-mounts and slides the
 	 * whole shell. */

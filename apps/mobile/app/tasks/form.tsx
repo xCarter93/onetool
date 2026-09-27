@@ -13,6 +13,7 @@ import {
 import { useEffect, useMemo, useState } from "react";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router, useLocalSearchParams } from "expo-router";
+import { showToast } from "@/lib/toast";
 import { useMutation } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
@@ -280,8 +281,10 @@ export default function TaskFormSheet() {
 		onlineAction("Creating a task", async () => {
 			setSubmitting(true);
 			try {
-				await createTask(buildEdited());
+				const created = buildEdited();
+				await createTask(created);
 				router.back();
+				showToast(`Task added: ${created.title}`);
 			} catch {
 				Alert.alert(
 					"Couldn't save your task",

@@ -6,7 +6,7 @@ import {
 	View,
 	type ViewStyle,
 } from "react-native";
-import { fontFamily, radii, touch, type, useTokens } from "@/lib/theme";
+import { fontFamily, radii, type, useTokens } from "@/lib/theme";
 
 type ButtonVariant = "primary" | "solid" | "secondary" | "ghost" | "destructive";
 type ButtonSize = "sm" | "md";
@@ -47,9 +47,9 @@ export function Button({
 				};
 			case "secondary":
 				return {
-					backgroundColor: t.card,
+					backgroundColor: pressed ? t.secondary : t.card,
 					borderWidth: 1,
-					borderColor: t.line,
+					borderColor: t.input,
 				};
 			default:
 				return { backgroundColor: "transparent" };
@@ -63,7 +63,7 @@ export function Button({
 				? t.ink
 				: variant === "destructive"
 					? t.destructive
-					: t.frostedInk;
+					: t.primary;
 
 	return (
 		<Pressable
@@ -87,7 +87,7 @@ export function Button({
 						styles.title,
 						{
 							color: textColor,
-							fontSize: size === "sm" ? type.rowTitle : type.body,
+							fontSize: size === "sm" ? 13 : type.body,
 						},
 					]}
 					numberOfLines={1}
@@ -106,14 +106,16 @@ const styles = StyleSheet.create({
 		justifyContent: "center",
 		overflow: "hidden",
 	},
+	// Web's below-768px workspace sizes: 40 default, 32 small.
 	md: {
-		minHeight: touch.min,
-		paddingVertical: 12,
+		minHeight: 40,
+		paddingVertical: 9,
 		paddingHorizontal: 16,
 	},
 	sm: {
-		paddingVertical: 8,
-		paddingHorizontal: 14,
+		minHeight: 32,
+		paddingVertical: 6,
+		paddingHorizontal: 12,
 	},
 	content: {
 		flexDirection: "row",
@@ -122,7 +124,7 @@ const styles = StyleSheet.create({
 		gap: 6,
 	},
 	title: {
-		fontFamily: fontFamily.semibold,
+		fontFamily: fontFamily.medium,
 	},
 	disabled: {
 		opacity: 0.5,

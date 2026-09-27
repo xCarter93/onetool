@@ -33,7 +33,6 @@ import MoneyScreen from "@/app/(tabs)/(money)/money";
 import RoutesScreen from "@/app/(tabs)/(routes)/routes";
 import ActivityScreen from "@/app/(tabs)/(today,work,money,routes)/activity";
 import ProfileScreen from "@/app/(tabs)/(today,work,money,routes)/profile";
-import { ClientCreateBody } from "@/app/(tabs)/(today,work,money,routes)/clients/new";
 import { AssistantHost } from "@/components/assistant/assistant-host";
 import {
 	AssistantInkHeader,
@@ -68,7 +67,7 @@ import { usePermissions } from "@/lib/use-permissions";
 //       selection untouched (each pane's last selection persists — issue #11)
 //
 // STACK-ROUTE SLOT: for a full-screen stack route that is NOT a detail route
-// (e.g. /clients/new reached by a raw link), the shell renders expo-router's
+// (e.g. /route-edit reached by a raw link), the shell renders expo-router's
 // <Slot /> full-width beside the rail so the pushed screen owns its own header.
 // ============================================================================
 
@@ -117,9 +116,6 @@ function IpadShellInner() {
 		setActiveTab(derivedTab);
 	}
 
-	// In-pane create surface. Clients is the only record type mobile can create,
-	// so this is a boolean rather than a per-tab enum.
-	const [creating, setCreating] = useState(false);
 	// §4: landscape gets the assistant as a companion right panel; portrait
 	// falls back to the pushed sheet route the iPhone FAB uses.
 	const [assistantOpen, setAssistantOpen] = useState(false);
@@ -145,7 +141,6 @@ function IpadShellInner() {
 	// the rail never re-mounts or slides). Also abandons any open create surface.
 	const onNavigate = (tab: SidebarTab) => {
 		setActiveTab(tab);
-		setCreating(false);
 	};
 
 	// In-pane navigation for detail bodies / list screens rendered INSIDE the
@@ -156,22 +151,15 @@ function IpadShellInner() {
 		() => ({
 			open: (ref) => {
 				setActiveTab("work");
-				setCreating(false);
-				select("work", ref);
+						select("work", ref);
 			},
 			browse: (kind) => {
 				setActiveTab("work");
-				setCreating(false);
-				setWorkKind(kind);
-			},
-			startCreate: () => {
-				setActiveTab("work");
-				setCreating(true);
+						setWorkKind(kind);
 			},
 			openProfile: () => {
 				setActiveTab("profile");
-				setCreating(false);
-			},
+					},
 		}),
 		[select],
 	);
@@ -199,7 +187,7 @@ function IpadShellInner() {
 			items.push({
 				key: "client",
 				label: "New client",
-				run: () => shellNav.startCreate(),
+				run: () => router.push("/client/new" as Href),
 			});
 		}
 		if (can("quotes", "modify")) {
@@ -261,27 +249,11 @@ function IpadShellInner() {
 		</ShellNavProvider>
 	);
 
-	// A full-screen stack route (e.g. /clients/new) → rail + full-width Slot.
+	// A full-screen stack route (e.g. /route-edit) → rail + full-width Slot.
 	if (isStackRoute(pathname)) {
 		return frame(
 			<View style={styles.contentPane}>
 				<Slot />
-			</View>,
-		);
-	}
-
-	// Create takes over the whole content area (rail + full-width body). The body
-	// owns its ONE PaneHeader; on success the new client opens in the detail pane.
-	if (creating) {
-		return frame(
-			<View style={styles.contentPane}>
-				<ClientCreateBody
-					headerMode="pane"
-					onDone={(newId) => {
-						setCreating(false);
-						if (newId) shellNav.open({ kind: "client", id: newId });
-					}}
-				/>
 			</View>,
 		);
 	}
