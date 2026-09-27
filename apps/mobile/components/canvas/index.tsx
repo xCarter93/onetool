@@ -513,6 +513,42 @@ export function Stepper({ steps }: { steps: StepperStep[] }) {
 	);
 }
 
+export interface ParentLink {
+	kind: RecordKind;
+	label: string;
+	onPress?: () => void;
+}
+
+/** A record's parents (client › project), each a tappable tile + name. */
+export function ParentLinks({ links }: { links: ParentLink[] }) {
+	const t = useTokens();
+	return (
+		<View style={styles.parents}>
+			{links.map((link, i) => (
+				<React.Fragment key={link.kind}>
+					{i > 0 ? <ChevronRight size={14} color={t.faint} strokeWidth={2} /> : null}
+					<Pressable
+						onPress={link.onPress}
+						disabled={!link.onPress}
+						hitSlop={6}
+						accessibilityRole={link.onPress ? "link" : undefined}
+						accessibilityLabel={link.onPress ? `Open ${link.kind} ${link.label}` : undefined}
+						style={({ pressed }) => [styles.parent, pressed && { opacity: 0.7 }]}
+					>
+						<TypeTile kind={link.kind} size={20} />
+						<Text
+							style={[styles.parentLabel, { color: link.onPress ? t.frostedInk : t.sub }]}
+							numberOfLines={1}
+						>
+							{link.label}
+						</Text>
+					</Pressable>
+				</React.Fragment>
+			))}
+		</View>
+	);
+}
+
 /** Composed empty state inside a panel. */
 export function EmptyPanel({
 	icon: Icon,
@@ -597,6 +633,25 @@ const styles = StyleSheet.create({
 	link: {
 		fontFamily: fontFamily.medium,
 		fontSize: 12.5,
+	},
+	parents: {
+		flexDirection: "row",
+		flexWrap: "wrap",
+		alignItems: "center",
+		columnGap: 8,
+		rowGap: 6,
+	},
+	parent: {
+		flexDirection: "row",
+		alignItems: "center",
+		gap: 6,
+		maxWidth: "100%",
+		flexShrink: 1,
+	},
+	parentLabel: {
+		fontFamily: fontFamily.medium,
+		fontSize: 13,
+		flexShrink: 1,
 	},
 	panel: {
 		borderWidth: 1,

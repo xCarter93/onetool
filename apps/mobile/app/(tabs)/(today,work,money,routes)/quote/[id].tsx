@@ -38,7 +38,7 @@ import {
 import { useShellNav } from "@/lib/shell-nav";
 import { describeMutationError } from "@/lib/mutation-error";
 import { useQuoteCapabilities } from "@/lib/use-record-capabilities";
-import { usePermissions } from "@/lib/use-permissions";
+import { useCachedCan, usePermissions } from "@/lib/use-permissions";
 import { formatCurrency, formatDocumentDate } from "@/lib/format";
 import { recordRecentView } from "@/lib/recents";
 import { useCachedQuery } from "@/lib/offline/useCachedQuery";
@@ -158,6 +158,11 @@ export function QuoteDetailBody({
 	);
 	const capsData = useQuoteCapabilities(quote);
 	const { can } = usePermissions();
+	const canView = useCachedCan();
+	const parentProject = useCachedQuery(
+		api.projects.get,
+		quote?.projectId && canView("projects") ? { id: quote.projectId } : "skip"
+	);
 	// Web-parity staleness hint: the saved PDF is older than the content.
 	// Gated useQuery throws on missing permission, so gate with can().
 	const latestDoc = useCachedQuery(
@@ -616,6 +621,17 @@ export function QuoteDetailBody({
 		}
 	};
 
+	const openProject = (projectId: Id<"projects">) => {
+		if (shellNav) {
+			shellNav.open({ kind: "project", id: projectId });
+		} else {
+			router.push({
+				pathname: "/projects/[projectId]",
+				params: { projectId },
+			} as unknown as Href);
+		}
+	};
+
 	const canGetSignature = actions.some((a) => a.key === "get_signature");
 
 	return (
@@ -629,7 +645,12 @@ export function QuoteDetailBody({
 					eyebrow={quote.quoteNumber ?? undefined}
 					status={status ?? quote.status}
 					clientName={client}
-					onClientPress={openClient}
+					onClientPress={canView("clients") ? openClient : undefined}
+					project={
+						parentProject
+							? { title: parentProject.title, onPress: () => openProject(parentProject._id) }
+							: undefined
+					}
 					title={documentTitle}
 					amount={quote.total}
 					subline={

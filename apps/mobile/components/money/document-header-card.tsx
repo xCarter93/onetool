@@ -1,13 +1,13 @@
 import type { ReactNode } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 import { fontFamily, type, useTokens } from "@/lib/theme";
 import { Badge } from "@/components/ui";
-import { TypeTile } from "@/components/canvas";
+import { ParentLinks, type ParentLink } from "@/components/canvas";
 import { MoneyAmount } from "./money-amount";
 
 // Identity block for quote/invoice details (frame 1d + 2d's large total):
 // number eyebrow + status badge, the document-grade amount, the title, then
-// the client as a link with its tile icon. Extra rows (stepper, signature
+// the client and project as links. Extra rows (stepper, signature
 // card, tray actions in pane mode) compose in as children.
 export function DocumentHeaderCard({
 	eyebrow,
@@ -16,6 +16,7 @@ export function DocumentHeaderCard({
 	amount,
 	clientName,
 	onClientPress,
+	project,
 	subline,
 	menu,
 	children,
@@ -28,6 +29,8 @@ export function DocumentHeaderCard({
 	clientName: string;
 	/** Absent = plain text (no navigation target available). */
 	onClientPress?: () => void;
+	/** The linked project, shown after the client. */
+	project?: { title: string; onPress?: () => void };
 	/** Small line under the client link (e.g. overdue notice, valid-until). */
 	subline?: ReactNode;
 	/** Overflow menu, placed after the status badge. */
@@ -53,27 +56,16 @@ export function DocumentHeaderCard({
 					{title}
 				</Text>
 			) : null}
-			<Pressable
-				onPress={onClientPress}
-				disabled={!onClientPress}
-				accessibilityRole={onClientPress ? "button" : undefined}
-				accessibilityLabel={onClientPress ? `Open ${clientName}` : undefined}
-				style={({ pressed }) => [
-					styles.clientRow,
-					pressed && onClientPress && { opacity: 0.7 },
-				]}
-			>
-				<TypeTile kind="client" size={20} />
-				<Text
-					style={[
-						styles.client,
-						{ color: onClientPress ? t.frostedInk : t.sub },
+			<View style={styles.parents}>
+				<ParentLinks
+					links={[
+						{ kind: "client", label: clientName, onPress: onClientPress },
+						...(project
+							? [{ kind: "project", label: project.title, onPress: project.onPress } satisfies ParentLink]
+							: []),
 					]}
-					numberOfLines={1}
-				>
-					{clientName}
-				</Text>
-			</Pressable>
+				/>
+			</View>
 			{subline}
 			{children}
 		</View>
@@ -107,15 +99,7 @@ const styles = StyleSheet.create({
 		fontSize: type.h3,
 		marginTop: 8,
 	},
-	clientRow: {
-		flexDirection: "row",
-		alignItems: "center",
-		gap: 6,
+	parents: {
 		marginTop: 8,
-		alignSelf: "flex-start",
-	},
-	client: {
-		fontFamily: fontFamily.medium,
-		fontSize: type.sm,
 	},
 });

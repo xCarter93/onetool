@@ -42,7 +42,7 @@ import {
 } from "@/lib/record-actions";
 import { useShellNav } from "@/lib/shell-nav";
 import { useInvoiceCapabilities } from "@/lib/use-record-capabilities";
-import { usePermissions } from "@/lib/use-permissions";
+import { useCachedCan, usePermissions } from "@/lib/use-permissions";
 import { deriveInvoiceDisplayPricing } from "@onetool/backend/pdf/invoicePricing";
 import { formatCurrency, formatDocumentDate } from "@/lib/format";
 import { recordRecentView } from "@/lib/recents";
@@ -150,6 +150,11 @@ export function InvoiceDetailBody({
 	);
 	const capsData = useInvoiceCapabilities(invoice);
 	const { can } = usePermissions();
+	const canView = useCachedCan();
+	const parentProject = useCachedQuery(
+		api.projects.get,
+		invoice?.projectId && canView("projects") ? { id: invoice.projectId } : "skip"
+	);
 	// Web-parity staleness hint: the saved PDF is older than the content.
 	// Gated useQuery throws on missing permission, so gate with can().
 	const latestDoc = useCachedQuery(
@@ -476,6 +481,17 @@ export function InvoiceDetailBody({
 		}
 	};
 
+	const openProject = (projectId: Id<"projects">) => {
+		if (shellNav) {
+			shellNav.open({ kind: "project", id: projectId });
+		} else {
+			router.push({
+				pathname: "/projects/[projectId]",
+				params: { projectId },
+			} as unknown as Href);
+		}
+	};
+
 	return (
 		<View style={[styles.flex, { backgroundColor: t.bg }]}>
 			{headerMode === "pane" ? (
@@ -487,7 +503,12 @@ export function InvoiceDetailBody({
 					eyebrow={invoice.invoiceNumber}
 					status={status}
 					clientName={client}
-					onClientPress={openClient}
+					onClientPress={canView("clients") ? openClient : undefined}
+					project={
+						parentProject
+							? { title: parentProject.title, onPress: () => openProject(parentProject._id) }
+							: undefined
+					}
 					amount={invoice.total}
 					subline={
 						status === "overdue" ? (

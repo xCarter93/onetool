@@ -26,7 +26,7 @@ import { recordRecentView } from "@/lib/recents";
 import { useCachedCan, usePermissions } from "@/lib/use-permissions";
 import { PaneHeader } from "@/components/ipad/pane-header";
 import { useShellNav } from "@/lib/shell-nav";
-import { IdentityBlock, IdentityMeta } from "@/components/identity-block";
+import { IdentityBlock } from "@/components/identity-block";
 import {
 	ContactChipRow,
 	countSuffix,
@@ -40,6 +40,7 @@ import {
 	MetricStrip,
 	Panel,
 	PanelHeader,
+	ParentLinks,
 	RecordRow,
 	UnderlineTabs,
 	type UnderlineTab,
@@ -463,18 +464,18 @@ export function ProjectDetailBody({
 					name={displayProject.title}
 					meta={
 						viewClients ? (
-							<Pressable
-								onPress={() =>
-									shellNav
-										? shellNav.open({ kind: "client", id: project.clientId })
-										: router.push(`/clients/${project.clientId}`)
-								}
-								hitSlop={8}
-								accessibilityRole="button"
-								accessibilityLabel={`View client ${clientName ?? ""}`.trim()}
-							>
-								<IdentityMeta>{clientName ?? "View client"}</IdentityMeta>
-							</Pressable>
+							<ParentLinks
+								links={[
+									{
+										kind: "client",
+										label: clientName ?? "Client",
+										onPress: () =>
+											shellNav
+												? shellNav.open({ kind: "client", id: project.clientId })
+												: router.push(`/clients/${project.clientId}`),
+									},
+								]}
+							/>
 						) : undefined
 					}
 					renderStatus={(badge) => (
