@@ -70,7 +70,7 @@ export function isStackRoute(pathname: string): boolean {
  * crashing with "Maximum update depth exceeded".
  */
 export function isOverlayRoute(pathname: string): boolean {
-	if (/^\/(notifications|assistant|org-switch|community-qr)(\/|$)/.test(pathname)) {
+	if (/^\/(notifications|notification-preferences|sync-issues|sign-quote|assistant|org-switch|community-qr)(\/|$)/.test(pathname)) {
 		return true;
 	}
 	// Create sheets present as transparentModal like tasks/form; without this,

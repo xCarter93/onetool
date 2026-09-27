@@ -26,6 +26,8 @@ export interface ShellNav {
 	 * own entry point — a raw router.push("/profile") re-mounts and slides the
 	 * whole shell. */
 	openProfile: () => void;
+	/** Business details in the Profile pane; a route push would stack a second shell. */
+	openBusinessDetails: () => void;
 }
 
 const ShellNavContext = createContext<ShellNav | null>(null);

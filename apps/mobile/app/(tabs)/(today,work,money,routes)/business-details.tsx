@@ -59,7 +59,8 @@ function buildAddress(org: {
 // Reached from the Home "finish setup" prompt and the Profile screen (both
 // owner-gated). Saves via completeMetadata, which also sets isMetadataComplete,
 // clearing the Home prompt. Save lives in the iPhone tray; iPad has no tray.
-export default function BusinessDetailsScreen() {
+/** `onDone` replaces router.back() when the iPad shell hosts this in its Profile pane. */
+export default function BusinessDetailsScreen({ onDone }: { onDone?: () => void } = {}) {
 	const router = useRouter();
 	const t = useTokens();
 	const { device } = useDevice();
@@ -150,12 +151,13 @@ export default function BusinessDetailsScreen() {
 				longitude: address.longitude,
 				companySize,
 			});
-			router.back();
+			if (onDone) onDone();
+			else router.back();
 		} catch {
 			setFormError("Couldn't save your business details. Try again.");
 			setSubmitting(false);
 		}
-	}, [address, email, phone, website, companySize, completeMetadata, router]);
+	}, [address, email, phone, website, companySize, completeMetadata, router, onDone]);
 
 	const canSave = isOwner && org !== undefined && org !== null;
 	const disabledReason = submitting

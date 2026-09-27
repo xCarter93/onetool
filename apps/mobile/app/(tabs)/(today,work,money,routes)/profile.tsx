@@ -23,6 +23,7 @@ import { openExternal } from "@/lib/open-external";
 import { useOffline } from "@/lib/offline/OfflineProvider";
 import { clearPartition } from "@/lib/offline/store";
 import { discardPaymentWarning, signOutGuardMessage, summarizePendingOps } from "@/lib/offline/sync-copy";
+import { useShellNav } from "@/lib/shell-nav";
 
 const SUPPORT_EMAIL = "support@onetool.biz";
 
@@ -85,6 +86,7 @@ export default function ProfileScreen({
 	const { partition, ops } = useOffline();
 	const t = useTokens();
 	const isPane = headerMode === "pane";
+	const shellNav = useShellNav();
 
 	// TRUE ownership comes from the BACKEND (Convex), NOT the Clerk org:admin role —
 	// a co-admin who is not the org owner must take the member path.
@@ -305,7 +307,11 @@ export default function ProfileScreen({
 								<RecordRow
 									leading={<Building size={18} color={t.sub} strokeWidth={2} />}
 									title="Business details"
-									onPress={() => router.push("/business-details" as Href)}
+									onPress={() =>
+										shellNav
+											? shellNav.openBusinessDetails()
+											: router.push("/business-details" as Href)
+									}
 								/>
 							) : null}
 							{showQr ? (

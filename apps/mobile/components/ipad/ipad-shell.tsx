@@ -34,6 +34,7 @@ import MoneyScreen from "@/app/(tabs)/(money)/money";
 import RoutesScreen from "@/app/(tabs)/(routes)/routes";
 import ActivityScreen from "@/app/(tabs)/(today,work,money,routes)/activity";
 import ProfileScreen from "@/app/(tabs)/(today,work,money,routes)/profile";
+import BusinessDetailsScreen from "@/app/(tabs)/(today,work,money,routes)/business-details";
 import { AssistantHost } from "@/components/assistant/assistant-host";
 import {
 	AssistantInkHeader,
@@ -135,8 +136,10 @@ function IpadShellInner() {
 
 	// Rail nav swaps the content pane in place (local state → no router push, so
 	// the rail never re-mounts or slides). Also abandons any open create surface.
+	const [businessOpen, setBusinessOpen] = useState(false);
 	const onNavigate = (tab: SidebarTab) => {
 		setActiveTab(tab);
+		setBusinessOpen(false);
 	};
 
 	// In-pane navigation for detail bodies / list screens rendered INSIDE the
@@ -155,7 +158,12 @@ function IpadShellInner() {
 			},
 			openProfile: () => {
 				setActiveTab("profile");
-					},
+				setBusinessOpen(false);
+			},
+			openBusinessDetails: () => {
+				setActiveTab("profile");
+				setBusinessOpen(true);
+			},
 		}),
 		[select],
 	);
@@ -200,7 +208,7 @@ function IpadShellInner() {
 				<PadSidebar
 					activeTab={activeTab}
 					onNavigate={onNavigate}
-					onProfile={() => setActiveTab("profile")}
+					onProfile={() => shellNav.openProfile()}
 					onNotifications={() => router.push("/notifications" as Href)}
 				/>
 				<View style={[styles.canvas, { marginBottom: Math.max(insets.bottom, 8) }]}>
@@ -238,7 +246,11 @@ function IpadShellInner() {
 		return frame(
 			<View style={styles.contentPane}>
 				<ScreenBoundary key={`${settledOrientation}:${activeTab}`}>
-					<SinglePane tab={activeTab} />
+					<SinglePane
+						tab={activeTab}
+						businessOpen={businessOpen}
+						onCloseBusiness={() => setBusinessOpen(false)}
+					/>
 				</ScreenBoundary>
 			</View>,
 		);
@@ -324,7 +336,15 @@ function IpadShellInner() {
 // Single content pane (Today / Routes / Profile) — no list+detail split in either
 // orientation. Each body renders headerMode="pane" so the shell owns the one
 // header; Today renders its own page header.
-function SinglePane({ tab }: { tab: Exclude<ShellTab, SelectionTab> }) {
+function SinglePane({
+	tab,
+	businessOpen,
+	onCloseBusiness,
+}: {
+	tab: Exclude<ShellTab, SelectionTab>;
+	businessOpen: boolean;
+	onCloseBusiness: () => void;
+}) {
 	const t = useTokens();
 
 	if (tab === "today") {
@@ -341,6 +361,15 @@ function SinglePane({ tab }: { tab: Exclude<ShellTab, SelectionTab> }) {
 			<View style={[styles.slot, { backgroundColor: t.surface }]}>
 				<PaneHeader title="Routes" />
 				<RoutesScreen headerMode="pane" />
+			</View>
+		);
+	}
+
+	if (businessOpen) {
+		return (
+			<View style={[styles.slot, { backgroundColor: t.surface }]}>
+				<PaneHeader onBack={onCloseBusiness} />
+				<BusinessDetailsScreen onDone={onCloseBusiness} />
 			</View>
 		);
 	}

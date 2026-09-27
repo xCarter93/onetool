@@ -111,6 +111,9 @@ describe("isOverlayRoute", () => {
 	it("claims the transparentModal routes", () => {
 		for (const p of [
 			"/notifications",
+			"/notification-preferences",
+			"/sync-issues",
+			"/sign-quote",
 			"/assistant",
 			"/org-switch",
 			"/tasks/form",
