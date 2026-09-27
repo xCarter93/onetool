@@ -8,22 +8,23 @@ import {
 	View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { LinearGradient } from "expo-linear-gradient";
 import { StatusBar } from "expo-status-bar";
-import { frame, radii, spacing, useTokens } from "@/lib/theme";
+import { frame, hero, radii, spacing, useTokens } from "@/lib/theme";
 import { useDevice } from "@/lib/use-device";
 
 interface AuthScreenShellProps {
 	children: React.ReactNode;
 }
 
-// 3.0 sign-in: the frame's graphite rail as a full-screen ground (no frame
-// chrome, screen is outside the shell) with the wordmark up top and a white
-// 8px card holding the auth surface (SignInCard — custom Clerk-hooks flow;
-// the native AuthView was retired because its NavigationStack paints an
+// Sign-in: the launch hero photo under its ink scrim (the launch overlay uses the
+// same photo, so cold start cross-fades into this screen), the wordmark up top
+// and a white card holding the auth surface (SignInCard — custom Clerk-hooks
+// flow; the native AuthView was retired because its NavigationStack paints an
 // unreachable opaque systemBackground).
 export function AuthScreenShell({ children }: AuthScreenShellProps) {
 	const t = useTokens();
-	const { device } = useDevice();
+	const { device, width, height } = useDevice();
 	const insets = useSafeAreaInsets();
 	const isPad = device === "ipad";
 
@@ -35,12 +36,28 @@ export function AuthScreenShell({ children }: AuthScreenShellProps) {
 		/>
 	);
 
+	// Sized to the live window: absoluteFill didn't expand the <Image> on iPad.
+	const backdrop = (
+		<>
+			<StatusBar style="light" />
+			<Image
+				source={require("@/assets/launch-hero.png")}
+				style={[styles.backdrop, { width, height }]}
+				resizeMode="cover"
+			/>
+			<LinearGradient
+				colors={hero.scrim as unknown as [string, string, ...string[]]}
+				locations={[0, 0.34, 0.58, 1]}
+				pointerEvents="none"
+				style={[styles.backdrop, { width, height }]}
+			/>
+		</>
+	);
+
 	if (isPad) {
 		return (
 			<View style={[styles.root, { backgroundColor: frame.rail }]}>
-				{/* Graphite ground needs light status-bar glyphs; root layout's "auto"
-				    resumes when this screen unmounts after sign-in. */}
-				<StatusBar style="light" />
+				{backdrop}
 				<KeyboardAvoidingView
 					style={styles.flex}
 					behavior={Platform.OS === "ios" ? "padding" : undefined}
@@ -67,7 +84,7 @@ export function AuthScreenShell({ children }: AuthScreenShellProps) {
 
 	return (
 		<View style={[styles.root, { backgroundColor: frame.rail }]}>
-			<StatusBar style="light" />
+			{backdrop}
 			<View style={[styles.lockup, { top: insets.top + 48 }]} pointerEvents="none">
 				{wordmark}
 			</View>
@@ -95,6 +112,11 @@ export function AuthScreenShell({ children }: AuthScreenShellProps) {
 const styles = StyleSheet.create({
 	root: {
 		flex: 1,
+	},
+	backdrop: {
+		position: "absolute",
+		top: 0,
+		left: 0,
 	},
 	flex: {
 		flex: 1,
