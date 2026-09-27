@@ -59,7 +59,7 @@ interface FrameProps {
 	children: React.ReactNode;
 }
 
-function useCreateItems(): CreateMenuItem[] {
+export function useCreateItems(): CreateMenuItem[] {
 	const router = useRouter();
 	const { can, isLoading } = usePermissions();
 	const onlineAction = useOnlineAction();

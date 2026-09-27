@@ -1,20 +1,21 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { SafeAreaInsetsContext, useSafeAreaInsets } from "react-native-safe-area-context";
+import { StatusBar } from "expo-status-bar";
 import { X } from "lucide-react-native";
 import { Slot, usePathname, useRouter, type Href } from "expo-router";
 import { useDevice } from "@/lib/use-device";
-import { useTokens } from "@/lib/theme";
+import { frame, useTokens } from "@/lib/theme";
 import {
 	SelectionProvider,
 	useSelection,
+	type RecordRef,
 	type SelectionTab,
 } from "@/lib/selection-context";
-import {
-	PadSidebar,
-	type CreateItem,
-	type SidebarTab,
-} from "@/components/ipad/pad-sidebar";
+import { PadSidebar, type SidebarTab } from "@/components/ipad/pad-sidebar";
+import { IpadDock } from "@/components/ipad/ipad-dock";
+import { Notch, type NotchContent } from "@/components/frame/notch";
+import { useCreateItems } from "@/components/frame/phone-frame";
 import {
 	isOverlayRoute,
 	isStackRoute,
@@ -22,7 +23,6 @@ import {
 	tabFromPathname,
 	type ShellTab,
 } from "@/lib/shell-routes";
-import { DotGrid } from "@/components/ui";
 import { PaneDetailHost } from "@/components/ipad/pane-detail-host";
 import { PaneHeader } from "@/components/ipad/pane-header";
 import { ShellNavProvider, type ShellNav } from "@/lib/shell-nav";
@@ -41,40 +41,34 @@ import {
 import { buildScreenContext } from "@/lib/screen-context";
 import { usePermissions } from "@/lib/use-permissions";
 
-// ============================================================================
-// IpadShell — top-level iPad layout (gated on device === "ipad" in (tabs)/
-// _layout.tsx, AFTER the auth redirects). Mounts SelectionProvider BELOW the
-// Convex key={convexKey} boundary (only rendered from the iPad branch) so an
-// org switch remounts it and resets selection (T-26-04).
-//
-// IA (§6): the rail mirrors the iPhone dock — Today · Work · Money · Routes —
-// plus Activity, which the rail has room for and the dock does not. The
-// assistant is pinned at the rail bottom instead of a FAB. Clients/projects/
-// quotes/invoices are no longer rail tabs; they are record KINDS inside Work,
-// which is why selection carries {kind,id} (selection-context).
-//
-// Three panes own a detail view (Work, Money, Activity) and get the
-// master-detail treatment. Today and Routes are single panes in both
-// orientations.
-//
-// ROUTER-INTEGRATION LAYER:
-//   A usePathname() effect reconciles expo-router route state → the shell's local
-//   activeTab + SelectionProvider on every pathname change, so route-driven entry
-//   (notification deep link, push payload, detail cross-link) lands inside the
-//   shell rather than on a stale tab:
-//     /clients|projects|quote|invoice/[id]  → tab "work" + select that record
-//     list routes (/, /work, /routes, /activity, /profile) → set the tab, leave
-//       selection untouched (each pane's last selection persists — issue #11)
-//
-// STACK-ROUTE SLOT: for a full-screen stack route that is NOT a detail route
-// (e.g. /route-edit reached by a raw link), the shell renders expo-router's
-// <Slot /> full-width beside the rail so the pushed screen owns its own header.
-// ============================================================================
+// iPad frame: web's graphite sidebar, a rounded canvas with a notch, list and
+// detail panes side by side, and the assistant dock at the canvas foot. Mounted
+// below the Convex org boundary so an org switch resets selection. A pathname
+// effect reconciles route-driven entry (deep links, pushes) to the local tab
+// and selection; non-record stack routes render through <Slot /> in the canvas.
 
 const LIST_PANE_WIDTH = 330;
 
 // Panes with a list + detail split. Today and Routes have no detail view.
 const MASTER_DETAIL: readonly ShellTab[] = ["work", "money", "activity"];
+
+const NO_INSETS = { top: 0, right: 0, bottom: 0, left: 0 };
+
+const TAB_LABEL: Record<ShellTab, string> = {
+	today: "Today",
+	work: "Work",
+	money: "Money",
+	routes: "Routes",
+	activity: "Activity",
+	profile: "Profile",
+};
+
+const KIND_LABEL: Record<RecordRef["kind"], string> = {
+	client: "Client",
+	project: "Project",
+	quote: "Quote",
+	invoice: "Invoice",
+};
 
 const PANE_TITLE: Record<SelectionTab, string> = {
 	work: "Work",
@@ -92,7 +86,8 @@ function IpadShellInner() {
 	const { orientation } = useDevice();
 	const { state, select, clear } = useSelection();
 	const pathname = usePathname();
-	const { can, isLoading: permissionsLoading } = usePermissions();
+	const { isLoading: permissionsLoading } = usePermissions();
+	const insets = useSafeAreaInsets();
 
 	// activeTab is held in LOCAL STATE so a rail tap swaps only the content pane —
 	// the rail is a persistent frame, not a navigation push. A router.push() for
@@ -164,58 +159,15 @@ function IpadShellInner() {
 		[select],
 	);
 
-	// Rail create menu — the iPad counterpart of the iPhone speed-dial FAB. Same
-	// four record types, same "modify" gate; New client uses the shell-native
-	// in-pane surface rather than a route push, the rest push their stack route.
-	const createItems = useMemo<CreateItem[]>(() => {
-		const items: CreateItem[] = [];
-		if (can("projects", "modify")) {
-			items.push({
-				key: "project",
-				label: "New project",
-				run: () => router.push("/project/new" as Href),
-			});
-		}
-		if (can("tasks", "modify")) {
-			items.push({
-				key: "task",
-				label: "New task",
-				run: () => router.push("/tasks/form" as Href),
-			});
-		}
-		if (can("clients", "modify")) {
-			items.push({
-				key: "client",
-				label: "New client",
-				run: () => router.push("/client/new" as Href),
-			});
-		}
-		if (can("quotes", "modify")) {
-			items.push({
-				key: "quote",
-				label: "New quote",
-				run: () => router.push("/quote/new" as Href),
-			});
-		}
-		return items;
-	}, [can, router, shellNav]);
+	const createItems = useCreateItems();
 
-	const sidebar = (
-		<PadSidebar
-			activeTab={activeTab}
-			onNavigate={onNavigate}
-			createItems={permissionsLoading ? [] : createItems}
-			onAssistant={() => {
-				if (orientation === "landscape") {
-					setAssistantOpen((open) => !open);
-				} else {
-					router.push("/assistant" as Href);
-				}
-			}}
-			onProfile={() => setActiveTab("profile")}
-			onNotifications={() => router.push("/notifications" as Href)}
-		/>
-	);
+	const openAssistant = () => {
+		if (orientation === "landscape") {
+			setAssistantOpen((open) => !open);
+		} else {
+			router.push("/assistant" as Href);
+		}
+	};
 
 	// Assistant context: the active mode plus the pane's current selection —
 	// ids only, never data values (same rule as web's use-screen-context).
@@ -227,23 +179,37 @@ function IpadShellInner() {
 			: undefined
 	);
 
+	const tabLabel = TAB_LABEL[activeTab];
+	const notch: NotchContent = selectionRef
+		? { kind: "crumb", parent: tabLabel, title: KIND_LABEL[selectionRef.kind] }
+		: { kind: "label", text: tabLabel };
+
 	const frame = (children: React.ReactNode) => (
 		<ShellNavProvider value={shellNav}>
-			<View style={[styles.root, { backgroundColor: t.surface }]}>
-				{/* Shell canvas, matching web's .workspace-canvas — covers the rail and
-				    inter-pane gaps; panes with opaque roots paint their own grid over it. */}
-				<DotGrid style={StyleSheet.absoluteFill} />
-				{sidebar}
-				<View style={styles.mainColumn}>
-					<View style={styles.mainRow}>
-						{children}
-						{assistantOpen && orientation === "landscape" ? (
-							<AssistantPanel
-								screenContext={assistantContext}
-								onClose={() => setAssistantOpen(false)}
-							/>
-						) : null}
-					</View>
+			<View style={[styles.root, { paddingTop: insets.top }]}>
+				<StatusBar style="light" />
+				<PadSidebar
+					activeTab={activeTab}
+					onNavigate={onNavigate}
+					onProfile={() => setActiveTab("profile")}
+					onNotifications={() => router.push("/notifications" as Href)}
+				/>
+				<View style={[styles.canvas, { marginBottom: Math.max(insets.bottom, 8) }]}>
+					<SafeAreaInsetsContext.Provider value={NO_INSETS}>
+						<View style={styles.mainRow}>
+							{children}
+							{assistantOpen && orientation === "landscape" ? (
+								<AssistantPanel
+									screenContext={assistantContext}
+									onClose={() => setAssistantOpen(false)}
+								/>
+							) : null}
+						</View>
+						{assistantOpen && orientation === "landscape" ? null : (
+							<IpadDock onAssistant={openAssistant} createItems={permissionsLoading ? [] : createItems} />
+						)}
+					</SafeAreaInsetsContext.Provider>
+					<Notch content={notch} />
 				</View>
 			</View>
 		</ShellNavProvider>
@@ -340,16 +306,13 @@ function IpadShellInner() {
 
 // Single content pane (Today / Routes / Profile) — no list+detail split in either
 // orientation. Each body renders headerMode="pane" so the shell owns the one
-// header; Today is the exception, its ink hero IS its header.
+// header; Today renders its own page header.
 function SinglePane({ tab }: { tab: Exclude<ShellTab, SelectionTab> }) {
 	const t = useTokens();
 
 	if (tab === "today") {
-		// Full-bleed canvas: the ink hero spans the pane edge to edge, so the grid
-		// is painted here and TodayScreen's pane mode caps only its own column.
 		return (
 			<View style={[styles.slot, { backgroundColor: t.bg }]}>
-				<DotGrid style={StyleSheet.absoluteFill} />
 				<TodayScreen headerMode="pane" />
 			</View>
 		);
@@ -434,10 +397,14 @@ const styles = StyleSheet.create({
 	root: {
 		flex: 1,
 		flexDirection: "row",
+		backgroundColor: frame.rail,
 	},
-	mainColumn: {
+	canvas: {
 		flex: 1,
-		flexDirection: "column",
+		marginRight: frame.canvasInset,
+		borderRadius: frame.canvasRadius,
+		backgroundColor: frame.canvas,
+		overflow: "hidden",
 	},
 	mainRow: {
 		flex: 1,
