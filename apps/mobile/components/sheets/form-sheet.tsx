@@ -61,7 +61,10 @@ export function FormSheet({
 			snapPoints={[snapPoint]}
 			enablePanDownToClose={!dirty}
 			handleComponent={null}
-			onDismiss={onDismiss}
+			// The native sheet also reports a dismiss we started by closing it; only a user swipe counts.
+			onDismiss={() => {
+				if (visible) onDismiss();
+			}}
 			backgroundStyle={{ backgroundColor: t.bg }}
 		>
 			{children}
