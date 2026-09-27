@@ -17,6 +17,7 @@ export function DocumentHeaderCard({
 	clientName,
 	onClientPress,
 	subline,
+	menu,
 	children,
 }: {
 	/** Record number, e.g. "Q-000128" / "INV-000456". */
@@ -29,6 +30,8 @@ export function DocumentHeaderCard({
 	onClientPress?: () => void;
 	/** Small line under the client link (e.g. overdue notice, valid-until). */
 	subline?: ReactNode;
+	/** Overflow menu, placed after the status badge. */
+	menu?: ReactNode;
 	children?: ReactNode;
 }) {
 	const t = useTokens();
@@ -40,6 +43,7 @@ export function DocumentHeaderCard({
 				) : null}
 				<View style={styles.spacer} />
 				<Badge status={status} big />
+				{menu ? <View style={styles.menu}>{menu}</View> : null}
 			</View>
 			<View style={styles.amountWrap}>
 				<MoneyAmount amount={amount} size={40} />
@@ -93,6 +97,8 @@ const styles = StyleSheet.create({
 		letterSpacing: 0.96,
 	},
 	spacer: { flex: 1 },
+	// Keeps the 44pt target from pushing the amount down past the badge row.
+	menu: { marginVertical: -8 },
 	amountWrap: {
 		marginTop: 10,
 	},

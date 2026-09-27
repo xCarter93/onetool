@@ -508,14 +508,13 @@ export function InvoiceDetailBody({
 							</Text>
 						)
 					}
+					menu={
+						headerMode === "root" ? (
+							<OverflowMenuButton actions={overflowActions} onAction={onAction} />
+						) : undefined
+					}
 				>
-					{headerMode === "root" ? (
-						overflowActions.length > 0 ? (
-							<View style={styles.headerMenuRow}>
-								<OverflowMenuButton actions={overflowActions} onAction={onAction} />
-							</View>
-						) : null
-					) : actions.length > 0 ? (
+					{headerMode === "root" ? null : actions.length > 0 ? (
 						<View style={styles.actionsWrap}>
 							<QuickActionRow actions={actions} onAction={onAction} />
 						</View>
@@ -906,12 +905,6 @@ const styles = StyleSheet.create({
 	flex: { flex: 1 },
 
 	actionsWrap: { marginTop: 14 },
-	headerMenuRow: {
-		position: "absolute",
-		top: 18,
-		right: 18,
-	},
-
 	section: { gap: 10 },
 	staleHint: {
 		fontFamily: fontFamily.regular,

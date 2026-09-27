@@ -639,14 +639,13 @@ export function QuoteDetailBody({
 							</Text>
 						) : undefined
 					}
+					menu={
+						headerMode === "root" ? (
+							<OverflowMenuButton actions={overflowActions} onAction={onAction} />
+						) : undefined
+					}
 				>
-					{headerMode === "root" ? (
-						overflowActions.length > 0 ? (
-							<View style={styles.headerMenuRow}>
-								<OverflowMenuButton actions={overflowActions} onAction={onAction} />
-							</View>
-						) : null
-					) : (
+					{headerMode === "root" ? null : (
 						<View style={styles.actionsWrap}>
 							<QuickActionRow actions={actions} onAction={onAction} />
 						</View>
@@ -1029,12 +1028,6 @@ const styles = StyleSheet.create({
 		marginTop: 5,
 	},
 	actionsWrap: { marginTop: 14 },
-	headerMenuRow: {
-		position: "absolute",
-		top: 18,
-		right: 18,
-	},
-
 	// Mirrors the client/project detail "Team chat" affordance (same shape).
 	teamChat: {
 		flexDirection: "row",
