@@ -279,36 +279,34 @@ function IpadShellInner() {
 
 	// Portrait: one pane. The list fills it until something is selected, then the
 	// detail takes over full-width with a back affordance that clears selection.
-	if (orientation === "portrait") {
-		return frame(
-			<View style={styles.contentPane}>
-				{selected ? (
-					<ScreenBoundary key={`${pane}:${selected.kind}:${selected.id}`}>
+	// Landscape: fixed list pane + flex detail, no back. Both orientations keep
+	// the same tree so rotating restyles the panes instead of rebuilding them,
+	// which kept the list's search and scroll and cost seconds.
+	const portrait = orientation === "portrait";
+	return frame(
+		<>
+			<View
+				style={
+					portrait
+						? selected
+							? styles.hidden
+							: styles.contentPane
+						: [styles.listPane, { borderRightColor: t.line }]
+				}
+			>
+				{listPane}
+			</View>
+			{portrait && !selected ? null : (
+				<View style={portrait ? styles.contentPane : styles.detailPane}>
+					<ScreenBoundary key={selected ? `${pane}:${selected.kind}:${selected.id}` : pane}>
 						<PaneDetailHost
 							context={pane}
 							record={selected}
-							onBack={() => clear(pane)}
+							onBack={portrait ? () => clear(pane) : undefined}
 						/>
 					</ScreenBoundary>
-				) : (
-					listPane
-				)}
-			</View>,
-		);
-	}
-
-	// Landscape: fixed list pane + flex detail. No back affordance — the list is
-	// always visible, so there is nothing to go back to.
-	return frame(
-		<>
-			<View style={[styles.listPane, { borderRightColor: t.line }]}>
-				{listPane}
-			</View>
-			<View style={styles.detailPane}>
-				<ScreenBoundary key={selected ? `${pane}:${selected.kind}:${selected.id}` : pane}>
-					<PaneDetailHost context={pane} record={selected} />
-				</ScreenBoundary>
-			</View>
+				</View>
+			)}
 		</>,
 	);
 }
@@ -429,6 +427,9 @@ const styles = StyleSheet.create({
 		flexShrink: 0,
 		borderRightWidth: 1,
 		overflow: "hidden",
+	},
+	hidden: {
+		display: "none",
 	},
 	detailPane: {
 		flex: 1,
