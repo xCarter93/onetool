@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import { usePathname, useRootNavigationState, useRouter, type Href } from "expo-router";
@@ -10,7 +10,7 @@ import {
 	type TabNavigationState,
 } from "expo-router/react-navigation";
 import { SafeAreaInsetsContext, useSafeAreaInsets } from "react-native-safe-area-context";
-import { KeyboardAvoidingView, useKeyboardState } from "react-native-keyboard-controller";
+import { KeyboardAvoidingView, KeyboardEvents, useKeyboardState } from "react-native-keyboard-controller";
 import {
 	Briefcase,
 	CalendarCheck,
@@ -122,6 +122,13 @@ export function PhoneFrame({ state, navigation, children }: FrameProps) {
 	// A hardware keyboard focuses the field without raising the software one; keep the tab row then.
 	const keyboardUp = useKeyboardState((k) => k.isVisible);
 	const typing = composerFocused && keyboardUp;
+	// Disabling the avoiding view mid-hide freezes its padding at keyboard height, so stay on until the keyboard is gone.
+	const [avoiding, setAvoiding] = useState(false);
+	if (typing && !avoiding) setAvoiding(true);
+	useEffect(() => {
+		const sub = KeyboardEvents.addListener("keyboardDidHide", () => setAvoiding(false));
+		return () => sub.remove();
+	}, []);
 
 	const rootState = useRootNavigationState() as AnyState | undefined;
 	const tabRoute = state.routes[state.index];
@@ -194,7 +201,7 @@ export function PhoneFrame({ state, navigation, children }: FrameProps) {
 	return (
 		<KeyboardAvoidingView
 			behavior="padding"
-			enabled={typing}
+			enabled={avoiding}
 			style={[styles.rail, { paddingTop: insets.top }]}
 		>
 			<StatusBar style="light" />

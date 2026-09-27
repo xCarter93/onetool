@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from "react";
 import { Alert, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
-import { MenuView, type MenuAction } from "@expo/ui/community/menu";
+import { Button, Host, Menu, RNHostView, Section } from "@expo/ui/swift-ui";
 import { Plus, Search, Sparkles, X } from "lucide-react-native";
 import { fontFamily, frame } from "@/lib/theme";
 import {
@@ -12,7 +12,7 @@ import {
 export interface CreateMenuItem {
 	key: string;
 	label: string;
-	symbol: MenuAction["image"];
+	symbol: React.ComponentProps<typeof Button>["systemImage"];
 	run: () => void;
 }
 
@@ -34,22 +34,29 @@ function CreateButton({ items }: { items: CreateMenuItem[] }) {
 	// SwiftUI host keeps a stale origin when the tier moves; a plain RN slot pins it.
 	return (
 		<View style={styles.slot}>
-			<MenuView
-				title="Create"
-				onPressAction={({ nativeEvent }) =>
-					items.find((i) => i.key === nativeEvent.event)?.run()
-				}
-				actions={items.map((i) => ({ id: i.key, title: i.label, image: i.symbol }))}
-			>
-				<View
-					style={styles.square}
-					accessible
-					accessibilityRole="button"
-					accessibilityLabel="Create"
+			{/* Built on Host directly: community MenuView can't opt out of SwiftUI's keyboard avoidance, which lifts the button. */}
+			<Host matchContents ignoreSafeArea="keyboard">
+				<Menu
+					label={
+						<RNHostView matchContents>
+							<View
+								style={styles.square}
+								accessible
+								accessibilityRole="button"
+								accessibilityLabel="Create"
+							>
+								<Plus size={20} color={frame.railText} strokeWidth={2.2} />
+							</View>
+						</RNHostView>
+					}
 				>
-					<Plus size={20} color={frame.railText} strokeWidth={2.2} />
-				</View>
-			</MenuView>
+					<Section title="Create">
+						{items.map((i) => (
+							<Button key={i.key} label={i.label} systemImage={i.symbol} onPress={i.run} />
+						))}
+					</Section>
+				</Menu>
+			</Host>
 		</View>
 	);
 }
