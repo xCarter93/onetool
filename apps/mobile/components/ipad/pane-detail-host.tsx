@@ -1,10 +1,10 @@
 import React from "react";
 import type { RecordRef, SelectionTab } from "@/lib/selection-context";
 import { DetailPlaceholder } from "@/components/ipad/detail-placeholder";
-import { ClientDetailBody } from "@/app/(tabs)/clients/[clientId]";
-import { ProjectDetailBody } from "@/app/(tabs)/projects/[projectId]";
-import { QuoteDetailBody } from "@/app/quote/[id]";
-import { InvoiceDetailBody } from "@/app/invoice/[id]";
+import { ClientDetailBody } from "@/app/(tabs)/(today,work,money,routes)/clients/[clientId]";
+import { ProjectDetailBody } from "@/app/(tabs)/(today,work,money,routes)/projects/[projectId]";
+import { QuoteDetailBody } from "@/app/(tabs)/(today,work,money,routes)/quote/[id]";
+import { InvoiceDetailBody } from "@/app/(tabs)/(today,work,money,routes)/invoice/[id]";
 
 // ============================================================================
 // PaneDetailHost — the ONE place a record kind maps to a detail body. Both

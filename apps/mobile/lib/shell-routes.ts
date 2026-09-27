@@ -79,3 +79,22 @@ export function isOverlayRoute(pathname: string): boolean {
 	if (/^\/(project|quote)\/new(\/|$)/.test(pathname)) return true;
 	return /^\/tasks\/(form|new)(\/|$)/.test(pathname);
 }
+
+const PAGE_TITLES: [RegExp, string][] = [
+	[/^\/clients\/new$/, "New client"],
+	[/^\/clients\/[^/]+$/, "Client"],
+	[/^\/clients$/, "Clients"],
+	[/^\/projects\/[^/]+$/, "Project"],
+	[/^\/projects$/, "Projects"],
+	[/^\/quote\/[^/]+$/, "Quote"],
+	[/^\/invoice\/[^/]+$/, "Invoice"],
+	[/^\/activity$/, "Activity"],
+	[/^\/profile$/, "Profile"],
+	[/^\/business-details$/, "Business details"],
+	[/^\/route-edit$/, "Route"],
+];
+
+/** Breadcrumb title for a pushed screen inside the phone frame; null for tab roots. */
+export function pageTitleFromPathname(pathname: string): string | null {
+	return PAGE_TITLES.find(([re]) => re.test(pathname))?.[1] ?? null;
+}

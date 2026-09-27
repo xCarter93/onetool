@@ -116,7 +116,7 @@ export default function NewQuoteSheet() {
 	// `can` is false while permissions resolve — wait before hiding. A role that
 	// can't create quotes can still deep-link here, so leave, rather than leaving
 	// a blank sheet with no way out.
-	if (!permsLoading && !canCreate) return <Redirect href="/(tabs)/money" />;
+	if (!permsLoading && !canCreate) return <Redirect href="/money" />;
 
 	const content = (
 		<>

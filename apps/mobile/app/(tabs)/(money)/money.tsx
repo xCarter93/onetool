@@ -30,7 +30,7 @@ import { NeedsAttention } from "@/components/money/needs-attention";
 import { RecentPayments } from "@/components/money/recent-payments";
 import { useCachedQuery } from "@/lib/offline/useCachedQuery";
 
-const WORK_TAB: Href = "/(tabs)/work" as Href;
+const WORK_TAB: Href = "/work" as Href;
 
 // The shell selection shape for Money. Mirrors selection-context's
 // state.money: { kind: "quote" | "invoice"; id: string } | null.
@@ -90,7 +90,7 @@ export default function MoneyScreen({
 	// iPad keeps every cell and view-all static this slice: the panes do not
 	// cross-navigate to the Work tab.
 	const browseWork = (kind: "quote" | "invoice") =>
-		router.push(`/(tabs)/work?kind=${kind}` as Href);
+		router.push(`/work?kind=${kind}` as Href);
 	const onPressAwaiting = isPane ? undefined : () => browseWork("quote");
 	const onPressUnpaid = isPane ? undefined : () => browseWork("invoice");
 

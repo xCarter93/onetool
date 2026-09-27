@@ -44,7 +44,7 @@ import { useScheduleView } from "@/lib/useScheduleView";
 import { ScheduleControls } from "@/components/today/schedule-controls";
 
 const TASK_FORM: Href = "/tasks/form" as Href;
-const WORK: Href = "/(tabs)/work" as Href;
+const WORK: Href = "/work" as Href;
 
 /** iPad pane: Today reads better as a column than a 900pt-wide agenda row. */
 const TODAY_MAX_WIDTH = 760;
@@ -293,7 +293,7 @@ export default function TodayScreen({
 			);
 		}
 		if (shellNav) return shellNav.browse(only.kind);
-		router.push(`/(tabs)/work?kind=${only.kind}` as Href);
+		router.push(`/work?kind=${only.kind}` as Href);
 	};
 
 	// Queues the toggle; the overlay above reflects it immediately. `tasks.complete`

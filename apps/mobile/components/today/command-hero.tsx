@@ -16,11 +16,10 @@ import {
 	InkIconButton,
 	InkOrgChip,
 } from "@/components/ink-header-cluster";
-import { SyncStatusRow } from "@/components/offline/sync-status-row";
 import { fontFamily, hero, tokens, tracking } from "@/lib/theme";
 import { requestSearchFocus } from "@/lib/search-focus";
 
-const WORK: Href = "/(tabs)/work" as Href;
+const WORK: Href = "/work" as Href;
 
 export interface HeroStat {
 	value: string;
@@ -139,7 +138,6 @@ export function CommandHero({
 					<InkHeaderCluster />
 				</View>
 			)}
-			<SyncStatusRow style={styles.syncRow} />
 
 			{/* Greeting */}
 			<Text style={[styles.eyebrow, compact && styles.eyebrowCompact]}>
@@ -189,9 +187,6 @@ export function CommandHero({
 }
 
 const styles = StyleSheet.create({
-	syncRow: {
-		marginTop: 8,
-	},
 	band: {
 		backgroundColor: hero.ink,
 		borderBottomLeftRadius: hero.radius,

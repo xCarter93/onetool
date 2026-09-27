@@ -8,19 +8,19 @@ describe("mapWebPathToMobileRoute", () => {
 	});
 
 	it("maps list pages to the Work tab", () => {
-		expect(mapWebPathToMobileRoute("/projects")).toBe("/(tabs)/work");
-		expect(mapWebPathToMobileRoute("/clients")).toBe("/(tabs)/work");
-		expect(mapWebPathToMobileRoute("/quotes")).toBe("/(tabs)/work");
-		expect(mapWebPathToMobileRoute("/invoices")).toBe("/(tabs)/work");
+		expect(mapWebPathToMobileRoute("/projects")).toBe("/work");
+		expect(mapWebPathToMobileRoute("/clients")).toBe("/work");
+		expect(mapWebPathToMobileRoute("/quotes")).toBe("/work");
+		expect(mapWebPathToMobileRoute("/invoices")).toBe("/work");
 	});
 
 	it("maps routing to the mobile Routes tab", () => {
-		expect(mapWebPathToMobileRoute("/routing")).toBe("/(tabs)/routes");
+		expect(mapWebPathToMobileRoute("/routing")).toBe("/routes");
 	});
 
 	it("maps client and project detail ids into the tabs group", () => {
-		expect(mapWebPathToMobileRoute("/clients/abc123")).toBe("/(tabs)/clients/abc123");
-		expect(mapWebPathToMobileRoute("/projects/xyz_789")).toBe("/(tabs)/projects/xyz_789");
+		expect(mapWebPathToMobileRoute("/clients/abc123")).toBe("/clients/abc123");
+		expect(mapWebPathToMobileRoute("/projects/xyz_789")).toBe("/projects/xyz_789");
 	});
 
 	it("maps quote and invoice detail ids to their top-level detail routes", () => {

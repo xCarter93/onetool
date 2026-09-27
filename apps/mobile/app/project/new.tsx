@@ -115,7 +115,7 @@ export default function NewProjectSheet() {
 	// `can` is false while permissions resolve, so wait before hiding — otherwise
 	// every open flashes an empty sheet. Once it resolves to "no", leave rather
 	// than sitting on a blank sheet the user can't dismiss.
-	if (!permsLoading && !canCreate) return <Redirect href="/(tabs)/projects" />;
+	if (!permsLoading && !canCreate) return <Redirect href="/projects" />;
 
 	const content = (
 		<>

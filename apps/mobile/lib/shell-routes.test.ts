@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+	pageTitleFromPathname,
 	isOverlayRoute,
 	isStackRoute,
 	refFromPathname,
@@ -145,5 +146,22 @@ describe("isOverlayRoute", () => {
 	it("does not match a route that merely starts with an overlay's letters", () => {
 		expect(isOverlayRoute("/assistants")).toBe(false);
 		expect(isOverlayRoute("/tasks")).toBe(false);
+	});
+});
+
+describe("pageTitleFromPathname", () => {
+	it("names record and pushed pages", () => {
+		expect(pageTitleFromPathname("/clients/abc")).toBe("Client");
+		expect(pageTitleFromPathname("/clients/new")).toBe("New client");
+		expect(pageTitleFromPathname("/quote/q1")).toBe("Quote");
+		expect(pageTitleFromPathname("/invoice/i1")).toBe("Invoice");
+		expect(pageTitleFromPathname("/projects/p1")).toBe("Project");
+		expect(pageTitleFromPathname("/activity")).toBe("Activity");
+	});
+
+	it("returns null for tab roots", () => {
+		for (const root of ["/", "/work", "/money", "/routes"]) {
+			expect(pageTitleFromPathname(root)).toBeNull();
+		}
 	});
 });

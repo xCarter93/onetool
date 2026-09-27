@@ -2,21 +2,21 @@ import { useEffect, useMemo, useState } from "react";
 import { Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from "react-native";
 import { useRouter, type Href } from "expo-router";
 import { ChevronRight } from "lucide-react-native";
-import { fontFamily, hero, type } from "@/lib/theme";
+import { fontFamily, frame } from "@/lib/theme";
 import { useOffline } from "@/lib/offline/OfflineProvider";
 import { useOldestCachedRead } from "@/lib/offline/useCachedQuery";
 import { syncStatusLine, type SyncLineTone } from "@/lib/offline/sync-copy";
 
 const DOT: Record<SyncLineTone, string> = {
-	faint: hero.textDim,
-	sub: hero.textMid,
-	frostedInk: hero.statAccent,
-	success: hero.statusSuccess,
-	warning: hero.statusWarning,
-	danger: hero.alertDot,
+	faint: frame.railMuted,
+	sub: frame.railText,
+	frostedInk: frame.railAccent,
+	success: frame.railSuccess,
+	warning: frame.railWarning,
+	danger: frame.railDanger,
 };
 
-/** Sync/offline state as a row on the ink header band; renders nothing when all is quiet. */
+/** Sync/offline state as a line on the graphite rail; renders nothing when all is quiet. */
 export function SyncStatusRow({ style }: { style?: StyleProp<ViewStyle> }) {
 	const router = useRouter();
 	const { online, summary } = useOffline();
@@ -44,13 +44,13 @@ export function SyncStatusRow({ style }: { style?: StyleProp<ViewStyle> }) {
 		<>
 			<View style={[styles.dot, { backgroundColor: DOT[line.tone] }]} />
 			<Text
-				style={[styles.text, { color: line.tappable ? hero.textStrong : hero.textMid }]}
+				style={[styles.text, { color: line.tappable ? frame.railText : frame.railMuted }]}
 				accessibilityLiveRegion="polite"
 				numberOfLines={1}
 			>
 				{line.text}
 			</Text>
-			{line.tappable ? <ChevronRight size={14} color={hero.textMid} strokeWidth={2} /> : null}
+			{line.tappable ? <ChevronRight size={14} color={frame.railMuted} strokeWidth={2} /> : null}
 		</>
 	);
 
@@ -59,7 +59,7 @@ export function SyncStatusRow({ style }: { style?: StyleProp<ViewStyle> }) {
 			onPress={() => router.push("/sync-issues" as Href)}
 			accessibilityRole="button"
 			accessibilityLabel={line.text}
-			hitSlop={14}
+			hitSlop={10}
 			style={[styles.row, style]}
 		>
 			{content}
@@ -74,8 +74,7 @@ const styles = StyleSheet.create({
 		flexDirection: "row",
 		alignItems: "center",
 		gap: 6,
-		alignSelf: "flex-start",
-		maxWidth: "100%",
+		minHeight: 20,
 	},
 	dot: {
 		width: 6,
@@ -85,6 +84,6 @@ const styles = StyleSheet.create({
 	text: {
 		flexShrink: 1,
 		fontFamily: fontFamily.medium,
-		fontSize: type.xs,
+		fontSize: 12,
 	},
 });

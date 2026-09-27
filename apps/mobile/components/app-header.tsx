@@ -221,7 +221,7 @@ export function AppHeader({
 				</Pressable>
 
 				<Pressable
-					onPress={() => router.push("/(tabs)/profile")}
+					onPress={() => router.push("/profile")}
 					style={styles.bareBtn}
 					accessibilityRole="button"
 					accessibilityLabel="Profile"

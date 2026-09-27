@@ -230,17 +230,11 @@ export default function RootLayout() {
 							<Stack.Screen name="(auth)" />
 							<Stack.Screen name="(onboarding)" />
 							<Stack.Screen name="index" />
-							{/* Shared document details — root-level so back returns to the
-							    origin tab (client/project/money), not the Money stack. */}
-							<Stack.Screen name="quote/[id]" />
-							<Stack.Screen name="invoice/[id]" />
-							{/* Owner-only business-profile editor (reached from Home
-							    prompt + Profile). Root-level so back returns to origin. */}
-							<Stack.Screen name="business-details" />
-							{/* Manual route builder — create/edit, pushed from Routes tab. */}
-							<Stack.Screen name="route-edit" />
-							{/* In-person quote signature capture (Slice 3). */}
-							<Stack.Screen name="sign-quote" />
+							{/* In-person signing is full screen, outside the frame. */}
+							<Stack.Screen
+								name="sign-quote"
+								options={{ presentation: "fullScreenModal", headerShown: false }}
+							/>
 							{/* Community-page QR panel. NOT the formSheet idiom the other
 							    root modals use — the screen goes full-bleed ink and drives
 							    the screen to full brightness so a customer can scan it, so

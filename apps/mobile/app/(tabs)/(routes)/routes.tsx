@@ -47,7 +47,7 @@ import { todayDateId, utcMsFromDateId } from "@/lib/date";
 //
 // headerMode "pane" = the iPad shell provides its own PaneHeader.
 
-const WORK_TAB: Href = "/(tabs)/work" as Href;
+const WORK_TAB: Href = "/work" as Href;
 
 // Same search jump the other tab roots carry in their ink band. Module scope —
 // it closes over the imperative `router`, so it needs no hook and both the map

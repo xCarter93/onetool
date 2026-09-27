@@ -13,8 +13,8 @@ import { fontFamily, hero, useTokens } from "@/lib/theme";
 import { useNotificationData } from "@/lib/use-notification-data";
 
 const NOTIFICATIONS: Href = "/notifications" as Href;
-const ACTIVITY: Href = "/(tabs)/activity" as Href;
-const PROFILE: Href = "/(tabs)/profile" as Href;
+const ACTIVITY: Href = "/activity" as Href;
+const PROFILE: Href = "/profile" as Href;
 const ORG_SWITCH: Href = "/org-switch" as Href;
 
 function initialsFrom(name?: string | null, email?: string | null): string {

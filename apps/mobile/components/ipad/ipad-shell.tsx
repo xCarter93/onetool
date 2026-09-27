@@ -27,13 +27,13 @@ import { PaneDetailHost } from "@/components/ipad/pane-detail-host";
 import { PaneHeader } from "@/components/ipad/pane-header";
 import { ShellNavProvider, type ShellNav } from "@/lib/shell-nav";
 import type { WorkChipKind } from "@/lib/work-search";
-import TodayScreen from "@/app/(tabs)/index";
-import WorkScreen from "@/app/(tabs)/work";
-import MoneyScreen from "@/app/(tabs)/money/index";
-import RoutesScreen from "@/app/(tabs)/routes";
-import ActivityScreen from "@/app/(tabs)/activity";
-import ProfileScreen from "@/app/(tabs)/profile";
-import { ClientCreateBody } from "@/app/(tabs)/clients/new";
+import TodayScreen from "@/app/(tabs)/(today)/index";
+import WorkScreen from "@/app/(tabs)/(work)/work";
+import MoneyScreen from "@/app/(tabs)/(money)/money";
+import RoutesScreen from "@/app/(tabs)/(routes)/routes";
+import ActivityScreen from "@/app/(tabs)/(today,work,money,routes)/activity";
+import ProfileScreen from "@/app/(tabs)/(today,work,money,routes)/profile";
+import { ClientCreateBody } from "@/app/(tabs)/(today,work,money,routes)/clients/new";
 import { AssistantHost } from "@/components/assistant/assistant-host";
 import {
 	AssistantInkHeader,
