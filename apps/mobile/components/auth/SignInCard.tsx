@@ -1,7 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import {
 	ActivityIndicator,
-	Image,
 	Linking,
 	Pressable,
 	StyleSheet,
@@ -156,21 +155,9 @@ export function SignInCard() {
 		}
 	};
 
-	// Brand mark shared by both steps — the wordmark lives in the shell's lockup;
-	// the card carries just the glyph.
-	const brandMark = (
-		<Image
-			source={require("@/assets/OneTool-mark.png")}
-			style={styles.brandMark}
-			resizeMode="contain"
-			accessibilityElementsHidden
-		/>
-	);
-
 	if (step === "code") {
 		return (
 			<View>
-				{brandMark}
 				<Text style={[styles.heading, { color: t.ink }]}>Check your email</Text>
 				<Text style={[styles.sub, { color: t.sub }]}>
 					Enter the 6-digit code we sent to {email.trim().toLowerCase()}
@@ -240,7 +227,6 @@ export function SignInCard() {
 
 	return (
 		<View>
-			{brandMark}
 			<Text style={[styles.heading, { color: t.ink }]}>Welcome back</Text>
 			<Text style={[styles.sub, { color: t.sub }]}>
 				Sign in to continue to OneTool
@@ -398,11 +384,6 @@ function GoogleMark() {
 }
 
 const styles = StyleSheet.create({
-	brandMark: {
-		width: 40,
-		height: 40,
-		marginBottom: 14,
-	},
 	heading: {
 		fontFamily: fontFamily.semibold,
 		fontSize: 22,
