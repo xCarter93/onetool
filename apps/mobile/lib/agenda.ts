@@ -500,17 +500,17 @@ export function isWeekend(dayMs: number): boolean {
 	return dow === 0 || dow === 6;
 }
 
-/** One-line Tomorrow peek: "3 tasks · first stop 8:30 AM" style summary parts. */
-export function tomorrowPeek(
+/** One-line peek at the day after `dayMs`: "3 jobs · first at 8:30 AM" style summary parts. */
+export function nextDayPeek(
 	tasks: AgendaTask[],
 	projects: readonly AgendaProject[],
-	todayMs: number,
+	dayMs: number,
 ): { count: number; firstStart?: string } {
-	const tomorrow = utcDayStartMs(todayMs) + DAY_MS;
+	const next = utcDayStartMs(dayMs) + DAY_MS;
 	const onDay = tasks.filter(
 		(t) =>
 			t.date !== undefined &&
-			utcDayStartMs(t.date) === tomorrow &&
+			utcDayStartMs(t.date) === next &&
 			!DONE.has(t.status ?? ""),
 	);
 	const timed = onDay
@@ -519,7 +519,7 @@ export function tomorrowPeek(
 		.sort((a, b) => a - b);
 	const first = timed[0];
 	return {
-		count: onDay.length + projectsForDay(projects, tomorrow).length,
+		count: onDay.length + projectsForDay(projects, next).length,
 		firstStart:
 			first === undefined
 				? undefined

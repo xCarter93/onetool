@@ -15,7 +15,7 @@ import { useScreenChrome } from "@/lib/shell-chrome";
 import { useShellNav } from "@/lib/shell-nav";
 import { WeekStrip } from "@/components/today/week-strip";
 import { attentionItems } from "@/components/today/attention-line";
-import { TomorrowPeek } from "@/components/today/tomorrow-peek";
+import { NextDayPeek } from "@/components/today/next-day-peek";
 import { DayPlanView, type Assignee } from "@/components/today/day-plan";
 import { UpcomingList } from "@/components/today/upcoming-list";
 import { ScheduleSkeleton } from "@/components/today/schedule-skeleton";
@@ -29,7 +29,8 @@ import {
 	scopeCalendarEvents,
 	taskDoneOverlay,
 	taskInScope,
-	tomorrowPeek,
+	dayLabel,
+	nextDayPeek,
 	weekDaysFor,
 	UPCOMING_DAYS,
 	type AgendaTask,
@@ -211,14 +212,11 @@ export default function TodayScreen({
 		[schedule, days],
 	);
 
-	// The subscription follows the SELECTED week, so browsing away puts actual
-	// tomorrow outside it — and a zero count would render a confident, false
-	// "Nothing scheduled". Only show the peek when tomorrow is really in range.
-	const tomorrowMs = todayMs + DAY_MS;
-	const peekInRange = tomorrowMs >= days[0] && tomorrowMs <= windowEndMs;
+	// The window runs WINDOW_DAYS past the week start, so the day after any strip day is always loaded.
+	const nextDayMs = anchorMs + DAY_MS;
 	const peek = useMemo(
-		() => tomorrowPeek(schedule.tasks, schedule.projects, todayMs),
-		[schedule, todayMs],
+		() => nextDayPeek(schedule.tasks, schedule.projects, anchorMs),
+		[schedule, anchorMs],
 	);
 
 	// Effective done state = queued-op overlay, else server status. Derived from
@@ -324,8 +322,6 @@ export default function TodayScreen({
 	// Metric strip — honest to what this screen already subscribes to. "Overdue"
 	// (not the canvas's "due this week"): due-dated aggregation isn't available
 	// client-side, and a wrong money number is worse than a narrower true one.
-	// Only rendered when the anchor IS today, which is exactly when the window
-	// is guaranteed to contain today.
 	const todayVisits = useMemo(
 		() => projectsForDay(schedule.projects, todayMs).length,
 		[schedule.projects, todayMs],
@@ -400,38 +396,37 @@ export default function TodayScreen({
 				}
 			/>
 
-			{!anchoredElsewhere ? (
-				<MetricStrip
-					cells={[
-						{ icon: CalendarDays, label: "Visits", value: String(todayVisits) },
-						{
-							icon: AlertCircle,
-							label: "Overdue",
-							value: formatCurrency(overdueTotal),
-							tone: overdueTotal > 0 ? "danger" : "default",
-						},
-						{
-							icon: FileText,
-							label: "Awaiting",
-							value: String(sentQuotes?.length ?? 0),
-						},
-					]}
-					footer={
-						attention.length > 0 ? (
-							<View style={styles.attentionFooter}>
-								<AlertCircle size={14} color={t.warning} />
-								<Text
-									style={[styles.attentionText, { color: t.warning }]}
-									numberOfLines={2}
-								>
-									{attention.map((item) => item.label).join(" · ")}
-								</Text>
-							</View>
-						) : undefined
-					}
-					onFooterPress={attention.length > 0 ? openAttention : undefined}
-				/>
-			) : null}
+			<MetricStrip
+				cells={[
+					// The selected day: the window always contains it, not always today.
+					{ icon: CalendarDays, label: "Visits", value: String(dayProjects.length) },
+					{
+						icon: AlertCircle,
+						label: "Overdue",
+						value: formatCurrency(overdueTotal),
+						tone: overdueTotal > 0 ? "danger" : "default",
+					},
+					{
+						icon: FileText,
+						label: "Awaiting",
+						value: String(sentQuotes?.length ?? 0),
+					},
+				]}
+				footer={
+					attention.length > 0 ? (
+						<View style={styles.attentionFooter}>
+							<AlertCircle size={14} color={t.warning} />
+							<Text
+								style={[styles.attentionText, { color: t.warning }]}
+								numberOfLines={2}
+							>
+								{attention.map((item) => item.label).join(" · ")}
+							</Text>
+						</View>
+					) : undefined
+				}
+				onFooterPress={attention.length > 0 ? openAttention : undefined}
+			/>
 
 			<WeekStrip
 				days={days}
@@ -490,14 +485,13 @@ export default function TodayScreen({
 						onNewTask={newTask}
 						assigneeFor={assigneeFor}
 					/>
-					{/* Day view only — in List, tomorrow is literally the next group. */}
-					{peekInRange ? (
-						<TomorrowPeek
-							count={peek.count}
-							firstStart={peek.firstStart}
-							onPress={() => setSelectedDayMs(tomorrowMs)}
-						/>
-					) : null}
+					{/* Day view only; in List the next day is the next group. */}
+					<NextDayPeek
+						label={dayLabel(nextDayMs, todayMs)}
+						count={peek.count}
+						firstStart={peek.firstStart}
+						onPress={() => setSelectedDayMs(nextDayMs)}
+					/>
 				</>
 			)}
 		</CanvasScroll>

@@ -5,9 +5,11 @@ import { fontFamily, touch, tracking, type, useTokens } from "@/lib/theme";
 import { Panel } from "@/components/canvas";
 import { formatClockLabel } from "@/lib/agenda";
 
-interface TomorrowPeekProps {
+interface NextDayPeekProps {
+	/** "TOMORROW" or the day's name; the day after whichever day is on screen. */
+	label: string;
 	count: number;
-	/** "HH:MM" of tomorrow's earliest timed job, if any. */
+	/** "HH:MM" of the day's earliest timed job, if any. */
 	firstStart?: string;
 	onPress: () => void;
 }
@@ -15,13 +17,14 @@ interface TomorrowPeekProps {
 /**
  * One line of forward visibility at the end of Today. Always renders — "nothing
  * scheduled" is the answer a field owner most wants at 5pm, so an empty
- * tomorrow is information, not chrome.
+ * next day is information, not chrome.
  */
-export function TomorrowPeek({
+export function NextDayPeek({
+	label,
 	count,
 	firstStart,
 	onPress,
-}: TomorrowPeekProps) {
+}: NextDayPeekProps) {
 	const t = useTokens();
 	const first = formatClockLabel(firstStart);
 	const summary =
@@ -37,10 +40,10 @@ export function TomorrowPeek({
 				onPress={onPress}
 				style={styles.row}
 				accessibilityRole="button"
-				accessibilityLabel={`Tomorrow: ${summary}`}
+				accessibilityLabel={`${label}: ${summary}`}
 			>
 				<View style={styles.text}>
-					<Text style={[styles.eyebrow, { color: t.sub }]}>TOMORROW</Text>
+					<Text style={[styles.eyebrow, { color: t.sub }]}>{label.toUpperCase()}</Text>
 					<Text style={[styles.summary, { color: t.ink }]} numberOfLines={1}>
 						{summary}
 					</Text>
