@@ -1,6 +1,7 @@
 import { View, Text, Pressable, Modal, StyleSheet } from "react-native";
 import { Bell } from "lucide-react-native";
-import { fontFamily, type, useTokens } from "@/lib/theme";
+import { Button } from "@/components/ui";
+import { fontFamily, radii, type, useTokens } from "@/lib/theme";
 
 interface PushPrePromptProps {
 	// Enable delegates to the host's enablePushNotifications (the single owner of
@@ -24,23 +25,14 @@ export function PushPrePrompt({ onEnable, onDismiss }: PushPrePromptProps) {
 		>
 			<View style={styles.scrim}>
 				<View style={[styles.card, { backgroundColor: t.card }]}>
-					<View style={[styles.iconTile, { backgroundColor: t.accentSoft }]}>
-						<Bell size={28} color={t.accent} />
+					<View style={[styles.iconTile, { backgroundColor: t.frostedBg }]}>
+						<Bell size={26} color={t.frostedInk} strokeWidth={2.2} />
 					</View>
 					<Text style={[styles.title, { color: t.ink }]}>Stay in the loop</Text>
 					<Text style={[styles.body, { color: t.sub }]}>
 						Get notified when a teammate mentions you.
 					</Text>
-					<Pressable
-						onPress={onEnable}
-						accessibilityRole="button"
-						style={({ pressed }) => [
-							styles.enableBtn,
-							{ backgroundColor: pressed ? t.accentMid : t.accent },
-						]}
-					>
-						<Text style={styles.enableText}>Enable</Text>
-					</Pressable>
+					<Button title="Enable" onPress={onEnable} style={styles.enableBtn} />
 					<Pressable
 						onPress={onDismiss}
 						accessibilityRole="button"
@@ -66,15 +58,15 @@ const styles = StyleSheet.create({
 	card: {
 		width: "100%",
 		maxWidth: 360,
-		borderRadius: 24,
+		borderRadius: radii.card,
 		paddingVertical: 28,
 		paddingHorizontal: 24,
 		alignItems: "center",
 	},
 	iconTile: {
-		width: 64,
-		height: 64,
-		borderRadius: 32,
+		width: 56,
+		height: 56,
+		borderRadius: radii.card,
 		alignItems: "center",
 		justifyContent: "center",
 		marginBottom: 16,
@@ -95,14 +87,6 @@ const styles = StyleSheet.create({
 	},
 	enableBtn: {
 		alignSelf: "stretch",
-		borderRadius: 14,
-		paddingVertical: 14,
-		alignItems: "center",
-	},
-	enableText: {
-		color: "#fff",
-		fontSize: type.body,
-		fontFamily: fontFamily.semibold,
 	},
 	dismissBtn: {
 		paddingVertical: 12,

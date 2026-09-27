@@ -72,25 +72,26 @@ export const AppCalendar = memo(function AppCalendar({
 	const t = useTokens();
 	const today = useMemo(() => toDateId(new Date()), []);
 
-	// Field Kit calendar theme — selected date = accent (UI-SPEC).
+	// Web-aligned calendar theme — selected day fills `primary`, today gets a
+	// `brand` marker (frame.indicator), not the selected treatment.
 	const calendarTheme = useMemo(
 		() => ({
 			backgroundColor: t.card,
 			calendarBackground: t.card,
 			textSectionTitleColor: t.sub,
-			textSectionTitleDisabledColor: t.faint,
-			selectedDayBackgroundColor: "transparent",
-			selectedDayTextColor: t.accent,
-			todayTextColor: t.accent,
+			textSectionTitleDisabledColor: t.sub,
+			selectedDayBackgroundColor: t.primary,
+			selectedDayTextColor: "#ffffff",
+			todayTextColor: t.brand,
 			todayBackgroundColor: "transparent",
 			dayTextColor: t.ink,
-			textDisabledColor: t.faint,
-			dotColor: t.accent,
-			selectedDotColor: t.accent,
+			textDisabledColor: t.sub,
+			dotColor: t.primary,
+			selectedDotColor: "#ffffff",
 			arrowColor: t.ink,
-			disabledArrowColor: t.faint,
+			disabledArrowColor: t.sub,
 			monthTextColor: t.ink,
-			indicatorColor: t.accent,
+			indicatorColor: t.primary,
 			textDayFontFamily: fontFamily.regular,
 			textMonthFontFamily: fontFamily.semibold,
 			textDayHeaderFontFamily: fontFamily.medium,
@@ -220,48 +221,44 @@ export const AppCalendar = memo(function AppCalendar({
 			}
 		});
 
-		// Add selected date marking - circle outline style
+		// Add selected date marking — web's 4px-radius solid fill.
 		if (selectedDate) {
-			if (!marks[selectedDate]) {
-				marks[selectedDate] = {
-					selected: true,
-					selectedColor: t.accent + "26", // accent at low alpha
-					selectedTextColor: t.accent,
-					customStyles: {
-						container: {
-							borderWidth: 2,
-							borderColor: t.accent,
-							borderRadius: 16,
-						},
-						text: {
-							color: t.accent,
-							fontFamily: fontFamily.semibold,
-						},
+			marks[selectedDate] = {
+				...marks[selectedDate],
+				selected: true,
+				selectedColor: t.primary,
+				selectedTextColor: "#ffffff",
+				customStyles: {
+					container: {
+						backgroundColor: t.primary,
+						borderRadius: radii.ctrl,
 					},
-				};
-			} else {
-				marks[selectedDate] = {
-					...marks[selectedDate],
-					selected: true,
-					selectedColor: t.accent + "26",
-					selectedTextColor: t.ink, // Keep text visible on period
-					customStyles: {
-						container: {
-							borderWidth: 2,
-							borderColor: t.accent,
-							borderRadius: 16,
-						},
-						text: {
-							color: t.ink,
-							fontFamily: fontFamily.semibold,
-						},
+					text: {
+						color: "#ffffff",
+						fontFamily: fontFamily.semibold,
 					},
-				};
-			}
+				},
+			};
+		}
+
+		// Today gets a `brand` dot marker, not the selected treatment, unless
+		// it's also the selected date.
+		if (today !== selectedDate) {
+			marks[today] = {
+				...marks[today],
+				customStyles: {
+					...marks[today]?.customStyles,
+					text: {
+						...marks[today]?.customStyles?.text,
+						color: t.brand,
+						fontFamily: fontFamily.semibold,
+					},
+				},
+			};
 		}
 
 		return marks;
-	}, [tasks, projects, selectedDate, t]);
+	}, [tasks, projects, selectedDate, today, t]);
 
 	// Handle day press
 	const handleDayPress = useCallback(

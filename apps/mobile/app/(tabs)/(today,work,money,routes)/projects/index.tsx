@@ -1,34 +1,24 @@
-import {
-	View,
-	Text,
-	Pressable,
-	ScrollView,
-	TextInput,
-	StyleSheet,
-} from "react-native";
+import { Pressable, View, TextInput, StyleSheet } from "react-native";
 import { FlashList } from "@shopify/flash-list";
 import { api } from "@onetool/backend/convex/_generated/api";
 import type { Doc, Id } from "@onetool/backend/convex/_generated/dataModel";
 import { useRouter } from "expo-router";
 import { useState, useMemo } from "react";
-import {
-	SafeAreaView,
-	useSafeAreaInsets,
-} from "react-native-safe-area-context";
-import { Search, Calendar, X } from "lucide-react-native";
-import {
-	colors,
-	DOCK_CLEARANCE,
-	fontFamily,
-	radii,
-	useTokens,
-} from "@/lib/theme";
-import { Badge, DotGrid, Eyebrow, SCROLL_TOP_INSET } from "@/components/ui";
-import { InkTabHeader } from "@/components/ink-tab-header";
+import { Search, X } from "lucide-react-native";
+import { GUTTER, EmptyPanel, PageHeader, RecordRow, CANVAS_HEADER as canvasHeader } from "@/components/canvas";
+import { SegmentedToggle } from "@/components/ui";
+import { fontFamily, radii, useTokens } from "@/lib/theme";
 import { useCachedQuery } from "@/lib/offline/useCachedQuery";
 
 type Project = Doc<"projects">;
 type FilterValue = "all" | "active" | "in-progress" | "completed";
+
+const SEGMENTS: { value: FilterValue; label: string }[] = [
+	{ value: "all", label: "All" },
+	{ value: "active", label: "Active" },
+	{ value: "in-progress", label: "In progress" },
+	{ value: "completed", label: "Done" },
+];
 
 function formatDate(timestamp: number | undefined): string | null {
 	if (!timestamp) return null;
@@ -41,12 +31,11 @@ function formatDate(timestamp: number | undefined): string | null {
 	});
 }
 
-// headerMode/onSelect/selectedId default off → the iPhone path (router.push,
-// the InkTabHeader band titled "Projects", no selected highlight) is
-// byte-identical. headerMode="pane" suppresses that band for a host that
-// mounts its own pane header, onSelect drives a detail pane via selection,
-// selectedId marks the row. NOTE: the iPad shell does NOT mount this screen —
-// its "work" pane mounts app/(tabs)/work.tsx, whose "Work" title is correct.
+// headerMode/onSelect/selectedId default off → the iPhone path (router.push, no
+// selected highlight) is byte-identical. headerMode="pane" would suppress the
+// page header for a host that mounts its own pane header, onSelect drives a
+// detail pane via selection, selectedId marks the row. The iPad shell does not
+// currently mount this screen (its "work" pane covers projects via Work).
 export default function ProjectsScreen({
 	headerMode = "root",
 	onSelect,
@@ -58,14 +47,7 @@ export default function ProjectsScreen({
 } = {}) {
 	const router = useRouter();
 	const t = useTokens();
-	const insets = useSafeAreaInsets();
 	const isPane = headerMode === "pane";
-	// The floating dock takes no layout height — the list clears it itself.
-	// iPad panes have no dock (the shell replaces Tabs).
-	const listBottom = isPane ? 24 : DOCK_CLEARANCE + insets.bottom;
-	// iPhone: the ink band is a solid hard edge, so the list starts just under it
-	// (Money's value). iPad pane: no band, so the translucent-header inset stays.
-	const listTop = isPane ? SCROLL_TOP_INSET : 12;
 	const [searchQuery, setSearchQuery] = useState("");
 	const [filter, setFilter] = useState<FilterValue>("all");
 
@@ -76,118 +58,86 @@ export default function ProjectsScreen({
 
 	// Single org-scoped clients query → name map. No per-row clients.get (N+1).
 	const clientNameById = useMemo(
-		() =>
-			new Map<Id<"clients">, string>(
-				(clients ?? []).map((c) => [c._id, c.companyName])
-			),
-		[clients]
+		() => new Map<Id<"clients">, string>((clients ?? []).map((c) => [c._id, c.companyName])),
+		[clients],
 	);
-	const clientName = (p: Project) =>
-		clientNameById.get(p.clientId) ?? "Unknown client";
+	const clientName = (p: Project) => clientNameById.get(p.clientId) ?? "Unknown client";
 
 	const allProjects = useMemo(() => projects ?? [], [projects]);
 
 	const counts = useMemo(
 		() => ({
 			all: allProjects.length,
-			active: allProjects.filter(
-				(p) => p.status === "in-progress" || p.status === "planned"
-			).length,
-			"in-progress": allProjects.filter((p) => p.status === "in-progress")
-				.length,
+			active: allProjects.filter((p) => p.status === "in-progress" || p.status === "planned").length,
+			"in-progress": allProjects.filter((p) => p.status === "in-progress").length,
 			completed: allProjects.filter((p) => p.status === "completed").length,
 		}),
-		[allProjects]
+		[allProjects],
 	);
-
-	const chips: { value: FilterValue; label: string }[] = [
-		{ value: "all", label: "All" },
-		{ value: "active", label: "Active" },
-		{ value: "in-progress", label: "In Progress" },
-		{ value: "completed", label: "Done" },
-	];
 
 	const visibleProjects = useMemo(() => {
 		let list = allProjects;
 		if (filter === "active") {
-			list = list.filter(
-				(p) => p.status === "in-progress" || p.status === "planned"
-			);
+			list = list.filter((p) => p.status === "in-progress" || p.status === "planned");
 		} else if (filter !== "all") {
 			list = list.filter((p) => p.status === filter);
 		}
 		const q = searchQuery.trim().toLowerCase();
 		if (q) {
 			list = list.filter(
-				(p) =>
-					p.title.toLowerCase().includes(q) ||
-					clientName(p).toLowerCase().includes(q)
+				(p) => p.title.toLowerCase().includes(q) || clientName(p).toLowerCase().includes(q),
 			);
 		}
 		return list;
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [allProjects, filter, searchQuery, clientNameById]);
 
-	// iPad pane: tap drives shell selection (no route push). iPhone: push route.
-	const openProject = (id: string) =>
-		onSelect ? onSelect(id) : router.push(`/projects/${id}`);
+	const openProject = (id: string) => (onSelect ? onSelect(id) : router.push(`/projects/${id}`));
 
-	const renderProject = ({ item }: { item: Project }) => {
+	const renderProject = ({ item, index }: { item: Project; index: number }) => {
 		const start = formatDate(item.startDate);
 		const end = formatDate(item.endDate);
 		const range =
-			start && end
-				? `${start} – ${end}`
-				: start
-					? `Starts ${start}`
-					: end
-						? `Due ${end}`
-						: null;
+			start && end ? `${start} to ${end}` : start ? `Starts ${start}` : end ? `Due ${end}` : null;
 		const isSelected = isPane && item._id === selectedId;
-
+		const first = index === 0;
+		const last = index === visibleProjects.length - 1;
 		return (
-			<Pressable
-				style={({ pressed }) => [
-					styles.card,
+			<View
+				style={[
+					styles.panelRow,
 					{ backgroundColor: t.card, borderColor: t.line },
-					isSelected && { borderColor: t.primarySolid, backgroundColor: t.frostedBg },
-					pressed && styles.cardPressed,
+					first && styles.panelFirst,
+					last && styles.panelLast,
+					!first && { borderTopWidth: 1, borderTopColor: t.lineSoft },
 				]}
-				onPress={() => openProject(item._id)}
 			>
-				<View style={styles.cardTop}>
-					<View style={styles.cardTitleCol}>
-						<Eyebrow>#{item.projectNumber}</Eyebrow>
-						<Text style={[styles.title, { color: t.ink }]} numberOfLines={1}>
-							{item.title}
-						</Text>
-						<Text style={[styles.client, { color: t.sub }]} numberOfLines={1}>
-							{clientName(item)}
-						</Text>
-					</View>
-					<Badge status={item.status} />
-				</View>
-				{range && (
-					<View style={styles.metaRow}>
-						<Calendar size={14} color={t.faint} />
-						<Text style={[styles.metaText, { color: t.sub }]}>{range}</Text>
-					</View>
-				)}
-			</Pressable>
+				<RecordRow
+					kind="project"
+					title={item.title}
+					subtitle={`#${item.projectNumber} · ${clientName(item)}${range ? ` · ${range}` : ""}`}
+					status={item.status}
+					selected={isSelected}
+					onPress={() => openProject(item._id)}
+				/>
+			</View>
 		);
 	};
 
 	const ListHeader = (
 		<View style={styles.listHeader}>
-			<View
-				style={[styles.searchBar, { backgroundColor: t.card, borderColor: t.line }]}
-			>
-				<Search size={19} color={t.faint} />
+			{isPane ? null : (
+				<View style={canvasHeader}>
+					<PageHeader title="Projects" hairline={false} />
+				</View>
+			)}
+			<View style={[styles.searchBar, { borderColor: t.input, backgroundColor: t.card }]}>
+				<Search size={18} color={t.sub} strokeWidth={2} />
 				<TextInput
 					value={searchQuery}
 					onChangeText={setSearchQuery}
-					placeholder="Search work…"
-					placeholderTextColor={t.faint}
+					placeholder="Search projects"
+					placeholderTextColor={t.sub}
 					style={[styles.searchInput, { color: t.ink }]}
 				/>
 				{searchQuery.length > 0 && (
@@ -197,98 +147,45 @@ export default function ProjectsScreen({
 						accessibilityRole="button"
 						accessibilityLabel="Clear search"
 					>
-						<X size={16} color={t.faint} />
+						<X size={16} color={t.sub} strokeWidth={2} />
 					</Pressable>
 				)}
 			</View>
-
-			<ScrollView
-				horizontal
-				showsHorizontalScrollIndicator={false}
-				contentContainerStyle={styles.chipRow}
-			>
-				{chips.map((chip) => {
-					const active = chip.value === filter;
-					return (
-						<Pressable
-							key={chip.value}
-							onPress={() => setFilter(chip.value)}
-							style={[
-								styles.chip,
-								active
-									? { backgroundColor: t.ink, borderColor: t.ink }
-									: { backgroundColor: t.card, borderColor: t.line },
-							]}
-						>
-							<Text
-								style={[
-									styles.chipLabel,
-									{ color: active ? colors.primaryForeground : t.sub },
-								]}
-							>
-								{chip.label}
-							</Text>
-							<Text
-								style={[
-									styles.chipCount,
-									{ color: active ? colors.primaryForeground : t.faint },
-								]}
-							>
-								{counts[chip.value]}
-							</Text>
-						</Pressable>
-					);
-				})}
-			</ScrollView>
+			<SegmentedToggle
+				segments={SEGMENTS.map((s) => ({ ...s, count: counts[s.value] }))}
+				value={filter}
+				onChange={setFilter}
+			/>
 		</View>
 	);
 
 	return (
-		<SafeAreaView
-			style={{ flex: 1, backgroundColor: t.surface }}
-			edges={[]}
-		>
-			{/* Page canvas, matching web's .workspace-canvas. */}
-			<DotGrid style={StyleSheet.absoluteFill} />
-			{/* Pane mode: shell mounts PaneHeader title="Work" above this body.
-			    iPhone: the shared ink band. It keeps a back circle because this
-			    route is always pushed (it holds no dock slot — href: null). */}
-			{isPane ? null : (
-				<InkTabHeader title="Projects" onBack={() => router.back()} />
-			)}
-
+		<View style={styles.screen}>
 			{loading ? (
-				<View style={[styles.listContent, { paddingTop: listTop }]}>
+				<View style={[styles.listContent, { paddingTop: 12 }]}>
 					{ListHeader}
-					{[0, 1, 2, 3].map((i) => (
-						<View
-							key={i}
-							style={[
-								styles.card,
-								{ backgroundColor: t.card, borderColor: t.line },
-								styles.skeletonCard,
-							]}
-						>
+					<View style={[styles.panel, { backgroundColor: t.card, borderColor: t.line }]}>
+						{[0, 1, 2].map((i) => (
 							<View
+								key={i}
 								style={[
-									styles.skeleton,
-									{ backgroundColor: t.lineSoft, width: 48, height: 11 },
+									styles.skeletonRow,
+									i > 0 && { borderTopWidth: 1, borderTopColor: t.lineSoft },
 								]}
-							/>
-							<View
-								style={[
-									styles.skeleton,
-									{ backgroundColor: t.lineSoft, width: "70%", height: 16, marginTop: 8 },
-								]}
-							/>
-							<View
-								style={[
-									styles.skeleton,
-									{ backgroundColor: t.lineSoft, width: "45%", height: 13, marginTop: 6 },
-								]}
-							/>
-						</View>
-					))}
+							>
+								<View style={[styles.skeletonTile, { backgroundColor: t.lineSoft }]} />
+								<View style={styles.skeletonBody}>
+									<View style={[styles.skeleton, { backgroundColor: t.lineSoft, width: "70%", height: 14 }]} />
+									<View
+										style={[
+											styles.skeleton,
+											{ backgroundColor: t.lineSoft, width: "45%", height: 12, marginTop: 6 },
+										]}
+									/>
+								</View>
+							</View>
+						))}
+					</View>
 				</View>
 			) : (
 				<FlashList
@@ -298,135 +195,85 @@ export default function ProjectsScreen({
 					ListHeaderComponent={ListHeader}
 					contentContainerStyle={{
 						...styles.listContent,
-						paddingTop: listTop,
-						paddingBottom: listBottom,
+						paddingTop: 12,
 					}}
-					ItemSeparatorComponent={() => <View style={{ height: 12 }} />}
 					ListEmptyComponent={
-						<View style={styles.emptyState}>
-							{allProjects.length === 0 ? (
-								<>
-									<Text style={[styles.emptyTitle, { color: t.ink }]}>No work yet</Text>
-									<Text style={[styles.emptyText, { color: t.sub }]}>
-										Projects you create will show up here.
-									</Text>
-								</>
-							) : (
-								<Text style={[styles.emptyText, { color: t.sub }]}>
-									Try a different search or filter.
-								</Text>
-							)}
-						</View>
+						allProjects.length === 0 ? (
+							<EmptyPanel title="No work yet" body="Projects you create will show up here." />
+						) : (
+							<EmptyPanel title="No projects found" body="Try a different search or filter." />
+						)
 					}
 				/>
 			)}
-		</SafeAreaView>
+		</View>
 	);
 }
 
 const styles = StyleSheet.create({
+	screen: {
+		flex: 1,
+	},
 	listContent: {
-		paddingHorizontal: 16,
-		paddingBottom: 24,
+		paddingHorizontal: GUTTER,
+		paddingBottom: 32,
 	},
 	listHeader: {
-		gap: 12,
-		paddingBottom: 12,
+		gap: 16,
+		paddingBottom: 16,
 	},
 	searchBar: {
 		flexDirection: "row",
 		alignItems: "center",
-		gap: 9,
+		gap: 8,
 		borderWidth: 1,
-		borderRadius: radii["4xl"],
-		paddingHorizontal: 14,
-		height: 46,
+		borderRadius: radii.ctrl,
+		paddingHorizontal: 12,
+		minHeight: 44,
 	},
 	searchInput: {
 		flex: 1,
 		fontFamily: fontFamily.regular,
-		fontSize: 13,
+		fontSize: 16,
 		letterSpacing: 0, // RN#42589: pin kern so iOS placeholder can't randomly letter-space
-		paddingVertical: 0,
+		paddingVertical: 10,
 	},
-	chipRow: {
-		gap: 8,
-		paddingRight: 16,
+	panel: {
+		borderWidth: 1,
+		borderRadius: radii.card,
+		overflow: "hidden",
 	},
-	chip: {
+	panelRow: {
+		borderLeftWidth: 1,
+		borderRightWidth: 1,
+	},
+	panelFirst: {
+		borderTopWidth: 1,
+		borderTopLeftRadius: radii.card,
+		borderTopRightRadius: radii.card,
+	},
+	panelLast: {
+		borderBottomWidth: 1,
+		borderBottomLeftRadius: radii.card,
+		borderBottomRightRadius: radii.card,
+	},
+	skeletonRow: {
 		flexDirection: "row",
 		alignItems: "center",
-		gap: 5,
-		minHeight: 36,
-		paddingHorizontal: 15,
-		borderRadius: radii.pill,
-		borderWidth: 1,
+		gap: 11,
+		paddingVertical: 11,
+		paddingHorizontal: 12,
+		minHeight: 56,
 	},
-	chipLabel: {
-		fontFamily: fontFamily.semibold,
-		fontSize: 12.5,
+	skeletonTile: {
+		width: 32,
+		height: 32,
+		borderRadius: 8,
 	},
-	chipCount: {
-		fontFamily: fontFamily.semibold,
-		fontSize: 12,
-	},
-	card: {
-		borderRadius: radii.rLg,
-		borderWidth: 1,
-		padding: 16,
-	},
-	cardPressed: {
-		opacity: 0.85,
-	},
-	cardTop: {
-		flexDirection: "row",
-		alignItems: "flex-start",
-		justifyContent: "space-between",
-		gap: 10,
-	},
-	cardTitleCol: {
+	skeletonBody: {
 		flex: 1,
-		minWidth: 0,
-	},
-	title: {
-		fontFamily: fontFamily.semibold,
-		fontSize: 14,
-		marginTop: 2,
-	},
-	client: {
-		fontFamily: fontFamily.regular,
-		fontSize: 13,
-		marginTop: 2,
-	},
-	metaRow: {
-		flexDirection: "row",
-		alignItems: "center",
-		gap: 6,
-		marginTop: 12,
-	},
-	metaText: {
-		fontFamily: fontFamily.regular,
-		fontSize: 11.5,
-	},
-	skeletonCard: {
-		marginBottom: 12,
 	},
 	skeleton: {
 		borderRadius: radii.sm,
-	},
-	emptyState: {
-		alignItems: "center",
-		paddingVertical: 64,
-		paddingHorizontal: 24,
-	},
-	emptyTitle: {
-		fontFamily: fontFamily.semibold,
-		fontSize: 18,
-		marginBottom: 8,
-	},
-	emptyText: {
-		fontFamily: fontFamily.regular,
-		fontSize: 13,
-		textAlign: "center",
 	},
 });

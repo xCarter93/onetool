@@ -1,24 +1,23 @@
 import { useState } from "react";
-import {
-	View,
-	Text,
-	ScrollView,
-	Alert,
-	Pressable,
-	StyleSheet,
-} from "react-native";
-import {
-	SafeAreaView,
-	useSafeAreaInsets,
-} from "react-native-safe-area-context";
+import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
 import { useUser, useAuth, useOrganization } from "@clerk/expo";
 import { useQuery } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
-import { DOCK_CLEARANCE, useTokens, radii, fontFamily } from "@/lib/theme";
-import { Avatar, Card, DotGrid } from "@/components/ui";
+import { fontFamily, useTokens } from "@/lib/theme";
+import { Avatar } from "@/components/ui";
+import { CanvasScroll, PageHeader, Panel, RecordRow, SectionLabel, CANVAS_HEADER as canvasHeader } from "@/components/canvas";
 import { useRouter, type Href } from "expo-router";
-import { Mail, Building, LogOut, Shield, Trash2, SquarePen, ChevronRight, Bell, QrCode, MessageCircle, Bug, Lightbulb } from "lucide-react-native";
-import { InkTabHeader } from "@/components/ink-tab-header";
+import {
+	Building,
+	LogOut,
+	Trash2,
+	Bell,
+	QrCode,
+	MessageCircle,
+	Bug,
+	Lightbulb,
+	type LucideIcon,
+} from "lucide-react-native";
 import { usePermissions } from "@/lib/use-permissions";
 import { openExternal } from "@/lib/open-external";
 import { useOffline } from "@/lib/offline/OfflineProvider";
@@ -32,17 +31,48 @@ function supportMailto(subject: string, body: string): string {
 	return `mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
 }
 
-// headerMode defaults to "root" → the iPhone path (self-mounted AppHeader,
-// edge-to-edge content) is byte-identical. The iPad shell renders Profile as a
-// single comfortable centered pane: headerMode="pane" suppresses the AppHeader
-// (shell mounts the one PaneHeader title="Profile") and the content is bounded
-// to a centered column so it is not stretched edge-to-edge.
 /** Clerk roles are "org:admin" / "org:member" — show "Admin" / "Member". */
 function formatRole(role: string): string {
 	const bare = role.replace(/^org:/, "");
 	return bare.charAt(0).toUpperCase() + bare.slice(1);
 }
 
+/** A destructive nav row: same row shape as RecordRow, danger-tinted, no chevron. */
+function DangerRow({
+	icon: Icon,
+	label,
+	onPress,
+	disabled,
+}: {
+	icon: LucideIcon;
+	label: string;
+	onPress: () => void;
+	disabled?: boolean;
+}) {
+	const t = useTokens();
+	return (
+		<Pressable
+			onPress={onPress}
+			disabled={disabled}
+			accessibilityRole="button"
+			accessibilityState={{ disabled: !!disabled }}
+			style={({ pressed }) => [
+				styles.dangerRow,
+				pressed && !disabled && { backgroundColor: t.muted },
+				disabled && styles.disabled,
+			]}
+		>
+			<Icon size={18} color={t.danger} strokeWidth={2} />
+			<Text style={[styles.dangerLabel, { color: t.danger }]}>{label}</Text>
+		</Pressable>
+	);
+}
+
+// headerMode defaults to "root" → the iPhone path (own page header, edge-to-edge
+// content) is byte-identical. The iPad shell renders Profile as a single pane:
+// headerMode="pane" suppresses the page header (the shell mounts the one
+// PaneHeader) and the content is bounded to a centered column so it is not
+// stretched edge-to-edge.
 export default function ProfileScreen({
 	headerMode = "root",
 }: {
@@ -54,11 +84,7 @@ export default function ProfileScreen({
 	const { organization, membership } = useOrganization();
 	const { partition, ops } = useOffline();
 	const t = useTokens();
-	const insets = useSafeAreaInsets();
 	const isPane = headerMode === "pane";
-	// The floating dock takes no layout height — scroll content clears it
-	// itself. iPad panes have no dock (the shell replaces Tabs).
-	const scrollBottom = isPane ? 16 : DOCK_CLEARANCE + insets.bottom;
 
 	// TRUE ownership comes from the BACKEND (Convex), NOT the Clerk org:admin role —
 	// a co-admin who is not the org owner must take the member path.
@@ -133,7 +159,7 @@ export default function ProfileScreen({
 		let message: string;
 		if (isOwner && otherMembers === 0) {
 			message =
-				"This permanently deletes your account and your entire organization — all clients, projects, quotes, and invoices. This cannot be undone.";
+				"This permanently deletes your account and your entire organization, including all clients, projects, quotes and invoices. This cannot be undone.";
 		} else if (isOwner) {
 			message = `You own this organization. Deleting your account will permanently delete the organization and ALL its business data for you and ${otherMembers} other member${
 				otherMembers === 1 ? "" : "s"
@@ -161,7 +187,7 @@ export default function ProfileScreen({
 					if (partition) await clearPartition(partition, discardOutbox);
 
 					// Owner path: destroy the org FIRST (fires organization.deleted →
-					// the 28-04 backend cascade erases all org data; child rows drain
+					// the backend cascade erases all org data; child rows drain
 					// asynchronously) THEN delete the user (fires user.deleted).
 					if (isOwner && organization) {
 						try {
@@ -242,372 +268,193 @@ export default function ProfileScreen({
 		"?";
 
 	return (
-		<SafeAreaView style={{ flex: 1, backgroundColor: t.surface }} edges={[]}>
-			{/* Page canvas, matching web's .workspace-canvas. */}
-			<DotGrid style={StyleSheet.absoluteFill} />
-			{/* iPad pane: shell mounts the one PaneHeader title="Profile" (single-header
-			    convention) so the self-mounted band is suppressed. iPhone: the shared
-			    ink band, minus the avatar — this screen IS Profile. */}
-			{isPane ? null : <InkTabHeader title="Profile" hideAvatar />}
-			<ScrollView
-				style={{ flex: 1 }}
-				contentContainerStyle={[
-					{ padding: 16, paddingBottom: scrollBottom },
-					// iPad: comfortable centered column (not stretched edge-to-edge).
-					isPane && { maxWidth: 560, alignSelf: "center", width: "100%" },
-				]}
-			>
-				{/* User Avatar & Name */}
-				<View style={{ alignItems: "center", marginBottom: 24, paddingVertical: 24 }}>
-					<Avatar text={initials} imageUrl={user?.imageUrl} size={80} />
-
-					<Text
-						style={{
-							fontSize: 20,
-							fontFamily: fontFamily.bold,
-							color: t.ink,
-							marginTop: 16,
-							marginBottom: 4,
-						}}
-					>
-						{user?.firstName} {user?.lastName}
-					</Text>
-					<Text
-						style={{
-							fontSize: 13,
-							fontFamily: fontFamily.regular,
-							color: t.sub,
-						}}
-					>
-						{user?.primaryEmailAddress?.emailAddress}
-					</Text>
+		<View style={styles.screen}>
+			{isPane ? null : (
+				<View style={canvasHeader}>
+					<PageHeader title="Profile" />
 				</View>
-
-				{/* Account Details */}
-				<Card>
-					{/* Email */}
-					<View style={{ flexDirection: "row", alignItems: "center", paddingVertical: 8 }}>
-						<Mail size={20} color={t.sub} />
-						<View style={{ marginLeft: 16, flex: 1 }}>
-							<Text style={{ fontSize: 11, fontFamily: fontFamily.regular, color: t.sub }}>
-								Email
+			)}
+			<CanvasScroll
+				contentContainerStyle={isPane ? styles.paneContent : { paddingTop: 12 }}
+			>
+				<Panel>
+					<View style={styles.identity}>
+						<Avatar text={initials} imageUrl={user?.imageUrl} size={64} />
+						<View style={styles.identityText}>
+							<Text style={[styles.name, { color: t.ink }]} numberOfLines={1}>
+								{user?.firstName} {user?.lastName}
 							</Text>
-							<Text style={{ fontSize: 13, fontFamily: fontFamily.regular, color: t.ink }}>
+							<Text style={[styles.email, { color: t.sub }]} numberOfLines={1}>
 								{user?.primaryEmailAddress?.emailAddress}
 							</Text>
+							{membership ? (
+								<Text style={[styles.role, { color: t.sub }]}>{formatRole(membership.role)}</Text>
+							) : null}
 						</View>
 					</View>
+				</Panel>
 
-					{/* Organization */}
-					{organization && (
-						<View
-							style={{
-								flexDirection: "row",
-								alignItems: "center",
-								paddingVertical: 8,
-								marginTop: 8,
-								borderTopWidth: 1,
-								borderTopColor: t.line,
-							}}
-						>
-							<Building size={20} color={t.sub} />
-							<View style={{ marginLeft: 16, flex: 1 }}>
-								<Text style={{ fontSize: 11, fontFamily: fontFamily.regular, color: t.sub }}>
-									Organization
-								</Text>
-								<Text style={{ fontSize: 13, fontFamily: fontFamily.regular, color: t.ink }}>
-									{organization.name}
-								</Text>
-							</View>
-						</View>
-					)}
+				{/* Business details is owner-only (backend gates the save to the owner).
+				    Edits the existing org's profile; never creates an org. Share QR sells
+				    SHARING the code, never "open the page". */}
+				{isOwner || showQr ? (
+					<View style={styles.section}>
+						<SectionLabel title="Organization" />
+						<Panel>
+							{isOwner ? (
+								<RecordRow
+									leading={<Building size={18} color={t.sub} strokeWidth={2} />}
+									title="Business details"
+									onPress={() => router.push("/business-details" as Href)}
+								/>
+							) : null}
+							{showQr ? (
+								<RecordRow
+									leading={<QrCode size={18} color={t.sub} strokeWidth={2} />}
+									title="Share QR code"
+									subtitle="Customers scan it to find your community page"
+									onPress={() => router.push("/community-qr" as Href)}
+								/>
+							) : null}
+						</Panel>
+					</View>
+				) : null}
 
-					{/* Role */}
-					{membership && (
-						<View
-							style={{
-								flexDirection: "row",
-								alignItems: "center",
-								paddingVertical: 8,
-								marginTop: 8,
-								borderTopWidth: 1,
-								borderTopColor: t.line,
-							}}
-						>
-							<Shield size={20} color={t.sub} />
-							<View style={{ marginLeft: 16, flex: 1 }}>
-								<Text style={{ fontSize: 11, fontFamily: fontFamily.regular, color: t.sub }}>
-									Role
-								</Text>
-								<Text style={{ fontSize: 13, fontFamily: fontFamily.regular, color: t.ink }}>
-									{formatRole(membership.role)}
-								</Text>
-							</View>
-						</View>
-					)}
-				</Card>
-
-				{/* Business details — owner only (backend gates the save to the owner).
-				    Edits the existing org's profile; never creates an org. */}
-				{isOwner && (
-					<Pressable
-						style={{
-							flexDirection: "row",
-							alignItems: "center",
-							paddingVertical: 16,
-							paddingHorizontal: 16,
-							borderRadius: radii.lg,
-							marginTop: 24,
-							backgroundColor: t.card,
-							borderWidth: 1,
-							borderColor: t.line,
-						}}
-						onPress={() => router.push("/business-details" as Href)}
-					>
-						<SquarePen size={20} color={t.sub} />
-						<Text
-							style={{
-								marginLeft: 12,
-								flex: 1,
-								color: t.ink,
-								fontFamily: fontFamily.semibold,
-								fontSize: 13,
-							}}
-						>
-							Business details
-						</Text>
-						<ChevronRight size={18} color={t.sub} />
-					</Pressable>
-				)}
-
-				{/* Share the org's community-page QR. Org-level, so it sits with
-				    Business details. The row sells SHARING the code, never "open the
-				    page" — the QR panel has no browse action either. */}
-				{showQr && (
-					<Pressable
-						style={{
-							flexDirection: "row",
-							alignItems: "center",
-							paddingVertical: 16,
-							paddingHorizontal: 16,
-							borderRadius: radii.lg,
-							marginTop: isOwner ? 12 : 24,
-							backgroundColor: t.card,
-							borderWidth: 1,
-							borderColor: t.line,
-						}}
-						onPress={() => router.push("/community-qr" as Href)}
-					>
-						<QrCode size={20} color={t.sub} />
-						<View style={{ marginLeft: 12, flex: 1 }}>
-							<Text
-								style={{
-									color: t.ink,
-									fontFamily: fontFamily.semibold,
-									fontSize: 13,
-								}}
-							>
-								Share QR code
-							</Text>
-							<Text
-								style={{
-									marginTop: 2,
-									color: t.sub,
-									fontFamily: fontFamily.regular,
-									fontSize: 11,
-								}}
-							>
-								Customers scan it to find your community page
-							</Text>
-						</View>
-						<ChevronRight size={18} color={t.sub} />
-					</Pressable>
-				)}
-
-				{/* Notification preferences — per-user, so no owner gate. */}
-				<Pressable
-					style={{
-						flexDirection: "row",
-						alignItems: "center",
-						paddingVertical: 16,
-						paddingHorizontal: 16,
-						borderRadius: radii.lg,
-						// Tight against the row above; 24 when it is the first row after the Card.
-						marginTop: isOwner || showQr ? 12 : 24,
-						backgroundColor: t.card,
-						borderWidth: 1,
-						borderColor: t.line,
-					}}
-					onPress={() => router.push("/notification-preferences" as Href)}
-				>
-					<Bell size={20} color={t.sub} />
-					<Text
-						style={{
-							marginLeft: 12,
-							flex: 1,
-							color: t.ink,
-							fontFamily: fontFamily.semibold,
-							fontSize: 13,
-						}}
-					>
-						Notifications
-					</Text>
-					<ChevronRight size={18} color={t.sub} />
-				</Pressable>
+				<View style={styles.section}>
+					<SectionLabel title="Preferences" />
+					<Panel>
+						<RecordRow
+							leading={<Bell size={18} color={t.sub} strokeWidth={2} />}
+							title="Notifications"
+							onPress={() => router.push("/notification-preferences" as Href)}
+						/>
+					</Panel>
+				</View>
 
 				{/* Support — mailto rows (no PostHog RN SDK; email is the mobile channel).
 				    Prefilled subjects carry "(mobile)" so tickets get tagged; bodies
 				    prompt the same two bug questions the web form asks. */}
-				<Text
-					style={{
-						marginTop: 24,
-						marginBottom: 8,
-						marginLeft: 4,
-						fontSize: 11,
-						fontFamily: fontFamily.semibold,
-						color: t.sub,
-						textTransform: "uppercase",
-						letterSpacing: 0.5,
-					}}
-				>
-					Support
-				</Text>
-				{(
-					[
-						{
-							key: "contact",
-							icon: MessageCircle,
-							label: "Contact support",
-							subtext: "We reply within one business day",
-							subject: "Support request (mobile)",
-							body: `How can we help?\n\n\n—\nOrganization: ${organization?.name ?? ""}\nOneTool Mobile`,
-						},
-						{
-							key: "bug",
-							icon: Bug,
-							label: "Report a bug",
-							subtext: "Something broken or not working right",
-							subject: "Bug report (mobile)",
-							body: `What were you trying to do?\n\n\nWhat happened instead?\n\n\n—\nOrganization: ${organization?.name ?? ""}\nOneTool Mobile`,
-						},
-						{
-							key: "feature",
-							icon: Lightbulb,
-							label: "Request a feature",
-							subtext: "Tell us what OneTool should do next",
-							subject: "Feature request (mobile)",
-							body: `What would you like OneTool to do?\n\n\n—\nOrganization: ${organization?.name ?? ""}\nOneTool Mobile`,
-						},
-					] as const
-				).map((row, index) => (
-					<Pressable
-						key={row.key}
-						style={{
-							flexDirection: "row",
-							alignItems: "center",
-							paddingVertical: 16,
-							paddingHorizontal: 16,
-							borderRadius: radii.lg,
-							marginTop: index === 0 ? 0 : 12,
-							backgroundColor: t.card,
-							borderWidth: 1,
-							borderColor: t.line,
-						}}
-						onPress={() =>
-							openExternal(supportMailto(row.subject, row.body), "Mail")
-						}
-					>
-						<row.icon size={20} color={t.sub} />
-						<View style={{ marginLeft: 12, flex: 1 }}>
-							<Text
-								style={{
-									color: t.ink,
-									fontFamily: fontFamily.semibold,
-									fontSize: 13,
-								}}
-							>
-								{row.label}
-							</Text>
-							<Text
-								style={{
-									marginTop: 2,
-									color: t.sub,
-									fontFamily: fontFamily.regular,
-									fontSize: 11,
-								}}
-							>
-								{row.subtext}
-							</Text>
-						</View>
-						<ChevronRight size={18} color={t.sub} />
-					</Pressable>
-				))}
-
-				{/* Sign Out Button */}
-				<Pressable
-					style={{
-						flexDirection: "row",
-						alignItems: "center",
-						justifyContent: "center",
-						paddingVertical: 16,
-						borderRadius: radii.lg,
-						marginTop: 24,
-						backgroundColor: t.card,
-						borderWidth: 1,
-						borderColor: t.line,
-					}}
-					onPress={handleSignOut}
-				>
-					<LogOut size={20} color={t.danger} />
-					<Text
-						style={{
-							marginLeft: 8,
-							color: t.danger,
-							fontFamily: fontFamily.semibold,
-							fontSize: 13,
-						}}
-					>
-						Sign Out
-					</Text>
-				</Pressable>
-
-				{/* Delete Account (App Store 5.1.1(v)) — confirm-gated, backend-owner-aware */}
-				<Pressable
-					style={{
-						flexDirection: "row",
-						alignItems: "center",
-						justifyContent: "center",
-						paddingVertical: 16,
-						borderRadius: radii.lg,
-						marginTop: 12,
-						backgroundColor: t.card,
-						borderWidth: 1,
-						borderColor: t.line,
-						opacity: isDeleting || !ownershipResolved ? 0.5 : 1,
-					}}
-					onPress={handleDeleteAccount}
-					disabled={isDeleting || !ownershipResolved}
-				>
-					<Trash2 size={20} color={t.danger} />
-					<Text
-						style={{
-							marginLeft: 8,
-							color: t.danger,
-							fontFamily: fontFamily.semibold,
-							fontSize: 13,
-						}}
-					>
-						Delete Account
-					</Text>
-				</Pressable>
-
-				{/* App Info */}
-				<View style={{ alignItems: "center", marginTop: 24 }}>
-					<Text style={{ fontSize: 11, fontFamily: fontFamily.regular, color: t.sub }}>
-						OneTool Mobile
-					</Text>
+				<View style={styles.section}>
+					<SectionLabel title="Support" />
+					<Panel>
+						<RecordRow
+							leading={<MessageCircle size={18} color={t.sub} strokeWidth={2} />}
+							title="Contact support"
+							subtitle="We reply within one business day"
+							onPress={() =>
+								openExternal(
+									supportMailto(
+										"Support request (mobile)",
+										`How can we help?\n\n\n—\nOrganization: ${organization?.name ?? ""}\nOneTool Mobile`,
+									),
+									"Mail",
+								)
+							}
+						/>
+						<RecordRow
+							leading={<Bug size={18} color={t.sub} strokeWidth={2} />}
+							title="Report a bug"
+							subtitle="Something broken or not working right"
+							onPress={() =>
+								openExternal(
+									supportMailto(
+										"Bug report (mobile)",
+										`What were you trying to do?\n\n\nWhat happened instead?\n\n\n—\nOrganization: ${organization?.name ?? ""}\nOneTool Mobile`,
+									),
+									"Mail",
+								)
+							}
+						/>
+						<RecordRow
+							leading={<Lightbulb size={18} color={t.sub} strokeWidth={2} />}
+							title="Request a feature"
+							subtitle="Tell us what OneTool should do next"
+							onPress={() =>
+								openExternal(
+									supportMailto(
+										"Feature request (mobile)",
+										`What would you like OneTool to do?\n\n\n—\nOrganization: ${organization?.name ?? ""}\nOneTool Mobile`,
+									),
+									"Mail",
+								)
+							}
+						/>
+					</Panel>
 				</View>
-			</ScrollView>
-		</SafeAreaView>
+
+				<View style={styles.section}>
+					<SectionLabel title="Account" />
+					<Panel>
+						<DangerRow icon={LogOut} label="Sign out" onPress={handleSignOut} />
+						<DangerRow
+							icon={Trash2}
+							label="Delete account"
+							onPress={handleDeleteAccount}
+							disabled={isDeleting || !ownershipResolved}
+						/>
+					</Panel>
+				</View>
+
+				<Text style={[styles.footer, { color: t.sub }]}>OneTool Mobile</Text>
+			</CanvasScroll>
+		</View>
 	);
 }
+
+const styles = StyleSheet.create({
+	screen: {
+		flex: 1,
+	},
+	paneContent: {
+		maxWidth: 560,
+		alignSelf: "center",
+		width: "100%",
+	},
+	identity: {
+		flexDirection: "row",
+		alignItems: "center",
+		gap: 14,
+		padding: 14,
+	},
+	identityText: {
+		flex: 1,
+		minWidth: 0,
+		gap: 2,
+	},
+	name: {
+		fontFamily: fontFamily.semibold,
+		fontSize: 16,
+	},
+	email: {
+		fontFamily: fontFamily.regular,
+		fontSize: 13,
+	},
+	role: {
+		fontFamily: fontFamily.medium,
+		fontSize: 12,
+	},
+	section: {
+		gap: 8,
+	},
+	dangerRow: {
+		flexDirection: "row",
+		alignItems: "center",
+		gap: 11,
+		minHeight: 56,
+		paddingVertical: 11,
+		paddingHorizontal: 12,
+	},
+	dangerLabel: {
+		fontFamily: fontFamily.semibold,
+		fontSize: 14,
+	},
+	disabled: {
+		opacity: 0.5,
+	},
+	footer: {
+		fontFamily: fontFamily.regular,
+		fontSize: 11,
+		textAlign: "center",
+		marginTop: 4,
+	},
+});

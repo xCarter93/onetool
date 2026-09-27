@@ -1,26 +1,15 @@
 import { useEffect, useState } from "react";
 import { Linking, Pressable, StyleSheet, Text, View } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useKeepAwake } from "expo-keep-awake";
 import * as Location from "expo-location";
-import { router, type Href } from "expo-router";
+import { router } from "expo-router";
 import { useAction, useMutation } from "convex/react";
 import { ConvexError } from "convex/values";
 import { api } from "@onetool/backend/convex/_generated/api";
 import type { Doc, Id } from "@onetool/backend/convex/_generated/dataModel";
-import { ChevronLeft, Fuel, Map, Search } from "lucide-react-native";
-import {
-	colors,
-	DOCK_CLEARANCE,
-	fontFamily,
-	radii,
-	shadow,
-	type,
-	useTokens,
-} from "@/lib/theme";
-import { InkTabHeader, type InkHeaderAction } from "@/components/ink-tab-header";
-import { requestSearchFocus } from "@/lib/search-focus";
-import { DotGrid } from "@/components/ui";
+import { ChevronLeft, Fuel, Map } from "lucide-react-native";
+import { CanvasScroll, EmptyPanel } from "@/components/canvas";
+import { colors, fontFamily, radii, shadow, type, useTokens } from "@/lib/theme";
 import { MapboxModule } from "@/lib/mapbox";
 import { useCachedQuery } from "@/lib/offline/useCachedQuery";
 import { saveOffline, useOnlineAction, useOpenOps } from "@/lib/offline/hooks";
@@ -40,30 +29,17 @@ import {
 } from "@/lib/route-run";
 import { todayDateId, utcMsFromDateId } from "@/lib/date";
 
-// Routes tab — P4, round 2. Full-bleed native map; the bottom sheet only PICKS
-// a route — a selected/running route shows as a floating stop-card carousel
-// (swipe stop-to-stop; the camera centers the focused card's stop; the overview
-// card fits the whole route, or follows the driver while running).
+// Routes tab root. Full-bleed native map fills the canvas edge to edge; the
+// bottom sheet only PICKS a route — a selected/running route swaps it for a
+// stop-card carousel (swipe stop-to-stop; the camera centers the focused
+// card's stop; the overview card fits the whole route, or follows the driver
+// while running). Both sit grounded at the canvas bottom, under the frame's
+// composer/tray rather than floating over it.
 //
 // headerMode "pane" = the iPad shell provides its own PaneHeader.
 
-const WORK_TAB: Href = "/work" as Href;
-
-// Same search jump the other tab roots carry in their ink band. Module scope —
-// it closes over the imperative `router`, so it needs no hook and both the map
-// screen and the no-module fallback can share one array.
-const HEADER_ACTIONS: readonly InkHeaderAction[] = [
-	{
-		key: "search",
-		label: "Search everything",
-		icon: Search,
-		onPress: () => {
-			// Latch, then navigate: Work consumes it once on focus.
-			requestSearchFocus();
-			router.push(WORK_TAB);
-		},
-	},
-];
+/** Bottom clearance for the sheet/carousel now that nothing floats over them. */
+const BOTTOM_INSET = 16;
 
 export default function RoutesScreen({
 	headerMode = "root",
@@ -71,7 +47,7 @@ export default function RoutesScreen({
 	headerMode?: "root" | "pane";
 } = {}) {
 	// The native module ships with the P4 build — older dev clients fall back.
-	if (!MapboxModule) return <RoutesUnavailable headerMode={headerMode} />;
+	if (!MapboxModule) return <RoutesUnavailable />;
 	return <RoutesBody headerMode={headerMode} />;
 }
 
@@ -93,10 +69,8 @@ function stopStatusLabel(status: "visited" | "skipped" | "pending"): string {
 	return status === "visited" ? "Arrived" : status === "skipped" ? "Skip" : "Undo";
 }
 
-function RoutesBody({ headerMode }: { headerMode: "root" | "pane" }) {
+function RoutesBody({ headerMode: _headerMode }: { headerMode: "root" | "pane" }) {
 	const t = useTokens();
-	const insets = useSafeAreaInsets();
-	const isPane = headerMode === "pane";
 
 	const routes = useCachedQuery(api.routes.list, {});
 	const me = useCachedQuery(api.users.current, {});
@@ -378,23 +352,17 @@ function RoutesBody({ headerMode }: { headerMode: "root" | "pane" }) {
 		googleMaps && selected
 			? googleMapsRouteUrl(selected.start, selected.stops, selected.roundTrip)
 			: null;
-	// The band (iPhone) and the pane header (iPad) are both in normal flow and
-	// already clear the safe area, so the chips only need a gutter off the map's
-	// own top edge — but that edge belongs to Mapbox: the logo sits at top 8 /
-	// left 8 and the attribution "i" at top 8 / right 8 (route-map.tsx), and this
-	// row spans both with space-between. Clear the ornaments (~26pt tall) rather
-	// than covering them; Mapbox terms require both to stay visible.
+	// The notch (iPhone) and the pane header (iPad) are both in normal flow and
+	// already clear the top, so the chips only need a gutter off the map's own
+	// top edge — but that edge belongs to Mapbox: the logo sits at top 8 / left 8
+	// and the attribution "i" at top 8 / right 8 (route-map.tsx), and this row
+	// spans both with space-between. Clear the ornaments (~26pt tall) rather than
+	// covering them; Mapbox terms require both to stay visible.
 	const controlsTop = 44;
-	// The floating dock takes no layout height — the sheet and the carousel lift
-	// clear of it. iPad panes have no dock (the shell replaces Tabs).
-	const dockInset = isPane ? 12 : DOCK_CLEARANCE + insets.bottom;
 
 	return (
 		<View style={styles.screen}>
 			{running ? <KeepAwakeWhileRunning /> : null}
-			{/* The band is normal flow (solid, rounded foot) — the map starts
-			    BELOW it, so nothing inside the map area offsets by insets.top. */}
-			{!isPane ? <InkTabHeader orgChip actions={HEADER_ACTIONS} /> : null}
 			<View style={styles.mapArea}>
 				<RouteMap
 					route={selected}
@@ -441,8 +409,8 @@ function RoutesBody({ headerMode }: { headerMode: "root" | "pane" }) {
 					</View>
 				) : null}
 			</View>
-			{/* Sheet + carousel stay at the SCREEN root: their bottom math (dock
-			    clearance, gorhom snap points) is measured against the full screen. */}
+			{/* Sheet + carousel stay at the SCREEN root: their bottom math is measured
+			    against the full screen, not the map area. */}
 			{selected ? (
 				<StopCarousel
 					route={selected}
@@ -452,7 +420,7 @@ function RoutesBody({ headerMode }: { headerMode: "root" | "pane" }) {
 					error={error}
 					googleMaps={googleMaps}
 					focusIndex={focusIndex}
-					bottomInset={dockInset}
+					bottomInset={BOTTOM_INSET}
 					onFocusChange={setFocusIndex}
 					onStart={onStart}
 					onFinish={onFinish}
@@ -486,7 +454,7 @@ function RoutesBody({ headerMode }: { headerMode: "root" | "pane" }) {
 					onSelect={selectRoute}
 					onCreate={() => openBuilder()}
 					onSeedSchedule={onSeedSchedule}
-					bottomInset={dockInset}
+					bottomInset={BOTTOM_INSET}
 				/>
 			)}
 		</View>
@@ -514,7 +482,7 @@ function FloatChip({
 				styles.chip,
 				{
 					backgroundColor: active ? t.primarySolid : t.card,
-					borderColor: active ? t.primarySolid : t.border,
+					borderColor: active ? t.primarySolid : t.line,
 					opacity: pressed ? 0.8 : 1,
 				},
 			]}
@@ -536,27 +504,15 @@ function KeepAwakeWhileRunning() {
 }
 
 /** Pre-P4-build fallback — the old placeholder, with honest copy. */
-function RoutesUnavailable({ headerMode }: { headerMode: "root" | "pane" }) {
-	const t = useTokens();
+function RoutesUnavailable() {
 	return (
-		<View style={[styles.screen, { backgroundColor: t.bg }]}>
-			<DotGrid style={StyleSheet.absoluteFill} />
-			{headerMode !== "pane" ? (
-				<InkTabHeader orgChip actions={HEADER_ACTIONS} />
-			) : null}
-			<View style={styles.fallbackBody}>
-				<View style={[styles.mark, { backgroundColor: t.muted }]}>
-					<Map size={26} color={t.sub} strokeWidth={2} />
-				</View>
-				<Text style={[styles.fallbackTitle, { color: t.ink }]}>
-					The map needs an app update
-				</Text>
-				<Text style={[styles.fallbackCopy, { color: t.sub }]}>
-					Update OneTool to the latest version to see your routes on
-					the map.
-				</Text>
-			</View>
-		</View>
+		<CanvasScroll contentContainerStyle={styles.fallbackScroll}>
+			<EmptyPanel
+				icon={Map}
+				title="The map needs an app update"
+				body="Update OneTool to the latest version to see your routes on the map."
+			/>
+		</CanvasScroll>
 	);
 }
 
@@ -580,7 +536,7 @@ const styles = StyleSheet.create({
 		gap: 5,
 		paddingHorizontal: 12,
 		height: 34,
-		borderRadius: radii.pill,
+		borderRadius: radii.card,
 		borderWidth: 1,
 		boxShadow: shadow.floatChip,
 	},
@@ -588,30 +544,8 @@ const styles = StyleSheet.create({
 		fontFamily: fontFamily.medium,
 		fontSize: type.sm,
 	},
-	fallbackBody: {
-		flex: 1,
-		alignItems: "center",
+	fallbackScroll: {
+		flexGrow: 1,
 		justifyContent: "center",
-		gap: 8,
-		paddingHorizontal: 40,
-		paddingBottom: 60,
-	},
-	mark: {
-		width: 56,
-		height: 56,
-		borderRadius: radii.card,
-		alignItems: "center",
-		justifyContent: "center",
-		marginBottom: 4,
-	},
-	fallbackTitle: {
-		fontFamily: fontFamily.semibold,
-		fontSize: type.h3,
-	},
-	fallbackCopy: {
-		fontFamily: fontFamily.regular,
-		fontSize: type.body,
-		lineHeight: 20,
-		textAlign: "center",
 	},
 });

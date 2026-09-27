@@ -1,32 +1,15 @@
 import { useMemo, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
-import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import { StyleSheet, Text, View } from "react-native";
 import { FlashList } from "@shopify/flash-list";
 import { usePaginatedQuery } from "convex/react";
 import { useRouter, type Href } from "expo-router";
+import { Activity as ActivityIcon } from "lucide-react-native";
 import { api } from "@onetool/backend/convex/_generated/api";
-import {
-	DOCK_CLEARANCE,
-	fontFamily,
-	radii,
-	spacing,
-	tokens,
-	touch,
-	type,
-	useTokens,
-} from "@/lib/theme";
-import { InkTabHeader } from "@/components/ink-tab-header";
-import { Illustration } from "@/components/illustrations";
-import { DotGrid, SCROLL_TOP_INSET } from "@/components/ui";
-import {
-	ActivityDayHeader,
-	ActivityRow,
-} from "@/components/activity/activity-row";
-import {
-	buildActivityFeed,
-	type ActivityFeedItem,
-	type ActivityLink,
-} from "@/lib/activity-feed";
+import { fontFamily, useTokens } from "@/lib/theme";
+import { GUTTER, EmptyPanel, PageHeader, Panel, SectionLabel, CANVAS_HEADER as canvasHeader } from "@/components/canvas";
+import { Button } from "@/components/ui";
+import { ActivityRow } from "@/components/activity/activity-row";
+import { groupByDay, type ActivityDaySection, type ActivityLink } from "@/lib/activity-feed";
 import { sameRef, type RecordRef } from "@/lib/selection-context";
 
 // Every loaded page stays a live subscription; cap mirrors web's SHEET_MAX_ITEMS
@@ -55,11 +38,11 @@ export function refFromActivityLink(link: ActivityLink): RecordRef | null {
 	}
 }
 
-// headerMode/onSelect/selected default off → the iPhone path (router.push, its
-// own AppHeader, no selected highlight) is byte-identical. The iPad shell
-// renders this as the Activity pane: headerMode="pane" suppresses the self-
-// mounted AppHeader (shell mounts PaneHeader), onSelect drives the detail pane
-// via the shell selection instead of a route push, selected marks the row.
+// headerMode/onSelect/selected default off → the iPhone path (router.push, own
+// page header, no selected highlight) is byte-identical. The iPad shell renders
+// this as the Activity pane: headerMode="pane" suppresses the page header (the
+// shell mounts PaneHeader), onSelect drives the detail pane via the shell
+// selection instead of a route push, selected marks the row.
 export default function ActivityScreen({
 	headerMode = "root",
 	onSelect,
@@ -71,15 +54,7 @@ export default function ActivityScreen({
 } = {}) {
 	const t = useTokens();
 	const router = useRouter();
-	const insets = useSafeAreaInsets();
 	const isPane = headerMode === "pane";
-	// The floating dock takes no layout height — the feed clears it itself.
-	// iPad panes have no dock (the shell replaces Tabs).
-	const listBottom = isPane ? spacing.lg : DOCK_CLEARANCE + insets.bottom;
-	// iPhone: the solid ink band ends the header, so the feed starts right below
-	// it (Work's flat-list value — the first day header carries its own spacing.lg).
-	// iPad pane: no band, so the old translucent-header inset still applies.
-	const listTop = isPane ? SCROLL_TOP_INSET : 12;
 	// Seed "now" once (lazy) — react-hooks/purity forbids Date.now() during render.
 	const [nowMs] = useState(() => Date.now());
 
@@ -89,10 +64,7 @@ export default function ActivityScreen({
 		loadMore,
 	} = usePaginatedQuery(api.activities.feed, {}, { initialNumItems: PAGE_SIZE });
 
-	const items = useMemo(
-		() => buildActivityFeed(activities, nowMs),
-		[activities, nowMs],
-	);
+	const days = useMemo(() => groupByDay(activities, nowMs), [activities, nowMs]);
 
 	// On iPad pane: a row tap drives the shell selection when the link resolves
 	// to a detail ref. Otherwise (iPhone, or a link with no detail pane body)
@@ -108,209 +80,153 @@ export default function ActivityScreen({
 		router.push(link as unknown as Href);
 	};
 
-	const renderItem = ({
-		item,
-		index,
-	}: {
-		item: ActivityFeedItem;
-		index: number;
-	}) => {
-		if (item.kind === "header") {
-			return <ActivityDayHeader label={item.label} count={item.count} />;
-		}
-		// Drop the hairline on the last row of a day group (and of the whole list).
-		const next = items[index + 1];
-		const ref = item.activity.link
-			? refFromActivityLink(item.activity.link)
-			: null;
-		const isSelected = isPane && sameRef(ref, selected);
-		return (
-			<View style={isSelected ? { backgroundColor: t.secondary } : undefined}>
-				<ActivityRow
-					activity={item.activity}
-					nowMs={nowMs}
-					last={!next || next.kind === "header"}
-					onPress={
-						item.activity.link
-							? () => openRecord(item.activity.link!)
-							: undefined
-					}
-				/>
-			</View>
-		);
-	};
-
-	const Skeleton = (
-		<View style={styles.skeletonBlock}>
-			{[0, 1, 2].map((group) => (
-				<View key={group}>
-					<View style={styles.skeletonDay}>
-						<View style={[styles.skeleton, { width: 64, height: 11 }]} />
-					</View>
-					{[0, 1, 2].map((i) => (
-						<View key={i} style={styles.skeletonRow}>
-							<View style={styles.skeletonTile} />
-							<View style={styles.skeletonBody}>
-								<View style={[styles.skeleton, { width: "62%", height: 13 }]} />
-								<View
-									style={[
-										styles.skeleton,
-										{ width: "34%", height: 11, marginTop: 6 },
-									]}
-								/>
-							</View>
-						</View>
-					))}
-				</View>
-			))}
+	const renderDay = ({ item }: { item: ActivityDaySection }) => (
+		<View style={styles.day}>
+			<SectionLabel
+				title={item.label}
+				right={
+					<Text style={[styles.dayCount, { color: t.sub }]}>
+						{item.items.length} {item.items.length === 1 ? "event" : "events"}
+					</Text>
+				}
+			/>
+			<Panel>
+				{item.items.map((activity) => {
+					const ref = activity.link ? refFromActivityLink(activity.link) : null;
+					return (
+						<ActivityRow
+							key={activity.id}
+							activity={activity}
+							nowMs={nowMs}
+							selected={isPane && sameRef(ref, selected)}
+							onPress={activity.link ? () => openRecord(activity.link!) : undefined}
+						/>
+					);
+				})}
+			</Panel>
 		</View>
 	);
 
-	const Empty = (
-		<View style={styles.emptyState}>
-			<Illustration name="activity-none" knockout={t.bg} style={styles.emptyArt} />
-			<Text style={[styles.emptyTitle, { color: t.ink }]}>
-				Nothing has happened yet
-			</Text>
-			<Text style={[styles.emptyText, { color: t.sub }]}>
-				Approvals, payments, and status changes across your business land here
-				as they happen — newest first.
-			</Text>
+	const Skeleton = (
+		<View style={styles.day}>
+			<SectionLabel title="Today" />
+			<Panel>
+				{[0, 1, 2].map((i) => (
+					<View key={i} style={styles.skeletonRow}>
+						<View style={[styles.skeletonTile, { backgroundColor: t.lineSoft }]} />
+						<View style={styles.skeletonBody}>
+							<View style={[styles.skeleton, { backgroundColor: t.lineSoft, width: "62%", height: 13 }]} />
+							<View
+								style={[
+									styles.skeleton,
+									{ backgroundColor: t.lineSoft, width: "34%", height: 11, marginTop: 6 },
+								]}
+							/>
+						</View>
+					</View>
+				))}
+			</Panel>
 		</View>
 	);
 
 	const loadingMore = status === "LoadingMore";
 	const atCap = activities.length >= MAX_ITEMS;
 	const Footer =
-		items.length === 0 ? null : status === "Exhausted" ? (
-			<Text style={[styles.footerNote, { color: t.sub }]}>
-				{"You're all caught up — that's everything."}
-			</Text>
+		days.length === 0 ? null : status === "Exhausted" ? (
+			<Text style={[styles.footerNote, { color: t.sub }]}>You are all caught up.</Text>
 		) : atCap ? (
 			<Text style={[styles.footerNote, { color: t.sub }]}>
 				{`Showing the ${MAX_ITEMS} most recent events.`}
 			</Text>
 		) : (
-			<Pressable
+			<Button
+				title={loadingMore ? "Loading older activity" : "Load older activity"}
+				variant="secondary"
 				onPress={() => loadMore(Math.min(PAGE_SIZE, MAX_ITEMS - activities.length))}
 				disabled={loadingMore}
-				accessibilityRole="button"
-				accessibilityLabel="Load older activity"
-				style={({ pressed }) => [
-					styles.loadMore,
-					{ borderColor: t.line, backgroundColor: t.card },
-					pressed && styles.pressed,
-					loadingMore && styles.pressed,
-				]}
-			>
-				<Text style={[styles.loadMoreText, { color: t.frostedInk }]}>
-					{loadingMore ? "Loading older activity…" : "Load older activity"}
-				</Text>
-			</Pressable>
+				style={styles.loadMore}
+			/>
 		);
 
 	return (
-		<SafeAreaView style={{ flex: 1, backgroundColor: t.surface }} edges={[]}>
-			{/* Page canvas, matching web's .workspace-canvas. */}
-			<DotGrid style={StyleSheet.absoluteFill} />
-			{/* iPhone: the ink band, matching Work and Money. No Activity quick-link
-			    in the cluster — this screen IS Activity. */}
-			{!isPane ? <InkTabHeader title="Activity" hideActivity /> : null}
+		<View style={styles.screen}>
+			{isPane ? null : (
+				<View style={canvasHeader}>
+					<PageHeader title="Activity" />
+				</View>
+			)}
 			{status === "LoadingFirstPage" ? (
-				<View style={[styles.listContent, { paddingTop: listTop }]}>
+				<View style={[styles.listContent, { paddingTop: 12 }]}>
 					{Skeleton}
 				</View>
 			) : (
 				<FlashList
-					data={items}
-					keyExtractor={(item) => item.key}
-					getItemType={(item) => item.kind}
-					renderItem={renderItem}
+					data={days}
+					keyExtractor={(item) => `day-${item.dayStartMs}`}
+					renderItem={renderDay}
 					contentContainerStyle={{
 						...styles.listContent,
-						paddingTop: listTop,
-						paddingBottom: listBottom,
+						paddingTop: 12,
 					}}
-					ListEmptyComponent={Empty}
+					ItemSeparatorComponent={() => <View style={styles.daySpacer} />}
+					ListEmptyComponent={
+						<EmptyPanel
+							icon={ActivityIcon}
+							title="Nothing has happened yet"
+							body="Approvals, payments and status changes across your business land here as they happen, newest first."
+						/>
+					}
 					ListFooterComponent={Footer}
 				/>
 			)}
-		</SafeAreaView>
+		</View>
 	);
 }
 
 const styles = StyleSheet.create({
+	screen: {
+		flex: 1,
+	},
 	listContent: {
-		paddingHorizontal: spacing.md,
-		paddingBottom: spacing.lg,
+		paddingHorizontal: GUTTER,
+		paddingBottom: 32,
 	},
-	skeletonBlock: {
-		gap: 4,
+	day: {
+		gap: 8,
 	},
-	skeletonDay: {
-		paddingTop: spacing.lg,
-		paddingBottom: spacing.sm,
-		paddingHorizontal: spacing.xs,
+	daySpacer: {
+		height: 16,
+	},
+	dayCount: {
+		fontFamily: fontFamily.medium,
+		fontSize: 11.5,
 	},
 	skeletonRow: {
 		flexDirection: "row",
 		alignItems: "center",
 		gap: 11,
 		paddingVertical: 11,
-		paddingHorizontal: spacing.sm,
+		paddingHorizontal: 12,
 	},
 	skeletonTile: {
 		width: 32,
 		height: 32,
-		borderRadius: radii.md,
-		backgroundColor: tokens.secondary,
+		borderRadius: 8,
 	},
 	skeletonBody: {
 		flex: 1,
 	},
 	skeleton: {
-		backgroundColor: tokens.secondary,
-		borderRadius: radii.xs,
-	},
-	emptyState: {
-		alignItems: "center",
-		paddingVertical: 72,
-		paddingHorizontal: spacing.lg,
-	},
-	emptyArt: {
-		marginBottom: spacing.md,
-	},
-	emptyTitle: {
-		fontFamily: fontFamily.semibold,
-		fontSize: type.h3,
-		marginBottom: 6,
-	},
-	emptyText: {
-		fontFamily: fontFamily.regular,
-		fontSize: type.body,
-		textAlign: "center",
-		lineHeight: 20,
+		borderRadius: 4,
 	},
 	loadMore: {
-		marginTop: spacing.lg,
-		minHeight: touch.min,
-		borderWidth: 1,
-		borderRadius: radii.ctrl,
-		alignItems: "center",
-		justifyContent: "center",
-		paddingVertical: 12,
-	},
-	loadMoreText: {
-		fontFamily: fontFamily.semibold,
-		fontSize: type.body,
-	},
-	pressed: {
-		opacity: 0.7,
+		marginTop: 8,
+		alignSelf: "center",
 	},
 	footerNote: {
-		marginTop: spacing.lg,
+		marginTop: 8,
 		fontFamily: fontFamily.regular,
-		fontSize: type.meta,
+		fontSize: 12,
 		textAlign: "center",
 	},
 });

@@ -1,13 +1,5 @@
-import { useState } from "react";
-import {
-	Pressable,
-	ScrollView,
-	StyleSheet,
-	Text,
-	TextInput,
-	View,
-} from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useCallback, useMemo, useState } from "react";
+import { StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
@@ -16,13 +8,19 @@ import {
 	AddressAutocomplete,
 	type AddressValue,
 } from "@/components/AddressAutocomplete.native";
-import { Card, DotGrid } from "@/components/ui";
-import { StyledButton } from "@/components/styled";
-import { InkTabHeader } from "@/components/ink-tab-header";
-import { fontFamily, radii, spacing, tokens, type } from "@/lib/theme";
+import { CanvasScroll, GUTTER, NOTCH_CLEARANCE, PageHeader } from "@/components/canvas";
+import { SheetField, SheetInput } from "@/components/sheets/create-sheet";
+import { Button, SegmentedToggle } from "@/components/ui";
+import { useDevice } from "@/lib/use-device";
+import { useScreenChrome } from "@/lib/shell-chrome";
+import { fontFamily, useTokens } from "@/lib/theme";
 
 type CompanySize = "1-10" | "10-100" | "100+";
-const COMPANY_SIZES: CompanySize[] = ["1-10", "10-100", "100+"];
+const COMPANY_SIZES = [
+	{ value: "1-10", label: "1-10" },
+	{ value: "10-100", label: "10-100" },
+	{ value: "100+", label: "100+" },
+] as const satisfies { value: CompanySize; label: string }[];
 
 const EMPTY_ADDRESS: AddressValue = {
 	streetAddress: "",
@@ -31,15 +29,40 @@ const EMPTY_ADDRESS: AddressValue = {
 	zipCode: "",
 };
 
+function sameAddress(a: AddressValue, org: Parameters<typeof buildAddress>[0]): boolean {
+	const b = buildAddress(org);
+	return (
+		a.streetAddress.trim() === b.streetAddress &&
+		a.city.trim() === b.city &&
+		a.state.trim() === b.state &&
+		a.zipCode.trim() === b.zipCode
+	);
+}
+
+function buildAddress(org: {
+	addressStreet?: string | null;
+	addressCity?: string | null;
+	addressState?: string | null;
+	addressZip?: string | null;
+}) {
+	return {
+		streetAddress: org.addressStreet ?? "",
+		city: org.addressCity ?? "",
+		state: org.addressState ?? "",
+		zipCode: org.addressZip ?? "",
+	};
+}
+
 // Owner-only editor for the org's business profile. This edits an EXISTING org
 // the user already belongs to (settings management) — it never creates an org
 // and shows no pricing, so it's outside Apple 3.1.1's account-registration scope.
 // Reached from the Home "finish setup" prompt and the Profile screen (both
 // owner-gated). Saves via completeMetadata, which also sets isMetadataComplete,
-// clearing the Home prompt.
+// clearing the Home prompt. Save lives in the iPhone tray; iPad has no tray.
 export default function BusinessDetailsScreen() {
-	const insets = useSafeAreaInsets();
 	const router = useRouter();
+	const t = useTokens();
+	const { device } = useDevice();
 
 	const org = useQuery(api.organizations.get);
 	const me = useQuery(api.users.current);
@@ -77,7 +100,27 @@ export default function BusinessDetailsScreen() {
 		if (org.companySize) setCompanySize(org.companySize as CompanySize);
 	}
 
-	async function handleSave() {
+	const isDirty = useMemo(() => {
+		if (!org) return false;
+		return (
+			!sameAddress(address, org) ||
+			email.trim() !== (org.email ?? "") ||
+			phone.trim() !== (org.phone ?? "") ||
+			website.trim() !== (org.website ?? "") ||
+			companySize !== (org.companySize as CompanySize | undefined)
+		);
+	}, [address, email, phone, website, companySize, org]);
+
+	const isValid =
+		!!address.streetAddress.trim() &&
+		!!address.city.trim() &&
+		!!address.state.trim() &&
+		!!address.zipCode.trim() &&
+		!!email.trim() &&
+		!!phone.trim() &&
+		!!companySize;
+
+	const handleSave = useCallback(async () => {
 		const missingFields: string[] = [];
 		if (!address.streetAddress.trim()) missingFields.push("street");
 		if (!address.city.trim()) missingFields.push("city");
@@ -112,16 +155,42 @@ export default function BusinessDetailsScreen() {
 			setFormError("Couldn't save your business details. Try again.");
 			setSubmitting(false);
 		}
-	}
+	}, [address, email, phone, website, companySize, completeMetadata, router]);
+
+	const canSave = isOwner && org !== undefined && org !== null;
+	const disabledReason = submitting
+		? "Saving…"
+		: !isDirty
+			? "No changes to save"
+			: !isValid
+				? "Fill in the required fields"
+				: undefined;
+
+	useScreenChrome(
+		canSave
+			? {
+					tray: [
+						{
+							key: "save",
+							label: "Save",
+							icon: Check,
+							onPress: () => void handleSave(),
+							disabledReason,
+						},
+					],
+				}
+			: null,
+	);
 
 	// Loading the org row.
 	if (org === undefined || me === undefined) {
 		return (
 			<View style={styles.screen}>
-				<DotGrid style={StyleSheet.absoluteFill} />
-				<InkTabHeader title="Business details" onBack={() => router.back()} />
-				<View style={[styles.body, styles.center]}>
-					<Text style={styles.mutedBody}>Loading…</Text>
+				<View style={styles.stateHeader}>
+					<PageHeader title="Business details" />
+				</View>
+				<View style={styles.center}>
+					<Text style={[styles.muted, { color: t.sub }]}>Loading…</Text>
 				</View>
 			</View>
 		);
@@ -133,28 +202,13 @@ export default function BusinessDetailsScreen() {
 	if (org === null) {
 		return (
 			<View style={styles.screen}>
-				<DotGrid style={StyleSheet.absoluteFill} />
-				<InkTabHeader title="Business details" onBack={() => router.back()} />
-				<View
-					style={[
-						styles.body,
-						styles.center,
-						{ paddingBottom: insets.bottom + spacing.lg },
-					]}
-				>
-					<View style={styles.box}>
-						<Text style={styles.mutedBody}>
-							No active workspace. Open one first, then edit its business details.
-						</Text>
-						<View style={styles.cta}>
-							<StyledButton
-								intent="outline"
-								label="Back"
-								showArrow={false}
-								onPress={() => router.back()}
-							/>
-						</View>
-					</View>
+				<View style={styles.stateHeader}>
+					<PageHeader title="Business details" />
+				</View>
+				<View style={styles.center}>
+					<Text style={[styles.muted, { color: t.sub }]}>
+						No active workspace. Open one first, then edit its business details.
+					</Text>
 				</View>
 			</View>
 		);
@@ -165,28 +219,13 @@ export default function BusinessDetailsScreen() {
 	if (!isOwner) {
 		return (
 			<View style={styles.screen}>
-				<DotGrid style={StyleSheet.absoluteFill} />
-				<InkTabHeader title="Business details" onBack={() => router.back()} />
-				<View
-					style={[
-						styles.body,
-						styles.center,
-						{ paddingBottom: insets.bottom + spacing.lg },
-					]}
-				>
-					<View style={styles.box}>
-						<Text style={styles.mutedBody}>
-							Only the organization owner can edit business details.
-						</Text>
-						<View style={styles.cta}>
-							<StyledButton
-								intent="outline"
-								label="Back"
-								showArrow={false}
-								onPress={() => router.back()}
-							/>
-						</View>
-					</View>
+				<View style={styles.stateHeader}>
+					<PageHeader title="Business details" />
+				</View>
+				<View style={styles.center}>
+					<Text style={[styles.muted, { color: t.sub }]}>
+						Only the organization owner can edit business details.
+					</Text>
 				</View>
 			</View>
 		);
@@ -194,104 +233,63 @@ export default function BusinessDetailsScreen() {
 
 	return (
 		<View style={styles.screen}>
-			<DotGrid style={StyleSheet.absoluteFill} />
-			<InkTabHeader title="Business details" onBack={() => router.back()} />
-			<ScrollView
-				style={styles.body}
-				contentContainerStyle={styles.scroll}
-				keyboardShouldPersistTaps="handled"
-			>
-				<Text style={styles.subtitle}>
-					Used on your quotes and invoices. Only the owner can edit these.
-				</Text>
-
-				<View style={styles.stepBody}>
+			<CanvasScroll contentContainerStyle={{ gap: 20 }}>
+				<PageHeader
+					title="Business details"
+					subtitle="Used on your quotes and invoices. Only the owner can edit these."
+				/>
+				<SheetField label="Address">
 					<AddressAutocomplete value={address} onChange={setAddress} />
-					<TextInput
+				</SheetField>
+				<SheetField label="Business email">
+					<SheetInput
 						value={email}
 						onChangeText={setEmail}
-						placeholder="Business email"
-						placeholderTextColor={tokens.faint}
+						placeholder="you@business.com"
 						editable={!submitting}
-						style={styles.input}
 						autoCapitalize="none"
 						keyboardType="email-address"
 					/>
-					<TextInput
+				</SheetField>
+				<SheetField label="Phone">
+					<SheetInput
 						value={phone}
 						onChangeText={setPhone}
-						placeholder="Phone"
-						placeholderTextColor={tokens.faint}
+						placeholder="(555) 555-5555"
 						editable={!submitting}
-						style={styles.input}
 						keyboardType="phone-pad"
 					/>
-					<TextInput
+				</SheetField>
+				<SheetField label="Website" hint="Optional">
+					<SheetInput
 						value={website}
 						onChangeText={setWebsite}
-						placeholder="Website (optional)"
-						placeholderTextColor={tokens.faint}
+						placeholder="https://"
 						editable={!submitting}
-						style={styles.input}
 						autoCapitalize="none"
 						keyboardType="url"
 					/>
-				</View>
-
-				<Text style={styles.sizeHeading}>How big is your team?</Text>
-				<View style={styles.stepBody}>
-					{COMPANY_SIZES.map((size) => {
-						const selected = companySize === size;
-						return (
-							<Pressable
-								key={size}
-								onPress={() => !submitting && setCompanySize(size)}
-								disabled={submitting}
-							>
-								<Card
-									style={[
-										styles.sizeRow,
-										{ borderColor: selected ? tokens.accent : tokens.border },
-									]}
-								>
-									<Text style={styles.sizeLabel}>{size}</Text>
-									{selected ? <Check size={18} color={tokens.accent} /> : null}
-								</Card>
-							</Pressable>
-						);
-					})}
-				</View>
+				</SheetField>
+				<SheetField label="Team size">
+					<SegmentedToggle<CompanySize | "">
+						segments={COMPANY_SIZES}
+						value={companySize ?? ""}
+						onChange={(v) => setCompanySize(v === "" ? undefined : v)}
+					/>
+				</SheetField>
 
 				{missing.length > 0 ? (
-					<Text style={styles.errorText}>
-						Please fill in the required fields.
-					</Text>
+					<Text style={[styles.errorText, { color: t.danger }]}>Please fill in the required fields.</Text>
 				) : null}
-				{formError ? <Text style={styles.errorText}>{formError}</Text> : null}
-			</ScrollView>
-
-			<View
-				style={[styles.footer, { paddingBottom: insets.bottom + spacing.md }]}
-			>
-				<View style={styles.footerHalf}>
-					<StyledButton
-						intent="outline"
-						label="Cancel"
-						showArrow={false}
-						disabled={submitting}
-						onPress={() => router.back()}
+				{formError ? <Text style={[styles.errorText, { color: t.danger }]}>{formError}</Text> : null}
+				{device === "ipad" ? (
+					<Button
+						title={submitting ? "Saving…" : "Save"}
+						onPress={() => void handleSave()}
+						disabled={!!disabledReason}
 					/>
-				</View>
-				<View style={styles.footerHalf}>
-					<StyledButton
-						intent="primary"
-						label="Save"
-						showArrow={false}
-						isLoading={submitting}
-						onPress={handleSave}
-					/>
-				</View>
-			</View>
+				) : null}
+			</CanvasScroll>
 		</View>
 	);
 }
@@ -299,94 +297,24 @@ export default function BusinessDetailsScreen() {
 const styles = StyleSheet.create({
 	screen: {
 		flex: 1,
-		backgroundColor: tokens.bg,
 	},
-	// The ink band spans full width, so the screen gutter moved off the root
-	// and onto everything that renders below it.
-	body: {
-		flex: 1,
-		paddingHorizontal: spacing.lg,
+	stateHeader: {
+		paddingHorizontal: GUTTER,
+		paddingTop: NOTCH_CLEARANCE,
 	},
 	center: {
+		flex: 1,
 		alignItems: "center",
 		justifyContent: "center",
+		paddingHorizontal: 24,
 	},
-	box: {
-		alignItems: "center",
-		gap: spacing.sm,
-		paddingHorizontal: spacing.lg,
-		maxWidth: 420,
-	},
-	scroll: {
-		paddingTop: spacing.lg,
-		paddingBottom: spacing.xl,
-	},
-	subtitle: {
+	muted: {
 		fontFamily: fontFamily.regular,
-		fontSize: type.h4,
-		color: tokens.sub,
-		marginTop: spacing.xs,
+		fontSize: 14,
 		textAlign: "center",
-	},
-	stepBody: {
-		marginTop: spacing.md,
-		gap: spacing.md,
-	},
-	sizeHeading: {
-		fontFamily: fontFamily.bold,
-		fontSize: type.h3,
-		color: tokens.ink,
-		marginTop: spacing.xl,
-	},
-	input: {
-		borderWidth: 1,
-		borderColor: tokens.border,
-		backgroundColor: tokens.card,
-		borderRadius: radii.lg,
-		paddingHorizontal: 12,
-		paddingVertical: 12,
-		fontFamily: fontFamily.regular,
-		fontSize: type.body,
-		letterSpacing: 0, // RN#42589: pin kern so iOS placeholder can't randomly letter-space
-		color: tokens.ink,
-		minHeight: 48,
-	},
-	sizeRow: {
-		flexDirection: "row",
-		alignItems: "center",
-		justifyContent: "space-between",
-		borderWidth: 1,
-		minHeight: 44,
-		padding: spacing.md,
-	},
-	sizeLabel: {
-		fontFamily: fontFamily.bold,
-		fontSize: type.h4,
-		color: tokens.ink,
 	},
 	errorText: {
 		fontFamily: fontFamily.regular,
-		fontSize: type.body,
-		color: tokens.danger,
-		marginTop: spacing.sm,
-	},
-	mutedBody: {
-		fontFamily: fontFamily.regular,
-		fontSize: type.h4,
-		color: tokens.sub,
-		textAlign: "center",
-	},
-	footer: {
-		flexDirection: "row",
-		gap: spacing.md,
-		paddingTop: spacing.md,
-		paddingHorizontal: spacing.lg,
-	},
-	footerHalf: {
-		flex: 1,
-	},
-	cta: {
-		marginTop: spacing.lg,
-		alignSelf: "stretch",
+		fontSize: 13,
 	},
 });

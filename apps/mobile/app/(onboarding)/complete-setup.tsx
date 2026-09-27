@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { StatusBar } from "expo-status-bar";
 import { useRouter } from "expo-router";
 import { useAuth, useOrganization, useOrganizationList } from "@clerk/expo";
-import { StyledButton } from "@/components/styled";
-import { DotGrid } from "@/components/ui";
-import { fontFamily, spacing, tokens, type } from "@/lib/theme";
+import { Button } from "@/components/ui";
+import { fontFamily, frame, radii, spacing, type, useTokens } from "@/lib/theme";
 
 // Post-auth "finish setup" screen. The app is SIGN-IN ONLY (Apple 3.1.1) — it no
 // longer creates organizations. Reached only when the session has NO active org.
@@ -19,6 +19,7 @@ import { fontFamily, spacing, tokens, type } from "@/lib/theme";
 // org, lands in tabs, and completes details via the Home prompt / Business
 // details editor.)
 export default function CompleteSetupScreen() {
+	const t = useTokens();
 	const insets = useSafeAreaInsets();
 	const router = useRouter();
 	const { signOut } = useAuth();
@@ -86,9 +87,12 @@ export default function CompleteSetupScreen() {
 	// transient → spinner.
 	if (!activationError && !noMembership) {
 		return (
-			<View style={[styles.screen, styles.center, { paddingTop: insets.top }]}>
-				<DotGrid style={StyleSheet.absoluteFill} />
-				<Text style={styles.body}>Loading your workspace…</Text>
+			<View style={[styles.screen, styles.center, { backgroundColor: frame.rail }]}>
+				<StatusBar style="light" />
+				<ActivityIndicator color={frame.railMuted} />
+				<Text style={[styles.loadingBody, { color: frame.railText }]}>
+					Loading your workspace…
+				</Text>
 			</View>
 		);
 	}
@@ -98,34 +102,31 @@ export default function CompleteSetupScreen() {
 			style={[
 				styles.screen,
 				styles.center,
-				{ paddingTop: insets.top, paddingBottom: insets.bottom + spacing.lg },
+				{ backgroundColor: frame.rail, paddingBottom: insets.bottom + spacing.lg },
 			]}
 		>
-			<DotGrid style={StyleSheet.absoluteFill} />
-			<View style={styles.box}>
-				<Text style={styles.title}>
+			<StatusBar style="light" />
+			<View style={[styles.card, { backgroundColor: t.card, borderColor: t.line }]}>
+				<Text style={[styles.title, { color: t.ink }]}>
 					{activationError ? "Couldn't open your workspace" : "Almost there"}
 				</Text>
-				<Text style={styles.body}>
+				<Text style={[styles.body, { color: t.sub }]}>
 					{activationError
 						? "Check your connection and try again."
 						: "Finish setting up your business in the OneTool web app, then sign in here to get started."}
 				</Text>
 				<View style={styles.cta}>
 					{activationError ? (
-						<StyledButton
-							intent="primary"
-							label="Try again"
-							showArrow={false}
-							onPress={activateFirstMembership}
+						<Button
+							title="Try again"
+							onPress={() => void activateFirstMembership()}
 						/>
 					) : null}
-					<StyledButton
-						intent="outline"
-						label="Sign out"
-						showArrow={false}
-						isLoading={signingOut}
-						onPress={handleSignOut}
+					<Button
+						title={signingOut ? "Signing out…" : "Sign out"}
+						variant="secondary"
+						disabled={signingOut}
+						onPress={() => void handleSignOut()}
 					/>
 				</View>
 			</View>
@@ -136,29 +137,34 @@ export default function CompleteSetupScreen() {
 const styles = StyleSheet.create({
 	screen: {
 		flex: 1,
-		backgroundColor: tokens.bg,
 		paddingHorizontal: spacing.lg,
 	},
 	center: {
 		alignItems: "center",
 		justifyContent: "center",
 	},
-	box: {
+	loadingBody: {
+		marginTop: spacing.sm,
+		fontFamily: fontFamily.regular,
+		fontSize: type.h4,
+	},
+	card: {
+		width: "100%",
+		maxWidth: 420,
+		borderRadius: radii.card,
+		borderWidth: 1,
+		padding: spacing.lg,
 		alignItems: "center",
 		gap: spacing.sm,
-		paddingHorizontal: spacing.lg,
-		maxWidth: 420,
 	},
 	title: {
 		fontFamily: fontFamily.bold,
 		fontSize: type.h2,
-		color: tokens.ink,
 		textAlign: "center",
 	},
 	body: {
 		fontFamily: fontFamily.regular,
 		fontSize: type.h4,
-		color: tokens.sub,
 		textAlign: "center",
 	},
 	cta: {

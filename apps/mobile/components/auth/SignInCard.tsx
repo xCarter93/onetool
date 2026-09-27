@@ -12,9 +12,8 @@ import {
 import { useClerk, useSignIn } from "@clerk/expo";
 import { useSignInWithApple } from "@clerk/expo/apple";
 import { useSignInWithGoogle } from "@clerk/expo/google";
-import { LinearGradient } from "expo-linear-gradient";
 import Svg, { Path } from "react-native-svg";
-import { dock, fontFamily, hero } from "@/lib/theme";
+import { fontFamily, radii, useTokens } from "@/lib/theme";
 
 type Busy = null | "continue" | "verify" | "resend" | "apple" | "google";
 
@@ -29,6 +28,7 @@ type Busy = null | "continue" | "verify" | "resend" | "apple" | "google";
 // first "Continue with Google" work — and users without an org still dead-end
 // at the complete-setup screen, so the 3.1.1 stance holds.
 export function SignInCard() {
+	const t = useTokens();
 	const clerk = useClerk();
 	const { signIn, fetchStatus } = useSignIn();
 	const { startAppleAuthenticationFlow } = useSignInWithApple();
@@ -171,13 +171,17 @@ export function SignInCard() {
 		return (
 			<View>
 				{brandMark}
-				<Text style={styles.heading}>Check your email</Text>
-				<Text style={styles.sub}>
+				<Text style={[styles.heading, { color: t.ink }]}>Check your email</Text>
+				<Text style={[styles.sub, { color: t.sub }]}>
 					Enter the 6-digit code we sent to {email.trim().toLowerCase()}
 				</Text>
 				<TextInput
 					ref={codeRef}
-					style={[styles.input, styles.codeInput]}
+					style={[
+						styles.input,
+						styles.codeInput,
+						{ borderColor: t.input, backgroundColor: t.card, color: t.ink },
+					]}
 					value={code}
 					onChangeText={(v) => {
 						const digits = v.replace(/\D/g, "").slice(0, 6);
@@ -187,37 +191,32 @@ export function SignInCard() {
 					keyboardType="number-pad"
 					textContentType="oneTimeCode"
 					autoComplete="one-time-code"
-					keyboardAppearance="dark"
 					placeholder="••••••"
-					placeholderTextColor={hero.textFaint}
+					placeholderTextColor={t.sub}
 					accessibilityLabel="Verification code"
 				/>
-				{formError ? <Text style={styles.error}>{formError}</Text> : null}
+				{formError ? (
+					<Text style={[styles.error, { color: t.danger }]}>{formError}</Text>
+				) : null}
 				<Pressable
 					onPress={() => void verifyCode(code)}
 					disabled={locked || code.length !== 6}
 					accessibilityRole="button"
 					style={({ pressed }) => [
-						styles.primaryWrap,
-						(pressed || locked || code.length !== 6) && styles.dimmed,
+						styles.primary,
+						{ backgroundColor: pressed ? t.primarySolidPressed : t.primarySolid },
+						(locked || code.length !== 6) && styles.dimmed,
 					]}
 				>
-					<LinearGradient
-						colors={dock.orbGradient}
-						start={{ x: 0, y: 0 }}
-						end={{ x: 1, y: 1 }}
-						style={styles.primary}
-					>
-						{busy === "verify" ? (
-							<ActivityIndicator color={hero.text} />
-						) : (
-							<Text style={styles.primaryLabel}>Verify</Text>
-						)}
-					</LinearGradient>
+					{busy === "verify" ? (
+						<ActivityIndicator color="#ffffff" />
+					) : (
+						<Text style={styles.primaryLabel}>Verify</Text>
+					)}
 				</Pressable>
 				<View style={styles.linkRow}>
 					<Pressable onPress={() => void resendCode()} disabled={locked} hitSlop={8}>
-						<Text style={styles.link}>
+						<Text style={[styles.link, { color: t.frostedInk }]}>
 							{busy === "resend" ? "Sending…" : "Resend code"}
 						</Text>
 					</Pressable>
@@ -230,7 +229,9 @@ export function SignInCard() {
 						disabled={locked}
 						hitSlop={8}
 					>
-						<Text style={styles.link}>Use a different email</Text>
+						<Text style={[styles.link, { color: t.frostedInk }]}>
+							Use a different email
+						</Text>
 					</Pressable>
 				</View>
 			</View>
@@ -240,51 +241,48 @@ export function SignInCard() {
 	return (
 		<View>
 			{brandMark}
-			<Text style={styles.heading}>Welcome back</Text>
-			<Text style={styles.sub}>Sign in to continue to OneTool</Text>
+			<Text style={[styles.heading, { color: t.ink }]}>Welcome back</Text>
+			<Text style={[styles.sub, { color: t.sub }]}>
+				Sign in to continue to OneTool
+			</Text>
 			<TextInput
-				style={styles.input}
+				style={[styles.input, { borderColor: t.input, backgroundColor: t.card, color: t.ink }]}
 				value={email}
 				onChangeText={setEmail}
 				onSubmitEditing={() => void submitEmail()}
 				placeholder="Email address"
-				placeholderTextColor={hero.textSub}
+				placeholderTextColor={t.sub}
 				keyboardType="email-address"
 				textContentType="emailAddress"
 				autoComplete="email"
 				autoCapitalize="none"
 				autoCorrect={false}
-				keyboardAppearance="dark"
 				returnKeyType="go"
 				accessibilityLabel="Email address"
 			/>
-			{formError ? <Text style={styles.error}>{formError}</Text> : null}
+			{formError ? (
+				<Text style={[styles.error, { color: t.danger }]}>{formError}</Text>
+			) : null}
 			<Pressable
 				onPress={() => void submitEmail()}
 				disabled={locked || !email.trim()}
 				accessibilityRole="button"
 				style={({ pressed }) => [
-					styles.primaryWrap,
-					(pressed || locked || !email.trim()) && styles.dimmed,
+					styles.primary,
+					{ backgroundColor: pressed ? t.primarySolidPressed : t.primarySolid },
+					(locked || !email.trim()) && styles.dimmed,
 				]}
 			>
-				<LinearGradient
-					colors={dock.orbGradient}
-					start={{ x: 0, y: 0 }}
-					end={{ x: 1, y: 1 }}
-					style={styles.primary}
-				>
-					{busy === "continue" ? (
-						<ActivityIndicator color={hero.text} />
-					) : (
-						<Text style={styles.primaryLabel}>Continue</Text>
-					)}
-				</LinearGradient>
+				{busy === "continue" ? (
+					<ActivityIndicator color="#ffffff" />
+				) : (
+					<Text style={styles.primaryLabel}>Continue</Text>
+				)}
 			</Pressable>
 			<View style={styles.dividerRow}>
-				<View style={styles.dividerLine} />
-				<Text style={styles.dividerLabel}>or</Text>
-				<View style={styles.dividerLine} />
+				<View style={[styles.dividerLine, { backgroundColor: t.lineSoft }]} />
+				<Text style={[styles.dividerLabel, { color: t.sub }]}>or</Text>
+				<View style={[styles.dividerLine, { backgroundColor: t.lineSoft }]} />
 			</View>
 			{/* SSO stays tappable while Clerk loads (ssoSignIn waits internally) —
 			    only an in-flight flow disables it. */}
@@ -293,14 +291,20 @@ export function SignInCard() {
 				disabled={busy !== null}
 				accessibilityRole="button"
 				accessibilityLabel="Continue with Apple"
-				style={({ pressed }) => [styles.provider, (pressed || busy !== null) && styles.dimmed]}
+				style={({ pressed }) => [
+					styles.provider,
+					{ borderColor: t.input, backgroundColor: pressed ? t.secondary : t.card },
+					busy !== null && styles.dimmed,
+				]}
 			>
 				{busy === "apple" ? (
-					<ActivityIndicator color={hero.text} />
+					<ActivityIndicator color={t.sub} />
 				) : (
 					<>
-						<AppleMark />
-						<Text style={styles.providerLabel}>Continue with Apple</Text>
+						<AppleMark color={t.ink} />
+						<Text style={[styles.providerLabel, { color: t.ink }]}>
+							Continue with Apple
+						</Text>
 					</>
 				)}
 			</Pressable>
@@ -309,23 +313,29 @@ export function SignInCard() {
 				disabled={busy !== null}
 				accessibilityRole="button"
 				accessibilityLabel="Continue with Google"
-				style={({ pressed }) => [styles.provider, (pressed || busy !== null) && styles.dimmed]}
+				style={({ pressed }) => [
+					styles.provider,
+					{ borderColor: t.input, backgroundColor: pressed ? t.secondary : t.card },
+					busy !== null && styles.dimmed,
+				]}
 			>
 				{busy === "google" ? (
-					<ActivityIndicator color={hero.text} />
+					<ActivityIndicator color={t.sub} />
 				) : (
 					<>
 						<GoogleMark />
-						<Text style={styles.providerLabel}>Continue with Google</Text>
+						<Text style={[styles.providerLabel, { color: t.ink }]}>
+							Continue with Google
+						</Text>
 					</>
 				)}
 			</Pressable>
 			{/* Sign-in-wrap assent: Clerk's express-consent checkbox is off (native
 			    token sign-ups can't render it), so this notice carries agreement. */}
-			<Text style={styles.legal}>
+			<Text style={[styles.legal, { color: t.sub }]}>
 				By continuing, you agree to our{" "}
 				<Text
-					style={styles.legalLink}
+					style={[styles.legalLink, { color: t.frostedInk }]}
 					accessibilityRole="link"
 					onPress={() =>
 						void Linking.openURL(
@@ -337,7 +347,7 @@ export function SignInCard() {
 				</Text>{" "}
 				and{" "}
 				<Text
-					style={styles.legalLink}
+					style={[styles.legalLink, { color: t.frostedInk }]}
 					accessibilityRole="link"
 					onPress={() =>
 						void Linking.openURL(
@@ -353,11 +363,11 @@ export function SignInCard() {
 	);
 }
 
-function AppleMark() {
+function AppleMark({ color }: { color: string }) {
 	return (
 		<Svg width={17} height={17} viewBox="0 0 384 512">
 			<Path
-				fill={hero.text}
+				fill={color}
 				d="M318.7 268.7c-.2-36.7 16.4-64.4 50-84.8-18.8-26.9-47.2-41.7-84.7-44.6-35.5-2.7-74.3 20.7-88.5 20.7-15 0-49.4-19.7-76.4-19.7C63.3 141.2 4 184.8 4 273.5q0 39.3 14.4 81.2c12.8 36.7 59 126.7 107.2 125.2 25.2-.6 43-17.9 75.8-17.9 31.8 0 48.3 17.9 76.4 17.9 48.6-.7 90.4-82.5 102.6-119.3-65.2-30.7-61.7-90-61.7-91.9zm-56.6-164.2c27.3-32.4 24.8-61.9 24-72.5-24.1 1.4-52 16.4-67.9 34.9-17.5 19.8-27.8 44.3-25.6 71.9 26.1 2 49.9-11.4 69.5-34.3z"
 			/>
 		</Svg>
@@ -396,26 +406,21 @@ const styles = StyleSheet.create({
 	heading: {
 		fontFamily: fontFamily.semibold,
 		fontSize: 22,
-		color: hero.textStrong,
 	},
 	sub: {
 		fontFamily: fontFamily.regular,
 		fontSize: 13,
-		color: hero.textMid,
 		marginTop: 4,
 		marginBottom: 18,
 	},
 	input: {
-		height: 50,
-		borderRadius: 14,
+		height: 44,
+		borderRadius: radii.ctrl,
 		borderWidth: 1,
-		borderColor: hero.buttonBorder,
-		backgroundColor: hero.cellBg,
 		paddingHorizontal: 16,
 		fontFamily: fontFamily.regular,
-		fontSize: 15,
+		fontSize: 16,
 		letterSpacing: 0, // RN#42589: pin kern so iOS placeholder can't randomly letter-space
-		color: hero.text,
 	},
 	codeInput: {
 		textAlign: "center",
@@ -426,23 +431,19 @@ const styles = StyleSheet.create({
 	error: {
 		fontFamily: fontFamily.medium,
 		fontSize: 12.5,
-		color: hero.alertDot,
 		marginTop: 10,
 	},
-	primaryWrap: {
-		marginTop: 14,
-		borderRadius: 14,
-		overflow: "hidden",
-	},
 	primary: {
-		height: 50,
+		marginTop: 14,
+		height: 40,
+		borderRadius: radii.ctrl,
 		alignItems: "center",
 		justifyContent: "center",
 	},
 	primaryLabel: {
 		fontFamily: fontFamily.semibold,
-		fontSize: 15.5,
-		color: hero.text,
+		fontSize: 14,
+		color: "#ffffff",
 	},
 	dimmed: {
 		opacity: 0.6,
@@ -456,19 +457,15 @@ const styles = StyleSheet.create({
 	dividerLine: {
 		flex: 1,
 		height: StyleSheet.hairlineWidth,
-		backgroundColor: hero.buttonBorder,
 	},
 	dividerLabel: {
 		fontFamily: fontFamily.regular,
 		fontSize: 12,
-		color: hero.textSub,
 	},
 	provider: {
-		height: 48,
-		borderRadius: 14,
+		height: 40,
+		borderRadius: radii.ctrl,
 		borderWidth: 1,
-		borderColor: hero.buttonBorder,
-		backgroundColor: hero.buttonBg,
 		flexDirection: "row",
 		alignItems: "center",
 		justifyContent: "center",
@@ -477,8 +474,7 @@ const styles = StyleSheet.create({
 	},
 	providerLabel: {
 		fontFamily: fontFamily.medium,
-		fontSize: 14.5,
-		color: hero.textStrong,
+		fontSize: 14,
 	},
 	linkRow: {
 		flexDirection: "row",
@@ -487,20 +483,17 @@ const styles = StyleSheet.create({
 	},
 	link: {
 		fontFamily: fontFamily.medium,
-		fontSize: 13,
-		color: hero.textMid,
+		fontSize: 12.5,
 	},
 	legal: {
 		fontFamily: fontFamily.regular,
 		fontSize: 11.5,
-		color: hero.textSub,
 		textAlign: "center",
 		lineHeight: 17,
 		marginTop: 8,
 	},
 	legalLink: {
 		fontFamily: fontFamily.medium,
-		color: hero.textMid,
 		textDecorationLine: "underline",
 	},
 });

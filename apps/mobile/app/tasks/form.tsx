@@ -2,13 +2,11 @@ import { useOfflinePartition } from "@/lib/offline/partition-context";
 import {
 	View,
 	Text,
-	TextInput,
-	ScrollView,
-	Pressable,
 	Alert,
 	ActivityIndicator,
-	StyleSheet,
 	Animated,
+	Pressable,
+	StyleSheet,
 } from "react-native";
 import { useEffect, useMemo, useState } from "react";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -17,27 +15,19 @@ import { showToast } from "@/lib/toast";
 import { useMutation } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
-import { X, ChevronDown } from "lucide-react-native";
-import {
-	colors,
-	fontFamily,
-	type,
-	radii,
-	tracking,
-	useTokens,
-} from "@/lib/theme";
+import { ChevronDown, X } from "lucide-react-native";
+import { colors, fontFamily, radii, type, useTokens } from "@/lib/theme";
 import { Button } from "@/components/ui";
 import { FieldMenu } from "@/components/FieldMenu";
 import { AppCalendar } from "@/components/AppCalendar";
 import { useOverlayTransition } from "@/components/useOverlayTransition";
 import { utcMsFromDateId, todayDateId, dateIdFromUtcMs } from "@/lib/date";
-import { CenteredModal } from "@/components/ipad/centered-modal";
-import { useDevice } from "@/lib/use-device";
 import { recordRecentView } from "@/lib/recents";
 import { formatTaskDate } from "@/lib/work-search";
 import { useCachedQuery } from "@/lib/offline/useCachedQuery";
 import { saveOffline, useOnlineAction, useOpenOps } from "@/lib/offline/hooks";
 import { overlayTaskOps, planTaskUpdate } from "@/lib/offline/field-patch";
+import { CreateSheet, SheetActions, SheetField, SheetInput } from "@/components/sheets/create-sheet";
 
 const TYPE_OPTIONS = [
 	{ value: "external", label: "External" },
@@ -59,11 +49,6 @@ const REPEAT_OPTIONS = [
 
 // Off-screen start distance for the calendar slide-up (>= sheet height).
 const SHEET_SLIDE = 600;
-
-// Layout floor for a FieldMenu row (14+14 padding + 1+1 border + ~18 line box).
-// FieldMenu now overlays the SwiftUI menu host absolutely so its under-measuring
-// can't displace siblings; this floor stays as a cheap belt-and-suspenders.
-const MENU_ROW_MIN_HEIGHT = 48;
 
 type TaskType = "external" | "internal";
 type TaskStatus = "pending" | "in-progress" | "completed" | "cancelled";
@@ -90,7 +75,6 @@ function formatDateLabel(dateId: string): string {
 export default function TaskFormSheet() {
 	const t = useTokens();
 	const insets = useSafeAreaInsets();
-	const { device } = useDevice();
 	const params = useLocalSearchParams<{
 		taskId?: string;
 		clientId?: string;
@@ -133,7 +117,7 @@ export default function TaskFormSheet() {
 	const [submitting, setSubmitting] = useState(false);
 	const [deleting, setDeleting] = useState(false);
 
-	// Calendar modal open flags (date fields keep the sheet calendar)
+	// Calendar overlay open flags (date fields keep the sheet calendar)
 	const [datePickerOpen, setDatePickerOpen] = useState(false);
 	const [repeatUntilPickerOpen, setRepeatUntilPickerOpen] = useState(false);
 
@@ -326,59 +310,90 @@ export default function TaskFormSheet() {
 		]);
 	};
 
-	const headerTitle = isEdit ? "Edit task" : "New task";
-
-	const content = (
-		<>
-			<View style={styles.header}>
-				<View style={{ flex: 1 }} />
-				<Text style={[styles.headerTitle, { color: t.ink }]}>
-					{headerTitle}
-				</Text>
-				<View style={styles.headerAction}>
-					<Pressable
-						onPress={() => router.back()}
-						hitSlop={8}
-						accessibilityRole="button"
-						accessibilityLabel="Close"
-						style={styles.closeBtn}
-					>
-						<X size={22} color={t.sub} />
-					</Pressable>
-				</View>
-			</View>
-
+	return (
+		<CreateSheet
+			kind="task"
+			title={isEdit ? "Edit task" : "New task"}
+			onClose={() => router.back()}
+			footer={
+				taskLoading ? undefined : taskMissing ? (
+					<Button title="Close" variant="secondary" onPress={() => router.back()} />
+				) : isEdit ? (
+					<SheetActions>
+						<Button
+							title="Delete"
+							variant="destructive"
+							onPress={handleDelete}
+							disabled={deleting || submitting}
+							style={styles.deleteAction}
+							icon={
+								deleting ? <ActivityIndicator size="small" color={t.danger} /> : undefined
+							}
+						/>
+						<Button
+							title="Save"
+							onPress={handleSave}
+							disabled={saveDisabled}
+							style={styles.saveAction}
+							icon={
+								submitting ? <ActivityIndicator size="small" color={colors.primaryForeground} /> : undefined
+							}
+						/>
+					</SheetActions>
+				) : (
+					<Button
+						title="Add task"
+						onPress={handleSave}
+						disabled={saveDisabled}
+						icon={submitting ? <ActivityIndicator size="small" color={colors.primaryForeground} /> : undefined}
+					/>
+				)
+			}
+			overlay={
+				<>
+					<CalendarOverlay
+						visible={datePickerOpen}
+						selectedDate={dateId}
+						onSelect={(id) => {
+							setDateId(id);
+							setDatePickerOpen(false);
+						}}
+						onClose={() => setDatePickerOpen(false)}
+						title="Select date"
+						t={t}
+						insets={insets}
+					/>
+					<CalendarOverlay
+						visible={repeatUntilPickerOpen}
+						selectedDate={repeatUntilId}
+						minDate={dateId}
+						onSelect={(id) => {
+							setRepeatUntilId(id);
+							setRepeatUntilPickerOpen(false);
+						}}
+						onClose={() => setRepeatUntilPickerOpen(false)}
+						title="Repeat until"
+						t={t}
+						insets={insets}
+					/>
+				</>
+			}
+		>
 			{taskLoading ? (
 				<View style={styles.state}>
-					<ActivityIndicator size="small" color={t.accent} />
-					<Text style={[styles.stateText, { color: t.sub }]}>
-						Loading task...
-					</Text>
+					<ActivityIndicator size="small" color={t.primary} />
+					<Text style={[styles.stateText, { color: t.sub }]}>Loading task...</Text>
 				</View>
 			) : taskMissing ? (
 				<View style={styles.state}>
-					<Text style={[styles.stateTitle, { color: t.ink }]}>
-						Task not found
-					</Text>
+					<Text style={[styles.stateTitle, { color: t.ink }]}>Task not found</Text>
 					<Text style={[styles.stateText, { color: t.sub }]}>
 						This task may have been deleted.
 					</Text>
-					<Button
-						title="Close"
-						variant="secondary"
-						onPress={() => router.back()}
-						style={styles.closeButton}
-					/>
 				</View>
 			) : (
-				<ScrollView
-					style={{ flex: 1 }}
-					contentContainerStyle={styles.body}
-					keyboardShouldPersistTaps="handled"
-				>
-					{/* Type */}
-					<FieldLabel text="Type" />
-					<View style={styles.menuField}>
+				<>
+					<SheetField label="Type">
 						<FieldMenu
 							title="Task type"
 							value={type}
@@ -393,47 +408,32 @@ export default function TaskFormSheet() {
 								}
 							}}
 						/>
-					</View>
+					</SheetField>
 
-					{/* Title */}
-					<FieldLabel text="Title" />
-					<TextInput
-						value={title}
-						onChangeText={setTitle}
-						placeholder="What needs doing?"
-						placeholderTextColor={t.faint}
-						style={[
-							styles.input,
-							{ borderColor: t.border, backgroundColor: t.card, color: t.ink },
-						]}
-					/>
-					{!title.trim() ? (
-						<Text style={[styles.hint, { color: t.faint }]}>
-							Title is required.
-						</Text>
-					) : null}
+					<SheetField label="Title" error={!title.trim() ? "Title is required." : null}>
+						<SheetInput
+							value={title}
+							onChangeText={setTitle}
+							placeholder="What needs doing?"
+							invalid={!title.trim()}
+						/>
+					</SheetField>
 
-					{/* Description */}
-					<FieldLabel text="Description" />
-					<TextInput
-						value={description}
-						onChangeText={setDescription}
-						placeholder="Add a few details"
-						placeholderTextColor={t.faint}
-						style={[
-							styles.input,
-							styles.multiline,
-							{ borderColor: t.border, backgroundColor: t.card, color: t.ink },
-						]}
-						multiline
-						textAlignVertical="top"
-					/>
+					<SheetField label="Description" hint="Optional">
+						<SheetInput
+							value={description}
+							onChangeText={setDescription}
+							placeholder="Add a few details"
+							multiline
+						/>
+					</SheetField>
 
-					{/* Client + Project — external only */}
 					{type === "external" ? (
 						<>
-							<FieldLabel text="Client" />
-							<View style={styles.menuField}>
+							<SheetField
+								label="Client"
+								hint={!clientId ? "Choose a client for an external task." : undefined}
+							>
 								<FieldMenu
 									title="Select client"
 									value={clientId}
@@ -449,15 +449,9 @@ export default function TaskFormSheet() {
 										setProjectId(""); // client change clears staged project
 									}}
 								/>
-							</View>
-							{!clientId ? (
-								<Text style={[styles.hint, { color: t.faint }]}>
-									Choose a client for an external task.
-								</Text>
-							) : null}
+							</SheetField>
 
-							<FieldLabel text="Project" />
-							<View style={styles.menuField}>
+							<SheetField label="Project">
 								<FieldMenu
 									title="Select project"
 									value={projectId}
@@ -471,21 +465,19 @@ export default function TaskFormSheet() {
 									disabled={!clientId}
 									onSelect={(next) => setProjectId(next as Id<"projects">)}
 								/>
-							</View>
+							</SheetField>
 						</>
 					) : null}
 
-					{/* Date */}
-					<FieldLabel text="Date" />
-					<SelectRow
-						label={formatDateLabel(dateId)}
-						onPress={() => setDatePickerOpen(true)}
-						t={t}
-					/>
+					<SheetField label="Date">
+						<SelectRow
+							label={formatDateLabel(dateId)}
+							onPress={() => setDatePickerOpen(true)}
+							t={t}
+						/>
+					</SheetField>
 
-					{/* Assignee */}
-					<FieldLabel text="Assignee" />
-					<View style={styles.menuField}>
+					<SheetField label="Assignee">
 						<FieldMenu
 							title="Assignee"
 							value={assigneeUserId}
@@ -498,11 +490,9 @@ export default function TaskFormSheet() {
 							placeholder={!assigneeUserId}
 							onSelect={(next) => setAssigneeUserId(next as Id<"users">)}
 						/>
-					</View>
+					</SheetField>
 
-					{/* Status */}
-					<FieldLabel text="Status" />
-					<View style={styles.menuField}>
+					<SheetField label="Status">
 						<FieldMenu
 							title="Status"
 							value={status}
@@ -510,11 +500,9 @@ export default function TaskFormSheet() {
 							label={labelFor(STATUS_OPTIONS, status, "Pending")}
 							onSelect={(next) => setStatus(next as TaskStatus)}
 						/>
-					</View>
+					</SheetField>
 
-					{/* Repeat */}
-					<FieldLabel text="Repeat" />
-					<View style={styles.menuField}>
+					<SheetField label="Repeat">
 						<FieldMenu
 							title="Repeat"
 							value={repeat}
@@ -526,128 +514,27 @@ export default function TaskFormSheet() {
 								if (nextRepeat === "none") setRepeatUntilId(undefined);
 							}}
 						/>
-					</View>
+					</SheetField>
 
-					{/* Repeat until — only when repeat != none */}
 					{repeat !== "none" ? (
-						<>
-							<FieldLabel text="Repeat until" />
+						<SheetField
+							label="Repeat until"
+							hint={!repeatUntilId ? "Choose a date the repeat ends." : undefined}
+						>
 							<SelectRow
 								label={
-									repeatUntilId
-										? formatDateLabel(repeatUntilId)
-										: "Select end date"
+									repeatUntilId ? formatDateLabel(repeatUntilId) : "Select end date"
 								}
 								placeholder={!repeatUntilId}
 								onPress={() => setRepeatUntilPickerOpen(true)}
 								t={t}
 							/>
-							{!repeatUntilId ? (
-								<Text style={[styles.hint, { color: t.faint }]}>
-									Choose a date the repeat ends.
-								</Text>
-							) : null}
-						</>
+						</SheetField>
 					) : null}
-
-					{/* Submit */}
-					<Button
-						title={isEdit ? "Save changes" : "Create task"}
-						onPress={handleSave}
-						disabled={saveDisabled}
-						icon={
-							submitting ? (
-								<ActivityIndicator
-									size="small"
-									color={colors.primaryForeground}
-								/>
-							) : undefined
-						}
-						style={styles.submit}
-					/>
-
-					{/* Delete — edit mode only */}
-					{isEdit ? (
-						<Pressable
-							onPress={handleDelete}
-							disabled={deleting || submitting}
-							style={styles.deleteBtn}
-							accessibilityRole="button"
-							accessibilityLabel="Delete task"
-						>
-							<Text
-								style={[
-									styles.deleteText,
-									{ color: t.destructive, opacity: deleting || submitting ? 0.5 : 1 },
-								]}
-							>
-								Delete task
-							</Text>
-						</Pressable>
-					) : null}
-				</ScrollView>
+				</>
 			)}
-
-			{/* Date pickers (AppCalendar in an in-sheet overlay, not a Modal) */}
-			<CalendarModal
-				visible={datePickerOpen}
-				selectedDate={dateId}
-				onSelect={(id) => {
-					setDateId(id);
-					setDatePickerOpen(false);
-				}}
-				onClose={() => setDatePickerOpen(false)}
-				title="Select date"
-				t={t}
-				insets={insets}
-			/>
-			<CalendarModal
-				visible={repeatUntilPickerOpen}
-				selectedDate={repeatUntilId}
-				minDate={dateId}
-				onSelect={(id) => {
-					setRepeatUntilId(id);
-					setRepeatUntilPickerOpen(false);
-				}}
-				onClose={() => setRepeatUntilPickerOpen(false)}
-				title="Repeat until"
-				t={t}
-				insets={insets}
-			/>
-		</>
+		</CreateSheet>
 	);
-
-	// iPad (Strategy B): centered card; maxHeight 92% so the tall form + keyboard
-	// scroll within it and never clip (this is a 0.9,1.0 sheet on iPhone).
-	if (device === "ipad") {
-		return (
-			<CenteredModal onScrimPress={() => router.back()} maxHeight="92%">
-				<View style={[styles.padCard, { backgroundColor: t.card }]}>
-					{content}
-				</View>
-			</CenteredModal>
-		);
-	}
-
-	// iPhone — existing bottom sheet, byte-identical.
-	return (
-		<View
-			style={[
-				styles.container,
-				{ backgroundColor: t.card, paddingBottom: insets.bottom },
-			]}
-		>
-			<View style={[styles.grabber, { backgroundColor: t.border }]} />
-			{content}
-		</View>
-	);
-}
-
-// Field labels read as 3.0 eyebrows (uppercase, tracked, faint) so the sheet
-// matches the record-detail grammar without borrowing its ink band.
-function FieldLabel({ text }: { text: string }) {
-	const t = useTokens();
-	return <Text style={[styles.fieldLabel, { color: t.faint }]}>{text}</Text>;
 }
 
 function SelectRow({
@@ -671,14 +558,14 @@ function SelectRow({
 			style={[
 				styles.select,
 				{
-					borderColor: t.border,
+					borderColor: t.input,
 					backgroundColor: t.card,
 					opacity: disabled ? 0.5 : 1,
 				},
 			]}
 		>
 			<Text
-				style={[styles.selectText, { color: placeholder ? t.faint : t.ink }]}
+				style={[styles.selectText, { color: placeholder ? t.sub : t.ink }]}
 				numberOfLines={1}
 			>
 				{label}
@@ -688,7 +575,7 @@ function SelectRow({
 	);
 }
 
-function CalendarModal({
+function CalendarOverlay({
 	visible,
 	selectedDate,
 	minDate,
@@ -719,10 +606,7 @@ function CalendarModal({
 	});
 	return (
 		<View style={styles.overlay}>
-			<Animated.View
-				style={[styles.backdrop, { opacity: progress }]}
-				pointerEvents="none"
-			/>
+			<Animated.View style={[styles.backdrop, { opacity: progress }]} pointerEvents="none" />
 			<Pressable
 				style={StyleSheet.absoluteFill}
 				onPress={onClose}
@@ -739,28 +623,21 @@ function CalendarModal({
 					},
 				]}
 			>
-				<View style={[styles.grabber, { backgroundColor: t.border }]} />
-				<View style={styles.header}>
-					<View style={{ flex: 1 }} />
-					<Text style={[styles.headerTitle, { color: t.ink }]}>{title}</Text>
-					<View style={styles.headerAction}>
-						<Pressable
-							onPress={onClose}
-							hitSlop={8}
-							accessibilityRole="button"
-							accessibilityLabel="Close"
-							style={styles.closeBtn}
-						>
-							<X size={22} color={t.sub} />
-						</Pressable>
-					</View>
+				<View style={[styles.grabber, { backgroundColor: t.line }]} />
+				<View style={styles.calendarHeader}>
+					<Text style={[styles.calendarTitle, { color: t.ink }]}>{title}</Text>
+					<Pressable
+						onPress={onClose}
+						hitSlop={8}
+						accessibilityRole="button"
+						accessibilityLabel="Close"
+						style={styles.closeBtn}
+					>
+						<X size={20} color={t.sub} />
+					</Pressable>
 				</View>
 				<View style={styles.calendarWrap}>
-					<AppCalendar
-						selectedDate={selectedDate}
-						onDateSelect={onSelect}
-						minDate={minDate}
-					/>
+					<AppCalendar selectedDate={selectedDate} onDateSelect={onSelect} minDate={minDate} />
 				</View>
 			</Animated.View>
 		</View>
@@ -768,64 +645,13 @@ function CalendarModal({
 }
 
 const styles = StyleSheet.create({
-	container: {
-		flex: 1,
-		borderTopLeftRadius: 30,
-		borderTopRightRadius: 30,
-		overflow: "hidden",
-	},
-	// iPad card (CenteredModal supplies the shell + radius + definite height).
-	// flex:1 (not flexShrink) so the body's flex:1 scroll/state resolves a basis.
-	padCard: {
-		flex: 1,
-		paddingTop: 18,
-	},
-	overlay: {
-		position: "absolute",
-		top: 0,
-		left: 0,
-		right: 0,
-		bottom: 0,
-		zIndex: 10,
-	},
-	grabber: {
-		alignSelf: "center",
-		width: 44,
-		height: 5,
-		borderRadius: radii.pill,
-		marginTop: 10,
-		marginBottom: 12,
-	},
-	header: {
-		flexDirection: "row",
-		alignItems: "center",
-		paddingHorizontal: 20,
-		paddingBottom: 12,
-	},
-	headerTitle: {
-		flex: 2,
-		textAlign: "center",
-		fontSize: type.h2,
-		lineHeight: 30,
-		fontFamily: fontFamily.bold,
-	},
-	headerAction: {
-		flex: 1,
-		alignItems: "flex-end",
-	},
-	closeBtn: {
-		width: 32,
-		height: 32,
-		borderRadius: radii.pill,
-		alignItems: "center",
-		justifyContent: "center",
-	},
+	deleteAction: { flex: 1 },
+	saveAction: { flex: 2 },
 	state: {
-		flex: 1,
 		alignItems: "center",
 		justifyContent: "center",
-		paddingHorizontal: 32,
-		gap: 10,
+		paddingVertical: 48,
+		gap: 8,
 	},
 	stateTitle: {
 		fontSize: type.h4,
@@ -836,72 +662,28 @@ const styles = StyleSheet.create({
 		fontFamily: fontFamily.regular,
 		textAlign: "center",
 	},
-	closeButton: {
-		marginTop: 8,
-		minWidth: 140,
-	},
-	body: {
-		paddingHorizontal: 20,
-		// Clears the 0.9-detent bottom edge (root is overflow:"hidden") so the
-		// last field/delete row is never cut off mid-glyph.
-		paddingBottom: 48,
-	},
-	fieldLabel: {
-		fontSize: type.eyebrow,
-		lineHeight: 14,
-		fontFamily: fontFamily.semibold,
-		letterSpacing: tracking.groupLabel,
-		textTransform: "uppercase",
-		marginTop: 20,
-		marginBottom: 8,
-	},
-	// Reserves the FieldMenu row's real layout box (see MENU_ROW_MIN_HEIGHT).
-	menuField: {
-		minHeight: MENU_ROW_MIN_HEIGHT,
-	},
-	input: {
-		borderWidth: 1,
-		borderRadius: radii.lg,
-		paddingHorizontal: 14,
-		paddingVertical: 12,
-		fontSize: type.h4,
-		fontFamily: fontFamily.regular,
-		letterSpacing: 0, // RN#42589: pin kern so iOS placeholder can't randomly letter-space
-	},
-	multiline: {
-		minHeight: 96,
-	},
 	select: {
 		flexDirection: "row",
 		alignItems: "center",
 		justifyContent: "space-between",
 		borderWidth: 1,
-		borderRadius: radii.lg,
-		paddingHorizontal: 14,
-		paddingVertical: 14,
+		borderRadius: radii.ctrl,
+		minHeight: 44,
+		paddingHorizontal: 12,
 	},
 	selectText: {
 		flex: 1,
-		fontSize: type.h4,
 		fontFamily: fontFamily.regular,
+		fontSize: 16,
 		marginRight: 8,
 	},
-	hint: {
-		fontSize: type.xs,
-		fontFamily: fontFamily.regular,
-		marginTop: 6,
-	},
-	submit: {
-		marginTop: 28,
-	},
-	deleteBtn: {
-		marginTop: 16,
-		alignItems: "center",
-		paddingVertical: 12,
-	},
-	deleteText: {
-		fontSize: type.body,
-		fontFamily: fontFamily.semibold,
+	overlay: {
+		position: "absolute",
+		top: 0,
+		left: 0,
+		right: 0,
+		bottom: 0,
+		zIndex: 10,
 	},
 	backdrop: {
 		position: "absolute",
@@ -916,9 +698,36 @@ const styles = StyleSheet.create({
 		left: 0,
 		right: 0,
 		bottom: 0,
-		borderTopLeftRadius: 30,
-		borderTopRightRadius: 30,
+		borderTopLeftRadius: 20,
+		borderTopRightRadius: 20,
 		overflow: "hidden",
+	},
+	grabber: {
+		alignSelf: "center",
+		width: 36,
+		height: 4,
+		borderRadius: 2,
+		marginTop: 8,
+		marginBottom: 2,
+	},
+	calendarHeader: {
+		flexDirection: "row",
+		alignItems: "center",
+		justifyContent: "space-between",
+		paddingHorizontal: 16,
+		paddingTop: 10,
+		paddingBottom: 12,
+	},
+	calendarTitle: {
+		fontFamily: fontFamily.semibold,
+		fontSize: 16,
+	},
+	closeBtn: {
+		width: 32,
+		height: 32,
+		borderRadius: radii.ctrl,
+		alignItems: "center",
+		justifyContent: "center",
 	},
 	calendarWrap: {
 		paddingHorizontal: 16,

@@ -5,8 +5,8 @@ import { SignInCard } from "@/components/auth/SignInCard";
 // reacts to the active session and <Redirect>s — this screen owns no callback.
 // The app is SIGN-IN ONLY (Apple 3.1.1) — account sign-up and business setup
 // live in the web app. SignInCard carries the whole flow (email code +
-// Apple/Google SSO on Clerk hooks); the shell provides the hero photo, scrim
-// and glass card around it.
+// Apple/Google SSO on Clerk hooks); the shell provides the graphite ground and
+// white card around it.
 export default function AuthScreen() {
 	return (
 		<AuthScreenShell>

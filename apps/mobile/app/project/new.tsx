@@ -1,32 +1,22 @@
 import { useState } from "react";
-import {
-	ActivityIndicator,
-	Animated,
-	Pressable,
-	ScrollView,
-	StyleSheet,
-	Text,
-	TextInput,
-	View,
-} from "react-native";
+import { ActivityIndicator, Animated, Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Redirect, router, useLocalSearchParams } from "expo-router";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
 import { CalendarDays, X } from "lucide-react-native";
-import { DateTimePicker } from "@expo/ui/community/datetime-picker";
-import { fontFamily, radii, type, useTokens } from "@/lib/theme";
-import { Button, Eyebrow } from "@/components/ui";
+import { colors, fontFamily, radii, useTokens } from "@/lib/theme";
+import { Button } from "@/components/ui";
+import { AppCalendar } from "@/components/AppCalendar";
 import { useOverlayTransition } from "@/components/useOverlayTransition";
-import { CenteredModal } from "@/components/ipad/centered-modal";
 import { ClientPicker } from "@/components/create/client-picker";
-import { useDevice } from "@/lib/use-device";
 import { usePermissions } from "@/lib/use-permissions";
 import { hapticSuccess } from "@/lib/haptics";
 import { describeMutationError } from "@/lib/mutation-error";
-import { dateIdFromLocalDate, localDateFromDateId, utcMsFromDateId } from "@/lib/date";
+import { utcMsFromDateId } from "@/lib/date";
 import { useOnlineAction } from "@/lib/offline/hooks";
+import { CreateSheet, SheetField, SheetInput } from "@/components/sheets/create-sheet";
 
 // Fast-capture project create (Slice 5 speed-dial). Deliberately minimal —
 // client, title, optional start date. Status and type mirror web's minimal
@@ -50,7 +40,6 @@ function formatDateLabel(dateId: string): string {
 export default function NewProjectSheet() {
 	const t = useTokens();
 	const insets = useSafeAreaInsets();
-	const { device } = useDevice();
 	const { can, isLoading: permsLoading } = usePermissions();
 	const onlineAction = useOnlineAction();
 	const params = useLocalSearchParams<{ clientId?: string }>();
@@ -117,140 +106,87 @@ export default function NewProjectSheet() {
 	// than sitting on a blank sheet the user can't dismiss.
 	if (!permsLoading && !canCreate) return <Redirect href="/projects" />;
 
-	const content = (
-		<>
-			<View style={styles.header}>
-				<View style={{ flex: 1 }} />
-				<Text style={[styles.headerTitle, { color: t.ink }]}>New project</Text>
-				<View style={styles.headerAction}>
-					<Pressable
-						onPress={() => router.back()}
-						hitSlop={8}
-						accessibilityRole="button"
-						accessibilityLabel="Close"
-						style={styles.closeBtn}
-					>
-						<X size={22} color={t.sub} />
-					</Pressable>
-				</View>
-			</View>
-
-			<ScrollView
-				style={styles.flex}
-				contentContainerStyle={styles.body}
-				keyboardShouldPersistTaps="handled"
-			>
-				<Eyebrow>Client</Eyebrow>
-				<ClientPicker
-					value={clientId}
-					onChange={setClientId}
-					allowQuickAdd={!clientLocked && can("clients", "modify")}
-					locked={clientLocked}
-				/>
-
-				<View style={styles.field}>
-					<Eyebrow>Project</Eyebrow>
-					<TextInput
-						value={title}
-						onChangeText={setTitle}
-						placeholder="What's the job?"
-						placeholderTextColor={t.faint}
-						style={[
-							styles.input,
-							{ borderColor: t.line, backgroundColor: t.card, color: t.ink },
-						]}
-						accessibilityLabel="Project title"
-					/>
-				</View>
-
-				<View style={styles.field}>
-					<Eyebrow>Start date</Eyebrow>
-					<Pressable
-						onPress={() => setDatePickerOpen(true)}
-						accessibilityRole="button"
-						accessibilityLabel="Choose a start date"
-						style={[
-							styles.select,
-							{ borderColor: t.line, backgroundColor: t.card },
-						]}
-					>
-						<Text
-							style={[
-								styles.selectText,
-								{ color: startDateId ? t.ink : t.faint },
-							]}
-							numberOfLines={1}
-						>
-							{startDateId ? formatDateLabel(startDateId) : "Optional"}
-						</Text>
-						{startDateId ? (
-							<Pressable
-								onPress={() => setStartDateId(undefined)}
-								hitSlop={10}
-								accessibilityRole="button"
-								accessibilityLabel="Clear start date"
-							>
-								<X size={16} color={t.sub} />
-							</Pressable>
-						) : (
-							<CalendarDays size={18} color={t.sub} />
-						)}
-					</Pressable>
-				</View>
-
-				{error ? (
-					<Text style={[styles.error, { color: t.destructive }]}>
-						{error.message}
-					</Text>
-				) : null}
-
+	return (
+		<CreateSheet
+			kind="project"
+			title="New project"
+			onClose={() => router.back()}
+			footer={
 				<Button
 					title="Create project"
 					onPress={() => onlineAction("Creating a project", submit)}
 					disabled={!valid || submitting}
 					icon={
 						submitting ? (
-							<ActivityIndicator size="small" color={t.primaryInk} />
+							<ActivityIndicator size="small" color={colors.primaryForeground} />
 						) : undefined
 					}
-					style={styles.submit}
 				/>
-			</ScrollView>
-
-			<CalendarOverlay
-				visible={datePickerOpen}
-				selectedDate={startDateId}
-				onSelect={(id) => {
-					setStartDateId(id);
-					setDatePickerOpen(false);
-				}}
-				onClose={() => setDatePickerOpen(false)}
-				t={t}
-				insets={insets}
-			/>
-		</>
-	);
-
-	if (device === "ipad") {
-		return (
-			<CenteredModal onScrimPress={() => router.back()} maxHeight="92%">
-				<View style={[styles.padCard, { backgroundColor: t.card }]}>
-					{content}
-				</View>
-			</CenteredModal>
-		);
-	}
-
-	return (
-		<View
-			style={[
-				styles.container,
-				{ backgroundColor: t.card, paddingBottom: insets.bottom },
-			]}
+			}
+			overlay={
+				<CalendarOverlay
+					visible={datePickerOpen}
+					selectedDate={startDateId}
+					onSelect={(id) => {
+						setStartDateId(id);
+						setDatePickerOpen(false);
+					}}
+					onClose={() => setDatePickerOpen(false)}
+					t={t}
+					insets={insets}
+				/>
+			}
 		>
-			<View style={[styles.grabber, { backgroundColor: t.line }]} />
-			{content}
-		</View>
+			<SheetField label="Client">
+				<ClientPicker
+					value={clientId}
+					onChange={setClientId}
+					allowQuickAdd={!clientLocked && can("clients", "modify")}
+					locked={clientLocked}
+				/>
+			</SheetField>
+
+			<SheetField label="Project">
+				<SheetInput
+					value={title}
+					onChangeText={setTitle}
+					placeholder="What's the job?"
+					accessibilityLabel="Project title"
+				/>
+			</SheetField>
+
+			<SheetField label="Start date" hint="Optional">
+				<Pressable
+					onPress={() => setDatePickerOpen(true)}
+					accessibilityRole="button"
+					accessibilityLabel="Choose a start date"
+					style={[styles.select, { borderColor: t.input, backgroundColor: t.card }]}
+				>
+					<Text
+						style={[styles.selectText, { color: startDateId ? t.ink : t.sub }]}
+						numberOfLines={1}
+					>
+						{startDateId ? formatDateLabel(startDateId) : "Optional"}
+					</Text>
+					{startDateId ? (
+						<Pressable
+							onPress={() => setStartDateId(undefined)}
+							hitSlop={10}
+							accessibilityRole="button"
+							accessibilityLabel="Clear start date"
+						>
+							<X size={16} color={t.sub} />
+						</Pressable>
+					) : (
+						<CalendarDays size={18} color={t.sub} />
+					)}
+				</Pressable>
+			</SheetField>
+
+			{error ? (
+				<Text style={[styles.error, { color: t.danger }]}>{error.message}</Text>
+			) : null}
+		</CreateSheet>
 	);
 }
 
@@ -282,10 +218,7 @@ function CalendarOverlay({
 	});
 	return (
 		<View style={styles.overlay}>
-			<Animated.View
-				style={[styles.backdrop, { opacity: progress }]}
-				pointerEvents="none"
-			/>
+			<Animated.View style={[styles.backdrop, { opacity: progress }]} pointerEvents="none" />
 			<Pressable
 				style={StyleSheet.absoluteFill}
 				onPress={onClose}
@@ -303,29 +236,20 @@ function CalendarOverlay({
 				]}
 			>
 				<View style={[styles.grabber, { backgroundColor: t.line }]} />
-				<View style={styles.header}>
-					<View style={{ flex: 1 }} />
-					<Text style={[styles.headerTitle, { color: t.ink }]}>Start date</Text>
-					<View style={styles.headerAction}>
-						<Pressable
-							onPress={onClose}
-							hitSlop={8}
-							accessibilityRole="button"
-							accessibilityLabel="Close"
-							style={styles.closeBtn}
-						>
-							<X size={22} color={t.sub} />
-						</Pressable>
-					</View>
+				<View style={styles.calendarHeader}>
+					<Text style={[styles.calendarTitle, { color: t.ink }]}>Start date</Text>
+					<Pressable
+						onPress={onClose}
+						hitSlop={8}
+						accessibilityRole="button"
+						accessibilityLabel="Close"
+						style={styles.closeBtn}
+					>
+						<X size={20} color={t.sub} />
+					</Pressable>
 				</View>
 				<View style={styles.calendarWrap}>
-					<DateTimePicker
-						mode="date"
-						display="inline"
-						presentation="inline"
-						value={selectedDate ? localDateFromDateId(selectedDate) : new Date()}
-						onValueChange={(_event, date) => onSelect(dateIdFromLocalDate(date))}
-					/>
+					<AppCalendar selectedDate={selectedDate} onDateSelect={onSelect} />
 				</View>
 			</Animated.View>
 		</View>
@@ -333,77 +257,25 @@ function CalendarOverlay({
 }
 
 const styles = StyleSheet.create({
-	flex: { flex: 1 },
-	container: {
-		flex: 1,
-		borderTopLeftRadius: 30,
-		borderTopRightRadius: 30,
-		overflow: "hidden",
-	},
-	padCard: { flex: 1, paddingTop: 18 },
-	grabber: {
-		alignSelf: "center",
-		width: 44,
-		height: 5,
-		borderRadius: 999,
-		marginTop: 10,
-		marginBottom: 12,
-	},
-	header: {
-		flexDirection: "row",
-		alignItems: "center",
-		paddingHorizontal: 20,
-		paddingBottom: 12,
-	},
-	headerTitle: {
-		flex: 2,
-		textAlign: "center",
-		fontSize: type.h2,
-		lineHeight: 30,
-		fontFamily: fontFamily.bold,
-	},
-	headerAction: { flex: 1, alignItems: "flex-end" },
-	closeBtn: {
-		width: 32,
-		height: 32,
-		borderRadius: 999,
-		alignItems: "center",
-		justifyContent: "center",
-	},
-	body: { paddingHorizontal: 20, paddingBottom: 32 },
-	field: { marginTop: 20 },
-	input: {
-		borderWidth: 1,
-		borderRadius: radii.ctrl,
-		paddingHorizontal: 14,
-		paddingVertical: 12,
-		fontSize: type.h4,
-		fontFamily: fontFamily.regular,
-		letterSpacing: 0, // RN#42589: pin kern so iOS placeholder can't randomly letter-space
-		marginTop: 8,
-	},
 	select: {
 		flexDirection: "row",
 		alignItems: "center",
 		justifyContent: "space-between",
 		borderWidth: 1,
 		borderRadius: radii.ctrl,
-		paddingHorizontal: 14,
-		paddingVertical: 14,
-		marginTop: 8,
+		minHeight: 44,
+		paddingHorizontal: 12,
 	},
 	selectText: {
 		flex: 1,
-		fontSize: type.h4,
 		fontFamily: fontFamily.regular,
+		fontSize: 16,
 		marginRight: 8,
 	},
 	error: {
 		fontFamily: fontFamily.medium,
-		fontSize: type.meta,
-		marginTop: 16,
+		fontSize: 12.5,
 	},
-	submit: { marginTop: 24 },
 	overlay: {
 		position: "absolute",
 		top: 0,
@@ -425,9 +297,39 @@ const styles = StyleSheet.create({
 		left: 0,
 		right: 0,
 		bottom: 0,
-		borderTopLeftRadius: 30,
-		borderTopRightRadius: 30,
+		borderTopLeftRadius: 20,
+		borderTopRightRadius: 20,
 		overflow: "hidden",
 	},
-	calendarWrap: { paddingHorizontal: 16, paddingBottom: 8 },
+	grabber: {
+		alignSelf: "center",
+		width: 36,
+		height: 4,
+		borderRadius: 2,
+		marginTop: 8,
+		marginBottom: 2,
+	},
+	calendarHeader: {
+		flexDirection: "row",
+		alignItems: "center",
+		justifyContent: "space-between",
+		paddingHorizontal: 16,
+		paddingTop: 10,
+		paddingBottom: 12,
+	},
+	calendarTitle: {
+		fontFamily: fontFamily.semibold,
+		fontSize: 16,
+	},
+	closeBtn: {
+		width: 32,
+		height: 32,
+		borderRadius: radii.ctrl,
+		alignItems: "center",
+		justifyContent: "center",
+	},
+	calendarWrap: {
+		paddingHorizontal: 16,
+		paddingBottom: 8,
+	},
 });

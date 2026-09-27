@@ -8,7 +8,7 @@ import {
 } from "react-native";
 import { Navigation } from "lucide-react-native";
 import type { Doc } from "@onetool/backend/convex/_generated/dataModel";
-import { Button, Eyebrow } from "@/components/ui";
+import { Badge, Button, Card, Eyebrow } from "@/components/ui";
 import {
 	formatDistance,
 	formatDuration,
@@ -17,11 +17,12 @@ import {
 	stopsInOrder,
 	type RouteStop,
 } from "@/lib/route-run";
-import { fontFamily, radii, shadow, type, useTokens } from "@/lib/theme";
+import { fontFamily, type, useTokens } from "@/lib/theme";
 
-// Floating card carousel over the map (Patrick's mock): card 0 is the route
-// overview, cards 1..n are stops. The parent owns focusIndex — swiping commits
-// it upward, external changes (auto-advance to next pending stop) scroll here.
+// Card carousel grounded at the canvas bottom (Patrick's mock): card 0 is the
+// route overview, cards 1..n are stops. The parent owns focusIndex — swiping
+// commits it upward, external changes (auto-advance to next pending stop)
+// scroll here.
 
 const CARD_GAP = 10;
 const H_INSET = 24;
@@ -46,12 +47,11 @@ export type StopCarouselProps = {
 	onSendGoogle?: () => void;
 	/** Waypoint-cap note, e.g. "Sends the next 10 stops — 3 left off." */
 	sendGoogleNote?: string | null;
-	/** Bottom clearance for the floating dock (DOCK_CLEARANCE + safe area). */
+	/** Bottom clearance now that nothing floats over the carousel. */
 	bottomInset: number;
 };
 
 export function StopCarousel(props: StopCarouselProps) {
-	const t = useTokens();
 	const { width } = useWindowDimensions();
 	const scrollRef = useRef<ScrollView>(null);
 	const cardWidth = Math.min(width, 500) - H_INSET * 2;
@@ -69,11 +69,7 @@ export function StopCarousel(props: StopCarouselProps) {
 	}, [props.focusIndex, snap]);
 
 	return (
-		// Lifted clear of the floating dock (DOCK_CLEARANCE) by the parent.
-		<View
-			style={[styles.wrap, { bottom: props.bottomInset }]}
-			pointerEvents="box-none"
-		>
+		<View style={[styles.wrap, { bottom: props.bottomInset }]} pointerEvents="box-none">
 			<ScrollView
 				ref={scrollRef}
 				horizontal
@@ -91,32 +87,13 @@ export function StopCarousel(props: StopCarouselProps) {
 					if (clamped !== props.focusIndex) props.onFocusChange(clamped);
 				}}
 			>
-				<View
-					style={[
-						styles.card,
-						{
-							width: cardWidth,
-							backgroundColor: t.card,
-							borderColor: t.border,
-						},
-					]}
-				>
+				<Card flush style={{ width: cardWidth }}>
 					<OverviewCard {...props} />
-				</View>
+				</Card>
 				{stops.map((stop, i) => (
-					<View
-						key={stop.order}
-						style={[
-							styles.card,
-							{
-								width: cardWidth,
-								backgroundColor: t.card,
-								borderColor: t.border,
-							},
-						]}
-					>
+					<Card key={stop.order} flush style={{ width: cardWidth }}>
 						<StopCard {...props} stop={stop} position={i} total={stops.length} />
-					</View>
+					</Card>
 				))}
 			</ScrollView>
 		</View>
@@ -142,22 +119,15 @@ function OverviewCard(props: StopCarouselProps) {
 
 	return (
 		<View style={styles.cardBody}>
-			<View style={styles.titleRow}>
-				<View style={styles.flex}>
-					<Eyebrow color={running ? t.primaryInk : undefined}>
-						{running ? "On route" : isDaily ? "Today" : "Saved"}
-					</Eyebrow>
-					<Text
-						style={[styles.title, { color: t.ink }]}
-						numberOfLines={1}
-					>
-						{route.name}
-					</Text>
-					<Text style={[styles.meta, { color: t.sub }]}>
-						{running ? `${progress.done}/${progress.total} done · ${meta}` : meta}
-					</Text>
-				</View>
-			</View>
+			<Eyebrow color={running ? t.primaryInk : undefined}>
+				{running ? "On route" : isDaily ? "Today" : "Saved"}
+			</Eyebrow>
+			<Text style={[styles.title, { color: t.ink }]} numberOfLines={1}>
+				{route.name}
+			</Text>
+			<Text style={[styles.meta, { color: t.sub }]}>
+				{running ? `${progress.done}/${progress.total} done · ${meta}` : meta}
+			</Text>
 			{props.error ? (
 				<Text style={[styles.error, { color: t.danger }]}>
 					{props.error}
@@ -185,7 +155,6 @@ function OverviewCard(props: StopCarouselProps) {
 									? "Restart route"
 									: "Start route"
 							}
-							variant="solid"
 							size="sm"
 							onPress={props.onStart}
 							disabled={props.busy}
@@ -193,7 +162,6 @@ function OverviewCard(props: StopCarouselProps) {
 					) : (
 						<Button
 							title="Use today"
-							variant="solid"
 							size="sm"
 							onPress={props.onUseToday}
 							disabled={props.busy}
@@ -248,60 +216,28 @@ function StopCard(
 	const leg = legForStop(props.route, stop.order);
 	const status = stop.status ?? "pending";
 	const canAct = props.premium !== false && !props.busy;
-	// Jobber-style status rail: solid brand while pending on an active run,
-	// success once visited, faded when skipped.
-	const railColor =
-		status === "visited"
-			? t.success
-			: status === "skipped"
-				? t.faintDecor
-				: props.running
-					? t.primarySolid
-					: t.border;
 
 	return (
 		<View style={styles.cardBody}>
-			<View style={styles.titleRow}>
-				<View style={[styles.rail, { backgroundColor: railColor }]} />
-				<View style={styles.flex}>
-					<Eyebrow>
-						Stop {position + 1} of {total}
-					</Eyebrow>
-					<Text
-						style={[styles.title, { color: t.ink }]}
-						numberOfLines={2}
-					>
-						{stop.label}
+			<Eyebrow>
+				Stop {position + 1} of {total}
+			</Eyebrow>
+			<Text style={[styles.title, { color: t.ink }]} numberOfLines={2}>
+				{stop.label}
+			</Text>
+			<View style={styles.statusRow}>
+				<Badge status={status} />
+				{status === "pending" && leg ? (
+					<Text style={[styles.meta, { color: t.sub }]}>
+						{formatDistance(leg.distanceMeters)} · {formatDuration(leg.durationSeconds)} from previous
 					</Text>
-					<Text
-						style={[
-							styles.meta,
-							{
-								color:
-									status === "visited"
-										? t.success
-										: status === "skipped"
-											? t.sub
-											: t.sub,
-							},
-						]}
-					>
-						{status === "visited"
-							? "Visited"
-							: status === "skipped"
-								? "Skipped"
-								: leg
-									? `${formatDistance(leg.distanceMeters)} · ${formatDuration(leg.durationSeconds)} from previous`
-									: "Pending"}
-					</Text>
-				</View>
+				) : null}
 			</View>
 			<View style={styles.actions}>
 				{status === "pending" ? (
 					<>
 						<Button
 							title="Navigate"
-							variant="solid"
 							size="sm"
 							icon={
 								<Navigation
@@ -366,27 +302,9 @@ const styles = StyleSheet.create({
 	strip: {
 		gap: CARD_GAP,
 	},
-	card: {
-		borderRadius: radii.card,
-		borderWidth: 1,
-		boxShadow: shadow.floatChip,
-	},
 	cardBody: {
 		padding: 14,
-		gap: 10,
-	},
-	titleRow: {
-		flexDirection: "row",
-		gap: 10,
-	},
-	rail: {
-		width: 4,
-		borderRadius: 2,
-		alignSelf: "stretch",
-	},
-	flex: {
-		flex: 1,
-		gap: 2,
+		gap: 8,
 	},
 	title: {
 		fontFamily: fontFamily.semibold,
@@ -396,6 +314,11 @@ const styles = StyleSheet.create({
 	meta: {
 		fontFamily: fontFamily.regular,
 		fontSize: type.meta,
+	},
+	statusRow: {
+		flexDirection: "row",
+		alignItems: "center",
+		gap: 8,
 	},
 	actions: {
 		flexDirection: "row",

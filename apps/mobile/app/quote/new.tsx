@@ -1,29 +1,18 @@
 import { useState } from "react";
-import {
-	ActivityIndicator,
-	Pressable,
-	ScrollView,
-	StyleSheet,
-	Text,
-	TextInput,
-	View,
-} from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { ActivityIndicator, StyleSheet, Text } from "react-native";
 import { Redirect, router, useLocalSearchParams } from "expo-router";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
-import { X } from "lucide-react-native";
-import { fontFamily, radii, type, useTokens } from "@/lib/theme";
-import { Button, Eyebrow } from "@/components/ui";
-import { CenteredModal } from "@/components/ipad/centered-modal";
+import { colors, fontFamily, useTokens } from "@/lib/theme";
+import { Button } from "@/components/ui";
 import { ClientPicker } from "@/components/create/client-picker";
 import { FieldMenu } from "@/components/FieldMenu";
-import { useDevice } from "@/lib/use-device";
 import { usePermissions } from "@/lib/use-permissions";
 import { hapticSuccess } from "@/lib/haptics";
 import { describeMutationError } from "@/lib/mutation-error";
 import { useOnlineAction } from "@/lib/offline/hooks";
+import { CreateSheet, SheetField, SheetInput } from "@/components/sheets/create-sheet";
 
 // FieldMenu action id for "no project" — an empty-string id is not a shape the
 // native MenuView is known to round-trip.
@@ -34,8 +23,6 @@ const NO_PROJECT = "__none__";
 // where the money gets entered, so the sheet hands off immediately.
 export default function NewQuoteSheet() {
 	const t = useTokens();
-	const insets = useSafeAreaInsets();
-	const { device } = useDevice();
 	const { can, isLoading: permsLoading } = usePermissions();
 	const params = useLocalSearchParams<{
 		clientId?: string;
@@ -118,30 +105,26 @@ export default function NewQuoteSheet() {
 	// a blank sheet with no way out.
 	if (!permsLoading && !canCreate) return <Redirect href="/money" />;
 
-	const content = (
-		<>
-			<View style={styles.header}>
-				<View style={{ flex: 1 }} />
-				<Text style={[styles.headerTitle, { color: t.ink }]}>New quote</Text>
-				<View style={styles.headerAction}>
-					<Pressable
-						onPress={() => router.back()}
-						hitSlop={8}
-						accessibilityRole="button"
-						accessibilityLabel="Close"
-						style={styles.closeBtn}
-					>
-						<X size={22} color={t.sub} />
-					</Pressable>
-				</View>
-			</View>
-
-			<ScrollView
-				style={styles.flex}
-				contentContainerStyle={styles.body}
-				keyboardShouldPersistTaps="handled"
-			>
-				<Eyebrow>Client</Eyebrow>
+	return (
+		<CreateSheet
+			kind="quote"
+			title="New quote"
+			subtitle="You'll add line items on the next screen"
+			onClose={() => router.back()}
+			footer={
+				<Button
+					title="Create quote"
+					onPress={() => onlineAction("Creating a quote", () => void submit())}
+					disabled={!valid || submitting}
+					icon={
+						submitting ? (
+							<ActivityIndicator size="small" color={colors.primaryForeground} />
+						) : undefined
+					}
+				/>
+			}
+		>
+			<SheetField label="Client">
 				<ClientPicker
 					value={clientId}
 					onChange={(next) => {
@@ -151,153 +134,44 @@ export default function NewQuoteSheet() {
 					allowQuickAdd={!clientLocked && can("clients", "modify")}
 					locked={clientLocked}
 				/>
+			</SheetField>
 
-				{/* Optional, and only when the client actually has projects — same
-				    FieldMenu idiom as the task form's client/project pair. */}
-				{clientId && projects && projects.length > 0 ? (
-					<View style={styles.field}>
-						<Eyebrow>Project</Eyebrow>
-						<View style={styles.menuWrap}>
-							<FieldMenu
-								title="Select project"
-								value={projectId || NO_PROJECT}
-								options={projectOptions}
-								label={projectLabel}
-								placeholder={!projectId}
-								onSelect={(next) =>
-									setProjectId(
-										next === NO_PROJECT ? "" : (next as Id<"projects">)
-									)
-								}
-							/>
-						</View>
-					</View>
-				) : null}
-
-				<View style={styles.field}>
-					<Eyebrow>Title</Eyebrow>
-					<TextInput
-						value={title}
-						onChangeText={setTitle}
-						placeholder="Optional"
-						placeholderTextColor={t.faint}
-						style={[
-							styles.input,
-							{ borderColor: t.line, backgroundColor: t.card, color: t.ink },
-						]}
-						accessibilityLabel="Quote title"
+			{/* Optional, and only when the client actually has projects — same
+			    FieldMenu idiom as the task form's client/project pair. */}
+			{clientId && projects && projects.length > 0 ? (
+				<SheetField label="Project">
+					<FieldMenu
+						title="Select project"
+						value={projectId || NO_PROJECT}
+						options={projectOptions}
+						label={projectLabel}
+						placeholder={!projectId}
+						onSelect={(next) =>
+							setProjectId(next === NO_PROJECT ? "" : (next as Id<"projects">))
+						}
 					/>
-				</View>
+				</SheetField>
+			) : null}
 
-				{error ? (
-					<Text style={[styles.error, { color: t.destructive }]}>
-						{error.message}
-					</Text>
-				) : null}
-
-				<Button
-					title="Create quote"
-					onPress={() => onlineAction("Creating a quote", () => void submit())}
-					disabled={!valid || submitting}
-					icon={
-						submitting ? (
-							<ActivityIndicator size="small" color={t.primaryInk} />
-						) : undefined
-					}
-					style={styles.submit}
+			<SheetField label="Title" hint="Optional">
+				<SheetInput
+					value={title}
+					onChangeText={setTitle}
+					placeholder="Optional"
+					accessibilityLabel="Quote title"
 				/>
-				<Text style={[styles.footnote, { color: t.sub }]}>
-					You&rsquo;ll add line items on the next screen.
-				</Text>
-			</ScrollView>
-		</>
-	);
+			</SheetField>
 
-	if (device === "ipad") {
-		return (
-			<CenteredModal onScrimPress={() => router.back()} maxHeight="92%">
-				<View style={[styles.padCard, { backgroundColor: t.card }]}>
-					{content}
-				</View>
-			</CenteredModal>
-		);
-	}
-
-	return (
-		<View
-			style={[
-				styles.container,
-				{ backgroundColor: t.card, paddingBottom: insets.bottom },
-			]}
-		>
-			<View style={[styles.grabber, { backgroundColor: t.line }]} />
-			{content}
-		</View>
+			{error ? (
+				<Text style={[styles.error, { color: t.danger }]}>{error.message}</Text>
+			) : null}
+		</CreateSheet>
 	);
 }
 
 const styles = StyleSheet.create({
-	flex: { flex: 1 },
-	container: {
-		flex: 1,
-		borderTopLeftRadius: 30,
-		borderTopRightRadius: 30,
-		overflow: "hidden",
-	},
-	padCard: { flex: 1, paddingTop: 18 },
-	grabber: {
-		alignSelf: "center",
-		width: 44,
-		height: 5,
-		borderRadius: 999,
-		marginTop: 10,
-		marginBottom: 12,
-	},
-	header: {
-		flexDirection: "row",
-		alignItems: "center",
-		paddingHorizontal: 20,
-		paddingBottom: 12,
-	},
-	headerTitle: {
-		flex: 2,
-		textAlign: "center",
-		fontSize: type.h2,
-		lineHeight: 30,
-		fontFamily: fontFamily.bold,
-	},
-	headerAction: { flex: 1, alignItems: "flex-end" },
-	closeBtn: {
-		width: 32,
-		height: 32,
-		borderRadius: 999,
-		alignItems: "center",
-		justifyContent: "center",
-	},
-	body: { paddingHorizontal: 20, paddingBottom: 32 },
-	field: { marginTop: 20 },
-	// FieldMenu has no outer margin of its own; match the TextInput's offset.
-	menuWrap: { marginTop: 8 },
-	input: {
-		borderWidth: 1,
-		borderRadius: radii.ctrl,
-		paddingHorizontal: 14,
-		paddingVertical: 12,
-		fontSize: type.h4,
-		fontFamily: fontFamily.regular,
-		letterSpacing: 0, // RN#42589: pin kern so iOS placeholder can't randomly letter-space
-		marginTop: 8,
-	},
 	error: {
 		fontFamily: fontFamily.medium,
-		fontSize: type.meta,
-		marginTop: 16,
-	},
-	submit: { marginTop: 24 },
-	footnote: {
-		fontFamily: fontFamily.regular,
-		fontSize: type.xs,
-		textAlign: "center",
-		marginTop: 10,
+		fontSize: 12.5,
 	},
 });

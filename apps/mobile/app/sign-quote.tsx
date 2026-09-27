@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState, type ReactNode } from "react";
 import {
 	ActivityIndicator,
 	Alert,
@@ -14,31 +14,31 @@ import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context"
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useAction } from "convex/react";
 import * as Device from "expo-device";
-import { Check, X } from "lucide-react-native";
+import { Check, User } from "lucide-react-native";
 import { api } from "@onetool/backend/convex/_generated/api";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
-import { fontFamily, radii, tracking, type, useTokens } from "@/lib/theme";
-import { useDevice } from "@/lib/use-device";
-import { AppHeader } from "@/components/app-header";
-import { Button, Card, DotGrid, Eyebrow, ListRow } from "@/components/ui";
+import { fontFamily, tracking, type, useTokens } from "@/lib/theme";
+import { EmptyPanel, Panel, PanelHeader, RecordRow } from "@/components/canvas";
+import { Button } from "@/components/ui";
 import {
 	SignaturePad,
 	buildSignatureSvg,
 	type SignatureStroke,
 } from "@/components/signature/signature-pad";
-import { formatCurrency } from "@/lib/format";
 import { useCachedQuery } from "@/lib/offline/useCachedQuery";
 import { useOffline } from "@/lib/offline/OfflineProvider";
 import { saveOffline } from "@/lib/offline/hooks";
 import { writeDurableText } from "@/lib/offline/files";
 import { canSignOffline } from "@/lib/offline/quote-signing";
 import { usePermissions } from "@/lib/use-permissions";
+import { useDevice } from "@/lib/use-device";
 
-// In-person signature flow (Slice 3, frame-1h follow-through): pick the
-// signer, then capture the signature. Phone keeps the app portrait and
-// rotates the signing surface 90° (Jobber's pattern — a wide canvas without
-// orientation-lock complexity); iPad is already wide, so it signs unrotated.
-// No Skip: if the client can't sign now, the resend path covers it.
+// In-person signature flow: pick the signer, then capture the signature. A
+// light full-screen page (no shell) since the client is looking at the phone
+// directly. Phone rotates the signing surface 90° (Jobber's pattern — a wide
+// canvas without orientation-lock complexity); iPad is already wide, so it
+// signs unrotated. No Skip: if the client can't sign now, the resend path
+// covers it.
 
 export default function SignQuoteScreen() {
 	const { id } = useLocalSearchParams<{ id: string }>();
@@ -170,11 +170,35 @@ export default function SignQuoteScreen() {
 		}
 	};
 
+	const header = (
+		<View style={[styles.header, { backgroundColor: t.card, borderBottomColor: t.line, paddingTop: insets.top }]}>
+			<Pressable
+				onPress={() => router.back()}
+				accessibilityRole="button"
+				accessibilityLabel="Close without signing"
+				hitSlop={8}
+				style={styles.headerSide}
+			>
+				<Text style={[styles.cancel, { color: t.frostedInk }]}>Cancel</Text>
+			</Pressable>
+			<View style={styles.headerTitleWrap}>
+				<Text style={[styles.headerTitle, { color: t.ink }]} numberOfLines={1}>
+					Get signature
+				</Text>
+				{quote?.quoteNumber ? (
+					<Text style={[styles.headerSub, { color: t.sub }]} numberOfLines={1}>
+						{quote.quoteNumber}
+					</Text>
+				) : null}
+			</View>
+			<View style={styles.headerSide} />
+		</View>
+	);
+
 	if (!quote || sortedContacts === undefined) {
 		return (
 			<SafeAreaView style={[styles.flex, { backgroundColor: t.bg }]} edges={[]}>
-				<DotGrid style={StyleSheet.absoluteFill} />
-				<AppHeader mode="detail" title="Get signature" />
+				{header}
 				<View style={styles.loading}>
 					<ActivityIndicator color={t.sub} />
 				</View>
@@ -183,75 +207,55 @@ export default function SignQuoteScreen() {
 	}
 
 	if (step === "signer") {
-		const clientLine = [
-			quote.quoteNumber,
-			formatCurrency(quote.total, { exact: true }),
-		]
-			.filter(Boolean)
-			.join(" · ");
 		return (
 			<SafeAreaView style={[styles.flex, { backgroundColor: t.bg }]} edges={[]}>
-				<DotGrid style={StyleSheet.absoluteFill} />
-				<AppHeader mode="detail" title="Get signature" />
+				{header}
 				<ScrollView
 					contentContainerStyle={[
 						styles.scroll,
 						{ paddingBottom: 24 + insets.bottom },
 					]}
 				>
-					<Text style={[styles.contextLine, { color: t.sub }]}>
-						{clientLine}
-					</Text>
-					<View style={styles.section}>
-						<Eyebrow>{"Who’s signing?"}</Eyebrow>
+					<Panel
+						header={<PanelHeader title={"Who's signing?"} />}
+					>
 						{sortedContacts.length === 0 ? (
-							<Card style={styles.emptyCard}>
-								<Text style={[styles.emptyTitle, { color: t.ink }]}>
-									No contacts on this client
-								</Text>
-								<Text style={[styles.emptyBody, { color: t.sub }]}>
-									Add a contact to the client first — the signature is
-									recorded under their name.
-								</Text>
-							</Card>
+							<EmptyPanel
+								title="No contacts on this client"
+								body="Add a contact to the client first — the signature is recorded under their name."
+							/>
 						) : (
-							// Bare rows over the canvas (money-hub idiom) — a Card wrapper
-							// clips the selected row's frosted capsule (visual pass round 2).
-							<View>
-								{sortedContacts.map((c, i) => (
-									<ListRow
-										key={c._id}
-										icon="User"
-										title={`${c.firstName} ${c.lastName}`.trim()}
-										sub={
-											[
-												c.isPrimary ? "Primary contact" : null,
-												c.email ?? c.phone ?? null,
-											]
-												.filter(Boolean)
-												.join(" · ") || undefined
-										}
-										selected={c._id === selectedId}
-										showChevron={false}
-										right={
-											c._id === selectedId ? (
-												<Check
-													size={17}
-													color={t.primarySolid}
-													strokeWidth={2.5}
-												/>
-											) : undefined
-										}
-										last={i === sortedContacts.length - 1}
-										onPress={() => setContactId(c._id)}
-									/>
-								))}
-							</View>
+							sortedContacts.map((c) => (
+								<RecordRow
+									key={c._id}
+									leading={<User size={18} color={t.sub} strokeWidth={2} />}
+									title={`${c.firstName} ${c.lastName}`.trim()}
+									subtitle={
+										[
+											c.isPrimary ? "Primary contact" : null,
+											c.email ?? c.phone ?? null,
+										]
+											.filter(Boolean)
+											.join(" · ") || undefined
+									}
+									selected={c._id === selectedId}
+									chevron={false}
+									right={
+										c._id === selectedId ? (
+											<Check size={17} color={t.primarySolid} strokeWidth={2.5} />
+										) : undefined
+									}
+									onPress={() => setContactId(c._id)}
+								/>
+							))
 						)}
-					</View>
+					</Panel>
 				</ScrollView>
 				<View
-					style={[styles.footer, { paddingBottom: 12 + insets.bottom }]}
+					style={[
+						styles.footer,
+						{ backgroundColor: t.card, borderTopColor: t.line, paddingBottom: Math.max(insets.bottom, 12) },
+					]}
 				>
 					<Button
 						title="Continue to signature"
@@ -269,7 +273,9 @@ export default function SignQuoteScreen() {
 		);
 	}
 
-	// --- Canvas step ---
+	// --- Canvas step --- geometry unchanged from the pre-restyle version: phone
+	// rotates the measured frame 90° so the pad is a wide landscape canvas while
+	// the app stays portrait; iPad is already wide, so it signs unrotated.
 	const termsLine = quote.terms
 		? `By signing, ${signerName} approves this quote and accepts its terms.`
 		: `By signing, ${signerName} approves this quote.`;
@@ -277,9 +283,7 @@ export default function SignQuoteScreen() {
 	const surface = (
 		<View style={styles.surface}>
 			<View style={styles.surfaceHead}>
-				<Text style={[styles.signerLabel, { color: t.ink }]}>
-					{signerName}
-				</Text>
+				<Text style={[styles.signerLabel, { color: t.ink }]}>{signerName}</Text>
 				<Text style={[styles.termsLine, { color: t.sub }]}>{termsLine}</Text>
 			</View>
 			<View
@@ -301,15 +305,24 @@ export default function SignQuoteScreen() {
 				) : null}
 			</View>
 			<View style={styles.rail}>
-				<Button
-					title="Clear"
-					variant="secondary"
-					disabled={strokes.length === 0 || submitting}
+				<Pressable
 					onPress={() => setStrokes([])}
-					style={styles.railButton}
-				/>
+					disabled={strokes.length === 0 || submitting}
+					hitSlop={12}
+					style={styles.clearWrap}
+				>
+					<Text
+						style={[
+							styles.clear,
+							{ color: t.frostedInk },
+							(strokes.length === 0 || submitting) && styles.clearDisabled,
+						]}
+					>
+						Clear
+					</Text>
+				</Pressable>
 				<Button
-					title={submitting ? "Recording…" : "Confirm approval"}
+					title={submitting ? "Recording…" : "Accept and sign"}
 					disabled={strokes.length === 0 || submitting}
 					onPress={() => void confirm()}
 					style={styles.railButtonWide}
@@ -320,45 +333,20 @@ export default function SignQuoteScreen() {
 
 	return (
 		<SafeAreaView style={[styles.flex, { backgroundColor: t.bg }]} edges={[]}>
-			<DotGrid style={StyleSheet.absoluteFill} />
+			{header}
 			{device === "ipad" ? (
-				<View
-					style={[
-						styles.ipadFrame,
-						{ paddingTop: insets.top + 56, paddingBottom: insets.bottom + 24 },
-					]}
-				>
+				<View style={[styles.ipadFrame, { paddingBottom: insets.bottom + 24 }]}>
 					{surface}
 				</View>
 			) : (
-				// Phone: portrait app, rotated signing surface. The centered child
-				// swaps the measured frame's dimensions, then rotates about its
-				// center — gesture coordinates arrive in the child's own (rotated)
-				// space, so the pad needs no coordinate math.
 				<RotatedFrame>{surface}</RotatedFrame>
 			)}
-			<Pressable
-				accessibilityRole="button"
-				accessibilityLabel="Close without signing"
-				onPress={() => router.back()}
-				hitSlop={12}
-				style={({ pressed }) => [
-					styles.close,
-					{
-						top: insets.top + 10,
-						backgroundColor: pressed ? t.secondary : t.card,
-						borderColor: t.line,
-					},
-				]}
-			>
-				<X size={18} color={t.sub} strokeWidth={2.25} />
-			</Pressable>
 		</SafeAreaView>
 	);
 }
 
 /** Measures the available frame and renders children rotated 90° inside it. */
-function RotatedFrame({ children }: { children: React.ReactNode }) {
+function RotatedFrame({ children }: { children: ReactNode }) {
 	const [frame, setFrame] = useState<{ w: number; h: number } | null>(null);
 	return (
 		<View
@@ -388,20 +376,47 @@ function RotatedFrame({ children }: { children: React.ReactNode }) {
 const styles = StyleSheet.create({
 	flex: { flex: 1 },
 	loading: { flex: 1, alignItems: "center", justifyContent: "center" },
-	scroll: { paddingHorizontal: 16, paddingTop: 16 },
-	contextLine: {
+	scroll: { paddingHorizontal: 16, paddingTop: 16, gap: 16 },
+	header: {
+		flexDirection: "row",
+		alignItems: "center",
+		minHeight: 52,
+		paddingHorizontal: 12,
+		paddingBottom: 10,
+		borderBottomWidth: 1,
+	},
+	headerSide: { width: 64, justifyContent: "center" },
+	cancel: {
+		fontFamily: fontFamily.medium,
+		fontSize: type.body,
+	},
+	headerTitleWrap: { flex: 1, alignItems: "center" },
+	headerTitle: {
+		fontFamily: fontFamily.semibold,
+		fontSize: type.h3,
+	},
+	headerSub: {
 		fontFamily: fontFamily.medium,
 		fontSize: type.meta,
-		marginBottom: 16,
 		fontVariant: ["tabular-nums"],
 	},
-	section: { gap: 10 },
-	emptyCard: { padding: 16, gap: 4 },
-	emptyTitle: { fontFamily: fontFamily.semibold, fontSize: type.rowTitle },
-	emptyBody: { fontFamily: fontFamily.medium, fontSize: type.meta },
-	footer: { paddingHorizontal: 16, paddingTop: 8 },
+	termsLine: {
+		fontFamily: fontFamily.medium,
+		fontSize: type.meta,
+	},
+	clearWrap: { justifyContent: "center", paddingHorizontal: 4 },
+	clear: {
+		fontFamily: fontFamily.medium,
+		fontSize: type.sm,
+	},
+	clearDisabled: { opacity: 0.5 },
+	footer: {
+		paddingHorizontal: 16,
+		paddingTop: 12,
+		borderTopWidth: 1,
+	},
 	rotateHost: { flex: 1, alignItems: "center", justifyContent: "center" },
-	ipadFrame: { flex: 1, paddingHorizontal: 48 },
+	ipadFrame: { flex: 1, paddingTop: 24, paddingHorizontal: 48 },
 	surface: { flex: 1, gap: 12 },
 	surfaceHead: { gap: 2, paddingHorizontal: 4 },
 	signerLabel: {
@@ -409,19 +424,7 @@ const styles = StyleSheet.create({
 		fontSize: type.rowTitle,
 		letterSpacing: tracking.title,
 	},
-	termsLine: { fontFamily: fontFamily.medium, fontSize: type.meta },
 	padWrap: { flex: 1 },
-	rail: { flexDirection: "row", gap: 10 },
-	railButton: { flex: 1 },
-	railButtonWide: { flex: 2 },
-	close: {
-		position: "absolute",
-		left: 16,
-		width: 34,
-		height: 34,
-		borderRadius: radii.pill,
-		borderWidth: StyleSheet.hairlineWidth,
-		alignItems: "center",
-		justifyContent: "center",
-	},
+	rail: { flexDirection: "row", alignItems: "center", gap: 10 },
+	railButtonWide: { flex: 1 },
 });

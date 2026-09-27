@@ -2,8 +2,8 @@ import { useMemo, useState } from "react";
 import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { X } from "lucide-react-native";
-import { fontFamily, radii, spacing, touch, type, useTokens } from "@/lib/theme";
+import { CloudOff, X } from "lucide-react-native";
+import { fontFamily, radii, spacing, type, useTokens } from "@/lib/theme";
 import { Button } from "@/components/ui";
 import { CenteredModal } from "@/components/ipad/centered-modal";
 import { useDevice } from "@/lib/use-device";
@@ -54,20 +54,29 @@ export default function SyncIssuesSheet() {
 
 	const content = (
 		<>
-			<View style={styles.header}>
-				<View style={{ flex: 1 }} />
-				<Text style={[styles.title, { color: t.ink }]}>Sync issues</Text>
-				<View style={styles.headerAction}>
-					<Pressable
-						onPress={() => router.back()}
-						hitSlop={8}
-						accessibilityRole="button"
-						accessibilityLabel="Close"
-						style={styles.closeBtn}
-					>
-						<X size={22} color={t.sub} />
-					</Pressable>
+			<View style={[styles.header, { borderBottomColor: t.line }]}>
+				<View style={[styles.tile, { backgroundColor: t.secondary }]}>
+					<CloudOff size={18} color={t.frostedInk} strokeWidth={2} />
 				</View>
+				<View style={styles.headerText}>
+					<Text style={[styles.title, { color: t.ink }]} accessibilityRole="header">
+						Sync issues
+					</Text>
+					{sorted.length > 0 ? (
+						<Text style={[styles.subtitle, { color: t.sub }]}>
+							{sorted.length} {sorted.length === 1 ? "item" : "items"} need attention
+						</Text>
+					) : null}
+				</View>
+				<Pressable
+					onPress={() => router.back()}
+					hitSlop={8}
+					accessibilityRole="button"
+					accessibilityLabel="Close"
+					style={({ pressed }) => [styles.headerBtn, pressed && { backgroundColor: t.secondary }]}
+				>
+					<X size={20} color={t.sub} strokeWidth={2} />
+				</Pressable>
 			</View>
 
 			{sorted.length === 0 ? (
@@ -175,24 +184,35 @@ const styles = StyleSheet.create({
 	header: {
 		flexDirection: "row",
 		alignItems: "center",
-		paddingHorizontal: 20,
-		paddingBottom: spacing.gutter,
+		gap: 12,
+		paddingHorizontal: spacing.md,
+		paddingBottom: 14,
+		borderBottomWidth: 1,
+	},
+	tile: {
+		width: 36,
+		height: 36,
+		borderRadius: radii.ctrl,
+		alignItems: "center",
+		justifyContent: "center",
+	},
+	headerText: {
+		flex: 1,
+		minWidth: 0,
 	},
 	title: {
-		flex: 2,
-		textAlign: "center",
-		fontSize: type.h2,
-		lineHeight: 30,
-		fontFamily: fontFamily.bold,
+		fontSize: type.h3,
+		fontFamily: fontFamily.semibold,
 	},
-	headerAction: {
-		flex: 1,
-		alignItems: "flex-end",
+	subtitle: {
+		fontSize: type.sm,
+		fontFamily: fontFamily.regular,
+		marginTop: 1,
 	},
-	closeBtn: {
-		width: touch.min,
-		height: touch.min,
-		borderRadius: radii.pill,
+	headerBtn: {
+		width: 36,
+		height: 36,
+		borderRadius: radii.ctrl,
 		alignItems: "center",
 		justifyContent: "center",
 	},

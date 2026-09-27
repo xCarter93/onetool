@@ -4,8 +4,9 @@ import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
-import { BellRing, X } from "lucide-react-native";
+import { Bell, BellRing, X } from "lucide-react-native";
 import { ListRow } from "@/components/ui/list-row";
+import { Panel } from "@/components/canvas";
 import { fontFamily, radii, spacing, touch, type, useTokens } from "@/lib/theme";
 import { CenteredModal } from "@/components/ipad/centered-modal";
 import { useDevice } from "@/lib/use-device";
@@ -100,21 +101,24 @@ export default function NotificationPreferencesSheet() {
 	};
 
 	const header = (
-		<View style={styles.header}>
-			<View style={styles.titleWrap}>
-				<Text style={[styles.title, { color: t.ink }]}>Notifications</Text>
+		<View style={[styles.header, { borderBottomColor: t.line }]}>
+			<View style={[styles.tile, { backgroundColor: t.secondary }]}>
+				<Bell size={18} color={t.frostedInk} strokeWidth={2} />
 			</View>
-			<View style={styles.headerAction}>
-				<Pressable
-					onPress={() => router.back()}
-					hitSlop={8}
-					accessibilityRole="button"
-					accessibilityLabel="Close"
-					style={styles.closeBtn}
-				>
-					<X size={22} color={t.sub} />
-				</Pressable>
+			<View style={styles.headerText}>
+				<Text style={[styles.title, { color: t.ink }]} accessibilityRole="header">
+					Notifications
+				</Text>
 			</View>
+			<Pressable
+				onPress={() => router.back()}
+				hitSlop={8}
+				accessibilityRole="button"
+				accessibilityLabel="Close"
+				style={({ pressed }) => [styles.headerBtn, pressed && { backgroundColor: t.secondary }]}
+			>
+				<X size={20} color={t.sub} strokeWidth={2} />
+			</Pressable>
 		</View>
 	);
 
@@ -148,10 +152,8 @@ export default function NotificationPreferencesSheet() {
 				notifications list always shows everything.
 			</Text>
 
-			<View
-				style={[styles.group, { backgroundColor: t.card, borderColor: t.line }]}
-			>
-				{ROWS.map((row, i) => {
+			<Panel style={styles.group}>
+				{ROWS.map((row) => {
 					const value = valueOf(row.key);
 					return (
 						<ListRow
@@ -160,7 +162,7 @@ export default function NotificationPreferencesSheet() {
 							title={row.title}
 							sub={row.sub}
 							showChevron={false}
-							last={i === ROWS.length - 1}
+							last
 							right={
 								<Switch
 									value={value}
@@ -174,7 +176,7 @@ export default function NotificationPreferencesSheet() {
 						/>
 					);
 				})}
-			</View>
+			</Panel>
 		</ScrollView>
 	);
 
@@ -237,29 +239,30 @@ const styles = StyleSheet.create({
 	header: {
 		flexDirection: "row",
 		alignItems: "center",
-		paddingHorizontal: 20,
-		paddingBottom: spacing.gutter,
+		gap: 12,
+		paddingHorizontal: spacing.md,
+		paddingBottom: 14,
+		borderBottomWidth: 1,
 	},
-	titleWrap: {
-		flex: 2,
-		flexDirection: "row",
+	tile: {
+		width: 36,
+		height: 36,
+		borderRadius: radii.ctrl,
 		alignItems: "center",
 		justifyContent: "center",
-		gap: spacing.sm,
+	},
+	headerText: {
+		flex: 1,
+		minWidth: 0,
 	},
 	title: {
-		fontSize: type.h2,
-		lineHeight: 30,
-		fontFamily: fontFamily.bold,
+		fontSize: type.h3,
+		fontFamily: fontFamily.semibold,
 	},
-	headerAction: {
-		flex: 1,
-		alignItems: "flex-end",
-	},
-	closeBtn: {
-		width: touch.min,
-		height: touch.min,
-		borderRadius: radii.pill,
+	headerBtn: {
+		width: 36,
+		height: 36,
+		borderRadius: radii.ctrl,
 		alignItems: "center",
 		justifyContent: "center",
 	},
@@ -291,8 +294,5 @@ const styles = StyleSheet.create({
 	},
 	group: {
 		marginHorizontal: 20,
-		borderRadius: radii.lg,
-		borderWidth: 1,
-		overflow: "hidden",
 	},
 });

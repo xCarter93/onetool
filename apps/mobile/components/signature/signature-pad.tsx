@@ -2,7 +2,7 @@ import { useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Svg, { Path } from "react-native-svg";
-import { fontFamily, type, useTokens } from "@/lib/theme";
+import { fontFamily, radii, type, useTokens } from "@/lib/theme";
 
 // One captured pen stroke as an SVG path `d` string ("M… L… L…").
 export interface SignatureStroke {
@@ -132,8 +132,8 @@ export function SignaturePad({
 
 const styles = StyleSheet.create({
 	pad: {
-		borderRadius: 16,
-		borderWidth: StyleSheet.hairlineWidth,
+		borderRadius: radii.card,
+		borderWidth: 1,
 		overflow: "hidden",
 	},
 	baseline: {

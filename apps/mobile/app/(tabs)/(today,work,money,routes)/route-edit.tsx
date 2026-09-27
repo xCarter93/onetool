@@ -4,13 +4,11 @@ import {
 	KeyboardAvoidingView,
 	Platform,
 	Pressable,
-	ScrollView,
 	StyleSheet,
 	Text,
 	TextInput,
 	View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useAction, useMutation } from "convex/react";
 import { ConvexError } from "convex/values";
@@ -24,15 +22,17 @@ import {
 	ChevronDown,
 	ChevronUp,
 	MapPin,
+	Save,
 	Search,
 	X,
 } from "lucide-react-native";
 import { colors, fontFamily, radii, type, useTokens } from "@/lib/theme";
-import { AppHeader } from "@/components/app-header";
+import { CanvasScroll, PageHeader, Panel, SectionLabel } from "@/components/canvas";
 import { PaneHeader } from "@/components/ipad/pane-header";
-import { Button, DotGrid, SegmentedToggle, Toggle2 } from "@/components/ui";
+import { Button, SegmentedToggle, Toggle2 } from "@/components/ui";
 import type { Segment } from "@/components/ui/segmented-toggle";
 import { useDevice } from "@/lib/use-device";
+import { useScreenChrome, type TrayAction } from "@/lib/shell-chrome";
 import {
 	AddressAutocomplete,
 	type AddressValue,
@@ -67,10 +67,11 @@ const KIND_SEGMENTS: readonly Segment<"daily" | "saved">[] = [
 
 type StopPicker = "list" | "address" | null;
 
-// Full-screen manual route builder — create when no `routeId` param, edit when
-// one is present. Pushed from the Routes tab (app/(tabs)/routes.tsx
-// `openBuilder`). isStackRoute("/route-edit") renders it full-width beside the
-// iPad rail, so headerMode self-detects.
+// Manual route builder — create when no `routeId` param, edit when one is
+// present. Pushed from the Routes tab (routes.tsx `openBuilder`). On iPad,
+// isStackRoute("/route-edit") renders it full-width beside the rail via a
+// <Slot/>, so the screen owns its own pane header; on iPhone the persistent
+// frame supplies the back arrow and "<Tab> > Route" breadcrumb.
 export default function RouteEditScreen() {
 	const t = useTokens();
 	const router = useRouter();
@@ -151,49 +152,6 @@ export default function RouteEditScreen() {
 	const [stopQuery, setStopQuery] = useState("");
 	const [manualStopAddress, setManualStopAddress] =
 		useState<AddressValue>(EMPTY_ADDRESS);
-
-	const properties: GeocodedProperty[] = (propertiesData?.properties ?? []).map(
-		(p) => ({
-			_id: p._id,
-			clientId: p.clientId,
-			clientCompanyName: p.clientCompanyName,
-			propertyName: p.propertyName,
-			streetAddress: p.streetAddress,
-			city: p.city,
-			state: p.state,
-			zipCode: p.zipCode,
-			formattedAddress: p.formattedAddress,
-			latitude: p.latitude,
-			longitude: p.longitude,
-		})
-	);
-	const propertyById = new Map(properties.map((p) => [p._id, p]));
-
-	if (!draft) {
-		return (
-			<Screen isPane={isPane} title={routeId ? "Edit route" : "New route"}>
-				<View style={styles.loading}>
-					<ActivityIndicator color={t.sub} />
-				</View>
-			</Screen>
-		);
-	}
-	if (routeId && routes !== undefined && !existingRoute) {
-		return (
-			<Screen isPane={isPane} title="Route not found">
-				<View style={styles.loading}>
-					<Text style={{ color: t.sub, fontFamily: fontFamily.medium }}>
-						This route no longer exists.
-					</Text>
-				</View>
-			</Screen>
-		);
-	}
-
-	const usedIds = usedPropertyIds(draft);
-	const filteredProperties = filterProperties(properties, stopQuery, usedIds);
-	const atStopLimit = !canAddStop(draft);
-	const isEditing = routeId !== undefined;
 
 	async function persist(): Promise<Id<"routes"> | undefined> {
 		if (!draft) return undefined;
@@ -282,6 +240,63 @@ export default function RouteEditScreen() {
 			})();
 		});
 
+	// Tray, phone only: the primary Save. There is no delete action on this
+	// screen today, so the tray carries just the one action.
+	const tray: TrayAction[] = [
+		{
+			key: "save",
+			label: busy ? "Saving…" : "Save route",
+			icon: Save,
+			onPress: () => {
+				if (!busy) onSave();
+			},
+		},
+	];
+	useScreenChrome(isPane ? null : { tray });
+
+	const properties: GeocodedProperty[] = (propertiesData?.properties ?? []).map(
+		(p) => ({
+			_id: p._id,
+			clientId: p.clientId,
+			clientCompanyName: p.clientCompanyName,
+			propertyName: p.propertyName,
+			streetAddress: p.streetAddress,
+			city: p.city,
+			state: p.state,
+			zipCode: p.zipCode,
+			formattedAddress: p.formattedAddress,
+			latitude: p.latitude,
+			longitude: p.longitude,
+		})
+	);
+	const propertyById = new Map(properties.map((p) => [p._id, p]));
+
+	if (!draft) {
+		return (
+			<Screen isPane={isPane} title={routeId ? "Edit route" : "New route"}>
+				<View style={styles.loading}>
+					<ActivityIndicator color={t.sub} />
+				</View>
+			</Screen>
+		);
+	}
+	if (routeId && routes !== undefined && !existingRoute) {
+		return (
+			<Screen isPane={isPane} title="Route not found">
+				<View style={styles.loading}>
+					<Text style={{ color: t.sub, fontFamily: fontFamily.medium }}>
+						This route no longer exists.
+					</Text>
+				</View>
+			</Screen>
+		);
+	}
+
+	const usedIds = usedPropertyIds(draft);
+	const filteredProperties = filterProperties(properties, stopQuery, usedIds);
+	const atStopLimit = !canAddStop(draft);
+	const isEditing = routeId !== undefined;
+
 	const addProperty = (property: GeocodedProperty) => {
 		setDraft(addPropertyStop(draft, property));
 		setStopPicker(null);
@@ -345,14 +360,17 @@ export default function RouteEditScreen() {
 				style={styles.flex}
 				behavior={Platform.OS === "ios" ? "padding" : undefined}
 			>
-				<ScrollView
-					style={styles.flex}
-					contentContainerStyle={styles.content}
+				<CanvasScroll
 					keyboardShouldPersistTaps="handled"
-					showsVerticalScrollIndicator={false}
+					contentContainerStyle={isPane ? styles.paneScroll : undefined}
 				>
+					{/* On iPad, Screen's PaneHeader already carries the title. */}
+					{!isPane ? (
+						<PageHeader title={routeId ? "Edit route" : "New route"} />
+					) : null}
+
 					{/* Name + kind */}
-					<Section title="Route" tokens={t}>
+					<Section title="Route">
 						<FieldLabel text="Name" tokens={t} />
 						<TextInput
 							value={draft.name}
@@ -361,7 +379,7 @@ export default function RouteEditScreen() {
 							placeholderTextColor={t.faint}
 							style={[
 								styles.input,
-								{ borderColor: t.border, backgroundColor: t.card, color: t.ink },
+								{ borderColor: t.input, backgroundColor: t.card, color: t.ink },
 							]}
 						/>
 						{!isEditing ? (
@@ -377,7 +395,7 @@ export default function RouteEditScreen() {
 					</Section>
 
 					{/* Start */}
-					<Section title="Start" tokens={t}>
+					<Section title="Start">
 						{startMode === "current" ? (
 							<View style={styles.startRow}>
 								<View style={[styles.startPin, { backgroundColor: t.muted }]}>
@@ -405,7 +423,7 @@ export default function RouteEditScreen() {
 								{orgStart ? (
 									<Pressable
 										onPress={useBusinessAddress}
-										style={[styles.optionRow, { borderColor: t.border, backgroundColor: t.card }]}
+										style={[styles.optionRow, { borderColor: t.line, backgroundColor: t.card }]}
 										accessibilityRole="button"
 									>
 										<Text style={[styles.optionTitle, { color: t.ink }]}>
@@ -440,29 +458,20 @@ export default function RouteEditScreen() {
 					</Section>
 
 					{/* Stops */}
-					<Section title={`Stops (${draft.stops.length})`} tokens={t}>
+					<Section title={`Stops (${draft.stops.length})`}>
 						{draft.stops.length === 0 ? (
 							<Text style={[styles.emptyText, { color: t.faint }]}>
 								Add a stop to build this route.
 							</Text>
 						) : (
-							<View style={styles.group}>
+							<Panel>
 								{draft.stops.map((stop, index) => {
 									const client = stop.propertyId
 										? propertyById.get(stop.propertyId)
 										: undefined;
 									const flagged = unreachable.has(index);
 									return (
-										<View
-											key={stop.key}
-											style={[
-												styles.stopRow,
-												{
-													borderColor: flagged ? t.danger : t.border,
-													backgroundColor: t.card,
-												},
-											]}
-										>
+										<View key={stop.key} style={styles.stopRow}>
 											<View style={[styles.stopIndex, { backgroundColor: t.muted }]}>
 												<Text style={[styles.stopIndexText, { color: t.sub }]}>
 													{index + 1}
@@ -521,7 +530,7 @@ export default function RouteEditScreen() {
 										</View>
 									);
 								})}
-							</View>
+							</Panel>
 						)}
 
 						{stopPicker === null ? (
@@ -544,7 +553,7 @@ export default function RouteEditScreen() {
 								<View
 									style={[
 										styles.searchRow,
-										{ borderColor: t.border, backgroundColor: t.card },
+										{ borderColor: t.input, backgroundColor: t.card },
 									]}
 								>
 									<Search size={16} color={t.faint} />
@@ -562,7 +571,7 @@ export default function RouteEditScreen() {
 										onPress={() => addProperty(property)}
 										style={[
 											styles.optionRow,
-											{ borderColor: t.border, backgroundColor: t.card },
+											{ borderColor: t.line, backgroundColor: t.card },
 										]}
 										accessibilityRole="button"
 									>
@@ -633,7 +642,7 @@ export default function RouteEditScreen() {
 					</Section>
 
 					{/* Round trip */}
-					<Section title="Round trip" tokens={t}>
+					<Section title="Round trip">
 						<Toggle2
 							value={draft.roundTrip ? "yes" : "no"}
 							options={[
@@ -653,21 +662,22 @@ export default function RouteEditScreen() {
 						</Text>
 					) : null}
 
-					<Button
-						title={busy ? "Saving…" : "Save"}
-						onPress={onSave}
-						disabled={busy}
-						icon={
-							busy ? (
-								<ActivityIndicator
-									size="small"
-									color={colors.primaryForeground}
-								/>
-							) : undefined
-						}
-						variant="solid"
-						style={styles.submit}
-					/>
+					{isPane ? (
+						<Button
+							title={busy ? "Saving…" : "Save route"}
+							onPress={onSave}
+							disabled={busy}
+							icon={
+								busy ? (
+									<ActivityIndicator
+										size="small"
+										color={colors.primaryForeground}
+									/>
+								) : undefined
+							}
+							style={styles.submit}
+						/>
+					) : null}
 
 					{showComputeActions ? (
 						<>
@@ -691,7 +701,7 @@ export default function RouteEditScreen() {
 							</Text>
 						</>
 					) : null}
-				</ScrollView>
+				</CanvasScroll>
 			</KeyboardAvoidingView>
 		</Screen>
 	);
@@ -709,30 +719,23 @@ function Screen({
 	const t = useTokens();
 	const router = useRouter();
 	return (
-		<SafeAreaView edges={[]} style={[styles.screen, { backgroundColor: t.bg }]}>
-			<DotGrid style={StyleSheet.absoluteFill} />
-			{isPane ? (
-				<PaneHeader title={title} onBack={() => router.back()} />
-			) : (
-				<AppHeader mode="detail" title={title} sub="Routes" />
-			)}
+		<View style={[styles.screen, { backgroundColor: t.bg }]}>
+			{isPane ? <PaneHeader title={title} onBack={() => router.back()} /> : null}
 			{children}
-		</SafeAreaView>
+		</View>
 	);
 }
 
 function Section({
 	title,
-	tokens,
 	children,
 }: {
 	title: string;
-	tokens: ReturnType<typeof useTokens>;
 	children: React.ReactNode;
 }) {
 	return (
 		<View style={styles.section}>
-			<Text style={[styles.sectionTitle, { color: tokens.ink }]}>{title}</Text>
+			<SectionLabel title={title} />
 			<View style={styles.sectionBody}>{children}</View>
 		</View>
 	);
@@ -760,35 +763,28 @@ const styles = StyleSheet.create({
 		alignItems: "center",
 		justifyContent: "center",
 	},
-	content: {
-		paddingHorizontal: 16,
-		paddingTop: 8,
-		paddingBottom: 48,
-		gap: 20,
+	// iPad has no notch to clear — PaneHeader already sits above.
+	paneScroll: {
+		paddingTop: 12,
 	},
 	section: {
-		gap: 12,
-	},
-	sectionTitle: {
-		fontFamily: fontFamily.semibold,
-		fontSize: type.h3,
-		letterSpacing: -0.3,
+		gap: 16,
 	},
 	sectionBody: {
 		gap: 8,
 	},
 	fieldLabel: {
-		fontFamily: fontFamily.medium,
+		fontFamily: fontFamily.semibold,
 		fontSize: type.sm,
 		marginTop: 6,
 	},
 	input: {
 		borderWidth: 1,
-		borderRadius: radii.lg,
+		borderRadius: radii.ctrl,
 		paddingHorizontal: 12,
 		paddingVertical: 12,
 		fontFamily: fontFamily.regular,
-		fontSize: 13,
+		fontSize: 16,
 		letterSpacing: 0, // RN#42589: pin kern so iOS placeholder can't randomly letter-space
 		minHeight: 48,
 	},
@@ -811,7 +807,7 @@ const styles = StyleSheet.create({
 	startPin: {
 		width: 32,
 		height: 32,
-		borderRadius: radii.lg,
+		borderRadius: radii.card,
 		alignItems: "center",
 		justifyContent: "center",
 	},
@@ -826,7 +822,7 @@ const styles = StyleSheet.create({
 	},
 	optionRow: {
 		borderWidth: 1,
-		borderRadius: radii.lg,
+		borderRadius: radii.card,
 		paddingHorizontal: 12,
 		paddingVertical: 12,
 		minHeight: 44,
@@ -849,10 +845,9 @@ const styles = StyleSheet.create({
 		flexDirection: "row",
 		alignItems: "center",
 		gap: 8,
-		borderWidth: 1,
-		borderRadius: radii.lg,
-		paddingHorizontal: 10,
-		paddingVertical: 8,
+		paddingHorizontal: 12,
+		paddingVertical: 10,
+		minHeight: 56,
 	},
 	stopIndex: {
 		// minWidth/minHeight, not width/height — the pill grows at large Dynamic
@@ -897,14 +892,14 @@ const styles = StyleSheet.create({
 		alignItems: "center",
 		gap: 8,
 		borderWidth: 1,
-		borderRadius: radii.lg,
+		borderRadius: radii.ctrl,
 		paddingHorizontal: 12,
 		minHeight: 44,
 	},
 	searchInput: {
 		flex: 1,
 		fontFamily: fontFamily.regular,
-		fontSize: 13,
+		fontSize: 16,
 		letterSpacing: 0,
 		paddingVertical: 10,
 	},
