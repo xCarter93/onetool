@@ -1,6 +1,7 @@
 import { createContext, useContext } from "react";
 import type { RecordRef } from "@/lib/selection-context";
 import type { WorkKind } from "@/lib/work-search";
+import type { Id } from "@onetool/backend/convex/_generated/dataModel";
 
 // Provided by IpadShell so detail bodies + list screens rendered INSIDE the shell
 // navigate between surfaces WITHOUT router.push. A push to a (tabs) sibling
@@ -28,6 +29,8 @@ export interface ShellNav {
 	openProfile: () => void;
 	/** Business details in the Profile pane; a route push would stack a second shell. */
 	openBusinessDetails: () => void;
+	/** The route builder in the Routes pane; no id creates a new route. */
+	editRoute: (routeId?: Id<"routes">) => void;
 }
 
 const ShellNavContext = createContext<ShellNav | null>(null);

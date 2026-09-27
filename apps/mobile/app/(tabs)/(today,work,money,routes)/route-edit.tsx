@@ -67,12 +67,14 @@ const KIND_SEGMENTS: readonly Segment<"daily" | "saved">[] = [
 
 type StopPicker = "list" | "address" | null;
 
-// Manual route builder — create when no `routeId` param, edit when one is
-// present. Pushed from the Routes tab (routes.tsx `openBuilder`). On iPad,
-// isStackRoute("/route-edit") renders it full-width beside the rail via a
-// <Slot/>, so the screen owns its own pane header; on iPhone the persistent
-// frame supplies the back arrow and "<Tab> > Route" breadcrumb.
-export default function RouteEditScreen() {
+// Manual route builder — create when no `routeId`, edit when one is present.
+// iPhone pushes it from the Routes tab and the frame supplies the back arrow;
+// the iPad shell hosts it in the Routes pane with `routeId`/`onDone` props, so
+// it owns its pane header there.
+export default function RouteEditScreen({
+	routeId: routeIdProp,
+	onDone,
+}: { routeId?: Id<"routes">; onDone?: () => void } = {}) {
 	const t = useTokens();
 	const router = useRouter();
 	const { device } = useDevice();
@@ -81,7 +83,8 @@ export default function RouteEditScreen() {
 	const routeIdParam = Array.isArray(params.routeId)
 		? params.routeId[0]
 		: params.routeId;
-	const routeId = routeIdParam as Id<"routes"> | undefined;
+	const routeId = routeIdProp ?? (routeIdParam as Id<"routes"> | undefined);
+	const done = onDone ?? (() => router.back());
 
 	const routes = useCachedQuery(api.routes.list, {});
 	const org = useCachedQuery(api.organizations.get, {});
@@ -199,7 +202,7 @@ export default function RouteEditScreen() {
 				setError(null);
 				const id = await persist();
 				setBusy(false);
-				if (id) router.back();
+				if (id) done();
 			})();
 		});
 
@@ -222,7 +225,7 @@ export default function RouteEditScreen() {
 						setComputeNote("Route changed while computing — try again.");
 						return;
 					}
-					router.back();
+					done();
 				} catch (e) {
 					setBusy(false);
 					if (e instanceof ConvexError) {
@@ -273,7 +276,7 @@ export default function RouteEditScreen() {
 
 	if (!draft) {
 		return (
-			<Screen isPane={isPane} title={routeId ? "Edit route" : "New route"}>
+			<Screen isPane={isPane} onBack={done} title={routeId ? "Edit route" : "New route"}>
 				<View style={styles.loading}>
 					<ActivityIndicator color={t.sub} />
 				</View>
@@ -282,7 +285,7 @@ export default function RouteEditScreen() {
 	}
 	if (routeId && routes !== undefined && !existingRoute) {
 		return (
-			<Screen isPane={isPane} title="Route not found">
+			<Screen isPane={isPane} onBack={done} title="Route not found">
 				<View style={styles.loading}>
 					<Text style={{ color: t.sub, fontFamily: fontFamily.medium }}>
 						This route no longer exists.
@@ -355,7 +358,7 @@ export default function RouteEditScreen() {
 	const showComputeActions = savedRouteId !== undefined && draft.stops.length > 0;
 
 	return (
-		<Screen isPane={isPane} title={routeId ? "Edit route" : "New route"}>
+		<Screen isPane={isPane} onBack={done} title={routeId ? "Edit route" : "New route"}>
 			<KeyboardAvoidingView
 				style={styles.flex}
 				behavior={Platform.OS === "ios" ? "padding" : undefined}
@@ -712,17 +715,18 @@ export default function RouteEditScreen() {
 function Screen({
 	isPane,
 	title,
+	onBack,
 	children,
 }: {
 	isPane: boolean;
 	title: string;
+	onBack: () => void;
 	children?: React.ReactNode;
 }) {
 	const t = useTokens();
-	const router = useRouter();
 	return (
 		<View style={[styles.screen, { backgroundColor: t.bg }]}>
-			{isPane ? <PaneHeader title={title} onBack={() => router.back()} /> : null}
+			{isPane ? <PaneHeader title={title} onBack={onBack} /> : null}
 			{children}
 		</View>
 	);

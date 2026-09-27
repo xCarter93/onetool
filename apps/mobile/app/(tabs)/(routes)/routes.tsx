@@ -3,6 +3,7 @@ import { Linking, Pressable, StyleSheet, Text, View } from "react-native";
 import { useKeepAwake } from "expo-keep-awake";
 import * as Location from "expo-location";
 import { router } from "expo-router";
+import { useShellNav } from "@/lib/shell-nav";
 import { useAction, useMutation } from "convex/react";
 import { ConvexError } from "convex/values";
 import { api } from "@onetool/backend/convex/_generated/api";
@@ -70,6 +71,7 @@ function stopStatusLabel(status: "visited" | "skipped" | "pending"): string {
 }
 
 function RoutesBody({ headerMode: _headerMode }: { headerMode: "root" | "pane" }) {
+	const shellNav = useShellNav();
 	const t = useTokens();
 
 	const routes = useCachedQuery(api.routes.list, {});
@@ -340,10 +342,12 @@ function RoutesBody({ headerMode: _headerMode }: { headerMode: "root" | "pane" }
 	};
 
 	const openBuilder = (routeId?: Id<"routes">) =>
-		router.push({
-			pathname: "/route-edit" as never,
-			params: routeId ? { routeId } : {},
-		});
+		shellNav
+			? shellNav.editRoute(routeId)
+			: router.push({
+					pathname: "/route-edit" as never,
+					params: routeId ? { routeId } : {},
+				});
 
 	const gasStations =
 		gas && selected?.geometry === gas.geometry ? gas.stations : undefined;

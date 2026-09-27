@@ -35,6 +35,8 @@ import RoutesScreen from "@/app/(tabs)/(routes)/routes";
 import ActivityScreen from "@/app/(tabs)/(today,work,money,routes)/activity";
 import ProfileScreen from "@/app/(tabs)/(today,work,money,routes)/profile";
 import BusinessDetailsScreen from "@/app/(tabs)/(today,work,money,routes)/business-details";
+import RouteEditScreen from "@/app/(tabs)/(today,work,money,routes)/route-edit";
+import type { Id } from "@onetool/backend/convex/_generated/dataModel";
 import { AssistantHost } from "@/components/assistant/assistant-host";
 import {
 	AssistantInkHeader,
@@ -137,9 +139,12 @@ function IpadShellInner() {
 	// Rail nav swaps the content pane in place (local state → no router push, so
 	// the rail never re-mounts or slides). Also abandons any open create surface.
 	const [businessOpen, setBusinessOpen] = useState(false);
+	// null = the Routes list; { routeId: undefined } = a new route.
+	const [routeEditor, setRouteEditor] = useState<{ routeId?: Id<"routes"> } | null>(null);
 	const onNavigate = (tab: SidebarTab) => {
 		setActiveTab(tab);
 		setBusinessOpen(false);
+		setRouteEditor(null);
 	};
 
 	// In-pane navigation for detail bodies / list screens rendered INSIDE the
@@ -163,6 +168,10 @@ function IpadShellInner() {
 			openBusinessDetails: () => {
 				setActiveTab("profile");
 				setBusinessOpen(true);
+			},
+			editRoute: (routeId) => {
+				setActiveTab("routes");
+				setRouteEditor({ routeId });
 			},
 		}),
 		[select],
@@ -250,6 +259,8 @@ function IpadShellInner() {
 						tab={activeTab}
 						businessOpen={businessOpen}
 						onCloseBusiness={() => setBusinessOpen(false)}
+						routeEditor={routeEditor}
+						onCloseRouteEditor={() => setRouteEditor(null)}
 					/>
 				</ScreenBoundary>
 			</View>,
@@ -340,10 +351,14 @@ function SinglePane({
 	tab,
 	businessOpen,
 	onCloseBusiness,
+	routeEditor,
+	onCloseRouteEditor,
 }: {
 	tab: Exclude<ShellTab, SelectionTab>;
 	businessOpen: boolean;
 	onCloseBusiness: () => void;
+	routeEditor: { routeId?: Id<"routes"> } | null;
+	onCloseRouteEditor: () => void;
 }) {
 	const t = useTokens();
 
@@ -351,6 +366,15 @@ function SinglePane({
 		return (
 			<View style={[styles.slot, { backgroundColor: t.bg }]}>
 				<TodayScreen headerMode="pane" />
+			</View>
+		);
+	}
+
+	if (tab === "routes" && routeEditor) {
+		// The editor renders its own pane header with a back arrow.
+		return (
+			<View style={[styles.slot, { backgroundColor: t.surface }]}>
+				<RouteEditScreen routeId={routeEditor.routeId} onDone={onCloseRouteEditor} />
 			</View>
 		);
 	}
