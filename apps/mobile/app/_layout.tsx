@@ -41,6 +41,7 @@ import {
 	PushRegistrationHost,
 	usePushBridge,
 } from "@/components/push/PushRegistrationHost";
+import { ScreenBoundary } from "@/components/screen-boundary";
 
 // Module-level cold-start replay guard. Survives the ConvexClerkProvider
 // key={convexKey} remount on org switch because RootLayout itself never remounts —
@@ -226,7 +227,12 @@ export default function RootLayout() {
 							<PushConvexChild />
 							<View style={{ flex: 1 }}>
 							<StatusBar style="auto" />
-						<Stack screenOptions={{ headerShown: false }}>
+						<Stack
+							screenOptions={{ headerShown: false }}
+							screenLayout={({ route, children }) => (
+								<ScreenBoundary key={route.key}>{children}</ScreenBoundary>
+							)}
+						>
 							<Stack.Screen name="(tabs)" />
 							<Stack.Screen name="(auth)" />
 							<Stack.Screen name="(onboarding)" />

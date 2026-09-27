@@ -24,7 +24,7 @@ import {
 	type ShellTab,
 } from "@/lib/shell-routes";
 import { PaneDetailHost } from "@/components/ipad/pane-detail-host";
-import { AccessBoundary } from "@/components/access-boundary";
+import { ScreenBoundary } from "@/components/screen-boundary";
 import { PaneHeader } from "@/components/ipad/pane-header";
 import { ShellNavProvider, type ShellNav } from "@/lib/shell-nav";
 import type { WorkChipKind } from "@/lib/work-search";
@@ -229,9 +229,9 @@ function IpadShellInner() {
 	if (!isMasterDetailTab(activeTab)) {
 		return frame(
 			<View style={styles.contentPane}>
-				<AccessBoundary key={activeTab}>
+				<ScreenBoundary key={activeTab}>
 					<SinglePane tab={activeTab} />
-				</AccessBoundary>
+				</ScreenBoundary>
 			</View>,
 		);
 	}
@@ -241,7 +241,7 @@ function IpadShellInner() {
 	const selected = state[pane];
 
 	const listPane = (
-		<AccessBoundary key={pane}>
+		<ScreenBoundary key={pane}>
 			<View style={styles.fill}>
 				{/* No contextual ＋ — the rail's create menu is the single capture entry
 				    point on iPad. */}
@@ -274,7 +274,7 @@ function IpadShellInner() {
 					/>
 				)}
 			</View>
-		</AccessBoundary>
+		</ScreenBoundary>
 	);
 
 	// Portrait: one pane. The list fills it until something is selected, then the
@@ -283,13 +283,13 @@ function IpadShellInner() {
 		return frame(
 			<View style={styles.contentPane}>
 				{selected ? (
-					<AccessBoundary key={`${pane}:${selected.kind}:${selected.id}`}>
+					<ScreenBoundary key={`${pane}:${selected.kind}:${selected.id}`}>
 						<PaneDetailHost
 							context={pane}
 							record={selected}
 							onBack={() => clear(pane)}
 						/>
-					</AccessBoundary>
+					</ScreenBoundary>
 				) : (
 					listPane
 				)}
@@ -305,9 +305,9 @@ function IpadShellInner() {
 				{listPane}
 			</View>
 			<View style={styles.detailPane}>
-				<AccessBoundary key={selected ? `${pane}:${selected.kind}:${selected.id}` : pane}>
+				<ScreenBoundary key={selected ? `${pane}:${selected.kind}:${selected.id}` : pane}>
 					<PaneDetailHost context={pane} record={selected} />
-				</AccessBoundary>
+				</ScreenBoundary>
 			</View>
 		</>,
 	);
