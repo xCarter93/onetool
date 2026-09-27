@@ -10,7 +10,7 @@ import {
 	type TabNavigationState,
 } from "expo-router/react-navigation";
 import { SafeAreaInsetsContext, useSafeAreaInsets } from "react-native-safe-area-context";
-import { KeyboardAvoidingView } from "react-native-keyboard-controller";
+import { KeyboardAvoidingView, useKeyboardState } from "react-native-keyboard-controller";
 import {
 	Briefcase,
 	CalendarCheck,
@@ -104,7 +104,10 @@ export function PhoneFrame({ state, navigation, children }: FrameProps) {
 	const insets = useSafeAreaInsets();
 	const orgToday = useOrgToday();
 	const createItems = useCreateItems();
-	const [typing, setTyping] = useState(false);
+	const [composerFocused, setComposerFocused] = useState(false);
+	// A hardware keyboard focuses the field without raising the software one; keep the tab row then.
+	const keyboardUp = useKeyboardState((k) => k.isVisible);
+	const typing = composerFocused && keyboardUp;
 
 	const tabRoute = state.routes[state.index];
 	const tabName = tabRoute.name as TabRoute;
@@ -167,7 +170,7 @@ export function PhoneFrame({ state, navigation, children }: FrameProps) {
 			onSearchPress={openSearch}
 			onAssistant={openAssistant}
 			createItems={createItems}
-			onFocusChange={setTyping}
+			onFocusChange={setComposerFocused}
 		/>
 	);
 

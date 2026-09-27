@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useRef } from "react";
 import { Alert, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { MenuView, type MenuAction } from "@expo/ui/community/menu";
 import { Plus, Search, Sparkles, X } from "lucide-react-native";
@@ -31,23 +31,78 @@ function AssistantButton({ onPress }: { onPress: () => void }) {
 
 function CreateButton({ items }: { items: CreateMenuItem[] }) {
 	if (items.length === 0) return null;
+	// SwiftUI host keeps a stale origin when the tier moves; a plain RN slot pins it.
 	return (
-		<MenuView
-			title="Create"
-			onPressAction={({ nativeEvent }) =>
-				items.find((i) => i.key === nativeEvent.event)?.run()
-			}
-			actions={items.map((i) => ({ id: i.key, title: i.label, image: i.symbol }))}
-		>
-			<View
-				style={styles.square}
-				accessible
-				accessibilityRole="button"
-				accessibilityLabel="Create"
+		<View style={styles.slot}>
+			<MenuView
+				title="Create"
+				onPressAction={({ nativeEvent }) =>
+					items.find((i) => i.key === nativeEvent.event)?.run()
+				}
+				actions={items.map((i) => ({ id: i.key, title: i.label, image: i.symbol }))}
 			>
-				<Plus size={20} color={frame.railText} strokeWidth={2.2} />
-			</View>
-		</MenuView>
+				<View
+					style={styles.square}
+					accessible
+					accessibilityRole="button"
+					accessibilityLabel="Create"
+				>
+					<Plus size={20} color={frame.railText} strokeWidth={2.2} />
+				</View>
+			</MenuView>
+		</View>
+	);
+}
+
+function LiveField({
+	search,
+	placeholder,
+	onFocusChange,
+}: {
+	search: ComposerSearch;
+	placeholder: string;
+	onFocusChange?: (focused: boolean) => void;
+}) {
+	// Unmounting while focused (a row push, a tab switch) never fires onBlur.
+	useEffect(() => () => onFocusChange?.(false), [onFocusChange]);
+	const input = useRef<TextInput | null>(null);
+	// Uncontrolled: the value round-trips through the screen's chrome entry a render late, and a stale controlled value drops keystrokes.
+	return (
+		<View style={[styles.field, styles.fieldLive]}>
+			<Search size={17} color={frame.railMuted} strokeWidth={2} />
+			<TextInput
+				ref={(el) => {
+					input.current = el;
+					registerComposerInput(el);
+				}}
+				defaultValue={search.value}
+				onChangeText={search.onChangeText}
+				placeholder={placeholder}
+				placeholderTextColor={frame.railMuted}
+				selectionColor={frame.railAccent}
+				style={styles.input}
+				returnKeyType="search"
+				autoCorrect={false}
+				autoCapitalize="none"
+				clearButtonMode="never"
+				accessibilityLabel="Search"
+				onFocus={() => onFocusChange?.(true)}
+				onBlur={() => onFocusChange?.(false)}
+			/>
+			{search.value.length > 0 ? (
+				<Pressable
+					onPress={() => {
+						input.current?.clear();
+						search.onChangeText("");
+					}}
+					accessibilityRole="button"
+					accessibilityLabel="Clear search"
+					hitSlop={10}
+				>
+					<X size={16} color={frame.railMuted} strokeWidth={2} />
+				</Pressable>
+			) : null}
+		</View>
 	);
 }
 
@@ -72,35 +127,7 @@ export function Composer({
 	return (
 		<View style={styles.tier}>
 			{search ? (
-				<View style={[styles.field, styles.fieldLive]}>
-					<Search size={17} color={frame.railMuted} strokeWidth={2} />
-					<TextInput
-						ref={registerComposerInput}
-						value={search.value}
-						onChangeText={search.onChangeText}
-						placeholder={placeholder}
-						placeholderTextColor={frame.railMuted}
-						selectionColor={frame.railAccent}
-						style={styles.input}
-						returnKeyType="search"
-						autoCorrect={false}
-						autoCapitalize="none"
-						clearButtonMode="never"
-						accessibilityLabel="Search"
-						onFocus={() => onFocusChange?.(true)}
-						onBlur={() => onFocusChange?.(false)}
-					/>
-					{search.value.length > 0 ? (
-						<Pressable
-							onPress={() => search.onChangeText("")}
-							accessibilityRole="button"
-							accessibilityLabel="Clear search"
-							hitSlop={10}
-						>
-							<X size={16} color={frame.railMuted} strokeWidth={2} />
-						</Pressable>
-					) : null}
-				</View>
+				<LiveField search={search} placeholder={placeholder} onFocusChange={onFocusChange} />
 			) : (
 				<Pressable
 					onPress={onSearchPress}
@@ -215,6 +242,10 @@ const styles = StyleSheet.create({
 		// 16px keeps iOS from zooming the field; web's mobile input rule.
 		fontSize: 16,
 		color: frame.railText,
+	},
+	slot: {
+		width: frame.tierHeight,
+		height: frame.tierHeight,
 	},
 	square: {
 		width: frame.tierHeight,

@@ -95,12 +95,19 @@ export function composerSearchFor(routeKey: string): ComposerSearch | undefined 
 }
 
 let composerInput: TextInput | null = null;
+// Work asks for focus before its binding reaches the frame, so the field may not exist yet.
+let focusPending = false;
 
 export function registerComposerInput(input: TextInput | null) {
 	composerInput = input;
+	if (input && focusPending) {
+		focusPending = false;
+		input.focus();
+	}
 }
 
 /** Focus the composer's search field (used when Work opens with a pending search focus). */
 export function focusComposer() {
-	composerInput?.focus();
+	if (composerInput) composerInput.focus();
+	else focusPending = true;
 }
