@@ -194,10 +194,8 @@ export const frame = {
 } as const;
 
 // ----------------------------------------------------------------------------
-// 3.0 premium chrome — ink command hero + floating glass dock. Values are the
-// design canvas's literals (Mobile App Redesign 1a/1m); components must bind
-// these, never inline the hex. White-on-heroInk text tiers are AA-checked:
-// .92 white 15.2:1, .75 10.1:1, .55 5.5:1, .5 4.6:1 (all pass at their sizes).
+// Deep-ink launch palette (launch overlay only). White-on-ink text tiers are
+// AA-checked: .92 15.2:1, .75 10.1:1, .55 5.5:1, .5 4.6:1.
 // ----------------------------------------------------------------------------
 export const hero = {
 	/** Deep-ink band + sign-in root — the dark counterpart of the brand blue. */
@@ -244,26 +242,6 @@ export const hero = {
 	],
 } as const;
 
-export const dock = {
-	/** Floating white pill. Opaque: any alpha lets scrolling content ghost
-	 *  through on device (far more visible than in the simulator). */
-	bg: "#ffffff",
-	border: "rgba(23,24,26,.08)",
-	shadow: "0 12px 32px rgba(15,30,40,.16)",
-	height: 60,
-	radius: 30,
-	sideInset: 16,
-	bottomInset: 14,
-	/** Orb: 50px gradient squircle, risen 16px above the pill's top edge. */
-	orbSize: 50,
-	orbRise: 16,
-	orbRadius: 18,
-	orbRing: "#ffffff",
-	orbGradient: ["#00a6f4", "#0073ad"] as [string, string],
-} as const;
-
-/** @deprecated Nothing floats over the canvas now; scroll feet use CanvasScroll's 32. */
-export const DOCK_CLEARANCE = 24;
 
 // ----------------------------------------------------------------------------
 // Badge tones — soft-tint pairs, quieter than the old saturated pills.
