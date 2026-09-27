@@ -119,7 +119,6 @@ export function PadSidebar({
 							style={({ pressed }) => [
 								styles.navRow,
 								(active || pressed) && { backgroundColor: frame.railRaised },
-								active && { boxShadow: `inset 2px 0 0 ${frame.railAccent}` },
 							]}
 							accessibilityRole="tab"
 							accessibilityLabel={label}

@@ -175,10 +175,7 @@ export default function OrgSwitchSheet() {
 										disabled={switching || isActive}
 										style={({ pressed }) => [
 											styles.row,
-											isActive && {
-												backgroundColor: t.frostedBg,
-												boxShadow: `inset 2px 0 0 ${t.primary}`,
-											},
+											isActive && { backgroundColor: t.frostedBg },
 											!isActive && pressed && { backgroundColor: t.muted },
 										]}
 									>
@@ -350,6 +347,7 @@ const styles = StyleSheet.create({
 	},
 	listContent: {
 		paddingHorizontal: spacing.md,
+		paddingTop: spacing.md,
 		paddingBottom: spacing.lg,
 	},
 	emptyListContent: {

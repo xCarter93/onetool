@@ -232,7 +232,7 @@ export function RecordRow({
 			accessibilityState={selected ? { selected: true } : undefined}
 			style={({ pressed }) => [
 				styles.row,
-				selected && { backgroundColor: t.frostedBg, boxShadow: `inset 2px 0 0 ${t.primary}` },
+				selected && { backgroundColor: t.frostedBg },
 				pressed && { backgroundColor: t.muted },
 			]}
 		>

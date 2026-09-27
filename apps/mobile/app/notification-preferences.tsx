@@ -125,7 +125,7 @@ export default function NotificationPreferencesSheet() {
 	const body = (
 		<ScrollView
 			style={styles.scroll}
-			contentContainerStyle={{ paddingBottom: 24 }}
+			contentContainerStyle={styles.scrollContent}
 		>
 			{!pushGranted ? (
 				<Pressable
@@ -284,6 +284,10 @@ const styles = StyleSheet.create({
 	},
 	scroll: {
 		flex: 1,
+	},
+	scrollContent: {
+		paddingTop: spacing.md,
+		paddingBottom: 24,
 	},
 	intro: {
 		fontSize: type.meta,
