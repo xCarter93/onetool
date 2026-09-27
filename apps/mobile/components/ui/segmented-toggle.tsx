@@ -43,7 +43,7 @@ export function SegmentedToggle<V extends string>({
 						hitSlop={compact ? { top: 6, bottom: 6 } : undefined}
 						style={[
 							styles.segment,
-							{ minHeight: compact ? 32 : 40 },
+							compact ? styles.compact : styles.fill,
 							i < segments.length - 1 && { borderRightWidth: 1, borderRightColor: t.line },
 							active && {
 								backgroundColor: t.secondary,
@@ -83,16 +83,16 @@ const styles = StyleSheet.create({
 		borderWidth: 1,
 		overflow: "hidden",
 	},
-	// Grow from content width so the control also sizes itself in auto-width slots.
 	segment: {
-		flexGrow: 1,
-		flexBasis: "auto",
 		flexDirection: "row",
 		alignItems: "center",
 		justifyContent: "center",
 		gap: 6,
 		paddingHorizontal: 10,
 	},
+	// Yoga grows flexGrow children to the full at-most width, so header-slot (compact) toggles must not grow.
+	compact: { minHeight: 32 },
+	fill: { minHeight: 40, flexGrow: 1, flexBasis: "auto" },
 	label: {
 		fontSize: 13,
 		flexShrink: 1,
