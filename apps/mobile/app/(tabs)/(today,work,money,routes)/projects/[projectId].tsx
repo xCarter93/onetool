@@ -338,8 +338,12 @@ export function ProjectDetailBody({
 			? null
 			: {
 					tray: [
-						{ key: "add-task", label: "Add task", icon: ClipboardCheck, onPress: openAddTask },
-						{ key: "new-quote", label: "New quote", icon: FileText, onPress: openNewQuote },
+						...(permsLoading || can("tasks", "modify")
+							? [{ key: "add-task", label: "Add task", icon: ClipboardCheck, onPress: openAddTask }]
+							: []),
+						...(canCreateQuote
+							? [{ key: "new-quote", label: "New quote", icon: FileText, onPress: openNewQuote }]
+							: []),
 					],
 				}
 	);

@@ -46,7 +46,12 @@ export function OverflowMenuButton({
 					}}
 					actions={actions.map((a) => ({ id: a.key, title: a.label }))}
 				>
-					<View style={styles.anchor} />
+					<View
+						style={styles.anchor}
+						accessible
+						accessibilityRole="button"
+						accessibilityLabel={title ?? "More actions"}
+					/>
 				</MenuView>
 			</View>
 		</View>

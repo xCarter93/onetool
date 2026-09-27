@@ -243,8 +243,12 @@ export function ClientDetailBody({
 			? null
 			: {
 					tray: [
-						{ key: "new-quote", label: "New quote", icon: FileText, onPress: openNewQuote },
-						{ key: "schedule", label: "Schedule", icon: CalendarClock, onPress: openSchedule },
+						...(canCreateQuote
+							? [{ key: "new-quote", label: "New quote", icon: FileText, onPress: openNewQuote }]
+							: []),
+						...(permsLoading || can("tasks", "modify")
+							? [{ key: "schedule", label: "Schedule", icon: CalendarClock, onPress: openSchedule }]
+							: []),
 					],
 				}
 	);

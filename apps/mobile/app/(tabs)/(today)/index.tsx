@@ -335,7 +335,7 @@ export default function TodayScreen({
 			schedule.tasks.filter(
 				(task) =>
 					task.date !== undefined &&
-					utcDayStartMs(task.date) === todayMs &&
+					utcDayStartMs(task.date) === utcDayStartMs(todayMs) &&
 					!isDoneStatus(task.status),
 			).length,
 		[schedule.tasks, todayMs],

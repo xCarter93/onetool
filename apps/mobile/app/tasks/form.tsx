@@ -98,6 +98,7 @@ export default function TaskFormSheet() {
 	// Form state
 	const [type, setType] = useState<TaskType>("external");
 	const [title, setTitle] = useState("");
+	const [titleTouched, setTitleTouched] = useState(false);
 	const [description, setDescription] = useState("");
 	const [clientId, setClientId] = useState<Id<"clients"> | "">(
 		(params.clientId as Id<"clients">) || ""
@@ -410,12 +411,13 @@ export default function TaskFormSheet() {
 						/>
 					</SheetField>
 
-					<SheetField label="Title" error={!title.trim() ? "Title is required." : null}>
+					<SheetField label="Title" error={titleTouched && !title.trim() ? "Title is required." : null}>
 						<SheetInput
 							value={title}
 							onChangeText={setTitle}
+							onBlur={() => setTitleTouched(true)}
 							placeholder="What needs doing?"
-							invalid={!title.trim()}
+							invalid={titleTouched && !title.trim()}
 						/>
 					</SheetField>
 

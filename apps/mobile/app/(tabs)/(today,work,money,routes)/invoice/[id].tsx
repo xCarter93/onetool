@@ -223,7 +223,9 @@ export function InvoiceDetailBody({
 							// Recording always queues through the offline outbox — never
 							// connectivity-gated (Tier 4, PRD-mobile-offline §4.6).
 							onPress: () => setRecordOpen(true),
-							disabledReason: recordAction.disabledReason,
+							disabledReason:
+								recordAction.disabledReason ??
+								(withPayments === undefined ? "Loading payments…" : undefined),
 						});
 					}
 					const resendAction = actions.find(
