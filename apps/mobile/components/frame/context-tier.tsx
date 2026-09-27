@@ -248,6 +248,7 @@ const styles = StyleSheet.create({
 		fontFamily: fontFamily.regular,
 		// 16px keeps iOS from zooming the field; web's mobile input rule.
 		fontSize: 16,
+		letterSpacing: 0, // RN#42589: pin kern so iOS placeholder can't randomly letter-space
 		color: frame.railText,
 	},
 	slot: {
