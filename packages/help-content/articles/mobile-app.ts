@@ -110,11 +110,11 @@ export const mobileAppArticles: HelpArticle[] = [
 					},
 					{
 						type: "paragraph",
-						text: "Anything you change offline is saved on the phone the moment you tap. A status line just above the search bar at the bottom of the screen shows how many changes are waiting. They send by themselves once you're back in range with the app open. If you closed the app, they stay saved on the phone and send the next time you open it. Creating records, sending quotes and invoices, editing line items, uploading files, and planning routes need a connection; the app tells you when you try.",
+						text: "Anything you change offline is saved on the phone the moment you tap. A status line just above the search bar at the bottom of the screen (on iPad, at the bottom of the sidebar) shows how many changes are waiting. They send by themselves once you're back in range with the app open. If you closed the app, they stay saved on the phone and send the next time you open it. Creating records, sending quotes and invoices, editing line items, uploading files, and planning routes need a connection; the app tells you when you try.",
 					},
 					{
 						type: "paragraph",
-						text: "If the same record changed while you were offline, the app doesn't overwrite it. For example, the invoice was paid online or the quote was edited on the web. The status line at the bottom of the screen says how many changes need attention; tap it to open **Sync issues**, which shows what happened and lets you retry a change or mark it handled. A cash payment that couldn't be recorded stays on the phone until you mark it handled.",
+						text: "If the same record changed while you were offline, the app doesn't overwrite it. For example, the invoice was paid online or the quote was edited on the web. The status line says how many changes need attention; tap it to open **Sync issues**, which shows what happened and lets you retry a change or mark it handled. A cash payment that couldn't be recorded stays on the phone until you mark it handled.",
 					},
 					{
 						type: "note",

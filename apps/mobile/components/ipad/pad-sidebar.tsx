@@ -15,6 +15,7 @@ import {
 import { fontFamily, frame } from "@/lib/theme";
 import { useNotificationData } from "@/lib/use-notification-data";
 import { initialsFrom } from "@/components/frame/rail-header";
+import { SyncStatusRow } from "@/components/offline/sync-status-row";
 
 // Web's workspace sidebar on the graphite rail: brand, org switcher, one nav
 // group, profile and notifications in the footer. Routing is injected by the shell.
@@ -138,6 +139,7 @@ export function PadSidebar({
 				})}
 			</View>
 
+			<SyncStatusRow style={styles.sync} />
 			<View style={styles.footer}>
 				<Pressable
 					onPress={onProfile}
@@ -261,6 +263,10 @@ const styles = StyleSheet.create({
 	navLabel: {
 		fontSize: 14,
 		color: frame.railText,
+	},
+	sync: {
+		paddingHorizontal: 10,
+		paddingBottom: 10,
 	},
 	footer: {
 		flexDirection: "row",
