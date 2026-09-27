@@ -32,7 +32,9 @@ import {
 	type Href,
 } from "expo-router";
 import { api } from "@onetool/backend/convex/_generated/api";
-import { Building2, CircleCheck, FileText, Folder, History, Receipt, SearchX } from "lucide-react-native";
+import { Building2, CircleCheck, FileText, Folder, History, Receipt, SearchX, ShieldOff } from "lucide-react-native";
+import { canWith } from "@/lib/use-permissions";
+import type { PermissionObject } from "@onetool/backend/convex/lib/permissionKeys";
 import {
 	EmptyPanel,
 	GUTTER,
@@ -81,6 +83,14 @@ const isChipKind = (v: unknown): v is WorkChipKind =>
 	typeof v === "string" && v in KIND_LABEL;
 
 // Empty-state glyph per record kind, plus the two non-kind resting states.
+const KIND_PERMISSION: Record<WorkChipKind, PermissionObject> = {
+	client: "clients",
+	project: "projects",
+	quote: "quotes",
+	invoice: "invoices",
+	task: "tasks",
+};
+
 const KIND_EMPTY_ICON: Record<WorkChipKind, typeof Building2> = {
 	client: Building2,
 	project: Folder,
@@ -387,21 +397,31 @@ export default function WorkScreen({
 	const resting = !searching && kind === null;
 	// Clients are also the meta line ("Acme · PRJ-7") for the other three kinds,
 	// so one subscription serves both the client browse list and their names.
+	// Browse lists throw for a role without view access; cached so the gate holds offline.
+	const perms = useCachedQuery(api.permissions.myPermissions, {});
+	const canBrowse = (k: WorkChipKind) => canWith(perms, KIND_PERMISSION[k]);
+	const browsable = browseKind !== null && canBrowse(browseKind);
 	const wantsClients =
-		browseKind !== null && browseKind !== "task"
+		browsable && browseKind !== "task" && canBrowse("client")
 			? { includeArchived: true }
 			: "skip";
 	const clients = useCachedQuery(api.clients.list, wantsClients);
 	const projects = useCachedQuery(
 		api.projects.list,
-		browseKind === "project" ? {} : "skip",
+		browsable && browseKind === "project" ? {} : "skip",
 	);
-	const quotes = useCachedQuery(api.quotes.list, browseKind === "quote" ? {} : "skip");
+	const quotes = useCachedQuery(
+		api.quotes.list,
+		browsable && browseKind === "quote" ? {} : "skip",
+	);
 	const invoices = useCachedQuery(
 		api.invoices.list,
-		browseKind === "invoice" ? {} : "skip",
+		browsable && browseKind === "invoice" ? {} : "skip",
 	);
-	const tasks = useCachedQuery(api.tasks.list, browseKind === "task" ? {} : "skip");
+	const tasks = useCachedQuery(
+		api.tasks.list,
+		browsable && browseKind === "task" ? {} : "skip",
+	);
 
 	// Read-only favorites (web's sidebar query) — only needed at rest.
 	const favorites = useCachedQuery(api.favorites.list, resting ? {} : "skip");
@@ -441,8 +461,8 @@ export default function WorkScreen({
 	const loading = searching
 		? shownResults === undefined
 		: browseKind !== null
-			? browseList[browseKind] === undefined ||
-				(browseKind !== "task" && clients === undefined)
+			? browsable &&
+				(browseList[browseKind] === undefined || (wantsClients !== "skip" && clients === undefined))
 			: !!recentsScope && (recents === null || favorites === undefined);
 
 	const clientNames = useMemo(() => buildClientNameMap(clients), [clients]);
@@ -710,6 +730,13 @@ export default function WorkScreen({
 				title: "No matches",
 				body: "Search matches the start of words — try a name, number or fewer letters.",
 				icon: SearchX,
+			};
+		}
+		if (kind && !canBrowse(kind)) {
+			return {
+				title: "No access",
+				body: "Your role doesn't include this. Ask an admin to update your access.",
+				icon: ShieldOff,
 			};
 		}
 		if (kind) {
