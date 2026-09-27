@@ -36,20 +36,20 @@ export const mobileAppArticles: HelpArticle[] = [
 				blocks: [
 					{
 						type: "paragraph",
-						text: "On iPhone, the app is organized into four tabs along the bottom of the screen, with the assistant button in the center.",
+						text: "On iPhone, every screen sits inside the same frame: your organization and the Activity, notification and profile buttons along the top, and four tabs along the bottom. Above the tabs is a bar with a search field, the assistant button and a **+** button. The frame stays put while you move around, and a label at the top of the page shows where you are, such as **Work > Client**.",
 					},
 					{
 						type: "list",
 						items: [
-							"**Today** is your schedule. A week strip picks the date, and a **Day / List** toggle switches views: Day is a timeline of the chosen day (timed work in order with a *Now* marker, plus an all-day band for projects and unscheduled tasks), while List looks ahead two weeks, grouped by day. A **Me** and **Team** toggle switches between your own work and the whole team's, urgent items are called out at the top, and your organization's activity feed opens from here too.",
-							"**Work** is where you find anything. Type in the search field to search every record: clients (including their contacts and properties), projects, quotes, invoices, and tasks, with results grouped by type; the chips narrow to one type or browse its full list. Before you search, the screen shows records you've recently opened on this device.",
-							"**Money** is your money dashboard. The top of the screen shows what you are owed, how much of it is overdue, and a pipeline strip of three cells: **Quoted** (quotes waiting on a client), **Unpaid** (invoices still owed), and **Collected** this month. Below that, **Needs attention** lists your overdue invoices and the quotes a client has been sitting on, then a chart of what you've collected over the last six months, then your **Recent payments**. Tap any row to open that record. On iPhone, tapping the **Quoted** or **Unpaid** cell jumps to that list on **Work**; the **Collected** cell is a read-out, not a link, and on iPad the strip is read-only, so use the chips on **Work** to browse.",
+							"**Today** is your schedule. A week strip picks the date, and a **Day / List** toggle switches views: Day is a timeline of the chosen day (timed work in order with a *Now* marker, plus an all-day band for projects and unscheduled tasks), while List looks ahead two weeks, grouped by day. When your organization has more than one member, a **Me** and **Team** toggle switches between your own work and the whole team's. A strip at the top shows today's visits, the amount overdue, and the quotes awaiting approval, with anything urgent called out underneath.",
+							"**Work** is where you find anything. Type in the search field at the bottom of the screen to search every record: clients (including their contacts and properties), projects, quotes, invoices, and tasks, with results grouped by type. The tabs across the top narrow to one type or browse its full list. Before you search, the screen shows your favorites from the web workspace and the records you've recently opened on this device.",
+							"**Money** is your money dashboard. The top of the screen shows what you are owed and how much of it is overdue, then two cells: **Quoted** (quotes waiting on a client) and **Unpaid** (invoices still owed). A chart shows what you've collected over the last six months, with this month's total under it. **Record** opens your invoices so you can pick one to record a payment on, and **New quote** starts a quote. Below that, **Needs attention** lists your overdue invoices and the quotes a client has been sitting on, and **Payments** lists your recent payments. Tap any row to open that record. On iPhone, tapping the **Quoted** or **Unpaid** cell jumps to that list on **Work**; on iPad the cells are read-only, so use the tabs on **Work** to browse.",
 							"**Routes** plans the day's stops and gets you from one to the next. See [Planning a route](/help/routing/planning-a-route).",
 						],
 					},
 					{
 						type: "paragraph",
-						text: "A magnifier in the header of the other tabs jumps straight to Work with the search field ready. The center button opens the AI assistant, available on every plan. On the Free plan the assistant allows 10 messages per day for your organization, and a counter above the message field shows how many are left; the allowance resets at midnight UTC. See [Meet the assistant](/help/ai-assistant/meet-the-assistant).",
+						text: "On the other tabs, tapping the search field jumps straight to Work with the field ready to type. The sparkle button next to it opens the AI assistant, available on every plan. On the Free plan the assistant allows 10 messages per day for your organization, and a counter above the message field shows how many are left; the allowance resets at midnight UTC. See [Meet the assistant](/help/ai-assistant/meet-the-assistant).",
 					},
 				],
 			},
@@ -58,14 +58,14 @@ export const mobileAppArticles: HelpArticle[] = [
 				blocks: [
 					{
 						type: "paragraph",
-						text: "The **+** button floats above the bottom-right of every tab and fans out into **New project**, **New task**, **New client**, and **New quote**; you only see the ones your role can create. On iPad, the same menu lives behind the **+** in the sidebar.",
+						text: "The **+** button in the bar above the tabs opens a menu of **New quote**, **New client**, **New task**, and **New project**; you only see the ones your role can create. On iPad, the same menu is behind the **+** next to the assistant bar at the bottom of the screen. Every create opens as a sheet over the screen you were on.",
 					},
 					{
 						type: "list",
 						items: [
 							"**New project** is built for speed: pick a client, type a title, optionally set a start date, and it's created. If the client isn't in OneTool yet, tap **+ New client** inside the picker to add them with just a name and phone without leaving the form. You can also start a project straight from a client's detail screen.",
 							"**New quote** picks a client and creates a draft, then opens it so you can add line items right away.",
-							"**New task** and **New client** open the full forms you already know.",
+							"**New client** asks for the company, a primary contact, and a property, then opens the new client. **New task** saves the task and keeps you where you were, with a short confirmation at the top of the screen.",
 							"Clients and projects are unlimited on every plan, so creating from the app is never capped. The Free plan's monthly document send meter applies the same as on the web: the send preview shows how many sends you have left this month and explains when the allowance runs out. Resending an already-sent document is always free.",
 						],
 					},
@@ -76,7 +76,7 @@ export const mobileAppArticles: HelpArticle[] = [
 				blocks: [
 					{
 						type: "paragraph",
-						text: "You reach a record from the **Money** dashboard rows, or from the **Invoices** and **Quotes** chips on **Work**; tap any row to open the full record. From a detail screen, the buttons follow the record's status: a draft offers **Send** (with **Mark as sent** under the \u2022\u2022\u2022 menu when you delivered the quote yourself, so no email goes out), a sent quote offers **Get signature** (the client picks who's signing, signs on your screen, and the quote is approved with the signature saved to its approval history; on iPhone the signing area turns sideways on its own, so you keep holding the phone upright, and iPad signs full-width) plus **Resend** and a manual **Mark approved**, an approved quote converts to an invoice in one tap, and a sent or overdue invoice offers **Record payment** and **Share pay link**.",
+						text: "You reach a record from the **Money** dashboard rows, or from the **Invoices** and **Quotes** chips on **Work**; tap any row to open the full record. On a detail screen, the main action for the record's status sits at the bottom of the screen, above the tabs. Up to two more sit beside it, and anything further is under the \u2022\u2022\u2022 menu at the top of the record: a draft offers **Send** (with **Mark as sent** under the \u2022\u2022\u2022 menu when you delivered the quote yourself, so no email goes out), a sent quote offers **Get signature** (the client picks who's signing, signs on your screen, and the quote is approved with the signature saved to its approval history; on iPhone the signing area turns sideways on its own, so you keep holding the phone upright, and iPad signs full-width) plus **Resend** and a manual **Mark approved**, an approved quote converts to an invoice in one tap, and a sent or overdue invoice offers **Record payment** and **Share pay link**.",
 					},
 					{
 						type: "list",
@@ -110,11 +110,11 @@ export const mobileAppArticles: HelpArticle[] = [
 					},
 					{
 						type: "paragraph",
-						text: "Anything you change offline is saved on the phone the moment you tap. A status row under the title at the top of the screen shows how many changes are waiting. They send by themselves once you're back in range with the app open. If you closed the app, they stay saved on the phone and send the next time you open it. Creating records, sending quotes and invoices, editing line items, uploading files, and planning routes need a connection; the app tells you when you try.",
+						text: "Anything you change offline is saved on the phone the moment you tap. A status line just above the search bar at the bottom of the screen shows how many changes are waiting. They send by themselves once you're back in range with the app open. If you closed the app, they stay saved on the phone and send the next time you open it. Creating records, sending quotes and invoices, editing line items, uploading files, and planning routes need a connection; the app tells you when you try.",
 					},
 					{
 						type: "paragraph",
-						text: "If the same record changed while you were offline, the app doesn't overwrite it. For example, the invoice was paid online or the quote was edited on the web. The status row at the top of the screen says how many changes need attention; tap it to open **Sync issues**, which shows what happened and lets you retry a change or mark it handled. A cash payment that couldn't be recorded stays on the phone until you mark it handled.",
+						text: "If the same record changed while you were offline, the app doesn't overwrite it. For example, the invoice was paid online or the quote was edited on the web. The status line at the bottom of the screen says how many changes need attention; tap it to open **Sync issues**, which shows what happened and lets you retry a change or mark it handled. A cash payment that couldn't be recorded stays on the phone until you mark it handled.",
 					},
 					{
 						type: "note",
@@ -136,7 +136,7 @@ export const mobileAppArticles: HelpArticle[] = [
 				blocks: [
 					{
 						type: "paragraph",
-						text: "On iPad, the app replaces the tab bar with a multi-pane layout designed for the larger screen, so you can see more of your workspace at once.",
+						text: "On iPad, the app uses the same layout as the web workspace: a sidebar with your organization, the four areas plus **Activity**, and your profile and notifications, next to a page where lists and records sit side by side. The assistant bar and the **+** menu sit at the bottom of the page.",
 					},
 				],
 			},
@@ -145,7 +145,7 @@ export const mobileAppArticles: HelpArticle[] = [
 				blocks: [
 					{
 						type: "paragraph",
-						text: "The bell in the header opens your notifications list, and the app can also push the important ones to your lock screen: **mentions** (a teammate tagged you in team chat), **automation messages** from your workflows, and **payments and approvals** (an invoice was paid or a quote was approved). Team chat lives on every client, project, and quote detail screen, so you can tag a teammate right from the record you are looking at.",
+						text: "The bell opens your notifications list, and the app can also push the important ones to your lock screen: **mentions** (a teammate tagged you in team chat), **automation messages** from your workflows, and **payments and approvals** (an invoice was paid or a quote was approved). Team chat lives on every client, project, and quote detail screen, so you can tag a teammate right from the record you are looking at.",
 					},
 					{
 						type: "paragraph",
@@ -158,7 +158,7 @@ export const mobileAppArticles: HelpArticle[] = [
 				blocks: [
 					{
 						type: "paragraph",
-						text: "Tap your avatar in the header to open your profile. It shows your organization and your role, **Admin** or **Member**, and it is where you find **Sign Out**. The organization owner also sees account and organization deletion options here.",
+						text: "Tap your avatar to open your profile. On iPhone it sits at the top of the screen; on iPad it's at the bottom of the sidebar. It shows your organization and your role, **Admin** or **Member**, and it is where you find **Sign out**. The organization owner's **Delete account** also deletes the organization.",
 					},
 					{
 						type: "paragraph",
@@ -225,7 +225,7 @@ export const mobileAppArticles: HelpArticle[] = [
 						type: "list",
 						items: [
 							"If you already belong to an organization, the app activates it for you automatically and opens your workspace.",
-							"If your account has no organization yet, the app asks you to finish setting up your business in the OneTool web app, then sign in here. The only action available on that screen is **Sign Out**.",
+							"If your account has no organization yet, the app asks you to finish setting up your business in the OneTool web app, then sign in here. The only action available on that screen is **Sign out**.",
 						],
 					},
 				],
