@@ -73,7 +73,8 @@ function ConvexClerkProvider({ children }: PropsWithChildren) {
 // One client per org: a timed-out mutation still queued in the old client must never send under the new org's token.
 function OrgConvexProvider({ children }: PropsWithChildren) {
 	const [convex] = useState(() => new ConvexReactClient(process.env.EXPO_PUBLIC_CONVEX_URL!));
-	useEffect(() => () => void convex.close(), [convex]);
+	// Deferred: Convex's own provider cleanup calls clearAuth on this client after ours runs.
+	useEffect(() => () => void setTimeout(() => void convex.close(), 0), [convex]);
 	return (
 		<ConvexClerkOfflineProvider client={convex}>
 			<OfflineProvider>{children}</OfflineProvider>
